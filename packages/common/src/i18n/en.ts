@@ -4,6 +4,12 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    "httpApp.starting": "Starting MindOS…",
+    "httpApp.startupFailed": "MindOS failed to start",
+    "httpApp.updated": "A module needed by this page failed to load. Save open edits before reloading.",
+    "httpApp.disconnected": "HTTP storage is disconnected. Chat persistence, session leases and digital twin updates are unavailable.",
+    "httpApp.reload": "Reload",
+    "httpApp.checkConnection": "Check connection",
     "twin.invalidScanRule": "Invalid scan rule. Check the resource prefix and wildcard syntax.",
     "twin.connectionRequired": "Choose and save the analysis model in Overview first.",
     "twin.legacyScanPlan": "Legacy explicit-source plan; editing converts it to a scan rule",

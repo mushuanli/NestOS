@@ -19,6 +19,8 @@ chat 工作区由 `SessionWorkbench` 承载（Session 侧栏 + 路由 + 文件�
 
 chat 启动分阶段：`onWorkspaceMounted` 在两列 DOM 创建后立即把宿主遮罩移到正文列，使空侧栏可见；侧栏树加载完成后 `onWorkspaceReady` 通知宿主。浏览器获得一次绘制机会后才恢复选中项、当前项目正文或 URL 深链。侧栏初始化完成后触发 `onSidebarInteractive`，桌面端此时开放侧栏点击，正文首挂载再触发 `onEditorReady`。显式深链优先，不额外打开侧栏保存的旧选中项。
 
+移动端 `setupMobileWorkspaceView` 在工作台标签初始化时保留列表，只根据可见活动面板中的实际正文切换详情，标签栏与空面板不算编辑器。观察面板挂载和 hidden 状态变化；用户返回列表后，正文的后台 DOM 更新不会再次强制切换详情。
+
 Web 入口的图标与各工作区 CSS 由 HTML 引用的首批样式提供；`llm-ui/startup` 只带启动所需菜单和模板，编辑器工厂首次打开正文才导入完整 UI。MDX 默认编辑器与 MentionPlugin 也按正文打开延迟加载，避免侧栏数据加载等待正文模块图。
 
 普通 Chat 走 `ConversationRunCoordinator` 的直接任务路径（`directTaskSpec`），不包装成单节点 DAG。文件工具的 `ToolExecutionContext.vfs`（`ToolVFSContext`）由 `kernel-adapters` 注入：有该字段时走虚拟文件系统，没有时回退到 `node:fs/promises`，浏览器环境下因此不需要真实文件系统。

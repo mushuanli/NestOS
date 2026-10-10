@@ -5,6 +5,12 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    "httpApp.starting": "正在启动 MindOS…",
+    "httpApp.startupFailed": "MindOS 启动失败",
+    "httpApp.updated": "页面所需模块加载失败。请先保存已打开的编辑内容，再重新加载。",
+    "httpApp.disconnected": "HTTP 存储服务连接中断，聊天保存、会话续租和数字分身更新暂不可用。",
+    "httpApp.reload": "重新加载",
+    "httpApp.checkConnection": "检查连接",
     "twin.invalidScanRule": "扫描规则无效，请检查类型前缀和通配符语法。",
     "twin.connectionRequired": "请先在总览选择并保存分析模型。",
     "twin.legacyScanPlan": "旧版指定来源计划；编辑后改为自动扫描规则",

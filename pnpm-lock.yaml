@@ -153,6 +153,9 @@ importers:
       '@itookit/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
+      '@itookit/common':
+        specifier: workspace:*
+        version: link:../../packages/common
       '@itookit/piagent-driver':
         specifier: workspace:*
         version: link:../../packages/piagent-driver

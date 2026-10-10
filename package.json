@@ -6,6 +6,7 @@
     "main": "index.js",
     "scripts": {
         "dev": "pnpm --filter mind-os dev",
+        "httpd": "pnpm --filter @itookit/http-app dev",
         "build": "pnpm -r build",
         "build:libs": "pnpm --filter './packages/*' build",
         "test": "pnpm architecture:check && node --test scripts/tests/test-all.test.mjs && node scripts/test-all.mjs",

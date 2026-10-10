@@ -1,13 +1,22 @@
 import { FSError, type FSErrorCode } from '@itookit/vfs-core';
+import { setStorageAvailable } from './connection-state';
 
 export class HttpTransport {
     constructor(private readonly endpoint = '/api/vfs', private readonly fetcher: typeof fetch = globalThis.fetch.bind(globalThis)) {}
 
     async call<T>(method: string, args: unknown[] = [], signal?: AbortSignal): Promise<T> {
-        const response = await this.fetcher(this.endpoint, {
-            method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ method, args }), signal,
-        });
+        let response: Response;
+        try {
+            response = await this.fetcher(this.endpoint, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ method, args }), signal,
+            });
+        } catch (error) {
+            if (signal?.aborted) throw error;
+            setStorageAvailable(false);
+            throw new FSError('EIO', `HTTP storage connection failed: ${method}`, method, undefined, error instanceof Error ? error : undefined);
+        }
+        setStorageAvailable(true);
         const payload = await response.json() as { result?: T; error?: { code: FSErrorCode; message: string } };
         if (!response.ok) throw new FSError(payload.error?.code ?? 'EIO', payload.error?.message ?? `HTTP ${response.status}`);
         return payload.result as T;

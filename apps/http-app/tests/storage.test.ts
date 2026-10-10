@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from 'vitest';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,12 +6,19 @@ import type { Server } from 'node:http';
 import { openLocalFSBackend, type LocalFSBackend } from '@itookit/vfsdriver-local';
 import { createApplicationRuntime } from '@itookit/app-core';
 import { NodeSqliteSidecarDb } from '../src/server/sqlite-sidecar';
-import { createHttpServer } from '../src/server/http-server';
+import { createCertificates } from '../src/server/create-certificates';
+import { authenticatedFetch, secureServers, close } from './tls-fixture';
 import { HttpStorageBackend } from '../src/client/backend';
 import { HttpTransport } from '../src/client/transport';
 
-let temp: string, root: string, backend: LocalFSBackend, server: Server, client: HttpStorageBackend, origin: string;
+let temp: string, root: string, backend: LocalFSBackend, server: Server, internal: Server, client: HttpStorageBackend, origin: string;
+let certificateRoot: string, certificates: string, securedFetch: typeof fetch, closeFetch: () => void;
 let requests: string[], rejectField: string | undefined;
+beforeAll(async () => {
+    certificateRoot = await mkdtemp(path.join(tmpdir(), 'mindos-test-certificates-'));
+    certificates = path.join(certificateRoot, 'certs'); await createCertificates(certificates, ['127.0.0.1']);
+});
+afterAll(async () => { await rm(certificateRoot, { recursive: true, force: true }); });
 beforeEach(async () => {
     rejectField = undefined;
     temp = await mkdtemp(path.join(tmpdir(), 'mindos-http-')); root = path.join(temp, 'data');
@@ -26,23 +33,24 @@ beforeEach(async () => {
             const value = Reflect.get(target, key); return typeof value === 'function' ? value.bind(target) : value;
         } });
     } });
-    server = createHttpServer(backend, root, ui);
-    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
-    const address = server.address() as { port: number }; origin = `http://127.0.0.1:${address.port}`;
+    const secured = await secureServers(backend, root, ui, certificates);
+    server = secured.server; internal = secured.internal; origin = secured.origin;
+    const authenticated = await authenticatedFetch(certificates); securedFetch = authenticated.fetcher; closeFetch = authenticated.close;
     requests = [];
     const fetcher: typeof fetch = async (input, init) => {
         requests.push(JSON.parse(init!.body as string).method);
-        return fetch(input, init);
+        return securedFetch(input, init);
     };
     client = new HttpStorageBackend(new HttpTransport(`${origin}/api/vfs`, fetcher));
 });
 afterEach(async () => {
-    server.closeAllConnections(); await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve()));
+    closeFetch(); await close(server); await close(internal);
     await backend.close(); await rm(temp, { recursive: true, force: true });
 });
 
 it('serves the entry and round-trips binary files, metadata, tags and renamed SeqFile data', async () => {
-    expect(await (await fetch(origin)).text()).toContain('<title>MindOS');
+    expect(await (await securedFetch(origin)).text()).toContain('<title>MindOS');
+    expect(await (await securedFetch(`${origin}/api/health`)).json()).toEqual({ ready: true });
     await client.init(); await client.mkdir('/notes');
     const bytes = Uint8Array.from([0, 1, 127, 128, 255]); await client.write('/notes/a.seq', bytes);
     expect(await client.read('/notes/a.seq')).toEqual(bytes);
@@ -59,6 +67,21 @@ it('serves the entry and round-trips binary files, metadata, tags and renamed Se
     expect(await client.records.getRecordFieldsMany([{ path: '/x.seq', field: 'missing' }])).toEqual([undefined]);
 });
 
+it('keeps serving storage after a stale lazy chunk returns 404 and publishes a new entry', async () => {
+    const ui = path.join(temp, 'ui'); await mkdir(path.join(ui, 'assets'));
+    await writeFile(path.join(ui, 'assets/chat-old.js'), 'export const version = "old";');
+    expect((await securedFetch(`${origin}/assets/missing-chat.js`)).status).toBe(404);
+    await writeFile(path.join(ui, 'assets/chat-new.js'), 'export const version = "new";');
+    await writeFile(path.join(ui, 'index.html'), '<script type="module" src="/assets/chat-new.js"></script>');
+    expect(await (await securedFetch(origin)).text()).toContain('chat-new.js');
+    expect(await (await securedFetch(`${origin}/assets/chat-old.js`)).text()).toContain('"old"');
+    const asset = await securedFetch(`${origin}/assets/chat-new.js`);
+    expect(asset.headers.get('cache-control')).toBe('private, no-store');
+    expect((await securedFetch(origin)).headers.get('cache-control')).toBe('private, no-store');
+    expect(await (await securedFetch(`${origin}/api/health`)).json()).toEqual({ ready: true });
+    await client.mkdir('/still-alive'); expect((await client.stat('/still-alive'))?.type).toBe('directory');
+});
+
 it('commits records across two SeqFiles in one batch and rolls back a failed callback', async () => {
     await client.records.transaction!(async tx => {
         await tx.setRecordField('/a.seq', 'null', null); await tx.setRecordField('/b.seq', 'value', { n: 1 });
@@ -70,7 +93,7 @@ it('commits records across two SeqFiles in one batch and rolls back a failed cal
         await tx.setRecordField('/a.seq', 'null', 'discard'); throw new Error('abort');
     })).rejects.toThrow('abort');
     expect(await client.records.getRecordFieldsMany([{ path: '/a.seq', field: 'null' }, { path: '/b.seq', field: 'missing' }])).toEqual([null, undefined]);
-    const reopened = new HttpStorageBackend(new HttpTransport(`${origin}/api/vfs`));
+    const reopened = new HttpStorageBackend(new HttpTransport(`${origin}/api/vfs`, securedFetch));
     expect(await reopened.records.getRecordField('/b.seq', 'value')).toEqual({ n: 1 });
 });
 
@@ -117,8 +140,8 @@ it('blocks traversal, symlink escapes, root deletion, SQL and cross-origin write
     await expect(client.read('/escape/outside')).rejects.toMatchObject({ code: 'EACCES' });
     await expect(client.delete('/', { recursive: true })).rejects.toMatchObject({ code: 'EACCES' });
     await expect(client.read('/missing')).rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(new HttpTransport(`${origin}/api/vfs`).call('sqlite_execute', [])).rejects.toMatchObject({ code: 'EINVAL' });
-    const response = await fetch(`${origin}/api/vfs`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://evil.example' },
+    await expect(new HttpTransport(`${origin}/api/vfs`, securedFetch).call('sqlite_execute', [])).rejects.toMatchObject({ code: 'EINVAL' });
+    const response = await securedFetch(`${origin}/api/vfs`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: 'http://evil.example' },
         body: JSON.stringify({ method: 'write', args: ['/bad', ''] }) });
     expect(response.status).toBe(403); expect(await backend.stat('/bad')).toBeNull();
     expect(await readFile(path.join(temp, 'outside'), 'utf8')).toBe('secret');
@@ -131,7 +154,7 @@ it('boots the full application runtime through the HTTP backend and preserves th
     await client.records.setRecordField('/home/admin/projects/.mindos/local.seq', 'old-machine', reference);
     const first = await createApplicationRuntime({ backend: client, ownerKind: 'web', digitalTwinAutoStart: false });
     const project = await first.projects.personal(); expect(project.project.id).toEqual(expect.any(String)); await first.dispose();
-    const second = await createApplicationRuntime({ backend: new HttpStorageBackend(new HttpTransport(`${origin}/api/vfs`)), ownerKind: 'web', digitalTwinAutoStart: false });
+    const second = await createApplicationRuntime({ backend: new HttpStorageBackend(new HttpTransport(`${origin}/api/vfs`, securedFetch)), ownerKind: 'web', digitalTwinAutoStart: false });
     expect((await second.projects.personal()).project.id).toBe(project.project.id);
     expect(await client.records.getRecordField('/home/admin/projects/.mindos/local.seq', 'old-machine')).toBe(reference);
     await second.dispose();

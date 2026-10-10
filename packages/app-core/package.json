@@ -11,6 +11,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./profile": {
+      "types": "./src/profile/mindos-profile.ts",
+      "import": "./src/profile/mindos-profile.ts",
+      "default": "./src/profile/mindos-profile.ts"
     }
   },
   "scripts": {

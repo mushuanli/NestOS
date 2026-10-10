@@ -12,7 +12,7 @@ $XDG_CONFIG_HOME/mindos/mindos.json
 ~/.config/mindos/mindos.json
 ```
 
-CLI（desktop profile）和 Tauri 启动时，如果配置文件不存在，会自动创建以下默认值。已有文件不会被覆盖；`MINDOS_ROOT`、启动目录等临时参数不会写入默认配置。
+CLI（desktop profile）、Tauri 和 HTTP 存储宿主启动时，如果配置文件不存在，会自动创建以下默认值。已有文件不会被覆盖；`MINDOS_ROOT`、启动目录等临时参数不会写入默认配置。HTTP 宿主可通过 `pnpm httpd` 启动，额外支持 `--root` 优先覆盖数据根。
 
 ```json
 {
@@ -22,7 +22,9 @@ CLI（desktop profile）和 Tauri 启动时，如果配置文件不存在，会�
 }
 ```
 
-两端共用 `packages/app-core/src/profile/default-profile.json`，均将 `XDG_CONFIG_HOME` 视为配置基目录，并在其下使用 `mindos/`。可选的 `homeDir` 只在用户希望固定项目目录时填写。
+三个宿主共用 `packages/app-core/src/profile/default-profile.json`，均将 `XDG_CONFIG_HOME` 视为配置基目录，并在其下使用 `mindos/`。可选的 `homeDir` 只在用户希望固定项目目录时填写。
+
+HTTP 存储宿主通过 `@itookit/app-core/profile` 公开子入口复用配置默认值和数据根解析；该入口可独立打包，无需加载应用 Runtime。
 
 Schema：
 

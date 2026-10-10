@@ -1,30 +1,48 @@
 # MindOS HTTP app
 
-Node.js 提供静态 UI 和 VFS 存储 API；浏览器装配完整 MindOS 应用运行时。服务端使用 `@itookit/vfsdriver-local`，文件、元数据、标签和 SeqFile 记录落盘，浏览器不依赖 Tauri。Node.js 需要 >=22.13。
+Node.js 提供受双向 TLS 保护的完整 MindOS UI 和独立 VFS 存储服务，浏览器继续运行聊天、Kernel 和数字分身调度。Node.js >=22.13；初始化证书需要 OpenSSL。
+
+```text
+Browser + client certificate
+  → HTTPS :2000 (mTLS + enrolled certificate fingerprint)
+  → HTTP 127.0.0.1:2001 (ephemeral internal credential)
+  → LocalFS + SQLite
+```
+
+首次初始化私有 CA、服务器证书和浏览器身份：
+
+```bash
+./apps/http-app/scripts/create-certificates.sh --cert-host 192.168.31.10
+```
+
+也可运行 `pnpm --filter @itookit/http-app create:certs --cert-host 192.168.31.10`。脚本可从任意目录调用，`--help` 查看参数；使用 `--cert-dir /path/to/private/certs` 指定输出目录，相对路径按调用目录解析。脚本设置私有文件权限，并复用服务端证书生成逻辑。
+
+默认生成到 `~/.config/mindos/http-certs`；目录已存在时拒绝覆盖。`--cert-host` 可填写逗号分隔的 IP/DNS 名称，必须覆盖实际访问地址。初始化只打印文件位置，不打印密钥或密码。
+
+如果提示 `Certificate directory already exists`（旧版本为 `EEXIST`），说明目标目录已经存在。已生成的证书覆盖实际访问地址时，跳过初始化，直接用该目录启动服务；需要新证书时通过 `--cert-dir` 指定尚不存在的新目录，并在启动服务时使用同一个目录。新 CA 和浏览器身份需要重新导入浏览器。
+
+浏览器导入：
+
+1. 将 `ca.crt` 导入受信任的证书颁发机构，以验证服务器身份。
+2. 将 `browser-client.p12` 导入个人证书，导入密码在 `client-password.txt`。
+3. 打开 `https://192.168.31.10:2000`，浏览器请求选择身份时选 `MindOS browser`。
+
+不导入 CA 时浏览器不能信任服务器；不导入客户端身份时无法连接。CA 私钥 `ca.key` 不用于浏览器导入，应妥善保管。客户端私钥和导入包只交给获准访问该个人数据的设备。
 
 从仓库根启动：
 
 ```bash
-pnpm --filter @itookit/http-app dev --host 192.168.31.10 --port 2000 --root ./mindos-data
+pnpm httpd
 ```
 
-打开 `http://192.168.31.10:2000`。`dev` 先构建 UI，再运行服务端；修改源码后重新执行。默认地址为 `127.0.0.1:2000`，默认数据根是启动目录下 `.mindos-http`。相对 `--root`、`--sidecar`、`--static` 按命令启动目录 `INIT_CWD` 解析，不按 pnpm 切换后的 app 目录解析。
+发布使用 `pnpm --filter @itookit/http-app build`，再以同样参数运行 `pnpm --filter @itookit/http-app start`。`--cert-dir` 指定证书目录，`--audit-file` 指定 JSONL 日志；缺少有效证书或指纹允许名单时拒绝启动。没有匿名或明文降级开关。仅修改 UI 可在服务运行期间执行 `build:ui`，保留旧哈希资源，不必停止存储服务。
 
-生产启动：
+`pnpm httpd` 会先构建 UI，再启动服务；默认监听 `0.0.0.0:2000`（所有 IPv4 网卡），内部 VFS 仍为 `127.0.0.1:2001`。默认读取 `~/.config/mindos/mindos.json`，设置了 `XDG_CONFIG_HOME` 时读取其下的 `mindos/mindos.json`；文件缺失时创建与 CLI/桌面端相同的默认配置。证书和审计日志也使用该配置目录。可用 `pnpm httpd --host 127.0.0.1 --port 3000 --root /path/to/data` 覆盖启动参数。监听所有网卡不改变证书要求，`--cert-host` 仍需包含浏览器实际访问的 IP/DNS。
 
-```bash
-pnpm --filter @itookit/http-app build
-pnpm --filter @itookit/http-app start --host 192.168.31.10 --port 2000 --root ./mindos-data
-```
+证书有效期：CA 10 年，服务器及客户端证书 1 年。`clients.json` 保存允许的 SHA-256 指纹；删除对应项后下一次请求立即拒绝，包括已有连接。全部移除可禁止所有访问，重启前需恢复至少一枚有效身份。指纹文件不是私钥，不应填写任意 API Token。
 
-复用已有数据根时，把 `--root` 指向原 profile 的实际数据目录。例如：
+默认日志：`~/.config/mindos/logs/http/audit.jsonl`。记录认证成功/拒绝、请求 ID、来源 IP、路由、VFS 操作、HTTP 状态、错误码及耗时；通过 parentRequestId 关联对外和内部请求。不记录密码、Authorization/Cookie、查询参数、文件正文或模型消息。文件权限 0600，每份 10 MiB，保留当前及 3 份轮转记录；极端突发时汇总记录丢弃数量。
 
-```bash
-pnpm --filter @itookit/http-app start --host 192.168.31.10 --root /home/li/share/prj/pair-x1/mindos
-```
-
-`--root` 是整个 MindOS VFS 数据根，不是会话工作目录。默认 SQLite 位于 `<root>/_meta/index.db`，与 CLI/Tauri 布局一致。`--sidecar` 可指定根目录外的元数据目录；搬迁时需要一起保留文件树与 sidecar。UI 只能访问该 VFS 根内的逻辑路径，不直接打开宿主绝对目录。旧 profile 中其他机器的外部项目目录引用保留，当前宿主未提供目录挂载时显示不可用。
-
-UI 的 HTML、样式、工作区配置和编辑器工厂通过 `mind-os` 的公开入口复用。HTTP app 不启用 Web 的 IndexedDB/PWA 和受管项目同步。模型调用及 Kernel 运行仍在浏览器；关闭页面会停止运行。桌面的本机 Bash、Git worktree 和 MCP stdio 能力需要相应宿主，不由本 app 提供。
+数据根优先级为 `--root` → `MINDOS_ROOT` → `mindos.json` 的 `rootDir` → `<配置目录>/data`。配置中的相对 `rootDir` 按配置目录解析，`--root` 的相对路径按启动目录 `INIT_CWD` 解析。`--root` 是整个 MindOS 数据根，SQLite 默认 `<root>/_meta/index.db`。证书与审计日志必须在数据根之外，证书不能放在静态 UI 根中。浏览器只调用认证后的同源 `/api/vfs` 和 `/api/health`；内部端口不对局域网开放，直接本机访问还需内部凭据。
 
 协议、事务语义与限制见 [HTTP 存储应用](../../doc/http-app.md)。

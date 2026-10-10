@@ -5,8 +5,10 @@ import { WORKSPACES } from 'mind-os/workspaces';
 import { BrowserSkillToolHandlerFactory } from 'mind-os/skill-tools';
 import { createBrowserUI } from 'mind-os/ui';
 import { HttpStorageBackend } from './client/backend';
+import { installHttpStatus } from './client/status-banner';
 
 async function main(): Promise<void> {
+    installHttpStatus();
     installMobileNavigation();
     const runtime = await createApplicationRuntime({
         backend: new HttpStorageBackend(),

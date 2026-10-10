@@ -1,40 +1,84 @@
 import { mkdir, realpath, access } from 'node:fs/promises';
+import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import { parseArgs } from 'node:util';
+import type { Server } from 'node:http';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeSqliteSidecarDb } from './sqlite-sidecar';
 import { createHttpServer } from './http-server';
+import { createStorageServer } from './storage-server';
+import { loadCertificates } from './certificates';
+import { createCertificates } from './create-certificates';
+import { AuditLog } from './audit-log';
+import { configDirectory, resolveDataRoot } from './profile';
+import { options } from './options';
 
 async function main(): Promise<void> {
     const values = options();
-    if (values.help) { console.log('MindOS HTTP: --host 127.0.0.1 --port 2000 --root ./data [--sidecar ./data/_meta] [--static ./dist]'); return; }
-    const port = Number(values.port);
-    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Expected a port between 1 and 65535');
-    const cwd = process.env.INIT_CWD ?? process.cwd();
-    const root = path.resolve(cwd, values.root ?? '.mindos-http');
-    const sidecar = path.resolve(cwd, values.sidecar ?? path.join(root, '_meta'));
+    if (values.help) { console.log('MindOS HTTPS defaults: --host 0.0.0.0 --port 2000 --internal-port 2001\n  Data root: --root > MINDOS_ROOT > mindos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/mindos/mindos.json or ~/.config/mindos/mindos.json\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file>'); return; }
+    const cwd = process.env.INIT_CWD ?? process.cwd(), config = configDirectory();
+    const certDir = path.resolve(cwd, values['cert-dir'] ?? path.join(config, 'http-certs'));
+    if (values['init-certs']) {
+        await createCertificates(certDir, (values['cert-host'] ?? (values.host === '0.0.0.0' || values.host === '::' ? '127.0.0.1' : values.host)).split(',').map(host => host.trim()));
+        console.log(`Certificates created: ${certDir}\nBrowser identity: ${path.join(certDir, 'browser-client.p12')}\nImport password file: ${path.join(certDir, 'client-password.txt')}`); return;
+    }
+    const root = await resolveDataRoot(config, cwd, values.root), sidecar = path.resolve(cwd, values.sidecar ?? path.join(root, '_meta'));
     const staticDir = values.static ? path.resolve(cwd, values.static) : fileURLToPath(new URL(import.meta.url.endsWith('.ts') ? '../../dist/' : '../dist/', import.meta.url));
-    await access(path.join(staticDir, 'index.html'));
-    await mkdir(root, { recursive: true }); await mkdir(sidecar, { recursive: true });
+    const auditFile = path.resolve(cwd, values['audit-file'] ?? path.join(config, 'logs', 'http', 'audit.jsonl'));
+    await access(path.join(staticDir, 'index.html')); await mkdir(root, { recursive: true }); await mkdir(sidecar, { recursive: true });
     const canonicalRoot = await realpath(root), canonicalSidecar = await realpath(sidecar);
-    if (canonicalSidecar === canonicalRoot || (canonicalSidecar.startsWith(`${canonicalRoot}${path.sep}`)
-        && canonicalSidecar !== path.join(canonicalRoot, '_meta'))) throw new Error('Sidecar must be <root>/_meta or outside the VFS data root');
-    const backend = await openLocalFSBackend({ rootDir: canonicalRoot, sidecarDir: canonicalSidecar,
+    const canonicalCertificates = await realpath(certDir);
+    protectPaths(canonicalRoot, canonicalSidecar, canonicalCertificates, auditFile);
+    if (within(await realpath(staticDir), canonicalCertificates)) throw new Error('Certificates cannot reside within the static UI root');
+    const certificates = await loadCertificates(certDir), port = validPort(values.port), internalPort = validPort(values['internal-port']);
+    if (port === internalPort) throw new Error('Public and internal ports must differ');
+    await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, port, internalPort, host: values.host });
+}
+
+interface HostOptions {
+    root: string; sidecar: string; certificates: Awaited<ReturnType<typeof loadCertificates>>; staticDir: string;
+    auditFile: string; port: number; internalPort: number; host: string;
+}
+async function startHost({ root, sidecar, certificates, staticDir, auditFile, port, internalPort, host }: HostOptions): Promise<void> {
+    const backend = await openLocalFSBackend({ rootDir: root, sidecarDir: sidecar,
         durability: 'full', createDb: file => NodeSqliteSidecarDb.open(file) });
-    const server = createHttpServer(backend, canonicalRoot, staticDir);
-    const stop = () => { server.close(() => { void backend.close().finally(() => process.exit(0)); }); server.closeIdleConnections(); };
+    const audit = new AuditLog(auditFile), token = randomBytes(32).toString('base64url');
+    try { await audit.initialize(); } catch (error) { await backend.close(); throw error; }
+    const internal = createStorageServer(backend, root, token, audit);
+    const server = createHttpServer({ certificates, staticDir, internalPort, internalToken: token, audit });
+    try { await listen(internal, internalPort, '127.0.0.1'); await listen(server, port, host); }
+    catch (error) { await stopServers([server, internal]); await backend.close(); await audit.close(); throw error; }
+    installShutdown([server, internal], async () => { await backend.close(); audit.write({ event: 'server.stopped' }); await audit.close(); });
+    audit.write({ event: 'server.started', route: `https://${host}:${port}` });
+    console.log(`MindOS HTTPS UI: https://${host}:${port}\nVFS internal: 127.0.0.1:${internalPort}\nClient certificate required\nAudit log: ${auditFile}`);
+}
+
+function protectPaths(root: string, sidecar: string, certificates: string, log: string): void {
+    if (within(root, sidecar) && sidecar !== path.join(root, '_meta')) throw new Error('Sidecar must be <root>/_meta or outside the VFS data root');
+    if (within(root, certificates) || within(root, log)) throw new Error('Certificates and audit logs must remain outside the VFS data root');
+}
+function within(root: string, target: string): boolean {
+    const relative = path.relative(root, target);
+    return !relative || (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative));
+}
+function validPort(value: string): number {
+    const port = Number(value);
+    if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Expected a port between 1 and 65535');
+    return port;
+}
+function listen(server: Server, port: number, host: string): Promise<void> {
+    return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, () => { server.off('error', reject); resolve(); }); });
+}
+async function stopServers(servers: Server[]): Promise<void> {
+    await Promise.all(servers.map(server => new Promise<void>(resolve => { server.close(() => resolve()); server.closeIdleConnections(); })));
+}
+function installShutdown(servers: Server[], cleanup: () => Promise<void>): void {
+    let stopping = false;
+    const stop = () => {
+        if (stopping) return; stopping = true;
+        void stopServers(servers).then(cleanup).then(() => { process.exitCode = 0; }).catch(() => { process.exitCode = 1; });
+    };
     process.once('SIGINT', stop); process.once('SIGTERM', stop);
-    server.once('error', error => { console.error(error.message); void backend.close().finally(() => process.exit(1)); });
-    server.listen(port, values.host, () => console.log(`MindOS HTTP UI: http://${values.host}:${port}\ndata: ${canonicalRoot}\nsidecar: ${canonicalSidecar}`));
+    for (const server of servers) server.on('error', stop);
 }
-
-function options() {
-    const { values } = parseArgs({ options: {
-        root: { type: 'string' }, sidecar: { type: 'string' }, host: { type: 'string', default: '127.0.0.1' },
-        port: { type: 'string', default: '2000' }, static: { type: 'string' }, help: { type: 'boolean', short: 'h' },
-    } });
-    return values;
-}
-
 main().catch(error => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });

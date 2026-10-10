@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "create:certs": "bash scripts/create-certificates.sh",
     "dev": "pnpm build:ui && tsx src/server/main.ts",
     "build:ui": "vite build",
     "build": "pnpm build:ui && tsup src/server/main.ts --format esm --platform node --out-dir dist-server --splitting",
@@ -12,6 +13,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@itookit/common": "workspace:*",
     "@itookit/app-core": "workspace:*",
     "@itookit/app-shell": "workspace:*",
     "@itookit/vfs-core": "5.3.1",

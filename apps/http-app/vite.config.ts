@@ -18,6 +18,7 @@ export default defineConfig({
         alias: workspaceAliases(__dirname),
         dedupe: ['@codemirror/state', '@codemirror/view'],
     },
-    build: { target: 'esnext' },
+    // Open pages may still import lazy chunks from the previous build.
+    build: { target: 'esnext', emptyOutDir: false },
     optimizeDeps: { exclude: workspaceExcludes(), include: REGISTRY_PREBUNDLES },
 });

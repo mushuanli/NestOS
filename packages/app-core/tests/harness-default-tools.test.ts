@@ -36,7 +36,7 @@ it.each([
     let releaseSearch!: () => void;
     const searchGate = new Promise<void>(resolve => { releaseSearch = resolve; });
     const events: SessionEventEnvelope[] = [];
-    const runtime = await createApplicationRuntime({ backend: await backend(), ownerKind: 'tauri',
+    const runtime = await createApplicationRuntime({ backend: await backend(), ownerKind: 'tauri', digitalTwinAutoStart: false,
         kernelPlatform: { configureSession: (_id, { toolDriver }) => {
             const invoke = toolDriver.invoke.bind(toolDriver);
             vi.spyOn(toolDriver, 'invoke').mockImplementation(async request => {

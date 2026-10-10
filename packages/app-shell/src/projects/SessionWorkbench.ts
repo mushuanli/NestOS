@@ -99,6 +99,7 @@ export interface SessionWorkbenchOptions {
     fileFactory: EditorFactory;
     directoryMounts?: DirectoryMountService;
     sessionSkills?: SessionSkillControls;
+    manageTwin?: (sessionId: string) => Promise<void>;
     manageMemory?: (sessionId: string, signal: AbortSignal) => Promise<void>;
     flows?: { fs: IFileSystem; menu: ContextMenuConfig<VFSNodeUI> };
     projects?: ProjectService;
@@ -178,6 +179,7 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly fileFactory: SessionWorkbenchOptions['fileFactory'];
     private readonly directoryMounts: SessionWorkbenchOptions['directoryMounts'];
     private readonly sessionSkills: SessionWorkbenchOptions['sessionSkills'];
+    private readonly manageTwin: SessionWorkbenchOptions['manageTwin'];
     private readonly manageMemory: SessionWorkbenchOptions['manageMemory'];
     private readonly flows: SessionWorkbenchOptions['flows'];
     private readonly projects: SessionWorkbenchOptions['projects'];
@@ -202,6 +204,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.directoryMounts = options.directoryMounts;
         this.sessionSkills = options.sessionSkills;
         this.manageMemory = options.manageMemory;
+        this.manageTwin = options.manageTwin;
         this.flows = options.flows;
         this.projects = options.projects;
         this.onSidebarReady = options.onSidebarReady;
@@ -945,6 +948,10 @@ export class SessionWorkbench implements WorkspaceController {
             const button = document.createElement('button'); button.textContent = '挂载目录 / 管理挂载';
             button.onclick = () => { void this.manageMounts(target.sessionId).catch(error => this.report(error)); }; panel.append(button);
             if (nodes.every(node => node.name === 'attachments')) { const hint = document.createElement('p'); hint.textContent = '尚未挂载工作目录，此会话仅能访问附件'; panel.append(hint); }
+        }
+        if (target.kind === 'files' && target.path === '/' && this.manageTwin) {
+            const button = document.createElement('button'); button.type = 'button'; button.textContent = t('twin.title');
+            button.onclick = () => { void this.manageTwin!(target.sessionId).catch(error => this.report(error)); }; panel.append(button);
         }
         if (target.kind === 'files' && target.path === '/' && this.manageMemory) {
             const button = document.createElement('button'); button.textContent = t('memory.manage.title');

@@ -29,6 +29,8 @@ import {
 import {
     acquireSessionProcessContext,
     createKernelRuntime,
+    createNativeDigitalTwin,
+    type DigitalTwinService,
     createFlowCapabilities,
     createSessionAttachmentMounts,
     DirectoryMountService,
@@ -42,7 +44,7 @@ import {
     syncSkillsToKernel,
     withWorkspaceScopeCleanup,
 } from '@itookit/app-core';
-import { FlowRunProjection, SessionRepository } from '@itookit/llm-session';
+import { FlowRunProjection, SessionRepository, SessionDirectoryStorageResolver } from '@itookit/llm-session';
 import { createVFS, createFileSystemView, MemoryBackend, type IFileSystem, type VFSFactoryOptions } from '@itookit/vfs-core';
 import { createBashTool, type INativeShell } from '@itookit/tools';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
@@ -281,7 +283,9 @@ export async function createCliRuntime(
             () => directoryMounts.processMounts(id),
         );
     };
+    let digitalTwin: DigitalTwinService | undefined;
     const core = await createKernelRuntime({
+        authorizeLlm: (request, context) => digitalTwin?.authorizeLlm(request, context) ?? Promise.resolve(),
         systemFS,
         llmDriver,
         storageResolver: new CliStorageResolver(systemFS),
@@ -292,6 +296,8 @@ export async function createCliRuntime(
         fileContextForScope: acquireFiles,
         additionalTools: [...(hasRemoteMounts ? [] : [createBashTool(shell)]), createWorkspaceAccessTool(grants)],
         beforeRecover: async runtime => {
+            runtime.kernel.registerStorageResolver(new SessionDirectoryStorageResolver(systemFS));
+            digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, runtime.kernel, llmDriver, 'cli', projects);
             await syncSkillsToKernel(llmDriver, runtime);
             await grantRunMemory(runtime.memory.shared!, workflow.config.agents, manifest.sessionId, hostOptions.grantMemory ?? []);
         },
@@ -338,6 +344,7 @@ export async function createCliRuntime(
             return executor.waitForCheckpoint(manifest.sessionId, manifest.rootTaskId, taskIds);
         },
         async dispose() {
+            await digitalTwin?.dispose();
             kernel.dispose();
             const notice = setTimeout(() => { void reportWorkspace(kernel, manifest, true); }, 5_000);
             try { await executor.waitIdle(); } finally { clearTimeout(notice); }

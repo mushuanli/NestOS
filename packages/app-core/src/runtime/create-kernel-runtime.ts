@@ -18,6 +18,7 @@ import { createRuntimeContextResolver } from './context-service';
 import { createRuntimeContextGc, type RuntimeContextGc, type RuntimeContextGcOptions } from './context-gc';
 
 export interface CreateKernelRuntimeOptions {
+    authorizeLlm?: KernelAdaptersRuntimeOptions['authorizeLlm'];
     contextEngineOptions?: import('@itookit/llm-context').ContextEngineOptions;
     contextGc?: RuntimeContextGcOptions | false;
     /** Override the context storage/engine ports at the host composition boundary. */
@@ -70,6 +71,7 @@ export async function createKernelRuntime(
         logger: createModuleLogger('kernel-adapters'),
         processUnavailableMessage: () => t('chatInput.command.unavailable'),
         llmDriver: options.llmDriver,
+        authorizeLlm: options.authorizeLlm,
         runMode: 'kernel',
         fileContextForSession: options.fileContextForSession,
         scopeForEffect: options.scopeForEffect ?? (options.fileContextForScope ? async context => {

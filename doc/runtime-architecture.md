@@ -667,3 +667,13 @@ sequenceDiagram
 三个宿主统一创建 piagent-driver 并作为远程文件来源注入。外部 Codex 控制由远程连接服务创建 HarnessClient，app-shell 控制面板负责关闭该客户端；服务端持续监管 app-server。此链路独立于 MindOS Kernel 的模型设备与 llm-session 恢复，复用连接和运行期凭据，不把外部线程转为内部 Task。同步存储/协调器仍由 sync-adapters 提供，HTTP 同步 transport 由 piagent-driver 封装。
 
 外部 pi-agent 配置统一位于工具箱 MCP，基础设施为 MCP 注入运行期凭据解析和配置变更钩子。ProjectRemoteMountService 从 MCPRemoteConnections 读取连接；初始化先幂等迁移旧连接，再移除 `/etc/fs` 中的旧描述与密码。配置改名只刷新展示，不失效正在使用的文件来源；删除/改地址或账号受到项目引用保护。
+
+## 本地数字分身装配
+
+`createApplicationRuntime` 在恢复前通过 `createNativeDigitalTwin` 装配 `runtime.digitalTwin`；应用启动自动初始化分身扫描存储和可用的默认规则，不依赖用户先打开分身页面；新会话消费仍须授权。`createConversationSystem` 把授权相关记忆追加到公开 ContextPlan 检索入口；`createKernelRuntime.authorizeLlm` 透传到通用 LLM Effect，事件持久化前和 provider 发送前均等待校验。分身内核分析使用独立 `twin-analysis-*` Session，无工具；新扫描规则的自身信息自动生效，其他人物候选待确认，结果提交或失败后删除执行快照；恢复回调不把它作为工作台项目会话收养。
+
+来源与消费策略、版本和使用回执在 app-core；kernel-adapters 只提供通用异步发送前钩子，没有分身类型依赖。基础设施包装宿主 LLM 日志，为受门禁标记的分析/消费及后续轮次脱敏正文，保留响应观测。CLI 自有 Runtime 在恢复前接入相同门禁，`mindos twin` 管理命令采用共享应用 Runtime 和 SQLite。具体能力、布局与验收边界见[数字分身设计](design/数字分身完整设计与实施计划.md#实现与边界)。
+
+扫描计划与运行由 `digital-twin/scans.ts` 组织，`scan-store.ts` 在现有 SeqFile 中保存队列与扫描宿主租约，`scan-worker.ts` 调用已有 Kernel 提取任务。运行时在装配末尾启动 15 秒检查循环，退出时先停止分身扫描再释放内核与 VFS；`digitalTwinAutoStart=false` 可禁用自动调度。CLI 的一次性 twin 管理命令使用这一开关，`twin watch` 显式开启在线调度。间隔与变化轮询都保存下次检查时间，重开合并补跑；扫描暂停不阻断来源安全核对。
+
+规则驱动发现使用 `project-catalog.ts` / `harness-reader.ts` 和 ProjectService 公开目录/会话接口；`source-index.ts` 根据规则并集和全局排除维护来源，成功枚举的范围才判定删除，离线标不可用。`saveScanRule/previewScanRule` 简化宿主配置，模型与预算集中在全局设置。schema 1/layout 4 保留旧数据并隔离不理解规则的旧客户端。

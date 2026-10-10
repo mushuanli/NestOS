@@ -6,7 +6,7 @@ import { createWorkspaceModule, type WorkspaceModule } from '../workspaces/modul
 import { SessionWorkbench, type SessionWorkbenchOptions } from './SessionWorkbench';
 
 interface ProjectModuleOptions extends Pick<SessionWorkbenchOptions, 'sidebar' | 'container' | 'factory' | 'fileFactory' | 'onSelect' | 'hostContext' | 'sessionSkills' | 'onSidebarReady' | 'initialResourceId' | 'uiPersistence' | 'workbenchState' | 'projectSyncSetup' | 'projectSyncDirectory'> {
-    runtime: Pick<ApplicationRuntime, 'sessionRepository' | 'sessionFiles' | 'kernel' | 'directoryMounts' | 'sessionManager' | 'flowEngine' | 'projects' | 'commandBus' | 'projectSync'>;
+    runtime: Pick<ApplicationRuntime, 'sessionRepository' | 'sessionFiles' | 'kernel' | 'directoryMounts' | 'sessionManager' | 'flowEngine' | 'projects' | 'commandBus' | 'projectSync' | 'digitalTwin'>;
     createFlowContextMenu: AppUI['createFlowContextMenu'];
 }
 
@@ -16,6 +16,7 @@ export function createProjectModule(options: ProjectModuleOptions): WorkspaceMod
     const workbench = new SessionWorkbench({ ...options, repository: runtime.sessionRepository,
         files: runtime.sessionFiles, kernel: runtime.kernel.kernel, directoryMounts: runtime.directoryMounts,
         projects: runtime.projects, projectSync: runtime.projectSync,
+        manageTwin: runtime.digitalTwin ? async id => { await options.hostContext?.navigate({ target: 'twin', resourceId: '/overview/' + encodeURIComponent(id) }); } : undefined,
         manageMemory: async (id, signal) => showMemoryDialog(sessionManager.memory.forSession(id), await sessionManager.getAvailableAgents(), signal),
         flows: { fs: runtime.flowEngine.engine, menu: options.createFlowContextMenu({ commands: runtime.commandBus,
             navigate: id => options.hostContext?.navigate({ target: 'chat', resourceId: id }) ?? Promise.resolve() }) },

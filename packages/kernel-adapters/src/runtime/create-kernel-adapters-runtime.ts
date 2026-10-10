@@ -383,7 +383,7 @@ function createEffects(
     const skills = async (context: import('@itookit/durable-kernel').EffectExecutionContext) =>
         (await registry.getForContext(context)).skillService;
     const effects: import('@itookit/durable-kernel').EffectAdapter[] = [
-        new LlmChatEffectAdapter(llm, diagnostics.logger),
+        new LlmChatEffectAdapter(llm, diagnostics.logger, diagnostics.authorizeLlm),
         new ToolCallEffectAdapter(async (context, request) => {
             const scope = await registry.getForEffect(context);
             const meta = scope.toolService.getToolMeta(request.toolId);

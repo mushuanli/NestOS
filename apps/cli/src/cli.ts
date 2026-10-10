@@ -2,6 +2,7 @@ import { remoteFilesCommand } from './remote-files-command';
 import { createHttpMindOSRuntime, startHttpServer } from './http-server';
 import { installRuntimeDiagnostics, recordRuntimeDiagnostic, traceRuntimeStage } from './diagnostics';
 import { errorDetails } from '@itookit/common';
+import { digitalTwinCommand } from './digital-twin-command';
 import { sharedMemoryCommand } from './shared-memory-command';
 import {
     cancelCommand,
@@ -43,6 +44,7 @@ async function main(argv: string[]): Promise<number> {
     if (parsed.options.prompt) return promptCommand(parsed.options);
     switch (parsed.command) {
         case 'fs': return remoteFilesCommand(parsed.positional, parsed.options);
+        case 'twin': return digitalTwinCommand(parsed.positional, parsed.options);
         case 'memory': return sharedMemoryCommand(parsed.positional, parsed.options);
         case 'validate': return validateCommand(parsed.options);
         case 'run': return runCommand(parsed.options);
@@ -147,6 +149,8 @@ function help(): string {
         `  mindos export <run-id> [--state-dir .mindos] [--out file.json] [--max-bytes N]\n` +
         `  mindos fs list|read|stat|status <endpoint> <alias> [relative-path] [--credential-env ENV] [--out file]\n` +
         `  mindos sandbox doctor\n\n` +
+        `  mindos twin list|preview-source|add-source|add-memory|analyze|cancel|review|forget|forget-subject|forget-project|suppress|grant|settings|link-execution|revoke-source|enable-source|remove-source [id] [revision] [decision] [--profile root] [--value JSON]\n` +
+        `  mindos twin scan-plans|scan-runs|plan-create|plan-update|plan-pause|plan-enable|plan-delete|plan-run|scan-cancel|scan-tick|watch [id] [revision] [--profile root] [--value JSON]\n` +
         `  mindos memory list|create|inspect|grant|revoke|delete|audit [id] [incarnation] [session] [--profile root] [--value JSON]\n\n` +
         `选项：\n` +
         `  --profile <name>    desktop（默认，共享 ~/.config/mindos）或显式数据根路径\n` +

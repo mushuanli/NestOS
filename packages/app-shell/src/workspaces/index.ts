@@ -195,3 +195,9 @@ export const WS_TOOLBOX: WorkspaceConfig = {
     elementId: 'toolbox-workspace', workspaceName: 'toolbox', slug: 'toolbox', type: 'toolbox',
     title: 'Toolbox', supportedFileTypes: [], syncEnabled: false, readOnly: false, mentionAble: false, aiEnabled: false,
 };
+
+/** User-owned personal context management. */
+export const WS_TWIN: WorkspaceConfig = {
+    elementId: 'twin-workspace', workspaceName: 'digital-twin', slug: 'twin', type: 'twin',
+    title: 'Digital twin', supportedFileTypes: [], syncEnabled: false, readOnly: false, mentionAble: false, aiEnabled: false,
+};

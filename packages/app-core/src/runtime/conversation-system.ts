@@ -8,6 +8,7 @@ import { withWorkspaceScopeCleanup } from './workspace-scope-cleanup';
 import { t, createModuleLogger, traceBoot } from '@itookit/common';
 
 export interface ConversationSystemOptions {
+    digitalTwin?: import('../digital-twin/service').DigitalTwinService;
     directAgentPolicy?: import('@itookit/llm-session/contracts').DirectAgentPolicy;
     agentResolution?: import('@itookit/llm-session').AgentResolutionPolicy;
     vfs: IVFSManager;
@@ -47,7 +48,10 @@ export async function createConversationSystem(
         kernel: kernel.kernel,
         flowStore: flowEngine,
         dagPlugins: kernel.dagPlugins,
-        retrieveMemory: kernel.memory.retrieve,
+        retrieveMemory: async (plan, agent, context) => [
+            ...await kernel.memory.retrieve(plan, agent, context),
+            ...await options.digitalTwin?.retrieve(plan, agent.id, context.sessionId) ?? [],
+        ],
         memoryProvider: kernel.memory,
         workspaceManager: options.flowWorkspaceManager ? withWorkspaceScopeCleanup(options.flowWorkspaceManager, kernel) : undefined,
         canWriteSession: options.ensureWritable,

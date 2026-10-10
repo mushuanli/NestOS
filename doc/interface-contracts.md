@@ -188,3 +188,13 @@ pi-agent 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）。a
 
 
 `HarnessClient.directoryVersion`、`HarnessStatusPort.fileVersion` 是可选的目录观察端口。发现元数据 `PiAgentDescriptor.fileWatch` 协商 project_watch/project_unwatch，使用项目 revision 和私有 watchId；响应只返回版本、gap 及覆盖不足标记。`RemoteSessionStatus.fileVersion` 合并独立目录版本与原生文件事件，零会话仍可通知，授权变更失效。Claude 与 Codex 共用公共会话契约；Claude 子进程断线的 harness/disconnected 携带 threadId，只影响该会话。Claude capability 不声明未实现的分支、重命名或归档操作。
+
+## 数字分身宿主接口
+
+扫描公开契约为 app-core 的 `TwinScanPlanInput`、`TwinScanPlan`、`TwinScanRun`、`TwinScanState`；命令由 `DigitalTwinService.saveScanPlan`、`setScanPlanEnabled`、`removeScanPlan`、`runScanPlan`、`cancelScanRun`、`waitScanRun`、`scanOnce` 提供。`snapshot().scans` 返回计划、运行、下次检查和宿主信息。UI 只调用服务，工具箱资源仍按原协议管理；扫描不注册绕过来源授权的通用工具。扫描守卫在预算预留、模型发送和结果提交核对计划版本、来源范围、提取类型、运行状态与宿主 fence，预算和检查点与结果原子提交。
+
+`DigitalTwinService` 位于 `app-core/src/digital-twin/service.ts`，公开 `snapshot/addSource/analyze/review/grant/retrieve/forget/forgetScope/linkExecution` 等宿主管理方法；owner 和来源/消费权限不由模型参数提供。`TwinStore` 位于 `app-core/src/digital-twin/contracts.ts`，公开版本条件提交、固定页枚举、原子失效与可恢复清理，仍由 VFS 的同后端 SeqFile 事务承载。
+
+`KernelAdapterDiagnostics.authorizeLlm(request, context)` 位于 `kernel-adapters/src/ports/diagnostics.ts`：宿主可异步拒绝发送，或设置通用请求诊断 `_label`；LLM 适配器在持久请求事件前和实际发送前调用，发送参数在第二次校验后生成。底层不导入分身领域类型。该钩子是发送时授权校验，不能撤回已经发送的网络请求，也不代表跨网络/数据库的原子事务。
+
+数字分身新扫描入口：`DigitalTwinService.saveScanRule(id, revision, {name, include, exclude, intervalMinutes, enabled, kinds?})`，`previewScanRule({include, exclude})` 不提取/不新增来源；`TwinSourceReader.discover()` 返回资源、项目与完整范围，`probe()` 可提供文件版本。模型和全局排除通过 `configure` 保存；旧 `saveScanPlan` 保留兼容。

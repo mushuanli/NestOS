@@ -1,6 +1,6 @@
+import { SessionLifecycleService } from '../session/session-lifecycle';
 import { MCPRemoteConnections } from '../projects/mcp-remote-connections';
 import { createPiAgentMCPExtension } from '../projects/pi-agent-mcp-extension';
-import { SessionLifecycleService } from '../session/session-lifecycle';
 import { ProjectSyncService, type ProjectSyncProvider } from '../projects/sync/service';
 import type { Coordinator } from '@itookit/vfs-sync';
 import { seedDefaultFlows } from '../presets/default-flows';
@@ -34,6 +34,8 @@ import { recoverSessionsWithLeases } from './session-recovery';
 import { createConversationSystem } from './conversation-system';
 import { createInfrastructure } from './infrastructure';
 import { syncSkillsToKernel } from '../kernel/sync-skills';
+import { DigitalTwinService } from '../digital-twin/service';
+import { createNativeDigitalTwin } from '../digital-twin/native-service';
 
 export interface ApplicationPlatformServices {
     sessionFiles: SessionFilesService;
@@ -63,6 +65,7 @@ export interface ApplicationKernelPlatform {
 }
 
 export interface ApplicationRuntime {
+    digitalTwin?: DigitalTwinService;
     vfs: import('@itookit/vfs-core').IVFSManager;
     llmDriver: LLMDeviceDriver;
     agentService: VFSAgentService;
@@ -98,6 +101,7 @@ export interface ApplicationRuntimeOptions {
     mcp?: import('@itookit/kernel-adapters/llm/core').MCPConnectionOptions;
     codexTransport?: CodexAppServerTransport;
     ownerKind?: SessionOwnerKind;
+    digitalTwinAutoStart?: boolean;
     /**
      * Stable token identifying this host window/tab for Session write leases. A reload of the
      * same window reuses it and may take over the leases its predecessor still holds, while a
@@ -195,11 +199,13 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             await traceBoot('projects.init', () => projects.ensureStartup(options.defaultSessionDirectory));
         }
         let mayCollectContext = (_id: string): boolean => false;
+        let digitalTwin: DigitalTwinService | undefined;
         const kernel: HeadlessKernelRuntime = await traceBoot('createKernelRuntime', () => createKernelRuntime({
             systemFS,
             contextEngineOptions: options.contextEngineOptions,
             contextGc: { canCollectSession: id => mayCollectContext(id) },
             llmDriver,
+            authorizeLlm: (request, context) => digitalTwin?.authorizeLlm(request, context) ?? Promise.resolve(),
             storageResolver: new SessionDirectoryStorageResolver(systemFS),
             maxConcurrent: 20,
             fileContextForSession: async id => {
@@ -240,6 +246,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             recover: false,
         }));
         const kernelCore = kernel.kernel;
+        digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, kernelCore, agentService, options.ownerKind ?? 'tauri', projects);
         const leaseStore = new SessionLeaseStore(systemFS, {
             ...(options.sessionLeaseSkewMs ? { skewMs: options.sessionLeaseSkewMs } : {}),
         });
@@ -253,8 +260,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const observed: Record<string, number> = {};
         const recovery = await traceBoot('recoverSessionsWithLeases', () => recoverSessionsWithLeases(kernelCore, leaseStore,
             { id: ownerId, kind: options.ownerKind ?? 'tauri' }, 10_000, async id => {
-                await measureCallbacks(observed, 'adoptSession', () => projects.adoptSession(id));
-                await measureCallbacks(observed, 'platformBeforeRecovery', async () => options.kernelPlatform?.beforeSessionRecovery?.(id));
+                if (!id.startsWith('twin-analysis-')) await measureCallbacks(observed, 'adoptSession', () => projects.adoptSession(id));
+                if (!id.startsWith('twin-analysis-')) await measureCallbacks(observed, 'platformBeforeRecovery', async () => options.kernelPlatform?.beforeSessionRecovery?.(id));
                 await measureCallbacks(observed, 'contextGcObserve', async () => { await kernel.contextGc?.observeSession(id); });
             }, excluded)).catch(async error => {
                 kernelCore.dispose();
@@ -301,6 +308,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         // gate acquires a lease on demand so a freshly created Session is writable immediately.
         const { sessionManager, commandBus, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
             () => createConversationSystem({ vfs, systemFS, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
+                digitalTwin,
                 ensureWritable: async sessionId => !await sessionRepository.isSessionDeletionPending(sessionId)
                     && await recovery.acquireLater(sessionId) && await projects.sessionMoves.ready(sessionId),
                 flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager }));
@@ -337,9 +345,11 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             }
             if (errors.length) throw new AggregateError(errors, 'Application runtime cleanup failed');
         };
+        if (options.digitalTwinAutoStart !== false) digitalTwin.start();
+        cleanupFns.push(() => digitalTwin!.dispose());
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects,
             kernel, sessionManager, commandBus, runCatalog, dispose,
-            projectSync };
+            projectSync, digitalTwin };
     } catch (error) {
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
             try { await close(); } catch (cleanupError) { console.error('[Boot] Cleanup failed', cleanupError); }

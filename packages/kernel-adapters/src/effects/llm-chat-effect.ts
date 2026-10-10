@@ -8,6 +8,7 @@ import type { ILLMService } from '@itookit/driver-llm/contracts';
 import type { EffectAdapter, EffectExecutionContext, EffectReconcileResult } from '@itookit/durable-kernel';
 import { resolveCapability, type CapabilitySource } from '../ports/capabilities';
 import { InFlightEffects } from './in-flight';
+import type { KernelAdapterDiagnostics } from '../ports/diagnostics';
 
 
 export interface LlmChatEffectRequest {
@@ -23,7 +24,8 @@ export class LlmChatEffectAdapter implements EffectAdapter<LlmChatEffectRequest,
     /** In-flight executions by Effect id, so `cancel` can confirm the request settled. */
     private readonly inFlight = new InFlightEffects();
 
-    constructor(private readonly service: CapabilitySource<ILLMService>, private readonly log: LLMLogSink = silentAdapterLog) {}
+    constructor(private readonly service: CapabilitySource<ILLMService>, private readonly log: LLMLogSink = silentAdapterLog,
+        private readonly authorize?: KernelAdapterDiagnostics['authorizeLlm']) {}
 
     async execute(
         request: LlmChatEffectRequest,
@@ -52,10 +54,13 @@ export class LlmChatEffectAdapter implements EffectAdapter<LlmChatEffectRequest,
         const abort = () => controller.abort(context.abortSignal.reason);
         if (context.abortSignal.aborted) abort();
         context.abortSignal.addEventListener('abort', abort, { once: true });
-        const params: ChatCompletionParams = { ...request.request, signal: controller.signal };
         const emit = makeEmitter(context, controller);
         try {
+            await this.authorize?.(request, context);
             await emit({ type: 'llm:request', effectId: context.effectId, connectionId: request.connectionId, request: request.request });
+            await this.authorize?.(request, context);
+            context.abortSignal.throwIfAborted();
+            const params: ChatCompletionParams = { ...request.request, signal: controller.signal };
             const response = request.request.stream === false
                 ? await completeChat(service, request.connectionId, params, emit)
                 : await streamChat(service, request.connectionId, params, emit);

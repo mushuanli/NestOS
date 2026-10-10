@@ -91,7 +91,7 @@ export async function startHttpServer(address: string, options: CommandOptions, 
 }
 
 /** Initialize the shared MindOS runtime before the HTTP listener starts. */
-export async function createHttpMindOSRuntime(options: CommandOptions): Promise<ApplicationRuntime> {
+export async function createHttpMindOSRuntime(options: CommandOptions, initializeWorkspace = true): Promise<ApplicationRuntime> {
     const rootDir = resolveProfileRoot(options.profile);
     const backend = await openLocalFSBackend({
         rootDir,
@@ -103,7 +103,8 @@ export async function createHttpMindOSRuntime(options: CommandOptions): Promise<
             remoteSourceProvider: createPiAgentDriver(ref => process.env[`MINDOS_REMOTE_${ref.replace(/-/g, '_')}`] ?? ''),
             backend,
             directorySourceProvider: new CliDirectorySourceProvider(rootDir),
-            defaultSessionDirectory: `host:${path.resolve(options.setHome ?? process.cwd())}`,
+            defaultSessionDirectory: initializeWorkspace ? `host:${path.resolve(options.setHome ?? process.cwd())}` : undefined,
+            digitalTwinAutoStart: initializeWorkspace,
             ownerKind: 'cli',
             onProgress: stage => recordRuntimeDiagnostic('http.runtime.stage', { stage }),
         }));

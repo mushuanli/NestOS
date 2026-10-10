@@ -88,3 +88,8 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 
 - `projects/sync` 提供项目同步菜单、预览与状态 UI；命令交给 ProjectSyncService，首次绑定经 AppOptions.projectSyncSetup 注入。面板不直接访问 HTTP 或 SeqFile，不把无在途操作显示为已同步；冲突选侧先生成新预览再确认执行。
 - `showProjectSyncSetup` 通过注入端口列出服务器的同步项目目录或新建目录；切换服务器使原列表失效。目录探测可关闭面板，绑定提交仍保存恢复依据；同步目录不是 export 路径。
+
+- `digital-twin/` 提供 WS_TWIN 的五页原生 DOM 工作台；消费 runtime.digitalTwin，不访问 SeqFile。会话 Files 页可进入带会话选择的授权页；异步页面代次、AbortController 和服务订阅共同管理生命周期，失败保留表单草稿。
+- 来源与扫描内含来源清单/扫描计划/运行记录三页签，扫描计划引用工具箱模型连接。表单范围与类型为多选，冲突刷新保留选择；页面销毁只释放 UI 订阅，调度随 ApplicationRuntime 生命周期运行，不能因离开页面取消已授权后台扫描。
+
+- 数字分身的来源页默认显示扫描规则，表单仅范围、周期、类型；模型、预算、全局排除在总览。匹配预览仅列资源；来源明细只读，不逐项要求授权，规则启用不重复确认。

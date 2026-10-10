@@ -335,3 +335,60 @@ mindos memory delete team <incarnation>
 Agent YAML 的 `memory_policy.shared_memory: {id: team, incarnation: <创建结果>}` 选择资源，仍需配置 namespace_id/read_scopes/write_scopes。引用本身不授权；新 Run 显式传 `--grant-memory team` 才为本次 Session 授予所引用 Agent 策略的 scope 并集，或事先使用管理命令授权已知 Session。资源名称、incarnation 与 namespace 必须一致。删除创建者 Session 不删除共享资源，资源删除后旧引用失效；审计和操作回执保留。
 
 写入/删除支持 `expectedRevision`，应使用 memory_list 返回的版本进行条件修改；null 表示仅新建。`memory_compact` 需单独加入 tools 白名单，参数为目标 scope/entryId/content 与 sources（entryId/revision 数组），原子复验源版本、保存较短摘要及来源引用并保留原文。压缩不等于语义检索，后者暂未实现。
+
+## 本地数字分身
+
+`mindos twin` 使用同一 profile 的 SQLite SeqFile，通过宿主服务操作，普通 memory 工具不能直接读写分身。先用 `list` 获得来源/记忆/设置的当前 revision，条件修改必须明确传该版本。新授权使用 `new`。
+
+```bash
+mindos twin list --profile desktop
+mindos twin preview-source --value '{"kind":"file","target":"/home/admin/minds/context.md","label":"背景"}'
+mindos twin add-source --value '{"kind":"file","target":"/home/admin/minds/context.md","label":"背景","connectionId":"default"}'
+mindos twin analyze <source-id>
+mindos twin review <memory-id> <revision> confirm
+mindos twin review <memory-id> <revision> correct --value '{"content":"新的独立用户陈述"}'
+mindos twin add-memory --value '{"content":"希望 Alpha 使用 TypeScript","kind":"preference","project":"Alpha"}'
+mindos twin grant new --value '{"sessionId":"<session-id>","agentId":"default","connectionId":"default","enabled":true,"project":"Alpha"}'
+mindos twin settings <settings-revision> --value '{"tokenLimit":100000,"paused":false,"useEnabled":true}'
+mindos twin link-execution <goal-memory-id> <revision> --value '{"sessionId":"<session-id>","taskId":"<existing-task-id>"}'
+mindos twin forget <memory-id>
+mindos twin forget-project Alpha
+mindos twin forget-subject <subject-id>
+mindos twin suppress <memory-id> <revision>
+mindos twin revoke-source <source-id> <revision>
+mindos twin enable-source <source-id> <revision>
+mindos twin remove-source <source-id> <revision>
+mindos twin cancel <job-id>
+```
+
+自动规则使用总览配置的分析模型；来源分析会发送至明确选择的模型连接；CLI 的 add-source/grant 命令本身代表该项显式授权。未知计费保留预留额度，不当作免费。`forget` 可用 `--value '["<session-id>"]'` 明确要求同时删除曾用过该条的整个会话；省略时保留历史副本并阻断后续模型使用。原始来源、导出、手动复制、外部备份及服务商数据不在本地清理范围。来源移除保留独立用户陈述与其修订历史。
+
+分身扫描规则在“数字分身 → 来源与扫描”管理，自动发现所有登记项目的文本文档、原生与可读 harness 会话。全局模型、累计预算和全局排除在总览中设置；每条规则只定义范围、周期与提取类型，不再逐个授权来源。
+
+```bash
+mindos twin settings <settings-revision> --value '{"connectionId":"default","tokenLimit":100000,"globalExclude":["file:**/private/**"]}'
+mindos twin rule-preview --value '{"include":["file:**/*.md","session:native/**"],"exclude":[]}'
+mindos twin rule-create --value '{"name":"项目资料","include":["project:Alpha"],"exclude":["file:**/drafts/**"],"intervalMinutes":30}'
+mindos twin rule-update <rule-id> <revision> --value '{"name":"文档与会话","include":[],"exclude":["session:harness/codex/temporary-*"],"intervalMinutes":60}'
+mindos twin scan-plans --profile desktop
+mindos twin plan-run <rule-id>
+mindos twin scan-runs
+mindos twin plan-pause <rule-id> <revision>
+mindos twin plan-enable <rule-id> <revision>
+mindos twin plan-delete <rule-id> <revision>
+mindos twin scan-cancel <scan-run-id>
+mindos twin scan-tick --profile desktop
+mindos twin watch --profile desktop
+```
+
+`rule-create/update` 默认白名单/黑名单为空、30 分钟、全部提取类型、启用。`project:` 匹配项目 ID 或名称，`file:` 匹配项目内相对路径，`session:native/` 和 `session:harness/` 匹配会话 ID / profile+会话 ID；支持 `*`、`**`、`?`、目录末尾 `/` 和整行 `#` 注释。白名单任一命中即可，黑名单在当前规则内优先，多规则取并集，全局排除优先。`rule-preview` 不读取正文/不新增来源。删除、替换、排除会使旧证据失效，离线不视作删除；自身信息自动生效，其他人物归属待确认。
+
+旧 `add-source/analyze/plan-create/plan-update` 及指定来源计划保留兼容，不扩大既有范围。新规则共享全局模型和预算，重叠来源/类型复用进度。
+
+Web/Tauri 应用在线时自动每 15 秒调度检查；页面关闭、休眠、节流或进程退出会延迟运行。`watch` 在当前 CLI 进程持续运行，Ctrl+C 或 SIGTERM 关闭；如需长期后台运行，由用户的进程管理器承接。一次性管理命令不启动自动调度，也不把 cwd 注册为项目。`scan-tick` 执行一次到期检查及排队处理；错过的触发合并补跑，不逐个重放。`plan-run` 等待本次完成，超过 180 秒报告等待超时，运行状态以 `scan-runs` 为准；取消使用 `scan-cancel`。
+
+暂停或删除计划会阻止迟到结果提交；删除计划保留已生成记忆和不含正文的运行记录。预算不足保留已提交进度，通过新建一次运行继续；失败/取消时未知模型用量保持预留。旧开发版本中没有扫描作用域的分析 Job 不自动恢复发送，需要核对后重新发起。扫描租约依赖同一 profile 的事务与可比较时钟，不代表多端同步或跨时钟故障矩阵已通过。
+
+扫描协议使用 schema 1/layout 4；打开已知 layout 2/3 数据时只在事务内升级权威元数据，保留记忆、身份、遗忘代次与 tombstone。旧客户端需刷新升级后再访问同一 profile；未知或缺少布局版本的数据保持拒绝，不清空重建。
+
+消费接入本地原生 Chat/Agent；不自动为 YAML Flow 开启分身检索。当前最多 10000 来源、50 规则、500 当前记忆、单来源 1 MiB/本地当前分支 2000 轮；每次手动分析约 4000 字符。关联执行不启动任务或推断目标完成。完整支持和身份限制见[设计与支持边界](../../doc/design/数字分身完整设计与实施计划.md#实现与边界)。

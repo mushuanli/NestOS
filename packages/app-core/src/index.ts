@@ -1,4 +1,16 @@
+export type { TwinScanRuleInput, TwinScanRules } from './digital-twin/scan-rules';
 export { SessionFilesService } from './vfs/session-files';
+export { SeqTwinStore } from './digital-twin/seq-twin-store';
+export { DigitalTwinService } from './digital-twin/service';
+export type { DigitalTwinDependencies } from './digital-twin/service';
+export type { TwinScanPlanInput, TwinScanPlan, TwinScanRun, TwinScanState } from './digital-twin/scan-domain';
+export { TWIN_KINDS } from './digital-twin/domain';
+export type { TwinMemoryKind, TwinMemoryData, TwinSourceSpec, TwinSourceData, TwinGrantData, TwinSettings,
+    TwinSourceReader, TwinSourceContent, TwinDiscoveredSource, TwinSourceCatalog, TwinAnalysisJob, TwinCandidate } from './digital-twin/domain';
+export type { TwinDataRecord } from './digital-twin/records';
+export type { TwinUseRecord } from './digital-twin/context';
+export type { TwinStore, TwinIdentity, TwinRecordFamily, TwinRecordRef, TwinRecord,
+    TwinRecordWrite, TwinCommit, TwinCommitReceipt, TwinForget, TwinCleanup } from './digital-twin/contracts';
 export type { SessionMountRecord, FilesRecord } from './vfs/session-files';
 export { DirectoryMountService } from './vfs/directory-mounts';
 export type { DirectorySourceProvider } from './vfs/directory-mounts';
@@ -122,3 +134,5 @@ export { exportRemoteSession } from './session/remote-session-export';
 export { remoteSessionSources } from './session/remote-session-sources';
 export { manageRemoteSession } from './session/remote-session-management';
 export type { NativeSessionCommand } from './session/remote-session-management';
+
+export { createNativeDigitalTwin } from './digital-twin/native-service';

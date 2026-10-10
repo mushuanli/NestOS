@@ -88,7 +88,7 @@ describe('host application startup', () => {
 
     it('lets a reload with the same owner token take over its Sessions but keeps other windows out', async () => {
         const backend = new MemoryBackend();
-        const options = { backend, ownerKind: 'cli' as const, sessionOwnerToken: 'window-token' };
+        const options = { backend, ownerKind: 'cli' as const, sessionOwnerToken: 'window-token', digitalTwinAutoStart: false };
         const replaced = await createApplicationRuntime(options);
         const sessionId = await replaced.sessionRepository.createSession('reload');
         // The replaced page is not disposed: its leases outlive it exactly like a page reload.

@@ -1,13 +1,14 @@
 export type { DirectorySourceProvider } from '@itookit/app-core';
 export { workspaceRoot } from '@itookit/app-core';
 import './styles/workspace.css';
+import './styles/digital-twin.css';
 
 export { initApp } from './bootstrap';
 export { windowSessionLeaseToken } from './session-owner';
 export { SessionFilesService } from '@itookit/app-core';
 export type { SessionMountRecord, FilesRecord } from '@itookit/app-core';
 export { createVFSToolContext } from '@itookit/app-core';
-export { WS_SETTINGS, WS_CHAT, WS_TOOLBOX, WS_AGENTS, WS_MINDS, WS_ANKI, WS_PROJECTS, WS_EMAILS, WS_PRIVATE, WS_SKILLS, WS_FLOWS, WS_HOME, createWsMount } from './workspaces/index';
+export { WS_SETTINGS, WS_CHAT, WS_TOOLBOX, WS_TWIN, WS_AGENTS, WS_MINDS, WS_ANKI, WS_PROJECTS, WS_EMAILS, WS_PRIVATE, WS_SKILLS, WS_FLOWS, WS_HOME, createWsMount } from './workspaces/index';
 export type {
     AppOptions,
     BootWorkspaceParts,

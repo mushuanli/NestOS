@@ -25,7 +25,7 @@ export interface AppKernelRuntime extends KernelAdaptersRuntime {
 
 export type AppKernelPlatform = import('@itookit/app-core').ApplicationKernelPlatform;
 
-export type WorkspaceType = 'standard' | 'settings' | 'agent' | 'chat' | 'skills' | 'flows' | 'toolbox';
+export type WorkspaceType = 'standard' | 'settings' | 'agent' | 'chat' | 'skills' | 'flows' | 'toolbox' | 'twin';
 
 export interface WorkspaceConfig {
     /** Explicit application file context. workspaceName selects the default user directory. */

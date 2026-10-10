@@ -4,6 +4,19 @@ import type { EffectExecutionContext } from '@itookit/durable-kernel';
 import { LlmChatEffectAdapter } from './llm-chat-effect';
 
 describe('LlmChatEffectAdapter streaming', () => {
+    it('checks host policy before storing a request and again immediately before provider dispatch', async () => {
+        const emit = vi.fn(async () => undefined), chat = vi.fn();
+        const authorize = vi.fn(async () => { throw new Error('permission revoked'); });
+        const request = { resourceHandleId: 'llm-handle', connectionId: 'conn', request: { messages: [], stream: false } };
+        await expect(new LlmChatEffectAdapter({ chat } as unknown as ILLMService, undefined, authorize)
+            .execute(request, context(emit))).rejects.toThrow('permission revoked');
+        expect(emit).not.toHaveBeenCalled(); expect(chat).not.toHaveBeenCalled();
+        authorize.mockReset().mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error('permission changed while storing'));
+        await expect(new LlmChatEffectAdapter({ chat } as unknown as ILLMService, undefined, authorize)
+            .execute(request, context(emit))).rejects.toThrow('permission changed while storing');
+        expect(emit).toHaveBeenCalledOnce(); expect(authorize).toHaveBeenCalledTimes(2); expect(chat).not.toHaveBeenCalled();
+    });
+
     it('aggregates streamed chunks into a full response and emits deltas', async () => {
         const emit = vi.fn(async () => undefined);
         const service = streamService(async function* () {

@@ -4,6 +4,7 @@ import { createFileChatHandler } from './projects/file-chat';
 import { createOcrControls } from './configuration/ocr-controls';
 import { OcrService } from '@itookit/app-core';
 import { ConfigurationDeletionDialog } from './configuration/delete-dialog';
+import { createTwinModule } from './digital-twin';
 import { createToolboxModule } from './toolbox';
 import { TOOLBOX_SCOPE } from './toolbox/ToolboxWorkbench';
 import { TOOLBOX_KINDS, legacyToolboxRoute, toolboxSettingsRoute } from './toolbox/routes';
@@ -113,7 +114,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const uiState = new VfsUIPersistence(uiDocs);
     cleanupFns.push(() => uiState.flush());
     logStep('初始化界面服务…');
-    const settingsSources = await Promise.all(workspaces.filter(workspace => !['settings', 'skills', 'toolbox'].includes(workspace.type ?? '')).map(async workspace => ({
+    const settingsSources = await Promise.all(workspaces.filter(workspace => !['settings', 'skills', 'toolbox', 'twin'].includes(workspace.type ?? '')).map(async workspace => ({
         name: workspace.workspaceName, description: workspace.title,
         fs: workspace.files?.fs ?? await vfs.openFileSystem(workspaceRoot(workspace.workspaceName)),
     })));
@@ -174,6 +175,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const fs = workspace.files?.fs ?? (workspace.type === 'settings' ? settingsModule.engine
             : workspace.type === 'skills' ? skillsEngine
             : workspace.type === 'flows' ? flowEngine.engine
+            : workspace.type === 'twin' ? await vfs.openFileSystem('/home/admin')
             : workspace.type === 'toolbox' ? await vfs.openFileSystem(workspaceRoot('agents'))
             : await vfs.openFileSystem(workspaceRoot(workspace.workspaceName)));
         workspaceFiles.set(workspace.elementId, workspace.files ?? { fs, cwd: '/' });
@@ -269,6 +271,19 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const factory = factories[strategyType] ?? defaultEditorFactory;
         const files = workspaceFiles.get(elementId);
         if (!files) throw new Error(`Workspace files not configured: ${elementId}`);
+
+        if (strategyType === 'twin') {
+            if (!runtime.digitalTwin) throw new Error('Digital twin is unavailable in this runtime');
+            const module = createTwinModule({ service: runtime.digitalTwin, sidebar: sidebarEl, editor: editorEl,
+                agents: async () => (await agentService.getAgents()).map(agent => ({ id: agent.id, name: agent.name })),
+                connections: async () => (await agentService.getConnections()).filter(connection => connection.enabled)
+                    .map(connection => ({ id: connection.id, name: connection.name })),
+                selected: path => updateHistory(elementId, path, 'replace') });
+            cleanupFns.push(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
+            options.onWorkspaceReady?.({ editor: editorEl });
+            if (initialResourceId) await module.workbench.openResource(initialResourceId);
+            options.onEditorReady?.(); return module.workbench;
+        }
 
         if (strategyType === 'toolbox') {
             const storedPreferences = await uiDocs.read(TOOLBOX_PREFERENCES_DOC);

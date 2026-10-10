@@ -149,6 +149,10 @@ Node CLI
 
 读取点：`apps/tauri-app/src/main.ts` 的 `bootstrapRemote()` —— `__MINDOS_MODE__ === 'remote'` 时只读 `/status`、`/sessions`、`/runs` 并渲染，不调用 `createApplicationRuntime()`；`apps/web-app/src/main.ts` 没有 remote 分支，始终创建本地 runtime。
 
+### 独立 HTTP 存储宿主
+
+`apps/http-app` 使用 Node.js 提供静态 Web UI 和 VFS 存储 API；浏览器通过 `HttpStorageBackend` 创建完整应用 Runtime。跨 SeqFile 更新使用读观察校验后的原生 SQLite 批量事务，不经过 Tauri invoke 或远程 SQL。服务端不创建第二个 Runtime，既有 CLI `-d` 保持原有行为。详见 [HTTP 存储应用](http-app.md)。
+
 ### 可选 Effect 独立作用域端口
 
 `ApplicationKernelPlatform.scopeForEffect` 与 `fileContextForScope` 经 `createKernelRuntime` 透传给 kernel-adapters。前者以可信 `EffectExecutionContext` 为输入，由宿主查询 Task/Run 持久关系返回作用域 id；`undefined` 表示普通 Session。后者获取该 Session + scope 独立的 VFS/cwd/nativeShell/TTY 及释放函数。选择或获取失败直接拒绝，不回退默认目录。
@@ -278,7 +282,7 @@ Tauri 每个页面先调用 `sidecar_open_scope`，Rust 以 WebView label 维护
 
 新建会话先根据目标分组查找项目，再配置项目目录挂载。`Read`、`Write`、`Edit`、`Glob`、`Grep` 在 Web 使用 VFS；没有原生进程能力时不启用 `Bash`。现有会话的授权不会被重开覆盖；拿到 Session 写租约后，可将目录已匹配的旧会话归入项目，保留原授权。
 
-项目身份来自工作台直属项目目录的 `.mindos/info.seq`，导航索引仅作缓存。本地根互不重叠；只读远程项目正文保持逻辑引用，本地 `.mindos/readonly/<项目名>/` 保存身份和会话领域数据。普通子目录不会被识别成独立项目。项目创建、文件访问、本地进程及受管 Web 同步均校验根边界；文件来源错误局部显示，不中断工作台。`SessionFilesService.workspaceProvider` 解析项目授权视图，视图所有者随会话释放。可移植会话数据位于项目 `.mindos/sessions/`，运行控制状态仍在 `/var/lib/`；Seq 索引保存实际位置并记录目录移动恢复意图。可写远程项目需额外的多文件事务能力，当前单 SeqFile HTTP API 不宣称完成此能力。
+项目身份来自工作台直属项目目录的 `.mindos/info.seq`，导航索引仅作缓存。身份有效性以 SeqFile 的 `identity` 记录为准：零字节标记文件不代表已有身份，创建和恢复在 SeqFile 事务中核对并补全空记录；已有身份冲突时保留原记录并拒绝覆盖。本地根互不重叠；只读远程项目正文保持逻辑引用，本地 `.mindos/readonly/<项目名>/` 保存身份和会话领域数据。普通子目录不会被识别成独立项目。项目创建、文件访问、本地进程及受管 Web 同步均校验根边界；文件来源错误局部显示，不中断工作台。`SessionFilesService.workspaceProvider` 解析项目授权视图，视图所有者随会话释放。可移植会话数据位于项目 `.mindos/sessions/`，运行控制状态仍在 `/var/lib/`；Seq 索引保存实际位置并记录目录移动恢复意图。可写远程项目需额外的多文件事务能力，当前单 SeqFile HTTP API 不宣称完成此能力。
 
 `ProjectService.personal()` 独立于当前项目解析个人项目，以 `/etc/personal-project.json` 保存稳定项目 ID。旧 profile 首次使用时仅接纳已知中英文默认名称的托管个人项目，否则新建；改名、分组移动和重启后仍按 ID 找回。标题栏 AI 引用产生新的会话输入草稿：项目文件归其项目，Session 文件沿用 Session 所属项目，其余归个人项目。草稿先写入 `uiState.branchDrafts.main.inputText`，再导航到聊天，不触发模型请求。
 

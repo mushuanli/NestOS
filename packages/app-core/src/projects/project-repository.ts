@@ -42,32 +42,32 @@ export class ProjectRepository {
     }
     async createLocal(directory: string, identity: ProjectIdentity): Promise<void> {
         const owner = await this.directories.openDirectory(directory);
-        try {
-            if (!owner.fs.meta.seq) throw new FSError('ECAPABILITY', 'Project identity requires SeqFile storage');
-            if (await owner.fs.driver.exists(INFO)) throw new FSError('EEXIST', 'Directory already contains a project identity');
-            await owner.fs.driver.createFile({ parentPath: '/.mindos', name: 'info.seq', type: 'seqfile', recursive: true });
-            await owner.fs.meta.seq.setEntry(INFO, 'identity', JSON.stringify(identity));
-        } finally { await owner.dispose(); }
+        try { await this.writeIdentity(owner.fs, identity, false); }
+        finally { await owner.dispose(); }
         if (!directory.startsWith(ROOT + '/') || directory.slice(ROOT.length + 1).includes('/'))
             await this.saveReference(EXTERNAL, { ...identity, directory, kind: 'local' });
     }
     async adoptLocal(directory: string, identity: ProjectIdentity): Promise<void> {
         const owner = await this.directories.inspectDirectory(directory);
-        try {
-            const seq = owner.fs.meta.seq;
-            if (!seq?.transaction) throw new FSError('ECAPABILITY', 'Project conversion requires SeqFile transactions');
-            if (!await owner.fs.driver.exists(INFO)) {
-                try { await owner.fs.driver.createFile({ parentPath: '/.mindos', name: 'info.seq', type: 'seqfile', recursive: true }); }
-                catch (error) { if (!(error instanceof FSError) || error.code !== 'EEXIST') throw error; }
-            }
-            await seq.transaction(async tx => {
-                const existing = await tx.getEntry(INFO, 'identity');
-                if (existing && this.decode(existing).id !== identity.id) throw new FSError('ECONFLICT', 'Project identity already registered');
-                if (!existing) await tx.setEntry(INFO, 'identity', JSON.stringify(identity));
-            });
-        } finally { await owner.dispose(); }
+        try { await this.writeIdentity(owner.fs, identity, true); }
+        finally { await owner.dispose(); }
         if (!directory.startsWith(ROOT + '/') || directory.slice(ROOT.length + 1).includes('/'))
             await this.saveReference(EXTERNAL, { ...identity, directory, kind: 'local' });
+    }
+    private async writeIdentity(fs: IFileSystem, identity: ProjectIdentity, adopt: boolean): Promise<void> {
+        const seq = fs.meta.seq;
+        if (!seq?.transaction) throw new FSError('ECAPABILITY', 'Project identity requires SeqFile transactions');
+        if (!await fs.driver.exists(INFO)) {
+            try { await fs.driver.createFile({ parentPath: '/.mindos', name: 'info.seq', type: 'seqfile', recursive: true }); }
+            catch (error) { if (!(error instanceof FSError) || error.code !== 'EEXIST') throw error; }
+        }
+        await seq.transaction(async tx => {
+            const existing = await tx.getEntry(INFO, 'identity');
+            if (existing && (!adopt || this.decode(existing).id !== identity.id)) {
+                throw new FSError(adopt ? 'ECONFLICT' : 'EEXIST', 'Directory already contains a project identity');
+            }
+            if (!existing) await tx.setEntry(INFO, 'identity', JSON.stringify(identity));
+        });
     }
     async createRemote(identity: ProjectIdentity): Promise<void> {
         const directory = identity.navigationName ?? identity.name;

@@ -5,6 +5,7 @@ import { SessionRepository, sessionDirectoryStorage } from '@itookit/llm-session
 import { FSError, MemoryBackend, type IStorageBackend } from '@itookit/vfs-core';
 import { createApplicationRuntime, type ApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { createSessionBrowser, folderBrowserPath } from '../src/session/session-browser';
+import { ProjectRepository } from '../src/projects/project-repository';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanups.splice(0).reverse()) await close(); });
@@ -20,6 +21,21 @@ async function readSession(runtime: ApplicationRuntime, id: string, path: string
     const owner = await runtime.sessionFiles.acquire(id);
     try { return await owner.vfs.readFile(path); } finally { await owner.release(); }
 }
+
+it('completes an empty project identity marker without replacing existing records', async () => {
+    const r = await setup(), root = await r.vfs.openFileSystem('/');
+    const directory = '/home/admin/recovered-workspace', info = directory + '/.mindos/info.seq';
+    await root.driver.createFile({ parentPath: directory + '/.mindos', name: 'info.seq', type: 'seqfile', recursive: true });
+    await root.meta.seq!.setEntry(info, 'retained', 'existing data');
+    const project = await r.projects.ensureDirectory(directory, 'Recovered');
+    expect(JSON.parse((await root.meta.seq!.getEntry(info, 'identity'))!).id).toBe(project.project.id);
+    expect(await root.meta.seq!.getEntry(info, 'retained')).toBe('existing data');
+    expect((await r.projects.ensureDirectory(directory)).project.id).toBe(project.project.id);
+    const identities = new ProjectRepository(root, r.directoryMounts);
+    await expect(identities.createLocal(directory, { version: 1, id: 'replacement', name: 'Replacement', createdAt: Date.now() }))
+        .rejects.toMatchObject({ code: 'EEXIST' });
+    expect(JSON.parse((await root.meta.seq!.getEntry(info, 'identity'))!).id).toBe(project.project.id);
+});
 
 it('reads a directory header and rows from one workspace and one projection', async () => {
     const r = await setup(), project = (await r.projects.current())!, path = folderBrowserPath(project.path) + '/@files';

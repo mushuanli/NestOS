@@ -1,18 +1,9 @@
-import { createMindosFlowLibrary } from '@itookit/app-core';
 import { configureAppCache } from './app-cache';
 import { createPiAgentDriver } from '@itookit/piagent-driver';
-import { initApp, installMobileNavigation, windowSessionLeaseToken, type AppUI } from '@itookit/app-shell';
+import { initApp, installMobileNavigation, windowSessionLeaseToken } from '@itookit/app-shell';
 import { createApplicationRuntime } from '@itookit/app-core';
 import { openIndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
-import { createFlowContextMenuConfig, createAIContextMenuConfig,
-    installFlowLibrary, restoreFlowLibrary } from '@itookit/llm-ui/startup';
-import {
-    ProviderSettingsEditor,
-    ConnectionSettingsEditor,
-    MCPSettingsEditor,
-    CostEditor,
-    SystemPromptSettingsEditor,
-} from '@itookit/llm-settings-ui';
+import { createBrowserUI } from './ui';
 import { WORKSPACES } from './config/modules';
 import { BrowserSkillToolHandlerFactory } from './kernel/browser-skill-tools';
 import { WebProjectSync } from './sync';
@@ -20,37 +11,10 @@ import { WebProjectSync } from './sync';
 // Dev must always load the current workspace source graph.
 void configureAppCache(import.meta.env.DEV).catch(error => console.warn('App cache setup failed', error));
 
-type EditorFactory = ReturnType<AppUI['createChatEditor']>;
-
-function lazyEditorFactory(load: () => Promise<EditorFactory>): EditorFactory {
-    let pending: Promise<EditorFactory> | undefined;
-    return async (container, options) => (await (pending ??= load()))(container, options);
-}
-
 async function main() {
     installMobileNavigation();
     const backend = await openIndexedDBBackend({ dbName: 'MindOS-v3' });
-    const ui: AppUI = {
-        createChatEditor: (service, deps) => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/chat')).createLLMFactory(service, deps)),
-        createAgentEditor: (service, capabilities) => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/settings')).createAgentEditorFactory(service, capabilities)),
-        createFlowEditor: deps => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/chat')).createFlowsEditorFactory(deps)),
-        createFlowContextMenu: deps => createFlowContextMenuConfig({ ...deps, library: createMindosFlowLibrary() }),
-        installFlowLibrary: commands => installFlowLibrary(commands, createMindosFlowLibrary()),
-        restoreFlowLibrary: commands => restoreFlowLibrary(commands, createMindosFlowLibrary()),
-        createSkillEditor: service => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/settings')).createSkillsEditorFactory(service)),
-        createAIContextMenu: createAIContextMenuConfig,
-        llmUiEditors: {
-            ProviderSettingsEditor,
-            ConnectionSettingsEditor,
-            MCPSettingsEditor,
-            CostEditor,
-            SystemPromptSettingsEditor,
-        },
-    };
+    const ui = createBrowserUI();
     const remoteSourceProvider = createPiAgentDriver();
     const sync = new WebProjectSync(backend, remoteSourceProvider);
     const runtime = await createApplicationRuntime({

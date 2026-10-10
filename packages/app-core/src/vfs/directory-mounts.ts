@@ -88,6 +88,7 @@ export class DirectoryMountService {
     async inspectDirectory(directory: string): Promise<FileSystemSourceOwner> {
         const normalized = directory === '~' ? '/home/admin' : directory.startsWith('~/') ? '/home/admin/' + directory.slice(2) : directory;
         const internal = normalized === '/home/admin' || normalized.startsWith('/home/admin/');
+        if (!internal && !this.provider) throw new FSError('ENOENT', 'Host directory source is unavailable', 'inspectDirectory', directory);
         const source = internal ? this.root : await this.provider!.openDirectory(normalized.replace(/^host:/, ''));
         const root = internal ? normalized : '/';
         const node = await source.driver.getNode(root);

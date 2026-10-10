@@ -44,6 +44,7 @@ TODO.md
 prompt.md
 release/
 .mindos/
+.mindos-http/
 .mindos-prompt/
 .mindos-websearch/
 

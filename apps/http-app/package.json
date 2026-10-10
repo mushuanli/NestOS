@@ -1,0 +1,35 @@
+{
+  "name": "@itookit/http-app",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "pnpm build:ui && tsx src/server/main.ts",
+    "build:ui": "vite build",
+    "build": "pnpm build:ui && tsup src/server/main.ts --format esm --platform node --out-dir dist-server --splitting",
+    "start": "node dist-server/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@itookit/app-core": "workspace:*",
+    "@itookit/app-shell": "workspace:*",
+    "@itookit/vfs-core": "5.3.1",
+    "@itookit/piagent-driver": "workspace:*",
+    "@itookit/vfsdriver-local": "5.3.0",
+    "mind-os": "workspace:*",
+    "@codemirror/state": "^6.5.2",
+    "@codemirror/view": "^6.38.8"
+  },
+  "devDependencies": {
+    "@types/node": "^20.19.25",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "tsx": "^4.20.6",
+    "tsup": "^8.5.1",
+    "vitest": "^3.2.4"
+  },
+  "engines": {
+    "node": ">=22.13.0"
+  }
+}

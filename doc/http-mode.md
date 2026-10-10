@@ -1,5 +1,7 @@
 # CLI HTTP 模式
 
+独立 Node.js 存储宿主与完整浏览器 UI 使用 `apps/http-app`，见 [HTTP 存储应用](http-app.md)；本文描述既有 CLI `-d` 模式。
+
 CLI 的 `-d` / `--http` 让同一个 headless 进程直接提供浏览器可访问的 MindOS UI。
 
 ```bash

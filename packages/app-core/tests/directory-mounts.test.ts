@@ -218,3 +218,12 @@ it('distinguishes missing project directories from paths occupied by a file', as
     await expect(f.mounts.openDirectory('/home/admin/notes/secret.md')).rejects.toMatchObject({ code: 'ENOTDIR', path: '/home/admin/notes/secret.md' });
     expect(await f.root.driver.exists('/home/admin/not-found')).toBe(false);
 });
+
+
+it('reports unmounted host sources as unavailable while preserving internal directory inspection', async () => {
+    const { mounts: dirs } = await setup();
+    expect(dirs.canSelectHost).toBe(false);
+    await expect(dirs.inspectDirectory('host:/Users/li/share/x1')).rejects.toMatchObject({ code: 'ENOENT' });
+    const owner = await dirs.inspectDirectory('/home/admin/projects/demo');
+    expect(await owner.fs.driver.exists('/a.md')).toBe(true); await owner.dispose();
+});

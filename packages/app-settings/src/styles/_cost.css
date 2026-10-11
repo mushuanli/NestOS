@@ -619,3 +619,27 @@
     font-style: italic;
     padding: var(--st-space-xs) 0;
 }
+
+/* Collapsed detail panels keep the monthly summary visible. */
+.cost-fold {
+    border: 1px solid var(--st-border-color);
+    border-radius: var(--st-radius-md);
+    padding: var(--st-space-md);
+    margin-block: var(--st-space-lg);
+    min-width: 0;
+}
+.cost-fold > summary {
+    cursor: pointer;
+    font-weight: 600;
+    color: var(--st-text-primary);
+}
+.cost-fold[open] > summary { margin-bottom: var(--st-space-md); }
+.cost-fold__hint { color: var(--st-text-secondary); font-size: 0.8125rem; line-height: 1.6; }
+.cost-trend { margin-top: var(--st-space-lg); min-width: 0; }
+.cost-trend h3 { font-size: 0.875rem; font-weight: 500; }
+.cost-trend__columns { display: flex; gap: 6px; overflow-x: auto; padding: 4px 2px 12px; }
+.cost-trend__column { flex: 1 0 36px; min-width: 36px; text-align: center; font-size: 0.6875rem; color: var(--st-text-secondary); }
+.cost-trend__track { height: 150px; display: flex; align-items: flex-end; border-bottom: 1px solid var(--st-border-color); }
+.cost-trend__bar { width: 70%; margin-inline: auto; background: var(--st-color-primary); border-radius: 4px 4px 0 0; }
+.cost-trend__column:focus-visible { outline: 2px solid var(--st-color-primary); outline-offset: 1px; }
+.cost-trend__column:hover .cost-trend__bar { opacity: 0.75; }

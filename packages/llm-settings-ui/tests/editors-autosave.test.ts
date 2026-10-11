@@ -75,7 +75,7 @@ it('auto-saves pricing edits without requiring a save button', async () => {
     const service = { getProviders: () => [], queryCosts: async () => [], writePricing,
         getPricingConfig: () => ({ model_pricing: [{ id: 'default', price: [1, 2, 0, 0], providers: {}, names: [] }] }) };
     const editor = new CostEditor(container, service as never, {}); editors.push(editor); await editor.init(container);
-    container.querySelector<HTMLButtonElement>('[data-tab="pricing"]')!.click(); await vi.advanceTimersByTimeAsync(0);
+    const pricing = container.querySelector<HTMLDetailsElement>('#cost-panel-pricing')!; pricing.open = true; pricing.dispatchEvent(new Event('toggle')); await vi.advanceTimersByTimeAsync(0);
     const field = change(container, '.cost-pricing-input[data-field="0"]', '3.5'); await vi.advanceTimersByTimeAsync(600);
     expect(writePricing).toHaveBeenCalledOnce(); expect(writePricing.mock.calls[0][0].model_pricing[0].price[0]).toBe(3.5);
     expect(container.querySelector('#btn-save-pricing')).toBeNull(); expect(field.isConnected).toBe(true);

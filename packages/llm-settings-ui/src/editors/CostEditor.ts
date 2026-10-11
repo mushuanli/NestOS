@@ -4,16 +4,16 @@ import { SettingsValidationError, requestSettingsSave } from '@itookit/ui-common
 // 费用统计 & 定价配置编辑器。
 //
 // 职责：
-//   - 仪表盘：按时间（今日/本周/本月）+ provider 过滤展示费用汇总、按 provider 分组、Top 10 Sessions
-//   - 定价配置：可视化编辑 pricing.json（ModelPricingEntry 列表），保存后写入 VFS
+// Monthly summaries, collapsible UTC daily/monthly trends, and provider/session breakdowns.
+// Pricing edits save automatically without recalculating historical ledger entries.
 
 import { aggregateCostRecords, lookupPricingEntry } from '@itookit/kernel-adapters/contracts';
 import { t } from '@itookit/common';
 import type { IAgentManagementService, CostRecord, ModelPricingEntry, ModelPricingConfig } from '@itookit/kernel-adapters/contracts';
+import { costTrendRange, renderCostTrend, type CostTrendPeriod } from './cost-trend';
 import { BaseSettingsEditor } from '@itookit/ui-common';
 
 type Period = 'today' | 'week' | 'month';
-type Tab = 'dashboard' | 'pricing';
 
 interface SessionAgg {
     sessionId: string;
@@ -28,8 +28,10 @@ interface SessionAgg {
 }
 
 export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
-    private activeTab: Tab = 'dashboard';
-    private activePeriod: Period = 'today';
+    private activePeriod: Period = 'month';
+    private trendPeriod: CostTrendPeriod = 'day';
+    private dashboardGeneration = 0;
+    private trendGeneration = 0;
     private filterProviderId = '';
 
     private editablePricing: ModelPricingEntry[] = [];
@@ -44,24 +46,19 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
             <div class="settings-page">
                 <div class="settings-page__header">
                     <div>
-                        <h2 class="settings-page__title">费用统计 & 定价配置</h2>
+                        <h2 class="settings-page__title">${t('settings.cost.title')}</h2>
                         <p class="settings-page__description">
-                            查看 LLM 使用费用，按时间和 Provider 统计；编辑模型定价（USD/M tokens）。
+                            ${t('settings.cost.scope')}
                         </p>
                     </div>
-                </div>
-
-                <div class="cost-tabs" role="tablist">
-                    <button class="cost-tab cost-tab--active" data-tab="dashboard" role="tab">费用仪表盘</button>
-                    <button class="cost-tab" data-tab="pricing" role="tab">定价配置</button>
                 </div>
 
                 <div id="cost-panel-dashboard">
                     <div class="cost-filters">
                         <div class="cost-filters__time" role="group" aria-label="时间范围">
-                            <button class="cost-time-btn cost-time-btn--active" data-period="today">今日</button>
-                            <button class="cost-time-btn" data-period="week">本周</button>
-                            <button class="cost-time-btn" data-period="month">本月</button>
+                            <button class="cost-time-btn${this.activePeriod === 'today' ? ' cost-time-btn--active' : ''}" data-period="today" aria-pressed="${this.activePeriod === 'today'}">今日</button>
+                            <button class="cost-time-btn${this.activePeriod === 'week' ? ' cost-time-btn--active' : ''}" data-period="week" aria-pressed="${this.activePeriod === 'week'}">本周</button>
+                            <button class="cost-time-btn${this.activePeriod === 'month' ? ' cost-time-btn--active' : ''}" data-period="month" aria-pressed="${this.activePeriod === 'month'}">本月</button>
                         </div>
                         <select class="cost-filters__provider" id="cost-filter-provider" aria-label="Provider 过滤">
                             <option value="">All Providers</option>
@@ -72,6 +69,17 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
                         ${this.renderSummaryPlaceholder()}
                     </div>
 
+                    <details class="cost-fold" id="cost-trend-details">
+                        <summary>${t('settings.cost.trend')}</summary>
+                        <p class="cost-fold__hint">${t('settings.cost.trendHelp')}</p>
+                        <div class="cost-filters__time" role="group" aria-label="${t('settings.cost.granularity')}">
+                            <button class="cost-time-btn${this.trendPeriod === 'day' ? ' cost-time-btn--active' : ''}" data-trend="day" aria-pressed="${this.trendPeriod === 'day'}">${t('settings.cost.day')}</button>
+                            <button class="cost-time-btn${this.trendPeriod === 'month' ? ' cost-time-btn--active' : ''}" data-trend="month" aria-pressed="${this.trendPeriod === 'month'}">${t('settings.cost.month')}</button>
+                        </div>
+                        <div id="cost-trend-chart" aria-live="polite"></div>
+                    </details>
+                    <details class="cost-fold">
+                        <summary>${t('settings.cost.breakdown')}</summary>
                     <div class="cost-section">
                         <h3 class="cost-section__title">按 Provider 分组</h3>
                         <div id="cost-provider-breakdown" class="cost-provider-list">
@@ -99,9 +107,12 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
                             </table>
                         </div>
                     </div>
+                    </details>
                 </div>
 
-                <div id="cost-panel-pricing" hidden>
+                <details class="cost-fold" id="cost-panel-pricing">
+                    <summary>${t('settings.cost.pricing')}</summary>
+                    <p class="cost-fold__hint">${t('settings.cost.pricingHelp')}</p>
                     <div class="cost-pricing-toolbar">
                         <p class="cost-pricing-toolbar__desc">
                             ${t('settings.autosave.hint')}
@@ -122,48 +133,48 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
                             <div class="cost-loading">加载中...</div>
                         </div>
                     </div>
-                </div>
+                </details>
             </div>
         `;
 
-        this.bindTabEvents();
+        this.bindFoldEvents();
         this.bindDashboardEvents();
         await this.loadDashboardData();
-        if (this.activeTab === 'pricing') this.initPricingPanel();
+
     }
 
-    // ─── Tab ──────────────────────────────────────────────────────────────────
-
-    private bindTabEvents(): void {
-        const tabs = this.container.querySelectorAll('.cost-tab[data-tab]');
-        tabs.forEach(tab => {
-            this.addEventListener(tab as HTMLElement, 'click', () => {
-                const t = (tab as HTMLElement).dataset.tab as Tab;
-                this.switchTab(t);
+    private bindFoldEvents(): void {
+        const pricing = this.container.querySelector<HTMLDetailsElement>('#cost-panel-pricing')!;
+        this.addEventListener(pricing, 'toggle', () => {
+            if (pricing.open && !this.pricingInitialized) this.initPricingPanel();
+        });
+        const trend = this.container.querySelector<HTMLDetailsElement>('#cost-trend-details')!;
+        this.addEventListener(trend, 'toggle', () => { if (trend.open) void this.loadTrend(); });
+        this.container.querySelectorAll<HTMLButtonElement>('[data-trend]').forEach(button => {
+            this.addEventListener(button, 'click', () => {
+                this.trendPeriod = button.dataset.trend as CostTrendPeriod;
+                this.container.querySelectorAll<HTMLElement>('[data-trend]').forEach(item => {
+                    const active = item.dataset.trend === this.trendPeriod;
+                    item.classList.toggle('cost-time-btn--active', active);
+                    item.setAttribute('aria-pressed', String(active));
+                });
+                void this.loadTrend();
             });
         });
     }
 
-    private async switchTab(tab: Tab): Promise<void> {
-        if (tab === this.activeTab) return;
-
-        if (this.activeTab === 'pricing' && !await this.prepareRender()) return;
-        if (this.activeTab === 'pricing') this.pricingInitialized = false;
-
-        this.activeTab = tab;
-
-        this.container.querySelectorAll('.cost-tab').forEach(el => {
-            const t = (el as HTMLElement).dataset.tab;
-            el.classList.toggle('cost-tab--active', t === tab);
-        });
-
-        const dashboard = this.container.querySelector('#cost-panel-dashboard') as HTMLElement;
-        const pricing = this.container.querySelector('#cost-panel-pricing') as HTMLElement;
-        if (dashboard) dashboard.hidden = tab !== 'dashboard';
-        if (pricing) pricing.hidden = tab !== 'pricing';
-
-        if (tab === 'pricing' && !this.pricingInitialized) {
-            this.initPricingPanel();
+    private async loadTrend(): Promise<void> {
+        const target = this.container.querySelector<HTMLElement>('#cost-trend-chart');
+        if (!target) return;
+        const generation = ++this.trendGeneration;
+        const period = this.trendPeriod;
+        const range = costTrendRange(period);
+        target.textContent = t('settings.cost.loading');
+        try {
+            const records = await this.service.queryCosts({ ...range, ...(this.filterProviderId ? { providerId: this.filterProviderId } : {}) });
+            if (generation === this.trendGeneration && target.isConnected) target.innerHTML = renderCostTrend(records, period, range);
+        } catch {
+            if (generation === this.trendGeneration) target.textContent = t('settings.cost.loadFailed');
         }
     }
 
@@ -176,7 +187,10 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
                 const p = (btn as HTMLElement).dataset.period as Period;
                 if (p === this.activePeriod) return;
                 this.activePeriod = p;
-                timeBtns.forEach(b => b.classList.toggle('cost-time-btn--active', (b as HTMLElement).dataset.period === p));
+                timeBtns.forEach(b => {
+                    const active = (b as HTMLElement).dataset.period === p;
+                    b.classList.toggle('cost-time-btn--active', active); b.setAttribute('aria-pressed', String(active));
+                });
                 this.loadDashboardData();
             });
         });
@@ -186,11 +200,13 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
             this.addEventListener(providerSelect, 'change', () => {
                 this.filterProviderId = providerSelect.value;
                 this.loadDashboardData();
+                if (this.container.querySelector<HTMLDetailsElement>('#cost-trend-details')?.open) void this.loadTrend();
             });
         }
     }
 
     private async loadDashboardData(): Promise<void> {
+        const generation = ++this.dashboardGeneration;
         const summaryEl = this.container.querySelector('#cost-summary-grid');
         const breakdownEl = this.container.querySelector('#cost-provider-breakdown');
         const sessionsEl = this.container.querySelector('#cost-top-sessions');
@@ -207,12 +223,18 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
             records = await this.service.queryCosts(filter);
         } catch (e) {
             console.error('[CostEditor] queryCosts failed:', e);
+            if (generation !== this.dashboardGeneration) return;
+            if (summaryEl) summaryEl.textContent = t('settings.cost.loadFailed');
+            if (breakdownEl) breakdownEl.textContent = t('settings.cost.loadFailed');
+            if (sessionsEl) sessionsEl.innerHTML = `<tr><td colspan="6">${t('settings.cost.loadFailed')}</td></tr>`;
+            return;
         }
+        if (generation !== this.dashboardGeneration || !summaryEl?.isConnected) return;
 
         const agg = aggregateCostRecords(records);
 
         if (summaryEl) {
-            summaryEl.innerHTML = this.renderSummaryCards(agg);
+            summaryEl.innerHTML = records.length ? this.renderSummaryCards(agg) : `<p class="cost-empty">${t('settings.cost.empty')}</p>`;
         }
 
         this.updateProviderFilterOptions(records);
@@ -231,9 +253,9 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
     private getDateRange(period: Period): { dateFrom: string; dateTo: string } {
         const today = new Date();
         const fmt = (d: Date): string => {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
+            const y = d.getUTCFullYear();
+            const m = String(d.getUTCMonth() + 1).padStart(2, '0');
+            const day = String(d.getUTCDate()).padStart(2, '0');
             return `${y}-${m}-${day}`;
         };
 
@@ -243,12 +265,12 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
 
         if (period === 'week') {
             const start = new Date(today);
-            start.setDate(today.getDate() - today.getDay());
+            start.setUTCDate(today.getUTCDate() - today.getUTCDay());
             return { dateFrom: fmt(start), dateTo: todayStr };
         }
 
         // month
-        const start = new Date(today.getFullYear(), today.getMonth(), 1);
+        const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), 1));
         return { dateFrom: fmt(start), dateTo: todayStr };
     }
 
@@ -256,7 +278,7 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
         const select = this.container.querySelector('#cost-filter-provider') as HTMLSelectElement;
         if (!select) return;
 
-        const providers = [...new Set(records.map(r => r.providerId))].sort();
+        const providers = [...new Set([...Array.from(select.options).map(option => option.value), ...records.map(r => r.providerId), this.filterProviderId])].filter(Boolean).sort();
         const current = this.filterProviderId;
 
         select.innerHTML = `<option value="">All Providers</option>` +
@@ -325,7 +347,7 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
     private renderSummaryPlaceholder(): string {
         return `
             <div class="cost-summary-card">
-                <div class="cost-summary-card__label">总费用</div>
+                <div class="cost-summary-card__label">${t('settings.cost.recordedCost')}</div>
                 <div class="cost-summary-card__value cost-summary-card__value--primary">$-</div>
             </div>
             <div class="cost-summary-card">
@@ -343,7 +365,7 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
         const cacheTotal = (agg.cacheWriteTokens ?? 0) + (agg.cacheReadTokens ?? 0);
         return `
             <div class="cost-summary-card">
-                <div class="cost-summary-card__label">总费用</div>
+                <div class="cost-summary-card__label">${t('settings.cost.recordedCost')}</div>
                 <div class="cost-summary-card__value cost-summary-card__value--primary">${this.formatCost(agg.cost)}</div>
             </div>
             <div class="cost-summary-card">

@@ -35,3 +35,5 @@ Agent 编辑必须保留未展示的策略字段；工具授权写顶层 `capabi
 AgentConfigEditor 的第 4 个参数接收 AgentCapabilityOptions.defaultToolIds，并在构造时复制、去重。默认目录为空，不内置 MindOS 工具授权；未设置 toolIds 表示继承宿主策略，显式空数组表示无授权。
 
 配置导入导出使用 kernel-adapters/llm/config，stdio 能力经管理服务 supportsMCPStdio() 查询，缺省视为不可用；禁止加载 /llm 聚合入口，否则会把设备运行时与产品预设带入设置包。
+
+CostEditor 默认展示本月费用账本摘要；趋势、Provider/会话明细和定价配置默认折叠。cost-trend.ts 按 UTC 账本日期聚合本月每日、最近 12 个月用量与费用；折叠图表按需查询，费用和 token 分开刻度。定价自动保存，不重算历史费用。统计只包含已入账调用，不包含远程 harness session 内部费用；数字分身分析远程会话的费用以实际入账为准，缺失记录不等于免费。

@@ -2,6 +2,7 @@ import { FSError, type IRecordStore, type IRecordTransaction, type RecordFieldRe
     type RecordWalkOptions } from '@itookit/vfs-core';
 import { MAX_BATCH, MAX_PAGE, type Cell, type Commit, type Page } from '../protocol';
 import type { PathGuard } from './path-guard';
+import { RecordConflictError } from './record-conflict';
 
 export async function readMany(store: IRecordTransaction, requests: ReadonlyArray<RecordFieldRequest>): Promise<Cell[]> {
     const values = store.getRecordFieldsMany ? await store.getRecordFieldsMany(requests)
@@ -41,10 +42,10 @@ export async function commitRecords(store: IRecordStore, guard: PathGuard, input
     if (input.mutations.some(row => !Array.isArray(row.value) || row.value.length > 1)) throw new FSError('EINVAL', 'Invalid record value');
     if (!store.transaction) throw new FSError('ECAPABILITY', 'Atomic records are unavailable');
     await store.transaction(async tx => {
-        for (const read of input.observations) {
+        for (const [index, read] of input.observations.entries()) {
             const current = read.kind === 'get' ? await readMany(tx, read.requests) : await readPage(tx, read.path, read.options);
             const expected = read.kind === 'get' ? read.values : read.page;
-            if (JSON.stringify(current) !== JSON.stringify(expected)) throw new FSError('ECONFLICT', 'Records changed during the transaction');
+            if (JSON.stringify(current) !== JSON.stringify(expected)) throw new RecordConflictError(input, index, current);
         }
         for (const row of input.mutations) {
             if (row.value.length) await tx.setRecordField(row.path, row.field, row.value[0]);

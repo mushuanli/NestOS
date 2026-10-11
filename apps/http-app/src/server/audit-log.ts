@@ -2,10 +2,12 @@ import { mkdir, open, rename, stat, unlink } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import type { ConflictMetadata } from './record-conflict';
 
 export interface AuditEvent {
     event: string; requestId?: string; remoteAddress?: string; method?: string; route?: string;
     status?: number; durationMs?: number; operation?: string; code?: string; certificate?: string; parentRequestId?: string;
+    conflict?: ConflictMetadata;
 }
 export interface AuditPort { write(event: AuditEvent): void; close(): Promise<void>; }
 

@@ -10,10 +10,12 @@ import { createCertificates } from '../src/server/create-certificates';
 import { authenticatedFetch, secureServers, close } from './tls-fixture';
 import { HttpStorageBackend } from '../src/client/backend';
 import { HttpTransport } from '../src/client/transport';
+import type { AuditEvent } from '../src/server/audit-log';
 
 let temp: string, root: string, backend: LocalFSBackend, server: Server, internal: Server, client: HttpStorageBackend, origin: string;
 let certificateRoot: string, certificates: string, securedFetch: typeof fetch, closeFetch: () => void;
 let requests: string[], rejectField: string | undefined;
+let auditEvents: AuditEvent[];
 beforeAll(async () => {
     certificateRoot = await mkdtemp(path.join(tmpdir(), 'mindos-test-certificates-'));
     certificates = path.join(certificateRoot, 'certs'); await createCertificates(certificates, ['127.0.0.1']);
@@ -34,7 +36,7 @@ beforeEach(async () => {
         } });
     } });
     const secured = await secureServers(backend, root, ui, certificates);
-    server = secured.server; internal = secured.internal; origin = secured.origin;
+    server = secured.server; internal = secured.internal; origin = secured.origin; auditEvents = secured.events;
     const authenticated = await authenticatedFetch(certificates); securedFetch = authenticated.fetcher; closeFetch = authenticated.close;
     requests = [];
     const fetcher: typeof fetch = async (input, init) => {
@@ -108,6 +110,12 @@ it('rejects a concurrent correction without partially writing another SeqFile', 
     });
     await ready; await client.records.setRecordField('/a.seq', 'revision', 3); release();
     await expect(pending).rejects.toMatchObject({ code: 'ECONFLICT' });
+    const conflict = auditEvents.find(event => event.event === 'records.conflict');
+    expect(conflict).toMatchObject({ operation: 'records.commit', code: 'ECONFLICT',
+        conflict: { observationKind: 'get', mutationCount: 2, recordId: expect.stringMatching(/^[a-f0-9]{64}$/) } });
+    expect(JSON.stringify(conflict)).not.toMatch(/a\.seq|revision|discard/);
+    const internalRequest = auditEvents.find(event => event.event === 'request.complete' && event.requestId === conflict?.requestId);
+    expect(internalRequest?.parentRequestId).toMatch(/^[a-f0-9-]{36}$/);
     expect(await client.records.getRecordField('/a.seq', 'revision')).toBe(3);
     expect(await client.records.getRecordField('/b.seq', 'result')).toBeUndefined();
 });
@@ -122,6 +130,8 @@ it('detects range phantoms and supports read-after-write enumeration and early t
         await client.records.setRecordField('/a.seq', 'item/c', 3);
         await tx.setRecordField('/b.seq', 'result', true);
     })).rejects.toMatchObject({ code: 'ECONFLICT' });
+    expect(auditEvents.find(event => event.event === 'records.conflict')?.conflict)
+        .toMatchObject({ observationKind: 'walk', expectedCount: 2, actualCount: 3 });
     await client.records.transaction!(async tx => {
         await tx.deleteRecordField('/a.seq', 'item/a'); await tx.setRecordField('/a.seq', 'item/d', 4);
         const seen: string[] = [];

@@ -18,7 +18,11 @@ export class HttpTransport {
         }
         setStorageAvailable(true);
         const payload = await response.json() as { result?: T; error?: { code: FSErrorCode; message: string } };
-        if (!response.ok) throw new FSError(payload.error?.code ?? 'EIO', payload.error?.message ?? `HTTP ${response.status}`);
+        if (!response.ok) {
+            const id = response.headers.get('X-Request-ID');
+            const request = id && /^[a-f0-9-]{36}$/.test(id) ? ` (requestId=${id})` : '';
+            throw new FSError(payload.error?.code ?? 'EIO', (payload.error?.message ?? `HTTP ${response.status}`) + request);
+        }
         return payload.result as T;
     }
 }

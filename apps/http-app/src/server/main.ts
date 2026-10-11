@@ -15,7 +15,8 @@ import { options } from './options';
 
 async function main(): Promise<void> {
     const values = options();
-    if (values.help) { console.log('MindOS HTTPS defaults: --host 0.0.0.0 --port 2000 --internal-port 2001\n  Data root: --root > MINDOS_ROOT > mindos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/mindos/mindos.json or ~/.config/mindos/mindos.json\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file>'); return; }
+    if (values.help) { console.log('MindOS HTTPS defaults: --host 0.0.0.0 --port 2000 --internal-port 2001 --backlog 4096\n  Data root: --root > MINDOS_ROOT > mindos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/mindos/mindos.json or ~/.config/mindos/mindos.json\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file>'); return; }
+    const backlog = validBacklog(values.backlog);
     const cwd = process.env.INIT_CWD ?? process.cwd(), config = configDirectory();
     const certDir = path.resolve(cwd, values['cert-dir'] ?? path.join(config, 'http-certs'));
     if (values['init-certs']) {
@@ -32,21 +33,21 @@ async function main(): Promise<void> {
     if (within(await realpath(staticDir), canonicalCertificates)) throw new Error('Certificates cannot reside within the static UI root');
     const certificates = await loadCertificates(certDir), port = validPort(values.port), internalPort = validPort(values['internal-port']);
     if (port === internalPort) throw new Error('Public and internal ports must differ');
-    await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, port, internalPort, host: values.host });
+    await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, port, internalPort, host: values.host, backlog });
 }
 
 interface HostOptions {
     root: string; sidecar: string; certificates: Awaited<ReturnType<typeof loadCertificates>>; staticDir: string;
-    auditFile: string; port: number; internalPort: number; host: string;
+    auditFile: string; port: number; internalPort: number; host: string; backlog: number;
 }
-async function startHost({ root, sidecar, certificates, staticDir, auditFile, port, internalPort, host }: HostOptions): Promise<void> {
+async function startHost({ root, sidecar, certificates, staticDir, auditFile, port, internalPort, host, backlog }: HostOptions): Promise<void> {
     const backend = await openLocalFSBackend({ rootDir: root, sidecarDir: sidecar,
         durability: 'full', createDb: file => NodeSqliteSidecarDb.open(file) });
     const audit = new AuditLog(auditFile), token = randomBytes(32).toString('base64url');
     try { await audit.initialize(); } catch (error) { await backend.close(); throw error; }
     const internal = createStorageServer(backend, root, token, audit);
     const server = createHttpServer({ certificates, staticDir, internalPort, internalToken: token, audit });
-    try { await listen(internal, internalPort, '127.0.0.1'); await listen(server, port, host); }
+    try { await listen(internal, internalPort, '127.0.0.1', backlog); await listen(server, port, host, backlog); }
     catch (error) { await stopServers([server, internal]); await backend.close(); await audit.close(); throw error; }
     installShutdown([server, internal], async () => { await backend.close(); audit.write({ event: 'server.stopped' }); await audit.close(); });
     audit.write({ event: 'server.started', route: `https://${host}:${port}` });
@@ -66,8 +67,13 @@ function validPort(value: string): number {
     if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('Expected a port between 1 and 65535');
     return port;
 }
-function listen(server: Server, port: number, host: string): Promise<void> {
-    return new Promise((resolve, reject) => { server.once('error', reject); server.listen(port, host, () => { server.off('error', reject); resolve(); }); });
+function validBacklog(value: string): number {
+    const backlog = Number(value);
+    if (!Number.isInteger(backlog) || backlog < 1 || backlog > 2147483647) throw new Error('Expected backlog between 1 and 2147483647');
+    return backlog;
+}
+function listen(server: Server, port: number, host: string, backlog: number): Promise<void> {
+    return new Promise((resolve, reject) => { server.once('error', reject); server.listen({ port, host, backlog }, () => { server.off('error', reject); resolve(); }); });
 }
 async function stopServers(servers: Server[]): Promise<void> {
     await Promise.all(servers.map(server => new Promise<void>(resolve => { server.close(() => resolve()); server.closeIdleConnections(); })));

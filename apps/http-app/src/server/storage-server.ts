@@ -4,17 +4,22 @@ import { FSError, type IStorageBackend } from '@itookit/vfs-core';
 import { StorageApi } from './storage-api';
 import { readJson, json, sendError } from './http-response';
 import { auditRequest, type AuditPort } from './audit-log';
+import { RecordConflictError } from './record-conflict';
 
 /** Internal service: loopback only plus an ephemeral process credential. */
 export function createStorageServer(backend: IStorageBackend, root: string, token: string, audit: AuditPort) {
     if (token.length < 32) throw new Error('Internal VFS credential is required');
     const api = new StorageApi(backend, root);
     return createServer((request, response) => {
-        auditRequest(audit, request, response, '/internal/vfs');
+        const requestId = auditRequest(audit, request, response, '/internal/vfs');
         if (request.socket.remoteAddress !== '127.0.0.1' || !validToken(request.headers.authorization, token)) {
             json(response, 401, { error: { code: 'EACCES', message: 'Internal authentication required' } }); return;
         }
-        void handleStorage(request, response, api).catch(error => sendError(response, error));
+        void handleStorage(request, response, api).catch(error => {
+            if (error instanceof RecordConflictError) audit.write({ event: 'records.conflict', requestId,
+                operation: 'records.commit', code: 'ECONFLICT', status: 409, conflict: error.conflict });
+            sendError(response, error);
+        });
     });
 }
 async function handleStorage(request: IncomingMessage, response: ServerResponse, api: StorageApi): Promise<void> {

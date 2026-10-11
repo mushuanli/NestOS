@@ -31,6 +31,8 @@ pnpm httpd
 
 根目录的 `httpd` 脚本调用 HTTP app 的 `dev`，构建静态 UI 后运行 TypeScript 服务端，不提供热更新。发布使用 `build` 后 `start`；完整参数见 [app README](../apps/http-app/README.md)。默认监听 `0.0.0.0:2000`（所有 IPv4 网卡），局域网访问必须提供已登记的有效客户端证书；认证后的浏览器拥有该单用户数据根的访问权限，不引入多用户角色。
 
+对外 HTTPS 与内部 VFS 的监听队列默认均为 4096（原 Node.js 默认值为 511），可用 `--backlog <正整数>` 调整，例如 `pnpm httpd --backlog 8192`。此参数缓冲等待接收的突发连接，不是 HTTP 并发上限；Linux 实际队列受 `net.core.somaxconn` 限制。重启服务后用 `ss -ltnp` 查看 `Send-Q` 确认生效。
+
 UI 构建保留已有哈希静态资源，避免旧页面延迟加载聊天等模块时出现 404；全部静态资源使用 private, no-store，服务器仍在每次请求前认证。服务运行期间可单独执行 `build:ui` 更新页面，不必为 UI 重建停止存储服务。`GET /api/health` 核对存储可访问状态。浏览器连接中断时显示状态条，旧模块缺失时提供显式重新加载操作；不自动重放结果未知的写入。
 
 默认读取 `$XDG_CONFIG_HOME/mindos/mindos.json` 或 `~/.config/mindos/mindos.json`，缺失时创建共享默认配置；证书与日志也使用该配置目录。数据根优先级为 `--root` → `MINDOS_ROOT` → 配置中的 `rootDir` → `<配置目录>/data`，配置中的相对路径按配置目录解析。`--root` 是 VFS 数据根；其相对路径按 `INIT_CWD`（缺失时进程 cwd）解析。存储内部路径 `/home/admin/...` 始终相对于该根，不保存当前服务器机器的绝对路径。SQLite 默认 `<root>/_meta/index.db`；允许显式指定根目录外的 `--sidecar`。已有外部项目的绝对路径仍表示原宿主资源，不能直接改成相对路径推断另一份数据；未装配的来源保留引用并标记不可用。
@@ -63,6 +65,12 @@ UI 构建保留已有哈希静态资源，避免旧页面延迟加载聊天等�
 默认分页上限与单批记录数上限为 10000，单次请求/JSON 响应上限 32 MiB，超限返回 `EFBIG`。事务中对已修改范围枚举，需要合并原范围与缓存变更，该范围超过 10000 项时拒绝执行；普通有界分页直接调用 LocalFS 的页读取接口。初版仍会为顺序读取产生 HTTP 往返，没有把完整应用启动合成一个远程 RPC；性能需根据实际网络延迟和 profile 规模评估。
 
 ## 验证
+
+分身设置自动保存对明确的 HTTP ECONFLICT（包括读取设置及提交阶段）最多退避重试两次，重新取得设置版本并提交编辑字段；EIO 等结果未知的故障仍显示保存失败。来源分析弹窗仅在运行中每秒更新耗时，无变化的进度与结果不替换 DOM；后台 15 秒在线检查继续运行。
+
+分身 LLM 授权按 `twin-analysis-<jobId>` 定位当前作业，不扫描全部 job，避免无关作业进度更新使授权快照失效。当前作业读取遇到 ECONFLICT 最多退避重读三次，记录 `authorization_retry`；作业状态、会话、连接、扫描范围和来源版本的权限检查仍执行。
+
+事务冲突的审计事件为 `records.conflict`，以内部 `requestId` 关联 `request.complete`，后者的 `parentRequestId` 对应浏览器错误中的对外请求 ID。冲突元数据包含观察类型/序号、观察/变更数量及位置哈希；范围观察包含预期/实际总数。位置哈希为 `SHA256(JSON.stringify([虚拟路径, 字段名或范围前缀]))`，不记录原始参数或正文，也不推断竞争写入方。数字分身任务进度读取遇到 ECONFLICT 时退避后重新读取，最多三次；Kernel 巡检继续按既有轮询调度恢复，写事务不通用重放。模型 `response_complete` 另记录 prompt/completion/total token 数与正文类型，便于区分事务冲突和模型截断。
 
 `apps/http-app/tests/storage.test.ts` 使用真实 Node HTTP、LocalFS 和 SQLite：二进制内容/范围读取、元数据/标签、含记录的文件重命名、null 与缺失值、跨文件提交、回调回滚、并发修订与范围 phantom 冲突、事务内 Unicode 字段排序、目录边界和跨来源请求，以及完整应用 Runtime 启动并重开个人项目。
 

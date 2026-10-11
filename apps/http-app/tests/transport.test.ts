@@ -2,6 +2,15 @@ import { expect, it, vi } from 'vitest';
 import { HttpTransport } from '../src/client/transport';
 import { onStorageConnectionChange, setStorageAvailable } from '../src/client/connection-state';
 
+it('includes the public request ID in a conflict without replaying the commit', async () => {
+    const id = '00000000-0000-0000-0000-000000000001';
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(JSON.stringify({ error: { code: 'ECONFLICT', message: 'changed' } }),
+        { status: 409, headers: { 'X-Request-ID': id } }));
+    await expect(new HttpTransport('/api/vfs', fetcher).call('records.commit', []))
+        .rejects.toMatchObject({ code: 'ECONFLICT', message: expect.stringContaining(`requestId=${id}`) });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+});
+
 it('reports a lost storage connection without replaying a write, then clears it on success', async () => {
     setStorageAvailable(true);
     const statuses: boolean[] = [], cause = new TypeError('Failed to fetch');

@@ -66,33 +66,37 @@ export class VFSHelpers {
             if (!dirId) { console.log(`[Boot]       loadDir ${dirPath}: empty`); return []; }
             const children = await fs.driver.getChildren(dirId, { fields: 'entry' });
             console.log(`[Boot]       loadDir ${dirPath}: ${children.length} entries`);
-            for (const child of children) {
-                if (child.type !== 'file') continue;
-                if (!extensions.some(extension => child.name.endsWith(extension))) continue;
-                const isYaml = child.name.endsWith('.yaml') || child.name.endsWith('.yml');
-                const isJson = child.name.endsWith('.json');
-                if (!isYaml && !isJson) continue;
-                try {
-                    const raw = await fs.driver.readContent(child.path, { representation: 'bytes' });
-                    const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw as ArrayBuffer);
-                    const parsed = isYaml
-                        ? yaml.load(text)
-                        : JSON.parse(text);
-                    if (parsed === null || parsed === undefined) {
-                        console.warn(`[VFSHelpers] loadDir skip empty ${child.path}`);
-                        continue;
-                    }
-                    if (validate && !validate(parsed, child.path)) {
-                        console.warn(`[VFSHelpers] loadDir skip invalid ${child.path}`);
-                        continue;
-                    }
-                    items.push(parsed as T);
-                } catch (e) {
-                    console.warn(`[VFSHelpers] loadDir skip ${child.path}:`, e instanceof Error ? e.message : e);
-                }
+            const files = children.filter(child => child.type === 'file'
+                && extensions.some(extension => child.name.endsWith(extension)));
+            // Bound remote reads and preserve directory order regardless of completion order.
+            for (let offset = 0; offset < files.length; offset += 8) {
+                const loaded = await Promise.all(files.slice(offset, offset + 8)
+                    .map(child => this.readConfigFile<T>(fs, child.path, child.name, validate)));
+                for (const item of loaded) if (item !== null) items.push(item);
             }
             console.log(`[Boot]       loadDir ${dirPath}: ${items.length} loaded in ${(performance.now() - t0).toFixed(0)}ms`);
         } catch { /* directory not yet created */ }
         return items;
     }
+
+    private async readConfigFile<T>(fs: IFileSystem, path: string, name: string, validate?: ConfigValidator<T>): Promise<T | null> {
+        try {
+            const raw = await fs.driver.readContent(path, { representation: 'bytes' });
+            const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw as ArrayBuffer);
+            const parsed = name.endsWith('.json') ? JSON.parse(text) : yaml.load(text);
+            if (parsed === null || parsed === undefined) {
+                console.warn(`[VFSHelpers] loadDir skip empty ${path}`);
+                return null;
+            }
+            if (validate && !validate(parsed, path)) {
+                console.warn(`[VFSHelpers] loadDir skip invalid ${path}`);
+                return null;
+            }
+            return parsed as T;
+        } catch (error) {
+            console.warn(`[VFSHelpers] loadDir skip ${path}:`, error instanceof Error ? error.message : error);
+            return null;
+        }
+    }
+
 }

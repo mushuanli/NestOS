@@ -1,3 +1,4 @@
+import { TWIN_EXTRACTION_OUTPUT_ESTIMATE, TWIN_EXTRACTION_PROMPT_RESERVE } from './extraction-estimates';
 import { randomUUID } from '@itookit/common';
 import { sha256HexSync } from '@itookit/llm-context';
 import { memoryData, TWIN_KINDS, type TwinAnalysisJob, type TwinSettings, type TwinSourceData } from './domain';
@@ -95,7 +96,7 @@ export class TwinAnalysis {
         const settings = await this.records.get<TwinSettings>('settings', 'pot');
         if (!settings || settings.data.paused) throw new Error('TWIN_ANALYSIS_PAUSED');
         const offset = progress.offset, end = Math.min(text.length, offset + 4000);
-        const reservedTokens = new TextEncoder().encode(text.slice(Math.max(0, offset - 256), end)).length + 4096;
+        const reservedTokens = new TextEncoder().encode(text.slice(Math.max(0, offset - 256), end)).length + TWIN_EXTRACTION_OUTPUT_ESTIMATE + TWIN_EXTRACTION_PROMPT_RESERVE;
         if (settings.data.spentTokens + settings.data.reservedTokens + reservedTokens > settings.data.tokenLimit) throw new Error('TWIN_BUDGET_EXHAUSTED');
         const id = randomUUID(), epoch = (await this.records.store.inspect()).forgetEpoch;
         const guard = await this.guard(scope, { reserve: reservedTokens });

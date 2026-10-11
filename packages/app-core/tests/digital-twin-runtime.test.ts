@@ -47,6 +47,8 @@ it('extracts through the durable kernel and uses approved context in a later rea
             sendIntent: { branch: { mode: 'continue' }, retention: { mode: 'persistent' }, execution: { kind: 'agent', agentId: 'default', mode: 'chat' } } });
         await vi.waitFor(async () => { expect((await runtime.kernel.kernel.listSessionTasks(id))[0]?.status).toBe('succeeded'); }, { timeout: 10000 });
         expect(requests).toHaveLength(2);
+        expect(requests[0].max_tokens).toBe(8192);
+        expect(requests[0].stream).toBe(false);
         expect(JSON.stringify(requests[1].messages)).toContain('Alpha 使用 TypeScript');
         expect((await twin.snapshot()).uses).toHaveLength(1);
         expect(diagnostic.join('')).not.toContain('Alpha');

@@ -12,3 +12,6 @@ packages:
 
 ignoredBuiltDependencies:
   - better-sqlite3
+
+patchedDependencies:
+  '@itookit/driver-llm@0.2.0': patches/@itookit__driver-llm@0.2.0.patch

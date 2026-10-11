@@ -106,7 +106,7 @@ pnpm --filter @itookit/app-core typecheck
 
 - 项目收藏位于 `projects/favorites/`：contracts 定义存储/变更端口，policy 无 I/O，store 封装 SeqFile 事务，service 串行化同项目读写，lifecycle 适配 VFS 提交事件；UI 跳转展示策略留在 app-shell。
 
-- `digital-twin/` 提供 DigitalTwinService：来源、Kernel 提取、审核、授权检索、发送门禁、目标与遗忘；SeqTwinStore 以固定索引页和版本链实现原子存储/清理，只用公开 VFS 契约，不访问数据库内部。native-service 负责运行时装配，UI 在 app-shell。普通 Memory 工具不读写分身资源。支持规模、布局版本和适配器局限见 [数字分身设计](../../doc/design/数字分身完整设计与实施计划.md)。
+- `digital-twin/` 提供 DigitalTwinService：来源、Kernel 提取、审核、默认知识检索、发送前校验、目标与遗忘；SeqTwinStore 以固定索引页和版本链实现原子存储/清理，只用公开 VFS 契约，不访问数据库内部。native-service 负责运行时装配，UI 在 app-shell。普通 Memory 工具不读写分身资源。支持规模、布局版本和适配器局限见 [数字分身设计](../../doc/design/数字分身完整设计与实施计划.md)。
 - 扫描计划与运行在 `digital-twin/scan-*` 和 `scans.ts`；SeqFile CAS 保存队列、检查点和宿主 fence，Kernel 负责实际提取任务。默认串行、在线 15 秒检查；自动触发是间隔/变化轮询。Runtime 退出先关闭扫描，CLI 一次性管理用 `digitalTwinAutoStart=false`，`twin watch` 显式开启；不把界面页面生命周期当作后台服务生命周期。
 
 - `browser-routes.ts` 是路由语义唯一来源；显式的 Session manifest `folder: null` 表示根目录，不回退到陈旧路由前缀。远程 provider 的实例方法必须保留 receiver，不能取出后无绑定调用。
@@ -124,4 +124,8 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 
 - `projects/project-directory-recovery.ts` 恢复有数据的工作台直属旧目录：条件补建 info.seq、沿用旧项目身份与会话归属；不移动正文，读取故障或根重叠不能当作不存在。
 
-- 分身扫描规则通过 `scan-rules` / `source-index` 维护自动来源；`project-catalog` / `harness-reader` 复用项目与会话公开接口。文件的到期检查核对正文 hash，失败范围不推断删除。新规则全局模型/预算，默认自身信息生效；layout 4 原子迁移 2/3，旧指定来源计划保留兼容。
+- 分身扫描规则通过 `scan-rules` / `source-index` 维护自动来源；`project-catalog` / `harness-reader` 复用项目与会话公开接口。文件的到期检查核对正文 hash，失败范围不推断删除。新规则全局模型/预算，明确主体信息自动生效；layout 4 原子迁移 2/3，旧指定来源计划保留兼容。
+
+- 扫描 `focus` 随 run/scope 固化并参与检查点身份；无关注点的旧检查点保持兼容。规则停用或删除保留知识快照，`retained` 不代表继续读取源文件；全局排除仍使其失效。`graph.ts` 从可用记忆派生图，人物合并通过 entity 映射与版本检查点完成，不能按同名自动合并。
+
+- 数字分身仅自动加入邮件；普通工作区目录由 `workspace-catalog` 补充发现，菜单显式规则按来源身份匹配、最具体范围决定类型。`selection` / `identity` 封装类型与用户身份；移除来源清理派生知识但保留禁用定位记录，禁止永久墓碑阻止显式重新加入。

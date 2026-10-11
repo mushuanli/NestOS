@@ -674,10 +674,18 @@ sequenceDiagram
 
 ## 本地数字分身装配
 
-`createApplicationRuntime` 在恢复前通过 `createNativeDigitalTwin` 装配 `runtime.digitalTwin`；应用启动自动初始化分身扫描存储和可用的默认规则，不依赖用户先打开分身页面；新会话消费仍须授权。`createConversationSystem` 把授权相关记忆追加到公开 ContextPlan 检索入口；`createKernelRuntime.authorizeLlm` 透传到通用 LLM Effect，事件持久化前和 provider 发送前均等待校验。分身内核分析使用独立 `twin-analysis-*` Session，无工具；新扫描规则的自身信息自动生效，其他人物候选待确认，结果提交或失败后删除执行快照；恢复回调不把它作为工作台项目会话收养。
+自动更新页区分“扫描规则”（范围、关注内容、周期）、“扫描目标”（已接入的文件和会话）、“运行记录”（实际执行结果）；通用设置位于页签上方，模型连接未配置或不可用时默认展开，有效配置后默认折叠；当前页面手动展开/收起状态在配置有效性不变时保留。规则与目标使用 `digital-twin/scan-list.ts` 搜索、组合筛选并分页，每页 10 条；筛选只影响展示，不改后台扫描范围。目标不截断到前 200 条，尚未接入的匹配资源通过规则预览查看。页签切换保留表单 DOM 和未保存规则草稿，筛选状态在后台刷新后恢复。
+
+数字分身侧栏通过 `app-shell/src/digital-twin/navigation.ts` 将五个页面投影为只读 `BrowserSource`，复用设置侧栏的 `VFSUIShell` / `NodeList` 与组件 CSS。导航保留固定页面顺序、搜索和选中态，不映射真实用户文件，不开放文件增删改操作。深链接选中对应顶层入口；切页前等待通用设置自动保存，保存失败回退侧栏选中态并保留草稿。组件和订阅随工作台销毁释放，移动端切页沿用 `VFS_DOM_EVENTS.resourceActivated`。
+
+“数字分身”工作台先挂载正文标题与加载状态，再读取已保存的数据快照、模型连接和 Agent 列表；`snapshot()` 不执行来源校验、历史读取或清理恢复。来源校验与清理恢复由持有租约的后台扫描工作器执行，完成后发布更新通知；知识检索和发送前仍执行来源与权限校验。读取超过 30 秒显示超时和重试入口。超时仅结束本次视图等待，不取消后台扫描或持久化写入；过期结果不能覆盖重试后的正文。后台通知在读取期间合并，不创建新一轮加载；读取成功后如有积累通知，再补一次刷新。失败后保留错误，等待用户重试。
+
+加载超过 5 秒时，浏览器 Console 输出 `[DigitalTwin] Slow overview load`，30 秒时输出 `Overview load timed out`。诊断只包含 `pending` 阶段、阶段耗时、已完成阶段和初始化位置，不包含知识正文或凭据。`sessions.list` 指本地会话目录查询，`connections.list` / `agents.list` 指配置查询；`records.*` 指 SeqFile 记录读取。初始化位置 `storage.prepare.*` / `storage.bind-transaction` 分别指文件准备和身份绑定事务。阶段只标识等待边界，不能单凭 `records.*` 就判定 IndexedDB 驱动故障；需结合事务状态或独立数据库复现。后台单个来源校验超过 5 秒时输出 `[DigitalTwin] Slow source check`，记录不含正文的来源 ID、类型、等待阶段和耗时；阶段为 `rules`、`connection`、`probe`、`read` 或 `save`。
+
+`createApplicationRuntime` 在恢复前通过 `createNativeDigitalTwin` 装配 `runtime.digitalTwin`；应用启动自动初始化分身扫描存储和可用的默认规则，不依赖用户先打开分身页面；新会话消费仍须授权。`createConversationSystem` 把授权相关记忆追加到公开 ContextPlan 检索入口；`createKernelRuntime.authorizeLlm` 透传到通用 LLM Effect，事件持久化前和 provider 发送前均等待校验。分身内核分析使用独立 `twin-analysis-*` Session，无工具；新扫描规则中有明确主体的信息自动生效，未知主体候选待确认，结果提交或失败后删除执行快照；恢复回调不把它作为工作台项目会话收养。
 
 来源与消费策略、版本和使用回执在 app-core；kernel-adapters 只提供通用异步发送前钩子，没有分身类型依赖。基础设施包装宿主 LLM 日志，为受门禁标记的分析/消费及后续轮次脱敏正文，保留响应观测。CLI 自有 Runtime 在恢复前接入相同门禁，`mindos twin` 管理命令采用共享应用 Runtime 和 SQLite。具体能力、布局与验收边界见[数字分身设计](design/数字分身完整设计与实施计划.md#实现与边界)。
 
 扫描计划与运行由 `digital-twin/scans.ts` 组织，`scan-store.ts` 在现有 SeqFile 中保存队列与扫描宿主租约，`scan-worker.ts` 调用已有 Kernel 提取任务。运行时在装配末尾启动 15 秒检查循环，退出时先停止分身扫描再释放内核与 VFS；`digitalTwinAutoStart=false` 可禁用自动调度。CLI 的一次性 twin 管理命令使用这一开关，`twin watch` 显式开启在线调度。间隔与变化轮询都保存下次检查时间，重开合并补跑；扫描暂停不阻断来源安全核对。
 
-规则驱动发现使用 `project-catalog.ts` / `harness-reader.ts` 和 ProjectService 公开目录/会话接口；`source-index.ts` 根据规则并集和全局排除维护来源，成功枚举的范围才判定删除，离线标不可用。`saveScanRule/previewScanRule` 简化宿主配置，模型与预算集中在全局设置。schema 1/layout 4 保留旧数据并隔离不理解规则的旧客户端。
+规则驱动发现使用 `project-catalog.ts` / `harness-reader.ts` 和 ProjectService 公开目录/会话接口；`source-index.ts` 根据规则并集和全局排除维护来源，成功枚举的范围才判定删除，离线标不可用。`saveScanRule/previewScanRule` 简化宿主配置，关注点随扫描作用域进入提取提示与检查点，模型与预算集中在高级设置。暂停规则保留知识快照，全局排除继续阻止使用。schema 1/layout 4 保留旧数据并隔离不理解规则的旧客户端。

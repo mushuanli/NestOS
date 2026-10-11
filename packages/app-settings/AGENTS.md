@@ -32,6 +32,6 @@ src/
 
 [架构设计](./Architecture.md)
 
-系统恢复页通过 createSettingsFactory 的可选 restoreFlows 回调提供「恢复内置工作流」：只恢复缺失模板，保留已有内容。回调由 app-shell 注入 llm-ui.restoreFlowLibrary，设置包不依赖 Flow 运行器或 llm-ui。此操作与原有 Provider/Connection/Agent 强制重置分开。
+文件系统与系统恢复页通过 createSettingsFactory 的可选 InitialFilesPort 提供初始文件清单与勾选恢复。initial-files.ts 负责折叠分组、默认全选、存在状态与逐文件结果；app-shell 注入 app-core 的 MindosInitialFiles，写入当前笔记文件系统并经原 Flow 命令恢复工作流。设置包不依赖 app-core 或 Flow 运行器。旧 restoreFlows 回调保留兼容；初始文件恢复与 Provider/Connection/Agent 强制重置分开。
 
 pi-agent 连接统一由工具箱 MCP 管理，StorageSettingsEditor 只负责存储维护。MCP 编辑器通过中立 ConfigurationFormControls 接收宿主字段与操作，不使设置包依赖 app-core。

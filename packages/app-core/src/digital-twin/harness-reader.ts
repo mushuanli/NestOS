@@ -16,7 +16,7 @@ export async function discoverHarness(projects: ProjectService, project: Project
                 let cursor: string | undefined; const seen = new Set<string>();
                 do {
                     const page = await client.list(profile.id, { archived, cursor }, { timeoutMs: 5000 });
-                    for (const session of page.sessions) resources.push({ kind: 'harness-session', projectId: project.project.id, projectName: project.name, profileId: profile.id,
+                    for (const session of page.sessions) resources.push({ kind: 'harness-session', location: 'remote', projectId: project.project.id, projectName: project.name, profileId: profile.id,
                         sessionId: session.id, target: harnessTarget(project.project.id, profile.id, session.id), label: session.title, version: String(session.updatedAt) });
                     if (resources.length > 10000 || (page.nextCursor && seen.has(page.nextCursor))) throw new Error('TWIN_SOURCE_LIMIT');
                     cursor = page.nextCursor ?? undefined; if (cursor) seen.add(cursor);

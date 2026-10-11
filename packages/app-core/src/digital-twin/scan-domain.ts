@@ -3,7 +3,7 @@ import { TWIN_KINDS, type TwinMemoryKind } from './domain';
 import type { TwinRecordFamily, TwinRecordWrite } from './contracts';
 
 export interface TwinScanPlanInput {
-    rules?: TwinScanRules; autoConfirm?: boolean;
+    rules?: TwinScanRules; autoConfirm?: boolean; focus?: string;
     name: string; sourceIds: string[]; connectionId: string; kinds: TwinMemoryKind[];
     mode: 'analyze' | 'reconcile'; trigger: 'manual' | 'interval' | 'changes';
     intervalMinutes: number; tokenLimit: number; enabled: boolean;
@@ -11,7 +11,9 @@ export interface TwinScanPlanInput {
 export interface TwinScanPlan extends TwinScanPlanInput { connectionFingerprint: string; createdAt: number; updatedAt: number; }
 export type TwinScanState = 'queued' | 'running' | 'succeeded' | 'paused' | 'failed' | 'cancelled' | 'interrupted';
 export interface TwinScanRun {
-    rules?: TwinScanRules; autoConfirm?: boolean;
+    budgetUnlimited?: boolean;
+    errorDetail?: string;
+    rules?: TwinScanRules; autoConfirm?: boolean; focus?: string;
     planId: string; planRevision: string; name: string; sourceIds: string[]; completedSourceIds: string[];
     connectionId: string; connectionFingerprint: string; kinds: TwinMemoryKind[]; mode: 'analyze' | 'reconcile';
     state: TwinScanState; trigger: 'manual' | 'interval' | 'changes'; singleBatch: boolean;
@@ -19,7 +21,7 @@ export interface TwinScanRun {
     createdAt: number; startedAt: number; finishedAt: number; owner: string; fence: number; error: string;
 }
 export interface TwinScanCheckpoint { sourceId: string; sourceHash: string; incarnation: string; offset: number; complete: boolean; }
-export interface TwinScanScope { runId: string; planId: string; planRevision: string; sourceId: string; fence: number; kinds: TwinMemoryKind[]; }
+export interface TwinScanScope { runId: string; planId: string; planRevision: string; sourceId: string; fence: number; kinds: TwinMemoryKind[]; focus?: string; }
 export interface TwinScanGuard {
     conditions: Array<{ family: TwinRecordFamily; id: string; expectedRevision: string | null }>;
     writes: TwinRecordWrite[];
@@ -34,12 +36,13 @@ export function scanInput(input: TwinScanPlanInput): TwinScanPlanInput {
         || typeof input.enabled !== 'boolean') invalid();
     identifiers(input.sourceIds, 10000, Boolean(input.rules));
     const rules = input.rules ? scanRules(input.rules) : undefined;
+    if (input.focus !== undefined && (typeof input.focus !== 'string' || input.focus.length > 2000)) invalid();
     if (input.autoConfirm !== undefined && typeof input.autoConfirm !== 'boolean') invalid();
     if (!Array.isArray(input.kinds) || !input.kinds.length || input.kinds.some(kind => !TWIN_KINDS.includes(kind))) invalid();
     if (!['analyze', 'reconcile'].includes(input.mode) || !['manual', 'interval', 'changes'].includes(input.trigger)) invalid();
     if (!Number.isSafeInteger(input.intervalMinutes) || input.intervalMinutes < 1 || input.intervalMinutes > 10080
         || !Number.isSafeInteger(input.tokenLimit) || input.tokenLimit < 0 || input.tokenLimit > 10000000) invalid();
-    return { ...(rules ? { rules, autoConfirm: input.autoConfirm ?? true } : {}), name: input.name.trim(), sourceIds: [...new Set(input.sourceIds)], connectionId: input.connectionId.trim(),
+    return { ...(rules ? { rules, autoConfirm: input.autoConfirm ?? true } : {}), focus: input.focus?.trim() ?? '', name: input.name.trim(), sourceIds: [...new Set(input.sourceIds)], connectionId: input.connectionId.trim(),
         kinds: TWIN_KINDS.filter(kind => input.kinds.includes(kind)), mode: input.mode, trigger: input.trigger,
         intervalMinutes: input.intervalMinutes, tokenLimit: input.tokenLimit, enabled: input.enabled };
 }

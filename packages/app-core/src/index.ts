@@ -1,3 +1,6 @@
+export { MindosInitialFiles } from './presets/initial-files';
+export { TWIN_SELECTION_TYPES, selectionKinds } from './digital-twin/selection';
+export type { TwinSelectionTarget, TwinSelectionType } from './digital-twin/selection';
 export type { TwinScanRuleInput, TwinScanRules } from './digital-twin/scan-rules';
 export { SessionFilesService } from './vfs/session-files';
 export { SeqTwinStore } from './digital-twin/seq-twin-store';
@@ -136,3 +139,5 @@ export { manageRemoteSession } from './session/remote-session-management';
 export type { NativeSessionCommand } from './session/remote-session-management';
 
 export { createNativeDigitalTwin } from './digital-twin/native-service';
+
+export type { TwinGraph, TwinGraphNode, TwinGraphEdge } from './digital-twin/graph';

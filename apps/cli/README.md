@@ -338,7 +338,7 @@ Agent YAML 的 `memory_policy.shared_memory: {id: team, incarnation: <创建结�
 
 ## 本地数字分身
 
-`mindos twin` 使用同一 profile 的 SQLite SeqFile，通过宿主服务操作，普通 memory 工具不能直接读写分身。先用 `list` 获得来源/记忆/设置的当前 revision，条件修改必须明确传该版本。新授权使用 `new`。
+`mindos twin` 使用同一 profile 的 SQLite SeqFile，通过宿主服务操作，普通 memory 工具不能直接读写分身。先用 `list` 获得来源/记忆/设置的当前 revision，条件修改必须明确传该版本。所有会话默认可使用相关知识，无需会话授权；使用全局忽略和规则级忽略限定资料范围。
 
 ```bash
 mindos twin list --profile desktop
@@ -348,7 +348,6 @@ mindos twin analyze <source-id>
 mindos twin review <memory-id> <revision> confirm
 mindos twin review <memory-id> <revision> correct --value '{"content":"新的独立用户陈述"}'
 mindos twin add-memory --value '{"content":"希望 Alpha 使用 TypeScript","kind":"preference","project":"Alpha"}'
-mindos twin grant new --value '{"sessionId":"<session-id>","agentId":"default","connectionId":"default","enabled":true,"project":"Alpha"}'
 mindos twin settings <settings-revision> --value '{"tokenLimit":100000,"paused":false,"useEnabled":true}'
 mindos twin link-execution <goal-memory-id> <revision> --value '{"sessionId":"<session-id>","taskId":"<existing-task-id>"}'
 mindos twin forget <memory-id>
@@ -363,7 +362,7 @@ mindos twin cancel <job-id>
 
 自动规则使用总览配置的分析模型；来源分析会发送至明确选择的模型连接；CLI 的 add-source/grant 命令本身代表该项显式授权。未知计费保留预留额度，不当作免费。`forget` 可用 `--value '["<session-id>"]'` 明确要求同时删除曾用过该条的整个会话；省略时保留历史副本并阻断后续模型使用。原始来源、导出、手动复制、外部备份及服务商数据不在本地清理范围。来源移除保留独立用户陈述与其修订历史。
 
-分身扫描规则在“数字分身 → 来源与扫描”管理，自动发现所有登记项目的文本文档、原生与可读 harness 会话。全局模型、累计预算和全局排除在总览中设置；每条规则只定义范围、周期与提取类型，不再逐个授权来源。
+分身扫描规则在“数字分身 → 自动更新”管理，自动发现所有登记项目的文本文档、原生与可读 harness 会话。全局忽略在通用设置中，模型与累计预算位于高级选项；每条规则定义范围、关注点、忽略规则、周期与可选提取类型，不再逐个授权来源。
 
 ```bash
 mindos twin settings <settings-revision> --value '{"connectionId":"default","tokenLimit":100000,"globalExclude":["file:**/private/**"]}'
@@ -381,13 +380,13 @@ mindos twin scan-tick --profile desktop
 mindos twin watch --profile desktop
 ```
 
-`rule-create/update` 默认白名单/黑名单为空、30 分钟、全部提取类型、启用。`project:` 匹配项目 ID 或名称，`file:` 匹配项目内相对路径，`session:native/` 和 `session:harness/` 匹配会话 ID / profile+会话 ID；支持 `*`、`**`、`?`、目录末尾 `/` 和整行 `#` 注释。白名单任一命中即可，黑名单在当前规则内优先，多规则取并集，全局排除优先。`rule-preview` 不读取正文/不新增来源。删除、替换、排除会使旧证据失效，离线不视作删除；自身信息自动生效，其他人物归属待确认。
+`rule-create/update` 默认白名单/黑名单为空、30 分钟、全部提取类型、启用。`project:` 匹配项目 ID 或名称，`file:` 匹配项目内相对路径，`session:native/` 和 `session:harness/` 匹配会话 ID / profile+会话 ID；支持 `*`、`**`、`?`、目录末尾 `/` 和整行 `#` 注释。白名单任一命中即可，黑名单在当前规则内优先，多规则取并集，全局排除优先。`rule-preview` 返回 `resources` 和 `excluded`，不读取正文/不新增来源。忽略模式可省略前缀，例如 `*.log`、`drafts/`，开头 `/` 锚定项目根。`focus` 可设置自然语言关注点，不同关注点拥有独立提取进度。来源删除、替换、全局排除会使旧证据失效，离线不视作删除；明确主体的信息自动生效，未知主体待确认；同名人物保持独立，可在对象详情中手动合并。
 
 旧 `add-source/analyze/plan-create/plan-update` 及指定来源计划保留兼容，不扩大既有范围。新规则共享全局模型和预算，重叠来源/类型复用进度。
 
 Web/Tauri 应用在线时自动每 15 秒调度检查；页面关闭、休眠、节流或进程退出会延迟运行。`watch` 在当前 CLI 进程持续运行，Ctrl+C 或 SIGTERM 关闭；如需长期后台运行，由用户的进程管理器承接。一次性管理命令不启动自动调度，也不把 cwd 注册为项目。`scan-tick` 执行一次到期检查及排队处理；错过的触发合并补跑，不逐个重放。`plan-run` 等待本次完成，超过 180 秒报告等待超时，运行状态以 `scan-runs` 为准；取消使用 `scan-cancel`。
 
-暂停或删除计划会阻止迟到结果提交；删除计划保留已生成记忆和不含正文的运行记录。预算不足保留已提交进度，通过新建一次运行继续；失败/取消时未知模型用量保持预留。旧开发版本中没有扫描作用域的分析 Job 不自动恢复发送，需要核对后重新发起。扫描租约依赖同一 profile 的事务与可比较时钟，不代表多端同步或跨时钟故障矩阵已通过。
+暂停或删除计划会阻止迟到结果提交；暂停或删除规则保留最后一次有效知识快照和运行记录，停止更新的记忆有明确标记。预算不足保留已提交进度，通过新建一次运行继续；失败/取消时未知模型用量保持预留。旧开发版本中没有扫描作用域的分析 Job 不自动恢复发送，需要核对后重新发起。扫描租约依赖同一 profile 的事务与可比较时钟，不代表多端同步或跨时钟故障矩阵已通过。
 
 扫描协议使用 schema 1/layout 4；打开已知 layout 2/3 数据时只在事务内升级权威元数据，保留记忆、身份、遗忘代次与 tombstone。旧客户端需刷新升级后再访问同一 profile；未知或缺少布局版本的数据保持拒绝，不清空重建。
 

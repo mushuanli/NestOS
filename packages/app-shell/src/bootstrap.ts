@@ -1,4 +1,5 @@
-import { DEFAULT_HARNESS_TOOL_IDS } from '@itookit/app-core';
+import { twinSourceMenu } from './digital-twin/source-menu';
+import { MindosInitialFiles, DEFAULT_HARNESS_TOOL_IDS } from '@itookit/app-core';
 import { FSError } from '@itookit/vfs-core';
 import { createFileChatHandler } from './projects/file-chat';
 import { createOcrControls } from './configuration/ocr-controls';
@@ -129,6 +130,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const settingsFactory = createSettingsFactory({
         settingsService: settingsModule.service, agentService, connectionService: llmDriver, llmUiEditors: options.ui.llmUiEditors,
         connectBrowser: (browser, fs, container, factory) => connectEditorLifecycle(browser, fs, container, factory, { readOnly: true }),
+        initialFiles: new MindosInitialFiles(commandBus, settingsSources.find(source => source.name === 'minds')?.fs),
         restoreFlows: options.ui.restoreFlowLibrary ? () => options.ui.restoreFlowLibrary!(commandBus) : undefined,
         requestDelete: targets => deletionDialog.request(targets),
     });
@@ -275,7 +277,6 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (strategyType === 'twin') {
             if (!runtime.digitalTwin) throw new Error('Digital twin is unavailable in this runtime');
             const module = createTwinModule({ service: runtime.digitalTwin, sidebar: sidebarEl, editor: editorEl,
-                agents: async () => (await agentService.getAgents()).map(agent => ({ id: agent.id, name: agent.name })),
                 connections: async () => (await agentService.getConnections()).filter(connection => connection.enabled)
                     .map(connection => ({ id: connection.id, name: connection.name })),
                 selected: path => updateHistory(elementId, path, 'replace') });
@@ -348,6 +349,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             commands: commandBus,
             navigate: sessionId => handleNavigationRequest({ target: 'chat', resourceId: sessionId }),
         });
+        const twinMenuLifetime = new AbortController(); cleanupFns.push(() => twinMenuLifetime.abort());
         const uiOptions = {
             ...uiPassThrough,
             defaultExtension: primaryDef?.extension,
@@ -363,6 +365,10 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 items: (_item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]) => {
                     if (uiPassThrough.readOnly) return [];
                     if (strategyType === 'flows') return flowContextMenu.items?.(_item, defaults) ?? defaults;
+                    if (runtime.digitalTwin && ['emails', 'minds', 'anki', 'home', 'projects'].includes(wsConfig.workspaceName)) return [...defaults,
+                        ...twinSourceMenu(runtime.digitalTwin, async () => ({ kind: 'file', target: workspaceRoot(wsConfig.workspaceName) + '/' + _item.id.replace(/^\//, ''),
+                            directory: _item.type === 'directory', label: _item.metadata.title || _item.id }),
+                            async () => { await handleNavigationRequest({ target: 'twin', resourceId: '/sources' }); }, twinMenuLifetime.signal)];
                     return defaults;
                 },
             },

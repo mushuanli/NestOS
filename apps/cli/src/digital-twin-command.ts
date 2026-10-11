@@ -1,4 +1,4 @@
-import type { DigitalTwinService, TwinGrantData, TwinMemoryData, TwinSourceSpec } from '@itookit/app-core';
+import type { DigitalTwinService, TwinMemoryData, TwinSourceSpec } from '@itookit/app-core';
 import { createHttpMindOSRuntime } from './http-server';
 import type { CommandOptions } from './commands';
 import { scanCommand, SCAN_COMMANDS } from './digital-twin-scans-command';
@@ -25,7 +25,6 @@ async function execute(service: DigitalTwinService, args: string[], value?: stri
         return service.addSource({ kind: data.kind, target: data.target, label: data.label }, required(data.connectionId, 'connectionId'));
     }
     if (action === 'settings') return service.configure(object(value), required(revision ?? id, 'revision'));
-    if (action === 'grant') return service.grant(object(value) as unknown as TwinGrantData, revision === 'new' || id === 'new' ? null : required(revision ?? id, 'revision or new'));
     if (action === 'preview-source') return service.previewSource(object(value) as unknown as TwinSourceSpec);
     if (action === 'remove-source') return service.removeSource(required(id, 'source id'), required(revision, 'revision'));
     if (action === 'forget-subject' || action === 'forget-project') return service.forgetScope(action === 'forget-subject'
@@ -40,7 +39,7 @@ async function execute(service: DigitalTwinService, args: string[], value?: stri
         if (!['confirm', 'reject', 'dispute', 'correct'].includes(decision)) throw new Error('Expected confirm/reject/dispute/correct');
         return service.review(required(id, 'memory id'), required(revision, 'revision'), decision as 'confirm' | 'reject' | 'dispute' | 'correct', value ? object(value) : undefined);
     }
-    throw new Error('twin requires list/add-source/add-memory/analyze/cancel/review/forget/suppress/grant/settings/revoke-source/enable-source');
+    throw new Error('twin requires list/add-source/add-memory/analyze/cancel/review/forget/suppress/settings/revoke-source/enable-source');
 }
 function object(value?: string): Record<string, unknown> {
     const data: unknown = JSON.parse(required(value, '--value JSON'));

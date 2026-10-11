@@ -1,10 +1,12 @@
+import { knowledgeGraph, relatedMemories, type TwinEntityAlias } from './graph';
 import { sha256HexSync, type ContextPlan, type RetrievedMemoryEntry } from '@itookit/llm-context';
 import type { KernelAdaptersRuntimeOptions } from '@itookit/kernel-adapters';
-import type { TwinGrantData, TwinMemoryData, TwinSettings, TwinSourceData } from './domain';
+import type { TwinMemoryData, TwinSettings, TwinSourceData } from './domain';
 import { supported } from './knowledge';
 import { TwinRecords } from './records';
 import { TwinSources } from './sources';
 
+/** grantRevision is a legacy storage field now holding the global policy fingerprint. */
 export interface TwinUseRecord {
     sessionId: string; taskId: string; agentId: string; connectionId: string; grantRevision: string;
     memoryRefs: Array<{ id: string; revision: string }>; usedAt: number;
@@ -13,40 +15,42 @@ export interface TwinUseRecord {
 export class TwinContext {
     constructor(private readonly records: TwinRecords, private readonly sources: TwinSources) {}
 
-    async retrieve(plan: ContextPlan, agentId: string, sessionId: string): Promise<RetrievedMemoryEntry[]> {
+    async retrieve(plan: ContextPlan, agentId: string, _sessionId: string): Promise<RetrievedMemoryEntry[]> {
         const settings = await this.records.get<TwinSettings>('settings', 'pot');
-        const grant = await this.records.get<TwinGrantData>('grant', sessionId);
-        if (!settings?.data.useEnabled || !grant?.data.enabled || !agentAllowed(grant.data, agentId)) return [];
-        if (await this.sources.fingerprint(grant.data.connectionId) !== grant.data.connectionFingerprint) return [];
-        await this.sources.reconcile();
+        if (!settings?.data.useEnabled) return [];
         const query = typeof plan.pendingUserMessage?.content === 'string' ? plan.pendingUserMessage.content : '';
         const sourceMap = new Map((await this.records.list<TwinSourceData>('source')).map(source => [source.id, source]));
-        const scored = (await this.records.list<TwinMemoryData>('memory')).filter(memory => memory.data.state === 'active'
-            && (!grant.data.project || memory.data.project === grant.data.project)
-            && (memory.data.independent || sourceMap.get(memory.data.sourceId)?.data.connectionId === grant.data.connectionId)
-            && supported(memory.data, sourceMap.get(memory.data.sourceId) ?? null))
-            .map(memory => ({ memory, score: relevance(query, memory.data) })).filter(item => item.score > 0)
+        const ignored = new Set((await Promise.all([...sourceMap.values()].map(async source => await this.sources.excluded(source.data, settings.data.globalExclude ?? []) ? source.id : ''))).filter(Boolean));
+        const eligible = (await this.records.list<TwinMemoryData>('memory')).filter(memory => memory.data.state === 'active'
+            && (memory.data.independent || !ignored.has(memory.data.sourceId))
+            && supported(memory.data, sourceMap.get(memory.data.sourceId) ?? null));
+        const aliases = new Map((await this.records.list<TwinEntityAlias>('entity')).map(alias => [alias.id, alias.data]));
+        const related = relatedMemories(knowledgeGraph(eligible.map(memory => ({ ...memory, supported: true })), aliases), query);
+        const scored = eligible.map(memory => ({ memory, score: relevance(query, memory.data) + (related.has(memory.id) ? 1 : 0) })).filter(item => item.score > 0)
             .sort((a, b) => b.score - a.score || a.memory.id.localeCompare(b.memory.id)).slice(0, 5);
-        return scored.map(({ memory }) => ({ namespaceId: 'digital-twin',
-            entryId: encodeURIComponent(JSON.stringify([memory.id, memory.revision, grant.revision, agentId])),
+        await this.reconcileReferences(scored.map(({ memory }) => ({ id: memory.id })));
+        const current = await Promise.all(scored.map(async ({ memory }) => ({ memory, valid: supported(memory.data,
+            memory.data.independent ? null : await this.records.get<TwinSourceData>('source', memory.data.sourceId)) })));
+        return current.filter(item => item.valid).map(({ memory }) => ({ namespaceId: 'digital-twin',
+            entryId: encodeURIComponent(JSON.stringify([memory.id, memory.revision, policyRevision(settings.data), agentId])),
             content: referenceContent(memory.data), contentHash: sha256HexSync(referenceContent(memory.data)) }));
     }
 
     readonly authorize: NonNullable<KernelAdaptersRuntimeOptions['authorizeLlm']> = async (request, context) => {
-        await this.sources.reconcile();
         const previous = (await this.records.list<TwinUseRecord>('usage')).filter(use => use.data.sessionId === context.sessionId);
-        for (const use of previous) await this.validate(use.data, request.connectionId);
         const selected = parseReferences(request.request.messages);
+        await this.reconcileReferences([...selected, ...previous.flatMap(use => use.data.memoryRefs)]);
+        for (const use of previous) await this.validate(use.data);
         if (previous.length || selected.length) request.request._label = `twin-private-${sha256HexSync(context.sessionId + ':' + context.effectId).slice(0, 40)}`;
         if (!selected.length) return;
-        const grant = await this.records.get<TwinGrantData>('grant', context.sessionId);
-        if (!grant) throw new Error('TWIN_CONTEXT_PERMISSION_DENIED');
+        const settings = await this.records.get<TwinSettings>('settings', 'pot');
+        if (!settings?.data.useEnabled) throw new Error('TWIN_CONTEXT_PERMISSION_DENIED');
+        const revision = policyRevision(settings.data);
         const use: TwinUseRecord = { sessionId: context.sessionId, taskId: context.taskId,
-            agentId: selected[0].agentId, connectionId: request.connectionId, grantRevision: grant.revision,
+            agentId: selected[0].agentId, connectionId: request.connectionId, grantRevision: revision,
             memoryRefs: selected.map(({ id, revision }) => ({ id, revision })), usedAt: Date.now() };
-        const conditions = await this.validate(use, request.connectionId);
+        const conditions = await this.validate(use);
         for (const ref of selected) {
-            if (ref.grantRevision !== grant.revision || ref.agentId !== use.agentId) throw new Error('TWIN_CONTEXT_PERMISSION_STALE');
             const memory = await this.records.get<TwinMemoryData>('memory', ref.id);
             if (!memory || ref.content !== referenceContent(memory.data)) throw new Error('TWIN_CONTEXT_CONTENT_STALE');
         }
@@ -55,26 +59,31 @@ export class TwinContext {
         if (!existing) await this.records.save('usage', id, use, null, conditions);
     };
 
-    private async validate(use: TwinUseRecord, connectionId: string) {
-        const grant = await this.records.get<TwinGrantData>('grant', use.sessionId);
+    private async reconcileReferences(refs: Array<{ id: string }>): Promise<void> {
+        const checked = new Set<string>();
+        for (const ref of refs) {
+            const memory = await this.records.get<TwinMemoryData>('memory', ref.id);
+            if (!memory || memory.data.independent || checked.has(memory.data.sourceId)) continue;
+            checked.add(memory.data.sourceId);
+            const source = await this.records.get<TwinSourceData>('source', memory.data.sourceId);
+            if (source?.data.enabled) await this.sources.checkOne(source.id);
+        }
+    }
+    private async validate(use: TwinUseRecord) {
         const settings = await this.records.get<TwinSettings>('settings', 'pot');
-        if (!settings?.data.useEnabled || !grant?.data.enabled || !agentAllowed(grant.data, use.agentId)
-            || grant.data.connectionId !== connectionId || grant.revision !== use.grantRevision) throw new Error('TWIN_CONTEXT_PERMISSION_STALE');
-        if (await this.sources.fingerprint(connectionId) !== grant.data.connectionFingerprint) throw new Error('TWIN_CONNECTION_CHANGED');
-        const conditions = [{ family: 'grant' as const, id: grant.id, expectedRevision: grant.revision }];
-        const checks: Array<{ family: 'grant' | 'memory' | 'source' | 'settings'; id: string; expectedRevision: string }> = conditions;
-        checks.push({ family: 'settings', id: settings.id, expectedRevision: settings.revision });
-        for (const ref of use.memoryRefs) for (const check of await this.memoryChecks(ref, grant.data.project, connectionId)) {
+        if (!settings?.data.useEnabled) throw new Error('TWIN_CONTEXT_PERMISSION_STALE');
+        const checks: Array<{ family: 'memory' | 'source' | 'settings'; id: string; expectedRevision: string }> = [
+            { family: 'settings', id: settings.id, expectedRevision: settings.revision }];
+        for (const ref of use.memoryRefs) for (const check of await this.memoryChecks(ref)) {
             if (!checks.some(existing => existing.family === check.family && existing.id === check.id)) checks.push(check);
         }
         return checks;
     }
-    private async memoryChecks(ref: { id: string; revision: string }, project: string, connectionId: string) {
+    private async memoryChecks(ref: { id: string; revision: string }) {
         const memory = await this.records.get<TwinMemoryData>('memory', ref.id);
-        if (!memory || memory.revision !== ref.revision || memory.data.state !== 'active'
-            || (project && memory.data.project !== project)) throw new Error('TWIN_CONTEXT_MEMORY_STALE');
+        if (!memory || memory.revision !== ref.revision || memory.data.state !== 'active') throw new Error('TWIN_CONTEXT_MEMORY_STALE');
         const source = memory.data.independent ? null : await this.records.get<TwinSourceData>('source', memory.data.sourceId);
-        if (source && source.data.connectionId !== connectionId) throw new Error('TWIN_CONTEXT_ROUTE_DENIED');
+        if (source && await this.sources.excluded(source.data)) throw new Error('TWIN_CONTEXT_SOURCE_IGNORED');
         if (!supported(memory.data, source)) throw new Error('TWIN_CONTEXT_SOURCE_STALE');
         const checks: Array<{ family: 'memory' | 'source'; id: string; expectedRevision: string }> = [
             { family: 'memory', id: ref.id, expectedRevision: ref.revision }];
@@ -84,11 +93,13 @@ export class TwinContext {
 
 }
 
-function agentAllowed(grant: TwinGrantData, agentId: string): boolean { return grant.agentId === '*' || grant.agentId === agentId; }
+function policyRevision(settings: TwinSettings): string {
+    return 'global:' + sha256HexSync(JSON.stringify([settings.useEnabled, settings.globalExclude ?? []]));
+}
 function referenceContent(memory: TwinMemoryData): string {
     return JSON.stringify({ content: memory.content, kind: memory.kind, subject: memory.subject, subjectId: memory.subjectId, project: memory.project,
         eventTime: memory.eventTime, goalStatus: memory.goalStatus, deadline: memory.deadline,
-        note: 'User-confirmed context data. Current user instructions take precedence. This is not an action permission.' });
+        note: 'Evidence-backed context data; automatic extraction may contain errors. Current user instructions take precedence. This is not an action permission.' });
 }
 
 function parseReferences(messages: Array<{ role: string; content: unknown }>) {

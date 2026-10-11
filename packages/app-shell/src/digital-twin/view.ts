@@ -1,5 +1,6 @@
 import { escapeHTML, escapeAttr, t } from '@itookit/common';
 import { TWIN_KINDS, type DigitalTwinService, type TwinMemoryData, type TwinDataRecord } from '@itookit/app-core';
+import { scanListFilters, scanListPagination } from './scan-list';
 
 export type TwinSnapshot = Awaited<ReturnType<DigitalTwinService['snapshot']>>;
 export type TwinPage = 'overview' | 'profile' | 'memories' | 'goals' | 'sources';
@@ -11,43 +12,63 @@ export const select = (name: string, options: Array<{ id: string; name: string }
 const checkbox = (name: string, title: string, checked = false) => `<label><input type="checkbox" name="${name}"${checked ? ' checked' : ''}>${escapeHTML(label(title))}</label>`;
 const submit = (title: string) => `<button type="submit">${escapeHTML(label(title))}</button>`;
 
-export function overview(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>, sessionId = '', agents: Array<{ id: string; name: string }> = []): string {
-    const { settings, memories, jobs } = snapshot;
-    return `<p>${escapeHTML(label('overviewHelp'))}</p><p>${escapeHTML(label('scanHost'))}: ${escapeHTML(snapshot.scans.worker.host)} · ${escapeHTML(label('scanHostHelp'))}</p>
-        <p>${escapeHTML(snapshot.scans.worker.error)} ${escapeHTML(label('scanLeaseHost'))}: ${escapeHTML(snapshot.scans.worker.ownerHost || label('scanIdle'))}</p>
-        <p>${escapeHTML(label('scanPlans'))}: ${snapshot.scans.plans.length} · ${escapeHTML(label('scanState.queued'))}: ${snapshot.scans.runs.filter(run => run.data.state === 'queued').length} · ${escapeHTML(label('scanState.running'))}: ${snapshot.scans.runs.filter(run => run.data.state === 'running').length}</p>
-        ${snapshot.cleanupError || snapshot.pendingCleanup.length ? `<p class="twin__error">${escapeHTML(label('cleanupPending'))} (${snapshot.pendingCleanup.length}) ${button('refresh', 'refresh')}</p>` : ''}<p>${escapeHTML(label('counts'))}: ${memories.filter(memory => memory.data.state === 'active' && memory.supported).length} / ${memories.filter(memory => memory.data.state === 'candidate').length}</p>
-        <form class="twin__form" data-form="settings">${input('tokenLimit', 'tokenLimit', String(settings.data.tokenLimit), 'number')}
-        ${select('connectionId', connections, settings.data.connectionId)}<label>${escapeHTML(label('globalExclude'))}<textarea name="globalExclude">${escapeHTML((settings.data.globalExclude ?? []).join('\n'))}</textarea></label>
-        ${checkbox('paused', 'paused', settings.data.paused)}${checkbox('useEnabled', 'useEnabled', settings.data.useEnabled)}${submit('save')}</form>
-        <p>${escapeHTML(label('budget'))}: ${settings.data.spentTokens} / ${settings.data.reservedTokens} / ${settings.data.tokenLimit}</p>
-        <p>${escapeHTML(label('unknownBudget'))}</p><h3>${escapeHTML(label('grants'))}</h3>${grantForm(snapshot, connections, sessionId, agents)}
-        ${snapshot.grants.map(grant => `<article class="twin__card"><p>${escapeHTML(snapshot.sessions.find(session => session.id === grant.id)?.title ?? grant.id)} · ${escapeHTML(grant.data.agentId)} · ${escapeHTML(grant.data.connectionId)} · ${escapeHTML(grant.data.project)} · ${escapeHTML(label(grant.data.enabled ? 'enabled' : 'disabled'))}</p>${button('revokeGrant', 'revoke', grant.id)}</article>`).join('')}
-        <h3>${escapeHTML(label('jobs'))}</h3>${jobs.slice(-20).reverse().map(job => `<article class="twin__card">${escapeHTML(label(`job.${job.data.state === 'cancelled' && !job.data.cancelConfirmed ? 'cancelPending' : job.data.state}`))} · ${escapeHTML(job.data.error)} ${escapeHTML(job.data.cleanupError ?? '')}${['queued', 'running'].includes(job.data.state) ? button('cancelJob', 'cancel', job.id) : ''}</article>`).join('')}
-        <h3>${escapeHTML(label('usage'))}</h3>${snapshot.uses.slice(-30).reverse().map(use => `<p>${escapeHTML(snapshot.sessions.find(session => session.id === use.data.sessionId)?.title ?? use.data.sessionId)} · ${escapeHTML(new Date(use.data.usedAt).toLocaleString())} · ${use.data.memoryRefs.map(ref => escapeHTML(`${ref.id}@${ref.revision}`)).join(', ')}</p>`).join('')}`;
+export function overview(snapshot: TwinSnapshot): string {
+    const active = snapshot.memories.filter(memory => memory.data.state === 'active' && memory.supported);
+    const pending = snapshot.memories.filter(memory => memory.data.state === 'candidate' && memory.supported);
+    const recent = [...active].sort((a, b) => b.data.recordedAt - a.data.recordedAt).slice(0, 8);
+    return `<p>${escapeHTML(label('overviewHelp'))}</p>
+        <p>${escapeHTML(label('counts'))}: ${active.length} / ${pending.length}</p>
+        ${snapshot.cleanupError || snapshot.pendingCleanup.length ? `<p class="twin__error">${escapeHTML(label('cleanupPending'))}${button('refresh', 'refresh')}</p>` : ''}
+        ${button('openProfile', 'profile')}${button('openUpdates', 'sources')}
+        <h3>${escapeHTML(label('recentKnowledge'))}</h3>${recent.map(memory => `<article class="twin__card"><p>${escapeHTML(memory.data.content)}</p><small>${escapeHTML(memory.data.subject)} · ${escapeHTML(memory.data.project)}</small></article>`).join('') || `<p>${escapeHTML(label('empty'))}</p>`}
+        <p>${escapeHTML(label('defaultKnowledgeUse'))}</p>`;
 }
-function grantForm(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>, sessionId: string, agents: Array<{ id: string; name: string }>): string {
-    return `<p>${escapeHTML(label('grantHelp'))}</p><form class="twin__form" data-form="grant">
-        ${select('sessionId', snapshot.sessions.map(session => ({ id: session.id, name: session.title })), sessionId)}
-        ${select('agentId', [{ id: '*', name: label('allAgents') }, ...agents])}${select('connectionId', connections)}${input('project', 'project')}
-        ${checkbox('consent', 'grantConsent')}${submit('authorize')}</form>`;
+
+export function updateSettings(snapshot: TwinSnapshot, connections: Array<{ id: string; name: string }>): string {
+    const { settings } = snapshot;
+    return `<section class="twin__settings" aria-label="${escapeAttr(label('updateSettings'))}">
+        <header class="twin__section-header"><div><h3>${escapeHTML(label('updateSettings'))}</h3><p>${escapeHTML(label('autosaveHelp'))}</p></div>
+        <span class="twin__save-status" data-save-status role="status" aria-live="polite">${escapeHTML(label('autosave.idle'))}</span></header>
+        <form class="twin__form twin__settings-form" data-form="settings">
+        <div class="twin__settings-grid"><section class="twin__settings-group"><h4>${escapeHTML(label('modelUsage'))}</h4>
+        <label>${escapeHTML(label('connectionId'))}${select('connectionId', [{ id: '', name: label('connectionRequired') }, ...connections], settings.data.connectionId)}</label>
+        <p class="twin__help">${escapeHTML(label('modelAutoSaveHelp'))}</p>${budgetSettings(settings.data)}</section>
+        <section class="twin__settings-group"><h4>${escapeHTML(label('personalInfo'))}</h4>
+        ${input('userName', 'userName', settings.data.userName ?? '')}
+        <label>${escapeHTML(label('userAliases'))}<textarea name="userAliases" rows="2">${escapeHTML((settings.data.userAliases ?? []).join('\n'))}</textarea></label>
+        <p class="twin__help">${escapeHTML(label('identityHelp'))}</p></section>
+        <section class="twin__settings-group twin__settings-group--wide"><h4>${escapeHTML(label('analysisControls'))}</h4>
+        <div class="twin__settings-grid"><div class="twin__toggles">${checkbox('paused', 'paused', settings.data.paused)}${checkbox('useEnabled', 'useEnabled', settings.data.useEnabled)}</div>
+        <div><label>${escapeHTML(label('globalExclude'))}<textarea name="globalExclude" rows="3" placeholder="**/*.log">${escapeHTML((settings.data.globalExclude ?? []).join('\n'))}</textarea></label>
+        <p class="twin__help">${escapeHTML(label('globalExcludeHelp'))}</p></div></div></section></div>
+        <details class="twin__advanced"><summary>${escapeHTML(label('extractionPrompt'))}</summary><pre class="twin__preview">${escapeHTML(snapshot.prompt ?? '')}</pre></details>
+        <div class="twin__save-feedback"><p class="twin__error" data-save-error role="alert"></p><button type="button" data-action="retrySettings" hidden>${escapeHTML(label('retrySave'))}</button></div>
+        </form></section>`;
+}
+
+function budgetSettings(settings: TwinSnapshot['settings']['data']): string {
+    return `<div class="twin__usage"><div><span>${escapeHTML(label('spentTokens'))}</span><strong data-spent-tokens>${settings.spentTokens.toLocaleString()}</strong></div>
+        <div><span>${escapeHTML(label('reservedTokens'))}</span><strong data-reserved-tokens>${settings.reservedTokens.toLocaleString()}</strong></div></div>
+        <div class="twin__budget">${checkbox('budgetUnlimited', 'budgetUnlimited', settings.budgetUnlimited === true)}
+        <label data-budget-limit${settings.budgetUnlimited ? ' hidden' : ''}>${escapeHTML(label('tokenLimit'))}<input name="tokenLimit" type="number" min="0" step="1" value="${settings.tokenLimit}"${settings.budgetUnlimited ? ' disabled' : ''}></label>
+        <p class="twin__help">${escapeHTML(label('budgetLimitHelp'))}</p>
+        <details><summary>${escapeHTML(label('usageAccounting'))}</summary><p class="twin__help">${escapeHTML(label('unknownBudget'))}</p></details></div>`;
 }
 
 export function sources(snapshot: TwinSnapshot, _connections: Array<{ id: string; name: string }>): string {
-    return `<p>${escapeHTML(label('sourceHelp'))} (${snapshot.sources.length})</p>
-        ${snapshot.sources.slice(0, 200).map(source => `<article class="twin__card"><h3>${escapeHTML(source.data.label || source.data.target)}</h3>
+    return `<section data-scan-list="sources">${scanListFilters('sources')}
+        ${snapshot.sources.map(source => `<article class="twin__card" data-scan-row="${escapeAttr(source.id)}" data-scan-text="${escapeAttr([source.data.label, source.data.target, source.data.resource?.projectName, source.data.resource?.projectId].join(' ').toLocaleLowerCase())}" data-scan-enabled="${source.data.enabled}" data-scan-kind="${source.data.kind}" data-scan-state="${source.data.status}"><h3>${escapeHTML(source.data.label || source.data.target)}</h3>
         <p>${escapeHTML(source.data.resource?.projectName ?? source.data.resource?.projectId ?? '')} · ${escapeHTML(source.data.target)} · ${escapeHTML(label(source.data.enabled ? 'enabled' : 'disabled'))} · ${escapeHTML(label(`source.${source.data.status}`))}</p>
-        <p>${source.data.offset} / ${source.data.characters} · ${escapeHTML(label('checkedAt'))}: ${escapeHTML(new Date(source.observedAt).toLocaleString())}</p></article>`).join('')}`;
+        <p>${source.data.offset} / ${source.data.characters} · ${escapeHTML(label('checkedAt'))}: ${escapeHTML(new Date(source.observedAt).toLocaleString())}</p></article>`).join('') || `<p>${escapeHTML(label('targetsEmpty'))}</p>`}${scanListPagination()}</section>`;
 }
 
-export function memories(snapshot: TwinSnapshot, page: TwinPage): string {
-    const visible = snapshot.memories.filter(memory => page === 'goals' ? ['goal', 'commitment'].includes(memory.data.kind)
-        : page === 'profile' ? memory.data.state === 'active' && ['fact', 'preference', 'role', 'relationship', 'project', 'constraint'].includes(memory.data.kind) : true);
+export function memories(snapshot: TwinSnapshot, page: 'memories' | 'goals'): string {
+    const visible = snapshot.memories.filter(memory => page !== 'goals' || ['goal', 'commitment'].includes(memory.data.kind));
     const sorted = [...visible].sort((a, b) => b.data.recordedAt - a.data.recordedAt);
-    return `<p>${escapeHTML(label(page === 'profile' ? 'profileHelp' : page === 'goals' ? 'goalHelp' : 'memoryHelp'))}</p>
+    return `<p>${escapeHTML(label(page === 'goals' ? 'goalHelp' : 'memoryHelp'))}</p>
         <details><summary>${escapeHTML(label('addMemory'))}</summary><form class="twin__form" data-form="memory">${memoryFields(undefined, page === 'goals' ? 'goal' : 'fact')}${submit('addMemory')}</form></details>
         <input class="twin__search" data-search placeholder="${escapeAttr(label('search'))}" aria-label="${escapeAttr(label('search'))}">
-        ${page === 'profile' ? profileGroups(snapshot.memories.filter(memory => memory.data.state === 'active')) : ''}
+        ${page === 'memories' ? `<details><summary>${escapeHTML(label('forgetScope'))}</summary>${profileGroups(snapshot.memories)}</details>` : ''}
         ${page === 'memories' ? timeline(snapshot.memories) : ''}
         <div class="twin__cards">${sorted.map(memory => memoryCard(memory)).join('') || `<p>${escapeHTML(label('empty'))}</p>`}</div>`;
 }
@@ -56,6 +77,7 @@ function memoryCard(memory: TwinSnapshot['memories'][number]): string {
     return `<article class="twin__card" data-memory="${escapeAttr(memory.id)}" data-search-text="${escapeAttr(`${data.content} ${data.subject} ${data.project} ${data.kind} ${data.state}`.toLowerCase())}">
         <h3>${escapeHTML(label(`kind.${data.kind}`))} · ${escapeHTML(label(`state.${data.state}`))}${memory.supported ? '' : ` · ${escapeHTML(label('unsupported'))}`}</h3>
         <p>${escapeHTML(data.content)}</p><p>${escapeHTML(data.subject)} · ${escapeHTML(data.project)} · ${escapeHTML(data.eventTime)}</p>
+        ${memory.retained ? `<p>${escapeHTML(label('retainedKnowledge'))}</p>` : ''}
         ${['goal', 'commitment'].includes(data.kind) ? `<p>${escapeHTML(label(`goal.${data.goalStatus}`))} · ${escapeHTML(data.successCondition)} · ${escapeHTML(data.deadline)}</p>` : ''}
         <details><summary>${escapeHTML(label('evidence'))}</summary><blockquote>${escapeHTML(data.quote || label('userStatement'))}</blockquote><p>${escapeHTML(data.sourceId)} · ${escapeHTML(data.sourceHash)} · ${escapeHTML(memory.revision)}</p></details>
         ${data.state === 'candidate' && memory.supported ? button('confirm', 'confirm', memory.id) : ''}${button('reject', 'reject', memory.id)}${button('dispute', 'dispute', memory.id)}
@@ -63,13 +85,16 @@ function memoryCard(memory: TwinSnapshot['memories'][number]): string {
         ${['goal', 'commitment'].includes(data.kind) && data.state === 'active' ? executionForm(memory) : ''}
         ${button('forget', 'forget', memory.id)}${button('suppress', 'suppress', memory.id)}</article>`;
 }
-function memoryFields(memory?: TwinDataRecord<TwinMemoryData>, defaultKind = 'fact'): string {
+export function memoryFields(memory?: TwinDataRecord<TwinMemoryData>, defaultKind = 'fact'): string {
     const data = memory?.data;
     return `<label>${escapeHTML(label('content'))}<textarea name="content" required maxlength="4000">${escapeHTML(data?.content ?? '')}</textarea></label>
         ${select('kind', TWIN_KINDS.map(kind => ({ id: kind, name: label(`kind.${kind}`) })), data?.kind ?? defaultKind)}
         ${input('subject', 'subject', data?.subject ?? 'self')}${input('project', 'project', data?.project)}${input('eventTime', 'eventTime', data?.eventTime)}
         ${select('goalStatus', ['draft', 'active', 'paused', 'completed', 'cancelled'].map(status => ({ id: status, name: label(`goal.${status}`) })), data?.goalStatus ?? 'draft')}
-        ${input('successCondition', 'successCondition', data?.successCondition)}${input('deadline', 'deadline', data?.deadline)}`;
+        ${input('successCondition', 'successCondition', data?.successCondition)}${input('deadline', 'deadline', data?.deadline)}
+        <details><summary>${escapeHTML(label('kind.relationship'))}</summary>
+        ${input('relationPredicate', 'relationPredicate', data?.relation?.predicate)}${input('relationTarget', 'relationTarget', data?.relation?.target)}
+        ${select('relationTargetKind', ['person', 'organization', 'project'].map(kind => ({ id: kind, name: label(`entity.${kind}`) })), data?.relation?.targetKind ?? 'person')}</details>`;
 }
 
 function profileGroups(memories: TwinSnapshot['memories']): string {

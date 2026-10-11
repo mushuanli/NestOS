@@ -1,3 +1,4 @@
+import { projectTwinTarget, twinSourceMenu } from '../digital-twin/source-menu';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
 import { ProjectSearchPanel } from './project-search-panel';
@@ -99,6 +100,7 @@ export interface SessionWorkbenchOptions {
     fileFactory: EditorFactory;
     directoryMounts?: DirectoryMountService;
     sessionSkills?: SessionSkillControls;
+    digitalTwin?: import('@itookit/app-core').DigitalTwinService;
     manageTwin?: (sessionId: string) => Promise<void>;
     manageMemory?: (sessionId: string, signal: AbortSignal) => Promise<void>;
     flows?: { fs: IFileSystem; menu: ContextMenuConfig<VFSNodeUI> };
@@ -174,6 +176,7 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly files: SessionWorkbenchOptions['files'];
     private readonly factory: SessionWorkbenchOptions['factory'];
     private readonly onSelect: SessionWorkbenchOptions['onSelect'];
+    private readonly digitalTwin?: import('@itookit/app-core').DigitalTwinService;
     private readonly hostContext: SessionWorkbenchOptions['hostContext'];
     private readonly kernel: SessionWorkbenchOptions['kernel'];
     private readonly fileFactory: SessionWorkbenchOptions['fileFactory'];
@@ -198,7 +201,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.files = options.files;
         this.factory = options.factory;
         this.onSelect = options.onSelect;
-        this.hostContext = options.hostContext;
+        this.hostContext = options.hostContext; this.digitalTwin = options.digitalTwin;
         this.kernel = options.kernel;
         this.fileFactory = options.fileFactory;
         this.directoryMounts = options.directoryMounts;
@@ -301,10 +304,14 @@ export class SessionWorkbench implements WorkspaceController {
                     if (isFlowPath(item.id)) return this.flows?.menu.items?.(item,
                         item.id === '/@flows' ? [] : defaults.filter(entry => 'id' in entry && entry.id === 'delete')) ?? [];
                     const target = resolveBrowserTarget(item.id);
+                    const twin = this.digitalTwin && this.projects && (['session', 'project-files'].includes(target.kind) || (target.kind === 'remote' && target.nativeSessionId) || (target.kind === 'folder' && item.metadata.custom.projectId))
+                        ? twinSourceMenu(this.digitalTwin, () => projectTwinTarget(this.projects!, item),
+                            async () => { await this.hostContext?.navigate({ target: 'twin', resourceId: '/sources' }); }, this.dialogs.signal) : [];
+                    defaults = [...defaults, ...twin];
                     if (target.kind === 'remote') {
                         const parent = item.metadata.custom.remoteParentSessionId;
                         return target.nativeSessionId && this.projects ? [
-                            ...nativeSessionMenu(this.projects, target, item.metadata.title, item.metadata.custom.nativeManagement, this.dialogs.signal,
+                            ...twin, ...nativeSessionMenu(this.projects, target, item.metadata.title, item.metadata.custom.nativeManagement, this.dialogs.signal,
                                 async () => { await this.tabs.close(item.id, false); },
                                 async (command, title, deletedSessionIds) => {
                                     await this.sidebarUI?.refresh();
@@ -329,7 +336,7 @@ export class SessionWorkbench implements WorkspaceController {
                         ] : [];
                     }
                     if (target.kind === 'favorite' || target.kind === 'favorites') return [];
-                    if (target.kind === 'project-files' && target.path === WORKSPACE_PATH) return [];
+                    if (target.kind === 'project-files' && target.path === WORKSPACE_PATH) return twin;
                     if (this.projects && item.metadata?.custom?.projectId)
                         return [...defaults.filter(entry => !('id' in entry) || !['create-in-folder-session', 'create-in-folder-folder'].includes(entry.id))
                             .map(entry => 'id' in entry && entry.id === 'rename' ? { ...entry, onClick: () => this.renameProjectDialog(String(item.metadata.custom.projectId)) } : entry),

@@ -40,7 +40,6 @@ it('extracts through the durable kernel and uses approved context in a later rea
         expect(candidate.data.state).toBe('candidate');
         await twin.review(candidate.id, candidate.revision, 'confirm');
         const id = await runtime.sessionRepository.createSession('Consumer');
-        await twin.grant({ sessionId: id, agentId: 'default', connectionId: 'default', enabled: true, project: '' }, null);
         await runtime.commandBus.execute(SessionCommand.Bind, { sessionId: id });
         await runtime.commandBus.execute(SessionCommand.Send, { text: 'Alpha 用什么语言？', files: [], agentId: 'default',
             overrides: { executionMode: 'chat', streamMode: true, webSearchEnabled: false },
@@ -48,11 +47,45 @@ it('extracts through the durable kernel and uses approved context in a later rea
         await vi.waitFor(async () => { expect((await runtime.kernel.kernel.listSessionTasks(id))[0]?.status).toBe('succeeded'); }, { timeout: 10000 });
         expect(requests).toHaveLength(2);
         expect(requests[0].max_tokens).toBe(8192);
+        expect(requests[0]).not.toHaveProperty('max_completion_tokens');
+        expect(requests[0]).not.toHaveProperty('max_output_tokens');
         expect(requests[0].stream).toBe(false);
+        const extractionJob = (await twin.snapshot()).jobs[0].data;
+        expect(extractionJob.requestStartedAt).toBeGreaterThan(0);
+        expect(extractionJob.responseCompletedAt).toBeGreaterThanOrEqual(extractionJob.requestStartedAt!);
         expect(JSON.stringify(requests[1].messages)).toContain('Alpha 使用 TypeScript');
         expect((await twin.snapshot()).uses).toHaveLength(1);
         expect(diagnostic.join('')).not.toContain('Alpha');
         expect(diagnostic.join('')).toContain('redacted');
         await expect(runtime.kernel.kernel.openSession('twin-analysis-' + (await twin.snapshot()).jobs[0].id)).rejects.toThrow('Session not found');
+    } finally { await runtime.dispose(); }
+});
+
+it('persists the real provider rejection with timestamps through the Web kernel path', async () => {
+    const backend = new MemoryBackend(); await backend.init();
+    for (const path of ['/etc', '/etc/llm', '/etc/llm/.providers', '/etc/llm/.connections']) await backend.mkdir(path);
+    const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
+    await backend.write('/etc/llm/.providers/mock.json', encode({ id: 'mock', name: 'Mock', implementation: 'openai-compatible', apiKey: 'test-secret',
+        baseURL: 'http://localhost:18449', models: [{ id: 'mock-model', name: 'Mock' }] }));
+    await backend.write('/etc/llm/.connections/default.json', encode({ id: 'default', name: 'Default', providerId: 'mock', tiers: { standard: 'mock-model' } }));
+    await backend.write('/etc/llm/.connection-settings.json', encode({ defaultConnectionId: 'default' }));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ error: { message: 'Unsupported response_format', type: 'invalid_request_error' } }),
+        { status: 400, headers: { 'content-type': 'application/json' } })));
+    const runtime = await createApplicationRuntime({ backend, ownerKind: 'web', digitalTwinAutoStart: false });
+    try {
+        const fs = await runtime.vfs.openFileSystem('/');
+        await fs.driver.createFile({ parentPath: '/home/admin/minds', name: 'test.md', content: '我喜欢茶。' });
+        const source = { kind: 'file' as const, target: '/home/admin/minds/test.md', label: 'test.md' };
+        const sourceId = await runtime.digitalTwin!.addSource(source, 'default');
+        await expect(runtime.digitalTwin!.analyze(sourceId)).rejects.toThrow('TWIN_EXTRACTION_FAILED');
+        const info = await runtime.digitalTwin!.selectionInfo(source), job = info.jobs[0];
+        expect(job.data.state).toBe('failed');
+        expect(job.data.errorDetail).toContain('Unsupported response_format');
+        expect(job.data.errorDetail).toContain('waiting');
+        expect(job.data.errorDetail).not.toContain('test-secret');
+        expect(job.data.createdAt).toBeGreaterThan(0);
+        expect(job.data.startedAt).toBeGreaterThanOrEqual(job.data.createdAt!);
+        expect(job.data.finishedAt).toBeGreaterThanOrEqual(job.data.startedAt!);
+        expect(info.runs[0].data.errorDetail).toContain('Unsupported response_format');
     } finally { await runtime.dispose(); }
 });

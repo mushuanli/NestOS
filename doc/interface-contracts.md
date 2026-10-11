@@ -193,8 +193,30 @@ pi-agent 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）。a
 
 扫描公开契约为 app-core 的 `TwinScanPlanInput`、`TwinScanPlan`、`TwinScanRun`、`TwinScanState`；命令由 `DigitalTwinService.saveScanPlan`、`setScanPlanEnabled`、`removeScanPlan`、`runScanPlan`、`cancelScanRun`、`waitScanRun`、`scanOnce` 提供。`snapshot().scans` 返回计划、运行、下次检查和宿主信息。UI 只调用服务，工具箱资源仍按原协议管理；扫描不注册绕过来源授权的通用工具。扫描守卫在预算预留、模型发送和结果提交核对计划版本、来源范围、提取类型、运行状态与宿主 fence，预算和检查点与结果原子提交。
 
-`DigitalTwinService` 位于 `app-core/src/digital-twin/service.ts`，公开 `snapshot/addSource/analyze/review/grant/retrieve/forget/forgetScope/linkExecution` 等宿主管理方法；owner 和来源/消费权限不由模型参数提供。`TwinStore` 位于 `app-core/src/digital-twin/contracts.ts`，公开版本条件提交、固定页枚举、原子失效与可恢复清理，仍由 VFS 的同后端 SeqFile 事务承载。
+`DigitalTwinService.getSettings()` 仅读取设置及其 revision，供 UI 自动保存使用，不枚举来源、会话或运行记录。`configure(patch, revision)` 保持版本条件更新，UI 串行提交变更字段并在预算等后台写入冲突时重新读取版本。
+
+`DigitalTwinService.snapshot(progress?)` 只读取已保存的知识与任务状态，不触发来源校验或清理；可选回调用于诊断读取阶段，`diagnostics()` 返回初始化位置。后台扫描持有租约后恢复清理并校验来源，完成后通知视图读取新状态。
+
+`DigitalTwinService` 位于 `app-core/src/digital-twin/service.ts`，公开 `snapshot/addSource/analyze/review/retrieve/forget/forgetScope/linkExecution/selectionInfo/selectSource/removeSelection` 等宿主管理方法；`selectSource` 保存显式范围和分析类型后立即请求后台扫描，`selectionInfo` 返回来源状态/知识/任务，`removeSelection` 停用并清理来源提取结果且保留原文；配置支持提取模型与用户姓名/别名，snapshot.prompt 返回基础提取提示词。owner 和来源/消费权限不由模型参数提供。`TwinStore` 位于 `app-core/src/digital-twin/contracts.ts`，公开版本条件提交、固定页枚举、原子失效与可恢复清理，仍由 VFS 的同后端 SeqFile 事务承载。
 
 `KernelAdapterDiagnostics.authorizeLlm(request, context)` 位于 `kernel-adapters/src/ports/diagnostics.ts`：宿主可异步拒绝发送，或设置通用请求诊断 `_label`；LLM 适配器在持久请求事件前和实际发送前调用，发送参数在第二次校验后生成。底层不导入分身领域类型。该钩子是发送时授权校验，不能撤回已经发送的网络请求，也不代表跨网络/数据库的原子事务。
 
-数字分身新扫描入口：`DigitalTwinService.saveScanRule(id, revision, {name, include, exclude, intervalMinutes, enabled, kinds?})`，`previewScanRule({include, exclude})` 不提取/不新增来源；`TwinSourceReader.discover()` 返回资源、项目与完整范围，`probe()` 可提供文件版本。模型和全局排除通过 `configure` 保存；旧 `saveScanPlan` 保留兼容。
+数字分身新扫描入口：`DigitalTwinService.saveScanRule(id, revision, {name, include, exclude, intervalMinutes, enabled, focus?, kinds?})`，`previewScanRule({include, exclude})` 不提取/不新增来源；`TwinSourceReader.discover()` 返回资源、项目与完整范围，`probe()` 可提供文件版本。模型和全局排除通过 `configure` 保存；`budgetUnlimited?: boolean` 控制累计预算是否无限，不改变 `tokenLimit: 0` 的原语义。自动规则将无限标记写入运行记录，并在下一次预留/结算时核对最新全局预算，实际用量继续记账；旧 `saveScanPlan` 的独立额度保留兼容。
+
+`snapshot().graph` 返回由有效事实派生的 `TwinGraph`（节点、带类型的关系及记忆引用）。`mergePeople(from, to)` 保存显式人物身份映射，不改写来源证据；`previewScanRule` 返回匹配的 `resources` 与排除的 `excluded`。扫描 scope 固化 `focus`，同一来源按关注点复用或区分提取检查点。
+
+单用户知识消费默认对已接入的 Chat/Agent 开放，不再读取 grant 作为许可；使用总开关与全局忽略在检索及发送前生效。`local:` / `remote:` 匹配文件目录，`session-name:` 匹配会话名；规则级忽略不覆盖其他规则的包含范围。历史 grant 记录保留但不再生效。
+
+## 初始文件恢复
+
+`app-settings` 的 `InitialFilesPort` 注入 `list()` 与 `restore(ids)`；列表包含稳定 ID、分组、文件名、目标路径和存在状态，恢复返回逐文件 restored/preserved/failed。`app-core` 的 `MindosInitialFiles` 提供产品模板，宿主将当前笔记文件系统和 CommandBus 注入；笔记只创建缺失文件，Flow 复用 DraftLoad/DraftRestore。文件系统及系统恢复页复用 `InitialFilesSection`，默认全选、分组折叠，保留勾选和展开状态，不把文件恢复等同于覆盖或模型分析。
+
+数字分析的 selectionInfo 返回关联扫描 runs 与分析结果。用户修正将知识转为独立陈述，originSourceId 仅保留文档归属，不作为事实证据；对话框据此继续显示修正结果。显式 removeSelection 一并清理这些关联修正，普通来源变更不覆盖用户陈述。旧记录无需迁移。
+
+数字分身 job 与 scan-run 可选 errorDetail 保存经过凭证过滤和长度限制的失败原因，error 仍保留稳定错误码。提取任务分别报告失败、超时、取消、JSON 格式不符和输出截断；历史记录无详情时可重新扫描获取原因。UI 将任务状态与未确认用量分开显示，预算入口位于自动更新的通用设置“用量与预算”。
+
+分析 job 可选 createdAt/startedAt/finishedAt 记录创建、附着执行任务和终止时间；历史记录不伪造时间。Web Console 的 [DigitalTwin] 日志记录阶段、连接、任务 ID、字符数、耗时及过滤凭证后的错误摘要，模型输入和响应正文不进入该日志。诊断可按任务 ID 对照对话框中的任务详情。
+
+提取请求显式设置 thinking=false、maxTokens=8192、stream=false；预算预留包含输入字节数、8192 token 输出额度及提示词余量，并按返回的 total_tokens 结算。截断/格式错误带有已知 total_tokens 时，job、settings 和 scan-run 原子结算，失败不推进来源游标；重复结算不重复计费。无任务时间的历史记录仅展示其 scanScope.runId 对应扫描时间，并明确标注，不从其他任务或当前时间推断。
+
+数字分析当前使用非流式提取。通过 Kernel 公开任务事件记录 requestStartedAt、responseReceivedAt 和 responseCompletedAt；请求启动不代表服务端接收确认。驱动超时单独标记 TWIN_EXTRACTION_TIMEOUT；非流式未返回完整响应时不能推断网络链路或服务端生成的具体阶段。界面独立展示当前更新、下次调度与全部可展开的历史扫描/任务记录。

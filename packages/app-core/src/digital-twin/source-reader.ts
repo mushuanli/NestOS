@@ -1,3 +1,4 @@
+import { discoverWorkspaces } from './workspace-catalog';
 import { sha256HexSync } from '@itookit/llm-context';
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
 import { RoundLog, type SessionRepository } from '@itookit/llm-session';
@@ -10,9 +11,10 @@ const MAX_BYTES = 1024 * 1024;
 /** Read ordinary project documents and visible conversations through existing application services. */
 export class MindosTwinSourceReader implements TwinSourceReader {
     constructor(private readonly fs: IFileSystem, private readonly sessionsRepository: SessionRepository, private readonly projects?: ProjectService) {}
-    discover() {
+    async discover() {
         if (!this.projects) throw new Error('TWIN_PROJECT_CATALOG_UNAVAILABLE');
-        return new TwinProjectCatalog(this.projects, this.sessionsRepository).discover();
+        const catalog = await new TwinProjectCatalog(this.projects, this.sessionsRepository).discover();
+        await discoverWorkspaces(this.fs, catalog); return catalog;
     }
     async sessions() { return (await this.sessionsRepository.list()).filter(session => !session.id.startsWith('twin-analysis-'))
         .map(session => ({ id: session.id, title: session.title })); }
@@ -89,7 +91,7 @@ function validatePath(path: string): void {
     const parts = path.split('/');
     if (!path.startsWith('/home/admin/') || parts.some(part => part === '.' || part === '..' || part.startsWith('.'))
         || /\/(?:private|agents|skills|flows|chats|sessions|toolbox)(?:\/|$)/i.test(path)
-        || !/\.(?:md|markdown|txt|mind|email|anki|project)$/i.test(path)) throw new Error('TWIN_SOURCE_SCOPE');
+        || !documentPath(path)) throw new Error('TWIN_SOURCE_SCOPE');
 }
 
 function publicMessages(messages: Array<{ role: string; content: unknown }>) {

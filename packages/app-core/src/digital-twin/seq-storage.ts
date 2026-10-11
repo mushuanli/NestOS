@@ -11,15 +11,16 @@ export class TwinSeqStorage {
     private constructor(private readonly fs: IFileSystem, private readonly root: string,
         private readonly bound: TwinIdentity) {}
 
-    static async open(fs: IFileSystem, twinId: string, ownerId: string): Promise<TwinSeqStorage> {
+    static async open(fs: IFileSystem, twinId: string, ownerId: string, progress: (stage: string) => void = () => {}): Promise<TwinSeqStorage> {
         if (!/^[a-zA-Z0-9_-]{1,128}$/.test(twinId)) throw new Error('Invalid Twin path identity');
         identity(ownerId);
         if (!fs.capabilities.transactionalSeqFiles || !fs.meta.seq?.transaction) {
             throw new Error('Twin requires transactional SeqFiles');
         }
         const root = `/var/lib/digital-twin/${twinId}`;
-        for (const file of FILES) await prepare(fs, root, file);
+        for (const file of FILES) { progress(`storage.prepare.${file}`); await prepare(fs, root, file); }
         const seed: TwinIdentity = { twinId, ownerId, incarnation: randomUUID(), schemaVersion: 1, layoutVersion: 4, forgetEpoch: 0 };
+        progress('storage.bind-transaction');
         const bound = await fs.meta.seq.transaction(async tx => {
             const raw = await tx.getEntry(`${root}/authority.seq`, 'twin');
             const previous = raw ? JSON.parse(raw) : null;

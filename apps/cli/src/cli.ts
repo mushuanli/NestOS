@@ -149,7 +149,7 @@ function help(): string {
         `  mindos export <run-id> [--state-dir .mindos] [--out file.json] [--max-bytes N]\n` +
         `  mindos fs list|read|stat|status <endpoint> <alias> [relative-path] [--credential-env ENV] [--out file]\n` +
         `  mindos sandbox doctor\n\n` +
-        `  mindos twin list|preview-source|add-source|add-memory|analyze|cancel|review|forget|forget-subject|forget-project|suppress|grant|settings|link-execution|revoke-source|enable-source|remove-source [id] [revision] [decision] [--profile root] [--value JSON]\n` +
+        `  mindos twin list|preview-source|add-source|add-memory|analyze|cancel|review|forget|forget-subject|forget-project|suppress|settings|link-execution|revoke-source|enable-source|remove-source [id] [revision] [decision] [--profile root] [--value JSON]\n` +
         `  mindos twin scan-plans|scan-runs|plan-create|plan-update|plan-pause|plan-enable|plan-delete|plan-run|scan-cancel|scan-tick|watch [id] [revision] [--profile root] [--value JSON]\n` +
         `  mindos memory list|create|inspect|grant|revoke|delete|audit [id] [incarnation] [session] [--profile root] [--value JSON]\n\n` +
         `选项：\n` +

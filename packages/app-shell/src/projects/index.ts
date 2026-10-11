@@ -15,7 +15,7 @@ export function createProjectModule(options: ProjectModuleOptions): WorkspaceMod
     const { runtime } = options, { sessionManager } = runtime;
     const workbench = new SessionWorkbench({ ...options, repository: runtime.sessionRepository,
         files: runtime.sessionFiles, kernel: runtime.kernel.kernel, directoryMounts: runtime.directoryMounts,
-        projects: runtime.projects, projectSync: runtime.projectSync,
+        projects: runtime.projects, digitalTwin: runtime.digitalTwin, projectSync: runtime.projectSync,
         manageTwin: runtime.digitalTwin ? async id => { await options.hostContext?.navigate({ target: 'twin', resourceId: '/overview/' + encodeURIComponent(id) }); } : undefined,
         manageMemory: async (id, signal) => showMemoryDialog(sessionManager.memory.forSession(id), await sessionManager.getAvailableAgents(), signal),
         flows: { fs: runtime.flowEngine.engine, menu: options.createFlowContextMenu({ commands: runtime.commandBus,

@@ -1,3 +1,4 @@
+export type { InitialFilesPort } from './editors/initial-files';
 import type { WorkspaceFileSource } from './services/workspace-files';
 export type { WorkspaceFileSource } from './services/workspace-files';
 // @file: app-settings/index.ts

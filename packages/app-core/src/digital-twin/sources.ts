@@ -28,7 +28,7 @@ export class TwinSources {
     async setEnabled(id: string, revision: string, enabled: boolean): Promise<void> {
         const source = await this.records.get<TwinSourceData>('source', id);
         if (!source || source.revision !== revision) throw new Error('TWIN_REVIEW_CONFLICT');
-        await this.records.save('source', id, { ...source.data, enabled }, revision);
+        await this.records.save('source', id, { ...source.data, enabled, retained: false }, revision);
     }
 
     async reconcile(includeManaged = true): Promise<void> {
@@ -53,6 +53,12 @@ export class TwinSources {
         return { source: latest, content };
     }
 
+    async excluded(source: TwinSourceData, globalExclude?: string[]): Promise<boolean> {
+        const patterns = globalExclude ?? (await this.records.get<TwinSettings>('settings', 'pot'))!.data.globalExclude ?? [];
+        const resource = source.resource ?? { ...source, projectId: '', path: source.kind === 'file' ? source.target : undefined,
+            location: source.kind === 'harness-session' ? 'remote' as const : 'local' as const };
+        return patterns.some(line => matchesLine(resource, line));
+    }
     private async allowed(source: TwinSourceData): Promise<boolean> {
         if (!source.resource) return false;
         const settings = (await this.records.get<TwinSettings>('settings', 'pot'))!.data;
@@ -61,13 +67,23 @@ export class TwinSources {
             && plan.data.rules && matchesRules(source.resource!, plan.data.rules));
     }
     private async check(source: TwinDataRecord<TwinSourceData>, verifyContent = false): Promise<void> {
+        let stage = 'start'; const started = Date.now();
+        const step: SourceStep = (name, read) => { stage = name; return read(); };
+        const slow = setTimeout(() => console.warn('[DigitalTwin] Slow source check', {
+            sourceId: source.id, kind: source.data.kind, stage, elapsedMs: Date.now() - started,
+        }), 5_000);
+        try { await this.checkSource(source, verifyContent, step); }
+        finally { clearTimeout(slow); }
+    }
+    private async checkSource(source: TwinDataRecord<TwinSourceData>, verifyContent: boolean, step: SourceStep): Promise<void> {
         let data: TwinSourceData;
         try {
-            if (source.data.managed && !await this.allowed(source.data)) throw new Error('TWIN_SOURCE_DENIED');
-            if (await this.fingerprint(source.data.connectionId) !== source.data.connectionFingerprint) throw new Error('TWIN_CONNECTION_CHANGED');
-            const version = await this.reader.probe?.(source.data);
+            if (await step('global-ignore', () => this.excluded(source.data))) throw new Error('TWIN_SOURCE_IGNORED');
+            if (source.data.managed && !await step('rules', () => this.allowed(source.data))) throw new Error('TWIN_SOURCE_DENIED');
+            if (await step('connection', () => this.fingerprint(source.data.connectionId)) !== source.data.connectionFingerprint) throw new Error('TWIN_CONNECTION_CHANGED');
+            const version = await step('probe', () => this.reader.probe?.(source.data) ?? Promise.resolve(''));
             if (!verifyContent && version && version === source.data.observedVersion && source.data.status === 'available') return;
-            const content = await this.reader.read(source.data);
+            const content = await step('read', () => this.reader.read(source.data));
             const changed = content.hash !== source.data.hash || content.nativeIdentity !== source.data.nativeIdentity;
             data = { ...source.data, ...(version ? { observedVersion: version } : {}), hash: content.hash, nativeIdentity: content.nativeIdentity, status: 'available',
                 characters: content.text.length, ...(changed ? { incarnation: randomUUID(), offset: 0, analyzedHash: '' } : {}) };
@@ -77,6 +93,8 @@ export class TwinSources {
         this.observations.set(source.id, Date.now());
         // Avoid changing the source revision on every read; it is a commit dependency.
         if (JSON.stringify(data) === JSON.stringify(source.data)) return;
-        await this.records.save('source', source.id, { ...data, checkedAt: Date.now() }, source.revision);
+        await step('save', () => this.records.save('source', source.id, { ...data, checkedAt: Date.now() }, source.revision));
     }
 }
+
+type SourceStep = <T>(stage: string, read: () => Promise<T>) => Promise<T>;

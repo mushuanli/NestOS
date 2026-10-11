@@ -10,7 +10,7 @@ export class TwinKnowledge {
     async manual(input: Partial<TwinMemoryData>): Promise<string> {
         await this.capacity();
         const id = randomUUID(), evidenceId = randomUUID();
-        const data = memoryData({ ...input, independent: true, state: 'active', evidenceIds: [evidenceId],
+        const data = memoryData({ ...input, originSourceId: undefined, independent: true, state: 'active', evidenceIds: [evidenceId],
             sourceId: '', sourceHash: '', sourceIncarnation: '', quote: '' });
         await this.records.store.commit({ operationId: randomUUID(),
             expectedForgetEpoch: (await this.records.store.inspect()).forgetEpoch, writes: [
@@ -26,11 +26,11 @@ export class TwinKnowledge {
         if (!current || current.revision !== revision) throw new Error('TWIN_REVIEW_CONFLICT');
         if (action !== 'correct' && Object.keys(patch).length) throw new Error('TWIN_INVALID_REVIEW_PATCH');
         const editable = Object.fromEntries(Object.entries(patch).filter(([key]) =>
-            ['content', 'kind', 'subject', 'project', 'eventTime', 'goalStatus', 'successCondition', 'deadline'].includes(key)));
+            ['content', 'kind', 'subject', 'project', 'eventTime', 'goalStatus', 'successCondition', 'deadline', 'relation'].includes(key)));
         const independent = action === 'correct', decisionId = randomUUID();
         const state = action === 'reject' ? 'rejected' : action === 'dispute' ? 'disputed' : 'active';
         const data = memoryData({ ...current.data, ...editable, state, recordedAt: current.data.recordedAt,
-            ...(independent ? { independent: true, subjectId: patch.subject === undefined || patch.subject === current.data.subject ? current.data.subjectId
+            ...(independent ? { originSourceId: current.data.originSourceId || current.data.sourceId, relation: patch.relation, entityScope: undefined, projectId: patch.project === undefined || patch.project === current.data.project ? current.data.projectId : undefined, independent: true, subjectId: patch.subject === undefined || patch.subject === current.data.subject ? current.data.subjectId
                 : patch.subject === 'self' ? 'self' : `user:${patch.subject}`, sourceId: '', sourceHash: '', sourceIncarnation: '', quote: '',
                 evidenceIds: [...current.data.evidenceIds, decisionId] } : {}) });
         const conditions = await this.supportCondition(current.data, independent || action !== 'confirm');
@@ -48,12 +48,15 @@ export class TwinKnowledge {
         if (memories.length) await this.invalidate(memories);
     }
 
-    async removeSource(id: string, revision: string): Promise<void> {
+    async removeSource(id: string, revision: string, preserveSource = false): Promise<void> {
         const source = await this.records.get<TwinSourceData>('source', id);
         if (!source || source.revision !== revision) throw new Error('TWIN_REVIEW_CONFLICT');
+        if (preserveSource) { await this.records.save('source', id, { ...source.data, enabled: false, retained: false,
+            incarnation: randomUUID(), hash: '', analyzedHash: '', offset: 0, characters: 0, status: 'inaccessible' }, revision);
+            revision = (await this.records.get<TwinSourceData>('source', id))!.revision; }
         const memories = (await this.records.list<TwinMemoryData>('memory')).filter(memory => memory.data.sourceId === id && !memory.data.independent);
         const evidence = (await this.records.list<{ sourceId?: string }>('evidence')).filter(item => item.data.sourceId === id);
-        await this.invalidate(memories, [{ family: 'source', id }, ...evidence.map(item => ({ family: 'evidence' as const, id: item.id }))],
+        await this.invalidate(memories, [...(preserveSource ? [] : [{ family: 'source' as const, id }]), ...evidence.map(item => ({ family: 'evidence' as const, id: item.id }))],
             [{ family: 'source', id, expectedRevision: revision }]);
     }
 
@@ -65,6 +68,7 @@ export class TwinKnowledge {
             ...memory.data.evidenceIds.map(id => ({ family: 'evidence' as const, id }))]),
             ...reviews.map(item => ({ family: 'review' as const, id: item.id }))];
         const records = [...new Map(references.map(ref => [`${ref.family}/${ref.id}`, ref])).values()];
+        if (!records.length) return;
         const operationId = randomUUID();
         await this.records.store.startForget({ operationId, expectedForgetEpoch: (await this.records.store.inspect()).forgetEpoch,
             conditions: [...conditions, ...memories.map(memory => ({ family: 'memory' as const, id: memory.id, expectedRevision: memory.revision }))], records });
@@ -106,6 +110,6 @@ export class TwinKnowledge {
 }
 
 export function supported(memory: TwinMemoryData, source: TwinDataRecord<TwinSourceData> | null): boolean {
-    return memory.independent || Boolean(source?.data.enabled && source.data.status === 'available'
+    return memory.independent || Boolean(source && (source.data.enabled || source.data.retained) && source.data.status === 'available'
         && source.data.hash === memory.sourceHash && source.data.incarnation === memory.sourceIncarnation);
 }

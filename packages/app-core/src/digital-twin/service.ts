@@ -1,21 +1,26 @@
+import { userIdentity } from './identity';
+import { extractionPrompt } from './extraction';
+import { selectionPattern, selectionKinds, type TwinSelectionTarget, type TwinSelectionType } from './selection';
+import { randomUUID } from '@itookit/common';
+import { knowledgeGraph, type TwinEntityAlias } from './graph';
 import { TwinSourceIndex } from './source-index';
-import { scanRules, ruleLines, type TwinScanRuleInput, type TwinScanRules } from './scan-rules';
+import { scanRules, ruleLines, matchesLine, matchesRules, type TwinScanRuleInput, type TwinScanRules } from './scan-rules';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { sha256HexSync, type ContextPlan } from '@itookit/llm-context';
 import type { KernelAdaptersRuntimeOptions } from '@itookit/kernel-adapters';
 import { TwinAnalysis } from './analysis';
 import { TwinContext, type TwinUseRecord } from './context';
 import { TWIN_KINDS } from './domain';
-import type { TwinGrantData, TwinMemoryData, TwinSettings, TwinSourceSpec, TwinSourceData, TwinSourceReader, TwinAnalysisJob } from './domain';
+import type { TwinMemoryData, TwinSettings, TwinSourceSpec, TwinSourceData, TwinSourceReader, TwinAnalysisJob } from './domain';
 import type { TwinExtractionPort } from './extraction';
 import { TwinKnowledge, supported } from './knowledge';
-import { TwinRecords } from './records';
+import { write, TwinRecords, type TwinDataRecord } from './records';
 import { SeqTwinStore } from './seq-twin-store';
 import { TwinSources } from './sources';
 import { TwinScans } from './scans';
-import { TwinScanStore } from './scan-store';
+import { TwinScanStore, retry } from './scan-store';
 import { createScanGuard } from './scan-guard';
-import type { TwinScanPlanInput } from './scan-domain';
+import type { TwinScanPlanInput, TwinScanPlan } from './scan-domain';
 
 interface TwinServices { records: TwinRecords; sources: TwinSources; knowledge: TwinKnowledge; context: TwinContext; analysis: TwinAnalysis; scans: TwinScans; index: TwinSourceIndex; }
 export interface DigitalTwinDependencies {
@@ -30,6 +35,8 @@ export interface DigitalTwinDependencies {
 /** Application-owned single-user service. No authority is inferred from source text or model output. */
 export class DigitalTwinService {
     private opening?: Promise<TwinServices>;
+    private initializationStage = 'idle';
+    diagnostics() { return { initialization: this.initializationStage }; }
     private listeners = new Set<() => void>();
     private scanTimer?: ReturnType<typeof setInterval>;
     private disposed = false;
@@ -46,7 +53,7 @@ export class DigitalTwinService {
         await this.initialized();
         if (this.disposed) return;
         const services = await this.services();
-        if (!this.disposed) await services.scans.pump();
+        if (!this.disposed) { await this.resolveDefaultModel(services); await services.scans.pump(); }
     }
     async dispose(): Promise<void> {
         this.disposed = true; clearInterval(this.scanTimer); this.scanTimer = undefined;
@@ -54,18 +61,36 @@ export class DigitalTwinService {
         this.listeners.clear();
     }
 
-    async snapshot() {
-        const services = await this.services();
-        const cleanupError = await services.knowledge.recoverCleanup().then(() => '', () => 'TWIN_CLEANUP_FAILED');
-        await services.sources.reconcile();
-        await services.analysis.recoverCleanup();
-        const sources = await services.records.list<TwinSourceData>('source');
+    async snapshot(progress: (stage: string) => void = () => {}) {
+        const read = <T>(stage: string, action: () => Promise<T>) => { progress(stage); return action(); };
+        const services = await read('services.initialize', () => this.services());
+        const sources = await read('records.source', () => services.records.list<TwinSourceData>('source'));
         const byId = new Map(sources.map(source => [source.id, source]));
-        const memories = (await services.records.list<TwinMemoryData>('memory')).map(memory => ({ ...memory,
-            supported: supported(memory.data, byId.get(memory.data.sourceId) ?? null) }));
-        return { cleanupError, pendingCleanup: await services.records.store.pendingCleanup(), sources: sources.map(source => ({ ...source, observedAt: services.sources.observedAt(source.id) ?? source.data.checkedAt })), memories, settings: (await services.records.get<TwinSettings>('settings', 'pot'))!,
-            grants: await services.records.list<TwinGrantData>('grant'), jobs: await services.records.list<TwinAnalysisJob>('job'),
-            uses: await services.records.list<TwinUseRecord>('usage'), sessions: await this.deps.reader.sessions(), scans: await services.scans.snapshot() };
+        const memories = (await read('records.memory', () => services.records.list<TwinMemoryData>('memory'))).map(memory => ({ ...memory,
+            retained: Boolean(byId.get(memory.data.sourceId)?.data.retained), supported: supported(memory.data, byId.get(memory.data.sourceId) ?? null) }));
+        const aliases = new Map((await read('records.entity', () => services.records.list<TwinEntityAlias>('entity'))).map(alias => [alias.id, alias.data]));
+        const jobs = await read('records.job', () => services.records.list<TwinAnalysisJob>('job'));
+        const identity = (await services.records.get<TwinSettings>('settings', 'pot'))!.data;
+        return { prompt: extractionPrompt(identity), graph: knowledgeGraph(memories, aliases), cleanupError: jobs.find(job => job.data.cleanupError)?.data.cleanupError ?? '',
+            pendingCleanup: await read('records.pendingCleanup', () => services.records.store.pendingCleanup()),
+            sources: sources.map(source => ({ ...source, observedAt: services.sources.observedAt(source.id) ?? source.data.checkedAt })), memories,
+            settings: (await read('records.settings', () => services.records.get<TwinSettings>('settings', 'pot')))!,
+            jobs,
+            uses: await read('records.usage', () => services.records.list<TwinUseRecord>('usage')),
+            sessions: await read('sessions.list', () => this.deps.reader.sessions()),
+            scans: await read('scans.snapshot', () => services.scans.snapshot()) };
+    }
+
+    async mergePeople(from: string, to: string): Promise<void> {
+        const records = (await this.services()).records;
+        const lock = await records.get('checkpoint', 'entity-merge');
+        const graph = (await this.snapshot()).graph;
+        if (from === to || [from, to].some(id => !graph.nodes.some(node => node.id === id && node.kind === 'person' && !node.aliases.includes('self')))) throw new Error('TWIN_INVALID_ENTITY_MERGE');
+        const current = await records.get<TwinEntityAlias>('entity', from);
+        await records.store.commit({ operationId: randomUUID(), expectedForgetEpoch: (await records.store.inspect()).forgetEpoch, writes: [
+            write('entity', from, { targetId: to }, current?.revision ?? null),
+            write('checkpoint', 'entity-merge', { updatedAt: Date.now() }, lock?.revision ?? null),
+        ] }); this.notify();
     }
 
     previewSource(spec: TwinSourceSpec) { return this.deps.reader.read(spec); }
@@ -94,10 +119,58 @@ export class DigitalTwinService {
         try { await run; } finally { this.notify(); }
     }
     async cancelAnalysis(id: string) { await (await this.services()).analysis.cancel(id); this.notify(); }
+    async selectionInfo(target: TwinSelectionTarget) {
+        const pattern = selectionPattern(target), snapshot = await this.snapshot();
+        const sources = snapshot.sources.filter(source => matchesLine(source.data.resource ?? { ...source.data, projectId: '' }, pattern));
+        const ids = new Set(sources.map(source => source.id));
+        const plan = snapshot.scans.plans.find(plan => plan.data.rules?.selection && plan.data.rules.include[0] === pattern);
+        const resource = sources[0]?.data.resource ?? { ...target, projectId: '', path: target.target };
+        const ignored = (snapshot.settings.data.globalExclude ?? []).some(line => line === pattern || matchesLine(resource, line));
+        const included = !ignored && (Boolean(plan?.data.enabled) || sources.some(source => source.data.enabled)
+            || snapshot.scans.plans.some(plan => plan.data.enabled && plan.data.rules && matchesRules(resource, plan.data.rules)));
+        return { sources, plan, included, memories: snapshot.memories.filter(memory => ids.has(memory.data.sourceId) || ids.has(memory.data.originSourceId ?? '')),
+            runs: snapshot.scans.runs.filter(run => run.data.planId === plan?.id || run.data.sourceIds.some(id => ids.has(id))),
+            jobs: snapshot.jobs.filter(job => ids.has(job.data.sourceId)), settings: snapshot.settings,
+            nextScanAt: snapshot.scans.schedules.find(schedule => schedule.planId === plan?.id)?.nextAt ?? 0,
+            ignored, worker: snapshot.scans.worker,
+            discoveryErrors: snapshot.scans.discovery.errors };
+    }
+    async selectSource(target: TwinSelectionTarget, type: TwinSelectionType): Promise<void> {
+        const services = await this.services(), pattern = selectionPattern(target), info = await this.selectionInfo(target);
+        await services.scans.save(info.plan?.id ?? null, info.plan?.revision ?? null, { name: target.label.slice(0, 200) || target.kind,
+            rules: { include: [pattern], exclude: [], selection: true }, kinds: selectionKinds(type), sourceIds: [], connectionId: '',
+            mode: 'analyze', trigger: 'interval', intervalMinutes: 30, tokenLimit: 0, enabled: true, autoConfirm: true }, false);
+        await this.setSelectionIgnored(pattern, false);
+        this.notify(); void this.scanOnce().then(() => this.scanOnce()).catch(() => {});
+    }
+    async removeSelection(target: TwinSelectionTarget): Promise<void> {
+        const services = await this.services(), pattern = selectionPattern(target);
+        await this.setSelectionIgnored(pattern, true);
+        const info = await this.selectionInfo(target);
+        if (info.plan?.data.enabled) await services.scans.enable(info.plan.id, info.plan.revision, false, false);
+        for (const source of info.sources) {
+            for (const job of info.jobs.filter(job => job.data.sourceId === source.id && ['queued', 'running'].includes(job.data.state))) await services.analysis.cancel(job.id);
+            const current = await services.records.get<TwinSourceData>('source', source.id);
+            if (current) await services.knowledge.removeSource(current.id, current.revision, true);
+        }
+        await services.knowledge.forgetMany(info.memories.filter(memory => memory.data.originSourceId).map(memory => memory.id));
+        this.notify();
+    }
+    private async setSelectionIgnored(pattern: string, ignored: boolean): Promise<void> {
+        const { records } = await this.services();
+        await retry(async () => {
+            const settings = (await records.get<TwinSettings>('settings', 'pot'))!;
+            const excludes = (settings.data.globalExclude ?? []).filter(line => line !== pattern);
+            await records.save('settings', 'pot', { ...settings.data,
+                globalExclude: ruleLines(ignored ? [...excludes, pattern] : excludes) }, settings.revision);
+        });
+    }
     async previewScanRule(rules: TwinScanRules) { return (await this.services()).index.preview(scanRules(rules)); }
     async saveScanRule(id: string | null, revision: string | null, input: TwinScanRuleInput) {
         const rules = scanRules(input);
-        return this.saveScanPlan(id, revision, { name: input.name, rules, sourceIds: [], connectionId: '',
+        const previous = id ? await (await this.services()).records.get<TwinScanPlan>('scan-plan', id) : null;
+        if (previous?.data.rules?.selection && JSON.stringify(previous.data.rules.include) === JSON.stringify(rules.include)) rules.selection = true;
+        return this.saveScanPlan(id, revision, { name: input.name, focus: input.focus, rules, sourceIds: [], connectionId: '',
             kinds: input.kinds ?? [...TWIN_KINDS], mode: 'analyze', trigger: 'interval', intervalMinutes: input.intervalMinutes,
             tokenLimit: 0, enabled: input.enabled, autoConfirm: true });
     }
@@ -168,12 +241,17 @@ export class DigitalTwinService {
         this.notify();
         return { retainedSessions: await this.forgetPreview(id) };
     }
-    async configure(patch: Partial<Pick<TwinSettings, 'tokenLimit' | 'paused' | 'useEnabled' | 'connectionId' | 'globalExclude'>>, revision: string) {
+    async getSettings(): Promise<TwinDataRecord<TwinSettings>> {
+        return (await (await this.services()).records.get<TwinSettings>('settings', 'pot'))!;
+    }
+    async configure(patch: Partial<Pick<TwinSettings, 'tokenLimit' | 'budgetUnlimited' | 'paused' | 'useEnabled' | 'connectionId' | 'globalExclude' | 'userName' | 'userAliases'>>, revision: string) {
         const records = (await this.services()).records, settings = (await records.get<TwinSettings>('settings', 'pot'))!;
         const data = { ...settings.data, ...Object.fromEntries(Object.entries(patch).filter(([key]) =>
-            ['tokenLimit', 'paused', 'useEnabled', 'connectionId', 'globalExclude'].includes(key))) };
+            ['tokenLimit', 'budgetUnlimited', 'paused', 'useEnabled', 'connectionId', 'globalExclude', 'userName', 'userAliases'].includes(key))) };
+        Object.assign(data, userIdentity(data));
         if (typeof data.paused !== 'boolean' || typeof data.useEnabled !== 'boolean') throw new Error('TWIN_INVALID_SETTINGS');
         if (!Number.isSafeInteger(data.tokenLimit) || data.tokenLimit < 0) throw new Error('TWIN_INVALID_BUDGET');
+        if (data.budgetUnlimited !== undefined && typeof data.budgetUnlimited !== 'boolean') throw new Error('TWIN_INVALID_BUDGET');
         if (patch.connectionId !== undefined && (typeof patch.connectionId !== 'string' || !patch.connectionId.trim())) throw new Error('TWIN_CONNECTION_REQUIRED');
         if (data.globalExclude !== undefined) data.globalExclude = ruleLines(data.globalExclude);
         const services = await this.services();
@@ -182,17 +260,7 @@ export class DigitalTwinService {
         if (patch.connectionId) await services.scans.refreshModels();
         await this.initializeRules(services.scans);
         await services.index.sync(); this.notify();
-    }
-    async grant(data: TwinGrantData, expectedRevision: string | null) {
-        if (typeof data?.sessionId !== 'string' || typeof data.agentId !== 'string' || data.agentId.length > 200
-            || typeof data.connectionId !== 'string' || typeof data.project !== 'string' || data.project.length > 200
-            || typeof data.enabled !== 'boolean') throw new Error('TWIN_INVALID_GRANT');
-        const sessions = await this.deps.reader.sessions();
-        if ((data.enabled && !sessions.some(session => session.id === data.sessionId)) || !data.agentId || !data.connectionId) throw new Error('TWIN_INVALID_GRANT');
-        const services = await this.services();
-        const current = await services.records.get<TwinGrantData>('grant', data.sessionId);
-        const connectionFingerprint = data.enabled ? await services.sources.fingerprint(data.connectionId) : current?.data.connectionFingerprint ?? '';
-        await services.records.save('grant', data.sessionId, { ...data, connectionFingerprint }, expectedRevision); this.notify();
+        if (this.scanTimer) void this.scanOnce().catch(() => {});
     }
     async retrieve(plan: ContextPlan, agentId: string, sessionId: string) {
         if (!await this.initialized()) return [];
@@ -207,6 +275,13 @@ export class DigitalTwinService {
         }
         else await services.context.authorize(request, context);
     };
+
+    private async resolveDefaultModel(services: TwinServices): Promise<void> {
+        const settings = (await services.records.get<TwinSettings>('settings', 'pot'))!;
+        if (settings.data.connectionId || !this.deps.defaultConnection) return;
+        const connectionId = await this.deps.defaultConnection().catch(() => '');
+        if (connectionId) await this.configure({ connectionId }, settings.revision);
+    }
 
     private async initialized(): Promise<boolean> {
         return Boolean(this.opening) || this.deps.fs.driver.exists('/var/lib/digital-twin/personal/authority.seq');
@@ -223,7 +298,9 @@ export class DigitalTwinService {
         return this.opening;
     }
     private async open(): Promise<TwinServices> {
-        const records = new TwinRecords(await SeqTwinStore.open(this.deps.fs, 'personal', 'admin'));
+        this.initializationStage = 'storage.open';
+        const records = new TwinRecords(await SeqTwinStore.open(this.deps.fs, 'personal', 'admin', stage => { this.initializationStage = stage; }));
+        this.initializationStage = 'settings.initialize';
         if (!await records.get('settings', 'pot')) {
             await records.save('settings', 'pot', { tokenLimit: 100000, reservedTokens: 0,
                 spentTokens: 0, paused: false, useEnabled: true, connectionId: await this.deps.defaultConnection?.().catch(() => '') ?? '', globalExclude: [] } satisfies TwinSettings, null).catch(async error => {
@@ -237,9 +314,14 @@ export class DigitalTwinService {
         const index = new TwinSourceIndex(records, sources);
         const scanStore = new TwinScanStore(records, this.deps.scanHost?.kind ?? 'local', this.deps.scanHost?.now, this.deps.scanHost?.leaseMs);
         const analysis = new TwinAnalysis(records, sources, this.deps.extractor, () => this.notify(), createScanGuard(scanStore));
-        const scans = new TwinScans(scanStore, sources, analysis, () => this.notify(), index);
+        const knowledge = new TwinKnowledge(records);
+        const scans = new TwinScans(scanStore, sources, analysis, () => this.notify(), index, async () => {
+            await knowledge.recoverCleanup(); await analysis.recoverCleanup();
+        });
+        this.initializationStage = 'scan-rules.initialize';
         await this.initializeRules(scans);
-        return { records, sources, index, knowledge: new TwinKnowledge(records), context: new TwinContext(records, sources),
+        this.initializationStage = 'ready';
+        return { records, sources, index, knowledge, context: new TwinContext(records, sources),
             analysis, scans };
     }
     private async initializeRules(scans: TwinScans): Promise<void> {

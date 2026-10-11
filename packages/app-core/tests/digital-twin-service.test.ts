@@ -32,10 +32,9 @@ async function setup(kind: 'memory' | 'indexeddb') {
     const deps = { fs, reader, extractor, deleteSession, executionExists: async (_session: string, task: string) => task === 'known-task', connectionFingerprint: async () => route };
     const service = new DigitalTwinService(deps);
     const sourceId = await service.addSource({ kind: 'file', target: '/home/admin/minds/context.md', label: 'Context' }, 'model');
-    const grant = () => service.grant({ sessionId: 'consumer', agentId: 'agent', connectionId: 'model', enabled: true, project: '' }, null);
     const request = (entries: Awaited<ReturnType<DigitalTwinService['retrieve']>>) => ({ resourceHandleId: 'llm', connectionId: 'model',
         request: { messages: entries.map(entry => ({ role: 'user' as const, content: `Memory (${entry.namespaceId}/${entry.entryId}):\n${entry.content}` })) } });
-    return { fs, service, sourceId, grant, request, extractor, deleteSession,
+    return { fs, service, sourceId, request, extractor, deleteSession, reader,
         reopen: () => new DigitalTwinService(deps), change: (value: string) => { text = value; },
         reroute: () => { route = 'changed'; }, unavailable: () => { inaccessible = true; } };
 }
@@ -63,17 +62,16 @@ describe.each(['memory', 'indexeddb'] as const)('Digital twin loop on %s', kind 
             await reopened.dispose(); expect(getRandomValues).toHaveBeenCalled();
         } finally { vi.unstubAllGlobals(); }
     });
-    it('keeps candidates out of context, requires an explicit consumer grant, and records only supplied references', async () => {
-        const { service, sourceId, grant, request } = await setup(kind);
+    it('keeps candidates out of context, defaults to all consumers, and records only supplied references', async () => {
+        const { service, sourceId, request } = await setup(kind);
         await service.analyze(sourceId);
         const snapshot = await service.snapshot(), candidate = snapshot.memories[0];
         expect(candidate.data.state).toBe('candidate'); expect(snapshot.settings.data.spentTokens).toBe(120);
         expect(await service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer')).toEqual([]);
         await service.review(candidate.id, candidate.revision, 'confirm');
-        expect(await service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer')).toEqual([]);
-        await grant();
+        expect(await service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer')).toHaveLength(1);
         expect(await service.retrieve(plan('unrelated astronomy'), 'agent', 'consumer')).toEqual([]);
-        expect(await service.retrieve(plan('Alpha TypeScript'), 'agent', 'other')).toEqual([]);
+        expect(await service.retrieve(plan('Alpha TypeScript'), 'another-agent', 'other')).toHaveLength(1);
         const entries = await service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer'); expect(entries).toHaveLength(1);
         await service.authorizeLlm(request([]), context()); expect((await service.snapshot()).uses).toHaveLength(0);
         await service.authorizeLlm(request(entries), context()); await service.authorizeLlm(request(entries), context());
@@ -83,7 +81,7 @@ describe.each(['memory', 'indexeddb'] as const)('Digital twin loop on %s', kind 
     });
 
     it('invalidates confirmed evidence after source change, revocation, unreadability and connection replacement', async () => {
-        const host = await setup(kind); await host.service.analyze(host.sourceId); await host.grant();
+        const host = await setup(kind); await host.service.analyze(host.sourceId);
         let memory = (await host.service.snapshot()).memories[0]; await host.service.review(memory.id, memory.revision, 'confirm');
         const selected = await host.service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer');
         host.change('新的来源内容');
@@ -94,15 +92,15 @@ describe.each(['memory', 'indexeddb'] as const)('Digital twin loop on %s', kind 
         expect(await host.service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer')).toHaveLength(1);
         const fresh = await host.service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer');
         host.reroute();
-        await expect(host.service.authorizeLlm(host.request(fresh), context())).rejects.toThrow('CONNECTION_CHANGED');
+        await expect(host.service.authorizeLlm({ ...host.request(fresh), connectionId: 'another-model' }, context('consumer', 'new-model'))).resolves.toBeUndefined();
     });
 
-    it('blocks historical use after grant revocation, settings disable and forget, including reopen', async () => {
-        const host = await setup(kind); const id = await host.service.addMemory({ content: 'Alpha 使用 TypeScript', kind: 'fact' }); await host.grant();
+    it('blocks historical use after global disable and forget, including reopen', async () => {
+        const host = await setup(kind); const id = await host.service.addMemory({ content: 'Alpha 使用 TypeScript', kind: 'fact' });
         await host.service.authorizeLlm(host.request(await host.service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer')), context());
         expect(await host.service.forgetPreview(id)).toEqual(['consumer']);
         const snapshot = await host.service.snapshot();
-        await host.service.grant({ ...snapshot.grants[0].data, enabled: false }, snapshot.grants[0].revision);
+        await host.service.configure({ useEnabled: false }, snapshot.settings.revision);
         await expect(host.service.authorizeLlm(host.request([]), context())).rejects.toThrow('PERMISSION_STALE');
         const result = await host.service.forget(id);
         expect(result.retainedSessions).toEqual(['consumer']);
@@ -165,4 +163,51 @@ describe.each(['memory', 'indexeddb'] as const)('Digital twin loop on %s', kind 
         await expect(running).rejects.toThrow('CANCELLED');
         expect((await host.service.snapshot()).memories).toHaveLength(0);
     });
+});
+
+it('renders stored data while a background source read is stalled', async () => {
+    const host = await setup('indexeddb');
+    let complete!: (content: TwinSourceContent) => void;
+    const original = await host.service.snapshot();
+    host.reader.read.mockImplementation(() => new Promise(resolve => { complete = resolve; }));
+    host.reader.read.mockClear();
+    const stored = await host.service.snapshot();
+    expect(stored.sources).toHaveLength(original.sources.length);
+    expect(host.reader.read).not.toHaveBeenCalled();
+    const background = host.service.scanOnce();
+    await vi.waitFor(() => expect(host.reader.read).toHaveBeenCalled());
+    try {
+        expect((await host.service.snapshot()).sources[0].data.hash).toBe(original.sources[0].data.hash);
+    } finally {
+        complete({ text: 'Updated', hash: sha256HexSync('Updated'), nativeIdentity: 'document-incarnation' });
+        await background;
+    }
+    expect((await host.service.snapshot()).sources[0].data.hash).toBe(sha256HexSync('Updated'));
+});
+
+it('uses knowledge across sessions and models by default and stops ignored evidence from reaching later requests', async () => {
+    const host = await setup('indexeddb'); await host.service.analyze(host.sourceId);
+    const memory = (await host.service.snapshot()).memories[0]; await host.service.review(memory.id, memory.revision, 'confirm');
+    const store = await SeqTwinStore.open(host.fs, 'personal', 'admin');
+    await store.commit({ operationId: randomUUID(), expectedForgetEpoch: (await store.inspect()).forgetEpoch, writes: [{
+        family: 'grant', id: 'any-session', expectedRevision: null, payload: { sessionId: 'any-session', agentId: 'old-agent',
+            connectionId: 'old-model', connectionFingerprint: 'old-route', enabled: false, project: 'old-project' },
+    }] });
+    const entries = await host.service.retrieve(plan('Alpha TypeScript'), 'any-agent', 'any-session');
+    expect(entries).toHaveLength(1);
+    await host.service.authorizeLlm({ ...host.request(entries), connectionId: 'different-model' }, context('any-session'));
+    const settings = (await host.service.snapshot()).settings;
+    await host.service.configure({ globalExclude: ['**/context.md'] }, settings.revision);
+    expect(await host.service.retrieve(plan('Alpha TypeScript'), 'any-agent', 'any-session')).toEqual([]);
+    await expect(host.service.authorizeLlm(host.request([]), context('any-session', 'next'))).rejects.toThrow('SOURCE_IGNORED');
+    expect((await host.service.snapshot()).memories).toHaveLength(1);
+});
+
+it('does not wait for unrelated sources when retrieving and sending independent knowledge', async () => {
+    const host = await setup('memory'); await host.service.addMemory({ content: 'Alpha uses TypeScript' });
+    host.reader.read.mockClear(); host.reader.read.mockImplementation(() => new Promise(() => {}));
+    const entries = await host.service.retrieve(plan('Alpha TypeScript'), 'any-agent', 'new-session');
+    expect(entries).toHaveLength(1);
+    await host.service.authorizeLlm(host.request(entries), context('new-session'));
+    expect(host.reader.read).not.toHaveBeenCalled();
 });

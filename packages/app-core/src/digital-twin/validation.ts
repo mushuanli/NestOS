@@ -1,3 +1,4 @@
+import { userIdentity } from './identity';
 import { ruleLines, scanRules } from './scan-rules';
 import type { TwinRecordFamily } from './contracts';
 import { TWIN_KINDS } from './domain';
@@ -16,6 +17,7 @@ const validators: Partial<Record<TwinRecordFamily, (data: Data) => void>> = {
 /** Reject malformed persisted authority and content rather than granting through truthy defaults. */
 export function validateData(family: TwinRecordFamily, data: Data): void { validators[family]?.(data); }
 function validateMemory(data: Data): void {
+    if (data.originSourceId !== undefined) strings(data, ['originSourceId']);
     strings(data, ['content', 'subject', 'subjectId', 'project', 'eventTime', 'sourceId', 'sourceHash', 'sourceIncarnation', 'quote', 'successCondition', 'deadline']);
     oneOf(data.kind, TWIN_KINDS); oneOf(data.state, ['candidate', 'active', 'rejected', 'disputed']);
     oneOf(data.goalStatus, ['draft', 'active', 'paused', 'completed', 'cancelled']);
@@ -30,13 +32,19 @@ function validateSource(data: Data): void {
     if (data.managed !== undefined) validateManagedSource(data);
 }
 function validateSettings(data: Data): void {
+    if (data.budgetUnlimited !== undefined) booleans(data, ['budgetUnlimited']);
+    userIdentity(data);
     if (data.connectionId !== undefined && typeof data.connectionId !== 'string') invalid();
     if (data.globalExclude !== undefined) ruleLines(data.globalExclude);
     booleans(data, ['paused', 'useEnabled']); integers(data, ['tokenLimit', 'reservedTokens', 'spentTokens']);
 }
 function validateJob(data: Data): void {
+    for (const key of ['createdAt', 'startedAt', 'finishedAt', 'actualTokens', 'requestStartedAt', 'responseReceivedAt', 'responseCompletedAt']) if (data[key] !== undefined) integers(data, [key]);
+    if (data.errorDetail !== undefined) strings(data, ['errorDetail']);
+    userIdentity(data);
     strings(data, ['sourceId', 'sourceRevision', 'sourceHash', 'connectionId', 'sessionId', 'taskId', 'error']);
     integers(data, ['offset', 'end', 'epoch', 'reservedTokens']);
+    if (data.start !== undefined) { integers(data, ['start']); if (data.start !== data.offset) invalid(); }
     oneOf(data.state, ['queued', 'running', 'committed', 'failed', 'cancelled']);
 }
 function validateUsage(data: Data): void {
@@ -45,6 +53,8 @@ function validateUsage(data: Data): void {
         || typeof ref.id !== 'string' || typeof ref.revision !== 'string')) invalid();
 }
 function validateScanRun(data: Data): void {
+    if (data.budgetUnlimited !== undefined) booleans(data, ['budgetUnlimited']);
+    if (data.errorDetail !== undefined) strings(data, ['errorDetail']);
     if (data.rules !== undefined) scanRules(data.rules);
     if (data.autoConfirm !== undefined && typeof data.autoConfirm !== 'boolean') invalid();
     strings(data, ['planId', 'planRevision', 'name', 'connectionId', 'connectionFingerprint', 'owner', 'error']);
@@ -59,6 +69,8 @@ function validateManagedSource(data: Data): void {
     const resource = data.resource as Data | undefined;
     if (data.managed && (!resource || typeof resource !== 'object' || Array.isArray(resource)
         || typeof resource.projectId !== 'string' || !resource.projectId || resource.kind !== data.kind || resource.target !== data.target)) invalid();
+    if (resource?.location !== undefined) oneOf(resource.location, ['local', 'remote']);
+    if (resource?.directoryPath !== undefined && typeof resource.directoryPath !== 'string') invalid();
     if (data.observedVersion !== undefined && typeof data.observedVersion !== 'string') invalid();
 }
 function strings(data: Data, keys: string[]): void { for (const key of keys) if (typeof data[key] !== 'string') invalid(); }

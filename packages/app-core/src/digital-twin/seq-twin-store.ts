@@ -12,8 +12,8 @@ export class SeqTwinStore implements TwinStore {
     private readonly pages: TwinSeqPages;
     private constructor(private readonly storage: TwinSeqStorage) { this.pages = new TwinSeqPages(storage.file('indexes')); }
 
-    static async open(fs: IFileSystem, twinId: string, ownerId: string): Promise<SeqTwinStore> {
-        return new SeqTwinStore(await TwinSeqStorage.open(fs, twinId, ownerId));
+    static async open(fs: IFileSystem, twinId: string, ownerId: string, progress: (stage: string) => void = () => {}): Promise<SeqTwinStore> {
+        return new SeqTwinStore(await TwinSeqStorage.open(fs, twinId, ownerId, progress));
     }
 
     async inspect() { return this.storage.transaction(async (_tx, current) => current); }

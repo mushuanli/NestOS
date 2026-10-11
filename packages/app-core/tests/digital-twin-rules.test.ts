@@ -46,6 +46,23 @@ it('matches typed scopes, root globs, directory patterns, comments and exclusion
     for (const line of ['unknown:**', 'file:../secret', '!file:**', 'file:[a]']) expect(() => ruleLines([line])).toThrow('TWIN_INVALID_SCAN_RULE');
 });
 describe.each(['memory', 'indexeddb'] as const)('automatic rules on %s', kind => {
+    it('keeps zero finite by default and lets unlimited rules extract while preserving usage accounting', async () => {
+        const host = await setup(kind); host.put('note.md', 'first fact');
+        await host.service.configure({ tokenLimit: 0 }, (await host.service.getSettings()).revision);
+        const id = await host.rule();
+        await expect(host.run(id)).rejects.toThrow('TWIN_BUDGET_EXHAUSTED');
+        expect(host.extractor.run).not.toHaveBeenCalled();
+        await host.service.configure({ budgetUnlimited: true }, (await host.service.getSettings()).revision);
+        await host.run(id);
+        const snapshot = await host.service.snapshot();
+        expect(snapshot.settings.data).toMatchObject({ tokenLimit: 0, budgetUnlimited: true, spentTokens: 10, reservedTokens: 0 });
+        expect(snapshot.scans.runs.find(run => run.data.state === 'succeeded')!.data)
+            .toMatchObject({ tokenLimit: 0, budgetUnlimited: true, spentTokens: 10, reservedTokens: 0 });
+        await host.service.configure({ budgetUnlimited: false }, (await host.service.getSettings()).revision);
+        host.put('note.md', 'second fact');
+        await expect(host.run(id)).rejects.toThrow('TWIN_BUDGET_EXHAUSTED');
+        expect(host.extractor.run).toHaveBeenCalledTimes(1);
+    });
     it('discovers new sources and invalidates modified, deleted, replaced and excluded evidence while preserving manual memories', async () => {
         const host = await setup(kind); host.put('note.md', 'first');
         const id = await host.rule(); await host.run(id);
@@ -161,7 +178,7 @@ it('creates one default rule atomically and does not recreate it after deletion'
         await Promise.all([first.snapshot(), second.snapshot()]);
         const plan = (await first.snapshot()).scans.plans[0];
         expect((await first.snapshot()).scans.plans).toHaveLength(1);
-        expect(plan.data.rules).toEqual({ include: [], exclude: [] }); expect(plan.data.intervalMinutes).toBe(30);
+        expect(plan.data.rules).toEqual({ include: ['file:**/*.email', 'resource:file/%2Fhome%2Fadmin%2Femails%2F**'], exclude: [] }); expect(plan.data.intervalMinutes).toBe(30);
         await first.removeScanPlan(plan.id, plan.revision);
         const reopened = new DigitalTwinService(deps);
         try { expect((await reopened.snapshot()).scans.plans).toHaveLength(0); }
@@ -170,7 +187,7 @@ it('creates one default rule atomically and does not recreate it after deletion'
 });
 it('starts discovery automatically before the twin page or storage has ever been opened', async () => {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() }), fs = await manager.openFileSystem('/');
-    const resource: TwinDiscoveredSource = { kind: 'file', projectId: 'alpha', path: 'note.md', target: 'note.md', label: 'Note' };
+    const resource: TwinDiscoveredSource = { kind: 'file', projectId: 'alpha', path: 'note.email', target: 'note.email', label: 'Note' };
     const discover = vi.fn(async () => ({ projects: ['alpha'], resources: [resource], completeScopes: ['alpha/file'], errors: [] }));
     const run = vi.fn(async (_job, _text, attached) => { await attached('kernel-task'); return {
         candidates: [{ content: 'Auto fact', kind: 'fact' as const, subject: 'self', project: 'alpha', eventTime: '', quote: 'Auto fact' }], tokens: 10 }; });
@@ -183,4 +200,104 @@ it('starts discovery automatically before the twin page or storage has ever been
         await vi.waitFor(async () => expect((await service.snapshot()).memories[0]?.data.state).toBe('active'));
         expect(discover).toHaveBeenCalled();
     } finally { await service.dispose(); await manager.dispose(); }
+});
+
+it('supports ignore-style paths, anchored directories and non-file scopes', () => {
+    const resource: TwinDiscoveredSource = { kind: 'file', projectId: 'alpha', target: 'file', label: '', path: 'src/drafts/note.md' };
+    expect(matchesRules(resource, { include: [], exclude: ['drafts/'] })).toBe(false);
+    expect(matchesRules(resource, { include: [], exclude: ['drafts'] })).toBe(false);
+    expect(matchesRules(resource, { include: [], exclude: ['/drafts/'] })).toBe(true);
+    expect(matchesRules({ ...resource, path: 'drafts/note.md' }, { include: [], exclude: ['/drafts/'] })).toBe(false);
+    expect(matchesRules({ ...resource, path: 'logs/build.log' }, { include: [], exclude: ['*.log'] })).toBe(false);
+    expect(matchesRules({ ...resource, kind: 'session' }, { include: [], exclude: ['**'] })).toBe(true);
+});
+
+it('keeps focus-specific progress while sharing identical extraction work', async () => {
+    const host = await setup('memory'); host.put('note.md', 'A supported fact');
+    const create = (focus: string) => host.service.saveScanRule(null, null, { name: focus, focus, include: [], exclude: [], intervalMinutes: 30, enabled: true });
+    const first = await create('Decisions'), same = await create('Decisions'), second = await create('Commitments');
+    await host.run(first); await host.run(same); await host.run(second);
+    expect(host.extractor.run).toHaveBeenCalledTimes(2);
+    expect(host.extractor.run.mock.calls.map(([job]) => job.scanScope.focus)).toEqual(['Decisions', 'Commitments']);
+    const plan = (await host.service.snapshot()).scans.plans.find(item => item.id === first)!;
+    await host.service.saveScanRule(first, plan.revision, { name: 'New focus', focus: 'People', include: [], exclude: [], intervalMinutes: 30, enabled: true });
+    await host.run(first); expect(host.extractor.run).toHaveBeenCalledTimes(3);
+    expect((await host.service.snapshot()).memories).toHaveLength(1);
+});
+
+it('retains knowledge on pause and deletion, then excludes it globally', async () => {
+    const host = await setup('memory'); host.put('note.md', 'Retained fact');
+    const id = await host.rule(); await host.run(id);
+    let snapshot = await host.service.snapshot(), plan = snapshot.scans.plans[0];
+    await host.service.setScanPlanEnabled(id, plan.revision, false);
+    snapshot = await host.service.snapshot();
+    expect(snapshot.memories[0]).toMatchObject({ supported: true, retained: true });
+    const calls = host.extractor.run.mock.calls.length;
+    host.advance(); await host.service.scanOnce(); expect(host.extractor.run).toHaveBeenCalledTimes(calls);
+    plan = snapshot.scans.plans[0]; await host.service.removeScanPlan(id, plan.revision);
+    snapshot = await host.service.snapshot(); expect(snapshot.memories[0].supported).toBe(true);
+    await host.service.configure({ globalExclude: ['*.md'] }, snapshot.settings.revision);
+    snapshot = await host.service.snapshot(); expect(snapshot.memories[0].supported).toBe(false);
+    expect(snapshot.graph.nodes).toHaveLength(0);
+});
+
+it('automatically builds third-party profiles with explicit evidence and stable identities across edits', async () => {
+    const host = await setup('memory'); host.put('note.md', 'Alex leads Alpha');
+    host.extractor.run.mockImplementation(async (_job, text, attached) => {
+        await attached('task'); return { candidates: [{ content: text, kind: 'fact', subject: 'Alex', project: 'alpha', eventTime: '', quote: text }], tokens: 10 };
+    });
+    const id = await host.rule(); await host.run(id);
+    const before = (await host.service.snapshot()).graph.nodes.find(node => node.kind === 'person')!;
+    host.put('note.md', 'Alex reviews Alpha'); await host.run(id);
+    const after = (await host.service.snapshot()).graph.nodes.find(node => node.kind === 'person')!;
+    expect(after.id).toBe(before.id); expect(after.memoryIds).toHaveLength(1);
+});
+
+it('matches local and remote directory ignores and native or remote conversation names', () => {
+    const file: TwinDiscoveredSource = { kind: 'file', target: 'project://p/docs/a.md', projectId: 'p', path: 'docs/a.md', label: 'a.md', location: 'local', directoryPath: '/home/me/private/docs/a.md' };
+    expect(matchesRules(file, { include: [], exclude: ['local:/home/me/private/'] })).toBe(false);
+    expect(matchesRules(file, { include: [], exclude: ['remote:docs/'] })).toBe(true);
+    expect(matchesRules({ ...file, location: 'remote', directoryPath: '/archive/docs/a.md' }, { include: [], exclude: ['remote:/archive/'] })).toBe(false);
+    for (const kind of ['session', 'harness-session'] as const) {
+        const session = { ...file, kind, label: '私人记录 2026', sessionId: 'opaque-id' };
+        expect(matchesRules(session, { include: [], exclude: ['session-name:私人*'] })).toBe(false);
+        expect(matchesRules(session, { include: ['session:私人*'], exclude: [] })).toBe(true);
+        expect(matchesRules(session, { include: [], exclude: ['local:**'] })).toBe(true);
+    }
+    expect(ruleLines(['local:/home/me/private/', 'remote:/archive/', 'session-name:私人*'])).toHaveLength(3);
+});
+
+it('allows another rule to include a locally ignored source while global ignores override every rule', async () => {
+    const host = await setup('indexeddb'); host.put('private.md', 'private fact'); host.put('work.md', 'work fact');
+    await host.service.saveScanRule(null, null, { name: 'Work only', include: [], exclude: ['private.md'], intervalMinutes: 30, enabled: true });
+    expect((await host.service.snapshot()).sources.map(source => source.data.target)).toEqual(['work.md']);
+    const id = await host.rule(); await host.run(id);
+    expect((await host.service.snapshot()).sources.find(source => source.data.target === 'private.md')?.data.enabled).toBe(true);
+    await host.service.configure({ globalExclude: ['private.md'] }, (await host.service.snapshot()).settings.revision);
+    expect((await host.service.snapshot()).sources.find(source => source.data.target === 'private.md')?.data.enabled).toBe(false);
+});
+
+it('ignores named local and remote conversations before extraction without blocking other conversations', async () => {
+    const host = await setup('indexeddb');
+    host.put('私人本地', 'Local private', 'session'); host.put('私人远程', 'Remote private', 'harness-session'); host.put('工作', 'Work', 'session');
+    const rule = await host.rule([], ['session-name:私人*']); await host.run(rule);
+    expect((await host.service.snapshot()).sources.map(source => source.data.label)).toEqual(['工作']);
+    expect(host.extractor.run).toHaveBeenCalledTimes(1);
+});
+
+it('classifies nested remote mounts using their remote directory rather than the local project directory', async () => {
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() }); closes.push(() => manager.dispose());
+    const fs = await manager.openFileSystem('/');
+    await fs.driver.createFile({ parentPath: '/docs', name: 'a.md', content: 'Local', recursive: true });
+    await fs.driver.createFile({ parentPath: '/linked/private', name: 'b.md', content: 'Remote', recursive: true });
+    const project = { path: '/p', name: 'P', project: { id: 'p', directory: '/home/me/project', source: { kind: 'local' } } };
+    const projects = { list: async () => [project], openFiles: async () => ({ fs, dispose: async () => {} }),
+        remoteMounts: { list: () => [{ at: '/linked', root: '/archive' }] } } as unknown as ProjectService;
+    const { TwinProjectCatalog } = await import('../src/digital-twin/project-catalog');
+    const catalog = await new TwinProjectCatalog(projects, { list: async () => [] } as any).discover();
+    const local = catalog.resources.find(resource => resource.path === 'docs/a.md')!;
+    const remote = catalog.resources.find(resource => resource.path === 'linked/private/b.md')!;
+    expect(local).toMatchObject({ location: 'local', directoryPath: '/home/me/project/docs/a.md' });
+    expect(remote).toMatchObject({ location: 'remote', directoryPath: '/archive/private/b.md' });
+    expect(matchesRules(remote, { include: [], exclude: ['remote:/archive/private/'] })).toBe(false);
 });

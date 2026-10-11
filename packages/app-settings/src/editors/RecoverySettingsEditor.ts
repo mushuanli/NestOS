@@ -1,3 +1,4 @@
+import { InitialFilesSection, type InitialFilesPort } from './initial-files';
 // @file: app-settings/editors/RecoverySettingsEditor.ts
 
 import { t } from '@itookit/common';
@@ -6,7 +7,10 @@ import { BaseSettingsEditor, Toast, Modal, type EditorOptions } from '@itookit/u
 
 export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementService> {
     constructor(container: HTMLElement, service: IAgentManagementService, options: EditorOptions,
-        private readonly restoreFlows?: () => Promise<number>) { super(container, service, options); }
+        private readonly restoreFlows?: () => Promise<number>, initialFiles?: InitialFilesPort) {
+        super(container, service, options); if (initialFiles) this.initialFiles = new InitialFilesSection(initialFiles);
+    }
+    private initialFiles?: InitialFilesSection;
     private restoringFlows = false;
     private selectedItems = new Set<string>(); // key = "type:id"
     private allItems: RestorableItem[] = [];
@@ -46,7 +50,7 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
                 </div>
 
                 ${dupWarnings}
-                ${this.restoreFlows ? `<section class="settings-section">
+                ${this.initialFiles ? `<div data-initial-files></div>` : this.restoreFlows ? `<section class="settings-section">
                     <h3>${this.escapeHtml(t('flow.library.restore'))}</h3>
                     <p>${this.escapeHtml(t('flow.library.recoveryHint'))}</p>
                     <button id="btn-restore-flows" class="settings-btn settings-btn--primary" ${this.restoringFlows ? 'disabled' : ''}>
@@ -59,6 +63,7 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
             </div>
         `;
 
+        await this.initialFiles?.mount(this.container.querySelector<HTMLElement>('[data-initial-files]')!);
         this.updateAllSelectAllState(providers, connections, agents);
         this.bindEvents();
     }
@@ -79,6 +84,8 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
             </div>
         `;
     }
+
+    async destroy(): Promise<void> { this.initialFiles?.destroy(); await super.destroy(); }
 
     private async restoreMissingFlows(): Promise<void> {
         if (!this.restoreFlows || this.restoringFlows) return;

@@ -1,3 +1,7 @@
+import { settleFailedJob } from '../src/digital-twin/failure-accounting';
+import { TwinDiagnosticError } from '../src/digital-twin/diagnostics';
+import { TwinRecords } from '../src/digital-twin/records';
+import { TwinScanStore } from '../src/digital-twin/scan-store';
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend, FSError } from '@itookit/vfs-core';
@@ -95,18 +99,18 @@ describe.each(['memory', 'indexeddb'] as const)('scan plans on %s', kind => {
         expect(snapshot.sources.find(source => source.id === host.a)!.data.analyzedHash).toBe('');
     });
     it('stops at a per-run budget and resumes committed segments through a new run', async () => {
-        const host = await setup(kind); host.texts.set('a', 'x'.repeat(9000));
-        const id = await host.service.saveScanPlan(null, null, host.input([host.a], { tokenLimit: 9000 }));
+        const host = await setup(kind); host.texts.set('a', 'x'.repeat(70000));
+        const id = await host.service.saveScanPlan(null, null, host.input([host.a], { tokenLimit: 44000 }));
         const r1 = await host.service.runScanPlan(id);
         await expect(host.service.waitScanRun(r1)).rejects.toThrow('SCAN_BUDGET_EXHAUSTED');
         let snapshot = await host.service.snapshot();
-        expect(snapshot.sources.find(source => source.id === host.a)!.data.offset).toBe(4000);
+        expect(snapshot.sources.find(source => source.id === host.a)!.data.offset).toBe(32768);
         expect(snapshot.scans.runs[0].data).toMatchObject({ state: 'paused', spentTokens: 2000, reservedTokens: 0 });
-        await host.service.saveScanPlan(id, snapshot.scans.plans[0].revision, host.input([host.a], { tokenLimit: 20000 }));
+        await host.service.saveScanPlan(id, snapshot.scans.plans[0].revision, host.input([host.a], { tokenLimit: 100000 }));
         await host.service.waitScanRun(await host.service.runScanPlan(id));
         snapshot = await host.service.snapshot(); expect(host.extractor.run).toHaveBeenCalledTimes(3);
         expect(snapshot.settings.data.spentTokens).toBe(6000);
-        expect(snapshot.sources.find(source => source.id === host.a)!.data.offset).toBe(9000);
+        expect(snapshot.sources.find(source => source.id === host.a)!.data.offset).toBe(70000);
     });
     it('rejects a late result after a plan is paused and retains unknown provider reservation', async () => {
         const host = await setup(kind); let release!: () => void;
@@ -144,6 +148,78 @@ describe.each(['memory', 'indexeddb'] as const)('scan plans on %s', kind => {
         await host.service.removeScanPlan(id, snapshot.scans.plans.find(plan => plan.id === id)!.revision);
         snapshot = await host.service.snapshot(); expect(snapshot.memories).toHaveLength(2);
         expect(snapshot.scans.plans.map(plan => plan.id)).toEqual([check]);
+    });
+    it('settles known usage on truncation once without advancing extraction progress', async () => {
+        const host = await setup(kind);
+        const error = new TwinDiagnosticError('TWIN_EXTRACTION_TRUNCATED', { message: 'Output limit reached' }, 1234);
+        vi.mocked(host.extractor.run).mockRejectedValueOnce(error);
+        const planId = await host.service.saveScanPlan(null, null, host.input([host.a]));
+        const runId = await host.service.runScanPlan(planId); await host.service.scanOnce();
+        const snapshot = await host.service.snapshot(), job = snapshot.jobs[0];
+        expect(job.data).toMatchObject({ state: 'failed', actualTokens: 1234, reservedTokens: 0 });
+        expect(snapshot.settings.data).toMatchObject({ spentTokens: 1234, reservedTokens: 0 });
+        expect(snapshot.scans.runs.find(run => run.id === runId)!.data).toMatchObject({ spentTokens: 1234, reservedTokens: 0 });
+        expect(snapshot.sources.find(source => source.id === host.a)!.data.offset).toBe(0);
+        const records = new TwinRecords(await SeqTwinStore.open(host.fs, 'personal', 'admin'));
+        await settleFailedJob(records, job.id, error, error.message);
+        expect((await host.service.snapshot()).settings.data.spentTokens).toBe(1234);
+    });
+    it('keeps model failure details separate from budget reservations', async () => {
+        const host = await setup(kind);
+        vi.mocked(host.extractor.run).mockRejectedValueOnce(new TwinDiagnosticError('TWIN_EXTRACTION_FAILED', { code: 'HTTP_400', message: 'Unsupported response_format' }));
+        const planId = await host.service.saveScanPlan(null, null, host.input([host.a]));
+        const runId = await host.service.runScanPlan(planId); await host.service.scanOnce();
+        const snapshot = await host.service.snapshot(), run = snapshot.scans.runs.find(run => run.id === runId)!;
+        expect(run.data).toMatchObject({ state: 'failed', error: 'TWIN_EXTRACTION_FAILED', errorDetail: 'HTTP_400: Unsupported response_format' });
+        expect(snapshot.jobs[0].data.finishedAt).toBeGreaterThanOrEqual(snapshot.jobs[0].data.createdAt!);
+        expect(snapshot.jobs[0].data).toMatchObject({ state: 'failed', error: 'TWIN_EXTRACTION_FAILED', errorDetail: run.data.errorDetail });
+        expect(snapshot.settings.data.reservedTokens).toBeGreaterThan(0);
+        expect(snapshot.settings.data.spentTokens).toBe(0);
+    });
+    it('renews a delayed heartbeat in the same generation but never revives a released lease', async () => {
+        const host = await setup(kind);
+        const records = new TwinRecords(await SeqTwinStore.open(host.fs, 'personal', 'admin'));
+        let now = 1000;
+        const store = new TwinScanStore(records, 'test', () => now, 100);
+        const fence = (await store.acquire())!;
+        now += 101; await store.renew(fence);
+        expect((await store.lease())!.data).toMatchObject({ fence, until: now + 100 });
+        await expect(store.fence(fence)).resolves.toMatchObject({ family: 'checkpoint', id: 'scan-worker' });
+        await store.release();
+        await expect(store.renew(fence)).rejects.toThrow('TWIN_SCAN_LEASE_LOST');
+        await expect(store.fence(fence)).rejects.toThrow('TWIN_SCAN_LEASE_LOST');
+    });
+    it('rejects an expired owner after another host wins the lease', async () => {
+        const host = await setup(kind);
+        const records = new TwinRecords(await SeqTwinStore.open(host.fs, 'personal', 'admin'));
+        let now = 1000;
+        const first = new TwinScanStore(records, 'first', () => now, 100);
+        const second = new TwinScanStore(records, 'second', () => now, 100);
+        const fence = (await first.acquire())!;
+        now += 101; expect(await second.acquire()).toBe(fence + 1);
+        await expect(first.renew(fence)).rejects.toThrow('TWIN_SCAN_LEASE_LOST');
+        await expect(first.fence(fence)).rejects.toThrow('TWIN_SCAN_LEASE_LOST');
+        await first.release();
+        expect((await second.lease())!.data.owner).toBe(second.owner);
+        await second.release();
+    });
+    it('completes a slow extraction after a delayed heartbeat without changing its fence', async () => {
+        const host = await setup(kind); let release!: () => void;
+        const waiting = new Promise<void>(resolve => { release = resolve; }), original = host.extractor.run;
+        vi.mocked(host.extractor.run).mockImplementationOnce(async (...args) => {
+            await args[2]('slow-task'); await waiting; return original(...args);
+        });
+        const planId = await host.service.saveScanPlan(null, null, host.input([host.a]));
+        const runId = await host.service.runScanPlan(planId);
+        await vi.waitFor(async () => expect((await host.service.snapshot()).jobs[0]?.data.state).toBe('running'));
+        const before = (await host.service.snapshot()).scans.runs.find(run => run.id === runId)!;
+        host.advance(101); release();
+        await host.service.scanOnce();
+        const after = await host.service.snapshot(), run = after.scans.runs.find(run => run.id === runId)!;
+        expect(run.data.state).toBe('succeeded');
+        expect(run.data.fence).toBe(before.data.fence);
+        expect(after.memories).toHaveLength(2);
+        expect(after.scans.worker.error).toBe('');
     });
     it('uses the shared host fence, recovers an interrupted run and rejects the old host result', async () => {
         const host = await setup(kind); let release!: () => void;

@@ -5,7 +5,7 @@ itookit 通过 npm 注册表安装独立库。新增统一接入包 piagent-driv
 | npm 包 | 固定版本 | 源码仓库 |
 |---|---|---|
 | @itookit/vfs-core | 5.3.1 | [vfs-core](https://github.com/mushuanli/vfs-core) |
-| @itookit/vfs-ui | 0.5.6 | [vfs-ui](https://github.com/mushuanli/vfs-ui) |
+| @itookit/vfs-ui | 0.5.7 | [vfs-ui](https://github.com/mushuanli/vfs-ui) |
 | @itookit/vfsdriver-indexeddb | 5.3.1 | [vfsdriver-indexeddb](https://github.com/mushuanli/vfsdriver-indexeddb) |
 | @itookit/vfsdriver-local | 5.3.0 | [vfsdriver-local](https://github.com/mushuanli/vfsdriver-local) |
 | @itookit/piagent-driver | 0.1.0（发布目标） | [piagent-driver](https://github.com/mushuanli/piagent-driver) |

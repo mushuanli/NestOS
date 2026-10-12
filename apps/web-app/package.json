@@ -31,7 +31,7 @@
     "@itookit/llm-ui": "workspace:*",
     "@itookit/mdxeditor": "0.5.1",
     "@itookit/vfs-core": "5.3.1",
-    "@itookit/vfs-ui": "0.5.6",
+    "@itookit/vfs-ui": "0.5.7",
     "@itookit/vfsdriver-indexeddb": "5.3.1",
     "codemirror": "^6.0.2",
     "dexie": "^4.2.1",

@@ -38,7 +38,7 @@
         "typescript": "^5.9.3",
         "@itookit/vfs-sync": "0.1.0",
         "@itookit/vfs-core": "5.3.1",
-        "@itookit/vfs-ui": "0.5.6",
+        "@itookit/vfs-ui": "0.5.7",
         "@itookit/vfsdriver-indexeddb": "5.3.1",
         "@itookit/vfsdriver-local": "5.3.0",
         "@itookit/driver-llm": "0.2.0",

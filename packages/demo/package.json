@@ -20,7 +20,7 @@
     "@itookit/driver-llm": "0.2.0",
     "@itookit/llm-ui": "workspace:*",
     "@itookit/mdxeditor": "0.5.1",
-    "@itookit/vfs-ui": "0.5.5",
+    "@itookit/vfs-ui": "0.5.6",
     "dexie": "^4.2.1",
     "immer": "^10.2.0",
     "marked": "^16.4.2",

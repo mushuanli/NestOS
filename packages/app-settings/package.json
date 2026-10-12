@@ -36,7 +36,7 @@
     "@itookit/common": "workspace:*",
     "@itookit/mdxeditor": "0.5.1",
     "@itookit/vfs-core": "5.3.1",
-    "@itookit/vfs-ui": "0.5.5",
+    "@itookit/vfs-ui": "0.5.6",
     "@itookit/ui-common": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*"
   },
@@ -44,7 +44,7 @@
     "@itookit/common": "workspace:*",
     "@itookit/mdxeditor": "0.5.1",
     "@itookit/vfs-core": "5.3.1",
-    "@itookit/vfs-ui": "0.5.5",
+    "@itookit/vfs-ui": "0.5.6",
     "@types/node": "^20.19.25",
     "typescript": "^5.9.3",
     "vite": "^5.4.21",

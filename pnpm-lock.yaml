@@ -62,8 +62,8 @@ importers:
         specifier: 0.1.0
         version: 0.1.0
       '@itookit/vfs-ui':
-        specifier: 0.5.5
-        version: 0.5.5
+        specifier: 0.5.6
+        version: 0.5.6
       '@itookit/vfsdriver-indexeddb':
         specifier: 5.3.1
         version: 5.3.1
@@ -269,8 +269,8 @@ importers:
         specifier: 5.3.1
         version: 5.3.1
       '@itookit/vfs-ui':
-        specifier: 0.5.5
-        version: 0.5.5
+        specifier: 0.5.6
+        version: 0.5.6
       '@itookit/vfsdriver-indexeddb':
         specifier: 5.3.1
         version: 5.3.1
@@ -384,8 +384,8 @@ importers:
         specifier: 0.1.0
         version: 0.1.0
       '@itookit/vfs-ui':
-        specifier: 0.5.5
-        version: 0.5.5
+        specifier: 0.5.6
+        version: 0.5.6
       '@itookit/vfsdriver-indexeddb':
         specifier: 5.3.1
         version: 5.3.1
@@ -504,8 +504,8 @@ importers:
         specifier: 5.3.1
         version: 5.3.1
       '@itookit/vfs-ui':
-        specifier: 0.5.5
-        version: 0.5.5
+        specifier: 0.5.6
+        version: 0.5.6
       '@types/node':
         specifier: ^20.19.25
         version: 20.19.25
@@ -577,8 +577,8 @@ importers:
         specifier: 5.3.1
         version: 5.3.1
       '@itookit/vfs-ui':
-        specifier: 0.5.5
-        version: 0.5.5
+        specifier: 0.5.6
+        version: 0.5.6
       '@itookit/vfsdriver-indexeddb':
         specifier: 5.3.1
         version: 5.3.1
@@ -652,8 +652,8 @@ importers:
         specifier: 0.5.1
         version: 0.5.1
       '@itookit/vfs-ui':
-        specifier: 0.5.5
-        version: 0.5.5
+        specifier: 0.5.6
+        version: 0.5.6
       dexie:
         specifier: ^4.2.1
         version: 4.2.1
@@ -1862,8 +1862,8 @@ packages:
   '@itookit/vfs-sync@0.1.0':
     resolution: {integrity: sha512-nWpnOPouSnhMs60BVy+mB70GGxEld5jgRGuxZQ5Jxj1kkQdrZsNd/+/s+kzSD8BCJLaxzp5J/LpNd5OwSJFZCQ==}
 
-  '@itookit/vfs-ui@0.5.5':
-    resolution: {integrity: sha512-6skFBx5GROm8ARDIwHMSpNM3TpfT1xfw4mUfw5T90dHRj3OZPAld91RaWheAcsRjYpVvCfKeyfdKvgtCiQEo4g==}
+  '@itookit/vfs-ui@0.5.6':
+    resolution: {integrity: sha512-uG96MqXlzUr0ufexT8gdthCX2KX/4cCPSJz4yXv/7DJDHRv1BF7bxmLS2DETBGQ0SGwJPoumS/KlXdHm186P9Q==}
     engines: {node: '>=16.0.0'}
 
   '@itookit/vfsdriver-indexeddb@5.3.1':
@@ -5549,7 +5549,7 @@ snapshots:
 
   '@itookit/vfs-sync@0.1.0': {}
 
-  '@itookit/vfs-ui@0.5.5':
+  '@itookit/vfs-ui@0.5.6':
     dependencies:
       '@itookit/vfs-core': 5.3.1
 

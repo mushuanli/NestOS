@@ -34,6 +34,8 @@ node:renamed
 
 打开 Session 时，`SessionService.loadSession` 只绑定一次，完成目标分支选择后复用 manifest；输入状态在 HistoryView 创建前读取。新建 API 的侧栏刷新与编辑器打开并行。历史链读取和首屏 Markdown 去重的证据见 [Session 性能审查](./design/llm-ui-session-performance.md)。
 
+工作台侧栏标题区通过 npm 包 `@itookit/vfs-ui` 的工具栏动作定义，按“新建项目、刷新、导入、导出”呈现外层按钮，项目内也保持可见。新建项目调用宿主项目创建流程；刷新经 `SessionWorkbench.refresh` 使导航缓存失效并刷新资源树、项目切换器与当前目录列表，等待现有刷新队列完成，复用工具栏的去重与禁用状态，不重新创建已打开的编辑器或恢复输入草稿。
+
 ```
 ChatInput.send (llm-ui)
   → SendMessageCommand

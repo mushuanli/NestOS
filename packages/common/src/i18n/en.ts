@@ -863,6 +863,7 @@ export const en: LocaleStrings = {
     'vfs.toolbar.file': 'File',
     'vfs.toolbar.import': 'Import',
     'vfs.toolbar.export': 'Export',
+    'vfs.toolbar.refresh': 'Refresh',
     'vfs.toolbar.create': 'New {name}',
     'vfs.toolbar.selectExport': 'Select a project, session or file to export',
     'vfs.toolbar.project': 'Project',

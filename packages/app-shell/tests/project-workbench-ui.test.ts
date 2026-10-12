@@ -50,12 +50,18 @@ it('creates project Sessions from the selected project and edits its files in th
         expect(selector.value).toBe('/');
         expect(sidebar.querySelector(`[data-item-id="${folderBrowserPath((await projects.personal()).path)}"]`)).not.toBeNull();
         selector.value = projectPath; selector.dispatchEvent(new Event('change', { bubbles: true }));
-        await vi.waitFor(() => expect(sidebar.querySelector<HTMLElement>('.workbench-project-navigation__transfer')?.hidden).toBe(true));
+        await vi.waitFor(() => expect(selector.value).toBe(projectPath));
         await workbench.openResource(projectPath);
         const navigation = sidebar.querySelector('.workbench-sidebar__navigation')!;
         expect(navigation.textContent).toContain('Research');
         const header = navigation.querySelector('.workbench-project-navigation')!;
-        expect([...header.querySelectorAll<HTMLButtonElement>('button')].filter(button => !button.closest('[hidden]')).map(button => button.title)).toEqual(['新会话', t('project.sync.projectActions')]);
+        expect([...header.querySelectorAll<HTMLButtonElement>('button')].filter(button => !button.closest('[hidden]')).map(button => button.title))
+            .toEqual(['新会话', t('project.create'), t('action.refresh'), t('vfs.toolbar.import'), t('vfs.toolbar.export'), t('project.sync.projectActions')]);
+        expect([...header.querySelectorAll<HTMLElement>('[data-action]')].map(button => button.dataset.action))
+            .toEqual(['create-project', 'refresh', 'import', 'export']);
+        const createdProject = vi.spyOn(workbench as any, 'createProject').mockResolvedValue(undefined);
+        header.querySelector<HTMLButtonElement>('[data-action="create-project"]')!.click();
+        await vi.waitFor(() => expect(createdProject).toHaveBeenCalledWith('/')); createdProject.mockRestore();
         expect(navigation.querySelector('[data-directory-action]')).toBeNull();
         expect(navigation.querySelectorAll('[data-action="import"]')).toHaveLength(1);
         expect(navigation.querySelector('[data-action="import"]')?.closest('.workbench-project-navigation')).toBe(header);
@@ -102,6 +108,16 @@ it('creates project Sessions from the selected project and edits its files in th
         await workbench.openResource(projectPath + '/@files/notes.md');
         expect(file.mock.calls.at(-1)![1].initialContent).toBe('research notes');
         const options = file.mock.calls.at(-1)![1];
+        const activeBeforeRefresh = workbench.getActiveResourceId();
+        const filePanel = main.querySelector('.workbench-tabs__panel:not([hidden])');
+        const refreshButton = header.querySelector<HTMLButtonElement>('[data-action="refresh"]')!;
+        const refreshed = vi.spyOn(workbench as any, 'refresh');
+        refreshButton.click(); refreshButton.click();
+        await vi.waitFor(() => expect(refreshed).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(refreshButton.disabled).toBe(false)); refreshed.mockRestore();
+        expect(workbench.getActiveResourceId()).toBe(activeBeforeRefresh);
+        expect(main.querySelector('.workbench-tabs__panel:not([hidden])')).toBe(filePanel);
+        expect(options.signal.aborted).toBe(false); expect(file).toHaveBeenCalledOnce();
         await options.hostContext.saveContent('/workspace/notes.md', 'edited in workbench');
         const quote = { path: '/workspace/notes.md', content: 'selected', selection: true };
         await options.hostContext.chatFromFile(quote);

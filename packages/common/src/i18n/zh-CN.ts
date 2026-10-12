@@ -864,6 +864,7 @@ export const zhCN = {
     'vfs.toolbar.file': '文件',
     'vfs.toolbar.import': '导入',
     'vfs.toolbar.export': '导出',
+    'vfs.toolbar.refresh': '刷新',
     'vfs.toolbar.create': '新建{name}',
     'vfs.toolbar.selectExport': '请先选择要导出的项目、会话或文件',
     'vfs.toolbar.project': '项目',

@@ -9,6 +9,7 @@ import type { VFSActionDefinition, VFSActionContext, VFSToolbarContext, VFSColum
 import { decorateButton } from '../workbench/controls';
 
 interface Actions {
+    refresh?(): Promise<void>;
     projectRenamed?(from: ProjectFolder, to: ProjectFolder): void;
     projectMenu?(event: MouseEvent, project: ProjectFolder): Promise<void>;
     projectsChanged?(projects: ProjectFolder[]): void;
@@ -58,6 +59,13 @@ export class ProjectNavigation {
         this.updateHeader([], 0);
         this.options = {
             navigationToolbarOptions: { variant: 'plain', definitions: [
+                { id: 'create-project', label: t('project.create'), iconHTML: FILE_BROWSER_ICONS.addFolder, placement: 'toolbar',
+                    run: async () => { await this.actions.createProject('/'); } },
+                { id: 'refresh', label: t('action.refresh'), iconHTML: FILE_BROWSER_ICONS.refresh, placement: 'toolbar',
+                    run: async () => {
+                        if (this.actions.refresh) await this.actions.refresh();
+                        else { await this.ui()?.refresh(); await this.refresh(); }
+                    } },
                 this.transferAction('import', context => this.actions.importItems(context)),
                 this.transferAction('export', context => this.actions.exportItems(context)),
             ] },
@@ -66,7 +74,7 @@ export class ProjectNavigation {
     private transferAction(id: 'import' | 'export', run: (context: VFSToolbarContext) => Promise<void>): VFSActionDefinition {
         return { id, label: t(`vfs.toolbar.${id}`), iconHTML: VFS_TOOLBAR_ICONS[id],
             placement: (context: VFSActionContext) => {
-                if (context.origin === 'toolbar') return this.project ? 'hidden' : 'toolbar';
+                if (context.origin === 'toolbar') return 'toolbar';
                 return context.target?.metadata.custom.projectId ? 'menu' : 'hidden';
             },
             disabled: (context: VFSActionContext) => !!context.target?.metadata.custom.projectId
@@ -158,7 +166,7 @@ export class ProjectNavigation {
         this.projectChoices = projects;
         const project = this.project;
         this.syncStatus.update(project && this.actions.syncIndicator?.(project.project.id));
-        this.create.hidden = !project; this.toolbarContainer.hidden = !!project;
+        this.create.hidden = !project;
         this.menu.hidden = !project || !this.actions.projectMenu;
         this.create.disabled = !!project && this.offlinePaths.has(folderBrowserPath(project.path));
         this.create.setAttribute('aria-current', this.draftActive ? 'page' : 'false');

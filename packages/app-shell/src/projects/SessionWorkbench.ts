@@ -1219,6 +1219,7 @@ export class SessionWorkbench implements WorkspaceController {
             report: error => this.report(error),
         });
         this.projectNavigation = new ProjectNavigation(this.projects!, () => this.sidebarUI, {
+            refresh: () => { this.refresh(); return this.refreshTail; },
             projectRenamed: (from, to) => this.remapProjectRoutes(folderBrowserPath(from.path), folderBrowserPath(to.path), to.name),
             projectMenu: async (event, project) => {
                 await this.syncMenu.refresh(project.project.id);

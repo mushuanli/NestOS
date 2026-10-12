@@ -175,6 +175,14 @@ it('opens files from the root details, filters ignored files and returns to the 
     try {
         await workbench.start();
         await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/完整文件名称.md"]'), main.innerHTML).not.toBeNull());
+        const refresh = sidebar.querySelector<HTMLButtonElement>('.workbench-sidebar__navigation [data-action="refresh"]')!;
+        expect(refresh).not.toBeNull(); expect(refresh.hidden).toBe(false);
+        expect(refresh.closest('[hidden]')).toBeNull(); expect(refresh.disabled).toBe(false);
+        expect(refresh.title).toBe('刷新'); expect(refresh.querySelector('svg')).not.toBeNull();
+        const read = vi.spyOn(fs.driver, 'getChildren');
+        refresh.click();
+        await vi.waitFor(() => expect(read).toHaveBeenCalledWith('/'));
+        await vi.waitFor(() => expect(refresh.disabled).toBe(false)); read.mockRestore();
         expect(main.querySelector('[data-resource-id="/hidden.log"]')).toBeNull(); expect(sidebar.textContent).toContain('完整文件名称.md');
         const toolbar = main.querySelector('.workbench-directory__toolbar')!;
         expect([...toolbar.querySelectorAll('button')].map(button => button.title)).toEqual(['刷新列表', '新建文件', '新建目录']);

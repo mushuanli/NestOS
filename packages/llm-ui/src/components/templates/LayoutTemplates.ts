@@ -1,5 +1,5 @@
 // @file: llm-ui/components/templates/LayoutTemplates.ts
-import { escapeHTML, t } from '@itookit/common';
+import { ACTION_ICONS, escapeHTML, t } from '@itookit/common';
 
 export const LayoutTemplates = {
 
@@ -34,7 +34,8 @@ export const LayoutTemplates = {
                     <div class="llm-workspace-titlebar__menu-actions">
                 <button class="llm-workspace-titlebar__btn llm-workspace-titlebar__btn--text" id="llm-btn-workspace" hidden aria-haspopup="menu" aria-expanded="false">${escapeHTML(t('workspace.menu'))}</button>
                 <button class="llm-workspace-titlebar__btn llm-workspace-titlebar__btn--text" id="llm-btn-flow-output" title="${escapeHTML(t('flow.output.title'))}">${escapeHTML(t('flow.output.title'))}</button>
-                <button class="llm-workspace-titlebar__btn llm-workspace-titlebar__btn--text" id="llm-btn-session-rerun" title="${escapeHTML(t('session.rerun.hint'))}">${escapeHTML(t('session.rerun.title'))}</button>
+                <button type="button" class="llm-workspace-titlebar__btn" id="llm-btn-session-rerun" title="${escapeHTML(t('session.rerun.hint'))}" aria-label="${escapeHTML(t('session.rerun.title'))}">${ACTION_ICONS.rerun}</button>
+                <button type="button" class="llm-workspace-titlebar__btn" id="llm-btn-refresh" title="${escapeHTML(t('action.refresh'))}" aria-label="${escapeHTML(t('action.refresh'))}">${ACTION_ICONS.refreshView}</button>
                 <div class="llm-workspace-titlebar__bg-indicator" id="llm-bg-indicator" style="display:none;">
                     <span class="llm-bg-badge">2 running</span>
                 </div>

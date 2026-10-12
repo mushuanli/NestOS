@@ -76,7 +76,7 @@ it('renders each user and assistant message in its own MDx editor and preserves 
     expect(host.querySelector('[data-role="assistant"] .mdx-editor-renderer pre code')?.textContent).toContain('<script>sample</script>');
     const original=host.querySelector('[data-role="assistant"] .mdx-editor-renderer');
     vi.mocked(peer.read).mockResolvedValue({...state,messages:[messages[0],{...messages[1],text:'## Updated reply'}]});
-    [...host.querySelectorAll('button')].find(b=>b.textContent===t('harness.refresh'))!.click();
+    host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
     await vi.waitFor(()=>expect(original?.textContent).toContain('Updated reply'));
     expect(host.querySelector('[data-role="assistant"] .mdx-editor-renderer')).toBe(original);await editor.destroy();
 });
@@ -96,7 +96,7 @@ it('shows the remote error details and allows history loading to be retried',asy
     const {editor,peer,host}=setup();vi.mocked(peer.read).mockRejectedValueOnce(new Error('Native path unavailable'));
     await editor.init(host);expect(host.querySelector('[role="status"]')?.textContent).toContain('Native path unavailable');
     expect(host.querySelector('.llm-workspace-status__dot')?.classList.contains('--failed')).toBe(true);
-    [...host.querySelectorAll('button')].find(b=>b.textContent===t('harness.refresh'))!.click();
+    host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
     await vi.waitFor(()=>expect(host.querySelector('.mdx-editor-renderer')).not.toBeNull());await editor.destroy();
 });
 
@@ -306,7 +306,7 @@ it('groups all native response items with compact tool targets and keeps assista
     expect(toggle.getAttribute('aria-expanded')).toBe('false'); toggle.click();
     expect(toggle.getAttribute('aria-expanded')).toBe('true'); toggle.click(); expect(toggle.getAttribute('aria-expanded')).toBe('false');
     vi.mocked(peer.read).mockResolvedValue({...state, messages: messages.map(message => message.id === 'a2' ? {...message, text: '## Updated result'} : message)});
-    [...host.querySelectorAll('button')].find(button => button.textContent === t('harness.refresh'))!.click();
+    host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
     await vi.waitFor(() => expect(reply.textContent).toContain('Updated result'));
     expect(host.querySelector('.llm-ui-session--assistant .mdx-editor-renderer')).toBe(reply); await editor.destroy();
 });

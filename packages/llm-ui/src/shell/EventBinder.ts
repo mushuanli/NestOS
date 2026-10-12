@@ -15,6 +15,7 @@ export interface EventBinderCallbacks {
     onCollapseAll: () => void;
     onCopy: () => void;
     onPrint: () => void;
+    onRefresh: () => void;
 }
 
 export interface GlobalShortcutCallbacks {
@@ -41,7 +42,7 @@ export class EventBinder {
         const titlebar = menu.closest<HTMLElement>('.llm-workspace-titlebar');
         const toolbar = titlebar?.querySelector<HTMLElement>('.llm-workspace-titlebar__primary');
         if (titlebar && toolbar) {
-            const actions = ['llm-btn-session-rerun', 'llm-btn-history-visibility', 'llm-btn-navigator', 'llm-btn-copy']
+            const actions = ['llm-btn-refresh', 'llm-btn-session-rerun', 'llm-btn-history-visibility', 'llm-btn-navigator', 'llm-btn-copy']
                 .flatMap(id => { const button = menu.querySelector<HTMLElement>('#' + id); return button ? [button] : []; });
             this.disposeResponsive?.();
             this.disposeResponsive = installResponsiveActions({ container: titlebar, toolbar, actions, minWidth: 760,
@@ -93,6 +94,7 @@ export class EventBinder {
 
     bindNavigationEvents(): void {
         const bindings: Record<string, (() => void) | undefined> = {
+            '#llm-btn-refresh': this.callbacks.onRefresh,
             '#llm-btn-navigator': this.callbacks.onToggleNavigator,
             '#llm-btn-prev-unfolded': this.callbacks.onPrevUnfolded,
             '#llm-btn-next-unfolded': this.callbacks.onNextUnfolded,

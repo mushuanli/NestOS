@@ -16,7 +16,7 @@ import { EventBus } from '@itookit/vfs-core';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import type { EventEnvelope, InteractionRequest, JsonValue } from '@itookit/durable-kernel';
 
-import { ISessionRepository, IAgentConfigService, type ConversationManifest, SessionCommand } from '@itookit/llm-session/contracts';
+import { ISessionRepository, IAgentConfigService, type ConversationManifest, type SessionSnapshot, SessionCommand } from '@itookit/llm-session/contracts';
 
 // Domain — 只依赖接口和类型
 import type { IHistoryPresenter } from '../domain/ports/IHistoryPresenter';
@@ -163,6 +163,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private bus!: IEditorEventBus;
     private commandRegistry!: CommandRegistry;
     private eventBinder!: EventBinder;
+    private refreshPending = false;
     private sessionEventHandler!: SessionEventHandler;
 
     // === 命令实例 ===
@@ -636,6 +637,7 @@ export class LLMWorkspaceEditor implements IEditor {
             onCollapseAll: () => this.handleToggleAllFold(),
             onCopy: () => this.handleCopy(),
             onPrint: () => this.handlePrint(),
+            onRefresh: () => { void this.handleRefresh(); },
         });
 
         this.eventBinder.bindTitleBarEvents();
@@ -740,6 +742,27 @@ export class LLMWorkspaceEditor implements IEditor {
             states: (this.historyView as HistoryView).getCollapseStates(),
         });
         this.updateCollapseButtonIcon(isNowCollapsed);
+    }
+
+    private async handleRefresh(): Promise<void> {
+        const sessionId = this.currentSessionId;
+        if (!sessionId || this.refreshPending || this.attachmentClosed) return;
+        this.refreshPending = true;
+        const button = this.domCache.byId('llm-btn-refresh') as HTMLButtonElement | null;
+        if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+        try {
+            const snapshot = await this.commandBus.execute<SessionSnapshot>(SessionCommand.GetSnapshot);
+            if (this.attachmentClosed || this.currentSessionId !== sessionId || snapshot.sessionId !== sessionId) return;
+            this.historyView.renderFull(snapshot.sessions);
+            this.statusIndicator.updateFromSnapshot(snapshot);
+            await this.branchStore.refresh();
+            if (!this.attachmentClosed && this.currentSessionId === sessionId) this.navigation.pushNavData();
+        } catch (error) {
+            if (!this.attachmentClosed) this.errorHandler.handle(error, 'Refresh conversation');
+        } finally {
+            this.refreshPending = false;
+            if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+        }
     }
 
     private async handleCopy(): Promise<void> {

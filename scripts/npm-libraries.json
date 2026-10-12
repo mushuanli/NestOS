@@ -1,6 +1,6 @@
 [
   {"directory":"vfs-core","name":"@itookit/vfs-core","version":"5.3.1"},
-  {"directory":"vfs-ui","name":"@itookit/vfs-ui","version":"0.5.5"},
+  {"directory":"vfs-ui","name":"@itookit/vfs-ui","version":"0.5.6"},
   {"directory":"vfsdriver-indexeddb","name":"@itookit/vfsdriver-indexeddb","version":"5.3.1"},
   {"directory":"vfsdriver-local","name":"@itookit/vfsdriver-local","version":"5.3.0"},
   {"directory":"piagent-driver","name":"@itookit/piagent-driver","version":"0.1.0","workspace":true},

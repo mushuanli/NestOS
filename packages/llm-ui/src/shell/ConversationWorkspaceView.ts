@@ -49,7 +49,6 @@ export class ConversationWorkspaceView {
         this.progress.append(this.progressText);
         this.earlier = this.button(t('harness.earlierHistory'), actions.earlier, this.progress); this.earlier.hidden = true;
         this.reconcile = this.button(t('harness.reconcile'), actions.reconcile, toolbar); this.reconcile.disabled = true;
-        this.button(t('harness.refresh'), actions.refresh, toolbar);
         this.input = this.createInput(options, actions);
         this.input.setAvailability({canSend: false, canInterrupt: false});
         this.interactions.className = 'remote-conversation__interactions';
@@ -70,6 +69,7 @@ export class ConversationWorkspaceView {
         this.container.querySelector<HTMLButtonElement>('#llm-btn-sidebar')!.hidden = !options.hostContext?.toggleSidebar;
         const events = new EventBinder(this.container, {
             onToggleSidebar: () => options.hostContext?.toggleSidebar(),
+            onRefresh: actions.refresh,
             onToggleHistory: () => this.panes.toggleHistory(),
             onCollapseAll: () => { this.history.view.toggleAllFold(); },
             onFoldCurrent: () => this.history.view.foldCurrentUnfolded(),

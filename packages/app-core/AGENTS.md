@@ -66,7 +66,7 @@ const runtime = await createApplicationRuntime({ backend, additionalMounts, owne
 const kernel = await createKernelRuntime({ systemFS, llmDriver, storageResolver, recover: false });
 ```
 
-`createApplicationRuntime` 的顺序是：`createInfrastructure`（VFS + LLM 驱动）→ 核心服务（agent/flow/session files/mounts）→ `createKernelRuntime` → 取租约并**后台**恢复租约集合（`recoverSessionsWithLeases` 只等租约与宿主核对）→ 会话系统（`initializeConversationSystem`）→ 默认 Flow 播种 → `RunCatalog`。恢复不再阻塞宿主首屏：写入门（`acquireLater`）与结构写（`acquireMetadataLease`）等待该 Session 所属的批量恢复完成，失败向写入方报错并保持拒写；`release()` 等待在途恢复后再释放租约。释放走 `cleanupFns` 逆序 + `AggregateError`，VFS 最后释放。
+`createApplicationRuntime` 的顺序是：`createInfrastructure`（VFS + LLM 驱动）→ 核心服务（agent/flow/session files/mounts）→ `createKernelRuntime` → 取租约并**后台**恢复租约集合（`recoverSessionsWithLeases` 只等每批最多 100 个 Session 的批量租约事务与最多 10 路并发宿主核对）→ 会话系统（`initializeConversationSystem`）→ 默认 Flow 播种 → `RunCatalog`。恢复不再阻塞宿主首屏：写入门（`acquireLater`）与结构写（`acquireMetadataLease`）等待该 Session 所属的批量恢复完成，失败向写入方报错并保持拒写；`release()` 等待在途恢复后再释放租约。释放走 `cleanupFns` 逆序 + `AggregateError`，VFS 最后释放。
 
 ## 约束
 
@@ -129,3 +129,5 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 - 扫描 `focus` 随 run/scope 固化并参与检查点身份；无关注点的旧检查点保持兼容。规则停用或删除保留知识快照，`retained` 不代表继续读取源文件；全局排除仍使其失效。`graph.ts` 从可用记忆派生图，人物合并通过 entity 映射与版本检查点完成，不能按同名自动合并。
 
 - 数字分身仅自动加入邮件；普通工作区目录由 `workspace-catalog` 补充发现，菜单显式规则按来源身份匹配、最具体范围决定类型。`selection` / `identity` 封装类型与用户身份；移除来源清理派生知识但保留禁用定位记录，禁止永久墓碑阻止显式重新加入。
+
+启动扫描：项目身份目录最多 4 路并发，initializeSources 复用身份扫描并仅在目录变更后重读；Session 租约通过 acquireMany 在同一事务批量观察并提交，保持单写者与 fencing token。并发核对失败先排空在途工作再清理租约，Kernel 批量恢复必须等待全部核对成功。回归见 session-recovery、session-lease、map-concurrent、projects 与 http-app 的 storage 测试。

@@ -1,6 +1,7 @@
 import { moveSessionDataDirectory } from '@itookit/llm-session';
 import { FSError, type IFileSystem, type FileSystemSourceOwner } from '@itookit/vfs-core';
 import type { DirectoryMountService } from '../vfs/directory-mounts';
+import { mapConcurrent } from '../utils/map-concurrent';
 
 const ROOT = '/home/admin/projects';
 const INFO = '/.mindos/info.seq';
@@ -18,20 +19,18 @@ export class ProjectRepository {
             if (error instanceof FSError && error.code === 'ENOENT') return [];
             throw error;
         });
-        for (const child of children) if (child.type === 'directory' && child.name !== '.mindos') {
-            const project = await this.readLocal(child.path);
-            if (project) records.push(project);
-        }
-        for (const reference of await this.references(EXTERNAL)) {
+        const local = await mapConcurrent(children.filter(child => child.type === 'directory' && child.name !== '.mindos'),
+            4, child => this.readLocal(child.path));
+        records.push(...local.filter((project): project is StoredProject => project !== undefined));
+        const external = await mapConcurrent(await this.references(EXTERNAL), 4, async reference => {
             const project = await this.readLocal(reference.directory);
-            if (project && project.id === reference.id) records.push(project);
-        }
-        if (await this.root.driver.exists(READONLY)) for (const child of await this.root.driver.getChildren(READONLY)) {
-            if (child.type !== 'directory') continue;
-            const path = `${child.path}/info.seq`;
-            if (!await this.root.driver.exists(path)) continue;
-            const raw = await this.root.meta.seq!.getEntry(path, 'identity');
-            if (raw) records.push({ ...this.decode(raw), directory: `project:${this.decode(raw).id}`, kind: 'remote', metadataDirectory: child.path });
+            return project?.id === reference.id ? project : undefined;
+        });
+        records.push(...external.filter((project): project is StoredProject => project !== undefined));
+        if (await this.root.driver.exists(READONLY)) {
+            const remote = await mapConcurrent((await this.root.driver.getChildren(READONLY)).filter(child => child.type === 'directory'),
+                4, child => this.readRemote(child.path));
+            records.push(...remote.filter((project): project is StoredProject => project !== undefined));
         }
         const ids = new Set<string>();
         for (const record of records) {
@@ -39,6 +38,14 @@ export class ProjectRepository {
             ids.add(record.id);
         }
         return records;
+    }
+    private async readRemote(directory: string): Promise<StoredProject | undefined> {
+        const path = `${directory}/info.seq`;
+        if (!await this.root.driver.exists(path)) return undefined;
+        const raw = await this.root.meta.seq!.getEntry(path, 'identity');
+        if (!raw) return undefined;
+        const identity = this.decode(raw);
+        return { ...identity, directory: `project:${identity.id}`, kind: 'remote', metadataDirectory: directory };
     }
     async createLocal(directory: string, identity: ProjectIdentity): Promise<void> {
         const owner = await this.directories.openDirectory(directory);

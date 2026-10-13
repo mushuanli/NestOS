@@ -76,27 +76,30 @@ export class SessionLeaseStore {
     }
 
     async acquire(sessionId: string, owner: SessionLeaseOwner): Promise<SessionLeaseRecord | null> {
+        return (await this.acquireMany([sessionId], owner)).get(sessionId) ?? null;
+    }
+
+    /** One observed read and atomic commit; refused Sessions never enter the write set. */
+    async acquireMany(sessionIds: readonly string[], owner: SessionLeaseOwner): Promise<Map<string, SessionLeaseRecord>> {
+        const ids = [...new Set(sessionIds)];
+        const keys = ids.map(key);
+        if (!ids.length) return new Map();
         await this.init();
         const seq = this.fs.meta.seq!;
         if (!seq.transaction) throw new Error('Session leases require transactional SeqFiles');
         return seq.transaction(async tx => {
-            const raw = await tx.getEntry(this.path, key(sessionId));
-            const current = raw ? parse(raw) : null;
-            const now = this.now();
-            if (current && current.ownerId !== owner.id && current.leaseUntil + this.skewMs > now) return null;
-            const record: SessionLeaseRecord = {
-                sessionId,
-                ownerId: owner.id,
-                ownerKind: owner.kind,
-                fencingToken: (current?.fencingToken ?? 0) + 1,
-                leaseUntil: now + this.ttlMs,
-                heartbeatAt: now,
-            };
-            const changed = await tx.compareAndSet(this.path, key(sessionId), {
-                expected: raw,
-                value: JSON.stringify(record),
-            });
-            return changed ? record : null;
+            const entries = await tx.getEntries(this.path, keys);
+            const acquired = new Map<string, SessionLeaseRecord>();
+            for (const id of ids) {
+                const raw = entries[key(id)], current = raw ? parse(raw) : null, now = this.now();
+                if (current && current.ownerId !== owner.id && current.leaseUntil + this.skewMs > now) continue;
+                const record: SessionLeaseRecord = { sessionId: id, ownerId: owner.id, ownerKind: owner.kind,
+                    fencingToken: (current?.fencingToken ?? 0) + 1, leaseUntil: now + this.ttlMs, heartbeatAt: now };
+                // The transaction validates the observed batch before committing any lease.
+                await tx.setEntry(this.path, key(id), JSON.stringify(record));
+                acquired.set(id, record);
+            }
+            return acquired;
         });
     }
 

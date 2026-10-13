@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Server } from 'node:http';
 import { openLocalFSBackend, type LocalFSBackend } from '@itookit/vfsdriver-local';
-import { createApplicationRuntime } from '@itookit/app-core';
+import { createApplicationRuntime, SessionLeaseStore } from '@itookit/app-core';
+import { createVFS } from '@itookit/vfs-core';
 import { NodeSqliteSidecarDb } from '../src/server/sqlite-sidecar';
 import { createCertificates } from '../src/server/create-certificates';
 import { authenticatedFetch, secureServers, close } from './tls-fixture';
@@ -48,6 +49,20 @@ beforeEach(async () => {
 afterEach(async () => {
     closeFetch(); await close(server); await close(internal);
     await backend.close(); await rm(temp, { recursive: true, force: true });
+});
+
+it('acquires six Session leases with one batch read and one atomic HTTP commit', async () => {
+    const { manager } = await createVFS({ rootBackend: client });
+    const fs = await manager.openFileSystem('/'), leases = new SessionLeaseStore(fs);
+    try {
+        await leases.init();
+        await leases.acquire('busy', { id: 'other-host', kind: 'cli' });
+        requests = [];
+        const acquired = await leases.acquireMany(['s1', 's2', 's3', 's4', 's5', 's6', 'busy'], { id: 'host', kind: 'web' });
+        expect([...acquired.keys()]).toEqual(['s1', 's2', 's3', 's4', 's5', 's6']);
+        expect(requests).toEqual(['records.getMany', 'records.commit']);
+        expect((await leases.inspect('busy'))?.ownerId).toBe('other-host');
+    } finally { await manager.dispose(); }
 });
 
 it('serves the entry and round-trips binary files, metadata, tags and renamed SeqFile data', async () => {

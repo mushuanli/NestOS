@@ -146,9 +146,10 @@ export class ProjectService {
     }
     async initializeSources(): Promise<void> {
         await this.recoverLegacyDirectories();
-        const storedProjects = new Map((await this.projectRepository.list()).map(project => [project.id, project]));
+        const storedProjects = await this.projectRepository.list();
         let folders = await this.repository.listFolders();
-        for (const project of await this.list(folders)) {
+        for (const stored of storedProjects) {
+            const project = this.projectFolder(stored, folders);
             const cached = folders.find(folder => folder.project?.id === project.project.id);
             if (!cached) {
                 const slot = folders.find(folder => folder.path === project.path);
@@ -156,8 +157,7 @@ export class ProjectService {
                 else await this.repository.createFolder(project.path, project.project);
             }
             else if (cached.path !== project.path) await this.repository.renameFolder(cached.path, project.path);
-            folders = await this.repository.listFolders();
-            const stored = storedProjects.get(project.project.id)!;
+            if (!cached || cached.path !== project.path) folders = await this.repository.listFolders();
             await this.repository.indexProjectSessions?.(this.projectRepository.sessionDirectory(stored));
         }
     }

@@ -3,6 +3,36 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionLeaseStore } from '../src/index';
 
 describe('SessionLeaseStore', () => {
+    it('acquires a deduplicated batch while preserving busy owners, skew and fencing tokens', async () => {
+        const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+        const fs = await manager.openFileSystem('/'), store = new SessionLeaseStore(fs, { now: () => 1000 });
+        try {
+            await store.acquire('busy', { id: 'other', kind: 'cli' });
+            const batch = await store.acquireMany(['a', 'b', 'a', 'busy'], { id: 'host', kind: 'web' });
+            expect([...batch.keys()]).toEqual(['a', 'b']);
+            expect(batch.get('a')?.fencingToken).toBe(1);
+            expect((await store.inspect('busy'))?.ownerId).toBe('other');
+            expect((await store.acquireMany(['a', 'b'], { id: 'host', kind: 'web' })).get('a')?.fencingToken).toBe(2);
+        } finally { await manager.dispose(); }
+    });
+
+    it('rolls back all staged leases when a later record in the batch is invalid', async () => {
+        const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+        const fs = await manager.openFileSystem('/'), store = new SessionLeaseStore(fs);
+        try {
+            await store.init();
+            await fs.meta.seq!.setEntry('/var/lib/kernel/session-leases.seq', 'lease/bad', '{}');
+            await expect(store.acquireMany(['free', 'bad'], { id: 'host', kind: 'web' })).rejects.toThrow('Invalid Session lease record');
+            expect(await store.inspect('free')).toBeNull();
+        } finally { await manager.dispose(); }
+    });
+
+    it('does not touch storage for an empty batch and validates all identities before writing', async () => {
+        const store = new SessionLeaseStore({} as never);
+        expect(await store.acquireMany([], { id: 'host', kind: 'web' })).toEqual(new Map());
+        await expect(store.acquireMany(['valid', '../invalid'], { id: 'host', kind: 'web' })).rejects.toThrow('Invalid Session lease identity');
+    });
+
     it('shares concurrent initialization, then retries once after a failed attempt', async () => {
         const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
         const fs = await manager.openFileSystem('/data');

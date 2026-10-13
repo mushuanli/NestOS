@@ -2,9 +2,12 @@ import { traceBoot } from '@itookit/common';
 import type { Kernel } from '@itookit/durable-kernel';
 import { SessionLeaseStore, type SessionLeaseRecord, type SessionOwnerKind } from '../kernel/session-lease';
 import { summarizeRecovery, type RecoverySample } from './recovery-trace';
+import { mapConcurrent } from '../utils/map-concurrent';
 
 type RecoveryKernel = Pick<Kernel, 'listSessions' | 'recoverSessions' | 'recoverSession'>;
 type Owner = { id: string; kind: SessionOwnerKind };
+const BOOT_RECONCILIATION_CONCURRENCY = 10;
+const BOOT_LEASE_BATCH_SIZE = 100;
 export interface SessionRecovery {
     leases: Map<string, SessionLeaseRecord>;
     /** Acquire and recover before admitting writes; concurrent requests share one recovery. */
@@ -31,12 +34,18 @@ class LeasedRecovery implements SessionRecovery {
     }
 
     async boot(): Promise<void> {
-        const leased: string[] = [];
-        for await (const session of this.kernel.listSessions()) {
-            if (this.excluded.has(session.id) || !await this.acquire(session.id)) continue;
-            await this.beforeRecover?.(session.id);
-            leased.push(session.id);
+        const ids: string[] = [];
+        for await (const session of this.kernel.listSessions()) if (!this.excluded.has(session.id)) ids.push(session.id);
+        for (let offset = 0; offset < ids.length; offset += BOOT_LEASE_BATCH_SIZE) {
+            const batch = ids.slice(offset, offset + BOOT_LEASE_BATCH_SIZE);
+            const acquired = await this.store.acquireMany(batch, this.owner);
+            for (const [id, lease] of acquired) this.leases.set(id, lease);
+            for (const id of batch) if (!acquired.has(id)) await this.reportRefused(id);
         }
+        const leased = await mapConcurrent(ids.filter(id => this.leases.has(id)), BOOT_RECONCILIATION_CONCURRENCY, async id => {
+            await this.beforeRecover?.(id);
+            return id;
+        });
         // Recovery is proportional to the catalog, so the host paints first and every write waits
         // for it through acquireLater; only lease acquisition and host reconciliation block boot.
         if (leased.length) this.startSweep(leased);
@@ -121,12 +130,16 @@ class LeasedRecovery implements SessionRecovery {
     private async acquire(id: string): Promise<boolean> {
         const lease = await this.store.acquire(id, this.owner);
         if (!lease) {
-            const held = await this.store.inspect(id);
-            console.warn(`[Shell] Session ${id} is owned by ${held?.ownerKind}:${held?.ownerId} until ${held ? new Date(held.leaseUntil).toISOString() : 'unknown'}; leaving it read-only`);
+            await this.reportRefused(id);
             return false;
         }
         this.leases.set(id, lease);
         return true;
+    }
+
+    private async reportRefused(id: string): Promise<void> {
+        const held = await this.store.inspect(id);
+        console.warn(`[Shell] Session ${id} is owned by ${held?.ownerKind}:${held?.ownerId} until ${held ? new Date(held.leaseUntil).toISOString() : 'unknown'}; leaving it read-only`);
     }
 
     private renew(id: string): Promise<boolean> {

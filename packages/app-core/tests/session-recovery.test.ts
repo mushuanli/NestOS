@@ -5,6 +5,48 @@ import { recoverSessionsWithLeases } from '../src/runtime/session-recovery';
 import { Kernel, SeqFileKernelStore } from '@itookit/durable-kernel';
 
 describe('Session recovery with leases', () => {
+    it('reconciles ten Sessions concurrently and starts the sweep only after all finish', async () => {
+        const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+        const fs = await manager.openFileSystem('/'), store = new SessionLeaseStore(fs);
+        const ids = Array.from({ length: 12 }, (_, index) => `s${index}`);
+        const gates = new Map<string, () => void>();
+        const kernel = { async *listSessions() { for (const id of ids) yield { id }; }, recoverSessions: vi.fn(async () => {}), recoverSession: vi.fn() };
+        const boot = recoverSessionsWithLeases(kernel as never, store, { id: 'host', kind: 'web' }, 10_000,
+            async id => { await new Promise<void>(resolve => { gates.set(id, resolve); }); });
+        try {
+            await vi.waitFor(() => expect(gates.size).toBe(10));
+            expect(kernel.recoverSessions).not.toHaveBeenCalled();
+            gates.get('s0')!(); gates.get('s1')!();
+            await vi.waitFor(() => expect(gates.size).toBe(12));
+            expect(kernel.recoverSessions).not.toHaveBeenCalled();
+            for (const release of gates.values()) release();
+            const recovery = await boot;
+            expect(kernel.recoverSessions).toHaveBeenCalledWith(ids, expect.objectContaining({ takeover: true }));
+            await recovery.release();
+        } finally { for (const release of gates.values()) release(); await manager.dispose(); }
+    });
+
+    it('drains concurrent reconciliation before releasing leases when one callback fails', async () => {
+        const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+        const fs = await manager.openFileSystem('/'), store = new SessionLeaseStore(fs);
+        let release!: () => void, fail!: (error: Error) => void;
+        const kernel = { async *listSessions() { yield { id: 'bad' }; yield { id: 'slow' }; }, recoverSessions: vi.fn() };
+        const boot = recoverSessionsWithLeases(kernel as never, store, { id: 'host', kind: 'web' }, 10_000,
+            async id => new Promise<void>((resolve, reject) => { if (id === 'bad') fail = reject; else release = resolve; }));
+        let settled = false;
+        const observed = boot.catch(error => { settled = true; return error; });
+        try {
+            await vi.waitFor(() => { expect(fail).toBeDefined(); expect(release).toBeDefined(); });
+            fail(new Error('reconcile failed')); await Promise.resolve(); await Promise.resolve();
+            expect(settled).toBe(false);
+            expect((await store.inspect('slow'))?.ownerId).toBe('host');
+            release(); expect(await observed).toMatchObject({ message: 'reconcile failed' });
+            expect(kernel.recoverSessions).not.toHaveBeenCalled();
+            expect(await store.acquire('slow', { id: 'next', kind: 'web' })).not.toBeNull();
+            expect(await store.acquire('bad', { id: 'next', kind: 'web' })).not.toBeNull();
+        } finally { release?.(); await manager.dispose(); }
+    });
+
     it('inspects and restores multiple leased Sessions before starting any workers', async () => {
         const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
         const fs = await manager.openFileSystem('/');

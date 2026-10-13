@@ -74,9 +74,9 @@ async function initializeDevices(options: ApplicationInfrastructureOptions, vfs:
     if (options.llmInitialization === 'background') {
         void initialization().catch(error => console.error('[Boot] LLM initialization failed', error));
     } else await initialization();
-    // Older npm cores have no readiness gate, so materialize before exposing the VFS.
-    const supportsReadiness = typeof (vfs.devices as { ready?: unknown }).ready === 'function';
-    if (options.deviceInitialization !== 'on-demand' || !supportsReadiness) {
+    if (options.deviceInitialization === 'on-demand' && typeof (vfs.devices as { ready?: unknown }).ready !== 'function')
+        throw new Error('On-demand devices require VFS readiness support');
+    if (options.deviceInitialization !== 'on-demand') {
         await traceBoot('llmDriver.createDeviceNodes', async () => {
             await llmDriver.ensureReady(); await llmDriver.createDeviceNodes();
         });

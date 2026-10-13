@@ -702,7 +702,7 @@ UI 的主题、OCR 配置和设置来源文件系统并行准备。工作区视�
 
 启动调度由 `runtime/startup-policy.ts` 和 `runtime/startup-coordinator.ts` 分开承担：前者按 interactive/headless 选择启动前、后台或工作区可用后的任务；后者只负责共享 readiness、有界并发、错误报告与关闭排空。llm-session 接收初始化调度回调，不判断宿主是否有 UI。interactive 宿主首次工作区可用后调用 `startBackground()`；具体 Session 使用仍等待自身初始化与租约校验。
 
-基础设施分别配置 LLM 初始化、设备节点初始化及目录预热，三者互不绑定。本地独立 vfs-core 支持设备 readiness 时，访问 `/dev/<handler>` 才等待并生成节点；旧 npm core 无此能力时自动使用启动前节点初始化，保持功能兼容，该路径首屏仍会较慢。独立库通过自身公开 exports 消费，不并入主仓库工作区。
+基础设施分别配置 LLM 初始化、设备节点初始化及目录预热，三者互不绑定。按需设备初始化要求 vfs-core 提供 readiness，访问 `/dev/<handler>` 才等待并生成节点；缺少该能力时明确拒绝启动，不再退回启动前全量生成节点。独立库通过自身公开 exports 消费，不并入主仓库工作区。
 
 
 ## 应用端口与独立 npm 边界

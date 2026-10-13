@@ -17,7 +17,10 @@ export class HttpTransport {
             throw new FSError('EIO', `HTTP storage connection failed: ${method}`, method, undefined, error instanceof Error ? error : undefined);
         }
         setStorageAvailable(true);
-        const payload = await response.json() as { result?: T; error?: { code: FSErrorCode; message: string } };
+        const payload = await response.json().catch(error => {
+            setStorageAvailable(false);
+            throw new FSError('EIO', `Invalid HTTP storage response: ${method} (HTTP ${response.status})`, method, undefined, error instanceof Error ? error : undefined);
+        }) as { result?: T; error?: { code: FSErrorCode; message: string } };
         if (!response.ok) {
             const id = response.headers.get('X-Request-ID');
             const request = id && /^[a-f0-9-]{36}$/.test(id) ? ` (requestId=${id})` : '';

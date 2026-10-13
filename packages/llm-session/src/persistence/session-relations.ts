@@ -1,3 +1,4 @@
+import { indexSessionSummary, removeSessionSummary } from './session-navigation-index';
 import { FSError, type IFileSystem, type ISeqFileTransaction } from '@itookit/vfs-core';
 import type { ConversationManifest, SessionFolder } from './types';
 import { resolveSessionStorageRoot } from './session-storage-locations';
@@ -83,6 +84,7 @@ export class SessionRelations {
     async finishDeletion(id: string): Promise<void> {
         await this.fs.meta.seq!.transaction!(async tx => {
             await tx.deleteEntry(RELATIONS_PATH, deletionKey(id));
+            await removeSessionSummary(tx, id);
             await touchSessionRelations(tx);
         });
     }
@@ -90,7 +92,9 @@ export class SessionRelations {
         const raw = await tx.getEntry(await metadataPath(tx, id), 'session');
         if (!raw) throw new FSError('ENOENT', 'Session not found');
         const current = JSON.parse(raw);
-        await tx.setEntry(await metadataPath(tx, id), 'session', JSON.stringify({ ...current, ...patch, updatedAt: Date.now(), revision: current.revision + 1 }));
+        const next = { ...current, ...patch, updatedAt: Date.now(), revision: current.revision + 1 };
+        await tx.setEntry(await metadataPath(tx, id), 'session', JSON.stringify(next));
+        await indexSessionSummary(tx, next, current);
     }
 }
 

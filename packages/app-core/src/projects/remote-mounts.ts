@@ -83,9 +83,9 @@ export class ProjectRemoteMountService {
     constructor(private readonly store: IFileSystem, private readonly provider: RemoteFileSourceProvider,
         private readonly beforeChange: (projectId: string) => Promise<void>,
         private readonly afterChange: (projectId: string) => Promise<void>, private readonly mcpConnections?: MCPRemoteConnections) { this.catalogStore = new RemoteMountStore(store); }
-    async init(): Promise<void> {
+    async init(deferMCP = false): Promise<void> {
         const saved = await this.catalogStore.load();
-        if (!saved) { await this.mcpConnections?.refresh(); return; }
+        if (!saved) { if (!deferMCP) await this.mcpConnections?.refresh(); return; }
         if (!saved || saved.version !== 1 || (!Number.isSafeInteger(saved.revision) || saved.revision < 0) || !saved.projects || typeof saved.projects !== 'object') throw new FSError('EINVAL', 'Invalid remote mount catalog');
         // Validate per record: a single damaged entry must not stop the whole application from
         // starting, and the surviving grants stay usable.
@@ -96,7 +96,7 @@ export class ProjectRemoteMountService {
                 return true;
             } catch { this.loadWarnings.push(`INVALID_CONNECTION:${(connection as { id?: string })?.id ?? 'unknown'}`); return false; }
         });
-        await this.mcpConnections?.migrate(connections,id => this.catalogStore.password(id));
+        if (connections.length || !deferMCP) await this.mcpConnections?.migrate(connections,id => this.catalogStore.password(id));
         const known = new Set([...connections, ...(this.mcpConnections?.list() ?? [])].map(connection => connection.id));
         const projects: Record<string, ProjectRemoteMount[]> = {};
         for (const [projectId, mounts] of Object.entries(saved.projects)) {

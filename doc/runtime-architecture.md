@@ -274,7 +274,7 @@ Tauri 每个页面先调用 `sidecar_open_scope`，Rust 以 WebView label 维护
 
 日志路径、排查流程与回归证据见 [启动故障与运行日志](design/startup-diagnostics.md)。
 
-目录预热的 `ensureDirectoryPath` 使用后端 `statType`（缺失时回退完整 stat），逐路径前缀验证类型而不读取无关元数据。LLM 默认提示词在一次 SeqFile 事务中检查/补齐，已有用户值保持不变。暖启动 I/O 计数及 Linux 实际分段耗时见上述诊断文档。
+目录预热的 `ensureDirectoryPath` 使用后端 `statType`（缺失时回退完整 stat），并发检查各路径前缀，按父子顺序创建缺失目录，而不读取无关元数据。LLM 默认提示词在一次 SeqFile 事务中检查/补齐，已有用户值保持不变。暖启动 I/O 计数及 Linux 实际分段耗时见上述诊断文档。
 
 ### 项目与统一工作台
 
@@ -686,10 +686,20 @@ sequenceDiagram
 
 来源与消费策略、版本和使用回执在 app-core；kernel-adapters 只提供通用异步发送前钩子，没有分身类型依赖。基础设施包装宿主 LLM 日志，为受门禁标记的分析/消费及后续轮次脱敏正文，保留响应观测。CLI 自有 Runtime 在恢复前接入相同门禁，`mindos twin` 管理命令采用共享应用 Runtime 和 SQLite。具体能力、布局与验收边界见[数字分身设计](design/数字分身完整设计与实施计划.md#实现与边界)。
 
-扫描计划与运行由 `digital-twin/scans.ts` 组织，`scan-store.ts` 在现有 SeqFile 中保存队列与扫描宿主租约，`scan-worker.ts` 调用已有 Kernel 提取任务。运行时在装配末尾启动 15 秒检查循环，退出时先停止分身扫描再释放内核与 VFS；`digitalTwinAutoStart=false` 可禁用自动调度。CLI 的一次性 twin 管理命令使用这一开关，`twin watch` 显式开启在线调度。间隔与变化轮询都保存下次检查时间，重开合并补跑；扫描暂停不阻断来源安全核对。
+扫描计划与运行由 `digital-twin/scans.ts` 组织，`scan-store.ts` 在现有 SeqFile 中保存队列与扫描宿主租约，`scan-worker.ts` 调用已有 Kernel 提取任务。运行时默认在装配末尾启动 15 秒检查循环；`startupMode=interactive` 的 UI 宿主在工作台可用后调用 `startBackground()` 启动，退出时先停止分身扫描再释放内核与 VFS；`digitalTwinAutoStart=false` 可禁用自动调度。CLI 的一次性 twin 管理命令使用这一开关，`twin watch` 显式开启在线调度。间隔与变化轮询都保存下次检查时间，重开合并补跑；扫描暂停不阻断来源安全核对。
 
 规则驱动发现使用 `project-catalog.ts` / `harness-reader.ts` 和 ProjectService 公开目录/会话接口；`source-index.ts` 根据规则并集和全局排除维护来源，成功枚举的范围才判定删除，离线标不可用。`saveScanRule/previewScanRule` 简化宿主配置，关注点随扫描作用域进入提取提示与检查点，模型与预算集中在高级设置。暂停规则保留知识快照，全局排除继续阻止使用。schema 1/layout 4 保留旧数据并隔离不理解规则的旧客户端。
+
+### 初始化依赖与并行
+
+VFS 基础目录和驱动注册完成后，LLM 配置在后台加载。核心文件系统（Agent、Flow、用户目录、提示词历史）并行打开；会话仓储初始化提前启动并共享 Promise，目录挂载偏好读取与仓储、Kernel 创建重叠。平台 `beforeRecover` 接线等待挂载偏好，删除恢复等待仓储就绪；项目核对等待仓储与挂载，避免迁移与项目索引互相覆盖。
+
+UI 的主题、OCR 配置和设置来源文件系统并行准备。工作区视图按导航创建，聊天侧栏状态与标签页状态并行读取，工具箱偏好与侧栏状态并行读取。折叠目录仍按展开层级读取；不会用并行创建所有视图来增加首屏网络竞争。关闭时先等待已启动的初始化任务，再释放相应服务。
 
 ### HTTP 启动读写优化
 
 项目身份目录以最多 4 路并发读取；`ProjectService.initializeSources` 复用同一次身份扫描，只在组织目录实际变更时重读目录记录。`SessionLeaseStore.acquireMany` 在一个 SeqFile 事务中批量观察租约，再暂存可取得的租约；提交校验全部读观察，保留拒租、时钟偏差和 fencing token 规则。http-app 的既有 `records.getMany` / `records.commit` 接口承载该批量操作，6 个 Session 的正常批次只需一次批量读取和一次原子提交，无需修改 pi-agent 协议。
+
+启动调度由 `runtime/startup-policy.ts` 和 `runtime/startup-coordinator.ts` 分开承担：前者按 interactive/headless 选择启动前、后台或工作区可用后的任务；后者只负责共享 readiness、有界并发、错误报告与关闭排空。llm-session 接收初始化调度回调，不判断宿主是否有 UI。interactive 宿主首次工作区可用后调用 `startBackground()`；具体 Session 使用仍等待自身初始化与租约校验。
+
+基础设施分别配置 LLM 初始化、设备节点初始化及目录预热，三者互不绑定。本地独立 vfs-core 支持设备 readiness 时，访问 `/dev/<handler>` 才等待并生成节点；旧 npm core 无此能力时自动使用启动前节点初始化，保持功能兼容，该路径首屏仍会较慢。独立库通过自身公开 exports 消费，不并入主仓库工作区。

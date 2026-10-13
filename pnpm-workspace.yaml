@@ -14,4 +14,5 @@ ignoredBuiltDependencies:
   - better-sqlite3
 
 patchedDependencies:
+  '@itookit/vfs-ui@0.5.7': patches/@itookit__vfs-ui@0.5.7.patch
   '@itookit/driver-llm@0.2.0': patches/@itookit__driver-llm@0.2.0.patch

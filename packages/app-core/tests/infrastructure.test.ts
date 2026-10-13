@@ -30,6 +30,25 @@ describe('application infrastructure ownership', () => {
         expect(close).toHaveBeenCalledOnce();
     });
 
+    it('defers device materialization until namespace access and merges concurrent preparation', async () => {
+        const nodes = vi.spyOn(LLMDeviceDriver.prototype, 'createDeviceNodes');
+        const infrastructure = await createInfrastructure({ backend: new MemoryBackend(), llmInitialization: 'background', deviceInitialization: 'on-demand', preloadDirectories: [] });
+        try {
+            await infrastructure.llmDriver.ensureReady();
+            const lazy = typeof (infrastructure.vfs.devices as { ready?: unknown }).ready === 'function';
+            expect(nodes).toHaveBeenCalledTimes(lazy ? 0 : 1);
+            expect(await infrastructure.systemFS.driver.getNode('/etc')).not.toBeNull();
+            expect(nodes).toHaveBeenCalledTimes(lazy ? 0 : 1);
+            const [first, second] = await Promise.all([
+                infrastructure.systemFS.driver.getChildren('/dev/llm/connection'),
+                infrastructure.systemFS.driver.getChildren('/dev/llm/connection'),
+            ]);
+            expect(first.length).toBeGreaterThan(0);
+            expect(second.map(node => node.path)).toEqual(first.map(node => node.path));
+            expect(nodes).toHaveBeenCalledOnce();
+        } finally { await infrastructure.vfs.dispose(); }
+    });
+
     it.each(['init', 'createDeviceNodes'] as const)('releases acquired resources when %s fails', async method => {
         const failure = new Error('device initialization failed');
         vi.spyOn(LLMDeviceDriver.prototype, method).mockRejectedValueOnce(failure);

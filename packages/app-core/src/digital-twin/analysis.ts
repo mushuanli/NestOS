@@ -27,13 +27,20 @@ export class TwinAnalysis {
     }
 
     async cancel(jobId: string): Promise<void> {
-        const job = await this.records.get<TwinAnalysisJob>('job', jobId);
-        if (!job || !['queued', 'running'].includes(job.data.state)) return;
-        await this.records.save('job', jobId, { ...job.data, state: 'cancelled', finishedAt: Date.now() }, job.revision);
+        const job = await retry(async () => {
+            const current = await this.records.get<TwinAnalysisJob>('job', jobId);
+            if (!current || !['queued', 'running'].includes(current.data.state)) return null;
+            await this.records.save('job', jobId, { ...current.data, state: 'cancelled', finishedAt: Date.now() }, current.revision);
+            return current;
+        });
+        if (!job) return;
         await this.extractor.cancel(job.data);
-        const latest = await this.records.get<TwinAnalysisJob>('job', jobId);
-        if (latest && latest.data.state === 'cancelled' && !latest.data.cancelConfirmed) await this.records.save('job', jobId,
-            { ...latest.data, cancelConfirmed: true }, latest.revision);
+        await retry(async () => {
+            const latest = await this.records.get<TwinAnalysisJob>('job', jobId);
+            if (latest && latest.data.state === 'cancelled' && !latest.data.cancelConfirmed) {
+                await this.records.save('job', jobId, { ...latest.data, cancelConfirmed: true }, latest.revision);
+            }
+        });
     }
 
     async authorize(sessionId: string, connectionId: string): Promise<void> {

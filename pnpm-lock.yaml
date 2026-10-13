@@ -39,6 +39,9 @@ patchedDependencies:
   '@itookit/driver-llm@0.2.0':
     hash: 5e8020f05177e13ce18e96095d51fedc289d26a352e65ed346356dcfc0eef5d2
     path: patches/@itookit__driver-llm@0.2.0.patch
+  '@itookit/vfs-ui@0.5.7':
+    hash: df578f98a57cc49fb13773452a53af4533ff6e77d43ea8bd1fa66f48421f2ff9
+    path: patches/@itookit__vfs-ui@0.5.7.patch
 
 importers:
 
@@ -65,7 +68,7 @@ importers:
         version: 0.1.0
       '@itookit/vfs-ui':
         specifier: 0.5.7
-        version: 0.5.7
+        version: 0.5.7(patch_hash=df578f98a57cc49fb13773452a53af4533ff6e77d43ea8bd1fa66f48421f2ff9)
       '@itookit/vfsdriver-indexeddb':
         specifier: 5.3.1
         version: 5.3.1
@@ -272,7 +275,7 @@ importers:
         version: 5.3.1
       '@itookit/vfs-ui':
         specifier: 0.5.7
-        version: 0.5.7
+        version: 0.5.7(patch_hash=df578f98a57cc49fb13773452a53af4533ff6e77d43ea8bd1fa66f48421f2ff9)
       '@itookit/vfsdriver-indexeddb':
         specifier: 5.3.1
         version: 5.3.1
@@ -387,7 +390,7 @@ importers:
         version: 0.1.0
       '@itookit/vfs-ui':
         specifier: 0.5.7
-        version: 0.5.7
+        version: 0.5.7(patch_hash=df578f98a57cc49fb13773452a53af4533ff6e77d43ea8bd1fa66f48421f2ff9)
       '@itookit/vfsdriver-indexeddb':
         specifier: 5.3.1
         version: 5.3.1
@@ -507,7 +510,7 @@ importers:
         version: 5.3.1
       '@itookit/vfs-ui':
         specifier: 0.5.7
-        version: 0.5.7
+        version: 0.5.7(patch_hash=df578f98a57cc49fb13773452a53af4533ff6e77d43ea8bd1fa66f48421f2ff9)
       '@types/node':
         specifier: ^20.19.25
         version: 20.19.25
@@ -580,7 +583,7 @@ importers:
         version: 5.3.1
       '@itookit/vfs-ui':
         specifier: 0.5.7
-        version: 0.5.7
+        version: 0.5.7(patch_hash=df578f98a57cc49fb13773452a53af4533ff6e77d43ea8bd1fa66f48421f2ff9)
       '@itookit/vfsdriver-indexeddb':
         specifier: 5.3.1
         version: 5.3.1
@@ -655,7 +658,7 @@ importers:
         version: file:packages/mdxeditor
       '@itookit/vfs-ui':
         specifier: 0.5.7
-        version: 0.5.7
+        version: 0.5.7(patch_hash=df578f98a57cc49fb13773452a53af4533ff6e77d43ea8bd1fa66f48421f2ff9)
       dexie:
         specifier: ^4.2.1
         version: 4.2.1
@@ -5551,7 +5554,7 @@ snapshots:
 
   '@itookit/vfs-sync@0.1.0': {}
 
-  '@itookit/vfs-ui@0.5.7':
+  '@itookit/vfs-ui@0.5.7(patch_hash=df578f98a57cc49fb13773452a53af4533ff6e77d43ea8bd1fa66f48421f2ff9)':
     dependencies:
       '@itookit/vfs-core': 5.3.1
 

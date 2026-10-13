@@ -208,7 +208,17 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
 
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
-    async init(): Promise<void> {
+    private initialization?: Promise<void>;
+    private disposed = false;
+    private autoConnections = new Set<Promise<unknown>>();
+    init(): Promise<void> {
+        if (this.disposed) return Promise.reject(new Error('LLM driver is disposed'));
+        return this.initialization ??= this.initialize();
+    }
+    ensureReady(): Promise<void> { return this.init(); }
+    ready(): Promise<void> { return this.createDeviceNodes(); }
+
+    private async initialize(): Promise<void> {
         const t0 = performance.now();
         let t = t0;
         const _log = (label: string) => {
@@ -237,19 +247,13 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         ]);
         _log('preloadDirs');
 
-        // Load pricing config, then init cost store
-        await this.providerManager.loadPricing();
-        _log('loadPricing');
-        const costStore = new CostStore(this.engine);
-        await costStore.ensureFile();
-        this.costManager = new CostManager(costStore);
-        _log('initCostStore');
-
-        // System prompt seqfile: /llm/systemprompt (key = agent id), seeded from the injected host catalog.
-        const systemPromptStore = new SystemPromptStore(this.engine, this.presets.agents);
-        await systemPromptStore.ensureFile();
-        await systemPromptStore.seedDefaults();
-        _log('initSystemPromptStore');
+        // These stores have independent files; publish readiness after every task settles.
+        const stores = await Promise.allSettled([
+            this.providerManager.loadPricing(), this.initializeCostStore(), this.initializePromptStore(),
+        ]);
+        const failedStores = stores.filter(result => result.status === 'rejected');
+        if (failedStores.length) throw new AggregateError(failedStores.map(result => result.reason), 'LLM stores failed to initialize');
+        _log('configStores');
 
         // Sync default providers, then merge into cache
         await this.providerManager.syncDefaultProviders(preProviders);
@@ -270,12 +274,31 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         this.skillManager.setSkills(preSkills);
         _log('reloadSkills');
 
+        for (const server of preMcps) if (server.autoConnect) this.autoConnect(server);
+
         // Cross-tab sync
         this.bindVFSEvents();
         console.log(`[Boot]     ↳ llm.init total: ${(performance.now() - t0).toFixed(0)}ms`);
+        this.notify();
+    }
+
+    private async initializeCostStore(): Promise<void> {
+        const store = new CostStore(this.engine);
+        await store.ensureFile();
+        this.costManager = new CostManager(store);
+    }
+
+    private async initializePromptStore(): Promise<void> {
+        const store = new SystemPromptStore(this.engine, this.presets.agents);
+        await store.ensureFile();
+        await store.seedDefaults();
     }
 
     async dispose(): Promise<void> {
+        this.disposed = true;
+        await this.initialization?.catch(() => {});
+        await this.deviceNodes?.catch(() => {});
+        await Promise.allSettled(this.autoConnections);
         this._eventUnsubs.forEach(fn => fn());
         this._eventUnsubs = [];
         if (this._syncTimer) { clearTimeout(this._syncTimer); this._syncTimer = null; }
@@ -290,7 +313,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
             }));
 
         // Disconnect all active MCP connections
-        await this.mcpManager.disconnectAll();
+        await this.mcpManager?.disconnectAll();
         this.sessions.clear();
     }
 
@@ -299,7 +322,13 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     /**
      * 在 VFS 中建立 /dev/llm/ 目录树并创建设备文件。
      */
-    async createDeviceNodes(): Promise<void> {
+    private deviceNodes?: Promise<void>;
+    createDeviceNodes(): Promise<void> {
+        return this.deviceNodes ??= this.populateDeviceNodes();
+    }
+    private async populateDeviceNodes(): Promise<void> {
+        await this.ensureReady();
+        if (this.disposed) return;
         // 建父目录（普通目录，不是 device 文件）
         await this.vfs.ensureSystemDirectory('/dev/llm');
         await Promise.all(['/dev/llm/connection', '/dev/llm/mcp', '/dev/llm/skills']
@@ -311,23 +340,12 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
             resourceId: conn.id,
         }));
 
-        // MCP device files + auto-connect
+        // MCP device files
         for (const server of this.mcpManager.getRawServers()) {
             await this.vfs.createDeviceNode('llm', `/dev/llm/mcp/${server.id}`, {
                 resourceType: 'mcp',
                 resourceId: server.id,
             });
-            if (server.autoConnect) {
-                // Race with a 3s timeout so a dead server doesn't block boot.
-                try {
-                    await Promise.race([
-                        this.mcpManager.connectMCPServer(server),
-                        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 3000)),
-                    ]);
-                } catch (e) {
-                    console.error(`[LLMDeviceDriver] Auto-connect MCP server '${server.id}' failed:`, e);
-                }
-            }
         }
 
         // Skill device files
@@ -337,9 +355,18 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         }));
     }
 
+    private autoConnect(server: MCPServer): void {
+        if (this.disposed) return;
+        const work = this.mcpManager.connectMCPServer(server);
+        this.autoConnections.add(work);
+        void work.catch(error => console.warn(`[LLMDeviceDriver] Auto-connect failed: ${server.id}`, error))
+            .finally(() => this.autoConnections.delete(work));
+    }
+
     // ─── IDeviceDriver: open / close ─────────────────────────────────────────
 
     async open(ctx: DeviceContext, options?: Record<string, unknown>): Promise<string> {
+        await this.ensureReady();
         const resourceType = (ctx.metadata?.resourceType ?? options?.resourceType) as string | undefined;
         const resourceId   = (ctx.metadata?.resourceId   ?? options?.resourceId)   as string | undefined;
 
@@ -425,6 +452,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     // ─── IDeviceDriver: ioctl ────────────────────────────────────────────────
     async ioctl(ctx: DeviceContext, command: string | number, arg?: unknown): Promise<unknown> {
         validateLLMIoctlArgument(command, arg);
+        await this.ensureReady();
         if (typeof command === 'string' && Object.hasOwn(this.managementIoctl, command)) {
             return this.managementIoctl[command as keyof typeof this.managementIoctl]!(ctx, arg);
         }
@@ -438,7 +466,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
 
     private readonly managementIoctl: Readonly<Partial<Record<(typeof LLM_IOCTL)[keyof typeof LLM_IOCTL], (ctx: DeviceContext, arg?: unknown) => Promise<unknown>>>> = Object.freeze({
         [LLM_IOCTL.LIST_CONNECTIONS]: async (_ctx, _arg) => {
-            return this.connectionManager.listConnections();
+            return this.connectionManager?.listConnections() ?? [];
         },
         [LLM_IOCTL.GET_CONNECTION_META]: async (_ctx, arg) => {
             return this.connectionManager.getConnection(arg as string) ?? null;
@@ -486,7 +514,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
             }
         },
         [LLM_IOCTL.LIST_PROVIDERS]: async (_ctx, _arg) => {
-            return this.providerManager.getProviders();
+            return this.providerManager?.getProviders() ?? [];
         },
         [LLM_IOCTL.GET_PROVIDER]: async (_ctx, arg) => {
             return this.providerManager.getProvider(arg as string) ?? null;
@@ -662,30 +690,37 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     // ─── IConnectionService ───────────────────────────────────────────────────
 
     async getConnections(): Promise<ConnectionMeta[]> {
+        await this.ensureReady();
         return this.connectionManager.getConnections();
     }
 
     async getConnection(id: string): Promise<ConnectionMeta | undefined> {
+        await this.ensureReady();
         return this.connectionManager.getConnection(id);
     }
 
     async getDefaultConnection(): Promise<ConnectionMeta | null> {
+        await this.ensureReady();
         return this.connectionManager.getDefaultConnection();
     }
     async setDefaultConnection(id: string | null): Promise<void> {
+        await this.ensureReady();
         await this.connectionManager.setDefaultConnection(id);
     }
 
     async getFullConnection(id: string): Promise<LLMConnection | null> {
+        await this.ensureReady();
         return this.connectionManager.getFullConnection(id);
     }
 
     async saveConnection(conn: LLMConnection, systemFS?: IFileSystem): Promise<void> {
+        await this.ensureReady();
         this.cancelPendingSync();
         await this.connectionManager.saveConnection(conn, systemFS);
     }
 
     async deleteConnection(id: string, systemFS?: IFileSystem): Promise<void> {
+        await this.ensureReady();
         this.cancelPendingSync();
         await this.connectionManager.deleteConnection(id, systemFS);
     }
@@ -696,11 +731,11 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     }
 
     listConnections(): ConnectionMeta[] {
-        return this.connectionManager.listConnections();
+        return this.connectionManager?.listConnections() ?? [];
     }
 
     findConnection(id: string): ConnectionMeta | undefined {
-        return this.connectionManager.findConnection(id);
+        return this.connectionManager?.findConnection(id);
     }
 
     // ─── ILLMManagementService — MCP ─────────────────────────────────────────
@@ -710,22 +745,28 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     }
 
     async getMCPServers(): Promise<MCPServer[]> {
+        await this.ensureReady();
         return this.mcpManager.getMCPServers();
     }
 
     async saveMCPServer(server: MCPServer, systemFS?: IFileSystem): Promise<void> {
+        await this.ensureReady();
         this.cancelPendingSync();
         await this.mcpManager.saveMCPServer(server, systemFS);
     }
 
-    async readMCPResource(id: string, uri: string) { return this.mcpManager.readMCPResource(id, uri); }
-    async getMCPPrompt(id: string, name: string, args?: Record<string, string>) { return this.mcpManager.getMCPPrompt(id, name, args); }
+    async readMCPResource(id: string, uri: string) {
+        await this.ensureReady(); return this.mcpManager.readMCPResource(id, uri); }
+    async getMCPPrompt(id: string, name: string, args?: Record<string, string>) {
+        await this.ensureReady(); return this.mcpManager.getMCPPrompt(id, name, args); }
 
     async testMCPServer(server: MCPServer) {
+        await this.ensureReady();
         return this.mcpManager.testMCPServer(server);
     }
 
     async deleteMCPServer(id: string, systemFS?: IFileSystem): Promise<void> {
+        await this.ensureReady();
         this.cancelPendingSync();
         await this.mcpManager.deleteMCPServer(id, systemFS);
     }
@@ -733,15 +774,18 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     // ─── ILLMManagementService — Skills ──────────────────────────────────────
 
     async getSkills(): Promise<LLMSkill[]> {
+        await this.ensureReady();
         return this.skillManager.getSkills();
     }
 
     async saveSkill(skill: LLMSkill, systemFS?: IFileSystem): Promise<void> {
+        await this.ensureReady();
         this.cancelPendingSync();
         await this.skillManager.saveSkill(skill, systemFS);
     }
 
     async deleteSkill(id: string, systemFS?: IFileSystem): Promise<void> {
+        await this.ensureReady();
         this.cancelPendingSync();
         await this.skillManager.deleteSkill(id, systemFS);
     }
@@ -749,10 +793,12 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     // ─── ILLMManagementService — Cost tracking ────────────────────────────────
 
     async recordCost(params: Parameters<import('@itookit/kernel-adapters/contracts').ILLMManagementService['recordCost']>[0]): Promise<void> {
+        await this.ensureReady();
         return this.costManager.recordCost(params);
     }
 
     async writePricing(config: import('@itookit/kernel-adapters/contracts').ModelPricingConfig): Promise<void> {
+        await this.ensureReady();
         return this.providerManager.writePricing(config);
     }
 
@@ -761,15 +807,16 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         dateTo?: string;
         providerId?: string;
     }): Promise<import('@itookit/kernel-adapters/contracts').CostRecord[]> {
+        await this.ensureReady();
         return this.costManager.queryCosts(filter);
     }
 
     getPricingConfig(): import('@itookit/kernel-adapters/contracts').ModelPricingConfig {
-        return this.providerManager.getPricingConfig();
+        return this.providerManager?.getPricingConfig() ?? { model_pricing: [] };
     }
 
     getPricingDefaults(): import('@itookit/kernel-adapters/contracts').ModelPricingConfig {
-        return this.providerManager.getPricingDefaults();
+        return structuredClone(this.presets.pricing);
     }
 
     // ─── ILLMManagementService — Defaults metadata ────────────────────────────
@@ -789,33 +836,36 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     // ─── IConnectionService — Provider metadata & testing ─────────────────────
 
     getProviderDefaults(): Record<string, LLMProvider> {
-        return this.providerManager.getProviderDefaults();
+        return structuredClone(this.presets.providers);
     }
 
     getProvider(providerId: string): LLMProvider | undefined {
-        return this.providerManager.getProvider(providerId);
+        return this.providerManager?.getProvider(providerId);
     }
 
     getProviders(): LLMProvider[] {
-        return this.providerManager.getProviders();
+        return this.providerManager?.getProviders() ?? [];
     }
 
     getFullProvider(id: string): LLMProvider | undefined {
-        return this.providerManager.getFullProvider(id);
+        return this.providerManager?.getFullProvider(id);
     }
 
     async saveProvider(provider: LLMProvider, systemFS?: IFileSystem): Promise<void> {
+        await this.ensureReady();
         this.cancelPendingSync();
         await this.providerManager.saveProvider(provider, systemFS);
         await this.connectionManager.ensureProviderConnection(provider, systemFS);
     }
 
     async deleteProvider(id: string, systemFS?: IFileSystem): Promise<void> {
+        await this.ensureReady();
         this.cancelPendingSync();
         await this.providerManager.deleteProvider(id, systemFS);
     }
 
     async testConnection(params: ProviderConnectionTestParams): Promise<ConnectionTestResult> {
+        await this.ensureReady();
         return testLLMConnection({ ...params, providerDefinition: params.providerDefinition ?? this.getFullProvider(params.provider), codex: this.resolveCodexConfig() });
     }
 

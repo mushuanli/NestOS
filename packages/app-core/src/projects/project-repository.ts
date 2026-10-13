@@ -12,8 +12,38 @@ export interface StoredProject extends ProjectIdentity { directory: string; kind
 
 /** Local identity lives with its directory; remote records are explicit workbench references. */
 export class ProjectRepository {
-    constructor(private readonly root: IFileSystem, private readonly directories: DirectoryMountService) {}
+    private unsubscribe?: () => void;
+    constructor(private readonly root: IFileSystem, private readonly directories: DirectoryMountService) {
+        this.unsubscribe = root.onAny?.(event => {
+            const payload = event.payload as { paths?: string[]; requestedPaths?: string[]; nodes?: Array<{path?: string; oldPath?: string; newPath?: string}> };
+            const paths = [...(payload.paths ?? []), ...(payload.requestedPaths ?? []),
+                ...(payload.nodes ?? []).flatMap(node => [node.path, node.oldPath, node.newPath].filter((path): path is string => !!path))];
+            if (paths.some(path => this.affectsIdentity(path))) this.invalidate();
+        });
+    }
+    dispose(): void { this.unsubscribe?.(); this.unsubscribe = undefined; this.invalidate(); }
+    private affectsIdentity(path: string): boolean {
+        if (path.endsWith('/.mindos/info.seq') || path === EXTERNAL || path.endsWith('/info.seq') && path.startsWith(READONLY + '/')) return true;
+        return path === ROOT || path.startsWith(ROOT + '/') && !path.slice(ROOT.length + 1).includes('/');
+    }
+    private snapshot?: { until: number; rows: StoredProject[] };
+    private pending?: Promise<StoredProject[]>;
+    private revision = 0;
+    invalidate(): void { this.revision++; this.snapshot = undefined; this.pending = undefined; }
     async list(): Promise<StoredProject[]> {
+        if (this.snapshot && this.snapshot.until > Date.now()) return structuredClone(this.snapshot.rows);
+        if (!this.pending) {
+            const revision = this.revision;
+            const work = this.scan().then(rows => {
+                if (revision === this.revision) this.snapshot = { until: Date.now() + 30_000, rows };
+                return rows;
+            });
+            this.pending = work;
+            void work.finally(() => { if (this.pending === work) this.pending = undefined; }).catch(() => {});
+        }
+        return structuredClone(await this.pending);
+    }
+    private async scan(): Promise<StoredProject[]> {
         const records: StoredProject[] = [];
         const children = await this.root.driver.getChildren(ROOT).catch(error => {
             if (error instanceof FSError && error.code === 'ENOENT') return [];
@@ -48,16 +78,18 @@ export class ProjectRepository {
         return { ...identity, directory: `project:${identity.id}`, kind: 'remote', metadataDirectory: directory };
     }
     async createLocal(directory: string, identity: ProjectIdentity): Promise<void> {
+        this.invalidate();
         const owner = await this.directories.openDirectory(directory);
         try { await this.writeIdentity(owner.fs, identity, false); }
-        finally { await owner.dispose(); }
+        finally { this.invalidate(); await owner.dispose(); }
         if (!directory.startsWith(ROOT + '/') || directory.slice(ROOT.length + 1).includes('/'))
             await this.saveReference(EXTERNAL, { ...identity, directory, kind: 'local' });
     }
     async adoptLocal(directory: string, identity: ProjectIdentity): Promise<void> {
+        this.invalidate();
         const owner = await this.directories.inspectDirectory(directory);
         try { await this.writeIdentity(owner.fs, identity, true); }
-        finally { await owner.dispose(); }
+        finally { this.invalidate(); await owner.dispose(); }
         if (!directory.startsWith(ROOT + '/') || directory.slice(ROOT.length + 1).includes('/'))
             await this.saveReference(EXTERNAL, { ...identity, directory, kind: 'local' });
     }
@@ -77,6 +109,7 @@ export class ProjectRepository {
         });
     }
     async createRemote(identity: ProjectIdentity): Promise<void> {
+        this.invalidate();
         const directory = identity.navigationName ?? identity.name;
         const path = `${READONLY}/${directory}/info.seq`;
         if (!await this.root.driver.exists(path)) await this.root.driver.createFile({ parentPath: `${READONLY}/${directory}`, name: 'info.seq', type: 'seqfile', recursive: true });
@@ -85,6 +118,7 @@ export class ProjectRepository {
         await this.root.meta.seq!.setEntry(path, 'identity', JSON.stringify(identity));
     }
     async rename(project: StoredProject, name: string, navigationName?: string): Promise<void> {
+        this.invalidate();
         const identity: ProjectIdentity = { version:1,id:project.id,name,createdAt:project.createdAt,...(navigationName ? {navigationName} : {}) };
         if (project.kind === 'remote') {
             await moveSessionDataDirectory(this.root, project.metadataDirectory!, `${READONLY}/${navigationName ?? name}`);
@@ -93,9 +127,10 @@ export class ProjectRepository {
         }
         const owner = await this.directories.openDirectory(project.directory);
         try { await owner.fs.meta.seq!.setEntry(INFO, 'identity', JSON.stringify(identity)); }
-        finally { await owner.dispose(); }
+        finally { this.invalidate(); await owner.dispose(); }
     }
     async remove(project: StoredProject): Promise<void> {
+        this.invalidate();
         if (project.kind === 'remote') {
             const path = `${project.metadataDirectory}/info.seq`;
             await this.root.meta.seq!.deleteEntry(path, 'identity');
@@ -105,7 +140,7 @@ export class ProjectRepository {
         try {
             await owner.fs.meta.seq!.deleteEntry(INFO, 'identity');
             await owner.fs.driver.delete([INFO]);
-        } finally { await owner.dispose(); }
+        } finally { this.invalidate(); await owner.dispose(); }
         if (await this.root.driver.exists(EXTERNAL)) await this.root.meta.seq!.deleteEntry(EXTERNAL, project.id);
         if (project.directory.startsWith(ROOT + '/')) await this.root.driver.delete([project.directory], { recursive: true });
     }

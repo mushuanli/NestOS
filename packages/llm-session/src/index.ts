@@ -96,6 +96,8 @@ import { DagCommandService } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
+    scheduleAgentInitialization?: (initialize: () => Promise<void>) => void | Promise<void>;
+    scheduleInvocationRecovery?: (recover: () => Promise<void>) => void | Promise<void>;
     directAgentPolicy?: import('./contracts').DirectAgentPolicy;
     hostPorts?: SessionHostPorts;
     agentResolution?: import('./session/agent-resolver').AgentResolutionPolicy;
@@ -173,12 +175,16 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
         return { branch: manifest.currentBranch, head: manifest.currentHead };
     }, (id, selected) => resolveSessionConnection(options, id, selected), options.flowInvocationSessions);
     invocations.register();
-    await createSessionHost(options.hostPorts).traceBoot('flowInvocations.recover', () => invocations.recover());
+    const recover = () => createSessionHost(options.hostPorts).traceBoot('flowInvocations.recover', () => invocations.recover());
+    if (options.scheduleInvocationRecovery) await options.scheduleInvocationRecovery(recover);
+    else await recover();
 }
 
 async function initializeServices(options: ConversationSystemOptions): Promise<PromptHistoryService> {
     const host = createSessionHost(options.hostPorts);
-    await host.traceBoot('agentService.init', () => options.agentService.init());
+    const initializeAgents = () => host.traceBoot('agentService.init', () => options.agentService.init());
+    if (options.scheduleAgentInitialization) await options.scheduleAgentInitialization(initializeAgents);
+    else await initializeAgents();
     await host.traceBoot('sessionEngine.init', () => options.sessionEngine.init());
     const history = new PromptHistoryService(options.promptHistoryFiles, host);
     await host.traceBoot('promptHistory.init', () => history.init()).catch(error => {

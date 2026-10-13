@@ -23,6 +23,11 @@ export class StorageApi {
             init: async () => ({ records: Boolean(records?.transaction) }),
             stat: pathMethod(backend.stat.bind(backend)),
             statType: pathMethod(backend.statType!.bind(backend)),
+            statTypes: async paths => {
+                if (!Array.isArray(paths) || paths.length > 1000) throw new FSError('EINVAL', 'Invalid type probe batch');
+                const checked = await Promise.all(paths.map(value => this.guard.check(value)));
+                return Promise.all(checked.map(value => backend.statType!(value)));
+            },
             list: pathMethod(async path => (await backend.list(path)).filter(node => this.guard.visible(node.path))),
             listEntries: pathMethod(async path => (await backend.listEntries!(path)).filter(node => this.guard.visible(node.path))),
             mkdir: pathMethod(backend.mkdir.bind(backend)),

@@ -11,6 +11,36 @@ beforeEach(async () => {
 afterEach(async () => { await repository.dispose(); await manager.dispose(); });
 
 describe('Session data repository', () => {
+    it('shares initialization across concurrent consumers and rejects initialization after disposal', async () => {
+        const reader = new SessionRepository(fs);
+        const first = reader.init(), second = reader.init();
+        expect(first).toBe(second);
+        await Promise.all([first, second]);
+        await reader.dispose();
+        await expect(reader.init()).rejects.toMatchObject({ code: 'EACCES' });
+    });
+
+    it('reindexes unchanged project summaries without rewriting their navigation rows', async () => {
+        const id = await repository.createSession('Indexed');
+        await repository.indexProjectSessions('/var/lib/sessions');
+        const transaction = fs.meta.seq!.transaction!.bind(fs.meta.seq);
+        const writes = vi.fn();
+        const seq = new Proxy(fs.meta.seq!, { get(target, key) {
+            if (key !== 'transaction') return Reflect.get(target, key);
+            return (run: Parameters<typeof transaction>[0]) => transaction(tx => {
+                const set = tx.setEntry.bind(tx);
+                tx.setEntry = async (...args) => { writes(...args); await set(...args); };
+                return run(tx);
+            });
+        } });
+        const reader = new SessionRepository({ ...fs, meta: { ...fs.meta, seq } });
+        await reader.indexProjectSessions('/var/lib/sessions');
+        expect(writes).not.toHaveBeenCalled();
+        await reader.dispose();
+        await repository.updateManifest(id, { title: 'Changed' });
+        await repository.indexProjectSessions('/var/lib/sessions');
+        expect((await repository.listSummariesInFolder(null))[0].title).toBe('Changed');
+    });
     it('conditionally migrates project references while preserving identity and rejecting stale updates', async () => {
         const previous = { id: 'legacy', directory: '/home/admin/projects/legacy' };
         await repository.createFolder('/Legacy', previous);

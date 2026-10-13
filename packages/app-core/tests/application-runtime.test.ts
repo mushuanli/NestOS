@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
+import { Kernel } from '@itookit/durable-kernel';
+import { DirectoryMountService } from '../src/vfs/directory-mounts';
+import { SessionRepository, VFSAgentService } from '@itookit/llm-session';
+import { ProjectRemoteMountService } from '../src/projects/remote-mounts';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { createInfrastructure } from '../src/runtime/infrastructure';
 import type { ApplicationPlatformServices } from '../src/runtime/create-application-runtime';
@@ -32,21 +36,69 @@ describe('application infrastructure', () => {
 });
 
 describe('host application startup', () => {
-    it('closes the kernel when the host recovery hook rejects startup', async () => {
-        const closed = vi.fn(), recovered = vi.fn();
-        await expect(createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli',
+    it('keeps Agent scanning out of deferred boot and initializes on first asynchronous use', async () => {
+        const initialize = vi.spyOn(VFSAgentService.prototype, 'init');
+        const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web',
+            startupMode: 'interactive', digitalTwinAutoStart: false });
+        try {
+            expect(initialize).not.toHaveBeenCalled();
+            expect(await runtime.agentService.getAgents()).not.toHaveLength(0);
+            expect(initialize).toHaveBeenCalledOnce();
+        } finally { await runtime.dispose(); initialize.mockRestore(); }
+    });
+
+    it('initializes the repository and Kernel while directory preferences are still loading', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const initialize = DirectoryMountService.prototype.init;
+        const directory = vi.spyOn(DirectoryMountService.prototype, 'init').mockImplementation(async function () {
+            await gate; await initialize.call(this);
+        });
+        const repository = vi.spyOn(SessionRepository.prototype, 'init');
+        const kernel = vi.spyOn(Kernel.prototype, 'initialize');
+        const pending = createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web',
+            startupMode: 'interactive', digitalTwinAutoStart: false });
+        try {
+            await vi.waitFor(() => expect(kernel).toHaveBeenCalled());
+            expect(directory).toHaveBeenCalled();
+            expect(repository).toHaveBeenCalled();
+            release();
+            const runtime = await pending;
+            await runtime.dispose();
+        } finally {
+            release(); await pending.then(runtime => runtime.dispose()).catch(() => {});
+            directory.mockRestore(); repository.mockRestore(); kernel.mockRestore();
+        }
+    });
+
+    it('defers remote configuration refresh until background startup', async () => {
+        const refresh = vi.spyOn(ProjectRemoteMountService.prototype, 'refreshMCPConnections');
+        const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web',
+            startupMode: 'interactive', digitalTwinAutoStart: false,
+            remoteSourceProvider: { setCredential() {}, dispose: async () => {}, open: async () => { throw new Error('not connected'); } } });
+        try {
+            await runtime.llmDriver.ensureReady();
+            expect(refresh).not.toHaveBeenCalled();
+            runtime.startBackground?.();
+            await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+        } finally { await runtime.dispose(); refresh.mockRestore(); }
+    });
+
+    it('keeps the host available when background reconciliation fails and rejects that Session on access', async () => {
+        const recovered = vi.fn();
+        const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false,
             kernelPlatform: {
                 configure: headless => {
                     vi.spyOn(headless.kernel, 'listSessions').mockImplementation(async function* () { yield { id: 'free' } as never; });
                     vi.spyOn(headless.kernel, 'recoverSession').mockImplementation(recovered);
-                    const dispose = headless.dispose.bind(headless);
-                    vi.spyOn(headless, 'dispose').mockImplementation(async () => { closed(); await dispose(); });
                 },
                 beforeSessionRecovery: async () => { throw new Error('workspace recovery refused'); },
             },
-        })).rejects.toThrow('workspace recovery refused');
-        expect(recovered).not.toHaveBeenCalled();
-        expect(closed).toHaveBeenCalledTimes(1);
+        });
+        try {
+            expect(await runtime.vfs.openFileSystem('/')).toBeDefined();
+            expect(recovered).not.toHaveBeenCalled();
+        } finally { await runtime.dispose(); }
     });
 
     it('awaits host binding with initialized file services before starting Session recovery', async () => {

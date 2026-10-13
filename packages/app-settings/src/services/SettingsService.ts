@@ -65,7 +65,9 @@ export class SettingsService {
     // 初始化
     // =========================================================
 
-    async init(): Promise<void> {
+    private initialization?: Promise<void>;
+    init(): Promise<void> { return this.initialization ??= this.initialize(); }
+    private async initialize(): Promise<void> {
         if (this.initialized) return;
 
         this.configFiles = await this.vfs.openFileSystem('/etc');
@@ -130,11 +132,13 @@ export class SettingsService {
     }
 
     async saveContact(contact: Contact): Promise<void> {
+        await this.init();
         this.updateOrAdd(this.state.contacts, contact);
         await this.saveEntity('contacts');
     }
 
     async deleteContact(id: string): Promise<void> {
+        await this.init();
         this.state.contacts = this.state.contacts.filter((c) => c.id !== id);
         await this.saveEntity('contacts');
         this.notify();
@@ -202,6 +206,7 @@ export class SettingsService {
     }
 
     async saveTag(tag: Tag): Promise<void> {
+        await this.init();
         // 更新 VFS 的标签定义
         await this.tagStore.save(tag);
         this.updateOrAdd(this.state.tags, tag);
@@ -209,6 +214,7 @@ export class SettingsService {
     }
 
     async deleteTag(tagId: string): Promise<void> {
+        await this.init();
         const tag = this.state.tags.find((t) => t.id === tagId);
         if (!tag) return;
 
@@ -238,6 +244,7 @@ export class SettingsService {
         settingsKeys: (keyof SettingsState)[], 
         moduleNames: string[]
     ): Promise<any> {
+        await this.init();
         const exportData: any = {
             version: 3,
             timestamp: Date.now(),
@@ -265,6 +272,7 @@ export class SettingsService {
         workspaceNames: string[],
         _options: { overwrite?: boolean; mergeTags?: boolean } = {}
     ): Promise<void> {
+        await this.init();
         if (data?.version !== 3 || data.type !== 'mixed_backup' || !Array.isArray(data.workspaces)) throw new Error('Unsupported backup; convert it before importing');
         const selected = data.workspaces.filter((entry: any) => workspaceNames.includes(entry.name));
         const seen = new Set<string>();
@@ -298,6 +306,7 @@ export class SettingsService {
     deleteSnapshot(name: string) { return this.snapshot.deleteSnapshot(name); }
 
     async restoreSnapshot(snapshotName: string): Promise<void> {
+        await this.init();
         await this.snapshot.restoreSnapshot(snapshotName);
         // 恢复后需要重新初始化 VFS
     }
@@ -367,6 +376,7 @@ export class SettingsService {
      * 清理资源
      */
     async dispose(): Promise<void> {
+        await this.initialization?.catch(() => {});
         // 清理监听器
         this.listeners.clear();
 

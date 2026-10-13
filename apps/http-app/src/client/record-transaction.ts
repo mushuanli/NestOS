@@ -17,6 +17,7 @@ export class HttpRecordTransaction implements IRecordTransaction {
     private readonly observations: Observation[] = [];
     private readonly mutations = new Map<string, Mutation>();
     private active = true;
+    private readonly reads = new Map<string, Cell>();
     constructor(private readonly transport: HttpTransport) {}
 
     async getRecordField(path: string, field: string): Promise<RecordValue | undefined> {
@@ -30,11 +31,20 @@ export class HttpRecordTransaction implements IRecordTransaction {
 
     async getRecordFieldsMany(requests: ReadonlyArray<RecordFieldRequest>): Promise<Array<RecordValue | undefined>> {
         this.check();
-        const missing = requests.filter(request => !this.mutations.has(key(request.path, request.field)));
+        const unique = new Map(requests.map(request => [key(request.path, request.field), request]));
+        const missing = [...unique.values()].filter(request => {
+            const id = key(request.path, request.field);
+            return !this.mutations.has(id) && !this.reads.has(id);
+        });
         const cells = missing.length ? await this.transport.call<Cell[]>('records.getMany', [missing]) : [];
-        if (missing.length) this.observations.push({ kind: 'get', requests: [...missing], values: cells });
-        let index = 0;
-        return requests.map(request => structuredClone((this.mutations.get(key(request.path, request.field))?.value ?? cells[index++])[0]));
+        if (missing.length) {
+            this.observations.push({ kind: 'get', requests: [...missing], values: structuredClone(cells) });
+            missing.forEach((request, index) => this.reads.set(key(request.path, request.field), cells[index]));
+        }
+        return requests.map(request => {
+            const id = key(request.path, request.field);
+            return structuredClone((this.mutations.get(id)?.value ?? this.reads.get(id) ?? [])[0]);
+        });
     }
 
     async setRecordField(path: string, field: string, value: RecordValue): Promise<void> {
@@ -62,6 +72,7 @@ export class HttpRecordTransaction implements IRecordTransaction {
 
     async commit(): Promise<void> {
         this.check(); this.active = false;
+        if (!this.observations.length && !this.mutations.size) return;
         const payload: Commit = { observations: this.observations, mutations: [...this.mutations.values()] };
         await this.transport.call('records.commit', [payload]);
     }

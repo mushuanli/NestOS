@@ -37,3 +37,11 @@ it('does not label caller cancellation as a server outage', async () => {
         expect(statuses).toEqual([true]);
     } finally { off(); }
 });
+
+it('reports a non-JSON upstream failure without replaying the request', async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response('Upstream unavailable', { status: 503 }));
+    await expect(new HttpTransport('/api/vfs', fetcher).call('records.commit', []))
+        .rejects.toMatchObject({ code: 'EIO', message: expect.stringContaining('HTTP 503') });
+    expect(fetcher).toHaveBeenCalledOnce();
+    setStorageAvailable(true);
+});

@@ -1,3 +1,5 @@
+import { applicationStartupPolicy, type ApplicationStartupMode } from './startup-policy';
+import { StartupCoordinator } from './startup-coordinator';
 import { SessionLifecycleService } from '../session/session-lifecycle';
 import { MCPRemoteConnections } from '../projects/mcp-remote-connections';
 import { createPiAgentMCPExtension } from '../projects/pi-agent-mcp-extension';
@@ -80,10 +82,14 @@ export interface ApplicationRuntime {
     sessionManager: import('@itookit/llm-session').SessionManager;
     commandBus: import('@itookit/llm-session').CommandBus;
     runCatalog: RunCatalog;
+    startBackground?(): void;
+    prepareSession?(sessionId: string): Promise<boolean>;
     dispose(): Promise<void>;
 }
 
 export interface ApplicationRuntimeOptions {
+    /** Interactive hosts activate background tasks after their first workspace is ready. */
+    startupMode?: ApplicationStartupMode;
     sync?: { provider: ProjectSyncProvider; coordinator: Coordinator };
     directAgentPolicy?: import('@itookit/llm-session/contracts').DirectAgentPolicy;
     contextEngineOptions?: CreateKernelRuntimeOptions['contextEngineOptions'];
@@ -115,6 +121,8 @@ export interface ApplicationRuntimeOptions {
 
 /** Host-owned system startup. Contains no DOM, routing or editor initialization. */
 export async function createApplicationRuntime(options: ApplicationRuntimeOptions): Promise<ApplicationRuntime> {
+    const policy = applicationStartupPolicy(options.startupMode);
+    const startup = new StartupCoordinator();
     const cleanupFns: Array<() => void | Promise<void>> = [];
     const sourceCleanupFns: Array<() => void | Promise<void>> = [];
     let remoteConnections: ProjectRemoteMountService | undefined;
@@ -129,7 +137,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
     const logStep = (label: string) => { console.log(`[Boot] ${label}`); options.onProgress?.(label); };
     try {
         // ── 1-2. VFS + LLM device driver ───────────────────────────────────────────
-        const { vfs, systemFS, llmDriver, logIO, closeCodexTransport } = await createInfrastructure(options);
+        const { vfs, systemFS, llmDriver, logIO, closeCodexTransport } = await createInfrastructure({ ...options, llmInitialization: policy.llm, deviceInitialization: policy.devices, preloadDirectories: [] });
         // The VFS owns every other resource, so it is disposed last.
         sourceCleanupFns.push(() => vfs.dispose());
         if (closeCodexTransport) cleanupFns.push(closeCodexTransport);
@@ -137,30 +145,37 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         // ── 3. Core services ───────────────────────────────────────────────────────
 
         logStep(t('boot.coreServices'));
-        const agentService   = new VFSAgentService(await vfs.openFileSystem(workspaceRoot('agents')), llmDriver, { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot });
+        const [agentFiles, flowFiles, homeFiles, promptHistoryFiles] = await traceBoot('core.openFileSystems', () => Promise.all([
+            vfs.openFileSystem(workspaceRoot('agents')), vfs.openFileSystem(workspaceRoot('flows')), vfs.openFileSystem('/home/admin'),
+            vfs.openFileSystem('/home/admin/.config/mindos/prompt-history'),
+        ]));
+        const agentService   = new VFSAgentService(agentFiles, llmDriver, { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot });
+        cleanupFns.push(() => agentService.dispose());
         const projectSync = options.sync ? new ProjectSyncService(options.sync.provider, options.sync.coordinator) : undefined;
         if (projectSync) cleanupFns.push(() => projectSync.dispose());
         const configuration = new ModelConfigurationCommands(agentService);
         cleanupFns.push(() => configuration.dispose());
-        const sessionRepository     = new SessionRepository(await vfs.openFileSystem('/'), async id => {
+        const sessionRepository     = new SessionRepository(systemFS, async id => {
             if (await projects.initializeSession(id)) return;
             if (!options.defaultSessionDirectory) return;
             if (directoryMounts.getHome()) await directoryMounts.mountHome(id);
             else await directoryMounts.setWorkspace(id, options.defaultSessionDirectory);
         });
-        const flowEngine     = new FlowEngine(await vfs.openFileSystem(workspaceRoot('flows')));
+        cleanupFns.push(() => sessionRepository.dispose());
+        const repositoryReady = startup.task('sessionRepository.init (parallel)', () => sessionRepository.init())();
+        const flowEngine     = new FlowEngine(flowFiles);
         await traceBoot('flowEngine.init', () => flowEngine.init());
 
         // Durable Kernel with application-owned capability injection.
         const ts = performance.now();
         const systemMounts = createSessionAttachmentMounts(sessionRepository);
         cleanupFns.push(() => systemMounts.dispose());
-        const sessionFiles: SessionFilesService = new SessionFilesService(await vfs.openFileSystem('/'), id => systemMounts.forSession(id),
+        const sessionFiles: SessionFilesService = new SessionFilesService(systemFS, id => systemMounts.forSession(id),
             // Saved host directories open on first use: mounting a Session must not pay for
             // every bookmark at startup.
             sourceId => directoryMounts.resolveSource(sourceId));
         await traceBoot('sessionFiles.initialize', () => sessionFiles.initialize());
-        sessionFiles.registerSource('admin-home', await vfs.openFileSystem('/home/admin'));
+        sessionFiles.registerSource('admin-home', homeFiles);
         await options.configureSessionFiles?.(sessionFiles);
         if (options.directorySourceProvider) cleanupFns.push(() => options.directorySourceProvider!.dispose());
         cleanupFns.push(() => sessionFiles.dispose());
@@ -170,34 +185,45 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             id => mountGuard(id), id => mountChanged(id),
             async (id): Promise<string | undefined> => (await projects.forFolder((await sessionRepository.getManifest(id)).folder))?.project.directory);
         cleanupFns.push(() => directoryMounts.dispose());
-        await traceBoot('directoryMounts.init', () => directoryMounts.init());
+        const directoryReady = startup.task('directoryMounts.init (parallel)', () => directoryMounts.init())();
         const projects = new ProjectService(systemFS, sessionRepository, directoryMounts, sessionFiles);
+        cleanupFns.push(() => projects.dispose());
         let remoteGuard = async (id: string) => mountGuard(id);
+        let initializeRemoteConfiguration: () => Promise<void> = () => Promise.resolve();
         if (options.remoteSourceProvider) {
             const affected = async (projectId: string) => {
                 const result: string[] = [];
-                for (const session of await sessionRepository.list()) {
-                    if ((await projects.forFolder(session.folder))?.project.id === projectId) result.push(session.id);
+                const [sessions, folders] = await Promise.all([sessionRepository.listSummaries(), sessionRepository.listFolders()]);
+                for (const session of sessions) {
+                    if ((await projects.forFolder(session.folder, folders))?.project.id === projectId) result.push(session.id);
                 }
                 return result;
             };
             const remote = new ProjectRemoteMountService(systemFS, options.remoteSourceProvider,
                 async projectId => { for (const id of await affected(projectId)) await remoteGuard(id); },
                 async projectId => { for (const id of await affected(projectId)) { await sessionFiles.invalidate(id); await mountChanged(id); } }, new MCPRemoteConnections(agentService,options.remoteSourceProvider));
-            await remote.init(); remoteConnections = remote; projects.remoteMounts = remote;
+            sourceCleanupFns.push(() => remote.dispose());
+            await remote.init(true); remoteConnections = remote; projects.remoteMounts = remote;
+            initializeRemoteConfiguration = startup.task('remote.configuration', async () => {
+                await llmDriver.ensureReady(); await remote.refreshMCPConnections();
+            });
             remote.existingProjectIds = () => projects.storedProjectIds();
-            await traceBoot('projects.remoteReferences', () => remote.reconcileMCPReferences());
+
             configuration.mcpDeletion = remote;
             projects.execution = new ProjectExecutionService(remote,
                 options.projectExecutionProvider ?? createRemoteExecutionProvider(sessionFiles, options.remoteSourceProvider));
-            sourceCleanupFns.push(() => remote.dispose());
         }
 
-        await traceBoot('projects.sources', () => projects.initializeSources());
-
-        if (options.ownerKind === 'web' || options.defaultSessionDirectory) {
-            await traceBoot('projects.init', () => projects.ensureStartup(options.defaultSessionDirectory));
-        }
+        projects.navigationFromIndex = policy.navigation === 'index';
+        const initializeProjects = startup.task('projects.initialize', async () => {
+            await Promise.all([repositoryReady, directoryReady]);
+            await initializeRemoteConfiguration();
+            await traceBoot('projects.remoteReferences', async () => remoteConnections?.reconcileMCPReferences());
+            await traceBoot('projects.sources', () => projects.initializeSources());
+            if (options.ownerKind === 'web' || options.defaultSessionDirectory)
+                await traceBoot('projects.init', () => projects.ensureStartup(options.defaultSessionDirectory));
+        });
+        if (policy.projects === 'before-ready') await initializeProjects();
         let mayCollectContext = (_id: string): boolean => false;
         let digitalTwin: DigitalTwinService | undefined;
         const kernel: HeadlessKernelRuntime = await traceBoot('createKernelRuntime', () => createKernelRuntime({
@@ -231,6 +257,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             skillSourceForSession: options.kernelPlatform?.skillSourceForSession,
             skillToolHandlerFactory: options.kernelPlatform?.skillToolHandlerFactory,
             beforeRecover: async runtime => {
+                await directoryReady;
                 mountChanged = id => runtime.disposeSession(id);
                 mountGuard = async id => {
                     let exists = false;
@@ -239,19 +266,23 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                         throw new SessionUnfinishedTasksError(id);
                     }
                 };
-                await traceBoot('syncSkillsToKernel', () => syncSkillsToKernel(llmDriver, runtime));
+
                 await options.kernelPlatform?.configure?.(runtime, { sessionFiles, directoryMounts });
             },
             // Recover Sessions only after this host acquires their lease.
             recover: false,
         }));
         const kernelCore = kernel.kernel;
+        const skillsReady = traceBoot('syncSkillsToKernel (background)', () => syncSkillsToKernel(llmDriver, kernel));
+        void skillsReady.catch(error => console.warn('[Boot] Skill initialization failed', error));
+
         digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, kernelCore, agentService, options.ownerKind ?? 'tauri', projects);
         const leaseStore = new SessionLeaseStore(systemFS, {
             ...(options.sessionLeaseSkewMs ? { skewMs: options.sessionLeaseSkewMs } : {}),
         });
         const ownerToken = options.sessionOwnerToken ?? globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
         const ownerId = `${options.ownerKind ?? "tauri"}-${ownerToken}`;
+        await repositoryReady;
         const excluded = await traceBoot('resumeSessionDeletions',
             () => resumeSessionDeletions(sessionRepository, kernelCore, leaseStore, { id: ownerId, kind: options.ownerKind ?? 'tauri' }));
         for (const id of await sessionRepository.pendingStorageSessionIds()) excluded.add(id);
@@ -259,11 +290,13 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         // the untraced part of createKernel to a concrete callback instead of leaving a gap.
         const observed: Record<string, number> = {};
         const recovery = await traceBoot('recoverSessionsWithLeases', () => recoverSessionsWithLeases(kernelCore, leaseStore,
-            { id: ownerId, kind: options.ownerKind ?? 'tauri' }, 10_000, async id => {
-                if (!id.startsWith('twin-analysis-')) await measureCallbacks(observed, 'adoptSession', () => projects.adoptSession(id));
+            { id: ownerId, kind: options.ownerKind ?? 'tauri' }, 10_000, async (id, ensureLeases) => {
+                await initializeProjects();
+                await skillsReady;
+                if (!id.startsWith('twin-analysis-')) await measureCallbacks(observed, 'adoptSession', () => projects.adoptSession(id, folder => sessionRepository.reconcileFolder(id, folder, ensureLeases)));
                 if (!id.startsWith('twin-analysis-')) await measureCallbacks(observed, 'platformBeforeRecovery', async () => options.kernelPlatform?.beforeSessionRecovery?.(id));
                 await measureCallbacks(observed, 'contextGcObserve', async () => { await kernel.contextGc?.observeSession(id); });
-            }, excluded)).catch(async error => {
+            }, excluded, 'deferred')).catch(async error => {
                 kernelCore.dispose();
                 const errors: unknown[] = [error];
                 for (const close of [() => kernelCore.waitIdle(), () => kernel.dispose()]) {
@@ -280,9 +313,14 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             await mountGuard(id);
         };
         mayCollectContext = id => (recovery.leases.get(id)?.leaseUntil ?? 0) > Date.now();
-        cleanupFns.push(() => recovery.release());
         cleanupFns.push(() => kernel.dispose());
-        cleanupFns.push(async () => { kernelCore.dispose(); await kernelCore.waitIdle(); });
+        cleanupFns.push(async () => {
+            const released = recovery.release();
+            kernelCore.dispose();
+            await released;
+            await kernelCore.waitIdle();
+        });
+        cleanupFns.push(() => skillsReady.catch(() => {}));
         await traceBoot('projects.resumeSessionMoves', () => projects.sessionMoves.recoverPending(id => recovery.acquireMetadataLease(id)));
         if (Object.keys(observed).length) console.log(`[Boot]   ↳ beforeRecover totals: ${formatTimings(observed)}`);
         console.log(`[Boot]   ↳ createKernel: +${(performance.now() - ts).toFixed(0)}ms`);
@@ -307,8 +345,10 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         // Writes are only allowed while this host holds the Session's single-writer lease; the
         // gate acquires a lease on demand so a freshly created Session is writable immediately.
         const { sessionManager, commandBus, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
-            () => createConversationSystem({ vfs, systemFS, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
+            () => createConversationSystem({ vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
                 digitalTwin,
+                scheduleAgentInitialization: run => startup.schedule(policy.agents, 'agents.initialize', run),
+                scheduleInvocationRecovery: run => startup.schedule(policy.invocations, 'invocations.recover', async () => { await initializeProjects(); await run(); }),
                 ensureWritable: async sessionId => !await sessionRepository.isSessionDeletionPending(sessionId)
                     && await recovery.acquireLater(sessionId) && await projects.sessionMoves.ready(sessionId),
                 flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager }));
@@ -321,7 +361,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 .catch(error => console.warn(`[Shell] Session ${event.payload.sessionId} recovery failed; writes remain blocked`, error));
         });
         cleanupFns.push(unsubscribeSessionLease);
-        cleanupFns.push(await attachProjectDraftRecovery(projects.drafts, sessionManager));
+        cleanupFns.push(await attachProjectDraftRecovery(projects.drafts, sessionManager, false));
+        await startup.schedule(policy.drafts, 'projects.drafts.recover', async () => { await initializeProjects(); await projects.drafts.recover(); });
 
         // Seed the default essay-review workflow so users have a runnable example.
         await traceBoot('seedDefaultFlows', () => seedDefaultFlows(new FlowDefinitionStore(flowEngine, kernel.dagPlugins)));
@@ -339,18 +380,27 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const dispose = async () => {
             if (disposed) return;
             disposed = true;
+            await startup.close();
             const errors: unknown[] = [];
             for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
                 try { await close(); } catch (error) { errors.push(error); }
             }
             if (errors.length) throw new AggregateError(errors, 'Application runtime cleanup failed');
         };
-        if (options.digitalTwinAutoStart !== false) digitalTwin.start();
+        startup.schedule('after-ready', 'runtime.workers', async () => {
+            await initializeProjects();
+            if (!startup.active) return;
+            recovery.startBackground();
+            if (options.digitalTwinAutoStart !== false) digitalTwin!.start();
+        });
+        const startBackground = () => startup.activate();
+        if (policy.projects === 'before-ready') startBackground();
         cleanupFns.push(() => digitalTwin!.dispose());
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects,
-            kernel, sessionManager, commandBus, runCatalog, dispose,
+            kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
             projectSync, digitalTwin };
     } catch (error) {
+        await startup.close();
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
             try { await close(); } catch (cleanupError) { console.error('[Boot] Cleanup failed', cleanupError); }
         }

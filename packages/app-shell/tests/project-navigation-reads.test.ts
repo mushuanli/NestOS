@@ -33,7 +33,7 @@ it('resolves project folders from one organization snapshot per sync and refresh
         const list = vi.spyOn(repository, 'listSummaries'), folders = vi.spyOn(repository, 'listFolders');
         list.mockClear(); folders.mockClear();
         await navigation.sync(folderBrowserPath(project.path));
-        expect(list).toHaveBeenCalledTimes(1);
+        expect(list).not.toHaveBeenCalled();
         expect(folders).toHaveBeenCalledTimes(1);
         expect(navigation.currentProject()?.path).toBe('/Demo');
         expect(navigation.toolbarContainer.hidden).toBe(false);
@@ -44,7 +44,7 @@ it('resolves project folders from one organization snapshot per sync and refresh
         await vi.waitFor(() => expect(commands.createProject).toHaveBeenCalledWith('/'));
         await vi.waitFor(() => expect(selector.value).toBe(folderBrowserPath('/Demo')));
         await navigation.refresh();
-        expect(list).toHaveBeenCalledTimes(2);
+        expect(list).not.toHaveBeenCalled();
         expect(folders).toHaveBeenCalledTimes(2);
         expect(navigation.currentProject()?.path).toBe('/Demo');
         list.mockClear();

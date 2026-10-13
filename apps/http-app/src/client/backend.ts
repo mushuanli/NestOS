@@ -1,18 +1,20 @@
 import type { IStorageBackend, FSNode, DirEntry, OperationOptions, ReadOptions } from '@itookit/vfs-core';
+import { StatBatch } from './stat-batch';
 import { HttpRecordStore } from './records';
 import { HttpTransport } from './transport';
 
 export class HttpStorageBackend implements IStorageBackend {
     readonly name = 'http-localfs';
     readonly records: HttpRecordStore;
-    constructor(private readonly transport = new HttpTransport()) { this.records = new HttpRecordStore(transport); }
+    private readonly stats: StatBatch;
+    constructor(private readonly transport = new HttpTransport()) { this.records = new HttpRecordStore(transport); this.stats = new StatBatch(transport); }
     async init(): Promise<void> { await this.transport.call('init'); }
     async close(): Promise<void> { /* The server owns the shared backend lifetime. */ }
     stat(path: string, options?: OperationOptions): Promise<FSNode | null> {
         return this.transport.call('stat', [path], options?.signal);
     }
     statType(path: string, options?: OperationOptions): Promise<Pick<FSNode, 'type'> | null> {
-        return this.transport.call('statType', [path], options?.signal);
+        return this.stats.read(path, options?.signal);
     }
     list(path: string, options?: OperationOptions): Promise<FSNode[]> {
         return this.transport.call('list', [path], options?.signal);

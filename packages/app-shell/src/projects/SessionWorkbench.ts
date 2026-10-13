@@ -110,6 +110,7 @@ export interface SessionWorkbenchOptions {
     projectSyncDirectory?(projectId: string, signal: AbortSignal): Promise<void>;
     onSidebarReady?: () => boolean;
     initialResourceId?: string;
+    prepareSession?(sessionId: string): Promise<boolean>;
     /** Host-owned snapshot storage; omitted means the sidebar restores nothing. */
     uiPersistence?: UIPersistencePort;
     workbenchState?: WorkbenchStatePort;
@@ -187,6 +188,7 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly flows: SessionWorkbenchOptions['flows'];
     private readonly projects: SessionWorkbenchOptions['projects'];
     private readonly onSidebarReady: SessionWorkbenchOptions['onSidebarReady'];
+    private readonly prepareSession?: (sessionId: string) => Promise<boolean>;
     private readonly initialResourceId: SessionWorkbenchOptions['initialResourceId'];
     private readonly uiPersistence: SessionWorkbenchOptions['uiPersistence'];
     private readonly sessions: ProjectSessions;
@@ -212,6 +214,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.projects = options.projects;
         this.onSidebarReady = options.onSidebarReady;
         this.initialResourceId = options.initialResourceId;
+        this.prepareSession = options.prepareSession;
         this.uiPersistence = options.uiPersistence;
         this.sessions = options.projects?.sessions ?? new ProjectSessions(options.repository);
         this.tabs = new WorkbenchTabs(this.container, {
@@ -291,6 +294,7 @@ export class SessionWorkbench implements WorkspaceController {
             readOnly: false, activateDirectories: true, autoSelectFirst: !this.projects, defaultUiSettings: { sortBy: 'lastModified' },
             compareItems: compareSessionEntries,
             restoreExpandedDirectory: isExpandableDirectory,
+            deferExpansion: true,
             exportDirectories: true,
             exportItem: item => this.exportSessionItem(item),
             favoriteAction: this.projects ? projectFavoriteAction(this.projects, this.repository) : undefined,
@@ -639,6 +643,7 @@ export class SessionWorkbench implements WorkspaceController {
                 return;
             }
             if (target.kind === 'favorite') throw new Error('Favorite navigation was not resolved');
+            if ('sessionId' in target) await load.read(async () => { await this.prepareSession?.(target.sessionId); });
             const openingManifest = 'sessionId' in target ? await load.read(() => this.sessions.get(target.sessionId)) : undefined;
             load.check();
             const tabId = id;

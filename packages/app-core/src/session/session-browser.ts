@@ -69,6 +69,8 @@ class BrowserBackend implements IStorageBackend {
     readonly name = 'session-browser';
     private readonly lifecycle: SessionLifecycleService;
     private snapshot?: Promise<[SessionFolder[], import('@itookit/llm-session').SessionSummary[]]>;
+    private folderSnapshot?: Promise<SessionFolder[]>;
+    private directorySnapshots = new Map<string | null, Promise<import('@itookit/llm-session').SessionSummary[]>>();
     private subscriptions: Array<() => void> = [];
     constructor(private readonly deps: SessionBrowserDependencies) {
         this.lifecycle = deps.lifecycle ?? new SessionLifecycleService({ repository: deps.repository, kernel: deps.kernel });
@@ -82,10 +84,29 @@ class BrowserBackend implements IStorageBackend {
         if (unsubscribe) this.subscriptions.push(unsubscribe);
     }
     async close() { for (const unsubscribe of this.subscriptions.splice(0)) unsubscribe(); this.invalidateNavigation(); }
-    invalidateNavigation(): void { this.snapshot = undefined; }
+    invalidateNavigation(): void { this.snapshot = undefined; this.folderSnapshot = undefined; this.directorySnapshots.clear(); }
+    private folders(): Promise<SessionFolder[]> {
+        if (!this.folderSnapshot) {
+            const work = this.deps.repository.listFolders().then(folders => this.deps.projects?.navigationFolders(folders) ?? folders);
+            this.folderSnapshot = work;
+            void work.catch(() => { if (this.folderSnapshot === work) this.folderSnapshot = undefined; });
+        }
+        return this.folderSnapshot;
+    }
+    private directoryNavigation(folder: string | null) {
+        if (!this.deps.repository.listSummariesInFolder) return this.navigation();
+        let rows = this.directorySnapshots.get(folder);
+        if (!rows) {
+            rows = this.deps.repository.listSummariesInFolder(folder);
+            this.directorySnapshots.set(folder, rows);
+            const pending = rows;
+            void rows.catch(() => { if (this.directorySnapshots.get(folder) === pending) this.directorySnapshots.delete(folder); });
+        }
+        return Promise.all([this.folders(), rows]);
+    }
     private navigation() {
         if (!this.snapshot) {
-            const pending = Promise.all([this.deps.repository.listFolders().then(folders => this.deps.projects?.navigationFolders(folders) ?? folders),
+            const pending = Promise.all([this.folders(),
                 this.deps.repository.listSummaries?.() ?? this.deps.repository.list()]);
             this.snapshot = pending;
             void pending.catch(() => { if (this.snapshot === pending) this.invalidateNavigation(); });
@@ -205,7 +226,7 @@ class BrowserBackend implements IStorageBackend {
             if (!folderPath) return this.node('/', 'Sessions', true);
             // Folder stats are projection reads; reuse the same catalog the listings use so a
             // path-prefix check does not re-read the folder record.
-            const [folders] = await this.navigation();
+            const folders = await this.folders();
             const folder = folders.find(item => item.path === folderPath);
             return folder ? this.folderNode(folder) : null;
         }
@@ -246,7 +267,7 @@ class BrowserBackend implements IStorageBackend {
         // change the catalog invalidate it through `repository.subscribe` / `kernel.onChanged`,
         // and hosts can force a re-read with the owner's `invalidateNavigation` (see `init`).
         if (path === '/') {
-            const [folders, sessions] = await this.navigation();
+            const [folders, sessions] = await this.directoryNavigation(null);
             return [
                 ...folders.filter(folder => !folder.parentPath).map(folder => this.folderNode(folder)),
                 ...this.sessionNodes(sessions, null),
@@ -255,7 +276,7 @@ class BrowserBackend implements IStorageBackend {
         const target = resolveBrowserTarget(path);
         if (target.kind === 'folder') {
             const folderPath = folderPathFromBrowserPath(path);
-            const [folders, sessions] = await this.navigation();
+            const [folders, sessions] = await this.directoryNavigation(folderPath);
             return [
                 ...folders.filter(folder => folder.parentPath === folderPath).map(folder => this.folderNode(folder)),
                 ...(this.deps.projects && folders.find(folder => folder.path === folderPath)?.project

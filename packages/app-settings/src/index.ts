@@ -22,9 +22,11 @@ export { SkillsEngine } from './engine/SkillsEngine';
  *       vfsCore.devices,  // IDeviceManager，供 ConnectionSettingsEditor 使用
  *   );
  */
-export async function createSettingsModule(vfs: IVFSManager, workspaces: readonly WorkspaceFileSource[], options: { excludedPages?: readonly string[] } = {}) {
+export async function createSettingsModule(vfs: IVFSManager, workspaces: readonly WorkspaceFileSource[], options: { background?: boolean; excludedPages?: readonly string[] } = {}) {
     const service = new SettingsService(vfs, undefined, workspaces);
-    await service.init();
+    const ready = service.init();
+    if (options.background) void ready.catch(error => console.warn('[Settings] Initialization failed', error));
+    else await ready;
     const engine = new SettingsEngine(service, options.excludedPages);
     return { service, engine };
 }

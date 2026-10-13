@@ -13,6 +13,7 @@ async function main(): Promise<void> {
     installHttpStatus();
     installMobileNavigation();
     const runtime = await createApplicationRuntime({
+        startupMode: 'interactive',
         onProgress: message => startup.progress(message),
         backend: new HttpStorageBackend(),
         remoteSourceProvider: createPiAgentDriver(),

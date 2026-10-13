@@ -141,3 +141,5 @@ export type { NativeSessionCommand } from './session/remote-session-management';
 export { createNativeDigitalTwin } from './digital-twin/native-service';
 
 export type { TwinGraph, TwinGraphNode, TwinGraphEdge } from './digital-twin/graph';
+
+export type { ApplicationStartupMode } from './runtime/startup-policy';

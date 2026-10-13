@@ -69,13 +69,13 @@ it('saves UI state without touching history and suppresses unchanged writes and 
     const changed = vi.fn(); repository.subscribe(changed);
     const state = { branchDrafts: { main: { inputText: 'draft' } } };
     await repository.updateUIState(id, state);
-    expect(get.mock.calls.map(call => call[1])).toEqual(['__vfs_seq__:session']);
-    expect(set.mock.calls.map(call => call[1])).toEqual(['__vfs_seq__:session']);
+    expect(get.mock.calls.map(call => call[1]).filter(field => field !== '__vfs_seq__:navigation-version')).toEqual(['__vfs_seq__:session']);
+    expect(set.mock.calls.map(call => call[1]).filter(field => !field.startsWith('__vfs_seq__:navigation'))).toEqual(['__vfs_seq__:session']);
     expect(changed).toHaveBeenCalledWith({ kind: 'ui-state', sessionId: id });
     const before = await repository.getManifest(id);
     get.mockClear(); set.mockClear(); changed.mockClear();
     await repository.updateUIState(id, state);
-    expect(get.mock.calls.map(call => call[1])).toEqual(['__vfs_seq__:session']);
+    expect(get.mock.calls.map(call => call[1]).filter(field => field !== '__vfs_seq__:navigation-version')).toEqual(['__vfs_seq__:session']);
     expect(set).not.toHaveBeenCalled(); expect(changed).not.toHaveBeenCalled();
     expect(await repository.getManifest(id)).toEqual(before);
     await repository.updateUIState(id, { branchDrafts: { main: { inputText: '' } } });

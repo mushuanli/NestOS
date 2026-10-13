@@ -102,29 +102,36 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     if (!options.runtime && !options.backend) throw new Error('AppOptions.backend or AppOptions.runtime is required');
     const ownsRuntime = !options.runtime;
-    const runtime = options.runtime ?? await createApplicationRuntime({ ...options, backend: options.backend! });
+    const runtime = options.runtime ?? await createApplicationRuntime({ ...options, backend: options.backend!, startupMode: 'interactive' });
     if (ownsRuntime) cleanupFns.push(() => runtime.dispose());
     const { vfs, llmDriver, agentService, sessionRepository, flowEngine, sessionFiles,
         kernel, sessionManager, commandBus } = runtime;
     // UI state lives beside the theme in `etc:/ui`, so Web and Tauri share one
     // inspectable store instead of the webview's localStorage.
     const etc = await vfs.openFileSystem('/etc');
-    await themeService.init(etc);
-    cleanupFns.push(() => themeService.destroy());
+    const ocrService = new OcrService(etc, agentService, kernel.llmService);
+    const ocrReady = traceBoot('ocr.init (parallel)', () => ocrService.init());
+    void ocrReady.catch(() => {});
+    cleanupFns.push(() => ocrReady.catch(() => {}));
+    const themeReady = themeService.init(etc);
+    void themeReady.catch(() => {});
+    cleanupFns.push(async () => { await themeReady.catch(() => {}); themeService.destroy(); });
     const uiDocs = new VfsJsonStore(etc);
     const uiState = new VfsUIPersistence(uiDocs);
     cleanupFns.push(() => uiState.flush());
     logStep('初始化界面服务…');
-    const settingsSources = await Promise.all(workspaces.filter(workspace => !['settings', 'skills', 'toolbox', 'twin'].includes(workspace.type ?? '')).map(async workspace => ({
+    const settingsSourcesReady = Promise.all(workspaces.filter(workspace => !['settings', 'skills', 'toolbox', 'twin'].includes(workspace.type ?? '')).map(async workspace => ({
         name: workspace.workspaceName, description: workspace.title,
         fs: workspace.files?.fs ?? await vfs.openFileSystem(workspaceRoot(workspace.workspaceName)),
     })));
-    const settingsModule = await traceBoot('createSettingsModule', () => createSettingsModule(vfs, settingsSources, { excludedPages: toolboxId ? ['providers', 'connections', 'mcp-servers', 'system-prompts'] : [] }));
+    const preparation = await Promise.allSettled([settingsSourcesReady, themeReady, ocrReady]);
+    const failures = preparation.filter(result => result.status === 'rejected');
+    if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'UI preparation failed');
+    const settingsSources = (preparation[0] as PromiseFulfilledResult<Awaited<typeof settingsSourcesReady>>).value;
+    const settingsModule = await traceBoot('createSettingsModule', () => createSettingsModule(vfs, settingsSources, { background: true, excludedPages: toolboxId ? ['providers', 'connections', 'mcp-servers', 'system-prompts'] : [] }));
     cleanupFns.push(() => settingsModule.service.dispose());
 
     const chatFromFile = createFileChatHandler(runtime.projects, sessionRepository, request => handleNavigationRequest(request));
-    const ocrService = new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService);
-    await ocrService.init();
     const ocr = createOcrControls(ocrService, agentService, request => handleNavigationRequest(request));
     const deletionDialog = new ConfigurationDeletionDialog(runtime.configuration, undefined, ocr.deletionImpact, runtime.projects);
     const settingsFactory = createSettingsFactory({
@@ -173,15 +180,19 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         settings: settingsFactory, chat: llmFactory, skills: skillsFactory, flows: flowsFactory,
     };
     const workspaceFiles = new Map<string, import('@itookit/vfs-core').FileSystemContext>();
-    for (const workspace of options.workspaces) {
+    const filesForWorkspace = async (workspace: WorkspaceConfig): Promise<import('@itookit/vfs-core').FileSystemContext> => {
+        const cached = workspaceFiles.get(workspace.elementId);
+        if (cached) return cached;
         const fs = workspace.files?.fs ?? (workspace.type === 'settings' ? settingsModule.engine
             : workspace.type === 'skills' ? skillsEngine
             : workspace.type === 'flows' ? flowEngine.engine
             : workspace.type === 'twin' ? await vfs.openFileSystem('/home/admin')
             : workspace.type === 'toolbox' ? await vfs.openFileSystem(workspaceRoot('agents'))
             : await vfs.openFileSystem(workspaceRoot(workspace.workspaceName)));
-        workspaceFiles.set(workspace.elementId, workspace.files ?? { fs, cwd: '/' });
-    }
+        const files = workspace.files ?? { fs, cwd: '/' };
+        workspaceFiles.set(workspace.elementId, files);
+        return files;
+    };
 
     const editorFactoryMap: Record<EditorTypeKey, EditorFactory | undefined> = {
         standard: defaultEditorFactory,
@@ -271,8 +282,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         const strategyType = wsConfig.type ?? 'standard';
         const factory = factories[strategyType] ?? defaultEditorFactory;
-        const files = workspaceFiles.get(elementId);
-        if (!files) throw new Error(`Workspace files not configured: ${elementId}`);
+        const files = await filesForWorkspace(wsConfig);
 
         if (strategyType === 'twin') {
             if (!runtime.digitalTwin) throw new Error('Digital twin is unavailable in this runtime');
@@ -287,10 +297,12 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         }
 
         if (strategyType === 'toolbox') {
-            const storedPreferences = await uiDocs.read(TOOLBOX_PREFERENCES_DOC);
+            const [storedPreferences, uiPersistence] = await Promise.all([
+                uiDocs.read(TOOLBOX_PREFERENCES_DOC), uiState.port(TOOLBOX_SCOPE),
+            ]);
             const module = await createToolboxModule({ runtime, ocr, ui: options.ui, sidebar: sidebarEl, editor: editorEl,
                 skills: skillsEngine, factories: { agents: agentFactory, skills: skillsFactory, flows: flowsFactory },
-                uiPersistence: await uiState.port(TOOLBOX_SCOPE),
+                uiPersistence,
                 uiPreferences: { load: () => storedPreferences, save: value => uiDocs.write(TOOLBOX_PREFERENCES_DOC, value) },
                 navigate: handleNavigationRequest, selected: path => updateHistory(elementId, path, 'replace') });
             const toolbox = module.workbench;
@@ -307,14 +319,17 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const revealSidebar = () => {
                 if (sidebarReady || (visibleWorkspaceId && visibleWorkspaceId !== elementId)) return false;
                 sidebarReady = true;
+                requestAnimationFrame(() => runtime.startBackground?.());
                 options.onWorkspaceReady?.({ editor: editorEl });
                 return true;
             };
+            const [uiPersistence, workbenchState] = await traceBoot('workspace.chatState (parallel)', () => Promise.all([
+                uiState.port(SESSION_BROWSER_SCOPE), uiState.workbenchPort(SESSION_BROWSER_SCOPE),
+            ]));
             const module = createProjectModule({ runtime, sessionSkills, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
                 factory, fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 initialResourceId, onSidebarReady: revealSidebar,
-                uiPersistence: await uiState.port(SESSION_BROWSER_SCOPE),
-                workbenchState: await uiState.workbenchPort(SESSION_BROWSER_SCOPE),
+                uiPersistence, workbenchState,
                 onSelect: (id, mode = 'replace') => updateHistory(elementId, id, mode),
                 hostContext: { chatFromFile, toggleSidebar: collapsed => sidebarEl.classList.toggle('is-collapsed', collapsed ?? !sidebarEl.classList.contains('is-collapsed')), navigate: handleNavigationRequest } });
             cleanupFns.push(module.dispose);
@@ -536,6 +551,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 }
             }
         }
+        requestAnimationFrame(() => runtime.startBackground?.());
         if (movedSettings || legacyToolbox) updateHistory(workspaceId, resourceId ?? null, 'replace');
         if (projectRouteError) {
             const workspace = document.getElementById(workspaceId);

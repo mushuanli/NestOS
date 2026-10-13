@@ -79,6 +79,9 @@ it('creates project Sessions from the selected project and edits its files in th
         imported.mockRestore(); exported.mockRestore();
 
         expect(sidebar.querySelector('.vfs-columns')).toBeNull();
+        // File children load only after their directory is explicitly expanded.
+        const ui = (workbench as unknown as { sidebarUI: VFSUIShell }).sidebarUI;
+        await ui.expandPath(projectPath + '/@files');
         expect(navigation.textContent).toContain('notes.md');
         const beforeDraft = (await repository.listSummaries()).length;
         await workbench.startSessionDraft(projectPath);

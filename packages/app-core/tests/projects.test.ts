@@ -404,7 +404,7 @@ it('boots existing central Sessions into project storage without moving their ru
     cleanups.push(() => reopened.dispose());
     const files = await reopened.vfs.openFileSystem('/');
     expect(await reopened.sessionRepository.readDocument(id, 'round.json')).toBe('{"text":"saved"}');
-    expect(await files.driver.exists(`${project.project.directory}/.mindos/sessions/${id}/history.seq`)).toBe(true);
+    await vi.waitFor(async () => expect(await files.driver.exists(`${project.project.directory}/.mindos/sessions/${id}/history.seq`)).toBe(true));
     expect((await reopened.sessionFiles.inspect(id))?.mounts).toEqual(before?.mounts);
     expect(await files.driver.exists(`/var/lib/sessions/${id}/kernel`)).toBe(true);
 });
@@ -525,6 +525,7 @@ it('recovers an old data directory and its conversation during IndexedDB applica
     expect((await reopened.projects.get('old-startup')).path).toBe('/Old startup');
     expect((await reopened.sessionRepository.getManifest(id)).folder).toBe('/Old startup/@sessions');
     expect(await reopened.sessionRepository.readDocument(id, 'round.json')).toBe('{"text":"original conversation"}');
+    await vi.waitFor(async () => expect(await (await reopened.vfs.openFileSystem('/')).driver.exists(`${directory}/.mindos/sessions/${id}/history.seq`)).toBe(true));
     expect(await readSession(reopened, id, 'old.md')).toBe('original file');
     expect(await (await reopened.vfs.openFileSystem('/')).driver.exists(`${directory}/.mindos/sessions/${id}/history.seq`)).toBe(true);
 });

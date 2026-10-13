@@ -21,7 +21,7 @@ Web/Tauri 共用 `REGISTRY_PREBUNDLES` 显式预构建 vfs-ui：它的消费方�
 
 独立仓库通常位于 `../pair-x1/<仓库名>`。`.pnpmfile.cjs` 根据 `scripts/npm-libraries.json` 统一判断：`packages/<库目录>/package.json` 存在且包名匹配时，通过本地依赖接入（源码入口使用 `link:`，构建入口使用 `file:`）；缺席时沿用应用声明的 npm 版本。覆盖 mdxeditor、driver-llm、vfs-core、vfs-ui、vfsdriver-indexeddb、vfsdriver-local 和 vfs-sync；工作区包不重复覆盖。
 
-本地库先独立安装依赖并构建，再在主仓库运行 `pnpm install --no-frozen-lockfile` 更新解析与锁文件。增加或移除目录后同样运行此命令，使本地/npm 选择重新生效；构建和测试不添加源码别名，继续消费该库自己的公开 exports。本地 mdxeditor 使用 dist 构建产物，修改后重新构建并重新安装主仓库，刷新 Web/Tauri 的 Vite 预构建缓存。锁文件可能因本地目录存在而包含 file/link 依赖，应与使用的目录集合一致。旁边的 `../pair-x1` 或 `priv/` checkout 不自动接入。
+本地库先独立安装依赖并构建，再在主仓库运行 `pnpm install --no-frozen-lockfile` 更新解析与锁文件。增加或移除目录后同样运行此命令，使本地/npm 选择重新生效；构建和测试通过该库自己的公开 exports 解析；Vitest 的 VFS 根入口别名由 `import.meta.resolve` 取得，不硬编码独立库源码位置。本地 mdxeditor 使用 dist 构建产物，修改后重新构建并重新安装主仓库，刷新 Web/Tauri 的 Vite 预构建缓存。锁文件可能因本地目录存在而包含 file/link 依赖，应与使用的目录集合一致。旁边的 `../pair-x1` 或 `priv/` checkout 不自动接入。
 
 ## 发布流程
 
@@ -45,7 +45,7 @@ piagent-driver 将旧 vfsdriver-agent 文件/进程层与项目、同步及 harn
 
 ## 验证边界
 
-独立库的单元测试在各自仓库运行；应用保留跨库集成测试。根目录提供七个已接入注册表库的开发依赖，供公共契约测试与边界检查读取实际安装包的 exports；piagent-driver 暂时通过工作区接入。注册表库在工作区排除同名源码目录，避免重新创建目录后悄悄恢复本地链接。
+独立库的单元测试在各自仓库运行；应用保留跨库集成测试。根目录提供七个已接入注册表库的开发依赖，供公共契约测试与边界检查读取实际安装包的 exports；piagent-driver 暂时通过工作区接入。独立库在工作区排除同名源码目录；自动本地接入由 `.pnpmfile.cjs` 管理，保留独立 Git 身份。
 
 发布前验证 ESM、CommonJS、CSS 导出及各库适用的 TypeScript 类型解析；VFS 库额外验证 SeqFile 读写。MDX 的类型消费使用 `moduleResolution: bundler`。应用迁移后须在八个源码目录缺席时通过类型检查、公共接口边界检查、文档检查、样式检查、应用构建与集成测试。
 

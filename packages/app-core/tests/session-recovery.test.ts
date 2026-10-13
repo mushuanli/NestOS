@@ -114,7 +114,7 @@ describe('Session recovery with leases', () => {
             expect([...recovery.leases.keys()]).toEqual(['free']);
             expect(kernel.recoverSessions).toHaveBeenCalledTimes(1);
             expect(kernel.recoverSessions).toHaveBeenCalledWith(['free'], expect.objectContaining({ takeover: true }));
-            expect(beforeRecover).toHaveBeenCalledExactlyOnceWith('free');
+            expect(beforeRecover).toHaveBeenCalledExactlyOnceWith('free', expect.any(Function));
 
             // Late acquisition must recover before the write gate grants access.
             expect(await recovery.acquireLater('late')).toBe(true);
@@ -233,4 +233,22 @@ describe('Session recovery with leases', () => {
             await leaseStore.release(next!);
         } finally { await manager.dispose(); }
     });
+});
+
+it('returns before background reconciliation and does not block one Session behind another', async () => {
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+    const fs = await manager.openFileSystem('/'), store = new SessionLeaseStore(fs);
+    let unblock!: () => void;
+    const gate = new Promise<void>(resolve => { unblock = resolve; });
+    const kernel = { async *listSessions() { yield { id: 'slow' }; yield { id: 'fast' }; },
+        recoverSession: vi.fn(async () => {}), recoverSessions: vi.fn() };
+    const recovery = await recoverSessionsWithLeases(kernel as never, store, { id: 'host', kind: 'web' }, 10_000,
+        async id => { if (id === 'slow') await gate; }, new Set(), true);
+    try {
+        expect(await recovery.acquireLater('fast')).toBe(true);
+        expect(kernel.recoverSession).toHaveBeenCalledWith('fast');
+        expect(kernel.recoverSession).not.toHaveBeenCalledWith('slow');
+        const waiting = recovery.acquireLater('slow');
+        unblock(); expect(await waiting).toBe(true);
+    } finally { unblock(); await recovery.release(); await manager.dispose(); }
 });

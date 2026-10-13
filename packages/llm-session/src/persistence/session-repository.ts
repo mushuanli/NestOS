@@ -1,3 +1,4 @@
+import { serializeSessionSummary, indexSessionSummary, navigationPrefix, NAVIGATION_VERSION, NAVIGATION_REVISION } from './session-navigation-index';
 import { sessionSettings, mergeSessionSettings } from './session-settings';
 import { SessionRelations, assertSessionAvailable, readSessionMetadata, touchSessionRelations } from './session-relations';
 import { ulid } from './ulid';
@@ -26,15 +27,28 @@ export class SessionRepository implements ISessionRepository {
         private readonly initializeNewSession?: (sessionId: string) => Promise<void>) {}
     setStorageDirectoryResolver(resolver: (folder: string | null) => Promise<string | undefined>): void { this.storageDirectory = resolver; }
     private storageDirectory?: (folder: string | null) => Promise<string | undefined>;
-    async init(): Promise<void> {
-        if (this.closed) throw new FSError('EACCES', 'Session repository is closed');
+    private initialization?: Promise<void>;
+    init(): Promise<void> {
+        if (this.closed) return Promise.reject(new FSError('EACCES', 'Session repository is closed'));
+        return this.initialization ??= this.initialize();
+    }
+    private async initialize(): Promise<void> {
         if (!this.fs.meta.seq?.transaction) throw new Error('Session storage requires record transactions');
         await recoverSessionDataMoves(this.fs);
-        if (await this.fs.driver.exists(FOLDERS_PATH)) await this.fs.meta.seq!.walkEntries(FOLDERS_PATH, () => {
-            this.portableLocations = true; return false;
-        }, { keyPrefix: 'storage/' });
+        await this.ensureFolderRecord();
+        const [, navigationVersion] = await Promise.all([
+            this.fs.meta.seq!.walkEntries(FOLDERS_PATH, () => {
+                this.portableLocations = true; return false;
+            }, { keyPrefix: 'storage/', limit: 1 }),
+            this.fs.meta.seq!.getEntry(FOLDERS_PATH, NAVIGATION_VERSION),
+        ]);
+        await this.ensureNavigationIndex(navigationVersion);
     }
-    async dispose(): Promise<void> { this.closed = true; this.listeners.clear(); }
+    async dispose(): Promise<void> {
+        this.closed = true;
+        await this.initialization?.catch(() => {});
+        this.listeners.clear();
+    }
     subscribe(listener: (change?: SessionRepositoryChange) => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
     private notify(change: SessionRepositoryChange = { kind: 'session' }) { for (const listener of this.listeners) listener(change); }
     private root(id: string) { if (this.closed) throw new FSError('EACCES', 'Session repository is closed'); return this.storageDirectory || this.portableLocations ? resolveSessionStorageRoot(this.fs.meta.seq!, id) : Promise.resolve(sessionStorageRoot(id)); }
@@ -51,11 +65,24 @@ export class SessionRepository implements ISessionRepository {
         const children = await this.fs.driver.getChildren(directory);
         this.portableLocations = true;
         await this.ensureFolderRecord();
+        const directories = children.filter(child => child.type === 'directory');
         await this.fs.meta.seq!.transaction!(async tx => {
-            for (const child of children) if (child.type === 'directory' && await tx.getEntry(`${child.path}/session.seq`, 'session')) {
-                const previous = await tx.getEntry(FOLDERS_PATH, `storage/${child.name}`);
+            const rows = await tx.getEntriesMany(directories.map(child => ({ fileIdOrPath: `${child.path}/session.seq`, key: 'session' })));
+            const sessions = rows.map(raw => raw ? JSON.parse(raw) as SessionSummary : null);
+            const keys = directories.flatMap((child, index) => {
+                const session = sessions[index];
+                return [`storage/${child.name}`, ...(session ? [navigationPrefix(session.folder ?? null) + session.id, `navigation-location/${session.id}`] : [])];
+            });
+            const stored = await tx.getEntries(FOLDERS_PATH, keys);
+            for (const [index, child] of directories.entries()) {
+                const raw = rows[index]; if (!raw) continue;
+                const previous = stored[`storage/${child.name}`];
                 if (previous && previous !== child.path) throw new FSError('ECONFLICT', 'Duplicate Session storage identity');
-                await tx.setEntry(FOLDERS_PATH, `storage/${child.name}`, child.path);
+                if (!previous) await tx.setEntry(FOLDERS_PATH, `storage/${child.name}`, child.path);
+                const session = sessions[index]!;
+                const key = navigationPrefix(session.folder ?? null) + session.id;
+                if (stored[key] !== serializeSessionSummary(session) || stored[`navigation-location/${session.id}`] !== key)
+                    await indexSessionSummary(tx, session);
             }
         });
     }
@@ -139,6 +166,7 @@ export class SessionRepository implements ISessionRepository {
             const record = { storageVersion: 1, id: init.id, title: init.title, origin: init.origin, folder: init.folder, parentSessionId: init.parentSessionId,
                 createdAt: init.now, updatedAt: init.now, revision: 0 };
             await tx.setEntry(p.session, 'session', JSON.stringify(record));
+            await indexSessionSummary(tx, record, null);
             await touchSessionRelations(tx);
             repaired = true;
         }
@@ -229,20 +257,48 @@ export class SessionRepository implements ISessionRepository {
             entry => { ids.add(entry.key.slice(7)); return true; }, { keyPrefix: 'moving/' });
         return ids;
     }
-    async listSummaries(): Promise<SessionSummary[]> {
+    private async ensureNavigationIndex(version: string | null): Promise<void> {
+        if (version === '1') return;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            const revision = await this.fs.meta.seq!.getEntry(FOLDERS_PATH, NAVIGATION_REVISION);
+            const summaries = await this.scanSummaries(true);
+            const indexed = await this.fs.meta.seq!.transaction!(async tx => {
+                if (await tx.getEntry(FOLDERS_PATH, NAVIGATION_REVISION) !== revision) return false;
+                for (const summary of summaries) await indexSessionSummary(tx, summary);
+                await tx.setEntry(FOLDERS_PATH, NAVIGATION_VERSION, '1');
+                return true;
+            });
+            if (indexed) return;
+        }
+        throw new FSError('EBUSY', 'Session navigation changed during indexing');
+    }
+    async listSummariesInFolder(folder: string | null): Promise<SessionSummary[]> {
+        if (this.closed) throw new FSError('EACCES', 'Session repository is closed');
+        const normalized = normalizeFolderPath(folder);
+        if (await this.fs.meta.seq!.getEntry(FOLDERS_PATH, NAVIGATION_VERSION) !== '1')
+            return (await this.listSummaries()).filter(session => (session.folder ?? null) === normalized);
+        const rows: SessionSummary[] = [];
+        await this.fs.meta.seq!.walkEntries(FOLDERS_PATH, entry => { rows.push(JSON.parse(entry.value)); return true; },
+            { keyPrefix: navigationPrefix(normalized) });
+        const moving = await this.pendingStorageSessionIds();
+        return rows.filter(row => !moving.has(row.id)).sort((a, b) => b.updatedAt - a.updatedAt);
+    }
+    listSummaries(): Promise<SessionSummary[]> { return this.scanSummaries(); }
+    private async scanSummaries(includeMoving = false): Promise<SessionSummary[]> {
         if (this.closed) throw new FSError('EACCES', 'Session repository is closed');
         if (!await this.fs.driver.exists('/var/lib/sessions')) return [];
         const entries = await this.fs.driver.getChildren('/var/lib/sessions', { fields: 'entry' });
         const ids = entries.flatMap(entry => entry.type === 'directory' ? [entry.name] : []);
-        if ((this.portableLocations || this.storageDirectory) && await this.fs.driver.exists(FOLDERS_PATH)) await this.fs.meta.seq!.walkEntries(FOLDERS_PATH, entry => { ids.push(entry.key.slice(8)); return true; }, { keyPrefix: 'storage/' });
+        const locations = new Map<string, string>();
+        if ((this.portableLocations || this.storageDirectory) && await this.fs.driver.exists(FOLDERS_PATH)) await this.fs.meta.seq!.walkEntries(FOLDERS_PATH, entry => { const id = entry.key.slice(8); ids.push(id); locations.set(id, entry.value); return true; }, { keyPrefix: 'storage/' });
         const pending = await this.pendingStorageSessionIds();
-        const uniqueIds = [...new Set(ids)].filter(id => !pending.has(id));
+        const uniqueIds = [...new Set(ids)].filter(id => includeMoving || !pending.has(id));
         const summaries: SessionSummary[] = [];
         for (let start = 0; start < uniqueIds.length; start += 64) {
             const batch = uniqueIds.slice(start, start + 64);
-            const rows = await this.fs.meta.seq!.getEntriesMany(await Promise.all(batch.map(async id => ({
-                fileIdOrPath: (await this.paths(id)).session, key: 'session',
-            }))));
+            const rows = await this.fs.meta.seq!.getEntriesMany(batch.map(id => ({
+                fileIdOrPath: `${locations.get(id) ?? sessionStorageRoot(id)}/session.seq`, key: 'session',
+            })));
             rows.forEach((raw, index) => {
                 if (raw === null) return;
                 const session = JSON.parse(raw);
@@ -413,6 +469,13 @@ export class SessionRepository implements ISessionRepository {
         });
         this.notify();
     }
+    /** Recovery holds explicit leases; use its validator without recursively entering the write gate. */
+    async reconcileFolder(id: string, folder: string, ensureLeases: (ids: string[]) => Promise<void>): Promise<void> {
+        await this.ensureFolderRecord();
+        const relations = new SessionRelations(this.fs, () => this.list(), ensureLeases);
+        await relations.move(id, undefined, normalizeFolderPath(folder));
+        this.notify();
+    }
     async updateManifest(id: string, patch: Partial<ConversationManifest>): Promise<void> {
         const p = await this.paths(id);
         if (patch.id && patch.id !== id) throw new FSError('EINVAL', 'Session identity cannot change');
@@ -443,6 +506,8 @@ export class SessionRepository implements ISessionRepository {
         if (!historyChanged && JSON.stringify(current) === JSON.stringify(next)) return false;
         const updatedAt = activityChanged(current, next, historyChanged) ? Date.now() : current.updatedAt;
         await tx.setEntry(p.session, 'session', JSON.stringify({ ...next, updatedAt, revision: current.revision + 1 }));
+        if (updatedAt !== current.updatedAt || ['title', 'summary', 'origin', 'folder'].some(key => next[key] !== current[key]))
+            await indexSessionSummary(tx, { ...next, updatedAt }, current);
         return true;
     }
     private async writeHistoryPatchTx(tx: ISeqFileTransaction, p: SessionPaths, patch: object): Promise<boolean> {

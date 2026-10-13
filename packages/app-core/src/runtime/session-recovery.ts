@@ -6,6 +6,7 @@ import { mapConcurrent } from '../utils/map-concurrent';
 
 type RecoveryKernel = Pick<Kernel, 'listSessions' | 'recoverSessions' | 'recoverSession'>;
 type Owner = { id: string; kind: SessionOwnerKind };
+type BeforeRecovery = (id: string, ensureLeases: (ids: string[]) => Promise<void>) => Promise<void>;
 const BOOT_RECONCILIATION_CONCURRENCY = 10;
 const BOOT_LEASE_BATCH_SIZE = 100;
 export interface SessionRecovery {
@@ -14,6 +15,7 @@ export interface SessionRecovery {
     acquireLater(sessionId: string): Promise<boolean>;
     /** Lease for structural writes (create/delete/move); waits out the boot sweep of that Session. */
     acquireMetadataLease(sessionId: string): Promise<boolean>;
+    startBackground(): void;
     release(): Promise<void>;
 }
 
@@ -26,8 +28,10 @@ class LeasedRecovery implements SessionRecovery {
     private sweep?: Promise<void>;
     private swept?: Set<string>;
     private released = false;
+    private scanning?: Promise<void>;
+    private readonly acquisitions = new Map<string, Promise<boolean>>();
     constructor(private kernel: RecoveryKernel, private store: SessionLeaseStore, private owner: Owner,
-        heartbeatMs: number, private beforeRecover?: (sessionId: string) => Promise<void>, private excluded = new Set<string>()) {
+        heartbeatMs: number, private beforeRecover?: BeforeRecovery, private excluded = new Set<string>()) {
         this.heartbeat = setInterval(() => {
             for (const id of this.leases.keys()) void this.renew(id).catch(error => console.warn(`[Lease] renew failed for Session ${id}`, error));
         }, heartbeatMs);
@@ -43,12 +47,37 @@ class LeasedRecovery implements SessionRecovery {
             for (const id of batch) if (!acquired.has(id)) await this.reportRefused(id);
         }
         const leased = await mapConcurrent(ids.filter(id => this.leases.has(id)), BOOT_RECONCILIATION_CONCURRENCY, async id => {
-            await this.beforeRecover?.(id);
+            await this.beforeRecover?.(id, ids => this.ensureReconciliationLeases(ids));
             return id;
         });
         // Recovery is proportional to the catalog, so the host paints first and every write waits
         // for it through acquireLater; only lease acquisition and host reconciliation block boot.
         if (leased.length) this.startSweep(leased);
+    }
+
+    /** Online recovery is per Session and respects Task/Effect leases in other active Sessions. */
+    startBackground(): void {
+        if (this.scanning || this.released) return;
+        this.scanning = this.scanOnline();
+        void this.scanning.catch(error => console.warn('[Lease] Background scan failed; Sessions recover on access', error));
+    }
+    private async scanOnline(): Promise<void> {
+        const ids: string[] = [];
+        for await (const session of this.kernel.listSessions()) {
+            if (this.released) return;
+            if (!this.excluded.has(session.id)) ids.push(session.id);
+        }
+        await mapConcurrent(ids, 2, async id => {
+            if (this.released) return;
+            try { await this.acquireLater(id); }
+            catch (error) { console.warn(`[Lease] Background recovery failed for ${id}`, error); }
+        });
+    }
+    private async ensureReconciliationLeases(ids: string[]): Promise<void> {
+        for (const id of ids) {
+            if (this.released || this.excluded.has(id) || !(await this.renew(id) || await this.acquire(id)))
+                throw new Error(`Session is owned by another host: ${id}`);
+        }
     }
 
     private startSweep(leased: string[]): void {
@@ -84,6 +113,8 @@ class LeasedRecovery implements SessionRecovery {
         if (this.released) return false;
         // Structural writes must not race the sweep; a failed sweep still leaves the lease gate.
         await this.settleSweep(id).catch(() => {});
+        if (this.pending.has(id)) await this.pending.get(id);
+        if (this.released || this.excluded.has(id)) return false;
         return await this.renew(id) || await this.acquire(id);
     }
 
@@ -110,9 +141,9 @@ class LeasedRecovery implements SessionRecovery {
             await sweep;
             if (this.ready.has(id)) return !this.released;
         }
-        if (!await this.acquire(id)) return false;
+        if (!await this.renew(id) && !await this.acquire(id)) return false;
         try {
-            await this.beforeRecover?.(id);
+            await this.beforeRecover?.(id, ids => this.ensureReconciliationLeases(ids));
             // Online recovery respects existing Task/Effect leases; it never fences work in other Sessions.
             await this.kernel.recoverSession(id);
             if (this.released || !await this.renew(id)) return false;
@@ -127,7 +158,15 @@ class LeasedRecovery implements SessionRecovery {
         }
     }
 
-    private async acquire(id: string): Promise<boolean> {
+    private acquire(id: string): Promise<boolean> {
+        const current = this.acquisitions.get(id);
+        if (current) return current;
+        const work = this.acquireLease(id);
+        this.acquisitions.set(id, work);
+        void work.finally(() => { if (this.acquisitions.get(id) === work) this.acquisitions.delete(id); }).catch(() => {});
+        return work;
+    }
+    private async acquireLease(id: string): Promise<boolean> {
         const lease = await this.store.acquire(id, this.owner);
         if (!lease) {
             await this.reportRefused(id);
@@ -173,7 +212,7 @@ class LeasedRecovery implements SessionRecovery {
         clearInterval(this.heartbeat);
         // The sweep must finish before its leases are released; a failed sweep was reported to
         // every blocked writer already and must not break teardown.
-        await Promise.allSettled([...(this.sweep ? [this.sweep] : []), ...this.pending.values(), ...this.renewals.values()]);
+        await Promise.allSettled([...(this.scanning ? [this.scanning] : []), ...(this.sweep ? [this.sweep] : []), ...this.pending.values(), ...this.renewals.values(), ...this.acquisitions.values()]);
         const results = await Promise.allSettled([...this.leases.values()].map(lease => this.store.release(lease)));
         this.leases.clear(); this.ready.clear();
         const errors = results.flatMap(result => result.status === 'rejected' ? [result.reason] : []);
@@ -187,8 +226,9 @@ class LeasedRecovery implements SessionRecovery {
  * Later acquisition recovers only the selected Session online.
  */
 export async function recoverSessionsWithLeases(kernel: RecoveryKernel, leaseStore: SessionLeaseStore, owner: Owner,
-    heartbeatMs = 10_000, beforeRecover?: (sessionId: string) => Promise<void>, excluded = new Set<string>()): Promise<SessionRecovery> {
+    heartbeatMs = 10_000, beforeRecover?: BeforeRecovery, excluded = new Set<string>(), background: boolean | 'deferred' = false): Promise<SessionRecovery> {
     const recovery = new LeasedRecovery(kernel, leaseStore, owner, heartbeatMs, beforeRecover, excluded);
+    if (background) { if (background === true) recovery.startBackground(); return recovery; }
     try { await recovery.boot(); return recovery; }
     catch (error) {
         try { await recovery.release(); }

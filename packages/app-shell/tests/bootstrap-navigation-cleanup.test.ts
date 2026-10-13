@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NAVIGATION_EVENTS } from '@itookit/common';
-import type { ApplicationRuntime } from '@itookit/app-core';
+import { OcrService, type ApplicationRuntime } from '@itookit/app-core';
+import { themeService } from '../src/ThemeService';
 import type { WorkspaceConfig } from '../src/types';
 
 const visibility = vi.hoisted(() => vi.fn());
@@ -25,7 +26,7 @@ vi.mock('@itookit/app-settings', () => ({
         service: { dispose: vi.fn() },
     })),
     createSettingsFactory: vi.fn(() => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }))),
-    SkillsEngine: class {},
+    SkillsEngine: class { dispose() {} },
 }));
 
 vi.mock('../src/core/Workbench', () => ({
@@ -139,4 +140,43 @@ it('notifies cached workspaces when nav visibility changes', async () => {
         await handle.navigate('settings');
         expect(visibility.mock.calls).toEqual([[true], [false]]);
     } finally { await handle.destroy(); }
+});
+
+it('starts background services after a non-chat workspace is available', async () => {
+    const callbacks: FrameRequestCallback[] = [];
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { callbacks.push(callback); return callbacks.length; });
+    const runtime = makeRuntime();
+    runtime.startBackground = vi.fn();
+    document.body.innerHTML = '<div id="settings-workspace"></div>';
+    const factory = () => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }));
+    const handle = await initApp({ runtime, workspaces: [workspace], defaultSlug: 'settings',
+        ui: { createChatEditor: factory, createAgentEditor: factory, createFlowEditor: factory,
+            createSkillEditor: factory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), llmUiEditors: {} } as any });
+    try {
+        expect(runtime.startBackground).not.toHaveBeenCalled();
+        callbacks.forEach(callback => callback(0));
+        expect(runtime.startBackground).toHaveBeenCalledOnce();
+    } finally { await handle.destroy(); vi.unstubAllGlobals(); }
+});
+
+it('prepares the theme while OCR loads and leaves an inactive workspace filesystem unopened', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const ocr = vi.spyOn(OcrService.prototype, 'init').mockImplementation(async () => { await gate; });
+    const runtime = makeRuntime();
+    const inactive = { ...workspace, elementId: 'inactive-workspace', slug: 'inactive', type: 'twin' as const };
+    document.body.innerHTML = '<div id="settings-workspace"></div><div id="inactive-workspace"></div>';
+    const factory = () => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }));
+    vi.mocked(themeService.init).mockClear();
+    const pending = initApp({ runtime, workspaces: [workspace, inactive], defaultSlug: 'settings',
+        ui: { createChatEditor: factory, createAgentEditor: factory, createFlowEditor: factory,
+            createSkillEditor: factory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), llmUiEditors: {} } as any });
+    try {
+        await vi.waitFor(() => expect(ocr).toHaveBeenCalled());
+        expect(themeService.init).toHaveBeenCalled();
+        expect(runtime.vfs.openFileSystem).not.toHaveBeenCalledWith('/home/admin');
+        release();
+        const handle = await pending;
+        expect(runtime.vfs.openFileSystem).not.toHaveBeenCalledWith('/home/admin');
+    } finally { release(); await pending.then(handle => handle.destroy()).catch(() => {}); }
 });

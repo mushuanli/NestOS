@@ -313,6 +313,7 @@ async function bootstrap(): Promise<void> {
     const flowWorkspaces = new TauriFlowWorkspaces(rootDir);
     const llmLogger = new TauriLLMLogger(rootDir);
     const runtime = await createApplicationRuntime({
+        startupMode: 'interactive',
         remoteSourceProvider: createPiAgentDriver(),
         backend: rootBackend,
         additionalMounts: [...workspaceMounts],

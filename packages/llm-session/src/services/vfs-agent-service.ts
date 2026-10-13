@@ -44,6 +44,8 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
 
     // ─── FileBackedService lifecycle ─────────────────────────────────────────
 
+    protected override waitForLoad(): Promise<void> { return this.init(); }
+
     protected async onLoad(): Promise<void> {
         await this.ensureDefaults();
         await this.refreshData();
@@ -165,6 +167,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
 
     /** Resolve a System Prompt library entry (stored as /system-prompts/{id}.sp), in-memory cached. */
     async getSystemPrompt(id: string): Promise<SystemPromptDefinition | null> {
+        await this.waitForLoad();
         if (!id) return null;
         const cached = this._systemPromptCache.get(id);
         if (cached) return cached;
@@ -175,6 +178,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     }
 
     async listSystemPrompts(): Promise<SystemPromptDefinition[]> {
+        await this.waitForLoad();
         if (this._systemPromptListLoaded) return [...this._systemPromptCache.values()];
         try {
             const result = await this.engine.driver.search({ name: { contains: '.sp' }, type: 'file' });
@@ -195,6 +199,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     }
 
     async saveSystemPrompt(prompt: SystemPromptDefinition): Promise<void> {
+        await this.waitForLoad();
         assertPromptId(prompt.id);
         if (!prompt.name?.trim() || !Array.isArray(prompt.content) || prompt.content.some(part => typeof part !== 'string'))
             throw new Error('Invalid system prompt');
@@ -204,6 +209,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     }
 
     async deleteSystemPrompt(id: string): Promise<void> {
+        await this.waitForLoad();
         if (!id?.trim()) return;
         assertPromptId(id);
         if (this.llmService.getDefaultAgents().some(agent => agent.id === id))
@@ -222,10 +228,12 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     }
 
     async getAgents(): Promise<AgentDefinition[]> {
+        await this.waitForLoad();
         return [...this._agents];
     }
 
     async getAgentConfig(agentId: string): Promise<AgentDefinition | null> {
+        await this.waitForLoad();
         let found = this._agents.find(a => a.id === agentId);
         if (!found && agentId === 'default') {
             found = {
@@ -252,6 +260,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     // ─── IAgentManagementService — Agent CRUD ─────────────────────────────────
 
     async saveAgent(agent: AgentDefinition, options?: { onDuplicate?: 'merge' | 'error' }): Promise<void> {
+        await this.waitForLoad();
         const filename = `${agent.id}.agent`;
         const contentStr = JSON.stringify(agent, null, 2);
         const metadata = { icon: agent.icon || '🤖', title: agent.name, description: agent.description };
@@ -319,6 +328,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     }
 
     async deleteAgent(agentId: string): Promise<void> {
+        await this.waitForLoad();
         const cachedId = this._agentNodeIds.get(agentId);
         const filename = `${agentId}.agent`;
 
@@ -628,12 +638,12 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     }
 
     async dispose(): Promise<void> {
+        await super.dispose();
         this._eventUnsubscribers.forEach(fn => fn());
         this._eventUnsubscribers = [];
         if (this._syncTimer) { clearTimeout(this._syncTimer); this._syncTimer = null; }
         this._agentNodeIds.clear();
         this._duplicatePaths.clear();
-        await super.dispose();
     }
 }
 

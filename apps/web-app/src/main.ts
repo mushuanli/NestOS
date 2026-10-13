@@ -18,6 +18,7 @@ async function main() {
     const remoteSourceProvider = createPiAgentDriver();
     const sync = new WebProjectSync(backend, remoteSourceProvider);
     const runtime = await createApplicationRuntime({
+        startupMode: 'interactive',
         remoteSourceProvider,
         sync: { provider: sync, coordinator: sync.coordinator },
         backend,

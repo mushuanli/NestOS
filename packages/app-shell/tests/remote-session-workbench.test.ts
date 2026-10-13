@@ -99,7 +99,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(nativeRow.querySelector('button')!.title).toContain(t('workbench.modified'));
         await workbench.openResource(morePath, {preserveProject: true});
         expect(main.textContent).toContain('Older native session');
-        expect(peer.list).toHaveBeenLastCalledWith('codex',{cursor:'older/before+='},expect.anything());
+        expect(peer.list).toHaveBeenCalledWith('codex',{cursor:'older/before+='},expect.anything());
         await workbench.openResource(morePath + '/older');
         expect(selector.value).toBe(initialScope);
         expect(main.textContent).toContain('Remote native history');

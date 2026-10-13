@@ -108,6 +108,7 @@ export class ProjectService {
         try { return this.forFolder((await this.repository.getManifest(id)).folder); }
         catch (error) { if (error instanceof FSError && error.code === 'ENOENT') return undefined; throw error; }
     }
+    dispose(): void { this.projectRepository.dispose(); }
     chooseDirectory() { return this.directories.chooseDirectory(); }
     /** When the caller already read the folder catalog, reuse it instead of re-reading. */
     async list(folders?: readonly SessionFolder[]): Promise<ProjectFolder[]> {
@@ -122,9 +123,17 @@ export class ProjectService {
         return { path, name: project.name,displayName:server ? `${server.name}:${project.name}` : project.name, parentPath: cached?.parentPath ?? null, updatedAt: project.createdAt,
             project: { id: project.id, directory: project.directory, source: { kind: project.kind } } };
     }
+    navigationFromIndex = false;
+    listNavigation(folders: readonly SessionFolder[]): ProjectFolder[] {
+        return folders.filter((folder): folder is ProjectFolder => !!folder.project).map(folder => {
+            const connection = this.remoteMounts?.list(folder.project.id).find(mount => mount.at === '/')?.connectionId;
+            const server = this.remoteMounts?.connections().find(item => item.id === connection);
+            return { ...folder, displayName: server ? `${server.name}:${folder.name}` : folder.name };
+        });
+    }
     async navigationFolders(folders?: readonly SessionFolder[]): Promise<SessionFolder[]> {
         const cached = folders ?? await this.repository.listFolders();
-        const projects = await this.list(cached);
+        const projects = this.navigationFromIndex ? this.listNavigation(cached) : await this.list(cached);
         const children = cached.filter(folder => !folder.project && projects.some(project =>
             folder.path.startsWith(project.path + '/') || project.path.startsWith(folder.path + '/')));
         // Directory identities can exist before their Session organization records.
@@ -208,11 +217,18 @@ export class ProjectService {
         return project;
     }
     async forFolder(path: string | null | undefined, folders?: readonly SessionFolder[]): Promise<ProjectFolder | undefined> {
-        return (await this.list(folders)).filter(folder => path === folder.path || path?.startsWith(folder.path + '/'))
+        const projects = folders && this.navigationFromIndex ? this.listNavigation(folders) : await this.list(folders);
+        return projects.filter(folder => path === folder.path || path?.startsWith(folder.path + '/'))
             .sort((a, b) => b.path.length - a.path.length)[0];
     }
     async current(): Promise<ProjectFolder | undefined> {
-        const projects = await this.list();
+        if (this.navigationFromIndex && !this.startupId) {
+            try {
+                const raw = await this.root.driver.readContent('/etc/personal-project.json', { encoding: 'utf-8', representation: 'bytes' });
+                this.startupId = JSON.parse(String(raw)).id;
+            } catch (error) { if (!(error instanceof FSError) || error.code !== 'ENOENT') throw error; }
+        }
+        const projects = this.navigationFromIndex ? this.listNavigation(await this.repository.listFolders()) : await this.list();
         return projects.find(folder => folder.project.id === this.startupId) ?? projects[0];
     }
     create(name: string, parent: string | null = null, directory?: string): Promise<ProjectFolder> {
@@ -369,7 +385,7 @@ export class ProjectService {
         return true;
     }
     /** Called only after the host has acquired this Session's write lease. */
-    async adoptSession(id: string): Promise<void> {
+    async adoptSession(id: string, reconcileFolder?: (folder: string) => Promise<void>): Promise<void> {
         await this.sessionMoves.recoverLeased(id);
         const session = await this.repository.getManifest(id).catch(error => {
             if (error?.code === 'ENOENT') return undefined; throw error;
@@ -388,7 +404,9 @@ export class ProjectService {
         const directory = this.directories.describe(grant);
         const project = (await this.list()).find(item => item.project.directory.replace(/^host:/, '') === directory);
         if (!project) return;
-        await this.repository.updateManifest(id, { folder: await this.folderInProject(project, session.folder) });
+        const folder = await this.folderInProject(project, session.folder);
+        if (reconcileFolder) await reconcileFolder(folder);
+        else await this.repository.updateManifest(id, { folder });
     }
     private async folderInProject(project: ProjectFolder, folder?: string | null): Promise<string> {
         let parent = await this.sessionFolder(project);

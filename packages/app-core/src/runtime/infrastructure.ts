@@ -7,6 +7,9 @@ import { type ILLMLogger } from '@itookit/driver-llm/contracts';
 
 export interface ApplicationInfrastructureOptions {
     backend: IStorageBackend;
+    llmInitialization?: 'before-ready' | 'background';
+    deviceInitialization?: 'before-ready' | 'on-demand';
+    preloadDirectories?: readonly string[];
     additionalMounts?: Array<{ path: string; backend: IStorageBackend; options?: MountOptions }>;
     llmLogger?: ILLMLogger;
     mcp?: import('@itookit/kernel-adapters/llm/core').MCPConnectionOptions;
@@ -65,20 +68,22 @@ async function initializeDevices(options: ApplicationInfrastructureOptions, vfs:
         presets: createMindosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
         llmLogger: options.llmLogger ? new TwinSafeLlmLogger(options.llmLogger) : undefined, mcp: { clientInfo: { name: 'mindos', version: '1.0.0' }, logger: createModuleLogger('llm:mcp'), ...options.mcp }, codexTransport: options.codexTransport,
     });
-    let started = performance.now();
-    await traceBoot('llmDriver.init', () => llmDriver.init());
-    console.log(`[Boot]   ↳ llmDriver.init: +${(performance.now() - started).toFixed(0)}ms`);
     vfs.devices.register(llmDriver);
-    started = performance.now();
-    await traceBoot('llmDriver.createDeviceNodes', () => llmDriver.createDeviceNodes());
-    console.log(`[Boot]   ↳ createDeviceNodes: +${(performance.now() - started).toFixed(0)}ms`);
     vfs.devices.freeze();
-    logIO('LLM driver');
-
-    // Warm the fixed user layout so later projections do not race their first read.
-    for (const path of ['/home/admin/chats', '/home/admin/notes', '/home/admin/projects', '/home/admin/.config']) {
-        await vfs.openFileSystem(path);
+    const initialization = () => traceBoot('llmDriver.init', () => llmDriver.init());
+    if (options.llmInitialization === 'background') {
+        void initialization().catch(error => console.error('[Boot] LLM initialization failed', error));
+    } else await initialization();
+    // Older npm cores have no readiness gate, so materialize before exposing the VFS.
+    const supportsReadiness = typeof (vfs.devices as { ready?: unknown }).ready === 'function';
+    if (options.deviceInitialization !== 'on-demand' || !supportsReadiness) {
+        await traceBoot('llmDriver.createDeviceNodes', async () => {
+            await llmDriver.ensureReady(); await llmDriver.createDeviceNodes();
+        });
     }
+    logIO('LLM driver');
+    const directories = options.preloadDirectories ?? ['/home/admin/chats', '/home/admin/notes', '/home/admin/projects', '/home/admin/.config'];
+    await Promise.all(directories.map(path => vfs.openFileSystem(path)));
     const systemFS = await vfs.openFileSystem('/');
     return {
         vfs, systemFS, llmDriver, logIO,

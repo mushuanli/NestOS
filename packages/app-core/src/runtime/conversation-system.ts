@@ -8,10 +8,13 @@ import { withWorkspaceScopeCleanup } from './workspace-scope-cleanup';
 import { t, createModuleLogger, traceBoot } from '@itookit/common';
 
 export interface ConversationSystemOptions {
+    scheduleAgentInitialization?: (initialize: () => Promise<void>) => void | Promise<void>;
+    scheduleInvocationRecovery?: (recover: () => Promise<void>) => void | Promise<void>;
     digitalTwin?: import('../digital-twin/service').DigitalTwinService;
     directAgentPolicy?: import('@itookit/llm-session/contracts').DirectAgentPolicy;
     agentResolution?: import('@itookit/llm-session').AgentResolutionPolicy;
     vfs: IVFSManager;
+    promptHistoryFiles?: IFileSystem;
     /** Root view shared by Session-independent services; holds the Flow invocation marker. */
     systemFS: IFileSystem;
     agentService: VFSAgentService;
@@ -38,12 +41,14 @@ export async function createConversationSystem(
     const { vfs, agentService, sessionRepository, flowEngine, kernel, systemFS } = options;
     const capabilities = createFlowCapabilities(kernel);
     return initializeConversationSystem({
+        scheduleAgentInitialization: options.scheduleAgentInitialization,
+        scheduleInvocationRecovery: options.scheduleInvocationRecovery,
         directAgentPolicy: options.directAgentPolicy ?? createMindosDirectAgentPolicy(),
         agentResolution: options.agentResolution,
         hostPorts: { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot },
         agentService,
         sessionEngine: sessionRepository,
-        promptHistoryFiles: await vfs.openFileSystem('/home/admin/.config/mindos/prompt-history'),
+        promptHistoryFiles: options.promptHistoryFiles ?? await vfs.openFileSystem('/home/admin/.config/mindos/prompt-history'),
         flowInvocationSessions: createFlowInvocationSessions(systemFS),
         kernel: kernel.kernel,
         flowStore: flowEngine,

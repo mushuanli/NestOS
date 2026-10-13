@@ -13,12 +13,19 @@ export abstract class FileBackedService {
 
     // ── 生命周期 ──────────────────────────────────────────────
 
-    async init(): Promise<void> {
-        if (this.initialized) return;
-        await this.onLoad();
-        this.initialized = true;
-        this.notify();
+    private loading?: Promise<void>;
+    private closed = false;
+    init(): Promise<void> {
+        if (this.closed) return Promise.reject(new Error('Service is disposed'));
+        if (this.initialized) return Promise.resolve();
+        if (!this.loading) {
+            const work = this.onLoad().then(() => { this.initialized = true; this.notify(); });
+            this.loading = work;
+            void work.finally(() => { if (this.loading === work) this.loading = undefined; }).catch(() => {});
+        }
+        return this.loading;
     }
+    protected async waitForLoad(): Promise<void> { await this.loading; }
 
     protected abstract onLoad(): Promise<void>;
 
@@ -27,6 +34,8 @@ export abstract class FileBackedService {
     }
 
     async dispose(): Promise<void> {
+        this.closed = true;
+        await this.loading?.catch(() => {});
         this.listeners.clear();
         this.initialized = false;
     }

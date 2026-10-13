@@ -96,6 +96,8 @@ export interface ISessionRepository extends SessionDeletionStore {
     list(): Promise<ConversationManifest[]>;
     /** Read navigation metadata without loading history indexes, when supported. */
     listSummaries?(): Promise<SessionSummary[]>;
+    /** Read only the direct Session rows of a navigation directory. */
+    listSummariesInFolder?(folder: string | null): Promise<SessionSummary[]>;
     /** Delete a Session and its owned storage. */
     deleteSession(sessionId: string): Promise<void>;
     listFolders(): Promise<SessionFolder[]>;

@@ -20,3 +20,5 @@ export {
     ensureTree,
     type TaskClaim,
 } from './infrastructure/seqfile/store';
+
+export type { AttachedTask, TaskControlPlane, PendingInteractionTaskSource, TaskAttachmentSession, EditorTaskControlPlane } from './ports/task-control';

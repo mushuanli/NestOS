@@ -27,6 +27,11 @@
       "types": "./src/settings.ts",
       "import": "./src/settings.ts",
       "default": "./src/settings.ts"
+    },
+    "./conversation": {
+      "types": "./src/conversation.ts",
+      "import": "./src/conversation.ts",
+      "default": "./src/conversation.ts"
     }
   },
   "publishConfig": {
@@ -52,6 +57,10 @@
       "./settings": {
         "types": "./dist/settings.d.ts",
         "import": "./dist/settings.js"
+      },
+      "./conversation": {
+        "types": "./dist/conversation.d.ts",
+        "import": "./dist/conversation.js"
       }
     }
   },
@@ -61,7 +70,7 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "vite build && vite build --config vite.startup.config.ts && vite build --config vite.entries.config.ts && tsup --config tsup.types.config.ts && node ../../scripts/check-llm-ui-entrypoints.mjs",
+    "build": "vite build && vite build --config vite.startup.config.ts && vite build --config vite.entries.config.ts && tsup --config tsup.types.config.ts && node scripts/bundle-contracts.mjs && node ../../scripts/check-llm-ui-entrypoints.mjs",
     "dev": "vite build --watch",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
@@ -95,36 +104,38 @@
   },
   "dependencies": {
     "@itookit/common": "workspace:*",
+    "@itookit/durable-kernel": "workspace:*",
+    "@itookit/llm-flow": "workspace:*",
     "@itookit/llm-session": "workspace:*",
+    "@itookit/ui-common": "workspace:*",
     "@itookit/vfs-core": "5.3.1",
     "js-yaml": "^4.1.1",
-    "marked": "^16.4.2",
-    "@itookit/ui-common": "workspace:*",
-    "@itookit/llm-flow": "workspace:*",
-    "@itookit/durable-kernel": "workspace:*"
+    "marked": "^16.4.2"
   },
   "peerDependencies": {
-    "@itookit/mdxeditor": "0.5.2",
+    "@itookit/llm-settings-ui": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*",
-    "@itookit/llm-settings-ui": "workspace:*"
+    "@itookit/mdxeditor": "0.5.2"
   },
   "devDependencies": {
+    "@itookit/driver-llm": "0.2.0",
+    "@itookit/kernel-adapters": "workspace:*",
+    "@itookit/llm-settings-ui": "workspace:*",
+    "@itookit/llm-tasks": "workspace:*",
+    "@itookit/mdx-adapter": "workspace:*",
     "@itookit/mdxeditor": "0.5.2",
+    "@itookit/tools": "workspace:*",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.25",
     "@vitest/coverage-v8": "^1.6.1",
+    "rollup": "4.62.2",
+    "rollup-plugin-dts": "6.3.0",
+    "tsup": "^8.5.1",
     "typescript": "^5.9.3",
     "vite": "^5.4.21",
     "vite-plugin-checker": "^0.11.0",
     "vite-plugin-dts": "^3.9.1",
-    "vitest": "^1.6.1",
-    "@itookit/mdx-adapter": "workspace:*",
-    "@itookit/llm-settings-ui": "workspace:*",
-    "@itookit/driver-llm": "0.2.0",
-    "@itookit/tools": "workspace:*",
-    "@itookit/kernel-adapters": "workspace:*",
-    "@itookit/llm-tasks": "workspace:*",
-    "tsup": "^8.5.1"
+    "vitest": "^1.6.1"
   },
   "peerDependenciesMeta": {
     "@itookit/llm-settings-ui": {

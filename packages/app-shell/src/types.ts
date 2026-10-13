@@ -11,7 +11,6 @@ import type { Kernel } from '@itookit/durable-kernel';
 import type {
     DagPluginRegistry,
     ISessionRepository,
-    VFSAgentService,
     IAgentManagementService,
     IAgentConfigService,
     IPrivilegedCommandService,
@@ -70,11 +69,11 @@ export interface AdditionalMount {
 
 export interface ChatEditorDeps {
     defaultHarnessToolIds?: readonly string[];
-    sessionManager: import('@itookit/llm-session').SessionManager;
+    sessionManager: import('@itookit/llm-session/contracts').SessionViewPort;
     sessionRepository: ISessionRepository;
     ocr?: import('@itookit/ui-common').OcrControls;
     commandBus?: ICommandBus;
-    kernel?: Kernel;
+    kernel?: import('@itookit/durable-kernel').EditorTaskControlPlane;
     privilegedCommands?: IPrivilegedCommandService;
     sessionSkills?: import('@itookit/tools/contracts').SessionSkillControls;
 }
@@ -111,8 +110,8 @@ export interface AppUI {
         commands: ICommandBus;
         navigate(sessionId: string): void | Promise<void>;
     }): ContextMenuConfig<TNode>;
-    createChatEditor(agentService: VFSAgentService, deps: ChatEditorDeps): EditorFactory;
-    createAgentEditor(agentService: VFSAgentService, options?: { defaultToolIds?: readonly string[] }): EditorFactory;
+    createChatEditor(agentService: IAgentConfigService, deps: ChatEditorDeps): EditorFactory;
+    createAgentEditor(agentService: IAgentManagementService, options?: { defaultToolIds?: readonly string[] }): EditorFactory;
     createFlowEditor(deps: FlowEditorDeps): EditorFactory;
     createSkillEditor(agentService: IAgentManagementService): EditorFactory;
     createAIContextMenu<TNode extends AIContextMenuNode>(deps: AIContextMenuDeps): ContextMenuConfig<TNode>;

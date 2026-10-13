@@ -1,10 +1,10 @@
 # @itookit/http-app
 
-独立 Node.js HTTP 存储宿主。浏览器通过 IStorageBackend 复用 MindOS Web UI。
+独立 Node.js 应用宿主。服务端持有 ApplicationRuntime，浏览器通过 ApplicationPort 展示和控制。
 
-- `src/server/` 装配 LocalFS、Node SQLite 和静态 UI；不能装配第二套应用 Runtime。
+- `src/server/` 装配 LocalFS、Node SQLite 和静态 UI；装配唯一应用 Runtime；浏览器不能再装配另一套执行 Runtime。
 - `src/client/` 不导入 Node、LocalFS、Tauri。Web UI 经 mind-os 的公开入口导入。
-- API 只暴露 VFS 存储操作，不提供 SQL、任意宿主路径或 Tauri invoke。
+- 对外 API 暴露应用查询、命令、回执和事件，不提供 SQL、任意宿主路径、原始托管状态写入或 Tauri invoke；原始 VFS 存储协议仅用于内部监听。
 - SeqFile 事务缓存写入，服务端在同一原生事务中先校验读观察再批量提交。不可把跨文件事务改成逐条非原子写入，不自动重试回调或结果未知的提交。
 - `_meta` 和 LocalFS rename journal 是宿主内部路径，不向客户端暴露。
 

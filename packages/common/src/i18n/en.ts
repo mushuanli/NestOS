@@ -4,6 +4,7 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    "application.loadMore": "Load more",
     "httpApp.starting": "Starting MindOS…",
     "httpApp.startupFailed": "MindOS failed to start",
     "httpApp.updated": "A module needed by this page failed to load. Save open edits before reloading.",

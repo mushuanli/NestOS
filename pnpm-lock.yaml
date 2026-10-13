@@ -166,6 +166,12 @@ importers:
       '@itookit/common':
         specifier: workspace:*
         version: link:../../packages/common
+      '@itookit/llm-ui':
+        specifier: workspace:*
+        version: link:../../packages/llm-ui
+      '@itookit/mdxeditor':
+        specifier: file:../../packages/mdxeditor
+        version: file:packages/mdxeditor
       '@itookit/piagent-driver':
         specifier: workspace:*
         version: link:../../packages/piagent-driver
@@ -1001,6 +1007,12 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^1.6.1
         version: 1.6.1(vitest@1.6.1(@types/node@20.19.25)(jsdom@27.2.0))
+      rollup:
+        specifier: 4.62.2
+        version: 4.62.2
+      rollup-plugin-dts:
+        specifier: 6.3.0
+        version: 6.3.0(rollup@4.62.2)(typescript@5.9.3)
       tsup:
         specifier: ^8.5.1
         version: 8.5.1(@microsoft/api-extractor@7.55.1(@types/node@20.19.25))(jiti@1.21.7)(postcss@8.5.16)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
@@ -1182,6 +1194,14 @@ importers:
         version: 5.9.3
 
 packages:
+
+  rollup-plugin-dts@6.3.0:
+    resolution: {integrity: sha512-d0UrqxYd8KyZ6i3M2Nx7WOMy708qsV/7fTHMHxCMCBOAe3V/U7OMPu5GkX8hC+cmkHhzGnfeYongl1IgiooddA==}
+    engines: {node: '>=16'}
+    peerDependencies:
+      rollup: ^3.29.4 || ^4
+      typescript: ^4.5 || ^5.0
+
 
   '@acemir/cssom@0.9.31':
     resolution: {integrity: sha512-ZnR3GSaH+/vJ0YlHau21FjfLYjMpYVIzTD8M8vIEQvIGxeOXyXdzCI140rrCY862p/C/BbzWsjc1dgnM9mkoTA==}
@@ -5011,6 +5031,18 @@ packages:
     resolution: {integrity: sha512-IynmDyxsEsb9RKzO3J9+4SxXnl2FTFSzNBaKKaMV6tsSk0rw9gYw9gs+JFCq/qk2LCZ78KDwyj+Z289TijSkUw==}
 
 snapshots:
+
+  ignore@5.3.2:
+    optional: true
+
+  rollup-plugin-dts@6.3.0(rollup@4.62.2)(typescript@5.9.3):
+    dependencies:
+      magic-string: 0.30.21
+      rollup: 4.62.2
+      typescript: 5.9.3
+    optionalDependencies:
+      '@babel/code-frame': 7.27.1
+
 
   '@acemir/cssom@0.9.31': {}
 

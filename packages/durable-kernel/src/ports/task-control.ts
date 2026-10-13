@@ -1,4 +1,4 @@
-import type { SessionHandle, TaskHandle, TaskRecord } from '@itookit/durable-kernel';
+import type { SessionHandle, TaskHandle, TaskRecord } from '../domain/types';
 
 export type AttachedTask = Pick<TaskHandle, 'id' | 'events' | 'signal' | 'start' | 'cancel' | 'status' | 'respond' | 'pause' | 'interrupt' | 'resume'>;
 

@@ -1,6 +1,6 @@
-import type { SessionGroup, SessionStatus, SessionEventEnvelope, RegistryEvent } from '@itookit/llm-session/contracts';
-import type { ISession } from '@itookit/llm-session/contracts';
-import type { PromptHistoryEntry } from '@itookit/llm-session/contracts';
+import type { SessionGroup, SessionStatus, SessionEventEnvelope, RegistryEvent } from '../core/types';
+import type { ISession } from './session';
+import type { PromptHistoryEntry } from './prompt-history';
 
 export interface PromptHistoryPort {
     getRecent(count?: number): Promise<PromptHistoryEntry[]>;
@@ -10,7 +10,7 @@ export interface PromptHistoryPort {
 
 /** The editor needs observation and a command channel, not a session implementation. */
 export interface SessionViewPort extends ISession {
-    getDirectAgentPolicy?(): import('@itookit/llm-session/contracts').ResolvedDirectAgentPolicy;
+    getDirectAgentPolicy?(): import('./direct-agent-policy').ResolvedDirectAgentPolicy;
     getSessions(): SessionGroup[];
     getStatus(): SessionStatus | 'unbound';
     isGenerating(): boolean;

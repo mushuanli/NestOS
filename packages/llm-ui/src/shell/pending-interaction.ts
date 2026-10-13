@@ -1,5 +1,5 @@
 import type { TaskRecord } from '@itookit/durable-kernel';
-import type { PendingInteractionTaskSource } from '../domain/ports/TaskControlPlane';
+import type { PendingInteractionTaskSource } from '@itookit/durable-kernel';
 
 const TERMINAL = ['succeeded', 'failed', 'cancelled'];
 

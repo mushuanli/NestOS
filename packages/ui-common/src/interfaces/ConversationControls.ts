@@ -27,6 +27,7 @@ export interface ConversationSnapshot {
     canSend: boolean; canInterrupt: boolean; canRespond: boolean; pending: boolean; disconnected: boolean; gap: boolean;
 }
 export interface ConversationControls {
+    subscribe?(listener: () => void): () => void;
     rename?(name: string): Promise<ConversationSnapshot>;
     archive?(archived: boolean): Promise<ConversationSnapshot>;
     /** Local observation of receipts and control ownership, including while offline. */

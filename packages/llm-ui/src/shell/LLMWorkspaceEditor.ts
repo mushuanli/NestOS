@@ -1,7 +1,7 @@
 import { disposeEditorResources } from './editor-disposal';
 import { rememberTaskAttachment, restoreTaskAttachment } from './task-attachment-lifecycle';
-import type { EditorTaskControlPlane } from '../domain/ports/TaskControlPlane';
-import type { SessionViewPort } from '../domain/ports/SessionViewPort';
+import type { EditorTaskControlPlane } from '@itookit/durable-kernel';
+import type { SessionViewPort } from '@itookit/llm-session/contracts';
 import { acquireConnectionOptions } from './connection-options-cache';
 import { rerunSession } from './rerun-session';
 import { t } from '@itookit/common';

@@ -12,6 +12,7 @@ import { createCertificates } from './create-certificates';
 import { AuditLog } from './audit-log';
 import { configDirectory, resolveDataRoot } from './profile';
 import { options } from './options';
+import { createApplicationApi } from './application-host';
 
 async function main(): Promise<void> {
     const values = options();
@@ -45,11 +46,17 @@ async function startHost({ root, sidecar, certificates, staticDir, auditFile, po
         durability: 'full', createDb: file => NodeSqliteSidecarDb.open(file) });
     const audit = new AuditLog(auditFile), token = randomBytes(32).toString('base64url');
     try { await audit.initialize(); } catch (error) { await backend.close(); throw error; }
+    const applicationApi = createApplicationApi(backend);
     const internal = createStorageServer(backend, root, token, audit);
-    const server = createHttpServer({ certificates, staticDir, internalPort, internalToken: token, audit });
+    const server = createHttpServer({ certificates, staticDir, internalPort, internalToken: token, audit, application: applicationApi });
     try { await listen(internal, internalPort, '127.0.0.1', backlog); await listen(server, port, host, backlog); }
-    catch (error) { await stopServers([server, internal]); await backend.close(); await audit.close(); throw error; }
-    installShutdown([server, internal], async () => { await backend.close(); audit.write({ event: 'server.stopped' }); await audit.close(); });
+    catch (error) { applicationApi?.endStreams(); await stopServers([server, internal]); await applicationApi?.close().catch(() => {}); await backend.close(); await audit.close(); throw error; }
+    installShutdown([server, internal], async () => {
+        const errors: unknown[] = [];
+        await applicationApi.close().catch(error => errors.push(error)); await backend.close().catch(error => errors.push(error));
+        audit.write({ event: 'server.stopped' }); await audit.close().catch(error => errors.push(error));
+        if (errors.length) throw new AggregateError(errors, 'Host cleanup failed');
+    }, () => applicationApi.endStreams());
     audit.write({ event: 'server.started', route: `https://${host}:${port}` });
     console.log(`MindOS HTTPS UI: https://${host}:${port}\nVFS internal: 127.0.0.1:${internalPort}\nClient certificate required\nAudit log: ${auditFile}`);
 }
@@ -78,10 +85,10 @@ function listen(server: Server, port: number, host: string, backlog: number): Pr
 async function stopServers(servers: Server[]): Promise<void> {
     await Promise.all(servers.map(server => new Promise<void>(resolve => { server.close(() => resolve()); server.closeIdleConnections(); })));
 }
-function installShutdown(servers: Server[], cleanup: () => Promise<void>): void {
+function installShutdown(servers: Server[], cleanup: () => Promise<void>, beforeStop: () => void = () => {}): void {
     let stopping = false;
     const stop = () => {
-        if (stopping) return; stopping = true;
+        if (stopping) return; stopping = true; beforeStop();
         void stopServers(servers).then(cleanup).then(() => { process.exitCode = 0; }).catch(() => { process.exitCode = 1; });
     };
     process.once('SIGINT', stop); process.once('SIGTERM', stop);

@@ -607,7 +607,7 @@ Session 回归补迁了 pending-user 测试中遗漏的 ContextAssembler 导入�
 - [统一提交](../packages/llm-flow/src/run-submission.ts)、[Flow 执行器](../packages/llm-flow/src/flow/executor.ts)。
 - [Program/Effect 契约](../packages/durable-kernel/src/domain/types.ts)、[Context v2 bridge](../packages/llm-tasks/src/durable/context-program.ts)、[LLM Effect 构造与重试](../packages/llm-tasks/src/durable/program-helpers.ts)。
 - [Context 端口](../packages/llm-context/src/domain/durable.ts)、[通信驱动](https://github.com/mushuanli/driver-llm/blob/main/src/core/driver.ts)、[Provider 注册表](https://github.com/mushuanli/driver-llm/blob/main/src/providers/registry.ts)。
-- [UI 实例端口](../packages/llm-ui/src/domain/ports/SessionViewPort.ts)、[任务挂接](../packages/llm-ui/src/shell/RunAttachmentController.ts)。
+- [UI 实例端口](../packages/llm-session/src/contracts/session-view.ts)、[任务挂接](../packages/llm-ui/src/shell/RunAttachmentController.ts)。
 
 后续 GraphMutationRuntime 提取再次通过 Flow 346 项回归，覆盖整批身份绑定失败、patch 幂等冲突、容量限制、循环派发、join 与恢复路径。内部结构见 [Flow API](llm-flow-api.md#执行器内部责任边界)。
 
@@ -703,3 +703,19 @@ UI 的主题、OCR 配置和设置来源文件系统并行准备。工作区视�
 启动调度由 `runtime/startup-policy.ts` 和 `runtime/startup-coordinator.ts` 分开承担：前者按 interactive/headless 选择启动前、后台或工作区可用后的任务；后者只负责共享 readiness、有界并发、错误报告与关闭排空。llm-session 接收初始化调度回调，不判断宿主是否有 UI。interactive 宿主首次工作区可用后调用 `startBackground()`；具体 Session 使用仍等待自身初始化与租约校验。
 
 基础设施分别配置 LLM 初始化、设备节点初始化及目录预热，三者互不绑定。本地独立 vfs-core 支持设备 readiness 时，访问 `/dev/<handler>` 才等待并生成节点；旧 npm core 无此能力时自动使用启动前节点初始化，保持功能兼容，该路径首屏仍会较慢。独立库通过自身公开 exports 消费，不并入主仓库工作区。
+
+
+## 应用端口与独立 npm 边界
+
+HTTP 应用模式正在实施，尚未完成全部工作区迁移。`ApplicationPort` 属于应用用例层，定义数据查询、命令与变更订阅；本地适配与 HTTP 适配实现同一契约。HTTP 实现留在 apps/http-app，通用库不识别 URL、认证、传输或 MindOS 的工作区策略。
+
+| 模块 | 保持的公共边界 | 应用模式的接入位置 |
+|---|---|---|
+| vfs-core | IStorageBackend / IFileSystem / readiness；独立存储机制 | app-core 使用公开 VFS 接口；服务端宿主注入存储驱动 |
+| vfs-ui | BrowserSource；仅树节点、子层读取与变更通知 | app-shell 的 ApplicationBrowserSource 投影查询结果 |
+| llm-ui | ConversationControls；仅展示、输入与控制端口 | app-shell 的 ApplicationConversationControls；HTTP 位于宿主适配器 |
+| llm-session / durable-kernel | 会话观察与任务控制契约 | SessionViewPort 与任务端口定义归所属领域模块，UI 直接导入领域契约 |
+
+独立 vfs-core、vfs-ui 不依赖 app-core、app-shell 或 http-app，不要求应用服务器才能使用。开发环境存在独立目录时通过其公开 exports 消费；目录缺席时回退到 npm，不用仓库源码别名替代 npm 入口。npm 发布清单保持版本依赖，不能带入本地 link 或 workspace 路径。
+
+当前新应用 UI 接入覆盖基本文件浏览、编辑和会话展示/控制；设置、工具箱等完整能力仍需继续迁移和验收。Web/Tauri/CLI 保持本地宿主装配，HTTP 浏览器不再初始化 Runtime。新增领域契约需要先发布对应领域包，再发布消费它的 UI 包；结构接口兼容并不保证新声明可搭配旧领域包。llm-ui 构建检查覆盖公开 JS/声明依赖图和发布入口，不能以仓库内源码类型检查代替独立安装验收。

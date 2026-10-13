@@ -1,5 +1,5 @@
 import type { JsonValue } from '@itookit/durable-kernel';
-import type { EditorTaskControlPlane } from '../domain/ports/TaskControlPlane';
+import type { EditorTaskControlPlane } from '@itookit/durable-kernel';
 import type { RunAttachmentController } from './RunAttachmentController';
 import { restoreWaitingAttachment } from './pending-interaction';
 

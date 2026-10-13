@@ -8,6 +8,7 @@ import { loadCertificates } from '../src/server/certificates';
 import { createHttpServer } from '../src/server/http-server';
 import { createStorageServer } from '../src/server/storage-server';
 import type { AuditEvent, AuditPort } from '../src/server/audit-log';
+import type { ApplicationApi } from '../src/server/application-api';
 
 export async function authenticatedFetch(directory: string): Promise<{ fetcher: typeof fetch; close(): void }> {
     const [ca, cert, key] = await Promise.all(['ca.crt', 'client.crt', 'client.key'].map(file => readFile(path.join(directory, file))));
@@ -31,11 +32,11 @@ export async function listen(server: Server): Promise<number> {
 export async function close(server: Server): Promise<void> {
     server.closeAllConnections(); await new Promise<void>(resolve => server.close(() => resolve()));
 }
-export async function secureServers(backend: IStorageBackend, root: string, ui: string, certificates: string) {
+export async function secureServers(backend: IStorageBackend, root: string, ui: string, certificates: string, application?: ApplicationApi) {
     const events: AuditEvent[] = [], audit: AuditPort = { write: event => { events.push(event); }, close: async () => {} };
     const token = randomBytes(32).toString('hex'), internal = createStorageServer(backend, root, token, audit);
     const internalPort = await listen(internal);
-    const server = createHttpServer({ certificates: await loadCertificates(certificates), staticDir: ui, internalPort, internalToken: token, audit });
+    const server = createHttpServer({ certificates: await loadCertificates(certificates), staticDir: ui, internalPort, internalToken: token, audit, application });
     const port = await listen(server);
     return { server, internal, internalPort, token, events, origin: `https://127.0.0.1:${port}` };
 }

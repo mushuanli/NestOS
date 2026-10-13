@@ -6,9 +6,11 @@ import type { CertificateAuth } from './certificates';
 import { auditRequest, type AuditPort } from './audit-log';
 import { sendError } from './http-response';
 import { serveStatic } from './static-files';
+import type { ApplicationApi } from './application-api';
 import { proxyStorage } from './storage-proxy';
 
 export interface HttpServerOptions {
+    application?: ApplicationApi;
     certificates: CertificateAuth; staticDir: string; internalPort: number; internalToken: string; audit: AuditPort;
 }
 /** Every public resource requires both TLS client validation and explicit certificate enrollment. */
@@ -35,8 +37,14 @@ async function serve(request: IncomingMessage, response: ServerResponse, options
         request.socket.destroy(); return;
     }
     const pathname = new URL(request.url ?? '/', 'https://localhost').pathname;
-    auditRequest(options.audit, request, response, ['/api/vfs', '/api/health'].includes(pathname) ? pathname : pathname.startsWith('/api/') ? '/api/unknown' : '/ui');
-    if (request.method === 'POST') validateOrigin(request);
+    const route = ['/api/vfs', '/api/health', '/api/application', '/api/application/events'].includes(pathname) ? pathname : pathname.startsWith('/api/') ? '/api/unknown' : '/ui';
+    auditRequest(options.audit, request, response, route);
+    if (request.method === 'POST' || pathname.startsWith('/api/application')) validateOrigin(request);
+    if (pathname === '/api/application' || pathname === '/api/application/events') {
+        if (!options.application) throw new FSError('ECAPABILITY', 'Application hosting is disabled');
+        await options.application.handle(request, response, () => options.certificates.accepts(request.socket as TLSSocket)); return;
+    }
+    if (pathname === '/api/vfs' && options.application) throw new FSError('EACCES', 'Managed state is only writable through application commands');
     if (pathname === '/api/vfs' || pathname === '/api/health') {
         await proxyStorage(request, response, options.internalPort, options.internalToken); return;
     }

@@ -21,7 +21,7 @@
 
 | 接口/类型 | 核心字段/方法 | 定义 | 实现 | 消费 |
 |---|---|---|---|---|
-| `EditorTaskControlPlane` / `AttachedTask` | openTask/openSession/listSessionTasks；共享挂接身份、Task 事件及控制 | `llm-ui/src/domain/ports/TaskControlPlane.ts`，从 `/chat` 和根入口导出 | Kernel 或宿主远程客户端 | 聊天编辑器、任务挂接及 pending 恢复 |
+| `EditorTaskControlPlane` / `AttachedTask` | openTask/openSession/listSessionTasks；共享挂接身份、Task 事件及控制 | `durable-kernel/src/ports/task-control.ts`，从 Kernel 根入口导出 | Kernel 或宿主远程客户端 | 聊天编辑器、任务挂接及 pending 恢复 |
 | `SessionViewBinding` / `LLMFactoryDependencies` | 显式 sessionManager 或 resolveSessionView；仓储及可选宿主端口 | `llm-ui/src/chat.ts` | 宿主组合根 | createLLMFactory |
 | `ILLMService` | `chat()`、`chatStream()`、`abort()`、`getConnection()` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/service.ts` | `kernel-adapters LLMServiceAdapter` | `llm-tasks`（经 effect）、`llm-session` |
 | `ChatMessage` | `role/content/attachments?` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/message.ts` | driver-llm | 宿主通信适配 |

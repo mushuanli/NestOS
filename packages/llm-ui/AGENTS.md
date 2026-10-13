@@ -84,8 +84,10 @@ ChatInput 设置按对话、OCR、高级分组；高级项默认折叠。Skills 
 
 `/chat` 的正式会话编辑器必须注入 SessionViewPort，提示词历史仅由实例提供。Session/Flow 命令常量来自各自 `/contracts`，共享 UI 禁止导入 Session 实现根入口；禁止全局单例回退。
 
-声明由 tsup.types.config.ts 打包，中性契约内联，Kernel 和 UI 公共类保持外部身份。build 自动执行 check-llm-ui-entrypoints.mjs，检查默认入口无设置/单例，以及四个开发契约包不泄漏到 JS 或公开声明。禁止只移动 package.json 依赖而不验证产物。
+声明由 tsup.types.config.ts 打包，再由 scripts/bundle-contracts.mjs 按 npm 公开 exports 解析并内联 driver 契约，Kernel 和 UI 公共类保持外部身份。build 自动执行 check-llm-ui-entrypoints.mjs，检查默认入口无设置/单例，四个开发契约包不泄漏到 JS 或公开声明，应用宿主依赖不泄漏，以及发布入口对应的文件存在。禁止只移动 package.json 依赖而不验证产物。
+
+`/conversation` 仅消费 ui-common 的 ConversationControls 和 EditorOptions，不依赖 app-core 或 HTTP。SessionViewPort 的定义归 llm-session/contracts，TaskControlPlane 等任务端口归 durable-kernel；UI 直接导入所属模块的公共契约。发布这些新声明前必须先发布包含对应端口的领域包，不能用旧 npm 版本代替新契约。
 
 Slash 命令描述在 slash-command-catalog.ts，弹出交互在 SlashCommandPlugin，执行按 SlashCommandRouter 的领域回调分组。输入创建状态只接收 initialInputState，禁止恢复 app_create_params 或全局创建缓存。
 
-公开 EditorTaskControlPlane 位于 domain/ports/TaskControlPlane.ts，Kernel 和远程客户端均可按结构实现，不要求继承 Kernel。工厂依赖类型要求 sessionManager/resolveSessionView 至少一个。task-attachment-lifecycle 负责共享挂接身份与异步恢复；editor-disposal 顺序尝试全部资源清理并汇总失败，destroy 返回同一 Promise。加载后的配置记录已保存快照，未修改时刷新/销毁不覆盖外部更新。
+公开 EditorTaskControlPlane 位于 durable-kernel/src/ports/task-control.ts，Kernel 和远程客户端均可按结构实现，不要求继承 Kernel。工厂依赖类型要求 sessionManager/resolveSessionView 至少一个。task-attachment-lifecycle 负责共享挂接身份与异步恢复；editor-disposal 顺序尝试全部资源清理并汇总失败，destroy 返回同一 Promise。加载后的配置记录已保存快照，未修改时刷新/销毁不覆盖外部更新。

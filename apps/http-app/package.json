@@ -16,6 +16,8 @@
     "@itookit/common": "workspace:*",
     "@itookit/app-core": "workspace:*",
     "@itookit/app-shell": "workspace:*",
+    "@itookit/llm-ui": "workspace:*",
+    "@itookit/mdxeditor": "0.5.2",
     "@itookit/vfs-core": "5.3.1",
     "@itookit/piagent-driver": "workspace:*",
     "@itookit/vfsdriver-local": "5.3.0",

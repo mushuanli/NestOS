@@ -12,6 +12,8 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private branches?: RemoteBranches;
     private snapshot?: ConversationSnapshot;
     private closed = false;
+    private releaseUpdates?: () => void;
+    private updateTimer?: ReturnType<typeof setTimeout>;
     private working = false;
     private timer?: ReturnType<typeof setTimeout>;
     private historyTimer?: ReturnType<typeof setTimeout>;
@@ -38,7 +40,10 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     async render() {
         this.layout();
         try { await this.show(await this.service.read()); } catch (error) { this.showError(error); }
-        if (!this.closed) this.schedule();
+        if (!this.closed) {
+            if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
+            else this.schedule();
+        }
     }
     private layout() {
         this.view = new ConversationWorkspaceView(this.container, this.options, {
@@ -168,6 +173,15 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private showError(error: unknown) {
         this.view.setStatus(this.snapshot?.pending ? t('harness.unknown') : `${t('harness.failed')} ${error instanceof Error ? error.message : ''}`, this.snapshot?.pending ? 'queued' : 'failed');
     }
+    private queueUpdate(): void {
+        if (this.closed || this.updateTimer) return;
+        this.updateTimer = setTimeout(() => {
+            this.updateTimer = undefined;
+            if (this.working) { this.queueUpdate(); return; }
+            const work = this.tail.then(async () => { if (!this.closed) await this.show(await this.service.poll()); });
+            this.tail = work.catch(() => { if (!this.closed) this.view.setStatus(t('harness.disconnected')); });
+        }, 50);
+    }
     private schedule() {
         this.timer = setTimeout(() => {
             if (this.closed) return;
@@ -178,7 +192,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             void this.tail.finally(() => { if (!this.closed) this.schedule(); });
         }, 1000);
     }
-    async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; clearTimeout(this.timer); clearTimeout(this.historyTimer); await this.service.close(); await this.tail; this.branches?.destroy(); this.view?.destroy(); this.container.replaceChildren(); }
+    async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); clearTimeout(this.historyTimer); await this.service.close(); await this.tail; this.branches?.destroy(); this.view?.destroy(); this.container.replaceChildren(); }
     getText() { return remoteRounds(this.snapshot?.messages ?? []).map(group => group.content ?? group.executionRoot?.data.output ?? '').join('\n\n'); }
     async navigateTo(target: {elementId: string}): Promise<void> {
         if (!target.elementId.startsWith('native-item:')) return;

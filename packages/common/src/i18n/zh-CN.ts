@@ -5,6 +5,7 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    "application.loadMore": "加载更多",
     "httpApp.starting": "正在启动 MindOS…",
     "httpApp.startupFailed": "MindOS 启动失败",
     "httpApp.updated": "页面所需模块加载失败。请先保存已打开的编辑内容，再重新加载。",

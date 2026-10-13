@@ -17,8 +17,8 @@ export function createSessionPlugin(sessionManager: SessionManager): ILLMPlugin 
             const sm = sessionManager;
 
             ctx.commands.register(SessionCommand.Bind, async (args) => {
-                const { sessionId } = args as { sessionId: string };
-                return sm.bindSession(sessionId);
+                const { sessionId, createMissing } = args as { sessionId: string; createMissing?: boolean };
+                return createMissing === undefined ? sm.bindSession(sessionId) : sm.bindSession(sessionId, { createMissing });
             });
             ctx.commands.register(SessionCommand.Unbind, async () => sm.unbindSession());
             ctx.commands.register(SessionCommand.CreateFromFlow, async (args) => {

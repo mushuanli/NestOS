@@ -11,7 +11,7 @@ import type { IAgentConfigService } from '@itookit/kernel-adapters/contracts';
 import { IEditor } from '@itookit/ui-common';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { EditorFactory, EditorOptions } from '@itookit/ui-common';
-import type { EditorTaskControlPlane } from './domain/ports/TaskControlPlane';
+import type { EditorTaskControlPlane } from '@itookit/durable-kernel';
 
 export type {
     IPrivilegedCommandService,
@@ -40,8 +40,8 @@ export type { FlowsEditorDeps } from './components/FlowsEditor';
  */
 /** A formal Session factory must receive one explicit instance source. */
 export type SessionViewBinding =
-    | { sessionManager: import('./domain/ports/SessionViewPort').SessionViewPort; resolveSessionView?: never }
-    | { sessionManager?: never; resolveSessionView: () => import('./domain/ports/SessionViewPort').SessionViewPort };
+    | { sessionManager: import('@itookit/llm-session/contracts').SessionViewPort; resolveSessionView?: never }
+    | { sessionManager?: never; resolveSessionView: () => import('@itookit/llm-session/contracts').SessionViewPort };
 
 export type LLMFactoryDependencies = SessionViewBinding & {
     defaultHarnessToolIds?: readonly string[];
@@ -144,8 +144,5 @@ export { createFlowContextMenuConfig } from './flows/context-menu';
 export { FlowLauncher, type FlowRunOptions } from './flows/run-flow';
 export { installFlowLibrary, restoreFlowLibrary } from './flows/library';
 
-export type { SessionViewPort, PromptHistoryPort } from './domain/ports/SessionViewPort';
 
 export type { FlowContextMenuOptions } from './flows/context-menu';
-
-export type { EditorTaskControlPlane, TaskControlPlane, TaskAttachmentSession, PendingInteractionTaskSource, AttachedTask } from './domain/ports/TaskControlPlane';

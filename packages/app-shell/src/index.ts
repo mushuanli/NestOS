@@ -38,3 +38,5 @@ export type { ProjectSyncSetupPorts } from './projects/sync/setup';
 export { showDirectorySync } from './projects/sync/directory';
 export type { DirectorySyncPorts } from './projects/sync/directory';
 export { showSyncPreview } from './projects/sync/preview';
+
+export type { ApplicationAppOptions, ApplicationHandle, ApplicationWorkspace, ApplicationPresentation, ApplicationView, ApplicationViewContext } from './application/shell';

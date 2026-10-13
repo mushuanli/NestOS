@@ -1,13 +1,14 @@
 # MindOS HTTP app
 
-Node.js 提供受双向 TLS 保护的完整 MindOS UI 和独立 VFS 存储服务，浏览器继续运行聊天、Kernel 和数字分身调度。Node.js >=22.13；初始化证书需要 OpenSSL。
+Node.js 提供受双向 TLS 保护的应用能力服务，持有唯一的 Session/Kernel/LLM Runtime。浏览器仅装配 UI、应用端口适配器与视图状态。Node.js >=22.13；初始化证书需要 OpenSSL。
 
 ```text
-Browser + client certificate
+Browser + client certificate + ApplicationPort
   → HTTPS :2000 (mTLS + enrolled certificate fingerprint)
-  → HTTP 127.0.0.1:2001 (ephemeral internal credential)
-  → LocalFS + SQLite
+  → ApplicationHost → app-core Runtime → LocalFS + SQLite
 ```
+
+当前接入基本文件和会话工作区；工具箱、设置、数字分身和完整 Flow 工作区仍待迁移。浏览器不再通过原始存储 API 创建执行 Runtime；详细边界和验收见 [HTTP 应用宿主](../../doc/http-app.md)。
 
 首次初始化私有 CA、服务器证书和浏览器身份：
 
@@ -49,8 +50,8 @@ pnpm httpd
 
 默认日志：`~/.config/mindos/logs/http/audit.jsonl`。记录认证成功/拒绝、请求 ID、来源 IP、路由、VFS 操作、HTTP 状态、错误码及耗时；通过 parentRequestId 关联对外和内部请求。不记录密码、Authorization/Cookie、查询参数、文件正文或模型消息。文件权限 0600，每份 10 MiB，保留当前及 3 份轮转记录；极端突发时汇总记录丢弃数量。
 
-数据根优先级为 `--root` → `MINDOS_ROOT` → `mindos.json` 的 `rootDir` → `<配置目录>/data`。配置中的相对 `rootDir` 按配置目录解析，`--root` 的相对路径按启动目录 `INIT_CWD` 解析。`--root` 是整个 MindOS 数据根，SQLite 默认 `<root>/_meta/index.db`。证书与审计日志必须在数据根之外，证书不能放在静态 UI 根中。浏览器只调用认证后的同源 `/api/vfs` 和 `/api/health`；内部端口不对局域网开放，直接本机访问还需内部凭据。
+数据根优先级为 `--root` → `MINDOS_ROOT` → `mindos.json` 的 `rootDir` → `<配置目录>/data`。配置中的相对 `rootDir` 按配置目录解析，`--root` 的相对路径按启动目录 `INIT_CWD` 解析。`--root` 是整个 MindOS 数据根，SQLite 默认 `<root>/_meta/index.db`。证书与审计日志必须在数据根之外，证书不能放在静态 UI 根中。浏览器访问认证后的同源 `/api/application` 与事件订阅；对外 `/api/vfs` 被拒绝。内部存储端口不对局域网开放，直接本机访问还需内部凭据。
 
 协议、事务语义与限制见 [HTTP 存储应用](../../doc/http-app.md)。
 
-事务冲突返回 409 / ECONFLICT，浏览器错误附带对外 `requestId`。审计中的 `request.complete.parentRequestId` 将对外请求关联到内部请求，再以内部 `requestId` 查找 `records.conflict`；该事件记录观察类型/序号、观察与变更数量、冲突位置的 SHA-256 `recordId`，范围观察另记录预期/实际总数，不记录路径、字段名或值。`recordId` 为 `SHA256(JSON.stringify([虚拟路径, 字段名]))`，范围观察用前缀代替字段名，便于从已知位置核对同一热点；日志不直接确定竞争写入方。数字分身进度读取对明确的 ECONFLICT 最多重读三次，保留游标并退避；写事务和结果未知的提交不自动重放。
+应用冲突返回 409 / ECONFLICT。应用命令通过持久回执核对结果，不自动重放。内部存储协议的事务冲突诊断记录观察类型、数量与位置哈希，不记录原始路径、字段名、值或凭据；它不等同于所有应用用例的执行日志。

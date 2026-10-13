@@ -10,6 +10,7 @@ export default defineConfig({
         transformIndexHtml: { order: 'pre', handler() {
             const source = createRequire(import.meta.url).resolve('mind-os/index.html');
             return readFileSync(source, 'utf8')
+                .replace('<head>', '<head>\n<link rel="icon" href="data:,">')
                 .replace('src/styles/index.css', './src/style.css')
                 .replace(/\s*<link rel="(?:manifest|apple-touch-icon)"[^>]+>/g, '');
         } },

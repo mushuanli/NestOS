@@ -1,7 +1,7 @@
 import {
     WS_SETTINGS, WS_CHAT, WS_TOOLBOX, WS_TWIN, WS_AGENTS, WS_MINDS,
     WS_ANKI, WS_EMAILS, WS_PRIVATE, WS_SKILLS, WS_FLOWS,
-} from '@itookit/app-shell';
+} from '@itookit/app-shell/workspaces';
 import type { WorkspaceConfig } from '@itookit/app-shell';
 
 export const WORKSPACES: WorkspaceConfig[] = [

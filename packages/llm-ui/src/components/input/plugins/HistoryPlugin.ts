@@ -1,4 +1,4 @@
-import type { PromptHistoryPort } from '../../../domain/ports/SessionViewPort';
+import type { PromptHistoryPort } from '@itookit/llm-session/contracts';
 // @file: llm-ui/components/input/plugins/HistoryPlugin.ts
 
 import type { InputPlugin, InputPluginContext } from './InputPlugin';

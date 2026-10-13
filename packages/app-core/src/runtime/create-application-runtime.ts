@@ -1,4 +1,5 @@
 import { applicationStartupPolicy, type ApplicationStartupMode } from './startup-policy';
+import { ConversationContexts } from './conversation-contexts';
 import { StartupCoordinator } from './startup-coordinator';
 import { SessionLifecycleService } from '../session/session-lifecycle';
 import { MCPRemoteConnections } from '../projects/mcp-remote-connections';
@@ -82,6 +83,7 @@ export interface ApplicationRuntime {
     sessionManager: import('@itookit/llm-session').SessionManager;
     commandBus: import('@itookit/llm-session').CommandBus;
     runCatalog: RunCatalog;
+    openConversation(sessionId: string): Promise<import('../application/local').ConversationClient>;
     startBackground?(): void;
     prepareSession?(sessionId: string): Promise<boolean>;
     dispose(): Promise<void>;
@@ -344,16 +346,25 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         logStep(t('boot.llmEngine'));
         // Writes are only allowed while this host holds the Session's single-writer lease; the
         // gate acquires a lease on demand so a freshly created Session is writable immediately.
-        const { sessionManager, commandBus, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
-            () => createConversationSystem({ vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
+        const conversationOptions = { vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
                 digitalTwin,
                 scheduleAgentInitialization: run => startup.schedule(policy.agents, 'agents.initialize', run),
                 scheduleInvocationRecovery: run => startup.schedule(policy.invocations, 'invocations.recover', async () => { await initializeProjects(); await run(); }),
                 ensureWritable: async sessionId => !await sessionRepository.isSessionDeletionPending(sessionId)
                     && await recovery.acquireLater(sessionId) && await projects.sessionMoves.ready(sessionId),
-                flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager }));
-
+                flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager } satisfies import('./conversation-system').ConversationSystemOptions;
+        const { sessionManager, commandBus, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
+            () => createConversationSystem(conversationOptions));
+        const conversationContexts = new ConversationContexts(() => startup.task('host.conversation', async () => {
+            const context = await createConversationSystem({ ...conversationOptions,
+                scheduleAgentInitialization: initialize => initialize(), scheduleInvocationRecovery: () => {} });
+            const releaseDrafts = await attachProjectDraftRecovery(projects.drafts, context.sessionManager, false);
+            const dispose = context.dispose;
+            context.dispose = async () => { await releaseDrafts(); await dispose(); };
+            return context;
+        })(), id => recovery.acquireMetadataLease(id));
         cleanupFns.push(disposeConversations);
+        cleanupFns.push(() => conversationContexts.close());
 
         const acquireSessionLease = (sessionId: string): Promise<boolean> => recovery.acquireLater(sessionId);
         const unsubscribeSessionLease = sessionManager.onGlobalEvent(event => {
@@ -398,7 +409,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         cleanupFns.push(() => digitalTwin!.dispose());
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects,
             kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
-            projectSync, digitalTwin };
+            projectSync, digitalTwin, openConversation: id => conversationContexts.open(id) };
     } catch (error) {
         await startup.close();
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {

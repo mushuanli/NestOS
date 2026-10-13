@@ -7,8 +7,8 @@ import type {
 } from '@itookit/durable-kernel';
 import { randomUUID } from '@itookit/common';
 
-import type { AttachedTask, TaskControlPlane } from '../domain/ports/TaskControlPlane';
-export type { AttachedTask, TaskControlPlane } from '../domain/ports/TaskControlPlane';
+import type { AttachedTask, TaskControlPlane } from '@itookit/durable-kernel';
+export type { AttachedTask, TaskControlPlane } from '@itookit/durable-kernel';
 
 export interface RunAttachmentCallbacks {
     onEvent(event: EventEnvelope): void;

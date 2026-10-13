@@ -237,12 +237,12 @@ export class SessionManager implements ISession, SessionQuery {
     // 会话绑定 → SessionRegistry
     // ================================================================
 
-    async bindSession(sessionId: string): Promise<SessionSnapshot> {
+    async bindSession(sessionId: string, options?: { createMissing?: boolean }): Promise<SessionSnapshot> {
         const storage = sessionDirectoryStorage(sessionId);
         try {
             this.durableSession = await this.kernel.openSession(sessionId, storage);
         } catch (error) {
-            if (!(error instanceof KernelError) || error.code !== KernelErrorCode.SESSION_NOT_FOUND) throw error;
+            if (options?.createMissing === false || !(error instanceof KernelError) || error.code !== KernelErrorCode.SESSION_NOT_FOUND) throw error;
             this.durableSession = await this.kernel.createSession({ id: sessionId, storage });
         }
         const snapshot = await this.registry.bindSession(sessionId);

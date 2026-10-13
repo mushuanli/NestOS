@@ -1,4 +1,4 @@
-import type { SessionViewPort } from '../domain/ports/SessionViewPort';
+import type { SessionViewPort } from '@itookit/llm-session/contracts';
 // @file: llm-ui/shell/StateManager.ts
 
 import type { UIState, CollapseStateMap } from '../domain/types';

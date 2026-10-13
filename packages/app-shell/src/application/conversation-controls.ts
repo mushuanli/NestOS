@@ -27,7 +27,7 @@ export class ApplicationConversationControls implements ConversationControls {
     subscribe(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
     private changed(event: ApplicationEvent): void {
         if (event.kind === 'session' && event.sessionId !== this.sessionId) return;
-        if (event.kind === 'invalidate' && event.scope === 'files') return;
+        if (event.kind === 'invalidate' && (event.scope === 'files' || event.scope === 'configuration')) return;
         if (this.loading) this.queued.push(event); else this.apply(event);
         if (this.visible) for (const listener of this.listeners) listener();
     }

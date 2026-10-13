@@ -1,3 +1,6 @@
+import type { ConfigurationRead, ConfigurationWrite, ConfigurationRequest, ConfigurationResult } from './configuration-contracts';
+export { CONFIGURATION_READS, CONFIGURATION_WRITES } from './configuration-contracts';
+export type { ConfigurationRead, ConfigurationWrite, ConfigurationArgs, ConfigurationResult, ConfigurationRequest, ApplicationConfigurationPort } from './configuration-contracts';
 import type { InteractionRecord, JsonValue } from '@itookit/durable-kernel';
 import type { FSErrorCode, FSNode } from '@itookit/vfs-core';
 import type { ConversationManifest, SessionSummary, SessionSnapshot, SessionEventEnvelope, RegistryEvent } from '@itookit/llm-session/contracts';
@@ -16,6 +19,7 @@ export interface ApplicationCapabilities {
 export interface CommandReceipt { id: string; name: string; state: 'pending' | 'completed' | 'failed'; createdAt: number; result?: JsonValue; error?: { code: FSErrorCode; message: string } }
 export interface ApplicationFolder { path: string; name: string; parentPath: string | null; projectId?: string }
 export interface ApplicationQueries {
+    configuration: { input: ConfigurationRequest<ConfigurationRead>; output: ConfigurationResult<ConfigurationRead> };
     entry: { input: { workspace: WorkspaceIdentity; path: string }; output: FSNode | null };
     session: { input: { sessionId: string }; output: SessionSummary };
     navigation: { input: { folder: string | null }; output: { folders: ApplicationFolder[]; sessions: SessionSummary[] } };
@@ -27,13 +31,14 @@ export interface ApplicationQueries {
     conversation: { input: { sessionId: string; before?: string; limit?: number }; output: { manifest: ConversationManifest; snapshot: SessionSnapshot; writable: boolean; revision: number; hasEarlier: boolean; interactions: Array<{ taskId: string; request: InteractionRecord<JsonValue> }> } };
 }
 export interface ApplicationCommands {
+    configuration: { input: ConfigurationRequest<ConfigurationWrite>; output: ConfigurationResult<ConfigurationWrite> };
     createConversation: { input: { title: string; folder?: string | null }; output: { sessionId: string } };
     conversation: { input: { sessionId: string; name: string; args?: JsonValue }; output: unknown };
     respond: { input: { sessionId: string; taskId: string; interactionId: string; value: JsonValue }; output: void };
     cancelTask: { input: { sessionId: string; taskId: string }; output: void };
     saveFile: { input: { workspace: WorkspaceIdentity; path: string; content: string; revision?: string }; output: { revision?: string } };
 }
-export type ApplicationChange = { kind: 'session'; sessionId: string; event: SessionEventEnvelope } | { kind: 'registry'; event: RegistryEvent } | { kind: 'invalidate'; scope: 'sessions' | 'files' | 'all' };
+export type ApplicationChange = { kind: 'session'; sessionId: string; event: SessionEventEnvelope } | { kind: 'registry'; event: RegistryEvent } | { kind: 'invalidate'; scope: 'sessions' | 'files' | 'configuration' | 'all' };
 export type ApplicationEvent = ApplicationChange & { revision: number };
 
 /** Local and remote adapters share capabilities; the transport is not a business interface. */

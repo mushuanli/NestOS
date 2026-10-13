@@ -718,4 +718,6 @@ HTTP 应用模式正在实施，尚未完成全部工作区迁移。`Application
 
 独立 vfs-core、vfs-ui 不依赖 app-core、app-shell 或 http-app，不要求应用服务器才能使用。开发环境存在独立目录时通过其公开 exports 消费；目录缺席时回退到 npm，不用仓库源码别名替代 npm 入口。npm 发布清单保持版本依赖，不能带入本地 link 或 workspace 路径。
 
+配置管理已增加应用端口查询/命令白名单（`configuration-contracts.ts`）：列表查询返回领域安全元数据，完整 Provider/Connection 配置按编辑请求单独读取；模型、连接、Agent、提示词、Skill、MCP、定价与恢复操作交由后端服务执行。MCP 发现和连接测试属于显式命令，不在列表读取时联网探测。配置调用按需等待 LLM readiness，只有 Agent/提示词/恢复操作等待 Agent 服务，读取 Provider 不触发 Agent 扫描。写命令复用持久回执；`configuration` 失效事件通知客户端，普通文件树与会话视图不因此重新加载。app-shell 的 `ApplicationConfigurationClient` 将应用端口投影成异步配置能力，独立 UI 包仍不导入 app-core 或 HTTP。
+
 当前新应用 UI 接入覆盖基本文件浏览、编辑和会话展示/控制；设置、工具箱等完整能力仍需继续迁移和验收。Web/Tauri/CLI 保持本地宿主装配，HTTP 浏览器不再初始化 Runtime。新增领域契约需要先发布对应领域包，再发布消费它的 UI 包；结构接口兼容并不保证新声明可搭配旧领域包。llm-ui 构建检查覆盖公开 JS/声明依赖图和发布入口，不能以仓库内源码类型检查代替独立安装验收。

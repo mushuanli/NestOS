@@ -1,3 +1,4 @@
+import { ApplicationConfiguration } from './configuration';
 import { FSError } from '@itookit/vfs-core';
 import { type ICommandBus, type SessionSnapshot, type SessionViewPort } from '@itookit/llm-session/contracts';
 import type { ApplicationRuntime } from '../runtime/create-application-runtime';
@@ -19,17 +20,30 @@ const readCommands = new Set<string>(APPLICATION_READ_COMMANDS);
 /** A client owns a view binding; the host keeps the filesystem, execution and leases. */
 export class LocalApplicationPort implements ApplicationPort {
     private closed = false;
+    private configurationEventQueued = false;
     private revision = 0;
     private readonly files: ApplicationFiles;
+    private readonly configuration: ApplicationConfiguration;
     private readonly listeners = new Set<(event: ApplicationEvent) => void>();
     private readonly releases: Array<() => void> = [];
     private readonly contexts = new Map<string, Promise<ConversationClient>>();
     private readonly pending = new Set<Promise<unknown>>();
     private closing?: Promise<void>;
     constructor(private readonly runtime: ApplicationRuntime, private readonly workspaces: readonly string[]) {
+        this.configuration = new ApplicationConfiguration(runtime.agentService, () => runtime.llmDriver.init());
+        this.releases.push(runtime.llmDriver.onChange(() => this.configurationChanged()));
+        this.releases.push(runtime.agentService.onChange(() => this.configurationChanged()));
         this.files = new ApplicationFiles({ workspaces, projects: runtime.projects,
             openWorkspace: name => runtime.vfs.openFileSystem(workspaceRoot(name)) }, () => this.publish({ kind: 'invalidate', scope: 'files' }));
         this.releases.push(runtime.sessionRepository.subscribe(() => this.publish({ kind: 'invalidate', scope: 'sessions' })));
+    }
+    private configurationChanged(): void {
+        if (this.closed || this.configurationEventQueued) return;
+        this.configurationEventQueued = true;
+        queueMicrotask(() => {
+            this.configurationEventQueued = false;
+            if (!this.closed) this.publish({ kind: 'invalidate', scope: 'configuration' });
+        });
     }
     private publish(change: ApplicationChange): void {
         const event: ApplicationEvent = { ...change, revision: ++this.revision };
@@ -65,6 +79,7 @@ export class LocalApplicationPort implements ApplicationPort {
     }
     private async read(name: keyof ApplicationQueries, input: ApplicationQueries[keyof ApplicationQueries]['input']): Promise<unknown> {
         switch (name) {
+            case 'configuration': return this.configuration.invoke(input as ApplicationQueries['configuration']['input']);
             case 'capabilities': return { protocol: APPLICATION_PROTOCOL_VERSION, workspaces: [...this.workspaces], commands: [...safeCommands], events: true, receipts: false };
             case 'entry': {
                 const query = input as ApplicationQueries['entry']['input'];
@@ -114,6 +129,12 @@ export class LocalApplicationPort implements ApplicationPort {
     }
     private async write(name: keyof ApplicationCommands, input: ApplicationCommands[keyof ApplicationCommands]['input']): Promise<unknown> {
         switch (name) {
+            case 'configuration': {
+                const request = input as ApplicationCommands['configuration']['input'];
+                const result = await this.configuration.invoke(request);
+                if (!request.operation.startsWith('test') && request.operation !== 'listProviderModels') this.configurationChanged();
+                return result;
+            }
             case 'createConversation': {
                 const request = input as ApplicationCommands['createConversation']['input'];
                 return { sessionId: await this.runtime.sessionRepository.createSession(request.title, request.folder) };

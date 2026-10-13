@@ -64,3 +64,15 @@ it('does not advertise or silently ignore unsupported file revision precondition
     await expect(second.command('saveFile', { ...query, revision: 'unavailable-precondition', content: 'stale writer' })).rejects.toMatchObject({ code: 'ECAPABILITY' });
     expect((await second.query('file', query)).content).toBe('first writer'); await first.close(); await second.close();
 });
+
+it('routes configuration to the owning service and replays mutations without repeating them', async () => {
+    const port = new HttpApplicationPort(servers.origin + '/api/application', client.fetcher, 'configuration-client');
+    const input = { operation: 'saveSystemPrompt' as const, args: [{ id: 'http-prompt', name: 'HTTP prompt', content: ['Keep responses concise'] }] as [{ id: string; name: string; content: string[] }] };
+    await port.command('configuration', input, undefined, 'save-prompt');
+    expect(await port.query('configuration', { operation: 'getSystemPrompt', args: ['http-prompt'] })).toMatchObject(input.args[0]);
+    const receipt = await port.query('receipt', { requestId: 'save-prompt' }); expect(receipt?.state).toBe('completed');
+    await port.command('configuration', { operation: 'deleteSystemPrompt', args: ['http-prompt'] });
+    await port.command('configuration', input, undefined, 'save-prompt');
+    expect(await port.query('configuration', { operation: 'getSystemPrompt', args: ['http-prompt'] })).toBeNull();
+    await port.close();
+});

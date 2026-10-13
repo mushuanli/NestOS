@@ -48,10 +48,10 @@
     "@itookit/vfs-core": "5.3.1"
   },
   "peerDependencies": {
-    "@itookit/mdxeditor": "0.5.1"
+    "@itookit/mdxeditor": "0.5.2"
   },
   "devDependencies": {
-    "@itookit/mdxeditor": "0.5.1",
+    "@itookit/mdxeditor": "0.5.2",
     "@types/node": "^20.19.25",
     "jsdom": "^27.2.0",
     "tsup": "^8.5.1",

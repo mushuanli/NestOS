@@ -34,7 +34,7 @@
   },
   "peerDependencies": {
     "@itookit/common": "workspace:*",
-    "@itookit/mdxeditor": "0.5.1",
+    "@itookit/mdxeditor": "0.5.2",
     "@itookit/vfs-core": "5.3.1",
     "@itookit/vfs-ui": "0.5.7",
     "@itookit/ui-common": "workspace:*",
@@ -42,7 +42,7 @@
   },
   "devDependencies": {
     "@itookit/common": "workspace:*",
-    "@itookit/mdxeditor": "0.5.1",
+    "@itookit/mdxeditor": "0.5.2",
     "@itookit/vfs-core": "5.3.1",
     "@itookit/vfs-ui": "0.5.7",
     "@types/node": "^20.19.25",

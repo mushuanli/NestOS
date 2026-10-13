@@ -104,12 +104,12 @@
     "@itookit/durable-kernel": "workspace:*"
   },
   "peerDependencies": {
-    "@itookit/mdxeditor": "0.5.1",
+    "@itookit/mdxeditor": "0.5.2",
     "@itookit/mdx-adapter": "workspace:*",
     "@itookit/llm-settings-ui": "workspace:*"
   },
   "devDependencies": {
-    "@itookit/mdxeditor": "0.5.1",
+    "@itookit/mdxeditor": "0.5.2",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.25",
     "@vitest/coverage-v8": "^1.6.1",

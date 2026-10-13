@@ -6,5 +6,5 @@
   {"directory":"piagent-driver","name":"@itookit/piagent-driver","version":"0.1.0","workspace":true},
   {"directory":"vfs-sync","name":"@itookit/vfs-sync","version":"0.1.0"},
   {"directory":"driver-llm","name":"@itookit/driver-llm","version":"0.2.0"},
-  {"directory":"mdxeditor","name":"@itookit/mdxeditor","version":"0.5.1"}
+  {"directory":"mdxeditor","name":"@itookit/mdxeditor","version":"0.5.2"}
 ]

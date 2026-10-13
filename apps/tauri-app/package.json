@@ -23,7 +23,7 @@
     "@itookit/llm-session": "workspace:*",
     "@itookit/llm-ui": "workspace:*",
     "@itookit/llm-settings-ui": "workspace:*",
-    "@itookit/mdxeditor": "0.5.1",
+    "@itookit/mdxeditor": "0.5.2",
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-core": "5.3.1",
     "@itookit/vfs-ui": "0.5.7",

@@ -29,7 +29,7 @@ function preparePackage(library, sourceRoot) {
     for (const name of ['README.md', 'LICENSE']) if (existsSync(join(source, name))) cpSync(join(source, name), join(staging, name));
     validateExports(manifest.exports, staging);
     writeFileSync(join(staging, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
-    run('pnpm', ['pack', '--pack-destination', releaseRoot], staging);
+    run('npm', ['pack', '--ignore-scripts', '--pack-destination', releaseRoot], staging);
     const tarball = join(releaseRoot, `${library.name.replace('@', '').replace('/', '-')}-${library.version}.tgz`);
     if (!existsSync(tarball)) throw new Error(`Missing tarball: ${tarball}`);
     return { ...library, tarball, sha256: sha256(tarball) };

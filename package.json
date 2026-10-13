@@ -42,7 +42,7 @@
         "@itookit/vfsdriver-indexeddb": "5.3.1",
         "@itookit/vfsdriver-local": "5.3.0",
         "@itookit/driver-llm": "0.2.0",
-        "@itookit/mdxeditor": "0.5.1"
+        "@itookit/mdxeditor": "0.5.2"
     },
     "pnpm": {
         "overrides": {

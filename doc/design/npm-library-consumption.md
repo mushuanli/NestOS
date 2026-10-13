@@ -10,16 +10,18 @@ itookit 通过 npm 注册表安装独立库。新增统一接入包 piagent-driv
 | @itookit/vfsdriver-local | 5.3.0 | [vfsdriver-local](https://github.com/mushuanli/vfsdriver-local) |
 | @itookit/piagent-driver | 0.1.0（发布目标） | [piagent-driver](https://github.com/mushuanli/piagent-driver) |
 | @itookit/vfs-sync | 0.1.0 | [vfs-sync](https://github.com/mushuanli/vfs-sync) |
-| @itookit/mdxeditor | 0.5.1 | [mdxeditor](https://github.com/mushuanli/mdxeditor) |
+| @itookit/mdxeditor | 0.5.2 | [mdxeditor](https://github.com/mushuanli/mdxeditor) |
 | @itookit/driver-llm | 0.2.0 | [driver-llm](https://github.com/mushuanli/driver-llm) |
 
 ## 安装与开发
 
-首次 checkout 先执行 `git submodule update --init packages/piagent-driver tools/pi-agent`，取得发布前的驱动源码及端点服务，再执行 `pnpm install --frozen-lockfile` 开发与构建。Vite、TypeScript 和测试只解析注册表库的公开 exports；piagent-driver 发布前使用工作区源码映射，发布清单以 `workspace: true` 标记这项例外。测试替身由宿主测试目录维护，不导入独立仓库的私有测试文件。vfs-ui CSS 使用 `@itookit/vfs-ui/style.css`，MDX CSS 使用 `@itookit/mdxeditor/style.css`。
+首次 checkout 先执行 `git submodule update --init packages/piagent-driver tools/pi-agent`，取得发布前的驱动源码及端点服务，再执行 `pnpm install --frozen-lockfile` 开发与构建。Vite、TypeScript 和测试统一解析独立库的公开 exports；piagent-driver 发布前使用工作区源码映射，发布清单以 `workspace: true` 标记这项例外。测试替身由宿主测试目录维护，不导入独立仓库的私有测试文件。vfs-ui CSS 使用 `@itookit/vfs-ui/style.css`，MDX CSS 使用 `@itookit/mdxeditor/style.css`。
 
 Web/Tauri 共用 `REGISTRY_PREBUNDLES` 显式预构建 vfs-ui：它的消费方位于被扫描排除的 workspace 源码中，启动时预构建可避免页面加载过程中才发现该依赖。升级库后退出旧 Vite/Tauri 进程再启动；必要时在对应 app 目录运行 `pnpm exec vite optimize --force` 重建开发缓存。应用仍通过 npm 包 exports 解析，不映射独立库源码。
 
-独立仓库位于 `../pair-x1/<仓库名>`，移动这些源码不会影响 itookit。修改库时，在对应仓库安装依赖、测试、构建和发布新版本，再更新应用固定版本与锁文件。应用不会自动使用旁边仓库的新代码。
+独立仓库通常位于 `../pair-x1/<仓库名>`。`.pnpmfile.cjs` 根据 `scripts/npm-libraries.json` 统一判断：`packages/<库目录>/package.json` 存在且包名匹配时，通过本地依赖接入（源码入口使用 `link:`，构建入口使用 `file:`）；缺席时沿用应用声明的 npm 版本。覆盖 mdxeditor、driver-llm、vfs-core、vfs-ui、vfsdriver-indexeddb、vfsdriver-local 和 vfs-sync；工作区包不重复覆盖。
+
+本地库先独立安装依赖并构建，再在主仓库运行 `pnpm install --no-frozen-lockfile` 更新解析与锁文件。增加或移除目录后同样运行此命令，使本地/npm 选择重新生效；构建和测试不添加源码别名，继续消费该库自己的公开 exports。本地 mdxeditor 使用 dist 构建产物，修改后重新构建并重新安装主仓库，刷新 Web/Tauri 的 Vite 预构建缓存。锁文件可能因本地目录存在而包含 file/link 依赖，应与使用的目录集合一致。旁边的 `../pair-x1` 或 `priv/` checkout 不自动接入。
 
 ## 发布流程
 

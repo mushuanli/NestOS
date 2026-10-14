@@ -4,7 +4,7 @@
 
 系统沙箱属于**宿主进程能力层**。在创建 `nativeShell` / `ttyDriver` 时固定策略，在实际 spawn 前应用策略；由 `kernel-adapters` 按 Session / Run 提供这组能力。不要把操作系统沙箱实现放进 `llm-ui`、`llm-flow` 或 `durable-kernel`。
 
-新增包 [packages/sanbox](../../packages/sanbox/README.md)，包名 `@itookit/sanbox` 沿用需求拼写。已提供：
+新增包 [packages/sanbox](../../backend/sanbox/README.md)，包名 `@itookit/sanbox` 沿用需求拼写。已提供：
 
 - `SandboxPolicy`：只读目录、读写目录、默认拒绝的网络策略。
 - `createSandboxLaunchPlan`：分别生成 Bubblewrap argv / Seatbelt SBPL 与 argv。
@@ -12,7 +12,7 @@
 - Node 子入口 `prepareSandbox`：解析真实路径、固定授权快照、逐次验证 cwd、检查启动器。
 - Node 子入口 `probeSandbox`：以同一策略实际运行 `/bin/sh`，确认隔离能启动。
 
-桌面已完成实际接线：`session_shell_exec` → Tauri `session_bash::command` → `packages/sanbox/native` 的 `session_command` → Bubblewrap/Seatbelt。授权路径从 Rust 的目录句柄解析，网络由宿主固定为 deny；不接受前端生成的 profile/argv。TypeScript/Rust 共用 `src/runtime-policy.json`。现有执行模式中的 Bash 自动走此链路，无需新增 UI 开关；Flow 复用同一工厂和独立工作区授权。
+桌面已完成实际接线：`session_shell_exec` → Tauri `session_bash::command` → `backend/sanbox/native` 的 `session_command` → Bubblewrap/Seatbelt。授权路径从 Rust 的目录句柄解析，网络由宿主固定为 deny；不接受前端生成的 profile/argv。TypeScript/Rust 共用 `src/runtime-policy.json`。现有执行模式中的 Bash 自动走此链路，无需新增 UI 开关；Flow 复用同一工厂和独立工作区授权。
 
 CLI 仍使用原有 native/OCI 路径，桌面尚未提供持久 TTY 驱动；MCP 和父进程 VFS 不属于此 Bash 接线的覆盖范围。
 
@@ -34,15 +34,15 @@ flowchart TD
 
 | 层 | 应承担的职责 | 代码入口 |
 |---|---|---|
-| llm-ui | 提交执行请求、展示生效策略/错误/审批；配置请求必须经宿主核验 | [SendMessageCommand](../../packages/llm-ui/src/commands/SendMessageCommand.ts)、[ExecutionModeControl](../../packages/llm-ui/src/components/input/ExecutionModeControl.ts) |
-| llm-session / llm-flow | 保存执行意图，选择持久 Run 工作区身份；节点只可在宿主授权上收窄权限 | [create-kernel-runtime](../../packages/app-core/src/runtime/create-kernel-runtime.ts) 中工作区作用域装配 |
-| durable-kernel | Effect 调度、授权记录、审批、取消确认、恢复；通过端口依赖外部能力 | [BashEffectAdapter](../../packages/kernel-adapters/src/effects/bash-effect.ts) 实现 `process.exec` 外部能力 |
-| kernel-adapters | 为 Effect 解析 Session/Run 能力；Bash、shell_session/tty_write 共用作用域 | [create-kernel-adapters-runtime](../../packages/kernel-adapters/src/runtime/create-kernel-adapters-runtime.ts) |
-| app-core | 平台无关装配：`createSessionProcesses`、`fileContextForScope`，释放时先停进程后放开文件 | [session-process-context](../../packages/app-core/src/vfs/session-process-context.ts)、[workspace-process-context](../../packages/app-core/src/vfs/workspace-process-context.ts) |
+| llm-ui | 提交执行请求、展示生效策略/错误/审批；配置请求必须经宿主核验 | [SendMessageCommand](../../ui/llm-ui/src/commands/SendMessageCommand.ts)、[ExecutionModeControl](../../ui/llm-ui/src/components/input/ExecutionModeControl.ts) |
+| llm-session / llm-flow | 保存执行意图，选择持久 Run 工作区身份；节点只可在宿主授权上收窄权限 | [create-kernel-runtime](../../backend/app-core/src/runtime/create-kernel-runtime.ts) 中工作区作用域装配 |
+| durable-kernel | Effect 调度、授权记录、审批、取消确认、恢复；通过端口依赖外部能力 | [BashEffectAdapter](../../backend/kernel-adapters/src/effects/bash-effect.ts) 实现 `process.exec` 外部能力 |
+| kernel-adapters | 为 Effect 解析 Session/Run 能力；Bash、shell_session/tty_write 共用作用域 | [create-kernel-adapters-runtime](../../backend/kernel-adapters/src/runtime/create-kernel-adapters-runtime.ts) |
+| app-core | 平台无关装配：`createSessionProcesses`、`fileContextForScope`，释放时先停进程后放开文件 | [session-process-context](../../backend/app-core/src/vfs/session-process-context.ts)、[workspace-process-context](../../backend/app-core/src/vfs/workspace-process-context.ts) |
 | CLI / Tauri 宿主 | 验证原生目录授权、选择后端、探测、启动、管理进程树 | [CLI shell](../../apps/cli/src/shell.ts)、[Tauri session-bash](../../apps/tauri-app/src/shell/session-bash.ts) |
-| sanbox | 将已验证策略编译为底层沙箱参数；保持无 UI / Kernel / Flow 依赖 | [公共入口](../../packages/sanbox/src/index.ts)、[Node 入口](../../packages/sanbox/src/node.ts) |
+| sanbox | 将已验证策略编译为底层沙箱参数；保持无 UI / Kernel / Flow 依赖 | [公共入口](../../backend/sanbox/src/index.ts)、[Node 入口](../../backend/sanbox/src/node.ts) |
 
-既有 CLI 使用 OCI（Podman/Docker）或显式 native 模式，并已有 `OciSandboxShell` / `OciTtyDriver`。Tauri 的 [Rust session_bash](../../apps/tauri-app/src-tauri/src/session_bash.rs) 现在仅保留宿主策略和回归测试，实际参数交由本包 [Rust 入口](../../packages/sanbox/native/src/lib.rs) 创建。相比原实现，新增默认网络隔离与 macOS Seatbelt 分支，并保留 Linux 虚拟挂载、流式输出、超时和取消语义。
+既有 CLI 使用 OCI（Podman/Docker）或显式 native 模式，并已有 `OciSandboxShell` / `OciTtyDriver`。Tauri 的 [Rust session_bash](../../apps/tauri-app/src-tauri/src/session_bash.rs) 现在仅保留宿主策略和回归测试，实际参数交由本包 [Rust 入口](../../backend/sanbox/native/src/lib.rs) 创建。相比原实现，新增默认网络隔离与 macOS Seatbelt 分支，并保留 Linux 虚拟挂载、流式输出、超时和取消语义。
 
 ## 与现有 OCI 的比较及证据
 
@@ -67,7 +67,7 @@ OCI 不是未引用的占位类：[CLI runtime](../../apps/cli/src/runtime.ts) �
 
 `ExecutionModeControl` 的「对话/执行」只选择工具执行意图，不等于操作系统隔离等级。不要把「执行模式」标成「沙箱已启用」。
 
-适合在 [WorkspaceDirectoryMenu](../../packages/llm-ui/src/shell/WorkspaceDirectoryMenu.ts) 所调用的**宿主工作目录配置**中加入沙箱配置入口，并在输入区附近展示宿主回传的实际状态：后端、目录权限、网络状态、不可用原因。UI 不生成路径授权、不自己调用系统二进制、不用前端布尔值跳过隔离。
+适合在 [WorkspaceDirectoryMenu](../../ui/llm-ui/src/shell/WorkspaceDirectoryMenu.ts) 所调用的**宿主工作目录配置**中加入沙箱配置入口，并在输入区附近展示宿主回传的实际状态：后端、目录权限、网络状态、不可用原因。UI 不生成路径授权、不自己调用系统二进制、不用前端布尔值跳过隔离。
 
 `TtyController` / `TtyPanel` 继续只消费输出与控制请求；限制必须覆盖创建持久 TTY 的 `ttyDriver.spawn`。仅包装 Bash / `process.exec` 会遗漏 `shell_session`。审批只允许某次动作，不自动解除目录与网络限制。
 

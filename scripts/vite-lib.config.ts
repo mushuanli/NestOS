@@ -1,3 +1,4 @@
+import { moduleSeparationPlugin } from './check-module-separation.mjs';
 import { UserConfig } from 'vite';
 import { resolve } from 'path';
 import dts from 'vite-plugin-dts';
@@ -43,7 +44,7 @@ export function createLibConfig(options: LibConfigOptions): UserConfig {
       sourcemap: true,
       emptyOutDir: true
     },
-    plugins: [
+    plugins: [moduleSeparationPlugin('frontend'),
       dts({
         entryRoot: 'src',
         outDir: 'dist',

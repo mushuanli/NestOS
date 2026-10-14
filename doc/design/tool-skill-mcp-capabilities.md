@@ -66,15 +66,15 @@ CLI 的 worktree 创建、恢复和清理由宿主 Git 通道执行；Agent 的 
 
 ## 验证入口
 
-- [配置表单测试](../../packages/app-shell/tests/capability-settings.test.ts)：策略保留、MCP 授权、转义、单位换算、草稿测试和失败处理。
-- [Agent 导入导出](../../packages/kernel-adapters/tests/llm-management/agent-config-roundtrip.test.ts)：显式空白名单、策略和嵌套配置。
-- [连接管理测试](../../packages/kernel-adapters/tests/llm-management/mcp-manager.test.ts)：配置失效、并发修改、删除、reload 及旧单位。
-- [配置扩展测试](../../packages/kernel-adapters/tests/llm-management/mcp-extensions.test.ts)：匹配、结果复用、身份变化、导入验证及失败不保存。
-- [pi-agent 扩展测试](../../packages/app-core/tests/pi-agent-mcp-extension.test.ts)：标准元数据、已声明工具兼容、名称不能冒充和同源验证。
-- [真实 pi-agent 集成](../../packages/app-shell/tests/web-project-sync.test.ts)：通用 MCP 发现、保存/改名无额外验证及远程项目绑定。
-- [宿主 stdio 测试](../../packages/kernel-adapters/tests/llm-management/mcp-host-transport.test.ts)：真实子进程、SDK 2026-07-28 协商、分页、资源、Prompt、progress 和启动取消。
-- [MCP 工具适配](../../packages/kernel-adapters/src/tool/mcp-tools.test.ts)：能力 ID、参数验证、external 标记及进度。
-- [Harness 提交](../../packages/llm-session/__tests__/direct-execution-mode.test.ts)：profile 展开进入实际 Task 输入，Chat 不加载 MCP。
+- [配置表单测试](../../ui/app-shell/tests/capability-settings.test.ts)：策略保留、MCP 授权、转义、单位换算、草稿测试和失败处理。
+- [Agent 导入导出](../../backend/kernel-adapters/tests/llm-management/agent-config-roundtrip.test.ts)：显式空白名单、策略和嵌套配置。
+- [连接管理测试](../../backend/kernel-adapters/tests/llm-management/mcp-manager.test.ts)：配置失效、并发修改、删除、reload 及旧单位。
+- [配置扩展测试](../../backend/kernel-adapters/tests/llm-management/mcp-extensions.test.ts)：匹配、结果复用、身份变化、导入验证及失败不保存。
+- [pi-agent 扩展测试](../../backend/app-core/tests/pi-agent-mcp-extension.test.ts)：标准元数据、已声明工具兼容、名称不能冒充和同源验证。
+- [真实 pi-agent 集成](../../ui/app-shell/tests/web-project-sync.test.ts)：通用 MCP 发现、保存/改名无额外验证及远程项目绑定。
+- [宿主 stdio 测试](../../backend/kernel-adapters/tests/llm-management/mcp-host-transport.test.ts)：真实子进程、SDK 2026-07-28 协商、分页、资源、Prompt、progress 和启动取消。
+- [MCP 工具适配](../../backend/kernel-adapters/src/tool/mcp-tools.test.ts)：能力 ID、参数验证、external 标记及进度。
+- [Harness 提交](../../backend/llm-session/__tests__/direct-execution-mode.test.ts)：profile 展开进入实际 Task 输入，Chat 不加载 MCP。
 - [CLI 集成](../../apps/cli/tests/flow-capabilities.test.ts)：显式工具 / Skill / profile、真实 stdio、审批、恢复和重跑。
 - [CLI worktree](../../apps/cli/tests/worktree-run.test.ts)：宿主 Git 装配、文件隔离、恢复，以及模型请求未授权工具时无文件副作用。
 - [Tauri 子进程](../../apps/tauri-app/src-tauri/src/mcp_process.rs)、[Bash 输出](../../apps/tauri-app/src-tauri/src/bash_process.rs)：原生进程隔离、输出限制、清理、结束前输出。

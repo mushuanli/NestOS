@@ -33,7 +33,7 @@ MindOS reimagines AI applications with an "operating system" philosophy: all con
 
 ### Key Features
 
-#### 1. Virtual File System (VFS) — `packages/vfslib`
+#### 1. Virtual File System (VFS) — `libraries/vfs-core`
 
 VFS is the foundation of MindOS, providing a unique filesystem abstraction:
 
@@ -60,7 +60,7 @@ A next-generation Markdown editor built on **CodeMirror 6**, balancing writing e
 - **Foldable blocks**: Fold/unfold long document sections to maintain reading focus
 - **Plugin architecture**: Micro-kernel built on `PluginManager` + `EventBus` + `ServiceContainer`—all features are plugins, combinable on demand
 
-#### 3. Conversation Branch System — `packages/llm-ui`
+#### 3. Conversation Branch System — `ui/llm-ui`
 
 The Chat workspace supports a **message tree branching system**, letting you explore multiple distinct conversation paths within the same session:
 
@@ -96,7 +96,7 @@ Agent      ── Functional customization (system prompt + tier preference)
 
 A single Provider can have multiple Connections (e.g., `deepseek-reasoner` / `deepseek-chat`), enabling flexible multi-model setups.
 
-#### 5. Multi-turn Agent Loop — `packages/llm-kernel`
+#### 5. Multi-turn Agent Loop — `backend/llm-tasks`
 
 - Tool calling (file_read / file_write / shell_exec / glob_search / grep_search)
 - Four-layer progressive context compression (history_snip → cache_prune → llm_summarize → sliding_window)
@@ -105,7 +105,7 @@ A single Provider can have multiple Connections (e.g., `deepseek-reasoner` / `de
 - MCP Protocol support (Model Context Protocol)
 - TTY interactive shell sessions (Python REPL / psql / ssh, etc.)
 
-#### 6. Skill System — `packages/device-llm`
+#### 6. Skill System — `backend/kernel-adapters`
 
 Skills give Agents reusable specialized capabilities:
 
@@ -155,16 +155,27 @@ libraries/               # Independent Git libraries in the source workspace
 ├── vfs-ui/ # File and resource browsing UI
 ├── vfsdriver-indexeddb/ # IndexedDB storage backend
 └── vfsdriver-local/ # Local FS and SQLite backend
-packages/                # MindOS application and UI packages
-├── app-core/
+ui/                      # MindOS business UI
 ├── app-shell/
+├── app-settings/
+├── llm-ui/
+├── llm-settings-ui/
 ├── mdx-adapter/
+└── ui-common/
+backend/                 # Application use cases, execution and persistence
+├── app-core/
+├── durable-kernel/
+├── llm-session/
 └── ...
+shared/                  # Shared application contracts and utilities
+├── app-contracts/
+└── common/
 apps/
 ├── web-app/
 ├── tauri-app/
 ├── cli/
-└── http-app/
+├── http-app/
+└── demo/
 ```
 
 ---

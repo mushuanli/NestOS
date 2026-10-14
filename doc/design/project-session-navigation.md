@@ -135,7 +135,7 @@ Web 和 Tauri 使用同一套宿主逻辑。侧栏、详情列表与标签资源
 - 手机从项目抽屉直接进入 D；切到 A 只打开一次同组面板，不连续返回三层。
 
 
-实现证据：`packages/llm-session/__tests__/session-relations.test.ts` 覆盖独立历史、重开、循环与跨项目拒绝、子树移动、提升、删除故障重试及并发关系变更；`packages/app-core/tests/session-family.test.ts` 覆盖损坏关系投影和 IndexedDB 重启删除恢复；`packages/app-shell/tests/project-workbench-ui.test.ts` 使用真实 VFS UI 验证项目文件、保留目录、多代同组切换。
+实现证据：`backend/llm-session/__tests__/session-relations.test.ts` 覆盖独立历史、重开、循环与跨项目拒绝、子树移动、提升、删除故障重试及并发关系变更；`backend/app-core/tests/session-family.test.ts` 覆盖损坏关系投影和 IndexedDB 重启删除恢复；`ui/app-shell/tests/project-workbench-ui.test.ts` 使用真实 VFS UI 验证项目文件、保留目录、多代同组切换。
 
 当前范围：单侧栏有搜索与可滚动成员，展开同组后能直接打开子会话。删除保留后代，父会话专用授权不继承。会话运行状态汇总、超大列表窗口渲染和快速定位按钮仍待后续完善，不作为本次已完成能力。
 

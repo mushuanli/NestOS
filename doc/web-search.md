@@ -4,7 +4,7 @@
 
 ## 1. 三态决策（WebSearchMode）
 
-权威决策点只有一个：`resolveWebSearchStrategy`（`kernel-adapters/src/llm-management/contracts/connection.ts`，纯函数；单测见 `packages/kernel-adapters/tests/llm-management/web-search-strategy.spec.ts`）。下游只做**派生**，不再重推。
+权威决策点只有一个：`resolveWebSearchStrategy`（`kernel-adapters/src/llm-management/contracts/connection.ts`，纯函数；单测见 `backend/kernel-adapters/tests/llm-management/web-search-strategy.spec.ts`）。下游只做**派生**，不再重推。
 
 ```ts
 export type WebSearchMode = 'builtin' | 'client-tool' | 'disabled';

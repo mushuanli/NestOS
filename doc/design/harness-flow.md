@@ -9,7 +9,7 @@
 2026-09-21 补充：编码工具执行与 Agent 错误修正链路已补齐第一批实现，见本文末尾「Coding harness 第一批实现」。这一批不改变 Flow 的编排职责与文件写入的并发保证。
 
 > 核查日期：2026-09-15。依据当前工作树源码与包内测试；这是现状分析，不是新增功能承诺。
-> 范围：`packages/llm-flow`，以及它公开的 `llm-flow/contracts` 类型。规范依据为 [Harness Core](durable-harness-core.md)、[Protocol](durable-harness-protocol.md)、[Storage](durable-harness-storage.md)、[Resources](durable-harness-resources.md)、[Cache](durable-harness-cache.md)；跨包验收边界见 [Durable 证据映射](durable-harness-evidence.md)。
+> 范围：`backend/llm-flow`，以及它公开的 `llm-flow/contracts` 类型。规范依据为 [Harness Core](durable-harness-core.md)、[Protocol](durable-harness-protocol.md)、[Storage](durable-harness-storage.md)、[Resources](durable-harness-resources.md)、[Cache](durable-harness-cache.md)；跨包验收边界见 [Durable 证据映射](durable-harness-evidence.md)。
 
 ## 1. 结论
 
@@ -25,17 +25,17 @@
 
 ## 2. 当前定义哪些 Flow
 
-本包提供通用定义、编译和执行设施，并提供可配置的 [作文评审示例](../../packages/app-core/src/presets/essay-review-isolated.json)。示例使用通用节点配置，不在运行器中硬编码作文业务。
+本包提供通用定义、编译和执行设施，并提供可配置的 [作文评审示例](../../backend/app-core/src/presets/essay-review-isolated.json)。示例使用通用节点配置，不在运行器中硬编码作文业务。
 
 ### 2.1 三种表示与运行身份
 
 | 表示 | 内容与用途 | 源码 |
 |---|---|---|
-| `FlowDraft` | 可编辑定义：nodes/edges/layout、参数、连接槽、Agent 默认值、runPolicy、draftVersion | [flow-definition.ts](../../packages/llm-flow/src/contracts/flow-definition.ts) |
-| `FlowRevision` | 发布版本：revision/digest，冻结节点、边及默认配置；不含编辑布局 | 同上；[flow-definition-store.ts](../../packages/llm-flow/src/flow-definition-store.ts) |
-| `WorkflowTaskSpec[]` | 声明式工作流 DSL，字段兼容 CLI 的 snake_case；编译出 nodes/edges | [types.ts](../../packages/llm-flow/src/flow/workflow/types.ts)、[compile.ts](../../packages/llm-flow/src/flow/workflow/compile.ts) |
-| `DagRunSpec` | 执行输入，包含展开后的图及运行策略；不是新增业务 Flow 类型 | [to-dag.ts](../../packages/llm-flow/src/flow/to-dag.ts)、[executor.ts](../../packages/llm-flow/src/flow/executor.ts) |
-| Run / 根 Task | 每次执行以 `flow.aggregate` 根 Task 为持久锚点；节点每次迭代有独立 Task 身份 | [programs.ts](../../packages/llm-flow/src/flow/programs.ts)、[scheduler-checkpoint.ts](../../packages/llm-flow/src/flow/scheduler-checkpoint.ts) |
+| `FlowDraft` | 可编辑定义：nodes/edges/layout、参数、连接槽、Agent 默认值、runPolicy、draftVersion | [flow-definition.ts](../../backend/llm-flow/src/contracts/flow-definition.ts) |
+| `FlowRevision` | 发布版本：revision/digest，冻结节点、边及默认配置；不含编辑布局 | 同上；[flow-definition-store.ts](../../backend/llm-flow/src/flow-definition-store.ts) |
+| `WorkflowTaskSpec[]` | 声明式工作流 DSL，字段兼容 CLI 的 snake_case；编译出 nodes/edges | [types.ts](../../backend/llm-flow/src/flow/workflow/types.ts)、[compile.ts](../../backend/llm-flow/src/flow/workflow/compile.ts) |
+| `DagRunSpec` | 执行输入，包含展开后的图及运行策略；不是新增业务 Flow 类型 | [to-dag.ts](../../backend/llm-flow/src/flow/to-dag.ts)、[executor.ts](../../backend/llm-flow/src/flow/executor.ts) |
+| Run / 根 Task | 每次执行以 `flow.aggregate` 根 Task 为持久锚点；节点每次迭代有独立 Task 身份 | [programs.ts](../../backend/llm-flow/src/flow/programs.ts)、[scheduler-checkpoint.ts](../../backend/llm-flow/src/flow/scheduler-checkpoint.ts) |
 
 `.flow` 保存草稿，revision 保存为该文件的 assets。`saveRevision` 校验图和 digest，拒绝覆盖同版本的不同内容。恢复使用已保存的执行图和检查点，不重新读取最新草稿。
 
@@ -73,7 +73,7 @@ DSL 定义 `agent | route | spawn | supervisor | node` 五类任务。`node` 直
 
 ### 3.1 十一个内置插件 ID、十四个版本化定义
 
-注册入口：[builtin-plugins.ts](../../packages/llm-flow/src/flow/builtin-plugins.ts)。route 提供 `1.0.0`、`2.0.0`、`3.0.0`，aggregate 提供 `1.0.0`、`2.0.0`，其余版本为 `1.0.0`；插件 id 是可扩展字符串，不是封闭枚举。
+注册入口：[builtin-plugins.ts](../../backend/llm-flow/src/flow/builtin-plugins.ts)。route 提供 `1.0.0`、`2.0.0`、`3.0.0`，aggregate 提供 `1.0.0`、`2.0.0`，其余版本为 `1.0.0`；插件 id 是可扩展字符串，不是封闭枚举。
 
 | 插件 | 底层 Program | 当前行为 | 主要配置 |
 |---|---|---|---|
@@ -102,7 +102,7 @@ DSL 定义 `agent | route | spawn | supervisor | node` 五类任务。`node` 直
 - `flowToDag` 应用 Flow 默认值、连接槽和 binder；执行器注入工具、skill 上下文并绑定 Kernel capabilities。配置中的工具名称与已授权的运行能力应分别检查。
 - 端口 schema 可按节点声明并随 Run 固定；恢复拒绝宿主 manifest/schema 漂移，但插件可执行代码仍由宿主加载。相同版本与相同 manifest 不能证明代码字节一致。
 
-相关实现：[task-capabilities.ts](../../packages/llm-flow/src/flow/task-capabilities.ts)、[run-catalog.ts](../../packages/llm-flow/src/flow/run-catalog.ts)、[port-contract.ts](../../packages/llm-flow/src/flow/port-contract.ts)。配置继承的跨包契约见 [Flow 执行模型](flow-execution-model.md)。
+相关实现：[task-capabilities.ts](../../backend/llm-flow/src/flow/task-capabilities.ts)、[run-catalog.ts](../../backend/llm-flow/src/flow/run-catalog.ts)、[port-contract.ts](../../backend/llm-flow/src/flow/port-contract.ts)。配置继承的跨包契约见 [Flow 执行模型](flow-execution-model.md)。
 
 ## 4. 对照 Harness 要求
 
@@ -172,10 +172,10 @@ delegation.budget.maxTokens/timeoutMs 只是子任务单次请求默认限制；
 
 主要定位入口：
 
-- [durable-flow-executor.test.ts](../../packages/llm-flow/__tests__/durable-flow-executor.test.ts)：静态图、路由、循环、委派、恢复、授权与图重试。
-- [scheduler-lease.test.ts](../../packages/llm-flow/__tests__/scheduler-lease.test.ts)：租约、并发拥有者与 fencing。
-- [port-contract.test.ts](../../packages/llm-flow/__tests__/port-contract.test.ts)、[run-catalog.test.ts](../../packages/llm-flow/__tests__/run-catalog.test.ts)：schema 与恢复契约。
-- [workspace-finalization.test.ts](../../packages/llm-flow/__tests__/workspace-finalization.test.ts)、[run-workspace-drain.test.ts](../../packages/llm-flow/__tests__/run-workspace-drain.test.ts)：任务停止与工作区收尾。
+- [durable-flow-executor.test.ts](../../backend/llm-flow/__tests__/durable-flow-executor.test.ts)：静态图、路由、循环、委派、恢复、授权与图重试。
+- [scheduler-lease.test.ts](../../backend/llm-flow/__tests__/scheduler-lease.test.ts)：租约、并发拥有者与 fencing。
+- [port-contract.test.ts](../../backend/llm-flow/__tests__/port-contract.test.ts)、[run-catalog.test.ts](../../backend/llm-flow/__tests__/run-catalog.test.ts)：schema 与恢复契约。
+- [workspace-finalization.test.ts](../../backend/llm-flow/__tests__/workspace-finalization.test.ts)、[run-workspace-drain.test.ts](../../backend/llm-flow/__tests__/run-workspace-drain.test.ts)：任务停止与工作区收尾。
 
 本轮只修改分析文档与包说明，未修改运行时代码；未重跑全仓、CLI SIGKILL 或真实设备验收。测试通过不消除第 5 节的契约限制。
 
@@ -225,7 +225,7 @@ delegation.budget.maxTokens/timeoutMs 只是子任务单次请求默认限制；
 - `ToolInvokeResult` 保留兼容的 output 文本，新增可选 data/errorCode/recoverable/truncated。Bash 结构化结果保留 exitCode；命令非零退出作为已完成命令返回给模型。请求的 Bash 超时不能超过宿主调用超时。
 - 已取消请求不会进入工具；取消监听器在调用结束后移除，Edit/Write 在异步读取后、写入前检查取消。实际进程停止仍依赖宿主 Shell 和 Effect cancel 的确认协议。
 
-实现入口：[工具调用驱动](../../packages/tools/src/adapters/tool-device-driver.ts)、[调用校验与结果封装](../../packages/tools/src/adapters/tool-invocation.ts)、[工具 Effect](../../packages/kernel-adapters/src/effects/tool-call-effect.ts)、[Agent Program](../../packages/llm-tasks/src/durable/agent-program.ts)。
+实现入口：[工具调用驱动](../../backend/tools/src/adapters/tool-device-driver.ts)、[调用校验与结果封装](../../backend/tools/src/adapters/tool-invocation.ts)、[工具 Effect](../../backend/kernel-adapters/src/effects/tool-call-effect.ts)、[Agent Program](../../backend/llm-tasks/src/durable/agent-program.ts)。
 
 ### 验证和后续边界
 

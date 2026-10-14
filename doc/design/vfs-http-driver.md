@@ -31,9 +31,9 @@ Rust HTTP 文件服务位于 tools/pi-agent，三端共用文件驱动源码已�
 | [FileSystemView](https://github.com/mushuanli/vfs-core/blob/main/src/impl/services/FileSystemView.ts) | 挂载映射、只读校验、前缀类型检查和释放；目前 dispose 等待活动操作，没有主动取消 |
 | [VFSEngine](https://github.com/mushuanli/vfs-core/blob/main/src/impl/engine/vfs-engine.ts) | 目前 expectedVersion 为先 stat 再 write；append/offset 为客户端读改写 |
 | [能力探测](https://github.com/mushuanli/vfs-core/blob/main/src/impl/engine/capabilities.ts) | 部分能力默认 true，须改为真实能力派生 |
-| [SessionFilesService](../../packages/app-core/src/vfs/session-files.ts) | sourceId 注册、授权挂载、revision、不可用来源占位 |
-| [DirectoryMountService](../../packages/app-core/src/vfs/directory-mounts.ts) | 当前来源是内部/宿主目录，并被转换为进程目录 |
-| [ProjectService](../../packages/app-core/src/projects/project-service.ts) | 当前项目绑定单一 directory；项目级额外挂载尚不存在 |
+| [SessionFilesService](../../backend/app-core/src/vfs/session-files.ts) | sourceId 注册、授权挂载、revision、不可用来源占位 |
+| [DirectoryMountService](../../backend/app-core/src/vfs/directory-mounts.ts) | 当前来源是内部/宿主目录，并被转换为进程目录 |
+| [ProjectService](../../backend/app-core/src/projects/project-service.ts) | 当前项目绑定单一 directory；项目级额外挂载尚不存在 |
 | [文件发现接口](https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/services/file-discovery.ts) | 已有 signal，但普通文件接口尚未端到端传播 |
 
 现有 [CLI HTTP 模式](../http-mode.md) 是宿主桥接与应用服务，不等同于本文文件协议。项目授权继续遵守 [Session 挂载与访问边界](./vfs-session-mount-access.md)，本文提出的项目组合视图是其增量扩展。

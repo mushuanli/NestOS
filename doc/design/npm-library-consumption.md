@@ -1,17 +1,17 @@
 # 独立库源码工作区与 npm 构建
 
-MindOS 默认消费固定 Git 提交的独立库源码。八个库位于 `libraries/`，保留各自仓库和 npm 发布能力；`packages/` 保存业务包，`apps/` 保存应用宿主。三组目录统一由 pnpm workspace 安装、排序和链接。
+MindOS 默认消费固定 Git 提交的独立库源码。八个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui），保留独立仓库和 npm 发布能力。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
 
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
 | @itookit/vfs-core | `libraries/vfs-core` | 5.3.1 |
-| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.7 |
+| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.8 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.1 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
 | @itookit/piagent-driver | `libraries/piagent-driver` | 0.1.0（需发布） |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.2 |
-| @itookit/driver-llm | `libraries/driver-llm` | 0.2.0 |
+| @itookit/driver-llm | `libraries/driver-llm` | 0.2.2 |
 
 ## 源码开发
 
@@ -37,7 +37,7 @@ pnpm build:registry
 pnpm build:registry --filter @itookit/cli build
 ```
 
-build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从注册表取得，再在 `release/registry-*` 创建独立工作区。该目录不包含 libraries、node_modules、dist 或环境文件；独立库依赖改为明确的 npm 版本，业务包仍使用 workspace。npm 版本需要的补丁仅在这份隔离配置中启用。
+build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从注册表取得，再在 `release/registry-*` 创建独立工作区。该目录不包含独立库源码、node_modules、dist 或环境文件；独立库依赖改为明确的 npm 版本，业务包仍使用 workspace。修复随独立库新版本发布，不再复制 patches/ 或生成 patchedDependencies。
 
 默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的源码模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
 
@@ -53,7 +53,7 @@ node scripts/release-npm-libraries.mjs prepare ./libraries @itookit/piagent-driv
 pnpm npm:publish
 ```
 
-prepare 默认从 libraries 构建、检查发布 exports，固定库间 npm 版本并保存 tarball 和 SHA-256。源码消费与制品发布使用各自的入口。publish 校验制品未变后发布；已发布版本不可覆盖。发布后更新 npm 构建清单，无需改动日常源码工作区。
+prepare 默认从 libraries 构建、检查发布 exports，固定库间 npm 版本并保存 tarball 和 SHA-256。 发布时使用 prepare 生成的 tarball；库源码的入口指向 src，publishConfig 指向 dist，直接从源码目录执行 npm publish 可能保留源码入口而不携带 src。应先检查打包后的 package.json 和所有导出目标，并在仓库外验证 ESM/CJS 与声明。源码消费与制品发布使用各自的入口。publish 校验制品未变后发布；已发布版本不可覆盖。发布后更新 npm 构建清单，无需改动日常源码工作区。
 
 升级源码时提交独立库的改动，再在主仓库更新 submodule 指针。新提交需要推送到相应仓库，其他 checkout 才能取得该提交。旁边的 `../pair-x1`、旧 packages 库目录或 priv checkout 不参与当前依赖选择。
 
@@ -78,3 +78,14 @@ prepare 默认从 libraries 构建、检查发布 exports，固定库间 npm 版
 - x1 在 `packages/mdx` 缺席时，冻结锁文件离线安装、全仓类型检查、架构/文档/样式检查、Web 与 Tauri 前端构建通过。
 - mdx-adapter 18 项测试及 CLI 原子保存集成测试通过；app-shell 首轮 507 项通过，受沙箱进程/端口限制的三个测试文件在沙箱外复跑 8 项通过。
 - Tauri 对发布库使用的无前缀 Node 内置模块也执行 external，避免 Vite 将 LocalFS 的 `fs` 导入解析为浏览器空模块。
+
+
+### 2026-10-14 补丁替代发布与清理
+
+已使用经过仓库外验证的 tarball 发布 driver-llm@0.2.2 与 vfs-ui@0.5.8；npm publish 均退出码为 0。源码包版本与 scripts/npm-libraries.json 已同步升级，旧 patches/ 目录及 registry 工作区的补丁复制/配置生成逻辑已删除。日常工作区仍消费 libraries/ 的源码入口。
+
+此前实际下载的 driver-llm@0.2.1 tarball（integrity 与注册表一致）声明 src/index.ts、src/chain.ts、src/contracts.ts 为入口，但只携带 dist，没有 src。0.2.2 使用正确的 dist 发布入口，包含原协议修复；0.5.8 包含延迟展开、销毁时取消恢复及折叠竞态修复。已发布的同名同版本不能覆盖，避免直接在源码目录运行 npm publish。
+
+发布前制品在仓库外配合 npm 的 vfs-core@5.3.1 验证：46 项 Anthropic/Responses/thinking/延迟展开回归通过，ESM/CJS、chain、contracts、CSS 和 TypeScript 类型消费通过。测试工具使用本机缓存，三个第一方库均来自 tarball，没有工作区源码链接。vfs-ui 源码 201 项测试、类型检查和构建通过。
+
+发布后两个版本均从注册表重新下载，SHA-256 与获批 tarball 逐字节一致；下载后的包再次通过 46 项回归、ESM/CJS/chain/contracts/CSS 导出与 TypeScript 类型消费验证。无补丁 registry 工作区准备、45 项脚本测试、两库类型检查、工作区链接与冻结锁文件离线安装通过。

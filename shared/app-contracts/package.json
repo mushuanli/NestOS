@@ -1,0 +1,50 @@
+{
+  "name": "@itookit/app-contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./application": {
+      "types": "./src/application/contracts.ts",
+      "import": "./src/application/contracts.ts",
+      "default": "./src/application/contracts.ts"
+    },
+    "./settings": {
+      "types": "./src/settings.ts",
+      "import": "./src/settings.ts",
+      "default": "./src/settings.ts"
+    },
+    "./services": {
+      "types": "./src/services.ts",
+      "import": "./src/services.ts",
+      "default": "./src/services.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@itookit/common": "workspace:*",
+    "@itookit/vfs-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@itookit/kernel-adapters": "workspace:*",
+    "@itookit/durable-kernel": "workspace:*",
+    "@itookit/llm-session": "workspace:*",
+    "@itookit/tools": "workspace:*",
+    "@itookit/driver-llm": "workspace:*",
+    "@itookit/piagent-driver": "workspace:*",
+    "@itookit/vfs-sync": "workspace:*",
+    "@itookit/llm-context": "workspace:*",
+    "@itookit/llm-flow": "workspace:*",
+    "@itookit/llm-tasks": "workspace:*"
+  }
+}

@@ -119,8 +119,8 @@
 | 资源浏览契约与数据源 | `https://github.com/mushuanli/vfs-ui/blob/main/src/browser/`、`https://github.com/mushuanli/vfs-ui/blob/main/src/contracts/source.ts` |
 | 文件编辑器装配与预览 | `app-shell/src/browser/` |
 | MDX 编辑器 | [mdxeditor/src](https://github.com/mushuanli/mdxeditor/tree/main/src) |
-| MDX 宿主/VFS 适配 | `packages/mdx-adapter/src/` |
-| 设置（Provider/Connection/Agent/MCP/Skill/Cost） | `packages/llm-settings-ui/src/editors/` |
+| MDX 宿主/VFS 适配 | `ui/mdx-adapter/src/` |
+| 设置（Provider/Connection/Agent/MCP/Skill/Cost） | `ui/llm-settings-ui/src/editors/` |
 
 ## 装配 / 入口
 
@@ -128,7 +128,7 @@
 |---|---|
 | initApp 装配 | `app-shell/src/bootstrap.ts` |
 | App 类型（AppKernelRuntime 等） | `app-shell/src/types.ts` |
-| 特权命令服务（plan 等） | `packages/app-core/src/kernel/privileged-command-service.ts` |
+| 特权命令服务（plan 等） | `backend/app-core/src/kernel/privileged-command-service.ts` |
 | web-app 入口 | `apps/web-app/src/` |
 | 工作区挂载配置（WS_*/createWsMount、文件注册表） | `app-shell/src/workspaces/`、`app-shell/src/config/` |
 | 全量测试矩阵（`pnpm test`，含 crash-matrix 隔离与 Rust 边界） | `scripts/test-all.mjs` |
@@ -158,8 +158,8 @@
 | 项目归档业务目标 | `app-core/src/projects/targets.ts`、`app-shell/src/projects/archive-targets.ts` |
 | 业务边界与接口说明 | [应用策略边界](design/application-policy-boundaries.md) |
 | 生产源码依赖边界检查（`pnpm architecture:check`） | `scripts/check-boundaries.mjs` |
-| 工作区模块能力、路由恢复与统一释放 | `packages/app-shell/src/workspaces/module.ts` |
-| 项目 UI 模块装配 | `packages/app-shell/src/projects/index.ts` |
+| 工作区模块能力、路由恢复与统一释放 | `ui/app-shell/src/workspaces/module.ts` |
+| 项目 UI 模块装配 | `ui/app-shell/src/projects/index.ts` |
 
 
 - pi-agent 目录项目、目录身份与策略版本：`tools/pi-agent/src/projects/`；客户端：`libraries/piagent-driver/src/projects.ts`、`libraries/piagent-driver/src/project-process.ts`；设计：[项目模型](design/pi-agent-project-model.md)。

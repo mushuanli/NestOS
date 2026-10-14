@@ -60,7 +60,7 @@ LLM、项目与会话初始化在服务器本地执行。预热减少浏览器�
 
 ## 验证
 
-共享工作台回归见 `packages/app-shell/tests/application-workbench.test.ts`：覆盖文件/会话标签切换、编辑器保留、文件 revision 保存、新建会话、目录分页、不可用操作拒绝与真实 Markdown 标题栏。
+共享工作台回归见 `ui/app-shell/tests/application-workbench.test.ts`：覆盖文件/会话标签切换、编辑器保留、文件 revision 保存、新建会话、目录分页、不可用操作拒绝与真实 Markdown 标题栏。
 
 认证、存储、事务和应用能力测试见 `apps/http-app/tests/`。应用测试覆盖真实 mTLS、命令回执重复送达、客户端释放/回收、会话查询与托管状态写入拒绝；事件测试覆盖重连重放、缺口、字节上限和证书撤销。
 

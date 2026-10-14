@@ -34,7 +34,7 @@ it('rejects non-object parameter files before starting a run', async () => {
     const paramsFile = path.join(root, 'params.json');
     await writeFile(paramsFile, '[]');
     const file = path.join(root, 'host-template.flow');
-    await copyFile(path.resolve('../../packages/app-core/src/presets/essay-review-isolated.json'), file);
+    await copyFile(path.resolve('../../backend/app-core/src/presets/essay-review-isolated.json'), file);
     await expect(runCommand({ file, paramsFile, profile: root })).rejects.toThrow('JSON object');
 });
 

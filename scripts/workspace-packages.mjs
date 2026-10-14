@@ -1,16 +1,18 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-export const WORKSPACE_GROUPS = ['libraries', 'packages', 'apps'];
+export const WORKSPACE_GROUPS = ['ui', 'backend', 'shared', 'libraries', 'apps'];
 
 export function workspacePackages(root) {
     return WORKSPACE_GROUPS.flatMap(group => {
         const parent = resolve(root, group);
         if (!existsSync(parent)) return [];
         return readdirSync(parent, { withFileTypes: true }).flatMap(entry => {
-            if (!entry.isDirectory() || (group === 'packages' && entry.name === 'mdx')) return [];
+            if (!entry.isDirectory()) return [];
             const directory = resolve(parent, entry.name), file = resolve(directory, 'package.json');
-            return existsSync(file) ? [{ ...JSON.parse(readFileSync(file, 'utf8')), directory, group }] : [];
+            if (!existsSync(file)) return [];
+            const manifest = JSON.parse(readFileSync(file, 'utf8'));
+            return [{ ...manifest, directory, group }];
         });
     });
 }

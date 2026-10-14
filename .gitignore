@@ -4,10 +4,8 @@ fs-svr
 priv/
 
 node_modules/
-# Legacy editor checkout; active libraries are pinned workspace submodules.
-/packages/mdx/
 # Library crate: the CLI Session Bash fixture builds it, but its lock file is not committed.
-packages/sanbox/native/Cargo.lock
+backend/sanbox/native/Cargo.lock
 .pnpm-store/
 target/
 r2/

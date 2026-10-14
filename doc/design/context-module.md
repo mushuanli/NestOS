@@ -49,14 +49,14 @@
 
 | 当前位置 | 已有能力 | 应迁移/补齐的内容 |
 |---|---|---|
-| [context-types.ts](../../packages/llm-context/src/domain/context.ts) | Profile、Plan、Block、Snapshot、Explanation | Context 类型所有权迁入新包；兼容期旧入口只 re-export |
-| [context-assembler.ts](../../packages/llm-context/src/assembly/context-assembler.ts) | 分支主线遍历、profile 规则、材料/记忆装配、pending user 保留 | 装配迁入 context；当前全文装配且使用字符/4 估算，没有完整计入工具 schema/多模态；缺乏严格超限失败结果 |
-| [provider-message-adapter.ts](../../packages/llm-context/src/assembly/provider-message-adapter.ts) | 工具配对检查、部分 provider 清洗 | 协议组校验迁入 context；provider wire 编码经 codec 接口注入，避免继续积累厂商分支 |
-| [context-compaction.ts](../../packages/llm-context/src/window/compact-messages.ts) | 保留 system、最后 user、最近消息与完整工具组 | 本质为按消息数裁剪，不是语义压缩；不存在摘要、原文读取或窗口世代 |
-| [agent-program.ts](../../packages/llm-tasks/src/durable/agent-program.ts) | 持久 messages、pending calls、审批键、独立 Skill 快照 | 循环仅消费 context 接口；去除长 messages 副本；保留 Kernel 执行控制与审批事实 |
-| [context-profile-store.ts](../../packages/llm-session/src/persistence/context-profile-store.ts) | Profile 不可变版本与进程内写序列 | Profile 规则/版本语义迁入 context；持久化端口实现留 adapter，进程内 Promise 链不能充当跨进程 CAS |
-| [Kernel domain](../../packages/durable-kernel/src/domain/types.ts)、[SeqFile store](../../packages/durable-kernel/src/infrastructure/seqfile/store.ts) | `context.seq` commit/branch/head CAS；Task state、effects、shared mutations 可同事务提交 | 既有 `commitContext()` 是单独事务，不能当成与 Task checkpoint 联合原子提交；Context 语义 API 最终迁出 Kernel |
-| [tool-call-effect.ts](../../packages/kernel-adapters/src/effects/tool-call-effect.ts)、[llm-chat-effect.ts](../../packages/kernel-adapters/src/effects/llm-chat-effect.ts) | 工具/LLM 的 grant、取消、reconcile 和用量结算 | 大 payload 在进入持久 Effect 结果之前外置；不要只截断模型侧 messages |
+| [context-types.ts](../../backend/llm-context/src/domain/context.ts) | Profile、Plan、Block、Snapshot、Explanation | Context 类型所有权迁入新包；兼容期旧入口只 re-export |
+| [context-assembler.ts](../../backend/llm-context/src/assembly/context-assembler.ts) | 分支主线遍历、profile 规则、材料/记忆装配、pending user 保留 | 装配迁入 context；当前全文装配且使用字符/4 估算，没有完整计入工具 schema/多模态；缺乏严格超限失败结果 |
+| [provider-message-adapter.ts](../../backend/llm-context/src/assembly/provider-message-adapter.ts) | 工具配对检查、部分 provider 清洗 | 协议组校验迁入 context；provider wire 编码经 codec 接口注入，避免继续积累厂商分支 |
+| [context-compaction.ts](../../backend/llm-context/src/window/compact-messages.ts) | 保留 system、最后 user、最近消息与完整工具组 | 本质为按消息数裁剪，不是语义压缩；不存在摘要、原文读取或窗口世代 |
+| [agent-program.ts](../../backend/llm-tasks/src/durable/agent-program.ts) | 持久 messages、pending calls、审批键、独立 Skill 快照 | 循环仅消费 context 接口；去除长 messages 副本；保留 Kernel 执行控制与审批事实 |
+| [context-profile-store.ts](../../backend/llm-session/src/persistence/context-profile-store.ts) | Profile 不可变版本与进程内写序列 | Profile 规则/版本语义迁入 context；持久化端口实现留 adapter，进程内 Promise 链不能充当跨进程 CAS |
+| [Kernel domain](../../backend/durable-kernel/src/domain/types.ts)、[SeqFile store](../../backend/durable-kernel/src/infrastructure/seqfile/store.ts) | `context.seq` commit/branch/head CAS；Task state、effects、shared mutations 可同事务提交 | 既有 `commitContext()` 是单独事务，不能当成与 Task checkpoint 联合原子提交；Context 语义 API 最终迁出 Kernel |
+| [tool-call-effect.ts](../../backend/kernel-adapters/src/effects/tool-call-effect.ts)、[llm-chat-effect.ts](../../backend/kernel-adapters/src/effects/llm-chat-effect.ts) | 工具/LLM 的 grant、取消、reconcile 和用量结算 | 大 payload 在进入持久 Effect 结果之前外置；不要只截断模型侧 messages |
 
 特别注意：裁掉 `state.messages` 不会自动消除 `input.messages`、`effects[*].request/result` 和历史 Task snapshot 中的重复内容。新设计要同时缩小模型输入和恢复记录，否则只是降低 token，无法改善长任务的状态写放大。
 
@@ -65,7 +65,7 @@
 整个 context 领域归属一个独立包。包内可以分目录，其他包不得深引用这些目录，也不得复制裁剪、摘要或笔记规则。
 
 ```text
-packages/llm-context/                  # Target logical layout; current files are listed in context-api.md
+backend/llm-context/                  # Target logical layout; current files are listed in context-api.md
   src/index.ts                     # Interfaces, DTOs, composition factory
   src/domain/                      # Items, profiles, notes, windows, checkpoints
   src/history/                     # Protocol groups, lineage, bounded queries
@@ -375,7 +375,7 @@ GC 与发布需要共同的 fence。活跃 Task 在线回收需要 stage 发布�
 
 旧 API 迁移规则：
 
-- common 不再导出 Context 类型；[node-config.ts](../../packages/llm-tasks/src/contracts/node-config.ts) 中的 ContextCompactionPolicy 与 llm-tasks 的 ContextAssembler 导出在兼容期只转发或提供显式旧 DTO 转换；实现和新类型唯一来源是 context。最终消费者直接 `import type` 公开接口。
+- common 不再导出 Context 类型；[node-config.ts](../../backend/llm-tasks/src/contracts/node-config.ts) 中的 ContextCompactionPolicy 与 llm-tasks 的 ContextAssembler 导出在兼容期只转发或提供显式旧 DTO 转换；实现和新类型唯一来源是 context。最终消费者直接 `import type` 公开接口。
 - 旧 ChatMessage、Round/Artifact DTO 由边界 mapper 转换，context 不反向依赖宿主或聚合兼容层。Provider wire 编码由 codec 适配，不把现有临时清洗规则当永久 API。
 - llm-session 仍拥有 Round/branch 的业务身份，Context Profile 的版本和选择规则迁出；旧 profile 文件只作为迁移输入。
 - Kernel `SessionContextApi` / ContextCommit / ContextBranch 属于历史通用提交 API；经 adapter 读取旧 context.seq，建立稳定 legacy ID 映射。新 Context 不双写两个权威 head；待消费者全部迁移后移除 Kernel 的 Context 命名 API，旧磁盘数据保留只读迁移支持。
@@ -403,7 +403,7 @@ MVP 仍允许 Task.effects 的小型元数据随 Effect 数量线性增长；若
 
 ## 12. 本轮交付边界
 
-已创建零运行时依赖的 `packages/llm-context`，迁入消息/Context 类型、Profile、历史选择、装配、裁剪、协议校验和 hash 实现。旧入口保留兼容转发，Session 保留 Round 拓扑与持久 adapter。新 `IContextService`/`IContextEngine`/`IContextContentStore` 管理不可变请求、原始历史、笔记和窗口；kernel-adapters 与 app-core 通过端口接入，durable-kernel 源码与依赖不变。
+已创建零运行时依赖的 `backend/llm-context`，迁入消息/Context 类型、Profile、历史选择、装配、裁剪、协议校验和 hash 实现。旧入口保留兼容转发，Session 保留 Round 拓扑与持久 adapter。新 `IContextService`/`IContextEngine`/`IContextContentStore` 管理不可变请求、原始历史、笔记和窗口；kernel-adapters 与 app-core 通过端口接入，durable-kernel 源码与依赖不变。
 
 Agent/Chat v2 使用 `context.prepare@1` 与 `llm.chat@2`，head/receipt 写集和下一 Effect 在同一 Decision 提交。`tool.call@2` 在旧截断前保存完整可读输出，提供 `context_history`、`context_read`、`context_checkpoint`；末次助手答案也归档。v1 Task 保持原版本恢复。
 

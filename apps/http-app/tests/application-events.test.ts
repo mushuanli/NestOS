@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import type { ServerResponse } from 'node:http';
 import { afterEach, expect, it, vi } from 'vitest';
-import type { ApplicationPort, ApplicationEvent } from '@itookit/app-core/application/contracts';
+import type { ApplicationPort, ApplicationEvent } from '@itookit/app-contracts/application';
 import { ApplicationEvents } from '../src/server/application-events';
 
 afterEach(() => vi.useRealTimers());

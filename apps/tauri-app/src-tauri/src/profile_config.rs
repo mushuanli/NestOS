@@ -3,7 +3,7 @@ use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 
 pub const FILE_NAME: &str = "mindos.json";
-const DEFAULT_SETTINGS: &str = include_str!("../../../../packages/app-core/src/profile/default-profile.json");
+const DEFAULT_SETTINGS: &str = include_str!("../../../../backend/app-core/src/profile/default-profile.json");
 
 pub fn config_dir(home: &Path, xdg: Option<PathBuf>) -> PathBuf {
     xdg.unwrap_or_else(|| home.join(".config")).join("mindos")

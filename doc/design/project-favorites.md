@@ -18,7 +18,7 @@
 
 ## 模块边界
 
-`packages/app-core/src/projects/favorites/` 按职责组织：
+`backend/app-core/src/projects/favorites/` 按职责组织：
 
 - `contracts.ts`：目标模型、原子存储端口和文件变更端口。
 - `policy.ts`：删除后代、路径迁移、去重和会话校准的纯函数；无 I/O。

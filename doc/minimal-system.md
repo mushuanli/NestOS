@@ -42,7 +42,7 @@ env -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
 
 ### 模型与目录授权
 
-1. 设置 → Provider：新增 OpenAI-compatible 地址与 API Key；验收可用本地 mock。Key 按已确认的落盘方案，以**明文**保存在数据根的 `/etc/llm/.providers/<id>.json`，表单已标注存储路径。Provider 列表接口与 `.llm` 配置导出不包含该字段；如果把凭证写入消息或命令，仍可能进入对应记录。`api_key_env` 是 CLI YAML 从环境变量读取凭证的配置，桌面 Provider 表单没有该字段。回归见 `packages/kernel-adapters/tests/llm-management/provider-export.spec.ts` 和 `packages/llm-settings-ui/tests/ProviderSettingsEditor.key-storage.test.ts`。
+1. 设置 → Provider：新增 OpenAI-compatible 地址与 API Key；验收可用本地 mock。Key 按已确认的落盘方案，以**明文**保存在数据根的 `/etc/llm/.providers/<id>.json`，表单已标注存储路径。Provider 列表接口与 `.llm` 配置导出不包含该字段；如果把凭证写入消息或命令，仍可能进入对应记录。`api_key_env` 是 CLI YAML 从环境变量读取凭证的配置，桌面 Provider 表单没有该字段。回归见 `backend/kernel-adapters/tests/llm-management/provider-export.spec.ts` 和 `ui/llm-settings-ui/tests/ProviderSettingsEditor.key-storage.test.ts`。
 2. 设置 → Connection：把 tier 指向实际模型 ID；Agent 保持默认即可。
 3. 目录授权：只有明确授权（`directory_open`）的目录才进入 Session 命名空间。典型映射是仓库只读 `/app` + 可写工作目录 `/workspace`；未授权目录在 Bash 里不可见。
 4. 发送一条要求“运行子 harness”的消息。Agent 会调用 Bash 工具，命令形如：
@@ -136,7 +136,7 @@ Web 保留 `createSessionProcesses` 接口，默认不注入本机 shell；不�
 
 ## 已知问题与测量方法（P0-02）
 
-应用被强杀后重启的前几次发送，从用户消息落盘到 `task.created` 存在 11–25s 的空档。已用无界面探针测量同一份数据根上的共享路径（`packages/app-core` + `llm-session`，LocalFS 进程内后端）：
+应用被强杀后重启的前几次发送，从用户消息落盘到 `task.created` 存在 11–25s 的空档。已用无界面探针测量同一份数据根上的共享路径（`backend/app-core` + `llm-session`，LocalFS 进程内后端）：
 
 ```bash
 # 需要一个 OpenAI-compatible mock 服务（默认 127.0.0.1:8399）

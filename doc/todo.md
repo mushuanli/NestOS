@@ -96,11 +96,11 @@ Web 保留平台接口，不启用本机 Bash。跨 Session Memory 已有实现�
   - 2026-09-14 桌面字体/导航补验：10 个本地 FontAwesome 字体面在真实 WebView 加载成功，修复 Vite 内联小字体被 CSP 拦截；11 个静态导航控件具有稳定 AT-SPI 名称。文件列表方框字符已定位为本机缺少 emoji 字体（见下条支持边界），字体面加载通过不等于全部图标渲染通过。见[字体与导航验收](minimal-system-acceptance.md#2026-09-14桌面本地字体与导航可访问名称)。
   - 2026-09-14 边界收口（见[平台边界验收](minimal-system-acceptance.md#2026-09-14p0-04-平台边界图标字体与原生目录选择器)）：**方框字符根因已定位**为宿主缺少 emoji 字体——列表图标是 `@itookit/common` 的 emoji 码位，而本机 `fc-list ':charset=1F4C1'`/`1F5D1`/`2795` 均为 0 条，应用不自带该字体；属支持边界而非本轮代码回归。**原生 GTK 选择器**经 XDG Portal 真实弹出 `Select Folder`（含文件选择小部件与 `取消/打开`），但**未能完成选择**：合成输入会破坏 GTK 位置栏路径（实测 `/ome/…`、`/home/lli/…`），且容器无 `/dev/fuse` 使门户文档门户不可用，未产生挂载记录。**发布产物**未构建（无 AppImage/linuxdeploy 工具、无网络）；受版本控制的 `release/dist/` 停留在 2026-09-04。**其他平台未验证**，不能由 Linux 证据外推。
   - 2026-09-14 嵌套边界收窄（见[嵌套规则验收](minimal-system-acceptance.md#2026-09-14项目规则在真实窗口的嵌套边界p0-04)）：**「多层级嵌套挂载」在本实现不可表达**——`SessionFilesService.create` 要求挂载点 `at` 匹配 `^\/[a-zA-Z0-9_-]+$`（单段），`at: '/workspace/inner'` 实测抛 `EACCES Reserved or invalid mount point`；真正存在的嵌套是**一个挂载内部的多层目录树**。按此收窄后在真实窗口验证：单挂载 `/workspace` 的树内含 `inner/_agent/AGENT.md` 与 `inner/_agent/skills/...`，请求体出现 `OUTER-PROJECT-RULE-MARKER`(1) 与 `OUTER-SKILL-BODY-MARKER`(1)，`INNER-NESTED-RULE-MARKER`(0) 与 `INNER-SKILL-BODY-MARKER`(0)，即内层项目规则不合并、不替换。cwd 等于项目根时内层 Skill 不级联（级联需更深 cwd，属 Flow/工作区作用域路径，本场景未覆盖）。
-  - 2026-09-14 选择器静默失败已修（见[静默失败验收](minimal-system-acceptance.md#2026-09-14原生目录选择器的静默失败p0-04)）：`openDirectoryDialog` 原为 `catch { return null }`，把“取消”与“选择器损坏”合并，且点击处理没有 `catch`，失效时唯一症状是按钮无反应。现抽出 `apps/tauri-app/src/services/directory-dialog.ts`：取消返回 `null`，真实失败记录并重新抛出；点击处理报告挂载/选择失败。回归 `packages/app-shell/tests/directory-dialog.test.ts` 3 项通过。**验证缺口**：改动后本环境合成输入不再激活窗口（诊断标题从未改变，同期导航点击也失效），因此修复后的端到端行为未在窗口复验；门户选择失败的确切形态（reject / null / 挂起）仍未判定，原生选择器在本机的可用性**未结论**。
+  - 2026-09-14 选择器静默失败已修（见[静默失败验收](minimal-system-acceptance.md#2026-09-14原生目录选择器的静默失败p0-04)）：`openDirectoryDialog` 原为 `catch { return null }`，把“取消”与“选择器损坏”合并，且点击处理没有 `catch`，失效时唯一症状是按钮无反应。现抽出 `apps/tauri-app/src/services/directory-dialog.ts`：取消返回 `null`，真实失败记录并重新抛出；点击处理报告挂载/选择失败。回归 `ui/app-shell/tests/directory-dialog.test.ts` 3 项通过。**验证缺口**：改动后本环境合成输入不再激活窗口（诊断标题从未改变，同期导航点击也失效），因此修复后的端到端行为未在窗口复验；门户选择失败的确切形态（reject / null / 挂起）仍未判定，原生选择器在本机的可用性**未结论**。
   - Tauri Session Bash **共享宿主网络**；无出网或连接超时不能当作网络沙箱证据。见[验收 §29](minimal-system-acceptance.md)。
 
 - [ ] **P0-05 当前最终回归**
-  - [ ] **优先排查当前失败**：`345a8994` 提交批次 app-shell 为 221 通过 / 1 失败 / 30 跳过；`packages/app-shell/tests/scheduler-paused-owner.test.ts` 返回 `Host exited: 1`，单独重跑仍失败。保留子进程 stderr、定位失败阶段并修复或明确环境前置条件后，重跑该用例和整包。未定位前不判定为无关失败，不用旧 P1 通过记录覆盖。
+  - [ ] **优先排查当前失败**：`345a8994` 提交批次 app-shell 为 221 通过 / 1 失败 / 30 跳过；`ui/app-shell/tests/scheduler-paused-owner.test.ts` 返回 `Host exited: 1`，单独重跑仍失败。保留子进程 stderr、定位失败阶段并修复或明确环境前置条件后，重跑该用例和整包。未定位前不判定为无关失败，不用旧 P1 通过记录覆盖。
   - 最近 P2 批次类型/文档/样式检查、kernel-adapters 128、llm-session 124、app-core 103、CLI Skill/Memory 4 及共享 Memory 13 项通过；没有执行该提交的全量最终矩阵、完整构建和真实窗口。见 [P2 批次证据](minimal-system-acceptance.md#p2-版本与共享-memory-提交批次)。
   - 旧树 `d883a497` 的阶段性矩阵已完成并保留在[验收记录](minimal-system-acceptance.md)，不能作为后续大量改动后的最终通过证据。
   - 2026-09-14 统一测试入口批次：以 `a308eb65` 加本批选定文件的隔离快照运行 `pnpm test`，Vitest 1,593、调度器 3、Rust 36 项通过，共 1,632 项；30 项既有跳过。CLI 107 项与 SIGKILL 矩阵 10 项分开执行；CLI 类型与文档检查通过。Node 26.8.1 / pnpm 10.20.0，复用本机依赖与 Rust 编译缓存，未做全新依赖安装验证。这是当前入口的阶段性回归，不是最终全仓/GUI 验收。
@@ -116,7 +116,7 @@ Web 保留平台接口，不启用本机 Bash。跨 Session Memory 已有实现�
 - [x] **P1-01 本地崩溃恢复闭环**
   - 已实现：稳定 requestId/spec 去重、根和检查点持久化、循环/patch/委派恢复；不确定 Effect 默认阻断，显式授权才重放。提交/检查点间隙、委派在途、已完成循环迭代已有真实 SIGKILL 回归。新增根提交后、首检查点前的真实 SIGKILL 回归；初始调度/工作区身份与根同事务持久，终态到收尾 pending 的窗口也可恢复。
   - 已补验证：首个能力回执后、Task.start 后、动态 patch 检查点前、委派全部完成但根 join 信号前四个真实 SIGKILL 窗口；恢复保持 Task 身份、已完成输出及模型调用次数。结果不确定时仍阻断并要求显式裁决，不追求外部服务恰好执行一次。
-  - 入口：`apps/cli/tests/crash-matrix.test.ts`、`packages/llm-flow/__tests__/durable-flow-executor.test.ts`、[验收记录](minimal-system-acceptance.md)。
+  - 入口：`apps/cli/tests/crash-matrix.test.ts`、`backend/llm-flow/__tests__/durable-flow-executor.test.ts`、[验收记录](minimal-system-acceptance.md)。
 
 - [x] **P1-02 同机所有权与全部本地控制入口**
   - 已实现：Session/Run 租约、epoch、CLI 本机锁；Run 到期即失效、迟到心跳不续活；节点提交、共享状态和根信号在事务内检查所有权；失权不触发失败清理。

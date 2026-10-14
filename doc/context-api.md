@@ -6,15 +6,15 @@
 
 | 接口 | 用途 | 实现 |
 |---|---|---|
-| `IContextAssembler` | 分支历史、Profile、材料与记忆装配 | [context-assembler.ts](../packages/llm-context/src/assembly/context-assembler.ts) |
-| `IContextProfiles` | 不可变 Profile 版本与选择规则 | [profiles.ts](../packages/llm-context/src/application/profiles.ts) |
-| `IContextEngine` | 完整工具组、目标与策略保留、输入预算 | [engine.ts](../packages/llm-context/src/window/engine.ts) |
-| `IContextService` | prepare/request、内容 admission | [service.ts](../packages/llm-context/src/application/service.ts) |
-| `IContextReader` | inspect/history/read | [reader.ts](../packages/llm-context/src/application/reader.ts) |
-| `IContextContentStore` | 按 hash 发布、读取并校验不可变内容 | [store.ts](../packages/llm-context/src/content/store.ts) |
-| `IContextGcStore` | 与内容发布/根提交共享的事务 GC 视图 | [task-content-store.ts](../packages/kernel-adapters/src/context/task-content-store.ts) |
-| `createContextGc` / `scheduleContextGc` | 引用标记、保留期、预算、定时维护 | [collector.ts](../packages/llm-context/src/gc/collector.ts)、[scheduler.ts](../packages/llm-context/src/gc/scheduler.ts) |
-| `ContextServiceResolver` | 按真实 Task/Session 获取服务 | [context-service.ts](../packages/app-core/src/runtime/context-service.ts) |
+| `IContextAssembler` | 分支历史、Profile、材料与记忆装配 | [context-assembler.ts](../backend/llm-context/src/assembly/context-assembler.ts) |
+| `IContextProfiles` | 不可变 Profile 版本与选择规则 | [profiles.ts](../backend/llm-context/src/application/profiles.ts) |
+| `IContextEngine` | 完整工具组、目标与策略保留、输入预算 | [engine.ts](../backend/llm-context/src/window/engine.ts) |
+| `IContextService` | prepare/request、内容 admission | [service.ts](../backend/llm-context/src/application/service.ts) |
+| `IContextReader` | inspect/history/read | [reader.ts](../backend/llm-context/src/application/reader.ts) |
+| `IContextContentStore` | 按 hash 发布、读取并校验不可变内容 | [store.ts](../backend/llm-context/src/content/store.ts) |
+| `IContextGcStore` | 与内容发布/根提交共享的事务 GC 视图 | [task-content-store.ts](../backend/kernel-adapters/src/context/task-content-store.ts) |
+| `createContextGc` / `scheduleContextGc` | 引用标记、保留期、预算、定时维护 | [collector.ts](../backend/llm-context/src/gc/collector.ts)、[scheduler.ts](../backend/llm-context/src/gc/scheduler.ts) |
+| `ContextServiceResolver` | 按真实 Task/Session 获取服务 | [context-service.ts](../backend/app-core/src/runtime/context-service.ts) |
 
 `ChatMessage`、`ToolDefinition`、`ContextPlan`、`ContextSnapshot`、`ContextCompactionPolicy` 等类型以 Context 为唯一来源。llm-tasks 入口保留相关类型转发，原 llm-common 与 common 的 LLM 转发均已删除；Session 的 Profile 文件存储仍由 adapter 负责。
 
@@ -107,13 +107,13 @@ await runtime.contextGc?.collect();
 
 ## 验证
 
-- [service.test.ts](../packages/llm-context/src/application/service.test.ts)：CAS 竞争、回执幂等、连续三次窗口切换、Notes 版本、Unicode 大输出、工具组、schema 预算。
-- [context-program.test.ts](../packages/llm-tasks/src/durable/context-program.test.ts)：联合 Decision、持久状态恢复、工具批次与伪造 checkpoint 拒绝。
-- [effects.test.ts](../packages/kernel-adapters/src/context/effects.test.ts)：缺失/损坏快照、跨 Task 拒绝、取消屏障、未知外部效果。
-- [context-runtime.test.ts](../packages/app-core/tests/context-runtime.test.ts)：真实 Kernel 审批点关闭/重开、工具不重跑、checkpoint、完整原文检索、v1/v2 并存。
-- [collector.test.ts](../packages/llm-context/src/gc/collector.test.ts)：可达性、保留期、dry-run、预算、损坏引用、批量限制、调度与关闭。
-- [task-content-store.test.ts](../packages/kernel-adapters/src/context/task-content-store.test.ts)：发布保护、历史根、事务回滚、Effect 清理确认、并发 sweep 和终态发布屏障。
-- [context-gc.test.ts](../packages/app-core/tests/context-gc.test.ts)：重启自动清理、写权限检查和已提交历史检索。
+- [service.test.ts](../backend/llm-context/src/application/service.test.ts)：CAS 竞争、回执幂等、连续三次窗口切换、Notes 版本、Unicode 大输出、工具组、schema 预算。
+- [context-program.test.ts](../backend/llm-tasks/src/durable/context-program.test.ts)：联合 Decision、持久状态恢复、工具批次与伪造 checkpoint 拒绝。
+- [effects.test.ts](../backend/kernel-adapters/src/context/effects.test.ts)：缺失/损坏快照、跨 Task 拒绝、取消屏障、未知外部效果。
+- [context-runtime.test.ts](../backend/app-core/tests/context-runtime.test.ts)：真实 Kernel 审批点关闭/重开、工具不重跑、checkpoint、完整原文检索、v1/v2 并存。
+- [collector.test.ts](../backend/llm-context/src/gc/collector.test.ts)：可达性、保留期、dry-run、预算、损坏引用、批量限制、调度与关闭。
+- [task-content-store.test.ts](../backend/kernel-adapters/src/context/task-content-store.test.ts)：发布保护、历史根、事务回滚、Effect 清理确认、并发 sweep 和终态发布屏障。
+- [context-gc.test.ts](../backend/app-core/tests/context-gc.test.ts)：重启自动清理、写权限检查和已提交历史检索。
 
 CLI 的 22 个既有 SIGKILL 恢复用例也已通过；这不等同于覆盖 Context 发布协议的全部进程 kill-point 或各后端断电矩阵。CLI 非崩溃测试有两个既有路由/supervisor 场景失败，在临时关闭 v2 的 v1 对照中同样复现。
 

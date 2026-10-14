@@ -51,7 +51,7 @@ llm-ui 标题栏「工作目录与挂载」与标题栏/输入工具栏右键菜
 
 Tauri 在创建 Session 返回前完成启动 cwd 的默认挂载；已显式设置的默认目录优先。CLI 未指定 `workspace.root` 时使用调用进程 cwd，显式相对路径仍相对于 Flow 配置文件。CLI 重开 Session 保留已保存挂载；`--set-home` 显式替换主目录。本机选择器与 CLI 路径使用 `host:` 解析，避免与 `/home/admin` 应用命名空间混淆。
 
-files 行提供一个“＋”动作，点击 files 主视图顶部也提供“挂载目录”和“管理挂载”。两处复用同一个挂载弹窗（`packages/app-shell/src/files/mount-dialog.ts`）与宿主控制器 `DirectoryMountService`（`packages/app-core/src/vfs/directory-mounts.ts`），不写两套业务逻辑。vfs-ui 仅提供通用条目动作扩展点。
+files 行提供一个“＋”动作，点击 files 主视图顶部也提供“挂载目录”和“管理挂载”。两处复用同一个挂载弹窗（`ui/app-shell/src/files/mount-dialog.ts`）与宿主控制器 `DirectoryMountService`（`backend/app-core/src/vfs/directory-mounts.ts`），不写两套业务逻辑。vfs-ui 仅提供通用条目动作扩展点。
 
 未挂载目录的 Session files 主视图显示 attachments 和说明：“尚未挂载工作目录，此会话仅能访问附件。”
 
@@ -164,8 +164,8 @@ directoryAction?: {
 | 层 | 改动 |
 | --- | --- |
 | app-shell SessionWorkbench | 删除自动 admin-home → /workspace；加入挂载动作与管理 UI |
-| app-core SessionFilesService | 附件加显式挂载组成唯一用户文件上下文；cwd、只读、revision 与撤销统一校验（`packages/app-core/src/vfs/session-files.ts`） |
-| app-core DirectoryMountService | 宿主来源登记、默认目录与挂载增删改（`packages/app-core/src/vfs/directory-mounts.ts`） |
+| app-core SessionFilesService | 附件加显式挂载组成唯一用户文件上下文；cwd、只读、revision 与撤销统一校验（`backend/app-core/src/vfs/session-files.ts`） |
+| app-core DirectoryMountService | 宿主来源登记、默认目录与挂载增删改（`backend/app-core/src/vfs/directory-mounts.ts`） |
 | app-core session-attachments | 删除 system-mounts 旧入口；只组装当前 Session 附件 |
 | app-core SessionBrowser | files 直接代理受限上下文，删除目录黑名单，不再代理完整系统视图 |
 | vfs-ui | 通用条目动作钩子；files 的“＋”与挂载状态由宿主提供 |
@@ -195,7 +195,7 @@ flowchart LR
 
 进程执行是必要的独立检查点：VFS 只能约束经过 VFS 的操作。原生 shell/PTY 若仍可直接读宿主文件，则仅修改 cwd、过滤路径或限制文件工具不能实现本方案。提供 process 能力的平台必须通过 OS 沙箱/容器/受控执行器实施等价文件范围；无法实施的平台不得向受限 Session 提供无约束宿主 shell。运行程序所需的运行库等系统资源由执行器固定提供，与用户数据挂载分开，不借此授权其他用户数据。
 
-Tauri 已移除向 Session 注入无约束 native shell、原生 skill tool handler 和本地 Codex app-server 传输；进程执行改由 Bubblewrap runner 实施：`apps/tauri-app/src-tauri/src/session_bash.rs` 按显式 Session 挂载生成 `bwrap` 命令（`--ro-bind`/`--bind`、`--unshare-pid/--unshare-ipc/--unshare-uts`、`--die-with-parent`），cwd 必须落在授权挂载内，宿主环境变量被清空；`apps/tauri-app/src/shell/session-bash.ts` 经 `directory_open`/`directory_close` 取得目录句柄并接线到 `SessionProcessFactory`（`packages/app-core/src/vfs/session-process-context.ts`）。该 runner 不隔离网络，也不是完整 OS 沙箱。CLI 默认 OCI 使用同一 Session 挂载列表；主挂载被卸载时 Shell/TTY 拒绝启动，不能从旧 Flow 路径自动恢复授权。`RequestWorkspaceAccess` 返回实际会话挂载路径。CLI 显式 `native` 模式仍以宿主权限执行，不具备等价的 OS 文件范围隔离。
+Tauri 已移除向 Session 注入无约束 native shell、原生 skill tool handler 和本地 Codex app-server 传输；进程执行改由 Bubblewrap runner 实施：`apps/tauri-app/src-tauri/src/session_bash.rs` 按显式 Session 挂载生成 `bwrap` 命令（`--ro-bind`/`--bind`、`--unshare-pid/--unshare-ipc/--unshare-uts`、`--die-with-parent`），cwd 必须落在授权挂载内，宿主环境变量被清空；`apps/tauri-app/src/shell/session-bash.ts` 经 `directory_open`/`directory_close` 取得目录句柄并接线到 `SessionProcessFactory`（`backend/app-core/src/vfs/session-process-context.ts`）。该 runner 不隔离网络，也不是完整 OS 沙箱。CLI 默认 OCI 使用同一 Session 挂载列表；主挂载被卸载时 Shell/TTY 拒绝启动，不能从旧 Flow 路径自动恢复授权。`RequestWorkspaceAccess` 返回实际会话挂载路径。CLI 显式 `native` 模式仍以宿主权限执行，不具备等价的 OS 文件范围隔离。
 
 Tauri 文件 IO 使用原生 directory_open/close/io，保存规范化目录根，每次拒绝 parent traversal 和符号链接，关闭 scope 后 IO 失败；元数据位于独立 sidecar，用户内容保持原路径，包括 __tests__。这不等于 OS 进程沙箱，也不宣称能抵抗外部宿主进程在路径检查和 IO 之间恶意换链的竞态。
 
@@ -223,7 +223,7 @@ MindOS 的目标更明确：未配置默认来源的 Session 不附加用户目�
 7. 文件工具与受限进程执行分别验证访问边界；Bubblewrap runner 已覆盖只读/可写授权与保留路径拒绝，但未完成真实 GUI 与网络隔离验收，不能宣称完整隔离。
 
 **逐项证据映射（2026-09-11 第四十三轮核对）**：
-1. `packages/app-core/tests/directory-mounts.test.ts`「only grants attachments until the default directory is explicitly mounted」、「keeps the same mount point name bound to each Session source independently」；`session-files.test.ts`「exposes only attachments without system directories, kernel records, or another Session」。
+1. `backend/app-core/tests/directory-mounts.test.ts`「only grants attachments until the default directory is explicitly mounted」、「keeps the same mount point name bound to each Session source independently」；`session-files.test.ts`「exposes only attachments without system directories, kernel records, or another Session」。
 2. 同上第一条（B 仅见 `attachments`；绝对兄弟路径 ENOENT）；第四十三轮在该文件的只读用例中补 `/demo/../notes/secret.md` 遍历拒绝与根视图只含 `attachments`+`demo`；链接逃逸由 Tauri 侧 `directory_boundary::tests::rejects_link_outside_selected_directory`（`pnpm --filter tauri-app test:rust`）覆盖。
 3. `directory-mounts.test.ts`「defaults to read-write, attenuates explicit read-only, and removes grants without deleting data」第四十三轮扩展为 `writeContent`/`rename`/`move`/`delete`/`updateMetadata`/`setTags`/`createDirectory` 全部 `EROFS`；shell 侧由 `session_bash::tests::confines_bash_to_readonly_and_writable_grants` 覆盖只读/可写绑定。
 4. 第四条「keeps the same mount point name bound to each Session source independently」：同一虚拟路径 `/demo` 绑定不同来源，互不可见。

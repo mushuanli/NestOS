@@ -1,3 +1,6 @@
+import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
+import { SnapshotService } from './storage/snapshots';
+import { createLocalBackendPort, bindLocalApplicationServices } from '@itookit/app-core/host';
 import { configureAppCache } from './app-cache';
 import { createPiAgentDriver } from '@itookit/piagent-driver';
 import { initApp, installMobileNavigation, windowSessionLeaseToken } from '@itookit/app-shell';
@@ -33,7 +36,9 @@ async function main() {
     sync.service = runtime.projectSync;
     try {
         await initApp({
-            runtime,
+            fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) },
+            localBackend: createLocalBackendPort({ snapshots: vfs => new SnapshotService(vfs, 'MindOS-v3') }),
+            services: bindLocalApplicationServices(runtime),
             projectSyncSetup: (id, signal) => sync.setup(id, signal),
             projectSyncDirectory: (id, signal) => sync.directory(id, signal),
             workspaces: WORKSPACES,

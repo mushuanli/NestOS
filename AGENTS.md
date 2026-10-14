@@ -8,7 +8,7 @@
 - **itookit**：pnpm monorepo，承载 **MindOS**（浏览器/桌面的个人知识 OS：虚拟文件系统 + Markdown 编辑器 + LLM 对话/Agent 执行）
 - 工具链：`pnpm@10.20.0`（`workspace:*`）、TypeScript 5.9 strict（`target: ES2022`、`moduleResolution: bundler`，见 `tsconfig.base.json`）
 - 无前端框架：原生 DOM + TypeScript
-- 19 个业务 package + 8 个独立库源码工作区（`libraries/`）+ 4 个 app，详见 [包结构](./doc/pkgstructure.md)
+- 19 个业务 package（`ui/`、`backend/`、`shared/`）+ 8 个独立库源码工作区（`libraries/`）+ 5 个 app，详见 [包结构](./doc/pkgstructure.md)
 
 ## 开发原则
 SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
@@ -17,7 +17,7 @@ SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
 
 ```bash
 pnpm dev                              # Web app 开发服务器
-pnpm build:libs                       # 构建 packages/*
+pnpm build:libs                       # 构建 ui/backend/shared/libraries 工作区
 pnpm typecheck                        # 全仓类型检查
 pnpm docs:check                       # 活文档与代码同步检查
 pnpm styles:check                     # markup 类名 ↔ CSS 规则一致性检查
@@ -64,7 +64,7 @@ pnpm --filter @itookit/<pkg> typecheck
 | [已归档文档](./doc/deprecated/) | 一次性评审记录与已被取代的方案（**归档，不随代码更新**） |
 
 > 上表为**活文档**（随代码更新）。改代码时按此表定位对应文档即可，无需全量扫描；`pnpm docs:check` 可校验活文档中的悬空路径与已删除符号。
-> 各包的开发说明见 `packages/<pkg>/AGENTS.md`。
+> 各包开发说明见 `ui/<pkg>/AGENTS.md`、`backend/<pkg>/AGENTS.md`、`shared/<pkg>/AGENTS.md`；目录边界见 [前后端模块](./doc/design/frontend-backend-modules.md)。
 
 ## UI 约定
 

@@ -259,10 +259,10 @@ buildLlmTaskInput(options: LlmTaskInputOptions): DurableAgentInput;
 
 ## 源码结构：文件与路径
 
-`@itookit/llm-tasks` 的公共 API 全部从 `packages/llm-tasks/src/index.ts` 根导出。包内按 **core / durable** 两层组织：
+`@itookit/llm-tasks` 的公共 API 全部从 `backend/llm-tasks/src/index.ts` 根导出。包内按 **core / durable** 两层组织：
 
 ```
-packages/llm-tasks/src/
+backend/llm-tasks/src/
 ├── index.ts                      根导出（唯一公共入口）
 ├── core/                         上下文组装 + Provider 适配（无状态）
 │   ├── context-assembler.ts      ContextAssembler + ContextAssemblerDeps/AssemblyResult/RetrievedMemoryEntry
@@ -280,7 +280,7 @@ packages/llm-tasks/src/
     └── *.test.ts                 单测（不导出）
 ```
 
-**注册位置**：`llm.chat@1` / `llm.agent@1` / `llm.plan@1` 由 `llm-flow` 的 `registerDurablePrograms()` 与 Flow 系程序一起注册（`packages/llm-flow/src/flow/register-programs.ts`），本包自身不做注册。
+**注册位置**：`llm.chat@1` / `llm.agent@1` / `llm.plan@1` 由 `llm-flow` 的 `registerDurablePrograms()` 与 Flow 系程序一起注册（`backend/llm-flow/src/flow/register-programs.ts`），本包自身不做注册。
 
 **约定**：本包不持有 Session/Flow/Scheduler/CommandBus/通用 Middleware；新运行模式实现 `DurableTaskProgram` 并放入 `durable/`；所有等待必须返回 Kernel `WaitSpec`，State 必须可持久化（JSON 可序列化）。
 

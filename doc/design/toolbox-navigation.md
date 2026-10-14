@@ -36,11 +36,11 @@ Web 与 Tauri 共用 `ToolboxWorkbench`，主导航中用「工具箱」集中�
 
 ## 实现与验证
 
-- `packages/app-shell/src/toolbox/`：模块装配、列表、纯展示投影和路由转换。
-- `packages/app-core/src/configuration/`：资源操作、分组快照、只读目录、引用重映射与失败补偿。
-- `packages/llm-settings-ui/src/editors/MCPSettingsEditor.ts`：连接表单模式及原设置页模式。
+- `ui/app-shell/src/toolbox/`：模块装配、列表、纯展示投影和路由转换。
+- `backend/app-core/src/configuration/`：资源操作、分组快照、只读目录、引用重映射与失败补偿。
+- `ui/llm-settings-ui/src/editors/MCPSettingsEditor.ts`：连接表单模式及原设置页模式。
 - `https://github.com/mushuanli/vfs-ui/blob/main/src/ui/components/NodeList/NodeList.ts`：可注入列表投影/筛选头，动态工具栏；其他模块默认行为保持一致。
-- `packages/app-shell/tests/toolbox-workbench.test.ts`：资源筛选、抽屉排序与搜索展开、服务商图标、新建连接归属、编辑器身份、归档复制及工具来源检查。
+- `ui/app-shell/tests/toolbox-workbench.test.ts`：资源筛选、抽屉排序与搜索展开、服务商图标、新建连接归属、编辑器身份、归档复制及工具来源检查。
 
 
 ## 共享系统提示词
@@ -60,7 +60,7 @@ Web 与 Tauri 共用 `ToolboxWorkbench`，主导航中用「工具箱」集中�
 - `app-core/src/configuration/ocr-service.ts` 保存配置到 `/etc/llm/ocr.json`，首次初始化将 `image-to-markdown` 提示词写入已有提示词库；已有内容不会覆盖。后续按引用读取提示词，多段内容保留。删除引用的连接、提供商或提示词时提示 OCR 影响；保留失效引用，失效连接需要用户重新选择，不自动换模型。已删除提示词仅在用户显式点击编辑时补回默认内容，正常识别和启动不会自动恢复。
 - `app-shell/src/configuration/ocr-controls.ts` 负责配置、导航与删除提示；`ui-common` 的 `OcrControls` 定义识别、配置读取与保存、配置导航、标签及订阅接口；`OcrSettingsForm` 复用字段渲染并处理即时保存和失败提示。llm-ui 消费该接口，保留缩图与识别结果审阅，不选择提供商或读写应用配置。Web/Tauri 由相同 bootstrap 装配。
 - 图片长边超过 2000 像素时尝试缩小，再由视觉模型生成 Markdown，最多返回 4096 tokens。单图可以修改、插入并保留或移除图片；批量顺序识别，失败时停止并显示错误，保留未完成图片及已成功提取的文字。
-- 回归覆盖持久化、缺失或禁用连接、非视觉模型、共享提示词更新、取消配置、删除影响、批量失败与编辑器销毁。见 `packages/app-core/tests/ocr-service.test.ts`、`packages/app-shell/tests/ocr-controls.test.ts`。
+- 回归覆盖持久化、缺失或禁用连接、非视觉模型、共享提示词更新、取消配置、删除影响、批量失败与编辑器销毁。见 `backend/app-core/tests/ocr-service.test.ts`、`ui/app-shell/tests/ocr-controls.test.ts`。
 
 
 ## 聊天输入设置

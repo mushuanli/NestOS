@@ -6,7 +6,7 @@
 
 原来的 route@1 只选择边，回边按节点迭代，不能可靠表达跨轮选择不同类型、独立上下文和按类型保留结果。现新增可作为普通 DAG 节点使用的结构化派发控制器，复用 Kernel Task、spawn、interaction、持久状态与权限机制。保留旧插件版本和旧检查点行为。
 
-完整可运行定义见 [essay-review-isolated.flow](../../packages/app-core/src/presets/essay-review-isolated.json)。编辑图包含九个节点：输入补全、路由、四个独立检查、汇总、判断、报告。
+完整可运行定义见 [essay-review-isolated.flow](../../backend/app-core/src/presets/essay-review-isolated.json)。编辑图包含九个节点：输入补全、路由、四个独立检查、汇总、判断、报告。
 
 ```mermaid
 flowchart LR
@@ -47,7 +47,7 @@ flowchart LR
 
 ## 3. 可复用配置
 
-公共类型见 [dispatch.ts](../../packages/llm-flow/src/contracts/dispatch.ts)。route@2 配置如下：
+公共类型见 [dispatch.ts](../../backend/llm-flow/src/contracts/dispatch.ts)。route@2 配置如下：
 
 | 参数 | 语义 |
 |---|---|
@@ -103,12 +103,12 @@ flowchart LR
 
 | 范围 | 实现 |
 |---|---|
-| 输入补齐 | [input.ts](../../packages/llm-flow/src/flow/structured/input.ts) |
-| 配置校验/模板准备 | [validation.ts](../../packages/llm-flow/src/flow/structured/validation.ts)、[prepare.ts](../../packages/llm-flow/src/flow/structured/prepare.ts) |
-| 派发/汇合/循环 | [dispatch.ts](../../packages/llm-flow/src/flow/structured/dispatch.ts) |
-| prompt/调用实例 | [invocation.ts](../../packages/llm-flow/src/flow/structured/invocation.ts) |
-| 权限、并发与恢复装配 | [reconcile.ts](../../packages/llm-flow/src/flow/structured/reconcile.ts) |
-| 集成验收 | [structured-flow.test.ts](../../packages/llm-flow/__tests__/structured-flow.test.ts) |
+| 输入补齐 | [input.ts](../../backend/llm-flow/src/flow/structured/input.ts) |
+| 配置校验/模板准备 | [validation.ts](../../backend/llm-flow/src/flow/structured/validation.ts)、[prepare.ts](../../backend/llm-flow/src/flow/structured/prepare.ts) |
+| 派发/汇合/循环 | [dispatch.ts](../../backend/llm-flow/src/flow/structured/dispatch.ts) |
+| prompt/调用实例 | [invocation.ts](../../backend/llm-flow/src/flow/structured/invocation.ts) |
+| 权限、并发与恢复装配 | [reconcile.ts](../../backend/llm-flow/src/flow/structured/reconcile.ts) |
+| 集成验收 | [structured-flow.test.ts](../../backend/llm-flow/__tests__/structured-flow.test.ts) |
 
 自动验收覆盖缺一项/两项、部分回复、history 污染隔离、四类累积、降分替换、输出校验失败无部分提交、1/10 轮限制、人工等待后重启不重复 spawn、修订旧分失效、全局并发和取消。LLM Effect 使用测试替身；真实 Provider 和桌面交互尚未做端到端验收。
 

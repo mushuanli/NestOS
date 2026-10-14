@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { TLSSocket } from 'node:tls';
 import { FSError } from '@itookit/vfs-core';
 import { ApplicationHost } from '@itookit/app-core/application';
-import type { ApplicationQueries, ApplicationCommands } from '@itookit/app-core/application/contracts';
+import type { ApplicationQueries, ApplicationCommands } from '@itookit/app-contracts/application';
 import { json, readJson } from './http-response';
 import { ApplicationEvents } from './application-events';
 

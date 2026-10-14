@@ -6,7 +6,7 @@
 
 ## 当前实现基线（2026-09-08）
 
-当前实现以 [resource-api.ts](../../packages/durable-kernel/src/domain/resource-api.ts)、[public/resources.ts](../../packages/durable-kernel/src/public/resources.ts)、[managed-resources.ts](../../packages/durable-kernel/src/infrastructure/seqfile/managed-resources.ts) 为准，历史 feat 记录不是最新 API 清单。
+当前实现以 [resource-api.ts](../../backend/durable-kernel/src/domain/resource-api.ts)、[public/resources.ts](../../backend/durable-kernel/src/public/resources.ts)、[managed-resources.ts](../../backend/durable-kernel/src/infrastructure/seqfile/managed-resources.ts) 为准，历史 feat 记录不是最新 API 清单。
 
 - ResourceRef 当前是 `{ id, scope }`，kind 为 pool/shared；scope 为 kernel 或 session:<id>。authority 与使用方须共享同一事务型 IFileSystem，未提供跨 backend broker。
 - `create/share/open/acquire/release/close/read/write` 返回持久请求；`revoke(ref, { requestId, toSessionId, rights?, expectedRevision })` 支持按权限撤销，旧 handle 的 grantEpochs 防止重新 share 后复活。
@@ -71,7 +71,7 @@ Session 逻辑资源表由以下几组权威记录组成，统一放在 `resourc
 | `account/<accountId>` | 分配 authority | Session 根、Task/Effect 子账户；不以 Resource.parentResourceId 隐式替代账务父关系 |
 | `allocation-request/<requestId>` | 分配 authority | 指纹、排队次序、deadlineAt、granted/rejected/cancelled/timed-out 结果 |
 | `allocation/<allocationId>` | 分配 authority | 容量预留/持有、预算预留、归属、release/cleanup 状态 |
-| `usage/<usageId>` | 分配 authority | 幂等结算记录，和账户汇总在同一事务更新。**内核侧已实现（2026-09-11 第五十二轮）**：`Kernel.chargeBudget`/`SessionBudgetApi.chargeBudget` 接受 `{ usageId }`，`chargeBudget` 在同一事务内写 `usage/<usageId>` 回执（`BudgetUsage { usageId, resourceId, dimension, amount, accounts, settledAt }`）；同 id 重放返回记录的回执不再扣费，金额/资源/维度不同即冲突。Effect 路径由内核默认按逻辑 Effect 结算（`effect:<effectId>:<handleId>:<dimension>`），Adapter 不必自己传 id；未提供 `usageId` 的宿主直调保持「每次调用都扣」的旧语义。回归 `packages/durable-kernel/src/kernel.test.ts`「settles a budget charge once per usage id and refuses a conflicting replay」「charges effect-driven usage once per logical Effect even when the attempt is retried」 |
+| `usage/<usageId>` | 分配 authority | 幂等结算记录，和账户汇总在同一事务更新。**内核侧已实现（2026-09-11 第五十二轮）**：`Kernel.chargeBudget`/`SessionBudgetApi.chargeBudget` 接受 `{ usageId }`，`chargeBudget` 在同一事务内写 `usage/<usageId>` 回执（`BudgetUsage { usageId, resourceId, dimension, amount, accounts, settledAt }`）；同 id 重放返回记录的回执不再扣费，金额/资源/维度不同即冲突。Effect 路径由内核默认按逻辑 Effect 结算（`effect:<effectId>:<handleId>:<dimension>`），Adapter 不必自己传 id；未提供 `usageId` 的宿主直调保持「每次调用都扣」的旧语义。回归 `backend/durable-kernel/src/kernel.test.ts`「settles a budget charge once per usage id and refuses a conflicting replay」「charges effect-driven usage once per logical Effect even when the attempt is retried」 |
 
 默认每个 Task 有独立 binding 表，不提供隐式 `CLONE_FILES`。spawn 可声明 bindings：派生降权 grant + 新 binding；有状态 use 默认新建，只有显式 `share-use` 才共享游标/交互实例。分配给父 Task 的独占 allocation 不因派生 grant 自动复制给子 Task。
 
@@ -163,7 +163,7 @@ lease 到期首先禁止旧持有者新操作。只有资源端能够 fence 旧�
 
 authority 是持久逻辑服务，不是创建资源的进程。首次创建固定 authorityId→storage binding；Catalog 仅保存发现投影。authority leader 的 ownerEpoch 在该权威存储中 CAS 递增，所有修改验证 epoch；缓存路由不能决定所有权。
 
-**内核侧骨架已实现（2026-09-11 第五十一轮）**：`resources.seq.managed/authority/<id>` 保存 `{authorityId, ownerEpoch, ownerId, binding, serviceEndpoint, status, updatedAt}`；`ResourceApi.claimAuthority(id, {ownerId, expectedEpoch, binding, serviceEndpoint, scope})` 首次声明写入 epoch 1，接管必须提交观察到的 `expectedEpoch` 并 CAS 递增，否则报 `Authority epoch conflict: <id> is owned by <owner> at epoch <n>`；`ResourceApi.authority(id, scope?)` 只读；声明了 `binding` 的接管必须与首次记录一致，否则拒绝（不同物理 store 的显式切换屏障仍未实现）。写命令可携带 `authority: {authorityId, epoch}`：命令在该权威事务内校验 epoch，过期 leader 的**新**写入被拒绝；已受理请求的重放仍返回原结果（幂等事实优先于 fence）。回归 `packages/durable-kernel/src/resources.test.ts`「fences a superseded authority leader by the ownerEpoch it presents」「keeps the authority binding fixed to the first claim and survives Kernel reconstruction」「rejects invalid authority claims and epoch presentations」「refuses a Decision resource write whose authority epoch was superseded」（Task Decision 内的资源命令同样被 fence，整笔 Decision 回滚）。
+**内核侧骨架已实现（2026-09-11 第五十一轮）**：`resources.seq.managed/authority/<id>` 保存 `{authorityId, ownerEpoch, ownerId, binding, serviceEndpoint, status, updatedAt}`；`ResourceApi.claimAuthority(id, {ownerId, expectedEpoch, binding, serviceEndpoint, scope})` 首次声明写入 epoch 1，接管必须提交观察到的 `expectedEpoch` 并 CAS 递增，否则报 `Authority epoch conflict: <id> is owned by <owner> at epoch <n>`；`ResourceApi.authority(id, scope?)` 只读；声明了 `binding` 的接管必须与首次记录一致，否则拒绝（不同物理 store 的显式切换屏障仍未实现）。写命令可携带 `authority: {authorityId, epoch}`：命令在该权威事务内校验 epoch，过期 leader 的**新**写入被拒绝；已受理请求的重放仍返回原结果（幂等事实优先于 fence）。回归 `backend/durable-kernel/src/resources.test.ts`「fences a superseded authority leader by the ownerEpoch it presents」「keeps the authority binding fixed to the first claim and survives Kernel reconstruction」「rejects invalid authority claims and epoch presentations」「refuses a Decision resource write whose authority epoch was superseded」（Task Decision 内的资源命令同样被 fence，整笔 Decision 回滚）。
 
 服务 worker 更换在同一 authority store 完成 fencing；资源端 adapter 必须识别相应执行令牌。迁移到不同物理 store 不在基础热迁移承诺内：需要停止新申请、固定一致性快照、建立单一切换屏障并证明旧 authority 无法再写，否则禁止两个 store 同时受理。迁移请求/进度放 `session.seq.work/<id>`，不能仅改 Catalog URI。
 

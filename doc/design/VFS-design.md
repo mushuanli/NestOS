@@ -111,7 +111,7 @@ await source.dispose();
 
 VFS 基础系统保留目录为 `/etc`、`/dev`。`/var/lib/kernel`、`/var/lib/sessions`（含跨 Session 的 `folders.seq` 文件夹索引）、`/home/admin` 和易失 `/run` 由平台/应用启动装配，不能把完整 MindOS 布局归因于 VFS 工厂。
 
-Session 默认只暴露 `/attachments`，显式授权后增加 `/workspace` 等根下一层挂载。history、credentials、Kernel 记录不投影到用户文件上下文。Session 配置 CAS、draining 状态下重启后的拒绝访问和任务执行期间禁止重配由 `app-core` 的 SessionFilesService 管理（`packages/app-core/src/vfs/session-files.ts`，app-shell 仅 re-export），详见 C4 规范。
+Session 默认只暴露 `/attachments`，显式授权后增加 `/workspace` 等根下一层挂载。history、credentials、Kernel 记录不投影到用户文件上下文。Session 配置 CAS、draining 状态下重启后的拒绝访问和任务执行期间禁止重配由 `app-core` 的 SessionFilesService 管理（`backend/app-core/src/vfs/session-files.ts`，app-shell 仅 re-export），详见 C4 规范。
 
 ## 5. Path-based 存储后端
 

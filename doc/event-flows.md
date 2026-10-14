@@ -79,7 +79,7 @@ ConversationRunCoordinator → RoundLog 投影 → SessionEventBus.emitSession()
 
 > 联网搜索的 citations 事件链与三态决策详见 [web-search.md](./web-search.md)。
 
-Harness 工具事件无需等待 effect 完成：`tool:running` 随发起 effect 的 decision 持久化，`ConversationRunCoordinator` 先发 `node:appended` 再透传生命周期事件，`HistoryView` 对二者立即处理。工具结果区按预格式文本展示；刷新后的失败卡片读取持久化 `data.error`。Grep 目前通过授权 VFS 遍历并执行 JavaScript 正则，没有实际 shell 命令可展示；Bash 的真实命令在调用参数中。Grep 通过 `ToolInvokeRequest.onProgress` → effect `context.emit` → `agent.event/tool:progress` → `HistoryView` 显示 cwd、搜索路径、扫描数、跳过数和匹配预览。快照按约 250ms 限频，首个匹配及时发送；消息最多 2048 字符，预览最多 8192 字符，不作为 LLM 的最终工具结果。终态覆盖预览，迟到进度不改写终态。通用 `getActivityDescription` 已由 ToolDeviceDriver 接入，并通过工具进度端口发出活动描述。回归：`packages/app-core/tests/harness-default-tools.test.ts` 阻塞搜索完成并确认开始事件已到达；`packages/app-shell/tests/tool-history-live.test.ts` 验证执行中卡片及成功/失败结果。
+Harness 工具事件无需等待 effect 完成：`tool:running` 随发起 effect 的 decision 持久化，`ConversationRunCoordinator` 先发 `node:appended` 再透传生命周期事件，`HistoryView` 对二者立即处理。工具结果区按预格式文本展示；刷新后的失败卡片读取持久化 `data.error`。Grep 目前通过授权 VFS 遍历并执行 JavaScript 正则，没有实际 shell 命令可展示；Bash 的真实命令在调用参数中。Grep 通过 `ToolInvokeRequest.onProgress` → effect `context.emit` → `agent.event/tool:progress` → `HistoryView` 显示 cwd、搜索路径、扫描数、跳过数和匹配预览。快照按约 250ms 限频，首个匹配及时发送；消息最多 2048 字符，预览最多 8192 字符，不作为 LLM 的最终工具结果。终态覆盖预览，迟到进度不改写终态。通用 `getActivityDescription` 已由 ToolDeviceDriver 接入，并通过工具进度端口发出活动描述。回归：`backend/app-core/tests/harness-default-tools.test.ts` 阻塞搜索完成并确认开始事件已到达；`ui/app-shell/tests/tool-history-live.test.ts` 验证执行中卡片及成功/失败结果。
 
 ## 5. 跨会话同步（outbox/inbox）
 

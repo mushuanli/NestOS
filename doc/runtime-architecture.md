@@ -65,7 +65,7 @@ interface ApplicationRuntimeOptions {
 
 ## headless Kernel 组合
 
-`createKernelRuntime`（`packages/app-core/src/runtime/create-kernel-runtime.ts`）是平台无关的 Kernel 组合层，返回 `HeadlessKernelRuntime`：
+`createKernelRuntime`（`backend/app-core/src/runtime/create-kernel-runtime.ts`）是平台无关的 Kernel 组合层，返回 `HeadlessKernelRuntime`：
 
 ```ts
 interface HeadlessKernelRuntime extends KernelAdaptersRuntime {
@@ -86,30 +86,25 @@ interface HeadlessKernelRuntime extends KernelAdaptersRuntime {
 | 调用方 | 文件 | 说明 |
 |---|---|---|
 | CLI headless | `apps/cli/src/runtime.ts` | `createCliRuntime` 先组装 VFS / TTY / 目录挂载 / 工具，再调用 `createKernelRuntime` |
-| app-core 应用基础设施 | `packages/app-core/src/runtime/infrastructure.ts` | `createInfrastructure`：VFS（含 `/run` 挂载与固定用户布局预热）+ LLM kernel-adapters/llm 设备驱动注册/冻结；返回 `vfs`/`systemFS`/`llmDriver`/`logIO`/`closeCodexTransport`，宿主负责释放顺序（VFS 最后） |
-| app-core 应用运行时 | `packages/app-core/src/runtime/create-application-runtime.ts` | `createApplicationRuntime` 先调用 `createInfrastructure`，再叠加会话、Flow、`RunCatalog` |
+| app-core 应用基础设施 | `backend/app-core/src/runtime/infrastructure.ts` | `createInfrastructure`：VFS（含 `/run` 挂载与固定用户布局预热）+ LLM kernel-adapters/llm 设备驱动注册/冻结；返回 `vfs`/`systemFS`/`llmDriver`/`logIO`/`closeCodexTransport`，宿主负责释放顺序（VFS 最后） |
+| app-core 应用运行时 | `backend/app-core/src/runtime/create-application-runtime.ts` | `createApplicationRuntime` 先调用 `createInfrastructure`，再叠加会话、Flow、`RunCatalog` |
 
 ## app-shell 只负责 UI
 
 Web/Tauri 的智能体、技能、流程、Provider/Connection 模型配置、MCP 和工具共用工具箱导航。文件视图与编辑器上下文适配由 app-shell 负责，原有存储与执行授权不变；见[工具箱导航](./design/toolbox-navigation.md)。
 
-`app-shell` 支持注入 runtime：
+`app-shell` 要求宿主显式提供本地服务与后端端口：
 
 ```ts
 await initApp({
-  runtime,        // 已由宿主创建
+  services: bindLocalApplicationServices(runtime),
+  localBackend: createLocalBackendPort(),
   workspaces,
   ui,
 });
 ```
 
-如果 `runtime` 未提供，`app-shell` 才创建本地 runtime：
-
-```ts
-const runtime = options.runtime ?? await createApplicationRuntime({ ...options, backend: options.backend! });
-```
-
-`backend` 与 `runtime` 二者必居其一；两者都缺失时 `initApp` 直接抛错（`AppOptions.backend or AppOptions.runtime is required`）。
+Runtime 创建与平台启动参数只属于宿主；app-shell 不再提供自动创建分支。服务绑定不提供 Runtime 的关闭、会话执行上下文创建和 RunCatalog。前端运行时只加载 UI 与共享契约，后端运行时不加载 UI；目录、契约与构建检查见[前后端模块边界](design/frontend-backend-modules.md)。
 
 因此：
 
@@ -169,7 +164,7 @@ Node CLI
 
 共享运行时记忆工具：createKernelRuntime 通过 createMemoryTools 注册 memory_list、memory_write、memory_remove。KernelAdaptersRuntimeOptions.effectTools 为需要可信 Effect 身份的宿主工具提供 metadata/definition/invoke 绑定；目录可被宿主过滤展示，普通 ToolService.invoke 的占位处理器拒绝直接调用，tool.call 在验证工具句柄后传入 Kernel context，并将调用纳入取消等待。任务记忆服务另校验持久 input 中冻结的 memoryPolicy 和 allowedToolIds；模型参数不选择 Session 或授权策略。
 
-应用启动的 Session 恢复由 `packages/app-core/src/runtime/session-recovery.ts` 的 `recoverSessionsWithLeases` 承载：先按每批最多 100 个 Session 用一个事务批量获取租约，再最多 10 路并发完成宿主核对，全部核对成功后才调用 Kernel `recoverSessions` 一次性恢复该集合，避免逐个恢复时前一个 Session 已启动导致后一个 takeover 被拒。该批量恢复在后台执行、不阻塞宿主装配与首屏绘制；租约集合内的 Session 在恢复完成前由写入门拒写（`acquireLater` 等待并上报失败），结构写（`acquireMetadataLease`）同样等待其所属恢复，释放时先等在途恢复再释放租约。拒租项跳过并记录拥有者与到期时间；持有集合由心跳续租，恢复失败清理已取得租约，应用装配关闭 Kernel 并执行其余启动清理。服务支持恢复前回调，宿主工作区核对接线另行提供。并发检查失败会停止排队项并等待所有在途检查结束，再释放已取得的租约，避免清理与恢复回调竞争。
+应用启动的 Session 恢复由 `backend/app-core/src/runtime/session-recovery.ts` 的 `recoverSessionsWithLeases` 承载：先按每批最多 100 个 Session 用一个事务批量获取租约，再最多 10 路并发完成宿主核对，全部核对成功后才调用 Kernel `recoverSessions` 一次性恢复该集合，避免逐个恢复时前一个 Session 已启动导致后一个 takeover 被拒。该批量恢复在后台执行、不阻塞宿主装配与首屏绘制；租约集合内的 Session 在恢复完成前由写入门拒写（`acquireLater` 等待并上报失败），结构写（`acquireMetadataLease`）同样等待其所属恢复，释放时先等在途恢复再释放租约。拒租项跳过并记录拥有者与到期时间；持有集合由心跳续租，恢复失败清理已取得租约，应用装配关闭 Kernel 并执行其余启动清理。服务支持恢复前回调，宿主工作区核对接线另行提供。并发检查失败会停止排队项并等待所有在途检查结束，再释放已取得的租约，避免清理与恢复回调竞争。
 
 运行中注册或启动时拒租的 Session 经 `acquireLater` 获取租约后，先执行宿主核对，再以非 takeover 的 `recoverSession` 在线恢复，成功后才允许写入，无需重启。并发申请共享一次恢复；未过期的 Task/Effect 租约继续等待其原期限，不强制抢占其他 Session。心跳更新租约快照，续租拒绝/失败会清除本地可写标记；发送前重新验证租约，恢复失败释放新取得的租约。应用退出时停止 Kernel 后释放持有租约；此改动不替代完整在途 Effect 停写和跨主机 fencing 验收。
 
@@ -257,7 +252,7 @@ Session 配置变更、禁用和服务释放会先同时关闭普通视图与工
 
 `createKernelRuntime` 在 app-core 注入 Task 作用域 `ContextServiceResolver`，kernel-adapters 注册 `context.prepare@1`、`llm.chat@2`、`tool.call@2`，llm-tasks 注册 v2 Program bridge。存储适配器只用 Kernel 公共 Session/shared 与 VFS 端口；内核自身不引入 Context 依赖。新请求消费不可变快照，v1 程序继续可恢复。见 [Context API](context-api.md)。
 
-默认 Context GC 由 [context-gc.ts](../packages/app-core/src/runtime/context-gc.ts) 装配：授权恢复/首次 Context 执行时登记 Session，延迟启动定时扫描，分页处理已静止的 Task。完整应用通过 Session 租约检查限制回收范围；覆写 `contextService` 或 `contextGc: false` 时不启动默认维护器。运行时和 Session 释放先停止维护入口并等待事务。标记和保留策略属于 Context，VFS SeqFile 事务属于适配器；详细边界见 [自动 GC](design/context-gc.md)。
+默认 Context GC 由 [context-gc.ts](../backend/app-core/src/runtime/context-gc.ts) 装配：授权恢复/首次 Context 执行时登记 Session，延迟启动定时扫描，分页处理已静止的 Task。完整应用通过 Session 租约检查限制回收范围；覆写 `contextService` 或 `contextGc: false` 时不启动默认维护器。运行时和 Session 释放先停止维护入口并等待事务。标记和保留策略属于 Context，VFS SeqFile 事务属于适配器；详细边界见 [自动 GC](design/context-gc.md)。
 
 ### 会话工作目录默认值
 
@@ -301,7 +296,7 @@ Session 实现不依赖 common。`ConversationSystemOptions.hostPorts` 注入实
 Session 的发布构建内联 kernel-adapters/contracts 的纯配置函数和类型声明；适配器包只作为开发依赖，不新增发布运行时依赖。
 
 
-公共机制与产品策略：作文评审的提示词、评分阈值和默认流程位于 `packages/app-core/src/presets/essay-review.json`，播种位于 `packages/app-core/src/presets/default-flows.ts`。Session 不再持有或导出这些内容。`agentResolution.missingAgent` 可由宿主拒绝或提供回退；精确身份解析和授权约束保持严格。
+公共机制与产品策略：作文评审的提示词、评分阈值和默认流程位于 `backend/app-core/src/presets/essay-review.json`，播种位于 `backend/app-core/src/presets/default-flows.ts`。Session 不再持有或导出这些内容。`agentResolution.missingAgent` 可由宿主拒绝或提供回退；精确身份解析和授权约束保持严格。
 
 Context 的 `ContextEngineOptions` 注入默认窗口、输入预算和完整请求计量；服务与宿主摘要请求共同使用该计量。默认采用 UTF-8 字节估算；`IContextEngine` 可替换窗口选择和预算计量。应用通过 `contextEngineOptions` 接入。
 
@@ -602,12 +597,12 @@ Session 回归补迁了 pending-user 测试中遗漏的 ContextAssembler 导入�
 
 主要源码入口：
 
-- [宿主装配](../packages/app-core/src/runtime/create-application-runtime.ts)、[内核装配](../packages/app-core/src/runtime/create-kernel-runtime.ts)。
-- [Session 实例装配](../packages/llm-session/src/index.ts)、[会话运行协调](../packages/llm-session/src/session/conversation-run-coordinator.ts)。
-- [统一提交](../packages/llm-flow/src/run-submission.ts)、[Flow 执行器](../packages/llm-flow/src/flow/executor.ts)。
-- [Program/Effect 契约](../packages/durable-kernel/src/domain/types.ts)、[Context v2 bridge](../packages/llm-tasks/src/durable/context-program.ts)、[LLM Effect 构造与重试](../packages/llm-tasks/src/durable/program-helpers.ts)。
-- [Context 端口](../packages/llm-context/src/domain/durable.ts)、[通信驱动](https://github.com/mushuanli/driver-llm/blob/main/src/core/driver.ts)、[Provider 注册表](https://github.com/mushuanli/driver-llm/blob/main/src/providers/registry.ts)。
-- [UI 实例端口](../packages/llm-session/src/contracts/session-view.ts)、[任务挂接](../packages/llm-ui/src/shell/RunAttachmentController.ts)。
+- [宿主装配](../backend/app-core/src/runtime/create-application-runtime.ts)、[内核装配](../backend/app-core/src/runtime/create-kernel-runtime.ts)。
+- [Session 实例装配](../backend/llm-session/src/index.ts)、[会话运行协调](../backend/llm-session/src/session/conversation-run-coordinator.ts)。
+- [统一提交](../backend/llm-flow/src/run-submission.ts)、[Flow 执行器](../backend/llm-flow/src/flow/executor.ts)。
+- [Program/Effect 契约](../backend/durable-kernel/src/domain/types.ts)、[Context v2 bridge](../backend/llm-tasks/src/durable/context-program.ts)、[LLM Effect 构造与重试](../backend/llm-tasks/src/durable/program-helpers.ts)。
+- [Context 端口](../backend/llm-context/src/domain/durable.ts)、[通信驱动](https://github.com/mushuanli/driver-llm/blob/main/src/core/driver.ts)、[Provider 注册表](https://github.com/mushuanli/driver-llm/blob/main/src/providers/registry.ts)。
+- [UI 实例端口](../backend/llm-session/src/contracts/session-view.ts)、[任务挂接](../ui/llm-ui/src/shell/RunAttachmentController.ts)。
 
 后续 GraphMutationRuntime 提取再次通过 Flow 346 项回归，覆盖整批身份绑定失败、patch 幂等冲突、容量限制、循环派发、join 与恢复路径。内部结构见 [Flow API](llm-flow-api.md#执行器内部责任边界)。
 
@@ -707,7 +702,7 @@ UI 的主题、OCR 配置和设置来源文件系统并行准备。工作区视�
 
 ## 应用端口与独立 npm 边界
 
-HTTP 应用模式正在实施，尚未完成全部工作区迁移。`ApplicationPort` 属于应用用例层，定义数据查询、命令与变更订阅；本地适配与 HTTP 适配实现同一契约。HTTP 实现留在 apps/http-app，通用库不识别 URL、认证、传输或 MindOS 的工作区策略。
+HTTP 应用模式正在实施，尚未完成全部工作区迁移。`ApplicationPort` 属于应用用例层，定义数据查询、命令与变更订阅；本地适配与 HTTP 适配实现同一契约。应用 DTO 与协议版本归 app-contracts，HTTP 实现留在 apps/http-app，通用库不识别 URL、认证、传输或 MindOS 的工作区策略。
 
 | 模块 | 保持的公共边界 | 应用模式的接入位置 |
 |---|---|---|
@@ -716,8 +711,15 @@ HTTP 应用模式正在实施，尚未完成全部工作区迁移。`Application
 | llm-ui | ConversationControls；仅展示、输入与控制端口 | app-shell 的 ApplicationConversationControls；HTTP 位于宿主适配器 |
 | llm-session / durable-kernel | 会话观察与任务控制契约 | SessionViewPort 与任务端口定义归所属领域模块，UI 直接导入领域契约 |
 
-独立 vfs-core、vfs-ui 不依赖 app-core、app-shell 或 http-app，不要求应用服务器才能使用。开发环境存在独立目录时通过其公开 exports 消费；目录缺席时回退到 npm，不用仓库源码别名替代 npm 入口。npm 发布清单保持版本依赖，不能带入本地 link 或 workspace 路径。
+独立 vfs-core、vfs-ui 不依赖 app-core、app-shell 或 http-app，不要求应用服务器才能使用。源码工作区始终通过 libraries/ 中独立库的公开 exports 消费；目录缺席时安装检查明确失败。npm 消费通过隔离的 build:registry 工作区验证。npm 发布清单保持版本依赖，不能带入本地 link 或 workspace 路径。
 
 配置管理已增加应用端口查询/命令白名单（`configuration-contracts.ts`）：列表查询返回领域安全元数据，完整 Provider/Connection 配置按编辑请求单独读取；模型、连接、Agent、提示词、Skill、MCP、定价与恢复操作交由后端服务执行。MCP 发现和连接测试属于显式命令，不在列表读取时联网探测。配置调用按需等待 LLM readiness，只有 Agent/提示词/恢复操作等待 Agent 服务，读取 Provider 不触发 Agent 扫描。写命令复用持久回执；`configuration` 失效事件通知客户端，普通文件树与会话视图不因此重新加载。app-shell 的 `ApplicationConfigurationClient` 将应用端口投影成异步配置能力，独立 UI 包仍不导入 app-core 或 HTTP。
 
 当前新应用 UI 接入覆盖基本文件浏览、编辑和会话展示/控制；设置、工具箱等完整能力仍需继续迁移和验收。Web/Tauri/CLI 保持本地宿主装配，HTTP 浏览器不再初始化 Runtime。新增领域契约需要先发布对应领域包，再发布消费它的 UI 包；结构接口兼容并不保证新声明可搭配旧领域包。llm-ui 构建检查覆盖公开 JS/声明依赖图和发布入口，不能以仓库内源码类型检查代替独立安装验收。
+
+
+## 物理目录与应用服务接口
+
+业务 UI 位于 ui/，后端业务与执行包位于 backend/，应用契约和 common 位于 shared/。独立库仍在 libraries/，包含 mdxeditor、vfs-ui；这两个库按前端加载边界检查。apps/demo 作为历史演示宿主参与 apps 工作区。
+
+app-shell 接收的 LocalApplicationServices 与 LocalBackendPort 由 shared/app-contracts/services 定义，按职责拆在 ports/。它们是独立接口，不从 ApplicationRuntime 或后端服务类派生。bindLocalApplicationServices 与 createLocalBackendPort 的返回类型校验后端实现是否满足契约；前端不导入 app-core 的类型入口。Kernel 观察/控制与内存管理通过所属领域的 contracts 端口访问。详见 [前后端模块边界](design/frontend-backend-modules.md)。

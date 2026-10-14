@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const dist = fileURLToPath(new URL('../packages/kernel-adapters/dist/', import.meta.url));
+const dist = fileURLToPath(new URL('../backend/kernel-adapters/dist', import.meta.url));
 
 /** Follow emitted local modules; external package imports remain visible for boundary checks. */
 function graph(entry) {
@@ -32,6 +32,6 @@ for (const format of ['js', 'cjs']) {
     assert.doesNotMatch([...core.values()].join('\n'), /hostFactory|registerMCPStdioHost|snapshotMCPStdioHost/,
         `${format}: core must not load the legacy host registry`);
 }
-const manifest = JSON.parse(readFileSync(new URL('../packages/kernel-adapters/package.json', import.meta.url), 'utf8'));
+const manifest = JSON.parse(readFileSync(new URL('../backend/kernel-adapters/package.json', import.meta.url), 'utf8'));
 assert.ok(!manifest.exports['./llm'] && !manifest.publishConfig.exports['./llm'], 'Legacy LLM aggregate must not be exported');
 process.stdout.write('LLM ESM/CJS entry boundaries and instance MCP isolation passed.\n');

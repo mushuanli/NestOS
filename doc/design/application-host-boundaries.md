@@ -8,6 +8,8 @@
 
 当前迁移方向成立，但尚未完成。简化 ApplicationWorkbench 已删除，HTTP 基础文件和会话视图通过端口适配复用原 Workbench 的侧栏、标签页与编辑器。原 SessionWorkbench 的项目选择、挂载、收藏和任务检查尚未接入 HTTP；本轮允许这些能力暂缺，保留既有实现。后续不能为 HTTP 再创建展示组件，也不能把完整服务强制转换成 UI 服务接口来掩盖缺失能力。
 
+目录与模块加载解耦已实施，见[前后端模块边界](frontend-backend-modules.md)。app-shell 完整本地入口不再创建 Runtime；Settings 持久化和配置导入执行已移到后端。此状态与下述完整 HTTP 功能迁移分别验收。
+
 ## 四个边界
 
 ```mermaid

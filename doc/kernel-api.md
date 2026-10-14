@@ -591,10 +591,10 @@ catch (e) {
 
 ## 源码结构：文件与路径
 
-`@itookit/durable-kernel` 的公共 API 全部从 `packages/durable-kernel/src/index.ts` 根导出（`exports['.']` 指向 `src/index.ts`）。包内按 **六层** 组织，依赖单向向下：
+`@itookit/durable-kernel` 的公共 API 全部从 `backend/durable-kernel/src/index.ts` 根导出（`exports['.']` 指向 `src/index.ts`）。包内按 **六层** 组织，依赖单向向下：
 
 ```
-packages/durable-kernel/src/
+backend/durable-kernel/src/
 ├── index.ts                      根导出（唯一公共入口）
 ├── core.ts                       精简入口：createHarness() + Harness/Session/Task 窄接口
 ├── domain/                       纯类型 + 错误模型（无逻辑）
@@ -674,11 +674,11 @@ packages/durable-kernel/src/
                        cache-operation/<operationId>
 ```
 
-**观察投影的取消三态**：`taskStat(task)` 的 `control.requested` 在取消请求被接受后即为 `'cancel'`，而 `control.acknowledged` 只有在**没有任何在途/待清理操作**（`activeOperations === 0`，含 `cleanupPending` 的 Effect）时才为 true——即“请求已接受/逻辑状态已变化”与“外部确已停止”可区分；`taskStat`/`taskStats`/`sessionStat` 现由包入口公开导出，`@itookit/app-core` 的 `taskSummary` 透传 `control`/`activeOperations` 供宿主渲染。回归 `packages/durable-kernel/src/kernel.test.ts`「distinguishes an accepted cancel request from a confirmed external stop」。
+**观察投影的取消三态**：`taskStat(task)` 的 `control.requested` 在取消请求被接受后即为 `'cancel'`，而 `control.acknowledged` 只有在**没有任何在途/待清理操作**（`activeOperations === 0`，含 `cleanupPending` 的 Effect）时才为 true——即“请求已接受/逻辑状态已变化”与“外部确已停止”可区分；`taskStat`/`taskStats`/`sessionStat` 现由包入口公开导出，`@itookit/app-core` 的 `taskSummary` 透传 `control`/`activeOperations` 供宿主渲染。回归 `backend/durable-kernel/src/kernel.test.ts`「distinguishes an accepted cancel request from a confirmed external stop」。
 
-**预算结算幂等**：`chargeBudget` 可选 `usageId`——扣费与 `usage/<usageId>` 回执在同一事务写入，同 id 重放返回记录的回执（不再扣费），同 id 不同金额/资源/维度抛冲突；Effect 路径由内核默认按逻辑 Effect 结算（`effect:<taskId>:<effectId>:<handleId>:<dimension>`），未提供 `usageId` 的宿主直调保持每次调用都扣。回归 `packages/durable-kernel/src/kernel.test.ts`。
+**预算结算幂等**：`chargeBudget` 可选 `usageId`——扣费与 `usage/<usageId>` 回执在同一事务写入，同 id 重放返回记录的回执（不再扣费），同 id 不同金额/资源/维度抛冲突；Effect 路径由内核默认按逻辑 Effect 结算（`effect:<taskId>:<effectId>:<handleId>:<dimension>`），未提供 `usageId` 的宿主直调保持每次调用都扣。回归 `backend/durable-kernel/src/kernel.test.ts`。
 
-**authority 归属**：`managed/authority/<id>` 记录 `{authorityId, ownerEpoch, ownerId, binding, serviceEndpoint, status, updatedAt}`；首次 `claimAuthority` 写 epoch 1，接管必须提交 `expectedEpoch` 并 CAS 递增（失配报 `Authority epoch conflict: …`）；命令携带 `authority: {authorityId, epoch}` 时在同一权威事务内校验，过期 leader 的新写入被拒，已受理请求的重放仍返回原结果。回归见 `packages/durable-kernel/src/resources.test.ts`。
+**authority 归属**：`managed/authority/<id>` 记录 `{authorityId, ownerEpoch, ownerId, binding, serviceEndpoint, status, updatedAt}`；首次 `claimAuthority` 写 epoch 1，接管必须提交 `expectedEpoch` 并 CAS 递增（失配报 `Authority epoch conflict: …`）；命令携带 `authority: {authorityId, epoch}` 时在同一权威事务内校验，过期 leader 的新写入被拒，已受理请求的重放仍返回原结果。回归见 `backend/durable-kernel/src/resources.test.ts`。
 
 **约定补充**：托管资源（`managed/*`）按作用域落在对应存储根的 `resources.seq`——kernel 作用域落在 `catalog` 根，`session:<id>` 作用域落在该 Session 根；Cache 的 operation 收据（`cache-operation/<operationId>`）落在发起 Task 的 `task.seq`，与 namespace/entry 分离。
 
@@ -767,7 +767,7 @@ retention 的 before 必须为非负有限数，limit 必须为非负安全整�
 
 ### 保留与清理 API 批次
 
-`Kernel.pruneSessionMessages(sessionId, before, limit?)` 返回 `{outbox, inbox}`；跨 Session 回收以双方持久结算确认为前提。已终态源恢复只补确认，不重新投递。缓存按 Task/Session 生命周期在同一事务清理，旧 owner 索引事务内重建并校验真实所有者。详见 [Cache 设计](design/durable-harness-cache.md) 与 [Storage 设计](design/durable-harness-storage.md)；自动回归在 `packages/durable-kernel/src/retention.test.ts`。
+`Kernel.pruneSessionMessages(sessionId, before, limit?)` 返回 `{outbox, inbox}`；跨 Session 回收以双方持久结算确认为前提。已终态源恢复只补确认，不重新投递。缓存按 Task/Session 生命周期在同一事务清理，旧 owner 索引事务内重建并校验真实所有者。详见 [Cache 设计](design/durable-harness-cache.md) 与 [Storage 设计](design/durable-harness-storage.md)；自动回归在 `backend/durable-kernel/src/retention.test.ts`。
 
 
 ## 2026-09-14：托管资源 authority 事务隔离

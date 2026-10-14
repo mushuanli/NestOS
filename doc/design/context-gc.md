@@ -67,9 +67,9 @@ Task 使用带固定上界的分页 cursor；Session 轮转，避免每次只扫
 
 ## 故障证据
 
-- [collector.test.ts](../../packages/llm-context/src/gc/collector.test.ts)：间接引用、内嵌输出引用、保留期、dry-run、扫描/字节/时间预算、损坏根、批量删除、非重入与关闭等待。
-- [task-content-store.test.ts](../../packages/kernel-adapters/src/context/task-content-store.test.ts)：未提交候选保护、快照/shared 历史根、Effect cleanup、事务删除故障回滚、双收集器串行、迟到发布拒绝。
-- [context-runtime.test.ts](../../packages/app-core/tests/context-runtime.test.ts)：真实 Kernel 提交后删除孤儿，最终答案和历史仍可检索。
-- [context-gc.test.ts](../../packages/app-core/tests/context-gc.test.ts)：运行时关闭后重建，无需新模型调用即触发自动 GC；失去写权限时跳过；恢复权限后回收。
+- [collector.test.ts](../../backend/llm-context/src/gc/collector.test.ts)：间接引用、内嵌输出引用、保留期、dry-run、扫描/字节/时间预算、损坏根、批量删除、非重入与关闭等待。
+- [task-content-store.test.ts](../../backend/kernel-adapters/src/context/task-content-store.test.ts)：未提交候选保护、快照/shared 历史根、Effect cleanup、事务删除故障回滚、双收集器串行、迟到发布拒绝。
+- [context-runtime.test.ts](../../backend/app-core/tests/context-runtime.test.ts)：真实 Kernel 提交后删除孤儿，最终答案和历史仍可检索。
+- [context-gc.test.ts](../../backend/app-core/tests/context-gc.test.ts)：运行时关闭后重建，无需新模型调用即触发自动 GC；失去写权限时跳过；恢复权限后回收。
 
 目前验证覆盖 MemoryBackend 的真实事务和运行时重建；没有将其等同于所有后端的断电、SQLite VACUUM 或全部进程 SIGKILL 故障矩阵。

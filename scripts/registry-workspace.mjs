@@ -16,11 +16,10 @@ export function registryManifest(manifest, catalog = libraries) {
 export function prepareRegistryWorkspace(repository, destination, catalog = libraries) {
     mkdirSync(destination, { recursive: true });
     const excluded = new Set(['node_modules', 'dist', 'dist-server', '.git', 'target', 'vendor', 'coverage', '.env']);
-    for (const name of ['apps', 'packages', 'scripts', 'patches', 'tsconfig.base.json']) {
+    for (const name of ['apps', 'ui', 'backend', 'shared', 'scripts', 'tsconfig.base.json']) {
         const source = join(repository, name);
         if (existsSync(source)) cpSync(source, join(destination, name), { recursive: true,
-            filter: file => resolve(file) !== resolve(repository, 'packages/mdx')
-                && !excluded.has(basename(file)) && !basename(file).startsWith('.env.') });
+            filter: file => !excluded.has(basename(file)) && !basename(file).startsWith('.env.') });
     }
     const root = registryManifest(JSON.parse(readFileSync(join(repository, 'package.json'), 'utf8')), catalog);
     delete root.scripts.preinstall;
@@ -28,6 +27,7 @@ export function prepareRegistryWorkspace(repository, destination, catalog = libr
     for (const pkg of workspacePackages(repository).filter(pkg => pkg.group !== 'libraries')) {
         const path = join(destination, pkg.group, basename(pkg.directory), 'package.json');
         const { directory, group, ...manifest } = pkg;
+        void directory; void group;
         writeFileSync(path, JSON.stringify(registryManifest(manifest, catalog), null, 2) + '\n');
     }
     writeRegistryConfig(repository, destination, catalog);
@@ -42,8 +42,5 @@ function writeRegistryConfig(repository, destination, catalog) {
         const library = catalog.find(library => library.name === name);
         return library ? `${indent}"${name}": "${library.version}"` : line;
     });
-    // Registry patches are applied only in this isolated installation.
-    const patches = catalog.filter(library => existsSync(join(repository, 'patches', `${library.name.replace('/', '__')}@${library.version}.patch`)));
-    const patchConfig = patches.map(library => `  '${library.name}@${library.version}': patches/${library.name.replace('/', '__')}@${library.version}.patch`);
-    writeFileSync(join(destination, 'pnpm-workspace.yaml'), pinned + (patchConfig.length ? '\npatchedDependencies:\n' + patchConfig.join('\n') + '\n' : ''));
+    writeFileSync(join(destination, 'pnpm-workspace.yaml'), pinned);
 }

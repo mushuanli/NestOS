@@ -47,7 +47,7 @@ Resource 统一的是 create/open/share/stat/close 与授权入口。`mailbox.se
 
 ## 4. 简明状态、控制与统计
 
-当前实现见 [domain/status.ts](../../packages/durable-kernel/src/domain/status.ts)：`taskStat()` 返回 `id/revision/phase/control/blockedBy/exit/activeOperations`，其中 `phase` 是按状态与阻塞原因推导出的字面量值，不是具名 `TaskPhase` 类型；`taskStats()` 返回 `observedRevision/completedSteps/attempts/pendingInputs/operations/createdAt/updatedAt`。下面五个执行阶段与 `progress` 是兼容投影的目标形态（提案），当前尚无具名 `TaskPhase` 类型和 `progress` 字段：
+当前实现见 [domain/status.ts](../../backend/durable-kernel/src/domain/status.ts)：`taskStat()` 返回 `id/revision/phase/control/blockedBy/exit/activeOperations`，其中 `phase` 是按状态与阻塞原因推导出的字面量值，不是具名 `TaskPhase` 类型；`taskStats()` 返回 `observedRevision/completedSteps/attempts/pendingInputs/operations/createdAt/updatedAt`。下面五个执行阶段与 `progress` 是兼容投影的目标形态（提案），当前尚无具名 `TaskPhase` 类型和 `progress` 字段：
 
 ```ts
 // 目标形态（提案）
@@ -77,7 +77,7 @@ Session 视图使用 open/paused/closing/closed，附 control acknowledged 和 b
 | Task 使用表 | 使用方 Session 的 `resources.seq` | 仍在使用方 Session，指向 kernel root 的本体 |
 | 容量占用/消费 | 本体所在 authority 的记录 | kernel root 的唯一记录；使用方不维护第二份余额 |
 
-表的最小内容（当前键布局，见 [managed-resources.ts](../../packages/durable-kernel/src/infrastructure/seqfile/managed-resources.ts)）：
+表的最小内容（当前键布局，见 [managed-resources.ts](../../backend/durable-kernel/src/infrastructure/seqfile/managed-resources.ts)）：
 
 ```text
 managed/schema                         表格式版本（当前 '2'）
@@ -115,7 +115,7 @@ Session A 授权 B 后，A/B 的多个 Task 可以显式 open 同一资源；Tas
 
 `create/share/open/acquire/release/close` 的统一返回值为 durable Request：包含 id/status，提供 `poll()`、`wait()`、`cancel()`。`wait()` 只是当前客户端等回执；调用方断线后，内核继续处理请求。相同 requestId 重连查询或重试，不创建第二次分配；`wait()` 的本地超时不自动取消远端申请。
 
-当前 [task-handle.ts](../../packages/durable-kernel/src/public/task-handle.ts) 已实现 `stat()/stats()/watch()`、`pause/interrupt/resume(TaskControlOptions)`（含 requestId/expectedEpoch/reason）和 `retry({requestId})`；`cancel(reason?)` 不接 requestId，是即时取消而非持久请求。资源侧已实现 `ResourceApi` 的 create/share/revoke/destroy/open/acquire/release/close/read/write/stat/list/query，命名以 [resource-api.ts](../../packages/durable-kernel/src/domain/resource-api.ts) 为准；本节其余 `{requestId}` 控制面与 `scope.resources.*` 分组仍是提案。
+当前 [task-handle.ts](../../backend/durable-kernel/src/public/task-handle.ts) 已实现 `stat()/stats()/watch()`、`pause/interrupt/resume(TaskControlOptions)`（含 requestId/expectedEpoch/reason）和 `retry({requestId})`；`cancel(reason?)` 不接 requestId，是即时取消而非持久请求。资源侧已实现 `ResourceApi` 的 create/share/revoke/destroy/open/acquire/release/close/read/write/stat/list/query，命名以 [resource-api.ts](../../backend/durable-kernel/src/domain/resource-api.ts) 为准；本节其余 `{requestId}` 控制面与 `scope.resources.*` 分组仍是提案。
 
 ```ts
 // 宿主辅助：result(command) 等待命令登记，再等待其持久结果。

@@ -601,11 +601,11 @@ interface MaintenanceStatus {
 
 | 契约 | 当前定义 |
 |---|---|
-| 顶层应用操作与事件 | [contracts](../../packages/app-core/src/application/contracts.ts) |
-| 配置签名、参数数量 | [configuration-contracts](../../packages/app-core/src/application/configuration-contracts.ts) |
-| 会话白名单 | [conversation-policy](../../packages/app-core/src/application/conversation-policy.ts) |
-| 项目、草稿与同步用例 | [ProjectSessions](../../packages/app-core/src/projects/project-sessions.ts)、[draft contracts](../../packages/app-core/src/projects/drafts/contracts.ts)、[sync service](../../packages/app-core/src/projects/sync/service.ts) |
-| 文件与挂载边界 | [ApplicationFiles](../../packages/app-core/src/application/files.ts)、[DirectoryMountService](../../packages/app-core/src/vfs/directory-mounts.ts) |
+| 顶层应用操作与事件 | [contracts](../../backend/app-core/src/application/contracts.ts) |
+| 配置签名、参数数量 | [configuration-contracts](../../backend/app-core/src/application/configuration-contracts.ts) |
+| 会话白名单 | [conversation-policy](../../backend/app-core/src/application/conversation-policy.ts) |
+| 项目、草稿与同步用例 | [ProjectSessions](../../backend/app-core/src/projects/project-sessions.ts)、[draft contracts](../../backend/app-core/src/projects/drafts/contracts.ts)、[sync service](../../backend/app-core/src/projects/sync/service.ts) |
+| 文件与挂载边界 | [ApplicationFiles](../../backend/app-core/src/application/files.ts)、[DirectoryMountService](../../backend/app-core/src/vfs/directory-mounts.ts) |
 
 以下模块属于规划，尚无对应源码；本文中的目标接口不代表当前已提供的应用能力。
 

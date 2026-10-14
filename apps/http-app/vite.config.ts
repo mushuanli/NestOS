@@ -1,3 +1,4 @@
+import { moduleSeparationPlugin } from '../../scripts/check-module-separation.mjs';
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
@@ -5,7 +6,7 @@ import { workspaceAliases, workspaceExcludes } from '../../scripts/workspace-sou
 
 export default defineConfig({
     base: './',
-    plugins: [{
+    plugins: [moduleSeparationPlugin('frontend'), {
         name: 'mindos-web-shell',
         transformIndexHtml: { order: 'pre', handler() {
             const source = createRequire(import.meta.url).resolve('mind-os/index.html');

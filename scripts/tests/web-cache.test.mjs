@@ -13,7 +13,7 @@ function worker() {
 }
 test('does not cache development modules, APIs, authenticated files or other origins', () => {
     const { handlers } = worker();
-    for (const url of ['https://app.test/@fs/packages/common/src/i18n/index.ts', 'https://app.test/api/files', 'https://remote.test/assets/file.js']) {
+    for (const url of ['https://app.test/@fs/shared/common/src/i18n/index.ts', 'https://app.test/api/files', 'https://remote.test/assets/file.js']) {
         handlers.fetch({ request: new Request(url), respondWith() { assert.fail('request must bypass app cache'); } });
     }
     handlers.fetch({ request: new Request('https://app.test/assets/file.js', { headers: { Authorization: 'Bearer test' } }),

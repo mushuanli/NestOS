@@ -1,0 +1,145 @@
+{
+  "name": "@itookit/llm-ui",
+  "version": "0.1.0",
+  "description": "A specialized UI library for Large Language Model workspaces, featuring chat interfaces, streaming history views, and session orchestration visualization",
+  "type": "module",
+  "main": "./src/index.ts",
+  "module": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./startup": {
+      "types": "./src/startup.ts",
+      "import": "./src/startup.ts",
+      "default": "./src/startup.ts"
+    },
+    "./style.css": "./src/styles/index.css",
+    "./chat": {
+      "types": "./src/chat.ts",
+      "import": "./src/chat.ts",
+      "default": "./src/chat.ts"
+    },
+    "./settings": {
+      "types": "./src/settings.ts",
+      "import": "./src/settings.ts",
+      "default": "./src/settings.ts"
+    },
+    "./conversation": {
+      "types": "./src/conversation.ts",
+      "import": "./src/conversation.ts",
+      "default": "./src/conversation.ts"
+    }
+  },
+  "publishConfig": {
+    "access": "public",
+    "main": "./dist/llm-ui.umd.cjs",
+    "module": "./dist/llm-ui.js",
+    "types": "./dist/index.d.ts",
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/llm-ui.js",
+        "require": "./dist/llm-ui.umd.cjs"
+      },
+      "./startup": {
+        "types": "./dist/startup.d.ts",
+        "import": "./dist/startup.js"
+      },
+      "./style.css": "./dist/style.css",
+      "./chat": {
+        "types": "./dist/chat.d.ts",
+        "import": "./dist/chat.js"
+      },
+      "./settings": {
+        "types": "./dist/settings.d.ts",
+        "import": "./dist/settings.js"
+      },
+      "./conversation": {
+        "types": "./dist/conversation.d.ts",
+        "import": "./dist/conversation.js"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "vite build && vite build --config vite.startup.config.ts && vite build --config vite.entries.config.ts && tsup --config tsup.types.config.ts && node scripts/bundle-contracts.mjs && node ../../scripts/check-llm-ui-entrypoints.mjs",
+    "dev": "vite build --watch",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepublishOnly": "pnpm build"
+  },
+  "keywords": [
+    "llm-ui",
+    "ai-workspace",
+    "chat-interface",
+    "streaming-ui",
+    "agent-visualization",
+    "session-manager",
+    "editor-adapter",
+    "typescript"
+  ],
+  "author": "lizlok@gmail.com",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mushuanli/itookit.git",
+    "directory": "ui/llm-ui"
+  },
+  "bugs": {
+    "url": "https://github.com/mushuanli/itookit/issues"
+  },
+  "homepage": "https://github.com/mushuanli/itookit/tree/main/ui/llm-ui#readme",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@itookit/common": "workspace:*",
+    "@itookit/durable-kernel": "workspace:*",
+    "@itookit/llm-flow": "workspace:*",
+    "@itookit/llm-session": "workspace:*",
+    "@itookit/ui-common": "workspace:*",
+    "@itookit/vfs-core": "workspace:*",
+    "js-yaml": "^4.1.1",
+    "marked": "^16.4.2"
+  },
+  "peerDependencies": {
+    "@itookit/llm-settings-ui": "workspace:*",
+    "@itookit/mdx-adapter": "workspace:*",
+    "@itookit/mdxeditor": "workspace:*"
+  },
+  "devDependencies": {
+    "@itookit/driver-llm": "workspace:*",
+    "@itookit/kernel-adapters": "workspace:*",
+    "@itookit/llm-settings-ui": "workspace:*",
+    "@itookit/llm-tasks": "workspace:*",
+    "@itookit/mdx-adapter": "workspace:*",
+    "@itookit/mdxeditor": "workspace:*",
+    "@itookit/tools": "workspace:*",
+    "@types/js-yaml": "^4.0.9",
+    "@types/node": "^20.19.25",
+    "@vitest/coverage-v8": "^1.6.1",
+    "rollup": "4.62.2",
+    "rollup-plugin-dts": "6.3.0",
+    "tsup": "^8.5.1",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21",
+    "vite-plugin-checker": "^0.11.0",
+    "vite-plugin-dts": "^3.9.1",
+    "vitest": "^1.6.1"
+  },
+  "peerDependenciesMeta": {
+    "@itookit/llm-settings-ui": {
+      "optional": true
+    }
+  }
+}

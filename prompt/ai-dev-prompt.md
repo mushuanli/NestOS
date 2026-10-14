@@ -6,7 +6,7 @@
 
 ---
 
-审查分析梳理 @packages/common/src/interfaces/fs/ 和 @libraries/vfs-core/ 逻辑，提出重构方案。当前vfs存在相对普通文件系统有如下扩展：1. 一个文件可以拥有assetdir,vfs文件可以包含其他文件组成复杂内容; 2.
+审查分析梳理 @shared/common/src/interfaces/fs/ 和 @libraries/vfs-core/ 逻辑，提出重构方案。当前vfs存在相对普通文件系统有如下扩展：1. 一个文件可以拥有assetdir,vfs文件可以包含其他文件组成复杂内容; 2.
     可以自定义文件格式，文件的存储与显示分开; 3. 支持存储更多扩展信息在metadata; 4. 支持不同底层，比如数据库上的文件，本地文件系统上的文件，远程文件等; 5. 普通文件支持按模块隔离，但是全局配置通过/etc/ /dev
     方式可以全局访问。
 --

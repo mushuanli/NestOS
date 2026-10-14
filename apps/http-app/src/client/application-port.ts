@@ -1,6 +1,6 @@
 import { ApplicationEventStream, type EventSourceFactory } from './application-event-stream';
 import { FSError, type FSErrorCode } from '@itookit/vfs-core';
-import type { ApplicationPort, ApplicationQueries, ApplicationCommands, ApplicationEvent } from '@itookit/app-core/application/contracts';
+import type { ApplicationPort, ApplicationQueries, ApplicationCommands, ApplicationEvent } from '@itookit/app-contracts/application';
 
 /** Only this adapter knows HTTP. Failed or ambiguous commands are never replayed. */
 export class HttpApplicationPort implements ApplicationPort {

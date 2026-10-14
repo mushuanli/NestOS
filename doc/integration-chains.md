@@ -68,7 +68,7 @@ ChatInput.send (llm-ui)
 
 工具结果回传：OpenAI 兼容适配器必须保留 assistant 的 `tool_calls`，并把 `thinking` 映射为 `reasoning_content`，随后才能发送带 `tool_call_id` 的 tool 消息；丢失前者会使 DeepSeek 拒绝第二轮请求。CLI 流式工具往返回归见 [prompt-harness.test.ts](../apps/cli/tests/prompt-harness.test.ts)。
 
-会话右键/顶部「重新运行」统一调用 `LLMWorkspaceEditor.commands.rerunSession`：关联 Flow 进入参数表单；Chat/Harness 从当前分支最后一条用户消息调用 `SessionCommand.RegenerateFromUser`。已有回复时创建替代分支，新的 Task 重新执行工具，保留旧 Task；使用当前工作区文件状态，不撤销旧文件修改。执行模式在点击时固定，重复点击只提交一次，切换会话或关闭编辑器取消尚未提交的操作。消息旁「重新生成」仍可选择指定轮次。回归见 [session-rerun.test.ts](../packages/app-shell/tests/session-rerun.test.ts) 和 [harness-default-tools.test.ts](../packages/app-core/tests/harness-default-tools.test.ts)。
+会话右键/顶部「重新运行」统一调用 `LLMWorkspaceEditor.commands.rerunSession`：关联 Flow 进入参数表单；Chat/Harness 从当前分支最后一条用户消息调用 `SessionCommand.RegenerateFromUser`。已有回复时创建替代分支，新的 Task 重新执行工具，保留旧 Task；使用当前工作区文件状态，不撤销旧文件修改。执行模式在点击时固定，重复点击只提交一次，切换会话或关闭编辑器取消尚未提交的操作。消息旁「重新生成」仍可选择指定轮次。回归见 [session-rerun.test.ts](../ui/app-shell/tests/session-rerun.test.ts) 和 [harness-default-tools.test.ts](../backend/app-core/tests/harness-default-tools.test.ts)。
 
 ## 3. DAG Flow 链（CLI 工作流）
 

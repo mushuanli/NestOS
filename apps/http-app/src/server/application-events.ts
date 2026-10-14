@@ -1,6 +1,6 @@
 import type { ServerResponse } from 'node:http';
 import { randomUUID } from 'node:crypto';
-import type { ApplicationPort, ApplicationEvent } from '@itookit/app-core/application/contracts';
+import type { ApplicationPort, ApplicationEvent } from '@itookit/app-contracts/application';
 
 interface EventRow { id: number; event: ApplicationEvent; bytes?: number }
 interface EventSource {

@@ -4,7 +4,7 @@
 
 ## 1. 结论和数据组织
 
-采用单用户 `admin`。`[mindos]` 表示应用打开的文件系统根，不是内层目录名。Session 是业务实体，history 和 attachments 都属于 Session；SessionFS 是运行时组合视图，不是第二份数据。通用映射器属于 `vfs-core`，Session 仓库属于 `llm-session`，持久挂载配置及来源组装属于 `app-core`（`packages/app-core/src/vfs/session-files.ts`、`packages/app-core/src/vfs/directory-mounts.ts`）；`app-shell` 只做装配与兼容 re-export。
+采用单用户 `admin`。`[mindos]` 表示应用打开的文件系统根，不是内层目录名。Session 是业务实体，history 和 attachments 都属于 Session；SessionFS 是运行时组合视图，不是第二份数据。通用映射器属于 `vfs-core`，Session 仓库属于 `llm-session`，持久挂载配置及来源组装属于 `app-core`（`backend/app-core/src/vfs/session-files.ts`、`backend/app-core/src/vfs/directory-mounts.ts`）；`app-shell` 只做装配与兼容 re-export。
 
 ```text
 [mindos]/
@@ -29,7 +29,7 @@
     .config/<app>/                用户级应用配置
 ```
 
-`session.seq/history.seq` 是逻辑记录文件，`/var/lib/sessions/folders.seq` 同样承载文件夹记录（`packages/llm-session/src/persistence/session-repository.ts`）。IndexedDB 使用记录表，LocalFS 使用对应 sidecar SQLite；不能把空的物理 `.seq` 文件单独复制当成完整备份。LocalFS 的 `_meta/_db/meta` 是后端索引侧车，不是 Session 可见目录。
+`session.seq/history.seq` 是逻辑记录文件，`/var/lib/sessions/folders.seq` 同样承载文件夹记录（`backend/llm-session/src/persistence/session-repository.ts`）。IndexedDB 使用记录表，LocalFS 使用对应 sidecar SQLite；不能把空的物理 `.seq` 文件单独复制当成完整备份。LocalFS 的 `_meta/_db/meta` 是后端索引侧车，不是 Session 可见目录。
 
 没有 `conversation/`、`/etc/mindos`、`/var/lib/mindos` 或预留的 `/var/lib/files`。可靠恢复所需的任务和 IPC 数据留在 `/var/lib`；移入 `/run` 会丢失重启恢复能力。
 
@@ -163,7 +163,7 @@ stateDiagram-v2
 
 ## 8. 实际接口与调用方式
 
-以下对应已实现接口，不再列出未实现的伪类型。完整定义见 [文件接口](https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/services/file-system.ts)、[视图](https://github.com/mushuanli/vfs-core/blob/main/src/impl/services/FileSystemView.ts)、[Session 仓库](../../packages/llm-session/src/persistence/types.ts)、[挂载服务](../../packages/app-core/src/vfs/session-files.ts)、[编辑器](../../packages/ui-common/src/interfaces/IEditor.ts)。
+以下对应已实现接口，不再列出未实现的伪类型。完整定义见 [文件接口](https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/services/file-system.ts)、[视图](https://github.com/mushuanli/vfs-core/blob/main/src/impl/services/FileSystemView.ts)、[Session 仓库](../../backend/llm-session/src/persistence/types.ts)、[挂载服务](../../backend/app-core/src/vfs/session-files.ts)、[编辑器](../../ui/ui-common/src/interfaces/IEditor.ts)。
 
 ```ts
 interface FileSystemContext {

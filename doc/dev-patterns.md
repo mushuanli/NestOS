@@ -2,7 +2,7 @@
 
 ## 新增 Provider
 
-1. `packages/kernel-adapters/src/llm-management/constants/providers.ts` — 在 `LLM_PROVIDERS`（`Record<string, LLMProvider>`，key = provider.id）中追加 provider 定义
+1. `backend/kernel-adapters/src/llm-management/constants/providers.ts` — 在 `LLM_PROVIDERS`（`Record<string, LLMProvider>`，key = provider.id）中追加 provider 定义
 2. `https://github.com/mushuanli/driver-llm/blob/main/src/providers/registry.ts` — 注册 provider 名→构造函数映射
 3. 如需新 Provider 类（非 OpenAI 兼容）：`https://github.com/mushuanli/driver-llm/blob/main/src/providers/` 新建类 → `extends BaseProvider`
 4. `https://github.com/mushuanli/driver-llm/blob/main/src/index.ts` — 导出
@@ -13,7 +13,7 @@ Provider 高级设置以 `supportedProtocols` 声明可用协议，以 `defaultP
 
 ## LLM 配置自动保存
 
-`packages/ui-common/src/components/SettingsAutoSave.ts` 统一管理 LLM 设置编辑器的延迟、校验、串行写入和状态提示。普通文本停止输入 600ms、长文本 1000ms 后保存；开关/选择立即保存，API Key 和带 `data-autosave-defer` 的标识输入失去焦点后保存。输入法组合输入完成前不写入。程序修改列表时调用 `requestSettingsSave(root)`，搜索和临时图标输入不触发保存。
+`ui/ui-common/src/components/SettingsAutoSave.ts` 统一管理 LLM 设置编辑器的延迟、校验、串行写入和状态提示。普通文本停止输入 600ms、长文本 1000ms 后保存；开关/选择立即保存，API Key 和带 `data-autosave-defer` 的标识输入失去焦点后保存。输入法组合输入完成前不写入。程序修改列表时调用 `requestSettingsSave(root)`，搜索和临时图标输入不触发保存。
 
 Provider / Connection 使用 `configuration-form.ts` 的自动保存表单，新增资源使用稳定 ID；API 刷新也自动保存，失败保留编辑草稿并提供重试。Agent 优先通过宿主 `saveContent` 写入当前源，未注入宿主时使用 `saveAgent`，避免与宿主 `interactiveChange` 自动保存重复写入。Skill / MCP / SystemPrompt / Cost 使用同一控制器，完整配置经校验后整体写入；不合法的 JSON、路径/协议或未完成条目不覆盖上一次有效配置。
 
@@ -21,8 +21,8 @@ Provider / Connection 使用 `configuration-form.ts` 的自动保存表单，新
 
 ## 新增 Provider 内置联网搜索能力
 
-1. `packages/kernel-adapters/src/llm-management/constants/providers.ts` — provider 定义加 `capabilities.serverSideWebSearch: true`
-2. `packages/kernel-adapters/src/llm-management/contracts/connection.ts` — `supportsServerSideSearch()` 确认协议支持
+1. `backend/kernel-adapters/src/llm-management/constants/providers.ts` — provider 定义加 `capabilities.serverSideWebSearch: true`
+2. `backend/kernel-adapters/src/llm-management/contracts/connection.ts` — `supportsServerSideSearch()` 确认协议支持
 3. provider 实现类注入内置工具并提取 `citations`（参考 `responses.ts` / `gemini.ts`）
 4. 详见 [web-search.md](./web-search.md)
 
@@ -34,44 +34,44 @@ Provider / Connection 使用 `configuration-form.ts` 的自动保存表单，新
 
 ## 新增 Connection
 
-通过 Settings UI (`packages/llm-settings-ui/src/editors/ConnectionSettingsEditor.ts`) 操作，
+通过 Settings UI (`ui/llm-settings-ui/src/editors/ConnectionSettingsEditor.ts`) 操作，
 或直接写入 VFS `etc:/llm/.connections/<id>.json`
 
 ## 新增 Agent
 
-1. `packages/kernel-adapters/src/llm-management/contracts/agent.ts` — 更新 `AgentDefinition` 接口（如需新字段）
-2. `packages/kernel-adapters/src/llm-management/constants/agents.ts` — `DEFAULT_AGENTS` 预设模板
-3. `packages/llm-settings-ui/src/editors/AgentConfigEditor.ts` — 编辑器 UI
-4. `packages/llm-session/src/session/agent-resolver.ts` — AgentResolver.resolve()
+1. `backend/kernel-adapters/src/llm-management/contracts/agent.ts` — 更新 `AgentDefinition` 接口（如需新字段）
+2. `backend/kernel-adapters/src/llm-management/constants/agents.ts` — `DEFAULT_AGENTS` 预设模板
+3. `ui/llm-settings-ui/src/editors/AgentConfigEditor.ts` — 编辑器 UI
+4. `backend/llm-session/src/session/agent-resolver.ts` — AgentResolver.resolve()
 
 ## 新增通用工具 (Built-in Tool)
 
-1. `packages/tools/src/tools/<Name>/prompt.ts` — 工具 prompt
-2. `packages/tools/src/tools/<Name>/<Name>Tool.ts` — `buildTool(def)` 实现
-3. `packages/tools/src/index.ts` — 在 `BUILTIN_TOOLS` 数组注册
+1. `backend/tools/src/tools/<Name>/prompt.ts` — 工具 prompt
+2. `backend/tools/src/tools/<Name>/<Name>Tool.ts` — `buildTool(def)` 实现
+3. `backend/tools/src/index.ts` — 在 `BUILTIN_TOOLS` 数组注册
 
 工具驱动在 `call()` 前执行输入 schema、`validateInput` 和 `checkPermissions`，权限回调更新的参数会重新校验。已知的参数/操作前提错误可抛出 `ToolInputError(code, message)`，Agent 会收到可纠正的失败结果；存储异常或可能已发生副作用的未知失败应保持普通异常。不要把任意异常包装成可重试错误。结构化 `data` 与模型文本分别受输出上限限制，超大 data 被省略。人工审批由 Durable Agent interaction 承担，工具权限回调只负责 allow/deny。
 
 ## 新增 Kernel 工具 (需运行时引用)
 
-1. `packages/kernel-adapters/src/tool/<name>.ts` — ToolMeta + ToolDefinition + ToolHandler
-2. `packages/kernel-adapters/src/runtime/create-kernel-adapters-runtime.ts` — 运行时注册
-3. 如需 Durable 执行，在 `packages/kernel-adapters/src/effects/` 增加 EffectAdapter，并由 KernelAdaptersPlugin 注册
+1. `backend/kernel-adapters/src/tool/<name>.ts` — ToolMeta + ToolDefinition + ToolHandler
+2. `backend/kernel-adapters/src/runtime/create-kernel-adapters-runtime.ts` — 运行时注册
+3. 如需 Durable 执行，在 `backend/kernel-adapters/src/effects/` 增加 EffectAdapter，并由 KernelAdaptersPlugin 注册
 
 ## 新增 i18n 文案
 
-1. `packages/common/src/i18n/zh-CN.ts` — 添加 key (source of truth)
-2. `packages/common/src/i18n/en.ts` — 添加相同 key (TypeScript 静态校验)
+1. `shared/common/src/i18n/zh-CN.ts` — 添加 key (source of truth)
+2. `shared/common/src/i18n/en.ts` — 添加相同 key (TypeScript 静态校验)
 3. 组件中使用 `t('new.key')`
 
 ## 新增图标
 
-`packages/common/src/i18n/icons.ts` — 添加新图标常量，禁止组件硬编码 emoji
+`shared/common/src/i18n/icons.ts` — 添加新图标常量，禁止组件硬编码 emoji
 
 ## 新增 Test
 
 - vitest, `*.test.ts` 模式
-- 测试目录为 `packages/<pkg>/__tests__/` 或 `packages/<pkg>/tests/`；仅部分包有 `packages/<pkg>/vitest.config.ts`（其余走 vitest 默认配置）
+- 测试目录为 相应 `ui/`、`backend/`、`shared/` 包下的 `__tests__/` 或 `tests/`；仅部分包有 包内的 `vitest.config.ts`（其余走 vitest 默认配置）
 - 不 mock 数据库（集成测试原则）
 
 ## 构建
@@ -91,7 +91,7 @@ Provider / Connection 使用 `configuration-form.ts` 的自动保存表单，新
 
 - 包根用 `^包名$` 正则精确匹配，因此包内其它 `exports` 子路径（如 `@itookit/durable-kernel/core`）仍按 package.json 解析；CSS 等子路径入口由字符串别名处理，排在包根之前。
 - **新增/删除 package、或新增包内子路径入口时，必须同步 `scripts/workspace-sources.mjs`**，不要在两份 `vite.config.ts` 里各自加别名。
-- 改了 `packages/*` 源码后请**重启 dev server** 再验证，不要只刷新页面：长驻 server 可能保留了部分文件的旧转译结果。
+- 改了工作区包源码后请**重启 dev server** 再验证，不要只刷新页面：长驻 server 可能保留了部分文件的旧转译结果。
 
 ## 代码约定
 
@@ -114,6 +114,6 @@ Responses 请求统一发送 `input` item 数组，包括单条纯文本消息�
 
 ### Tauri 开发模块校验
 
-`node --experimental-vm-modules scripts/check-tauri-dev-modules.mjs` 使用隔离 Vite 缓存和原生 ESM 链接检查桌面入口的静态开发模块图，不执行界面代码。缺失 default/named export 会直接失败，避免仅凭生产构建成功遗漏开发模式错误。对应回归位于 `packages/app-shell/tests/tauri-dev-modules.test.ts`。
+`node --experimental-vm-modules scripts/check-tauri-dev-modules.mjs` 使用隔离 Vite 缓存和原生 ESM 链接检查桌面入口的静态开发模块图，不执行界面代码。缺失 default/named export 会直接失败，避免仅凭生产构建成功遗漏开发模式错误。对应回归位于 `ui/app-shell/tests/tauri-dev-modules.test.ts`。
 
 `vfsdriver-local` 的 Node SQLite 回退在 WebView 中不可运行；Tauri 通过 `createDb` 注入原生 `TauriSqlSidecarDb`。Vite 将 `better-sqlite3` 映射到显式的不可用适配器，防止开发服务器直接向浏览器发送 CommonJS 原生模块。Node 文件系统内置模块仍由生产构建外置，宿主通过 `createFs` 注入原生端口。

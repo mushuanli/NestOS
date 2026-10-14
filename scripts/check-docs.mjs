@@ -7,16 +7,17 @@
  *   2. 反引号里的仓库文件路径不存在（悬空引用）；
  *   3. 相对 Markdown 链接失效。
  *
- * 活文档 = doc/*.md + doc/design/*.md + AGENTS.md + packages/AGENTS.md + packages/ * /AGENTS.md + packages/ * /doc/*.md + packages|apps 的 README.md。
+ * 活文档 = doc/*.md + doc/design/*.md + 工作区各目录的 AGENTS.md / README.md / doc/*.md。
  * doc/feat/ 与 doc/deprecated/ 是归档，不参与检查。
  *
  * 用法：node scripts/check-docs.mjs   （或 pnpm docs:check）
  */
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import { WORKSPACE_GROUPS } from './workspace-packages.mjs';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const TOP_DIRS = ['libraries', 'packages', 'apps', 'doc', 'scripts', 'tests'];
+const TOP_DIRS = [...WORKSPACE_GROUPS, 'doc', 'scripts', 'tests'];
 
 /** 已被删除/更名的符号：活文档中不应再出现（历史表述仅告警）。 */
 const REMOVED_SYMBOLS = [
@@ -34,31 +35,30 @@ const HISTORICAL_CONTEXT = /(取代|替代|已删除|已移除|更名|旧|原|�
 const EXTERNAL_PATH = /[<>{}*…]|^[a-z]+:\/\//;
 
 function collectDocs() {
-    const docs = ['AGENTS.md', 'packages/AGENTS.md'];
+    const docs = ['AGENTS.md', ...WORKSPACE_GROUPS.map(group => `${group}/AGENTS.md`).filter(path => existsSync(join(ROOT, path)))];
     for (const name of readdirSync(join(ROOT, 'doc'))) {
         if (name.endsWith('.md') && statSync(join(ROOT, 'doc', name)).isFile()) docs.push(`doc/${name}`);
     }
     for (const name of readdirSync(join(ROOT, 'doc/design'))) {
         if (name.endsWith('.md')) docs.push(`doc/design/${name}`);
     }
-    for (const pkg of readdirSync(join(ROOT, 'packages'))) {
-        if (existsSync(join(ROOT, 'packages', pkg, 'AGENTS.md'))) docs.push(`packages/${pkg}/AGENTS.md`);
-        if (existsSync(join(ROOT, 'packages', pkg, 'README.md'))) docs.push(`packages/${pkg}/README.md`);
-        const docDir = join(ROOT, 'packages', pkg, 'doc');
+    for (const directory of workspaceDirs()) {
+        for (const filename of ['AGENTS.md', 'README.md']) {
+            if (existsSync(join(ROOT, directory, filename))) docs.push(`${directory}/${filename}`);
+        }
+        const docDir = join(ROOT, directory, 'doc');
         if (!existsSync(docDir)) continue;
         for (const name of readdirSync(docDir)) {
-            if (name.endsWith('.md')) docs.push(`packages/${pkg}/doc/${name}`);
+            if (name.endsWith('.md')) docs.push(`${directory}/doc/${name}`);
         }
-    }
-    for (const app of readdirSync(join(ROOT, 'apps'))) {
-        if (existsSync(join(ROOT, 'apps', app, 'README.md'))) docs.push(`apps/${app}/README.md`);
     }
     return docs.sort();
 }
 
 function workspaceDirs() {
     const dirs = [];
-    for (const base of ['libraries', 'packages', 'apps']) {
+    for (const base of WORKSPACE_GROUPS) {
+        if (!existsSync(join(ROOT, base))) continue;
         for (const name of readdirSync(join(ROOT, base))) {
             if (statSync(join(ROOT, base, name)).isDirectory()) dirs.push(`${base}/${name}`);
         }
@@ -83,11 +83,9 @@ function resolveReference(doc, ref) {
     if (TOP_DIRS.includes(head)) return candidates.some(candidate => existsSync(resolve(ROOT, candidate)));
     if (WORKSPACE_NAMES.includes(head)) {
         const rest = ref.slice(head.length + 1);
-        candidates.push(`libraries/${head}/${rest}`, `libraries/${head}/src/${rest}`,
-            `packages/${head}/${rest}`, `packages/${head}/src/${rest}`,
-            `apps/${head}/${rest}`, `apps/${head}/src/${rest}`);
+        for (const group of WORKSPACE_GROUPS) candidates.push(`${group}/${head}/${rest}`, `${group}/${head}/src/${rest}`);
     }
-    candidates.push(`libraries/${ref}`, `packages/${ref}`, `apps/${ref}`);
+    for (const group of WORKSPACE_GROUPS) candidates.push(`${group}/${ref}`);
     for (const dir of WORKSPACE_DIRS) candidates.push(`${dir}/${ref}`, `${dir}/src/${ref}`);
     return candidates.some(candidate => existsSync(resolve(ROOT, candidate)));
 }
@@ -120,9 +118,9 @@ for (const doc of collectDocs()) {
 
 // A package without its own AGENTS.md silently drops out of this check (collectDocs
 // only adds existing files), so surface the gap instead of hiding it.
-for (const pkg of readdirSync(join(ROOT, 'packages'))) {
-    if (!existsSync(join(ROOT, 'packages', pkg, 'package.json'))) continue;
-    if (!existsSync(join(ROOT, 'packages', pkg, 'AGENTS.md'))) warnings.push(`[missing-doc] packages/${pkg}/AGENTS.md`);
+for (const directory of WORKSPACE_DIRS) {
+    if (!existsSync(join(ROOT, directory, 'package.json'))) continue;
+    if (!existsSync(join(ROOT, directory, 'AGENTS.md'))) warnings.push(`[missing-doc] ${directory}/AGENTS.md`);
 }
 
 for (const warning of warnings) console.warn(`  告警 ${warning}`);

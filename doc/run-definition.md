@@ -17,12 +17,12 @@ mindos.yml ──┐
 当前实现：
 
 - CLI YAML 已通过 `apps/cli/src/run-definition.ts` 编译为 `RunDefinition`；
-- `.flow` 已通过 `packages/app-core/src/run/run-definition.ts` 的 `createRunDefinitionFromFlow()` 转为 `RunDefinition`；
+- `.flow` 已通过 `backend/app-core/src/run/run-definition.ts` 的 `createRunDefinitionFromFlow()` 转为 `RunDefinition`；
 - `RunDefinition → DagRunSpec` 已通过 `toDagRunSpec()` 实现，CLI `run` 已走该路径；
 - CLI `run -f xxx.flow` 已支持 inline `.flow` 节点和 desktop profile LLM 配置；
   可用 `--params input.json` 传入运行参数；编译参数作用域与模板标记完整传到 DAG，运行快照支持补填、恢复和重跑。真实模型验证与命令见 [作文 CLI 验证](./design/essay-review-cli-verification.md)。
 - `RunCatalog` 只读投影已提供；
-- `.flow` 的 `agentId` / `systemPromptId` / `skillIds` 引用解析已由 `packages/llm-session/src/session/flow-node-binder.ts`（`bindFlowNode` / `bindStandaloneFlowNode`）实现，并被 `packages/llm-session/src/session/session-run-coordinator.ts` 与 `DagCommandService` 使用；CLI `.flow` 入口（`apps/cli/src/commands.ts` 调用 `createRunDefinitionFromFlow()` 时未传 `bind`）与 Tauri Runs 视图仍待接线。
+- `.flow` 的 `agentId` / `systemPromptId` / `skillIds` 引用解析已由 `backend/llm-session/src/session/flow-node-binder.ts`（`bindFlowNode` / `bindStandaloneFlowNode`）实现，并被 `backend/llm-session/src/session/session-run-coordinator.ts` 与 `DagCommandService` 使用；CLI `.flow` 入口（`apps/cli/src/commands.ts` 调用 `createRunDefinitionFromFlow()` 时未传 `bind`）与 Tauri Runs 视图仍待接线。
 
 ## 会话与命令的统一提交
 
@@ -39,7 +39,7 @@ mindos.yml ──┐
 
 普通 Chat 每次发送产生一个独立 Task；会话空闲不创建人工等待。Agent 的工具循环和 Plan 的批准仍在各自 Program 内执行。工作流允许有界回边，所以定义层的“DAG”表示可循环工作流图。Session 历史、分支、留存策略继续由会话层管理。
 
-源码：[run-submission.ts](../packages/llm-flow/src/run-submission.ts)。`RunDefinition` 仍负责 YAML/`.flow` 的来源、环境和策略；`CompiledRunDefinition` 位于配置解析之后，不重复存储这些来源信息。CLI 的已有 `RunDefinition → DagRunSpec → DurableFlowExecutor` 路径继续使用原执行器。
+源码：[run-submission.ts](../backend/llm-flow/src/run-submission.ts)。`RunDefinition` 仍负责 YAML/`.flow` 的来源、环境和策略；`CompiledRunDefinition` 位于配置解析之后，不重复存储这些来源信息。CLI 的已有 `RunDefinition → DagRunSpec → DurableFlowExecutor` 路径继续使用原执行器。
 
 ## 字段
 

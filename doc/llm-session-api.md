@@ -98,7 +98,7 @@ class SessionManager implements ISession, SessionQuery {
 
 **项目草稿来源**：首次提交可携带 `SendIntent.submission = { id, source: { kind: 'project-draft', ownerId: projectId, id: draftId } }`。Session 层将 `submissionId` 用作该 Round 的身份，并将来源保存到 `Round.submission`；历史提交完成后的 `execution_task_projected` 同时携带该来源。应用层验证持久 Round、执行引用和历史索引后，事务性地记录草稿转正并补建下一份草稿。普通 `createSession` 不触发此流程，内存队列返回成功也不作为转正依据。生命周期、恢复及通知详见 [项目内的新会话草稿](design/vfs-session-browser.md#项目内的新会话草稿)。
 
-**对话 / 执行模式**：`ChatSessionSettings.executionMode` 与 `ExecutionOverrides.executionMode` 使用 `ChatExecutionMode = 'chat' | 'agent'`；UI 默认 chat，Session settings 持久化该偏好。`SendIntent.execution` 的 agent 分支可携带 `mode`，优先于 overrides。发送准入前复制意图与覆盖参数，创建的 Task 在 labels 固定 executionMode。chat 剥离工作区工具，保留显式授权的客户端 WebSearch / Provider 内置搜索；agent 固定 llm.agent 与默认 50 次交换预算。未配置 `capabilityPolicy.toolIds` 时，宿主 `resolveHarnessToolIds(sessionId)` 提供已启用的 Read/Glob/Grep/Write/Edit/Bash；Bash 需要宿主注入 Shell。显式白名单（含空数组）优先，无可用工具时拒绝提交。工具仍受 Session 挂载与 external 审批限制；执行提示要求实际使用工具并按 Session 虚拟路径操作。无 mode 的旧 API 调用继续按工具自动选择程序；Flow 分支不消费该偏好。实现见 [direct-execution-mode.ts](../packages/llm-session/src/session/direct-execution-mode.ts)，完整调用链回归见 [harness-default-tools.test.ts](../packages/app-core/tests/harness-default-tools.test.ts)。
+**对话 / 执行模式**：`ChatSessionSettings.executionMode` 与 `ExecutionOverrides.executionMode` 使用 `ChatExecutionMode = 'chat' | 'agent'`；UI 默认 chat，Session settings 持久化该偏好。`SendIntent.execution` 的 agent 分支可携带 `mode`，优先于 overrides。发送准入前复制意图与覆盖参数，创建的 Task 在 labels 固定 executionMode。chat 剥离工作区工具，保留显式授权的客户端 WebSearch / Provider 内置搜索；agent 固定 llm.agent 与默认 50 次交换预算。未配置 `capabilityPolicy.toolIds` 时，宿主 `resolveHarnessToolIds(sessionId)` 提供已启用的 Read/Glob/Grep/Write/Edit/Bash；Bash 需要宿主注入 Shell。显式白名单（含空数组）优先，无可用工具时拒绝提交。工具仍受 Session 挂载与 external 审批限制；执行提示要求实际使用工具并按 Session 虚拟路径操作。无 mode 的旧 API 调用继续按工具自动选择程序；Flow 分支不消费该偏好。实现见 [direct-execution-mode.ts](../backend/llm-session/src/session/direct-execution-mode.ts)，完整调用链回归见 [harness-default-tools.test.ts](../backend/app-core/tests/harness-default-tools.test.ts)。
 
 ---
 
@@ -209,7 +209,7 @@ class RoundLog implements ILog {
 1. 终态（`failed`/`cancelled`）且有用户输入 → 投影 `failed`/`aborted` 占位（含 `error`）；
 2. **已记录 execution 但仍为 `running`/`pending`**（拥有它的宿主已消失）→ 投影 `running` 占位，`SessionRegistry.getSnapshot().interruptedAssistantId` 据此提示「上次执行未完成」并可重新执行；
 3. `waiting`（等待人工输入）与从未启动过执行的 round 保持仅用户消息。
-回归：`packages/llm-session/__tests__/failed-round-projection.test.ts`（7 通过）与 `packages/app-shell/tests/host-restart-inflight.test.ts`（真实本地存储 + 永不回包模型，宿主在运行途中退出后重开：转写以助手占位结尾、`interruptedAssistantId` 存在、新消息不再被拒）。
+回归：`backend/llm-session/__tests__/failed-round-projection.test.ts`（7 通过）与 `ui/app-shell/tests/host-restart-inflight.test.ts`（真实本地存储 + 永不回包模型，宿主在运行途中退出后重开：转写以助手占位结尾、`interruptedAssistantId` 存在、新消息不再被拒）。
 
 ### RoundGraphService
 
@@ -231,7 +231,7 @@ class RoundGraphService {
 
 `class RoundOperations` —— round 业务操作（sendMessage 执行、regenerate 判定）。`hasRegenerateAssistant(...)` 辅助。
 
-Chat/Harness 重跑沿用 regenerate：已有回复时创建替代分支和新 Task，保留原 Task；工具重新执行，使用当前文件状态，不自动撤销文件修改。顶部与会话右键入口选择当前分支最后一条用户消息，消息旁入口可选择指定轮次；执行模式由 UI 固定后传入 overrides。`SessionRunCoordinator` 在执行结束后等待 `refreshSession` 同步持久 Round，再发布终态，避免刚完成的临时消息缺少轮次索引而无法立即重新生成。相关真实工具回归见 [harness-default-tools.test.ts](../packages/app-core/tests/harness-default-tools.test.ts)。
+Chat/Harness 重跑沿用 regenerate：已有回复时创建替代分支和新 Task，保留原 Task；工具重新执行，使用当前文件状态，不自动撤销文件修改。顶部与会话右键入口选择当前分支最后一条用户消息，消息旁入口可选择指定轮次；执行模式由 UI 固定后传入 overrides。`SessionRunCoordinator` 在执行结束后等待 `refreshSession` 同步持久 Round，再发布终态，避免刚完成的临时消息缺少轮次索引而无法立即重新生成。相关真实工具回归见 [harness-default-tools.test.ts](../backend/app-core/tests/harness-default-tools.test.ts)。
 
 ---
 
@@ -362,10 +362,10 @@ class DurableConversationProjection {
 
 ## 源码结构：文件与路径
 
-`@itookit/llm-session` 的公共 API 从 `packages/llm-session/src/index.ts` 根导出（并 re-export `@itookit/llm-flow`）。包内按 **core / session / persistence / plugins / services / utils** 组织：
+`@itookit/llm-session` 的公共 API 从 `backend/llm-session/src/index.ts` 根导出（并 re-export `@itookit/llm-flow`）。包内按 **core / session / persistence / plugins / services / utils** 组织：
 
 ```
-packages/llm-session/src/
+backend/llm-session/src/
 ├── index.ts                      根导出 + initializeConversationSystem() 装配入口
 ├── core/                         会话核心契约
 │   ├── types.ts                  NodeStatus/ExecutorType/ExecutionNode/SessionTokenUsage/HistoryPolicy 等
@@ -477,7 +477,7 @@ TTY 首次结束信息保持不变，后续结束通知与输出不覆盖；已�
 
 `prepareSessionDeletion(id)` 记录可恢复意图并提升直接子会话；`pendingSessionDeletions()` 提供待清理 ID。宿主仍应通过 `SessionLifecycleService` 先停止执行再删除。删除意图在物理清理完成后移除，重启可以继续处理。此字段属于 `session.seq` 元信息，不写入 `history.seq` 的 Round 索引，也不编码成物理子目录。详见 [项目抽屉与子会话导航](design/project-session-navigation.md)。
 
-会话工厂接受实例级 `hostPorts` 与 `agentResolution`，返回独立 SessionManager 和幂等异步 dispose。UI 必须接入返回实例；不再提供全局单例入口。业务预设移到 `packages/app-core/src/presets/default-flows.ts` 与 `packages/app-core/src/presets/essay-review.json`。
+会话工厂接受实例级 `hostPorts` 与 `agentResolution`，返回独立 SessionManager 和幂等异步 dispose。UI 必须接入返回实例；不再提供全局单例入口。业务预设移到 `backend/app-core/src/presets/default-flows.ts` 与 `backend/app-core/src/presets/essay-review.json`。
 
 
 会话领域存储支持项目定位：`setStorageDirectoryResolver` 为新会话选择数据目录，`indexProjectSessions` 从项目目录重建会话位置索引；索引位于 `/var/lib/sessions/folders.seq`。本地项目使用 `.mindos/sessions/<sessionId>/`，只读远程项目使用本地 `.mindos/readonly/<项目名>/sessions/<sessionId>/`。没有设置定位器的独立仓库继续使用原默认路径。运行控制文件与执行内核存储不随领域目录移动。移动日志位于 `/var/lib/sessions/storage-moves.seq`，恢复完成前相关领域记录报告 EBUSY；来源与目标同时存在时保留双方并报告冲突，不猜测或清理正文。

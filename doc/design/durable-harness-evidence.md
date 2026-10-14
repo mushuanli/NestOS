@@ -19,16 +19,16 @@
 
 | 证据 | 范围 | 命令 |
 |---|---|---|
-| `packages/durable-kernel/src/kernel.test.ts` | Kernel 状态机、租约、wait、spawn、shared CAS、消息、资源授权 | `pnpm --filter @itookit/durable-kernel test` |
-| `packages/durable-kernel/src/protocol.test.ts` | 协议不变量与 §15 矩阵中的内核侧行（分页、重试、fencing、cache 回执、outbox） | 同上 |
-| `packages/durable-kernel/src/resources.test.ts` | 资源分配/授权/预算/物理清理/迁移 | 同上 |
+| `backend/durable-kernel/src/kernel.test.ts` | Kernel 状态机、租约、wait、spawn、shared CAS、消息、资源授权 | `pnpm --filter @itookit/durable-kernel test` |
+| `backend/durable-kernel/src/protocol.test.ts` | 协议不变量与 §15 矩阵中的内核侧行（分页、重试、fencing、cache 回执、outbox） | 同上 |
+| `backend/durable-kernel/src/resources.test.ts` | 资源分配/授权/预算/物理清理/迁移 | 同上 |
 | `apps/cli/tests/20-kernel-ipc.test.ts` | 真实 LocalFS + SQLite 上的 SIGKILL/多进程：接管、竞争、单次消费、清理恢复 | `pnpm --filter @itookit/vfsdriver-local test` |
-| `packages/llm-flow/__tests__/durable-flow-executor.test.ts` | Flow 调度：根任务、检查点恢复、任务去重、工作区租约、detached 计时器、调度所有权 fencing | `pnpm --filter @itookit/llm-flow test` |
-| `packages/llm-flow/__tests__/scheduler-lease.test.ts` | Run 级调度租约：记录、拒绝活拥有者、到期接管、心跳、释放 | 同上 |
-| `packages/llm-flow/__tests__/{git-worktree-manager,transcript-budget,port-contract}.test.ts` | 隔离工作区恢复、transcript 字节预算、端口结构兼容 | 同上 |
+| `backend/llm-flow/__tests__/durable-flow-executor.test.ts` | Flow 调度：根任务、检查点恢复、任务去重、工作区租约、detached 计时器、调度所有权 fencing | `pnpm --filter @itookit/llm-flow test` |
+| `backend/llm-flow/__tests__/scheduler-lease.test.ts` | Run 级调度租约：记录、拒绝活拥有者、到期接管、心跳、释放 | 同上 |
+| `backend/llm-flow/__tests__/{git-worktree-manager,transcript-budget,port-contract}.test.ts` | 隔离工作区恢复、transcript 字节预算、端口结构兼容 | 同上 |
 | `apps/cli/tests/crash-matrix.test.ts` | 真实 CLI 进程 + 真实 HTTP 模型服务的 SIGKILL 崩溃矩阵 | `pnpm --filter @itookit/cli test` |
 | `apps/cli/tests/{run.integration.test.ts,nested-harness.test.ts,hitl.test.ts,session-lease.test.ts,run-scheduler-lock.test.ts,run-scheduler-lease-delete.test.ts,worktree-run.test.ts}` | 端到端 Run、嵌套 harness、人工交互、Session 租约、本机调度锁、跨主机调度租约删除保护、隔离工作区宿主装配 | 同上 |
-| `packages/llm-session/__tests__/*` | 会话/回合投影与失败回合可继续性 | `pnpm --filter @itookit/llm-session test` |
+| `backend/llm-session/__tests__/*` | 会话/回合投影与失败回合可继续性 | `pnpm --filter @itookit/llm-session test` |
 
 ## 1. Protocol §2 不变量
 
@@ -137,7 +137,7 @@
 |---|---|---|
 | 存储/协议层 | `20-kernel-ipc.test.ts`：SIGKILL 后 adapter 缺失/不支持/抛错三种清理失败保留标记、重启后成功清理、再次重启不重复调用，Task 始终 cancelled | 真实设备（摄像头、串口、外部服务）的停止确认 |
 | 真实模型请求 | `apps/cli/tests/crash-matrix.test.ts`：真实 CLI 进程被 SIGKILL 时在途模型请求无法核对 → `indeterminate` → 显式裁决（`--retry-indeterminate`）后重放同一逻辑 Effect | 供应商侧幂等键/查询接口（若供应商支持，可把 indeterminate 收敛为 reconcile） |
-| 本地进程（bash/tty） | `packages/kernel-adapters/src/effects/*.ts` 的**全部**适配器（llm.chat/tool.call/bash/tty/skill.load/skill.unload）实现 `EffectAdapter.cancel`（`effects/in-flight.ts` 记录在途执行，`cancel` 等待其结束才确认停止）；`apps/cli/src/shell.ts` 的 `runProcess` 取消时先 SIGTERM 进程组、未退出则 SIGKILL，并**等 `close` 才 resolve**；CLI 实机证据 `apps/cli/tests/process-cancel.test.ts`（进程组忽略 SIGTERM，断言 cancel 返回时 pid 确已消失）与 `run-control.test.ts`（超时/SIGINT 后模型服务观察到客户端断开）；适配器契约见 `effect-adapters.test.ts` | Tauri 隔离模式实机证据（2026-09-11 补齐）：`apps/cli/tests/tauri-process-tree.test.ts` 编译**真实** Rust 模块（`apps/tauri-app/src-tauri/src/session_bash.rs` + `bash_process.rs`），在 bwrap（`--die-with-parent --unshare-pid`）内运行一个忽略 SIGTERM、持续写文件的进程树并触发取消：取消路径确认（`cancelled=true`、`elapsed_ms` 远小于 30s 超时）、退出码 1、**取消返回后 1s 内文件不再增长**（无残留进程）。该保证由「进程组 SIGTERM → 100ms → 组 SIGKILL」与 `--die-with-parent`/PID namespace 拆除共同提供，测试断言的是宿主可观察行为而非某一行实现。 Rust 侧原生测试（`cargo test`，经 `pnpm --filter tauri-app test:rust` 运行，**15 通过**）另覆盖 `session_bash::tests::never_falls_back_to_a_host_shell`（唯一可执行程序是 `bwrap`，脚本只作为内层 `bash` 的单个 `-c` 参数）、`session_bash::tests::clears_host_credentials_and_exposes_only_the_fixed_session_environment`（宿主凭证不进入会话 shell，环境恰为 `PATH`/`HOME`/`LANG`）、`bash_process::tests::a_missing_isolator_fails_the_command_instead_of_running_unescaped`（隔离器缺失时以 `bash exec failed` 失败，不静默回退宿主）、 `bash_process::tests::cancellation_stops_a_running_process_group` 与 `timeout_stops_children_that_ignore_term_and_closes_their_pipes`、`session_bash::tests::confines_bash_to_readonly_and_writable_grants`、`directory_boundary::tests::*`（绝对/父路径与符号链接逃逸）。仍缺：`reconcile` 仍返回 `indeterminate`（`PROCESS_INDETERMINATE`），外部进程结果无法核对 |
+| 本地进程（bash/tty） | `backend/kernel-adapters/src/effects/*.ts` 的**全部**适配器（llm.chat/tool.call/bash/tty/skill.load/skill.unload）实现 `EffectAdapter.cancel`（`effects/in-flight.ts` 记录在途执行，`cancel` 等待其结束才确认停止）；`apps/cli/src/shell.ts` 的 `runProcess` 取消时先 SIGTERM 进程组、未退出则 SIGKILL，并**等 `close` 才 resolve**；CLI 实机证据 `apps/cli/tests/process-cancel.test.ts`（进程组忽略 SIGTERM，断言 cancel 返回时 pid 确已消失）与 `run-control.test.ts`（超时/SIGINT 后模型服务观察到客户端断开）；适配器契约见 `effect-adapters.test.ts` | Tauri 隔离模式实机证据（2026-09-11 补齐）：`apps/cli/tests/tauri-process-tree.test.ts` 编译**真实** Rust 模块（`apps/tauri-app/src-tauri/src/session_bash.rs` + `bash_process.rs`），在 bwrap（`--die-with-parent --unshare-pid`）内运行一个忽略 SIGTERM、持续写文件的进程树并触发取消：取消路径确认（`cancelled=true`、`elapsed_ms` 远小于 30s 超时）、退出码 1、**取消返回后 1s 内文件不再增长**（无残留进程）。该保证由「进程组 SIGTERM → 100ms → 组 SIGKILL」与 `--die-with-parent`/PID namespace 拆除共同提供，测试断言的是宿主可观察行为而非某一行实现。 Rust 侧原生测试（`cargo test`，经 `pnpm --filter tauri-app test:rust` 运行，**15 通过**）另覆盖 `session_bash::tests::never_falls_back_to_a_host_shell`（唯一可执行程序是 `bwrap`，脚本只作为内层 `bash` 的单个 `-c` 参数）、`session_bash::tests::clears_host_credentials_and_exposes_only_the_fixed_session_environment`（宿主凭证不进入会话 shell，环境恰为 `PATH`/`HOME`/`LANG`）、`bash_process::tests::a_missing_isolator_fails_the_command_instead_of_running_unescaped`（隔离器缺失时以 `bash exec failed` 失败，不静默回退宿主）、 `bash_process::tests::cancellation_stops_a_running_process_group` 与 `timeout_stops_children_that_ignore_term_and_closes_their_pipes`、`session_bash::tests::confines_bash_to_readonly_and_writable_grants`、`directory_boundary::tests::*`（绝对/父路径与符号链接逃逸）。仍缺：`reconcile` 仍返回 `indeterminate`（`PROCESS_INDETERMINATE`），外部进程结果无法核对 |
 | 隔离工作区 | `git-worktree-manager.test.ts` + `durable-flow-executor.test.ts`：恢复租约、补跑 pending finalization、对已移除工作区幂等；`apps/cli/tests/worktree-run.test.ts`（4 通过）：CLI 宿主装配 `runtime.workspace.mode: worktree` 后节点在 worktree 内执行、脏工作区不被静默删除、崩溃恢复复用同一工作区 | CLI/Tauri 工作区装配及文件/进程/cwd 一致已有证据（见 `doc/todo.md` P1-03）；仍缺用户窗口启动与桌面重启、真实 OCI 及跨主机验收 |
 
 ## 8. 本地未完成与扩展的归属

@@ -2,10 +2,17 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { dependencyError, manifestDependencyError, sourceErrors, vfsStyleErrors } from '../check-boundaries.mjs';
 
-const pkg = (name, host = false) => ({ name: '@itookit/' + name, dir: '/repo/' + (host ? 'apps/' : 'packages/') + name, host, exports: { '.': './src/index.ts', './style.css': './src/style.css' } });
+const packageGroup = name => name === 'app-shell' ? 'ui/' : ['vfs-ui', 'vfs-core', 'vfs-sync'].includes(name) ? 'libraries/' : 'backend/';
+const pkg = (name, host = false) => ({ name: '@itookit/' + name, dir: '/repo/' + (host ? 'apps/' : packageGroup(name)) + name, host, exports: { '.': './src/index.ts', './style.css': './src/style.css' } });
 const core = pkg('app-core'), shell = pkg('app-shell'), vfs = pkg('vfs-ui'), host = pkg('web', true);
 const packages = [core, shell, vfs, host, pkg('vfs-core'), pkg('vfs-sync')];
 const inspect = (source, text, file = source.dir + '/src/index.ts') => sourceErrors(source, file, text, packages);
+
+test('frontend shell cannot import runtime roots or host factories even as a type shortcut', () => {
+    for (const expression of ["import type { Runtime } from '@itookit/app-core'", "import { createApplicationRuntime } from '@itookit/app-core'",
+        "import('@itookit/app-core/host')"])
+        assert.match(inspect(shell, expression)[0], /runtime assembly belongs to hosts/);
+});
 
 test('app-shell consumes public VFS events and presentation tokens without internal DOM or CSS selectors', () => {
     assert.match(inspect(shell, "sidebar.querySelector('.vfs-columns__back').click()")[0], /public VFS/);
@@ -41,7 +48,7 @@ test('checks static, dynamic, type-only, re-export and CommonJS dependencies', (
 test('allows public CSS exports but rejects private paths and relative package access', () => {
     assert.equal(inspect(shell, "import '@itookit/vfs-ui/style.css'").length, 0);
     assert.match(inspect(shell, "import '@itookit/vfs-ui/src/Store'")[0], /declared package export/);
-    assert.match(inspect(shell, "import '../../vfs-ui/src/Store'")[0], /cross-package relative/);
+    assert.match(inspect(shell, "import '../../../libraries/vfs-ui/src/Store'")[0], /cross-package relative/);
     assert.match(inspect(shell, "import '@itookit/web'")[0], /app hosts/);
     assert.equal(inspect(host, "import '@itookit/app-shell'").length, 0);
 });

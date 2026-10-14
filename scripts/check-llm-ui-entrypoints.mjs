@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const root = fileURLToPath(new URL('../packages/llm-ui/', import.meta.url));
+const root = fileURLToPath(new URL('../ui/llm-ui', import.meta.url));
 const manifest = JSON.parse(readFileSync(resolve(root, 'package.json'), 'utf8'));
 assert.ok(!manifest.exports['./legacy'] && !manifest.publishConfig.exports['./legacy'], 'UI must not publish singleton compatibility');
 const removed = ['driver-llm', 'tools', 'kernel-adapters', 'llm-tasks'].map(name => '@itookit/' + name);

@@ -55,11 +55,11 @@ createProjectModule 聚合项目工作台、记忆管理交互与等待输入事
 
 ## 可执行的边界
 
-`pnpm architecture:check` 检查 packages/apps 的生产源码静态依赖与 dependencies/peerDependencies，并运行检查器的边界用例；`pnpm test` 与 `pnpm test:matrix` 将它作为前置检查。
+`pnpm architecture:check` 检查 ui/backend/shared/libraries/apps 的生产源码静态依赖与 dependencies/peerDependencies，并运行检查器的边界用例；`pnpm test` 与 `pnpm test:matrix` 将它作为前置检查。
 
 - app-core 只依赖明确列出的平台无关能力，不直接引入 Node 内建模块、DOM 或浏览器存储。
 - 能力包不能反向依赖 app-core、app-shell 或 app-settings，包不能依赖 app 宿主。
 - 跨包引用使用 package.json 声明的公开出口，禁止跨包相对路径与未公开子路径；类型引用、动态 import 和 re-export 同样检查。
 - app-core 的公共出口使用具名导出，辅助算法与工具授权写入实现保留在模块内部。
 
-app-settings 仍属于应用功能包；packages/demo 是历史上放在 packages 下的 Vite 演示宿主，按宿主检查，其他包不能依赖它。测试夹具不受生产源码检查约束。检查器是静态边界守卫，不能代替业务职责审查，也不分析运行时拼接的模块名或任意反射访问。
+app-settings 仍属于应用功能包；apps/demo 是使用部分历史 API 的 Vite 演示宿主，按宿主检查，其他包不能依赖它。测试夹具不受生产源码检查约束。检查器是静态边界守卫，不能代替业务职责审查，也不分析运行时拼接的模块名或任意反射访问。

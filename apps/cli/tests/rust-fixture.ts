@@ -19,7 +19,7 @@ const run = (file: string, args: string[], cwd: string): Promise<void> =>
     });
 
 export async function compileSessionBashFixture(binary: string): Promise<void> {
-    const crate = join(repo, 'packages/sanbox/native'), target = join(crate, 'target/debug');
+    const crate = join(repo, 'backend/sanbox/native'), target = join(crate, 'target/debug');
     const rlib = join(target, 'libitookit_sanbox.rlib');
     if (!existsSync(rlib)) await run('cargo', ['build', '--quiet', '--manifest-path', join(crate, 'Cargo.toml')], repo);
     await run('rustc', ['--edition=2021', join(repo, 'apps/cli/tests/native-session-bash.rs'), '-o', binary,

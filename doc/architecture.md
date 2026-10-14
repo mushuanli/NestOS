@@ -164,7 +164,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 - **`llm-ui`**：Chat UI（流式历史、Session 渲染、DagWorkbench 可视化）。
 - **`vfs-ui`**：文件树 UI；**`mdxeditor`**：CodeMirror MDX 编辑器；**`ui-common`**：共享 UI 契约。
 - **`app-core`**：无 UI 应用核心 — MindOS profile、RunDefinition、共享 Session 文件/目录服务，以及 `createApplicationRuntime()`（VFS/LLM/Kernel/Session/Flow 统一装配）；Web/Tauri/CLI 共用。详见 [Runtime 架构](runtime-architecture.md)。
-- **`app-shell`**：Web/Tauri UI shell — `initApp()` 调用 app-core `createApplicationRuntime()`（其中已完成 `initializeConversationSystem` 装配），再装配设置模块、路由、Workbench/编辑器。
+- **`app-shell`**：Web/Tauri UI shell — `initApp()` 消费宿主注入的 `services` 与 `localBackend`，装配设置界面、路由、Workbench/编辑器。执行 Runtime 由宿主调用 app-core 创建；前后端实现不互相加载，见[前后端模块边界](design/frontend-backend-modules.md)。
 
 ## 7. 入口
 

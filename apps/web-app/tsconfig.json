@@ -13,11 +13,11 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["src/*"],
-      "@itookit/common": ["../../packages/common/src/index.ts"],
-      "@itookit/common/*": ["../../packages/common/src/*"],
-      "@itookit/llm-session": ["../../packages/llm-session/src/index.ts"],
-      "@itookit/llm-ui": ["../../packages/llm-ui/src/index.ts"],
-      "@itookit/app-settings": ["../../packages/app-settings/src/index.ts"]
+      "@itookit/common": ["../../shared/common/src/index.ts"],
+      "@itookit/common/*": ["../../shared/common/src/*"],
+      "@itookit/llm-session": ["../../backend/llm-session/src/index.ts"],
+      "@itookit/llm-ui": ["../../ui/llm-ui/src/index.ts"],
+      "@itookit/app-settings": ["../../ui/app-settings/src/index.ts"]
     }
   },
   "include": ["src"],

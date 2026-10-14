@@ -11,7 +11,7 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-itookit-sanbox      = { path = "../../../packages/sanbox/native" }
+itookit-sanbox      = { path = "../../../backend/sanbox/native" }
 tauri               = { version = "2", features = ["devtools"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-fs     = "2"

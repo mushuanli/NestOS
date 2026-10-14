@@ -14,6 +14,7 @@
 // Allowlist: scripts/style-class-allowlist.txt (one class per line, '#' comments).
 import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
+import { WORKSPACE_GROUPS } from './workspace-packages.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'target', 'vendor', '__tests__', 'tests', 'test', 'demo', 'coverage']);
@@ -34,7 +35,7 @@ function walk(dir, visit) {
 
 const cssFiles = [];
 const markupFiles = [];
-for (const group of ['libraries', 'packages', 'apps']) {
+for (const group of WORKSPACE_GROUPS) {
     const base = join(ROOT, group);
     if (!existsSync(base)) continue;
     walk(base, path => {

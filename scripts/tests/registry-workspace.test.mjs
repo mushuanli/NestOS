@@ -18,23 +18,53 @@ test('registry mode pins library dependencies while retaining application worksp
 test('registry build staging excludes sources and secrets without changing development manifests or lockfiles', t => {
     const root = mkdtempSync(join(tmpdir(), 'registry-staging-')), destination = join(root, 'release');
     t.after(() => rmSync(root, { recursive: true, force: true }));
-    mkdirSync(join(root, 'packages/host/src'), { recursive: true });
+    mkdirSync(join(root, 'ui/host/src'), { recursive: true });
     mkdirSync(join(root, 'libraries/core/src'), { recursive: true });
-    mkdirSync(join(root, 'packages/host/src/mdx'), { recursive: true });
-    writeFileSync(join(root, 'packages/host/src/mdx/controller.ts'), 'export {};');
+    mkdirSync(join(root, 'ui/host/src/mdx'), { recursive: true });
+    writeFileSync(join(root, 'ui/host/src/mdx/controller.ts'), 'export {};');
     const manifest = { name: 'example', scripts: { preinstall: 'guard' }, dependencies: { '@itookit/core': 'workspace:*' } };
     writeFileSync(join(root, 'package.json'), JSON.stringify(manifest));
-    writeFileSync(join(root, 'packages/host/package.json'), JSON.stringify({ ...manifest, name: '@itookit/host', exports: { '.': './src/index.ts' } }));
-    writeFileSync(join(root, 'packages/host/.env.local'), 'secret');
-    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - packages/*\n  - libraries/*\noverrides:\n  "@itookit/core": "workspace:*"\n');
+    writeFileSync(join(root, 'ui/host/package.json'), JSON.stringify({ ...manifest, name: '@itookit/host', exports: { '.': './src/index.ts' } }));
+    writeFileSync(join(root, 'ui/host/.env.local'), 'secret');
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - ui/*\n  - libraries/*\noverrides:\n  "@itookit/core": "workspace:*"\n');
     writeFileSync(join(root, 'pnpm-lock.yaml'), 'development-lock');
+    mkdirSync(join(root, 'patches'));
+    writeFileSync(join(root, 'patches/legacy.patch'), 'unused historical patch');
     prepareRegistryWorkspace(root, destination, [{ name: '@itookit/core', version: '1.0.0' }]);
     assert.equal(existsSync(join(destination, 'libraries')), false);
-    assert.equal(existsSync(join(destination, 'packages/host/.env.local')), false);
-    assert.equal(existsSync(join(destination, 'packages/host/src/mdx/controller.ts')), true);
+    assert.equal(existsSync(join(destination, 'patches')), false);
+    assert.doesNotMatch(readFileSync(join(destination, 'pnpm-workspace.yaml'), 'utf8'), /patchedDependencies/);
+    assert.equal(existsSync(join(destination, 'ui/host/.env.local')), false);
+    assert.equal(existsSync(join(destination, 'ui/host/src/mdx/controller.ts')), true);
     assert.equal(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8'), 'development-lock');
     assert.equal(JSON.parse(readFileSync(join(root, 'package.json'))).dependencies['@itookit/core'], 'workspace:*');
     assert.equal(JSON.parse(readFileSync(join(destination, 'package.json'))).scripts.preinstall, undefined);
     assert.ok(workspaceAliases(join(destination, 'apps/web-app')).every(alias => !alias.find.test('@itookit/core')));
     assert.match(readFileSync(join(destination, 'pnpm-workspace.yaml'), 'utf8'), /"@itookit\/core": "1\.0\.0"/);
+});
+
+
+test('directory separation survives registry staging and independent UI libraries remain registry dependencies', t => {
+    const root = mkdtempSync(join(tmpdir(), 'registry-separated-')), destination = join(root, 'release');
+    t.after(() => rmSync(root, { recursive: true, force: true }));
+    const catalog = [{ name: '@itookit/vfs-ui', version: '0.5.8', directory: 'vfs-ui' }];
+    for (const [group, name] of [['ui', 'app-shell'], ['backend', 'app-core'], ['shared', 'app-contracts'], ['libraries', 'vfs-ui']]) {
+        const dir = join(root, group, name);
+        mkdirSync(join(dir, 'src'), { recursive: true });
+        writeFileSync(join(dir, 'src/index.ts'), 'export {};');
+        writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: '@itookit/' + name,
+            exports: { '.': './src/index.ts' }, dependencies: { '@itookit/vfs-ui': 'workspace:*' } }));
+    }
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'root', scripts: {} }));
+    writeFileSync(join(root, 'pnpm-workspace.yaml'), 'packages:\n  - ui/*\n  - backend/*\n  - shared/*\n  - libraries/*\n');
+    prepareRegistryWorkspace(root, destination, catalog);
+    for (const directory of ['ui/app-shell', 'backend/app-core', 'shared/app-contracts']) {
+        const manifest = JSON.parse(readFileSync(join(destination, directory, 'package.json')));
+        assert.equal(manifest.dependencies['@itookit/vfs-ui'], '0.5.8');
+        assert.equal('independent' in manifest, false);
+    }
+    assert.equal(existsSync(join(destination, 'libraries')), false);
+    assert.equal(existsSync(join(destination, 'patches')), false);
+    assert.doesNotMatch(readFileSync(join(destination, 'pnpm-workspace.yaml'), 'utf8'), /patchedDependencies/);
+    assert.match(readFileSync(join(destination, 'pnpm-workspace.yaml'), 'utf8'), /ui\/\*/);
 });

@@ -40,7 +40,8 @@
     "mermaid": "^11.12.1",
     "@itookit/tools": "workspace:*",
     "@itookit/sync-adapters": "workspace:*",
-    "@itookit/piagent-driver": "workspace:*"
+    "@itookit/piagent-driver": "workspace:*",
+    "@itookit/app-contracts": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

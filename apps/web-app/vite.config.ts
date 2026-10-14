@@ -22,7 +22,7 @@ export default defineConfig({
         port: 3000,
         open: true,
         // ✅ 关键 2: Monorepo 必须配置文件系统权限
-        // 因为你的依赖代码在 ../../packages/ 目录下，超出了当前项目根目录
+        // Workspace sources live outside the host application root.
         fs: {
             allow: [
                 // 自动搜索 workspace 根目录并允许访问

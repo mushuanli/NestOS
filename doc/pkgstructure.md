@@ -1,7 +1,17 @@
 
 ## Workspace Structure
 
-pnpm monorepo. Business packages under `packages/`, independent library submodules under `libraries/`, apps under `apps/`（`apps/web-app` = `mind-os`）。
+pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `mind-os`）。八个独立库（包括 mdxeditor、vfs-ui）均位于 `libraries/`。目录迁移保留全部包名和公共入口。
+
+| 目录 | 模块 |
+|---|---|
+| `ui/` | app-shell、app-settings、llm-ui、llm-settings-ui、mdx-adapter、ui-common |
+| `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、durable-kernel、kernel-adapters、tools、device-tty、sanbox、sync-adapters |
+| `shared/` | app-contracts、common |
+| `libraries/` | driver-llm、piagent-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor |
+| `apps/` | web-app、tauri-app、cli、http-app、demo |
+
+19 个业务包 + 8 个独立库 + 5 个宿主。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
 
 ### LLM 子系统分层（单向依赖）
 
@@ -36,10 +46,10 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/mdxeditor` | 独立 CodeMirror 6 编辑器（[独立仓库](https://github.com/mushuanli/mdxeditor)，源码工作区接入），不依赖其他内部包；宿主通过公共附件、存储、导航和保存接口注入能力。 |
 | `@itookit/mdx-adapter` | MindOS 编辑器适配：VFS/namespace/Session 校验、文件格式、插件元数据、附件管理 UI、文件聊天引用及会话打印。 |
 | `@itookit/ui-common` | 共享 UI 组件、契约、浏览器工具。 |
-| `@itookit/app-settings` | 设置模块：SettingsEngine、SkillsEngine。 |
+| `@itookit/app-settings` | 设置 UI 与导航投影：SettingsEngine、SkillsEngine；持久化、标签和维护用例归 app-core，Web 快照归宿主。 |
+| `@itookit/app-contracts` | 共享应用 DTO、事件、设置端口、身份与纯变换；不加载后端执行或 UI 实现。 |
 | `@itookit/app-core` | 无 UI 应用核心：MindOS profile、RunDefinition、共享 Session 文件/目录服务，以及统一装配 `createApplicationRuntime`（VFS/LLM/Session/Flow）与 headless `createKernelRuntime`（durable-kernel + kernel-adapters + Flow programs）。Web/Tauri/CLI 共用。 |
-| `@itookit/app-shell` | Web/Tauri UI shell：`initApp()`（调用 app-core `createApplicationRuntime`）、workspace 策略、路由、Workbench/编辑器装配；依赖 app-core。 |
-| `@itookit/demo` | 演示/示例。 |
+| `@itookit/app-shell` | Web/Tauri UI shell：`initApp()`（宿主注入 services/localBackend，不创建 Runtime）、workspace 策略、路由、Workbench/编辑器装配；通过 shared/app-contracts 的独立服务接口与宿主注入端口调用后端。 |
 
 ### App 清单
 
@@ -48,13 +58,14 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `mind-os`（`apps/web-app`） | 主浏览器 SPA（IndexedDB 后端、workspace 配置、入口）。 |
 | `@itookit/cli`（`apps/cli`） | 命令行入口：YAML 工作流 → DurableFlowExecutor 运行。 |
 | `tauri-app`（`apps/tauri-app`） | Tauri 桌面壳。 |
-| `@itookit/http-app`（`apps/http-app`） | Node HTTP 静态 UI + LocalFS 存储 API；浏览器创建 MindOS Runtime。 |
+| `@itookit/http-app`（`apps/http-app`） | HTTP/SSE 应用宿主，server 持有 Runtime，client 只加载前端。 |
+| `@itookit/demo`（`apps/demo`） | 历史演示宿主，部分脚本使用已弃用 API。 |
 
 ### 独立 npm 库与同步接入
 
-八个独立库位于 `libraries/` 并以固定 Git 提交参与 pnpm workspace。应用和业务包消费源码 exports；各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 piagent-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
+八个独立库均位于 `libraries/`，以固定 Git 提交参与 pnpm workspace。应用和业务包消费源码 exports；各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 piagent-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
 
-VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依赖 better-sqlite3。vfs-sync、driver-llm 没有运行时包依赖。`packages/sync-adapters` 负责宿主同步接入，调用 vfs-sync 与驱动公共端口；同步范围和项目绑定由应用决定。
+VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依赖 better-sqlite3。vfs-sync、driver-llm 没有运行时包依赖。`backend/sync-adapters` 负责宿主同步接入，调用 vfs-sync 与驱动公共端口；同步范围和项目绑定由应用决定。
 
 VFS `IPlugin` 可以提供变更提示，但不能替代跨窗口扫描、恢复日志与条件提交。core 不内置同步业务。
 

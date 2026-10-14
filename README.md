@@ -33,7 +33,7 @@ MindOS 以"操作系统"的理念重新定义 AI 应用：所有内容——对�
 
 ### 核心特色
 
-#### 1. 虚拟文件系统（VFS）— `packages/vfslib`
+#### 1. 虚拟文件系统（VFS）— `libraries/vfs-core`
 
 VFS 是 MindOS 的底层基础，提供了独特的文件系统抽象：
 
@@ -60,7 +60,7 @@ VFS 是 MindOS 的底层基础，提供了独特的文件系统抽象：
 - **可折叠块**：长文档节点折叠/展开，保持阅读焦点
 - **插件架构**：基于 `PluginManager` + `EventBus` + `ServiceContainer` 的微内核，所有功能均为插件，业务代码可按需组合
 
-#### 3. 对话分支系统 — `packages/llm-ui`
+#### 3. 对话分支系统 — `ui/llm-ui`
 
 Chat 工作区支持**消息树状分支**，让你在同一个会话中探索多条不同的对话路径：
 
@@ -96,7 +96,7 @@ Agent      ──  个性化定制（system prompt + tier 偏好）
 
 同一 Provider 可创建多个 Connection（如 `deepseek-reasoner` / `deepseek-chat`），灵活应对多模型混用场景。
 
-#### 5. 多轮 Agent 循环 — `packages/llm-kernel`
+#### 5. 多轮 Agent 循环 — `backend/llm-tasks`
 
 - 工具调用（file_read / file_write / shell_exec / glob_search / grep_search）
 - 四层渐进式上下文压缩（history_snip → cache_prune → llm_summarize → sliding_window）
@@ -105,7 +105,7 @@ Agent      ──  个性化定制（system prompt + tier 偏好）
 - MCP 协议支持（Model Context Protocol）
 - TTY 交互式 Shell 会话（Python REPL / psql / ssh 等）
 
-#### 6. 技能系统 — `packages/device-llm`
+#### 6. 技能系统 — `backend/kernel-adapters`
 
 技能（Skill）让 Agent 具备可复用的专项能力：
 
@@ -155,16 +155,27 @@ libraries/               # 独立 Git 库，统一源码工作区
 ├── vfs-ui/ # 文件与资源浏览 UI
 ├── vfsdriver-indexeddb/ # IndexedDB 存储后端
 └── vfsdriver-local/ # 本地 FS 与 SQLite 后端
-packages/                # MindOS 业务与 UI 包
-├── app-core/
+ui/                      # MindOS 业务 UI
 ├── app-shell/
+├── app-settings/
+├── llm-ui/
+├── llm-settings-ui/
 ├── mdx-adapter/
+└── ui-common/
+backend/                 # 应用用例、执行与持久化
+├── app-core/
+├── durable-kernel/
+├── llm-session/
 └── ...
+shared/                  # 共享应用契约与基础工具
+├── app-contracts/
+└── common/
 apps/
 ├── web-app/
 ├── tauri-app/
 ├── cli/
-└── http-app/
+├── http-app/
+└── demo/
 ```
 
 ---

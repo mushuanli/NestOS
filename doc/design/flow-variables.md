@@ -50,11 +50,11 @@ Prompt 使用 `${vars.essay}` 读取当前稿件；`${param.essay}` 保留最初
 
 ## 实现与验证
 
-- [公共变量语义与调度检查点](../../packages/llm-flow/src/flow/variables.ts)
-- [普通 DAG 调度器](../../packages/llm-flow/src/flow/executor.ts)
-- [结构化路由提交](../../packages/llm-flow/src/flow/structured/dispatch.ts)
-- [模板引用](../../packages/llm-flow/src/contracts/flow-templates.ts)
-- [变量运行验证](../../packages/llm-flow/__tests__/variables.test.ts)：普通节点、原参数保留、运行隔离、补全后初始化、重启恢复、原子校验、重试清理、组合流程隔离、纯文本/JSON 输出。
-- [作文与子节点验证](../../packages/llm-flow/__tests__/structured-flow.test.ts)：修改后评审读取新稿，外层节点读取新变量，普通 check 写回与重启恢复。
+- [公共变量语义与调度检查点](../../backend/llm-flow/src/flow/variables.ts)
+- [普通 DAG 调度器](../../backend/llm-flow/src/flow/executor.ts)
+- [结构化路由提交](../../backend/llm-flow/src/flow/structured/dispatch.ts)
+- [模板引用](../../backend/llm-flow/src/contracts/flow-templates.ts)
+- [变量运行验证](../../backend/llm-flow/__tests__/variables.test.ts)：普通节点、原参数保留、运行隔离、补全后初始化、重启恢复、原子校验、重试清理、组合流程隔离、纯文本/JSON 输出。
+- [作文与子节点验证](../../backend/llm-flow/__tests__/structured-flow.test.ts)：修改后评审读取新稿，外层节点读取新变量，普通 check 写回与重启恢复。
 
 启动安装、恢复、草稿校验和发布共用 `createFlowRevision` 转换，保留 variables 与节点 assign，避免校验入口漏传声明。内置模板安装回归通过实际 DagCommandService 命令覆盖首次安装、保存发布、重复安装保留用户改动、删除后显式恢复，以及未声明变量的拒绝。

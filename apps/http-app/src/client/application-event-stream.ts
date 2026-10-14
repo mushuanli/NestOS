@@ -1,4 +1,4 @@
-import type { ApplicationEvent } from '@itookit/app-core/application/contracts';
+import type { ApplicationEvent } from '@itookit/app-contracts/application';
 
 interface EventSourceLike {
     onmessage: ((event: MessageEvent<string>) => void) | null;

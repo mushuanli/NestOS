@@ -22,7 +22,7 @@ CLI（desktop profile）、Tauri 和 HTTP 存储宿主启动时，如果配置�
 }
 ```
 
-三个宿主共用 `packages/app-core/src/profile/default-profile.json`，均将 `XDG_CONFIG_HOME` 视为配置基目录，并在其下使用 `mindos/`。可选的 `homeDir` 只在用户希望固定项目目录时填写。
+三个宿主共用 `backend/app-core/src/profile/default-profile.json`，均将 `XDG_CONFIG_HOME` 视为配置基目录，并在其下使用 `mindos/`。可选的 `homeDir` 只在用户希望固定项目目录时填写。
 
 HTTP 存储宿主通过 `@itookit/app-core/profile` 公开子入口复用配置默认值和数据根解析；该入口可独立打包，无需加载应用 Runtime。
 
@@ -137,8 +137,8 @@ CLI `-p` 默认启用 Read/Glob/Grep 和客户端 WebSearch；Responses 协议�
 - `run/resume/respond/cancel` 必须先获得 Session lease；
 - 如果 owner 已存在，CLI 明确报错，只允许 `status/logs/runs/tasks/export-config` 等只读命令；
 - lease 默认 60 秒过期，执行方每 10 秒 renew；
-- Tauri 启动时只恢复能成功获取 lease 的 Session，已被 CLI 持有的 Session 保持只读；**「只读」自 2026-09-11（第六十四轮）起是强制的**：应用运行时把租约检查作为写入门（`createApplicationRuntime` 的 `ensureWritable` → `recovery.acquireLater`，经 `initializeConversationSystem` 的 `canWriteSession` 进入 `SessionManager.sendMessage`），被拒的 Session 在**追加 round 之前**就以 `Session is owned by another host; this host can only read it` 拒绝发送，因此同一数据根上的第二个宿主不会再和持有者竞争写入；本宿主新建的 Session 在首次发送时按需取租约（回归 `packages/llm-session/__tests__/session-write-gate.test.ts`、`packages/app-core/tests/session-recovery.test.ts`）。
-- 跨主机共享同一数据根时用 `MINDOS_SESSION_LEASE_SKEW_MS`（或宿主的 `sessionLeaseSkewMs` 选项，默认 0）声明允许的时钟误差：接管要求旧租约 `leaseUntil + skewMs` 已过，避免快时钟主机抢走慢时钟主机的活租约（回归 `packages/app-core/tests/session-lease.test.ts`）。
+- Tauri 启动时只恢复能成功获取 lease 的 Session，已被 CLI 持有的 Session 保持只读；**「只读」自 2026-09-11（第六十四轮）起是强制的**：应用运行时把租约检查作为写入门（`createApplicationRuntime` 的 `ensureWritable` → `recovery.acquireLater`，经 `initializeConversationSystem` 的 `canWriteSession` 进入 `SessionManager.sendMessage`），被拒的 Session 在**追加 round 之前**就以 `Session is owned by another host; this host can only read it` 拒绝发送，因此同一数据根上的第二个宿主不会再和持有者竞争写入；本宿主新建的 Session 在首次发送时按需取租约（回归 `backend/llm-session/__tests__/session-write-gate.test.ts`、`backend/app-core/tests/session-recovery.test.ts`）。
+- 跨主机共享同一数据根时用 `MINDOS_SESSION_LEASE_SKEW_MS`（或宿主的 `sessionLeaseSkewMs` 选项，默认 0）声明允许的时钟误差：接管要求旧租约 `leaseUntil + skewMs` 已过，避免快时钟主机抢走慢时钟主机的活租约（回归 `backend/app-core/tests/session-lease.test.ts`）。
 
 ## Tauri / CLI 运行日志
 

@@ -560,12 +560,12 @@ HTTP 浏览器构建图不能包含执行 Runtime、Node 存储和服务端凭�
 | 迁移状态与验收证据 | [边界审查记录](application-host-boundaries.md) |
 | 应用策略与机制 | [应用策略边界](application-policy-boundaries.md) |
 | 宿主与协议 | [HTTP 应用说明](../http-app.md)、[运行时架构](../runtime-architecture.md) |
-| 应用契约与所有权 | [contracts](../../packages/app-core/src/application/contracts.ts)、[host](../../packages/app-core/src/application/host.ts)、[local](../../packages/app-core/src/application/local.ts) |
-| 回执与事件 | [receipts](../../packages/app-core/src/application/receipts.ts)、[HTTP events](../../apps/http-app/src/server/application-events.ts) |
-| 初始化策略与机制 | [startup-policy](../../packages/app-core/src/runtime/startup-policy.ts)、[startup-coordinator](../../packages/app-core/src/runtime/startup-coordinator.ts) |
-| 原主工作台与会话浏览 | [SessionWorkbench](../../packages/app-shell/src/projects/SessionWorkbench.ts)、[session-browser](../../packages/app-core/src/session/session-browser.ts) |
-| 文件与挂载迁移点 | [project-file-editor](../../packages/app-shell/src/projects/project-file-editor.ts)、[mount-dialog](../../packages/app-shell/src/files/mount-dialog.ts)、[file-backend](../../packages/app-shell/src/application/file-backend.ts)、[workbench-adapter](../../packages/app-shell/src/application/workbench-adapter.ts) |
-| 现有远端控制与会话管理 | [Harness 控制面板](../../packages/app-shell/src/harness/control.ts)、[remote-session-management](../../packages/app-core/src/session/remote-session-management.ts) |
+| 应用契约与所有权 | [contracts](../../backend/app-core/src/application/contracts.ts)、[host](../../backend/app-core/src/application/host.ts)、[local](../../backend/app-core/src/application/local.ts) |
+| 回执与事件 | [receipts](../../backend/app-core/src/application/receipts.ts)、[HTTP events](../../apps/http-app/src/server/application-events.ts) |
+| 初始化策略与机制 | [startup-policy](../../backend/app-core/src/runtime/startup-policy.ts)、[startup-coordinator](../../backend/app-core/src/runtime/startup-coordinator.ts) |
+| 原主工作台与会话浏览 | [SessionWorkbench](../../ui/app-shell/src/projects/SessionWorkbench.ts)、[session-browser](../../backend/app-core/src/session/session-browser.ts) |
+| 文件与挂载迁移点 | [project-file-editor](../../ui/app-shell/src/projects/project-file-editor.ts)、[mount-dialog](../../ui/app-shell/src/files/mount-dialog.ts)、[file-backend](../../ui/app-shell/src/application/file-backend.ts)、[workbench-adapter](../../ui/app-shell/src/application/workbench-adapter.ts) |
+| 现有远端控制与会话管理 | [Harness 控制面板](../../ui/app-shell/src/harness/control.ts)、[remote-session-management](../../backend/app-core/src/session/remote-session-management.ts) |
 
 以下是待实现模块，不作为当前源码链接：`workbench-backend.ts`（会话工作台窄端口）、`files-view.ts`（持续授权文件视图）、`harness-client.ts`（应用端口客户端）、`harness-runtime.ts` 与 `harness.ts`（宿主 Harness 适配及生命周期）。具体文件组织可随实施调整，落地后再加入上表。
 

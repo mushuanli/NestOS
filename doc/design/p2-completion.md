@@ -39,7 +39,7 @@
 
 对来源扫描、支持文件读取、动态工具注册、身份提交、订阅建立分别注入延迟，与 load/unload、cwd 切换、来源撤销、Session 关闭、运行时销毁/重建交错。旧作用域不能发布到新实例；关闭必须等待已开始操作，拒绝排队操作；不同 Session 不相互阻塞；恢复失败可重试且不能残留部分扩权。
 
-身份写入仅重试 Kernel `CONFLICT`，其他提交前/后错误立即报告。自动加载回滚必须同时保留持久化与清理错误。当前回归入口为 `packages/kernel-adapters/src/skill/loaded-state.test.ts`、`prompt-context.test.ts`、`session-skill-close.test.ts` 与 runtime 测试；这些不替代完整版本和自动委派验收。
+身份写入仅重试 Kernel `CONFLICT`，其他提交前/后错误立即报告。自动加载回滚必须同时保留持久化与清理错误。当前回归入口为 `backend/kernel-adapters/src/skill/loaded-state.test.ts`、`prompt-context.test.ts`、`session-skill-close.test.ts` 与 runtime 测试；这些不替代完整版本和自动委派验收。
 
 ## 3. P2-02 跨 Session Memory
 

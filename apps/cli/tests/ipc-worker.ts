@@ -1,13 +1,13 @@
 // Executed in an independent OS process by 20-kernel-ipc.test.ts.
 import { open, readFile } from 'node:fs/promises';
-import { ManagedResourceStore } from '../../../packages/durable-kernel/src/infrastructure/seqfile/managed-resources';
-import type { ManagedResourceAdapter, ResourceCleanup } from '../../../packages/durable-kernel/src/domain/resource-api';
+import { ManagedResourceStore } from '../../../backend/durable-kernel/src/infrastructure/seqfile/managed-resources';
+import type { ManagedResourceAdapter, ResourceCleanup } from '../../../backend/durable-kernel/src/domain/resource-api';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { LocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeFsOps } from '@itookit/vfsdriver-local/node';
-import { Kernel } from '../../../packages/durable-kernel/src/application/kernel';
-import { SeqFileKernelStore } from '../../../packages/durable-kernel/src/infrastructure/seqfile/store';
-import { addEffect } from '../../../packages/durable-kernel/src/application/effect-utils';
+import { Kernel } from '../../../backend/durable-kernel/src/application/kernel';
+import { SeqFileKernelStore } from '../../../backend/durable-kernel/src/infrastructure/seqfile/store';
+import { addEffect } from '../../../backend/durable-kernel/src/application/effect-utils';
 
 let crashOnRename = false;
 class CrashFs extends NodeFsOps {

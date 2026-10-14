@@ -16,8 +16,8 @@ join 的 mode 支持 all/any/first-success/quorum。any 等待首个终态；fir
 
 当前 taskGroup 是静态图分组：直接成员必须为普通节点，并连接同一个 join。它不提供独立的组级 Kernel 生命周期、动态 map、嵌套 taskGroup、重叠 loop 或独立 subRun；这些仍是扩展边界，不能据此认为 Harness 的所有资源与生命周期能力均已覆盖。loop 编译使用整个强连通分量，包含并行路径；各轮等待前轮成员结束，并使用同轮数据绑定。
 
-[作文评审模板](../../packages/app-core/src/presets/essay-review-isolated.json) 已迁移为 loop → taskGroup → 四个普通 Agent → join → aggregate → route，改写也使用普通 Agent。Agent 的隔离调用保留 system 指令并排除会话历史。评审与改写使用 JSON Schema 和三次输出修复；达到评分条件或轮数上限后转入报告。
+[作文评审模板](../../backend/app-core/src/presets/essay-review-isolated.json) 已迁移为 loop → taskGroup → 四个普通 Agent → join → aggregate → route，改写也使用普通 Agent。Agent 的隔离调用保留 system 指令并排除会话历史。评审与改写使用 JSON Schema 和三次输出修复；达到评分条件或轮数上限后转入报告。
 
-实现：[控制图编译](../../packages/llm-flow/src/flow/control/graph.ts)、[插件](../../packages/llm-flow/src/flow/control/plugins.ts)、[join Program](../../packages/llm-flow/src/flow/control/join-program.ts)、[并发调度](../../packages/llm-flow/src/flow/control/scheduling.ts)。
+实现：[控制图编译](../../backend/llm-flow/src/flow/control/graph.ts)、[插件](../../backend/llm-flow/src/flow/control/plugins.ts)、[join Program](../../backend/llm-flow/src/flow/control/join-program.ts)、[并发调度](../../backend/llm-flow/src/flow/control/scheduling.ts)。
 
-验证：[原生控制节点测试](../../packages/llm-flow/__tests__/control-flow.test.ts) 覆盖实际并发、提前汇合、剩余任务策略、失败与 quorum、结果丢弃、并行循环及模板多轮执行。旧图兼容测试使用冻结的旧模板。
+验证：[原生控制节点测试](../../backend/llm-flow/__tests__/control-flow.test.ts) 覆盖实际并发、提前汇合、剩余任务策略、失败与 quorum、结果丢弃、并行循环及模板多轮执行。旧图兼容测试使用冻结的旧模板。

@@ -40,9 +40,9 @@ test('public root, contracts and CSS aliases are exact and follow package export
 test('applications must declare workspace dependencies and installed links resolve to sources', t => {
     const root = fixture(t), catalog = [{ name: '@itookit/core', directory: 'core' }];
     packageAt(root, 'libraries', 'core', { name: '@itookit/core', exports: { '.': './src/index.ts' } });
-    packageAt(root, 'packages', 'host', { name: '@itookit/host', dependencies: { '@itookit/core': '1.0.0' } });
+    packageAt(root, 'ui', 'host', { name: '@itookit/host', dependencies: { '@itookit/core': '1.0.0' } });
     assert.match(checkWorkspace(root, { catalog })[0], /must use workspace:\*/);
-    packageAt(root, 'packages', 'host', { name: '@itookit/host', dependencies: { '@itookit/core': 'workspace:*' } });
+    packageAt(root, 'ui', 'host', { name: '@itookit/host', dependencies: { '@itookit/core': 'workspace:*' } });
     assert.deepEqual(checkWorkspace(root, { catalog }), []);
     assert.match(checkWorkspace(root, { catalog, installed: true })[0], /cannot resolve/);
 });

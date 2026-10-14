@@ -35,17 +35,17 @@
 | 当前代码 | 可复用基础及限制 |
 | --- | --- |
 | [vfs-sync](https://github.com/mushuanli/vfs-sync/blob/main/src/index.ts) | 已有文件比较／计划、冲突选择、命令序列、FileSync 及端口；包含有界文本三方合并；不含会话合并 |
-| [ProjectSyncService](../../packages/app-core/src/projects/sync/service.ts) | 可注入项目用例、策略 revision、解绑收尾及运行时关闭；宿主需提供持久项目到 session 映射 |
-| [ProjectService](../../packages/app-core/src/projects/project-service.ts) | 稳定项目 ID、目录绑定和项目视图；openFiles 会组合挂载，不能直接把该视图全部递归复制 |
-| [ProjectRemoteMountService](../../packages/app-core/src/projects/remote-mounts.ts) | 连接、凭据引用、项目授权和可用状态；同步关系需要独立记录 |
-| [SessionFilesService](../../packages/app-core/src/vfs/session-files.ts) | 授权 revision、cwd、派生视图撤销和挂载守卫；该 revision 不代表目录内容版本 |
+| [ProjectSyncService](../../backend/app-core/src/projects/sync/service.ts) | 可注入项目用例、策略 revision、解绑收尾及运行时关闭；宿主需提供持久项目到 session 映射 |
+| [ProjectService](../../backend/app-core/src/projects/project-service.ts) | 稳定项目 ID、目录绑定和项目视图；openFiles 会组合挂载，不能直接把该视图全部递归复制 |
+| [ProjectRemoteMountService](../../backend/app-core/src/projects/remote-mounts.ts) | 连接、凭据引用、项目授权和可用状态；同步关系需要独立记录 |
+| [SessionFilesService](../../backend/app-core/src/vfs/session-files.ts) | 授权 revision、cwd、派生视图撤销和挂载守卫；该 revision 不代表目录内容版本 |
 | [HTTP capabilities](https://github.com/mushuanli/piagent-driver/blob/main/src/files/capabilities.ts) | 客户端目前只解析 sync.push；需要独立读取 /v1/sync/capabilities，不能由一个布尔值推导同步保证 |
 | [HttpFSBackend](https://github.com/mushuanli/piagent-driver/blob/main/src/files/backend.ts) | 条件替换、Range 读取、操作结果查询；删除和重命名目前没有相同的版本条件 |
 | [pi-agent revision](../../tools/pi-agent/src/fs/revision.rs) | 服务生命周期内的文件身份凭证，不能作为内容摘要；命令后会使凭证失效 |
 | [pi-agent router](../../tools/pi-agent/src/http/mod.rs) 与 [同步传输](../../tools/pi-agent/src/sync/transport.rs) | 已有 /v1/sync 的项目、数据集、对象、发布、catalog、changes、回执、历史及恢复接口；同一实例可同时提供普通 export 与同步存储 |
-| [SessionBundle](../../packages/app-core/src/session/session-bundle.ts) | 格式版本、历史和附件交换；导入创建新身份，导出没有跨多个读取的快照边界 |
-| [RoundGraphService](../../packages/llm-session/src/persistence/round-graph-service.ts) | 已有历史父引用和分支 head；输出、状态、执行引用及删除标记仍可原地更新，Round ID 不是不可变内容身份 |
-| [SessionLeaseStore](../../packages/app-core/src/kernel/session-lease.ts) | 基于共享 SeqFile 事务的单写者租约；复制租约记录不能实现跨副本互斥 |
+| [SessionBundle](../../backend/app-core/src/session/session-bundle.ts) | 格式版本、历史和附件交换；导入创建新身份，导出没有跨多个读取的快照边界 |
+| [RoundGraphService](../../backend/llm-session/src/persistence/round-graph-service.ts) | 已有历史父引用和分支 head；输出、状态、执行引用及删除标记仍可原地更新，Round ID 不是不可变内容身份 |
+| [SessionLeaseStore](../../backend/app-core/src/kernel/session-lease.ts) | 基于共享 SeqFile 事务的单写者租约；复制租约记录不能实现跨副本互斥 |
 
 现有执行边界见 [pi-agent 与 Harness](agent-server.md)，文件协议见 [HTTP 外挂文件系统](vfs-http-driver.md)，会话持久化见 [llm-session API](../llm-session-api.md)。本文新增独立同步协议，不改变已有文件接口的语义。
 
@@ -641,7 +641,7 @@ files 数据集必须排除受协议管理的 .mindos 子树，sessions 和 orga
 
 ### 18.3 当前存储不能直接靠目录复制迁移
 
-当前 [Session 存储布局](../../packages/llm-session/src/persistence/session-storage-layout.ts) 将会话放在 MindOS 的 /var/lib/sessions 下，Kernel 记录位于该会话的 kernel 子目录。项目草稿和收藏位于 /var/lib/projects 下，成员关系在共享 folders.seq 中，SessionFilesService 还直接引用会话 session.seq 路径。
+当前 [Session 存储布局](../../backend/llm-session/src/persistence/session-storage-layout.ts) 将会话放在 MindOS 的 /var/lib/sessions 下，Kernel 记录位于该会话的 kernel 子目录。项目草稿和收藏位于 /var/lib/projects 下，成员关系在共享 folders.seq 中，SessionFilesService 还直接引用会话 session.seq 路径。
 
 更关键的是 [LocalFSBackend](https://github.com/mushuanli/vfsdriver-local/blob/main/AGENTS.md) 将 SeqFile 记录和元数据放在 SQLite sidecar 中。目录里有 session.seq 并不代表完整记录就在该文件字节中；复制目录或单独复制某个 SQLite 文件都不是可移植会话协议。浏览器 IndexedDB 同样需要通过逻辑读取导出。
 
@@ -796,7 +796,7 @@ S1 固定以 IndexedDB 受管 VFS 为首个完整后端。源码 [IndexedDBBacke
 
 预览和 execute 分别取得并释放协调权，等待用户决策不持锁；设置流程同时协调 setup 与 binding，解绑、策略修改使用同样的守卫。旧任务已发送的云端请求仍可能提交，接管者必须先恢复持久 pending 命令，按原 epoch、replicaId、opSeq 查询或重试，不跳过序号、不猜测失败。Web Locks 可作为显式选用的宿主协调实现，但默认网页同步不依赖安全上下文提供它。
 
-两个后端共用 sync-adapters 的 `SeqControl`、状态校验与计划编解码、`LeaseCoordinator`、租约格式及 `CachedFileLocal`。IndexedDB 保留原生应用事务；local 提供 `LocalSyncStore` 和 `createLocalSyncSession`，从独立 `/local` 入口加载 Node 文件能力。vfsdriver-local 只新增通用 `storageAccess()`、可选 FULL 持久性报告与忙锁异步等待，不依赖 vfs-sync 或同步适配。local 的 `applyPending` journal 保存固定绑定 token、目录身份、输入状态、对象引用、备份和安装证据；每项成功后与资源基线共同确认，接管与恢复仍核对全部守卫。详见 [适配使用与能力边界](../../packages/sync-adapters/README.md)。
+两个后端共用 sync-adapters 的 `SeqControl`、状态校验与计划编解码、`LeaseCoordinator`、租约格式及 `CachedFileLocal`。IndexedDB 保留原生应用事务；local 提供 `LocalSyncStore` 和 `createLocalSyncSession`，从独立 `/local` 入口加载 Node 文件能力。vfsdriver-local 只新增通用 `storageAccess()`、可选 FULL 持久性报告与忙锁异步等待，不依赖 vfs-sync 或同步适配。local 的 `applyPending` journal 保存固定绑定 token、目录身份、输入状态、对象引用、备份和安装证据；每项成功后与资源基线共同确认，接管与恢复仍核对全部守卫。详见 [适配使用与能力边界](../../backend/sync-adapters/README.md)。
 
 局域网 HTTP 页面缺少 crypto.subtle/randomUUID 时，vfs-sync 使用相同 SHA-256 算法的可移植实现，并通过 crypto.getRandomValues 生成 UUID v4；Web Crypto 可用时继续使用原生摘要，原生调用失败不隐式降级。缺少安全随机源时拒绝生成身份，不使用 Math.random。此支持不改变 HTTP 传输本身的安全属性。
 

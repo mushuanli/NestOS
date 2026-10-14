@@ -5,9 +5,10 @@ import { fileURLToPath } from 'node:url';
 import { builtinModules } from 'node:module';
 import ts from 'typescript';
 import { libraries } from './npm-libraries.mjs';
+import { WORKSPACE_GROUPS } from './workspace-packages.mjs';
 
 const application = new Set(['@itookit/app-core', '@itookit/app-shell', '@itookit/app-settings']);
-const coreDependencies = new Set(['common', 'llm-context', 'vfs-core', 'durable-kernel', 'kernel-adapters',
+const coreDependencies = new Set(['app-contracts', 'common', 'llm-context', 'vfs-core', 'durable-kernel', 'kernel-adapters',
     'llm-flow', 'llm-session', 'llm-tasks', 'tools', 'driver-llm', 'vfs-sync', 'piagent-driver'].map(name => '@itookit/' + name));
 const browserGlobals = new Set(['window', 'document', 'localStorage', 'sessionStorage', 'navigator',
     'Window', 'Document', 'Element', 'Node', 'MutationObserver', 'ResizeObserver']);
@@ -51,6 +52,8 @@ function ownerOf(file, packages) {
 }
 
 export function importError(source, file, specifier, packages) {
+    if (source.name === '@itookit/app-shell' && (specifier === '@itookit/app-core' || specifier.startsWith('@itookit/app-core/')))
+        return 'frontend shell must use shared app-contracts and injected backend ports; runtime assembly belongs to hosts';
     if (specifier === '@itookit/kernel-adapters/llm' && (source.host || ['@itookit/app-core', '@itookit/app-shell'].includes(source.name)))
         return 'hosts must select explicit LLM core, presets or config entries';
     if (source.name === '@itookit/llm-ui' && file !== resolve(source.dir, 'src/settings.ts')) {
@@ -158,7 +161,7 @@ async function readPackages(root, group) {
 }
 
 export async function checkBoundaries(root) {
-    const packages = (await Promise.all(['libraries', 'packages', 'apps'].map(group => readPackages(root, group)))).flat();
+    const packages = (await Promise.all(WORKSPACE_GROUPS.map(group => readPackages(root, group)))).flat();
     for (const library of libraries) {
         if (packages.some(pkg => pkg.name === library.name)) continue;
         const dir = resolve(root, 'node_modules', library.name);

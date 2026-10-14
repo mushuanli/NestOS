@@ -1,8 +1,9 @@
 packages:
-  - packages/*
+  - ui/*
+  - backend/*
+  - shared/*
   - libraries/*
   - apps/*
-  - '!packages/mdx'
 
 onlyBuiltDependencies:
   - better-sqlite3

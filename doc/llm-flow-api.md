@@ -271,10 +271,10 @@ createBuiltinDagPluginRegistry(): DagPluginRegistry;            // 内置插件
 
 ## 源码结构：文件与路径
 
-`@itookit/llm-flow` 的公共 API 从 `packages/llm-flow/src/index.ts` 根导出（barrel 转发 `flow/index.ts`）。包内结构：
+`@itookit/llm-flow` 的公共 API 从 `backend/llm-flow/src/index.ts` 根导出（barrel 转发 `flow/index.ts`）。包内结构：
 
 ```
-packages/llm-flow/src/
+backend/llm-flow/src/
 ├── index.ts                   根导出（flow/* + FlowDefinitionStore/FlowStore/FlowFileRef/generateFlowId）
 ├── flow-definition-store.ts   FlowDefinitionStore + FlowStore + FlowFileRef + FlowDraftVersionConflictError + generateFlowId
 └── flow/
@@ -322,7 +322,7 @@ packages/llm-flow/src/
 - 下一次调度回合（`resume` 或新宿主）消费意图：把重试 Task 作为该节点的最新实例，丢弃下游各节点已提交实例（取消未终态者）、清 `completed`/`skipped`、把入边重置为 `active`（route 边回到 `pending`），并递增这些节点的提交代数 `nodeGenerations`。代数进入节点 requestId（`flow:<root>:<node>#<iteration>@<generation>`），使重算实例不会命中旧提交的 Kernel 去重，而崩溃恢复的同代重提交仍复用原 Task。
 - 要求 Run 可恢复（非终态且存在调度检查点）；已终态 Run 的根不可改写，因此拒绝。重试源的历史用量保留，已废弃下游和委派子节点从 Run 的 token 统计中扣除；工作区收尾仍由 Run 结束时统一执行。
 
-回归：`packages/llm-flow/__tests__/graph-retry.test.ts`（闭包/回边/未知节点）、`durable-flow-executor.test.ts` 的「recomputes downstream nodes after a graph retry of an upstream node」。委派组重算会清理旧成员/边并递增子节点代数，废弃的已完成下游与委派子节点退还 Run 内的 token 统计；这不撤销供应商实际费用。另有预算退款、委派组重算及隔离工作区恢复复用的回归。UI 图级 retry 入口已接线并有 DOM 回归，真实窗口结果收敛提示仍需验收。
+回归：`backend/llm-flow/__tests__/graph-retry.test.ts`（闭包/回边/未知节点）、`durable-flow-executor.test.ts` 的「recomputes downstream nodes after a graph retry of an upstream node」。委派组重算会清理旧成员/边并递增子节点代数，废弃的已完成下游与委派子节点退还 Run 内的 token 统计；这不撤销供应商实际费用。另有预算退款、委派组重算及隔离工作区恢复复用的回归。UI 图级 retry 入口已接线并有 DOM 回归，真实窗口结果收敛提示仍需验收。
 
 并发重试的人工交互按具体 Task 匹配：`dag.run.respond` 接受可选 `targetTaskId`，先刷新持久成员清单并校验目标属于当前 Run；省略目标时，仅在所有成员中恰有一个同名 pending 请求时回应，多于一个则报歧义。Run 面板逐 Task 展示等待请求，回应窗口固定打开时的根 Task 与目标 Task，切换 Run 不改变提交目标。指定 targetTaskId 时支持已 resolved 交互同值重放，终态 Task 也可返回已保存结果；不同值拒绝。省略目标仍只搜索 pending 请求，不猜测已完成回应的目标。
 
@@ -373,7 +373,7 @@ DagWorkbench 在 Run 未终态时为终态成员提供「重试并重算下游�
 导出最多 10,000 条 Effect（含末页），越界、非递增/非法游标、空页却有后续游标、任务身份或版本不符、返回截断数据均报错，不下载不完整文件。此限制不是字节上限，单个交换仍可能很大；分页依然从完整 Task 记录读取。真实 Kernel 重开与命令服务回归覆盖 101 个交换的两页导出、固定版本及 300 KB 原始响应，UI 文件通过浏览器下载接口交付；不替代各平台真实文件保存验收。
 
 
-新调度检查点包含 `catalog` 契约快照（插件清单及 schema，含动态解析项）；恢复拒绝同 id/version 的清单或 schema 漂移，且不改写 Task。对象键顺序不构成漂移。旧检查点无快照时继续按宿主定义恢复。快照不包含可执行代码，宿主仍须保留旧版本插件的不可变实现。相关回归：`packages/llm-flow/__tests__/run-catalog.test.ts` 和 `durable-flow-executor.test.ts`。
+新调度检查点包含 `catalog` 契约快照（插件清单及 schema，含动态解析项）；恢复拒绝同 id/version 的清单或 schema 漂移，且不改写 Task。对象键顺序不构成漂移。旧检查点无快照时继续按宿主定义恢复。快照不包含可执行代码，宿主仍须保留旧版本插件的不可变实现。相关回归：`backend/llm-flow/__tests__/run-catalog.test.ts` 和 `durable-flow-executor.test.ts`。
 
 
 调度租约到期后 assertOwned 拒绝继续推进，心跳不续活过期记录。Flow 的节点提交、共享状态和根信号附带同事务的共享租约条件，旧 owner/epoch 的写入返回失权而不执行 Run 失败清理。工作区 finalization 的完成状态持久化前保持租约，waitIdle 包含此收尾；不保证强制终止任意宿主回调。完整支持边界见[ P1 过渡设计](design/p1-transition.md)。
@@ -394,7 +394,7 @@ DagWorkbench 在 Run 未终态时为终态成员提供「重试并重算下游�
 
 `builtin.route@2.0.0` 是普通 DAG 节点：显式 branches 模板、input/prompt/history 策略、maxRounds/maxConcurrency 和 until；每轮通过 Kernel spawn 独立 Task，校验后按 key 保留各类型最新结果。默认不继承上下文，也不发布子 Task 事件到主会话。输出端口为 result。
 
-`builtin.aggregate@1.0.0` 将 previous/updates 按键合并输出 result。节点 outputPolicy 可分别配置 includeInRunOutput/publishToHistory。完整参数与限制见 [结构化派发](design/essay-review-flow.md)；可运行示例见 [作文评审 .flow](../packages/app-core/src/presets/essay-review-isolated.json)。旧 route@1 和回边循环行为保留。
+`builtin.aggregate@1.0.0` 将 previous/updates 按键合并输出 result。节点 outputPolicy 可分别配置 includeInRunOutput/publishToHistory。完整参数与限制见 [结构化派发](design/essay-review-flow.md)；可运行示例见 [作文评审 .flow](../backend/app-core/src/presets/essay-review-isolated.json)。旧 route@1 和回边循环行为保留。
 
 运行参数支持 `minimum` / `maximum` / `integer`。`flowToDag` 将参数声明保存为 `DagRunSpec.parameterSchema`；`prepareFlowParameters` 合并默认值并校验，执行器在创建 Task 前调用。route@2 的 maxRounds/maxConcurrency 可使用完整参数模板，运行时保持 number 类型。详见 [参数契约](design/essay-review-flow.md)。
 

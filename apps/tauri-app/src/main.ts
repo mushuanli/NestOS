@@ -1,3 +1,5 @@
+import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
+import { createLocalBackendPort, bindLocalApplicationServices } from '@itookit/app-core/host';
 import { createMindosFlowLibrary } from '@itookit/app-core';
 import { createPiAgentDriver } from '@itookit/piagent-driver';
 import { createTauriMCPTransport } from './shell/tauri-mcp-transport';
@@ -365,7 +367,9 @@ async function bootstrap(): Promise<void> {
         console.log('[Boot] VFS trace enabled -> var/log/vfs-trace.log');
     }
     const app = await initApp({
-        runtime,
+        fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) },
+        localBackend: createLocalBackendPort(),
+        services: bindLocalApplicationServices(runtime),
         workspaces: WORKSPACES.map(ws => ws.workspaceName === 'home' ? { ...ws, files: { fs: homeSource.fs, cwd: '/' } } : ws),
         defaultSlug: 'chat',
         routeAliases: { home: 'llm-workspace', projects: 'llm-workspace', workbench: 'llm-workspace' },

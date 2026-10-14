@@ -1,9 +1,9 @@
 import { shellOutputChannel } from './shell-output-channel';
 import { invoke } from '@tauri-apps/api/core';
-import type { AppKernelPlatform } from '@itookit/app-shell';
+import type { ApplicationKernelPlatform } from '@itookit/app-core';
 import { randomUUID } from '@itookit/common';
 
-type Factory = NonNullable<AppKernelPlatform['createSessionProcesses']>;
+type Factory = NonNullable<ApplicationKernelPlatform['createSessionProcesses']>;
 
 /** Only explicit Session mounts are translated into native directory handles. */
 export function createTauriSessionProcesses(rootDir: string): Factory {

@@ -198,6 +198,8 @@ export interface WorkbenchConfig {
     scopeId?: string;
     editorFactory?: EditorFactory;
     editorConfig?: Partial<EditorOptions> & {
+        refreshFileMetadata?: boolean;
+        canCreateEntries?: boolean;
         mentionScope?: string[];
     };
     onNavigate?: (request: NavigationRequest) => Promise<void>;

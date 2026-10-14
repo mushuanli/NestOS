@@ -14,11 +14,9 @@ export async function startApplicationClient(onProgress: (message: string) => vo
         write: (id, draft) => { sessionStorage.setItem(`mindos:draft:${identity}:${id}`, JSON.stringify(draft)); },
     };
     return initApp({ application, drafts, workspaces: WORKSPACES, defaultSlug: 'chat', onProgress, presentation: {
-        file: async (container, options) => {
-            const { createMDxEditor } = await import('@itookit/mdxeditor');
-            return createMDxEditor(container, { documentPath: options.path, title: options.title,
-                initialContent: options.content, onSave: options.save, locale: 'zh-CN' });
-        },
+        file: async (container, options) => (await import('@itookit/mdx-adapter')).defaultEditorFactory(container, {
+            ...options, files: undefined, plugins: ['-ui:asset-manager'],
+        }),
         conversation: async (container, controls, options) => (await import('@itookit/llm-ui/conversation')).createConversationEditor(container, controls, options),
     } });
 }

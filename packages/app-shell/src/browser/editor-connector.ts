@@ -24,6 +24,8 @@ export interface ConnectOptions<Node extends VFSNodeUI = VFSNodeUI> {
     sidebarContainer?: HTMLElement;
     emptyMessage?: string;
     workbenchState?: WorkbenchStatePort;
+    refreshFileMetadata?: boolean;
+    canCreateEntries?: boolean;
     [key: string]: any;
 }
 interface OpenView { node: VFSNodeUI; editor?: IEditor; lease?: EditorLease; cancel?: () => void }
@@ -69,7 +71,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
     }
     async function persist(path: string, content: string): Promise<void> {
         await engine.driver.writeContent(path, content);
-        if (fileContentFormat(path).contentFormat !== 'markdown') return;
+        if (options.refreshFileMetadata === false || fileContentFormat(path).contentFormat !== 'markdown') return;
         try { const { metadata, summary } = parseFileInfo(content); await engine.driver.updateMetadata(path, { ...metadata, _summary: summary }); }
         catch (error) { console.error('[EditorConnector] Metadata refresh failed:', error); }
     }
@@ -103,8 +105,8 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
             contextMenu: (event, id) => { void vfs.showItemMenu(event, id).catch(report); }, select: ids => vfs.setSelection(ids),
             selectedIds: () => vfs.getSnapshot().selectedIds,
             bulkActions: directoryBulkActions(vfs),
-            actions: readOnly ? undefined : [{ label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, run: () => { void createEntry(item.id, 'file').catch(report); } },
-                { label: t('project.createFolder'), icon: FILE_BROWSER_ICONS.addFolder, run: () => { void createEntry(item.id, 'directory').catch(report); } }],
+            actions: readOnly ? undefined : [{ label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'file').catch(report); } },
+                { label: t('project.createFolder'), icon: FILE_BROWSER_ICONS.addFolder, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'directory').catch(report); } }],
             open: id => { void vfs.selectPath(id).catch(report); },
             parent: item.id === '/' ? undefined : () => { void (parent === '/' ? openDirectory(parent) : vfs.selectPath(parent)).catch(report); },
             refresh: () => directoryEntries(item.id).catch(error => { report(error); throw error; }) }));
@@ -121,7 +123,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
             const mount = document.createElement('div'); mount.className = 'session-editor-mount'; tab.panel.replaceChildren(mount);
             if (isBinaryViewable(mime)) { const editor = new MediaViewerEditor(mime); await editor.init(mount, raw); view.editor = editor; }
             else {
-                const text = typeof raw === 'string' ? raw : raw instanceof ArrayBuffer ? new TextDecoder().decode(raw) : '';
+                const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
                 const createEditor = resolveEditor?.(item) ?? factory;
                 if (!createEditor) throw new Error('No suitable editor factory found.');
                 view.editor = await createEditor(mount, { ...extra, ...fileContentFormat(item.id), files, signal: load.signal,

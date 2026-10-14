@@ -23,7 +23,8 @@
     "@itookit/vfsdriver-local": "workspace:*",
     "mind-os": "workspace:*",
     "@codemirror/state": "^6.5.2",
-    "@codemirror/view": "^6.38.8"
+    "@codemirror/view": "^6.38.8",
+    "@itookit/mdx-adapter": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

@@ -31,7 +31,7 @@ export class Workbench {
 
         const scopeId = config.scopeId || this.engine.viewId;
 
-        const root = document.createElement('button'); root.type = 'button'; root.className = 'workbench-root'; root.textContent = t('project.files');
+        const root = document.createElement('button'); root.type = 'button'; root.className = 'workbench-root'; root.textContent = config.uiOptions?.title ?? t('project.files');
         root.onclick = () => { void this.openDirectory('/'); };
         this.vfsUI = createVFSUI(
             {
@@ -49,7 +49,7 @@ export class Workbench {
                 showFileExtensions: config.showFileExtensions ?? true,
                 activateDirectories: true, autoSelectFirst: false, listHeader: root,
                 listItems: config.uiOptions?.listItems,
-                rowCreation: { visible: () => true, run: (node, type) => this.createInDirectory(node.id, type) },
+                rowCreation: config.uiOptions?.rowCreation ?? { visible: () => config.uiOptions?.readOnly !== true, run: (node, type) => this.createInDirectory(node.id, type) },
             },
             this.engine
         ) as VFSUIShell;
@@ -230,6 +230,8 @@ export class Workbench {
         await this.lifecycleUnsubscribe.setVisible(visible);
         if (visible) await this.vfsUI.refresh();
     }
+
+    public refresh(): Promise<void> { return this.vfsUI.refresh(); }
 
     public async destroy(): Promise<void> {
         this.dialogs.abort();

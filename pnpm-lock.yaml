@@ -167,6 +167,9 @@ importers:
       '@itookit/llm-ui':
         specifier: workspace:*
         version: link:../../packages/llm-ui
+      '@itookit/mdx-adapter':
+        specifier: workspace:*
+        version: link:../../packages/mdx-adapter
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor

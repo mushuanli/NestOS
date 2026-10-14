@@ -34,6 +34,10 @@ flowchart LR
 
 ## 当前接入范围
 
+HTTP 文件与会话工作区复用 app-shell 的 `Workbench`、VFSUIShell、WorkbenchTabs、WorkbenchSidebar 和默认 MDX 编辑器，不再保留简化 ApplicationWorkbench。`application/workbench-adapter.ts` 只连接具名应用端口与编辑器工厂；`application/file-backend.ts` 将已授权工作区文件和会话导航投影为展示文件源，不创建 LLM/Kernel 执行 Runtime，也不访问原始 HTTP VFS 存储协议。
+
+标题栏、标签页预览/固定/关闭、打开项列表与侧栏布局使用既有组件；支持文件读取/保存、会话创建和聊天。目录创建、文件创建、导入、导出等尚未接入的工具栏按钮保留并禁用，结构修改和标签写入也明确拒绝，不用假成功代替实现。项目选择、归档、挂载、收藏与完整任务检查仍由原 SessionWorkbench 保留，目前没有通过 HTTP 暴露。
+
 新入口覆盖基本文件工作区、会话浏览、历史、发送、停止和人工交互端口。设置、工具箱、数字分身及完整 Flow 工作区尚未迁移，不能把本轮基础端口接入视为完整 UI 功能迁移；未声明的工作区不显示入口。支持新工作区时由宿主注册 renderer，并扩展应用能力契约，不在通用 vfs-ui / llm-ui 内添加 HTTP 分支。
 
 HTTP 浏览器不再使用旧的 HttpStorageBackend 初始化执行 Runtime，也不根据服务端模式切换旧入口。对外 `/api/vfs` 在应用宿主模式下拒绝访问；原始存储服务继续隔离在 loopback 内部监听，保留存储协议测试。
@@ -55,6 +59,8 @@ pnpm --filter @itookit/http-app start
 LLM、项目与会话初始化在服务器本地执行。预热减少浏览器刷新时的等待，但冷启动仍可能等待宿主就绪；依赖某项能力的访问等待该能力的 readiness。多个宿主访问同一 profile 时仍遵守 Session 租约，不能绕过其他宿主的写所有权。
 
 ## 验证
+
+共享工作台回归见 `packages/app-shell/tests/application-workbench.test.ts`：覆盖文件/会话标签切换、编辑器保留、文件 revision 保存、新建会话、目录分页、不可用操作拒绝与真实 Markdown 标题栏。
 
 认证、存储、事务和应用能力测试见 `apps/http-app/tests/`。应用测试覆盖真实 mTLS、命令回执重复送达、客户端释放/回收、会话查询与托管状态写入拒绝；事件测试覆盖重连重放、缺口、字节上限和证书撤销。
 

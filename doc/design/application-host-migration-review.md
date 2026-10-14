@@ -35,13 +35,13 @@
 | 工具箱 | 复用原 ToolboxWorkbench、Flow 菜单、OCR、资源编辑器 | catalog 全分类准备、远端发现与可见层级读取彻底分离 |
 | 设置与分身 | 原设置页面、系统只读投影及数字分身应用适配已接入 | 服务端存储概况、快照、恢复和重置 |
 | 会话工作台后端 | 原 SessionWorkbench 不再持有 Kernel 或 SessionRepository；任务检查和项目导航有窄端口 | 项目、挂载、草稿、文件句柄、远端会话与同步仍依赖具体服务 |
-| HTTP 主会话界面 | ApplicationWorkbench 支持基础聊天 | 切换回原 SessionWorkbench；当前简化组件不能作为完整迁移验收 |
+| HTTP 主会话界面 | 简化 ApplicationWorkbench 已删除，基础文件/会话复用原 Workbench 的侧栏、标签页与编辑器 | 项目与任务等能力仍保留原 SessionWorkbench 实现，尚未接入 HTTP；不作为完整迁移验收 |
 | 远端 Agent 与 MCP | 原 Agent 详情与 Harness 面板接入；远端连接由后台持有 | 原主工作台的远端会话、附件、分支和项目作用域 |
 
 ### 2.2 需要先解决的设计问题
 
 1. **服务对象与视图契约混用。** SessionWorkbenchBackend 已抽离部分用例，但仍含文件句柄、订阅和工厂；它可以作为本地装配接口，不能直接 JSON 序列化为 HTTP 契约。ProjectService、DirectoryMountService 等具体服务仍进入原工作台。
-2. **两套聊天组件并存。** HTTP 默认使用 ApplicationWorkbench，本地使用 SessionWorkbench。继续给简化组件补功能会扩大界面和行为分叉，应以原组件为唯一展示实现。
+2. **展示组件复用已开始。** HTTP 已删除 ApplicationWorkbench，复用原 Workbench 的 VFS 侧栏、保留编辑器标签页和默认标题栏。当前允许 HTTP 暂缺项目与任务相关能力，原 SessionWorkbench 实现保留；后续继续抽离领域端口并复用原组件，不新建 HTTP 专用界面。
 3. **文件路径与能力不完整。** 当前项目文件 API 使用 openFiles 的来源视图；原项目编辑器使用 openWorkspace 的 `/workspace` 视图。现有通用 files-view 适配还需补齐 readonly、条件写版本、范围读取和订阅释放，不能按浏览器配置推断真实权限。
 4. **查询隐含写入准备。** 当前 conversation 查询会调用 prepareSession，可能获取写租约。目标是历史和状态读取独立于写入门，写能力在发送、修改和任务控制时由后台检查。
 5. **领域入口集中。** LocalApplicationPort 同时处理配置、文件、会话、工具箱和分身。保留一个传输入口，但将校验、用例和投影按领域拆分。

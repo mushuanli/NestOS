@@ -1,6 +1,5 @@
 import { expect, it, vi } from 'vitest';
 import type { ApplicationPort, ApplicationEvent, ApplicationQueries } from '@itookit/app-core/application/contracts';
-import { ApplicationBrowserSource } from '../src/application/browser-source';
 import { ApplicationConversationControls, type ApplicationDraft } from '../src/application/conversation-controls';
 
 type View = ApplicationQueries['conversation']['output'];
@@ -17,17 +16,6 @@ function conversation(): View {
         snapshot: { sessionId: 'session', sessions: [], status: 'idle', isRunning: false },
         writable: true, revision: 1, hasEarlier: false, interactions: [] } as View;
 }
-it('loads one directory layer and suppresses hidden browser refreshes', async () => {
-    const fake = fakePort(), source = new ApplicationBrowserSource(fake.port, { kind: 'workspace', name: 'notes' });
-    const refresh = vi.fn(); source.subscribe(refresh);
-    await source.children(null); await source.children(null);
-    expect(fake.query).toHaveBeenCalledOnce(); expect(fake.query.mock.calls[0][0]).toBe('directory');
-    source.setVisible(false); fake.emit({ kind: 'invalidate', scope: 'files', revision: 1 });
-    expect(refresh).not.toHaveBeenCalled(); expect(fake.query).toHaveBeenCalledOnce();
-    source.setVisible(true); expect(refresh).toHaveBeenCalledOnce();
-    await source.children(null); expect(fake.query).toHaveBeenCalledTimes(2);
-    source.close(); fake.emit({ kind: 'invalidate', scope: 'files', revision: 2 }); expect(refresh).toHaveBeenCalledOnce();
-});
 it('uses events instead of idle polling and waits until a hidden conversation is visible', async () => {
     const fake = fakePort(conversation()), controls = new ApplicationConversationControls(fake.port, 'session');
     const refresh = vi.fn(); controls.subscribe(refresh); await controls.read();

@@ -18,6 +18,7 @@ src/
 │   ├── module.ts         ← 工作区能力、路由恢复、模块资源统一释放
 │   └── hitl-bridge.ts    ← Session 等待输入状态适配
 ├── browser/             ← 文件浏览器与编辑器装配、媒体预览、mention/元数据策略
+├── application/          ← 应用端口装配；HTTP 通过 workbench-adapter 复用原 Workbench，未提供能力禁用
 ├── core/
 │   └── Workbench.ts          ← 通用工作区控制器
 ├── lifecycle/            ← 可替换视图读取与订阅释放机制（不含业务策略）

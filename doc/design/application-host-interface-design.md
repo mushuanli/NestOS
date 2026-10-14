@@ -603,9 +603,16 @@ interface MaintenanceStatus {
 |---|---|
 | 顶层应用操作与事件 | [contracts](../../packages/app-core/src/application/contracts.ts) |
 | 配置签名、参数数量 | [configuration-contracts](../../packages/app-core/src/application/configuration-contracts.ts) |
-| 会话与 Flow 白名单 | [conversation-policy](../../packages/app-core/src/application/conversation-policy.ts)、[flow-policy](../../packages/app-core/src/application/flow-policy.ts) |
-| 偏好、分身与 Harness | [preference-contracts](../../packages/app-core/src/application/preference-contracts.ts)、[twin-contracts](../../packages/app-core/src/application/twin-contracts.ts)、[harness-contracts](../../packages/app-core/src/application/harness-contracts.ts) |
+| 会话白名单 | [conversation-policy](../../packages/app-core/src/application/conversation-policy.ts) |
 | 项目、草稿与同步用例 | [ProjectSessions](../../packages/app-core/src/projects/project-sessions.ts)、[draft contracts](../../packages/app-core/src/projects/drafts/contracts.ts)、[sync service](../../packages/app-core/src/projects/sync/service.ts) |
-| 文件与维护边界 | [ApplicationFiles](../../packages/app-core/src/application/files.ts)、[DirectoryMountService](../../packages/app-core/src/vfs/directory-mounts.ts)、[PreferencesMaintenance](../../packages/app-preferences/src/contracts.ts) |
+| 文件与挂载边界 | [ApplicationFiles](../../packages/app-core/src/application/files.ts)、[DirectoryMountService](../../packages/app-core/src/vfs/directory-mounts.ts) |
 
-现有接口目录由源码生成以避免遗漏；未来新增操作必须同步目标目录、权威公开类型、输入校验、操作元数据和对应消费方。
+以下模块属于规划，尚无对应源码；本文中的目标接口不代表当前已提供的应用能力。
+
+| 规划职责 | 拟议模块或契约 |
+|---|---|
+| Flow 应用白名单 | `flow-policy.ts` |
+| 偏好、分身与 Harness 应用契约 | `preference-contracts.ts`、`twin-contracts.ts`、`harness-contracts.ts` |
+| 偏好与存储维护边界 | 拟议 app-preferences 包的 PreferencesMaintenance 契约 |
+
+现有接口以以上源码为准；未来新增操作必须同步目标目录、权威公开类型、输入校验、操作元数据和对应消费方。

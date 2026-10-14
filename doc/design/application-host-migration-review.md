@@ -34,15 +34,15 @@
 | 文件工作区 | HTTP 复用原 Workbench、文件编辑器、标签和 UI 状态 | 文件聊天、部分 AI 动作；文件版本与能力透传复核 |
 | 工具箱 | 复用原 ToolboxWorkbench、Flow 菜单、OCR、资源编辑器 | catalog 全分类准备、远端发现与可见层级读取彻底分离 |
 | 设置与分身 | 原设置页面、系统只读投影及数字分身应用适配已接入 | 服务端存储概况、快照、恢复和重置 |
-| 会话工作台后端 | 原 SessionWorkbench 不再持有 Kernel 或 SessionRepository；任务检查和项目导航有窄端口 | 项目、挂载、草稿、文件句柄、远端会话与同步仍依赖具体服务 |
+| 会话工作台后端 | 原 SessionWorkbench 仍直接持有 Kernel、SessionRepository 和项目服务 | 抽离任务检查、会话组织、项目、挂载、草稿、文件与远端控制端口 |
 | HTTP 主会话界面 | 简化 ApplicationWorkbench 已删除，基础文件/会话复用原 Workbench 的侧栏、标签页与编辑器 | 项目与任务等能力仍保留原 SessionWorkbench 实现，尚未接入 HTTP；不作为完整迁移验收 |
 | 远端 Agent 与 MCP | 原 Agent 详情与 Harness 面板接入；远端连接由后台持有 | 原主工作台的远端会话、附件、分支和项目作用域 |
 
 ### 2.2 需要先解决的设计问题
 
-1. **服务对象与视图契约混用。** SessionWorkbenchBackend 已抽离部分用例，但仍含文件句柄、订阅和工厂；它可以作为本地装配接口，不能直接 JSON 序列化为 HTTP 契约。ProjectService、DirectoryMountService 等具体服务仍进入原工作台。
+1. **服务对象与视图契约混用。** SessionWorkbenchBackend 尚未落地；原 SessionWorkbench 仍直接消费 Kernel、仓储、ProjectService、DirectoryMountService 等具体服务。拟议本地装配接口中的文件句柄、订阅和工厂不能直接 JSON 序列化为 HTTP 契约。
 2. **展示组件复用已开始。** HTTP 已删除 ApplicationWorkbench，复用原 Workbench 的 VFS 侧栏、保留编辑器标签页和默认标题栏。当前允许 HTTP 暂缺项目与任务相关能力，原 SessionWorkbench 实现保留；后续继续抽离领域端口并复用原组件，不新建 HTTP 专用界面。
-3. **文件路径与能力不完整。** 当前项目文件 API 使用 openFiles 的来源视图；原项目编辑器使用 openWorkspace 的 `/workspace` 视图。现有通用 files-view 适配还需补齐 readonly、条件写版本、范围读取和订阅释放，不能按浏览器配置推断真实权限。
+3. **文件路径与能力不完整。** 当前项目文件 API 使用 openFiles 的来源视图；原项目编辑器使用 openWorkspace 的 `/workspace` 视图。当前 file-backend 适配提供基础文件展示与保存；拟议 files-view 还需补齐 readonly、条件写版本、范围读取和订阅释放，不能按浏览器配置推断真实权限。
 4. **查询隐含写入准备。** 当前 conversation 查询会调用 prepareSession，可能获取写租约。目标是历史和状态读取独立于写入门，写能力在发送、修改和任务控制时由后台检查。
 5. **领域入口集中。** LocalApplicationPort 同时处理配置、文件、会话、工具箱和分身。保留一个传输入口，但将校验、用例和投影按领域拆分。
 6. **事件与缓存覆盖不完整。** 部分缓存仍全局失效；项目文件来源的订阅、跨客户端更新和跨宿主变更通知需要闭环，不能用无限轮询代替。
@@ -195,7 +195,7 @@ C4Deployment
 
 ### 5.2 能力划分与迁移映射
 
-以下名称表示拟拆分的能力职责；已有 TaskInspectionPort、ProjectNavigationPort 和 ConversationControls 优先沿用。
+以下名称表示拟拆分的能力职责；TaskInspectionPort 和 ProjectNavigationPort 尚未落地，已有 ConversationControls 优先沿用。
 
 | 业务能力 | UI 消费方 | 查询与命令 | 状态 |
 |---|---|---|---|
@@ -563,8 +563,10 @@ HTTP 浏览器构建图不能包含执行 Runtime、Node 存储和服务端凭�
 | 应用契约与所有权 | [contracts](../../packages/app-core/src/application/contracts.ts)、[host](../../packages/app-core/src/application/host.ts)、[local](../../packages/app-core/src/application/local.ts) |
 | 回执与事件 | [receipts](../../packages/app-core/src/application/receipts.ts)、[HTTP events](../../apps/http-app/src/server/application-events.ts) |
 | 初始化策略与机制 | [startup-policy](../../packages/app-core/src/runtime/startup-policy.ts)、[startup-coordinator](../../packages/app-core/src/runtime/startup-coordinator.ts) |
-| 原主工作台与已抽离后端 | [SessionWorkbench](../../packages/app-shell/src/projects/SessionWorkbench.ts)、[workbench-backend](../../packages/app-core/src/session/workbench-backend.ts) |
-| 文件与挂载迁移点 | [project-file-editor](../../packages/app-shell/src/projects/project-file-editor.ts)、[mount-dialog](../../packages/app-shell/src/files/mount-dialog.ts)、[files-view](../../packages/app-shell/src/application/files-view.ts) |
-| 远端适配与策略 | [harness-client](../../packages/app-shell/src/application/harness-client.ts)、[harness-runtime](../../packages/app-core/src/application/harness-runtime.ts)、[harness 生命周期](../../packages/app-core/src/application/harness.ts) |
+| 原主工作台与会话浏览 | [SessionWorkbench](../../packages/app-shell/src/projects/SessionWorkbench.ts)、[session-browser](../../packages/app-core/src/session/session-browser.ts) |
+| 文件与挂载迁移点 | [project-file-editor](../../packages/app-shell/src/projects/project-file-editor.ts)、[mount-dialog](../../packages/app-shell/src/files/mount-dialog.ts)、[file-backend](../../packages/app-shell/src/application/file-backend.ts)、[workbench-adapter](../../packages/app-shell/src/application/workbench-adapter.ts) |
+| 现有远端控制与会话管理 | [Harness 控制面板](../../packages/app-shell/src/harness/control.ts)、[remote-session-management](../../packages/app-core/src/session/remote-session-management.ts) |
+
+以下是待实现模块，不作为当前源码链接：`workbench-backend.ts`（会话工作台窄端口）、`files-view.ts`（持续授权文件视图）、`harness-client.ts`（应用端口客户端）、`harness-runtime.ts` 与 `harness.ts`（宿主 Harness 适配及生命周期）。具体文件组织可随实施调整，落地后再加入上表。
 
 实施时同步本文的阶段状态和[边界审查记录](application-host-boundaries.md)，具体公共接口以所属模块的实现契约为准。

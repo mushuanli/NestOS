@@ -19,9 +19,9 @@
 
 运行时创建唯一 `runtime.configuration`，设置页面与工具箱共用它。
 
-Provider 删除先调用 `inspectProviderDeletion(ids)` 得到受影响 Provider、Connection、Agent、可替换连接及预览标识。用户选择保留、删除或替换 Agent 连接，再调用 `deleteProviders({ revision, agents })`。应用服务在写入前重读依赖，验证预览、默认连接保护与替换目标；同一运行时的删除命令串行执行。
+Provider 删除先调用 `inspectProviderDeletion(ids)` 得到受影响 Provider、Connection 和预览标识，再由原确认弹窗调用 `deleteProviders({ revision })`。当前用例不提供 Agent 保留、删除或替换选择；应用服务在写入前重读 Provider/Connection 依赖并验证预览，同一运行时的删除命令串行执行。
 
-执行顺序为处理 Agent、删除连接、删除服务商。底层配置存储不构成跨实体原子事务；部分失败抛出 `ConfigurationMutationError`，带有已完成步骤与原始错误。可以重新打开预览，根据当前数据继续操作。此实现不是持久化删除任务，也不宣称阻止绕过该入口的其他宿主并发写入。
+执行顺序为删除连接、删除服务商。底层配置存储不构成跨实体原子事务；部分失败抛出 `ConfigurationMutationError`，带有已完成步骤与原始错误。可以重新打开预览，根据当前数据继续操作。此实现不是持久化删除任务，也不宣称阻止绕过该入口的其他宿主并发写入。
 
 UI 通过 `EditorHostContext.requestDelete(targets)` 请求确认和执行。列表直接调用相同确认界面，不打开或等待编辑器。IEditor 不包含删除能力。Modal 等待异步确认、防止重复确认并显示失败；失败时保持弹窗可见。
 

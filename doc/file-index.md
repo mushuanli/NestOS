@@ -162,4 +162,4 @@
 | 项目 UI 模块装配 | `packages/app-shell/src/projects/index.ts` |
 
 
-- pi-agent 目录项目、目录身份与策略版本：`tools/pi-agent/src/projects/`；客户端：`packages/piagent-driver/src/projects.ts`、`packages/piagent-driver/src/project-process.ts`；设计：[项目模型](design/pi-agent-project-model.md)。
+- pi-agent 目录项目、目录身份与策略版本：`tools/pi-agent/src/projects/`；客户端：`libraries/piagent-driver/src/projects.ts`、`libraries/piagent-driver/src/project-process.ts`；设计：[项目模型](design/pi-agent-project-model.md)。

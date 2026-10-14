@@ -93,9 +93,9 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@itookit/driver-llm": "0.2.0",
+    "@itookit/driver-llm": "workspace:*",
     "@itookit/durable-kernel": "workspace:*",
-    "@itookit/vfs-core": "5.3.1",
+    "@itookit/vfs-core": "workspace:*",
     "@itookit/tools": "workspace:*",
     "@itookit/llm-context": "workspace:*",
     "@modelcontextprotocol/client": "2.0.0",
@@ -109,7 +109,7 @@
     "typescript": "^5.9.3",
     "vitest": "^1.6.0",
     "@types/js-yaml": "^4.0.9",
-    "@itookit/vfsdriver-indexeddb": "5.3.1"
+    "@itookit/vfsdriver-indexeddb": "workspace:*"
   },
   "imports": {
     "#mcp-stdio": {

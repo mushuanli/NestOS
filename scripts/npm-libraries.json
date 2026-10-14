@@ -1,10 +1,50 @@
 [
-  {"directory":"vfs-core","name":"@itookit/vfs-core","version":"5.3.1"},
-  {"directory":"vfs-ui","name":"@itookit/vfs-ui","version":"0.5.7"},
-  {"directory":"vfsdriver-indexeddb","name":"@itookit/vfsdriver-indexeddb","version":"5.3.1"},
-  {"directory":"vfsdriver-local","name":"@itookit/vfsdriver-local","version":"5.3.0"},
-  {"directory":"piagent-driver","name":"@itookit/piagent-driver","version":"0.1.0","workspace":true},
-  {"directory":"vfs-sync","name":"@itookit/vfs-sync","version":"0.1.0"},
-  {"directory":"driver-llm","name":"@itookit/driver-llm","version":"0.2.0"},
-  {"directory":"mdxeditor","name":"@itookit/mdxeditor","version":"0.5.2"}
+  {
+    "directory": "vfs-core",
+    "name": "@itookit/vfs-core",
+    "version": "5.3.1",
+    "workspace": true
+  },
+  {
+    "directory": "vfs-ui",
+    "name": "@itookit/vfs-ui",
+    "version": "0.5.7",
+    "workspace": true
+  },
+  {
+    "directory": "vfsdriver-indexeddb",
+    "name": "@itookit/vfsdriver-indexeddb",
+    "version": "5.3.1",
+    "workspace": true
+  },
+  {
+    "directory": "vfsdriver-local",
+    "name": "@itookit/vfsdriver-local",
+    "version": "5.3.0",
+    "workspace": true
+  },
+  {
+    "directory": "piagent-driver",
+    "name": "@itookit/piagent-driver",
+    "version": "0.1.0",
+    "workspace": true
+  },
+  {
+    "directory": "vfs-sync",
+    "name": "@itookit/vfs-sync",
+    "version": "0.1.0",
+    "workspace": true
+  },
+  {
+    "directory": "driver-llm",
+    "name": "@itookit/driver-llm",
+    "version": "0.2.0",
+    "workspace": true
+  },
+  {
+    "directory": "mdxeditor",
+    "name": "@itookit/mdxeditor",
+    "version": "0.5.2",
+    "workspace": true
+  }
 ]

@@ -16,7 +16,7 @@ import { readFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative } from 'node:path';
 
 const ROOT = new URL('..', import.meta.url).pathname.replace(/\/$/, '');
-const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'target', '__tests__', 'tests', 'test', 'demo', 'coverage']);
+const SKIP_DIRS = new Set(['node_modules', 'dist', '.git', 'target', 'vendor', '__tests__', 'tests', 'test', 'demo', 'coverage']);
 const MARKUP_EXT = /\.(ts|js|mjs|html)$/;
 const ALLOWLIST = join(ROOT, 'scripts/style-class-allowlist.txt');
 
@@ -34,17 +34,13 @@ function walk(dir, visit) {
 
 const cssFiles = [];
 const markupFiles = [];
-for (const group of ['packages', 'apps']) {
+for (const group of ['libraries', 'packages', 'apps']) {
     const base = join(ROOT, group);
     if (!existsSync(base)) continue;
     walk(base, path => {
         if (path.endsWith('.css')) cssFiles.push(path);
         else if (MARKUP_EXT.test(path)) markupFiles.push(path);
     });
-}
-for (const name of ['vfs-ui', 'mdxeditor']) {
-    const registryStyles = join(ROOT, `node_modules/@itookit/${name}/dist/style.css`);
-    if (existsSync(registryStyles)) cssFiles.push(registryStyles);
 }
 
 const defined = new Set();
@@ -58,9 +54,7 @@ const addSelectors = text => {
 for (const file of cssFiles) addSelectors(readFileSync(file, 'utf8'));
 // Some components inject their stylesheet at runtime (injectStyle / <style>).
 // Treat class selectors that open a rule block inside markup sources as defined.
-const registryRuntimeStyles = join(ROOT, 'node_modules/@itookit/mdxeditor/dist/mdxeditor.js');
-const runtimeStyleSources = [...markupFiles, ...(existsSync(registryRuntimeStyles) ? [registryRuntimeStyles] : [])];
-for (const file of runtimeStyleSources) {
+for (const file of markupFiles) {
     const text = readFileSync(file, 'utf8');
     for (const match of text.matchAll(/\.([a-zA-Z][a-zA-Z0-9_-]*)(?=[^{};]*\{)/g)) defined.add(match[1]);
 }

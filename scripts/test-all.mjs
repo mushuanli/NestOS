@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 const cwd = fileURLToPath(new URL('..', import.meta.url));
 const steps = [
     ['package suites', ['-r', '--workspace-concurrency=1', '--filter', '!@itookit/cli', 'test']],
-    ['CLI suites (no crash matrix)', ['--filter', '@itookit/cli', 'exec', 'vitest', 'run', '--exclude', 'tests/crash-matrix.test.ts']],
+    // Source consumers launch real CLI processes; run files serially to avoid lease/timeout contention.
+    ['CLI suites (no crash matrix)', ['--filter', '@itookit/cli', 'exec', 'vitest', 'run', '--fileParallelism=false', '--exclude', 'tests/crash-matrix.test.ts']],
     ['CLI crash matrix', ['--filter', '@itookit/cli', 'exec', 'vitest', 'run', 'tests/crash-matrix.test.ts']],
     ['Rust sandbox boundaries', ['--filter', 'tauri-app', 'test:rust']],
 ];

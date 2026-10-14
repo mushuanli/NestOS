@@ -150,7 +150,7 @@ rename 的原子性缺口：文件系统 `rename` 与 sidecar 记录迁移（`mo
 **每个外层事务**都必须先探 `intent`，存在则在同一事务内推进恢复（补做 rename、迁移记录、写回执）：
 
 ```ts
-// packages/vfsdriver-local/src/localfs-backend.ts:78
+// libraries/vfsdriver-local/src/localfs-backend.ts:78
 this.records = new SidecarRecordStore(() => this.requireDb(), db => this.recoverRename(db), false);
 // 探测本体（localfs-backend.ts:307）
 const intent = await db.getRecordField(RENAME_JOURNAL, 'intent');

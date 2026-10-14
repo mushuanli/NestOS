@@ -6,6 +6,7 @@ export const root = fileURLToPath(new URL('..', import.meta.url));
 export const libraries = JSON.parse(readFileSync(new URL('./npm-libraries.json', import.meta.url), 'utf8'));
 export const versions = new Map(libraries.map(library => [library.name, library.version]));
 export const releaseRoot = resolve(root, 'release/npm-libraries');
+export const libraryRoot = resolve(root, 'libraries');
 
 export function releaseManifest(manifest, version) {
     const result = { ...manifest, ...manifest.publishConfig, version };

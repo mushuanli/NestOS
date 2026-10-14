@@ -43,11 +43,11 @@
   },
   "dependencies": {
     "@itookit/common": "workspace:*",
-    "@itookit/vfs-core": "5.3.1"
+    "@itookit/vfs-core": "workspace:*"
   },
   "devDependencies": {
     "@itookit/common": "workspace:*",
-    "@itookit/vfs-core": "5.3.1",
+    "@itookit/vfs-core": "workspace:*",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
   },

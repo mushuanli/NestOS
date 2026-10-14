@@ -6,7 +6,7 @@
 
 ## 1. 目标与决策
 
-Rust HTTP 文件服务位于 tools/pi-agent，三端共用文件驱动源码已并入 packages/piagent-driver/src/files，随统一接入包 @itookit/piagent-driver 发布。服务端仅暴露预配置目录别名；工作台可把别名中的目录外挂到项目，项目文件树、编辑器和 Agent 使用同一授权视图。
+Rust HTTP 文件服务位于 tools/pi-agent，三端共用文件驱动源码已并入 libraries/piagent-driver/src/files，随统一接入包 @itookit/piagent-driver 发布。服务端仅暴露预配置目录别名；工作台可把别名中的目录外挂到项目，项目文件树、编辑器和 Agent 使用同一授权视图。
 
 核心决策：
 

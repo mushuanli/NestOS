@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { defineConfig } from 'vite';
-import { workspaceAliases, workspaceExcludes, REGISTRY_PREBUNDLES } from '../../scripts/workspace-sources.mjs';
+import { workspaceAliases, workspaceExcludes } from '../../scripts/workspace-sources.mjs';
 
 export default defineConfig({
     base: './',
@@ -21,5 +21,5 @@ export default defineConfig({
     },
     // Open pages may still import lazy chunks from the previous build.
     build: { target: 'esnext', emptyOutDir: false },
-    optimizeDeps: { exclude: workspaceExcludes(), include: REGISTRY_PREBUNDLES },
+    optimizeDeps: { exclude: workspaceExcludes() },
 });

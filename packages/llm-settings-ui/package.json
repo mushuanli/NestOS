@@ -39,8 +39,8 @@
   "dependencies": {
     "@itookit/common": "workspace:*",
     "@itookit/ui-common": "workspace:*",
-    "@itookit/driver-llm": "0.2.0",
-    "@itookit/vfs-core": "5.3.1",
+    "@itookit/driver-llm": "workspace:*",
+    "@itookit/vfs-core": "workspace:*",
     "js-yaml": "^4.1.1",
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/tools": "workspace:*"

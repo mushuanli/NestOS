@@ -25,7 +25,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
-    "@itookit/vfs-core": "5.3.1"
+    "@itookit/vfs-core": "workspace:*"
   },
   "devDependencies": {
     "rimraf": "^5.0.5",

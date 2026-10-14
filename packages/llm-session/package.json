@@ -60,10 +60,10 @@
     "@itookit/durable-kernel": "workspace:*",
     "@itookit/llm-tasks": "workspace:*",
     "@itookit/llm-flow": "workspace:*",
-    "@itookit/vfs-core": "5.3.1",
+    "@itookit/vfs-core": "workspace:*",
     "yaml": "^2.8.2",
     "@itookit/llm-context": "workspace:*",
-    "@itookit/driver-llm": "0.2.0",
+    "@itookit/driver-llm": "workspace:*",
     "@itookit/tools": "workspace:*"
   },
   "devDependencies": {

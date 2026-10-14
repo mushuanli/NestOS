@@ -1,6 +1,6 @@
 # packages/ 模块协作指南
 
-20 个工作区 package + 4 个 app（另有 8 个独立 npm 库） 的协作关系（`packages/{coreutils,harness,llm-programs,stdio}` 无 package.json，非包）。各模块自身的架构和命令详见 `packages/<pkg>/AGENTS.md`。
+19 个业务 package + 8 个独立库源码工作区（`libraries/`）+ 4 个 app 的协作关系（`packages/{coreutils,harness,llm-programs,stdio}` 无 package.json，非包）。各模块自身的架构和命令详见 `packages/<pkg>/AGENTS.md`。
 
 ## 模块分层
 

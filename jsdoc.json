@@ -1,19 +1,19 @@
 {
   "source": {
-    "include": ["packages/mdxeditor/src"], 
+    "include": ["libraries/mdxeditor/src"],
     "exclude": [
-      "packages/mdxeditor/node_modules",
-      "packages/mdxeditor/dist",
-      "packages/mdxeditor/tailwind.config.js", 
-      "packages/mdxeditor/postcss.config.js"
+      "libraries/mdxeditor/node_modules",
+      "libraries/mdxeditor/dist",
+      "libraries/mdxeditor/tailwind.config.js",
+      "libraries/mdxeditor/postcss.config.js"
     ],
     "includePattern": ".+\\.js(doc|x)?$",
     "excludePattern": "(^|\\/|\\\\)_(?!.*\\/)"
   },
   "opts": {
-    "destination": "./docs/mdxeditor/", 
+    "destination": "./docs/mdxeditor/",
     "encoding": "utf8",
-    "recurse": true 
+    "recurse": true
   },
   "plugins": ["jsdoc-tsimport-plugin"]
 }

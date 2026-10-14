@@ -138,7 +138,7 @@ pnpm tau
 pnpm build:libs
 
 # 运行测试
-pnpm --filter @itookit/vfslib test --run
+pnpm --filter @itookit/vfs-core test
 ```
 
 ---
@@ -146,25 +146,25 @@ pnpm --filter @itookit/vfslib test --run
 ### 包结构
 
 ```
-packages/
-├── common/              # 共享接口与类型（跨包唯一真相来源）
-├── vfslib/              # VFS 引擎核心（模块隔离 / 设备节点 / AssetDir）
-├── vfsdriver-indexeddb/ # IndexedDB 存储后端（Web）
-├── vfsdriver-fs/        # SQLite + FS 存储后端（Node/Electron）
-├── vfsdriver-local/   # LocalFS 存储后端（Tauri）
-├── device-llm/          # LLM 驱动：多 Provider / 流式 / MCP / Skill
-├── llm-kernel/          # 执行内核：Executor + Orchestrator
-├── llm-kernel/         # 多轮 Agent 循环 + 内置工具 + TTY
-├── llm-runtime/          # 会话管理 + VFS 持久化 + Mission 编排
-├── mdx/                 # CodeMirror 6 Markdown 编辑器（插件化架构）
-├── llm-ui/              # Chat UI + Agent / Provider / Connection 编辑器
-├── vfs-ui/              # 文件树 Shell（VFSUIShell）
-├── memory-manager/      # 顶层工作区容器
-├── app-settings/        # 设置模块（存储 / 连接 / Provider / 恢复）
-└── app-shell/           # 启动引导：initApp() + 工作区路由
+libraries/               # 独立 Git 库，统一源码工作区
+├── driver-llm/ # 模型通信
+├── mdxeditor/ # 独立 Markdown 编辑器
+├── piagent-driver/ # pi-agent 文件、同步和执行客户端
+├── vfs-core/ # VFS 引擎与协议
+├── vfs-sync/ # 多端文件同步核心
+├── vfs-ui/ # 文件与资源浏览 UI
+├── vfsdriver-indexeddb/ # IndexedDB 存储后端
+└── vfsdriver-local/ # 本地 FS 与 SQLite 后端
+packages/                # MindOS 业务与 UI 包
+├── app-core/
+├── app-shell/
+├── mdx-adapter/
+└── ...
 apps/
-├── web-app/             # 主 Web SPA（IndexedDB 后端）
-└── tauri-app/           # Tauri 桌面应用（LocalFS 后端）
+├── web-app/
+├── tauri-app/
+├── cli/
+└── http-app/
 ```
 
 ---

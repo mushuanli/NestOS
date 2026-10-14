@@ -108,22 +108,22 @@
     "@itookit/llm-flow": "workspace:*",
     "@itookit/llm-session": "workspace:*",
     "@itookit/ui-common": "workspace:*",
-    "@itookit/vfs-core": "5.3.1",
+    "@itookit/vfs-core": "workspace:*",
     "js-yaml": "^4.1.1",
     "marked": "^16.4.2"
   },
   "peerDependencies": {
     "@itookit/llm-settings-ui": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*",
-    "@itookit/mdxeditor": "0.5.2"
+    "@itookit/mdxeditor": "workspace:*"
   },
   "devDependencies": {
-    "@itookit/driver-llm": "0.2.0",
+    "@itookit/driver-llm": "workspace:*",
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/llm-settings-ui": "workspace:*",
     "@itookit/llm-tasks": "workspace:*",
     "@itookit/mdx-adapter": "workspace:*",
-    "@itookit/mdxeditor": "0.5.2",
+    "@itookit/mdxeditor": "workspace:*",
     "@itookit/tools": "workspace:*",
     "@types/js-yaml": "^4.0.9",
     "@types/node": "^20.19.25",

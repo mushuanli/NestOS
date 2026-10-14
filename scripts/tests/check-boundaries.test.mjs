@@ -80,7 +80,7 @@ test('public LLM mechanisms reject host dependencies', () => {
     assert.match(dependencyError('@itookit/driver-llm', '@itookit/llm-context'), /public ports/);
     assert.match(dependencyError('@itookit/llm-context', '@itookit/driver-llm'), /public ports/);
     const driver = pkg('driver-llm'), context = pkg('llm-context');
-    const inspectDriver = text => sourceErrors(driver, '/repo/packages/driver-llm/src/test.ts', text, [driver, context]);
+    const inspectDriver = text => sourceErrors(driver, '/repo/libraries/driver-llm/src/test.ts', text, [driver, context]);
     assert.equal(inspectDriver("import type { ChatMessage } from '@itookit/llm-context';").length, 1);
     assert.equal(inspectDriver("import { createContextService } from '@itookit/llm-context';").length, 1);
     assert.equal(inspectDriver("import { Client } from 'some-sdk';").length, 1);

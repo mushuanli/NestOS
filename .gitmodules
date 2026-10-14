@@ -10,6 +10,27 @@
 [submodule "tools/pi-agent"]
 	path = tools/pi-agent
 	url = git@github.com:mushuanli/pi-agent.git
-[submodule "packages/piagent-driver"]
-	path = packages/piagent-driver
+[submodule "libraries/piagent-driver"]
+	path = libraries/piagent-driver
 	url = https://github.com/mushuanli/piagent-driver.git
+[submodule "libraries/vfs-core"]
+	path = libraries/vfs-core
+	url = https://github.com/mushuanli/vfs-core.git
+[submodule "libraries/vfs-ui"]
+	path = libraries/vfs-ui
+	url = https://github.com/mushuanli/vfs-ui.git
+[submodule "libraries/vfsdriver-indexeddb"]
+	path = libraries/vfsdriver-indexeddb
+	url = https://github.com/mushuanli/vfsdriver-indexeddb.git
+[submodule "libraries/vfsdriver-local"]
+	path = libraries/vfsdriver-local
+	url = https://github.com/mushuanli/vfsdriver-local.git
+[submodule "libraries/vfs-sync"]
+	path = libraries/vfs-sync
+	url = https://github.com/mushuanli/vfs-sync.git
+[submodule "libraries/driver-llm"]
+	path = libraries/driver-llm
+	url = https://github.com/mushuanli/driver-llm.git
+[submodule "libraries/mdxeditor"]
+	path = libraries/mdxeditor
+	url = https://github.com/mushuanli/mdxeditor.git

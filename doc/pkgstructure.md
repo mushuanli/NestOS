@@ -1,7 +1,7 @@
 
 ## Workspace Structure
 
-pnpm monorepo. Packages under `packages/`, apps under `apps/`（`apps/web-app` = `mind-os`）。
+pnpm monorepo. Business packages under `packages/`, independent library submodules under `libraries/`, apps under `apps/`（`apps/web-app` = `mind-os`）。
 
 ### LLM 子系统分层（单向依赖）
 
@@ -33,7 +33,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/llm-ui` | Chat UI：聊天界面、流式历史视图、会话编排可视化。 |
 | `@itookit/llm-settings-ui` | LLM 设置 UI：Agent/Provider/Connection/MCP/Skill/Cost/SystemPrompt 编辑器 + 配置导入导出（`llm-import`）。 |
 | `@itookit/vfs-ui` | 独立文件/资源浏览 UI：目录导航、标签、内容大纲；仅依赖 vfs-core，通过公开接口注入数据源、动作、展示和持久化。 |
-| `@itookit/mdxeditor` | 独立 CodeMirror 6 编辑器（[独立仓库](https://github.com/mushuanli/mdxeditor)，通过 npm 安装），不依赖其他内部包；宿主通过公共附件、存储、导航和保存接口注入能力。 |
+| `@itookit/mdxeditor` | 独立 CodeMirror 6 编辑器（[独立仓库](https://github.com/mushuanli/mdxeditor)，源码工作区接入），不依赖其他内部包；宿主通过公共附件、存储、导航和保存接口注入能力。 |
 | `@itookit/mdx-adapter` | MindOS 编辑器适配：VFS/namespace/Session 校验、文件格式、插件元数据、附件管理 UI、文件聊天引用及会话打印。 |
 | `@itookit/ui-common` | 共享 UI 组件、契约、浏览器工具。 |
 | `@itookit/app-settings` | 设置模块：SettingsEngine、SkillsEngine。 |
@@ -52,7 +52,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 
 ### 独立 npm 库与同步接入
 
-vfs-core、vfs-ui、IndexedDB/Local 两个 vfsdriver、vfs-sync 和 driver-llm 已从工作区移出，通过固定 npm 版本接入，独立仓库保存在 `../pair-x1/`。原 HTTP 驱动并入 piagent-driver，当前以 workspace 开发并准备独立发布，文件与进程实现位于其 src/files。版本和发布流程见 [npm 库接入](design/npm-library-consumption.md)。
+八个独立库位于 `libraries/` 并以固定 Git 提交参与 pnpm workspace。应用和业务包消费源码 exports；各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 piagent-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
 
 VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依赖 better-sqlite3。vfs-sync、driver-llm 没有运行时包依赖。`packages/sync-adapters` 负责宿主同步接入，调用 vfs-sync 与驱动公共端口；同步范围和项目绑定由应用决定。
 

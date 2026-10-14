@@ -147,7 +147,7 @@ Web/Tauri/CLI → `createPiAgentDriver` → 同一命名连接和凭据解析器
 
 Web/Tauri 在“工具箱 → MCP → 对应 pi-agent 配置 → 控制中心”打开 profile/workspace、会话和归档分页、历史、消息、输出、审批与中断。app-core 只解析连接并暴露 HarnessClient 类型端口；原生协议、主机目录和启动命令不进入 UI。外部会话不写入 MindOS 的 llm-session/Kernel，不共享其恢复日志或 Session 租约。
 
-详情见 [piagent-driver](../packages/piagent-driver/README.md) 和 [pi-agent](../tools/pi-agent/README.md)。
+详情见 [piagent-driver](../libraries/piagent-driver/README.md) 和 [pi-agent](../tools/pi-agent/README.md)。
 
 远程项目绑定为 MCP 配置 ID + 导出 alias/规范化路径 → 项目 ID。只有经过 pi-agent 能力发现的 HTTP MCP 配置进入绑定列表，显示名不能冒充类型。标准发现元数据优先提供同源 HTTP 文件端点、fileProtocol 与 serverId；旧服务复用通用连接调用其已声明的能力工具。测试成功后保存、改名复用结果，地址或认证变化重新验证；普通 MCP 不发 pi-agent 探测。同一安装身份（或规范化地址）、账号和路径只创建一个远程项目。
 

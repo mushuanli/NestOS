@@ -86,7 +86,7 @@
     "@itookit/durable-kernel": "workspace:*",
     "@itookit/llm-context": "workspace:*",
     "@itookit/tools": "workspace:*",
-    "@itookit/driver-llm": "0.2.0"
+    "@itookit/driver-llm": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

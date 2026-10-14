@@ -4,15 +4,8 @@ fs-svr
 priv/
 
 node_modules/
-# Local checkouts of independently published npm libraries (excluded from the workspace).
+# Legacy editor checkout; active libraries are pinned workspace submodules.
 /packages/mdx/
-/packages/mdxeditor/
-/packages/vfs-core/
-/packages/vfs-ui/
-/packages/vfsdriver-indexeddb/
-/packages/vfsdriver-local/
-/packages/vfs-sync/
-/packages/driver-llm/
 # Library crate: the CLI Session Bash fixture builds it, but its lock file is not committed.
 packages/sanbox/native/Cargo.lock
 .pnpm-store/

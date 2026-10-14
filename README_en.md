@@ -138,7 +138,7 @@ pnpm tau
 pnpm build:libs
 
 # Run tests
-pnpm --filter @itookit/vfslib test --run
+pnpm --filter @itookit/vfs-core test
 ```
 
 ---
@@ -146,25 +146,25 @@ pnpm --filter @itookit/vfslib test --run
 ### Package Structure
 
 ```
-packages/
-├── common/              # Shared interfaces & types (single source of truth)
-├── vfslib/              # VFS engine (module isolation / device nodes / AssetDir)
-├── vfsdriver-indexeddb/ # IndexedDB storage backend (Web)
-├── vfsdriver-fs/        # SQLite + FS backend (Node/Electron)
-├── vfsdriver-local/   # LocalFS backend (Tauri)
-├── device-llm/          # LLM driver: multi-Provider / streaming / MCP / Skills
-├── llm-kernel/          # Execution kernel: Executor + Orchestrator
-├── llm-kernel/         # Multi-turn Agent loop + built-in tools + TTY
-├── llm-runtime/          # Session management + VFS persistence + Mission orchestration
-├── mdx/                 # CodeMirror 6 Markdown editor (plugin architecture)
-├── llm-ui/              # Chat UI + Agent / Provider / Connection editors
-├── vfs-ui/              # File-tree shell (VFSUIShell)
-├── memory-manager/      # Top-level workspace container
-├── app-settings/        # Settings module (storage / connections / providers / recovery)
-└── app-shell/           # Bootstrap: initApp() + workspace routing
+libraries/               # Independent Git libraries in the source workspace
+├── driver-llm/ # LLM transport
+├── mdxeditor/ # Standalone Markdown editor
+├── piagent-driver/ # pi-agent files, sync and execution client
+├── vfs-core/ # VFS engine and contracts
+├── vfs-sync/ # Multi-device file sync
+├── vfs-ui/ # File and resource browsing UI
+├── vfsdriver-indexeddb/ # IndexedDB storage backend
+└── vfsdriver-local/ # Local FS and SQLite backend
+packages/                # MindOS application and UI packages
+├── app-core/
+├── app-shell/
+├── mdx-adapter/
+└── ...
 apps/
-├── web-app/             # Main Web SPA (IndexedDB backend)
-└── tauri-app/           # Tauri desktop app (LocalFS backend)
+├── web-app/
+├── tauri-app/
+├── cli/
+└── http-app/
 ```
 
 ---

@@ -16,7 +16,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
-const TOP_DIRS = ['packages', 'apps', 'doc', 'scripts', 'tests'];
+const TOP_DIRS = ['libraries', 'packages', 'apps', 'doc', 'scripts', 'tests'];
 
 /** 已被删除/更名的符号：活文档中不应再出现（历史表述仅告警）。 */
 const REMOVED_SYMBOLS = [
@@ -58,7 +58,7 @@ function collectDocs() {
 
 function workspaceDirs() {
     const dirs = [];
-    for (const base of ['packages', 'apps']) {
+    for (const base of ['libraries', 'packages', 'apps']) {
         for (const name of readdirSync(join(ROOT, base))) {
             if (statSync(join(ROOT, base, name)).isDirectory()) dirs.push(`${base}/${name}`);
         }
@@ -83,10 +83,11 @@ function resolveReference(doc, ref) {
     if (TOP_DIRS.includes(head)) return candidates.some(candidate => existsSync(resolve(ROOT, candidate)));
     if (WORKSPACE_NAMES.includes(head)) {
         const rest = ref.slice(head.length + 1);
-        candidates.push(`packages/${head}/${rest}`, `packages/${head}/src/${rest}`,
+        candidates.push(`libraries/${head}/${rest}`, `libraries/${head}/src/${rest}`,
+            `packages/${head}/${rest}`, `packages/${head}/src/${rest}`,
             `apps/${head}/${rest}`, `apps/${head}/src/${rest}`);
     }
-    candidates.push(`packages/${ref}`, `apps/${ref}`);
+    candidates.push(`libraries/${ref}`, `packages/${ref}`, `apps/${ref}`);
     for (const dir of WORKSPACE_DIRS) candidates.push(`${dir}/${ref}`, `${dir}/src/${ref}`);
     return candidates.some(candidate => existsSync(resolve(ROOT, candidate)));
 }

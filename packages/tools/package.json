@@ -86,10 +86,10 @@
     "directory": "packages/tools"
   },
   "dependencies": {
-    "@itookit/vfs-core": "5.3.1",
+    "@itookit/vfs-core": "workspace:*",
     "zod": "^4.4.2",
     "@itookit/llm-context": "workspace:*",
-    "@itookit/driver-llm": "0.2.0"
+    "@itookit/driver-llm": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

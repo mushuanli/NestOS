@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
-import { libraries, root, releaseRoot, releaseManifest } from './npm-libraries.mjs';
+import { libraries, root, libraryRoot, releaseRoot, releaseManifest } from './npm-libraries.mjs';
 
 function run(command, args, cwd = root) {
     return execFileSync(command, args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 32 * 1024 * 1024 });
@@ -18,7 +18,7 @@ function validateExports(value, directory) {
 }
 function preparePackage(library, sourceRoot) {
     const candidate = resolve(sourceRoot, library.directory);
-    const source = !existsSync(candidate) && library.workspace ? join(root,'packages',library.directory) : candidate;
+    const source = !existsSync(candidate) && library.workspace ? join(libraryRoot,library.directory) : candidate;
     const staging = join(releaseRoot, library.directory);
     process.stdout.write(`Building ${library.name}\n`);
     writeFileSync(join(releaseRoot, `${library.directory}.build.log`), run('pnpm', ['build'], source));
@@ -57,7 +57,7 @@ function publish() {
 }
 const command = process.argv[2];
 try {
-    if (command === 'prepare') prepare(resolve(process.argv[3] ?? join(root, '../pair-x1')),process.argv[4]);
+    if (command === 'prepare') prepare(resolve(process.argv[3] ?? libraryRoot),process.argv[4]);
     else if (command === 'publish') publish();
     else throw new Error('Usage: node scripts/release-npm-libraries.mjs prepare [source-root] [package-name] | publish');
 } catch (error) {

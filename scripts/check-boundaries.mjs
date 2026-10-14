@@ -144,7 +144,10 @@ async function filesIn(dir) {
 }
 
 async function readPackages(root, group) {
-    const entries = await readdir(resolve(root, group), { withFileTypes: true });
+    const entries = await readdir(resolve(root, group), { withFileTypes: true }).catch(error => {
+        if (error.code === 'ENOENT') return [];
+        throw error;
+    });
     const packages = await Promise.all(entries.filter(entry => entry.isDirectory()).map(async entry => {
         const dir = resolve(root, group, entry.name);
         // The historical demo lives under packages but is an executable Vite host.
@@ -155,7 +158,7 @@ async function readPackages(root, group) {
 }
 
 export async function checkBoundaries(root) {
-    const packages = (await Promise.all(['packages', 'apps'].map(group => readPackages(root, group)))).flat();
+    const packages = (await Promise.all(['libraries', 'packages', 'apps'].map(group => readPackages(root, group)))).flat();
     for (const library of libraries) {
         if (packages.some(pkg => pkg.name === library.name)) continue;
         const dir = resolve(root, 'node_modules', library.name);

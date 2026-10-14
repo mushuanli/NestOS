@@ -1,6 +1,6 @@
 import { defineConfig, searchForWorkspaceRoot } from 'vite';
 import path from 'path';
-import { workspaceAliases, workspaceExcludes, REGISTRY_PREBUNDLES } from '../../scripts/workspace-sources.mjs';
+import { workspaceAliases, workspaceExcludes } from '../../scripts/workspace-sources.mjs';
 
 export default defineConfig({
     // ✅ 关键 1: 相对路径，确保在非根目录或通过简单 server 启动时能找到 assets
@@ -39,7 +39,6 @@ export default defineConfig({
         // Workspace 包一律按源码处理（已在 resolve.alias 中映射），不进入预打包。
         exclude: workspaceExcludes(),
         include: [
-            ...REGISTRY_PREBUNDLES,
             // Workspace 包不要放这里：它们的 main 指向 .ts 源码，已由上面的 exclude 与
             // scripts/workspace-sources.mjs 统一处理（见 doc/dev-patterns.md）。
             // 这里只保留第三方纯 JS 库的预构建。

@@ -170,7 +170,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 
 - **`mind-os`（apps/web-app）**：浏览器 SPA（IndexedDB 后端）。
 - **`@itookit/cli`（apps/cli）**：MindOS profile + Session VFS 挂载 → YAML/.flow 编译为 RunDefinition/DagRunSpec → `app-core/createKernelRuntime` 装配 Kernel/Flow → 运行 → 结果落盘（RunStore 投影）。
-- **`tauri-app`**：桌面壳；**`sync-server`**：diff 同步服务。
+- **`tauri-app`**：桌面壳。
 
 ## 8. 核心数据流
 

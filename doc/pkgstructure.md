@@ -49,7 +49,6 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/cli`（`apps/cli`） | 命令行入口：YAML 工作流 → DurableFlowExecutor 运行。 |
 | `tauri-app`（`apps/tauri-app`） | Tauri 桌面壳。 |
 | `@itookit/http-app`（`apps/http-app`） | Node HTTP 静态 UI + LocalFS 存储 API；浏览器创建 MindOS Runtime。 |
-| `@itookit/sync-server`（`apps/sync-server`） | Hono HTTP 同步服务（diff 同步 + Bearer auth）。 |
 
 ### 独立 npm 库与同步接入
 

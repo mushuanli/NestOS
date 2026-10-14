@@ -164,8 +164,7 @@ packages/
 └── app-shell/           # Bootstrap: initApp() + workspace routing
 apps/
 ├── web-app/             # Main Web SPA (IndexedDB backend)
-├── tauri-app/           # Tauri desktop app (LocalFS backend)
-└── sync-server/         # Hono HTTP diff-based sync server
+└── tauri-app/           # Tauri desktop app (LocalFS backend)
 ```
 
 ---

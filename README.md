@@ -164,8 +164,7 @@ packages/
 └── app-shell/           # 启动引导：initApp() + 工作区路由
 apps/
 ├── web-app/             # 主 Web SPA（IndexedDB 后端）
-├── tauri-app/           # Tauri 桌面应用（LocalFS 后端）
-└── sync-server/         # Hono HTTP 差量同步服务器
+└── tauri-app/           # Tauri 桌面应用（LocalFS 后端）
 ```
 
 ---

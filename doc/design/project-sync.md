@@ -46,7 +46,6 @@
 | [SessionBundle](../../packages/app-core/src/session/session-bundle.ts) | 格式版本、历史和附件交换；导入创建新身份，导出没有跨多个读取的快照边界 |
 | [RoundGraphService](../../packages/llm-session/src/persistence/round-graph-service.ts) | 已有历史父引用和分支 head；输出、状态、执行引用及删除标记仍可原地更新，Round ID 不是不可变内容身份 |
 | [SessionLeaseStore](../../packages/app-core/src/kernel/session-lease.ts) | 基于共享 SeqFile 事务的单写者租约；复制租约记录不能实现跨副本互斥 |
-| [sync-server](../../apps/sync-server/src/routes/sync.ts) | 哈希及 mtime 比较、上传下载；缺少共同基线、项目分区和条件发布，不能直接充当多端一致性协议 |
 
 现有执行边界见 [pi-agent 与 Harness](agent-server.md)，文件协议见 [HTTP 外挂文件系统](vfs-http-driver.md)，会话持久化见 [llm-session API](../llm-session-api.md)。本文新增独立同步协议，不改变已有文件接口的语义。
 
@@ -1051,7 +1050,7 @@ sequenceDiagram
 
 代码质量验收关注依赖和失败边界：策略纯函数可独立验证；发布与基线更新不存在多份实现；HTTP 不决定冲突赢家；UI/CLI 不绕过统一用例；错误保留阶段与提交结果；重试、取消及 GC 共享持久记录。函数拆分服务于这些边界，组件数量与行数不作为通过标准。
 
-保留现有 SessionBundle 的离线交换语义、远程挂载与普通文件接口。同步 HTTP 客户端复用认证、传输和 Range 基础，但不复用缺少多端基线的 apps/sync-server 算法。新同步入口稳定后，另行核对旧 sync-server 的部署及调用方，再决定迁移或清理；本次设计不直接删除它。
+保留现有 SessionBundle 的离线交换语义、远程挂载与普通文件接口。同步 HTTP 客户端复用认证、传输和 Range 基础，使用 pi-agent 的 `/v1/sync` 协议。旧 sync-server 已移除；其按哈希及 mtime 比较的算法缺少多端基线、项目分区和条件发布，未被当前项目同步链路复用。
 
 首个可交付版本为 S2：受支持宿主上的多端文件同步。S3 交付明确覆盖与数据集恢复；S4 才可宣称“文件与会话多端接续”。项目整体时间点备份、运行中任务迁移和远程 checkout 自动回传仍属于后续独立能力。
 

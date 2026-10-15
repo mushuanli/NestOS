@@ -38,7 +38,7 @@ export class ProviderAuthorizationPanel {
             <p role="status" data-auth-progress hidden></p>
             ${state.issue ? `<p role="alert">${t(`provider.auth.issue.${issueKey(state.issue)}`)}</p>` : ''}
             ${state.pending ? this.pendingMarkup(state.pending) : ''}
-            <div class="provider-authorization__actions"></div>`;
+            <div class="provider-authorization__actions" data-auth-actions></div>`;
         if (state.supported) this.renderActions(state);
         this.setProgress(this.progress);
     }
@@ -54,7 +54,7 @@ export class ProviderAuthorizationPanel {
                 <input type="url" class="settings-form__input" data-auth-callback autocomplete="off" spellcheck="false" placeholder="${escapeAttr(pending.callbackUri)}"></label>`;
     }
     private renderActions(state: ProviderAuthorizationState): void {
-        const actions = this.root.querySelector<HTMLElement>('.provider-authorization__actions')!;
+        const actions = this.root.querySelector<HTMLElement>('[data-auth-actions]')!;
         if (state.pending) {
             const navigation = this.root.querySelector<HTMLElement>('[data-auth-links]')!;
             const link = document.createElement('a'); link.href = state.pending.url; link.target = '_blank'; link.rel = 'noopener noreferrer';

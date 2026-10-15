@@ -49,6 +49,7 @@ it('keeps callback input stable during unrelated notifications and refreshes the
     await panel.init(); root.querySelector<HTMLButtonElement>('button')!.click();
     await vi.waitFor(() => expect(root.querySelector('[data-auth-callback]')).not.toBeNull());
     const input = root.querySelector<HTMLInputElement>('[data-auth-callback]')!;
+    expect(input.compareDocumentPosition(button(root, 'provider.auth.complete')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     const form = document.createElement('form'), saved = vi.fn(); document.body.append(form); form.append(root);
     form.addEventListener('input', saved); form.addEventListener('change', saved);
     input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));

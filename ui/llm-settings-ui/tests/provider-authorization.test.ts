@@ -2,9 +2,16 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ProviderAuthorizationPanel } from '../src/editors/provider-authorization';
 import { ProviderSettingsEditor } from '../src/editors/ProviderSettingsEditor';
+import { t, type LocaleKey } from '@itookit/common';
+import * as ui from '@itookit/ui-common';
 import type { ProviderAuthorizationState } from '@itookit/kernel-adapters/contracts';
 
-afterEach(() => { document.body.replaceChildren(); });
+afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
+function button(root: HTMLElement, key: LocaleKey): HTMLButtonElement {
+    return [...root.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent === t(key))!;
+}
+const pendingAuthorization = () => ({ id: 'attempt', url: 'https://auth.openai.com/api/accounts/authorize?state=state&code_challenge=challenge',
+    callbackUri: 'http://127.0.0.1:12345/auth/callback', expiresAt: Date.now() + 600_000 });
 it('opens subscription authorization from OpenAI without changing the API-key provider', async () => {
     const root = document.createElement('div'); document.body.append(root);
     const openai = { id: 'openai', name: 'OpenAI', implementation: 'openai-compatible', apiKey: 'existing-key',
@@ -42,10 +49,14 @@ it('keeps callback input stable during unrelated notifications and refreshes the
     await panel.init(); root.querySelector<HTMLButtonElement>('button')!.click();
     await vi.waitFor(() => expect(root.querySelector('[data-auth-callback]')).not.toBeNull());
     const input = root.querySelector<HTMLInputElement>('[data-auth-callback]')!;
+    const form = document.createElement('form'), saved = vi.fn(); document.body.append(form); form.append(root);
+    form.addEventListener('input', saved); form.addEventListener('change', saved);
+    input.dispatchEvent(new Event('input', { bubbles: true })); input.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(saved).not.toHaveBeenCalled();
     input.value = pending.callbackUri + '?code=private-code&state=state'; notify();
     await vi.waitFor(() => expect(service.getProviderAuthorization).toHaveBeenCalledTimes(3));
     expect(root.querySelector('[data-auth-callback]')).toBe(input); expect(input.value).toContain('private-code');
-    root.querySelector<HTMLButtonElement>('button')!.click();
+    button(root, 'provider.auth.complete').click();
     await vi.waitFor(() => expect(authorized).toHaveBeenCalledOnce());
     expect(complete).toHaveBeenCalledWith('chatgpt', 'attempt', input.value);
     expect(root.querySelector('[data-auth-callback]')).toBeNull(); expect(root.textContent).toContain('safe@example.com');
@@ -68,4 +79,78 @@ it('shows the subscription type and explicit unsupported status without an API-k
         await vi.waitFor(() => expect(root.querySelector('[data-provider-authorization]')!.textContent).toContain('httpd'));
         expect(root.querySelector('[data-provider-authorization] button')).toBeNull();
     } finally { await editor.destroy(); }
+});
+
+
+it('displays and copies the complete authorization URL locally without a new server request', async () => {
+    const root = document.createElement('section'); document.body.append(root);
+    const pending = pendingAuthorization(); pending.url += '&hint=</textarea><img src=x onerror=alert(1)>';
+    let state: ProviderAuthorizationState = { supported: true, status: 'pending', pending };
+    const read = vi.fn(async () => state), begin = vi.fn();
+    const copy = vi.spyOn(ui, 'copyText').mockResolvedValue(true);
+    vi.spyOn(ui.Toast, 'success').mockImplementation(() => {});
+    const service = { getProviderAuthorization: read, beginProviderAuthorization: begin, onChange: () => () => {},
+        cancelProviderAuthorization: async () => { state = { supported: true, status: 'signed-out' }; return state; } };
+    const panel = new ProviderAuthorizationPanel(root, 'chatgpt', service as never, async () => {});
+    try {
+        await panel.init();
+        const field = root.querySelector<HTMLTextAreaElement>('[data-auth-url]')!;
+        expect(field.readOnly).toBe(true); expect(field.value).toBe(pending.url); expect(root.querySelector('img')).toBeNull();
+        const link = root.querySelector('a')!;
+        expect(link.textContent).toBe(t('provider.auth.open')); expect(link.getAttribute('href')).toBe(pending.url);
+        expect(link.target).toBe('_blank'); expect(link.rel).toContain('noreferrer');
+        expect(root.textContent).toContain(t('provider.auth.expires', {time: new Date(pending.expiresAt).toLocaleString('zh-CN')}));
+        button(root, 'provider.auth.copy').click();
+        await vi.waitFor(() => expect(copy).toHaveBeenCalledWith(pending.url));
+        expect(read).toHaveBeenCalledOnce(); expect(begin).not.toHaveBeenCalled();
+        button(root, 'action.cancel').click();
+        await vi.waitFor(() => expect(root.querySelector('[data-auth-url]')).toBeNull());
+        expect(root.querySelector('[data-auth-callback]')).toBeNull();
+    } finally { panel.destroy(); }
+});
+
+it('selects the full link for manual copy when clipboard access fails', async () => {
+    const root = document.createElement('section'); document.body.append(root);
+    const pending = pendingAuthorization(), copy = vi.spyOn(ui, 'copyText').mockResolvedValue(false);
+    const error = vi.spyOn(ui.Toast, 'error').mockImplementation(() => {});
+    const read = vi.fn(async () => ({ supported: true, status: 'pending', pending }));
+    const panel = new ProviderAuthorizationPanel(root, 'chatgpt', { getProviderAuthorization: read, onChange: () => () => {} } as never, async () => {});
+    try {
+        await panel.init(); button(root, 'provider.auth.copy').click();
+        await vi.waitFor(() => expect(error).toHaveBeenCalledWith(t('provider.auth.copyFailed')));
+        const field = root.querySelector<HTMLTextAreaElement>('[data-auth-url]')!;
+        expect(document.activeElement).toBe(field); expect(field.selectionStart).toBe(0); expect(field.selectionEnd).toBe(pending.url.length);
+        expect(copy).toHaveBeenCalledOnce(); expect(read).toHaveBeenCalledOnce();
+    } finally { panel.destroy(); }
+});
+
+it('shows preparation and verification stages and prevents empty or repeated callback submissions', async () => {
+    const root = document.createElement('section'); document.body.append(root);
+    let state: ProviderAuthorizationState = { supported: true, status: 'signed-out' };
+    let finishBegin!: () => void, finishComplete!: () => void;
+    const begin = vi.fn(() => new Promise<ProviderAuthorizationState>(resolve => { finishBegin = () => {
+        state = { supported: true, status: 'pending', pending: pendingAuthorization() }; resolve(state);
+    }; }));
+    const complete = vi.fn(() => new Promise<ProviderAuthorizationState>(resolve => { finishComplete = () => {
+        state = { supported: true, status: 'authorized' }; resolve(state);
+    }; }));
+    const error = vi.spyOn(ui.Toast, 'error').mockImplementation(() => {}), authorized = vi.fn(async () => {});
+    const panel = new ProviderAuthorizationPanel(root, 'chatgpt', { getProviderAuthorization: async () => state,
+        beginProviderAuthorization: begin, completeProviderAuthorization: complete, onChange: () => () => {} } as never, authorized);
+    try {
+        await panel.init(); const start = button(root, 'provider.auth.continue'); start.click(); start.click();
+        expect(begin).toHaveBeenCalledOnce(); expect(root.querySelector('[data-auth-progress]')?.textContent).toBe(t('provider.auth.preparing'));
+        finishBegin(); await vi.waitFor(() => expect(root.getAttribute('aria-busy')).toBe('false'));
+        button(root, 'provider.auth.complete').click();
+        await vi.waitFor(() => expect(error).toHaveBeenCalledWith(expect.stringContaining(t('provider.auth.callbackRequired'))));
+        expect(complete).not.toHaveBeenCalled();
+        await vi.waitFor(() => expect(root.getAttribute('aria-busy')).toBe('false'));
+        const callback = root.querySelector<HTMLInputElement>('[data-auth-callback]')!;
+        callback.value = pendingAuthorization().callbackUri + '?code=example&state=state';
+        const submit = button(root, 'provider.auth.complete'); submit.click(); submit.click();
+        expect(complete).toHaveBeenCalledOnce(); expect(complete).toHaveBeenCalledWith('chatgpt', 'attempt', callback.value);
+        expect(root.querySelector('[data-auth-progress]')?.textContent).toBe(t('provider.auth.verifying'));
+        finishComplete(); await vi.waitFor(() => expect(authorized).toHaveBeenCalledOnce());
+        expect(root.querySelector('[data-auth-url]')).toBeNull();
+    } finally { panel.destroy(); }
 });

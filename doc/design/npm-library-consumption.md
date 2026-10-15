@@ -4,11 +4,11 @@ MindOS 默认消费固定 Git 提交的独立库源码。八个独立库均位�
 
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
-| @itookit/vfs-core | `libraries/vfs-core` | 5.3.2（待发布） |
+| @itookit/vfs-core | `libraries/vfs-core` | 5.3.2 |
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.8 |
-| @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.3（待发布） |
+| @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.3 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
-| @itookit/piagent-driver | `libraries/piagent-driver` | 0.1.0（需发布） |
+| @itookit/piagent-driver | `libraries/piagent-driver` | 0.1.0 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.2 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.2.2 |
@@ -41,7 +41,7 @@ build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从�
 
 默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的源码模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
 
-`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。当前 v5.4 的 vfs-core@5.3.2、vfsdriver-indexeddb@5.3.3 和 piagent-driver@0.1.0 已准备制品，仍需完成 npm 发布认证，完整 npm 构建需等待这些版本发布。
+`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。当前 v5.4 清单中的版本均已发布；vfs-core@5.3.2、vfsdriver-indexeddb@5.3.3 和 piagent-driver@0.1.0 均已从注册表重新下载并核对制品。
 
 ## 独立库发布
 
@@ -90,10 +90,18 @@ prepare 默认从 libraries 构建、检查发布 exports，固定库间 npm 版
 
 发布后两个版本均从注册表重新下载，SHA-256 与获批 tarball 逐字节一致；下载后的包再次通过 46 项回归、ESM/CJS/chain/contracts/CSS 导出与 TypeScript 类型消费验证。无补丁 registry 工作区准备、45 项脚本测试、两库类型检查、工作区链接与冻结锁文件离线安装通过。
 
-### 2026-10-15 v5.4 发布准备
+### 2026-10-15 v5.4 发布完成
 
 vfs-core@5.3.2 包含按需设备 readiness 和 revision 前置条件校验；vfsdriver-indexeddb@5.3.3 固定依赖该 core 版本；piagent-driver@0.1.0 首次发布统一文件、同步和 harness 接口。已准备 dist 入口 tarball，独立驱动锁文件固定 core 制品的 SHA-512。
 
 三库源码测试共 347 项通过、1 项跳过。仓库外使用 tarball 完成 ESM/CommonJS、根与子路径导出、TypeScript NodeNext 声明解析、Memory/IndexedDB 文件及 SeqFile 读写、pi-agent 生命周期验证；没有源码链接。npm/registry 脚本 5 项通过，工作区链接检查通过。
 
-发布命令收到 npm 的 EOTP 双因素认证要求，以上三个版本尚未确认发布成功。Git 提交与 npm 发布状态分别记录，不将已准备制品视为已发布版本。其余库已发布的代码与当前源码一致；MDX 后续仅修改未打包的开发说明。
+三个发布命令均退出码为 0；npm 双因素认证已完成。注册表最初返回 202，版本元数据与 tarball 曾分别延迟可见，核验时没有重复提交发布请求。最终三个版本均从公开注册表重新下载，SHA-256 与上述通过仓库外消费验证的原制品逐字节一致。
+
+| 版本 | 发布后 tarball SHA-256 |
+|---|---|
+| vfs-core@5.3.2 | `c5a4061bebe781444ba9da5e0083e09998c584991a8992811c9f28c02e0fc149` |
+| vfsdriver-indexeddb@5.3.3 | `345089bb12e2d44b5758f64adea21d8268ce9a2b58866a0762b54af427475196` |
+| piagent-driver@0.1.0 | `121798fadaaaa61bf29cc9bd8a2f3b4983c0f571bca09172eaf350667c03ebfc` |
+
+其余库已发布的代码与当前源码一致；MDX 后续仅修改未打包的开发说明。主仓库位于 v5.4，九个已初始化子模块均已推送各自 main 分支，独立库版本与 Git 指针一并固定。

@@ -45,7 +45,9 @@ it('routes a real vfs-ui tree to chat, Task history and the Session mapped file 
     const listMountedFiles = vi.spyOn(home.driver, 'getChildren');
     try {
         await workbench.start();
-        await vi.waitFor(() => expect(chat).toHaveBeenCalledOnce());
+        expect(chat).not.toHaveBeenCalled();
+        await workbench.openResource('/' + id);
+        expect(chat).toHaveBeenCalledOnce();
         expect(listMountedFiles).not.toHaveBeenCalled();
         expect(kernel.listSessionTaskPage).not.toHaveBeenCalled();
         expect(sidebar.querySelector(`[data-item-id="/${id}/files"]`)).toBeNull();

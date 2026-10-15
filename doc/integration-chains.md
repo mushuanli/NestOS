@@ -100,6 +100,9 @@ cli run (apps/cli)
 
 ## 4. App 装配链（app-shell）
 
+
+正常入口为 `#/start`，只读取主题；`onShellReady` 结束全局启动提示。选择工作区后创建侧栏，用户点击或显式深链才进入正文加载链；持久展示偏好和历史标签不代表打开意图。工作区创建 Promise 共享，旧导航完成后不打开资源或写回当前 URL。后台恢复随 runtime 启动，不依赖用户进入工作台。
+
 ```
 apps/web-app (entry)
   → createApplicationRuntime() (app-core)
@@ -109,8 +112,10 @@ apps/web-app (entry)
     → initializeConversationSystem({ agentService, sessionEngine, promptHistoryFiles, kernel, flowStore, dagPlugins })
       ├─ SessionManager / CommandBus / DagCommandService 装配
       └─ 插件激活（session / vcs / history）
-  → initApp(runtime) (app-shell)
-    → WorkspaceConfig（standard/settings/agent/chat/skills/flows）→ Workbench / SessionWorkbench
+  → initApp({ services, backend, ui, startPage: true, ... }) (app-shell)
+    → 主题 + 路由就绪 → onShellReady → #/start 或显式深链
+    → 选择模块 → WorkspaceConfig → Workbench / SessionWorkbench
+    → 明确资源打开意图 → restoreWorkspaceResource
 ```
 
 | 步骤 | 关键文件 |

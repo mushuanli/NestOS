@@ -175,7 +175,6 @@ export interface WorkbenchView {
     search?: ProjectSearch;
     navigation?: import('./projects').ProjectNavigationSnapshot;
     directory?: { revision: number; node: FSNode | null; nodes: FSNode[] };
-    currentProject?: import('./projects').ProjectFolder | null;
     chat?: WorkbenchChatControls;
     connections?: ConnectionObservation;
 }

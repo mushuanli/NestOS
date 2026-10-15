@@ -391,3 +391,22 @@
 .project-search__controls { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; }
 .project-search__results { display: grid; max-height: 45vh; overflow: auto; gap: 4px; }
 .project-search__result { text-align: left; display: grid; gap: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+
+.app-start { box-sizing: border-box; padding: clamp(24px, 6vw, 72px); overflow: auto; color: var(--mm-text-color, #111827); background: var(--mm-bg-color, #fff); }
+.app-start > h1 { margin: 0 0 12px; font-size: clamp(24px, 3vw, 36px); }
+.app-start > p { margin: 0 0 32px; color: var(--text-secondary, #64748b); line-height: 1.7; }
+.app-start__choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; max-width: 960px; }
+.app-start__choice { padding: 24px; border: 1px solid var(--mm-border-color, #e5e7eb); border-radius: 12px; background: var(--mm-sidebar-bg, #f8fafc); color: inherit; text-align: left; font: inherit; cursor: pointer; }
+.app-start__choice:hover { background: var(--vfs-active-bg, #eef2ff); }
+.app-start__choice:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: 2px; }
+.app-sidebar__brand[role="button"] { cursor: pointer; }
+.app-sidebar__brand[role="button"]:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
+.workspace-view.app-start.active { flex-direction: column; }
+.workspace-status { position: absolute; inset: 0; z-index: 30; padding: 32px; overflow: auto; background: var(--mm-bg-color, #fff); color: var(--mm-text-color, #111827); }
+.workspace-status > p { overflow-wrap: anywhere; }
+.workspace-status > button { padding: 8px 16px; font: inherit; cursor: pointer; }
+.workspace-status[role="status"] { inset: 0 0 auto auto; max-width: 100%; box-sizing: border-box; padding: 8px 20px; pointer-events: none; background: var(--mm-sidebar-bg, #f8fafc); }
+[data-theme="dark"] :is(.app-start, .workspace-status) { background: #0d1117; color: #c9d1d9; }
+[data-theme="dark"] .app-start > p { color: #8b949e; }
+[data-theme="dark"] .app-start__choice, [data-theme="dark"] .workspace-status[role="status"] { background: #161b22; border-color: #30363d; }
+[data-theme="dark"] .app-start__choice:hover { background: #30363d; }

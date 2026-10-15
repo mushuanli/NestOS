@@ -118,22 +118,23 @@ export interface AppOptions {
     workspaces: WorkspaceConfig[];
     /** Product templates are provided by the host, never loaded from an execution adapter. */
     fileTemplates?: Readonly<Record<string, string>>;
-    /** URL slug to navigate to on startup. Defaults to first workspace. */
+    /** Startup slug; defaults to start when enabled, otherwise the first workspace. */
     defaultSlug?: string;
+    /** Provide the lightweight #/start route without loading a workspace. */
+    startPage?: boolean;
     /** Extra slug → elementId aliases, e.g. { home: 'home-workspace' } */
     routeAliases?: Record<string, string>;
     /** Called during boot steps; use this to drive a loading overlay. */
     onProgress?: (msg: string) => void;
+    /** Navigation handlers are installed; global startup UI can be dismissed. */
+    onShellReady?: () => void;
     /** The workspace columns exist; reveal the empty sidebar while its data is loading. */
     onWorkspaceMounted?: (parts: BootWorkspaceParts) => void;
-    /**
-     * The workspace layout and its sidebar are mounted; a host overlay may now cover only
-     * `editor`, keeping the app nav and the Session sidebar readable during the rest of boot.
-     */
+    /** The workspace layout and sidebar data are ready; resource content may still be loading. */
     onWorkspaceReady?: (parts: BootWorkspaceParts) => void;
     /** The Session sidebar has finished initializing and can accept navigation. */
     onSidebarInteractive?: () => void;
-    /** The initial editor finished mounting (or the workspace has no editor to wait for). */
+    /** The active workspace's initial resource operation completed (or none was requested). */
     onEditorReady?: () => void;
     /** UI implementations (editor factories, AI menu, LLM settings editors) injected by the entry app. */
     ui: AppUI;

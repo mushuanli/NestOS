@@ -53,7 +53,7 @@ it('keeps file-page select-all and sidebar checkbox toggles in sync', async () =
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main,
         editorFactory: async () => ({ destroy() {} }) as never });
     try {
-        await workbench.start();
+        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
         const all = () => main.querySelector<HTMLInputElement>('.workbench-tabs__panel:not([hidden]) thead input')!;
         await vi.waitFor(() => expect(all()).not.toBeNull());
         all().click();
@@ -81,7 +81,7 @@ it('exports selected page files and opens the shared Copy to picker from the sel
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main,
         editorFactory: async () => ({ destroy() {} }) as never });
     try {
-        await workbench.start();
+        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
         await vi.waitFor(() => expect(main.querySelector('[data-selection-id="/a.md"]')).not.toBeNull());
         main.querySelector<HTMLInputElement>('[data-selection-id="/a.md"]')!.click();
         const exportButton = main.querySelector<HTMLButtonElement>('[data-action="bulk-export"]')!;

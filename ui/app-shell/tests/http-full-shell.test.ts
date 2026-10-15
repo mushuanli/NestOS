@@ -14,13 +14,13 @@ import { createHostedView } from '../../../apps/http-app/src/server/view-service
 const releases: Array<() => Promise<void>> = [];
 const wireBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 afterEach(async () => { for (const release of releases.splice(0).reverse()) await release(); });
-it.each(['chat', 'minds'])('mounts the complete common shell starting at %s without eager feature services', async slug => {
+it.each(['start', 'chat', 'minds'])('mounts the complete common shell starting at %s without eager feature services', async slug => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} });
     const { initApp } = await import('../src/bootstrap');
     const html = readFileSync('../../apps/web-app/index.html', 'utf8');
     document.body.innerHTML = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'));
-    history.replaceState({}, '', slug === 'minds' ? '/#/minds/' + encodeURIComponent('/简历.mind') : '/#/chat');
+    history.replaceState({}, '', slug === 'minds' ? '/#/minds/' + encodeURIComponent('/简历.mind') : slug === 'start' ? '/' : '/#/chat');
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli', startupMode: 'interactive', digitalTwinAutoStart: false });
     releases.push(() => runtime.dispose());
     if (slug === 'minds') {
@@ -56,7 +56,7 @@ it.each(['chat', 'minds'])('mounts the complete common shell starting at %s with
     server.handle = (call, refresh) => { calls[call.method] = (calls[call.method] ?? 0) + 1; return handle(call, refresh); };
     const started = performance.now();
     const app = await initApp({ services: root.services, backend: root.backend, fileTemplates: root.fileTemplates,
-        workspaces: WORKSPACES, defaultSlug: slug, ui: createBrowserUI(root.flowLibrary) }).catch(error => { console.error(error.errors); throw error; });
+        workspaces: WORKSPACES, startPage: true, defaultSlug: slug, ui: createBrowserUI(root.flowLibrary) }).catch(error => { console.error(error.errors); throw error; });
     releases.push(() => app.destroy());
     const startup = { calls: metrics.calls - before.calls, requests: metrics.requests - before.requests, callbacks: metrics.callbacks - before.callbacks,
         responseBytes: metrics.bytes - before.bytes, inProcessMs: Math.round(performance.now() - started) };
@@ -64,6 +64,12 @@ it.each(['chat', 'minds'])('mounts the complete common shell starting at %s with
     expect(startup.requests).toBeLessThanOrEqual(slug === 'chat' ? 9 : 13); expect(startup.responseBytes).toBeLessThan(64000);
     console.log('[HTTP startup methods]', calls);
     for (const method of ['settings', 'ocr', 'readSettings', 'prepareConfiguration', 'initialFiles']) expect(calls[method]).toBeUndefined();
+    if (slug === 'start') {
+        expect(startup.calls).toBe(1); expect(startup.requests).toBe(1);
+        for (const method of ['workbenchView', 'openSessionView', 'openFileSystem']) expect(calls[method]).toBeUndefined();
+        expect(document.querySelector('.app-start.active')).not.toBeNull();
+        expect(document.querySelector('.app-start__choice')).not.toBeNull();
+    }
     for (const workspace of WORKSPACES) expect(document.getElementById(workspace.elementId)).not.toBeNull();
     for (const slug of WORKSPACES.map(workspace => workspace.slug)) await app.navigate(slug);
     expect(document.querySelectorAll('.app-nav-btn[hidden]')).toHaveLength(0);

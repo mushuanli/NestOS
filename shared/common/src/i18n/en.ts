@@ -4,6 +4,11 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    "application.startTitle": "What would you like to do?",
+    "application.startHelp": "Choose a workspace to load it. Saved tabs remain available when you need them.",
+    "application.workspaceLoading": "Loading workspace…",
+    "application.workspaceFailed": "Workspace failed to load",
+    "application.retry": "Retry",
     "application.loadMore": "Load more",
     "httpApp.starting": "Starting MindOS…",
     "httpApp.startupFailed": "MindOS failed to start",

@@ -42,7 +42,7 @@ async function main() {
             projectSyncSetup: (id, signal) => sync.setup(id, signal),
             projectSyncDirectory: (id, signal) => sync.directory(id, signal),
             workspaces: WORKSPACES,
-            defaultSlug: 'chat',
+            defaultSlug: 'start', startPage: true,
             routeAliases: { home: 'llm-workspace', projects: 'llm-workspace', workbench: 'llm-workspace' },
             ui,
         });

@@ -7,6 +7,8 @@ import { themeService } from '../src/ThemeService';
 import type { WorkspaceConfig } from '../src/types';
 
 const visibility = vi.hoisted(() => vi.fn());
+const lifecycle = vi.hoisted(() => ({ start: vi.fn(async () => {}), open: vi.fn(async (_id: string) => {}),
+    destroy: vi.fn(async () => {}), selection: undefined as ((id: string) => void) | undefined }));
 
 vi.mock('../src/ThemeService', () => ({
     themeService: { init: vi.fn(async () => {}), destroy: vi.fn(), setMode: vi.fn(async () => {}) },
@@ -29,10 +31,11 @@ vi.mock('@itookit/app-settings', () => ({
 
 vi.mock('../src/core/Workbench', () => ({
     Workbench: class {
+        constructor(config: any) { lifecycle.selection = config.onSessionChange; }
         setVisible = visibility;
-        start = vi.fn(async () => {});
-        destroy = vi.fn(async () => {});
-        openFile = vi.fn(async () => {});
+        start = lifecycle.start;
+        destroy = lifecycle.destroy;
+        openFile = lifecycle.open;
         createAndOpenFile = vi.fn(async () => 'new-id');
         getActiveFilePath = vi.fn(() => null);
         setNodeWaitingInput = vi.fn();
@@ -82,8 +85,8 @@ function makeRuntime(): ApplicationRuntime {
 
 afterEach(() => {
     document.body.innerHTML = '';
-    window.location.hash = '';
-    vi.restoreAllMocks();
+    history.replaceState(null, '', '/');
+    vi.restoreAllMocks(); lifecycle.start.mockReset().mockResolvedValue(); lifecycle.open.mockReset().mockResolvedValue(); lifecycle.destroy.mockReset().mockResolvedValue();
 });
 
 describe('app-shell navigation listener cleanup', () => {
@@ -173,4 +176,91 @@ it('opens an ordinary workspace without OCR, settings, flow installation or inac
         expect(themeService.init).toHaveBeenCalledOnce(); expect(ocr).not.toHaveBeenCalled(); expect(settings).not.toHaveBeenCalled(); expect(install).not.toHaveBeenCalled();
         expect(new Set(vi.mocked(runtime.vfs.openFileSystem).mock.calls.map(([path]) => path))).toEqual(new Set(['/etc', '/home/admin/minds']));
     } finally { await handle.destroy(); }
+});
+
+const uiFactory = () => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }));
+const testUI = () => ({ createChatEditor: uiFactory, createAgentEditor: uiFactory, createFlowEditor: uiFactory,
+    createSkillEditor: uiFactory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), llmUiEditors: {} }) as any;
+function navigationDOM(other = false) {
+    document.body.innerHTML = `<aside class="app-sidebar"><div class="app-sidebar__brand">MindOS</div>
+        <button class="app-nav-btn" data-target="settings-workspace"><span>Settings</span></button></aside>
+        <main class="main-content-area"><div id="settings-workspace" class="workspace-view"></div>
+        ${other ? '<div id="other-workspace" class="workspace-view"></div>' : ''}</main>`;
+}
+
+it('starts at a lightweight page and loads a workspace only after choosing it', async () => {
+    navigationDOM(); lifecycle.start.mockClear();
+    const runtime = makeRuntime(), ready = vi.fn();
+    const app = await initTestApp({ services: runtime, workspaces: [workspace], startPage: true, onShellReady: ready, ui: testUI() });
+    try {
+        expect(ready).toHaveBeenCalledOnce(); expect(location.hash).toBe('#/start');
+        expect(lifecycle.start).not.toHaveBeenCalled(); expect(lifecycle.open).not.toHaveBeenCalled();
+        document.querySelector<HTMLButtonElement>('.app-start__choice')!.click();
+        await vi.waitFor(() => expect(lifecycle.start).toHaveBeenCalledOnce());
+        expect(location.hash).toBe('#/settings');
+        document.querySelector<HTMLElement>('.app-sidebar__brand')!.click();
+        expect(location.hash).toBe('#/start');
+        expect(document.querySelector('.app-start')?.classList.contains('active')).toBe(true);
+    } finally { await app.destroy(); }
+});
+
+it('releases the global banner before slow workspace startup and ignores obsolete resource navigation', async () => {
+    navigationDOM(true); lifecycle.start.mockClear(); lifecycle.open.mockClear();
+    let finish!: () => void;
+    lifecycle.start.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    const other = { ...workspace, elementId: 'other-workspace', slug: 'other' };
+    history.replaceState(null, '', '#/settings/old-file');
+    const ready = vi.fn();
+    const starting = initTestApp({ services: makeRuntime(), workspaces: [workspace, other], onShellReady: ready, ui: testUI() });
+    await vi.waitFor(() => expect(lifecycle.start).toHaveBeenCalledOnce());
+    expect(ready).toHaveBeenCalledOnce();
+    const obsoleteSelection = lifecycle.selection;
+    document.dispatchEvent(new CustomEvent(NAVIGATION_EVENTS.NAVIGATE, { detail: { target: 'other' } }));
+    obsoleteSelection?.('obsolete-file'); finish();
+    const app = await starting;
+    try {
+        expect(location.hash).toBe('#/other');
+        expect(document.querySelector('#other-workspace')?.classList.contains('active')).toBe(true);
+        expect(lifecycle.open).not.toHaveBeenCalled();
+    } finally { await app.destroy(); }
+});
+
+it('keeps a failed workspace local and releases it before retrying', async () => {
+    navigationDOM(); lifecycle.start.mockClear(); lifecycle.destroy.mockClear();
+    lifecycle.start.mockRejectedValueOnce(new Error('Temporary workspace failure'));
+    const app = await initTestApp({ services: makeRuntime(), workspaces: [workspace], startPage: true, ui: testUI() });
+    try {
+        await app.navigate('settings');
+        expect(document.querySelector('[role="alert"]')?.textContent).toContain('Temporary workspace failure');
+        expect(lifecycle.destroy).toHaveBeenCalledOnce();
+        document.querySelector<HTMLButtonElement>('.workspace-status button')!.click();
+        await vi.waitFor(() => expect(lifecycle.start).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(document.querySelector('.workspace-status')).toBeNull());
+        expect(document.querySelector('#settings-workspace')?.classList.contains('active')).toBe(true);
+    } finally { await app.destroy(); }
+});
+
+it('honors an explicit resource link even when the start page is enabled', async () => {
+    navigationDOM(); lifecycle.open.mockClear();
+    history.replaceState(null, '', '#/settings/explicit-file');
+    const app = await initTestApp({ services: makeRuntime(), workspaces: [workspace], startPage: true, ui: testUI() });
+    try { expect(lifecycle.open).toHaveBeenCalledWith('explicit-file'); }
+    finally { await app.destroy(); }
+});
+
+it('shares a pending workspace load and opens only the latest requested resource', async () => {
+    navigationDOM(); lifecycle.start.mockClear(); lifecycle.open.mockClear();
+    let finish!: () => void;
+    lifecycle.start.mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    history.replaceState(null, '', '#/settings/old-file');
+    const starting = initTestApp({ services: makeRuntime(), workspaces: [workspace], ui: testUI() });
+    await vi.waitFor(() => expect(lifecycle.start).toHaveBeenCalledOnce());
+    document.dispatchEvent(new CustomEvent(NAVIGATION_EVENTS.NAVIGATE, { detail: { target: 'settings', resourceId: 'new-file' } }));
+    finish();
+    const app = await starting;
+    try {
+        await vi.waitFor(() => expect(lifecycle.open).toHaveBeenCalledOnce());
+        expect(lifecycle.start).toHaveBeenCalledOnce(); expect(lifecycle.open).toHaveBeenCalledWith('new-file');
+        expect(location.hash).toBe('#/settings/new-file');
+    } finally { await app.destroy(); }
 });

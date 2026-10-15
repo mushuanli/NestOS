@@ -33,7 +33,7 @@ const replacePrefix = (path: string, old: string, next: string) => path === old 
 
 /** Each open file owns its editor and save coordinator independently of navigation. */
 export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, container: HTMLElement,
-    factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void> } {
+    factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void> } {
     const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, emptyMessage, saveDebounceMs: _debounce, ...extra } = options;
     if (files.fs !== engine) throw new Error('Editor file context differs from its file tree');
     const loads = new LatestViewLoad(), pending = new Set<Promise<void>>();
@@ -64,7 +64,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         const external = extra.hostContext as EditorHostContext | undefined;
         return { openFile: async (path, anchor) => {
                 if (!await engine.driver.getNode(path)) throw new FSError('ENOENT', 'File not found', 'open', path);
-                await vfs.selectPath(path); await selectionWork; await Promise.all(pending);
+                await vfs.selectPath(path); await selectionWork;
                 if (anchor && tabs.current?.id === path) await tabs.current.value?.editor?.navigateTo({ elementId: anchor });
             }, chatFromFile: external?.chatFromFile, toggleSidebar: () => vfs.toggleSidebar(),
             navigate: async (request: NavigationRequest) => { await external?.navigate?.(request); }, saveContent: persist };
@@ -150,7 +150,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         const task = new Promise<void>(resolve => setTimeout(resolve, 0)).then(() => create(tab, item, load)).catch(error => {
             if (loads.isCurrent(load)) { tab.panel.replaceChildren(); report(error); }
         });
-        pending.add(task); void task.finally(() => pending.delete(task));
+        pending.add(task); void task.finally(() => pending.delete(task)); await task;
     }
     const unsubscribe = [vfs.on('sessionSelected', event => { selectionWork = select(event).catch(report); }),
         vfs.on('navigateToHeading', ({ elementId }) => tabs.current?.value?.editor?.navigateTo({ elementId })),
@@ -184,7 +184,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         await select({ item: { id: path, type: 'directory', icon: node ? vfs.getResourceIcon(node) : FILE_ICONS.folder, version: '1', metadata: { title: node?.name || t('project.files'), path,
             parentPath: node?.parentPath ?? null, tags: [], createdAt: new Date(node?.createdAt ?? 0).toISOString(), lastModified: new Date(node?.modifiedAt ?? 0).toISOString(), custom: node?.metadata ?? {} } } });
     }
-    return Object.assign(dispose, { openDirectory, async setVisible(next: boolean): Promise<void> {
+    return Object.assign(dispose, { openDirectory, async whenReady(): Promise<void> { await selectionWork; }, async setVisible(next: boolean): Promise<void> {
         if (visible === next) return; visible = next;
         if (!next) { loads.cancel(); await Promise.all(tabs.values().map(tab => flush(tab.value?.editor))); }
         else if (pendingItem && (tabs.current?.id !== pendingItem.id || !tabs.current?.value)) await select({ item: pendingItem });

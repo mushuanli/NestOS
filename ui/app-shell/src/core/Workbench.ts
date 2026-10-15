@@ -15,6 +15,7 @@ import { t, NavigationRequest} from '@itookit/common';
 import { EditorOptions, IEditor, EditorHostContext } from '@itookit/ui-common';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { showNameDialog } from '../files/project-dialog';
+import { presentationPersistence } from '../persistence/initial-navigation';
 
 export class Workbench {
     private readonly dialogs = new AbortController();
@@ -37,7 +38,7 @@ export class Workbench {
             {
                 ...config.uiOptions,
                 scopeId,
-                persistence: config.uiPersistence,
+                persistence: presentationPersistence(config.uiPersistence),
                 sessionListContainer: config.sidebarContainer,
                 fileCreation: {
                     ...config.uiOptions?.fileCreation,
@@ -155,7 +156,6 @@ export class Workbench {
         }
 
         this.hasStarted = true;
-        if (!this.getActiveFilePath() && !initialResourceId) await this.openDirectory('/');
     }
 
     public async openFile(nodeId: string): Promise<void> {
@@ -212,6 +212,7 @@ export class Workbench {
     private async openFileInternal(nodeId: string): Promise<void> {
         if (nodeId === '/') { await this.openDirectory(nodeId); return; }
         await this.vfsUI.selectPath(nodeId);
+        await this.lifecycleUnsubscribe.whenReady();
     }
 
     public setNodeWaitingInput(nodeId: string, waiting: boolean): void {

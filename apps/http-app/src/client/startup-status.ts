@@ -11,6 +11,7 @@ export function createStartupStatus() {
         progress(message: string): void { detail.textContent = message; },
         ready(): void { panel.remove(); },
         fail(error: unknown): void {
+            if (!panel.isConnected) document.body.append(panel);
             panel.setAttribute('role', 'alert'); title.textContent = t('httpApp.startupFailed');
             detail.textContent = error instanceof Error ? error.message : String(error);
             const reload = document.createElement('button'); reload.type = 'button';

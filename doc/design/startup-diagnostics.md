@@ -1,12 +1,30 @@
 # 启动故障与运行日志
 
+## 2026-10-15 启动外壳与按意图导航
+
+全局提示以 `onShellReady`（主题和导航就绪）作为结束点。无深链时停在 `#/start` 功能入口，选择模块后才加载侧栏；不自动恢复持久选中项或当前项目正文。显式深链直接打开对应资源，历史标签只展示入口，当前页面内模块切换保留编辑器。局部进度和失败重试不阻塞主导航，过期加载结果不能打开旧资源或改写 URL。移除旧的 `waitForEditorMount`、15 秒超时及 Tauri 遮罩迁移代码。
+
+```mermaid
+flowchart LR
+    Boot[宿主连接与主题] --> Shell[导航就绪 / 关闭全局提示]
+    Shell --> Entry[无深链：轻量入口]
+    Shell --> Deep[显式深链]
+    Entry -->|选择模块| Sidebar[加载侧栏与展示偏好]
+    Deep --> Sidebar
+    Sidebar -->|点击资源或显式深链| View[后端准备资源 / 前端编辑器]
+    Sidebar -->|失败| Retry[局部重试 / 保留主导航]
+    View -->|切换页面| Cache[保留已打开编辑器 / 释放可替换视图请求]
+```
+
+HTTP MemoryBackend + RPC 集成测试覆盖轻量入口、工作台、文件深链。入口的首屏读取只包含一次 `readUiDocuments` 主题查询，不包含 `workbenchView`、`openSessionView`、文件系统打开、设置或 OCR。这一计数不包括认证、bootstrap、静态资源及后台业务请求，不能作为真实网络总请求数。后台任务恢复和扫描仍属于 runtime，不因没有打开工作台而停止。
+
 ## 2026-09-27 启动等待链优化
 
 桌面在 HTML head 记录 `mindos.document`，入口模块及其静态依赖执行后写入 `frontend.bootstrap.entry`：`timeOrigin` 为页面时间原点，`documentMs` / `entryMs` 为相对时刻，`documentToEntryMs` 包含资源加载和模块执行，`resourceCount` 为已记录资源数。结合 Rust `process.start` / `app.ready` 可区分页面前与页面内的等待；该区间不能直接归因成 Vite 编译时间。原有 `bootstrap.ready` 仍只度量 JS bootstrap，不能替代端到端或首帧时间。
 
 会话导航在整个投影内复用一次 folders / sessions 快照：根目录读取不再自我作废快照，文件夹 `stat()`、`ProjectNavigation.sync()/refresh()` 与 `ProjectService.list()/forFolder()` 都从同一份 `navigation()` 派生，启动实测 `listFolders()` 由 25 次降到 3 次、连续两次根读由 2 次 `repository.list()` 降到 1 次（sidebar 根读与项目导航各一次属跨层，未合并）。仓库变更、Kernel 结构事件、关闭浏览器或工作台刷新使快照失效；失败读取可重试。权衡：根投影与文件夹投影一样只在显式刷新时看到其它宿主实例的写入。快照仅用于导航投影，`SessionRepository.list()` 不做长期缓存，恢复和跨实例持久读取仍读存储。manifest 每批最多 64 个并发读取，所有读取结束后才提交或回滚事务，保留不完整 Session 跳过和格式错误失败语义。
 
-Flow invocation 恢复先检查持久调用记录，空会话不再探测写租约或读取 Task 列表；有调用的会话仍先通过写入门，再重新读取恢复后的记录。`traceBoot` 在 console 分别记录 `agentService.init`、`sessionEngine.init`、`promptHistory.init`、`flowInvocations.recover`、`sessionWorkbench.sidebar`、`sessionWorkbench.currentProject`、`sessionWorkbench.projectNavigation`，用于拆解会话系统及首个工作区等待。
+Flow invocation 恢复先检查持久调用记录，空会话不再探测写租约或读取 Task 列表；有调用的会话仍先通过写入门，再重新读取恢复后的记录。`traceBoot` 在 console 分别记录 `agentService.init`、`sessionEngine.init`、`promptHistory.init`、`flowInvocations.recover`、`sessionWorkbench.sidebar`、`sessionWorkbench.projectNavigation`，用于拆解会话系统及首个工作区等待。
 
 桌面正常窗口关闭会阻止立即销毁 WebView，等待 `app.destroy()` 完成消费者、Kernel、租约及数据源清理后再销毁窗口；重复关闭请求合并。此路径需要 `core:window:allow-destroy`，需重启 Rust 宿主加载权限。强制结束进程和页面刷新仍依靠既有租约过期及事务代次协议，不能承诺执行异步关闭清理。
 
@@ -113,7 +131,7 @@ Context GC 的 `observeSession` 不再枚举全部 Session 寻找一条记录：
 
 Flow 调用恢复新增**持久标记** `/var/lib/kernel/flow-invocations.json`（`llm-session/src/persistence/flow-invocation-sessions.ts`）：`FlowInvocationService.submit()` 在写调用记录之前标记 Session，`recover()` 先读一次标记，标记存在且不含某 Session 时完全跳过该 Session 的 `listShared` 探测（3 个 Session、0 条记录的重载场景实测 513ms 属纯探测开销）；标记缺失/损坏/版本不符时报告 unknown，恢复退回逐 Session 探测并把命中者补写进标记（自愈旧数据根）。标记写入串行化，并发 `mark` 不丢条目。回归：`backend/llm-session/__tests__/flow-invocation-sessions.test.ts`、`__tests__/flow-invocations.test.ts`（标记为空时零探测、unknown 时探测并补写、受理先于记录写入）。
 
-启动外壳改为**分阶段呈现**：`#__boot-overlay` 不再是 `showLoading()` 动态创建的全屏层，而是 `apps/tauri-app/index.html` 中 `.main-content-area` 的静态子元素（首帧即绘制，只有内容区转圈，导航栏与侧栏始终可见）。`initApp` 新增 `onWorkspaceReady({ editor })` 与 `onEditorReady()`：前者在工作台布局与会话侧栏渲染完成后触发，宿主把遮罩移进编辑器区（导航 → 侧栏 → 编辑器），后者在首个编辑器挂载完成后触发，宿主移除遮罩；`waitForEditorMount` 改为后台等待，不再计入 `App 初始化完成` 与总启动耗时。`<head>` 内联脚本按 `localStorage['mindos.theme']`（`ThemeService.applyTheme` 镜像的 mode，缺失时回退 `prefers-color-scheme`）在首帧前设置 `data-theme`，消除深浅色闪烁。启动期间 `<body>` 带 `is-booting`，导航与侧栏仅可见、不接受输入，避免抢跑初始导航。
+早期桌面曾通过 `onWorkspaceReady` 把 `#__boot-overlay` 移到正文列，再等编辑器挂载移除。当前已由上述 `onShellReady` + 工作区局部提示替代，启动无需打开工作台。`<head>` 仍按持久主题镜像及系统偏好设置 `data-theme`，避免首帧闪烁；`is-booting` 只保护路由监听安装前的静态控件。
 
 Flow 调用标记新增**封存**语义（`FlowInvocationSessions.establish`）：标记缺失（升级后的首个数据根，或标记损坏）时，恢复完整探测一遍后把结果写入标记（**空集也写**），否则零调用记录的用户会永远停留在"每次启动逐 Session 探测"；探测中出现不可读 Session 时不封存，下次继续按 unknown 处理。回归在 `backend/llm-session/__tests__/flow-invocations.test.ts`。
 

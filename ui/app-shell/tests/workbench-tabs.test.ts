@@ -174,6 +174,8 @@ it('opens files from the root details, filters ignored files and returns to the 
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main, editorFactory: factory as never, fileTypes: [{ extensions: ['.md'], icon: FILE_ICONS.code }] });
     try {
         await workbench.start();
+        expect(factory).not.toHaveBeenCalled();
+        sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
         await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/完整文件名称.md"]'), main.innerHTML).not.toBeNull());
         const refresh = sidebar.querySelector<HTMLButtonElement>('.workbench-sidebar__navigation [data-action="refresh"]')!;
         expect(refresh).not.toBeNull(); expect(refresh.hidden).toBe(false);
@@ -213,7 +215,8 @@ it('uses deletion confirmation and refreshes root details after a bulk delete', 
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main, editorFactory: (async () => ({ destroy() {} })) as never });
     const confirm = vi.fn(() => false); vi.stubGlobal('confirm', confirm);
     try {
-        await workbench.start(); await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/a.md"]')).not.toBeNull());
+        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
+        await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/a.md"]')).not.toBeNull());
         main.querySelector<HTMLInputElement>('[data-selection-id="/a.md"]')!.click(); main.querySelector<HTMLInputElement>('[data-selection-id="/b.md"]')!.click();
         main.querySelector<HTMLButtonElement>('[data-action="bulk-delete"]')!.click();
         await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce()); expect(await fs.driver.exists('/a.md')).toBe(true);
@@ -232,7 +235,8 @@ it('moves a pinned open file through the shared picker and saves to its new path
         updateNodeId: (path: string) => { options.target.path = path; } }));
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main, editorFactory: factory as never });
     try {
-        await workbench.start(); await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/source.md"]')).not.toBeNull());
+        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
+        await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/source.md"]')).not.toBeNull());
         main.querySelector<HTMLButtonElement>('[data-resource-id="/source.md"] .workbench-directory__name')!.click();
         await vi.waitFor(() => expect(factory).toHaveBeenCalledOnce());
         main.querySelector<HTMLButtonElement>('[data-tab-id="/source.md"] .workbench-tabs__pin')!.click();
@@ -270,4 +274,23 @@ it('shows readable file sizes before modified time and keeps unknown directory s
     expect(size('/empty.txt').textContent).toBe('0 B'); expect(size('/note.md').textContent).toBe('1.5 KiB');
     expect(size('/image.png').textContent).toBe('2 MiB'); expect(size('/folder').textContent).toBe('—');
     expect(size('/note.md').title.replace(/[,\s]/g, '')).toBe('1536B');
+});
+
+it('restores layout and tab entries without opening the saved file; an explicit open waits for its editor', async () => {
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() }); const fs = await manager.openFileSystem('/');
+    await fs.driver.createFile({ parentPath: '/', name: 'saved.md', content: 'saved file body' });
+    const main = document.createElement('div'), sidebar = document.createElement('div'); document.body.append(sidebar, main);
+    const snapshot = { activeId: '/saved.md', expandedFolderIds: [], selectedItemIds: ['/saved.md'] };
+    const factory = vi.fn(async (mount: HTMLElement) => { await new Promise(resolve => setTimeout(resolve, 10)); mount.textContent = 'editor ready'; return { destroy() {} }; });
+    const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main, editorFactory: factory as never,
+        uiPersistence: { load: () => snapshot, save() {} },
+        workbenchState: { load: () => ({ version: 1, tabs: [{ id: '/saved.md', title: 'Saved tab', pinned: true }] }), save() {} } });
+    try {
+        await workbench.start();
+        expect(factory).not.toHaveBeenCalled(); expect(workbench.getActiveFilePath()).toBeNull();
+        expect(main.textContent).toContain('Saved tab'); expect(main.textContent).not.toContain('editor ready');
+        expect(snapshot.activeId).toBe('/saved.md'); expect(snapshot.selectedItemIds).toEqual(['/saved.md']);
+        await workbench.openFile('/saved.md');
+        expect(factory).toHaveBeenCalledOnce(); expect(main.textContent).toContain('editor ready');
+    } finally { await workbench.destroy(); await manager.dispose(); }
 });

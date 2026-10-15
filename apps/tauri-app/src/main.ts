@@ -78,8 +78,7 @@ function pathToMetaDir(rootDir: string, absPath: string): string {
 let diagnosticLogPath: string | undefined;
 
 function showLoading(msg: string): void {
-    // The shell is visible from the first paint; disable its controls until boot finishes so an
-    // early click cannot race the initial navigation.
+    // Guard static navigation until app-shell has installed its handlers.
     document.body.classList.add('is-booting');
     let el = document.getElementById('__boot-overlay');
     if (!el) {
@@ -101,31 +100,9 @@ function showLoading(msg: string): void {
     if (msgEl) msgEl.textContent = msg;
 }
 
-let releaseLoadingTarget: (() => void) | undefined;
-
-/**
- * Move the boot overlay into the workspace editor area so the app nav and the Session sidebar
- * stay readable while the editor mounts. The target's inline positioning is restored on hide.
- */
-function focusLoading(target: HTMLElement): void {
-    const overlay = document.getElementById('__boot-overlay');
-    if (!overlay || overlay.parentElement === target) return;
-    releaseLoadingTarget?.();
-    const previous = target.style.position;
-    if (!previous) target.style.position = 'relative';
-    target.appendChild(overlay);
-    releaseLoadingTarget = () => {
-        if (previous) target.style.position = previous;
-        else target.style.removeProperty('position');
-        releaseLoadingTarget = undefined;
-    };
-}
-
 function hideLoading(): void {
     document.getElementById('__boot-overlay')?.remove();
-    releaseLoadingTarget?.();
     document.body.classList.remove('is-booting');
-    document.body.classList.remove('is-sidebar-ready');
 }
 
 function showError(msg: string): void {
@@ -371,14 +348,10 @@ async function bootstrap(): Promise<void> {
         fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) },
         ...client,
         workspaces: WORKSPACES.map(ws => ws.workspaceName === 'home' ? { ...ws, files: { fs: homeSource.fs, cwd: '/' } } : ws),
-        defaultSlug: 'chat',
+        defaultSlug: 'start', startPage: true,
         routeAliases: { home: 'llm-workspace', projects: 'llm-workspace', workbench: 'llm-workspace' },
         onProgress: log,
-        // Staged reveal: nav (static) → Session sidebar → editor, instead of one full-screen wait.
-        onWorkspaceMounted: parts => focusLoading(parts.editor),
-        onWorkspaceReady: parts => focusLoading(parts.editor),
-        onSidebarInteractive: () => document.body.classList.add('is-sidebar-ready'),
-        onEditorReady: () => hideLoading(),
+        onShellReady: hideLoading,
         ui,
     });
     startupCleanup.push(() => app.destroy());
@@ -399,7 +372,6 @@ async function bootstrap(): Promise<void> {
         }
     }
 
-    hideLoading();
     console.log(`[Boot] 总启动耗时: ${(performance.now() - t0).toFixed(0)}ms`);
     void recordDiagnostic('bootstrap.ready', { durationMs: Math.round(performance.now() - t0) });
     } catch (error) {

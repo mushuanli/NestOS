@@ -6,18 +6,23 @@
 1. 宿主注入 options.services 与 options.backend（后端创建只在宿主执行）
    → vfs / llmDriver / agentService / sessionRepository / flowEngine /
      sessionFiles / directoryMounts / kernel / sessionManager / commandBus
-2. themeService.init(await vfs.openFileSystem('/etc'))
+2. themeService.init(uiDocs)，只读取主题偏好
 3. createSettingsAccess() → 本地设置目录、按需加载的 settingsFactory
 4. 按 WorkspaceConfig.type 建 EditorFactory 表（factories / editorFactoryMap）
 5. 绑定路由（routeMap / reverseRouteMap + popstate、NAVIGATION_EVENTS.NAVIGATE）
-6. loadWorkspace(wsConfig, resourceId)，managerCache 缓存 + pendingLoads 并发去重
+6. onShellReady 关闭全局提示；无深链显示 #/start，选择模块后 loadWorkspace(wsConfig)
+7. 显式资源导航才 restoreWorkspaceResource；managerCache 缓存 + pendingLoads 并发去重
 ```
 
 `initApp` 要求 `AppOptions.services` 与 `AppOptions.backend`；编辑器、AI 菜单和 LLM 设置编辑器经 `AppOptions.ui` 注入。普通文档启动只等待主题和当前工作区，不加载 OCR、设置数据、恢复能力或聊天权限。设置编辑器第一次打开时 backend.settings 返回已初始化端口；目录导航始终在本地生成。OCR 首次操作才获取后端服务，readSettings 只读，prepareConfiguration 仅在打开配置时创建缺省文件和提示词。订阅空输入框不触发 OCR 加载。
 
 chat 工作区由 `SessionWorkbench` 承载（Session 侧栏 + 路由 + 文件上下文），其余工作区由 `Workbench` 承载，二者都用 `EditorFactory` 选择编辑器。
 
-chat 启动分阶段：`onWorkspaceMounted` 在两列 DOM 创建后立即把宿主遮罩移到正文列，使空侧栏可见；侧栏树加载完成后 `onWorkspaceReady` 通知宿主。浏览器获得一次绘制机会后才恢复选中项、当前项目正文或 URL 深链。侧栏初始化完成后触发 `onSidebarInteractive`，桌面端此时开放侧栏点击，正文首挂载再触发 `onEditorReady`。显式深链优先，不额外打开侧栏保存的旧选中项。
+Web、HTTP、Tauri 的正常入口启用 startPage，默认进入 `#/start` 轻量功能页；点击品牌可回到入口。显式 URL 深链仍直接进入对应资源；`home` 等旧别名保持原映射。全局启动提示在路由监听安装后的 `onShellReady` 关闭，不等待工作区、会话或编辑器。`initApp` 的返回仍等待初始路由完成，后续消费者可依赖完成的句柄。
+
+工作区创建和正文导航分开：加载中的工作区共享 Promise，只有最新路由可在加载完成后打开资源。`onWorkspaceMounted` 报告两列 DOM，`onWorkspaceReady` 报告侧栏就绪，chat 的 `onSidebarInteractive` 表示侧栏可交互；`onEditorReady` 根据模块打开操作的 Promise 报告，不参与全局提示，也不再通过 DOM 或 15 秒超时猜测挂载。工作区显示局部加载提示，失败局部重试并释放半初始化资源，导航始终可用。后台完成的旧工作区不改写 URL。
+
+首次进入工作区只加载侧栏、排序/展开/布局偏好和标签入口；不恢复持久 activeId/selectedItemIds，不自动打开上次 Session、当前项目目录或普通文件正文，也不额外创建根目录正文视图。点击标签/浏览树或明确 URL 时才读取正文、绑定会话、取得租约及创建编辑器。当前页面内返回已经加载的模块继续保留其当前编辑器和草稿。保存的历史标签不删除。
 
 移动端 `setupMobileWorkspaceView` 在工作台标签初始化时保留列表，只根据可见活动面板中的实际正文切换详情，标签栏与空面板不算编辑器。观察面板挂载和 hidden 状态变化；用户返回列表后，正文的后台 DOM 更新不会再次强制切换详情。
 
@@ -27,7 +32,7 @@ Web 入口的图标与各工作区 CSS 由 HTML 引用的首批样式提供；`l
 
 ## Flow 定义库和右键运行
 
-AppUI.installFlowLibrary 在首次进入聊天、工具箱、Flow 工作区或打开 Flow 文件时安装 llm-ui 注册的缺失 Flow 模板；已有持久草稿不覆盖。AppUI.createFlowContextMenu 通过 Workbench.uiOptions.contextMenu 装配到 flows 工作区，菜单执行依赖命令总线，导航依赖宿主回调。Web/Tauri 均已接线。
+内置 Flow 模板由后端按安装记录准备；已有持久草稿不覆盖。AppUI.createFlowContextMenu 通过 Workbench.uiOptions.contextMenu 装配到 flows 工作区，菜单执行依赖命令总线，导航依赖宿主回调。Web/Tauri 均已接线。
 
 参数确认后创建 Session 并导航到 chat；会话 manifest.flow 保存固定 revision 和参数，LLMWorkspaceEditor 首次打开空会话后自动执行。定义与 UI 边界见 [作文评审实现](../../../doc/design/essay-review-flow.md)。
 
@@ -37,6 +42,6 @@ AppUI.installFlowLibrary 在首次进入聊天、工具箱、Flow 工作区或�
 
 普通 Workbench、SessionWorkbench 与工具箱连接器共用 `src/workbench/tabs.ts` 的标签机制。项目和普通文件工作区由 `src/workbench/sidebar.ts` 提供一个可调侧栏，上区导航、下区已打开；主区域的目录详情在 `src/workbench/directory-list.ts`。工具箱保留其资源导航，避免宿主覆盖连接器拥有的标签 DOM；释放连接器后再释放其文件视图。
 
-bootstrap 为普通工作区和 Session 浏览器注入 VfsUIPersistence.workbenchPort，与浏览器的 uiPersistence 分开存储。恢复的标签先展示入口，活动资源由 URL/浏览树恢复；后台标签首次选择时才装配编辑器。
+bootstrap 为普通工作区和 Session 浏览器注入 VfsUIPersistence.workbenchPort，与浏览器的 uiPersistence 分开存储。恢复的标签先展示入口，活动资源只由明确 URL 或用户点击打开；后台标签首次选择时才装配编辑器。
 
 项目选择器替换浏览器标题行，集合当前项目、所有项目及新建项目；目录和文件保留在同一侧栏树。目录行通过 rowCreation 提供悬停新建图标，主区域列表通过 directory-selection 管理全选和批量操作，复用 vfs-ui 菜单权限与命令。已打开区用关闭/Pin 图标并提供保留固定项的批量关闭。

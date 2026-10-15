@@ -1,3 +1,4 @@
+import { presentationPersistence } from '../persistence/initial-navigation';
 import { createMindOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { ToolboxDeletion, toolboxSelectionPaths } from './ToolboxDeletion';
 import { defaultToolDrawers } from './tool-drawers';
@@ -83,7 +84,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.descriptions = await resources.descriptions();
         await this.loadDirectories();
         this.buildFilters();
-        this.ui = createVFSUI({ sessionListContainer: sidebar, title: t('toolbox.title'), scopeId: TOOLBOX_SCOPE, persistence: this.options.uiPersistence, autoSelectFirst: false,
+        this.ui = createVFSUI({ sessionListContainer: sidebar, title: t('toolbox.title'), scopeId: TOOLBOX_SCOPE, persistence: presentationPersistence(this.options.uiPersistence), autoSelectFirst: false,
             appearance: { showTimestamp: false, menuVisibility: 'always' },
             searchPlaceholder: t('toolbox.search'), listHeader: this.filters, listItems: items => this.project(items),
             alwaysLoadedDirectories: this.loadedDirectories,

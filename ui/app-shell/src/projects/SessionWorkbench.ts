@@ -1,6 +1,7 @@
 import { harnessObservation, remoteSessionSources } from '@itookit/app-contracts';
 import { projectTwinTarget, twinSourceMenu } from '../digital-twin/source-menu';
 import { withInitialDirectory } from './initial-directory';
+import { presentationPersistence } from '../persistence/initial-navigation';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
 import { ProjectSearchPanel } from './project-search-panel';
@@ -114,7 +115,6 @@ export interface SessionWorkbenchOptions {
     projectSyncSetup?(projectId: string, signal: AbortSignal): Promise<void>;
     projectSyncDirectory?(projectId: string, signal: AbortSignal): Promise<void>;
     onSidebarReady?: () => boolean;
-    initialResourceId?: string;
     prepareSession?(sessionId: string): Promise<boolean>;
     /** Host-owned snapshot storage; omitted means the sidebar restores nothing. */
     uiPersistence?: UIPersistencePort;
@@ -153,7 +153,6 @@ export class SessionWorkbench implements WorkspaceController {
     private browser?: Awaited<ReturnType<ApplicationBackend['workbenchView']>>['browser'];
     private navigationFiles?: FileSystemView;
     private sidebarUI?: VFSUIShell;
-    private initialSidebarSelection?: string;
     private sidebarStarting = true;
     private projectNavigation?: ProjectNavigation;
     private readonly syncMenu: ProjectSyncMenu;
@@ -195,7 +194,6 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly projects: SessionWorkbenchOptions['projects'];
     private readonly onSidebarReady: SessionWorkbenchOptions['onSidebarReady'];
     private readonly prepareSession?: (sessionId: string) => Promise<boolean>;
-    private readonly initialResourceId: SessionWorkbenchOptions['initialResourceId'];
     private readonly uiPersistence: SessionWorkbenchOptions['uiPersistence'];
     private sessions!: ProjectSessions;
     private readonly sessionsReady: Promise<ProjectSessions>;
@@ -224,7 +222,6 @@ export class SessionWorkbench implements WorkspaceController {
         this.flows = options.flows;
         this.projects = options.projects;
         this.onSidebarReady = options.onSidebarReady;
-        this.initialResourceId = options.initialResourceId;
         this.prepareSession = options.prepareSession;
         this.uiPersistence = options.uiPersistence;
         this.sessionsReady = Promise.resolve(options.projects?.sessions ?? this.backend.projectSessions());
@@ -265,7 +262,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.projects) this.installProjectNavigation();
         if (this.searchPanel && this.projectNavigation) this.projectNavigation.header.after(this.searchPanel.element);
         this.sidebarUI = createVFSUI({ sessionListContainer: tree, title: this.projects ? t('project.workspace') : '会话', scopeId: SESSION_BROWSER_SCOPE,
-            persistence: this.uiPersistence, onError: error => this.report(error),
+            persistence: presentationPersistence(this.uiPersistence), onError: error => this.report(error),
             listItems: items => {
                 this.remoteStatus.project(this.projectNavigation?.currentProject()?.project.id);
                 this.searchPanel?.project(this.projectNavigation?.currentProject()?.path);
@@ -381,10 +378,7 @@ export class SessionWorkbench implements WorkspaceController {
                 },
             },
         }, this.navigationFiles) as VFSUIShell;
-        this.subscriptions.add(this.sidebarUI.on('sessionSelected', ({ item }) => {
-            // Selection notifications also come from refreshes; only restore them at startup.
-            if (item && this.sidebarStarting) this.initialSidebarSelection = item.id;
-        }), this.sidebarUI.on('resourceActivated', ({item}) => {
+        this.subscriptions.add(this.sidebarUI.on('resourceActivated', ({item}) => {
             if (!item || this.sidebarStarting) return;
             void this.openResource(item.id, {directory: item.type === 'directory', preserveProject: !item.metadata.custom.projectId}).catch(error => this.report(error));
         }), this.sidebarUI.on('sidebarStateChanged', ({ isCollapsed }) => this.sidebar.classList.toggle('is-collapsed', isCollapsed)),
@@ -406,13 +400,6 @@ export class SessionWorkbench implements WorkspaceController {
         this.sidebarStarting = false;
         if (this.projects?.remoteMounts) this.subscriptions.add(
             this.projects.remoteMounts.onChange(() => { this.updateRemoteAvailability(); this.scheduleRefresh('remote-status'); }));
-        if (this.initialSidebarSelection && !this.initialResourceId) await this.openResource(this.initialSidebarSelection);
-        if (this.projectNavigation && !this.active && !this.initialResourceId) {
-            const current = view.currentProject;
-            // The startup project is already resolved; hand it to the first sync so it does
-            // not look it up again from the folder catalog.
-            if (current) await traceBoot('sessionWorkbench.projectNavigation', () => this.openResource(folderBrowserPath(current.path)));
-        }
         if (!this.active) {
             if (this.projects) this.showWelcome();
             else this.message('选择一个会话，或新建会话');

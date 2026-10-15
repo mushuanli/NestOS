@@ -121,7 +121,9 @@ it('opens project files before blocked navigation and discards stale navigation 
         fileFactory: factory as never, directoryMounts: mounts, projects: projects, uiPersistence: { load: () => restored } });
     try {
         await workbench.start();
-        // The single sidebar now expands Files and restores its remembered descendants.
+        expect(openFiles).not.toHaveBeenCalled();
+        await workbench.openResource(startupPath);
+        // Expand remembered descendants only after the user enters a project.
         await (workbench as unknown as {fileNavigation: Promise<void>}).fileNavigation;
         expect(openFiles).toHaveBeenCalled();
         const startup = await projects.current();

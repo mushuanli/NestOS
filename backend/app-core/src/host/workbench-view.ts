@@ -8,11 +8,11 @@ export async function createWorkbenchView(deps: SessionBrowserDependencies, prel
     const lifecycle = deps.lifecycle ?? new SessionLifecycleService({ repository: deps.repository, kernel: deps.kernel });
     const browser = await createSessionBrowser({ ...deps, lifecycle });
     try {
-        const [currentProject, directory, navigation] = await Promise.all([deps.projects?.current(),
+        const [directory, navigation] = await Promise.all([
             preload ? Promise.all([browser.fs.driver.getNode('/'), browser.fs.driver.getChildren('/')]) : undefined,
             deps.projects?.sessions.navigation({ includeSessions: false })]);
         return { browser, lifecycle, search: deps.projects ? new ProjectSearch(deps.projects) : undefined,
-            navigation, currentProject,
+            navigation,
             directory: directory ? { revision: browser.fs.revision, node: directory[0], nodes: directory[1] } : undefined };
     } catch (error) { await browser.dispose(); throw error; }
 }

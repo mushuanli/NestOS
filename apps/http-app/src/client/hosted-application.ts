@@ -4,14 +4,14 @@ import { createBrowserUI } from 'mind-os/ui';
 import { installHttpStatus } from './status-banner';
 import { HttpViewClient } from './view-client';
 
-export async function startApplicationClient(onProgress: (message: string) => void) {
+export async function startApplicationClient(onProgress: (message: string) => void, onShellReady?: () => void) {
     installMobileNavigation();
     const releaseStatus = installHttpStatus();
     const client = new HttpViewClient(crypto.randomUUID());
     try {
         const { services, backend, flowLibrary, fileTemplates } = await client.start();
         const app = await initApp({ services, backend, fileTemplates, workspaces: WORKSPACES,
-            ui: createBrowserUI(flowLibrary), defaultSlug: 'chat', onProgress,
+            ui: createBrowserUI(flowLibrary), defaultSlug: 'start', startPage: true, onProgress, onShellReady,
             routeAliases: { home: 'llm-workspace', projects: 'llm-workspace', workbench: 'llm-workspace' } });
         app.onDestroy(releaseStatus);
         app.onDestroy(() => client.close(), 'sources');

@@ -40,14 +40,10 @@
     background: var(--bg-secondary);
 }
 
-/* Nav stays guarded during boot; the Session sidebar becomes interactive after initialization. */
+/* Guard controls only until the shell installs navigation handlers. */
 body.is-booting .app-sidebar,
 body.is-booting .mm-sidebar {
     pointer-events: none;
-}
-
-body.is-booting.is-sidebar-ready .mm-sidebar {
-    pointer-events: auto;
 }
 
 @keyframes boot-overlay-spin {

@@ -55,7 +55,7 @@ const settings = await backend.settings([{ name: 'Notes', workspace: 'minds' }])
 |---|---|
 | `StorageSettingsEditor` | VFS 容量使用、数据迁移、快照管理、同步设置、危险操作 |
 | `LogSettingsEditor` | 日志级别配置、概览统计、日志查看器 |
-| `RecoverySettingsEditor` | 从备份/快照恢复数据 |
+| `RecoverySettingsEditor` | 顶部统一恢复所选初始文件/内置配置、刷新全部状态；内置配置全量重置独立确认 |
 | `TagSettingsEditor` | 全局标签颜色/名称管理 |
 | `ContactSettingsEditor` | 联系人管理 |
 | `AppearanceSettingsEditor` | 主题切换 (写入 `/ui/theme.json`) |

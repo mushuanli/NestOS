@@ -615,3 +615,7 @@
 .settings-toggle input:checked + .settings-toggle__track { background: var(--st-color-primary, #6366f1); }
 .settings-toggle input:checked + .settings-toggle__track::before { transform: translateX(.875rem); }
 .settings-toggle input:focus-visible + .settings-toggle__track { outline: 2px solid var(--st-color-primary, #6366f1); outline-offset: 3px; }
+
+.recovery-page__actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: flex-end; }
+.recovery-page__group { margin-block: 1.5rem; }
+.recovery-page__warning { padding: 1rem; margin-block: 1rem; border-left: 3px solid var(--st-color-warning); background: var(--st-color-warning-light); }

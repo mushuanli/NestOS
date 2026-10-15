@@ -1,341 +1,206 @@
-import { InitialFilesSection, type InitialFilesPort } from './initial-files';
-// @file: app-settings/editors/RecoverySettingsEditor.ts
-
-import { t } from '@itookit/common';
+import { escapeHTML, escapeAttr, t } from '@itookit/common';
 import { type RestorableItem, type IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import { BaseSettingsEditor, Toast, Modal, type EditorOptions } from '@itookit/ui-common';
+import { InitialFilesSection, type InitialFilesPort } from './initial-files';
+
+type ItemType = RestorableItem['type'];
+const groups: ItemType[] = ['provider', 'connection', 'agent'];
 
 export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementService> {
+    private initialFiles?: InitialFilesSection;
+    private selectedItems = new Set<string>();
+    private allItems: RestorableItem[] = [];
+    private busy = false;
+    private disposed = false;
+    private generation = 0;
+
     constructor(container: HTMLElement, service: IAgentManagementService, options: EditorOptions,
         private readonly restoreFlows?: () => Promise<number>, initialFiles?: InitialFilesPort) {
-        super(container, service, options); if (initialFiles) this.initialFiles = new InitialFilesSection(initialFiles);
+        super(container, service, options);
+        if (initialFiles) this.initialFiles = new InitialFilesSection(initialFiles, undefined,
+            { externalActions: true, selectionChanged: () => this.refreshUIState() });
     }
-    private initialFiles?: InitialFilesSection;
-    private restoringFlows = false;
-    private selectedItems = new Set<string>(); // key = "type:id"
-    private allItems: RestorableItem[] = [];
 
-    async render() {
-        this.allItems = await this.service.getRestorableItems();
+    async render(): Promise<void> {
+        const generation = ++this.generation, items = await this.service.getRestorableItems();
+        if (this.disposed || generation !== this.generation) return;
+        this.allItems = items;
+        this.selectedItems = new Set(items.filter(item => this.selectedItems.has(this.key(item))).map(item => this.key(item)));
+        this.clearListeners();
+        this.container.innerHTML = `<div class="settings-page">
+            ${this.renderHeader()}<div data-recovery-warnings>${this.buildDuplicateWarnings()}</div>
+            ${this.initialFiles ? '<div data-initial-files></div>' : this.renderLegacyFlows()}
+            <section class="settings-section"><h3>${escapeHTML(t('recovery.configuration'))}</h3>
+                <p>${escapeHTML(t('recovery.configurationHelp'))}</p>
+                ${groups.map(group => this.renderSection(group)).join('')}</section></div>`;
+        if (this.initialFiles) await this.initialFiles.mount(this.container.querySelector<HTMLElement>('[data-initial-files]')!);
+        if (this.disposed || generation !== this.generation) return;
+        this.bindEvents(); this.refreshUIState();
+    }
 
-        const providers   = this.allItems.filter(i => i.type === 'provider');
-        const connections = this.allItems.filter(i => i.type === 'connection');
-        const agents      = this.allItems.filter(i => i.type === 'agent');
+    private renderHeader(): string {
+        return `<div class="settings-page__header"><div>
+            <h2 class="settings-page__title">${escapeHTML(t('recovery.title'))}</h2>
+            <p class="settings-page__description">${escapeHTML(t('recovery.help'))}</p></div>
+            <div class="recovery-page__actions">
+                <button id="btn-refresh-recovery" class="settings-btn settings-btn--secondary">${escapeHTML(t('recovery.refresh'))}</button>
+                <button id="btn-batch-restore" class="settings-btn settings-btn--primary" disabled></button>
+                <button id="btn-reset-all" class="settings-btn settings-btn--danger">${escapeHTML(t('recovery.resetAll'))}</button>
+            </div></div>`;
+    }
 
-        const selectedCount = this.selectedItems.size;
-        const hasSelection  = selectedCount > 0;
-
-        // Collect duplicate warnings
-        const dupWarnings = this.buildDuplicateWarnings();
-
-        this.container.innerHTML = `
-            <div class="settings-page">
-                <div class="settings-page__header">
-                    <div>
-                        <h2 class="settings-page__title">系统恢复与维护</h2>
-                        <p class="settings-page__description">
-                            选中项目并点击「重置选中项」可将其恢复为出厂默认值。
-                            Provider 重置会保留已配置的 API Key。
-                        </p>
-                    </div>
-                    <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
-                        <button id="btn-reset-all" class="settings-btn settings-btn--danger">
-                            🔄 强制全量重置
-                        </button>
-                        <button id="btn-batch-restore" class="settings-btn settings-btn--primary"
-                                ${!hasSelection ? 'disabled' : ''}>
-                            ↩️ 重置选中项 (${selectedCount})
-                        </button>
-                    </div>
-                </div>
-
-                ${dupWarnings}
-                ${this.initialFiles ? `<div data-initial-files></div>` : this.restoreFlows ? `<section class="settings-section">
-                    <h3>${this.escapeHtml(t('flow.library.restore'))}</h3>
-                    <p>${this.escapeHtml(t('flow.library.recoveryHint'))}</p>
-                    <button id="btn-restore-flows" class="settings-btn settings-btn--primary" ${this.restoringFlows ? 'disabled' : ''}>
-                        ${this.escapeHtml(t('flow.library.restore'))}</button>
-                </section>` : ''}
-
-                ${this.renderSection('🏭 Provider 配置', 'provider', providers)}
-                ${this.renderSection('🔗 默认连接（Connection）', 'connection', connections)}
-                ${this.renderSection('🤖 默认智能体（Agent）', 'agent', agents)}
-            </div>
-        `;
-
-        await this.initialFiles?.mount(this.container.querySelector<HTMLElement>('[data-initial-files]')!);
-        this.updateAllSelectAllState(providers, connections, agents);
-        this.bindEvents();
+    private renderLegacyFlows(): string {
+        if (!this.restoreFlows) return '';
+        return `<section class="settings-section"><h3>${escapeHTML(t('flow.library.restore'))}</h3>
+            <p>${escapeHTML(t('flow.library.recoveryHint'))}</p>
+            <button id="btn-restore-flows" class="settings-btn settings-btn--secondary">${escapeHTML(t('flow.library.restore'))}</button></section>`;
     }
 
     private buildDuplicateWarnings(): string {
-        const dupItems = this.allItems.filter(i => i.duplicatePaths?.length);
-        if (dupItems.length === 0) return '';
-
-        const rows = dupItems.map(i => {
-            const paths = i.duplicatePaths!.map(p => `<code>${this.escapeHtml(p)}</code>`).join(', ');
-            return `<li><strong>${i.type}/${i.id}</strong> — 重复路径: ${paths}</li>`;
-        }).join('');
-
-        return `
-            <div class="settings-banner settings-banner--warning" style="margin-bottom:1rem">
-                ⚠️ 检测到 ${dupItems.length} 个项目存在重复文件，全量重置时将自动合并（保留 /default/ 路径，删除冗余副本）：
-                <ul style="margin:8px 0 0 16px;font-size:0.875rem">${rows}</ul>
-            </div>
-        `;
+        const items = this.allItems.filter(item => item.duplicatePaths?.length);
+        if (!items.length) return '';
+        return `<div class="recovery-page__warning">${escapeHTML(t('recovery.duplicates', { count: items.length }))}
+            <ul>${items.map(item => `<li>${escapeHTML(this.key(item))}: ${item.duplicatePaths!.map(path => `<code>${escapeHTML(path)}</code>`).join(', ')}</li>`).join('')}</ul></div>`;
     }
 
-    async destroy(): Promise<void> { this.initialFiles?.destroy(); await super.destroy(); }
-
-    private async restoreMissingFlows(): Promise<void> {
-        if (!this.restoreFlows || this.restoringFlows) return;
-        this.restoringFlows = true;
-        const button = this.container.querySelector<HTMLButtonElement>('#btn-restore-flows');
-        if (button) button.disabled = true;
-        try { Toast.success(t('flow.library.restored', { count: await this.restoreFlows() })); }
-        catch (error) { Toast.error(String(error)); }
-        finally {
-            this.restoringFlows = false;
-            if (button?.isConnected) button.disabled = false;
-        }
-    }
-
-    private escapeHtml(s: string): string {
-        return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    }
-
-    // ── Render ─────────────────────────────────────────────────────────────────
-
-    private renderSection(title: string, group: string, items: RestorableItem[]): string {
-        return `
-            <div class="recovery-section" style="margin-top:1.5rem">
-                <div class="settings-section-header">
-                    <h3 class="settings-section-title">${title}</h3>
-                    <label class="settings-checkbox-label">
-                        <input type="checkbox" class="chk-select-all" data-group="${group}"> 全选
-                    </label>
-                </div>
-                <div class="settings-list-group">
-                    ${items.length > 0
-                        ? items.map(item => this.renderRow(item)).join('')
-                        : '<div style="padding:12px;color:var(--st-text-disabled)">（无条目）</div>'
-                    }
-                </div>
-            </div>
-        `;
+    private renderSection(group: ItemType): string {
+        const items = this.allItems.filter(item => item.type === group);
+        return `<div class="recovery-page__group"><div class="settings-section-header">
+            <h4 class="settings-section-title">${escapeHTML(t(`recovery.${group}`))}</h4>
+            <label class="settings-checkbox-label"><input type="checkbox" class="chk-select-all" data-group="${group}" ${!items.length ? 'disabled' : ''}>${escapeHTML(t('initialFiles.all'))}</label>
+            </div><div class="settings-list-group">${items.length ? items.map(item => this.renderRow(item)).join('') : escapeHTML(t('recovery.empty'))}</div></div>`;
     }
 
     private renderRow(item: RestorableItem): string {
-        const key = `${item.type}:${item.id}`;
-        const isSelected = this.selectedItems.has(key);
-
-        const { badge, cls } = {
-            missing:  { badge: '<span class="settings-badge settings-badge--danger">已丢失</span>',  cls: 'status-missing' },
-            modified: { badge: '<span class="settings-badge settings-badge--warning">已修改</span>', cls: 'status-modified' },
-            ok:       { badge: '<span class="settings-badge settings-badge--success">正常</span>',   cls: 'status-ok' },
-        }[item.status];
-
-        const dupBadge = item.duplicatePaths?.length
-            ? ` <span class="settings-badge settings-badge--danger" title="重复文件: ${item.duplicatePaths.join(', ')}">⚠️ 重复</span>`
-            : '';
-
-        return `
-            <div class="settings-list-item ${cls}${isSelected ? ' settings-list-item--selected' : ''}"
-                 data-key="${key}">
-                <div class="settings-list-item__check">
-                    <input type="checkbox" class="chk-item" value="${key}" ${isSelected ? 'checked' : ''}>
-                </div>
-                <div class="settings-list-item__icon">${item.icon ?? ''}</div>
-                <div class="settings-list-item__content">
-                    <div class="settings-list-item__title">${item.name} ${badge}${dupBadge}</div>
-                    <div class="settings-list-item__desc">${item.description ?? ''} · ID: ${item.id}</div>
-                </div>
-            </div>
-        `;
+        const key = this.key(item), selected = this.selectedItems.has(key);
+        const style = { missing: 'danger', modified: 'warning', ok: 'success' }[item.status];
+        const duplicate = item.duplicatePaths?.length ? `<span class="settings-badge settings-badge--danger" title="${escapeAttr(item.duplicatePaths.join(', '))}">${escapeHTML(t('recovery.duplicate'))}</span>` : '';
+        return `<div class="settings-list-item${selected ? ' settings-list-item--selected' : ''}" data-key="${escapeAttr(key)}">
+            <div class="settings-list-item__check"><input type="checkbox" class="chk-item" value="${escapeAttr(key)}" ${selected ? 'checked' : ''}></div>
+            <div class="settings-list-item__icon">${escapeHTML(item.icon ?? '')}</div>
+            <div class="settings-list-item__content"><div class="settings-list-item__title">${escapeHTML(item.name)}
+                <span class="settings-badge settings-badge--${style}">${escapeHTML(t(`recovery.${item.status}`))}</span>${duplicate}</div>
+                <div class="settings-list-item__desc">${escapeHTML(item.description ?? '')} · ID: ${escapeHTML(item.id)}</div></div></div>`;
     }
 
-    // ── Events ─────────────────────────────────────────────────────────────────
-
-    private bindEvents() {
-        // Row click → toggle checkbox
-        this.container.querySelectorAll('.settings-list-item').forEach(item => {
-            this.addEventListener(item, 'click', (e) => {
-                if ((e.target as HTMLElement).matches('input[type="checkbox"]')) return;
-                const chk = item.querySelector('.chk-item') as HTMLInputElement;
-                chk.checked = !chk.checked;
-                this.handleItemSelection(chk);
+    private bindEvents(): void {
+        this.addEventListener(this.container.querySelector('#btn-refresh-recovery'), 'click', () => { void this.runBusy(() => this.refreshAll()); });
+        this.addEventListener(this.container.querySelector('#btn-batch-restore'), 'click', () => this.handleBatchRestore());
+        this.addEventListener(this.container.querySelector('#btn-reset-all'), 'click', () => this.handleResetAll());
+        this.addEventListener(this.container.querySelector('#btn-restore-flows'), 'click', () => { void this.runBusy(async () => {
+            Toast.success(t('flow.library.restored', { count: await this.restoreFlows!() }));
+        }); });
+        this.container.querySelectorAll<HTMLElement>('.settings-list-item').forEach(row => {
+            this.addEventListener(row, 'click', event => {
+                if (this.busy || (event.target as HTMLElement).matches('input')) return;
+                const input = row.querySelector<HTMLInputElement>('.chk-item')!;
+                input.checked = !input.checked; this.selectItem(input);
             });
         });
-
-        // Checkbox change
-        this.container.querySelectorAll('.chk-item').forEach(chk => {
-            this.addEventListener(chk, 'change', (e) =>
-                this.handleItemSelection(e.target as HTMLInputElement));
+        this.container.querySelectorAll<HTMLInputElement>('.chk-item').forEach(input => {
+            this.addEventListener(input, 'change', () => this.selectItem(input));
         });
-
-        // Group select-all
-        this.container.querySelectorAll('.chk-select-all').forEach(chk => {
-            this.addEventListener(chk, 'change', (e) => {
-                const target = e.target as HTMLInputElement;
-                const group = target.dataset.group!;
-                this.allItems.filter(i => i.type === group).forEach(item => {
-                    const key = `${item.type}:${item.id}`;
-                    target.checked ? this.selectedItems.add(key) : this.selectedItems.delete(key);
+        this.container.querySelectorAll<HTMLInputElement>('.chk-select-all').forEach(input => {
+            this.addEventListener(input, 'change', () => {
+                if (this.busy) return;
+                this.allItems.filter(item => item.type === input.dataset.group).forEach(item => {
+                    input.checked ? this.selectedItems.add(this.key(item)) : this.selectedItems.delete(this.key(item));
                 });
-                this.render();
+                this.refreshUIState();
             });
         });
-
-        // Batch restore
-        const batchBtn = this.container.querySelector('#btn-batch-restore');
-        const flowButton = this.container.querySelector('#btn-restore-flows');
-        if (flowButton) this.addEventListener(flowButton, 'click', () => this.restoreMissingFlows());
-        if (batchBtn) this.addEventListener(batchBtn, 'click', () => this.handleBatchRestore());
-
-        // Force reset all
-        const resetAllBtn = this.container.querySelector('#btn-reset-all');
-        if (resetAllBtn) this.addEventListener(resetAllBtn, 'click', () => this.handleResetAll());
     }
 
-    private handleItemSelection(target: HTMLInputElement) {
-        target.checked ? this.selectedItems.add(target.value) : this.selectedItems.delete(target.value);
+    private key(item: RestorableItem): string { return `${item.type}:${item.id}`; }
+    private selectItem(input: HTMLInputElement): void {
+        if (this.busy) return;
+        input.checked ? this.selectedItems.add(input.value) : this.selectedItems.delete(input.value);
         this.refreshUIState();
     }
 
-    private refreshUIState() {
-        const btn = this.container.querySelector('#btn-batch-restore') as HTMLButtonElement | null;
-        if (btn) {
-            const count = this.selectedItems.size;
-            btn.disabled = count === 0;
-            btn.innerHTML = `↩️ 重置选中项 (${count})`;
-            const hasNormal = this.getSelectedObjects().some(i => i.status === 'ok');
-            btn.classList.toggle('settings-btn--danger', hasNormal);
-            btn.classList.toggle('settings-btn--primary', !hasNormal);
-        }
-
-        // Update select-all checkboxes
-        ['provider', 'connection', 'agent'].forEach(type => {
-            const items = this.allItems.filter(i => i.type === type);
-            const chk = this.container.querySelector(`.chk-select-all[data-group="${type}"]`) as HTMLInputElement | null;
-            if (!chk || items.length === 0) return;
-            const allSel  = items.every(i => this.selectedItems.has(`${i.type}:${i.id}`));
-            const someSel = items.some(i => this.selectedItems.has(`${i.type}:${i.id}`));
-            chk.checked = allSel;
-            chk.indeterminate = someSel && !allSel;
+    private refreshUIState(): void {
+        const count = this.selectedItems.size + (this.initialFiles?.selectedCount ?? 0);
+        const button = this.container.querySelector<HTMLButtonElement>('#btn-batch-restore');
+        if (button) { button.textContent = t(this.busy ? 'recovery.processing' : 'recovery.restoreSelected', { count }); button.disabled = this.busy || !count; }
+        this.container.querySelectorAll<HTMLButtonElement>('#btn-refresh-recovery, #btn-reset-all, #btn-restore-flows').forEach(input => { input.disabled = this.busy; });
+        this.container.querySelectorAll<HTMLInputElement>('.chk-item').forEach(input => {
+            input.checked = this.selectedItems.has(input.value); input.disabled = this.busy;
+            input.closest('.settings-list-item')?.classList.toggle('settings-list-item--selected', input.checked);
         });
-
-        // Row highlight
-        this.container.querySelectorAll('.settings-list-item').forEach(row => {
-            const key = (row as HTMLElement).dataset.key!;
-            row.classList.toggle('settings-list-item--selected', this.selectedItems.has(key));
+        this.container.querySelectorAll<HTMLInputElement>('.chk-select-all').forEach(input => {
+            const items = this.allItems.filter(item => item.type === input.dataset.group);
+            const selected = items.filter(item => this.selectedItems.has(this.key(item))).length;
+            input.checked = !!items.length && selected === items.length;
+            input.indeterminate = selected > 0 && selected < items.length; input.disabled = this.busy || !items.length;
         });
     }
 
-    private updateAllSelectAllState(
-        providers: RestorableItem[],
-        connections: RestorableItem[],
-        agents: RestorableItem[],
-    ) {
-        [
-            ['provider', providers],
-            ['connection', connections],
-            ['agent', agents],
-        ].forEach(([type, items]) => {
-            const chk = this.container.querySelector(
-                `.chk-select-all[data-group="${type}"]`
-            ) as HTMLInputElement | null;
-            const list = items as RestorableItem[];
-            if (!chk || list.length === 0) return;
-            const allSel  = list.every(i => this.selectedItems.has(`${i.type}:${i.id}`));
-            const someSel = list.some(i => this.selectedItems.has(`${i.type}:${i.id}`));
-            chk.checked = allSel;
-            chk.indeterminate = someSel && !allSel;
+    private handleBatchRestore(): void {
+        if (this.busy || this.disposed) return;
+        const items = this.allItems.filter(item => this.selectedItems.has(this.key(item)));
+        const files = this.initialFiles?.selectedCount ?? 0;
+        if (!items.length && !files) return;
+        const messages = [t('recovery.confirmSelection', { files, configurations: items.length })];
+        if (files) messages.push(t('recovery.filesHelp'));
+        if (items.length) messages.push(t('recovery.configurationHelp'));
+        if (items.some(item => item.duplicatePaths?.length)) messages.push(t('recovery.mergeDuplicates'));
+        new Modal(t('recovery.confirmTitle'), messages.map(message => `<p>${escapeHTML(message)}</p>`).join(''), {
+            type: items.length ? 'danger' : 'default', confirmText: t('action.confirm'), cancelText: t('action.cancel'),
+            onConfirm: () => this.runBusy(() => this.restoreSelection(items, files > 0)),
+        }).show();
+    }
+
+    private async restoreSelection(items: RestorableItem[], files: boolean): Promise<void> {
+        const operations = items.map(item => (async () => {
+            await this.service.restoreItem(item.type, item.id); this.selectedItems.delete(this.key(item)); return true;
+        })());
+        if (files) operations.push(this.initialFiles!.restore());
+        const results = await Promise.allSettled(operations);
+        const failures = results.filter(result => result.status === 'rejected' || !result.value);
+        if (failures.length) Toast.warning(t('recovery.partialFailure', { count: failures.length }));
+        else Toast.success(t('recovery.completed'));
+        // InitialFilesSection already refreshed its own results and existence state.
+        await this.refreshConfigurations();
+    }
+
+    private async refreshConfigurations(): Promise<void> {
+        const items = await this.service.getRestorableItems(); if (this.disposed) return;
+        this.allItems = items;
+        this.selectedItems = new Set(items.filter(item => this.selectedItems.has(this.key(item))).map(item => this.key(item)));
+        const warnings = this.container.querySelector('[data-recovery-warnings]');
+        if (warnings) warnings.innerHTML = this.buildDuplicateWarnings();
+        groups.forEach(group => {
+            const header = this.container.querySelector(`.chk-select-all[data-group="${group}"]`)?.closest('.recovery-page__group');
+            if (header) header.outerHTML = this.renderSection(group);
         });
+        this.clearListeners(); this.bindEvents(); this.refreshUIState();
     }
 
-    private getSelectedObjects(): RestorableItem[] {
-        return this.allItems.filter(i => this.selectedItems.has(`${i.type}:${i.id}`));
+    private async refreshAll(): Promise<void> {
+        const results = await Promise.allSettled([this.refreshConfigurations(), this.initialFiles?.refresh()]);
+        const failure = results.find(result => result.status === 'rejected');
+        if (failure?.status === 'rejected') throw failure.reason;
     }
 
-    // ── Actions ─────────────────────────────────────────────────────────────────
-
-    private handleBatchRestore() {
-        if (this.selectedItems.size === 0) return;
-
-        const selected = this.getSelectedObjects();
-        const hasOk    = selected.some(i => i.status === 'ok');
-        const hasProviders = selected.some(i => i.type === 'provider');
-        const hasDuplicates = selected.some(i => i.duplicatePaths?.length);
-
-        let msg = `确定要重置这 ${selected.length} 个项目吗？`;
-        if (hasOk) msg += '\n\n⚠️ 注意：包含状态正常的项目，重置将覆盖当前配置。';
-        if (hasProviders) msg += '\n\n✅ Provider 重置会保留已配置的 API Key，仅重置模型列表和地址。';
-        if (hasDuplicates) {
-            const dupItems = selected.filter(i => i.duplicatePaths?.length);
-            const dupDetail = dupItems.map(i =>
-                `  · ${i.type}/${i.id}: ${i.duplicatePaths!.join(', ')}`
-            ).join('\n');
-            msg += `\n\n⚠️ 以下项目存在重复文件，重置时将自动合并（保留 /default/ 路径）：\n${dupDetail}`;
-        }
-
-        Modal.confirm(hasOk || hasDuplicates ? '强制重置确认' : '恢复确认', msg, async () => {
-            const btn = this.container.querySelector('#btn-batch-restore') as HTMLButtonElement;
-            if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 处理中...'; }
-
-            let ok = 0; let err = 0;
-            await Promise.all(
-                Array.from(this.selectedItems).map(async (key) => {
-                    const sep = key.indexOf(':');
-                    const type = key.slice(0, sep) as 'provider' | 'connection' | 'agent';
-                    const id = key.slice(sep + 1);
-                    try {
-                        await this.service.restoreItem(type, id);
-                        ok++;
-                    } catch (e: unknown) {
-                        err++;
-                        console.error(`Restore ${key}:`, e);
-                    }
-                })
-            );
-
-            if (err === 0) {
-                Toast.success(`成功重置 ${ok} 个项目`);
-                this.selectedItems.clear();
-            } else {
-                Toast.warning(`完成：${ok} 成功，${err} 失败`);
-            }
-            await this.render();
-        });
+    private handleResetAll(): void {
+        if (this.busy || this.disposed) return;
+        new Modal(t('recovery.resetAll'), `<p>${escapeHTML(t('recovery.resetHelp'))}</p><p>${escapeHTML(t('recovery.mergeDuplicates'))}</p>`, {
+            type: 'danger', confirmText: t('action.confirm'), cancelText: t('action.cancel'),
+            onConfirm: () => this.runBusy(async () => {
+                await this.service.resetAllDefaults(); this.selectedItems.clear();
+                Toast.success(t('recovery.completed')); await this.refreshConfigurations();
+            }),
+        }).show();
     }
 
-    private handleResetAll() {
-        const dupItems = this.allItems.filter(i => i.duplicatePaths?.length);
-        let dupMsg = '';
-        if (dupItems.length > 0) {
-            dupMsg = '\n\n⚠️ 检测到以下项目存在重复文件，将自动合并（保留 /default/ 路径）：\n' +
-                dupItems.map(i => `  · ${i.type}/${i.id}: ${i.duplicatePaths!.join(', ')}`).join('\n');
-        }
-
-        Modal.confirm(
-            '强制全量重置',
-            '将所有内置 Provider、Connection、Agent 恢复为出厂默认值。\n\n' +
-            '✅ Provider 的 API Key 会被保留。\n' +
-            '⚠️ 用户对模型列表、地址、Agent 配置的自定义修改将丢失。\n\n' +
-            '建议在遇到配置混乱或版本升级后使用此功能。' +
-            dupMsg,
-            async () => {
-                const btn = this.container.querySelector('#btn-reset-all') as HTMLButtonElement;
-                if (btn) { btn.disabled = true; btn.innerHTML = '⏳ 重置中...'; }
-                try {
-                    await this.service.resetAllDefaults();
-                    Toast.success('已完成全量重置');
-                    this.selectedItems.clear();
-                } catch (e: unknown) {
-                    Toast.error('重置失败：' + (e instanceof Error ? e.message : String(e)));
-                } finally {
-                    await this.render();
-                }
-            }
-        );
+    private async runBusy(action: () => Promise<void>): Promise<void> {
+        if (this.busy || this.disposed) return;
+        this.busy = true; this.initialFiles?.setDisabled(true); this.refreshUIState();
+        try { await action(); }
+        catch (error) { Toast.error(String(error)); }
+        finally { this.busy = false; this.initialFiles?.setDisabled(false); this.refreshUIState(); }
     }
+
+    protected override onServiceChange(): void { if (!this.busy && !this.disposed) void this.runBusy(() => this.refreshAll()); }
+    async destroy(): Promise<void> { this.disposed = true; this.generation++; this.initialFiles?.destroy(); await super.destroy(); }
 }

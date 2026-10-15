@@ -2,7 +2,7 @@
 
 版本：1.1 · 日期：2026-09-05 · 状态：目标设计，核心部分已实现；owner、跨 Session 分配及保留契约修订待实施。
 
-实施进度：step/task/session cache、显式选择、TTL、授权、失效/续期和持久 receipt 已落地；跨 Session owner、provider cache 和大内容存储仍待实现。详见 [实施记录](../feat/durable-harness-implementation.md#4-task-管理与选择-cache)。下述协议描述完整目标，不是当前 API 的逐字定义。
+实施进度：step/task/session cache、显式选择、TTL、授权、失效/续期和持久 receipt 已落地；跨 Session owner、provider cache 和大内容存储仍待实现。当前 API 与证据见 [Kernel API](../kernel-api.md) 和 [证据映射](durable-harness-evidence.md)，早期取舍见 [实施记录](../feat/durable-harness-implementation.md#4-task-管理与选择-cache)。下述协议描述完整目标，不是当前 API 的逐字定义。
 
 本文补充 [Session / Task 协议](durable-harness-protocol.md)，回答 cache 是否一次性、是否限于本 Task、Task 能否管理及选择 cache，以及这些选择如何影响中断恢复。当前已实现核心能力，不能视为完整实现本文协议。namespace、entry 与 Task receipt 的存放位置及删除约束见 [持久存储与文件组织](durable-harness-storage.md)。
 

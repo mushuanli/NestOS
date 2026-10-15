@@ -120,4 +120,4 @@ C4Component
 
 会话消息的不可变投影位于 HTTP application/，消息事件定位受影响的分组，结构变化或未知事件从权威快照恢复；rpc/ 不识别 Session 事件类型。快照 DTO 编码、大小和能力引用扫描复用不变子树；历史不再同时编码 getSnapshot.sessions 与 getSessions。原生会话的游标推进和串行化属于 app-core/projects/conversation-view，订阅者共享一个轮询源；UI 接收通知后读取快照。
 
-旧 ApplicationPort、ApplicationHost 和独立持久回执链已移除；旧设计记录归档到 doc/deprecated/。当前前端能力以 services.ts 与 application-client.ts 为准。
+旧 ApplicationPort、ApplicationHost 和独立持久回执链已移除，相应废弃设计已从文档树清理。当前前端能力以 services.ts 与 application-client.ts 为准。

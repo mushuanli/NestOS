@@ -5,7 +5,7 @@
 > 状态：历史 v1 设计及实施记录；完备 harness 协议尚未实现和验收
 > 范围：定义通用、持久、可恢复、可扩展的 Kernel Session/Task 内核，覆盖 LLM loop、动态 DAG、Bash、Skill、MCP、跨进程与跨 Session 协作。
 
-> **2026-09-05 设计修订**：面向“随时中断/继续、Task/进程通信、共享状态等待和跨 Session 数据协作”的目标规范见 [Durable Harness Session / Task 协议](../design/durable-harness-protocol.md)。该文明确控制屏障、mailbox 消费、版本等待和持续恢复；与本文生命周期、重试或通信描述冲突时，以新协议为目标设计。下表的历史完成标记不代表新协议已落地，也不替代 [当前审查](durable-kernel-review.md) 中的正确性验收。
+> **2026-09-05 设计修订**：面向“随时中断/继续、Task/进程通信、共享状态等待和跨 Session 数据协作”的目标规范见 [Durable Harness Session / Task 协议](../design/durable-harness-protocol.md)。该文明确控制屏障、mailbox 消费、版本等待和持续恢复；与本文生命周期、重试或通信描述冲突时，以新协议为目标设计。下表的历史完成标记不代表新协议已落地，也不替代 [目标与实现映射](../design/durable-harness-evidence.md) 中的正确性验收。
 
 > **包名对照（2026-08-15 拆分后）**：本文写作时使用的 `llm-runtime` → 现为 `@itookit/llm-tasks`；`llm-conversation` → 现为 `@itookit/llm-session`（会话）+ `@itookit/llm-flow`（DAG 编排）。T19 等处提到的 `llm-kernel` 已删除，调度统一由 `@itookit/kernel` 承担。
 

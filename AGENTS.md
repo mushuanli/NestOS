@@ -60,8 +60,8 @@ pnpm --filter @itookit/<pkg> typecheck
 | [TODO 与进度](./doc/todo.md) | 目标、已完成范围与待办（活文档） |
 | [设计文档](./doc/design/) | 当前设计规范（VFS / harness / flow / skill / session 浏览） |
 | [Durable 证据映射](./doc/design/durable-harness-evidence.md) | 五篇 Durable 设计的目标 → 实现 → 持久记录 → 故障证据 |
-| [历史设计归档](./doc/feat/) | 已实现特性的设计/评审记录（**归档，不随代码更新**） |
-| [已归档文档](./doc/deprecated/) | 一次性评审记录与已被取代的方案（**归档，不随代码更新**） |
+| [文档导航](./doc/README.md) | 按架构、API、运行与设计主题查找当前文档 |
+| [协议历史背景](./doc/feat/README.md) | 当前协议仍引用的三份历史材料（不作为当前 API 依据） |
 
 > 上表为**活文档**（随代码更新）。改代码时按此表定位对应文档即可，无需全量扫描；`pnpm docs:check` 可校验活文档中的悬空路径与已删除符号。
 > 各包开发说明见 `ui/<pkg>/AGENTS.md`、`backend/<pkg>/AGENTS.md`、`shared/<pkg>/AGENTS.md`；目录边界见 [前后端模块](./doc/design/frontend-backend-modules.md)。

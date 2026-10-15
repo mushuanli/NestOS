@@ -2,7 +2,7 @@
 
 版本：目标协议 1.1 · 日期：2026-09-08 · 状态：下述编号章节保留完整目标；当前同后端 managed pool/shared、撤权、物理清理及查询已实现，不能再概括为“分配 API 未实现”。
 
-本文与 [主协议](durable-harness-protocol.md)、[Cache 协议](durable-harness-cache.md)、[存储设计](durable-harness-storage.md) 共同定义目标契约。资源所有权、授权、分配及回收以本文为准；当前代码能力仍以 [实施记录](../feat/durable-harness-implementation.md) 为准。
+本文与 [主协议](durable-harness-protocol.md)、[Cache 协议](durable-harness-cache.md)、[存储设计](durable-harness-storage.md) 共同定义目标契约。资源所有权、授权、分配及回收以本文为准；当前 API 及完成边界见 [Kernel API](../kernel-api.md) 和 [证据映射](durable-harness-evidence.md)。
 
 ## 当前实现基线（2026-09-08）
 
@@ -15,7 +15,7 @@
 - `query({ kind, scope?, sessionId?, taskId?, state?, limit?, cursor? })` 查询 resources/claims/requests/grants/cleanups，逐页重验授权，返回 items/nextCursor。这是 live keyset 查询，不是历史快照；存储扫描效率需另行核验。
 - managed schema 当前写入 2，兼容读取 1/2；包含 resource/access/handle/claim/request/cleanup 等记录。第 3–4 节的 account/use/allocation/export/import authority 表不是这些记录的同名别称，完整协议仍待实施。
 
-`resources.test.ts` 已有物理清理、未知回执、替换 worker、撤权后重授权、销毁、查询及旧 schema 测试；当前重跑结果见 [核验清单](../deprecated/implementation-audit.md)。不要用这些测试证明全部 1.1 目标或真实跨进程设备隔离已完成。
+`resources.test.ts` 已有物理清理、未知回执、替换 worker、撤权后重授权、销毁、查询及旧 schema 测试；覆盖与剩余边界见 [目标与实现映射](durable-harness-evidence.md)。不要用这些测试证明全部 1.1 目标或真实跨进程设备隔离已完成。
 
 ## 1. 正确对齐 Linux，保留 Harness 的语义
 

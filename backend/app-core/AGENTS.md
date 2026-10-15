@@ -106,7 +106,7 @@ pnpm --filter @itookit/app-core typecheck
 
 - 项目收藏位于 `projects/favorites/`：contracts 定义存储/变更端口，policy 无 I/O，store 封装 SeqFile 事务，service 串行化同项目读写，lifecycle 适配 VFS 提交事件；UI 跳转展示策略留在 app-shell。
 
-- `digital-twin/` 提供 DigitalTwinService：来源、Kernel 提取、审核、默认知识检索、发送前校验、目标与遗忘；SeqTwinStore 以固定索引页和版本链实现原子存储/清理，只用公开 VFS 契约，不访问数据库内部。native-service 负责运行时装配，UI 在 app-shell。普通 Memory 工具不读写分身资源。支持规模、布局版本和适配器局限见 [数字分身设计](../../doc/design/数字分身完整设计与实施计划.md)。
+- `digital-twin/` 提供 DigitalTwinService：来源、Kernel 提取、审核、默认知识检索、发送前校验、目标与遗忘；SeqTwinStore 以固定索引页和版本链实现原子存储/清理，只用公开 VFS 契约，不访问数据库内部。native-service 负责运行时装配，UI 在 app-shell。普通 Memory 工具不读写分身资源。支持规模、布局版本和适配器局限见 [数字分身设计](../../doc/design/digital-twin.md)。
 - 扫描计划与运行在 `digital-twin/scan-*` 和 `scans.ts`；SeqFile CAS 保存队列、检查点和宿主 fence，Kernel 负责实际提取任务。默认串行、在线 15 秒检查；自动触发是间隔/变化轮询。Runtime 退出先关闭扫描，CLI 一次性管理用 `digitalTwinAutoStart=false`，`twin watch` 显式开启；不把界面页面生命周期当作后台服务生命周期。
 
 - `browser-routes.ts` 是路由语义唯一来源；显式的 Session manifest `folder: null` 表示根目录，不回退到陈旧路由前缀。远程 provider 的实例方法必须保留 receiver，不能取出后无绑定调用。

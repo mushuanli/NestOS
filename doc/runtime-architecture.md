@@ -678,7 +678,7 @@ sequenceDiagram
 
 `createApplicationRuntime` 在恢复前通过 `createNativeDigitalTwin` 装配 `runtime.digitalTwin`；应用启动自动初始化分身扫描存储和可用的默认规则，不依赖用户先打开分身页面；新会话消费仍须授权。`createConversationSystem` 把授权相关记忆追加到公开 ContextPlan 检索入口；`createKernelRuntime.authorizeLlm` 透传到通用 LLM Effect，事件持久化前和 provider 发送前均等待校验。分身内核分析使用独立 `twin-analysis-*` Session，无工具；新扫描规则中有明确主体的信息自动生效，未知主体候选待确认，结果提交或失败后删除执行快照；恢复回调不把它作为工作台项目会话收养。
 
-来源与消费策略、版本和使用回执在 app-core；kernel-adapters 只提供通用异步发送前钩子，没有分身类型依赖。基础设施包装宿主 LLM 日志，为受门禁标记的分析/消费及后续轮次脱敏正文，保留响应观测。CLI 自有 Runtime 在恢复前接入相同门禁，`mindos twin` 管理命令采用共享应用 Runtime 和 SQLite。具体能力、布局与验收边界见[数字分身设计](design/数字分身完整设计与实施计划.md#实现与边界)。
+来源与消费策略、版本和使用回执在 app-core；kernel-adapters 只提供通用异步发送前钩子，没有分身类型依赖。基础设施包装宿主 LLM 日志，为受门禁标记的分析/消费及后续轮次脱敏正文，保留响应观测。CLI 自有 Runtime 在恢复前接入相同门禁，`mindos twin` 管理命令采用共享应用 Runtime 和 SQLite。具体能力、布局与验收边界见[数字分身设计](design/digital-twin.md#实现与边界)。
 
 扫描计划与运行由 `digital-twin/scans.ts` 组织，`scan-store.ts` 在现有 SeqFile 中保存队列与扫描宿主租约，`scan-worker.ts` 调用已有 Kernel 提取任务。运行时默认在装配末尾启动 15 秒检查循环；`startupMode=interactive` 的 UI 宿主在外壳导航可用后调用 `startBackground()` 启动，退出时先停止分身扫描再释放内核与 VFS；`digitalTwinAutoStart=false` 可禁用自动调度。CLI 的一次性 twin 管理命令使用这一开关，`twin watch` 显式开启在线调度。间隔与变化轮询都保存下次检查时间，重开合并补跑；扫描暂停不阻断来源安全核对。
 

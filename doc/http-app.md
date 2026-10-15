@@ -143,7 +143,7 @@ Session getSnapshot 是唯一历史快照，getSessions、getStatus 和 isGenera
 
 静态 hash 资源使用私有 immutable 缓存，HTML 使用 no-cache 和 ETag 重新验证；gzip 结果按文件身份、大小、修改时间和编码缓存，最多 64 项 / 16 MiB。所有请求仍先通过证书认证。API 响应继续 no-store。
 
-旧 ApplicationPort / ApplicationHost / 持久回执实现与专属测试已删除，历史设计移至 doc/deprecated/，不再保留第二套生产入口。
+旧 ApplicationPort / ApplicationHost / 持久回执实现、专属测试及废弃设计已删除，不再保留第二套生产入口。
 
 ## C4 事件路径
 

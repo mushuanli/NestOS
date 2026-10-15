@@ -145,7 +145,7 @@ skill.load effect 验证 skill ResourceHandle grant，按实际 sessionId 解析
 - 完成运行中项目文件 watch、L4 文件关联恢复和 Web/CLI 项目来源装配；新会话运行前刷新、Tauri 来源、支持文件读取与挂载变更已使用 Session 文件上下文。继续拒绝未隔离的原生执行。
 - 完成 Skill 自动委派到统一 TaskGroup 的编译接线，以及可复核的技能版本恢复语义。
 
-本次修补覆盖 Session 文件系统定义隔离、跨目录加载拒绝、压缩规则过滤、glob 禁用标记、迟到扫描与 dispose，以及 skill.load 禁止模型调用标记。测试在 `kernel-adapters/src/skill/skill-device-driver.test.ts`、`effects/effect-adapters.test.ts`，运行结果见 [核验清单](../deprecated/implementation-audit.md)。原有 skill-task 测试验证 TaskSpec 编译与真实 Kernel 执行。
+本次修补覆盖 Session 文件系统定义隔离、跨目录加载拒绝、压缩规则过滤、glob 禁用标记、迟到扫描与 dispose，以及 skill.load 禁止模型调用标记。测试在 `kernel-adapters/src/skill/skill-device-driver.test.ts`、`effects/effect-adapters.test.ts`，验证范围与待验收项见 [任务清单](../todo.md)，实际结果以对应版本重新执行为准。原有 skill-task 测试验证 TaskSpec 编译与真实 Kernel 执行。
 
 持久 loaded ID 更新与作用域恢复使用同一严格解析：兼容缺失/null 为空列表，其余值必须为非空白字符串数组。加载和卸载遇到损坏记录均报错，不过滤后覆盖原数据。工具卸载在无 execute grant、被禁用、ID 无效或缺少 Session shared state 时不写记录、不调用本地卸载；持久删除后本地清理失败可重试，不再次写入已删除的 ID。
 

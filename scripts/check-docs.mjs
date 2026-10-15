@@ -8,7 +8,7 @@
  *   3. 相对 Markdown 链接失效。
  *
  * 活文档 = doc/*.md + doc/design/*.md + 工作区各目录的 AGENTS.md / README.md / doc/*.md。
- * doc/feat/ 与 doc/deprecated/ 是归档，不参与检查。
+ * Historical protocol background in doc/feat/ checks links only, preserving historical API examples.
  *
  * 用法：node scripts/check-docs.mjs   （或 pnpm docs:check）
  */
@@ -95,7 +95,17 @@ const MD_LINK = /\]\(([^)\s]+?)(?:#[^)]*)?\)/g;
 
 const errors = [];
 const warnings = [];
-for (const doc of collectDocs()) {
+const activeDocs = collectDocs();
+function checkLinks(doc) {
+    readFileSync(join(ROOT, doc), 'utf8').split('\n').forEach((line, index) => {
+        for (const match of line.matchAll(MD_LINK)) {
+            const target = match[1];
+            if (/^(?:https?:|mailto:|#)/.test(target)) continue;
+            if (!existsSync(resolve(ROOT, dirname(doc), target))) errors.push(`[broken-link] ${doc}:${index + 1} → ${target}`);
+        }
+    });
+}
+for (const doc of activeDocs) {
     const text = readFileSync(join(ROOT, doc), 'utf8');
     text.split('\n').forEach((line, index) => {
         const where = `${doc}:${index + 1}`;
@@ -108,13 +118,10 @@ for (const doc of collectDocs()) {
             if (!isRepoReference(ref)) continue;
             if (!resolveReference(doc, ref)) errors.push(`[dangling-path] ${where} → ${ref}`);
         }
-        for (const match of line.matchAll(MD_LINK)) {
-            const target = match[1];
-            if (/^(?:https?:|mailto:|#)/.test(target)) continue;
-            if (!existsSync(resolve(ROOT, dirname(doc), target))) errors.push(`[broken-link] ${where} → ${target}`);
-        }
     });
 }
+const historicalDocs = readdirSync(join(ROOT, 'doc/feat')).filter(name => name.endsWith('.md')).map(name => `doc/feat/${name}`);
+for (const doc of [...activeDocs, ...historicalDocs]) checkLinks(doc);
 
 // A package without its own AGENTS.md silently drops out of this check (collectDocs
 // only adds existing files), so surface the gap instead of hiding it.
@@ -130,4 +137,4 @@ if (errors.length) {
     console.error('\n修正后重跑：pnpm docs:check');
     process.exit(1);
 }
-console.log(`文档同步检查通过（${collectDocs().length} 份活文档，${warnings.length} 条历史表述告警）`);
+console.log(`文档同步检查通过（${activeDocs.length} 份活文档、${historicalDocs.length} 份历史文档链接，${warnings.length} 条历史表述告警）`);

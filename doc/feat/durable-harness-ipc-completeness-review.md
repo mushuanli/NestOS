@@ -6,7 +6,7 @@
 
 后续处理：1.1 修订已在主协议补齐 endpoint/业务流/WaitSet 目标记录，在存储设计固定记录归属，并新增 [资源表与 Linux 对齐协议](../design/durable-harness-resources.md)。以下保留审查时的代码缺口；设计修订不等于实现缺口已经关闭。
 
-2026-09-06 实现更新：等待索引恢复、SeqFile 提交通知、消息拒绝/重试、固定路径保护和 LocalFS rename 崩溃恢复已补强，详见 [修复与验证记录](./durable-kernel-ipc-fixes.md)。下文为原审查记录，不能据此判断这些修复仍然缺失。
+2026-09-06 实现更新：等待索引恢复、SeqFile 提交通知、消息拒绝/重试、固定路径保护和 LocalFS rename 崩溃恢复已补强；当前覆盖边界见 [目标与实现映射](../design/durable-harness-evidence.md)。下文为原审查记录，不能据此判断这些修复仍然缺失。
 
 ## 1. 结论与判据
 
@@ -37,15 +37,15 @@ Cache 不属于上述 IPC 原语集合。共享 cache 可以通过相同的授�
 
 ### 3.1 Mailbox 还缺少独立对象及关闭协议
 
-当前 [消息类型](../../packages/durable-kernel/src/domain/types.ts) 仅有 pending/delivered，目标主要是 Session/Task；[mailbox 实现](../../packages/durable-kernel/src/infrastructure/seqfile/mailbox-store.ts) 保存 inbox/outbox、消费时间，并直接追加 Task pendingEvents。没有独立 endpoint 的 owner、generation、消费者绑定、容量、close/drain 和发送流记录。
+当前 [消息类型](../../backend/durable-kernel/src/domain/types.ts) 仅有 pending/delivered，目标主要是 Session/Task；[mailbox 实现](../../backend/durable-kernel/src/infrastructure/seqfile/mailbox-store.ts) 保存 inbox/outbox、消费时间，并直接追加 Task pendingEvents。没有独立 endpoint 的 owner、generation、消费者绑定、容量、close/drain 和发送流记录。
 
-影响：目标终态后 [relay](../../packages/durable-kernel/src/application/kernel.ts) 捕获投递错误并留待后续重试，却没有持久永久拒绝事实；短期失败、目标已删除和权限拒绝无法形成完整的可查询收敛协议。主协议已要求这些行为，布局尚未为其确定记录。
+影响：目标终态后 [relay](../../backend/durable-kernel/src/application/kernel.ts) 捕获投递错误并留待后续重试，却没有持久永久拒绝事实；短期失败、目标已删除和权限拒绝无法形成完整的可查询收敛协议。主协议已要求这些行为，布局尚未为其确定记录。
 
 应定义 endpoint 生命周期、每 channel 的消费模型、发送流序号/确认水位、重试 nextAttemptAt、rejected receipt 与迟到回复处理。默认单消费者；多个竞争消费者必须另外定义 claim/ack，不可只把多个 Task 绑定到同一游标。广播需独立 delivery 或每订阅者游标，单个 consumedAt 无法表达。
 
 ### 3.2 WaitSpec 不是完整的 WaitSet 结果账本
 
-当前 `TaskRecord.wait` 保存条件，输入队列保存 message/shared/timer 等证据；[等待辅助实现](../../packages/durable-kernel/src/infrastructure/seqfile/store-helpers.ts) 判断条件与唤醒。已有基础能力不能等同于稳定 waitSetId、统一 resolved/timeout/cancelled 结果和每次解析唯一 wake identity。
+当前 `TaskRecord.wait` 保存条件，输入队列保存 message/shared/timer 等证据；[等待辅助实现](../../backend/durable-kernel/src/infrastructure/seqfile/store-helpers.ts) 判断条件与唤醒。已有基础能力不能等同于稳定 waitSetId、统一 resolved/timeout/cancelled 结果和每次解析唯一 wake identity。
 
 需要定义每次逻辑等待的身份、所属 step、叶子证据、决胜结果、消费关联，以及历史保留。反向索引与扫描是实现选择；等待解析事实是恢复需要。共享版本、资源版本、Task exit 不能仅依赖瞬时通知。
 
@@ -63,7 +63,7 @@ Cache 不属于上述 IPC 原语集合。共享 cache 可以通过相同的授�
 
 ### 3.5 Cache 与恢复数据的保留策略尚未闭合
 
-[Cache 实现](../../packages/durable-kernel/src/infrastructure/seqfile/cache-store.ts) 已将读取结果复制到 Task receipt，避免失效后恢复输入丢失。但 namespace 配额没有限制这些 receipts、Task 全量快照及 Session 历史的累计增长。
+[Cache 实现](../../backend/durable-kernel/src/infrastructure/seqfile/cache-store.ts) 已将读取结果复制到 Task receipt，避免失效后恢复输入丢失。但 namespace 配额没有限制这些 receipts、Task 全量快照及 Session 历史的累计增长。
 
 必须区分 value 可淘汰、已选输入必须保留、namespace/generation 与防重 tombstone 受重放窗口约束。需要 artifact 引用、pin、消费水位、GC 计划和 Session 归档规则。single-use 指某个发布实例最多一次新领取；若允许重新发布同 key，则必须有不会与旧发布混淆的实例身份/版本规则。该约束在淘汰、重新发布和压缩之间也要成立。
 

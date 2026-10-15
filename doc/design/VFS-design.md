@@ -197,7 +197,7 @@ ConfigService 使用注入的 `/etc` 来源，有 records 时用 `.seq`，否则
 
 当前测试位于 `https://github.com/mushuanli/vfs-core/blob/main/tests`：01–12 覆盖 CRUD、目录、assets/tags/refs/seq、链接、事务、搜索、事件、挂载和配置；18–22 覆盖 pipe、回归、组合视图、复制、归档与生命周期。IndexedDB 和 LocalFS 测试位于各自包，平台 Session 装配测试在 app-shell。
 
-重点验收不止“能读写”：包括路径逃逸、只读写入、旧句柄撤销、来源关闭、records 坐标、事务回滚、搜索和事件信息泄漏、挂载覆盖及应用退出顺序。最新执行结果记录在 [核验清单](../deprecated/implementation-audit.md)，历史结果见 [实现状态](vfs-implementation-status.md)。
+重点验收不止“能读写”：包括路径逃逸、只读写入、旧句柄撤销、来源关闭、records 坐标、事务回滚、搜索和事件信息泄漏、挂载覆盖及应用退出顺序。验证范围、命令及历史结果见 [实现状态](vfs-implementation-status.md)，当前结果以对应版本重新执行为准。
 
 仍需独立验收或扩展的能力：完整原生进程隔离、真实 GUI/Tauri 全机编译、多宿主同时改挂载/历史、完整 Session/Kernel 系统备份及业务 GC。当前 watcher 类型保留，但 DirectoryFS 和组合视图未提供 OS 文件 watcher。普通文件跨操作原子事务也不能以现有透传实现宣称完成。
 

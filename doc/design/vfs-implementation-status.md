@@ -21,7 +21,7 @@
 
 ## 验证
 
-下表为 2026-09-09 在工作区的实测结果：各包用 `pnpm --filter <pkg> test`（llm-ui 无 test 脚本，用 `exec vitest run`），Rust 用 `cargo test --lib`，类型检查用各应用 `typecheck`。跨包批次不同步，计数随代码漂移，以对应命令的实际输出为准。其余历史批次见 [核验清单](../deprecated/implementation-audit.md)。DOM 测试覆盖 vfs-ui 到宿主路由、映射保存、挂载管理与分支保留，不代替原生 GUI 验收。
+下表为 2026-09-09 在工作区的实测结果：各包用 `pnpm --filter <pkg> test`（llm-ui 无 test 脚本，用 `exec vitest run`），Rust 用 `cargo test --lib`，类型检查用各应用 `typecheck`。跨包批次不同步，计数随代码漂移，以对应命令的实际输出为准；历史批次可从 Git 查阅。DOM 测试覆盖 vfs-ui 到宿主路由、映射保存、挂载管理与分支保留，不代替原生 GUI 验收。
 
 | 检查 | 结果 |
 | --- | --- |

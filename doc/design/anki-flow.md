@@ -112,6 +112,8 @@ C4Component
 
 三者不能相互替代。存在 MCP 连接不等于有 Anki 打包能力；服务器本身有磁盘也不等于任意 Run 可以读写任意路径。
 
+当前 [Flow Task 授权](../../backend/llm-flow/src/flow/task-capabilities.ts) 与[任务构造](../../backend/llm-flow/src/flow/task-factory.ts)主要针对 `llm.agent`/`llm.chat` 自动绑定并延迟启动。新增产品 Program 必须接入宿主注入的能力绑定：按节点要求取得受限资源句柄，完成绑定后才启动 Task。不能只注册新 Effect 就认为已有授权，也不能把整个宿主文件系统授给所有节点；这属于 Flow 装配扩展，无需修改 Kernel 授权协议。
+
 拟增加 Flow 级宿主能力声明，例如 `host.httpd`、`anki.package.v1`。能力由受信宿主装配产生，不接受浏览器自行声明。不要用 `startupMode === 'server'` 或 `ownerKind === 'cli'` 推断授权；这些现有字段分别描述启动策略与租约身份。
 
 准入须覆盖普通提交、会话内调用、远程 CLI、组合 Flow、动态节点和恢复。子图的要求与父图合并，动态节点只能使用已冻结的连接槽及已授予资源，不能扩大权限。HTTP 专有 Program/Effect 不在本地 Web/Tauri/CLI 注册；仅隐藏按钮不足以实现限制。

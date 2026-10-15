@@ -47,6 +47,14 @@ export function hostArguments(mode, id, args, env = process.env) {
     if (mode === 'dev') { add('--port', '2001'); add('--root', paths.developmentRoot); }
     return values;
 }
+/** Inherit system proxy settings while preserving an explicit Node proxy opt-out. */
+export function hostEnvironment(env = process.env) {
+    const values = { ...env };
+    if (values.NODE_USE_ENV_PROXY === undefined
+        && ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY'].some(name => values[name]?.trim()))
+        values.NODE_USE_ENV_PROXY = '1';
+    return values;
+}
 export function releaseDirectory(root, id) {
     if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(id) || id === '.' || id === '..') throw new Error('Invalid release ID');
     return path.join(root, id);

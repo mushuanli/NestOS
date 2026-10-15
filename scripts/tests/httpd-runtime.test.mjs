@@ -4,8 +4,41 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSyn
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
-import { hostArguments, runtimePaths, releaseDirectory, verifyRelease, runtimeLog, freezeWorkspaceDependencies, sourceFingerprint, copySource } from '../httpd-runtime.mjs';
+import { execFile, execFileSync } from 'node:child_process';
+import { createServer } from 'node:http';
+import { promisify } from 'node:util';
+import { hostArguments, hostEnvironment, runtimePaths, releaseDirectory, verifyRelease, runtimeLog, freezeWorkspaceDependencies, sourceFingerprint, copySource } from '../httpd-runtime.mjs';
+
+test('inherits proxy settings and honors explicit activation or opt-out without changing the parent', () => {
+    for (const name of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) {
+        const env = { [name]: 'http://127.0.0.1:7890', no_proxy: 'localhost,192.168.31.10' };
+        assert.deepEqual(hostEnvironment(env), { ...env, NODE_USE_ENV_PROXY: '1' });
+        assert.equal(env.NODE_USE_ENV_PROXY, undefined);
+        for (const value of ['0', '1']) assert.equal(hostEnvironment({ ...env, NODE_USE_ENV_PROXY: value }).NODE_USE_ENV_PROXY, value);
+    }
+    assert.deepEqual(hostEnvironment({ no_proxy: 'localhost', http_proxy: '' }), { no_proxy: 'localhost', http_proxy: '' });
+});
+
+test('Node fetch uses the inherited lowercase proxy and bypasses it for no_proxy', async () => {
+    const requests = [];
+    const proxy = createServer((request, response) => { requests.push(request.url); response.end('proxied'); });
+    const target = createServer((_request, response) => response.end('direct'));
+    await Promise.all([proxy, target].map(server => new Promise(resolve => server.listen(0, '127.0.0.1', resolve))));
+    try {
+        const env = { http_proxy: `http://127.0.0.1:${proxy.address().port}` };
+        const url = `http://127.0.0.1:${target.address().port}/proxy-check`;
+        const run = overrides => promisify(execFile)(process.execPath,
+            ['-e', 'fetch(process.argv[1]).then(r => r.text()).then(console.log)', url],
+            { env: hostEnvironment({ ...env, ...overrides }), timeout: 10_000 });
+        assert.equal((await run({})).stdout.trim(), 'proxied');
+        assert.deepEqual(requests, [url]);
+        assert.equal((await run({ no_proxy: '127.0.0.1' })).stdout.trim(), 'direct');
+        assert.equal((await run({ NODE_USE_ENV_PROXY: '0' })).stdout.trim(), 'direct');
+        assert.deepEqual(requests, [url]);
+    } finally {
+        await Promise.all([proxy, target].map(server => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); })));
+    }
+});
 
 test('captures source bytes independently and detects edits during a release build', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'httpd-source-'));

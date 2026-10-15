@@ -21,6 +21,8 @@
 
 运行时、存储、租约、扫描和任务执行属于 daemon。浏览器只拥有视图绑定、文件视图和订阅。各浏览器的 Session 绑定独立，共用同一份持久化数据与 Kernel。
 
+`pnpm httpd` 和 `pnpm httpd:dev` 沿用启动环境中的 `http_proxy` / `https_proxy`（也支持大写）及 `no_proxy` / `NO_PROXY`。存在非空 HTTP(S) 代理地址且未显式设置 `NODE_USE_ENV_PROXY` 时，启动器为后端进程自动启用 Node 环境代理，无需每次额外设置开关；地址、大小写优先级和绕过规则由 Node 处理。显式 `NODE_USE_ENV_PROXY=0` 保持关闭，没有代理地址时保持默认行为；启动器不修改父进程环境。此规则属于宿主启动层，不进入前端、app-core 或 LLM Provider。
+
 ## 协议
 
 `POST /api/application` 使用 `version: 10` 与 `clientId`，支持 bootstrap、queries、bindings、call、reply、close。bootstrap 返回公开服务图、产品模板与 Flow 库，以扁平描述避免重复导出对象图；call 只能调用本视图已经导出的能力句柄上的公开方法。v10 由后端组合工具箱文件视图并在分组刷新时返回导航目录，消除浏览器逐段路径检查及重复遍历；保留 Provider 订阅授权状态与命令；保留 navigationView、warmNavigation、工作台聚合、会话准备/激活及 UI 文档批量端口；升级服务后需重新加载页面。句柄包含视图随机身份，不能用于另一个浏览器。私有字段、原型访问、Runtime.dispose、设备注册、SQL 和原始记录写入不开放。

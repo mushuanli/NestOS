@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { hostArguments, runtimePaths, runtimeLog, releaseDirectory, verifyRelease, freezeWorkspaceDependencies, sourceFiles, sourceFingerprint, copySource } from './httpd-runtime.mjs';
+import { hostArguments, hostEnvironment, runtimePaths, runtimeLog, releaseDirectory, verifyRelease, freezeWorkspaceDependencies, sourceFiles, sourceFingerprint, copySource } from './httpd-runtime.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const app = path.join(root, 'apps/http-app'), releases = path.join(root, 'release/httpd');
@@ -72,7 +72,7 @@ function serve(mode, args) {
     const file = runtimePaths(mode, id).runtime, output = runtimeLog(file);
     const banner = `HTTP mode: ${mode}\nVersion: ${id}\nRuntime log: ${file}`; console.log(banner); output.write(Buffer.from(banner + '\n'));
     const child = spawn(command, childArgs, { cwd: directory, stdio: ['inherit', 'pipe', 'pipe'], detached: true,
-        env: { ...process.env, INIT_CWD: root, MINDOS_HTTPD_MODE: mode, MINDOS_HTTPD_VERSION: id } });
+        env: { ...hostEnvironment(), INIT_CWD: root, MINDOS_HTTPD_MODE: mode, MINDOS_HTTPD_VERSION: id } });
     child.stdout.on('data', chunk => { output.write(chunk); process.stdout.write(chunk); });
     child.stderr.on('data', chunk => { output.write(chunk); process.stderr.write(chunk); });
     let stopping = false;

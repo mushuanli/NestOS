@@ -11,7 +11,7 @@ MindOS 默认消费固定 Git 提交的独立库源码。八个独立库均位�
 | @itookit/piagent-driver | `libraries/piagent-driver` | 0.1.0 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.2 |
-| @itookit/driver-llm | `libraries/driver-llm` | 0.2.2 |
+| @itookit/driver-llm | `libraries/driver-llm` | 0.3.0 |
 
 ## 源码开发
 
@@ -105,3 +105,11 @@ vfs-core@5.3.2 包含按需设备 readiness 和 revision 前置条件校验；vf
 | piagent-driver@0.1.0 | `121798fadaaaa61bf29cc9bd8a2f3b4983c0f571bca09172eaf350667c03ebfc` |
 
 其余库已发布的代码与当前源码一致；MDX 后续仅修改未打包的开发说明。主仓库位于 v5.4，九个已初始化子模块均已推送各自 main 分支，独立库版本与 Git 指针一并固定。
+
+### 2026-10-15 ChatGPT 订阅类型（待完成 npm 二次验证）
+
+driver-llm@0.3.0 新增 `chatgpt` Provider 与同名 implementation，继续复用 Responses 协议；运行时注入账号绑定的 OAuth session。宿主负责登录、身份验证和凭据存储，前后端配置 DTO 不携带刷新回调或令牌。提供账号模型目录、合并刷新、订阅请求约束和严格的流终态检查。应用设置页的 OAuth 登录装配不在本次独立库改动范围。
+
+独立库 116 项测试、后端适配 244 项测试、全仓类型检查、架构边界检查、文档检查和 Web 构建通过。最终 tarball 在仓库外通过 ESM 推理/目录调用、CommonJS、contracts/chain 入口、TypeScript bundler 与 node16 类型验证；未使用真实 ChatGPT 账号验收。
+
+修复发布暂存目录未清空造成旧声明残留的问题；重复 prepare 的过期文件负例验证通过。最终制品 SHA-256 为 `027973c95274105f852aedb8063db8d45d585936907c757fabad3d6ad4dba396`。源码已推送独立仓库 main，npm 首次发布被 EOTP 阻止，等待完成注册表二次验证；本节不表示该版本已公开发布。

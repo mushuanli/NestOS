@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { cpSync, mkdirSync, readFileSync, writeFileSync, existsSync, rmSync } from 'node:fs';
 import { resolve, join } from 'node:path';
 import { createHash } from 'node:crypto';
 import { libraries, root, libraryRoot, releaseRoot, releaseManifest } from './npm-libraries.mjs';
@@ -24,6 +24,7 @@ function preparePackage(library, sourceRoot) {
     writeFileSync(join(releaseRoot, `${library.directory}.build.log`), run('pnpm', ['build'], source));
     const manifest = releaseManifest(JSON.parse(readFileSync(join(source, 'package.json'), 'utf8')), library.version);
     if (manifest.name !== library.name || manifest.private) throw new Error(`Invalid release identity: ${library.name}`);
+    rmSync(staging, { recursive: true, force: true });
     mkdirSync(staging, { recursive: true });
     cpSync(join(source, 'dist'), join(staging, 'dist'), { recursive: true });
     for (const name of ['README.md', 'LICENSE']) if (existsSync(join(source, name))) cpSync(join(source, name), join(staging, name));

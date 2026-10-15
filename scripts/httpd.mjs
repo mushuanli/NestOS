@@ -87,7 +87,9 @@ try {
     else if (command === 'dev') serve('dev', args);
     else if (command === 'start') serve('release', args);
     else if (command === 'activate' && args[0]) activate(args[0]);
-    else if (command === 'list') for (const entry of readdirSync(releases)) if (!entry.startsWith('.') && entry !== 'current.json') console.log(entry);
+    else if (command === 'list') {
+        for (const entry of readdirSync(releases)) if (!entry.startsWith('.') && entry !== 'current.json') console.log(entry);
+    }
     else throw new Error('Usage: httpd.mjs build | start [httpd options] | dev [httpd options] | list | activate <release-id>');
 } catch (error) {
     console.error(error.code === 'ENOENT' ? 'No HTTP release found. Run pnpm httpd:build first.' : error.message); process.exitCode = 1;

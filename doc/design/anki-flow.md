@@ -58,6 +58,70 @@
 
 节点的 manifest 与 UI 描述可以在所有宿主提供，使不支持执行的客户端仍能查看图和限制原因；执行用 Program/Effect 及原生实现只由 HTTP 宿主注册，不能为了显示图而加载原生依赖。
 
+### 3.1 Flow、业务、Effect、Tool 与打包程序的边界
+
+采用 **Flow 编排 + 确定性业务能力 + 宿主执行适配**。Tool 是可选的模型调用入口，不是每个 Flow 节点的必经层。“生成卡片内容”与“生成制卡脚本”是两件事：本方案让模型生成结构化卡片内容，使用预先编写、测试、版本化发布的打包程序生成 `.apkg`，不在运行时让模型生成并执行脚本。
+
+| 层次 | 拥有的职责 | 输入 / 输出 | 边界 |
+| --- | --- | --- | --- |
+| 产品 Flow 定义 | 阶段顺序、分支、连接槽、并发、失败策略、人工确认 | 参数/资产引用 → Run 结果 | 不写 Shell 命令、厂商请求或 ZIP/SQLite 逻辑 |
+| Anki 业务服务 | 卡片身份、补缺计划、字段校验/合并、导出清单、发布规则 | 业务 DTO → 业务 DTO/提交回执 | 不负责进程、网络传输或通用调度；受限文件操作由注入端口提供 |
+| 节点 Program | 当前节点的持久状态、Effect 请求与结果转换 | 可序列化状态/事件 → Decision | 不直接执行网络、文件写入或原生进程，不重复编排整个业务 Flow |
+| Effect 适配器 | 资源授权、输入物化、外部执行、取消、操作回执和恢复核对 | 授权句柄/清单引用 → 资产引用/操作回执 | 不自行选择模型、重试整个 Flow、改写用户卡片规则或宣布整个 Run 成功 |
+| 打包 worker | 根据清单生成 Anki 数据库、媒体映射和包体；校验物理格式 | 冻结清单、模板、只读媒体、临时输出 → 临时包及统计 | 不持有 Connection/凭据，不补全文本、不选择卡片、不修改正式项目或决定发布 |
+| 可选 Tool 入口 | 将模型请求翻译为已有应用命令 | 项目/输入引用、已授权选项 → invocationId/runId | 不复制编排、不直接调用打包进程，不提供任意脚本或宿主路径执行入口 |
+
+其中，Flow 是声明，Program 是节点执行的状态机，Effect 是可追踪的副作用；worker 是 Effect 使用的实现。没有必要为了“可在 Flow 使用”先把打包能力包装成模型 Tool。
+
+```mermaid
+flowchart LR
+    UI[用户运行 Flow] --> App[统一应用提交用例]
+    Agent[可选 Agent 入口] --> Tool[可选 GenerateAnkiDeck Tool]
+    Tool --> App
+    App --> Flow[Flow Run]
+    Flow --> Text[文本或视觉 Task]
+    Flow --> Pack[确定性打包节点 Program]
+    Pack --> Effect[anki.package Effect]
+    Effect --> Adapter[HTTP 宿主适配器]
+    Adapter --> Worker[固定版本打包 worker]
+    Worker --> Temp[临时包与格式统计]
+    Temp --> Receipt[核验资产与打包回执]
+    Receipt --> Publish[独立发布节点]
+    Publish --> Artifact[已发布产物引用]
+```
+
+打包步骤的应用契约只传逻辑引用。示意类型仍属于待实施设计：
+
+```ts
+interface ImmutableInputRef { id: string; sha256: string; }
+interface PackDeckRequest {
+    manifestRef: ImmutableInputRef;
+    templateRef: ImmutableInputRef;
+}
+interface PackDeckResult {
+    artifactRef: ImmutableInputRef;
+    noteCount: number;
+    mediaCount: number;
+    bytes: number;
+}
+```
+
+清单包含稳定 deck/card 身份、已校验字段、媒体引用和格式版本。Connection、API Key、业务覆盖策略和任意命令不进入打包协议。资源授权与 Effect 幂等键来自宿主执行上下文，不允许模型伪造。适配器将逻辑引用转换为受限的本机文件/目录；这些物理路径只存在于宿主和 worker 的私有协议中。
+
+worker 正常退出仅说明候选包生成完毕。宿主还要核对完整性、登记不可变资产并提交打包回执；后续发布节点按项目版本更新产物引用，才能对外显示已发布。下载读取已发布资产，不再次打包。发布失败时重试发布，不能重跑模型生成或重新收费的媒体阶段。
+
+任务粒度以独立恢复/重试为依据：通常按卡片补全文本，按媒体资产生成，按冻结的牌组清单打包。解析字段和构造参数等纯函数无需各自增加 Task；worker 内部的数据库/ZIP 子阶段只上报进度，不再维护另一套 Flow、重试队列和租约。
+
+### 3.2 何时才增加模型 Tool
+
+首个固定业务 Flow 不需要 `GenerateAnkiDeck` Tool。只有需要用户通过普通对话说“把这份单词表做成 Anki”时，才增加应用层工具工厂，并注入统一提交用例；不要把 Anki 产品代码放入通用 tools 包。
+
+Tool 与界面走相同的参数/连接校验、授权、调用记录和宿主限制。它默认返回 invocationId/runId 和当前状态，后续通过既有查询或受监管的等待/委派取得结果，不把整次生成塞入一个长时间 Tool 调用。Flow 内负责补全文本的模型不授予这一入口，避免递归发起相同制卡流程。
+
+入口的请求身份由可信 Tool Effect 上下文映射并持久化；回复丢失后以同一身份查询/重试提交，不能每次随机生成 requestId。不同的用户生成意图仍允许新 Run，不以输入摘要永久禁止重新生成。
+
+当前 [ToolCallEffectAdapter](../../backend/kernel-adapters/src/effects/tool-call-effect.ts) 对非只读工具缺少专用业务核对，`reconcile` 返回 `indeterminate`；因此不能把 `sideEffect` 标记或普通 Tool 包装视为打包已具备可恢复性。固定打包步骤使用专用 Effect/回执；若后续增加 Tool 入口，也必须补齐“根据持久调用身份查回 Run”的恢复适配及测试。暂不具备该适配时，保留明确的不确定状态，不能自动重放写操作。
+
 ## 4. C4：部署与模块边界
 
 ```mermaid

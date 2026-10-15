@@ -72,7 +72,7 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
     "ProjectSearch": { markers: ["search"], fields: [],
         methods: {"search": "query"} },
     "ToolboxResources": { lookupDefaults: { hasProvider: false }, observer: 'subscribe', domain: 'configuration', markers: ["drawers", "hasProvider"], fields: ["sources", "drawers"],
-        methods: {"subscribe": "subscribe", "setDefaultConnection": "async", "getAgents": "query", "hasProvider": "lookup", "setToolGrant": "async", "refreshGroups": "async", "create": "async", "createInDrawer": "async", "descriptions": "async", "export": "async", "import": "async"} },
+        methods: {"subscribe": "subscribe", "setDefaultConnection": "async", "getAgents": "query", "hasProvider": "lookup", "setToolGrant": "async", "refreshGroups": "async", "create": "async", "createInDrawer": "async", "descriptions": "query", "export": "async", "import": "async"} },
     "ToolboxDrawers": { domain: 'configuration', markers: ["snapshot", "assign"], fields: [],
         methods: {"setCatalog": "notify", "snapshot": "snapshot", "get": "lookup", "init": "async", "list": "lookup", "forPath": "lookup", "assign": "async", "relocate": "async", "create": "async", "rename": "async", "remove": "async"} },
     "ToolboxInventory": { domain: 'configuration', markers: ["remoteAgentSource", "providers"], fields: ["remoteAgents", "remoteAgentSource", "providers", "connections", "defaultConnectionId", "tools", "sources"],

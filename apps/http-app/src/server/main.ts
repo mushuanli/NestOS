@@ -1,14 +1,11 @@
-import { openHostRuntime, closeHostResources, type HostCleanup } from './host-runtime';
+import { startHost } from './start-host';
 import { mkdir, realpath, access } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
-import type { Server } from 'node:http';
-import { createHttpServer } from './http-server';
 import { loadCertificates } from './certificates';
 import { createCertificates } from './create-certificates';
 import { configDirectory, resolveDataRoot } from './profile';
 import { options } from './options';
-import { createApplicationApi } from './application-host';
 
 async function main(): Promise<void> {
     const values = options();
@@ -33,31 +30,8 @@ async function main(): Promise<void> {
     if (within(canonicalRoot, authDir) || within(await realpath(staticDir), authDir)) throw new Error('OAuth credentials must remain outside data and static roots');
     if (within(await realpath(staticDir), canonicalCertificates)) throw new Error('Certificates cannot reside within the static UI root');
     const certificates = await loadCertificates(certDir), port = validPort(values.port);
-    await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, authDir, port, host: values.host, backlog });
-}
-
-interface HostOptions {
-    root: string; sidecar: string; certificates: Awaited<ReturnType<typeof loadCertificates>>; staticDir: string;
-    auditFile: string; authDir: string; port: number; host: string; backlog: number;
-}
-async function startHost(options: HostOptions): Promise<void> {
-    const cleanup: HostCleanup = [];
-    try {
-        const runtime = await openHostRuntime(options); cleanup.push(runtime.close);
-        const { backend, audit, authorization } = runtime;
-        const applicationApi = createApplicationApi(backend, options.root, audit, authorization);
-        cleanup.push(() => applicationApi.close());
-        const server = createHttpServer({ certificates: options.certificates, staticDir: options.staticDir, audit, application: applicationApi,
-            build: { mode: process.env.MINDOS_HTTPD_MODE ?? 'standalone', version: process.env.MINDOS_HTTPD_VERSION } });
-        cleanup.push(async () => { applicationApi.endStreams(); await stopServers([server]); });
-        await listen(server, options.port, options.host, options.backlog);
-        installShutdown([server], async () => { audit.write({ event: 'server.stopped' }); await closeHostResources(cleanup); }, () => applicationApi.endStreams());
-        audit.write({ event: 'server.started', route: `https://${options.host}:${options.port}` });
-        console.log(`MindOS HTTPS UI: https://${options.host}:${options.port}\nClient certificate required\nAudit log: ${options.auditFile}`);
-    } catch (error) {
-        try { await closeHostResources(cleanup); } catch { /* Preserve the startup error. */ }
-        throw error;
-    }
+    const hosted = await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, authDir, port, host: values.host, backlog });
+    installShutdown(hosted);
 }
 
 function protectPaths(root: string, sidecar: string, certificates: string, log: string): void {
@@ -78,19 +52,13 @@ function validBacklog(value: string): number {
     if (!Number.isInteger(backlog) || backlog < 1 || backlog > 2147483647) throw new Error('Expected backlog between 1 and 2147483647');
     return backlog;
 }
-function listen(server: Server, port: number, host: string, backlog: number): Promise<void> {
-    return new Promise((resolve, reject) => { server.once('error', reject); server.listen({ port, host, backlog }, () => { server.off('error', reject); resolve(); }); });
-}
-async function stopServers(servers: Server[]): Promise<void> {
-    await Promise.all(servers.map(server => new Promise<void>(resolve => { server.close(() => resolve()); server.closeIdleConnections(); })));
-}
-function installShutdown(servers: Server[], cleanup: () => Promise<void>, beforeStop: () => void = () => {}): void {
+function installShutdown(hosted: Awaited<ReturnType<typeof startHost>>): void {
     let stopping = false;
     const stop = () => {
-        if (stopping) return; stopping = true; beforeStop();
-        void stopServers(servers).then(cleanup).then(() => { process.exitCode = 0; }).catch(() => { process.exitCode = 1; });
+        if (stopping) return; stopping = true;
+        void hosted.close().then(() => { process.exitCode = 0; }).catch(() => { process.exitCode = 1; });
     };
     process.once('SIGINT', stop); process.once('SIGTERM', stop);
-    for (const server of servers) server.on('error', stop);
+    hosted.server.on('error', stop);
 }
 main().catch(error => { console.error(error instanceof Error ? error.message : String(error)); process.exitCode = 1; });

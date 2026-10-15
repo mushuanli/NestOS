@@ -19,9 +19,14 @@ export class ConfigurationDeletionDialog {
         if (!kind || !['provider', 'connection', 'mcp', 'system-prompt'].includes(kind) || targets.some(target => target.kind !== 'entity' || target.entityType !== kind))
             throw new Error('Unsupported configuration deletion');
         const ids = targets.map(target => (target as Extract<EditorTarget, { kind: 'entity' }>).id);
-        const warning = await this.additionalImpact(targets);
-        if (signal?.aborted) return 'cancelled';
-        if (kind === 'provider') return this.showDeleteImpactModal(await this.commands.inspectProviderDeletion(ids), warning, signal);
+        const preview = kind === 'provider' ? this.commands.inspectProviderDeletion(ids) : Promise.resolve(undefined);
+        const [warning, providerImpact] = await Promise.all([this.additionalImpact(targets), preview]).catch(async error => {
+            const impact = await preview.catch(() => undefined);
+            if (impact) this.commands.discardPlan(impact.revision);
+            throw error;
+        });
+        if (signal?.aborted) { if (providerImpact) this.commands.discardPlan(providerImpact.revision); return 'cancelled'; }
+        if (providerImpact) return this.showDeleteImpactModal(providerImpact, warning, signal);
         if (kind === 'mcp') return this.showMCPImpact(await this.commands.inspectMCPDeletion(ids),warning,signal);
         return new Promise<DeleteResult>(resolve => new Modal(t('dialog.delete.title'), t('configuration.deleteConfirm', { count: ids.length }) + (warning ? ' ' + escapeHTML(warning) : '') + (kind === 'connection' ? ' ' + t('connection.deleteImpact') : kind === 'system-prompt' ? ' ' + t('prompt.deleteImpact') : ''), {
             onCancel: () => resolve('cancelled'),
@@ -102,7 +107,8 @@ export class ConfigurationDeletionDialog {
             onConfirm: async () => {
                 if (signal?.aborted) { this.commands.discardPlan(impact.revision); resolve('cancelled'); return; }
                 await this.commands.deleteProviders({ revision: impact.revision });
-                await this.changed(); resolve('completed');
+                // The backend commit determines success; navigation refresh is a separate view concern.
+                void this.changed().catch(error => Toast.error(String(error))); resolve('completed');
                 const parts = [`${deletable.length} 个 Provider`];
                 if (affectedConns.length) parts.push(`${affectedConns.length} 个连接`);
                 Toast.success(`已删除：${parts.join('、')}`);

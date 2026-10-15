@@ -111,7 +111,9 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.cleanups.push(resources.subscribe(() => this.scheduleRefresh()));
         for (const [kind, source] of Object.entries(resources.sources)) if (drawerKind(kind as ToolboxKind)) {
             const changed = (event: { payload: { nodes: Array<{ oldPath: string; newPath: string }> } }) => {
-                void resources.drawers.relocate(kind as import('@itookit/app-contracts').DrawerKind, event.payload.nodes)
+                const moved = event.payload.nodes.filter(node => node.oldPath && node.newPath && node.oldPath !== node.newPath);
+                if (!moved.length) return;
+                void resources.drawers.relocate(kind as import('@itookit/app-contracts').DrawerKind, moved)
                     .then(() => this.scheduleRefresh()).catch(error => alert(String(error)));
             };
             this.cleanups.push(source.on('node:renamed', changed), source.on('node:moved', changed));
@@ -188,17 +190,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     }
 
     private async loadDirectories(): Promise<void> {
-        const directories = TOOLBOX_KINDS.map(kind => '/' + kind);
-        for (const kind of ['agents', 'flows'] as const) {
-            const walk = async (path: string): Promise<void> => {
-                for (const node of await this.options.resources.sources[kind].driver.getChildren(path)) {
-                    if (node.type !== 'directory' || node.name.startsWith('.') || node.name === 'system-prompts') continue;
-                    directories.push('/' + kind + node.path); await walk(node.path);
-                }
-            };
-            await walk('/');
-        }
-        await this.options.resources.refreshGroups(defaultToolDrawers(this.options.inventory));
+        const directories = await this.options.resources.refreshGroups(defaultToolDrawers(this.options.inventory));
         this.loadedDirectories.splice(0, this.loadedDirectories.length, ...directories);
     }
     private exportMenu(ids: string[]): MenuItem<VFSNodeUI> {
@@ -276,8 +268,8 @@ export class ToolboxWorkbench implements WorkspaceController {
             if (this.closed) return;
             this.dirty = false; this.refreshing = true;
             try {
-                await this.options.inventory.refresh(); this.descriptions = await this.options.resources.descriptions();
-                await this.loadDirectories();
+                await this.options.inventory.refresh();
+                [this.descriptions] = await Promise.all([this.options.resources.descriptions(), this.loadDirectories()]);
                 if (!this.closed) await this.ui.refresh();
             } finally { this.refreshing = false; }
         }).catch(error => { this.dirty = true; throw error; });

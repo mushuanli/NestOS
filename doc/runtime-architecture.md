@@ -148,6 +148,8 @@ Node CLI
 
 ### 独立 HTTP 存储宿主
 
+HTTP 宿主使用 `startupMode: 'server'`。策略要求 LLM、设备、MCP 首次连接尝试、项目配置、Skill、Agent、调用恢复和草稿初始化在 ready 前完成；createApplicationApi 是异步工厂，startHost 等待其成功才 listen。MCP 不可达可以降级，必要本地初始化失败则拒绝启动并释放资源。交互宿主继续使用自己的首屏策略，持续任务和周期工作不纳入启动完成条件。
+
 `apps/http-app` 使用 Node.js 装配唯一 ApplicationRuntime 并提供相同 Web UI；浏览器通过应用视图查询、命令与事件调用 daemon，不创建执行 Runtime。存储直接使用 LocalFS/SQLite，跨 SeqFile 更新保持原生批量事务。既有 CLI `-d` 保持原有行为。详见 [HTTP 应用宿主](http-app.md)。
 
 ### 可选 Effect 独立作用域端口

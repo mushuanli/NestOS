@@ -145,6 +145,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         // The VFS owns every other resource, so it is disposed last.
         sourceCleanupFns.push(() => vfs.dispose());
         if (closeCodexTransport) cleanupFns.push(closeCodexTransport);
+        if (policy.mcp === 'before-ready') await traceBoot('mcp.startup', () => llmDriver.waitForMCPStartup());
 
         // ── 3. Core services ───────────────────────────────────────────────────────
 
@@ -277,7 +278,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             recover: false,
         }));
         const kernelCore = kernel.kernel;
-        const skillsReady = traceBoot('syncSkillsToKernel (background)', () => syncSkillsToKernel(llmDriver, kernel));
+        const skillsReady = traceBoot(policy.skills === 'before-ready' ? 'syncSkillsToKernel' : 'syncSkillsToKernel (background)', () => syncSkillsToKernel(llmDriver, kernel));
         void skillsReady.catch(error => console.warn('[Boot] Skill initialization failed', error));
 
         digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, kernelCore, agentService, options.ownerKind ?? 'tauri', projects);
@@ -325,6 +326,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             await kernelCore.waitIdle();
         });
         cleanupFns.push(() => skillsReady.catch(() => {}));
+        cleanupFns.push(() => digitalTwin!.dispose());
+        if (policy.skills === 'before-ready') await skillsReady;
         await traceBoot('projects.resumeSessionMoves', () => projects.sessionMoves.recoverPending(id => recovery.acquireMetadataLease(id)));
         if (Object.keys(observed).length) console.log(`[Boot]   ↳ beforeRecover totals: ${formatTimings(observed)}`);
         console.log(`[Boot]   ↳ createKernel: +${(performance.now() - ts).toFixed(0)}ms`);
@@ -400,7 +403,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             }
             if (errors.length) throw new AggregateError(errors, 'Application runtime cleanup failed');
         };
-        startup.schedule('after-ready', 'runtime.workers', async () => {
+        await startup.schedule(policy.workers, 'runtime.workers', async () => {
             await initializeProjects();
             if (!startup.active) return;
             recovery.startBackground();
@@ -408,7 +411,6 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         });
         const startBackground = () => startup.activate();
         if (policy.projects === 'before-ready') startBackground();
-        cleanupFns.push(() => digitalTwin!.dispose());
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects,
             kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
             projectSync, digitalTwin, createView: () => createConversationSystem({ ...conversationOptions,

@@ -208,6 +208,13 @@ it('groups providers by availability and keeps settings before their connections
     await vi.waitFor(async () => expect((await runtime.agentService.getConnections()).find(c => c.name === 'New connection')?.providerId).toBe('ready'));
     await vi.waitFor(() => expect(group().querySelector('.vfs-directory-item__description')?.textContent).toContain('2 个连接'));
 });
+it('keeps metadata title changes out of drawer relocation commands', async () => {
+    const f = await setup(), relocate = vi.spyOn(f.resources.drawers, 'relocate');
+    const provider = (await runtime.agentService.getFullProvider('openai'))!;
+    await runtime.agentService.saveProvider({ ...provider, name: 'Renamed provider' });
+    await vi.waitFor(() => expect(f.inventory.providers.get('openai')?.name).toBe('Renamed provider'));
+    expect(relocate).not.toHaveBeenCalled();
+});
 it('groups tools by purpose and MCP source, and search reveals nested matches', async () => {
     const f = await setup(); f.workbench.setFilter('tools');
     expect(f.sidebar.querySelector('[data-item-id="/tool-groups/files"]')).not.toBeNull();

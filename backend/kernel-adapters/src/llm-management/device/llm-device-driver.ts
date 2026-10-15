@@ -222,6 +222,11 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         return this.initialization ??= this.initialize();
     }
     ensureReady(): Promise<void> { return this.init(); }
+    /** Join the initial bounded connection attempts without changing interactive readiness. */
+    async waitForMCPStartup(): Promise<void> {
+        await this.ensureReady();
+        await Promise.allSettled([...this.autoConnections]);
+    }
     ready(): Promise<void> { return this.createDeviceNodes(); }
 
     private async initialize(): Promise<void> {

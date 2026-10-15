@@ -29,8 +29,12 @@ it('starts configured MCPs without a UI, defaults to connecting, and keeps LLM r
         await f.driver.init(); await vi.waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
         expect(initialize.mock.calls.map(([id]) => id).sort()).toEqual(['default', 'enabled']);
         expect((await f.driver.getMCPServers()).filter(item => item.status === 'connecting')).toHaveLength(2);
+        let ready = false;
+        const startup = f.driver.waitForMCPStartup().then(() => { ready = true; });
+        await Promise.resolve(); expect(ready).toBe(false);
         await f.driver.init(); expect(connect).toHaveBeenCalledTimes(2);
-        release(); await vi.waitFor(async () => expect((await f.driver.getMCPServers()).filter(item => item.status === 'connected')).toHaveLength(2));
+        release(); await startup;
+        expect((await f.driver.getMCPServers()).filter(item => item.status === 'connected')).toHaveLength(2);
     } finally { release(); await f.close(); }
 });
 
@@ -40,6 +44,7 @@ it('isolates connection failures and drains other startup connections during shu
     const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
     try {
         await f.driver.init();
+        await f.driver.waitForMCPStartup();
         await vi.waitFor(() => expect(warning).toHaveBeenCalledOnce());
         await vi.waitFor(async () => expect(await f.driver.getMCPServers()).toEqual(expect.arrayContaining([
             expect.objectContaining({ id: 'failing', status: 'error' }), expect.objectContaining({ id: 'healthy', status: 'connected' }),

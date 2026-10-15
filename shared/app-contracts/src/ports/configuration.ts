@@ -27,7 +27,7 @@ export interface ToolboxResources {
     getAgents(): Promise<AgentDefinition[]>;
     hasProvider(id: string): boolean;
     setToolGrant(tool: ToolGrantTarget, agentId: string, enabled: boolean): Promise<void>;
-    refreshGroups(toolGroups: readonly Drawer[]): Promise<void>;
+    refreshGroups(toolGroups: readonly Drawer[]): Promise<string[]>;
     create(kind: ToolboxKind, name: string, providerId?: string): Promise<string>;
     createInDrawer(kind: ToolboxKind, name: string, drawer: string, providerId?: string): Promise<string>;
     descriptions(): Promise<Map<string, {

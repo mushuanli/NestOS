@@ -77,6 +77,8 @@ describe('startup coordination', () => {
     it('selects host policy without performing initialization', () => {
         expect(applicationStartupPolicy('interactive')).toMatchObject({ projects: 'on-demand', agents: 'after-ready' });
         expect(applicationStartupPolicy()).toMatchObject({ projects: 'before-ready', invocations: 'before-ready' });
+        expect(applicationStartupPolicy('server')).toMatchObject({ llm: 'before-ready', mcp: 'before-ready', skills: 'before-ready',
+            agents: 'before-ready', projects: 'before-ready', drafts: 'before-ready', invocations: 'before-ready', workers: 'before-ready' });
         expect(() => harness(0)).toThrow(RangeError);
     });
 });

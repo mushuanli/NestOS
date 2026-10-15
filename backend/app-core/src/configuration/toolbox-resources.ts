@@ -10,7 +10,7 @@ import { type FlowDraft } from '@itookit/llm-flow/contracts';
 import { FlowCommand } from '@itookit/llm-session';
 import type { ApplicationAgentPort } from '@itookit/app-contracts/services';
 import type { IFileSystem } from '@itookit/vfs-core';
-import { toolboxPath, type ToolboxKind } from './toolbox-identity';
+import { TOOLBOX_KINDS, toolboxPath, type ToolboxKind } from './toolbox-identity';
 
 /** Resource creation retains the owning services' identity and validation rules. */
 export class ToolboxResources {
@@ -22,24 +22,27 @@ export class ToolboxResources {
     getAgents(): Promise<AgentDefinition[]> { return this.agents.getAgents(); }
     hasProvider(id: string): boolean { return this.agents.getProviders().some(item => item.id === id); }
     setToolGrant(tool: ToolGrantTarget, agentId: string, enabled: boolean): Promise<void> { return saveToolGrant(this.agents, tool, agentId, enabled); }
-    async refreshGroups(toolGroups: readonly Drawer[]): Promise<void> {
+    async refreshGroups(toolGroups: readonly Drawer[]): Promise<string[]> {
         const defaults: Drawer[] = [...toolGroups], resources: Array<{ path: string; kind: DrawerKind; groupId?: string }> = [];
+        const directories = TOOLBOX_KINDS.map(kind => '/' + kind);
         for (const group of toolGroups) for (const path of group.paths) resources.push({ path, kind: 'tools', groupId: group.id });
         for (const skill of await this.agents.getSkills()) resources.push({ path: toolboxPath('skills', '/' + skill.id), kind: 'skills' });
-        for (const kind of ['agents', 'flows', 'prompts', 'mcp'] as const) await this.scanGroups(kind, '/', defaults, resources);
+        for (const kind of ['agents', 'flows', 'prompts', 'mcp'] as const) await this.scanGroups(kind, '/', defaults, resources, directories);
         this.drawers.setCatalog(resources, defaults);
+        return directories;
     }
-    private async scanGroups(kind: DrawerKind, parent: string, groups: Drawer[], resources: Array<{ path: string; kind: DrawerKind; groupId?: string }>, group?: Drawer): Promise<void> {
+    private async scanGroups(kind: DrawerKind, parent: string, groups: Drawer[], resources: Array<{ path: string; kind: DrawerKind; groupId?: string }>, directories: string[], group?: Drawer): Promise<void> {
         for (const node of await this.sources[kind].driver.getChildren(parent)) {
             if (node.name.startsWith('.') || node.name === 'system-prompts') continue;
             const path = toolboxPath(kind, node.path);
             if (node.type === 'file') {
                 if (kind !== 'agents' || node.path.endsWith('.agent')) resources.push({ path, kind, groupId: group?.id });
             } else {
-                if (kind === 'agents' && node.path === '/default') { await this.scanGroups(kind, node.path, groups, resources); continue; }
+                if (kind === 'agents' || kind === 'flows') directories.push(path);
+                if (kind === 'agents' && node.path === '/default') { await this.scanGroups(kind, node.path, groups, resources, directories); continue; }
                 const name = String(node.metadata?.title ?? node.name);
                 const next: Drawer = { id: '/drawers/legacy-' + encodeURIComponent(path), kind, name: group ? group.name + ' / ' + name : name, paths: [] };
-                groups.push(next); await this.scanGroups(kind, node.path, groups, resources, next);
+                groups.push(next); await this.scanGroups(kind, node.path, groups, resources, directories, next);
             }
         }
     }

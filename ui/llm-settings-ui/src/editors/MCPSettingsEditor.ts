@@ -31,6 +31,8 @@ function statusBadge(status?: MCPServer['status']): string {
         return `<span class="settings-badge settings-badge--success">${STATUS_META.connected.dot} ${t('status.connected')}</span>`;
     if (status === 'error')
         return `<span class="settings-badge settings-badge--danger">✕ ${t('status.error')}</span>`;
+    if (status === 'connecting')
+        return `<span class="settings-badge">${STATUS_META.connecting.dot} ${t('mcp.state.connecting')}</span>`;
     return `<span class="settings-badge">${STATUS_META.idle.dot} ${t('status.idle')}</span>`;
 }
 
@@ -42,6 +44,17 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
     async destroy(): Promise<void> { await super.destroy(); this.controls?.dispose?.(); }
     private selectedId: string | null = null;
     private formOnly = false;
+    private statusRead = 0;
+    protected override onServiceChange(): void {
+        if (!this.formOnly) { super.onServiceChange(); return; }
+        void this.refreshStatus().catch(() => {});
+    }
+    private async refreshStatus(): Promise<void> {
+        const generation = ++this.statusRead, id = this.selectedId;
+        const host = this.container.querySelector<HTMLElement>('[data-mcp-status]');
+        const server = (await this.service.getMCPServers()).find(item => item.id === id);
+        if (server && host?.isConnected && generation === this.statusRead && id === this.selectedId) host.innerHTML = statusBadge(server.status);
+    }
     async init(container: HTMLElement): Promise<void> {
         if (this.options.target?.kind === 'entity' && this.options.target.entityType === 'mcp') {
             this.formOnly = true; this.selectedId = this.options.target.id;
@@ -138,7 +151,7 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
                 fallbackIcon:    ENTITY_ICONS.mcp,
                 name:            escape(server.name),
                 namePlaceholder: t('mcp.placeholder.name'),
-                badges:  statusBadge(server.status),
+                badges: `<span data-mcp-status role="status">${statusBadge(server.status)}</span>`,
                 subtitle: escape(server.description || t(`mcpTransport.${server.transport}` as Parameters<typeof t>[0]) || server.transport),
                 actions: `
                     <label class="settings-toggle" title="${t('mcp.autoConnectHint')}">

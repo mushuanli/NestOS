@@ -625,8 +625,10 @@ it('connects when auto-connect is enabled and updates sidebar state without wait
         toggle.focus();
         toggle.checked = true; toggle.dispatchEvent(new Event('change', { bubbles: true }));
         await vi.waitFor(() => expect(badge().title).toContain(t('mcp.state.connecting')), { timeout: 2000 });
+        await vi.waitFor(() => expect(f.main.querySelector('[data-mcp-status]')?.textContent).toContain(t('mcp.state.connecting')));
         expect((await runtime.agentService.getMCPServers())[0].autoConnect).toBe(true);
         release(); await vi.waitFor(() => expect(badge().title).toContain(t('mcp.state.connected')));
+        await vi.waitFor(() => expect(f.main.querySelector('[data-mcp-status]')?.textContent).toContain(t('status.connected')));
         expect(connect).toHaveBeenCalledOnce(); expect(f.main.querySelector('[name="autoConnect"]')).toBe(toggle);
     } finally { release?.(); }
 });

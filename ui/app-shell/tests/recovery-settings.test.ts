@@ -11,7 +11,8 @@ async function fixture() {
     const port: InitialFilesPort = { list: vi.fn(async () => entries), restore: vi.fn(async ids => {
         entries[0].exists = true; return ids.map(id => ({ id, status: 'restored' as const }));
     }) };
-    const items = [{ type: 'provider' as const, id: 'one', name: 'One', status: 'modified' as const }];
+    const items = [{ type: 'provider' as const, id: 'one', name: 'One', status: 'modified' as const },
+        { type: 'connection' as const, id: 'two', name: 'Two', status: 'ok' as const }];
     const service = { getRestorableItems: vi.fn(async () => items), restoreItem: vi.fn(async () => {}), resetAllDefaults: vi.fn(async () => {}) };
     const container = document.createElement('div'); document.body.append(container);
     const editor = new RecoverySettingsEditor(container, service as never, {} as never, undefined, port);
@@ -28,6 +29,8 @@ it('uses one page action for selected files and configurations, without fetching
     click(container, '.chk-select-all');
     expect(service.getRestorableItems).toHaveBeenCalledOnce(); expect(port.list).toHaveBeenCalledOnce();
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.checked).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('.chk-item[value="connection:two"]')!.checked).toBe(false);
+    expect(container.querySelector<HTMLInputElement>('[data-initial-group=notes]')!.checked).toBe(true);
     expect(container.querySelector('#btn-batch-restore')!.textContent).toBe(t('recovery.restoreSelected', { count: 2 }));
     click(container, '#btn-batch-restore');
     expect(document.querySelector('.settings-modal__body')!.textContent).toContain(t('recovery.confirmSelection', { files: 1, configurations: 1 }));
@@ -42,12 +45,14 @@ it('uses one page action for selected files and configurations, without fetching
 it('refreshes every group while retaining selection and expanded files', async () => {
     const { container, service, port } = await fixture();
     click(container, '.chk-item'); const details = container.querySelector('details')!; details.open = true;
-    click(container, '[data-initial-all]'); click(container, '#btn-refresh-recovery');
+    container.querySelector<HTMLDetailsElement>('[data-recovery-group=provider]')!.open = false;
+    click(container, '[data-initial-group=notes]'); click(container, '#btn-refresh-recovery');
     await vi.waitFor(() => expect(container.querySelector<HTMLButtonElement>('#btn-refresh-recovery')!.disabled).toBe(false));
     expect(service.getRestorableItems).toHaveBeenCalledTimes(2); expect(port.list).toHaveBeenCalledTimes(2);
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.checked).toBe(true);
     expect(container.querySelector<HTMLInputElement>('[data-initial-id]')!.checked).toBe(false);
     expect(container.querySelector('details')!.open).toBe(true);
+    expect(container.querySelector<HTMLDetailsElement>('[data-recovery-group=provider]')!.open).toBe(false);
     expect(port.restore).not.toHaveBeenCalled(); expect(service.restoreItem).not.toHaveBeenCalled();
 });
 

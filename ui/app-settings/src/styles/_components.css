@@ -607,6 +607,7 @@
 .initial-files__entry code { display: block; overflow-wrap: anywhere; font-size: .85em; }
 .initial-files [role="alert"] { color: var(--llm-color-error, #c33); }
 .initial-files button { margin: .5rem .5rem .5rem 0; }
+.initial-files__select-all { float: right; display: inline-flex; align-items: center; gap: .4rem; font-weight: normal; }
 /* Keyboard-accessible configuration switch; the native input owns its state. */
 .settings-toggle { display: inline-flex; align-items: center; gap: .5rem; position: relative; cursor: pointer; font-size: .8125rem; }
 .settings-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; }
@@ -618,4 +619,6 @@
 
 .recovery-page__actions { display: flex; gap: .5rem; flex-wrap: wrap; justify-content: flex-end; }
 .recovery-page__group { margin-block: 1.5rem; }
+.recovery-page__group > summary { cursor: pointer; padding-block: .5rem; }
+.recovery-page__group > summary .settings-checkbox-label { float: right; }
 .recovery-page__warning { padding: 1rem; margin-block: 1rem; border-left: 3px solid var(--st-color-warning); background: var(--st-color-warning-light); }

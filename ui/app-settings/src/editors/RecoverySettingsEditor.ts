@@ -10,6 +10,7 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
     private initialFiles?: InitialFilesSection;
     private selectedItems = new Set<string>();
     private allItems: RestorableItem[] = [];
+    private expandedGroups = new Set<ItemType>(groups);
     private busy = false;
     private disposed = false;
     private generation = 0;
@@ -26,6 +27,7 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
         if (this.disposed || generation !== this.generation) return;
         this.allItems = items;
         this.selectedItems = new Set(items.filter(item => this.selectedItems.has(this.key(item))).map(item => this.key(item)));
+        this.rememberExpansion();
         this.clearListeners();
         this.container.innerHTML = `<div class="settings-page">
             ${this.renderHeader()}<div data-recovery-warnings>${this.buildDuplicateWarnings()}</div>
@@ -65,10 +67,10 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
 
     private renderSection(group: ItemType): string {
         const items = this.allItems.filter(item => item.type === group);
-        return `<div class="recovery-page__group"><div class="settings-section-header">
-            <h4 class="settings-section-title">${escapeHTML(t(`recovery.${group}`))}</h4>
+        return `<details class="recovery-page__group" data-recovery-group="${group}" ${this.expandedGroups.has(group) ? 'open' : ''}><summary>
+            <span class="settings-section-title">${escapeHTML(t(`recovery.${group}`))}</span>
             <label class="settings-checkbox-label"><input type="checkbox" class="chk-select-all" data-group="${group}" ${!items.length ? 'disabled' : ''}>${escapeHTML(t('initialFiles.all'))}</label>
-            </div><div class="settings-list-group">${items.length ? items.map(item => this.renderRow(item)).join('') : escapeHTML(t('recovery.empty'))}</div></div>`;
+            </summary><div class="settings-list-group">${items.length ? items.map(item => this.renderRow(item)).join('') : escapeHTML(t('recovery.empty'))}</div></details>`;
     }
 
     private renderRow(item: RestorableItem): string {
@@ -165,6 +167,7 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
 
     private async refreshConfigurations(): Promise<void> {
         const items = await this.service.getRestorableItems(); if (this.disposed) return;
+        this.rememberExpansion();
         this.allItems = items;
         this.selectedItems = new Set(items.filter(item => this.selectedItems.has(this.key(item))).map(item => this.key(item)));
         const warnings = this.container.querySelector('[data-recovery-warnings]');
@@ -174,6 +177,13 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
             if (header) header.outerHTML = this.renderSection(group);
         });
         this.clearListeners(); this.bindEvents(); this.refreshUIState();
+    }
+
+    private rememberExpansion(): void {
+        this.container.querySelectorAll<HTMLDetailsElement>('details[data-recovery-group]').forEach(detail => {
+            const group = detail.dataset.recoveryGroup as ItemType;
+            detail.open ? this.expandedGroups.add(group) : this.expandedGroups.delete(group);
+        });
     }
 
     private async refreshAll(): Promise<void> {

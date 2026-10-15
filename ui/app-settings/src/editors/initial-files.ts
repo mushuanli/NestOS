@@ -43,12 +43,15 @@ export class InitialFilesSection {
         const count = this.selectedCount, disabled = this.busy || this.disabled;
         this.container.innerHTML = `<section class="settings-section initial-files"><h3>${escapeHTML(label('title'))}</h3>
             <p>${escapeHTML(label('help'))}</p><p>${escapeHTML(label('demoHelp'))}</p>
-            <label><input type="checkbox" data-initial-all ${count === this.entries.length && count ? 'checked' : ''} ${disabled ? 'disabled' : ''}>${escapeHTML(label('all'))}</label>
             ${['notes', 'flows'].map(group => this.group(group)).join('')}
             ${this.controls.externalActions ? '' : `<button type="button" class="settings-btn settings-btn--primary" data-initial-restore ${disabled || !count ? 'disabled' : ''}>${escapeHTML(label(this.busy ? 'restoring' : 'restore'))} (${count})</button>
             <button type="button" class="settings-btn settings-btn--secondary" data-initial-refresh ${disabled ? 'disabled' : ''}>${escapeHTML(label('refresh'))}</button>`}
             <p role="alert">${escapeHTML(this.error)}</p><ul role="status">${this.results.map(result => `<li>${escapeHTML(this.entries.find(entry => entry.id === result.id)?.name ?? result.id)} — ${escapeHTML(label(result.status))}${result.error ? ': ' + escapeHTML(result.error) : ''}</li>`).join('')}</ul></section>`;
-        const all = this.container.querySelector<HTMLInputElement>('[data-initial-all]')!; all.indeterminate = count > 0 && count < this.entries.length;
+        this.container.querySelectorAll<HTMLInputElement>('[data-initial-group]').forEach(input => {
+            const entries = this.entries.filter(entry => entry.group === input.dataset.initialGroup);
+            const selected = entries.filter(entry => this.selected?.has(entry.id)).length;
+            input.indeterminate = selected > 0 && selected < entries.length;
+        });
         this.container.onchange = event => this.change(event);
         this.container.onclick = event => { const element = event.target as HTMLElement;
             if (element.closest('[data-initial-restore]')) void this.restore();
@@ -62,13 +65,16 @@ export class InitialFilesSection {
     private group(group: string): string {
         const entries = this.entries.filter(entry => entry.group === group); if (!entries.length) return '';
         const count = entries.filter(entry => this.selected?.has(entry.id)).length;
-        return `<details data-group="${group}" ${this.expanded.has(group) ? 'open' : ''}><summary>${escapeHTML(label(group))} (${count}/${entries.length})</summary>
+        return `<details data-group="${group}" ${this.expanded.has(group) ? 'open' : ''}><summary>${escapeHTML(label(group))} (${count}/${entries.length})
+            <label class="initial-files__select-all"><input type="checkbox" data-initial-group="${group}" ${count === entries.length ? 'checked' : ''} ${this.busy || this.disabled ? 'disabled' : ''}>${escapeHTML(label('all'))}</label></summary>
             ${entries.map(entry => `<label class="initial-files__entry"><input type="checkbox" data-initial-id="${escapeAttr(entry.id)}" ${this.selected?.has(entry.id) ? 'checked' : ''} ${this.busy || this.disabled ? 'disabled' : ''}>
                 <span>${escapeHTML(entry.name)} — ${escapeHTML(label(entry.exists ? 'exists' : 'missing'))}<code>${escapeHTML(entry.path)}</code></span></label>`).join('')}</details>`;
     }
     private change(event: Event): void {
         if (this.busy || this.disabled) return; const input = event.target as HTMLInputElement;
-        if (input.hasAttribute('data-initial-all')) this.selected = new Set(input.checked ? this.entries.map(entry => entry.id) : []);
+        if (input.dataset.initialGroup) this.entries.filter(entry => entry.group === input.dataset.initialGroup).forEach(entry => {
+            input.checked ? this.selected?.add(entry.id) : this.selected?.delete(entry.id);
+        });
         else if (input.dataset.initialId) input.checked ? this.selected?.add(input.dataset.initialId) : this.selected?.delete(input.dataset.initialId);
         this.rememberExpansion(); this.render();
     }

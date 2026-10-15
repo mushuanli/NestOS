@@ -211,7 +211,7 @@ pi-agent 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）。a
 
 ## 初始文件恢复
 
-`app-settings` 的 `InitialFilesPort` 注入 `list()` 与 `restore(ids)`；列表包含稳定 ID、分组、文件名、目标路径和存在状态，恢复返回逐文件 restored/preserved/failed。`app-core` 的 `MindosInitialFiles` 提供产品模板，宿主将当前笔记文件系统和 CommandBus 注入；笔记只创建缺失文件，Flow 复用 DraftLoad/DraftRestore。文件系统及系统恢复页复用 `InitialFilesSection`，默认全选、分组折叠，保留勾选和展开状态，不把文件恢复等同于覆盖或模型分析。 系统恢复页将初始文件与配置勾选统一计入顶部“恢复选中项”，确认时分别说明补缺失文件与覆盖内置配置的影响；“刷新全部状态”覆盖所有分组并保留勾选和展开状态。“重置全部内置配置”仅针对 Provider/Connection/Agent，不包含初始文件。
+`app-settings` 的 `InitialFilesPort` 注入 `list()` 与 `restore(ids)`；列表包含稳定 ID、分组、文件名、目标路径和存在状态，恢复返回逐文件 restored/preserved/failed。`app-core` 的 `MindosInitialFiles` 提供产品模板，宿主将当前笔记文件系统和 CommandBus 注入；笔记只创建缺失文件，Flow 复用 DraftLoad/DraftRestore。文件系统及系统恢复页复用 `InitialFilesSection`，默认全选、分组折叠，保留勾选和展开状态，不把文件恢复等同于覆盖或模型分析。 系统恢复页将初始文件与配置勾选统一计入顶部“恢复选中项”，确认时分别说明补缺失文件与覆盖内置配置的影响；“刷新全部状态”覆盖所有分组并保留勾选和展开状态；各折叠组标题旁的“全选”仅作用于本组。“重置全部内置配置”仅针对 Provider/Connection/Agent，不包含初始文件。
 
 数字分析的 selectionInfo 返回关联扫描 runs 与分析结果。用户修正将知识转为独立陈述，originSourceId 仅保留文档归属，不作为事实证据；对话框据此继续显示修正结果。显式 removeSelection 一并清理这些关联修正，普通来源变更不覆盖用户陈述。旧记录无需迁移。
 

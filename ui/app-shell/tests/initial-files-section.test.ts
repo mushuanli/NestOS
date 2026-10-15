@@ -17,12 +17,14 @@ it('shows a collapsed, fully selected file catalog and restores only checked fil
         expect([...container.querySelectorAll<HTMLInputElement>('[data-initial-id]')].every(input => input.checked)).toBe(true);
         expect(container.textContent).toContain('/home/admin/minds/demo.md');
         expect(container.textContent).toContain(t('initialFiles.exists'));
-        container.querySelector<HTMLInputElement>('[data-initial-all]')!.click();
+        container.querySelector<HTMLInputElement>('[data-initial-group=notes]')!.click();
+        expect(container.querySelector<HTMLInputElement>('[data-initial-id=flow]')!.checked).toBe(true);
+        container.querySelector<HTMLInputElement>('[data-initial-group=flows]')!.click();
         expect(container.querySelector<HTMLButtonElement>('[data-initial-restore]')!.disabled).toBe(true);
         container.querySelector<HTMLDetailsElement>('details')!.open = true;
         container.querySelector<HTMLInputElement>('[data-initial-id="note"]')!.click();
         expect(container.querySelector<HTMLDetailsElement>('details')!.open).toBe(true);
-        expect(container.querySelector<HTMLInputElement>('[data-initial-all]')!.indeterminate).toBe(true);
+        expect(container.querySelector<HTMLInputElement>('[data-initial-group=notes]')!.checked).toBe(true);
         container.querySelector<HTMLButtonElement>('[data-initial-restore]')!.click();
         await vi.waitFor(() => expect(container.querySelector('[role=status]')!.textContent).toContain(t('initialFiles.restored')));
         expect(port.restore).toHaveBeenCalledWith(['note']); expect(changed).toHaveBeenCalledOnce();

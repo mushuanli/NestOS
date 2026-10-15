@@ -7,13 +7,24 @@ export class VfsJsonStore {
     private readonly pending = new Map<string, string>();
     private readonly saved = new Map<string, string>();
     private readonly reads = new Map<string, Array<(value: unknown) => void>>();
+    private readonly prefetched = new Map<string, unknown>();
     private reading = false;
     private writing?: Promise<void>;
     constructor(private readonly backend: DocumentPort) {}
 
+    /** Consume a navigation response without replacing newer local edits. */
+    seed(documents: Record<string, unknown>): void {
+        for (const [name, value] of Object.entries(documents))
+            if (!this.saved.has(name) && !this.pending.has(name)) this.prefetched.set(name, value);
+    }
     read(name: string): Promise<unknown> {
         const content = this.pending.get(name);
         if (content !== undefined) return Promise.resolve(JSON.parse(content));
+        if (this.prefetched.has(name)) {
+            const value = this.prefetched.get(name); this.prefetched.delete(name);
+            if (value !== undefined) this.saved.set(name, JSON.stringify(value));
+            return Promise.resolve(value);
+        }
         const pending = new Promise(resolve => this.reads.set(name, [...(this.reads.get(name) ?? []), resolve]));
         if (!this.reading) { this.reading = true; queueMicrotask(() => { void this.readBatch(); }); }
         return pending;
@@ -36,6 +47,7 @@ export class VfsJsonStore {
     write(name: string, value: unknown): void {
         const content = JSON.stringify(value);
         if (content === (this.pending.get(name) ?? this.saved.get(name))) return;
+        this.prefetched.delete(name);
         this.pending.set(name, content);
         if (!this.writing) {
             this.writing = Promise.resolve().then(() => this.drain());

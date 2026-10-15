@@ -39,6 +39,8 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    navigationView(options: { root: string; scope: string }): Promise<import('./navigation').NavigationView>;
+    warmNavigation(roots: string[]): Promise<void>;
     workbenchView(options?: { displayedFilesPolicy?: 'gitignore' | 'all'; chatControls?: boolean }): Promise<WorkbenchView>;
     openSessionView(sessionId: string): Promise<SessionOpenView>;
     readUiDocuments(names: string[]): Promise<Record<string, unknown>>;

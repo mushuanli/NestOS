@@ -289,3 +289,28 @@ it('flushes edits on hiding while retaining the editor on save failure', async (
     flushPendingSave.mockResolvedValue(undefined);
     await f.workbench.destroy();
 });
+
+it('keeps a clean Session sidebar cached and coalesces changes accumulated while hidden', async () => {
+    const f = setup(); await f.workbench.start();
+    const sidebar = (f.workbench as any).sidebarUI, refresh = vi.spyOn(sidebar, 'refresh');
+    try {
+        await f.workbench.setVisible(false); await f.workbench.setVisible(true);
+        expect(refresh).not.toHaveBeenCalled();
+        await f.workbench.setVisible(false); f.changed(); f.changed();
+        expect(refresh).not.toHaveBeenCalled();
+        await f.workbench.setVisible(true);
+        await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+    } finally { await f.workbench.destroy(); }
+});
+
+it('refreshes again when a visible navigation reload was interrupted by hiding', async () => {
+    const f = setup(); await f.workbench.start();
+    let finish!: () => void;
+    const refresh = vi.spyOn((f.workbench as any).sidebarUI, 'refresh')
+        .mockImplementationOnce(() => new Promise<void>(resolve => { finish = resolve; }));
+    try {
+        f.changed(); await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+        await f.workbench.setVisible(false); await f.workbench.setVisible(true); finish();
+        await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(2));
+    } finally { finish?.(); await f.workbench.destroy(); }
+});

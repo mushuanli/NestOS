@@ -1,3 +1,4 @@
+import { navigationView, warmNavigation } from './navigation-view';
 import { createFileSystemView, FSError } from '@itookit/vfs-core';
 import { withConfigurationImport } from '../configuration/configuration-import';
 import { SettingsService } from '../settings/SettingsService';
@@ -37,6 +38,8 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     const { vfs, agentService, sessionRepository: repository, projects, kernel, commandBus } = services;
     const lifecycle = () => new SessionLifecycleService({ repository, kernel: kernel.kernel });
     return {
+        navigationView: options => navigationView(vfs, options),
+        warmNavigation: roots => warmNavigation(vfs, roots),
         workbenchView: async settings => {
             const view = await createWorkbenchView({ ...settings, repository, files: services.sessionFiles, kernel: kernel.kernel, projects }, options.preload);
             return { ...view, browser: await scope.own(view.browser),

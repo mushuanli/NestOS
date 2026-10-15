@@ -1,8 +1,38 @@
 # 启动故障与运行日志
 
+## 2026-10-15 首次导航与空闲预热
+
+日志中 13:06:55.718～13:06:59.975 的装配调用跨度约 4.26 秒，12 次应用请求的后端处理时间合计仅 30ms。普通模块原先顺序打开文件系统、读取两份 UI 文档，再逐层读取目录与忽略文件；请求依赖链放大了公网延迟。
+
+```mermaid
+C4Component
+    Container_Boundary(front, "前端 app-shell") {
+        Component(route, "导航策略", "bootstrap", "决定模块与资源打开意图")
+        Component(tree, "侧栏与标签", "Workbench", "首层先显示，展开随后恢复")
+        Component(idle, "空闲预热", "navigation-warmup", "优先工具箱与工作台导航，随后最多两个普通根")
+    }
+    Container_Boundary(back, "后端应用") {
+        Component(api, "导航读用例", "navigationView", "授权根、元数据、UI 文档")
+        Component(cache, "短期目录缓存", "navigation-view", "有界共享，文件事件失效")
+        Component(store, "文件与偏好", "VFS", "实时数据与持久写入")
+    }
+    Rel(route, api, "一次首屏查询", "本地 API / HTTP")
+    Rel(api, tree, "返回目录快照与不透明偏好")
+    Rel(idle, route, "共享模块装配，不改变路由或打开正文")
+    Rel(idle, cache, "warmNavigation，只读预热")
+    Rel(api, cache, "取得元数据")
+    Rel(cache, store, "读取与观察文件事件")
+```
+
+首屏后工具箱和工作台导航优先串行预加载，用户提前点击复用同一在途加载，前台导航繁忙时不开始下一个后台任务。工具箱、工作台隐藏时暂停目录读取，变化只标脏；切回时无变更且未过期直接复用，变更积累后合并刷新，普通模块和工作台超过 15 秒在再次进入时重新验证。目录快照只供展示，不自动创建默认文件、打开会话或获取编辑租约。普通根缓存按授权根共享，最多 8 根、每根 1000 行 / 512 KiB JSON，15 秒过期；变化事件立即失效，挂载 revision 仅作身份检查。详情见 [HTTP 宿主](../http-app.md)。
+
+前端日志 `navigation.preload.toolbox` / `navigation.preload.chat` 分别记录导航提前装配耗时；它们在全局提示关闭后运行，不代表打开配置编辑器或会话正文。
+
+集成回归保留轻量入口的一次主题查询；从入口首次进入笔记只需一次 navigationView 数据查询及订阅绑定，不逐个请求文件系统、UI 文档、根目录或忽略文件。正文深链完整启动请求从前一版本 13 次降至 8 次；这是 MemoryBackend + 进程内 RPC 的合成比较，不包含静态资源、TLS、SSE 或空闲预热，不能作为真实公网延迟。
+
 ## 2026-10-15 启动外壳与按意图导航
 
-全局提示以 `onShellReady`（主题和导航就绪）作为结束点。无深链时停在 `#/start` 功能入口，选择模块后才加载侧栏；不自动恢复持久选中项或当前项目正文。显式深链直接打开对应资源，历史标签只展示入口，当前页面内模块切换保留编辑器。局部进度和失败重试不阻塞主导航，过期加载结果不能打开旧资源或改写 URL。移除旧的 `waitForEditorMount`、15 秒超时及 Tauri 遮罩迁移代码。
+全局提示以 `onShellReady`（主题和导航就绪）作为结束点。无深链时停在 `#/start` 功能入口，首屏不等待模块侧栏；工具箱和工作台在首屏后后台预加载导航，其他模块侧栏按选择加载。不自动恢复持久选中项或当前项目正文。显式深链直接打开对应资源，历史标签只展示入口，当前页面内模块切换保留编辑器。局部进度和失败重试不阻塞主导航，过期加载结果不能打开旧资源或改写 URL。移除旧的 `waitForEditorMount`、15 秒超时及 Tauri 遮罩迁移代码。
 
 ```mermaid
 flowchart LR
@@ -10,6 +40,8 @@ flowchart LR
     Shell --> Entry[无深链：轻量入口]
     Shell --> Deep[显式深链]
     Entry -->|选择模块| Sidebar[加载侧栏与展示偏好]
+    Entry -->|首屏后空闲| Prepare[提前装配工具箱与工作台导航]
+    Prepare -->|点击时复用| Sidebar
     Deep --> Sidebar
     Sidebar -->|点击资源或显式深链| View[后端准备资源 / 前端编辑器]
     Sidebar -->|失败| Retry[局部重试 / 保留主导航]

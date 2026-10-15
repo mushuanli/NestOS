@@ -70,6 +70,9 @@ export class ToolboxWorkbench implements WorkspaceController {
     private cleanups: Array<() => void | Promise<void>> = [];
     private readonly loadedDirectories = TOOLBOX_KINDS.map(kind => '/' + kind);
     private closed = false;
+    private visible = true;
+    private dirty = false;
+    private refreshing = false;
     private timer?: ReturnType<typeof setTimeout>;
     private refreshTail: Promise<void> = Promise.resolve();
     constructor(private readonly options: Options) { this.prefs = preferences(this.options.uiPreferences?.load()); }
@@ -264,16 +267,27 @@ export class ToolboxWorkbench implements WorkspaceController {
     private persist(): void { this.options.uiPreferences?.save(this.prefs); }
     private scheduleRefresh(): void {
         if (this.closed) return;
+        this.dirty = true;
+        if (!this.visible) return;
         clearTimeout(this.timer); this.timer = setTimeout(() => { void this.refresh().catch(error => alert(String(error))); }, 100);
     }
     private refresh(): Promise<void> {
         const work = this.refreshTail.then(async () => {
             if (this.closed) return;
-            await this.options.inventory.refresh(); this.descriptions = await this.options.resources.descriptions();
-            await this.loadDirectories();
-            if (!this.closed) await this.ui.refresh();
-        });
+            this.dirty = false; this.refreshing = true;
+            try {
+                await this.options.inventory.refresh(); this.descriptions = await this.options.resources.descriptions();
+                await this.loadDirectories();
+                if (!this.closed) await this.ui.refresh();
+            } finally { this.refreshing = false; }
+        }).catch(error => { this.dirty = true; throw error; });
         this.refreshTail = work.catch(() => {}); return work;
+    }
+    async setVisible(visible: boolean): Promise<void> {
+        if (this.closed || this.visible === visible) return;
+        this.visible = visible; this.ui?.setVisible?.(visible);
+        if (!visible) { clearTimeout(this.timer); if (this.refreshing) this.dirty = true; }
+        else if (this.dirty) await this.refresh();
     }
     async openResource(path: string): Promise<void> {
         const kind = toolboxKind(path);

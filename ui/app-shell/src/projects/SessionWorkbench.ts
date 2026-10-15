@@ -1,6 +1,6 @@
 import { harnessObservation, remoteSessionSources } from '@itookit/app-contracts';
 import { projectTwinTarget, twinSourceMenu } from '../digital-twin/source-menu';
-import { withInitialDirectory } from './initial-directory';
+import { withInitialDirectory } from '../browser/initial-directory';
 import { presentationPersistence } from '../persistence/initial-navigation';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
@@ -166,6 +166,8 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly subscriptions = new SubscriptionScope();
     private taskRefresh = 0;
     private refreshQueued = false;
+    private refreshing = false;
+    private navigationReadAt = 0;
     private refreshTimer?: ReturnType<typeof setTimeout>;
     private readonly refreshSources = new Set<string>();
     private kernelChanges: Record<string, number> = {};
@@ -397,7 +399,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (view.navigation) await this.projectNavigation?.refresh(view.navigation);
         if (this.onSidebarReady?.()) await afterSidebarPaint();
         if (this.closed) return;
-        this.sidebarStarting = false;
+        this.sidebarStarting = false; this.navigationReadAt = performance.now();
         if (this.projects?.remoteMounts) this.subscriptions.add(
             this.projects.remoteMounts.onChange(() => { this.updateRemoteAvailability(); this.scheduleRefresh('remote-status'); }));
         if (!this.active) {
@@ -486,8 +488,9 @@ export class SessionWorkbench implements WorkspaceController {
         }, undefined, { initialName: project.name, confirmLabel: t('project.save') });
     }
     private scheduleRefresh(source: string): void {
-        if (this.closed || !this.visible) return;
+        if (this.closed) return;
         this.refreshSources.add(source);
+        if (!this.visible) return;
         if (this.refreshTimer) return;
         this.refreshTimer = setTimeout(() => {
             this.refreshTimer = undefined;
@@ -505,16 +508,16 @@ export class SessionWorkbench implements WorkspaceController {
             );
             this.lastRefreshAt = now;
         }
-        this.refreshSources.clear();
         this.kernelChanges = {};
         this.refreshTail = this.refreshTail.catch(() => {}).then(async () => {
             this.refreshQueued = false;
             if (this.closed || !this.visible) return;
+            this.refreshing = true; this.refreshSources.clear();
             this.browser?.invalidateNavigation();
             await this.sidebarUI?.refresh();
-            if (!this.visible || this.closed) return;
+            if (!this.visible || this.closed) { this.refreshSources.add('visibility-interrupted'); return; }
             await this.projectNavigation?.refresh(); this.updateRemoteAvailability();
-            if (!this.visible || this.closed) return;
+            if (!this.visible || this.closed) { this.refreshSources.add('visibility-interrupted'); return; }
             await this.syncBranchRoute();
             for (const id of this.waiting) this.sidebarUI?.setNodeAttention(await this.sessionPath(id), t('project.waitingInput'));
             if (this.active?.startsWith('/')) {
@@ -522,7 +525,8 @@ export class SessionWorkbench implements WorkspaceController {
                 if (target.kind === 'task') await this.showTask(this.active);
                 else if (target.kind === 'folder' || target.kind === 'tasks' || ((target.kind === 'files' || target.kind === 'project-files') && !this.editor && !this.previewCleanup)) await this.showDirectory(this.active);
             }
-        }).catch(error => this.report(error));
+            this.navigationReadAt = performance.now();
+        }).catch(error => { this.refreshSources.add('refresh-failed'); this.report(error); }).finally(() => { this.refreshing = false; });
     }
     private message(text: string): void {
         const node = document.createElement('div'); node.className = 'mm-placeholder'; node.textContent = text;
@@ -571,6 +575,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (!visible) {
             ++this.openIntent;
             this.cancelViewLoad();
+            if (this.refreshing || this.refreshQueued) this.refreshSources.add('visibility-interrupted');
             this.editor?.cancelPendingRender?.();
             if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = undefined; }
             try { await Promise.all(this.tabs.values().map(tab => tab.value?.editor?.flushPendingSave?.())); }
@@ -578,7 +583,7 @@ export class SessionWorkbench implements WorkspaceController {
         } else {
             const pending = this.pendingTarget;
             if (pending) await this.openResource(pending.id, pending.options);
-            this.refresh();
+            if (this.refreshSources.size || performance.now() - this.navigationReadAt >= 15000) this.refresh();
         }
     }
     private finishReads(cleanup: Promise<void>): void {

@@ -1,3 +1,5 @@
+import { withInitialDirectory } from './browser/initial-directory';
+import { scheduleNavigationWarmup } from './navigation/navigation-warmup';
 import { cleanupGroup, type Cleanup } from './lifecycle/cleanup-group';
 import { installStartPage, START_PAGE_ID, START_PAGE_SLUG } from './navigation/start-page';
 import { workspaceStatus } from './navigation/workspace-status';
@@ -238,7 +240,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         layoutEl.appendChild(sidebarEl);
         layoutEl.appendChild(editorEl);
         container.appendChild(layoutEl);
-        if (!visibleWorkspaceId || visibleWorkspaceId === elementId) options.onWorkspaceMounted?.({ editor: editorEl });
+        if (visibleWorkspaceId === elementId) options.onWorkspaceMounted?.({ editor: editorEl });
         own(setupMobileWorkspaceView(layoutEl, sidebarEl, editorEl));
 
         const strategyType = wsConfig.type ?? 'standard';
@@ -323,9 +325,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 ...uiPassThrough.fileCreation,
                 label:           uiPassThrough.fileCreation?.label           ?? primaryDef?.label           ?? 'File',
                 title:           uiPassThrough.fileCreation?.title           ?? formatDefaultFileTitle(),
-                content:         uiPassThrough.fileCreation?.content ?? (primaryType ? options.fileTemplates?.[primaryType] : undefined),
-                startupFileName: uiPassThrough.fileCreation?.startupFileName ?? primaryDef?.defaultFileName,
-                startupContent:  uiPassThrough.fileCreation?.startupContent  ?? (primaryType ? options.fileTemplates?.[primaryType] : undefined) ?? primaryDef?.defaultContent,
+                content:         uiPassThrough.fileCreation?.content ?? (primaryType ? options.fileTemplates?.[primaryType] : undefined) ?? primaryDef?.defaultContent,
             },
             contextMenu: {
                 items: (_item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]) => {
@@ -348,15 +348,20 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             }),
         };
 
-        const files = await filesForWorkspace(wsConfig);
+        const navigation = !wsConfig.files && ['standard', 'agent'].includes(strategyType)
+            ? await backend.navigationView({ root: workspaceRoot(wsConfig.workspaceName), scope: elementId }) : undefined;
+        if (navigation) uiDocs.seed(navigation.documents);
+        const [files, uiPersistence, workbenchState] = await Promise.all([
+            navigation ? { ...navigation.files, fs: withInitialDirectory(navigation.files.fs, navigation.directory) } : filesForWorkspace(wsConfig),
+            uiState.port(elementId), uiState.workbenchPort(elementId),
+        ]);
         const manager = new Workbench({
             sidebarContainer: sidebarEl,
             editorContainer: editorEl,
             files,
             editorFactory: factory,
             scopeId:       elementId,
-            uiPersistence: await uiState.port(elementId),
-            workbenchState: await uiState.workbenchPort(elementId),
+            uiPersistence, workbenchState,
             fileTypes,
             uiOptions,
             showFileExtensions,
@@ -623,6 +628,17 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const initialRevision = navigationRevision;
     options.onShellReady?.();
     await initialLoad;
+    cleanupFns.push(scheduleNavigationWarmup([
+        ...workspaces.filter(ws => ws.type === 'toolbox' || ws.type === 'chat').map(ws => async () => {
+            if (!closed && workspaces.includes(ws) && !managerCache.has(ws.elementId))
+                await traceBoot(`navigation.preload.${ws.type}`, () => loadWorkspace(ws));
+        }),
+        async () => {
+            const roots = workspaces.filter(ws => !ws.files && (ws.type ?? 'standard') === 'standard').slice(0, 2)
+                .filter(ws => !managerCache.has(ws.elementId)).map(ws => workspaceRoot(ws.workspaceName));
+            if (!closed && roots.length) await backend.warmNavigation(roots);
+        },
+    ], () => pendingLoads.size > 0));
     if (initialRevision === navigationRevision) {
         const initialResource = managerCache.get(initWs)?.getActiveResourceId() ?? null;
         updateHistory(initWs, initialResource, 'replace');

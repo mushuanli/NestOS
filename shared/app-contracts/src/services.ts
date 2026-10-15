@@ -9,3 +9,5 @@ export type * from './ports/local';
 export type { HarnessClient, HarnessEvent, HarnessEvents, HarnessProfile, HarnessSession } from '@itookit/piagent-driver/harness';
 export type * from './ports/application-client';
 export type * from './ports/task-view';
+
+export type * from './ports/navigation';

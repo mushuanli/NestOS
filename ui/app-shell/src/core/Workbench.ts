@@ -24,9 +24,19 @@ export class Workbench {
     private lifecycleUnsubscribe: ReturnType<typeof connectEditorLifecycle>;
     private baseEditorFactory: (container: HTMLElement, options: EditorOptions) => Promise<IEditor>;
     private hasStarted = false;
+    private visible = true;
+    private dirty = false;
+    private refreshing = 0;
+    private loadedRevision = 0;
+    private loadedAt = 0;
+    private readonly stopChanges: () => void;
 
     constructor(private config: WorkbenchConfig) {
         this.engine = config.files.fs;
+        const changed = () => { this.dirty = true; };
+        const stops = this.engine.onAny ? [this.engine.onAny(changed)]
+            : (['node:created', 'node:updated', 'node:deleted', 'node:moved', 'node:renamed'] as const).map(type => this.engine.on(type, changed));
+        this.stopChanges = () => stops.forEach(stop => stop());
 
         this.baseEditorFactory = config.editorFactory ?? defaultEditorFactory;
 
@@ -49,6 +59,7 @@ export class Workbench {
                 fileTypes: config.fileTypes,
                 showFileExtensions: config.showFileExtensions ?? true,
                 activateDirectories: true, autoSelectFirst: false, listHeader: root,
+                deferExpansion: config.uiOptions?.deferExpansion ?? true,
                 listItems: config.uiOptions?.listItems,
                 rowCreation: config.uiOptions?.rowCreation ?? { visible: () => config.uiOptions?.readOnly !== true, run: (node, type) => this.createInDirectory(node.id, type) },
             },
@@ -146,6 +157,7 @@ export class Workbench {
     }
 
     public async start(initialResourceId?: string): Promise<void> {
+        this.loadedRevision = this.engine.revision;
         await this.vfsUI.start();
 
         if (initialResourceId) {
@@ -155,7 +167,7 @@ export class Workbench {
             }
         }
 
-        this.hasStarted = true;
+        this.hasStarted = true; this.loadedAt = performance.now();
     }
 
     public async openFile(nodeId: string): Promise<void> {
@@ -227,15 +239,22 @@ export class Workbench {
     }
 
     public async setVisible(visible: boolean): Promise<void> {
-        this.vfsUI.setVisible(visible);
+        if (this.visible === visible) return;
+        if (!visible && this.refreshing) this.dirty = true;
+        this.visible = visible; this.vfsUI.setVisible(visible);
         await this.lifecycleUnsubscribe.setVisible(visible);
-        if (visible) await this.vfsUI.refresh();
+        if (visible && (this.dirty || this.engine.revision !== this.loadedRevision || performance.now() - this.loadedAt >= 15000)) await this.refresh();
     }
 
-    public refresh(): Promise<void> { return this.vfsUI.refresh(); }
+    public async refresh(): Promise<void> {
+        const revision = this.engine.revision; this.dirty = false; ++this.refreshing;
+        try { await this.vfsUI.refresh(); this.loadedRevision = revision; this.loadedAt = performance.now(); }
+        catch (error) { this.dirty = true; throw error; }
+        finally { --this.refreshing; }
+    }
 
     public async destroy(): Promise<void> {
-        this.dialogs.abort();
+        this.dialogs.abort(); this.stopChanges();
         await this.lifecycleUnsubscribe();
         this.vfsUI.destroy();
     }

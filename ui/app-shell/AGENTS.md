@@ -116,3 +116,6 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 - 前端禁止引用 app-core，包括类型导入；应用服务接口从 shared/app-contracts 的 services 子入口通过 import type 引用。`pnpm modules:check` 与 `pnpm modules:buildcheck` 验证完整源码和构建图，见 [前后端模块边界](../../doc/design/frontend-backend-modules.md)。
 
 - 工作台初始聊天控制与导航由 backend.workbenchView 返回；会话先 openSessionView 准备，旧编辑器保存后 activate 返回初始快照。缓存编辑器重新激活绑定，文件租约随标签释放。连接观察只提交兴趣集合，不拥有轮询或后台任务。UI 文档写入合并、去重，后端完成 upsert，flush 失败保留待写内容。
+
+- 普通模块通过 backend.navigationView 聚合首层与不透明 UI 文档；外部注入来源、设置/Flow/Skill 保持各自端口，独立读取并行。browser/initial-directory 只消费一次元数据，已有事件订阅使快照失效，不干预写操作与版本回调。普通侧栏 deferExpansion，首次只展示首层；切回在事件标脏、挂载身份变化或 15 秒到期后刷新。工作台保留隐藏期间的 refreshSources 并合并刷新。
+- navigation/navigation-warmup 在初始路由完成后依次提前装配工具箱和工作台导航，复用 loadWorkspace 的在途 Promise 与模块缓存；不改变路由，不打开旧资源、编辑器或会话租约。任务间让出前台加载，页面隐藏时暂停，返回时继续，销毁取消剩余任务。随后最多预热两个未加载普通根的后端快照，不构造普通工作区。工具箱隐藏时暂停目录读取并合并变化；导航没有显式 startupFileName 时，不从文件类型默认值推导自动创建。

@@ -60,6 +60,37 @@ it('restores and persists toolbox preferences through the host port', async () =
     // Unknown filter kinds and non-string queries from a hand-edited document are dropped.
     expect(Object.keys(saved.at(-1)!.queries)).toEqual(['mcp']);
 });
+it('keeps preloaded navigation idle while hidden and merges configuration changes before returning', async () => {
+    const f = await setup();
+    f.sidebar.querySelector<HTMLElement>('[data-item-id="/drawers/ungrouped-skills"] .vfs-directory-item__header')!.click();
+    expect(f.sidebar.textContent).toContain('English phrases');
+    await f.workbench.setVisible(false);
+    const refresh = vi.spyOn(f.inventory, 'refresh');
+    const skill = (await runtime.agentService.getSkills()).find(item => item.id === 'phrases')!;
+    await runtime.agentService.saveSkill({ ...skill, name: 'First hidden update' });
+    await runtime.agentService.saveSkill({ ...skill, name: 'Latest hidden update' });
+    await new Promise(resolve => setTimeout(resolve, 200));
+    expect(refresh).not.toHaveBeenCalled(); expect(f.factory).not.toHaveBeenCalled();
+    await f.workbench.setVisible(true);
+    expect(refresh).toHaveBeenCalledOnce(); expect(f.sidebar.textContent).toContain('Latest hidden update');
+    refresh.mockClear(); await f.workbench.setVisible(false); await f.workbench.setVisible(true);
+    expect(refresh).not.toHaveBeenCalled(); expect(f.factory).not.toHaveBeenCalled();
+});
+it('revalidates the toolbox after hiding interrupts an in-flight refresh', async () => {
+    const f = await setup();
+    f.sidebar.querySelector<HTMLElement>('[data-item-id="/drawers/ungrouped-skills"] .vfs-directory-item__header')!.click();
+    const original = f.inventory.refresh.bind(f.inventory);
+    let finish!: () => void;
+    const blocked = new Promise<void>(resolve => { finish = resolve; });
+    const refresh = vi.spyOn(f.inventory, 'refresh').mockImplementationOnce(async () => { await blocked; await original(); });
+    cleanup.push(() => finish());
+    const skill = (await runtime.agentService.getSkills()).find(item => item.id === 'phrases')!;
+    await runtime.agentService.saveSkill({ ...skill, name: 'Interrupted update' });
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalledOnce());
+    await f.workbench.setVisible(false); finish();
+    await f.workbench.setVisible(true);
+    expect(refresh).toHaveBeenCalledTimes(2); expect(f.sidebar.textContent).toContain('Interrupted update');
+});
 
 it('unifies resource kinds, filters in place and passes original source identities to editors', async () => {
     const f = await setup();

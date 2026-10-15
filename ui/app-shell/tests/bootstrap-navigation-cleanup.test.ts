@@ -67,7 +67,7 @@ const workspace: WorkspaceConfig = {
 
 function makeRuntime(): ApplicationRuntime {
     return {
-        vfs: { openFileSystem: vi.fn(async () => ({ driver: { exists: async () => false, createFile: vi.fn() } })) },
+        vfs: { openFileSystem: vi.fn(async () => ({ driver: { exists: async () => false, createFile: vi.fn(), getNode: async () => null, getChildren: async () => [] } })) },
         llmDriver: {},
         agentService: { getConnections: vi.fn(async () => []), getSystemPrompt: async () => null, saveSystemPrompt: vi.fn() },
         sessionRepository: {},

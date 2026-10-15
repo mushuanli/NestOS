@@ -5,6 +5,16 @@ import type { ApplicationClient, FileSystemsPort } from '@itookit/app-contracts/
 export function restrictApplicationFiles(client: ApplicationClient, roots: readonly string[]): ApplicationClient {
     const vfs = viewVfs(client.services.vfs, roots);
     return { services: { ...client.services, vfs }, backend: { ...client.backend,
+        navigationView: async options => {
+            assertRoot(options.root, roots);
+            const view = await client.backend.navigationView(options);
+            return { ...view, files: { ...view.files, fs: protectFiles(view.files.fs, options.root) } };
+        },
+        warmNavigation: async targets => {
+            if (!Array.isArray(targets) || targets.length > 2) throw new FSError('EINVAL', 'Too many navigation roots');
+            targets.forEach(root => assertRoot(root, roots));
+            await client.backend.warmNavigation(targets);
+        },
         settings: async sources => {
             for (const source of sources) if (source.workspace !== undefined && !roots.includes('/home/admin/' + source.workspace))
                 throw new FSError('EACCES', 'Settings workspace is not an application workspace');
@@ -33,13 +43,15 @@ function viewVfs(vfs: FileSystemsPort, roots: readonly string[]): FileSystemsPor
     return new Proxy(vfs, { get(target, key) {
         if (key === 'devices') return devices;
         if (key === 'openFileSystem') return async (root: string) => {
-            const normalized = normalizeVirtualPath(root);
-            if (root !== normalized || !roots.includes(root))
-                throw new FSError('EACCES', 'Filesystem root is not an application workspace');
+            assertRoot(root, roots);
             return protectFiles(await target.openFileSystem(root), root);
         };
         const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
     } });
+}
+function assertRoot(root: string, roots: readonly string[]): void {
+    if (typeof root !== 'string' || root !== normalizeVirtualPath(root) || !roots.includes(root))
+        throw new FSError('EACCES', 'Filesystem root is not an application workspace');
 }
 const guardedFiles = new WeakMap<IFileSystem, IFileSystem>();
 function protectFiles(fs: IFileSystem, root: string): IFileSystem {

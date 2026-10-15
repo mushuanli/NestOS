@@ -52,12 +52,18 @@ it.each(['start', 'chat', 'minds'])('mounts the complete common shell starting a
     expect(bootstrapBytes).toBeLessThan(350000);
     const before = { ...metrics };
     const calls: Record<string, number> = {};
+    let releaseWorkbench!: () => void;
+    const workbenchGate = slug === 'start' ? new Promise<void>(resolve => { releaseWorkbench = resolve; }) : undefined;
     const handle = server.handle.bind(server);
-    server.handle = (call, refresh) => { calls[call.method] = (calls[call.method] ?? 0) + 1; return handle(call, refresh); };
+    server.handle = (call, refresh) => {
+        calls[call.method] = (calls[call.method] ?? 0) + 1;
+        return call.method === 'workbenchView' && workbenchGate ? workbenchGate.then(() => handle(call, refresh)) : handle(call, refresh);
+    };
     const started = performance.now();
     const app = await initApp({ services: root.services, backend: root.backend, fileTemplates: root.fileTemplates,
         workspaces: WORKSPACES, startPage: true, defaultSlug: slug, ui: createBrowserUI(root.flowLibrary) }).catch(error => { console.error(error.errors); throw error; });
     releases.push(() => app.destroy());
+    if (workbenchGate) releases.push(async () => releaseWorkbench());
     const startup = { calls: metrics.calls - before.calls, requests: metrics.requests - before.requests, callbacks: metrics.callbacks - before.callbacks,
         responseBytes: metrics.bytes - before.bytes, inProcessMs: Math.round(performance.now() - started) };
     console.log('[HTTP startup metrics]', startup);
@@ -69,6 +75,30 @@ it.each(['start', 'chat', 'minds'])('mounts the complete common shell starting a
         for (const method of ['workbenchView', 'openSessionView', 'openFileSystem']) expect(calls[method]).toBeUndefined();
         expect(document.querySelector('.app-start.active')).not.toBeNull();
         expect(document.querySelector('.app-start__choice')).not.toBeNull();
+    }
+    if (slug === 'start') {
+        for (const method of Object.keys(calls)) delete calls[method];
+        await app.navigate('minds');
+        console.log('[HTTP first nav methods]', calls);
+        expect(calls.navigationView).toBe(1);
+        for (const method of ['openFileSystem', 'readUiDocuments', 'getChildren', 'getNodeType', 'createFile', 'readContent']) expect(calls[method]).toBeUndefined();
+        await app.navigate('start');
+        for (const method of Object.keys(calls)) delete calls[method];
+        await app.navigate('minds');
+        for (const method of ['navigationView', 'getChildren', 'getNodeType']) expect(calls[method]).toBeUndefined();
+        const route = location.hash;
+        await vi.waitFor(() => expect(calls.workbenchView).toBe(1), { timeout: 5000 });
+        expect(calls.toolboxView).toBe(1);
+        expect(document.querySelector('.toolbox-navigation')?.textContent).toContain('模型');
+        expect(location.hash).toBe(route);
+        expect(document.getElementById('minds-workspace')?.classList.contains('active')).toBe(true);
+        expect(calls.openSessionView).toBeUndefined(); expect(document.querySelector('.llm-input')).toBeNull();
+        for (const method of ['settings', 'ocr', 'prepareConfiguration', 'prepareSession', 'acquireFiles']) expect(calls[method]).toBeUndefined();
+        // A foreground click joins the existing preload instead of creating another workbench.
+        const joined = app.navigate('chat'); releaseWorkbench(); await joined;
+        expect(calls.workbenchView).toBe(1);
+        await app.navigate('toolbox'); expect(calls.toolboxView).toBe(1);
+        expect(calls.openSessionView).toBeUndefined(); expect(document.querySelector('.llm-input')).toBeNull();
     }
     for (const workspace of WORKSPACES) expect(document.getElementById(workspace.elementId)).not.toBeNull();
     for (const slug of WORKSPACES.map(workspace => workspace.slug)) await app.navigate(slug);

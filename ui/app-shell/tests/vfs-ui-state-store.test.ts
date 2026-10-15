@@ -71,3 +71,13 @@ it('batches reads and writes, skips unchanged state and retains a failed batch f
     store.write('a', { selected: 'three' }); await expect(store.flush()).rejects.toThrow('offline');
     await store.flush(); expect(writeUiDocuments).toHaveBeenLastCalledWith({ a: { selected: 'three' } });
 });
+
+it('consumes navigation preferences locally without replacing a more recent local write', async () => {
+    const readUiDocuments = vi.fn(async () => ({})), writeUiDocuments = vi.fn(async () => {});
+    const store = new VfsJsonStore({ readUiDocuments, writeUiDocuments });
+    store.seed({ missing: undefined, data: { selected: 'old' } });
+    expect(await store.read('missing')).toBeUndefined(); expect(await store.read('data')).toEqual({ selected: 'old' });
+    store.write('data', { selected: 'new' }); store.seed({ data: { selected: 'old' } });
+    expect(await store.read('data')).toEqual({ selected: 'new' });
+    expect(readUiDocuments).not.toHaveBeenCalled(); await store.flush();
+});

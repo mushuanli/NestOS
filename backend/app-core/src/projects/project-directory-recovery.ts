@@ -51,6 +51,7 @@ async function recoverDirectory(context: Context, directory: string, folders: Se
     for (let n = 2; active.some(project => project.name === name) || folders.some(folder => folder !== cached && folder.path === `${parent ?? ''}/${name}`); n++) name = `${base} (${n})`;
     const path = `${parent ?? ''}/${name}`, reference: ProjectReference = { id, directory, source: { kind: 'local' } };
     await context.check(path, reference);
+    await context.repository.validateProjectSessions?.(`${directory}/.mindos/sessions`);
     await context.identities.adoptLocal(directory, { version: 1, id, name, createdAt: cached?.updatedAt ?? Date.now() });
     if (cached) {
         if (cached.path !== path) await context.repository.renameFolder(cached.path, path);

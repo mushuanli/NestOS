@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import 'fake-indexeddb/auto';
 import { IndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { SessionRepository, sessionDirectoryStorage } from '@itookit/llm-session';
-import { FSError, MemoryBackend, type IStorageBackend } from '@itookit/vfs-core';
+import { FSError, MemoryBackend, transferFileSystemEntry, type IStorageBackend } from '@itookit/vfs-core';
 import { createApplicationRuntime, type ApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { createSessionBrowser, folderBrowserPath } from '../src/session/session-browser';
 import { ProjectRepository } from '../src/projects/project-repository';
@@ -21,6 +21,19 @@ async function readSession(runtime: ApplicationRuntime, id: string, path: string
     const owner = await runtime.sessionFiles.acquire(id);
     try { return await owner.vfs.readFile(path); } finally { await owner.release(); }
 }
+
+it('rejects a copied Session identity before adopting a new project directory', async () => {
+    const r = await setup(), root = await r.vfs.openFileSystem('/'), original = (await r.projects.current())!;
+    const id = await r.sessionRepository.createSession('Original', await r.projects.sessionFolder(original));
+    const target = '/home/admin/copied-project', parent = `${target}/.mindos/sessions`;
+    await root.driver.createDirectory({ parentPath: `${target}/.mindos`, name: 'sessions', recursive: true });
+    await transferFileSystemEntry(root, `${original.project.directory}/.mindos/sessions/${id}`, root, parent);
+    await expect(r.projects.create('Copied', null, target)).rejects.toMatchObject({ code: 'ECONFLICT' });
+    expect(await root.driver.exists(`${target}/.mindos/info.seq`)).toBe(false);
+    expect(await root.driver.exists(`${parent}/${id}/session.seq`)).toBe(true);
+    expect((await r.sessionRepository.getManifest(id)).title).toBe('Original');
+    expect((await r.projects.list()).some(project => project.project.directory === target)).toBe(false);
+});
 
 it('completes an empty project identity marker without replacing existing records', async () => {
     const r = await setup(), root = await r.vfs.openFileSystem('/');

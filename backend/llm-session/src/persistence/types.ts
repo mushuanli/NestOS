@@ -105,6 +105,8 @@ export interface ISessionRepository extends SessionDeletionStore {
     setStorageDirectoryResolver?(resolver: (folder: string | null) => Promise<string | undefined>): void;
     relocateProjectStorage?(id: string): Promise<void>;
     indexProjectSessions?(directory: string): Promise<void>;
+    /** Check copied directory identities without publishing their storage locations. */
+    validateProjectSessions?(directory: string): Promise<void>;
     createFolder(path: string, project?: SessionFolder['project']): Promise<SessionFolder>;
     replaceProjectReference?(path: string, expected: NonNullable<SessionFolder['project']>, next: NonNullable<SessionFolder['project']>): Promise<void>;
     deleteFolder(path: string, recursive?: boolean): Promise<void>;

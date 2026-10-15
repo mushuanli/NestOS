@@ -36,6 +36,9 @@ describe('Session bundle', () => {
         expect(JSON.parse(exported.content).version).toBe(SESSION_BUNDLE_VERSION);
 
         const restored = await importSessionBundle(repository, exported.content, { folder: '/Work' });
+        expect(restored).not.toBe(id);
+        const another = await importSessionBundle(repository, exported.content, { folder: '/Work' });
+        expect(new Set([id, restored, another]).size).toBe(3);
         const manifest = await repository.getManifest(restored);
         expect(manifest.title).toBe('Branching');
         expect(manifest.currentBranch).toBe('dev');

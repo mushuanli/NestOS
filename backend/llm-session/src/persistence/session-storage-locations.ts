@@ -1,13 +1,18 @@
 import { FSError, transferFileSystemEntry, type IFileSystem, type ISeqFileTransaction } from '@itookit/vfs-core';
 import { relocateCentralSession } from './session-storage-relocation';
-import { sessionStorageRoot } from './session-storage-layout';
+import { sessionStorageRoot, storageIdentityConflict } from './session-storage-layout';
 
 const INDEX = '/var/lib/sessions/folders.seq';
 const MOVES = '/var/lib/sessions/storage-moves.seq';
-type Reader = Pick<ISeqFileTransaction, 'getEntry'>;
+type Reader = Pick<ISeqFileTransaction, 'getEntry'> & Partial<Pick<ISeqFileTransaction, 'getEntries'>>;
 export async function resolveSessionStorageRoot(reader: Reader, id: string): Promise<string> {
     sessionStorageRoot(id);
     try {
+        if (reader.getEntries) {
+            const rows = await reader.getEntries(INDEX, [`moving/${id}`, `storage/${id}`]);
+            if (rows[`moving/${id}`]) throw new FSError('EBUSY', 'Session storage relocation requires recovery');
+            return rows[`storage/${id}`] ?? sessionStorageRoot(id);
+        }
         if (await reader.getEntry(INDEX, `moving/${id}`)) throw new FSError('EBUSY', 'Session storage relocation requires recovery');
         return await reader.getEntry(INDEX, `storage/${id}`) ?? sessionStorageRoot(id);
     } catch (error) {
@@ -20,14 +25,22 @@ export async function resolveSessionStorageRoot(reader: Reader, id: string): Pro
 export async function moveSessionDataDirectory(fs: IFileSystem, from: string, to: string): Promise<void> {
     if (from === to) return;
     validateMove(from, to);
+    const [sourceExists, targetExists] = await Promise.all([fs.driver.exists(from), fs.driver.exists(to)]);
     if (!await fs.driver.exists(MOVES)) {
         try { await fs.driver.createFile({ parentPath: '/var/lib/sessions', name: 'storage-moves.seq', type: 'seqfile', recursive: true }); }
         catch (error) { if (!(error instanceof FSError) || error.code !== 'EEXIST') throw error; }
     }
     const key = encodeURIComponent(from);
+    await prepareMove(fs, key, from, to, sourceExists && targetExists);
+    await finishMove(fs, key, from, to);
+}
+async function prepareMove(fs: IFileSystem, key: string, from: string, to: string, occupied: boolean): Promise<void> {
     await fs.meta.seq!.transaction!(async tx => {
         const pending = await tx.getEntry(MOVES, key);
         if (pending && JSON.parse(pending).to !== to) throw new FSError('EBUSY', 'Complete the pending storage move first');
+        if (!pending && occupied) throw storageIdentityConflict(from.split('/').pop()!, from, to);
+        await validateMoveSource(tx, from);
+        if (isCentral(from)) await validateCentralMove(tx, from, to, Boolean(pending));
         if (!pending) await tx.setEntry(MOVES, key, JSON.stringify({ from, to }));
         if (isCentral(from)) {
             const id = from.split('/').pop()!;
@@ -39,7 +52,6 @@ export async function moveSessionDataDirectory(fs: IFileSystem, from: string, to
             return true;
         }, { keyPrefix: 'storage/' });
     });
-    await finishMove(fs, key, from, to);
 }
 export async function recoverSessionDataMoves(fs: IFileSystem): Promise<void> {
     if (!await fs.driver.exists(MOVES)) return;
@@ -55,7 +67,11 @@ export async function recoverSessionDataMoves(fs: IFileSystem): Promise<void> {
 }
 async function finishMove(fs: IFileSystem, key: string, from: string, to: string): Promise<void> {
     validateMove(from, to);
-    if (isCentral(from)) return relocateCentralSession(fs, key, from, to);
+    if (isCentral(from)) {
+        await fs.meta.seq!.transaction!(tx => validateCentralMove(tx, from, to, true));
+        return relocateCentralSession(fs, key, from, to);
+    }
+    await fs.meta.seq!.transaction!(tx => validateMoveSource(tx, from));
     const [source, target] = await Promise.all([fs.driver.exists(from), fs.driver.exists(to)]);
     if (source && target) throw new FSError('ECONFLICT', 'Both Session storage locations exist');
     if (!source && !target) throw new FSError('ENOENT', 'Session storage relocation contents missing');
@@ -84,4 +100,22 @@ function validateMove(from: string, to: string): void {
         || !canonical(from) || !canonical(to) || to.startsWith(from + '/') || from.startsWith(to + '/')
         || (isCentral(from) && from.split('/').pop() !== to.split('/').pop()))
         throw new FSError('EINVAL', 'Invalid Session storage relocation', 'relocate', from);
+}
+
+async function validateCentralMove(tx: ISeqFileTransaction, from: string, to: string, pending: boolean): Promise<void> {
+    const id = from.split('/').pop()!;
+    const registered = await tx.getEntry(INDEX, `storage/${id}`);
+    if (registered && registered !== from) throw storageIdentityConflict(id, registered, from);
+    const target = await tx.getEntry(`${to}/session.seq`, 'session');
+    const marker = await tx.getEntry(`${to}/session.seq`, 'storage-relocation-source');
+    if (target && (!pending || marker !== from)) throw storageIdentityConflict(id, from, to);
+}
+
+async function validateMoveSource(tx: ISeqFileTransaction, from: string): Promise<void> {
+    const raw = await tx.getEntry(`${from}/session.seq`, 'session');
+    if (!raw) return;
+    const { id } = JSON.parse(raw);
+    if (id !== from.split('/').pop()) throw new FSError('ECONFLICT', 'Session move source identity mismatch', 'session-storage', from);
+    const registered = await tx.getEntry(INDEX, `storage/${id}`);
+    if (registered && registered !== from) throw storageIdentityConflict(id, registered, from);
 }

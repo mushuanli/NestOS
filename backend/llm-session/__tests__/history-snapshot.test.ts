@@ -27,7 +27,8 @@ it('reads one selected chain without writes, and sees later branch changes on th
     const changed = vi.fn(); repository.subscribe(changed);
     expect(await repository.readHistoryChain(id)).toMatchObject({ chain: ['r0', 'r1'], rounds: [{ id: 'r0' }, { id: 'r1' }], branch: 'main' });
     expect(transaction).toHaveBeenCalledTimes(1);
-    expect(batch).toHaveBeenCalledTimes(1);
+    // The location and selected history are read in the same storage snapshot.
+    expect(batch).toHaveBeenCalledTimes(2);
     expect(changed).not.toHaveBeenCalled();
     await repository.updateManifest(id, { currentHead: 'other', currentBranch: 'other' });
     expect(await repository.readHistoryChain(id)).toMatchObject({ chain: ['other'], rounds: [{ id: 'other' }], branch: 'other' });

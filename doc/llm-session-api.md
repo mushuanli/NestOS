@@ -170,6 +170,8 @@ class SessionRepository implements ISessionRepository {
 
 **`ISessionRepository`**（`persistence/types.ts`）：上述契约接口。会话身份即 `<id>` 目录，不存在 UI 节点 ↔ 会话的映射 API；会话标题是 manifest 的 `title` 字段，经 `updateManifest()` 修改。
 
+创建与恢复使用不同语义：`createSession` 在事务中预占存储身份，已有 ID 返回 `EEXIST`；`ensureSession` 幂等沿用已登记位置，未登记的中央会话优先保留原位置，安装项目 resolver 不会复制旧会话。读取始终核对持久存储索引，不使用实例启动时的“存在项目存储”标志。`validateProjectSessions(directory)` 是只读预检，项目创建及旧目录接管在写项目身份前调用；`indexProjectSessions` 在同一事务先验证整批目录名、manifest ID、已有位置与迁移状态，再发布索引。重复身份返回 `ECONFLICT`，包含 ID、登记路径和候选路径，不自动覆盖或删除副本。中央迁移和恢复也必须核对来源仍是登记位置，拒绝用过期来源重置索引。正式导入继续分配新 Session ID。
+
 `listSummaries()` 是导航专用读取：每批最多 64 个 Session，使用跨文件 `getEntriesMany` 只读取 `session.seq::session`，返回 `SessionSummary`（身份、标题、摘要、来源、时间及组织关系），不读取 history index，也不返回分支、草稿和 UI 状态。缺失 Session 记录跳过，身份/版本错误仍拒绝。摘要不证明历史完整；打开会话时仍由完整读取校验历史。该能力在 `ISessionRepository` 上可选，旧实现回退 `list()`。Session browser、项目导航和家族选择均使用摘要；完整编辑、导出及恢复保留原接口。
 
 `SessionRepositoryChange` 为 `{ kind: 'session' | 'ui-state'; sessionId?: string }`。纯 UI 状态保存通知 `ui-state`，sidebar 不因此重新枚举；旧实现不提供事件参数时仍按普通变更处理。manifest 更新只读写受影响的记录，UI 状态不触碰 history index；相同内容不增加 revision、不写记录、不通知。比较和分支草稿合并仍在持久事务内完成，不使用跨加载的状态缓存。

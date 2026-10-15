@@ -1,5 +1,6 @@
 import { navigationView, warmNavigation } from './navigation-view';
 import { createFileSystemView, FSError } from '@itookit/vfs-core';
+import { createToolboxFiles } from './toolbox-files';
 import { withConfigurationImport } from '../configuration/configuration-import';
 import { SettingsService } from '../settings/SettingsService';
 import { OcrService } from '../configuration/ocr-service';
@@ -78,7 +79,8 @@ async function toolboxView(services: LocalApplicationServices, scope: ViewScope,
             { mountId: 'remote', at: '/@remote', fs: inventory.remoteAgentSource, access: 'ro' }] }));
         const toolbox = new ToolboxResources({ ...inventory.sources, agents, skills, flows: services.flowEngine.engine },
             agentService, services.commandBus, await vfs.openFileSystem('/etc'));
-        return scope.own({ inventory, resources: toolbox, dispose: () => resources.close() });
+        const files = await resources.own(createToolboxFiles(toolbox.sources));
+        return scope.own({ inventory, resources: toolbox, files, dispose: () => resources.close() });
     } catch (error) { await resources.close(); throw error; }
 }
 async function conversationFamily(services: LocalApplicationServices, folder: string, profile: string, session: string,

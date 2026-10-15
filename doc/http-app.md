@@ -23,7 +23,7 @@
 
 ## 协议
 
-`POST /api/application` 使用 `version: 9` 与 `clientId`，支持 bootstrap、queries、bindings、call、reply、close。bootstrap 返回公开服务图、产品模板与 Flow 库，以扁平描述避免重复导出对象图；call 只能调用本视图已经导出的能力句柄上的公开方法。v9 让工具箱分组刷新同时返回导航目录，消除前端重复遍历；保留 Provider 订阅授权状态与命令；保留 navigationView、warmNavigation、工作台聚合、会话准备/激活及 UI 文档批量端口；升级服务后需重新加载页面。句柄包含视图随机身份，不能用于另一个浏览器。私有字段、原型访问、Runtime.dispose、设备注册、SQL 和原始记录写入不开放。
+`POST /api/application` 使用 `version: 10` 与 `clientId`，支持 bootstrap、queries、bindings、call、reply、close。bootstrap 返回公开服务图、产品模板与 Flow 库，以扁平描述避免重复导出对象图；call 只能调用本视图已经导出的能力句柄上的公开方法。v10 由后端组合工具箱文件视图并在分组刷新时返回导航目录，消除浏览器逐段路径检查及重复遍历；保留 Provider 订阅授权状态与命令；保留 navigationView、warmNavigation、工作台聚合、会话准备/激活及 UI 文档批量端口；升级服务后需重新加载页面。句柄包含视图随机身份，不能用于另一个浏览器。私有字段、原型访问、Runtime.dispose、设备注册、SQL 和原始记录写入不开放。
 
 queries 合并同一微任务中独立的只读查询，bindings 合并订阅注册，每批最多 32 项、每个合批器最多 2 批在途，等待与在途调用合计最多 1024 项；服务端先检查整批方法类别再执行。共享只读命令策略使 GetSnapshot、GetSessions 和 Flow 读取进入查询批次，不触发全域失效。业务写入独立确认，不混入查询或订阅批次；失败与结果未知的命令不自动重放。
 
@@ -31,7 +31,7 @@ queries 合并同一微任务中独立的只读查询，bindings 合并订阅注
 
 `GET /api/application/events?clientId=<id>` 提供 SSE。通知按 16 ms 窗口合并，只运行一个刷新循环，256 条 / 1 MiB 上限覆盖等待和处理中的事件；刷新期间的失效只安排一次后续刷新，保持事件顺序。客户端也限制排队通知的数量和字节；需要结果的回调单独经 reply 返回，不等待通知批次。领域服务变更也主动更新其他浏览器的快照。客户端先安装 bootstrap，再按序消费已经缓冲的 SSE；服务端在首次快照建立前暂停通知快照刷新。快照补丁携带前后版本，客户端缓冲乱序补丁、忽略旧版本，缺失更新不能覆盖新状态。长连接每 15 秒重新验证证书。连接丢失显示重载入口；写请求不会自动重发。本协议不沿用旧 HTTP 模式的持久命令回执和事件重放，不能宣称跨重载的 exactly-once 保证。
 
-`POST /api/application/files?clientId=<id>&version=9` 使用 application/octet-stream 传输文件字节，X-View-Call 携带编码后的文件能力参数。权限仍由已导出的文件视图检查，不提供宿主路径或存储驱动入口。二进制读写省去 JSON/base64 编码；读取响应头与写入回执携带文件 revision，前端在操作完成前更新 onRevision，条件写入参数保持原有含义。文件接口仍使用完整 ArrayBuffer，不是无限大小的流式存储接口。
+`POST /api/application/files?clientId=<id>&version=10` 使用 application/octet-stream 传输文件字节，X-View-Call 携带编码后的文件能力参数。权限仍由已导出的文件视图检查，不提供宿主路径或存储驱动入口。二进制读写省去 JSON/base64 编码；读取响应头与写入回执携带文件 revision，前端在操作完成前更新 onRevision，条件写入参数保持原有含义。文件接口仍使用完整 ArrayBuffer，不是无限大小的流式存储接口。
 
 每个视图最多 4096 个活跃能力句柄、16 个在途业务请求和 128 个待回复回调，最多 128 个浏览器视图。dispose/release/close 撤销独占子图并传送句柄撤销，关闭资源时同步取消其订阅；共享子图按可达拥有者保留；压缩的撤销区间使迟到更新不能复活已释放句柄。回调中的事务能力仅借用到回调结束。没有事件连接和在途回调的视图在空闲 60 秒后回收。JSON 与独立二进制传输分别限制为 32 MiB；通知等待队列和流写缓冲也有上限。
 
@@ -39,7 +39,7 @@ queries 合并同一微任务中独立的只读查询，bindings 合并订阅注
 
 ## 性能边界
 
-工具箱刷新由后端 `refreshGroups` 在一次目录扫描中同时生成分组和导航目录，前端不再按 Agent/Flow 子目录逐个发起 getChildren。描述查询与分组刷新可并行；路径未改变的标题/状态更新不调用 relocate，纯描述查询不触发写域失效。Provider 删除确认以服务端提交为完成条件，导航刷新单独执行，刷新失败不重放删除命令。Provider 删除仍校验确认计划、清理关联连接和默认选择，内置条目以删除标记阻止重启重建；不能直接删除配置文件绕过这些规则。
+工具箱的 `ToolboxView.files` 由后端组合，权限与链接校验在后端完成；前端只消费文件能力，不重新挂载远端文件源。视图由后端 ViewScope 拥有，工作区关闭后统一释放。工具箱刷新由后端 `refreshGroups` 在一次目录扫描中同时生成分组和导航目录，前端不再按 Agent/Flow 子目录逐个发起 getChildren。描述查询与分组刷新可并行；路径未改变的标题/状态更新不调用 relocate，纯描述查询不触发写域失效。Provider 删除确认以服务端提交为完成条件，导航刷新单独执行，刷新失败不重放删除命令。Provider 删除仍校验确认计划、清理关联连接和默认选择，内置条目以删除标记阻止重启重建；不能直接删除配置文件绕过这些规则。
 
 普通文件模块通过 `navigationView({ root, scope })` 一次取得受限文件能力、首层元数据、根忽略规则及两份不透明 UI 状态；首屏不再顺序调用 openFileSystem、readUiDocuments、getChildren 和 getNodeType。快照只用一次，文件事件、显式版本回调和后续刷新使用实时端口。首次进入空模块不再隐式创建样例文件；用户点击新建时仍使用注册模板。
 

@@ -35,6 +35,7 @@ export interface ApplicationServices {
 export interface ToolboxView {
     inventory: ToolboxInventory;
     resources: ToolboxResources;
+    files: IFileSystem;
     dispose(): Promise<void>;
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */

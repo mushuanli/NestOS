@@ -21,6 +21,24 @@ async function setup(providerAuthorization?: ProviderAuthorizationHost) {
     return { root, server, client, runtime };
 }
 describe('full application view ports', () => {
+    it('keeps toolbox path checks on the server while retaining managed-path write protection', async () => {
+        const { root, server, runtime } = await setup();
+        const agents = await runtime.vfs.openFileSystem('/home/admin/agents');
+        await agents.driver.createFile({ parentPath: '/team/deep', name: '.gitignore', recursive: true, content: 'hidden.agent\n' });
+        for (const name of ['hidden.agent', 'visible.agent']) await agents.driver.createFile({ parentPath: '/team/deep', name,
+            content: JSON.stringify({ id: name, name, type: 'agent', config: {} }) });
+        const skills = await root.services.vfs.openFileSystem('/home/admin/minds');
+        const toolbox = await root.backend.toolboxView(skills), calls: string[] = [];
+        const handle = server.handle.bind(server);
+        vi.spyOn(server, 'handle').mockImplementation((call, refresh) => { calls.push(server.operationName(call)); return handle(call, refresh); });
+        const nodes = await toolbox.files.driver.getChildren('/agents/team/deep');
+        expect(nodes.map((node: { name: string }) => node.name).sort()).toEqual(['hidden.agent', 'visible.agent']);
+        expect(calls).toEqual(['IFSDriver.getChildren']);
+        await expect(toolbox.files.driver.createFile({ parentPath: '/providers', name: 'forged.json', content: '{}' })).rejects.toThrow();
+        await toolbox.files.driver.createFile({ parentPath: '/agents/team/deep', name: 'allowed.agent', content: '{}' });
+        expect(await agents.driver.exists('/team/deep/allowed.agent')).toBe(true);
+        await toolbox.dispose();
+    });
     it('keeps delayed settings workspace views within the same file permissions', async () => {
         const { root } = await setup();
         const settings = await root.backend.settings([{ name: 'Notes', workspace: 'minds' }, { name: 'Sessions', workspace: 'chats' }]);

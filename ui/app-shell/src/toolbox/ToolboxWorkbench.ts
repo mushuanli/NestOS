@@ -13,7 +13,7 @@ import { resourceIcon } from './resource-icons';
 import { mcpStatusIcon } from './mcp-status';
 import { modelDrawers, compareModelItems, modelDrawerId, modelDrawerProvider } from './model-drawers';
 import { type VFSUIShell, type VFSNodeUI, type VFSToolbarContext, type UIPersistencePort } from '@itookit/vfs-ui';
-import { createFileSystemView, type FileSystemView } from '@itookit/vfs-core';
+import type { IFileSystem } from '@itookit/vfs-core';
 import { ENTITY_ICONS, t, type NavigationRequest } from '@itookit/common';
 import { editorResourceId, type EditorFactory, type MenuItem, type ContextMenuConfig } from '@itookit/ui-common';
 import type { WorkspaceController } from '@itookit/app-contracts';
@@ -26,6 +26,7 @@ import type { ToolboxInventory } from '@itookit/app-contracts/services';
 interface Options {
     ocr?: import('../configuration/ocr-controls').OcrConfigurationControls;
     sidebar: HTMLElement; editor: HTMLElement; resources: ToolboxResources; inventory: ToolboxInventory;
+    files: IFileSystem;
     configuration: ModelConfigurationCommands;
     projects?: Pick<import('@itookit/app-contracts/services').ProjectService,'list'>;
     factories: Record<ToolboxKind, EditorFactory>; flowMenu: ContextMenuConfig<VFSNodeUI>;
@@ -60,7 +61,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     private deletion!: ConfigurationDeletionDialog;
     private selectionDeletion!: ToolboxDeletion;
     private ui!: VFSUIShell;
-    private view!: FileSystemView;
+    private view!: IFileSystem;
     private drawerActions!: DrawerActions;
     private titles = new Map<string, string>();
     private readonly abort = new AbortController();
@@ -82,8 +83,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         await resources.drawers.init();
         this.drawerActions = new DrawerActions({ groups: resources.drawers, signal: this.abort.signal,
             refresh: () => { this.ui.refreshList(); const active = this.ui.getSnapshot().activeId; if (active) this.revealDrawer(active); }, create: group => this.createResource({ drawerId: group.id }), title: path => this.titles.get(path) ?? path });
-        this.view = createFileSystemView({ viewId: 'toolbox:admin', mounts: TOOLBOX_KINDS.map(kind => ({
-            mountId: kind, at: '/' + kind, fs: resources.sources[kind], access: ['prompts', 'mcp', 'tools', 'providers', 'connections'].includes(kind) ? 'ro' : 'rw' })) });
+        this.view = this.options.files;
         this.descriptions = await resources.descriptions();
         await this.loadDirectories();
         this.buildFilters();
@@ -351,7 +351,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.closed = true; clearTimeout(this.timer); this.abort.abort();
         this.prefs.queries[this.prefs.filter] = this.ui?.getSnapshot().query ?? ''; this.persist();
         for (const close of this.cleanups.reverse()) await close();
-        await this.refreshTail; this.ui?.destroy(); await this.view?.dispose();
+        await this.refreshTail; this.ui?.destroy();
         this.options.sidebar.classList.remove('toolbox-navigation');
     }
 }

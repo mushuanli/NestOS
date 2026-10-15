@@ -6,6 +6,7 @@ import { ConnectionSettingsEditor } from '../../llm-settings-ui/src/editors/Conn
 import { toolboxSettingsRoute } from '../src/toolbox/routes';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
+import { createToolboxFiles } from '../../../backend/app-core/src/host/toolbox-files';
 import { createApplicationRuntime, type ApplicationRuntime } from '@itookit/app-core';
 import { SkillsEngine } from '@itookit/app-settings';
 import { BaseSettingsEditor, editorResourceId, type EditorOptions } from '@itookit/ui-common';
@@ -46,7 +47,9 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
         connections: async (container: HTMLElement, options: EditorOptions) => { const editor = new ConnectionSettingsEditor(container, runtime.agentService, options); await editor.init(container); return editor; },
         mcp: async (container: HTMLElement, options: EditorOptions) => { const editor = new MCPSettingsEditor(container, runtime.agentService, options); await editor.init(container); return editor; },
         tools: async (container: HTMLElement, options: EditorOptions) => { const editor = new ToolDetailsEditor(container, inventory, options, resources); await editor.init(container); return editor; } };
-    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, configuration: runtime.configuration, factories, flowMenu: {}, navigate: vi.fn(), selected: vi.fn(), uiPreferences });
+    const files = createToolboxFiles(resources.sources);
+    cleanup.push(() => files.dispose());
+    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu: {}, navigate: vi.fn(), selected: vi.fn(), uiPreferences });
     cleanup.push(() => workbench.destroy()); await workbench.start();
     return { workbench, sidebar, main, factory, resources, inventory };
 }

@@ -28,10 +28,10 @@ interface Options {
 /** The toolbox owns its projection lifetime and editor wiring as one module. */
 export async function createToolboxModule(options: Options): Promise<WorkspaceModule> {
     const { commandBus } = options.services;
-    const view = await options.backend.toolboxView(options.skills), { inventory, resources } = view;
+    const view = await options.backend.toolboxView(options.skills), { inventory, resources, files } = view;
     try {
         const factories = configurationFactories(options, inventory, resources);
-        const workbench = new ToolboxWorkbench({ ...options, inventory, resources, factories, configuration: options.services.configuration, projects: options.services.projects,
+        const workbench = new ToolboxWorkbench({ ...options, inventory, resources, files, factories, configuration: options.services.configuration, projects: options.services.projects,
             flowMenu: options.ui.createFlowContextMenu<VFSNodeUI>({ commands: commandBus,
                 navigate: id => options.navigate({ target: 'chat', resourceId: id }) }) });
         return createWorkspaceModule(workbench, async () => { try { await workbench.destroy(); } finally { await view.dispose(); } });

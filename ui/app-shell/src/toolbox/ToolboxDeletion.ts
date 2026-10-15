@@ -2,7 +2,7 @@ import { t } from '@itookit/common';
 import { ungroupedId } from '@itookit/app-contracts';
 import type { ToolboxResources, ToolboxInventory } from '@itookit/app-contracts/services';
 import { createDeleteOperation, type DeleteBatch, type DeletePlan, type VFSNodeUI } from '@itookit/vfs-ui';
-import type { FileSystemView } from '@itookit/vfs-core';
+import type { IFileSystem } from '@itookit/vfs-core';
 import type { ConfigurationDeletionDialog } from '../configuration/delete-dialog';
 import { modelDrawerProvider } from './model-drawers';
 import { toolboxKind, toolboxSourcePath } from './routes';
@@ -21,7 +21,7 @@ export function toolboxSelectionPaths(ids: string[], resources: ToolboxResources
 interface Options {
     resources: ToolboxResources;
     inventory: ToolboxInventory;
-    view: FileSystemView;
+    view: IFileSystem;
     deletion: ConfigurationDeletionDialog;
     completed(): Promise<void>;
 }

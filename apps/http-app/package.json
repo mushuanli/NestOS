@@ -5,10 +5,10 @@
   "type": "module",
   "scripts": {
     "create:certs": "bash scripts/create-certificates.sh",
-    "dev": "pnpm build:ui && tsx src/server/main.ts",
+    "dev": "node ../../scripts/httpd.mjs dev",
     "build:ui": "vite build",
     "build": "pnpm build:ui && tsup src/server/main.ts --format esm --platform node --out-dir dist-server --splitting",
-    "start": "node dist-server/main.js",
+    "start": "node ../../scripts/httpd.mjs start",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },

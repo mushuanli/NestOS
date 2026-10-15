@@ -5,6 +5,7 @@ export * from './llm-management/contracts/pricing';
 export * from './llm-management/contracts/restore';
 export * from './llm-management/contracts/presets';
 export * from './llm-management/contracts/device';
+export type { ProviderAuthorizationState, ProviderAuthorizationService } from './llm-management/contracts/provider-authorization';
 
 export type { ConflictStrategy, ConflictItem, ImportStats, ConfigurationImportPort } from './llm-management/contracts/config-import';
 

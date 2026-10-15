@@ -607,3 +607,11 @@
 .initial-files__entry code { display: block; overflow-wrap: anywhere; font-size: .85em; }
 .initial-files [role="alert"] { color: var(--llm-color-error, #c33); }
 .initial-files button { margin: .5rem .5rem .5rem 0; }
+/* Keyboard-accessible configuration switch; the native input owns its state. */
+.settings-toggle { display: inline-flex; align-items: center; gap: .5rem; position: relative; cursor: pointer; font-size: .8125rem; }
+.settings-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.settings-toggle__track { width: 2rem; height: 1.125rem; border-radius: 1rem; background: var(--st-border-color); position: relative; flex-shrink: 0; }
+.settings-toggle__track::before { content: ''; position: absolute; width: .875rem; height: .875rem; top: .125rem; left: .125rem; border-radius: 50%; background: var(--st-surface, #fff); transition: transform .15s; }
+.settings-toggle input:checked + .settings-toggle__track { background: var(--st-color-primary, #6366f1); }
+.settings-toggle input:checked + .settings-toggle__track::before { transform: translateX(.875rem); }
+.settings-toggle input:focus-visible + .settings-toggle__track { outline: 2px solid var(--st-color-primary, #6366f1); outline-offset: 3px; }

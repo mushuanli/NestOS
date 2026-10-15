@@ -61,7 +61,7 @@ await runtime.dispose();
 
 ## 约束
 
-- MCP 后端启动连接默认启用（autoConnect:false 显式关闭），空配置与宿主禁用的 stdio 跳过；连接和标准/扩展发现异步运行，不阻塞 LLM 就绪。initializeMCPServer 复用按 ID 串行队列，发布运行时目录后通过 configurationChanged 通知宿主，启动发现不重写持久配置。
+- MCP 后端启动连接默认启用（autoConnect:false 显式关闭），空配置与宿主禁用的 stdio 跳过；连接和标准/扩展发现异步运行，不阻塞 LLM 就绪。initializeMCPServer 复用按 ID 串行队列，发布运行时目录后通过 configurationChanged 通知宿主，启动发现不重写持久配置。已有配置 autoConnect 从 false 开启后，在保存完成后排队复用 initializeMCPServer；连接失败通过运行时状态发布，不把网络失败当成配置保存失败。关闭开关不主动断开。
 
 - 工具/Skill catalog 只暴露**元数据**（`getToolDefinitions`/`getSkillMeta`），可执行服务只经 Session 作用域取得。
 - Context 的 `createTaskContextStorage` 使用 Task SeqFile 独立内容命名空间，发布和 GC 与 Kernel 提交共用后端事务。GC 只接受终态且 Effect 清理已确认的 Task，根包含保留的 Task/shared 历史；不得按文件年龄直接删除可达内容或解除固定目录保护。

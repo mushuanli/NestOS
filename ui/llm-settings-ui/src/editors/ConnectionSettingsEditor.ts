@@ -1,3 +1,4 @@
+import { hasConnectionCredentials } from '@itookit/kernel-adapters/contracts';
 import { SettingsValidationError } from '@itookit/ui-common';
 import { renderProtocolOptions } from './provider-form';
 import { getProviderProtocols } from '@itookit/driver-llm/contracts';
@@ -45,8 +46,8 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
         // Sort: has-apiKey first → enabled first → alphabetical
         allConnections.sort((a, b) => {
-            if (a.hasApiKey && !b.hasApiKey) return -1;
-            if (!a.hasApiKey && b.hasApiKey) return 1;
+            if (hasConnectionCredentials(a) && !hasConnectionCredentials(b)) return -1;
+            if (!hasConnectionCredentials(a) && hasConnectionCredentials(b)) return 1;
             const aOn = a.enabled !== false;
             const bOn = b.enabled !== false;
             if (aOn && !bOn) return -1;
@@ -204,8 +205,8 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
         // Sort sidebar: providers with hasApiKey connections first, then alphabetical
         const sortedProviders = Object.entries(this.providers).sort(([, pa], [, pb]) => {
-            const aHasKey = allConnections.some(c => (c.providerId) === pa.id && c.hasApiKey);
-            const bHasKey = allConnections.some(c => (c.providerId) === pb.id && c.hasApiKey);
+            const aHasKey = allConnections.some(c => (c.providerId) === pa.id && hasConnectionCredentials(c));
+            const bHasKey = allConnections.some(c => (c.providerId) === pb.id && hasConnectionCredentials(c));
             if (aHasKey && !bHasKey) return -1;
             if (!aHasKey && bHasKey) return 1;
             return (pa.name || '').localeCompare(pb.name || '');
@@ -214,16 +215,16 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             const provConns = allConnections.filter(c => (c.providerId) === id);
             const count = provConns.length;
             // A provider has no key if it has connections and ALL of them report !hasApiKey
-            const noKey = count > 0 && provConns.every(c => !c.hasApiKey);
+            const noKey = count > 0 && provConns.every(c => !hasConnectionCredentials(c));
             const isActive = this._selectedProviderId === id;
             return `
                 <div class="conn-provider-item ${isActive ? 'conn-provider-item--active' : ''} ${noKey ? 'conn-provider-item--no-key' : ''}"
                      data-provider-id="${id}"
-                     title="${noKey ? 'Provider 未配置 API Key，相关连接均无效' : p.name}">
+                     title="${noKey ? t('connection.credentialsRequired') : p.name}">
                     <span class="conn-provider-item__icon">${p.icon ?? '🤖'}</span>
                     <span class="conn-provider-item__name">${p.name}</span>
                     ${noKey
-                        ? '<span class="conn-provider-item__nokey-badge">无 Key</span>'
+                        ? `<span class="conn-provider-item__nokey-badge">${t('connection.credentialsRequired')}</span>`
                         : `<span class="conn-provider-item__count ${count === 0 ? 'conn-provider-item__count--empty' : ''}">${count}</span>`
                     }
                 </div>
@@ -237,7 +238,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
     private renderConnectionCard(conn: ConnectionMeta) {
         const isDefault    = conn.id === this.defaultConnectionId;
-        const hasKey       = conn.hasApiKey;
+        const hasKey       = hasConnectionCredentials(conn);
         const enabled      = conn.enabled !== false;
         const pid          = conn.providerId;
         const provider     = this.providers[pid];

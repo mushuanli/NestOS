@@ -141,6 +141,12 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
                 badges:  statusBadge(server.status),
                 subtitle: escape(server.description || t(`mcpTransport.${server.transport}` as Parameters<typeof t>[0]) || server.transport),
                 actions: `
+                    <label class="settings-toggle" title="${t('mcp.autoConnectHint')}">
+                        <input type="checkbox" role="switch" name="autoConnect"
+                            ${server.autoConnect !== false ? 'checked' : ''}>
+                        <span class="settings-toggle__track" aria-hidden="true"></span>
+                        <span>${t('form.autoConnect')}</span>
+                    </label>
                     <button class="settings-btn settings-btn--secondary" data-action="test">
                         <i class="fas fa-plug"></i> ${t('action.test')}
                     </button>
@@ -203,11 +209,6 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
                             <label>${t('form.timeout')}</label>
                             <input class="settings-input" type="number" name="timeout"
                                 value="${mcpTimeoutMs(server) / 1000}" min="0.001" max="300" step="0.001">
-                        </div>
-                        <div class="settings-checkbox-row" style="padding-bottom:.5rem">
-                            <input type="checkbox" id="auto-connect" name="autoConnect"
-                                ${server.autoConnect !== false ? 'checked' : ''}>
-                            <label for="auto-connect">${t('form.autoConnect')}</label>
                         </div>
                     </div>
                 </div>

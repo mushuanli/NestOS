@@ -227,6 +227,12 @@ export const MODEL_NAME_MISTRAL_LARGE_2411 = 'Mistral: Mistral Large 2411';
 export const LLM_PROVIDERS: Record<string, LLMProvider> = {
     // External providers loaded from .llm configs
     ...externalProviders,
+    chatgpt: {
+        id: 'chatgpt', isBuiltin: true, name: 'ChatGPT', implementation: 'chatgpt',
+        baseURL: 'https://api.openai.com/v1', defaultProtocol: 'openai-responses',
+        supportedProtocols: ['openai-responses'], responsesPath: '/responses',
+        models: [],
+    },
 
     anthropic: {
         id: 'anthropic', isBuiltin: true,

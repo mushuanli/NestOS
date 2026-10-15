@@ -5,3 +5,4 @@ export type { LLMDeviceDriverOptions, LLMDeviceOpenOptions, IShellRunner } from 
 export type { LlmManagementPresets, ProviderConnectionPolicy } from './contracts/presets';
 export type { MCPConnectionOptions, MCPStdioTransportFactory, MCPConfigurationExtension, MCPConfigurationExtensionContext } from './contracts/mcp-transport';
 export type { CodexAppServerTransport } from '@itookit/driver-llm/contracts';
+export type { ProviderAuthorizationHost } from './contracts/provider-authorization';

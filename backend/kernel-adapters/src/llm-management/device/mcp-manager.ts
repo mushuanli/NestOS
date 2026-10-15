@@ -69,6 +69,7 @@ export class MCPManager {
 
     private async saveServer(server: MCPServer, systemFS?: IFileSystem): Promise<void> {
         validateMCPServer(server);
+        const enableAutoConnect = server.autoConnect !== false && this._mcpServers.find(item => item.id === server.id)?.autoConnect === false;
         await this.extensions.prepare(server,this._mcpServers.find(item => item.id === server.id),() => this.discoverServer(server));
         await this.options.beforeSave?.(server, this._mcpServers.find(item => item.id === server.id));
         server = { ...server, timeout: mcpTimeoutMs(server), timeoutUnit: 'ms' };
@@ -84,6 +85,8 @@ export class MCPManager {
         });
         this.onChanged();
         await this.options.configurationChanged?.();
+        // Queue after persistence; network failures belong to connection state, not save status.
+        if (enableAutoConnect) void this.initializeMCPServer(server.id).catch(() => {});
     }
 
     deleteMCPServer(id: string, systemFS?: IFileSystem): Promise<void> {
@@ -145,6 +148,7 @@ export class MCPManager {
         return this.serial(id, async () => {
             const server = this._mcpServers.find(item => item.id === id);
             if (!server || server.autoConnect === false) return false;
+            if (server.transport === 'stdio' && this.options.stdioTransport === false) return false;
             const target = server.transport === 'stdio' ? server.command : server.endpoint;
             if (!target?.trim()) return false;
             const discovery = await this.discoverServer(server);

@@ -109,6 +109,7 @@ export interface ApplicationRuntimeOptions {
     llmLogger?: ILLMLogger;
     mcp?: import('@itookit/kernel-adapters/llm/core').MCPConnectionOptions;
     codexTransport?: CodexAppServerTransport;
+    providerAuthorization?: import('@itookit/kernel-adapters/llm/core').ProviderAuthorizationHost;
     ownerKind?: SessionOwnerKind;
     digitalTwinAutoStart?: boolean;
     /**

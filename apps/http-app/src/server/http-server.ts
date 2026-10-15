@@ -11,6 +11,7 @@ export interface HostedApi { handle(request: ApplicationRequest, response: Appli
 import { json } from './http-response';
 
 export interface HttpServerOptions {
+    build?: { mode: string; version?: string };
     application?: HostedApi;
     certificates: CertificateAuth; staticDir: string; audit: AuditPort;
 }
@@ -46,7 +47,7 @@ async function serve(request: IncomingMessage, response: ServerResponse, options
         await options.application.handle(request, response, () => options.certificates.accepts(request.socket as TLSSocket)); return;
     }
     if (pathname === '/api/vfs') throw new FSError('EACCES', 'Storage is private to the daemon');
-    if (pathname === '/api/health') { json(response, 200, { ready: true }); return; }
+    if (pathname === '/api/health') { json(response, 200, { ready: true, ...options.build }); return; }
     if (pathname.startsWith('/api/')) throw new FSError('ENOENT', 'Unknown API route');
     if (request.method !== 'GET' && request.method !== 'HEAD') { response.writeHead(405); response.end(); return; }
     await serveStatic(response, request.method, options.staticDir, pathname, request.headers['accept-encoding']?.includes('gzip') ?? false, request.headers['if-none-match']);

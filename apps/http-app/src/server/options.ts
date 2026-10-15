@@ -6,6 +6,7 @@ export function options(args = process.argv.slice(2)) {
         port: { type: 'string', default: '2000' },
         backlog: { type: 'string', default: '4096' },
         static: { type: 'string' }, 'cert-dir': { type: 'string' }, 'cert-host': { type: 'string' },
+        'auth-dir': { type: 'string' },
         'init-certs': { type: 'boolean' }, 'audit-file': { type: 'string' }, help: { type: 'boolean', short: 'h' },
     } }).values;
 }

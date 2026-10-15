@@ -1,5 +1,5 @@
 import { t } from '@itookit/common';
-import { resolveModelId, type IAgentManagementService } from '@itookit/kernel-adapters/contracts';
+import { resolveModelId, hasConnectionCredentials, type IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import { type ModelTier, type LLMProvider, type ILLMService, type ConnectionMeta } from '@itookit/driver-llm/contracts';
 import type { IFileSystem } from '@itookit/vfs-core';
 
@@ -68,7 +68,7 @@ export class OcrService {
         const providers = this.agents.getProviders();
         return (await this.agents.getConnections()).map(connection => {
             const selected = visionModel(connection, providers);
-            const reason = !connection.enabled ? t('ocr.disabled') : !connection.hasApiKey && connection.providerId !== 'codex' ? t('ocr.noKey')
+            const reason = !connection.enabled ? t('ocr.disabled') : !hasConnectionCredentials(connection) ? t('ocr.noKey')
                 : !selected ? t('ocr.noVision') : undefined;
             return { connection, ...selected, available: !reason, reason };
         });

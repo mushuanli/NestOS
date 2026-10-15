@@ -2,6 +2,8 @@ import { validateLLMIoctlArgument, isConnection, isStoredProvider, isMCPServer, 
 import { snapshotMCPConnectionOptions, type MCPConnectionOptions } from '../contracts/mcp-transport';
 import type { ProviderConnectionTestParams } from '@itookit/driver-llm/contracts';
 import { listProviderModels } from '@itookit/driver-llm';
+import { ProviderAuthorization } from './provider-authorization';
+import type { ProviderAuthorizationHost } from '../contracts/provider-authorization';
 // @file: device-llm/device/llm-device-driver.ts
 //
 // LLMDeviceDriver — LLM 连接配置守护者 + LLM/MCP/Skill 通信设备。
@@ -129,6 +131,7 @@ export interface IShellRunner {
 // ─── LLMDeviceDriver ─────────────────────────────────────────────────────────
 
 export interface LLMDeviceDriverOptions {
+    providerAuthorization?: ProviderAuthorizationHost;
     providerFactory?: import('@itookit/driver-llm/contracts').ProviderFactory;
     mcp?: MCPConnectionOptions;
     presets?: Partial<LlmManagementPresets>;
@@ -196,6 +199,8 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     }
 
     constructor(private readonly vfs: IVFSManager, options?: LLMDeviceDriverOptions) {
+        this.authorization = new ProviderAuthorization(options?.providerAuthorization, id => this.getFullProvider(id));
+        if (options?.providerAuthorization) this._eventUnsubs.push(options.providerAuthorization.onChange(() => this.notify()));
         this.mcpOptions = snapshotMCPConnectionOptions(options?.mcp);
         this.presets = snapshotLlmPresets(options?.presets);
         this.providerConnectionPolicy = options?.providerConnectionPolicy;
@@ -209,6 +214,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     // ─── Lifecycle ────────────────────────────────────────────────────────────
 
     private initialization?: Promise<void>;
+    private readonly authorization: ProviderAuthorization;
     private disposed = false;
     private autoConnections = new Set<Promise<unknown>>();
     init(): Promise<void> {
@@ -234,7 +240,8 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         // Initialise helpers first (no async deps)
         this.vfsHelpers = new VFSHelpers(this.engine);
         this.providerManager = new ProviderManager(this.engine, this.vfsHelpers, () => this.notify(), this.presets);
-        this.connectionManager = new ConnectionManager(this.vfsHelpers, this.vfs, this.providerManager, () => this.notify(), this.presets, this.providerConnectionPolicy);
+        this.connectionManager = new ConnectionManager(this.vfsHelpers, this.vfs, this.providerManager, () => this.notify(), this.presets, this.providerConnectionPolicy,
+            id => this.getFullProvider(id)?.implementation === 'chatgpt' ? this.authorization.state(id).status === 'authorized' : undefined);
         this.mcpManager = new MCPManager(this.vfsHelpers, this.vfs, () => this.notify(), this.mcpOptions);
         this.skillManager = new SkillManager(this.vfsHelpers, this.vfs, this.mcpManager, this.shellRunner, () => this.notify());
 
@@ -864,17 +871,27 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
 
     async deleteProvider(id: string, systemFS?: IFileSystem): Promise<void> {
         await this.ensureReady();
+        if (this.authorization.state(id).supported) await this.authorization.run('disconnect', id);
         this.cancelPendingSync();
         await this.providerManager.deleteProvider(id, systemFS);
     }
 
     async testConnection(params: ProviderConnectionTestParams): Promise<ConnectionTestResult> {
         await this.ensureReady();
-        return testLLMConnection({ ...params, providerDefinition: params.providerDefinition ?? this.getFullProvider(params.provider), codex: this.resolveCodexConfig() });
+        const provider = params.providerDefinition ?? this.getFullProvider(params.provider);
+        return testLLMConnection({ ...params, providerDefinition: provider, chatgpt: this.authorization.credentials(provider), codex: this.resolveCodexConfig() });
     }
 
     async listProviderModels(provider: LLMProvider) {
-        return listProviderModels(provider);
+        return listProviderModels(provider, { chatgpt: this.authorization.credentials(provider) });
+    }
+
+    async getProviderAuthorization(id: string) { await this.ensureReady(); return this.authorization.state(id); }
+    async beginProviderAuthorization(id: string) { await this.ensureReady(); return this.authorization.run('begin', id); }
+    async cancelProviderAuthorization(id: string) { await this.ensureReady(); return this.authorization.run('cancel', id); }
+    async disconnectProviderAuthorization(id: string) { await this.ensureReady(); return this.authorization.run('disconnect', id); }
+    async completeProviderAuthorization(id: string, attempt: string, callback: string) {
+        await this.ensureReady(); return this.authorization.complete(id, attempt, callback);
     }
 
     /** Derive the Codex CLI config shared by connection tests and driver creation. */
@@ -907,7 +924,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
             throw new Error(`LLMDeviceDriver: provider '${conn.providerId}' is disabled`);
         }
         const apiKey = provider?.apiKey?.trim();
-        if (!apiKey && pid !== 'codex') {
+        if (!apiKey && pid !== 'codex' && provider?.implementation !== 'chatgpt') {
             throw new Error(
                 `LLMDeviceDriver: provider '${conn.providerId}' has no API key configured`
             );
@@ -946,6 +963,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
             connection: connForDriver,
             customProviderDefaults,
             codex: this.resolveCodexConfig(),
+            chatgpt: this.authorization.credentials(provider),
             hooks: {
                 onResponseHeaders: (headers, status) => {
                     this.llmLogger?.logResponse(sessionId, { status, headers });

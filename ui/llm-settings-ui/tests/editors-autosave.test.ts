@@ -66,6 +66,8 @@ it.each([undefined, true, false])('shows the backend startup policy for MCP auto
         { target: { kind: 'entity', entityType: 'mcp', id: 'm' } });
     editors.push(editor); await editor.init(container);
     const checkbox = container.querySelector<HTMLInputElement>('[name="autoConnect"]')!;
+    expect(checkbox.getAttribute('role')).toBe('switch');
+    expect(checkbox.closest('.settings-section')).toBeNull();
     expect(checkbox.checked).toBe(autoConnect !== false);
     checkbox.checked = false; checkbox.dispatchEvent(new Event('change', { bubbles: true }));
     await vi.advanceTimersByTimeAsync(1000);

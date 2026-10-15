@@ -39,7 +39,7 @@ function renderProtocolRow(provider: LLMProvider, protocol: ApiProtocol): string
 
 export function renderProviderAdvanced(provider: LLMProvider): string {
     const protocols = getProviderProtocols(provider);
-    return `<details class="settings-form__group"><summary>${t('provider.form.advanced')}</summary>
+    return `<details class="settings-form__group" data-provider-advanced><summary>${t('provider.form.advanced')}</summary>
         <label class="settings-form__label">${t('provider.protocol.default')}</label>
         <select class="settings-form__select" name="defaultProtocol">${protocols.map(protocol =>
             `<option value="${protocol}" ${getProviderDefaultProtocol(provider) === protocol ? 'selected' : ''}>${PROTOCOL_LABELS[protocol]}</option>`).join('')}</select>
@@ -59,6 +59,9 @@ export function readProviderForm(form: HTMLFormElement, previous: LLMProvider): 
     const supportedProtocols = [...form.querySelectorAll<HTMLInputElement>('[name="supportedProtocols"]:checked')]
         .map(input => input.value as ApiProtocol);
     const implementation = (data.implementation || previous.implementation) as LLMProvider['implementation'];
+    if (implementation === 'chatgpt') return { ...previous, implementation, baseURL: 'https://api.openai.com/v1', apiKey: undefined,
+        supportedProtocols: ['openai-responses'], defaultProtocol: 'openai-responses', defaultPath: '/responses',
+        responsesPath: '/responses', chatPath: undefined, anthropicPath: undefined, geminiPath: undefined, modelsPath: undefined };
     const paths = Object.fromEntries(Object.values(PATH_FIELDS).map(field => [field, data[field]?.trim() || undefined]));
     const primary = getPrimaryProtocol({ implementation });
     return { ...previous, ...paths, implementation, baseURL: data.baseURL.trim(),

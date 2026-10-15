@@ -25,6 +25,7 @@ export class ConnectionManager {
         private readonly onChanged: () => void,
         private readonly presets: LlmManagementPresets = snapshotLlmPresets(),
         private readonly providerConnectionPolicy?: ProviderConnectionPolicy,
+        private readonly credentialReadiness?: (providerId: string) => boolean | undefined,
     ) {}
 
     // ─── Public read accessors ─────────────────────────────────────────────
@@ -208,7 +209,8 @@ export class ConnectionManager {
 
     private connToMeta(conn: LLMConnection): ConnectionMeta {
         const provider = this.getProviderForConn(conn);
-        return toConnectionMeta(conn, provider, this.providerManager.getFullProviderMap().values());
+        const meta = toConnectionMeta(conn, provider, this.providerManager.getFullProviderMap().values());
+        return { ...meta, credentialsReady: this.credentialReadiness?.(conn.providerId) ?? (meta.hasApiKey || conn.providerId === 'codex') };
     }
 
     private getProviderForConn(conn: LLMConnection) {

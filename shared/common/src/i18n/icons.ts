@@ -257,6 +257,6 @@ export const TOOLBOX_ICONS = {
 const providerMark = (label: string): string => `<svg width="20" height="20" viewBox="0 0 24 24" aria-hidden="true"><rect x="1" y="1" width="22" height="22" rx="6" fill="currentColor" opacity=".08"/><text x="12" y="16" text-anchor="middle" font-family="sans-serif" font-size="11" font-weight="600" fill="currentColor">${label}</text></svg>`;
 export const TOOLBOX_PROVIDER_ICONS: Readonly<Record<string, string>> = {
     anthropic: providerMark('A'), gemini: providerMark('G'), deepseek: providerMark('DS'),
-    openai: providerMark('O'), openrouter: providerMark('OR'), cloudapi: providerMark('C'),
+    openai: providerMark('O'), chatgpt: providerMark('GPT'), openrouter: providerMark('OR'), cloudapi: providerMark('C'),
     volcengine: providerMark('V'), codex: TOOLBOX_ICONS.terminal, custom: TOOLBOX_ICONS.providers,
 };

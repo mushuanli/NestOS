@@ -1,4 +1,5 @@
 import { SettingsValidationError } from '@itookit/ui-common';
+import { ProviderAuthorizationPanel } from './provider-authorization';
 import { readProviderForm, renderProviderAdvanced, syncProtocolControls, renderProtocolOptions } from './provider-form';
 import { getPrimaryProtocol, getProviderProtocols } from '@itookit/driver-llm/contracts';
 import type { ApiProtocol } from '@itookit/driver-llm/contracts';
@@ -20,6 +21,7 @@ import { t, escapeAttr, ACTION_ICONS } from '@itookit/common';
 import {generateShortUUID} from '@itookit/common';
 import { BaseSettingsEditor, requestSettingsSave } from '@itookit/ui-common';
 import type { IConnectionService } from '@itookit/kernel-adapters/contracts';
+import type { ProviderAuthorizationState } from '@itookit/kernel-adapters/contracts';
 import type { LLMProvider, LLMModel, ModelCategory } from '@itookit/driver-llm/contracts';
 import { Modal, Toast } from '@itookit/ui-common';
 import { exportBundleToLLM, fromConnectionDef } from '@itookit/kernel-adapters/llm/config';
@@ -43,8 +45,16 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     private providerForm?: HTMLFormElement;
     private editGeneration = 0;
     private editorDisposed = false;
+    private authorizationPanel?: ProviderAuthorizationPanel;
+    private readonly authorizations = new Map<string, ProviderAuthorizationState>();
 
     private get formOnly(): boolean { return this.options.target?.kind === 'entity' && this.options.target.entityType === 'provider'; }
+
+    protected override onServiceChange(): void {
+        // Authorization has its own status subscription; keep callback drafts mounted.
+        if (this.formOnly && this.providerForm) return;
+        super.onServiceChange();
+    }
 
     async render() {
         if (!await this.prepareRender()) return;
@@ -55,11 +65,15 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             if (provider) await this.loadEditModal(provider); else this.container.textContent = t('toolbox.resourceMissing');
             return;
         }
+        await Promise.all(providers.filter(provider => provider.implementation === 'chatgpt').map(async provider => {
+            const state = await this.service.getProviderAuthorization?.(provider.id);
+            if (state) this.authorizations.set(provider.id, state);
+        }));
 
         // Sort: has-apiKey first → enabled first → alphabetical
         const keyedIds = new Set<string>();
         for (const p of providers) {
-            if (p.hasApiKey) keyedIds.add(p.id);
+            if (p.hasApiKey || this.authorizations.get(p.id)?.status === 'authorized') keyedIds.add(p.id);
         }
         const sorted = [...providers].sort((a, b) => {
             const aKey = keyedIds.has(a.id);
@@ -121,7 +135,8 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     // ── Card ───────────────────────────────────────────────────────────────────
 
     private renderProviderCard(p: LLMProvider & { hasApiKey?: boolean }): string {
-        const hasKey   = p.hasApiKey === true;
+        const subscription = p.implementation === 'chatgpt', authorization = this.authorizations.get(p.id);
+        const hasKey = subscription ? authorization?.status === 'authorized' : p.hasApiKey === true;
         const enabled  = p.enabled !== false;
         // A provider is "currently built-in" only if it exists in the live catalog.
         const currentBuiltins = this.service.getProviderDefaults?.() ?? {};
@@ -131,7 +146,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             : '<span class="settings-badge settings-badge--warning">自定义</span>';
         const keyBadge = hasKey
             ? ''
-            : '<span class="settings-badge settings-badge--warning" style="font-size:0.7rem">需配置 Key</span>';
+            : `<span class="settings-badge settings-badge--warning" style="font-size:0.7rem">${subscription ? t('provider.auth.signed-out') : t('connection.credentialsRequired')}</span>`;
         const disabledStyle = enabled ? '' : 'opacity:0.55;';
 
         const isChecked = this._checkedIds.has(p.id);
@@ -169,9 +184,9 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                         </span>
                     </div>
                     <div class="settings-detail-item">
-                        <span class="settings-detail-item__label">API Key</span>
+                        <span class="settings-detail-item__label">${subscription ? t('provider.auth.title') : 'API Key'}</span>
                         <span class="settings-detail-item__value">
-                            ${hasKey
+                            ${subscription ? t(`provider.auth.${authorization?.supported ? authorization.status : 'unsupported'}`) : hasKey
                                 ? '<span style="color:var(--st-color-success,#10b981)">✓ 已配置</span>'
                                 : '<span style="color:var(--st-text-disabled)">未配置</span>'
                             }
@@ -343,6 +358,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     // ── Edit modal ─────────────────────────────────────────────────────────────
 
     async destroy(): Promise<void> {
+        this.authorizationPanel?.destroy();
         await super.destroy(); this.editorDisposed = true; this.editGeneration++;
     }
 
@@ -351,6 +367,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     }
 
     private async loadEditModal(provider: LLMProvider | null) {
+        this.authorizationPanel?.destroy(); this.authorizationPanel = undefined;
         const generation = ++this.editGeneration;
         const isNew   = !provider;
         const isBuiltin = !!provider?.isBuiltin;
@@ -363,7 +380,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         this.modelSearch = '';
         this.providerForm = undefined;
 
-        this.editModels = (fullProvider?.models ?? []).map(model => ({
+        this.editModels = (fullProvider?.models ?? []).map(model => fullProvider?.implementation === 'chatgpt' ? { ...model } : ({
             ...model,
             supportsVision: model.supportsVision ?? true,
             supportsThinking: model.supportsThinking ?? true,
@@ -383,10 +400,11 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 <div class="settings-form__group">
                     <label class="settings-form__label">${t('provider.form.implementation')}</label>
                     <select class="settings-form__select" name="implementation">
-                        ${(['openai-compatible', 'anthropic', 'gemini', 'custom'] as const).map(type => `<option value="${type}" ${this.editingProvider?.implementation === type ? 'selected' : ''}>${t(`provider.implementation.${type}`)}</option>`).join('')}
+                        ${(['openai-compatible', 'chatgpt', 'anthropic', 'gemini', 'custom'] as const).map(type => `<option value="${type}" ${this.editingProvider?.implementation === type ? 'selected' : ''}>${t(`provider.implementation.${type}`)}</option>`).join('')}
                     </select>
                 </div>
-                <div class="settings-form__group">
+                <section class="provider-authorization" data-provider-authorization hidden></section>
+                <div class="settings-form__group" data-provider-api-key>
                     <label class="settings-form__label">API Key</label>
                     <input type="password" class="settings-form__input" name="apiKey"
                            value="${existingApiKey}"
@@ -429,9 +447,9 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             width: '620px',
             confirmText: '',
             onAutoSave: save => this.trackAutoSave(save),
-            onClose: () => { void this.render(); },
+            onClose: () => { this.authorizationPanel?.destroy(); this.authorizationPanel = undefined; void this.render(); },
             onConfirm: async () => {
-                const form = document.getElementById('provider-form') as HTMLFormElement;
+                const form = this.formElement('provider-form') as HTMLFormElement;
                 if (!form.checkValidity()) return false;
 
                 this.syncInputsToModelData();
@@ -464,10 +482,10 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                     implementation: providerConfig.implementation,
                     baseURL: providerConfig.baseURL,
                     defaultPath: providerConfig.defaultPath,
-                    responsesPath: (data.responsesPath as string || '').trim() || undefined,
-                    anthropicPath: (data.anthropicPath as string || '').trim() || undefined,
+                    responsesPath: providerConfig.implementation === 'chatgpt' ? '/responses' : (data.responsesPath as string || '').trim() || undefined,
+                    anthropicPath: providerConfig.implementation === 'chatgpt' ? undefined : (data.anthropicPath as string || '').trim() || undefined,
                     // Keep existing apiKey if field was left empty
-                    apiKey: newApiKey || existingApiKey || undefined,
+                    apiKey: providerConfig.implementation === 'chatgpt' ? undefined : newApiKey || existingApiKey || undefined,
                     models: structuredClone(this.editModels),
                     isBuiltin: isBuiltin,
                     enabled: this.formOnly ? data.enabled === 'on' : provider?.enabled,
@@ -481,17 +499,51 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 await this.service.saveProvider(updated);
                 this.editingProvider = structuredClone(updated);
                 this.currentProviderId = updated.id;
+                this.syncAuthorizationForm(form);
                 const heading = this.container.querySelector('.settings-page__title');
                 if (this.formOnly && heading) heading.textContent = updated.name;
             },
         }, this.formOnly);
 
+        this.providerForm = (this.formOnly ? this.container : document.body.lastElementChild)?.querySelector<HTMLFormElement>('#provider-form') ?? undefined;
         if (this.formOnly) {
             this.bindModalEvents();
             addConfigurationEnabled(this.container, provider?.enabled !== false);
+            if (provider?.id === 'openai' && this.options.hostContext?.navigate) {
+                addConfigurationAction(this.container, t('provider.auth.title'), () => {
+                    void this.openSubscription().catch(error => Toast.error(String(error)));
+                });
+            }
             if (provider && isBuiltin) addConfigurationAction(this.container, t('toolbox.resetDefaults'), () => this.confirmReset(provider));
             if (provider) addConfigurationAction(this.container, t('action.delete'), () => { void this.confirmDelete(provider); });
-        } else setTimeout(() => this.bindModalEvents(), 100);
+        } else setTimeout(() => { if (!this.editorDisposed && generation === this.editGeneration) this.bindModalEvents(); }, 100);
+    }
+
+    private async openSubscription(): Promise<void> {
+        await this.flushPendingSave();
+        if (!this.service.getProviders().some(provider => provider.id === 'chatgpt')) {
+            const defaults = this.service.getProviderDefaults().chatgpt;
+            if (!defaults) throw new Error(t('toolbox.resourceMissing'));
+            await this.service.saveProvider(defaults);
+        }
+        await this.options.hostContext?.navigate?.({ target: 'toolbox', resourceId: '/providers/chatgpt' });
+    }
+
+    private syncAuthorizationForm(form: HTMLFormElement): void {
+        const chatgpt = form.querySelector<HTMLSelectElement>('[name="implementation"]')?.value === 'chatgpt';
+        form.querySelector<HTMLElement>('[data-provider-api-key]')!.hidden = chatgpt;
+        const root = form.querySelector<HTMLElement>('[data-provider-authorization]')!; root.hidden = !chatgpt;
+        form.querySelector<HTMLElement>('[data-provider-advanced]')!.hidden = chatgpt;
+        const url = form.querySelector<HTMLInputElement>('[name="baseURL"]')!;
+        url.readOnly = chatgpt;
+        if (chatgpt) url.value = 'https://api.openai.com/v1';
+        if (!chatgpt) { this.authorizationPanel?.destroy(); this.authorizationPanel = undefined; root.replaceChildren(); return; }
+        if (this.authorizationPanel) return;
+        this.authorizationPanel = new ProviderAuthorizationPanel(root, this.editingProvider!.id, this.service, async () => {
+            const button = form.querySelector<HTMLButtonElement>('#btn-refresh-models')!;
+            await this.refreshModels(button, form.querySelector('#model-list-container')!);
+        });
+        void this.authorizationPanel.init().catch(error => Toast.error(String(error)));
     }
 
     private async refreshModels(button: HTMLButtonElement, list: HTMLElement): Promise<void> {
@@ -508,7 +560,8 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             }
             if (!button.isConnected) return;
             this.syncInputsToModelData();
-            const added = this.appendModels(models);
+            const added = snapshot.implementation === 'chatgpt' ? models.filter(model => !this.editModels.some(old => old.id === model.id)).length : this.appendModels(models);
+            if (snapshot.implementation === 'chatgpt') this.editModels = models.map(model => ({ ...model }));
             list.innerHTML = this.renderModelListHTML();
             this.updateModelCount();
             requestSettingsSave(form);
@@ -587,9 +640,15 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     // ── Modal events ───────────────────────────────────────────────────────────
 
+    private formElement(id: string): HTMLElement | null {
+        if (id === 'provider-form') return this.providerForm ?? null;
+        return this.providerForm?.querySelector<HTMLElement>('#' + id) ?? null;
+    }
+
     private bindModalEvents() {
-        const listContainer = document.getElementById('model-list-container') as HTMLElement | null;
-        const addModelBtn   = document.getElementById('btn-add-model') as HTMLButtonElement | null;
+        if (!this.providerForm?.isConnected || this.editorDisposed) return;
+        const listContainer = this.formElement('model-list-container') as HTMLElement | null;
+        const addModelBtn   = this.formElement('btn-add-model') as HTMLButtonElement | null;
 
         const renderList = () => {
             if (!listContainer) return;
@@ -602,12 +661,12 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         this.updateModelCount();
 
         // Test API Key button
-        const testBtn    = document.getElementById('btn-test-provider') as HTMLButtonElement | null;
-        const testResult = document.getElementById('provider-test-result') as HTMLElement | null;
+        const testBtn    = this.formElement('btn-test-provider') as HTMLButtonElement | null;
+        const testResult = this.formElement('provider-test-result') as HTMLElement | null;
         if (testBtn && testResult) {
             testBtn.addEventListener('click', async () => {
                 if (testBtn.disabled) return;
-                const form = document.getElementById('provider-form') as HTMLFormElement;
+                const form = this.formElement('provider-form') as HTMLFormElement;
                 this.syncInputsToModelData();
                 const definition = readProviderForm(form, this.editingProvider!);
                 const apiKey = definition.apiKey;
@@ -637,7 +696,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             });
         }
 
-        const refreshBtn = document.getElementById('btn-refresh-models') as HTMLButtonElement | null;
+        const refreshBtn = this.formElement('btn-refresh-models') as HTMLButtonElement | null;
         refreshBtn?.addEventListener('click', () => {
             if (!refreshBtn.disabled && listContainer) void this.refreshModels(refreshBtn, listContainer);
         });
@@ -695,7 +754,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     }
 
     private updateModelCount(): void {
-        const count = document.getElementById('provider-model-count');
+        const count = this.formElement('provider-model-count');
         if (count) count.textContent = t('provider.models.count', { total: this.editModels.length,
             visible: this.editModels.filter(model => this.matchesModelSearch(model)).length });
     }
@@ -716,13 +775,13 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         form.querySelector('#provider-model-search')?.addEventListener('input', event => {
             this.syncInputsToModelData();
             this.modelSearch = (event.target as HTMLInputElement).value.toLowerCase().trim();
-            document.getElementById('model-list-container')!.innerHTML = this.renderModelListHTML();
+            this.formElement('model-list-container')!.innerHTML = this.renderModelListHTML();
             this.updateModelCount();
         });
     }
 
     private bindProviderControls(): void {
-        const form = document.getElementById('provider-form') as HTMLFormElement;
+        const form = this.formElement('provider-form') as HTMLFormElement;
         this.providerForm = form;
         this.bindModelSearch(form);
         this.bindTestInvalidation(form);
@@ -738,11 +797,13 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             syncProtocolControls(form); this.refreshModelProtocolOptions(form);
         });
         form.querySelector('[name="implementation"]')?.addEventListener('change', () => {
+            this.syncAuthorizationForm(form);
             const primary = getPrimaryProtocol(readProviderForm(form, this.editingProvider!));
             form.querySelectorAll<HTMLInputElement>('[name="supportedProtocols"]').forEach(input => { input.checked = input.value === primary; });
             syncProtocolControls(form);
             this.refreshModelProtocolOptions(form);
         });
+        this.syncAuthorizationForm(form);
         form.querySelectorAll<HTMLButtonElement>('[data-test-protocol]').forEach(button => {
             button.addEventListener('click', () => { void this.testProtocol(form, button); });
         });
@@ -768,7 +829,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     // ── Sync helpers ───────────────────────────────────────────────────────────
 
     private syncInputsToModelData() {
-        const container = document.getElementById('model-list-container');
+        const container = this.formElement('model-list-container');
         if (!container) return;
         const capMap: Record<string, keyof LLMModel> = {
             audio: 'supportsAudio',

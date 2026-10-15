@@ -38,7 +38,7 @@
   {
     "directory": "driver-llm",
     "name": "@itookit/driver-llm",
-    "version": "0.3.0",
+    "version": "0.3.1",
     "workspace": true
   },
   {

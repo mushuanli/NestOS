@@ -85,6 +85,7 @@ export interface ConnectionOption {
     provider?: string;
     /** 关联 Provider 是否已配置 apiKey，未配置时在选择器中置灰提示 */
     hasApiKey: boolean;
+    credentialsReady?: boolean;
     /** 是否配置了 standard 或 fast tier（决定 tier 选择器是否有实际意义） */
     hasTiers: boolean;
     /** tier → model 显示名，供 tier quick-switch popup 展示。key 为 ModelTier，value 为 model name */

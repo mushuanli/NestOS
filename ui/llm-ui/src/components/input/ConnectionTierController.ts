@@ -183,8 +183,8 @@ export class ConnectionTierController {
             { id: '', label: this.defaultLabel(), icon: currentId === '' ? '✓' : '' },
         ];
 
-        const withKey    = this.connections.filter(c => c.hasApiKey);
-        const withoutKey = this.connections.filter(c => !c.hasApiKey);
+        const withKey    = this.connections.filter(c => c.credentialsReady ?? c.hasApiKey);
+        const withoutKey = this.connections.filter(c => !(c.credentialsReady ?? c.hasApiKey));
 
         for (const c of withKey) {
             items.push({
@@ -200,7 +200,7 @@ export class ConnectionTierController {
                 label: c.name,
                 description: c.provider,
                 icon: c.id === currentId ? '✓' : '',
-                group: '⚠️ 需配置 API Key',
+                group: t('connection.credentialsRequired'),
             });
         }
 

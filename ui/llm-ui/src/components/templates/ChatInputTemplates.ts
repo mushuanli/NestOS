@@ -590,8 +590,8 @@ export const ChatInputTemplates = {
      * 有 key 的连接在前，无 key 的归入「需配置 API Key」分组置灰。
      */
     renderConnectionOptions(connections: ConnectionOption[], selectedId?: string): string {
-        const withKey    = connections.filter(c => c.hasApiKey);
-        const withoutKey = connections.filter(c => !c.hasApiKey);
+        const withKey    = connections.filter(c => c.credentialsReady ?? c.hasApiKey);
+        const withoutKey = connections.filter(c => !(c.credentialsReady ?? c.hasApiKey));
 
         const renderOption = (c: ConnectionOption) => {
             const label    = c.provider ? `${escapeHTML(c.name)} (${escapeHTML(c.provider)})` : escapeHTML(c.name);
@@ -603,7 +603,7 @@ export const ChatInputTemplates = {
         let html = `<option value="">${t('connection.followDefaultShort')}</option>`;
         html += withKey.map(renderOption).join('');
         if (withoutKey.length > 0) {
-            html += `<optgroup label="⚠️ 需配置 API Key">`;
+            html += `<optgroup label="${t('connection.credentialsRequired')}">`;
             html += withoutKey.map(renderOption).join('');
             html += `</optgroup>`;
         }

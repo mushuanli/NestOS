@@ -17,7 +17,7 @@ export class ToolboxInventory {
     private owners: Partial<Record<'remoteAgents' | 'mcp' | 'tools' | 'providers' | 'connections' | 'prompts', FileSystemSourceOwner>> = {};
     readonly remoteAgents = new Map<string, RemoteHarnessAgent>();
     get remoteAgentSource() { return this.owners.remoteAgents!.fs; }
-    readonly providers = new Map<string, { id: string; name: string; icon?: string; enabled: boolean; configured: boolean }>();
+    readonly providers = new Map<string, { id: string; name: string; icon?: string; enabled: boolean; configured: boolean; authentication?: 'chatgpt'; authorizationAvailable?: boolean }>();
     readonly connections = new Map<string, { providerId: string; enabled: boolean }>();
     defaultConnectionId?: string;
     readonly tools = new Map<string, ToolboxTool>();
@@ -60,9 +60,14 @@ export class ToolboxInventory {
         const connections = await this.models?.getConnections() ?? [];
         this.defaultConnectionId = (await this.models?.getDefaultConnection())?.id;
         this.providers.clear(); this.connections.clear();
-        for (const item of providers) this.providers.set(item.id, { id: item.id, name: item.name,
+        for (const item of providers) {
+            const subscription = item.implementation === 'chatgpt';
+            const authorization = subscription ? await this.models?.getProviderAuthorization?.(item.id) : undefined;
+            this.providers.set(item.id, { id: item.id, name: item.name,
             icon: item.icon === defaults[item.id]?.icon ? undefined : item.icon, enabled: item.enabled !== false,
-            configured: item.id === 'codex' || !!(await this.models?.getFullProvider(item.id))?.apiKey?.trim() });
+            ...(subscription ? { authentication: 'chatgpt', authorizationAvailable: authorization?.supported === true } : {}),
+            configured: subscription ? authorization?.status === 'authorized' : item.id === 'codex' || !!(await this.models?.getFullProvider(item.id))?.apiKey?.trim() });
+        }
         for (const item of connections) this.connections.set(item.id, { providerId: item.providerId, enabled: item.enabled !== false });
         await this.replace('providers', providers.map(item => ({ id: item.id, name: item.name,
             description: item.baseURL ?? '', source: item.implementation, icon: item.icon ?? ENTITY_ICONS.llm })));

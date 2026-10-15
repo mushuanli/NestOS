@@ -32,6 +32,12 @@ Provider / Connection 使用 `configuration-form.ts` 的自动保存表单，新
 2. `driver-llm` `resolveProtocol()` 加 URL/provider 推断；`createProvider()` 加协议→Provider 类分发
 3. Provider 类实现该协议端点路径（如 `responsesPath`）
 
+## 增加订阅认证方式
+
+认证方式与线协议分开：`chatgpt` 是独立 Provider implementation，继续使用 Responses。账号目录不推断工具、模态或定价。OAuth 回调、令牌保存和刷新由宿主的 `ProviderAuthorizationHost` 实现，UI 仅使用安全的状态与命令接口。HTTP 能力描述必须显式登记，不能把私有 credentials 方法加入 RPC。工具箱把 ChatGPT 标记为“订阅”，OpenAI 保留 API Key 配置并提供订阅跳转。
+
+MCP 的自动连接开关位于详情顶部，使用既有自动保存控制器；从关闭切为开启时，后端在配置落盘后异步连接并发现目录，通过既有事件更新侧栏；失败不撤销已保存的策略。重复保存不重复连接，关闭开关不主动断开当前连接。
+
 ## 新增 Connection
 
 通过 Settings UI (`ui/llm-settings-ui/src/editors/ConnectionSettingsEditor.ts`) 操作，

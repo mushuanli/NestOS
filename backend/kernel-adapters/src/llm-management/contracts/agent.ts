@@ -2,6 +2,7 @@
 
 import type { LLMConnection, ConnectionMeta, LLMProvider, DefaultConnectionDef, ConnectionTestResult, LLMModel, ProviderConnectionTestParams } from './connection';
 import type { RestorableItem } from './restore';
+import type { ProviderAuthorizationService } from './provider-authorization';
 import type { SkillDefinition } from '@itookit/tools/contracts';
 import type { SystemPromptDefinition, PromptPreset } from '@itookit/tools/contracts';
 
@@ -131,7 +132,7 @@ export interface IConnectionReader {
  * 读取方法返回 ConnectionMeta（不含 apiKey），保持隐私边界；
  * 仅 getFullConnection() / getFullProvider() 返回完整对象，供 Settings UI 编辑使用。
  */
-export interface IConnectionService extends IConnectionReader {
+export interface IConnectionService extends IConnectionReader, Partial<ProviderAuthorizationService> {
     /** Persist the global default; null clears it without choosing a replacement. */
     setDefaultConnection(id: string | null): Promise<void>;
     /** 保存连接（接受完整连接，含 apiKey） */

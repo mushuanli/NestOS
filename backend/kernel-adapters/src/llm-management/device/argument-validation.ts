@@ -37,7 +37,7 @@ export function isStoredProvider(value: unknown): value is LLMProvider {
 
 export function isProvider(value: unknown): value is LLMProvider {
     return isRecord(value) && storageId(value.id) && text(value.name) && text(value.baseURL)
-        && enumValue(value.implementation, ['openai-compatible', 'anthropic', 'gemini', 'custom'])
+        && enumValue(value.implementation, ['openai-compatible', 'chatgpt', 'anthropic', 'gemini', 'custom'])
         && Array.isArray(value.models) && value.models.every(model => isRecord(model) && identifier(model.id))
         && optional(value.defaultProtocol, protocol)
         && optional(value.supportedProtocols, value => Array.isArray(value) && value.every(protocol))

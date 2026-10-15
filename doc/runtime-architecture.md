@@ -44,10 +44,13 @@ interface ApplicationRuntimeOptions {
   kernelPlatform?: ApplicationKernelPlatform;
   llmLogger?: ILLMLogger;
   codexTransport?: CodexAppServerTransport;
+  providerAuthorization?: ProviderAuthorizationHost;
   ownerKind?: 'web' | 'tauri' | 'cli';
   onProgress?(message: string): void;
 }
 ```
+
+`providerAuthorization` 是宿主私有端口：httpd 实现 OAuth、私密凭据存储和刷新，应用只传递到 LLM 驱动；安全状态与授权命令通过配置服务公开，凭据端口不出现在前端服务图。刷新按调用需求或认证失效触发，同账号合并并发刷新，无前端计时查询。
 
 `backend` 是唯一的必填项；挂载项用内联结构（无独立 `Mount` 类型），`options` 为 vfs-core 的 `MountOptions`。
 

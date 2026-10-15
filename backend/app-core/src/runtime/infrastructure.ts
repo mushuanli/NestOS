@@ -14,6 +14,7 @@ export interface ApplicationInfrastructureOptions {
     llmLogger?: ILLMLogger;
     mcp?: import('@itookit/kernel-adapters/llm/core').MCPConnectionOptions;
     codexTransport?: CodexAppServerTransport;
+    providerAuthorization?: import('@itookit/kernel-adapters/llm/core').ProviderAuthorizationHost;
     onProgress?(message: string): void;
 }
 
@@ -66,6 +67,7 @@ async function initializeDevices(options: ApplicationInfrastructureOptions, vfs:
     logStep(t('boot.llmDriver'));
     const llmDriver = new LLMDeviceDriver(vfs, {
         presets: createMindosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
+        providerAuthorization: options.providerAuthorization,
         llmLogger: options.llmLogger ? new TwinSafeLlmLogger(options.llmLogger) : undefined, mcp: { clientInfo: { name: 'mindos', version: '1.0.0' }, logger: createModuleLogger('llm:mcp'), ...options.mcp }, codexTransport: options.codexTransport,
     });
     vfs.devices.register(llmDriver);

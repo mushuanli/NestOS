@@ -19,6 +19,8 @@
 
 ## LLM 契约（能力包公开入口）
 
+`ProviderAuthorizationService` 的状态查询、开始/完成/取消/退出授权属于安全的配置端口，定义在 `kernel-adapters/src/llm-management/contracts/provider-authorization.ts`，从 `/contracts` 导出。私有 `ProviderAuthorizationHost` 只由宿主经 `/llm/core` 注入，不对外导出凭据方法。`ConnectionMeta.credentialsReady` 可选字段由宿主解析授权状态；旧实现缺省仍依据 API Key/Codex 判断。
+
 | 接口/类型 | 核心字段/方法 | 定义 | 实现 | 消费 |
 |---|---|---|---|---|
 | `EditorTaskControlPlane` / `AttachedTask` | openTask/openSession/listSessionTasks；共享挂接身份、Task 事件及控制 | `durable-kernel/src/ports/task-control.ts`，从 Kernel 根入口导出 | Kernel 或宿主远程客户端 | 聊天编辑器、任务挂接及 pending 恢复 |
@@ -28,7 +30,7 @@
 | `ChatCompletionParams/ChatCompletionResponse/ChatCompletionChunk` | `messages/model/tools/stream/webSearch`… | `https://github.com/mushuanli/driver-llm/blob/main/src/types/response.ts` | driver-llm providers | `llm-tasks`、`kernel-adapters` |
 | `Citation` | `text/source/title/url`（联网搜索引用） | `https://github.com/mushuanli/driver-llm/blob/main/src/types/response.ts` | driver-llm providers | `kernel-adapters`、`llm-ui` |
 | `TokenUsage` | `prompt_tokens/completion_tokens/total_tokens` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/response.ts` | driver-llm | `llm-tasks`、预算扣减 |
-| `LLMConnection/ConnectionMeta` | `id/name/providerId/tiers/model/protocol` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/connection.ts` | `driver-llm` | `llm-session AgentResolver` |
+| `LLMConnection/ConnectionMeta` | `id/name/providerId/tiers/model/protocol/credentialsReady?` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/connection.ts` | `driver-llm` | `llm-session AgentResolver` |
 | `WebSearchMode` | `'builtin'\|'client-tool'\|'disabled'` | `kernel-adapters/src/llm-management/contracts/connection.ts` | `resolveWebSearchStrategy`（纯函数） | `llm-session` |
 | `SettingsAutoSave` / `requestSettingsSave` | 设置表单延迟保存、串行写入、失败重试与安全释放；不重建编辑 DOM | `ui-common/src/components/SettingsAutoSave.ts` | `BaseSettingsEditor`、`configuration-form.ts` | 七类 LLM 设置编辑器 |
 | `IConnectionService.listProviderModels` | 接受完整未保存 Provider，返回归一化模型目录；无持久化副作用 | `kernel-adapters/src/llm-management/contracts/agent.ts` | `LLMDeviceDriver` → `providers/model-catalog.ts`，`VFSAgentService` 转发 | `ProviderSettingsEditor` |

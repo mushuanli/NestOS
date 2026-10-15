@@ -23,7 +23,7 @@
 
 ## 协议
 
-`POST /api/application` 使用 `version: 7` 与 `clientId`，支持 bootstrap、queries、bindings、call、reply、close。bootstrap 返回公开服务图、产品模板与 Flow 库，以扁平描述避免重复导出对象图；call 只能调用本视图已经导出的能力句柄上的公开方法。v7 增加 navigationView 首屏读模型及有界 warmNavigation 只读预热；保留工作台聚合、会话准备/激活及 UI 文档批量端口；升级服务后需重新加载页面。句柄包含视图随机身份，不能用于另一个浏览器。私有字段、原型访问、Runtime.dispose、设备注册、SQL 和原始记录写入不开放。
+`POST /api/application` 使用 `version: 8` 与 `clientId`，支持 bootstrap、queries、bindings、call、reply、close。bootstrap 返回公开服务图、产品模板与 Flow 库，以扁平描述避免重复导出对象图；call 只能调用本视图已经导出的能力句柄上的公开方法。v8 增加 Provider 订阅授权状态与命令；保留 navigationView、warmNavigation、工作台聚合、会话准备/激活及 UI 文档批量端口；升级服务后需重新加载页面。句柄包含视图随机身份，不能用于另一个浏览器。私有字段、原型访问、Runtime.dispose、设备注册、SQL 和原始记录写入不开放。
 
 queries 合并同一微任务中独立的只读查询，bindings 合并订阅注册，每批最多 32 项、每个合批器最多 2 批在途，等待与在途调用合计最多 1024 项；服务端先检查整批方法类别再执行。共享只读命令策略使 GetSnapshot、GetSessions 和 Flow 读取进入查询批次，不触发全域失效。业务写入独立确认，不混入查询或订阅批次；失败与结果未知的命令不自动重放。
 
@@ -31,11 +31,11 @@ queries 合并同一微任务中独立的只读查询，bindings 合并订阅注
 
 `GET /api/application/events?clientId=<id>` 提供 SSE。通知按 16 ms 窗口合并，只运行一个刷新循环，256 条 / 1 MiB 上限覆盖等待和处理中的事件；刷新期间的失效只安排一次后续刷新，保持事件顺序。客户端也限制排队通知的数量和字节；需要结果的回调单独经 reply 返回，不等待通知批次。领域服务变更也主动更新其他浏览器的快照。客户端先安装 bootstrap，再按序消费已经缓冲的 SSE；服务端在首次快照建立前暂停通知快照刷新。快照补丁携带前后版本，客户端缓冲乱序补丁、忽略旧版本，缺失更新不能覆盖新状态。长连接每 15 秒重新验证证书。连接丢失显示重载入口；写请求不会自动重发。本协议不沿用旧 HTTP 模式的持久命令回执和事件重放，不能宣称跨重载的 exactly-once 保证。
 
-`POST /api/application/files?clientId=<id>&version=6` 使用 application/octet-stream 传输文件字节，X-View-Call 携带编码后的文件能力参数。权限仍由已导出的文件视图检查，不提供宿主路径或存储驱动入口。二进制读写省去 JSON/base64 编码；读取响应头与写入回执携带文件 revision，前端在操作完成前更新 onRevision，条件写入参数保持原有含义。文件接口仍使用完整 ArrayBuffer，不是无限大小的流式存储接口。
+`POST /api/application/files?clientId=<id>&version=8` 使用 application/octet-stream 传输文件字节，X-View-Call 携带编码后的文件能力参数。权限仍由已导出的文件视图检查，不提供宿主路径或存储驱动入口。二进制读写省去 JSON/base64 编码；读取响应头与写入回执携带文件 revision，前端在操作完成前更新 onRevision，条件写入参数保持原有含义。文件接口仍使用完整 ArrayBuffer，不是无限大小的流式存储接口。
 
 每个视图最多 4096 个活跃能力句柄、16 个在途业务请求和 128 个待回复回调，最多 128 个浏览器视图。dispose/release/close 撤销独占子图并传送句柄撤销，关闭资源时同步取消其订阅；共享子图按可达拥有者保留；压缩的撤销区间使迟到更新不能复活已释放句柄。回调中的事务能力仅借用到回调结束。没有事件连接和在途回调的视图在空闲 60 秒后回收。JSON 与独立二进制传输分别限制为 32 MiB；通知等待队列和流写缓冲也有上限。
 
-旧 HttpStorageBackend、记录事务传输、loopback 存储监听、精简 ApplicationShell 与禁用菜单适配已删除。`/api/vfs` 始终拒绝访问；`/api/health` 只返回就绪状态。
+旧 HttpStorageBackend、记录事务传输、loopback 存储监听、精简 ApplicationShell 与禁用菜单适配已删除。`/api/vfs` 始终拒绝访问；`/api/health` 返回就绪状态及运行模式、构建版本。
 
 ## 性能边界
 
@@ -111,16 +111,32 @@ C4Component
 ## 启动与认证
 
 ```bash
-pnpm httpd
-pnpm --filter @itookit/http-app build
-pnpm --filter @itookit/http-app start
+pnpm httpd:build              # 构建并选择独立 release，不重启当前服务
+pnpm httpd                    # 直接运行已选 release，无构建步骤
+pnpm httpd:dev                # 开发工作树，默认端口 2001
+pnpm httpd:list
+pnpm httpd:activate <版本ID>   # 下次启动使用此版本
 ```
+
+release 保存在 `release/httpd/<版本ID>/`，包括固定的服务端、UI 与运行依赖副本，启动校验服务端/UI 校验和及 Node 主版本。依赖打包在临时源码副本执行，不修改开发工作区的 node_modules；构建中源码发生变化则拒绝激活。保留旧版本可回滚，正在运行的进程继续使用原版本和对应静态资源。第一次从旧 tsx 启动方式迁移时，需要先结束原实例再启动 release；不能让两个宿主同时使用真实数据。后续版本切换在下次启动生效。
+
+release 沿用原 profile 数据；dev 默认使用 `<configDir>/http-dev/data`，忽略原 profile 数据根。两者的 OAuth 凭据分别在 `<configDir>/http-auth/release` 与 `dev`；审计和控制台日志分别在 `<configDir>/logs/http/<模式>/<版本ID>/audit.jsonl` 与 `runtime.log`，每份 10 MiB、保留 3 份轮转。显式 CLI 参数可覆盖默认路径和端口。数据根和凭据目录分别以 SQLite 排他锁防止新宿主重复打开，崩溃后由操作系统释放。
 
 默认只监听 HTTPS `0.0.0.0:2000`，backlog 为 4096。TLS 验证客户端证书与 clients.json 的 SHA-256 指纹，没有匿名或明文入口。CA、密钥、浏览器导入包和审计日志位于数据根之外。
 
 数据根优先级：`--root` → `MINDOS_ROOT` → mindos.json 的 rootDir → 配置目录/data。配置目录遵循 XDG_CONFIG_HOME，默认 `~/.config/mindos`。SQLite 默认保存在 `<root>/_meta/index.db`；`--sidecar` 可以指定数据根之外的位置。`--internal-port` 已移除。
 
 审计仅记录请求和认证元数据，不记录正文、参数、消息或凭据。服务器退出先结束事件连接，再关闭视图、Runtime、存储和日志。原生目录选择、Shell/TTY、存储快照等平台能力由宿主注入；统一界面不意味着 Node、浏览器和 Tauri 的平台权限相同。
+
+## ChatGPT 订阅授权
+
+入口为 **工具箱 → 模型 → ChatGPT · 订阅 → Provider 设置 → 使用 ChatGPT 继续**；现有 **OpenAI** 设置顶部也提供“ChatGPT 订阅授权”跳转，原 API Key 配置保留。授权完成后加载账号模型目录并保存配置；连接选择器依据宿主的 `credentialsReady` 判断可用性，不再把订阅账号当成缺少 API Key。
+
+httpd 注入私有 `ProviderAuthorizationHost`，负责 PKCE、state、nonce、OIDC 签名与账号校验、凭据原子保存、共享刷新和退出撤销。UI 只取得授权链接、进度和账号显示，访问/刷新令牌不进入 RPC、VFS、模型配置导出或日志。状态查询读取宿主缓存，UI 无授权轮询计时器。未注入授权宿主的 Web/Tauri 明确显示不支持。
+
+[官方 OAuth 文档](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)要求 `http://127.0.0.1:<端口>/auth/callback` 回调。浏览器与 httpd 同机时自动完成；远程 httpd 可以通过 SSH 转发回调端口，也可以把浏览器授权后地址栏的完整回调 URL 粘贴回已通过 mTLS 认证的授权面板。后一种是本应用的回调转送实现，由后端验证 state、PKCE 与身份后交换授权码，不要求用户复制令牌。
+
+私有凭据目录权限 0700、文件 0600，必须位于数据根和静态目录之外；注销后保留客户端注册身份，清除本地令牌，远端撤销未确认时明确提示。授权流程、刷新和 RPC 用签名模拟响应验证，尚未使用真实订阅账号验收。
 
 ## 验证
 

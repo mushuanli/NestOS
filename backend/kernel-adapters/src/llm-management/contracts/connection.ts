@@ -2,6 +2,10 @@
 import type { DailyCost, ModelTier, ApiProtocol, LLMProvider, LLMConnection, ConnectionMeta } from '@itookit/driver-llm/contracts';
 export type { ModelCategory, LLMModel, DailyCost, ModelTier, ApiProtocol, LLMProviderImplementation, LLMProvider, LLMConnection, ConnectionMeta, ConnectionTestResult, ProviderConnectionTestParams } from '@itookit/driver-llm/contracts';
 
+export function hasConnectionCredentials(connection: Pick<ConnectionMeta, 'credentialsReady' | 'hasApiKey' | 'providerId'>): boolean {
+    return connection.credentialsReady ?? (connection.hasApiKey || connection.providerId === 'codex');
+}
+
 
 // ─── Utilities ────────────────────────────────────────────────────────────────
 

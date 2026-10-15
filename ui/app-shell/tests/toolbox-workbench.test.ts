@@ -611,6 +611,26 @@ it('deletes selected model drawers through provider impact confirmation includin
     expect(await runtime.agentService.getFullConnection('drawer-connection')).toBeNull();
 });
 
+it('connects when auto-connect is enabled and updates sidebar state without waiting for a restart', async () => {
+    const f = await setup(); await f.workbench.openResource('/mcp/docs');
+    const badge = () => f.sidebar.querySelector<HTMLElement>('.mcp-status-icon')!;
+    let release!: () => void;
+    const connect = vi.spyOn(MCPServerConnection.prototype, 'connect').mockImplementation(() => new Promise<void>(resolve => { release = resolve; }));
+    vi.spyOn(MCPServerConnection.prototype, 'isConnected').mockReturnValue(true);
+    vi.spyOn(MCPServerConnection.prototype, 'disconnect').mockResolvedValue();
+    vi.spyOn(MCPServerConnection.prototype, 'discover').mockResolvedValue({ tools: [], resources: [], prompts: [] });
+    try {
+        await vi.waitFor(() => expect(f.main.querySelector('[name="autoConnect"]')).not.toBeNull());
+        const toggle = f.main.querySelector<HTMLInputElement>('[name="autoConnect"]')!;
+        toggle.focus();
+        toggle.checked = true; toggle.dispatchEvent(new Event('change', { bubbles: true }));
+        await vi.waitFor(() => expect(badge().title).toContain(t('mcp.state.connecting')), { timeout: 2000 });
+        expect((await runtime.agentService.getMCPServers())[0].autoConnect).toBe(true);
+        release(); await vi.waitFor(() => expect(badge().title).toContain(t('mcp.state.connected')));
+        expect(connect).toHaveBeenCalledOnce(); expect(f.main.querySelector('[name="autoConnect"]')).toBe(toggle);
+    } finally { release?.(); }
+});
+
 it('updates MCP icon observations after explicit tests without probing during toolbox refresh', async () => {
     const f = await setup();
     await f.workbench.openResource('/mcp/docs');

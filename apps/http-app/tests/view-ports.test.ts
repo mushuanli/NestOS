@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ProviderAuthorizationHost } from '@itookit/kernel-adapters/llm/core';
 import { createApplicationRuntime } from '@itookit/app-core';
 import { MemoryBackend } from '@itookit/vfs-core';
 import { RpcPeer } from '../src/application/peer';
@@ -6,9 +7,9 @@ import { createHostedView } from '../src/server/view-services';
 import { installViewProjections } from '../src/application/projections';
 
 const releases: Array<() => Promise<void>> = [];
-afterEach(async () => { for (const release of releases.splice(0).reverse()) await release(); });
-async function setup() {
-    const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli', startupMode: 'interactive', digitalTwinAutoStart: false });
+afterEach(async () => { for (const release of releases.splice(0).reverse()) await release(); vi.unstubAllGlobals(); });
+async function setup(providerAuthorization?: ProviderAuthorizationHost) {
+    const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli', startupMode: 'interactive', digitalTwinAutoStart: false, providerAuthorization });
     releases.push(() => runtime.dispose());
     const view = await createHostedView(runtime); releases.push(() => view.close());
     let server!: RpcPeer;
@@ -113,4 +114,32 @@ it('opens an owned Session read model and binds it on activation without exposin
     await view.dispose(); expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);
     await expect(view.activate()).rejects.toThrow();
     expect(view.commandBus).toBeUndefined(); expect(view.kernel).toBeUndefined();
+});
+
+it('uses private subscription credentials through public model and connection ports without exposing tokens', async () => {
+    const state = { supported: true, status: 'authorized' as const, account: 'user@example.com' };
+    const host: ProviderAuthorizationHost = { state: () => state, begin: async () => state, complete: async () => state,
+        cancel: async () => state, disconnect: async () => state, onChange: () => () => {},
+        credentials: () => ({ session: { getToken: async () => ({ accessToken: 'backend-private-token',
+            scopes: ['resource.invoke', 'chatgpt.tokens.use.direct'] }) } }) };
+    const fetcher = vi.fn(async (url: unknown, init?: RequestInit) => {
+        expect(new Headers(init?.headers).get('Authorization')).toBe('Bearer backend-private-token');
+        if (String(url).endsWith('/models')) return Response.json({ models: [{ slug: 'account-model', display_name: 'Account model', visibility: 'list' }] });
+        const body = JSON.parse(init!.body as string); expect(body.store).toBe(false); expect(body.stream).toBe(true);
+        return new Response('data: ' + JSON.stringify({ type: 'response.completed', response: { status: 'completed',
+            model: 'account-model', output: [{ type: 'message', content: [{ type: 'output_text', text: 'OK' }] }] } }) + '\n\n');
+    });
+    vi.stubGlobal('fetch', fetcher);
+    const { root } = await setup(host), service = root.services.agentService;
+    expect(await service.getProviderAuthorization('chatgpt')).toEqual(state);
+    expect(await service.beginProviderAuthorization('chatgpt')).toEqual(state);
+    const provider = await service.getFullProvider('chatgpt');
+    expect(provider).toMatchObject({ implementation: 'chatgpt', models: [] });
+    const models = await service.listProviderModels(provider); expect(models[0].id).toBe('account-model');
+    await service.saveProvider({ ...provider, models });
+    const connection = (await service.getConnections()).find((item: { providerId: string }) => item.providerId === 'chatgpt');
+    expect(connection).toMatchObject({ hasApiKey: false, credentialsReady: true });
+    expect(await service.testConnection({ provider: 'chatgpt', model: 'account-model' })).toMatchObject({ success: true });
+    expect(service.credentials).toBeUndefined(); expect(service.authorization).toBeUndefined();
+    expect(JSON.stringify(await service.getFullProvider('chatgpt'))).not.toContain('backend-private-token');
 });

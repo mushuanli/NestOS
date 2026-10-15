@@ -1,0 +1,115 @@
+import path from 'node:path';
+import os from 'node:os';
+import { mkdirSync, openSync, writeSync, closeSync, statSync, renameSync, existsSync, readFileSync, readdirSync, lstatSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { execFileSync } from 'node:child_process';
+import { copyFileSync, readlinkSync } from 'node:fs';
+
+/** Capture Git inputs, including initialized library repositories, without build output. */
+export function sourceFiles(root, prefix = '') {
+    const names = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root }).toString().split('\0').filter(Boolean);
+    return [...new Set(names)].sort().flatMap(name => {
+        const file = path.join(root, name), relative = path.join(prefix, name);
+        if (!existsSync(file)) return [];
+        if (lstatSync(file).isDirectory()) return existsSync(path.join(file, '.git')) ? sourceFiles(file, relative) : [];
+        return [relative];
+    });
+}
+export function sourceFingerprint(root, files = sourceFiles(root)) {
+    const hash = createHash('sha256');
+    for (const file of files) {
+        const target = path.join(root, file);
+        hash.update(file + '\0');
+        hash.update(lstatSync(target).isSymbolicLink() ? readlinkSync(target) : readFileSync(target)); hash.update('\0');
+    }
+    return hash.digest('hex');
+}
+export function copySource(root, destination, files = sourceFiles(root)) {
+    for (const file of files) {
+        const from = path.join(root, file), to = path.join(destination, file);
+        mkdirSync(path.dirname(to), { recursive: true });
+        if (lstatSync(from).isSymbolicLink()) symlinkSync(readlinkSync(from), to);
+        else copyFileSync(from, to);
+    }
+}
+
+export function runtimePaths(mode, id = 'current', env = process.env) {
+    const config = path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'mindos');
+    const logs = path.join(config, 'logs', 'http', mode, id);
+    return { config, logs, audit: path.join(logs, 'audit.jsonl'), runtime: path.join(logs, 'runtime.log'),
+        auth: path.join(config, 'http-auth', mode), developmentRoot: path.join(config, 'http-dev', 'data') };
+}
+export function hostArguments(mode, id, args, env = process.env) {
+    const paths = runtimePaths(mode, id, env);
+    const values = [...args];
+    const add = (name, value) => { if (!args.some(arg => arg === name || arg.startsWith(name + '='))) values.push(name, value); };
+    add('--audit-file', paths.audit); add('--auth-dir', paths.auth);
+    if (mode === 'dev') { add('--port', '2001'); add('--root', paths.developmentRoot); }
+    return values;
+}
+export function releaseDirectory(root, id) {
+    if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,100}$/.test(id) || id === '.' || id === '..') throw new Error('Invalid release ID');
+    return path.join(root, id);
+}
+/** Legacy pnpm deploy leaves nested workspace links pointing back at the source tree. */
+export function freezeWorkspaceDependencies(snapshot) {
+    const store = path.join(snapshot, 'node_modules/.pnpm'), packages = new Map();
+    const rootPackage = JSON.parse(readFileSync(path.join(snapshot, 'package.json'), 'utf8'));
+    packages.set(rootPackage.name + '@' + rootPackage.version, snapshot);
+    for (const entry of readdirSync(store, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name === 'node_modules') continue;
+        const modules = path.join(store, entry.name, 'node_modules'); if (!existsSync(modules)) continue;
+        for (const name of readdirSync(modules)) {
+            const base = path.join(modules, name);
+            const paths = name.startsWith('@') ? readdirSync(base).map(child => path.join(base, child)) : [base];
+            for (const candidate of paths) {
+                if (lstatSync(candidate).isSymbolicLink() || !existsSync(path.join(candidate, 'package.json'))) continue;
+                const pkg = JSON.parse(readFileSync(path.join(candidate, 'package.json'), 'utf8'));
+                packages.set(pkg.name + '@' + pkg.version, candidate);
+            }
+        }
+    }
+    freezeLinks(path.join(snapshot, 'node_modules'), snapshot, packages);
+}
+function freezeLinks(directory, snapshot, packages) {
+    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+        const file = path.join(directory, entry.name);
+        if (!lstatSync(file).isSymbolicLink()) { if (entry.isDirectory()) freezeLinks(file, snapshot, packages); continue; }
+        const target = realpathSync(file), relative = path.relative(snapshot, target);
+        if (relative !== '..' && !relative.startsWith('..' + path.sep) && !path.isAbsolute(relative)) continue;
+        const manifest = path.join(target, 'package.json');
+        const pkg = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')) : {};
+        const local = packages.get(pkg.name + '@' + pkg.version);
+        if (!local || !(pkg.name?.startsWith('@itookit/') || pkg.name === 'mind-os')) throw new Error(`External release dependency: ${file}`);
+        rmSync(file); symlinkSync(path.relative(path.dirname(file), local), file, 'dir');
+    }
+}
+export function verifyRelease(directory) {
+    const manifest = JSON.parse(readFileSync(path.join(directory, 'release.json'), 'utf8'));
+    if (!Array.isArray(manifest.files) || !manifest.files.length) throw new Error('Release manifest is missing');
+    for (const { file, sha256 } of manifest.files) {
+        if (typeof file !== 'string' || path.isAbsolute(file) || file.split(/[\\/]/).includes('..')) throw new Error('Invalid release path');
+        if (createHash('sha256').update(readFileSync(path.join(directory, file))).digest('hex') !== sha256) throw new Error(`Release file changed: ${file}`);
+    }
+    if (manifest.nodeMajor !== Number(process.versions.node.split('.')[0])) throw new Error('Use the Node major version recorded in release.json');
+    return manifest;
+}
+/** Bounded runtime output; audit metadata has its own server-owned JSONL writer. */
+export function runtimeLog(file, limit = 10 * 1024 * 1024) {
+    mkdirSync(path.dirname(file), { recursive: true, mode: 0o700 });
+    let fd = openSync(file, 'a', 0o600), size = statSync(file).size;
+    return {
+        write(chunk) {
+            if (size && size + chunk.length > limit) {
+                closeSync(fd);
+                for (let i = 2; i >= 0; i--) {
+                    const from = i ? `${file}.${i}` : file;
+                    if (existsSync(from)) renameSync(from, `${file}.${i + 1}`);
+                }
+                fd = openSync(file, 'w', 0o600); size = 0;
+            }
+            writeSync(fd, chunk); size += chunk.length;
+        },
+        close() { closeSync(fd); },
+    };
+}

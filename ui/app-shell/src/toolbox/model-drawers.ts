@@ -21,12 +21,15 @@ export function modelDrawers(items: VFSNodeUI[], inventory: ToolboxInventory): V
         const provider = inventory.providers.get(id), file = providers.find(item => item.id === '/providers/' + encodeURIComponent(id));
         const children = connections.filter(item => inventory.connections.get(decodeURIComponent(item.id.slice('/connections/'.length)))?.providerId === id);
         const rank = !provider ? 3 : !provider.enabled ? 2 : !provider.configured ? 1 : 0;
-        const status = t(!provider ? 'toolbox.providerMissing' : rank === 2 ? 'toolbox.providerDisabled' : rank === 1 ? 'toolbox.providerUnconfigured' : 'toolbox.providerConfigured');
+        const subscription = provider?.authentication === 'chatgpt';
+        const status = t(!provider ? 'toolbox.providerMissing' : rank === 2 ? 'toolbox.providerDisabled' : subscription
+            ? !provider.authorizationAvailable ? 'provider.auth.unsupported' : provider.configured ? 'provider.auth.authorized' : 'provider.auth.signed-out'
+            : rank === 1 ? 'toolbox.providerUnconfigured' : 'toolbox.providerConfigured');
         if (file) children.unshift({ ...file, icon: `<span role="img" aria-label="${t('toolbox.providerSettings')}" title="${t('toolbox.providerSettings')}">${TOOLBOX_ICONS.settings}</span>`, metadata: { ...file.metadata, title: t('toolbox.providerSettings'), tags: [],
             custom: { ...file.metadata.custom, modelSettings: true } }, content: { ...file.content!, searchableText: provider!.name + ' ' + file.content?.searchableText } });
         return { ...seed, id: modelDrawerId(id), type: 'directory', kind: 'group', icon: providerIcon(id, provider?.icon), content: undefined, children,
             presentation: { ...seed.presentation, layout: 'drawer', titleLayout: 'stacked' },
-            metadata: { ...seed.metadata, path: modelDrawerId(id), title: provider?.name ?? id, parentPath: null, tags: [],
+            metadata: { ...seed.metadata, path: modelDrawerId(id), title: (provider?.name ?? id) + (subscription ? ` · ${t('provider.auth.subscription')}` : ''), parentPath: null, tags: [],
                 custom: { _readOnly: true, modelDrawer: true, navigationMenu: true, modelRank: rank,
                     navigationDescription: t('toolbox.providerSummary', { count: children.length - (file ? 1 : 0), status }) } } };
     });

@@ -78,6 +78,7 @@ export async function buildConnectionOptions(
                 name: c.name,
                 provider: c.providerId,
                 hasApiKey: c.hasApiKey,
+                credentialsReady: c.credentialsReady,
                 hasTiers: !!(c.tiers?.standard || c.tiers?.fast),
                 tiers: tiersMap,
             };

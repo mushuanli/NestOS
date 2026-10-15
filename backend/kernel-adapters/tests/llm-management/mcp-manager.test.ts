@@ -67,6 +67,35 @@ it('skips explicitly disabled, incomplete and removed startup configurations', a
     } finally { await manager.disconnectAll(); }
 });
 
+it.each([true, false])('connects once after enabling auto-connect and retains saved policy on success=%s', async success => {
+    const { manager, server, connect, disconnect, helpers } = setup();
+    manager.setServers([{ ...server, autoConnect: false }]);
+    vi.spyOn(MCPServerConnection.prototype, 'discover').mockResolvedValue({ tools: [], resources: [], prompts: [] });
+    if (!success) connect.mockRejectedValueOnce(new Error('offline'));
+    try {
+        await manager.saveMCPServer({ ...server, autoConnect: true });
+        await vi.waitFor(() => expect(manager.getMCPServers()[0].status).toBe(success ? 'connected' : 'error'));
+        expect(helpers.engineUpsert).toHaveBeenCalledOnce(); expect(connect).toHaveBeenCalledOnce();
+        expect(manager.getRawServers()[0].autoConnect).toBe(true);
+        await manager.saveMCPServer({ ...server, autoConnect: true, name: 'Renamed' });
+        expect(connect).toHaveBeenCalledOnce();
+        await manager.saveMCPServer({ ...server, autoConnect: false });
+        expect(disconnect).not.toHaveBeenCalled();
+    } finally { await manager.disconnectAll(); }
+});
+
+it('does not connect when enabling an incomplete server or stdio disabled by the host', async () => {
+    const { manager, server, connect } = setup({ stdioTransport: false });
+    try {
+        manager.setServers([{ ...server, autoConnect: false }]);
+        await manager.saveMCPServer({ ...server, endpoint: '', autoConnect: true });
+        await manager.initializeMCPServer(server.id);
+        manager.setServers([{ ...server, transport: 'stdio', command: 'disabled', autoConnect: false }]);
+        await manager.saveMCPServer({ ...manager.getServers()[0], autoConnect: true });
+        await manager.initializeMCPServer(server.id); expect(connect).not.toHaveBeenCalled();
+    } finally { await manager.disconnectAll(); }
+});
+
 it('waits for a pending connection before deleting its process', async () => {
     const { manager, connect, disconnect, server } = setup();
     let release!: () => void; connect.mockImplementationOnce(() => new Promise<void>(resolve => { release = resolve; }));

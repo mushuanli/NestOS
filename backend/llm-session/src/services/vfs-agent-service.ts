@@ -367,6 +367,19 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     async deleteProvider(id: string): Promise<void> { return this.llmService.deleteProvider(id); }
     async listProviderModels(provider: LLMProvider) { return this.llmService.listProviderModels(provider); }
     async testConnection(params: ProviderConnectionTestParams): Promise<ConnectionTestResult> { return this.llmService.testConnection(params); }
+    async getProviderAuthorization(id: string) {
+        return this.llmService.getProviderAuthorization?.(id) ?? { supported: false, status: 'signed-out' as const };
+    }
+    async beginProviderAuthorization(id: string) { return this.requireAuthorization().beginProviderAuthorization!(id); }
+    async cancelProviderAuthorization(id: string) { return this.requireAuthorization().cancelProviderAuthorization!(id); }
+    async disconnectProviderAuthorization(id: string) { return this.requireAuthorization().disconnectProviderAuthorization!(id); }
+    async completeProviderAuthorization(id: string, attempt: string, callback: string) {
+        return this.requireAuthorization().completeProviderAuthorization!(id, attempt, callback);
+    }
+    private requireAuthorization() {
+        if (!this.llmService.beginProviderAuthorization) throw new Error('Provider authorization is unavailable');
+        return this.llmService;
+    }
 
     async getConnections(): Promise<ConnectionMeta[]> { return this.llmService.getConnections(); }
     async getFullConnection(id: string): Promise<LLMConnection | null> { return this.llmService.getFullConnection(id); }

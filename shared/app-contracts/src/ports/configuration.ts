@@ -90,6 +90,8 @@ export interface ToolboxInventory {
         icon?: string;
         enabled: boolean;
         configured: boolean;
+        authentication?: 'chatgpt';
+        authorizationAvailable?: boolean;
     }>;
     readonly connections: Map<string, {
         providerId: string;

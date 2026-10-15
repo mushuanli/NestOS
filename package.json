@@ -6,7 +6,7 @@
     "main": "index.js",
     "scripts": {
         "dev": "pnpm --filter mind-os dev",
-        "httpd": "pnpm --filter @itookit/http-app dev",
+        "httpd": "node scripts/httpd.mjs start",
         "build": "pnpm -r build",
         "build:libs": "pnpm --filter './libraries/*' --filter './ui/*' --filter './backend/*' --filter './shared/*' build",
         "test": "pnpm architecture:check && node --test scripts/tests/test-all.test.mjs && node scripts/test-all.mjs",
@@ -30,7 +30,11 @@
         "preinstall": "node scripts/check-workspace.mjs",
         "build:registry": "node scripts/build-registry.mjs",
         "modules:check": "node --test scripts/tests/check-module-separation.test.mjs && node scripts/check-module-separation.mjs",
-        "modules:buildcheck": "node scripts/check-frontend-build.mjs"
+        "modules:buildcheck": "node scripts/check-frontend-build.mjs",
+        "httpd:build": "node scripts/httpd.mjs build",
+        "httpd:dev": "node scripts/httpd.mjs dev",
+        "httpd:list": "node scripts/httpd.mjs list",
+        "httpd:activate": "node scripts/httpd.mjs activate"
     },
     "keywords": [],
     "author": "lizlok@gmail.com",

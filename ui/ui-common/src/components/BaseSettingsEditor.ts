@@ -67,7 +67,7 @@ export abstract class BaseSettingsEditor<TService> implements IEditor {
         // Service 变更订阅
         if (isChangeObservable(this.service)) {
             const unsubscribe = this.service.onChange(() => {
-                if (![...this.autoSaves].some(save => save.protectsInput)) void this.render();
+                this.onServiceChange();
             });
 
             // Hook destroy
@@ -79,6 +79,10 @@ export abstract class BaseSettingsEditor<TService> implements IEditor {
         }
 
         await this.render();
+    }
+
+    protected onServiceChange(): void {
+        if (![...this.autoSaves].some(save => save.protectsInput)) void this.render();
     }
 
     // [新增] 辅助方法：切换侧边栏

@@ -22,3 +22,6 @@
         color: #93c5fd;
     }
 }
+.provider-authorization { padding: 1rem; border: 1px solid var(--st-color-primary, #6366f1); border-radius: .625rem; margin: 1rem 0; }
+.provider-authorization[hidden] { display: none; }
+.provider-authorization__actions { display: flex; flex-wrap: wrap; gap: .5rem; margin: .75rem 0; }

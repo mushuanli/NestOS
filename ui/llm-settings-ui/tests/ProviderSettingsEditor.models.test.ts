@@ -11,9 +11,10 @@ function setup(models: LLMModel[]) {
         <input name="apiKey" value="current-key"><button type="button">Refresh</button>
         <div id="model-list-container"></div></form>`;
     const editor = new ProviderSettingsEditor(document.createElement('div'), { listProviderModels } as never, {} as never);
-    const state = editor as unknown as { editModels: LLMModel[]; editingProvider: LLMProvider;
+    const state = editor as unknown as { editModels: LLMModel[]; editingProvider: LLMProvider; providerForm: HTMLFormElement;
         renderModelListHTML(): string; refreshModels(button: HTMLButtonElement, list: HTMLElement): Promise<void> };
     state.editModels = models;
+    state.providerForm = document.querySelector('form')!;
     state.editingProvider = { id: 'custom', name: '', implementation: 'openai-compatible', baseURL: '', models: [] };
     const list = document.getElementById('model-list-container')!;
     list.innerHTML = state.renderModelListHTML();

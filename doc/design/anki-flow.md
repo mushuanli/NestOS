@@ -1,423 +1,309 @@
-# Anki 制卡 Flow 与运行时连接组合
+# 外部 Anki Tool 与 Flow：策略和机制边界
 
-状态：**待实施的设计方案**。2026-10-15 根据当前源码与相邻仓库 `../pair-x1/tookit/anki-helper/` 核对。原需求中的 `anki_helper/` 实际目录名为 `anki-helper/`。
+状态：**待实施的设计方案**。2026-10-15，根据当前源码和相邻仓库 `../pair-x1/tookit/anki-helper/` 核对；原需求中的 `anki_helper/` 实际目录名为 `anki-helper/`。
 
-**目前没有可运行的 Anki Flow、对应内置模板或系统恢复条目。** 本文不代表这些功能已经实现；现有 `.anki` 笔记工作区也不等于本文的单词卡生成和 `.apkg` 导出。
+**目前没有可运行的 Anki Flow 或对应工具扩展。** 本文按“itookit 仅提供通用机制，非通用功能通过外部 Tool 实现”的要求重新确定归属，替代此前将 Anki 业务放入 app-core、HTTP 宿主和内置模板库的方案。现有 `.anki` 笔记工作区不代表本方案已经实现。
 
-## 1. 结论与范围
+## 1. 设计结论
 
-以应用层 Flow 串联输入、内容补全、可选媒体生成、卡片合并和 Anki 打包。界面仍使用共用的 Flow 参数表单、工作台、人工输入及运行结果组件；所有生成、文件写入和打包由 HTTP 后端执行。
+采用 **外部 Anki 业务包提供 Tool 与 Flow 定义，itookit 提供通用执行机制**。
 
-需要调整 Flow 的连接声明、运行时绑定、调用记录和应用装配端口；需要补充通信适配器对图片生成、语音合成的真实操作契约。**不为 Anki 改写 Durable Kernel 的调度、日志、租约或恢复协议。** 先使用现有版本化 Program、Effect、资源授权、幂等键和 reconcile；若实施测试证明机制不足，再单独提出内核变更。
+- Anki 的卡片字段、提示词、Unit/牌组规则、补缺/覆盖策略、模板、媒体依赖、导出与打包程序都在外部业务包。
+- 外部 `.flow` 定义决定制卡顺序、业务分支、人工确认、连接用途和失败处理；itookit 的 Flow 引擎解释并执行定义。
+- Flow 通过通用 Tool 节点调用外部工具，确定性步骤不经过 LLM 决策。模型也可以通过已有 Agent 机制调用获授权的同一工具。
+- itookit 提供工具发现/注册/调用、Schema 校验、连接解析、权限、持久执行、取消、恢复、资产引用和结果展示。
+- 不在 app-core、kernel-adapters、llm-flow、tools 或 apps/http-app 中新增 Anki 专用服务、节点、Program、Effect、路由或打包代码。
+- HTTP 专有运行限制由外部扩展/Flow 声明，框架提供通用宿主要求匹配，不在核心中判断工具名是否为 Anki。
 
-完整目标包括：
+“策略/机制”是相对层次：Anki 工具内部可以再拆字段策略与打包机制，但这两部分都属于外部业务包；不能因为打包是确定性算法，就把它归入 itookit 的通用基础设施。
 
-- 读取文本单词表、WordData JSON、已有项目；可选读取照片并确认识别结果。
-- 逐字段补全音标、释义、例句、词族、记忆技巧、难度、搭配及配图描述，保留已有内容。
-- 音频和配图默认关闭；启用时分别选择满足要求的 Connection。
-- 生成可导入 Anki 的 `.apkg`，提供 Markdown 和卡片 JSON 产物。
-- 支持后台执行、页面离开后继续、重连、失败项重试和宿主重启恢复。
-- 本地 Web、Tauri、直接执行的 CLI 可以查看或编辑定义，但不能在本地运行该 Flow。连接 HTTP 后端的浏览器、Tauri 客户端或远程 CLI 可以发起运行：判断依据是**执行宿主**，不是客户端种类。
+## 2. 归属表与依赖规则
 
-首个实施里程碑为“文本/JSON → 补全 → `.apkg`”；照片、媒体及完整恢复验收仍是后续必做范围，不能把首个里程碑称为整个需求完成。
-
-## 2. 当前能力与缺口
-
-| 事项 | 已有能力 | 本需求的缺口 |
+| 内容 | 归属 | itookit 如何消费 |
 | --- | --- | --- |
-| Flow 连接 | `FlowConnection` 为命名槽，节点可通过 `config.connectionId` 引用槽；支持默认连接及单一运行连接覆盖 | 槽要求、逐槽运行绑定、逐槽兼容性反馈及冻结结果 |
-| 调用记录 | `FlowInvocationService` 保存定义 revision、参数、单一连接解析结果及请求身份 | 保存多槽绑定、解析后的模型/操作和宿主要求，并纳入请求一致性检查 |
-| 模型描述 | 模型有 category、vision/structured-output 等标记；Provider 有部分能力声明 | 识图不等于生图，audioOutput 不等于专用 TTS；声明不证明适配器实现或账号可用 |
-| Kernel | 版本化 Program/Effect、授权句柄、事件、持久状态、取消和恢复核对 | 应用程序与宿主 Effect 的注册及测试，不是新增 Anki 内核 |
-| HTTP 宿主 | 后端先初始化再 listen，浏览器通过应用能力协议访问共用界面 | 可信宿主能力描述、Anki 文件/打包适配及发布产物 |
-| 模板与恢复 | 产品 Flow 库、安装回执、只补缺失的初始文件恢复 | Anki 模板、宿主可执行性说明及跨宿主恢复策略 |
-
-核对入口：
-
-- [Flow 定义与连接槽](../../backend/llm-flow/src/contracts/flow-definition.ts)、[槽解析](../../backend/llm-flow/src/flow/connections.ts)、[编译](../../backend/llm-flow/src/flow/to-dag.ts)。
-- [调用契约](../../backend/llm-session/src/contracts/flow-invocations.ts)、[持久调用服务](../../backend/llm-session/src/session/flow-invocations.ts)、[当前单连接表单](../../ui/llm-ui/src/components/FlowParameterForm.ts)。
-- [通信配置与模型](../../libraries/driver-llm/src/types/connection.ts)、[Provider 通信端口](../../libraries/driver-llm/src/types/provider.ts)。
-- [应用装配](../../backend/app-core/src/runtime/create-application-runtime.ts)、[Kernel 装配](../../backend/app-core/src/runtime/create-kernel-runtime.ts)、[HTTP 装配](../../apps/http-app/src/server/application-host.ts)。
-- [Kernel Effect 与恢复契约](../../backend/durable-kernel/src/domain/types.ts)、[产品 Flow 库](../../backend/app-core/src/presets/flow-library.ts)、[初始文件恢复](../../backend/app-core/src/presets/initial-files.ts)。
-
-## 3. 从 anki-helper 复用什么
-
-相邻源码的实际业务链为：输入单词/照片 → WordData → 缺失字段补全 → 可选单词/例句语音与配图 → JSON/Markdown → Anki 包。
-
-| 来源 | 复用的语义 | 在 MindOS 中的归属 |
-| --- | --- | --- |
-| `src/models.rs` | WordData 字段，grade/unit 和额外字段保留 | app-core 的 Anki 业务 DTO 与合并规则 |
-| `src/modules/init/utils.rs` | 内容提示词、识图结果校验、媒体有效性及逐项保存 | 产品模板、业务校验和媒体阶段 |
-| `src/modules/init.rs` | 单词列表/Unit 解析及缺失项处理 | Anki 输入和计划生成；并发改由 Flow 控制 |
-| `src/modules/pack.rs` | 稳定牌组/笔记身份、媒体映射、临时输出及流式打包 | HTTP 原生打包适配器 |
-| `src/modules/md.rs`、`template/ankimodel.json` | Markdown 输出与现有卡片样式 | 输出格式化及版本化模板资源 |
-
-不启动 helper 的 Web 服务，不复用它的 `config.toml`、项目列表和模型连接管理。也不直接调用 `helper init`：它自行读取凭据、执行网络请求与并发任务，会绕开 MindOS 的 Connection、预算、授权及 Durable 记录。
-
-推荐从打包实现提取最小 Rust 打包 worker，作为 HTTP 发布物携带的版本化本机组件；输入为已冻结的卡片/媒体清单，职责仅是生成包。不能运行时读取相邻源码仓库或要求用户手工安装 helper。提取、独立构建和发布均未完成。
-
-节点的 manifest 与 UI 描述可以在所有宿主提供，使不支持执行的客户端仍能查看图和限制原因；执行用 Program/Effect 及原生实现只由 HTTP 宿主注册，不能为了显示图而加载原生依赖。
-
-### 3.1 Flow、业务、Effect、Tool 与打包程序的边界
-
-采用 **Flow 编排 + 确定性业务能力 + 宿主执行适配**。Tool 是可选的模型调用入口，不是每个 Flow 节点的必经层。“生成卡片内容”与“生成制卡脚本”是两件事：本方案让模型生成结构化卡片内容，使用预先编写、测试、版本化发布的打包程序生成 `.apkg`，不在运行时让模型生成并执行脚本。
-
-| 层次 | 拥有的职责 | 输入 / 输出 | 边界 |
-| --- | --- | --- | --- |
-| 产品 Flow 定义 | 阶段顺序、分支、连接槽、并发、失败策略、人工确认 | 参数/资产引用 → Run 结果 | 不写 Shell 命令、厂商请求或 ZIP/SQLite 逻辑 |
-| Anki 业务服务 | 卡片身份、补缺计划、字段校验/合并、导出清单、发布规则 | 业务 DTO → 业务 DTO/提交回执 | 不负责进程、网络传输或通用调度；受限文件操作由注入端口提供 |
-| 节点 Program | 当前节点的持久状态、Effect 请求与结果转换 | 可序列化状态/事件 → Decision | 不直接执行网络、文件写入或原生进程，不重复编排整个业务 Flow |
-| Effect 适配器 | 资源授权、输入物化、外部执行、取消、操作回执和恢复核对 | 授权句柄/清单引用 → 资产引用/操作回执 | 不自行选择模型、重试整个 Flow、改写用户卡片规则或宣布整个 Run 成功 |
-| 打包 worker | 根据清单生成 Anki 数据库、媒体映射和包体；校验物理格式 | 冻结清单、模板、只读媒体、临时输出 → 临时包及统计 | 不持有 Connection/凭据，不补全文本、不选择卡片、不修改正式项目或决定发布 |
-| 可选 Tool 入口 | 将模型请求翻译为已有应用命令 | 项目/输入引用、已授权选项 → invocationId/runId | 不复制编排、不直接调用打包进程，不提供任意脚本或宿主路径执行入口 |
-
-其中，Flow 是声明，Program 是节点执行的状态机，Effect 是可追踪的副作用；worker 是 Effect 使用的实现。没有必要为了“可在 Flow 使用”先把打包能力包装成模型 Tool。
-
-```mermaid
-flowchart LR
-    UI[用户运行 Flow] --> App[统一应用提交用例]
-    Agent[可选 Agent 入口] --> Tool[可选 GenerateAnkiDeck Tool]
-    Tool --> App
-    App --> Flow[Flow Run]
-    Flow --> Text[文本或视觉 Task]
-    Flow --> Pack[确定性打包节点 Program]
-    Pack --> Effect[anki.package Effect]
-    Effect --> Adapter[HTTP 宿主适配器]
-    Adapter --> Worker[固定版本打包 worker]
-    Worker --> Temp[临时包与格式统计]
-    Temp --> Receipt[核验资产与打包回执]
-    Receipt --> Publish[独立发布节点]
-    Publish --> Artifact[已发布产物引用]
-```
-
-打包步骤的应用契约只传逻辑引用。示意类型仍属于待实施设计：
-
-```ts
-interface ImmutableInputRef { id: string; sha256: string; }
-interface PackDeckRequest {
-    manifestRef: ImmutableInputRef;
-    templateRef: ImmutableInputRef;
-}
-interface PackDeckResult {
-    artifactRef: ImmutableInputRef;
-    noteCount: number;
-    mediaCount: number;
-    bytes: number;
-}
-```
-
-清单包含稳定 deck/card 身份、已校验字段、媒体引用和格式版本。Connection、API Key、业务覆盖策略和任意命令不进入打包协议。资源授权与 Effect 幂等键来自宿主执行上下文，不允许模型伪造。适配器将逻辑引用转换为受限的本机文件/目录；这些物理路径只存在于宿主和 worker 的私有协议中。
-
-worker 正常退出仅说明候选包生成完毕。宿主还要核对完整性、登记不可变资产并提交打包回执；后续发布节点按项目版本更新产物引用，才能对外显示已发布。下载读取已发布资产，不再次打包。发布失败时重试发布，不能重跑模型生成或重新收费的媒体阶段。
-
-任务粒度以独立恢复/重试为依据：通常按卡片补全文本，按媒体资产生成，按冻结的牌组清单打包。解析字段和构造参数等纯函数无需各自增加 Task；worker 内部的数据库/ZIP 子阶段只上报进度，不再维护另一套 Flow、重试队列和租约。
-
-### 3.2 何时才增加模型 Tool
-
-首个固定业务 Flow 不需要 `GenerateAnkiDeck` Tool。只有需要用户通过普通对话说“把这份单词表做成 Anki”时，才增加应用层工具工厂，并注入统一提交用例；不要把 Anki 产品代码放入通用 tools 包。
-
-Tool 与界面走相同的参数/连接校验、授权、调用记录和宿主限制。它默认返回 invocationId/runId 和当前状态，后续通过既有查询或受监管的等待/委派取得结果，不把整次生成塞入一个长时间 Tool 调用。Flow 内负责补全文本的模型不授予这一入口，避免递归发起相同制卡流程。
-
-入口的请求身份由可信 Tool Effect 上下文映射并持久化；回复丢失后以同一身份查询/重试提交，不能每次随机生成 requestId。不同的用户生成意图仍允许新 Run，不以输入摘要永久禁止重新生成。
-
-当前 [ToolCallEffectAdapter](../../backend/kernel-adapters/src/effects/tool-call-effect.ts) 对非只读工具缺少专用业务核对，`reconcile` 返回 `indeterminate`；因此不能把 `sideEffect` 标记或普通 Tool 包装视为打包已具备可恢复性。固定打包步骤使用专用 Effect/回执；若后续增加 Tool 入口，也必须补齐“根据持久调用身份查回 Run”的恢复适配及测试。暂不具备该适配时，保留明确的不确定状态，不能自动重放写操作。
-
-## 4. C4：部署与模块边界
-
-```mermaid
-C4Container
-    Person(user, "用户", "选择输入、连接组合，查看产物")
-    System_Boundary(mindos, "MindOS") {
-        Container(client, "共用界面", "ui/app-shell + ui/llm-ui", "表单、选择、运行展示；无生成凭据")
-        Container(httpd, "HTTP 执行宿主", "apps/http-app + backend/*", "装配服务、校验能力、执行 Flow")
-        Container(pack, "Anki 打包 worker", "HTTP 随附原生程序", "生成数据库与媒体包；不调用模型")
-        ContainerDb(storage, "数据与运行记录", "VFS + SQLite + assets", "定义、Task/Effect、卡片与产物")
-    }
-    System_Ext(provider, "模型与媒体服务", "文本、视觉、图片生成、语音合成")
-    Rel(user, client, "使用")
-    Rel(client, httpd, "准备、提交、订阅、下载", "既有应用 API / 文件传输")
-    Rel(httpd, provider, "按冻结的连接调用", "HTTP / 宿主认证")
-    Rel(httpd, pack, "传入受限运行目录与清单", "结构化进程协议")
-    Rel(httpd, storage, "受授权读写与持久记录")
-    Rel(pack, storage, "仅写宿主授予的临时输出")
-```
-
-```mermaid
-C4Component
-    Container_Boundary(server, "HTTP 执行宿主") {
-        Component(facade, "应用门面", "app-core/host", "准备与提交用例、初始状态和订阅")
-        Component(policy, "连接解析与准入", "app-core", "活跃槽、能力匹配、冻结与授权")
-        Component(anki, "Anki 业务", "app-core/anki（拟新增）", "字段规则、卡片身份、清单和发布")
-        Component(flow, "Flow 编排", "llm-flow", "依赖、动态展开、命名槽及任务构造")
-        Component(tasks, "LLM 程序", "llm-tasks", "复用文本/视觉 LLM Task")
-        Component(kernel, "执行内核", "durable-kernel", "通用 Task/Effect、日志、租约与恢复")
-        Component(adapters, "通信适配", "kernel-adapters + driver-llm", "有效连接、认证、模型及媒体操作")
-        Component(native, "本机文件与打包", "apps/http-app", "原生进程、临时目录、流式传输")
-    }
-    Rel(facade, policy, "准备与提交时校验")
-    Rel(facade, flow, "提交冻结的运行定义")
-    Rel(policy, adapters, "读取安全能力与可用性")
-    Rel(flow, tasks, "构造 LLM Task")
-    Rel(flow, anki, "使用产品节点贡献")
-    Rel(flow, kernel, "提交与恢复")
-    Rel(tasks, kernel, "声明外部 Effect")
-    Rel(anki, kernel, "声明合并、媒体及发布 Effect")
-    Rel(kernel, adapters, "执行通信 Effect")
-    Rel(kernel, native, "执行本机打包 Effect")
-```
-
-以上为目标结构。产品节点/Program 位于 app-core；Flow 库只处理通用槽、图和任务。app-core 不导入 Node、Rust worker 或 DOM；原生机制在 HTTP 宿主注入。UI 只导入共享契约及前端模块，HTTP 后端不加载 UI。
-
-## 5. 三种要求分别检查
-
-1. **宿主可执行性**：当前执行宿主是否为 HTTP，并已注册所需版本的 Program、Effect 和打包组件。
-2. **连接适用性**：所选 Connection 解析到的具体模型、协议和适配器能否完成该阶段。
-3. **资源授权**：本次 Run 是否持有读取输入、写卡片/媒体及发布产物的授权。
-
-三者不能相互替代。存在 MCP 连接不等于有 Anki 打包能力；服务器本身有磁盘也不等于任意 Run 可以读写任意路径。
-
-当前 [Flow Task 授权](../../backend/llm-flow/src/flow/task-capabilities.ts) 与[任务构造](../../backend/llm-flow/src/flow/task-factory.ts)主要针对 `llm.agent`/`llm.chat` 自动绑定并延迟启动。新增产品 Program 必须接入宿主注入的能力绑定：按节点要求取得受限资源句柄，完成绑定后才启动 Task。不能只注册新 Effect 就认为已有授权，也不能把整个宿主文件系统授给所有节点；这属于 Flow 装配扩展，无需修改 Kernel 授权协议。
-
-拟增加 Flow 级宿主能力声明，例如 `host.httpd`、`anki.package.v1`。能力由受信宿主装配产生，不接受浏览器自行声明。不要用 `startupMode === 'server'` 或 `ownerKind === 'cli'` 推断授权；这些现有字段分别描述启动策略与租约身份。
-
-准入须覆盖普通提交、会话内调用、远程 CLI、组合 Flow、动态节点和恢复。子图的要求与父图合并，动态节点只能使用已冻结的连接槽及已授予资源，不能扩大权限。HTTP 专有 Program/Effect 不在本地 Web/Tauri/CLI 注册；仅隐藏按钮不足以实现限制。
-
-恢复到不具备能力的宿主时，保留持久记录并报告宿主不兼容，不能自动改用本地 Bash，也不能把缺少适配器误写为业务已完成。具体恢复状态沿用现有协议，实施时需验证“缺少 Program/Effect 版本”的实际行为并补齐应用层分类。
-
-## 6. 运行时多个 Connection 的组合
-
-### 6.1 命名槽与启用条件
-
-| 槽 | 操作要求 | 启用条件 | 模型最低要求 |
-| --- | --- | --- | --- |
-| `text` | `chat` | 有缺失文本字段时 | 文本输入/输出；输出经业务 JSON Schema 校验 |
-| `vision` | `chat` | 输入包含待识别照片时 | 图片输入、文本输出；不接受仅文本模型 |
-| `image` | `image.generate` | 用户启用配图且有缺失配图时 | 已实现的图片生成适配、模型与返回格式 |
-| `speech` | `speech.synthesize` | 用户启用音频且有缺失音频时 | 已实现的 TTS 适配、模型/资源 ID、音色与音频格式 |
-
-一个 Connection 可以绑定多个槽，只要各槽解析后的要求都成立。多个 Connection 可以来自同一 Provider，凭据仍由 Provider/认证宿主管理。无需为了四个用途复制四份 API Key。
-
-组合示例：
-
-- 仅文本：`text → connection-A`；不要求配置 vision、image、speech。
-- 照片加文本：vision 与 text 可绑定同一个支持视觉的 Connection，也可分别选择。
-- 完整媒体：text/vision 共用一个模型连接，image 使用图片连接，speech 使用语音连接；三者可来自不同 Provider。
-- 已有完整卡片只打包：不调用模型，不要求存在任何模型 Connection。
-
-媒体开关和补缺计划属于业务策略。未启用或无需执行的槽不参与必填校验；启用后找不到适配器/凭据则阻止提交并指出原因，不能静默跳过。
-
-### 6.2 拟议契约
-
-以下 TypeScript **仅描述拟新增/调整的契约，并非现有可用 API**：
-
-```ts
-type GenerationOperation = 'chat' | 'image.generate' | 'speech.synthesize';
-
-interface ConnectionRequirement {
-    operation: GenerationOperation;
-    input: Array<'text' | 'image'>;
-    output: 'text' | 'image' | 'audio';
-    features?: Array<'structured-output'>;
-}
-
-interface FlowConnection {
-    name: string;
-    connectionId?: string; // Existing field becomes an optional authoring default.
-    description?: string;
-    requirement?: ConnectionRequirement;
-}
-
-interface RunConnectionBinding {
-    connectionId: string;
-    tier?: 'optimal' | 'standard' | 'fast';
-}
-
-interface FlowRunBindings {
-    connectionBindings?: Record<string, RunConnectionBinding>;
-    connectionId?: string; // Legacy default for nodes without an explicit slot.
-}
-```
-
-继续使用 `connections` 这一份槽声明，避免再并行增加另一套 slots 配置。新定义允许只声明要求、运行时再选择连接；调整 `connectionId` 可选性时须同步全部读写、校验、编辑器和旧定义兼容代码。
-
-操作与模型能力契约归 driver-llm 的中立 contracts；Flow 槽、引用和运行绑定归 llm-flow/contracts，llm-session 持久调用消费这些契约；面向界面的准备结果经 app-contracts 暴露。应用层实现匹配策略，通信层提供事实，不能让 UI 或 Flow 调度器识别具体厂商。
-
-槽的活跃条件由后台节点计划确定，声明式条件复用现有 `SerializableExpression`，不执行用户 JavaScript。提交时尚不能确定是否会走到的必需分支，须先准备该分支可能使用的绑定，或在分支开始前进入持久交互重新准入；不能先调用付费服务，再发现后续槽未绑定。
-
-新增节点级显式 `connectionSlot` 引用，区分“槽名”和“全局 Connection ID”；现有 `config.connectionId` 的兼容解析保留。新模板统一使用显式槽，不依赖同名字符串猜测。
-
-解析顺序：
-
-1. 节点引用的槽先取本次 `connectionBindings[slot]`，再取定义中的槽默认绑定；都没有则报告该槽未绑定。
-2. 节点显式写全局 Connection ID 的旧语义不变；运行时槽映射不覆盖它。
-3. 没有显式槽或连接的旧节点，保持原有单运行连接、Flow 默认连接、会话连接的解析顺序。
-4. 声明了必需槽的新节点不隐式借用会话默认连接，防止用文本连接代替 TTS/生图连接。
-5. 组合 Flow 使用编译后的作用域名称限定槽身份；只有显式映射可以继承父槽。动态展开继承被冻结的映射，不重新读取全局默认值。
-
-绑定属于运行配置，与 `parameters` 分开；不能允许普通字符串参数绕过连接选择与能力校验。一次调用可覆盖多个槽；同一槽在同一 Run 内保持确定性。
-
-### 6.3 兼容性判定与证据
-
-判断对象必须是 `Connection + tier → Provider + model + protocol + operation adapter` 的实际解析结果。
-
-- 先检查 Connection/Provider 存在、启用、模型映射有效及宿主认证就绪。
-- 再检查操作适配器、模型输入/输出能力、协议、必要资源 ID/音色/格式及上下文限制。
-- Provider 声明、模型目录、适配器实现分别提供证据。明确不支持即拒绝；未知能力显示未知，不把 category 或 Provider 名称当成通过依据。
-- 视觉输入不能用“支持生成图片”代替；`audioOutput` 也不证明专用 `speech.synthesize` 已实现。
-- 普通文本只要求生成内容可被业务校验。支持严格结构化输出时优先使用；不支持时可采用 JSON 提示、解析及有界修复，不能因此排除所有仅支持普通文本的模型。
-- 未知的视觉/生图/TTS 能力须由可信适配器声明或显式测试补足，不能默认放行。付费测试由用户显式触发，打开表单和服务器启动都不自动试调用模型。
-
-前端收到按槽返回的候选、安全状态及拒绝原因，例如 `adapter-missing`、`model-incompatible`、`credentials-required`。候选由后台统一计算；前端筛选只是展示，提交时后台仍重新校验。
-
-能力目录可缓存，键包含 Provider/Connection 配置版本、模型目录版本、适配器版本和认证主体；配置/授权变更使相关缓存失效。认证是否就绪单独更新，绝不在响应、缓存键或日志中包含 token/API Key。
-
-## 7. 准备、提交与冻结
-
-拟新增通用“准备 Flow 运行”应用用例；它不是 Anki 专属的新 HTTP 路由。沿用现有应用能力协议，并同步共享契约、服务端能力描述、RPC 版本及客户端检查。
-
-```mermaid
-sequenceDiagram
-    participant UI as 共用 Flow 表单
-    participant App as 后端应用用例
-    participant Resolve as 连接/宿主解析
-    participant Store as 调用与输入记录
-    participant Flow as Flow/Kernel
-    UI->>App: 准备运行(flow revision, 输入引用, 功能开关)
-    App->>Resolve: 解析活跃槽、候选和宿主要求
-    App-->>UI: 表单描述、候选、问题、配置版本
-    UI->>App: 提交(requestId, 参数, connectionBindings, 版本)
-    App->>Resolve: 重验宿主、连接、输入版本、资源授权
-    App->>Store: 持久化不可变调用和解析结果
-    App->>Flow: 提交同一 requestId 对应的 Run
-    App-->>UI: Run 标识、初始状态和订阅能力
-    Flow-->>UI: 经现有视图推送阶段/任务变化
-```
-
-后台准备尽量一次装配表单所需业务数据，不让前端逐槽、逐模型请求。用户更改媒体开关后，合并一次重新准备请求；准备阶段不运行 LLM。
-
-冻结内容包括 Flow revision/digest、参数、输入内容版本/摘要、槽映射、实际模型/协议/操作、适配器版本、提示词与模板版本、输出策略及授权范围。调用记录和 DagRunSpec 都须能恢复这些信息；只在前端 Map 中保存绑定无效。
-
-`FlowInvocationInput`、记录、同请求一致性校验、RunStart、编译和动态派发都要接通多槽绑定。同一 requestId 携带不同参数或绑定时拒绝，不能复用之前的 Run。HTTP 回复丢失后重试同一请求不重复创建 Run。
-
-连接配置在准备后发生变化时，提交要求重新准备。运行中固定模型、地址语义和认证主体；当前凭据在 Effect 执行时由宿主解析并可正常刷新。删除/禁用连接或撤销授权后阻止新的调用，不能用冻结快照绕过撤销，也不能静默换服务商。需要换模型/主体时显式发起新调用。
-
-## 8. 业务 DAG 与卡片规则
+| WordData、cardId/deckId、Unit、字段合并与完整性规则 | 外部 Anki 工具包 | 不解释内容，通过工具输入/输出 Schema 与资产引用交互 |
+| 卡片生成提示词、照片确认、补缺/重生成与部分导出策略 | 外部 Flow/工具包 | 通用 LLM、人工交互、控制与 Tool 节点 |
+| Anki 模板、SQLite/媒体映射、`.apkg` 打包程序 | 外部工具包及其 worker | 通用工具执行和文件/进程能力 |
+| 工具注册、发现、参数/结果 Schema、版本与授权 | itookit 通用 Tool 机制 | 对所有业务工具一致处理 |
+| Flow 图、依赖、并发、分支、失败策略的执行 | itookit 通用 Flow 机制 | 解释外部定义，不内置制卡流程 |
+| Connection 槽、运行绑定、能力要求与快照 | itookit 通用机制 | 处理声明的操作、模态和能力，不内置 text/vision/image/speech 四个业务槽名 |
+| Task/Effect 日志、租约、请求身份、取消与恢复调度 | Durable Kernel 与通用适配层 | 核心保存执行事实，工具核对业务结果 |
+| “哪个字段该补”“包是否符合本次制卡目标” | 外部工具/Flow | 框架只执行 Schema、权限和通用产物约束 |
+| 已安装扩展的 Flow 清单、导入/恢复与完整性校验 | 通用扩展资源机制 | 读取扩展清单，不把 Anki 写入产品默认目录 |
+
+依赖方向：
 
 ```mermaid
 flowchart TD
-    A[后台准入与输入快照] --> B{输入是否为照片}
-    B -- 是 --> C[vision 槽识别单词及 Unit]
-    C --> D[持久人工确认识别结果]
-    B -- 否 --> E[解析文本/JSON/已有项目]
-    D --> F[规范化卡片身份与补缺计划]
-    E --> F
-    F --> G[按卡片有界展开任务]
-    G --> H{是否缺少文本字段}
-    H -- 是 --> I[text 槽补全并校验]
-    H -- 否 --> J[保留已有字段]
-    I --> K[并行生成启用且缺失的图片/语音]
-    J --> K
-    K --> L[逐卡合并、保存结果及失败明细]
-    L --> M[汇总与打包条件检查]
-    M --> N[打包 worker 生成临时 apkg]
-    N --> O[核对清单并提交产物发布回执]
-    O --> P[运行结果与下载入口]
+    Package[外部 Anki 业务包] --> SDK[itookit 公开 Tool 契约与能力端口]
+    Definition[外部 Anki Flow 与提示词] --> Contracts[通用 Flow 契约]
+    Host[HTTP 宿主] --> Loader[通用扩展装配与注册]
+    Loader --> Package
+    Runtime[Flow 与 Kernel] --> Registry[通用 Tool 注册表]
+    Registry --> Handler[已注册工具处理器]
+    Handler --> Worker[外部包内的打包 worker]
 ```
 
-照片分支在确认前不写正式卡片、不生成媒体。确认是持久交互，刷新或断连不能自动同意；修订单词清单后重算计划，在发生付费生成前重新核对所需槽。
+图中的注册调用是依赖倒置：核心依赖 Tool 接口，宿主按配置安装外部实现；核心生产源码不能静态 import Anki 包或按包名写分支。配置中的包 ID、工具 ID、版本和 Schema 是数据，不是领域实现依赖。
 
-节点复用已有控制、输入、人工等待、taskGroup/join 与 `builtin.agent`/LLM 程序；文本/视觉节点使用冻结的连接并禁止任意工具。产品补缺计划、合并、媒体生成和产物发布以 app-core 的小型节点/Program 承载，外部工作均通过 Effect。不能在纯 transform 内直接调用网络或打包进程。
+## 3. 现状与需要补齐的通用机制
 
-卡片约束：
+| 事项 | 当前源码事实 | 本方案要求 |
+| --- | --- | --- |
+| Tool 注入 | `additionalTools`、`configureSession` 可注入工具，工具服务支持外部注册 | 优先复用工厂/宿主注入，补齐版本、受限上下文和生命周期契约；不先建设插件市场 |
+| Flow 调用 | 已有 Agent、控制与人工节点；内置插件表未提供直接 Tool 节点 | 增加通用 `builtin.tool`（拟议名称），确定性调用指定工具，不让模型选工具和参数 |
+| Tool 执行 | `tool.call` 已有授权、执行、进度与取消转发 | 为直接 Tool Task 接通结构化结果、输出校验、正确的失败状态及通用恢复分派 |
+| 崩溃核对 | 当前通用 `ToolCallEffectAdapter.reconcile` 对非只读工具返回 `indeterminate` | 允许注册工具提供业务核对；没有核对能力时保持不确定状态，不静默重放 |
+| Flow 授权 | 自动绑定/延迟启动主要覆盖 `llm.agent`/`llm.chat` | 通用 Tool Task 在取得工具及文件/模型等所需句柄后才启动 |
+| 连接 | 支持命名槽和单个运行连接覆盖 | 逐槽运行绑定、通用操作/模态匹配与不可变解析结果 |
+| 模型通信 | 有 chat、模型 category 和部分能力标记 | 生图/TTS 若需补充，应增加通用通信操作和适配器，不增加 Anki 通信类型 |
+| 扩展资源 | 有产品内置 Flow 库和初始文件恢复 | 外部业务 Flow 通过导入/安装清单接入；通用恢复只处理已安装来源 |
 
-- 使用持久 cardId；同名单词在不同 Unit 可保留为不同卡片。规范化策略显式记录，不用清洗后的文件名作为唯一身份。
-- 保留已有非空字段与未知扩展字段；填补空缺时校验类型、长度、释义、例句及字段间一致性。显式重新生成才替换用户修改。
-- 模型只能返回文本数据，媒体引用由已完成的媒体 Effect 生成，不能直接采纳模型伪造的本地路径或 URL。
-- 单词和例句语音分别记录依赖摘要；例句或配图提示修改后，对应旧媒体标记过期，但保留原文件至新产物成功。
-- 旧字段与新结果合并采用卡片版本/CAS。生成期间有人编辑卡片时保留编辑并报告冲突，不能最后写入者覆盖。
-- 首版默认 `require-complete`：启用阶段出现失败时不发布“完整成功”包，保留成功中间结果并允许重试。允许部分导出作为显式策略，产物清单标明缺失项。
+源码入口：
 
-复用现有 WordData 字段和模板；导入已有项目保留其 deckId、笔记身份及媒体引用。跨格式导入须有版本化转换和测试，不能仅把文件扩展名改成 `.anki`。
+- [工具接口](../../backend/tools/src/core/Tool.ts)、[工具服务](../../backend/tools/src/contracts/tool-service.ts)、[工具执行与核对](../../backend/kernel-adapters/src/effects/tool-call-effect.ts)。
+- [宿主工具注入](../../backend/kernel-adapters/src/runtime/create-kernel-adapters-runtime.ts)、[现有通用审批 Effect Program](../../backend/kernel-adapters/src/programs/approved-effect-program.ts)。
+- [内置 Flow 插件](../../backend/llm-flow/src/flow/builtin-plugins.ts)、[Task 构造](../../backend/llm-flow/src/flow/task-factory.ts)、[Flow Task 授权](../../backend/llm-flow/src/flow/task-capabilities.ts)。
+- [连接槽](../../backend/llm-flow/src/contracts/flow-definition.ts)、[槽解析](../../backend/llm-flow/src/flow/connections.ts)、[Flow 编译](../../backend/llm-flow/src/flow/to-dag.ts)。
+- [调用记录](../../backend/llm-session/src/session/flow-invocations.ts)、[当前连接表单](../../ui/llm-ui/src/components/FlowParameterForm.ts)、[Kernel Effect 契约](../../backend/durable-kernel/src/domain/types.ts)。
 
-## 9. 持久化、幂等、取消与恢复
+下文的新接口与流程都是设计目标，不代表现有接口已支持这些能力。
 
-推荐在获授权的项目/Session 文件范围内保存 Anki 项目。具体物理位置由宿主现有文件端口决定，不新增未经授权的全局绝对目录。
+## 4. C4：部署与组件边界
 
-逻辑布局（待实施）：
+```mermaid
+C4Container
+    Person(user, "用户", "安装业务包，选择输入和连接组合")
+    System_Boundary(platform, "itookit 通用运行平台") {
+        Container(ui, "共用界面", "ui/*", "通用 Flow 表单、工具目录与运行展示")
+        Container(httpd, "HTTP 执行宿主", "apps/http-app + backend/*", "通用扩展装配、能力校验和持久执行")
+        ContainerDb(storage, "通用存储", "VFS + Kernel records + assets", "授权文件、Task/Effect 和不透明业务数据")
+    }
+    System_Boundary(extension, "外部 Anki 工具包，独立版本与发布") {
+        Container(tools, "Anki Tools 与业务 Flow", "外部模块", "卡片规则、业务流程、Schema、提示词与清单")
+        Container(worker, "Anki 打包 worker", "外部包私有组件", "生成 Anki 数据库、媒体映射和包体")
+    }
+    System_Ext(models, "模型与媒体服务", "按已绑定的通用操作提供能力")
+    Rel(user, ui, "使用")
+    Rel(ui, httpd, "提交、订阅、下载", "既有应用 API")
+    Rel(httpd, tools, "按注册契约调用", "通用 Tool API")
+    Rel(tools, worker, "业务实现委派")
+    Rel(httpd, storage, "通用授权与持久化")
+    Rel(httpd, models, "经通用模型适配器调用")
+```
+
+扩展可以与 httpd 同进程运行；独立业务边界不等于必须启动另一个 HTTP/MCP 服务。原生 worker 随外部包提供，只有工具实现知道其存在。
+
+```mermaid
+C4Component
+    Container_Boundary(core, "itookit 通用运行时") {
+        Component(app, "应用门面", "app-core / app-contracts", "准备运行、展示可用能力、接收调用")
+        Component(flow, "Flow 引擎", "llm-flow", "解释外部图、解析槽、构造通用 Task")
+        Component(task, "通用 Tool Task", "通用程序，待补齐", "请求工具 Effect、持久等待并投影结果")
+        Component(kernel, "执行内核", "durable-kernel", "租约、Effect 记录、事件和恢复调度")
+        Component(adapter, "Tool Effect 适配器", "kernel-adapters", "权限、工具分派、通用生命周期转发")
+        Component(registry, "工具注册表", "tools / 宿主注入", "版本化描述、处理器和受限能力")
+    }
+    Container_Boundary(business, "外部 Anki 工具包") {
+        Component(anki, "Anki 工具实现", "外部代码", "解析、卡片规则、合并、打包及业务回执")
+        Component(pack, "打包程序", "包内 worker", "清单和媒体转换为 apkg")
+    }
+    Rel(app, flow, "提交冻结定义与绑定")
+    Rel(flow, task, "构造 Tool Task")
+    Rel(task, kernel, "声明通用 tool.call Effect")
+    Rel(kernel, adapter, "执行或核对 Effect")
+    Rel(adapter, registry, "查找固定版本及授权的工具")
+    Rel(registry, anki, "invoke / reconcile / cancel")
+    Rel(anki, pack, "执行包内打包逻辑")
+```
+
+不新增内置 `anki.package` Effect 或 `app-core/anki`。Anki 工具 ID 可以是 `anki.pack`，但对核心只是一个在注册表中解析的字符串。
+
+## 5. Tool 是业务能力，不限于模型调用
+
+同一个已注册工具可以由 Flow 或获授权的 Agent 调用：
+
+```mermaid
+flowchart LR
+    Flow[Flow 的确定性 Tool 节点] --> Task[通用 Tool Task]
+    Task --> Effect[通用 tool.call Effect]
+    Agent[Agent 的模型工具调用] --> Effect
+    Effect --> Auth[统一工具解析与授权]
+    Auth --> Tool[外部 Anki Tool]
+    Tool --> Impl[业务代码或包内脚本 / worker]
+```
+
+业务层对外只暴露版本化 Tool 契约。Node、Rust 或 Python 是工具内部实现选择；不让模型临时生成打包脚本，也不把任意命令字符串当作制卡接口。
+
+拟增加的 Tool 节点只表达 `toolId`、工具版本/描述摘要、结构化参数或资产引用；运行上下文由宿主提供 operationId、受限文件/模型能力、取消信号和进度通道。模型参数不能伪造执行身份、授权句柄、Provider 凭据或宿主路径。
+
+通用 Tool Task/Program 只负责“校验请求 → 等待授权/审批 → 发出 tool.call → 等待结果 → 校验结果 → 完成/失败”。放在通用适配/程序层，与现有通用 Effect 程序的职责保持一致；Flow 插件只构造其 Task 输入，不依赖 Anki 实现。审批按授权策略决定，不为每个步骤新增强制确认。
+
+必须保持两种调用语义一致：同一注册版本、同一权限、同一超时/取消与恢复契约。Flow 调用直接消费结构化结果，不能从模型可读描述字符串反向解析。超大结果保存为资产/内容引用，展示截断不能使下游丢失业务结果。
+
+工具报告失败时，直接 Tool Task 不能把错误文本当成成功产物；可纠正参数错误与结果不确定分别分类，由外部 Flow 的显式分支决定如何处理。不得用“让 Agent 再调用一次”替代确定性步骤。
+
+## 6. 从 anki-helper 迁移的外部包
+
+推荐在相邻业务仓库演进独立 Anki 工具包，沿用其语言和打包实现；不要把源码搬进 itookit 的 backend、libraries 或 apps 目录。其建议逻辑结构为：
 
 ```text
-anki-project/
-  project.json                 # Stable project/deck identity and schema version.
-  cards/<cardId>.json           # WordData, field versions and media references.
-  assets/<digest>.<ext>         # Immutable generated media.
-  runs/<runId>/manifest.json    # Input, binding and output provenance.
-  exports/<artifactId>.apkg     # Versioned immutable package.
-  exports/<artifactId>.md
+external-anki-package/
+  manifest.json             # Package identity, versions and execution requirements.
+  flows/anki-generate.flow  # Business orchestration and connection slot declarations.
+  tools/                    # Parsing, validation, merge, pack and publish handlers.
+  schemas/                  # WordData, input and result schemas.
+  prompts/                  # Text/vision instructions owned by the business.
+  templates/                # Versioned Anki model templates.
+  runtime/                  # Business receipts and optional native worker.
 ```
 
-Kernel 的 Task/Effect/事件继续保存在现有 Kernel 存储中；这些项目文件是业务内容和产物，不另建第二套调度数据库。中间状态保存小对象及资产引用，照片、音频和包体不进入 DAG 参数或每次事件快照。
+| 现有 helper 源码 | 在外部包中复用 |
+| --- | --- |
+| `src/models.rs` | WordData、grade/unit、未知扩展字段与转换规则 |
+| `src/modules/init/utils.rs` | 业务提示词、识图结果校验、媒体有效性规则 |
+| `src/modules/init.rs` | 文本/JSON/Unit 输入及补缺计划；Flow 已编排的阶段不再内部重复调度 |
+| `src/modules/pack.rs` | 稳定牌组/笔记身份、流式媒体、临时包与 Anki 格式处理 |
+| `src/modules/md.rs`、`template/ankimodel.json` | Markdown 与卡片模板 |
 
-每个业务操作使用由 Run、cardId、阶段、输入摘要、模板/连接语义版本生成的稳定身份。已提交的卡片/媒体回执可以复用；失败重试只补未完成项。不要只凭“文件名存在”判断某次生成已完成。
+示意工具名为 `anki.prepare`、`anki.validate`、`anki.apply`、`anki.pack`、`anki.publish`，均属于外部包，不是平台内置 API；最终粒度按独立重试与业务事务边界确定，不要求每个纯函数都成为 Tool。
 
-- 本地打包写入同一宿主授予的临时目录；核对文件、大小、清单后发布不可变产物，再 CAS 更新最新产物引用。失败保留上一个完整包，原生临时文件不作为下载入口。
-- 卡片/资产提交与 Effect 结算存在崩溃窗口，适配器必须通过业务回执 reconcile，不能宣称文件操作与 Kernel 日志天然原子。
-- 有远端 jobId 的媒体服务保存身份并在恢复时查询；后台执行等待和状态缓存，浏览器不直接轮询服务商。
-- 无幂等接口/查询能力的付费调用，在“远端已执行、结果尚未持久化”的窗口无法保证不重复计费。使用现有 `recoveryPolicy: 'manual'` 和 `reconcile → indeterminate` 表达不确定性，显式决定重试；不能声称 exactly-once 或把所有网络请求标为可安全重试。
-- 取消通过 AbortSignal、服务商取消能力和打包进程组终止传播；等清理确认后再报告停止。取消不会删除用户原有卡片或已发布产物。
-- 重启时先注册相同版本的 Program/Effect、建立资源映射并取得原有 Session/Run 租约，再执行恢复；浏览器重连只读取/订阅，不重新创建 Run。
+业务包使用 itookit 管理的授权连接/资产端口，不再读取 helper 的独立 `config.toml`、项目列表和凭据。原 helper Web 服务不作为必要运行依赖；固定流程不能整个藏进 `helper init`，否则 Flow 看不到阶段、预算和失败边界。
 
-## 10. 打包、性能与日志
+平台执行通用 LLM/媒体节点，业务包提供提示词、输出 Schema 及校验/合并工具。若一个外部工具确实需要自行调用模型，必须使用能保留子操作身份、用量和恢复语义的通用受限模型端口；该端口尚未具备时，先把模型调用保留为显式 Flow 节点，不能直接携带 API Key 绕过框架。
 
-HTTP 发布流程构建并冻结打包 worker、模板和协议版本，检查可执行性后才声明 `anki.package.v1`。发布物缺少 worker 时显示准确的不可运行原因；不能先显示 ready，再到第一次导出才发现缺少本机依赖。启动检查不执行模型试调用。
+## 7. 多 Connection：机制在平台，用途在业务定义
 
-现有 release 清单只校验服务端/UI 文件及 Node 主版本；实施时须把 worker、模板、协议版本、操作系统/CPU 架构纳入构建清单、指纹与激活检查。worker 的标准输出只传结构化进度/结果，诊断写标准错误，避免原 helper 的普通输出破坏协议。
+外部 Flow 声明 text、vision、image、speech 等槽名、各自要求和启用条件。itookit 只解释声明，不在启动代码或通用表单中固定这四个槽。
 
-打包 worker 不接受浏览器提供的任意宿主路径。后端把已授权文件转换为只读运行清单，约束临时输出范围；原生程序只处理该清单，不包含认证或模型调用。
-
-性能要求：
-
-- 按卡片有界展开与排队，不一次为数千单词创建全部活跃任务；并发同时受 Run、连接/服务商及全局资源限制。
-- 已补齐字段不调用模型；音频/图片根据内容摘要复用，不因刷新、切换导航或重连重新生成。
-- 语音和配图可并行；已有成功的阶段独立提交，单个媒体失败不使整张卡重跑文本生成。
-- 数据库与 ZIP 工作在独立打包进程，避免占用 HTTP 事件循环；媒体流式读写，沿用 helper 的分块、已压缩媒体不重复压缩和临时输出策略。
-- 一个 Run 初始快照加增量订阅；进度按阶段变化或节流窗口合并，不逐音频 chunk/逐单词字符发前端请求。终态停止后台状态探测。
-- 复用现有应用视图、文件下载与事件传输；不另建 Anki Web 服务、WebSocket 或通用单步骤 REST 接口。
-
-现有通用 Flow 输出窗口仍有按秒刷新的路径，见[当前输出设计](flow-capabilities-and-output.md)。实施本方案时应复用/补齐通用运行订阅并取消该窗口对同一运行的重复轮询，不能声称现状已经全面事件化。
-
-日志关联 requestId、runId、taskId、cardId、slot 和阶段；记录缓存命中、排队、模型调用、文件提交、打包字节及下载开始/结束。性能分别衡量“提交返回”“首个卡片结果”“全量生成”“产物就绪”，不能用 HTTP 202/应用调用返回时间代表生成完成。默认日志不记录凭据、照片、单词正文、模型完整响应和原生私有路径。
-
-## 11. 界面、模板和系统恢复
-
-运行表单展示输入来源、目标项目、媒体开关及当前需要的槽。每个槽列出用途、选中 Connection/实际模型和兼容性原因；未启用的媒体不要求配置，配置入口复用工具箱，不再创建 Anki 专用 Provider 页面。
-
-执行后工作台展示识图确认、阶段/卡片进度、失败明细和产物。`.apkg` 与 Markdown 使用现有受授权文件传输下载；远程浏览器不能把服务器绝对路径当作可直接打开的本地路径。
-
-Anki 模板作为产品定义加入 Flow 库，按既有安装回执补装；定义本身可在所有客户端查看。非 HTTP 执行宿主显示“需要 HTTP 后端”，不自动启动 httpd、不打开任意进程、不删除模板。
-
-系统恢复页的“工作流”折叠组加入 Anki 模板，组名由当前“作文工作流”泛化为“内置工作流”。本组“全选”只选择本组；顶部恢复仅补缺失模板，保留已有修改，与 Provider/Connection/Agent 重置分开。恢复模板不触发模型调用、媒体生成或原生任务，也不恢复/覆盖用户卡片项目。
-
-## 12. 实施顺序与验收
-
-| 阶段 | 改动位置 | 可验收结果 |
+| Anki Flow 的槽 | 声明的通用操作/模态 | 外部业务启用条件 |
 | --- | --- | --- |
-| A：运行契约 | llm-flow/contracts、llm-session、app-contracts、应用解析、共用表单 | 多槽运行绑定、兼容反馈、持久冻结及请求去重；旧单连接 Flow 继续运行 |
-| B：文本闭环 | app-core/anki、产品模板、HTTP 文件/打包适配、release 构建 | 文本/JSON 输入、逐卡补缺、保留修改、可下载且能导入的文本 `.apkg` |
-| C：可选阶段 | driver-llm 操作契约、媒体适配、vision/HITL 节点 | 照片确认、图片/单词及例句语音、不同 Connection 组合；关闭功能无需对应配置 |
-| D：恢复与完整交付 | 业务回执、运行订阅、产品恢复清单、跨进程测试 | 重连/重启/取消、失败项重试、旧产物保留及模板恢复闭环 |
+| text | chat，文本输入/输出 | 存在缺失文本字段 |
+| vision | chat，图片输入/文本输出 | 有待识别照片 |
+| image | image.generate | 用户启用且缺失配图 |
+| speech | speech.synthesize，音色/格式等操作约束 | 用户启用且缺失语音 |
 
-独立 npm 若在实施中修改，须按独立仓库提交、推送、构建和发布，再记录消费版本；主仓提交不能代替 npm 已发布。设计阶段不修改或发布这些库。
+同一 Connection 可满足多个槽，也可选择不同 Provider。完整卡片仅打包时无模型调用，不要求任何模型连接。业务负责产生补缺计划；平台只按声明的活跃条件判断必需绑定。
 
-必须覆盖的验收：
+拟议的通用扩展：
 
-1. 同一 Connection 绑定多个适用槽成功；不同 Provider 的组合成功；文本模型绑定 vision、生图模型绑定 text、缺少 TTS 适配时准确拒绝。
-2. 文本/JSON/照片输入，以及“完整卡片只打包”；关闭音频/配图不检查未使用的连接。
-3. 本地 Web/Tauri/CLI 通过 UI 和直接应用调用均不能执行；远程客户端经 HTTP 执行成功；组合/动态节点和恢复也不能绕过。
-4. 同 requestId 重试只得到同一个 Run；改变绑定则拒绝；准备后修改配置、运行中撤销授权和 OAuth 正常刷新分别验证。
-5. 保留已有字段、扩展字段、Unit、人工修改及既有媒体；生成期间编辑产生可见冲突；失败重试不重跑已完成阶段。
-6. 在媒体返回后/业务提交后/Effect 结算前/打包完成后分别终止宿主，重启后核对回执、计费不确定性和原产物完整性。
-7. 导出核对卡片数、字段、稳定 deck/note 身份、媒体引用和 ZIP 完整性，并在真实 Anki 导入与重复导入；格式测试不能替代客户端验收。
-8. 大单词表的并发、内存、事件数量和打包吞吐有实测；HTTP 导航不被打包阻塞；关闭前端不取消已授权任务，取消后不继续发布新包。
-9. 全新 HTTP release 无相邻源码、开发依赖或额外 helper 安装仍能运行；系统恢复只补模板且不调用模型。
+- 继续使用现有 `FlowConnection` 声明；补充操作、模态、特性要求，允许槽先声明、运行时再绑定。
+- 调用输入增加 `connectionBindings: Record<slot, binding>`，与普通业务 parameters 分开；保留原单连接调用兼容。
+- 新节点使用显式槽引用，避免与全局 Connection ID 的同名字符串混淆。
+- 显式槽按本次绑定、定义默认绑定解析；必需槽缺失即报告，不隐式用会话文本连接替代媒体连接。未指定槽/连接的旧节点保持原解析顺序。
+- 组合 Flow 的槽按作用域命名并显式映射；动态节点继承被冻结的映射，不重新读取全局默认设置。
+- 条件复用现有声明式表达式；提交前无法确定的分支先准备其可能需要的绑定，或在运行中进入持久交互重新准入，不执行任意用户 JavaScript。
 
-A/B 单独完成只能记为阶段交付。A–D、真实媒体及 Anki 客户端验收完成后，才把原 Anki Flow 需求标为完成。
+匹配基于 Connection/tier 解析到的实际模型、协议、通信适配器和认证状态。识图不等于生图，模型 category 和 Provider 名称不等于已实现的操作。未知能力返回未知/需要测试，不当作支持；模型输出的领域正确性由外部 Schema/工具判断。
+
+普通文本可以使用提示、解析和有界修复；严格 structured-output 只在声明为必需时强制。付费连接测试由用户显式触发，不在打开表单或后台启动时自动运行。
+
+框架冻结 Flow/工具版本、参数、输入版本/摘要、槽映射、实际模型/协议和通用授权范围；外部包冻结自己的 Schema、提示词、模板及业务清单。调用记录与请求一致性校验必须包含这些绑定/来源，不能只保存在前端。
+
+认证凭据仍由宿主管理，正常刷新不会改变冻结的认证主体；删除/禁用连接或撤销授权后阻止新的调用，不能凭快照绕过撤销，也不能静默换模型。准备后配置变化要求重新准备。
+
+## 8. 仅 HTTP 执行与扩展安装
+
+“仅 HTTP”是本次外部业务的部署策略。扩展/Flow 清单声明 `host.httpd` 等通用宿主要求，框架读取可信执行宿主描述并匹配；不能以浏览器种类、`ownerKind === 'cli'` 或 `startupMode === 'server'` 代替执行能力。
+
+- 安装后的扩展仅在满足要求的执行宿主注册处理器。缺少扩展、版本、能力或授权时，在执行前返回通用的不可用原因。
+- 同一用户界面可查看定义，运行按钮说明当前宿主不满足的要求；Tauri/远程 CLI 连接 HTTP 后端时，按实际后端能力执行。
+- 普通提交、Agent Tool、组合 Flow、动态节点和恢复使用同一规则，不能只隐藏按钮。
+- 生产装配按受信宿主配置选择外部包；不接受前端任意 URL/代码作为插件执行来源。
+
+初期复用已有工具工厂和宿主注入；按实际缺口补充通用的安装清单与装配端口，不为 Anki 单独建立插件框架、路由或常驻服务。外部包既可本地工厂注册，也可后续通过既有 MCP 适配提供；首版不要求额外 MCP 服务。
+
+MCP 的 tools/progress/cancel 不天然提供应用级崩溃核对。通过 MCP 使用可恢复写工具时，仍需该工具提供稳定操作身份和核对协议；不存在时按不确定结果处理。
+
+平台 release 不默认内嵌 Anki worker 和模板。外部包独立构建、发布、安装并锁定版本；部署可以组合平台与选定扩展，但构建/激活逻辑只处理通用扩展清单、内容摘要、运行时/系统架构及协议兼容性。
+
+配置要求必须加载的扩展，在初始化成功后才能 listen；可选扩展失败则不宣告对应能力，并显示失败原因。扩展 ready 检查不调用付费模型。移除 Anki 扩展后，平台仍应能独立构建和启动。
+
+## 9. 外部业务 DAG 与交互
+
+```mermaid
+flowchart TD
+    A[通用准入：外部定义、工具、连接与授权] --> B[Tool：解析输入和补缺计划]
+    B --> C{业务定义要求识图吗}
+    C -- 是 --> D[通用视觉调用，使用外部提示词]
+    D --> E[外部定义的持久人工确认]
+    C -- 否 --> F[按卡片有界展开]
+    E --> F
+    F --> G[通用文本调用，使用外部提示词与连接槽]
+    G --> H[Tool：业务校验与字段合并]
+    H --> I[按业务开关执行通用媒体操作]
+    I --> J[Tool：保存业务结果和导出清单]
+    J --> K[Tool：打包]
+    K --> L[Tool：核对并发布业务产物]
+    L --> M[通用运行视图与资产下载]
+```
+
+图中的业务逻辑全部来自外部 Flow/工具。完整字段跳过生成、照片确认前不正式写入、媒体默认关闭、失败是否允许部分包，均由外部定义表达；框架没有 Anki 分支。
+
+外部业务验收需覆盖：稳定 card/deck 身份；同词不同 Unit；保留已有非空字段和扩展字段；显式重新生成；编辑冲突/CAS；媒体依赖变化后的失效与替换；不采纳模型伪造的媒体路径；现有项目导入；`.apkg` 和 Markdown 导出。
+
+模型生成卡片数据，外部工具使用预先编写和测试的打包程序。worker 可执行文件、模板和协议由工具包负责，核心不知道其路径和编程语言。工具不能重复编排整个已由 Flow 控制的生成流水线。
+
+对话入口可以增加一个外部 `GenerateAnkiDeck` 工具来提交该 Flow 并返回 Run ID；它不能代替实际执行步骤的 Anki Tools，也不能把整个长流程藏在一次模型调用里。制卡 Flow 不授予递归发起自身的入口。
+
+## 10. 恢复：平台负责调度，Tool 负责业务核对
+
+保留通用 `tool.call` Effect。补充工具生命周期注册与可信执行上下文，使适配器可以按固定工具版本转发 invoke、cancel、reconcile。**不为每个业务新增核心 Effect 类型，也不在通用适配器中添加 Anki 分支。**
+
+职责分开：
+
+| 事项 | 平台机制 | 外部 Tool 的策略/实现 |
+| --- | --- | --- |
+| 操作身份 | 生成并持久化稳定 operationId；回复丢失后保持同一身份 | 以该身份关联业务回执，不自行每次随机换 ID |
+| 核对 | 恢复时解析原版本，调核对端口并消费 completed/retry/indeterminate | 检查自己的清单、内容摘要、远端 jobId、包体和发布记录 |
+| 取消 | 传递信号、等待清理确认、维护 Task 状态 | 中止自身请求/进程组，释放临时资源并确认停止 |
+| 重试 | 执行已声明且获准的重试策略，保留 attempts | 判断具体副作用能否核对/重放；付费不确定性不能伪造为安全 |
+| 持久结果 | 保存完整有界结果/资产引用和 Effect 结算 | 定义领域结果、回执格式和完整包的发布语义 |
+
+现有 Tool 接口不完整提供上述恢复端口，当前非只读工具核对会返回 `indeterminate`。这是需要补齐的通用机制，不能用业务特化 Effect 绕过，也不能因注册了 Tool 就宣称已经可恢复。
+
+平台不默认重试所有写工具；工具没有核对能力就保留不确定状态。付费模型/媒体若缺乏服务商幂等或查询接口，远端已执行、结果未提交的窗口不能保证不重复计费。业务工具核对信息与 Kernel 结算存在崩溃窗口，须由回执/reconcile 处理，不声称跨存储天然原子。
+
+外部打包工具先写临时包、核验并登记业务回执，再由发布工具更新产物引用；失败保留旧包。Flow 在已结算的打包结果上重试发布，不重跑前面的文本和媒体。下载只读取已发布资产。
+
+恢复必须固定原包/工具版本；升级不能让旧调用静默执行新规则。缺少版本时保留记录、报告运行环境不可用，不自动失败归档或换实现。具体阻塞状态需按现有 Kernel 行为验证，由应用层提供准确分类。
+
+## 11. 存储、性能和界面边界
+
+平台拥有通用 VFS、资产、内容引用与 Kernel 日志；外部工具拥有被授权目录中的卡片、业务清单和回执。核心不硬编码 `word_json/`、`.anki-deck-id` 或 `anki-project/` 布局。
+
+- 任务按独立重试边界选择粒度：通常每卡片补全、每媒体资产生成、每清单打包。字段解析等纯函数无需分别创建 Task。
+- 并发上限、队列和预算是通用机制；具体批量大小、补缺与媒体复用条件由外部 Flow/工具选择。
+- 不为 Anki 新增后台队列或事件总线。工具上报有界进度，平台统一节流与推送；大数据通过资产引用传递。
+- 打包工作由外部工具在独立 worker 中执行，流式读写，避免阻塞 HTTP 事件循环；其分块/压缩策略属于工具实现。
+- 表单/运行页使用通用 Schema、节点标题、结构化结果和资产下载。需要专用编辑器时由外部 UI 扩展提供，不能让共用设置页引用 Anki DTO。
+- 外部工作流经通用导入/安装清单提供；恢复页只补已安装来源中的缺失定义、保留修改。Anki 不加入 app-core 的内置 Flow/初始文件数组，也不因打开恢复页自动安装。
+- 平台缓存描述/候选及通用运行状态，业务缓存由工具按内容/规则版本维护；没有核心的 Anki 缓存服务。
+
+现有通用 Flow 输出仍有按秒刷新的路径，见[输出设计](flow-capabilities-and-output.md)。若本轮实现运行订阅，应作为通用改进，不额外给 Anki 创建独立轮询。
+
+日志保存通用 requestId/runId/taskId/operationId/toolId、排队/执行时间和有界诊断。工具可报告业务统计，核心不解析卡片字段；凭据、完整卡片正文与媒体不进入默认日志。
+
+## 12. 实施与验收
+
+| 阶段 | itookit 的通用交付 | 外部 Anki 包的交付 |
+| --- | --- | --- |
+| A：确定性工具调用 | Tool 节点、通用 Tool Task、授权后启动、结构化结果及失败语义 | 最小解析/打包工具及 Schema |
+| B：持久连接与工具身份 | 多槽绑定、版本锁定、请求一致性、通用恢复生命周期 | 连接用途、提示词、回执及业务核对 |
+| C：文本闭环 | 通用安装/注入、能力匹配、运行视图与资产下载 | 外部 Flow、补缺/合并、模板、文本 `.apkg` |
+| D：媒体与完整交付 | 按实际缺口补通用模型操作、取消/恢复、扩展资源导入 | 照片确认、图片/语音、项目兼容与真实 Anki 导入验收 |
+
+先验证外部工厂注入能否满足装配，再补最小缺口；不为一个用例设计通用包市场、脚本语言、独立调度器或另一套 Runtime。
+
+通用机制必须用与 Anki 无关的测试工具验证，例如表格导出或文件转换 fixture：
+
+1. Flow 直接调用工具无需模型请求；工具名、输入字段和输出格式都不要求 Anki 特征。
+2. 参数/输出 Schema、禁用工具、未授权路径、失败状态、大结果引用、进度及取消均正确。
+3. 回复丢失/重启时按稳定身份核对；无核对能力不会自动重放写操作；版本缺失不会静默换实现。
+4. 多连接、多槽、同 Connection 复用、组合/动态节点、授权变更与恢复保持一致。
+5. HTTP 限制由通用要求声明并校验；其他外部工具可声明不同宿主要求，不受 Anki 策略影响。
+6. 删除/不安装 Anki 包后，平台独立构建和启动，通用测试全部通过；新增核心代码不包含 Anki 专用类型、分支、模板或数据路径。
+
+外部业务另行验收：文本/JSON/照片输入、保留修改与冲突、媒体默认关闭、不同 Connection 组合、失败项重试、崩溃后的业务回执、稳定 deck/note 身份、ZIP/媒体完整性、真实 Anki 导入和重复导入、独立包发布及无相邻源码依赖。
+
+独立 npm 若在机制实施中修改，分别提交、推送、构建和发布；外部 Anki 包也独立发布。**本次仅修订文档，未实现这些机制，也未修改或发布 npm。**

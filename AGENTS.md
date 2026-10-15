@@ -13,6 +13,9 @@
 ## 开发原则
 SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
 
+- 非通用业务通过独立的外部 Tool 包与 Flow 定义接入；新增核心代码只提供通用机制，不内置具体业务的字段、提示词、模板、打包实现或按工具名分支。
+- Flow 可以确定性调用 Tool，Agent 模型调用只是另一入口。平台负责授权、版本、连接绑定及持久执行；工具负责业务规则与副作用核对。详见 [策略与机制边界](./doc/design/application-policy-boundaries.md)。
+
 ## 常用命令
 
 ```bash

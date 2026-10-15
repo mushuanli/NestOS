@@ -53,7 +53,7 @@ Web 保留平台接口，不启用本机 Bash。跨 Session Memory 已有实现�
 
 | 归属 | 尚未完成 | 性质 |
 | --- | --- | --- |
-| Anki Flow | 将相邻仓库 `pair-x1/tookit/anki-helper` 的制卡功能接入 Flow；仅 HTTP 宿主执行，按阶段选择多个 Connection 并校验能力，补齐恢复模板与 `.apkg` 产物验收。已完成[设计方案](design/anki-flow.md)，尚无可运行实现 | 产品实现 + 验收 |
+| 外部 Anki Tool + Flow | 在独立业务包实现制卡规则、工具、Flow、模板与打包，按声明仅在 HTTP 宿主执行；itookit 只补通用 Tool 节点、连接绑定、版本/授权/恢复及扩展资源机制。已修订[设计方案](design/anki-flow.md)，尚无可运行实现 | 通用机制 + 外部业务实现 + 验收 |
 | P0-05 | 定位 `scheduler-paused-owner.test.ts` 的 `Host exited: 1`，修复后重跑；原因未确定，不能归因为环境或视作已解决 | 当前回归失败 |
 | P0-02 | 发送性能达到 ≤2 秒 / ≤100 次公开 IPC；IPC/发送失败、保存重试、pause 与未确认停止的真实窗口闭环 | 实现优化 + 验收 |
 | P0-04 | 原生目录选择完整授权路径、支持平台及发布安装包、深层 cwd 的 Skill 级联 | 平台验收 |

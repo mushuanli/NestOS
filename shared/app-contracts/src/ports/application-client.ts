@@ -2,11 +2,11 @@ import type { IFileSystem, OperationOptions } from '@itookit/vfs-core';
 import type { ConfigurationImportPort, IConnectionService, IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import type { ISessionRepository, SessionManagementPort, ICommandBus } from '@itookit/llm-session/contracts';
 import type { KernelViewPort } from '@itookit/durable-kernel/contracts';
-import type { IToolService, SessionSkillControls } from '@itookit/tools/contracts';
+import type { IToolService } from '@itookit/tools/contracts';
 import type { HarnessSession, HarnessConversationSnapshot } from '@itookit/piagent-driver/harness';
 import type { SessionFilesPort, DirectoryMountPort, FileSystemsPort } from './files';
 import type { ProjectService, ProjectSessions, NativeSessionCommand, ResolvedProjectFavorite } from './projects';
-import type { SessionExport, WorkbenchView, WorkbenchArchiveExporter, WorkbenchArchiveImporter, PrivilegedCommandService, MindosInitialFiles } from './session';
+import type { SessionExport, WorkbenchView, SessionOpenView, WorkbenchArchiveExporter, WorkbenchArchiveImporter, MindosInitialFiles } from './session';
 import type { SettingsPort, SettingsWorkspaceSource } from '../settings';
 import type { ToolboxInventory, ToolboxResources, OcrService, ModelConfigurationCommands } from './configuration';
 import type { DigitalTwinService } from './digital-twin';
@@ -39,12 +39,13 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
-    workbenchView(options?: { displayedFilesPolicy?: 'gitignore' | 'all' }): Promise<WorkbenchView>;
+    workbenchView(options?: { displayedFilesPolicy?: 'gitignore' | 'all'; chatControls?: boolean }): Promise<WorkbenchView>;
+    openSessionView(sessionId: string): Promise<SessionOpenView>;
+    readUiDocuments(names: string[]): Promise<Record<string, unknown>>;
+    writeUiDocuments(documents: Record<string, unknown>): Promise<void>;
     settings(sources: readonly SettingsWorkspaceSource[]): Promise<SettingsPort>;
     ocr(): Promise<OcrService>;
     initialFiles(): Promise<MindosInitialFiles>;
-    privilegedCommands(): Promise<PrivilegedCommandService>;
-    sessionSkills(): Promise<SessionSkillControls>;
     projectSessions(): Promise<ProjectSessions>;
     toolboxView(skills: IFileSystem): Promise<ToolboxView>;
     archiveExporter(): Promise<WorkbenchArchiveExporter>;

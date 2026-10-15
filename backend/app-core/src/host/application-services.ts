@@ -7,5 +7,5 @@ export function bindLocalApplicationServices(runtime: ApplicationRuntime): Local
         directoryMounts, projects, projectSync, digitalTwin, kernel, sessionManager, commandBus } = runtime;
     return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles,
         directoryMounts, projects, projectSync, digitalTwin, kernel, sessionManager, commandBus,
-        prepareSession: runtime.prepareSession?.bind(runtime), startBackground: runtime.startBackground?.bind(runtime) };
+        prepareSession: async id => { await runtime.openConversation(id); return await runtime.prepareSession?.(id) ?? true; }, startBackground: runtime.startBackground?.bind(runtime) };
 }

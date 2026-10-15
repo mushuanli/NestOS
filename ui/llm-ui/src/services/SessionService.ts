@@ -43,16 +43,23 @@ export class SessionService {
         private commands: ICommandBus,
     ) { }
 
-    async loadSession(sessionId: string, defaultTitle: string, branch?: string): Promise<SessionLoadResult> {
+    async loadSession(sessionId: string, defaultTitle: string, branch?: string, initial?: SessionLoadResult): Promise<SessionLoadResult> {
+        if (initial) {
+            if (initial.sessionId !== sessionId || branch !== undefined && initial.manifest.currentBranch !== branch)
+                throw new Error('Initial Session identity does not match the editor target');
+            this.subscribeOnce();
+            this.projections.set(sessionId, { at: Date.now(), title: initial.title, manifest: initial.manifest, settings: initial.settings });
+            return initial;
+        }
         let snapshot = await this.commands.execute<SessionSnapshot>(SessionCommand.Bind, { sessionId });
-        if (branch !== undefined) {
+        if (branch !== undefined && snapshot.view?.manifest.currentBranch !== branch) {
             await this.commands.execute('vcs.branch.switch', { branchName: branch });
             // Branch selection changes the projection; read it without rebinding.
             snapshot = await this.commands.execute<SessionSnapshot>(SessionCommand.GetSnapshot);
             // The cached projection belongs to the branch that was bound before the switch.
             this.projections.delete(sessionId);
         }
-        const cached = this.readProjection(sessionId);
+        const cached = snapshot.view ? undefined : this.readProjection(sessionId);
         if (cached) {
             return { sessionId, snapshot, title: cached.title, manifest: cached.manifest, settings: cached.settings };
         }

@@ -88,7 +88,6 @@ export interface AIContextMenuNode {
 }
 
 export interface AppUI {
-    installFlowLibrary?(commands: ICommandBus): Promise<void>;
     restoreFlowLibrary?(commands: ICommandBus): Promise<number>;
     createFlowContextMenu<TNode extends { id: string; type: 'file' | 'directory' }>(deps: {
         commands: ICommandBus;

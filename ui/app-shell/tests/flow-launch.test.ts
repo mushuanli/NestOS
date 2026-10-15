@@ -121,36 +121,6 @@ describe('Flow parameter form', () => {
     });
 });
 
-describe('bundled Flow library', () => {
-    it('installs missing templates without overwriting existing user drafts', async () => {
-        const { installFlowLibrary } = await import('../../llm-ui/src/flows/library');
-        const stored = new Map();
-        const execute = vi.fn(async (command: string, args: any) => {
-            if (command === FlowCommand.DraftInstall) {
-                if (!stored.has(args.id)) stored.set(args.id, structuredClone(args));
-                return stored.get(args.id);
-            }
-            throw new Error(command);
-        });
-        const commands = { execute } as unknown as ICommandBus;
-        await installFlowLibrary(commands, createMindosFlowLibrary());
-        const id = createMindosFlowLibrary()[0].id;
-        expect(stored.get(id).parameters.find((param: any) => param.name === 'maxRounds').default).toBe(10);
-        stored.get(id).name = 'User edited';
-        execute.mockClear(); await installFlowLibrary(commands, createMindosFlowLibrary());
-        expect(stored.get(id).name).toBe('User edited');
-        expect(execute.mock.calls.map(call => call[0])).toEqual([FlowCommand.DraftInstall]);
-    });
-
-    it('rejects invalid templates before creating a file', async () => {
-        const { installFlowLibrary } = await import('../../llm-ui/src/flows/library');
-        const execute = vi.fn(async () => { throw new Error('Invalid graph'); });
-        await expect(installFlowLibrary({ execute } as unknown as ICommandBus, createMindosFlowLibrary())).rejects.toThrow('Invalid graph');
-        expect(execute).toHaveBeenCalledTimes(1);
-
-    });
-});
-
 it('validates configurable round limits before closing the run form', async () => {
     const result = promptFlowParameters([{ name: 'maxRounds', type: 'number', default: 10,
         required: true, integer: true, minimum: 1, maximum: 1000 }]);

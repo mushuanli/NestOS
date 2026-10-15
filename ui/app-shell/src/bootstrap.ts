@@ -1,4 +1,3 @@
-import { lazyResource } from './lifecycle/lazy-resource';
 import { createSettingsAccess } from './configuration/settings-access';
 import { twinSourceMenu } from './digital-twin/source-menu';
 import { DEFAULT_HARNESS_TOOL_IDS } from '@itookit/app-contracts';
@@ -106,10 +105,9 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const agentService = services.agentService;
     // UI state lives beside the theme in `etc:/ui`, so Web and Tauri share one
     // inspectable store instead of the webview's localStorage.
-    const etc = await vfs.openFileSystem('/etc');
-    const themeReady = themeService.init(etc);
+    const uiDocs = new VfsJsonStore(backend);
+    const themeReady = themeService.init(uiDocs);
     cleanupFns.push(async () => { await themeReady.catch(() => {}); themeService.destroy(); });
-    const uiDocs = new VfsJsonStore(etc);
     const uiState = new VfsUIPersistence(uiDocs);
     cleanupFns.push(() => uiState.flush());
     logStep('初始化界面服务…');
@@ -127,14 +125,11 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         requestDelete: targets => deletionDialog.request(targets),
     });
     cleanupFns.push(() => settings.close());
-    const chat = lazyResource(async () => {
-        const [privilegedCommands, sessionSkills] = await Promise.all([backend.privilegedCommands(), backend.sessionSkills()]);
-        return { sessionSkills, factory: options.ui.createChatEditor(agentService, {
-            defaultHarnessToolIds: DEFAULT_HARNESS_TOOL_IDS, sessionManager, sessionRepository, ocr, commandBus, kernel: kernel.kernel, privilegedCommands, sessionSkills,
-        }) };
-    }, () => {});
-    cleanupFns.push(() => chat.close());
-    const llmFactory: EditorFactory = async (element, config) => (await chat.get()).factory(element, config);
+    const createChatFactory = (controls: import('@itookit/app-contracts/services').WorkbenchChatControls): EditorFactory =>
+        options.ui.createChatEditor(agentService, {
+            defaultHarnessToolIds: DEFAULT_HARNESS_TOOL_IDS, sessionManager, sessionRepository, ocr, commandBus,
+            kernel: kernel.kernel, ...controls,
+        });
     const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS });
 
     // Skills workspace: VFSUIShell list (SkillsEngine) + form editor (SkillSettingsEditor)
@@ -142,9 +137,6 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const skillsFiles = () => skillsEngine ??= new SkillsEngine(agentService);
     const skillsFactory = options.ui.createSkillEditor(agentService);
     cleanupFns.push(() => skillsEngine?.dispose());
-
-    const flowLibrary = lazyResource(async () => { await options.ui.installFlowLibrary?.(commandBus); }, () => {});
-    cleanupFns.push(() => flowLibrary.close());
 
     // Workflows workspace: standalone design surface over the flows VFS module.
     const flowsFactory = options.ui.createFlowEditor({
@@ -168,7 +160,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     const factories: Record<string, EditorFactory> = {
         standard: defaultEditorFactory, agent: defaultEditorFactory,
-        settings: settings.factory, chat: llmFactory, skills: skillsFactory, flows: flowsFactory,
+        settings: settings.factory,  skills: skillsFactory, flows: flowsFactory,
     };
     const workspaceFiles = new Map<string, import('@itookit/vfs-core').FileSystemContext>();
     const filesForWorkspace = async (workspace: WorkspaceConfig): Promise<import('@itookit/vfs-core').FileSystemContext> => {
@@ -188,7 +180,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const editorFactoryMap: Record<EditorTypeKey, EditorFactory | undefined> = {
         standard: defaultEditorFactory,
         agent:    agentFactory as EditorFactory,
-        flow:     async (element, config) => { await flowLibrary.get(); return flowsFactory(element, config); },
+        flow:     flowsFactory,
     };
 
     // ── 5. File type resolver ──────────────────────────────────────────────────
@@ -272,7 +264,6 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         cleanupFns.push(setupMobileWorkspaceView(layoutEl, sidebarEl, editorEl));
 
         const strategyType = wsConfig.type ?? 'standard';
-        if (['chat', 'toolbox', 'flows'].includes(strategyType)) await flowLibrary.get();
         const factory = factories[strategyType] ?? defaultEditorFactory;
 
         if (strategyType === 'twin') {
@@ -317,8 +308,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const [uiPersistence, workbenchState] = await traceBoot('workspace.chatState (parallel)', () => Promise.all([
                 uiState.port(SESSION_BROWSER_SCOPE), uiState.workbenchPort(SESSION_BROWSER_SCOPE),
             ]));
-            const module = createProjectModule({ services, backend, sessionSkills: (await chat.get()).sessionSkills, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
-                factory, fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
+            const module = createProjectModule({ services, backend, createFactory: createChatFactory, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
+                fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 initialResourceId, onSidebarReady: revealSidebar,
                 uiPersistence, workbenchState,
                 onSelect: (id, mode = 'replace') => updateHistory(elementId, id, mode),

@@ -1,6 +1,6 @@
 # 初始文件与 Flow 定义库
 
-UI 不附带业务模板。MindOS 模板位于 app-core 的 `src/presets/essay-review-isolated.json`，通过 `createMindosFlowLibrary()` 获取；宿主调用 `installFlowLibrary(commands, templates)` 或 `restoreFlowLibrary(commands, templates)`。已有用户版本不会被覆盖。
+UI 不附带业务模板。MindOS 模板位于 app-core 的 `src/presets/essay-review-isolated.json`，通过 `createMindosFlowLibrary()` 获取；后端启动通过 `seedDefaultFlows` 按安装回执准备；前端只在显式操作时调用 `restoreFlowLibrary(commands, templates)`。已有用户版本不会被覆盖。
 
 - essay-review-isolated.flow：四类独立 Task 评审，默认最多 10 轮、9 分达标；`maxExchanges` 默认 3（至少 2），为每个检查节点预留一次结构化输出修复；运行前填写作文要求与作文内容。
 

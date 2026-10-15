@@ -2,10 +2,10 @@ import { createMindosFlowLibrary, type ApplicationRuntime } from '@itookit/app-c
 import { bindLocalApplicationServices, createApplicationClient, restrictApplicationFiles } from '@itookit/app-core/host';
 import { APPLICATION_WORKSPACES } from '@itookit/app-contracts';
 import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
-import type { ApplicationClient, ApplicationServices, ToolboxResources } from '@itookit/app-contracts/services';
+import type { ApplicationServices, ToolboxResources } from '@itookit/app-contracts/services';
 import type { RpcPeer } from '../application/peer';
 import type { ViewDomain } from '../application/capabilities';
-import type { HostedApplicationClient, PreparedServices } from '../application/contracts';
+import type { HostedApplicationClient } from '../application/contracts';
 
 export interface HostedView { root: HostedApplicationClient; prepare(peer: RpcPeer, domains?: ReadonlySet<ViewDomain>): Promise<void>; close(): Promise<void> }
 const ROOTS = ['/etc', '/home/admin', ...APPLICATION_WORKSPACES.map(name => `/home/admin/${name}`)];
@@ -16,16 +16,11 @@ export async function createHostedView(runtime: ApplicationRuntime): Promise<Hos
         sessionManager: conversation.sessionManager, commandBus: conversation.commandBus }, { preload: true });
     const client = restrictApplicationFiles(view, ROOTS);
     try {
-        const prepared = await prepareBootServices(client);
-        const root: HostedApplicationClient = { ...client, services: { ...client.services, startBackground: undefined,
-            prepareSession: async id => { await runtime.openConversation(id); return await runtime.prepareSession?.(id) ?? true; } },
-            prepared, flowLibrary: createMindosFlowLibrary(), fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) } };
+        const root: HostedApplicationClient = { ...client, services: { ...client.services, startBackground: undefined },
+            flowLibrary: createMindosFlowLibrary(), fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) } };
         return { root, prepare: (peer, domains) => prepareSnapshots(peer, root.services, domains, runtime.projects.remoteMounts?.mountedProjectIds() ?? []),
             close: async () => { try { await view.close(); } finally { await conversation.dispose(); } } };
     } catch (error) { try { await view.close(); } finally { await conversation.dispose(); } throw error; }
-}
-async function prepareBootServices(client: ApplicationClient): Promise<PreparedServices> {
-    return { fileSystems: new Map([['/etc', await client.services.vfs.openFileSystem('/etc')]]) };
 }
 async function prepareSnapshots(peer: RpcPeer, services: ApplicationServices, domains?: ReadonlySet<ViewDomain>, projectIds: readonly string[] = []): Promise<void> {
     for (const id of services.vfs.devices.list()) peer.remember(services.vfs.devices, 'get', [id]);

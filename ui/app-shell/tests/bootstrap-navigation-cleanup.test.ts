@@ -171,6 +171,6 @@ it('opens an ordinary workspace without OCR, settings, flow installation or inac
             createSkillEditor: factory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), installFlowLibrary: install, llmUiEditors: {} } as any });
     try {
         expect(themeService.init).toHaveBeenCalledOnce(); expect(ocr).not.toHaveBeenCalled(); expect(settings).not.toHaveBeenCalled(); expect(install).not.toHaveBeenCalled();
-        expect(vi.mocked(runtime.vfs.openFileSystem).mock.calls.map(([path]) => path)).toEqual(['/etc', '/home/admin/minds']);
+        expect(new Set(vi.mocked(runtime.vfs.openFileSystem).mock.calls.map(([path]) => path))).toEqual(new Set(['/etc', '/home/admin/minds']));
     } finally { await handle.destroy(); }
 });

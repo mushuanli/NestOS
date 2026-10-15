@@ -101,3 +101,16 @@ it('reads full Provider configuration only on an explicit asynchronous request',
     expect(JSON.stringify(await server.refresh())).not.toContain('private-key');
     expect(await root.services.agentService.getFullProvider('secret')).toHaveProperty('apiKey', 'private-key');
 });
+
+it('opens an owned Session read model and binds it on activation without exposing runtime ownership', async () => {
+    const { root } = await setup();
+    const id = await root.services.projects.sessions.create('Aggregated', null);
+    const view = await root.backend.openSessionView(id);
+    expect(view.manifest).toMatchObject({ id, title: 'Aggregated' }); expect(view.context.fs.driver).toBeDefined();
+    const initial = await view.activate('main');
+    expect(initial).toMatchObject({ sessionId: id, manifest: { id, currentBranch: 'main' }, snapshot: { sessionId: id } });
+    expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);
+    await view.dispose(); expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);
+    await expect(view.activate()).rejects.toThrow();
+    expect(view.commandBus).toBeUndefined(); expect(view.kernel).toBeUndefined();
+});

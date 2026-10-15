@@ -44,3 +44,39 @@ it('notifies directory versions independently of empty native session rows and f
     version = 'watch:2'; await vi.advanceTimersByTimeAsync(1000); expect(changed).toHaveBeenCalledTimes(2);
     change(); expect(status.fileVersion('project')).toBeUndefined(); await status.dispose();
 });
+
+it('serves a bounded stale projection on revisit without keeping an idle poll alive', async () => {
+    const { status, port } = fixture();
+    const stop = status.subscribe('project', vi.fn()); await vi.advanceTimersByTimeAsync(0); stop();
+    expect(status.get('project', 'p', 's')).toMatchObject({ stale: true, canInterrupt: false, canRespond: false });
+    await vi.advanceTimersByTimeAsync(5000); expect(port.poll).toHaveBeenCalledOnce();
+    const again = status.subscribe('project', vi.fn());
+    expect(status.get('project', 'p', 's')).toMatchObject({ stale: true });
+    await vi.advanceTimersByTimeAsync(0); expect(port.poll).toHaveBeenCalledTimes(2);
+    expect(status.get('project', 'p', 's')).toMatchObject({ stale: false });
+    again(); await vi.advanceTimersByTimeAsync(30_001);
+    expect(status.get('project', 'p', 's')).toBeUndefined(); await status.dispose();
+});
+it('does not reuse idle status after the configuration or grants change', async () => {
+    const { status, change } = fixture();
+    const stop = status.subscribe('project', vi.fn()); await vi.advanceTimersByTimeAsync(0); stop();
+    change('new-grant'); expect(status.get('project', 'p', 's')).toBeUndefined();
+    await status.dispose();
+});
+
+it('evicts idle projects at the cache limit and does not retain oversized projections', async () => {
+    vi.useFakeTimers();
+    let rowCount = 1;
+    const status = new RemoteSessionStatus(id => id, async () => ({
+        poll: async () => Array.from({ length: rowCount }, (_, index) => ({ profileId: 'p', sessionId: String(index),
+            observation: { stale: false, canInterrupt: true, canRespond: true } } as HarnessStatusRow)), close: async () => {},
+    }));
+    for (let index = 0; index < 65; index++) {
+        const stop = status.subscribe(String(index), vi.fn()); await vi.advanceTimersByTimeAsync(0); stop();
+    }
+    expect(status.get('0', 'p', '0')).toBeUndefined(); expect(status.get('64', 'p', '0')).toMatchObject({ stale: true });
+    rowCount = 513;
+    const stop = status.subscribe('oversized', vi.fn()); await vi.advanceTimersByTimeAsync(0); stop();
+    expect(status.get('oversized', 'p', '0')).toBeUndefined();
+    await status.dispose(); expect(vi.getTimerCount()).toBe(0);
+});

@@ -22,7 +22,8 @@ import { projectFavoriteAction } from './project-favorites';
 import { directoryEntryName, directoryPathLabel } from './directory-label';
 import { WORKSPACE_PATH, projectRelativePath, reportRemoteFailure } from '@itookit/app-contracts';
 import { createProjectDraftControls } from './project-draft-editor';
-import { monitorRemoteConnections } from '../files/remote-status-monitor';
+import type { SessionOpenView, WorkbenchChatControls, ProjectFolder } from '@itookit/app-contracts/services';
+import type { ConversationManifest } from '@itookit/llm-session/contracts';
 import { EditorLease } from '../browser/editor-lease';
 import { openProjectFileEditor, localizeRemoteWriteError } from './project-file-editor';
 import { fileContentFormat } from '../browser/file-format';
@@ -96,7 +97,8 @@ export interface SessionWorkbenchOptions {
     container: HTMLElement;
     repository: ISessionRepository;
     files: SessionFilesPort;
-    factory: EditorFactory;
+    factory?: EditorFactory;
+    createFactory?(controls: WorkbenchChatControls): EditorFactory;
     onSelect: (id: string, mode?: 'push' | 'replace') => void;
     hostContext: EditorHostContext | undefined;
     kernel: Kernel;
@@ -178,14 +180,15 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly container: SessionWorkbenchOptions['container'];
     private readonly repository: SessionWorkbenchOptions['repository'];
     private readonly files: SessionWorkbenchOptions['files'];
-    private readonly factory: SessionWorkbenchOptions['factory'];
+    private factory!: EditorFactory;
+    private readonly createFactory: SessionWorkbenchOptions['createFactory'];
     private readonly onSelect: SessionWorkbenchOptions['onSelect'];
     private readonly digitalTwin?: import('@itookit/app-contracts/services').DigitalTwinService;
     private readonly hostContext: SessionWorkbenchOptions['hostContext'];
     private readonly kernel: SessionWorkbenchOptions['kernel'];
     private readonly fileFactory: SessionWorkbenchOptions['fileFactory'];
     private readonly directoryMounts: SessionWorkbenchOptions['directoryMounts'];
-    private readonly sessionSkills: SessionWorkbenchOptions['sessionSkills'];
+    private sessionSkills: SessionWorkbenchOptions['sessionSkills'];
     private readonly manageTwin: SessionWorkbenchOptions['manageTwin'];
     private readonly manageMemory: SessionWorkbenchOptions['manageMemory'];
     private readonly flows: SessionWorkbenchOptions['flows'];
@@ -207,7 +210,9 @@ export class SessionWorkbench implements WorkspaceController {
         this.container = options.container;
         this.repository = options.repository;
         this.files = options.files;
-        this.factory = options.factory;
+        if (!options.factory && !options.createFactory) throw new Error('Session workspace requires an editor factory');
+        if (options.factory) this.factory = options.factory;
+        this.createFactory = options.createFactory;
         this.onSelect = options.onSelect;
         this.hostContext = options.hostContext; this.digitalTwin = options.digitalTwin;
         this.kernel = options.kernel;
@@ -239,10 +244,12 @@ export class SessionWorkbench implements WorkspaceController {
 
     async start(): Promise<void> {
         this.sessions ??= await this.sessionsReady;
+        const view = await this.backend.workbenchView({ displayedFilesPolicy: 'gitignore', chatControls: !!this.createFactory });
+        if (this.createFactory) this.factory = this.createFactory(view.chat!);
+        this.sessionSkills ??= view.chat?.sessionSkills;
         this.remoteStatus = new RemoteSessionStatusView(harnessObservation, this.projects, () => this.sidebarUI?.refreshList(),
             (id, icon, tooltip) => this.tabs.setStatus(id, icon, tooltip), () => this.scheduleRefresh('native-files'),
-            (id, title) => this.tabs.title(id, title));
-        const view = await this.backend.workbenchView({ displayedFilesPolicy: 'gitignore' });
+            (id, title) => this.tabs.title(id, title), view.connections);
         this.browser = view.browser;
         this.lifecycle = view.lifecycle;
         this.navigationFiles = createFileSystemView({ viewId: 'session-navigation:admin', mounts: [
@@ -398,10 +405,10 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.closed) return;
         this.sidebarStarting = false;
         if (this.projects?.remoteMounts) this.subscriptions.add(
-            this.projects.remoteMounts.onChange(() => { this.updateRemoteAvailability(); this.scheduleRefresh('remote-status'); }), monitorRemoteConnections(this.projects));
+            this.projects.remoteMounts.onChange(() => { this.updateRemoteAvailability(); this.scheduleRefresh('remote-status'); }));
         if (this.initialSidebarSelection && !this.initialResourceId) await this.openResource(this.initialSidebarSelection);
         if (this.projectNavigation && !this.active && !this.initialResourceId) {
-            const current = await traceBoot('sessionWorkbench.currentProject', () => this.projects!.current());
+            const current = view.currentProject;
             // The startup project is already resolved; hand it to the first sync so it does
             // not look it up again from the folder catalog.
             if (current) await traceBoot('sessionWorkbench.projectNavigation', () => this.openResource(folderBrowserPath(current.path)));
@@ -457,6 +464,7 @@ export class SessionWorkbench implements WorkspaceController {
      * into one sidebar re-render. Content changes never reach here.
      */
     private updateRemoteAvailability(): void {
+        if (!this.visible || this.closed) return;
         const path = this.active;
         void this.applyRemoteAvailability(path).catch(error => this.report(error));
     }
@@ -509,9 +517,9 @@ export class SessionWorkbench implements WorkspaceController {
                 + ` +${Math.round(now - this.lastRefreshAt)}ms kernel=${JSON.stringify(this.kernelChanges)}`,
             );
             this.lastRefreshAt = now;
-            this.refreshSources.clear();
-            this.kernelChanges = {};
         }
+        this.refreshSources.clear();
+        this.kernelChanges = {};
         this.refreshTail = this.refreshTail.catch(() => {}).then(async () => {
             this.refreshQueued = false;
             if (this.closed || !this.visible) return;
@@ -641,6 +649,7 @@ export class SessionWorkbench implements WorkspaceController {
         const target = resolveBrowserTarget(path);
         const id = target.kind === 'session' ? target.sessionId : path;
         const directoryTarget = target.kind === 'folder' || target.kind === 'favorites' || target.kind === 'remote' && !target.nativeSessionId && !target.draft;
+        let opened: SessionOpenView | undefined;
         const operation = this.tail.then(async () => {
             if (this.closed) throw new Error('Session workspace closed');
             load.check();
@@ -653,16 +662,21 @@ export class SessionWorkbench implements WorkspaceController {
                 return;
             }
             if (target.kind === 'favorite') throw new Error('Favorite navigation was not resolved');
-            if ('sessionId' in target) await load.read(async () => { await this.prepareSession?.(target.sessionId); });
-            const openingManifest = 'sessionId' in target ? await load.read(() => this.sessions.get(target.sessionId)) : undefined;
+            const reusable = this.tabs.get(id);
+            let saved = false;
+            if (target.kind === 'session' && (!reusable?.value || reusable.failed || options.reload || branch !== undefined && branch !== reusable.value.branch)) {
+                await this.flushEditor(); saved = true; load.check();
+                await load.read(async () => { opened = await this.backend.openSessionView(target.sessionId); });
+            } else if ('sessionId' in target && target.kind !== 'session') await load.read(async () => { await this.prepareSession?.(target.sessionId); });
+            const openingManifest = opened?.manifest ?? ('sessionId' in target ? await load.read(() => this.sessions.get(target.sessionId)) : undefined);
             load.check();
             const tabId = id;
             const old = this.tabs.current;
             if (old?.value && !old.value.editor && !old.value.previewCleanup && old.id !== id && id.startsWith(old.id + '/')) this.tabs.keep(old.id);
-            await this.leaveEditor(); load.check();
+            await this.leaveEditor(saved); load.check();
             const existing = this.tabs.get(tabId);
             if (existing?.value && !existing.failed && !options.reload && target.kind !== 'task' && target.kind !== 'tasks' && (target.kind !== 'session' || existing.value.branch === (branch ?? openingManifest!.currentBranch ?? 'main'))) {
-                this.tabs.activate(tabId); this.restoreEditor(existing.value);
+                this.tabs.activate(tabId); await this.restoreEditor(existing.value);
                 if (!await load.read(() => this.checkRemoteFiles(path, target, load))) { this.onSelect(this.getActiveResourceId()!); return; }
                 await refreshDirectoryList(existing.panel); load.check();
                 const navigationPath = openingManifest ? `${folderBrowserPath(openingManifest.folder)}/${openingManifest.id}` : path;
@@ -679,7 +693,10 @@ export class SessionWorkbench implements WorkspaceController {
                 this.active = path; this.activeBranch = undefined; this.onSelect(path);
                 this.scheduleFileNavigation(path, options.fileNavigation); return;
             }
-            if (target.kind === 'session') this.tabs.setIcon(tabId, ENTITY_ICONS.chat);
+            if (target.kind === 'session') {
+                if (!opened) await load.read(async () => { opened = await this.backend.openSessionView(target.sessionId); });
+                this.tabs.setIcon(tabId, ENTITY_ICONS.chat);
+            }
             if (directoryTarget) {
                 this.active = id;
                 this.activeBranch = undefined;
@@ -740,9 +757,13 @@ export class SessionWorkbench implements WorkspaceController {
                 let previewCleanup: (() => void) | undefined;
                 let mount: HTMLElement | undefined;
                 try {
-                    const context = await load.read(async () => acquired = await this.files.acquireFiles(target.sessionId, cwd));
+                    const prepared = opened;
+                    const context = prepared
+                        ? (acquired = { context: prepared.context, release: () => prepared.dispose() })
+                        : await load.read(async () => acquired = await this.files.acquireFiles(target.sessionId, cwd));
+                    opened = undefined;
                     load.check();
-                    mount = await this.editorMount(manifest.folder, target.kind === 'session' ? manifest.id : undefined);
+                    mount = await this.editorMount(manifest.folder, target.kind === 'session' ? manifest.id : undefined, { manifest, ...(prepared ? { project: prepared.project } : {}) });
                     load.check();
                     const fileNode = target.kind === 'files' ? await load.read(() => context.context.fs.driver.getNode(target.path)) : undefined;
                     if (fileNode) this.tabs.setIcon(tabId, this.sidebarUI!.getResourceIcon(fileNode));
@@ -752,14 +773,15 @@ export class SessionWorkbench implements WorkspaceController {
                     } else if (target.kind === 'session') {
                         load.check();
                         assets = createFileSystemView({ viewId: `editor-attachments:${target.sessionId}`, mounts: [{ mountId: 'attachments', at: '/', root: '/attachments', fs: context.context.fs, access: 'rw' }] });
-                        const project = await this.projects?.forFolder(manifest.folder);
+                        const project = prepared?.project;
                         editor = await load.read(async () => editor = await this.factory(mount!, {
+                            initialData: await load.read(() => prepared!.activate(branch)),
                             remoteAgents: this.remoteAgentControls(manifest.folder),
                             initialInputState: options.initialInputState,
                             resolveSubmission: project ? () => this.projects!.drafts.submissionForSession(project.project.id, target.sessionId) : undefined,
                             target: { kind: 'session', sessionId: target.sessionId, branch: branch ?? manifest.currentBranch ?? 'main' }, files: context.context, assets, title: manifest.title,
                             hostContext: { ...this.hostContext!, directoryCommands: this.directoryMounts ? {
-                                workspaceReadOnly: (await this.directoryMounts.fixedWorkspace(target.sessionId)) !== undefined,
+                                workspaceReadOnly: prepared!.workspaceReadOnly,
                                 configureWorkspace: async mode => {
                                     if (await showMountDialog(this.directoryMounts!, this.files, target.sessionId, mode, this.dialogs.signal)) {
                                         await this.reloadAfterMount(target.sessionId);
@@ -853,12 +875,13 @@ export class SessionWorkbench implements WorkspaceController {
                     this.active = id; this.activeBranch = undefined; this.tabs.current.failed = true;
                     this.message(describeErrorReason(localizeMountError(error))); this.onSelect(id);
                     this.scheduleNavigation(path, {reveal: true, preserveProject: directoryTarget ? options.preserveProject : true});
-                } else if (!this.editor && this.tabs.current?.value) this.restoreEditor(this.tabs.current.value);
+                } else if (!this.editor && this.tabs.current?.value) await this.restoreEditor(this.tabs.current.value);
                 throw error;
             }
             if (this.closed) throw new Error('Session workspace closed');
-        }).finally(() => {
-            if (load.signal.aborted) this.finishReads(load.drain());
+        }).finally(async () => {
+            const cleanup = load.drain().then(async () => { await opened?.dispose(); });
+            if (load.signal.aborted) this.finishReads(cleanup); else await cleanup;
             if (this.viewLoads.isCurrent(load)) this.pendingTarget = undefined;
         });
         this.tail = result.catch(() => {}); return result;
@@ -1300,17 +1323,18 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
 
-    private async editorMount(folder?: string | null, sessionId?: string): Promise<HTMLElement> {
+    private async editorMount(folder?: string | null, sessionId?: string, prepared?: { manifest: ConversationManifest; project?: ProjectFolder | null }): Promise<HTMLElement> {
         const mount = document.createElement('div'); mount.className = 'session-editor-mount';
-        const project = await this.projects?.forFolder(folder);
+        const project = prepared && 'project' in prepared ? prepared.project : await this.projects?.forFolder(folder);
+        const manifest = prepared?.manifest ?? (sessionId ? await this.sessions.get(sessionId) : undefined);
         this.tabs.content.replaceChildren();
         if (project) {
             const context = document.createElement('div'); context.className = 'project-workbench__context';
             context.textContent = t('project.current', { name: project.displayName ?? project.name });
             this.tabs.content.append(context);
         }
-        if (sessionId) this.tabs.title(this.tabs.current!.id, (await this.sessions.get(sessionId)).title);
-        if (sessionId && this.familyActions) this.tabs.content.append(await this.familyActions.header(await this.sessions.get(sessionId)));
+        if (sessionId && manifest) this.tabs.title(this.tabs.current!.id, manifest.title);
+        if (sessionId && manifest && this.familyActions) this.tabs.content.append(await this.familyActions.header(manifest));
         this.tabs.content.append(mount); return mount;
     }
     private async openProjectFile(_path: string, target: { folder: string; path: string }, load: ViewLoad): Promise<void> {
@@ -1418,7 +1442,7 @@ export class SessionWorkbench implements WorkspaceController {
             const retained = this.tabs.get(draftId);
             await this.tabs.open(draftId, t('project.createSession'), false);
             this.tabs.setIcon(draftId, FILE_BROWSER_ICONS.newSession);
-            if (retained?.value) { this.restoreEditor(retained.value); this.onSelect(draftId, 'replace'); return; }
+            if (retained?.value) { await this.restoreEditor(retained.value); this.onSelect(draftId, 'replace'); return; }
             const mount = await this.editorMount(folder);
             const composer = await this.projects.drafts.open(project.project.id, folder);
             const draftOptions = createProjectDraftControls(composer, {
@@ -1482,17 +1506,21 @@ export class SessionWorkbench implements WorkspaceController {
             renameCleanup: this.fileRenameCleanup, active: this.active, branch: this.activeBranch, cancel, skills: this.openEditorTarget };
         this.tabs.bind(tab, this.editor);
     }
-    private restoreEditor(value: RetainedEditor): void {
+    private async restoreEditor(value: RetainedEditor): Promise<void> {
+        await value.editor?.activate?.();
         this.editor = value.editor; this.context = value.context; this.assets = value.assets;
         this.previewCleanup = value.previewCleanup; this.fileRenameCleanup = value.renameCleanup;
         this.active = value.active; this.activeBranch = value.branch;
         this.familyActions?.activate(this.tabs.current?.panel.querySelector('.session-family__toolbar') ?? null);
         if (value.skills) this.mountEditorSkills(value.skills.sessionId, value.skills.path);
     }
-    private async leaveEditor(): Promise<void> {
+    private async flushEditor(): Promise<void> {
+        await this.editor?.flushPendingSave?.();
+        if (this.editor?.isDirty?.() && !this.editor.flushPendingSave) throw new Error(t('workbench.pending'));
+    }
+    private async leaveEditor(saved = false): Promise<void> {
         if (this.tabs.current?.value) {
-            await this.editor?.flushPendingSave?.();
-            if (this.editor?.isDirty?.() && !this.editor.flushPendingSave) throw new Error(t('workbench.pending'));
+            if (!saved) await this.flushEditor();
             await this.unmountEditorSkills(); this.clearEditorFields();
         } else await this.closeEditor();
     }
@@ -1533,7 +1561,7 @@ export class SessionWorkbench implements WorkspaceController {
         ++this.openIntent;
         this.cancelViewLoad();
         this.closed = true; ++this.fileNavigationRevision; this.projectNavigation?.destroy();
-        this.remoteStatus?.destroy();
+        await this.remoteStatus?.destroy();
         this.searchPanel?.destroy();
         this.sidebarUI?.cancelPendingSelection?.(); this.dialogs.abort(); this.subscriptions.dispose();
         if (this.refreshTimer) { clearTimeout(this.refreshTimer); this.refreshTimer = undefined; }

@@ -43,7 +43,7 @@ async function startHost({ root, sidecar, certificates, staticDir, auditFile, po
         durability: 'full', createDb: file => NodeSqliteSidecarDb.open(file) });
     const audit = new AuditLog(auditFile);
     try { await audit.initialize(); } catch (error) { await backend.close(); throw error; }
-    const applicationApi = createApplicationApi(backend, root);
+    const applicationApi = createApplicationApi(backend, root, audit);
     const server = createHttpServer({ certificates, staticDir, audit, application: applicationApi });
     try { await listen(server, port, host, backlog); }
     catch (error) { applicationApi?.endStreams(); await stopServers([server]); await applicationApi?.close().catch(() => {}); await backend.close(); await audit.close(); throw error; }

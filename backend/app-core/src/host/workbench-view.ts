@@ -7,12 +7,12 @@ import { ProjectSearch } from '../projects/project-search';
 export async function createWorkbenchView(deps: SessionBrowserDependencies, preload = false): Promise<WorkbenchView> {
     const lifecycle = deps.lifecycle ?? new SessionLifecycleService({ repository: deps.repository, kernel: deps.kernel });
     const browser = await createSessionBrowser({ ...deps, lifecycle });
-    if (!preload) return { browser, lifecycle, search: deps.projects ? new ProjectSearch(deps.projects) : undefined };
     try {
-        const [node, nodes, navigation] = await Promise.all([browser.fs.driver.getNode('/'), browser.fs.driver.getChildren('/'),
+        const [currentProject, directory, navigation] = await Promise.all([deps.projects?.current(),
+            preload ? Promise.all([browser.fs.driver.getNode('/'), browser.fs.driver.getChildren('/')]) : undefined,
             deps.projects?.sessions.navigation({ includeSessions: false })]);
         return { browser, lifecycle, search: deps.projects ? new ProjectSearch(deps.projects) : undefined,
-            navigation,
-            directory: { revision: browser.fs.revision, node, nodes } };
+            navigation, currentProject,
+            directory: directory ? { revision: browser.fs.revision, node: directory[0], nodes: directory[1] } : undefined };
     } catch (error) { await browser.dispose(); throw error; }
 }

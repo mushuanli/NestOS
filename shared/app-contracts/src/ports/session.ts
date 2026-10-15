@@ -175,6 +175,38 @@ export interface WorkbenchView {
     search?: ProjectSearch;
     navigation?: import('./projects').ProjectNavigationSnapshot;
     directory?: { revision: number; node: FSNode | null; nodes: FSNode[] };
+    currentProject?: import('./projects').ProjectFolder | null;
+    chat?: WorkbenchChatControls;
+    connections?: ConnectionObservation;
+}
+
+export interface WorkbenchChatControls {
+    privilegedCommands: PrivilegedCommandService;
+    sessionSkills: import('@itookit/tools/contracts').SessionSkillControls;
+}
+
+/** An interest lease owns probes, never Session execution. */
+export interface ConnectionObservation {
+    update(projectIds: string[], revision: number): Promise<void>;
+    dispose(): Promise<void>;
+}
+
+/** Prepared once by the backend; the editor owns the returned file lease. */
+export interface SessionEditorInitialData {
+    sessionId: string;
+    snapshot: import('@itookit/llm-session/contracts').SessionSnapshot;
+    title: string;
+    manifest: ConversationManifest;
+    settings: ChatSessionSettings;
+}
+
+export interface SessionOpenView {
+    activate(branch?: string): Promise<SessionEditorInitialData>;
+    manifest: ConversationManifest;
+    project: import('./projects').ProjectFolder | null | undefined;
+    workspaceReadOnly: boolean;
+    context: VfsContracts.FileSystemContext;
+    dispose(): Promise<void>;
 }
 
 export type SessionOrganizationStore = Pick<ISessionRepository, 'list' | 'listSummaries' | 'listFolders' | 'pendingSessionDeletions' | 'getManifest' | 'updateManifest' | 'createSession'>;

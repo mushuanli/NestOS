@@ -14,14 +14,24 @@ export class RemoteSessionStatusView {
     private visible = true;
     private readonly deadlines = new Map<string, number>();
     private refreshTimer?: ReturnType<typeof setTimeout>;
+    private observed = '';
+    private revision = 0;
     constructor(private readonly harnessObservation: typeof observeHarness, private readonly projects: ProjectService | undefined, private readonly changed: () => void,
         private readonly tabStatus: (id: string, icon: string, tooltip: string) => void,
-        private readonly filesChanged?: (project: string) => void, private readonly tabTitle?: (id: string, title: string) => void) {}
+        private readonly filesChanged?: (project: string) => void, private readonly tabTitle?: (id: string, title: string) => void,
+        private readonly connections?: import('@itookit/app-contracts/services').ConnectionObservation) {}
     project(id?: string) { this.current = id; this.sync(); }
     attach(tab: string, project: string) { this.tabs.set(tab, project); this.sync(); }
     detach(tab: string) { this.tabs.delete(tab); this.deadlines.delete('tab:' + tab); this.sync(); this.scheduleRefresh(); }
     setVisible(visible: boolean) { this.visible = visible; this.sync(); this.scheduleRefresh(); }
     private sync() {
+        const interested = this.visible ? [...new Set([this.current, ...this.loadedProjects, ...this.tabs.values()]
+            .filter((id): id is string => !!id))].sort() : [];
+        const key = JSON.stringify(interested);
+        if (key !== this.observed) {
+            this.observed = key;
+            void this.connections?.update(interested, ++this.revision).catch(error => console.error('[connections]', error));
+        }
         const status = this.projects?.remoteMounts?.sessionStatus;
         if (!status) return;
         const ids = new Set(this.visible ? [this.current, ...this.loadedProjects, ...this.tabs.values()].filter((id): id is string => !!id
@@ -74,6 +84,8 @@ export class RemoteSessionStatusView {
     private projectItems(items: VFSNodeUI[], inherited?: string): VFSNodeUI[] {
         return items.map(item => {
             const projectId = typeof item.metadata.custom.projectId === 'string' ? item.metadata.custom.projectId : inherited;
+            if (projectId && this.loadedProjects.size < 16 && this.projects?.remoteMounts?.list(projectId).length)
+                this.loadedProjects.add(projectId);
             let target;
             try { target = resolveBrowserTarget(item.id); } catch { return item; }
             let presentation = item.presentation;
@@ -94,5 +106,10 @@ export class RemoteSessionStatusView {
             return {...item, metadata: record?.title ? {...item.metadata, title: record.title} : item.metadata, presentation, children: item.children && this.projectItems(item.children, projectId)};
         });
     }
-    destroy() { this.visible = false; clearTimeout(this.refreshTimer); this.deadlines.clear(); for (const stop of this.stops.values()) stop(); this.stops.clear(); this.tabs.clear(); this.loadedProjects.clear(); this.fileVersions.clear(); }
+    async destroy(): Promise<void> {
+        this.visible = false; clearTimeout(this.refreshTimer); this.deadlines.clear();
+        for (const stop of this.stops.values()) stop();
+        this.stops.clear(); this.tabs.clear(); this.loadedProjects.clear(); this.fileVersions.clear();
+        await this.connections?.dispose();
+    }
 }

@@ -6,6 +6,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 export interface AuditEvent {
     event: string; requestId?: string; remoteAddress?: string; method?: string; route?: string;
     status?: number; durationMs?: number; operation?: string; code?: string; certificate?: string; parentRequestId?: string;
+    rpcKind?: string; rpcBatchSize?: number; rpcOperations?: string[];
 }
 export interface AuditPort { write(event: AuditEvent): void; close(): Promise<void>; }
 

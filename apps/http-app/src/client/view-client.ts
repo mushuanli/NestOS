@@ -44,7 +44,6 @@ export class HttpViewClient {
         if (reply.error) throw new Error(reply.error.message);
         this.peer.applyUpdates(reply.updates);
         const root = this.peer.decode(reply.value!) as HostedApplicationClient;
-        installBootCache(root);
         this.initialized();
         await this.callbacks;
         return root;
@@ -104,16 +103,4 @@ export class HttpViewClient {
         this.closing = true; this.initialized(); this.queries.close(); this.bindings.close();
         try { await this.post({ kind: 'close' }); } finally { this.abort.abort(); await this.peer.close(); }
     }
-}
-
-
-/** Local assembly consumes bootstrap capabilities without extra network factory calls. */
-export function installBootCache(root: HostedApplicationClient): void {
-    const { services, prepared } = root;
-    if (!prepared) return;
-    const vfs = services.vfs;
-    root.services = { ...services, vfs: new Proxy(vfs, { get(target, key) {
-        if (key === 'openFileSystem') return (path: string) => prepared.fileSystems.has(path) ? Promise.resolve(prepared.fileSystems.get(path)!) : target.openFileSystem(path);
-        const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
-    } }) };
 }

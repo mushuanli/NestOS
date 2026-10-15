@@ -64,7 +64,7 @@ export const createLLMFactory = (
     const pendingByContainer = new WeakMap<HTMLElement, Map<string, Promise<IEditor>>>();
 
     return async (container: HTMLElement, options: EditorOptions) => {
-        const chatOptions = normalizeEditorOptions(options as EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission>);
+        const chatOptions = normalizeEditorOptions(options as EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission, import('./services/SessionService').SessionLoadResult>);
         if (options.conversation) {
             const editor = new RemoteConversationEditor(container, options.conversation, options);
             try { await editor.init(container); return editor; } catch (error) { await editor.destroy(); throw error; }
@@ -78,7 +78,6 @@ export const createLLMFactory = (
         if (options.target?.kind !== 'session') throw new Error('Chat editor requires a Session target');
         const sessionId = options.target.sessionId;
         const engine = deps.sessionRepository;
-        await engine.getManifest(sessionId);
 
         // 去重：如果同一个 sessionId 正在创建中，等待并复用
         if (sessionId && pendingCreations.has(sessionId)) {
@@ -142,7 +141,7 @@ export type { AIContextMenuOptions } from './context-menu/AIContextMenu';
 
 export { createFlowContextMenuConfig } from './flows/context-menu';
 export { FlowLauncher, type FlowRunOptions } from './flows/run-flow';
-export { installFlowLibrary, restoreFlowLibrary } from './flows/library';
+export { restoreFlowLibrary } from './flows/library';
 
 
 export type { FlowContextMenuOptions } from './flows/context-menu';

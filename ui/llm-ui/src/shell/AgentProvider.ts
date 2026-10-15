@@ -12,6 +12,8 @@ export async function buildExecutorOptions(
     remote?: import('@itookit/ui-common').RemoteAgentControls,
 ): Promise<ExecutorOption[]> {
     const agents = agentService.listAgents();
+    const promptIds = [...new Set(agents.map(agent => agent.config.systemPromptId).filter((id): id is string => !!id))];
+    const prompts = new Map(await Promise.all(promptIds.map(async id => [id, await agentService.getSystemPrompt(id)] as const)));
 
     const seen = new Set<string>();
     const options: ExecutorOption[] = [];
@@ -25,7 +27,7 @@ export async function buildExecutorOptions(
     for (const agent of agents) {
         if (seen.has(agent.id)) continue;
         seen.add(agent.id);
-        const shared = agent.config.systemPromptId ? await agentService.getSystemPrompt(agent.config.systemPromptId) : null;
+        const shared = agent.config.systemPromptId ? prompts.get(agent.config.systemPromptId) : null;
         const presets = new Map([...(shared?.presets ?? []), ...(agent.defaultPrompts ?? [])].map(item => [item.name, item]));
         options.push({
             id: agent.id,
@@ -48,8 +50,8 @@ export function validateAgentId(agentService: IAgentConfigService, id: string): 
 export async function buildConnectionOptions(
     agentService: IAgentConfigService,
 ): Promise<ConnectionOption[]> {
-    const connections = await agentService.getConnections();
-    const defaultId = (await agentService.getDefaultConnection())?.id;
+    const [connections, defaultConnection] = await Promise.all([agentService.getConnections(), agentService.getDefaultConnection()]);
+    const defaultId = defaultConnection?.id;
 
     return connections
         .filter(c => c.enabled !== false && agentService.getProvider(c.providerId)?.enabled !== false)

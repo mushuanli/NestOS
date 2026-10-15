@@ -43,7 +43,7 @@ export class EventBinder {
         const toolbar = titlebar?.querySelector<HTMLElement>('.llm-workspace-titlebar__primary');
         if (titlebar && toolbar) {
             const actions = ['llm-btn-refresh', 'llm-btn-session-rerun', 'llm-btn-history-visibility', 'llm-btn-navigator', 'llm-btn-copy']
-                .flatMap(id => { const button = menu.querySelector<HTMLElement>('#' + id); return button ? [button] : []; });
+                .flatMap(id => { const button = menu.querySelectorAll<HTMLElement>('#' + id)[0]; return button ? [button] : []; });
             this.disposeResponsive?.();
             this.disposeResponsive = installResponsiveActions({ container: titlebar, toolbar, actions, minWidth: 760,
                 fallbackFocus: menu.querySelector('summary')! });
@@ -60,14 +60,14 @@ export class EventBinder {
 
     bindTitleBarEvents(): void {
         this.bindToolbarMenu();
-        const sidebarBtn = this.container.querySelector('#llm-btn-sidebar');
+        const sidebarBtn = this.container.querySelectorAll('#llm-btn-sidebar')[0];
         if (sidebarBtn) {
             this.events.add(sidebarBtn, 'click', () => {
                 this.callbacks.onToggleSidebar?.();
             });
         }
 
-        const titleInput = this.container.querySelector('#llm-title-input') as HTMLInputElement;
+        const titleInput = this.container.querySelectorAll('#llm-title-input')[0] as HTMLInputElement;
         if (titleInput) {
             this.events.add(titleInput, 'blur', () => {
                 this.callbacks.onTitleChange?.(titleInput.value);
@@ -77,14 +77,14 @@ export class EventBinder {
             }) as EventListener);
         }
 
-        const assetsBtn = this.container.querySelector('#llm-btn-assets');
+        const assetsBtn = this.container.querySelectorAll('#llm-btn-assets')[0];
         if (assetsBtn) {
             this.events.add(assetsBtn, 'click', () => {
                 this.callbacks.onOpenAssetManager?.();
             });
         }
 
-        const historyBtn = this.container.querySelector('#llm-btn-history-visibility');
+        const historyBtn = this.container.querySelectorAll('#llm-btn-history-visibility')[0];
         if (historyBtn) {
             this.events.add(historyBtn, 'click', () => {
                 this.callbacks.onToggleHistory?.();
@@ -105,7 +105,7 @@ export class EventBinder {
         };
 
         for (const [selector, handler] of Object.entries(bindings)) {
-            const el = this.container.querySelector(selector);
+            const el = this.container.querySelectorAll(selector)[0];
             if (el && handler) {
                 this.events.add(el, 'click', handler);
             }

@@ -88,8 +88,8 @@ it.each(['main', 'review'])('initializes %s once and restores the selected branc
     if (branch === 'main') { expect(user).not.toBeNull(); expect(user?.classList.contains('is-collapsed')).toBe(false); }
     else expect(user).toBeNull();
     expect(f.getUIState).not.toHaveBeenCalled();
-    // Switching a branch mutates the manifest, so the projection is read again after the bind.
-    expect(f.getLoadState).toHaveBeenCalledTimes(1);
+    // Only changing the branch requires a new projection; the bound main branch is already current.
+    expect(f.getLoadState).toHaveBeenCalledTimes(branch === 'main' ? 0 : 1);
     // A branch switch may re-read the chain while reconciling the projection.
     expect(f.loadView).toHaveBeenCalled();
     expect(f.execute.mock.calls.filter(([name]) => name === 'vcs.branch.list')).toHaveLength(0);

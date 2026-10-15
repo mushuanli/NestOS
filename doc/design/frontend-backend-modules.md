@@ -41,7 +41,7 @@ await runtime.dispose();
 
 [应用门面](../../backend/app-core/src/host/application-client.ts) 在后端绑定构造依赖；本地与 HTTP 均使用同一门面。LocalApplicationServices 仅供宿主接线，UI 禁止引用。前端共享契约见 [application-client](../../shared/app-contracts/src/ports/application-client.ts)，本地构造接口见 [local](../../shared/app-contracts/src/ports/local.ts)。
 
-`workbenchView` 返回侧栏文件视图、生命周期、检索和可选首目录数据；`toolboxView` 在后端完成工具箱装配并统一释放资源；`taskDetails/taskEvents` 返回任务状态、摘要与分页关键事件，UI 不把刚读到的任务和事件传回后端加工。界面布局、导航和交互仍归 app-shell。
+`workbenchView` 返回侧栏文件视图、生命周期、检索、导航/当前项目、可选聊天控制和首目录数据；`openSessionView` 准备元信息与文件租约，activate 在旧编辑器保存后绑定并装配消息/设置；`readUiDocuments/writeUiDocuments` 只存储不透明 UI 文档；`toolboxView` 在后端完成工具箱装配并统一释放资源；`taskDetails/taskEvents` 返回任务状态、摘要与分页关键事件，UI 不把刚读到的任务和事件传回后端加工。界面布局、导航和交互仍归 app-shell。
 
 跨边界操作采用异步接口；同步 selector 只读取已加载快照。收藏身份、项目来源/访问与导航、工具授权默认值、远端会话关联和 Harness 展示状态使用 shared 中的纯规则。后端仍执行实际授权校验，前端 selector 不授予访问权限。
 
@@ -80,6 +80,8 @@ C4Component
 - 存储估计、主题和日志偏好通过设置端口访问。浏览器存储 API 不出现在设置 UI。
 - llm-settings-ui 保留文件选择、格式解析提示、冲突选择和结果展示。冲突查询、ID 分配、关联重映射、凭据保留与按依赖顺序保存由 app-core/configuration/configuration-import 执行；ConfigurationImportPort 属于配置领域契约。
 - llm-ui 保留交互命令、投影与视图缓存，通过 Session/Task/Conversation 公开端口调用。UI 的 services 或 commands 文件夹名称不表示后端实现。
+
+连接和原生会话状态由后端按观察需求共享探测；闲置状态缓存有身份、有效期和容量限制。前端读取快照并声明兴趣，不逐项目定时查询；后台执行记录仍以持久 Task 为准，缓存不授予操作权限。见 [业务装配与后台缓存](../http-app.md#业务装配与后台缓存)。
 
 ## 策略与机制
 

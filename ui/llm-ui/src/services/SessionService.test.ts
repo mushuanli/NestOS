@@ -80,3 +80,23 @@ it('re-reads after a branch switch because the projection belongs to the previou
     expect(getLoadState).toHaveBeenCalledTimes(3);
     service.dispose();
 });
+
+it('consumes the activated backend read model without binding or reading the repository again', async () => {
+    const { service, getLoadState, execute, unsubscribe } = cachedFixture();
+    const initial = { sessionId: 's', title: 'Prepared', manifest: { currentBranch: 'review', title: 'Prepared' },
+        snapshot: { sessionId: 's' }, settings: { executionMode: 'agent' } } as Parameters<SessionService['loadSession']>[3];
+    expect(await service.loadSession('s', 'fallback', 'review', initial)).toBe(initial);
+    expect(execute).not.toHaveBeenCalled(); expect(getLoadState).not.toHaveBeenCalled();
+    await expect(service.loadSession('other', 'fallback', 'review', initial)).rejects.toThrow('identity');
+    await expect(service.loadSession('s', 'fallback', 'main', initial)).rejects.toThrow('identity');
+    service.dispose(); expect(unsubscribe).toHaveBeenCalledOnce();
+});
+
+it('prefers the bound projection and avoids switching an already selected branch', async () => {
+    const { service, execute, getLoadState } = cachedFixture();
+    const view = { manifest: { title: 'Latest', currentBranch: 'review' }, settings: { executionMode: 'agent' } };
+    execute.mockResolvedValue({ sessions: [], status: 'idle', isRunning: false, view } as never);
+    expect(await service.loadSession('s', 'fallback', 'review')).toMatchObject({ title: 'Latest' });
+    expect(execute.mock.calls.map(([command]) => command)).toEqual([SessionCommand.Bind]);
+    expect(getLoadState).not.toHaveBeenCalled(); service.dispose();
+});

@@ -1,4 +1,5 @@
 import preset from './essay-review.json';
+import { createMindosFlowLibrary } from './flow-library';
 import type { FlowDraft } from '@itookit/llm-flow/contracts';
 import type { FlowDefinitionStore } from '@itookit/llm-flow';
 
@@ -10,6 +11,8 @@ export function essayReviewDraft(): FlowDraft {
 }
 
 export async function seedDefaultFlows(store: FlowDefinitionStore): Promise<void> {
-    const draft = await store.installBuiltinDraft(essayReviewDraft());
-    if (draft) await store.createRevision(draft);
+    for (const template of [essayReviewDraft(), ...createMindosFlowLibrary()]) {
+        const draft = await store.installBuiltinDraft(template);
+        if (draft) await store.createRevision(draft);
+    }
 }

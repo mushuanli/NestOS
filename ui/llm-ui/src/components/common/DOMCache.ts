@@ -22,7 +22,8 @@ export class DOMCache {
             this.cache.delete(id);
         }
 
-        const el = this.root.querySelector(`#${id}`) as HTMLElement | null;
+        // Resolve within this editor even when retained editors contain the same IDs.
+        const el = this.root.querySelectorAll<HTMLElement>(`#${id}`)[0] ?? null;
         if (el) {
             this.cache.set(id, new WeakRef(el));
         }

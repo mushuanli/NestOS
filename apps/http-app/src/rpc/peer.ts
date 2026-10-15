@@ -118,6 +118,11 @@ export class RpcPeer {
         return !!kind && isViewQuery(this.schemas, call, kind, this.schemas[kind]?.methods[call.method]);
     }
     binding(call: Call): boolean { return subscriptionMode(this.handles.get(call.target)?.schema.methods[call.method]); }
+    /** Diagnostics contain only registered public names, never caller-supplied arguments. */
+    operationName(call: Call): string {
+        const handle = this.handles.get(call.target);
+        return handle && Object.hasOwn(handle.schema.methods, call.method) ? `${handle.kind}.${call.method}` : 'unknown';
+    }
     remoteBinding(call: Call): boolean {
         const kind = this.descriptors.get(call.target)?.kind;
         return !!kind && subscriptionMode(this.schemas[kind]?.methods[call.method]);

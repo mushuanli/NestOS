@@ -18,6 +18,9 @@ import { ToolboxResources } from '../configuration/toolbox-resources';
 import { listRemoteHarnessAgents } from '../projects/remote-agent-catalog';
 import { conversationBranches } from '@itookit/piagent-driver';
 import { createWorkbenchView } from './workbench-view';
+import { openSessionView } from './session-view';
+import { observeConnections } from './connection-observation';
+import { readUiDocuments, writeUiDocuments } from './ui-documents';
 import { ViewScope } from './view-scope';
 import { taskDetails, taskEvents } from './task-view';
 import type { ApplicationClient, ApplicationBackend, LocalApplicationServices, LocalBackendOptions, ToolboxView } from '@itookit/app-contracts/services';
@@ -36,13 +39,17 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     return {
         workbenchView: async settings => {
             const view = await createWorkbenchView({ ...settings, repository, files: services.sessionFiles, kernel: kernel.kernel, projects }, options.preload);
-            return { ...view, browser: await scope.own(view.browser) };
+            return { ...view, browser: await scope.own(view.browser),
+                chat: settings?.chatControls ? { privilegedCommands: new PrivilegedCommandService(kernel.kernel, agentService),
+                    sessionSkills: createSessionSkillControls(kernel.kernel, kernel.sessions) } : undefined,
+                connections: projects?.remoteMounts ? await scope.own(observeConnections(projects.remoteMounts)) : undefined };
         },
+        openSessionView: async id => scope.own(await openSessionView(services, id)),
+        readUiDocuments: names => readUiDocuments(vfs, names),
+        writeUiDocuments: documents => writeUiDocuments(vfs, documents),
         settings: sources => settingsService(services, sources, options, scope),
         ocr: async () => new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService),
         initialFiles: async () => new MindosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/minds')),
-        privilegedCommands: async () => new PrivilegedCommandService(kernel.kernel, agentService),
-        sessionSkills: async () => createSessionSkillControls(kernel.kernel, kernel.sessions),
         projectSessions: async () => projects?.sessions ?? new ProjectSessions(repository),
         toolboxView: skills => toolboxView(services, scope, skills),
         archiveExporter: async () => new WorkbenchArchiveExporter(projects, repository),

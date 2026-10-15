@@ -5,7 +5,6 @@ import { createApplicationRuntime } from '@itookit/app-core';
 import { MemoryBackend } from '@itookit/vfs-core';
 import { WORKSPACES } from '../../../apps/web-app/src/config/modules';
 import { createBrowserUI } from '../../../apps/web-app/src/ui';
-import { installBootCache } from '../../../apps/http-app/src/client/view-client';
 import { RpcPeer } from '../../../apps/http-app/src/application/peer';
 import { QueryBatcher } from '../../../apps/http-app/src/client/query-batcher';
 import type { Call, Reply } from '../../../apps/http-app/src/rpc/protocol';
@@ -29,7 +28,7 @@ it.each(['chat', 'minds'])('mounts the complete common shell starting at %s with
         await fs.driver.createFile({ parentPath: '/', name: '简历.mind', content: '# Resume' });
     }
     const view = await createHostedView(runtime);
-    expect([...view.root.prepared.fileSystems.keys()]).toEqual(['/etc']); releases.push(() => view.close());
+    releases.push(() => view.close());
     let server!: RpcPeer;
     const metrics = { calls: 0, callbacks: 0, bytes: 0, requests: 0 };
     const measured = async (kind: 'calls' | 'callbacks', operation: () => Promise<any>) => { metrics[kind]++; const reply = await operation(); metrics.bytes += wireBytes(reply); return reply; };
@@ -51,7 +50,6 @@ it.each(['chat', 'minds'])('mounts the complete common shell starting at %s with
     const bootstrapBytes = wireBytes({ value: boot, updates });
     console.log('[HTTP bootstrap bytes]', bootstrapBytes);
     expect(bootstrapBytes).toBeLessThan(350000);
-    installBootCache(root);
     const before = { ...metrics };
     const calls: Record<string, number> = {};
     const handle = server.handle.bind(server);
@@ -63,14 +61,26 @@ it.each(['chat', 'minds'])('mounts the complete common shell starting at %s with
     const startup = { calls: metrics.calls - before.calls, requests: metrics.requests - before.requests, callbacks: metrics.callbacks - before.callbacks,
         responseBytes: metrics.bytes - before.bytes, inProcessMs: Math.round(performance.now() - started) };
     console.log('[HTTP startup metrics]', startup);
-    expect(startup.requests).toBeLessThanOrEqual(20); expect(startup.responseBytes).toBeLessThan(64000);
+    expect(startup.requests).toBeLessThanOrEqual(slug === 'chat' ? 9 : 13); expect(startup.responseBytes).toBeLessThan(64000);
     console.log('[HTTP startup methods]', calls);
     for (const method of ['settings', 'ocr', 'readSettings', 'prepareConfiguration', 'initialFiles']) expect(calls[method]).toBeUndefined();
     for (const workspace of WORKSPACES) expect(document.getElementById(workspace.elementId)).not.toBeNull();
     for (const slug of WORKSPACES.map(workspace => workspace.slug)) await app.navigate(slug);
     expect(document.querySelectorAll('.app-nav-btn[hidden]')).toHaveLength(0);
     const id = await root.services.projects.sessions.create('HTTP conversation', null);
+    for (const method of Object.keys(calls)) delete calls[method];
     await app.navigate('chat', id);
+    console.log('[HTTP open Session methods]', calls);
+    expect(calls.openSessionView).toBe(1); expect(calls.activate).toBe(1);
+    expect(calls.prepareSession).toBeUndefined(); expect(calls.acquireFiles).toBeUndefined(); expect(calls.fixedWorkspace).toBeUndefined();
     expect(document.querySelector('.llm-input')).not.toBeNull();
+    const second = await root.services.projects.sessions.create('Second HTTP conversation', null);
+    await app.navigate('chat', second); expect(root.services.sessionManager.getSnapshot().sessionId).toBe(second);
+    await app.navigate('chat', id); expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);
+    document.querySelector<HTMLButtonElement>(`[data-tab-id="${second}"] .workbench-tabs__close`)!.click();
+    await vi.waitFor(() => expect(document.querySelector(`[data-tab-id="${second}"]`)).toBeNull());
+    expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);
+
+
     console.log('[HTTP navigation metrics]', metrics);
 });

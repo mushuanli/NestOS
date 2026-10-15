@@ -62,3 +62,5 @@ pnpm --filter @itookit/ui-common build        # tsup
 `EditorOptions<TSubmission>` 与 `SessionDraftControls<TSubmission>` 通过泛型传递宿主提交数据，默认 unknown。本包不依赖 Flow 或 Session；LLM 编辑器适配层负责指定 SessionSubmission。
 
 发布出口使用 dist/index.js（ESM）、dist/index.cjs（CJS）及相应声明；publishConfig.exports 必须覆盖工作区的 src 出口。
+
+EditorOptions 的第二个泛型参数描述编辑器专属 initialData，本包不解释领域结构；IEditor.activate 供宿主恢复缓存视图的绑定。业务读模型与执行策略不进入 ui-common。

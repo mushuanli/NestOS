@@ -77,7 +77,7 @@ const factory = factories[strategyType] ?? defaultEditorFactory;
 - chat 工作区在 `SessionWorkbench` 完成侧栏树加载后立即触发 `onSidebarReady`，宿主的 `onWorkspaceReady` 因此先把加载遮罩限制在正文列；让出一帧后再恢复选中项、项目正文和深链编辑器。侧栏初始化完成后 `onSidebarInteractive` 允许桌面端提前开放点击；显式深链不额外打开旧的侧栏选中项。`onEditorReady` 仍在正文首挂载后触发。
 - 两列 DOM 创建后 `onWorkspaceMounted` 立即让桌面端把加载遮罩移到正文列，VFS 侧栏骨架在数据读取期间可见；`onWorkspaceReady` 表示侧栏数据已完成。
 - MDX 默认编辑器经 `browser/lazy-mdx.ts` 延迟导入；标准工作区的 MentionPlugin 也只在打开正文时加载。侧栏数据与正文编辑器不能共用启动时的静态模块图。
-- 普通文档启动只等待主题和当前工作区。configuration/settings-access 在首次打开设置编辑器时获取已就绪后端端口，导航目录纯本地；OCR、恢复能力、聊天权限与 Flow 模板按消费加载。lifecycle/lazy-resource 负责共享创建、失败重试和关闭时等待释放，不承载业务策略；空输入框订阅不能触发 OCR 加载。
+- 普通文档启动只等待主题和当前工作区。configuration/settings-access 在首次打开设置编辑器时获取已就绪后端端口，导航目录纯本地；OCR、恢复能力、聊天控制随工作台装配，Flow 模板由后端按回执安装。lifecycle/lazy-resource 负责共享创建、失败重试和关闭时等待释放，不承载业务策略；空输入框订阅不能触发 OCR 加载。
 - 路由基于 hash URL (`#/<slug>/<resourceId>`)，由 `history.pushState/replaceState` 写入，监听 `popstate` + `NAVIGATION_EVENTS.NAVIGATE`
 - `ThemeService` 管理 `<html>` 的 `data-theme` attribute，监听 `app:theme-change` 事件，偏好持久化到 `etc:/ui/theme.json`；`AppHandle.setTheme(mode)` 切换主题
 
@@ -114,3 +114,5 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 - `digital-twin/scan-list.ts` 管理规则与目标列表的搜索、筛选和每页 10 条分页，保留筛选状态和表单 DOM；规则按启用状态筛选，目标按启用状态、来源类型和可读取状态筛选。扫描目标是已接入来源，未接入匹配通过规则预览核对；不按旧 200 条截断目标。页签切换更新路由而不重建正文，保留规则草稿并支持方向键、Home/End。
 
 - 前端禁止引用 app-core，包括类型导入；应用服务接口从 shared/app-contracts 的 services 子入口通过 import type 引用。`pnpm modules:check` 与 `pnpm modules:buildcheck` 验证完整源码和构建图，见 [前后端模块边界](../../doc/design/frontend-backend-modules.md)。
+
+- 工作台初始聊天控制、导航与当前项目由 backend.workbenchView 返回；会话先 openSessionView 准备，旧编辑器保存后 activate 返回初始快照。缓存编辑器重新激活绑定，文件租约随标签释放。连接观察只提交兴趣集合，不拥有轮询或后台任务。UI 文档写入合并、去重，后端完成 upsert，flush 失败保留待写内容。

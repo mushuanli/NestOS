@@ -6,28 +6,33 @@ interface Watch {
     identity: string; listeners: Set<() => void>; rows: HarnessStatusRow[]; abort: AbortController;
     port?: HarnessStatusPort; timer?: ReturnType<typeof setTimeout>; work?: Promise<void>; failures: number;
 }
+interface CachedStatus { identity: string; rows: HarnessStatusRow[]; fileVersion?: string; expiresAt: number }
 /** Ref-counted project observers. Identity includes configuration, server, grants and revision. */
 export class RemoteSessionStatus {
     private readonly watches = new Map<string, Watch>();
+    private readonly cached = new Map<string, CachedStatus>();
     constructor(private readonly identity: (projectId: string) => string | undefined,
         private readonly open: (projectId: string, options: OperationOptions) => Promise<HarnessStatusPort>) {}
     get(projectId: string, profileId: string, sessionId: string): HarnessObservation | undefined {
         return this.record(projectId, profileId, sessionId)?.observation;
     }
     record(projectId: string, profileId: string, sessionId: string): HarnessStatusRow | undefined {
-        const watch = this.watches.get(projectId);
+        const watch = this.projection(projectId);
         if (!watch || watch.identity !== this.identity(projectId)) return;
         return watch.rows.find(row => row.profileId === profileId && row.sessionId === sessionId);
     }
     fileVersion(projectId: string): string | undefined {
-        const watch = this.watches.get(projectId);
+        const watch = this.projection(projectId);
         if (!watch || watch.identity !== this.identity(projectId)) return;
         return [...new Set(watch.rows.filter(row => row.fileVersion).map(row => `${row.profileId}:${row.fileVersion}`).concat(watch.fileVersion ? [watch.fileVersion] : []))].sort().join('|') || undefined;
     }
     subscribe(projectId: string, listener: () => void): () => void {
         let watch = this.watches.get(projectId);
         if (!watch) {
-            watch = {identity: this.identity(projectId) ?? '', listeners: new Set(), rows: [], abort: new AbortController(), failures: 0};
+            const cached = this.projection(projectId);
+            watch = {identity: this.identity(projectId) ?? '', listeners: new Set(), rows: cached?.rows ?? [],
+                fileVersion: cached?.fileVersion, abort: new AbortController(), failures: 0};
+            this.cached.delete(projectId);
             this.watches.set(projectId, watch);
         }
         const notify = () => listener();
@@ -65,9 +70,25 @@ export class RemoteSessionStatus {
         }
     }
     private async stop(id: string, watch: Watch) {
+        this.remember(id, watch);
         watch.abort.abort(); clearTimeout(watch.timer);
         if (this.watches.get(id) === watch) this.watches.delete(id);
         await watch.port?.close();
     }
-    async dispose() { await Promise.all([...this.watches].map(([id, watch]) => this.stop(id, watch))); }
+    private projection(id: string): Watch | CachedStatus | undefined {
+        const watch = this.watches.get(id);
+        if (watch) return watch.identity === this.identity(id) ? watch : undefined;
+        const cached = this.cached.get(id);
+        if (cached && cached.expiresAt > Date.now() && cached.identity === this.identity(id)) return cached;
+        this.cached.delete(id); return undefined;
+    }
+    private remember(id: string, watch: Watch): void {
+        if (watch.abort.signal.aborted || watch.identity !== this.identity(id) || watch.rows.length > 512) return;
+        this.cached.delete(id);
+        const rows = watch.rows.map(row => ({...row, observation: {...row.observation, stale: true, canInterrupt: false, canRespond: false}}));
+        this.cached.set(id, { identity: watch.identity, rows, fileVersion: watch.fileVersion, expiresAt: Date.now() + 30_000 });
+        while (this.cached.size > 64 || [...this.cached.values()].reduce((count, entry) => count + entry.rows.length, 0) > 4096)
+            this.cached.delete(this.cached.keys().next().value!);
+    }
+    async dispose() { await Promise.all([...this.watches].map(([id, watch]) => this.stop(id, watch))); this.cached.clear(); }
 }

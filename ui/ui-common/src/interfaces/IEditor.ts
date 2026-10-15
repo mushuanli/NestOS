@@ -13,7 +13,7 @@ export type EditorTarget =
     | { kind: 'entity'; entityType: 'agent' | 'skill' | 'flow' | 'mcp' | 'tool' | 'provider' | 'connection' | 'system-prompt'; id: string };
 
 /** Validate an explicitly supplied target against its granted file context. */
-export function normalizeEditorOptions<TSubmission>(options: EditorOptions<TSubmission>): EditorOptions<TSubmission> {
+export function normalizeEditorOptions<TSubmission, TInitial>(options: EditorOptions<TSubmission, TInitial>): EditorOptions<TSubmission, TInitial> {
     const fs = options.files?.fs;
     if (options.target?.kind === 'file' && options.target.namespaceId && fs && options.target.namespaceId !== fs.viewId) throw new Error('Editor namespace does not match its file context');
     if (options.target && 'sessionId' in options.target && options.target.sessionId && options.files?.sessionId && options.target.sessionId !== options.files.sessionId) throw new Error('Editor Session does not match its file context');
@@ -108,7 +108,9 @@ export interface ConfigurationFormControls<T, TDiscovery> {
     dispose?(): void;
 }
 
-export interface EditorOptions<TSubmission = unknown> {
+export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
+    /** Editor-specific read model assembled by its application service. */
+    initialData?: TInitial;
     onConversationSession?(sessionId: string): void;
     conversation?: import('./ConversationControls').ConversationControls;
     remoteAgents?: import('./ConversationControls').RemoteAgentControls;
@@ -215,6 +217,8 @@ export abstract class IEditor {
     abstract setText(markdown: string): void;
 
     abstract focus(): void;
+    /** Restore view bindings when the host reuses a retained editor. */
+    activate?(): Promise<void>;
 
     // --- 状态与UI交互 ---
     abstract getMode(): 'edit' | 'render';

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FlowStore } from '@itookit/llm-flow';
 import { FlowDefinitionStore } from '@itookit/llm-flow';
+import { createMindosFlowLibrary } from '../src/presets/flow-library';
 import { essayReviewDraft, seedDefaultFlows, ESSAY_REVIEW_FLOW_ID } from '../src/presets/default-flows';
 
 interface MemoryFile { nodeId: string; name: string; content: string; }
@@ -73,4 +74,17 @@ it('does not recreate the legacy essay Flow after deletion and restart', async (
     const restarted = new FlowDefinitionStore(storage);
     await seedDefaultFlows(restarted);
     expect(await restarted.loadDraft(ESSAY_REVIEW_FLOW_ID)).toBeNull();
+});
+
+it('installs product templates in the backend and preserves user edits and deletion receipts', async () => {
+    const storage = memoryStore(), store = new FlowDefinitionStore(storage);
+    const template = createMindosFlowLibrary()[0];
+    await seedDefaultFlows(store);
+    const loaded = (await store.loadDraft(template.id))!;
+    expect(loaded.parameters?.find(parameter => parameter.name === 'maxRounds')?.default).toBe(10);
+    await store.saveDraft({ ...loaded, name: 'User edited' }, loaded.draftVersion);
+    await seedDefaultFlows(store); expect((await store.loadDraft(template.id))?.name).toBe('User edited');
+    await storage.deleteFile(`/${template.id}.flow`);
+    await seedDefaultFlows(new FlowDefinitionStore(storage));
+    expect(await new FlowDefinitionStore(storage).loadDraft(template.id)).toBeNull();
 });

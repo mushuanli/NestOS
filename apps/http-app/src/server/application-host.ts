@@ -3,9 +3,10 @@ import { createPiAgentDriver } from '@itookit/piagent-driver';
 import type { IStorageBackend } from '@itookit/vfs-core';
 import { guardHostStorage } from './host-storage';
 import { ViewApi } from './view-api';
+import type { AuditPort } from './audit-log';
 
 /** Storage and execution belong to the daemon; browser views borrow capabilities. */
-export function createApplicationApi(backend: IStorageBackend, root?: string): ViewApi {
+export function createApplicationApi(backend: IStorageBackend, root?: string, audit?: AuditPort): ViewApi {
     const storage = root ? guardHostStorage(backend, root) : backend;
     const borrowed = new Proxy(storage, { get(target, key) {
         if (key === 'close') return async () => {};
@@ -13,5 +14,5 @@ export function createApplicationApi(backend: IStorageBackend, root?: string): V
     } });
     const ready = createApplicationRuntime({ backend: borrowed, remoteSourceProvider: createPiAgentDriver(), ownerKind: 'cli', startupMode: 'interactive' });
     void ready.then(runtime => runtime.startBackground?.()).catch(error => console.error('[Application] Host initialization failed', error));
-    return new ViewApi(ready);
+    return new ViewApi(ready, audit);
 }

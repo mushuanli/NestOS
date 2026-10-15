@@ -83,7 +83,7 @@ interface InitialSessionData {
 }
 
 
-export interface LLMEditorOptions extends EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission> {
+export interface LLMEditorOptions extends EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission, import('../services/SessionService').SessionLoadResult> {
     sessionId: string;
     sessionRepository: ISessionRepository;
     sessionManager: SessionViewPort;
@@ -238,8 +238,9 @@ export class LLMWorkspaceEditor implements IEditor {
 
             // Bind the existing Session before rendering its settings.
             const session = await this.sessionService.loadSession(
-                this.options.sessionId!, this.currentTitle, this.options.target?.kind === 'session' ? this.options.target.branch : undefined
+                this.options.sessionId!, this.currentTitle, this.options.target?.kind === 'session' ? this.options.target.branch : undefined, this.options.initialData
             );
+            this.options.initialData = undefined;
             measurement.mark('bindSession');
 
             this.currentSessionId = session.sessionId;
@@ -277,7 +278,7 @@ export class LLMWorkspaceEditor implements IEditor {
 
     private initLayout(): void {
         this.container.innerHTML = LayoutTemplates.renderWorkspace(this.currentTitle);
-        this.titleInput = this.container.querySelector('#llm-title-input') as HTMLInputElement;
+        this.titleInput = this.container.querySelectorAll('#llm-title-input')[0] as HTMLInputElement;
         this.container.addEventListener('click', this.onWelcomePrompt);
     }
 
@@ -867,16 +868,11 @@ export class LLMWorkspaceEditor implements IEditor {
             }
         } catch { /* manifest 不可读时忽略 */ }
 
-        this.sessionEventUnsub = this.sessionManager.onEvent(
-            (event) => {
-                if (event.type === 'branch:switched') void this.stateManager.switchDraftBranch(event.payload.branchName).catch(error => console.error('Branch draft switch failed', error));
-                this.sessionEventHandler.handleSessionEvent(event);
-            }
-        );
+        this.bindSessionEvents();
 
         this.statusIndicator.updateFromSnapshot(snapshot);
 
-        // 从 workflow 创建的新 session：立即运行一次（用 title 作为首条消息）。
+        // Preserve the initial execution behavior for empty Flow sessions.
         if (autoRunFlow) {
             void this.sendCommand.run({
                 text: `${title}\n\n${JSON.stringify(autoRunFlow.parameters ?? {}, null, 2)}`,
@@ -890,6 +886,16 @@ export class LLMWorkspaceEditor implements IEditor {
                 },
             });
         }
+    }
+
+    private bindSessionEvents(): void {
+        this.sessionEventUnsub?.();
+        this.sessionEventUnsub = this.sessionManager.onEvent(
+            (event) => {
+                if (event.type === 'branch:switched') void this.stateManager.switchDraftBranch(event.payload.branchName).catch(error => console.error('Branch draft switch failed', error));
+                this.sessionEventHandler.handleSessionEvent(event);
+            }
+        );
     }
 
     // ================================================================
@@ -967,6 +973,13 @@ export class LLMWorkspaceEditor implements IEditor {
     isDirty(): boolean { return false; }
     setDirty(_dirty: boolean): void { }
     focus(): void { this.chatInput?.focus(); }
+    async activate(): Promise<void> {
+        if (!this.initComplete || this.destroyPromise) return;
+        const loaded = await this.sessionService.loadSession(this.options.sessionId, this.currentTitle, this.branchStore.currentBranch?.name);
+        this.bindSessionEvents();
+        this.historyView.renderFull(loaded.snapshot.sessions);
+        this.statusIndicator.updateFromSnapshot(loaded.snapshot);
+    }
 
     setTitle(title: string): void {
         this.currentTitle = title;
@@ -1206,7 +1219,10 @@ export class LLMWorkspaceEditor implements IEditor {
             () => this.historyView?.destroy(), () => this.chatInput?.destroy(),
             () => this.sessionService?.dispose(), () => this.branchStore?.destroy(),
             () => this.domCache?.destroy(), () => this.bus?.destroy(),
-            async () => { await this.commandBus?.execute(SessionCommand.Unbind).catch(() => {}); },
+            async () => {
+                if (this.sessionManager.id === this.options.sessionId)
+                    await this.commandBus?.execute(SessionCommand.Unbind).catch(() => {});
+            },
             () => { if (this.container) this.container.innerHTML = ''; },
             () => this.editorEvents.clear(), () => this.nodeCommands.clear(),
         ];

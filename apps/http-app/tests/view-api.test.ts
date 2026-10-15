@@ -13,13 +13,15 @@ import { authenticatedFetch, close, secureServers } from './tls-fixture';
 let certificateRoot: string, certificates: string, directory: string, backend: LocalFSBackend;
 let api: ReturnType<typeof createApplicationApi>, server: Awaited<ReturnType<typeof secureServers>>, auth: Awaited<ReturnType<typeof authenticatedFetch>>;
 const clients: HttpViewClient[] = [];
+const auditEvents: import('../src/server/audit-log').AuditEvent[] = [];
 beforeAll(async () => { certificateRoot = await mkdtemp(path.join(tmpdir(), 'mindos-view-certs-')); certificates = path.join(certificateRoot, 'certs'); await createCertificates(certificates, ['127.0.0.1']); });
 afterAll(async () => { await rm(certificateRoot, { recursive: true, force: true }); });
 beforeEach(async () => {
     directory = await mkdtemp(path.join(tmpdir(), 'mindos-view-'));
     const root = path.join(directory, 'data'), ui = path.join(directory, 'ui'); await mkdir(ui); await writeFile(path.join(ui, 'index.html'), '<title>MindOS</title>');
     backend = await openLocalFSBackend({ rootDir: root, sidecarDir: path.join(directory, 'meta'), createDb: NodeSqliteSidecarDb.open });
-    api = createApplicationApi(backend, root); server = await secureServers(backend, root, ui, certificates, api); auth = await authenticatedFetch(certificates);
+    auditEvents.length = 0;
+    api = createApplicationApi(backend, root, { write: event => auditEvents.push(event), close: async () => {} }); server = await secureServers(backend, root, ui, certificates, api); auth = await authenticatedFetch(certificates);
 });
 afterEach(async () => { await Promise.all(clients.splice(0).map(client => client.close())); await api.close(); auth.close(); await close(server.server); await backend.close(); await rm(directory, { recursive: true, force: true }); });
 async function client(id: string) { const peer = new HttpViewClient(id, server.origin + '/api/application', auth.fetcher); clients.push(peer); return peer.start(); }
@@ -95,4 +97,16 @@ it('updates another browser configuration cache after a backend change without r
     const first = await client('writer'), second = await client('observer');
     await first.services.agentService.saveProvider({ id: 'shared', name: 'Shared', implementation: 'openai-compatible', baseURL: 'https://example.test', models: [] });
     await vi.waitFor(() => expect(second.services.agentService.getProvider('shared')?.name).toBe('Shared'));
+});
+
+it('records registered RPC names and batch size without recording UI document content or names', async () => {
+    const root = await client('diagnostic');
+    await root.backend.writeUiDocuments({ 'private-document-name': { secret: 'private-document-content' } });
+    await root.backend.readUiDocuments(['private-document-name']);
+    const writes = auditEvents.filter(event => event.rpcOperations?.includes('ApplicationBackend.writeUiDocuments'));
+    expect(writes).toHaveLength(1); expect(writes[0]).toMatchObject({ rpcKind: 'call', rpcBatchSize: 1 });
+    expect(JSON.stringify(auditEvents)).not.toContain('private-document');
+    await Promise.all([root.services.projects.list(), root.services.digitalTwin!.getSettings()]);
+    expect(auditEvents).toContainEqual(expect.objectContaining({ rpcKind: 'queries', rpcBatchSize: 2,
+        rpcOperations: ['ProjectService.list', 'DigitalTwinService.getSettings'] }));
 });

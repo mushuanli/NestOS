@@ -30,7 +30,7 @@ import { initApp, installMobileNavigation, windowSessionLeaseToken, workspaceRoo
 import { createApplicationRuntime } from '@itookit/app-core';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { createFlowContextMenuConfig, createAIContextMenuConfig,
-    installFlowLibrary, restoreFlowLibrary } from '@itookit/llm-ui/startup';
+    restoreFlowLibrary } from '@itookit/llm-ui/startup';
 import {
     ProviderSettingsEditor,
     ConnectionSettingsEditor,
@@ -299,7 +299,6 @@ async function bootstrap(): Promise<void> {
         createFlowEditor: deps => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui/chat')).createFlowsEditorFactory(deps)),
         createFlowContextMenu: deps => createFlowContextMenuConfig({ ...deps, library: createMindosFlowLibrary() }),
-        installFlowLibrary: commands => installFlowLibrary(commands, createMindosFlowLibrary()),
         restoreFlowLibrary: commands => restoreFlowLibrary(commands, createMindosFlowLibrary()),
         createSkillEditor: agents => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui/settings')).createSkillsEditorFactory(agents)),

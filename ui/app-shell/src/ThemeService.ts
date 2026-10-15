@@ -1,13 +1,12 @@
 // @file: app-shell/src/ThemeService.ts
 // Manages light / dark / system theme preference.
-// Persists to etc:/ui/theme.json via VFS; applies data-theme on <html>.
+// Persists through the document port; applies data-theme on <html>.
 
-import type { IFileSystem } from '@itookit/vfs-core';
+import type { VfsJsonStore } from './persistence/vfs-json-store';
 
 export type ThemeMode = 'light' | 'dark' | 'system';
 
 export const THEME_CHANGE_EVENT = 'app:theme-change';
-const THEME_PATH = '/ui/theme.json';
 /**
  * Mirror of the chosen mode for the next launch's pre-paint script (`index.html`): the shell is
  * painted from `localStorage` before the VFS-backed preference can be read.
@@ -18,7 +17,11 @@ export class ThemeService {
     private mode: ThemeMode = 'system';
     private mq: MediaQueryList;
     private mqListener: () => void;
-    private vfs: IFileSystem | null = null;
+    private store?: Pick<VfsJsonStore, 'read' | 'write' | 'flush'>;
+    private readonly themeChanged = (event: Event) => {
+        const mode = (event as CustomEvent<{ mode: ThemeMode }>).detail?.mode;
+        if (mode) this.applyMode(mode);
+    };
 
     constructor() {
         this.mq = window.matchMedia('(prefers-color-scheme: dark)');
@@ -28,17 +31,16 @@ export class ThemeService {
         this.mq.addEventListener('change', this.mqListener);
     }
 
-    /** Call after VFS is ready. Loads persisted preference and applies theme. */
-    async init(vfs: IFileSystem): Promise<void> {
-        this.vfs = vfs;
+    /** Load the persisted preference and apply the theme. */
+    async init(store: Pick<VfsJsonStore, 'read' | 'write' | 'flush'>): Promise<void> {
+        this.store = store;
+        this.mq.removeEventListener('change', this.mqListener);
+        this.mq.addEventListener('change', this.mqListener);
         this.mode = await this.loadMode();
         this.applyTheme();
 
         // Listen for changes dispatched by AppearanceSettingsEditor
-        window.addEventListener(THEME_CHANGE_EVENT, (e) => {
-            const mode = (e as CustomEvent<{ mode: ThemeMode }>).detail?.mode;
-            if (mode) this.applyMode(mode);
-        });
+        window.addEventListener(THEME_CHANGE_EVENT, this.themeChanged);
     }
 
     getMode(): ThemeMode {
@@ -74,10 +76,9 @@ export class ThemeService {
     }
 
     private async loadMode(): Promise<ThemeMode> {
-        if (!this.vfs) return 'system';
+        if (!this.store) return 'system';
         try {
-            const raw = await this.vfs.driver.readContent(THEME_PATH);
-            const json = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw as ArrayBuffer));
+            const json = await this.store.read('theme') as { mode?: unknown } | undefined;
             const m = json?.mode;
             return m === 'light' || m === 'dark' || m === 'system' ? m : 'system';
         } catch {
@@ -86,14 +87,14 @@ export class ThemeService {
     }
 
     private async saveMode(mode: ThemeMode): Promise<void> {
-        if (!this.vfs) return;
-        const content = JSON.stringify({ mode }, null, 2);
-        if (await this.vfs.driver.exists(THEME_PATH)) await this.vfs.driver.writeContent(THEME_PATH, content);
-        else await this.vfs.driver.createFile({ name: 'theme.json', parentPath: '/ui', content, recursive: true });
+        if (!this.store) return;
+        this.store.write('theme', { mode }); await this.store.flush();
     }
 
     destroy(): void {
         this.mq.removeEventListener('change', this.mqListener);
+        window.removeEventListener(THEME_CHANGE_EVENT, this.themeChanged);
+        this.store = undefined;
     }
 }
 

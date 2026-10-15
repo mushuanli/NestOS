@@ -15,6 +15,7 @@ async function setup() {
 }
 it('lists exact files, restores only selected notes and preserves edits', async () => {
     const { runtime, notes, library } = await setup();
+    await runtime.flowEngine.engine.driver.delete(['/essay-review-isolated.flow']);
     const entries = await library.list();
     expect(entries.map(entry => entry.name)).toEqual(['demo.md', 'essay-review-isolated.flow', 'essay-review.flow']);
     expect(entries[0]).toMatchObject({ path: '/home/admin/minds/demo.md', exists: false });
@@ -30,6 +31,7 @@ it('lists exact files, restores only selected notes and preserves edits', async 
 });
 it('restores selected Flow templates through real commands and does not create unselected notes', async () => {
     const { runtime, notes, library } = await setup();
+    await runtime.flowEngine.engine.driver.delete(['/essay-review-isolated.flow']);
     expect(await library.restore(['flow:essay-review-isolated', 'flow:essay-review'])).toEqual([
         { id: 'flow:essay-review-isolated', status: 'restored' }, { id: 'flow:essay-review', status: 'preserved' },
     ]);

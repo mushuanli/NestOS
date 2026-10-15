@@ -10,6 +10,7 @@ import { json, readJson, readBytes } from './http-response';
 import { MAX_BODY_BYTES } from '../protocol';
 import { createHostedView, type HostedView } from './view-services';
 import { ViewNotifications } from './view-notifications';
+import type { AuditPort } from './audit-log';
 
 interface Client { peer: RpcPeer; view: HostedView; stream?: ServerResponse; lastSeen: number; active: number;
     initialized: boolean; notifications: ViewNotifications;
@@ -18,7 +19,7 @@ interface Client { peer: RpcPeer; view: HostedView; stream?: ServerResponse; las
 export class ViewApi {
     private readonly clients = new Map<string, Promise<Client>>();
     private readonly sweep: ReturnType<typeof setInterval>;
-    constructor(private readonly runtime: Promise<ApplicationRuntime>) {
+    constructor(private readonly runtime: Promise<ApplicationRuntime>, private readonly audit?: AuditPort) {
         this.sweep = setInterval(() => { void this.releaseIdle(); }, 15000); this.sweep.unref();
     }
     private identity(request: IncomingMessage, id: unknown): string {
@@ -47,8 +48,16 @@ export class ViewApi {
         }
         if (!['queries', 'bindings'].includes(body.kind ?? '') && (body.kind !== 'call' || !validCall(body.call))) throw new FSError('EINVAL', 'Invalid public capability call');
         this.acquire(client);
+        const started = Date.now();
+        const calls = body.kind === 'call' ? [body.call!] : (Array.isArray(body.calls) ? body.calls : []).filter(validCall).slice(0, 32);
+        const operations = calls.map(call => client.peer.operationName(call));
         try { json(response, 200, ['queries', 'bindings'].includes(body.kind!) ? await this.queries(client, body.calls, body.kind === 'bindings') : await client.peer.handle(body.call!)); }
-        finally { client.active--; client.lastSeen = Date.now(); }
+        finally {
+            client.active--; client.lastSeen = Date.now();
+            this.audit?.write({ event: 'application.complete', requestId: String(response.getHeader('X-Request-ID') ?? ''),
+                rpcKind: body.kind, rpcBatchSize: calls.length, rpcOperations: operations,
+                durationMs: Date.now() - started });
+        }
     }
     private async file(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {
         if (request.method !== 'POST' || request.headers['content-type'] !== 'application/octet-stream') throw new FSError('EINVAL', 'Expected file transfer');

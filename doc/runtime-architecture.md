@@ -307,7 +307,7 @@ LLM UI 分为 `/chat` 与 `/settings` 子入口；设置包是可选 peer，聊�
 
 本轮边界补全验收：全仓 typecheck、架构守卫与 docs:check 通过；Kernel adapters 199、Session 208、LLM UI 64、app-core 231 项测试通过。Session/UI/Flow/Adapters 与 Web 构建通过，构建后的 `/llm/core` 导入图不含产品目录，`/chat` 导入图不含 Session 单例或设置实现。宿主定向回归 25 项中 23 项通过，2 项仍为此前确认的外部草稿刷新问题；这不代表完整 app-shell 矩阵通过。
 
-业务 Flow 模板由 app-core 的 `createMindosFlowLibrary` 提供。llm-ui 的安装/恢复 API 必须接收显式模板数组，命令调用会复制输入以保护宿主目录；菜单仅在提供非空 `library` 时暴露恢复入口。Web/Tauri 在 UI 装配时注入 MindOS 目录，其他宿主可注入自己的 FlowDraft。原 UI 导出的 builtinFlowLibrary 已移除，迁移时需向 installFlowLibrary/restoreFlowLibrary 显式传目录。
+业务 Flow 模板由 app-core 的 `createMindosFlowLibrary` 提供。普通安装由后端 seedDefaultFlows 按回执完成；llm-ui 的显式恢复 API 接收模板数组并复制输入以保护宿主目录；菜单仅在提供非空 `library` 时暴露恢复入口。Web/Tauri 在 UI 装配时注入 MindOS 目录，其他宿主可注入自己的 FlowDraft。原 UI 导出的 builtinFlowLibrary 已移除，迁移时需向 restoreFlowLibrary 显式传目录。
 
 MindOS 默认工具授权已从 kernel-adapters/contracts 与 llm-session/contracts 移到 app-core 宿主预设。AgentConfigEditor 和 createAgentEditorFactory 接收 defaultToolIds，实例保存独立副本。app-shell 使用同一宿主列表装配聊天与设置界面；Web/Tauri 透传该参数。通用设置 UI 默认目录为空，继承与显式空授权语义保持不同。
 
@@ -709,3 +709,6 @@ HTTP 浏览器通过共享服务接口和显式能力传输调用 daemon，完�
 
 
 应用门面位于 [application-client](../backend/app-core/src/host/application-client.ts)，前端消费 [ApplicationClient 契约](../shared/app-contracts/src/ports/application-client.ts)。宿主内部直接构造领域服务，不再保留 LocalBackendPort 工厂表。工作台、工具箱和任务读模型在后端聚合；[ViewScope](../backend/app-core/src/host/view-scope.ts) 管理视图资源并移除已释放对象。具体策略/机制图见 [前后端模块](design/frontend-backend-modules.md)。
+
+
+应用视图的业务装配由 app-core/host 统一完成：workbench-view 聚合导航和当前项目，session-view 分离准备文件租约与激活会话绑定；旧编辑器保存后才激活新绑定，关闭视图不取消后台任务。bindLocalApplicationServices 统一先通过 openConversation 准备持久会话，再等待租约，Web/Tauri/HTTP 使用同一规则。连接探测共享观察兴趣，UI 不再枚举项目轮询；远端状态的闲置缓存按授权身份和 TTL 失效。UI 文档仅按名字批量读写，存储 upsert 在后端，布局格式由 UI 解释。端口与 C4 图见 [HTTP 业务装配](http-app.md#业务装配与后台缓存)。

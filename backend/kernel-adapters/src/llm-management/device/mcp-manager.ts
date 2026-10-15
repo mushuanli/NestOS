@@ -20,6 +20,7 @@ export class MCPManager {
     private closed = false;
     private revisions = new Map<string, number>();
     private _activeMCPConns = new Map<string, MCPServerConnection>();
+    private discoveries = new Map<string, { identity: string; value: MCPDiscovery }>();
 
     constructor(
         private readonly helpers: VFSHelpers,
@@ -40,7 +41,9 @@ export class MCPManager {
     getMCPServers(): MCPServer[] {
         return this._mcpServers.map(server => {
             const connectionState = this.states.get(server.id);
-            return {...server, status: connectionState.status, connectionState};
+            const discovery = this.discoveries.get(server.id);
+            const current = discovery?.identity === mcpConnectionIdentity(server) ? discovery.value : undefined;
+            return {...server, ...current, status: connectionState.status, connectionState};
         });
     }
 
@@ -92,6 +95,7 @@ export class MCPManager {
         await this.options.beforeDelete?.(id);
         await this.deleteMCPFromDisk(id, systemFS);
         this.extensions.forget(id);
+        this.discoveries.delete(id);
         this.revisions.set(id, (this.revisions.get(id) ?? 0) + 1);
         this._mcpServers = this._mcpServers.filter(s => s.id !== id);
         await this.closeServer(id);
@@ -117,7 +121,9 @@ export class MCPManager {
             if ((revisions.get(id) ?? 0) !== (this.revisions.get(id) ?? 0)) return;
             const server = servers.find(item => item.id === id);
             const previous = this._mcpServers.find(item => item.id === id);
-            if (!server || !previous || mcpConnectionIdentity(server) !== mcpConnectionIdentity(previous)) this.extensions.forget(id);
+            if (!server || !previous || mcpConnectionIdentity(server) !== mcpConnectionIdentity(previous)) {
+                this.extensions.forget(id); this.discoveries.delete(id);
+            }
             const changed = !server || !previous || this.connectionFingerprint(server) !== this.connectionFingerprint(previous);
             const activeChanged = server && this.fingerprints.has(id) && this.connectionFingerprint(server) !== this.fingerprints.get(id);
             if (changed || activeChanged) await this.closeServer(id);
@@ -144,7 +150,7 @@ export class MCPManager {
             const discovery = await this.discoverServer(server);
             const verified = { ...server, ...discovery };
             await this.options.beforeSave?.(verified, server);
-            this._mcpServers = this._mcpServers.map(item => item.id === id ? verified : item);
+            this.discoveries.set(id, { identity: mcpConnectionIdentity(server), value: discovery });
             this.onChanged();
             await this.options.configurationChanged?.();
             return true;
@@ -219,6 +225,7 @@ export class MCPManager {
         this.closed = true;
         await Promise.allSettled(this.operations.values());
         this.extensions.clear();
+        this.discoveries.clear();
         const results = await Promise.allSettled([...this._activeMCPConns.keys()].map(id => this.closeServer(id)));
         const errors = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected').map(result => result.reason);
         if (errors.length) throw new AggregateError(errors, 'MCP cleanup failed');

@@ -39,14 +39,21 @@ it('disconnects removed/reconfigured servers during reload', async () => {
 
 it('publishes discovered runtime capabilities before notifying dependent remote catalogs without rewriting configuration', async () => {
     const discovery = { tools: [{ name: 'remote', inputSchema: {} }], resources: [], prompts: [] };
-    const changed = vi.fn(async () => expect(manager.getMCPServers()[0]).toMatchObject({ ...discovery, status: 'connected' }));
+    const observed: MCPServer[] = [];
+    const changed = vi.fn(async () => { observed.push(manager.getMCPServers()[0]); });
     const { manager, server, connect, helpers } = setup({ configurationChanged: changed });
     vi.spyOn(MCPServerConnection.prototype, 'discover').mockResolvedValue(discovery);
     // Host hooks observe the same catalog that future navigation requests consume.
     try {
         await manager.initializeMCPServer(server.id);
         expect(connect).toHaveBeenCalledOnce(); expect(changed).toHaveBeenCalledOnce();
+        expect(observed[0]).toMatchObject({ ...discovery, status: 'connected' });
         expect(helpers.engineUpsert).not.toHaveBeenCalled();
+        await manager.reload();
+        expect(manager.getMCPServers()[0]).toMatchObject(discovery);
+        expect(manager.getRawServers()[0].tools).toBeUndefined();
+        await manager.saveMCPServer({ ...server, endpoint: 'https://new.invalid' });
+        expect(manager.getMCPServers()[0].tools).toBeUndefined();
     } finally { await manager.disconnectAll(); }
 });
 

@@ -2,9 +2,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { MCPManager } from '../../src/llm-management/device/mcp-manager';
 import { MCPServerConnection } from '../../src/llm-management/skills/mcp-client';
 import { mcpTimeoutMs, type MCPServer } from '@itookit/tools/mcp-contracts';
+import type { MCPConnectionOptions } from '../../src/llm-management/core';
 
 afterEach(() => vi.restoreAllMocks());
-function setup() {
+function setup(options: MCPConnectionOptions = {}) {
     const connected = new WeakSet<MCPServerConnection>();
     const connect = vi.spyOn(MCPServerConnection.prototype, 'connect').mockImplementation(async function (this: MCPServerConnection) { connected.add(this); });
     const disconnect = vi.spyOn(MCPServerConnection.prototype, 'disconnect').mockImplementation(async function (this: MCPServerConnection) { connected.delete(this); });
@@ -13,7 +14,7 @@ function setup() {
     let saved = [server];
     const helpers = { engineUpsert: vi.fn(async () => {}), loadJsonFilesFromDir: async () => saved,
         getFileSystem: () => ({ driver: { resolvePath: async () => undefined } }) };
-    const manager = new MCPManager(helpers as never, { createDeviceNode: async () => {}, removeDeviceNode: async () => {} } as never, () => {});
+    const manager = new MCPManager(helpers as never, { createDeviceNode: async () => {}, removeDeviceNode: async () => {} } as never, () => {}, options);
     manager.setServers(saved);
     return { manager, connect, disconnect, server, helpers, reload: (next: MCPServer[]) => { saved = next; } };
 }
@@ -34,6 +35,29 @@ it('disconnects removed/reconfigured servers during reload', async () => {
     reload([{ ...server, endpoint: 'https://new.invalid' }]); await manager.reload();
     expect(disconnect).toHaveBeenCalledOnce(); await manager.connectMCPServer(manager.getServers()[0]);
     reload([]); await manager.reload(); expect(disconnect).toHaveBeenCalledTimes(2);
+});
+
+it('publishes discovered runtime capabilities before notifying dependent remote catalogs without rewriting configuration', async () => {
+    const discovery = { tools: [{ name: 'remote', inputSchema: {} }], resources: [], prompts: [] };
+    const changed = vi.fn(async () => expect(manager.getMCPServers()[0]).toMatchObject({ ...discovery, status: 'connected' }));
+    const { manager, server, connect, helpers } = setup({ configurationChanged: changed });
+    vi.spyOn(MCPServerConnection.prototype, 'discover').mockResolvedValue(discovery);
+    // Host hooks observe the same catalog that future navigation requests consume.
+    try {
+        await manager.initializeMCPServer(server.id);
+        expect(connect).toHaveBeenCalledOnce(); expect(changed).toHaveBeenCalledOnce();
+        expect(helpers.engineUpsert).not.toHaveBeenCalled();
+    } finally { await manager.disconnectAll(); }
+});
+
+it('skips explicitly disabled, incomplete and removed startup configurations', async () => {
+    const { manager, server, connect } = setup();
+    try {
+        manager.setServers([{ ...server, autoConnect: false }]); await manager.initializeMCPServer(server.id);
+        manager.setServers([{ ...server, endpoint: '' }]); await manager.initializeMCPServer(server.id);
+        manager.setServers([]); await manager.initializeMCPServer(server.id);
+        expect(connect).not.toHaveBeenCalled();
+    } finally { await manager.disconnectAll(); }
 });
 
 it('waits for a pending connection before deleting its process', async () => {

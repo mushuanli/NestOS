@@ -206,7 +206,7 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
                         </div>
                         <div class="settings-checkbox-row" style="padding-bottom:.5rem">
                             <input type="checkbox" id="auto-connect" name="autoConnect"
-                                ${server.autoConnect ? 'checked' : ''}>
+                                ${server.autoConnect !== false ? 'checked' : ''}>
                             <label for="auto-connect">${t('form.autoConnect')}</label>
                         </div>
                     </div>

@@ -61,6 +61,8 @@ await runtime.dispose();
 
 ## 约束
 
+- MCP 后端启动连接默认启用（autoConnect:false 显式关闭），空配置与宿主禁用的 stdio 跳过；连接和标准/扩展发现异步运行，不阻塞 LLM 就绪。initializeMCPServer 复用按 ID 串行队列，发布运行时目录后通过 configurationChanged 通知宿主，启动发现不重写持久配置。
+
 - 工具/Skill catalog 只暴露**元数据**（`getToolDefinitions`/`getSkillMeta`），可执行服务只经 Session 作用域取得。
 - Context 的 `createTaskContextStorage` 使用 Task SeqFile 独立内容命名空间，发布和 GC 与 Kernel 提交共用后端事务。GC 只接受终态且 Effect 清理已确认的 Task，根包含保留的 Task/shared 历史；不得按文件年龄直接删除可达内容或解除固定目录保护。
 - 可选 `scopeForEffect`/`fileContextForScope` 由宿主选择并获取 Run 独立能力，注册表按 Session + scope 缓存；普通 Session API 保持默认作用域。选择或获取失败不回退；`disposeScope` 合并并发清理并禁止迟到 Effect 重建，Session/运行时关闭释放所有子作用域。

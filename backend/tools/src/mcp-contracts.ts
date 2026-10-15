@@ -26,6 +26,7 @@ export interface MCPServer {
     extensions?: Record<string, unknown>;
     headers?: Record<string, string>;
     env?: Record<string, string>;
+    /** Connect configured servers during host startup by default; false explicitly opts out. */
     autoConnect?: boolean;
     /** Milliseconds; timeoutUnit marks new writes, legacy UI values <= 300 were seconds. */
     timeout?: number;

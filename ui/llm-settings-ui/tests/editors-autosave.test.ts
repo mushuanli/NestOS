@@ -59,6 +59,19 @@ it('validates MCP JSON and persists corrected transport settings in place', asyn
     expect(container.querySelector('[name="headers"]')).toBe(field);
 });
 
+it.each([undefined, true, false])('shows the backend startup policy for MCP autoConnect=%s', async autoConnect => {
+    vi.useFakeTimers(); const container = mount(), saveMCPServer = vi.fn().mockResolvedValue(undefined);
+    const server = { id: 'm', name: 'MCP', transport: 'http', endpoint: 'https://example.invalid/mcp', autoConnect };
+    const editor = new MCPSettingsEditor(container, { getMCPServers: async () => [server], saveMCPServer } as never,
+        { target: { kind: 'entity', entityType: 'mcp', id: 'm' } });
+    editors.push(editor); await editor.init(container);
+    const checkbox = container.querySelector<HTMLInputElement>('[name="autoConnect"]')!;
+    expect(checkbox.checked).toBe(autoConnect !== false);
+    checkbox.checked = false; checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(saveMCPServer).toHaveBeenCalledWith(expect.objectContaining({ autoConnect: false }));
+});
+
 it('saves System Prompt content without flattening unchanged message groups or re-rendering', async () => {
     vi.useFakeTimers(); const container = mount(); const saveSystemPrompt = vi.fn().mockResolvedValue(undefined);
     const prompt = { id: 'p', name: 'Prompt', content: ['first', 'second'], description: 'old' };

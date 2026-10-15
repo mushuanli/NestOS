@@ -134,6 +134,23 @@ export class MCPManager {
         return this.serial(server.id, () => this.connectServer(server));
     }
 
+    /** Refresh runtime capabilities before publishing readiness to dependent host services. */
+    initializeMCPServer(id: string): Promise<boolean> {
+        return this.serial(id, async () => {
+            const server = this._mcpServers.find(item => item.id === id);
+            if (!server || server.autoConnect === false) return false;
+            const target = server.transport === 'stdio' ? server.command : server.endpoint;
+            if (!target?.trim()) return false;
+            const discovery = await this.discoverServer(server);
+            const verified = { ...server, ...discovery };
+            await this.options.beforeSave?.(verified, server);
+            this._mcpServers = this._mcpServers.map(item => item.id === id ? verified : item);
+            this.onChanged();
+            await this.options.configurationChanged?.();
+            return true;
+        });
+    }
+
     private async connectServer(server: MCPServer): Promise<void> {
         validateMCPServer(server);
         const fingerprint = this.connectionFingerprint(server);

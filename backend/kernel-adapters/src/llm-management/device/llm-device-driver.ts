@@ -274,7 +274,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         this.skillManager.setSkills(preSkills);
         _log('reloadSkills');
 
-        for (const server of preMcps) if (server.autoConnect) this.autoConnect(server);
+        for (const server of preMcps) if (server.autoConnect !== false) this.autoConnect(server);
 
         // Cross-tab sync
         this.bindVFSEvents();
@@ -356,10 +356,14 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     }
 
     private autoConnect(server: MCPServer): void {
-        if (this.disposed) return;
-        const work = this.mcpManager.connectMCPServer(server);
+        const target = server.transport === 'stdio' ? server.command : server.endpoint;
+        if (this.disposed || !target?.trim() || (server.transport === 'stdio' && !this.supportsMCPStdio())) return;
+        const started = performance.now();
+        this.mcpOptions.logger?.info('MCP startup connection started', { serverId: server.id, name: server.name });
+        const work = this.mcpManager.initializeMCPServer(server.id);
         this.autoConnections.add(work);
-        void work.catch(error => console.warn(`[LLMDeviceDriver] Auto-connect failed: ${server.id}`, error))
+        void work.then(ready => { if (ready) this.mcpOptions.logger?.info('MCP startup connection ready', { serverId: server.id, durationMs: Math.round(performance.now() - started) }); })
+            .catch(error => console.warn(`[LLMDeviceDriver] Auto-connect failed: ${server.id}`, error))
             .finally(() => this.autoConnections.delete(work));
     }
 

@@ -54,7 +54,7 @@ export class ToolboxResources {
             return toolboxPath(kind, '/' + id);
         }
         if (kind === 'mcp') {
-            await this.agents.saveMCPServer({ id, name, transport: 'http', status: 'idle', autoConnect: false });
+            await this.agents.saveMCPServer({ id, name, transport: 'http', status: 'idle' });
             return toolboxPath(kind, '/' + id);
         }
         if (kind === 'agents') {
@@ -168,7 +168,7 @@ export class ToolboxResources {
         }
         if (kind === 'providers' || kind === 'connections') return this.importModel(kind, data, id);
         if (kind === 'mcp') {
-            await this.agents.saveMCPServer({ ...data as MCPServer, id, status: 'idle', autoConnect: false, tools: [], resources: [], prompts: [] });
+            await this.agents.saveMCPServer({ ...data as MCPServer, id, status: 'idle', tools: [], resources: [], prompts: [] });
             return toolboxPath(kind, '/' + id);
         }
         if (kind === 'agents') {

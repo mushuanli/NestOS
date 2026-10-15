@@ -16,6 +16,22 @@ llm-ui 的 Skill 面板分别显示指令加载状态和当前 Agent 声明的�
 
 ## MCP 宿主与协议
 
+后端 LLM 驱动启动后异步连接已经填写 endpoint/command 的 MCP，`autoConnect` 缺省或 true 表示启用，显式 false 保留关闭；空草稿、宿主不支持的 stdio 不发起连接。工具箱新建不写隐式 false，导入保留原配置，表单按相同缺省规则显示。连接及发现不阻塞 LLM/宿主就绪，失败只影响对应 MCP；销毁等待在途连接并释放传输。
+
+启动连接复用管理器的按 ID 串行队列，完成标准发现与扩展验证、引用约束检查后更新运行时能力，再通知后端远程项目目录并发布事件。启动发现不改写持久配置。工作台依赖已验证的远程能力与后端通知，不依赖工具箱 UI 装配；本地导航不等待所有远端在线，访问不可用远端时沿用现有连接检查与错误/重试路径。已保存的有效远程描述仍可用于目录投影；连接、MCP 能力与远程文件 HTTP 状态分别由后端管理。
+
+```mermaid
+flowchart LR
+    Host[后端启动] --> Driver[LLM 配置就绪]
+    Driver --> Connect[MCP 连接与标准发现]
+    Connect --> Verify[扩展验证与引用约束]
+    Verify --> Catalog[运行时能力与远程目录]
+    Catalog --> Notify[后端变更通知]
+    Notify --> Workbench[工作台更新远程导航]
+    Shell[前端首屏] --> Toolbox[工具箱导航预加载]
+    Shell --> Workbench
+```
+
 使用官方 `@modelcontextprotocol/client` / `@modelcontextprotocol/core` **2.0.0**，Node 最低版本为 20。通用 MCP 客户端采用 `Client.versionNegotiation.mode: 'auto'` 和 SDK 支持的协议版本：优先 `server/discover`，遇到旧协议或未知方法时由 SDK 使用 `initialize` 协商。认证失败及服务器故障不会触发协议降级。`MCPDiscovery.protocolVersion` 返回实际协商版本；`MCP_PROTOCOL_VERSION` 是现代协议版本常量。piagent-driver 的专用 harness 网关仍要求服务声明的 2026-07-28 契约。
 
 只保留 stdio 和 Streamable HTTP（JSON-RPC over HTTP，可返回 JSON 或 SSE）。移除旧 HTTP+SSE 和 WebSocket 配置入口；已有旧传输配置显示“不支持”，连接或保存时明确拒绝，需要选择支持的传输。SDK 按协商版本生成请求头、客户端元数据并验证响应；现代协议不建立 MCP 协议级 Session，旧协议的初始化及 Session 生命周期由 SDK 管理。

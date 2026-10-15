@@ -1,11 +1,13 @@
+import { harnessObservation, remoteSessionSources } from '@itookit/app-contracts';
 import { projectTwinTarget, twinSourceMenu } from '../digital-twin/source-menu';
+import { withInitialDirectory } from './initial-directory';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
 import { ProjectSearchPanel } from './project-search-panel';
 import { showRemoteSessionFamily } from './remote-session-family';
 import { nativeSessionMenu } from './remote-session-management';
 import type { ProjectSearchMatch } from '@itookit/app-contracts/services';
-import type { LocalBackendPort } from '@itookit/app-contracts/services';
+import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import { projectTransferTargets } from './transfer-targets';
 import { ProjectSyncMenu } from './sync/menu';
 import { createMindOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
@@ -41,13 +43,12 @@ import type { EditorFactory, IEditor, EditorHostContext, ContextMenuConfig } fro
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { KernelViewPort as Kernel } from '@itookit/durable-kernel/contracts';
 import { allowsRowAction, describeErrorReason, describeCauseChain, type VFSToolbarContext, type VFSUIShell, type VFSNodeUI, type UIPersistencePort } from '@itookit/vfs-ui';
-import { filterDirectoryFiles } from './directory-visibility';
 import { FSError, createFileSystemView, type FSNode, type IFileSystem, type FileSystemContextOwner, type FileSystemView } from '@itookit/vfs-core';
 
 
 
 import { remoteSessionPath, browserTargetFolder, folderBrowserPath, folderPathFromBrowserPath, parseSessionRoute, resolveBrowserTarget, sessionRoute, type WorkspaceController } from '@itookit/app-contracts';
-import type { ProjectService, DirectoryMountService, SessionFilesService } from '@itookit/app-contracts/services';
+import type { ProjectService, DirectoryMountPort, SessionFilesPort } from '@itookit/app-contracts/services';
 import type { SessionLifecycleService, ProjectSessions } from '@itookit/app-contracts/services';
 
 /** Sidebar refresh tracing — enable with localStorage['vfs:debug']='1' (same flag as vfs-ui). */
@@ -90,17 +91,17 @@ function compareSessionEntries(a: VFSNodeUI, b: VFSNodeUI): number | undefined {
 }
 
 export interface SessionWorkbenchOptions {
-    backend: LocalBackendPort;
+    backend: ApplicationBackend;
     sidebar: HTMLElement;
     container: HTMLElement;
     repository: ISessionRepository;
-    files: SessionFilesService;
+    files: SessionFilesPort;
     factory: EditorFactory;
     onSelect: (id: string, mode?: 'push' | 'replace') => void;
     hostContext: EditorHostContext | undefined;
     kernel: Kernel;
     fileFactory: EditorFactory;
-    directoryMounts?: DirectoryMountService;
+    directoryMounts?: DirectoryMountPort;
     sessionSkills?: SessionSkillControls;
     digitalTwin?: import('@itookit/app-contracts/services').DigitalTwinService;
     manageTwin?: (sessionId: string) => Promise<void>;
@@ -147,7 +148,7 @@ export class SessionWorkbench implements WorkspaceController {
     private fileRenameCleanup?: () => void;
     private context?: FileSystemContextOwner;
     private assets?: FileSystemView;
-    private browser?: Awaited<ReturnType<LocalBackendPort['sessionBrowser']>>;
+    private browser?: Awaited<ReturnType<ApplicationBackend['workbenchView']>>['browser'];
     private navigationFiles?: FileSystemView;
     private sidebarUI?: VFSUIShell;
     private initialSidebarSelection?: string;
@@ -193,8 +194,9 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly prepareSession?: (sessionId: string) => Promise<boolean>;
     private readonly initialResourceId: SessionWorkbenchOptions['initialResourceId'];
     private readonly uiPersistence: SessionWorkbenchOptions['uiPersistence'];
-    private readonly sessions: ProjectSessions;
-    private readonly backend: LocalBackendPort;
+    private sessions!: ProjectSessions;
+    private readonly sessionsReady: Promise<ProjectSessions>;
+    private readonly backend: ApplicationBackend;
     constructor(options: SessionWorkbenchOptions) {
         this.backend = options.backend;
         this.syncMenu = new ProjectSyncMenu({ service: options.projectSync, setup: options.projectSyncSetup, directory: options.projectSyncDirectory,
@@ -220,7 +222,8 @@ export class SessionWorkbench implements WorkspaceController {
         this.initialResourceId = options.initialResourceId;
         this.prepareSession = options.prepareSession;
         this.uiPersistence = options.uiPersistence;
-        this.sessions = options.projects?.sessions ?? this.backend.projectSessions(options.repository);
+        this.sessionsReady = Promise.resolve(options.projects?.sessions ?? this.backend.projectSessions());
+        void this.sessionsReady.catch(() => {});
         this.tabs = new WorkbenchTabs(this.container, {
             activate: id => this.openResource(id), dispose: tab => this.disposeTab(tab),
             empty: () => { this.clearEditorFields(); this.showWelcome(); this.onSelect('', 'replace'); },
@@ -235,19 +238,20 @@ export class SessionWorkbench implements WorkspaceController {
     }
 
     async start(): Promise<void> {
-        this.remoteStatus = new RemoteSessionStatusView(this.backend.harnessObservation, this.projects, () => this.sidebarUI?.refreshList(),
+        this.sessions ??= await this.sessionsReady;
+        this.remoteStatus = new RemoteSessionStatusView(harnessObservation, this.projects, () => this.sidebarUI?.refreshList(),
             (id, icon, tooltip) => this.tabs.setStatus(id, icon, tooltip), () => this.scheduleRefresh('native-files'),
             (id, title) => this.tabs.title(id, title));
-        this.browser = await this.backend.sessionBrowser({ repository: this.repository, files: this.files, kernel: this.kernel, projects: this.projects,
-            filterDisplayedFiles: filterDirectoryFiles });
+        const view = await this.backend.workbenchView({ displayedFilesPolicy: 'gitignore' });
+        this.browser = view.browser;
+        this.lifecycle = view.lifecycle;
         this.navigationFiles = createFileSystemView({ viewId: 'session-navigation:admin', mounts: [
-            { mountId: 'sessions', at: '/', fs: this.browser.fs, access: 'rw' },
+            { mountId: 'sessions', at: '/', fs: view.directory ? withInitialDirectory(this.browser.fs, view.directory) : this.browser.fs, access: 'rw' },
             ...(this.flows && !this.projects ? [{ mountId: 'flows', at: '/@flows', fs: this.flows.fs, access: 'rw' as const }] : []),
         ] });
-        this.lifecycle = this.backend.sessionLifecycle({ repository: this.repository, kernel: this.kernel });
         const tree = document.createElement('div'); tree.className = 'project-workbench__tree';
         if (this.projects) {
-            this.searchPanel = new ProjectSearchPanel(this.backend.projectSearch(this.projects), (row, query) => this.openSearchMatch(row, query), folder => this.openResource(remoteSessionPath(folder)));
+            this.searchPanel = new ProjectSearchPanel(view.search!, (row, query) => this.openSearchMatch(row, query), folder => this.openResource(remoteSessionPath(folder)));
             this.sidebarLayout.navigation.append(this.searchPanel.element);
         }
         this.sidebarLayout.navigation.append(tree);
@@ -260,7 +264,7 @@ export class SessionWorkbench implements WorkspaceController {
                 this.searchPanel?.project(this.projectNavigation?.currentProject()?.path);
                 this.searchPanel?.setQuery(this.sidebarUI?.getSnapshot().query ?? '', query => this.sidebarUI?.setQuery(query));
                 const selected = this.projectNavigation?.currentProject();
-                this.searchPanel?.sessionSources(selected && this.projects ? this.backend.remoteSessionSources(this.projects, selected, this.projectNavigation!.registeredProjects()) : []);
+                this.searchPanel?.sessionSources(selected && this.projects ? remoteSessionSources(this.projects, selected, this.projectNavigation!.registeredProjects()) : []);
                 return this.remoteStatus.items(this.projectNavigation?.navigationItems(items, this.sidebarUI?.getSnapshot().query) ?? items);
             },
             titleHeader: this.projectNavigation?.header, toolbarContainer: this.projectNavigation?.toolbarContainer,
@@ -319,7 +323,7 @@ export class SessionWorkbench implements WorkspaceController {
                     if (target.kind === 'remote') {
                         const parent = item.metadata.custom.remoteParentSessionId;
                         return target.nativeSessionId && this.projects ? [
-                            ...twin, ...nativeSessionMenu(this.backend.manageRemoteSession, this.projects, target, item.metadata.title, item.metadata.custom.nativeManagement, this.dialogs.signal,
+                            ...twin, ...nativeSessionMenu(this.backend.manageRemoteSession, target, item.metadata.title, item.metadata.custom.nativeManagement, this.dialogs.signal,
                                 async () => { await this.tabs.close(item.id, false); },
                                 async (command, title, deletedSessionIds) => {
                                     await this.sidebarUI?.refresh();
@@ -339,7 +343,7 @@ export class SessionWorkbench implements WorkspaceController {
                             ...defaults.filter(entry => 'id' in entry && ['export', 'favorite'].includes(entry.id)),
                             {id: 'native-export', label: t('harness.export'), onClick: () => { void this.exportSessionItem({path: item.id, type: 'file'})
                                 .then(result => { if (result && !this.closed) downloadArchive(result.content, result.name); }).catch(error => this.report(error)); }},
-                            {id: 'native-family', label: t('harness.family'), onClick: () => { void showRemoteSessionFamily(this.backend.conversationBranches, this.projects!, target, this.dialogs.signal, path => this.openResource(path)).catch(error => this.report(error)); }},
+                            {id: 'native-family', label: t('harness.family'), onClick: () => { void showRemoteSessionFamily(this.backend.conversationBranches, target, this.dialogs.signal, path => this.openResource(path)).catch(error => this.report(error)); }},
                             ...(typeof parent === 'string' && parent ? [{id: 'native-parent', label: t('harness.parent'), onClick: () => { void this.openResource(remoteSessionPath(target.folder, target.profileId, parent)).catch(error => this.report(error)); }}] : []),
                         ] : [];
                     }
@@ -389,6 +393,7 @@ export class SessionWorkbench implements WorkspaceController {
         }));
         if (this.projects) this.subscriptions.add(this.projects.drafts.onPromoted(() => this.scheduleRefresh('project.draftPromoted')));
         await traceBoot('sessionWorkbench.sidebar', () => this.sidebarUI!.start());
+        if (view.navigation) await this.projectNavigation?.refresh(view.navigation);
         if (this.onSidebarReady?.()) await afterSidebarPaint();
         if (this.closed) return;
         this.sidebarStarting = false;
@@ -611,6 +616,7 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
     async openResource(resourceId: string, options: OpenResourceOptions = {}): Promise<void> {
+        this.sessions ??= await this.sessionsReady;
         const intent = ++this.openIntent;
         const current = () => intent === this.openIntent && !this.closed;
         if (resourceId.startsWith('draft:') && this.projects) {
@@ -1061,18 +1067,16 @@ export class SessionWorkbench implements WorkspaceController {
     private async showTask(path: string): Promise<void> {
         const target = resolveBrowserTarget(path); if (target.kind !== 'task') return;
         const generation = ++this.taskRefresh;
-        const task = await this.kernel.task(target.sessionId, target.taskId);
-        let eventPage = await this.kernel.taskEventPage(target.sessionId, target.taskId);
-        const projectEvents = (items: typeof eventPage.items) => items
-            .filter(event => event.taskId === target.taskId).map(this.backend.taskKeyEvent).filter(event => event !== undefined);
-        const events = projectEvents(eventPage.items);
+        const detail = await this.backend.taskDetails(target.sessionId, target.taskId), { task, stat } = detail;
+        let eventPage = detail.events;
+        const events = [...eventPage.items];
         if (this.closed || generation !== this.taskRefresh) return;
         const panel = document.createElement('div'); panel.className = 'session-detail';
         const heading = document.createElement('h2'); heading.textContent = `${task.program.kind} · ${task.status}`; panel.append(heading);
         // Distinguish "the request was accepted" from "the external work really stopped":
         // only the confirmed case may read as stopped. Pause is projected the same way, so a
         // task paused by a Flow or another host does not silently render no state at all.
-        const stat = this.backend.taskStat(task), control = stat.control;
+        const control = stat.control;
         const stop = document.createElement('p');
         const kind = control.requested === 'cancel' ? 'cancel' : control.requested === 'pause' ? 'pause' : undefined;
         stop.dataset.stopState = !kind ? 'none'
@@ -1086,7 +1090,7 @@ export class SessionWorkbench implements WorkspaceController {
         stop.hidden = !kind;
         panel.append(stop);
         const description = document.createElement('p'); description.textContent = task.id; panel.append(description);
-        const result = document.createElement('pre'); result.textContent = JSON.stringify(this.backend.taskSummary(task), null, 2); panel.append(result);
+        const result = document.createElement('pre'); result.textContent = JSON.stringify(detail.summary, null, 2); panel.append(result);
         const entries = document.createElement('div'); panel.append(entries);
         // Retention may have dropped the oldest events; say so instead of silently
         // showing a shorter history (the page also reports `firstAvailableIndex`).
@@ -1115,13 +1119,13 @@ export class SessionWorkbench implements WorkspaceController {
         moreEvents.onclick = () => {
             if (moreEvents.disabled || eventPage.nextAfterIndex === undefined) return;
             moreEvents.disabled = true;
-            void this.kernel.taskEventPage(target.sessionId, target.taskId, {
+            void this.backend.taskEvents(target.sessionId, target.taskId, {
                 afterIndex: eventPage.nextAfterIndex, throughIndex: eventPage.throughIndex,
-            }).then(next => {
+            }).then(async next => {
                 if (this.closed || generation !== this.taskRefresh) return;
                 eventPage = next;
                 watermark = Math.max(watermark, next.firstAvailableIndex ?? 1);
-                events.push(...projectEvents(next.items)); render();
+                events.push(...next.items); render();
             }).catch(error => this.report(error)).finally(() => { moreEvents.disabled = false; });
         };
         render();
@@ -1129,7 +1133,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private async exportSelection(context: VFSToolbarContext): Promise<void> {
         if (!context.selectedIds.length) throw new Error(t('vfs.toolbar.selectExport'));
-        const archive = await this.backend.archiveExporter(this.projects!, this.repository).export(await Promise.all(context.selectedIds.map(path => archiveTarget(path, this.projects!))));
+        const archive = await (await this.backend.archiveExporter()).export(await Promise.all(context.selectedIds.map(path => archiveTarget(path, this.projects!))));
         if (!this.closed) downloadArchive(JSON.stringify(archive, null, 2));
     }
     private async importSelection(context: VFSToolbarContext): Promise<void> {
@@ -1138,7 +1142,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (!file || this.closed) return;
         const content = await file.text();
         if (this.closed) return;
-        const paths = await this.backend.archiveImporter(this.projects!, this.lifecycle, this.repository).import(content, await archiveTarget(path, this.projects!));
+        const paths = await (await this.backend.archiveImporter()).import(content, await archiveTarget(path, this.projects!));
         if (this.closed) return;
         await this.sidebarUI?.refresh();
         if (paths[0]) await this.openResource(await archiveTargetPath(paths[0], this.projects!));
@@ -1146,9 +1150,9 @@ export class SessionWorkbench implements WorkspaceController {
     private async exportSessionItem(item: { path: string; type: string }): Promise<{ name: string; content: string; mimeType: string } | null> {
         const target = resolveBrowserTarget(item.path);
         if (target.kind === 'remote' && target.profileId && target.nativeSessionId && this.projects)
-            return this.backend.exportRemoteSession(this.projects, target.folder, target.profileId, target.nativeSessionId, {signal: this.dialogs.signal, timeoutMs: 20_000});
+            return this.backend.exportRemoteSession(target.folder, target.profileId, target.nativeSessionId, {signal: this.dialogs.signal, timeoutMs: 20_000});
         if (target.kind !== 'session') return null;
-        return this.backend.exportSession(this.repository, target.sessionId);
+        return this.backend.exportSession(target.sessionId);
     }
 
     private async sessionPath(id: string): Promise<string> {
@@ -1179,7 +1183,7 @@ export class SessionWorkbench implements WorkspaceController {
         const projects = this.projects;
         const favorite = projects && resolveBrowserTarget(routePath);
         if (!projects || favorite?.kind !== 'favorite') return false;
-        const resolved = await this.backend.resolveFavorite(projects, this.repository, favorite.folder, favorite.favoriteId);
+        const resolved = await this.backend.resolveFavorite(favorite.folder, favorite.favoriteId);
         if (!current()) return true;
         await this.openResource(resolved.path, { ...options, fileNavigation: fileViewFor(resolved.kind) });
         // The resolved file is now active; keep the favorite row selected instead of its target.

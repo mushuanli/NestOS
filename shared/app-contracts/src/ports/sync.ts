@@ -3,7 +3,7 @@ import type * as SyncContracts from '@itookit/vfs-sync';
 import type { bindingToken, StoredFilePlan, FilePlan, Binding } from '@itookit/vfs-sync';
 
 export interface ProjectSyncService {
-    readonly bindingToken: typeof bindingToken;
+    readonly bindingToken: (binding: Parameters<typeof bindingToken>[0]) => string | Promise<string>;
     preview(projectId: string): Promise<StoredFilePlan>;
     execute(projectId: string, planId: string): Promise<FilePlan>;
     compare(projectId: string, planId: string, path: string): Promise<ProjectSyncComparison>;
@@ -14,7 +14,6 @@ export interface ProjectSyncService {
     status(projectId: string): Promise<SyncContracts.SyncState>;
     unbind(projectId: string): Promise<void>;
     configure(projectId: string, expectedToken: string, change: Pick<Binding, 'direction'>): Promise<void>;
-    dispose(): Promise<void>;
 }
 
 export interface ProjectSyncComparison {

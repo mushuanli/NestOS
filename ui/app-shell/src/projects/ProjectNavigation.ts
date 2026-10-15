@@ -138,7 +138,7 @@ export class ProjectNavigation {
     private async apply(snapshot: ProjectNavigationSnapshot, path: string, revision: number, resolved?: ProjectFolder, preserveProject = false): Promise<void> {
         const target = resolveBrowserTarget(path), manifest = 'sessionId' in target ? snapshot.sessions.find(item => item.id === target.sessionId) : undefined;
         const folder = browserTargetFolder(target, path, manifest?.folder);
-        let project = preserveProject ? this.project : resolved ?? await this.projects.forFolder(folder, snapshot.folders);
+        let project = preserveProject ? this.project : resolved ?? (folder ? await this.projects.forFolder(folder, snapshot.folders) : undefined);
         const projects = this.projects.navigationFromIndex ? this.projects.listNavigation(snapshot.folders) : await this.projects.list(snapshot.folders);
         if (preserveProject && project) project = projects.find(item => item.project.id === project!.project.id) ?? project;
         if (revision !== this.revision) return;
@@ -193,9 +193,9 @@ export class ProjectNavigation {
         });
     }
     showContent(): void { this.familyVisible = !this.familyVisible; this.ui()?.refreshList(); }
-    async refresh(): Promise<void> {
+    async refresh(initial?: ProjectNavigationSnapshot): Promise<void> {
         const revision = ++this.revision;
-        const snapshot = await this.projects.sessions.navigation({ includeSessions: 'sessionId' in resolveBrowserTarget(this.path) });
+        const snapshot = initial ?? await this.projects.sessions.navigation({ includeSessions: 'sessionId' in resolveBrowserTarget(this.path) });
         if (revision !== this.revision) return;
         const renamed = snapshot.folders.find(folder => folder.project?.id === this.project?.project.id);
         if (this.project && renamed?.project && renamed.path !== this.project.path) {

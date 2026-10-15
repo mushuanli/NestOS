@@ -1,3 +1,5 @@
+import type { ProjectConversationPort } from '@itookit/app-contracts/services';
+import { observeConversation } from './conversation-view';
 import { RemoteConversationStore } from './remote-conversation-store';
 import { RemoteSessionStatus } from '../session/remote-session-status';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
@@ -122,6 +124,7 @@ export class ProjectRemoteMountService {
         if (!this.provider.capabilities) throw new FSError('ECAPABILITY', 'Remote capability discovery is unavailable');
         return this.provider.capabilities(await this.resolveConnection(connectionId, options), options);
     }
+    mountedProjectIds(): string[] { return Object.keys(this.catalog.projects); }
     list(projectId: string): ProjectRemoteMount[] {
         return structuredClone((this.catalog.projects[projectId] ?? []).map(mount => {
             const connection = mount.connectionId && this.connections().find(item => item.id === mount.connectionId);
@@ -398,7 +401,7 @@ export class ProjectRemoteMountService {
             return result;
         } finally { await client.close(); }
     }
-    async projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false): Promise<HarnessConversationPort> {
+    async projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false): Promise<ProjectConversationPort> {
         if (!this.provider.conversation) throw new FSError('ECAPABILITY', 'Conversation adapter unavailable');
         const client = await this.projectHarness(projectId, options);
         const fingerprint = JSON.stringify(this.list(projectId));
@@ -414,8 +417,8 @@ export class ProjectRemoteMountService {
                 if (record?.sessionId === sessionId && !record.pending) await draft.save({});
             }
             const recovery = new RemoteConversationStore(this.store, JSON.stringify([projectId, root.connectionId, root.serverProjectId, profileId, sessionId ?? '@new']));
-            return this.provider.conversation(guarded, profile, profile.workspaces[0].id, sessionId, root.access === 'rw' && !readOnly,
-                {epoch: descriptor.epoch, load: () => recovery.load(), save: record => recovery.save(record)});
+            return observeConversation(await this.provider.conversation(guarded, profile, profile.workspaces[0].id, sessionId, root.access === 'rw' && !readOnly,
+                {epoch: descriptor.epoch, load: () => recovery.load(), save: record => recovery.save(record)}));
         } catch (error) { await client.close(); throw error; }
     }
     private guardHarness(client: HarnessClient, projectId: string, fingerprint: string, connectionId: string): HarnessClient {

@@ -4,7 +4,7 @@ import type { IFileSystem, OperationOptions, FSNode } from '@itookit/vfs-core';
 import type { ISessionRepository, ConversationManifest, ChatSessionSettings, PlanCommandRequest, ExecCommandRequest } from '@itookit/llm-session/contracts';
 import type * as KernelContracts from '@itookit/durable-kernel/contracts';
 import type { TaskRecord, EventEnvelope } from '@itookit/durable-kernel/contracts';
-import type { ProjectTarget, ProjectService } from './projects';
+import type { ProjectTarget, ProjectService, ProjectSearch } from './projects';
 import type { SessionFilesService } from './files';
 import type { ApplicationKernelPort } from './local';
 
@@ -158,6 +158,7 @@ export interface FileDirectoryOptions extends OperationOptions {
 }
 
 export interface SessionBrowserDependencies {
+    displayedFilesPolicy?: 'gitignore' | 'all';
     repository: ISessionRepository;
     projects?: ProjectService;
     files: SessionFilesService;
@@ -166,6 +167,14 @@ export interface SessionBrowserDependencies {
     lifecycle?: SessionLifecycleService;
     /** Optional host presentation policy. Raw project/Session file APIs are unaffected. */
     filterDisplayedFiles?(fs: IFileSystem, nodes: FSNode[], signal?: AbortSignal): Promise<FSNode[]>;
+}
+/** One workspace query supplies the services and the first directory projection. */
+export interface WorkbenchView {
+    browser: Awaited<ReturnType<typeof createSessionBrowser>>;
+    lifecycle: SessionLifecycleService;
+    search?: ProjectSearch;
+    navigation?: import('./projects').ProjectNavigationSnapshot;
+    directory?: { revision: number; node: FSNode | null; nodes: FSNode[] };
 }
 
 export type SessionOrganizationStore = Pick<ISessionRepository, 'list' | 'listSummaries' | 'listFolders' | 'pendingSessionDeletions' | 'getManifest' | 'updateManifest' | 'createSession'>;

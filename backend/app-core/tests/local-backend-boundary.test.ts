@@ -2,9 +2,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import type { SnapshotPort } from '@itookit/app-contracts/settings';
 import type { ApplicationRuntime } from '../src/runtime/create-application-runtime';
-import { bindLocalApplicationServices, createLocalBackendPort } from '../src/host/local-backend';
+import { bindLocalApplicationServices, bindApplicationBackend } from '../src/host';
 
 describe('local host boundary', () => {
+    it('returns ready settings data without opening declared workspace files', async () => {
+        const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+        const etc = await manager.openFileSystem('/etc');
+        await etc.driver.createFile({ name: 'contacts.json', parentPath: '/', content: JSON.stringify([{ id: 'saved', name: 'Saved' }]) });
+        const open = vi.spyOn(manager, 'openFileSystem');
+        const service = await bindApplicationBackend({ vfs: manager } as never).settings([{ name: 'Notes', workspace: 'minds' }]);
+        try {
+            expect(service.getContacts()).toEqual([{ id: 'saved', name: 'Saved' }]);
+            expect(service.workspaces).toEqual([{ name: 'Notes', description: undefined }]);
+            expect(open).toHaveBeenCalledExactlyOnceWith('/etc');
+        } finally { await service.dispose(); await manager.dispose(); }
+    });
     it('binds UI services without exposing runtime disposal, assembly or conversation ownership', () => {
         const runtime = { dispose: vi.fn(), openConversation: vi.fn(), prepareSession: vi.fn(async () => true), startBackground: vi.fn() } as unknown as ApplicationRuntime;
         const services = bindLocalApplicationServices(runtime);
@@ -16,9 +28,9 @@ describe('local host boundary', () => {
         const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
         const snapshots: SnapshotPort = { estimate: vi.fn(async () => ({ usage: 128, quota: 1024 })), listLocalSnapshots: vi.fn(async () => []), createSnapshot: vi.fn(async () => {}),
             restoreSnapshot: vi.fn(async () => {}), deleteSnapshot: vi.fn(async () => {}), factoryReset: vi.fn(async () => {}) };
-        const service = createLocalBackendPort({ snapshots: () => snapshots }).settings(manager, []);
+        const service = await bindApplicationBackend({ vfs: manager } as never, { snapshots: () => snapshots }).settings([]);
         try {
-            await service.init(); await service.saveContact({ id: 'contact', name: 'Name' });
+            await service.saveContact({ id: 'contact', name: 'Name' });
             expect(service.getContacts()).toEqual([{ id: 'contact', name: 'Name' }]);
             await service.writePreference('/ui/theme.json', '{"mode":"dark"}');
             expect(await service.readPreference('/ui/theme.json')).toBe('{"mode":"dark"}');
@@ -28,10 +40,10 @@ describe('local host boundary', () => {
     });
     it('rejects unsupported maintenance without closing the filesystem', async () => {
         const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
-        const service = createLocalBackendPort().settings(manager, []);
+        const service = await bindApplicationBackend({ vfs: manager } as never).settings([]);
         try {
             await expect(service.factoryReset()).rejects.toMatchObject({ code: 'ECAPABILITY' });
-            await service.init(); expect(service.getContacts()).toEqual([]);
+            expect(service.getContacts()).toEqual([]);
         } finally { await service.dispose(); await manager.dispose(); }
     });
 });

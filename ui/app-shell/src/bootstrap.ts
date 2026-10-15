@@ -1,3 +1,5 @@
+import { lazyResource } from './lifecycle/lazy-resource';
+import { createSettingsAccess } from './configuration/settings-access';
 import { twinSourceMenu } from './digital-twin/source-menu';
 import { DEFAULT_HARNESS_TOOL_IDS } from '@itookit/app-contracts';
 import { FSError } from '@itookit/vfs-core';
@@ -23,7 +25,6 @@ import { connectEditorLifecycle } from './browser/editor-connector';
 import {NavigationRequest, NAVIGATION_EVENTS, formatDefaultFileTitle, traceBoot} from '@itookit/common';
 import { MenuItem } from '@itookit/ui-common';
 import { EditorFactory } from '@itookit/ui-common';
-import { createSettingsModule, createSettingsFactory } from '@itookit/app-settings';
 import { Workbench } from './core/Workbench';
 import { setupMobileWorkspaceView } from './navigation/mobile-workspace-view';
 import { SkillsEngine } from '@itookit/app-settings';
@@ -98,59 +99,52 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     const resolvedDefault = defaultSlug ?? workspaces[0]?.slug ?? '';
 
-    if (!options.services || !options.localBackend) throw new Error('AppOptions.services and AppOptions.localBackend are required');
-    const services = options.services, backend = options.localBackend;
+    if (!options.services || !options.backend) throw new Error('AppOptions.services and AppOptions.backend are required');
+    const services = options.services, backend = options.backend;
     const { vfs, llmDriver, sessionRepository, flowEngine, sessionFiles,
         kernel, sessionManager, commandBus } = services;
-    const agentService = backend.configurationService(services.agentService);
+    const agentService = services.agentService;
     // UI state lives beside the theme in `etc:/ui`, so Web and Tauri share one
     // inspectable store instead of the webview's localStorage.
     const etc = await vfs.openFileSystem('/etc');
-    const ocrService = backend.ocr(etc, agentService, kernel.llmService);
-    const ocrReady = traceBoot('ocr.init (parallel)', () => ocrService.init());
-    void ocrReady.catch(() => {});
-    cleanupFns.push(() => ocrReady.catch(() => {}));
     const themeReady = themeService.init(etc);
-    void themeReady.catch(() => {});
     cleanupFns.push(async () => { await themeReady.catch(() => {}); themeService.destroy(); });
     const uiDocs = new VfsJsonStore(etc);
     const uiState = new VfsUIPersistence(uiDocs);
     cleanupFns.push(() => uiState.flush());
     logStep('初始化界面服务…');
-    const settingsSourcesReady = Promise.all(workspaces.filter(workspace => !['settings', 'skills', 'toolbox', 'twin'].includes(workspace.type ?? '')).map(async workspace => ({
-        name: workspace.workspaceName, description: workspace.title,
-        fs: workspace.files?.fs ?? await vfs.openFileSystem(workspaceRoot(workspace.workspaceName)),
-    })));
-    const preparation = await Promise.allSettled([settingsSourcesReady, themeReady, ocrReady]);
-    const failures = preparation.filter(result => result.status === 'rejected');
-    if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'UI preparation failed');
-    const settingsSources = (preparation[0] as PromiseFulfilledResult<Awaited<typeof settingsSourcesReady>>).value;
-    const settingsModule = await traceBoot('createSettingsModule', () => createSettingsModule(backend.settings(vfs, settingsSources), { background: true, excludedPages: toolboxId ? ['providers', 'connections', 'mcp-servers', 'system-prompts'] : [] }));
-    cleanupFns.push(() => settingsModule.service.dispose());
+    await themeReady;
 
     const chatFromFile = createFileChatHandler(services.projects, sessionRepository, request => handleNavigationRequest(request));
-    const ocr = createOcrControls(ocrService, agentService, request => handleNavigationRequest(request));
+    const ocr = createOcrControls(() => backend.ocr(), agentService, request => handleNavigationRequest(request));
+    cleanupFns.push(() => ocr.dispose());
     const deletionDialog = new ConfigurationDeletionDialog(services.configuration, undefined, ocr.deletionImpact, services.projects);
-    const settingsFactory = createSettingsFactory({
-        settingsService: settingsModule.service, agentService, connectionService: backend.configurationService(llmDriver), llmUiEditors: options.ui.llmUiEditors,
+    const settings = createSettingsAccess(backend, () => workspaces, {
+        agentService, connectionService: llmDriver, llmUiEditors: options.ui.llmUiEditors,
+        excludedPages: toolboxId ? ['providers', 'connections', 'mcp-servers', 'system-prompts'] : [],
         connectBrowser: (browser, fs, container, factory) => connectEditorLifecycle(browser, fs, container, factory, { readOnly: true }),
-        initialFiles: backend.initialFiles(commandBus, settingsSources.find(source => source.name === 'minds')?.fs),
         restoreFlows: options.ui.restoreFlowLibrary ? () => options.ui.restoreFlowLibrary!(commandBus) : undefined,
         requestDelete: targets => deletionDialog.request(targets),
     });
-    const privilegedCommands = backend.privilegedCommands(kernel.kernel, agentService);
-    const sessionSkills = backend.sessionSkills(kernel.kernel, kernel.sessions);
-    const llmFactory = options.ui.createChatEditor(agentService, {
-        defaultHarnessToolIds: DEFAULT_HARNESS_TOOL_IDS, sessionManager, sessionRepository, ocr, commandBus, kernel: kernel.kernel, privilegedCommands, sessionSkills,
-    });
+    cleanupFns.push(() => settings.close());
+    const chat = lazyResource(async () => {
+        const [privilegedCommands, sessionSkills] = await Promise.all([backend.privilegedCommands(), backend.sessionSkills()]);
+        return { sessionSkills, factory: options.ui.createChatEditor(agentService, {
+            defaultHarnessToolIds: DEFAULT_HARNESS_TOOL_IDS, sessionManager, sessionRepository, ocr, commandBus, kernel: kernel.kernel, privilegedCommands, sessionSkills,
+        }) };
+    }, () => {});
+    cleanupFns.push(() => chat.close());
+    const llmFactory: EditorFactory = async (element, config) => (await chat.get()).factory(element, config);
     const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS });
 
     // Skills workspace: VFSUIShell list (SkillsEngine) + form editor (SkillSettingsEditor)
-    const skillsEngine  = new SkillsEngine(agentService);
+    let skillsEngine: SkillsEngine | undefined;
+    const skillsFiles = () => skillsEngine ??= new SkillsEngine(agentService);
     const skillsFactory = options.ui.createSkillEditor(agentService);
-    cleanupFns.push(() => skillsEngine.dispose());
+    cleanupFns.push(() => skillsEngine?.dispose());
 
-    await options.ui.installFlowLibrary?.(commandBus);
+    const flowLibrary = lazyResource(async () => { await options.ui.installFlowLibrary?.(commandBus); }, () => {});
+    cleanupFns.push(() => flowLibrary.close());
 
     // Workflows workspace: standalone design surface over the flows VFS module.
     const flowsFactory = options.ui.createFlowEditor({
@@ -174,14 +168,14 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     const factories: Record<string, EditorFactory> = {
         standard: defaultEditorFactory, agent: defaultEditorFactory,
-        settings: settingsFactory, chat: llmFactory, skills: skillsFactory, flows: flowsFactory,
+        settings: settings.factory, chat: llmFactory, skills: skillsFactory, flows: flowsFactory,
     };
     const workspaceFiles = new Map<string, import('@itookit/vfs-core').FileSystemContext>();
     const filesForWorkspace = async (workspace: WorkspaceConfig): Promise<import('@itookit/vfs-core').FileSystemContext> => {
         const cached = workspaceFiles.get(workspace.elementId);
         if (cached) return cached;
-        const fs = workspace.files?.fs ?? (workspace.type === 'settings' ? settingsModule.engine
-            : workspace.type === 'skills' ? skillsEngine
+        const fs = workspace.files?.fs ?? (workspace.type === 'settings' ? settings.files()
+            : workspace.type === 'skills' ? skillsFiles()
             : workspace.type === 'flows' ? flowEngine.engine
             : workspace.type === 'twin' ? await vfs.openFileSystem('/home/admin')
             : workspace.type === 'toolbox' ? await vfs.openFileSystem(workspaceRoot('agents'))
@@ -194,7 +188,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const editorFactoryMap: Record<EditorTypeKey, EditorFactory | undefined> = {
         standard: defaultEditorFactory,
         agent:    agentFactory as EditorFactory,
-        flow:     flowsFactory as EditorFactory,
+        flow:     async (element, config) => { await flowLibrary.get(); return flowsFactory(element, config); },
     };
 
     // ── 5. File type resolver ──────────────────────────────────────────────────
@@ -278,8 +272,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         cleanupFns.push(setupMobileWorkspaceView(layoutEl, sidebarEl, editorEl));
 
         const strategyType = wsConfig.type ?? 'standard';
+        if (['chat', 'toolbox', 'flows'].includes(strategyType)) await flowLibrary.get();
         const factory = factories[strategyType] ?? defaultEditorFactory;
-        const files = await filesForWorkspace(wsConfig);
 
         if (strategyType === 'twin') {
             if (!services.digitalTwin) throw new Error('Digital twin is unavailable in this services');
@@ -298,7 +292,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 uiDocs.read(TOOLBOX_PREFERENCES_DOC), uiState.port(TOOLBOX_SCOPE),
             ]);
             const module = await createToolboxModule({ services, backend, ocr, ui: options.ui, sidebar: sidebarEl, editor: editorEl,
-                skills: skillsEngine, factories: { agents: agentFactory, skills: skillsFactory, flows: flowsFactory },
+                skills: skillsFiles(), factories: { agents: agentFactory, skills: skillsFactory, flows: flowsFactory },
                 uiPersistence,
                 uiPreferences: { load: () => storedPreferences, save: value => uiDocs.write(TOOLBOX_PREFERENCES_DOC, value) },
                 navigate: handleNavigationRequest, selected: path => updateHistory(elementId, path, 'replace') });
@@ -323,7 +317,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const [uiPersistence, workbenchState] = await traceBoot('workspace.chatState (parallel)', () => Promise.all([
                 uiState.port(SESSION_BROWSER_SCOPE), uiState.workbenchPort(SESSION_BROWSER_SCOPE),
             ]));
-            const module = createProjectModule({ services, backend, sessionSkills, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
+            const module = createProjectModule({ services, backend, sessionSkills: (await chat.get()).sessionSkills, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
                 factory, fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 initialResourceId, onSidebarReady: revealSidebar,
                 uiPersistence, workbenchState,
@@ -395,6 +389,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             }),
         };
 
+        const files = await filesForWorkspace(wsConfig);
         const manager = new Workbench({
             sidebarContainer: sidebarEl,
             editorContainer: editorEl,

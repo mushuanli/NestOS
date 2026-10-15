@@ -166,8 +166,8 @@ export class ProviderManager {
         if (nodeId) await fs.driver.delete([nodeId]);
     }
 
-    private stripProviderApiKey(provider: LLMProvider): LLMProvider {
+    private stripProviderApiKey(provider: LLMProvider): LLMProvider & { hasApiKey: boolean } {
         const { apiKey: _apiKey, ...meta } = provider as LLMProvider & { apiKey?: string };
-        return meta as LLMProvider;
+        return { ...meta, hasApiKey: Boolean(_apiKey?.trim()) };
     }
 }

@@ -1,10 +1,9 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, SessionFilesService, ProjectService, folderBrowserPath } from '@itookit/app-core';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 it('copies and moves a selected file between project file roots using the shared picker', async () => {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
@@ -21,7 +20,7 @@ it('copies and moves a selected file between project file roots using the shared
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const kernel = { onChanged: () => () => {}, async *listSessions() {}, listSessionTasks: async () => [] };
     const file = vi.fn(async (_mount: HTMLElement, _options: any) => ({ destroy() {}, navigateTo() {} }));
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar, container: main, repository, files, projects, directoryMounts: mounts,
+    const workbench = createTestWorkbench({  sidebar, container: main, repository, files, projects, directoryMounts: mounts,
         factory: async () => ({ destroy() {} }) as never, fileFactory: file as never, onSelect() {}, kernel: kernel as never });
     try {
         await workbench.start(); await workbench.openResource(from + '/@files');

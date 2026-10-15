@@ -17,13 +17,13 @@ it('points the page description at the Provider layer for API keys', async () =>
     expect(container.querySelector('.settings-page__description')?.textContent).toContain('API Key（认证信息属于 Provider 层）');
 });
 
-it('states the plaintext storage path and the child-process injection conventions next to the key field', () => {
+it('states the plaintext storage path and the child-process injection conventions next to the key field', async () => {
     const container = document.createElement('div');
     const service = { getProviders: () => [provider], getFullProvider: () => ({ ...provider, apiKey: 'sk-secret' }) };
     const editor = new ProviderSettingsEditor(container, service as never, {} as never);
 
     // The key field lives in the edit modal, not in the list page.
-    (editor as unknown as { showEditModal(p: unknown): void }).showEditModal(provider);
+    await (editor as unknown as { loadEditModal(p: unknown): Promise<void> }).loadEditModal(provider);
 
     const keyInput = document.querySelector<HTMLInputElement>('input[name="apiKey"]');
     expect(keyInput?.type).toBe('password');

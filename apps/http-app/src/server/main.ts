@@ -1,12 +1,10 @@
 import { mkdir, realpath, access } from 'node:fs/promises';
-import { randomBytes } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 import type { Server } from 'node:http';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeSqliteSidecarDb } from './sqlite-sidecar';
 import { createHttpServer } from './http-server';
-import { createStorageServer } from './storage-server';
 import { loadCertificates } from './certificates';
 import { createCertificates } from './create-certificates';
 import { AuditLog } from './audit-log';
@@ -16,7 +14,7 @@ import { createApplicationApi } from './application-host';
 
 async function main(): Promise<void> {
     const values = options();
-    if (values.help) { console.log('MindOS HTTPS defaults: --host 0.0.0.0 --port 2000 --internal-port 2001 --backlog 4096\n  Data root: --root > MINDOS_ROOT > mindos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/mindos/mindos.json or ~/.config/mindos/mindos.json\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file>'); return; }
+    if (values.help) { console.log('MindOS HTTPS defaults: --host 0.0.0.0 --port 2000 --backlog 4096\n  Data root: --root > MINDOS_ROOT > mindos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/mindos/mindos.json or ~/.config/mindos/mindos.json\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file>'); return; }
     const backlog = validBacklog(values.backlog);
     const cwd = process.env.INIT_CWD ?? process.cwd(), config = configDirectory();
     const certDir = path.resolve(cwd, values['cert-dir'] ?? path.join(config, 'http-certs'));
@@ -32,33 +30,31 @@ async function main(): Promise<void> {
     const canonicalCertificates = await realpath(certDir);
     protectPaths(canonicalRoot, canonicalSidecar, canonicalCertificates, auditFile);
     if (within(await realpath(staticDir), canonicalCertificates)) throw new Error('Certificates cannot reside within the static UI root');
-    const certificates = await loadCertificates(certDir), port = validPort(values.port), internalPort = validPort(values['internal-port']);
-    if (port === internalPort) throw new Error('Public and internal ports must differ');
-    await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, port, internalPort, host: values.host, backlog });
+    const certificates = await loadCertificates(certDir), port = validPort(values.port);
+    await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, port, host: values.host, backlog });
 }
 
 interface HostOptions {
     root: string; sidecar: string; certificates: Awaited<ReturnType<typeof loadCertificates>>; staticDir: string;
-    auditFile: string; port: number; internalPort: number; host: string; backlog: number;
+    auditFile: string; port: number; host: string; backlog: number;
 }
-async function startHost({ root, sidecar, certificates, staticDir, auditFile, port, internalPort, host, backlog }: HostOptions): Promise<void> {
+async function startHost({ root, sidecar, certificates, staticDir, auditFile, port, host, backlog }: HostOptions): Promise<void> {
     const backend = await openLocalFSBackend({ rootDir: root, sidecarDir: sidecar,
         durability: 'full', createDb: file => NodeSqliteSidecarDb.open(file) });
-    const audit = new AuditLog(auditFile), token = randomBytes(32).toString('base64url');
+    const audit = new AuditLog(auditFile);
     try { await audit.initialize(); } catch (error) { await backend.close(); throw error; }
-    const applicationApi = createApplicationApi(backend);
-    const internal = createStorageServer(backend, root, token, audit);
-    const server = createHttpServer({ certificates, staticDir, internalPort, internalToken: token, audit, application: applicationApi });
-    try { await listen(internal, internalPort, '127.0.0.1', backlog); await listen(server, port, host, backlog); }
-    catch (error) { applicationApi?.endStreams(); await stopServers([server, internal]); await applicationApi?.close().catch(() => {}); await backend.close(); await audit.close(); throw error; }
-    installShutdown([server, internal], async () => {
+    const applicationApi = createApplicationApi(backend, root);
+    const server = createHttpServer({ certificates, staticDir, audit, application: applicationApi });
+    try { await listen(server, port, host, backlog); }
+    catch (error) { applicationApi?.endStreams(); await stopServers([server]); await applicationApi?.close().catch(() => {}); await backend.close(); await audit.close(); throw error; }
+    installShutdown([server], async () => {
         const errors: unknown[] = [];
         await applicationApi.close().catch(error => errors.push(error)); await backend.close().catch(error => errors.push(error));
         audit.write({ event: 'server.stopped' }); await audit.close().catch(error => errors.push(error));
         if (errors.length) throw new AggregateError(errors, 'Host cleanup failed');
     }, () => applicationApi.endStreams());
     audit.write({ event: 'server.started', route: `https://${host}:${port}` });
-    console.log(`MindOS HTTPS UI: https://${host}:${port}\nVFS internal: 127.0.0.1:${internalPort}\nClient certificate required\nAudit log: ${auditFile}`);
+    console.log(`MindOS HTTPS UI: https://${host}:${port}\nClient certificate required\nAudit log: ${auditFile}`);
 }
 
 function protectPaths(root: string, sidecar: string, certificates: string, log: string): void {

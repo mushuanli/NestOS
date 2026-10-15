@@ -1,11 +1,10 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, SessionFilesService, ProjectService, folderBrowserPath } from '@itookit/app-core';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 it('creates project Sessions from the selected project and edits its files in the same tree', async () => {
     const storage = new Map<string, string>();
@@ -31,7 +30,7 @@ it('creates project Sessions from the selected project and edits its files in th
         destroy: vi.fn(), setTitle: vi.fn(), navigateTo: vi.fn(async () => {}), updateNodeId: (path: string) => { options.target.path = path; },
     }; });
     const chatFromFile = vi.fn(async () => {});
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files, factory: chat as any, onSelect: () => {}, hostContext: { chatFromFile, toggleSidebar() {}, navigate: async () => {} }, kernel: kernel as any, fileFactory: file as any, directoryMounts: mounts, sessionSkills: undefined, manageMemory: undefined, flows: undefined, projects: projects });
+    const workbench = createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files, factory: chat as any, onSelect: () => {}, hostContext: { chatFromFile, toggleSidebar() {}, navigate: async () => {} }, kernel: kernel as any, fileFactory: file as any, directoryMounts: mounts, sessionSkills: undefined, manageMemory: undefined, flows: undefined, projects: projects });
     try {
         await workbench.start();
         await expect(workbench.createResource({ parentPath: '/' })).rejects.toThrow('请在项目内创建会话');
@@ -193,7 +192,7 @@ it('restores a bookmark inside an unreachable remote project without aborting bo
         connections: () => [], assertUnmountable: async () => {}, forgetProject: async () => {}, dispose: async () => {},
     } as never;
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar, container: main, repository, files, factory: (async () => ({ destroy: vi.fn() })) as never,
+    const workbench = createTestWorkbench({  sidebar, container: main, repository, files, factory: (async () => ({ destroy: vi.fn() })) as never,
         onSelect: () => {}, hostContext: { chatFromFile: async () => {}, toggleSidebar() {}, navigate: async () => {} }, kernel: { onChanged: () => () => {}, async *listSessions() {} } as never,
         fileFactory: (async () => ({ destroy: vi.fn() })) as never, directoryMounts: mounts, sessionSkills: undefined, manageMemory: undefined, flows: undefined, projects });
     try {

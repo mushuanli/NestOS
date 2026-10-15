@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
@@ -6,7 +6,6 @@ import { SessionRepository } from '@itookit/llm-session';
 import { SessionFilesService } from '@itookit/app-core';
 import type { Kernel } from '@itookit/durable-kernel';
 import type { EditorFactory } from '@itookit/ui-common';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -37,7 +36,7 @@ it.each([null, '/Work'])('orders Sessions by latest activity with stable timesta
         return { destroy() {} } as never;
     };
     const kernel = { onChanged: () => () => {} } as unknown as Kernel;
-    const createWorkbench = () => new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files, factory: factory, onSelect: () => {}, hostContext: undefined, kernel: kernel, fileFactory: factory, uiPersistence: { load: () => restored } });
+    const createWorkbench = () => createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files, factory: factory, onSelect: () => {}, hostContext: undefined, kernel: kernel, fileFactory: factory, uiPersistence: { load: () => restored } });
     let workbench = createWorkbench();
     const order = () => [...sidebar.querySelectorAll<HTMLElement>('.vfs-node-item[data-item-id]')]
         .map(node => node.dataset.itemId!.slice(prefix.length + 1)).filter(id => ['old', 'new', 'tie-a', 'tie-b'].includes(id));

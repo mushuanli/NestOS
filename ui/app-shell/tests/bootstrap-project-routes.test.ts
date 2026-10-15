@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { initTestApp } from './helpers/application';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { DirectoryMountService, SessionFilesService, ProjectService, folderBrowserPath, type ApplicationRuntime } from '@itookit/app-core';
@@ -21,10 +21,7 @@ vi.mock('@itookit/kernel-adapters', () => ({
 }));
 
 vi.mock('@itookit/app-settings', () => ({
-    createSettingsModule: vi.fn(async () => ({
-        engine: {},
-        service: { dispose: vi.fn() },
-    })),
+    createSettingsNavigation: vi.fn(() => ({})),
     createSettingsFactory: vi.fn(() => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }))),
     SkillsEngine: class { async dispose() {} },
 }));
@@ -54,7 +51,7 @@ async function fixture() {
         createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), llmUiEditors: {} };
     return { root, projects, repository, async start(overrides: Record<string, unknown> = {}) {
         document.body.innerHTML = '<div id="llm-workspace" class="workspace-view"></div>';
-        return initApp({ localBackend: createLocalBackendPort(),  services: runtime, workspaces: [workspace], defaultSlug: 'chat', routeAliases: { projects: 'llm-workspace' }, ui: ui as any, ...overrides });
+        return initTestApp({   services: runtime, workspaces: [workspace], defaultSlug: 'chat', routeAliases: { projects: 'llm-workspace' }, ui: ui as any, ...overrides });
     }, async dispose() { await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); } };
 }
 

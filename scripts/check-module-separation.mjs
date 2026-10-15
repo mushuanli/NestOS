@@ -75,6 +75,7 @@ function sourceFiles(directory) {
 
 export function moduleRole(path, root = repository) {
     const file = relative(root, path).replaceAll('\\', '/');
+    if (file.startsWith('apps/http-app/src/application/') || file.startsWith('apps/http-app/src/rpc/')) return 'shared';
     if (file.startsWith('apps/http-app/src/client/')) return 'frontend';
     if (file.startsWith('apps/http-app/src/server/') || file.startsWith('apps/web-app/src/storage/') || file.startsWith('apps/cli/src/')) return 'backend';
     const match = /^(ui|backend|shared|packages|libraries)\/([^/]+)\/src\/(.*)$/.exec(file);

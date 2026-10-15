@@ -6,12 +6,13 @@ import type { CertificateAuth } from './certificates';
 import { auditRequest, type AuditPort } from './audit-log';
 import { sendError } from './http-response';
 import { serveStatic } from './static-files';
-import type { ApplicationApi } from './application-api';
-import { proxyStorage } from './storage-proxy';
+import type { IncomingMessage as ApplicationRequest, ServerResponse as ApplicationResponse } from 'node:http';
+export interface HostedApi { handle(request: ApplicationRequest, response: ApplicationResponse, authorize?: () => Promise<boolean>): Promise<void> }
+import { json } from './http-response';
 
 export interface HttpServerOptions {
-    application?: ApplicationApi;
-    certificates: CertificateAuth; staticDir: string; internalPort: number; internalToken: string; audit: AuditPort;
+    application?: HostedApi;
+    certificates: CertificateAuth; staticDir: string; audit: AuditPort;
 }
 /** Every public resource requires both TLS client validation and explicit certificate enrollment. */
 export function createHttpServer(options: HttpServerOptions): Server {
@@ -37,20 +38,18 @@ async function serve(request: IncomingMessage, response: ServerResponse, options
         request.socket.destroy(); return;
     }
     const pathname = new URL(request.url ?? '/', 'https://localhost').pathname;
-    const route = ['/api/vfs', '/api/health', '/api/application', '/api/application/events'].includes(pathname) ? pathname : pathname.startsWith('/api/') ? '/api/unknown' : '/ui';
+    const route = ['/api/vfs', '/api/health', '/api/application', '/api/application/events', '/api/application/files'].includes(pathname) ? pathname : pathname.startsWith('/api/') ? '/api/unknown' : '/ui';
     auditRequest(options.audit, request, response, route);
     if (request.method === 'POST' || pathname.startsWith('/api/application')) validateOrigin(request);
-    if (pathname === '/api/application' || pathname === '/api/application/events') {
+    if (['/api/application', '/api/application/events', '/api/application/files'].includes(pathname)) {
         if (!options.application) throw new FSError('ECAPABILITY', 'Application hosting is disabled');
         await options.application.handle(request, response, () => options.certificates.accepts(request.socket as TLSSocket)); return;
     }
-    if (pathname === '/api/vfs' && options.application) throw new FSError('EACCES', 'Managed state is only writable through application commands');
-    if (pathname === '/api/vfs' || pathname === '/api/health') {
-        await proxyStorage(request, response, options.internalPort, options.internalToken); return;
-    }
+    if (pathname === '/api/vfs') throw new FSError('EACCES', 'Storage is private to the daemon');
+    if (pathname === '/api/health') { json(response, 200, { ready: true }); return; }
     if (pathname.startsWith('/api/')) throw new FSError('ENOENT', 'Unknown API route');
     if (request.method !== 'GET' && request.method !== 'HEAD') { response.writeHead(405); response.end(); return; }
-    await serveStatic(response, request.method, options.staticDir, pathname, request.headers['accept-encoding']?.includes('gzip') ?? false);
+    await serveStatic(response, request.method, options.staticDir, pathname, request.headers['accept-encoding']?.includes('gzip') ?? false, request.headers['if-none-match']);
 }
 function validateOrigin(request: IncomingMessage): void {
     if (request.headers.origin && request.headers.origin !== `https://${request.headers.host}`) throw new FSError('EACCES', 'Cross-origin requests are denied');

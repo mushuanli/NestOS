@@ -1,3 +1,4 @@
+import { projectFileSource, projectWorkspaceAccess, projectNavigation } from '@itookit/app-contracts';
 import { trackFavoriteFiles } from './favorites/lifecycle';
 import type { MCPDeletedProject } from '../configuration/model-commands';
 import { overlappingProjectRoots, projectFileLocation, type ProjectFileRoot } from './file-location';
@@ -125,11 +126,7 @@ export class ProjectService {
     }
     navigationFromIndex = false;
     listNavigation(folders: readonly SessionFolder[]): ProjectFolder[] {
-        return folders.filter((folder): folder is ProjectFolder => !!folder.project).map(folder => {
-            const connection = this.remoteMounts?.list(folder.project.id).find(mount => mount.at === '/')?.connectionId;
-            const server = this.remoteMounts?.connections().find(item => item.id === connection);
-            return { ...folder, displayName: server ? `${server.name}:${folder.name}` : folder.name };
-        });
+        return projectNavigation(folders, this.remoteMounts);
     }
     async navigationFolders(folders?: readonly SessionFolder[]): Promise<SessionFolder[]> {
         const cached = folders ?? await this.repository.listFolders();
@@ -286,7 +283,7 @@ export class ProjectService {
             const remote = this.remoteMounts;
             if (!remote) throw new FSError('ECAPABILITY', 'Remote file systems unavailable');
             if (access==='rw' && !remote.connection(connectionId).projects) throw new FSError('ECAPABILITY','Writable remote projects require the server project protocol');
-            const existing = remote.findRemoteProject(connectionId, path);
+            const existing = await remote.findRemoteProject(connectionId, path);
             if (existing) {
                 const project = (await this.list()).find(item => item.project.id === existing);
                 if (project) return project;
@@ -435,17 +432,10 @@ export class ProjectService {
         return this.remoteMounts ? this.remoteMounts.compose(project.project.id, open) : open();
     }
     fileSource(project: ProjectFolder): ProjectFileSource {
-        const normalized = this.normalizeSource(project);
-        return normalized.project.source?.kind === 'remote' ? { kind: 'remote', reference: normalized.project.directory }
-            : { kind: 'local', directory: normalized.project.directory };
+        return projectFileSource(project, this.remoteMounts);
     }
     workspaceAccess(project: ProjectFolder, requested: 'ro' | 'rw' = 'rw'): 'ro' | 'rw' {
-        return requested === 'ro' || this.remoteMounts?.list(project.project.id).some(mount => mount.at === '/' && mount.access === 'ro') ? 'ro' : 'rw';
-    }
-    private normalizeSource(project: ProjectFolder): ProjectFolder {
-        const remote = project.project.source?.kind === 'remote' || this.remoteMounts?.list(project.project.id).some(mount => mount.at === '/');
-        return { ...project, project: { ...project.project, directory: remote ? `project:${project.project.id}` : project.project.directory,
-            source: { kind: remote ? 'remote' : 'local' } } };
+        return projectWorkspaceAccess(project, this.remoteMounts, requested);
     }
     async assertIndependent(project: ProjectFolder, mounts = this.remoteMounts?.list(project.project.id) ?? [], knownCatalog?: readonly ProjectFolder[]): Promise<void> {
         const catalog = knownCatalog ?? await this.list();

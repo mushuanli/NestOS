@@ -21,3 +21,9 @@ export type { PiAgentConfiguration } from './projects/pi-agent';
 export { TWIN_SELECTION_TYPES, selectionKinds } from './digital-twin/selection';
 export type { TwinSelectionTarget, TwinSelectionType } from './digital-twin/selection';
 export type { TwinScanScope } from './digital-twin/domain';
+
+export { favoriteKey, projectFileSource, projectWorkspaceAccess, projectNavigation, remoteSessionSources } from './projects/selectors';
+export { toolGrant } from './configuration/tool-grant';
+export { harnessObservation } from './session/harness-observation';
+export { APPLICATION_WORKSPACES } from './presets/workspaces';
+export { isApplicationReadCommand } from './session/command-policy';

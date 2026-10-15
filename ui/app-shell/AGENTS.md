@@ -1,7 +1,7 @@
 # @itookit/app-shell
 
 应用启动引导 + UI 路由 + UI 装配。`initApp()` 是唯一顶层初始化函数。
-平台无关的 Session/Kernel 组合位于 `@itookit/app-core`（直接依赖）；app-shell 依赖它并只保留 UI/路由/编辑器装配。
+平台无关的 Session/Kernel 组合位于 backend/app-core；app-shell 只通过 shared/app-contracts 接收服务，不导入 app-core。UI 仅消费 ApplicationServices/ApplicationBackend；应用操作异步，宿主内部构造契约不进入 UI。本地与 HTTP 宿主共用 initApp。
 
 peerDependencies: `@itookit/{app-settings,common,driver-llm,llm-session,durable-kernel,kernel-adapters,mdxeditor,vfs-ui,vfs-core,ui-common}`
 
@@ -18,7 +18,6 @@ src/
 │   ├── module.ts         ← 工作区能力、路由恢复、模块资源统一释放
 │   └── hitl-bridge.ts    ← Session 等待输入状态适配
 ├── browser/             ← 文件浏览器与编辑器装配、媒体预览、mention/元数据策略
-├── application/          ← 应用端口装配；HTTP 通过 workbench-adapter 复用原 Workbench，未提供能力禁用
 ├── core/
 │   └── Workbench.ts          ← 通用工作区控制器
 ├── lifecycle/            ← 可替换视图读取与订阅释放机制（不含业务策略）
@@ -66,7 +65,7 @@ const factory = factories[strategyType] ?? defaultEditorFactory;
 
 ## Conventions
 
-- `initApp()` 是唯一 UI 装配点 — VFS/LLM/Kernel 由宿主调用 `app-core` 的 `createApplicationRuntime()` 装配，UI 只接收 `services` 和 `localBackend`，编辑器/AI 菜单/LLM 设置编辑器经 `AppOptions.ui` 注入
+- `initApp()` 是唯一 UI 装配点 — VFS/LLM/Kernel 由宿主调用 `app-core` 的 `createApplicationRuntime()` 装配，UI 只接收 `services` 和 `backend`，编辑器/AI 菜单/LLM 设置编辑器经 `AppOptions.ui` 注入
 - 项目收藏只做端口适配：`project-favorites.ts` 把 `resolveBrowserTarget` 路由翻译成 `ProjectFavorites` 命令。远程命令由 pi-agent 能力声明控制，工作台不提供启用/禁用开关。
 - 项目范围选择复用 vfs-ui 的 ScopeSelector；导入导出通过 toolbarOptions.definitions 统一按钮、菜单、图标与异步执行，工作台只注入业务命令和目标策略。
 - 通用 Workbench 保留 vfs-ui 默认的创建文件、创建目录按钮，并透传宿主 toolbarOptions；项目侧栏的精简操作只由 ProjectNavigation 配置，不影响其他模块。
@@ -78,6 +77,7 @@ const factory = factories[strategyType] ?? defaultEditorFactory;
 - chat 工作区在 `SessionWorkbench` 完成侧栏树加载后立即触发 `onSidebarReady`，宿主的 `onWorkspaceReady` 因此先把加载遮罩限制在正文列；让出一帧后再恢复选中项、项目正文和深链编辑器。侧栏初始化完成后 `onSidebarInteractive` 允许桌面端提前开放点击；显式深链不额外打开旧的侧栏选中项。`onEditorReady` 仍在正文首挂载后触发。
 - 两列 DOM 创建后 `onWorkspaceMounted` 立即让桌面端把加载遮罩移到正文列，VFS 侧栏骨架在数据读取期间可见；`onWorkspaceReady` 表示侧栏数据已完成。
 - MDX 默认编辑器经 `browser/lazy-mdx.ts` 延迟导入；标准工作区的 MentionPlugin 也只在打开正文时加载。侧栏数据与正文编辑器不能共用启动时的静态模块图。
+- 普通文档启动只等待主题和当前工作区。configuration/settings-access 在首次打开设置编辑器时获取已就绪后端端口，导航目录纯本地；OCR、恢复能力、聊天权限与 Flow 模板按消费加载。lifecycle/lazy-resource 负责共享创建、失败重试和关闭时等待释放，不承载业务策略；空输入框订阅不能触发 OCR 加载。
 - 路由基于 hash URL (`#/<slug>/<resourceId>`)，由 `history.pushState/replaceState` 写入，监听 `popstate` + `NAVIGATION_EVENTS.NAVIGATE`
 - `ThemeService` 管理 `<html>` 的 `data-theme` attribute，监听 `app:theme-change` 事件，偏好持久化到 `etc:/ui/theme.json`；`AppHandle.setTheme(mode)` 切换主题
 

@@ -1,4 +1,4 @@
-import { workspaceFiles, writeWorkspaceFile, type WorkspaceFileSource } from './workspace-files';
+import { SettingsFiles, writeWorkspaceFile } from './workspace-files';
 import { exportFileSystem, importFileSystem } from '@itookit/vfs-core';
 /**
  * @file: app-settings/services/SettingsService.ts
@@ -8,7 +8,7 @@ import { FSNotFoundError } from '@itookit/vfs-core';
 import { LabelStore, TAG_STORE_PATH } from './LabelStore';
 import { traceBoot } from '@itookit/common';
 import { SettingsState, Contact, Tag } from '@itookit/app-contracts/settings';
-import type { SnapshotPort, SettingsPort } from '@itookit/app-contracts/settings';
+import type { SnapshotPort, SettingsPort, SettingsWorkspaceSource, WorkspaceDescription } from '@itookit/app-contracts/settings';
 import { FSError } from '@itookit/vfs-core';
 
 // UI display: modules not shown to users in workspace picker
@@ -54,9 +54,12 @@ export class SettingsService implements SettingsPort {
     private tagStore!: LabelStore;
 
     public readonly snapshot: SnapshotPort;
+    readonly workspaces: readonly WorkspaceDescription[];
+    private readonly files: SettingsFiles;
 
-    constructor(vfs: IVFSManager, _dbName: string = 'MindOS-v2', readonly workspaces: readonly WorkspaceFileSource[] = [], snapshot?: SnapshotPort) {
+    constructor(vfs: IVFSManager, _dbName: string = 'MindOS-v2', sources: readonly SettingsWorkspaceSource[] = [], snapshot?: SnapshotPort) {
         this.vfs = vfs;
+        this.files = new SettingsFiles(vfs, sources); this.workspaces = this.files.descriptions();
         this.snapshot = snapshot ?? unavailableSnapshots;
     }
 
@@ -166,18 +169,14 @@ export class SettingsService implements SettingsPort {
         return this.tagRefresh ??= this.refreshTags().finally(() => { this.tagRefresh = undefined; });
     }
 
-    /** MindOS-managed sources only: external directories never contribute tag counts. */
-    private tagSources(): readonly WorkspaceFileSource[] {
-        return this.workspaces.filter(source =>
-            source.internal !== false && source.fs.external !== true && source.fs.capabilities.tags);
-    }
+    openWorkspace(name: string): Promise<IFileSystem> { return this.files.open(name); }
 
     private async refreshTags(): Promise<void> {
         try {
             const configTags = await this.tagStore.list();
 
             const counts = new Map<string, { name: string; color?: string; refCount: number }>();
-            for (const source of this.tagSources()) {
+            for (const source of await this.files.tags()) {
                 const tags = await traceBoot(`settings.tags[${source.name}].getAllTags`, () => source.fs.meta.tags.getAllTags());
                 console.log(`[Boot] settings.tags[${source.name}]: ${tags.length} tags`);
                 for (const tag of tags) {
@@ -229,7 +228,7 @@ export class SettingsService implements SettingsPort {
         // 注意：VFS 可能没有直接的 deleteTagDefinition
         // 需要通过 TagManager 或者从所有节点移除该标签
         try {
-            for (const source of this.tagSources()) {
+            for (const source of await this.files.tags()) {
                 const paths: string[] = [];
                 await source.fs.meta.tags.walkByTag(tag.name, path => { paths.push(path); return true; });
                 for (const path of paths) await source.fs.meta.tags.removeTag(path, tag.name);
@@ -269,7 +268,7 @@ export class SettingsService implements SettingsPort {
         }
 
         for (const name of moduleNames) {
-            exportData.workspaces.push({ name, archive: await exportFileSystem(workspaceFiles(this.workspaces, name)) });
+            exportData.workspaces.push({ name, archive: await exportFileSystem(await this.openWorkspace(name)) });
         }
         return exportData;
     }
@@ -287,12 +286,12 @@ export class SettingsService implements SettingsPort {
         for (const entry of selected) {
             if (seen.has(entry.name)) throw new Error(`Duplicate backup workspace: ${entry.name}`);
             seen.add(entry.name);
-            workspaceFiles(this.workspaces, entry.name);
+            await this.openWorkspace(entry.name);
         }
         for (const name of workspaceNames) if (!seen.has(name)) throw new Error(`Backup workspace missing: ${name}`);
         // Cross-source restore is not atomic. Propagate failures so the UI never
         // reports success for a partial restore. Settings are saved afterwards.
-        for (const entry of selected) await importFileSystem(workspaceFiles(this.workspaces, entry.name), entry.archive);
+        for (const entry of selected) await importFileSystem(await this.openWorkspace(entry.name), entry.archive);
         if (settingsKeys.includes('tags') && Array.isArray(data.settings?.tags)) {
             this.state.tags = data.settings.tags;
             await this.tagStore.replaceAll(data.settings.tags);

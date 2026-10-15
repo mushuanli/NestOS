@@ -1,8 +1,8 @@
-import { createFileSystemSource, createFileSystemView, MemoryBackend, type IDeviceDriver } from '@itookit/vfs-core';
+import { createFileSystemSource, createFileSystemView, MemoryBackend } from '@itookit/vfs-core';
 import type { WorkspaceFileSource } from '@itookit/app-contracts/settings';
 
 /** Reuse the normal view protocol; the inspector has no alternate ID/path parser. */
-export async function createSystemFileInspector(sources: readonly WorkspaceFileSource[], devices: readonly IDeviceDriver[]) {
+export async function createSystemFileInspector(sources: readonly WorkspaceFileSource[], devices: readonly import('@itookit/app-contracts/services').DeviceDescription[]) {
     const descriptions = await createFileSystemSource({ backend: new MemoryBackend(), viewId: 'device-descriptions', internal: true });
     try {
         for (const device of devices) {

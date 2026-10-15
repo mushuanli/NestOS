@@ -25,7 +25,8 @@ export class ToolboxResources {
     async refreshGroups(toolGroups: readonly Drawer[]): Promise<void> {
         const defaults: Drawer[] = [...toolGroups], resources: Array<{ path: string; kind: DrawerKind; groupId?: string }> = [];
         for (const group of toolGroups) for (const path of group.paths) resources.push({ path, kind: 'tools', groupId: group.id });
-        for (const kind of ['agents', 'skills', 'flows', 'prompts', 'mcp'] as const) await this.scanGroups(kind, '/', defaults, resources);
+        for (const skill of await this.agents.getSkills()) resources.push({ path: toolboxPath('skills', '/' + skill.id), kind: 'skills' });
+        for (const kind of ['agents', 'flows', 'prompts', 'mcp'] as const) await this.scanGroups(kind, '/', defaults, resources);
         this.drawers.setCatalog(resources, defaults);
     }
     private async scanGroups(kind: DrawerKind, parent: string, groups: Drawer[], resources: Array<{ path: string; kind: DrawerKind; groupId?: string }>, group?: Drawer): Promise<void> {
@@ -76,7 +77,8 @@ export class ToolboxResources {
         catch (error) {
             try {
                 if (kind === 'prompts') await this.agents.deleteSystemPrompt(path.split('/').pop()!);
-                else if (kind === 'mcp') await this.agents.deleteMCPServer(path.split('/').pop()!);
+                else if (kind === 'skills') await this.agents.deleteSkill(path.split('/').pop()!);
+                    else if (kind === 'mcp') await this.agents.deleteMCPServer(path.split('/').pop()!);
                 else await this.sources[kind].driver.delete([path.slice(kind.length + 1)]);
             } catch (cleanup) { throw new AggregateError([error, cleanup], 'Resource creation and cleanup failed'); }
             throw error;
@@ -105,8 +107,8 @@ export class ToolboxResources {
         const queue = [...new Set(paths)];
         for (const path of queue) {
             const kind = path.split('/')[1] as ToolboxKind, source = this.sources[kind], local = path.slice(kind.length + 1);
-            if (!source || kind !== 'prompts' && (await source.driver.getNode(local))?.type !== 'file') throw new Error(t('toolbox.selectFiles'));
-            const data = kind === 'providers' ? this.agents.getFullProvider(decodeURIComponent(local.slice(1)))
+            if (!source || kind !== 'prompts' && kind !== 'skills' && (await source.driver.getNode(local))?.type !== 'file') throw new Error(t('toolbox.selectFiles'));
+            const data = kind === 'providers' ? await this.agents.getFullProvider(decodeURIComponent(local.slice(1)))
                 : kind === 'prompts' ? await this.agents.getSystemPrompt(decodeURIComponent(local.slice(1)))
                 : kind === 'connections' ? await this.agents.getFullConnection(decodeURIComponent(local.slice(1)))
                 : kind === 'mcp' ? (await this.agents.getMCPServers()).find(item => item.id === decodeURIComponent(local.slice(1))) : kind === 'skills' ? (await this.agents.getSkills()).find(item => item.id === local.slice(1))
@@ -146,6 +148,7 @@ export class ToolboxResources {
                     if (kind === 'providers') await this.agents.deleteProvider(decodeURIComponent(path.split('/').pop()!));
                     else if (kind === 'connections') await this.agents.deleteConnection(decodeURIComponent(path.split('/').pop()!));
                     else if (kind === 'prompts') await this.agents.deleteSystemPrompt(decodeURIComponent(path.split('/').pop()!));
+                    else if (kind === 'skills') await this.agents.deleteSkill(path.split('/').pop()!);
                     else if (kind === 'mcp') await this.agents.deleteMCPServer(decodeURIComponent(path.split('/').pop()!)); else await this.sources[kind].driver.delete([path.slice(kind.length + 1)]); } catch (cleanup) { errors.push(cleanup); }
             }
             if (errors.length > 1) throw new AggregateError(errors, 'Toolbox import and cleanup failed');

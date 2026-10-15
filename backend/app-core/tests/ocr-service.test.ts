@@ -6,7 +6,7 @@ import { OcrService } from '../src/configuration/ocr-service';
 
 let runtime: ApplicationRuntime;
 afterEach(async () => { vi.restoreAllMocks(); await runtime?.dispose(); });
-async function setup() {
+async function setup(prepare = true) {
     runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web' });
     const agents = runtime.agentService, fs = await runtime.vfs.openFileSystem('/etc');
     await agents.saveProvider({ baseURL: '', id: 'vision', name: 'Vision', implementation: 'openai-compatible', apiKey: 'test',
@@ -15,16 +15,41 @@ async function setup() {
     await agents.saveConnection({ id: 'chat', name: 'Chat', providerId: 'vision', tiers: { optimal: 'text-model' } });
     await agents.setDefaultConnection('chat');
     const chat = vi.fn<ILLMService['chat']>().mockResolvedValue({ choices: [{ message: { content: '# Recognized' } }] } as never);
-    const service = new OcrService(fs, agents, { chat } as unknown as ILLMService); await service.init();
+    const service = new OcrService(fs, agents, { chat } as unknown as ILLMService);
+    if (prepare) await service.prepareConfiguration();
     return { service, agents, fs, chat };
 }
+it('loads settings once without creating defaults during reads or readiness checks', async () => {
+    const { service, fs, agents } = await setup(false), exists = vi.spyOn(fs.driver, 'exists');
+    const create = vi.spyOn(fs.driver, 'createFile'), savePrompt = vi.spyOn(agents, 'saveSystemPrompt');
+    const [settings, label, ready] = await Promise.all([service.readSettings(), service.label(), service.ready()]);
+    expect(settings).toEqual({ systemPromptId: 'image-to-markdown' }); expect(label).toBeTruthy(); expect(ready).toBe(false);
+    expect(exists).toHaveBeenCalledExactlyOnceWith('/llm/ocr.json');
+    expect(create).not.toHaveBeenCalled(); expect(savePrompt).not.toHaveBeenCalled();
+    await Promise.all([service.prepareConfiguration(), service.prepareConfiguration()]);
+    expect(create).toHaveBeenCalledOnce(); expect(savePrompt).toHaveBeenCalledOnce();
+});
+it('retries settings reads after an IO failure', async () => {
+    const { service, fs } = await setup(false);
+    vi.spyOn(fs.driver, 'exists').mockRejectedValueOnce(new Error('offline'));
+    await expect(service.readSettings()).rejects.toThrow('offline');
+    await expect(service.readSettings()).resolves.toEqual({ systemPromptId: 'image-to-markdown' });
+});
+it('serializes default preparation with saving an explicit configuration', async () => {
+    const { service, agents, fs } = await setup(false);
+    await agents.saveSystemPrompt({ id: 'custom', name: 'Custom', content: ['Extract'] });
+    const settings = { systemPromptId: 'custom', connectionId: 'ocr' };
+    await Promise.all([service.save(settings), service.prepareConfiguration()]);
+    expect(await service.readSettings()).toEqual(settings);
+    expect(JSON.parse(await fs.driver.readContent('/llm/ocr.json', { encoding: 'utf-8' }))).toEqual(settings);
+});
 it('starts unconfigured, persists explicit choices, and never uses the chat default', async () => {
     const { service, agents, fs, chat } = await setup();
     expect(service.snapshot().connectionId).toBeUndefined();
     await expect(service.recognize(new Blob())).rejects.toThrow(); expect(chat).not.toHaveBeenCalled();
     expect(await agents.getSystemPrompt(service.snapshot().systemPromptId)).toBeTruthy();
     await service.save({ ...service.snapshot(), connectionId: 'ocr' });
-    const reopened = new OcrService(fs, agents, { chat } as unknown as ILLMService); await reopened.init();
+    const reopened = new OcrService(fs, agents, { chat } as unknown as ILLMService); await reopened.readSettings();
     expect(reopened.snapshot()).toEqual(service.snapshot());
     expect(await reopened.recognize(new Blob(['image'], { type: 'image/png' }))).toBe('# Recognized');
     expect(chat.mock.calls[0][0]).toBe('ocr');
@@ -43,7 +68,7 @@ it('revalidates vision support, connection status and credentials before sending
     await agents.saveConnection({ ...conn, tiers: { optimal: 'text-model' } });
     await expect(service.recognize(new Blob())).rejects.toThrow();
     await agents.saveConnection(conn);
-    await agents.saveProvider({ ...agents.getFullProvider('vision')!, apiKey: '' });
+    await agents.saveProvider({ ...(await agents.getFullProvider('vision'))!, apiKey: '' });
     await expect(service.recognize(new Blob())).rejects.toThrow(); expect(chat).not.toHaveBeenCalled();
 });
 it('resolves shared prompt edits for later requests and retains each submitted prompt', async () => {
@@ -62,8 +87,9 @@ it('keeps deleted references explicit across restart instead of restoring or fal
     await agents.deleteConnection('ocr');
     await expect(service.recognize(new Blob())).rejects.toThrow();
     await agents.deleteSystemPrompt(service.snapshot().systemPromptId);
-    const reopened = new OcrService(fs, agents, { chat } as unknown as ILLMService); await reopened.init();
+    const reopened = new OcrService(fs, agents, { chat } as unknown as ILLMService); await reopened.readSettings();
     expect(reopened.snapshot()).toEqual(service.snapshot());
+    await reopened.prepareConfiguration();
     expect(await agents.getSystemPrompt(service.snapshot().systemPromptId)).toBeNull();
     expect(await reopened.ready()).toBe(false); expect(chat).not.toHaveBeenCalled();
 });
@@ -92,7 +118,7 @@ it.each([
     [{ fast: 'Cheap image', optimal: 'image-model' }, 'cheap-image', 'fast'],
 ] as const)('selects the lowest configured vision tier for %j', async (tiers, modelId, tier) => {
     const { service, agents, chat } = await setup();
-    const provider = agents.getFullProvider('vision')!;
+    const provider = (await agents.getFullProvider('vision'))!;
     await agents.saveProvider({ ...provider, models: [...provider.models, { id: 'cheap-image', name: 'Cheap image', supportsVision: true }] });
     await agents.saveConnection({ id: 'ocr', name: 'OCR', providerId: 'vision', tiers });
     expect((await service.connections()).find(item => item.connection.id === 'ocr')).toMatchObject({ available: true, modelId, tier });
@@ -112,7 +138,7 @@ it('reevaluates tier capabilities for each new recognition request', async () =>
     const { service, agents, chat } = await setup();
     await service.save({ ...service.snapshot(), connectionId: 'ocr' });
     await service.recognize(new Blob());
-    const provider = agents.getFullProvider('vision')!;
+    const provider = (await agents.getFullProvider('vision'))!;
     await agents.saveProvider({ ...provider, models: provider.models.map(model => ({ ...model, supportsVision: true })) });
     await service.recognize(new Blob());
     expect(chat.mock.calls.map(call => call[1].model)).toEqual(['image-model', 'text-model']);

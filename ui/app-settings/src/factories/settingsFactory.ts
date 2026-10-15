@@ -55,10 +55,8 @@ export interface SettingsFactoryOptions {
 export const createSettingsFactory = ({ settingsService, agentService, connectionService, llmUiEditors,
     connectBrowser, restoreFlows, initialFiles, requestDelete }: SettingsFactoryOptions): EditorFactory => {
     return async (container: HTMLElement, options: EditorOptions) => {
-        await settingsService.init();
         if (requestDelete) options = { ...options, hostContext: { toggleSidebar: () => {}, navigate: async () => {}, ...options.hostContext, requestDelete } };
         const nodeId = resolveSettingsSlug(editorResourceId(options) || '');
-        await settingsService.init();
 
         let editor: IEditor | null = null;
 

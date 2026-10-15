@@ -44,7 +44,7 @@ test('backend cannot load UI and frontend cannot derive contracts from backend c
 
 test('domain contracts and codecs are shared while host factories and independent storage drivers are backend', () => {
     assert.equal(moduleRole('/repo/backend/app-core/src/contracts/backend.ts', '/repo'), 'shared');
-    assert.equal(moduleRole('/repo/backend/app-core/src/host/local-backend.ts', '/repo'), 'backend');
+    assert.equal(moduleRole('/repo/backend/app-core/src/host/application-client.ts', '/repo'), 'backend');
     assert.equal(moduleRole('/repo/backend/kernel-adapters/src/llm-management/config.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/vfsdriver-local/src/index.ts', '/repo'), 'backend');
     assert.equal(moduleRole('/repo/libraries/driver-llm/src/types/provider.ts', '/repo'), 'shared');

@@ -525,8 +525,8 @@ it('recovers an old data directory and its conversation during IndexedDB applica
     expect((await reopened.projects.get('old-startup')).path).toBe('/Old startup');
     expect((await reopened.sessionRepository.getManifest(id)).folder).toBe('/Old startup/@sessions');
     expect(await reopened.sessionRepository.readDocument(id, 'round.json')).toBe('{"text":"original conversation"}');
-    await vi.waitFor(async () => expect(await (await reopened.vfs.openFileSystem('/')).driver.exists(`${directory}/.mindos/sessions/${id}/history.seq`)).toBe(true));
-    expect(await readSession(reopened, id, 'old.md')).toBe('original file');
+    // Wait for committed public access while recovery runs in the background.
+    await vi.waitFor(async () => expect(await readSession(reopened, id, 'old.md')).toBe('original file'));
     expect(await (await reopened.vfs.openFileSystem('/')).driver.exists(`${directory}/.mindos/sessions/${id}/history.seq`)).toBe(true);
 });
 

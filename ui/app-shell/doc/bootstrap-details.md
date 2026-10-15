@@ -3,17 +3,17 @@
 `initApp(options)` 是唯一顶层初始化函数，只负责 UI 装配；平台无关的 VFS / LLM / Kernel / Session 组合由 `@itookit/app-core` 的 `createApplicationRuntime()` 完成。
 
 ```text
-1. 宿主注入 options.services 与 options.localBackend（后端创建只在宿主执行）
+1. 宿主注入 options.services 与 options.backend（后端创建只在宿主执行）
    → vfs / llmDriver / agentService / sessionRepository / flowEngine /
      sessionFiles / directoryMounts / kernel / sessionManager / commandBus
 2. themeService.init(await vfs.openFileSystem('/etc'))
-3. createSettingsModule(localBackend.settings(vfs, settingsSources)) → settingsFactory
+3. createSettingsAccess() → 本地设置目录、按需加载的 settingsFactory
 4. 按 WorkspaceConfig.type 建 EditorFactory 表（factories / editorFactoryMap）
 5. 绑定路由（routeMap / reverseRouteMap + popstate、NAVIGATION_EVENTS.NAVIGATE）
 6. loadWorkspace(wsConfig, resourceId)，managerCache 缓存 + pendingLoads 并发去重
 ```
 
-`initApp` 要求 `AppOptions.services` 与 `AppOptions.localBackend`；编辑器、AI 菜单和 LLM 设置编辑器经 `AppOptions.ui` 注入。
+`initApp` 要求 `AppOptions.services` 与 `AppOptions.backend`；编辑器、AI 菜单和 LLM 设置编辑器经 `AppOptions.ui` 注入。普通文档启动只等待主题和当前工作区，不加载 OCR、设置数据、恢复能力或聊天权限。设置编辑器第一次打开时 backend.settings 返回已初始化端口；目录导航始终在本地生成。OCR 首次操作才获取后端服务，readSettings 只读，prepareConfiguration 仅在打开配置时创建缺省文件和提示词。订阅空输入框不触发 OCR 加载。
 
 chat 工作区由 `SessionWorkbench` 承载（Session 侧栏 + 路由 + 文件上下文），其余工作区由 `Workbench` 承载，二者都用 `EditorFactory` 选择编辑器。
 
@@ -27,7 +27,7 @@ Web 入口的图标与各工作区 CSS 由 HTML 引用的首批样式提供；`l
 
 ## Flow 定义库和右键运行
 
-AppUI.installFlowLibrary 在工作区加载前安装 llm-ui 注册的缺失 Flow 模板；已有持久草稿不覆盖。AppUI.createFlowContextMenu 通过 Workbench.uiOptions.contextMenu 装配到 flows 工作区，菜单执行依赖命令总线，导航依赖宿主回调。Web/Tauri 均已接线。
+AppUI.installFlowLibrary 在首次进入聊天、工具箱、Flow 工作区或打开 Flow 文件时安装 llm-ui 注册的缺失 Flow 模板；已有持久草稿不覆盖。AppUI.createFlowContextMenu 通过 Workbench.uiOptions.contextMenu 装配到 flows 工作区，菜单执行依赖命令总线，导航依赖宿主回调。Web/Tauri 均已接线。
 
 参数确认后创建 Session 并导航到 chat；会话 manifest.flow 保存固定 revision 和参数，LLMWorkspaceEditor 首次打开空会话后自动执行。定义与 UI 边界见 [作文评审实现](../../../doc/design/essay-review-flow.md)。
 

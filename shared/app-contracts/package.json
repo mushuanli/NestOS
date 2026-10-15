@@ -11,11 +11,6 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
-    "./application": {
-      "types": "./src/application/contracts.ts",
-      "import": "./src/application/contracts.ts",
-      "default": "./src/application/contracts.ts"
-    },
     "./settings": {
       "types": "./src/settings.ts",
       "import": "./src/settings.ts",

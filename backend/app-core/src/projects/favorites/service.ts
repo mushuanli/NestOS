@@ -25,6 +25,7 @@ export class ProjectFavorites {
         return this.persist(projectId, entries => reconcileSessions(entries, titles));
     }
     /** Read-only cache accessors; call `list` first when a project may not be loaded yet. */
+    snapshot(): Record<string, ProjectFavorite[]> { return Object.fromEntries(this.cache); }
     hasSession(sessionId: string): boolean { return [...this.cache.values()].some(items => items.some(item => item.target.kind === 'session' && item.target.sessionId === sessionId)); }
     has(projectId: string, target: ProjectFavoriteTarget): boolean { return this.cache.get(projectId)?.some(item => favoriteKey(item.target) === favoriteKey(target)) ?? false; }
     async toggle(projectId: string, target: ProjectFavoriteTarget, title: string): Promise<void> {

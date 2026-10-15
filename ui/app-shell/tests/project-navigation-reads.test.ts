@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -6,7 +6,6 @@ import { createVFS, MemoryBackend, type IFileSystem } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, ProjectService, SessionFilesService, folderBrowserPath } from '@itookit/app-core';
 import { ProjectNavigation } from '../src/projects/ProjectNavigation';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 function actions() {
     return { createProject: vi.fn(), createSession: vi.fn(), createChild: vi.fn(), importItems: vi.fn(),
@@ -83,7 +82,7 @@ it('boots when the persisted selection names a route this build no longer serves
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const factory = vi.fn(async () => ({ destroy: vi.fn() }));
     const kernel = { onChanged: () => () => {}, async *listSessions() {} };
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files,
+    const workbench = createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files,
         factory: factory as never, onSelect: () => {}, hostContext: undefined, kernel: kernel as never,
         fileFactory: factory as never, directoryMounts: mounts, projects: projects, uiPersistence: { load: () => restored } });
     try {
@@ -117,7 +116,7 @@ it('opens project files before blocked navigation and discards stale navigation 
     const sync = vi.spyOn(ProjectNavigation.prototype, 'sync');
     let releaseNavigation = () => {};
     const blocked = new Promise<void>(resolve => { releaseNavigation = resolve; });
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files,
+    const workbench = createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files,
         factory: factory as never, onSelect: () => {}, hostContext: undefined, kernel: kernel as never,
         fileFactory: factory as never, directoryMounts: mounts, projects: projects, uiPersistence: { load: () => restored } });
     try {
@@ -207,7 +206,7 @@ it('renders directory entries before blocked sidebar navigation and ignores its 
     await source.fs.driver.createFile({parentPath: '/docs', name: 'ready.md', content: 'Ready'}); await source.dispose();
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const kernel = {onChanged: () => () => {}, async *listSessions() {}};
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(), sidebar, container: main, repository, files, projects, directoryMounts: mounts,
+    const workbench = createTestWorkbench({ sidebar, container: main, repository, files, projects, directoryMounts: mounts,
         kernel: kernel as never, factory: async () => ({destroy() {}}) as never, onSelect() {}});
     let release = () => {};
     const gate = new Promise<void>(resolve => {release = resolve;});

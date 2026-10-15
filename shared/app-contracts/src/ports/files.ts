@@ -56,7 +56,7 @@ export interface DirectoryMountService {
     resolveSource(sourceId: string): Promise<IFileSystem | undefined>;
     dispose(): Promise<void>;
     listDirectories(path?: string): Promise<string[]>;
-    describe(mount: SessionMountRecord): string;
+    describe(mount: SessionMountRecord): string | Promise<string>;
     readonly canSelectHost: boolean;
     processMounts(sessionId: string): Promise<SessionProcessMount[]>;
     getHome(): string | undefined;
@@ -80,3 +80,14 @@ export interface SessionProcessMount {
     at: string;
     access: 'ro' | 'rw';
 }
+
+/** Browser-facing file capabilities exclude manager, driver and execution ownership. */
+export type DeviceDescription = Pick<import('@itookit/vfs-core').IDeviceDriver, 'handlerId' | 'description' | 'writable' | 'streamable' | 'sessionable'>;
+export interface FileSystemsPort {
+    openFileSystem(rootPath: string): Promise<IFileSystem>;
+    readonly ioStats: import('@itookit/vfs-core').IVFSManager['ioStats'];
+    readonly devices: { list(): string[]; get(id: string): DeviceDescription };
+}
+export type SessionFilesPort = Pick<SessionFilesService, 'invalidate' | 'subscribe' | 'inspect' | 'configure' | 'disable' | 'acquireFiles'>;
+export type DirectoryMountPort = Pick<DirectoryMountService, 'fixedWorkspace' | 'resolveSource' | 'listDirectories' | 'describe' | 'canSelectHost' | 'getHome' | 'chooseDirectory'
+    | 'openDirectory' | 'inspectDirectory' | 'setHome' | 'mountHome' | 'addDirectory' | 'setWorkspace' | 'restoreWorkspace' | 'assertWorkspaceChange' | 'remove' | 'reconnect' | 'update'>;

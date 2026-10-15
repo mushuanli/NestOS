@@ -1,3 +1,4 @@
+import { filterDirectoryFiles } from './directory-visibility';
 import { RemoteSessionProjection } from './remote-session-projection';
 import { FOLDER_SEGMENT_PREFIX, isFolderSegment, isFileTarget, filesBrowserPrefix, parentBrowserPath, browserName,
     resolveBrowserTarget, browserTargetFolder, folderBrowserPath, folderPathFromBrowserPath, type FileTarget, type BrowserTarget } from './browser-routes';
@@ -54,6 +55,7 @@ export function taskKeyEvent(event: EventEnvelope) {
     return { sequence: event.sequence, occurredAt: event.occurredAt, type: agentType ?? type, payload: event.payload };
 }
 export interface SessionBrowserDependencies {
+    displayedFilesPolicy?: 'gitignore' | 'all';
     repository: ISessionRepository;
     projects?: ProjectService;
     files: SessionFilesService;
@@ -626,7 +628,7 @@ class BrowserBackend implements IStorageBackend {
     async getAllTags(): Promise<string[]> { return []; }
 }
 export async function createSessionBrowser(deps: SessionBrowserDependencies) {
-    const backend = new BrowserBackend(deps);
+    const backend = new BrowserBackend(deps.displayedFilesPolicy === 'gitignore' ? { ...deps, filterDisplayedFiles: filterDirectoryFiles } : deps);
     const owner = await createFileSystemSource({ tags: false, backend, viewId: 'session-browser:admin', access: 'rw' });
     const rename = owner.fs.driver.rename.bind(owner.fs.driver);
     owner.fs.driver.rename = async (path, name, options) => {

@@ -116,11 +116,11 @@ export interface IConnectionReader {
     /** 同步查找单个连接（从内存缓存读取，无 apiKey） */
     findConnection(id: string): ConnectionMeta | undefined;
     /** 获取单个 Provider 定义 */
-    getProvider(providerId: string): LLMProvider | undefined;
+    getProvider(providerId: string): (LLMProvider & { hasApiKey?: boolean }) | undefined;
     /** 列出所有 Provider（不含 apiKey，供 UI 列表使用） */
-    getProviders(): LLMProvider[];
+    getProviders(): Array<LLMProvider & { hasApiKey?: boolean }>;
     /** 返回含 apiKey 的完整 Provider（仅供 Settings UI 编辑表单使用） */
-    getFullProvider(id: string): LLMProvider | undefined;
+    getFullProvider(id: string): LLMProvider | undefined | Promise<LLMProvider | undefined>;
 }
 
 // ─── IConnectionService ───────────────────────────────────────────────────────

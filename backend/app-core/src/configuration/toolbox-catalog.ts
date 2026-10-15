@@ -13,6 +13,7 @@ interface Catalog { listTools(): ToolMeta[]; getToolDefinitions(): ToolDefinitio
 /** Read-only navigation metadata; configuration remains in its owning services. */
 export class ToolboxInventory {
     private readonly backends = { remoteAgents: new MemoryBackend(), mcp: new MemoryBackend(), tools: new MemoryBackend(), providers: new MemoryBackend(), connections: new MemoryBackend(), prompts: new MemoryBackend() };
+    private readonly contents = new Map<string, string>();
     private owners: Partial<Record<'remoteAgents' | 'mcp' | 'tools' | 'providers' | 'connections' | 'prompts', FileSystemSourceOwner>> = {};
     readonly remoteAgents = new Map<string, RemoteHarnessAgent>();
     get remoteAgentSource() { return this.owners.remoteAgents!.fs; }
@@ -61,7 +62,7 @@ export class ToolboxInventory {
         this.providers.clear(); this.connections.clear();
         for (const item of providers) this.providers.set(item.id, { id: item.id, name: item.name,
             icon: item.icon === defaults[item.id]?.icon ? undefined : item.icon, enabled: item.enabled !== false,
-            configured: item.id === 'codex' || !!this.models?.getFullProvider(item.id)?.apiKey?.trim() });
+            configured: item.id === 'codex' || !!(await this.models?.getFullProvider(item.id))?.apiKey?.trim() });
         for (const item of connections) this.connections.set(item.id, { providerId: item.providerId, enabled: item.enabled !== false });
         await this.replace('providers', providers.map(item => ({ id: item.id, name: item.name,
             description: item.baseURL ?? '', source: item.implementation, icon: item.icon ?? ENTITY_ICONS.llm })));
@@ -80,13 +81,16 @@ export class ToolboxInventory {
     }
     private async replace(kind: 'remoteAgents' | 'mcp' | 'tools' | 'providers' | 'connections' | 'prompts', entries: Array<{ id: string; name: string; description: string; source: string; icon: string; status?: MCPServer['status']; connectionState?: MCPConnectionState }>): Promise<void> {
         const backend = this.backends[kind], paths = new Set(entries.map(item => '/' + encodeURIComponent(item.id) + (kind === 'remoteAgents' ? '.agent' : '')));
-        for (const old of await backend.list('/')) if (!paths.has(old.path)) await backend.delete(old.path);
+        for (const old of await backend.list('/')) if (!paths.has(old.path)) { await backend.delete(old.path); this.contents.delete(kind + ':' + old.path); }
         for (const item of entries) {
             const path = '/' + encodeURIComponent(item.id) + (kind === 'remoteAgents' ? '.agent' : '');
-            await backend.write(path, new TextEncoder().encode(JSON.stringify(item)));
+            const content = JSON.stringify(item), key = kind + ':' + path;
+            if (this.contents.get(key) === content) continue;
+            await backend.write(path, new TextEncoder().encode(content));
             await backend.updateMetadata(path, { title: item.name, description: item.description, source: item.source,
                 icon: item.icon, ...(kind === 'remoteAgents' ? {remoteHarnessAgent: true} : {}),
                 ...(kind === 'mcp' ? {mcpStatus: item.status, mcpConnectionState: item.connectionState} : {}), _readOnly: true, _showAll: true });
+            this.contents.set(key, content);
         }
     }
     async dispose(): Promise<void> { for (const owner of Object.values(this.owners ?? {})) await owner.dispose(); }

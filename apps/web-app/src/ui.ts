@@ -1,4 +1,3 @@
-import { createMindosFlowLibrary } from '@itookit/app-core';
 import type { AppUI } from '@itookit/app-shell';
 import { createFlowContextMenuConfig, createAIContextMenuConfig,
     installFlowLibrary, restoreFlowLibrary } from '@itookit/llm-ui/startup';
@@ -12,7 +11,7 @@ function lazyEditorFactory(load: () => Promise<EditorFactory>): EditorFactory {
     return async (container, options) => (await (pending ??= load()))(container, options);
 }
 
-export function createBrowserUI(): AppUI {
+export function createBrowserUI(library: Parameters<typeof installFlowLibrary>[1]): AppUI {
     return {
         createChatEditor: (service, deps) => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui/chat')).createLLMFactory(service, deps)),
@@ -20,9 +19,9 @@ export function createBrowserUI(): AppUI {
             (await import('@itookit/llm-ui/settings')).createAgentEditorFactory(service, capabilities)),
         createFlowEditor: deps => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui/chat')).createFlowsEditorFactory(deps)),
-        createFlowContextMenu: deps => createFlowContextMenuConfig({ ...deps, library: createMindosFlowLibrary() }),
-        installFlowLibrary: commands => installFlowLibrary(commands, createMindosFlowLibrary()),
-        restoreFlowLibrary: commands => restoreFlowLibrary(commands, createMindosFlowLibrary()),
+        createFlowContextMenu: deps => createFlowContextMenuConfig({ ...deps, library: library }),
+        installFlowLibrary: commands => installFlowLibrary(commands, library),
+        restoreFlowLibrary: commands => restoreFlowLibrary(commands, library),
         createSkillEditor: service => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui/settings')).createSkillsEditorFactory(service)),
         createAIContextMenu: createAIContextMenuConfig,

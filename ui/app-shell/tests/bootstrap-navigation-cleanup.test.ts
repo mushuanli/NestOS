@@ -1,8 +1,8 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { initTestApp } from './helpers/application';
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NAVIGATION_EVENTS } from '@itookit/common';
-import { OcrService, type ApplicationRuntime } from '@itookit/app-core';
+import { OcrService, SettingsService, type ApplicationRuntime } from '@itookit/app-core';
 import { themeService } from '../src/ThemeService';
 import type { WorkspaceConfig } from '../src/types';
 
@@ -22,10 +22,7 @@ vi.mock('@itookit/kernel-adapters', () => ({
 }));
 
 vi.mock('@itookit/app-settings', () => ({
-    createSettingsModule: vi.fn(async () => ({
-        engine: {},
-        service: { dispose: vi.fn() },
-    })),
+    createSettingsNavigation: vi.fn(() => ({})),
     createSettingsFactory: vi.fn(() => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }))),
     SkillsEngine: class { dispose() {} },
 }));
@@ -96,7 +93,7 @@ describe('app-shell navigation listener cleanup', () => {
         document.body.appendChild(container);
 
         const pushState = vi.spyOn(window.history, 'pushState');
-        const handle = await initApp({ localBackend: createLocalBackendPort(),
+        const handle = await initTestApp({
             services: makeRuntime(),
             workspaces: [workspace],
             ui: {
@@ -131,7 +128,7 @@ it('notifies cached workspaces when nav visibility changes', async () => {
     const other = { ...workspace, elementId: 'other-workspace', slug: 'other' };
     document.body.innerHTML = '<div id="settings-workspace"></div><div id="other-workspace"></div>';
     const factory = () => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }));
-    const handle = await initApp({ localBackend: createLocalBackendPort(),  services: makeRuntime(), workspaces: [workspace, other], defaultSlug: 'settings',
+    const handle = await initTestApp({   services: makeRuntime(), workspaces: [workspace, other], defaultSlug: 'settings',
         ui: { createChatEditor: factory, createAgentEditor: factory, createFlowEditor: factory,
             createSkillEditor: factory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), llmUiEditors: {} } as any });
     try {
@@ -150,7 +147,7 @@ it('starts background services after a non-chat workspace is available', async (
     runtime.startBackground = vi.fn();
     document.body.innerHTML = '<div id="settings-workspace"></div>';
     const factory = () => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }));
-    const handle = await initApp({ localBackend: createLocalBackendPort(),  services: runtime, workspaces: [workspace], defaultSlug: 'settings',
+    const handle = await initTestApp({   services: runtime, workspaces: [workspace], defaultSlug: 'settings',
         ui: { createChatEditor: factory, createAgentEditor: factory, createFlowEditor: factory,
             createSkillEditor: factory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), llmUiEditors: {} } as any });
     try {
@@ -160,24 +157,20 @@ it('starts background services after a non-chat workspace is available', async (
     } finally { await handle.destroy(); vi.unstubAllGlobals(); }
 });
 
-it('prepares the theme while OCR loads and leaves an inactive workspace filesystem unopened', async () => {
-    let release!: () => void;
-    const gate = new Promise<void>(resolve => { release = resolve; });
-    const ocr = vi.spyOn(OcrService.prototype, 'init').mockImplementation(async () => { await gate; });
+it('opens an ordinary workspace without OCR, settings, flow installation or inactive filesystems', async () => {
+    const ocr = vi.spyOn(OcrService.prototype, 'readSettings').mockRejectedValue(new Error('OCR must remain lazy'));
+    const settings = vi.spyOn(SettingsService.prototype, 'init').mockRejectedValue(new Error('Settings must remain lazy'));
     const runtime = makeRuntime();
-    const inactive = { ...workspace, elementId: 'inactive-workspace', slug: 'inactive', type: 'twin' as const };
-    document.body.innerHTML = '<div id="settings-workspace"></div><div id="inactive-workspace"></div>';
-    const factory = () => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }));
+    const active = { ...workspace, elementId: 'minds-workspace', slug: 'minds', workspaceName: 'minds', type: 'standard' as const };
+    const inactive = { ...active, elementId: 'inactive-workspace', slug: 'inactive', workspaceName: 'emails' };
+    document.body.innerHTML = '<div id="minds-workspace"></div><div id="inactive-workspace"></div>';
+    const factory = vi.fn(() => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }))), install = vi.fn();
     vi.mocked(themeService.init).mockClear();
-    const pending = initApp({ localBackend: createLocalBackendPort(),  services: runtime, workspaces: [workspace, inactive], defaultSlug: 'settings',
+    const handle = await initTestApp({ services: runtime, workspaces: [active, workspace, inactive], defaultSlug: 'minds',
         ui: { createChatEditor: factory, createAgentEditor: factory, createFlowEditor: factory,
-            createSkillEditor: factory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), llmUiEditors: {} } as any });
+            createSkillEditor: factory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), installFlowLibrary: install, llmUiEditors: {} } as any });
     try {
-        await vi.waitFor(() => expect(ocr).toHaveBeenCalled());
-        expect(themeService.init).toHaveBeenCalled();
-        expect(runtime.vfs.openFileSystem).not.toHaveBeenCalledWith('/home/admin');
-        release();
-        const handle = await pending;
-        expect(runtime.vfs.openFileSystem).not.toHaveBeenCalledWith('/home/admin');
-    } finally { release(); await pending.then(handle => handle.destroy()).catch(() => {}); }
+        expect(themeService.init).toHaveBeenCalledOnce(); expect(ocr).not.toHaveBeenCalled(); expect(settings).not.toHaveBeenCalled(); expect(install).not.toHaveBeenCalled();
+        expect(vi.mocked(runtime.vfs.openFileSystem).mock.calls.map(([path]) => path)).toEqual(['/etc', '/home/admin/minds']);
+    } finally { await handle.destroy(); }
 });

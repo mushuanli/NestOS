@@ -2,7 +2,7 @@
 
 ```
 src/
-├── index.ts               ← createSettingsModule() + 导出
+├── index.ts               ← createSettingsNavigation() + 导出
 ├── engine/
 │   ├── SettingsEngine.ts   ← IFileSystem 实现 (SETTINGS_PAGES → 只读虚拟节点)
 │   └── SkillsEngine.ts     ← IFileSystem 实现 (LLMSkill → 可写虚拟节点)
@@ -27,13 +27,13 @@ src/
 
 ## 核心组件
 
-### createSettingsModule()
+### createSettingsNavigation()
 
 ```typescript
-const settings = localBackend.settings(vfs, workspaces);
-const { service, engine } = await createSettingsModule(settings);
-// settings/service: SettingsPort supplied by the host
-// engine: SettingsEngine (IFileSystem)
+const engine = createSettingsNavigation({ excludedPages: [] });
+// Local navigation requires no backend initialization.
+const settings = await backend.settings([{ name: 'Notes', workspace: 'minds' }]);
+// SettingsPort is ready when returned; workspace files open only when consumed.
 ```
 
 ### SettingsEngine
@@ -78,7 +78,7 @@ const factory = createSettingsFactory(
 ## Conventions
 
 - SettingsService、LabelStore 与导入导出用例位于 app-core/settings；SnapshotService 位于 Web 存储宿主。设置 UI 通过 SettingsPort 使用能力。
-- 后端设置数据持久化在 VFS `/etc` 视图（`SettingsService.init()` 中 `vfs.openFileSystem('/etc')`）：标签 `/tags.seq`、联系人 `/contacts.json`
+- 后端设置数据持久化在 VFS `/etc` 视图（宿主等待 `SettingsService.init()` 后才返回端口）：标签 `/tags.seq`、联系人 `/contacts.json`。SettingsPort 不暴露 init；workspaces 仅含描述，openWorkspace(name) 按需解析并复用已授权文件视图。
 - 编辑器继承 `BaseSettingsEditor`（`@itookit/ui-common`），实现 `IEditor`
 - `StorageSettingsEditor` 的子 section 各自独立：`StorageOverviewSection`, `MigrationSection`, `SnapshotSection`, `DangerZoneSection`
 - `AppearanceSettingsEditor` 写 `/ui/theme.json`，通过 `app:theme-change` 事件广播

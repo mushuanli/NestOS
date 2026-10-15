@@ -362,7 +362,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     getProviderDefaults(): Record<string, LLMProvider> { return this.llmService.getProviderDefaults(); }
     getProvider(providerId: string): LLMProvider | undefined { return this.llmService.getProvider(providerId); }
     getProviders(): LLMProvider[] { return this.llmService.getProviders(); }
-    getFullProvider(id: string): LLMProvider | undefined { return this.llmService.getFullProvider(id); }
+    getFullProvider(id: string): LLMProvider | undefined | Promise<LLMProvider | undefined> { return this.llmService.getFullProvider(id); }
     async saveProvider(provider: LLMProvider): Promise<void> { return this.llmService.saveProvider(provider); }
     async deleteProvider(id: string): Promise<void> { return this.llmService.deleteProvider(id); }
     async listProviderModels(provider: LLMProvider) { return this.llmService.listProviderModels(provider); }
@@ -416,7 +416,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
 
         // ── Layer 1: Providers ─────────────────────────────────────────────────
         for (const [key, def] of Object.entries(providerDefaults)) {
-            const vfsProvider = this.llmService.getFullProvider(key);
+            const vfsProvider = await this.llmService.getFullProvider(key);
             const status: RestorableItem['status'] = !vfsProvider
                 ? 'missing'
                 : this.isProviderModified(vfsProvider, def)
@@ -537,7 +537,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
         const builtinDef = this.llmService.getProviderDefaults()[providerId];
         if (!builtinDef) throw new Error(`No built-in definition for provider: ${providerId}`);
         // Reset to built-in defaults, preserving user's apiKey
-        const existing = this.llmService.getFullProvider(providerId);
+        const existing = await this.llmService.getFullProvider(providerId);
         await this.saveProvider({
             ...builtinDef,
             id: providerId,

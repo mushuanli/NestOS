@@ -25,7 +25,6 @@ import type {
     ITagOperations,
 } from '@itookit/vfs-core';
 import { FSCapabilityError } from '@itookit/vfs-core';
-import type { SettingsPort as SettingsService } from '@itookit/app-contracts/settings';
 
 // UI 定义：ID -> 元数据
 export const SETTINGS_PAGES: Record<string, { name: string, icon: string }> = {
@@ -111,13 +110,10 @@ export class SettingsEngine implements IFileSystem {
     };
 
     readonly pages: typeof SETTINGS_PAGES;
-    constructor(private _service: SettingsService, excludedPages: readonly string[] = []) {
+    constructor(excludedPages: readonly string[] = []) {
         this.pages = Object.fromEntries(Object.entries(SETTINGS_PAGES).filter(([id]) => !excludedPages.includes(id)));
         this.driver = new SettingsDriver(this);
     }
-
-    /** @internal — exposed for SettingsDriver */
-    get service(): SettingsService { return this._service; }
 
     async init(): Promise<void> {}
     async dispose(): Promise<void> {}
@@ -152,14 +148,12 @@ class SettingsDriver implements IFSDriver {
 
     // ── Read ─────────────────────────────────────────
     async getNode(id: string): Promise<FSNode | null> {
-        await this.engine.service.init();
         const config = this.engine.pages[id];
         return config ? toFSNode(id, config) : null;
     }
 
     async getChildren(parentId: string, _options?: ListOptions): Promise<FSNode[]> {
         if (parentId !== '/') return [];
-        await this.engine.service.init();
         return Object.entries(this.engine.pages).map(([id, c]) => toFSNode(id, c));
     }
 

@@ -1,9 +1,9 @@
 import type { EditorFileType as FileTypeDefinition, EditorResolver as CustomEditorResolver } from './browser/types';
 import type { NavigationRequest } from '@itookit/common';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
-import type { LocalApplicationServices } from '@itookit/app-contracts/services';
+import type { ApplicationServices } from '@itookit/app-contracts/services';
 import type { FileCreationConfig, EditorFactory, EditorOptions, ContextMenuConfig } from '@itookit/ui-common';
-import type { IVFSManager, IFileSystem } from '@itookit/vfs-core';
+import type { IFileSystem } from '@itookit/vfs-core';
 import type { ThemeMode } from './ThemeService';
 import type { VFSUIOptions } from '@itookit/vfs-ui';
 import type {
@@ -112,10 +112,10 @@ export interface AppOptions {
     /** Host UI for selecting a server/project and persisting a fresh binding. */
     projectSyncSetup?(projectId: string, signal: AbortSignal): Promise<void>;
     projectSyncDirectory?(projectId: string, signal: AbortSignal): Promise<void>;
-    /** Host-owned local service binding. The UI never creates an execution runtime. */
-    services: LocalApplicationServices;
-    /** Backend factories and use cases are supplied by the owning host. */
-    localBackend: import('@itookit/app-contracts/services').LocalBackendPort;
+    /** Application capabilities. The UI never creates an execution runtime. */
+    services: ApplicationServices;
+    /** Host-bound application queries and commands; no construction dependencies. */
+    backend: import('@itookit/app-contracts/services').ApplicationBackend;
     workspaces: WorkspaceConfig[];
     /** Product templates are provided by the host, never loaded from an execution adapter. */
     fileTemplates?: Readonly<Record<string, string>>;
@@ -151,9 +151,9 @@ export interface AppHandle {
     destroy(): Promise<void>;
     /** Host-owned resources close with the application, in reverse registration order. */
     onDestroy(cleanup: () => void | Promise<void>, phase?: 'consumers' | 'sources'): void;
-    vfs: IVFSManager;
-    sessionFiles: import('@itookit/app-contracts/services').SessionFilesService;
-    services: LocalApplicationServices;
+    vfs: ApplicationServices['vfs'];
+    sessionFiles: import('@itookit/app-contracts/services').SessionFilesPort;
+    services: ApplicationServices;
 }
 
 // ── Workbench config ────────────────────────────────────────────────────

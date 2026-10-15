@@ -14,7 +14,7 @@ export interface MCPDeletedProject { id: string; name: string; path: string; loc
 export interface MCPDeletionImpact { revision: string; ids: string[]; servers: Array<{id: string; name: string}>; references: MCPDeletionReference[]; projects: MCPDeletedProject[]; }
 export interface MCPDeletionPort {
     reconcileMCPReferences?(): Promise<void>;
-    mcpReferences(ids: readonly string[]): MCPDeletionReference[];
+    mcpReferences(ids: readonly string[]): MCPDeletionReference[] | Promise<MCPDeletionReference[]>;
     inspectRemoteProjects?(ids: readonly string[]): Promise<MCPDeletedProject[]>;
     removeMCPReferences(ids: readonly string[], expected: readonly MCPDeletionReference[], projectIds?: readonly string[]): Promise<void>;
 }
@@ -53,7 +53,7 @@ export class ModelConfigurationCommands {
     discardPlan(revision: string): void { this.plans.delete(revision); this.mcpPlans.delete(revision); }
     private async mcpImpact(ids: string[]): Promise<{references: MCPDeletionReference[]; projects: MCPDeletedProject[]; servers: Array<{id: string; name: string}>; signature: string}> {
         await this.mcpDeletion?.reconcileMCPReferences?.();
-        const references = this.mcpDeletion?.mcpReferences(ids) ?? [];
+        const references = await this.mcpDeletion?.mcpReferences(ids) ?? [];
         const roots = [...new Set(references.filter(ref => ref.at === '/').map(ref => ref.projectId))];
         const projects = await this.mcpDeletion?.inspectRemoteProjects?.(roots) ?? [];
         const servers = (await this.store.getMCPServers?.() ?? []).filter(server => !!server && typeof server === 'object' && 'id' in server && ids.includes(String(server.id)));

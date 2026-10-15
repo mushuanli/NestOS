@@ -83,7 +83,8 @@ export interface ApplicationRuntime {
     sessionManager: import('@itookit/llm-session').SessionManager;
     commandBus: import('@itookit/llm-session').CommandBus;
     runCatalog: RunCatalog;
-    openConversation(sessionId: string): Promise<import('../application/local').ConversationClient>;
+    createView(): Promise<import('./conversation-system').OwnedConversationView>;
+    openConversation(sessionId: string): Promise<import('./conversation-contexts').ConversationClient>;
     startBackground?(): void;
     prepareSession?(sessionId: string): Promise<boolean>;
     dispose(): Promise<void>;
@@ -409,7 +410,8 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         cleanupFns.push(() => digitalTwin!.dispose());
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects,
             kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
-            projectSync, digitalTwin, openConversation: id => conversationContexts.open(id) };
+            projectSync, digitalTwin, createView: () => createConversationSystem({ ...conversationOptions,
+                scheduleAgentInitialization: initialize => initialize(), scheduleInvocationRecovery: () => {} }), openConversation: id => conversationContexts.open(id) };
     } catch (error) {
         await startup.close();
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {

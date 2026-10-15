@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { dependencyError, manifestDependencyError, sourceErrors, vfsStyleErrors } from '../check-boundaries.mjs';
+import { resolve } from 'node:path';
+import { dependencyError, manifestDependencyError, sourceErrors, vfsStyleErrors, importError } from '../check-boundaries.mjs';
 
 const packageGroup = name => name === 'app-shell' ? 'ui/' : ['vfs-ui', 'vfs-core', 'vfs-sync'].includes(name) ? 'libraries/' : 'backend/';
 const pkg = (name, host = false) => ({ name: '@itookit/' + name, dir: '/repo/' + (host ? 'apps/' : packageGroup(name)) + name, host, exports: { '.': './src/index.ts', './style.css': './src/style.css' } });
@@ -186,4 +187,17 @@ test('VFS drivers have no sync runtime or type dependencies', () => {
     assert.match(dependencyError('@itookit/vfs-core', '@itookit/vfs-sync'), /remain independent/);
     assert.equal(dependencyError('@itookit/piagent-driver','@itookit/vfs-sync'),undefined);
     assert.match(dependencyError('@itookit/piagent-driver','@itookit/vfsdriver-agent'),/public ports/);
+});
+
+test('UI consumes application capabilities instead of backend construction contracts', () => {
+    for (const name of ['LocalBackendPort', 'LocalApplicationServices', 'IVFSManager', 'SessionFilesService', 'DirectoryMountService'])
+        assert.match(inspect(shell, `import type { ${name} } from '@itookit/app-contracts/services'`)[0], /construction contracts/);
+    assert.equal(inspect(shell, "import type { ApplicationClient } from '@itookit/app-contracts/services'").length, 0);
+});
+test('RPC mechanism cannot import application metadata or domain policy', () => {
+    const file = resolve(host.dir, 'src/rpc/peer.ts');
+    for (const specifier of ['../application/capabilities', '@itookit/app-contracts', '../client/projections'])
+        assert.match(importError(host, file, specifier, packages), /metadata through injection/);
+    assert.equal(importError(host, file, './protocol', packages), undefined);
+    assert.equal(importError(host, file, '@itookit/vfs-core', packages), undefined);
 });

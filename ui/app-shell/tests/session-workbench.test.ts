@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FSError } from '@itookit/vfs-core';
@@ -8,7 +8,6 @@ import { createVFSUI } from '@itookit/vfs-ui';
 vi.mock('@itookit/vfs-ui', async (importOriginal) => ({ ...(await importOriginal<typeof import('@itookit/vfs-ui')>()),
     filterGitignoredFiles: async (_fs: unknown, _path: string, nodes: unknown[]) => nodes,
     createVFSUI: vi.fn(() => ({ on: () => () => {}, start: async () => {}, getActiveSession: () => undefined, refresh: async () => {}, selectPath: async () => {}, destroy: () => {} })) }));
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 const element = () => document.createElement('div');
 function setup() {
     const release = vi.fn(async () => {}), dispose = vi.fn(async () => {});
@@ -23,7 +22,7 @@ function setup() {
     const sidebar = element();
     const kernel = { onChanged: () => () => {}, cancel: vi.fn(async () => {}), task: vi.fn(async () => ({ effects: {} })),
         closeSession: vi.fn(async () => {}), sessionStat: vi.fn(async () => ({ phase: 'closed' })) };
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar as any, container: element() as any, repository: repository as any, files: files as any, factory: factory as any, onSelect: onSelect, hostContext: undefined, kernel: kernel as any, fileFactory: factory as any });
+    const workbench = createTestWorkbench({  sidebar: sidebar as any, container: element() as any, repository: repository as any, files: files as any, factory: factory as any, onSelect: onSelect, hostContext: undefined, kernel: kernel as any, fileFactory: factory as any });
     return { rerunSession, kernel, sidebar, workbench, repository, files, factory, release, dispose, destroy, onSelect, manifest, changed: () => listeners.forEach(listener => listener()) };
 }
 afterEach(() => vi.unstubAllGlobals());

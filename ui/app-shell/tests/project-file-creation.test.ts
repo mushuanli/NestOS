@@ -1,11 +1,10 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, SessionFilesService, ProjectService, folderBrowserPath } from '@itookit/app-core';
 import { directoryPathLabel } from '../src/projects/directory-label';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 /**
  * The project Files view shows the built-in create controls. Activating a row drops the
@@ -32,7 +31,7 @@ it('creates a project file beside the activated file, not at the Files root', as
     const kernel = { onChanged: () => () => {}, async *listSessions() {} };
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const factory = vi.fn(async (element: HTMLElement) => { element.textContent = 'editor'; return { destroy: vi.fn() }; });
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar, container: main, repository, files, factory: factory as never,
+    const workbench = createTestWorkbench({  sidebar, container: main, repository, files, factory: factory as never,
         onSelect: () => {}, hostContext: undefined, kernel: kernel as never, fileFactory: factory as never, directoryMounts: mounts, projects });
     try {
         await workbench.start();

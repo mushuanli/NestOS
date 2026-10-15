@@ -212,7 +212,7 @@ it('edits model resources inline, keeps provider keys out of the list and remaps
     const providerId = paths.find(path => path.startsWith('/providers/'))!.split('/').pop()!;
     const connectionId = paths.find(path => path.startsWith('/connections/'))!.split('/').pop()!;
     expect((await runtime.agentService.getFullConnection(connectionId))?.providerId).toBe(providerId);
-    expect(runtime.agentService.getFullProvider(providerId)?.apiKey).toBe('private-key');
+    expect((await runtime.agentService.getFullProvider(providerId))?.apiKey).toBe('private-key');
 });
 it('writes tool usage into the selected agent policy and preserves unrelated grants', async () => {
     const f = await setup();
@@ -353,7 +353,7 @@ it('exposes provider drawer export and deletion for custom and builtin providers
     document.querySelector<HTMLButtonElement>('[data-action="delete-resource"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('.llm-delete-impact-section')).not.toBeNull());
     expect(document.querySelector('.settings-modal')?.textContent).toContain('Linked connection');
-    expect(runtime.agentService.getFullProvider('deletable')).toBeDefined();
+    expect((await runtime.agentService.getFullProvider('deletable'))).toBeDefined();
     document.querySelector<HTMLButtonElement>('.settings-modal-cancel')!.click();
     f.sidebar.querySelector<HTMLButtonElement>('[data-item-id="/model-groups/openai"] [data-action="item-menu"]')!.click();
     expect(document.querySelector('[data-action="delete-resource"]')).not.toBeNull();
@@ -395,7 +395,7 @@ it('deletes a provider with the selected default connection and clears the prefe
     document.querySelector<HTMLButtonElement>('[data-action="delete-resource"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('.settings-modal-confirm')).not.toBeNull());
     document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
-    await vi.waitFor(() => expect(runtime.agentService.getFullProvider('protected-provider')).toBeUndefined());
+    await vi.waitFor(async () => expect((await runtime.agentService.getFullProvider('protected-provider'))).toBeUndefined());
     expect(await runtime.agentService.getDefaultConnection()).toBeNull();
     expect(await runtime.agentService.getFullConnection('default')).toBeNull();
 });
@@ -576,7 +576,7 @@ it('deletes selected model drawers through provider impact confirmation includin
     await vi.waitFor(() => expect(document.querySelector('.settings-modal')?.textContent).toContain('Drawer connection'));
     document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
     await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/model-groups/openai"]')).toBeNull());
-    expect(runtime.agentService.getFullProvider('anthropic')).toBeUndefined();
+    expect((await runtime.agentService.getFullProvider('anthropic'))).toBeUndefined();
     expect(await runtime.agentService.getFullConnection('drawer-connection')).toBeNull();
 });
 

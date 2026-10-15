@@ -66,7 +66,11 @@ export class SystemFSExploreEditor extends BaseSettingsEditor<SettingsService> {
         const mount = this.container.querySelector('#sfe-mount') as HTMLElement;
 
         // ── Engine: cross-module read-only VFS view ───────────────────────────
-        this.inspector = await createSystemFileInspector(this.service.workspaces, this.service.vfs.devices.list().map(id => this.service.vfs.devices.get(id)));
+        const sources = await Promise.all(this.service.workspaces.map(async source => ({
+            ...source, fs: await this.service.openWorkspace(source.name),
+        })));
+        const devices = this.service.vfs.devices.list().map(id => this.service.vfs.devices.get(id));
+        this.inspector = await createSystemFileInspector(sources, devices);
         const engine = this.inspector.fs;
 
         // ── Layout DOM ──────────────────────────────────────────────────────

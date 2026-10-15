@@ -134,9 +134,9 @@ export interface MCPDeletionReference {
 }
 
 export interface OcrService {
-    init(): Promise<void>;
+    readSettings(): Promise<OcrSettings>;
+    prepareConfiguration(): Promise<void>;
     preparePromptEditor(): Promise<string>;
-    snapshot(): OcrSettings;
     subscribe(listener: () => void): () => void;
     connections(): Promise<OcrConnection[]>;
     save(settings: OcrSettings): Promise<void>;
@@ -174,7 +174,7 @@ export interface ModelConfigurationCommands {
         kind: 'connections' | 'mcp' | 'prompts';
         ids: readonly string[];
     }): Promise<void>;
-    dispose(): Promise<void>;
+
 }
 
 export interface MCPDeletionImpact {
@@ -190,7 +190,7 @@ export interface MCPDeletionImpact {
 
 export interface MCPDeletionPort {
     reconcileMCPReferences?(): Promise<void>;
-    mcpReferences(ids: readonly string[]): MCPDeletionReference[];
+    mcpReferences(ids: readonly string[]): MCPDeletionReference[] | Promise<MCPDeletionReference[]>;
     inspectRemoteProjects?(ids: readonly string[]): Promise<MCPDeletedProject[]>;
     removeMCPReferences(ids: readonly string[], expected: readonly MCPDeletionReference[], projectIds?: readonly string[]): Promise<void>;
 }

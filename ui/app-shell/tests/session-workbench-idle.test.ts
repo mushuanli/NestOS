@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 // Regression guard for the P0-02 idle-traffic investigation: the Session sidebar and
 // workbench must not poll the backend while nothing changes. VFS operation counts
@@ -8,7 +8,6 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { SessionFilesService } from '@itookit/app-core';
 import { createSessionAttachmentMounts } from '@itookit/app-core';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 it('issues no VFS operations while the Session workbench is idle', async () => {
     const storage = new Map<string, string>();
@@ -38,7 +37,7 @@ it('issues no VFS operations while the Session workbench is idle', async () => {
     document.body.append(sidebar, main);
     const chat = vi.fn(async () => ({ destroy: vi.fn() }));
     const file = vi.fn(async () => ({ destroy: vi.fn() }));
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files, factory: chat as never, onSelect: () => {}, hostContext: undefined, kernel: kernel as never, fileFactory: file as never });
+    const workbench = createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files, factory: chat as never, onSelect: () => {}, hostContext: undefined, kernel: kernel as never, fileFactory: file as never });
     try {
         await workbench.start();
         await workbench.openResource(id);

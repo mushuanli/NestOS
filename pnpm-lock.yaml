@@ -228,6 +228,12 @@ importers:
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
+      '@itookit/kernel-adapters':
+        specifier: workspace:*
+        version: link:../../backend/kernel-adapters
+      '@itookit/llm-flow':
+        specifier: workspace:*
+        version: link:../../backend/llm-flow
       '@itookit/llm-ui':
         specifier: workspace:*
         version: link:../../ui/llm-ui
@@ -511,6 +517,9 @@ importers:
         specifier: workspace:*
         version: link:../../libraries/vfs-sync
     devDependencies:
+      '@itookit/vfs-ui':
+        specifier: workspace:*
+        version: link:../../libraries/vfs-ui
       '@itookit/vfsdriver-indexeddb':
         specifier: workspace:*
         version: link:../../libraries/vfsdriver-indexeddb

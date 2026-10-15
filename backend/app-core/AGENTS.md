@@ -132,4 +132,5 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 
 启动扫描：项目身份目录最多 4 路并发，initializeSources 复用身份扫描并仅在目录变更后重读；Session 租约通过 acquireMany 在同一事务批量观察并提交，保持单写者与 fencing token。并发核对失败先排空在途工作再清理租约，Kernel 批量恢复必须等待全部核对成功。回归见 session-recovery、session-lease、map-concurrent、projects 与 http-app 的 storage 测试。
 
-- `settings/` 承载设置持久化、标签和维护用例，存储快照由宿主 SnapshotPort 注入。`host/local-backend.ts` 创建本地服务端口和 UI 服务绑定；contracts 子入口只导出类型，不能重新导出实现的运行时值。
+- `settings/` 承载设置持久化、标签和维护用例，存储快照由宿主 SnapshotPort 注入。`host/application-client.ts` 创建本地服务端口和 UI 服务绑定；contracts 子入口只导出类型，不能重新导出实现的运行时值。
+- backend.settings 等待 SettingsService.init 后返回已就绪端口；工作区描述与文件视图分开，SettingsFiles 按操作解析声明的 workspace 身份。OCR 自行共享并等待首次配置读取，readSettings/label/ready 不生成默认配置；仅显式 prepareConfiguration/preparePromptEditor 创建默认值。设置的延迟文件视图与 configFiles 必须保持宿主原有写保护。

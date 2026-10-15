@@ -17,30 +17,15 @@
       "import": "./src/profile/mindos-profile.ts",
       "default": "./src/profile/mindos-profile.ts"
     },
-    "./application": {
-      "types": "./src/application/index.ts",
-      "import": "./src/application/index.ts",
-      "default": "./src/application/index.ts"
-    },
-    "./application/contracts": {
-      "types": "./src/application/contracts.ts",
-      "import": "./src/application/contracts.ts",
-      "default": "./src/application/contracts.ts"
-    },
     "./host": {
-      "types": "./src/host/local-backend.ts",
-      "import": "./src/host/local-backend.ts",
-      "default": "./src/host/local-backend.ts"
+      "types": "./src/host/index.ts",
+      "import": "./src/host/index.ts",
+      "default": "./src/host/index.ts"
     },
     "./contracts": {
       "types": "./src/contracts/backend.ts",
       "import": "./src/contracts/backend.ts",
       "default": "./src/contracts/backend.ts"
-    },
-    "./contracts/local-services": {
-      "types": "./src/contracts/local-services.ts",
-      "import": "./src/contracts/local-services.ts",
-      "default": "./src/contracts/local-services.ts"
     }
   },
   "scripts": {
@@ -67,6 +52,7 @@
     "@types/node": "^20.19.25",
     "fake-indexeddb": "^6.0.0",
     "typescript": "^5.9.3",
-    "vitest": "^3.2.4"
+    "vitest": "^3.2.4",
+    "@itookit/vfs-ui": "workspace:*"
   }
 }

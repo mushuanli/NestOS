@@ -52,6 +52,10 @@ function ownerOf(file, packages) {
 }
 
 export function importError(source, file, specifier, packages) {
+    if (source.host && file.startsWith(resolve(source.dir, 'src/rpc') + sep)) {
+        const local = specifier.startsWith('.') && resolve(file, '..', specifier).startsWith(resolve(source.dir, 'src/rpc') + sep);
+        if (!local && specifier !== '@itookit/vfs-core') return 'RPC mechanisms must receive application metadata through injection';
+    }
     if (source.name === '@itookit/app-shell' && (specifier === '@itookit/app-core' || specifier.startsWith('@itookit/app-core/')))
         return 'frontend shell must use shared app-contracts and injected backend ports; runtime assembly belongs to hosts';
     if (specifier === '@itookit/kernel-adapters/llm' && (source.host || ['@itookit/app-core', '@itookit/app-shell'].includes(source.name)))
@@ -122,6 +126,8 @@ export function sourceErrors(source, file, text, packages) {
         if (['@itookit/kernel-adapters', '@itookit/llm-session', '@itookit/llm-ui', '@itookit/llm-settings-ui'].includes(source.name) &&
             ts.isIdentifier(node) && node.text === 'DEFAULT_HARNESS_TOOL_IDS')
             report(node, 'MindOS default tool grants belong to the host; capabilities receive injected policy');
+        if (source.name === '@itookit/app-shell' && ts.isIdentifier(node) && ['LocalBackendPort', 'LocalApplicationServices', 'IVFSManager', 'SessionFilesService', 'DirectoryMountService'].includes(node.text))
+            report(node, 'UI must consume ApplicationClient ports, not backend construction contracts');
         if (source.name === '@itookit/app-core' && browserReference(node)) report(node, 'app-core must not reference DOM or browser storage');
         if (source.name === '@itookit/app-core' && file === resolve(source.dir, 'src/index.ts') &&
             ts.isExportDeclaration(node) && !node.exportClause) report(node, 'app-core public exports must be explicit');

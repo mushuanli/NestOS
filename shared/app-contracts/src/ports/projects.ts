@@ -12,6 +12,10 @@ import type { SessionSubmission } from '@itookit/llm-flow/contracts';
 import type { MCPConnectionDiagnostic } from '../index';
 import type { MCPDeletedProject, MCPDeletionReference } from './configuration';
 
+export interface ProjectConversationPort extends HarnessConversationPort {
+    subscribe(listener: () => void): () => void;
+}
+
 export interface RemoteHarnessAgent {
     id: string;
     name: string;
@@ -64,13 +68,12 @@ export interface ProjectNavigationSnapshot {
 
 export interface ProjectService {
     execution?: ProjectExecutionService;
-    readonly remoteMounts: ProjectRemoteMountService | undefined;
+    readonly remoteMounts: ProjectRemoteMountPort | undefined;
     readonly sessions: ProjectSessions;
     readonly drafts: ProjectDraftService;
     readonly favorites: ProjectFavorites;
     readonly sessionMoves: ProjectSessionMoves;
     readonly canSelectDirectory: boolean;
-    dispose(): void;
     chooseDirectory(): Promise<string | null>;
     list(folders?: readonly SessionFolder[]): Promise<ProjectFolder[]>;
     navigationFromIndex: boolean;
@@ -143,13 +146,11 @@ export type ProjectFileSource = {
 
 export interface ProjectSessionMoves {
     move(id: string, folder: string): Promise<void>;
-    recover(id: string): Promise<void>;
-    recoverLeased(id: string): Promise<void>;
-    recoverPending(acquire: (id: string) => Promise<boolean>): Promise<void>;
     ready(id: string): Promise<boolean>;
 }
 
 export interface ProjectFavorites {
+    snapshot(): Readonly<Record<string, readonly ProjectFavorite[]>>;
     subscribe(listener: () => void): () => void;
     list(projectId: string): Promise<ProjectFavorite[]>;
     hasSession(sessionId: string): boolean;
@@ -235,6 +236,7 @@ export interface ProjectDraftComposer {
 }
 
 export interface ProjectRemoteMountService {
+    mountedProjectIds(): string[];
     readonly sessionStatus: RemoteSessionStatus;
     inspectRemoteProjects?: (ids: readonly string[]) => Promise<MCPDeletedProject[]>;
     removeRemoteProjects?: (ids: readonly string[]) => Promise<void>;
@@ -248,7 +250,7 @@ export interface ProjectRemoteMountService {
     connections(): RemoteFileSystemConfig[];
     connectionName(id: string): string | undefined;
     connectionDiagnostic(id: string): MCPConnectionDiagnostic;
-    harness(connectionId: string): HarnessClient;
+    harness(connectionId: string): HarnessClient | Promise<HarnessClient>;
     connection(id: string): RemoteFileSystemConfig;
     resolveConnection(id: string, options?: OperationOptions): Promise<RemoteFileSystemConfig>;
     checkConnection(id: string, options?: OperationOptions): Promise<void>;
@@ -262,20 +264,20 @@ export interface ProjectRemoteMountService {
     beforeMCPChange(server: MCPServer, previous?: MCPServer): Promise<void>;
     beforeMCPDelete(id: string): void;
     reconcileMCPReferences(): Promise<void>;
-    mcpReferences(ids: readonly string[]): MCPDeletionReference[];
+    mcpReferences(ids: readonly string[]): MCPDeletionReference[] | Promise<MCPDeletionReference[]>;
     removeMCPReferences(ids: readonly string[], expected: readonly MCPDeletionReference[], projectIds?: readonly string[]): Promise<void>;
     refreshMCPConnections(): Promise<void>;
     setMCPCredential(reference: string, password: string): void | (() => void);
     discoverMCP(endpoint: string, username: string | undefined, credentialRef: string, options?: OperationOptions): Promise<HarnessContracts.PiAgentDescriptor>;
     forgetProject(projectId: string): Promise<void>;
-    findRemoteProject(connectionId: string, path: string): string | undefined;
+    findRemoteProject(connectionId: string, path: string): string | undefined | Promise<string | undefined>;
     bindProject(projectId: string, connectionId: string, path: string, access: 'ro' | 'rw', options?: OperationOptions & {
         createDirectory?: boolean;
         projectName?: string;
     }): Promise<void>;
     projectHarness(projectId: string, options?: OperationOptions): Promise<HarnessClient>;
     searchFiles(projectId: string, query: HarnessContracts.FileSearchQuery, options?: OperationOptions): Promise<HarnessContracts.FileSearchResult>;
-    projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean): Promise<HarnessConversationPort>;
+    projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean): Promise<ProjectConversationPort>;
     projectOffline(projectId: string): boolean;
     degraded(projectId: string): boolean;
     status(mountId: string): RemoteConnectionStatus;
@@ -289,7 +291,6 @@ export interface ProjectRemoteMountService {
     remove(projectId: string, mountId: string): Promise<void>;
     reconnect(projectId: string, mountId: string, secret: string, options?: OperationOptions): Promise<void>;
     compose(projectId: string, input: FileSystemSourceOwner | (() => Promise<FileSystemSourceOwner>)): Promise<FileSystemSourceOwner>;
-    dispose(): Promise<void>;
 }
 
 export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offline';
@@ -326,7 +327,6 @@ export interface RemoteSessionStatus {
     record(projectId: string, profileId: string, sessionId: string): HarnessStatusRow | undefined;
     fileVersion(projectId: string): string | undefined;
     subscribe(projectId: string, listener: () => void): () => void;
-    dispose(): Promise<void>;
 }
 
 export interface ProjectExecutionService {
@@ -380,7 +380,7 @@ export type NativeSessionCommand = {
     kind: 'archive' | 'unarchive' | 'delete';
 };
 
-export declare function listRemoteHarnessAgents(remote?: ProjectRemoteMountService): Promise<RemoteHarnessAgent[]>;
+export declare function listRemoteHarnessAgents(remote?: ProjectRemoteMountPort): Promise<RemoteHarnessAgent[]>;
 
 export declare function remoteSessionSources(projects: ProjectService, owner: ProjectFolder, registered: readonly ProjectFolder[]): ProjectFolder[];
 
@@ -398,3 +398,6 @@ export declare function exportRemoteSession(projects: ProjectService, folder: st
     content: string;
     mimeType: string;
 }>;
+
+/** UI capabilities exclude credential injection, host change hooks and source composition. */
+export type ProjectRemoteMountPort = Omit<ProjectRemoteMountService, 'mountedProjectIds' | 'beforeMCPChange' | 'beforeMCPDelete' | 'setMCPCredential' | 'compose'>;

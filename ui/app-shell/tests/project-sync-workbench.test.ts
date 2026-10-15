@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { createApplicationRuntime, ProjectSyncService } from '@itookit/app-core';
@@ -6,7 +6,6 @@ import { MemoryBackend } from '@itookit/vfs-core';
 import { SyncError } from '@itookit/vfs-sync';
 import { t } from '@itookit/common';
 import { initialState, MemoryState, SerialCoordinator } from '../../../tests/helpers/sync';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 afterEach(() => {document.body.replaceChildren(); vi.unstubAllGlobals(); vi.restoreAllMocks();});
 it('shows stale sync bindings on real project icons without disrupting local navigation or resolving an MCP', async () => {
@@ -24,7 +23,7 @@ it('shows stale sync bindings on real project icons without disrupting local nav
     const resolve = vi.spyOn(runtime.projects.remoteMounts!, 'connection');
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const factory = vi.fn();
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(), sidebar, container: main, repository: runtime.sessionRepository, files: runtime.sessionFiles,
+    const workbench = createTestWorkbench({ sidebar, container: main, repository: runtime.sessionRepository, files: runtime.sessionFiles,
         projects: runtime.projects, projectSync: service, kernel: runtime.kernel.kernel, factory, fileFactory: factory, onSelect() {}, hostContext: undefined});
     try {
         await workbench.start(); await workbench.openResource('/');

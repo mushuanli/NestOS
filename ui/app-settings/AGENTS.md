@@ -8,7 +8,7 @@
 
 ```
 src/
-├── index.ts           ← createSettingsModule() + 导出
+├── index.ts           ← createSettingsNavigation() + 导出
 ├── editors/           ← 8 个设置编辑器（本包自有）+ system-fs/ storage/ log/ 子模块
 │   ├── SystemFSExploreEditor.ts  ← 跨模块只读 VFS 浏览（调试页，经 system-fs/ 组装视图）
 │   ├── Storage/Tag/Contact / Recovery/Log/About
@@ -35,4 +35,4 @@ src/
 
 pi-agent 连接统一由工具箱 MCP 管理，StorageSettingsEditor 只负责存储维护。MCP 编辑器通过中立 ConfigurationFormControls 接收宿主字段与操作，不使设置包依赖 app-core。
 
-- createSettingsModule 接收宿主注入的 SettingsPort；持久化与标签存储归 app-core/settings，数据库快照与存储估计归宿主适配。禁止将 IndexedDB、存储复制或 Runtime 创建重新放入 UI。
+- createSettingsNavigation 只生成本地设置目录；编辑器消费已就绪的 SettingsPort，不调用服务 init。backend.settings 在后端完成联系人和标签定义加载；工作区来源仅传身份或已有文件视图，需要导出、标签统计或系统浏览时才打开。持久化与标签存储归 app-core/settings，数据库快照与存储估计归宿主适配。禁止将 IndexedDB、存储复制或 Runtime 创建重新放入 UI。

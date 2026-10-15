@@ -13,11 +13,6 @@
       "default": "./src/index.ts"
     },
     "./navigation.css": "./src/styles/navigation.css",
-    "./application": {
-      "types": "./src/application/index.ts",
-      "import": "./src/application/index.ts",
-      "default": "./src/application/index.ts"
-    },
     "./workspaces": {
       "types": "./src/workspaces/index.ts",
       "import": "./src/workspaces/index.ts",

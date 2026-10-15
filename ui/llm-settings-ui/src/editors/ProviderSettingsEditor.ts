@@ -41,6 +41,8 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     private editingProvider?: LLMProvider;
     private modelSearch = '';
     private providerForm?: HTMLFormElement;
+    private editGeneration = 0;
+    private editorDisposed = false;
 
     private get formOnly(): boolean { return this.options.target?.kind === 'entity' && this.options.target.entityType === 'provider'; }
 
@@ -50,15 +52,14 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         if (this.formOnly) {
             const target = this.options.target;
             const provider = providers.find(item => item.id === (target?.kind === 'entity' ? target.id : ''));
-            if (provider) this.showEditModal(provider); else this.container.textContent = t('toolbox.resourceMissing');
+            if (provider) await this.loadEditModal(provider); else this.container.textContent = t('toolbox.resourceMissing');
             return;
         }
 
         // Sort: has-apiKey first → enabled first → alphabetical
         const keyedIds = new Set<string>();
         for (const p of providers) {
-            const full = this.service.getFullProvider?.(p.id);
-            if (full?.apiKey?.trim()) keyedIds.add(p.id);
+            if (p.hasApiKey) keyedIds.add(p.id);
         }
         const sorted = [...providers].sort((a, b) => {
             const aKey = keyedIds.has(a.id);
@@ -119,9 +120,8 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     // ── Card ───────────────────────────────────────────────────────────────────
 
-    private renderProviderCard(p: LLMProvider): string {
-        const fullP    = this.service.getFullProvider?.(p.id);
-        const hasKey   = !!(fullP?.apiKey?.trim());
+    private renderProviderCard(p: LLMProvider & { hasApiKey?: boolean }): string {
+        const hasKey   = p.hasApiKey === true;
         const enabled  = p.enabled !== false;
         // A provider is "currently built-in" only if it exists in the live catalog.
         const currentBuiltins = this.service.getProviderDefaults?.() ?? {};
@@ -268,7 +268,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             // Enable/disable toggle
             if (target.classList.contains('chk-provider-enabled')) {
                 const id = target.dataset.id!;
-                const full = this.service.getFullProvider?.(id);
+                const full = await this.service.getFullProvider?.(id);
                 if (!full) return;
                 await this.service.saveProvider({ ...full, enabled: target.checked });
                 this.render();
@@ -342,12 +342,22 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     // ── Edit modal ─────────────────────────────────────────────────────────────
 
+    async destroy(): Promise<void> {
+        await super.destroy(); this.editorDisposed = true; this.editGeneration++;
+    }
+
     private showEditModal(provider: LLMProvider | null) {
+        void this.loadEditModal(provider).catch(error => Toast.error(String(error)));
+    }
+
+    private async loadEditModal(provider: LLMProvider | null) {
+        const generation = ++this.editGeneration;
         const isNew   = !provider;
         const isBuiltin = !!provider?.isBuiltin;
 
         // Load full provider (with apiKey) when editing an existing one
-        const fullProvider = provider ? (this.service.getFullProvider(provider.id) ?? provider) : null;
+        const fullProvider = provider ? ((await this.service.getFullProvider(provider.id)) ?? provider) : null;
+        if (this.editorDisposed || generation !== this.editGeneration) return;
         this.currentProviderId = provider?.id;
         this.editingProvider = fullProvider ?? { id: `prov-${generateShortUUID()}`, name: '', implementation: 'openai-compatible', baseURL: '', models: [] };
         this.modelSearch = '';

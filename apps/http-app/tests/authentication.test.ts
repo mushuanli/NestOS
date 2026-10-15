@@ -35,7 +35,7 @@ beforeEach(async () => {
     backend = await openLocalFSBackend({ rootDir: root, sidecarDir: path.join(temp, path.basename(root) + '-meta'), createDb: file => NodeSqliteSidecarDb.open(file) });
     host = await secureServers(backend, root, ui, certificates); client = await authenticatedFetch(certificates);
 });
-afterEach(async () => { client.close(); await close(host.server); await close(host.internal); await backend.close(); });
+afterEach(async () => { client.close(); await close(host.server); await backend.close(); });
 
 async function requestWithIdentity(route: string, directory?: string, certificate = 'client.crt'): Promise<number> {
     const ca = await readFile(path.join(certificates, 'ca.crt'));
@@ -64,13 +64,6 @@ it('allows an enrolled identity and revokes it on the next request even on an ex
     await expect(requestWithIdentity('/')).rejects.toThrow();
     expect(host.events.some(event => event.event === 'auth.accepted')).toBe(true);
     expect(host.events.some(event => event.code === 'CLIENT_CERTIFICATE_NOT_ENROLLED')).toBe(true);
-});
-it('requires the private process token even when connecting directly to the loopback VFS', async () => {
-    expect(host.internal.address()).toMatchObject({ address: '127.0.0.1' });
-    const url = `http://127.0.0.1:${host.internalPort}/api/health`;
-    expect((await fetch(url)).status).toBe(401);
-    expect((await fetch(url, { headers: { Authorization: 'Bearer invalid' } })).status).toBe(401);
-    expect(await (await fetch(url, { headers: { Authorization: `Bearer ${host.token}` } })).json()).toEqual({ ready: true });
 });
 it('blocks cross-site authenticated writes and never logs request bodies, credentials or query parameters', async () => {
     const response = await client.fetcher(host.origin + '/api/vfs?password=private-query', { method: 'POST',

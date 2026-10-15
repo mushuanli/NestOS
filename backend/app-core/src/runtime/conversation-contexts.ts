@@ -1,6 +1,11 @@
 import { FSError } from '@itookit/vfs-core';
 import { SessionCommand } from '@itookit/llm-session/contracts';
-import type { ConversationClient } from '../application/local';
+import type { ICommandBus, SessionSnapshot, SessionViewPort } from '@itookit/llm-session/contracts';
+
+export interface ConversationClient {
+    sessionManager: Pick<SessionViewPort, 'onEvent' | 'onGlobalEvent'> & { getSnapshot(): SessionSnapshot };
+    commandBus: ICommandBus;
+}
 
 interface OwnedConversation extends ConversationClient { dispose(): Promise<void> }
 

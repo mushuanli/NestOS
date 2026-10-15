@@ -124,7 +124,7 @@ export class ProjectSyncMenu {
         select.value = state.binding.direction; dialog.body.append(select);
         paragraph(dialog.body, t('project.sync.scopeHint'));
         dialog.button(t('project.sync.save'), async () => {
-            await this.options.service!.configure(id, this.options.service!.bindingToken(state.binding), { direction: select.value as 'both' | 'upload' | 'download' });
+            await this.options.service!.configure(id, await this.options.service!.bindingToken(state.binding), { direction: select.value as 'both' | 'upload' | 'download' });
             await this.refresh(id); await this.changed(); dialog.close();
         }); dialog.open();
     }

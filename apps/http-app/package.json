@@ -25,7 +25,9 @@
     "@codemirror/state": "^6.5.2",
     "@codemirror/view": "^6.38.8",
     "@itookit/mdx-adapter": "workspace:*",
-    "@itookit/app-contracts": "workspace:*"
+    "@itookit/app-contracts": "workspace:*",
+    "@itookit/kernel-adapters": "workspace:*",
+    "@itookit/llm-flow": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

@@ -16,7 +16,6 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private updateTimer?: ReturnType<typeof setTimeout>;
     private working = false;
     private timer?: ReturnType<typeof setTimeout>;
-    private historyTimer?: ReturnType<typeof setTimeout>;
     private loadingHistory = false;
     private historyError = '';
     private tail: Promise<unknown> = Promise.resolve();
@@ -86,7 +85,6 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             updatedAt: snapshot.updatedAt, connection: snapshot.disconnected ? 'offline' : 'online', stale: snapshot.gap, receiptUnknown: snapshot.pending, source: 'history', observedAt: 0});
         this.view.setStatus(status.text, status.indicator);
         this.updateControls();
-        this.queueHistory();
     }
     private restoreDraft(snapshot: ConversationSnapshot) {
         if (this.restoredDraft) return;
@@ -117,17 +115,13 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.view.reconcile.disabled = this.working || !this.snapshot?.pending;
         for (const button of this.view.interactions.querySelectorAll('button')) button.disabled = this.working || !!this.options.readOnly || !this.snapshot?.canRespond;
     }
-    private queueHistory(): void {
-        if (this.closed || this.working || this.loadingHistory || this.historyTimer || this.historyError || !this.snapshot?.hasEarlier || !this.service.loadEarlier) return;
-        this.historyTimer = setTimeout(() => { this.historyTimer = undefined; void this.loadHistory(); }, 0);
-    }
     private async loadHistory(): Promise<void> {
         if (this.closed || this.working || this.loadingHistory || !this.snapshot?.hasEarlier || !this.service.loadEarlier) return;
         this.loadingHistory = true; this.updateControls();
         const operation = this.tail.then(async () => {
             try { if (!this.closed && !this.working) await this.show(await this.service.loadEarlier!()); }
             catch (error) { if (!this.closed) this.historyError = error instanceof Error ? error.message : String(error); }
-            finally { this.loadingHistory = false; if (!this.closed) { this.updateControls(); this.queueHistory(); } }
+            finally { this.loadingHistory = false; if (!this.closed) { this.updateControls(); } }
         });
         this.tail = operation.catch(() => {}); await this.tail;
     }
@@ -158,7 +152,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                 try { await this.show(await this.service.read()); } catch { /* Keep the last snapshot and draft. */ }
                 if (!this.closed) this.showError(error);
                 throw error;
-            } finally { this.working = false; if (!this.closed) { this.updateControls(); this.queueHistory(); } }
+            } finally { this.working = false; if (!this.closed) { this.updateControls(); } }
         });
         this.tail = operation.catch(() => {});
         await operation;
@@ -178,7 +172,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.updateTimer = setTimeout(() => {
             this.updateTimer = undefined;
             if (this.working) { this.queueUpdate(); return; }
-            const work = this.tail.then(async () => { if (!this.closed) await this.show(await this.service.poll()); });
+            const work = this.tail.then(async () => { if (!this.closed) await this.show(this.service.snapshot?.() ?? await this.service.poll()); });
             this.tail = work.catch(() => { if (!this.closed) this.view.setStatus(t('harness.disconnected')); });
         }, 50);
     }
@@ -192,7 +186,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             void this.tail.finally(() => { if (!this.closed) this.schedule(); });
         }, 1000);
     }
-    async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); clearTimeout(this.historyTimer); await this.service.close(); await this.tail; this.branches?.destroy(); this.view?.destroy(); this.container.replaceChildren(); }
+    async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); this.view?.destroy(); this.container.replaceChildren(); }
     getText() { return remoteRounds(this.snapshot?.messages ?? []).map(group => group.content ?? group.executionRoot?.data.output ?? '').join('\n\n'); }
     async navigateTo(target: {elementId: string}): Promise<void> {
         if (!target.elementId.startsWith('native-item:')) return;

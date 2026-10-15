@@ -39,7 +39,7 @@ export interface MemorySharingControls {
 
 export interface SessionMemoryControls {
     readonly sharing: MemorySharingControls;
-    forSession(sessionId: string): SessionMemoryControls;
+    forSession(sessionId: string): SessionMemoryControls | Promise<SessionMemoryControls>;
     list(agentId: string): Promise<MemoryEntry[]>;
     upsert(agentId: string, entry: MemoryWrite, options?: MemoryMutationOptions): Promise<void>;
     remove(agentId: string, scope: string, entryId: string, options?: MemoryMutationOptions): Promise<void>;

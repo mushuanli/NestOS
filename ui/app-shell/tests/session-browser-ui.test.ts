@@ -1,11 +1,10 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, SessionFilesService } from '@itookit/app-core';
 import { createSessionAttachmentMounts } from '@itookit/app-core';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 it('routes a real vfs-ui tree to chat, Task history and the Session mapped file context', async () => {
     vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => setTimeout(fn, 0));
@@ -42,7 +41,7 @@ it('routes a real vfs-ui tree to chat, Task history and the Session mapped file 
     const mounts = new DirectoryMountService(root, files); await mounts.init();
     const sessionSkills = { mountByGlob: vi.fn(async () => {}), unmountByGlob: vi.fn(async () => {}), list: vi.fn(), load: vi.fn(), listLoaded: vi.fn(), unload: vi.fn() };
     const restored = { activeId: '/' + id, expandedFolderIds: ['/' + id, `/${id}/files`, `/${id}/files/workspace`], selectedItemIds: [] };
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files, factory: chat as any, onSelect: () => {}, hostContext: undefined, kernel: kernel as any, fileFactory: file as any, directoryMounts: mounts, sessionSkills: sessionSkills as any, uiPersistence: { load: () => restored } });
+    const workbench = createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files, factory: chat as any, onSelect: () => {}, hostContext: undefined, kernel: kernel as any, fileFactory: file as any, directoryMounts: mounts, sessionSkills: sessionSkills as any, uiPersistence: { load: () => restored } });
     const listMountedFiles = vi.spyOn(home.driver, 'getChildren');
     try {
         await workbench.start();

@@ -23,8 +23,8 @@ async function setup() {
     await agents.saveConnection({ id: 'text', name: 'Text', providerId: 'vision', tiers: { optimal: 'text' } });
     const chat = vi.fn().mockResolvedValue({ choices: [{ message: { content: '# Markdown' } }] });
     const service = new OcrService(await runtime.vfs.openFileSystem('/etc'), agents, { chat } as unknown as ILLMService);
-    await service.init();
-    const navigate = vi.fn().mockResolvedValue(undefined), controls = createOcrControls(service, agents, navigate);
+    await service.prepareConfiguration();
+    const navigate = vi.fn().mockResolvedValue(undefined), controls = createOcrControls(async () => service, agents, navigate);
     return { agents, service, controls, chat, navigate };
 }
 async function modal() {

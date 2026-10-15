@@ -62,7 +62,7 @@ function skipped(ctx: ImportContext, kind: Kind, id: string): boolean {
 async function importProviders(ctx: ImportContext, config: LLMConfigFile): Promise<void> {
     for (const entry of getProviderDefs(config)) {
         if (skipped(ctx, 'provider', entry.id)) continue;
-        const previous = ctx.strategy === 'overwrite' ? ctx.service.getFullProvider?.(entry.id) : undefined;
+        const previous = ctx.strategy === 'overwrite' ? await ctx.service.getFullProvider?.(entry.id) : undefined;
         await ctx.service.saveProvider(toLLMProvider({ ...entry, id: ctx.names.provider.get(entry.id) ?? entry.id,
             isBuiltin: false, apiKey: previous?.apiKey ?? entry.apiKey }));
         ctx.stats.providers++;

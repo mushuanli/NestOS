@@ -15,7 +15,7 @@ beforeEach(async () => {
 afterEach(async () => { vi.unstubAllEnvs(); await rm(temp, { recursive: true, force: true }); });
 
 it('uses every IPv4 interface on port 2000 by default and accepts overrides', () => {
-    expect(options([])).toMatchObject({ host: '0.0.0.0', port: '2000', 'internal-port': '2001' });
+    expect(options([])).toMatchObject({ host: '0.0.0.0', port: '2000' });
     expect(options(['--host', '127.0.0.1', '--port', '3000'])).toMatchObject({ host: '127.0.0.1', port: '3000' });
 });
 

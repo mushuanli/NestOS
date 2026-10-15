@@ -11,3 +11,11 @@ it('uses the supplied service catalog when presenting provider defaults', async 
         expect(inventory.providers.get('custom')).toMatchObject({ icon: undefined, configured: true });
     } finally { await inventory.dispose(); }
 });
+
+it('does not emit catalog file changes when configuration is unchanged', async () => {
+    const inventory = new ToolboxInventory(async () => [], { listTools: () => [{ id: 'tool', name: 'Tool', description: '', type: 'builtin', enabled: true }], getToolDefinitions: () => [] } as never);
+    await inventory.init(); let events = 0;
+    const stop = inventory.sources.tools.onAny(() => { events++; });
+    try { await inventory.refresh(); expect(events).toBe(0); }
+    finally { stop(); await inventory.dispose(); }
+});

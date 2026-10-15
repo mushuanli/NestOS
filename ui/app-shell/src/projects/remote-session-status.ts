@@ -1,4 +1,4 @@
-import type { LocalBackendPort } from '@itookit/app-contracts/services';
+import { harnessObservation as observeHarness } from '@itookit/app-contracts';
 import { conversationStatus } from '@itookit/ui-common';
 import { resolveBrowserTarget } from '@itookit/app-contracts';
 import type { ProjectService } from '@itookit/app-contracts/services';
@@ -14,7 +14,7 @@ export class RemoteSessionStatusView {
     private visible = true;
     private readonly deadlines = new Map<string, number>();
     private refreshTimer?: ReturnType<typeof setTimeout>;
-    constructor(private readonly harnessObservation: LocalBackendPort['harnessObservation'], private readonly projects: ProjectService | undefined, private readonly changed: () => void,
+    constructor(private readonly harnessObservation: typeof observeHarness, private readonly projects: ProjectService | undefined, private readonly changed: () => void,
         private readonly tabStatus: (id: string, icon: string, tooltip: string) => void,
         private readonly filesChanged?: (project: string) => void, private readonly tabTitle?: (id: string, title: string) => void) {}
     project(id?: string) { this.current = id; this.sync(); }

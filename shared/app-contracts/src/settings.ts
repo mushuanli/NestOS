@@ -35,6 +35,16 @@ export interface SettingsState {
 import type { IFileSystem } from '@itookit/vfs-core';
 
 /** Host-selected sources for settings export and tag management; names are UI labels, not filesystem roots. */
+export interface WorkspaceDescription {
+    readonly name: string;
+    readonly description?: string;
+}
+
+/** A settings source is an authorized view or a persistent workspace identity. */
+export type SettingsWorkspaceSource = WorkspaceDescription & { readonly internal?: boolean } & (
+    { readonly workspace: string; readonly fs?: never } | { readonly fs: IFileSystem; readonly workspace?: never }
+);
+
 export interface WorkspaceFileSource {
     readonly name: string;
     readonly description?: string;
@@ -51,12 +61,13 @@ export interface StorageUsage { usage?: number; quota?: number }
 export interface SnapshotPort { estimate?(): Promise<StorageUsage | null>; listLocalSnapshots(): Promise<LocalSnapshot[]>; createSnapshot(): Promise<void>; restoreSnapshot(name: string): Promise<void>; deleteSnapshot(name: string): Promise<void>; factoryReset(): Promise<void> }
 export interface SettingsPort {
     estimateStorage(): Promise<StorageUsage | null>;
-    readonly workspaces: readonly WorkspaceFileSource[];
+    readonly workspaces: readonly WorkspaceDescription[];
+    openWorkspace(name: string): Promise<IFileSystem>;
     readPreference(path: string): Promise<string>;
     writePreference(path: string, content: string): Promise<void>;
-    readonly vfs: import('@itookit/vfs-core').IVFSManager;
+    readonly vfs: import('./ports/files').FileSystemsPort;
     readonly configFiles: IFileSystem;
-    init(): Promise<void>; dispose(): Promise<void>; onChange(listener: () => void): () => void;
+    dispose(): Promise<void>; onChange(listener: () => void): () => void;
     getContacts(): Contact[]; saveContact(contact: Contact): Promise<void>; deleteContact(id: string): Promise<void>;
     getTags(): Tag[]; syncTags(): Promise<void>; saveTag(tag: Tag): Promise<void>; deleteTag(id: string): Promise<void>;
     exportMixedData(settings: (keyof SettingsState)[], workspaces: string[]): Promise<object>;

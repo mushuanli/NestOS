@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 // P0-02: measure VFS and real SQLite calls while the DOM workbench is idle.
 // Logical sidecar counts are not Tauri transport counts; the Kernel facade below is a stub.
@@ -10,7 +10,6 @@ import { createVFS } from '@itookit/vfs-core';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { SessionRepository } from '@itookit/llm-session';
 import { SessionFilesService, createSessionAttachmentMounts } from '@itookit/app-core';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 function positiveDeltas(before: Record<string, number>, after: Record<string, number>): Record<string, number> {
     const delta: Record<string, number> = {};
@@ -52,7 +51,7 @@ it('issues no VFS or sidecar operations while the Session workbench is idle on L
     document.body.append(sidebar, main);
     const chat = vi.fn(async () => ({ destroy: vi.fn() }));
     const file = vi.fn(async () => ({ destroy: vi.fn() }));
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files, factory: chat as never, onSelect: () => {}, hostContext: undefined, kernel: kernel as never, fileFactory: file as never });
+    const workbench = createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files, factory: chat as never, onSelect: () => {}, hostContext: undefined, kernel: kernel as never, fileFactory: file as never });
     try {
         await workbench.start();
         await workbench.openResource(id);

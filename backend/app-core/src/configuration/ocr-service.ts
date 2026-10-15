@@ -25,20 +25,37 @@ export class OcrService {
     private settings: OcrSettings = { systemPromptId: promptId };
     private tail: Promise<void> = Promise.resolve();
     private listeners = new Set<() => void>();
+    private initialization?: Promise<void>;
+    private preparation?: Promise<void>;
+    private configured = false;
     constructor(private readonly fs: IFileSystem, private readonly agents: IAgentManagementService,
         private readonly llm: ILLMService) {}
-    async init(): Promise<void> {
+    private ensureSettings(): Promise<void> {
+        return this.initialization ??= this.loadSettings().catch(error => { this.initialization = undefined; throw error; });
+    }
+    async readSettings(): Promise<OcrSettings> { await this.ensureSettings(); return this.snapshot(); }
+    prepareConfiguration(): Promise<void> {
+        return this.preparation ??= this.prepareDefaults().catch(error => { this.preparation = undefined; throw error; });
+    }
+    private async prepareDefaults(): Promise<void> {
+        await this.ensureSettings();
+        const work = this.tail.then(async () => {
+            if (this.configured) return;
+            await this.preparePromptEditor(); await this.persist(this.settings); this.configured = true;
+        });
+        this.tail = work.catch(() => {}); await work;
+    }
+    private async loadSettings(): Promise<void> {
         if (await this.fs.driver.exists(path)) {
             const value = JSON.parse(await this.fs.driver.readContent(path, { encoding: 'utf-8' }));
             if (!value || typeof value.systemPromptId !== 'string' || (value.connectionId !== undefined && typeof value.connectionId !== 'string'))
                 throw new Error(t('ocr.invalidSettings'));
-            this.settings = { systemPromptId: value.systemPromptId, connectionId: value.connectionId }; return;
+            this.settings = { systemPromptId: value.systemPromptId, connectionId: value.connectionId }; this.configured = true;
         }
-        await this.preparePromptEditor();
-        await this.persist(this.settings);
     }
     /** Explicit editing also recreates a deleted prompt; recognition never restores it silently. */
     async preparePromptEditor(): Promise<string> {
+        await this.ensureSettings();
         const id = this.settings.systemPromptId;
         if (!await this.agents.getSystemPrompt(id)) await this.agents.saveSystemPrompt({
             id, name: t('ocr.promptName'), content: [t('ocr.promptContent')],
@@ -57,16 +74,18 @@ export class OcrService {
         });
     }
     async save(settings: OcrSettings): Promise<void> {
+        await this.ensureSettings();
         const next = { ...settings };
         const work = this.tail.then(async () => {
             if (next.connectionId) await this.resolveConnection(next.connectionId);
             await this.resolvePrompt(next.systemPromptId);
-            await this.persist(next); this.settings = next;
+            await this.persist(next); this.settings = next; this.configured = true;
             for (const listener of this.listeners) listener();
         });
         this.tail = work.catch(() => {}); return work;
     }
     async label(): Promise<string> {
+        await this.ensureSettings();
         const { connectionId } = this.settings;
         if (!connectionId) return t('ocr.unconfigured');
         const item = (await this.connections()).find(item => item.connection.id === connectionId);
@@ -74,12 +93,12 @@ export class OcrService {
         return `${item.connection.name} · ${item.modelId ?? ''}${item.tier ? ' · ' + t(`ocr.tier.${item.tier}`) : ''}${item.reason ? ' · ' + item.reason : ''}`;
     }
     async ready(): Promise<boolean> {
-        try { await this.resolveConnection(this.settings.connectionId); await this.resolvePrompt(this.settings.systemPromptId); return true; }
+        try { await this.ensureSettings(); await this.resolveConnection(this.settings.connectionId); await this.resolvePrompt(this.settings.systemPromptId); return true; }
         catch { return false; }
     }
     async recognize(image: Blob, signal?: AbortSignal): Promise<string> {
         signal?.throwIfAborted();
-        const settings = this.snapshot();
+        const settings = await this.readSettings();
         const [connection, prompt] = await Promise.all([this.resolveConnection(settings.connectionId), this.resolvePrompt(settings.systemPromptId)]);
         signal?.throwIfAborted();
         const response = await this.llm.chat(connection.connection.id, {

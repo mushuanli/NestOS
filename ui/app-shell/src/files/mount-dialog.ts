@@ -1,11 +1,11 @@
-import type { DirectoryMountService, SessionFilesService, SessionMountRecord } from '@itookit/app-contracts/services';
+import type { DirectoryMountPort, SessionFilesPort, SessionMountRecord } from '@itookit/app-contracts/services';
 import { t } from '@itookit/common';
 import { localizeMountError } from './localize-mount-error';
 
 type Mode = 'mount' | 'home' | 'workspace';
 
 /** Host-only configuration shared by sidebar, slash commands and the chat menu. */
-export async function showMountDialog(service: DirectoryMountService, files: SessionFilesService, sessionId: string,
+export async function showMountDialog(service: DirectoryMountPort, files: SessionFilesPort, sessionId: string,
     mode: Mode = 'mount', signal?: AbortSignal): Promise<boolean> {
     if (signal?.aborted) return false;
     const fixed = mode !== 'home' && (await service.fixedWorkspace(sessionId)) !== undefined;
@@ -29,7 +29,7 @@ class MountDialog {
     private closed = false;
     private readonly abort = () => this.close(true);
 
-    constructor(private readonly service: DirectoryMountService, private readonly files: SessionFilesService,
+    constructor(private readonly service: DirectoryMountPort, private readonly files: SessionFilesPort,
         private readonly sessionId: string, private readonly mode: Mode, private readonly signal: AbortSignal | undefined,
         private readonly resolve: (changed: boolean) => void, private readonly fixed: boolean) {}
 
@@ -126,7 +126,8 @@ class MountDialog {
     }
 
     private renderMount(row: HTMLTableRowElement, mount: SessionMountRecord, cwd: string): void {
-        row.insertCell().textContent = this.service.describe(mount);
+        const source = row.insertCell();
+        void Promise.resolve(this.service.describe(mount)).then(label => { if (!this.closed) source.textContent = label; }).catch(error => { source.textContent = String(error); });
         row.insertCell().textContent = mount.at;
         row.insertCell().textContent = t(`mount.access.${mount.access}`);
         const actions = row.insertCell();

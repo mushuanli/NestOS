@@ -1,4 +1,4 @@
-import type { LocalApplicationServices } from '@itookit/app-contracts/services';
+import type { ApplicationServices } from '@itookit/app-contracts/services';
 import type { AppUI } from '../types';
 import { showMemoryDialog } from '../files/memory-dialog';
 import { setupHitlVfsBridge } from '../workspaces/hitl-bridge';
@@ -6,8 +6,8 @@ import { createWorkspaceModule, type WorkspaceModule } from '../workspaces/modul
 import { SessionWorkbench, type SessionWorkbenchOptions } from './SessionWorkbench';
 
 interface ProjectModuleOptions extends Pick<SessionWorkbenchOptions, 'sidebar' | 'container' | 'factory' | 'fileFactory' | 'onSelect' | 'hostContext' | 'sessionSkills' | 'onSidebarReady' | 'initialResourceId' | 'uiPersistence' | 'workbenchState' | 'projectSyncSetup' | 'projectSyncDirectory'> {
-    backend: import('@itookit/app-contracts/services').LocalBackendPort;
-    services: Pick<LocalApplicationServices, 'sessionRepository' | 'sessionFiles' | 'kernel' | 'directoryMounts' | 'sessionManager' | 'flowEngine' | 'projects' | 'commandBus' | 'projectSync' | 'digitalTwin' | 'prepareSession'>;
+    backend: import('@itookit/app-contracts/services').ApplicationBackend;
+    services: Pick<ApplicationServices, 'sessionRepository' | 'sessionFiles' | 'kernel' | 'directoryMounts' | 'sessionManager' | 'flowEngine' | 'projects' | 'commandBus' | 'projectSync' | 'digitalTwin' | 'prepareSession'>;
     createFlowContextMenu: AppUI['createFlowContextMenu'];
 }
 
@@ -19,7 +19,7 @@ export function createProjectModule(options: ProjectModuleOptions): WorkspaceMod
         prepareSession: services.prepareSession,
         projects: services.projects, digitalTwin: services.digitalTwin, projectSync: services.projectSync,
         manageTwin: services.digitalTwin ? async id => { await options.hostContext?.navigate({ target: 'twin', resourceId: '/overview/' + encodeURIComponent(id) }); } : undefined,
-        manageMemory: async (id, signal) => showMemoryDialog(sessionManager.memory.forSession(id), await sessionManager.getAvailableAgents(), signal),
+        manageMemory: async (id, signal) => showMemoryDialog(await sessionManager.memory.forSession(id), await sessionManager.getAvailableAgents(), signal),
         flows: { fs: services.flowEngine.engine, menu: options.createFlowContextMenu({ commands: services.commandBus,
             navigate: id => options.hostContext?.navigate({ target: 'chat', resourceId: id }) ?? Promise.resolve() }) },
     });

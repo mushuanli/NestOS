@@ -1,10 +1,9 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, SessionFilesService, ProjectService, folderBrowserPath } from '@itookit/app-core';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 it('follows a renamed project by identity without expanding its obsolete path', async () => {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
@@ -20,7 +19,7 @@ it('follows a renamed project by identity without expanding its obsolete path', 
     const previousShow = HTMLDialogElement.prototype.showModal, previousClose = HTMLDialogElement.prototype.close;
     HTMLDialogElement.prototype.showModal = vi.fn(); HTMLDialogElement.prototype.close = vi.fn();
     const kernel = { onChanged: () => () => {}, async *listSessions() {}, listSessionTasks: async () => [] };
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar, container: main, repository, files, projects, directoryMounts: mounts,
+    const workbench = createTestWorkbench({  sidebar, container: main, repository, files, projects, directoryMounts: mounts,
         factory: async () => ({ destroy() {} }) as never, onSelect() {}, kernel: kernel as never });
     try {
         await workbench.start(); await workbench.openResource(folderBrowserPath(project.path));
@@ -50,7 +49,7 @@ it('removes a deleted project directory from navigation and allows an explicit n
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const report = vi.spyOn(console, 'error');
     const kernel = { onChanged: () => () => {}, async *listSessions() {}, listSessionTasks: async () => [] };
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar, container: main, repository, files, projects, directoryMounts: mounts,
+    const workbench = createTestWorkbench({  sidebar, container: main, repository, files, projects, directoryMounts: mounts,
         factory: async () => ({ destroy() {} }) as never, onSelect() {}, kernel: kernel as never });
     const prefix = folderBrowserPath(project.path);
     try {

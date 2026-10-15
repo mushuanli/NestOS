@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { harnessObservation as observeHarness } from '@itookit/app-contracts';
 import {expect, it, vi} from 'vitest';
 import {conversationStatus} from '@itookit/ui-common';
 import {t} from '@itookit/common';
@@ -12,7 +12,7 @@ it('shares visible observers, updates native titles and refreshes files only whe
     const status = {subscribe: vi.fn((_id: string, listener: () => void) => {callback = listener; return stop;}), get: () => observation,
         record: () => ({title: 'Native title'}), fileVersion: () => version};
     const projects = {remoteMounts: {sessionStatus: status, list: () => [{at: '/', serverProjectId: 'native'}]}} as unknown as ProjectService;
-    const view = new RemoteSessionStatusView(createLocalBackendPort().harnessObservation, projects, changed, vi.fn(), files, title), tab = remoteSessionPath('/P', 'codex', 's');
+    const view = new RemoteSessionStatusView(observeHarness, projects, changed, vi.fn(), files, title), tab = remoteSessionPath('/P', 'codex', 's');
     view.project('project'); view.attach(tab, 'project'); expect(status.subscribe).toHaveBeenCalledOnce();
     callback!(); expect(title).toHaveBeenCalledWith(tab, 'Native title'); expect(files).not.toHaveBeenCalled();
     version = 'codex:event:2'; callback!(); callback!(); expect(files).toHaveBeenCalledExactlyOnceWith('project');
@@ -37,7 +37,7 @@ it('uses each project identity for loaded sessions in the all-project view', () 
     const observations = {a: harnessObservation({...base, status: 'active'}, [{kind: 'approval'}]), b: harnessObservation({...base, status: 'idle'})};
     const status = {subscribe: vi.fn(() => vi.fn()), get: vi.fn((id: 'a' | 'b') => observations[id]), record: () => undefined};
     const projects = {remoteMounts: {sessionStatus: status, list: () => [{at: '/', serverProjectId: 'native'}]}} as unknown as ProjectService;
-    const view = new RemoteSessionStatusView(createLocalBackendPort().harnessObservation, projects, vi.fn(), vi.fn());
+    const view = new RemoteSessionStatusView(observeHarness, projects, vi.fn(), vi.fn());
     const session = (folder: string) => ({id: remoteSessionPath(folder, 'codex', 'same'), metadata: {custom: {remoteStatus: 'notLoaded', remoteObservedAt: Date.now()}}});
     const rows = view.items([{id: '/folder:A', metadata: {custom: {projectId: 'a'}}, children: [session('/A')]},
         {id: '/folder:B', metadata: {custom: {projectId: 'b'}}, children: [session('/B')]}] as never);
@@ -77,7 +77,7 @@ it('expires inferred tree and tab hints without a server event and releases refr
         const status = {subscribe: vi.fn((_id: string, listener: () => void) => {callback = listener; return vi.fn();}), get: () => observation, record: () => undefined, fileVersion: () => undefined};
         const projects = {remoteMounts: {sessionStatus: status, list: () => [{at: '/', serverProjectId: 'native'}]}} as unknown as ProjectService;
         const changed = vi.fn(), tabStatus = vi.fn();
-        const view = new RemoteSessionStatusView(createLocalBackendPort().harnessObservation, projects, changed, tabStatus);
+        const view = new RemoteSessionStatusView(observeHarness, projects, changed, tabStatus);
         const tab = remoteSessionPath('/P', 'codex', 's'); view.project('project'); view.attach(tab, 'project');
         const items = [{id: tab, metadata: {lastModified: new Date(now - 119_000).toISOString(), custom: {remoteStatus: 'notLoaded'}}}];
         expect(view.items(items as never)[0].presentation!.badges![0]).toContain(t('harness.activity.recent')); callback!();
@@ -95,7 +95,7 @@ it('expires inferred tree and tab hints without a server event and releases refr
 });
 
 it('uses native modification time from unopened tree rows when no observer snapshot exists', () => {
-    const view = new RemoteSessionStatusView(createLocalBackendPort().harnessObservation, undefined, vi.fn(), vi.fn());
+    const view = new RemoteSessionStatusView(observeHarness, undefined, vi.fn(), vi.fn());
     const items = [{id: remoteSessionPath('/P', 'codex', 's'), metadata: {lastModified: new Date().toISOString(), custom: {remoteStatus: 'notLoaded'}}}];
     expect(view.items(items as never)[0].presentation!.badges![0]).toContain(t('harness.activity.recent'));
     view.destroy();

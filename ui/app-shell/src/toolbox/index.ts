@@ -1,10 +1,8 @@
 import { RemoteAgentDetailsEditor } from './RemoteAgentDetailsEditor';
-import { createFileSystemView } from '@itookit/vfs-core';
 import { PiAgentMCPControls } from './pi-agent-controls';
 import { MCPConfigurationControlsRegistry } from './mcp-controls';
 import { PI_AGENT_EXTENSION, piAgentConfiguration } from '@itookit/app-contracts';
-import { workspaceRoot } from '@itookit/app-contracts';
-import type { LocalApplicationServices } from '@itookit/app-contracts/services';
+import type { ApplicationServices } from '@itookit/app-contracts/services';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import type { IFileSystem } from '@itookit/vfs-core';
 import type { NavigationRequest } from '@itookit/common';
@@ -17,9 +15,9 @@ import { ToolDetailsEditor } from './ToolDetailsEditor';
 import { createWorkspaceModule, type WorkspaceModule } from '../workspaces/module';
 
 interface Options {
-    backend: import('@itookit/app-contracts/services').LocalBackendPort;
+    backend: import('@itookit/app-contracts/services').ApplicationBackend;
     ocr?: import('../configuration/ocr-controls').OcrConfigurationControls;
-    services: Pick<LocalApplicationServices, 'vfs' | 'agentService' | 'commandBus' | 'kernel' | 'flowEngine' | 'configuration' | 'projects'>;
+    services: Pick<ApplicationServices, 'vfs' | 'agentService' | 'commandBus' | 'kernel' | 'flowEngine' | 'configuration' | 'projects'>;
     ui: Pick<AppUI, 'llmUiEditors' | 'createFlowContextMenu'>;
     sidebar: HTMLElement; editor: HTMLElement; skills: IFileSystem;
     factories: Record<'agents' | 'skills' | 'flows', EditorFactory>;
@@ -29,22 +27,15 @@ interface Options {
 }
 /** The toolbox owns its projection lifetime and editor wiring as one module. */
 export async function createToolboxModule(options: Options): Promise<WorkspaceModule> {
-    const { agentService, commandBus, kernel, vfs, flowEngine } = options.services;
-    const inventory = options.backend.toolboxInventory(() => agentService.getMCPServers(), kernel.toolCatalog, agentService, () => agentService.listSystemPrompts(), () => options.backend.remoteHarnessAgents(options.services.projects?.remoteMounts));
-    let agents: import('@itookit/vfs-core').FileSystemView | undefined;
+    const { commandBus } = options.services;
+    const view = await options.backend.toolboxView(options.skills), { inventory, resources } = view;
     try {
-        await inventory.init();
-        agents = createFileSystemView({viewId: 'toolbox:agents', mounts: [
-            {mountId: 'local', at: '/', fs: await vfs.openFileSystem(workspaceRoot('agents')), access: 'rw'},
-            {mountId: 'remote', at: '/@remote', fs: inventory.remoteAgentSource, access: 'ro'}]});
-        const resources = options.backend.toolboxResources({ agents,
-            skills: options.skills, flows: flowEngine.engine, ...inventory.sources }, agentService, commandBus, await vfs.openFileSystem('/etc'));
         const factories = configurationFactories(options, inventory, resources);
         const workbench = new ToolboxWorkbench({ ...options, inventory, resources, factories, configuration: options.services.configuration, projects: options.services.projects,
             flowMenu: options.ui.createFlowContextMenu<VFSNodeUI>({ commands: commandBus,
                 navigate: id => options.navigate({ target: 'chat', resourceId: id }) }) });
-        return createWorkspaceModule(workbench, async () => { try { await workbench.destroy(); } finally { try { await agents!.dispose(); } finally { await inventory.dispose(); } } });
-    } catch (error) { try { await agents?.dispose(); } finally { await inventory.dispose(); } throw error; }
+        return createWorkspaceModule(workbench, async () => { try { await workbench.destroy(); } finally { await view.dispose(); } });
+    } catch (error) { await view.dispose(); throw error; }
 }
 function configurationFactories(options: Options, inventory: ToolboxInventory, resources: ToolboxResources) {
     const { agentService } = options.services, editors = options.ui.llmUiEditors;

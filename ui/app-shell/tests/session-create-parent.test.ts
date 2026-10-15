@@ -1,10 +1,9 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { SessionFilesService, createSessionAttachmentMounts } from '@itookit/app-core';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 
 it.each([null, '/group'] as const)('creates a sibling Session when the selected Session belongs to %s', async folder => {
     const storage = new Map<string, string>();
@@ -22,7 +21,7 @@ it.each([null, '/group'] as const)('creates a sibling Session when the selected 
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const factory = vi.fn(async () => ({ destroy: vi.fn() }));
     const kernel = { onChanged: () => () => {}, listSessionTasks: async () => [] };
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files, factory: factory as never, onSelect: () => {}, hostContext: undefined, kernel: kernel as never, fileFactory: factory as never });
+    const workbench = createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files, factory: factory as never, onSelect: () => {}, hostContext: undefined, kernel: kernel as never, fileFactory: factory as never });
     try {
         await workbench.start();
         await workbench.openResource(`${folder ? '/folder:group' : ''}/${id}`);
@@ -68,7 +67,7 @@ it('maps Flow files into the chat sidebar and deletes through to the shared Flow
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const factory = vi.fn(async () => ({ destroy: vi.fn() })), navigate = vi.fn();
     const kernel = { onChanged: () => () => {}, listSessionTasks: async () => [] };
-    const workbench = new SessionWorkbench({ backend: createLocalBackendPort(),  sidebar: sidebar, container: main, repository: repository, files: files, factory: factory as never, onSelect: () => {}, hostContext: { navigate } as never, kernel: kernel as never, fileFactory: factory as never, directoryMounts: undefined, sessionSkills: undefined, manageMemory: undefined, flows: { fs: flowFiles, menu: { items: (_item, defaults) => defaults } } });
+    const workbench = createTestWorkbench({  sidebar: sidebar, container: main, repository: repository, files: files, factory: factory as never, onSelect: () => {}, hostContext: { navigate } as never, kernel: kernel as never, fileFactory: factory as never, directoryMounts: undefined, sessionSkills: undefined, manageMemory: undefined, flows: { fs: flowFiles, menu: { items: (_item, defaults) => defaults } } });
     try {
         await workbench.start();
         const view = (workbench as any).navigationFiles;

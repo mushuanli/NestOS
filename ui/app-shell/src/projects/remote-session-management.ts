@@ -1,16 +1,16 @@
-import type { NativeSessionCommand, ProjectService } from '@itookit/app-contracts/services';
-import type { LocalBackendPort } from '@itookit/app-contracts/services';
+import type { NativeSessionCommand } from '@itookit/app-contracts/services';
+import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import { t } from '@itookit/common';
 import { showNameDialog } from '../files/project-dialog';
 
 interface Target {folder: string; profileId?: string; nativeSessionId?: string; archived?: boolean}
-export function nativeSessionMenu(manageRemoteSession: LocalBackendPort['manageRemoteSession'], projects: ProjectService, target: Target, title: string, capability: unknown, signal: AbortSignal,
+export function nativeSessionMenu(manageRemoteSession: ApplicationBackend['manageRemoteSession'], target: Target, title: string, capability: unknown, signal: AbortSignal,
     before: () => Promise<void>, changed: (command: NativeSessionCommand, title: string, deletedSessionIds: string[]) => Promise<void>, report: (error: unknown) => void) {
     if (!target.profileId || !target.nativeSessionId) return [];
     const caps = capability as {rename?: boolean; archive?: boolean; unarchive?: boolean; delete?: boolean; archiveDisabled?: boolean} | undefined;
     const save = async (command: NativeSessionCommand) => {
         await before();
-        const result = await manageRemoteSession(projects, target.folder, target.profileId!, target.nativeSessionId!, command, {signal, timeoutMs: 20_000});
+        const result = await manageRemoteSession(target.folder, target.profileId!, target.nativeSessionId!, command, {signal, timeoutMs: 20_000});
         await changed(command, result.title, result.deletedSessionIds ?? []);
     };
     const rename = () => showNameDialog(t('harness.rename'), t('harness.nativeTitle'), signal, name => save({kind: 'rename', name}), undefined,

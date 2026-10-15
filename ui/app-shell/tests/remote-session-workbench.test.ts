@@ -1,4 +1,4 @@
-import { createLocalBackendPort } from '@itookit/app-core/host';
+import { createTestWorkbench } from './helpers/application';
 // @vitest-environment jsdom
 import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
@@ -6,7 +6,6 @@ import { MemoryBackend, createFileSystemSource, FSError } from '@itookit/vfs-cor
 import { createApplicationRuntime, remoteSessionPath, folderBrowserPath } from '@itookit/app-core';
 import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/piagent-driver';
 import { RemoteConversationEditor } from '../../llm-ui/src/shell/RemoteConversationEditor';
-import { SessionWorkbench } from '../src/projects/SessionWorkbench';
 import type { EditorOptions } from '@itookit/ui-common';
 import type { VFSUIShell } from '@itookit/vfs-ui';
 
@@ -44,7 +43,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         if (!options.conversation) throw new Error('Expected native conversation port');
         const editor=new RemoteConversationEditor(container,options.conversation,options);await editor.init(container);return editor;
     });
-    const workbench=new SessionWorkbench({ backend: createLocalBackendPort(), sidebar,container:main,repository:runtime.sessionRepository,files:runtime.sessionFiles,projects:runtime.projects,kernel:runtime.kernel.kernel,factory,onSelect() {},hostContext:undefined,fileFactory:factory});
+    const workbench=createTestWorkbench({ sidebar,container:main,repository:runtime.sessionRepository,files:runtime.sessionFiles,projects:runtime.projects,kernel:runtime.kernel.kernel,factory,onSelect() {},hostContext:undefined,fileFactory:factory});
     try {
         const remote=runtime.projects.remoteMounts!,connection=await remote.saveConnection({name:'Server',endpoint:'https://files.test',username:'u'},'secret');
         const project=await runtime.projects.createRemote('Notes',null,connection,'/docs/project','rw');

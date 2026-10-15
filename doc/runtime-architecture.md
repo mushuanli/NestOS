@@ -93,12 +93,11 @@ interface HeadlessKernelRuntime extends KernelAdaptersRuntime {
 
 Web/Tauri 的智能体、技能、流程、Provider/Connection 模型配置、MCP 和工具共用工具箱导航。文件视图与编辑器上下文适配由 app-shell 负责，原有存储与执行授权不变；见[工具箱导航](./design/toolbox-navigation.md)。
 
-`app-shell` 要求宿主显式提供本地服务与后端端口：
+`app-shell` 要求宿主提供已绑定构造依赖的应用客户端：
 
 ```ts
 await initApp({
-  services: bindLocalApplicationServices(runtime),
-  localBackend: createLocalBackendPort(),
+  ...createApplicationClient(bindLocalApplicationServices(runtime)),
   workspaces,
   ui,
 });
@@ -146,7 +145,7 @@ Node CLI
 
 ### 独立 HTTP 存储宿主
 
-`apps/http-app` 使用 Node.js 提供静态 Web UI 和 VFS 存储 API；浏览器通过 `HttpStorageBackend` 创建完整应用 Runtime。跨 SeqFile 更新使用读观察校验后的原生 SQLite 批量事务，不经过 Tauri invoke 或远程 SQL。服务端不创建第二个 Runtime，既有 CLI `-d` 保持原有行为。详见 [HTTP 存储应用](http-app.md)。
+`apps/http-app` 使用 Node.js 装配唯一 ApplicationRuntime 并提供相同 Web UI；浏览器通过应用视图查询、命令与事件调用 daemon，不创建执行 Runtime。存储直接使用 LocalFS/SQLite，跨 SeqFile 更新保持原生批量事务。既有 CLI `-d` 保持原有行为。详见 [HTTP 应用宿主](http-app.md)。
 
 ### 可选 Effect 独立作用域端口
 
@@ -689,11 +688,11 @@ sequenceDiagram
 
 VFS 基础目录和驱动注册完成后，LLM 配置在后台加载。核心文件系统（Agent、Flow、用户目录、提示词历史）并行打开；会话仓储初始化提前启动并共享 Promise，目录挂载偏好读取与仓储、Kernel 创建重叠。平台 `beforeRecover` 接线等待挂载偏好，删除恢复等待仓储就绪；项目核对等待仓储与挂载，避免迁移与项目索引互相覆盖。
 
-UI 的主题、OCR 配置和设置来源文件系统并行准备。工作区视图按导航创建，聊天侧栏状态与标签页状态并行读取，工具箱偏好与侧栏状态并行读取。折叠目录仍按展开层级读取；不会用并行创建所有视图来增加首屏网络竞争。关闭时先等待已启动的初始化任务，再释放相应服务。
+UI 启动只读取主题和当前工作区；设置目录纯本地，实际编辑器首次打开才请求已就绪的 backend.settings。后端加载联系人和标签定义，工作区文件按导出、标签统计或系统浏览操作解析，不预开全部来源。OCR 自行共享首次读取，读配置不写默认值；显式打开 OCR 配置才准备缺省文件与提示词。恢复、聊天权限和 Flow 模板也按消费加载。聊天侧栏状态与标签页状态并行读取，工具箱偏好与侧栏状态并行读取；折叠目录按展开层级读取。关闭先等待已经启动的创建，再释放服务；关闭后到达的服务同样释放。
 
 ### HTTP 启动读写优化
 
-项目身份目录以最多 4 路并发读取；`ProjectService.initializeSources` 复用同一次身份扫描，只在组织目录实际变更时重读目录记录。`SessionLeaseStore.acquireMany` 在一个 SeqFile 事务中批量观察租约，再暂存可取得的租约；提交校验全部读观察，保留拒租、时钟偏差和 fencing token 规则。http-app 的既有 `records.getMany` / `records.commit` 接口承载该批量操作，6 个 Session 的正常批次只需一次批量读取和一次原子提交，无需修改 pi-agent 协议。
+项目身份目录以最多 4 路并发读取；`ProjectService.initializeSources` 复用同一次身份扫描，只在组织目录实际变更时重读目录记录。`SessionLeaseStore.acquireMany` 在一个 SeqFile 事务中批量观察租约，再暂存可取得的租约；提交校验全部读观察，保留拒租、时钟偏差和 fencing token 规则。http-app 在 daemon 内直接使用 LocalFS/SQLite 承载批量读取与原子事务，浏览器不再调用 records.getMany / records.commit。
 
 启动调度由 `runtime/startup-policy.ts` 和 `runtime/startup-coordinator.ts` 分开承担：前者按 interactive/headless 选择启动前、后台或工作区可用后的任务；后者只负责共享 readiness、有界并发、错误报告与关闭排空。llm-session 接收初始化调度回调，不判断宿主是否有 UI。interactive 宿主首次工作区可用后调用 `startBackground()`；具体 Session 使用仍等待自身初始化与租约校验。
 
@@ -702,24 +701,11 @@ UI 的主题、OCR 配置和设置来源文件系统并行准备。工作区视�
 
 ## 应用端口与独立 npm 边界
 
-HTTP 应用模式正在实施，尚未完成全部工作区迁移。`ApplicationPort` 属于应用用例层，定义数据查询、命令与变更订阅；本地适配与 HTTP 适配实现同一契约。应用 DTO 与协议版本归 app-contracts，HTTP 实现留在 apps/http-app，通用库不识别 URL、认证、传输或 MindOS 的工作区策略。
+HTTP 浏览器通过共享服务接口和显式能力传输调用 daemon，完整共用 app-shell.initApp。服务工厂支持异步返回，UI 不包含 HTTP 分支。具体协议与所有权见 [HTTP 应用宿主](http-app.md)。
 
-| 模块 | 保持的公共边界 | 应用模式的接入位置 |
-|---|---|---|
-| vfs-core | IStorageBackend / IFileSystem / readiness；独立存储机制 | app-core 使用公开 VFS 接口；服务端宿主注入存储驱动 |
-| vfs-ui | BrowserSource；仅树节点、子层读取与变更通知 | app-shell 的 ApplicationBrowserSource 投影查询结果 |
-| llm-ui | ConversationControls；仅展示、输入与控制端口 | app-shell 的 ApplicationConversationControls；HTTP 位于宿主适配器 |
-| llm-session / durable-kernel | 会话观察与任务控制契约 | SessionViewPort 与任务端口定义归所属领域模块，UI 直接导入领域契约 |
+`ApplicationBackend.workbenchView` 聚合工作台服务，HTTP 宿主预取首目录与导航读模型，本地宿主省去预取。HTTP 查询与订阅分别按有界批次执行，写命令独立确认；配置/项目/会话等快照按领域事件失效，版本化增量与二进制传输只属于 HTTP 适配，不进入 UI 或业务策略。
 
-独立 vfs-core、vfs-ui 不依赖 app-core、app-shell 或 http-app，不要求应用服务器才能使用。源码工作区始终通过 libraries/ 中独立库的公开 exports 消费；目录缺席时安装检查明确失败。npm 消费通过隔离的 build:registry 工作区验证。npm 发布清单保持版本依赖，不能带入本地 link 或 workspace 路径。
-
-配置管理已增加应用端口查询/命令白名单（`configuration-contracts.ts`）：列表查询返回领域安全元数据，完整 Provider/Connection 配置按编辑请求单独读取；模型、连接、Agent、提示词、Skill、MCP、定价与恢复操作交由后端服务执行。MCP 发现和连接测试属于显式命令，不在列表读取时联网探测。配置调用按需等待 LLM readiness，只有 Agent/提示词/恢复操作等待 Agent 服务，读取 Provider 不触发 Agent 扫描。写命令复用持久回执；`configuration` 失效事件通知客户端，普通文件树与会话视图不因此重新加载。app-shell 的 `ApplicationConfigurationClient` 将应用端口投影成异步配置能力，独立 UI 包仍不导入 app-core 或 HTTP。
-
-当前新应用 UI 接入覆盖基本文件浏览、编辑和会话展示/控制；设置、工具箱等完整能力仍需继续迁移和验收。Web/Tauri/CLI 保持本地宿主装配，HTTP 浏览器不再初始化 Runtime。新增领域契约需要先发布对应领域包，再发布消费它的 UI 包；结构接口兼容并不保证新声明可搭配旧领域包。llm-ui 构建检查覆盖公开 JS/声明依赖图和发布入口，不能以仓库内源码类型检查代替独立安装验收。
+通用 vfs-ui、mdxeditor、llm-ui 只消费文件视图和 UI 控制端口；传输、身份、证书、请求生命周期与远端句柄均位于 apps/http-app。Web/Tauri 继续通过本地服务装配相同 UI。旧 app-shell/application 精简入口和 HttpStorageBackend 已删除。
 
 
-## 物理目录与应用服务接口
-
-业务 UI 位于 ui/，后端业务与执行包位于 backend/，应用契约和 common 位于 shared/。独立库仍在 libraries/，包含 mdxeditor、vfs-ui；这两个库按前端加载边界检查。apps/demo 作为历史演示宿主参与 apps 工作区。
-
-app-shell 接收的 LocalApplicationServices 与 LocalBackendPort 由 shared/app-contracts/services 定义，按职责拆在 ports/。它们是独立接口，不从 ApplicationRuntime 或后端服务类派生。bindLocalApplicationServices 与 createLocalBackendPort 的返回类型校验后端实现是否满足契约；前端不导入 app-core 的类型入口。Kernel 观察/控制与内存管理通过所属领域的 contracts 端口访问。详见 [前后端模块边界](design/frontend-backend-modules.md)。
+应用门面位于 [application-client](../backend/app-core/src/host/application-client.ts)，前端消费 [ApplicationClient 契约](../shared/app-contracts/src/ports/application-client.ts)。宿主内部直接构造领域服务，不再保留 LocalBackendPort 工厂表。工作台、工具箱和任务读模型在后端聚合；[ViewScope](../backend/app-core/src/host/view-scope.ts) 管理视图资源并移除已释放对象。具体策略/机制图见 [前后端模块](design/frontend-backend-modules.md)。

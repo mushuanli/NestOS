@@ -3,17 +3,21 @@ import { FSError, type FSErrorCode } from '@itookit/vfs-core';
 import { MAX_BODY_BYTES } from '../protocol';
 
 export async function readJson(request: IncomingMessage): Promise<{ method?: unknown; args?: unknown }> {
+    const bytes = await readBytes(request);
+    try {
+        const value = JSON.parse(bytes.toString('utf8'));
+        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid request');
+        return value;
+    } catch { throw new FSError('EINVAL', 'Malformed JSON request'); }
+}
+export async function readBytes(request: IncomingMessage): Promise<Buffer> {
     const chunks: Buffer[] = []; let size = 0;
     for await (const chunk of request) {
         const bytes = Buffer.from(chunk); size += bytes.length;
         if (size > MAX_BODY_BYTES) throw new FSError('EFBIG', 'HTTP request is too large');
         chunks.push(bytes);
     }
-    try {
-        const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
-        if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Invalid request');
-        return value;
-    } catch { throw new FSError('EINVAL', 'Malformed JSON request'); }
+    return Buffer.concat(chunks);
 }
 export function json(response: ServerResponse, status: number, payload: unknown): void {
     if (response.destroyed) return;

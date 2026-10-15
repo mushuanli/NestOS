@@ -60,9 +60,7 @@ export interface DigitalTwinService {
         initialization: string;
     };
     onChange(listener: () => void): () => void;
-    start(): void;
     scanOnce(): Promise<void>;
-    dispose(): Promise<void>;
     snapshot(progress?: (stage: string) => void): Promise<{
         prompt: string;
         graph: TwinGraph;

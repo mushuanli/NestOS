@@ -207,6 +207,8 @@ it('prepends native history using shared cards without losing existing Markdown 
     const original = host.querySelector('[data-role="assistant"] .mdx-editor-renderer');
     expect(host.querySelector<HTMLElement>('.remote-conversation__history-progress')!.hidden).toBe(false);
     expect(host.querySelector('.remote-conversation__history-progress')?.textContent).toContain(t('harness.partialHistory', {count: 1}));
+    expect(peer.loadEarlier).not.toHaveBeenCalled();
+    [...host.querySelectorAll('button')].find(button => button.textContent === t('harness.earlierHistory'))!.click();
     await vi.waitFor(() => expect(peer.loadEarlier).toHaveBeenCalledOnce());
     expect(host.querySelector('.remote-conversation__history-progress')?.textContent).toContain(t('harness.loadingEarlier', {count: 1}));
     resolve({...state, messages: [{id: 'older-"/><img onerror="bad">', role: 'user', text: 'Earlier **question**', turnId: 'older-turn'}, ...state.messages], hasEarlier: false});
@@ -215,13 +217,17 @@ it('prepends native history using shared cards without losing existing Markdown 
     expect(host.querySelector('#llm-ui-history')?.textContent).toContain('Earlier question');
     expect(host.querySelector('img[onerror]')).toBeNull(); await editor.destroy();
 });
-it('automatically reads every earlier history page and stops at the beginning', async () => {
+it('loads one earlier history page per request and stops at the beginning', async () => {
     const {editor, peer, host} = setup();
     vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true});
     const middle = {id: 'middle', role: 'user' as const, text: 'Middle request', turnId: 'middle-turn'};
     peer.loadEarlier = vi.fn().mockResolvedValueOnce({...state, messages: [middle, ...state.messages], hasEarlier: true})
         .mockResolvedValueOnce({...state, messages: [{...middle, id: 'first', turnId: 'first-turn', text: 'First request'}, middle, ...state.messages], hasEarlier: false});
-    await editor.init(host);
+    await editor.init(host); expect(peer.loadEarlier).not.toHaveBeenCalled();
+    const earlier = () => [...host.querySelectorAll('button')].find(button => button.textContent === t('harness.earlierHistory'))!;
+    earlier().click(); await vi.waitFor(() => expect(host.textContent).toContain('Middle request'));
+    expect(peer.loadEarlier).toHaveBeenCalledOnce();
+    await vi.waitFor(() => expect((earlier() as HTMLButtonElement).disabled).toBe(false)); earlier().click();
     await vi.waitFor(() => expect(host.querySelector('#llm-ui-history')?.textContent).toContain('First request'));
     expect(peer.loadEarlier).toHaveBeenCalledTimes(2);
     expect(host.querySelector<HTMLElement>('.remote-conversation__history-progress')!.hidden).toBe(true); await editor.destroy();
@@ -233,6 +239,8 @@ it('keeps a history paging failure visible through polls and retries only when r
     peer.loadEarlier = vi.fn().mockRejectedValueOnce(new Error('Conversation history capacity reached'))
         .mockResolvedValueOnce({...state, hasEarlier: false});
     await editor.init(host);
+    expect(peer.loadEarlier).not.toHaveBeenCalled();
+    [...host.querySelectorAll('button')].find(button => button.textContent === t('harness.earlierHistory'))!.click();
     await vi.waitFor(() => expect(host.querySelector('.remote-conversation__history-progress')?.textContent).toContain('capacity reached'));
     await new Promise(resolve => setTimeout(resolve, 1100));
     expect(peer.loadEarlier).toHaveBeenCalledOnce(); expect(host.textContent).toContain('capacity reached');

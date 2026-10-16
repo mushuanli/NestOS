@@ -16,6 +16,7 @@ export class HttpViewClient {
     private listening?: Promise<void>;
     private callbacks: Promise<void> = Promise.resolve();
     private closing = false;
+    private disconnected = false;
     private pendingNotifications = 0;
     private notificationBytes = 0;
     private initialized!: () => void;
@@ -27,7 +28,7 @@ export class HttpViewClient {
         this.peer = new RpcPeer('client', call => this.peer.remoteQuery(call) ? this.queries.query(call)
             : this.peer.remoteBinding(call) ? this.bindings.query(call) : this.post({ kind: 'call', call }),
             error => console.error('[View]', error), installViewProjections);
-        installFileTransport(this.peer, this.url, this.clientId, this.abort.signal, this.fetcher);
+        installFileTransport(this.peer, this.url, this.clientId, this.abort.signal, this.fetcher, error => this.showDisconnected(error));
     }
     private batcher(kind: 'queries' | 'bindings'): QueryBatcher {
         return new QueryBatcher(calls => this.post({ kind, calls }).then(reply => {
@@ -50,7 +51,9 @@ export class HttpViewClient {
     }
     private async post(body: object): Promise<Reply & { replies?: Reply[] }> {
         const response = await this.fetcher(this.url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ ...body, clientId: this.clientId, version: RPC_VERSION }), signal: this.abort.signal });
+            body: JSON.stringify({ ...body, clientId: this.clientId, version: RPC_VERSION }), signal: this.abort.signal })
+            .catch(error => { if (!this.abort.signal.aborted) this.showDisconnected(error); throw error; });
+        if (response.headers.get('X-MindOS-View-Expired') === '1') this.showDisconnected(new FSError('ECAPABILITY', 'View expired'));
         const reply = await response.json() as Reply & { replies?: Reply[] };
         if (!response.ok) throw Object.assign(new Error(reply.error?.message ?? 'View request failed'), reply.error);
         return reply;
@@ -95,7 +98,8 @@ export class HttpViewClient {
         }
     }
     private showDisconnected(error: unknown): void {
-        if (this.closing) return;
+        if (this.closing || this.disconnected) return;
+        this.disconnected = true;
         console.error('[View] Connection lost', error);
         if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('mindos:http-disconnected'));
     }

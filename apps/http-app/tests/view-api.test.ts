@@ -99,6 +99,21 @@ it('updates another browser configuration cache after a backend change without r
     await vi.waitFor(() => expect(second.services.agentService.getProvider('shared')?.name).toBe('Shared'));
 });
 
+it.each(['queries', 'file'])('marks an expired %s view without creating a replacement or executing its operation', async kind => {
+    const root = await client('expired'), fs = await root.services.vfs.openFileSystem('/home/admin/minds');
+    const peer = clients.at(-1)!, ref = await peer.peer.expose(fs.driver) as { $ref: string };
+    const closeResponse = await auth.fetcher(server.origin + '/api/application', { method: 'POST',
+        headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind: 'close', clientId: 'expired', version: RPC_VERSION }) });
+    expect(closeResponse.status).toBe(200);
+    const response = kind === 'file'
+        ? await auth.fetcher(server.origin + `/api/application/files?clientId=expired&version=${RPC_VERSION}`, { method: 'POST',
+            headers: { 'Content-Type': 'application/octet-stream', 'X-View-Call': encodeURIComponent(JSON.stringify({ target: ref.$ref, method: 'readContent', args: ['/missing'] })) } })
+        : await auth.fetcher(server.origin + '/api/application', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ kind: 'queries', clientId: 'expired', version: RPC_VERSION, calls: [{ target: ref.$ref, method: 'getNode', args: ['/'] }] }) });
+    expect(response.status).toBe(400); expect(response.headers.get('X-MindOS-View-Expired')).toBe('1');
+    expect(await response.json()).toHaveProperty('error.code', 'ECAPABILITY');
+});
+
 it('records registered RPC names and batch size without recording UI document content or names', async () => {
     const root = await client('diagnostic');
     await root.backend.writeUiDocuments({ 'private-document-name': { secret: 'private-document-content' } });

@@ -37,7 +37,7 @@ export class ViewApi {
         const identity = this.identity(request, body.clientId);
         if (body.version !== RPC_VERSION) throw new FSError('ECAPABILITY', 'Unsupported view protocol version');
         if (body.kind === 'close') { await this.release(identity); json(response, 200, {}); return; }
-        const client = await this.client(identity); client.lastSeen = Date.now();
+        const client = await (body.kind === 'bootstrap' ? this.client(identity) : this.requireClient(identity, response)); client.lastSeen = Date.now();
         if (body.kind === 'bootstrap') {
             const snapshot = await client.peer.bootstrap(client.view.root); client.initialized = true;
             json(response, 200, snapshot); return;
@@ -63,7 +63,7 @@ export class ViewApi {
         if (request.method !== 'POST' || request.headers['content-type'] !== 'application/octet-stream') throw new FSError('EINVAL', 'Expected file transfer');
         if (url.searchParams.get('version') !== String(RPC_VERSION)) throw new FSError('ECAPABILITY', 'Unsupported view protocol version');
         const call = fileCall(request.headers['x-view-call']);
-        const client = await this.client(this.identity(request, url.searchParams.get('clientId'))); this.acquire(client);
+        const client = await this.requireClient(this.identity(request, url.searchParams.get('clientId')), response); this.acquire(client);
         try {
             const body = await readBytes(request);
             if (call.method === 'readContent') {
@@ -96,6 +96,12 @@ export class ViewApi {
             void ready.catch(() => this.clients.delete(identity));
         }
         return ready;
+    }
+    private async requireClient(identity: string, response: ServerResponse): Promise<Client> {
+        const ready = this.clients.get(identity), client = ready && await ready;
+        if (client?.initialized) return client;
+        response.setHeader('X-MindOS-View-Expired', '1');
+        throw new FSError('ECAPABILITY', 'View expired; reload the page');
     }
     private async createClient(): Promise<Client> {
         const view = await createHostedView(await this.runtime);

@@ -4,6 +4,13 @@ export const OPENAI_ISSUER = 'https://auth.openai.com';
 export const OPENAI_RESOURCE = 'https://api.openai.com/v1';
 export interface VerifiedIdentity { subject: string; email?: string }
 export interface OAuthTokens { access_token: string; refresh_token: string; id_token: string; scope: string; expires_in: number }
+type IdentityFailureCode = 'IDENTITY_PAYLOAD_INVALID' | 'IDENTITY_ISSUER_MISMATCH' | 'IDENTITY_AUDIENCE_MISMATCH'
+    | 'IDENTITY_AUTHORIZED_PARTY_MISSING' | 'IDENTITY_AUTHORIZED_PARTY_MISMATCH' | 'IDENTITY_EXPIRY_INVALID'
+    | 'IDENTITY_EXPIRED' | 'IDENTITY_SUBJECT_INVALID' | 'IDENTITY_ISSUED_AT_INVALID' | 'IDENTITY_ISSUED_IN_FUTURE'
+    | 'IDENTITY_NOT_ACTIVE' | 'IDENTITY_NONCE_MISSING' | 'IDENTITY_NONCE_MISMATCH';
+export class OpenAIIdentityError extends Error {
+    constructor(readonly code: IdentityFailureCode) { super('OpenAI identity claims verification failed'); }
+}
 export class OpenAIAuthorizationError extends Error {
     constructor(readonly status?: number, readonly code = status ? 'http_error' : 'network_error', readonly requestId?: string) {
         super(status ? `OpenAI authorization rejected (HTTP ${status})` : 'OpenAI authorization network request failed');
@@ -102,13 +109,35 @@ async function boundedText(response: Response): Promise<string> {
     } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
 }
 
-function identity(claims: Record<string, unknown>, clientId: string, nonce?: string): VerifiedIdentity {
-    const now = Date.now() / 1000, audience = claims.aud;
-    const validAudience = audience === clientId || Array.isArray(audience) && audience.includes(clientId) && claims.azp === clientId;
-    if (claims.iss !== OPENAI_ISSUER || !validAudience || typeof claims.exp !== 'number' || !Number.isFinite(claims.exp) || claims.exp <= now
-        || typeof claims.sub !== 'string' || !claims.sub || typeof claims.iat !== 'number' || !Number.isFinite(claims.iat) || claims.iat > now + 60
-        || (claims.azp !== undefined && claims.azp !== clientId)
-        || (claims.nbf !== undefined && (typeof claims.nbf !== 'number' || !Number.isFinite(claims.nbf) || claims.nbf > now + 60))
-        || (nonce !== undefined && claims.nonce !== nonce)) throw new Error('OpenAI identity claims verification failed');
+function identity(value: unknown, clientId: string, nonce?: string): VerifiedIdentity {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new OpenAIIdentityError('IDENTITY_PAYLOAD_INVALID');
+    const claims = value as Record<string, unknown>;
+    requireClaim(claims.iss === OPENAI_ISSUER, 'IDENTITY_ISSUER_MISMATCH');
+    validateAudience(claims, clientId); validateIdentityTimes(claims);
+    requireClaim(typeof claims.sub === 'string' && Boolean(claims.sub), 'IDENTITY_SUBJECT_INVALID');
+    if (nonce !== undefined) {
+        requireClaim(typeof claims.nonce === 'string', 'IDENTITY_NONCE_MISSING');
+        requireClaim(claims.nonce === nonce, 'IDENTITY_NONCE_MISMATCH');
+    }
     return { subject: claims.sub, email: typeof claims.email === 'string' ? claims.email : undefined };
+}
+function validateAudience(claims: Record<string, unknown>, clientId: string): void {
+    const audience: unknown[] = Array.isArray(claims.aud) ? claims.aud : [claims.aud];
+    requireClaim(audience.every(item => typeof item === 'string') && audience.includes(clientId), 'IDENTITY_AUDIENCE_MISMATCH');
+    requireClaim(audience.length <= 1 || claims.azp !== undefined, 'IDENTITY_AUTHORIZED_PARTY_MISSING');
+    requireClaim(claims.azp === undefined || claims.azp === clientId, 'IDENTITY_AUTHORIZED_PARTY_MISMATCH');
+}
+function validateIdentityTimes(claims: Record<string, unknown>): void {
+    const now = Date.now() / 1000;
+    requireNumericDate(claims.exp, 'IDENTITY_EXPIRY_INVALID'); requireClaim(claims.exp > now, 'IDENTITY_EXPIRED');
+    requireNumericDate(claims.iat, 'IDENTITY_ISSUED_AT_INVALID'); requireClaim(claims.iat <= now + 60, 'IDENTITY_ISSUED_IN_FUTURE');
+    if (claims.nbf !== undefined) {
+        requireNumericDate(claims.nbf, 'IDENTITY_NOT_ACTIVE'); requireClaim(claims.nbf <= now + 60, 'IDENTITY_NOT_ACTIVE');
+    }
+}
+function requireNumericDate(value: unknown, code: IdentityFailureCode): asserts value is number {
+    requireClaim(typeof value === 'number' && Number.isFinite(value), code);
+}
+function requireClaim(valid: boolean, code: IdentityFailureCode): asserts valid {
+    if (!valid) throw new OpenAIIdentityError(code);
 }

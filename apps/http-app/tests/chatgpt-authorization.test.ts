@@ -166,7 +166,7 @@ it('distinguishes credential, identity and storage failures without logging thei
     expect(auditEvents.at(-1)).toMatchObject({ operation: 'tokens.validate', code: 'TOKEN_RESPONSE_INVALID' });
     changeGrants(scopes); attempt = await begin(); changeIdentity({ nonce: 'private-invalid-nonce' });
     await auth.complete('provider', attempt.state.pending!.id, attempt.callback.href);
-    expect(auditEvents.at(-1)).toMatchObject({ operation: 'identity.verify', code: 'IDENTITY_CLAIMS_INVALID' });
+    expect(auditEvents.at(-1)).toMatchObject({ operation: 'identity.verify', code: 'IDENTITY_NONCE_MISMATCH' });
     changeIdentity({}); attempt = await begin();
     const write = vi.spyOn(store, 'put').mockRejectedValueOnce(new Error('private-storage-path'));
     try {
@@ -195,4 +195,36 @@ it('preserves network classifications and omits untrusted response identifiers',
     const denied = new OpenAIOidc(async () => Response.json({ error: 'private-provider-body' },
         { status: 403, headers: { 'x-request-id': 'private-request-id?token=private' } }));
     await expect(denied.authorizeURL()).rejects.toMatchObject({ status: 403, code: 'http_error', requestId: undefined });
+});
+
+it.each([
+    { aud: 'oaiapp_test' }, { aud: ['oaiapp_test'] }, { aud: ['oaiapp_test'], azp: 'oaiapp_test' },
+    { aud: ['other-audience', 'oaiapp_test'], azp: 'oaiapp_test' },
+])('accepts signed identity tokens with the registered client audience: %j', async claims => {
+    const { auth, begin, changeIdentity, store } = await setup(), attempt = await begin(); changeIdentity(claims);
+    expect((await auth.complete('provider', attempt.state.pending!.id, attempt.callback.href)).status).toBe('authorized');
+    expect(store.get('provider')?.tokens).toBeDefined();
+});
+
+it.each([
+    [{ iss: 'https://private-issuer.example' }, 'IDENTITY_ISSUER_MISMATCH'],
+    [{ aud: ['private-other-client'] }, 'IDENTITY_AUDIENCE_MISMATCH'],
+    [{ aud: [] }, 'IDENTITY_AUDIENCE_MISMATCH'],
+    [{ aud: ['oaiapp_test', 1], azp: 'oaiapp_test' }, 'IDENTITY_AUDIENCE_MISMATCH'],
+    [{ aud: ['oaiapp_test', 'other'] }, 'IDENTITY_AUTHORIZED_PARTY_MISSING'],
+    [{ azp: 'private-other-client' }, 'IDENTITY_AUTHORIZED_PARTY_MISMATCH'],
+    [{ exp: undefined }, 'IDENTITY_EXPIRY_INVALID'],
+    [{ exp: 1 }, 'IDENTITY_EXPIRED'],
+    [{ sub: '' }, 'IDENTITY_SUBJECT_INVALID'],
+    [{ iat: undefined }, 'IDENTITY_ISSUED_AT_INVALID'],
+    [{ iat: Math.floor(Date.now() / 1000) + 3600 }, 'IDENTITY_ISSUED_IN_FUTURE'],
+    [{ nbf: Math.floor(Date.now() / 1000) + 3600 }, 'IDENTITY_NOT_ACTIVE'],
+    [{ nonce: undefined }, 'IDENTITY_NONCE_MISSING'],
+    [{ nonce: 'private-wrong-nonce' }, 'IDENTITY_NONCE_MISMATCH'],
+])('reports the exact rejected identity check without disclosing claim values: %j', async (claims, code) => {
+    const { auth, begin, changeIdentity, auditEvents, store } = await setup(), attempt = await begin(); changeIdentity(claims);
+    expect((await auth.complete('provider', attempt.state.pending!.id, attempt.callback.href)).issue).toBe('authorization-failed');
+    expect(auditEvents.at(-1)).toMatchObject({ operation: 'identity.verify', code });
+    expect(store.get('provider')).toBeUndefined();
+    expect(JSON.stringify(auditEvents)).not.toMatch(/private-|user@example|oaiapp_test|access-|refresh-/);
 });

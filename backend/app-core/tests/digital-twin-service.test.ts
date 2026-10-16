@@ -95,6 +95,23 @@ describe.each(['memory', 'indexeddb'] as const)('Digital twin loop on %s', kind 
         await expect(host.service.authorizeLlm({ ...host.request(fresh), connectionId: 'another-model' }, context('consumer', 'new-model'))).resolves.toBeUndefined();
     });
 
+    it.each(['image.generate', 'speech.synthesize'] as const)('applies the same reference and revocation policy to %s', async operation => {
+        const host = await setup(kind), service = host.service;
+        await service.addMemory({ content: 'Alpha uses TypeScript', kind: 'fact' });
+        const entries = await service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer');
+        expect(entries).toHaveLength(1);
+        const text = host.request(entries).request.messages.map(message => message.content).join('\n');
+        const request: Parameters<DigitalTwinService['authorizeMedia']>[0] = { resourceHandleId: 'llm', connectionId: 'model',
+            request: operation === 'image.generate' ? { operation, model: 'image', prompt: text, format: 'png' }
+                : { operation, model: 'speech', input: 'Read the preference', instructions: text, voice: 'voice', format: 'wav' } };
+        await service.authorizeMedia(request, context());
+        const snapshot = await service.snapshot();
+        expect(snapshot.uses).toHaveLength(1);
+        expect(snapshot.uses[0].data.connectionId).toBe('model');
+        await service.configure({ useEnabled: false }, snapshot.settings.revision);
+        await expect(service.authorizeMedia(request, context('consumer', 'next-media'))).rejects.toThrow('PERMISSION_STALE');
+    });
+
     it('blocks historical use after global disable and forget, including reopen', async () => {
         const host = await setup(kind); const id = await host.service.addMemory({ content: 'Alpha 使用 TypeScript', kind: 'fact' });
         await host.service.authorizeLlm(host.request(await host.service.retrieve(plan('Alpha TypeScript'), 'agent', 'consumer')), context());

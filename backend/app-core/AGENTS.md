@@ -134,3 +134,6 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 
 - `settings/` 承载设置持久化、标签和维护用例，存储快照由宿主 SnapshotPort 注入。`host/application-client.ts` 创建本地服务端口和 UI 服务绑定；contracts 子入口只导出类型，不能重新导出实现的运行时值。
 - backend.settings 等待 SettingsService.init 后返回已就绪端口；工作区描述与文件视图分开，SettingsFiles 按操作解析声明的 workspace 身份。OCR 自行共享并等待首次配置读取，readSettings/label/ready 不生成默认配置；仅显式 prepareConfiguration/preparePromptEditor 创建默认值。设置的延迟文件视图与 configFiles 必须保持宿主原有写保护。
+
+- configuration/skills-files.ts 拥有技能文件系统与服务订阅，tool-groups.ts 拥有产品默认工具分类；toolbox-resources.navigation 聚合目录、分组与说明。host.toolboxView 不接收前端文件系统，返回后端准备的 initial 快照与实时端口。导航初始化/刷新不回调浏览器取数。
+- Skill 的非空导入与所有写入必须先解析、校验再保存；存储错误不得触发空白资源回退，身份变更的旧记录删除失败必须报错。媒体授权转换由 DigitalTwinService.authorizeMedia 统一处理，语音 input/instructions 保持独立文本边界；Runtime 只接线。媒体回执通过 Kernel.inspectSession 按身份定位存储，不枚举其他 Session。

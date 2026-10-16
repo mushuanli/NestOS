@@ -1,6 +1,6 @@
 import { navigationView, warmNavigation } from './navigation-view';
 import { createFileSystemView, FSError } from '@itookit/vfs-core';
-import { createToolboxFiles } from './toolbox-files';
+import { createToolboxFiles } from '../configuration/toolbox-files';
 import { withConfigurationImport } from '../configuration/configuration-import';
 import { SettingsService } from '../settings/SettingsService';
 import { OcrService } from '../configuration/ocr-service';
@@ -17,6 +17,7 @@ import { resolveProjectFavorite } from '../projects/favorites/routes';
 import { manageRemoteSession } from '../session/remote-session-management';
 import { unmountRemoteProject } from '../projects/unmount-project';
 import { ToolboxInventory } from '../configuration/toolbox-catalog';
+import { SkillsEngine } from '../configuration/skills-files';
 import { ToolboxResources } from '../configuration/toolbox-resources';
 import { listRemoteHarnessAgents } from '../projects/remote-agent-catalog';
 import { conversationBranches } from '@itookit/piagent-driver';
@@ -56,7 +57,8 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         ocr: async () => new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService),
         initialFiles: async () => new MindosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/minds')),
         projectSessions: async () => projects?.sessions ?? new ProjectSessions(repository),
-        toolboxView: skills => toolboxView(services, scope, skills),
+        skillsFiles: () => scope.own(new SkillsEngine(agentService)),
+        toolboxView: () => toolboxView(services, scope),
         archiveExporter: async () => new WorkbenchArchiveExporter(projects, repository),
         archiveImporter: async () => new WorkbenchArchiveImporter(projects, await lifecycle(), repository),
         exportSession: (...args) => exportSessionBundle(repository, ...args),
@@ -69,7 +71,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         taskEvents: (session, task, settings) => taskEvents(kernel.kernel, session, task, settings),
     };
 }
-async function toolboxView(services: LocalApplicationServices, scope: ViewScope, skills: import('@itookit/vfs-core').IFileSystem): Promise<ToolboxView> {
+async function toolboxView(services: LocalApplicationServices, scope: ViewScope): Promise<ToolboxView> {
     const { agentService, kernel, vfs, projects } = services;
     const inventory = new ToolboxInventory(() => agentService.getMCPServers(), kernel.toolCatalog, agentService,
         () => agentService.listSystemPrompts(), () => listRemoteHarnessAgents(projects?.remoteMounts));
@@ -79,10 +81,12 @@ async function toolboxView(services: LocalApplicationServices, scope: ViewScope,
         const agents = await resources.own(createFileSystemView({ viewId: 'toolbox:agents', mounts: [
             { mountId: 'local', at: '/', fs: await vfs.openFileSystem('/home/admin/agents'), access: 'rw' },
             { mountId: 'remote', at: '/@remote', fs: inventory.remoteAgentSource, access: 'ro' }] }));
+        const skills = await resources.own(new SkillsEngine(agentService));
         const toolbox = new ToolboxResources({ ...inventory.sources, agents, skills, flows: services.flowEngine.engine },
-            agentService, services.commandBus, await vfs.openFileSystem('/etc'));
+            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory);
         const files = await resources.own(createToolboxFiles(toolbox.sources));
-        return scope.own({ inventory, resources: toolbox, files, dispose: () => resources.close() });
+        const initial = await toolbox.navigation(false);
+        return scope.own({ inventory, resources: toolbox, files, initial, dispose: () => resources.close() });
     } catch (error) { await resources.close(); throw error; }
 }
 async function conversationFamily(services: LocalApplicationServices, folder: string, profile: string, session: string,

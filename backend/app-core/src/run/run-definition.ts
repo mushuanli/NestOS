@@ -94,6 +94,8 @@ export interface RunDefinition {
         maxNodes?: number;
         templateVersion?: import('@itookit/llm-flow/contracts').DagRunSpec['templateVersion'];
         parameterScopes?: import('@itookit/llm-flow/contracts').DagRunSpec['parameterScopes'];
+        variables?: import('@itookit/llm-flow/contracts').DagRunSpec['variables'];
+        variableScopes?: import('@itookit/llm-flow/contracts').DagRunSpec['variableScopes'];
     };
     parameters?: FlowParameter[];
     environment: RunEnvironment;
@@ -139,6 +141,8 @@ export async function createRunDefinitionFromFlow(flow: FlowRevision, options: {
             edges: structuredClone(dag.edges) as DagEdgeDefinition[],
             templateVersion: dag.templateVersion,
             parameterScopes: structuredClone(dag.parameterScopes),
+            variables: structuredClone(dag.variables),
+            variableScopes: structuredClone(dag.variableScopes),
             ...(dag.nodeDefaults ? { nodeDefaults: structuredClone(dag.nodeDefaults) as Record<string, Record<string, JsonValue>> } : {}),
             ...(dag.nodeConnections ? { nodeConnections: structuredClone(dag.nodeConnections) as Record<string, Record<string, JsonValue>> } : {}),
             ...(dag.maxNodes !== undefined ? { maxNodes: dag.maxNodes } : {}),
@@ -148,7 +152,7 @@ export async function createRunDefinitionFromFlow(flow: FlowRevision, options: {
             connections: (flow.connections ?? []).map(connection => ({
                 id: connection.name,
                 name: connection.description ?? connection.name,
-                provider: connection.connectionId,
+                provider: connection.connectionId ?? '',
                 tiers: {},
             })),
             agents: [],
@@ -177,6 +181,8 @@ export function toDagRunSpec(definition: RunDefinition): import('@itookit/llm-fl
         edges: structuredClone(definition.graph.edges),
         templateVersion: definition.graph.templateVersion,
         parameterScopes: structuredClone(definition.graph.parameterScopes),
+        variables: structuredClone(definition.graph.variables),
+        variableScopes: structuredClone(definition.graph.variableScopes),
         parameterSchema: structuredClone(definition.parameters),
         ...(definition.graph.nodeDefaults ? { nodeDefaults: structuredClone(definition.graph.nodeDefaults) } : {}),
         ...(definition.graph.nodeConnections ? { nodeConnections: structuredClone(definition.graph.nodeConnections) } : {}),

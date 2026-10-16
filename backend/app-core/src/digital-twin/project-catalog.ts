@@ -5,7 +5,7 @@ import type { TwinDiscoveredSource, TwinSourceCatalog } from './domain';
 import { discoverHarness } from './harness-reader';
 
 export const documentPath = (path: string) => !path.split('/').some(part => part.startsWith('.') || part === 'node_modules')
-    && /\.(md|markdown|txt|mind|email|anki|project|rst|adoc|html|csv|ya?ml|json|[cm]?[jt]sx?|py|go|rs|java|c|cpp|h|css|sh|sql)$/i.test(path);
+    && /\.(md|markdown|txt|mind|email|project|rst|adoc|html|csv|ya?ml|json|[cm]?[jt]sx?|py|go|rs|java|c|cpp|h|css|sh|sql)$/i.test(path);
 export const projectTarget = (id: string, path: string) => `project://${encodeURIComponent(id)}/${path.split('/').filter(Boolean).map(encodeURIComponent).join('/')}`;
 export const scopeOf = (resource: TwinDiscoveredSource) => `${resource.projectId}/${resource.kind}`;
 export const nodeVersion = (node: FSNode) => JSON.stringify([node.createdAt, node.modifiedAt, node.version, node.type === 'file' ? node.size : 0]);

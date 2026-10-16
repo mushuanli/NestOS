@@ -2,6 +2,7 @@ import { t, createModuleLogger } from '@itookit/common';
 import { Kernel, type RecoveryOptions, type SessionStorageResolver } from '@itookit/durable-kernel';
 import {
     createKernelAdaptersRuntime,
+    createMediaResultStore,
     type KernelAdaptersRuntime,
     type KernelAdaptersRuntimeOptions,
 } from '@itookit/kernel-adapters';
@@ -19,6 +20,7 @@ import { createRuntimeContextGc, type RuntimeContextGc, type RuntimeContextGcOpt
 
 export interface CreateKernelRuntimeOptions {
     authorizeLlm?: KernelAdaptersRuntimeOptions['authorizeLlm'];
+    authorizeMedia?: KernelAdaptersRuntimeOptions['authorizeMedia'];
     contextEngineOptions?: import('@itookit/llm-context').ContextEngineOptions;
     contextGc?: RuntimeContextGcOptions | false;
     /** Override the context storage/engine ports at the host composition boundary. */
@@ -72,6 +74,11 @@ export async function createKernelRuntime(
         processUnavailableMessage: () => t('chatInput.command.unavailable'),
         llmDriver: options.llmDriver,
         authorizeLlm: options.authorizeLlm,
+        authorizeMedia: options.authorizeMedia,
+        mediaResultStore: createMediaResultStore(async context => {
+            const { storage } = await kernel.inspectSession(context.sessionId);
+            return kernel.storageResolvers.resolve(storage.kind).resolve(storage);
+        }),
         runMode: 'kernel',
         fileContextForSession: options.fileContextForSession,
         scopeForEffect: options.scopeForEffect ?? (options.fileContextForScope ? async context => {

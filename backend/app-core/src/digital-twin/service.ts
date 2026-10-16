@@ -276,6 +276,13 @@ export class DigitalTwinService {
         else await services.context.authorize(request, context);
     };
 
+    readonly authorizeMedia: NonNullable<KernelAdaptersRuntimeOptions['authorizeMedia']> = (request, context) =>
+        this.authorizeLlm({ ...request, request: { model: request.request.model,
+            messages: (request.request.operation === 'image.generate' ? [request.request.prompt]
+                : [request.request.input, ...(request.request.instructions ? [request.request.instructions] : [])])
+                .map(content => ({ role: 'user' as const, content })),
+        } }, context);
+
     private async resolveDefaultModel(services: TwinServices): Promise<void> {
         const settings = (await services.records.get<TwinSettings>('settings', 'pot'))!;
         if (settings.data.connectionId || !this.deps.defaultConnection) return;

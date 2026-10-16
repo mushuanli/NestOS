@@ -11,18 +11,43 @@ import { FlowCommand } from '@itookit/llm-session';
 import type { ApplicationAgentPort } from '@itookit/app-contracts/services';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { TOOLBOX_KINDS, toolboxPath, type ToolboxKind } from './toolbox-identity';
+import { defaultToolDrawers } from './tool-groups';
+import { createToolboxFiles } from './toolbox-files';
+import type { ToolboxInventory, ToolboxNavigation } from '@itookit/app-contracts/services';
 
 /** Resource creation retains the owning services' identity and validation rules. */
 export class ToolboxResources {
     readonly drawers: ToolboxDrawers;
-    constructor(readonly sources: Record<ToolboxKind, IFileSystem>, private readonly agents: ApplicationAgentPort, private readonly commands: ICommandBus, settings: IFileSystem) { this.drawers = new ToolboxDrawers(settings); }
+    private initialized?: Promise<void>;
+    constructor(readonly sources: Record<ToolboxKind, IFileSystem>, private readonly agents: ApplicationAgentPort, private readonly commands: ICommandBus, settings: IFileSystem,
+        private readonly inventory?: ToolboxInventory & { refresh(): Promise<void> }) { this.drawers = new ToolboxDrawers(settings); }
+    /** Prepare the whole navigation read model where the source services live. */
+    async navigation(refresh = true): Promise<ToolboxNavigation> {
+        await (this.initialized ??= this.drawers.init().catch(error => { this.initialized = undefined; throw error; }));
+        if (refresh) await this.inventory?.refresh();
+        const [loadedDirectories, descriptions] = await Promise.all([
+            this.refreshGroups(this.inventory ? defaultToolDrawers(this.inventory) : []), this.descriptions(),
+        ]);
+        const files = createToolboxFiles(this.sources);
+        let stale = false;
+        const stop = files.onAny!(() => { stale = true; });
+        try {
+            const directories = [];
+            for (const path of ['/', ...loadedDirectories]) {
+                const [node, nodes] = await Promise.all([files.driver.getNode(path), files.driver.getChildren(path)]);
+                directories.push({ path, node, nodes, revision: files.revision });
+            }
+            if (stale) for (const directory of directories) Object.assign(directory, { stale: true });
+            return { directories, loadedDirectories, descriptions };
+        } finally { stop(); await files.dispose(); }
+    }
     subscribe(listener: () => void): () => void { return this.agents.onChange(listener); }
     setDefaultConnection(id: string | null): Promise<void> { return this.agents.setDefaultConnection(id); }
     toolGrant = toolGrant;
     getAgents(): Promise<AgentDefinition[]> { return this.agents.getAgents(); }
     hasProvider(id: string): boolean { return this.agents.getProviders().some(item => item.id === id); }
     setToolGrant(tool: ToolGrantTarget, agentId: string, enabled: boolean): Promise<void> { return saveToolGrant(this.agents, tool, agentId, enabled); }
-    async refreshGroups(toolGroups: readonly Drawer[]): Promise<string[]> {
+    private async refreshGroups(toolGroups: readonly Drawer[]): Promise<string[]> {
         const defaults: Drawer[] = [...toolGroups], resources: Array<{ path: string; kind: DrawerKind; groupId?: string }> = [];
         const directories = TOOLBOX_KINDS.map(kind => '/' + kind);
         for (const group of toolGroups) for (const path of group.paths) resources.push({ path, kind: 'tools', groupId: group.id });
@@ -96,7 +121,7 @@ export class ToolboxResources {
         }
         return toolboxPath(kind, '/' + encodeURIComponent(id));
     }
-    async descriptions(): Promise<Map<string, { name: string; description?: string }>> {
+    private async descriptions(): Promise<Map<string, { name: string; description?: string }>> {
         const [agents, skills, flows] = await Promise.all([this.agents.getAgents(), this.agents.getSkills(),
             this.commands.execute<FlowDraft[]>(FlowCommand.DraftList, {})]);
         const map = new Map<string, { name: string; description?: string }>();

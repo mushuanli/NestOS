@@ -47,6 +47,7 @@ export interface ApplicationPlatformServices {
 }
 
 export interface ApplicationKernelPlatform {
+    additionalTools?: CreateKernelRuntimeOptions['additionalTools'];
     scopeForEffect?: CreateKernelRuntimeOptions['scopeForEffect'];
     fileContextForScope?: CreateKernelRuntimeOptions['fileContextForScope'];
     createSessionProcesses?: SessionProcessFactory;
@@ -239,6 +240,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             contextGc: { canCollectSession: id => mayCollectContext(id) },
             llmDriver,
             authorizeLlm: (request, context) => digitalTwin?.authorizeLlm(request, context) ?? Promise.resolve(),
+            authorizeMedia: (request, context) => digitalTwin?.authorizeMedia(request, context) ?? Promise.resolve(),
             storageResolver: new SessionDirectoryStorageResolver(systemFS),
             maxConcurrent: 20,
             fileContextForSession: async id => {
@@ -250,6 +252,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                     () => directoryMounts.processMounts(id));
             },
             configureSession: options.kernelPlatform?.configureSession,
+            additionalTools: options.kernelPlatform?.additionalTools,
             scopeForEffect: options.kernelPlatform?.scopeForEffect,
             fileContextForScope: options.kernelPlatform?.fileContextForScope || options.projectExecutionProvider || options.remoteSourceProvider?.process ? async (id, scopeId) => {
                 const project = await projects.forFolder((await sessionRepository.getManifest(id)).folder);

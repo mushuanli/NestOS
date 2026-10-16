@@ -45,7 +45,8 @@
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
     "@itookit/piagent-driver": "workspace:*",
-    "@itookit/app-contracts": "workspace:*"
+    "@itookit/app-contracts": "workspace:*",
+    "js-yaml": "^4.1.1"
   },
   "devDependencies": {
     "@itookit/vfsdriver-indexeddb": "workspace:*",
@@ -53,6 +54,7 @@
     "fake-indexeddb": "^6.0.0",
     "typescript": "^5.9.3",
     "vitest": "^3.2.4",
-    "@itookit/vfs-ui": "workspace:*"
+    "@itookit/vfs-ui": "workspace:*",
+    "@types/js-yaml": "^4.0.9"
   }
 }

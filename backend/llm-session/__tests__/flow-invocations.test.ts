@@ -228,6 +228,9 @@ it('retains the admitted fallback when retrying a submission after the global de
 });
 
 function connectionRuntime(source: 'defaults' | 'run' | 'fallback' | 'nested') {
+    kernel.registerEffect({ kind: 'llm.chat', version: '1', async execute() {
+        return { choices: [{ message: { role: 'assistant', content: 'Done' }, finish_reason: 'stop' }] };
+    } });
     const selection = { model: 'before', enabled: true };
     const provider = { id: 'p', name: 'P', implementation: 'openai-compatible' as const, baseURL: 'https://example.test',
         models: ['before', 'after'].map(id => ({ id, name: id })) };
@@ -329,4 +332,18 @@ it('reattaches an existing root without compiling or reading the model catalog a
     expect(repeated.rootTaskId).toBe(first.rootTaskId);
     expect(fixture.catalog.getConnection).toHaveBeenCalledTimes(lookups);
     expect((await kernel.listSessionTasks('s')).filter(task => task.labels?.kind === 'flow-root')).toHaveLength(1);
+});
+
+it('removes an admission graph left behind after the durable root was created', async () => {
+    const fixture = connectionRuntime('run'), call = await fixture.create().service.invoke(fixture.input);
+    const session = await kernel.openSession('s'), root = (await (await kernel.openTask(call.rootTaskId!)).status()).task;
+    await session.setShared('flow.invocation.frozen', { ...call, rootTaskId: undefined,
+        preparedGraph: (root.input as any).initialScheduler.spec } as never);
+    const lookups = fixture.catalog.getConnection.mock.calls.length;
+    fixture.selection.enabled = false;
+    await fixture.create().service.recover();
+    const saved = (await session.getShared('flow.invocation.frozen'))!.value as any;
+    expect(saved.rootTaskId).toBe(call.rootTaskId); expect(saved).not.toHaveProperty('preparedGraph');
+    expect(fixture.catalog.getConnection).toHaveBeenCalledTimes(lookups);
+    expect((await session.listTasks()).filter(task => task.labels?.kind === 'flow-root')).toHaveLength(1);
 });

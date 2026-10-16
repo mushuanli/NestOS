@@ -73,7 +73,13 @@ export class FlowInvocationService {
             for (const record of await this.list(session.id, stored)) {
                 try {
                     if (!record.rootTaskId && !record.error) await this.invoke(record);
-                    else if (record.rootTaskId) await this.commands.execute(FlowCommand.RunResume, { sessionId: session.id, taskId: record.rootTaskId });
+                    else if (record.rootTaskId) {
+                        if (record.preparedGraph) {
+                            await this.assertWritable(session.id);
+                            await this.saveRoot(await this.kernel.openSession(session.id), record, record.rootTaskId);
+                        }
+                        await this.commands.execute(FlowCommand.RunResume, { sessionId: session.id, taskId: record.rootTaskId });
+                    }
                 } catch (error) { console.error('Flow invocation recovery failed', session.id, record.requestId, error); }
             }
         }

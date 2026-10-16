@@ -8,10 +8,10 @@ MindOS 默认消费固定 Git 提交的独立库源码。八个独立库均位�
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.8 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.3 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
-| @itookit/piagent-driver | `libraries/piagent-driver` | 0.1.0 |
+| @itookit/piagent-driver | `libraries/piagent-driver` | 0.1.3 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.2 |
-| @itookit/driver-llm | `libraries/driver-llm` | 0.3.1 |
+| @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
 
 ## 源码开发
 
@@ -41,7 +41,7 @@ build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从�
 
 默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的源码模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
 
-`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。当前 driver-llm@0.3.1 仍待 npm 二次验证，其余 v5.4 清单版本已发布；vfs-core@5.3.2、vfsdriver-indexeddb@5.3.3 和 piagent-driver@0.1.0 均已从注册表重新下载并核对制品。
+`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。当前清单版本均已发布；driver-llm@0.4.0、piagent-driver@0.1.3 及此前的 vfs-core@5.3.2、vfsdriver-indexeddb@5.3.3 均已从注册表重新下载并核对制品。
 
 ## 独立库发布
 
@@ -113,3 +113,16 @@ driver-llm@0.3.1 包含 `chatgpt` Provider 与同名 implementation，继续复�
 独立库 116 项测试、后端适配 244 项测试、全仓类型检查、架构边界检查、文档检查和 Web 构建通过。最终 tarball 在仓库外通过 ESM 推理/目录调用、CommonJS、contracts/chain 入口、TypeScript bundler 与 node16 类型验证；未使用真实 ChatGPT 账号验收。
 
 修复发布暂存目录未清空造成旧声明残留的问题；重复 prepare 的过期文件负例验证通过。0.3.0 制品 SHA-256 为 `027973c95274105f852aedb8063db8d45d585936907c757fabad3d6ad4dba396`；0.3.1 制品 SHA-256 为 `9430b08bad35f0ae799b4a76f31250f967544dd65fe3ed2ba3edf965be990d63`，仓库外 ESM/CJS 与 TypeScript bundler/node16 消费验证通过。npm 发布 0.3.0 与 0.3.1 均被 EOTP 阻止，等待完成注册表二次验证；本节不表示该版本已公开发布。
+
+### 2026-10-16 媒体通信与原生会话用量发布
+
+已通过 npm 浏览器二次认证发布 driver-llm@0.4.0 与 piagent-driver@0.1.3，两个发布命令均退出码为 0。driver-llm 包含独立图片生成和语音合成通信客户端，以及此前 ChatGPT 订阅协议；piagent-driver 包含新建/续写/删除/并发修复和原生会话用量快照。价格策略仍由宿主注入，不进入远程通信库。
+
+两个源码库各有 123 项测试通过（piagent-driver 另有 1 项跳过），类型检查与正式发布构建通过。仓库外 npm 消费者验证了 ESM/CommonJS、根与所有公开子路径、TypeScript bundler/NodeNext 声明，以及注入 fetch 的图片和语音请求；未依赖工作区源码链接。发布制品 exports 均指向实际携带的 dist 文件，运行时依赖无 workspace/link/file 协议。两个新版本已从公开注册表重新下载，SHA-256 与发布前验证的 tarball 一致。
+
+| 版本 | 发布后 tarball SHA-256 |
+|---|---|
+| driver-llm@0.4.0 | `5f9b54ffe8bc9dfa20d6f4bd811c1f75e1e991ee07fe3ea400a6e0911cff839a` |
+| piagent-driver@0.1.3 | `0ae5c9406bcdab7a698d01eef6ed512e8aa25c9adcad6d9ef302c1257de9b73e` |
+
+Rust pi-agent 独立于 npm 发布流程；其启动版本输出、日志与并发隔离更新通过 tools/pi-agent 的 Git 提交和本地二进制交付。

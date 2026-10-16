@@ -2,9 +2,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderAuthorizationHost } from '@itookit/kernel-adapters/llm/core';
 import { createApplicationRuntime } from '@itookit/app-core';
 import { MemoryBackend } from '@itookit/vfs-core';
-import { RpcPeer } from '../src/application/peer';
-import { createHostedView } from '../src/server/view-services';
-import { installViewProjections } from '../src/application/projections';
+import { RpcPeer } from '@itookit/app-transport/application';
+import { createHostedView } from '@itookit/node-host/http';
+import { installViewProjections } from '@itookit/app-transport/application';
 
 const releases: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const release of releases.splice(0).reverse()) await release(); vi.unstubAllGlobals(); });

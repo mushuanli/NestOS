@@ -1,5 +1,5 @@
 import { remoteFilesCommand } from './remote-files-command';
-import { createHttpMindOSRuntime, startHttpServer } from './http-server';
+import { startHttpServer } from './http-server';
 import { installRuntimeDiagnostics, recordRuntimeDiagnostic, traceRuntimeStage } from './diagnostics';
 import { errorDetails } from '@itookit/common';
 import { digitalTwinCommand } from './digital-twin-command';
@@ -34,14 +34,20 @@ interface ParsedArgs {
 async function main(argv: string[]): Promise<number> {
     const parsed = parseArgs(argv);
     recordRuntimeDiagnostic('command.start', { command: parsed.options.http ? 'http' : parsed.options.prompt ? 'prompt' : parsed.command ?? 'help' });
-    // -d / --http: run as the headless HTTP host for the Tauri UI.
+    if (parsed.options.connect && (parsed.options.http || parsed.options.profile || parsed.options.setHome || parsed.options.authDir || parsed.options.certDir || parsed.options.staticDir || parsed.options.auditFile)) throw new Error('--connect cannot be combined with local hosting/profile options');
+    if (parsed.options.connect && parsed.options.prompt) throw new Error('--connect uses session send or conversation send, not the standalone prompt runner');
+    // Explicit hosting uses the same application server as httpd.
     if (parsed.options.http) {
-        const runtime = await createHttpMindOSRuntime(parsed.options);
-        await startHttpServer(parsed.options.http, parsed.options, runtime);
+        await startHttpServer(parsed.options.http, parsed.options);
         return 0;
     }
     // -p / --prompt：直接运行一段 prompt（优先于 command 分发）
     if (parsed.options.prompt) return promptCommand(parsed.options);
+    if (['project', 'session', 'conversation', 'connection', 'mcp', 'task'].includes(parsed.command ?? '')) {
+        const {applicationCommand} = await import('./application-command');
+        return applicationCommand(parsed.command!, parsed.positional, parsed.options);
+    }
+    if (parsed.options.connect) throw new Error('--connect is supported by project/session/conversation/connection/mcp/task commands');
     switch (parsed.command) {
         case 'fs': return remoteFilesCommand(parsed.positional, parsed.options);
         case 'twin': return digitalTwinCommand(parsed.positional, parsed.options);
@@ -89,6 +95,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
         if (arg === '-f' || arg === '--file') options.file = required(rest[++index], 'config path');
         else if (arg === '--params') options.paramsFile = required(rest[++index], 'parameters JSON file');
         else if (arg === '-p' || arg === '--prompt') options.prompt = (options.prompt ? `${options.prompt} ` : '') + required(rest[++index], 'prompt');
+        else if (arg === '--connect') options.connect = required(rest[++index], 'HTTPS endpoint');
+        else if (arg === '--client-cert') options.clientCert = required(rest[++index], 'client certificate');
+        else if (arg === '--client-key') options.clientKey = required(rest[++index], 'client key');
+        else if (arg === '--ca-cert') options.caCert = required(rest[++index], 'CA certificate');
+        else if (arg === '--auth-dir') options.authDir = required(rest[++index], 'authorization directory');
+        else if (arg === '--cert-dir') options.certDir = required(rest[++index], 'server certificate directory');
+        else if (arg === '--static') options.staticDir = required(rest[++index], 'static UI directory');
+        else if (arg === '--audit-file') options.auditFile = required(rest[++index], 'audit file');
+        else if (arg === '--agent') options.agent = required(rest[++index], 'agent id');
+        else if (arg === '--branch') options.branch = required(rest[++index], 'branch name');
         else if (arg === '--model') options.model = required(rest[++index], 'model');
         else if (arg === '--api-key-env') options.apiKeyEnv = required(rest[++index], 'api-key-env');
         else if (arg === '--credential-env') options.credentialEnv = required(rest[++index], 'credential environment variable');
@@ -132,6 +148,13 @@ function required(value: string | undefined, label: string): string {
 
 function help(): string {
     return `MindOS CLI\n\n` +
+        `  mindos project list|create [name] [--profile data-root] [--json]\n` +
+        `  mindos session list | create <project-id> <title> | show <session-id>\n` +
+        `  mindos session send|branches|branch|delete-branch <session-id> [text/name] [--agent id] [--branch name]\n` +
+        `  mindos conversation profiles <project-id> | list <project-id> <profile-id> [cursor]\n` +
+        `  mindos conversation show|send|branches|fork|reconcile|interrupt <project-id> <profile-id> <session-id> [text/name]\n` +
+        `  mindos connection list | mcp list | task show|events|cancel <session-id> <task-id>\n` +
+        `  --connect https://host:2000 --client-cert file --client-key file --ca-cert file\n` +
         `  mindos validate [-f mindos.yml] [--offline]\n` +
         `  mindos run [-f mindos.yml] [--headless] [--json] [--sandbox native|oci]\n` +
         `  mindos -p "your prompt" [--model provider/model] [--api-key-env ENV] [--base-url URL] [--protocol openai-chat|openai-responses] [--no-tools]\n` +
@@ -155,17 +178,19 @@ function help(): string {
         `选项：\n` +
         `  --profile <name>    desktop（默认，共享 ~/.config/mindos）或显式数据根路径\n` +
         `  -d, --http <addr>   启动 HTTP 版 MindOS UI（[ip:]port，默认 127.0.0.1）\n` +
+        `  --connect <url>     应用命令连接 HTTPS httpd；默认直接启动本地运行时，不监听端口\n` +
+        `  --follow            应用 session send 等待执行结果并输出事件 JSONL\n` +
         `  --state-dir <dir>   运行状态目录；默认 <dataRoot>/var/lib/cli-runs\n` +
         `  --set-home <dir>    将宿主目录挂载到 /workspace 并作为 Session 工作目录（默认 rw）\n` +
         `  --add-dir <dir>     追加宿主目录到 Session 上下文；可重复，默认只读，支持 <dir>:rw\n` +
         `  --grant-memory <id> 显式授权本次 Session 使用该共享记忆的配置范围；可重复\n` +
         `  --headless          无交互模式，事件作为 JSONL 写到 stdout（适合 CI）\n` +
         `  --params <file>     .flow 运行参数（JSON 对象，覆盖参数默认值）\n` +
-        `  --json              JSON 输出；隐含 --headless（遇到人工输入时返回退出码 3 而非阻塞）\n` +
+        `  --json              JSON 输出；离线 run 隐含 --headless，应用命令默认输出 JSON\n` +
         `  --offline           校验/查看时不要求 API key 环境变量已存在\n`;
 }
 
-const diagnostics = installRuntimeDiagnostics();
+const diagnostics = installRuntimeDiagnostics(process.argv.includes('--connect') ? 'cli-remote' : process.argv.includes('-d') || process.argv.includes('--http') ? 'httpd-cli' : 'cli-local');
 traceRuntimeStage('cli', () => main(process.argv.slice(2))).then(code => {
     recordRuntimeDiagnostic('command.completed', { code });
     if (code !== 0) process.stderr.write(`[Diagnostics] ${diagnostics.file}\n`);

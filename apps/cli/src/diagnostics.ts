@@ -12,8 +12,8 @@ export class RuntimeDiagnostics {
     private bytes = 0;
     private failed = false;
 
-    constructor(directory: string) {
-        this.file = path.join(directory, `${Date.now()}-${process.pid}.jsonl`);
+    constructor(directory: string, mode = 'cli-local') {
+        this.file = path.join(directory, `${mode}-${Date.now()}-${process.pid}.jsonl`);
         try { mkdirSync(directory, { recursive: true, mode: 0o700 }); }
         catch (error) { this.fail(error); }
     }
@@ -45,10 +45,10 @@ export function recordRuntimeDiagnostic(event: string, value?: unknown): void {
 
 export function runtimeDiagnosticPath(): string | undefined { return active?.file; }
 
-export function installRuntimeDiagnostics(): { file: string; dispose(): void } {
+export function installRuntimeDiagnostics(mode: 'cli-local' | 'cli-remote' | 'httpd-cli' = 'cli-local'): { file: string; dispose(): void } {
     const base = process.env.MINDOS_DIAGNOSTICS_DIR ?? path.join(
         process.env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'), 'mindos', 'logs', 'cli');
-    const log = new RuntimeDiagnostics(base); active = log;
+    const log = new RuntimeDiagnostics(base, mode); active = log;
     const fatal = (error: Error, origin: string) => {
         log.record(`process.${origin}`, error);
         process.stderr.write(`[Diagnostics] ${log.file}\n`);

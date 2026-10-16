@@ -1,0 +1,33 @@
+{
+  "name": "@itookit/node-host",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./http": "./src/http/index.ts",
+    "./runtime": "./src/runtime/index.ts",
+    "./storage": "./src/storage/index.ts",
+    "./authorization": "./src/authorization/index.ts",
+    "./logging": "./src/logging/index.ts",
+    "./client": "./src/client/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@itookit/app-core": "workspace:*",
+    "@itookit/app-contracts": "workspace:*",
+    "@itookit/app-transport": "workspace:*",
+    "@itookit/common": "workspace:*",
+    "@itookit/vfs-core": "workspace:*",
+    "@itookit/vfsdriver-local": "workspace:*",
+    "@itookit/piagent-driver": "workspace:*",
+    "@itookit/kernel-adapters": "workspace:*",
+    "@itookit/driver-llm": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3",
+    "@types/node": "^20.19.25"
+  }
+}

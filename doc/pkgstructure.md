@@ -7,11 +7,11 @@ pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应�
 |---|---|
 | `ui/` | app-shell、app-settings、llm-ui、llm-settings-ui、mdx-adapter、ui-common |
 | `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、durable-kernel、kernel-adapters、tools、device-tty、sanbox、sync-adapters |
-| `shared/` | app-contracts、common |
+| `shared/` | app-contracts、common、app-transport |
 | `libraries/` | driver-llm、piagent-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor |
-| `apps/` | web-app、tauri-app、cli、http-app、demo |
+| `apps/` | web-app、tauri-app、cli、http-app、demo、node-host（共享 Node 宿主适配包） |
 
-19 个业务包 + 8 个独立库 + 5 个宿主。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
+20 个业务/共享包 + 8 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 tools/pi-agent 工具工作区。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
 
 ### LLM 子系统分层（单向依赖）
 
@@ -48,6 +48,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/ui-common` | 共享 UI 组件、契约、浏览器工具。 |
 | `@itookit/app-settings` | 设置 UI 与导航投影：SettingsEngine、SkillsEngine；持久化、标签和维护用例归 app-core，Web 快照归宿主。 |
 | `@itookit/app-contracts` | 共享应用 DTO、事件、设置端口、身份与纯变换；不加载后端执行或 UI 实现。 |
+| `@itookit/app-transport` | 平台中立的 HTTP/SSE 与能力 RPC，应用描述/selector 注入机制，不加载 Node 或 UI。 |
 | `@itookit/app-core` | 无 UI 应用核心：MindOS profile、RunDefinition、共享 Session 文件/目录服务，以及统一装配 `createApplicationRuntime`（VFS/LLM/Session/Flow）与 headless `createKernelRuntime`（durable-kernel + kernel-adapters + Flow programs）。Web/Tauri/CLI 共用。 |
 | `@itookit/app-shell` | Web/Tauri UI shell：`initApp()`（宿主注入 services/localBackend，不创建 Runtime）、workspace 策略、路由、Workbench/编辑器装配；通过 shared/app-contracts 的独立服务接口与宿主注入端口调用后端。 |
 
@@ -56,9 +57,10 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | App | Role |
 |---|---|
 | `mind-os`（`apps/web-app`） | 主浏览器 SPA（IndexedDB 后端、workspace 配置、入口）。 |
-| `@itookit/cli`（`apps/cli`） | 命令行入口：YAML 工作流 → DurableFlowExecutor 运行。 |
+| `@itookit/cli`（`apps/cli`） | 命令行表示层：应用命令默认本地直调，显式 --connect 调 httpd；保留 YAML 离线执行入口。 |
 | `tauri-app`（`apps/tauri-app`） | Tauri 桌面壳。 |
-| `@itookit/http-app`（`apps/http-app`） | HTTP/SSE 应用宿主，server 持有 Runtime，client 只加载前端。 |
+| `@itookit/http-app`（`apps/http-app`） | HTTP/SSE 薄入口：委托 node-host，client 只加载前端。 |
+| `@itookit/node-host`（`apps/node-host`） | CLI/httpd 共用的 Node Runtime、SQLite、私密授权、锁、日志、mTLS 客户端和 HTTPS 服务。 |
 | `@itookit/demo`（`apps/demo`） | 历史演示宿主，部分脚本使用已弃用 API。 |
 
 ### 独立 npm 库与同步接入

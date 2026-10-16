@@ -5,8 +5,8 @@ import path from 'node:path';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { createVFS } from '@itookit/vfs-core';
 import { DigitalTwinService, SeqTwinStore } from '@itookit/app-core';
-import { NodeSqliteSidecarDb } from '../src/sqlite-sidecar';
-import { createHttpMindOSRuntime } from '../src/http-server';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
+import { openLocalApplication } from '../src/application-host';
 import { createHash } from 'node:crypto';
 import { scanCommand } from '../src/digital-twin-scans-command';
 
@@ -14,7 +14,8 @@ const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 it('registers watch shutdown before announcing readiness and removes signal handlers on stop', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'mindos-twin-watch-')); roots.push(root);
-    const runtime = await createHttpMindOSRuntime({ profile: root }, false);
+    const host = await openLocalApplication({ profile: root }, false);
+    const runtime = host.runtime;
     const before = new Set(process.listeners('SIGTERM'));
     const output = vi.spyOn(process.stdout, 'write').mockImplementation(() => {
         const stop = process.listeners('SIGTERM').find(listener => !before.has(listener));
@@ -23,7 +24,7 @@ it('registers watch shutdown before announcing readiness and removes signal hand
     try {
         await scanCommand(runtime.digitalTwin!, ['watch']);
         expect(new Set(process.listeners('SIGTERM'))).toEqual(before);
-    } finally { output.mockRestore(); await runtime.dispose(); }
+    } finally { output.mockRestore(); await host.close(); }
 });
 it('persists CLI scan plans and queued work through SQLite reopen without registering a workspace', async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), 'mindos-twin-scans-')); roots.push(rootDir);
@@ -57,11 +58,12 @@ it('boots profile administration without registering or modifying the current wo
     const workspace = path.join(root, 'workspace'), identityPath = path.join(workspace, '.mindos', 'info.seq');
     await mkdir(path.dirname(identityPath), { recursive: true });
     await writeFile(identityPath, 'existing workspace identity');
-    const runtime = await createHttpMindOSRuntime({ profile: path.join(root, 'profile'), setHome: workspace }, false);
+    const host = await openLocalApplication({ profile: path.join(root, 'profile'), setHome: workspace }, false);
+    const runtime = host.runtime;
     try {
         expect((await runtime.digitalTwin!.snapshot()).memories).toHaveLength(0);
         expect(await readFile(identityPath, 'utf8')).toBe('existing workspace identity');
-    } finally { await runtime.dispose(); }
+    } finally { await host.close(); }
 });
 it('persists twin review, authority, CAS and forgetting across real SQLite host restarts', async () => {
     const rootDir = await mkdtemp(path.join(os.tmpdir(), 'mindos-twin-')); roots.push(rootDir);

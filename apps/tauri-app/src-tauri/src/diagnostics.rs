@@ -83,7 +83,8 @@ pub fn install() {
         return;
     }
     recover_markers(&base);
-    let id = format!("{}-{}", stamp(), std::process::id());
+    let mode = if cfg!(debug_assertions) { "dev" } else { "release" };
+    let id = format!("tauri-{mode}-{}-{}", stamp(), std::process::id());
     let path = base.join(format!("{id}.jsonl"));
     let marker = base.join(format!("{id}.active"));
     let _ = std::fs::write(&marker, std::process::id().to_string());

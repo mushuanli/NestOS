@@ -2,7 +2,7 @@
 
 ## 单一 runtime 契约
 
-应用级宿主（Web / Tauri / CLI `-d`）共用：
+应用级宿主（Web / Tauri / CLI 本地应用命令 / httpd）共用：
 
 ```ts
 createApplicationRuntime(options): Promise<ApplicationRuntime>
@@ -100,7 +100,7 @@ Web/Tauri 的智能体、技能、流程、Provider/Connection 模型配置、MC
 
 ```ts
 await initApp({
-  ...createApplicationClient(bindLocalApplicationServices(runtime)),
+  ...await openApplicationView(runtime),
   workspaces,
   ui,
 });
@@ -127,30 +127,46 @@ Node CLI
 
 `status`、`runs`、`logs`、`checkpoints`、`delete` 只读 RunStore，不装配 runtime。
 
-### cli-web (`-d`)
+### 应用命令与共享 Node 宿主
 
-```text
-Node CLI
-  → createApplicationRuntime()
-  → HTTP API
-  → 浏览器 remote UI
+`project/session/conversation/connection/mcp/task` 默认通过 `apps/node-host/runtime` 以 headless 启动策略直接打开应用运行时，等待项目就绪后调用 `openApplicationView`，不监听 HTTP。显式 `--connect` 则由 `shared/app-transport/http` 和注入的 Node mTLS fetcher 实现相同 ApplicationClient。CLI 命令仅转换输入和输出，不复制权限、会话恢复、发送或回执策略。
+
+```mermaid
+C4Component
+    title HTTP、CLI 与 Tauri 的应用边界
+    Container_Boundary(presentation, "表示层") {
+        Component(web, "HTTP 浏览器", "app-shell / llm-ui", "展示和交互")
+        Component(cli, "CLI 应用命令", "apps/cli", "参数、JSON 与事件输出")
+        Component(tauri, "Tauri", "直接 API", "平台能力和相同 UI")
+    }
+    Container_Boundary(adapters, "适配层") {
+        Component(transport, "HTTP / SSE", "shared/app-transport", "编码、批次和通知机制")
+        Component(host, "Node 宿主", "apps/node-host", "SQLite、锁、OAuth、mTLS、日志与 HTTPS")
+    }
+    Container_Boundary(application, "应用与领域") {
+        Component(view, "openApplicationView", "app-core/host", "独立绑定、资源作用域和应用门面")
+        Component(policy, "领域用例", "app-core / llm-session", "授权、项目、会话和回执策略")
+        Component(kernel, "执行与存储", "Kernel / 驱动", "通用机制")
+    }
+    Rel(web, transport, "ApplicationClient", "HTTP / SSE")
+    Rel(cli, transport, "显式 --connect")
+    Rel(cli, host, "默认本地，不监听端口")
+    Rel(transport, host, "应用能力调用")
+    Rel(host, view, "创建视图")
+    Rel(tauri, view, "直接 API")
+    Rel(view, policy, "相同领域端口")
+    Rel(policy, kernel, "使用机制")
 ```
 
-浏览器端注入：
+共享契约位于 app-contracts；通用 rpc/ 不依赖应用能力目录，application/ 注入方法分类和 selector；HTTP 客户端无 DOM，浏览器断线提示由宿主注入。Node 私密存储、SQLite 和资源锁只在 node-host，不经共享传输包加载到前端。CLI、HTTP 使用同一 Node SQLite 实现；Tauri 仍注入原生存储和进程 API。
 
-```html
-<script>window.__MINDOS_MODE__ = 'remote'; window.__MINDOS_API__ = '/api';</script>
-```
+`openApplicationView` 为每个调用方创建独立 SessionManager/CommandBus 绑定，共享持久化服务和执行内核；关闭视图不拥有 Runtime。NodeApplicationHost 统一负责 Runtime 和资源关闭；HTTP ViewApi 借用 Runtime。Tauri trace 订阅当前视图 commandBus。Tauri 本轮保持 WebView 中的直接 API 装配，尚未把整个 TS 后端迁入独立原生进程。
 
-注入点：`apps/cli/src/http-server.ts` 的 `REMOTE_FLAG`，由 `-d` 启动的 HTTP 服务在返回 `index.html` 时插入 `</head>` 之前。
+### 独立 httpd 与 CLI `-d`
 
-读取点：`apps/tauri-app/src/main.ts` 的 `bootstrapRemote()` —— `__MINDOS_MODE__ === 'remote'` 时只读 `/status`、`/sessions`、`/runs` 并渲染，不调用 `createApplicationRuntime()`；`apps/web-app/src/main.ts` 没有 remote 分支，始终创建本地 runtime。
+二者调用同一个 `apps/node-host/http`。HTTP 宿主使用 `startupMode: 'server'`；LLM、设备、MCP 首次连接尝试、项目、Skill、Agent、调用恢复和草稿初始化完成后才 listen。MCP 不可达可降级，本地必要初始化失败则释放资源并拒绝启动。静态页面使用完整 HTTP Web UI，不再伪装 Tauri invoke，也不提供第二套 SQL/FS bridge。
 
-### 独立 HTTP 存储宿主
-
-HTTP 宿主使用 `startupMode: 'server'`。策略要求 LLM、设备、MCP 首次连接尝试、项目配置、Skill、Agent、调用恢复和草稿初始化在 ready 前完成；createApplicationApi 是异步工厂，startHost 等待其成功才 listen。MCP 不可达可以降级，必要本地初始化失败则拒绝启动并释放资源。交互宿主继续使用自己的首屏策略，持续任务和周期工作不纳入启动完成条件。
-
-`apps/http-app` 使用 Node.js 装配唯一 ApplicationRuntime 并提供相同 Web UI；浏览器通过应用视图查询、命令与事件调用 daemon，不创建执行 Runtime。存储直接使用 LocalFS/SQLite，跨 SeqFile 更新保持原生批量事务。既有 CLI `-d` 保持原有行为。详见 [HTTP 应用宿主](http-app.md)。
+日志文件按 cli-local、cli-remote、httpd-cli、httpd-dev/release、tauri-dev/release 命名。CLI 操作诊断与服务端审计分开，Tauri LLM 日志仅保存状态、时长和字节数。命令、认证、生命周期及日志路径见 [CLI 与 HTTP 模式](http-mode.md)，协议见 [HTTP 应用宿主](http-app.md)。
 
 ### 可选 Effect 独立作用域端口
 
@@ -710,7 +726,7 @@ HTTP 浏览器通过共享服务接口和显式能力传输调用 daemon，完�
 
 `ApplicationBackend.workbenchView` 聚合工作台服务，HTTP 宿主预取首目录与导航读模型，本地宿主省去预取。HTTP 查询与订阅分别按有界批次执行，写命令独立确认；配置/项目/会话等快照按领域事件失效，版本化增量与二进制传输只属于 HTTP 适配，不进入 UI 或业务策略。
 
-通用 vfs-ui、mdxeditor、llm-ui 只消费文件视图和 UI 控制端口；传输、身份、证书、请求生命周期与远端句柄均位于 apps/http-app。Web/Tauri 继续通过本地服务装配相同 UI。旧 app-shell/application 精简入口和 HttpStorageBackend 已删除。
+通用 vfs-ui、mdxeditor、llm-ui 只消费文件视图和 UI 控制端口；传输、身份、证书、请求生命周期与远端句柄分别位于 shared/app-transport 与 apps/node-host。Web/Tauri 继续通过本地服务装配相同 UI。旧 app-shell/application 精简入口和 HttpStorageBackend 已删除。
 
 
 应用门面位于 [application-client](../backend/app-core/src/host/application-client.ts)，前端消费 [ApplicationClient 契约](../shared/app-contracts/src/ports/application-client.ts)。宿主内部直接构造领域服务，不再保留 LocalBackendPort 工厂表。工作台、工具箱和任务读模型在后端聚合；[ViewScope](../backend/app-core/src/host/view-scope.ts) 管理视图资源并移除已释放对象。具体策略/机制图见 [前后端模块](design/frontend-backend-modules.md)。

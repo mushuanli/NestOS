@@ -1,10 +1,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { RpcPeer } from '../src/application/peer';
-import { installViewProjections } from '../src/application/projections';
-import { QueryBatcher } from '../src/client/query-batcher';
-import { ViewNotifications } from '../src/server/view-notifications';
+import { RpcPeer } from '@itookit/app-transport/application';
+import { installViewProjections } from '@itookit/app-transport/application';
+import { QueryBatcher } from '@itookit/app-transport/http';
+import { ViewNotifications } from '@itookit/node-host/http';
 import type { ServerResponse } from 'node:http';
-import type { Call, Reply, WireValue } from '../src/rpc/protocol';
+import type { Call, Reply, WireValue } from '@itookit/app-transport/rpc';
 
 const peers: RpcPeer[] = [];
 afterEach(async () => { vi.useRealTimers(); await Promise.all(peers.splice(0).map(peer => peer.close())); });
@@ -201,4 +201,25 @@ it('bounds notification bytes including a blocked in-flight batch', async () => 
     const call = { target: 'event', method: 'call', args: ['x'.repeat(600_000)] };
     await queue.enqueue(call); await vi.advanceTimersByTimeAsync(16); await queue.enqueue(call);
     expect(stream.end).toHaveBeenCalledOnce(); resume(); await vi.advanceTimersByTimeAsync(16); expect(stream.write).not.toHaveBeenCalled();
+});
+
+
+it('installs earlier event bindings before commands while independent queries remain concurrent', async () => {
+    let register!: () => void;
+    const gate = new Promise<void>(resolve => {register = resolve;});
+    const listeners = new Set<(value: string) => void>(), received = vi.fn();
+    const files = {getNode: async () => null, getChildren: async () => [], search: async () => [],
+        onAny: (listener: (value: string) => void) => {listeners.add(listener); return () => listeners.delete(listener);},
+        writeContent: vi.fn(async () => {for (const listener of listeners) listener('completed');})};
+    let client!: RpcPeer;
+    const server = new RpcPeer('server', call => client.handle(call));
+    client = new RpcPeer('client', async call => {if (server.binding(call)) await gate; return server.handle(call);});
+    peers.push(server, client);
+    const boot = await server.bootstrap(files); client.applyUpdates(boot.updates); const root = client.decode(boot.value!);
+    const stop = root.onAny(received), sent = root.writeContent('/file', 'content');
+    await expect(root.getChildren('/')).resolves.toEqual([]);
+    expect(files.writeContent).not.toHaveBeenCalled();
+    register(); await sent;
+    await vi.waitFor(() => expect(received).toHaveBeenCalledWith('completed'));
+    stop();
 });

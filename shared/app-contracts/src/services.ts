@@ -11,3 +11,5 @@ export type * from './ports/application-client';
 export type * from './ports/task-view';
 
 export type * from './ports/navigation';
+
+export type { HostedApplicationClient } from './ports/hosted-application';

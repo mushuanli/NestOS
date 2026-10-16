@@ -3,8 +3,8 @@ import { mkdtemp, rm, writeFile, symlink } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openLocalFSBackend, type LocalFSBackend } from '@itookit/vfsdriver-local';
-import { NodeSqliteSidecarDb } from '../src/server/sqlite-sidecar';
-import { guardHostStorage } from '../src/server/host-storage';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
+import { guardHostStorage } from '@itookit/node-host/storage';
 
 let directory: string, backend: LocalFSBackend;
 beforeEach(async () => {

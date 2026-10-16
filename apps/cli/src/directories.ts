@@ -4,7 +4,7 @@ import path from 'node:path';
 import type { DirectorySourceProvider } from '@itookit/app-core';
 import { createFileSystemSource, type FileSystemSourceOwner, type IFileSystem } from '@itookit/vfs-core';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
-import { NodeSqliteSidecarDb } from './sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 
 /** Node-host directory sources used by CLI --set-home / --add-dir / RequestWorkspaceAccess. */
 export class CliDirectorySourceProvider implements DirectorySourceProvider {

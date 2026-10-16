@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createApplicationRuntime, type ApplicationRuntime } from '@itookit/app-core';
 import { openLocalFSBackend, type ISidecarDb } from '@itookit/vfsdriver-local';
-import { NodeSqliteSidecarDb } from '../../src/sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 
 /**
  * Boot-cost profile: counts logical sidecar (SQLite) calls and VFS engine operations per boot stage.

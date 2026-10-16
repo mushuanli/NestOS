@@ -3,10 +3,10 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import type { Server } from 'node:http';
 import type { IStorageBackend } from '@itookit/vfs-core';
-import { loadCertificates } from '../src/server/certificates';
-import { createHttpServer } from '../src/server/http-server';
-import type { AuditEvent, AuditPort } from '../src/server/audit-log';
-import type { HostedApi } from '../src/server/http-server';
+import { loadCertificates } from '@itookit/node-host/http';
+import { createHttpServer } from '@itookit/node-host/http';
+import type { AuditEvent, AuditPort } from '@itookit/node-host/logging';
+import type { HostedApi } from '@itookit/node-host/http';
 
 export async function authenticatedFetch(directory: string): Promise<{ fetcher: typeof fetch; close(): void }> {
     const [ca, cert, key] = await Promise.all(['ca.crt', 'client.crt', 'client.key'].map(file => readFile(path.join(directory, file))));

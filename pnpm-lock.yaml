@@ -85,9 +85,15 @@ importers:
 
   apps/cli:
     dependencies:
+      '@itookit/app-contracts':
+        specifier: workspace:*
+        version: link:../../shared/app-contracts
       '@itookit/app-core':
         specifier: workspace:*
         version: link:../../backend/app-core
+      '@itookit/app-transport':
+        specifier: workspace:*
+        version: link:../../shared/app-transport
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -112,6 +118,9 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../../backend/llm-tasks
+      '@itookit/node-host':
+        specifier: workspace:*
+        version: link:../node-host
       '@itookit/piagent-driver':
         specifier: workspace:*
         version: link:../../libraries/piagent-driver
@@ -225,6 +234,9 @@ importers:
       '@itookit/app-shell':
         specifier: workspace:*
         version: link:../../ui/app-shell
+      '@itookit/app-transport':
+        specifier: workspace:*
+        version: link:../../shared/app-transport
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -243,6 +255,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
+      '@itookit/node-host':
+        specifier: workspace:*
+        version: link:../node-host
       '@itookit/piagent-driver':
         specifier: workspace:*
         version: link:../../libraries/piagent-driver
@@ -274,6 +289,43 @@ importers:
       vitest:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.25)(jiti@1.21.7)(jsdom@27.2.0)(tsx@4.20.6)(yaml@2.8.2)
+
+  apps/node-host:
+    dependencies:
+      '@itookit/app-contracts':
+        specifier: workspace:*
+        version: link:../../shared/app-contracts
+      '@itookit/app-core':
+        specifier: workspace:*
+        version: link:../../backend/app-core
+      '@itookit/app-transport':
+        specifier: workspace:*
+        version: link:../../shared/app-transport
+      '@itookit/common':
+        specifier: workspace:*
+        version: link:../../shared/common
+      '@itookit/driver-llm':
+        specifier: workspace:*
+        version: link:../../libraries/driver-llm
+      '@itookit/kernel-adapters':
+        specifier: workspace:*
+        version: link:../../backend/kernel-adapters
+      '@itookit/piagent-driver':
+        specifier: workspace:*
+        version: link:../../libraries/piagent-driver
+      '@itookit/vfs-core':
+        specifier: workspace:*
+        version: link:../../libraries/vfs-core
+      '@itookit/vfsdriver-local':
+        specifier: workspace:*
+        version: link:../../libraries/vfsdriver-local
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.25
+        version: 20.19.43
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   apps/tauri-app:
     dependencies:
@@ -1096,6 +1148,19 @@ importers:
       '@itookit/vfs-sync':
         specifier: workspace:*
         version: link:../../libraries/vfs-sync
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+
+  shared/app-transport:
+    dependencies:
+      '@itookit/app-contracts':
+        specifier: workspace:*
+        version: link:../app-contracts
+      '@itookit/vfs-core':
+        specifier: workspace:*
+        version: link:../../libraries/vfs-core
+    devDependencies:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

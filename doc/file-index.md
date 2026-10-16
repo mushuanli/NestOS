@@ -163,3 +163,16 @@
 
 
 - pi-agent 目录项目、目录身份与策略版本：`tools/pi-agent/src/projects/`；客户端：`libraries/piagent-driver/src/projects.ts`、`libraries/piagent-driver/src/project-process.ts`；设计：[项目模型](design/pi-agent-project-model.md)。
+
+## CLI 与共享宿主
+
+| 场景 | 入口 |
+|---|---|
+| 本地/远程应用模式选择 | `apps/cli/src/application-host.ts` |
+| Session/远程 Conversation 验证 | `apps/cli/src/application-command.ts` |
+| 每个客户端的独立会话绑定 | `backend/app-core/src/host/application-view.ts` |
+| Node Runtime 与私密资源所有权 | `apps/node-host/src/runtime/application.ts` |
+| HTTPS 服务和初始化屏障 | `apps/node-host/src/http/start-host.ts` |
+| 平台中立 HTTP 客户端 | `shared/app-transport/src/http/view-client.ts` |
+| Node mTLS 注入 | `apps/node-host/src/client/index.ts` |
+| 模式日志与使用说明 | [CLI 与 HTTP](http-mode.md) |

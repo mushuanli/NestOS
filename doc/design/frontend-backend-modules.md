@@ -4,7 +4,7 @@
 
 ## 目录归属
 
-所有业务 UI 工作区统一放在 ui/，后端业务工作区统一放在 backend/，app-contracts/common 放在 shared/；apps/ 只承担宿主接线。原 packages/ 已清理，不再使用。独立 UI 库 vfs-ui、mdxeditor 保留在 libraries/，维持 Git 子模块与 npm 发布身份，但加载边界按前端检查。
+所有业务 UI 工作区统一放在 ui/，后端业务工作区统一放在 backend/，app-contracts/common/app-transport 放在 shared/；apps/ 只承担宿主接线。原 packages/ 已清理，不再使用。独立 UI 库 vfs-ui、mdxeditor 保留在 libraries/，维持 Git 子模块与 npm 发布身份，但加载边界按前端检查。
 
 | 归属 | 目录 | 入口规则 |
 |---|---|---|
@@ -17,7 +17,9 @@
 | 所属领域契约 | 各包公开 contracts 入口及目录 | 类型、命令标识与纯校验；不转发执行类的运行时值 |
 | 共享文件机制 | libraries/vfs-core | 文件接口和通用机制；展示文件源可使用 MemoryBackend，不装配应用执行 Runtime |
 | 宿主装配 | apps/* 的 main 与平台装配代码 | 本地宿主可同时装配双方，前端模块本身不能反向创建后端 |
-| HTTP 双端 | apps/http-app/src/client 与 src/server | client 经 HTTP/SSE；server 持有唯一 ApplicationRuntime 与可回收的浏览器视图 |
+| 共享传输 | shared/app-transport | 无 DOM/Node 的 HTTP/SSE、RPC、应用描述与 selector；不执行后端业务 |
+| Node 宿主 | apps/node-host | Node 存储、私密授权、锁、日志与 HTTPS；不导入 UI |
+| HTTP 入口 | apps/http-app/src/client 与 src/server | client 挂载完整 UI；server 委托 node-host，不复制业务 |
 | Web 存储适配 | apps/web-app/src/storage | 浏览器内的后端存储能力，不属于设置 UI |
 
 “后端”是职责归属。Web 本地模式的执行与 IndexedDB 适配可以运行在浏览器内；Tauri 本地模式可通过直接 API。HTTP 浏览器只加载前端。当前未把 Web 的本地后端移到 Worker，也未把 Tauri 的整个执行内核移到 Rust 进程。
@@ -28,11 +30,11 @@ app-shell 接收 `ApplicationClient` 的 `services: ApplicationServices` 与 `ba
 
 ```ts
 import { createApplicationRuntime } from '@itookit/app-core';
-import { bindLocalApplicationServices, createApplicationClient } from '@itookit/app-core/host';
+import { openApplicationView } from '@itookit/app-core/host';
 import { initApp } from '@itookit/app-shell';
 
 const runtime = await createApplicationRuntime(runtimeOptions);
-const client = createApplicationClient(bindLocalApplicationServices(runtime));
+const client = await openApplicationView(runtime);
 const app = await initApp({ ...client, workspaces, ui });
 app.onDestroy(() => client.close(), 'sources');
 await app.destroy();
@@ -53,7 +55,7 @@ C4Component
         Component(client, "ApplicationClient", "shared/app-contracts", "异步应用操作与快照能力")
     }
     Container_Boundary(host, "宿主与后端") {
-        Component(local, "本地调用", "Web / Tauri", "直接注入应用门面")
+        Component(local, "本地调用", "Web / Tauri / CLI", "直接注入应用门面")
         Component(http, "HTTP 双端适配", "HTTP / SSE", "编码、批次、通知、文件字节")
         Component(view, "应用门面", "app-core/host", "绑定构造依赖、聚合查询、资源作用域")
         Component(domain, "业务用例与领域", "app-core / domain", "项目、会话、配置、执行规则")
@@ -89,11 +91,11 @@ C4Component
 
 ## 验证与限制
 
-`pnpm modules:check` 检查所有前端、后端与共享生产源码的传递运行时依赖，包括 re-export、动态 import 和 require；应用类型引用也受检查：UI 和共享层禁止引用 app-core；后端和共享层禁止引用 UI。领域类型通过中立 contracts 入口引用。检查同时覆盖 HTTP client/server 和 CLI 后端入口。通过共享 barrel 间接加载另一端也会失败。
+`pnpm modules:check` 检查所有前端、后端与共享生产源码的传递运行时依赖，包括 re-export、动态 import 和 require；应用类型引用也受检查：UI 和共享层禁止引用 app-core；后端和共享层禁止引用 UI。领域类型通过中立 contracts 入口引用。检查同时覆盖 HTTP client/server、共享传输、Node 宿主和 CLI 后端入口。通过共享 barrel 间接加载另一端也会失败。
 
 `pnpm modules:buildcheck` 将八个前端包的完整公开根入口一起构建，构建图出现后端实现即失败。HTTP Vite 和服务端 tsup 另检查实际构建输入；这两种检查补充源码守卫，避免只靠 tree shaking 或 package.json 判断边界。
 
-物理目录、独立应用服务接口与加载边界已实施。HTTP 完整工作区现在通过原 app-shell 接线，传输代码留在 apps/http-app；模块加载检查、完整 Shell 回归和真实 HTTPS 服务端口测试分别验证加载隔离、UI 复用与远端行为。平台原生能力由宿主注入，不能把统一 UI 当作各平台权限完全一致。
+物理目录、独立应用服务接口与加载边界已实施。HTTP 完整工作区现在通过原 app-shell 接线，传输机制位于 shared/app-transport，Node 服务适配位于 apps/node-host；模块加载检查、完整 Shell 回归和真实 HTTPS 服务端口测试分别验证加载隔离、UI 复用与远端行为。平台原生能力由宿主注入，不能把统一 UI 当作各平台权限完全一致。
 
 
 ## 2026-10-14 目录隔离验收

@@ -1,0 +1,10 @@
+export { RpcPeer } from './peer';
+export { RPC_VERSION, MAX_RPC_HANDLES } from './protocol';
+export type { WireValue, Call, Reply, CallbackRequest, Descriptor } from './protocol';
+export { descriptorChanges, applyDescriptorPatch } from './view-cache';
+export type { WirePatch, DescriptorPatch } from './view-cache';
+export { CapabilityLifetime, capabilityReferences, CapabilityRetirements } from './lifetime';
+export { viewDomain, affectedDomains, isViewQuery, subscriptionMode } from './capabilities';
+export type { MethodMode, ViewDomain, CapabilitySchema, CapabilityRegistry } from './capabilities';
+export { SnapshotCodec, wireSize } from './snapshot-codec';
+export { MAX_BODY_BYTES } from './protocol';

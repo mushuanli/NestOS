@@ -201,3 +201,10 @@ test('RPC mechanism cannot import application metadata or domain policy', () => 
     assert.equal(importError(host, file, './protocol', packages), undefined);
     assert.equal(importError(host, file, '@itookit/vfs-core', packages), undefined);
 });
+
+test('shared RPC transport keeps application descriptors outside its mechanism directory', () => {
+    const transport = pkg('app-transport');
+    const file = resolve(transport.dir, 'src/rpc/peer.ts');
+    assert.match(importError(transport, file, '../application/capabilities', packages), /metadata through injection/);
+    assert.equal(importError(transport, file, './protocol', packages), undefined);
+});

@@ -1,80 +1,39 @@
-/**
- * @file apps/tauri-app/src/log/tauri-llm-logger.ts
- * @description TauriLLMLogger — persists complete LLM exchange to {rootDir}/var/log/llm/{session}.json
- *
- * Buffers user message, full request params, response headers, and assistant response,
- * then flushes a single JSON file with the complete picture. Overwrite mode — only
- * the latest exchange is kept per session.
- */
-
 import { invoke } from '@tauri-apps/api/core';
 import type { ILLMLogger, LLMRequestLog, LLMResponseLog } from '@itookit/driver-llm/contracts';
 
 interface LogRecord {
-    userContent?: string;
-    userRole?: 'user' | 'system';
-    request?: LLMRequestLog;
-    response?: LLMResponseLog;
-    assistantContent?: string;
-    ts: string;
+    startedAt: number; provider?: string; model?: string; messageCount?: number;
+    userBytes?: number; assistantBytes?: number; status?: number;
 }
-
+/** Persist bounded metadata, with distinct desktop mode names and no conversation or credentials. */
 export class TauriLLMLogger implements ILLMLogger {
-    constructor(private rootDir: string) {}
-
-    /**
-     * Observer for the moment response headers arrive, i.e. the provider has
-     * received the request and started answering. Used by the acceptance trace to
-     * close its `send-to-provider` action; unset in normal builds.
-     */
+    private readonly pending = new Map<string, LogRecord>();
     onResponse?: (session: string, status: number) => void;
-
-    private pending = new Map<string, LogRecord>();
-
+    constructor(private readonly rootDir: string, private readonly mode: 'dev' | 'release' = import.meta.env.DEV ? 'dev' : 'release') {}
+    private record(session: string): LogRecord {
+        let record = this.pending.get(session);
+        if (!record) { record = {startedAt: Date.now()}; this.pending.set(session, record); }
+        if (this.pending.size > 128) this.pending.delete(this.pending.keys().next().value!);
+        return record;
+    }
     logMessage(session: string, role: 'user' | 'assistant' | 'system', content: string): void {
-        let rec = this.pending.get(session);
-        if (!rec) { rec = { ts: new Date().toISOString() }; this.pending.set(session, rec); }
-
-        if (role === 'user' || role === 'system') {
-            rec.userContent = content;
-            rec.userRole = role;
-        } else {
-            rec.assistantContent = content;
-            this.flush(session, rec);
-        }
+        const record = this.record(session), bytes = new TextEncoder().encode(content).byteLength;
+        if (role === 'assistant') { record.assistantBytes = bytes; this.flush(session, record); }
+        else record.userBytes = bytes;
     }
-
     logRequest(session: string, request: LLMRequestLog): void {
-        let rec = this.pending.get(session);
-        if (!rec) { rec = { ts: new Date().toISOString() }; this.pending.set(session, rec); }
-        rec.request = request;
+        Object.assign(this.record(session), {provider: request.provider, model: request.model, messageCount: request.messages.length});
     }
-
     logResponse(session: string, response: LLMResponseLog): void {
-        let rec = this.pending.get(session);
-        if (!rec) { rec = { ts: new Date().toISOString() }; this.pending.set(session, rec); }
-        rec.response = response;
+        const record = this.record(session); record.status = response.status;
         this.onResponse?.(session, response.status);
+        if (response.status >= 400) this.flush(session, record);
     }
-
-    private flush(session: string, rec: LogRecord): void {
+    private flush(session: string, record: LogRecord): void {
         this.pending.delete(session);
-        const payload = JSON.stringify({
-            ts: rec.ts,
-            session,
-            user: rec.userContent ? { role: rec.userRole, content: rec.userContent } : undefined,
-            request: rec.request,
-            response: rec.response,
-            assistant: rec.assistantContent,
-        }, null, 2) + '\n';
-
-        const encoder = new TextEncoder();
-        const path = `${this.rootDir}/var/log/llm/${session}.json`;
-        invoke('fs_write_file', {
-            path,
-            data: Array.from(encoder.encode(payload)),
-        }).catch((e) => {
-            console.warn('[TauriLLMLogger] write failed:', e);
-        });
+        const payload = JSON.stringify({...record, session, mode: this.mode, durationMs: Date.now() - record.startedAt}) + '\n';
+        const path = `${this.rootDir}/var/log/llm/tauri-${this.mode}-${encodeURIComponent(session)}.json`;
+        void invoke('fs_write_file', {path, data: Array.from(new TextEncoder().encode(payload))})
+            .catch(error => console.warn('[TauriLLMLogger] write failed:', error));
     }
 }

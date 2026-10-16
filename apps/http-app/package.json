@@ -27,7 +27,9 @@
     "@itookit/mdx-adapter": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
     "@itookit/kernel-adapters": "workspace:*",
-    "@itookit/llm-flow": "workspace:*"
+    "@itookit/llm-flow": "workspace:*",
+    "@itookit/node-host": "workspace:*",
+    "@itookit/app-transport": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

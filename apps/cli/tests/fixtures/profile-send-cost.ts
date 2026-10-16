@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createApplicationRuntime } from '@itookit/app-core';
 import { openLocalFSBackend, type ISidecarDb } from '@itookit/vfsdriver-local';
-import { NodeSqliteSidecarDb } from '../../src/sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { listenForTest } from '../listen';
 
 // Counts logical sidecar calls, not Tauri IPC: one sidecar method may issue multiple SQL calls.

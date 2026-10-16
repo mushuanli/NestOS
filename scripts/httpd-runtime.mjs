@@ -36,7 +36,7 @@ export function copySource(root, destination, files = sourceFiles(root)) {
 export function runtimePaths(mode, id = 'current', env = process.env) {
     const config = path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'mindos');
     const logs = path.join(config, 'logs', 'http', mode, id);
-    return { config, logs, audit: path.join(logs, 'audit.jsonl'), runtime: path.join(logs, 'runtime.log'),
+    return { config, logs, audit: path.join(logs, `httpd-${mode}-audit.jsonl`), runtime: path.join(logs, `httpd-${mode}-runtime.log`),
         auth: path.join(config, 'http-auth', mode), developmentRoot: path.join(config, 'http-dev', 'data') };
 }
 export function hostArguments(mode, id, args, env = process.env) {

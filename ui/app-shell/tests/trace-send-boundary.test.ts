@@ -1,4 +1,7 @@
-import { expect, it, vi } from 'vitest';
+import {afterEach, beforeEach, expect, it, vi} from 'vitest';
+const invoke = vi.fn(async (_command: string, _args: unknown) => undefined);
+beforeEach(() => { invoke.mockClear(); vi.stubGlobal('window', {__TAURI_INTERNALS__: {invoke}}); });
+afterEach(() => vi.unstubAllGlobals());
 import { createSendBoundary } from '../../../apps/tauri-app/src/log/send-boundary';
 import { TauriLLMLogger } from '../../../apps/tauri-app/src/log/tauri-llm-logger';
 
@@ -59,4 +62,23 @@ it('closes the trace window when the provider answers with headers', () => {
     logger.onResponse = undefined;
     logger.logResponse('session', { status: 500, headers: {} });
     expect(onResponse).toHaveBeenCalledTimes(1);
+});
+
+
+it('separates desktop mode logs and writes only provider metadata without content or credentials', () => {
+    invoke.mockClear();
+    for (const mode of ['dev', 'release'] as const) {
+        const logger = new TauriLLMLogger('/data', mode);
+        logger.logMessage('session', 'user', 'private prompt');
+        logger.logRequest('session', {provider: 'example', model: 'model', messages: [{role: 'user', content: 'private prompt'}],
+            params: {token: 'secret-token'}, headers: {Authorization: 'secret-token'}} as never);
+        logger.logResponse('session', {status: 200, headers: {Authorization: 'secret-token'}});
+        logger.logMessage('session', 'assistant', 'private reply');
+    }
+    const calls = invoke.mock.calls;
+    expect(calls.map(([, args]) => (args as {path: string}).path)).toEqual([
+        '/data/var/log/llm/tauri-dev-session.json', '/data/var/log/llm/tauri-release-session.json']);
+    const record = new TextDecoder().decode(Uint8Array.from((calls[0][1] as {data: number[]}).data));
+    expect(JSON.parse(record)).toMatchObject({provider: 'example', messageCount: 1, status: 200, mode: 'dev'});
+    expect(record).not.toMatch(/private prompt|private reply|secret-token|Authorization/);
 });

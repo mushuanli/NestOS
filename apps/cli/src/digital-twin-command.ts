@@ -1,5 +1,5 @@
 import type { DigitalTwinService, TwinMemoryData, TwinSourceSpec } from '@itookit/app-core';
-import { createHttpMindOSRuntime } from './http-server';
+import { openLocalApplication } from './application-host';
 import type { CommandOptions } from './commands';
 import { scanCommand, SCAN_COMMANDS } from './digital-twin-scans-command';
 
@@ -8,12 +8,12 @@ export async function digitalTwinCommand(args: string[], options: CommandOptions
     const originalLog = console.log;
     console.log = (...values) => console.error(...values);
     let runtime;
-    try { runtime = await createHttpMindOSRuntime(options, false); } finally { console.log = originalLog; }
+    try { runtime = await openLocalApplication(options, false); } finally { console.log = originalLog; }
     try {
-        const result = await execute(runtime.digitalTwin!, args, options.value);
+        const result = await execute(runtime.runtime.digitalTwin!, args, options.value);
         process.stdout.write(`${JSON.stringify(result ?? { success: true }, null, 2)}\n`);
         return 0;
-    } finally { await runtime.dispose(); }
+    } finally { await runtime.close(); }
 }
 async function execute(service: DigitalTwinService, args: string[], value?: string): Promise<unknown> {
     const [action, id, revision, decision] = args;

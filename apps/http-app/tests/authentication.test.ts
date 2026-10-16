@@ -7,10 +7,10 @@ import { promisify } from 'node:util';
 import { X509Certificate } from 'node:crypto';
 import path from 'node:path';
 import { openLocalFSBackend, type LocalFSBackend } from '@itookit/vfsdriver-local';
-import { NodeSqliteSidecarDb } from '../src/server/sqlite-sidecar';
-import { createCertificates } from '../src/server/create-certificates';
-import { loadCertificates } from '../src/server/certificates';
-import { AuditLog } from '../src/server/audit-log';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
+import { createCertificates } from '@itookit/node-host/http';
+import { loadCertificates } from '@itookit/node-host/http';
+import { AuditLog } from '@itookit/node-host/logging';
 import { secureServers, authenticatedFetch, close } from './tls-fixture';
 
 let temp: string, certificates: string, untrusted: string, backend: LocalFSBackend;

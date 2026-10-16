@@ -21,6 +21,16 @@ import { sandboxDoctor } from './shell';
 import type { BlockedEffect, CompiledWorkflow, PendingInteraction, RunManifest } from './types';
 
 export interface CommandOptions {
+    connect?: string;
+    clientCert?: string;
+    clientKey?: string;
+    caCert?: string;
+    authDir?: string;
+    certDir?: string;
+    staticDir?: string;
+    auditFile?: string;
+    agent?: string;
+    branch?: string;
     file?: string;
     paramsFile?: string;
     stateDir?: string;

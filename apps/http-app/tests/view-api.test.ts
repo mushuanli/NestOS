@@ -1,19 +1,19 @@
-import { RPC_VERSION } from '../src/rpc/protocol';
+import { RPC_VERSION } from '@itookit/app-transport/rpc';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { openLocalFSBackend, type LocalFSBackend } from '@itookit/vfsdriver-local';
-import { createApplicationApi } from '../src/server/application-host';
-import { createCertificates } from '../src/server/create-certificates';
-import { NodeSqliteSidecarDb } from '../src/server/sqlite-sidecar';
-import { HttpViewClient } from '../src/client/view-client';
+import { createApplicationApi } from '@itookit/node-host/http';
+import { createCertificates } from '@itookit/node-host/http';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
+import { HttpViewClient } from '@itookit/app-transport/http';
 import { authenticatedFetch, close, secureServers } from './tls-fixture';
 
 let certificateRoot: string, certificates: string, directory: string, backend: LocalFSBackend;
 let api: Awaited<ReturnType<typeof createApplicationApi>>, server: Awaited<ReturnType<typeof secureServers>>, auth: Awaited<ReturnType<typeof authenticatedFetch>>;
 const clients: HttpViewClient[] = [];
-const auditEvents: import('../src/server/audit-log').AuditEvent[] = [];
+const auditEvents: import('@itookit/node-host/logging').AuditEvent[] = [];
 beforeAll(async () => { certificateRoot = await mkdtemp(path.join(tmpdir(), 'mindos-view-certs-')); certificates = path.join(certificateRoot, 'certs'); await createCertificates(certificates, ['127.0.0.1']); });
 afterAll(async () => { await rm(certificateRoot, { recursive: true, force: true }); });
 beforeEach(async () => {

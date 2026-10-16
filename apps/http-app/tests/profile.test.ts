@@ -2,8 +2,8 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { configDirectory, resolveDataRoot } from '../src/server/profile';
-import { options } from '../src/server/options';
+import { configDirectory, resolveDataRoot } from '@itookit/node-host/runtime';
+import { options } from '@itookit/node-host/http';
 
 let temp: string, config: string, cwd: string;
 beforeEach(async () => {

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { gzip, gunzipSync } from 'node:zlib';
 import type { ServerResponse } from 'node:http';
-import { serveStatic } from '../src/server/static-files';
+import { serveStatic } from '@itookit/node-host/http';
 
 vi.mock('node:zlib', async original => { const actual = await original<typeof import('node:zlib')>(); return { ...actual, gzip: vi.fn(actual.gzip) }; });
 let directory: string;

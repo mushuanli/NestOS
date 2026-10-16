@@ -1,12 +1,12 @@
 # @itookit/http-app
 
-独立 Node.js 应用宿主。服务端持有 ApplicationRuntime，浏览器通过共享服务端口展示和控制，完整复用 app-shell.initApp。
+HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位于 shared/app-transport。服务端持有 ApplicationRuntime，浏览器通过共享服务端口展示和控制，完整复用 app-shell.initApp。
 
-- `start-host.ts` 必须等待 server 策略的 ApplicationRuntime 初始化成功后再 listen；失败清理全部资源且不开放端口。MCP 首次连接尝试可失败降级，不能吞掉本地初始化错误后仍声称 ready。
-- `src/server/` 装配 LocalFS、Node SQLite 和静态 UI；装配唯一应用 Runtime；浏览器不能再装配另一套执行 Runtime。
+- `apps/node-host/src/http/start-host.ts` 必须等待 server 策略的 ApplicationRuntime 初始化成功后再 listen；失败清理全部资源且不开放端口。MCP 首次连接尝试可失败降级，不能吞掉本地初始化错误后仍声称 ready。
+- `src/server/` 仅委托 node-host/http；node-host 装配 LocalFS、Node SQLite、静态 UI 与唯一应用 Runtime；浏览器不能再装配另一套执行 Runtime。
 - `src/client/` 不导入 Node、LocalFS、Tauri。Web UI 经 mind-os 的公开入口导入。
 - 对外 API 暴露应用查询、命令、确认和事件，不提供 SQL、任意宿主路径、原始托管状态写入或 Tauri invoke；没有原始 VFS 存储 HTTP 协议。
-- application/ 绑定统一应用门面、能力描述与共享 selector；rpc/ 通过注入获得描述，不导入业务模块。协议 v10 拒绝旧客户端。
+- app-transport/application 绑定应用能力描述与共享 selector；app-transport/rpc 通过注入获得描述，不导入业务模块。协议 v10 拒绝旧客户端。
 - bootstrap 不预开文件系统，主题与 UI 状态经文档端口读取；OCR、设置、恢复与聊天能力按消费创建。设置工作区以声明身份传递，后端按需解析并保持写权限保护，不能通过延迟视图绕过托管状态命令。
 - bootstrap 安装后才消费 SSE；资源释放回收独占句柄和订阅，共享句柄保留，回调能力按借用寿命释放。
 - 查询、订阅装配分别有界合并；写命令独立确认。快照按资源事件失效，未知写操作保留域失效兜底，通知批次保持顺序，版本补丁不得覆盖新状态。二进制通道仍使用已授权的文件视图句柄。
@@ -18,7 +18,7 @@
 - 证书、CA 私钥、浏览器导入包及审计日志必须保存在 VFS 数据根之外；证书不能置于静态目录。日志仅记录认证与请求元数据，不记录请求头、参数、文件正文、模型消息和密钥。
 - `audit-log` 的 JSONL 文件权限 0600；每份 10 MiB，保留当前及 3 份轮转记录。客户端证书撤销在下一次 HTTP 请求重新核对，包括已有连接。
 
-- `provider-auth/` 持有 OAuth 的 loopback 回调、PKCE/OIDC 校验和私密令牌；仅安全状态及命令通过应用能力描述公开，禁止公开 credentials、令牌或私有存储。
+- `apps/node-host/src/authorization/` 持有 OAuth 的 loopback 回调、PKCE/OIDC 校验和私密令牌；仅安全状态及命令通过应用能力描述公开，禁止公开 credentials、令牌或私有存储。
 
 验证：`pnpm --filter @itookit/http-app test`、`typecheck`、`build`。
 

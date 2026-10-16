@@ -267,6 +267,7 @@ export class BranchService {
         if (manifest.branches[branchName] === undefined) {
             throw new ConversationError(ConversationErrorCode.SESSION_INVALID, `Branch not found: ${branchName}`);
         }
+        if (manifest.currentBranch === branchName) throw new ConversationError(ConversationErrorCode.SESSION_INVALID, 'Cannot delete the current branch');
         await roundLog.refs().delete(branchName);
         await this.registry.reloadSessionData(sessionId, state);
         eventBus.emitSession(sessionId, {

@@ -50,3 +50,12 @@ it.each(['throw new Error("fatal")', 'Promise.reject(new Error("rejected"))'])('
     expect(result.code).toBe(1); expect(result.stderr).toContain(root);
     expect((await rows(root)).some(row => row.event === 'process.uncaughtException' || row.event === 'process.unhandledRejection')).toBe(true);
 });
+
+
+it('gives local, connected and hosted CLI diagnostics distinct mode filenames', async () => {
+    const root = await directory();
+    const files = ['cli-local', 'cli-remote', 'httpd-cli'].map(mode => new RuntimeDiagnostics(root, mode));
+    for (const log of files) log.record('mode');
+    expect(await readdir(root)).toHaveLength(3);
+    expect(files.map(log => path.basename(log.file).split('-').slice(0, 2).join('-'))).toEqual(['cli-local', 'cli-remote', 'httpd-cli']);
+});

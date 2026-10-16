@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { RpcPeer } from '../src/application/peer';
-import { HttpViewClient } from '../src/client/view-client';
+import { RpcPeer } from '@itookit/app-transport/application';
+import { HttpViewClient } from '@itookit/app-transport/http';
 import { bindApplicationBackend } from '@itookit/app-core/host';
 import type { LocalApplicationServices } from '@itookit/app-contracts/services';
 import { ProjectFavorites } from '../../../backend/app-core/src/projects/favorites/service';

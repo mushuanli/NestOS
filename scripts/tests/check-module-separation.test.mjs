@@ -9,7 +9,7 @@ function fixture(t) {
     const root = mkdtempSync(join(tmpdir(), 'x1-module-boundary-'));
     t.after(() => rmSync(root, { recursive: true, force: true }));
     const add = (name, source) => {
-        const group = name === 'app-core' ? 'backend' : name === 'app-contracts' ? 'shared' : 'ui';
+        const group = name === 'app-core' ? 'backend' : ['app-contracts', 'app-transport'].includes(name) ? 'shared' : name === 'node-host' ? 'apps' : 'ui';
         const directory = join(root, group, name);
         mkdirSync(join(directory, 'src'), { recursive: true });
         writeFileSync(join(directory, 'package.json'), JSON.stringify({ name: '@itookit/' + name, exports: { '.': './src/index.ts' } }));
@@ -81,4 +81,15 @@ test('type-only relative imports cannot bypass application implementation isolat
     add('app-core', 'export interface Runtime {}');
     add('app-shell', "type Runtime = import('../../../backend/app-core/src/index').Runtime;");
     assert.ok(separationErrors(root).some(error => /frontend references implementation contract/.test(error)));
+});
+
+
+test('portable transport cannot load the Node host, and Node host cannot load UI', t => {
+    const {root, add} = fixture(t);
+    add('app-transport', "export {host} from '@itookit/node-host';");
+    add('node-host', "export {ui as host} from '@itookit/app-shell';");
+    add('app-shell', 'export const ui = 1;');
+    const errors = separationErrors(root);
+    assert.ok(errors.some(error => /shared loads backend/.test(error)));
+    assert.ok(errors.some(error => /backend loads frontend/.test(error)));
 });

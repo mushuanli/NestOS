@@ -1,0 +1,22 @@
+{
+  "name": "@itookit/app-transport",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./http": "./src/http/index.ts",
+    "./application": "./src/application/index.ts",
+    "./rpc": "./src/rpc/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@itookit/app-contracts": "workspace:*",
+    "@itookit/vfs-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

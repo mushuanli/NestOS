@@ -187,7 +187,7 @@ sidecar_begin(IPC) → sidecar_select(journal intent, IPC) → 业务 SQL(IPC) �
 | `apps/tauri-app/src/db/tauri-sql-sidecar.ts:314` | `transaction()` 改为带探测调用；`invoke('sidecar_begin', { …, probe })` |
 | `https://github.com/mushuanli/vfsdriver-local/blob/main/src/db/sidecar-interface.ts` | 新增 `SidecarProbe`、`transactionWithProbe?`；`getRecordField` 探测型调用保持不变 |
 | `https://github.com/mushuanli/vfsdriver-local/blob/main/src/localfs-backend.ts:78/307/661` | `beforeTransaction` 增加 `probeRows` 形参；`runInTransaction` 优先 `transactionWithProbe`；`recoverRename` 接受探测结果 |
-| `https://github.com/mushuanli/vfsdriver-local/blob/main/src/db/sidecar.ts`、`apps/cli/src/sqlite-sidecar.ts` | `transactionWithProbe` 实现（本地调用，收益为少一次 JS 调用，SQL 不变） |
+| `https://github.com/mushuanli/vfsdriver-local/blob/main/src/db/sidecar.ts`、`apps/node-host/src/storage/sqlite-sidecar.ts` | `transactionWithProbe` 实现（本地调用，收益为少一次 JS 调用，SQL 不变） |
 | `ui/app-shell/tests/fake-sidecar.ts`、`https://github.com/mushuanli/vfsdriver-local/blob/main/tests/{18,24,25}-*.test.ts` | fake/计数实现补齐新端口；`25-journal-probe.test.ts` 的 `journalProbes` 断言改为「begin 携带探测」计数 |
 | `apps/cli/tests/20-kernel-ipc.test.ts` | 两进程 SIGKILL 场景保持在改后路径下通过（探测仍每事务执行） |
 

@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer, connect } from 'node:net';
 import { VFSAgentService } from '../../../backend/llm-session/src/index';
-import { startHost, type HttpHostOptions } from '../src/server/start-host';
-import { createCertificates } from '../src/server/create-certificates';
-import { loadCertificates } from '../src/server/certificates';
-import { acquireHostLock } from '../src/server/host-lock';
+import { startHost, type HttpHostOptions } from '@itookit/node-host/http';
+import { createCertificates } from '@itookit/node-host/http';
+import { loadCertificates } from '@itookit/node-host/http';
+import { acquireHostLock } from '@itookit/node-host/storage';
 import { authenticatedFetch } from './tls-fixture';
 
 let directory: string, certificates: HttpHostOptions['certificates'];

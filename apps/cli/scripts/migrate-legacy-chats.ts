@@ -30,7 +30,7 @@ import { createVFS } from '@itookit/vfs-core';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { SessionRepository } from '@itookit/llm-session';
 import { parseSessionBundle } from '@itookit/app-core';
-import { NodeSqliteSidecarDb } from '../src/sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 
 /**
  * Legacy system rounds only ever carried the default "You are a helpful assistant."

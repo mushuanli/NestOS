@@ -3,7 +3,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { LocalFSBackend } from '@itookit/vfsdriver-local';
-import { NodeSqliteSidecarDb } from '../src/sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import type { ISidecarDb } from '@itookit/vfsdriver-local';
 
 const cleanup: Array<() => Promise<void>> = [];

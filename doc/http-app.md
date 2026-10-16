@@ -8,14 +8,14 @@
 |---|---|
 | [app-contracts/services](../shared/app-contracts/src/services.ts) | ApplicationClient 前端能力；应用操作异步，快照 selector 同步 |
 | [app-shell](../ui/app-shell/src/bootstrap.ts) | 唯一 UI 装配入口；项目、文件、设置、工具箱、数字分身及 Flow 使用原组件 |
-| [HTTP 客户端](../apps/http-app/src/client/view-client.ts) | HTTP 调用、SSE 接收、回调回复与连接状态 |
-| [应用能力描述](../apps/http-app/src/application/capabilities.ts) | 显式方法、字段、查询模式、观察和失效；按 ApplicationBackend 校验方法覆盖 |
-| [传输机制](../apps/http-app/src/rpc/peer.ts) | 注入能力描述；编码、远程句柄、版本、资源借用与撤销 |
+| [HTTP 客户端](../shared/app-transport/src/http/view-client.ts) | HTTP 调用、SSE 接收、回调回复与连接状态 |
+| [应用能力描述](../shared/app-transport/src/application/capabilities.ts) | 显式方法、字段、查询模式、观察和失效；按 ApplicationBackend 校验方法覆盖 |
+| [传输机制](../shared/app-transport/src/rpc/peer.ts) | 注入能力描述；编码、远程句柄、版本、资源借用与撤销 |
 | [工作台读模型](../backend/app-core/src/host/workbench-view.ts) | 一次装配侧栏文件视图、生命周期、检索、当前项目、聊天控制和可选首目录/导航数据 |
-| [视图缓存](../apps/http-app/src/rpc/view-cache.ts) | 纯字段差分、版本补丁与追加内容；业务失效关系由应用描述提供 |
-| [视图宿主](../apps/http-app/src/server/view-services.ts) | 绑定统一应用门面和每个浏览器的独立会话绑定 |
-| [HTTP API](../apps/http-app/src/server/view-api.ts) | 客户端证书指纹与 clientId 隔离、事件连接、空闲回收 |
-| [存储保护](../apps/http-app/src/server/host-storage.ts) | 数据根路径、内部目录和符号链接检查；存储不经过 HTTP |
+| [视图缓存](../shared/app-transport/src/rpc/view-cache.ts) | 纯字段差分、版本补丁与追加内容；业务失效关系由应用描述提供 |
+| [视图宿主](../apps/node-host/src/http/view-services.ts) | 绑定统一应用门面和每个浏览器的独立会话绑定 |
+| [HTTP API](../apps/node-host/src/http/view-api.ts) | 客户端证书指纹与 clientId 隔离、事件连接、空闲回收 |
+| [存储保护](../apps/node-host/src/storage/host-storage.ts) | 数据根路径、内部目录和符号链接检查；存储不经过 HTTP |
 
 目录隔离与远程行为一致性分别验证。Web、Tauri 与 HTTP 共用 app-core/host 的应用门面；UI 不传仓储、内核或构造工厂，任务详情和工具箱在后端聚合。同步/异步返回契约显式声明，传输适配持有远端对象句柄；`app-shell`、`llm-ui`、`app-settings` 不识别 HTTP、URL 或证书。
 
@@ -27,7 +27,7 @@
 
 `POST /api/application` 使用 `version: 10` 与 `clientId`，支持 bootstrap、queries、bindings、call、reply、close。bootstrap 返回公开服务图、产品模板与 Flow 库，以扁平描述避免重复导出对象图；call 只能调用本视图已经导出的能力句柄上的公开方法。v10 由后端组合工具箱文件视图并在分组刷新时返回导航目录，消除浏览器逐段路径检查及重复遍历；保留 Provider 订阅授权状态与命令；保留 navigationView、warmNavigation、工作台聚合、会话准备/激活及 UI 文档批量端口；升级服务后需重新加载页面。句柄包含视图随机身份，不能用于另一个浏览器。私有字段、原型访问、Runtime.dispose、设备注册、SQL 和原始记录写入不开放。
 
-queries 合并同一微任务中独立的只读查询，bindings 合并订阅注册，每批最多 32 项、每个合批器最多 2 批在途，等待与在途调用合计最多 1024 项；服务端先检查整批方法类别再执行。共享只读命令策略使 GetSnapshot、GetSessions 和 Flow 读取进入查询批次，不触发全域失效。业务写入独立确认，不混入查询或订阅批次；失败与结果未知的命令不自动重放。
+queries 合并同一微任务中独立的只读查询，bindings 合并订阅注册，每批最多 32 项、每个合批器最多 2 批在途，等待与在途调用合计最多 1024 项；服务端先检查整批方法类别再执行。共享只读命令策略使 GetSnapshot、GetSessions 和 Flow 读取进入查询批次，不触发全域失效。业务写入独立确认，不混入查询或订阅批次；后续命令先等待此前发起的订阅注册确认，避免快速执行漏事件，独立只读查询仍可并行；失败与结果未知的命令不自动重放。
 
 文件操作经过应用文件视图。用户内容可以读写；`/etc` 的直接写入仅允许 UI 偏好，配置、会话和任务修改通过各自服务执行。字节、Map、Set、回调与持续句柄有显式编码。同步 UI 查询读取已加载的快照；执行和持久化调用经异步端口完成，不使用同步 XMLHttpRequest。
 
@@ -124,7 +124,7 @@ pnpm httpd:activate <版本ID>   # 下次启动使用此版本
 
 release 保存在 `release/httpd/<版本ID>/`，包括固定的服务端、UI 与运行依赖副本，启动校验服务端/UI 校验和及 Node 主版本。依赖打包在临时源码副本执行，不修改开发工作区的 node_modules；构建中源码发生变化则拒绝激活。保留旧版本可回滚，正在运行的进程继续使用原版本和对应静态资源。第一次从旧 tsx 启动方式迁移时，需要先结束原实例再启动 release；不能让两个宿主同时使用真实数据。后续版本切换在下次启动生效。
 
-release 沿用原 profile 数据；dev 默认使用 `<configDir>/http-dev/data`，忽略原 profile 数据根。两者的 OAuth 凭据分别在 `<configDir>/http-auth/release` 与 `dev`；审计和控制台日志分别在 `<configDir>/logs/http/<模式>/<版本ID>/audit.jsonl` 与 `runtime.log`，每份 10 MiB、保留 3 份轮转。显式 CLI 参数可覆盖默认路径和端口。数据根和凭据目录分别以 SQLite 排他锁防止新宿主重复打开，崩溃后由操作系统释放。
+release 沿用原 profile 数据；dev 默认使用 `<configDir>/http-dev/data`，忽略原 profile 数据根。两者的 OAuth 凭据分别在 `<configDir>/http-auth/release` 与 `dev`；审计和控制台日志分别在 `<configDir>/logs/http/<模式>/<版本ID>/httpd-<模式>-audit.jsonl` 与 `httpd-<模式>-runtime.log`，每份 10 MiB、保留 3 份轮转。显式 CLI 参数可覆盖默认路径和端口。数据根和凭据目录分别以 SQLite 排他锁防止新宿主重复打开，崩溃后由操作系统释放。
 
 httpd 使用 `startupMode: 'server'`：LLM 配置与设备、MCP 首次自动连接尝试、依赖的项目目录、Skill、Agent、会话调用恢复和项目草稿初始化完成后才创建监听。失败向启动入口传播，关闭 Runtime、存储、日志并释放目录锁，不打印服务已启动，也不开放健康检查。远端 MCP 首次尝试失败作为已观测的连接状态保留，不要求所有远端服务可达；持续任务恢复、周期扫描与分身分析不等待业务运行结束。Web/Tauri 的交互式延迟初始化策略保持独立。
 
@@ -146,7 +146,7 @@ httpd 注入私有 `ProviderAuthorizationHost`，负责 PKCE、state、nonce、O
 
 私有凭据目录权限 0700、文件 0600，必须位于数据根和静态目录之外；注销后保留客户端注册身份，清除本地令牌，远端撤销未确认时明确提示。授权流程、刷新和 RPC 用签名模拟响应验证，尚未使用真实订阅账号验收。
 
-授权交换失败写入 `audit.jsonl` 的 `provider.authorization.failed` 事件，`operation` 区分客户端注册检查、令牌交换、令牌结构/权限校验、OIDC 身份校验、账号核对和凭据保存；记录耗时、HTTP 状态及白名单错误分类，合法的远端请求 ID 作为 `providerRequestId` 保留。上游错误正文、异常原文、回调 URL、授权码及令牌不写日志。授权成功保存后记录 `provider.authorization.completed`。回调结果页的 HTTP 200 仅表示结果页已返回，页面正文才表明授权结果；已有账号在重新授权失败后保持可用，结果页仍明确报告本次失败。
+授权交换失败写入当前模式的 `httpd-<模式>-audit.jsonl` 的 `provider.authorization.failed` 事件，`operation` 区分客户端注册检查、令牌交换、令牌结构/权限校验、OIDC 身份校验、账号核对和凭据保存；记录耗时、HTTP 状态及白名单错误分类，合法的远端请求 ID 作为 `providerRequestId` 保留。上游错误正文、异常原文、回调 URL、授权码及令牌不写日志。授权成功保存后记录 `provider.authorization.completed`。回调结果页的 HTTP 200 仅表示结果页已返回，页面正文才表明授权结果；已有账号在重新授权失败后保持可用，结果页仍明确报告本次失败。
 
 身份字段校验使用独立错误分类区分 issuer、audience、authorized party、过期时间、签发时间、生效时间、subject 及 nonce 缺失/不匹配，不记录字段值。`aud` 可以是包含当前客户端的字符串或字符串数组；单元素数组不强制要求 `azp`，多个 audience 时要求 `azp`，提供的 `azp` 必须匹配当前客户端。身份校验始终在签名验证成功后执行，失败不保存凭据。
 

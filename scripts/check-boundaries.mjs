@@ -52,7 +52,7 @@ function ownerOf(file, packages) {
 }
 
 export function importError(source, file, specifier, packages) {
-    if (source.host && file.startsWith(resolve(source.dir, 'src/rpc') + sep)) {
+    if ((source.host || source.name === '@itookit/app-transport') && file.startsWith(resolve(source.dir, 'src/rpc') + sep)) {
         const local = specifier.startsWith('.') && resolve(file, '..', specifier).startsWith(resolve(source.dir, 'src/rpc') + sep);
         if (!local && specifier !== '@itookit/vfs-core') return 'RPC mechanisms must receive application metadata through injection';
     }

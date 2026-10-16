@@ -53,7 +53,7 @@ import { CliDirectorySourceProvider } from './directories';
 import { createShell, OciTtyDriver, NodeNativeShell } from './shell';
 import type { AgentConfig, CompiledWorkflow, RunManifest, TaskConfig, WorkspaceGrant } from './types';
 import { createWorkspaceAccessTool, WorkspaceGrantRegistry } from './workspace';
-import { NodeSqliteSidecarDb } from './sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 
 const STORAGE_KIND = 'cli-run';
 const TOOL_ALIASES: Record<string, string> = {

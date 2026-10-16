@@ -3,11 +3,11 @@ import { mkdtemp, rm, stat, readFile, readdir, chmod } from 'node:fs/promises';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { PrivateAuthStore } from '../src/server/provider-auth/private-store';
-import { ChatGPTAuthorization } from '../src/server/provider-auth/chatgpt-authorization';
-import { OpenAIOidc } from '../src/server/provider-auth/openai-oidc';
-import { acquireHostLock } from '../src/server/host-lock';
-import type { AuditEvent } from '../src/server/audit-log';
+import { PrivateAuthStore } from '@itookit/node-host/authorization';
+import { ChatGPTAuthorization } from '@itookit/node-host/authorization';
+import { OpenAIOidc } from '@itookit/node-host/authorization';
+import { acquireHostLock } from '@itookit/node-host/storage';
+import type { AuditEvent } from '@itookit/node-host/logging';
 
 const releases: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const release of releases.splice(0).reverse()) await release(); });
@@ -141,7 +141,7 @@ it('uses an OS-backed directory lock and permits reopening after release', async
     const directory = await mkdtemp(path.join(tmpdir(), 'mindos-http-lock-'));
     releases.push(() => rm(directory, { recursive: true, force: true }));
     const release = await acquireHostLock(directory);
-    try { await expect(acquireHostLock(directory)).rejects.toThrow('another httpd'); }
+    try { await expect(acquireHostLock(directory)).rejects.toThrow('another application host'); }
     finally { release(); }
     (await acquireHostLock(directory))();
 });

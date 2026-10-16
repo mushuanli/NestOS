@@ -1,5 +1,5 @@
 import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
-import { createApplicationClient, bindLocalApplicationServices } from '@itookit/app-core/host';
+import { openApplicationView } from '@itookit/app-core/host';
 import { createMindosFlowLibrary } from '@itookit/app-core';
 import { createPiAgentDriver } from '@itookit/piagent-driver';
 import { createTauriMCPTransport } from './shell/tauri-mcp-transport';
@@ -315,6 +315,8 @@ async function bootstrap(): Promise<void> {
         },
     });
     startupCleanup.push(() => runtime.dispose());
+    const client = await openApplicationView(runtime);
+    startupCleanup.push(() => client.close());
     recordDiagnostic('workspace.default', { sessionDirectory: homeDir, rootDir });
     // Acceptance diagnostics: VITE_MINDOS_TRACE=1 records per-interval VFS + sidecar op counts
     // so a slow user action can be attributed to backend/IPC round trips.
@@ -326,7 +328,7 @@ async function bootstrap(): Promise<void> {
         // routed per bound Session, so the send is observed at the command bus instead.
         const boundary = createSendBoundary(stopTrace);
         llmLogger.onResponse = () => boundary.responded();
-        const { commandBus } = runtime;
+        const commandBus = client.services.commandBus;
         const execute = commandBus.execute.bind(commandBus) as typeof commandBus.execute;
         commandBus.execute = <T>(name: string, args?: unknown): Promise<T> => {
             if (name !== SessionCommand.Send) return execute<T>(name, args);
@@ -342,8 +344,6 @@ async function bootstrap(): Promise<void> {
         });
         console.log('[Boot] VFS trace enabled -> var/log/vfs-trace.log');
     }
-    const client = createApplicationClient(bindLocalApplicationServices(runtime));
-    startupCleanup.push(() => client.close());
     const app = await initApp({
         fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) },
         ...client,

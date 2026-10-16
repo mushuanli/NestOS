@@ -23,3 +23,9 @@ describe('Session entry branch selection', () => {
         await expect(f.service.switchBranch('missing')).rejects.toThrow('Branch not found');
     });
 });
+
+it('rejects deleting the current branch through the backend command boundary', async () => {
+    const f = setup('experiment');
+    await expect(f.service.deleteBranch('experiment')).rejects.toThrow('Cannot delete the current branch');
+    expect(f.registry.engine.updateManifest).not.toHaveBeenCalled();
+});

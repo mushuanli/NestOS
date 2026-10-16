@@ -70,6 +70,26 @@ it('refreshes a conversation snapshot after a poll without a domain event', asyn
     expect(root.snapshot()).toEqual({ state: 'before' });
     await root.poll(); expect(root.snapshot()).toEqual({ state: 'after' });
 });
+it('refreshes toolbox grouping and inventory with navigation without a configuration event', async () => {
+    let groups = [{ id: 'old', kind: 'skills', name: 'Old', paths: ['/skills/old'] }];
+    const inventory = { remoteAgentSource: {}, providers: new Map([['old', { name: 'Old' }]]) };
+    const resources = { sources: {}, hasProvider: () => true, subscribe: () => () => {},
+        drawers: { snapshot: () => groups, assign: async () => {} },
+        navigation: async () => {
+            groups = [{ id: 'new', kind: 'skills', name: 'New', paths: ['/skills/new'] }];
+            inventory.providers = new Map([['new', { name: 'New' }]]);
+            return { directories: [], loadedDirectories: ['/skills'], descriptions: new Map([['skills/new', { name: 'New' }]]) };
+        } };
+    const { root } = await pair({ resources, inventory });
+    expect(root.resources.drawers.snapshot()[0].id).toBe('old');
+    expect(root.inventory.providers.has('old')).toBe(true);
+    const navigation = await root.resources.navigation();
+    expect(navigation.descriptions.get('skills/new').name).toBe('New');
+    expect(root.resources.drawers.snapshot()).toEqual(groups);
+    expect(root.resources.drawers.get('old')).toBeUndefined();
+    expect(root.resources.drawers.forPath('/skills/new').id).toBe('new');
+    expect([...root.inventory.providers.keys()]).toEqual(['new']);
+});
 it('releases nested services and their subscriptions with the owning view', async () => {
     const listeners = new Set<() => void>(), dispose = vi.fn();
     const settings = { getContacts: () => [], readPreference: async () => '', dispose,

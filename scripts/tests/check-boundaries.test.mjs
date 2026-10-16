@@ -38,6 +38,8 @@ test('dependency direction keeps domain capabilities independent of applications
     assert.equal(dependencyError(core.name, '@itookit/llm-session'), undefined);
     assert.match(dependencyError(vfs.name, shell.name), /must not depend/);
     assert.match(dependencyError(core.name, vfs.name), /platform-neutral/);
+    assert.equal(dependencyError(core.name, 'js-yaml'), undefined);
+    assert.match(dependencyError(core.name, 'some-sdk'), /platform-neutral/);
 });
 
 test('checks static, dynamic, type-only, re-export and CommonJS dependencies', () => {

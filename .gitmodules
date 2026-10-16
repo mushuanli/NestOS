@@ -1,9 +1,3 @@
-[submodule "data"]
-	path = data
-	url = git@github.com:mushuanli/anki-data.git
-[submodule "tookit/anki_helper"]
-	path = tookit/anki_helper
-	url = git@github.com:mushuanli/anki-helper.git
 [submodule "tookit/cc-proxy"]
 	path = tookit/cc-proxy
 	url = git@github.com:mushuanli/cc-proxy.git

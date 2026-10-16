@@ -568,6 +568,9 @@ importers:
       '@itookit/vfs-sync':
         specifier: workspace:*
         version: link:../../libraries/vfs-sync
+      js-yaml:
+        specifier: ^4.1.1
+        version: 4.3.2
     devDependencies:
       '@itookit/vfs-ui':
         specifier: workspace:*
@@ -575,6 +578,9 @@ importers:
       '@itookit/vfsdriver-indexeddb':
         specifier: workspace:*
         version: link:../../libraries/vfsdriver-indexeddb
+      '@types/js-yaml':
+        specifier: ^4.0.9
+        version: 4.0.9
       '@types/node':
         specifier: ^20.19.25
         version: 20.19.43
@@ -1182,12 +1188,6 @@ importers:
       '@itookit/app-contracts':
         specifier: workspace:*
         version: link:../../shared/app-contracts
-      '@types/js-yaml':
-        specifier: ^4.0.9
-        version: 4.0.9
-      js-yaml:
-        specifier: ^4.1.1
-        version: 4.3.2
     devDependencies:
       '@itookit/common':
         specifier: workspace:*

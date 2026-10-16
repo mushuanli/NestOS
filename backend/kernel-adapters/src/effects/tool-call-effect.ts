@@ -19,6 +19,8 @@ export interface EffectToolBinding {
 }
 
 export interface ToolCallEffectRequest {
+    toolVersion?: string;
+    resultMode?: 'structured';
     callId?: string;
     resourceHandleId: string;
     toolId: string;
@@ -74,8 +76,9 @@ export class ToolCallEffectAdapter implements EffectAdapter<ToolCallEffectReques
             if (service.getToolMeta(request.toolId)?.enabled !== true) throw new Error('Effect tool is disabled');
             context.abortSignal.throwIfAborted();
             const started = Date.now();
+            if (request.toolVersion && request.toolVersion !== (bound.meta.version ?? '1')) throw new Error('Required tool version is unavailable');
             const output = await bound.invoke(request.args, context);
-            return { toolId: request.toolId, success: true, output, durationMs: Date.now() - started };
+            return { toolId: request.toolId, success: true, output, ...(request.resultMode === 'structured' ? { data: JSON.parse(output) } : {}), durationMs: Date.now() - started };
         }
         const unloadKey = service.getToolMeta(request.toolId)?.skillUnloaderArgKey;
         if (unloadKey) {
@@ -98,7 +101,7 @@ export class ToolCallEffectAdapter implements EffectAdapter<ToolCallEffectReques
                 progress: { message: progress.message.slice(0, 2048), output: progress.output?.slice(0, 8192) },
             } } });
         } : undefined;
-        const result = await service.invoke({ ...request, signal: context.abortSignal, admitOutput, onProgress });
+        const result = await service.invoke({ ...request, executionIdentity: toolIdentity(context), signal: context.abortSignal, admitOutput, onProgress });
         // Unload has already changed persistent state; its cleanup must still settle as an Effect.
         if (result.recoverable !== true || unloadKey) requireToolSuccess(result);
         let skillContext: ToolInvokeResult['skillContext'];
@@ -116,11 +119,19 @@ export class ToolCallEffectAdapter implements EffectAdapter<ToolCallEffectReques
         return skillContext ? { ...output, skillContext } : output;
     }
 
-    async reconcile(
+    reconcile(
         request: ToolCallEffectRequest,
         context: EffectExecutionContext,
     ): Promise<EffectReconcileResult<ToolInvokeResult>> {
+        return this.inFlight.track(context, this.recover(request, context));
+    }
+
+    private async recover(request: ToolCallEffectRequest, context: EffectExecutionContext): Promise<EffectReconcileResult<ToolInvokeResult>> {
+        assertEffectGrant(context, request.resourceHandleId, 'tool');
+        context.abortSignal.throwIfAborted();
         const service = await (typeof this.service === 'function' ? this.service(context, request) : this.service);
+        context.abortSignal.throwIfAborted();
+        if (service.reconcile) return service.reconcile({ ...request, ...toolIdentity(context), signal: context.abortSignal });
         if (service.getToolMeta(request.toolId)?.sideEffect === 'none') return { status: 'retry' };
         return {
             status: 'indeterminate',
@@ -132,4 +143,9 @@ export class ToolCallEffectAdapter implements EffectAdapter<ToolCallEffectReques
 export function requireToolSuccess(result: ToolInvokeResult): ToolInvokeResult {
     if (result.success) return result;
     throw new Error(result.error ?? result.output ?? `Tool failed: ${result.toolId}`);
+}
+
+function toolIdentity(context: EffectExecutionContext) {
+    const { sessionId, taskId, effectId } = context;
+    return { sessionId, taskId, effectId, operationId: JSON.stringify([sessionId, taskId, effectId]) };
 }

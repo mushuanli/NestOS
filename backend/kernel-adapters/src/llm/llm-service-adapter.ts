@@ -4,7 +4,7 @@
 // Process programs use ILLMService through the injected LLM resource port.
 // 不直接感知 device driver 的 open/write/readStream 模式。
 
-import type { ChatCompletionParams, ChatCompletionResponse, ChatCompletionChunk, ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
+import type { MediaGenerationRequest, MediaGenerationResult, ChatCompletionParams, ChatCompletionResponse, ChatCompletionChunk, ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import type { ILLMService } from '@itookit/driver-llm/contracts';
 import type {
     IDeviceDriver,
@@ -20,6 +20,14 @@ export class LLMServiceAdapter implements ILLMService {
         /** 运行模式；kernel 下层自动选 anthropic-messages 协议。 */
         private readonly runMode?: 'kernel',
     ) {}
+
+    async generateMedia(connectionId: string, request: MediaGenerationRequest): Promise<MediaGenerationResult> {
+        if (!connectionId.trim()) throw new Error('Media connection id is required');
+        const sessionId = await this.driver.open?.(BASE_CTX, { connectionId }) ?? connectionId;
+        const ctx: DeviceContext = { ...BASE_CTX, sessionId };
+        try { return await this.driver.ioctl!(ctx, LLM_IOCTL.MEDIA_GENERATE, request) as MediaGenerationResult; }
+        finally { await this.driver.close?.(ctx); }
+    }
 
     async chat(connectionId: string, request: ChatCompletionParams): Promise<ChatCompletionResponse> {
         const openOpts: Record<string, unknown> = { connectionId };

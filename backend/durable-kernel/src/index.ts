@@ -14,6 +14,8 @@ export * from './ports/plugin';
 export { Kernel, type KernelOptions } from './application/kernel';
 export { bindCapabilities, type CapabilityBinding } from './application/capabilities';
 export { assertEffectGrant, interactionApproved } from './application/effect-utils';
+// Adapters use the same validated Task layout as the store without duplicating its paths.
+export { taskPath as taskStoragePath } from './infrastructure/seqfile/seqfile-core';
 export {
     SeqFileKernelStore,
     createId,

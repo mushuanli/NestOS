@@ -84,6 +84,7 @@ export function toConnectionMeta(
         id: conn.id,
         name: conn.name,
         providerId: pid,
+        baseURL: conn.baseURL ?? provider?.baseURL,
         model: resolvedModel,
         tiers: effectiveTiers,
         hasApiKey: !!(provider?.apiKey?.trim()),

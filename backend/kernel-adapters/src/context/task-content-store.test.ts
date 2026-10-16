@@ -5,19 +5,29 @@ import { createTaskContextStorage } from './task-content-store';
 
 const managers: IVFSManager[] = [];
 afterEach(async () => { for (const manager of managers.splice(0)) await manager.dispose(); });
-async function fixture() {
+async function fixture(taskId = 't') {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() }); managers.push(manager);
     const fs = await manager.openFileSystem('/');
-    await fs.driver.createFile({ parentPath: '/s/tasks/t', name: 'task.seq', type: 'seqfile', recursive: true });
+    await fs.driver.createFile({ parentPath: `/s/tasks/${taskId}`, name: 'task.seq', type: 'seqfile', recursive: true });
     await fs.driver.createFile({ parentPath: '/s', name: 'shared.seq', type: 'seqfile' });
     await fs.driver.updateMetadata('/s', { vfsFixedLayout: true });
-    const task = { id: 't', status: 'waiting', effects: {}, state: {}, exit: undefined as unknown };
-    const writeTask = () => fs.meta.seq!.setEntry('/s/tasks/t/task.seq', 'record', JSON.stringify(task));
+    const task = { id: taskId, status: 'waiting', effects: {}, state: {}, exit: undefined as unknown };
+    const writeTask = () => fs.meta.seq!.setEntry(`/s/tasks/${taskId}/task.seq`, 'record', JSON.stringify(task));
     await writeTask();
-    const storage = createTaskContextStorage(fs, '/s', 't');
+    const storage = createTaskContextStorage(fs, '/s', taskId);
     const terminal = async () => { task.status = 'succeeded'; task.exit = { status: 'succeeded' }; await writeTask(); };
     return { fs, storage, task, writeTask, terminal };
 }
+
+it('publishes and collects context in the same Task file for a non-ASCII identity', async () => {
+    const f = await fixture('任务 space%');
+    const ref = await f.storage.content.publish('evidence');
+    expect(await f.storage.content.read(ref)).toBe('evidence');
+    await f.terminal();
+    const restored = createTaskContextStorage(f.fs, '/s', f.task.id);
+    expect(await restored.content.read(ref)).toBe('evidence');
+    expect(await createContextGc(restored.gc, { retentionMs: 0 }).collect()).toMatchObject({ status: 'collected', deleted: 1 });
+});
 
 it('pins active/uncommitted publications, then preserves snapshots and historical shared roots after restart', async () => {
     const f = await fixture();

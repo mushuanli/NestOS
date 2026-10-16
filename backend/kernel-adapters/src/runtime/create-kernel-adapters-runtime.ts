@@ -1,3 +1,6 @@
+import { ToolProgram } from '../programs/tool-program';
+import { LlmMediaEffectAdapter, type MediaResultStore } from '../effects/llm-media-effect';
+import { MediaProgram } from '../programs/media-program';
 import { MCPToolAdapter } from '../tool/mcp-tools';
 import { silentAdapterLog, type KernelAdapterDiagnostics } from '../ports/diagnostics';
 import { FSError } from '@itookit/vfs-core';
@@ -21,7 +24,7 @@ import { createTtyCloseHandler, ttyCloseDefinition, ttyCloseMeta } from '../tty/
 import { createTtyWriteHandler, ttyWriteDefinition, ttyWriteMeta } from '../tty/tty-write';
 import { TTYSessionManager } from '../tty/session-manager';
 import { KernelAdaptersPlugin } from '../plugin/kernel-adapters-plugin';
-import { LlmChatEffectAdapter } from '../effects/llm-chat-effect';
+import { LlmChatEffectAdapter, assertFrozenConnection } from '../effects/llm-chat-effect';
 import { ToolCallEffectAdapter } from '../effects/tool-call-effect';
 import { BashEffectAdapter } from '../effects/bash-effect';
 import { SkillLoadEffectAdapter } from '../effects/skill-load-effect';
@@ -37,6 +40,7 @@ import { ExecProgram } from '../programs/exec-program';
 import { ContextPrepareEffect, ContextLlmEffect, ContextToolEffect, type ContextServiceResolver } from '../context/effects';
 
 export interface KernelAdaptersRuntimeOptions extends KernelAdapterDiagnostics {
+    mediaResultStore?: MediaResultStore;
     contextService?: ContextServiceResolver;
     effectTools?: import('../effects/tool-call-effect').EffectToolBinding[];
     /** Resolve a trusted Task to its isolated Run identity; undefined selects the normal Session. */
@@ -83,7 +87,14 @@ export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntime
     registerEffectTools(catalogTools, options.effectTools);
     await catalogTools.init();
     const effects = createEffects(llmService, registry, Boolean(options.fileContextForSession || options.fileContextForScope), options.effectTools, options);
-    if (options.contextService) effects.push(new ContextPrepareEffect(options.contextService),
+    if (options.mediaResultStore) {
+        const authorize = options.authorizeMedia ?? (options.authorizeLlm ? async () => { throw new Error('Media runtime requires the host model authorization gate'); } : undefined);
+        effects.push(new LlmMediaEffectAdapter(llmService, options.mediaResultStore, authorize));
+    }
+    if (options.contextService) effects.push(new ContextPrepareEffect(options.contextService, request => assertFrozenConnection(llmService, {
+        resourceHandleId: request.resourceHandleId, connectionId: request.connectionId, connectionSnapshot: request.connectionSnapshot,
+        request: request.request as unknown as import('../effects/llm-chat-effect').LlmChatEffectRequest['request'],
+    })),
         new ContextLlmEffect(options.contextService, effects.find(effect => effect.kind === 'llm.chat')! as LlmChatEffectAdapter),
         new ContextToolEffect(options.contextService, effects.find(effect => effect.kind === 'tool.call')! as ToolCallEffectAdapter));
     return {
@@ -101,7 +112,7 @@ export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntime
         sessions: registry,
         plugin: new KernelAdaptersPlugin({
             effects: effects.map(effect => coordinateSkillEffect(effect, registry)),
-            programs: [new ApprovedEffectProgram(), new ExecProgram()],
+            programs: [new ApprovedEffectProgram(), new ExecProgram(), new MediaProgram(), new ToolProgram()],
             onSessionClosed: sessionId => registry.disposeSession(sessionId),
         }),
         disposeSession: sessionId => registry.disposeSession(sessionId),

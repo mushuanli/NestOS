@@ -188,7 +188,7 @@ describe('createKernelAdaptersRuntime', () => {
             'llm.chat', 'tool.call', 'process.exec', 'skill.load', 'skill.unload',
         ]);
         expect(programs.map(program => program.manifest.kind)).toEqual([
-            'kernel-adapters.approved-effect', 'kernel-adapters.exec',
+            'kernel-adapters.approved-effect', 'kernel-adapters.exec', 'kernel-adapters.media', 'kernel-adapters.tool',
         ]);
 
         await runtime.dispose();

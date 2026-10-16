@@ -11,6 +11,7 @@ export type ContextServiceResolver = (context: EffectExecutionContext, prepare?:
 export interface PrepareContextRequest extends Omit<ContextPrepareInput, 'contextId' | 'operationId'> {
     resourceHandleId: string;
     connectionId: string;
+    connectionSnapshot?: LlmChatEffectRequest['connectionSnapshot'];
 }
 
 export class ContextPrepareEffect implements EffectAdapter<PrepareContextRequest, PreparedContext> {
@@ -18,13 +19,14 @@ export class ContextPrepareEffect implements EffectAdapter<PrepareContextRequest
     readonly version = '1';
     readonly recoveryPolicy = 'idempotent-retry' as const;
     private readonly inFlight = new InFlightEffects();
-    constructor(private readonly resolve: ContextServiceResolver) {}
+    constructor(private readonly resolve: ContextServiceResolver, private readonly checkConnection?: (request: PrepareContextRequest) => Promise<void>) {}
     execute(request: PrepareContextRequest, context: EffectExecutionContext) {
         return this.inFlight.track(context, this.run(request, context));
     }
     private async run(request: PrepareContextRequest, context: EffectExecutionContext) {
         assertEffectGrant(context, request.resourceHandleId, 'llm');
         context.abortSignal.throwIfAborted();
+        if (!request.archiveOnly) await this.checkConnection?.(request);
         const service = await this.resolve(context, request);
         const result = await service.prepare({ ...request, contextId: context.taskId, operationId: context.effectId });
         context.abortSignal.throwIfAborted();
@@ -34,7 +36,7 @@ export class ContextPrepareEffect implements EffectAdapter<PrepareContextRequest
     async reconcile() { return { status: 'retry' as const }; }
 }
 
-interface SnapshotRequest { cursor: ContextCursor; resourceHandleId: string; connectionId: string }
+interface SnapshotRequest { connectionSnapshot?: LlmChatEffectRequest['connectionSnapshot']; cursor: ContextCursor; resourceHandleId: string; connectionId: string }
 export class ContextLlmEffect implements EffectAdapter<SnapshotRequest, ChatCompletionResponse> {
     readonly kind = 'llm.chat';
     readonly version = '2';
@@ -48,7 +50,7 @@ export class ContextLlmEffect implements EffectAdapter<SnapshotRequest, ChatComp
         if (request.cursor.contextId !== context.taskId) throw new Error('Context owner mismatch');
         const snapshot = await (await this.resolve(context)).request(request.cursor);
         context.abortSignal.throwIfAborted();
-        return this.llm.execute({ resourceHandleId: request.resourceHandleId, connectionId: request.connectionId,
+        return this.llm.execute({ connectionSnapshot: request.connectionSnapshot, resourceHandleId: request.resourceHandleId, connectionId: request.connectionId,
             request: snapshot.request as unknown as LlmChatEffectRequest['request'] }, context);
     }
     async cancel(_request: SnapshotRequest, context: EffectExecutionContext) {

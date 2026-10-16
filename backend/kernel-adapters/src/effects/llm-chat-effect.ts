@@ -1,3 +1,4 @@
+import { assertModelConnection, type ModelConnectionSnapshot } from '../llm-management/contracts/model-requirements';
 import { assertEffectGrant } from '@itookit/durable-kernel';
 import type { LLMLogSink } from '@itookit/driver-llm/contracts';
 import { silentAdapterLog } from '../ports/diagnostics';
@@ -12,6 +13,7 @@ import type { KernelAdapterDiagnostics } from '../ports/diagnostics';
 
 
 export interface LlmChatEffectRequest {
+    connectionSnapshot?: ModelConnectionSnapshot;
     resourceHandleId: string;
     connectionId: string;
     request: Omit<ChatCompletionParams, 'signal'>;
@@ -57,8 +59,10 @@ export class LlmChatEffectAdapter implements EffectAdapter<LlmChatEffectRequest,
         const emit = makeEmitter(context, controller);
         try {
             await this.authorize?.(request, context);
+            await assertFrozenConnection(service, request);
             await emit({ type: 'llm:request', effectId: context.effectId, connectionId: request.connectionId, request: request.request });
             await this.authorize?.(request, context);
+            await assertFrozenConnection(service, request);
             context.abortSignal.throwIfAborted();
             const params: ChatCompletionParams = { ...request.request, signal: controller.signal };
             const response = request.request.stream === false
@@ -92,6 +96,15 @@ export class LlmChatEffectAdapter implements EffectAdapter<LlmChatEffectRequest,
             error: { message: 'LLM request outcome cannot be reconciled after worker loss', code: 'LLM_INDETERMINATE' },
         };
     }
+}
+
+export async function assertFrozenConnection(service: ILLMService, request: LlmChatEffectRequest): Promise<void> {
+    const saved = request.connectionSnapshot;
+    if (!saved) return;
+    const connection = await service.getConnection(request.connectionId);
+    if (!connection || connection.providerId !== saved.providerId || connection.protocol !== saved.protocol
+        || request.request.model !== saved.modelId) throw new Error('Model connection changed after admission');
+    assertModelConnection(connection, await service.getProvider(connection.providerId), saved.modelId, saved.requirements);
 }
 
 // ─── Streaming helpers ─────────────────────────────────────────────────────────

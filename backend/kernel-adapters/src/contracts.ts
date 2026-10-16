@@ -11,3 +11,6 @@ export type { ProviderAuthorizationState, ProviderAuthorizationService } from '.
 export type { ConflictStrategy, ConflictItem, ImportStats, ConfigurationImportPort } from './llm-management/contracts/config-import';
 
 export type { SessionCapabilityRegistry, SessionCapabilityScope } from './ports/capabilities';
+
+export { assertModelConnection, mediaEndpointIdentity } from './llm-management/contracts/model-requirements';
+export type { ModelRequirements, ModelConnectionSnapshot } from './llm-management/contracts/model-requirements';

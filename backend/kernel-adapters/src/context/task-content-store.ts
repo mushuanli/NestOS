@@ -1,12 +1,12 @@
 import { contextKey, createContextContentStore, type ContextGcView, type IContextGcStore } from '@itookit/llm-context';
-import type { TaskRecord } from '@itookit/durable-kernel';
+import { taskStoragePath, type TaskRecord } from '@itookit/durable-kernel';
 import type { IFileSystem, ISeqFileTransaction } from '@itookit/vfs-core';
 import { createFileContextContentStore } from './file-content-store';
 
 /** SeqFile bodies can be reclaimed without unpinning the Kernel's fixed directory layout. */
 export function createTaskContextStorage(fs: IFileSystem, sessionRoot: string, taskId: string) {
-    const root = `${sessionRoot}/tasks/${encodeURIComponent(taskId)}`;
-    const taskPath = `${root}/task.seq`;
+    const taskPath = taskStoragePath(sessionRoot, taskId);
+    const root = taskPath.slice(0, taskPath.lastIndexOf('/'));
     const path = taskPath;
     const legacy = createFileContextContentStore(fs, `${root}/context-content`, false);
     const transaction = fs.meta.seq?.transaction?.bind(fs.meta.seq);

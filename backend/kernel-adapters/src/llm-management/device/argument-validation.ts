@@ -1,3 +1,4 @@
+import { isMediaCatalog } from '@itookit/driver-llm/contracts';
 import type { LLMConnection, LLMProvider } from '@itookit/driver-llm/contracts';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 import type { ChatMessage } from '@itookit/llm-context';
@@ -38,7 +39,8 @@ export function isStoredProvider(value: unknown): value is LLMProvider {
 export function isProvider(value: unknown): value is LLMProvider {
     return isRecord(value) && storageId(value.id) && text(value.name) && text(value.baseURL)
         && enumValue(value.implementation, ['openai-compatible', 'chatgpt', 'anthropic', 'gemini', 'custom'])
-        && Array.isArray(value.models) && value.models.every(model => isRecord(model) && identifier(model.id))
+        && Array.isArray(value.models) && value.models.every(model => isRecord(model) && identifier(model.id) && isMediaCatalog(undefined, model.operations))
+        && isMediaCatalog(value.media, undefined)
         && optional(value.defaultProtocol, protocol)
         && optional(value.supportedProtocols, value => Array.isArray(value) && value.every(protocol))
         && optional(value.capabilities, isRecord) && optional(value.defaultTiers, stringMap)
@@ -78,6 +80,8 @@ const validators: Record<string, (value: unknown) => boolean> = {
     [LLM_IOCTL.TEST_CONNECTION_PARAMS]: value => isRecord(value) && identifier(value.provider)
         && optional(value.apiKey, text) && optional(value.baseURL, text) && optional(value.model, text)
         && optional(value.protocol, protocol) && optional(value.providerDefinition, isProvider),
+    [LLM_IOCTL.MEDIA_GENERATE]: value => isRecord(value) && enumValue(value.operation, ['image.generate', 'speech.synthesize'])
+        && identifier(value.model) && identifier(value.format) && optional(value.signal, isAbortSignal),
     [LLM_IOCTL.CHAT]: isChatRequest,
     [LLM_IOCTL.CHAT_SYNC]: isChatRequest,
     [LLM_IOCTL.SET_SYSTEM_PROMPT]: value => optional(value, text),

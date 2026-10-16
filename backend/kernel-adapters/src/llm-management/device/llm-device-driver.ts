@@ -18,7 +18,7 @@ import type { ProviderAuthorizationHost } from '../contracts/provider-authorizat
 //  7. 创建 /dev/llm/connection/<id>、/dev/llm/mcp/<id>、/dev/llm/skills/<id> 设备节点
 
 import type { ILLMManagementService, LLMSkill, InitialAgentDef } from '@itookit/kernel-adapters/contracts';
-import type { LLMConnection, LLMProvider, ConnectionMeta, ChatCompletionChunk, ChatCompletionParams, ChatCompletionResponse, TokenUsage, ConnectionTestResult } from '@itookit/driver-llm/contracts';
+import type { LLMConnection, LLMProvider, ConnectionMeta, MediaGenerationRequest, ChatCompletionChunk, ChatCompletionParams, ChatCompletionResponse, TokenUsage, ConnectionTestResult } from '@itookit/driver-llm/contracts';
 import type { ChatMessage } from '@itookit/llm-context';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 import type { ToolDefinition } from '@itookit/tools/contracts';
@@ -644,6 +644,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
 
     private async chatIoctl(llmSession: LLMSessionState, command: string | number, arg?: unknown): Promise<unknown> {
         switch (command) {
+            case LLM_IOCTL.MEDIA_GENERATE: return llmSession.driver.generateMedia(arg as MediaGenerationRequest);
             case LLM_IOCTL.CHAT: return this.streamChat(llmSession, arg as ChatCompletionParams);
             case LLM_IOCTL.CHAT_SYNC: {
                 const params = arg as ChatCompletionParams;

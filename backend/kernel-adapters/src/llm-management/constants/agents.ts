@@ -43,52 +43,6 @@ const FEYNMAN_PROMPTLIST: PromptPreset[] = [
         prompt: '像费曼一样审查分析试卷中题目，先抓住所有题目共同点、本质、基本思考方法和步骤，然后使用这个基本方法和步骤去解释每一道题：'
     },
     {
-        name: '英文单词 Anki',
-        prompt: `将下面单词信息转换成MD表格，按照Unit进行分块。请深度挖掘并补充完整缺失的内容（音标、例句、词族、常用搭配、记忆技巧、同义词辨析等），忽略页码等无用信息。
-请严格按照以下MD表格模板输出（注意首列是 [ ]，使用 ¶ 表示换行，¶¶ 表示换段，-- 包裹主体内容，^^audio 包裹发音文本）：
-
-| 状态 | 中文释义 | 单词详情 |
-| :--- | :--- | :--- |
-| [ ] | {chn} | --[{name}] {name}: {symbol} ¶¶ 例句: {example_en} ¶ {example_cn} ¶¶ 词族: {word_family} ¶ 词组: {collocations} ¶ 记忆: {memory_tips} ¶¶ 辨析: {synonym_diff} --^^audio: {name} . {example_en} ^^|
-
-示例：
-| 状态 | 中文释义 | 单词详情 |
-| :--- | :--- | :--- |
-| [ ] | n. 友谊 | --[friendship] friendship: /'fren(d)ʃɪp/ ¶¶ 例句: True friendship is more valuable than money. ¶ 真正的友谊比金钱更珍贵。 ¶¶ 词族: friend(n.朋友), friendly(adj.友好的), befriend(v.与...交朋友) ¶ 词组: form a friendship(建立友谊), cherish friendship(珍惜友谊), lifelong friendship(终身的友谊), friendship bracelet(友谊手链) ¶ 记忆: 由friend(朋友)+ship(表示状态或性质的名词后缀)组成。联想记忆：ship像一艘船，友谊就像一艘承载感情的船。 ¶¶ 辨析: Friendship 强调朋友间的感情，relationship 泛指各种关系，bond 指紧密联系，companionship 强调陪伴，camaraderie 指团队中的同志情谊。 --^^audio: friendship . True friendship is more valuable than money. ^^|
----
-`
-    },
-    {
-        name: '英文单词 Anki JSON',
-        prompt: `将下面单词信息仿照如下JSON数组格式进行转换，按照Unit进行分块，深度挖掘并补充完整所有缺失的内容，忽略页码等无用信息。请严格输出合法的JSON格式：
-    [
-        {
-            "unit": "Unit 8",
-            "words": [
-                {
-                    "name": "friendship",
-                    "chn": "n. 友谊",
-                    "symbol": "/'fren(d)ʃɪp/",
-                    "example_en": "True friendship is more valuable than money.",
-                    "example_cn": "真正的友谊比金钱更珍贵。",
-                    "word_family": "friend(n.朋友), friendly(adj.友好的), befriend(v.与...交朋友)",
-                    "memory_tips": "由friend(朋友)+ship(表示状态或性质的名词后缀)组成。联想记忆：ship像一艘船，友谊就像一艘承载感情的船。",
-                    "difficulty": "2",
-                    "collocations": "form a friendship(建立友谊), cherish friendship(珍惜友谊), lifelong friendship(终身的友谊), friendship bracelet(友谊手链)",
-                    "image_prompt": "两个不同肤色的青少年在公园里交换友谊手链，背景是蓝天和绿树，他们脸上带着真诚的笑容。",
-                    "synonym_diff": {
-                        "words": "relationship, bond, companionship, camaraderie",
-                        "quick_guide": "Friendship 强调朋友间的感情，relationship 泛指各种关系，bond 指紧密联系，companionship 强调陪伴，camaraderie 指团队中的同志情谊。",
-                        "details": []
-                    }
-                }
-            ]
-        }
-    ]
----
-`
-    },
-    {
         name: '知识检查',
         prompt: `请使用最小有效线索协议，测试我对[学科]中[主题]的真实掌握程度。
 协议：

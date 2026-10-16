@@ -98,6 +98,51 @@ describe('KernelAdapters Effect adapters', () => {
             .toMatchObject({ status: 'indeterminate', error: { code: 'TOOL_INDETERMINATE' } });
     });
 
+    it('waits for service resolution on cancellation and never starts a late reconciliation', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const reconcile = vi.fn(async () => ({ status: 'retry' as const }));
+        const resolve = vi.fn(async () => { await gate; return { ...toolService(vi.fn()), reconcile }; });
+        const adapter = new ToolCallEffectAdapter(resolve), abort = new AbortController();
+        const ctx = { ...context('tool'), abortSignal: abort.signal };
+        const request = { resourceHandleId: 'tool-handle', toolId: 'external', args: {} };
+        const pending = adapter.reconcile(request, ctx);
+        const outcome = pending.then(value => ({ value }), error => ({ error }));
+        await vi.waitFor(() => expect(resolve).toHaveBeenCalledOnce());
+        abort.abort(); let stopped = false;
+        const cancelled = adapter.cancel(request, ctx).then(() => { stopped = true; });
+        try { await Promise.resolve(); await Promise.resolve(); expect(stopped).toBe(false); }
+        finally { release(); await Promise.allSettled([pending, cancelled]); }
+        expect(await outcome).toMatchObject({ error: { name: 'AbortError' } });
+        expect(reconcile).not.toHaveBeenCalled();
+        expect(stopped).toBe(true);
+    });
+
+    it('waits for an in-flight tool reconciliation to stop before confirming cancellation', async () => {
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => { release = resolve; });
+        const reconcile = vi.fn(async () => { await gate; return { status: 'retry' as const }; });
+        const adapter = new ToolCallEffectAdapter({ ...toolService(vi.fn()), reconcile });
+        const abort = new AbortController(), ctx = { ...context('tool'), abortSignal: abort.signal };
+        const request = { resourceHandleId: 'tool-handle', toolId: 'external', args: {} };
+        const pending = adapter.reconcile(request, ctx);
+        await vi.waitFor(() => expect(reconcile).toHaveBeenCalledOnce());
+        abort.abort(); let stopped = false;
+        const cancelled = adapter.cancel(request, ctx).then(() => { stopped = true; });
+        try { await Promise.resolve(); await Promise.resolve(); expect(stopped).toBe(false); }
+        finally { release(); await Promise.all([pending, cancelled]); }
+        expect(stopped).toBe(true);
+    });
+
+    it('rejects revoked or cancelled recovery before acquiring tool capabilities', async () => {
+        const resolve = vi.fn(), adapter = new ToolCallEffectAdapter(resolve);
+        const request = { resourceHandleId: 'tool-handle', toolId: 'external', args: {} };
+        await expect(adapter.reconcile(request, context())).rejects.toThrow('grant');
+        const abort = new AbortController(); abort.abort();
+        await expect(adapter.reconcile(request, { ...context('tool'), abortSignal: abort.signal })).rejects.toMatchObject({ name: 'AbortError' });
+        expect(resolve).not.toHaveBeenCalled();
+    });
+
     it('rejects model-disabled Skills through the durable load Effect', async () => {
         const loadSkill = vi.fn();
         const adapter = new SkillLoadEffectAdapter({

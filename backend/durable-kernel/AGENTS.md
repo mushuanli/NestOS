@@ -6,6 +6,7 @@
 
 - **唯一公共入口是 `src/index.ts`**（`exports['.']` 与 `exports['./core']`）。包内目录不可被外部深引用（`kernel-adapters` / `llm-flow` 只从根导出取符号）。
 - **不依赖上层**：`src/` 内不出现 `@itookit/common`、`driver-llm`、`tools`、`kernel-adapters`、`llm-*`；平台差异经 `SessionStorageResolver` / `WorkspaceAdapter` / `EffectAdapter` 端口注入。
+- `taskStoragePath(sessionRoot, taskId)` 从根入口提供 SeqFile Task 的统一寻址与身份校验；能力适配器不得复制任务目录布局，内核不解释媒体或工具专用回执。
 - **一切决策必须可持久**：`Decision` 的 payload 由 `assertDurableValue` 校验；跨重启只依赖持久记录，不依赖进程内 Promise 或内存 Map。
 - **观察与事实分离**：`domain/status.ts` 的 `taskStat`/`taskStats`/`sessionStat` 是只读投影（如「取消已接受」与「外部已停止」可区分），不得写状态。
 

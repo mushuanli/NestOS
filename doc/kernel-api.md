@@ -684,6 +684,8 @@ backend/durable-kernel/src/
 
 **键命名规则**（`seqfile-core.ts` 导出的 `*Path()` / `*Key()` 函数）：
 
+适配器通过包根入口的 `taskStoragePath(sessionRoot, taskId)` 获取 Task 主日志路径，复用内核的单段身份校验与布局规则。Task ID 不作 URL 编码；媒体资产、Context 内容与各自回执使用该路径下的独立命名空间，不导入内核内部文件。
+
 | 函数 | 路径 / 键 | 用途 |
 |---|---|---|
 | `catalogPath(root)` | `catalog.seq` | 全局会话目录 |

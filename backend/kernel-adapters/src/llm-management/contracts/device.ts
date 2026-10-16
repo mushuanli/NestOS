@@ -28,6 +28,7 @@ export const LLM_IOCTL = {
     DISCONNECT_MCP_SERVER:    'disconnect-mcp-server',
 
     // ── Chat 会话（需要 sessionId）───────────────────────────────────────────
+    MEDIA_GENERATE: 'media-generate',
     CHAT:             'chat',
     CHAT_SYNC:        'chat-sync',
     GET_HISTORY:      'get-history',

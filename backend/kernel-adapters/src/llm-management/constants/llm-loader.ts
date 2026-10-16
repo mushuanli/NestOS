@@ -20,6 +20,7 @@ export interface LLMModelDef {
     icon?: string;
     preferredProtocol?: LLMModel['preferredProtocol'];
     category?: LLMModel['category'];
+    operations?: LLMModel['operations'];
     thinkingMode?: LLMModel['thinkingMode'];
     contextWindow?: number;
     maxOutput?: number;
@@ -57,6 +58,7 @@ export interface LLMProviderDef {
     responsesPath?: string;
     /** Responses API 推理行为配置（defaultThinkingEnabled 等），可选 */
     responses?: { defaultThinkingEnabled?: boolean };
+    media?: LLMProvider['media'];
     models: LLMModelDef[];
 }
 
@@ -252,6 +254,7 @@ export function toLLMProvider(def: LLMProviderDef): LLMProvider {
         defaultProtocol: def.defaultProtocol,
         responsesPath: def.responsesPath,
         responses: def.responses,
+        media: def.media,
         models: def.models.map(m => ({ ...m } as LLMModel)),
         capabilities: {
             thinking: def.supportsThinking,
@@ -346,12 +349,14 @@ export function fromLLMProvider(p: LLMProvider): LLMProviderDef {
         defaultProtocol: p.defaultProtocol,
         responsesPath: p.responsesPath,
         responses: p.responses,
+        media: p.media,
         models: p.models.map(m => ({
             id: m.id,
             name: m.name,
             icon: m.icon,
             preferredProtocol: m.preferredProtocol,
             category: m.category,
+            operations: m.operations,
             thinkingMode: m.thinkingMode,
             supportsAudio: m.supportsAudio,
             supportsVideo: m.supportsVideo,

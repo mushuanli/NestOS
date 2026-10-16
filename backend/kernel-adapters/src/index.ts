@@ -65,3 +65,10 @@ export { createSkillToolHandlers } from './skill/tool-handlers';
 export { createFileContextContentStore } from './context/file-content-store';
 export { createTaskContextStorage } from './context/task-content-store';
 export { ContextPrepareEffect, ContextLlmEffect, ContextToolEffect, type ContextServiceResolver, type PrepareContextRequest } from './context/effects';
+
+export { LlmMediaEffectAdapter } from './effects/llm-media-effect';
+export type { LlmMediaEffectRequest, StoredMediaResult, MediaResultStore, MediaAssetReference } from './effects/llm-media-effect';
+export { createMediaResultStore, readMediaAsset } from './effects/media-result-store';
+export { MediaProgram, type MediaProgramInput } from './programs/media-program';
+
+export { ToolProgram, type ToolProgramInput } from './programs/tool-program';

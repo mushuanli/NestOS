@@ -36,6 +36,7 @@ export interface ToolboxView {
     inventory: ToolboxInventory;
     resources: ToolboxResources;
     files: IFileSystem;
+    initial: import('./configuration').ToolboxNavigation;
     dispose(): Promise<void>;
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
@@ -50,7 +51,8 @@ export interface ApplicationBackend {
     ocr(): Promise<OcrService>;
     initialFiles(): Promise<MindosInitialFiles>;
     projectSessions(): Promise<ProjectSessions>;
-    toolboxView(skills: IFileSystem): Promise<ToolboxView>;
+    skillsFiles(): Promise<IFileSystem>;
+    toolboxView(): Promise<ToolboxView>;
     archiveExporter(): Promise<WorkbenchArchiveExporter>;
     archiveImporter(): Promise<WorkbenchArchiveImporter>;
     exportSession(sessionId: string): Promise<SessionExport>;

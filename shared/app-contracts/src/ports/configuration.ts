@@ -18,7 +18,15 @@ export interface ToolboxTool {
     parameters?: unknown;
 }
 
+/** Backend-prepared navigation metadata; source capabilities retain write ownership. */
+export interface ToolboxNavigation {
+    directories: Array<import('./navigation').NavigationDirectory & { path: string }>;
+    loadedDirectories: string[];
+    descriptions: Map<string, { name: string; description?: string }>;
+}
+
 export interface ToolboxResources {
+    navigation(): Promise<ToolboxNavigation>;
     readonly sources: Record<ToolboxKind, IFileSystem>;
     readonly drawers: ToolboxDrawers;
     subscribe(listener: () => void): () => void;
@@ -27,13 +35,8 @@ export interface ToolboxResources {
     getAgents(): Promise<AgentDefinition[]>;
     hasProvider(id: string): boolean;
     setToolGrant(tool: ToolGrantTarget, agentId: string, enabled: boolean): Promise<void>;
-    refreshGroups(toolGroups: readonly Drawer[]): Promise<string[]>;
     create(kind: ToolboxKind, name: string, providerId?: string): Promise<string>;
     createInDrawer(kind: ToolboxKind, name: string, drawer: string, providerId?: string): Promise<string>;
-    descriptions(): Promise<Map<string, {
-        name: string;
-        description?: string;
-    }>>;
     export(paths: string[], drawers?: Array<{
         kind: DrawerKind;
         name: string;
@@ -53,14 +56,8 @@ export declare function toolGrant(tool: ToolGrantTarget, agent: AgentDefinition)
 };
 
 export interface ToolboxDrawers {
-    setCatalog(resources: Array<{
-        path: string;
-        kind: DrawerKind;
-        groupId?: string;
-    }>, defaults: readonly Drawer[]): void;
     snapshot(): readonly Drawer[];
     get(id: string): Drawer | undefined;
-    init(): Promise<void>;
     list(kind: DrawerKind): Drawer[];
     forPath(resource: string): Drawer | undefined;
     assign(entries: Array<{
@@ -99,7 +96,6 @@ export interface ToolboxInventory {
     }>;
     defaultConnectionId?: string;
     readonly tools: Map<string, ToolboxTool>;
-    init(): Promise<void>;
     readonly sources: {
         prompts: VfsContracts.IFileSystem;
         mcp: VfsContracts.IFileSystem;
@@ -107,8 +103,6 @@ export interface ToolboxInventory {
         providers: VfsContracts.IFileSystem;
         connections: VfsContracts.IFileSystem;
     };
-    refresh(): Promise<void>;
-    dispose(): Promise<void>;
 }
 
 export interface ProviderDeletionImpact {

@@ -22,7 +22,6 @@ export interface NavigationRequest {
      * - 'chat'      -> LLM 会话工作区
      * - 'agents'    -> Agent 配置工作区  
      * - 'settings'  -> 设置工作区
-     * - 'anki'      -> Anki 卡片工作区
      * - 'prompts'   -> Prompt 库工作区
      * - 'projects'  -> 项目工作区
      * - 'emails'    -> 邮件草稿工作区

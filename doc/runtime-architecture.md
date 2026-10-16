@@ -740,3 +740,10 @@ HTTP 浏览器通过共享服务接口和显式能力传输调用 daemon，完�
 `ApplicationBackend.navigationView` 聚合普通工作区文件上下文、首层目录/忽略规则和不透明 UI 文档；授权适配先验证根，再允许访问缓存。前端在初始路由完成后的空闲时段优先装配工具箱与工作台导航，复用在途加载和模块缓存，不打开正文或改变路由；任务串行并让出前台导航。随后 `warmNavigation` 只预热最多两个常用根，不构造普通 UI 模块。后端缓存跨视图共享，文件事件使条目失效，挂载 revision 仅判断身份，有界容量与 15 秒到期限制外部写入的陈旧窗口。前端只消费一次初始元数据，原端口继续负责实时读取、版本回调和写入；普通侧栏先显示首层再恢复展开，缓存模块根据变更合并刷新。
 
 后端 MCP 启动连接与前端工具箱装配独立；完整 endpoint/command 且未显式设置 autoConnect:false 的服务器在 LLM 初始化后异步连接并完成标准/扩展发现，运行时目录更新后通知远程项目导航。慢连接不阻塞本地工作台，不通过加载工具箱触发服务连接。持久配置与显式关闭保持不变；详见 [MCP 配置与执行](design/tool-skill-mcp-capabilities.md)。
+
+
+通用媒体执行：app-core 为 kernel-adapters 的 `llm.media` 注入 `mediaResultStore`，通过 Kernel
+存储解析器定位所属 Session 的 Task 资产目录；二进制不进入任务状态。MediaProgram 等待独立
+LLM 资源，执行前复核被冻结的 Connection/模型/媒体端点及能力。完整应用与 CLI 同时注入
+`authorizeMedia` 以保持分身权限核对；已有 `authorizeLlm` 而未提供媒体授权门时，媒体调用拒绝。
+恢复仅核验持久回执和资产，不自动重发付费请求。缺少回执保持不确定状态。

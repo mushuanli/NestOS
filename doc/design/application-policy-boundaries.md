@@ -23,6 +23,54 @@
 
 恢复调度属于平台，副作用的业务核对由工具实现。应补充通用生命周期扩展，不能为了绕过 Tool 恢复缺口将每个业务改成内置专用 Effect。外部包独立发布与按配置装配，不自动进入平台默认构建或产品初始文件清单。
 
+## 当前改动的 C4 组件边界
+
+以下是当前源码的模块关系，不表示每个 package 都是独立进程。Web、Tauri、CLI、HTTP 的宿主装配方式不同，执行机制共用。
+
+```mermaid
+C4Component
+    Container_Boundary(platform, "itookit：由宿主装配的通用运行时") {
+        Component(ui, "交互与展示", "ui/*", "参数、连接选择、工具箱、目录与运行结果")
+        Component(app, "应用用例与装配", "backend/app-core", "资源目录、配置操作、宿主能力注入")
+        Component(session, "会话与连接准入", "backend/llm-session", "调用身份、连接绑定、能力校验与快照")
+        Component(flow, "图编排", "backend/llm-flow", "解释声明图、构造任务、统一能力启动")
+        Component(program, "持久程序", "backend/llm-tasks + kernel-adapters/programs", "Agent、Tool、媒体状态机")
+        Component(kernel, "持久执行", "backend/durable-kernel", "授权句柄、日志、调度、取消与恢复")
+        Component(adapter, "能力适配", "backend/kernel-adapters/effects", "模型通信、工具分派、媒体回执与资产")
+        Component(tools, "工具契约与注册", "backend/tools", "版本、Schema、受限上下文、invoke/reconcile")
+    }
+    Component_Ext(extension, "外部业务实现", "独立 Tool 包与 Flow 定义", "业务字段、提示词、模板、打包和副作用核对")
+    System_Ext(provider, "模型服务", "Chat、图片、语音的已声明端点")
+    Rel(ui, app, "经 app-contracts 消费应用端口")
+    Rel(app, session, "装配并注入服务")
+    Rel(app, tools, "宿主通过 additionalTools 注入实现")
+    Rel(session, flow, "编译完整准入图，持久化后提交")
+    Rel(flow, program, "构造 Task 输入")
+    Rel(program, kernel, "声明 Effect 与等待")
+    Rel(kernel, adapter, "执行、取消、核对")
+    Rel(adapter, tools, "按版本分派工具")
+    Rel(tools, extension, "调用已注册处理器")
+    Rel(adapter, provider, "使用冻结的模型身份与能力要求")
+```
+
+工具实现由宿主注入；图中的处理器调用不构成核心对外部业务包的静态依赖。媒体 Effect 是通用模型通信能力，不能承载业务字段、制卡步骤或业务媒体选择策略。
+
+### 2026-10-16 工作树审查
+
+审查开始时已有 129 个受版本管理文件的改动，另有新增文件。文件数来自跨层契约传播和多项工作混合，不能据此认定每处修改都必要。
+
+| 改动组 | 判断与处理 |
+| --- | --- |
+| Tool 节点、版本、结构化结果与 reconcile | 确定性调用的执行链；插件、Program、Effect、工具服务各有职责，保留 |
+| 媒体节点、连接槽、快照与资产回执 | 通用模型能力；Agent 节点要求及同槽多节点要求也必须参加准入，已修正遗漏 |
+| 内置业务入口移除 | 提示词、模板、工作区、宿主初始化和演示要同步移除，避免只隐藏 UI；现有用户文件保留 |
+| Skill 投影迁至后端、工具箱导航读模型 | 修复前端拥有服务订阅/后端回读前端文件系统的边界问题，可独立交付；YAML 是显式允许的无平台 I/O 编解码依赖 |
+| 目录快照、面包屑、独立库版本更新 | 导航优化，可与执行机制分开提交；不属于外部 Tool 接入的必要前置 |
+
+本次只集中修补准入遗漏、架构检查和重复流程：能力启动判定统一放在 `llm-flow/flow/task-capabilities.ts`；纯计算/媒体节点不再无条件查询工具目录；历史测试改用中性的外部文件类型。没有新增扩展市场、业务队列或第二套 Runtime。
+
+外部包安装/完整性锁定、宿主要求匹配、业务产物导出并未形成完整交付；`additionalTools` 是注入端口，不能宣称已经实现这些安装与部署能力。现有流程仍有兼容路径，本轮不以大规模重写掩盖这些缺口。
+
 ## 配置写操作
 
 运行时创建唯一 `runtime.configuration`，设置页面与工具箱共用它。

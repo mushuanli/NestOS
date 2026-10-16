@@ -1,8 +1,8 @@
 # 外部 Anki Tool 与 Flow：策略和机制边界
 
-状态：**待实施的设计方案**。2026-10-15，根据当前源码和相邻仓库 `../pair-x1/tookit/anki-helper/` 核对；原需求中的 `anki_helper/` 实际目录名为 `anki-helper/`。
+状态：**通用执行子集已实施，外部业务包及安装/宿主要求匹配待实现**。2026-10-16，同步到当前主工作区并通过独立进程 CLI 验收；此前的业务分析来自相邻 `anki-helper` 仓库，不要求核心依赖该目录。当前模块边界与工作树审查见[策略与机制](application-policy-boundaries.md)。
 
-**目前没有可运行的 Anki Flow 或对应工具扩展。** 本文按“itookit 仅提供通用机制，非通用功能通过外部 Tool 实现”的要求重新确定归属，替代此前将 Anki 业务放入 app-core、HTTP 宿主和内置模板库的方案。现有 `.anki` 笔记工作区不代表本方案已经实现。
+**目前没有可运行的 Anki Flow 或对应工具扩展。** 本文按“itookit 仅提供通用机制，非通用功能通过外部 Tool 实现”的要求重新确定归属，替代此前将 Anki 业务放入 app-core、HTTP 宿主和内置模板库的方案。默认 Anki 提示词、工作区、文件模板和演示反馈场景已移除；已有文件不会删除，外部宿主可通过 AppOptions.fileTypes 显式注册自己的文件类型。
 
 ## 1. 设计结论
 
@@ -51,12 +51,12 @@ flowchart TD
 | 事项 | 当前源码事实 | 本方案要求 |
 | --- | --- | --- |
 | Tool 注入 | `additionalTools`、`configureSession` 可注入工具，工具服务支持外部注册 | 优先复用工厂/宿主注入，补齐版本、受限上下文和生命周期契约；不先建设插件市场 |
-| Flow 调用 | 已有 Agent、控制与人工节点；内置插件表未提供直接 Tool 节点 | 增加通用 `builtin.tool`（拟议名称），确定性调用指定工具，不让模型选工具和参数 |
-| Tool 执行 | `tool.call` 已有授权、执行、进度与取消转发 | 为直接 Tool Task 接通结构化结果、输出校验、正确的失败状态及通用恢复分派 |
-| 崩溃核对 | 当前通用 `ToolCallEffectAdapter.reconcile` 对非只读工具返回 `indeterminate` | 允许注册工具提供业务核对；没有核对能力时保持不确定状态，不静默重放 |
-| Flow 授权 | 自动绑定/延迟启动主要覆盖 `llm.agent`/`llm.chat` | 通用 Tool Task 在取得工具及文件/模型等所需句柄后才启动 |
-| 连接 | 支持命名槽和单个运行连接覆盖 | 逐槽运行绑定、通用操作/模态匹配与不可变解析结果 |
-| 模型通信 | 有 chat、模型 category 和部分能力标记 | 生图/TTS 若需补充，应增加通用通信操作和适配器，不增加 Anki 通信类型 |
+| Flow 调用 | `builtin.tool@1.0.0` → `kernel-adapters.tool@1` → `tool.call` | 确定性调用固定版本及参数，节点 capabilities 显式授权 |
+| Tool 执行 | 已接通完整有界 JSON、输出 Schema 校验、版本匹配、稳定 operationId | 超大结果返回资产引用；禁止把展示截断当作下游数据 |
+| 崩溃核对 | 原生 Tool 可提供 reconcile 并取得相同 operationId | 无核对能力的非只读工具保持 indeterminate，不静默重放 |
+| Flow 授权 | Tool / 媒体 Task 延迟到能力句柄绑定后启动 | Tool 只取得工具资源，媒体只取得模型资源 |
+| 连接 | 支持节点 connectionId/connectionSlot 和运行 connectionBindings，持久化模型/媒体端点快照 | 准入和执行前校验操作、模态、格式、音色及授权，未知即拒绝 |
+| 模型通信 | chat + image.generate / speech.synthesize；媒体使用独立的 OpenAI 兼容端点 | Provider.media 和 model.operations 显式声明，category/audio 标记不等于生成能力 |
 | 扩展资源 | 有产品内置 Flow 库和初始文件恢复 | 外部业务 Flow 通过导入/安装清单接入；通用恢复只处理已安装来源 |
 
 源码入口：
@@ -67,7 +67,7 @@ flowchart TD
 - [连接槽](../../backend/llm-flow/src/contracts/flow-definition.ts)、[槽解析](../../backend/llm-flow/src/flow/connections.ts)、[Flow 编译](../../backend/llm-flow/src/flow/to-dag.ts)。
 - [调用记录](../../backend/llm-session/src/session/flow-invocations.ts)、[当前连接表单](../../ui/llm-ui/src/components/FlowParameterForm.ts)、[Kernel Effect 契约](../../backend/durable-kernel/src/domain/types.ts)。
 
-下文的新接口与流程都是设计目标，不代表现有接口已支持这些能力。
+上表区分当前实现与待补要求；后文的扩展安装、宿主要求匹配和业务流程仍是设计目标。
 
 ## 4. C4：部署与组件边界
 
@@ -99,7 +99,7 @@ C4Component
     Container_Boundary(core, "itookit 通用运行时") {
         Component(app, "应用门面", "app-core / app-contracts", "准备运行、展示可用能力、接收调用")
         Component(flow, "Flow 引擎", "llm-flow", "解释外部图、解析槽、构造通用 Task")
-        Component(task, "通用 Tool Task", "通用程序，待补齐", "请求工具 Effect、持久等待并投影结果")
+        Component(task, "通用 Tool Task", "kernel-adapters/programs/tool-program", "请求工具 Effect、持久等待并投影结果")
         Component(kernel, "执行内核", "durable-kernel", "租约、Effect 记录、事件和恢复调度")
         Component(adapter, "Tool Effect 适配器", "kernel-adapters", "权限、工具分派、通用生命周期转发")
         Component(registry, "工具注册表", "tools / 宿主注入", "版本化描述、处理器和受限能力")
@@ -188,7 +188,7 @@ external-anki-package/
 拟议的通用扩展：
 
 - 继续使用现有 `FlowConnection` 声明；补充操作、模态、特性要求，允许槽先声明、运行时再绑定。
-- 调用输入增加 `connectionBindings: Record<slot, binding>`，与普通业务 parameters 分开；保留原单连接调用兼容。
+- 调用输入支持 `connectionBindings: Record<slot, binding>`，与普通业务 parameters 分开；保留原单连接调用兼容。
 - 新节点使用显式槽引用，避免与全局 Connection ID 的同名字符串混淆。
 - 显式槽按本次绑定、定义默认绑定解析；必需槽缺失即报告，不隐式用会话文本连接替代媒体连接。未指定槽/连接的旧节点保持原解析顺序。
 - 组合 Flow 的槽按作用域命名并显式映射；动态节点继承被冻结的映射，不重新读取全局默认设置。
@@ -306,4 +306,25 @@ flowchart TD
 
 外部业务另行验收：文本/JSON/照片输入、保留修改与冲突、媒体默认关闭、不同 Connection 组合、失败项重试、崩溃后的业务回执、稳定 deck/note 身份、ZIP/媒体完整性、真实 Anki 导入和重复导入、独立包发布及无相邻源码依赖。
 
-独立 npm 若在机制实施中修改，分别提交、推送、构建和发布；外部 Anki 包也独立发布。**本次仅修订文档，未实现这些机制，也未修改或发布 npm。**
+独立 npm 若在机制实施中修改，分别提交、推送、构建和发布；外部 Anki 包也独立发布。本轮已修改通用机制与 driver-llm 源码并进行构建/本地 tarball 验证；未发布 npm，未实现或发布 Anki 业务包。
+
+
+## 本轮通用媒体与 CLI 接入
+
+`builtin.media@1.0.0` 支持 `image.generate`、`speech.synthesize`，通过受授权的 LLM
+Connection 执行；请求、输出与快照均不包含 Anki 业务字段。准入读取真实连接/tier/模型，
+执行前再检查启用状态、凭据和能力。媒体端点使用 API Key，不使用 ChatGPT 订阅授权。
+原生 Tool 的业务核对仍由外部实现提供，不把业务幂等判断搬入平台。
+
+二进制保存在所属 Task 的 VFS 资产目录，结果仅包含资产引用及 SHA-256；本地回执在所有
+资产写入并校验后发布，恢复核验资产与回执，缺少回执保持 MEDIA_INDETERMINATE。
+媒体 Effect 默认 180 秒、传输默认 120 秒，独立于聊天时限，避免恢复核对与内核默认
+30 秒租约同时到期。HTTP 错误不自动重试；显式重跑可能再次计费。
+
+CLI 运行 `.flow` 时通过 `--connection-bindings file.json` 绑定独立槽；能力声明从隔离
+profile 的 Provider 配置读取。配置示例见 [Flow API](../llm-flow-api.md)，可重复验收脚本见
+[verify-media-connections.mjs](../../apps/cli/scripts/verify-media-connections.mjs)。验收使用本地
+模拟端点，不调用真实付费服务。外部 Anki 制卡、打包与真实 Anki 导入仍待外部工具包完成。
+
+脚本直接执行 CLI 源码，不依赖旧 dist；普通媒体/工具与连接快照验收由 CLI 的 flow-run 测试执行，
+付费请求中断恢复由 crash-matrix 单独执行，两者随现有测试矩阵运行。

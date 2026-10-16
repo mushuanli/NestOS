@@ -100,7 +100,7 @@ FSEventBus（vfs-core/src/impl/event/event-bus.ts）：
     （payload 统一为数组：{nodes:[…]}；node:deleted 为 {requestedPaths, allDeletedPaths}）
   mount:added / mount:removed（payload {mountPath, mountId, label?}）
   → vfs-ui（EngineAdapter 订阅 driver 事件 → VFSUIShell 刷新树）
-  → app-settings SettingsService 防抖重载 → app-shell SkillsEngine（skill 变更同步）
+  → 后端配置服务重载 → app-core SkillsEngine（skill 变更同步）→ 工具箱导航快照/事件
 ```
 
 ## 7. 消费方一览

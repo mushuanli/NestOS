@@ -1913,3 +1913,68 @@ Tauri `session_shell_exec` 通过宿主目录句柄解析 grants，调用 `backe
 回归结果：VFS 22 文件 / 195 项、LocalFS 9 文件 / 86 项、Durable Kernel 8 文件 / 266 项、MDX 3 文件 / 14 项通过；Tauri sidecar 批量 IPC 定向测试 8 项通过。四个相关包类型检查与 Tauri Vite 构建通过。AppShell 整包在受限沙箱中运行到工作区崩溃用例时，子进程 `spawnSync git` 返回 EPERM；本次相关的 sidecar 定向测试独立通过，未把该环境失败记成功。
 
 本节没有改后真实 WebView 录制，因此只证明请求合并、嵌套放大消除和启动 chunk 拆分已经落地；P0-02 的 ≤2 秒 / ≤100 次仍保持开放，下一步须用同一 profile、同一 Session 和同一动作边界重录。
+
+
+## 2026-10-16：通用媒体连接与独立进程 CLI 验收
+
+当前原代码基线为 `a1934941`（v5.4）。旧 `/tmp` worktree 未随环境迁移保留，因此将已确认
+的机制恢复到本工作区，并保留基线之后的 Node 宿主与 CLI 重构。没有发布 npm 或调用真实
+付费服务；外部 Anki 制卡/打包工具不在本轮范围。
+
+复现命令（Node 22.13+，先安装工作区依赖）：
+
+```bash
+pnpm cli:build
+node apps/cli/scripts/verify-media-connections.mjs
+```
+
+脚本启动本地 HTTP 模拟服务，隔离 profile、XDG 配置与运行目录，随后通过独立的
+`node apps/cli/dist/cli.js` 进程执行 `run/status/tasks/resume`。崩溃案例会等待 31 秒，
+让内核原有执行租约到期；只结束该案例自己启动的 CLI 进程。
+
+本轮成功运行 ID：`20261016091724-4e15c9ed`。
+结构化证据：`/tmp/itookit-media-cli-8tYjHr/report.json`；该目录属于临时验收数据，环境迁移后
+可重新运行脚本生成。主要结果：
+
+| 验收 | 结果 |
+| --- | --- |
+| 节点连接槽绑定图片模型、直接连接绑定语音模型 | 两个模型分别到达指定 Provider 的不同端点，run/status/tasks 成功 |
+| PNG / WAV 资产与下游结果 | 两项资产内容及 SHA-256 一致，Task 仅输出资产引用 |
+| 成功运行 resume | 退出 0，没有新增模型请求 |
+| 未知音色、不支持格式、连接用途错误、仅 category/audio 标记、缺失必需槽 | 全部失败，发请求前阻止 |
+| 确定性 builtin.tool 调用 Read | 成功，无模型请求，错误固定版本被拒绝 |
+| HTTP 503 | 退出 1，仅一次请求，没有自动重试 |
+| 请求发出后强制结束进程，再 resume | 退出 3，MEDIA_INDETERMINATE，没有重发请求 |
+
+崩溃验收发现并修复媒体 Effect 沿用内核默认 30 秒时限的问题：媒体 Effect 现在默认
+180 秒，传输默认 120 秒；恢复在执行租约到期后可先核对回执，而非立即因总时限到期失败。
+远端成功、本地未保存回执的窗口依然不能证明结果，显式重跑可能再次计费。
+
+验证记录：全仓 typecheck、架构及文档检查通过；driver-llm、Tools、Kernel adapters、Flow、
+Tasks、Session、app-core、设置 UI 和 CLI 相关回归通过。AppShell 整包首轮发现三处空绑定
+对象兼容性差异，修复后的相关五个测试文件共 39 项通过；另外五项 web-project-sync 用例
+因环境未配置 Rust 工具链而无法启动，不计为通过。driver-llm 构建及仓库外 tarball 的
+ESM/CJS/类型消费者验证通过。本轮没有真实服务商的付费模型验收。
+
+
+## 2026-10-16 工具箱后端读模型与目录导航
+
+工具箱首屏改为后端 toolboxView.initial，刷新改为 ToolboxResources.navigation。技能文件系统迁入 app-core/configuration；默认工具分组迁出 UI；不再向后端传入浏览器文件系统。传输回归使用完整 Runtime 与 RpcPeer，确认首屏仅一次 toolboxView，初始列表与事件刷新均无 getChildren/getNodeType RPC、无反向浏览器数据调用；只读资源和技能编辑继续走原有授权端口。公共协议升级为 v11。
+
+工作台目录面包屑复用 openResource，覆盖缓存目录、项目根与所有项目的侧栏选择同步，保留中文、百分号与远程 profile 身份。vfs-ui 修复已加载节点的延迟创建事件抢占选择，以及虚拟根目录选择未清理旧状态的问题。
+
+验证：app-shell 全包 684 通过、30 跳过；http-app 106 通过；vfs-ui 201 通过；app-core 定向 3 通过。相关 TypeScript 检查、模块边界、文档、样式及 HTTP 前后端构建通过。vfs-ui@0.5.9 发布 tarball 在仓库外完成 ESM/CJS/TypeScript 消费验证。此次未在真实 Safari 或用户运行中的 release 上复测，没有重启现有 httpd；网络改善以消除调用链证据为准，未宣称真实跨机耗时指标。
+
+## 2026-10-17：剩余修改审查与修正
+
+按会话准入、工具生命周期、任务快照、Flow 表单/CLI 和工作区元数据分组审查与提交，保持业务工具与通用执行机制分离。主要修正：
+
+- 独立 Flow 调用在持久化意图前完成完整 DAG 准入，固定默认连接、运行选择及子 Flow 的模型；提交中断后复用准入图，根 Task 创建后移除临时图。旧的无根调用记录先补准入，已有根只重挂。
+- 原生 Tool 的 reconcile 重验版本、启用、Schema、权限与取消，保留原 operationId，不重跑业务执行前提或改写原参数。结构化输出必须是完整有界 JSON，执行后的输出失败不再作为可纠正输入错误返回模型。
+- LLM 连接快照通过 Agent/Chat、Context 准备、恢复及归档链传递，构造 Task 输入时复制快照，避免调用方后续修改影响运行。
+- 可选槽位可以显式清除默认连接，必需槽仍拒绝空绑定；表单保留缺失连接 ID 与已有嵌套绑定。设置编辑保留槽位能力要求，变更连接时清除旧模型快照，清空描述能正确保存。
+- CLI 在同一次编译中完成宿主绑定与连接准入，保存最终 RunDefinition，重跑不再重新选择模型。Agent Task 的 Session 身份来自当前运行上下文。
+
+已通过全仓 typecheck、build:libs、CLI 构建、前端公共入口构建隔离、文档/样式检查及离线 frozen-lockfile 校验。CLI 媒体验收脚本直接执行源码，使用隔离 profile 和本地 HTTP 模拟端点；本轮没有真实服务商付费调用或 npm 发布。
+
+完整 `pnpm test` 矩阵通过：Vitest 汇总 3948 项通过、33 项按配置跳过，其中 CLI 串行回归 206 项、隔离崩溃矩阵 23 项；Rust 宿主边界 62 项通过。收尾补充“根 Task 已创建但调用回执未写入”的临时图清理后，llm-session 整包 265 项、类型检查及构建再次通过；已有根不重编译、不重读模型目录。文档检查保留 7 条既存历史表述告警。

@@ -20,7 +20,7 @@ Web 与 Tauri 共用 `ToolboxWorkbench`，主导航中用「工具箱」集中�
 
 规范地址为 `#/toolbox/<encodeURIComponent(资源路径)>`，资源路径带 `/agents`、`/skills`、`/flows`、`/prompts`、`/mcp`、`/tools`、`/providers` 或 `/connections` 前缀。例如 `/agents/default/example.agent`。旧 `#/agents`、`#/skills`、`#/flows` 链接与导航请求会转换到工具箱，保持原文件路径。旧 `#/settings/providers`、`#/settings/connections`、`#/settings/mcp-servers`、`#/settings/system-prompts` 及携带 anchor 的设置导航请求重定向到工具箱分类或具体条目。
 
-`app-core/configuration` 管理资源操作、分组存储与只读目录；`ToolboxWorkbench` 用 `createFileSystemView` 挂载已有资源源。适配层向编辑器传回原始路径/实体 ID 和所属文件系统；原有智能体、技能、流程、提示词及 MCP 存储无需迁移。提示词、MCP、工具、Provider 和 Connection 使用只读内存投影，配置修改仍经过管理服务；投影不包含模型服务商凭据。`SkillsEngine` 提供可挂载的根目录。`/drawers/*`、`/model-groups/*` 和 `/tool-groups/*` 仅是 UI 抽屉，不改变存储目录或文件身份。
+`app-core/configuration` 管理资源操作、分组存储与只读目录；后端用 `createFileSystemView` 组合已有资源源，`ToolboxWorkbench` 仅消费准备好的视图与导航数据。适配层向编辑器传回原始路径/实体 ID 和所属文件系统；原有智能体、技能、流程、提示词及 MCP 存储无需迁移。提示词、MCP、工具、Provider 和 Connection 使用只读内存投影，配置修改仍经过管理服务；投影不包含模型服务商凭据。`app-core/configuration/skills-files.ts` 的 `SkillsEngine` 提供后端拥有的可挂载根目录。`/drawers/*`、`/model-groups/*` 和 `/tool-groups/*` 仅是 UI 抽屉，不改变存储目录或文件身份。
 
 自定义抽屉名称、资源归属及默认分组调整持久化在 `/etc/ui/toolbox-drawers.json`，Web 和 Tauri 共用 VFS 读写。资源重命名时同步更新归属；保存失败不更新内存分组，新建资源的分组保存失败会回滚本次新建资源。
 
@@ -74,3 +74,31 @@ Web 与 Tauri 共用 `ToolboxWorkbench`，主导航中用「工具箱」集中�
 `vfs-ui` 的 `createSelectionOperation` 统一选择操作的去重、确认、顺序执行、取消与成功回调，`createDeleteOperation` 保证先删除资源再删除容器，`createMoveOperation` 接收宿主定义的目的地。文件操作与工具箱操作复用执行机制。
 
 `app-shell/src/toolbox/ToolboxDeletion.ts` 从完整资源目录展开抽屉，生成删除计划并过滤已由 Provider 级联删除的连接；`ToolboxWorkbench` 仅注册动作与完成后的刷新。`ConfigurationDeletionDialog.requestResult` 明确返回 `completed` / `cancelled`，不通过资源是否存在猜测用户是否取消；原有编辑器 `request` 保持 void 接口兼容。`DrawerActions` 的归属移动通过公共移动机制调用抽屉服务，具体分组规则仍由宿主负责。
+
+## 导航数据装配边界
+
+`ApplicationBackend.toolboxView()` 不接受浏览器文件系统。后端创建技能文件系统与资源目录，读取抽屉设置，装配默认工具分类，返回 `ToolboxView.initial`（目录节点、条目、资源说明和需要加载的目录）及实时能力端口。首次展示不再逐目录 HTTP 读取，不经 SSE 回调前端读取技能。刷新由 `ToolboxResources.navigation()` 一次准备新数据；前端不编排 inventory 刷新、抽屉初始化、说明查询和分组扫描。
+
+`navigation()` 会重建分组和资源清单，在应用能力描述中按异步刷新操作处理，复用配置域失效机制，
+在回复前同步 `ToolboxDrawers` 和 `ToolboxInventory` 快照。不依赖额外配置变更事件，也不作为纯查询批处理；
+普通只读查询仍保留原有行为。传输机制不识别工具箱名称或分组规则。
+
+`browser/directory-snapshot.ts` 只实现通用的一次性元数据消费：事件、版本变化或显式读取条件不匹配时回到实时端口；它与普通工作区的首层导航共用，不能当作长期业务缓存。工具箱是配置资源目录，关闭 Git 忽略检查；普通项目文件浏览仍遵循原有忽略策略。
+
+```mermaid
+C4Component
+    Container_Boundary(frontend, "前端 app-shell") {
+        Component(toolbox, "ToolboxWorkbench", "DOM", "筛选、折叠、选择、编辑器导航")
+        Component(seed, "DirectorySnapshot", "一次性元数据适配", "复用后端结果，事件后使用实时端口")
+    }
+    Container_Boundary(backend, "后端 app-core") {
+        Component(view, "ToolboxView", "应用入口", "准备资源能力与首屏数据")
+        Component(resources, "ToolboxResources", "应用用例", "分组、说明、目录快照与刷新")
+        Component(skills, "SkillsEngine", "文件系统适配", "技能数据读写与服务事件")
+    }
+    Rel(toolbox, view, "toolboxView，无前端数据能力参数")
+    Rel(toolbox, resources, "navigation，业务级刷新")
+    Rel(toolbox, seed, "展示已准备目录")
+    Rel(view, resources, "装配首屏数据")
+    Rel(resources, skills, "本地读取，无浏览器回调")
+```

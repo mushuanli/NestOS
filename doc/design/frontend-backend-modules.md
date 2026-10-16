@@ -123,3 +123,9 @@ C4Component
 会话消息的不可变投影位于 HTTP application/，消息事件定位受影响的分组，结构变化或未知事件从权威快照恢复；rpc/ 不识别 Session 事件类型。快照 DTO 编码、大小和能力引用扫描复用不变子树；历史不再同时编码 getSnapshot.sessions 与 getSessions。原生会话的游标推进和串行化属于 app-core/projects/conversation-view，订阅者共享一个轮询源；UI 接收通知后读取快照。
 
 旧 ApplicationPort、ApplicationHost 和独立持久回执链已移除，相应废弃设计已从文档树清理。当前前端能力以 services.ts 与 application-client.ts 为准。
+
+### 导航的读取与交互边界
+
+后端准备资源元数据、分组、能力和业务读模型，前端通过应用端口消费，不能向后端传入前端实现的数据文件系统再回调读取。工具箱由 `app-core/configuration` 装配完整导航；`SkillsEngine` 从设置 UI 包迁移到后端。前端的一次性目录快照适配与原生 DOM 面包屑不包含资源分类或存储策略。
+
+工作台目录面包屑保存每一级的真实路由和展示名称，复用 `openResource` 及已有异步导航代次同步侧栏展开/选中；返回缓存目录标签也执行侧栏同步。本地与远程项目共用，不额外创建后台数据服务或改动挂载权限。

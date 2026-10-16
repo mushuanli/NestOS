@@ -111,3 +111,12 @@ it('ignores an older catalog refresh that finishes after a newer configuration u
         {setCredential:vi.fn(),dispose:vi.fn(),open:vi.fn()});
     const older=registry.refresh();await registry.refresh();finish([server]);await older;expect(registry.list()).toEqual([]);
 });
+
+it('requires explicit anonymous authentication and a verified anonymous principal projection',()=>{
+    const authorization={principalId:'anonymous',anonymous:true,revision:'a'.repeat(64)};
+    const anonymous={...server,auth:{type:'anonymous' as const,credentialRef:'public'},extensions:{[PI_AGENT_EXTENSION]:{...server.extensions[PI_AGENT_EXTENSION],harness:false,projects:false,authorization}}};
+    expect(remoteMCPConnection(anonymous)).toMatchObject({anonymous:true,authorization});
+    expect(remoteMCPConnection({...anonymous,extensions:{[PI_AGENT_EXTENSION]:{...anonymous.extensions[PI_AGENT_EXTENSION],authorization:undefined}}})).toBeUndefined();
+    expect(remoteMCPConnection({...anonymous,auth:undefined})).toBeUndefined();
+    expect(remoteMCPConnection({...anonymous,extensions:{[PI_AGENT_EXTENSION]:{...anonymous.extensions[PI_AGENT_EXTENSION],authorization:{...authorization,principalId:'alice'}}}})).toBeUndefined();
+});

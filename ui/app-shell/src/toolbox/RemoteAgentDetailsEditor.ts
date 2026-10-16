@@ -11,6 +11,8 @@ export class RemoteAgentDetailsEditor extends BaseSettingsEditor<ToolboxInventor
         const panel = document.createElement('section'); panel.className = 'toolbox-detail';
         const heading = document.createElement('h1'); heading.textContent = agent?.name ?? t('harness.remoteAgents'); panel.append(heading);
         if (!agent) { panel.append(t('toolbox.unavailable')); this.container.replaceChildren(panel); return; }
+        const authorization = this.projects?.remoteMounts?.connections().find(c => c.id === agent.connectionId)?.authorization;
+        if (authorization) { const identity = document.createElement('p'); identity.textContent = t('remote.identity', {name:authorization.principalId}); panel.append(identity); }
         const hint = document.createElement('p'); hint.textContent = t('harness.hint'); panel.append(hint);
         for (const project of await this.projects?.list() ?? []) {
             const mount = this.projects?.remoteMounts?.list(project.project.id).find(m => m.at === '/' && m.connectionId === agent.connectionId && m.serverProjectId);
@@ -18,7 +20,7 @@ export class RemoteAgentDetailsEditor extends BaseSettingsEditor<ToolboxInventor
             const sessions = document.createElement('button'); sessions.type = 'button'; sessions.textContent = `${project.name} · ${t('harness.remoteSessions')}`;
             sessions.onclick = () => { void this.options.hostContext?.navigate({target: 'chat', resourceId: remoteSessionPath(project.path, agent.profile.id)}); };
             panel.append(sessions);
-            if (mount.access === 'rw' && agent.profile.capabilities.create) {
+            if ((mount.capabilities?.sessionControl ?? mount.access === 'rw') && agent.profile.capabilities.create) {
                 const create = document.createElement('button'); create.type = 'button'; create.textContent = `${project.name} · ${t('harness.create')}`;
                 create.onclick = () => { void this.options.hostContext?.navigate({target: 'chat', resourceId: remoteSessionPath(project.path, agent.profile.id) + '/@new'}); };
                 panel.append(create);

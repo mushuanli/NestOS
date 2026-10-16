@@ -4,6 +4,10 @@ import type { MCPConnectionOptions } from '../contracts/mcp-transport';
 /** Credentials are resolved on every request, never copied into stored headers. */
 export function mcpAuthenticatedFetch(auth: MCPAuthentication, resolve: MCPConnectionOptions['resolveCredential']): typeof fetch {
     return async (input, init) => {
+        if (auth.type === 'anonymous') {
+            const headers = new Headers(init?.headers); headers.delete('Authorization');
+            return fetch(input, {...init, headers, redirect:'error', credentials:'omit', cache:'no-store'});
+        }
         const secret = await resolve?.(auth.credentialRef);
         if (!secret) throw new Error('MCP credentials required');
         const headers = new Headers(init?.headers);

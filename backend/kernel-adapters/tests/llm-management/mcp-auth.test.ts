@@ -19,3 +19,13 @@ it('fails before contacting a server when the credential is unavailable',async (
     await expect(mcpAuthenticatedFetch({type:'bearer',credentialRef:'missing'},async () => '')('https://server.test/mcp')).rejects.toThrow('credentials required');
     expect(network).not.toHaveBeenCalled();
 });
+
+it('uses explicit anonymous mode without resolving or forwarding credentials',async()=>{
+    const network=vi.fn(async()=>new Response('{}'));vi.stubGlobal('fetch',network);
+    const resolve=vi.fn(async()=>{throw new Error('must not resolve');});
+    await mcpAuthenticatedFetch({type:'anonymous',credentialRef:'public'},resolve)('https://server.test/mcp',{headers:{Authorization:'Bearer ambient'}});
+    expect(resolve).not.toHaveBeenCalled();
+    const options=(network.mock.calls[0] as unknown as [unknown,RequestInit])[1];
+    expect(new Headers(options.headers).has('authorization')).toBe(false);
+    expect(options.credentials).toBe('omit');
+});

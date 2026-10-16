@@ -17,7 +17,7 @@ import { normalizeConnection, remoteProjectPath, type RemoteFileSystemConfig, ty
 import type { HarnessClient } from '@itookit/piagent-driver/harness';
 import type { ProjectClient, RemoteProject, HarnessConversationPort, HarnessProfile, HarnessConversationJournal } from '@itookit/piagent-driver';
 
-export interface RemoteFileConnection { endpoint: string; alias: string; credentialRef: string; username?: string; }
+export interface RemoteFileConnection { endpoint: string; alias: string; credentialRef: string; username?: string; anonymous?: boolean; authorization?: import('@itookit/piagent-driver').RemoteAuthorization; }
 
 /** One directory grant as the execution node must expose it to a process. */
 export interface RemoteProcessMount { alias: string; path: string; at: string; access: 'ro' | 'rw' }
@@ -51,6 +51,7 @@ export interface RemoteFileSourceProvider {
     dispose(): Promise<void>;
 }
 export interface ProjectRemoteMount extends RemoteFileConnection {
+    capabilities?: import('@itookit/piagent-driver').RemoteProjectCapabilities;
     serverProjectId?: string; serverProjectRevision?: number; serverId?: string; mountId: string; at: string; root: string; access: 'ro' | 'rw'; connectionId?: string;
 }
 export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offline';
@@ -236,7 +237,8 @@ export class ProjectRemoteMountService {
         if (!previous || !this.connectionProjects(server.id).length) return;
         const before = remoteMCPConnection(previous), after = remoteMCPConnection(server);
         if (!before && after && this.recoversMCP(server, previous, after)) return;
-        if (!before || !after || before.endpoint !== after.endpoint || before.username !== after.username || before.credentialRef !== after.credentialRef
+        if (!before || !after || before.endpoint !== after.endpoint || before.username !== after.username || before.credentialRef !== after.credentialRef || before.anonymous !== after.anonymous
+            || !!before.authorization && before.authorization.principalId !== after.authorization?.principalId
             || !!before.serverId && before.serverId !== after.serverId)
             throw new FSError('EBUSY', 'Referenced pi-agent connection cannot be retargeted or disabled');
         if (JSON.stringify(previous.auth) !== JSON.stringify(server.auth) || previous.apiKey !== server.apiKey)
@@ -293,11 +295,11 @@ export class ProjectRemoteMountService {
     }
     async refreshMCPConnections(): Promise<void> {
         if (!this.mcpConnections || this.closed) return;
-        const before = new Map(this.connections().map(item => [item.id,JSON.stringify([item.endpoint,item.username,item.credentialRef])]));
+        const before = new Map(this.connections().map(item => [item.id,JSON.stringify([item.endpoint,item.username,item.credentialRef,item.anonymous,item.authorization])]));
         await this.mcpConnections.refresh();
         for (const projectId of Object.keys(this.catalog.projects)) {
             const mounts = this.list(projectId).filter(mount => mount.connectionId && before.get(mount.connectionId)
-                !== (() => { const next = this.connections().find(item => item.id === mount.connectionId); return next ? JSON.stringify([next.endpoint,next.username,next.credentialRef]) : undefined; })());
+                !== (() => { const next = this.connections().find(item => item.id === mount.connectionId); return next ? JSON.stringify([next.endpoint,next.username,next.credentialRef,next.anonymous,next.authorization]) : undefined; })());
             for (const mount of mounts) await this.releaseSource(mount.mountId);
             if (mounts.length) await this.changed(projectId);
         }
@@ -340,7 +342,7 @@ export class ProjectRemoteMountService {
             if (this.findRemoteProject(connectionId, path)) throw new FSError('EEXIST', 'Remote path already belongs to a project');
             await this.beforeChange(projectId); checkOperation(options);
             const connection = this.connection(connectionId);
-            const mount: ProjectRemoteMount = { endpoint: connection.endpoint, username: connection.username, credentialRef: connection.credentialRef,serverId:connection.serverId,
+            const mount: ProjectRemoteMount = { endpoint: connection.endpoint, username: connection.username, anonymous:connection.anonymous, authorization:connection.authorization, credentialRef: connection.credentialRef,serverId:connection.serverId,
                 connectionId, ...remoteProjectPath(path), access, at: '/', mountId: randomUUID() };
             await this.rootValidator?.(projectId, mount);
             const grants=[mount];
@@ -350,6 +352,7 @@ export class ProjectRemoteMountService {
                     const remote=await client.register({name:options?.projectName ?? projectId,alias:mount.alias,path:mount.root.replace(/^\//,''),access,createDirectory:options?.createDirectory},options);
                     if (remote.alias!==mount.alias || remote.path!==mount.root.replace(/^\//,'') || access==='rw' && remote.access!=='rw') throw new FSError('EACCES','Server project grant does not match the requested root');
                     mount.serverProjectId=remote.id; mount.serverProjectRevision=remote.revision;
+                    mount.capabilities=remote.capabilities ? {...remote.capabilities,fileWrite:remote.capabilities.fileWrite && access==='rw'} : undefined;
                     for (const extra of remote.mounts) {
                         if (!extra.at.startsWith('/workspace/')) throw new FSError('EACCES','Server project mount outside the project');
                         const grant={...mount,alias:extra.alias,root:extra.path ? '/'+extra.path : '/',at:extra.at.slice('/workspace'.length),access:access==='ro' ? 'ro' as const : extra.access,mountId:randomUUID()};
@@ -400,6 +403,8 @@ export class ProjectRemoteMountService {
                 }
                 checkOperation(options);
                 const next = grants.map(mount => ({...mount, mountId: randomUUID(), serverProjectRevision: project.revision,
+                    authorization:project.authorization ?? mount.authorization,
+                    capabilities:project.capabilities ? {...project.capabilities,fileWrite:project.capabilities.fileWrite && access==='rw'} : undefined,
                     access: access === 'ro' ? 'ro' as const : mount.at === '/' ? 'rw' as const
                         : project.mounts.find(item => item.at === '/workspace' + mount.at)!.access}));
                 await this.save(projectId, next);
@@ -444,8 +449,8 @@ export class ProjectRemoteMountService {
             if (!profile) throw new FSError('ECAPABILITY', 'Project harness profile unavailable');
             const root = this.list(projectId).find(m => m.at === '/')!;
             const guarded = this.guardHarness(client, projectId, fingerprint, root.connectionId!);
-            const recovery = new RemoteConversationStore(this.store, JSON.stringify([projectId, root.connectionId, root.serverProjectId, profileId, sessionId ?? '@new']));
-            const conversation = await this.provider.conversation(sessionId ? guarded : draftHarness(guarded, recovery), profile, profile.workspaces[0].id, sessionId, root.access === 'rw' && !readOnly,
+            const recovery = new RemoteConversationStore(this.store, JSON.stringify([projectId, root.connectionId, root.serverProjectId, ...(root.authorization ? [root.authorization.principalId] : []), profileId, sessionId ?? '@new']));
+            const conversation = await this.provider.conversation(sessionId ? guarded : draftHarness(guarded, recovery), profile, profile.workspaces[0].id, sessionId, (profile.projectCapabilities?.sessionControl ?? root.access === 'rw') && !readOnly,
                 remoteConversationJournal(recovery, descriptor.epoch, !sessionId));
             return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage);
         } catch (error) { await client.close(); throw error; }
@@ -633,6 +638,11 @@ export class ProjectRemoteMountService {
         } });
     }
     private resolve(mount: ProjectRemoteMount, options?: OperationOptions) {
+        if (mount.connectionId) {
+            const current = this.connections().find(c => c.id === mount.connectionId);
+            if (mount.authorization && (current?.authorization?.principalId !== mount.authorization.principalId
+                || current.authorization.revision !== mount.authorization.revision)) return Promise.reject(new FSError('EACCES','Remote authorization changed; refresh the project binding'));
+        }
         let owner = this.sources.get(mount.mountId);
         if (!owner) {
             owner = this.provider.open(mount, options); this.sources.set(mount.mountId, owner);

@@ -8,7 +8,7 @@ MindOS 默认消费固定 Git 提交的独立库源码。八个独立库均位�
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.8 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.3 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
-| @itookit/piagent-driver | `libraries/piagent-driver` | 0.1.3 |
+| @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.0 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.2 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
@@ -126,3 +126,9 @@ driver-llm@0.3.1 包含 `chatgpt` Provider 与同名 implementation，继续复�
 | piagent-driver@0.1.3 | `0ae5c9406bcdab7a698d01eef6ed512e8aa25c9adcad6d9ef302c1257de9b73e` |
 
 Rust pi-agent 独立于 npm 发布流程；其启动版本输出、日志与并发隔离更新通过 tools/pi-agent 的 Git 提交和本地二进制交付。
+
+### 2026-10-16 目录授权发布
+
+piagent-driver@0.2.0 已发布并从公开注册表重新下载，SHA-256 为 `e43eef38a227f1daa53904135b5beca9e9b6d52c6f2f27c6af8b93ee8aee27c5`，与正式 prepare 制品一致。128 项源码测试通过、1 项跳过；仓库外 ESM/CommonJS、公开子路径及 TypeScript bundler/NodeNext 消费验证通过。新增匿名目录读取、稳定身份与授权版本校验、项目有效能力投影，价格和目录共享策略仍由宿主控制。
+
+Rust pi-agent@0.2.0 提供目录 grants、稳定 owner 和独立执行权限；共享节点可由多个独立 itookit 实例连接。同一 httpd 的多用户登录与存储隔离不在本次实现范围。

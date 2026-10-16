@@ -1,9 +1,11 @@
 import { FSError, normalizeVirtualPath } from '@itookit/vfs-core';
 
 export interface RemoteFileSystemConfig {
+    anonymous?: boolean;
+    authorization?: import('@itookit/piagent-driver').RemoteAuthorization;
     id: string; name: string; endpoint: string; username?: string; credentialRef: string; serverId?: string; projects?: boolean;
 }
-export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpoint' | 'username'>;
+export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpoint' | 'username' | 'anonymous'>;
 
 export function normalizeConnection(input: RemoteFileSystemInput): RemoteFileSystemInput {
     // Stored catalogs and dialog input both arrive as untrusted shapes: reject them as FSError,
@@ -18,7 +20,9 @@ export function normalizeConnection(input: RemoteFileSystemInput): RemoteFileSys
     catch { throw new FSError('EINVAL', 'Invalid remote endpoint'); }
     if (!['http:', 'https:'].includes(endpoint.protocol) || endpoint.username || endpoint.password || endpoint.search || endpoint.hash)
         throw new FSError('EINVAL', 'Invalid remote endpoint');
-    return { name, ...(username ? {username} : {}), endpoint: endpoint.href.replace(/\/+$/, '') };
+    if (input.anonymous !== undefined && typeof input.anonymous !== 'boolean' || input.anonymous && username)
+        throw new FSError('EINVAL', 'Invalid anonymous connection');
+    return { name, ...(username ? {username} : {}), ...(input.anonymous ? {anonymous: true} : {}), endpoint: endpoint.href.replace(/\/+$/, '') };
 }
 
 /** The first component names a server export, never a physical host directory. */

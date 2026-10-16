@@ -1,7 +1,7 @@
 export const MCP_PROTOCOL_VERSION = '2026-07-28' as const;
 
 export interface MCPAuthentication {
-    type: 'basic' | 'bearer';
+    type: 'basic' | 'bearer' | 'anonymous';
     credentialRef: string;
     username?: string;
 }

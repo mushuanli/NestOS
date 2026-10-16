@@ -268,3 +268,13 @@ Claude 配置 `kind="claude"`、显式 command 和私有 home（CLAUDE_CONFIG_DI
 侧栏点击项目根及项目选择器显式切换项目范围，复用已打开目录标签时也应用当前选择；文件和会话子项继续保留所在浏览范围。已知范围从当前目录清单立即显示，正文目录读取不等待整个侧栏导航、会话区和文件区展开。侧栏在后台补齐展开与选中状态，旧结果不得覆盖新路由，后台同步期间仍接受显式点击。
 
 目录读取复用已知节点，其他情况下并行读取条目与元数据；正文不重复执行侧栏展开。远程探测和打开错误停留在目标标签，显示原因并允许重试，不隐式回退到本地项目。项目文件、目录和原生会话错误使用统一带时间的 pi-agent 结构化日志，包含阶段、身份和错误码，不记录凭据或正文。
+
+## 2026-10-16：目录共享 ACL 与稳定身份
+
+目录共享采用一个非重叠 export 对应一个权限范围，不为不同用户重复导出同一个真实根。pi-agent 的 `principals` 将凭据映射到稳定 ID；exports 的 public/grants 决定文件 ro/rw 和独立执行权限。匿名请求仅能访问显式公开目录；无效认证不能退回匿名。项目绑定、harness profile/home、历史、事件和回执不因目录公开而共享。项目和目录同步绑定的持久 owner 从数组下标升级为稳定字符串；旧单用户 0 只映射 owner，用户重排与凭据轮换不转移所有权。
+
+`config/authorization.rs` 编译部署策略；`auth.rs` 提供身份解析、权限查询及缓存的授权版本；文件与进程边界消费同一授权。Bearer 使用摘要索引、Basic 使用用户名索引，读取不扫描全部用户。授权版本包含有效操作、可见目录物理身份和原生 home 范围；请求 headers 可绑定 principal/revision，旧上下文在执行前拒绝。文件 revision、项目布局 revision、授权 revision 各自独立。权限配置目前重启生效，没有在线 ACL 修改、组或任意嵌套规则。
+
+piagent-driver 的纯 authorization 入口负责校验 DTO，连接支持显式匿名，来源池包含身份、授权版本和认证模式。app-core 持有连接与挂载策略，阻止引用中的连接改为其他 principal；授权变化释放旧来源。服务端 ProjectCapabilities 分别投影 fileRead/fileWrite/run/sessionRead/sessionControl。只读挂载可以显式允许自己的原生会话，旧节点无该能力快照时仍按旧只读行为处理。UI 只展示认证模式、文件能力及会话控制能力，不解释 ACL。
+
+配置示例见 [config.access.example.toml](../../tools/pi-agent/config.access.example.toml)。同一 pi-agent 可由不同用户的独立 itookit 实例连接；单个 httpd 的多租户 profile、凭据和订阅隔离尚未实现，不能把 mTLS 准入作为多人应用隔离。同步仍是单个配置主体的 namespace，不隐式共享。

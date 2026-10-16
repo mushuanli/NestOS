@@ -2,6 +2,7 @@ import type { MCPServer } from '@itookit/tools/mcp-contracts';
 export const PI_AGENT_EXTENSION = 'itookit/pi-agent';
 const LEGACY_EXTENSION = 'itookit/fs-agent';
 export interface PiAgentConfiguration {
+    authorization?: import('@itookit/piagent-driver').RemoteAuthorization;
     version: 1; mcpEndpoint: string; httpEndpoint: string; fileProtocol: 'fs-agent-http-v1';
     serverId: string | null; harness: boolean; projects?: boolean; projectProtocol?: string; legacy?: boolean;
 }

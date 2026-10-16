@@ -281,6 +281,16 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
                     placeholder="${t('mcp.placeholder.endpoint')}">
             </div>
             <div class="settings-form-group">
+                <label>${t('mcp.authenticationMode')}</label>
+                <select class="settings-input" name="authenticationMode">
+                    ${(['bearer','basic','anonymous'] as const).map(mode => `<option value="${mode}" ${(server.auth?.type ?? 'bearer') === mode ? 'selected' : ''}>${t(`mcp.authentication.${mode}`)}</option>`).join('')}
+                </select>
+            </div>
+            <div class="settings-form-group">
+                <label>${t('mcp.authenticationUsername')}</label>
+                <input class="settings-input" name="authenticationUsername" value="${escape(server.auth?.username ?? '')}">
+            </div>
+            <div class="settings-form-group">
                 <label>${t('mcp.apiKey.label')} <span style="color:var(--st-text-tertiary);font-size:.8em">${t('mcp.apiKey.hint')}</span></label>
                 <input class="settings-input" type="password" name="apiKey" value="${escape(server.apiKey || '')}"
                     placeholder="${t('mcp.placeholder.apiKey')}">
@@ -454,10 +464,14 @@ export class MCPSettingsEditor extends BaseSettingsEditor<IAgentManagementServic
             apiKey: transport !== 'stdio' ? this.val('apiKey') || undefined : undefined,
             timeout: seconds * 1000, timeoutUnit: 'ms', autoConnect: this.chk('autoConnect'),
         };
-        if (draft.apiKey && draft.auth) {
-            draft.auth = undefined;
-            draft.headers = Object.fromEntries(Object.entries(draft.headers ?? {}).filter(([key]) => key.toLowerCase() !== 'authorization'));
-        }
+        if (transport !== 'stdio') {
+            const mode = this.val('authenticationMode') || existing.auth?.type || 'bearer';
+            if (!['anonymous','bearer','basic'].includes(mode)) throw new Error(t('mcp.invalidMap'));
+            draft.auth = mode === 'bearer' && !draft.apiKey && !existing.auth ? undefined : {type:mode as 'anonymous' | 'bearer' | 'basic',credentialRef:existing.auth?.credentialRef ?? `mcp-${existing.id}`,
+                ...(mode === 'basic' ? {username:this.val('authenticationUsername')} : {})};
+            if (mode === 'anonymous') draft.apiKey = undefined;
+            if (draft.auth) draft.headers = Object.fromEntries(Object.entries(draft.headers ?? {}).filter(([key]) => key.toLowerCase() !== 'authorization'));
+        } else draft.auth = undefined;
         return this.controls?.read(draft) ?? draft;
     }
 

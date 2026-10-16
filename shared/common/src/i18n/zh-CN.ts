@@ -1527,6 +1527,12 @@ export const zhCN = {
     'mcp.args.hint':             'Args（空格分隔）',
     'mcp.cwd.label':             '工作目录',
     'mcp.cwd.hint':              'CWD（可选）',
+    'remote.identity': '远端身份：{name}',
+    'mcp.authenticationMode': '认证方式',
+    'mcp.authenticationUsername': '用户名（仅 Basic）',
+    'mcp.authentication.bearer': 'API Key / Bearer',
+    'mcp.authentication.basic': '用户名 / 密码（Basic）',
+    'mcp.authentication.anonymous': '匿名访问公开目录',
     'mcp.apiKey.label':          'API Key',
     'mcp.apiKey.hint':           '可选',
 

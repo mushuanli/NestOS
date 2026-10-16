@@ -132,6 +132,7 @@ export type ProjectFolder = SessionFolder & {
 };
 
 export interface ProjectRemoteMount extends RemoteFileConnection {
+    capabilities?: import('@itookit/piagent-driver').RemoteProjectCapabilities;
     serverProjectId?: string;
     serverProjectRevision?: number;
     serverId?: string;
@@ -143,6 +144,8 @@ export interface ProjectRemoteMount extends RemoteFileConnection {
 }
 
 export interface RemoteFileConnection {
+    anonymous?: boolean;
+    authorization?: import('@itookit/piagent-driver').RemoteAuthorization;
     endpoint: string;
     alias: string;
     credentialRef: string;
@@ -309,9 +312,11 @@ export interface ProjectRemoteMountService {
 
 export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offline';
 
-export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpoint' | 'username'>;
+export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpoint' | 'username' | 'anonymous'>;
 
 export interface RemoteFileSystemConfig {
+    anonymous?: boolean;
+    authorization?: import('@itookit/piagent-driver').RemoteAuthorization;
     id: string;
     name: string;
     endpoint: string;

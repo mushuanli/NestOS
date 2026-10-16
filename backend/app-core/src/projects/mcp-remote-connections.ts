@@ -1,3 +1,4 @@
+import { validateAuthorization } from '@itookit/piagent-driver/authorization';
 import type { MCPDiscovery, MCPServer } from '@itookit/tools/mcp-contracts';
 import { FSError, checkOperation, type OperationOptions } from '@itookit/vfs-core';
 import { remoteLog, type MCPConnectionDiagnostic, type MCPConnectionReason } from './remote-diagnostics';
@@ -90,7 +91,8 @@ export function remoteMCPConnection(server: MCPServer): RemoteFileSystemConfig |
     const extension = piAgentConfiguration(server);
     const credentialRef = server.auth?.credentialRef ?? `mcp-${server.id}`;
     const basic = server.auth?.type === 'basic';
-    return { ...normalizeConnection({ name: server.name, endpoint: extension!.httpEndpoint, username: basic ? server.auth?.username : undefined }),
+    return { ...normalizeConnection({ name: server.name, endpoint: extension!.httpEndpoint, username: basic ? server.auth?.username : undefined, anonymous: server.auth?.type === 'anonymous' }),
+        authorization:validateAuthorization(extension!.authorization),
         id: server.id, credentialRef, ...(extension!.projects === true && extension!.projectProtocol === 'fs-agent-project-v1' ? {projects: true} : {}),
         ...(typeof extension!.serverId === 'string' && extension!.serverId ? {serverId: extension!.serverId} : {}) };
 }
@@ -98,6 +100,8 @@ function remoteMCPReason(server: MCPServer): MCPConnectionReason {
     if (server.transport !== 'http') return 'unsupported-transport';
     const extension = piAgentConfiguration(server);
     if (!hasRemoteAuth(server)) return 'auth-missing';
+    if (server.auth?.type === 'anonymous' && extension?.authorization?.anonymous !== true) return 'auth-missing';
+    if (extension?.authorization && extension.authorization.anonymous !== (server.auth?.type === 'anonymous')) return 'auth-missing';
     if (!extension) return 'extension-missing';
     if (!validRemoteDescriptor(extension)) return 'invalid-descriptor';
     if (extension.mcpEndpoint !== server.endpoint) return 'endpoint-mismatch';
@@ -109,12 +113,14 @@ function remoteMCPReason(server: MCPServer): MCPConnectionReason {
     } catch { return 'invalid-endpoint'; }
 }
 function hasRemoteAuth(server: MCPServer): boolean {
+    if (server.auth?.type === 'anonymous') return true;
     const credentialRef = server.auth?.credentialRef ?? (server.apiKey ? `mcp-${server.id}` : undefined);
     if (!credentialRef) return false;
     if (server.auth?.type === 'basic') return !!server.auth.username;
     return server.auth?.type === 'bearer' || !!server.apiKey;
 }
 function validRemoteDescriptor(extension: PiAgentConfiguration): boolean {
+    try { validateAuthorization(extension.authorization); } catch { return false; }
     return extension.version === 1 && extension.fileProtocol === 'fs-agent-http-v1'
         && typeof extension.harness === 'boolean' && typeof extension.httpEndpoint === 'string';
 }
@@ -124,11 +130,11 @@ function cleanEndpoint(endpoint: URL): boolean {
 function legacyMCPConnection(connection: RemoteFileSystemConfig): MCPServer {
     const endpoint = connection.endpoint.replace(/\/+$/, '') + '/mcp';
     return { id:connection.id,name:connection.name,transport:'http',endpoint,
-        auth:{type:connection.username ? 'basic' : 'bearer',username:connection.username,credentialRef:connection.credentialRef},
+        auth:{type:connection.anonymous ? 'anonymous' : connection.username ? 'basic' : 'bearer',username:connection.username,credentialRef:connection.credentialRef},
         extensions:{[LEGACY_EXTENSION]:{version:1,mcpEndpoint:endpoint,httpEndpoint:connection.endpoint,
             fileProtocol:'fs-agent-http-v1',serverId:null,harness:false,legacy:true} satisfies PiAgentConfiguration} };
 }
 
 function sameConnection(a: RemoteFileSystemConfig | undefined, b: RemoteFileSystemConfig): boolean {
-    return !!a && ['id','name','endpoint','username','credentialRef'].every(key => a[key as keyof typeof a] === b[key as keyof typeof b]);
+    return !!a && ['id','name','endpoint','username','credentialRef','anonymous'].every(key => a[key as keyof typeof a] === b[key as keyof typeof b]);
 }

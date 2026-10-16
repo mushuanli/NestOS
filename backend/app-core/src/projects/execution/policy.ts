@@ -26,7 +26,7 @@ export function executionGrantRevision(mounts: readonly ProjectRemoteMount[], co
     if (mounts.some(mount => mount.connectionId !== connectionId)) throw new FSError('EXMOUNT', 'Execution mounts must use one connection');
     const ordered = [...mounts].sort((a, b) => a.at < b.at ? -1 : a.at > b.at ? 1 : 0);
     return sha256HexSync(JSON.stringify(ordered.map(mount =>
-        [mount.mountId, mount.connectionId, mount.alias, mount.root, mount.at, mount.access, mount.endpoint, mount.username, mount.credentialRef, mount.serverProjectId, mount.serverProjectRevision])));
+        [mount.mountId, mount.connectionId, mount.alias, mount.root, mount.at, mount.access, mount.endpoint, mount.username, mount.credentialRef, mount.serverProjectId, mount.serverProjectRevision, mount.anonymous, mount.authorization])));
 }
 export function requireExecutionCapabilities(binding: ProjectExecutionBinding, caps: ExecutionCapabilities, mounts: readonly ProjectRemoteMount[]): void {
     if (!caps.serverId || caps.serverId !== binding.serverId) throw new FSError('ECONFLICT', 'Remote execution node identity changed');

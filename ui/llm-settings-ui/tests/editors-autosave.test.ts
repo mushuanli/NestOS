@@ -105,3 +105,16 @@ it.each([true, false, undefined])('uses the service capability (%s) for MCP stdi
     editors.push(editor); await editor.init(container);
     expect(container.querySelector<HTMLOptionElement>('option[value="stdio"]')!.disabled).toBe(supported !== true);
 });
+
+it('saves explicit anonymous MCP access without retaining API keys or Authorization headers',async()=>{
+    vi.useFakeTimers();const container=mount(),saveMCPServer=vi.fn().mockResolvedValue(undefined);
+    const server={id:'public',name:'Public',transport:'http',endpoint:'https://example.test/mcp',apiKey:'fixture-private-key',headers:{Authorization:'Bearer fixture-header'}};
+    const editor=new MCPSettingsEditor(container,{getMCPServers:async()=>[server],saveMCPServer} as never,{target:{kind:'entity',entityType:'mcp',id:'public'}});
+    editors.push(editor);await editor.init(container);
+    change(container,'[name="authenticationMode"]','anonymous');await vi.advanceTimersByTimeAsync(1000);
+    expect(saveMCPServer).toHaveBeenCalledOnce();
+    const saved=saveMCPServer.mock.calls[0][0];
+    expect(saved.auth).toMatchObject({type:'anonymous',credentialRef:'mcp-public'});
+    expect(saved.apiKey).toBeUndefined();expect(saved.headers.Authorization).toBeUndefined();
+    expect(JSON.stringify(saved)).not.toContain('fixture-private');
+});

@@ -1515,6 +1515,12 @@ export const en: LocaleStrings = {
     'mcp.args.hint':             'Args (space-separated)',
     'mcp.cwd.label':             'Working directory',
     'mcp.cwd.hint':              'CWD (optional)',
+    'remote.identity': 'Remote identity: {name}',
+    'mcp.authenticationMode': 'Authentication',
+    'mcp.authenticationUsername': 'Username (Basic only)',
+    'mcp.authentication.bearer': 'API key / Bearer',
+    'mcp.authentication.basic': 'Username / password (Basic)',
+    'mcp.authentication.anonymous': 'Anonymous public directories',
     'mcp.apiKey.label':          'API Key',
     'mcp.apiKey.hint':           'optional',
 

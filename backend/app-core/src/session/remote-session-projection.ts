@@ -40,7 +40,7 @@ export class RemoteSessionProjection {
             const page = profile.capabilities.history ? await client.list(profile.id, {cursor: target.cursor, ...(target.archived ? {archived: true} : {})}, {timeoutMs: 3000}) : {sessions: [], nextCursor: null};
             const root = remote.list(project.project.id).find(m => m.at === '/')!;
             if (root.serverId) await this.projects?.favorites?.list(project.project.id);
-            return [ ...(profile.capabilities.create && root.access === 'rw' && !target.cursor && !target.archived ? [this.node(path + '/@new', t('harness.create'), false)] : []),
+            return [ ...(profile.capabilities.create && (profile.projectCapabilities?.sessionControl ?? root.access === 'rw') && !target.cursor && !target.archived ? [this.node(path + '/@new', t('harness.create'), false)] : []),
                 ...(profile.capabilities.history && !target.cursor && !target.archived ? [this.node(path + '/@archived', t('harness.archivedSessions'), true)] : []),
                 ...page.sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || a.id.localeCompare(b.id))
                     .map(s => this.sessionNode(path + '/' + encodeURIComponent(s.id), s, this.favorite(project.project.id, root, profile.id, s.id),
@@ -68,7 +68,7 @@ export class RemoteSessionProjection {
     }
     private management(profile: HarnessProfile, root: ProjectRemoteMount, session: HarnessSession, archived = false) {
         const caps = profile.capabilities;
-        if (root.access !== 'rw' || !caps.rename && !caps.archive && !caps.unarchive && !caps.delete) return;
+        if (!(profile.projectCapabilities?.sessionControl ?? root.access === 'rw') || !caps.rename && !caps.archive && !caps.unarchive && !caps.delete) return;
         return {delete: !!caps.delete && (archived && session.status === 'notLoaded' || !!session.owned && session.status === 'idle'), rename: !!caps.rename, archive: !archived && !!caps.archive, archiveDisabled: !(session.status === 'notLoaded' || !!session.owned && session.status === 'idle'), unarchive: archived && !!caps.unarchive};
     }
     private favorite(projectId: string, root: ProjectRemoteMount, profileId: string, sessionId: string): boolean {

@@ -49,6 +49,7 @@ export class ProviderAuthorizationPanel {
             <p class="settings-form__help">${t('provider.auth.urlHint')}</p>
             <p class="settings-form__help">${t('provider.auth.expires', { time: expires })}</p>
             <div class="provider-authorization__actions" data-auth-links></div>
+            <p class="settings-form__help">${t('provider.auth.regenerateHint')}</p>
             <p>${t('provider.auth.remoteHint')}</p>
             <label class="provider-authorization__field">${t('provider.auth.callback')}
                 <input type="url" class="settings-form__input" data-auth-callback autocomplete="off" spellcheck="false" placeholder="${escapeAttr(pending.callbackUri)}"></label>`;
@@ -60,6 +61,7 @@ export class ProviderAuthorizationPanel {
             const link = document.createElement('a'); link.href = state.pending.url; link.target = '_blank'; link.rel = 'noopener noreferrer';
             link.className = 'settings-btn settings-btn--primary'; link.textContent = t('provider.auth.open'); navigation.append(link);
             this.copyButton(navigation, state.pending.url);
+            this.button(navigation, t('provider.auth.regenerate'), () => this.regenerate(), 'provider.auth.preparing');
             this.button(actions, t('provider.auth.complete'), async () => {
                 const input = this.root.querySelector<HTMLInputElement>('[data-auth-callback]')!;
                 if (!input.value.trim()) { input.focus(); throw new Error(t('provider.auth.callbackRequired')); }
@@ -71,6 +73,11 @@ export class ProviderAuthorizationPanel {
             if (state.status === 'authorized' || state.status === 'reauthorize') this.button(actions,
                 t('provider.auth.disconnect'), () => this.service.disconnectProviderAuthorization!(this.providerId));
         }
+    }
+    private async regenerate(): Promise<ProviderAuthorizationState> {
+        await this.service.cancelProviderAuthorization!(this.providerId);
+        try { return await this.service.beginProviderAuthorization!(this.providerId); }
+        catch (error) { await this.refresh(); throw error; }
     }
     private copyButton(parent: HTMLElement, url: string): void {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'settings-btn settings-btn--secondary';

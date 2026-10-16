@@ -155,3 +155,69 @@ it('shows preparation and verification stages and prevents empty or repeated cal
         expect(root.querySelector('[data-auth-url]')).toBeNull();
     } finally { panel.destroy(); }
 });
+
+it('waits for cancellation before regenerating the link and clears the previous callback', async () => {
+    const root = document.createElement('section'); document.body.append(root);
+    const previous = pendingAuthorization(), next = { ...previous, id: 'next-attempt', url: previous.url + '&attempt=next',
+        callbackUri: 'http://127.0.0.1:23456/auth/callback' };
+    let state: ProviderAuthorizationState = { supported: true, status: 'pending', pending: previous };
+    let finishCancel!: () => void;
+    const cancel = vi.fn(() => new Promise<ProviderAuthorizationState>(resolve => { finishCancel = () => {
+        state = { supported: true, status: 'signed-out' }; resolve(state);
+    }; }));
+    const begin = vi.fn(async () => { state = { supported: true, status: 'pending', pending: next }; return state; });
+    const complete = vi.fn(async () => { state = { supported: true, status: 'authorized' }; return state; });
+    const panel = new ProviderAuthorizationPanel(root, 'chatgpt', { getProviderAuthorization: async () => state,
+        cancelProviderAuthorization: cancel, beginProviderAuthorization: begin,
+        completeProviderAuthorization: complete, onChange: () => () => {} } as never, async () => {});
+    try {
+        await panel.init(); root.querySelector<HTMLInputElement>('[data-auth-callback]')!.value = 'previous callback';
+        const regenerate = button(root, 'provider.auth.regenerate'); regenerate.click(); regenerate.click();
+        expect(cancel).toHaveBeenCalledOnce(); expect(cancel).toHaveBeenCalledWith('chatgpt'); expect(begin).not.toHaveBeenCalled();
+        expect(root.getAttribute('aria-busy')).toBe('true'); finishCancel();
+        await vi.waitFor(() => expect(root.getAttribute('aria-busy')).toBe('false'));
+        expect(begin).toHaveBeenCalledOnce(); expect(begin).toHaveBeenCalledWith('chatgpt');
+        expect(root.querySelector<HTMLTextAreaElement>('[data-auth-url]')!.value).toBe(next.url);
+        const input = root.querySelector<HTMLInputElement>('[data-auth-callback]')!;
+        expect(input.value).toBe(''); expect(input.placeholder).toBe(next.callbackUri);
+        input.value = next.callbackUri + '?code=example&state=next'; button(root, 'provider.auth.complete').click();
+        await vi.waitFor(() => expect(complete).toHaveBeenCalledWith('chatgpt', next.id, input.value));
+    } finally { panel.destroy(); }
+});
+
+it('keeps the existing link when cancellation fails without starting another authorization', async () => {
+    const root = document.createElement('section'); document.body.append(root);
+    const pending = pendingAuthorization(), begin = vi.fn();
+    const error = vi.spyOn(ui.Toast, 'error').mockImplementation(() => {});
+    const cancel = vi.fn().mockRejectedValue(new Error('Cancellation unavailable'));
+    const panel = new ProviderAuthorizationPanel(root, 'chatgpt', {
+        getProviderAuthorization: async () => ({ supported: true, status: 'pending', pending }),
+        cancelProviderAuthorization: cancel, beginProviderAuthorization: begin, onChange: () => () => {},
+    } as never, async () => {});
+    try {
+        await panel.init(); const input = root.querySelector<HTMLInputElement>('[data-auth-callback]')!; input.value = 'draft';
+        button(root, 'provider.auth.regenerate').click();
+        await vi.waitFor(() => expect(root.getAttribute('aria-busy')).toBe('false'));
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('Cancellation unavailable')); expect(begin).not.toHaveBeenCalled();
+        expect(root.querySelector<HTMLTextAreaElement>('[data-auth-url]')!.value).toBe(pending.url);
+        expect(root.querySelector('[data-auth-callback]')).toBe(input); expect(input.value).toBe('draft');
+    } finally { panel.destroy(); }
+});
+
+it('removes the cancelled link if generating its replacement fails', async () => {
+    const root = document.createElement('section'); document.body.append(root);
+    let state: ProviderAuthorizationState = { supported: true, status: 'pending', pending: pendingAuthorization() };
+    const error = vi.spyOn(ui.Toast, 'error').mockImplementation(() => {});
+    const begin = vi.fn().mockRejectedValue(new Error('Authorization network unavailable'));
+    const panel = new ProviderAuthorizationPanel(root, 'chatgpt', { getProviderAuthorization: async () => state,
+        cancelProviderAuthorization: async () => { state = { supported: true, status: 'signed-out' }; return state; },
+        beginProviderAuthorization: begin, onChange: () => () => {},
+    } as never, async () => {});
+    try {
+        await panel.init(); button(root, 'provider.auth.regenerate').click();
+        await vi.waitFor(() => expect(root.getAttribute('aria-busy')).toBe('false'));
+        expect(error).toHaveBeenCalledWith(expect.stringContaining('Authorization network unavailable'));
+        expect(root.querySelector('[data-auth-url]')).toBeNull(); expect(root.querySelector('[data-auth-callback]')).toBeNull();
+        expect(button(root, 'provider.auth.continue').disabled).toBe(false);
+    } finally { panel.destroy(); }
+});

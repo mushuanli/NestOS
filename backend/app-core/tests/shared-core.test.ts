@@ -90,6 +90,22 @@ describe('RunDefinition', () => {
         expect(definition.graph.nodes[0].id).toBe('agent');
         expect(definition.graph.edges[0].id).toBe('edge');
     });
+
+    it('admits the final bound configuration and keeps it in the saved definition', async () => {
+        const flow = { id: 'flow', name: 'Flow', revision: 1, digest: 'original', createdAt: 0, edges: [],
+            nodes: [{ id: 'agent', name: 'Agent', plugin: 'builtin.agent', pluginVersion: '1.0.0', config: {}, inputs: {} }] };
+        let binds = 0;
+        const definition = await createRunDefinitionFromFlow(flow as never, {
+            bind: () => { binds++; return { config: { connectionId: 'bound' } }; },
+            prepareConnections: async value => ({ ...value, nodes: value.nodes.map(node => {
+                expect(node.config).toMatchObject({ connectionId: 'bound' });
+                return { ...node, config: { ...node.config as object, modelName: 'frozen', frozenConnection: { providerId: 'p', modelId: 'frozen' } } };
+            }) }),
+        });
+        expect(binds).toBe(1);
+        expect(definition.graph.nodes[0].config).toMatchObject({ connectionId: 'bound', modelName: 'frozen', frozenConnection: { modelId: 'frozen' } });
+        expect(flow.nodes[0].config).toEqual({});
+    });
 });
 
 describe('toDagRunSpec', () => {

@@ -10,18 +10,18 @@ export interface FlowRerunContext {
     definitionKey: string;
     sourceRoundId: string | null;
     definition: FlowRevision;
-    flow: { connectionId?: string; parameters?: Record<string, JsonValue> };
+    flow: { connectionBindings?: Record<string, string>; connectionId?: string; parameters?: Record<string, JsonValue> };
 }
 
 export async function rerunSessionFlow(commands: ICommandBus, signal: AbortSignal, suppliedContext?: FlowRerunContext): Promise<void> {
     const context = suppliedContext ?? await commands.execute<FlowRerunContext | null>(SessionCommand.FlowRerunContext);
     if (signal.aborted) return;
     if (!context) throw new Error(t('flow.rerun.unavailable'));
-    const connection = await flowConnectionSelection(commands, context.flow.connectionId);
+    const connection = await flowConnectionSelection(commands, context.flow.connectionId, context.definition.connections, context.flow.connectionBindings);
     const parameters = (context.definition.parameters ?? []).map(field => ({ ...field,
         default: context.flow.parameters && Object.hasOwn(context.flow.parameters, field.name) ? context.flow.parameters[field.name] : field.default }));
     await promptFlowParameters(parameters, t('flow.rerun.title'), async values => {
         if (signal.aborted) throw new Error(t('flow.rerun.unavailable'));
-        await commands.execute(SessionCommand.FlowRerun, { parameters: values, sourceRoundId: context.sourceRoundId, sessionId: context.sessionId, definitionKey: context.definitionKey, connectionId: connection.selected });
+        await commands.execute(SessionCommand.FlowRerun, { parameters: values, sourceRoundId: context.sourceRoundId, sessionId: context.sessionId, definitionKey: context.definitionKey, connectionId: connection.selected, ...(Object.keys(connection.bindings ?? {}).length ? { connectionBindings: connection.bindings } : {}) });
     }, signal, connection);
 }

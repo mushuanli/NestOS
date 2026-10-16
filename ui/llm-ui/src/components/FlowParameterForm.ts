@@ -5,6 +5,8 @@ import { type ConnectionMeta } from '@itookit/driver-llm/contracts';
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 export interface FlowConnectionSelection {
     connections: ConnectionMeta[];
+    slots?: import('@itookit/llm-flow/contracts').FlowConnection[];
+    bindings?: Record<string, string>;
     selected?: string;
     onChange(id: string | undefined): void;
 }
@@ -16,7 +18,7 @@ export function promptFlowParameters(parameters: FlowParameter[], title?: string
         dialog.className = 'dag-dialog';
         dialog.innerHTML = `<form novalidate><h2>${escapeHTML(title ?? t('flow.launch.title'))}</h2>
             ${parameters.map(parameterField).join('')}
-            ${connection ? connectionField(connection) : ''}
+            ${connection ? connectionField(connection) + slotFields(connection) : ''}
             <p data-form-error class="dag-dialog__error" role="alert"></p>
             <menu><button type="button" data-cancel>${escapeHTML(t('flow.launch.cancel'))}</button>
             <button type="submit">${escapeHTML(t(submit ? 'flow.editor.submit' : 'flow.launch.confirm'))}</button></menu></form>`;
@@ -29,7 +31,10 @@ export function promptFlowParameters(parameters: FlowParameter[], title?: string
             submitting = true;
             try {
                 const values = collectParameters(dialog, parameters);
-                if (connection) connection.onChange(dialog.querySelector<HTMLSelectElement>('[data-run-connection]')!.value || undefined);
+                if (connection) {
+                    collectConnections(dialog, connection);
+                    connection.onChange(dialog.querySelector<HTMLSelectElement>('[data-run-connection]')!.value || undefined);
+                }
                 await submit?.(values); result = values; dialog.close();
             }
             catch (error) { dialog.querySelector('[data-form-error]')!.textContent =
@@ -52,6 +57,25 @@ function connectionField(selection: FlowConnectionSelection): string {
         ? `<option value="${escapeHTML(selection.selected)}" selected>${escapeHTML(t('connection.unavailable', { id: selection.selected }))}</option>` : '';
     return `<label>${escapeHTML(t('connection.flowLabel'))}<select data-run-connection><option value="">${escapeHTML(t('connection.flowInherit'))}</option>${missing}${options}</select>
         <small>${escapeHTML(t('connection.flowHint'))}</small></label>`;
+}
+
+function slotFields(selection: FlowConnectionSelection): string {
+    return (selection.slots ?? []).map((slot, index) => {
+        const selected = selection.bindings?.[slot.name] ?? slot.connectionId;
+        const missing = selected && !selection.connections.some(item => item.id === selected)
+            ? `<option value="${escapeHTML(selected)}" selected>${escapeHTML(t('connection.unavailable', { id: selected }))}</option>` : '';
+        const options = selection.connections.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === selected ? 'selected' : ''} ${item.enabled === false ? 'disabled' : ''}>${escapeHTML(item.name)}</option>`).join('');
+        return `<label>${escapeHTML(slot.description ?? slot.name)}${slot.requirements ? ` · ${escapeHTML(slot.requirements.operation)}` : ''}<select data-slot-connection="${index}"><option value="">${escapeHTML(t('connection.slotUnbound'))}</option>${missing}${options}</select></label>`;
+    }).join('');
+}
+function collectConnections(dialog: HTMLDialogElement, selection: FlowConnectionSelection): void {
+    const bindings: Record<string, string> = Object.fromEntries(Object.entries(selection.bindings ?? {}).filter(([name]) => name.includes('/')));
+    (selection.slots ?? []).forEach((slot, index) => {
+        const id = dialog.querySelector<HTMLSelectElement>(`[data-slot-connection="${index}"]`)!.value;
+        if (!id && slot.required !== false) throw new Error(t('flow.launch.required', { name: slot.name }));
+        if (id || slot.connectionId || Object.hasOwn(selection.bindings ?? {}, slot.name)) bindings[slot.name] = id;
+    });
+    selection.bindings = bindings;
 }
 
 function collectParameters(dialog: HTMLDialogElement, parameters: FlowParameter[]): Record<string, JsonValue> {

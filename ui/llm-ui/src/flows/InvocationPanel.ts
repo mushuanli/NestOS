@@ -161,14 +161,14 @@ export class InvocationPanel {
     }
 
     private async repeat(call: FlowInvocationRecord): Promise<void> {
-        const connection = await flowConnectionSelection(this.commands, call.connectionId);
+        const connection = await flowConnectionSelection(this.commands, call.connectionId, call.flow.connections, call.connectionBindings);
         const requests = new Map<string, string>();
         const submit = async (parameters: Record<string, JsonValue>) => {
             if (this.abort.signal.aborted) throw new Error('Invocation view closed');
-            const key = JSON.stringify([parameters, connection.selected]), requestId = requests.get(key) ?? randomUUID();
+            const key = JSON.stringify([parameters, connection.selected, connection.bindings]), requestId = requests.get(key) ?? randomUUID();
             requests.set(key, requestId);
             await this.commands.execute(FlowInvocationCommand.Invoke, { sessionId: this.sessionId, requestId,
-                flowId: call.flowId, revision: call.revision, parameters, connectionId: connection.selected });
+                flowId: call.flowId, revision: call.revision, parameters, connectionId: connection.selected, ...(Object.keys(connection.bindings ?? {}).length ? { connectionBindings: connection.bindings } : {}) });
         };
         const fields = (call.flow.parameters ?? []).map(field => ({ ...field, ...(Object.hasOwn(call.parameters, field.name) ? { default: call.parameters[field.name] } : {}) }));
         await promptFlowParameters(fields, call.flow.name, submit, this.abort.signal, connection);

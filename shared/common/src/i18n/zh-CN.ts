@@ -1160,6 +1160,7 @@ export const zhCN = {
     'connection.deleteImpact': '删除后，指定此连接的会话与流程需重新选择；若它是全局默认，将清空默认设置。智能体保留。',
     'connection.flowLabel': '本次运行连接',
     'connection.flowInherit': '沿用流程配置及会话默认',
+    'connection.slotUnbound': '不绑定此槽位',
     'connection.flowHint': '仅用于本次运行；节点明确指定的连接保持不变。',
     'mount.dialog.projectWorkspace': '项目工作目录',
     'mount.home.set': '默认目录：{label}。使用“挂载默认目录”接入当前会话的 /workspace。',

@@ -126,10 +126,13 @@ export async function createRunDefinitionFromFlow(flow: FlowRevision, options: {
     workspaceRoot?: string;
     result?: { task: string; output: string };
     fallbackConnectionId?: string;
+    connectionBindings?: Record<string, string>;
+    prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>) => Promise<FlowRevision>;
     bind?: FlowNodeBinder;
     resolveComposite?: (id: string, revision?: number) => Promise<FlowRevision | null>;
 } = {}): Promise<RunDefinition> {
-    const dag = await flowToDag(flow, options.bind, options.fallbackConnectionId, options.resolveComposite);
+    const dag = await flowToDag(flow, options.bind, options.fallbackConnectionId, options.resolveComposite,
+        [], flow.dependencyLocks, false, undefined, options.connectionBindings, options.prepareConnections);
     return {
         id: String(flow.id),
         name: flow.name,

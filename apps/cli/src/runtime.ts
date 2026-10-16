@@ -288,9 +288,7 @@ export async function createCliRuntime(
     let digitalTwin: DigitalTwinService | undefined;
     const core = await createKernelRuntime({
         authorizeLlm: (request, context) => digitalTwin?.authorizeLlm(request, context) ?? Promise.resolve(),
-        authorizeMedia: (request, context) => digitalTwin?.authorizeLlm({ ...request, request: { model: request.request.model,
-            messages: [{ role: 'user', content: request.request.operation === 'image.generate' ? request.request.prompt
-                : [request.request.input, request.request.instructions].filter(Boolean).join('\n') }] } }, context) ?? Promise.resolve(),
+        authorizeMedia: (request, context) => digitalTwin?.authorizeMedia(request, context) ?? Promise.resolve(),
         systemFS,
         llmDriver,
         storageResolver: new CliStorageResolver(systemFS),

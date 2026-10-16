@@ -178,10 +178,12 @@ function connectionRow(
     defaultConnection: string | undefined,
 ): string {
     const isDefault = connection.name === defaultConnection || (!defaultConnection && connection.name === 'default');
-    return `<div class="dag-setting-row" data-conn-row>
+    const missing = connection.connectionId && !available.some(item => item.id === connection.connectionId)
+        ? `<option value="${escapeHTML(connection.connectionId)}" selected>${escapeHTML(t('connection.unavailable', { id: connection.connectionId }))}</option>` : '';
+    return `<div class="dag-setting-row" data-conn-row data-conn-original="${escapeHTML(JSON.stringify(connection))}">
         <label class="dag-settings__default" title="Default"><input type="radio" name="dag-default-conn" ${isDefault ? 'checked' : ''}>default</label>
         <input data-conn-name placeholder="name" value="${escapeHTML(connection.name)}">
-        <select data-conn-id>${available.map(item =>
+        <select data-conn-id><option value="">${escapeHTML(t('connection.slotUnbound'))}</option>${missing}${available.map(item =>
             `<option value="${escapeHTML(item.id)}" ${item.id === connection.connectionId ? 'selected' : ''}>${escapeHTML(item.name)}</option>`,
         ).join('')}</select>
         <input data-conn-desc placeholder="description" value="${escapeHTML(connection.description ?? '')}">
@@ -258,8 +260,9 @@ function readSettings(dialog: HTMLDialogElement): FlowSettingsResult {
         const connectionId = readInput(row, '[data-conn-id]');
         const description = readInput(row, '[data-conn-desc]').trim();
         if (!name) throw new Error('Every connection needs a name');
-        if (!connectionId) throw new Error(`Connection ${name} needs a global connection`);
-        return { name, connectionId, ...(description ? { description } : {}) };
+        const original = JSON.parse(row.dataset.connOriginal ?? '{}') as FlowConnection;
+        return { ...original, name, connectionId: connectionId || undefined, description: description || undefined,
+            ...(connectionId !== original.connectionId ? { resolved: undefined } : {}) };
     });
     if (new Set(connections.map(item => item.name)).size !== connections.length) {
         throw new Error('Connection names must be unique');

@@ -130,7 +130,7 @@ function agentTask(context: DagNodeContext) {
         programKind: 'llm.agent',
         programVersion: '1',
         input: buildLlmTaskInput({
-            sessionId: string(config.sessionId, context.sessionId),
+            sessionId: context.sessionId,
             roundId: string(config.roundId, context.nodeRunId),
             messages,
             connectionId: string(config.connectionId, 'default'),

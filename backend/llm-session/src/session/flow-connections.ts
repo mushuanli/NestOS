@@ -9,7 +9,9 @@ export async function prepareFlowConnections(flow: FlowRevision, bindings: Recor
     const slots = inferConnectionRequirements(flow);
     for (const [name, id] of Object.entries(bindings)) {
         const nested = flow.nodes.some(node => node.plugin === 'builtin.flow' && name.startsWith(node.id + '/'));
-        if ((!slots.some(slot => slot.name === name) && !nested) || typeof id !== 'string' || !id.trim()) throw new Error(`Invalid connection slot binding: ${name}`);
+        const slot = slots.find(slot => slot.name === name);
+        if ((!slot && !nested) || typeof id !== 'string' || (id !== '' && !id.trim())
+            || (id === '' && !nested && slot?.required !== false)) throw new Error(`Invalid connection slot binding: ${name}`);
     }
     const connections = await Promise.all(slots.map(slot => resolveSlot(slot, bindings[slot.name] ?? slot.connectionId, agents)));
     const nodes = await Promise.all(flow.nodes.map(async node => {
@@ -25,7 +27,7 @@ export async function prepareFlowConnections(flow: FlowRevision, bindings: Recor
     return { ...flow, connections, nodes };
 }
 async function resolveSlot(slot: FlowConnection, connectionId: string | undefined, agents: ConnectionCatalog): Promise<FlowConnection> {
-    if (!connectionId) { if (slot.required === false) return { ...slot, resolved: undefined }; throw new Error(`Missing connection binding: ${slot.name}`); }
+    if (!connectionId) { if (slot.required === false) return { ...slot, connectionId: undefined, resolved: undefined }; throw new Error(`Missing connection binding: ${slot.name}`); }
     const connection = await agents.getConnection(connectionId), provider = connection && agents.getProvider(connection.providerId);
     const modelId = slot.resolved?.modelId ?? connection?.tiers?.[slot.tier ?? 'optimal'] ?? connection?.model ?? '';
     assertModelConnection(connection, provider, modelId, slot.requirements);

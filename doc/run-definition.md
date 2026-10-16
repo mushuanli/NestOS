@@ -55,6 +55,8 @@ interface RunDefinition {
     edges: DagEdgeDefinition[];
     nodeDefaults?: Record<string, Record<string, JsonValue>>;
     nodeConnections?: Record<string, Record<string, JsonValue>>;
+    variables?: DagRunSpec['variables'];
+    variableScopes?: DagRunSpec['variableScopes'];
     maxNodes?: number;
   };
   parameters?: FlowParameter[];
@@ -86,6 +88,12 @@ interface RunDefinition {
 | `--add-dir <dir>[:ro\|rw]` | 尚未映射：CLI 只把目录作为宿主挂载交给 `CliRuntimeOptions.addDir` → `DirectoryMountService`，从不写入 `policy.additionalDirectories` |
 | `-f mindos.yml` | `source: 'yaml'`，编译 YAML 后填充 graph/environment |
 | `.flow` 输入 | `source: 'flow'`，从 `FlowRevision` 编译 |
+
+CLI 的 `flow-config` 只读取文件并调用 llm-flow 公开的 `createFlowRevision`，不另行维护草稿字段清单。
+首次运行在同一次编译中完成宿主绑定与最终连接准入，`variables` 与组合流程的 `variableScopes` 随执行定义保存，提交前不再二次绑定。
+`rerun` 创建新 Run 并复用原执行定义，不从源码重新选择当前 tier 的模型；模型仍需可用，媒体端点变化仍在执行前拒绝。
+运行时连接绑定通过 `--connection-bindings file.json` 独立传入，不改写源 Flow 及其 digest。
+Agent Task 的 Session 身份取自当前运行上下文，重跑不会沿用旧定义中的 Session ID。
 
 ## 状态与投影
 

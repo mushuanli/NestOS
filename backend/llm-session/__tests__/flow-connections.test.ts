@@ -45,6 +45,21 @@ it('keeps an unbound optional media slot empty instead of inheriting a text conn
     expect((dag.nodes[0].config as any).modelName).toBeUndefined();
 });
 
+it('allows an optional default binding to be explicitly cleared, including nested bindings', async () => {
+    const definition = flow(); definition.connections![0] = { name: 'illustrations', required: false, connectionId: 'pictures' };
+    const dag = await flowToDag(definition, undefined, 'text', undefined, [], undefined, false, 'text', { illustrations: '' },
+        (value, bindings) => prepareFlowConnections(value, bindings, catalog));
+    expect(dag.nodes[0].config).toMatchObject({ connectionId: '' });
+    expect(definition.connections![0].connectionId).toBe('pictures');
+    const parent = { ...definition, connections: [], nodes: [{ ...definition.nodes[0], id: 'child' as never,
+        plugin: 'builtin.flow', config: { flowId: 'child' } }] };
+    const nested = await flowToDag(parent, undefined, undefined, async () => definition, [], undefined, false, undefined,
+        { 'child/illustrations': '' }, (value, bindings) => prepareFlowConnections(value, bindings, catalog));
+    expect(nested.nodes[0].config).toMatchObject({ connectionId: '' });
+    definition.connections![0].required = true;
+    await expect(prepareFlowConnections(definition, { illustrations: '' }, catalog)).rejects.toThrow('Invalid connection');
+});
+
 it('checks Agent requirements on named slots and rejects media models for chat', async () => {
     const definition = flow();
     definition.nodes = [{ ...definition.nodes[0], plugin: 'builtin.agent', config: {

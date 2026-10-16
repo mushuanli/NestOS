@@ -1159,6 +1159,7 @@ export const en: LocaleStrings = {
     'connection.deleteImpact': 'Sessions and flows using this connection must select another. Deleting the global default clears that setting. Agents are retained.',
     'connection.flowLabel': 'Connection for this run',
     'connection.flowInherit': 'Use flow configuration and session default',
+    'connection.slotUnbound': 'Leave this slot unbound',
     'connection.flowHint': 'Applies to this run only; explicit node connections are retained.',
     'mount.dialog.projectWorkspace': 'Project workspace',
     'mount.home.set': 'Default directory: {label}. Use "Mount default directory" to attach it as /workspace for the current session.',

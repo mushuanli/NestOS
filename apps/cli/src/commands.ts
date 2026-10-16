@@ -268,18 +268,16 @@ async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, overri
         runtime = await runtimeFor(loaded.workflow, manifest, store, options, 'execute', Boolean(override));
         await runtime.kernel.createSession({ id, storage: cliStorage(id) });
         const definition = override && 'flow' in override
-            ? await createRunDefinitionFromFlow(await runtime.prepareConnections(override.flow, override.connectionBindings), {
+            ? await createRunDefinitionFromFlow(override.flow, {
                 workspaceRoot: loaded.workflow.workspaceRoot, result: loaded.workflow.config.result,
+                connectionBindings: override.connectionBindings, prepareConnections: runtime.prepareConnections,
+                bind: (node, defaults) => runtime!.flowCapabilities.bindNode(id, node, defaults),
             }) : override?.definition ?? compileRunDefinition(loaded.workflow, loaded.hash, runtime.workspaceRoot);
         if (override) {
             manifest.flow = { definition, parameters: override.parameters, config: loaded.workflow.config };
             await store.save(manifest);
         }
         const spec = toDagRunSpec(definition);
-        if (override) {
-            for (const node of spec.nodes) Object.assign(node, await runtime.flowCapabilities.bindNode(id,
-                node as import('@itookit/llm-flow/contracts').FlowNodeDefinition, spec.nodeDefaults?.[node.id] as never));
-        }
         // `submit` resolves as soon as the durable root exists, before the nodes are
         // dispatched, so this handle is live but its node map is still empty here.
         // Node → Task mapping is read from the Session by the monitor; `run.started`

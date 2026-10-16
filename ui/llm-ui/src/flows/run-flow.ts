@@ -30,20 +30,20 @@ export class FlowLauncher {
             revision === undefined ? FlowCommand.DraftLoad : FlowCommand.RevisionGet,
             { id: flowId, ...(revision === undefined ? {} : { revision }) });
         if (!flow?.id) throw new Error(t('flow.launch.invalid'));
-        const connection = await flowConnectionSelection(commands);
+        const connection = await flowConnectionSelection(commands, undefined, flow.connections);
         const values = await (this.options.prompt ?? promptFlowParameters)(flow.parameters ?? [], undefined, undefined, undefined, connection);
         if (values === null) return;
         const published = revision === undefined
             ? (await commands.execute<{ revision: FlowRevision }>(FlowCommand.RevisionCreate,
                 { draftId: flow.id, expectedDraftVersion: (flow as FlowDraft).draftVersion })).revision
             : flow as FlowRevision;
-        await this.createSession(published, values, connection.selected);
+        await this.createSession(published, values, connection.selected, connection.bindings);
     }
 
-    private async createSession(flow: FlowRevision, parameters: Record<string, JsonValue>, connectionId?: string): Promise<void> {
+    private async createSession(flow: FlowRevision, parameters: Record<string, JsonValue>, connectionId?: string, connectionBindings?: Record<string, string>): Promise<void> {
         const created = await this.options.commands.execute<{ sessionId: string }>(SessionCommand.CreateFromFlow, {
             flowId: flow.id, revision: flow.revision, parameters, title: flow.name,
-            invocation: true, connectionId,
+            invocation: true, connectionId, ...(Object.keys(connectionBindings ?? {}).length ? { connectionBindings } : {}),
         });
         await this.options.navigate(created.sessionId);
     }

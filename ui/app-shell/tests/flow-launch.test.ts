@@ -119,6 +119,28 @@ describe('Flow parameter form', () => {
         document.querySelector<HTMLButtonElement>('[data-cancel]')!.click();
         expect(await result).toBeNull();
     });
+
+    it('clears optional default slots explicitly and retains nested selections', async () => {
+        const connection = { connections: [{ id: 'picture', name: 'Picture', providerId: 'p' }],
+            slots: [{ name: 'optional', required: false, connectionId: 'picture' }], bindings: { 'child/voice': 'speech' }, onChange: vi.fn() };
+        const result = promptFlowParameters([], undefined, undefined, undefined, connection);
+        const slot = document.querySelector<HTMLSelectElement>('[data-slot-connection="0"]')!;
+        expect(slot.value).toBe('picture'); slot.value = '';
+        submit(); await result;
+        expect(connection.bindings).toEqual({ optional: '', 'child/voice': 'speech' });
+    });
+
+    it('preserves missing slot ids and validates required slots before changing run selection', async () => {
+        const connection = { connections: [], slots: [{ name: 'required', connectionId: 'missing' }], bindings: {}, onChange: vi.fn() };
+        const result = promptFlowParameters([], undefined, undefined, undefined, connection);
+        const slot = document.querySelector<HTMLSelectElement>('[data-slot-connection="0"]')!;
+        expect(slot.value).toBe('missing'); expect(slot.textContent).toContain('missing');
+        slot.value = ''; submit();
+        expect(document.querySelector('dialog')!.open).toBe(true);
+        expect(connection.onChange).not.toHaveBeenCalled();
+        slot.value = 'missing'; submit(); await result;
+        expect(connection.bindings).toEqual({ required: 'missing' });
+    });
 });
 
 it('validates configurable round limits before closing the run form', async () => {
@@ -149,6 +171,21 @@ it('preserves editable parameter bounds and missing-input policy through Flow se
         { name: 'rounds', type: 'number', default: 10, required: true, minimum: 1, maximum: 20, integer: true },
         { name: 'essay', type: 'string', required: true, onMissing: 'interact' },
     ]);
+});
+
+it('retains slot requirements but clears obsolete snapshots and descriptions when changing a connection', async () => {
+    const { openFlowSettings } = await import('../../llm-ui/src/components/dag/FlowSettingsDialog');
+    const slot = { name: 'image', connectionId: 'missing', description: 'Remove me', required: false,
+        tier: 'fast' as const, requirements: { operation: 'image.generate' }, resolved: { providerId: 'p', modelId: 'old' } };
+    const pending = openFlowSettings({ connections: [slot], availableConnections: [{ id: 'new', name: 'New' }], parameters: [] });
+    const select = document.querySelector<HTMLSelectElement>('[data-conn-id]')!;
+    expect(select.value).toBe('missing'); select.value = 'new';
+    document.querySelector<HTMLInputElement>('[data-conn-desc]')!.value = '';
+    const dialog = document.querySelector('dialog')!; dialog.returnValue = 'save'; dialog.close();
+    const saved = (await pending)!.connections[0];
+    expect(saved).toMatchObject({ name: 'image', connectionId: 'new', required: false, tier: 'fast', requirements: { operation: 'image.generate' } });
+    expect(saved.resolved).toBeUndefined(); expect(saved.description).toBeUndefined();
+    expect(slot.resolved!.modelId).toBe('old');
 });
 
 it('restores the builtin library from System Recovery without duplicate requests', async () => {

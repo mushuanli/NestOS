@@ -6,6 +6,8 @@ import type { ProviderAuthorizationHost } from '@itookit/kernel-adapters/llm/cor
 import type { ProviderAuthorizationState } from '@itookit/kernel-adapters/contracts';
 import { PrivateAuthStore, type Registration } from './private-store';
 import { OpenAIOidc, OpenAIAuthorizationError, type OAuthTokens } from './openai-oidc';
+import type { AuditPort } from '../audit-log';
+import { reportAuthorizationFailure, type AuthorizationStage } from './authorization-diagnostics';
 
 interface Attempt {
     id: string; state: string; nonce: string; verifier: string; callbackUri: string;
@@ -21,7 +23,8 @@ export class ChatGPTAuthorization implements ProviderAuthorizationHost {
     private readonly listeners = new Set<() => void>();
     private readonly operations = new Map<string, Promise<unknown>>();
     private closed = false;
-    constructor(private readonly store: PrivateAuthStore, private readonly oidc = new OpenAIOidc()) {}
+    constructor(private readonly store: PrivateAuthStore, private readonly oidc = new OpenAIOidc(),
+        private readonly audit?: Pick<AuditPort, 'write'>) {}
     onChange(listener: () => void): () => void { this.listeners.add(listener); return () => this.listeners.delete(listener); }
     state(id: string): ProviderAuthorizationState {
         const record = this.store.get(id), attempt = this.pending.get(id), issue = this.issues.get(id);
@@ -114,7 +117,8 @@ export class ChatGPTAuthorization implements ProviderAuthorizationHost {
             }
             void this.complete(id, attempt.id, callback.href).then(state => {
                 response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
-                response.end(state.status === 'authorized' ? 'Sign-in completed. Return to MindOS.' : 'Sign-in did not complete. Return to MindOS.');
+                response.end(state.status === 'authorized' && !state.issue ? 'Sign-in completed. Return to MindOS.'
+                    : 'Sign-in did not complete. Return to MindOS. Check the server audit log for provider.authorization.failed.');
             }).catch(() => { response.writeHead(400, { 'Cache-Control': 'no-store' }); response.end('Invalid sign-in callback.'); });
         });
         server.maxConnections = 8; server.headersTimeout = 10_000; server.requestTimeout = 15_000;
@@ -136,15 +140,22 @@ export class ChatGPTAuthorization implements ProviderAuthorizationHost {
         attempt.timer.unref(); return attempt;
     }
     private async exchange(id: string, attempt: Attempt, callback: URLSearchParams): Promise<void> {
-        const previous = this.store.get(id), issued = callback.get('client_id') ?? previous?.clientId;
-        if (!issued || issued === 'dynamic_agent_client' || (previous && issued !== previous.clientId)) throw new Error('Invalid issued ChatGPT client');
-        const response = await this.oidc.exchange({ grant_type: 'authorization_code', client_id: issued,
-            code: callback.get('code')!, code_verifier: attempt.verifier, redirect_uri: attempt.callbackUri });
-        const tokens = validateTokens(response);
-        const identity = await this.oidc.verify(tokens.idToken, issued, attempt.nonce);
-        if (previous && previous.subject !== identity.subject) throw new Error('ChatGPT account does not match this provider');
-        if (attempt.cancelled || this.closed) throw new Error('Sign-in cancelled');
-        await this.store.put({ providerId: id, clientId: issued, subject: identity.subject, email: identity.email, tokens });
+        const startedAt = Date.now(); let stage: AuthorizationStage = 'client.validate';
+        try {
+            const previous = this.store.get(id), issued = callback.get('client_id') ?? previous?.clientId;
+            if (!issued || issued === 'dynamic_agent_client' || (previous && issued !== previous.clientId)) throw new Error('Invalid issued ChatGPT client');
+            stage = 'token.exchange';
+            const response = await this.oidc.exchange({ grant_type: 'authorization_code', client_id: issued,
+                code: callback.get('code')!, code_verifier: attempt.verifier, redirect_uri: attempt.callbackUri });
+            stage = 'tokens.validate'; const tokens = validateTokens(response);
+            stage = 'identity.verify'; const identity = await this.oidc.verify(tokens.idToken, issued, attempt.nonce);
+            stage = 'account.validate';
+            if (previous && previous.subject !== identity.subject) throw new Error('ChatGPT account does not match this provider');
+            if (attempt.cancelled || this.closed) throw new Error('Sign-in cancelled');
+            stage = 'credentials.save';
+            await this.store.put({ providerId: id, clientId: issued, subject: identity.subject, email: identity.email, tokens });
+            this.audit?.write({ event: 'provider.authorization.completed', durationMs: Date.now() - startedAt });
+        } catch (error) { reportAuthorizationFailure(this.audit, stage, error, startedAt); throw error; }
     }
     private async finish(id: string, attempt: Attempt, issue?: string): Promise<void> {
         if (this.pending.get(id) !== attempt) return;

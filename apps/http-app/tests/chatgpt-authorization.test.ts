@@ -1,4 +1,4 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { mkdtemp, rm, stat, readFile, readdir, chmod } from 'node:fs/promises';
 import { generateKeyPairSync, sign } from 'node:crypto';
 import { tmpdir } from 'node:os';
@@ -7,6 +7,7 @@ import { PrivateAuthStore } from '../src/server/provider-auth/private-store';
 import { ChatGPTAuthorization } from '../src/server/provider-auth/chatgpt-authorization';
 import { OpenAIOidc } from '../src/server/provider-auth/openai-oidc';
 import { acquireHostLock } from '../src/server/host-lock';
+import type { AuditEvent } from '../src/server/audit-log';
 
 const releases: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const release of releases.splice(0).reverse()) await release(); });
@@ -25,6 +26,7 @@ async function setup() {
     const store = new PrivateAuthStore(directory); await store.initialize();
     const requests: Array<{ url: string; body: URLSearchParams }> = [];
     let nonce = '', grants = scopes, tokenIdentity: Record<string, unknown> = {}, refreshes = 0, failure = 0;
+    let errorBody: unknown = { error: 'secret-provider-body' };
     const fetcher: typeof fetch = async (input, init) => {
         const url = String(input), body = new URLSearchParams(init?.body as URLSearchParams);
         requests.push({ url, body });
@@ -33,12 +35,13 @@ async function setup() {
             jwks_uri: 'https://auth.openai.com/.well-known/jwks.json', revocation_endpoint: 'https://auth.openai.com/api/accounts/oauth/revoke' });
         if (url.endsWith('/jwks.json')) return Response.json({ keys: [publicKey] });
         if (url.endsWith('/revoke')) return new Response(null, { status: failure || 200 });
-        if (failure) return Response.json({ error: 'secret-provider-body' }, { status: failure });
+        if (failure) return Response.json(errorBody, { status: failure, headers: { 'x-request-id': 'req_test' } });
         if (body.get('grant_type') === 'refresh_token') refreshes++;
         return Response.json({ access_token: `access-${refreshes}`, refresh_token: `refresh-${refreshes}`,
             id_token: jwt(nonce, tokenIdentity), scope: grants, expires_in: 3600 });
     };
-    const oidc = new OpenAIOidc(fetcher), auth = new ChatGPTAuthorization(store, oidc);
+    const auditEvents: AuditEvent[] = [];
+    const oidc = new OpenAIOidc(fetcher), auth = new ChatGPTAuthorization(store, oidc, { write: event => auditEvents.push(event) });
     releases.push(() => auth.close());
     const begin = async () => {
         const state = await auth.begin('provider'); nonce = new URL(state.pending!.url).searchParams.get('nonce')!;
@@ -47,9 +50,10 @@ async function setup() {
         callback.searchParams.set('code', 'private-code'); callback.searchParams.set('client_id', 'oaiapp_test');
         return { state, callback };
     };
-    return { directory, store, auth, oidc, requests, begin,
+    return { directory, store, auth, oidc, requests, begin, auditEvents,
         changeIdentity: (value: Record<string, unknown>) => { tokenIdentity = value; },
-        changeGrants: (value: string) => { grants = value; }, fail: (status: number) => { failure = status; } };
+        changeGrants: (value: string) => { grants = value; },
+        fail: (status: number, body: unknown = { error: 'secret-provider-body' }) => { failure = status; errorBody = body; } };
 }
 
 it('completes PKCE authorization, keeps credentials private and restores the same host after restart', async () => {
@@ -140,4 +144,55 @@ it('uses an OS-backed directory lock and permits reopening after release', async
     try { await expect(acquireHostLock(directory)).rejects.toThrow('another httpd'); }
     finally { release(); }
     (await acquireHostLock(directory))();
+});
+
+it.each([
+    [{ error: 'invalid_grant', error_description: 'private-provider-details' }, 'invalid_grant'],
+    [{ error: { code: 'unsupported_country_region_territory', message: 'private-provider-details' } }, 'unsupported_country_region_territory'],
+    [{ error: 'private-provider-details' }, 'http_error'],
+])('records token exchange failures using only controlled provider codes: %j', async (body, code) => {
+    const { auth, begin, fail, auditEvents, store } = await setup(), attempt = await begin(); fail(403, body);
+    expect((await auth.complete('provider', attempt.state.pending!.id, attempt.callback.href)).issue).toBe('authorization-failed');
+    expect(auditEvents).toContainEqual({ event: 'provider.authorization.failed', operation: 'token.exchange',
+        code, status: 403, providerRequestId: 'req_test', durationMs: expect.any(Number) });
+    expect(JSON.stringify(auditEvents)).not.toMatch(/private-provider-details|private-code|code_verifier|refresh-|access-|nonce|state/);
+    expect(store.get('provider')).toBeUndefined();
+});
+
+it('distinguishes credential, identity and storage failures without logging their values', async () => {
+    const { auth, begin, auditEvents, changeGrants, changeIdentity, store } = await setup();
+    let attempt = await begin(); changeGrants('openid profile');
+    await auth.complete('provider', attempt.state.pending!.id, attempt.callback.href);
+    expect(auditEvents.at(-1)).toMatchObject({ operation: 'tokens.validate', code: 'TOKEN_RESPONSE_INVALID' });
+    changeGrants(scopes); attempt = await begin(); changeIdentity({ nonce: 'private-invalid-nonce' });
+    await auth.complete('provider', attempt.state.pending!.id, attempt.callback.href);
+    expect(auditEvents.at(-1)).toMatchObject({ operation: 'identity.verify', code: 'IDENTITY_CLAIMS_INVALID' });
+    changeIdentity({}); attempt = await begin();
+    const write = vi.spyOn(store, 'put').mockRejectedValueOnce(new Error('private-storage-path'));
+    try {
+        await auth.complete('provider', attempt.state.pending!.id, attempt.callback.href);
+        expect(auditEvents.at(-1)).toMatchObject({ operation: 'credentials.save', code: 'CREDENTIAL_STORAGE_FAILED' });
+    } finally { write.mockRestore(); }
+    expect(JSON.stringify(auditEvents)).not.toMatch(/private-|user@example|access-|refresh-/);
+    expect(store.get('provider')).toBeUndefined();
+});
+
+it('does not report successful reauthorization when the previous account remains active after failure', async () => {
+    const { auth, begin, fail, auditEvents } = await setup();
+    const first = await begin(); await auth.complete('provider', first.state.pending!.id, first.callback.href);
+    expect(auditEvents.at(-1)).toMatchObject({ event: 'provider.authorization.completed' });
+    const next = await begin(); fail(400);
+    const response = await fetch(next.callback), body = await response.text();
+    expect(response.status).toBe(200); expect(body).toContain('Sign-in did not complete');
+    expect(body).toContain('provider.authorization.failed');
+    expect(auth.state('provider')).toMatchObject({ status: 'authorized', issue: 'authorization-failed' });
+    expect(body).not.toContain('secret-provider-body');
+});
+
+it('preserves network classifications and omits untrusted response identifiers', async () => {
+    const oidc = new OpenAIOidc(async () => { throw new DOMException('private-network-address', 'TimeoutError'); });
+    await expect(oidc.authorizeURL()).rejects.toMatchObject({ code: 'request_timeout' });
+    const denied = new OpenAIOidc(async () => Response.json({ error: 'private-provider-body' },
+        { status: 403, headers: { 'x-request-id': 'private-request-id?token=private' } }));
+    await expect(denied.authorizeURL()).rejects.toMatchObject({ status: 403, code: 'http_error', requestId: undefined });
 });

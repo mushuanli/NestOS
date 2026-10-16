@@ -24,7 +24,7 @@ export async function openHostRuntime(options: { root: string; sidecar: string; 
             durability: 'full', createDb: file => NodeSqliteSidecarDb.open(file) });
         cleanup.push(() => backend.close());
         const audit = new AuditLog(options.auditFile); await audit.initialize(); cleanup.push(() => audit.close());
-        const authorization = new ChatGPTAuthorization(store); cleanup.push(() => authorization.close());
+        const authorization = new ChatGPTAuthorization(store, undefined, audit); cleanup.push(() => authorization.close());
         return { backend, audit, authorization, close: () => closeHostResources(cleanup) };
     } catch (error) {
         try { await closeHostResources(cleanup); } catch { /* Preserve the startup error. */ }

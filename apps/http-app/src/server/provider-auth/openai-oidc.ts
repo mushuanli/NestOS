@@ -5,7 +5,9 @@ export const OPENAI_RESOURCE = 'https://api.openai.com/v1';
 export interface VerifiedIdentity { subject: string; email?: string }
 export interface OAuthTokens { access_token: string; refresh_token: string; id_token: string; scope: string; expires_in: number }
 export class OpenAIAuthorizationError extends Error {
-    constructor(readonly status?: number) { super(status ? `OpenAI authorization rejected (HTTP ${status})` : 'OpenAI authorization network request failed'); }
+    constructor(readonly status?: number, readonly code = status ? 'http_error' : 'network_error', readonly requestId?: string) {
+        super(status ? `OpenAI authorization rejected (HTTP ${status})` : 'OpenAI authorization network request failed');
+    }
 }
 
 /** Network errors never include provider bodies, authorization codes or tokens. */
@@ -60,13 +62,30 @@ export class OpenAIOidc {
     private async json(url: URL, init?: RequestInit): Promise<Record<string, unknown>> {
         let response: Response;
         try { response = await this.fetcher(url, { ...init, redirect: 'error', signal: AbortSignal.timeout(15_000) }); }
-        catch { throw new OpenAIAuthorizationError(); }
-        if (!response.ok) { await response.body?.cancel(); throw new OpenAIAuthorizationError(response.status); }
+        catch (error) {
+            const timeout = error instanceof Error && ['AbortError', 'TimeoutError'].includes(error.name);
+            throw new OpenAIAuthorizationError(undefined, timeout ? 'request_timeout' : 'network_error');
+        }
+        if (!response.ok) throw await responseError(response);
         const text = await boundedText(response);
         try { const value = JSON.parse(text); if (value && typeof value === 'object' && !Array.isArray(value)) return value; }
         catch { /* The caller receives no response body. */ }
         throw new Error('Invalid OpenAI authorization response');
     }
+}
+
+const oauthErrors = new Set(['invalid_grant', 'invalid_client', 'invalid_request', 'invalid_scope', 'access_denied',
+    'unauthorized_client', 'unsupported_grant_type', 'unsupported_country_region_territory', 'temporarily_unavailable', 'server_error']);
+async function responseError(response: Response): Promise<OpenAIAuthorizationError> {
+    let code = 'http_error';
+    try {
+        const value = JSON.parse(await boundedText(response));
+        const candidate = typeof value?.error === 'string' ? value.error : value?.error?.code;
+        if (typeof candidate === 'string' && oauthErrors.has(candidate)) code = candidate;
+    } catch { /* Keep the HTTP status even when the provider body is not valid JSON. */ }
+    const requestId = response.headers.get('openai-request-id') ?? response.headers.get('x-request-id');
+    return new OpenAIAuthorizationError(response.status, code,
+        requestId && /^[a-zA-Z0-9_-]{1,128}$/.test(requestId) ? requestId : undefined);
 }
 
 async function boundedText(response: Response): Promise<string> {

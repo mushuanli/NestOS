@@ -281,8 +281,10 @@ piagent-driver 的纯 authorization 入口负责校验 DTO，连接支持显式�
 
 ## DSH 驱动
 
-pi-agent@0.3.0 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适配通用 HarnessDriver。驱动目录 `tools/pi-agent/src/harness/dsh/` 持有原生传输、历史投影和进程生命周期；通用 harness 服务继续持有目录授权、epoch/requestId 回执与会话修改队列，itookit 前端不依赖 DSH 协议。
+pi-agent@0.3.1 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适配通用 HarnessDriver。驱动目录 `tools/pi-agent/src/harness/dsh/` 持有原生传输、历史投影和进程生命周期；通用 harness 服务继续持有目录授权、epoch/requestId 回执与会话修改队列，itookit 前端不依赖 DSH 协议。
 
 托管模式启动 DSH `web` profile，项目实例使用 ProjectRuntime/launcher 与独立授权的模型 home；多个会话共享该实例的 WS mux，HTTP 只等提交回执。连接已有服务时必须显式配置 origin、令牌环境变量和 legacy workspaces，拒绝声明项目沙箱或多身份隔离。配置示例见 [config.dsh.example.toml](../../tools/pi-agent/config.dsh.example.toml)。
 
 已实现新建/继续、历史分页、流式文本/推理、工具摘要、交互确认、中断、重命名和归档；能力描述不声明未实现的分支、永久删除、附件、取消归档或用量。网络结果不明时保留 unknown，不自动重放；WS 断线后实例拒绝续写，节点重启后可显式恢复持久会话。
+
+2026-10-16 的真实 DeepSeek 验收通过已发布 npm 客户端和 MCP 完成新建、追加、4 会话并发及重启续写，10 个模型 turn 均完成并持久记录用量。修复托管绑定被 profile 覆盖、新建响应缺少 updatedAt，以及 SIGTERM 不关闭原生进程而遗留写锁的问题。测试数据使用隔离 home、专用目录和会话，全部归档；永久删除返回 ECAPABILITY，不能以归档替代其验收。

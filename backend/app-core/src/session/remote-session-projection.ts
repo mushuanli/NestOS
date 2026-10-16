@@ -2,6 +2,7 @@ import { ENTITY_ICONS, t } from '@itookit/common';
 import { FSError, type FSNode } from '@itookit/vfs-core';
 import type { SessionFolder } from '@itookit/llm-session/contracts';
 import type { HarnessSession, HarnessProfile } from '@itookit/piagent-driver';
+import { harnessArchiveAllowed } from '@itookit/piagent-driver';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { reportRemoteFailure } from '../projects/remote-diagnostics';
 import { remoteSessionPath, type BrowserTarget } from './browser-routes';
@@ -69,7 +70,7 @@ export class RemoteSessionProjection {
     private management(profile: HarnessProfile, root: ProjectRemoteMount, session: HarnessSession, archived = false) {
         const caps = profile.capabilities;
         if (!(profile.projectCapabilities?.sessionControl ?? root.access === 'rw') || !caps.rename && !caps.archive && !caps.unarchive && !caps.delete) return;
-        return {delete: !!caps.delete && (archived && session.status === 'notLoaded' || !!session.owned && session.status === 'idle'), rename: !!caps.rename, archive: !archived && !!caps.archive, archiveDisabled: !(session.status === 'notLoaded' || !!session.owned && session.status === 'idle'), unarchive: archived && !!caps.unarchive};
+        return {delete: !!caps.delete && (archived && session.status === 'notLoaded' || !!session.owned && session.status === 'idle'), rename: !!caps.rename, archive: !archived && !!caps.archive, archiveDisabled: !harnessArchiveAllowed(session), unarchive: archived && !!caps.unarchive};
     }
     private favorite(projectId: string, root: ProjectRemoteMount, profileId: string, sessionId: string): boolean {
         return !!root.serverId && !!root.connectionId && !!root.serverProjectId && !!this.projects?.favorites.has(projectId,

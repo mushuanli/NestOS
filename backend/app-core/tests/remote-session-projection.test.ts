@@ -99,3 +99,15 @@ it('does not advertise native creation for a read-only mount or a history-only p
     peer.profiles.mockResolvedValue({profiles: [{id: 'native', kind: 'codex', projectRuntime: true, capabilities: {history: true, create: false}}]});
     expect((await projection.list(path, resolveBrowserTarget(path) as never)).some(node => node.name === '@new')).toBe(false);
 });
+
+it('projects native archive eligibility independently of attachment ownership', async () => {
+    const {projection, peer} = setup(), path = remoteSessionPath('/Project', 'native');
+    const descriptor = {profiles: [{id: 'native', kind: 'dsh', projectRuntime: true, capabilities: {history: true, create: true, archive: true}}]};
+    peer.profiles.mockResolvedValue(descriptor);
+    for (const [status, archiveAllowed, disabled] of [['idle', true, false], ['idle', false, true], ['active', true, true], ['idle', undefined, true]] as const) {
+        const session = {id: 's', title: 'Native', updatedAt: 42, status, owned: false, archiveAllowed};
+        peer.list.mockResolvedValue({sessions: [session], nextCursor: null});
+        const nodes = await projection.list(path, resolveBrowserTarget(path) as never);
+        expect(nodes.find(node => node.name === 's')?.metadata.nativeManagement).toMatchObject({archive: true, archiveDisabled: disabled});
+    }
+});

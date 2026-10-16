@@ -832,6 +832,7 @@ export const en: LocaleStrings = {
     'remote.projectPath': 'Project path',
     'remote.projectPathHint': 'Path: /export-alias/subdirectory, e.g. /docs/project-a. An existing project is reused for the same server path.',
     'project.selectForSession': 'Create Sessions inside a project.',
+    'project.enter': 'Enter project',
     'remote.writable': 'Allow writes (requires exclusive server writer)',
     'remote.writeConflict': 'The remote file changed. Your edits are retained; reload and merge before saving.',
     'remote.writeUnknown': 'Save result is unknown. Query the operation and reload the file. Operation ID:',

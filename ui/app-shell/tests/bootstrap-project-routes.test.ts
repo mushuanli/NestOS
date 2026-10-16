@@ -150,4 +150,16 @@ describe('saved project routes at bootstrap', () => {
         expect(parseWorkspaceHash('#/chat/' + encodeURIComponent(resource), 'chat')).toEqual({ slug: 'chat', resource });
         expect(parseWorkspaceHash('#/chat/folder:Project/@files/notes.md', 'chat').resource).toBe('folder:Project/@files/notes.md');
     });
+
+    it('returns to all projects when entering a cached workbench without an explicit resource', async () => {
+        const f = await fixture(), project = (await f.projects.current())!;
+        history.replaceState(null, '', '#/chat/' + encodeURIComponent(folderBrowserPath(project.path)));
+        const app = await f.start();
+        try {
+            const selector = document.querySelector<HTMLSelectElement>('.workbench-project-navigation select')!;
+            expect(selector.value).toBe(folderBrowserPath(project.path));
+            await app.navigate('chat'); expect(selector.value).toBe('/');
+            expect(parseWorkspaceHash(location.hash, 'chat').resource).toBe('/');
+        } finally { await app.destroy(); await f.dispose(); }
+    });
 });

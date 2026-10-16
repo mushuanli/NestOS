@@ -39,6 +39,8 @@ it('creates project Sessions from the selected project and edits its files in th
         expect(selector.value).toBe('/');
         const projectHeader = sidebar.querySelector<HTMLElement>(`[data-item-id="${projectPath}"] .vfs-directory-item__header`)!;
         expect(projectHeader).not.toBeNull(); projectHeader.click();
+        expect(workbench.getActiveResourceId()).toBe('/');
+        projectHeader.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(projectPath));
         const projectPanel = main.querySelector('.workbench-tabs__panel:not([hidden])')!;
         await vi.waitFor(() => expect(projectPanel.querySelector(`[data-resource-id="${projectPath}/@files"]`)).not.toBeNull());
@@ -55,23 +57,22 @@ it('creates project Sessions from the selected project and edits its files in th
         const navigation = sidebar.querySelector('.workbench-sidebar__navigation')!;
         expect(navigation.textContent).toContain('Research');
         const header = navigation.querySelector('.workbench-project-navigation')!;
-        expect([...header.querySelectorAll<HTMLButtonElement>('button')].filter(button => !button.closest('[hidden]')).map(button => button.title))
-            .toEqual(['新会话', t('project.create'), t('action.refresh'), t('vfs.toolbar.import'), t('vfs.toolbar.export'), t('project.sync.projectActions')]);
+        expect([...header.querySelectorAll<HTMLButtonElement>('button')].filter(button => !button.closest('[hidden], details')).map(button => button.title))
+            .toEqual(['新会话', t('action.refresh')]);
         expect([...header.querySelectorAll<HTMLElement>('[data-action]')].map(button => button.dataset.action))
             .toEqual(['create-project', 'refresh', 'import', 'export']);
         const createdProject = vi.spyOn(workbench as any, 'createProject').mockResolvedValue(undefined);
         header.querySelector<HTMLButtonElement>('[data-action="create-project"]')!.click();
-        await vi.waitFor(() => expect(createdProject).toHaveBeenCalledWith('/')); createdProject.mockRestore();
+        await new Promise(resolve => setTimeout(resolve, 0)); expect(createdProject).not.toHaveBeenCalled(); createdProject.mockRestore();
         expect(navigation.querySelector('[data-directory-action]')).toBeNull();
         expect(navigation.querySelectorAll('[data-action="import"]')).toHaveLength(1);
         expect(navigation.querySelector('[data-action="import"]')?.closest('.workbench-project-navigation')).toBe(header);
         const imported = vi.spyOn(workbench as any, 'importSelection').mockResolvedValue(undefined);
         const exported = vi.spyOn(workbench as any, 'exportSelection').mockResolvedValue(undefined);
-        const more = header.querySelector<HTMLButtonElement>(`button[title="${t('project.sync.projectActions')}"]`)!;
+        const more = header.querySelector<HTMLElement>('details > summary')!;
         for (const [action, command] of [['import', imported], ['export', exported]] as const) {
             more.click();
-            await vi.waitFor(() => expect(document.querySelector(`.vfs-context-menu [data-action="${action}"]`)).not.toBeNull());
-            const button = document.querySelector<HTMLButtonElement>(`.vfs-context-menu [data-action="${action}"]`)!;
+            const button = header.querySelector<HTMLButtonElement>(`details [data-project-action="${action}"]`)!;
             expect(button.querySelector('svg')).not.toBeNull();
             button.click();
             await vi.waitFor(() => expect(command).toHaveBeenCalledWith({ selectedIds: [projectPath], activeId: projectPath, parentPath: projectPath }));

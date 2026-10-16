@@ -528,6 +528,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         }
     };
 
+    const isProjectWorkspace = (id: string) => workspaces.some(ws => ws.elementId === id && ws.type === 'chat');
     const handleNavigationRequest = async (req: NavigationRequest): Promise<void> => {
         const moved = toolboxId && req.target === 'settings' ? toolboxSettingsRoute(req.resourceId, req.state?.anchor) : undefined;
         if (moved) req = { ...req, target: 'toolbox', resourceId: moved, state: undefined };
@@ -575,8 +576,9 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                         timestamp: Date.now(),
                     }));
                 }
-                updateHistory(targetWsId, req.resourceId ?? null, 'push');
-                await performNavigation(targetWsId, req.resourceId, req.target);
+                const resourceId = req.resourceId ?? (isProjectWorkspace(targetWsId) ? '/' : undefined);
+                updateHistory(targetWsId, resourceId ?? null, 'push');
+                await performNavigation(targetWsId, resourceId, req.target);
             }
         }
     };
@@ -588,6 +590,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const navigationAbort = new AbortController();
     cleanupFns.push(() => navigationAbort.abort());
     const navigationSignal = navigationAbort.signal;
+    const entryResource = (id: string) => isProjectWorkspace(id)
+        ? '/' : managerCache.get(id)?.getActiveResourceId() ?? null;
 
     document.querySelectorAll('.app-nav-btn[data-target]').forEach(btn => {
         btn.addEventListener('click', (e) => {
@@ -595,7 +599,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             e.stopPropagation(); // prevent bubbling to delegated handler in app-specific main.ts
             const targetId = (e.currentTarget as HTMLElement).dataset.target;
             if (!targetId) return;
-            const lastId = managerCache.get(targetId)?.getActiveResourceId() ?? null;
+            const lastId = entryResource(targetId);
             updateHistory(targetId, lastId, 'push');
             void performNavigation(targetId, lastId ?? undefined);
         }, { signal: navigationSignal });
@@ -619,7 +623,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     // ── 9. Initial navigation ──────────────────────────────────────────────────
 
     if (options.startPage) cleanupFns.push(installStartPage(workspaces, navigationSignal, id => {
-        const lastId = managerCache.get(id)?.getActiveResourceId() ?? null;
+        const lastId = entryResource(id);
         updateHistory(id, lastId, 'push'); void performNavigation(id, lastId ?? undefined);
     }));
     const initialRoute = parseWorkspaceHash(location.hash, resolvedDefault);
@@ -653,6 +657,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         async navigate(slug: string, resourceId?: string): Promise<void> {
             const wsId = resolveTarget(slug, resourceId);
+            resourceId ??= isProjectWorkspace(wsId) ? '/' : undefined;
             updateHistory(wsId, resourceId ?? null, 'push');
             await performNavigation(wsId, resourceId, slug);
         },

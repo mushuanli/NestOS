@@ -75,7 +75,7 @@ const factory = factories[strategyType] ?? defaultEditorFactory;
 - 项目与工具箱分别通过 `createProjectModule` / `createToolboxModule` 装配，返回统一 WorkspaceModule；bootstrap 只消费工作区能力，不用具体工作台类做 instanceof 判断。模块销毁同时释放目录投影和事件订阅，动态移除与应用退出共用一次释放。
 - `loadWorkspace()` 包含去重 — 并发加载同一工作区共享同一个 Promise (`pendingLoads`)
 - 正常 Web/HTTP/Tauri 入口启用 startPage，默认 #/start；显式深链和旧别名保留。onShellReady 在路由绑定后关闭全局提示，不等待工作区加载。工作区和资源加载分开，最新导航代次决定正文打开，隐藏模块不能改写 URL；失败局部重试，部分初始化资源由独立 cleanupGroup 释放。
-- 首次进入模块不以保存的 activeId/selectedItemIds 导航，不打开旧会话、当前项目目录、文件或根目录正文；只保留侧栏展示偏好、布局及历史标签入口。当前页面内返回已缓存模块保留当前编辑器；显式 URL 或用户操作打开正文。onWorkspaceMounted/onWorkspaceReady/onSidebarInteractive 报告局部阶段，onEditorReady 根据模块打开操作的 Promise 报告，不参与全局提示或使用 DOM 挂载超时判断。
+- 首次进入模块不以保存的 activeId/selectedItemIds 导航，不打开旧会话、当前项目目录、文件或根目录正文；只保留侧栏展示偏好、布局及历史标签入口。顶层导航或开始页进入工作台时显示所有项目，不恢复缓存项目/会话；其他已缓存模块保留当前编辑器。项目行单击只选择，双击、Enter、菜单“进入项目”、项目切换器或显式 URL 才进入项目。创建项目、导入完成只刷新列表，不自动打开结果。所有项目只显示新建项目，项目内只显示新建会话，不提供项目嵌套入口。onWorkspaceMounted/onWorkspaceReady/onSidebarInteractive 报告局部阶段，onEditorReady 根据模块打开操作的 Promise 报告，不参与全局提示或使用 DOM 挂载超时判断。
 - MDX 默认编辑器经 `browser/lazy-mdx.ts` 延迟导入；标准工作区的 MentionPlugin 也只在打开正文时加载。侧栏数据与正文编辑器不能共用启动时的静态模块图。
 - 普通文档启动只等待主题和当前工作区。configuration/settings-access 在首次打开设置编辑器时获取已就绪后端端口，导航目录纯本地；OCR、恢复能力、聊天控制随工作台装配，Flow 模板由后端按回执安装。lifecycle/lazy-resource 负责共享创建、失败重试和关闭时等待释放，不承载业务策略；空输入框订阅不能触发 OCR 加载。
 - 路由基于 hash URL (`#/<slug>/<resourceId>`)，由 `history.pushState/replaceState` 写入，监听 `popstate` + `NAVIGATION_EVENTS.NAVIGATE`

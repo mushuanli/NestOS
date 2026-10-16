@@ -23,10 +23,11 @@ it('resolves project folders from one organization snapshot per sync and refresh
     const root = await manager.openFileSystem('/');
     const repository = new SessionRepository(root); await repository.init();
     const { projects, mounts, files } = await projectServices(root, repository);
+    let navigation: ProjectNavigation | undefined;
     try {
         const project = await projects.create('Demo');
         const commands = actions(); commands.createProject.mockResolvedValue(undefined);
-        const navigation = new ProjectNavigation(projects, () => undefined, commands);
+        navigation = new ProjectNavigation(projects, () => undefined, commands);
         expect(navigation.header.querySelector('[data-action="create-project"]')).toBeNull();
         expect(navigation.toolbarContainer.hidden).toBe(false);
 
@@ -37,12 +38,10 @@ it('resolves project folders from one organization snapshot per sync and refresh
         expect(folders).toHaveBeenCalledTimes(1);
         expect(navigation.currentProject()?.path).toBe('/Demo');
         expect(navigation.toolbarContainer.hidden).toBe(false);
-        expect([...navigation.header.querySelectorAll('button')].filter(button => !button.closest('.project-sync-status'))).toHaveLength(3);
+        expect(navigation.header.querySelectorAll(':scope > button')).toHaveLength(2);
         const selector = navigation.header.querySelector('select')!;
         expect(selector.querySelector('option[value="/"]')?.textContent).toBe('所有项目');
-        selector.value = '@new-project'; selector.dispatchEvent(new Event('change'));
-        await vi.waitFor(() => expect(commands.createProject).toHaveBeenCalledWith('/'));
-        await vi.waitFor(() => expect(selector.value).toBe(folderBrowserPath('/Demo')));
+        expect(selector.querySelector('option[value="@new-project"]')).toBeNull();
         await navigation.refresh();
         expect(list).not.toHaveBeenCalled();
         expect(folders).toHaveBeenCalledTimes(2);
@@ -63,7 +62,7 @@ it('resolves project folders from one organization snapshot per sync and refresh
         navigation.showDraft(project);
         expect(navigation.header.querySelector('.workbench-project-navigation__create')?.getAttribute('aria-current')).toBe('page');
         expect(navigationReads).not.toHaveBeenCalled();
-    } finally { await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); }
+    } finally { navigation?.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); }
 });
 
 it('boots when the persisted selection names a route this build no longer serves', async () => {
@@ -194,7 +193,7 @@ it('shows session cleanup only while a deletion is pending, including its render
         expect(getComputedStyle(cleanup).display).not.toBe('none');
         await repository.deleteSession(session); await navigation.refresh();
         expect(cleanup.hidden).toBe(true); expect(getComputedStyle(cleanup).display).toBe('none');
-    } finally { navigation.header.remove(); style.remove(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); }
+    } finally { navigation.destroy(); navigation.header.remove(); style.remove(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); }
 });
 
 it('renders directory entries before blocked sidebar navigation and ignores its late result after another route opens', async () => {
@@ -231,5 +230,72 @@ it('renders directory entries before blocked sidebar navigation and ignores its 
     } finally {
         release(); await workbench.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose();
         sidebar.remove(); main.remove();
+    }
+});
+
+it('keeps project selection separate from entry and exposes creation only in its proper scope', async () => {
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+    const root = await manager.openFileSystem('/'), repository = new SessionRepository(root); await repository.init();
+    const { projects, mounts, files } = await projectServices(root, repository); await projects.ensureStartup();
+    const project = (await projects.current())!, path = folderBrowserPath(project.path);
+    const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
+    const workbench = createTestWorkbench({ sidebar, container: main, repository, files, projects, directoryMounts: mounts,
+        kernel: { onChanged: () => () => {}, async *listSessions() {} } as never,
+        factory: async () => ({ destroy() {} }) as never, onSelect() {} });
+    try {
+        await workbench.start();
+        const selector = sidebar.querySelector<HTMLSelectElement>('.workbench-project-navigation select')!;
+        const createProject = () => sidebar.querySelector<HTMLButtonElement>('[data-action="create-project"]')!;
+        const createSession = () => sidebar.querySelector<HTMLButtonElement>('.workbench-project-navigation__create')!;
+        expect(selector.value).toBe('/'); expect(createProject().hidden).toBe(false); expect(createSession().hidden).toBe(true);
+        const row = () => sidebar.querySelector<HTMLElement>(`[data-item-id="${path}"] .vfs-directory-item__header`)!;
+        row().click(); await Promise.resolve(); expect(selector.value).toBe('/'); expect(workbench.getActiveResourceId()).toBeNull();
+        await workbench.refresh(); expect(selector.value).toBe('/');
+        row().dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
+        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(path));
+        expect(selector.value).toBe(path); expect(createProject().hidden).toBe(true); expect(createSession().hidden).toBe(false);
+        expect(selector.querySelector('[value="@new-project"]')).toBeNull();
+        await workbench.openResource('/'); expect(selector.value).toBe('/');
+        expect(createProject().hidden).toBe(false); expect(createSession().hidden).toBe(true);
+        await expect(workbench.createResource()).rejects.toThrow('请在项目内创建会话');
+    } finally {
+        await workbench.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose();
+        sidebar.remove(); main.remove();
+    }
+});
+
+it('runs transfer actions from the more menu without navigating or changing the selection', async () => {
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+    const root = await manager.openFileSystem('/'), repository = new SessionRepository(root); await repository.init();
+    const { projects, mounts, files } = await projectServices(root, repository), commands = { ...actions(), navigate: vi.fn() };
+    const selectedIds = ['/project/session'], ui = { getSnapshot: () => ({ selectedIds, activeId: null }), refreshList() {}, setTitle() {} };
+    const navigation = new ProjectNavigation(projects, () => ui as never, commands); document.body.append(navigation.header);
+    try {
+        const menu = navigation.header.querySelector('details')!, button = menu.querySelector<HTMLButtonElement>('[data-project-action="export"]')!;
+        menu.open = true; button.click();
+        await vi.waitFor(() => expect(commands.exportItems).toHaveBeenCalledWith({ selectedIds, activeId: null, parentPath: '/' }));
+        expect(menu.open).toBe(false); expect(commands.navigate).not.toHaveBeenCalled(); expect(selectedIds).toEqual(['/project/session']);
+        menu.open = true; document.body.click(); expect(menu.open).toBe(false);
+    } finally {
+        navigation.destroy(); navigation.header.remove(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose();
+    }
+});
+
+it('ignores a delayed project choice after its navigation intent has been cancelled', async () => {
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+    const root = await manager.openFileSystem('/'), repository = new SessionRepository(root); await repository.init();
+    const { projects, mounts, files } = await projectServices(root, repository), commands = { ...actions(), navigate: vi.fn() };
+    const project = await projects.create('Demo'), navigation = new ProjectNavigation(projects, () => undefined, commands);
+    let release!: () => void; const pending = new Promise<void>(resolve => { release = resolve; });
+    try {
+        await navigation.refresh(); const original = projects.forFolder.bind(projects);
+        const lookup = vi.spyOn(projects, 'forFolder').mockImplementationOnce(async (...args) => { await pending; return original(...args); });
+        const selector = navigation.header.querySelector('select')!; selector.value = folderBrowserPath(project.path);
+        selector.dispatchEvent(new Event('change')); await vi.waitFor(() => expect(lookup).toHaveBeenCalledOnce());
+        navigation.cancelPending(); release(); await vi.waitFor(() => expect(selector.disabled).toBe(false));
+        expect(commands.navigate).not.toHaveBeenCalled(); expect(navigation.currentProject()).toBeUndefined(); expect(selector.value).toBe('/');
+        lookup.mockRestore();
+    } finally {
+        release(); navigation.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose();
     }
 });

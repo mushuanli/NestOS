@@ -34,7 +34,11 @@ export class ProjectNavigation {
     private readonly create = document.createElement('button');
     private readonly selector: ScopeSelector;
     private readonly retry = document.createElement('button');
-    private readonly menu = document.createElement('button');
+    private readonly menu = document.createElement('details');
+    private readonly projectActions = document.createElement('button');
+    private readonly menuEvents = new AbortController();
+    private transferPending = false;
+    private scopeRevision = 0;
     private readonly syncStatus: ProjectSyncStatusIndicator;
     private project?: ProjectFolder;
     private path = '/';
@@ -51,15 +55,15 @@ export class ProjectNavigation {
             if (this.project) void this.actions.syncStatus?.(this.project.project.id).catch(this.actions.report);
         });
         this.selector = new ScopeSelector({ label: t('project.workspace'), onError: actions.report,
-            select: async value => {
+            select: async (value, signal) => {
                 if (value === '@new-project') await actions.createProject('/');
-                else await this.choose(value);
+                else await this.choose(value, signal);
             } });
         this.buildHeader();
         this.updateHeader([], 0);
         this.options = {
             navigationToolbarOptions: { variant: 'plain', definitions: [
-                { id: 'create-project', label: t('project.create'), iconHTML: FILE_BROWSER_ICONS.addFolder, placement: 'toolbar',
+                { id: 'create-project', label: t('project.create'), iconHTML: FILE_BROWSER_ICONS.addFolder, placement: () => this.project ? 'hidden' : 'toolbar',
                     run: async () => { await this.actions.createProject('/'); } },
                 { id: 'refresh', label: t('action.refresh'), iconHTML: FILE_BROWSER_ICONS.refresh, placement: 'toolbar',
                     run: async () => {
@@ -74,7 +78,6 @@ export class ProjectNavigation {
     private transferAction(id: 'import' | 'export', run: (context: VFSToolbarContext) => Promise<void>): VFSActionDefinition {
         return { id, label: t(`vfs.toolbar.${id}`), iconHTML: VFS_TOOLBAR_ICONS[id],
             placement: (context: VFSActionContext) => {
-                if (context.origin === 'toolbar') return 'toolbar';
                 return context.target?.metadata.custom.projectId ? 'menu' : 'hidden';
             },
             disabled: (context: VFSActionContext) => !!context.target?.metadata.custom.projectId
@@ -88,17 +91,53 @@ export class ProjectNavigation {
         this.create.className = 'workbench-project-navigation__create';
         decorateButton(this.create, FILE_BROWSER_ICONS.newSession, t('project.createSession'), true);
         this.button(this.retry, '', () => this.actions.retryDeletions()); this.retry.hidden = true;
-        this.menu.type = 'button'; decorateButton(this.menu, FILE_BROWSER_ICONS.more, t('project.sync.projectActions'), true);
-        this.menu.onclick = () => {
-            const rect = this.menu.getBoundingClientRect();
-            this.showMenu(new MouseEvent('contextmenu', { clientX: rect.left, clientY: rect.bottom }));
-        };
+        this.buildMenu();
         this.selector.element.oncontextmenu = event => { if (this.project) { event.preventDefault(); this.showMenu(event); } };
         this.toolbarContainer.className = 'workbench-project-navigation__transfer';
         this.header.append(this.selector.element, this.syncStatus.element, this.create, this.toolbarContainer, this.menu, this.retry);
     }
-    private async choose(path: string): Promise<void> {
-        this.project = path === '/' ? undefined : await this.projects.forFolder(browserTargetFolder(resolveBrowserTarget(path), path));
+    private buildMenu(): void {
+        this.menu.className = 'workbench-project-navigation__menu';
+        const summary = document.createElement('summary'), panel = document.createElement('div');
+        summary.title = t('vfs.columns.more'); summary.setAttribute('aria-label', summary.title);
+        summary.innerHTML = FILE_BROWSER_ICONS.more; panel.className = 'workbench-project-navigation__menu-items';
+        for (const id of ['import', 'export'] as const) {
+            const button = document.createElement('button'); button.dataset.projectAction = id;
+            this.button(button, t(`vfs.toolbar.${id}`), () => this.runTransfer(id));
+            decorateButton(button, VFS_TOOLBAR_ICONS[id], t(`vfs.toolbar.${id}`)); panel.append(button);
+        }
+        this.button(this.projectActions, t('project.sync.projectActions'), async () => {
+            const rect = summary.getBoundingClientRect(); this.menu.open = false;
+            this.showMenu(new MouseEvent('contextmenu', { clientX: rect.left, clientY: rect.bottom }));
+        });
+        panel.append(this.projectActions); this.menu.append(summary, panel);
+        this.menu.addEventListener('click', event => event.stopPropagation());
+        this.menu.addEventListener('keydown', event => {
+            if (event.key === 'Escape') { this.menu.open = false; summary.focus(); }
+        });
+        document.addEventListener('click', event => {
+            if (!this.menu.contains(event.target as Node)) this.menu.open = false;
+        }, { capture: true, signal: this.menuEvents.signal });
+    }
+    private async runTransfer(id: 'import' | 'export'): Promise<void> {
+        if (this.transferPending) return;
+        const state = this.ui()?.getSnapshot(), activeId = state?.activeId ?? null;
+        const selectedIds = state?.selectedIds.length ? [...state.selectedIds] : activeId ? [activeId] : [];
+        const context = { selectedIds, activeId, parentPath: this.project ? folderBrowserPath(this.project.path) : '/' };
+        this.menu.open = false; this.transferPending = true; this.updateTransferControls();
+        try { await (id === 'import' ? this.actions.importItems(context) : this.actions.exportItems(context)); }
+        finally { this.transferPending = false; this.updateTransferControls(); }
+    }
+    private updateTransferControls(): void {
+        const offline = !!this.project && this.offlinePaths.has(folderBrowserPath(this.project.path));
+        for (const button of this.menu.querySelectorAll<HTMLButtonElement>('[data-project-action]'))
+            button.disabled = this.transferPending || offline;
+    }
+    private async choose(path: string, signal: AbortSignal): Promise<void> {
+        const revision = ++this.scopeRevision;
+        const project = path === '/' ? undefined : await this.projects.forFolder(browserTargetFolder(resolveBrowserTarget(path), path));
+        if (signal.aborted || revision !== this.scopeRevision) return;
+        this.project = project;
         this.updateSelector();
         if (this.actions.navigate) await this.actions.navigate(path);
         else await this.sync(path, { preserveProject: true });
@@ -120,8 +159,8 @@ export class ProjectNavigation {
         button.type = 'button'; button.textContent = label;
         button.onclick = () => { void action().catch(this.actions.report); };
     }
-    destroy(): void { this.cancelPending(); this.selector.destroy(); }
-    cancelPending(): void { ++this.revision; }
+    destroy(): void { this.cancelPending(); this.selector.destroy(); this.menuEvents.abort(); }
+    cancelPending(): void { ++this.revision; ++this.scopeRevision; this.menu.open = false; }
     showDraft(project: ProjectFolder): void {
         this.cancelPending();
         this.session = undefined;
@@ -129,6 +168,7 @@ export class ProjectNavigation {
         this.create.setAttribute('aria-current', this.draftActive ? 'page' : 'false');
     }
     async sync(path: string, options: ProjectNavigationOptions = {}): Promise<void> {
+        ++this.scopeRevision;
         this.path = path; this.draftActive = false;
         const target = resolveBrowserTarget(path); this.session = 'sessionId' in target ? target.sessionId : undefined;
         const revision = ++this.revision;
@@ -159,16 +199,16 @@ export class ProjectNavigation {
         const project = this.project;
         this.syncStatus.update(project && this.actions.syncIndicator?.(project.project.id));
         this.create.hidden = !project;
-        this.menu.hidden = !project || !this.actions.projectMenu;
+        this.projectActions.hidden = !project || !this.actions.projectMenu;
         this.create.disabled = !!project && this.offlinePaths.has(folderBrowserPath(project.path));
         this.create.setAttribute('aria-current', this.draftActive ? 'page' : 'false');
         this.retry.hidden = !pending; this.retry.textContent = t('project.retryDeletion', { count: pending });
-        this.updateSelector();
+        this.updateSelector(); this.updateTransferControls();
     }
     private updateSelector(): void {
         this.selector.update([{ id: '/', label: t('workbench.allProjects') },
             ...this.projectChoices.map(item => ({ id: folderBrowserPath(item.path), label: this.projectLabel(item) })),
-            { id: '@new-project', label: t('project.create') + '…' }], this.project ? folderBrowserPath(this.project.path) : '/');
+            ...(!this.project ? [{ id: '@new-project', label: t('project.create') + '…' }] : [])], this.project ? folderBrowserPath(this.project.path) : '/');
     }
     navigationItems(items: VFSNodeUI[], query = ''): VFSNodeUI[] {
         const root = this.project ? findNode(items, folderBrowserPath(this.project.path)) : undefined;

@@ -833,6 +833,7 @@ export const zhCN = {
     'remote.projectPath': '项目路径',
     'remote.projectPathHint': '路径格式：/导出别名/子目录，例如 /docs/project-a。同一服务的同一路径会打开已有项目。',
     'project.selectForSession': '请在项目内创建会话。',
+    'project.enter': '进入项目',
     'remote.writable': '允许写入（服务端必须启用独占写入）',
     'remote.writeConflict': '远程文件已更改。你的编辑仍然保留，请重新读取并合并后保存。',
     'remote.writeUnknown': '保存结果尚未确认，请查询操作状态并重新读取文件。操作 ID：',

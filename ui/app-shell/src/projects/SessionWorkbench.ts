@@ -30,7 +30,7 @@ import { openProjectFileEditor, localizeRemoteWriteError } from './project-file-
 import { fileContentFormat } from '../browser/file-format';
 import { ViewLoad, ViewLoadCancelled, LatestViewLoad } from '../lifecycle/view-load';
 import { SubscriptionScope } from '../lifecycle/subscription-scope';
-import { archiveTarget, archiveTargetPath } from './archive-targets';
+import { archiveTarget } from './archive-targets';
 import { chooseArchive, downloadArchive } from '../files/archive-transfer';
 import { SessionFamilyActions } from './SessionFamilyActions';
 import { buildRenamedFilename, formatDefaultFileTitle, t, traceBoot } from '@itookit/common';
@@ -306,6 +306,7 @@ export class SessionWorkbench implements WorkspaceController {
             toolbar: 'full', hideGitignored: false,
             searchPlaceholder: t(this.projects ? 'project.searchContents' : 'project.search'), showFileExtensions: true,
             readOnly: false, activateDirectories: true, autoSelectFirst: !this.projects, defaultUiSettings: { sortBy: 'lastModified' },
+            doubleClickActivation: node => !!node.metadata.custom.projectId,
             compareItems: compareSessionEntries,
             restoreExpandedDirectory: isExpandableDirectory,
             deferExpansion: true,
@@ -356,7 +357,8 @@ export class SessionWorkbench implements WorkspaceController {
                     if (target.kind === 'favorite' || target.kind === 'favorites') return [];
                     if (target.kind === 'project-files' && target.path === WORKSPACE_PATH) return twin;
                     if (this.projects && item.metadata?.custom?.projectId)
-                        return [...defaults.filter(entry => !('id' in entry) || !['create-in-folder-session', 'create-in-folder-folder'].includes(entry.id))
+                        return [{ id: 'enter-project', label: t('project.enter'), onClick: () => this.openResource(item.id) },
+                            ...defaults.filter(entry => !('id' in entry) || !['create-in-folder-session', 'create-in-folder-folder'].includes(entry.id))
                             .map(entry => 'id' in entry && entry.id === 'rename' ? { ...entry, onClick: () => this.renameProjectDialog(String(item.metadata.custom.projectId)) } : entry),
                             { type: 'separator' }, ...this.syncMenu.items(String(item.metadata.custom.projectId)), ...this.projectHarnessMenu(String(item.metadata.custom.projectId))];
                     if (target.kind === 'folder' && folderPathFromBrowserPath(item.id)?.endsWith('/@sessions'))
@@ -1157,10 +1159,10 @@ export class SessionWorkbench implements WorkspaceController {
         if (!file || this.closed) return;
         const content = await file.text();
         if (this.closed) return;
-        const paths = await (await this.backend.archiveImporter()).import(content, await archiveTarget(path, this.projects!));
+        await (await this.backend.archiveImporter()).import(content, await archiveTarget(path, this.projects!));
         if (this.closed) return;
         await this.sidebarUI?.refresh();
-        if (paths[0]) await this.openResource(await archiveTargetPath(paths[0], this.projects!));
+        await this.projectNavigation?.refresh();
     }
     private async exportSessionItem(item: { path: string; type: string }): Promise<{ name: string; content: string; mimeType: string } | null> {
         const target = resolveBrowserTarget(item.path);
@@ -1251,7 +1253,8 @@ export class SessionWorkbench implements WorkspaceController {
             projectRenamed: (from, to) => this.remapProjectRoutes(folderBrowserPath(from.path), folderBrowserPath(to.path), to.name),
             projectMenu: async (event, project) => {
                 await this.syncMenu.refresh(project.project.id);
-                if (!this.dialogs.signal.aborted) await this.sidebarUI?.showItemMenu(event, folderBrowserPath(project.path));
+                if (!this.dialogs.signal.aborted && this.projectNavigation?.currentProject()?.project.id === project.project.id)
+                    await this.sidebarUI?.showItemMenu(event, folderBrowserPath(project.path));
             },
             projectsChanged: projects => { for (const project of projects) void this.syncMenu.refresh(project.project.id)
                 .catch(error => reportRemoteFailure(error, {stage: 'sync-status', projectId: project.project.id})); },
@@ -1289,8 +1292,8 @@ export class SessionWorkbench implements WorkspaceController {
         const folder = folderPathFromBrowserPath(path);
         const current = await this.projects!.forFolder(folder);
         const parent = current ? current.parentPath : folder;
-        await showProjectDialog(this.projects!, parent, this.dialogs.signal, async created => {
-            await this.sidebarUI?.refresh(); await this.openResource(folderBrowserPath(created));
+        await showProjectDialog(this.projects!, parent, this.dialogs.signal, async () => {
+            await this.sidebarUI?.refresh(); await this.projectNavigation?.refresh();
         });
     }
     private showWelcome(): void {
@@ -1299,7 +1302,9 @@ export class SessionWorkbench implements WorkspaceController {
         const title = document.createElement('h1'); title.textContent = t('project.welcome');
         const hint = document.createElement('p'); hint.textContent = t('project.welcomeHint');
         panel.append(mark, title, hint);
-        if (this.projects) this.actionButton(panel, t('project.create'), () => this.createProject('/'));
+        const project = this.projectNavigation?.currentProject();
+        if (project) this.actionButton(panel, t('project.createSession'), () => this.startSessionDraft(folderBrowserPath(project.path)));
+        else if (this.projects) this.actionButton(panel, t('project.create'), () => this.createProject('/'));
         this.tabs.content.replaceChildren(panel);
     }
     private remapProjectRoutes(from: string, to: string, title: string): void {

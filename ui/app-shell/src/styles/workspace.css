@@ -289,6 +289,16 @@
 .workbench-project-navigation > button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px; height: 34px; padding: 7px; border-radius: 7px; }
 .workbench-project-navigation > button[hidden] { display: none; }
 .workbench-project-navigation__transfer { display: flex; flex-shrink: 0; }
+.workbench-project-navigation__menu { position: relative; flex: 0 0 32px; }
+.workbench-project-navigation__menu > summary { display: flex; align-items: center; justify-content: center; height: 34px; padding: 7px; box-sizing: border-box; list-style: none; cursor: pointer; border-radius: 7px; color: var(--primary-color, #6366f1); }
+.workbench-project-navigation__menu > summary::-webkit-details-marker { display: none; }
+.workbench-project-navigation__menu > summary svg { width: 18px; height: 18px; }
+.workbench-project-navigation__menu > summary:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
+.workbench-project-navigation__menu-items { position: absolute; top: 100%; right: 0; z-index: 60; display: flex; flex-direction: column; width: min(220px, calc(100vw - 36px)); padding: 6px; border: 1px solid var(--mm-border-color, #e5e7eb); border-radius: 8px; background: var(--mm-bg-color, #fff); color: var(--mm-text-color, #111827); box-shadow: 0 5px 20px #0002; }
+.workbench-project-navigation__menu-items > button { display: flex; align-items: center; gap: 8px; border: 0; background: transparent; color: inherit; padding: 8px 10px; text-align: left; font: inherit; cursor: pointer; border-radius: 5px; }
+.workbench-project-navigation__menu-items > button[hidden] { display: none; }
+.workbench-project-navigation__menu-items > button:hover:not(:disabled) { background: var(--vfs-active-bg, #eef2ff); }
+.workbench-project-navigation__menu-items > button:disabled { opacity: .5; cursor: default; }
 .project-sync-icon { position: relative; display: inline-flex; align-items: center; gap: 2px; }
 .project-sync-icon__badge { font-size: .8em; color: var(--primary-color, #6366f1); }
 .project-sync-icon__warning { font-size: .7em; }

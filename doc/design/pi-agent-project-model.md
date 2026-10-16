@@ -291,9 +291,17 @@ pi-agent@0.3.1 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适配�
 
 默认 profile ID 使用 codex、dsh；改名通过配置 aliases 保留旧引用，客户端按服务端发现的 aliases 解析旧目录和会话路由。别名在服务端先规范化，再执行主体授权、实例选择与回执处理，不能创建重复实例或绕过权限。历史收藏保留原键并继续识别，新发现列表只展示规范 ID。
 
+DSH 原生 workspace 还会按原 cwd 的规范化结果过滤成员；仅将项目挂到虚拟路径时，session/list 能读到日志，但 workspace/follow 成员为空，最终项目列表为空。DSH 驱动通过通用 ProjectRuntime.prepare_with_source_paths 请求已授权目录的等权物理路径别名；运行时从固定目录身份的挂载生成别名，并复制嵌套覆盖和只读限制，不开放父目录、其他共享或运行时保留路径。其他驱动保持默认虚拟命名空间。真实 DSH 原生 API 的对比验收确认同一存储在虚拟路径下为 0 个 workspace 成员，加上授权物理路径后恢复 44 个。
+
+2026-10-16 部署 pi-agent@0.3.4 后，生产 MCP HTTP API 和已发布 piagent-driver@0.2.1 均返回 x1 的 41 个未归档 DSH 会话，另有 3 个归档会话，与原生 workspace 的 44 个成员一致。用户提供的 `session-a455bf84-d57b-4817-aad3-ba160e78fa9f` 可读取 243 项历史，保持 owned=false，未恢复执行或调用模型。此次修复不需要前端绕过成员校验或自行读取原生日志。
+
 已实现新建/继续、历史分页、流式文本/推理、工具摘要、交互确认、中断、重命名和归档；能力描述不声明未实现的分支、永久删除、附件、取消归档或用量。网络结果不明时保留 unknown，不自动重放；WS 断线后实例拒绝续写，节点重启后可显式恢复持久会话。
 
 2026-10-16 的真实 DeepSeek 验收通过已发布 npm 客户端和 MCP 完成新建、追加、4 会话并发及重启续写，10 个模型 turn 均完成并持久记录用量。修复托管绑定被 profile 覆盖、新建响应缺少 updatedAt，以及 SIGTERM 不关闭原生进程而遗留写锁的问题。测试数据使用隔离 home、专用目录和会话，全部归档；永久删除返回 ECAPABILITY，不能以归档替代其验收。
+
+## Claude Code 驱动
+
+项目模板见 [profiles/claude.example.toml](../../tools/pi-agent/profiles/claude.example.toml)，绑定已有 principal 并沿用原 CLAUDE_CONFIG_DIR。原生历史发现与模型执行分开：只读项目的 MCP API 能列出和读取历史，保持 notLoaded/owned=false，不启动模型、resume 或接管外部会话。0.3.4 生产节点已启用 claude profile：x1 的 harness_sessions 列出一个原生初始化日志 `7a5611ba-e806-420a-9efa-f9be534b4e5e`，harness_session_read 成功返回 0 项消息，保持 notLoaded/owned=false。另以已安装的 Claude Code 2.1.209 和本机受控模型 peer 验证新建、审批、写入、历史、恢复及图片链路；该验证使用临时数据，不代表真实模型服务验收。
 
 
 ## 本地目录授权管理

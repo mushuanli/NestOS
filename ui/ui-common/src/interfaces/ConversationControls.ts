@@ -9,6 +9,10 @@ export interface ConversationMessage {
 export interface ConversationRequest { id: string | number; kind: 'approval' | 'input' | 'unsupported'; detail: string; questions?: Array<{id: string; question: string; options?: Array<{label: string}>}> }
 export interface ConversationAttachment {kind: 'text' | 'image'; name: string; content: string; mimeType?: string}
 export interface ConversationSnapshot {
+    usage?: {scope: 'transcript'; complete: boolean; observedAt: number;
+        totals: {inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number}};
+    usageUnavailable?: boolean;
+    usageEstimate?: {currency: 'USD'; estimatedCostUsd: number | null; complete: boolean};
     /** Native turn identity acknowledged for the most recent send on this view. */
     submittedTurnId?: string;
     draftAttachments?: ConversationAttachment[];

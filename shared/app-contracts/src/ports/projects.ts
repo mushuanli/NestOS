@@ -12,7 +12,20 @@ import type { SessionSubmission } from '@itookit/llm-flow/contracts';
 import type { MCPConnectionDiagnostic } from '../index';
 import type { MCPDeletedProject, MCPDeletionReference } from './configuration';
 
+export type ProjectConversationSnapshot = HarnessConversationSnapshot & {usageEstimate?: import('@itookit/kernel-adapters/contracts').UsageCostEstimate};
 export interface ProjectConversationPort extends HarnessConversationPort {
+    snapshot(): ProjectConversationSnapshot;
+    read(): Promise<ProjectConversationSnapshot>;
+    poll(): Promise<ProjectConversationSnapshot>;
+    send(text: string, attachments?: HarnessContracts.HarnessAttachment[]): Promise<ProjectConversationSnapshot>;
+    loadEarlier(): Promise<ProjectConversationSnapshot>;
+    interrupt(): Promise<ProjectConversationSnapshot>;
+    reconcile(): Promise<ProjectConversationSnapshot>;
+    respond(id: string | number, response: Record<string, unknown>): Promise<ProjectConversationSnapshot>;
+    fork(name?: string): Promise<ProjectConversationSnapshot>;
+    rename?(name: string): Promise<ProjectConversationSnapshot>;
+    archive?(archived: boolean): Promise<ProjectConversationSnapshot>;
+    delete?(): Promise<ProjectConversationSnapshot>;
     subscribe(listener: () => void): () => void;
 }
 

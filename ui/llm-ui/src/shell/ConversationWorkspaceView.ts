@@ -9,6 +9,8 @@ import { EventBinder } from './EventBinder';
 import { DOMCache } from '../components/common';
 import { StatusIndicatorView } from '../components/indicators/StatusIndicatorView';
 import { RemoteHistory, literalHtml } from './remote-history';
+import { conversationUsage } from './conversation-usage';
+import type { ConversationSnapshot } from '@itookit/ui-common';
 
 interface Actions {
     attachments?: Array<'text' | 'image'>;
@@ -28,6 +30,7 @@ export class ConversationWorkspaceView {
     readonly input: ChatInput;
     readonly interactions = document.createElement('div');
     readonly status = document.createElement('p');
+    private readonly usage = document.createElement('p');
     readonly reconcile: HTMLButtonElement;
     readonly earlier: HTMLButtonElement;
     private readonly progress = document.createElement('div');
@@ -55,7 +58,9 @@ export class ConversationWorkspaceView {
         this.input.setAvailability({canSend: false, canInterrupt: false});
         this.interactions.className = 'remote-conversation__interactions';
         this.status.className = 'remote-conversation__status'; this.status.setAttribute('role', 'status');
-        const input = container.querySelector('#llm-ui-input')!; input.before(this.interactions, this.status);
+        this.usage.className = 'remote-conversation__status'; this.usage.hidden = true;
+        this.usage.title = t('harness.usageHelp'); this.usage.setAttribute('aria-live', 'polite');
+        const input = container.querySelector('#llm-ui-input')!; input.before(this.interactions, this.status, this.usage);
     }
     private configureTitle(): void {
         const title = this.container.querySelector<HTMLInputElement>('#llm-title-input')!;
@@ -111,6 +116,10 @@ export class ConversationWorkspaceView {
     setTitle(title: string): void {
         const input = this.container.querySelector<HTMLInputElement>('#llm-title-input')!;
         if (document.activeElement !== input || input.readOnly) input.value = title;
+    }
+    setUsage(snapshot: ConversationSnapshot): void {
+        this.usage.textContent = conversationUsage(snapshot);
+        this.usage.hidden = !this.usage.textContent;
     }
     setRenameAvailability(enabled: boolean): void { this.container.querySelector<HTMLInputElement>('#llm-title-input')!.readOnly = !enabled; }
     setSessionTimes(createdAt?: number | null, updatedAt?: number | null): void {

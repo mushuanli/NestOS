@@ -57,6 +57,7 @@ export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offlin
 
 /** Project-owned grants; credentials stay in the injected host provider. */
 export class ProjectRemoteMountService {
+    estimateUsage?: (usage: import('@itookit/piagent-driver').HarnessUsage) => import('@itookit/kernel-adapters/contracts').UsageCostEstimate;
     readonly sessionStatus = new RemoteSessionStatus(id => {
         const grants = this.list(id), root = grants.find(m => m.at === '/');
         return !this.closed && root?.connectionId && root.serverProjectId ? JSON.stringify(grants) : undefined;
@@ -446,7 +447,7 @@ export class ProjectRemoteMountService {
             const recovery = new RemoteConversationStore(this.store, JSON.stringify([projectId, root.connectionId, root.serverProjectId, profileId, sessionId ?? '@new']));
             const conversation = await this.provider.conversation(sessionId ? guarded : draftHarness(guarded, recovery), profile, profile.workspaces[0].id, sessionId, root.access === 'rw' && !readOnly,
                 remoteConversationJournal(recovery, descriptor.epoch, !sessionId));
-            return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery));
+            return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage);
         } catch (error) { await client.close(); throw error; }
     }
     private guardHarness(client: HarnessClient, projectId: string, fingerprint: string, connectionId: string): HarnessClient {

@@ -30,6 +30,8 @@ export interface ModelPricingEntry {
      * names 按 model name 宽松匹配，适合自定义/未知 provider 的模型归类。
      */
     names?: string[];
+    /** Provider defaults, used only when no model entry matches. */
+    fallbackFor?: string[];
 }
 
 /** pricing.json 根结构 */
@@ -73,7 +75,8 @@ export interface CostRecord {
  * 匹配优先级：
  *   1. providers 精确匹配（providerId + modelId）
  *   2. names 匹配（modelId === entry.id 或匹配 entry.names[] 中任意一项，支持 * 通配符）
- *   3. id = "default" 的 fallback 条目
+ *   3. fallbackFor contains providerId
+ *   4. id = "default" global fallback
  *
  * 找不到任何匹配时返回 undefined，调用方应 fallback 到内联常量价格。
  */
@@ -82,33 +85,42 @@ export function lookupPricingEntry(
     providerId: string,
     actualModelId: string,
 ): ModelPricingEntry | undefined {
-    let defaultEntry: ModelPricingEntry | undefined;
-    let nameEntry: ModelPricingEntry | undefined;
+    return resolvePricingEntry(config, providerId, actualModelId)?.entry;
+}
 
+export type PricingBasis = 'model' | 'provider-default' | 'global-default';
+/** Materialize editable defaults from the caller's global template, without inventing rates. */
+export function ensureProviderPricing(config: ModelPricingConfig, providerIds: Iterable<string>): ModelPricingConfig {
+    const template = config.model_pricing.find(entry => entry.id === 'default' && !entry.fallbackFor?.length);
+    if (!template) return config;
+    const covered = new Set(config.model_pricing.flatMap(entry => entry.fallbackFor ?? []));
+    const ids = new Set(config.model_pricing.map(entry => entry.id));
+    const added: ModelPricingEntry[] = [];
+    for (const provider of providerIds) {
+        if (covered.has(provider)) continue;
+        let id = `provider-default-${provider}`, suffix = 1;
+        while (ids.has(id)) id = `provider-default-${provider}-${suffix++}`;
+        ids.add(id); covered.add(provider);
+        added.push({id, fallbackFor: [provider], providers: {}, price: [...template.price]});
+    }
+    return added.length ? {...config, model_pricing: [...config.model_pricing, ...added]} : config;
+}
+/** Resolution mechanism; catalogs and fallback prices are supplied by the host. */
+export function resolvePricingEntry(config: ModelPricingConfig, providerId: string, modelId: string):
+    {entry: ModelPricingEntry; basis: PricingBasis} | undefined {
+    let global: ModelPricingEntry | undefined, provider: ModelPricingEntry | undefined, named: ModelPricingEntry | undefined;
     for (const entry of config.model_pricing) {
-        if (entry.id === 'default') {
-            defaultEntry = entry;
+        if (entry.fallbackFor?.length) {
+            if (!provider && entry.fallbackFor.includes(providerId)) provider = entry;
             continue;
         }
-
-        // Priority 1: providers exact match
-        const list = entry.providers[providerId];
-        if (list !== undefined) {
-            const modelIds = list.length === 0 ? [entry.id] : list;
-            if (modelIds.includes(actualModelId)) return entry;
-        }
-
-        // Priority 2: names / id match (first found wins), supports * wildcard
-        if (!nameEntry) {
-            if (entry.id === actualModelId || matchesName(actualModelId, entry.id)) {
-                nameEntry = entry;
-            } else if (entry.names?.some(n => matchesName(actualModelId, n))) {
-                nameEntry = entry;
-            }
-        }
+        if (entry.id === 'default') { global = entry; continue; }
+        const ids = Object.hasOwn(entry.providers, providerId) ? entry.providers[providerId] : undefined;
+        if (ids !== undefined && (ids.length ? ids : [entry.id]).includes(modelId)) return {entry, basis: 'model'};
+        if (!named && (matchesName(modelId, entry.id) || entry.names?.some(name => matchesName(modelId, name)))) named = entry;
     }
-
-    return nameEntry ?? defaultEntry;
+    return named ? {entry: named, basis: 'model'} : provider ? {entry: provider, basis: 'provider-default'}
+        : global ? {entry: global, basis: 'global-default'} : undefined;
 }
 
 /** 将 glob 模式（仅支持 * 通配符）转为 RegExp 并测试目标字符串 */

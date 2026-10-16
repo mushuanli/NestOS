@@ -60,3 +60,4 @@ localhost-recording*.json
 # Local pi-agent executable and pre-upgrade backup
 /tools/svr
 /tools/svr.bak-before-autoinit
+/tools/logs/

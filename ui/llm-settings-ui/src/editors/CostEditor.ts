@@ -441,6 +441,7 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
         const config = this.service.getPricingConfig();
         this.editablePricing = config.model_pricing.map(e => ({
             id: e.id,
+            fallbackFor: e.fallbackFor ? [...e.fallbackFor] : undefined,
             price: [...e.price] as [number, number, number, number],
             providers: JSON.parse(JSON.stringify(e.providers)) as Record<string, string[]>,
             names: e.names ? [...e.names] : [],
@@ -540,6 +541,9 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
                    aria-label="模型名称别名">` : ''}
         `;
 
+        const fallbackInput = isDefault ? '' : `<input class="cost-pricing-row__names-input" type="text"
+            data-idx="${idx}" data-field="fallbackFor" value="${this.escapeHtml((entry.fallbackFor ?? []).join(', '))}"
+            placeholder="${this.escapeHtml(t('settings.cost.providerDefault'))}" aria-label="${this.escapeHtml(t('settings.cost.providerDefault'))}">`;
         const deleteBtn = isDefault
             ? `<span class="cost-pricing-row__no-delete" title="default 行不可删除">—</span>`
             : `<button class="settings-btn settings-btn--danger btn-delete-pricing" data-idx="${idx}" title="删除此条目">删除</button>`;
@@ -551,7 +555,7 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
         return `
             <div class="cost-pricing-row${isDefault ? ' cost-pricing-row--default' : ''}" data-idx="${idx}">
                 <div class="cost-pricing-row__id-cell">
-                    ${idCell}
+                    ${idCell}${fallbackInput}
                 </div>
                 <div class="cost-pricing-row__prices">
                     ${this.renderPriceField(idx, 0, 'Input', entry.price[0])}
@@ -607,6 +611,8 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
                 const idInput = row.querySelector<HTMLInputElement>('[data-field="id"]');
                 if (idInput) entry.id = idInput.value.trim();
 
+                const fallback = row.querySelector<HTMLInputElement>('[data-field="fallbackFor"]');
+                if (fallback) entry.fallbackFor = [...new Set(fallback.value.split(',').map(s => s.trim()).filter(Boolean))];
                 const namesInput = row.querySelector<HTMLInputElement>('[data-field="names"]');
                 if (namesInput) {
                     entry.names = namesInput.value.split(',').map(s => s.trim()).filter(Boolean);
@@ -643,6 +649,9 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
     }
 
     private renderPricingHits(entry: ModelPricingEntry): string {
+        if (entry.fallbackFor?.length) {
+            return `<div class="cost-pricing-hits__desc">${this.escapeHtml(t('settings.cost.providerDefault'))}: ${this.escapeHtml(entry.fallbackFor.join(', '))}</div>`;
+        }
         if (entry.id === 'default') {
             return `<div class="cost-pricing-hits__desc">全局 fallback：当其他条目均未命中时生效</div>`;
         }
@@ -703,6 +712,8 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
         if (ids.length < nonDefault.length) {
             throw new SettingsValidationError(t('settings.autosave.invalid'));
         }
+        const fallbacks = this.editablePricing.flatMap(entry => entry.fallbackFor ?? []);
+        if (new Set(fallbacks).size !== fallbacks.length) throw new SettingsValidationError(t('settings.autosave.invalid'));
         const unique = new Set(ids);
         if (unique.size < ids.length) {
             throw new SettingsValidationError(t('settings.autosave.invalid'));
@@ -727,6 +738,7 @@ export class CostEditor extends BaseSettingsEditor<IAgentManagementService> {
         const defaults = this.service.getPricingDefaults();
         this.editablePricing = defaults.model_pricing.map(e => ({
             id: e.id,
+            fallbackFor: e.fallbackFor ? [...e.fallbackFor] : undefined,
             price: [...e.price] as [number, number, number, number],
             providers: JSON.parse(JSON.stringify(e.providers)) as Record<string, string[]>,
             names: e.names ? [...e.names] : [],

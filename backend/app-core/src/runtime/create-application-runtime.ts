@@ -1,3 +1,4 @@
+import { createUsageCostEstimator } from '../projects/usage-estimator';
 import { applicationStartupPolicy, type ApplicationStartupMode } from './startup-policy';
 import { ConversationContexts } from './conversation-contexts';
 import { StartupCoordinator } from './startup-coordinator';
@@ -207,6 +208,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             const remote = new ProjectRemoteMountService(systemFS, options.remoteSourceProvider,
                 async projectId => { for (const id of await affected(projectId)) await remoteGuard(id); },
                 async projectId => { for (const id of await affected(projectId)) { await sessionFiles.invalidate(id); await mountChanged(id); } }, new MCPRemoteConnections(agentService,options.remoteSourceProvider));
+            remote.estimateUsage = createUsageCostEstimator(() => agentService.getPricingConfig());
             sourceCleanupFns.push(() => remote.dispose());
             await remote.init(true); remoteConnections = remote; projects.remoteMounts = remote;
             initializeRemoteConfiguration = startup.task('remote.configuration', async () => {

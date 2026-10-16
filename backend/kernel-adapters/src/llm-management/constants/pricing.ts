@@ -27,7 +27,12 @@ export async function loadPricingConfig(engine: IFileSystem, defaults: ModelPric
         if (!nodeId) return defaultConfig;
         const raw = await engine.driver.readContent(nodeId);
         const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw as ArrayBuffer);
-        return JSON.parse(text) as ModelPricingConfig;
+        const config = JSON.parse(text) as ModelPricingConfig;
+        const supplied = new Set(config.model_pricing.flatMap(entry => entry.fallbackFor ?? []));
+        const ids = new Set(config.model_pricing.map(entry => entry.id));
+        const missing = defaultConfig.model_pricing.filter(entry => entry.fallbackFor?.length && !ids.has(entry.id))
+            .map(entry => ({...entry, fallbackFor: entry.fallbackFor!.filter(id => !supplied.has(id))})).filter(entry => entry.fallbackFor.length);
+        return {...config, model_pricing: [...config.model_pricing, ...missing]};
     } catch (e) {
         console.warn('[LLMDeviceDriver] pricing.json load failed, using supplied defaults:', e);
         return defaultConfig;

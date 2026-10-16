@@ -167,6 +167,14 @@ export const MODEL_PRICING: ModelPricingEntry[] = [
         price: [P.DOUBAO_LITE_IN, P.DOUBAO_LITE_OUT, 0, 0],
         providers: { volcengine: ['doubao-seed-2-0-lite-260428', 'doubao-seed-2-0-mini-260428', 'deepseek-v4-flash-260425'] },
     },
+    // Product policy: editable provider defaults for model IDs outside this catalog.
+    { id: 'provider-default-openai', fallbackFor: ['openai'], price: [P.GPT_PRO_IN, P.GPT_PRO_OUT, 0, 0], providers: {} },
+    { id: 'provider-default-anthropic', fallbackFor: ['anthropic'], price: [P.CLAUDE_SONNET_IN, P.CLAUDE_SONNET_OUT, P.CLAUDE_SONNET_CACHE_WRITE, P.CLAUDE_SONNET_CACHE_READ], providers: {} },
+    { id: 'provider-default-deepseek', fallbackFor: ['deepseek'], price: [P.DEEPSEEK_PRO_IN, P.DEEPSEEK_PRO_OUT, P.DEEPSEEK_PRO_CACHE_WRITE, P.DEEPSEEK_PRO_CACHE_READ], providers: {} },
+    { id: 'provider-default-gemini', fallbackFor: ['gemini'], price: [P.GEMINI_PRO_IN, P.GEMINI_PRO_OUT, 0, 0], providers: {} },
+    { id: 'provider-default-openrouter', fallbackFor: ['openrouter'], price: [P.MISTRAL_LARGE_IN, P.MISTRAL_LARGE_OUT, 0, 0], providers: {} },
+    { id: 'provider-default-cloudapi', fallbackFor: ['cloudapi'], price: [P.GPT_PRO_IN, P.GPT_PRO_OUT, 0, 0], providers: {} },
+    { id: 'provider-default-volcengine', fallbackFor: ['volcengine'], price: [P.DOUBAO_PRO_IN, P.DOUBAO_PRO_OUT, 0, 0], providers: {} },
     {
         // Global fallback: used when no other entry matches by providers or names.
         id: 'default',

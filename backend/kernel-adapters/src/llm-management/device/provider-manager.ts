@@ -8,6 +8,7 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import { snapshotLlmPresets, type LlmManagementPresets } from '../contracts/presets';
 import { loadPricingConfig, writePricingConfig, applyPricingToModel } from '../constants/pricing';
 import type { ModelPricingConfig } from '../constants/pricing';
+import { ensureProviderPricing } from '../contracts/pricing';
 import { VFSHelpers } from './vfs-helpers';
 
 const PROVIDERS_DIR = '/llm/.providers';
@@ -134,6 +135,7 @@ export class ProviderManager {
     }
 
     getPricingConfig(): import('@itookit/kernel-adapters/contracts').ModelPricingConfig {
+        if (this._pricingConfig) this._pricingConfig = ensureProviderPricing(this._pricingConfig, this._providers.keys());
         return this._pricingConfig ?? { model_pricing: [] };
     }
 

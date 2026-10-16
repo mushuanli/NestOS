@@ -1,20 +1,35 @@
 import { FSError } from '@itookit/vfs-core';
-import type { HarnessConversationPort, HarnessConversationSnapshot } from '@itookit/piagent-driver';
+import type { HarnessConversationPort, HarnessConversationSnapshot, HarnessUsage } from '@itookit/piagent-driver';
+import type { UsageCostEstimate } from '@itookit/kernel-adapters/contracts';
 
-import type { ProjectConversationPort } from '@itookit/app-contracts/services';
+import type { ProjectConversationPort, ProjectConversationSnapshot } from '@itookit/app-contracts/services';
 /** One host-side cursor pump serves every subscriber to this conversation view. */
-export function observeConversation(source: HarnessConversationPort): ProjectConversationPort {
-    return new ConversationView(source).port();
+export function observeConversation(source: HarnessConversationPort, quote?: (usage: HarnessUsage) => UsageCostEstimate): ProjectConversationPort {
+    return new ConversationView(source, quote).port();
 }
 class ConversationView {
     private readonly listeners = new Set<() => void>();
-    private current: HarnessConversationSnapshot;
+    private current: ProjectConversationSnapshot;
     private timer?: ReturnType<typeof setTimeout>;
     private tail: Promise<unknown> = Promise.resolve();
     private closing?: Promise<void>;
     private closed = false;
     private pumping = false;
-    constructor(private readonly source: HarnessConversationPort) { this.current = immutableData(undefined, source.snapshot()); }
+    private quoteFailed = false;
+    constructor(private readonly source: HarnessConversationPort, private readonly quote?: (usage: HarnessUsage) => UsageCostEstimate) {
+        this.current = immutableData(undefined, this.project(source.snapshot()));
+    }
+    private project(snapshot: HarnessConversationSnapshot): ProjectConversationSnapshot {
+        try {
+            const usageEstimate = snapshot.usage && !snapshot.usageUnavailable ? this.quote?.(snapshot.usage) : undefined;
+            this.quoteFailed = false;
+            return {...snapshot, usageEstimate};
+        } catch {
+            if (!this.quoteFailed) console.warn('[Conversation] Usage estimation unavailable', {sessionId: snapshot.sessionId});
+            this.quoteFailed = true;
+            return {...snapshot, usageEstimate: undefined};
+        }
+    }
     port(): ProjectConversationPort {
         return new Proxy(this.source as ProjectConversationPort, { get: (target, key) => {
             if (key === 'snapshot') return () => this.current;
@@ -48,7 +63,7 @@ class ConversationView {
         this.tail = work.catch(() => {}); return work;
     }
     private update(): void {
-        const next = immutableData(this.current, this.source.snapshot());
+        const next = immutableData(this.current, this.project(this.source.snapshot()));
         if (next === this.current) return;
         this.current = next;
         for (const listener of this.listeners) { try { listener(); } catch (error) { console.warn('[Conversation] View listener failed', error); } }

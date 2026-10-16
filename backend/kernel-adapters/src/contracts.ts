@@ -2,6 +2,7 @@
 export * from './llm-management/contracts/agent';
 export * from './llm-management/contracts/connection';
 export * from './llm-management/contracts/pricing';
+export * from './llm-management/contracts/usage-pricing';
 export * from './llm-management/contracts/restore';
 export * from './llm-management/contracts/presets';
 export * from './llm-management/contracts/device';

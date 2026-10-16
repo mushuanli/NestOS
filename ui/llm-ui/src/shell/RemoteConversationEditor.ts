@@ -90,6 +90,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         }
         this.view.setTitle(snapshot.title);
         this.view.setSessionTimes(snapshot.createdAt, snapshot.updatedAt);
+        this.view.setUsage(snapshot);
         const status = conversationStatus(snapshot.observation ?? {execution: snapshot.requests.some(r => r.kind === 'approval') ? 'waiting-approval'
             : snapshot.requests.some(r => r.kind === 'input') ? 'waiting-input' : snapshot.active || snapshot.canInterrupt ? 'running' : 'unknown',
             updatedAt: snapshot.updatedAt, connection: snapshot.disconnected ? 'offline' : 'online', stale: snapshot.gap, receiptUnknown: snapshot.pending, source: 'history', observedAt: 0}, Date.now(), {inferActivity: false});

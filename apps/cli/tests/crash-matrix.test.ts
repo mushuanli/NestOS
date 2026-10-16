@@ -7,7 +7,8 @@
 // apps/cli/tests/20-kernel-ipc.test.ts; this file covers the
 // Flow/program layer: first step, loop iteration, route-free single node,
 // terminal commit and budget accounting.
-import { spawn, type ChildProcess } from 'node:child_process';
+import { execFile, spawn, type ChildProcess } from 'node:child_process';
+import { promisify } from 'node:util';
 import { once } from 'node:events';
 import { createServer, type ServerResponse } from 'node:http';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
@@ -32,6 +33,14 @@ const CLI_CWD = fileURLToPath(new URL('../', import.meta.url));
 const children: ChildProcess[] = [];
 const servers: ReturnType<typeof createServer>[] = [];
 const roots: string[] = [];
+
+it('keeps a lost media receipt indeterminate without replaying a paid request', async () => {
+    const script = fileURLToPath(new URL('../scripts/verify-media-connections.mjs', import.meta.url));
+    const result = await promisify(execFile)(process.execPath, [script, '--crash-only'], { timeout: 80_000, maxBuffer: 4_000_000 });
+    const report = JSON.parse(result.stdout);
+    roots.push(path.dirname(report.report));
+    expect(report.crash).toMatchObject({ indeterminate: true, replayedRequests: 0 });
+}, 90_000);
 
 afterEach(async () => {
     for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');

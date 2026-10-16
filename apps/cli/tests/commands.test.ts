@@ -34,6 +34,7 @@ describe('parseArgs', () => {
         });
         expect(parseArgs(['run', '--json', '--headless']).options).toMatchObject({ json: true, headless: true });
         expect(parseArgs(['run', '--params', 'input.json']).options).toMatchObject({ paramsFile: 'input.json' });
+        expect(parseArgs(['run', '--connection-bindings', 'bindings.json']).options).toMatchObject({ connectionBindingsFile: 'bindings.json' });
     });
 
     it('parses --profile, --set-home and repeated --add-dir', () => {

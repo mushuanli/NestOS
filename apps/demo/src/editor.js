@@ -12,7 +12,7 @@ import { javascript } from "@codemirror/lang-javascript";
 import { bracketMatching, foldGutter, foldKeymap, syntaxHighlighting, defaultHighlightStyle } from "@codemirror/language";
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap } from "@codemirror/autocomplete";
 
-import {IMentionSource,simpleHash} from '@itookit/common';
+import {IMentionSource} from '@itookit/common';
 // [修改] 现有 MDxEditor 库的导入
 import {
     createMDxEditor,      // [修改] 导入新的工厂函数替代 MDxEditor 构造函数
@@ -37,100 +37,8 @@ import {
  * @typedef {import('@itookit/mdxeditor').PluginContext} PluginContext
  */
 
-// 使用 Set 来跟踪需要永久打开的 Cloze
-const permanentlyOpenClozes = new Set();
-
 // [NEW] 为 Mention 插件定义一个唯一的服务 Key
 const MentionAPIKey = Symbol('MentionAPI');
-
-/**
- * A plugin to manage Anki-like feedback UI and state.
- * @implements {MDxPlugin}
- */
-class AnkiFeedbackPlugin {
-    name = 'demo:anki-feedback';
-
-    /** @param {PluginContext} context */
-    install(context) {
-        // 监听由 ClozePlugin 发出的事件
-        context.listen('clozeRevealed', this.handleClozeRevealed.bind(this));
-        
-        // 监听渲染开始前的钩子，动态修改 clozeStates
-        context.on('beforeParse', this.modifyClozeStates.bind(this));
-    }
-
-    /**
-     * Hook to dynamically set clozes to be open based on our internal state.
-     * @param {{ markdown: string, options: any }} payload
-     */
-    modifyClozeStates(payload) {
-        // 确保 payload 结构完整
-        if (!payload) {
-            payload = { markdown: '', options: {} };
-        }
-        if (!payload.options) {
-            payload.options = {};
-        }
-        
-        const { options } = payload;
-        
-        // 确保 clozeStates 属性存在
-        if (!options.clozeStates) {
-            options.clozeStates = {};
-        }
-        
-        // 设置永久打开的 cloze 状态
-        for (const clozeId of permanentlyOpenClozes) {
-            options.clozeStates[clozeId] = { 
-                ...options.clozeStates[clozeId], 
-                isHidden: false 
-            };
-        }
-        
-        return payload;
-    }
-
-
-
-    /**
-     * Event handler for when a cloze is revealed.
-     * [重构] 该方法现在变得极其简洁，因为它直接使用了事件载荷中提供的 `hide` 函数。
-     * @param {{ clozeId: string, element: HTMLElement, content: string, hide: () => void }} detail
-     */
-    handleClozeRevealed(detail) {
-        const outputContainer = detail.element.closest('#anki-output');
-        if (!outputContainer) return;
-
-        outputContainer.querySelector('.feedback-ui')?.remove();
-
-        const feedbackUI = document.createElement('div');
-        feedbackUI.className = 'feedback-ui';
-        feedbackUI.innerHTML = `<button>重来</button><button>困难</button><button>犹豫</button><button>简单</button>`;
-        detail.element.after(feedbackUI);
-
-        feedbackUI.addEventListener('click', (e) => {
-            const target = e.target;
-            if (!(target instanceof HTMLButtonElement)) return;
-    
-            const choice = target.textContent;
-            const clozeId = detail.clozeId;
-            
-            alert(`你将 "${detail.content}" 评为 "${choice}"`);
-            
-            if (choice === '简单') {
-                permanentlyOpenClozes.add(clozeId);
-            } else {
-                permanentlyOpenClozes.delete(clozeId);
-                
-                // [核心改进] 直接调用事件载荷中提供的 `hide` 函数，无需了解内部实现。
-                detail.hide(); 
-            }
-            
-            feedbackUI.remove();
-        }, { once: true });
-    }
-}
-
 
 // ======================================================
 //   [NEW] Mention System Demo Setup
@@ -659,36 +567,8 @@ Let's check the technical specs too: @Technical Spec
 
 
     // ======================================================
-    //   场景 3: Anki 静态渲染 (Advanced)
+    //   Shared renderer plugins
     // ======================================================
-    const ankiInput = document.getElementById('anki-input');
-    if (ankiInput instanceof HTMLTextAreaElement) {
-        ankiInput.value = `# 美国历史测验
-## 第一任总统是谁？
-- [ ] 亚伯拉罕·林肯
-- [x] **乔治·华盛顿**
-
-美国的第一个首都是--纽约市--。它叫做--New York--^^audio: New York^^。
-
-::> 更多关于华盛顿的信息
-    他是一位来自弗吉尼亚州的--种植园主--。
-    这是--一个¶多行--的cloze。
-    \`\`\`mermaid
-    graph TD
-        A[历史事件] -->|导致| B(独立战争);
-    \`\`\`
-    数学公式: $$E=mc^2$$
-`;
-    }
-    const clozeStates = {
-            [`anki-demo_${simpleHash('纽约市')}`]: { isHidden: true, memoryTier: 'due' },
-            [`anki-demo_${simpleHash('New York')}`]: { isHidden: true, memoryTier: 'learning-7d' },
-            [`anki-demo_${simpleHash('种植园主')}`]: { isHidden: true, memoryTier: 'mature' },
-            [`anki-demo_${simpleHash('一个\n多行')}`]: { isHidden: true, memoryTier: 'new' },
-        };
-    
-    // [修改] 独立渲染器的插件注册方式变更
-    // 1. 创建一个包含所需插件实例的数组
     const defaultRendererPlugins = [
         new FoldablePlugin(),
         new MathJaxPlugin(),
@@ -698,24 +578,6 @@ Let's check the technical specs too: @Technical Spec
         new ClozePlugin()
     ];
     
-    // 2. 实例化渲染器
-    const ankiRenderer = new MDxRenderer();
-    
-    // 3. 使用 .usePlugin() 方法注册所有插件
-    [...defaultRendererPlugins, new AnkiFeedbackPlugin()].forEach(p => ankiRenderer.usePlugin(p));
-
-    const renderAnki = () => {
-        if (ankiInput instanceof HTMLTextAreaElement) {
-            ankiRenderer.render(document.getElementById('anki-output'), ankiInput.value, { 
-                contextId: 'anki-demo',
-                clozeStates: JSON.parse(JSON.stringify(clozeStates)),
-                on: { taskToggled: d => alert(`任务 "${d.taskText}" 状态: ${d.isChecked ? '完成' : '未完成'}.`) }
-            });
-        }
-    };
-    document.getElementById('render-anki').addEventListener('click', renderAnki);
-    renderAnki();
-
     // ======================================================
     //   场景 4: Agent 流式渲染
     // ======================================================
@@ -846,8 +708,7 @@ Let's check the technical specs too: @Technical Spec
     // 定义所有可被搜索的实例
     const searchableInstances = [
         { instance: editor, name: '集成编辑器' },
-        { instance: mentionEditor, name: 'Mention编辑器' },
-        { instance: ankiRenderer, name: 'Anki渲染区' }
+        { instance: mentionEditor, name: 'Mention编辑器' }
     ];
 
     let allMatches = [];

@@ -1,3 +1,4 @@
+import { prepareFlowConnections } from '@itookit/llm-session';
 import { createPiAgentDriver } from '@itookit/piagent-driver';
 import { selectFinalResult } from './run-store';
 import { recordRuntimeDiagnostic, traceRuntimeStage } from './diagnostics';
@@ -68,6 +69,7 @@ const TOOL_ALIASES: Record<string, string> = {
 };
 
 export interface CliRuntime {
+    prepareConnections(flow: import('@itookit/llm-flow/contracts').FlowRevision, bindings?: Record<string, string>): Promise<import('@itookit/llm-flow/contracts').FlowRevision>;
     flowCapabilities: ReturnType<typeof createFlowCapabilities>;
     kernel: Kernel;
     executor: DurableFlowExecutor;
@@ -286,6 +288,9 @@ export async function createCliRuntime(
     let digitalTwin: DigitalTwinService | undefined;
     const core = await createKernelRuntime({
         authorizeLlm: (request, context) => digitalTwin?.authorizeLlm(request, context) ?? Promise.resolve(),
+        authorizeMedia: (request, context) => digitalTwin?.authorizeLlm({ ...request, request: { model: request.request.model,
+            messages: [{ role: 'user', content: request.request.operation === 'image.generate' ? request.request.prompt
+                : [request.request.input, request.request.instructions].filter(Boolean).join('\n') }] } }, context) ?? Promise.resolve(),
         systemFS,
         llmDriver,
         storageResolver: new CliStorageResolver(systemFS),
@@ -335,6 +340,9 @@ export async function createCliRuntime(
     return {
         kernel,
         syncHistory,
+        prepareConnections: (flow, bindings) => prepareFlowConnections(flow, bindings, {
+            getConnection: async id => llmDriver.getConnection(id), getProvider: id => llmDriver.getProvider(id),
+        }),
         flowCapabilities,
         executor,
         grants,

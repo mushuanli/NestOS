@@ -524,7 +524,7 @@ pub fn run() {
                 let _ = std::fs::create_dir_all(paths.root_dir.join(sub));
             }
             for module in &[
-                "etc", "chats", "agents", "anki",
+                "etc", "chats", "agents",
                 "prompts", "projects", "emails", "private",
             ] {
                 let _ = std::fs::create_dir_all(paths.root_dir.join("_db").join(module));

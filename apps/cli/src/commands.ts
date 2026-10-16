@@ -19,8 +19,10 @@ import { readFlowTaskTranscript } from '@itookit/llm-flow';
 import { RunStore, selectFinalResult } from './run-store';
 import { sandboxDoctor } from './shell';
 import type { BlockedEffect, CompiledWorkflow, PendingInteraction, RunManifest } from './types';
+import type { FlowRevision } from '@itookit/llm-flow/contracts';
 
 export interface CommandOptions {
+    connectionBindingsFile?: string;
     connect?: string;
     clientCert?: string;
     clientKey?: string;
@@ -116,20 +118,19 @@ export async function runCommand(options: CommandOptions): Promise<number> {
     const file = options.file ?? 'mindos.yml';
     if (file.toLowerCase().endsWith('.flow')) return runFlowCommand(file, options);
     if (options.paramsFile) throw new Error('--params is only supported for .flow inputs');
+    if (options.connectionBindingsFile) throw new Error('--connection-bindings is only supported for .flow inputs');
     const loaded = await loadWorkflow(file);
     return runLoaded(loaded, options);
 }
 
 async function runFlowCommand(file: string, options: CommandOptions): Promise<number> {
     const flow = await loadFlowDefinition(file);
+    const connectionBindings = options.connectionBindingsFile
+        ? await loadRunParameters(options.connectionBindingsFile, '--connection-bindings') as Record<string, string> : undefined;
     const parameters = options.paramsFile ? await loadRunParameters(options.paramsFile) : undefined;
     const workspaceRoot = path.resolve(options.setHome ?? process.cwd());
     const resultTask = String(flow.nodes.at(-1)?.id ?? '');
     if (!resultTask) throw new Error('.flow has no nodes to use as the result task');
-    const definition = await createRunDefinitionFromFlow(flow, {
-        workspaceRoot,
-        result: { task: resultTask, output: 'result' },
-    });
     const stateDir = resolveStateDir(options, workspaceRoot);
     const workflow: CompiledWorkflow = {
         config: {
@@ -146,14 +147,14 @@ async function runFlowCommand(file: string, options: CommandOptions): Promise<nu
         workspaceRoot,
         stateDir,
     };
-    const loaded = { workflow, source: JSON.stringify(flow), hash: definition.digest };
-    return runLoaded(loaded, options, { definition, parameters, useProfileConfig: true });
+    const loaded = { workflow, source: JSON.stringify(flow), hash: flow.digest };
+    return runLoaded(loaded, options, { flow, connectionBindings, parameters });
 }
 
-async function loadRunParameters(file: string): Promise<Record<string, JsonValue>> {
+async function loadRunParameters(file: string, option = '--params'): Promise<Record<string, JsonValue>> {
     const value: unknown = JSON.parse(await readFile(file, 'utf8'));
     if (!value || typeof value !== 'object' || Array.isArray(value)) {
-        throw new Error('--params must contain a JSON object');
+        throw new Error(`${option} must contain a JSON object`);
     }
     return value as Record<string, JsonValue>;
 }
@@ -229,12 +230,12 @@ export async function promptCommand(options: CommandOptions): Promise<number> {
 }
 
 type LoadedWorkflow = Awaited<ReturnType<typeof loadWorkflow>>;
+type FlowRunInput = { parameters?: Record<string, JsonValue> } & (
+    | { definition: RunDefinition }
+    | { flow: FlowRevision; connectionBindings?: Record<string, string> }
+);
 
-async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, override?: {
-    definition: RunDefinition;
-    parameters?: Record<string, JsonValue>;
-    useProfileConfig?: boolean;
-}): Promise<number> {
+async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, override?: FlowRunInput): Promise<number> {
     if (options.sandbox) loaded.workflow.config.sandbox = { ...loaded.workflow.config.sandbox, mode: options.sandbox };
     const id = createRunId();
     const store = new RunStore(resolveStateDir(options, loaded.workflow.workspaceRoot));
@@ -243,7 +244,7 @@ async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, overri
     const manifest: RunManifest = {
         version: 1,
         id,
-        ...(override ? { flow: { definition: override.definition, parameters: override.parameters, config: loaded.workflow.config } } : {}),
+        ...(override && 'definition' in override ? { flow: { definition: structuredClone(override.definition), parameters: override.parameters, config: loaded.workflow.config } } : {}),
         name: loaded.workflow.config.name,
         goal: loaded.workflow.config.goal,
         workspaceRoot: loaded.workflow.workspaceRoot,
@@ -264,9 +265,16 @@ async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, overri
     const releaseScheduler = await acquireRunSchedulerLock(store.runDir(id));
     let runtime: CliRuntime | undefined;
     try {
-        runtime = await runtimeFor(loaded.workflow, manifest, store, options, 'execute', override?.useProfileConfig);
+        runtime = await runtimeFor(loaded.workflow, manifest, store, options, 'execute', Boolean(override));
         await runtime.kernel.createSession({ id, storage: cliStorage(id) });
-        const definition = override?.definition ?? compileRunDefinition(loaded.workflow, loaded.hash, runtime.workspaceRoot);
+        const definition = override && 'flow' in override
+            ? await createRunDefinitionFromFlow(await runtime.prepareConnections(override.flow, override.connectionBindings), {
+                workspaceRoot: loaded.workflow.workspaceRoot, result: loaded.workflow.config.result,
+            }) : override?.definition ?? compileRunDefinition(loaded.workflow, loaded.hash, runtime.workspaceRoot);
+        if (override) {
+            manifest.flow = { definition, parameters: override.parameters, config: loaded.workflow.config };
+            await store.save(manifest);
+        }
         const spec = toDagRunSpec(definition);
         if (override) {
             for (const node of spec.nodes) Object.assign(node, await runtime.flowCapabilities.bindNode(id,
@@ -302,7 +310,7 @@ export async function rerunCommand(runId: string, options: CommandOptions): Prom
     const loaded = await loadSavedWorkflow(store, manifest, false);
     loaded.workflow.workspaceRoot = manifest.workspaceRoot;
     loaded.workflow.stateDir = store.stateDir;
-    return runLoaded(loaded, options, manifest.flow ? { ...manifest.flow, useProfileConfig: true } : undefined);
+    return runLoaded(loaded, options, manifest.flow);
 }
 
 /** 把某个 run 的配置快照复制为可编辑文件，供 fork 后修改再 run。 */

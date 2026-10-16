@@ -27,8 +27,7 @@ describe('full application view ports', () => {
         await agents.driver.createFile({ parentPath: '/team/deep', name: '.gitignore', recursive: true, content: 'hidden.agent\n' });
         for (const name of ['hidden.agent', 'visible.agent']) await agents.driver.createFile({ parentPath: '/team/deep', name,
             content: JSON.stringify({ id: name, name, type: 'agent', config: {} }) });
-        const skills = await root.services.vfs.openFileSystem('/home/admin/minds');
-        const toolbox = await root.backend.toolboxView(skills), calls: string[] = [];
+        const toolbox = await root.backend.toolboxView(), calls: string[] = [];
         const handle = server.handle.bind(server);
         vi.spyOn(server, 'handle').mockImplementation((call, refresh) => { calls.push(server.operationName(call)); return handle(call, refresh); });
         const nodes = await toolbox.files.driver.getChildren('/agents/team/deep');

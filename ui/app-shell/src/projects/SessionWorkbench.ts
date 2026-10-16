@@ -1040,9 +1040,12 @@ export class SessionWorkbench implements WorkspaceController {
             if (project) {
                 const directory = document.createElement('p'); directory.className = 'project-workbench__directory';
                 directory.textContent = project.project.directory.startsWith('host:') ? project.project.directory.slice(5) : t('project.managedDirectory'); panel.append(directory);
-                const create = this.actionButton(panel, t('project.createSession'), () => this.startSessionDraft(path));
-                create.disabled = !!this.projects.remoteMounts?.projectOffline(project.project.id);
-                if (create.disabled) create.title = t('remote.projectOffline');
+                const draft = nodes.find(node => resolveBrowserTarget(node.path).kind === 'project-draft');
+                if (draft) {
+                    const create = this.actionButton(panel, t('project.createSession'), () => this.openResource(draft.path));
+                    create.disabled = !!this.projects.remoteMounts?.projectOffline(project.project.id);
+                    if (create.disabled) create.title = t('remote.projectOffline');
+                }
                 const remote = this.projects.remoteMounts?.list(project.project.id).find(mount => mount.at === '/');
                 if (remote?.connectionId) directory.textContent = `${this.projects.remoteMounts!.connectionName(remote.connectionId) ?? project.displayName ?? project.name}: /${remote.alias}${remote.root === '/' ? '' : remote.root}`;
             }
@@ -1373,7 +1376,11 @@ export class SessionWorkbench implements WorkspaceController {
         const hint = document.createElement('p'); hint.textContent = t('project.welcomeHint');
         panel.append(mark, title, hint);
         const project = this.projectNavigation?.currentProject();
-        if (project) this.actionButton(panel, t('project.createSession'), () => this.startSessionDraft(folderBrowserPath(project.path)));
+        if (project) {
+            const remote = project.project.source?.kind === 'remote' || this.projects?.remoteMounts?.list(project.project.id).some(mount => mount.at === '/');
+            this.actionButton(panel, t(remote ? 'harness.remoteSessions' : 'project.createSession'), () =>
+                this.openResource(remote ? remoteSessionPath(project.path) : folderBrowserPath(project.path) + '/@new'));
+        }
         else if (this.projects) this.actionButton(panel, t('project.create'), () => this.createProject('/'));
         this.tabs.content.replaceChildren(panel);
     }

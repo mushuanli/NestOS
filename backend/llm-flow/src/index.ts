@@ -9,6 +9,7 @@ export {
     FlowDefinitionStore,
     FlowDraftVersionConflictError,
     generateFlowId,
+    createFlowRevision,
     type FlowFileRef,
     type FlowStore,
 } from './flow-definition-store';

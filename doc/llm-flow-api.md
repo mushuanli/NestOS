@@ -190,11 +190,17 @@ flowToDag(
     dependencyLocks?: FlowRevision['dependencyLocks'],
     isolated?: boolean,
     runConnectionId?: string,
+    connectionBindings?: Record<string, string>,
+    prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>) => Promise<FlowRevision>,
 ): Promise<DagRunSpec>;
 findCycles(nodes: GraphNode[], edges: GraphEdge[]): GraphCycles;   // 通用环检测
 ```
 
 **`GraphNode`** / **`GraphEdge`** / **`GraphCycles`**：泛型图结构（`node.id` / `edge.from→to`），`findCycles` 返回环集合。
+
+连接准入在默认值合并和宿主 `bind` 之后执行：先通过 `prepareConnections` 解析槽位绑定，再对解析后的全局连接执行准入并固定快照，覆盖运行时选择与 fallback。第二次回调不携带槽位或绑定，避免将全局连接 ID 重新解释成槽位别名；未绑定的可选槽保持为空。回调由宿主提供，负责模型能力与媒体请求校验，不应提交任务或执行业务副作用。嵌套 Flow 通过节点 ID 前缀分发自己的 `connectionBindings`，内部编译上下文统一传递递归参数。
+
+结构化派发、控制组调度与重试统一通过包内 `startFlowTask` 绑定能力后启动；Tool 绑定工具能力，Media 绑定模型能力，Agent/Chat 保留既有能力和预算绑定。插件只构造任务声明，具体执行由适配器负责。
 
 ---
 
@@ -414,3 +420,72 @@ Flow 的发布 revision 与草稿 draftVersion 分开保存。Session 重跑使�
 FlowDraft/FlowRevision.variables 声明类型和 initial；FlowNodeDefinition.assign 将输出映射到变量。DagRunSpec 同步携带声明与子流程 variableScopes。模板支持 `${vars.field}`、赋值阶段的 `${output.field}` 和 `${output}`。变量提交进入 SchedulerCheckpoint，RunGet 与最终输出可读取其状态与来源。完整语义及示例见 [Flow 内部变量](./design/flow-variables.md)。
 
 调度 checkpoint 经 checkpoint-decoder 验证后恢复，图效果整批结构解码后才进入语义校验和修改；未知插件 config/input 的语义归插件目录。旧 version-1 checkpoint 可不含重试回执，新字段缺省为空。
+
+
+### 通用 Tool 与媒体 Connection 节点
+
+`builtin.tool@1.0.0` 指定 `toolId/toolVersion/args`，节点 `capabilities` 授权对应工具，
+通过 `kernel-adapters.tool@1` 调用既有 `tool.call`。默认持久审批；明确配置 `approval: none`
+可确定性执行。成功输出 `outputs.result.content` 为完整有界 JSON，并校验工具输出 Schema。
+原生工具可通过 `reconcile(args, context)` 核对同一 `operationId`；无核对能力的写操作
+保持不确定状态，缺少原版本不能重放。`ApplicationKernelPlatform.additionalTools` 提供外部注入。
+
+`builtin.media@1.0.0` 使用 `config.connectionId` 或 `config.connectionSlot` 指定连接，
+`config.operation` 为 `image.generate` 或 `speech.synthesize`，`config.request` 提供操作参数。
+Flow.connections 支持 `name/connectionId?/required?/tier?/requirements?`；调用参数的
+`connectionBindings: Record<string,string>` 独立于业务 parameters。显式节点绑定优先于
+运行/会话默认连接，不能把缺少的媒体连接替换为文本连接。可选槽未绑定时保留空绑定，
+若分支最终执行该媒体节点，仍须通过执行时完整校验。
+
+Provider 与模型须同时显式声明已实现的媒体适配器和实际能力，例如：
+
+```yaml
+media:
+  image.generate: { adapter: openai-images }
+  speech.synthesize: { adapter: openai-speech }
+models:
+  - id: configured-image-model
+    name: Image
+    operations:
+      image.generate:
+        inputModalities: [text]
+        outputModalities: [image]
+        formats: [png]
+  - id: configured-speech-model
+    name: Speech
+    operations:
+      speech.synthesize:
+        inputModalities: [text]
+        outputModalities: [audio]
+        formats: [wav]
+        voices: [configured-voice]
+```
+
+模型 ID 与音色是占位值，需替换为服务商确认支持的值。`category`、`supportsVision` 和
+`supportsAudio` 不会隐式开放生成操作。`size/quality/count/speed/instructions` 等可选参数
+也必须与操作声明匹配。媒体声明可通过 Provider 高级设置及模型详情编辑，`.llm` 导入/导出保留。
+声明校验不代表真实服务探测；当前适配器使用 OpenAI 兼容 API Key 端点，不使用 ChatGPT OAuth。
+旧图片端点可明确指定 `responseFormat: b64_json`、`outputFormatParameter: false`，不按模型名猜测。
+
+媒体节点配置示例：
+
+```json
+{
+  "connectionSlot": "illustrations",
+  "operation": "image.generate",
+  "request": { "prompt": "${params.prompt}", "format": "png" }
+}
+```
+
+媒体 Effect 必须持有 LLM 资源授权，宿主已有 authorizeLlm 时须同时提供 authorizeMedia。
+输出 `{ model, assets, usage? }` 的资产项仅有 `sessionId/taskId/owner/name/mimeType/bytes/sha256`；
+二进制放在所属 `task.seq` 的 VFS 资产目录，响应上限 64 MiB，不把 base64 写入 Task 日志。
+宿主通过 `createMediaResultStore` 与 `readMediaAsset` 为外部工具提供受授权的资产读取端口。
+有 token 用量时扣预算，缺失用量不估造；图片/语音专属价格账本尚未实现。
+
+媒体 Effect 默认 180 秒，`config.timeoutMs` 可显式覆盖；传输默认 120 秒，独立客户端可用
+`LLMClientConfig.mediaTimeout` 配置。取消须等待在途请求结束。HTTP 失败不自动重试；恢复只
+读取并校验本地回执，无回执保持 `MEDIA_INDETERMINATE`，显式重跑可能重复计费。
+CLI 使用 `node apps/cli/dist/cli.js run -f job.flow --profile <profile> --connection-bindings bindings.json --json`；
+绑定文件为 `{ "illustrations": "configured-connection-id" }`。复现实验：
+`pnpm cli:build && node apps/cli/scripts/verify-media-connections.mjs`。

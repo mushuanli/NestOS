@@ -1,3 +1,5 @@
+import { toolPlugin } from './tool-plugin';
+import { mediaPlugin } from './media-plugin';
 import type { DagNodeContext, DagPlugin, DagPluginManifest, JsonValue } from '../contracts';
 import { DELEGATION_DEFAULTS } from '../contracts';
 import { buildLlmTaskInput, type LlmTaskInputOptions } from '@itookit/llm-tasks';
@@ -25,6 +27,8 @@ function builtinPlugins(): DagPlugin[] {
         valuePlugin('builtin.return', manifest('return', 'Return', 'Composition', { returns: { type: 'object' } }, { returns: {} }), 'return'),
         humanPlugin(),
         agentPlugin(),
+        mediaPlugin(),
+        toolPlugin(),
         ...structuredPlugins(),
         ...splitGraphPlugins(agentManifest()),
         ...controlPlugins(),
@@ -130,6 +134,7 @@ function agentTask(context: DagNodeContext) {
             roundId: string(config.roundId, context.nodeRunId),
             messages,
             connectionId: string(config.connectionId, 'default'),
+            connectionSnapshot: config.frozenConnection,
             model: optionalString(config.modelName) ?? optionalString(config.model),
             temperature: optionalNumber(config.temperature),
             maxTokens: optionalNumber(config.maxTokens),

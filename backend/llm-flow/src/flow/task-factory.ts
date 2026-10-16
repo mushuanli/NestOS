@@ -5,6 +5,7 @@ import type { DagNodeDefinition, DagPluginCatalog, DagTaskDefinition, DagTaskDep
 import type { DispatchInput } from './structured/types';
 import { prepareDispatch } from './structured/prepare';
 import { subtaskToolDef, subtaskToolDescription, subtaskToolName } from './delegation-runtime';
+import { flowTaskNeedsCapabilities } from './task-capabilities';
 
 /** Host capability resolution used for one run; no task submission or scheduler state. */
 export interface FlowTaskFactoryOptions {
@@ -34,17 +35,24 @@ export class FlowTaskFactory {
             retry: node.retry,
             priority: node.priority ?? task.priority,
             labels: nodeLabels(node),
-            deferStart: task.programKind === 'llm.agent' || task.programKind === 'llm.chat',
+            deferStart: flowTaskNeedsCapabilities(task.programKind),
         };
     }
 
     private async prepareInput(node: DagNodeDefinition, task: DagTaskDefinition,
         parameters?: Record<string, JsonValue>, requestId?: string): Promise<unknown> {
         const allowed = node.capabilities ?? [];
-        // Preserve host resolution for every plugin, including nested dispatch targets.
-        const catalog = await this.options.resolveTools?.(this.options.sessionId, allowed)
+        // Nested dispatch targets come through this factory independently.
+        const needsTools = task.programKind === 'llm.agent' || task.programKind === 'kernel-adapters.tool';
+        const catalog = await (needsTools ? this.options.resolveTools?.(this.options.sessionId, allowed) : undefined)
             ?? { definitions: [], externalIds: [] };
         switch (task.programKind) {
+            case 'kernel-adapters.tool': {
+                const input = record(task.input);
+                if (typeof input.toolId !== 'string' || !allowed.includes(input.toolId)) throw new Error('Flow tool is not authorized');
+                if (!catalog.definitions.some(tool => (tool.function?.name ?? tool.name) === input.toolId)) throw new Error('Flow tool is unavailable');
+                return { ...input, allowedToolIds: allowed };
+            }
             case 'flow.dispatch': return this.prepareDispatch({ ...task.input as DispatchInput, invocationNamespace: requestId! });
             case 'flow.input': return { ...record(task.input), values: { ...parameters, ...record(record(task.input).values) } };
             case 'llm.agent': return this.agentInput(node, task, allowed, catalog);

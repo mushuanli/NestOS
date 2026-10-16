@@ -303,7 +303,7 @@ function validateConnections(
             issues.push({ code: 'duplicate-connection', message: `Duplicate connection slot: ${connection.name}` });
         }
         seen.add(connection.name);
-        if (!connection.connectionId?.trim()) {
+        if (connection.connectionId !== undefined && !connection.connectionId.trim()) {
             issues.push({ code: 'invalid-connection', message: `Connection ${connection.name} requires a connectionId` });
         }
     }

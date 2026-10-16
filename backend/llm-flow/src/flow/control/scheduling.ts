@@ -1,6 +1,6 @@
 import type { DagNodeDefinition } from '../../contracts';
 import type { SessionHandle, TaskHandle, TaskRecord } from '@itookit/durable-kernel';
-import { bindFlowTaskCapabilities } from '../task-capabilities';
+import { startFlowTask } from '../task-capabilities';
 import { object } from '../structured/value';
 
 interface Scheduling {
@@ -46,8 +46,7 @@ async function startMember(state: Scheduling, node: DagNodeDefinition, group: Da
         if (state.active >= state.maxConcurrency || groupActive >= limit) break;
         const task = state.tasks.get(handle.id)!;
         if (task.control && task.control.mode !== 'run') continue;
-        if (task.program.kind === 'llm.agent' || task.program.kind === 'llm.chat') await bindFlowTaskCapabilities(state.session, handle, task.program.kind, node.capabilities ?? [], node.budget);
-        else await handle.start();
+        await startFlowTask(state.session, handle, task.program.kind, node.capabilities ?? [], node.budget);
         state.active++; groupActive++;
         state.started.set(group.id, (state.started.get(group.id) ?? 0) + 1);
     }

@@ -18,7 +18,7 @@ export interface SendIntent {
     };
     execution:
         | { kind: 'agent'; agentId: string; mode?: ChatExecutionMode }
-        | { kind: 'flow'; flowId: FlowId; revision?: number; parameters?: Record<string, JsonValue> };
+        | { kind: 'flow'; connectionBindings?: Record<string, string>; flowId: FlowId; revision?: number; parameters?: Record<string, JsonValue> };
 }
 
 export function createAgentSendIntent(agentId: string): SendIntent {

@@ -142,7 +142,11 @@ export interface FlowParameter {
  */
 export interface FlowConnection {
     name: string;
-    connectionId: string;
+    connectionId?: string;
+    required?: boolean;
+    tier?: 'optimal' | 'standard' | 'fast';
+    requirements?: { operation: string; inputModalities?: string[]; outputModalities?: string[]; features?: string[] };
+    resolved?: { providerId: string; modelId: string; protocol?: string; mediaEndpoint?: string };
     description?: string;
 }
 
@@ -212,6 +216,8 @@ export interface DelegationConfig {
  * `agentId` shortcut that inherits one Agent's whole reference set at once.
  */
 export interface FlowAgentNodeConfig extends Partial<LlmNodeConfig> {
+    connectionSlot?: string;
+    connectionRequirements?: NonNullable<FlowConnection['requirements']>;
     agentId?: string;
     /** Canonical task instruction, appended as the final system segment. */
     instruction?: string;

@@ -41,10 +41,34 @@ export function resolveNodeConnection(
     runConnectionId?: string,
 ): void {
     if (!isRecord(config)) return;
+    const slotName = nodeConnectionSlot(config, connections, defaultConnection, runConnectionId);
+    if (slotName) {
+        const slot = connections?.find(item => item.name === slotName);
+        if (!slot) throw new Error(`Unknown connection slot: ${slotName}`);
+        if (!slot.connectionId && slot.required !== false) throw new Error(`Missing connection binding: ${slotName}`);
+        config.connectionId = slot.connectionId ?? '';
+        if (slot.resolved) {
+            if (config.modelName && config.modelName !== slot.resolved.modelId) throw new Error(`Model override conflicts with connection slot: ${slotName}`);
+            config.modelName = slot.resolved.modelId;
+            const requirements = config.connectionRequirements ?? slot.requirements;
+            config.frozenConnection = { ...slot.resolved, ...(requirements ? { requirements } : {}) };
+        }
+        delete config.connectionSlot;
+        return;
+    }
     const explicit = typeof config.connectionId === 'string' && config.connectionId.length > 0;
     const resolved = (explicit ? resolveConnectionId(config.connectionId, connections, defaultConnection) : runConnectionId
         ?? resolveConnectionId(undefined, connections, defaultConnection)) ?? fallbackConnectionId;
     if (resolved !== undefined) config.connectionId = resolved;
+}
+
+/** Preserve implicit slot identity for host admission before replacing it with a global id. */
+export function nodeConnectionSlot(config: JsonValue, connections: FlowConnection[] | undefined,
+    defaultConnection: string | undefined, runConnectionId?: string): string | undefined {
+    if (!isRecord(config)) return;
+    if (typeof config.connectionSlot === 'string') return config.connectionSlot;
+    if (typeof config.connectionId === 'string' && connections?.some(slot => slot.name === config.connectionId)) return config.connectionId;
+    if (!config.connectionId && !runConnectionId) return connections?.find(slot => slot.name === (defaultConnection ?? connections?.[0]?.name))?.name;
 }
 
 function isRecord(value: unknown): value is Record<string, JsonValue> {

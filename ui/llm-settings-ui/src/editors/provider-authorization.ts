@@ -12,16 +12,25 @@ export class ProviderAuthorizationPanel {
     private status?: ProviderAuthorizationState['status'];
     private disposed = false;
     private progress?: LocaleKey;
+    private readonly events = new AbortController();
+    private refreshQueued = false;
     constructor(private readonly root: HTMLElement, private readonly providerId: string,
         private readonly service: IConnectionService, private readonly authorized: () => Promise<void>) {
         root.addEventListener('input', event => event.stopPropagation());
         root.addEventListener('change', event => event.stopPropagation());
     }
     async init(): Promise<void> {
-        this.unsubscribe = this.service.onChange(() => { void this.refresh().catch(() => {}); });
+        this.unsubscribe = this.service.onChange(() => this.queueRefresh());
+        window.addEventListener('focus', () => this.queueRefresh(), { signal: this.events.signal });
+        document.addEventListener('visibilitychange', () => this.queueRefresh(), { signal: this.events.signal });
         await this.refresh();
     }
-    destroy(): void { this.disposed = true; this.generation++; this.unsubscribe?.(); }
+    destroy(): void { this.disposed = true; this.generation++; this.unsubscribe?.(); this.events.abort(); }
+    private queueRefresh(): void {
+        if (this.disposed || this.refreshQueued || document.visibilityState === 'hidden') return;
+        this.refreshQueued = true;
+        queueMicrotask(() => { this.refreshQueued = false; if (!this.disposed) void this.refresh().catch(() => {}); });
+    }
     private async refresh(): Promise<void> {
         if (this.disposed) return;
         const generation = ++this.generation;

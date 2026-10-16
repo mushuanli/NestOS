@@ -221,3 +221,35 @@ it('removes the cancelled link if generating its replacement fails', async () =>
         expect(button(root, 'provider.auth.continue').disabled).toBe(false);
     } finally { panel.destroy(); }
 });
+
+it('refreshes authorization once on return, preserves input when unchanged and releases return listeners', async () => {
+    const root = document.createElement('section'); document.body.append(root);
+    let state: ProviderAuthorizationState = { supported: true, status: 'pending', pending: pendingAuthorization() };
+    const read = vi.fn(async () => state), authorized = vi.fn(async () => {});
+    const panel = new ProviderAuthorizationPanel(root, 'chatgpt', { getProviderAuthorization: read, onChange: () => () => {} } as never, authorized);
+    try {
+        await panel.init(); const input = root.querySelector<HTMLInputElement>('[data-auth-callback]')!; input.value = 'draft';
+        window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange'));
+        await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+        expect(root.querySelector('[data-auth-callback]')).toBe(input); expect(input.value).toBe('draft');
+        state = { supported: true, status: 'authorized', account: 'safe@example.com' };
+        window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange'));
+        await vi.waitFor(() => expect(authorized).toHaveBeenCalledOnce());
+        expect(read).toHaveBeenCalledTimes(3); expect(root.textContent).toContain('safe@example.com');
+        panel.destroy(); window.dispatchEvent(new Event('focus')); document.dispatchEvent(new Event('visibilitychange'));
+        await Promise.resolve(); expect(read).toHaveBeenCalledTimes(3);
+    } finally { panel.destroy(); }
+});
+
+it('waits until visible to refresh background authorization notifications', async () => {
+    const root = document.createElement('section'); document.body.append(root);
+    const visibility = vi.spyOn(document, 'visibilityState', 'get').mockReturnValue('hidden'); let notify = () => {};
+    const read = vi.fn(async () => ({ supported: true, status: 'signed-out' }));
+    const panel = new ProviderAuthorizationPanel(root, 'chatgpt', { getProviderAuthorization: read,
+        onChange: (fn: () => void) => { notify = fn; return () => {}; } } as never, async () => {});
+    try {
+        await panel.init(); notify(); window.dispatchEvent(new Event('focus')); await Promise.resolve();
+        expect(read).toHaveBeenCalledOnce(); visibility.mockReturnValue('visible');
+        document.dispatchEvent(new Event('visibilitychange')); await vi.waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+    } finally { panel.destroy(); }
+});

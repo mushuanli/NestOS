@@ -65,6 +65,7 @@ pnpm cli -d 127.0.0.1:2000 --profile /path/to/data \
 | CLI `-d` | `<config>/logs/cli/httpd-cli-<timestamp>-<pid>.jsonl`、`<config>/logs/http/httpd-cli-audit.jsonl` |
 | httpd dev/release | `<config>/logs/http/<mode>/<release-id>/httpd-<mode>-runtime.log` 与 `httpd-<mode>-audit.jsonl` |
 | Tauri dev/release | `<config>/logs/desktop/tauri-<mode>-<timestamp>-<pid>.jsonl`；LLM 元数据位于 `<data>/var/log/llm/tauri-<mode>-<session>.json` |
+| pi-agent 0.1.4+ | pi-agent 配置文件同级 `logs/pi-agent-<启动时间>-<pid>.jsonl`；默认每份 10 MiB、每次启动最多 5 份，`[logging]` 可配置 |
 
 `<config>` 遵循 XDG_CONFIG_HOME。CLI 的 `MINDOS_DIAGNOSTICS_DIR` 只覆盖诊断目录，`--audit-file` 只覆盖当前宿主审计路径。新应用诊断记录操作阶段、错误码、提交结果和请求 ID，不写 prompt、消息正文或凭据。旧日志不删除。
 

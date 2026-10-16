@@ -256,8 +256,12 @@ function flowAgentDefaults(flow: FlowRevision): Record<string, unknown> {
 }
 
 export function mergeAgentConfig(defaultsValue: Record<string, unknown>, nodeConfig: FlowNodeDefinition['config']): Record<string, unknown> {
-    const defaults = defaultsValue;
     const node = isRecord(nodeConfig) ? nodeConfig : {};
+    const defaults = { ...defaultsValue };
+    if (node.connectionSlot || node.connectionId) {
+        delete defaults.connectionId;
+        delete defaults.modelName;
+    }
     const defaultPrompt = Array.isArray(defaults.systemPrompt) ? defaults.systemPrompt : [];
     const nodePrompt = Array.isArray(node.systemPrompt) ? node.systemPrompt : [];
     const defaultTools = Array.isArray(defaults.toolIds) ? defaults.toolIds : [];

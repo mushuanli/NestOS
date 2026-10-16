@@ -1,7 +1,7 @@
 import type { JsonValue, DagRunSpec } from '@itookit/llm-flow/contracts';
 import type { ICommandBus } from '../contracts';
 import type { Kernel, TaskRecord, SessionHandle } from '@itookit/durable-kernel';
-import { FlowCommand, FlowDefinitionStore, validateFlowParameters } from '@itookit/llm-flow';
+import { FlowCommand, FlowDefinitionStore, validateFlowParameters, type DagCommandService } from '@itookit/llm-flow';
 import type { FlowInvocationSessions } from '../persistence/flow-invocation-sessions';
 
 import { FlowInvocationCommand, type FlowInvocationInput, type FlowInvocationRecord } from '../contracts/flow-invocations';
@@ -17,7 +17,8 @@ export class FlowInvocationService {
         private canWrite?: (id: string) => Promise<boolean>,
         private source?: (id: string) => Promise<{ branch: string; head: string | null }>,
         private resolveConnection?: (sessionId: string, connectionId?: string) => Promise<string | undefined>,
-        private invocationSessions?: FlowInvocationSessions) {}
+        private invocationSessions?: FlowInvocationSessions,
+        private runs?: Pick<DagCommandService, 'prepareRun' | 'submitPrepared'>) {}
 
     register(): void {
         this.commands.register(FlowInvocationCommand.Invoke, args => this.invoke(args as FlowInvocationInput));
@@ -89,25 +90,51 @@ export class FlowInvocationService {
         const session = await this.kernel.openSession(input.sessionId), key = PREFIX + input.requestId;
         let record = await this.admit(input, session);
         const existing = this.findRoot(await session.listTasks(), input.requestId);
-        if (existing) return { ...record, rootTaskId: existing.id, error: undefined };
-        const invocation: DagRunSpec['invocation'] = { requestId: input.requestId, flowId: input.flowId,
-            revision: record.flow.revision, digest: record.flow.digest, name: record.flow.name, createdAt: record.createdAt,
-            ...(record.branch ? { branch: record.branch, head: record.head } : {}) };
+        if (existing) return this.saveRoot(session, record, existing.id);
+        // Upgrade older intents only when no durable root already owns their graph.
+        if (this.runs && !record.preparedGraph) {
+            record = await this.prepare(record);
+            await session.setShared(key, json(record));
+        }
         try {
             await this.assertWritable(input.sessionId);
-            const { taskId } = await this.commands.execute<{ taskId: string }>(FlowCommand.RunStart, {
-                sessionId: input.sessionId, flow: record.flow, parameters: record.parameters, invocation,
-                connectionId: record.connectionId, fallbackConnectionId: record.resolvedConnectionId,
-            });
-            record = { ...record, rootTaskId: taskId, error: undefined };
+            const { taskId } = await this.start(record);
+            return await this.saveRoot(session, record, taskId);
         } catch (error) {
             const root = this.findRoot(await session.listTasks(), input.requestId);
-            if (root) return { ...record, rootTaskId: root.id, error: undefined };
+            if (root) return this.saveRoot(session, record, root.id);
             await session.setShared(key, json({ ...record, error: String(error) }));
             throw error;
         }
-        await session.setShared(key, json(record));
-        return record;
+    }
+
+    private async start(record: FlowInvocationRecord): Promise<{ taskId: string }> {
+        const invocation: DagRunSpec['invocation'] = { requestId: record.requestId, flowId: record.flowId,
+            revision: record.flow.revision, digest: record.flow.digest, name: record.flow.name, createdAt: record.createdAt,
+            ...(record.branch ? { branch: record.branch, head: record.head } : {}) };
+        if (record.preparedGraph) {
+            if (!this.runs) throw new Error('Admitted Flow graph requires a compiled run runtime');
+            return this.runs.submitPrepared({ kind: 'graph', sessionId: record.sessionId,
+                graph: { ...record.preparedGraph, invocation }, parameters: record.parameters });
+        }
+        return this.commands.execute(FlowCommand.RunStart, { sessionId: record.sessionId, flow: record.flow,
+            parameters: record.parameters, invocation, connectionBindings: record.connectionBindings,
+            connectionId: record.connectionId, fallbackConnectionId: record.resolvedConnectionId });
+    }
+
+    private async saveRoot(session: SessionHandle, record: FlowInvocationRecord, taskId: string): Promise<FlowInvocationRecord> {
+        if (record.rootTaskId === taskId && !record.preparedGraph && !record.error) return record;
+        const saved = { ...record, rootTaskId: taskId, error: undefined, preparedGraph: undefined };
+        await session.setShared(PREFIX + record.requestId, json(saved));
+        return saved;
+    }
+
+    private async prepare(record: FlowInvocationRecord): Promise<FlowInvocationRecord> {
+        if (!this.runs) return record;
+        const preparedGraph = await this.runs.prepareRun({ sessionId: record.sessionId, flow: record.flow,
+            parameters: record.parameters, connectionId: record.connectionId, connectionBindings: record.connectionBindings,
+            fallbackConnectionId: record.resolvedConnectionId ?? null });
+        return { ...record, preparedGraph };
     }
 
     private async admit(input: FlowInvocationInput, session: SessionHandle): Promise<FlowInvocationRecord> {
@@ -122,6 +149,7 @@ export class FlowInvocationService {
             for (const name of Object.keys(input.parameters)) if (!(flow.parameters ?? []).some(field => field.name === name)) throw new Error(`Unknown Flow parameter: ${name}`);
             if (issues.length) throw new Error(issues.map(issue => issue.message).join('; '));
             record = { ...input, resolvedConnectionId: await this.resolveConnection?.(input.sessionId, input.connectionId) ?? null, flow, createdAt: Date.now(), ...await this.source?.(input.sessionId) };
+            record = await this.prepare(record);
             await session.setShared(key, json(record), { expectedVersion: null });
         }
         return record;
@@ -133,7 +161,7 @@ export class FlowInvocationService {
     }
 
     private assertSame(record: FlowInvocationRecord, input: FlowInvocationInput): void {
-        if (record.connectionId !== input.connectionId || record.flowId !== input.flowId || record.revision !== input.revision || canonical(record.parameters) !== canonical(input.parameters)) {
+        if (canonical(record.connectionBindings ?? {}) !== canonical(input.connectionBindings ?? {}) || record.connectionId !== input.connectionId || record.flowId !== input.flowId || record.revision !== input.revision || canonical(record.parameters) !== canonical(input.parameters)) {
             throw new Error('Flow invocation request id was already used with different arguments');
         }
     }

@@ -97,6 +97,14 @@ describe('flowToDag connection resolution', () => {
         expect(config.skillIds).toEqual(['flow-skill', 'node-skill']);
     });
 
+    it.each(['connectionSlot', 'connectionId'])('does not inherit a default model when a node selects %s', async field => {
+        const flow = revision([{ ...agentNode('a'), config: { [field]: 'premium' } }]);
+        flow.defaults = { connectionId: 'economy', modelName: 'cheap-model' };
+        const spec = await flowToDag(flow);
+        expect(spec.nodes[0].config).toMatchObject({ connectionId: 'conn-pro' });
+        expect(spec.nodes[0].config).not.toHaveProperty('modelName');
+    });
+
     it('expands Composite Flow nodes into one namespaced DAG', async () => {
         const value = (id: string, content: unknown): FlowNodeDefinition => ({
             id: id as FlowNodeId, name: id, plugin: 'builtin.transform', pluginVersion: '1.0.0',

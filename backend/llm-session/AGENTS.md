@@ -36,6 +36,8 @@ src/
 
 Flow 重新运行通过 `FlowRerunService` 校验参数并创建替代分支，调用参数固定在 `Round.flow`。`FlowHistory` 将 Task 事件投影为 History 交互并存入 `RoundResult.flowInteractions`，与模型 history 独立；编译到路由内的汇总/判断通过 `flow.logic.completed` 逐轮展示条件与结果，流式内容按 Task 隔离。见 [Flow 能力与输出](../../doc/design/flow-capabilities-and-output.md)。
 
+FlowInvocationService 通过注入的 prepareRun/submitPrepared 端口先完成完整 DAG 准入，再持久化 preparedGraph 与调用意图，最后提交根 Task。准入图覆盖最终连接选择及子 Flow，提交重试不重新读取模型配置；根 Task 持有执行快照后删除临时图。编译与任务提交仍归 llm-flow，会话层不实现第二套 DAG 编译器或执行器。
+
 ## 联网搜索
 
 - 三态 `ExecutorConfig.webSearchMode`（`WebSearchMode`）由 `AgentResolver.resolveWebSearch` 经 `resolveWebSearchStrategy` 解析。

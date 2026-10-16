@@ -9,6 +9,8 @@ import { SessionManager } from '../src/session/session-manager';
 import { SessionRepository } from '../src/persistence/session-repository';
 import { SessionDirectoryStorageResolver } from '../src/persistence/session-directory-storage';
 import { createSessionPlugin, SessionCommand } from '../src/plugins/session-plugin';
+import { prepareFlowConnections } from '../src/session/flow-connections';
+import { bindStandaloneFlowNode } from '../src/session/flow-node-binder';
 
 let manager: Awaited<ReturnType<typeof createVFS>>['manager'], kernel: Kernel, service: FlowInvocationService, commands: CommandBus;
 const flow: FlowRevision = { id: 'wait' as never, name: 'Wait', revision: 1, digest: 'wait-v1', createdAt: 0,
@@ -223,4 +225,108 @@ it('retains the admitted fallback when retrying a submission after the global de
     expect(call.resolvedConnectionId).toBe('global-before');
     expect(resolve).toHaveBeenCalledOnce();
     expect(execute).toHaveBeenLastCalledWith(FlowCommand.RunStart, expect.objectContaining({ fallbackConnectionId: 'global-before' }));
+});
+
+function connectionRuntime(source: 'defaults' | 'run' | 'fallback' | 'nested') {
+    const selection = { model: 'before', enabled: true };
+    const provider = { id: 'p', name: 'P', implementation: 'openai-compatible' as const, baseURL: 'https://example.test',
+        models: ['before', 'after'].map(id => ({ id, name: id })) };
+    const catalog = { getProvider: () => provider, getConnection: vi.fn(async (id: string) => ({
+        id, name: id, providerId: 'p', model: selection.model, enabled: selection.enabled, hasApiKey: true, protocol: 'openai-chat' as const,
+    })) };
+    const agent: FlowRevision = { id: 'agent' as never, name: 'Agent', revision: 1, digest: 'agent', createdAt: 0, edges: [], nodes: [
+        { id: 'worker' as never, name: 'Worker', plugin: 'builtin.agent', pluginVersion: '1.0.0', inputs: {}, config: { instruction: 'Hello' } },
+    ] };
+    const definition = structuredClone(agent);
+    if (source === 'defaults') {
+        definition.connections = [{ name: 'default', connectionId: 'chosen' }];
+        definition.defaults = { connectionId: 'default' };
+    }
+    if (source === 'nested') {
+        definition.nodes = [{ id: 'child' as never, name: 'Child', plugin: 'builtin.flow', pluginVersion: '1.0.0', inputs: {}, config: { flowId: 'agent' } }];
+        agent.connections = [{ name: 'worker' }]; agent.nodes[0].config = { connectionSlot: 'worker', instruction: 'Hello' };
+    }
+    const definitions = { loadRevision: async (id: string) => id === 'agent' ? agent : definition } as unknown as FlowDefinitionStore;
+    const input = { sessionId: 's', requestId: 'frozen', flowId: 'parent', revision: 1, parameters: {},
+        ...(source === 'run' ? { connectionId: 'chosen' } : {}), ...(source === 'nested' ? { connectionBindings: { 'child/worker': 'chosen' } } : {}) };
+    const identity = { getSkills: async () => [], getSystemPrompt: async () => undefined, resolveExact: async () => ({}) };
+    const options = { kernel, flowStore: definitions, plugins: createBuiltinDagPluginRegistry(),
+        bindNode: (sessionId: string, node: FlowRevision['nodes'][number], defaults?: FlowRevision['nodes'][number]['config']) =>
+            bindStandaloneFlowNode(node, defaults, sessionId, identity as never),
+        prepareConnections: (flow: FlowRevision, bindings?: Record<string, string>) => prepareFlowConnections(flow, bindings, catalog) };
+    const create = () => {
+        const dag = new DagCommandService(options);
+        return { dag, service: new FlowInvocationService(kernel, definitions, commands, undefined, undefined, async () => 'chosen', undefined, dag) };
+    };
+    return { selection, catalog, input, create, definition };
+}
+
+it.each(['defaults', 'run', 'fallback', 'nested'] as const)('persists the complete %s model choice before spawning and reuses it after a failed submission', async source => {
+    const fixture = connectionRuntime(source), first = fixture.create();
+    vi.spyOn(first.dag, 'submitPrepared').mockRejectedValueOnce(new Error('interrupted before root spawn'));
+    await expect(first.service.invoke(fixture.input)).rejects.toThrow('interrupted');
+    const session = await kernel.openSession('s');
+    const saved = (await session.getShared('flow.invocation.frozen'))!.value as any;
+    expect(saved.preparedGraph.nodes[0].config).toMatchObject({ connectionId: 'chosen', modelName: 'before',
+        frozenConnection: { providerId: 'p', modelId: 'before' } });
+    expect(await session.listTasks()).toEqual([]);
+    const lookups = fixture.catalog.getConnection.mock.calls.length;
+    fixture.selection.model = 'after';
+    const call = await fixture.create().service.invoke(fixture.input);
+    const root = (await (await kernel.openTask(call.rootTaskId!)).status()).task;
+    expect((root.input as any).initialScheduler.spec.nodes[0].config).toMatchObject({ modelName: 'before' });
+    expect(fixture.catalog.getConnection).toHaveBeenCalledTimes(lookups);
+    expect((await session.getShared('flow.invocation.frozen'))!.value).not.toHaveProperty('preparedGraph');
+    expect(call.preparedGraph).toBeUndefined();
+});
+
+it('rejects invalid effective connections before persisting a new invocation', async () => {
+    const fixture = connectionRuntime('fallback'); fixture.selection.enabled = false;
+    await expect(fixture.create().service.invoke(fixture.input)).rejects.toThrow('unavailable');
+    const session = await kernel.openSession('s');
+    expect(await session.getShared('flow.invocation.frozen')).toBeUndefined();
+    expect(await session.listTasks()).toEqual([]);
+});
+
+it('checks connection bindings when deduplicating an admitted request', async () => {
+    const fixture = connectionRuntime('nested'), first = fixture.create();
+    vi.spyOn(first.dag, 'submitPrepared').mockRejectedValueOnce(new Error('interrupted'));
+    await expect(first.service.invoke(fixture.input)).rejects.toThrow('interrupted');
+    await expect(fixture.create().service.invoke({ ...fixture.input, connectionBindings: { 'child/worker': 'other' } }))
+        .rejects.toThrow('different arguments');
+});
+
+it('recovers an interrupted admission with the persisted graph after model configuration changes', async () => {
+    const fixture = connectionRuntime('nested'), first = fixture.create();
+    vi.spyOn(first.dag, 'submitPrepared').mockRejectedValueOnce(new Error('interrupted'));
+    await expect(first.service.invoke(fixture.input)).rejects.toThrow('interrupted');
+    const session = await kernel.openSession('s');
+    const saved = (await session.getShared('flow.invocation.frozen'))!.value as any;
+    delete saved.error;
+    await session.setShared('flow.invocation.frozen', saved);
+    fixture.selection.model = 'after';
+    const recovered = fixture.create().service;
+    await recovered.recover();
+    const [call] = await recovered.list('s');
+    const root = (await (await kernel.openTask(call.rootTaskId!)).status()).task;
+    expect((root.input as any).initialScheduler.spec.nodes[0].config).toMatchObject({ modelName: 'before' });
+});
+
+it('prepares a legacy intent without a root before submitting it', async () => {
+    const fixture = connectionRuntime('fallback'), session = await kernel.openSession('s');
+    await session.setShared('flow.invocation.frozen', { ...fixture.input, flow: fixture.definition, createdAt: 0,
+        resolvedConnectionId: 'chosen' } as never);
+    const call = await fixture.create().service.invoke(fixture.input);
+    const root = (await (await kernel.openTask(call.rootTaskId!)).status()).task;
+    expect((root.input as any).initialScheduler.spec.nodes[0].config).toMatchObject({ modelName: 'before' });
+});
+
+it('reattaches an existing root without compiling or reading the model catalog again', async () => {
+    const fixture = connectionRuntime('run'), first = await fixture.create().service.invoke(fixture.input);
+    const lookups = fixture.catalog.getConnection.mock.calls.length;
+    fixture.selection.enabled = false;
+    const repeated = await fixture.create().service.invoke(fixture.input);
+    expect(repeated.rootTaskId).toBe(first.rootTaskId);
+    expect(fixture.catalog.getConnection).toHaveBeenCalledTimes(lookups);
+    expect((await kernel.listSessionTasks('s')).filter(task => task.labels?.kind === 'flow-root')).toHaveLength(1);
 });

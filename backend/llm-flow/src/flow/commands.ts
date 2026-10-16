@@ -4,7 +4,7 @@ import type { DagPluginCatalog, DagPluginPresentation, FlowDraft, FlowNodeDefini
 import type { ToolDefinition } from '@itookit/llm-context';
 import type { Kernel, SessionHandle, TaskRecord, TaskSnapshot } from '@itookit/durable-kernel';
 import { createFlowRevision, type FlowDefinitionStore } from '../flow-definition-store';
-import { submitRun } from '../run-submission';
+import { submitRun, type GraphRunDefinition } from '../run-submission';
 import { expandDispatchDraft } from './structured/expand';
 import { flowToDag, type FlowNodeBinder } from './to-dag';
 import { hasValidationErrors, validateFlowRevision } from './validation';
@@ -32,6 +32,15 @@ export interface DagCommandServiceOptions {
         definitions: ToolDefinition[];
         externalIds: string[];
     }>;
+}
+
+export interface FlowRunPreparation {
+    sessionId: string;
+    flow: FlowRevision;
+    parameters?: Record<string, JsonValue>;
+    connectionId?: string;
+    fallbackConnectionId?: string | null;
+    connectionBindings?: Record<string, string>;
 }
 
 export interface FlowRunSummary { taskId: string; sessionId: string; name: string; status: string; createdAt: number; }
@@ -169,6 +178,13 @@ export class DagCommandService {
         fallbackConnectionId?: string | null,
         connectionBindings?: Record<string, string>,
     ) {
+        const compiled = await this.prepareRun({ sessionId, flow, parameters, connectionId, fallbackConnectionId, connectionBindings });
+        return this.submitPrepared({ kind: 'graph', sessionId,
+            graph: { ...compiled, ...(goal ? { goal } : {}), ...(invocation ? { invocation } : {}) }, parameters });
+    }
+
+    /** Compile without spawning tasks so the host can persist admission before execution. */
+    async prepareRun({ sessionId, flow, parameters, connectionId, fallbackConnectionId, connectionBindings }: FlowRunPreparation) {
         if (!sessionId) throw new Error('DAG run requires sessionId');
         if (this.options.canWriteSession && !await this.options.canWriteSession(sessionId)) throw new Error('Session is read-only on this host');
         const issues = [
@@ -178,8 +194,15 @@ export class DagCommandService {
         if (hasValidationErrors(issues)) throw new Error(issues.map(issue => issue.message).join('; '));
         const resolved = fallbackConnectionId !== undefined ? fallbackConnectionId ?? undefined
             : await this.options.resolveConnection?.(sessionId, connectionId);
-        const compiled = await flowToDag(flow, this.options.bindNode ? (node, defaults) => this.options.bindNode!(sessionId, node, defaults) : undefined, resolved, (id, revision) =>
+        return flowToDag(flow, this.options.bindNode ? (node, defaults) => this.options.bindNode!(sessionId, node, defaults) : undefined, resolved, (id, revision) =>
             this.options.flowStore.loadRevision(id, revision), [], flow.dependencyLocks, false, connectionId, connectionBindings, this.options.prepareConnections);
+    }
+
+    /** Submit trusted compiled input; command callers continue through RunStart admission. */
+    async submitPrepared(definition: GraphRunDefinition): Promise<{ taskId: string }> {
+        const { sessionId } = definition;
+        if (!sessionId) throw new Error('DAG run requires sessionId');
+        if (this.options.canWriteSession && !await this.options.canWriteSession(sessionId)) throw new Error('Session is read-only on this host');
         const sessionContext = await this.options.resolveSessionContext?.(sessionId, '');
         if (this.options.canWriteSession && !await this.options.canWriteSession(sessionId)) throw new Error('Session is read-only on this host');
         const executor = new DurableFlowExecutor({ ...this.options, sessionContext,
@@ -187,9 +210,7 @@ export class DagCommandService {
             bindPatchNode: this.options.bindNode ? async (id, node, defaults) =>
                 this.options.bindNode!(id, node as FlowNodeDefinition, defaults as FlowNodeDefinition['config']) : undefined,
         });
-        const { flow: handle } = await submitRun({ kind: 'graph', sessionId,
-            graph: { ...compiled, ...(goal ? { goal } : {}), ...(invocation ? { invocation } : {}) }, parameters,
-        }, { kernel: this.options.kernel, flowExecutor: executor });
+        const { flow: handle } = await submitRun(definition, { kernel: this.options.kernel, flowExecutor: executor });
         this.handles.set(handle.root.id, handle);
         return { taskId: handle.root.id };
     }

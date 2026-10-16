@@ -455,6 +455,7 @@ function conversationRound(
         ...(execution.task.input.sendIntent?.execution.kind === 'flow' ? { flow: {
             flowId: execution.task.input.sendIntent.execution.flowId,
             connectionId: execution.task.input.overrides?.connectionId,
+            connectionBindings: execution.task.input.sendIntent.execution.connectionBindings,
             revision: execution.task.input.sendIntent.execution.revision!,
             parameters: execution.task.input.sendIntent.execution.parameters,
         } } : {}),

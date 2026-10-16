@@ -1,3 +1,4 @@
+import { prepareFlowConnections } from './session/flow-connections';
 import { skillContextResolver } from './session/direct-conversation';
 import { createSessionHost, type SessionHostPorts } from './utils/host-ports';
 import { FlowInvocationService } from './session/flow-invocations';
@@ -173,7 +174,7 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
     const invocations = new FlowInvocationService(options.kernel, new FlowDefinitionStore(options.flowStore, options.dagPlugins), system.commandBus, options.canWriteSession, async id => {
         const manifest = await new InvocationRoundLog(options.sessionEngine, id).loadManifest();
         return { branch: manifest.currentBranch, head: manifest.currentHead };
-    }, (id, selected) => resolveSessionConnection(options, id, selected), options.flowInvocationSessions);
+    }, (id, selected) => resolveSessionConnection(options, id, selected), options.flowInvocationSessions, system.dag);
     invocations.register();
     const recover = () => createSessionHost(options.hostPorts).traceBoot('flowInvocations.recover', () => invocations.recover());
     if (options.scheduleInvocationRecovery) await options.scheduleInvocationRecovery(recover);
@@ -218,6 +219,7 @@ function createDagCommands(
         options.dagPlugins,
     );
     const dag = new DagCommandService({
+        prepareConnections: (flow, bindings) => prepareFlowConnections(flow, bindings, options.agentService),
         resolveConnection: (id, selected) => resolveSessionConnection(options, id, selected),
         flowStore,
         canWriteSession: options.canWriteSession,
@@ -271,3 +273,5 @@ export * from './contracts';
 export { createSessionHost, type SessionHostPorts, type SessionHost, type SessionLogger, type SessionTextKey } from './utils/host-ports';
 
 export { moveSessionDataDirectory } from "./persistence/session-storage-locations";
+
+export { prepareFlowConnections } from './session/flow-connections';

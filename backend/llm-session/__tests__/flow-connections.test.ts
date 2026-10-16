@@ -3,6 +3,7 @@ import type { FlowRevision } from '@itookit/llm-flow/contracts';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import { flowToDag } from '@itookit/llm-flow';
 import { prepareFlowConnections } from '../src/session/flow-connections';
+import { bindStandaloneFlowNode } from '../src/session/flow-node-binder';
 const provider: LLMProvider = { id: 'p', name: 'P', baseURL: 'https://example.test', implementation: 'openai-compatible',
     media: { 'image.generate': { adapter: 'openai-images' } }, models: [{ id: 'picture', name: 'Picture', operations: { 'image.generate': {
         inputModalities: ['text'], outputModalities: ['image'], formats: ['png'],
@@ -128,4 +129,18 @@ it('keeps nested slot bindings scoped and run connection ids distinct from slot 
         { 'child/illustrations': 'pictures' }, (value, bindings) => prepareFlowConnections(value, bindings, catalog));
     expect(dag.nodes.find(node => node.id === 'picture')!.config).toMatchObject({ connectionId: 'text', modelName: 'text' });
     expect(dag.nodes.find(node => node.id === 'child/picture')!.config).toMatchObject({ connectionId: 'pictures', modelName: 'picture' });
+});
+
+it.each([false, true])('does not inherit a different default model into an explicit slot (isolated=%s)', async isolated => {
+    const definition = agentFlow();
+    definition.defaults = { connectionId: 'obsolete', modelName: 'obsolete-model' };
+    definition.connections = [{ name: 'worker', connectionId: 'text' }];
+    definition.nodes[0].config = { connectionSlot: 'worker', instruction: 'Hello' };
+    const resolver = { getSkills: async () => [], getSystemPrompt: async () => undefined, resolveExact: async () => ({}) };
+    const bind = (node: FlowRevision['nodes'][number], defaults?: FlowRevision['nodes'][number]['config']) =>
+        bindStandaloneFlowNode(node, defaults, 's', resolver as never);
+    const dag = await flowToDag(definition, bind, undefined, undefined, [], undefined, isolated, undefined, {},
+        (value, bindings) => prepareFlowConnections(value, bindings, catalog));
+    expect(dag.nodes[0].config).toMatchObject({ connectionId: 'text', modelName: 'text' });
+    expect(definition.defaults).toEqual({ connectionId: 'obsolete', modelName: 'obsolete-model' });
 });

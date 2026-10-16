@@ -249,10 +249,11 @@ function resolveModelSettings(
     context: BindingContext,
 ): Record<string, unknown> {
     const defaults = context.flowDefaults;
+    const explicitConnection = stringValue(config.connectionSlot) ?? stringValue(config.connectionId);
     return {
-        connectionId: stringValue(config.connectionId) ?? stringValue(defaults.connectionId),
+        connectionId: stringValue(config.connectionId) ?? (explicitConnection ? undefined : stringValue(defaults.connectionId)),
         modelName: stringValue(config.modelName)
-            ?? (stringValue(config.connectionId) ? undefined : stringValue(defaults.modelName)),
+            ?? (explicitConnection ? undefined : stringValue(defaults.modelName)),
         temperature: numberValue(config.temperature) ?? agent?.temperature
             ?? numberValue(defaults.temperature) ?? context.setup.config.temperature,
         maxTokens: numberValue(config.maxTokens) ?? agent?.constraints?.maxTokens

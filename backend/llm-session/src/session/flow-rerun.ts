@@ -32,14 +32,14 @@ export class FlowRerunService {
             definitionKey: definitionKey(definition), agentId: source?.agentId ?? 'default' };
     }
 
-    async run(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedDefinitionKey?: string, connectionId?: string) {
+    async run(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedDefinitionKey?: string, connectionId?: string, connectionBindings?: Record<string, string>) {
         if (this.pending) throw new Error('Flow rerun is already being submitted');
         this.pending = true;
-        try { return await this.submit(parameters, sourceRoundId, expectedDefinitionKey, connectionId); }
+        try { return await this.submit(parameters, sourceRoundId, expectedDefinitionKey, connectionId, connectionBindings); }
         finally { this.pending = false; }
     }
 
-    private async submit(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedDefinitionKey?: string, connectionId?: string) {
+    private async submit(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedDefinitionKey?: string, connectionId?: string, connectionBindings?: Record<string, string>) {
         this.registry.ensureNotGenerating('rerun flow');
         const context = await this.context();
         if (!context || context.sourceRoundId !== sourceRoundId) throw new Error('Session flow changed; reopen the rerun form');
@@ -58,16 +58,16 @@ export class FlowRerunService {
             ? await definitions.createRevision(context.draft) : latest ?? context.definition as FlowRevision;
         if (this.registry.ensureBound().sessionId !== sessionId) throw new Error('Session changed; reopen the rerun form');
         this.registry.ensureNotGenerating('rerun flow');
-        return this.launch({ ...context, definition }, parameters, { sessionId, state, runtime }, connectionId);
+        return this.launch({ ...context, definition }, parameters, { sessionId, state, runtime }, connectionId, connectionBindings);
     }
 
     private async launch(context: NonNullable<Awaited<ReturnType<FlowRerunService['context']>>> & { definition: FlowRevision },
-        parameters: Record<string, JsonValue>, bound: ReturnType<SessionRegistry['ensureBound']>, connectionId?: string) {
+        parameters: Record<string, JsonValue>, bound: ReturnType<SessionRegistry['ensureBound']>, connectionId?: string, connectionBindings?: Record<string, string>) {
         const { sessionId, state, runtime } = bound;
         const log = new RoundLog(this.registry.engine, sessionId), roundId = ulid();
         const previous = await log.loadManifest();
         const branch = await log.createBranchForReplacement(null, roundId, { createdFrom: 'regenerate' });
-        const flow: NonNullable<Round['flow']> = { flowId: context.definition.id, revision: context.definition.revision, parameters };
+        const flow: NonNullable<Round['flow']> = { flowId: context.definition.id, revision: context.definition.revision, parameters, ...(connectionBindings ? { connectionBindings } : {}) };
         try {
             await this.registry.reloadSessionData(sessionId, state);
             this.switched(sessionId, branch.branchName, branch.commonHeadId ?? '', roundId);

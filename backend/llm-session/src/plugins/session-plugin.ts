@@ -22,13 +22,14 @@ export function createSessionPlugin(sessionManager: SessionManager): ILLMPlugin 
             });
             ctx.commands.register(SessionCommand.Unbind, async () => sm.unbindSession());
             ctx.commands.register(SessionCommand.CreateFromFlow, async (args) => {
-                const { flowId, revision, parameters, title, invocation, connectionId } = args as {
+                const { flowId, revision, parameters, title, invocation, connectionId, connectionBindings } = args as {
                     flowId: string;
                     revision: number;
                     parameters?: Record<string, unknown>;
                     title?: string;
                     invocation?: boolean;
                     connectionId?: string;
+                    connectionBindings?: Record<string, string>;
                 };
                 const created = await sm.createSessionFromFlow(
                     flowId,
@@ -36,10 +37,10 @@ export function createSessionPlugin(sessionManager: SessionManager): ILLMPlugin 
                     parameters as Record<string, import('@itookit/llm-flow/contracts').JsonValue> | undefined,
                     title ?? 'Workflow',
                     invocation,
-                    connectionId,
+                    connectionId, connectionBindings,
                 );
                 if (invocation) await ctx.commands.execute(FlowInvocationCommand.Invoke, {
-                    sessionId: created.sessionId, requestId: 'initial-flow', flowId, revision, parameters: parameters ?? {}, connectionId,
+                    sessionId: created.sessionId, requestId: 'initial-flow', flowId, revision, parameters: parameters ?? {}, connectionId, connectionBindings,
                 });
                 return created;
             });
@@ -47,8 +48,8 @@ export function createSessionPlugin(sessionManager: SessionManager): ILLMPlugin 
             ctx.commands.register(SessionCommand.FlowBranchExecutions, args => sm.getFlowBranchExecutions((args as { sessionId: string }).sessionId));
             ctx.commands.register(SessionCommand.FlowRerunContext, () => sm.getFlowRerunContext());
             ctx.commands.register(SessionCommand.FlowRerun, args => {
-                const { parameters, sourceRoundId, sessionId, definitionKey, connectionId } = args as { connectionId?: string; parameters: Record<string, import('@itookit/llm-flow/contracts').JsonValue>; sourceRoundId: string | null; sessionId?: string; definitionKey?: string };
-                return sm.rerunFlow(parameters, sourceRoundId, sessionId, definitionKey, connectionId);
+                const { parameters, sourceRoundId, sessionId, definitionKey, connectionId, connectionBindings } = args as { connectionBindings?: Record<string, string>; connectionId?: string; parameters: Record<string, import('@itookit/llm-flow/contracts').JsonValue>; sourceRoundId: string | null; sessionId?: string; definitionKey?: string };
+                return sm.rerunFlow(parameters, sourceRoundId, sessionId, definitionKey, connectionId, connectionBindings);
             });
 
             ctx.commands.register(SessionCommand.GetSnapshot, async () => sm.getSnapshot());

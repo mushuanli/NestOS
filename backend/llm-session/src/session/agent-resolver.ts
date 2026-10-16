@@ -268,6 +268,9 @@ export class AgentResolver {
      *
      * 当用户切换连接或模型层级时，需要重新查新连接的 tiers 映射来解析模型。
      */
+    getConnection(id: string) { return this.agentService.getConnection(id); }
+    getProvider(id: string) { return this.agentService.getProvider(id); }
+
     async reResolveModel(config: ExecutorConfig, overrides: {
         connectionId?: string;
         modelTier?: ModelTier;

@@ -202,6 +202,8 @@ findCycles(nodes: GraphNode[], edges: GraphEdge[]): GraphCycles;   // 通用环�
 
 结构化派发、控制组调度与重试统一通过包内 `startFlowTask` 绑定能力后启动；Tool 绑定工具能力，Media 绑定模型能力，Agent/Chat 保留既有能力和预算绑定。插件只构造任务声明，具体执行由适配器负责。
 
+`DagCommandService.prepareRun(input: FlowRunPreparation)` 复用命令入口的校验、宿主绑定和完整 DAG 编译，返回 `DagRunSpec`，不创建 Task。宿主可先持久化准入结果，再调用 `submitPrepared(definition: GraphRunDefinition)` 提交可信编译结果；提交仍检查会话写权限并通过既有执行器构造 Run。`RunStart` 复用这两个步骤，命令总线不开放绕过准入的编译图输入。
+
 ---
 
 ## 校验

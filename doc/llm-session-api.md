@@ -279,7 +279,9 @@ class BranchService {
 会话 `ChatSessionSettings.connectionId` 为可选覆盖；未设置时使用 `IConnectionService.getDefaultConnection()`。
 `setDefaultConnection(id | null)` 显式设置或清空全局默认。`session.get-connections` 返回连接列表与 `defaultId`，供 Flow 运行表单使用。
 Agent 定义不再包含连接、模型层级和 `modelPolicy`。普通执行在接收请求时冻结解析后的配置。
-Flow Invocation 记录请求的 `connectionId` 与接收时的 `resolvedConnectionId`，重复请求与恢复沿用该记录。
+Flow Invocation 记录请求的 `connectionId`、`connectionBindings` 与接收时的 `resolvedConnectionId`。正式装配通过 `DagCommandService.prepareRun` 完成默认值、宿主身份与子 Flow 展开，将包含模型身份、协议和能力要求的完整 `preparedGraph` 与调用意图一并持久化，再通过 `submitPrepared` 创建根 Task。提交中断后重试复用该图；根 Task 创建成功后，调用记录移除临时图，由根 Task 的执行快照持有配置。已有根 Task 直接重挂，旧的无根调用记录在再次提交前补做准入；普通命令调用仍通过 `RunStart` 校验和编译。
+
+显式节点 `connectionSlot` 与 `connectionId` 都阻断 Flow 默认连接及默认模型的继承；节点自己的显式 `modelName` 仍参与槽位冲突检查。这一规则同时适用于普通绑定和隔离子 Flow 的默认值合并。
 
 
 | 类 | 职责 | 关键 API |

@@ -27,6 +27,7 @@ export interface ConversationManifest extends RoundManifest {
     uiState?: ConversationUIState;
     /** Workflow instance source: set when the session is created from a workflow run. */
     flow?: {
+        connectionBindings?: Record<string, string>;
         flowId: string;
         connectionId?: string;
         revision: number;

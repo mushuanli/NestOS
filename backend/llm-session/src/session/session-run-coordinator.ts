@@ -1,3 +1,4 @@
+import { prepareFlowConnections } from './flow-connections';
 import { type Signal } from '../contracts';
 import { type ToolDefinition } from '@itookit/llm-context';
 import type { Kernel } from '@itookit/durable-kernel';
@@ -187,7 +188,7 @@ export class SessionRunCoordinator {
                 (node, defaults) => bindFlowNode(node, defaults, snapshot, task, setup, this.agents),
                 setup.config.connectionId,
                 (id, childRevision) => definitions.loadRevision(id, childRevision),
-                [], revision.dependencyLocks, false, task.input.overrides?.connectionId,
+                [], revision.dependencyLocks, false, task.input.overrides?.connectionId, flow.connectionBindings, (definition, bindings) => prepareFlowConnections(definition, bindings, this.agents),
             ),
             (node, snapshot, defaults) => bindFlowNode(node as Parameters<typeof bindFlowNode>[0], defaults as Parameters<typeof bindFlowNode>[1], snapshot, task, setup, this.agents),
         );

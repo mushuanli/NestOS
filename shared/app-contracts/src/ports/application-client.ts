@@ -57,6 +57,7 @@ export interface ApplicationBackend {
     exportRemoteSession(folder: string, profileId: string, sessionId: string, options?: OperationOptions): Promise<SessionExport>;
     resolveFavorite(folder: string, favoriteId: string): Promise<ResolvedProjectFavorite>;
     manageRemoteSession(folder: string, profileId: string, sessionId: string, command: NativeSessionCommand, options?: OperationOptions): Promise<HarnessConversationSnapshot>;
+    unmountProject(projectId: string): Promise<void>;
     conversationBranches(folder: string, profileId: string, sessionId: string, options?: OperationOptions): Promise<HarnessSession[]>;
     taskDetails(sessionId: string, taskId: string): Promise<TaskDetail>;
     taskEvents(sessionId: string, taskId: string, options?: TaskEventQuery): Promise<TaskEventView>;

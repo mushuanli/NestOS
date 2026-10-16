@@ -378,8 +378,39 @@ export class ProjectRemoteMountService {
             return harness;
         } catch(error) {await client.close();throw error;}
     }
+    remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void> {
+        return this.serial(async () => {
+            if (!['ro', 'rw'].includes(access)) throw new FSError('EINVAL', 'Invalid project access');
+            checkOperation(options); await this.beforeChange(projectId);
+            const grants = this.list(projectId), root = grants.find(mount => mount.at === '/');
+            if (!root?.connectionId || !root.serverProjectId || !this.provider.projects) throw new FSError('ECAPABILITY', 'Project remount unavailable');
+            const client = this.provider.projects(await this.resolveConnection(root.connectionId, options));
+            try {
+                let project = await client.read(root.serverProjectId, options);
+                this.assertProjectGrant(projectId, root, project);
+                if (access === 'rw' && !(await client.roots(options)).roots.some(item => item.alias === root.alias && item.access === 'rw'))
+                    throw new FSError('EROFS', 'Server export is read-only');
+                if (access === 'rw' && project.access !== 'rw') {
+                    if (!client.remount) throw new FSError('ECAPABILITY', 'Server project remount unavailable');
+                    project = await client.remount(project, access, options);
+                    this.assertProjectGrant(projectId, root, project);
+                    if (project.access !== access) throw new FSError('EACCES', 'Server project access unavailable');
+                }
+                checkOperation(options);
+                const next = grants.map(mount => ({...mount, mountId: randomUUID(), serverProjectRevision: project.revision,
+                    access: access === 'ro' ? 'ro' as const : mount.at === '/' ? 'rw' as const
+                        : project.mounts.find(item => item.at === '/workspace' + mount.at)!.access}));
+                await this.save(projectId, next);
+                try { await this.changed(projectId); }
+                finally { await this.releaseSources(grants); }
+            } finally { await client.close(); }
+        });
+    }
+    private async releaseSources(grants: readonly ProjectRemoteMount[]): Promise<void> {
+        await Promise.all(grants.map(mount => this.releaseSource(mount.mountId)));
+    }
     private assertProjectGrant(projectId: string, mount: ProjectRemoteMount, project: RemoteProject): void {
-            if (project.alias!==mount.alias || project.path!==mount.root.replace(/^\//,'')) throw new FSError('ECONFLICT','Project directory changed');
+            if (mount.serverProjectId && project.id !== mount.serverProjectId || project.alias!==mount.alias || project.path!==mount.root.replace(/^\//,'')) throw new FSError('ECONFLICT','Project directory changed');
             const expected=[{alias:project.alias,root:project.path ? '/'+project.path : '/',at:'/'},...project.mounts.map(m=>({alias:m.alias,root:m.path ? '/'+m.path : '/',at:m.at.slice('/workspace'.length)}))];
             const granted=this.list(projectId);
             if (expected.length!==granted.length || expected.some(m=>!granted.some(g=>g.alias===m.alias && g.root===m.root && g.at===m.at)) || mount.access==='rw' && project.mounts.some(m=>granted.find(g=>g.at===m.at.slice('/workspace'.length))?.access!==m.access)) throw new FSError('ECONFLICT','Server project mounts changed; refresh the project binding');

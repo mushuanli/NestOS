@@ -174,6 +174,8 @@ pi-agent 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）。a
 
 `PiAgentDriver.projects` 暴露 ProjectClient/RemoteProject/ProjectMount/RegisterProject；服务端目录项目与 sync 数据项目是不同身份。项目文件请求使用项目 ID、revision 与只读衰减 headers，project_exec/harness 从服务端同一份授权获取 mounts。ProjectLauncher 是进程/harness 共用启动端口，当前 bubblewrap，VMM 尚未实现。详见 [项目模型](design/pi-agent-project-model.md)。
 
+`ProjectRemoteMountService.remountProject` 修改客户端项目权限，必要时经可选 `ProjectClient.remount` 调用 `project_remount` 提升服务端项目根授权；所有写入均校验当前权限与版本，不修改项目身份。客户端降为只读只衰减本地绑定。`ApplicationBackend.unmountProject` 是本地卸载用例，允许远端离线，不通过远程文件删除或服务端 `project_forget` 执行。
+
 ### 远程项目会话展示端口
 
 `ui-common` 的 `ConversationControls` 由宿主注入，提供 read/poll/send/respond/interrupt/reconcile/close 及能力限定的 rename/archive，返回规范化历史、待交互卡片及操作可用状态。`piagent-driver` 的 `HarnessConversation` 按结构实现；app-core 的 `ProjectRemoteMountService.projectConversation` 注入项目授权和持久回执 journal；llm-ui 只消费该端口。`RemoteAgentControls` 提供项目范围内目标列表及发送路由，远程选择不进入本地 SessionCommand.Send。原生会话引用、输入草稿和待确认回执位于 `/etc/fs/harness-conversations.seq`，不复制原生历史。 `ConversationSnapshot` 可携带 `canFork` / `hasEarlier`，对应可选 `fork` / `branches` / `loadEarlier`；分支切换仍由宿主导航处理。`HarnessHistory.nextCursor` 与 `HarnessHistoryOptions.cursor` 描述只读历史分页；`HarnessClient.inspect` 读取元信息，`fork` 是带 epoch/requestId 的原生修改。

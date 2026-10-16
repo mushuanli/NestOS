@@ -9,15 +9,27 @@ import { RemoteConversationEditor } from '../../llm-ui/src/shell/RemoteConversat
 import type { EditorOptions } from '@itookit/ui-common';
 import type { VFSUIShell } from '@itookit/vfs-ui';
 
+const dialogMethods = new Map<string, PropertyDescriptor | undefined>();
 beforeEach(() => {
     vi.stubGlobal('matchMedia', () => ({matches:false,addEventListener() {},removeEventListener() {}}));
     vi.stubGlobal('ResizeObserver', class {observe() {} disconnect() {} unobserve() {}});
     Object.defineProperties(Range.prototype,{getClientRects:{configurable:true,value:()=>[]},getBoundingClientRect:{configurable:true,value:()=>new DOMRect()}});
+    for (const method of ['showModal', 'close']) {
+        dialogMethods.set(method, Object.getOwnPropertyDescriptor(HTMLDialogElement.prototype, method));
+        Object.defineProperty(HTMLDialogElement.prototype, method, {configurable: true, value: vi.fn()});
+    }
 });
-afterEach(() => {vi.unstubAllGlobals();delete (Range.prototype as any).getClientRects;delete (Range.prototype as any).getBoundingClientRect;});
+afterEach(() => {
+    vi.unstubAllGlobals(); vi.restoreAllMocks(); delete (Range.prototype as any).getClientRects; delete (Range.prototype as any).getBoundingClientRect;
+    for (const [method, descriptor] of dialogMethods) {
+        if (descriptor) Object.defineProperty(HTMLDialogElement.prototype, method, descriptor);
+        else Reflect.deleteProperty(HTMLDialogElement.prototype, method);
+    }
+});
 
 it('browses mounted native history pages, opens their conversations and routes a project draft remotely', async () => {
     const files = new MemoryBackend(); await files.mkdir('/project');
+    const fileSource = await createFileSystemSource({backend: files, viewId: 'server-files', access: 'rw'});
     const record = {id:'server-project',name:'Notes',alias:'docs',path:'project',access:'rw' as const,revision:1,mounts:[]};
     const profile = {id:'codex',kind:'codex',projectRuntime:true,workspaces:[{id:record.id}],capabilities:{history:true,create:true,resume:true,interrupt:true,interactions:true,fork:true}};
     const native = {id:'native',title:'Native session',cwd:'/projects/server-project',status:'idle',createdAt:1791458500000,updatedAt:1791458565000,resumable:true,owned:true};
@@ -27,10 +39,10 @@ it('browses mounted native history pages, opens their conversations and routes a
         : {sessions:[...sessionList],nextCursor:'older/before+='}),read:vi.fn(async () => ({session:{...native},turns:[{items:[{id:'a',type:'agentMessage',text:'Remote native history'}]}]})),
         fork:vi.fn(async (_profile,id,name) => {const session={...native,id:'branched-native',title:name ?? 'Alternative',parentSessionId:id};sessionList.push(session);return {session};}),create:vi.fn(async () => {const session={...native,id:'new-native'};sessionList.push(session);return {session};}),resume:vi.fn(async () => ({session:{...native}})),turn:vi.fn(async () => ({turnId:'t'})),events:vi.fn(async () => ({epoch:'ev',cursor:0,gap:false,events:[],requests:[]})),respond:vi.fn(),interrupt:vi.fn(),operation:vi.fn(),close:vi.fn(async () => {})};
     vi.mocked(peer.read).mockImplementation(async (_profile,id) => ({session:{...native,id},turns:[{items:[{id:'a',type:'agentMessage',text:'Remote native history'}]}]}));
-    const client = {register:async () => record,read:async () => record,harness:() => peer,close:async () => {}} as unknown as ProjectClient;
+    const client = {register:async () => record,read:async () => record,roots:async () => ({roots: [{alias: 'docs', access: 'rw'}]}),harness:() => peer,close:async () => {}} as unknown as ProjectClient;
     const runtime = await createApplicationRuntime({backend:new MemoryBackend(),ownerKind:'web',remoteSourceProvider:{setCredential() {},resolveCredential:()=>'secret',dispose:async () => {},projects:() => client,
         conversation:(...args) => new HarnessConversation(...args),discover:async connection => ({version:1,fileProtocol:'fs-agent-http-v1',httpEndpoint:connection.endpoint.replace(/\/mcp$/,''),serverId:'node',harness:true,projects:true,projectProtocol:'fs-agent-project-v1'}),
-        open:async () => createFileSystemSource({backend:files,viewId:'remote',access:'rw'})}});
+        open:async () => ({fs: fileSource.fs, dispose: async () => {}})}});
     const fetch = vi.spyOn(globalThis,'fetch').mockImplementation(async (_url,init) => {
         if (init?.method !== 'POST') return new Response(null,{status:405});
         const message = JSON.parse(String(init.body));
@@ -152,5 +164,30 @@ it('browses mounted native history pages, opens their conversations and routes a
         vi.mocked(peer.create).mockImplementationOnce(async () => {const session={...native,id:'second-native'};sessionList.push(session);return {session};});
         await controls.send(remoteId,'another task');expect(peer.create).toHaveBeenCalledTimes(2);
         expect(peer.turn).toHaveBeenLastCalledWith('codex','second-native','another task',expect.anything());
-    } finally {await workbench.destroy();await runtime.dispose();fetch.mockRestore();sidebar.remove();main.remove();}
+        const menu = async () => {
+            await workbench.openResource('/'); await ui.showItemMenu(new MouseEvent('contextmenu'), remotePath);
+            const host = document.querySelector<HTMLElement>('.vfs-context-menu')!;
+            expect(host.querySelector('[data-action="delete"]')).toBeNull(); expect(host.querySelector('[data-action="moveTo"]')).toBeNull();
+            expect(host.querySelector('[data-action="copyTo"]')).toBeNull(); expect(host.textContent).toContain(t('remote.unmountProject'));
+            return host;
+        };
+        const remountAs = async (access: 'ro' | 'rw') => {
+            (await menu()).querySelector<HTMLButtonElement>('[data-action="remount-project"]')!.click();
+            await vi.waitFor(() => expect(document.querySelector('dialog select')).not.toBeNull());
+            document.querySelector<HTMLSelectElement>('dialog select')!.value = access;
+            document.querySelector('dialog form')!.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+            await vi.waitFor(() => expect(document.querySelector('dialog')).toBeNull());
+            expect(remote.list(project.project.id)[0].access).toBe(access); expect(workbench.getActiveResourceId()).toBe('/');
+        };
+        await remountAs('ro'); await workbench.openResource(nativePath);
+        expect(activePanel().querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
+        await remountAs('rw'); await workbench.openResource(nativePath);
+        expect(activePanel().querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(false);
+        (await menu()).querySelector<HTMLButtonElement>('[data-action="unmount-project"]')!.click();
+        await vi.waitFor(() => expect(document.querySelector('dialog')?.textContent).toContain('远端目录'));
+        document.querySelector('dialog form')!.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
+        await vi.waitFor(() => expect(document.querySelector('dialog')).toBeNull());
+        expect(remote.list(project.project.id)).toEqual([]); await expect(runtime.projects.get(project.project.id)).rejects.toMatchObject({code: 'ENOENT'});
+        expect(await fileSource.fs.driver.exists('/project')).toBe(true); expect(peer.turn).toHaveBeenCalledTimes(2);
+    } finally {await workbench.destroy();await runtime.dispose();await fileSource.dispose();fetch.mockRestore();sidebar.remove();main.remove();}
 });

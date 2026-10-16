@@ -41,7 +41,7 @@ import { showNameDialog, showProjectDialog } from '../files/project-dialog';
 import { showMountDialog } from '../files/mount-dialog';
 import { localizeMountError } from '../files/localize-mount-error';
 
-import type { EditorFactory, IEditor, EditorHostContext, ContextMenuConfig } from '@itookit/ui-common';
+import type { EditorFactory, IEditor, EditorHostContext, ContextMenuConfig, MenuItem } from '@itookit/ui-common';
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { KernelViewPort as Kernel } from '@itookit/durable-kernel/contracts';
 import { allowsRowAction, describeErrorReason, describeCauseChain, type VFSToolbarContext, type VFSUIShell, type VFSNodeUI, type UIPersistencePort } from '@itookit/vfs-ui';
@@ -279,7 +279,7 @@ export class SessionWorkbench implements WorkspaceController {
                 run: (node, type) => this.createDirectoryEntry(node.id, type) },
             transferPolicy: {
                 targets: this.projects ? (ids, _mode, parent) => projectTransferTargets(this.projects!, this.navigationFiles!, ids, parent) : undefined,
-                source: (node, mode) => mode === 'move' || this.isTransferFile(node.id),
+                source: (node, mode) => !node.metadata.custom.remoteProject && (mode === 'move' || this.isTransferFile(node.id)),
                 destination: (node, ids) => {
                     if (!node) return false;
                     const fileSources = ids.every(id => this.isTransferFile(id));
@@ -319,6 +319,8 @@ export class SessionWorkbench implements WorkspaceController {
             },
             fileCreation: { label: '会话', title: formatDefaultFileTitle(), resolveParent: sessionCreationParent },
             contextMenu: {
+                bulkItems: (items, defaults) => items.some(item => item.metadata.custom.remoteProject)
+                    ? defaults.filter(entry => !('id' in entry) || !['bulk-delete', 'bulk-move', 'bulk-copy'].includes(entry.id)) : defaults,
                 items: (item, defaults) => {
                     if (isFlowPath(item.id)) return this.flows?.menu.items?.(item,
                         item.id === '/@flows' ? [] : defaults.filter(entry => 'id' in entry && entry.id === 'delete')) ?? [];
@@ -357,10 +359,7 @@ export class SessionWorkbench implements WorkspaceController {
                     if (target.kind === 'favorite' || target.kind === 'favorites') return [];
                     if (target.kind === 'project-files' && target.path === WORKSPACE_PATH) return twin;
                     if (this.projects && item.metadata?.custom?.projectId)
-                        return [{ id: 'enter-project', label: t('project.enter'), onClick: () => this.openResource(item.id) },
-                            ...defaults.filter(entry => !('id' in entry) || !['create-in-folder-session', 'create-in-folder-folder'].includes(entry.id))
-                            .map(entry => 'id' in entry && entry.id === 'rename' ? { ...entry, onClick: () => this.renameProjectDialog(String(item.metadata.custom.projectId)) } : entry),
-                            { type: 'separator' }, ...this.syncMenu.items(String(item.metadata.custom.projectId)), ...this.projectHarnessMenu(String(item.metadata.custom.projectId))];
+                        return this.projectEntryMenu(item, defaults);
                     if (target.kind === 'folder' && folderPathFromBrowserPath(item.id)?.endsWith('/@sessions'))
                         return defaults.filter(entry => !('id' in entry) || !['delete', 'rename'].includes(entry.id));
                     if (target.kind === 'task') {
@@ -480,6 +479,49 @@ export class SessionWorkbench implements WorkspaceController {
             const project=await this.projects!.get(id);
             await showHarnessControl(await remote.projectHarness(id),project.displayName ?? project.name,this.dialogs.signal);
         }}];
+    }
+    private projectEntryMenu(item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]): MenuItem<VFSNodeUI>[] {
+        const id = String(item.metadata.custom.projectId), remote = !!item.metadata.custom.remoteProject;
+        const hidden = ['create-in-folder-session', 'create-in-folder-folder', ...(remote ? ['delete', 'moveTo', 'copyTo', 'duplicate'] : [])];
+        return [{ id: 'enter-project', label: t('project.enter'), onClick: () => this.openResource(item.id) },
+            ...defaults.filter(entry => !('id' in entry) || !hidden.includes(entry.id))
+                .map(entry => 'id' in entry && entry.id === 'rename' ? {...entry, onClick: () => this.renameProjectDialog(id)} : entry),
+            ...(remote ? [
+                {id: 'remount-project', label: t('remote.remountAs'), onClick: () => this.remountProjectDialog(id)},
+                {id: 'unmount-project', label: t('remote.unmountProject'), onClick: () => this.unmountProjectDialog(id)},
+            ] : []),
+            {type: 'separator'}, ...this.syncMenu.items(id), ...this.projectHarnessMenu(id)];
+    }
+    private async closeProjectTabs(path: string): Promise<void> {
+        const prefix = folderBrowserPath(path);
+        for (const tab of this.tabs.values()) if (tab.id === prefix || tab.id.startsWith(prefix + '/')) await this.tabs.close(tab.id, false);
+    }
+    private async unmountProjectDialog(id: string): Promise<void> {
+        const project = await this.projects!.get(id), note = document.createElement('p');
+        note.textContent = t('remote.unmountEffect', {name: project.name});
+        await showNameDialog(t('remote.unmountProject'), '', this.dialogs.signal, async () => {
+            const selected = this.projectNavigation?.currentProject()?.project.id === id;
+            await this.projects!.remoteMounts!.assertUnmountable(id); await this.closeProjectTabs(project.path);
+            await this.backend.unmountProject(id);
+            await this.sidebarUI?.refresh(); await this.projectNavigation?.refresh();
+            if (selected) await this.openResource('/');
+        }, note, {hideName: true, confirmLabel: t('remote.unmountProject')});
+    }
+    private async remountProjectDialog(id: string): Promise<void> {
+        const project = await this.projects!.get(id), remote = this.projects!.remoteMounts!;
+        const root = remote.list(id).find(mount => mount.at === '/')!, panel = document.createElement('div');
+        const label = document.createElement('label'); label.textContent = t('remote.remountAs');
+        const select = document.createElement('select'); select.setAttribute('aria-label', t('remote.remountAs'));
+        for (const mode of ['ro', 'rw'] as const) { const option = document.createElement('option'); option.value = mode; option.textContent = t(`remote.access.${mode}`); select.append(option); }
+        select.value = root.access; label.append(select); panel.append(label);
+        const note = document.createElement('p'); note.textContent = t('remote.remountEffect'); panel.append(note);
+        await showNameDialog(t('remote.remountAs'), '', this.dialogs.signal, async () => {
+            const active = this.active, prefix = folderBrowserPath(project.path);
+            await remote.assertUnmountable(id); await this.closeProjectTabs(project.path);
+            await remote.remountProject(id, select.value as 'ro' | 'rw', {signal: this.dialogs.signal, timeoutMs: 10000});
+            await this.sidebarUI?.refresh(); await this.projectNavigation?.refresh();
+            if (active === prefix || active?.startsWith(prefix + '/')) await this.openResource(active);
+        }, panel, {hideName: true, confirmLabel: t('action.confirm')});
     }
     private async renameProjectDialog(id: string): Promise<void> {
         const project = await this.projects!.get(id);

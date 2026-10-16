@@ -4,6 +4,7 @@ import type { ProjectRemoteMountService } from '@itookit/app-core';
 import { PI_AGENT_EXTENSION } from '@itookit/app-core';
 import { PiAgentMCPControls } from '../src/toolbox/pi-agent-controls';
 import { MCPConfigurationControlsRegistry } from '../src/toolbox/mcp-controls';
+import type { ProjectService } from '@itookit/app-contracts/services';
 
 it('renders verified pi-agent controls without performing network discovery',async () => {
     const restore = vi.fn(), setMCPCredential = vi.fn(() => restore), discoverMCP = vi.fn(async () => ({version:1 as const,
@@ -39,4 +40,18 @@ it('routes registered views only to matching extensions and preserves ordinary M
     registry.render(parent,verified);registry.read(verified);
     expect(render).toHaveBeenCalledOnce();expect(read).toHaveBeenCalledOnce();
     registry.dispose();expect(dispose).toHaveBeenCalledOnce();
+});
+
+it('projects mount permissions from the project service and releases its subscription', async () => {
+    let changed!: () => void, access: 'ro' | 'rw' = 'ro';
+    const stop = vi.fn(), remote = {onChange: (listener: () => void) => {changed = listener; return stop;}, status: () => 'online',
+        list: () => [{connectionId: 'node', mountId: 'mount', alias: 'docs', root: '/project', at: '/', get access() {return access;}}]};
+    const projects = {list: async () => [{name: 'Project', project: {id: 'p'}}]} as unknown as ProjectService;
+    const controls = new PiAgentMCPControls(remote as never, projects), host = document.createElement('div');
+    const server = {id: 'node', name: 'Node', transport: 'http' as const, endpoint: 'https://files.test/mcp',
+        extensions: {[PI_AGENT_EXTENSION]: {version: 1, mcpEndpoint: 'https://files.test/mcp', httpEndpoint: 'https://files.test', fileProtocol: 'fs-agent-http-v1', harness: false}}};
+    controls.render(host, server); await vi.waitFor(() => expect(host.textContent).toContain('只读'));
+    expect(host.textContent).toContain('客户端授权'); expect(host.textContent).toContain('/docs/project');
+    access = 'rw'; changed(); await vi.waitFor(() => expect(host.textContent).toContain('读写'));
+    controls.dispose(); expect(stop).toHaveBeenCalledOnce();
 });

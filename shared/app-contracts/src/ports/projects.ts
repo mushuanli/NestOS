@@ -276,6 +276,7 @@ export interface ProjectRemoteMountService {
         projectName?: string;
     }): Promise<void>;
     projectHarness(projectId: string, options?: OperationOptions): Promise<HarnessClient>;
+    remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void>;
     searchFiles(projectId: string, query: HarnessContracts.FileSearchQuery, options?: OperationOptions): Promise<HarnessContracts.FileSearchResult>;
     projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean): Promise<ProjectConversationPort>;
     projectOffline(projectId: string): boolean;

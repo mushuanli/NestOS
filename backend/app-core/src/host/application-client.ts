@@ -15,6 +15,7 @@ import { exportSessionBundle } from '../session/session-bundle';
 import { exportRemoteSession } from '../session/remote-session-export';
 import { resolveProjectFavorite } from '../projects/favorites/routes';
 import { manageRemoteSession } from '../session/remote-session-management';
+import { unmountRemoteProject } from '../projects/unmount-project';
 import { ToolboxInventory } from '../configuration/toolbox-catalog';
 import { ToolboxResources } from '../configuration/toolbox-resources';
 import { listRemoteHarnessAgents } from '../projects/remote-agent-catalog';
@@ -62,6 +63,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         exportRemoteSession: (...args) => exportRemoteSession(projects, ...args),
         resolveFavorite: (folder, id) => resolveProjectFavorite(projects, repository, folder, id),
         manageRemoteSession: (...args) => manageRemoteSession(projects, ...args),
+        unmountProject: id => unmountRemoteProject(projects, lifecycle(), id),
         conversationBranches: (folder, profile, session, settings) => conversationFamily(services, folder, profile, session, settings),
         taskDetails: (session, task) => taskDetails(kernel.kernel, session, task),
         taskEvents: (session, task, settings) => taskEvents(kernel.kernel, session, task, settings),

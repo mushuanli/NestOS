@@ -4,6 +4,7 @@ import { withInitialDirectory } from '../browser/initial-directory';
 import { presentationPersistence } from '../persistence/initial-navigation';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
+import {remoteSessionCreationPath} from './remote-session-creation';
 import { ProjectSearchPanel } from './project-search-panel';
 import { showRemoteSessionFamily } from './remote-session-family';
 import { nativeSessionMenu } from './remote-session-management';
@@ -1049,6 +1050,8 @@ export class SessionWorkbench implements WorkspaceController {
             button.onclick = () => { void this.manageMemory!(target.sessionId, this.dialogs.signal).catch(error => this.report(error)); };
             panel.append(button);
         }
+        const draft = remoteSessionCreationPath(path, nodes);
+        this.projectNavigation?.setRemoteCreation(path, draft);
         const parent = path.slice(0, path.lastIndexOf('/')) || '/';
         const row = this.sidebarUI?.getNode(path);
         const writable = (target.kind === 'project-files' || target.kind === 'files') && directoryNode?.type === 'directory'
@@ -1066,7 +1069,8 @@ export class SessionWorkbench implements WorkspaceController {
             selectedIds: () => this.sidebarUI?.getSnapshot().selectedIds ?? [],
             bulkActions: this.sidebarUI && (target.kind === 'project-files' || target.kind === 'files') ? directoryBulkActions(this.sidebarUI) : undefined,
             favorite: this.projects ? this.directoryFavorites() : undefined,
-            actions: writable ? [
+            actions: draft ? [{label: t('harness.create'), icon: FILE_BROWSER_ICONS.newSession, iconOnly: false,
+                run: () => {void this.openResource(draft).catch(error => this.report(error));}}] : writable ? [
                 { label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, run: () => { void this.createDirectoryEntry(path, 'file').catch(error => this.report(error)); } },
                 { label: t('project.createFolder'), icon: FILE_BROWSER_ICONS.addFolder, run: () => { void this.createDirectoryEntry(path, 'directory').catch(error => this.report(error)); } },
             ] : undefined });
@@ -1078,7 +1082,10 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private async directoryEntries(path: string) {
         const nodes = await this.navigationFiles!.driver.getChildren(path);
-        if (this.active === path) void this.sidebarUI?.refresh().catch(error => this.report(error));
+        if (this.active === path) {
+            this.projectNavigation?.setRemoteCreation(path, remoteSessionCreationPath(path, nodes));
+            void this.sidebarUI?.refresh().catch(error => this.report(error));
+        }
         return nodes.map(node => this.directoryEntry(node));
     }
     private directoryEntry(node: FSNode): DirectoryEntry {

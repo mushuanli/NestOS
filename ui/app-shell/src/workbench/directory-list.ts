@@ -13,7 +13,7 @@ export interface DirectoryListOptions {
     title: string; path: string; entries: DirectoryEntry[];
     initialSort?: {key: 'name' | 'size' | 'modified' | 'type'; ascending: boolean};
     open(id: string): void; parent?: () => void; refresh?: () => Promise<DirectoryEntry[]>;
-    actions?: { label: string; run(): void; disabled?: boolean; icon?: string }[];
+    actions?: { label: string; run(): void; disabled?: boolean; icon?: string; iconOnly?: boolean }[];
     contextMenu?: (event: MouseEvent, id: string) => void;
     favorite?: { state(id: string): boolean | undefined; toggle(id: string): Promise<void> };
     select?: (ids: string[]) => void;
@@ -53,7 +53,7 @@ export function createDirectoryList(options: DirectoryListOptions): HTMLElement 
     const refresh = () => refreshEntries(options, missing, toolbar, () => render());
     refreshers.set(panel, refresh);
     if (options.refresh) toolbar.append(action(t('workbench.refresh'), () => { void refresh().catch(fail); }, FILE_BROWSER_ICONS.refresh, true));
-    for (const entry of options.actions ?? []) { const button = action(entry.label, entry.run, entry.icon, true); button.disabled = !!entry.disabled;
+    for (const entry of options.actions ?? []) { const button = action(entry.label, entry.run, entry.icon, entry.iconOnly ?? true); button.disabled = !!entry.disabled;
         button.dataset.directoryAction = entry.disabled ? 'disabled' : 'enabled'; toolbar.append(button); }
     const search = document.createElement('input'); search.type = 'search'; search.placeholder = t('workbench.filter'); search.setAttribute('aria-label', t('workbench.filter')); toolbar.append(search);
     const table = document.createElement('table'); table.className = 'workbench-directory__table';

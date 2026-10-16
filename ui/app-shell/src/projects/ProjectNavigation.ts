@@ -3,7 +3,7 @@ import { remapProjectPath } from './project-paths';
 import { t, FILE_BROWSER_ICONS, VFS_TOOLBAR_ICONS, ENTITY_ICONS, FEEDBACK_ICONS } from '@itookit/common';
 import { ProjectSyncStatusIndicator, projectSyncIcon } from './sync/indicator';
 import type { ProjectSyncIndicator } from './sync/presentation';
-import { browserTargetFolder, folderBrowserPath, resolveBrowserTarget } from '@itookit/app-contracts';
+import { browserTargetFolder, folderBrowserPath, resolveBrowserTarget, remoteSessionPath } from '@itookit/app-contracts';
 import type { ProjectFolder, ProjectNavigationSnapshot, ProjectService } from '@itookit/app-contracts/services';
 import { ScopeSelector } from '@itookit/vfs-ui';
 import type { VFSActionDefinition, VFSActionContext, VFSToolbarContext, VFSColumnsOptions, VFSNodeUI, VFSUIShell } from '@itookit/vfs-ui';
@@ -46,6 +46,7 @@ export class ProjectNavigation {
     private familyVisible = false;
     private family?: string;
     private draftActive = false;
+    private readonly remoteCreation = new Map<string, string | undefined>();
     private revision = 0;
     private offlinePaths = new Set<string>();
     private projectChoices: ProjectFolder[] = [];
@@ -87,7 +88,7 @@ export class ProjectNavigation {
     }
     private buildHeader(): void {
         this.header.className = 'workbench-project-navigation';
-        this.button(this.create, t('project.createSession'), () => this.actions.createSession(folderBrowserPath(this.project?.path)));
+        this.button(this.create, t('project.createSession'), () => this.createSession());
         this.create.className = 'workbench-project-navigation__create';
         decorateButton(this.create, FILE_BROWSER_ICONS.newSession, t('project.createSession'), true);
         this.button(this.retry, '', () => this.actions.retryDeletions()); this.retry.hidden = true;
@@ -198,12 +199,41 @@ export class ProjectNavigation {
         this.projectChoices = projects;
         const project = this.project;
         this.syncStatus.update(project && this.actions.syncIndicator?.(project.project.id));
-        this.create.hidden = !project;
+        this.updateCreation();
         this.projectActions.hidden = !project || !this.actions.projectMenu;
-        this.create.disabled = !!project && this.offlinePaths.has(folderBrowserPath(project.path));
-        this.create.setAttribute('aria-current', this.draftActive ? 'page' : 'false');
         this.retry.hidden = !pending; this.retry.textContent = t('project.retryDeletion', { count: pending });
         this.updateSelector(); this.updateTransferControls();
+    }
+    setRemoteCreation(path: string, draftPath?: string): void {
+        const target = resolveBrowserTarget(path);
+        if (target.kind !== 'remote' || !target.profileId || target.cursor || target.archived) return;
+        const profile = remoteSessionPath(target.folder, target.profileId);
+        this.remoteCreation.delete(profile); this.remoteCreation.set(profile, draftPath);
+        if (this.remoteCreation.size > 16) this.remoteCreation.delete(this.remoteCreation.keys().next().value!);
+        this.updateCreation();
+    }
+    private remoteDraftPath(): string | undefined {
+        const target = resolveBrowserTarget(this.path);
+        if (target.kind !== 'remote' || !target.profileId || target.archived) return;
+        return this.remoteCreation.get(remoteSessionPath(target.folder, target.profileId));
+    }
+    private async createSession(): Promise<unknown> {
+        const target = resolveBrowserTarget(this.path);
+        if (target.kind === 'remote' && target.profileId) {
+            const draft = this.remoteDraftPath();
+            if (draft) return this.actions.navigate?.(draft);
+            return;
+        }
+        return this.actions.createSession(folderBrowserPath(this.project?.path));
+    }
+    private updateCreation(): void {
+        const target = resolveBrowserTarget(this.path), remote = target.kind === 'remote' && !!target.profileId;
+        const label = t(remote ? 'harness.create' : 'project.createSession');
+        if (this.create.title !== label) decorateButton(this.create, FILE_BROWSER_ICONS.newSession, label, true);
+        this.create.hidden = remote ? !this.remoteDraftPath() : !this.project;
+        const folder = remote ? target.folder : this.project?.path;
+        this.create.disabled = !!folder && this.offlinePaths.has(folderBrowserPath(folder));
+        this.create.setAttribute('aria-current', this.draftActive || remote && !!target.draft ? 'page' : 'false');
     }
     private updateSelector(): void {
         this.selector.update([{ id: '/', label: t('workbench.allProjects') },

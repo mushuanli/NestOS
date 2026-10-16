@@ -40,7 +40,7 @@ export class RemoteSessionProjection {
             const page = profile.capabilities.history ? await client.list(profile.id, {cursor: target.cursor, ...(target.archived ? {archived: true} : {})}, {timeoutMs: 3000}) : {sessions: [], nextCursor: null};
             const root = remote.list(project.project.id).find(m => m.at === '/')!;
             if (root.serverId) await this.projects?.favorites?.list(project.project.id);
-            return [ ...(profile.capabilities.create && !target.cursor && !target.archived ? [this.node(path + '/@new', t('harness.create'), false)] : []),
+            return [ ...(profile.capabilities.create && root.access === 'rw' && !target.cursor && !target.archived ? [this.node(path + '/@new', t('harness.create'), false)] : []),
                 ...(profile.capabilities.history && !target.cursor && !target.archived ? [this.node(path + '/@archived', t('harness.archivedSessions'), true)] : []),
                 ...page.sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || a.id.localeCompare(b.id))
                     .map(s => this.sessionNode(path + '/' + encodeURIComponent(s.id), s, this.favorite(project.project.id, root, profile.id, s.id),

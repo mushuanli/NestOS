@@ -11,7 +11,7 @@ function setup(root = true) {
         list:vi.fn(async (_profile: string, _query?: {cursor?: string}, _options?: unknown): Promise<{sessions:Array<Pick<HarnessSession, 'id' | 'title' | 'updatedAt' | 'createdAt'>>;nextCursor:string|null}> =>
             ({sessions:[{id:'same',title:'Native session',updatedAt:42}],nextCursor:'a/b+='})),
         inspect:vi.fn(async (_profile: string, id: string) => ({session: {id, title: 'First request', createdAt: 1791458500000, updatedAt: 1791458565000}})), close:vi.fn(async () => {})};
-    const projects = {forFolder:async () => project, remoteMounts:{list:() => [{at:root ? '/' : '/reference',connectionId:'server',serverProjectId:'remote-p'}],projectHarness:vi.fn(async () => peer)}} as unknown as ProjectService;
+    const projects = {forFolder:async () => project, remoteMounts:{list:() => [{at:root ? '/' : '/reference',connectionId:'server',serverProjectId:'remote-p',access:'rw'}],projectHarness:vi.fn(async () => peer)}} as unknown as ProjectService;
     return {projection:new RemoteSessionProjection(projects),projects,peer};
 }
 it('routes remote identities independently of local session IDs and round-trips pagination cursors', () => {
@@ -75,4 +75,15 @@ it('lists multiple native history pages through a mounted VFS without escaping t
         expect(third.map(node => node.metadata.title)).toEqual(['Oldest native session']);
         expect(peer.list).toHaveBeenLastCalledWith('native',{cursor:'next/%'},expect.anything());
     } finally { await view.dispose(); await source.dispose(); }
+});
+
+
+it('does not advertise native creation for a read-only mount or a history-only profile', async () => {
+    const {projection, projects, peer} = setup(), path = remoteSessionPath('/Project', 'native');
+    const list = (access: string) => [{at: '/', connectionId: 'server', serverProjectId: 'remote-p', access}];
+    vi.spyOn(projects.remoteMounts!, 'list').mockImplementation(() => list('ro') as never);
+    expect((await projection.list(path, resolveBrowserTarget(path) as never)).some(node => node.name === '@new')).toBe(false);
+    vi.mocked(projects.remoteMounts!.list).mockImplementation(() => list('rw') as never);
+    peer.profiles.mockResolvedValue({profiles: [{id: 'native', kind: 'codex', projectRuntime: true, capabilities: {history: true, create: false}}]});
+    expect((await projection.list(path, resolveBrowserTarget(path) as never)).some(node => node.name === '@new')).toBe(false);
 });

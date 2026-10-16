@@ -5,11 +5,11 @@ import { createApplicationRuntime } from '@itookit/app-core';
 import { MemoryBackend } from '@itookit/vfs-core';
 import { WORKSPACES } from '../../../apps/web-app/src/config/modules';
 import { createBrowserUI } from '../../../apps/web-app/src/ui';
-import { RpcPeer } from '../../../apps/http-app/src/application/peer';
-import { QueryBatcher } from '../../../apps/http-app/src/client/query-batcher';
-import type { Call, Reply } from '../../../apps/http-app/src/rpc/protocol';
-import { installViewProjections } from '../../../apps/http-app/src/application/projections';
-import { createHostedView } from '../../../apps/http-app/src/server/view-services';
+import { RpcPeer } from '@itookit/app-transport/application';
+import { QueryBatcher } from '@itookit/app-transport/http';
+import type { Call, Reply } from '@itookit/app-transport/rpc';
+import { installViewProjections } from '@itookit/app-transport/application';
+import { createHostedView } from '@itookit/node-host/http';
 
 const releases: Array<() => Promise<void>> = [];
 const wireBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;

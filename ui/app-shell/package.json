@@ -67,6 +67,8 @@
     "@itookit/app-core": "workspace:*",
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
-    "@itookit/piagent-driver": "workspace:*"
+    "@itookit/piagent-driver": "workspace:*",
+    "@itookit/node-host": "workspace:*",
+    "@itookit/app-transport": "workspace:*"
   }
 }

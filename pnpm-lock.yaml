@@ -1241,6 +1241,9 @@ importers:
       '@itookit/app-settings':
         specifier: workspace:*
         version: link:../app-settings
+      '@itookit/app-transport':
+        specifier: workspace:*
+        version: link:../../shared/app-transport
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
@@ -1271,6 +1274,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
+      '@itookit/node-host':
+        specifier: workspace:*
+        version: link:../../apps/node-host
       '@itookit/piagent-driver':
         specifier: workspace:*
         version: link:../../libraries/piagent-driver

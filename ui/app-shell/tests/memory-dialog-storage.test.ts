@@ -8,7 +8,7 @@ import { Kernel } from '@itookit/durable-kernel';
 import { createVFS } from '@itookit/vfs-core';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { SessionManager, SessionRepository, SessionDirectoryStorageResolver } from '@itookit/llm-session';
-import { NodeSqliteSidecarDb } from '../../../apps/cli/src/sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { showMemoryDialog } from '../src/files/memory-dialog';
 
 async function host(root: string) {

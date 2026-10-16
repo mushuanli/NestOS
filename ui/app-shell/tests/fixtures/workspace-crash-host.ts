@@ -4,7 +4,7 @@ import { createVFS, type IDeviceDriver } from '@itookit/vfs-core';
 import { SessionFilesService, createKernelRuntime, type ApplicationPlatformServices } from '@itookit/app-core';
 import { withWorkspaceScopeCleanup } from '../../../../backend/app-core/src/runtime/workspace-scope-cleanup';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
-import { NodeSqliteSidecarDb } from '../../../../apps/cli/src/sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { DurableFlowExecutor, type FlowExecutionHandle } from '../../../../backend/llm-flow/src/index';
 import { TauriFlowWorkspaces } from '../../../../apps/tauri-app/src/shell/flow-workspaces';
 

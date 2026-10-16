@@ -2,7 +2,7 @@ import { once } from 'node:events';
 import { createVFS } from '@itookit/vfs-core';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { Kernel } from '@itookit/durable-kernel';
-import { NodeSqliteSidecarDb } from '../../../../apps/cli/src/sqlite-sidecar';
+import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { acquireSchedulerLease } from '../../../../backend/llm-flow/src/flow/scheduler-lease';
 
 const [root, role] = process.argv.slice(2);

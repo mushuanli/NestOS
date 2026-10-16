@@ -30,6 +30,8 @@ export interface PermissionResult {
  * Tool execution context passed to Tool.call().
  */
 export interface ToolUseContext {
+  operationId?: string;
+  executionIdentity?: import('../contracts').ToolExecutionIdentity;
   onProgress?: (progress: import('../contracts').ToolProgress) => Promise<void>;
   /** Working directory (real path for Node.js, module path for VFS). */
   cwd: string;

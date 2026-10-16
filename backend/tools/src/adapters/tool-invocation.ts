@@ -1,7 +1,7 @@
 import type { ToolInvokeResult } from '../contracts';
 import type { Tool } from '../core/Tool';
 import type { ToolUseContext } from '../core/types';
-import { ToolInputError } from '../core/tool-error';
+import { ToolInputError, ToolOutputError } from '../core/tool-error';
 
 const MAX_RESULT_CHARS = 100_000;
 const TRUNCATION_NOTICE = '\n[output truncated]';
@@ -26,8 +26,27 @@ export async function prepareToolInput(tool: Tool, args: Record<string, unknown>
   return approved;
 }
 
+/** Recovery checks authority without rerunning business preconditions or changing the original arguments. */
+export async function prepareToolReconciliation(tool: Tool, args: Record<string, unknown>, context: ToolUseContext) {
+  context.signal?.throwIfAborted();
+  const parsed = tool.inputSchema.safeParse(args);
+  if (!parsed.success) throw new ToolInputError('INVALID_ARGUMENTS', parsed.error.message);
+  const permission = await tool.checkPermissions?.(parsed.data, context);
+  if (permission && (permission.behavior !== 'allow' || permission.updatedInput)) {
+    throw new ToolInputError('PERMISSION_DENIED', permission.reason ?? 'Reconciliation cannot change the original operation');
+  }
+  context.signal?.throwIfAborted();
+  return parsed.data;
+}
+
 export async function toolSuccess(tool: Tool, data: unknown, started: number,
-  admit?: import('../contracts').ToolInvokeRequest['admitOutput']): Promise<ToolInvokeResult> {
+  admit?: import('../contracts').ToolInvokeRequest['admitOutput'], structured = false): Promise<ToolInvokeResult> {
+  if (tool.outputSchema) {
+    const parsed = tool.outputSchema.safeParse(data);
+    if (!parsed.success) throw new ToolOutputError('INVALID_OUTPUT', parsed.error.message);
+    data = parsed.data;
+  }
+  if (structured) return structuredSuccess(tool, data, started);
   const block = tool.mapToolResultToToolResultBlockParam(data, tool.name);
   const text = typeof block.content === 'string' ? block.content : JSON.stringify(block.content);
   if (admit) {
@@ -48,11 +67,25 @@ export async function toolSuccess(tool: Tool, data: unknown, started: number,
   };
 }
 
+function structuredSuccess(tool: Tool, data: unknown, started: number): ToolInvokeResult {
+  let serialized: string | undefined;
+  try {
+    serialized = JSON.stringify(data, (_key, value: unknown) => {
+      if (value === undefined || ['bigint', 'function', 'symbol'].includes(typeof value) || (typeof value === 'number' && !Number.isFinite(value)))
+        throw new Error('Non-JSON output');
+      return value;
+    });
+  } catch { throw new ToolOutputError('INVALID_OUTPUT', 'Complete JSON result required'); }
+  const limit = Math.max(0, Math.floor(Math.min(tool.maxResultSizeChars, MAX_RESULT_CHARS)));
+  if (serialized === undefined || !Number.isFinite(limit) || serialized.length > limit) throw new ToolOutputError('OUTPUT_TOO_LARGE', 'Complete JSON result required; return asset references for large results');
+  return { toolId: tool.name, success: true, durationMs: Date.now() - started, output: serialized, data: JSON.parse(serialized) };
+}
+
 export function toolFailure(toolId: string, error: unknown, started: number): ToolInvokeResult {
   const message = (error instanceof Error ? error.message : String(error)).slice(0, MAX_RESULT_CHARS - 7);
   const known = error instanceof ToolInputError;
   return { toolId, success: false, output: `Error: ${message}`, durationMs: Date.now() - started,
-    error: message, ...(known ? { errorCode: error.code, recoverable: true } : {}) };
+    error: message, ...(known || error instanceof ToolOutputError ? { errorCode: error.code, recoverable: known } : {}) };
 }
 
 export function invocationSignal(signal: AbortSignal | undefined, timeoutMs: number) {

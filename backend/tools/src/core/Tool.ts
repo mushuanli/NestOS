@@ -30,6 +30,8 @@ export interface Tool<
 > {
   /** Unique tool name (e.g. "Bash", "Read"). */
   readonly name: string;
+  readonly version?: string;
+  reconcile?(args: Record<string, unknown>, context: ToolUseContext): Promise<import('../contracts').ToolReconcileResult>;
 
   /** Optional aliases for backwards compatibility when renamed. */
   aliases?: string[];
@@ -144,6 +146,7 @@ export type ToolDef<
 // ── Defaults ──
 
 const TOOL_DEFAULTS = {
+  version: '1',
   isEnabled: () => true,
   isConcurrencySafe: () => false,
   isReadOnly: () => false,

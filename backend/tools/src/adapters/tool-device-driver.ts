@@ -20,7 +20,7 @@ import type {
 import type { Tool } from '../core/Tool';
 import type { INativeShell, ToolUseContext } from '../core/types';
 import { ToolInputError } from '../core/tool-error';
-import { invocationSignal, prepareToolInput, toolFailure, toolSuccess } from './tool-invocation';
+import { invocationSignal, prepareToolInput, prepareToolReconciliation, toolFailure, toolSuccess } from './tool-invocation';
 import { createBashTool } from '../tools/Bash/BashTool';
 
 // ── Registry entry ──
@@ -36,6 +36,7 @@ interface RegisteredTool {
 function toolMetaFromTool(tool: Tool): ToolMeta {
   return {
     id: tool.name,
+    version: tool.version ?? '1',
     name: tool.userFacingName(undefined),
     description: '',
     sideEffect: tool.isReadOnly() ? 'none' : 'local',
@@ -181,6 +182,7 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
     if (!entry.meta.enabled || !entry.tool.isEnabled()) {
       return toolFailure(request.toolId, new ToolInputError('TOOL_DISABLED', `Tool is disabled: ${request.toolId}`), started);
     }
+    if (request.toolVersion && entry.meta.version !== request.toolVersion) return toolFailure(request.toolId, new ToolInputError('TOOL_VERSION_MISMATCH', 'Required tool version is unavailable'), started);
     const timeoutMs = request.timeoutMs ?? entry.meta.timeoutMs;
     if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) {
       return toolFailure(request.toolId, new ToolInputError('INVALID_ARGUMENTS', 'Invalid tool timeout'), started);
@@ -195,7 +197,7 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
       const activity = entry.tool.getActivityDescription?.(args);
       if (activity) await context.onProgress?.({ message: activity });
       const result = await entry.tool.call(args, context);
-      return await toolSuccess(entry.tool, result.data, started, request.admitOutput);
+      return await toolSuccess(entry.tool, result.data, started, request.admitOutput, request.resultMode === 'structured');
     } catch (error) {
       const result = toolFailure(request.toolId, error, started);
       return signal.controller.signal.aborted ? { ...result, errorCode: 'CANCELLED', recoverable: false } : result;
@@ -204,12 +206,34 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
     }
   }
 
+  async reconcile(request: import('../contracts').ToolReconcileRequest): Promise<import('../contracts').ToolServiceReconcileResult> {
+    const started = Date.now();
+    const entry = this.registry.get(request.toolId);
+    if (!entry || !entry.meta.enabled || !entry.tool.isEnabled() || (request.toolVersion && request.toolVersion !== entry.meta.version)) throw new Error('Required tool version is unavailable');
+    const timeoutMs = request.timeoutMs ?? entry.meta.timeoutMs;
+    if (!Number.isSafeInteger(timeoutMs) || timeoutMs <= 0 || timeoutMs > 2_147_483_647) throw new ToolInputError('INVALID_ARGUMENTS', 'Invalid tool timeout');
+    const signal = invocationSignal(request.signal, timeoutMs);
+    try {
+      const { operationId, sessionId, taskId, effectId } = request;
+      const context = this.invocationContext({ ...request, executionIdentity: { operationId, sessionId, taskId, effectId } }, timeoutMs, signal.controller);
+      const args = await prepareToolReconciliation(entry.tool, request.args, context);
+      if (!entry.meta.enabled || !entry.tool.isEnabled() || this.registry.get(request.toolId) !== entry) throw new Error('Tool was disabled or replaced before reconciliation');
+      if (!entry.tool.reconcile) return entry.meta.sideEffect === 'none' && entry.tool.isReadOnly() ? { status: 'retry' }
+        : { status: 'indeterminate', error: { message: 'Tool outcome cannot be reconciled', code: 'TOOL_INDETERMINATE' } };
+      const result = await entry.tool.reconcile(args, context);
+      signal.controller.signal.throwIfAborted();
+      if (result.status === 'indeterminate') return { ...result, error: result.error ?? { message: 'Tool outcome cannot be reconciled', code: 'TOOL_INDETERMINATE' } };
+      if (result.status !== 'completed') return result;
+      return { status: 'completed', result: await toolSuccess(entry.tool, result.data, started, undefined, request.resultMode === 'structured') };
+    } finally { signal.dispose(); }
+  }
+
   private invocationContext(request: ToolInvokeRequest, timeoutMs: number, controller: AbortController): ToolUseContext {
     const appState = this.sessionAppState;
     return {
       cwd: request.cwd ?? this.fileCwd ?? (typeof process !== 'undefined' ? process.cwd() : '/'),
       signal: controller.signal, timeoutMs, vfs: this.vfsContext, shell: this.shellContext,
-      onProgress: request.onProgress,
+      onProgress: request.onProgress, operationId: request.executionIdentity?.operationId, executionIdentity: request.executionIdentity,
       abortController: controller, appState,
       setAppState: (key, value) => { appState[key] = value; },
     };

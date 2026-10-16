@@ -13,3 +13,5 @@ export type * from './contracts/sub-agent';
 export type * from './contracts/prompt';
 
 export type * from './contracts/native-shell';
+
+export type { ToolExecutionIdentity, ToolReconcileResult, ToolServiceReconcileResult, ToolReconcileRequest } from './contracts/tool-lifecycle';

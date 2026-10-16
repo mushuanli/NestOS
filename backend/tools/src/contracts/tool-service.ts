@@ -11,6 +11,7 @@ import type { ToolDefinition } from '@itookit/llm-context';
  * llm-agent 的 ToolExecutor 通过此接口（或设备文件 ioctl）调用工具。
  */
 export interface IToolService {
+    reconcile?(request: import('./tool-lifecycle').ToolReconcileRequest): Promise<import('./tool-lifecycle').ToolServiceReconcileResult>;
     /** 获取所有已注册工具的元数据列表 */
     listTools(): ToolMeta[];
 

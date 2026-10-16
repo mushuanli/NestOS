@@ -5,3 +5,11 @@ export class ToolInputError extends Error {
     this.name = 'ToolInputError';
   }
 }
+
+/** Output failures happen after execution and must not invite replaying side effects. */
+export class ToolOutputError extends Error {
+  constructor(readonly code: string, message: string) {
+    super(message);
+    this.name = 'ToolOutputError';
+  }
+}

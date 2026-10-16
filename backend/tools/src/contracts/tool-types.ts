@@ -24,6 +24,7 @@ export type ToolPermission = 'allowed' | 'denied' | 'ask_user';
  * 工具注册时需要同时提供此元数据和 LLM ToolDefinition。
  */
 export interface ToolMeta {
+    version?: string;
     /** 工具唯一标识（与设备文件名一致，如 file_read） */
     id: string;
     /** 人类可读名称 */
@@ -65,6 +66,9 @@ export interface ToolProgress {
 }
 
 export interface ToolInvokeRequest {
+    toolVersion?: string;
+    resultMode?: 'structured';
+    executionIdentity?: import('./tool-lifecycle').ToolExecutionIdentity;
     onProgress?: (progress: ToolProgress) => Promise<void>;
     /** Host-only admission before legacy output truncation; never a model argument. */
     admitOutput?: (output: string) => Promise<{ output: string; contentRef?: import('@itookit/llm-context').ContentRef }>;

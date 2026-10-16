@@ -13,7 +13,7 @@ import { randomUUID } from '@itookit/common';
 import { checkOperation, createFileSystemView, FSError, normalizeVirtualPath, operationScope,
     type FileSystemSourceOwner, type FileSystemMount, type IFileSystem, type OperationOptions } from '@itookit/vfs-core';
 import { createUnavailableDirectory } from '../vfs/unavailable-directory';
-import { normalizeConnection, remoteProjectPath, type RemoteFileSystemConfig, type RemoteFileSystemInput } from './remote-connections';
+import { canReaddressConnection, normalizeConnection, remoteProjectPath, type RemoteFileSystemConfig, type RemoteFileSystemInput } from './remote-connections';
 import type { HarnessClient } from '@itookit/piagent-driver/harness';
 import type { ProjectClient, RemoteProject, HarnessConversationPort, HarnessProfile, HarnessConversationJournal } from '@itookit/piagent-driver';
 
@@ -237,11 +237,14 @@ export class ProjectRemoteMountService {
         if (!previous || !this.connectionProjects(server.id).length) return;
         const before = remoteMCPConnection(previous), after = remoteMCPConnection(server);
         if (!before && after && this.recoversMCP(server, previous, after)) return;
-        if (!before || !after || before.endpoint !== after.endpoint || before.username !== after.username || before.credentialRef !== after.credentialRef || before.anonymous !== after.anonymous
+        const legacyCredentialUnchanged = !!previous.apiKey && previous.apiKey === server.apiKey
+            && JSON.stringify(previous.headers) === JSON.stringify(server.headers);
+        if (!before || !after || before.endpoint !== after.endpoint && !canReaddressConnection(before, after, legacyCredentialUnchanged)
+            || before.username !== after.username || before.credentialRef !== after.credentialRef || before.anonymous !== after.anonymous
             || !!before.authorization && before.authorization.principalId !== after.authorization?.principalId
             || !!before.serverId && before.serverId !== after.serverId)
             throw new FSError('EBUSY', 'Referenced pi-agent connection cannot be retargeted or disabled');
-        if (JSON.stringify(previous.auth) !== JSON.stringify(server.auth) || previous.apiKey !== server.apiKey)
+        if (before.endpoint !== after.endpoint || JSON.stringify(previous.auth) !== JSON.stringify(server.auth) || previous.apiKey !== server.apiKey)
             for (const id of this.connectionProjects(server.id)) await this.beforeChange(id);
     }
     private recoversMCP(server: MCPServer, previous: MCPServer, after: RemoteFileSystemConfig): boolean {
@@ -445,7 +448,7 @@ export class ProjectRemoteMountService {
         const fingerprint = JSON.stringify(this.list(projectId));
         try {
             const descriptor = await client.profiles(options);
-            const profile = descriptor.profiles.find(p => p.id === profileId && p.projectRuntime);
+            const profile = descriptor.profiles.find(p => (p.id === profileId || p.aliases?.includes(profileId)) && p.projectRuntime);
             if (!profile) throw new FSError('ECAPABILITY', 'Project harness profile unavailable');
             const root = this.list(projectId).find(m => m.at === '/')!;
             const guarded = this.guardHarness(client, projectId, fingerprint, root.connectionId!);

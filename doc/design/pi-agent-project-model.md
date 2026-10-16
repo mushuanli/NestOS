@@ -215,6 +215,8 @@ Codex 会话从显式配置的 home 通过原生 `thread/list` 发现，再以�
 
 API Key 通过既有 MCP 配置持久保存，启动时恢复到 piagent-driver 的凭据解析器；文件、sync、bash 与 harness 共用 Bearer。项目挂载记录只保留 credentialRef，不复制密钥。旧 Basic 连接仍兼容；已被项目引用的连接不能直接改变认证身份，需先解除绑定。
 
+连接 ID 是项目引用，endpoint 是可替换的网络位置。修改已引用连接的地址时，通用 MCP 管理器先对新地址重新发现并验证能力；只有 serverId、principalId 和资源授权 revision 均与原连接一致，且认证模式与凭据引用不变，才允许保留原 ID 保存。旧协议没有授权快照时，只允许保留原凭据和认证头、相同 serverId，并在新地址明确发现为 owner 的兼容迁移；不能同时更换凭据或切换身份。缺少服务器身份时不自动迁移。保存前检查受影响项目的运行保护，保存后释放旧文件来源与派生视图，后续访问使用新地址；不删除项目、会话，也不自动重放操作。httpd 模式下的 127.0.0.1 指 httpd 所在主机。
+
 通用 MCP 管理器负责认证、协议协商、扩展注册及验证缓存。普通 MCP 只执行标准发现；pi-agent 测试后的保存和改名不再单独调用 driver 验证。地址、API Key 或 headers 变化重新验证，错误描述不生成绑定。UI 只按已验证扩展显示控制中心。多个 harness 共用一个 pi-agent MCP 连接，原生协议适配留在服务端插件内。
 
 ### Harness 内置插件
@@ -284,6 +286,10 @@ piagent-driver 的纯 authorization 入口负责校验 DTO，连接支持显式�
 pi-agent@0.3.1 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适配通用 HarnessDriver。驱动目录 `tools/pi-agent/src/harness/dsh/` 持有原生传输、历史投影和进程生命周期；通用 harness 服务继续持有目录授权、epoch/requestId 回执与会话修改队列，itookit 前端不依赖 DSH 协议。
 
 托管模式启动 DSH `web` profile，项目实例使用 ProjectRuntime/launcher 与独立授权的模型 home；多个会话共享该实例的 WS mux，HTTP 只等提交回执。连接已有服务时必须显式配置 origin、令牌环境变量和 legacy workspaces，拒绝声明项目沙箱或多身份隔离。配置示例见 [config.dsh.example.toml](../../tools/pi-agent/config.dsh.example.toml)。
+
+多身份服务的追加式配置模板见 [profiles/dsh.example.toml](../../tools/pi-agent/profiles/dsh.example.toml)，profile 必须绑定现有 principal 并沿用需要读取历史的 DSH_HOME。DSH 会话发现同时校验原生会话 cwd 与 workspace 成员关系；项目运行时通过已有目录授权映射物理路径和虚拟路径，不按路径文本直接相等过滤旧历史，也不扫描其他主体的 home。
+
+默认 profile ID 使用 codex、dsh；改名通过配置 aliases 保留旧引用，客户端按服务端发现的 aliases 解析旧目录和会话路由。别名在服务端先规范化，再执行主体授权、实例选择与回执处理，不能创建重复实例或绕过权限。历史收藏保留原键并继续识别，新发现列表只展示规范 ID。
 
 已实现新建/继续、历史分页、流式文本/推理、工具摘要、交互确认、中断、重命名和归档；能力描述不声明未实现的分支、永久删除、附件、取消归档或用量。网络结果不明时保留 unknown，不自动重放；WS 断线后实例拒绝续写，节点重启后可显式恢复持久会话。
 

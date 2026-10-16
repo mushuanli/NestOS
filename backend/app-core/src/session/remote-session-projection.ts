@@ -34,8 +34,8 @@ export class RemoteSessionProjection {
         try {
             client = await remote.projectHarness(project.project.id, {timeoutMs: 3000});
             const profiles = (await client.profiles({timeoutMs: 3000})).profiles.filter(p => p.projectRuntime && (p.capabilities.history || p.capabilities.create));
-            if (!target.profileId) return profiles.map(p => this.node(remoteSessionPath(target.folder, p.id), `${p.kind} · ${p.id}`, true));
-            const profile = profiles.find(p => p.id === target.profileId);
+            if (!target.profileId) return profiles.map(p => this.node(remoteSessionPath(target.folder, p.id), p.kind === p.id ? p.id : `${p.kind} · ${p.id}`, true));
+            const profile = profiles.find(p => p.id === target.profileId || p.aliases?.includes(target.profileId!));
             if (!profile) throw new FSError('ENOENT', 'Remote profile unavailable');
             const page = profile.capabilities.history ? await client.list(profile.id, {cursor: target.cursor, ...(target.archived ? {archived: true} : {})}, {timeoutMs: 3000}) : {sessions: [], nextCursor: null};
             const root = remote.list(project.project.id).find(m => m.at === '/')!;
@@ -43,7 +43,7 @@ export class RemoteSessionProjection {
             return [ ...(profile.capabilities.create && (profile.projectCapabilities?.sessionControl ?? root.access === 'rw') && !target.cursor && !target.archived ? [this.node(path + '/@new', t('harness.create'), false)] : []),
                 ...(profile.capabilities.history && !target.cursor && !target.archived ? [this.node(path + '/@archived', t('harness.archivedSessions'), true)] : []),
                 ...page.sessions.sort((a, b) => (b.updatedAt ?? 0) - (a.updatedAt ?? 0) || a.id.localeCompare(b.id))
-                    .map(s => this.sessionNode(path + '/' + encodeURIComponent(s.id), s, this.favorite(project.project.id, root, profile.id, s.id),
+                    .map(s => this.sessionNode(path + '/' + encodeURIComponent(s.id), s, [profile.id, ...(profile.aliases ?? [])].some(id => this.favorite(project.project.id, root, id, s.id)),
                         this.management(profile, root, s, target.archived))),
                 ...(page.nextCursor ? [this.node(path + '/@page:' + encodeURIComponent(page.nextCursor), t('harness.more'), true)] : []) ];
         } catch (error) {
@@ -61,7 +61,7 @@ export class RemoteSessionProjection {
         try { const history = await (client.inspect ? client.inspect(target.profileId, target.nativeSessionId, {timeoutMs: 3000}) : client.read(target.profileId, target.nativeSessionId, {timeoutMs: 3000}));
             const root = remote.list(project.project.id).find(m => m.at === '/')!;
             if (root.serverId) await this.projects?.favorites?.list(project.project.id);
-            const profile = (await client.profiles({timeoutMs: 3000})).profiles.find(profile => profile.id === target.profileId);
+            const profile = (await client.profiles({timeoutMs: 3000})).profiles.find(profile => profile.id === target.profileId || profile.aliases?.includes(target.profileId!));
             return this.sessionNode(path, history.session, this.favorite(project.project.id, root, target.profileId, target.nativeSessionId),
                 profile && this.management(profile, root, history.session, target.archived));
         } finally { await client.close(); }

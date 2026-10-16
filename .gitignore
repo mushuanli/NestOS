@@ -1,4 +1,6 @@
 config.toml
+/tools/config.toml.backup-*.toml
+/tools/.config.toml.edit.lock
 itookit-vfs-server
 fs-svr
 priv/

@@ -33,7 +33,7 @@ export class ProjectSearch {
         const client = await remote.projectHarness(projectId, options);
         const fingerprint = JSON.stringify(remote.list(projectId));
         try {
-            const profiles = (await client.profiles(options)).profiles.filter(profile => profile.projectRuntime && profile.capabilities.search && (!query.profileId || profile.id === query.profileId));
+            const profiles = (await client.profiles(options)).profiles.filter(profile => profile.projectRuntime && profile.capabilities.search && (!query.profileId || profile.id === query.profileId || profile.aliases?.includes(query.profileId)));
             if (!client.search || !profiles.length) throw new FSError('ECAPABILITY', 'Native session search unavailable');
             const matches: ProjectSearchMatch[] = []; let truncated = false;
             for (const profile of profiles) {

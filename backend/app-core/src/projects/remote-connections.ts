@@ -7,6 +7,18 @@ export interface RemoteFileSystemConfig {
 }
 export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpoint' | 'username' | 'anonymous'>;
 
+/** A verified location change must retain both node identity and its resource-scoped grant. */
+export function canReaddressConnection(before: RemoteFileSystemConfig, after: RemoteFileSystemConfig, legacyCredentialUnchanged = false): boolean {
+    if (!before.serverId || before.serverId !== after.serverId || !after.authorization) return false;
+    // The pre-ACL protocol has exactly one implicit principal, owner. Its original
+    // credential may acquire an explicit owner snapshot, never another identity.
+    if (!before.authorization) return legacyCredentialUnchanged && !before.anonymous
+        && !after.authorization.anonymous && after.authorization.principalId === 'owner';
+    return before.authorization.principalId === after.authorization.principalId
+        && before.authorization.anonymous === after.authorization.anonymous
+        && before.authorization.revision === after.authorization.revision;
+}
+
 export function normalizeConnection(input: RemoteFileSystemInput): RemoteFileSystemInput {
     // Stored catalogs and dialog input both arrive as untrusted shapes: reject them as FSError,
     // never as a TypeError from reading a property of undefined.

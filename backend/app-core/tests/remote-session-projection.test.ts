@@ -14,6 +14,18 @@ function setup(root = true) {
     const projects = {forFolder:async () => project, remoteMounts:{list:() => [{at:root ? '/' : '/reference',connectionId:'server',serverProjectId:'remote-p',access:'rw'}],projectHarness:vi.fn(async () => peer)}} as unknown as ProjectService;
     return {projection:new RemoteSessionProjection(projects),projects,peer};
 }
+it('opens an old profile route through its alias while listing only the canonical name', async () => {
+    const {projection, peer} = setup();
+    const profile = {...(await peer.profiles()).profiles[0], id:'codex', aliases:['native']};
+    peer.profiles.mockResolvedValue({profiles:[profile]});
+    const path = remoteSessionPath('/Project', 'native');
+    const nodes = await projection.list(path, resolveBrowserTarget(path) as never);
+    expect(nodes.some(node => node.name === 'same')).toBe(true);
+    expect(peer.list).toHaveBeenCalledWith('codex', expect.anything(), expect.anything());
+    const root = remoteSessionPath('/Project');
+    const profiles = await projection.list(root, resolveBrowserTarget(root) as never);
+    expect(profiles).toHaveLength(1); expect(profiles[0].metadata.title).toBe('codex');
+});
 it('routes remote identities independently of local session IDs and round-trips pagination cursors', () => {
     const path = remoteSessionPath('/Project','profile one','same');
     expect(resolveBrowserTarget(path)).toMatchObject({kind:'remote',folder:'/Project',profileId:'profile one',nativeSessionId:'same'});

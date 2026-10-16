@@ -36,7 +36,8 @@ it('measures cold history loading on LocalFS without reading each round twice', 
             expect(backend.sidecarStats.begin).toBe(1);
             expect(backend.sidecarStats.commit).toBe(1);
             expect(backend.sidecarStats.getRecordField).toBe(2);
-            expect(backend.sidecarStats.getRecordFields).toBe(2);
+            // Canonical storage/moving identity, session/settings, then history chain.
+            expect(backend.sidecarStats.getRecordFields).toBe(3);
             expect(backend.sidecarStats.getMetaExt).toBe(0);
             expect(backend.sidecarStats.setRecordField).toBe(0);
             expect(snapshot.sessions.filter(message => message.role === 'user').map(message => message.content))
@@ -90,8 +91,11 @@ it('lists 65 Sessions in bounded snapshots without directory metadata or writes'
         backend.resetSidecarStats();
         const listed = await repository.list();
         expect(listed.map(item => item.id).sort()).toEqual(ids.sort());
-        expect(backend.sidecarStats.begin).toBe(2);
-        expect(backend.sidecarStats.getMetaExt).toBe(0);
+        // The persistent identity index adds four bounded index/journal reads;
+        // the 65 manifests still use only two batches, not 65 transactions.
+        expect(backend.sidecarStats.begin).toBe(6);
+        // The storage and moving prefix scans each read the index metadata once.
+        expect(backend.sidecarStats.getMetaExt).toBe(2);
         expect(backend.sidecarStats.setRecordField).toBe(0);
         console.info('session-list-localfs', JSON.stringify(backend.sidecarStats));
     } finally {

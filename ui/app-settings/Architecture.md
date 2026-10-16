@@ -5,7 +5,6 @@ src/
 ├── index.ts               ← createSettingsNavigation() + 导出
 ├── engine/
 │   ├── SettingsEngine.ts   ← IFileSystem 实现 (SETTINGS_PAGES → 只读虚拟节点)
-│   └── SkillsEngine.ts     ← IFileSystem 实现 (LLMSkill → 可写虚拟节点)
 ├── editors/                ← 设置编辑器 (继承 BaseSettingsEditor)
 │   ├── AboutSettingsEditor.ts
 │   ├── AppearanceSettingsEditor.ts  ← 浅色/深色/跟随系统, 写入 /ui/theme.json
@@ -40,14 +39,9 @@ const settings = await backend.settings([{ name: 'Notes', workspace: 'minds' }])
 
 把 `SETTINGS_PAGES` 的每个分类映射为一个只读虚拟文件节点（`IFileSystem` 实现，`viewId: 'settings_ui'`，`path` = 分类 slug），使设置页面可以通过 `VFSUIShell` 展示；写操作被拒绝（`createFile`/`rename`/`move`/`delete` 抛错，`writeContent` 仅告警）。
 
-### SkillsEngine
+### 技能数据边界
 
-把 `IAgentManagementService.getSkills()` 返回的技能列表映射为可写虚拟文件节点（`IFileSystem` 实现，`viewId: 'skills'`，`path` = `/{skillId}`），技能节点规则：
-- `node.name` = Skill 名称
-- `node.tags` = `['disabled']` (禁用时)
-- `node.metadata.hasUnreadUpdate` = `enabled` (绿点)
-- `node.metadata.skillType` = Skill 类型
-- `readContent()` 返回 Skill id；`writeContent()` 接收 YAML 并 `saveSkill()`
+技能文件系统由 `backend/app-core/configuration/skills-files.ts` 实现，通过 `backend.skillsFiles()` 或工具箱资源端口访问。设置包只提供表单与本地导航，不拥有技能存储、读写适配或服务订阅；HTTP 不再把浏览器文件系统传回服务端。
 
 ### Settings 编辑器一览
 

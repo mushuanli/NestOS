@@ -6,7 +6,6 @@ import { SettingsEngine } from './engine/SettingsEngine';
 
 export * from './types/types';
 export { createSettingsFactory, type LLMUIEditors, type SettingsFactoryOptions } from './factories/settingsFactory';
-export { SkillsEngine } from './engine/SkillsEngine';
 
 /** Settings navigation is local presentation and does not load settings data. */
 export function createSettingsNavigation(options: { excludedPages?: readonly string[] } = {}) {

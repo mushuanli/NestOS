@@ -1,3 +1,4 @@
+import { renderMediaDeclaration } from './provider-media-form';
 import { escapeAttr, t } from '@itookit/common';
 import { API_PROTOCOLS, getPrimaryProtocol, getProviderProtocols, getProviderDefaultProtocol } from '@itookit/driver-llm/contracts';
 import type { ApiProtocol, LLMProvider } from '@itookit/driver-llm/contracts';
@@ -51,6 +52,7 @@ export function renderProviderAdvanced(provider: LLMProvider): string {
         <input class="settings-form__input" name="modelsPath" value="${escapeAttr(provider.modelsPath ?? '')}" placeholder="${t('provider.models.endpointDefault')}">
         <label class="settings-form__label">${t('provider.form.temperature')}</label>
         <input type="number" class="settings-form__input" name="defaultTemperature" value="${provider.defaultTemperature ?? ''}" min="0" max="2" step="0.1">
+        ${renderMediaDeclaration(provider.media)}
     </details>`;
 }
 

@@ -56,8 +56,6 @@
     "@itookit/kernel-adapters": "workspace:*"
   },
   "dependencies": {
-    "@types/js-yaml": "^4.0.9",
-    "js-yaml": "^4.1.1",
     "@itookit/app-contracts": "workspace:*"
   }
 }

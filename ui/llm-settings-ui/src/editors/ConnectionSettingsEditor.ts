@@ -636,7 +636,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
     private tierModelId(tier: ModelTier, provider: LLMProvider | undefined): string {
         return resolveModelForTier({ tiers: this.currentEditTiers,
-            model: provider?.models.find(model => (model.category ?? 'chat') === 'chat')?.id || '' }, tier);
+            model: provider?.models[0]?.id || '' }, tier);
     }
 
     private renderModelEffort(tier: ModelTier, provider: LLMProvider | undefined): string {
@@ -650,8 +650,8 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
     }
 
     private renderTierForm(provider: LLMProvider | undefined): string {
-        // tier 是对话质量分层，只列 chat 类模型（缺省 category 视为 chat）
-        const models = (provider?.models ?? []).filter(m => (m.category ?? 'chat') === 'chat');
+        // Operations are validated at admission; tiers may select any declared model.
+        const models = provider?.models ?? [];
         const noneOpt = '<option value="">— 未指定（使用 Provider 首个模型）—</option>';
         const modelOpts = models.map(m =>
             `<option value="${escapeAttr(m.id)}">${escapeHTML(m.name)}</option>`

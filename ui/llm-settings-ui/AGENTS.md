@@ -39,3 +39,5 @@ AgentConfigEditor 的第 4 个参数接收 AgentCapabilityOptions.defaultToolIds
 CostEditor 默认展示本月费用账本摘要；趋势、Provider/会话明细和定价配置默认折叠。cost-trend.ts 按 UTC 账本日期聚合本月每日、最近 12 个月用量与费用；折叠图表按需查询，费用和 token 分开刻度。定价自动保存，不重算历史费用。统计只包含已入账调用，不包含远程 harness session 内部费用；数字分身分析远程会话的费用以实际入账为准，缺失记录不等于免费。
 
 - `.llm` 导入 UI 只负责解析、选择冲突策略和展示结果；通过注入服务的 ConfigurationImportPort 查询冲突并提交导入，不编排 Provider/Connection/Agent/Skill 写入。执行用例归宿主后端。
+
+- Provider 媒体 JSON 草稿与模型对象分开保存，搜索、排序和删除不能因草稿无效而失败；保存时才解析为配置。ChatGPT 订阅类型隐藏并禁用媒体字段，切回 API 类型时恢复草稿与校验；隐藏字段不参与保存校验。

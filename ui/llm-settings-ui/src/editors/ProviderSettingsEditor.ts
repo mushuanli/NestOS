@@ -1,3 +1,4 @@
+import { renderMediaDeclaration, readMediaEndpoints, readModelOperations, bindMediaDeclarations, syncMediaDeclarations } from './provider-media-form';
 import { SettingsValidationError } from '@itookit/ui-common';
 import { ProviderAuthorizationPanel } from './provider-authorization';
 import { readProviderForm, renderProviderAdvanced, syncProtocolControls, renderProtocolOptions } from './provider-form';
@@ -38,6 +39,7 @@ const MODEL_CAP_CHIPS: ReadonlyArray<[string, keyof LLMModel, string]> = [
 
 export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionService> {
     private editModels: LLMModel[] = [];
+    private modelOperationDrafts = new WeakMap<LLMModel, string>();
     private _checkedIds = new Set<string>();
     private currentProviderId?: string;
     private editingProvider?: LLMProvider;
@@ -378,6 +380,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         this.currentProviderId = provider?.id;
         this.editingProvider = fullProvider ?? { id: `prov-${generateShortUUID()}`, name: '', implementation: 'openai-compatible', baseURL: '', models: [] };
         this.modelSearch = '';
+        this.modelOperationDrafts = new WeakMap();
         this.providerForm = undefined;
 
         this.editModels = (fullProvider?.models ?? []).map(model => fullProvider?.implementation === 'chatgpt' ? { ...model } : ({
@@ -476,6 +479,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                     // supportsThinking、requiresReferer、metadata 等），否则保存会静默丢失
                     // 内置联网搜索能力，导致 resolveWebSearch 判定失败。
                     ...providerConfig,
+                    media: readMediaEndpoints(form, providerConfig),
                     id: this.editingProvider!.id,
                     name,
                     icon,
@@ -486,7 +490,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                     anthropicPath: providerConfig.implementation === 'chatgpt' ? undefined : (data.anthropicPath as string || '').trim() || undefined,
                     // Keep existing apiKey if field was left empty
                     apiKey: providerConfig.implementation === 'chatgpt' ? undefined : newApiKey || existingApiKey || undefined,
-                    models: structuredClone(this.editModels),
+                    models: structuredClone(this.collectModels(form)),
                     isBuiltin: isBuiltin,
                     enabled: this.formOnly ? data.enabled === 'on' : provider?.enabled,
                     defaultTemperature: (() => {
@@ -531,6 +535,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     private syncAuthorizationForm(form: HTMLFormElement): void {
         const chatgpt = form.querySelector<HTMLSelectElement>('[name="implementation"]')?.value === 'chatgpt';
+        syncMediaDeclarations(form);
         form.querySelector<HTMLElement>('[data-provider-api-key]')!.hidden = chatgpt;
         const root = form.querySelector<HTMLElement>('[data-provider-authorization]')!; root.hidden = !chatgpt;
         form.querySelector<HTMLElement>('[data-provider-advanced]')!.hidden = chatgpt;
@@ -562,8 +567,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             this.syncInputsToModelData();
             const added = snapshot.implementation === 'chatgpt' ? models.filter(model => !this.editModels.some(old => old.id === model.id)).length : this.appendModels(models);
             if (snapshot.implementation === 'chatgpt') this.editModels = models.map(model => ({ ...model }));
-            list.innerHTML = this.renderModelListHTML();
-            this.updateModelCount();
+            this.renderModelList(list);
             requestSettingsSave(form);
             Toast.success(t('provider.models.refreshed', { count: added, total: models.length, existing: models.length - added }));
         } catch (error) {
@@ -603,6 +607,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                                value="${escapeAttr(m.name)}" placeholder="显示名称">
                     </div>
                     <details><summary>${t('provider.models.details')}</summary>
+                    ${renderMediaDeclaration(m.operations, true, this.modelOperationDrafts.get(m))}
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                         <select class="settings-input-sm model-category-select" data-idx="${i}" title="模型用途" style="max-width:110px">
                             ${MODEL_CATEGORIES.map(cat => `
@@ -645,6 +650,13 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         return this.providerForm?.querySelector<HTMLElement>('#' + id) ?? null;
     }
 
+    private renderModelList(list = this.formElement('model-list-container')): void {
+        if (!list) return;
+        list.innerHTML = this.renderModelListHTML();
+        this.updateModelCount();
+        if (this.providerForm) syncMediaDeclarations(this.providerForm);
+    }
+
     private bindModalEvents() {
         if (!this.providerForm?.isConnected || this.editorDisposed) return;
         const listContainer = this.formElement('model-list-container') as HTMLElement | null;
@@ -652,8 +664,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
         const renderList = () => {
             if (!listContainer) return;
-            listContainer.innerHTML = this.renderModelListHTML();
-            this.updateModelCount();
+            this.renderModelList(listContainer);
             if (this.providerForm) requestSettingsSave(this.providerForm);
         };
 
@@ -760,6 +771,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     }
 
     private bindTestInvalidation(form: HTMLFormElement): void {
+        bindMediaDeclarations(form);
         form.addEventListener('input', event => {
             const input = event.target as HTMLInputElement;
             if (!['baseURL', 'apiKey', 'implementation', 'chatPath', 'responsesPath', 'anthropicPath', 'geminiPath'].includes(input.name)) return;
@@ -775,8 +787,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         form.querySelector('#provider-model-search')?.addEventListener('input', event => {
             this.syncInputsToModelData();
             this.modelSearch = (event.target as HTMLInputElement).value.toLowerCase().trim();
-            this.formElement('model-list-container')!.innerHTML = this.renderModelListHTML();
-            this.updateModelCount();
+            this.renderModelList();
         });
     }
 
@@ -828,6 +839,14 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     // ── Sync helpers ───────────────────────────────────────────────────────────
 
+    private collectModels(form: HTMLFormElement): LLMModel[] {
+        const rows = form.querySelectorAll('.settings-model-item');
+        const models = this.editModels.map((model, index) => ({ ...model, operations: readModelOperations(rows[index], model) }));
+        // Keep validated values when a later implementation change disables their controls.
+        models.forEach((model, index) => { this.editModels[index].operations = model.operations; });
+        return models;
+    }
+
     private syncInputsToModelData() {
         const container = this.formElement('model-list-container');
         if (!container) return;
@@ -855,6 +874,8 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 this.editModels[i].thinkingMode = val || undefined;
             }
 
+            const operations = row.querySelector<HTMLTextAreaElement>('[name="modelOperations"]');
+            if (operations) this.modelOperationDrafts.set(this.editModels[i], operations.value);
             const model = this.editModels[i] as unknown as Record<string, unknown>;
             row.querySelectorAll('.model-cap-chk').forEach((chk) => {
                 const el = chk as HTMLInputElement;

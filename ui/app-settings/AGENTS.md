@@ -13,7 +13,7 @@ src/
 │   ├── SystemFSExploreEditor.ts  ← 跨模块只读 VFS 浏览（调试页，经 system-fs/ 组装视图）
 │   ├── Storage/Tag/Contact / Recovery/Log/About
 │   └── Appearance     ← 浅色/深色/跟随系统 主题切换，写入 /ui/theme.json
-├── engine/            ← SettingsEngine + SkillsEngine (均为 IFileSystem 实现)
+├── engine/            ← SettingsEngine（只读导航投影）
 ├── factories/         ← createSettingsFactory (nodeId → editor 路由)
 └── styles/            ← settings CSS (_appearance.css, _cost.css 等)
 ```
@@ -21,7 +21,7 @@ src/
 ## 关键点
 
 - `createSettingsFactory()` 先经 `resolveSettingsSlug()` 把 nodeId（VFS path 或 slug）归一为分类 slug，再按 slug 路由到对应 editor，未匹配时返回 placeholder
-- `SettingsEngine` 把 `SETTINGS_PAGES` 映射为只读虚拟文件节点；`SkillsEngine` 把 `IAgentManagementService.getSkills()` 映射为可写虚拟文件节点，供 Skills 工作区列表使用
+- `SettingsEngine` 把 `SETTINGS_PAGES` 映射为只读虚拟文件节点；技能文件系统归 [后端技能文件系统](../../backend/app-core/src/configuration/skills-files.ts)，UI 通过后端端口使用
 - `SystemFSExploreEditor` 经 `createSystemFileInspector()` 组装只读视图：`/dev` 挂载设备描述，`/workspaces/<name>` 挂载各工作区文件系统
 - `SystemFSExploreEditor` 的 MDX 文件编辑器按需导入；设置模块初始化与 VFS 列表显示不加载正文编辑器代码。
 - `LLMUIEditors` 注入 5 个编辑器（来自 `@itookit/llm-settings-ui`）：Provider / Connection / MCP / Cost / SystemPrompt；Skill / Agent 编辑器由 llm-ui 的 skills/agent 工作区直接使用，不经过本包

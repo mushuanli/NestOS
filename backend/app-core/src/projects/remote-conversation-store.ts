@@ -1,24 +1,30 @@
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
 import type { HarnessAttachment, HarnessRecovery } from '@itookit/piagent-driver';
+export interface RemoteConversationRecovery extends HarnessRecovery { submittedTurnId?: string }
 /** Persist native references and pending receipts; never native conversation histories. */
 export class RemoteConversationStore {
     private raw: string | null = null;
+    private record: RemoteConversationRecovery = {};
     constructor(private readonly fs: IFileSystem, private readonly key: string) {}
     private readonly path = '/etc/fs/harness-conversations.seq';
-    async load(): Promise<HarnessRecovery | undefined> {
-        if (!await this.fs.driver.exists(this.path)) return;
+    async load(): Promise<RemoteConversationRecovery | undefined> {
+        if (!await this.fs.driver.exists(this.path)) { this.record = {}; this.raw = null; return; }
         this.raw = await this.fs.meta.seq!.getEntry(this.path, this.key);
-        if (!this.raw) return;
-        const record = JSON.parse(this.raw) as HarnessRecovery;
+        if (!this.raw) { this.record = {}; return; }
+        const record = JSON.parse(this.raw) as RemoteConversationRecovery;
+        if (record.submittedTurnId !== undefined && (typeof record.submittedTurnId !== 'string' || !record.submittedTurnId))
+            throw new FSError('EINVAL', 'Invalid remote submission receipt');
         if (record.draft !== undefined && (typeof record.draft !== 'string' || record.draft.length > 1024 * 1024)) throw new FSError('EINVAL', 'Invalid remote input draft');
         if (record.sessionId !== undefined && typeof record.sessionId !== 'string' || record.pending &&
             (!record.pending.requestId || typeof record.pending.epoch !== 'string' || typeof record.pending.operation !== 'string')) throw new FSError('EINVAL', 'Invalid remote conversation recovery');
         if (record.deletedSessionIds !== undefined && (!Array.isArray(record.deletedSessionIds) || record.deletedSessionIds.length > 16401
             || record.deletedSessionIds.some(id => typeof id !== 'string' || !id))) throw new FSError('EINVAL', 'Invalid native deletion recovery');
         validateAttachments(record.draftAttachments);
-        return record;
+        this.record = record; return record;
     }
-    async save(record: HarnessRecovery): Promise<void> {
+    get submittedTurnId(): string | undefined { return this.record.submittedTurnId; }
+    async submitted(turnId: string): Promise<void> { await this.save({...this.record, submittedTurnId: turnId}); }
+    async save(record: RemoteConversationRecovery): Promise<void> {
         if (record.deletedSessionIds !== undefined && (!Array.isArray(record.deletedSessionIds) || record.deletedSessionIds.length > 16401
             || record.deletedSessionIds.some(id => typeof id !== 'string' || !id))) throw new FSError('EINVAL', 'Invalid native deletion recovery');
         validateAttachments(record.draftAttachments);
@@ -31,6 +37,7 @@ export class RemoteConversationStore {
             if (!await tx.compareAndSet(this.path, this.key, {expected: this.raw, value})) throw new FSError('ECONFLICT', 'Remote conversation is controlled by another view');
         });
         this.raw = value;
+        this.record = record;
     }
 }
 

@@ -230,7 +230,9 @@ export class ProjectNavigation {
         const target = resolveBrowserTarget(this.path), remote = target.kind === 'remote' && !!target.profileId;
         const label = t(remote ? 'harness.create' : 'project.createSession');
         if (this.create.title !== label) decorateButton(this.create, FILE_BROWSER_ICONS.newSession, label, true);
-        this.create.hidden = remote ? !this.remoteDraftPath() : !this.project;
+        const remoteProject = this.project?.project.source?.kind === 'remote'
+            || !!this.project && !!this.projects.remoteMounts?.list(this.project.project.id).some(mount => mount.at === '/');
+        this.create.hidden = remote ? !this.remoteDraftPath() : !this.project || remoteProject;
         const folder = remote ? target.folder : this.project?.path;
         this.create.disabled = !!folder && this.offlinePaths.has(folderBrowserPath(folder));
         this.create.setAttribute('aria-current', this.draftActive || remote && !!target.draft ? 'page' : 'false');

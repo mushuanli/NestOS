@@ -1,6 +1,7 @@
 import type { ProjectConversationPort } from '@itookit/app-contracts/services';
 import { observeConversation } from './conversation-view';
 import { RemoteConversationStore } from './remote-conversation-store';
+import {draftHarness, draftConversation, remoteConversationJournal} from './remote-draft-conversation';
 import { RemoteSessionStatus } from '../session/remote-session-status';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 import type { MCPDeletedProject, MCPDeletionReference } from '../configuration/model-commands';
@@ -442,14 +443,10 @@ export class ProjectRemoteMountService {
             if (!profile) throw new FSError('ECAPABILITY', 'Project harness profile unavailable');
             const root = this.list(projectId).find(m => m.at === '/')!;
             const guarded = this.guardHarness(client, projectId, fingerprint, root.connectionId!);
-            if (sessionId) {
-                const draft = new RemoteConversationStore(this.store, JSON.stringify([projectId, root.connectionId, root.serverProjectId, profileId, '@new']));
-                const record = await draft.load();
-                if (record?.sessionId === sessionId && !record.pending) await draft.save({});
-            }
             const recovery = new RemoteConversationStore(this.store, JSON.stringify([projectId, root.connectionId, root.serverProjectId, profileId, sessionId ?? '@new']));
-            return observeConversation(await this.provider.conversation(guarded, profile, profile.workspaces[0].id, sessionId, root.access === 'rw' && !readOnly,
-                {epoch: descriptor.epoch, load: () => recovery.load(), save: record => recovery.save(record)}));
+            const conversation = await this.provider.conversation(sessionId ? guarded : draftHarness(guarded, recovery), profile, profile.workspaces[0].id, sessionId, root.access === 'rw' && !readOnly,
+                remoteConversationJournal(recovery, descriptor.epoch, !sessionId));
+            return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery));
         } catch (error) { await client.close(); throw error; }
     }
     private guardHarness(client: HarnessClient, projectId: string, fingerprint: string, connectionId: string): HarnessClient {
@@ -461,7 +458,9 @@ export class ProjectRemoteMountService {
                     if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
                     this.connection(connectionId); return await value.apply(target, args);
                 } catch (error) {
-                    reportRemoteFailure(error, {stage: `harness.${String(key)}`, projectId, connectionId});
+                    reportRemoteFailure(error, {stage: `harness.${String(key)}`, projectId, connectionId,
+                        ...(typeof args[0] === 'string' ? {profileId: args[0]} : {}),
+                        ...(['resume', 'turn', 'read', 'inspect'].includes(String(key)) && typeof args[1] === 'string' ? {sessionId: args[1]} : {})});
                     throw error;
                 }
             };

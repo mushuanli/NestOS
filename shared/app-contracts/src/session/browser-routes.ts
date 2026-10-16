@@ -3,6 +3,7 @@ import { workspacePath } from '../vfs/workspace-namespace';
 
 export type BrowserTarget =
     | { kind: 'folder'; path: string }
+    | { kind: 'project-draft'; folder: string }
     | { kind: 'remote'; folder: string; profileId?: string; nativeSessionId?: string; draft?: boolean; cursor?: string; archived?: boolean }
     | { kind: 'project-files'; folder: string; path: string }
     | { kind: 'favorites'; folder: string }
@@ -65,6 +66,8 @@ export function resolveBrowserTarget(path: string): BrowserTarget {
     while (index < segments.length && isFolderSegment(segments[index])) index++;
     const folderPrefix = '/' + segments.slice(0, index).join('/');
     if (index === segments.length) return { kind: 'folder', path: folderPrefix };
+    if (segments[index] === '@new' && index > 0 && segments.length === index + 1)
+        return { kind: 'project-draft', folder: folderPathFromBrowserPath(folderPrefix)! };
     if (segments[index] === '@harness' && index > 0) return remoteTarget(segments.slice(index + 1), folderPathFromBrowserPath(folderPrefix)!);
     if (segments[index] === '@favorites' && index > 0) {
         const favoriteId = segments[index + 1];

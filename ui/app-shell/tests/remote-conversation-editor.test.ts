@@ -42,6 +42,16 @@ it('preserves failed input and offers reconciliation instead of repeating an unk
     expect(host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
     await expect(editor.sendText('keep draft')).rejects.toThrow();expect(peer.send).toHaveBeenCalledOnce();await editor.destroy();
 });
+it('accepts a committed turn even when a following metadata operation needs reconciliation', async () => {
+    const {editor, peer, host} = setup(); await editor.init(host);
+    vi.mocked(peer.send).mockResolvedValue({...state, submittedTurnId: 'accepted', pending: true, canSend: false});
+    host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.value = 'Accepted input';
+    await expect(editor.sendText('Accepted input')).resolves.toBeUndefined();
+    expect(host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.value).toBe('');
+    expect(host.textContent).not.toContain(t('chat.submission.unknown'));
+    expect(host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
+    expect(peer.send).toHaveBeenCalledOnce(); await editor.destroy();
+});
 it('renders pending approvals but prevents responding without native control ownership', async () => {
     const {editor,peer,host}=setup();vi.mocked(peer.read).mockResolvedValue({...state,requests:[{id:1,kind:'approval',detail:'command'}]});await editor.init(host);
     const approve=[...host.querySelectorAll('button')].find(b=>b.textContent===t('harness.approve'))!;expect(approve.disabled).toBe(true);

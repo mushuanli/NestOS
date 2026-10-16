@@ -2,11 +2,18 @@ import { getLocale, t } from '@itookit/common';
 import { resolveBrowserTarget, folderPathFromBrowserPath } from '@itookit/app-contracts';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
 
+/** Fixed project entries keep their order independently of user sort direction. */
+export function navigationPriority(path: string): number {
+    const target = resolveBrowserTarget(path);
+    if (target.kind === 'favorites') return -30;
+    if (target.kind === 'project-files' && target.path === '/workspace') return -20;
+    if (target.kind === 'project-draft' || target.kind === 'remote' && (target.draft || !target.profileId)) return -10;
+    if (target.kind === 'remote' && (target.cursor || target.archived)) return 10;
+    return 0;
+}
 export function fileFirst(a: VFSNodeUI, b: VFSNodeUI): number | undefined {
-    const favorites = (item: VFSNodeUI) => resolveBrowserTarget(item.id).kind === 'favorites';
-    if (favorites(a) !== favorites(b)) return favorites(a) ? -1 : 1;
-    const files = (item: VFSNodeUI) => resolveBrowserTarget(item.id).kind === 'project-files';
-    if (files(a) !== files(b)) return files(a) ? -1 : 1;
+    const priority = navigationPriority(a.id) - navigationPriority(b.id);
+    if (priority) return priority;
     const session = (item: VFSNodeUI) => { const target = resolveBrowserTarget(item.id); return target.kind === 'session' || target.kind === 'remote' && !!target.nativeSessionId; };
     if (session(a) && session(b)) return ((Date.parse(b.metadata.lastModified) || 0) - (Date.parse(a.metadata.lastModified) || 0)) || a.id.localeCompare(b.id);
     return undefined;
@@ -30,6 +37,7 @@ export function projectItems(items: VFSNodeUI[], query = '', family?: string): V
                     ? t('project.parentSession', { name: String(item.metadata.custom.parentTitle) }) : '' } } }];
         }
         if (kind === 'favorite') return [{ ...item, children: undefined }];
+        if (kind === 'project-draft') return [{...item, children: undefined}];
         if (kind === 'favorites') return [item];
         if (kind === 'remote') return [{...remoteItem(item), children: item.children && projectItems(item.children, query, family).sort((a, b) => fileFirst(a, b) ?? 0)}];
         if (kind === 'project-files') return [{ ...item, children: item.children && projectItems(item.children, query, family) }];

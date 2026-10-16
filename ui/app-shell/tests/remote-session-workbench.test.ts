@@ -121,6 +121,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         const list = activePanel().querySelector('.workbench-directory__table')!;
         expect(list.querySelector('[data-column="modified"]')?.getAttribute('aria-sort')).toBe('descending');
         const paths = [...list.querySelectorAll<HTMLTableRowElement>('[data-resource-id]')].map(row => row.dataset.resourceId);
+        expect(paths[0]).toBe(profilePath + '/@new');
         expect(paths.indexOf(remoteSessionPath(project.path,'codex','native'))).toBeLessThan(paths.indexOf(remoteSessionPath(project.path,'codex','earlier-native')));
         const nativeRow = list.querySelector<HTMLTableRowElement>(`[data-resource-id="${remoteSessionPath(project.path,'codex','native')}"]`)!;
         expect(nativeRow.cells[2].textContent).not.toContain('1970'); expect(nativeRow.cells[2].textContent).not.toBe('—');

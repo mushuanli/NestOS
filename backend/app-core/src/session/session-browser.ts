@@ -233,6 +233,10 @@ class BrowserBackend implements IStorageBackend {
             return folder ? this.folderNode(folder) : null;
         }
         if (target.kind === 'remote') return this.remoteSessions.stat(path, target);
+        if (target.kind === 'project-draft') {
+            const project = (await this.folders()).find(folder => folder.path === target.folder);
+            return this.localDraft(project) ? this.draftEntry(path) : null;
+        }
         if (target.kind === 'favorites') return this.favoritesEntry(path);
         if (target.kind === 'favorite') return (await this.favoriteNodes(parentBrowserPath(path), target.folder)).find(node => node.path === path) ?? null;
         if (target.kind === 'project-files') {
@@ -279,15 +283,18 @@ class BrowserBackend implements IStorageBackend {
         if (target.kind === 'folder') {
             const folderPath = folderPathFromBrowserPath(path);
             const [folders, sessions] = await this.directoryNavigation(folderPath);
+            const project = folders.find(folder => folder.path === folderPath);
             return [
                 ...folders.filter(folder => folder.parentPath === folderPath).map(folder => this.folderNode(folder)),
                 ...(this.deps.projects && folders.find(folder => folder.path === folderPath)?.project
                     ? [await this.fileEntry(path + '/@files', folderPath), this.favoritesEntry(path + '/@favorites')] : []),
+                ...(this.deps.projects && this.localDraft(project) ? [this.draftEntry(path + '/@new')] : []),
                 ...(folderPath ? await this.remoteSessions.root(folderPath, folders.find(folder => folder.path === folderPath) ?? null) : []),
                 ...this.sessionNodes(sessions, folderPath),
             ];
         }
         if (target.kind === 'remote') return this.remoteSessions.list(path, target);
+        if (target.kind === 'project-draft') return [];
         if (target.kind === 'favorites') return this.favoriteNodes(path, target.folder);
         if (target.kind === 'favorite') return [];
         if (target.kind === 'project-files') return this.listFiles(path, target);
@@ -362,6 +369,14 @@ class BrowserBackend implements IStorageBackend {
             metadata: { ...node.metadata, remoteMountId: mount.mountId, _disabled: offline || status === 'offline', _readOnly: offline || node.metadata._readOnly,
                 navigationDescription: relative === mount.at ? t(`remote.state.${status}`) : node.metadata.navigationDescription } };
     }
+    private localDraft(folder?: SessionFolder): boolean {
+        return !!folder?.project && folder.project.source?.kind !== 'remote'
+            && !this.deps.projects?.remoteMounts?.list(folder.project.id).some(mount => mount.at === '/');
+    }
+    private draftEntry(path: string): FSNode {
+        const node = this.node(path, t('project.createSession'), false, 0, true);
+        return {...node, icon: ENTITY_ICONS.chat, metadata: {...node.metadata, _fixedEntry: true}};
+    }
     private favoritesEntry(path: string): FSNode {
         return { ...this.node(path, t('project.favorites'), true), icon: ACTION_ICONS.favorite,
             metadata: { title: t('project.favorites'), _fixedEntry: true, _readOnly: true, _showAll: true } };
@@ -409,6 +424,7 @@ class BrowserBackend implements IStorageBackend {
         if (target.kind === 'favorite' || target.kind === 'favorites') throw new FSError('EISDIR', 'Open favorites through navigation');
         if (target.kind === 'folder') throw new FSError('EISDIR', 'Open this folder using its browser target');
         if (target.kind === 'remote') throw new FSError('EROFS', 'Remote sessions use the conversation port');
+        if (target.kind === 'project-draft') throw new FSError('EROFS', 'Project drafts use the composer port');
         if (target.kind === 'session') return this.sessionBundle(target.sessionId);
         if (isFileTarget(target)) return this.withFiles(target, async fs => new Uint8Array(await fs.driver.readContent(target.path, { encoding: 'binary' })));
         await this.deps.repository.getManifest(target.sessionId);
@@ -441,6 +457,7 @@ class BrowserBackend implements IStorageBackend {
         throw new FSError('EROFS', 'Use the Session file context for this path');
     }
     async write(path: string, content: Uint8Array): Promise<FSNode> {
+        if (path.endsWith('/@new') && resolveBrowserTarget(path).kind === 'project-draft') throw new FSError('EROFS', 'Project drafts use the composer port');
         await this.assertAvailable(path);
         const parent = parentBrowserPath(path);
         if (this.isFolderContainer(parent)) {

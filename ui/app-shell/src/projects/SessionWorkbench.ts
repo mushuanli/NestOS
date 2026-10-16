@@ -5,6 +5,7 @@ import { presentationPersistence } from '../persistence/initial-navigation';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
 import {remoteSessionCreationPath} from './remote-session-creation';
+import {fileFirst, navigationPriority} from './navigation-policy';
 import { ProjectSearchPanel } from './project-search-panel';
 import { showRemoteSessionFamily } from './remote-session-family';
 import { nativeSessionMenu } from './remote-session-management';
@@ -50,7 +51,7 @@ import { FSError, createFileSystemView, type FSNode, type IFileSystem, type File
 
 
 
-import { remoteSessionPath, browserTargetFolder, folderBrowserPath, folderPathFromBrowserPath, parseSessionRoute, resolveBrowserTarget, sessionRoute, type WorkspaceController } from '@itookit/app-contracts';
+import { parentBrowserPath, remoteSessionPath, browserTargetFolder, folderBrowserPath, folderPathFromBrowserPath, parseSessionRoute, resolveBrowserTarget, sessionRoute, type WorkspaceController } from '@itookit/app-contracts';
 import type { ProjectService, DirectoryMountPort, SessionFilesPort } from '@itookit/app-contracts/services';
 import type { SessionLifecycleService, ProjectSessions } from '@itookit/app-contracts/services';
 
@@ -84,6 +85,10 @@ function compareSessionEntries(a: VFSNodeUI, b: VFSNodeUI): number | undefined {
     if (a.presentation?.fileDetails && b.presentation?.fileDetails) {
         if (a.type !== b.type) return a.type === 'directory' ? -1 : 1;
         return fileNames.compare(a.metadata.title, b.metadata.title) || a.id.localeCompare(b.id);
+    }
+    if (!isFlowPath(a.id) && !isFlowPath(b.id)) {
+        const fixed = fileFirst(a, b);
+        if (fixed !== undefined) return fixed;
     }
     const isSession = (item: VFSNodeUI) => !isFlowPath(item.id) && resolveBrowserTarget(item.id).kind === 'session';
     const aSession = isSession(a), bSession = isSession(b);
@@ -678,12 +683,18 @@ export class SessionWorkbench implements WorkspaceController {
             return Promise.resolve(this.hostContext?.navigate?.({ target: 'flows',
                 ...(path === '/@flows' ? {} : { resourceId: path.slice('/@flows'.length) }) }));
         }
+        const target = resolveBrowserTarget(path);
+        if (target.kind === 'project-draft') {
+            const node = await this.navigationFiles?.driver.getNode(path);
+            if (!current()) return;
+            if (!node) throw new FSError('ENOENT', 'Project draft unavailable');
+            return this.startSessionDraft(parentBrowserPath(path));
+        }
         this.cancelViewLoad();
         const load = this.viewLoads.begin();
         this.pendingTarget = { id: resourceId, options };
         if (!this.visible) this.viewLoads.cancel();
         const branch = options.branch ?? route.branch;
-        const target = resolveBrowserTarget(path);
         const id = target.kind === 'session' ? target.sessionId : path;
         const directoryTarget = target.kind === 'folder' || target.kind === 'favorites' || target.kind === 'remote' && !target.nativeSessionId && !target.draft;
         let opened: SessionOpenView | undefined;
@@ -1093,7 +1104,7 @@ export class SessionWorkbench implements WorkspaceController {
         return {id: node.path, name: directoryEntryName(node), type: target.kind === 'session' || remote && target.nativeSessionId ? 'session' : node.type,
             icon: this.sidebarUI!.getResourceIcon(node), created: remote && node.createdAt <= 0 ? undefined : node.createdAt,
             modified: remote && node.modifiedAt <= 0 ? undefined : node.modifiedAt, size: !remote && node.type === 'file' ? node.size : undefined,
-            priority: remote ? target.draft ? -1 : target.cursor ? 1 : 0 : undefined,
+            priority: navigationPriority(node.path),
             disabled: node.metadata._disabled === true, description: String(node.metadata.navigationDescription ?? '')};
     }
     private directoryFavorites() {
@@ -1495,10 +1506,11 @@ export class SessionWorkbench implements WorkspaceController {
             if (!project || !this.projects || !folder) throw new Error('Project required for a draft');
             this.projectNavigation?.showDraft(project);
             const draftId = `draft:${project.project.id}`;
+            const draftPath = folderBrowserPath(project.path) + '/@new';
             const retained = this.tabs.get(draftId);
             await this.tabs.open(draftId, t('project.createSession'), false);
             this.tabs.setIcon(draftId, FILE_BROWSER_ICONS.newSession);
-            if (retained?.value) { await this.restoreEditor(retained.value); this.onSelect(draftId, 'replace'); return; }
+            if (retained?.value) { await this.restoreEditor(retained.value); await this.selectPath(draftPath); this.onSelect(draftPath, 'replace'); return; }
             const mount = await this.editorMount(folder);
             const composer = await this.projects.drafts.open(project.project.id, folder);
             const draftOptions = createProjectDraftControls(composer, {
@@ -1515,7 +1527,7 @@ export class SessionWorkbench implements WorkspaceController {
             try { load.check(); } catch (error) { await editor.destroy(); mount.remove(); throw error; }
             this.editor = editor; this.active = draftId; this.editor.focus?.();
             this.retainEditor(this.viewLoads.detach(load));
-            this.onSelect(draftId, 'replace');
+            await this.selectPath(draftPath); this.onSelect(draftPath, 'replace');
         });
         this.tail = work.catch(() => {}); await work;
     }

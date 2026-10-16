@@ -150,8 +150,9 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                 const attachments = await prepareRemoteAttachments(files, this.snapshot?.attachments ?? []);
                 this.submittedDraft = {text, files: [...files]};
                 const result = attachments.length ? await this.service.send(text.trim() || t('harness.attachmentPrompt'), attachments) : await this.service.send(text);
-                this.submission = {...this.submission!, state: result.pending ? 'unknown' : 'accepted', messageId: this.submittedMessageId(result.submittedTurnId)};
-                if (!this.closed && !result.pending) { this.acceptSubmission(text, files); this.submittedDraft = undefined; }
+                const accepted = !!result.submittedTurnId || !result.pending;
+                this.submission = {...this.submission!, state: accepted ? 'accepted' : 'unknown', messageId: this.submittedMessageId(result.submittedTurnId)};
+                if (!this.closed && accepted) { this.acceptSubmission(text, files); this.submittedDraft = undefined; }
                 return result;
             } catch (error) {
                 this.submission = {...this.submission!, state: this.service.snapshot?.().pending || (error as {outcome?: string})?.outcome === 'unknown' ? 'unknown' : 'failed',

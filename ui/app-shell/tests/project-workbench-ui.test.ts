@@ -45,6 +45,12 @@ it('creates project Sessions from the selected project and edits its files in th
         const projectPanel = main.querySelector('.workbench-tabs__panel:not([hidden])')!;
         await vi.waitFor(() => expect(projectPanel.querySelector(`[data-resource-id="${projectPath}/@files"]`)).not.toBeNull());
         expect(selector.value).toBe(projectPath);
+        const initialSessions = (await repository.listSummaries()).length;
+        expect(projectPanel.querySelector(`[data-resource-id="${projectPath}/@new"]`)).not.toBeNull();
+        await workbench.openResource(projectPath + '/@new');
+        expect(chat.mock.calls.at(-1)![1].sessionDraft).toBeDefined();
+        expect((await repository.listSummaries()).length).toBe(initialSessions);
+        await workbench.openResource(projectPath);
         expect(sidebar.querySelector(`[data-item-id="${folderBrowserPath((await projects.personal()).path)}"]`)).toBeNull();
         selector.value = '/'; selector.dispatchEvent(new Event('change', {bubbles: true}));
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('/'));

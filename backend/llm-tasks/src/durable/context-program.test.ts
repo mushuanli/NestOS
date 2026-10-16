@@ -30,18 +30,23 @@ it('keeps v2 context tools available after restore without granting unrelated to
 
 it('commits the context head and frozen LLM request in one decision without repeated working history', async () => {
     const program = new ContextTaskProgram(new DurableAgentProgram());
-    const initial = await program.init({ sessionId: 's', roundId: 'r', connectionId: 'c', messages: [{ role: 'user', content: 'goal' }] });
+    const connectionSnapshot = { providerId: 'p', modelId: 'frozen', protocol: 'openai-chat' };
+    const initial = await program.init({ sessionId: 's', roundId: 'r', connectionId: 'c', connectionSnapshot, messages: [{ role: 'user', content: 'goal' }] });
     const prepared = await program.reduce(initial.state, capability);
     expect(effect(prepared.actions).kind).toBe('context.prepare');
+    expect(effect(prepared.actions).request).toMatchObject({ connectionSnapshot });
     expect(JSON.stringify(prepared.state)).not.toContain('goal');
     const result = { cursor, writes: [{ key: 'context/t/head', value: cursor, expectedVersion: null }], explanation: { strategy: 'retain' } };
     const restored = JSON.parse(JSON.stringify(prepared.state));
     const next = await program.reduce(restored, { type: 'effect-completed', effectId: effect(prepared.actions).id, result });
     expect(next.actions).toContainEqual({ type: 'set-shared', ...result.writes[0] });
-    expect(effect(next.actions)).toMatchObject({ kind: 'llm.chat', version: '2', request: { cursor } });
+    expect(effect(next.actions)).toMatchObject({ kind: 'llm.chat', version: '2', request: { cursor, connectionSnapshot } });
     expect(JSON.stringify(effect(next.actions))).not.toContain('messages');
     const failed = await program.reduce(restored, { type: 'effect-failed', effectId: effect(prepared.actions).id, error: { message: 'publication failed' } });
     expect(failed.next.type).toBe('fail'); expect(failed.actions).toBeUndefined();
+    const completed = await program.reduce(next.state, { type: 'effect-completed', effectId: effect(next.actions).id,
+        result: { choices: [{ message: { role: 'assistant', content: 'Done' }, finish_reason: 'stop' }] } });
+    expect(effect(completed.actions)).toMatchObject({ kind: 'context.prepare', request: { archiveOnly: true, connectionSnapshot } });
 });
 
 it('keeps partial tool batches until complete and ignores checkpoint fields from ordinary tools', async () => {

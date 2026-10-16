@@ -15,6 +15,7 @@ export interface LlmTaskInputOptions {
     sessionId: string;
     roundId: string;
     messages: ChatMessage[];
+    connectionSnapshot?: unknown;
     connectionId?: string;
     model?: string;
     temperature?: number;
@@ -49,6 +50,7 @@ export function buildLlmTaskInput(options: LlmTaskInputOptions): DurableAgentInp
         sessionId: options.sessionId,
         roundId: options.roundId,
         messages: options.messages,
+        connectionSnapshot: options.connectionSnapshot === undefined ? undefined : structuredClone(options.connectionSnapshot),
         connectionId: options.connectionId ?? 'default',
         model: options.model,
         temperature: options.temperature,

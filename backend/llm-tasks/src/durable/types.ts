@@ -15,6 +15,7 @@ export interface DurableProgramInput {
     sessionId: string;
     roundId: string;
     messages: ChatMessage[];
+    connectionSnapshot?: unknown;
     connectionId: string;
     model?: string;
     temperature?: number;

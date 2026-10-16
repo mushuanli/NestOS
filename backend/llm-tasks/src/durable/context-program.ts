@@ -56,11 +56,11 @@ function withContextToolGrants<S>(state: S): S {
 }
 
 function prepareEffect(effect: EffectRequest, cursor?: ContextCursor, policy?: ContextCompactionPolicy, notes?: WorkingNotes): EffectRequest {
-    const request = effect.request as { request: { messages: ChatMessage[] }; resourceHandleId: string; connectionId: string };
+    const request = effect.request as { request: { messages: ChatMessage[] }; resourceHandleId: string; connectionId: string; connectionSnapshot?: unknown };
     const { messages, ...parameters } = request.request;
     return { ...effect, kind: 'context.prepare', version: '1', id: `context-${effect.id}`,
         idempotencyKey: `${effect.idempotencyKey}:context`, request: {
-            resourceHandleId: request.resourceHandleId, connectionId: request.connectionId,
+            resourceHandleId: request.resourceHandleId, connectionId: request.connectionId, connectionSnapshot: request.connectionSnapshot,
             messages, request: parameters, ...(cursor ? { previous: cursor } : {}),
             ...(policy ? { policy } : {}),
             ...(notes ? { notes } : {}),
@@ -68,8 +68,8 @@ function prepareEffect(effect: EffectRequest, cursor?: ContextCursor, policy?: C
 }
 
 function withoutMessages(value: unknown): unknown {
-    const request = value as { resourceHandleId: string; connectionId: string };
-    return { resourceHandleId: request.resourceHandleId, connectionId: request.connectionId };
+    const request = value as { resourceHandleId: string; connectionId: string; connectionSnapshot?: unknown };
+    return { resourceHandleId: request.resourceHandleId, connectionId: request.connectionId, connectionSnapshot: request.connectionSnapshot };
 }
 
 function clearWorkingMessages(state: unknown): void {
@@ -135,6 +135,7 @@ function recordCompletion<S, O>(decision: Decision<S, O>, state: ContextProgramS
     state.preparing = id;
     state.completion = { next: decision.next, actions };
     const request = { resourceHandleId: inner.capabilities.llmHandleId, connectionId: inner.input.connectionId,
+        connectionSnapshot: inner.input.connectionSnapshot,
         previous: state.cursor, messages, request: {}, archiveOnly: true };
     clearWorkingMessages(state.inner);
     return { state, actions: [{ type: 'effect', effect: { id, kind: 'context.prepare', version: '1',

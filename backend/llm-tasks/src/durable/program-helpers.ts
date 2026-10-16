@@ -99,7 +99,7 @@ export function llmEffect(
             id: effectId ?? `llm-${messages.length}`,
             kind: 'llm.chat',
             version: '1',
-            request: { resourceHandleId: handleId, connectionId: input.connectionId, request },
+            request: { resourceHandleId: handleId, connectionId: input.connectionId, connectionSnapshot: input.connectionSnapshot, request },
             idempotencyKey: effectId ? `${input.roundId}:${effectId}` : `${input.roundId}:llm:${messages.length}`,
             timeoutMs: input.timeoutMs ?? DEFAULT_EFFECT_TIMEOUT_MS,
             retry: { maxAttempts: retries + 1, backoffMs },

@@ -1,7 +1,7 @@
 import { presentationPersistence } from '../persistence/initial-navigation';
 import { createMindOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { ToolboxDeletion, toolboxSelectionPaths } from './ToolboxDeletion';
-import { defaultToolDrawers } from './tool-drawers';
+import { directorySnapshot } from '../browser/directory-snapshot';
 import { ConfigurationDeletionDialog } from '../configuration/delete-dialog';
 import type { ModelConfigurationCommands } from '@itookit/app-contracts/services';
 import { connectEditorLifecycle } from '../browser/editor-connector';
@@ -22,11 +22,13 @@ import { chooseArchive, downloadArchive } from '../files/archive-transfer';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import { TOOLBOX_KINDS, TOOLBOX_FILTERS, toolboxFilter, toolboxKind, toolboxSourcePath, type ToolboxKind, type ToolboxFilter } from './routes';
 import type { ToolboxInventory } from '@itookit/app-contracts/services';
+import type { ToolboxNavigation } from '@itookit/app-contracts/services';
 
 interface Options {
     ocr?: import('../configuration/ocr-controls').OcrConfigurationControls;
     sidebar: HTMLElement; editor: HTMLElement; resources: ToolboxResources; inventory: ToolboxInventory;
     files: IFileSystem;
+    initial?: ToolboxNavigation;
     configuration: ModelConfigurationCommands;
     projects?: Pick<import('@itookit/app-contracts/services').ProjectService,'list'>;
     factories: Record<ToolboxKind, EditorFactory>; flowMenu: ContextMenuConfig<VFSNodeUI>;
@@ -62,6 +64,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     private selectionDeletion!: ToolboxDeletion;
     private ui!: VFSUIShell;
     private view!: IFileSystem;
+    private readonly snapshot: ReturnType<typeof directorySnapshot>;
     private drawerActions!: DrawerActions;
     private titles = new Map<string, string>();
     private readonly abort = new AbortController();
@@ -76,21 +79,22 @@ export class ToolboxWorkbench implements WorkspaceController {
     private refreshing = false;
     private timer?: ReturnType<typeof setTimeout>;
     private refreshTail: Promise<void> = Promise.resolve();
-    constructor(private readonly options: Options) { this.prefs = preferences(this.options.uiPreferences?.load()); }
+    constructor(private readonly options: Options) {
+        this.prefs = preferences(this.options.uiPreferences?.load()); this.snapshot = directorySnapshot(options.files);
+    }
     async start(): Promise<void> {
         const { resources, sidebar } = this.options;
         sidebar.classList.add('toolbox-navigation');
-        await resources.drawers.init();
         this.drawerActions = new DrawerActions({ groups: resources.drawers, signal: this.abort.signal,
             refresh: () => { this.ui.refreshList(); const active = this.ui.getSnapshot().activeId; if (active) this.revealDrawer(active); }, create: group => this.createResource({ drawerId: group.id }), title: path => this.titles.get(path) ?? path });
-        this.view = this.options.files;
-        this.descriptions = await resources.descriptions();
-        await this.loadDirectories();
+        this.view = this.snapshot.files;
+        this.applyNavigation(this.options.initial ?? await resources.navigation());
         this.buildFilters();
         this.ui = createVFSUI({ sessionListContainer: sidebar, title: t('toolbox.title'), scopeId: TOOLBOX_SCOPE, persistence: presentationPersistence(this.options.uiPersistence), autoSelectFirst: false,
             appearance: { showTimestamp: false, menuVisibility: 'always' },
             searchPlaceholder: t('toolbox.search'), listHeader: this.filters, listItems: items => this.project(items),
             alwaysLoadedDirectories: this.loadedDirectories,
+            hideGitignored: false,
             defaultUiSettings: { showSummary: true, showTags: true, showBadges: false, sortBy: 'title' },
             fileCreation: { resolveParent: path => path ?? (['agents', 'flows'].includes(this.prefs.filter) ? '/' + this.prefs.filter : null) },
             sort: { by: 'title', direction: 'asc', directoriesFirst: true },
@@ -186,12 +190,13 @@ export class ToolboxWorkbench implements WorkspaceController {
     private groupResources(items: VFSNodeUI[]): VFSNodeUI[] {
         const models = items.filter(item => ['providers', 'connections'].includes(toolboxKind(item.id)!));
         return [...(this.prefs.filter === 'all' || this.prefs.filter === 'models' ? modelDrawers(models, this.options.inventory) : []),
-            ...resourceDrawers(items, this.options.inventory, this.options.resources.drawers, this.prefs.filter)];
+            ...resourceDrawers(items, this.options.resources.drawers, this.prefs.filter)];
     }
 
-    private async loadDirectories(): Promise<void> {
-        const directories = await this.options.resources.refreshGroups(defaultToolDrawers(this.options.inventory));
-        this.loadedDirectories.splice(0, this.loadedDirectories.length, ...directories);
+    private applyNavigation(navigation: ToolboxNavigation): void {
+        this.descriptions = navigation.descriptions;
+        this.loadedDirectories.splice(0, this.loadedDirectories.length, ...navigation.loadedDirectories);
+        this.snapshot.seed(navigation.directories);
     }
     private exportMenu(ids: string[]): MenuItem<VFSNodeUI> {
         return { id: 'export-json', label: t('toolbox.exportJSON'), onClick: async () => {
@@ -268,8 +273,8 @@ export class ToolboxWorkbench implements WorkspaceController {
             if (this.closed) return;
             this.dirty = false; this.refreshing = true;
             try {
-                await this.options.inventory.refresh();
-                [this.descriptions] = await Promise.all([this.options.resources.descriptions(), this.loadDirectories()]);
+                const navigation = await this.options.resources.navigation();
+                if (!this.closed) this.applyNavigation(navigation);
                 if (!this.closed) await this.ui.refresh();
             } finally { this.refreshing = false; }
         }).catch(error => { this.dirty = true; throw error; });

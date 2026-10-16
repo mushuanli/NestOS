@@ -10,6 +10,8 @@ export interface AppFileTypeConfig {
     defaultFileName: string;
     defaultContent: string;
     editorType: EditorTypeKey;
+    /** Falls back to extension-based detection when omitted. */
+    contentFormat?: 'markdown' | 'text';
     duplicateTransformer?: (content: string) => string | Promise<string>;
 }
 
@@ -21,14 +23,7 @@ export const FILE_REGISTRY: Record<string, AppFileTypeConfig> = {
         defaultFileName: 'Untitled.md',
         defaultContent: '',
         editorType: 'standard',
-    },
-    anki: {
-        id: 'anki',
-        label: 'Card',
-        extension: '.anki',
-        defaultFileName: 'New Card.anki',
-        defaultContent: TPL.TPL_ANKI,
-        editorType: 'standard',
+        contentFormat: 'markdown',
     },
     agent: {
         id: 'agent',
@@ -74,6 +69,7 @@ export const FILE_REGISTRY: Record<string, AppFileTypeConfig> = {
         defaultFileName: 'New Mind.md',
         defaultContent: TPL.TPL_MIND,
         editorType: 'standard',
+        contentFormat: 'markdown',
     },
     project: {
         id: 'project',
@@ -82,6 +78,7 @@ export const FILE_REGISTRY: Record<string, AppFileTypeConfig> = {
         defaultFileName: 'New Project.md',
         defaultContent: TPL.TPL_PROJECT,
         editorType: 'standard',
+        contentFormat: 'markdown',
     },
     email: {
         id: 'email',
@@ -90,6 +87,7 @@ export const FILE_REGISTRY: Record<string, AppFileTypeConfig> = {
         defaultFileName: 'Draft.md',
         defaultContent: TPL.TPL_EMAIL,
         editorType: 'standard',
+        contentFormat: 'markdown',
     },
     private: {
         id: 'private',
@@ -98,5 +96,6 @@ export const FILE_REGISTRY: Record<string, AppFileTypeConfig> = {
         defaultFileName: 'My Private Note.md',
         defaultContent: TPL.TPL_PRIVATE,
         editorType: 'standard',
+        contentFormat: 'markdown',
     },
 };

@@ -22,7 +22,7 @@ import { ENTITY_ICONS, FILE_BROWSER_ICONS, FILE_ICONS } from '@itookit/common';
 import { watchDirectoryList } from '../workbench/directory-watch';
 import type { WorkbenchStatePort } from '../workbench/state';
 import { projectFavoriteAction } from './project-favorites';
-import { directoryEntryName, directoryPathLabel } from './directory-label';
+import { directoryBreadcrumbs, directoryEntryName } from './directory-label';
 import { WORKSPACE_PATH, projectRelativePath, reportRemoteFailure } from '@itookit/app-contracts';
 import { createProjectDraftControls } from './project-draft-editor';
 import type { SessionOpenView, WorkbenchChatControls, ProjectFolder } from '@itookit/app-contracts/services';
@@ -702,7 +702,7 @@ export class SessionWorkbench implements WorkspaceController {
             if (this.closed) throw new Error('Session workspace closed');
             load.check();
             if (id === this.active && !options.reload && !this.tabs.current?.failed && (branch === undefined || branch === this.activeBranch)) {
-                if (target.kind === 'project-files') this.scheduleFileNavigation(path, options.fileNavigation);
+                if (target.kind === 'project-files' || target.kind === 'files') this.scheduleFileNavigation(path, options.fileNavigation);
                 else if (directoryTarget) {
                     if (!options.preserveProject) this.projectNavigation?.selectScope(path);
                     this.scheduleNavigation(path, {reveal: true, preserveProject: options.preserveProject});
@@ -728,7 +728,8 @@ export class SessionWorkbench implements WorkspaceController {
                 if (!await load.read(() => this.checkRemoteFiles(path, target, load))) { this.onSelect(this.getActiveResourceId()!); return; }
                 await refreshDirectoryList(existing.panel); load.check();
                 const navigationPath = openingManifest ? `${folderBrowserPath(openingManifest.folder)}/${openingManifest.id}` : path;
-                if (directoryTarget) {
+                if (target.kind === 'project-files' || target.kind === 'files') this.scheduleFileNavigation(path, options.fileNavigation);
+                else if (directoryTarget) {
                     if (!options.preserveProject) this.projectNavigation?.selectScope(path);
                     this.scheduleNavigation(navigationPath, {reveal: true, preserveProject: options.preserveProject});
                 }
@@ -1072,7 +1073,9 @@ export class SessionWorkbench implements WorkspaceController {
             && directoryNode.metadata._readOnly !== true && directoryNode.metadata._disabled !== true
             && (!row || allowsRowAction('create-in-folder-session', false, row));
         if (this.closed || generation !== this.taskRefresh) return;
-        const list = createDirectoryList({ title: heading.textContent || t('project.workspace'), path: directoryPathLabel(path, heading.textContent),
+        const list = createDirectoryList({ title: heading.textContent || t('project.workspace'), path,
+            breadcrumbs: directoryBreadcrumbs(path, heading.textContent),
+            openDirectory: id => { void this.openResource(id, {directory: true}).catch(error => this.report(error)); },
             entries: nodes.map(node => this.directoryEntry(node)),
             initialSort: target.kind === 'remote' && target.profileId ? {key: 'modified', ascending: false} : undefined,
             open: id => { void this.openResource(id, {directory: nodes.find(node => node.path === id)?.type === 'directory'}).catch(error => this.report(error)); },

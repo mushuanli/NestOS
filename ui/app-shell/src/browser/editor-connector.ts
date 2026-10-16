@@ -15,6 +15,7 @@ import { WorkbenchTabs, type WorkbenchTab } from '../workbench/tabs';
 import { WorkbenchSidebar } from '../workbench/sidebar';
 import { createDirectoryList, refreshDirectoryList, watchDirectorySelection } from '../workbench/directory-list';
 import type { WorkbenchStatePort } from '../workbench/state';
+import { fileDirectoryBreadcrumbs } from '../workbench/directory-breadcrumbs';
 
 export interface ConnectOptions<Node extends VFSNodeUI = VFSNodeUI> {
     resolveEditor?: (node: Node) => EditorFactory | null | undefined;
@@ -71,7 +72,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
     }
     async function persist(path: string, content: string): Promise<void> {
         await engine.driver.writeContent(path, content);
-        if (options.refreshFileMetadata === false || fileContentFormat(path).contentFormat !== 'markdown') return;
+        if (options.refreshFileMetadata === false || fileContentFormat(path, options.fileTypes).contentFormat !== 'markdown') return;
         try { const { metadata, summary } = parseFileInfo(content); await engine.driver.updateMetadata(path, { ...metadata, _summary: summary }); }
         catch (error) { console.error('[EditorConnector] Metadata refresh failed:', error); }
     }
@@ -101,6 +102,8 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         const readOnly = !allowsRowAction('create-in-folder-session', extra.readOnly === true, item) || (await engine.capabilitiesAt(item.id)).readonly; load.check();
         const parent = item.id.slice(0, item.id.lastIndexOf('/')) || '/';
         tab.panel.replaceChildren(createDirectoryList({ title: item.metadata.title, path: item.id,
+            breadcrumbs: fileDirectoryBreadcrumbs(item.id, t('project.files')),
+            openDirectory: id => { void (id === '/' ? openDirectory(id).then(() => vfs.setSelection([])) : vfs.selectPath(id)).catch(report); },
             entries: nodes.map(node => ({ id: node.path, name: node.name, type: node.type, icon: vfs.getResourceIcon(node), created: node.createdAt, modified: node.modifiedAt, size: node.type === 'file' ? node.size : undefined })),
             contextMenu: (event, id) => { void vfs.showItemMenu(event, id).catch(report); }, select: ids => vfs.setSelection(ids),
             selectedIds: () => vfs.getSnapshot().selectedIds,
@@ -126,7 +129,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
                 const createEditor = resolveEditor?.(item) ?? factory;
                 if (!createEditor) throw new Error('No suitable editor factory found.');
-                view.editor = await createEditor(mount, { ...extra, ...fileContentFormat(item.id), files, signal: load.signal,
+                view.editor = await createEditor(mount, { ...extra, ...fileContentFormat(item.id, options.fileTypes), files, signal: load.signal,
                     target: { kind: 'file', path: item.id }, initialContent: text, title: item.metadata.title,
                     language: item.metadata.custom?._extension, hostContext: host() });
             }

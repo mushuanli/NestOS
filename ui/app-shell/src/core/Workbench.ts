@@ -89,6 +89,7 @@ export class Workbench {
             config.editorContainer,
             this.enhancedEditorFactory,
             {
+                fileTypes: config.fileTypes,
                 resolveEditor: resolveFileEditor(config.fileTypes, config.customEditorResolver),
                 hostContext: sharedHostContext,
                 files: config.files, sidebarContainer: config.sidebarContainer, workbenchState: config.workbenchState,

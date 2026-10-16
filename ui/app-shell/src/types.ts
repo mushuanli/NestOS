@@ -108,6 +108,7 @@ export interface BootWorkspaceParts {
 }
 
 export interface AppOptions {
+    fileTypes?: import('./config/file-registry').AppFileTypeConfig[];
     /** Host UI for selecting a server/project and persisting a fresh binding. */
     projectSyncSetup?(projectId: string, signal: AbortSignal): Promise<void>;
     projectSyncDirectory?(projectId: string, signal: AbortSignal): Promise<void>;

@@ -3,12 +3,14 @@ import { initTestApp } from './helpers/application';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { NAVIGATION_EVENTS } from '@itookit/common';
 import { OcrService, SettingsService, type ApplicationRuntime } from '@itookit/app-core';
+import { bindApplicationBackend } from '@itookit/app-core/host';
 import { themeService } from '../src/ThemeService';
 import type { WorkspaceConfig } from '../src/types';
+import { fileContentFormat } from '../src/browser/file-format';
 
 const visibility = vi.hoisted(() => vi.fn());
 const lifecycle = vi.hoisted(() => ({ start: vi.fn(async () => {}), open: vi.fn(async (_id: string) => {}),
-    destroy: vi.fn(async () => {}), selection: undefined as ((id: string) => void) | undefined }));
+    destroy: vi.fn(async () => {}), configure: vi.fn(), selection: undefined as ((id: string) => void) | undefined }));
 
 vi.mock('../src/ThemeService', () => ({
     themeService: { init: vi.fn(async () => {}), destroy: vi.fn(), setMode: vi.fn(async () => {}) },
@@ -31,7 +33,7 @@ vi.mock('@itookit/app-settings', () => ({
 
 vi.mock('../src/core/Workbench', () => ({
     Workbench: class {
-        constructor(config: any) { lifecycle.selection = config.onSessionChange; }
+        constructor(config: any) { lifecycle.selection = config.onSessionChange; lifecycle.configure(config); }
         setVisible = visibility;
         start = lifecycle.start;
         destroy = lifecycle.destroy;
@@ -237,6 +239,46 @@ it('keeps a failed workspace local and releases it before retrying', async () =>
         await vi.waitFor(() => expect(lifecycle.start).toHaveBeenCalledTimes(2));
         await vi.waitFor(() => expect(document.querySelector('.workspace-status')).toBeNull());
         expect(document.querySelector('#settings-workspace')?.classList.contains('active')).toBe(true);
+    } finally { await app.destroy(); }
+});
+
+it('retries a failed skill filesystem request through the workspace retry button', async () => {
+    navigationDOM(); lifecycle.start.mockClear();
+    const runtime = makeRuntime(), backend = bindApplicationBackend(runtime);
+    const files = await runtime.vfs.openFileSystem('/home/admin/skills');
+    const skillsFiles = vi.spyOn(backend, 'skillsFiles').mockRejectedValueOnce(new Error('Temporary disconnect')).mockResolvedValue(files);
+    const skills = { ...workspace, workspaceName: 'skills', slug: 'skills', type: 'skills' as const };
+    const app = await initApp({ services: runtime, backend, workspaces: [skills], startPage: true, ui: testUI() });
+    try {
+        await app.navigate('skills');
+        expect(document.querySelector('[role="alert"]')?.textContent).toContain('Temporary disconnect');
+        expect(lifecycle.start).not.toHaveBeenCalled();
+        document.querySelector<HTMLButtonElement>('.workspace-status button')!.click();
+        await vi.waitFor(() => expect(lifecycle.start).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(document.querySelector('.workspace-status')).toBeNull());
+        await app.navigate('start'); await app.navigate('skills');
+        expect(skillsFiles).toHaveBeenCalledTimes(2);
+    } finally { await app.destroy(); }
+});
+
+it('keeps host file formats independent from the standard editor', async () => {
+    navigationDOM(); lifecycle.configure.mockClear();
+    const runtime = makeRuntime(), fs = await runtime.vfs.openFileSystem('/home/admin');
+    const fileTypes = [
+        { id: 'json', extension: '.json', contentFormat: 'text' as const },
+        { id: 'log', extension: '.log' },
+        { id: 'custom', extension: '.CUSTOM', contentFormat: 'markdown' as const },
+        { id: 'markdown', extension: '.md', contentFormat: 'text' as const },
+    ].map(type => ({ label: type.id, defaultFileName: 'new' + type.extension, defaultContent: '', editorType: 'standard' as const, ...type }));
+    const active = { ...workspace, type: 'standard' as const, supportedFileTypes: fileTypes.map(type => type.id), files: { fs, cwd: '/' } };
+    const app = await initTestApp({ services: runtime, workspaces: [active], fileTypes, ui: testUI() });
+    try {
+        const types = lifecycle.configure.mock.calls[0][0].fileTypes;
+        expect(fileContentFormat('/config.json', types)).toEqual({ contentFormat: 'text' });
+        expect(fileContentFormat('/error.log', types)).toEqual({ contentFormat: 'text' });
+        expect(fileContentFormat('/note.custom', types)).toEqual({ contentFormat: 'markdown' });
+        expect(fileContentFormat('/plain.md', types)).toEqual({ contentFormat: 'text' });
+        expect(fileContentFormat('/note.custom')).toEqual({ contentFormat: 'text' });
     } finally { await app.destroy(); }
 });
 

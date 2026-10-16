@@ -6,9 +6,9 @@ import { ConnectionSettingsEditor } from '../../llm-settings-ui/src/editors/Conn
 import { toolboxSettingsRoute } from '../src/toolbox/routes';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
-import { createToolboxFiles } from '../../../backend/app-core/src/host/toolbox-files';
+import { createToolboxFiles } from '../../../backend/app-core/src/configuration/toolbox-files';
 import { createApplicationRuntime, type ApplicationRuntime } from '@itookit/app-core';
-import { SkillsEngine } from '@itookit/app-settings';
+import { SkillsEngine } from '../../../backend/app-core/src/configuration/skills-files';
 import { BaseSettingsEditor, editorResourceId, type EditorOptions } from '@itookit/ui-common';
 import { MCPSettingsEditor } from '../../llm-settings-ui/src/editors/MCPSettingsEditor';
 import { FlowCommand } from '@itookit/llm-session';
@@ -39,7 +39,7 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
     const skills = new SkillsEngine(runtime.agentService); cleanup.push(() => skills.dispose());
     const inventory = new ToolboxInventory(() => runtime.agentService.getMCPServers(), runtime.kernel.toolCatalog, runtime.agentService, () => runtime.agentService.listSystemPrompts()); await inventory.init(); cleanup.push(() => inventory.dispose());
     const resources = new ToolboxResources({ agents: await runtime.vfs.openFileSystem('/home/admin/agents'), skills,
-        flows: runtime.flowEngine.engine, ...inventory.sources }, runtime.agentService, runtime.commandBus, await runtime.vfs.openFileSystem('/etc'));
+        flows: runtime.flowEngine.engine, ...inventory.sources }, runtime.agentService, runtime.commandBus, await runtime.vfs.openFileSystem('/etc'), inventory);
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const factory = vi.fn(async (container: HTMLElement, options: EditorOptions) => { const editor = new Editor(container, {}, options); await editor.init(container); return editor; });
     const factories = { prompts: async (container: HTMLElement, options: EditorOptions) => { const editor = new SystemPromptSettingsEditor(container, runtime.agentService, options); await editor.init(container); return editor; }, agents: factory, skills: factory, flows: factory,

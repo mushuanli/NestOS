@@ -119,3 +119,6 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 
 - 普通模块通过 backend.navigationView 聚合首层与不透明 UI 文档；外部注入来源、设置/Flow/Skill 保持各自端口，独立读取并行。browser/initial-directory 只消费一次元数据，已有事件订阅使快照失效，不干预写操作与版本回调。普通侧栏 deferExpansion，首次只展示首层；切回在事件标脏、挂载身份变化或 15 秒到期后刷新。工作台保留隐藏期间的 refreshSources 并合并刷新。
 - navigation/navigation-warmup 在初始路由完成后依次提前装配工具箱和工作台导航，复用 loadWorkspace 的在途 Promise 与模块缓存；不改变路由，不打开旧资源、编辑器或会话租约。任务间让出前台加载，页面隐藏时暂停，返回时继续，销毁取消剩余任务。随后最多预热两个未加载普通根的后端快照，不构造普通工作区。工具箱隐藏时暂停目录读取并合并变化；导航没有显式 startupFileName 时，不从文件类型默认值推导自动创建。
+
+- 工具箱启动消费 backend.toolboxView 的 initial 导航快照，刷新只调用 resources.navigation；技能文件系统、默认工具分类与分组扫描归后端 configuration。browser/directory-snapshot 是通用一次性读取适配，事件或版本变化后回到实时端口。目录面包屑由前端生成路由标签并复用 openResource 同步侧栏，缓存目录重新激活也须同步选择。
+- 技能文件系统端口通过 lazyResource 共享请求并允许失败重试，后端拥有其释放职责。宿主文件类型的 contentFormat 独立于 editorType，未声明时按扩展名回退；项目目录标签和目标只由 directoryBreadcrumbs 解析。

@@ -4,6 +4,7 @@ import { decorateButton } from './controls';
 import { formatFileSize, type VFSUIShell } from '@itookit/vfs-ui';
 import { DirectorySelection, type DirectoryBulkAction } from './directory-selection';
 import { FSError } from '@itookit/vfs-core';
+import { createDirectoryBreadcrumbs, type DirectoryBreadcrumb } from './directory-breadcrumbs';
 
 export interface DirectoryEntry {
     id: string; name: string; type: string; created?: string | number; modified?: string | number;
@@ -11,6 +12,8 @@ export interface DirectoryEntry {
 }
 export interface DirectoryListOptions {
     title: string; path: string; entries: DirectoryEntry[];
+    breadcrumbs?: DirectoryBreadcrumb[];
+    openDirectory?(id: string): void;
     initialSort?: {key: 'name' | 'size' | 'modified' | 'type'; ascending: boolean};
     open(id: string): void; parent?: () => void; refresh?: () => Promise<DirectoryEntry[]>;
     actions?: { label: string; run(): void; disabled?: boolean; icon?: string; iconOnly?: boolean }[];
@@ -44,7 +47,9 @@ export function createDirectoryList(options: DirectoryListOptions): HTMLElement 
     const panel = document.createElement('section'); panel.className = 'workbench-directory';
     const heading = document.createElement('h2'); heading.textContent = options.title;
     const header = document.createElement('div'); header.className = 'workbench-directory__heading'; header.append(heading);
-    const path = document.createElement('p'); path.className = 'workbench-directory__path'; path.textContent = options.path;
+    const path = options.breadcrumbs ? createDirectoryBreadcrumbs(options.breadcrumbs, options.openDirectory ?? options.open)
+        : document.createElement('p');
+    if (!options.breadcrumbs) { path.className = 'workbench-directory__path'; path.textContent = options.path; }
     const toolbar = document.createElement('div'); toolbar.className = 'workbench-directory__toolbar';
     if (options.parent) toolbar.append(action(t('workbench.parent'), options.parent, FILE_BROWSER_ICONS.up, true));
     const fail = (error: unknown) => { const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.textContent = error instanceof Error ? error.message : String(error); panel.append(notice); };

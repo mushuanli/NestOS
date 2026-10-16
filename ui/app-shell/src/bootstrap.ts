@@ -1,6 +1,7 @@
 import { withInitialDirectory } from './browser/initial-directory';
 import { scheduleNavigationWarmup } from './navigation/navigation-warmup';
 import { cleanupGroup, type Cleanup } from './lifecycle/cleanup-group';
+import { lazyResource } from './lifecycle/lazy-resource';
 import { installStartPage, START_PAGE_ID, START_PAGE_SLUG } from './navigation/start-page';
 import { workspaceStatus } from './navigation/workspace-status';
 import { createSettingsAccess } from './configuration/settings-access';
@@ -31,7 +32,6 @@ import { MenuItem } from '@itookit/ui-common';
 import { EditorFactory } from '@itookit/ui-common';
 import { Workbench } from './core/Workbench';
 import { setupMobileWorkspaceView } from './navigation/mobile-workspace-view';
-import { SkillsEngine } from '@itookit/app-settings';
 
 import { AppOptions, AppHandle, WorkspaceConfig } from './types';
 import { lazyMdxEditorFactory as defaultEditorFactory } from './browser/lazy-mdx';
@@ -111,11 +111,10 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         });
     const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS });
 
-    // Skills workspace: VFSUIShell list (SkillsEngine) + form editor (SkillSettingsEditor)
-    let skillsEngine: SkillsEngine | undefined;
-    const skillsFiles = () => skillsEngine ??= new SkillsEngine(agentService);
+    // The backend owns the skill filesystem and its service subscriptions.
+    const skillsFiles = lazyResource(() => backend.skillsFiles(), () => {});
+    cleanupFns.push(() => skillsFiles.close());
     const skillsFactory = options.ui.createSkillEditor(agentService);
-    cleanupFns.push(() => skillsEngine?.dispose());
 
     // Workflows workspace: standalone design surface over the flows VFS module.
     const flowsFactory = options.ui.createFlowEditor({
@@ -146,7 +145,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const cached = workspaceFiles.get(workspace.elementId);
         if (cached) return cached;
         const fs = workspace.files?.fs ?? (workspace.type === 'settings' ? settings.files()
-            : workspace.type === 'skills' ? skillsFiles()
+            : workspace.type === 'skills' ? await skillsFiles.get()
             : workspace.type === 'flows' ? flowEngine.engine
             : workspace.type === 'twin' ? await vfs.openFileSystem('/home/admin')
             : workspace.type === 'toolbox' ? await vfs.openFileSystem(workspaceRoot('agents'))
@@ -189,14 +188,16 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         return tokens.every(t => corpus.includes(t));
     };
 
+    const fileRegistry = { ...FILE_REGISTRY, ...Object.fromEntries((options.fileTypes ?? []).map(type => [type.id, type])) };
     const getFileTypeDef = (typeId: string): FileTypeDefinition | null => {
-        const def = FILE_REGISTRY[typeId];
+        const def = fileRegistry[typeId];
         if (!def) { console.warn(`[app-shell] Unknown file type: ${typeId}`); return null; }
         const factory = def.editorType !== 'standard' ? editorFactoryMap[def.editorType] : undefined;
         const parser  = def.id === 'agent' ? agentFileParser
                       : undefined;
         return {
-            extensions:           [def.extension],
+            extensions:           [def.extension.toLowerCase()],
+            contentFormat:        def.contentFormat,
             icon:                 def.icon,
             editorFactory:        factory,
             contentParser:        parser,
@@ -263,7 +264,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 uiDocs.read(TOOLBOX_PREFERENCES_DOC), uiState.port(TOOLBOX_SCOPE),
             ]);
             const module = await createToolboxModule({ services, backend, ocr, ui: options.ui, sidebar: sidebarEl, editor: editorEl,
-                skills: skillsFiles(), factories: { agents: agentFactory, skills: skillsFactory, flows: flowsFactory },
+                factories: { agents: agentFactory, skills: skillsFactory, flows: flowsFactory },
                 uiPersistence,
                 uiPreferences: { load: () => storedPreferences, save: value => uiDocs.write(TOOLBOX_PREFERENCES_DOC, value) },
                 navigate: handleNavigationRequest, selected: path => selectionHistory(elementId, path, 'replace') });
@@ -311,7 +312,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             .filter((x): x is FileTypeDefinition => !!x);
 
         const primaryType = supportedFileTypes?.[0];
-        const primaryDef = primaryType ? FILE_REGISTRY[primaryType] : undefined;
+        const primaryDef = primaryType ? fileRegistry[primaryType] : undefined;
 
         const flowContextMenu = options.ui.createFlowContextMenu<VFSNodeUI>({
             commands: commandBus,
@@ -331,7 +332,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 items: (_item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]) => {
                     if (uiPassThrough.readOnly) return [];
                     if (strategyType === 'flows') return flowContextMenu.items?.(_item, defaults) ?? defaults;
-                    if (services.digitalTwin && ['emails', 'minds', 'anki', 'home', 'projects'].includes(wsConfig.workspaceName)) return [...defaults,
+                    if (services.digitalTwin && ['emails', 'minds', 'home', 'projects'].includes(wsConfig.workspaceName)) return [...defaults,
                         ...twinSourceMenu(services.digitalTwin, async () => ({ kind: 'file', target: workspaceRoot(wsConfig.workspaceName) + '/' + _item.id.replace(/^\//, ''),
                             directory: _item.type === 'directory', label: _item.metadata.title || _item.id }),
                             async () => { await handleNavigationRequest({ target: 'twin', resourceId: '/sources' }); }, twinMenuLifetime.signal)];

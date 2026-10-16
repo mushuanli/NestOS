@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, SessionFilesService, ProjectService, folderBrowserPath } from '@itookit/app-core';
-import { directoryPathLabel } from '../src/projects/directory-label';
+import { directoryBreadcrumbs } from '../src/projects/directory-label';
 
 /**
  * The project Files view shows the built-in create controls. Activating a row drops the
@@ -40,7 +40,7 @@ it('creates a project file beside the activated file, not at the Files root', as
         const panel = main.querySelector('.workbench-tabs__panel:not([hidden])')!;
         expect(panel.textContent).toContain('deep.md');
         expect(panel.querySelector('h2')?.textContent).toBe('sub');
-        expect(panel.querySelector('.workbench-directory__path')?.textContent).toBe('原项目文档 / 文件 / sub');
+        expect(panel.querySelector('.workbench-directory__path')?.textContent).toBe('所有项目 / 原项目文档 / 文件 / sub');
         expect([...panel.querySelectorAll<HTMLButtonElement>('.workbench-directory__toolbar button')].map(button => button.title)).toEqual(['上一级', '刷新列表', '新建文件', '新建目录']);
         expect(panel.querySelector('.workbench-directory__heading button')).toBeNull();
         const previousShow = HTMLDialogElement.prototype.showModal, previousClose = HTMLDialogElement.prototype.close;
@@ -60,6 +60,23 @@ it('creates a project file beside the activated file, not at the Files root', as
         const readonlyOwner = await projects.openFiles(project.path);
         await readonlyOwner.fs.driver.createDirectory({ parentPath: '/', name: 'readonly' });
         await readonlyOwner.fs.driver.updateMetadata('/readonly', { _readOnly: true }); await readonlyOwner.dispose();
+        const pathToSub = projectPath + '/@files/sub';
+        await workbench.openResource(pathToSub, { directory: true });
+        const current = () => main.querySelector('.workbench-tabs__panel:not([hidden])')!;
+        const ui = (workbench as unknown as { sidebarUI: import('@itookit/vfs-ui').VFSUIShell }).sidebarUI;
+        current().querySelector<HTMLButtonElement>('.workbench-directory__path [data-directory-path="' + projectPath + '/@files"]')!.click();
+        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(projectPath + '/@files'));
+        await (workbench as unknown as {fileNavigation: Promise<void>}).fileNavigation;
+        await vi.waitFor(() => expect(ui.getSnapshot().activeId).toBe(projectPath + '/@files'));
+        expect(current().querySelector('[aria-current="page"]')?.textContent).toBe('文件');
+        current().querySelector<HTMLButtonElement>('.workbench-directory__path [data-directory-path="' + projectPath + '"]')!.click();
+        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(projectPath));
+        await vi.waitFor(() => expect(ui.getSnapshot().activeId).toBe(projectPath));
+        current().querySelector<HTMLButtonElement>('.workbench-directory__path [data-directory-path="/"]')!.click();
+        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('/'));
+        await vi.waitFor(() => expect(sidebar.querySelector<HTMLSelectElement>('.workbench-project-navigation select')?.value).toBe('/'));
+        await vi.waitFor(() => expect(ui.getSnapshot().activeId).toBeNull());
+        expect(ui.getSnapshot().selectedIds).toEqual([]);
         await workbench.openResource(projectPath + '/@files/readonly');
         const readonlyPanel = main.querySelector('.workbench-tabs__panel:not([hidden])')!;
         expect(readonlyPanel.querySelector('[aria-label="新建文件"]')).toBeNull();
@@ -76,6 +93,24 @@ it('creates a project file beside the activated file, not at the Files root', as
 
 it('presents an encoded project route as names while retaining the actual directory identifier', () => {
     const id = '7ebbd424-717f-4f68-9e9c-b465a78586cc';
-    expect(directoryPathLabel('/folder:%E5%8E%9F%E9%A1%B9%E7%9B%AE%E6%96%87%E6%A1%A3/@files/' + id)).toBe('原项目文档 / 文件 / ' + id);
-    expect(directoryPathLabel('/folder:%E4%B8%AA%E4%BA%BA%E9%A1%B9%E7%9B%AE')).toBe('个人项目');
+    const path = '/folder:%E5%8E%9F%E9%A1%B9%E7%9B%AE%E6%96%87%E6%A1%A3/@files/' + id;
+    const breadcrumbs = directoryBreadcrumbs(path);
+    expect(breadcrumbs.map(item => item.label).join(' / ')).toBe('所有项目 / 原项目文档 / 文件 / ' + id);
+    expect(breadcrumbs.at(-1)?.id).toBe(path);
+    expect(directoryBreadcrumbs('/folder:%E4%B8%AA%E4%BA%BA%E9%A1%B9%E7%9B%AE').at(-1)?.label).toBe('个人项目');
+});
+
+it('preserves literal file names and native profile identities in breadcrumb destinations', () => {
+    const project = folderBrowserPath('/项目 %');
+    const file = project + '/@files/100% notes/%2F';
+    expect(directoryBreadcrumbs(file)).toEqual([
+        {id: '/', label: '所有项目'}, {id: project, label: '项目 %'},
+        {id: project + '/@files', label: '文件'}, {id: project + '/@files/100% notes', label: '100% notes'},
+        {id: file, label: '%2F'},
+    ]);
+    const profile = project + '/@harness/' + encodeURIComponent('dsh main');
+    expect(directoryBreadcrumbs(profile + '/@archived/@page:older%2Fcursor').slice(-3)).toEqual([
+        {id: profile, label: 'dsh main'}, {id: profile + '/@archived', label: '归档会话'},
+        {id: profile + '/@archived/@page:older%2Fcursor', label: '加载更多'},
+    ]);
 });

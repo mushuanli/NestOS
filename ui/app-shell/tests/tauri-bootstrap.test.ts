@@ -32,7 +32,6 @@ import type { IVFSManager } from '@itookit/vfs-core';
 const MODULE_CONFIGS = [
     { name: 'chats',    syncEnabled: true,  isSystem: false },
     { name: 'agents',  syncEnabled: true,  isSystem: true  },
-    { name: 'anki',            syncEnabled: true,  isSystem: false },
     { name: 'prompts',         syncEnabled: true,  isSystem: false },
     { name: 'projects',        syncEnabled: true,  isSystem: false },
     { name: 'emails',          syncEnabled: true,  isSystem: false },

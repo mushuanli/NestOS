@@ -243,6 +243,12 @@
 .workbench-directory { padding: 20px; overflow: auto; }
 .workbench-directory h2 { margin-bottom: 8px; }
 .workbench-directory__path { overflow-wrap: anywhere; color: var(--text-secondary, #64748b); font-size: 12px; margin-bottom: 12px; }
+.workbench-directory__path ol { display: flex; flex-wrap: wrap; align-items: baseline; list-style: none; padding: 0; margin: 0; }
+.workbench-directory__path li { display: inline-flex; align-items: baseline; white-space: pre-wrap; min-width: 0; }
+.workbench-directory .workbench-directory__path button { display: inline; padding: 2px 0; color: var(--primary-color, #6366f1); border-radius: 3px; }
+.workbench-directory__path button:hover { text-decoration: underline; }
+.workbench-directory__path button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: 2px; }
+.workbench-directory__path [aria-current="page"] { font-weight: 500; }
 .workbench-directory__toolbar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
 .workbench-directory__toolbar input { flex: 1; min-width: 160px; padding: 8px; border: 1px solid var(--mm-border-color, #e5e7eb); background: transparent; color: inherit; border-radius: 6px; }
 .workbench-directory button { padding: 7px; border: 0; background: transparent; color: inherit; cursor: pointer; font: inherit; text-align: left; }

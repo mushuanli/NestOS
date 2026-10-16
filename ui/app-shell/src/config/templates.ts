@@ -1,13 +1,3 @@
-export const TPL_ANKI = `### 挖空填词 (Cloze)
-
-这是通过 \`cloze\` 插件启用的功能。在预览模式下，点击挖空部分即可显示/隐藏答案。
-**控制面板**: 请留意屏幕右下角的浮动控制面板，支持 **切换摘要/详细视图**。
-
-- **基本用法**: --太阳-- 是太阳系的中心。
-- **带 ID**: [c1]--地球-- 是我们居住的行星。
-- **带音频**: 法语单词 "你好" 的发音是 --Bonjour--^^audio:Bonjour^^。
-`;
-
 export const TPL_MIND = `# Welcome to Minds!
 
 This is your personal space to create, manage, and reuse powerful prompts for Large Language Models (LLMs).

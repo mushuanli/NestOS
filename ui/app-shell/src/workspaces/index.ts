@@ -69,20 +69,6 @@ export const WS_MINDS: WorkspaceConfig = {
     aiEnabled: true,
 };
 
-export const WS_ANKI: WorkspaceConfig = {
-    elementId: 'anki-workspace',
-    workspaceName: 'anki',
-    slug: 'anki',
-    type: 'standard',
-    title: 'Anki Memory Cards',
-    supportedFileTypes: ['anki', 'markdown'],
-    syncEnabled: true,
-    plugins: ['cloze:cloze', 'cloze:cloze-controls', 'cloze:memory', 'autocomplete:mention', 'autocomplete:tag'],
-    mentionScope: ['*'],
-    mentionAble: true,
-    aiEnabled: true,
-};
-
 export const WS_PROJECTS: WorkspaceConfig = {
     elementId: 'project-workspace',
     workspaceName: 'projects',

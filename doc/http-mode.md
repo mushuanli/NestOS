@@ -45,6 +45,8 @@ pnpm cli conversation reconcile <project-id> <profile-id> <native-session-id>
 
 这可以分离界面问题与后端问题：若 CLI 同样返回 `HARNESS_SESSION_BUSY`，应处理原生线程的 active writer；若同一端口发送成功而 UI 无回显，再检查界面订阅和投影。复查当前运行 httpd 的挂载、授权和占用状态应使用 `--connect`，本地模式用于隔离验证同一实现。
 
+pi-agent 0.1.3 起支持同一远程项目的多个原生 session 并发执行；同一 session 仍只允许一个活动 turn。提交与收据按 session/requestId 隔离，一个会话等待审批不阻塞其他会话。活动执行共享文件保护，最后一个执行结束前，文件 API、project_exec 与挂载变更仍返回忙；独立修改代码时显式使用 worktree。此能力需要升级实际运行的 pi-agent，仅更新 CLI 或 httpd 不会解除旧服务的项目串行限制。
+
 ## CLI 启动 HTTPS 服务
 
 ```bash

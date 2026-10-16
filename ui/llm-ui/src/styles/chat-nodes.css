@@ -843,3 +843,7 @@
     overflow-wrap: anywhere;
     min-width: 0;
 }
+
+.llm-ui-submission-status { margin: .4rem 0 0; font-size: .8rem; color: var(--llm-text-secondary); }
+.llm-ui-submission-status[data-state="failed"] { color: var(--llm-error-color, #dc2626); }
+.llm-ui-workspace__history:has(.llm-ui-submission-status) .llm-ui-welcome { display: none; }

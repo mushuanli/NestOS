@@ -93,3 +93,7 @@ Slash 命令描述在 slash-command-catalog.ts，弹出交互在 SlashCommandPlu
 公开 EditorTaskControlPlane 位于 durable-kernel/src/ports/task-control.ts，Kernel 和远程客户端均可按结构实现，不要求继承 Kernel。工厂依赖类型要求 sessionManager/resolveSessionView 至少一个。task-attachment-lifecycle 负责共享挂接身份与异步恢复；editor-disposal 顺序尝试全部资源清理并汇总失败，destroy 返回同一 Promise。加载后的配置记录已保存快照，未修改时刷新/销毁不覆盖外部更新。
 
 Session 编辑器可消费泛型 EditorOptions.initialData 的已激活读模型，不重复 Bind。activate 恢复缓存标签的会话绑定；destroy 只在仍持有当前绑定时 Unbind，避免关闭后台标签影响前台。
+
+聊天提交反馈共用 `HistoryView` 的 `SubmissionFeedback`，本地 `SendMessageCommand` 与远程编辑器只提供状态和显式消息身份。临时用户卡片不写入持久历史；本地沿用 `SendIntent.submission.id` 对齐 round，远程使用已确认的 `submittedTurnId` 对齐原生 turn。不按文字相等去重，不把提交中显示为运行中，失败保留输入。直接命令仍无聊天轮次。历史顶部控件使用 `HistoryViewOptions.header`，位于滚动区内、消息 renderer 之外，分页保留已有 MDx 实例。远程分支删除由宿主调用既有管理服务，后端保护当前分支及其祖先；当前分支不显示删除按钮。
+
+历史卡片销毁由 `MDxController` 等待在途初始化及 MDx 的异步销毁，`SessionRenderer` 汇总回收 Promise，`HistoryView.destroy` 返回可等待的结果。临时卡片被原生回显替换后，关闭编辑器仍会等待其完整释放。

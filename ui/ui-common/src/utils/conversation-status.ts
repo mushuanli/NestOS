@@ -11,8 +11,8 @@ function recentActivity(observation: Observation, now: number) {
         refreshAt: recent ? updatedAt + 120_001 : undefined};
 }
 
-export function conversationStatus(observation: Observation, now = Date.now()) {
-    const activity = recentActivity(observation, now);
+export function conversationStatus(observation: Observation, now = Date.now(), options: {inferActivity?: boolean} = {}) {
+    const activity = options.inferActivity === false ? undefined : recentActivity(observation, now);
     const key = observation.connection === 'offline' ? 'offline' : observation.nativeError ? 'error'
         : activity ? 'unknown' : observation.stale ? 'stale' : observation.execution;
     const label = activity?.label ?? t(key === 'unknown' && observation.rawStatus === 'notLoaded' ? 'harness.state.unloaded' : `harness.state.${key}`);

@@ -13,6 +13,8 @@ import { ErrorTemplates } from './templates/ErrorTemplates';
 import { getPreviewText } from '../utils/textUtils';
 
 import { SessionRenderer, RendererContext } from './history/SessionRenderer';
+import { SubmissionFeedback } from './history/SubmissionFeedback';
+import type { ChatSubmission } from '../domain/submission';
 import { StreamController } from './history/StreamController';
 import { CollapseController } from './history/CollapseController';
 import { EditController } from './history/EditController';
@@ -22,6 +24,8 @@ import type { MDxPlugin } from '@itookit/mdxeditor';
 import type { MDxControllerOptions } from './mdx/MDxController';
 
 export interface HistoryViewOptions {
+    /** Optional host-owned controls inside the history scroll pane. */
+    header?: HTMLElement;
     readOnly?: boolean;
     markdownPlugins?: MDxPlugin[];
     codeBlockControls?: MDxControllerOptions['codeBlockControls'];
@@ -50,6 +54,7 @@ export class HistoryView implements IHistoryPresenter {
 
     // 子控制器
     private renderer: SessionRenderer;
+    private submission: SubmissionFeedback;
     private stream: StreamController;
     private collapse: CollapseController;
     private edit: EditController;
@@ -83,7 +88,10 @@ export class HistoryView implements IHistoryPresenter {
             collapsedState: (id, fallback) => this.collapse?.getStates()[id] ?? fallback,
         };
 
-        this.renderer = new SessionRenderer(container, ctx, options.onContentChange);
+        const messages = document.createElement('div'), pending = document.createElement('div');
+        container.replaceChildren(...(options.header ? [options.header] : []), messages, pending);
+        this.renderer = new SessionRenderer(messages, ctx, options.onContentChange);
+        this.submission = new SubmissionFeedback(pending, ctx);
 
         this.scrollController = new ScrollController(container, {
             onUserScrolledUp: () => {
@@ -166,6 +174,7 @@ export class HistoryView implements IHistoryPresenter {
 
     renderFull(sessions: SessionGroup[], options?: { position?: 'top' | 'bottom' }): void {
         this.clear();
+        this.submission.clear();
         if (sessions.length === 0) {
             this.renderer.renderWelcome();
             return;
@@ -173,6 +182,7 @@ export class HistoryView implements IHistoryPresenter {
 
         const totalCount = sessions.length;
         sessions.forEach((session, index) => {
+            this.submission.observe(session.id);
             const shouldCollapse = this.collapse.computeInitialState(
                 session.id, session.role, index, totalCount
             );
@@ -196,7 +206,10 @@ export class HistoryView implements IHistoryPresenter {
     /** Reconcile flat native history snapshots without recreating existing editors. */
     async renderSnapshot(sessions: SessionGroup[]): Promise<void> {
         await this.renderer.reconcileSessions(sessions);
+        for (const session of sessions) this.submission.observe(session.id);
     }
+
+    setSubmission(submission?: ChatSubmission): void { this.submission.show(submission); }
 
     renderError(error: Error): void {
         this.onHistoryActivity?.('error', error);
@@ -426,6 +439,7 @@ export class HistoryView implements IHistoryPresenter {
                     console.warn('[HistoryView] message:appended missing sessionGroup', event.payload);
                     break;
                 }
+                this.submission.observe(sessionGroup.id);
                 if (isExecutionRoot) {
                     // Step 1: create the session bubble (avatar + execution-root container)
                     this.renderer.appendSession(sessionGroup, false);
@@ -559,6 +573,8 @@ export class HistoryView implements IHistoryPresenter {
     // ================================================================
 
     private clear(): void {
+        this.clearErrors();
+        this.hideNewContentIndicator();
         this.stream.destroy();
         this.edit.destroy();
         this.ttyCtrl.destroyAll();
@@ -566,7 +582,7 @@ export class HistoryView implements IHistoryPresenter {
         this.stream = new StreamController(this.container, this.renderer, this.scrollController);
     }
 
-    destroy(): void {
+    async destroy(): Promise<void> {
         this.timers.destroy();
         this.eventProcessor.destroy();
         this.scrollController.destroy();
@@ -576,8 +592,9 @@ export class HistoryView implements IHistoryPresenter {
         this.collapse.destroy();
         this.edit.destroy();
         this.ttyCtrl.destroyAll();
-        this.renderer.destroy();
+        const disposals = [this.renderer.destroy(), this.submission.destroy()];
         this.hideNewContentIndicator();
         this.container.innerHTML = '';
+        await Promise.all(disposals);
     }
 }

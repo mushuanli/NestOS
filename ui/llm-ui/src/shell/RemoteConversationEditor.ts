@@ -5,6 +5,7 @@ import { ConversationWorkspaceView } from './ConversationWorkspaceView';
 import { RemoteBranches } from './remote-branches';
 import { remoteRounds } from './remote-rounds';
 import { prepareRemoteAttachments } from './remote-attachments';
+import type { ChatSubmission } from '../domain/submission';
 
 /** Native histories remain remote; this editor only owns a view and input draft. */
 export class RemoteConversationEditor extends BaseSettingsEditor<ConversationControls> {
@@ -25,6 +26,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private draftFiles: File[] = [];
     private savedFiles: File[] = [];
     private submittedDraft?: {text: string; files: File[]};
+    private submission?: ChatSubmission;
     private readonly events = new Map<EditorEvent, Set<(payload: unknown) => void>>();
     private interactionKey = '';
     constructor(container: HTMLElement, controls: ConversationControls, options: EditorOptions) { super(container, controls, options); }
@@ -50,7 +52,12 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             attachments: this.options.readOnly ? undefined : this.service.snapshot?.().attachments,
             stop: () => { void this.run(() => this.service.interrupt()).catch(() => {}); },
             refresh: () => { void this.run(() => this.service.read()).catch(() => {}); },
-            reconcile: () => { void this.run(() => this.service.reconcile()).catch(() => {}); },
+            reconcile: () => { void this.run(async () => {
+                const snapshot = await this.service.reconcile();
+                if (this.submission?.state === 'unknown' && !snapshot.pending && !snapshot.submittedTurnId)
+                    this.submission = {...this.submission, state: 'failed', error: t('chat.submission.unconfirmed')};
+                return snapshot;
+            }).catch(() => {}); },
             earlier: () => { this.historyError = ''; void this.loadHistory(); },
             changed: files => { this.draftFiles = files ?? []; this.emit('interactiveChange', undefined); }, copy: () => this.getText(),
             rename: title => {
@@ -68,7 +75,10 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         }
         this.snapshot = snapshot;
         this.restoreDraft(snapshot);
-        await this.view.history.show(snapshot.messages);
+        if (this.submission?.state === 'unknown' && !snapshot.pending && snapshot.submittedTurnId) {
+            this.submission = {...this.submission, state: 'accepted', messageId: this.submittedMessageId(snapshot.submittedTurnId), error: undefined};
+        }
+        await this.view.history.show(snapshot.messages, this.submission);
         if (this.closed) return;
         if (snapshot.sessionId && !snapshot.pending && snapshot.sessionId !== this.announced) {
             this.announced = snapshot.sessionId; this.options.onConversationSession?.(snapshot.sessionId);
@@ -82,8 +92,11 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.view.setSessionTimes(snapshot.createdAt, snapshot.updatedAt);
         const status = conversationStatus(snapshot.observation ?? {execution: snapshot.requests.some(r => r.kind === 'approval') ? 'waiting-approval'
             : snapshot.requests.some(r => r.kind === 'input') ? 'waiting-input' : snapshot.active || snapshot.canInterrupt ? 'running' : 'unknown',
-            updatedAt: snapshot.updatedAt, connection: snapshot.disconnected ? 'offline' : 'online', stale: snapshot.gap, receiptUnknown: snapshot.pending, source: 'history', observedAt: 0});
-        this.view.setStatus(status.text, status.indicator);
+            updatedAt: snapshot.updatedAt, connection: snapshot.disconnected ? 'offline' : 'online', stale: snapshot.gap, receiptUnknown: snapshot.pending, source: 'history', observedAt: 0}, Date.now(), {inferActivity: false});
+        const submission = this.submission;
+        this.view.setStatus(submission && submission.state !== 'accepted'
+            ? [t(`chat.submission.${submission.state}`), submission.error].filter(Boolean).join(' ') : status.text,
+            submission?.state === 'failed' ? 'failed' : submission && submission.state !== 'accepted' ? 'queued' : status.indicator);
         this.updateControls();
     }
     private restoreDraft(snapshot: ConversationSnapshot) {
@@ -109,10 +122,10 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.view.setHistoryProgress(this.snapshot?.messages.length ?? 0, !!this.snapshot?.hasEarlier, this.loadingHistory, this.historyError);
         this.view.input.setLoading(!!this.snapshot?.canInterrupt);
         this.view.input.setAvailability({
-            canSend: !this.working && !this.options.readOnly && !!this.snapshot?.canSend,
+            canSend: !this.working && this.submission?.state !== 'unknown' && !this.options.readOnly && !!this.snapshot?.canSend,
             canInterrupt: !this.working && !this.options.readOnly && !!this.snapshot?.canInterrupt,
         });
-        this.view.reconcile.disabled = this.working || !this.snapshot?.pending;
+        this.view.reconcile.disabled = this.working || !this.snapshot?.pending && this.submission?.state !== 'unknown';
         for (const button of this.view.interactions.querySelectorAll('button')) button.disabled = this.working || !!this.options.readOnly || !this.snapshot?.canRespond;
     }
     private async loadHistory(): Promise<void> {
@@ -127,16 +140,35 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     }
     async sendText(text: string, files: File[] = []): Promise<void> {
         if (!text.trim() && !files.length) return;
-        if (this.closed || this.working || this.options.readOnly || !this.snapshot?.canSend) throw new Error(t('harness.remoteBusy'));
+        if (this.closed || this.working || this.submission?.state === 'unknown' || this.options.readOnly || !this.snapshot?.canSend) throw new Error(t('harness.remoteBusy'));
+        this.submission = {id: crypto.randomUUID(), text: text.trim() || t('harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting'};
         await this.run(async () => {
-            const attachments = await prepareRemoteAttachments(files, this.snapshot?.attachments ?? []);
-            this.submittedDraft = {text, files: [...files]};
-            const result = attachments.length ? await this.service.send(text.trim() || t('harness.attachmentPrompt'), attachments) : await this.service.send(text);
-            if (!this.closed) {
-                this.acceptSubmission(text, files); this.submittedDraft = undefined;
+            try {
+                this.view.history.view.setSubmission(this.submission);
+                this.view.history.view.scrollToBottom(true);
+                this.view.setStatus(t('chat.submission.submitting'), 'queued');
+                const attachments = await prepareRemoteAttachments(files, this.snapshot?.attachments ?? []);
+                this.submittedDraft = {text, files: [...files]};
+                const result = attachments.length ? await this.service.send(text.trim() || t('harness.attachmentPrompt'), attachments) : await this.service.send(text);
+                this.submission = {...this.submission!, state: result.pending ? 'unknown' : 'accepted', messageId: this.submittedMessageId(result.submittedTurnId)};
+                if (!this.closed && !result.pending) { this.acceptSubmission(text, files); this.submittedDraft = undefined; }
+                return result;
+            } catch (error) {
+                this.submission = {...this.submission!, state: this.service.snapshot?.().pending || (error as {outcome?: string})?.outcome === 'unknown' ? 'unknown' : 'failed',
+                    error: this.sendError(error)};
+                if (!this.closed) { this.view.history.view.setSubmission(this.submission); this.showError(error); }
+                throw error;
             }
-            return result;
         });
+        if (this.submission?.state === 'unknown') throw new Error(t('chat.submission.unknown'));
+    }
+    private submittedMessageId(turnId?: string): string | undefined {
+        return turnId ? remoteRounds([{id: 'ack', role: 'user', text: '', turnId}])[0]?.id : undefined;
+    }
+    private sendError(error: unknown): string | undefined {
+        const code = (error as {remoteCode?: string})?.remoteCode;
+        return code === 'HARNESS_SESSION_BUSY' || error instanceof Error && error.message.includes('HARNESS_SESSION_BUSY')
+            ? t('chat.submission.occupied') : error instanceof Error ? error.message : undefined;
     }
     private acceptSubmission(text: string, files: File[]) {
         this.view.input.acceptSubmittedDraft(text, files);
@@ -165,6 +197,9 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         }
     }
     private showError(error: unknown) {
+        if (this.submission?.state === 'failed' || this.submission?.state === 'unknown') {
+            this.view.setStatus([t(`chat.submission.${this.submission.state}`), this.submission.error].filter(Boolean).join(' '), this.submission.state === 'failed' ? 'failed' : 'queued'); return;
+        }
         this.view.setStatus(this.snapshot?.pending ? t('harness.unknown') : `${t('harness.failed')} ${error instanceof Error ? error.message : ''}`, this.snapshot?.pending ? 'queued' : 'failed');
     }
     private queueUpdate(): void {
@@ -186,7 +221,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             void this.tail.finally(() => { if (!this.closed) this.schedule(); });
         }, 1000);
     }
-    async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); this.view?.destroy(); this.container.replaceChildren(); }
+    async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); await this.view?.destroy(); this.container.replaceChildren(); }
     getText() { return remoteRounds(this.snapshot?.messages ?? []).map(group => group.content ?? group.executionRoot?.data.output ?? '').join('\n\n'); }
     async navigateTo(target: {elementId: string}): Promise<void> {
         if (!target.elementId.startsWith('native-item:')) return;

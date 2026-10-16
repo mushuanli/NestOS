@@ -16,6 +16,7 @@ import type { IStreamingController } from './IStreamingController';
  * 任何 UI 实现的替换（如 React 版本）只需实现此接口。
  */
 export interface IHistoryPresenter extends ICollapseManager, IStreamingController {
+    setSubmission?(submission?: import('../submission').ChatSubmission): void;
     // === 渲染 ===
     renderFull(sessions: SessionGroup[], options?: { position?: 'top' | 'bottom' }): void;
     renderWelcome(): void;
@@ -37,5 +38,5 @@ export interface IHistoryPresenter extends ICollapseManager, IStreamingControlle
     processEvent(event: SessionEventEnvelope): void;
 
     // === 生命周期 ===
-    destroy(): void;
+    destroy(): void | Promise<void>;
 }

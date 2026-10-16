@@ -43,5 +43,5 @@ export interface IStreamableEditor {
     /**
      * 销毁
      */
-    destroy(): void;
+    destroy(): void | Promise<void>;
 }

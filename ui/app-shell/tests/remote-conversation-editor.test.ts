@@ -195,7 +195,7 @@ it('keeps the shared input locked against repeated sends after an unknown native
     const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
     const send = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
     input.value = 'keep native input'; input.dispatchEvent(new Event('input')); send.click();
-    await vi.waitFor(() => expect(host.querySelector('[role="status"]')?.textContent).toContain(t('harness.unknown')));
+    await vi.waitFor(() => expect(host.querySelector('[role="status"]')?.textContent).toContain(t('chat.submission.unknown')));
     expect(send.disabled).toBe(true); expect(input.value).toBe('keep native input');
     send.click(); input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
     expect(peer.send).toHaveBeenCalledOnce(); await editor.destroy();
@@ -283,7 +283,7 @@ it('uses local receipt observations when native history cannot be read after an 
     vi.mocked(peer.read).mockRejectedValue(new Error('Network unavailable'));
     await expect(editor.sendText('uncertain')).rejects.toBeDefined();
     expect(host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
-    expect(host.querySelector('[role="status"]')?.textContent).toContain(t('harness.unknown'));
+    expect(host.querySelector('[role="status"]')?.textContent).toContain(t('chat.submission.unknown'));
     expect([...host.querySelectorAll('button')].find(button => button.textContent === t('harness.reconcile'))!.disabled).toBe(false);
     expect(host.querySelector('.llm-workspace-status__dot')?.classList.contains('--queued')).toBe(true);
     await expect(editor.sendText('uncertain')).rejects.toThrow(); expect(peer.send).toHaveBeenCalledOnce(); await editor.destroy();
@@ -394,4 +394,64 @@ it('restores attachment drafts and preserves newer edits when an unknown turn is
     await vi.waitFor(() => expect(host.textContent).not.toContain('notes.md'));
     expect(input.value).toBe('Newer edit'); await editor.destroy(); expect(peer.saveDraft).toHaveBeenCalledWith('Newer edit');
     expect(peer.send).not.toHaveBeenCalled();
+});
+
+it('shows the shared user bubble while submission is pending and replaces it by the exact native turn', async () => {
+    const {editor, peer, host} = setup(); let accept!: (value: ConversationSnapshot) => void;
+    vi.mocked(peer.send).mockImplementation(() => new Promise(resolve => { accept = resolve; }));
+    await editor.init(host);
+    const sending = editor.sendText('immediate feedback');
+    await vi.waitFor(() => expect(peer.send).toHaveBeenCalledOnce());
+    const provisional = host.querySelector('.llm-ui-session--user')!;
+    expect(provisional.textContent).toContain('immediate feedback');
+    expect(provisional.querySelector('.llm-ui-bubble .llm-ui-submission-status')?.textContent).toBe(t('chat.submission.submitting'));
+    accept({...state, submittedTurnId: 'confirmed', messages: [...state.messages,
+        {id: 'native-user', turnId: 'confirmed', role: 'user', text: 'immediate feedback'}]});
+    await sending;
+    expect(host.querySelectorAll('.llm-ui-session--user')).toHaveLength(1);
+    expect(host.querySelector('.llm-ui-submission-status')).toBeNull();
+    await editor.destroy();
+});
+
+it('keeps the paging entry inside the history pane and suppresses inferred activity in the conversation', async () => {
+    const {editor, peer, host} = setup();
+    vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true, observation: {execution: 'unknown', updatedAt: Date.now(),
+        source: 'history', observedAt: Date.now(), connection: 'online', stale: false, receiptUnknown: false}});
+    peer.loadEarlier = vi.fn(async () => ({...state, hasEarlier: false}));
+    await editor.init(host);
+    const history = host.querySelector('#llm-ui-history')!;
+    expect(history.firstElementChild?.classList.contains('remote-conversation__history-progress')).toBe(true);
+    expect(host.querySelector('.llm-ui-workspace__workbench')?.children).toHaveLength(1);
+    expect(peer.loadEarlier).not.toHaveBeenCalled();
+    expect(host.textContent).not.toContain(t('harness.activity.recent'));
+    host.querySelector<HTMLButtonElement>('.remote-conversation__earlier')!.click();
+    await vi.waitFor(() => expect(peer.loadEarlier).toHaveBeenCalledOnce());
+    await editor.destroy();
+});
+
+it('keeps an occupied-session failure visible across refreshes without submitting another message', async () => {
+    const {editor, peer, host} = setup();
+    vi.mocked(peer.send).mockRejectedValue(Object.assign(new Error('HARNESS_SESSION_BUSY'), {remoteCode: 'HARNESS_SESSION_BUSY', outcome: 'not-committed'}));
+    await editor.init(host);
+    await expect(editor.sendText('retained')).rejects.toThrow('HARNESS_SESSION_BUSY');
+    expect(host.querySelector('.llm-ui-bubble .llm-ui-submission-status')?.textContent).toContain(t('chat.submission.occupied'));
+    host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
+    await vi.waitFor(() => expect(peer.read).toHaveBeenCalledTimes(3));
+    expect(host.querySelector('.llm-ui-submission-status')?.textContent).toContain(t('chat.submission.occupied'));
+    expect(peer.send).toHaveBeenCalledOnce(); await editor.destroy();
+});
+
+it('deletes a non-current native branch through the host without navigating to it', async () => {
+    const remove = vi.fn(async () => {}), navigate = vi.fn();
+    const {editor, peer, host} = setup({removeConversationSession: remove, onConversationSession: navigate});
+    peer.branches = vi.fn(async () => [{id: 's', title: 'Current'}, {id: 'other', title: 'Other'}]);
+    await editor.init(host); navigate.mockClear();
+    host.querySelector<HTMLButtonElement>('.llm-branch-indicator-btn')!.click();
+    await vi.waitFor(() => expect(host.querySelectorAll('.llm-branch-dropdown__item')).toHaveLength(2));
+    expect(host.querySelector('.is-current .llm-branch-dropdown__delete')).toBeNull();
+    host.querySelector<HTMLButtonElement>('[data-branch-name="other"] .llm-branch-dropdown__delete')!.click();
+    await vi.waitFor(() => expect(document.querySelector('.settings-modal-confirm')).not.toBeNull());
+    (document.querySelector('.settings-modal-confirm') as HTMLButtonElement).click();
+    await vi.waitFor(() => expect(remove).toHaveBeenCalledExactlyOnceWith('other'));
+    expect(navigate).not.toHaveBeenCalled(); await editor.destroy();
 });

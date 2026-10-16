@@ -378,7 +378,10 @@ export type NativeSessionCommand = {
     kind: 'rename';
     name: string;
 } | {
-    kind: 'archive' | 'unarchive' | 'delete';
+    kind: 'archive' | 'unarchive';
+} | {
+    kind: 'delete';
+    preserveSessionId?: string;
 };
 
 export declare function listRemoteHarnessAgents(remote?: ProjectRemoteMountPort): Promise<RemoteHarnessAgent[]>;

@@ -9,6 +9,8 @@ export interface ConversationMessage {
 export interface ConversationRequest { id: string | number; kind: 'approval' | 'input' | 'unsupported'; detail: string; questions?: Array<{id: string; question: string; options?: Array<{label: string}>}> }
 export interface ConversationAttachment {kind: 'text' | 'image'; name: string; content: string; mimeType?: string}
 export interface ConversationSnapshot {
+    /** Native turn identity acknowledged for the most recent send on this view. */
+    submittedTurnId?: string;
     draftAttachments?: ConversationAttachment[];
     attachments?: Array<'text' | 'image'>;
     archived?: boolean; canRename?: boolean; canArchive?: boolean; canUnarchive?: boolean;

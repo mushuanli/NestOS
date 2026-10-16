@@ -3,7 +3,7 @@ import type { ProjectFavoriteTarget } from '../projects/favorites/contracts';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import type { HarnessConversationSnapshot } from '@itookit/piagent-driver';
 
-export type NativeSessionCommand = {kind: 'rename'; name: string} | {kind: 'archive' | 'unarchive' | 'delete'};
+export type NativeSessionCommand = {kind: 'rename'; name: string} | {kind: 'archive' | 'unarchive'} | {kind: 'delete'; preserveSessionId?: string};
 /** Management uses the same persistent mutation journal as the opened conversation. */
 export async function manageRemoteSession(projects: ProjectService, folder: string, profile: string, session: string, command: NativeSessionCommand, options?: OperationOptions): Promise<HarnessConversationSnapshot> {
     const project = await projects.forFolder(folder);
@@ -15,6 +15,7 @@ export async function manageRemoteSession(projects: ProjectService, folder: stri
     try {
         const snapshot = await controls.read();
         if (snapshot.pending) throw new FSError('EBUSY', 'Reconcile the previous native operation first');
+        if (command.kind === 'delete' && command.preserveSessionId && !snapshot.deletedSessionIds?.length) await assertBranchRemovable(controls, session, command.preserveSessionId);
         const result = command.kind === 'delete' && snapshot.deletedSessionIds?.length ? snapshot : await applyCommand(controls, command);
         if (identity?.connectionId && identity.serverId && identity.serverProjectId) {
             const current = projects.remoteMounts.list(project.project.id).find(item => item.at === '/');
@@ -45,4 +46,20 @@ async function updateFavorites(projects: ProjectService, projectId: string, comm
         if (command.kind === 'delete') await projects.favorites?.deleteNativeSessions(projectId, identity, result.deletedSessionIds);
         else await projects.favorites?.updateNativeSession(projectId, identity, result.title, result.archived);
     } catch { throw new FSError('EIO', 'Native operation committed, but updating the local favorite failed'); }
+}
+
+/** Native removal can cascade; protect the currently viewed branch before committing. */
+async function assertBranchRemovable(controls: import('@itookit/piagent-driver').HarnessConversationPort, target: string, preserve: string): Promise<void> {
+    const branches = await controls.branches();
+    const byId = new Map(branches.map(branch => [branch.id, branch]));
+    let id: string | null | undefined = preserve;
+    const visited = new Set<string>();
+    while (id) {
+        if (id === target) throw new FSError('EBUSY', 'Cannot delete the current native branch or its ancestors');
+        if (visited.has(id)) throw new FSError('EIO', 'Cyclic native branch family');
+        visited.add(id);
+        const branch = byId.get(id);
+        if (!branch) throw new FSError('ECONFLICT', 'Cannot verify the current native branch ancestry');
+        id = branch.parentSessionId;
+    }
 }

@@ -70,3 +70,17 @@ it('cleans deleted native favorites after commitment and can finish local cleanu
     await manageRemoteSession(projects, '/P', 'codex', 's', {kind: 'delete'});
     expect(controls.delete).toHaveBeenCalledOnce(); expect(controls.close).toHaveBeenCalledTimes(2);
 });
+
+
+it('rejects deleting the current native branch or its ancestors before native deletion', async () => {
+    const {projects} = fixture();
+    const controls = {read: vi.fn(async () => ({pending: false})), delete: vi.fn(),
+        branches: vi.fn(async () => [{id: 'main'}, {id: 'child', parentSessionId: 'main'}, {id: 'sibling', parentSessionId: 'main'}]), close: vi.fn(async () => {})};
+    projects.remoteMounts!.projectConversation = vi.fn(async () => controls) as never;
+    for (const target of ['main', 'child']) await expect(manageRemoteSession(projects, '/P', 'codex', target,
+        {kind: 'delete', preserveSessionId: 'child'})).rejects.toMatchObject({code: 'EBUSY'});
+    expect(controls.delete).not.toHaveBeenCalled(); expect(controls.close).toHaveBeenCalledTimes(2);
+    controls.delete.mockResolvedValue({title: 'Removed', deletedSessionIds: ['sibling']});
+    await manageRemoteSession(projects, '/P', 'codex', 'sibling', {kind: 'delete', preserveSessionId: 'child'});
+    expect(controls.delete).toHaveBeenCalledOnce();
+});

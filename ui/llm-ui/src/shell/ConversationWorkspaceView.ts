@@ -39,7 +39,6 @@ export class ConversationWorkspaceView {
         container.classList.add('llm-ui-workspace');
         container.innerHTML = LayoutTemplates.renderWorkspace(options.title ?? t('harness.remoteSessions'));
         const history = container.querySelector<HTMLElement>('#llm-ui-history')!;
-        this.history = new RemoteHistory(history, container);
         this.indicator = new StatusIndicatorView(new DOMCache(container), () => false, () => {});
         const toggle = container.querySelector<HTMLButtonElement>('#llm-btn-history-visibility')!;
         this.panes = new WorkspacePaneController(container, history, toggle, () => {});
@@ -48,12 +47,14 @@ export class ConversationWorkspaceView {
         this.progress.className = 'remote-conversation__history-progress'; this.progress.hidden = true;
         this.progress.append(this.progressText);
         this.earlier = this.button(t('harness.earlierHistory'), actions.earlier, this.progress); this.earlier.hidden = true;
+        this.earlier.className = 'remote-conversation__earlier';
+        this.progress.setAttribute('aria-live', 'polite');
+        this.history = new RemoteHistory(history, container, this.progress);
         this.reconcile = this.button(t('harness.reconcile'), actions.reconcile, toolbar); this.reconcile.disabled = true;
         this.input = this.createInput(options, actions);
         this.input.setAvailability({canSend: false, canInterrupt: false});
         this.interactions.className = 'remote-conversation__interactions';
         this.status.className = 'remote-conversation__status'; this.status.setAttribute('role', 'status');
-        history.before(this.progress);
         const input = container.querySelector('#llm-ui-input')!; input.before(this.interactions, this.status);
     }
     private configureTitle(): void {
@@ -119,11 +120,12 @@ export class ConversationWorkspaceView {
     }
     setHistoryProgress(count: number, hasEarlier: boolean, loading = false, error = ''): void {
         this.progress.hidden = !hasEarlier;
+        this.progress.setAttribute('aria-busy', String(loading));
         this.progressText.textContent = t(loading ? 'harness.loadingEarlier' : 'harness.partialHistory', {count}) + (error ? ` ${error}` : '');
     }
     setStatus(text: string, state = 'failed'): void {
         this.status.textContent = text;
         this.indicator.update(state, text || t('harness.ready'));
     }
-    destroy(): void { this.events.cleanup(); this.indicator.destroy(); this.panes.setHistoryVisibility('visible', {persist: false}); this.input.destroy(); this.history.destroy(); this.container.classList.remove('llm-ui-workspace'); }
+    destroy(): Promise<void> { this.events.cleanup(); this.indicator.destroy(); this.panes.setHistoryVisibility('visible', {persist: false}); this.input.destroy(); this.container.classList.remove('llm-ui-workspace'); return this.history.destroy(); }
 }

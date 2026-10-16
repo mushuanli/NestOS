@@ -124,3 +124,9 @@ SessionRunCoordinator 在取消终态的 `error` 事件中保留 `code: ABORTED`
 控制端经 requestFlowGraphRetry 把 intent 追加到 Session shared；GraphRetryController 在恢复调度前消费。图状态与 appliedGraphRetries 回执写入同一 scheduler checkpoint 后才确认队列。恢复遇到已有回执时只确认，不重复下游失效、代数推进或 token 退款；checkpoint 写入失败保留 pending 意图。完整序列图见 [运行时架构审查](runtime-architecture.md#集中实施调度会话ui-与解码边界)。
 
 UI 挂接恢复通过 EditorTaskControlPlane 获取状态和事件，每次异步返回后核验 Session、attachment revision 与关闭状态。编辑器销毁先阻止新挂接，再尝试保存、detach、解绑和视图释放；任一失败不会跳过后续清理，最终以 AggregateError 交给宿主。
+
+### 聊天提交反馈
+
+本地与远程共用 `HistoryView.setSubmission` → `SubmissionFeedback` 的临时用户卡片，展示提交中、已接受、失败或结果未知。卡片不写入会话历史，不将 HTTP 返回成功等同于模型开始运行。本地通过既有 `SendIntent.submission.id` 对齐 `round-<id>-user`；远程通过 `ConversationSnapshot.submittedTurnId` 对齐原生用户轮次。真实历史到达后仅按身份移除临时卡片，不按正文去重。直接 Tool 命令不创建聊天卡片。未知远程结果保留草稿并通过既有 reconcile 查询回执，不自动重复提交。原生 `HARNESS_SESSION_BUSY` 明确提示其他 Codex 实例持有写入权，不能通过删除锁或自动抢占恢复。
+
+历史分页入口通过 `HistoryViewOptions.header` 放在历史滚动区顶部；点击才读取下一页，保留原卡片实例及阅读锚点。对话正文禁用“近期活跃”的时间推测，侧栏保留原有观察策略。

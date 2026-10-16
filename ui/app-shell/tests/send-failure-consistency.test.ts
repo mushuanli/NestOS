@@ -44,7 +44,7 @@ function harness(options: HarnessOptions = {}) {
         throw new Error(`Unexpected command ${command}`);
     });
     const chatInput = { setLoading: vi.fn(), restoreInput: vi.fn(), scrollToBottom: vi.fn() };
-    const historyView = { scrollToBottom: vi.fn(), renderError: vi.fn(), removeMessages: vi.fn(() => []) };
+    const historyView = { scrollToBottom: vi.fn(), renderError: vi.fn(), removeMessages: vi.fn(() => []), setSubmission: vi.fn() };
     const uploadFiles = vi.fn(async () => { if (options.uploadError) throw options.uploadError; return ['attachment://one']; });
     const ctx = {
         getSessionId: () => 'session-one',
@@ -105,4 +105,19 @@ it('keeps the draft and sends nothing when an attachment upload fails', async ()
         expect(execute).not.toHaveBeenCalledWith(SessionCommand.Send, expect.anything());
         expect(sessions).toEqual(['session-one']);
     } finally { toast.mockRestore(); }
+});
+
+
+it('presents the local user message before attachment upload and correlates the accepted round explicitly', async () => {
+    const {ctx, historyView, uploadFiles, execute} = harness();
+    let finishUpload!: (refs: string[]) => void;
+    uploadFiles.mockImplementation(() => new Promise(resolve => { finishUpload = resolve; }));
+    execute.mockImplementation(async () => 'accepted-task');
+    const sending = new SendMessageCommand(ctx).run({text: 'local prompt', files: [new File(['x'], 'x.txt')]});
+    await vi.waitFor(() => expect(uploadFiles).toHaveBeenCalledOnce());
+    expect(historyView.setSubmission).toHaveBeenLastCalledWith(expect.objectContaining({text: 'local prompt', state: 'submitting'}));
+    expect(execute).not.toHaveBeenCalled();
+    finishUpload(['attachment://one']); await sending;
+    const submitted = execute.mock.calls.find(([command]) => command === SessionCommand.Send)![1].sendIntent.submission;
+    expect(historyView.setSubmission).toHaveBeenLastCalledWith(expect.objectContaining({state: 'accepted', messageId: `round-${submitted.id}-user`}));
 });

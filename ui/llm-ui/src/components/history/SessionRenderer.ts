@@ -33,6 +33,8 @@ export interface RendererContext {
  * 不负责：事件绑定、折叠逻辑、编辑模式、流式更新
  */
 export class SessionRenderer {
+    private readonly disposals = new Set<Promise<void>>();
+    private readonly disposalFailures: unknown[] = [];
     private flowWindows = new Map<string, HTMLElement>();
     private nodeMap = new Map<string, HTMLElement>();
     private editorMap = new Map<string, MDxController>();
@@ -366,7 +368,7 @@ export class SessionRenderer {
 
             const editor = this.editorMap.get(id);
             if (editor) {
-                editor.destroy();
+                this.releaseEditor(editor);
                 this.editorMap.delete(id);
                 this.editorMounts.delete(id);
             }
@@ -434,7 +436,7 @@ export class SessionRenderer {
     // ================================================================
 
     clear(): void {
-        this.editorMap.forEach(editor => editor.destroy());
+        this.editorMap.forEach(editor => this.releaseEditor(editor));
         this.editorMap.clear();
         this.editorMounts.clear();
         this.nodeMap.clear();
@@ -445,8 +447,16 @@ export class SessionRenderer {
         this.container.innerHTML = '';
     }
 
-    destroy(): void {
+    private releaseEditor(editor: MDxController): void {
+        const disposal = Promise.resolve(editor.destroy()).catch(error => { this.disposalFailures.push(error); })
+            .finally(() => this.disposals.delete(disposal));
+        this.disposals.add(disposal);
+    }
+
+    async destroy(): Promise<void> {
         this.timers.destroy();
         this.clear();
+        await Promise.all(this.disposals);
+        if (this.disposalFailures.length) throw new AggregateError(this.disposalFailures, 'History editor disposal failed');
     }
 }

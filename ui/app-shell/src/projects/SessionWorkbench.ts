@@ -763,6 +763,16 @@ export class SessionWorkbench implements WorkspaceController {
                         hostContext: {...this.hostContext, toggleSidebar: () => this.sidebarUI?.toggleSidebar(),
                             navigate: request => this.hostContext?.navigate(request) ?? Promise.resolve()},
                         title: `${serverName} · ${project.name} · ${controls.kind} · ${target.profileId}`,
+                        removeConversationSession: async nativeId => {
+                            if (nativeId === target.nativeSessionId) throw new Error(t('branch.deleteCurrentHint'));
+                            const result = await this.backend.manageRemoteSession(target.folder, target.profileId!, nativeId, {kind: 'delete', preserveSessionId: target.nativeSessionId}, {signal: this.dialogs.signal, timeoutMs: 30_000});
+                            for (const tab of this.tabs.values()) {
+                                const route = resolveBrowserTarget(tab.id);
+                                if (route.kind === 'remote' && route.folder === target.folder && route.profileId === target.profileId
+                                    && route.nativeSessionId && result.deletedSessionIds.includes(route.nativeSessionId)) await this.tabs.close(tab.id, false);
+                            }
+                            await this.sidebarUI?.refresh();
+                        },
                         onConversationSession: nativeId => {
                             if (nativeId === target.nativeSessionId) return;
                             const next = remoteSessionPath(target.folder, target.profileId, nativeId);

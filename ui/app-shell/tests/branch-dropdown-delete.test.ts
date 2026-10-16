@@ -36,8 +36,9 @@ it('deletes exactly once without switching, even after reopening the dropdown', 
         const toggle = () => host.querySelector<HTMLButtonElement>('.llm-branch-indicator-btn')!.click();
         toggle(); toggle(); toggle();
         const buttons = host.querySelectorAll<HTMLButtonElement>('.llm-branch-dropdown__delete');
-        expect(buttons[0].disabled).toBe(true);
-        buttons[1].click();
+        expect(host.querySelector('.is-current .llm-branch-dropdown__delete')).toBeNull();
+        expect(buttons).toHaveLength(1);
+        buttons[0].click();
         expect(emit.mock.calls).toEqual([['branch:delete', { branchName: 'review <1>' }]]);
         toggle();
         host.querySelectorAll<HTMLElement>('.llm-branch-dropdown__name')[1].click();

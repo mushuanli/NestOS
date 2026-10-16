@@ -62,3 +62,15 @@ it('initializes a hidden editor before editing and never initializes a destroyed
     hidden.destroy(); await hidden.waitUntilReady();
     expect(createMDxEditor).toHaveBeenCalledOnce();
 });
+
+
+it('awaits a late editor and its asynchronous destruction exactly once', async () => {
+    const f = fixture(); let release!: () => void;
+    f.editor.destroy.mockReturnValue(new Promise<void>(resolve => { release = resolve; }) as never);
+    const closing = f.controller.destroy();
+    expect(f.controller.destroy()).toBe(closing);
+    let closed = false; void closing.then(() => { closed = true; });
+    f.ready(); await vi.waitFor(() => expect(f.editor.destroy).toHaveBeenCalledOnce());
+    expect(closed).toBe(false); release(); await closing;
+    expect(closed).toBe(true);
+});

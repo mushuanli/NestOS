@@ -42,6 +42,8 @@ export class MDxController implements IStreamableEditor {
     private isInitialized: boolean = false;
     private destroyed = false;
     private started = false;
+    private initialization?: Promise<void>;
+    private disposal?: Promise<void>;
     private readyPromise: Promise<void>;
     private readyResolve!: () => void;
     private readyReject!: (reason: any) => void;
@@ -74,7 +76,7 @@ export class MDxController implements IStreamableEditor {
     activate(): void {
         if (this.started || this.destroyed) return;
         this.started = true;
-        void this.init();
+        this.initialization = this.init();
     }
 
     private async init(): Promise<void> {
@@ -107,7 +109,7 @@ export class MDxController implements IStreamableEditor {
                 }
             }) as MDxEditor;
             if (this.destroyed) {
-                editor.destroy();
+                await editor.destroy();
                 this.readyResolve();
                 return;
             }
@@ -131,6 +133,7 @@ export class MDxController implements IStreamableEditor {
                 void this.finalize();
             }
         } catch (e) {
+            if (this.destroyed) throw e;
             console.error('[MDxController] init() failed:', e);
             this.readyReject(e);
         }
@@ -297,13 +300,19 @@ export class MDxController implements IStreamableEditor {
     // 销毁
     // ================================================================
 
-    destroy(): void {
+    destroy(): Promise<void> {
+        if (this.disposal) return this.disposal;
         this.destroyed = true;
         this.readyResolve();
-        this.editor?.destroy();
+        const editor = this.editor;
         this.editor = null;
         this.isInitialized = false;
         this.pendingDelta = '';
         this.currentContent = '';
+        return this.disposal = (async () => {
+            await this.initialization;
+            await this.flushChain;
+            await editor?.destroy();
+        })();
     }
 }

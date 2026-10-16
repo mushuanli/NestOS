@@ -1,5 +1,5 @@
 import { t } from '@itookit/common';
-import type { ConversationControls, ConversationSnapshot, EditorOptions } from '@itookit/ui-common';
+import { showConfirmDialog, type ConversationControls, type ConversationSnapshot, type EditorOptions } from '@itookit/ui-common';
 import { BranchIndicatorTemplates } from '../components/templates/BranchIndicatorTemplates';
 import { EventCleanup } from '../components/common';
 import type { BranchItem } from '../domain/types';
@@ -64,9 +64,23 @@ export class RemoteBranches {
             if (!this.closed && !this.unavailable) this.setOpen(true);
         } else {
             const id = target.closest<HTMLElement>('[data-branch-name]')?.dataset.branchName;
-            if (!id || this.unavailable || id === this.sessionId) return;
+            if (!id || this.unavailable || this.loading || id === this.sessionId) return;
+            if (target.closest('.llm-branch-dropdown__delete')) {
+                event.stopPropagation(); await this.remove(id); return;
+            }
             this.closeDropdown(); this.options.onConversationSession?.(id);
         }
+    }
+    private async remove(id: string): Promise<void> {
+        if (!this.options.removeConversationSession || this.options.readOnly) return;
+        const branch = this.branches.find(branch => branch.headNodeId === id);
+        if (!branch || !await showConfirmDialog(t('branch.confirmDelete', {name: branch.name}))) return;
+        if (this.closed || this.unavailable || id === this.sessionId) return;
+        this.loading = true; this.closeDropdown(); this.render();
+        try { await this.options.removeConversationSession(id); }
+        finally { this.loading = false; this.render(); }
+        await this.load();
+        if (!this.closed && !this.unavailable) this.setOpen(true);
     }
     private async load(): Promise<void> {
         if (!this.controls.branches || this.loading) return;
@@ -84,7 +98,7 @@ export class RemoteBranches {
         dropdown.style.display = open ? 'block' : 'none';
         this.element.querySelector('.llm-branch-indicator-btn')?.setAttribute('aria-expanded', String(open));
         if (!open) return;
-        dropdown.innerHTML = BranchIndicatorTemplates.renderDropdownItems(this.branches, {deletable: false, key: branch => branch.headNodeId});
+        dropdown.innerHTML = BranchIndicatorTemplates.renderDropdownItems(this.branches, {deletable: !!this.options.removeConversationSession && !this.options.readOnly, key: branch => branch.headNodeId});
         if (this.controls.fork) dropdown.append(this.form);
     }
     private closeDropdown(): void { this.setOpen(false); }

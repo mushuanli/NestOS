@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Server } from 'node:net';
@@ -31,6 +31,18 @@ it('uses the same persistent Project and Session models without opening a listen
 it('never opens a local profile when explicit remote identity is missing or malformed', async () => {
     await expect(openCliApplication({connect: 'http://localhost:2000'})).rejects.toThrow('HTTPS');
     await expect(openCliApplication({connect: 'https://localhost:2000'})).rejects.toThrow('--client-cert');
+});
+
+it('keeps the local CLI usable when a previously registered host directory disappears', async () => {
+    const config = await options(), directory = path.join(config.profile, '..', 'external-project');
+    await mkdir(directory);
+    let app = await openCliApplication(config);
+    try {
+        await app.client.services.projects.create('External project', null, 'host:' + directory);
+        await app.close(); await rm(directory, {recursive: true});
+        app = await openCliApplication(config);
+        await expect(app.client.services.projects.list()).resolves.toEqual(expect.any(Array));
+    } finally {await app.close();}
 });
 
 it('rejects private credentials inside the local data root before opening storage', async () => {

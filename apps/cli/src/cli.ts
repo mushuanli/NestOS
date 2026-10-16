@@ -152,6 +152,7 @@ function help(): string {
         `  mindos session list | create <project-id> <title> | show <session-id>\n` +
         `  mindos session send|branches|branch|delete-branch <session-id> [text/name] [--agent id] [--branch name]\n` +
         `  mindos conversation profiles <project-id> | list <project-id> <profile-id> [cursor]\n` +
+        `  mindos conversation create <project-id> <profile-id> <workspace-id>\n` +
         `  mindos conversation show|send|branches|fork|reconcile|interrupt <project-id> <profile-id> <session-id> [text/name]\n` +
         `  mindos connection list | mcp list | task show|events|cancel <session-id> <task-id>\n` +
         `  --connect https://host:2000 --client-cert file --client-key file --ca-cert file\n` +

@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { DirectorySourceProvider } from '@itookit/app-core';
-import { createFileSystemSource, type FileSystemSourceOwner, type IFileSystem } from '@itookit/vfs-core';
+import { FSError, createFileSystemSource, type FileSystemSourceOwner, type IFileSystem } from '@itookit/vfs-core';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 
@@ -17,7 +17,10 @@ export class CliDirectorySourceProvider implements DirectorySourceProvider {
     }
 
     async openDirectory(directory: string): Promise<IFileSystem> {
-        const canonical = await realpath(directory);
+        const canonical = await realpath(directory).catch(error => {
+            if (error?.code === 'ENOENT') throw new FSError('ENOENT', 'Host directory unavailable', 'openDirectory', directory);
+            throw error;
+        });
         let pending = this.sources.get(canonical);
         if (!pending) {
             pending = this.open(canonical);

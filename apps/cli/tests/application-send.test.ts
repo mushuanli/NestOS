@@ -3,6 +3,16 @@ import type {ApplicationClient} from '@itookit/app-contracts/services';
 import {SessionCommand} from '@itookit/llm-session/contracts';
 import {executeApplicationCommand} from '../src/application-command';
 
+it('creates an explicitly selected native workspace with an epoch and unique receipt identity', async () => {
+    const create = vi.fn(async () => ({session: {id: 'new-native'}})), close = vi.fn(async () => {});
+    const projectHarness = vi.fn(async () => ({profiles: async () => ({epoch: 'server-epoch'}), create, close}));
+    const client = {services: {projects: {remoteMounts: {projectHarness}}}} as unknown as ApplicationClient;
+    await expect(executeApplicationCommand(client, 'conversation', ['create', 'project', 'profile', 'workspace'], {}))
+        .resolves.toMatchObject({session: {id: 'new-native'}});
+    expect(create).toHaveBeenCalledExactlyOnceWith('profile', 'workspace', {epoch: 'server-epoch', requestId: expect.any(String)});
+    expect(close).toHaveBeenCalledOnce();
+});
+
 it.each(['completed', 'failed', 'await_signal'])('waits for local session %s before releasing its view', async status => {
     let global!: (event: unknown) => void, local!: (event: unknown) => void, submitted!: () => void;
     const accepted = new Promise<void>(resolve => {submitted = resolve;});

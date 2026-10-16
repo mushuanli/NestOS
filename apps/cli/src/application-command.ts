@@ -113,9 +113,16 @@ async function nativeConversation(client: ApplicationClient, args: string[]): Pr
     const [action, projectId, profileId, sessionId, value] = args;
     const remote = client.services.projects.remoteMounts;
     if (!remote) throw new Error('Remote projects unavailable');
-    if (action === 'profiles' || action === 'list') {
+    if (action === 'profiles' || action === 'list' || action === 'create') {
         const harness = await remote.projectHarness(required(projectId, 'project id'));
-        try { return action === 'profiles' ? await harness.profiles() : await harness.list(required(profileId, 'profile id'), {cursor: sessionId}); }
+        try {
+            if (action === 'profiles') return await harness.profiles();
+            if (action === 'create') {
+                const {epoch} = await harness.profiles();
+                return await harness.create(required(profileId, 'profile id'), required(sessionId, 'workspace id'), {epoch, requestId: crypto.randomUUID()});
+            }
+            return await harness.list(required(profileId, 'profile id'), {cursor: sessionId});
+        }
         finally { await harness.close(); }
     }
     const conversation = await remote.projectConversation(required(projectId, 'project id'), required(profileId, 'profile id'), required(sessionId, 'session id'));

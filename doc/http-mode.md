@@ -34,13 +34,14 @@ pnpm cli project list --connect https://host:2000 \
 ```bash
 pnpm cli project list
 pnpm cli conversation profiles <project-id>
+pnpm cli conversation create <project-id> <profile-id> <workspace-id>
 pnpm cli conversation list <project-id> <profile-id>
 pnpm cli conversation show <project-id> <profile-id> <native-session-id>
 pnpm cli conversation send <project-id> <profile-id> <native-session-id> "测试消息"
 pnpm cli conversation reconcile <project-id> <profile-id> <native-session-id>
 ```
 
-`list` 可追加上一页返回的 cursor。`show` 返回后端快照，包括 canSend、pending、disconnected 和 observation。`send` 调用与 llm-ui 相同的 `ProjectConversationPort.send()`，保留后端错误 code、remoteCode、outcome、requestId；结果未知时用 `reconcile` 查询回执，不自动再次发送。还支持 branches、fork、interrupt。发送、分支和中断均为真实操作，读取命令不会试发消息。
+`create` 使用 profiles 返回的 workspace ID，显式创建真实原生会话并返回 session；操作携带 epoch 与唯一 requestId。`list` 可追加上一页返回的 cursor。`show` 返回后端快照，包括 canSend、pending、disconnected 和 observation。`send` 调用与 llm-ui 相同的 `ProjectConversationPort.send()`，保留后端错误 code、remoteCode、outcome、requestId；结果未知时用 `reconcile` 查询回执，不自动再次发送。还支持 branches、fork、interrupt。发送、分支和中断均为真实操作，读取命令不会试发消息。turn 被接受只表示提交成功，模型最终回复或失败需继续检查原生事件与会话状态。
 
 这可以分离界面问题与后端问题：若 CLI 同样返回 `HARNESS_SESSION_BUSY`，应处理原生线程的 active writer；若同一端口发送成功而 UI 无回显，再检查界面订阅和投影。复查当前运行 httpd 的挂载、授权和占用状态应使用 `--connect`，本地模式用于隔离验证同一实现。
 

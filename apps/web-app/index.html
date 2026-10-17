@@ -16,10 +16,46 @@
     <link rel="apple-touch-icon" href="./icon.svg">
 
     <!-- 3. 应用样式 -->
+    <script>
+        try {
+            var mode = localStorage.getItem('mindos.theme');
+            document.documentElement.dataset.theme = mode === 'dark' || mode === 'light' ? mode
+                : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        } catch (_) {}
+        performance.mark('mindos:document');
+    </script>
+    <style>
+        html { background: #f7f8fa; }
+        html[data-theme="dark"] { background: #181a1f; }
+        body[data-app-starting] > :is(.app-sidebar, .main-content-area) { visibility: hidden; }
+        #app-initial-view { display: none; }
+        body[data-app-starting] > #app-initial-view { position: fixed; inset: 0; z-index: 9000; display: flex; flex-direction: column; padding: 0 20px env(safe-area-inset-bottom, 0px); background: #f7f8fa; color: #e3e6eb; }
+        html[data-theme="dark"] body[data-app-starting] > #app-initial-view { background: #181a1f; color: #30343c; }
+        #app-initial-view header { display: flex; align-items: center; gap: 12px; height: 64px; flex: 0 0 64px; border-bottom: 1px solid currentColor; }
+        #app-initial-view i, #app-initial-view span { display: block; background: currentColor; border-radius: 8px; }
+        #app-initial-view header i { width: 28px; height: 28px; }
+        #app-initial-view header span { width: 140px; height: 14px; }
+        #app-initial-view main { width: 100%; max-width: 820px; margin: 32px auto; flex: 1; }
+        #app-initial-view main i { width: 68%; height: 12px; margin: 16px 0; }
+        #app-initial-view main i:nth-child(2) { width: 44%; }
+        #app-initial-view main i:nth-child(3) { width: 55%; margin-left: auto; margin-top: 48px; }
+        #app-initial-view footer { width: 100%; max-width: 820px; height: 100px; min-height: 100px; margin: 0 auto 16px; border: 1px solid currentColor; border-radius: 16px; }
+        .app-startup { position: fixed; z-index: 9999; inset: 16px 16px auto; padding: 20px; border: 1px solid #e5e7eb; border-radius: 10px; background: #fff; color: #111; box-shadow: 0 4px 20px #0002; overflow-wrap: anywhere; }
+        html[data-theme="dark"] .app-startup { background: #181a1f; color: #e3e6eb; border-color: #30343c; }
+        .app-startup h1 { font-size: 18px; margin-bottom: 12px; }
+        .app-startup p { white-space: pre-wrap; }
+        .app-startup button { margin-top: 16px; padding: 8px 16px; cursor: pointer; }
+        @media (min-width: 769px) { body[data-app-starting] > #app-initial-view { padding-left: 100px; padding-right: 40px; } }
+    </style>
     <link rel="stylesheet" href="src/styles/index.css">
 </head>
 
-<body>
+<body data-app-starting>
+    <div id="app-initial-view" aria-hidden="true">
+        <header><i></i><span></span></header>
+        <main><i></i><i></i><i></i></main>
+        <footer></footer>
+    </div>
 
     <!-- ============================================= -->
     <!--          1. 左侧主导航栏 (App Sidebar)         -->

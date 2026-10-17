@@ -35,6 +35,41 @@ it('reads and updates identical persisted application models over direct API and
     await remote.client.services.projects.sessions.rename(id, 'Renamed over HTTP');
     expect((await remote.client.services.sessionRepository.getManifest(id)).title).toBe('Renamed over HTTP');
 });
+it('prepares and activates the current Session through CLI over HTTPS and observes aggregate configuration changes', async () => {
+    const {local, start} = await setup(), direct = await openCliApplication(local);
+    const project = await executeApplicationCommand(direct.client, 'project', ['create', 'Cold target'], local) as {project: {id: string}};
+    const id = await executeApplicationCommand(direct.client, 'session', ['create', project.project.id, 'Current conversation'], local) as string;
+    await direct.close();
+    const options = await start(), remote = await openCliApplication(options); cleanup.push(() => remote.close());
+    const view = await remote.client.backend.workbenchView({initialSessionId: id, initialNavigation: false, chatControls: true});
+    expect(view.initialSession?.manifest.id).toBe(id);
+    expect(remote.client.services.sessionManager.getSnapshot().sessionId).not.toBe(id);
+    const configuration = view.chat!.configuration!, changed = vi.fn(), stop = configuration.subscribe(changed);
+    const service = remote.client.services.agentService, agent = (await service.getAgents())[0];
+    expect(configuration.getConfigurationSnapshot().agents.some(item => item.id === agent.id)).toBe(true);
+    await service.saveAgent({...agent, name: 'Updated over HTTPS'});
+    await vi.waitFor(() => expect(configuration.getConfigurationSnapshot().agents.find(item => item.id === agent.id)?.name).toBe('Updated over HTTPS'));
+    expect(changed).toHaveBeenCalled(); stop();
+    expect((await view.initialSession!.activate()).snapshot.sessionId).toBe(id);
+    expect(remote.client.services.sessionManager.getSnapshot().sessionId).toBe(id);
+    const other = await remote.client.services.projects.sessions.create('Other recovery target', null);
+    expect(await remote.client.backend.taskAttachment(other, 'ui.privileged.active-task')).toEqual({pendingTaskIds: []});
+    expect(remote.client.services.sessionManager.getSnapshot().sessionId).toBe(id);
+    await view.initialSession!.dispose(); await view.browser.dispose(); await configuration.dispose();
+});
+it('opens the current Session and replays changes through the aggregate view using the authenticated CLI client', async () => {
+    const {local, start} = await setup(), direct = await openCliApplication(local);
+    const id = await direct.client.services.projects.sessions.create('Aggregate CLI target', null); await direct.close();
+    const remote = await openCliApplication(await start()); cleanup.push(() => remote.close());
+    const view = await remote.client.backend.openView({documents: ['theme'], taskAttachmentKey: 'ui.privileged.active-task',
+        workbench: {initialSessionId: id, initialNavigation: false, chatControls: true}});
+    expect(view.initial).toMatchObject({sessionId: id, snapshot: {sessionId: id}, taskAttachment: {pendingTaskIds: []}, flowInvocations: [], skills: []});
+    expect(remote.client.services.sessionManager.getSnapshot().sessionId).toBe(id);
+    await remote.client.services.projects.sessions.rename(id, 'Changed before observation');
+    const changed = vi.fn(), stop = await view.observation.observeView(view.cursor, changed);
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledWith(expect.objectContaining({topic: 'repository', value: expect.objectContaining({sessionId: id})})));
+    stop(); await view.dispose();
+});
 it.each(['not-committed', 'unknown'] as const)('diagnoses a native send %s through the same remote conversation port without UI or retry', async outcome => {
     const state = {sessionId: 'native', title: 'Native', messages: [], requests: [], canSend: true, canInterrupt: false, canRespond: false, pending: false, disconnected: false, gap: false};
     const failure = Object.assign(new Error('Native writer conflict'), {code: 'HARNESS_SESSION_BUSY', outcome, requestId: 'fixture-request'});

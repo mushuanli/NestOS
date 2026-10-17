@@ -72,3 +72,11 @@ it('ignores repeated event frames and stops at a sequence gap', async () => {
     await vi.waitFor(() => expect(updateError).toHaveBeenCalledWith(expect.objectContaining({code: 'EIO'})));
     expect(apply).toHaveBeenCalledOnce(); expect(disconnected).not.toHaveBeenCalled();
 });
+
+it('reports a notification callback failure instead of silently losing view changes', async () => {
+    const {client, send, disconnected, updateError} = await connection();
+    vi.spyOn(client.peer, 'handle').mockResolvedValueOnce({error: {name: 'Error', message: 'Application view event gap', code: 'EIO'}});
+    send(JSON.stringify({calls: [{target: 'view', method: 'notify', args: []}]}));
+    await vi.waitFor(() => expect(updateError).toHaveBeenCalledWith(expect.objectContaining({message: 'Application view event gap', code: 'EIO'})));
+    expect(disconnected).not.toHaveBeenCalled();
+});

@@ -4,6 +4,9 @@ import { createFlowContextMenuConfig, createAIContextMenuConfig,
 import { ProviderSettingsEditor, ConnectionSettingsEditor, MCPSettingsEditor,
     CostEditor, SystemPromptSettingsEditor } from '@itookit/llm-settings-ui';
 
+import {loadChatEditor} from './editor-modules';
+export {preloadBrowserEditor} from './editor-modules';
+
 type EditorFactory = ReturnType<AppUI['createChatEditor']>;
 
 function lazyEditorFactory(load: () => Promise<EditorFactory>): EditorFactory {
@@ -14,11 +17,11 @@ function lazyEditorFactory(load: () => Promise<EditorFactory>): EditorFactory {
 export function createBrowserUI(library: Parameters<typeof restoreFlowLibrary>[1]): AppUI {
     return {
         createChatEditor: (service, deps) => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/chat')).createLLMFactory(service, deps)),
+            (await loadChatEditor()).createLLMFactory(service, deps)),
         createAgentEditor: (service, capabilities) => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui/settings')).createAgentEditorFactory(service, capabilities)),
         createFlowEditor: deps => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/chat')).createFlowsEditorFactory(deps)),
+            (await loadChatEditor()).createFlowsEditorFactory(deps)),
         createFlowContextMenu: deps => createFlowContextMenuConfig({ ...deps, library: library }),
         restoreFlowLibrary: commands => restoreFlowLibrary(commands, library),
         createSkillEditor: service => lazyEditorFactory(async () =>

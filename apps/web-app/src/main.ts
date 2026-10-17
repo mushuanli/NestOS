@@ -7,35 +7,19 @@ import { initApp, installMobileNavigation, windowSessionLeaseToken } from '@itoo
 import { createApplicationRuntime, createMindosFlowLibrary } from '@itookit/app-core';
 import { openIndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { createBrowserUI } from './ui';
-import { WORKSPACES } from './config/modules';
+import { WORKSPACES, ROUTE_ALIASES } from './config/modules';
+import {createStartupStatus, stylesReady} from './startup';
 import { BrowserSkillToolHandlerFactory } from './kernel/browser-skill-tools';
 import { WebProjectSync } from './sync';
 
 // Dev must always load the current workspace source graph.
 void configureAppCache(import.meta.env.DEV).catch(error => console.warn('App cache setup failed', error));
 
-async function main() {
+async function main(styles: Promise<void>) {
     installMobileNavigation();
-    const backend = await openIndexedDBBackend({ dbName: 'MindOS-v3' });
-    const ui = createBrowserUI(createMindosFlowLibrary());
-    const remoteSourceProvider = createPiAgentDriver();
-    const sync = new WebProjectSync(backend, remoteSourceProvider);
-    const runtime = await createApplicationRuntime({
-        startupMode: 'interactive',
-        remoteSourceProvider,
-        sync: { provider: sync, coordinator: sync.coordinator },
-        backend,
-        ownerKind: 'web',
-        // Same tab keeps its lease identity across reloads; other tabs keep their own.
-        sessionOwnerToken: windowSessionLeaseToken(),
-        kernelPlatform: {
-            skillToolHandlerFactory: new BrowserSkillToolHandlerFactory(),
-        },
-    });
-    const client = createApplicationClient(bindLocalApplicationServices(runtime), { snapshots: vfs => new SnapshotService(vfs, 'MindOS-v3') });
-    sync.projects = runtime.projects;
-    sync.service = runtime.projectSync;
+    const {runtime, client, sync} = await createLocalClient();
     try {
+        await styles;
         const app = await initApp({
             fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) },
             ...client,
@@ -43,8 +27,8 @@ async function main() {
             projectSyncDirectory: (id, signal) => sync.directory(id, signal),
             workspaces: WORKSPACES,
             defaultSlug: 'start', startPage: true,
-            routeAliases: { home: 'llm-workspace', projects: 'llm-workspace', workbench: 'llm-workspace' },
-            ui,
+            routeAliases: ROUTE_ALIASES,
+            ui: createBrowserUI(createMindosFlowLibrary()),
         });
         app.onDestroy(() => runtime.dispose(), 'sources');
         app.onDestroy(() => client.close(), 'sources');
@@ -54,4 +38,24 @@ async function main() {
     }
 }
 
-main().catch(err => console.error('[Bootstrap] Fatal:', err));
+async function createLocalClient() {
+    const backend = await openIndexedDBBackend({dbName: 'MindOS-v3'}), remoteSourceProvider = createPiAgentDriver();
+    const sync = new WebProjectSync(backend, remoteSourceProvider);
+    const runtime = await createApplicationRuntime({
+        startupMode: 'interactive', remoteSourceProvider, backend, ownerKind: 'web',
+        sync: {provider: sync, coordinator: sync.coordinator},
+        // Same tab keeps its lease identity across reloads; other tabs keep their own.
+        sessionOwnerToken: windowSessionLeaseToken(),
+        kernelPlatform: {skillToolHandlerFactory: new BrowserSkillToolHandlerFactory()},
+    });
+    try {
+        const client = createApplicationClient(bindLocalApplicationServices(runtime), {snapshots: vfs => new SnapshotService(vfs, 'MindOS-v3')});
+        sync.projects = runtime.projects; sync.service = runtime.projectSync;
+        return {runtime, client, sync};
+    } catch (error) {await runtime.dispose(); throw error;}
+}
+
+const startup = createStartupStatus(), styles = stylesReady();
+void Promise.all([main(styles), styles]).catch(error => {
+    console.error('[Bootstrap] Fatal:', error); startup.fail(error);
+});

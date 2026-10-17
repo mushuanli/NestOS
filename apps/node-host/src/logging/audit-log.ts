@@ -8,8 +8,21 @@ export interface AuditEvent {
     status?: number; durationMs?: number; operation?: string; code?: string; certificate?: string; parentRequestId?: string;
     rpcKind?: string; rpcBatchSize?: number; rpcOperations?: string[];
     providerRequestId?: string;
+    bodyReadMs?: number; viewReadyMs?: number; rpcMs?: number; responseFlushMs?: number;
 }
 export interface AuditPort { write(event: AuditEvent): void; close(): Promise<void>; }
+
+type RequestPhase = 'bodyReadMs' | 'viewReadyMs' | 'rpcMs';
+const requestTimings = new WeakMap<ServerResponse, { phases: Partial<Record<RequestPhase, number>>; queuedAt?: number }>();
+function requestTiming(response: ServerResponse) {
+    let value = requestTimings.get(response);
+    if (!value) { value = {phases: {}}; requestTimings.set(response, value); }
+    return value;
+}
+export function recordRequestPhase(response: ServerResponse, phase: RequestPhase, durationMs: number): void {
+    requestTiming(response).phases[phase] = durationMs;
+}
+export function recordResponseQueued(response: ServerResponse): void { requestTiming(response).queuedAt = Date.now(); }
 
 /** A bounded JSONL log containing metadata only, never headers, arguments or bodies. */
 export class AuditLog implements AuditPort {
@@ -56,7 +69,9 @@ export function auditRequest(audit: AuditPort, request: IncomingMessage, respons
     const record = () => {
         if (finished) return; finished = true;
         const parent = request.headers['x-parent-request-id'];
+        const timing = requestTimings.get(response);
         audit.write({ event: response.writableFinished ? 'request.complete' : 'request.aborted', requestId,
+            ...timing?.phases, ...(timing?.queuedAt !== undefined ? {responseFlushMs: Date.now() - timing.queuedAt} : {}),
             ...(typeof parent === 'string' && /^[a-f0-9-]{36}$/.test(parent) ? { parentRequestId: parent } : {}),
             remoteAddress, method: request.method, route,
             status: response.statusCode, durationMs: Date.now() - startedAt,

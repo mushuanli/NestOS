@@ -7,7 +7,7 @@ import { openLocalFSBackend, type LocalFSBackend } from '@itookit/vfsdriver-loca
 import { createApplicationApi } from '@itookit/node-host/http';
 import { createCertificates } from '@itookit/node-host/http';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
-import { HttpViewClient, ViewExpiredError } from '@itookit/app-transport/http';
+import { HttpViewClient, SnapshotCache, ViewExpiredError } from '@itookit/app-transport/http';
 import { authenticatedFetch, close, secureServers } from './tls-fixture';
 
 let certificateRoot: string, certificates: string, directory: string, backend: LocalFSBackend;
@@ -42,6 +42,53 @@ it('keeps browser bindings separate while both views share the same persisted ba
     expect(second.services.sessionManager.getSnapshot().sessionId).toBe(id2);
     expect(await second.services.sessionRepository.getManifest(id1)).toHaveProperty('title', 'First');
 });
+
+it('opens independent cold views in one call and replays changes between the baseline and observation registration', async () => {
+    const a = await client('opened-one'), b = await client('opened-two');
+    const one = await a.services.projects.sessions.create('First view', null), two = await b.services.projects.sessions.create('Second view', null);
+    const options = (id: string) => ({documents: ['theme'], taskAttachmentKey: 'ui.privileged.active-task',
+        workbench: {initialSessionId: id, chatControls: true, initialNavigation: false}});
+    const [first, second] = await Promise.all([a.backend.openView(options(one)), b.backend.openView(options(two))]);
+    expect(first.initial?.snapshot.sessionId).toBe(one); expect(second.initial?.snapshot.sessionId).toBe(two);
+    await b.services.projects.sessions.rename(one, 'Changed before observation');
+    const events: import('@itookit/app-contracts/services').ApplicationViewEvent[] = [];
+    const stop = await first.observation.observeView(first.cursor, event => events.push(event));
+    await vi.waitFor(() => expect(events.some(event => event.topic === 'repository' && event.value?.sessionId === one)).toBe(true));
+    expect(events[0].sequence).toBe(first.cursor + 1);
+    expect(a.services.sessionManager.getSnapshot().sessionId).toBe(one);
+    stop(); await first.dispose();
+    expect(b.services.sessionManager.getSnapshot().sessionId).toBe(two);
+    await b.services.projects.sessions.rename(two, 'Second still usable'); await second.dispose();
+});
+it('opens, activates and observes in one handshake, reuses cached DTOs across clients and preserves independent bindings', async () => {
+    const seed = await client('handshake-seed'), a = await seed.services.projects.sessions.create('One', null), b = await seed.services.projects.sessions.create('Two', null);
+    let saved: string | null = null;
+    const storage = {read: () => saved, write: (value: string) => {saved = value;}};
+    const posts: string[] = [], sizes: number[] = [];
+    const fetcher: typeof fetch = async (url, init) => {
+        const request = init?.method === 'POST' ? JSON.parse(String(init.body)) : undefined;
+        if (request) posts.push(request.kind);
+        const response = await auth.fetcher(url, init);
+        if (request?.kind === 'bootstrap') sizes.push((await response.clone().arrayBuffer()).byteLength);
+        return response;
+    };
+    const open = async (name: string, id: string) => {
+        const http = new HttpViewClient(name, server.origin + '/api/application', fetcher); clients.push(http);
+        return http.start({snapshots: new SnapshotCache(storage), initialView: {documents: ['theme'], taskAttachmentKey: 'ui.privileged.active-task',
+            workbench: {initialSessionId: id, initialNavigation: false, chatControls: true}}});
+    };
+    const first = await open('handshake-one', a), second = await open('handshake-two', b);
+    expect(posts).toEqual(['bootstrap', 'bootstrap']);
+    expect(first.initialView?.initial?.snapshot.sessionId).toBe(a); expect(second.initialView?.initial?.snapshot.sessionId).toBe(b);
+    expect(sizes[1]).toBeLessThan(sizes[0] * 0.7);
+    const received = vi.fn(), stop = await first.initialView!.observation.observeView(first.initialView!.cursor, received);
+    await seed.services.projects.sessions.rename(a, 'Changed after handshake');
+    await vi.waitFor(() => expect(received).toHaveBeenCalledWith(expect.objectContaining({topic: 'repository', value: expect.objectContaining({sessionId: a})})));
+    stop(); await first.initialView!.dispose();
+    expect(await first.backend.readUiDocuments(['theme'])).toBeTypeOf('object');
+    expect(second.services.sessionManager.getSnapshot().sessionId).toBe(b);
+    console.log('[Handshake cache bytes]', {cold: sizes[0], warm: sizes[1], openingPosts: posts.slice(0, 2)});
+});
 it('uses backend draft creation and navigation projections across browsers with an awaited refresh barrier', async () => {
     const first = await client('draft-writer'), second = await client('navigation-reader');
     const project = await first.services.projects.create('Shared project');
@@ -56,6 +103,23 @@ it('uses backend draft creation and navigation projections across browsers with 
         expect((await view.browser.fs.driver.getChildren(navigation.loadPaths[0])).map(row => row.metadata.title)).toContain('Quoted document');
         expect((await second.backend.sessionTasks(id)).items).toEqual([]);
     } finally { await view.browser.dispose(); }
+});
+it('repairs a missing cached DTO by reading the prepared handshake without reopening the Session', async () => {
+    const source = await client('repair-source'), id = await source.services.projects.sessions.create('Repair target', null);
+    const posts: string[] = [];
+    const fetcher: typeof fetch = async (url, init) => {
+        const request = init?.method === 'POST' ? JSON.parse(String(init.body)) : undefined;
+        if (request) posts.push(request.kind);
+        const response = await auth.fetcher(url, init);
+        if (request?.kind !== 'bootstrap') return response;
+        const packet = await response.json(); delete packet.cache[Object.keys(packet.cache)[0]];
+        return Response.json(packet);
+    };
+    const http = new HttpViewClient('repair', server.origin + '/api/application', fetcher); clients.push(http);
+    const root = await http.start({initialView: {documents: [], workbench: {initialSessionId: id, initialNavigation: false}}});
+    expect(root.initialView?.initial?.snapshot.sessionId).toBe(id);
+    expect(posts).toEqual(['bootstrap', 'bootstrap-data']);
+    expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);
 });
 it('rejects incompatible protocols, forged capabilities and cross-origin commands', async () => {
     const post = (body: object, headers: object = {}) => auth.fetcher(server.origin + '/api/application', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
@@ -135,6 +199,9 @@ it('records registered RPC names and batch size without recording UI document co
     await root.backend.readUiDocuments(['private-document-name']);
     const writes = auditEvents.filter(event => event.rpcOperations?.includes('ApplicationBackend.writeUiDocuments'));
     expect(writes).toHaveLength(1); expect(writes[0]).toMatchObject({ rpcKind: 'call', rpcBatchSize: 1 });
+    await vi.waitFor(() => expect(server.events.find(event => event.requestId === writes[0].requestId)).toMatchObject({
+        bodyReadMs: expect.any(Number), viewReadyMs: expect.any(Number), rpcMs: expect.any(Number), responseFlushMs: expect.any(Number),
+    }));
     expect(JSON.stringify(auditEvents)).not.toContain('private-document');
     await Promise.all([root.services.projects.list(), root.services.digitalTwin!.getSettings()]);
     expect(auditEvents).toContainEqual(expect.objectContaining({ rpcKind: 'queries', rpcBatchSize: 2,

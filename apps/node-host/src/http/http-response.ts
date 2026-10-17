@@ -1,6 +1,7 @@
 import type { ServerResponse, IncomingMessage } from 'node:http';
 import { FSError, type FSErrorCode } from '@itookit/vfs-core';
 import { MAX_BODY_BYTES } from '@itookit/app-transport/rpc';
+import { recordResponseQueued } from '../logging/audit-log';
 
 export async function readJson(request: IncomingMessage): Promise<{ method?: unknown; args?: unknown }> {
     const bytes = await readBytes(request);
@@ -23,7 +24,8 @@ export function json(response: ServerResponse, status: number, payload: unknown)
     if (response.destroyed) return;
     const body = JSON.stringify(payload);
     if (Buffer.byteLength(body) > MAX_BODY_BYTES) throw new FSError('EFBIG', 'HTTP response is too large; use smaller pages or file ranges');
-    response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); response.end(body);
+    response.writeHead(status, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
+    recordResponseQueued(response); response.end(body);
 }
 export function sendError(response: ServerResponse, error: unknown): void {
     if (response.headersSent) { response.destroy(); return; }

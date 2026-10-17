@@ -6,7 +6,7 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 - `src/server/` 仅委托 node-host/http；node-host 装配 LocalFS、Node SQLite、静态 UI 与唯一应用 Runtime；浏览器不能再装配另一套执行 Runtime。
 - `src/client/` 不导入 Node、LocalFS、Tauri。Web UI 经 mind-os 的公开入口导入。
 - 对外 API 暴露应用查询、命令、确认和事件，不提供 SQL、任意宿主路径、原始托管状态写入或 Tauri invoke；没有原始 VFS 存储 HTTP 协议。
-- app-transport/application 绑定应用能力描述与共享 selector；app-transport/rpc 通过注入获得描述，不导入业务模块。协议 v11 拒绝旧客户端。
+- app-transport/application 绑定应用能力描述与共享 selector；app-transport/rpc 通过注入获得描述，不导入业务模块。协议 v14 拒绝旧客户端。
 - bootstrap 不预开文件系统，主题与 UI 状态经文档端口读取；OCR、设置、恢复与聊天能力按消费创建。设置工作区以声明身份传递，后端按需解析并保持写权限保护，不能通过延迟视图绕过托管状态命令。
 - bootstrap 安装后才消费 SSE；资源释放回收独占句柄和订阅，共享句柄保留，回调能力按借用寿命释放。
 - 查询、订阅装配分别有界合并；写命令独立确认。快照按资源事件失效，未知写操作保留域失效兜底，通知批次保持顺序，版本补丁不得覆盖新状态。二进制通道仍使用已授权的文件视图句柄。
@@ -27,8 +27,14 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 - `mindos:http-disconnected` 区分 reconnecting 和 expired：短暂中断由传输恢复同一 SSE，成功发出 `mindos:http-reconnected` 收起提示；视图过期才探测健康，服务就绪后显示手动重载入口，保留页面及草稿，不依赖 DOM 输入事件判断是否安全重载。`mindos:http-retry` 唤醒退避，不重发业务写入。`mindos:http-view-error` 显示页面更新失败和手动重载入口，不单独触发自动重载，保留当前页面未发送内容。
 - 应用层决定只读命令、消息投影和快照结果引用；rpc 层只实现注入规则、不可变 DTO 编码缓存及版本补丁。静态 hash 资源私有缓存，HTML 重新验证；压缩结果最多 64 项 / 16 MiB。
 
-- workbenchView、openSessionView/activate 和 UI 文档端口由后端聚合；连接检查按观察兴趣共享，不由浏览器逐项目轮询。application.complete 只记录注册能力/方法和批次数，不记录参数或用户内容。
+- workbenchView 可带 initialSessionId 并行准备当前会话；chat.configuration 提供安全展示字段的配置快照与订阅。openSessionView/activate 保留准备与激活顺序，UI 文档按当前路由合并预读；连接检查按观察兴趣共享，不由浏览器逐项目轮询。application.complete 只记录注册能力/方法和批次数，不记录参数或用户内容。
 
 - navigationView 聚合普通模块首层、忽略规则和 UI 文档；warmNavigation 仅预热最多两个授权根的只读元数据。二者为 query，不触发写域失效，不创建独占资源。文件事件使有界后端缓存失效，前端一次消费后使用实时端口。
 
 - 正常启动、工作区加载和 SSE 重连静默进行，不显示加载 banner；视图过期且服务就绪后的重载入口与真实失败提示仍可见。文件未保存内容由 app-shell 的本地恢复副本保护，健康检查成功不代表文件已保存，不清除草稿、不重放写入。
+
+- openView 聚合聊天首屏及无旧编辑器时的激活/恢复，observeView 按水位补发并共享 SSE；事件缺口与回调失败报告更新错误。CLI 临时 profile/mTLS 测试覆盖新路径和多客户端隔离。
+
+- 轻入口先并行启动 HTTP 同步、Shell 与当前编辑器代码加载；初始目标通过 app-shell/startup 构造。初始视图随 bootstrap 进入 initApp，不重复 openView/observeView。浏览器按内容摘要缓存纯数据，首帧使用共享 HTML 的主题镜像和静态骨架，错误仍显示现有入口。
+- HTML 在样式 load/error 时记录结果；HTTP/Web 共用 mind-os/startup 读取已有结果、等待未完成样式（最长 30 秒）和显示启动失败。失败提示的必要样式内联在 HTML，CSS 不可用时仍可操作重载。
+- 提前连接保存当前状态，状态 UI 订阅时同步补报；终结的 view-error/expired 不能被迟到的重连覆盖。窗口事件保留兼容通知，正常 HTTP UI 通过连接状态订阅消费。

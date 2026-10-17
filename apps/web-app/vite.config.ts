@@ -1,8 +1,10 @@
 import { defineConfig, searchForWorkspaceRoot } from 'vite';
 import path from 'path';
 import { workspaceAliases, workspaceExcludes } from '../../scripts/workspace-sources.mjs';
+import {firstPaintStyles} from '../../scripts/first-paint.mjs';
 
 export default defineConfig({
+    plugins: [firstPaintStyles()],
     // ✅ 关键 1: 相对路径，确保在非根目录或通过简单 server 启动时能找到 assets
     base: './',
 

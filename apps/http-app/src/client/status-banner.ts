@@ -1,8 +1,9 @@
 import { t } from '@itookit/common';
 import { ConnectionRecovery } from './connection-recovery';
+import type {ApplicationConnection, ConnectionState} from './application-connection';
 
 type Status = 'disconnected' | 'reconnecting' | 'expired' | 'update' | 'view-error';
-interface StatusOptions { fetcher?: typeof fetch; reload?: () => void; }
+interface StatusOptions { fetcher?: typeof fetch; reload?: () => void; connection?: Pick<ApplicationConnection, 'subscribeStatus'>; }
 
 /** Present transport recovery without discarding potentially unsaved input. */
 export function installHttpStatus(options: StatusOptions = {}): () => void {
@@ -26,13 +27,20 @@ class HttpStatusBanner {
         this.action.onclick = () => { if (this.state === 'reconnecting') window.dispatchEvent(new Event('mindos:http-retry')); else this.reload(); };
         this.banner.append(this.text, this.action); document.body.append(this.banner);
         const signal = this.abort.signal;
-        window.addEventListener('mindos:http-disconnected', event => this.disconnected(event), {signal});
-        window.addEventListener('mindos:http-reconnected', () => {
-            if (this.state === 'reconnecting') { this.banner.hidden = true; this.state = undefined; }
-        }, {signal});
-        window.addEventListener('mindos:http-view-error', () => this.show('view-error', t('httpApp.viewError'), false), {signal});
+        if (options.connection) signal.addEventListener('abort', options.connection.subscribeStatus(state => this.connectionChanged(state)), {once: true});
+        else this.listenConnection(signal);
         window.addEventListener('vite:preloadError', event => { event.preventDefault(); this.show('update', t('httpApp.updated')); }, {signal});
         for (const event of ['online', 'focus']) window.addEventListener(event, () => this.recovery.retry(), {signal});
+    }
+    private listenConnection(signal: AbortSignal): void {
+        window.addEventListener('mindos:http-disconnected', event => this.disconnected(event), {signal});
+        window.addEventListener('mindos:http-reconnected', () => this.connectionChanged('connected'), {signal});
+        window.addEventListener('mindos:http-view-error', () => this.connectionChanged('view-error'), {signal});
+    }
+    private connectionChanged(state: ConnectionState): void {
+        if (state === 'view-error') this.show('view-error', t('httpApp.viewError'), false);
+        else if (state !== 'connected') this.disconnected(new CustomEvent('mindos:http-disconnected', {detail: {state}}));
+        else if (this.state === 'reconnecting') {this.banner.hidden = true; this.state = undefined;}
     }
     private disconnected(event: Event): void {
         if (this.state === 'view-error' || this.state === 'update') return;

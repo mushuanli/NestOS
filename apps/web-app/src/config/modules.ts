@@ -4,6 +4,8 @@ import {
 } from '@itookit/app-shell/workspaces';
 import type { WorkspaceConfig } from '@itookit/app-shell';
 
+export const ROUTE_ALIASES = {home: 'llm-workspace', projects: 'llm-workspace', workbench: 'llm-workspace'};
+
 export const WORKSPACES: WorkspaceConfig[] = [
     WS_SETTINGS,
     WS_TOOLBOX,

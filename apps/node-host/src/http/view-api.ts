@@ -12,12 +12,19 @@ import { createHostedView, type HostedView } from './view-services';
 import { ViewNotifications } from './view-notifications';
 import { ViewEventStream } from './view-event-stream';
 import type { AuditPort } from '../logging/audit-log';
+import { recordRequestPhase } from '../logging/audit-log';
+import {SnapshotCache} from '@itookit/app-transport/http';
+import {bootstrapView, type BootstrapRequest} from './view-bootstrap';
 
 interface Client { peer: RpcPeer; view: HostedView; stream?: ServerResponse; lastSeen: number; active: number;
+    bootstrap?: Promise<Reply>; stopObservation?: () => void;
     initialized: boolean; notifications: ViewNotifications; events: ViewEventStream;
     pending: Map<string, { resolve(reply: Reply): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>; }
+type ApplicationRequest = BootstrapRequest & {clientId?: unknown; version?: unknown; kind?: string;
+    call?: Call; calls?: Call[]; id?: string; reply?: Reply};
 /** A certificate-scoped browser view owns subscriptions; the daemon owns execution. */
 export class ViewApi {
+    private readonly snapshots = new SnapshotCache();
     private readonly clients = new Map<string, Promise<Client>>();
     private readonly sweep: ReturnType<typeof setInterval>;
     constructor(private readonly runtime: Promise<ApplicationRuntime>, private readonly audit?: AuditPort, private readonly ownsRuntime = true) {
@@ -34,19 +41,33 @@ export class ViewApi {
         if (url.pathname.endsWith('/files')) return this.file(request, response, url);
         if (request.method !== 'POST') { response.writeHead(405, { Allow: 'POST' }); response.end(); return; }
         if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') throw new FSError('EINVAL', 'Expected application/json');
-        const body = await readJson(request) as { clientId?: unknown; version?: unknown; kind?: string; call?: Call; calls?: Call[]; id?: string; reply?: Reply };
+        const body = await readApplicationBody(request, response) as ApplicationRequest;
         const identity = this.identity(request, body.clientId);
         if (body.version !== RPC_VERSION) throw new FSError('ECAPABILITY', 'Unsupported view protocol version');
         if (body.kind === 'close') { await this.release(identity); json(response, 200, {}); return; }
+        const preparing = Date.now();
         const client = await (body.kind === 'bootstrap' ? this.client(identity) : this.requireClient(identity, response)); client.lastSeen = Date.now();
-        if (body.kind === 'bootstrap') {
-            const snapshot = await client.peer.bootstrap(client.view.root); client.initialized = true;
-            json(response, 200, snapshot); return;
-        }
+        recordRequestPhase(response, 'viewReadyMs', Date.now() - preparing);
+        if (body.kind === 'bootstrap') return this.respondBootstrap(client, identity, body, response);
+        if (body.kind === 'bootstrap-data') {json(response, 200, await client.bootstrap!); return;}
         if (body.kind === 'reply') {
             const pending = client.pending.get(body.id!); if (!pending) throw new FSError('ENOENT', 'Unknown callback');
             clearTimeout(pending.timer); client.pending.delete(body.id!); pending.resolve(body.reply!); json(response, 200, {}); return;
         }
+        return this.invoke(client, body, response);
+    }
+    private async respondBootstrap(client: Client, identity: string, body: BootstrapRequest, response: ServerResponse): Promise<void> {
+        const started = Date.now(), existing = client.bootstrap;
+        try {json(response, 200, await bootstrapView(client, body, this.snapshots));}
+        catch (error) {if (!existing) await this.release(identity); throw error;}
+        finally {
+            recordRequestPhase(response, 'rpcMs', Date.now() - started);
+            this.audit?.write({event: 'application.complete', requestId: String(response.getHeader('X-Request-ID') ?? ''),
+                rpcKind: 'bootstrap', rpcBatchSize: body.initialView ? 1 : 0,
+                rpcOperations: body.initialView ? ['ApplicationBackend.openView'] : [], durationMs: Date.now() - started});
+        }
+    }
+    private async invoke(client: Client, body: ApplicationRequest, response: ServerResponse): Promise<void> {
         if (!['queries', 'bindings'].includes(body.kind ?? '') && (body.kind !== 'call' || !validCall(body.call))) throw new FSError('EINVAL', 'Invalid public capability call');
         this.acquire(client);
         const started = Date.now();
@@ -55,6 +76,7 @@ export class ViewApi {
         try { json(response, 200, ['queries', 'bindings'].includes(body.kind!) ? await this.queries(client, body.calls, body.kind === 'bindings') : await client.peer.handle(body.call!)); }
         finally {
             client.active--; client.lastSeen = Date.now();
+            recordRequestPhase(response, 'rpcMs', Date.now() - started);
             this.audit?.write({ event: 'application.complete', requestId: String(response.getHeader('X-Request-ID') ?? ''),
                 rpcKind: body.kind, rpcBatchSize: calls.length, rpcOperations: operations,
                 durationMs: Date.now() - started });
@@ -154,7 +176,7 @@ export class ViewApi {
     }
     private async release(identity: string): Promise<void> {
         const ready = this.clients.get(identity); if (!ready) return; this.clients.delete(identity);
-        const client = await ready; client.notifications.close(); client.events.end();
+        const client = await ready; client.stopObservation?.(); client.notifications.close(); client.events.end();
         for (const pending of client.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('View closed')); }
         client.pending.clear(); await client.peer.close(); await client.view.close();
     }
@@ -167,6 +189,11 @@ export class ViewApi {
         if (errors.length) throw new AggregateError(errors, 'HTTP host cleanup failed');
     }
 
+}
+async function readApplicationBody(request: IncomingMessage, response: ServerResponse) {
+    const started = Date.now();
+    try { return await readJson(request); }
+    finally { recordRequestPhase(response, 'bodyReadMs', Date.now() - started); }
 }
 function validCall(call: Call | undefined): call is Call {
     return !!call && typeof call.target === 'string' && typeof call.method === 'string' && Array.isArray(call.args);

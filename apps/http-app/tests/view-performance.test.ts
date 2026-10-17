@@ -161,8 +161,27 @@ it('treats read commands as queries without invalidating configuration', async (
     const model = models(), command = { execute: vi.fn(async () => []), list: () => [] };
     const { root } = await pair({ model, command }); model.getProviders.mockClear();
     await root.command.execute('session.get-sessions'); await root.command.execute('flow.draft.list');
+    await root.command.execute('session.flow.invocations');
     expect(model.getProviders).not.toHaveBeenCalled();
     await root.command.execute('session.send'); expect(model.getProviders).toHaveBeenCalledOnce();
+});
+
+it('runs dynamically classified read commands while earlier subscriptions are pending and keeps writes behind them', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;}), execute = vi.fn(async () => []);
+    const files = {getNode: async () => null, getChildren: async () => [], search: async () => [], writeContent: async () => {}, onAny: () => () => {}};
+    let client!: RpcPeer;
+    const server = new RpcPeer('server', call => client.handle(call));
+    client = new RpcPeer('client', async call => {if (server.binding(call)) await gate; return server.handle(call);});
+    peers.push(server, client);
+    const boot = await server.bootstrap({files, command: {execute, list: () => []}});
+    client.applyUpdates(boot.updates); const root = client.decode(boot.value!);
+    const stop = root.files.onAny(() => {}), write = root.command.execute('session.send');
+    try {
+        await expect(root.command.execute('session.flow.invocations')).resolves.toEqual([]);
+        expect(execute).toHaveBeenCalledExactlyOnceWith('session.flow.invocations');
+    } finally {release(); await write; stop();}
+    expect(execute.mock.calls.at(-1)).toEqual(['session.send']);
 });
 it('does not refresh other conversations for a session management event', async () => {
     const manager = session(), snapshot = vi.fn(() => ({ messages: [] }));

@@ -11,3 +11,8 @@ CLI 与 httpd 共用的 Node 宿主适配包，不是业务策略层，不导入
 - HTTP 退出先结束 SSE、停止接入并等待连接排空，5 秒后关闭残留 HTTP 连接，再释放视图、Runtime、存储和锁；不能因客户端未结束请求而无限持锁。进程名可能为 node/node-MainThread，定位 httpd 应匹配完整命令行。
 - client/ 为共享传输注入 Node mTLS fetch；必须验证证书，不跟随跨地址重定向。
 - 项目、会话、配置、授权规则位于 app-core；宿主不复制策略。通过本包公开子入口引用，测试位于 apps/http-app/tests 与 apps/cli/tests。
+
+- JSON 应用请求通过 requestId 关联 bodyReadMs/viewReadyMs/rpcMs/responseFlushMs 四段耗时；flush 只表示 Node 提交后至 finish/close，不表示浏览器接收完成，不记录正文或参数。
+
+- v14 bootstrap 可携带 initialView 与 knownSnapshots；view-bootstrap 先打开目标并登记观察，再导出能力图。纯数据缓存归 ViewApi，不能缓存或复用其他视图的能力句柄；bootstrap-data 只重读当前客户端的已准备响应，绝不重新激活。bootstrap 也记录 rpcMs 与 application.complete。
+- 通知刷新、序列化或输出失败时，关闭通知队列并使事件日志失效；不得丢弃已出队应用事件后继续发送下一序号。客户端随后按视图过期提供重载入口，不能重放业务写命令。

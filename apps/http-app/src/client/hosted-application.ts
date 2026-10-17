@@ -1,25 +1,28 @@
 import { initApp, installMobileNavigation } from '@itookit/app-shell';
-import { WORKSPACES } from 'mind-os/workspaces';
+import { WORKSPACES, ROUTE_ALIASES } from 'mind-os/workspaces';
 import { createBrowserUI } from 'mind-os/ui';
 import { installHttpStatus } from './status-banner';
-import { HttpViewClient, ViewExpiredError } from '@itookit/app-transport/http';
+import {connectApplication, type ApplicationConnection} from './application-connection';
+import {stylesReady} from './styles-ready';
 
-export async function startApplicationClient(onProgress: (message: string) => void, onShellReady?: () => void) {
+export async function startApplicationClient(onProgress: (message: string) => void, onShellReady?: () => void,
+    connection: ApplicationConnection = connectApplication()) {
+    if (!performance.getEntriesByName('mindos:entry').length) performance.mark('mindos:entry');
     installMobileNavigation();
-    const releaseStatus = installHttpStatus();
-    const listeners = new AbortController();
-    const client = new HttpViewClient(crypto.randomUUID(), '/api/application', globalThis.fetch.bind(globalThis),
-        error => window.dispatchEvent(new CustomEvent('mindos:http-disconnected', {detail: {state: error instanceof ViewExpiredError ? 'expired' : 'reconnecting'}})),
-        () => window.dispatchEvent(new CustomEvent('mindos:http-view-error')),
-        () => window.dispatchEvent(new CustomEvent('mindos:http-reconnected')));
-    for (const event of ['online', 'focus', 'mindos:http-retry']) window.addEventListener(event, () => client.retryConnection(), {signal: listeners.signal});
+    const releaseStatus = installHttpStatus({connection});
     try {
-        const { services, backend, flowLibrary, fileTemplates } = await client.start();
+        const [{services, backend, flowLibrary, fileTemplates, initialView}] = await Promise.all([connection.ready, stylesReady()]);
         const app = await initApp({ services, backend, fileTemplates, workspaces: WORKSPACES,
+            initialView,
             ui: createBrowserUI(flowLibrary), defaultSlug: 'start', startPage: true, onProgress, onShellReady,
-            routeAliases: { home: 'llm-workspace', projects: 'llm-workspace', workbench: 'llm-workspace' } });
-        app.onDestroy(() => { listeners.abort(); releaseStatus(); });
-        app.onDestroy(() => client.close(), 'sources');
+            onEditorReady: () => {
+                performance.mark('mindos:editor-ready');
+                performance.measure('mindos:entry-to-editor', 'mindos:entry', 'mindos:editor-ready');
+                if (performance.getEntriesByName('mindos:document').length) performance.measure('mindos:document-to-editor', 'mindos:document', 'mindos:editor-ready');
+            },
+            routeAliases: ROUTE_ALIASES });
+        app.onDestroy(releaseStatus);
+        app.onDestroy(() => connection.close(), 'sources');
         return app;
-    } catch (error) { listeners.abort(); releaseStatus(); await client.close().catch(() => {}); throw error; }
+    } catch (error) { releaseStatus(); await connection.close().catch(() => {}); throw error; }
 }

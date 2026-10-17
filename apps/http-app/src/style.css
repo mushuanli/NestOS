@@ -3,8 +3,3 @@
 .http-status { position: fixed; z-index: 10000; inset: 12px 16px auto; display: flex; align-items: center; justify-content: center; gap: 16px; padding: 12px 16px; border: 1px solid var(--llm-border-color, #e5e7eb); border-radius: 10px; background: var(--llm-bg-primary, #fff); color: var(--llm-text-primary, #111); box-shadow: 0 4px 20px #0002; font-size: 13px; }
 .http-status[hidden] { display: none; }
 .http-status button { flex-shrink: 0; cursor: pointer; }
-
-.http-startup { position: fixed; z-index: 9999; inset: 16px 16px auto; padding: 20px; border: 1px solid var(--llm-border-color, #e5e7eb); border-radius: 10px; background: var(--llm-bg-primary, #fff); color: var(--llm-text-primary, #111); box-shadow: 0 4px 20px #0002; overflow-wrap: anywhere; }
-.http-startup h1 { font-size: 18px; margin-bottom: 12px; }
-.http-startup p { white-space: pre-wrap; }
-.http-startup button { margin-top: 16px; padding: 8px 16px; cursor: pointer; }

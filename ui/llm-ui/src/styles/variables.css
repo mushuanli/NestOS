@@ -19,6 +19,8 @@
     --llm-color-error-border: #fecaca;
     --llm-color-warning: #f59e0b;
     --llm-color-warning-bg: #fef3c7;
+    --llm-system-text: #7359a5;
+    --llm-system-bg: #f3eff9;
 
     /* 背景 */
     --llm-bg-primary: #ffffff;
@@ -59,7 +61,8 @@
     --llm-input-padding-x: 20px;
     --llm-input-padding-y: 16px;
     --llm-bubble-max-width: 80%;
-    --llm-bubble-min-width: 300px;
+    --llm-bubble-min-width: 0px;
+    --llm-content-width: 780px;
     --llm-titlebar-btn-size: 32px;
     --llm-avatar-size: 32px;
     --llm-textarea-max-height: 200px;
@@ -93,6 +96,8 @@
 /* 暗色模式 */
 @media (prefers-color-scheme: dark) {
     :root {
+        --llm-system-text: #c4b5e5;
+        --llm-system-bg: #282137;
         --llm-bg-primary: #0d1117;
         --llm-bg-secondary: #161b22;
         --llm-bg-tertiary: #1e2530;
@@ -110,6 +115,8 @@
 /* The app theme is explicit and must override the operating-system preference. */
 :root[data-theme="light"] {
     color-scheme: light;
+    --llm-system-text: #7359a5;
+    --llm-system-bg: #f3eff9;
     --llm-color-primary-light: #dbeafe;
     --llm-color-primary-bg: #eff6ff;
     --llm-color-success-bg: #d1fae5;
@@ -131,6 +138,8 @@
 
 :root[data-theme="dark"] {
     color-scheme: dark;
+    --llm-system-text: #c4b5e5;
+    --llm-system-bg: #282137;
     --llm-color-primary-light: #1e3a5f;
     --llm-color-primary-bg: #172554;
     --llm-color-success-bg: #143c2b;

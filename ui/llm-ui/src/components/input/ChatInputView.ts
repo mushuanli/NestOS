@@ -1,4 +1,4 @@
-import { OcrSettingsForm, Modal } from '@itookit/ui-common';
+import { OcrSettingsForm, Modal, Toast } from '@itookit/ui-common';
 // @file: llm-ui/components/input/ChatInputView.ts
 
 import type { IChatInputPresenter, IChatInputConfig } from '../../domain/ports/IChatInputPresenter';
@@ -7,7 +7,7 @@ import type {
     ExecutorOption, ConnectionOption,
     ChatOverrides, SkillInfo, FileSuggestion,
 } from '../../domain/types';
-import { t, randomUUID } from '@itookit/common';
+import { t, randomUUID, ENTITY_ICONS, CHAT_ICONS } from '@itookit/common';
 import { type JsonValue } from '@itookit/llm-flow/contracts';
 import { type ModelTier } from '@itookit/driver-llm/contracts';
 import { ChatInputTemplates } from '../templates/ChatInputTemplates';
@@ -21,19 +21,24 @@ import { ToolOutputPanel } from './ToolOutputPanel';
 import { HelpPanel } from './HelpPanel';
 import { SkillPanel } from './SkillPanel';
 import { ConnectionTierController } from './ConnectionTierController';
+import { ConnectionReadiness, type ConnectionLoadState } from './ConnectionReadiness';
+import { isDirectCommandInput } from '../../commands/direct-command';
 import { ExecutionModeControl } from './ExecutionModeControl';
 import { InteractionPanel } from './InteractionPanel';
 import { delegate } from '../../utils/domEvents';
 
 export interface ChatInputOptions {
+    executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
     attachments?: boolean;
     attachmentAccept?: string;
     attachmentHint?: string;
     executorLocked?: boolean;
     maxAgentExchanges?: number;
-    onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides) => Promise<void>;
+    onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides) => Promise<void | false>;
     onStop: () => void;
     onExecutorChange?: (executorId: string) => void;
+    onConfigureExecutor?: () => void;
+    onSwitchExecutionTarget?: (input: {text: string; files: File[]}) => Promise<void>;
     onDraftChange?: (config: IChatInputConfig, files: File[]) => void;
     onConfigChange?: (config: IChatInputConfig) => void;
     initialAgents?: ExecutorOption[];
@@ -113,6 +118,10 @@ export interface ChatInputOptions {
 export class ChatInput implements IChatInputPresenter {
     private connectionLoadRevision = 0;
     private connectionsDisposed = false;
+    private connectionLoadState: ConnectionLoadState = 'loading';
+    private connectionReadiness!: ConnectionReadiness;
+    private checkingConnection = false;
+    private readonly resizeInput = () => this.adjustTextareaHeight();
     private textarea!: HTMLTextAreaElement;
     private sendBtn!: HTMLButtonElement;
     private stopBtn!: HTMLButtonElement;
@@ -150,6 +159,7 @@ export class ChatInput implements IChatInputPresenter {
     private files: File[] = [];
     private settingsExpanded = false;
     private currentAgentId: string = 'default';
+    private switchingTarget = false;
 
     private skillPanel?: SkillPanel;
     private skillModal?: Modal;
@@ -161,7 +171,6 @@ export class ChatInput implements IChatInputPresenter {
 
     // ── More menu ─────────────────────────────────────────────────────────────
     private moreBtn!: HTMLButtonElement;
-    private morePopup: PopupPanel | null = null;
 
     // ── Tool output panel ─────────────────────────────────────────────────────
     private toolOutput: ToolOutputPanel;
@@ -217,8 +226,14 @@ export class ChatInput implements IChatInputPresenter {
                 this.config.settings.connectionId = this.connectionTier.getConnectionId();
                 this.config.settings.modelTier = this.connectionTier.getModelTier();
                 this.updateActiveBadges();
+                this.refreshConnectionStatus();
                 this.notifyConfigChange();
             },
+        });
+
+        this.connectionReadiness = new ConnectionReadiness(container, {
+            navigate: options.onNavigateSettings,
+            choose: () => this.openConnectionPicker(), retry: () => { void this.refreshConnections(); },
         });
 
         if (options.ocr) {
@@ -237,6 +252,9 @@ export class ChatInput implements IChatInputPresenter {
         if (options.attachmentHint) this.attachBtn.title = options.attachmentHint;
         this.applyAvailability();
         this.loadConnections();
+        window.addEventListener('resize', this.resizeInput);
+        window.visualViewport?.addEventListener('resize', this.resizeInput);
+        this.adjustTextareaHeight();
 
         // TokenMeterPlugin — always registered, shows token stats after each response
         const tokenMeter = new TokenMeterPlugin();
@@ -320,7 +338,7 @@ export class ChatInput implements IChatInputPresenter {
         this.settingsBtn.disabled = loading;
         if (this.moreBtn) this.moreBtn.disabled = loading;
 
-        if (loading) this.toggleSettings(false);
+        if (loading) { this.toggleSettings(false); this.closeToolbarMenus(); }
         this.applyAvailability();
     }
 
@@ -329,9 +347,19 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private applyAvailability(): void {
-        this.sendBtn.disabled = !this.availability.canSend || this.remoteSending;
+        const command = isDirectCommandInput(this.textarea.value) || this.textarea.value.trimStart().startsWith('/');
+        this.sendBtn.disabled = !this.availability.canSend || this.submitting || this.checkingConnection || (!!this.connectionReadiness?.blocked && !command);
         this.stopBtn.disabled = !this.availability.canInterrupt;
         this.agentPickerBtn.disabled = this.loading || !!this.options.executorLocked;
+    }
+
+    private requiresConnection(): boolean {
+        return !!this.options.onRequestConnections && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId;
+    }
+
+    private refreshConnectionStatus(): void {
+        this.connectionReadiness?.update(this.requiresConnection(), this.connectionLoadState, this.connectionTier.getIssue(), this.sendBtn);
+        this.applyAvailability();
     }
 
     setConfig(config: Partial<IChatInputConfig>): void {
@@ -391,6 +419,16 @@ export class ChatInput implements IChatInputPresenter {
         return changed;
     }
 
+    /** Draft target changes preserve input, attachments and independent model settings. */
+    setExecutorChoices(agents: ExecutorOption[], selectedId: string): void {
+        this.agentPopup?.hide(); this.updateExecutors(agents); this.selectAgent(selectedId);
+    }
+
+    appendDraft(input: {text: string; files: File[]}): void {
+        const text = [this.getConfig().text, input.text].filter(Boolean).join('\n\n');
+        this.restoreDraft(text, input.files, this.config.agentId);
+    }
+
     updateTokenStats(stats: import('../../domain/types').TokenStats | null): void {
         this.tokenMeterPlugin?.update(stats);
     }
@@ -415,6 +453,9 @@ export class ChatInput implements IChatInputPresenter {
     clearInteraction(interactionId?: string): void { this.interactionPanel.clear(interactionId); }
 
     destroy(): void {
+        window.removeEventListener('resize', this.resizeInput);
+        window.visualViewport?.removeEventListener('resize', this.resizeInput);
+        delete this.container.dataset.editorComposing;
         this.connectionsDisposed = true;
         this.connectionLoadRevision++;
         this.ocrSettings?.destroy();
@@ -427,10 +468,9 @@ export class ChatInput implements IChatInputPresenter {
         this.agentPopup?.destroy();
         this.agentPopup = null;
         this.connectionTier.destroy();
+        this.connectionReadiness.destroy();
         this.promptPopup?.destroy();
         this.promptPopup = null;
-        this.morePopup?.destroy();
-        this.morePopup = null;
         this.attachmentMgr?.destroy();
         this.helpPanel.destroy();
         this.container.innerHTML = '';
@@ -503,12 +543,19 @@ export class ChatInput implements IChatInputPresenter {
         this.attachmentContainer = q('.llm-input__attachments');
         this.inputWrapper = q('.llm-input__field-wrapper');
 
-        // Help panel (button is inside the more popup — bound lazily in toggleMoreMenu)
         // Session profile
         this.systemPromptAppendInput = this.container.querySelector('.llm-input__system-prompt-append') as HTMLTextAreaElement;
     }
 
     private bindEvents(): void {
+        this.bindToolbarMenus();
+        this.container.querySelector('.llm-input__btn--switch-target')?.addEventListener('click', () => { void this.switchExecutionTarget(); });
+        for (const selector of ['.llm-input__btn--configure-agent', '.llm-input__flow-configure']) {
+            this.container.querySelector(selector)?.addEventListener('click', () => {
+                if (this.loading) return;
+                this.closeToolbarMenus(); this.options.onConfigureExecutor?.();
+            });
+        }
         this.webSearchQuickBtn?.addEventListener('click', () => {
             const next = !(this.config.settings.webSearchEnabled ?? true);
             this.config.settings.webSearchEnabled = next;
@@ -535,6 +582,7 @@ export class ChatInput implements IChatInputPresenter {
         this.textarea.addEventListener('input', () => {
             this.adjustTextareaHeight();
             this.config.text = this.textarea.value;
+            this.applyAvailability();
             this.notifyConfigChange();
             // Close help when user starts typing
             if (this.helpPanel.isVisible && this.textarea.value.length > 0) this.hideHelp();
@@ -544,8 +592,11 @@ export class ChatInput implements IChatInputPresenter {
                 plugin.onInput?.(this.textarea.value, cursorPos);
             }
         });
+        this.textarea.addEventListener('focus', () => { this.container.dataset.editorComposing = 'true'; });
+        this.textarea.addEventListener('blur', () => { delete this.container.dataset.editorComposing; });
 
         this.textarea.addEventListener('keydown', (e) => {
+            if (e.isComposing || e.keyCode === 229) return;
             // Esc closes help panel before propagating to plugins
             if (e.key === 'Escape' && this.helpPanel.isVisible) {
                 e.preventDefault();
@@ -559,7 +610,8 @@ export class ChatInput implements IChatInputPresenter {
                 }
             }
 
-            if (e.key === 'Enter' && !e.shiftKey) {
+            const mobile = window.matchMedia?.('(max-width: 768px) and (pointer: coarse)').matches;
+            if (e.key === 'Enter' && !e.shiftKey && (!mobile || e.ctrlKey || e.metaKey)) {
                 e.preventDefault();
                 this.triggerSend();
             }
@@ -572,8 +624,8 @@ export class ChatInput implements IChatInputPresenter {
         this.attachBtn.addEventListener('click', () => this.attachmentMgr.toggleAddMenu(
             (anchor, opts) => new PopupPanel(anchor, opts)
         ));
-        this.settingsBtn.addEventListener('click', () => this.toggleSettings());
-        this.moreBtn?.addEventListener('click', () => this.toggleMoreMenu());
+        this.settingsBtn.addEventListener('click', () => { this.closeToolbarMenus(); this.toggleSettings(); });
+        this.moreBtn?.addEventListener('click', event => { event.stopPropagation(); this.closeToolbarMenus(); this.toggleHelp(); });
 
         this.container.querySelector('.llm-input__settings-close')
             ?.addEventListener('click', () => this.toggleSettings(false));
@@ -616,7 +668,7 @@ export class ChatInput implements IChatInputPresenter {
         this.agentPickerBtn.addEventListener('click', () => this.toggleAgentPicker());
 
         // Prompt picker — popup handled by PopupPanel
-        this.promptPickerBtn?.addEventListener('click', () => this.togglePromptPicker());
+        this.promptPickerBtn?.addEventListener('click', () => { this.closeToolbarMenus(); this.togglePromptPicker(); });
 
         this.historySlider.addEventListener('input', () => {
             this.config.settings.historyLength = parseInt(this.historySlider.value);
@@ -681,17 +733,8 @@ export class ChatInput implements IChatInputPresenter {
             btn.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const clearType = (e.currentTarget as HTMLElement).dataset.clear;
-                this.clearSetting(clearType as 'connection' | 'tier' | 'history' | 'stream');
+                this.clearSetting(clearType as 'history' | 'stream');
             });
-        });
-
-        // Connection badge click → navigate to edit that connection
-        const connBadge = this.container.querySelector('.llm-input__active-badge[data-type="connection"]') as HTMLElement | null;
-        connBadge?.addEventListener('click', (e) => {
-            // Don't navigate if the × clear button was clicked (handled above)
-            if ((e.target as HTMLElement).closest('.llm-input__badge-clear')) return;
-            const connId = connBadge.dataset.connectionId ?? this.config.settings.connectionId;
-            if (connId) this.options.onNavigateSettings?.({ resourceId: 'connections', anchor: `conn:${connId}` });
         });
 
         // Session profile — system prompt append
@@ -704,6 +747,9 @@ export class ChatInput implements IChatInputPresenter {
     private bindOutsideClickHandler(): void {
         this.outsideClickHandler = (e: MouseEvent) => {
             const target = e.target as HTMLElement;
+            for (const menu of this.container.querySelectorAll<HTMLDetailsElement>('.llm-input__toolbar details[open]')) {
+                if (!menu.contains(target)) menu.open = false;
+            }
             if (this.settingsExpanded) {
                 if (!this.settingsPanel.contains(target) && !this.settingsBtn.contains(target)) {
                     this.toggleSettings(false);
@@ -722,61 +768,69 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private async triggerSend(): Promise<void> {
-        if (!this.availability.canSend) return;
+        if (!this.availability.canSend || this.checkingConnection || this.submitting) return;
         const text = this.textarea.value.trim();
         if (!text && this.files.length === 0) return;
         if (this.loading && !/^\/(flow|cancel|approve|resume)(?:\s|$)/.test(text)) return;
 
-        if (this.config.agentId.startsWith('remote:')) { await this.triggerRemoteSend(text); return; }
+        if (this.config.agentId.startsWith('remote:')) { await this.submitDraft(text); return; }
 
         // ✨ before 钩子
         for (const plugin of this.plugins) {
             if (plugin.onBeforeSend?.(text) === false) return;
         }
 
-        const currentExecutor = this.config.agentId;
-        const currentFiles = [...this.files];
-        const overrides = currentExecutor.startsWith('remote:') ? undefined : this.buildOverrides();
+        if (this.requiresConnection() && !isDirectCommandInput(text) && !await this.checkConnectionBeforeSend(text)) return;
 
-        this.textarea.value = '';
-        this.textarea.style.height = 'auto';
-        this.config.text = '';
-        this.files = [];
-        this.attachmentMgr.renderAttachments();
+        await this.submitDraft(text);
+    }
 
-        // Clear the inline tool output when sending to the agent —
-        // the user is switching from tool mode back to conversation mode.
-        this.clearToolOutput();
+    private async submitDraft(text: string): Promise<void> {
+        const submitted = this.textarea.value, executor = this.config.agentId, files = [...this.files];
+        const remote = executor.startsWith('remote:');
+        const overrides = remote ? undefined : this.buildOverrides();
+        this.submitting = true; this.applyAvailability();
+        try {
+            if (await this.options.onSend(text, files, executor, overrides) === false) return;
+            if (!overrides?.flowId && (remote || !isDirectCommandInput(text))) this.recordExecutor(executor);
+            if (this.connectionsDisposed) return;
+            this.clearSubmittedInput(files, this.textarea.value === submitted);
+            if (!remote) {
+                this.notifyConfigChange(); this.clearToolOutput();
+                for (const plugin of this.plugins) plugin.onAfterSend?.(text, executor);
+            }
+        } catch { /* The host reports errors; keep submitted input and later edits. */ }
+        finally { this.submitting = false; if (!this.connectionsDisposed) this.applyAvailability(); }
+    }
 
-        await this.options.onSend(text, currentFiles, currentExecutor, overrides);
+    private recordExecutor(id: string): void {
+        try { this.options.executorUsage?.record(id); }
+        catch (error) { console.error('[ChatInput] Failed to record executor usage', error); }
+    }
 
-        // ✨ after 钩子
-        for (const plugin of this.plugins) {
-            plugin.onAfterSend?.(text, currentExecutor);
-        }
+    private async checkConnectionBeforeSend(text: string): Promise<boolean> {
+        const selection = JSON.stringify([this.config.agentId, this.config.settings]);
+        this.checkingConnection = true; this.applyAvailability();
+        try {
+            const revision = this.connectionLoadRevision + 1;
+            await this.loadConnections();
+            return !this.connectionsDisposed && !this.connectionReadiness.blocked && !this.loading
+                && revision === this.connectionLoadRevision
+                && this.availability.canSend && this.textarea.value.trim() === text
+                && selection === JSON.stringify([this.config.agentId, this.config.settings]);
+        } finally { this.checkingConnection = false; this.applyAvailability(); }
     }
 
     openConnectionPicker(): void { this.connectionTier.openConnPicker(); }
 
-    private remoteSending = false;
+    private submitting = false;
     acceptSubmittedDraft(text: string, files: File[]): void {
-        if (this.textarea.value.trim() === text.trim()) { this.textarea.value = ''; this.config.text = ''; }
+        this.clearSubmittedInput(files, this.textarea.value.trim() === text.trim());
+    }
+    private clearSubmittedInput(files: File[], clearText: boolean): void {
+        if (clearText) { this.textarea.value = ''; this.config.text = ''; }
         this.files = this.files.filter(file => !files.includes(file));
         this.attachmentMgr.renderAttachments(); this.adjustTextareaHeight();
-    }
-
-    private async triggerRemoteSend(text: string): Promise<void> {
-        if (this.remoteSending) return;
-        const submitted = this.textarea.value;
-        const submittedFiles = [...this.files];
-        this.remoteSending = true; this.sendBtn.disabled = true;
-        try {
-            await this.options.onSend(text, submittedFiles, this.config.agentId);
-            if (this.textarea.value === submitted) { this.textarea.value = ''; this.config.text = ''; }
-            this.files = this.files.filter(file => !submittedFiles.includes(file));
-            this.attachmentMgr.renderAttachments(); this.adjustTextareaHeight();
-        } catch { /* The host reports errors; keep the original text and attachments. */ }
-        finally { this.remoteSending = false; this.applyAvailability(); }
     }
 
     private buildOverrides(): ChatOverrides {
@@ -840,10 +894,17 @@ export class ChatInput implements IChatInputPresenter {
     private async loadConnections(): Promise<void> {
         if (!this.options.onRequestConnections) return;
         const revision = ++this.connectionLoadRevision;
+        if (this.connectionLoadState === 'failed') this.connectionLoadState = 'loading';
+        this.refreshConnectionStatus();
         try {
             const connections = await this.options.onRequestConnections();
-            if (!this.connectionsDisposed && revision === this.connectionLoadRevision) this.connectionTier.setConnections(connections);
+            if (!this.connectionsDisposed && revision === this.connectionLoadRevision) {
+                this.connectionLoadState = 'ready'; this.connectionTier.setConnections(connections);
+                this.refreshConnectionStatus();
+            }
         } catch (e) {
+            if (this.connectionsDisposed || revision !== this.connectionLoadRevision) return;
+            this.connectionLoadState = 'failed'; this.refreshConnectionStatus();
             console.error('[ChatInput] Failed to load connections:', e);
         }
     }
@@ -854,11 +915,30 @@ export class ChatInput implements IChatInputPresenter {
 
     private syncRemoteControls(): void {
         const remote = this.config.agentId.startsWith('remote:');
+        const flow = !remote && !!this.config.settings.flowId;
         this.container.classList.toggle('llm-input--remote', remote);
-        for (const selector of ['.llm-input__btn--settings', '.llm-input__conn-quick-wrapper', '.llm-input__tier-quick-wrapper', '.llm-input__execution-mode', '.llm-input__execution-hint', '.llm-input__btn--websearch', '.llm-input__active-settings']) {
-            for (const element of this.container.querySelectorAll<HTMLElement>(selector)) element.hidden = remote;
+        for (const selector of ['.llm-input__btn--settings', '.llm-input__model-trigger', '.llm-input__btn--websearch', '.llm-input__active-settings']) {
+            for (const element of this.container.querySelectorAll<HTMLElement>(selector)) element.hidden = remote || flow;
         }
-        if (remote) this.toggleSettings(false);
+        this.container.querySelector<HTMLElement>('.llm-input__execution-picker')!.hidden = remote;
+        this.container.querySelector<HTMLElement>('.llm-input__agent-picker')!.hidden = flow;
+        this.container.querySelector<HTMLElement>('.llm-input__execution-source')!.hidden = !remote;
+        const flowButton = this.container.querySelector<HTMLButtonElement>('.llm-input__flow-configure')!;
+        flowButton.hidden = !flow; flowButton.disabled = this.loading || !this.options.onConfigureExecutor;
+        const configure = this.container.querySelector<HTMLButtonElement>('.llm-input__btn--configure-agent')!;
+        configure.hidden = remote || flow || !this.options.onConfigureExecutor; configure.disabled = this.loading;
+        this.container.querySelector<HTMLElement>('.llm-input__btn--switch-target')!.hidden = !this.options.onSwitchExecutionTarget;
+        if (remote || flow) { this.toggleSettings(false); this.connectionTier?.hidePopups(); }
+        if (this.connectionTier) this.refreshConnectionStatus();
+    }
+    private async switchExecutionTarget(): Promise<void> {
+        if (!this.options.onSwitchExecutionTarget || this.switchingTarget) return;
+        this.switchingTarget = true; this.closeToolbarMenus();
+        const button = this.container.querySelector<HTMLButtonElement>('.llm-input__btn--switch-target')!;
+        button.disabled = true;
+        try { await this.options.onSwitchExecutionTarget({text: this.getConfig().text, files: [...this.files]}); }
+        catch (error) { Toast.error(error instanceof Error ? error.message : String(error)); }
+        finally { this.switchingTarget = false; button.disabled = false; }
     }
     private syncExecutionMode(): void {
         this.syncRemoteControls();
@@ -908,6 +988,7 @@ export class ChatInput implements IChatInputPresenter {
             this.systemPromptAppendInput.value = this.config.settings.systemPromptAppend ?? '';
         }
         this.updateActiveBadges();
+        this.refreshConnectionStatus();
     }
 
     private syncConfigFromUI(): void {
@@ -923,7 +1004,8 @@ export class ChatInput implements IChatInputPresenter {
     /** 同步联网搜索状态到工具栏快速开关（高亮）与设置面板 toggle。 */
     private syncWebSearchUI(active: boolean): void {
         if (this.webSearchQuickBtn) {
-            this.webSearchQuickBtn.dataset.active = active ? 'true' : 'false';
+            this.webSearchQuickBtn.dataset.active = String(active);
+            this.webSearchQuickBtn.setAttribute('aria-pressed', String(active));
         }
         const panelToggle = this.container.querySelector('.llm-input__websearch-toggle') as HTMLInputElement | null;
         if (panelToggle) panelToggle.checked = active;
@@ -931,9 +1013,10 @@ export class ChatInput implements IChatInputPresenter {
 
     private adjustTextareaHeight(): void {
         this.textarea.style.height = 'auto';
-        const lineHeight = parseFloat(getComputedStyle(this.textarea).lineHeight) || 24;
-        const minHeight = lineHeight * 2 + 8; // 2 rows + padding
-        const newHeight = Math.max(minHeight, Math.min(this.textarea.scrollHeight, 200));
+        const style = getComputedStyle(this.textarea), lineHeight = parseFloat(style.lineHeight) || 24;
+        const minHeight = parseFloat(style.minHeight) || lineHeight * 2 + 8;
+        const maxHeight = parseFloat(style.maxHeight) || 200;
+        const newHeight = Math.max(minHeight, Math.min(this.textarea.scrollHeight, maxHeight));
         this.textarea.style.height = `${newHeight}px`;
     }
 
@@ -956,16 +1039,8 @@ export class ChatInput implements IChatInputPresenter {
         }
     }
 
-    private clearSetting(type: 'connection' | 'tier' | 'history' | 'stream'): void {
+    private clearSetting(type: 'history' | 'stream'): void {
         switch (type) {
-            case 'connection':
-                this.connectionTier.setConnectionId(undefined);
-                this.config.settings.connectionId = undefined;
-                break;
-            case 'tier':
-                this.config.settings.modelTier = 'auto';
-                this.connectionTier.setModelTier('auto');
-                break;
             case 'history':
                 this.historySlider.value = '-1';
                 this.config.settings.historyLength = -1;
@@ -1003,46 +1078,31 @@ export class ChatInput implements IChatInputPresenter {
         if (label) label.textContent = this.config.settings.streamMode ? 'Enabled' : 'Disabled';
     }
 
-    // ── More menu ─────────────────────────────────────────────────────────────
-
-    /**
-     * 切换 "..." 更多菜单。
-     *
-     * 菜单内容：Help（始终）+ Prompt Picker 入口（有 prompts 时）。
-     * 使用 PopupPanel 实现，锚点为 moreBtn。
-     */
-    private toggleMoreMenu(): void {
-        if (!this.morePopup) {
-            this.morePopup = new PopupPanel(this.moreBtn, {
-                showSearch: false,
-                animated: true,
-            });
-        }
-        if (this.morePopup.isVisible) {
-            this.morePopup.hide();
-            this.moreBtn.classList.remove('active');
-            return;
-        }
-
-        const items = this.buildMoreMenuItems();
-        this.morePopup.show(items, {
-            onSelect: (item) => {
-                this.moreBtn.classList.remove('active');
-                if (item.id === '__help') this.toggleHelp();
-                else if (item.id === '__prompts') this.togglePromptPicker();
-            },
-        });
-        this.moreBtn.classList.add('active');
+    private closeToolbarMenus(): void {
+        for (const menu of this.container.querySelectorAll<HTMLDetailsElement>('.llm-input__toolbar details[open]')) menu.open = false;
     }
 
-    private buildMoreMenuItems(): PopupItem[] {
-        const items: PopupItem[] = [
-            { id: '__help', label: 'Keyboard shortcuts & commands', icon: '?' },
-        ];
-        if (this.getCurrentPrompts().length > 0) {
-            items.push({ id: '__prompts', label: 'Preset Prompts', icon: '💬' });
+    private bindToolbarMenus(): void {
+        const toolbar = this.container.querySelector('.llm-input__toolbar')!;
+        toolbar.addEventListener('keydown', event => {
+            const key = event as KeyboardEvent;
+            const menu = (key.target as Element).closest<HTMLDetailsElement>('details[open]');
+            if (key.key !== 'Escape' || !menu) return;
+            key.preventDefault();
+            menu.open = false;
+            menu.querySelector('summary')?.focus();
+        });
+        for (const menu of toolbar.querySelectorAll<HTMLDetailsElement>('details')) {
+            menu.addEventListener('toggle', () => {
+                if (!menu.open) return;
+                for (const other of toolbar.querySelectorAll<HTMLDetailsElement>('details[open]')) {
+                    if (other !== menu) other.open = false;
+                }
+                this.connectionTier.hidePopups();
+                this.agentPopup?.hide();
+                this.promptPopup?.hide();
+            });
         }
-        return items;
     }
 
     // ── Help panel ────────────────────────────────────────────────────────────
@@ -1097,36 +1157,10 @@ export class ChatInput implements IChatInputPresenter {
 
     private updateActiveBadges(): void {
         const activeContainer = this.container.querySelector('.llm-input__active-settings') as HTMLElement;
-        const connBadge    = this.container.querySelector('.llm-input__active-badge[data-type="connection"]') as HTMLElement;
-        const tierBadge    = this.container.querySelector('.llm-input__active-badge[data-type="tier"]') as HTMLElement;
-        const streamBadge  = this.container.querySelector('.llm-input__active-badge[data-type="stream"]') as HTMLElement;
-        const historyBadge = this.container.querySelector('.llm-input__active-badge[data-type="history"]') as HTMLElement;
-
+        const streamBadge = this.container.querySelector<HTMLElement>('.llm-input__active-badge[data-type="stream"]');
+        const historyBadge = this.container.querySelector<HTMLElement>('.llm-input__active-badge[data-type="history"]');
         if (!activeContainer) return;
         let hasActive = false;
-
-        if (this.config.settings.connectionId) {
-            const conn = this.connectionTier.getConnections().find(c => c.id === this.config.settings.connectionId);
-            const text = connBadge?.querySelector('.llm-input__badge-text');
-            if (text) text.textContent = conn?.name || this.config.settings.connectionId;
-            if (connBadge) {
-                connBadge.dataset.connectionId = this.config.settings.connectionId;
-                connBadge.style.display = 'inline-flex';
-            }
-            hasActive = true;
-        } else if (connBadge) {
-            delete connBadge.dataset.connectionId;
-            connBadge.style.display = 'none';
-        }
-
-        const tier = this.config.settings.modelTier;
-        if (tier && tier !== 'auto') {
-            const TIER_LABELS: Record<string, string> = { optimal: '最优', standard: '标准', fast: '快速' };
-            const text = tierBadge?.querySelector('.llm-input__badge-text');
-            if (text) text.textContent = TIER_LABELS[tier] ?? tier;
-            if (tierBadge) tierBadge.style.display = 'inline-flex';
-            hasActive = true;
-        } else if (tierBadge) { tierBadge.style.display = 'none'; }
 
         if (!this.config.settings.streamMode) {
             if (streamBadge) streamBadge.style.display = 'inline-flex';
@@ -1137,7 +1171,7 @@ export class ChatInput implements IChatInputPresenter {
             const text = historyBadge?.querySelector('.llm-input__badge-text');
             if (text) {
                 text.textContent = this.config.settings.historyLength === 0
-                    ? 'No history' : `${this.config.settings.historyLength} msgs`;
+                    ? t('chatSettings.fresh') : t('chatInput.historyCount', { count: this.config.settings.historyLength ?? -1 });
             }
             if (historyBadge) historyBadge.style.display = 'inline-flex';
             hasActive = true;
@@ -1178,8 +1212,8 @@ export class ChatInput implements IChatInputPresenter {
         if (!this.agentPopup) {
             this.agentPopup = new PopupPanel(this.agentPickerBtn, {
                 showSearch: true,
-                searchPlaceholder: 'Search by name, provider...',
-                emptyText: 'No agents match',
+                searchPlaceholder: t('chatInput.searchAssistants'),
+                emptyText: t('chatInput.noAssistants'),
                 animated: true,
             });
         }
@@ -1202,11 +1236,14 @@ export class ChatInput implements IChatInputPresenter {
 
     /** Convert agents list to PopupItem[] for the picker. */
     private buildAgentItems(): PopupItem[] {
-        return this.agents.map(a => {
+        const categories = [...new Set(this.agents.map(agent => agent.category))];
+        const ordered = [...this.agents].sort((a, b) => categories.indexOf(a.category) - categories.indexOf(b.category)
+            || (this.options.executorUsage?.lastUsed(b.id) ?? 0) - (this.options.executorUsage?.lastUsed(a.id) ?? 0));
+        return ordered.map(a => {
             return {
                 id: a.id,
                 label: a.name,
-                icon: a.icon ?? '🤖',
+                icon: a.icon ?? ENTITY_ICONS.agent,
                 description: a.description,
                 group: a.category,
                 searchText: a.category,
@@ -1229,14 +1266,14 @@ export class ChatInput implements IChatInputPresenter {
         const agent = this.agents.find(a => a.id === this.config.agentId);
         if (!this.agentNameEl) return;
         if (agent) {
-            this.agentIconEl.textContent = agent.icon ?? '🤖';
+            this.agentIconEl.textContent = agent.icon ?? ENTITY_ICONS.agent;
             this.agentNameEl.textContent = agent.name;
             const meta = agent.category ?? '';
             this.agentMetaEl.textContent = meta;
             this.agentMetaEl.style.display = meta ? '' : 'none';
         } else {
-            this.agentIconEl.textContent = '🤖';
-            this.agentNameEl.textContent = 'Assistant';
+            this.agentIconEl.textContent = ENTITY_ICONS.agent;
+            this.agentNameEl.textContent = t('flow.history.assistant');
             this.agentMetaEl.textContent = '';
             this.agentMetaEl.style.display = 'none';
         }
@@ -1261,7 +1298,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private getOrCreatePromptPopup(): PopupPanel {
         if (!this.promptPopup) {
-            this.promptPopup = new PopupPanel(this.promptPickerBtn, {
+            this.promptPopup = new PopupPanel(this.container.querySelector('.llm-input__options > summary')!, {
                 maxVisible: 12,
                 showSearch: true,
                 searchPlaceholder: 'Search prompts...',
@@ -1292,7 +1329,7 @@ export class ChatInput implements IChatInputPresenter {
         return this.getCurrentPrompts().map((p, i) => ({
             id: String(i),
             label: p.name || `Prompt ${i + 1}`,
-            icon: '💬',
+            icon: CHAT_ICONS.edit,
             description: p.prompt.replace(/\s+/g, ' ').slice(0, 60),
             searchText: `${p.name} ${p.prompt}`,
         }));

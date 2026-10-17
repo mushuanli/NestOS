@@ -3,7 +3,7 @@ import { t } from '@itookit/common';
 import { conversationRequests } from './remote-interactions';
 import { ConversationWorkspaceView } from './ConversationWorkspaceView';
 import { RemoteBranches } from './remote-branches';
-import { remoteRounds } from './remote-rounds';
+import { remoteRounds, remotePrompts } from './remote-rounds';
 import { prepareRemoteAttachments } from './remote-attachments';
 import type { ChatSubmission } from '../domain/submission';
 
@@ -13,12 +13,14 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private branches?: RemoteBranches;
     private snapshot?: ConversationSnapshot;
     private closed = false;
+    private active = true;
     private releaseUpdates?: () => void;
     private updateTimer?: ReturnType<typeof setTimeout>;
     private working = false;
     private timer?: ReturnType<typeof setTimeout>;
     private loadingHistory = false;
     private historyError = '';
+    private findingPrompts = false;
     private tail: Promise<unknown> = Promise.resolve();
     private announced?: string;
     private savedDraft = '';
@@ -41,13 +43,16 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     async render() {
         this.layout();
         try { await this.show(await this.service.read()); } catch (error) { this.showError(error); }
-        if (!this.closed) {
+        if (!this.closed && this.active) {
             if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
             else this.schedule();
         }
     }
     private layout() {
-        this.view = new ConversationWorkspaceView(this.container, this.options, {
+        this.view = new ConversationWorkspaceView(this.container, {...this.options,
+            onStartConversationDraft: this.options.onStartConversationDraft ? async input => {
+                await this.flushPendingSave(); await this.options.onStartConversationDraft!(input);
+            } : undefined}, {
             send: (text, files) => this.sendText(text, files),
             attachments: this.options.readOnly ? undefined : this.service.snapshot?.().attachments,
             stop: () => { void this.run(() => this.service.interrupt()).catch(() => {}); },
@@ -59,6 +64,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                 return snapshot;
             }).catch(() => {}); },
             earlier: () => { this.historyError = ''; void this.loadHistory(); },
+            openPrompts: () => { void this.findPrompts(); },
             changed: files => { this.draftFiles = files ?? []; this.emit('interactiveChange', undefined); }, copy: () => this.getText(),
             rename: title => {
                 if (title !== this.snapshot?.title && this.snapshot?.canRename && this.service.rename)
@@ -69,7 +75,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.container.querySelector('#llm-branch-indicator')!.append(this.branches.element);
     }
     private async show(snapshot: ConversationSnapshot) {
-        if (this.closed) return;
+        if (this.closed || !this.active) return;
         if (this.snapshot?.pending && !snapshot.pending && snapshot.draft === '' && !snapshot.draftAttachments?.length && this.submittedDraft) {
             this.acceptSubmission(this.submittedDraft.text, this.submittedDraft.files); this.submittedDraft = undefined;
         }
@@ -108,7 +114,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                 const content = attachment.kind === 'text' ? attachment.content : Uint8Array.from(atob(attachment.content.split(',')[1] ?? ''), char => char.charCodeAt(0));
                 return new File([content], attachment.name, {type: attachment.mimeType ?? 'text/plain'});
             });
-            this.view.input.restoreDraft(this.savedDraft, this.draftFiles, 'remote:native');
+            this.view.input.restoreDraft(this.savedDraft, this.draftFiles, this.view.input.getConfig().agentId);
             this.savedFiles = [...this.draftFiles];
         }
         if (snapshot.pending) this.submittedDraft = {text: this.savedDraft, files: [...this.draftFiles]};
@@ -138,6 +144,22 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             finally { this.loadingHistory = false; if (!this.closed) { this.updateControls(); } }
         });
         this.tail = operation.catch(() => {}); await this.tail;
+    }
+    private async findPrompts(): Promise<void> {
+        if (this.findingPrompts || this.historyError) return;
+        this.findingPrompts = true;
+        try {
+            for (let page = 0; page < 3; page++) {
+                if (!this.needsPromptHistory()) break;
+                const before = this.snapshot;
+                await this.loadHistory();
+                if (this.historyError || this.snapshot === before) break;
+            }
+        } finally { this.findingPrompts = false; }
+    }
+    private needsPromptHistory(): boolean {
+        return !this.closed && !this.working && !!this.snapshot?.hasEarlier && !!this.service.loadEarlier
+            && remotePrompts(this.snapshot.messages).length === 0;
     }
     async sendText(text: string, files: File[] = []): Promise<void> {
         if (!text.trim() && !files.length) return;
@@ -205,25 +227,44 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.view.setStatus(this.snapshot?.pending ? t('harness.unknown') : `${t('harness.failed')} ${error instanceof Error ? error.message : ''}`, this.snapshot?.pending ? 'queued' : 'failed');
     }
     private queueUpdate(): void {
-        if (this.closed || this.updateTimer) return;
+        if (this.closed || !this.active || this.updateTimer) return;
         this.updateTimer = setTimeout(() => {
             this.updateTimer = undefined;
             if (this.working) { this.queueUpdate(); return; }
-            const work = this.tail.then(async () => { if (!this.closed) await this.show(this.service.snapshot?.() ?? await this.service.poll()); });
-            this.tail = work.catch(() => { if (!this.closed) this.view.setStatus(t('harness.disconnected')); });
+            const work = this.tail.then(async () => { if (!this.closed && this.active) await this.show(this.service.snapshot?.() ?? await this.service.poll()); });
+            this.tail = work.catch(error => this.showUpdateError(error));
         }, 50);
     }
     private schedule() {
+        clearTimeout(this.timer);
+        if (this.closed || !this.active) return;
         this.timer = setTimeout(() => {
-            if (this.closed) return;
+            if (this.closed || !this.active) return;
             if (!this.working) {
-                const poll = this.tail.then(async () => { if (!this.closed) await this.show(await this.service.poll()); });
-                this.tail = poll.catch(() => { if (!this.closed) this.view.setStatus(t('harness.disconnected')); });
+                const poll = this.tail.then(async () => { if (!this.closed && this.active) await this.show(await this.service.poll()); });
+                this.tail = poll.catch(error => this.showUpdateError(error));
             }
             void this.tail.finally(() => { if (!this.closed) this.schedule(); });
         }, 1000);
     }
+    private showUpdateError(error: unknown): void {
+        if (this.closed || !this.active) return;
+        console.error('[Conversation] Update failed', error);
+        const message = error instanceof Error ? error.message : t('harness.failed');
+        this.view.setStatus(t('harness.updateFailed', {message}));
+    }
     async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); await this.view?.destroy(); this.container.replaceChildren(); }
+    cancelPendingRender(): void {
+        this.active = false; this.releaseUpdates?.(); this.releaseUpdates = undefined;
+        clearTimeout(this.updateTimer); this.updateTimer = undefined; clearTimeout(this.timer);
+    }
+    async activate(): Promise<void> {
+        if (this.closed || this.active) return;
+        this.active = true; await this.tail; await this.show(await this.service.read());
+        if (!this.active || this.closed) return;
+        if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
+        else this.schedule();
+    }
     getText() { return remoteRounds(this.snapshot?.messages ?? []).map(group => group.content ?? group.executionRoot?.data.output ?? '').join('\n\n'); }
     async navigateTo(target: {elementId: string}): Promise<void> {
         if (!target.elementId.startsWith('native-item:')) return;

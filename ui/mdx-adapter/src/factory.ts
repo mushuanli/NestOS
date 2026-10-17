@@ -7,7 +7,7 @@ import { createAssetProvider } from './assets';
 import { createDocumentHost } from './document-host';
 import { AssetManagerPlugin } from './asset-manager.plugin';
 
-export interface MDxAdapterOptions extends EditorOptions { onSave?: (content: string) => Promise<void>; }
+export interface MDxAdapterOptions extends EditorOptions, Pick<MDxEditorFactoryConfig, 'htmlPolicy' | 'scrollMode'> { onSave?: (content: string) => Promise<void>; }
 export type AdaptedMDxEditor = MDxEditor & { updateNodeId(path: string): void };
 
 export function resolveDocumentFormat(options: EditorOptions): 'markdown' | 'text' {
@@ -52,7 +52,7 @@ export function adaptEditorOptions(options: MDxAdapterOptions): MDxEditorFactory
     const assets = createAssetProvider(options.files?.fs, () => path, options.assets);
     const plugins = (options.plugins ?? []).filter(isPluginConfig);
     if (assets && titlebar.enableAssetManager !== false && !plugins.includes('-ui:asset-manager')) plugins.push(new AssetManagerPlugin(options.files?.fs, () => path, options.assets, defaults['ui:asset-manager']));
-    return { signal: options.signal, documentPath: path, title: options.title, language: options.language,
+    return { htmlPolicy: options.htmlPolicy, scrollMode: options.scrollMode, signal: options.signal, documentPath: path, title: options.title, language: options.language,
         initialContent: options.initialContent, initialMode: options.initialMode, contentFormat: resolveDocumentFormat(options),
         onDocumentPathChange: next => { path = next; },
         readOnly: options.readOnly, plugins, defaultPluginOptions: defaults, host, assets, translate: key => t(key as Parameters<typeof t>[0]),

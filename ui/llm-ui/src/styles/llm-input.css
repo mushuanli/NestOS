@@ -1,4 +1,28 @@
 /* @file: llm-ui/styles/llm-input.css */
+.llm-input__connection-notice {
+    display: flex;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 4px 10px;
+    padding: 10px 12px 4px;
+    color: var(--llm-text-secondary);
+    font-size: 12px;
+    line-height: 1.6;
+}
+
+.llm-input__connection-notice[hidden], .llm-input__connection-notice [hidden] { display: none; }
+.llm-input__connection-notice > span { flex: 1 1 220px; }
+.llm-input__connection-notice > button {
+    border: 0;
+    background: transparent;
+    padding: 2px 0;
+    color: var(--llm-color-primary);
+    font: inherit;
+    text-decoration: underline;
+    text-underline-offset: 3px;
+    cursor: pointer;
+}
+.llm-input__connection-notice > button:focus-visible { outline: 2px solid var(--llm-color-primary); outline-offset: 3px; }
 /* =========================================
    输入组件 (Input Component)
    ========================================= */
@@ -13,12 +37,12 @@
     box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05);
     transition: box-shadow var(--llm-transition-normal), border-color var(--llm-transition-normal);
     position: relative;
-    overflow: hidden;
+    overflow: visible;
 }
 
 .llm-input:focus-within {
-    border-color: var(--llm-color-primary);
-    box-shadow: 0 4px 12px -2px rgba(59, 130, 246, 0.15);
+    border-color: var(--llm-text-muted);
+    box-shadow: 0 4px 12px -2px #0000000a;
 }
 
 /* --- 设置面板 --- */
@@ -351,7 +375,7 @@
     display: flex;
     align-items: center;
     gap: 2px;
-    flex-wrap: wrap;
+    min-width: 0;
 }
 
 .llm-input__execution-mode {
@@ -401,9 +425,8 @@
     display: flex;
     align-items: center;
     gap: 4px;
-    flex-shrink: 0;
     min-width: 0;
-    overflow: hidden;
+    gap: 4px;
 }
 
 /* ─── Agent Picker (custom combobox) ─────────────────────────────────────── */
@@ -416,17 +439,17 @@
 .llm-input__agent-trigger {
     display: flex;
     align-items: center;
-    gap: 5px;
-    padding: 4px 8px 4px 8px;
-    background: var(--llm-bg-tertiary);
-    border: 1px solid transparent;
-    border-radius: var(--llm-radius-md);
-    font-size: 0.85rem;
-    font-weight: 500;
-    color: var(--llm-text-primary);
+    gap: 2px;
+    padding: 4px 6px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--llm-text-secondary);
+    font: inherit;
+    font-size: 12px;
     cursor: pointer;
-    max-width: 260px;
-    transition: background var(--llm-transition-fast), border-color var(--llm-transition-fast);
+    min-width: 0;
+    max-width: 160px;
 }
 
 .llm-input__agent-trigger:hover {
@@ -451,13 +474,7 @@
 }
 
 .llm-input__agent-meta {
-    font-size: 0.72rem;
-    color: var(--llm-text-tertiary);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    max-width: 110px;
-    opacity: 0.85;
+    display: none !important;
 }
 
 .llm-input__agent-chevron {
@@ -468,136 +485,6 @@
 }
 
 /* Agent dropdown is managed by PopupPanel (mounted on body, position:fixed) */
-
-/* ─── Connection Quick-Switch ──────────────────────────────────────────────── */
-
-.llm-input__conn-quick-wrapper {
-    position: relative;
-    flex-shrink: 0;
-}
-
-.llm-input__conn-quick {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 7px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--llm-radius-md);
-    font-size: 0.8rem;
-    color: var(--llm-text-secondary);
-    cursor: pointer;
-    transition: background var(--llm-transition-fast), color var(--llm-transition-fast);
-    white-space: nowrap;
-}
-
-.llm-input__conn-quick:hover {
-    background: var(--llm-bg-hover);
-    color: var(--llm-text-primary);
-}
-
-.llm-input__conn-quick--active {
-    color: var(--llm-color-primary);
-    background: var(--llm-color-primary-bg);
-}
-
-.llm-input__conn-quick--active:hover {
-    background: var(--llm-color-primary-bg);
-}
-
-.llm-input__conn-quick:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.llm-input__conn-quick-icon {
-    font-size: 0.85em;
-    opacity: 0.7;
-}
-
-.llm-input__conn-quick-label {
-    max-width: 90px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.llm-input__conn-quick-clear {
-    font-size: 0.9em;
-    line-height: 1;
-    opacity: 0.6;
-    cursor: pointer;
-}
-
-.llm-input__conn-quick-clear:hover {
-    opacity: 1;
-}
-
-/* Connection dropdown is managed by PopupPanel (mounted on body, position:fixed) */
-
-/* ─── Tier Quick-Switch ─────────────────────────────────────────────────────── */
-
-.llm-input__tier-quick-wrapper {
-    position: relative;
-    flex-shrink: 0;
-}
-
-.llm-input__tier-quick {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px 7px;
-    background: transparent;
-    border: 1px solid transparent;
-    border-radius: var(--llm-radius-md);
-    font-size: 0.8rem;
-    color: var(--llm-text-secondary);
-    cursor: pointer;
-    transition: background var(--llm-transition-fast), color var(--llm-transition-fast);
-    white-space: nowrap;
-}
-
-.llm-input__tier-quick:hover {
-    background: var(--llm-bg-hover);
-    color: var(--llm-text-primary);
-}
-
-.llm-input__tier-quick--active {
-    color: var(--llm-color-primary);
-    background: var(--llm-color-primary-bg);
-}
-
-.llm-input__tier-quick--active:hover {
-    background: var(--llm-color-primary-bg);
-}
-
-.llm-input__tier-quick:disabled {
-    opacity: 0.4;
-    cursor: not-allowed;
-}
-
-.llm-input__tier-quick-icon {
-    font-size: 0.85em;
-    opacity: 0.7;
-}
-
-.llm-input__tier-quick-label {
-    max-width: 60px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-}
-
-.llm-input__tier-quick-clear {
-    font-size: 0.9em;
-    line-height: 1;
-    opacity: 0.6;
-    cursor: pointer;
-}
-
-.llm-input__tier-quick-clear:hover {
-    opacity: 1;
-}
-
-/* Tier dropdown is managed by PopupPanel (mounted on body, position:fixed) */
 
 /* ─── Prompt Picker (preset prompts quick-insert) ──────────────────────────── */
 
@@ -961,41 +848,6 @@
     position: relative;
 }
 
-/* 开启：主色浅底 + 主色图标 + 右上角主色实心点（状态醒目） */
-.llm-input__btn--websearch[data-active="true"] {
-    background-color: var(--llm-color-primary-bg);
-    color: var(--llm-color-primary);
-}
-.llm-input__btn--websearch[data-active="true"]::after {
-    content: '';
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--llm-color-primary);
-    box-shadow: 0 0 0 1px #fff;
-}
-
-/* 关闭：灰底 + 灰图标 + 右上角灰色空心点 */
-.llm-input__btn--websearch[data-active="false"] {
-    background-color: var(--llm-bg-tertiary);
-    color: var(--llm-text-secondary);
-    opacity: 0.8;
-}
-.llm-input__btn--websearch[data-active="false"]::after {
-    content: '';
-    position: absolute;
-    top: 4px;
-    right: 4px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: transparent;
-    border: 2px solid var(--llm-text-secondary);
-}
-
 .llm-input__btn--settings.has-overrides::after {
     content: '';
     position: absolute;
@@ -1066,6 +918,11 @@
 
 /* ≤768px：平板适配 */
 @media (max-width: 768px) {
+    .llm-input__textarea {
+        min-height: calc(1lh + 8px);
+        max-height: min(160px, calc(var(--app-visible-height, 100dvh) * 0.22));
+        font-size: 16px;
+    }
     /* Agent meta 隐藏，降低噪音 */
     .llm-input__agent-meta { display: none; }
 
@@ -1089,19 +946,8 @@
         height: 44px;
     }
 
-    /* Textarea 限高避免占满屏幕 */
-    .llm-input__textarea {
-        max-height: var(--llm-textarea-max-height, 120px);
-    }
-
     /* Agent 名称截断，meta 隐藏 */
     .llm-input__agent-name { max-width: 72px; }
-
-    /* Connection quick switch 仅显示图标 */
-    .llm-input__conn-quick-label { display: none; }
-
-    /* Prompt picker 移入 more 菜单，工具栏隐藏 */
-    .llm-input__prompt-picker-wrapper { display: none !important; }
 
     /* 附件 chips：横向单行滚动，避免纵向堆叠占屏幕空间 */
     .llm-input__attachments {
@@ -1470,4 +1316,74 @@
     .llm-input__ocr-preferences .settings-form__group { grid-template-columns: minmax(0, 1fr); }
     .llm-input__ocr-preferences .settings-btn { justify-self: start; }
     .llm-input__settings-toggles { gap: 10px; }
+}
+
+/* Model, mode and secondary menus share the composer's quiet visual language. */
+.llm-input__model-trigger,
+.llm-input__execution-picker > summary,
+.llm-input__options > summary { display: flex; align-items: center; justify-content: center; gap: 3px; padding: 4px 6px; min-height: 32px; box-sizing: border-box; border: 0; border-radius: 6px; background: transparent; color: var(--llm-text-secondary); font: inherit; font-size: 12px; cursor: pointer; list-style: none; }
+.llm-input__model-trigger { min-width: 0; max-width: 240px; }
+.llm-input__model-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.llm-input__model-trigger > svg,
+.llm-input__agent-chevron > svg,
+.llm-input__execution-picker > summary > svg { width: 12px; height: 12px; flex-shrink: 0; }
+.llm-input__execution-picker > summary { white-space: nowrap; }
+.llm-input__execution-label { overflow: hidden; text-overflow: ellipsis; }
+.llm-input__options > summary { width: 32px; }
+.llm-input__options > summary::-webkit-details-marker,
+.llm-input__execution-picker > summary::-webkit-details-marker { display: none; }
+.llm-input__model-trigger:hover,
+.llm-input__options > summary:hover,
+.llm-input__execution-picker > summary:hover { background: var(--llm-bg-tertiary); }
+.llm-input__model-trigger:disabled { opacity: .5; cursor: default; }
+.llm-input__options,
+.llm-input__execution-picker { position: relative; flex-shrink: 0; }
+.llm-input__options-body,
+.llm-input__execution-menu { position: absolute; bottom: calc(100% + 8px); z-index: 30; width: 220px; box-sizing: border-box; padding: 8px; background: var(--llm-bg-primary); border: 1px solid var(--llm-border-color); border-radius: 12px; box-shadow: 0 6px 24px #00000018; }
+.llm-input__options-body { right: 0; }
+.llm-input__execution-menu { left: 0; }
+.llm-input__options-body .llm-input__btn,
+.llm-input__options-body .llm-input__prompt-picker { display: flex; align-items: center; gap: 8px; width: 100%; height: auto; min-height: 36px; padding: 8px; border: 0; border-radius: 6px; background: transparent; color: var(--llm-text-primary); font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+.llm-input__options-body button { justify-content: flex-start; }
+.llm-input__options-body button:hover { background: var(--llm-bg-tertiary); }
+.llm-input__options-body svg { width: 16px; height: 16px; flex-shrink: 0; }
+.llm-input__options-body .llm-input__btn--websearch::after { content: ''; margin-left: auto; width: 6px; height: 6px; border-radius: 50%; background: var(--llm-border-color); }
+.llm-input__options-body .llm-input__btn--websearch[aria-pressed="true"]::after { background: var(--llm-color-primary); }
+.llm-input__options-body [hidden] { display: none; }
+.llm-input__options-body .llm-input__btn--settings.has-overrides::after { display: none; }
+.llm-input__settings-panel { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 40; box-sizing: border-box; border: 1px solid var(--llm-border-color); border-radius: 12px; box-shadow: 0 6px 24px #00000018; }
+.llm-input__help-panel { position: absolute; bottom: calc(100% + 8px); left: 0; right: 0; z-index: 40; background: var(--llm-bg-primary); border-color: var(--llm-border-color); }
+.llm-input__execution-mode { display: flex; border: 0; padding: 0; }
+.llm-input__execution-option { flex: 1; min-height: 36px; }
+.llm-input__execution-hint { margin-top: 6px; }
+.llm-input__btn--send,
+.llm-input__btn--stop { flex-shrink: 0; }
+.llm-input__textarea { line-height: 1.65; }
+.llm-input__options[hidden],
+.llm-input__execution-picker[hidden],
+.llm-input__model-trigger[hidden] { display: none; }
+.llm-input__execution-source,
+.llm-input__flow-configure { padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--llm-text-secondary); font: inherit; font-size: 12px; white-space: nowrap; }
+.llm-input__flow-configure { cursor: pointer; }
+.llm-input__flow-configure:hover { background: var(--llm-bg-tertiary); }
+.llm-input__execution-source[hidden],
+.llm-input__flow-configure[hidden],
+.llm-input__agent-picker[hidden] { display: none; }
+.llm-draft-target { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+.llm-draft-target > button { padding: 7px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--llm-text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+.llm-draft-target > button:hover,
+.llm-draft-target > button[aria-pressed="true"] { color: var(--llm-text-primary); background: var(--llm-bg-tertiary); }
+.llm-draft-target > button:disabled { opacity: .5; cursor: default; }
+.llm-draft-target > button:focus-visible { outline: 2px solid var(--llm-color-primary); outline-offset: 2px; }
+.llm-draft-target__hint { flex-basis: 100%; margin: 0 0 2px; color: var(--llm-text-secondary); font-size: 12px; line-height: 1.5; }
+.llm-input__toolbar :focus-visible { outline: 2px solid var(--llm-color-primary); outline-offset: 2px; }
+
+@media (max-width: 480px) {
+    .llm-input__model-trigger { max-width: 110px; }
+    .llm-input__agent-name { max-width: 64px; }
+    .llm-input__toolbar-left,
+    .llm-input__toolbar-right { gap: 2px; }
+    .llm-input__settings-panel,
+    .llm-input__help-panel { position: fixed; bottom: 0; left: 0; right: 0; max-height: 65vh; border-radius: 16px 16px 0 0; }
+    .llm-input__options-body button { min-height: 44px; }
 }

@@ -14,7 +14,7 @@ function fixture(text = '!ls') {
         if (name === SessionCommand.GetCurrentId) return 'session';
         if (name === SessionCommand.FlowRerunContext) return null;
     });
-    const ctx: any = { commands: { execute }, executeDirectCommand: vi.fn(async () => {}), resolveSubmission: vi.fn(),
+    const ctx: any = { getSessionId: () => 'session', commands: { execute }, executeDirectCommand: vi.fn(async () => {}), resolveSubmission: vi.fn(),
         chatInput: { restoreInput: vi.fn(), setLoading: vi.fn(), getConfig: () => ({ settings: {}, agentId: 'default' }) },
         errorHandler: { wrap: (fn: () => Promise<unknown>) => fn() } };
     return { ctx, execute };

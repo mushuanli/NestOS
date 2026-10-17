@@ -109,6 +109,18 @@ export interface ConfigurationFormControls<T, TDiscovery> {
 }
 
 export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
+    /** Mount host navigation in the editor header on narrow screens; return its cleanup. */
+    mountCompactNavigation?(container: HTMLElement): () => void;
+    /** Mount host-owned resource actions in the editor's More menu; return its cleanup. */
+    mountMoreMenu?(container: HTMLElement): () => void;
+    /** Host-owned presentation history; viewing or editing an executor does not record usage. */
+    executorUsage?: {
+        lastUsed(id: string): number;
+        record(id: string): void;
+        subscribe?(listener: () => void): () => void;
+    };
+    /** Open a separate conversation draft while retaining the current conversation. */
+    onStartConversationDraft?(input: {text: string; files: File[]}): Promise<void>;
     /** Editor-specific read model assembled by its application service. */
     initialData?: TInitial;
     onConversationSession?(sessionId: string): void;

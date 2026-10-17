@@ -20,6 +20,7 @@ export class InvocationPanel {
     private timer?: ReturnType<typeof setTimeout>;
     private refreshing?: Promise<void>;
     private refreshFailed = false;
+    private visible = true;
     private actions = new Set<string>();
     private element = document.createElement('section');
     constructor(private commands: ICommandBus, private sessionId: string, parent: HTMLElement, private useResult: (text: string) => void) {
@@ -32,7 +33,7 @@ export class InvocationPanel {
     }
 
     refresh(): Promise<void> {
-        if (this.abort.signal.aborted) return Promise.resolve();
+        if (this.abort.signal.aborted || !this.visible) return Promise.resolve();
         if (this.refreshing) return this.refreshing;
         this.refreshing = this.load().then(() => { this.refreshFailed = false; }).catch(error => {
             this.refreshFailed = true;
@@ -41,11 +42,15 @@ export class InvocationPanel {
             this.refreshing = undefined; clearTimeout(this.timer);
             const active = this.refreshFailed || [...this.cards.values()].some(card => card.active);
             // Idle polling remains a fallback for changes made by another host.
-            if (!this.abort.signal.aborted) this.timer = setTimeout(() => { void this.refresh(); }, active ? 1000 : 30_000);
+            if (!this.abort.signal.aborted && this.visible) this.timer = setTimeout(() => { void this.refresh(); }, active ? 1000 : 30_000);
         });
         return this.refreshing;
     }
 
+    setVisible(visible: boolean): void {
+        this.visible = visible; clearTimeout(this.timer);
+        if (visible) void this.refresh();
+    }
     async hasActive(): Promise<boolean> {
         await this.refresh();
         return [...this.cards.values()].some(card => card.active);
@@ -64,7 +69,7 @@ export class InvocationPanel {
 
     private async load(): Promise<void> {
         const calls = await this.commands.execute<FlowInvocationRecord[]>(FlowInvocationCommand.List, { sessionId: this.sessionId });
-        if (this.abort.signal.aborted) return;
+        if (this.abort.signal.aborted || !this.visible) return;
         this.element.hidden = !calls.length;
         for (const call of calls) {
             let card = this.cards.get(call.requestId);
@@ -72,7 +77,7 @@ export class InvocationPanel {
             if (!call.rootTaskId) { card.active = !call.error; card.element.querySelector('[data-status]')!.textContent = call.error ?? t('flow.output.pending'); continue; }
             try {
                 const snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, { sessionId: this.sessionId, taskId: call.rootTaskId });
-                if (this.abort.signal.aborted) return;
+                if (this.abort.signal.aborted || !this.visible) return;
                 card.snapshot = snapshot; this.updateCard(card, call, snapshot);
             } catch (error) { card.element.querySelector('[data-status]')!.textContent = String(error); }
         }

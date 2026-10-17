@@ -26,6 +26,7 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
     protected name = 'Send Message';
 
     protected async execute({ text, files, agentId, overrides, origin, historyPolicy, submission }: SendMessageParams): Promise<boolean> {
+        const restoreInput = this.rejectedInputRestorer(text, agentId);
         overrides = { ...overrides,
             executionMode: overrides?.executionMode ?? this.ctx.chatInput.getConfig?.().settings?.executionMode ?? 'chat',
             ...(overrides?.flowParameters ? { flowParameters: structuredClone(overrides.flowParameters) } : {}),
@@ -33,14 +34,11 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         try {
             if (await dispatchDirectCommand(text, files, this.ctx.executeDirectCommand)) return true;
         } catch (error) {
-            this.ctx.chatInput.restoreInput(text, agentId);
+            restoreInput();
             throw error;
         }
         const sessionId = this.ctx.getSessionId();
         if (!sessionId) throw new Error('No session loaded');
-
-        const savedText = text;
-        const savedAgentId = agentId;
 
         let feedback: ChatSubmission = {id: crypto.randomUUID(), text: text.trim() || t('harness.attachmentPrompt'),
             timestamp: Date.now(), state: 'submitting'};
@@ -65,7 +63,7 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
                 } catch (uploadErr: any) {
                     present({state: 'failed', error: uploadErr.message});
                     Toast.error(uploadErr.message || 'Failed to upload files');
-                    this.ctx.chatInput.restoreInput(savedText, savedAgentId);
+                    restoreInput();
                     this.ctx.chatInput.setLoading(false);
                     return false;
                 }
@@ -104,12 +102,13 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
                 },
             });
             present({state: 'accepted'});
+            if (this.ctx.getSessionId() === sessionId && this.ctx.isGenerating) this.ctx.chatInput.setLoading(this.ctx.isGenerating());
             if (!overrides.flowId && this.ctx.getSessionId() === sessionId) this.ctx.chatInput.setConfig?.({ settings: { executionMode: overrides.executionMode, executionModeLocked: true } });
             return true;
         } catch (error: any) {
             // A rejected transport response does not prove the host rejected the send.
             // Preserve persisted rounds; only the host can reconcile accepted execution.
-            this.ctx.chatInput.restoreInput(savedText, savedAgentId);
+            restoreInput();
 
             present({state: error?.outcome === 'unknown' ? 'unknown' : 'failed', error: error?.message});
             const classified = ErrorHandler.classifyError(error);
@@ -123,4 +122,13 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         }
     }
 
+    private rejectedInputRestorer(text: string, agentId?: string): () => void {
+        const sessionId = this.ctx.getSessionId();
+        const original = this.ctx.chatInput.getConfig?.().text;
+        return () => {
+            if (this.ctx.getSessionId() !== sessionId) return;
+            const current = this.ctx.chatInput.getConfig?.().text;
+            if ((original === undefined || original === '') && current === original) this.ctx.chatInput.restoreInput(text, agentId);
+        };
+    }
 }

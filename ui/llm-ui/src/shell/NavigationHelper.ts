@@ -16,8 +16,10 @@ import type { TimerManager } from '../components/common/TimerManager';
 import { FloatingNavPanel } from '../components/FloatingNavPanel';
 import { Toast } from '@itookit/ui-common';
 import { visibleSessionId } from '../components/history/visible-session';
+import { PromptNavigator } from '../components/PromptNavigator';
 
 export interface NavigationDeps {
+    workspace: HTMLElement;
     domCache: DOMCache;
     commands: ICommandBus;
     historyView: IHistoryPresenter;
@@ -30,8 +32,48 @@ export interface NavigationDeps {
 export class NavigationHelper {
     private floatingNav: INavigationPresenter | null = null;
     private navRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    private readonly prompts: PromptNavigator;
+    private sessions: SessionGroup[] = [];
+    private historyDirty = true;
+    private historyRevision = 0;
+    private historyRead?: Promise<SessionGroup[]>;
+    private destroyed = false;
 
-    constructor(private deps: NavigationDeps) {}
+    constructor(private deps: NavigationDeps) {
+        this.prompts = new PromptNavigator(deps.workspace, deps.domCache.byId('llm-ui-history')!, {
+            refresh: () => this.refreshPrompts(),
+            reveal: id => deps.historyView.revealSession(id),
+        });
+    }
+
+    private refreshPrompts(): void {
+        if (!this.historyRead) this.invalidateHistory();
+        void this.loadSessions().catch(error => { if (!this.destroyed) Toast.error(String(error)); });
+    }
+
+    updatePrompts(sessions: SessionGroup[]): void {
+        if (this.destroyed) return;
+        this.historyRevision++; this.historyDirty = false; this.sessions = sessions;
+        this.prompts.update(sessions.filter(session => session.role === 'user').map(session => ({id: session.id, text: session.content ?? ''})));
+    }
+
+    private invalidateHistory(): void { this.historyRevision++; this.historyDirty = true; }
+
+    private loadSessions(): Promise<SessionGroup[]> {
+        if (!this.historyDirty || this.destroyed) return Promise.resolve(this.sessions);
+        return this.historyRead ??= this.readSessions().finally(() => { this.historyRead = undefined; });
+    }
+
+    private async readSessions(): Promise<SessionGroup[]> {
+        while (this.historyDirty && !this.destroyed) {
+            const revision = this.historyRevision;
+            try {
+                const sessions = await this.deps.commands.execute<SessionGroup[]>(SessionCommand.GetSessions);
+                if (revision === this.historyRevision) this.updatePrompts(sessions);
+            } catch (error) { if (revision === this.historyRevision) throw error; }
+        }
+        return this.sessions;
+    }
 
     get isNavVisible(): boolean {
         return this.floatingNav?.isVisible ?? false;
@@ -63,7 +105,8 @@ export class NavigationHelper {
         const currentId = this.findCurrentVisibleSession();
         if (!currentId) return;
 
-        this.deps.commands.execute<SessionGroup[]>(SessionCommand.GetSessions).then(sessions => {
+        this.loadSessions().then(sessions => {
+            if (this.destroyed) return;
             const idx = sessions.findIndex(s => s.id === currentId);
             const step = direction === 'prev' ? -1 : 1;
 
@@ -96,18 +139,21 @@ export class NavigationHelper {
     // ── Floating nav panel ──────────────────────────────────────────────────
 
     pushNavData(): void {
-        if (!this.floatingNav?.isVisible) return;
-
-        if (this.navRefreshTimer !== null) {
-            this.deps.timers.clearTimeout(this.navRefreshTimer);
-        }
-
-        this.navRefreshTimer = this.deps.timers.setTimeout(async () => {
+        this.invalidateHistory();
+        if (this.destroyed || (!this.prompts.isVisible && !this.isNavVisible)) return;
+        if (this.navRefreshTimer !== null) this.deps.timers.clearTimeout(this.navRefreshTimer);
+        this.navRefreshTimer = this.deps.timers.setTimeout(() => {
             this.navRefreshTimer = null;
-            if (!this.floatingNav?.isVisible) return;
-            const data = await this.buildNavData();
-            this.floatingNav.update(data);
+            if (this.destroyed || (!this.prompts.isVisible && !this.isNavVisible)) return;
+            void this.refreshVisibleNavigation().catch(error => { if (!this.destroyed) Toast.error(String(error)); });
         }, 50);
+    }
+
+    private async refreshVisibleNavigation(): Promise<void> {
+        await this.loadSessions();
+        if (this.destroyed || !this.isNavVisible) return;
+        const data = await this.buildNavData();
+        if (!this.destroyed && this.isNavVisible && data) this.floatingNav?.update(data);
     }
 
     async pushNavDataImmediate(): Promise<void> {
@@ -119,17 +165,19 @@ export class NavigationHelper {
         }
 
         const data = await this.buildNavData();
-        this.floatingNav.update(data);
+        if (!this.destroyed && data) this.floatingNav?.update(data);
     }
 
-    private async buildNavData(): Promise<NavPanelData> {
-        const sessions = await this.deps.commands.execute<SessionGroup[]>(SessionCommand.GetSessions);
-        return this.deps.navDataBuilder.build(
+    private async buildNavData(): Promise<NavPanelData | undefined> {
+        const sessions = await this.loadSessions();
+        const revision = this.historyRevision;
+        const data = await this.deps.navDataBuilder.build(
             sessions,
             this.deps.historyView.getCollapseStates(),
             this.deps.branchStore.current,
             this.findCurrentVisibleSession() ?? undefined
         );
+        return revision === this.historyRevision ? data : undefined;
     }
 
     async toggleNavigator(container: HTMLElement): Promise<void> {
@@ -150,13 +198,15 @@ export class NavigationHelper {
         }
 
         if (!this.floatingNav.isVisible) {
+            if (!this.historyRead) this.invalidateHistory();
             await this.pushNavDataImmediate();
         }
 
-        this.floatingNav.toggle();
+        if (!this.destroyed) this.floatingNav?.toggle();
     }
 
     destroy(): void {
+        this.destroyed = true; this.historyRevision++; this.sessions = []; this.prompts.destroy();
         this.floatingNav?.destroy();
         this.floatingNav = null;
         if (this.navRefreshTimer !== null) {

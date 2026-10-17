@@ -18,6 +18,7 @@
 import type { InputPlugin, InputPluginContext } from './InputPlugin';
 import type { TokenStats } from '../../../domain/types';
 import { injectStyle } from '../../../utils/styleInjector';
+import { t } from '@itookit/common';
 
 const BAR_BLOCKS = 10;
 
@@ -86,21 +87,13 @@ export class TokenMeterPlugin implements InputPlugin {
 
     private ensureStrip(): HTMLElement {
         if (!this.strip) {
-            this.strip = document.createElement('div');
+            this.strip = document.createElement('details');
             this.strip.className = 'token-meter';
             this.strip.style.display = 'none';
 
-            // Insert inside .llm-input__toolbar-right, before the settings button,
-            // so token stats share the toolbar row instead of occupying a full row.
-            const toolbarRight = this.ctx!.container.querySelector('.llm-input__toolbar-right');
-            const settingsBtn  = toolbarRight?.querySelector('.llm-input__btn--settings');
-            if (toolbarRight && settingsBtn) {
-                toolbarRight.insertBefore(this.strip, settingsBtn);
-            } else {
-                // Fallback: append to main (original behavior)
-                const main = this.ctx!.container.querySelector('.llm-input__main') ?? this.ctx!.container;
-                main.appendChild(this.strip);
-            }
+            // Keep diagnostics below composition, with details available on demand.
+            const main = this.ctx!.container.querySelector('.llm-input__main') ?? this.ctx!.container;
+            main.appendChild(this.strip);
         }
         return this.strip;
     }
@@ -131,8 +124,11 @@ export class TokenMeterPlugin implements InputPlugin {
             ? `<span class="token-meter__sep">·</span><span title="${s.rounds} rounds">${s.rounds} rounds</span>`
             : '';
 
-        strip.style.display = 'flex';
+        strip.style.display = 'block';
         strip.innerHTML = `
+            <summary class="token-meter__summary token-meter__ctx--${colorClass}" title="${t('chatInput.usage')}">
+                ${t('chatInput.contextUsage', { percent: Math.round(s.contextUsageRatio * 100) })} · ${cost}${est}
+            </summary><div class="token-meter__details">
             <span class="token-meter__tokens" title="Total tokens: ${s.inputTokens + s.outputTokens}">
                 <span class="token-meter__arrow token-meter__arrow--in" title="Input tokens">↑</span>${inTok}
                 <span class="token-meter__arrow token-meter__arrow--out" title="Output tokens">↓</span>${outTok}
@@ -150,6 +146,7 @@ export class TokenMeterPlugin implements InputPlugin {
             <span class="token-meter__sep">·</span>
             <span class="token-meter__dur" title="Generation time">${dur}</span>
             <span class="token-meter__total" style="display:none" aria-label="Total tokens: ${totalOut}"></span>
+            </div>
         `;
     }
 
@@ -157,23 +154,19 @@ export class TokenMeterPlugin implements InputPlugin {
         injectStyle('token-meter-styles', `
 /* ── Token Meter — inline in toolbar-right ─────────────────────────────── */
 .token-meter {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 0 6px;
+    padding: 4px 2px 0;
     font-size: 11px;
-    color: var(--text-tertiary, #aaa);
+    color: var(--llm-text-secondary);
     flex-wrap: nowrap;
-    overflow: hidden;
     white-space: nowrap;
     user-select: none;
     /* Separator from toolbar-left via flex spacer in toolbar */
-    border-right: 1px solid var(--border-color-subtle, #eee);
     margin-right: 2px;
-    max-width: 280px;
     flex-shrink: 1;
     min-width: 0;
 }
+.token-meter__summary { cursor: pointer; width: fit-content; font-size: 11px; }
+.token-meter__details { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; padding-top: 6px; }
 .token-meter__sep { opacity: 0.35; flex-shrink: 0; }
 .token-meter__arrow { font-size: 10px; margin-right: 1px; opacity: 0.7; }
 .token-meter__arrow--in  { color: var(--accent, #1967d2); }

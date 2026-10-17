@@ -3,6 +3,8 @@ export interface ConversationMessage {
     id: string; role: 'user' | 'assistant' | 'tool' | 'system'; text: string; status?: string;
     /** Native text array boundaries, kept separate from the plain-text preview. */
     contentParts?: string[];
+    /** Native provenance aligned with contentParts; absent or unknown means ordinary prompt text. */
+    contentPartKinds?: string[];
     turnId?: string; name?: string; input?: string; inputLanguage?: 'bash' | 'json' | 'text';
     timestamp?: number; paths?: string[]; operation?: 'read' | 'write' | 'search' | 'list' | 'execute'; commandPreview?: string;
 }

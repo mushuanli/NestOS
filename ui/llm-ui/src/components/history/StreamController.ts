@@ -178,7 +178,7 @@ export class StreamController {
 
             const statusText = el.querySelector('.llm-ui-node__status');
             if (statusText) {
-                statusText.textContent = status;
+                statusText.textContent = NodeTemplates.statusLabel(status);
                 statusText.className = `llm-ui-node__status llm-ui-node__status--${status}`;
             }
 
@@ -190,6 +190,10 @@ export class StreamController {
                     resEl.textContent = typeof result === 'string'
                         ? result : JSON.stringify(result, null, 2);
                 }
+            }
+            if (status === 'failed') {
+                const details = el.querySelector<HTMLDetailsElement>('.llm-ui-tool-details');
+                if (details) details.open = true;
             }
 
             // 更新预览
@@ -217,6 +221,7 @@ export class StreamController {
         const thoughtEl = nodeEl.querySelector('.llm-ui-thought') as HTMLElement | null;
         if (!thoughtEl || thoughtEl.style.display === 'none') return;
         thoughtEl.classList.add('llm-ui-thought--collapsed');
+        thoughtEl.querySelector('.llm-ui-thought__label')?.setAttribute('aria-expanded', 'false');
     }
 
     // ================================================================

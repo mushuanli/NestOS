@@ -5,8 +5,9 @@ export const LayoutTemplates = {
 
     renderWorkspace: (currentTitle: string) => `
         <div class="llm-workspace-titlebar">
+            <div class="llm-workspace-titlebar__compact-navigation" hidden></div>
             <div class="llm-workspace-titlebar__left">
-                <button class="llm-workspace-titlebar__btn" id="llm-btn-sidebar" title="Toggle Sidebar">
+                <button type="button" class="llm-workspace-titlebar__btn" id="llm-btn-sidebar" title="${escapeHTML(t('chat.toolbar.sidebar'))}" aria-label="${escapeHTML(t('chat.toolbar.sidebar'))}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
                         <line x1="9" y1="3" x2="9" y2="21"></line>
@@ -28,6 +29,13 @@ export const LayoutTemplates = {
             </div>
 
             <div class="llm-workspace-titlebar__right">
+                <button type="button" class="llm-workspace-titlebar__btn llm-prompt-nav-trigger" id="llm-btn-prompt-nav"
+                        title="${escapeHTML(t('chat.promptNav.title'))}" aria-label="${escapeHTML(t('chat.promptNav.title'))}" aria-expanded="false">
+                    ${ACTION_ICONS.promptList}
+                </button>
+                <button type="button" class="llm-workspace-titlebar__btn" id="llm-btn-collapse" title="${escapeHTML(t('chat.toolbar.collapseAll'))}" aria-label="${escapeHTML(t('chat.toolbar.collapseAll'))}">
+                    ${LayoutTemplates.collapseIcon()}
+                </button>
                 <div class="llm-workspace-titlebar__primary"></div>
                 <details class="llm-workspace-titlebar__menu">
                     <summary aria-label="${escapeHTML(t('chat.toolbar.more'))}" title="${escapeHTML(t('chat.toolbar.more'))}">⋯</summary>
@@ -68,23 +76,6 @@ export const LayoutTemplates = {
                     </svg>
                 </button>
 
-                <button class="llm-workspace-titlebar__btn" id="llm-btn-history-visibility"
-                        title="Hide history" aria-label="Hide history"
-                        aria-controls="llm-ui-history" aria-pressed="true">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12z"></path>
-                        <circle cx="12" cy="12" r="3"></circle>
-                    </svg>
-                    <span class="llm-workspace-titlebar__badge" hidden></span>
-                </button>
-
-                <button class="llm-workspace-titlebar__btn" id="llm-btn-collapse" title="${escapeHTML(t('chat.toolbar.collapse'))}">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <polyline points="4 14 10 14 10 20"></polyline>
-                        <polyline points="20 10 14 10 14 4"></polyline>
-                    </svg>
-                </button>
-
                 <button class="llm-workspace-titlebar__btn" id="llm-btn-copy" title="${escapeHTML(t('chat.toolbar.copy'))}">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                         <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
@@ -117,7 +108,6 @@ export const LayoutTemplates = {
 
     renderWelcome: () => `
         <div class="llm-ui-welcome">
-            <div class="llm-ui-welcome__mark" aria-hidden="true">X1</div>
             <span class="llm-ui-welcome__eyebrow">${escapeHTML(t('chat.welcome.eyebrow'))}</span>
             <h2>${escapeHTML(t('chat.welcome.title'))}</h2>
             <p>${escapeHTML(t('chat.welcome.description'))}</p>

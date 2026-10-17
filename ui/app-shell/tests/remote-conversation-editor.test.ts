@@ -675,3 +675,37 @@ it('releases a hidden conversation subscription and reads its latest state when 
     await editor.activate(); expect(peer.read).toHaveBeenCalledTimes(2); expect(peer.subscribe).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('Received while hidden'); await editor.destroy();
 });
+
+it('keeps authored transcript-like code as ordinary code in history and print', async () => {
+    const {editor, peer, host} = setup();
+    const raw = ['mindos-context authored agents_md.instructions', 'mindos-system authored', 'mindos-tool']
+        .map(language => '```' + language + '\nOrdinary authored example\n```').join('\n\n');
+    vi.mocked(peer.read).mockResolvedValue({...state, messages: [
+        {id: 'prompt', turnId: 'turn', role: 'user', text: raw},
+        {id: 'reply', turnId: 'turn', role: 'assistant', text: raw},
+    ]});
+    const print = vi.spyOn(LLMPrintService.prototype, 'printFromHtml').mockResolvedValue(undefined);
+    try {
+        await editor.init(host);
+        expect(host.querySelectorAll('.llm-ui-transcript-context, .llm-ui-transcript-note, .llm-ui-transcript-tool')).toHaveLength(0);
+        expect(host.querySelectorAll('.llm-ui-session pre')).toHaveLength(6);
+        host.querySelector<HTMLButtonElement>('#llm-btn-print')!.click();
+        await vi.waitFor(() => expect(print).toHaveBeenCalledOnce());
+        const printed = document.createElement('div'); printed.innerHTML = print.mock.calls[0][0];
+        expect(printed.querySelectorAll('.llm-ui-transcript-context, .llm-ui-transcript-note, .llm-ui-transcript-tool')).toHaveLength(0);
+        expect(printed.querySelectorAll('pre')).toHaveLength(6);
+    } finally { await editor.destroy(); print.mockRestore(); }
+});
+
+it('removes context role after explicit provenance is removed on refresh', async () => {
+    const {editor, peer, host} = setup();
+    const context = {id: 'context', turnId: 'turn', role: 'user' as const, text: 'Original context'};
+    vi.mocked(peer.read).mockResolvedValue({...state, messages: [{...context, contentPartKinds: ['agents_md.instructions']}]});
+    try {
+        await editor.init(host); expect(host.querySelectorAll('.llm-ui-transcript-context')).toHaveLength(1);
+        vi.mocked(peer.read).mockResolvedValue({...state, messages: [context]});
+        host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
+        await vi.waitFor(() => expect(host.querySelectorAll('.llm-ui-transcript-context')).toHaveLength(0));
+        expect(host.querySelector('.llm-ui-session--user')?.textContent).toContain('Original context');
+    } finally { await editor.destroy(); }
+});

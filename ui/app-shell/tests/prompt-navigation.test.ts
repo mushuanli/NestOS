@@ -194,3 +194,65 @@ it('adapts local current-branch users and opens only the selected history group'
     expect(execute).toHaveBeenCalledWith(SessionCommand.GetSessions);
     expect(revealSession).toHaveBeenCalledWith('user'); expect(host.querySelector('.llm-prompt-nav__list')?.textContent).not.toContain('Answer');
 });
+
+function localNavigation(execute: ReturnType<typeof vi.fn>) {
+    const host = document.createElement('div'); host.innerHTML = LayoutTemplates.renderWorkspace('Local'); document.body.append(host);
+    const timers = new TimerManager(); views.push(timers);
+    const build = vi.fn(async () => ({items: [], branches: []}));
+    const navigation = new NavigationHelper({workspace: host, domCache: new DOMCache(host), commands: {execute},
+        historyView: {revealSession: vi.fn(), getCollapseStates: () => ({})},
+        timers, bus: {emit: vi.fn()}, branchStore: {current: []}, navDataBuilder: {build},
+    } as unknown as ConstructorParameters<typeof NavigationHelper>[0]);
+    views.push(navigation);
+    const openPrompts = () => host.querySelector<HTMLButtonElement>('#llm-btn-prompt-nav')!.click();
+    return {host, navigation, build, openPrompts};
+}
+
+it('performs no history reads for closed navigation and coalesces prompt-only updates', async () => {
+    const execute = vi.fn(async () => [{id: 'u', role: 'user', content: 'Current prompt'}]);
+    const {navigation, openPrompts, build} = localNavigation(execute);
+    navigation.pushNavData(); navigation.pushNavData(); navigation.pushNavData();
+    await new Promise(resolve => setTimeout(resolve, 70)); expect(execute).not.toHaveBeenCalled();
+    openPrompts(); await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    navigation.pushNavData(); navigation.pushNavData(); navigation.pushNavData();
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledTimes(2));
+    expect(build).not.toHaveBeenCalled();
+    openPrompts(); navigation.pushNavData();
+    await new Promise(resolve => setTimeout(resolve, 70)); expect(execute).toHaveBeenCalledTimes(2);
+});
+
+it('shares an in-flight history read between both navigation panels', async () => {
+    let complete!: (sessions: unknown[]) => void;
+    const execute = vi.fn(() => new Promise(resolve => {complete = resolve;}));
+    const {host, navigation, openPrompts, build} = localNavigation(execute);
+    openPrompts(); const opening = navigation.toggleNavigator(host);
+    expect(execute).toHaveBeenCalledOnce();
+    complete([{id: 'u', role: 'user', content: 'Shared prompt'}]); await opening;
+    expect(host.querySelector('[data-prompt-id]')?.textContent).toContain('Shared prompt');
+    expect(execute).toHaveBeenCalledOnce(); expect(build).toHaveBeenCalledOnce(); expect(navigation.isNavVisible).toBe(true);
+});
+
+it('does not overwrite a newer supplied snapshot with an older in-flight history response', async () => {
+    let complete!: (sessions: unknown[]) => void;
+    const execute = vi.fn(() => new Promise(resolve => {complete = resolve;}));
+    const {host, navigation, openPrompts} = localNavigation(execute);
+    openPrompts();
+    navigation.updatePrompts([{id: 'new', role: 'user', timestamp: 1, content: 'Latest snapshot'}]);
+    complete([{id: 'old', role: 'user', content: 'Stale snapshot'}]);
+    await vi.waitFor(() => expect(host.querySelector('[data-prompt-id]')?.textContent).toContain('Latest snapshot'));
+    await Promise.resolve(); expect(execute).toHaveBeenCalledOnce();
+    expect(host.querySelector('[data-prompt-id="old"]')).toBeNull();
+});
+
+it('retries an invalidated in-flight snapshot once and ignores late results after disposal', async () => {
+    let complete!: (sessions: unknown[]) => void;
+    const execute = vi.fn().mockImplementationOnce(() => new Promise(resolve => {complete = resolve;}))
+        .mockResolvedValue([{id: 'new', role: 'user', content: 'Fresh after change'}]);
+    const {host, navigation, openPrompts} = localNavigation(execute);
+    openPrompts(); navigation.pushNavData(); navigation.pushNavData();
+    complete([{id: 'old', role: 'user', content: 'Stale'}]);
+    await vi.waitFor(() => expect(host.querySelector('[data-prompt-id]')?.textContent).toContain('Fresh after change'));
+    expect(execute).toHaveBeenCalledTimes(2);
+    openPrompts(); openPrompts(); navigation.destroy();
+    await Promise.resolve(); expect(host.querySelector('.llm-prompt-nav')).toBeNull();
+});

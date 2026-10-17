@@ -8,10 +8,8 @@
 .remote-conversation__earlier:disabled { opacity: .6; cursor: default; }
 
 .llm-input--remote .llm-input__btn--settings,
-.llm-input--remote .llm-input__conn-quick-wrapper,
-.llm-input--remote .llm-input__tier-quick-wrapper,
-.llm-input--remote .llm-input__execution-mode,
-.llm-input--remote .llm-input__execution-hint,
+.llm-input--remote .llm-input__model-trigger,
+.llm-input--remote .llm-input__execution-picker,
 .llm-input--remote .llm-input__btn--websearch,
 .llm-input--remote .llm-input__active-settings { display: none !important; }
 

@@ -71,12 +71,13 @@ export class NodeRenderer {
                 ${node.data.metaInfo?.flowInteraction && node.data.metaInfo?.actor?.kind !== 'tool' ? NodeRenderer.renderRequests(node.data.metaInfo?.requests) : ''}
                 ${NodeTemplates.renderThinking(node.data.thought || '', hasThought, node.status)}
                 ${errorHtml}
+                <div class="llm-ui-node__tty-panels"></div>
+                <div class="llm-ui-node__children"></div>
                 <div class="llm-ui-node__output">
                     <div class="llm-ui-mount-point" id="mount-${node.id}"></div>
                 </div>
-                <div class="llm-ui-node__tty-panels"></div>
-                <div class="llm-ui-node__children"></div>
             </div>
+            ${NodeTemplates.renderAgentFooter(node, isCollapsed)}
         `;
 
         mounts.output = el.querySelector(`#mount-${node.id}`);

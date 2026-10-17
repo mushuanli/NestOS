@@ -29,6 +29,8 @@ export class ExecutionModeControl {
             if ((mode !== 'chat' && mode !== 'agent') || mode === this.mode) return;
             this.mode = mode;
             this.render();
+            this.group.closest<HTMLDetailsElement>('details')!.open = false;
+            this.group.closest('details')!.querySelector('summary')!.focus();
             onChange(mode);
         });
     }
@@ -42,6 +44,10 @@ export class ExecutionModeControl {
     }
 
     private render(): void {
+        const picker = this.group.closest('details')!;
+        picker.querySelector('.llm-input__execution-label')!.textContent = this.flow ? t('chatSettings.flow')
+            : t(this.mode === 'agent' ? 'chatInput.executionMode.agent' : 'chatInput.executionMode.chat');
+        picker.querySelector('summary')!.title = this.locked ? t('chatInput.executionMode.locked') : t('chatInput.executionMode.label');
         for (const button of this.buttons) {
             button.disabled = this.loading || this.flow || this.locked;
             button.title = this.locked ? t('chatInput.executionMode.locked') : '';

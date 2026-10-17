@@ -27,6 +27,8 @@ export class ScrollController {
     private _isStreamingMode = false;
     private _isUserScrolledUp = false;
     private lastScrollHeight = 0;
+    private lastClientHeight = 0;
+    private viewportObserver?: ResizeObserver;
     private scrollLockUntil = 0;
 
     private scrollFrameId: number | null = null;
@@ -46,6 +48,11 @@ export class ScrollController {
         callbacks?: ScrollControllerCallbacks
     ) {
         this.callbacks = callbacks || {};
+        this.lastClientHeight = container.clientHeight;
+        if (typeof ResizeObserver !== 'undefined') {
+            this.viewportObserver = new ResizeObserver(() => this.handleViewportResize());
+            this.viewportObserver.observe(container);
+        }
         this.container.addEventListener('scroll', this.handleScroll, { passive: true });
     }
 
@@ -62,6 +69,7 @@ export class ScrollController {
     // ================================================================
 
     private handleScroll = (): void => {
+        if (this.container.clientHeight !== this.lastClientHeight) { this.handleViewportResize(); return; }
         // 程序触发的滚动：不更新用户状态
         if (this.isProgrammaticScroll) return;
 
@@ -95,6 +103,15 @@ export class ScrollController {
     // 内容高度变化
     // ================================================================
 
+    private handleViewportResize(): void {
+        const height = this.container.clientHeight;
+        if (height === this.lastClientHeight) return;
+        this.lastClientHeight = height;
+        if (!height || !this.shouldAutoScroll) return;
+        this.markProgrammaticScroll();
+        this.container.scrollTop = this.container.scrollHeight - height;
+    }
+
     /**
      * 由 StreamRenderPipeline（流式）或 ContentResizeTracker（非流式）调用
      *
@@ -124,6 +141,17 @@ export class ScrollController {
     // ================================================================
     // 滚动操作
     // ================================================================
+
+    pauseAutoScroll(): void {
+        this.shouldAutoScroll = false;
+        this._isUserScrolledUp = true;
+        this.isProgrammaticScroll = false;
+        this.scrollLockUntil = 0;
+        if (this.scrollFrameId !== null) {
+            cancelAnimationFrame(this.scrollFrameId);
+            this.scrollFrameId = null;
+        }
+    }
 
     forceScrollToTop(): void {
         this.shouldAutoScroll = false;
@@ -224,6 +252,7 @@ export class ScrollController {
     }
 
     destroy(): void {
+        this.viewportObserver?.disconnect();
         this.container.removeEventListener('scroll', this.handleScroll);
 
         if (this.scrollFrameId !== null) {

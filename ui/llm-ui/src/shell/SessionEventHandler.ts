@@ -35,7 +35,7 @@ const EVENT_SIDE_EFFECTS: Partial<Record<string, SideEffect[]>> = {
     error: [],
 
     // ── LLM 2.0 canonical / projection event names (S7) ──
-    'message:appended': ['clearErrors', 'notifyChange', 'scrollToBottom'],
+    'message:appended': ['clearErrors', 'notifyChange', 'scrollToBottom', 'refreshNav'],
     'messages:cleared': ['refreshNav', 'refreshBranch'],
     'messages:deleted': ['refreshNav', 'notifyChange'],
     'message:edited': ['refreshNav'],

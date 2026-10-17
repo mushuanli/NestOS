@@ -1,11 +1,12 @@
 // @file: llm-ui/shell/EventBinder.ts
 
-import { installResponsiveActions } from '@itookit/ui-common';
+import { installResponsiveActions, type EditorOptions } from '@itookit/ui-common';
 import { EventCleanup } from '../components/common/EventCleanup';
 
 export interface EventBinderCallbacks {
+    mountCompactNavigation: NonNullable<EditorOptions['mountCompactNavigation']>;
+    mountMoreMenu: NonNullable<EditorOptions['mountMoreMenu']>;
     onToggleSidebar: () => void;
-    onToggleHistory: () => void;
     onTitleChange: (title: string) => void;
     onOpenAssetManager: () => void;
     onToggleNavigator: () => void;
@@ -30,6 +31,8 @@ export interface GlobalShortcutCallbacks {
 export class EventBinder {
     private events = new EventCleanup();
     private disposeResponsive?: () => void;
+    private disposeHostMenu?: () => void;
+    private disposeHostNavigation?: () => void;
 
     constructor(
         private container: HTMLElement,
@@ -39,10 +42,13 @@ export class EventBinder {
     private bindToolbarMenu(): void {
         const menu = this.container.querySelector<HTMLDetailsElement>('.llm-workspace-titlebar__menu');
         if (!menu) return;
+        const content = menu.querySelector<HTMLElement>('.llm-workspace-titlebar__menu-actions');
+        this.disposeHostMenu?.();
+        if (content) this.disposeHostMenu = this.callbacks.mountMoreMenu?.(content);
         const titlebar = menu.closest<HTMLElement>('.llm-workspace-titlebar');
         const toolbar = titlebar?.querySelector<HTMLElement>('.llm-workspace-titlebar__primary');
         if (titlebar && toolbar) {
-            const actions = ['llm-btn-refresh', 'llm-btn-session-rerun', 'llm-btn-history-visibility', 'llm-btn-navigator', 'llm-btn-copy']
+            const actions = ['llm-btn-refresh', 'llm-btn-session-rerun', 'llm-btn-copy']
                 .flatMap(id => { const button = menu.querySelectorAll<HTMLElement>('#' + id)[0]; return button ? [button] : []; });
             this.disposeResponsive?.();
             this.disposeResponsive = installResponsiveActions({ container: titlebar, toolbar, actions, minWidth: 760,
@@ -59,6 +65,12 @@ export class EventBinder {
     }
 
     bindTitleBarEvents(): void {
+        const slot = this.container.querySelector<HTMLElement>('.llm-workspace-titlebar__compact-navigation');
+        if (slot && this.callbacks.mountCompactNavigation) {
+            this.disposeHostNavigation?.();
+            this.disposeHostNavigation = this.callbacks.mountCompactNavigation(slot);
+            slot.hidden = false; this.container.dataset.editorMobileNavigation = 'embedded';
+        }
         this.bindToolbarMenu();
         const sidebarBtn = this.container.querySelectorAll('#llm-btn-sidebar')[0];
         if (sidebarBtn) {
@@ -84,12 +96,7 @@ export class EventBinder {
             });
         }
 
-        const historyBtn = this.container.querySelectorAll('#llm-btn-history-visibility')[0];
-        if (historyBtn) {
-            this.events.add(historyBtn, 'click', () => {
-                this.callbacks.onToggleHistory?.();
-            });
-        }
+
     }
 
     bindNavigationEvents(): void {
@@ -156,6 +163,9 @@ export class EventBinder {
     }
 
     cleanup(): void {
+        this.disposeHostNavigation?.(); this.disposeHostNavigation = undefined;
+        delete this.container.dataset.editorMobileNavigation;
+        this.disposeHostMenu?.(); this.disposeHostMenu = undefined;
         this.disposeResponsive?.(); this.disposeResponsive = undefined;
         this.events.cleanup();
     }

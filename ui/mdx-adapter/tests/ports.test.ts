@@ -42,3 +42,10 @@ it('rejects attachment traversal without accessing the granted view', async () =
     }
     expect(read).not.toHaveBeenCalled(); expect(createFile).not.toHaveBeenCalled();
 });
+
+it('passes public embedding options through without assigning conversation policy', () => {
+    const embedded = adaptEditorOptions({ scrollMode: 'host', htmlPolicy: 'literal' });
+    expect(embedded.scrollMode).toBe('host'); expect(embedded.htmlPolicy).toBe('literal');
+    const defaults = adaptEditorOptions({});
+    expect(defaults.scrollMode).toBeUndefined(); expect(defaults.htmlPolicy).toBeUndefined();
+});

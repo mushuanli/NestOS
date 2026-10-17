@@ -23,6 +23,7 @@
 }
 
 .llm-workspace-titlebar__left { min-width: 0; }
+.llm-workspace-titlebar__compact-navigation { display: none; min-width: 0; flex: 1; }
 .llm-workspace-titlebar__right { flex-shrink: 0; }
 
 .llm-workspace-titlebar__btn {
@@ -64,20 +65,6 @@
 
 .llm-workspace-titlebar__btn[aria-pressed="false"] {
     color: var(--llm-text-muted);
-}
-
-.llm-workspace-titlebar__badge {
-    position: absolute;
-    top: 3px;
-    right: 3px;
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--llm-color-error);
-}
-
-#llm-btn-history-visibility {
-    position: relative;
 }
 
 .llm-workspace-titlebar__sep {
@@ -292,18 +279,20 @@
 
 /* --- 响应式：标题栏按钮折叠 --- */
 @media (max-width: 768px) {
+    .llm-workspace-titlebar__compact-navigation:not([hidden]) { display: flex; }
+    .llm-workspace-titlebar:has(> .llm-workspace-titlebar__compact-navigation:not([hidden])) > .llm-workspace-titlebar__left { display: none; }
     .llm-workspace-titlebar {
-        padding: 0.4rem 0.75rem;
-        min-height: 44px;
+        padding: 0 6px;
+        min-height: 48px;
     }
+    .llm-workspace-titlebar__right > .llm-workspace-titlebar__btn { width: 44px; height: 44px; }
+    .llm-workspace-titlebar__menu > summary { display: grid; place-items: center; min-width: 44px; height: 44px; padding: 0; }
 
-    /* 隐藏低频按钮，保留 Copy + Navigator */
-    #llm-btn-sidebar,
+    /* Secondary actions remain available in the overflow menu. */
     #llm-btn-fold-current,
     #llm-btn-prev-unfolded,
     #llm-btn-next-unfolded,
-    #llm-btn-assets,
-    #llm-btn-collapse {
+    #llm-btn-assets {
         display: none;
     }
 
@@ -398,8 +387,8 @@
 .llm-workspace-titlebar__input { min-width: 0; width: 100%; }
 .llm-workspace-titlebar__right { overflow: visible; max-width: none; }
 .llm-workspace-titlebar__menu { position: relative; }
-.llm-workspace-titlebar__menu summary { list-style: none; cursor: pointer; padding: 4px 10px; font-size: 22px; border-radius: 6px; }
-.llm-workspace-titlebar__menu summary:focus-visible { outline: 2px solid var(--llm-color-primary); }
+.llm-workspace-titlebar__menu > summary { list-style: none; cursor: pointer; padding: 4px 10px; font-size: 22px; border-radius: 6px; }
+.llm-workspace-titlebar__menu > summary:focus-visible { outline: 2px solid var(--llm-color-primary); }
 .llm-workspace-titlebar__menu-actions { position: absolute; top: 100%; right: 0; width: 250px; max-height: min(480px, 70vh); overflow: auto; padding: 6px; border: 1px solid var(--llm-border-color); border-radius: 8px; background: var(--llm-bg-primary); box-shadow: 0 8px 24px #0002; }
 .llm-workspace-titlebar__menu-actions .llm-workspace-titlebar__btn:not([hidden]) { display: flex; width: 100%; max-width: none; min-height: 36px; justify-content: flex-start; padding: 6px 10px; gap: 10px; text-align: left; }
 .llm-workspace-titlebar__menu-actions .llm-workspace-titlebar__btn:not(.llm-workspace-titlebar__btn--text)::after { content: attr(title); font-size: 13px; }

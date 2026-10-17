@@ -1,11 +1,12 @@
 // @file llm-ui/views/mdx/MDxController.ts
 import { createMDxEditor } from '@itookit/mdx-adapter';
-import type { MDxEditor, MDxPlugin } from '@itookit/mdxeditor';
+import type { MDxEditor, MDxPlugin, HtmlPolicy } from '@itookit/mdxeditor';
 import type { CollapseExpandResult } from '@itookit/ui-common';
 import type { IFileSystem } from '@itookit/vfs-core';
 import type { IStreamableEditor } from '../../domain/ports/IStreamableEditor';
 
 export interface MDxControllerOptions {
+    htmlPolicy?: HtmlPolicy;
     codeBlockControls?: {defaultCollapsed?: boolean; minLinesThreshold?: number; collapsedHeight?: number};
     plugins?: MDxPlugin[];
     editable?: boolean;
@@ -84,6 +85,8 @@ export class MDxController implements IStreamableEditor {
             const initialContent = this.currentContent;
             const editor = await createMDxEditor(this.container, {
                 initialContent,
+                scrollMode: 'host',
+                htmlPolicy: this.options.htmlPolicy,
                 initialMode: this.isReadOnly ? 'render' : 'edit',
                 ...(this.options.editable === false ? {readOnly:true} : {}),
                 assets: this.options.assets,

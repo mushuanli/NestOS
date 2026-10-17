@@ -28,6 +28,7 @@ export interface HistoryViewOptions {
     header?: HTMLElement;
     readOnly?: boolean;
     markdownPlugins?: MDxPlugin[];
+    htmlPolicy?: MDxControllerOptions['htmlPolicy'];
     codeBlockControls?: MDxControllerOptions['codeBlockControls'];
     onContentChange?: (id: string, content: string, type: 'user' | 'node') => void;
     onNodeAction?: NodeActionCallback;
@@ -84,6 +85,7 @@ export class HistoryView implements IHistoryPresenter {
             assets: options.assets,
             readOnly: options.readOnly,
             markdownPlugins: options.markdownPlugins,
+            htmlPolicy: options.htmlPolicy,
             codeBlockControls: options.codeBlockControls,
             collapsedState: (id, fallback) => this.collapse?.getStates()[id] ?? fallback,
         };
@@ -209,7 +211,10 @@ export class HistoryView implements IHistoryPresenter {
         for (const session of sessions) this.submission.observe(session.id);
     }
 
-    setSubmission(submission?: ChatSubmission): void { this.submission.show(submission); }
+    setSubmission(submission?: ChatSubmission): void {
+        if (submission) this.container.querySelector('.llm-ui-welcome')?.remove();
+        this.submission.show(submission);
+    }
 
     renderError(error: Error): void {
         this.onHistoryActivity?.('error', error);
@@ -306,6 +311,12 @@ export class HistoryView implements IHistoryPresenter {
 
     getSessionElement(sessionId: string): HTMLElement | null {
         return this.renderer.getSessionElement(sessionId);
+    }
+
+    revealSession(sessionId: string): HTMLElement | null {
+        this.scrollController.pauseAutoScroll();
+        this.toggleSessionCollapse(sessionId, false);
+        return this.getElement(sessionId);
     }
 
     getElement(id: string): HTMLElement | null {

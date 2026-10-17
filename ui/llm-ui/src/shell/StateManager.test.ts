@@ -3,6 +3,14 @@ import { StateManager } from './StateManager';
 import type { IChatInputPresenter } from '../domain/ports/IChatInputPresenter';
 import type { StateService } from '../services/StateService';
 import type { SessionViewPort } from '@itookit/llm-session/contracts';
+it('saves visible history after reading legacy hidden preferences without changing the draft or collapse states', async () => {
+    const service = {loadUIState: vi.fn(async () => ({history_visibility: 'hidden', input_text: 'Keep draft', collapse_states: {u: true}})), saveUIState: vi.fn(async () => {})};
+    const manager = new StateManager(service as unknown as StateService, {isGenerating: () => false} as SessionViewPort, 's', id => id);
+    const state = await manager.loadUIState(); expect(state?.input_text).toBe('Keep draft');
+    await manager.saveUIState({text: 'Keep draft', agentId: 'default', settings: {}} as Parameters<StateManager['saveInputConfiguration']>[0]);
+    expect(service.saveUIState).toHaveBeenCalledWith('s', expect.objectContaining({history_visibility: 'visible', input_text: 'Keep draft', collapse_states: {u: true}}), 'main');
+    manager.cleanup();
+});
 it('restores Session mode even when navigation overrides the input text', () => {
     const manager = new StateManager({} as StateService, {} as SessionViewPort, 's', id => id);
     const input = { setConfig: vi.fn() } as unknown as IChatInputPresenter;

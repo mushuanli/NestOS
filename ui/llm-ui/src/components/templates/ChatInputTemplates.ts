@@ -1,6 +1,6 @@
 // @file: llm-ui/components/templates/ChatInputTemplates.ts
 
-import { escapeHTML, t, ENTITY_ICONS, ACTION_ICONS } from '@itookit/common';
+import { escapeHTML, t, ENTITY_ICONS, ACTION_ICONS, CHAT_ICONS } from '@itookit/common';
 import { ExecutorOption, ConnectionOption } from '../../domain/types';
 
 export const ChatInputTemplates = {
@@ -100,7 +100,7 @@ export const ChatInputTemplates = {
                 <div class="llm-input__tier-cards" role="group" aria-label="Model tier">
                     <button type="button" class="llm-input__tier-card active" data-tier="auto"
                             title="${t('chatSettings.autoTier')}">
-                        <span class="llm-input__tier-card-name">${t('chatSettings.auto')}</span>
+                        <span class="llm-input__tier-card-name">${t('chatSettings.followDefault')}</span>
                         <span class="llm-input__tier-card-model" data-tier-model="auto">${escapeHTML(t_auto)}</span>
                     </button>
                     <button type="button" class="llm-input__tier-card" data-tier="optimal"
@@ -272,66 +272,62 @@ export const ChatInputTemplates = {
     renderInputArea(): string {
         return `
             <div class="llm-input__main">
+                <div class="llm-input__connection-notice" role="status" aria-live="polite" hidden>
+                    <span data-connection-message></span>
+                    <button type="button" data-connection-choose>${t('chatInput.connectionStatus.choose')}</button>
+                    <button type="button" data-connection-configure>${t('chatInput.connectionStatus.configure')}</button>
+                    <button type="button" data-connection-retry>${t('chatInput.connectionStatus.retry')}</button>
+                </div>
                 ${this.renderFieldWrapper()}
                 ${this.renderToolbar()}
-                <div class="llm-input__execution-hint" role="status"></div>
             </div>
         `;
     },
 
-    /**
-     * 底部工具栏
-     *
-     * 左侧：attach / agent picker / conn quick-switch / tier quick-switch / more
-     * 右侧：settings / send / stop
-     */
+    /** Keep composition controls in one row; secondary actions live in the menu. */
     renderToolbar(): string {
-        return `
-            <div class="llm-input__toolbar">
-                <div class="llm-input__toolbar-left">
-                    ${this.renderExecutionMode()}
-                    <button class="llm-input__btn llm-input__btn--attach" title="${t('chatInput.add.menu')}">
-                        ${this.addIcon()}
-                    </button>
-                    ${this.renderWebSearchQuick()}
-                    ${this.renderAgentPicker()}
-                    ${this.renderConnQuick()}
-                    ${this.renderTierQuick()}
-                    ${this.renderPromptPicker()}
-                    <button class="llm-input__btn llm-input__btn--more" title="More options">
-                        ${this.moreIcon()}
-                    </button>
-                </div>
-                <div class="llm-input__toolbar-right">
-                    <button class="llm-input__btn llm-input__btn--settings" title="${t('chatSettings.title')}" aria-label="${t('chatSettings.title')}">
-                        ${this.sliderIcon()}
-                    </button>
-                    <button class="llm-input__btn llm-input__btn--send" title="Send (Enter)">
-                        ${this.sendIcon()}
-                    </button>
-                    <button class="llm-input__btn llm-input__btn--stop" title="Stop Generation" style="display:none;">
-                        ${this.stopIcon()}
-                    </button>
-                </div>
+        return `<div class="llm-input__toolbar">
+            <div class="llm-input__toolbar-left">
+                <button type="button" class="llm-input__btn llm-input__btn--attach" title="${t('chatInput.add.menu')}" aria-label="${t('chatInput.add.menu')}">${this.addIcon()}</button>
+                ${this.renderExecutionMode()}${this.renderAgentPicker()}
             </div>
-        `;
-    },
-
-    /** Accessible mode selection for future sends. */
-    renderExecutionMode(): string {
-        return `<div class="llm-input__execution-mode" role="group" aria-label="${t('chatInput.executionMode.label')}">
-            <button class="llm-input__execution-option" type="button" data-execution-mode="chat" aria-pressed="true">${t('chatInput.executionMode.chat')}</button>
-            <button class="llm-input__execution-option" type="button" data-execution-mode="agent" aria-pressed="false">${t('chatInput.executionMode.agent')}</button>
+            <div class="llm-input__toolbar-right">
+                ${this.renderModelPicker()}
+                <span class="llm-input__execution-source" title="${t('chatInput.nativeModelsHint')}" hidden>${t('chatInput.nativeModels')}</span>
+                <button type="button" class="llm-input__flow-configure" title="${t('chatInput.flowModelsHint')}" hidden>${t('chatInput.flowModels')}</button>
+                ${this.renderOptionsMenu()}
+                <button type="button" class="llm-input__btn llm-input__btn--send" title="${t('chatInput.send')} (Enter)" aria-label="${t('chatInput.send')}">${this.sendIcon()}</button>
+                <button type="button" class="llm-input__btn llm-input__btn--stop" title="${t('chatInput.stop')}" aria-label="${t('chatInput.stop')}" style="display:none;">${this.stopIcon()}</button>
+            </div>
         </div>`;
     },
 
-    renderWebSearchQuick(): string {
-        return `
-            <button class="llm-input__btn llm-input__btn--websearch" type="button"
-                    title="${t('webSearch.tooltip')}" data-active="true">
-                ${ACTION_ICONS.search}
-            </button>
-        `;
+    renderOptionsMenu(): string {
+        return `<details class="llm-input__options">
+            <summary title="${t('chat.toolbar.more')}" aria-label="${t('chat.toolbar.more')}">${CHAT_ICONS.more}</summary>
+            <div class="llm-input__options-body">
+                <button type="button" class="llm-input__btn llm-input__btn--websearch" data-active="true" aria-pressed="true">${CHAT_ICONS.search}<span>${t('webSearch.label')}</span></button>
+                <button type="button" class="llm-input__btn llm-input__btn--settings">${this.sliderIcon()}<span>${t('chatSettings.title')}</span></button>
+                <button type="button" class="llm-input__btn llm-input__btn--configure-agent" hidden>${ENTITY_ICONS.agent}<span>${t('chatInput.configureAgent')}</span></button>
+                <button type="button" class="llm-input__btn llm-input__btn--switch-target" title="${t('chatInput.switchTargetHint')}" hidden>${ENTITY_ICONS.chat}<span>${t('chatInput.switchTarget')}</span></button>
+                ${this.renderPromptPicker()}
+                <button type="button" class="llm-input__btn llm-input__btn--more">${this.helpIcon()}<span>${t('chatInput.help')}</span></button>
+            </div>
+        </details>`;
+    },
+
+    /** A single mode label stays visible; its explanation is available on demand. */
+    renderExecutionMode(): string {
+        return `<details class="llm-input__execution-picker">
+            <summary><span class="llm-input__execution-label">${t('chatInput.executionMode.chat')}</span>${CHAT_ICONS.chevron}</summary>
+            <div class="llm-input__execution-menu">
+                <div class="llm-input__execution-mode" role="group" aria-label="${t('chatInput.executionMode.label')}">
+                    <button class="llm-input__execution-option" type="button" data-execution-mode="chat" aria-pressed="true">${t('chatInput.executionMode.chat')}</button>
+                    <button class="llm-input__execution-option" type="button" data-execution-mode="agent" aria-pressed="false">${t('chatInput.executionMode.agent')}</button>
+                </div>
+                <div class="llm-input__execution-hint" role="status"></div>
+            </div>
+        </details>`;
     },
 
     /**
@@ -343,51 +339,22 @@ export const ChatInputTemplates = {
     renderAgentPicker(): string {
         return `
             <div class="llm-input__agent-picker">
-                <button class="llm-input__agent-trigger" type="button" title="Select Agent">
-                    <span class="llm-input__agent-icon">🤖</span>
-                    <span class="llm-input__agent-name">Assistant</span>
+                <button class="llm-input__agent-trigger" type="button" title="${t('chatInput.selectAgent')}" aria-label="${t('chatInput.selectAgent')}">
+                    <span class="llm-input__agent-icon" hidden></span>
+                    <span class="llm-input__agent-name">${t('flow.history.assistant')}</span>
                     <span class="llm-input__agent-meta"></span>
-                    <span class="llm-input__agent-chevron">▾</span>
+                    <span class="llm-input__agent-chevron">${CHAT_ICONS.chevron}</span>
                 </button>
             </div>
         `;
     },
 
 
-    /**
-     * Connection 快速切换 pill（位于 toolbar 左侧）
-     *
-     * 默认显示 "Default"；有 override 时显示连接名并附带 × 清除按钮。
-     * 下拉列表由 PopupPanel 管理（挂载在 body，position:fixed，规避 overflow:hidden）。
-     */
-    renderConnQuick(): string {
-        return `
-            <div class="llm-input__conn-quick-wrapper">
-                <button class="llm-input__conn-quick" type="button" title="Override LLM connection">
-                    <span class="llm-input__conn-quick-icon">🔌</span>
-                    <span class="llm-input__conn-quick-label">Default</span>
-                    <span class="llm-input__conn-quick-clear" style="display:none" title="Clear override">×</span>
-                </button>
-            </div>
-        `;
-    },
-
-    /**
-     * Tier 快速切换 pill（位于 toolbar 左侧，紧跟 conn-quick）
-     *
-     * 默认显示 "Auto"；有 override 时显示层级名并附带 × 清除按钮。
-     * 下拉列表由 PopupPanel 管理，选项含对应模型显示名。
-     */
-    renderTierQuick(): string {
-        return `
-            <div class="llm-input__tier-quick-wrapper">
-                <button class="llm-input__tier-quick" type="button" title="Override model tier">
-                    <span class="llm-input__tier-quick-icon">⚡</span>
-                    <span class="llm-input__tier-quick-label">${t('chatSettings.auto')}</span>
-                    <span class="llm-input__tier-quick-clear" style="display:none" title="Clear tier">×</span>
-                </button>
-            </div>
-        `;
+    renderModelPicker(): string {
+        return `<button type="button" class="llm-input__model-trigger" title="${t('chatInput.modelHint')}"
+            aria-label="${t('chatInput.modelHint')}" aria-haspopup="listbox" aria-expanded="false">
+            <span class="llm-input__model-label">${t('chatSettings.followDefault')}</span>${CHAT_ICONS.chevron}
+        </button>`;
     },
 
     /**
@@ -399,10 +366,10 @@ export const ChatInputTemplates = {
     renderPromptPicker(): string {
         return `
             <div class="llm-input__prompt-picker-wrapper" style="display:none">
-                <button class="llm-input__prompt-picker" type="button" title="插入预设 Prompt">
-                    <span class="llm-input__prompt-picker-icon">💬</span>
-                    <span class="llm-input__prompt-picker-label">Prompts</span>
-                    <span class="llm-input__prompt-picker-chevron">▾</span>
+                <button class="llm-input__prompt-picker" type="button" title="${t('chatInput.prompts')}">
+                    <span class="llm-input__prompt-picker-icon">${CHAT_ICONS.edit}</span>
+                    <span class="llm-input__prompt-picker-label">${t('chatInput.prompts')}</span>
+
                 </button>
             </div>
         `;
@@ -419,7 +386,7 @@ export const ChatInputTemplates = {
                 <textarea
                     class="llm-input__textarea"
                     placeholder="${escapeHTML(t('chatInput.messagePlaceholder'))}"
-                    rows="2"
+                    rows="1"
                 ></textarea>
             </div>
         `;
@@ -431,20 +398,12 @@ export const ChatInputTemplates = {
     renderActiveBadges(): string {
         return `
             <div class="llm-input__active-settings" style="display:none">
-                <span class="llm-input__active-badge" data-type="connection" style="display:none">
-                    🔌 <span class="llm-input__badge-text"></span>
-                    <button class="llm-input__badge-clear" data-clear="connection">×</button>
-                </span>
-                <span class="llm-input__active-badge" data-type="tier" style="display:none">
-                    ⚡ <span class="llm-input__badge-text"></span>
-                    <button class="llm-input__badge-clear" data-clear="tier">×</button>
-                </span>
                 <span class="llm-input__active-badge" data-type="stream" style="display:none">
-                    ⏸️ <span class="llm-input__badge-text">Block Mode</span>
+                    <span class="llm-input__badge-text">${t('chatSettings.block')}</span>
                     <button class="llm-input__badge-clear" data-clear="stream">×</button>
                 </span>
                 <span class="llm-input__active-badge" data-type="history" style="display:none">
-                    📜 <span class="llm-input__badge-text"></span>
+                    <span class="llm-input__badge-text"></span>
                     <button class="llm-input__badge-clear" data-clear="history">×</button>
                 </span>
             </div>
@@ -597,7 +556,7 @@ export const ChatInputTemplates = {
             const label    = c.provider ? `${escapeHTML(c.name)} (${escapeHTML(c.provider)})` : escapeHTML(c.name);
             const selected = c.id === selectedId ? ' selected' : '';
             const tierHint = c.hasTiers ? ' ⚡' : '';
-            return `<option value="${escapeHTML(c.id)}"${selected}>${label}${tierHint}</option>`;
+            return `<option value="${escapeHTML(c.id)}"${selected}${c.enabled === false ? ' disabled' : ''}>${label}${tierHint}${c.enabled === false ? ` · ${t('connection.status.disabled')}` : ''}</option>`;
         };
 
         let html = `<option value="">${t('connection.followDefaultShort')}</option>`;

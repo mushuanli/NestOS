@@ -40,6 +40,9 @@ import { Modal, Toast, showConfirmDialog, ISessionUI, IEditor } from '@itookit/u
 
 - 组件不得假设宿主环境（浏览器/WebView/jsdom 均可运行）；不得使用 `node:*`。
 - 事件与回调类型从接口导出，宿主与实现共享同一份类型，避免各自声明漂移。
+- `EditorOptions.mountMoreMenu` 是宿主更多菜单挂载端口，返回清理函数；编辑器控制菜单布局和关闭行为，宿主控制资源业务与元数据。
+- `EditorOptions.mountCompactNavigation` 挂载小屏宿主导航，返回清理函数。支持嵌入导航的编辑器公开 data-editor-mobile-navigation="embedded"；输入容器用 data-editor-composing 标识编辑状态。宿主只消费这些语义标记，不访问业务编辑器内部 DOM。
+- `EditorOptions.executorUsage` 是可选的最近使用展示端口；宿主拥有保存和订阅，编辑器只在提交获接受后记录，不在本包实现存储或改变 Agent 定义。
 - 新增组件时同步补样式类；`pnpm styles:check` 会把无规则类名列为失败或计入允许清单。
 
 ## 运行
@@ -64,3 +67,5 @@ pnpm --filter @itookit/ui-common build        # tsup
 发布出口使用 dist/index.js（ESM）、dist/index.cjs（CJS）及相应声明；publishConfig.exports 必须覆盖工作区的 src 出口。
 
 EditorOptions 的第二个泛型参数描述编辑器专属 initialData，本包不解释领域结构；IEditor.activate 供宿主恢复缓存视图的绑定。业务读模型与执行策略不进入 ui-common。
+
+- SessionDraftControls.refresh 是可选宿主端口：确认旧草稿提交后返回新的草稿控制对象，不让编辑器自行跟随或覆盖共享存储。

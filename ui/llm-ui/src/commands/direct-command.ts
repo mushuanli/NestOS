@@ -1,9 +1,11 @@
 import { t } from '@itookit/common';
 
 /** Input policy shared by send, resend and edit-and-run; no I/O. */
+export function isDirectCommandInput(text: string): boolean { return text.trimStart().startsWith('!'); }
+
 export function parseDirectCommand(text: string, files: readonly unknown[]): string | undefined {
     const input = text.trimStart();
-    if (!input.startsWith('!')) return undefined;
+    if (!isDirectCommandInput(input)) return undefined;
     const command = input.slice(1).trim();
     if (!command) throw new Error(t('chatInput.command.empty'));
     if (files.length) throw new Error(t('chatInput.command.attachments'));

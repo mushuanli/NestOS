@@ -29,7 +29,8 @@
     flex: 1;
     overflow-y: auto;
     overflow-x: hidden;
-    padding: var(--llm-history-padding, 20px);
+    min-width: 0;
+    padding: 28px max(var(--llm-history-padding, 20px), calc((100% - var(--llm-content-width)) / 2));
     scrollbar-width: thin;
     overflow-anchor: none;
     scroll-behavior: auto;
@@ -39,23 +40,23 @@
     will-change: scroll-position;
 }
 
-.llm-ui-workspace--history-hidden .llm-ui-workspace__history {
-    display: none;
-}
 
 .llm-ui-workspace__input {
     flex-shrink: 0;
     padding: var(--llm-input-padding-y, 16px) var(--llm-input-padding-x, 20px);
     /* 键盘弹出时兼容 iOS 底部安全区 */
     padding-bottom: max(var(--llm-input-padding-y, 16px), env(safe-area-inset-bottom, 0px));
-    border-top: 1px solid var(--llm-border-color);
+    box-sizing: border-box;
+    width: 100%;
+    max-width: calc(var(--llm-content-width) + 2 * var(--llm-input-padding-x));
+    margin-inline: auto;
     background: var(--llm-bg-primary);
     z-index: 10;
 }
 
 @media (max-width: 480px) {
     .llm-ui-workspace__history {
-        scroll-behavior: smooth;
+        scroll-behavior: auto;
     }
 }
 
@@ -84,22 +85,8 @@
     text-align: center;
 }
 
-.llm-ui-welcome__mark {
-    display: grid;
-    place-items: center;
-    width: 56px;
-    height: 56px;
-    margin-bottom: 18px;
-    border-radius: 18px;
-    background: linear-gradient(145deg, #4f46e5, #6366f1);
-    box-shadow: 0 10px 24px #4f46e533;
-    color: white;
-    font-size: 18px;
-    font-weight: 750;
-}
-
 .llm-ui-welcome__eyebrow {
-    color: #4f46e5;
+    color: var(--llm-text-secondary);
     font-size: 12px;
     font-weight: 700;
     letter-spacing: .08em;
@@ -144,13 +131,13 @@
     line-height: 1.45;
     text-align: left;
     cursor: pointer;
-    box-shadow: 0 4px 16px #0f172a0a;
+    box-shadow: none;
 }
 
 .llm-ui-welcome__prompt:hover,
 .llm-ui-welcome__prompt:focus-visible {
-    border-color: #a5b4fc;
-    background: #f7f8ff;
+    border-color: var(--llm-text-muted);
+    background: var(--llm-bg-secondary);
 }
 
 .llm-ui-welcome__prompt:focus-visible { outline: 2px solid #4f46e5; outline-offset: 2px; }

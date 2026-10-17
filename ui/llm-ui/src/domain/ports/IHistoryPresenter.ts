@@ -28,6 +28,7 @@ export interface IHistoryPresenter extends ICollapseManager, IStreamingControlle
 
     // === 滚动 ===
     scrollToBottom(force: boolean): void;
+    revealSession(sessionId: string): HTMLElement | null;
 
     // === 查询 ===
     getSessionElement(sessionId: string): HTMLElement | null;

@@ -131,18 +131,24 @@ export function resolveModelForTier(
     return conn.model;
 }
 
+/** Resolve the actual tier fallback before checking chat capability and catalog membership. */
+export function resolveChatModelForTier(connection: Pick<ConnectionMeta, 'model' | 'tiers'>,
+    provider: Pick<LLMProvider, 'models'> | undefined, tier: ModelTier): LLMModel | undefined {
+    const id = resolveModelForTier(connection, tier);
+    const model = provider?.models.find(item => item.id === id);
+    return model && (model.category ?? 'chat') === 'chat' ? model : undefined;
+}
+
 /** Keep configured chat choices only; catalog misses must not become selectable models. */
 export function resolveChatModelTiers(
     connection: Pick<ConnectionMeta, 'model' | 'tiers'>,
     provider: Pick<LLMProvider, 'models'> | undefined,
 ): Partial<Record<ModelTier, LLMModel>> {
     const models: Partial<Record<ModelTier, LLMModel>> = {};
-    const configured = {...connection.tiers, optimal: resolveModelForTier(connection, 'optimal')};
     for (const tier of ['optimal', 'standard', 'fast'] as const) {
-        const id = configured[tier];
-        if (!id) continue;
-        const model = provider?.models.find(item => item.id === id);
-        if (model && (model.category ?? 'chat') === 'chat') models[tier] = model;
+        if (tier !== 'optimal' && !connection.tiers?.[tier]) continue;
+        const model = resolveChatModelForTier(connection, provider, tier);
+        if (model) models[tier] = model;
     }
     return models;
 }

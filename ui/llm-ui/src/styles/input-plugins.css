@@ -124,6 +124,7 @@
     background: var(--llm-bg-hover);
 }
 
+.llm-popup__item[aria-disabled="true"] { opacity: .5; cursor: default; }
 .llm-popup__item--selected {
     background: var(--llm-color-primary-bg);
 }

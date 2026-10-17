@@ -9,6 +9,7 @@
 @import 'chat-nodes.css';
 @import 'tty-panel.css';
 @import 'floating-nav.css';
+@import 'prompt-navigation.css';
 @import 'dialogs.css';
 @import 'input-plugins.css';
 @import 'ai-context-menu.css';

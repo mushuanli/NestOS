@@ -21,7 +21,7 @@ it('shares reads across editors and invalidates on provider/connection notificat
     const [a, b] = await Promise.all([first.read(), second.read()]);
     expect(getConnections).toHaveBeenCalledOnce();
     a[0].name = 'local mutation'; expect(b[0].name).toBe('Connection');
-    provider.enabled = false; fire(); expect(await second.read()).toEqual([]);
+    provider.enabled = false; fire(); expect(await second.read()).toMatchObject([{id: 'c', enabled: false}]);
     provider.enabled = true; connections.push({ ...connections[0], id: 'new' }); fire();
     expect((await first.read()).map(item => item.id)).toEqual(['c', 'new']);
     expect(getConnections).toHaveBeenCalledTimes(3);
@@ -53,4 +53,6 @@ it('offers known chat tiers while excluding media and removed catalog models', a
     expect(mixed).toMatchObject({id: 'mixed', hasTiers: true, tiers: {standard: 'Chat'}});
     expect(mixed.tiers).toEqual({standard: 'Chat'});
     expect(removed.tiers).toEqual({});
+    expect(JSON.parse(JSON.stringify(mixed.resolvedTiers))).toEqual({optimal: null, standard: 'Chat', fast: null});
+    expect(removed.resolvedTiers).toEqual({optimal: null, standard: null, fast: null});
 });

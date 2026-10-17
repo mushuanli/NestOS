@@ -1,3 +1,4 @@
+import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { disposeEditorResources } from './editor-disposal';
 import { rememberTaskAttachment, restoreTaskAttachment } from './task-attachment-lifecycle';
 import type { EditorTaskControlPlane } from '@itookit/durable-kernel/contracts';
@@ -46,7 +47,6 @@ import { EditorEventBus } from './EditorEventBus';
 import { SessionEventHandler } from './SessionEventHandler';
 import { StateManager } from './StateManager';
 import { EventBinder } from './EventBinder';
-import { WorkspacePaneController } from './WorkspacePaneController';
 import { WorkspaceDirectoryMenu } from './WorkspaceDirectoryMenu';
 import { NavigationHelper } from './NavigationHelper';
 import { RunAttachmentController } from './RunAttachmentController';
@@ -131,7 +131,6 @@ export class LLMWorkspaceEditor implements IEditor {
 
     // === 委托的子模块 ===
     private navigation!: NavigationHelper;
-    private workspacePanes!: WorkspacePaneController;
     private directoryMenu?: WorkspaceDirectoryMenu;
 
     // === Services ===
@@ -148,6 +147,8 @@ export class LLMWorkspaceEditor implements IEditor {
     private assetManager?: AssetManagerUI;
     private fileSearchService!: FileSearchService;
     private runAttachment?: RunAttachmentController;
+    private viewActive = true;
+    private activationRevision = 0;
     private rerunAbort?: AbortController;
     private rerunPending = false;
     private flowOutputAbort?: AbortController;
@@ -329,15 +330,6 @@ export class LLMWorkspaceEditor implements IEditor {
         ]);
         const historyEl = this.domCache.byId('llm-ui-history')!;
         const inputEl = this.domCache.byId('llm-ui-input')!;
-        const historyToggle = this.domCache.byId('llm-btn-history-visibility') as HTMLButtonElement;
-
-        this.workspacePanes = new WorkspacePaneController(
-            this.container,
-            historyEl,
-            historyToggle,
-            (visibility) => this.stateManager.setHistoryVisibility(visibility),
-        );
-
         const historyView = new HistoryView(historyEl, {
             onContentChange: (id: string, content: string, type: 'user' | 'node') =>
                 this.handleContentChange(id, content, type),
@@ -353,11 +345,7 @@ export class LLMWorkspaceEditor implements IEditor {
             onNavigateSettings: () => {
                 this.hostContext?.navigate?.({ target: 'settings', resourceId: 'connections' });
             },
-            onHistoryActivity: (kind, error) => {
-                const hidden = this.workspacePanes.getHistoryVisibility() === 'hidden';
-                this.workspacePanes.markUnread(kind);
-                if (hidden && kind === 'error' && error) Toast.error(error.message);
-            },
+
         });
         this.historyView = historyView;
         const calls = document.createElement('div'); inputEl.before(calls);
@@ -366,6 +354,7 @@ export class LLMWorkspaceEditor implements IEditor {
 
         // Create NavigationHelper now that historyView is available
         this.navigation = new NavigationHelper({
+            workspace: this.container,
             domCache: this.domCache,
             commands: this.commandBus,
             historyView: this.historyView,
@@ -386,14 +375,20 @@ export class LLMWorkspaceEditor implements IEditor {
             (loading) => this.chatInput?.setLoading(loading)
         );
 
-        this.workspacePanes.setHistoryVisibility(
-            savedUIState?.history_visibility ?? 'visible',
-            { persist: false },
-        );
         const savedAgentId = savedUIState?.input_agent_id || 'default';
         const validAgentId = validateAgentId(this.agentService, savedAgentId);
 
         this.chatInput = new ChatInput(inputEl, {
+            executorUsage: this.options.executorUsage,
+            onSwitchExecutionTarget: this.options.onStartConversationDraft ? async input => {
+                await this.flushPendingSave(); await this.options.onStartConversationDraft!(input);
+            } : undefined,
+            onConfigureExecutor: this.hostContext?.navigate ? () => {
+                const config = this.chatInput.getConfig();
+                void this.hostContext?.navigate?.(config.settings.flowId
+                    ? {target: 'flows', resourceId: config.settings.flowId}
+                    : {target: 'agents', resourceId: this.agentService.getAgentResourceId?.(config.agentId)});
+            } : undefined,
             maxAgentExchanges: this.sessionManager.getDirectAgentPolicy?.().maxExchanges,
             ...(this.options.sessionSkills ? {
                 onRequestSkills: async () => this.decorateSkillCapabilities(await this.options.sessionSkills!.list(this.options.sessionId)),
@@ -407,10 +402,10 @@ export class LLMWorkspaceEditor implements IEditor {
                 onUnloadSkill: (id: string) => this.options.sessionSkills!.unload(this.options.sessionId, id),
             } : {}),
             onSend: (text, files, agentId, overrides) =>
-                this.routeMessage({ text, files, agentId, overrides }).then(() => {})
+                this.routeMessage({ text, files, agentId, overrides })
                     // Direct commands reject on purpose (no fallback to chat): report the reason the
                     // command could not start instead of leaving an unhandled rejection.
-                    .catch(error => { this.errorHandler.handle(error, 'Send message'); if (agentId.startsWith('remote:')) throw error; }),
+                    .catch(error => { this.errorHandler.handle(error, 'Send message'); if (agentId.startsWith('remote:')) throw error; return false as const; }),
             onStop: () => this.commandBus.execute(SessionCommand.Abort).catch(error => this.errorHandler.handle(error, 'Stop execution')),
             initialAgents,
             initialConfig: {
@@ -492,6 +487,7 @@ export class LLMWorkspaceEditor implements IEditor {
             branchStore: this.branchStore,
             getCurrentSessionId: () => this.currentSessionId,
             onExecutionTask: taskId => {
+                if (!this.viewActive) return;
                 void this.runAttachment?.attach(taskId).catch(error =>
                     Toast.error(error instanceof Error ? error.message : 'Unable to attach execution task'),
                 );
@@ -532,8 +528,8 @@ export class LLMWorkspaceEditor implements IEditor {
         if (event.type === 'task.succeeded') this.statusIndicator.update('completed');
         else if (event.type === 'task.failed' || event.type === 'task.cancelled') {
             this.statusIndicator.update(event.type === 'task.failed' ? 'failed' : 'idle');
-        } else if (event.type === 'task.ready') this.statusIndicator.update('queued');
-        else if (event.type.startsWith('task.')) this.statusIndicator.update('running');
+        } else if (event.type === 'task.ready' || event.type === 'task.retry.scheduled') this.statusIndicator.update('queued');
+        else if (event.type === 'task.started' || event.type === 'task.running') this.statusIndicator.update('running');
     }
 
     /**
@@ -604,6 +600,7 @@ export class LLMWorkspaceEditor implements IEditor {
             bus: this.bus,
             errorHandler: this.errorHandler,
             getSessionId: () => this.options.sessionId,
+            isGenerating: () => this.sessionManager.isGenerating(),
             executeDirectCommand: this.options.privilegedCommands ? command => this.startExec(command) : undefined,
             resolveSubmission: this.options.resolveSubmission,
         };
@@ -627,8 +624,9 @@ export class LLMWorkspaceEditor implements IEditor {
             openSessionFlowOutputs(this.commandBus, this.currentSessionId, this.flowOutputAbort.signal);
         });
         this.eventBinder = new EventBinder(this.container, {
+            mountCompactNavigation: this.options.mountCompactNavigation,
+            mountMoreMenu: this.options.mountMoreMenu,
             onToggleSidebar: () => this.hostContext?.toggleSidebar(),
-            onToggleHistory: () => this.toggleHistoryView(),
             onTitleChange: (title) => this.handleTitleChange(title),
             onOpenAssetManager: () => this.handleOpenAssetManager(),
             onToggleNavigator: () => this.navigation.toggleNavigator(this.container),
@@ -640,6 +638,7 @@ export class LLMWorkspaceEditor implements IEditor {
             onPrint: () => this.handlePrint(),
             onRefresh: () => { void this.handleRefresh(); },
         });
+        this.domCache.byId('llm-btn-sidebar')!.hidden = !this.hostContext?.toggleSidebar;
 
         this.eventBinder.bindTitleBarEvents();
         this.eventBinder.bindNavigationEvents();
@@ -664,6 +663,7 @@ export class LLMWorkspaceEditor implements IEditor {
         );
 
         this.agentServiceUnsub = this.agentService.onChange(() => {
+            if (!this.viewActive) return;
             void this.chatInput.refreshConnections();
             if (this.refreshAgentsTimer) clearTimeout(this.refreshAgentsTimer);
             this.refreshAgentsTimer = setTimeout(() => {
@@ -672,10 +672,6 @@ export class LLMWorkspaceEditor implements IEditor {
                 this.skillRefreshBinding?.refresh();
             }, 300);
         });
-    }
-
-    private toggleHistoryView(): void {
-        this.workspacePanes.toggleHistory();
     }
 
     // ================================================================
@@ -826,6 +822,7 @@ export class LLMWorkspaceEditor implements IEditor {
         } else {
             this.historyView.renderWelcome();
         }
+        this.navigation.updatePrompts(snapshot.sessions);
 
         // Assign before prompting because the callback reads the active session.
         if (this.currentSessionId && this.currentSessionId !== sessionId) await this.runAttachment?.detach();
@@ -902,8 +899,8 @@ export class LLMWorkspaceEditor implements IEditor {
     // Agent / Connection 辅助 → 委托到 AgentProvider
     // ================================================================
 
-    private async routeMessage(message: import('../commands/SendMessageCommand').SendMessageParams): Promise<void> {
-        if (!message.agentId?.startsWith('remote:')) { await this.sendCommand.run(message); return; }
+    private async routeMessage(message: import('../commands/SendMessageCommand').SendMessageParams): Promise<void | false> {
+        if (!message.agentId?.startsWith('remote:')) return await this.sendCommand.run(message) ? undefined : false;
         if (message.files.length) throw new Error(t('harness.remoteAttachments'));
         if (!this.options.remoteAgents) throw new Error(t('toolbox.unavailable'));
         try { await this.options.remoteAgents.send(message.agentId, message.text); }
@@ -931,10 +928,7 @@ export class LLMWorkspaceEditor implements IEditor {
         if (!collapseBtn) return;
 
         const showExpand = isAllCollapsed ?? !this.historyView.shouldShowCollapseIcon();
-        collapseBtn.innerHTML = showExpand
-            ? LayoutTemplates.expandIcon()
-            : LayoutTemplates.collapseIcon();
-        collapseBtn.setAttribute('title', showExpand ? 'Expand All' : 'Collapse All');
+        updateCollapseAction(collapseBtn, showExpand);
     }
 
     // ================================================================
@@ -973,12 +967,32 @@ export class LLMWorkspaceEditor implements IEditor {
     isDirty(): boolean { return false; }
     setDirty(_dirty: boolean): void { }
     focus(): void { this.chatInput?.focus(); }
+    cancelPendingRender(): void {
+        ++this.activationRevision;
+        this.viewActive = false; this.invocationPanel?.setVisible(false);
+        if (this.refreshAgentsTimer) clearTimeout(this.refreshAgentsTimer);
+        this.refreshAgentsTimer = null;
+        void this.runAttachment?.detach().catch(error => console.error('[View] Task detach failed', error));
+        this.sessionEventUnsub?.(); this.sessionEventUnsub = null;
+        this.globalEventUnsub?.(); this.globalEventUnsub = null;
+    }
     async activate(): Promise<void> {
         if (!this.initComplete || this.destroyPromise) return;
+        const revision = ++this.activationRevision;
+        const isCurrent = () => revision === this.activationRevision && this.viewActive && !this.destroyPromise;
+        this.viewActive = true;
         const loaded = await this.sessionService.loadSession(this.options.sessionId, this.currentTitle, this.branchStore.currentBranch?.name);
+        if (!isCurrent()) return;
         this.bindSessionEvents();
+        this.globalEventUnsub?.();
+        this.globalEventUnsub = this.sessionManager.onGlobalEvent(event => this.sessionEventHandler.handleGlobalEvent(event));
         this.historyView.renderFull(loaded.snapshot.sessions);
+        this.navigation.updatePrompts(loaded.snapshot.sessions);
         this.statusIndicator.updateFromSnapshot(loaded.snapshot);
+        this.invocationPanel?.setVisible(true);
+        await this.chatInput.refreshConnections();
+        if (!isCurrent()) return;
+        await this.restorePrivilegedTaskAttachment();
     }
 
     setTitle(title: string): void {
@@ -1140,9 +1154,9 @@ export class LLMWorkspaceEditor implements IEditor {
 
     private async restorePrivilegedTaskAttachment(): Promise<void> {
         const attachment = this.runAttachment, kernel = this.options.kernel, sessionId = this.currentSessionId;
-        if (!attachment || !kernel || !sessionId || this.attachmentClosed) return;
+        if (!attachment || !kernel || !sessionId || this.attachmentClosed || !this.viewActive) return;
         const revision = attachment.revision;
-        const isCurrent = () => !this.attachmentClosed && this.runAttachment === attachment
+        const isCurrent = () => !this.attachmentClosed && this.viewActive && this.runAttachment === attachment
             && this.currentSessionId === sessionId && attachment.revision === revision;
         await restoreTaskAttachment(kernel, sessionId, attachment, isCurrent,
             async () => await this.invocationPanel?.taskIds() ?? new Set<string>());
@@ -1191,6 +1205,7 @@ export class LLMWorkspaceEditor implements IEditor {
 
     destroy(): Promise<void> {
         if (this.destroyPromise) return this.destroyPromise;
+        ++this.activationRevision; this.viewActive = false;
         this.attachmentClosed = true;
         this.rerunAbort?.abort();
         this.flowOutputAbort?.abort();

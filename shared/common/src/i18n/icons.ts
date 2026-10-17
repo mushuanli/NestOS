@@ -105,6 +105,9 @@ export function getFileIcon(mimeType: string | undefined, filename?: string): st
 // ── Common UI actions ─────────────────────────────────────────────────────────
 
 export const ACTION_ICONS = {
+    back: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m15 5-7 7 7 7"/></svg>',
+    opened: '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="7" y="7" width="14" height="14" rx="2"/><path d="M17 7V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h2"/></svg>',
+    promptList: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5h12M9 12h12M9 19h12M3 5h1M3 12h1M3 19h1"/></svg>',
     refreshView: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M20 7v5h-5M4 17v-5h5M6 6a8 8 0 0 1 14 6M4 12a8 8 0 0 0 14 6"/></svg>',
     rerun: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4m0 5h5M4 9a8 8 0 1 1 0 7"/><path d="m10 8 6 4-6 4Z"/></svg>',
     favorite: '<svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1.1 6.2-5.6-3-5.6 3 1.1-6.2L3 9.6l6.2-.9Z" fill="#eab308" stroke="#ca8a04" stroke-width="1.4" stroke-linejoin="round"/></svg>',
@@ -234,6 +237,16 @@ export const VFS_TOOLBAR_ICONS = {
 
 /** Consistent outline icons for toolbox resource types and purpose groups. */
 const toolboxIcon = (shape: string): string => `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${shape}</svg>`;
+/** Quiet outline controls for conversation content and its composer. */
+export const CHAT_ICONS = {
+    copy: toolboxIcon('<rect x="8" y="8" width="12" height="13" rx="2"/><path d="M16 8V3H3v13h5"/>'),
+    edit: toolboxIcon('<path d="m15 4 5 5M4 20l5-1L21 7a3.5 3.5 0 0 0-5-5L4 14l-1 7z"/>'),
+    delete: toolboxIcon('<path d="M3 6h18M9 6V3h6v3M5 6l1 15h12l1-15M10 10v7m4-7v7"/>'),
+    more: toolboxIcon('<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>'),
+    chevron: toolboxIcon('<path d="m7 10 5 5 5-5"/>'),
+    thinking: toolboxIcon('<path d="M9 18h6m-5 3h4M8 14a6 6 0 1 1 8 0l-1 2H9l-1-2z"/>'),
+    search: toolboxIcon('<circle cx="10" cy="10" r="7"/><path d="m15 15 6 6"/>'),
+} as const;
 export const TOOLBOX_ICONS = {
     prompts: toolboxIcon('<path d="M5 3h14v18H5zM8 7h8M8 11h8M8 15h5"/>'),
     providers: toolboxIcon('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 9h16M4 15h16M8 6h.01M8 12h.01M8 18h.01"/>'),

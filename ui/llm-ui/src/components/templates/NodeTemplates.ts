@@ -2,7 +2,7 @@ import { renderFlowIdentity } from '../history/FlowIdentity';
 // @file: llm-ui/components/templates/NodeTemplates.ts
 
 import { ExecutionNode, SessionGroup } from '@itookit/llm-session/contracts';
-import { escapeHTML, ACTION_ICONS, t } from '@itookit/common';
+import { escapeHTML, ACTION_ICONS, CHAT_ICONS, TOOLBOX_ICONS, t } from '@itookit/common';
 import { type Citation } from '@itookit/driver-llm/contracts';
 import { LayoutTemplates } from './LayoutTemplates';
 
@@ -87,154 +87,109 @@ export class NodeTemplates {
         return navHtml + manageHtml;
     }
 
-    static renderUserBubble(
-        group: SessionGroup,
-        preview: string,
-        isCollapsed: boolean = false,
-    ): string {
-        const collapsedClass = isCollapsed ? 'is-collapsed' : '';
-        const timeStr = this.formatTime(group.timestamp);
-        const branchHtml = this.renderBranchNav(
-            group.siblingIndex ?? 0,
-            group.siblingCount ?? 1,
-            group.branchInfo?.name,
-        );
+    static statusLabel(status: string): string {
+        const labels: Record<string, string> = {
+            queued: t('chatMessage.status.queued'), running: t('chatMessage.status.running'),
+            success: t('chatMessage.status.success'), failed: t('chatMessage.status.failed'),
+            aborted: t('chatMessage.status.aborted'),
+        };
+        return labels[status] ?? status;
+    }
 
-        const chevron = isCollapsed
-            ? LayoutTemplates.chevronDown()
-            : LayoutTemplates.chevronUp();
+    private static action(action: string, label: string, icon: string): string {
+        return `<button type="button" class="llm-icon-btn" data-action="${action}"
+            title="${escapeHTML(label)}" aria-label="${escapeHTML(label)}">${icon}</button>`;
+    }
 
-        return `
-        <div class="llm-ui-bubble llm-ui-bubble--user ${collapsedClass}"
-             data-round-id="${escapeHTML(group.roundId ?? '')}"
-             data-round-role="user"
-             data-context-mode="${escapeHTML(group.historyPolicy ?? 'include')}"
-             data-context-source="default">
-            <div class="llm-ui-bubble__header">
-                <div class="llm-ui-avatar">👤</div>
-                
-                <div class="llm-ui-header-preview">${escapeHTML(preview)}</div>
-                <div class="llm-ui-time">${timeStr}</div>
-
-                <div class="llm-ui-actions" style="margin-left: auto; display: flex; gap: 4px;">
-                     ${branchHtml}
-                     
-                     <button class="llm-icon-btn" data-action="delete" title="Delete">🗑️</button>
-                     <button class="llm-icon-btn" data-action="resend" title="Resend">↻</button>
-                     <button class="llm-icon-btn" data-action="edit" title="Edit">✎</button>
-                     <button class="llm-icon-btn" data-action="copy" title="Copy">📋</button>
-                     <button class="llm-icon-btn" data-action="collapse" title="Toggle">
-                        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                            ${chevron}
-                        </svg>
-                     </button>
-                </div>
-            </div>
-            <div class="llm-ui-bubble__content">
-                <div class="llm-ui-mount-point" id="user-mount-${group.id}"></div>
-                
-                <div class="llm-ui-edit-actions" style="display:none;">
-                    <button class="llm-btn llm-btn--primary" data-action="confirm-edit">Save & Run</button>
-                    <button class="llm-btn" data-action="save-only">Save Only</button>
-                    <button class="llm-btn" data-action="cancel-edit">Cancel</button>
-                </div>
-            </div>
-        </div>`;
+    private static collapseButton(collapsed: boolean): string {
+        return `<button type="button" class="llm-icon-btn" data-action="collapse"
+            title="${t('flow.history.toggle')}" aria-label="${t('flow.history.toggle')}" aria-expanded="${!collapsed}">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                ${collapsed ? LayoutTemplates.chevronDown() : LayoutTemplates.chevronUp()}</svg></button>`;
     }
 
     static renderReadActions(collapsed = false): string {
-        return `<div class="llm-ui-actions">
-            <button type="button" class="llm-icon-btn" data-action="copy" title="${t('action.copy')}" aria-label="${t('action.copy')}">${ACTION_ICONS.copy}</button>
-            <button type="button" class="llm-icon-btn" data-action="collapse" title="${t('flow.history.toggle')}" aria-label="${t('flow.history.toggle')}" aria-expanded="${!collapsed}">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">${collapsed ? LayoutTemplates.chevronDown() : LayoutTemplates.chevronUp()}</svg>
-            </button></div>`;
+        return `<div class="llm-ui-actions">${this.action('copy', t('action.copy'), CHAT_ICONS.copy)}${this.collapseButton(collapsed)}</div>`;
     }
 
-    static renderAgentHeader(
-        node: ExecutionNode,
-        preview: string,
-        icon: string,
-        isCollapsed: boolean = false,
-    ): string {
-        if (node.messageRole) return `<div class="llm-ui-node__header">
-            ${node.data.metaInfo?.nativeRole ? `<span class="llm-ui-node__name">${escapeHTML(node.name)}</span>` : renderFlowIdentity(node)}
-            <span class="llm-ui-node__status llm-ui-node__status--${node.status}">${escapeHTML(node.status)}</span>
-            <div class="llm-ui-time">${this.formatTime(node.startTime)}</div>${this.renderReadActions(isCollapsed)}</div>`;
-        const timeStr = this.formatTime(node.startTime);
-        const branchHtml = this.renderBranchNav(
-            node.data.metaInfo?.siblingIndex ?? 0,
-            node.data.metaInfo?.siblingCount ?? 1,
-            node.data.metaInfo?.branchName,
-        );
-
-        const agentId = node.data.metaInfo?.agentId;
-        const isClickable = node.executorType === 'agent' && agentId;
-
-        // 修复：添加 data-action="edit-agent" 使事件委托能捕获点击
-        const iconHtml = isClickable
-            ? `<div class="llm-ui-node__icon llm-ui-node__icon--clickable" 
-                    data-action="edit-agent" 
-                    data-agent-id="${escapeHTML(agentId)}" 
-                    title="Edit Agent: ${escapeHTML(agentId)}">${icon}</div>`
-            : `<div class="llm-ui-node__icon">${icon}</div>`;
-
-        const chevron = isCollapsed
-            ? LayoutTemplates.chevronDown()
-            : LayoutTemplates.chevronUp();
-
-        return `
-        <div class="llm-ui-node__header">
-            ${iconHtml}
-            <span class="llm-ui-node__name">${escapeHTML(node.name)}</span>
-            <span class="llm-ui-header-preview">${escapeHTML(preview)}</span>
-            <span class="llm-ui-node__status llm-ui-node__status--${node.status}">${node.status}</span>
-            <div class="llm-ui-time">${timeStr}</div>
-
-            <div class="llm-ui-actions" style="margin-left: auto; display: flex; gap: 4px;">
-                ${branchHtml}
-
-                <button class="llm-icon-btn" data-action="delete" title="Delete">🗑️</button>
-                <button class="llm-icon-btn" data-action="regenerate" title="Regenerate">↻</button>
-                <button class="llm-icon-btn" data-action="edit" title="Edit">✎</button>
-                <button class="llm-icon-btn" data-action="copy" title="Copy">📋</button>
-                <button class="llm-icon-btn" data-action="collapse" title="Toggle">
-                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                        ${chevron}
-                    </svg>
-                </button>
-            </div>
+    private static renderActions(user: boolean, branch: string, collapsed: boolean): string {
+        return `<div class="llm-ui-actions">
+            ${this.action('copy', t('action.copy'), CHAT_ICONS.copy)}
+            ${this.action(user ? 'resend' : 'regenerate', t(user ? 'chatMessage.resend' : 'chatMessage.retry'), ACTION_ICONS.rerun)}
+            ${this.collapseButton(collapsed)}
+            <details class="llm-ui-message-more">
+                <summary title="${t('chat.toolbar.more')}" aria-label="${t('chat.toolbar.more')}">${CHAT_ICONS.more}</summary>
+                <div class="llm-ui-message-more__items">${branch}
+                    ${this.action('edit', t('action.edit'), CHAT_ICONS.edit)}
+                    ${this.action('delete', t('action.delete'), CHAT_ICONS.delete)}
+                </div>
+            </details>
         </div>`;
     }
 
-    static renderTool(node: ExecutionNode, icon: string): string {
+    static renderUserBubble(group: SessionGroup, preview: string, isCollapsed = false): string {
+        const branch = this.renderBranchNav(group.siblingIndex ?? 0, group.siblingCount ?? 1, group.branchInfo?.name);
+        return `<div class="llm-ui-bubble llm-ui-bubble--user ${isCollapsed ? 'is-collapsed' : ''}"
+            data-round-id="${escapeHTML(group.roundId ?? '')}" data-round-role="user"
+            data-context-mode="${escapeHTML(group.historyPolicy ?? 'include')}" data-context-source="default">
+            <div class="llm-ui-bubble__header"><div class="llm-ui-header-preview">${escapeHTML(preview)}</div></div>
+            <div class="llm-ui-bubble__content">
+                <div class="llm-ui-mount-point" id="user-mount-${group.id}"></div>
+                <div class="llm-ui-edit-actions" style="display:none;">
+                    <button class="llm-btn llm-btn--primary" data-action="confirm-edit">${t('chatMessage.saveAndRun')}</button>
+                    <button class="llm-btn" data-action="save-only">${t('chatMessage.saveOnly')}</button>
+                    <button class="llm-btn" data-action="cancel-edit">${t('action.cancel')}</button>
+                </div>
+            </div>
+            <div class="llm-ui-message-footer"><span class="llm-ui-time">${this.formatTime(group.timestamp)}</span>
+                ${this.renderActions(true, branch, isCollapsed)}</div>
+        </div>`;
+    }
+
+    static renderAgentHeader(node: ExecutionNode, preview: string, _icon: string, _isCollapsed = false): string {
+        const agentId = node.data.metaInfo?.agentId;
+        const name = node.messageRole && !node.data.metaInfo?.nativeRole ? renderFlowIdentity(node)
+            : `<span class="llm-ui-node__name">${escapeHTML(node.name)}</span>`;
+        return `<div class="llm-ui-node__header">
+            ${agentId && agentId !== 'default' ? `<button type="button" class="llm-icon-btn llm-ui-node__icon--clickable"
+                data-action="edit-agent" data-agent-id="${escapeHTML(agentId)}" aria-label="${t('action.edit')}">${TOOLBOX_ICONS.agents}</button>` : ''}
+            ${name}<span class="llm-ui-header-preview">${escapeHTML(preview)}</span>
+            <span class="llm-ui-node__status llm-ui-node__status--${node.status}">${this.statusLabel(node.status)}</span>
+        </div>`;
+    }
+
+    static renderAgentFooter(node: ExecutionNode, collapsed = false): string {
+        const meta = node.data.metaInfo;
+        const branch = this.renderBranchNav(meta?.siblingIndex ?? 0, meta?.siblingCount ?? 1, meta?.branchName);
+        return `<div class="llm-ui-message-footer"><span class="llm-ui-time">${this.formatTime(node.startTime)}</span>
+            ${node.messageRole ? this.renderReadActions(collapsed) : this.renderActions(false, branch, collapsed)}</div>`;
+    }
+
+    static renderTool(node: ExecutionNode, _icon: string): string {
         const result = node.data.error ?? node.data.output;
         const hasResult = result !== undefined && result !== '' || node.status === 'success';
-        const resultDisplay = hasResult ? 'block' : 'none';
-        const resultText = result !== undefined
-            ? (typeof result === 'string' ? result : JSON.stringify(result, null, 2))
-            : '';
-
-        return `
-        <div class="llm-ui-node__header">
-            <div class="llm-ui-node__icon">${icon}</div>
-            <span class="llm-ui-node__name">${escapeHTML(node.name)}</span>
-            <span class="llm-ui-node__status llm-ui-node__status--${node.status}">${node.status}</span>
-        </div>
-        <div class="llm-ui-node__body">
-            ${node.data.input ? `<div class="llm-ui-node__input"><pre>${escapeHTML(
-                typeof node.data.input === 'string' ? node.data.input : JSON.stringify(node.data.input, null, 2)
-            )}</pre></div>` : ''}
-            <div class="llm-ui-node__result" style="display:${resultDisplay}">${escapeHTML(resultText)}</div>
-            <div class="llm-ui-node__progress" role="status" hidden></div>
-            <div class="llm-ui-node__children"></div>
-        </div>`;
+        const resultText = result === undefined ? '' : typeof result === 'string' ? result : JSON.stringify(result, null, 2);
+        return `<details class="llm-ui-tool-details" ${node.status === 'failed' ? 'open' : ''}>
+            <summary class="llm-ui-node__header">
+                <span class="llm-ui-node__icon">${TOOLBOX_ICONS.tools}</span>
+                <span class="llm-ui-node__name">${escapeHTML(node.name)}</span>
+                <span class="llm-ui-node__status llm-ui-node__status--${node.status}">${this.statusLabel(node.status)}</span>
+                <span class="llm-ui-tool-details__hint">${t('chatMessage.toolDetails')}</span>${CHAT_ICONS.chevron}
+            </summary>
+            <div class="llm-ui-node__body">
+                ${node.data.input ? `<div class="llm-ui-node__input"><pre>${escapeHTML(typeof node.data.input === 'string' ? node.data.input : JSON.stringify(node.data.input, null, 2))}</pre></div>` : ''}
+                <div class="llm-ui-node__result" style="display:${hasResult ? 'block' : 'none'}">${escapeHTML(resultText)}</div>
+            </div>
+        </details>
+        <div class="llm-ui-node__progress" role="status" hidden></div>
+        <div class="llm-ui-node__children"></div>`;
     }
 
-    static renderThinking(thought: string, hasThought: boolean, status?: string): string {
-        const collapsedClass = hasThought && status && status !== 'running' ? ' llm-ui-thought--collapsed' : '';
+    static renderThinking(thought: string, hasThought: boolean, _status?: string): string {
+        const collapsedClass = hasThought ? ' llm-ui-thought--collapsed' : '';
         return `
         <div class="llm-ui-thought${collapsedClass}" style="display: ${hasThought ? 'block' : 'none'}">
-            <div class="llm-ui-thought__label">💭 Thinking</div>
+            <button type="button" class="llm-ui-thought__label" aria-expanded="${!collapsedClass}">${CHAT_ICONS.thinking}${t('chatMessage.thinking')}${CHAT_ICONS.chevron}</button>
             <div class="llm-ui-thought__content">${escapeHTML(thought)}</div>
         </div>`;
     }

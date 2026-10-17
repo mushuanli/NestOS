@@ -188,7 +188,6 @@ llm-ui/
 │   ├── SessionEventHandler.ts        #   引擎事件 → 副作用声明表
 │   ├── StateManager.ts               #   防抖持久化 + UI 状态恢复
 │   ├── EventBinder.ts                #   DOM 事件 + 快捷键绑定
-│   ├── WorkspacePaneController.ts    #   history/run-graph/inspector 面板切换
 │   ├── NavigationHelper.ts           #   导航面板(浮动导航)
 │   ├── RunAttachmentController.ts    #   经 TaskControlPlane 附着并控制运行
 │   ├── AgentProvider.ts              #   Agent/Connection 选项构建(buildExecutorOptions)
@@ -700,6 +699,7 @@ BranchStore 是分支数据的唯一真实来源(Single Source of Truth)。
 
 ```
 用户输入 → ChatInput.triggerSend()
+  → 连接元数据复查；提交期间去重并保留草稿
   → options.onSend(text, files, agentId, overrides)
     → Shell 路由到 SendMessageCommand.run()
       → AssetService.uploadFiles()            [如有附件]
@@ -717,6 +717,8 @@ BranchStore 是分支数据的唯一真实来源(Single Source of Truth)。
             → 副作用表: refreshNav + notifyChange
             → updateStatusFromEvent() → ChatInput.updateTokenStats(tu)
 ```
+
+确认提交后仅移除本次附件；文字仍与提交时一致才清空。拒绝、未知结果和异常保留草稿，成功后才记录助手使用及调用 afterSend。等待期间新增的输入不被迟到回执覆盖。
 
 ### 9.2 分支切换流程
 
@@ -757,11 +759,12 @@ BranchStore 是分支数据的唯一真实来源(Single Source of Truth)。
 
 触发推送的时机:
   1. toggleNavigator() 首次打开 → pushNavDataImmediate()
-  2. refreshNav 副作用 → pushNavData() [防抖 50ms]
+  2. refreshNav 副作用 → pushNavData() 标脏；仅有可见面板时防抖 50ms 读取
   3. 分支切换/删除 → refreshNav 副作用
 
 数据构建:
-  Shell.buildNavData() / NavigationHelper
+  NavigationHelper.loadSessions() [两面板共享缓存与在途请求，旧响应不覆盖新快照]
+    → 仅提问目录可见时直接投影用户摘要；批量导航可见时继续构建
     → NavDataBuilder.build(sessions, collapseStates, branches, currentSessionId)
     → floatingNav.update(data)          [推送到面板]
 
@@ -770,6 +773,38 @@ BranchStore 是分支数据的唯一真实来源(Single Source of Truth)。
     → 本地操作(选择/高亮):立即更新 DOM
     → 远程操作(删除/切换):bus.emit() → 等待事件回流 → update() 刷新
 ```
+
+### 会话展示边界与确认路径
+
+```mermaid
+C4Component
+    title 会话输入、快照与历史渲染
+    Container_Boundary(ui, "ui/llm-ui") {
+        Component(input, "ChatInput", "DOM", "保留提交草稿，按确认清理")
+        Component(options, "AgentProvider", "TypeScript", "将连接目录投影为安全展示元数据")
+        Component(command, "SendMessageCommand / RemoteConversationEditor", "TypeScript", "适配本地命令或原生控制端口")
+        Component(lifecycle, "LLMWorkspaceEditor", "TypeScript", "激活代次与隐藏、销毁保护")
+        Component(nav, "NavigationHelper", "TypeScript", "可见时读取，共享快照与在途请求")
+        Component(projection, "remote-rounds / RemoteHistory", "TypeScript", "仅明确来源创建登记块")
+        Component(markup, "createTranscriptMarkup", "MDx plugin", "登记校验后渲染辅助信息，历史与打印共用")
+    }
+    Container_Boundary(contracts, "领域公开契约") {
+        Component(ports, "SessionViewPort / ConversationControls", "Ports", "会话操作、快照和提交回执")
+        Component(models, "kernel-adapters/contracts", "Pure functions", "聊天候选与实际档位解析")
+    }
+    Container(mdx, "mdxeditor", "Markdown", "通用解析、代码块与折叠状态")
+    Rel(input, command, "发送并等待确认")
+    Rel(command, ports, "提交；失败保留输入")
+    Rel(lifecycle, ports, "读取快照；返回后核验激活代次")
+    Rel(nav, ports, "按需读取历史")
+    Rel(input, options, "经注入回调读取连接选项")
+    Rel(options, models, "复用候选与真实档位解析")
+    Rel(ports, projection, "原生快照和来源元数据")
+    Rel(projection, markup, "登记块身份与正文")
+    Rel(markup, mdx, "扩展渲染；未登记围栏按普通代码处理")
+```
+
+输入确认、可见性、导航缓存与来源展示属于 llm-ui；档位回退规则属于模型配置契约；持久提交和执行仍由领域端口提供。通用 Markdown 组件无需认识原生角色或项目规则，通用欢迎页不包含产品品牌。
 
 ### 9.5 会话加载流程(loadSession)
 
@@ -1183,7 +1218,7 @@ Phase 3: 数据层
   4. ensureReady(sessionId)  ⭐ 绑定会话(必须在 ChatInput 渲染前)
 
 Phase 4: UI 层
-  5. initComponents()        WorkspacePaneController / DagWorkbench / HistoryView / NavigationHelper / BranchIndicator / StatusIndicator / ChatInput / plugins
+  5. initComponents()        DagWorkbench / HistoryView / NavigationHelper / BranchIndicator / StatusIndicator / ChatInput / plugins
 
 Phase 5: 操作层
   6. initCommands()          CommandRegistry + 命令实例 + state 事件监听

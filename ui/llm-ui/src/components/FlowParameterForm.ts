@@ -18,7 +18,7 @@ export function promptFlowParameters(parameters: FlowParameter[], title?: string
         dialog.className = 'dag-dialog';
         dialog.innerHTML = `<form novalidate><h2>${escapeHTML(title ?? t('flow.launch.title'))}</h2>
             ${parameters.map(parameterField).join('')}
-            ${connection ? connectionField(connection) + slotFields(connection) : ''}
+            ${connection ? slotFields(connection) + connectionField(connection) : ''}
             <p data-form-error class="dag-dialog__error" role="alert"></p>
             <menu><button type="button" data-cancel>${escapeHTML(t('flow.launch.cancel'))}</button>
             <button type="submit">${escapeHTML(t(submit ? 'flow.editor.submit' : 'flow.launch.confirm'))}</button></menu></form>`;
@@ -33,7 +33,8 @@ export function promptFlowParameters(parameters: FlowParameter[], title?: string
                 const values = collectParameters(dialog, parameters);
                 if (connection) {
                     collectConnections(dialog, connection);
-                    connection.onChange(dialog.querySelector<HTMLSelectElement>('[data-run-connection]')!.value || undefined);
+                    const selected = dialog.querySelector<HTMLSelectElement>('[data-run-connection]')!.value;
+                    validateConnection(connection, selected); connection.onChange(selected || undefined);
                 }
                 await submit?.(values); result = values; dialog.close();
             }
@@ -52,11 +53,12 @@ export function promptFlowParameters(parameters: FlowParameter[], title?: string
 
 function connectionField(selection: FlowConnectionSelection): string {
     const options = selection.connections.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === selection.selected ? 'selected' : ''}
-        ${item.enabled === false ? 'disabled' : ''}>${escapeHTML(item.name)} · ${escapeHTML(item.providerId)}</option>`).join('');
+        ${connectionUnavailable(item) ? 'disabled' : ''}>${escapeHTML(item.name)} · ${escapeHTML(item.providerId)}</option>`).join('');
     const missing = selection.selected && !selection.connections.some(item => item.id === selection.selected)
         ? `<option value="${escapeHTML(selection.selected)}" selected>${escapeHTML(t('connection.unavailable', { id: selection.selected }))}</option>` : '';
-    return `<label>${escapeHTML(t('connection.flowLabel'))}<select data-run-connection><option value="">${escapeHTML(t('connection.flowInherit'))}</option>${missing}${options}</select>
+    const field = `<label>${escapeHTML(t('connection.flowLabel'))}<select data-run-connection><option value="">${escapeHTML(t('connection.flowInherit'))}</option>${missing}${options}</select>
         <small>${escapeHTML(t('connection.flowHint'))}</small></label>`;
+    return selection.slots?.length ? `<details ${selection.selected ? 'open' : ''}><summary>${escapeHTML(t('connection.flowLabel'))}</summary>${field}</details>` : field;
 }
 
 function slotFields(selection: FlowConnectionSelection): string {
@@ -64,7 +66,10 @@ function slotFields(selection: FlowConnectionSelection): string {
         const selected = selection.bindings?.[slot.name] ?? slot.connectionId;
         const missing = selected && !selection.connections.some(item => item.id === selected)
             ? `<option value="${escapeHTML(selected)}" selected>${escapeHTML(t('connection.unavailable', { id: selected }))}</option>` : '';
-        const options = selection.connections.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === selected ? 'selected' : ''} ${item.enabled === false ? 'disabled' : ''}>${escapeHTML(item.name)}</option>`).join('');
+        const options = selection.connections.map(item => {
+            const model = item.tiers?.[slot.tier ?? 'optimal'] ?? item.model;
+            return `<option value="${escapeHTML(item.id)}" ${item.id === selected ? 'selected' : ''} ${connectionUnavailable(item) ? 'disabled' : ''}>${escapeHTML(item.name)} · ${escapeHTML(item.providerId)}${model ? ` · ${escapeHTML(model)}` : ''}</option>`;
+        }).join('');
         return `<label>${escapeHTML(slot.description ?? slot.name)}${slot.requirements ? ` · ${escapeHTML(slot.requirements.operation)}` : ''}<select data-slot-connection="${index}"><option value="">${escapeHTML(t('connection.slotUnbound'))}</option>${missing}${options}</select></label>`;
     }).join('');
 }
@@ -73,9 +78,20 @@ function collectConnections(dialog: HTMLDialogElement, selection: FlowConnection
     (selection.slots ?? []).forEach((slot, index) => {
         const id = dialog.querySelector<HTMLSelectElement>(`[data-slot-connection="${index}"]`)!.value;
         if (!id && slot.required !== false) throw new Error(t('flow.launch.required', { name: slot.name }));
+        validateConnection(selection, id);
         if (id || slot.connectionId || Object.hasOwn(selection.bindings ?? {}, slot.name)) bindings[slot.name] = id;
     });
     selection.bindings = bindings;
+}
+
+function connectionUnavailable(connection: ConnectionMeta): boolean {
+    return connection.enabled === false || connection.credentialsReady === false
+        || connection.credentialsReady === undefined && connection.hasApiKey === false;
+}
+function validateConnection(selection: FlowConnectionSelection, id: string): void {
+    if (!id) return;
+    const connection = selection.connections.find(item => item.id === id);
+    if (!connection || connectionUnavailable(connection)) throw new Error(t('connection.unavailable', {id}));
 }
 
 function collectParameters(dialog: HTMLDialogElement, parameters: FlowParameter[]): Record<string, JsonValue> {

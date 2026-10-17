@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { resolveChatModelTiers } from '../../src/contracts';
+import { resolveChatModelForTier, resolveChatModelTiers } from '../../src/contracts';
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
 
 const provider: Pick<LLMProvider, 'models'> = {models: [
@@ -19,4 +19,13 @@ it('rejects missing catalog entries and does not hide an invalid configured tier
     expect(resolveChatModelTiers({model: 'chat'}, undefined)).toEqual({});
     expect(resolveChatModelTiers({model: ''}, provider)).toEqual({});
     expect(resolveChatModelTiers({model: 'chat', tiers: {optimal: ''}}, provider)).toEqual({optimal: provider.models[0]});
+});
+
+it('matches execution tier fallback without skipping explicitly invalid models', () => {
+    const connection = {model: 'legacy', tiers: {optimal: 'chat', standard: 'image'}};
+    expect(resolveChatModelForTier(connection, provider, 'optimal')).toBe(provider.models[0]);
+    expect(resolveChatModelForTier(connection, provider, 'standard')).toBeUndefined();
+    expect(resolveChatModelForTier(connection, provider, 'fast')).toBeUndefined();
+    expect(resolveChatModelForTier({model: 'legacy'}, provider, 'fast')).toBe(provider.models[1]);
+    expect(resolveChatModelForTier({model: 'chat', tiers: {fast: 'removed'}}, provider, 'fast')).toBeUndefined();
 });

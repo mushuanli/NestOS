@@ -15,6 +15,7 @@ import type { MDxPlugin } from '@itookit/mdxeditor';
 export interface RendererContext {
     readOnly?: boolean;
     markdownPlugins?: MDxPlugin[];
+    htmlPolicy?: MDxControllerOptions['htmlPolicy'];
     codeBlockControls?: MDxControllerOptions['codeBlockControls'];
     fs?: IFileSystem;
     assets?: IFileSystem;
@@ -97,6 +98,7 @@ export class SessionRenderer {
             return;
         }
         this.renderedSessionIds.add(group.id);
+        this.container.querySelector('.llm-ui-welcome')?.remove();
 
         const wrapper = document.createElement('div');
         wrapper.className = `llm-ui-session llm-ui-session--${group.role}`;
@@ -176,7 +178,7 @@ export class SessionRenderer {
         if (node && group.executionRoot) {
             node.dataset.status = group.executionRoot.status;
             const status = node.querySelector('.llm-ui-node__status');
-            if (status) { status.textContent = group.executionRoot.status; status.className = `llm-ui-node__status llm-ui-node__status--${group.executionRoot.status}`; }
+            if (status) { status.textContent = NodeTemplates.statusLabel(group.executionRoot.status); status.className = `llm-ui-node__status llm-ui-node__status--${group.executionRoot.status}`; }
         }
     }
 
@@ -186,6 +188,7 @@ export class SessionRenderer {
             if (!['copy', 'collapse'].includes(button.dataset.action!)) button.remove();
         }
         element.querySelector('.llm-ui-edit-actions')?.remove();
+        element.querySelector('.llm-ui-message-more')?.remove();
     }
 
     /**
@@ -294,6 +297,7 @@ export class SessionRenderer {
             readOnly: true,
             editable: this.context.readOnly ? false : undefined,
             plugins: this.context.markdownPlugins,
+            htmlPolicy: this.context.htmlPolicy,
             codeBlockControls: this.context.codeBlockControls,
             deferred: !!mountPoint.closest('.is-collapsed'),
             onChange: (text) => {
@@ -323,6 +327,7 @@ export class SessionRenderer {
             readOnly: true,
             editable: this.context.readOnly ? false : undefined,
             plugins: this.context.markdownPlugins,
+            htmlPolicy: this.context.htmlPolicy,
             codeBlockControls: this.context.codeBlockControls,
             deferred: !!mountPoint.closest('.is-collapsed'),
             streaming: isStreaming && !this.context.readOnly,

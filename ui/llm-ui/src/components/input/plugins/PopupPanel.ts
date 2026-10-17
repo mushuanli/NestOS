@@ -16,6 +16,7 @@ import { escapeAttr, escapeHTML } from '@itookit/common';
  */
 export interface PopupItem {
     id: string;
+    disabled?: boolean;
     label: string;
     description?: string;
     icon?: string;
@@ -60,6 +61,7 @@ export class PopupPanel {
 
     private onSelect: ((item: PopupItem) => void) | null = null;
     private onClose: (() => void) | null = null;
+    private readonly resize = () => { if (this.visible) this.positionPanel(); };
 
     constructor(
         private anchor: HTMLElement,
@@ -70,6 +72,7 @@ export class PopupPanel {
 
         // 改为挂载到 body，避免 overflow: hidden 裁剪
         document.body.appendChild(this.panel);
+        window.addEventListener('resize', this.resize);
     }
 
     get isVisible(): boolean {
@@ -89,7 +92,7 @@ export class PopupPanel {
     ): void {
         this.items = items;
         this.filteredItems = [...items];
-        this.selectedIndex = 0;
+        this.selectedIndex = this.firstSelectable();
         this.onSelect = callbacks.onSelect;
         this.onClose = callbacks.onClose ?? null;
 
@@ -105,8 +108,9 @@ export class PopupPanel {
         }
 
         requestAnimationFrame(() => {
+            if (!this.visible || this.outsideClickHandler) return;
             this.outsideClickHandler = (e: MouseEvent) => {
-                if (!this.panel.contains(e.target as Node)) {
+                if (!this.panel.contains(e.target as Node) && !this.anchor.contains(e.target as Node)) {
                     this.hide();
                 }
             };
@@ -148,7 +152,7 @@ export class PopupPanel {
             );
         }
 
-        this.selectedIndex = 0;
+        this.selectedIndex = this.firstSelectable();
         this.renderItems();
     }
 
@@ -221,7 +225,7 @@ export class PopupPanel {
             `;
         }
 
-        html += `<div class="llm-popup__list"></div>`;
+        html += `<div class="llm-popup__list" role="listbox"></div>`;
 
         if (this.options.toggle) {
             html += `<label class="llm-popup__footer"><input type="checkbox" data-popup-toggle
@@ -345,7 +349,7 @@ export class PopupPanel {
                 : '';
 
             html += `
-                <div class="llm-popup__item${selectedCls}${argsCls}${dimmedCls}" data-index="${index}">
+                <div class="llm-popup__item${selectedCls}${argsCls}${dimmedCls}" data-index="${index}" role="option" aria-selected="${index === this.selectedIndex}" aria-disabled="${!!item.disabled}">
                     ${icon}
                     <span class="llm-popup__item-label">${escapeHTML(item.label)}</span>
                     ${desc}
@@ -375,14 +379,21 @@ export class PopupPanel {
         const len = Math.min(this.filteredItems.length, this.options.maxVisible ?? 10);
         if (len === 0) return;
 
-        this.selectedIndex = ((this.selectedIndex + delta) % len + len) % len;
+        for (let count = 0; count < len; count++) {
+            this.selectedIndex = ((this.selectedIndex + delta) % len + len) % len;
+            if (!this.filteredItems[this.selectedIndex].disabled) break;
+        }
         this.updateSelectionUI();
         this.scrollToSelected();
     }
 
+    private firstSelectable(): number {
+        return Math.max(0, this.filteredItems.slice(0, this.options.maxVisible ?? 10).findIndex(item => !item.disabled));
+    }
+
     private selectCurrent(): void {
         const item = this.filteredItems[this.selectedIndex];
-        if (item) {
+        if (item && !item.disabled) {
             // onSelect MUST fire before hide() so that callbacks can still read
             // state that hide() / onClose() would clear (e.g. MentionPlugin uses
             // mentionStart and cachedSuggestions which are reset by close()).
@@ -394,6 +405,7 @@ export class PopupPanel {
     private updateSelectionUI(): void {
         this.listEl.querySelectorAll('.llm-popup__item').forEach((el, i) => {
             el.classList.toggle('llm-popup__item--selected', i === this.selectedIndex);
+            el.setAttribute('aria-selected', String(i === this.selectedIndex));
         });
     }
 
@@ -410,8 +422,9 @@ export class PopupPanel {
         // 使用 fixed 定位（相对于 viewport）
         this.panel.style.position = 'fixed';
         this.panel.style.bottom = `${window.innerHeight - containerRect.top + 4}px`;
-        this.panel.style.left = `${containerRect.left}px`;
-        this.panel.style.width = `${containerRect.width}px`;
+        const left = Math.max(8, Math.min(containerRect.left, window.innerWidth - 16));
+        this.panel.style.left = `${left}px`;
+        this.panel.style.width = `${Math.max(0, Math.min(containerRect.width, window.innerWidth - left - 8))}px`;
         this.panel.style.right = 'auto';
     }
 
@@ -420,6 +433,7 @@ export class PopupPanel {
     // ================================================================
     destroy(): void {
         this.hide();
+        window.removeEventListener('resize', this.resize);
         this.panel.remove();
     }
 }

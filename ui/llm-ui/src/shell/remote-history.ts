@@ -1,31 +1,32 @@
 import type { ConversationMessage } from '@itookit/ui-common';
-import type { MDxPlugin } from '@itookit/mdxeditor';
+import type { SessionGroup } from '@itookit/llm-session/contracts';
+import { createTranscriptMarkup } from './transcript-markup';
 import { HistoryView } from '../components/HistoryView';
-import { remoteRounds } from './remote-rounds';
+import { remoteRounds, remotePrompts } from './remote-rounds';
 import { ConversationHistoryNavigation } from './ConversationHistoryNavigation';
 import type { ChatSubmission } from '../domain/submission';
 
-export const literalHtml: MDxPlugin = {name: 'native-literal-html', install(context) {
-    context.registerSyntaxExtension({renderer: {html(token) {
-        return token.text.replace(/[&<>]/g, char => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[char]!));
-    }}});
-}};
 
 /** Native snapshots use the same message renderer, copy and fold controls as local sessions. */
 export class RemoteHistory {
+    private readonly markup = createTranscriptMarkup();
+    private groups: SessionGroup[] = [];
     readonly view: HistoryView;
     readonly navigation: ConversationHistoryNavigation;
-    constructor(private readonly container: HTMLElement, workspace: HTMLElement, header?: HTMLElement) {
-        this.view = new HistoryView(container, {header, readOnly: true, markdownPlugins: [literalHtml],
+    constructor(private readonly container: HTMLElement, workspace: HTMLElement, header?: HTMLElement,
+        navigation: {refresh?(): void; earlier?(): void} = {}) {
+        this.view = new HistoryView(container, {header, readOnly: true, htmlPolicy: 'literal', markdownPlugins: [this.markup.plugin],
             codeBlockControls: {defaultCollapsed: true, minLinesThreshold: 0, collapsedHeight: 0}});
-        this.navigation = new ConversationHistoryNavigation(workspace, container, this.view);
+        this.navigation = new ConversationHistoryNavigation(workspace, container, this.view, navigation);
     }
     async show(messages: ConversationMessage[], submission?: ChatSubmission): Promise<void> {
-        const groups = remoteRounds(messages);
+        this.markup.clear();
+        const groups = remoteRounds(messages, this.markup.encode);
+        this.groups = groups;
         this.view.setSubmission(submission);
         const anchor = this.container.querySelector<HTMLElement>('[data-session-id]');
         const top = anchor?.getBoundingClientRect().top;
-        await this.view.renderSnapshot(groups); this.navigation.update(groups);
+        await this.view.renderSnapshot(groups); this.navigation.update(groups, remotePrompts(messages));
         if (anchor?.isConnected && top !== undefined) this.container.scrollTop += anchor.getBoundingClientRect().top - top;
     }
     locate(itemId: string, messages: ConversationMessage[]): boolean {
@@ -37,5 +38,10 @@ export class RemoteHistory {
         element.scrollIntoView?.({block: 'center'}); element.classList.add('llm-ui-search-hit');
         element.tabIndex = -1; element.focus({preventScroll: true}); return true;
     }
-    destroy(): Promise<void> { this.navigation.destroy(); return this.view.destroy(); }
+    get markdownPlugin() { return this.markup.plugin; }
+    markdown(): string { return this.groups.map(group => group.content ?? group.executionRoot?.data?.output ?? '').join('\n\n'); }
+    destroy(): Promise<void> {
+        this.navigation.destroy(); this.groups = []; this.markup.clear();
+        return this.view.destroy();
+    }
 }

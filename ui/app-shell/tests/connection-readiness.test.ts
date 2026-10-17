@@ -167,3 +167,50 @@ it('does not record an executor for a rejected submission or direct commands', a
     await vi.waitFor(() => expect(send.disabled).toBe(false)); expect(record).not.toHaveBeenCalled();
     type('!pwd'); send.click(); await Promise.resolve(); expect(record).not.toHaveBeenCalled();
 });
+
+it.each(['rejected', 'unknown', 'thrown'])('retains the local draft and attachments when submission is %s', async outcome => {
+    const draft = vi.fn();
+    const onSend = vi.fn(async () => {
+        if (outcome !== 'rejected') throw Object.assign(new Error('Send failed'), {outcome});
+        return false;
+    });
+    const {view, type, send, input} = setup(async () => [ready()], {onSend, onDraftChange: draft});
+    await view.refreshConnections();
+    const file = new File(['draft'], 'draft.txt'); view.restoreDraft('Keep this draft', [file], 'default');
+    const afterSend = vi.fn(); view.registerPlugin({id: 'ack-test', activate() {}, destroy() {}, onAfterSend: afterSend});
+    type('Keep this draft'); send.click();
+    await vi.waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(send.disabled).toBe(false));
+    expect(input.value).toBe('Keep this draft'); expect(draft).toHaveBeenLastCalledWith(expect.anything(), [file]);
+    expect(afterSend).not.toHaveBeenCalled();
+});
+
+it('clears only acknowledged local input and preserves edits and attachments added while awaiting acceptance', async () => {
+    const draft = vi.fn();
+    let accept!: (accepted?: void | false) => void;
+    const onSend = vi.fn(() => new Promise<void | false>(resolve => { accept = resolve; }));
+    const {view, type, send, input} = setup(async () => [ready()], {onSend, onDraftChange: draft});
+    await view.refreshConnections();
+    const submitted = new File(['old'], 'old.txt'), later = new File(['new'], 'new.txt');
+    view.restoreDraft('Submitted text', [submitted], 'default'); send.click();
+    await vi.waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(input.value).toBe('Submitted text'); expect(send.disabled).toBe(true);
+    view.restoreDraft('Later draft', [later], 'default'); type('Later draft');
+    input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+    expect(onSend).toHaveBeenCalledOnce(); accept();
+    await vi.waitFor(() => expect(send.disabled).toBe(false));
+    expect(input.value).toBe('Later draft'); expect(draft).toHaveBeenLastCalledWith(expect.anything(), [later]);
+    send.click(); await vi.waitFor(() => expect(onSend).toHaveBeenCalledTimes(2)); accept();
+    await vi.waitFor(() => expect(input.value).toBe('')); expect(draft).toHaveBeenLastCalledWith(expect.anything(), []);
+});
+
+it('preserves an invalid explicit tier instead of displaying and sending the optimal fallback', async () => {
+    const {view, notice, send, input, type, onSend} = setup(async () => [ready({
+        resolvedTiers: {optimal: 'Chat model', standard: null, fast: null},
+    })], {initialConfig: {settings: {connectionId: 'main', modelTier: 'standard'}}});
+    await view.refreshConnections(); type('Blocked draft');
+    expect(send.disabled).toBe(true); expect(notice.textContent).toContain(t('chatInput.connectionStatus.noModel', {name: 'Main connection'}));
+    expect(view.getConfig().settings.modelTier).toBe('standard');
+    input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+    await view.refreshConnections(); expect(onSend).not.toHaveBeenCalled(); expect(input.value).toBe('Blocked draft');
+});

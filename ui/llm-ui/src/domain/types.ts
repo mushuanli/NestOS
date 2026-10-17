@@ -79,10 +79,14 @@ export interface ModelOption {
 
 /** 连接选项（用于 ChatInput 连接选择器，不含 apiKey） */
 export interface ConnectionOption {
+    /** Actual chat resolution for each tier; null preserves an explicitly invalid model across JSON. */
+    resolvedTiers?: Partial<Record<ModelTier, string | null>>;
+    enabled?: boolean;
     isDefault?: boolean;
     id: string;
     name: string;
     provider?: string;
+    providerName?: string;
     /** 关联 Provider 是否已配置 apiKey，未配置时在选择器中置灰提示 */
     hasApiKey: boolean;
     credentialsReady?: boolean;

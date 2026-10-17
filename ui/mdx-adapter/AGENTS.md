@@ -5,6 +5,7 @@ MindOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJ
 ## Responsibilities
 
 - `src/factory.ts`：接收 `ui-common` 的 `EditorOptions`，先校验 namespace/Session，再构造核心公共接口；文件后缀推断和文件聊天按钮位于这里。
+- 公共 `htmlPolicy` / `scrollMode` 原样转发到 mdxeditor，不在适配层设置对话角色或显示策略。
 - `src/assets.ts`：将授权 `IFileSystem` 转成 `AssetProvider`，拒绝附件路径穿越。
 - `src/document-host.ts`：文档打开、重命名和通知适配。
 - `src/metadata-store.ts`：插件元数据持久化，文档路径随重命名/移动更新。

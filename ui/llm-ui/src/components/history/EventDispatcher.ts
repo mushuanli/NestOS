@@ -140,6 +140,7 @@ export class EventDispatcher {
                 const thoughtEl = thoughtLabel.closest('.llm-ui-thought') as HTMLElement;
                 if (thoughtEl) {
                     thoughtEl.classList.toggle('llm-ui-thought--collapsed');
+                    thoughtLabel.setAttribute('aria-expanded', String(!thoughtEl.classList.contains('llm-ui-thought--collapsed')));
                 }
                 return;
             }

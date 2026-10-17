@@ -1,312 +1,151 @@
-// @file: llm-ui/components/input/ConnectionTierController.ts
-// 连接 + 模型层级选择：快速按钮/弹窗 + 设置面板的 connection select / tier cards。
-// 从 ChatInputView 抽出，自包含（状态 + DOM + 弹窗渲染），变更通过 onChange 回调通知宿主。
-
-import { t } from '@itookit/common';
-import { type ModelTier } from '@itookit/driver-llm/contracts';
+import { TOOLBOX_ICONS, t } from '@itookit/common';
+import type { ModelTier } from '@itookit/driver-llm/contracts';
 import { ChatInputTemplates } from '../templates/ChatInputTemplates';
 import { PopupPanel, type PopupItem } from './plugins/PopupPanel';
 import type { ConnectionOption } from '../../domain/types';
 
-export interface ConnectionTierDeps {
+interface ConnectionTierDeps {
     onNavigateSettings: (target: { resourceId: string }) => void;
     onChange: () => void;
     onRefreshConnections?: () => Promise<void>;
 }
 
+export interface ConnectionIssue {
+    kind: 'noDefault' | 'unavailable' | 'disabled' | 'credentials' | 'noModel';
+    name?: string;
+    target: {resourceId: string; anchor?: string};
+}
+
+/** Model choices bind a connection and its configured tier in one action. */
 export class ConnectionTierController {
     private connections: ConnectionOption[] = [];
-    private connectionId: string | undefined;
+    private connectionId?: string;
     private modelTier: ModelTier | 'auto' = 'auto';
-
-    private readonly connQuickBtn: HTMLButtonElement;
-    private readonly connQuickLabel: HTMLSpanElement;
-    private readonly connQuickClear: HTMLElement;
-    private readonly tierQuickBtn: HTMLButtonElement;
-    private readonly tierQuickLabel: HTMLSpanElement;
-    private readonly tierQuickClear: HTMLElement;
+    private readonly trigger: HTMLButtonElement;
+    private readonly label: HTMLElement;
     private readonly connectionSelect: HTMLSelectElement;
-    private readonly tierPillsContainer: HTMLElement;
-
-    private connPopup: PopupPanel | null = null;
-    private tierPopup: PopupPanel | null = null;
+    private readonly tierCards: HTMLElement;
+    private popup?: PopupPanel;
 
     constructor(container: HTMLElement, private readonly deps: ConnectionTierDeps) {
-        this.connQuickBtn = container.querySelector('.llm-input__conn-quick')!;
-        this.connQuickLabel = container.querySelector('.llm-input__conn-quick-label')!;
-        this.connQuickClear = container.querySelector('.llm-input__conn-quick-clear')!;
-        this.tierQuickBtn = container.querySelector('.llm-input__tier-quick')!;
-        this.tierQuickLabel = container.querySelector('.llm-input__tier-quick-label')!;
-        this.tierQuickClear = container.querySelector('.llm-input__tier-quick-clear')!;
+        this.trigger = container.querySelector('.llm-input__model-trigger')!;
+        this.label = container.querySelector('.llm-input__model-label')!;
         this.connectionSelect = container.querySelector('.llm-input__connection-select')!;
-        this.tierPillsContainer = container.querySelector('.llm-input__tier-cards')!;
-
-        this.connQuickBtn.addEventListener('click', (e) => {
-            if ((e.target as HTMLElement).closest('.llm-input__conn-quick-clear')) { this.selectConnection(''); return; }
-            this.toggleConnPicker();
-        });
-        this.tierQuickBtn.addEventListener('click', (e) => {
-            if ((e.target as HTMLElement).closest('.llm-input__tier-quick-clear')) { this.selectTier('auto'); return; }
-            this.toggleTierPicker();
-        });
+        this.tierCards = container.querySelector('.llm-input__tier-cards')!;
+        this.trigger.addEventListener('click', () => this.popup?.isVisible ? this.hidePopups() : this.openConnPicker());
         this.connectionSelect.addEventListener('change', () => {
-            this.selectConnection(this.connectionSelect.value);
+            this.setConnectionId(this.connectionSelect.value || undefined); this.deps.onChange();
         });
-        this.tierPillsContainer.addEventListener('click', (e) => {
-            const pill = (e.target as HTMLElement).closest('.llm-input__tier-card') as HTMLElement | null;
-            if (!pill) return;
-            const tier = pill.dataset.tier as 'auto' | ModelTier;
-            if (!tier) return;
-            this.selectTier(tier);
+        this.tierCards.addEventListener('click', event => {
+            const card = (event.target as Element).closest<HTMLButtonElement>('[data-tier]');
+            if (card && !card.disabled) { this.setModelTier(card.dataset.tier as 'auto' | ModelTier); this.deps.onChange(); }
         });
     }
-
     getConnectionId(): string | undefined { return this.connectionId; }
     getModelTier(): ModelTier | 'auto' { return this.modelTier; }
     getConnections(): ConnectionOption[] { return this.connections; }
-
-    /** 初始同步（不触发 onChange）。 */
-    setConnectionId(id: string | undefined): void {
-        this.connectionId = id;
-        if (this.connectionSelect) this.connectionSelect.value = id ?? '';
-        this.updateConnQuick();
+    getIssue(): ConnectionIssue | undefined {
+        const connection = this.effectiveConnection();
+        if (!connection) return {kind: this.connectionId ? 'unavailable' : 'noDefault', name: this.connectionId,
+            target: {resourceId: 'connections', ...(this.connectionId ? {anchor: 'conn:' + this.connectionId} : {})}};
+        if (connection.enabled === false) return {kind: 'disabled', name: connection.name, target: {resourceId: 'connections', anchor: 'conn:' + connection.id}};
+        if (!(connection.credentialsReady ?? connection.hasApiKey)) return {kind: 'credentials', name: connection.name,
+            target: connection.provider ? {resourceId: 'providers', anchor: connection.provider} : {resourceId: 'connections', anchor: 'conn:' + connection.id}};
+        if (!this.modelName(connection)) return {kind: 'noModel', name: connection.name,
+            target: {resourceId: 'connections', anchor: 'conn:' + connection.id}};
+        return undefined;
     }
-
-    setModelTier(tier: ModelTier | 'auto'): void {
-        this.modelTier = tier;
-        this.updateTierQuick();
-        this.updateTierPills(tier);
-    }
-
-    /** 连接列表就绪后刷新所有连接/tier UI。 */
+    setConnectionId(id: string | undefined): void { this.connectionId = id; this.updateUI(); }
+    setModelTier(tier: ModelTier | 'auto'): void { this.modelTier = tier; this.updateUI(); }
     setConnections(connections: ConnectionOption[]): void {
         this.connections = connections;
-        this.updateConnectionOptions();
-        this.updateConnQuick();
-        this.updateTierQuick();
-        this.updateTierCardModels();
-        this.updateTierPills(this.modelTier);
-        if (this.connPopup?.isVisible) this.connPopup.updateItems(this.buildConnItems());
+        this.connectionSelect.innerHTML = ChatInputTemplates.renderConnectionOptions(connections, this.connectionId);
+        this.updateUI(); if (this.popup?.isVisible) this.popup.updateItems(this.buildItems());
     }
-
-    /** 关闭连接/tier 弹窗（供其它弹窗互斥时调用）。 */
-    hidePopups(): void {
-        this.connPopup?.hide();
-        this.tierPopup?.hide();
-    }
-
+    hidePopups(): void { this.popup?.hide(); }
     setLoading(loading: boolean): void {
-        this.connQuickBtn.disabled = loading;
-        this.tierQuickBtn.disabled = loading;
-        this.connectionSelect.disabled = loading;
+        this.trigger.disabled = this.connectionSelect.disabled = loading;
+        for (const card of this.tierCards.querySelectorAll<HTMLButtonElement>('button')) card.disabled = loading;
+        if (loading) this.hidePopups(); else this.updateUI();
     }
-
-    destroy(): void {
-        this.connPopup?.destroy();
-        this.connPopup = null;
-        this.tierPopup?.destroy();
-        this.tierPopup = null;
+    destroy(): void { this.popup?.destroy(); }
+    private effectiveConnection(): ConnectionOption | undefined {
+        return this.connectionId ? this.connections.find(c => c.id === this.connectionId) : this.connections.find(c => c.isDefault);
     }
-
-    // ── 连接选择 ──────────────────────────────────────────────────────────────
-
-    private selectConnection(id: string): void {
-        this.connectionId = id || undefined;
-        if (this.connectionSelect) this.connectionSelect.value = id;
-        this.updateConnQuick();
-        this.updateTierQuick();
-        this.updateTierCardModels();
-        this.deps.onChange();
+    private tierLabel(tier: string): string {
+        return ({auto: t('chatSettings.followDefault'), optimal: t('ocr.tier.optimal'),
+            standard: t('ocr.tier.standard'), fast: t('ocr.tier.fast')} as Record<string, string>)[tier] ?? tier;
     }
-
-    private updateConnQuick(): void {
-        if (!this.connQuickLabel) return;
-        const id = this.connectionId;
-        if (id) {
-            const conn = this.connections.find(c => c.id === id);
-            this.connQuickLabel.textContent = conn?.name ?? t('connection.unavailable', { id });
-            this.connQuickClear.style.display = '';
-            this.connQuickBtn.classList.add('llm-input__conn-quick--active');
-        } else {
-            this.connQuickLabel.textContent = this.defaultLabel();
-            this.connQuickClear.style.display = 'none';
-            this.connQuickBtn.classList.remove('llm-input__conn-quick--active');
+    private modelName(connection: ConnectionOption | undefined, tier = this.modelTier): string | undefined {
+        if (connection?.resolvedTiers) return connection.resolvedTiers[tier === 'auto' ? 'optimal' : tier] ?? undefined;
+        const tiers = connection?.tiers;
+        if (tier === 'fast' && tiers?.fast) return tiers.fast;
+        if ((tier === 'fast' || tier === 'standard') && tiers?.standard) return tiers.standard;
+        return tiers?.optimal;
+    }
+    private updateUI(): void {
+        const connection = this.effectiveConnection(), model = this.modelName(connection);
+        const source = connection?.name ?? (this.connectionId ? t('connection.unavailable', {id: this.connectionId}) : t('connection.unset'));
+        this.label.textContent = model ? `${model} · ${this.connectionId ? source : t('connection.followDefault', {name: source})}` : source;
+        this.trigger.title = [t('chatInput.modelHint'), source, connection?.providerName ?? connection?.provider, this.tierLabel(this.modelTier)].filter(Boolean).join(' · ');
+        this.trigger.setAttribute('aria-label', `${t('chatInput.model')}: ${this.label.textContent} · ${this.trigger.title}`);
+        this.connectionSelect.value = this.connectionId ?? '';
+        for (const card of this.tierCards.querySelectorAll<HTMLButtonElement>('[data-tier]')) {
+            const tier = card.dataset.tier!;
+            card.classList.toggle('active', tier === this.modelTier); card.setAttribute('aria-pressed', String(tier === this.modelTier));
+            card.disabled = this.trigger.disabled || (tier !== 'auto' && tier !== 'optimal' && !connection?.tiers?.[tier as ModelTier]);
+            const label = card.querySelector('[data-tier-model]'); if (label) label.textContent = this.modelName(connection, tier as 'auto' | ModelTier) ?? '';
         }
     }
-
-    private updateConnectionOptions(): void {
-        if (!this.connectionSelect) return;
-        this.connectionSelect.innerHTML = ChatInputTemplates.renderConnectionOptions(
-            this.connections, this.connectionId
-        );
-    }
-
-    private getOrCreateConnPopup(): PopupPanel {
-        if (!this.connPopup) {
-            this.connPopup = new PopupPanel(this.connQuickBtn, {
-                emptyText: 'No connections configured',
-                showSearch: true,
-                animated: true,
-                maxVisible: 30,
-            });
-        }
-        return this.connPopup;
-    }
-
     openConnPicker(): void {
+        if (this.trigger.disabled || this.trigger.hidden) return;
         void this.deps.onRefreshConnections?.();
-        const popup = this.getOrCreateConnPopup();
-        popup.show(this.buildConnItems(), {
-            onSelect: (item) => {
-                if (item.id === '__manage') {
-                    this.deps.onNavigateSettings({ resourceId: 'connections' });
-                    return;
-                }
-                this.selectConnection(item.id);
-            },
-        });
+        this.popup ??= new PopupPanel(this.trigger, {showSearch: true, animated: true, maxVisible: 50,
+            searchPlaceholder: t('chatInput.searchModels'), emptyText: t('chatInput.noModels')});
+        this.trigger.setAttribute('aria-expanded', 'true');
+        this.popup.show(this.buildItems(), {onSelect: item => this.select(item.id), onClose: () => {
+            this.trigger.setAttribute('aria-expanded', 'false');
+            if (document.activeElement?.closest('.llm-popup')) this.trigger.focus();
+        }});
     }
-
-    private defaultLabel(): string {
-        return t('connection.followDefault', { name: this.connections.find(c => c.isDefault)?.name ?? t('connection.unset') });
-    }
-
-    private toggleConnPicker(): void {
-        const popup = this.getOrCreateConnPopup();
-        if (popup.isVisible) popup.hide();
-        else this.openConnPicker();
-    }
-
-    private buildConnItems(): PopupItem[] {
-        const currentId = this.connectionId ?? '';
-        const items: PopupItem[] = [
-            { id: '', label: this.defaultLabel(), icon: currentId === '' ? '✓' : '' },
-        ];
-
-        const withKey    = this.connections.filter(c => c.credentialsReady ?? c.hasApiKey);
-        const withoutKey = this.connections.filter(c => !(c.credentialsReady ?? c.hasApiKey));
-
-        for (const c of withKey) {
-            items.push({
-                id: c.id,
-                label: c.name,
-                description: c.provider,
-                icon: c.id === currentId ? '✓' : (c.hasTiers ? '⚡' : ''),
-            });
+    private select(id: string): void {
+        if (id === 'manage') { this.deps.onNavigateSettings({resourceId: 'connections'}); return; }
+        if (id === 'default') {
+            const connection = this.connections.find(c => c.isDefault);
+            if (connection?.enabled === false || !(connection?.credentialsReady ?? connection?.hasApiKey) || !this.modelName(connection, 'auto')) return;
+            this.connectionId = undefined; this.modelTier = 'auto';
         }
-        for (const c of withoutKey) {
-            items.push({
-                id: c.id,
-                label: c.name,
-                description: c.provider,
-                icon: c.id === currentId ? '✓' : '',
-                group: t('connection.credentialsRequired'),
-            });
+        else {
+            const [connectionId, tier] = JSON.parse(decodeURIComponent(id.slice('model:'.length))) as [string, ModelTier];
+            const connection = this.connections.find(c => c.id === connectionId);
+            if (connection?.enabled === false || !(connection?.credentialsReady ?? connection?.hasApiKey) || !connection?.tiers?.[tier]) return;
+            this.connectionId = connectionId; this.modelTier = tier;
         }
-
-        items.push(
-            { id: '__manage', label: '管理连接 →', icon: '⚙️', description: '配置 Provider 和模型层级' },
-        );
-        return items;
+        this.updateUI(); this.deps.onChange();
     }
-
-    // ── 层级选择 ──────────────────────────────────────────────────────────────
-
-    private selectTier(tier: 'auto' | ModelTier): void {
-        this.modelTier = tier;
-        this.updateTierQuick();
-        this.updateTierPills(tier);
-        this.deps.onChange();
+    private buildItems(): PopupItem[] {
+        const connection = this.connections.find(c => c.isDefault);
+        return [{id: 'default', label: t('chatSettings.followDefault'),
+            description: [connection?.name, connection?.providerName ?? connection?.provider, this.modelName(connection, 'auto')].filter(Boolean).join(' · '),
+            disabled: connection?.enabled === false || !(connection?.credentialsReady ?? connection?.hasApiKey) || !this.modelName(connection, 'auto')},
+            ...[...this.connections].sort((a, b) => this.priority(a) - this.priority(b) || Number(!!b.isDefault) - Number(!!a.isDefault)).flatMap(c => this.connectionItems(c)),
+            {id: 'manage', label: t('chatInput.manageConnections'), icon: TOOLBOX_ICONS.connections}];
     }
-
-    private updateTierQuick(): void {
-        if (!this.tierQuickLabel) return;
-        const tier = this.modelTier;
-        const TIER_LABELS: Record<string, string> = { optimal: '最优', standard: '标准', fast: '快速' };
-        if (tier === 'auto') {
-            const autoModel = this.resolveEffectiveTiers().optimal;
-            this.tierQuickLabel.textContent = autoModel ? `Auto (${autoModel})` : 'Auto';
-        } else {
-            this.tierQuickLabel.textContent = TIER_LABELS[tier] ?? tier;
-        }
-        if (tier !== 'auto') {
-            this.tierQuickClear.style.display = '';
-            this.tierQuickBtn.classList.add('llm-input__tier-quick--active');
-        } else {
-            this.tierQuickClear.style.display = 'none';
-            this.tierQuickBtn.classList.remove('llm-input__tier-quick--active');
-        }
+    private connectionItems(connection: ConnectionOption): PopupItem[] {
+        const ready = connection.enabled !== false && (connection.credentialsReady ?? connection.hasApiKey);
+        const unavailable = connection.enabled === false ? t('connection.status.disabled') : t('connection.credentialsRequired');
+        const group = [connection.isDefault ? t('connection.default') : '', connection.name, connection.providerName ?? connection.provider].filter(Boolean).join(' · ');
+        const tiers = (['optimal', 'standard', 'fast'] as const).filter(tier => connection.tiers?.[tier]);
+        if (!tiers.length) return [{id: `unavailable:${connection.id}`, label: connection.name, group,
+            description: ready ? t('chatInput.noModels') : unavailable, disabled: true}];
+        return tiers.map(tier => ({id: 'model:' + encodeURIComponent(JSON.stringify([connection.id, tier])),
+            label: connection.tiers![tier]!, group, disabled: !ready,
+            description: ready ? this.tierLabel(tier) : unavailable,
+            searchText: [connection.id, connection.provider, group, tier].join(' '),
+            icon: this.connectionId === connection.id && this.modelTier === tier ? TOOLBOX_ICONS.connections : undefined}));
     }
-
-    private updateTierPills(tier: 'auto' | ModelTier): void {
-        this.tierPillsContainer?.querySelectorAll('.llm-input__tier-card').forEach(card => {
-            card.classList.toggle('active', (card as HTMLElement).dataset.tier === tier);
-        });
-    }
-
-    /** Refresh the model-name subtitle on each tier card to match the currently selected connection. */
-    private updateTierCardModels(): void {
-        const tiers = this.resolveEffectiveTiers();
-        const modelLabels: Record<string, string> = {
-            auto:     tiers.optimal ?? '',
-            optimal:  tiers.optimal ?? '',
-            standard: tiers.standard ?? '',
-            fast:     tiers.fast ?? '',
-        };
-        this.tierPillsContainer?.querySelectorAll('[data-tier-model]').forEach(el => {
-            const t = (el as HTMLElement).dataset.tierModel ?? '';
-            el.textContent = modelLabels[t] ?? '';
-        });
-    }
-
-    /**
-     * Resolve the effective tier→modelName map for the current session.
-     * Priority: connection override → agent's default connection → first available connection.
-     */
-    private resolveEffectiveTiers(): Partial<Record<string, string>> {
-        const conn = this.connectionId ? this.connections.find(c => c.id === this.connectionId)
-            : this.connections.find(c => c.isDefault);
-        return conn?.tiers ?? {};
-    }
-
-    private getOrCreateTierPopup(): PopupPanel {
-        if (!this.tierPopup) {
-            this.tierPopup = new PopupPanel(this.tierQuickBtn, {
-                emptyText: 'No tiers configured',
-                animated: true,
-            });
-        }
-        return this.tierPopup;
-    }
-
-    private openTierPicker(): void {
-        this.connPopup?.hide();
-        const popup = this.getOrCreateTierPopup();
-        popup.show(this.buildTierItems(), {
-            onSelect: (item) => this.selectTier(item.id as 'auto' | ModelTier),
-        });
-    }
-
-    private toggleTierPicker(): void {
-        const popup = this.getOrCreateTierPopup();
-        if (popup.isVisible) popup.hide();
-        else this.openTierPicker();
-    }
-
-    private buildTierItems(): PopupItem[] {
-        const currentTier = this.modelTier;
-        const tierMap = this.resolveEffectiveTiers();
-
-        const items: PopupItem[] = [
-            { id: 'auto', label: 'Auto', description: tierMap.optimal || 'Use agent default', icon: currentTier === 'auto' ? '✓' : '' },
-            { id: 'optimal', label: '最优', description: tierMap.optimal, icon: currentTier === 'optimal' ? '✓' : '' },
-        ];
-        if (tierMap.standard) {
-            items.push({ id: 'standard', label: '标准', description: tierMap.standard, icon: currentTier === 'standard' ? '✓' : '' });
-        }
-        if (tierMap.fast) {
-            items.push({ id: 'fast', label: '快速', description: tierMap.fast, icon: currentTier === 'fast' ? '✓' : '' });
-        }
-        return items;
+    private priority(connection: ConnectionOption): number {
+        if (connection.enabled === false) return 2;
+        return (connection.credentialsReady ?? connection.hasApiKey) && Object.values(connection.tiers ?? {}).some(Boolean) ? 0 : 1;
     }
 }

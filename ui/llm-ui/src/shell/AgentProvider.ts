@@ -2,9 +2,9 @@
 // Agent/Connection data-fetching helpers — extracted from LLMWorkspaceEditor.
 // Pure async functions: no DOM access, no mutable state.
 
-import { resolveChatModelTiers, type IAgentConfigService } from '@itookit/kernel-adapters/contracts';
+import { resolveChatModelForTier, resolveChatModelTiers, type IAgentConfigService } from '@itookit/kernel-adapters/contracts';
 import type { ExecutorOption, ConnectionOption } from '../domain/types';
-import { formatDefaultFileTitle } from '@itookit/common';
+import { ENTITY_ICONS, formatDefaultFileTitle, t } from '@itookit/common';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 
 export async function buildExecutorOptions(
@@ -20,7 +20,7 @@ export async function buildExecutorOptions(
 
     // Ensure 'default' exists — inject fallback when absent in VFS
     if (!agents.some(a => a.id === 'default')) {
-        options.push({ id: 'default', name: 'Default Assistant', icon: '🤖', category: 'System' });
+        options.push({ id: 'default', name: t('chatInput.defaultAssistant'), icon: ENTITY_ICONS.agent, category: t('chatInput.assistants') });
         seen.add('default');
     }
 
@@ -33,8 +33,7 @@ export async function buildExecutorOptions(
             id: agent.id,
             name: agent.name,
             icon: agent.icon,
-            category: agent.type === 'agent' ? 'Agents' :
-                agent.type === 'workflow' ? 'Workflows' : 'Other',
+            category: t('chatInput.assistants'),
             description: agent.description,
             defaultPrompts: [...presets.values()],
         });
@@ -53,18 +52,20 @@ export async function buildConnectionOptions(
     const [connections, defaultConnection] = await Promise.all([agentService.getConnections(), agentService.getDefaultConnection()]);
     const defaultId = defaultConnection?.id;
 
-    return connections
-        .filter(c => c.enabled !== false && agentService.getProvider(c.providerId)?.enabled !== false)
-        .map(c => connectionOption(c, agentService.getProvider(c.providerId), defaultId));
+    return connections.map(c => connectionOption(c, agentService.getProvider(c.providerId), defaultId));
 }
 
 function connectionOption(connection: ConnectionMeta, provider: LLMProvider | undefined, defaultId?: string): ConnectionOption {
     const tiers = Object.fromEntries(Object.entries(resolveChatModelTiers(connection, provider))
         .map(([tier, model]) => [tier, model.name || model.id]));
-    return {id: connection.id, isDefault: connection.id === defaultId, name: connection.name,
-        provider: connection.providerId,
+    const resolvedTiers = Object.fromEntries((['optimal', 'standard', 'fast'] as const).map(tier => {
+        const model = resolveChatModelForTier(connection, provider, tier);
+        return [tier, model ? model.name || model.id : null];
+    }));
+    return {id: connection.id, isDefault: connection.id === defaultId, name: connection.name, enabled: connection.enabled !== false && provider?.enabled !== false,
+        provider: connection.providerId, providerName: provider?.name ?? connection.providerId,
         hasApiKey: connection.hasApiKey, credentialsReady: connection.credentialsReady,
-        hasTiers: !!(tiers.standard || tiers.fast), tiers};
+        hasTiers: !!(tiers.standard || tiers.fast), tiers, resolvedTiers};
 }
 export function formatDefaultTitle(agentId: string, agentService: IAgentConfigService): string {
     const base = formatDefaultFileTitle();

@@ -130,3 +130,18 @@ it('presents the local user message before attachment upload and correlates the 
     const submitted = execute.mock.calls.find(([command]) => command === SessionCommand.Send)![1].sendIntent.submission;
     expect(historyView.setSubmission).toHaveBeenLastCalledWith(expect.objectContaining({state: 'accepted', messageId: `round-${submitted.id}-user`}));
 });
+
+it.each(['Later draft', ''])('does not restore rejected text over a newer edit %j', async newer => {
+    const toast = vi.spyOn(Toast, 'error').mockImplementation(() => {});
+    try {
+        const {ctx, execute, chatInput} = harness();
+        let reject!: (error: Error) => void;
+        let draft = 'Submitted';
+        Object.assign(chatInput, {getConfig: () => ({text: draft, settings: {}})});
+        execute.mockImplementationOnce(() => new Promise((_, fail) => {reject = fail;}));
+        const pending = new SendMessageCommand(ctx).run({text: 'Submitted', files: []});
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+        draft = newer; reject(new Error('Rejected')); await pending;
+        expect(chatInput.restoreInput).not.toHaveBeenCalled();
+    } finally { toast.mockRestore(); }
+});

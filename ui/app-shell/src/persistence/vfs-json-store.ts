@@ -8,9 +8,15 @@ export class VfsJsonStore {
     private readonly saved = new Map<string, string>();
     private readonly reads = new Map<string, Array<(value: unknown) => void>>();
     private readonly prefetched = new Map<string, unknown>();
+    private readonly preloads = new Map<string, Promise<unknown>>();
     private reading = false;
     private writing?: Promise<void>;
     constructor(private readonly backend: DocumentPort) {}
+
+    /** Batch the current route's known documents, consuming each prepared read once. */
+    prefetch(names: readonly string[]): void {
+        for (const name of names) if (!this.preloads.has(name)) this.preloads.set(name, this.read(name));
+    }
 
     /** Consume a navigation response without replacing newer local edits. */
     seed(documents: Record<string, unknown>): void {
@@ -20,6 +26,8 @@ export class VfsJsonStore {
     read(name: string): Promise<unknown> {
         const content = this.pending.get(name);
         if (content !== undefined) return Promise.resolve(JSON.parse(content));
+        const preload = this.preloads.get(name);
+        if (preload) { this.preloads.delete(name); return preload; }
         if (this.prefetched.has(name)) {
             const value = this.prefetched.get(name); this.prefetched.delete(name);
             if (value !== undefined) this.saved.set(name, JSON.stringify(value));
@@ -48,6 +56,7 @@ export class VfsJsonStore {
         const content = JSON.stringify(value);
         if (content === (this.pending.get(name) ?? this.saved.get(name))) return;
         this.prefetched.delete(name);
+        this.preloads.delete(name);
         this.pending.set(name, content);
         if (!this.writing) {
             this.writing = Promise.resolve().then(() => this.drain());

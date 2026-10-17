@@ -20,6 +20,8 @@ export function createTestWorkbench(options: Omit<SessionWorkbenchOptions, 'back
 }
 export async function initTestApp(options: Omit<AppOptions, 'backend'>) {
     const client = createApplicationClient(options.services as LocalApplicationServices);
+    // Navigation fixtures provide partial services; full view opening uses real-runtime integration tests.
+    const backend = {...client.backend}; delete (backend as Partial<typeof backend>).openView;
     const { initApp } = await import('../../src/bootstrap');
-    return initApp({ ...options, ...client });
+    return initApp({ ...options, ...client, backend });
 }

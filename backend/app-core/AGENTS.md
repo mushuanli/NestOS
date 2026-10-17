@@ -148,3 +148,9 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 - ConversationViews 由 Runtime 持有所有会话视图；浏览器关闭时仅解绑，仍有运行/排队任务的视图继续保留草稿投影监听，终态后排空收尾再销毁。Runtime 退出统一释放剩余视图，先于 Kernel 与存储关闭。
 
 - runtime.createView 与宿主 ConversationContexts 使用同一会话视图创建函数，每个上下文都接入 ProjectDraftRecovery 并在销毁前排空。ProjectDraftComposer.refresh 先核对该项目的持久提交证据，补偿漏通知或收尾失败，再在旧草稿存在持久提升回执时提供新的 composer；旧写游标仍拒绝跨代写入，不自动跟随下一草稿。composer 与提升事件复用 app-contracts 公共契约，内部 DraftStore 必须提供 wasPromoted。
+
+- configuration/chat-configuration.ts 将聊天选择器所需的安全配置投影为一个宿主观察；变更期间的读取失效后重读，通知前安装新快照，关闭释放源订阅。workbenchView 的 initialSessionId 与工作台并行准备，不激活绑定；任一准备失败先排空并释放成功结果，过期会话链接保留工作台。
+
+- host/task-attachment.ts 聚合显式 Session 的共享任务提示、非终结状态及待审批索引，仅返回任务 ID，不改变绑定；有效业务会话尚无 Kernel Session 时返回空候选，其他错误不得伪装为空。
+
+- host/open-view.ts 聚合冷启动 UI 文档、工作台、目标激活及只读恢复；host/view-observation.ts 先订阅源、保存有界事件日志，再按水位补发。失败排空资源并仅回滚本次绑定，不取消 Task；同客户端已有绑定/并发冷激活拒绝，多客户端绑定独立。

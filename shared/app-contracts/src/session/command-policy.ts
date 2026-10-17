@@ -20,6 +20,7 @@ const reads = new Set<string>([
     "session.get-models",
     "session.flow-branch-executions",
     "session.flow-rerun-context",
+    "session.flow.invocations",
     "session.export",
     "flow.draft.list",
     "flow.draft.load",

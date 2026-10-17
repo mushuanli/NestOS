@@ -10,3 +10,12 @@
 - HTTP 连接断开与视图更新失败分别通知宿主；快照/回调异常、事件解析失败和通知过载不能误报网络断开。解析失败或过载停止事件消费，保持队列有界，不自动重放命令。
 - 使用公开子入口；传输集成与资源生命周期回归在 apps/http-app/tests，pnpm modules:check 检查加载边界。
 - 导航失效是有完成回执的 async 操作，不得使用 notify；ProjectService.navigation、sessionTasks 是聚合查询，createSessionDraft 是独立写命令，不自动重放。
+
+- session.flow.invocations 是只读命令；客户端订阅屏障和请求分类使用同一动态查询规则，只读命令不等待订阅，写命令仍等待确认。
+
+- 协议 v14 注册 openView、OpenedApplicationView 与 ApplicationViewObservation；observeView 为 async-subscribe，getViewCursor 为同步快照。通知回调的错误回执必须转为更新失败，不能静默丢掉应用事件。
+
+- HTTP 关闭先等待已发起的 RPC（包含从取消订阅到远程释放的整个异步过程）排空再销毁远程视图；排空、关闭请求及本地清理共用 5 秒上限，超时中止请求，不重放写入。重复关闭共用同一过程。聚合视图由显式能力拥有资源，不导出游离的 dispose 回调。
+- ApplicationViewObservation 只通过公开 getSessionBaseline/observeView 编码和失效快照，不读取后端会话源或私有通知方法。RPC 支持等待异步观察登记，登记失败向调用者传播，关闭后才完成的登记立即释放。
+
+- v14 初始握手可以同时打开目标并登记观察，SSE 与 bootstrap 并行。http/snapshot-cache 仅对不含能力的 Wire DTO 做 SHA-256 缓存，校验本地内容后才声明版本；缺块只补读已准备响应，不重放打开或写命令。应用事件由有界 viewEvents 队列接收，初始观察在本地适配。

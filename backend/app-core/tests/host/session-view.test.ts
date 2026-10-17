@@ -44,3 +44,32 @@ it('does not acquire files when preparing a missing Session fails', async () => 
     await expect(client.backend.openSessionView('s')).rejects.toThrow('missing');
     expect(acquireFiles).not.toHaveBeenCalled(); expect(execute).not.toHaveBeenCalled(); await client.close();
 });
+
+it('prepares a cold target with the workbench without binding it and releases unused preparation', async () => {
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false});
+    releases.push(() => runtime.dispose());
+    const client = createApplicationClient(bindLocalApplicationServices(runtime)); releases.push(() => client.close());
+    const id = await runtime.projects.sessions.create('Cold target', null);
+    const workspace = await client.backend.workbenchView({initialNavigation: false, initialSessionId: id});
+    expect(workspace.initialSession?.manifest.id).toBe(id);
+    expect(runtime.sessionManager.getSnapshot().sessionId).not.toBe(id);
+    await client.close();
+    await expect(workspace.initialSession!.activate()).rejects.toThrow('closed');
+});
+
+it('keeps navigation usable for a missing initial target and cleans preparation after navigation failure', async () => {
+    const runtime = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false});
+    releases.push(() => runtime.dispose());
+    const services = bindLocalApplicationServices(runtime), client = createApplicationClient(services); releases.push(() => client.close());
+    const missing = await client.backend.workbenchView({initialNavigation: false, initialSessionId: 'missing'});
+    expect(missing.initialSession).toBeUndefined(); await missing.browser.dispose();
+    const id = await runtime.projects.sessions.create('Prepared before failure', null);
+    const acquire = services.sessionFiles.acquireFiles.bind(services.sessionFiles), release = vi.fn();
+    vi.spyOn(services.sessionFiles, 'acquireFiles').mockImplementation(async (...args) => {
+        const owner = await acquire(...args);
+        return {...owner, release: async () => {release(); await owner.release();}};
+    });
+    vi.spyOn(services.projects, 'navigation').mockRejectedValueOnce(new Error('navigation failed'));
+    await expect(client.backend.workbenchView({initialSessionId: id})).rejects.toThrow('navigation failed');
+    expect(release).toHaveBeenCalledOnce();
+});

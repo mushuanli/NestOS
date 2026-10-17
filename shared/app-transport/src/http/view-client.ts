@@ -1,3 +1,6 @@
+import type {ApplicationViewEvent, OpenViewRequest} from '@itookit/app-contracts/services';
+import {SnapshotCache, type CachedReply} from './snapshot-cache';
+import {ApplicationObservation} from './application-observation';
 import type { HostedApplicationClient } from '@itookit/app-contracts/services';
 import { FSError } from '@itookit/vfs-core';
 import { RpcPeer } from '../application/peer';
@@ -8,11 +11,13 @@ import { QueryBatcher } from './query-batcher';
 import { installFileTransport } from './file-transport';
 import { ViewExpiredError } from './view-expired';
 
-type NotificationPacket = Partial<CallbackRequest> & Pick<Reply, 'updates'> & { calls?: Call[] };
+type NotificationPacket = Partial<CallbackRequest> & Pick<Reply, 'updates'> & { calls?: Call[]; viewEvents?: ApplicationViewEvent[] };
+export interface HttpViewStartOptions {initialView?: OpenViewRequest; snapshots?: SnapshotCache;}
 
 /** HTTP commands are never automatically replayed after an unknown outcome. */
 export class HttpViewClient {
     readonly peer: RpcPeer;
+    private readonly applicationObservation = new ApplicationObservation();
     private readonly abort = new AbortController();
     private listening?: Promise<void>;
     private streamAbort = new AbortController();
@@ -23,6 +28,7 @@ export class HttpViewClient {
     private wake?: () => void;
     private callbacks: Promise<void> = Promise.resolve();
     private closing = false;
+    private closeTask?: Promise<void>;
     private disconnected = false;
     private updateFailed = false;
     private pendingNotifications = 0;
@@ -45,18 +51,43 @@ export class HttpViewClient {
             const replies = reply.replies!; if (replies[0]) replies[0].updates = reply.updates; return replies;
         }), async updates => { this.peer.applyUpdates(updates); await this.peer.waitUpdates(updates); });
     }
-    async start(): Promise<HostedApplicationClient> {
+    async start(options: HttpViewStartOptions = {}): Promise<HostedApplicationClient> {
+        const snapshots = options.snapshots ?? new SnapshotCache(); await snapshots.load();
+        const stream = this.startEventStream(); void stream.catch(() => {});
+        const packet = await this.post({kind: 'bootstrap', initialView: options.initialView, knownSnapshots: snapshots.known()});
+        const reply = await this.expandBootstrap(packet, snapshots);
+        if (reply.error) throw new Error(reply.error.message);
+        this.peer.applyUpdates(reply.updates);
+        const root = this.peer.decode(reply.value!) as HostedApplicationClient;
+        this.bindInitialObservation(root);
+        this.initialized(); await stream; await this.callbacks;
+        return root;
+    }
+    private async startEventStream(): Promise<void> {
         const response = await this.subscribe(false);
         this.resumable = response.headers.get('X-MindOS-View-Resume') === '1';
         this.listening = this.listen(response.body!);
         void this.listening.catch(error => this.showUpdateError(error));
-        const reply = await this.post({ kind: 'bootstrap' });
-        if (reply.error) throw new Error(reply.error.message);
-        this.peer.applyUpdates(reply.updates);
-        const root = this.peer.decode(reply.value!) as HostedApplicationClient;
-        this.initialized();
-        await this.callbacks;
-        return root;
+    }
+    private async expandBootstrap(packet: Reply, snapshots: SnapshotCache): Promise<Reply> {
+        if (!('payload' in packet)) return packet;
+        try {return await snapshots.unpack(packet as unknown as CachedReply) as unknown as Reply;}
+        catch (error) {
+            if (!(error instanceof FSError) || error.code !== 'ENOENT') throw error;
+            // This only re-reads the already prepared reply; opening and activation are not replayed.
+            return this.post({kind: 'bootstrap-data'});
+        }
+    }
+    private bindInitialObservation(root: HostedApplicationClient): void {
+        if (!root.initialView) return;
+        const remote = root.initialView.observation, observation = this.applicationObservation;
+        observation.initialize(root.initialView.cursor);
+        root.initialView.observation = {
+            getViewCursor: () => observation.getCursor(),
+            getSessionBaseline: () => remote.getSessionBaseline(),
+            observeView: async (after, listener) => observation.observe(after, listener),
+            dispose: () => remote.dispose(),
+        };
     }
     private async post(body: object): Promise<Reply & { replies?: Reply[] }> {
         const response = await this.request(this.url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -168,7 +199,7 @@ export class HttpViewClient {
         } catch (error) { this.showUpdateError(error); this.abort.abort(); return false; }
     }
     private enqueueNotification(packet: NotificationPacket, bytes: number): boolean {
-        const count = Math.max(1, packet.calls?.length ?? 0);
+        const count = Math.max(1, (packet.calls?.length ?? 0) + (packet.viewEvents?.length ?? 0));
         this.pendingNotifications += count; this.notificationBytes += bytes;
         if (this.pendingNotifications > 256 || this.notificationBytes > 2 * 1024 * 1024) {
             this.showUpdateError(new FSError('EBUSY', 'View notification queue is full')); this.abort.abort(); return false;
@@ -182,9 +213,11 @@ export class HttpViewClient {
         if (this.abort.signal.aborted) return;
         this.peer.applyUpdates(packet.updates);
         await this.peer.waitUpdates(packet.updates);
+        for (const event of packet.viewEvents ?? []) this.applicationObservation.receive(event);
         for (const call of packet.calls ?? (packet.call ? [packet.call] : [])) {
             const reply = await this.peer.handle(call);
             if (packet.id) await this.post({ kind: 'reply', id: packet.id, reply });
+            else if (reply.error) throw Object.assign(new Error(reply.error.message), reply.error);
         }
     }
     private showUpdateError(error: unknown): void {
@@ -201,9 +234,24 @@ export class HttpViewClient {
         console.error('[View] Connection lost', error);
         this.onDisconnected?.(error);
     }
-    async close(): Promise<void> {
-        this.closing = true; this.initialized(); this.queries.close(); this.bindings.close();
+    close(): Promise<void> { return this.closeTask ??= this.closeView(); }
+    private async closeView(): Promise<void> {
+        this.closing = true; this.initialized(); this.applicationObservation.close(); this.queries.close(); this.bindings.close();
         this.wake?.();
-        try { if (!this.abort.signal.aborted) await this.post({ kind: 'close' }); } finally { this.abort.abort(); await this.listening; await this.peer.close(); }
+        let timer: ReturnType<typeof setTimeout>;
+        const deadline = new Promise<void>(resolve => {
+            timer = setTimeout(() => { this.abort.abort(); resolve(); }, 5000);
+        });
+        const drain = async () => {
+            await this.peer.whenIdle();
+            if (!this.abort.signal.aborted) await this.post({ kind: 'close' });
+        };
+        try {
+            await Promise.race([drain(), deadline]);
+        } finally {
+            this.abort.abort();
+            try { await Promise.race([Promise.allSettled([this.listening, this.peer.close()]), deadline]); }
+            finally { clearTimeout(timer!); }
+        }
     }
 }

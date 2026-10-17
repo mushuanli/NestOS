@@ -1,5 +1,8 @@
 import {withInitialDirectory} from './browser/initial-directory';
+import {OpenedViewProjection} from './lifecycle/opened-view';
+import {openInitialView} from './lifecycle/initial-view';
 import { ExecutorUsage } from './persistence/executor-usage';
+import { INITIAL_CHAT_DOCUMENTS } from './persistence/documents';
 import { observeNavigationVisibility } from './navigation/navigation-visibility';
 import { cleanupGroup, type Cleanup } from './lifecycle/cleanup-group';
 import { lazyResource } from './lifecycle/lazy-resource';
@@ -81,7 +84,17 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const resolvedDefault = defaultSlug ?? (options.startPage ? START_PAGE_SLUG : workspaces[0]?.slug) ?? '';
 
     if (!options.services || !options.backend) throw new Error('AppOptions.services and AppOptions.backend are required');
-    const services = options.services, backend = options.backend;
+    let services = options.services, backend = options.backend;
+    const startupRoute = parseWorkspaceHash(location.hash, resolvedDefault);
+    const startupWorkspace = workspaces.find(ws => ws.elementId === routeMap[startupRoute.slug]);
+    const initialDocuments = startupWorkspace?.type === 'chat'
+        ? INITIAL_CHAT_DOCUMENTS : ['theme'];
+    const opened = options.initialView ?? (startupWorkspace?.type === 'chat' && typeof backend.openView === 'function' ? await openInitialView(backend, initialDocuments, startupRoute.resource) : undefined);
+    const projection = opened ? new OpenedViewProjection(opened, services, backend) : undefined;
+    if (projection) {
+        cleanupFns.push(() => projection.dispose());
+        await projection.start(); services = projection.services; backend = projection.backend;
+    }
     cleanupFns.push(installMobileViewport());
     cleanupFns.push(installMobileShellState());
     const { vfs, llmDriver, sessionRepository, flowEngine, sessionFiles,
@@ -90,6 +103,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     // UI state lives beside the theme in `etc:/ui`, so Web and Tauri share one
     // inspectable store instead of the webview's localStorage.
     const uiDocs = new VfsJsonStore(backend);
+    if (opened) uiDocs.seed(opened.documents);
+    else if (startupWorkspace?.type === 'chat') uiDocs.prefetch(initialDocuments);
     const executorUsage = new ExecutorUsage(uiDocs);
     cleanupFns.push(() => uiDocs.flush());
     const themeReady = themeService.init(uiDocs);
@@ -114,7 +129,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const createChatFactory = (controls: import('@itookit/app-contracts/services').WorkbenchChatControls): EditorFactory => {
         const factory = options.ui.createChatEditor(agentService, {
             defaultHarnessToolIds: DEFAULT_HARNESS_TOOL_IDS, sessionManager, sessionRepository, ocr, commandBus,
-            kernel: kernel.kernel, ...controls,
+            kernel: kernel.kernel, readTaskAttachment: backend.taskAttachment?.bind(backend), ...controls,
         });
         return async (container, config) => { await executorUsage.load(); return factory(container, {...config, executorUsage}); };
     };
@@ -242,6 +257,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         // Workbench no longer owns DOM — consumers create their own containers.
         const layoutEl = document.createElement('div');
         layoutEl.className = 'mm-layout';
+        if (initialResource) layoutEl.dataset.workspaceOpening = 'true';
 
         const sidebarEl = document.createElement('div');
         sidebarEl.className = 'mm-sidebar';
@@ -300,7 +316,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const [uiPersistence, workbenchState] = await traceBoot('workspace.chatState (parallel)', () => Promise.all([
                 uiState.port(SESSION_BROWSER_SCOPE), uiState.workbenchPort(SESSION_BROWSER_SCOPE),
             ]));
-            const module = createProjectModule({ services, backend, createFactory: createChatFactory, deferNavigation: !!initialResource, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
+            const module = createProjectModule({ services, backend, createFactory: createChatFactory, initialResource, deferNavigation: !!initialResource, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
                 fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 onSidebarReady: revealSidebar,
                 uiPersistence, workbenchState,
@@ -490,7 +506,10 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         const container = document.getElementById(workspaceId);
         const targetLayout = container?.querySelector<HTMLElement>('.mm-layout');
-        if (resourceId && targetLayout) targetLayout.dataset.mobileView = 'detail';
+        if (targetLayout) {
+            if (resourceId) { targetLayout.dataset.workspaceOpening = 'true'; targetLayout.dataset.mobileView = 'detail'; }
+            else delete targetLayout.dataset.workspaceOpening;
+        }
         const dismissLoading = workspaceId !== START_PAGE_ID ? workspaceStatus(container) : () => {};
         try {
             if (sourceSlug === 'projects' && resourceId && workspaces.some(ws => ws.elementId === workspaceId && ws.type === 'chat')) {
@@ -534,6 +553,10 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         } finally {
             dismissLoading();
             const manager = managerCache.get(workspaceId), layout = container?.querySelector<HTMLElement>('.mm-layout');
+            if (!closed && revision === navigationRevision) {
+                if (layout) delete layout.dataset.workspaceOpening;
+                delete document.body.dataset.appStarting;
+            }
             const sidebar = layout?.querySelector<HTMLElement>('.mm-sidebar');
             if (manager?.setNavigationVisible && layout && sidebar && !navigationObservers.has(manager)) {
                 const stop = observeNavigationVisibility(layout, sidebar, visible => {
@@ -669,6 +692,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     // ── AppHandle ──────────────────────────────────────────────────────────────
 
+    projection?.finishHydration();
     return {
         vfs,
         sessionFiles,
@@ -717,6 +741,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         },
     };
     } catch (error) {
+        delete document.body.dataset.appStarting;
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
             try { await close(); } catch (cleanupError) { console.error('[App] Startup cleanup failed', cleanupError); }
         }

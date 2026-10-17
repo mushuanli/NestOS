@@ -5,6 +5,7 @@ import type { IConnectionService, IAgentManagementService, SessionCapabilityRegi
 import type { ISessionRepository, ICommandBus, SessionManagementPort } from '@itookit/llm-session/contracts';
 import type { SnapshotPort } from '../settings';
 import type { IToolService } from '@itookit/tools/contracts';
+import type { KernelInspectionPort } from '@itookit/durable-kernel/contracts';
 import type { DigitalTwinService } from './digital-twin';
 import type { ModelConfigurationCommands } from './configuration';
 import type { ProjectService } from './projects';
@@ -24,7 +25,7 @@ export interface LocalApplicationServices {
     projects: ProjectService;
     projectSync?: ProjectSyncService;
     kernel: {
-        kernel: ApplicationKernelPort;
+        kernel: ApplicationKernelPort & KernelInspectionPort;
         llmService: ILLMService;
         toolCatalog: Pick<IToolService, 'getToolDefinitions' | 'getToolMeta' | 'listTools'>;
         sessions: SessionCapabilityRegistry;

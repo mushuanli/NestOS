@@ -12,6 +12,7 @@
       "import": "./src/index.ts",
       "default": "./src/index.ts"
     },
+    "./startup": "./src/startup.ts",
     "./navigation.css": "./src/styles/navigation.css",
     "./workspaces": {
       "types": "./src/workspaces/index.ts",

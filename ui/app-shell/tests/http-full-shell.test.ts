@@ -14,15 +14,19 @@ import { createHostedView } from '@itookit/node-host/http';
 const releases: Array<() => Promise<void>> = [];
 const wireBytes = (value: unknown) => new TextEncoder().encode(JSON.stringify(value)).byteLength;
 afterEach(async () => { for (const release of releases.splice(0).reverse()) await release(); });
-it.each(['start', 'chat', 'minds'])('mounts the complete common shell starting at %s without eager feature services', async slug => {
+it.each(['start', 'chat', 'minds', 'session'])('mounts the complete common shell starting at %s without eager feature services', async slug => {
     vi.stubGlobal('matchMedia', vi.fn(() => ({ matches: false, addEventListener() {}, removeEventListener() {} })));
     vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} unobserve() {} });
     const { initApp } = await import('../src/bootstrap');
     const html = readFileSync('../../apps/web-app/index.html', 'utf8');
-    document.body.innerHTML = html.slice(html.indexOf('<body>') + 6, html.indexOf('</body>'));
+    document.body.replaceWith(document.importNode(new DOMParser().parseFromString(html, 'text/html').body, true));
     history.replaceState({}, '', slug === 'minds' ? '/#/minds/' + encodeURIComponent('/简历.mind') : slug === 'start' ? '/' : '/#/chat');
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli', startupMode: 'interactive', digitalTwinAutoStart: false });
     releases.push(() => runtime.dispose());
+    if (slug === 'session') {
+        const id = await runtime.projects.sessions.create('Cold HTTP conversation', null);
+        history.replaceState({}, '', '/#/chat/' + encodeURIComponent(id));
+    }
     if (slug === 'minds') {
         const fs = await runtime.vfs.openFileSystem('/home/admin/minds');
         await fs.driver.createFile({ parentPath: '/', name: '简历.mind', content: '# Resume' });
@@ -31,17 +35,25 @@ it.each(['start', 'chat', 'minds'])('mounts the complete common shell starting a
     releases.push(() => view.close());
     let server!: RpcPeer;
     const metrics = { calls: 0, callbacks: 0, bytes: 0, requests: 0 };
+    const requestGroups: string[][] = [];
+    const pendingRequests = new Set<Promise<unknown>>();
+    const track = <T>(pending: Promise<T>): Promise<T> => {
+        pendingRequests.add(pending);
+        void pending.finally(() => pendingRequests.delete(pending)).catch(() => {});
+        return pending;
+    };
     const measured = async (kind: 'calls' | 'callbacks', operation: () => Promise<any>) => { metrics[kind]++; const reply = await operation(); metrics.bytes += wireBytes(reply); return reply; };
     const batch = async (calls: Call[]): Promise<Reply[]> => {
+        requestGroups.push(calls.map(call => call.method));
         metrics.requests++; metrics.calls += calls.length;
         const replies = await Promise.all(calls.map(call => server.handle(call, false))), updates = await server.refresh();
         metrics.bytes += wireBytes({ replies, updates }); client.applyUpdates(updates); return replies;
     };
-    const queries = new QueryBatcher(batch, () => {}), bindings = new QueryBatcher(batch, () => {});
+    const queries = new QueryBatcher(calls => track(batch(calls)), () => {}), bindings = new QueryBatcher(calls => track(batch(calls)), () => {});
     const client = new RpcPeer('client', call => {
         if (client.remoteQuery(call)) return queries.query(call);
         if (client.remoteBinding(call)) return bindings.query(call);
-        metrics.requests++; return measured('calls', () => server.handle(call));
+        requestGroups.push([call.method]); metrics.requests++; return track(measured('calls', () => server.handle(call)));
     }, console.error, installViewProjections);
     server = new RpcPeer('server', async call => { client.applyUpdates(await server.refresh()); return measured('callbacks', () => client.handle(call)); }, console.error, undefined, domains => view.prepare(server, domains));
     releases.push(() => client.close(), () => server.close());
@@ -57,18 +69,41 @@ it.each(['start', 'chat', 'minds'])('mounts the complete common shell starting a
     const handle = server.handle.bind(server);
     server.handle = (call, refresh) => {
         calls[call.method] = (calls[call.method] ?? 0) + 1;
+        if (call.method === 'execute') calls[`execute:${call.args[0]}`] = (calls[`execute:${call.args[0]}`] ?? 0) + 1;
         return call.method === 'workbenchView' && workbenchGate ? workbenchGate.then(() => handle(call, refresh)) : handle(call, refresh);
     };
     const started = performance.now();
+    const ui = createBrowserUI(root.flowLibrary), createChatEditor = ui.createChatEditor;
+    const loaded: unknown[] = [];
+    ui.createChatEditor = (service, deps) => createChatEditor(service, {...deps, onLoadMetrics: value => { loaded.push(value); }});
     const app = await initApp({ services: root.services, backend: root.backend, fileTemplates: root.fileTemplates,
-        workspaces: WORKSPACES, startPage: true, defaultSlug: slug, ui: createBrowserUI(root.flowLibrary) }).catch(error => { console.error(error.errors); throw error; });
+        workspaces: WORKSPACES, startPage: true, defaultSlug: slug, ui }).catch(error => { console.error(error.errors); throw error; });
+    expect(document.body.hasAttribute('data-app-starting')).toBe(false);
     releases.push(() => app.destroy());
     if (workbenchGate) releases.push(async () => releaseWorkbench());
     const startup = { calls: metrics.calls - before.calls, requests: metrics.requests - before.requests, callbacks: metrics.callbacks - before.callbacks,
         responseBytes: metrics.bytes - before.bytes, inProcessMs: Math.round(performance.now() - started) };
     console.log('[HTTP startup metrics]', startup);
-    expect(startup.requests).toBeLessThanOrEqual(slug === 'chat' ? 9 : 13); expect(startup.responseBytes).toBeLessThan(64000);
+    expect(startup.requests).toBeLessThanOrEqual(slug === 'session' ? 5 : slug === 'chat' ? 9 : 13); expect(startup.responseBytes).toBeLessThan(slug === 'session' ? 350000 : 64000);
     console.log('[HTTP startup methods]', calls);
+    if (slug === 'session') {
+        expect(loaded).toHaveLength(1);
+        console.log('[HTTP Session ready]', loaded);
+        console.log('[HTTP Session request groups]', requestGroups);
+        expect(calls.openView).toBe(1); expect(calls.observeView).toBe(1);
+        for (const method of ['workbenchView', 'openSessionView', 'activate', 'readUiDocuments']) expect(calls[method]).toBeUndefined();
+        for (const method of ['getConnections', 'getDefaultConnection', 'getSystemPrompt', 'execute:session.get-snapshot'])
+            expect(calls[method]).toBeUndefined();
+        expect(document.querySelector('.llm-input')).not.toBeNull();
+        await vi.waitFor(() => expect(calls.navigation).toBeGreaterThanOrEqual(1));
+        while (pendingRequests.size) await Promise.all([...pendingRequests]);
+        expect(calls.openSession).toBeUndefined(); expect(calls.getShared).toBeUndefined();
+        expect(calls.listSessionPendingInteractionTasks).toBeUndefined();
+        for (const method of ['taskAttachment', 'onGlobalEvent', 'onEvent', 'subscribe', 'onChange', 'onChanged', 'onPromoted', 'list', 'execute:session.flow.invocations'])
+            expect(calls[method]).toBeUndefined();
+        console.log('[HTTP Session recovery metrics]', {...metrics, methods: calls, requestGroups});
+        return;
+    }
     for (const method of ['settings', 'ocr', 'readSettings', 'prepareConfiguration', 'initialFiles']) expect(calls[method]).toBeUndefined();
     if (slug === 'start') {
         expect(startup.calls).toBe(1); expect(startup.requests).toBe(1);

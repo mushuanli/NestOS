@@ -81,3 +81,17 @@ it('consumes navigation preferences locally without replacing a more recent loca
     expect(await store.read('data')).toEqual({ selected: 'new' });
     expect(readUiDocuments).not.toHaveBeenCalled(); await store.flush();
 });
+
+it('batches staged startup reads once and does not reuse a preload after a newer write', async () => {
+    const readUiDocuments = vi.fn(async () => ({theme: {mode: 'dark'}, layout: {width: 300}}));
+    const store = new VfsJsonStore({readUiDocuments, writeUiDocuments: async () => {}});
+    store.prefetch(['theme', 'layout', 'missing']);
+    expect(await store.read('theme')).toEqual({mode: 'dark'});
+    expect(await store.read('layout')).toEqual({width: 300});
+    expect(await store.read('missing')).toBeUndefined();
+    expect(readUiDocuments).toHaveBeenCalledOnce();
+    store.prefetch(['layout']); await Promise.resolve();
+    store.write('layout', {width: 500}); await store.flush();
+    readUiDocuments.mockResolvedValueOnce({theme: {mode: 'dark'}, layout: {width: 500}});
+    expect(await store.read('layout')).toEqual({width: 500});
+});

@@ -21,13 +21,16 @@ import { SkillsEngine } from '../configuration/skills-files';
 import { ToolboxResources } from '../configuration/toolbox-resources';
 import { listRemoteHarnessAgents } from '../projects/remote-agent-catalog';
 import { conversationBranches } from '@itookit/piagent-driver';
-import { createWorkbenchView } from './workbench-view';
+import { prepareWorkbenchView } from './workbench-view';
 import { openSessionView } from './session-view';
 import { observeConnections } from './connection-observation';
 import { readUiDocuments, writeUiDocuments } from './ui-documents';
 import { ViewScope } from './view-scope';
 import { taskDetails, taskEvents, sessionTasks } from './task-view';
 import { createSessionDraft } from '../session/create-session-draft';
+import { createChatConfigurationView } from '../configuration/chat-configuration';
+import { taskAttachment } from './task-attachment';
+import {openView} from './open-view';
 import type { ApplicationClient, ApplicationBackend, LocalApplicationServices, LocalBackendOptions, ToolboxView } from '@itookit/app-contracts/services';
 
 export interface ApplicationViewOptions extends LocalBackendOptions { preload?: boolean }
@@ -42,16 +45,34 @@ export function createApplicationClient(services: LocalApplicationServices, opti
 export function bindApplicationBackend(services: LocalApplicationServices, options: ApplicationViewOptions = {}, scope = new ViewScope()): ApplicationBackend {
     const { vfs, agentService, sessionRepository: repository, projects, kernel, commandBus } = services;
     const lifecycle = () => new SessionLifecycleService({ repository, kernel: kernel.kernel });
-    return {
+    let opening = false;
+    const backend: ApplicationBackend = {
+        openView: async request => {
+            if (opening) throw new FSError('EBUSY', 'A view is already opening');
+            opening = true;
+            try { return await scope.own(await openView(services, backend, request)); }
+            finally { opening = false; }
+        },
         createSessionDraft: request => createSessionDraft(projects, repository, request),
         navigationView: options => navigationView(vfs, options),
         warmNavigation: roots => warmNavigation(vfs, roots),
         workbenchView: async settings => {
-            const view = await createWorkbenchView({ ...settings, repository, files: services.sessionFiles, kernel: kernel.kernel, projects }, options.preload, settings?.initialNavigation !== false);
-            return { ...view, browser: await scope.own(view.browser),
-                chat: settings?.chatControls ? { privilegedCommands: new PrivilegedCommandService(kernel.kernel, agentService),
-                    sessionSkills: createSessionSkillControls(kernel.kernel, kernel.sessions) } : undefined,
-                connections: projects?.remoteMounts ? await scope.own(observeConnections(projects.remoteMounts)) : undefined };
+            const owned = new ViewScope();
+            try {
+                const view = await prepareWorkbenchView({ ...settings, repository, files: services.sessionFiles, kernel: kernel.kernel, projects }, !!options.preload, settings?.initialNavigation !== false,
+                    settings?.initialSessionId ? () => prepareInitialSession(services, settings.initialSessionId!) : undefined);
+                const browser = await owned.own(view.browser);
+                const initialSession = view.initialSession ? await owned.own(view.initialSession) : undefined;
+                const chat = settings?.chatControls ? {privilegedCommands: new PrivilegedCommandService(kernel.kernel, agentService),
+                    sessionSkills: createSessionSkillControls(kernel.kernel, kernel.sessions),
+                    configuration: options.preload ? await owned.own(await createChatConfigurationView(agentService)) : undefined} : undefined;
+                const connections = projects?.remoteMounts ? await owned.own(observeConnections(projects.remoteMounts)) : undefined;
+                await scope.own({dispose: () => owned.close()});
+                return {...view, browser, initialSession, chat, connections};
+            } catch (error) {
+                try {await owned.close();} catch (cleanup) {throw new AggregateError([error, cleanup], 'Workbench preparation cleanup failed');}
+                throw error;
+            }
         },
         openSessionView: async id => scope.own(await openSessionView(services, id)),
         readUiDocuments: names => readUiDocuments(vfs, names),
@@ -71,9 +92,26 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         unmountProject: id => unmountRemoteProject(projects, lifecycle(), id),
         conversationBranches: (folder, profile, session, settings) => conversationFamily(services, folder, profile, session, settings),
         taskDetails: (session, task) => taskDetails(kernel.kernel, session, task),
+        taskAttachment: (session, key) => taskAttachment(services, session, key),
         sessionTasks: (session, settings) => sessionTasks(kernel.kernel, session, settings),
         taskEvents: (session, task, settings) => taskEvents(kernel.kernel, session, task, settings),
     };
+    return backend;
+}
+async function prepareInitialSession(services: LocalApplicationServices, id: string) {
+    try { return await openSessionView(services, id); }
+    catch (error) {
+        if (isMissingSession(error)) return undefined;
+        throw error;
+    }
+}
+function isMissingSession(error: unknown): boolean {
+    const visited = new Set<unknown>();
+    while (error instanceof Error && !visited.has(error)) {
+        if (error instanceof FSError && error.code === 'ENOENT') return true;
+        visited.add(error); error = error.cause;
+    }
+    return false;
 }
 async function toolboxView(services: LocalApplicationServices, scope: ViewScope): Promise<ToolboxView> {
     const { agentService, kernel, vfs, projects } = services;

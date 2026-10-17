@@ -1,10 +1,19 @@
 import { isApplicationReadCommand } from '@itookit/app-contracts';
-import { observeSession, sessionSnapshot } from './session-snapshots';
+import { applicationSnapshot, observeApplication, observeSession, sessionSnapshot } from './session-snapshots';
 import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import type { CapabilitySchema, MethodMode } from '../rpc/capabilities';
 export type { ViewDomain } from '../rpc/capabilities';
 
 export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
+    "OpenedApplicationView": {markers: ['workbench', 'observation', 'cursor', 'dispose'],
+        domain: 'opened-view', invalidates: [],
+        fields: ['documents', 'workbench', 'initial', 'taskAttachmentKey', 'connectionInterests', 'observation', 'cursor'], methods: {dispose: 'async'}},
+    "ApplicationViewObservation": {markers: ['getViewCursor', 'getSessionBaseline', 'observeView', 'dispose'], fields: [], scopedObserver: true, observer: observeApplication,
+        snapshotView: applicationSnapshot,
+        methods: {getViewCursor: 'snapshot', getSessionBaseline: 'snapshot', observeView: 'async-subscribe', dispose: 'async'}},
+    "ChatConfigurationView": { markers: ["getConfigurationSnapshot", "subscribe", "dispose"], fields: [],
+        domain: 'configuration', scopedObserver: true, observer: 'subscribe', sharedSnapshots: true,
+        methods: { "getConfigurationSnapshot": "snapshot", "subscribe": "subscribe", "dispose": "async" } },
     "SessionBrowserPort": { markers: ["fs", "transferItems", "readFileDirectory", "invalidateNavigation"], fields: ["fs"],
         invalidates: ['projects', 'session', 'files'], domain: 'projects',
         methods: { "dispose": "async", "transferItems": "async", "readFileDirectory": "query", "invalidateNavigation": "async" } },
@@ -96,7 +105,7 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
     "ApplicationServices": { markers: ["sessionRepository", "sessionFiles"], fields: ["digitalTwin", "vfs", "llmDriver", "agentService", "configuration", "sessionRepository", "flowEngine", "sessionFiles", "directoryMounts", "projects", "projectSync", "kernel", "sessionManager", "commandBus"],
         methods: {"startBackground": "notify", "prepareSession": "async"} },
     "ApplicationBackend": { markers: ["workbenchView", "toolboxView", "taskDetails"], fields: [],
-        methods: {"createSessionDraft": "async", "navigationView": "query", "warmNavigation": "query", "workbenchView": "async", "openSessionView": "async", "readUiDocuments": "query", "writeUiDocuments": "async", "settings": "async", "ocr": "async", "initialFiles": "async", "projectSessions": "async", "skillsFiles": "async", "toolboxView": "async", "archiveExporter": "async", "archiveImporter": "async", "exportSession": "query", "exportRemoteSession": "query", "resolveFavorite": "query", "manageRemoteSession": "async", "unmountProject": "async", "conversationBranches": "query", "taskDetails": "query", "sessionTasks": "query", "taskEvents": "query"} satisfies Record<keyof ApplicationBackend, MethodMode> },
+        methods: {"openView": "async", "createSessionDraft": "async", "navigationView": "query", "warmNavigation": "query", "workbenchView": "async", "openSessionView": "async", "readUiDocuments": "query", "writeUiDocuments": "async", "settings": "async", "ocr": "async", "initialFiles": "async", "projectSessions": "async", "skillsFiles": "async", "toolboxView": "async", "archiveExporter": "async", "archiveImporter": "async", "exportSession": "query", "exportRemoteSession": "query", "resolveFavorite": "query", "manageRemoteSession": "async", "unmountProject": "async", "conversationBranches": "query", "taskDetails": "query", "taskAttachment": "query", "sessionTasks": "query", "taskEvents": "query"} satisfies Record<keyof ApplicationBackend, MethodMode> },
     "SessionOpenView": { markers: ["manifest", "workspaceReadOnly", "dispose"], fields: ["manifest", "project", "workspaceReadOnly", "context"], methods: { "activate": "async", "dispose": "async" } },
     "ConnectionObservation": { markers: ["update", "dispose"], fields: [], methods: { "update": "async", "dispose": "async" } },
     "SessionLifecycleService": { markers: ["deleteSession", "deleteFolder"], fields: [],

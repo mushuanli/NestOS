@@ -6,7 +6,7 @@ export function installMobileShellState(): () => void {
         if (closed) return;
         const workspace = body.querySelector('.workspace-view.active');
         const layout = workspace?.querySelector<HTMLElement>('.mm-layout');
-        const immersive = layout?.dataset.mobileView === 'detail' && layout.dataset.mobileHeader === 'embedded';
+        const immersive = layout?.dataset.mobileView === 'detail' && ['embedded', 'pending'].includes(layout.dataset.mobileHeader ?? '');
         const focused = document.activeElement;
         const composing = focused instanceof Element && workspace?.contains(focused)
             && focused.closest('[data-editor-composing="true"]') && !focused.closest('[hidden]');

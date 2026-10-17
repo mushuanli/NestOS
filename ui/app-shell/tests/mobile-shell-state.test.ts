@@ -30,6 +30,14 @@ it('follows focused composing state without reacting to hidden tabs or hidden wo
     expect(document.body.dataset.mobileNavigation).toBe('standard');
 });
 
+it('keeps navigation hidden while the requested conversation is being rebound', async () => {
+    document.body.innerHTML = '<section class="workspace-view active"><div class="mm-layout" data-mobile-view="detail" data-mobile-header="pending"></div></section>';
+    dispose = installMobileShellState(); expect(document.body.dataset.mobileNavigation).toBe('immersive');
+    const layout = document.querySelector<HTMLElement>('.mm-layout')!;
+    layout.dataset.mobileHeader = 'embedded'; await flush(); expect(document.body.dataset.mobileNavigation).toBe('immersive');
+    layout.dataset.mobileView = 'list'; await flush(); expect(document.body.dataset.mobileNavigation).toBe('standard');
+});
+
 it('releases observers and pending focus updates when the app is destroyed', async () => {
     document.body.dataset.mobileNavigation = 'previous'; dispose = installMobileShellState();
     document.dispatchEvent(new Event('focusout')); dispose(); await flush();

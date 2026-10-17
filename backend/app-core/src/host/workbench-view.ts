@@ -1,7 +1,23 @@
-import type { SessionBrowserDependencies, WorkbenchView } from '@itookit/app-contracts/services';
+import type { SessionBrowserDependencies, SessionOpenView, WorkbenchView } from '@itookit/app-contracts/services';
 import { createSessionBrowser } from '../session/session-browser';
 import { SessionLifecycleService } from '../session/session-lifecycle';
 import { ProjectSearch } from '../projects/project-search';
+
+/** Prepare independent observations together, releasing both if either preparation fails. */
+export async function prepareWorkbenchView(deps: SessionBrowserDependencies, preload: boolean, initialNavigation: boolean,
+    prepareSession?: () => Promise<SessionOpenView | undefined>): Promise<WorkbenchView> {
+    const [workspace, session] = await Promise.allSettled([
+        createWorkbenchView(deps, preload, initialNavigation), prepareSession?.(),
+    ]);
+    if (workspace.status === 'rejected' || session.status === 'rejected') {
+        await Promise.allSettled([
+            workspace.status === 'fulfilled' ? workspace.value.browser.dispose() : undefined,
+            session.status === 'fulfilled' ? session.value?.dispose() : undefined,
+        ]);
+        throw workspace.status === 'rejected' ? workspace.reason : (session as PromiseRejectedResult).reason;
+    }
+    return {...workspace.value, initialSession: session.value};
+}
 
 /** Assemble one workspace read model where the repository and file queries execute. */
 export async function createWorkbenchView(deps: SessionBrowserDependencies, preload = false, initialNavigation = true): Promise<WorkbenchView> {

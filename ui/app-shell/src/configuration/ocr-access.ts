@@ -4,7 +4,8 @@ import { lazyResource } from '../lifecycle/lazy-resource';
 
 /** Observing an empty input must not load OCR; bind its remote events on first use. */
 export class OcrAccess {
-    private readonly listeners = new Map<() => void, () => void>();
+    private readonly listeners = new Set<() => void>();
+    private releaseAgents?: () => void;
     private service?: OcrService;
     private release?: () => void;
     private closed = false;
@@ -18,20 +19,27 @@ export class OcrAccess {
     subscribe(listener: () => void): () => void {
         if (this.closed) return () => {};
         const notify = () => listener();
-        this.listeners.set(notify, this.agents.onChange(notify)); this.bind();
+        this.listeners.add(notify);
+        this.releaseAgents ??= this.agents.onChange(() => this.notify());
+        this.bind();
         return () => {
-            this.listeners.get(notify)?.(); this.listeners.delete(notify);
-            if (!this.listeners.size) this.unbind();
+            this.listeners.delete(notify);
+            if (!this.listeners.size) { this.unbind(); this.releaseAgents?.(); this.releaseAgents = undefined; }
         };
     }
     async close(): Promise<void> {
         this.closed = true;
-        for (const stop of this.listeners.values()) stop();
+        this.releaseAgents?.(); this.releaseAgents = undefined;
         this.listeners.clear(); this.unbind(); await this.resource.close();
     }
     private bind(): void {
         if (this.service && this.listeners.size && !this.release && !this.closed)
-            this.release = this.service.subscribe(() => { for (const notify of this.listeners.keys()) notify(); });
+            this.release = this.service.subscribe(() => this.notify());
+    }
+    private notify(): void {
+        for (const listener of this.listeners) {
+            try { listener(); } catch { console.warn('[OCR] Observer failed'); }
+        }
     }
     private unbind(): void { this.release?.(); this.release = undefined; }
 }

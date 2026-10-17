@@ -17,6 +17,7 @@ export class RpcPeer {
     private readonly snapshotCodec = new SnapshotCodec();
     private readonly subscriptionReleases = new Map<string, Set<() => Promise<void>>>();
     private readonly observerReleases = new Map<string, () => void>();
+    private readonly observing = new Map<string, Promise<void>>();
     private readonly retired = new Set<string>();
     private readonly remoteRetirements = new CapabilityRetirements();
     private operations = 0;
@@ -32,6 +33,7 @@ export class RpcPeer {
     private readonly lookupArgs = new Map<string, Map<string, unknown[]>>();
     private readonly releases = new Set<() => void | Promise<void>>();
     private readonly pendingBindings = new Set<Promise<unknown>>();
+    private readonly pendingInvocations = new Set<Promise<unknown>>();
     private readonly eventCallbacks = new Set<string>();
     private readonly cleanupFunctions = new WeakSet<object>();
     private readonly callbackUses = new Map<string, { active: number; persistent: number }>();
@@ -72,7 +74,9 @@ export class RpcPeer {
     }
     bootstrap(value: unknown): Promise<Reply> {
         return this.operation(async () => {
-            const root = await this.encode(value, new Set(), undefined, true); this.retain(root);
+            const root = await this.encode(value, new Set(), undefined, true);
+            // Bootstrap services live with the connection, independently of disposable initial views.
+            this.lifetime.retain(root, () => false);
             return { value: root, updates: await this.refresh() };
         });
     }
@@ -136,13 +140,23 @@ export class RpcPeer {
         if (candidates.length) return candidates[0];
         return undefined;
     }
-    private register(value: object, kind: string, schema: CapabilitySchema): string {
+    private async register(value: object, kind: string, schema: CapabilitySchema): Promise<string> {
         let id = this.ids.get(value);
-        if (!id) {
-            if (this.handles.size >= MAX_RPC_HANDLES) throw new FSError('EBUSY', 'View capability limit reached');
-            id = `${this.side}:${this.identity}:${++this.sequence}`; this.ids.set(value, id); this.handles.set(id, { value, kind, schema });
-            this.dirty.add(id); this.domains.add(viewDomain(this.schemas, kind)); this.observe(value, kind, id);
+        if (id) {
+            await this.observing.get(id);
+            if (this.closed) throw new FSError('EIO', 'View connection is closed');
+            return id;
         }
+        if (this.closed) throw new FSError('EIO', 'View connection is closed');
+        if (this.handles.size >= MAX_RPC_HANDLES) throw new FSError('EBUSY', 'View capability limit reached');
+        id = `${this.side}:${this.identity}:${++this.sequence}`; this.ids.set(value, id); this.handles.set(id, { value, kind, schema });
+        this.dirty.add(id); this.domains.add(viewDomain(this.schemas, kind));
+        const ready = this.observe(value, kind, id); this.observing.set(id, ready);
+        try { await ready; }
+        catch (error) {
+            this.ids.delete(value); this.handles.delete(id); this.dirty.delete(id); throw error;
+        } finally { this.observing.delete(id); }
+        if (this.closed) throw new FSError('EIO', 'View connection is closed');
         return id;
     }
     private async encode(value: any, seen: Set<string>, kind?: string, flat = false): Promise<WireValue> {
@@ -150,7 +164,7 @@ export class RpcPeer {
         const remote = this.remoteIds.get(value); if (remote) return { $ref: remote };
         const capability = this.schema(value, kind);
         if (capability) {
-            const [name, schema] = capability, id = this.register(value, name, schema);
+            const [name, schema] = capability, id = await this.register(value, name, schema);
             if ((flat && name !== 'Function') || seen.has(id)) return { $ref: id }; seen.add(id);
             return { $capability: await this.describe(id, seen) as unknown as WireValue };
         }
@@ -230,12 +244,14 @@ export class RpcPeer {
         }
         return updates;
     }
-    private observe(value: any, kind: string, id: string): void {
+    private async observe(value: any, kind: string, id: string): Promise<void> {
         const method = this.schemas[kind]?.observer;
         if (!method || (typeof method === 'string' && typeof value[method] !== 'function')) return;
         const changed = () => { this.eventInvalidated(id); this.onInvalidation?.(); };
-        const release = typeof method === 'function' ? method(value, changed) : value[method](changed);
-        if (typeof release === 'function') { this.releases.add(release); this.observerReleases.set(id, release); }
+        const release = await (typeof method === 'function' ? method(value, changed) : value[method](changed));
+        if (typeof release !== 'function') return;
+        if (this.closed) { release(); return; }
+        this.releases.add(release); this.observerReleases.set(id, release);
     }
     private eventInvalidated(id: string): void {
         const handle = this.handles.get(id); if (!handle || handle.retired) return;
@@ -413,7 +429,7 @@ export class RpcPeer {
         } };
         void pending.catch(() => { if (!stopped) { stopped = true; listeners.delete(callback); finish(); } });
         return { ready: pending, stop: () => { if (stopped) return; stopped = true; listeners.delete(callback);
-            void pending.then(release => release?.()).finally(finish).catch(this.report); } };
+            void this.trackInvocation(pending.then(release => release?.()).finally(finish)).catch(this.report); } };
     }
     private async *iterate(id: string, name: string, args: unknown[]): AsyncIterable<unknown> {
         const iterator = await this.invoke(id, name, args);
@@ -423,10 +439,20 @@ export class RpcPeer {
     invoke(id: string, method: string, args: unknown[]): Promise<any> {
         const mode = this.schemas[this.descriptors.get(id)?.kind ?? '']?.methods[method];
         // Capture earlier registrations synchronously; reads remain concurrent.
-        const bindings = this.side === 'client' && !subscriptionMode(mode) && mode !== 'query' && mode !== 'refresh'
+        const bindings = this.side === 'client' && !subscriptionMode(mode)
+            && !this.remoteQuery({target: id, method, args: args as Call['args']})
             ? [...this.pendingBindings] : [];
-        return this.operation(() => bindings.length ? Promise.all(bindings).then(() => this.invokeRemote(id, method, args))
-            : this.invokeRemote(id, method, args));
+        return this.trackInvocation(this.operation(() => bindings.length ? Promise.all(bindings).then(() => this.invokeRemote(id, method, args))
+            : this.invokeRemote(id, method, args)));
+    }
+    private trackInvocation<T>(pending: Promise<T>): Promise<T> {
+        this.pendingInvocations.add(pending);
+        void pending.finally(() => this.pendingInvocations.delete(pending)).catch(() => {});
+        return pending;
+    }
+    /** Let pending unsubscribe calls finish before the transport destroys their view. */
+    async whenIdle(): Promise<void> {
+        while (this.pendingInvocations.size) await Promise.allSettled([...this.pendingInvocations]);
     }
     private async invokeRemote(id: string, method: string, args: unknown[]): Promise<any> {
         if (this.closed) throw new FSError('EIO', 'View connection is closed');

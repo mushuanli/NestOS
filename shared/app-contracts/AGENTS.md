@@ -15,3 +15,11 @@
 
 - WorkspaceController.setNavigationVisible 是可选视图生命周期能力，和整个工作区 setVisible 分开；WorkbenchView 的 initialNavigation=false 跳过初始目录/组织投影，不改变授权或资源所有权。
 - ProjectNavigationView 聚合项目归属、当前路径、离线状态与不透明分组加载路径；ProjectNavigationRequest.projectId=null 表示保持“所有项目”，省略才按目标解析归属。Session 浏览器的 invalidateNavigation 必须返回 Promise，表示后端失效屏障已完成。createSessionDraft 聚合来源解析与带初始输入的会话创建；sessionTasks 只返回任务列表所需字段。宿主观察租约 acquireConversation 只属于 local 接口。
+
+- workbenchView.initialSessionId 只请求目标准备，WorkbenchView.initialSession 的文件/观察租约由调用者释放；activate 仍单独执行。WorkbenchChatControls.configuration 是可选安全配置观察，不接入执行或原始配置写入。
+
+- ApplicationBackend.taskAttachment 是显式 Session 的只读恢复查询，使用 durable-kernel/contracts 的 ReadTaskAttachment；不传内部 Task 记录或执行凭据。
+
+- openView 是冷启动应用用例：UI 文档、工作台、可选激活/恢复初始数据及带水位观察一起返回；ApplicationViewObservation 只描述当前客户端事件，不能成为全局页面状态。普通切换继续保留准备/保存/激活顺序。
+
+- HostedApplicationClient.initialView/AppOptions.initialView 连接一次打开同步握手与 Shell；ApplicationViewObservation.getSessionBaseline 成对返回当前快照和事件水位。缓存摘要不是授权或资源句柄，初始连接兴趣随打开返回。

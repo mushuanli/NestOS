@@ -7,6 +7,7 @@ import type { TaskRecord, EventEnvelope } from '@itookit/durable-kernel/contract
 import type { ProjectTarget, ProjectService, ProjectSearch } from './projects';
 import type { SessionFilesService } from './files';
 import type { ApplicationKernelPort } from './local';
+import type {SessionPresentationState} from '@itookit/llm-session/contracts';
 
 export interface SessionLifecycleService {
     closeSession(sessionId: string): Promise<void>;
@@ -172,6 +173,8 @@ export interface SessionBrowserDependencies {
 }
 /** One workspace query supplies the services and the first directory projection. */
 export interface WorkbenchView {
+    initialData?: SessionEditorInitialData;
+    initialSession?: SessionOpenView;
     browser: SessionBrowserPort;
     lifecycle: SessionLifecycleService;
     search?: ProjectSearch;
@@ -184,6 +187,7 @@ export interface WorkbenchView {
 export interface WorkbenchChatControls {
     privilegedCommands: PrivilegedCommandService;
     sessionSkills: import('@itookit/tools/contracts').SessionSkillControls;
+    configuration?: import('@itookit/kernel-adapters/contracts').ChatConfigurationView;
 }
 
 /** An interest lease owns probes, never Session execution. */
@@ -193,7 +197,7 @@ export interface ConnectionObservation {
 }
 
 /** Prepared once by the backend; the editor owns the returned file lease. */
-export interface SessionEditorInitialData {
+export interface SessionEditorInitialData extends SessionPresentationState {
     sessionId: string;
     snapshot: import('@itookit/llm-session/contracts').SessionSnapshot;
     title: string;

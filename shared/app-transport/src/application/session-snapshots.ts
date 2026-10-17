@@ -1,3 +1,5 @@
+import type {ApplicationViewObservation} from '@itookit/app-contracts/services';
+
 type Snapshot = Record<string, any>;
 
 /** Own immutable wire projections; domain objects remain mutable and private. */
@@ -63,4 +65,16 @@ export function observeSession(value: any, listener: (...events: any[]) => void)
     const changed = (event: unknown) => { projection.change(event); listener(event); };
     const releases = [value.onGlobalEvent?.(changed), value.onEvent?.(changed)];
     return () => { for (const release of releases) release?.(); };
+}
+export function applicationSnapshot(value: ApplicationViewObservation, name: string): unknown {
+    if (name !== 'getSessionBaseline') return value.getViewCursor();
+    const baseline = value.getSessionBaseline();
+    return {cursor: baseline.cursor, snapshot: view(value).snapshot(baseline.snapshot)};
+}
+export function observeApplication(value: ApplicationViewObservation, listener: () => void): Promise<() => void> {
+    const projection = view(value); projection.change(undefined);
+    return value.observeView(value.getViewCursor(), event => {
+        if (event.topic === 'session' || event.topic === 'global') projection.change(event.value);
+        listener();
+    });
 }

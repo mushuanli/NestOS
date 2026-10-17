@@ -14,9 +14,10 @@ it('keeps subscription local until first use and shares one remote subscription'
     await Promise.all([f.access.get(), f.access.get()]);
     const stopSecond = f.access.subscribe(second);
     expect(f.create).toHaveBeenCalledOnce(); expect(f.subscribe).toHaveBeenCalledOnce();
+    expect(f.onChange).toHaveBeenCalledOnce();
     const notify = f.subscribe.mock.calls[0] as unknown as [() => void]; notify[0]();
     expect(first).toHaveBeenCalledOnce(); expect(second).toHaveBeenCalledOnce();
-    stopFirst(); expect(f.stopOcr).not.toHaveBeenCalled();
+    stopFirst(); expect(f.stopOcr).not.toHaveBeenCalled(); expect(f.stopAgent).not.toHaveBeenCalled();
     stopSecond(); expect(f.stopOcr).toHaveBeenCalledOnce(); await f.access.close();
 });
 it('does not bind a remote listener after an in-flight access has been unsubscribed', async () => {
@@ -31,4 +32,13 @@ it('closes both configuration and agent subscriptions even without consumer clea
     expect(f.stopOcr).toHaveBeenCalledOnce(); expect(f.stopAgent).toHaveBeenCalledOnce();
     f.access.subscribe(vi.fn()); expect(f.onChange).toHaveBeenCalledOnce();
     await expect(f.access.get()).rejects.toMatchObject({ code: 'EIO' });
+});
+
+it('keeps independent OCR consumers notified when one observer throws', async () => {
+    const f = fixture(), second = vi.fn(), log = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+        f.access.subscribe(() => {throw new Error('Broken observer');}); f.access.subscribe(second);
+        const [notify] = f.onChange.mock.calls[0] as unknown as [() => void]; notify();
+        expect(second).toHaveBeenCalledOnce(); expect(f.onChange).toHaveBeenCalledOnce();
+    } finally {await f.access.close(); log.mockRestore();}
 });

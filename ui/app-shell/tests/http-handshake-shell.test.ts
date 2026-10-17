@@ -1,0 +1,59 @@
+// @vitest-environment jsdom
+import {afterEach, expect, it, vi} from 'vitest';
+import {webcrypto} from 'node:crypto';
+import {mkdtemp, rm, readFile} from 'node:fs/promises';
+import path from 'node:path';
+import {tmpdir} from 'node:os';
+import {startHost, createCertificates, loadCertificates} from '@itookit/node-host/http';
+import {HttpViewClient} from '@itookit/app-transport/http';
+import {WORKSPACES} from '../../../apps/web-app/src/config/modules';
+import {createBrowserUI} from '../../../apps/web-app/src/ui';
+import {authenticatedFetch} from '../../../apps/http-app/tests/tls-fixture';
+import {INITIAL_CHAT_DOCUMENTS, initialViewRequest} from '../src/startup';
+
+const releases: Array<() => unknown> = [];
+afterEach(async () => {for (const release of releases.splice(0).reverse()) await release(); vi.unstubAllGlobals();});
+
+it('shows the first-paint skeleton while a real HTTPS opening is pending, then mounts the current Session without opening RPCs', async () => {
+    vi.stubGlobal('crypto', webcrypto);
+    vi.stubGlobal('matchMedia', (query: string) => ({matches: query.includes('max-width'), addEventListener() {}, removeEventListener() {}}));
+    vi.stubGlobal('ResizeObserver', class {observe() {} disconnect() {} unobserve() {}});
+    const html = new DOMParser().parseFromString(await readFile('../../apps/web-app/index.html', 'utf8'), 'text/html');
+    document.body.replaceWith(document.importNode(html.body, true));
+    const style = document.createElement('style'); style.textContent = html.querySelector('style')!.textContent; document.head.append(style); releases.push(() => style.remove());
+    const directory = await mkdtemp(path.join(tmpdir(), 'mindos-handshake-shell-')); releases.push(() => rm(directory, {recursive: true, force: true}));
+    const certificates = path.join(directory, 'certs'); await createCertificates(certificates, ['127.0.0.1']);
+    const host = await startHost({root: path.join(directory, 'data'), sidecar: path.join(directory, 'meta'), authDir: path.join(directory, 'auth'),
+        auditFile: path.join(directory, 'audit.jsonl'), certificates: await loadCertificates(certificates), staticDir: directory, host: '127.0.0.1', port: 0, backlog: 32});
+    releases.push(() => host.close());
+    const auth = await authenticatedFetch(certificates); releases.push(() => auth.close());
+    const origin = `https://127.0.0.1:${(host.server.address() as {port: number}).port}/api/application`;
+    const seed = new HttpViewClient('seed', origin, auth.fetcher); releases.push(() => seed.close());
+    const source = await seed.start(), project = await source.services.projects.create('Current project');
+    const id = await source.services.projects.sessions.create('Current HTTPS Session', project.path);
+    history.replaceState({}, '', '/#/chat/' + encodeURIComponent(id));
+    let release!: () => void; const gate = new Promise<void>(resolve => {release = resolve;});
+    const operations: string[] = [];
+    const fetcher: typeof fetch = async (url, init) => {
+        const body = init?.method === 'POST' ? JSON.parse(String(init.body)) : undefined;
+        if (body) operations.push(body.kind === 'call' ? body.call.method : body.kind);
+        const response = await auth.fetcher(url, init);
+        if (body?.kind === 'bootstrap') await gate;
+        return response;
+    };
+    const client = new HttpViewClient('shell', origin, fetcher); releases.push(() => client.close());
+    const opening = client.start({initialView: initialViewRequest(INITIAL_CHAT_DOCUMENTS, id)});
+    await vi.waitFor(() => expect(operations).toEqual(['bootstrap']));
+    expect(getComputedStyle(document.getElementById('app-initial-view')!).display).toBe('flex');
+    release(); const root = await opening;
+    const {initApp} = await import('../src/bootstrap');
+    const app = await initApp({...root, workspaces: WORKSPACES, defaultSlug: 'start', startPage: true, ui: createBrowserUI(root.flowLibrary)});
+    releases.push(() => app.destroy());
+    await client.peer.whenIdle();
+    expect(document.querySelector('.llm-input')).not.toBeNull();
+    expect(root.services.sessionManager.getSnapshot().sessionId).toBe(id);
+    expect(document.body.hasAttribute('data-app-starting')).toBe(false);
+    expect(getComputedStyle(document.getElementById('app-initial-view')!).display).toBe('none');
+    for (const method of ['openView', 'workbenchView', 'activate', 'observeView', 'update']) expect(operations).not.toContain(method);
+    console.log('[HTTPS shell handshake operations]', operations);
+});

@@ -191,6 +191,7 @@ body {
 /*                5. 响应式：侧边栏 → 底部 Tab Bar (≤768px)             */
 /* =================================================================== */
 @media (max-width: 768px) {
+    body[data-app-starting] > :is(.app-sidebar, .main-content-area) { visibility: hidden; }
     body {
         flex-direction: column;
         height: var(--app-visible-height, 100dvh);

@@ -60,7 +60,7 @@ beforeEach(() => {
     vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null,
         setItem: (key: string, value: string) => storage.set(key, value), removeItem: (key: string) => storage.delete(key) });
 });
-afterEach(() => { document.body.replaceChildren(); history.replaceState(null, '', '/'); vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { document.body.replaceChildren(); delete document.body.dataset.appStarting; history.replaceState(null, '', '/'); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 
 describe('saved project routes at bootstrap', () => {
     it('keeps the workbench running when a saved file refers only to a stale project cache', async () => {
@@ -143,6 +143,22 @@ describe('saved project routes at bootstrap', () => {
         });
         try { expect(phases).toEqual(['shell', 'sidebar', 'interactive', 'editor']); }
         finally { await app.destroy(); await f.dispose(); }
+    });
+
+    it('reveals a restored target only after its first resource navigation finishes', async () => {
+        const f = await fixture(), project = (await f.projects.current())!;
+        await f.root.driver.createFile({ parentPath: project.project.directory, name: documentName, content: 'original study notes' });
+        history.replaceState(null, '', '#/chat/' + encodeURIComponent(folderBrowserPath(project.path) + '/@files/' + documentName));
+        document.body.dataset.appStarting = '';
+        const app = await f.start({
+            onShellReady: () => expect(document.body.hasAttribute('data-app-starting')).toBe(true),
+            onWorkspaceReady: () => expect(document.querySelector<HTMLElement>('.mm-layout')?.dataset.workspaceOpening).toBe('true'),
+        });
+        try {
+            expect(document.body.hasAttribute('data-app-starting')).toBe(false);
+            expect(document.querySelector<HTMLElement>('.mm-layout')?.dataset.workspaceOpening).toBeUndefined();
+            expect(defaultEditorFactory).toHaveBeenCalled();
+        } finally {await app.destroy(); await f.dispose();}
     });
 
     it('keeps nested paths and decodes the shell URI envelope only once', () => {

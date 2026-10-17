@@ -15,7 +15,7 @@ export interface CapabilitySchema {
     transaction?: boolean;
     domain?: ViewDomain;
     invalidates?: readonly ViewDomain[];
-    observer?: string | ((value: any, listener: (...events: any[]) => void) => (() => void));
+    observer?: string | ((value: any, listener: (...events: any[]) => void) => (() => void) | Promise<() => void>);
     scopedObserver?: boolean;
     methodMode?: (call: Call) => MethodMode | undefined;
     snapshotView?: (value: any, name: string) => unknown;

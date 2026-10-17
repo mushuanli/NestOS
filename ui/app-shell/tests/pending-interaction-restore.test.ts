@@ -9,6 +9,8 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { Kernel, type DurableTaskProgram, type TaskRecord } from '@itookit/durable-kernel';
 import { RunAttachmentController } from '../../llm-ui/src/shell/RunAttachmentController';
 import { pendingInteractionTask, restoreWaitingAttachment } from '../../llm-ui/src/shell/pending-interaction';
+import {restoreTaskAttachment} from '../../llm-ui/src/shell/task-attachment-lifecycle';
+import {taskAttachment} from '../../../backend/app-core/src/host/task-attachment';
 
 const spec = { program: { kind: 'test.wait', version: '1' }, input: null };
 
@@ -113,7 +115,7 @@ it('discards a pending lookup after its view becomes obsolete', async () => {
     } finally { await f.dispose(); }
 });
 
-it('restores a pending approval after Kernel reconstruction and completes the original task', async () => {
+it.each(['legacy', 'aggregate'])('restores a pending approval through %s recovery after Kernel reconstruction and completes the original task', async mode => {
     const f = await fixture();
     let restored: Kernel | undefined;
     let controller: RunAttachmentController | undefined;
@@ -126,7 +128,13 @@ it('restores a pending approval after Kernel reconstruction and completes the or
         restored.registerProgram(waitProgram()); await restored.initialize();
         const onWaiting = vi.fn();
         controller = new RunAttachmentController(restored, { onEvent: () => {}, onWaiting });
-        expect(await restoreWaitingAttachment(restored, 'session', id => controller!.attach(id))).toBe(task.id);
+        if (mode === 'legacy') expect(await restoreWaitingAttachment(restored, 'session', id => controller!.attach(id))).toBe(task.id);
+        else {
+            const services = {kernel: {kernel: restored}, sessionRepository: {getManifest: async () => ({})}};
+            await restoreTaskAttachment(restored, 'session', controller, () => true, async () => new Set(),
+                (id, key) => taskAttachment(services as never, id, key));
+            expect(controller.activeTaskId).toBe(task.id);
+        }
         await vi.waitFor(() => expect(onWaiting).toHaveBeenCalledWith(expect.objectContaining({ id: 'answer' })));
         await controller.approve();
         expect((await (await restored.openTask(task.id)).wait({ timeoutMs: 2000 })).status).toBe('succeeded');

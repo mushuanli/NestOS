@@ -58,8 +58,11 @@ export interface ChatEditorDeps {
     ocr?: import('@itookit/ui-common').OcrControls;
     commandBus?: ICommandBus;
     kernel?: import('@itookit/durable-kernel/contracts').EditorTaskControlPlane;
+    readTaskAttachment?: import('@itookit/durable-kernel/contracts').ReadTaskAttachment;
     privilegedCommands?: IPrivilegedCommandService;
     sessionSkills?: import('@itookit/tools/contracts').SessionSkillControls;
+    configuration?: import('@itookit/kernel-adapters/contracts').ChatConfigurationView;
+    onLoadMetrics?(metrics: {sessionId: string; durationMs: number; stages: Record<string, number>}): void;
 }
 
 export interface FlowEditorDeps {
@@ -108,6 +111,7 @@ export interface BootWorkspaceParts {
 }
 
 export interface AppOptions {
+    initialView?: import('@itookit/app-contracts/services').OpenedApplicationView;
     fileTypes?: import('./config/file-registry').AppFileTypeConfig[];
     /** Host UI for selecting a server/project and persisting a fresh binding. */
     projectSyncSetup?(projectId: string, signal: AbortSignal): Promise<void>;

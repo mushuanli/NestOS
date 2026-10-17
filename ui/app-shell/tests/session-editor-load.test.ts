@@ -95,6 +95,7 @@ it.each(['main', 'review'])('initializes %s once and restores the selected branc
     expect(f.execute.mock.calls.filter(([name]) => name === 'vcs.branch.list')).toHaveLength(0);
     expect(container.querySelector('.llm-branch-indicator-name')?.textContent).toBe(branch);
     expect(f.execute.mock.calls.filter(([name]) => name === SessionCommand.GetSettings)).toHaveLength(0);
+    expect(f.execute.mock.calls.filter(([name]) => name === SessionCommand.GetSnapshot)).toHaveLength(branch === 'main' ? 0 : 1);
     expect(container.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe(`${branch} draft`);
     expect(container.querySelector<HTMLInputElement>('#llm-title-input')?.value).toBe('Loaded title');
     expect(container.querySelector('[data-execution-mode="agent"]')?.getAttribute('aria-pressed')).toBe('true');

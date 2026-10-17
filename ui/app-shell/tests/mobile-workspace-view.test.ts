@@ -89,6 +89,31 @@ it('opens a deep link directly in detail while restored window entries initializ
     } finally {dispose(); await tabs.destroy();}
 });
 
+it('keeps the requested detail presentation while its editor and navigation are still loading', async () => {
+    const layout = document.createElement('div'), sidebar = document.createElement('div'), editor = document.createElement('div');
+    layout.append(sidebar, editor); document.body.append(layout);
+    layout.dataset.workspaceOpening = 'true';
+    const dispose = setupMobileWorkspaceView(layout, sidebar, editor, true);
+    const tabs = new WorkbenchTabs(editor, {activate: async id => tabs.activate(id), dispose: async () => {}, empty() {}, error() {}},
+        [{id: 'old', title: 'Previous window', pinned: false}]);
+    const flush = () => new Promise(resolve => setTimeout(resolve, 0));
+    try {
+        await flush();
+        expect(layout.dataset.mobileView).toBe('detail');
+        expect(layout.dataset.mobileHeader).toBe('pending');
+        const current = await tabs.open('current', 'Current session', false);
+        await flush(); expect(layout.dataset.mobileHeader).toBe('pending');
+        current.panel.innerHTML = '<div data-editor-mobile-navigation="embedded">Current conversation</div>';
+        delete layout.dataset.workspaceOpening;
+        await flush(); expect(layout.dataset.mobileView).toBe('detail'); expect(layout.dataset.mobileHeader).toBe('embedded');
+        layout.dataset.workspaceOpening = 'true'; await flush();
+        const next = await tabs.open('document', 'Document', false); next.panel.textContent = 'Document';
+        await flush(); expect(layout.dataset.mobileHeader).toBe('pending');
+        delete layout.dataset.workspaceOpening;
+        await flush(); expect(layout.dataset.mobileView).toBe('detail'); expect(layout.dataset.mobileHeader).toBe('standalone');
+    } finally {dispose(); await tabs.destroy();}
+});
+
 it('uses embedded navigation only for the active editor and restores standalone navigation for documents', async () => {
     const layout = document.createElement('div'), sidebar = document.createElement('div'), editor = document.createElement('div');
     layout.append(sidebar, editor); document.body.append(layout);

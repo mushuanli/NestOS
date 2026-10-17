@@ -24,11 +24,12 @@ export function setupMobileWorkspaceView(layout: HTMLElement, sidebar: HTMLEleme
     let hadContent = false;
     let activation = editor.dataset.workbenchActivation;
     const sync = () => {
-        const hasContent = hasEditorContent(editor);
+        const opening = layout.dataset.workspaceOpening === 'true';
+        const hasContent = opening || hasEditorContent(editor);
         const active = editor.classList.contains('workbench-tabs')
             ? editor.querySelector('.workbench-tabs__panel:not([hidden])') : editor;
         layout.dataset.mobileHeader = active?.matches('[data-editor-mobile-navigation="embedded"]')
-            || active?.querySelector('[data-editor-mobile-navigation="embedded"]') ? 'embedded' : 'standalone';
+            || active?.querySelector('[data-editor-mobile-navigation="embedded"]') ? 'embedded' : opening ? 'pending' : 'standalone';
         if (hasContent !== hadContent || activation !== editor.dataset.workbenchActivation)
             layout.dataset.mobileView = hasContent ? 'detail' : 'list';
         hadContent = hasContent;
@@ -36,6 +37,7 @@ export function setupMobileWorkspaceView(layout: HTMLElement, sidebar: HTMLEleme
     };
     const observer = new MutationObserver(sync);
     observer.observe(editor, { childList: true, subtree: true, attributes: true, attributeFilter: ['hidden', 'data-editor-mobile-navigation', 'data-workbench-view', 'data-workbench-activation'] });
+    observer.observe(layout, {attributes: true, attributeFilter: ['data-workspace-opening']});
     const showList = () => {
         layout.dataset.mobileView = 'list';
     };

@@ -30,6 +30,10 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         const captured = ++generation, state = await options.controls.read();
         if (captured === generation) publish(state);
     };
+    const publishResponse = (state: NativeSnapshot, captured: number) => {
+        if (captured !== generation) return;
+        ++generation; publish(state);
+    };
     const off = options.controls.subscribe?.(() => {
         ++generation;
         const state = options.controls.snapshot?.();
@@ -42,7 +46,8 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         async send(input, context) {
             if (!valid(context.viewId)) return { status: 'rejected', operationId: context.operationId, code: 'STALE_VIEW', message: 'Observation binding expired' };
             if (input.attachments.length) return { status: 'rejected', operationId: context.operationId, code: 'ATTACHMENT_MAPPING_REQUIRED', message: 'Native attachments require host conversion' };
-            const state = await options.controls.send(input.text); ++generation; publish(state);
+            const captured = generation, state = await options.controls.send(input.text);
+            publishResponse(state, captured);
             return state.submittedTurnId && !state.pending ? { status: 'accepted', operationId: context.operationId, submissionRef: state.submittedTurnId }
                 : { status: 'unknown', operationId: context.operationId, message: 'Awaiting native receipt' };
         },
@@ -54,7 +59,8 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             const response = request.response.kind === 'approval' ? { decision: request.response.decisionId }
                 : { answers: Object.fromEntries(Object.entries(request.response.values).map(([id, value]) => [id, { answers: Array.isArray(value) ? value : [value] }])) };
             const original = native!.requests.find(item => String(item.id) === request.id)!;
-            const state = await options.controls.respond(original.id, response); ++generation; publish(state);
+            const captured = generation, state = await options.controls.respond(original.id, response);
+            publishResponse(state, captured);
             return { status: 'accepted', operationId: context.operationId };
         },
         async reconcile(operationId) {

@@ -4,6 +4,21 @@ MindOS 对独立 llm-ui 的适配与原产品编辑器兼容入口。通用 Chat
 
 新的 Session/native ChatView 绑定通过 /independent 导出，宿主保留其 source、台账和连接生命周期。原 /chat、/conversation、/settings、/startup 入口继续保留项目草稿、配置、Flow 业务表单、导航及原编辑器行为。
 
+Session 绑定注入 `hasCommittedSubmission`，由宿主调用后端公开函数核对持久提交。仅内存入队时返回 unknown 并保留草稿，后续观察通知重新核对；适配器不直接读取 Round 存储。以下代码位于宿主组合根：
+
+```ts
+import { hasCommittedSubmission } from '@itookit/llm-session';
+import { createSessionChatBinding } from '@itookit/llm-ui-adapter/independent';
+
+const sessionId = session.id;
+const binding = createSessionChatBinding({
+  session, commands, operations,
+  hasCommittedSubmission: submission => hasCommittedSubmission(repository, sessionId, submission),
+});
+```
+
+原生 send/respond 的迟到响应不会覆盖较新的观察快照；操作接纳仍使用与该调用关联的回执。
+
 
 原生 DOM 聊天、历史和 Flow 展示。按需要选择公开入口：
 

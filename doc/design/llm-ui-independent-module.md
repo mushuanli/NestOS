@@ -9,13 +9,22 @@ MindOS 的 Session、Task、Flow 执行、VFS、配置和权限由 `@itookit/llm
 ## 1 模块与当前实施范围
 
 ```mermaid
-flowchart LR
-    App[Web / Tauri / HTTP] --> Adapter[llm-ui-adapter]
-    Adapter --> UI[llm-ui Chat]
-    Adapter --> Flow[llm-ui/flow]
-    UI --> MDX[mdxeditor]
-    Adapter --> Ports[Session / Task / Flow / VFS 公开端口]
-    Ports --> Backend[执行与存储]
+C4Component
+    title Chat 与 Flow 的模块职责
+    Component(app, "Web / Tauri / HTTP", "组合根", "装配端口并持有台账")
+    Component(compat, "llm-ui-adapter/chat", "MindOS UI", "现有产品编辑器兼容入口")
+    Component(binding, "llm-ui-adapter/independent", "展示适配", "Session 与原生会话投影")
+    Component(ui, "libraries/llm-ui", "原生 DOM", "通用 Chat 与按需 Flow")
+    Component(mdx, "mdxeditor", "Markdown", "受控渲染")
+    Component(ports, "宿主注入端口", "公开契约", "命令、观察与持久提交核对")
+    Component(backend, "llm-session / 执行与存储", "后端", "接纳证据、授权与执行")
+    Rel(app, compat, "装配现有产品入口")
+    Rel(app, binding, "装配独立视图入口")
+    Rel(binding, ui, "展示")
+    Rel(ui, mdx, "渲染")
+    Rel(binding, ports, "调用注入能力")
+    Rel(compat, ports, "调用注入能力")
+    Rel(ports, backend, "委托业务语义")
 ```
 
 箭头表示代码依赖；状态通知在运行时由宿主流入 UI。
@@ -52,7 +61,28 @@ UI 生成 operationId。宿主持有 OperationLedger，生命周期长于单个�
 
 unknown 表示副作用可能已经发生。有写操作的宿主必须提供 reconcile(operationId)，读取不能因旧 viewId 失效而无法核对原操作。查询不到不自动等于 rejected。UI 保留输入与操作记录，不自动重发，也不为同一待核对提交生成新 ID 再发送。
 
+edit/retry 共用目标消息的待核对锁；respond 按请求 ID 与 revision 锁定，accepted 后仍等待权威请求更新，局部 Promise 完成不会重新启用按钮。Flow 的 submitting 与 unknown 均提供核对入口，覆盖 register 已持久化、回执未保存即崩溃的恢复窗口。
+
 权威确认先到，迟到网络错误不降级 accepted；接纳后的执行失败由事实投影呈现，不改写提交接纳状态。相互矛盾的终态回执报告给宿主核对，不按最后到达者覆盖。原生会话适配必须由宿主把 operationId 映射到原生持久请求，不能把“最近一次 submittedTurnId”猜作任意旧操作的回执。
+
+Session 适配要求注入 `hasCommittedSubmission(submission)`，宿主委托后端 llm-session 的同名函数核对完整提交身份、执行引用与已提交历史索引。适配层不读取 Round 文件，也不复制持久化协议。`SessionCommand.Send` 返回内存请求 ID 不构成接纳证据；未见持久证据时返回 unknown，后续 Session 通知触发去重核对。confirmed 投影依据后端证据，独立于台账当前状态，避免“台账未接纳所以消息永远不能确认”的循环。
+
+```mermaid
+C4Dynamic
+    title Session 提交与确认
+    Component(view, "ChatView", "UI", "草稿与临时消息")
+    Component(ledger, "OperationLedger", "宿主持有", "保存操作及回执")
+    Component(adapter, "Session 适配器", "展示适配", "关联 operationId")
+    Component(session, "llm-session", "后端", "持久提交证据")
+    RelIndex(1, view, ledger, "register：先保存提交内容")
+    RelIndex(2, view, adapter, "send：固定 operationId")
+    RelIndex(3, adapter, session, "入队并核对持久提交")
+    RelIndex(4, session, adapter, "无证据返回 unknown，保留草稿")
+    RelIndex(5, session, adapter, "提交后通知，再核对证据")
+    RelIndex(6, adapter, view, "发布 confirmed 用户消息")
+    RelIndex(7, view, ledger, "保存 accepted 回执")
+    RelIndex(8, ledger, view, "清理匹配草稿，替换临时卡片")
+```
 
 ## 4 身份、版本与快照
 
@@ -61,6 +91,8 @@ conversationId/flowId 是跨绑定稳定关联，viewId 标识一次固定资源
 getSnapshot 同步读取内存，不发网络请求。先安装订阅，再读取快照；无变化返回同一对象，有变化先原子发布不可变对象，再通知监听。消息身份稳定，只在该消息变化时递增消息 revision。通知不是必须逐条处理的事件日志。
 
 snapshot revision 只表示本地发布顺序，不证明上游数据新旧。适配层负责 refresh、分页和增量之间的竞争，依据上游版本、失效代次或明确合并规则处理。分页合并到最新消息集合，不能用请求开始时的数组覆盖流式更新。
+
+原生 send/respond 与 refresh 同样捕获观察代次；期间有更新通知或新的读取时，迟到操作响应只提供关联回执，不覆盖更晚的会话正文或请求状态。
 
 编辑和重新生成携带目标消息 expectedRevision，不要求整个 ConversationSnapshot.revision 相等。retry 表示重新生成回复，不表示重发未知发送。edit 的分支策略由宿主决定；新分支由宿主建立新 source 与视图。
 
@@ -81,6 +113,7 @@ Flow 的 UI 契约使用通用 FlowSnapshot、节点类型、字段、端口与�
 - 通用视图提供节点面板、端口连线、拖动、节点名称/参数检查器、保存/运行/停止和执行输出。
 - 宿主描述节点类型和字段，复杂参数表单通过显式 mountInspector 注入可信代码。
 - 节点修改携带节点 expectedRevision；连线、保存、运行使用独立 graphRevision，不受运行流式状态更新影响。
+- 检查器保存期间禁用表单；accepted 后等到节点变更快照，再以新版本重建检查器。保存前的外部更新保留本地草稿与原 expectedRevision，继续由宿主检测冲突；切换检查器后不被旧提交重新打开。
 - Flow 操作复用宿主持有的操作台账；unknown 不自动重发，运行结果经 source 输入。
 - 业务模板、参数业务规则、编译、连接授权和持久执行继续归宿主。关闭 Flow 视图不停止后台运行。
 

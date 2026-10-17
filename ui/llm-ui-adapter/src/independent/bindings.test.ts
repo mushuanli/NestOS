@@ -67,3 +67,29 @@ it('preserves unchanged message identity and advances only changed message revis
     source.publish({ ...state, messages: [{ ...message, parts: [{ id: 'text', kind: 'markdown', text: 'second' }] }] });
     expect(first.parts[0]).toMatchObject({ text: 'first' }); expect(source.getSnapshot().messages[0].revision).toBe(first.revision + 1);
 });
+
+it('keeps newer streamed content when an older send response arrives', async () => {
+    const host = fixture(), pending = deferred<ConversationSnapshot>();
+    host.controls.send = async () => pending.promise;
+    const binding = await createNativeChatBinding(host.options);
+    const sending = binding.actions.send!({ text: 'hello', attachments: [] }, { operationId: 'send', viewId: binding.source.getSnapshot().viewId });
+    const old = { ...host.state(), submittedTurnId: 'turn', messages: [{ id: 'reply', role: 'assistant' as const, text: 'old' }] };
+    host.emit({ messages: [{ id: 'reply', role: 'assistant', text: 'new streamed output' }] });
+    pending.resolve(old);
+    expect(await sending).toMatchObject({ status: 'accepted', submissionRef: 'turn' });
+    expect(binding.source.getSnapshot().messages[0].parts[0]).toMatchObject({ text: 'new streamed output' }); binding.dispose();
+});
+
+it('keeps a resolved request when an older approval response arrives', async () => {
+    const host = fixture(), pending = deferred<ConversationSnapshot>();
+    host.emit({ requests: [{ id: 'approval', kind: 'approval', detail: 'Approve?' }] });
+    const respond = vi.fn(async () => pending.promise); host.controls.respond = respond;
+    const binding = await createNativeChatBinding(host.options), request = binding.source.getSnapshot().interactions[0];
+    const responding = binding.actions.respond!({ id: request.id, revision: request.revision,
+        response: { kind: 'approval', decisionId: 'accept' } }, { operationId: 'response', viewId: binding.source.getSnapshot().viewId });
+    await vi.waitFor(() => expect(respond).toHaveBeenCalledOnce());
+    const old = { ...host.state() }; host.emit({ requests: [], messages: [{ id: 'reply', role: 'assistant', text: 'continued' }] });
+    pending.resolve(old); expect(await responding).toMatchObject({ status: 'accepted' });
+    expect(binding.source.getSnapshot().interactions).toEqual([]);
+    expect(binding.source.getSnapshot().messages[0].parts[0]).toMatchObject({ text: 'continued' }); binding.dispose();
+});

@@ -73,3 +73,71 @@ it('renders an inert read-only view when no mutating callbacks exist', async () 
     expect(host.host.querySelector<HTMLButtonElement>('.llm-flow__palette button')!.disabled).toBe(true);
     expect(host.host.querySelector<HTMLButtonElement>('.llm-flow__form button')!.disabled).toBe(true);
 });
+
+it('exposes reconciliation for a submitting operation recovered after a crash', async () => {
+    const run = vi.fn(async (_revision, context) => ({ status: 'accepted' as const, operationId: context.operationId }));
+    const host = fixture({ run });
+    await host.operations.register({ context: { viewId: 'expired', operationId: 'crashed-run' }, conversationId: 'flow',
+        kind: 'flow.run', input: 9, status: 'submitting' });
+    await host.open();
+    const control = [...host.host.querySelectorAll('button')].find(button => button.textContent === '核对操作')!;
+    expect(control).toBeDefined(); control.click();
+    await vi.waitFor(() => expect(host.operations.getSnapshot()[0].status).toBe('accepted'));
+    click(host.host, 'run'); await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+});
+
+it('uses the acknowledged node snapshot for successive inspector saves', async () => {
+    const host = fixture({ updateNode: async (target, change, context) => {
+        host.publish({ nodes: [{ ...host.source.getSnapshot().nodes[0], ...change, revision: target.expectedRevision + 1 }] });
+        return { status: 'accepted', operationId: context.operationId };
+    } });
+    const update = vi.spyOn(host.options.actions, 'updateNode'); const view = await host.open(); view.selectNode('node');
+    const save = (value: string) => {
+        const form = host.host.querySelector<HTMLFormElement>('.llm-flow__form')!;
+        form.querySelector<HTMLInputElement>('[name="prompt"]')!.value = value;
+        form.dispatchEvent(new Event('submit', { cancelable: true }));
+    };
+    save('B'); await vi.waitFor(() => expect(host.operations.getSnapshot()[0]?.status).toBe('accepted'));
+    await vi.waitFor(() => expect(host.host.querySelector<HTMLInputElement>('[name="prompt"]')?.value).toBe('B'));
+    save('C'); await vi.waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    expect(update.mock.calls.map(call => call[0].expectedRevision)).toEqual([4, 5]);
+    expect(host.source.getSnapshot().nodes[0].config.prompt).toBe('C');
+});
+
+it('waits for the saved node projection without rebasing an unsaved external edit', async () => {
+    const updateNode = vi.fn(async (_target, _change, context) => ({ status: 'accepted' as const, operationId: context.operationId }));
+    const host = fixture({ updateNode }), view = await host.open(); view.selectNode('node');
+    const form = host.host.querySelector<HTMLFormElement>('.llm-flow__form')!;
+    form.querySelector<HTMLInputElement>('[name="prompt"]')!.value = 'B'; form.dispatchEvent(new Event('submit', { cancelable: true }));
+    expect(form.querySelector<HTMLInputElement>('[name="prompt"]')!.disabled).toBe(true);
+    await vi.waitFor(() => expect(host.operations.getSnapshot()[0]?.status).toBe('accepted'));
+    await vi.waitFor(() => expect(host.host.querySelector('.llm-flow__form')).toBeNull());
+    host.publish({ nodes: [{ ...host.source.getSnapshot().nodes[0], revision: 5, config: { prompt: 'B' } }] });
+    expect(host.host.querySelector<HTMLInputElement>('[name="prompt"]')!.value).toBe('B');
+    host.host.querySelector<HTMLInputElement>('[name="prompt"]')!.value = 'local unsaved';
+    host.publish({ nodes: [{ ...host.source.getSnapshot().nodes[0], revision: 6, config: { prompt: 'other window' } }] });
+    expect(host.host.querySelector<HTMLInputElement>('[name="prompt"]')!.value).toBe('local unsaved');
+});
+
+it('allows continued editing after an accepted no-op without requiring a new node revision', async () => {
+    const host = fixture({ updateNode: async (_target, _change, context) => ({ status: 'accepted', operationId: context.operationId }) });
+    const view = await host.open(); view.selectNode('node');
+    const form = host.host.querySelector<HTMLFormElement>('.llm-flow__form')!;
+    form.dispatchEvent(new Event('submit', { cancelable: true }));
+    await vi.waitFor(() => expect(host.host.querySelector('.llm-flow__form')).not.toBe(form));
+    expect(host.host.querySelector<HTMLInputElement>('[name="prompt"]')!.disabled).toBe(false);
+    expect(host.source.getSnapshot().nodes[0].revision).toBe(4);
+});
+
+it('does not reopen an old inspector when its save finishes after a selection change', async () => {
+    let finish!: () => void;
+    const host = fixture({ updateNode: async (_target, _change, context) => {
+        await new Promise<void>(resolve => { finish = resolve; }); return { status: 'accepted', operationId: context.operationId };
+    } });
+    host.publish({ nodes: [...host.source.getSnapshot().nodes, { ...host.source.getSnapshot().nodes[0], id: 'other', config: { prompt: 'Other node' } }] });
+    const view = await host.open(); view.selectNode('node');
+    host.host.querySelector<HTMLFormElement>('.llm-flow__form')!.dispatchEvent(new Event('submit', { cancelable: true }));
+    await vi.waitFor(() => expect(finish).toBeDefined()); view.selectNode('other'); finish();
+    await vi.waitFor(() => expect(host.operations.getSnapshot()[0]?.status).toBe('accepted'));
+    expect(host.host.querySelector<HTMLInputElement>('[name="prompt"]')!.value).toBe('Other node');
+});

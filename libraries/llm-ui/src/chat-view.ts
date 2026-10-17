@@ -168,7 +168,8 @@ export class ChatController implements ChatView {
                 this.cards.set(key, card);
             }
             const operation = this.records().find(record => record.kind === 'respond'
-                && typeof record.input === 'object' && record.input !== null && 'id' in record.input && record.input.id === request.id && record.status !== 'rejected');
+                && typeof record.input === 'object' && record.input !== null && 'id' in record.input
+                && record.input.id === request.id && record.input.revision === request.revision && record.status !== 'rejected');
             card.setPending(!this.can('respond') || !!operation, operation ? this.t(operation.status === 'submitting' ? 'pending' : operation.status) : undefined);
             this.requests.append(card.element);
         }
@@ -200,8 +201,11 @@ export class ChatController implements ChatView {
     private async perform(kind: ActionName, input: JsonValue, action: (context: OperationContext) => Promise<OperationReceipt>,
         draft?: import('./contracts').ComposerDraft): Promise<void> {
         if (this.closed || !this.can(kind)) throw new Error('Operation is unavailable');
-        const key = `${kind}:${JSON.stringify(input)}`;
+        const key = operationKey(kind, input);
         if (this.inFlight.has(key)) return;
+        if (this.records().some(record => operationKey(record.kind, record.input) === key
+            && (unresolved(record) || kind === 'respond' && record.status === 'accepted')))
+            throw new Error('Operation is awaiting reconciliation or an updated request');
         this.inFlight.add(key);
         try { await this.dispatch(kind, input, action, draft); }
         finally { this.inFlight.delete(key); }
@@ -276,6 +280,13 @@ export class ChatController implements ChatView {
     }
 }
 function unresolved(record: OperationRecord): boolean { return record.status === 'submitting' || record.status === 'unknown'; }
+function operationKey(kind: OperationRecord['kind'], input: JsonValue): string {
+    if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
+        if ((kind === 'edit' || kind === 'retry') && 'messageId' in input) return `message:${input.messageId}`;
+        if (kind === 'respond' && 'id' in input && 'revision' in input) return `respond:${input.id}:${input.revision}`;
+    }
+    return `${kind}:${JSON.stringify(input)}`;
+}
 function temporaryMessage(record: OperationRecord): ChatMessage {
     return { id: `operation:${record.context.operationId}`, revision: ['submitting', 'accepted', 'unknown', 'rejected'].indexOf(record.status),
         role: 'user', state: record.status === 'rejected' ? 'failed' : 'pending',

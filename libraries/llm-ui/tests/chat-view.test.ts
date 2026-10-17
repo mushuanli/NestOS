@@ -172,3 +172,32 @@ it('keeps the published ledger version when saving a receipt fails', async () =>
     await expect(ledger.settle({ status: 'accepted', operationId: 'op' })).rejects.toThrow('disk full');
     expect(ledger.getSnapshot()[0].status).toBe('unknown');
 });
+
+it('blocks another regeneration until an unknown operation is reconciled, including after reopening', async () => {
+    const retry = vi.fn(async (_target, context) => ({ status: 'unknown' as const, operationId: context.operationId, message: 'Receipt lost' }));
+    const host = fixture({ actions: { retry, reconcile: async operationId => ({ status: 'rejected', operationId, code: 'NOT_STARTED', message: 'Not started' }) } });
+    const first = await host.open(); host.publish({ messages: [{ ...user('s'), allowed: ['retry'] }] });
+    const click = () => [...host.host.querySelectorAll('button')].find(button => button.textContent === '重新生成')!.click();
+    click(); await vi.waitFor(() => expect(host.operations.getSnapshot()[0]?.status).toBe('unknown'));
+    await first.destroy(); host.publish({ viewId: 'binding-2' }); const second = await host.open(); click();
+    await vi.waitFor(() => expect(host.host.textContent).toContain('awaiting reconciliation'));
+    expect(retry).toHaveBeenCalledOnce();
+    await second.reconcile(host.operations.getSnapshot()[0].context.operationId); click();
+    await vi.waitFor(() => expect(retry).toHaveBeenCalledTimes(2));
+});
+
+it.each(['accepted', 'unknown'] as const)('keeps an approval locked after its response is %s', async status => {
+    const respond = vi.fn(async (_request, context) => status === 'accepted'
+        ? { status, operationId: context.operationId } : { status, operationId: context.operationId, message: 'Receipt lost' });
+    const host = fixture({ actions: { respond, reconcile: async operationId => ({ status: 'unknown', operationId, message: '?' }) } });
+    await host.open(); host.publish({ interactions: [{ id: 'approval', revision: 0, kind: 'approval', title: 'Approve?',
+        state: 'pending', decisions: [{ id: 'yes', label: 'YES' }] }] });
+    const control = host.host.querySelector<HTMLButtonElement>('[data-request-id="approval"] button')!;
+    control.click(); await vi.waitFor(() => expect(host.operations.getSnapshot()[0]?.status).toBe(status));
+    await vi.waitFor(() => expect(control.disabled).toBe(true)); control.click();
+    expect(respond).toHaveBeenCalledOnce();
+    host.publish({ interactions: [{ ...host.options.source.getSnapshot().interactions[0], revision: 1 }] });
+    const updated = host.host.querySelector<HTMLButtonElement>('[data-request-id="approval"] button')!;
+    expect(updated.disabled).toBe(false); updated.click();
+    await vi.waitFor(() => expect(respond).toHaveBeenCalledTimes(2));
+});

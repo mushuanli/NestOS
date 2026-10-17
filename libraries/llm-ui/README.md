@@ -71,6 +71,7 @@ const flow = await createFlowView(container, {
 - `accepted` 表示宿主接管提交内容、后续处理及失败恢复责任，不表示模型或任务已完成。内存宿主只保证实例寿命；持久宿主须提供持久接纳证据或可靠待发送记录。
 - 只有关联 operationId 的 **confirmed 用户消息**可确认提交。optimistic 消息不清理草稿。accepted 清理对应草稿，正式用户消息出现后才替换临时气泡，并记录已经观察到正式消息，分页或重开不会复活临时卡片；assistant/tool 消息不会按 submissionId 合并。
 - 有写操作的宿主必须实现 reconcile。unknown 不判失败、不自动重发，也禁止把同一待核对提交换新 ID 再发；查询不到记录仍可返回 unknown。
+- 待核对的 edit/retry 锁定目标消息，respond 锁定请求 ID/revision；审批 accepted 后等待权威请求更新。Flow 恢复的 submitting 与 unknown 操作均可手动核对。
 - 操作台账由宿主持有。`createOperationLedger({ initial, save })` 可接入持久化；register 保存成功后才派发操作，settle 保存成功后才发布结果。重新打开传入同一台账和持久草稿。
 - 接纳确认不会被迟到网络异常降级。矛盾的终态回执通过台账 onError 交给适配层核对；UI 不采用最后到达者覆盖。
 - edit/retry 携带目标消息 revision。宿主进行权威版本检查；产生分支后由宿主创建新的绑定和 ChatView。cancel 必须核对不透明 executionRef。

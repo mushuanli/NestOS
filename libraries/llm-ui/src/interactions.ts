@@ -7,6 +7,7 @@ export class InteractionCard {
     private readonly form = element('form');
     private readonly feedback = element('p', 'llm-chat__error');
     private busy = false;
+    private pending = false;
     private closed = false;
     constructor(readonly request: InteractionView, private readonly t: Translate,
         private readonly submit: (response: InteractionResponse) => Promise<void>) {
@@ -43,13 +44,14 @@ export class InteractionCard {
         });
     }
     private async run(response: InteractionResponse): Promise<void> {
-        if (this.busy || this.closed) return;
+        if (this.busy || this.pending || this.closed) return;
         this.busy = true; this.disable(true); this.feedback.textContent = this.t('pending');
         try { await this.submit(response); if (!this.closed) this.feedback.textContent = this.t('accepted'); }
         catch (error) { if (!this.closed) this.feedback.textContent = errorText(error); }
-        finally { this.busy = false; if (!this.closed) this.disable(false); }
+        finally { this.busy = false; if (!this.closed) this.disable(this.pending); }
     }
     setPending(pending: boolean, message?: string): void {
+        this.pending = pending;
         this.disable(pending || this.busy);
         if (message) this.feedback.textContent = message;
     }

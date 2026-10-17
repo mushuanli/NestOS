@@ -7,7 +7,8 @@ import { mountFlowInspector } from './flow-inspector';
 export type * from './flow-contracts';
 export { createOperationLedger } from './operations';
 const zh: Record<string, string> = { addNode: '添加节点', updateNode: '更新节点', removeNode: '删除节点', connect: '连接', disconnect: '断开连接',
-    save: '保存', run: '运行', cancel: '停止', refresh: '刷新', apply: '应用', name: '名称', accepted: '已接纳', reconcile: '核对操作' };
+    save: '保存', run: '运行', cancel: '停止', refresh: '刷新', apply: '应用', name: '名称', accepted: '已接纳', reconcile: '核对操作',
+    waitingChanges: '等待已保存的节点更新' };
 
 class FlowController implements FlowView {
     private readonly root = element('section', 'llm-flow');
@@ -28,6 +29,8 @@ class FlowController implements FlowView {
     private selected?: string;
     private connecting?: { endpoint: FlowEndpoint; revision: number };
     private mounted?: MountedFlowInspector;
+    private inspectorVersion = 0;
+    private waitingInspector?: { id: string; revision: number; change: FlowNodeChange };
     private active = true;
     private closed = false;
     private disposed?: Promise<void>;
@@ -54,6 +57,7 @@ class FlowController implements FlowView {
         if (this.active) this.render();
     }
     private render(): void {
+        this.refreshInspector();
         this.renderToolbar(); this.renderPalette(); this.renderNodes(); this.renderEdges(); this.renderOperations();
         if (this.selected && !this.snapshot.nodes.some(node => node.id === this.selected)) this.clearInspector();
         this.output.textContent = this.snapshot.execution ? JSON.stringify(this.snapshot.execution, null, 2) : '';
@@ -144,7 +148,9 @@ class FlowController implements FlowView {
         if (this.closed) return;
         const node = this.snapshot.nodes.find(item => item.id === id); if (!node) return;
         this.clearInspector(); this.selected = id;
-        const context = { node, snapshot: this.snapshot, canEdit: this.can('updateNode'), commit: (change: FlowNodeChange) => this.commit(node, change) };
+        const version = this.inspectorVersion;
+        const context = { node, snapshot: this.snapshot, canEdit: this.can('updateNode'),
+            commit: (change: FlowNodeChange) => this.commitInspector(node, change, version) };
         try { this.mounted = this.options.mountInspector?.(this.inspector, context) ?? mountFlowInspector(this.inspector, context, this.t); }
         catch (error) { this.report(error); }
         if (this.can('removeNode')) this.inspector.append(button(this.t('removeNode'), () => {
@@ -157,7 +163,22 @@ class FlowController implements FlowView {
         const target = { nodeId: node.id, expectedRevision: node.revision };
         return this.perform('updateNode', { ...target, ...change } as JsonValue, context => this.options.actions.updateNode!(target, change, context));
     }
+    private async commitInspector(node: FlowNodeView, change: FlowNodeChange, version: number): Promise<void> {
+        await this.commit(node, change);
+        if (this.closed || this.inspectorVersion !== version) return;
+        this.clearInspector(); this.selected = node.id;
+        this.waitingInspector = { id: node.id, revision: node.revision, change };
+        this.inspector.textContent = this.t('waitingChanges');
+        this.refreshInspector();
+    }
+    private refreshInspector(): void {
+        const pending = this.waitingInspector;
+        if (!pending) return;
+        const node = this.snapshot.nodes.find(item => item.id === pending.id);
+        if (node && (node.revision !== pending.revision || matchesChange(node, pending.change))) this.selectNode(node.id);
+    }
     private clearInspector(): void {
+        ++this.inspectorVersion; this.waitingInspector = undefined;
         const mounted = this.mounted; this.mounted = undefined; this.selected = undefined; this.inspector.replaceChildren();
         if (mounted) { const task = Promise.resolve().then(() => mounted.destroy()); void task.catch(() => {}); this.disposers.push(() => task); }
     }
@@ -195,7 +216,7 @@ class FlowController implements FlowView {
         for (const record of this.options.operations.getSnapshot()) {
             if (record.conversationId !== this.snapshot.flowId || record.status === 'accepted') continue;
             const row = element('p', undefined, record.message ?? record.status);
-            if (record.status === 'unknown' && this.options.actions.reconcile) row.append(button(this.t('reconcile'), () => {
+            if ((record.status === 'unknown' || record.status === 'submitting') && this.options.actions.reconcile) row.append(button(this.t('reconcile'), () => {
                 void this.reconcile(record.context.operationId).catch(error => this.report(error));
             }));
             this.feedback.append(row);
@@ -209,6 +230,11 @@ class FlowController implements FlowView {
         this.closed = true; this.clearInspector();
         return this.disposed = disposeAll([...this.disposers, () => this.root.remove()]);
     }
+}
+function matchesChange(node: FlowNodeView, change: FlowNodeChange): boolean {
+    return (change.name === undefined || change.name === node.name)
+        && (change.config === undefined || JSON.stringify(change.config) === JSON.stringify(node.config))
+        && (change.position === undefined || change.position.x === node.position.x && change.position.y === node.position.y);
 }
 function flowKind(name: FlowActionName): OperationKind {
     return ({ addNode: 'flow.add-node', updateNode: 'flow.update-node', removeNode: 'flow.remove-node', connect: 'flow.connect',

@@ -4,6 +4,8 @@
 
 独立 `@itookit/llm-ui` 的 ChatOptions/ConversationSource/ConversationActions/OperationLedger 定义于 [contracts.ts](../libraries/llm-ui/src/contracts.ts)，FlowSource/FlowActions 定义于 [flow-contracts.ts](../libraries/llm-ui/src/flow-contracts.ts)。两者只依赖展示数据与 mdxeditor；MindOS 接线位于 `llm-ui-adapter/independent`，原工厂兼容入口迁至适配包。Flow 通过 `features.flow` 与 `setFlowEnabled` 控制，默认关闭。
 
+`SessionChatBindingOptions.hasCommittedSubmission(submission)` 由宿主注入，委托 llm-session 的公开持久提交查询；不再注入仓储或在 UI 解析 Round。Send 入队后的回执与后续 confirmed 投影均依据同一后端证据；unknown 的 edit/retry 锁定目标消息，respond 锁定请求 ID/revision。Flow 的恢复 submitting 操作可显式核对，检查器保存后从新节点快照获取下次编辑版本。
+
 ## VFS 体系（@itookit/vfs-core）
 
 | 接口 | 核心方法 | 定义 | 实现 | 消费 |

@@ -5,7 +5,7 @@ const state = vi.hoisted(() => ({ options: undefined as any, restore: vi.fn(), d
 vi.mock('../../llm-ui/src/shell/AgentProvider', () => ({ buildExecutorOptions: async () => [], buildConnectionOptions: async () => [] }));
 vi.mock('../../llm-ui/src/components/input/ChatInputView', () => ({ ChatInput: class {
     constructor(_container: HTMLElement, options: unknown) { state.options = options; }
-    focus() {} setLoading() {} restoreDraft = state.restore; destroy = state.destroy;
+    focus() {} setLoading() {} refreshConnections() {} restoreDraft = state.restore; destroy = state.destroy;
 } }));
 
 it('does not materialize while opening or on empty send; the first submitted payload reaches the real editor once', async () => {
@@ -23,6 +23,44 @@ it('does not materialize while opening or on empty send; the first submitted pay
     finish({ editor: { commands: { sendMessage } }, resumeOnly: false }); await sending;
     expect(sendMessage).toHaveBeenCalledExactlyOnceWith({ text: 'hello', files: [], agentId: 'writer', overrides: { connectionId: 'model-1' } });
     await editor.destroy();
+});
+
+it('reopens a promoted project draft with a fresh save cursor after another browser submitted it', async () => {
+    const save = vi.fn(async () => {}), nextSave = vi.fn(async () => {});
+    const next = {initialData: '', save: nextSave, materialize: vi.fn()};
+    const refresh = vi.fn(async () => next);
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never,
+        {sessionDraft: {initialData: '', save, refresh, materialize: vi.fn()}});
+    await editor.init(document.createElement('div')); await editor.activate();
+    state.options.onDraftChange({text: 'Next conversation', agentId: 'default', settings: {}}, []);
+    await editor.flushPendingSave(); expect(nextSave).toHaveBeenCalledOnce(); expect(save).not.toHaveBeenCalled(); await editor.destroy();
+});
+
+it('shares activation and promotion refreshes without replacing the draft editor twice', async () => {
+    let finish!: (value: any) => void;
+    const pending = new Promise<any>(resolve => {finish = resolve;}), refresh = vi.fn(() => pending), save = vi.fn();
+    const next = {initialData: '', save, materialize: vi.fn()};
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never,
+        {sessionDraft: {refresh, materialize: vi.fn()}});
+    await editor.init(document.createElement('div')); const render = vi.spyOn(editor, 'render');
+    const active = editor.activate(), promoted = editor.commands.refreshDraft();
+    finish(next); await Promise.all([active, promoted]);
+    expect(refresh).toHaveBeenCalledOnce(); expect(render).toHaveBeenCalledOnce();
+    state.options.onDraftChange({text: 'Keep successor input', agentId: 'default', settings: {}}, []);
+    await editor.flushPendingSave(); expect(save).toHaveBeenCalledOnce(); await editor.destroy();
+});
+
+it('preserves edits made while checking for a promoted draft instead of replacing the input', async () => {
+    let finish!: (value: any) => void;
+    const nextSave = vi.fn(), refresh = vi.fn(() => new Promise<any>(resolve => {finish = resolve;}));
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never,
+        {sessionDraft: {save: async () => {}, refresh, materialize: vi.fn()}});
+    await editor.init(document.createElement('div')); const active = editor.activate();
+    await vi.waitFor(() => expect(refresh).toHaveBeenCalled());
+    state.options.onDraftChange({text: 'Keep new typing', agentId: 'default', settings: {}}, []); await editor.flushPendingSave();
+    finish({initialData: '', save: nextSave, materialize: vi.fn()}); await active;
+    state.options.onDraftChange({text: 'Still my draft', agentId: 'default', settings: {}}, []); await editor.flushPendingSave();
+    expect(nextSave).not.toHaveBeenCalled(); await editor.destroy();
 });
 
 it('restores text, agent, options and binary attachments after reopening', async () => {

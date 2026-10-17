@@ -138,3 +138,7 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 
 - configuration/skills-files.ts 拥有技能文件系统与服务订阅，tool-groups.ts 拥有产品默认工具分类；toolbox-resources.navigation 聚合目录、分组与说明。host.toolboxView 不接收前端文件系统，返回后端准备的 initial 快照与实时端口。导航初始化/刷新不回调浏览器取数。
 - Skill 的非空导入与所有写入必须先解析、校验再保存；存储错误不得触发空白资源回退，身份变更的旧记录删除失败必须报错。媒体授权转换由 DigitalTwinService.authorizeMedia 统一处理，语音 input/instructions 保持独立文本边界；Runtime 只接线。媒体回执通过 Kernel.inspectSession 按身份定位存储，不枚举其他 Session。
+
+- ToolboxInventory 投影连接的安全 credentialsReady 和聊天模型显示名称；通过 kernel-adapters/contracts 的 resolveChatModelTiers 按 optimal、standard、fast 选择目录中存在的聊天模型，不把未知模型 ID 当作就绪。缺少聊天模型显式返回 null，确保 HTTP JSON 保留未就绪信息，不向 UI 传递 API Key 或 OAuth 凭据。
+
+ProjectDraftComposer.refresh 先核对该项目的持久提交证据，补偿漏通知或收尾失败，再凭提升回执返回新 composer；旧写游标继续拒绝跨代保存。公共 composer/提升事件复用 app-contracts，内部 DraftStore 必须提供 wasPromoted。

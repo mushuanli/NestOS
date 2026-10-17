@@ -57,6 +57,51 @@ it('recovers a lost notification and creates only one successor across concurren
     } finally { await f.manager.dispose(); }
 });
 
+it('offers a fresh composer after promotion while rejecting writes through the old browser cursor', async () => {
+    const f = await fixture();
+    try {
+        const browser = await f.lifecycle.open('p', '/');
+        expect(await browser.refresh?.()).toBeUndefined();
+        await f.accept(); await f.lifecycle.recover();
+        const next = await browser.refresh?.(); expect(next?.initialData).toBe('');
+        await expect(browser.save('stale input')).rejects.toMatchObject({code: 'ECONFLICT'});
+        await next!.save('New browser conversation');
+        expect((await new ProjectDraftStore(f.fs, 'p').load()).data).toBe('New browser conversation');
+    } finally {await f.manager.dispose();}
+});
+
+it('refreshes committed drafts without notifications and promotes only once across concurrent refreshes', async () => {
+    const f = await fixture(), promoted = vi.fn(); f.lifecycle.onPromoted(promoted);
+    try {
+        const browser = await f.lifecycle.open('p', '/');
+        await f.accept({}, false);
+        expect(await browser.refresh?.()).toBeUndefined();
+        expect(promoted).not.toHaveBeenCalled();
+        await f.accept();
+        const [first, second] = await Promise.all([browser.refresh!(), browser.refresh!()]);
+        expect(first?.initialData).toBe(''); expect(second?.initialData).toBe('');
+        expect(promoted).toHaveBeenCalledOnce();
+        await expect(browser.save('late input')).rejects.toMatchObject({code: 'ECONFLICT'});
+        await first!.save('Next conversation');
+        await expect(second!.save('Competing input')).rejects.toMatchObject({code: 'ECONFLICT'});
+        expect((await new ProjectDraftStore(f.fs, 'p').load()).data).toBe('Next conversation');
+    } finally {await f.manager.dispose();}
+});
+
+it('retries draft promotion on refresh after submission reconciliation failed', async () => {
+    const f = await fixture();
+    const promote = vi.spyOn(ProjectDraftStore.prototype, 'promote');
+    try {
+        const browser = await f.lifecycle.open('p', '/'); await f.accept();
+        promote.mockRejectedValueOnce(new Error('Temporary storage failure'));
+        await expect(f.lifecycle.submitted({sessionId: f.intent.sessionId!, roundId: f.source.id, submission: f.source}))
+            .rejects.toThrow('Temporary storage failure');
+        expect((await browser.refresh?.())?.initialData).toBe('');
+        expect(promote).toHaveBeenCalledTimes(2);
+        await expect(browser.save('late input')).rejects.toMatchObject({code: 'ECONFLICT'});
+    } finally {promote.mockRestore(); await f.manager.dispose();}
+});
+
 it('retains the same submission identity for explicit retry of an unaccepted reserved Session', async () => {
     const f = await fixture();
     try {

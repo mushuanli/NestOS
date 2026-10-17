@@ -7,6 +7,7 @@ export interface SessionDraftControls<TSubmission = unknown> {
         read(id: string): Promise<ArrayBuffer>;
     };
     readonly initialData?: string;
+    refresh?(): Promise<SessionDraftControls<TSubmission> | undefined>;
     save?(data: string): Promise<void>;
     clear?(): Promise<void>;
     materialize(): Promise<{ editor: IEditor; resumeOnly: boolean; submission?: TSubmission }>;

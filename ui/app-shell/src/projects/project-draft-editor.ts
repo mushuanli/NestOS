@@ -7,6 +7,10 @@ export function createProjectDraftControls(composer: ProjectDraftComposer,
     return {
         initialData: composer.initialData,
         attachments: composer.attachments,
+        refresh: async () => {
+            const next = await composer.refresh?.();
+            return next ? createProjectDraftControls(next, navigation) : undefined;
+        },
         save: data => composer.save(data),
         clear: () => composer.clear(),
         materialize: async () => {

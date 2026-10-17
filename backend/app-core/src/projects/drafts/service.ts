@@ -16,6 +16,10 @@ export class ProjectDraftService {
         let resumeOnly = record.state === 'submitting';
         return {
             initialData: record.data,
+            refresh: async () => {
+                await this.reconcile(projectId);
+                return await store.wasPromoted() ? this.open(projectId, folder) : undefined;
+            },
             attachments: { put: content => store.putAttachment(content), read: id => store.readAttachment(id) },
             save: data => store.saveData(data), clear: async () => { await store.reset(); resumeOnly = false; },
             prepare: async () => {

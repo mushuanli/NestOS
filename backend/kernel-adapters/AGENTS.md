@@ -102,6 +102,8 @@ pnpm --filter @itookit/kernel-adapters typecheck
 
 `@itookit/kernel-adapters/contracts` 定义 Agent、连接管理、恢复与定价契约及纯策略，不加载适配器运行时、VFS、YAML 或 MCP SDK。Session 与设置 UI 直接消费此入口；适配层不得反向依赖 Session、Flow 或 Tasks。模型事件来自 driver-llm/contracts 的 LlmCommunicationEvent。
 
+`resolveChatModelTiers` 统一工具箱与聊天菜单的模型档位解析：只返回 Provider 目录中存在的聊天模型，保留缺省 category 的聊天语义，不为 standard/fast 添加未配置档位；optimal 缺省时沿用连接 model。未知 ID 和媒体模型不可作为聊天候选，执行准入继续由 assertModelConnection 校验。
+
 模型管理机制使用 `/llm/core`，预设经 `presets` 快照注入，自动连接经 `providerConnectionPolicy` 注入。MindOS 目录与默认连接策略只在可选 `/llm/presets`；旧 `/llm` 聚合入口已删除。禁止机制入口加载产品目录。
 
 配置格式与目录组合只从 `/llm/config` 提供，不依赖产品目录或设备实现。MCP 宿主桥从 `/llm/mcp-host` 的 createMCPStdioTransportFactory 创建，通过驱动 options.mcp.stdioTransport 注入。机制入口禁止读取全局桥；不提供全局桥注册或兼容构造器。

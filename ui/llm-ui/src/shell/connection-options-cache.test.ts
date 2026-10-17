@@ -1,5 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { acquireConnectionOptions } from './connection-options-cache';
+import { buildConnectionOptions } from './AgentProvider';
 
 function fixture() {
     const listeners = new Set<() => void>();
@@ -38,4 +39,18 @@ it('discards an in-flight snapshot invalidated by a newer event and retries fail
     fire(); getConnections.mockRejectedValueOnce(new Error('temporary'));
     await expect(cache.read()).rejects.toThrow('temporary');
     expect((await cache.read())[0].id).toBe('c'); cache.dispose();
+});
+
+it('offers known chat tiers while excluding media and removed catalog models', async () => {
+    const provider = {id: 'p', enabled: true, models: [
+        {id: 'chat', name: 'Chat', category: 'chat'}, {id: 'image', name: 'Image', category: 'image'},
+    ]};
+    const service = {getProvider: () => provider, getDefaultConnection: async () => null, getConnections: async () => [
+        {id: 'mixed', name: 'Mixed', providerId: 'p', model: 'image', tiers: {optimal: 'image', standard: 'chat', fast: 'removed'}, hasApiKey: true},
+        {id: 'removed', name: 'Removed', providerId: 'p', model: 'chat', tiers: {optimal: 'removed'}, hasApiKey: true},
+    ]};
+    const [mixed, removed] = await buildConnectionOptions(service as never);
+    expect(mixed).toMatchObject({id: 'mixed', hasTiers: true, tiers: {standard: 'Chat'}});
+    expect(mixed.tiers).toEqual({standard: 'Chat'});
+    expect(removed.tiers).toEqual({});
 });

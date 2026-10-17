@@ -97,3 +97,7 @@ Session 编辑器可消费泛型 EditorOptions.initialData 的已激活读模型
 聊天提交反馈共用 `HistoryView` 的 `SubmissionFeedback`，本地 `SendMessageCommand` 与远程编辑器只提供状态和显式消息身份。临时用户卡片不写入持久历史；本地沿用 `SendIntent.submission.id` 对齐 round，远程使用已确认的 `submittedTurnId` 对齐原生 turn。不按文字相等去重，不把提交中显示为运行中，失败保留输入。直接命令仍无聊天轮次。历史顶部控件使用 `HistoryViewOptions.header`，位于滚动区内、消息 renderer 之外，分页保留已有 MDx 实例。远程分支删除由宿主调用既有管理服务，后端保护当前分支及其祖先；当前分支不显示删除按钮。
 
 历史卡片销毁由 `MDxController` 等待在途初始化及 MDx 的异步销毁，`SessionRenderer` 汇总回收 Promise，`HistoryView.destroy` 返回可等待的结果。临时卡片被原生回显替换后，关闭编辑器仍会等待其完整释放。
+
+聊天候选复用 kernel-adapters/contracts 的纯函数 resolveChatModelTiers，排除目录中不存在或明确非聊天的模型；构建将该纯契约代码内联到独立入口，不增加发布时的后端依赖。
+
+SessionDraftEditor 激活时刷新已提升草稿，激活与提升通知共享在途刷新，避免重复重建编辑器；未保存输入和检查期间的新编辑优先保留，隐藏编辑器不刷新或抢焦点。

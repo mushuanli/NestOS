@@ -10,3 +10,5 @@
 运行时只依赖 common 与 vfs-core。领域类型通过公开入口引用，开发依赖不授予运行时实现导入权限。不得在契约里重新导出 Runtime、执行服务或 DOM 组件的值。`pnpm modules:check` 校验传递加载，`pnpm modules:buildcheck` 校验完整前端公开入口。
 
 - WorkbenchView/SessionOpenView 是应用聚合契约：后端准备只读模型、能力与资源所有权，前端决定编辑器保存/切换时机。UI 文档保持不透明，连接兴趣按 revision 更新，不能传递实现类或前端类型。
+
+工具箱连接元数据只投影安全的 `credentialsReady` 和聊天模型显示名称 `model`；model 表示按 optimal、standard、fast 顺序找到的首个已配置且存在于目录的聊天模型，不等同于默认档一定能聊天。没有可用聊天模型用 null 保留跨 JSON 传输语义，不暴露 API Key 或 OAuth 凭据。

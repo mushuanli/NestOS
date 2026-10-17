@@ -237,6 +237,8 @@ export interface ProjectDraftPromotion {
 }
 
 export interface ProjectDraftComposer {
+    /** Reconcile durable submission evidence and replace this cursor only after its promotion. */
+    refresh?(): Promise<ProjectDraftComposer | undefined>;
     readonly attachments: {
         put(content: ArrayBuffer): Promise<string>;
         read(id: string): Promise<ArrayBuffer>;

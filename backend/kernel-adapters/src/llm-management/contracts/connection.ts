@@ -1,5 +1,5 @@
 // Compatibility exports; communication contracts are owned by the client.
-import type { DailyCost, ModelTier, ApiProtocol, LLMProvider, LLMConnection, ConnectionMeta } from '@itookit/driver-llm/contracts';
+import type { DailyCost, ModelTier, ApiProtocol, LLMModel, LLMProvider, LLMConnection, ConnectionMeta } from '@itookit/driver-llm/contracts';
 export type { ModelCategory, LLMModel, DailyCost, ModelTier, ApiProtocol, LLMProviderImplementation, LLMProvider, LLMConnection, ConnectionMeta, ConnectionTestResult, ProviderConnectionTestParams } from '@itookit/driver-llm/contracts';
 
 export function hasConnectionCredentials(connection: Pick<ConnectionMeta, 'credentialsReady' | 'hasApiKey' | 'providerId'>): boolean {
@@ -129,6 +129,22 @@ export function resolveModelForTier(
         if (modelId) return modelId;
     }
     return conn.model;
+}
+
+/** Keep configured chat choices only; catalog misses must not become selectable models. */
+export function resolveChatModelTiers(
+    connection: Pick<ConnectionMeta, 'model' | 'tiers'>,
+    provider: Pick<LLMProvider, 'models'> | undefined,
+): Partial<Record<ModelTier, LLMModel>> {
+    const models: Partial<Record<ModelTier, LLMModel>> = {};
+    const configured = {...connection.tiers, optimal: resolveModelForTier(connection, 'optimal')};
+    for (const tier of ['optimal', 'standard', 'fast'] as const) {
+        const id = configured[tier];
+        if (!id) continue;
+        const model = provider?.models.find(item => item.id === id);
+        if (model && (model.category ?? 'chat') === 'chat') models[tier] = model;
+    }
+    return models;
 }
 
 /** 解析最终温度：connection.temperature → provider.defaultTemperature → undefined */

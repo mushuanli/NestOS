@@ -2,10 +2,10 @@
 // Agent/Connection data-fetching helpers — extracted from LLMWorkspaceEditor.
 // Pure async functions: no DOM access, no mutable state.
 
-import type { IAgentConfigService } from '@itookit/kernel-adapters/contracts';
+import { resolveChatModelTiers, type IAgentConfigService } from '@itookit/kernel-adapters/contracts';
 import type { ExecutorOption, ConnectionOption } from '../domain/types';
 import { formatDefaultFileTitle } from '@itookit/common';
-import type { ModelTier } from '@itookit/driver-llm/contracts';
+import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 
 export async function buildExecutorOptions(
     agentService: IAgentConfigService,
@@ -55,36 +55,17 @@ export async function buildConnectionOptions(
 
     return connections
         .filter(c => c.enabled !== false && agentService.getProvider(c.providerId)?.enabled !== false)
-        .map(c => {
-            // Use getProvider() — same cache as getProviders() but more direct
-            const provider = agentService.getProvider(c.providerId);
-            const tiersMap: Partial<Record<ModelTier, string>> = {};
-
-            // Map tier model IDs → display names from provider catalog
-            for (const [tier, modelId] of Object.entries(c.tiers ?? {}) as [ModelTier, string][]) {
-                if (!modelId) continue;
-                const modelName = provider?.models.find(m => m.id === modelId)?.name;
-                tiersMap[tier] = modelName ?? modelId;
-            }
-            // Always populate optimal from c.model (already resolved by toConnectionMeta)
-            if (!tiersMap.optimal && c.model) {
-                const modelName = provider?.models.find(m => m.id === c.model)?.name;
-                tiersMap.optimal = modelName ?? c.model;
-            }
-
-            return {
-                id: c.id,
-                isDefault: c.id === defaultId,
-                name: c.name,
-                provider: c.providerId,
-                hasApiKey: c.hasApiKey,
-                credentialsReady: c.credentialsReady,
-                hasTiers: !!(c.tiers?.standard || c.tiers?.fast),
-                tiers: tiersMap,
-            };
-        });
+        .map(c => connectionOption(c, agentService.getProvider(c.providerId), defaultId));
 }
 
+function connectionOption(connection: ConnectionMeta, provider: LLMProvider | undefined, defaultId?: string): ConnectionOption {
+    const tiers = Object.fromEntries(Object.entries(resolveChatModelTiers(connection, provider))
+        .map(([tier, model]) => [tier, model.name || model.id]));
+    return {id: connection.id, isDefault: connection.id === defaultId, name: connection.name,
+        provider: connection.providerId,
+        hasApiKey: connection.hasApiKey, credentialsReady: connection.credentialsReady,
+        hasTiers: !!(tiers.standard || tiers.fast), tiers};
+}
 export function formatDefaultTitle(agentId: string, agentService: IAgentConfigService): string {
     const base = formatDefaultFileTitle();
     const agentName = sanitizeFileName(getAgentDisplayName(agentId, agentService));

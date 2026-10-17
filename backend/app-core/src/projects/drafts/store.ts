@@ -69,6 +69,9 @@ export class ProjectDraftStore {
     }
     saveData(data: string): Promise<void> { return this.save({ data }); }
     reset(): Promise<void> { return this.save(null); }
+    async wasPromoted(): Promise<boolean> {
+        return await this.fs.meta.seq!.getEntry(this.path, `promotion/${this.record.id}`) !== null;
+    }
     private save(patch: Partial<ProjectDraftRecord> | null): Promise<void> {
         return this.enqueue(async () => {
             const oldId = this.record.id;

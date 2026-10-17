@@ -2,7 +2,7 @@ import { createFileSystemSource, MemoryBackend, type FileSystemSourceOwner } fro
 import { ENTITY_ICONS, t } from '@itookit/common';
 import { type SystemPromptDefinition } from '@itookit/llm-tasks/contracts';
 import { type MCPServer, type MCPConnectionState } from '@itookit/tools/mcp-contracts';
-import { type IConnectionService } from '@itookit/kernel-adapters/contracts';
+import { hasConnectionCredentials, resolveChatModelTiers, type IConnectionService } from '@itookit/kernel-adapters/contracts';
 import { type ToolMeta } from '@itookit/tools/contracts';
 import { type ToolDefinition } from '@itookit/llm-context';
 
@@ -18,7 +18,7 @@ export class ToolboxInventory {
     readonly remoteAgents = new Map<string, RemoteHarnessAgent>();
     get remoteAgentSource() { return this.owners.remoteAgents!.fs; }
     readonly providers = new Map<string, { id: string; name: string; icon?: string; enabled: boolean; configured: boolean; authentication?: 'chatgpt'; authorizationAvailable?: boolean }>();
-    readonly connections = new Map<string, { providerId: string; enabled: boolean }>();
+    readonly connections = new Map<string, { providerId: string; enabled: boolean; credentialsReady?: boolean; model?: string | null }>();
     defaultConnectionId?: string;
     readonly tools = new Map<string, ToolboxTool>();
     constructor(private readonly servers: () => Promise<MCPServer[]>, private readonly catalog: Catalog, private readonly models?: IConnectionService, private readonly prompts?: () => Promise<SystemPromptDefinition[]>, private readonly harnesses?: () => Promise<RemoteHarnessAgent[]>) {}
@@ -68,7 +68,12 @@ export class ToolboxInventory {
             ...(subscription ? { authentication: 'chatgpt', authorizationAvailable: authorization?.supported === true } : {}),
             configured: subscription ? authorization?.status === 'authorized' : item.id === 'codex' || !!(await this.models?.getFullProvider(item.id))?.apiKey?.trim() });
         }
-        for (const item of connections) this.connections.set(item.id, { providerId: item.providerId, enabled: item.enabled !== false });
+        for (const item of connections) {
+            const provider = providers.find(provider => provider.id === item.providerId);
+            const [model] = Object.values(resolveChatModelTiers(item, provider));
+            this.connections.set(item.id, {providerId: item.providerId, enabled: item.enabled !== false,
+                credentialsReady: hasConnectionCredentials(item), model: model ? model.name || model.id : null});
+        }
         await this.replace('providers', providers.map(item => ({ id: item.id, name: item.name,
             description: item.baseURL ?? '', source: item.implementation, icon: item.icon ?? ENTITY_ICONS.llm })));
         await this.replace('connections', connections.map(item => ({

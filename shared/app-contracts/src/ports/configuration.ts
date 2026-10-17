@@ -93,6 +93,9 @@ export interface ToolboxInventory {
     readonly connections: Map<string, {
         providerId: string;
         enabled: boolean;
+        credentialsReady?: boolean;
+        /** First available configured chat tier (optimal, standard, fast); null when none exists in the catalog. */
+        model?: string | null;
     }>;
     defaultConnectionId?: string;
     readonly tools: Map<string, ToolboxTool>;

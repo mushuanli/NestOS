@@ -13,6 +13,7 @@ export class SessionDraftEditor extends IEditor {
     private codec: DraftDataCodec;
     private input?: ChatInput;
     private closed = false;
+    private active = true;
     private sending = false;
     private restoring = true;
     private readonly saves = new DraftSaveQueue(data => this.options.sessionDraft?.save?.(data) ?? Promise.resolve(), error => {
@@ -23,6 +24,8 @@ export class SessionDraftEditor extends IEditor {
     private config?: IChatInputConfig;
     private initialData?: string;
     private status?: HTMLElement;
+    private editRevision = 0;
+    private refreshing?: Promise<void>;
     private readonly beforeUnload = (event: BeforeUnloadEvent) => {
         if (!this.saves.dirty) return;
         event.preventDefault(); event.returnValue = '';
@@ -47,7 +50,7 @@ export class SessionDraftEditor extends IEditor {
         this.restoring = false;
         if (saved.migrated && saved.config) { this.persist(saved.config, saved.files); await this.saves.flush(); }
         window.addEventListener('beforeunload', this.beforeUnload);
-        this.input.focus();
+        if (this.active) this.input.focus();
     }
     private initLayout(): void {
         this.container.classList.add('llm-ui-workspace');
@@ -75,6 +78,7 @@ export class SessionDraftEditor extends IEditor {
         actions.replaceChildren(discard);
     }
     private persist(config: IChatInputConfig, files: File[]): void {
+        ++this.editRevision;
         this.config = structuredClone(config);
         if (!this.options.sessionDraft?.save) return;
         this.status!.hidden = true;
@@ -118,7 +122,7 @@ export class SessionDraftEditor extends IEditor {
         this.restoring = true;
         await this.render();
     }
-    readonly commands = {};
+    readonly commands = {refreshDraft: () => this.refreshDraft()};
     getText(): string { return this.input?.getConfig().text ?? this.config?.text ?? ''; }
     setText(text: string): void {
         this.input?.setConfig({ text });
@@ -137,6 +141,22 @@ export class SessionDraftEditor extends IEditor {
     on(): () => void { return () => {}; }
     focus(): void { this.input?.focus(); }
     async flushPendingSave(): Promise<void> { await this.saves.flush(); }
+    private refreshDraft(): Promise<void> {
+        return this.refreshing ??= Promise.resolve().then(() => this.refreshDraftNow())
+            .finally(() => {this.refreshing = undefined;});
+    }
+    private async refreshDraftNow(): Promise<void> {
+        if (this.closed || !this.active || this.sending || this.saves.dirty) return;
+        const revision = this.editRevision, controls = this.options.sessionDraft;
+        const next = await controls?.refresh?.();
+        if (!next || this.closed || !this.active || this.sending || this.saves.dirty || revision !== this.editRevision || controls !== this.options.sessionDraft) return;
+        this.input?.destroy();
+        this.options.sessionDraft = next; this.initialData = next.initialData;
+        this.codec = new DraftDataCodec(next.attachments); this.restoring = true;
+        await this.render();
+    }
+    cancelPendingRender(): void {this.active = false;}
+    async activate(): Promise<void> { this.active = true; await this.refreshDraft(); await this.input?.refreshConnections(); }
     async destroy(): Promise<void> {
         await this.saves.flush();
         this.closed = true; window.removeEventListener('beforeunload', this.beforeUnload);

@@ -1,6 +1,6 @@
-# llm-ui 开发说明
+# llm-ui-adapter 开发说明
 
-本包负责 Conversation 展示和 Run 控制，不直接控制 Engine。
+本包承接 MindOS 的 Session、Task、原生会话、配置和权限接线，保留原业务编辑器兼容入口。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。
 
 本地与原生会话的标题栏共享 `EventBinder` 更多菜单；宿主可通过 `EditorOptions.mountMoreMenu` 注入资源动作并返回清理函数。会话归属与关联创建由 app-shell 提供，不进入聊天或 Markdown 组件；关闭编辑器须释放注入菜单。
 
@@ -26,7 +26,7 @@
 
 `remote-rounds` 将系统/工具事件编码为专用 fenced block，`transcript-markup` 的 createTranscriptMarkup 扩展渲染有来源标签的辅助信息：系统提示淡紫色、默认折叠，工具灰色标签与命令/目标摘要，保持轮内顺序；原始内容全部转义。llm-ui 将原生消息身份编码为通用 `data-mdx-disclosure-key`，由 mdxeditor 在快照更新时保留展开状态；普通回答仍使用 Markdown，未知代码语言继续走共享代码块控件，历史和打印均设置公共 `htmlPolicy: 'literal'`，打印复用同一视图的登记与扩展。仅视图投影登记的块允许角色呈现，并核对块正文；普通消息中的同名代码围栏继续按代码显示。回归见 app-shell 的 remote-conversation-editor 测试。
 
-Web 首屏仅通过 `@itookit/llm-ui/startup` 加载 Flow 模板和菜单；完整入口 `@itookit/llm-ui` 在首次打开聊天、Agent、Flow 或 Skill 正文时异步加载。`vite.startup.config.ts` 为发布包生成独立的 `dist/startup.js`。
+Web 首屏仅通过 `@itookit/llm-ui-adapter/startup` 加载 Flow 模板和菜单；完整入口 `@itookit/llm-ui-adapter` 在首次打开聊天、Agent、Flow 或 Skill 正文时异步加载。`vite.startup.config.ts` 为发布包生成独立的 `dist/startup.js`。
 
 ChatInput 工具栏的「对话 / 执行」由 `ExecutionModeControl` 呈现，通过具名 `ExecutionModeViewState` 接收展示状态；模式及 executionModeLocked 随 Session settings 保存；首次直接运行获准入队后固定，停止或失败不解锁，新草稿仍可选择。发送/重新生成显式携带模式，Flow 会话禁用开关。工具由宿主与 llm-session 装配：未配置白名单时执行模式使用宿主默认工具，显式白名单优先；UI 不自行枚举工具或改变目录授权。Task 过滤与预算由 llm-session 固定。相关回归在 app-shell 的 `chat-execution-mode.test.ts`。
 
@@ -59,13 +59,13 @@ Harness 工具卡片由 `node:appended` 立即挂载，再消费 `tool:running/s
 ## 运行
 
 ```bash
-pnpm --filter @itookit/llm-ui typecheck
-pnpm --filter @itookit/llm-ui build
+pnpm --filter @itookit/llm-ui-adapter typecheck
+pnpm --filter @itookit/llm-ui-adapter build
 ```
 
-测试用例为 `src/**/*.test.ts`：`pnpm --filter @itookit/llm-ui test`（vitest run）或 `test:watch`。
+测试用例为 `src/**/*.test.ts`：`pnpm --filter @itookit/llm-ui-adapter test`（vitest run）或 `test:watch`。
 
-Skill 列表通过 bindSkillRefresh 返回的 refresh/dispose 与 SessionSkillControls.onChange 保持一致；菜单请求共用刷新队列，销毁时 dispose。/sk-<id> 发送前重新核验定义，action/silent 仅走显式用户请求。测试入口为 pnpm --filter @itookit/llm-ui test（vitest run）及 test:watch。
+Skill 列表通过 bindSkillRefresh 返回的 refresh/dispose 与 SessionSkillControls.onChange 保持一致；菜单请求共用刷新队列，销毁时 dispose。/sk-<id> 发送前重新核验定义，action/silent 仅走显式用户请求。测试入口为 pnpm --filter @itookit/llm-ui-adapter test（vitest run）及 test:watch。
 
 恢复边界：`restoreWaitingAttachment` 只恢复当前 Session 仍待交互的非终态 Task；编辑器关闭、新挂接或会话身份改变后丢弃旧恢复结果。RunAttachmentController 在异步打开前捕获 revision，事件重放前核验审批仍为 pending。SendMessageCommand 不按轮次差集删除发送记录，失败可能只是回复丢失。TTY finalize 保留首次结束信息；未知退出码显示本地化的未知状态。回归见 app-shell 的 pending-interaction-restore、attachment-restore-race、send-failure-consistency、tty-panel、terminal-node-reason 测试。
 
@@ -106,7 +106,7 @@ ChatInput 设置按对话、OCR、高级分组；高级项默认折叠。Skills 
 
 `/chat` 的正式会话编辑器必须注入 SessionViewPort，提示词历史仅由实例提供。Session/Flow 命令常量来自各自 `/contracts`，共享 UI 禁止导入 Session 实现根入口；禁止全局单例回退。
 
-声明由 tsup.types.config.ts 打包，再由 scripts/bundle-contracts.mjs 按 npm 公开 exports 解析并内联 driver 契约，Kernel 和 UI 公共类保持外部身份。build 自动执行 check-llm-ui-entrypoints.mjs，检查默认入口无设置/单例，四个开发契约包不泄漏到 JS 或公开声明，应用宿主依赖不泄漏，以及发布入口对应的文件存在。禁止只移动 package.json 依赖而不验证产物。
+适配包通过 Vite 生成 JS 与声明，公开引用领域契约并声明真实依赖，不再通过声明内联伪装独立。独立 llm-ui 在自己的构建中执行 check-llm-ui-entrypoints.mjs，检查仅依赖 mdxeditor。适配包仍不得加载后端实现或隐藏 Runtime 所有权。
 
 `/conversation` 仅消费 ui-common 的 ConversationControls 和 EditorOptions，不依赖 app-core 或 HTTP。SessionViewPort 的定义归 llm-session/contracts，TaskControlPlane 等任务端口归 durable-kernel；UI 直接导入所属模块的公共契约。发布这些新声明前必须先发布包含对应端口的领域包，不能用旧 npm 版本代替新契约。
 

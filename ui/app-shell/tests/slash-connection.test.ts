@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { SessionCommand } from '@itookit/llm-session';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import { buildSlashCallbacks } from '../../llm-ui/src/shell/SlashCommandRouter';
-import { SlashCommandPlugin } from '../../llm-ui/src/components/input/plugins/SlashCommandPlugin';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import { buildSlashCallbacks } from '../../llm-ui-adapter/src/shell/SlashCommandRouter';
+import { SlashCommandPlugin } from '../../llm-ui-adapter/src/components/input/plugins/SlashCommandPlugin';
 
 afterEach(() => { document.body.replaceChildren(); vi.restoreAllMocks(); });
 

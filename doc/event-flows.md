@@ -1,5 +1,7 @@
 # 核心事件流
 
+独立 llm-ui 的 Chat/Flow 通过宿主 source 发布事实、actions 提交意图，操作结果进入宿主持有的 OperationLedger；视图关闭只释放 UI。以下原产品的 Session/Kernel 接线与编辑器兼容实现位于 llm-ui-adapter。
+
 > 事件层分两套：**Kernel 持久化事件**（落盘，经 `eventList`/`TaskHandle.events()` 轮询消费）与 **业务流式事件**（`agent.event` payload，流式渲染）。
 
 ## 1. Kernel 持久化事件（EventEnvelope）

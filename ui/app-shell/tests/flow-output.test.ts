@@ -2,8 +2,8 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand, SessionCommand } from '@itookit/llm-session';
-import { DagWorkbench } from '../../llm-ui/src/components/DagWorkbench';
-import { openSessionFlowOutputs } from '../../llm-ui/src/flows/session-output';
+import { DagWorkbench } from '../../llm-ui-adapter/src/components/DagWorkbench';
+import { openSessionFlowOutputs } from '../../llm-ui-adapter/src/flows/session-output';
 
 beforeEach(() => {
     HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -75,7 +75,7 @@ it('switches output branches without changing History and clears output for empt
 });
 
 it('shows persisted variable values and task sources with escaped user content', async () => {
-    const { renderVariables } = await import('../../llm-ui/src/components/dag/VariableView');
+    const { renderVariables } = await import('../../llm-ui-adapter/src/components/dag/VariableView');
     const root = document.createElement('div');
     root.innerHTML = renderVariables({ ...snapshot('succeeded'), variables: {
         initial: { '': { essay: 'OLD' } }, snapshots: {},

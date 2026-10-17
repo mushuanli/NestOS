@@ -111,10 +111,10 @@
 
 | 场景 | 文件 |
 |---|---|
-| ChatInput（发送/插件/i18n） | `llm-ui/src/components/input/` |
-| 流式历史 / Session 渲染 | `llm-ui/src/components/history/` |
-| 会话事件消费 | `llm-ui/src/shell/SessionEventHandler.ts` |
-| DagWorkbench（流程可视化） | `llm-ui/src/components/DagWorkbench.ts` |
+| ChatInput（发送/插件/i18n） | `llm-ui-adapter/src/components/input/` |
+| 流式历史 / Session 渲染 | `llm-ui-adapter/src/components/history/` |
+| 会话事件消费 | `llm-ui-adapter/src/shell/SessionEventHandler.ts` |
+| DagWorkbench（流程可视化） | `llm-ui-adapter/src/components/DagWorkbench.ts` |
 | VFSUIShell（文件树） | `https://github.com/mushuanli/vfs-ui/blob/main/src/shell/` |
 | 资源浏览契约与数据源 | `https://github.com/mushuanli/vfs-ui/blob/main/src/browser/`、`https://github.com/mushuanli/vfs-ui/blob/main/src/contracts/source.ts` |
 | 文件编辑器装配与预览 | `app-shell/src/browser/` |
@@ -142,8 +142,8 @@
 | 策略解析 | `llm-session/src/session/agent-resolver.ts` |
 | 派生 + 剥离客户端工具 + citations 投影 | `llm-session/src/session/conversation-run-coordinator.ts` |
 | citations 事件发射 + 流式聚合 | `kernel-adapters/src/effects/llm-chat-effect.ts` |
-| citations 渲染 | `llm-ui/src/components/history/StreamController.ts`、`components/templates/NodeTemplates.ts` |
-| 联网搜索开关 | `llm-ui/src/components/input/ChatInputView.ts`、`components/templates/ChatInputTemplates.ts` |
+| citations 渲染 | `llm-ui-adapter/src/components/history/StreamController.ts`、`components/templates/NodeTemplates.ts` |
+| 联网搜索开关 | `llm-ui-adapter/src/components/input/ChatInputView.ts`、`components/templates/ChatInputTemplates.ts` |
 | CLI -p prompt 命令 | `apps/cli/src/commands.ts` |
 
 > 详见 [web-search.md](./web-search.md)

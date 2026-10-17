@@ -8,7 +8,7 @@ const bundledContracts = new Set([
 
 export default defineConfig({
     build: {
-        lib: { entry: { chat: resolve(__dirname, 'src/chat.ts'), settings: resolve(__dirname, 'src/settings.ts'), conversation: resolve(__dirname, 'src/conversation.ts') },
+        lib: { entry: { independent: resolve(__dirname, 'src/independent.ts'), chat: resolve(__dirname, 'src/chat.ts'), settings: resolve(__dirname, 'src/settings.ts'), conversation: resolve(__dirname, 'src/conversation.ts') },
             formats: ['es'], fileName: (_format, entry) => `${entry}.js` },
         outDir: 'dist', emptyOutDir: false,
         rollupOptions: { external: id => !bundledContracts.has(id) && !id.startsWith('.') && !id.startsWith('/') },

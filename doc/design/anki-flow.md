@@ -65,7 +65,7 @@ flowchart TD
 - [宿主工具注入](../../backend/kernel-adapters/src/runtime/create-kernel-adapters-runtime.ts)、[现有通用审批 Effect Program](../../backend/kernel-adapters/src/programs/approved-effect-program.ts)。
 - [内置 Flow 插件](../../backend/llm-flow/src/flow/builtin-plugins.ts)、[Task 构造](../../backend/llm-flow/src/flow/task-factory.ts)、[Flow Task 授权](../../backend/llm-flow/src/flow/task-capabilities.ts)。
 - [连接槽](../../backend/llm-flow/src/contracts/flow-definition.ts)、[槽解析](../../backend/llm-flow/src/flow/connections.ts)、[Flow 编译](../../backend/llm-flow/src/flow/to-dag.ts)。
-- [调用记录](../../backend/llm-session/src/session/flow-invocations.ts)、[当前连接表单](../../ui/llm-ui/src/components/FlowParameterForm.ts)、[Kernel Effect 契约](../../backend/durable-kernel/src/domain/types.ts)。
+- [调用记录](../../backend/llm-session/src/session/flow-invocations.ts)、[当前连接表单](../../ui/llm-ui-adapter/src/components/FlowParameterForm.ts)、[Kernel Effect 契约](../../backend/durable-kernel/src/domain/types.ts)。
 
 上表区分当前实现与待补要求；后文的扩展安装、宿主要求匹配和业务流程仍是设计目标。
 

@@ -5,9 +5,9 @@ import { ExecProgram } from '@itookit/kernel-adapters';
 import type { IAgentConfigService } from '@itookit/llm-session';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { PrivilegedCommandService } from '../../../backend/app-core/src/kernel/privileged-command-service';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import { RunAttachmentController } from '../../llm-ui/src/shell/RunAttachmentController';
-import { LLMWorkspaceEditor } from '../../llm-ui/src/shell/LLMWorkspaceEditor';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import { RunAttachmentController } from '../../llm-ui-adapter/src/shell/RunAttachmentController';
+import { LLMWorkspaceEditor } from '../../llm-ui-adapter/src/shell/LLMWorkspaceEditor';
 
 it.each([true, false])('restores an exec approval card and preserves the real effect boundary (%s)', async approved => {
     const f = await fixture();

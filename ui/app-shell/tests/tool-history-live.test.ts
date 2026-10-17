@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { HistoryView } from '../../llm-ui/src/components/HistoryView';
-import { SessionRenderer } from '../../llm-ui/src/components/history/SessionRenderer';
-import { NodeRenderer } from '../../llm-ui/src/components/history/NodeRenderer';
+import { HistoryView } from '../../llm-ui-adapter/src/components/HistoryView';
+import { SessionRenderer } from '../../llm-ui-adapter/src/components/history/SessionRenderer';
+import { NodeRenderer } from '../../llm-ui-adapter/src/components/history/NodeRenderer';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); document.body.replaceChildren(); });
 

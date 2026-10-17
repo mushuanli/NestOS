@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
 import { SessionCommand } from '@itookit/llm-session';
-import { SendMessageCommand } from '../../llm-ui/src/commands/SendMessageCommand';
-import { RegenerateCommand, EditAndRetryCommand } from '../../llm-ui/src/commands/NodeCommands';
-import { rerunSession } from '../../llm-ui/src/shell/rerun-session';
+import { SendMessageCommand } from '../../llm-ui-adapter/src/commands/SendMessageCommand';
+import { RegenerateCommand, EditAndRetryCommand } from '../../llm-ui-adapter/src/commands/NodeCommands';
+import { rerunSession } from '../../llm-ui-adapter/src/shell/rerun-session';
 
 function fixture(text = '!ls') {
     const user = { id: 'user', role: 'user', content: text, persistedNodeId: 'round' };

@@ -1,0 +1,20 @@
+.llm-flow { display: flex; flex-direction: column; min-height: 300px; height: 100%; color: inherit; font: inherit; --llm-flow-border: #d8dce3; }
+.llm-flow__toolbar { display: flex; gap: 8px; padding: 8px; align-items: center; }
+.llm-flow__toolbar strong { flex: 1; }
+.llm-flow button { font: inherit; color: inherit; background: transparent; border: 1px solid var(--llm-flow-border); border-radius: 5px; padding: 5px 10px; cursor: pointer; }
+.llm-flow button:disabled { opacity: .5; cursor: default; }
+.llm-flow__workspace { flex: 1; min-height: 220px; display: grid; grid-template-columns: 160px minmax(0, 1fr) 240px; border-block: 1px solid var(--llm-flow-border); }
+.llm-flow__palette, .llm-flow__inspector { padding: 8px; overflow: auto; }
+.llm-flow__palette button { display: block; width: 100%; margin-bottom: 8px; }
+.llm-flow__canvas { position: relative; overflow: auto; min-height: 220px; background: radial-gradient(var(--llm-flow-border) 1px, transparent 1px) 0 0 / 20px 20px; }
+.llm-flow__canvas svg { position: absolute; width: 2000px; height: 2000px; pointer-events: none; }
+.llm-flow__canvas path { stroke: #4263eb; stroke-width: 3; fill: none; pointer-events: stroke; }
+.llm-flow__node { position: absolute; width: 190px; box-sizing: border-box; padding: 8px; border: 1px solid var(--llm-flow-border); border-radius: 8px; background: Canvas; color: CanvasText; }
+.llm-flow__node[data-selected="true"] { outline: 2px solid #4263eb; }
+.llm-flow__ports { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.llm-flow__ports button { font-size: .75rem; padding: 3px; }
+.llm-flow__form label { display: block; margin-block: 8px; }
+.llm-flow__form input:not([type="checkbox"]), .llm-flow__form textarea, .llm-flow__form select { display: block; width: 100%; box-sizing: border-box; font: inherit; }
+.llm-flow__output { max-height: 25vh; overflow: auto; white-space: pre-wrap; margin: 8px; }
+.llm-flow__error { color: #d24444; margin-inline: 8px; }
+@media (max-width: 700px) { .llm-flow__workspace { grid-template-columns: 100px minmax(0, 1fr); } .llm-flow__inspector { grid-column: 1 / -1; } }

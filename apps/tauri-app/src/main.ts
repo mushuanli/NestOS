@@ -30,7 +30,7 @@ import { initApp, installMobileNavigation, windowSessionLeaseToken, workspaceRoo
 import { createApplicationRuntime } from '@itookit/app-core';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { createFlowContextMenuConfig, createAIContextMenuConfig,
-    restoreFlowLibrary } from '@itookit/llm-ui/startup';
+    restoreFlowLibrary } from '@itookit/llm-ui-adapter/startup';
 import {
     ProviderSettingsEditor,
     ConnectionSettingsEditor,
@@ -268,17 +268,17 @@ async function bootstrap(): Promise<void> {
     // Session Bash runs through the platform directory-grant namespace.
     const ui: AppUI = {
         createChatEditor: (agents, deps) => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/chat')).createLLMFactory(agents, {
+            (await import('@itookit/llm-ui-adapter/chat')).createLLMFactory(agents, {
                 ...deps, onLoadMetrics: metrics => { void recordDiagnostic('session.load.ready', metrics); },
             })),
         createAgentEditor: (agents, capabilities) => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/settings')).createAgentEditorFactory(agents, capabilities)),
+            (await import('@itookit/llm-ui-adapter/settings')).createAgentEditorFactory(agents, capabilities)),
         createFlowEditor: deps => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/chat')).createFlowsEditorFactory(deps)),
+            (await import('@itookit/llm-ui-adapter/chat')).createFlowsEditorFactory(deps)),
         createFlowContextMenu: deps => createFlowContextMenuConfig({ ...deps, library: createMindosFlowLibrary() }),
         restoreFlowLibrary: commands => restoreFlowLibrary(commands, createMindosFlowLibrary()),
         createSkillEditor: agents => lazyEditorFactory(async () =>
-            (await import('@itookit/llm-ui/settings')).createSkillsEditorFactory(agents)),
+            (await import('@itookit/llm-ui-adapter/settings')).createSkillsEditorFactory(agents)),
         createAIContextMenu: createAIContextMenuConfig,
         llmUiEditors: {
             ProviderSettingsEditor,

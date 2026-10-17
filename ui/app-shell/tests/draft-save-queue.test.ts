@@ -1,5 +1,5 @@
 import { it, expect, vi } from 'vitest';
-import { DraftSaveQueue } from '../../llm-ui/src/shell/drafts/draft-save-queue';
+import { DraftSaveQueue } from '../../llm-ui-adapter/src/shell/drafts/draft-save-queue';
 
 it('retains unsaved state on error, retries later edits, and preserves write order', async () => {
     const write = vi.fn().mockRejectedValueOnce(new Error('offline')).mockResolvedValue(undefined);

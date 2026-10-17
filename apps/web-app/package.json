@@ -28,7 +28,7 @@
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/llm-session": "workspace:*",
     "@itookit/llm-settings-ui": "workspace:*",
-    "@itookit/llm-ui": "workspace:*",
+    "@itookit/llm-ui-adapter": "workspace:*",
     "@itookit/mdxeditor": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "@itookit/vfs-ui": "workspace:*",

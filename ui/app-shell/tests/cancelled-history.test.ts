@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
-import { HistoryView } from '../../llm-ui/src/components/HistoryView';
-import { SessionEventHandler } from '../../llm-ui/src/shell/SessionEventHandler';
-import { StatusIndicatorView } from '../../llm-ui/src/components/indicators/StatusIndicatorView';
+import { HistoryView } from '../../llm-ui-adapter/src/components/HistoryView';
+import { SessionEventHandler } from '../../llm-ui-adapter/src/shell/SessionEventHandler';
+import { StatusIndicatorView } from '../../llm-ui-adapter/src/components/indicators/StatusIndicatorView';
 
 afterEach(() => { vi.unstubAllGlobals(); document.body.replaceChildren(); });
 

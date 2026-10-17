@@ -2,6 +2,8 @@
 
 调用方只依赖接口，不依赖实现。契约按能力归属：driver-llm/contracts（模型通信与服务端口）、llm-context（领域消息与上下文）、tools/contracts（Tool/TTY 执行）、vfs-core（文件系统）；llm-tasks/contracts、llm-flow/contracts 和 llm-session/contracts 分别承载执行、编排与会话契约；kernel-adapters/contracts 承载配置管理与定价；common 不再转发 LLM 契约。
 
+独立 `@itookit/llm-ui` 的 ChatOptions/ConversationSource/ConversationActions/OperationLedger 定义于 [contracts.ts](../libraries/llm-ui/src/contracts.ts)，FlowSource/FlowActions 定义于 [flow-contracts.ts](../libraries/llm-ui/src/flow-contracts.ts)。两者只依赖展示数据与 mdxeditor；MindOS 接线位于 `llm-ui-adapter/independent`，原工厂兼容入口迁至适配包。Flow 通过 `features.flow` 与 `setFlowEnabled` 控制，默认关闭。
+
 ## VFS 体系（@itookit/vfs-core）
 
 | 接口 | 核心方法 | 定义 | 实现 | 消费 |
@@ -26,7 +28,7 @@
 | `SessionPresentationState` | 可选 taskAttachment/flowInvocations/skills；应用启动组合读模型 | `app-contracts/src/ports/session.ts` | `app-core/host/open-view.ts` | `app-shell/lifecycle/opened-view.ts`，向编辑器注入领域初始数据 |
 | `TaskAttachmentRecovery` / `ReadTaskAttachment` | 活动任务与待审批候选 ID；显式 Session、共享键，只读恢复线索，附着前核对实时状态 | `durable-kernel/src/ports/task-control.ts` | `app-core/host/task-attachment.ts`，由 ApplicationBackend.taskAttachment 提供 | `llm-ui` 可选恢复回调 |
 | `EditorTaskControlPlane` / `AttachedTask` | openTask/openSession/listSessionTasks；共享挂接身份、Task 事件及控制 | `durable-kernel/src/ports/task-control.ts`，从 Kernel 根入口导出 | Kernel 或宿主远程客户端 | 聊天编辑器、任务挂接及 pending 恢复 |
-| `SessionViewBinding` / `LLMFactoryDependencies` | 显式 sessionManager 或 resolveSessionView；仓储及可选宿主端口 | `llm-ui/src/chat.ts` | 宿主组合根 | createLLMFactory |
+| `SessionViewBinding` / `LLMFactoryDependencies` | 显式 sessionManager 或 resolveSessionView；仓储及可选宿主端口 | `llm-ui-adapter/src/chat.ts` | 宿主组合根 | createLLMFactory |
 | `ILLMService` | `chat()`、`chatStream()`、`abort()`、`getConnection()` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/service.ts` | `kernel-adapters LLMServiceAdapter` | `llm-tasks`（经 effect）、`llm-session` |
 | `ChatMessage` | `role/content/attachments?` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/message.ts` | driver-llm | 宿主通信适配 |
 | `ChatCompletionParams/ChatCompletionResponse/ChatCompletionChunk` | `messages/model/tools/stream/webSearch`… | `https://github.com/mushuanli/driver-llm/blob/main/src/types/response.ts` | driver-llm providers | `llm-tasks`、`kernel-adapters` |

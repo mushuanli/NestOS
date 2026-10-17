@@ -1148,7 +1148,7 @@ export class MyCommand extends Command<Params> {
 ### 15.1 工厂函数
 
 ```typescript
-import { createLLMFactory, createAgentEditorFactory, createSkillsEditorFactory } from '@itookit/llm-ui';
+import { createLLMFactory, createAgentEditorFactory, createSkillsEditorFactory } from '@itookit/llm-ui-adapter';
 
 // 会话工作区编辑器(vfs-ui 选中 session 目标时创建)
 const llmFactory = createLLMFactory(agentService, {
@@ -1175,18 +1175,18 @@ const skillsFactory = createSkillsEditorFactory(agentService);
 
 ```typescript
 // 本包实现
-export { DagWorkbench, FlowsEditor, createFlowsEditorFactory } from '@itookit/llm-ui';
-export { createAIContextMenuConfig } from '@itookit/llm-ui';   // AI 右键菜单
-export { VFSAgentService } from '@itookit/llm-ui';
-export type { LLMEditorOptions, DagWorkbenchOptions, FlowsEditorDeps } from '@itookit/llm-ui';
-export type { IPrivilegedCommandService } from '@itookit/llm-ui';
+export { DagWorkbench, FlowsEditor, createFlowsEditorFactory } from '@itookit/llm-ui-adapter';
+export { createAIContextMenuConfig } from '@itookit/llm-ui-adapter';   // AI 右键菜单
+export { VFSAgentService } from '@itookit/llm-ui-adapter';
+export type { LLMEditorOptions, DagWorkbenchOptions, FlowsEditorDeps } from '@itookit/llm-ui-adapter';
+export type { IPrivilegedCommandService } from '@itookit/llm-ui-adapter';
 
 // 自 @itookit/llm-settings-ui 再导出
 export {
     ConnectionSettingsEditor, ProviderSettingsEditor, MCPSettingsEditor,
     SkillSettingsEditor, CostEditor, SystemPromptSettingsEditor,
     AgentConfigEditor,
-} from '@itookit/llm-ui';
+} from '@itookit/llm-ui-adapter';
 ```
 
 ### 15.3 IEditor 契约实现
@@ -1319,8 +1319,8 @@ Phase 9: DOM 清理
 运行:
 
 ```bash
-pnpm --filter @itookit/llm-ui typecheck
-pnpm --filter @itookit/llm-ui exec vitest run
+pnpm --filter @itookit/llm-ui-adapter typecheck
+pnpm --filter @itookit/llm-ui-adapter exec vitest run
 ```
 
 ---

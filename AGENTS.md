@@ -8,7 +8,7 @@
 - **itookit**：pnpm monorepo，承载 **MindOS**（浏览器/桌面的个人知识 OS：虚拟文件系统 + Markdown 编辑器 + LLM 对话/Agent 执行）
 - 工具链：`pnpm@10.20.0`（`workspace:*`）、TypeScript 5.9 strict（`target: ES2022`、`moduleResolution: bundler`，见 `tsconfig.base.json`）
 - 无前端框架：原生 DOM + TypeScript
-- 20 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 8 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
+- 20 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 9 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
 
 ## 开发原则
 SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
@@ -79,7 +79,7 @@ pnpm --filter @itookit/<pkg> typecheck
 ## UI 约定
 
 - **技术栈**: 原生 DOM + 模板字符串 + `addEventListener` 委托绑定
-- **CSS**: BEM 命名 (`llm-input__xxx`), 变量在 `llm-ui/src/styles/variables.css`
+- **CSS**: BEM 命名 (`llm-input__xxx`), 变量在 `llm-ui-adapter/src/styles/variables.css`
 - **图标**: 从 `@itookit/common` import (`ENTITY_ICONS`, `ACTION_ICONS` 等), 禁止硬编码 emoji
 - **i18n**: `t('domain.section.item')`, key 在 `common/src/i18n/zh-CN.ts` 先加 → `en.ts` 同步
 

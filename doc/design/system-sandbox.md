@@ -34,7 +34,7 @@ flowchart TD
 
 | 层 | 应承担的职责 | 代码入口 |
 |---|---|---|
-| llm-ui | 提交执行请求、展示生效策略/错误/审批；配置请求必须经宿主核验 | [SendMessageCommand](../../ui/llm-ui/src/commands/SendMessageCommand.ts)、[ExecutionModeControl](../../ui/llm-ui/src/components/input/ExecutionModeControl.ts) |
+| llm-ui | 提交执行请求、展示生效策略/错误/审批；配置请求必须经宿主核验 | [SendMessageCommand](../../ui/llm-ui-adapter/src/commands/SendMessageCommand.ts)、[ExecutionModeControl](../../ui/llm-ui-adapter/src/components/input/ExecutionModeControl.ts) |
 | llm-session / llm-flow | 保存执行意图，选择持久 Run 工作区身份；节点只可在宿主授权上收窄权限 | [create-kernel-runtime](../../backend/app-core/src/runtime/create-kernel-runtime.ts) 中工作区作用域装配 |
 | durable-kernel | Effect 调度、授权记录、审批、取消确认、恢复；通过端口依赖外部能力 | [BashEffectAdapter](../../backend/kernel-adapters/src/effects/bash-effect.ts) 实现 `process.exec` 外部能力 |
 | kernel-adapters | 为 Effect 解析 Session/Run 能力；Bash、shell_session/tty_write 共用作用域 | [create-kernel-adapters-runtime](../../backend/kernel-adapters/src/runtime/create-kernel-adapters-runtime.ts) |
@@ -67,7 +67,7 @@ OCI 不是未引用的占位类：[CLI runtime](../../apps/cli/src/runtime.ts) �
 
 `ExecutionModeControl` 的「对话/执行」只选择工具执行意图，不等于操作系统隔离等级。不要把「执行模式」标成「沙箱已启用」。
 
-适合在 [WorkspaceDirectoryMenu](../../ui/llm-ui/src/shell/WorkspaceDirectoryMenu.ts) 所调用的**宿主工作目录配置**中加入沙箱配置入口，并在输入区附近展示宿主回传的实际状态：后端、目录权限、网络状态、不可用原因。UI 不生成路径授权、不自己调用系统二进制、不用前端布尔值跳过隔离。
+适合在 [WorkspaceDirectoryMenu](../../ui/llm-ui-adapter/src/shell/WorkspaceDirectoryMenu.ts) 所调用的**宿主工作目录配置**中加入沙箱配置入口，并在输入区附近展示宿主回传的实际状态：后端、目录权限、网络状态、不可用原因。UI 不生成路径授权、不自己调用系统二进制、不用前端布尔值跳过隔离。
 
 `TtyController` / `TtyPanel` 继续只消费输出与控制请求；限制必须覆盖创建持久 TTY 的 `ttyDriver.spawn`。仅包装 Bash / `process.exec` 会遗漏 `shell_session`。审批只允许某次动作，不自动解除目录与网络限制。
 

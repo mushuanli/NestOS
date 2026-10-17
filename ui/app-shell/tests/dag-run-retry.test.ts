@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { Toast } from '@itookit/ui-common';
-import { DagWorkbench } from '../../llm-ui/src/components/DagWorkbench';
+import { DagWorkbench } from '../../llm-ui-adapter/src/components/DagWorkbench';
 
 function snapshot(retrying = false) {
     const original = { id: 'original', sessionId: 'session', status: 'failed', program: { kind: 'llm.agent' },

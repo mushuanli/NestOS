@@ -62,7 +62,7 @@
 
 - 编译与契约：[function-call](../../backend/llm-flow/src/flow/function-call.ts)、[function-outputs](../../backend/llm-flow/src/flow/function-outputs.ts)、[dependency-locks](../../backend/llm-flow/src/flow/dependency-locks.ts)。
 - 会话调用：[FlowInvocationService](../../backend/llm-session/src/session/flow-invocations.ts)。
-- UI：[InvocationPanel](../../ui/llm-ui/src/flows/InvocationPanel.ts)、[invoke-flow](../../ui/llm-ui/src/flows/invoke-flow.ts)。
+- UI：[InvocationPanel](../../ui/llm-ui-adapter/src/flows/InvocationPanel.ts)、[invoke-flow](../../ui/llm-ui-adapter/src/flows/invoke-flow.ts)。
 - 新增回归：[函数组合](../../backend/llm-flow/__tests__/function-calls.test.ts)、[并发/提交恢复](../../backend/llm-session/__tests__/flow-invocations.test.ts)、[真实 Kernel + DOM](../../ui/app-shell/tests/flow-invocations.test.ts)。
 - 已通过 llm-flow、llm-session、llm-ui 整包测试，以及应用层相关回归、全仓类型检查、样式检查。应用层整包中遇到沙箱 Git 子进程拒绝和本地 HTTP 测试超时；对应 workspace-crash 与 host-restart-inflight 在沙箱外单独重跑通过。未进行真实模型或人工 GUI 验收。
 
@@ -86,17 +86,17 @@
 
 | 层次 | 当前实现 | 对目标的影响 |
 | --- | --- | --- |
-| UI 启动 | [FlowLauncher](../../ui/llm-ui/src/flows/run-flow.ts) 收集参数、发布 revision、CreateFromFlow、导航 | 一次运行进入一个新 Flow Session；`pending` 只覆盖启动流程，并非执行期间的全局锁 |
-| Session 模式 | [LLMWorkspaceEditor](../../ui/llm-ui/src/shell/LLMWorkspaceEditor.ts) 读取 manifest.flow，selectFlow；空 Session 打开时自动发送 | 启动执行依赖打开编辑器，Flow 与 Session 模式绑定 |
+| UI 启动 | [FlowLauncher](../../ui/llm-ui-adapter/src/flows/run-flow.ts) 收集参数、发布 revision、CreateFromFlow、导航 | 一次运行进入一个新 Flow Session；`pending` 只覆盖启动流程，并非执行期间的全局锁 |
+| Session 模式 | [LLMWorkspaceEditor](../../ui/llm-ui-adapter/src/shell/LLMWorkspaceEditor.ts) 读取 manifest.flow，selectFlow；空 Session 打开时自动发送 | 启动执行依赖打开编辑器，Flow 与 Session 模式绑定 |
 | 发送准入 | [SessionRunCoordinator.submit](../../backend/llm-session/src/session/session-run-coordinator.ts) 按 sessionId 保存一个 active，重复提交报 SESSION_BUSY | 硬限制是每个 Session 一个活动 Run；代码未在这里施加应用级单 Run 限制 |
 | 会话语义 | [RoundOperations.sendMessage](../../backend/llm-session/src/session/round-operations.ts) 拒绝连续 user；[ConversationRunCoordinator](../../backend/llm-session/src/session/conversation-run-coordinator.ts) 按 sessionId 保存一个执行，并通过 appendExpected 写入分支 | 删除 SESSION_BUSY 检查会留下状态覆盖、控制目标不明确和 branch head 冲突 |
-| 输入区 | [ChatInputView](../../ui/llm-ui/src/components/input/ChatInputView.ts) 的 setLoading 禁用 textarea；triggerSend 在插件钩子前检查 loading | 运行时无法输入第二次 Flow 调用，新增 slash 解析仍会被前置条件挡住 |
-| 控制与恢复 | [RunAttachmentController](../../ui/llm-ui/src/shell/RunAttachmentController.ts) 持有一个 handle；[pending-interaction](../../ui/llm-ui/src/shell/pending-interaction.ts) 只恢复最新一个待交互任务 | 一个焦点 attachment 可以保留，但不能作为全部活动调用和审批的唯一来源 |
-| Slash | [SlashCommandPlugin](../../ui/llm-ui/src/components/input/plugins/SlashCommandPlugin.ts) 支持静态命令和动态 sk 命令；[Router](../../ui/llm-ui/src/shell/SlashCommandRouter.ts) 装配回调 | 可复用候选、解析和宿主回调模式，目前没有 Flow 调用入口 |
+| 输入区 | [ChatInputView](../../ui/llm-ui-adapter/src/components/input/ChatInputView.ts) 的 setLoading 禁用 textarea；triggerSend 在插件钩子前检查 loading | 运行时无法输入第二次 Flow 调用，新增 slash 解析仍会被前置条件挡住 |
+| 控制与恢复 | [RunAttachmentController](../../ui/llm-ui-adapter/src/shell/RunAttachmentController.ts) 持有一个 handle；[pending-interaction](../../ui/llm-ui-adapter/src/shell/pending-interaction.ts) 只恢复最新一个待交互任务 | 一个焦点 attachment 可以保留，但不能作为全部活动调用和审批的唯一来源 |
+| Slash | [SlashCommandPlugin](../../ui/llm-ui-adapter/src/components/input/plugins/SlashCommandPlugin.ts) 支持静态命令和动态 sk 命令；[Router](../../ui/llm-ui-adapter/src/shell/SlashCommandRouter.ts) 装配回调 | 可复用候选、解析和宿主回调模式，目前没有 Flow 调用入口 |
 | 底层运行 | [DagCommandService](../../backend/llm-flow/src/flow/commands.ts) 已有 RunStart/List/Get/Cancel/Respond，handles 按根 taskId 保存 | 已有多 Run 控制基础；直接从 slash 调用 RunStart 仍缺会话调用记录、历史归属及恢复协调 |
 | Flow 组合 | [builtin-plugins](../../backend/llm-flow/src/flow/builtin-plugins.ts) 注册 builtin.flow；[flowToDag](../../backend/llm-flow/src/flow/to-dag.ts) 递归展开并加节点前缀 | 已能组合成 DAG，不需要另造调度器；已有参数作用域、变量隔离与递归引用检测 |
 
-现有输出窗口也已有按 branch/Run 选择的能力，见 [session-output](../../ui/llm-ui/src/flows/session-output.ts)。这可复用，但它目前只展示已归属于分支的执行，不能代替新的调用准入和历史记录。
+现有输出窗口也已有按 branch/Run 选择的能力，见 [session-output](../../ui/llm-ui-adapter/src/flows/session-output.ts)。这可复用，但它目前只展示已归属于分支的执行，不能代替新的调用准入和历史记录。
 
 ## 现有组合为什么还不等于函数调用
 

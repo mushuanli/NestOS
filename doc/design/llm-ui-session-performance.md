@@ -37,10 +37,10 @@
 ## 验证入口
 
 - `pnpm --filter @itookit/llm-session test`：历史顺序、单次读取、空分支、环和缺失祖先、无 Flow 调用时不扫描 Tasks、存储校验及既有会话回归。
-- `pnpm --filter @itookit/llm-ui test`：Markdown 初始内容不重复渲染，初始化期间流式更新/替换/清空，以及关闭期间迟到结果的处理。
+- `pnpm --filter @itookit/llm-ui-adapter test`：Markdown 初始内容不重复渲染，初始化期间流式更新/替换/清空，以及关闭期间迟到结果的处理。
 - `pnpm --filter @itookit/app-shell test --maxWorkers=2`：真实 SessionManager + Kernel + DOM 的单次初始化、分支草稿、历史折叠、执行模式、显式重载，以及既有审批/Flow/工作区测试。
 - `pnpm --filter @itookit/app-shell test session-load-localfs`：复跑优化后的 LocalFS 计数和耗时实验。
-- `pnpm --filter @itookit/llm-ui --filter @itookit/llm-session --filter @itookit/app-shell typecheck`。
+- `pnpm --filter @itookit/llm-ui-adapter --filter @itookit/llm-session --filter @itookit/app-shell typecheck`。
 
 验证结果：llm-ui 48 项、llm-session 163 项、app-shell 304 项通过，共 515 项；app-shell 的 30 项联网测试按既有配置跳过。三个包类型检查通过。app-shell 完整回归首次受沙箱子进程/网络限制，获准在沙箱外重跑后通过。`docs:check` 通过，保留仓库原有的 5 条历史表述告警。
 

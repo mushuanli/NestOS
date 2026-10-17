@@ -2,7 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand, FlowInvocationCommand } from '@itookit/llm-session';
-import { InvocationPanel } from '../../llm-ui/src/flows/InvocationPanel';
+import { InvocationPanel } from '../../llm-ui-adapter/src/flows/InvocationPanel';
 
 let panel: InvocationPanel | undefined;
 afterEach(() => { panel?.destroy(); panel = undefined; vi.useRealTimers(); vi.restoreAllMocks(); document.body.replaceChildren(); });

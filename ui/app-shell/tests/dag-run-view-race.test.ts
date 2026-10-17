@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { DagWorkbench } from '../../llm-ui/src/components/DagWorkbench';
+import { DagWorkbench } from '../../llm-ui-adapter/src/components/DagWorkbench';
 
 function pending() {
     let resolve!: (value: unknown) => void, reject!: (error: Error) => void;

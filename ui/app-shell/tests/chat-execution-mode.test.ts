@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import { SendMessageCommand } from '../../llm-ui/src/commands/SendMessageCommand';
-import { RegenerateCommand } from '../../llm-ui/src/commands/NodeCommands';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import { SendMessageCommand } from '../../llm-ui-adapter/src/commands/SendMessageCommand';
+import { RegenerateCommand } from '../../llm-ui-adapter/src/commands/NodeCommands';
 import { SessionCommand } from '@itookit/llm-session';
-import type { ChatOverrides } from '../../llm-ui/src/domain/types';
+import type { ChatOverrides } from '../../llm-ui-adapter/src/domain/types';
 
 const views: ChatInput[] = [];
 afterEach(() => { for (const view of views.splice(0)) view.destroy(); document.body.innerHTML = ''; });

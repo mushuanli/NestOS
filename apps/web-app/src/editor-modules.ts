@@ -1,5 +1,5 @@
 let chatModule: ReturnType<typeof importChat> | undefined;
-const importChat = () => import('@itookit/llm-ui/chat');
+const importChat = () => import('@itookit/llm-ui-adapter/chat');
 export const loadChatEditor = () => chatModule ??= importChat();
 
 /** Only the editor selected by the current route is fetched before shell assembly. */

@@ -32,7 +32,7 @@ app-shell/src/projects/project-draft-editor.ts
   createProjectDraftControls         可用性检查、打开编辑器，不读写草稿记录
 ui-common/src/interfaces/SessionDraftControls.ts
   SessionDraftControls               UI 与宿主之间的独立契约
-llm-ui/src/shell/drafts/
+llm-ui-adapter/src/shell/drafts/
   SessionDraftEditor.ts              普通空会话布局和输入交互
   session-draft-data.ts              UI 配置、附件引用序列化和旧 base64 迁移
   draft-save-queue.ts                写入排序、失败状态与 flush

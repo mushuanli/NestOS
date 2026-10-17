@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
-import { SkillPanel } from '../../llm-ui/src/components/input/SkillPanel';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import { bindSkillRefresh } from '../../llm-ui/src/shell/skill-refresh';
+import { SkillPanel } from '../../llm-ui-adapter/src/components/input/SkillPanel';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import { bindSkillRefresh } from '../../llm-ui-adapter/src/shell/skill-refresh';
 import type { SessionSkillControls } from '@itookit/tools/contracts';
 import { t } from '@itookit/common';
 

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, it } from 'vitest';
-import { NodeRenderer } from '../../llm-ui/src/components/history/NodeRenderer';
+import { NodeRenderer } from '../../llm-ui-adapter/src/components/history/NodeRenderer';
 
 it.each(['failed', 'aborted'])('renders the persisted %s reason as text', status => {
     const error = '<img src=x onerror=alert(1)> permission revoked';

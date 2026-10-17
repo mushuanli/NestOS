@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
-import { LLMWorkspaceEditor } from '../../llm-ui/src/shell/LLMWorkspaceEditor';
+import { LLMWorkspaceEditor } from '../../llm-ui-adapter/src/shell/LLMWorkspaceEditor';
 
 it.each(['closed', 'hidden', 'session changed', 'live attach started'])('does not restore an old task after %s', async reason => {
     let resolve!: (value: unknown) => void;

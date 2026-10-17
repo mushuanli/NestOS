@@ -19,7 +19,7 @@ import { LogSettingsEditor } from '../editors/LogSettingsEditor';
 import { SystemFSExploreEditor, type FileBrowserConnector } from '../editors/SystemFSExploreEditor';
 import { AppearanceSettingsEditor } from '../editors/AppearanceSettingsEditor';
 
-/** Injected UI editors from @itookit/llm-ui (to avoid upward dependency). */
+/** Injected UI editors from @itookit/llm-ui-adapter (to avoid upward dependency). */
 export interface LLMUIEditors {
     ProviderSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions) => IEditor;
     ConnectionSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions) => IEditor;

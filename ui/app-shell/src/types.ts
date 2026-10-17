@@ -47,7 +47,7 @@ export interface WorkspaceConfig {
 
 // ── UI 装配契约 ──────────────────────────────────────────────────────────
 //
-// app-shell 不直接依赖 @itookit/llm-ui：编辑器工厂 / AI 右键菜单 / LLM 设置
+// app-shell 不直接依赖 @itookit/llm-ui-adapter：编辑器工厂 / AI 右键菜单 / LLM 设置
 // 编辑器均通过 AppOptions.ui 由 apps 入口注入。契约类型定义在 app-shell
 // （装配层，已依赖全部所需类型），llm-ui 的实现靠结构类型在入口处兼容。
 

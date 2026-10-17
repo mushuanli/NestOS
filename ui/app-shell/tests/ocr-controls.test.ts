@@ -1,4 +1,4 @@
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
@@ -8,7 +8,7 @@ import { type ILLMService } from '@itookit/driver-llm/contracts';
 import type { OcrControls } from '@itookit/ui-common';
 import { createOcrControls } from '../src/configuration/ocr-controls';
 import { ConfigurationDeletionDialog } from '../src/configuration/delete-dialog';
-import { AttachmentManager } from '../../llm-ui/src/components/input/AttachmentManager';
+import { AttachmentManager } from '../../llm-ui-adapter/src/components/input/AttachmentManager';
 
 let runtime: ApplicationRuntime;
 const cleanup: Array<() => void> = [];

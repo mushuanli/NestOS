@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
-import { HistoryView } from '../../llm-ui/src/components/HistoryView';
+import { HistoryView } from '../../llm-ui-adapter/src/components/HistoryView';
 
 it('paints a Flow delta before any completion event arrives', async () => {
     vi.stubGlobal('mermaid', { run: async () => {}, initialize() {} });
@@ -41,7 +41,7 @@ it('paints a Flow delta before any completion event arrives', async () => {
 });
 
 it('restores parallel windows and folded request snapshots from persisted nodes', async () => {
-    const { SessionRenderer } = await import('../../llm-ui/src/components/history/SessionRenderer');
+    const { SessionRenderer } = await import('../../llm-ui-adapter/src/components/history/SessionRenderer');
     const mount = vi.spyOn(SessionRenderer.prototype as any, 'mountNodeEditor').mockImplementation(() => {});
     const host = document.createElement('div'), renderer = new SessionRenderer(host, {});
     const requests = [{ effectId: 'e1', connectionId: 'c', request: { messages: [{ role: 'system', content: 'Saved system prompt' }] } }];

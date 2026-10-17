@@ -137,6 +137,6 @@ Provider.collectCitations
 | Responses API（web_search/reasoning/citations） | `https://github.com/mushuanli/driver-llm/blob/main/src/providers/responses.ts` |
 | Gemini grounding citations | `https://github.com/mushuanli/driver-llm/blob/main/src/providers/gemini.ts` |
 | citations 事件发射 + 流式聚合 | `kernel-adapters/src/effects/llm-chat-effect.ts` |
-| citations 渲染 | `llm-ui/src/components/{HistoryView,history/StreamController,templates/NodeTemplates}.ts` |
-| 联网搜索开关 | `llm-ui/src/components/input/ChatInputView.ts`、`templates/ChatInputTemplates.ts` |
+| citations 渲染 | `llm-ui-adapter/src/components/{HistoryView,history/StreamController,templates/NodeTemplates}.ts` |
+| 联网搜索开关 | `llm-ui-adapter/src/components/input/ChatInputView.ts`、`templates/ChatInputTemplates.ts` |
 | CLI -p prompt 命令 | `apps/cli/src/{cli,commands,schema,types}.ts` |

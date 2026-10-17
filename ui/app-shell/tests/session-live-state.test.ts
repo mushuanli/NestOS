@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
-import {HistoryView} from '../../llm-ui/src/components/HistoryView';
-import {LLMWorkspaceEditor} from '../../llm-ui/src/shell/LLMWorkspaceEditor';
+import {HistoryView} from '../../llm-ui-adapter/src/components/HistoryView';
+import {LLMWorkspaceEditor} from '../../llm-ui-adapter/src/shell/LLMWorkspaceEditor';
 import {SessionWorkbench} from '../src/projects/SessionWorkbench';
 
-vi.mock('../../llm-ui/src/components/mdx/MDxController', () => ({MDxController: class {
+vi.mock('../../llm-ui-adapter/src/components/mdx/MDxController', () => ({MDxController: class {
     constructor(private container: HTMLElement, text: string) {container.textContent = text;}
     destroy() {return Promise.resolve();} waitUntilReady() {return Promise.resolve();} activate() {}
 }}));

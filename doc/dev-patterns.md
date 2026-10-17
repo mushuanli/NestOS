@@ -103,7 +103,7 @@ MCP 的自动连接开关位于详情顶部，使用既有自动保存控制器�
 
 - **Ports/Adapters**: Shell 只通过 port 接口与视图通信，内部 DOM 完全封装
 - **接口依赖**: 调用方类型为接口 (`IVFSManager`, `IFileSystem`)，具体实现在 bootstrap 注入
-- **CSS 变量**: 唯一权威来源 `llm-ui/src/styles/variables.css`
+- **CSS 变量**: 唯一权威来源 `llm-ui-adapter/src/styles/variables.css`
 - **函数 ≤30 行**，圈复杂度 ≤10
 - **i18n 零硬编码**，图标统一从 `@itookit/common` 导入
 - **Git commit**: `type(scope): description` (Conventional Commits)
@@ -112,7 +112,7 @@ Connection 推理强度按模型 ID 存于 `metadata.modelReasoningEfforts`；�
 
 Provider 保存为启用且包含聊天模型时，如尚无对应 Connection，通信层创建一个启用的默认连接；已有连接的独立禁用状态保留。有效启用状态由 Provider 与 Connection 共同决定。
 
-聊天连接候选由 `llm-ui/src/shell/connection-options-cache.ts` 按配置服务共享缓存与在途请求，`onChange` 同步失效；打开连接菜单读取缓存，配置通知立即刷新下拉与已打开弹窗，保留搜索文本。最后一个编辑器关闭时解绑缓存订阅；过期异步结果不回填已销毁或更新后的输入视图。
+聊天连接候选由 `llm-ui-adapter/src/shell/connection-options-cache.ts` 按配置服务共享缓存与在途请求，`onChange` 同步失效；打开连接菜单读取缓存，配置通知立即刷新下拉与已打开弹窗，保留搜索文本。最后一个编辑器关闭时解绑缓存订阅；过期异步结果不回填已销毁或更新后的输入视图。
 
 ChatInput 的 Agent、Connection、模型层级及其他会话配置修改立即提交保存，正文草稿单独防抖。`StateManager.saveInputConfiguration` 在调用时复制配置并固定 Session/branch，通过串行队列写入 Session settings 和分支草稿；菜单与斜杠配置命令共用该路径。编辑器 `flushPendingSave` 等待并重试当前配置，成功后才释放。设置写入通知 Session 投影缓存失效，切回会话读取已提交数据。
 

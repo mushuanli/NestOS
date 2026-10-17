@@ -1,5 +1,5 @@
 import {expect, it, vi} from 'vitest';
-import {restoreTaskAttachment} from '../../llm-ui/src/shell/task-attachment-lifecycle';
+import {restoreTaskAttachment} from '../../llm-ui-adapter/src/shell/task-attachment-lifecycle';
 
 function task(id: string, status = 'waiting', pending = true, sessionId = 'session') {
     return {id, sessionId, status, updatedAt: 1,

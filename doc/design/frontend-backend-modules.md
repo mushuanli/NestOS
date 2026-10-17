@@ -4,12 +4,12 @@
 
 ## 目录归属
 
-所有业务 UI 工作区统一放在 ui/，后端业务工作区统一放在 backend/，app-contracts/common/app-transport 放在 shared/；apps/ 只承担宿主接线。原 packages/ 已清理，不再使用。独立 UI 库 vfs-ui、mdxeditor 保留在 libraries/，维持 Git 子模块与 npm 发布身份，但加载边界按前端检查。
+所有业务 UI 工作区统一放在 ui/，后端业务工作区统一放在 backend/，app-contracts/common/app-transport 放在 shared/；apps/ 只承担宿主接线。原 packages/ 已清理，不再使用。独立 UI 库 vfs-ui、mdxeditor、llm-ui 位于 libraries/，支持源码工作区与 npm 制品；已有子模块身份不变，但加载边界按前端检查。
 
 | 归属 | 目录 | 入口规则 |
 |---|---|---|
-| 前端 | ui/app-shell、app-settings、llm-ui、llm-settings-ui、mdx-adapter、ui-common 的 src | 不导入后端实现，不创建执行 Runtime |
-| 前端独立库 | libraries/vfs-ui、libraries/mdxeditor | 保留通用展示、编辑和注入端口 |
+| 前端 | ui/app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common 的 src | 不导入后端实现，不创建执行 Runtime |
+| 前端独立库 | libraries/vfs-ui、libraries/mdxeditor、libraries/llm-ui | 保留通用展示、编辑和注入端口 |
 | 后端应用 | backend/app-core/src/host、configuration、settings、projects、session、runtime 等 | 不加载 UI、CSS 或 DOM 组件 |
 | 后端领域与能力 | backend/ 下的 llm-context、llm-session、llm-flow、llm-tasks、durable-kernel、kernel-adapters、tools、device-tty、sanbox、sync-adapters | 领域契约与实现入口分开 |
 | 后端独立库 | driver-llm、piagent-driver、vfs-sync、vfsdriver-* 的实现 | 存储、网络和执行能力由宿主选择 |
@@ -89,7 +89,7 @@ C4Component
 - SnapshotService 位于 Web 存储宿主，通过 SnapshotPort 注入。Node/Tauri 未提供快照适配时，写维护操作明确拒绝；不会误操作浏览器数据库或关闭 VFS 后假成功。
 - 存储估计、主题和日志偏好通过设置端口访问。浏览器存储 API 不出现在设置 UI。
 - llm-settings-ui 保留文件选择、格式解析提示、冲突选择和结果展示。冲突查询、ID 分配、关联重映射、凭据保留与按依赖顺序保存由 app-core/configuration/configuration-import 执行；ConfigurationImportPort 属于配置领域契约。
-- llm-ui 保留交互命令、投影与视图缓存，通过 Session/Task/Conversation 公开端口调用。UI 的 services 或 commands 文件夹名称不表示后端实现。
+- llm-ui 通过自身的 Chat/Flow 展示契约消费宿主 source/actions，仅依赖 mdxeditor。llm-ui-adapter 保留 MindOS 交互命令、投影、视图缓存与完整产品编辑器兼容入口，通过 Session/Task/Conversation 公开端口调用。
 
 连接和原生会话状态由后端按观察需求共享探测；闲置状态缓存有身份、有效期和容量限制。前端读取快照并声明兴趣，不逐项目定时查询；后台执行记录仍以持久 Task 为准，缓存不授予操作权限。见 [业务装配与后台缓存](../http-app.md#业务装配与后台缓存)。
 
@@ -101,17 +101,17 @@ C4Component
 
 `pnpm modules:check` 检查所有前端、后端与共享生产源码的传递运行时依赖，包括 re-export、动态 import 和 require；应用类型引用也受检查：UI 和共享层禁止引用 app-core；后端和共享层禁止引用 UI。领域类型通过中立 contracts 入口引用。检查同时覆盖 HTTP client/server、共享传输、Node 宿主和 CLI 后端入口。通过共享 barrel 间接加载另一端也会失败。
 
-`pnpm modules:buildcheck` 将八个前端包的完整公开根入口一起构建，构建图出现后端实现即失败。HTTP Vite 和服务端 tsup 另检查实际构建输入；这两种检查补充源码守卫，避免只靠 tree shaking 或 package.json 判断边界。
+`pnpm modules:buildcheck` 将九个前端包的完整公开根入口一起构建，构建图出现后端实现即失败。HTTP Vite 和服务端 tsup 另检查实际构建输入；这两种检查补充源码守卫，避免只靠 tree shaking 或 package.json 判断边界。
 
 物理目录、独立应用服务接口与加载边界已实施。HTTP 完整工作区现在通过原 app-shell 接线，传输机制位于 shared/app-transport，Node 服务适配位于 apps/node-host；模块加载检查、完整 Shell 回归和真实 HTTPS 服务端口测试分别验证加载隔离、UI 复用与远端行为。平台原生能力由宿主注入，不能把统一 UI 当作各平台权限完全一致。
 
 
 ## 2026-10-14 目录隔离验收
 
-- 六个业务 UI 包位于 ui/；十一个后端包位于 backend/；app-contracts/common 位于 shared/。八个独立库仍在 libraries/，其中 mdxeditor/vfs-ui 按前端检查；demo 移至 apps/demo。原 packages/ 已删除。
+- 六个业务 UI 包位于 ui/；十一个后端包位于 backend/；app-contracts/common 位于 shared/。九个独立库在 libraries/，其中 mdxeditor/vfs-ui/llm-ui 按前端检查；demo 移至 apps/demo。原 packages/ 已删除。
 - 冻结锁文件离线安装与工作区实际链接检查通过；包名、公共入口和独立库 Git 子模块身份保持一致。
 - 全仓类型检查、架构/目录/应用类型边界、文档和样式检查通过；脚本套件 45 项通过。
-- 八个前端公开根入口的聚合构建通过，没有加载后端实现。所有有构建脚本的业务包/独立库、Web、Tauri 前端、HTTP 前后端、CLI 构建通过；llm-ui 的公开声明检查通过。
+- 九个前端公开根入口的聚合构建通过，没有加载后端实现。所有有构建脚本的业务包/独立库、Web、Tauri 前端、HTTP 前后端、CLI 构建通过；llm-ui 的公开声明检查通过。
 - pnpm test 完整矩阵退出码为 0：包括 app-core 510、app-shell 640（另 30 跳过）、HTTP 43、CLI 常规 202、CLI 崩溃恢复 22；Rust 沙箱 8、Tauri Rust 62 全部通过。
 - npm registry 工作区 prepare-only 与目录迁移用例通过。后续补丁替代发布将 driver-llm 升级到 0.2.2、vfs-ui 升级到 0.5.8，已删除 patches/ 和补丁配置生成逻辑；详见 [独立库发布记录](npm-library-consumption.md)。本轮未执行完整 registry 安装/构建或桌面 GUI 验收。
 

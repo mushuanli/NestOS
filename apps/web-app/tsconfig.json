@@ -16,7 +16,7 @@
       "@itookit/common": ["../../shared/common/src/index.ts"],
       "@itookit/common/*": ["../../shared/common/src/*"],
       "@itookit/llm-session": ["../../backend/llm-session/src/index.ts"],
-      "@itookit/llm-ui": ["../../ui/llm-ui/src/index.ts"],
+      "@itookit/llm-ui-adapter": ["../../ui/llm-ui-adapter/src/index.ts"],
       "@itookit/app-settings": ["../../ui/app-settings/src/index.ts"]
     }
   },

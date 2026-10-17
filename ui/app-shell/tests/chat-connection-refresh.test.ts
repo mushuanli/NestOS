@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import type { ConnectionOption } from '../../llm-ui/src/domain/types';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import type { ConnectionOption } from '../../llm-ui-adapter/src/domain/types';
 
 afterEach(() => { document.body.replaceChildren(); });
 const option = (id: string): ConnectionOption => ({ id, name: id, provider: 'p', hasApiKey: true, hasTiers: false, tiers: {} });

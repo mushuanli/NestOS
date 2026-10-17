@@ -10,13 +10,13 @@ export default defineConfig(
       '@itookit/mdx-adapter',
       '@itookit/common',
       '@itookit/vfs',
-      '@itookit/llm-ui'
+      '@itookit/llm-ui-adapter'
     ],
     globals: {
       '@itookit/mdx-adapter': 'MDxAdapter',
       '@itookit/common': 'ItookitCommon',
       '@itookit/vfs': 'VFSCore',
-      '@itookit/llm-ui': 'LLMUI'
+      '@itookit/llm-ui-adapter': 'LLMUI'
     }
   })
 );

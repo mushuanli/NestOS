@@ -1,0 +1,17 @@
+import './style.css';
+import type { ChatOptions, ChatView } from './contracts';
+import { ChatController } from './chat-view';
+
+export type * from './contracts';
+export { createOperationLedger } from './operations';
+export type { OperationLedgerOptions } from './operations';
+
+export async function createChatView(container: HTMLElement, options: ChatOptions): Promise<ChatView> {
+    const controller = new ChatController(container, options);
+    try { controller.initialize(); return controller; }
+    catch (error) {
+        try { await controller.destroy(); }
+        catch (cleanup) { throw new AggregateError([error, cleanup], 'Chat initialization failed'); }
+        throw error;
+    }
+}

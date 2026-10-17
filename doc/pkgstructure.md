@@ -1,17 +1,17 @@
 
 ## Workspace Structure
 
-pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `mind-os`）。八个独立库（包括 mdxeditor、vfs-ui）均位于 `libraries/`。目录迁移保留全部包名和公共入口。
+pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `mind-os`）。九个独立库（包括 llm-ui、mdxeditor、vfs-ui）均位于 `libraries/`。目录迁移保留全部包名和公共入口。
 
 | 目录 | 模块 |
 |---|---|
-| `ui/` | app-shell、app-settings、llm-ui、llm-settings-ui、mdx-adapter、ui-common |
+| `ui/` | app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common |
 | `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、durable-kernel、kernel-adapters、tools、device-tty、sanbox、sync-adapters |
 | `shared/` | app-contracts、common、app-transport |
-| `libraries/` | driver-llm、piagent-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor |
+| `libraries/` | driver-llm、piagent-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui |
 | `apps/` | web-app、tauri-app、cli、http-app、demo、node-host（共享 Node 宿主适配包） |
 
-20 个业务/共享包 + 8 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 tools/pi-agent 工具工作区。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
+20 个业务/共享包 + 9 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 tools/pi-agent 工具工作区。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
 
 ### LLM 子系统分层（单向依赖）
 
@@ -40,7 +40,8 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/vfsdriver-indexeddb` | IndexedDB 存储后端（浏览器）；既有 SeqFile 记录存储与通用原生事务能力；同步适配、原子应用与 Web Locks 由 sync-adapters 提供。 |
 | `@itookit/piagent-driver` | 统一 pi-agent 连接/凭据接入：文件、远程进程、HTTP 同步与 MCP harness 控制；独立于应用策略与 UI。 |
 | `@itookit/vfsdriver-local` | SQLite + 本地 FS 后端（Node/Electron）。 |
-| `@itookit/llm-ui` | Chat UI：聊天界面、流式历史视图、会话编排可视化。 |
+| `@itookit/llm-ui` | 独立 Chat + Flow 通用 UI；只依赖 mdxeditor，Flow 由同包 /flow 子入口与功能开关控制。 |
+| `@itookit/llm-ui-adapter` | MindOS 的 Session/Task/Flow/VFS 接线与原产品编辑器兼容入口。 |
 | `@itookit/llm-settings-ui` | LLM 设置 UI：Agent/Provider/Connection/MCP/Skill/Cost/SystemPrompt 编辑器 + 配置导入导出（`llm-import`）。 |
 | `@itookit/vfs-ui` | 独立文件/资源浏览 UI：目录导航、标签、内容大纲；仅依赖 vfs-core，通过公开接口注入数据源、动作、展示和持久化。 |
 | `@itookit/mdxeditor` | 独立 CodeMirror 6 编辑器（[独立仓库](https://github.com/mushuanli/mdxeditor)，源码工作区接入），不依赖其他内部包；宿主通过公共附件、存储、导航和保存接口注入能力。 |

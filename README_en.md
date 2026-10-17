@@ -60,7 +60,7 @@ A next-generation Markdown editor built on **CodeMirror 6**, balancing writing e
 - **Foldable blocks**: Fold/unfold long document sections to maintain reading focus
 - **Plugin architecture**: Micro-kernel built on `PluginManager` + `EventBus` + `ServiceContainer`—all features are plugins, combinable on demand
 
-#### 3. Conversation Branch System — `ui/llm-ui`
+#### 3. Conversation Branch System — `ui/llm-ui-adapter`
 
 The Chat workspace supports a **message tree branching system**, letting you explore multiple distinct conversation paths within the same session:
 

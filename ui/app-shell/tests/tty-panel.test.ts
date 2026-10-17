@@ -6,8 +6,8 @@
  */
 import { expect, it } from 'vitest';
 import { t } from '@itookit/common';
-import { TtyPanel } from '../../llm-ui/src/components/tty/TtyPanel';
-import { TtyController } from '../../llm-ui/src/components/tty/TtyController';
+import { TtyPanel } from '../../llm-ui-adapter/src/components/tty/TtyPanel';
+import { TtyController } from '../../llm-ui-adapter/src/components/tty/TtyController';
 
 function node(): HTMLElement {
     const el = document.createElement('div');

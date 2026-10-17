@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { WorkspaceDirectoryMenu } from '../../llm-ui/src/shell/WorkspaceDirectoryMenu';
+import { WorkspaceDirectoryMenu } from '../../llm-ui-adapter/src/shell/WorkspaceDirectoryMenu';
 import { showMountDialog } from '../src/files/mount-dialog';
 import type { DirectoryMountService, SessionFilesService } from '@itookit/app-core';
 

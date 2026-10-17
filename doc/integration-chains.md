@@ -1,5 +1,7 @@
 # 核心集成链
 
+独立 llm-ui 的 Chat/Flow 通过宿主 source 发布事实、actions 提交意图，操作结果进入宿主持有的 OperationLedger；视图关闭只释放 UI。以下原产品的 Session/Kernel 接线与编辑器兼容实现位于 llm-ui-adapter。
+
 > 详细架构参见 [architecture.md](./architecture.md)
 
 ## 1. VFS 全栈链（@itookit/vfs-core）
@@ -63,8 +65,8 @@ ChatInput.send (llm-ui)
 
 | 步骤 | 组件 | 关键文件 |
 |---|---|---|
-| 输入 | `ChatInput.triggerSend()` | `llm-ui/src/components/input/` |
-| 命令路由 | `SendMessageCommand` / `SlashCommandRouter` | `llm-ui/src/commands/`, `shell/` |
+| 输入 | `ChatInput.triggerSend()` | `llm-ui-adapter/src/components/input/` |
+| 命令路由 | `SendMessageCommand` / `SlashCommandRouter` | `llm-ui-adapter/src/commands/`, `shell/` |
 | 会话 | `SessionManager.sendMessage()` | `llm-session/src/session/session-manager.ts` |
 | 编排 | `ConversationRunCoordinator`（Direct / Flow 分流） | `llm-session/src/session/conversation-run-coordinator.ts` |
 | 程序 | `DurableChatProgram` / `DurableAgentProgram` | `llm-tasks/src/durable/` |

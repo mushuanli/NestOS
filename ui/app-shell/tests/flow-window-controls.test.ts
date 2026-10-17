@@ -2,8 +2,8 @@
 import { afterEach, expect, it, vi } from 'vitest';
 vi.mock('@itookit/ui-common', async () => ({ ...await vi.importActual('@itookit/ui-common'), copyText: vi.fn(async () => {}) }));
 import { copyText } from '@itookit/ui-common';
-import { HistoryView } from '../../llm-ui/src/components/HistoryView';
-import { SessionRenderer } from '../../llm-ui/src/components/history/SessionRenderer';
+import { HistoryView } from '../../llm-ui-adapter/src/components/HistoryView';
+import { SessionRenderer } from '../../llm-ui-adapter/src/components/history/SessionRenderer';
 
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 

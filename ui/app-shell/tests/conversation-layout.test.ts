@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import { NodeRenderer } from '../../llm-ui/src/components/history/NodeRenderer';
-import { NodeTemplates } from '../../llm-ui/src/components/templates/NodeTemplates';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import { NodeRenderer } from '../../llm-ui-adapter/src/components/history/NodeRenderer';
+import { NodeTemplates } from '../../llm-ui-adapter/src/components/templates/NodeTemplates';
 
 const views: ChatInput[] = [];
 afterEach(() => {

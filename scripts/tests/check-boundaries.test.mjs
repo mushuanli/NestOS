@@ -122,7 +122,7 @@ test('driver dependencies reject context types as well as runtime imports', () =
 });
 
 test('optional settings may only load through the explicit settings or compatibility entry', () => {
-    const ui = pkg('llm-ui');
+    const ui = pkg('llm-ui-adapter');
     for (const statement of ["import '@itookit/llm-settings-ui'", "import('./settings')", "export * from './settings'"]) {
         assert.match(inspect(ui, statement, ui.dir + '/src/chat.ts')[0], /optional settings/);
         assert.equal(inspect(ui, statement, ui.dir + '/src/settings.ts').length, 0);
@@ -130,7 +130,7 @@ test('optional settings may only load through the explicit settings or compatibi
 });
 
 test('chat uses session contracts and rejects session implementation imports', () => {
-    const ui = pkg('llm-ui');
+    const ui = pkg('llm-ui-adapter');
     const session = { ...pkg('llm-session'), exports: { '.': './src/index.ts', './contracts': './src/contracts.ts' } };
     const check = (file, expression) => sourceErrors(ui, ui.dir + '/src/' + file, expression, [ui, session]);
     assert.match(check('chat.ts', "import { getSessionManager } from '@itookit/llm-session'")[0], /runtime instances belong to the host/);
@@ -141,13 +141,13 @@ test('chat uses session contracts and rejects session implementation imports', (
 
 
 test('chat must receive business flow templates from the host', () => {
-    const ui = pkg('llm-ui');
+    const ui = pkg('llm-ui-adapter');
     assert.match(inspect(ui, "import template from './library/product.flow?raw'", ui.dir + '/src/chat.ts')[0], /template catalogs/);
 });
 
 
 test('public LLM capabilities cannot choose MindOS default tool grants', () => {
-    for (const name of ['kernel-adapters', 'llm-session', 'llm-ui', 'llm-settings-ui']) {
+    for (const name of ['kernel-adapters', 'llm-session', 'llm-ui-adapter', 'llm-settings-ui']) {
         const source = pkg(name);
         assert.match(inspect(source, "export const DEFAULT_HARNESS_TOOL_IDS = ['Bash'];")[0], /injected policy/);
     }
@@ -175,7 +175,7 @@ test('production hosts cannot rely on implicit LLM presets through the compatibi
 
 test('adapter diagnostics and UI creation state are instance scoped', () => {
     assert.match(dependencyError('@itookit/kernel-adapters', '@itookit/common'), /injected ports/);
-    const ui = pkg('llm-ui');
+    const ui = pkg('llm-ui-adapter');
     assert.match(sourceErrors(ui, ui.dir + '/src/StateManager.ts', "sessionStorage.getItem('app_create_params')", [ui])[0], /instance options/);
 });
 
@@ -209,4 +209,14 @@ test('shared RPC transport keeps application descriptors outside its mechanism d
     const file = resolve(transport.dir, 'src/rpc/peer.ts');
     assert.match(importError(transport, file, '../application/capabilities', packages), /metadata through injection/);
     assert.equal(importError(transport, file, './protocol', packages), undefined);
+});
+
+
+test('standalone llm-ui rejects all runtime and contract dependencies except mdxeditor', () => {
+    const ui = pkg('llm-ui');
+    for (const name of ['@itookit/common', '@itookit/llm-ui-adapter', '@itookit/llm-session/contracts', 'marked', 'node:fs']) {
+        assert.match(sourceErrors(ui, ui.dir + '/src/index.ts', `import type { Contract } from '${name}'`, [ui])[0], /only import mdxeditor/);
+        assert.match(manifestDependencyError(ui.name, name), /only depend on mdxeditor/);
+    }
+    assert.equal(inspect(ui, "import { MDxRenderer } from '@itookit/mdxeditor'").length, 0);
 });

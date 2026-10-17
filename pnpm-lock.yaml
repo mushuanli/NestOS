@@ -185,9 +185,9 @@ importers:
       '@itookit/driver-llm':
         specifier: workspace:*
         version: link:../../libraries/driver-llm
-      '@itookit/llm-ui':
+      '@itookit/llm-ui-adapter':
         specifier: workspace:*
-        version: link:../../ui/llm-ui
+        version: link:../../ui/llm-ui-adapter
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
@@ -246,9 +246,9 @@ importers:
       '@itookit/llm-flow':
         specifier: workspace:*
         version: link:../../backend/llm-flow
-      '@itookit/llm-ui':
+      '@itookit/llm-ui-adapter':
         specifier: workspace:*
-        version: link:../../ui/llm-ui
+        version: link:../../ui/llm-ui-adapter
       '@itookit/mdx-adapter':
         specifier: workspace:*
         version: link:../../ui/mdx-adapter
@@ -362,9 +362,9 @@ importers:
       '@itookit/llm-settings-ui':
         specifier: workspace:*
         version: link:../../ui/llm-settings-ui
-      '@itookit/llm-ui':
+      '@itookit/llm-ui-adapter':
         specifier: workspace:*
-        version: link:../../ui/llm-ui
+        version: link:../../ui/llm-ui-adapter
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
@@ -474,9 +474,9 @@ importers:
       '@itookit/llm-settings-ui':
         specifier: workspace:*
         version: link:../../ui/llm-settings-ui
-      '@itookit/llm-ui':
+      '@itookit/llm-ui-adapter':
         specifier: workspace:*
-        version: link:../../ui/llm-ui
+        version: link:../../ui/llm-ui-adapter
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
@@ -907,6 +907,31 @@ importers:
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
+      vitest:
+        specifier: ^1.6.1
+        version: 1.6.1(@types/node@20.19.43)(jsdom@27.2.0)
+
+  libraries/llm-ui:
+    dependencies:
+      '@itookit/mdxeditor':
+        specifier: workspace:*
+        version: link:../mdxeditor
+    devDependencies:
+      '@types/node':
+        specifier: ^20.19.25
+        version: 20.19.43
+      jsdom:
+        specifier: ^27.2.0
+        version: 27.2.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.21
+        version: 5.4.21(@types/node@20.19.43)
+      vite-plugin-dts:
+        specifier: ^3.9.1
+        version: 3.9.1(@types/node@20.19.43)(rollup@4.62.2)(typescript@5.9.3)(vite@5.4.21(@types/node@20.19.43))
       vitest:
         specifier: ^1.6.1
         version: 1.6.1(@types/node@20.19.43)(jsdom@27.2.0)
@@ -1366,20 +1391,35 @@ importers:
         specifier: ^1.6.1
         version: 1.6.1(@types/node@20.19.43)(jsdom@27.2.0)
 
-  ui/llm-ui:
+  ui/llm-ui-adapter:
     dependencies:
       '@itookit/common':
         specifier: workspace:*
         version: link:../../shared/common
+      '@itookit/driver-llm':
+        specifier: workspace:*
+        version: link:../../libraries/driver-llm
       '@itookit/durable-kernel':
         specifier: workspace:*
         version: link:../../backend/durable-kernel
+      '@itookit/kernel-adapters':
+        specifier: workspace:*
+        version: link:../../backend/kernel-adapters
       '@itookit/llm-flow':
         specifier: workspace:*
         version: link:../../backend/llm-flow
       '@itookit/llm-session':
         specifier: workspace:*
         version: link:../../backend/llm-session
+      '@itookit/llm-tasks':
+        specifier: workspace:*
+        version: link:../../backend/llm-tasks
+      '@itookit/llm-ui':
+        specifier: workspace:*
+        version: link:../../libraries/llm-ui
+      '@itookit/tools':
+        specifier: workspace:*
+        version: link:../../backend/tools
       '@itookit/ui-common':
         specifier: workspace:*
         version: link:../ui-common
@@ -1393,27 +1433,15 @@ importers:
         specifier: ^16.4.2
         version: 16.4.2
     devDependencies:
-      '@itookit/driver-llm':
-        specifier: workspace:*
-        version: link:../../libraries/driver-llm
-      '@itookit/kernel-adapters':
-        specifier: workspace:*
-        version: link:../../backend/kernel-adapters
       '@itookit/llm-settings-ui':
         specifier: workspace:*
         version: link:../llm-settings-ui
-      '@itookit/llm-tasks':
-        specifier: workspace:*
-        version: link:../../backend/llm-tasks
       '@itookit/mdx-adapter':
         specifier: workspace:*
         version: link:../mdx-adapter
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/tools':
-        specifier: workspace:*
-        version: link:../../backend/tools
       '@types/js-yaml':
         specifier: ^4.0.9
         version: 4.0.9
@@ -1423,15 +1451,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: ^1.6.1
         version: 1.6.1(vitest@1.6.1(@types/node@20.19.43)(jsdom@27.2.0))
-      rollup:
-        specifier: 4.62.2
-        version: 4.62.2
-      rollup-plugin-dts:
-        specifier: 6.3.0
-        version: 6.3.0(rollup@4.62.2)(typescript@5.9.3)
-      tsup:
-        specifier: ^8.5.1
-        version: 8.5.1(@microsoft/api-extractor@7.55.1(@types/node@20.19.43))(jiti@1.21.7)(postcss@8.5.16)(tsx@4.20.6)(typescript@5.9.3)(yaml@2.8.2)
       typescript:
         specifier: ^5.9.3
         version: 5.9.3
@@ -4561,13 +4580,6 @@ packages:
 
   robust-predicates@3.0.3:
     resolution: {integrity: sha512-NS3levdsRIUOmiJ8FZWCP7LG3QpJyrs/TE0Zpf1yvZu8cAJJ6QMW92H1c7kWpdIHo8RvmLxN/o2JXTKHp74lUA==}
-
-  rollup-plugin-dts@6.3.0:
-    resolution: {integrity: sha512-d0UrqxYd8KyZ6i3M2Nx7WOMy708qsV/7fTHMHxCMCBOAe3V/U7OMPu5GkX8hC+cmkHhzGnfeYongl1IgiooddA==}
-    engines: {node: '>=16'}
-    peerDependencies:
-      rollup: ^3.29.4 || ^4
-      typescript: ^4.5 || ^5.0
 
   rollup@4.53.3:
     resolution: {integrity: sha512-w8GmOxZfBmKknvdXU1sdM9NHcoQejwF/4mNgj2JuEEdRaHwwF12K7e9eXn1nLZ07ad+du76mkVsyeb2rKGllsA==}
@@ -8673,14 +8685,6 @@ snapshots:
       glob: 10.5.0
 
   robust-predicates@3.0.3: {}
-
-  rollup-plugin-dts@6.3.0(rollup@4.62.2)(typescript@5.9.3):
-    dependencies:
-      magic-string: 0.30.21
-      rollup: 4.62.2
-      typescript: 5.9.3
-    optionalDependencies:
-      '@babel/code-frame': 7.27.1
 
   rollup@4.53.3:
     dependencies:

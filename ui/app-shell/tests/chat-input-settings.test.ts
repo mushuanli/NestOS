@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
 
 const cleanup: Array<() => void> = [];
 afterEach(() => { cleanup.splice(0).forEach(close => close()); document.body.replaceChildren(); vi.unstubAllGlobals(); });

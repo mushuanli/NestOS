@@ -1,10 +1,10 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { RemoteConversationEditor } from '../../llm-ui/src/shell/RemoteConversationEditor';
+import { RemoteConversationEditor } from '../../llm-ui-adapter/src/shell/RemoteConversationEditor';
 import type { ConversationControls, ConversationSnapshot, EditorOptions } from '@itookit/ui-common';
 import { LLMPrintService } from '@itookit/mdx-adapter';
 import { t } from '@itookit/common';
-import { HistoryView } from '../../llm-ui/src/components/HistoryView';
+import { HistoryView } from '../../llm-ui-adapter/src/components/HistoryView';
 const state: ConversationSnapshot = {sessionId:'s',title:'remote',branchName:'main',messages:[{id:'1',role:'assistant',text:'<script>native</script>',turnId:'initial-turn'}],requests:[],canSend:true,canInterrupt:false,canRespond:false,pending:false,disconnected:false,gap:false};
 function setup(options: EditorOptions = {}) {
     const peer: ConversationControls = {read:vi.fn(async () => state),poll:vi.fn(async () => state),send:vi.fn(async () => ({...state,canSend:false,canInterrupt:true})),interrupt:vi.fn(async () => state),respond:vi.fn(async () => state),reconcile:vi.fn(async () => state),close:vi.fn(async () => {})};

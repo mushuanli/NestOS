@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { it, expect, vi } from 'vitest';
-import { SessionDraftEditor } from '../../llm-ui/src/shell/drafts/SessionDraftEditor';
+import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
 const state = vi.hoisted(() => ({ options: undefined as any, restore: vi.fn(), destroy: vi.fn() }));
-vi.mock('../../llm-ui/src/shell/AgentProvider', () => ({ buildExecutorOptions: async () => [], buildConnectionOptions: async () => [] }));
-vi.mock('../../llm-ui/src/components/input/ChatInputView', () => ({ ChatInput: class {
+vi.mock('../../llm-ui-adapter/src/shell/AgentProvider', () => ({ buildExecutorOptions: async () => [], buildConnectionOptions: async () => [] }));
+vi.mock('../../llm-ui-adapter/src/components/input/ChatInputView', () => ({ ChatInput: class {
     constructor(_container: HTMLElement, options: unknown) { state.options = options; }
     focus() {} setLoading() {} refreshConnections() {} restoreDraft = state.restore; destroy = state.destroy;
 } }));
@@ -67,7 +67,7 @@ it('preserves edits made while checking for a promoted draft instead of replacin
 });
 
 it('restores text, agent, options and binary attachments after reopening', async () => {
-    const { DraftDataCodec } = await import('../../llm-ui/src/shell/drafts/session-draft-data');
+    const { DraftDataCodec } = await import('../../llm-ui-adapter/src/shell/drafts/session-draft-data');
     let stored = '';
     const bytes = new Map<string, ArrayBuffer>();
     const attachments = { put: vi.fn(async (data: ArrayBuffer) => { bytes.set('asset', data); return 'asset'; }),
@@ -157,7 +157,7 @@ it('migrates legacy base64 drafts to binary references when opened', async () =>
 });
 
 it('retries failed binary writes without publishing an incomplete reference', async () => {
-    const { DraftDataCodec } = await import('../../llm-ui/src/shell/drafts/session-draft-data');
+    const { DraftDataCodec } = await import('../../llm-ui-adapter/src/shell/drafts/session-draft-data');
     const attachments = { put: vi.fn().mockRejectedValueOnce(new Error('disk full')).mockResolvedValue('retry-id'), read: vi.fn() };
     const codec = new DraftDataCodec(attachments);
     const file = new File(['bytes'], 'file.txt'), config = { text: 'draft', agentId: 'default', settings: {} };

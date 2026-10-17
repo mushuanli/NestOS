@@ -16,7 +16,7 @@
     "@itookit/common": "workspace:*",
     "@itookit/app-core": "workspace:*",
     "@itookit/app-shell": "workspace:*",
-    "@itookit/llm-ui": "workspace:*",
+    "@itookit/llm-ui-adapter": "workspace:*",
     "@itookit/mdxeditor": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "@itookit/piagent-driver": "workspace:*",

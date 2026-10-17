@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
-import { openTaskTranscript } from '../../llm-ui/src/components/dag/TaskTranscriptDialog';
+import { openTaskTranscript } from '../../llm-ui-adapter/src/components/dag/TaskTranscriptDialog';
 
 beforeEach(() => {
     Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: vi.fn() });

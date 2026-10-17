@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { MentionPlugin } from '../../llm-ui/src/components/input/plugins/MentionPlugin';
-import type { InputPluginContext } from '../../llm-ui/src/components/input/plugins/InputPlugin';
+import { MentionPlugin } from '../../llm-ui-adapter/src/components/input/plugins/MentionPlugin';
+import type { InputPluginContext } from '../../llm-ui-adapter/src/components/input/plugins/InputPlugin';
 
 let plugin: MentionPlugin | undefined;
 afterEach(() => { plugin?.deactivate(); document.body.replaceChildren(); vi.useRealTimers(); });

@@ -23,7 +23,7 @@ History 展示交互而不展开 DAG：输入节点与补充输入显示为 user
 - 打开历史输出只读取持久记录，不自动恢复执行；显式恢复仍使用工作台的恢复操作。切换 Session 或关闭窗口会释放轮询。
 - 新完成的 Flow 同时把格式化结果写入会话消息；旧会话中已保存的空消息不会自动重写，但仍可从「流程输出」读取 Run 的持久结果。
 
-源码：[输出投影](../../backend/llm-flow/src/contracts/flow-output.ts)、[会话窗口](../../ui/llm-ui/src/flows/session-output.ts)、[输出渲染](../../ui/llm-ui/src/components/dag/FlowOutput.ts)。
+源码：[输出投影](../../backend/llm-flow/src/contracts/flow-output.ts)、[会话窗口](../../ui/llm-ui-adapter/src/flows/session-output.ts)、[输出渲染](../../ui/llm-ui-adapter/src/components/dag/FlowOutput.ts)。
 
 ## 节点工具与 Skill
 
@@ -62,7 +62,7 @@ Skill 可通过工具绑定声明：
 
 - [CLI 集成](../../apps/cli/tests/flow-capabilities.test.ts)：本地模拟模型 + 真实 stdio MCP 进程，直接工具、Skill 工具、独立 history、批准等待、关闭后恢复及再次运行。
 - [HTTP MCP 测试](../../backend/kernel-adapters/tests/llm-management/mcp-transport.test.ts)：初始化、认证头、分页、结构化结果和取消。
-- [输出测试](../../ui/llm-ui/src/flows/flow-output.test.ts) 与 [DOM 集成](../../ui/app-shell/tests/flow-output.test.ts)：结构化数据、转义、运行刷新、会话过滤、历史查看和关闭清理。
+- [输出测试](../../ui/llm-ui-adapter/src/flows/flow-output.test.ts) 与 [DOM 集成](../../ui/app-shell/tests/flow-output.test.ts)：结构化数据、转义、运行刷新、会话过滤、历史查看和关闭清理。
 
 这些测试不依赖外部模型或用户 MCP 服务，也不等同于真实桌面手工验收。
 

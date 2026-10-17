@@ -5,7 +5,7 @@
  *
  * Usage:
  * ```ts
- * import { createAIContextMenuConfig } from '@itookit/llm-ui';
+ * import { createAIContextMenuConfig } from '@itookit/llm-ui-adapter';
  *
  * // Pass to VFSUIShell via MemoryManagerConfig.uiOptions
  * uiOptions: {

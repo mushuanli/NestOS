@@ -17,6 +17,7 @@ const browserGlobals = new Set(['window', 'document', 'localStorage', 'sessionSt
 
 export function dependencyError(source, target) {
     if (source === target) return;
+    if (source === '@itookit/llm-ui' && target !== '@itookit/mdxeditor') return 'independent llm-ui may only depend on mdxeditor';
     if (source === '@itookit/piagent-driver' && target.startsWith('@itookit/') &&
         !['@itookit/vfs-core', '@itookit/vfs-sync'].includes(target))
         return 'piagent-driver must receive application policy through public ports';
@@ -54,6 +55,8 @@ function ownerOf(file, packages) {
 }
 
 export function importError(source, file, specifier, packages) {
+    if (source.name === '@itookit/llm-ui' && !specifier.startsWith('.') && specifier !== '@itookit/mdxeditor')
+        return 'independent llm-ui may only import mdxeditor';
     if ((source.host || source.name === '@itookit/app-transport') && file.startsWith(resolve(source.dir, 'src/rpc') + sep)) {
         const local = specifier.startsWith('.') && resolve(file, '..', specifier).startsWith(resolve(source.dir, 'src/rpc') + sep);
         if (!local && specifier !== '@itookit/vfs-core') return 'RPC mechanisms must receive application metadata through injection';
@@ -62,7 +65,7 @@ export function importError(source, file, specifier, packages) {
         return 'frontend shell must use shared app-contracts and injected backend ports; runtime assembly belongs to hosts';
     if (specifier === '@itookit/kernel-adapters/llm' && (source.host || ['@itookit/app-core', '@itookit/app-shell'].includes(source.name)))
         return 'hosts must select explicit LLM core, presets or config entries';
-    if (source.name === '@itookit/llm-ui' && file !== resolve(source.dir, 'src/settings.ts')) {
+    if (source.name === '@itookit/llm-ui-adapter' && file !== resolve(source.dir, 'src/settings.ts')) {
         if (specifier.startsWith('@itookit/llm-settings-ui') || (specifier.startsWith('.') && resolve(file, '..', specifier).replace(/\.ts$/, '') === resolve(source.dir, 'src/settings')))
             return 'chat and shared UI must not load optional settings implementations';
     }
@@ -70,9 +73,9 @@ export function importError(source, file, specifier, packages) {
         return 'settings UI must query service instance capabilities, not the global host registry';
     if (source.name === '@itookit/llm-settings-ui' && specifier === '@itookit/kernel-adapters/llm')
         return 'settings UI must use config codecs, contracts or explicit host ports; not the management aggregate';
-    if (source.name === '@itookit/llm-ui' && /\.flow(?:\?raw)?$/.test(specifier))
+    if (source.name === '@itookit/llm-ui-adapter' && /\.flow(?:\?raw)?$/.test(specifier))
         return 'UI must receive Flow template catalogs from the host';
-    if (source.name === '@itookit/llm-ui' && specifier === '@itookit/llm-session')
+    if (source.name === '@itookit/llm-ui-adapter' && specifier === '@itookit/llm-session')
         return 'chat UI must use session contracts and injected views; runtime instances belong to the host';
     if (source.name === '@itookit/app-core' && (specifier.startsWith('node:') || builtinModules.includes(specifier))) return 'app-core must receive native capabilities through injected ports';
     if (specifier.startsWith('.')) {
@@ -118,14 +121,14 @@ export function sourceErrors(source, file, text, packages) {
     const visit = node => {
         if (source.name === '@itookit/app-shell' && ts.isStringLiteralLike(node) && /(?:\.|^)vfs-[\w-]+/.test(node.text))
             report(node, 'app-shell must use public VFS options/events instead of internal DOM classes');
-        if (source.name === '@itookit/llm-ui' && ts.isStringLiteralLike(node) && node.text === 'app_create_params')
+        if (source.name === '@itookit/llm-ui-adapter' && ts.isStringLiteralLike(node) && node.text === 'app_create_params')
             report(node, 'UI must receive initial input through instance options, not ambient host storage');
         const specifier = moduleSpecifier(node);
         if (specifier && ts.isStringLiteralLike(specifier)) {
             const error = importError(source, file, specifier.text, packages);
             if (error) report(node, `${error} (${specifier.text})`);
         }
-        if (['@itookit/kernel-adapters', '@itookit/llm-session', '@itookit/llm-ui', '@itookit/llm-settings-ui'].includes(source.name) &&
+        if (['@itookit/kernel-adapters', '@itookit/llm-session', '@itookit/llm-ui-adapter', '@itookit/llm-settings-ui'].includes(source.name) &&
             ts.isIdentifier(node) && node.text === 'DEFAULT_HARNESS_TOOL_IDS')
             report(node, 'MindOS default tool grants belong to the host; capabilities receive injected policy');
         if (source.name === '@itookit/app-shell' && ts.isIdentifier(node) && ['LocalBackendPort', 'LocalApplicationServices', 'IVFSManager', 'SessionFilesService', 'DirectoryMountService'].includes(node.text))

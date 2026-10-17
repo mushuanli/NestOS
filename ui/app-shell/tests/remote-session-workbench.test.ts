@@ -5,7 +5,7 @@ import { t } from '@itookit/common';
 import { MemoryBackend, createFileSystemSource, FSError } from '@itookit/vfs-core';
 import { createApplicationRuntime, remoteSessionPath, folderBrowserPath } from '@itookit/app-core';
 import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/piagent-driver';
-import { RemoteConversationEditor } from '../../llm-ui/src/shell/RemoteConversationEditor';
+import { RemoteConversationEditor } from '../../llm-ui-adapter/src/shell/RemoteConversationEditor';
 import type { EditorOptions } from '@itookit/ui-common';
 import type { VFSUIShell } from '@itookit/vfs-ui';
 

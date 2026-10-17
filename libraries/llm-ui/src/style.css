@@ -1,0 +1,26 @@
+@import './flow.css';
+.llm-chat { --llm-chat-width: 780px; --llm-chat-accent: #4263eb; --llm-chat-border: #d8dce3; display: flex; flex-direction: column; height: 100%; min-height: 0; color: inherit; font: inherit; }
+.llm-chat__header, .llm-chat__toolbar, .llm-chat__selectors, .llm-chat__message-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.llm-chat__header { padding: 8px 16px; border-bottom: 1px solid var(--llm-chat-border); }
+.llm-chat__title { flex: 1; font-size: 1rem; margin: 0; }
+.llm-chat__status { font-size: .8rem; opacity: .7; }
+.llm-chat__history { flex: 1; min-height: 0; overflow: auto; overflow-anchor: auto; padding: 16px; }
+.llm-chat__message { max-width: var(--llm-chat-width); margin: 0 auto 24px; overflow-wrap: anywhere; }
+.llm-chat__message[data-role="user"] .llm-chat__body { padding: 8px 16px; border-radius: 12px; background: color-mix(in srgb, var(--llm-chat-accent) 8%, transparent); }
+.llm-chat__message-actions { margin-top: 6px; }
+.llm-chat button { font: inherit; cursor: pointer; border: 1px solid var(--llm-chat-border); border-radius: 5px; padding: 4px 10px; background: transparent; color: inherit; }
+.llm-chat button:disabled { opacity: .5; cursor: default; }
+.llm-chat__composer { width: calc(100% - 32px); max-width: var(--llm-chat-width); margin: 8px auto 16px; }
+.llm-chat__input, .llm-chat__edit textarea { box-sizing: border-box; width: 100%; min-height: 40px; max-height: 160px; field-sizing: content; resize: vertical; font: inherit; color: inherit; background: transparent; border: 1px solid var(--llm-chat-border); border-radius: 8px; padding: 10px; }
+.llm-chat__error { color: #d24444; margin: 4px 0; font-size: .85rem; }
+.llm-chat__interactions, .llm-chat__prompts { max-height: 35vh; overflow: auto; }
+.llm-chat__interaction { max-width: var(--llm-chat-width); margin: 8px auto; padding: 12px; border: 1px solid var(--llm-chat-border); border-radius: 8px; }
+.llm-chat__part { --mdx-content-background: transparent; --mdx-content-color: inherit; --mdx-content-padding: 0; }
+.llm-chat__part img { max-width: 100%; }
+.llm-chat__part pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+.llm-chat__attachments, .llm-chat__candidates { display: flex; flex-wrap: wrap; gap: 8px; }
+.llm-chat__prompts button { display: block; text-align: start; }
+@media (max-width: 600px) { .llm-chat__history { padding: 10px; } .llm-chat__header { padding: 8px; } }
+
+.llm-chat__flow { min-height: 320px; height: 45%; border-block: 1px solid var(--llm-chat-border); }
+.llm-chat__flow > div { height: 100%; }

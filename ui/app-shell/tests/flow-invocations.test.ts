@@ -3,10 +3,10 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Kernel } from '@itookit/durable-kernel';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { CommandBus, FlowEngine, FlowDefinitionStore, DagCommandService, FlowInvocationService, FlowCommand, SessionCommand, createBuiltinDagPluginRegistry, registerDurablePrograms } from '@itookit/llm-session';
-import { invokeFlowText } from '../../llm-ui/src/flows/invoke-flow';
-import { InvocationPanel } from '../../llm-ui/src/flows/InvocationPanel';
-import { SlashCommandPlugin } from '../../llm-ui/src/components/input/plugins/SlashCommandPlugin';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
+import { invokeFlowText } from '../../llm-ui-adapter/src/flows/invoke-flow';
+import { InvocationPanel } from '../../llm-ui-adapter/src/flows/InvocationPanel';
+import { SlashCommandPlugin } from '../../llm-ui-adapter/src/components/input/plugins/SlashCommandPlugin';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
 import { t } from '@itookit/common';
 
 let manager: Awaited<ReturnType<typeof createVFS>>['manager'], kernel: Kernel, commands: CommandBus, panel: InvocationPanel;

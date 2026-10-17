@@ -18,7 +18,7 @@
     "@itookit/app-settings": "workspace:*",
     "@itookit/common": "workspace:*",
     "@itookit/driver-llm": "workspace:*",
-    "@itookit/llm-ui": "workspace:*",
+    "@itookit/llm-ui-adapter": "workspace:*",
     "@itookit/mdxeditor": "workspace:*",
     "@itookit/vfs-ui": "workspace:*",
     "dexie": "^4.2.1",

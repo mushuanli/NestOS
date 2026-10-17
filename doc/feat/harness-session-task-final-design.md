@@ -1917,7 +1917,7 @@ apps/tauri-app
   ChatKernelStorageResolver / Round and Conversation projection
   Flow manifest registry + TaskSpec/dependsOn DAG compiler
 
-@itookit/llm-ui
+@itookit/llm-ui-adapter
   Slash command syntax + attached Task selection
   depends on IPrivilegedCommandService, never on concrete Exec/Plan programs
 

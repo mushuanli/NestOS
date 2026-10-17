@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import type { ChatInputInteraction } from '../../llm-ui/src/domain/ports/IChatInputPresenter';
-import { LLMWorkspaceEditor } from '../../llm-ui/src/shell/LLMWorkspaceEditor';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import type { ChatInputInteraction } from '../../llm-ui-adapter/src/domain/ports/IChatInputPresenter';
+import { LLMWorkspaceEditor } from '../../llm-ui-adapter/src/shell/LLMWorkspaceEditor';
 
 const approval: ChatInputInteraction = {
     key: '1:approval', id: 'approval', kind: 'approval', prompt: 'Approve <script>bad()</script>?',

@@ -377,7 +377,7 @@ sequenceDiagram
 </article>
 ```
 
-徽标规则（仅 `builtin.agent` 节点渲染，实现见 `llm-ui/src/components/dag/DagCanvas.ts` 的 `nodeBadges`）：
+徽标规则（仅 `builtin.agent` 节点渲染，实现见 `llm-ui-adapter/src/components/dag/DagCanvas.ts` 的 `nodeBadges`）：
 - **agent 引用**：`config.agentId` 非空时显示该 id（title="引用 Agent"）。
 - **history 继承状态**：`H:inherit` / `H:none` / `H:upstream` 三态徽标，颜色区分（inherit 灰 / none 橙 / upstream 蓝）；未配置或非法值按 inherit 显示。
 - **System Prompt 策略**：`SP:replace` / `SP:none` 徽标，仅在非 inherit 时出现。
@@ -540,7 +540,7 @@ Codex 支持并行 subagent、等待汇总、检查子线程、向运行中子�
 | Memory/Context | ConversationSystemOptions → createSessionManager → SessionManager 已传递 retrieveMemory 注入点，检索接收当前 Session 与复制的 memoryPolicy；Agent 每次模型请求前按配置裁剪历史并保护系统指令、当前用户请求和完整工具组 | 已装配 Session 内持久 memory provider，并实现存储侧保留期（`retention.maxEntriesPerScope` / `before` 水位 + `prune`）；跨 Session 共享、模型记忆工具、语义摘要及长期运行恢复仍待完成 |
 | 扩展点 | Harness hooks 已有 host trust/hash/timeout/output boundary，Flow 发出生命周期事件 | 完整事件接线与信任管理 UI 仍需核验 |
 
-源码依据：`llm-flow/src/flow/executor.ts`、`delegation-runtime.ts`、`builtin-plugins.ts`，`llm-ui/src/components/DagWorkbench.ts`，`llm-session/src/session/session-manager.ts`，`llm-tasks/src/durable/agent-program.ts`。`cd packages/llm-flow && npx vitest run` 实测全套 132 项通过（计数随代码演进，以实际测试输出为准）；这些测试不替代上述尚待验收的 UI、恢复与平台能力。
+源码依据：`llm-flow/src/flow/executor.ts`、`delegation-runtime.ts`、`builtin-plugins.ts`，`llm-ui-adapter/src/components/DagWorkbench.ts`，`llm-session/src/session/session-manager.ts`，`llm-tasks/src/durable/agent-program.ts`。`cd packages/llm-flow && npx vitest run` 实测全套 132 项通过（计数随代码演进，以实际测试输出为准）；这些测试不替代上述尚待验收的 UI、恢复与平台能力。
 
 #### 7.8.3 Spawn 依赖边界
 

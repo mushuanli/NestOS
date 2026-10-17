@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { SessionCommand } from '@itookit/llm-session';
-import { rerunSessionFlow } from '../../llm-ui/src/flows/rerun-flow';
-import { NodeRenderer } from '../../llm-ui/src/components/history/NodeRenderer';
-import { EventBatchProcessor } from '../../llm-ui/src/components/common/EventBatchProcessor';
+import { rerunSessionFlow } from '../../llm-ui-adapter/src/flows/rerun-flow';
+import { NodeRenderer } from '../../llm-ui-adapter/src/components/history/NodeRenderer';
+import { EventBatchProcessor } from '../../llm-ui-adapter/src/components/common/EventBatchProcessor';
 
 beforeEach(() => {
     HTMLDialogElement.prototype.showModal = function () { this.open = true; };

@@ -203,7 +203,7 @@ HTTP 提前连接保留当前连接状态，状态提示安装时同步补报；
 ```bash
 pnpm --filter @itookit/http-app test tests/view-api.test.ts tests/snapshot-cache.test.ts
 pnpm --filter @itookit/app-shell test --maxWorkers=4 tests/http-handshake-shell.test.ts tests/opened-view-projection.test.ts tests/task-attachment-recovery.test.ts tests/pending-interaction-restore.test.ts
-pnpm --filter @itookit/llm-ui test --minWorkers=1 --maxWorkers=4
+pnpm --filter @itookit/llm-ui-adapter test --minWorkers=1 --maxWorkers=4
 ```
 
 原生会话状态由 `RemoteSessionStatus` 按项目共享轮询，缓存读取不触发远端查询；变化才通知，失败退避 1–30 秒。最后一个订阅退出后保留最多 30 秒的过期投影，重新订阅可先展示并立即后台验证。闲置缓存最多 64 个项目、合计 4096 行，单个超过 512 行的项目不保留；缓存身份包含配置、服务器和授权 revision，身份改变立即拒绝旧缓存。过期记录禁止中断/审批操作。任务的最终结果、运行状态与命令回执仍以持久记录为准；缓存不替代写入门、租约、版本校验或结果未知命令的核对。

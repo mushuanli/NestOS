@@ -9,8 +9,8 @@ import { NodeFsOps } from '@itookit/vfsdriver-local/node';
 import { Kernel } from '@itookit/durable-kernel';
 import { SessionRepository, SessionManager, SessionCommand } from '@itookit/llm-session';
 import { SessionDirectoryStorageResolver } from '../../../backend/llm-session/src/persistence/session-directory-storage';
-import { createLLMFactory } from '../../llm-ui/src/chat';
-import { LLMWorkspaceEditor } from '../../llm-ui/src/shell/LLMWorkspaceEditor';
+import { createLLMFactory } from '../../llm-ui-adapter/src/chat';
+import { LLMWorkspaceEditor } from '../../llm-ui-adapter/src/shell/LLMWorkspaceEditor';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 
 const cleanup: Array<() => void | Promise<void>> = [];

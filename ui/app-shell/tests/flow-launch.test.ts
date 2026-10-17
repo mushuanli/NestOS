@@ -3,9 +3,9 @@ import { createMindosFlowLibrary } from '@itookit/app-core';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand, SessionCommand } from '@itookit/llm-session';
-import { FlowLauncher } from '../../llm-ui/src/flows/run-flow';
-import { createFlowContextMenuConfig } from '../../llm-ui/src/flows/context-menu';
-import { promptFlowParameters } from '../../llm-ui/src/components/FlowParameterForm';
+import { FlowLauncher } from '../../llm-ui-adapter/src/flows/run-flow';
+import { createFlowContextMenuConfig } from '../../llm-ui-adapter/src/flows/context-menu';
+import { promptFlowParameters } from '../../llm-ui-adapter/src/components/FlowParameterForm';
 
 const parameters = [
     { name: 'requirements', type: 'string' as const, required: true },
@@ -184,7 +184,7 @@ it('validates configurable round limits before closing the run form', async () =
 });
 
 it('preserves editable parameter bounds and missing-input policy through Flow settings', async () => {
-    const { openFlowSettings } = await import('../../llm-ui/src/components/dag/FlowSettingsDialog');
+    const { openFlowSettings } = await import('../../llm-ui-adapter/src/components/dag/FlowSettingsDialog');
     const result = openFlowSettings({ connections: [], availableConnections: [], parameters: [
         { name: 'rounds', type: 'number', default: 10, required: true, minimum: 1, maximum: 1000, integer: true },
         { name: 'essay', type: 'string', required: true, onMissing: 'interact' },
@@ -202,7 +202,7 @@ it('preserves editable parameter bounds and missing-input policy through Flow se
 });
 
 it('retains slot requirements but clears obsolete snapshots and descriptions when changing a connection', async () => {
-    const { openFlowSettings } = await import('../../llm-ui/src/components/dag/FlowSettingsDialog');
+    const { openFlowSettings } = await import('../../llm-ui-adapter/src/components/dag/FlowSettingsDialog');
     const slot = { name: 'image', connectionId: 'missing', description: 'Remove me', required: false,
         tier: 'fast' as const, requirements: { operation: 'image.generate' }, resolved: { providerId: 'p', modelId: 'old' } };
     const pending = openFlowSettings({ connections: [slot], availableConnections: [{ id: 'new', name: 'New' }], parameters: [] });
@@ -250,7 +250,7 @@ it('offers explicit restore on the Flow directory and sends the dedicated restor
 });
 
 it('keeps parameter bindings editable in numeric node fields and supports multiline reviewer instructions', async () => {
-    const { SchemaForm } = await import('../../llm-ui/src/components/dag/SchemaForm');
+    const { SchemaForm } = await import('../../llm-ui-adapter/src/components/dag/SchemaForm');
     const root = document.createElement('div'); document.body.append(root);
     const form = new SchemaForm(root, { type: 'object', properties: {
         maxRounds: { type: 'integer' }, instruction: { type: 'string', format: 'multiline' },
@@ -287,7 +287,7 @@ it('closes an obsolete input form when its task attachment changes', async () =>
 });
 
 it('inserts schema-derived score references into judge conditions and previews prompts without model calls', async () => {
-    const { enhanceInvocationEditor } = await import('../../llm-ui/src/components/dag/InvocationEditor');
+    const { enhanceInvocationEditor } = await import('../../llm-ui-adapter/src/components/dag/InvocationEditor');
     const root = document.createElement('div'); document.body.append(root);
     root.innerHTML = '<textarea data-schema-path="$.condition"></textarea>';
     const route = { id: 'route', name: 'Route', plugin: 'builtin.route', config: { invocationDefaults: { prompt: 'Essay ${param.essay}', outputContract: { schema: { properties: { score: { type: 'number' } } } } } } };
@@ -304,8 +304,8 @@ it('inserts schema-derived score references into judge conditions and previews p
 });
 
 it('edits input field names, types and widgets without retaining renamed fields', async () => {
-    const { SchemaForm } = await import('../../llm-ui/src/components/dag/SchemaForm');
-    const { enhanceInputFieldsEditor } = await import('../../llm-ui/src/components/dag/InputFieldsEditor');
+    const { SchemaForm } = await import('../../llm-ui-adapter/src/components/dag/SchemaForm');
+    const { enhanceInputFieldsEditor } = await import('../../llm-ui-adapter/src/components/dag/InputFieldsEditor');
     const root = document.createElement('div'); document.body.append(root);
     const config = { param: { essay: { type: 'string', widget: 'textarea', nonBlank: true } } };
     const form = new SchemaForm(root, { type: 'object', properties: { param: { type: 'object' } } }, config);

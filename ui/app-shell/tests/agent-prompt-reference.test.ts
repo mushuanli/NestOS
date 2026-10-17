@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { AgentConfigEditor } from '../../llm-settings-ui/src/editors/AgentConfigEditor';
-import { buildExecutorOptions } from '../../llm-ui/src/shell/AgentProvider';
+import { buildExecutorOptions } from '../../llm-ui-adapter/src/shell/AgentProvider';
 import type { SystemPromptDefinition } from '@itookit/llm-tasks/contracts';
 
 const cleanup: Array<() => unknown> = [];

@@ -3,7 +3,7 @@ import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { Kernel, type DurableTaskProgram } from '@itookit/durable-kernel';
 import { DagCommandService, createBuiltinDagPluginRegistry } from '../../../backend/llm-flow/src/index';
-import { openTaskTranscript } from '../../llm-ui/src/components/dag/TaskTranscriptDialog';
+import { openTaskTranscript } from '../../llm-ui-adapter/src/components/dag/TaskTranscriptDialog';
 
 it('exports all persisted exchanges through the command service after a Kernel reopen', async () => {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });

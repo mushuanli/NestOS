@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { PromptNavigator } from '../../llm-ui/src/components/PromptNavigator';
-import { LayoutTemplates } from '../../llm-ui/src/components/templates/LayoutTemplates';
-import { remotePrompts, remoteRounds } from '../../llm-ui/src/shell/remote-rounds';
-import { NavigationHelper } from '../../llm-ui/src/shell/NavigationHelper';
-import { DOMCache, TimerManager } from '../../llm-ui/src/components/common';
-import { ScrollController } from '../../llm-ui/src/components/common/ScrollController';
+import { PromptNavigator } from '../../llm-ui-adapter/src/components/PromptNavigator';
+import { LayoutTemplates } from '../../llm-ui-adapter/src/components/templates/LayoutTemplates';
+import { remotePrompts, remoteRounds } from '../../llm-ui-adapter/src/shell/remote-rounds';
+import { NavigationHelper } from '../../llm-ui-adapter/src/shell/NavigationHelper';
+import { DOMCache, TimerManager } from '../../llm-ui-adapter/src/components/common';
+import { ScrollController } from '../../llm-ui-adapter/src/components/common/ScrollController';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { t } from '@itookit/common';
 

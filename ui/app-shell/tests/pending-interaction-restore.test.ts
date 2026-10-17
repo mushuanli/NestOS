@@ -7,9 +7,9 @@
 import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { Kernel, type DurableTaskProgram, type TaskRecord } from '@itookit/durable-kernel';
-import { RunAttachmentController } from '../../llm-ui/src/shell/RunAttachmentController';
-import { pendingInteractionTask, restoreWaitingAttachment } from '../../llm-ui/src/shell/pending-interaction';
-import {restoreTaskAttachment} from '../../llm-ui/src/shell/task-attachment-lifecycle';
+import { RunAttachmentController } from '../../llm-ui-adapter/src/shell/RunAttachmentController';
+import { pendingInteractionTask, restoreWaitingAttachment } from '../../llm-ui-adapter/src/shell/pending-interaction';
+import {restoreTaskAttachment} from '../../llm-ui-adapter/src/shell/task-attachment-lifecycle';
 import {taskAttachment} from '../../../backend/app-core/src/host/task-attachment';
 
 const spec = { program: { kind: 'test.wait', version: '1' }, input: null };

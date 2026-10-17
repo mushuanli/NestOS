@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { createMDxEditor } from '@itookit/mdx-adapter';
-import { HistoryView } from '../../llm-ui/src/components/HistoryView';
-import { SessionRenderer } from '../../llm-ui/src/components/history/SessionRenderer';
+import { HistoryView } from '../../llm-ui-adapter/src/components/HistoryView';
+import { SessionRenderer } from '../../llm-ui-adapter/src/components/history/SessionRenderer';
 vi.mock('@itookit/mdx-adapter', () => ({ createMDxEditor: vi.fn(async () => ({
     on() {}, destroy() {}, getMode: () => 'render', collapseBlocks: async () => ({ affectedCount: 0, allCollapsed: true }),
 })) }));

@@ -21,7 +21,7 @@
     "@itookit/driver-llm": "workspace:*",
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/llm-session": "workspace:*",
-    "@itookit/llm-ui": "workspace:*",
+    "@itookit/llm-ui-adapter": "workspace:*",
     "@itookit/llm-settings-ui": "workspace:*",
     "@itookit/mdxeditor": "workspace:*",
     "@itookit/tools": "workspace:*",

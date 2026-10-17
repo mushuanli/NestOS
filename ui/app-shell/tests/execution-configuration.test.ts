@@ -1,11 +1,11 @@
 // @vitest-environment jsdom
 import { afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import { DraftExecutionPicker } from '../../llm-ui/src/shell/drafts/DraftExecutionPicker';
-import { SessionDraftEditor } from '../../llm-ui/src/shell/drafts/SessionDraftEditor';
-import { buildConnectionOptions } from '../../llm-ui/src/shell/AgentProvider';
-import { PopupPanel } from '../../llm-ui/src/components/input/plugins/PopupPanel';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import { DraftExecutionPicker } from '../../llm-ui-adapter/src/shell/drafts/DraftExecutionPicker';
+import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
+import { buildConnectionOptions } from '../../llm-ui-adapter/src/shell/AgentProvider';
+import { PopupPanel } from '../../llm-ui-adapter/src/components/input/plugins/PopupPanel';
 
 const releases: Array<() => void | Promise<void>> = [];
 afterEach(async () => { for (const release of releases.splice(0)) await release(); document.body.replaceChildren(); vi.restoreAllMocks(); });

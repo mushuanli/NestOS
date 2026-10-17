@@ -11,7 +11,7 @@ import { DurableAgentProgram } from '../../../backend/llm-tasks/src';
 import { createKernelAdaptersRuntime } from '../../../backend/kernel-adapters/src/runtime/create-kernel-adapters-runtime';
 import { createSessionSkillControls } from '../../../backend/kernel-adapters/src/skill/session-skill-controls';
 import { buildSkillPromptContext } from '../../../backend/kernel-adapters/src/skill/prompt-context';
-import { SkillPanel } from '../../llm-ui/src/components/input/SkillPanel';
+import { SkillPanel } from '../../llm-ui-adapter/src/components/input/SkillPanel';
 import { DurableFlowExecutor } from '../../../backend/llm-flow/src/flow/executor';
 import { createBuiltinDagPluginRegistry } from '../../../backend/llm-flow/src/flow/builtin-plugins';
 import { FlowAggregateProgram, FlowHumanProgram, FlowValueProgram } from '../../../backend/llm-flow/src/flow/programs';

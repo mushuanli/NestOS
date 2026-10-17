@@ -3,10 +3,10 @@
 // is false for action/silent Skills by design, so the popup has to key off `definitionEnabled`;
 // getting that wrong made the command invisible and the text fell through as an unknown command.
 import { expect, it, vi } from 'vitest';
-import { ChatInput } from '../../llm-ui/src/components/input/ChatInputView';
-import { SlashCommandPlugin } from '../../llm-ui/src/components/input/plugins/SlashCommandPlugin';
-import { buildSlashCallbacks } from '../../llm-ui/src/shell/SlashCommandRouter';
-import type { SkillInfo } from '../../llm-ui/src/domain/types';
+import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
+import { SlashCommandPlugin } from '../../llm-ui-adapter/src/components/input/plugins/SlashCommandPlugin';
+import { buildSlashCallbacks } from '../../llm-ui-adapter/src/shell/SlashCommandRouter';
+import type { SkillInfo } from '../../llm-ui-adapter/src/domain/types';
 
 const actionSkill: SkillInfo = { id: 'review', name: 'Review', description: '', loaded: false,
     enabled: false, definitionEnabled: true, toolCount: 0 };

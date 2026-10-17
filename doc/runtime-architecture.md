@@ -583,11 +583,11 @@ sequenceDiagram
 | 热点 | 审查基线 → 实施后 | 结构与剩余工作 |
 |---|---:|---|
 | llm-flow/src/flow/executor.ts 的 execute | 约 770 → 294 行 | 主调度移入 FlowScheduler；执行器保留装配、租约和提交协调，恢复、图修改、委派、输入准备、任务构造、工作区及根聚合均有组件 |
-| llm-ui/src/components/input/plugins/SlashCommandPlugin.ts 的 buildDefaultCommands | 约 439 → 3 行 | 命令描述移至 slash-command-catalog，参数解析移至 slash-tool-args；弹窗仅消费描述目录 |
-| llm-ui/src/shell/SlashCommandRouter.ts 的 buildSlashCallbacks | 约 366 → 12 行 | 按会话、模型、工具、导航领域组织处理器；创建状态通过宿主导航参数传递 |
+| llm-ui-adapter/src/components/input/plugins/SlashCommandPlugin.ts 的 buildDefaultCommands | 约 439 → 3 行 | 命令描述移至 slash-command-catalog，参数解析移至 slash-tool-args；弹窗仅消费描述目录 |
+| llm-ui-adapter/src/shell/SlashCommandRouter.ts 的 buildSlashCallbacks | 约 366 → 12 行 | 按会话、模型、工具、导航领域组织处理器；创建状态通过宿主导航参数传递 |
 | kernel-adapters/src/llm-management/device/llm-device-driver.ts 的 ioctl | 约 205 → 11 行 | 管理命令使用类型化分派表；MCP、Skill、Chat 单独处理；设备参数与存储配置在边界校验 |
 | llm-session/src/session/conversation-run-coordinator.ts | 文件约 818 → 643 行 | Context 装配与直接运行准备/TaskSpec 已分离；协调器保留 Round 与事件投影 |
-| llm-ui/src/shell/LLMWorkspaceEditor.ts | 文件约 1245 → 1195 行 | 挂接生命周期与完整资源清理已分离；控制依赖改为公开结构端口 |
+| llm-ui-adapter/src/shell/LLMWorkspaceEditor.ts | 文件约 1245 → 1195 行 | 挂接生命周期与完整资源清理已分离；控制依赖改为公开结构端口 |
 
 Provider wire 层与管理适配层存在 any 和双重断言，但数量不能证明错误。优先在外部 JSON、VFS ioctl 和持久化解码边界使用 unknown + 校验；已经校验后的稳定内部类型再逐步收紧。不要只替换关键字或为了函数≤30行而拆成没有语义的跳转。
 
@@ -622,7 +622,7 @@ Session 回归补迁了 pending-user 测试中遗漏的 ContextAssembler 导入�
 - [统一提交](../backend/llm-flow/src/run-submission.ts)、[Flow 执行器](../backend/llm-flow/src/flow/executor.ts)。
 - [Program/Effect 契约](../backend/durable-kernel/src/domain/types.ts)、[Context v2 bridge](../backend/llm-tasks/src/durable/context-program.ts)、[LLM Effect 构造与重试](../backend/llm-tasks/src/durable/program-helpers.ts)。
 - [Context 端口](../backend/llm-context/src/domain/durable.ts)、[通信驱动](https://github.com/mushuanli/driver-llm/blob/main/src/core/driver.ts)、[Provider 注册表](https://github.com/mushuanli/driver-llm/blob/main/src/providers/registry.ts)。
-- [UI 实例端口](../backend/llm-session/src/contracts/session-view.ts)、[任务挂接](../ui/llm-ui/src/shell/RunAttachmentController.ts)。
+- [UI 实例端口](../backend/llm-session/src/contracts/session-view.ts)、[任务挂接](../ui/llm-ui-adapter/src/shell/RunAttachmentController.ts)。
 
 后续 GraphMutationRuntime 提取再次通过 Flow 346 项回归，覆盖整批身份绑定失败、patch 幂等冲突、容量限制、循环派发、join 与恢复路径。内部结构见 [Flow API](llm-flow-api.md#执行器内部责任边界)。
 

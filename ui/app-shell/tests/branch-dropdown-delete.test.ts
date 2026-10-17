@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
-import { BranchIndicatorView } from '../../llm-ui/src/components/indicators/BranchIndicatorView';
-import { BranchStore } from '../../llm-ui/src/services/BranchStore';
-import { ErrorHandler } from '../../llm-ui/src/utils/errorHandler';
+import { BranchIndicatorView } from '../../llm-ui-adapter/src/components/indicators/BranchIndicatorView';
+import { BranchStore } from '../../llm-ui-adapter/src/services/BranchStore';
+import { ErrorHandler } from '../../llm-ui-adapter/src/utils/errorHandler';
 
 it.each([false, true])('shows the initial branch when an unchanged refresh emits no notification (cached alternatives: %s)', async alternatives => {
     const host = document.createElement('div'); document.body.append(host);
@@ -47,7 +47,7 @@ it('deletes exactly once without switching, even after reopening the dropdown', 
 });
 
 it('refreshes the branch list after deletion succeeds', async () => {
-    const { SessionEventHandler } = await import('../../llm-ui/src/shell/SessionEventHandler');
+    const { SessionEventHandler } = await import('../../llm-ui-adapter/src/shell/SessionEventHandler');
     const refresh = vi.fn(), onNavRefresh = vi.fn();
     const handler = new SessionEventHandler({ historyView: { processEvent() {} }, branchStore: { refresh }, onNavRefresh } as never);
     handler.handleSessionEvent({ type: 'log:ref_deleted', payload: { ref: 'review' } } as never);

@@ -4,6 +4,8 @@
 >
 > 与代码不一致时以 `src/` 为准;接口清单见 `src/domain/ports/`,公共 API 见 `src/index.ts`。
 
+仅依赖 mdxeditor 的目标边界与 callback / 事件协作方案见 [独立模块设计提案](../../doc/design/llm-ui-independent-module.md)。该提案待实施，本文继续描述当前业务 UI 的设计。
+
 ---
 
 ## 0. 功能概览

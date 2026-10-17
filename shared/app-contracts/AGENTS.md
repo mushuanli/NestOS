@@ -18,6 +18,8 @@
 
 - workbenchView.initialSessionId 只请求目标准备，WorkbenchView.initialSession 的文件/观察租约由调用者释放；activate 仍单独执行。WorkbenchChatControls.configuration 是可选安全配置观察，不接入执行或原始配置写入。
 
+- SessionPresentationState 位于 ports/session.ts，组合 Task、Flow、Skill 的可选启动读模型；该应用聚合类型不进入 llm-session 或 llm-ui。
+
 - ApplicationBackend.taskAttachment 是显式 Session 的只读恢复查询，使用 durable-kernel/contracts 的 ReadTaskAttachment；不传内部 Task 记录或执行凭据。
 
 - openView 是冷启动应用用例：UI 文档、工作台、可选激活/恢复初始数据及带水位观察一起返回；ApplicationViewObservation 只描述当前客户端事件，不能成为全局页面状态。普通切换继续保留准备/保存/激活顺序。

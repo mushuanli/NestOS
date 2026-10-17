@@ -115,3 +115,5 @@ MCP 日志与客户端身份经 MCPConnectionOptions.logger/clientInfo 实例注
 诊断日志与进程不可用提示通过实例选项注入；禁止重新引入 common 全局日志/翻译、MCP 全局注册或旧 /llm 聚合。设备 ioctl 分为管理分派表与 MCP/Skill/Chat 会话处理。
 
 设备 ioctl 在分派前验证身份、配置、消息和调用参数；Connection/Provider 直接保存路径也验证，加载时跳过无效配置并保留合法删除回执。模型 URL、密钥和协议字段不允许依赖 JavaScript 隐式转换；配置身份禁止路径分隔符。Skill 定义和 MCP 配置继续由各自管理器检查语义。
+
+ChatConfigurationView 是聊天选择器的只读聚合观察契约；Snapshot 仅包含 Agent 展示字段及 systemPromptId、预设提示词、ConnectionMeta 与 Provider 模型目录，不含凭据和系统提示词正文。宿主实现聚合和订阅，契约入口不加载服务。

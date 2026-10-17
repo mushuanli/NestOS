@@ -86,3 +86,7 @@ pnpm --filter @itookit/durable-kernel typecheck
 | [运行时架构](../../doc/runtime-architecture.md) | Kernel 在 app-core / CLI 中的装配位置 |
 
 发布出口：根入口和 `/core` 使用 dist 的 ESM/CJS 及对应类型声明，工作区继续使用 src；发布只包含 dist，唯一运行依赖为 vfs-core。
+
+- TaskAttachmentRecovery/ReadTaskAttachment 只定义脱离执行的任务恢复线索契约，宿主实现聚合；Kernel 不依赖 UI 共享键或应用策略，实际 Task 附着仍读取当前状态和事件。
+
+- inspectSession 的 listPendingInteractionTasks 与 getShared 共用已解析的存储绑定，只读索引，不登记执行或启动调度。该方法属于宿主专用 KernelInspectionPort，经 LocalApplicationServices 提供，不进入前端 KernelViewPort 或 HTTP 能力白名单。

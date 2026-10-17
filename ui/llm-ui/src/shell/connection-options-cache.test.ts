@@ -41,6 +41,32 @@ it('discards an in-flight snapshot invalidated by a newer event and retries fail
     expect((await cache.read())[0].id).toBe('c'); cache.dispose();
 });
 
+it('releases only the disposed handle listeners while another editor keeps the source alive', async () => {
+    const {service, connections, fire, off} = fixture();
+    const first = acquireConnectionOptions(service), second = acquireConnectionOptions(service);
+    const closed = vi.fn(), shared = vi.fn();
+    first.subscribe(closed);
+    const stopFirst = first.subscribe(shared);
+    second.subscribe(shared);
+    fire(); expect(shared).toHaveBeenCalledTimes(2);
+    first.dispose(); first.dispose(); stopFirst();
+    first.subscribe(closed);
+    connections[0].name = 'Updated'; fire();
+    expect(closed).toHaveBeenCalledOnce(); expect(shared).toHaveBeenCalledTimes(3);
+    expect(off).not.toHaveBeenCalled();
+    expect((await second.read())[0].name).toBe('Updated');
+    second.dispose(); fire();
+    expect(shared).toHaveBeenCalledTimes(3); expect(off).toHaveBeenCalledOnce();
+});
+
+it('does not remove a newer registration when an old unsubscribe is called again', () => {
+    const {service, fire} = fixture(), cache = acquireConnectionOptions(service), changed = vi.fn();
+    const stop = cache.subscribe(changed);
+    stop(); cache.subscribe(changed); stop(); fire();
+    expect(changed).toHaveBeenCalledOnce();
+    cache.dispose();
+});
+
 it('offers known chat tiers while excluding media and removed catalog models', async () => {
     const provider = {id: 'p', enabled: true, models: [
         {id: 'chat', name: 'Chat', category: 'chat'}, {id: 'image', name: 'Image', category: 'image'},
@@ -55,4 +81,19 @@ it('offers known chat tiers while excluding media and removed catalog models', a
     expect(removed.tiers).toEqual({});
     expect(JSON.parse(JSON.stringify(mixed.resolvedTiers))).toEqual({optimal: null, standard: 'Chat', fast: null});
     expect(removed.resolvedTiers).toEqual({optimal: null, standard: null, fast: null});
+});
+
+it('shares the injected configuration subscription and reads current snapshots without RPC selectors', async () => {
+    const f = fixture(), listeners = new Set<() => void>();
+    let snapshot = {agents: [], promptPresets: {}, connections: f.connections, providers: [f.provider], defaultConnectionId: 'c'};
+    const configuration = {getConfigurationSnapshot: () => snapshot,
+        subscribe: (listener: () => void) => {listeners.add(listener); return () => {listeners.delete(listener);};}, dispose: async () => {}};
+    const first = acquireConnectionOptions(f.service, configuration as never), second = acquireConnectionOptions(f.service, configuration as never);
+    const changed = vi.fn(), stop = first.subscribe(changed);
+    expect(await first.read()).toMatchObject([{id: 'c', isDefault: true}]);
+    snapshot = {...snapshot, connections: [{...f.connections[0], name: 'Updated'}]};
+    for (const listener of listeners) listener();
+    expect(changed).toHaveBeenCalledOnce(); expect((await second.read())[0].name).toBe('Updated');
+    expect(f.getConnections).not.toHaveBeenCalled(); expect(listeners.size).toBe(1);
+    stop(); first.dispose(); second.dispose(); expect(listeners.size).toBe(0);
 });

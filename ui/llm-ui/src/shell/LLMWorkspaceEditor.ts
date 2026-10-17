@@ -84,6 +84,8 @@ interface InitialSessionData {
 
 
 export interface LLMEditorOptions extends EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission, import('../services/SessionService').SessionLoadResult> {
+    readTaskAttachment?: import('@itookit/durable-kernel/contracts').ReadTaskAttachment;
+    configuration?: import('@itookit/kernel-adapters/contracts').ChatConfigurationView;
     sessionId: string;
     sessionRepository: ISessionRepository;
     sessionManager: SessionViewPort;
@@ -231,7 +233,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.initComplete = false;
         this.initPromise = new Promise(resolve => { this.initResolve = resolve; });
         try {
-            this.connectionOptions = acquireConnectionOptions(this.agentService);
+            this.connectionOptions = acquireConnectionOptions(this.agentService, this.options.configuration);
             this.initLayout();
             this.initInfrastructure();
             this.initServices();
@@ -253,7 +255,9 @@ export class LLMWorkspaceEditor implements IEditor {
             this.initCommands();
             this.initEventHandler();
             this.bindEvents();
-            session.snapshot = await this.commandBus.execute(SessionCommand.GetSnapshot);
+            const observed = this.sessionManager.getSnapshot?.();
+            session.snapshot = observed?.sessionId === session.sessionId ? observed
+                : await this.commandBus.execute(SessionCommand.GetSnapshot);
             await this.loadSession({ session, ...initial });
             measurement.mark('restoreAndRender');
 
@@ -325,7 +329,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private async initComponents(session: InitialSessionData['session']): Promise<Omit<InitialSessionData, 'session'>> {
         const initialSettings = session.settings;
         const [initialAgents, savedUIState] = await Promise.all([
-            buildExecutorOptions(this.agentService, this.options.remoteAgents),
+            buildExecutorOptions(this.agentService, this.options.remoteAgents, this.options.configuration?.getConfigurationSnapshot()),
             this.stateManager.loadUIState(session.manifest),
         ]);
         const historyEl = this.domCache.byId('llm-ui-history')!;
@@ -662,7 +666,7 @@ export class LLMWorkspaceEditor implements IEditor {
             (event) => this.sessionEventHandler.handleGlobalEvent(event)
         );
 
-        this.agentServiceUnsub = this.agentService.onChange(() => {
+        this.agentServiceUnsub = this.connectionOptions!.subscribe(() => {
             if (!this.viewActive) return;
             void this.chatInput.refreshConnections();
             if (this.refreshAgentsTimer) clearTimeout(this.refreshAgentsTimer);
@@ -908,7 +912,7 @@ export class LLMWorkspaceEditor implements IEditor {
     }
     private async refreshAgents(): Promise<void> {
         if (!this.chatInput) return;
-        const agents = await buildExecutorOptions(this.agentService, this.options.remoteAgents);
+        const agents = await buildExecutorOptions(this.agentService, this.options.remoteAgents, this.options.configuration?.getConfigurationSnapshot());
         const changed = this.chatInput.refreshAgents(
             agents,
             (id) => agents.some(a => a.id === id) ? id : 'default'
@@ -1159,7 +1163,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const isCurrent = () => !this.attachmentClosed && this.viewActive && this.runAttachment === attachment
             && this.currentSessionId === sessionId && attachment.revision === revision;
         await restoreTaskAttachment(kernel, sessionId, attachment, isCurrent,
-            async () => await this.invocationPanel?.taskIds() ?? new Set<string>());
+            async () => await this.invocationPanel?.taskIds() ?? new Set<string>(), this.options.readTaskAttachment);
     }
 
     private async cancelAttachedTask(): Promise<void> {

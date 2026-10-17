@@ -49,8 +49,10 @@ export type LLMFactoryDependencies = SessionViewBinding & {
     ocr?: import('@itookit/ui-common').OcrControls;
     commandBus?: ICommandBus;
     kernel?: EditorTaskControlPlane;
+    readTaskAttachment?: import('@itookit/durable-kernel/contracts').ReadTaskAttachment;
     privilegedCommands?: import('./domain/ports/IPrivilegedCommandService').IPrivilegedCommandService;
     sessionSkills?: import('@itookit/tools/contracts').SessionSkillControls;
+    configuration?: import('@itookit/kernel-adapters/contracts').ChatConfigurationView;
     onLoadMetrics?: LLMEditorOptions['onLoadMetrics'];
 };
 
@@ -101,8 +103,10 @@ export const createLLMFactory = (
             ocr: deps.ocr,
             commandBus: deps.commandBus,
             kernel: deps.kernel,
+            readTaskAttachment: deps.readTaskAttachment,
             privilegedCommands: deps.privilegedCommands,
             sessionSkills: deps.sessionSkills,
+            configuration: deps.configuration,
             onLoadMetrics: deps.onLoadMetrics,
         };
 

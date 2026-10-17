@@ -1,7 +1,6 @@
 import {FSError} from '@itookit/vfs-core';
 import {FlowInvocationCommand, SessionCommand} from '@itookit/llm-session/contracts';
-import type {SessionPresentationState} from '@itookit/llm-session/contracts';
-import type {ApplicationBackend, LocalApplicationServices, OpenedApplicationView, OpenViewRequest, WorkbenchView} from '@itookit/app-contracts/services';
+import type {SessionPresentationState, ApplicationBackend, LocalApplicationServices, OpenedApplicationView, OpenViewRequest, WorkbenchView} from '@itookit/app-contracts/services';
 import {ViewObservation} from './view-observation';
 import {taskAttachment} from './task-attachment';
 

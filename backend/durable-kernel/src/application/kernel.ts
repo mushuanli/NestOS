@@ -71,7 +71,7 @@ import { decisionSideEffects, prepareSpawns } from './actions';
  *   second while a run streams, so consumers must not re-render on it.
  */
 export type { KernelChangeReason } from '../ports/kernel-view';
-import type { KernelChangeReason, KernelViewPort } from '../ports/kernel-view';
+import type { KernelChangeReason, KernelInspectionPort, KernelViewPort } from '../ports/kernel-view';
 
 interface KernelEvents { changed: { sessionId: string; taskId?: string; reason: KernelChangeReason }; }
 
@@ -87,7 +87,7 @@ export interface KernelOptions {
     pollMs?: number;
 }
 
-export class Kernel implements KernelRegistration, KernelViewPort {
+export class Kernel implements KernelRegistration, KernelViewPort, KernelInspectionPort {
     private readonly resourcePoller: DurablePoller<string>;
     private readonly managedResources: ManagedResourceStore;
     get resources() { return resourceApi(this.managedResources, {}); }
@@ -301,6 +301,7 @@ export class Kernel implements KernelRegistration, KernelViewPort {
         // The catalog binding reference is returned alongside the resolved binding so a caller can
         // observe one Session without enumerating every other Session record.
         return { id, storage: record.storage, listTasks: () => this.store.listTasks(binding),
+            listPendingInteractionTasks: () => this.store.listPendingInteractionTasks(binding),
             getShared: <T extends import('../domain/types').JsonValue>(key: string) => this.store.getShared<T>(binding, key),
             attachTask: async <O = unknown>(taskId: string): Promise<TaskHandle<O>> => {
                 await this.store.readTask(binding, taskId);

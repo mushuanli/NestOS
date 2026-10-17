@@ -69,3 +69,5 @@ pnpm --filter @itookit/ui-common build        # tsup
 EditorOptions 的第二个泛型参数描述编辑器专属 initialData，本包不解释领域结构；IEditor.activate 供宿主恢复缓存视图的绑定。业务读模型与执行策略不进入 ui-common。
 
 - SessionDraftControls.refresh 是可选宿主端口：确认旧草稿提交后返回新的草稿控制对象，不让编辑器自行跟随或覆盖共享存储。
+
+- OcrSettingsForm 对相同配置保留输入 DOM 和保存反馈；失败替换内容后清除渲染缓存，下一次读取成功必须能恢复表单。

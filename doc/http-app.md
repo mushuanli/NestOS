@@ -25,15 +25,15 @@
 
 ## 协议
 
-`POST /api/application` 使用 `version: 11` 与 `clientId`，支持 bootstrap、queries、bindings、call、reply、close。bootstrap 返回公开服务图、产品模板与 Flow 库，以扁平描述避免重复导出对象图；call 只能调用本视图已经导出的能力句柄上的公开方法。v11 由后端拥有技能文件系统、默认工具分组与工具箱导航装配；toolboxView 初始快照及 resources.navigation 聚合刷新返回目录数据，不接受浏览器反向文件系统能力，消除浏览器逐段路径检查及重复遍历；保留 Provider 订阅授权状态与命令；保留 navigationView、warmNavigation、工作台聚合、会话准备/激活及 UI 文档批量端口；升级服务后需重新加载页面。句柄包含视图随机身份，不能用于另一个浏览器。私有字段、原型访问、Runtime.dispose、设备注册、SQL 和原始记录写入不开放。
+`POST /api/application` 使用 `version: 14` 与 `clientId`，支持 bootstrap、queries、bindings、call、reply、close。bootstrap 返回公开服务图、产品模板与 Flow 库，以扁平描述避免重复导出对象图；call 只能调用本视图已经导出的能力句柄上的公开方法。v14 将初始视图打开与观察登记并入 bootstrap，并支持按内容摘要复用纯数据缓存，要求前后端同步更新；聊天配置聚合观察和冷启动目标会话准备继续保留；后端拥有技能文件系统、默认工具分组与工具箱导航装配；toolboxView 初始快照及 resources.navigation 聚合刷新返回目录数据，不接受浏览器反向文件系统能力，消除浏览器逐段路径检查及重复遍历；保留 Provider 订阅授权状态与命令；保留 navigationView、warmNavigation、工作台聚合、会话准备/激活及 UI 文档批量端口；升级服务后需重新加载页面。句柄包含视图随机身份，不能用于另一个浏览器。私有字段、原型访问、Runtime.dispose、设备注册、SQL 和原始记录写入不开放。
 
 queries 合并同一微任务中独立的只读查询，bindings 合并订阅注册，每批最多 32 项、每个合批器最多 2 批在途，等待与在途调用合计最多 1024 项；服务端先检查整批方法类别再执行。共享只读命令策略使 GetSnapshot、GetSessions 和 Flow 读取进入查询批次，不触发全域失效。业务写入独立确认，不混入查询或订阅批次；后续命令先等待此前发起的订阅注册确认，避免快速执行漏事件，独立只读查询仍可并行；失败与结果未知的命令不自动重放。
 
 文件操作经过应用文件视图。用户内容可以读写；`/etc` 的直接写入仅允许 UI 偏好，配置、会话和任务修改通过各自服务执行。字节、Map、Set、回调与持续句柄有显式编码。同步 UI 查询读取已加载的快照；执行和持久化调用经异步端口完成，不使用同步 XMLHttpRequest。
 
-`GET /api/application/events?clientId=<id>` 提供 SSE。通知按 16 ms 窗口合并，只运行一个刷新循环，256 条 / 1 MiB 上限覆盖等待和处理中的事件；刷新期间的失效只安排一次后续刷新，保持事件顺序。客户端也限制排队通知的数量和字节；需要结果的回调单独经 reply 返回，不等待通知批次。领域服务变更也主动更新其他浏览器的快照。客户端先安装 bootstrap，再按序消费已经缓冲的 SSE；服务端在首次快照建立前暂停通知快照刷新。快照补丁携带前后版本，客户端缓冲乱序补丁、忽略旧版本，缺失更新不能覆盖新状态。长连接每 15 秒重新验证证书。初次连接通过 `resume=1` 显式协商带序号的 SSE，未协商的旧客户端仍收到原有 data 帧格式。短暂中断通过 `after=<最后接收序号>&version=11` 恢复同一视图，服务端以 `X-MindOS-View-Resume: 1` 声明支持；按视图保留最近 256 帧 / 2 MiB 内存事件日志，包含离线期间通知。恢复前验证证书、已初始化视图、协议版本和序号范围，缺失历史或回调超时必须重新加载，不能静默漏掉更新或为旧句柄创建新视图。客户端按序接收、忽略重复帧，首次立即重连，连续失败按 1/2/4/8/15 秒退避；响应头成功但立即 EOF 仍累计退避，连接持续 15 秒后重置，online/focus 或立即重连可唤醒；45 秒无心跳触发重连，取消与销毁停止恢复。写请求不会自动重发。事件日志不跨 daemon 重启，不提供持久命令回执，不能宣称跨重载的 exactly-once 保证。
+`GET /api/application/events?clientId=<id>` 提供 SSE。通知按 16 ms 窗口合并，只运行一个刷新循环，256 条 / 1 MiB 上限覆盖等待和处理中的事件；刷新期间的失效只安排一次后续刷新，保持事件顺序。客户端也限制排队通知的数量和字节；需要结果的回调单独经 reply 返回，不等待通知批次。领域服务变更也主动更新其他浏览器的快照。客户端先安装 bootstrap，再按序消费已经缓冲的 SSE；服务端在首次快照建立前暂停通知快照刷新。快照补丁携带前后版本，客户端缓冲乱序补丁、忽略旧版本，缺失更新不能覆盖新状态。长连接每 15 秒重新验证证书。初次连接通过 `resume=1` 显式协商带序号的 SSE，未协商的旧客户端仍收到原有 data 帧格式。短暂中断通过 `after=<最后接收序号>&version=14` 恢复同一视图，服务端以 `X-MindOS-View-Resume: 1` 声明支持；按视图保留最近 256 帧 / 2 MiB 内存事件日志，包含离线期间通知。恢复前验证证书、已初始化视图、协议版本和序号范围，缺失历史或回调超时必须重新加载，不能静默漏掉更新或为旧句柄创建新视图。客户端按序接收、忽略重复帧，首次立即重连，连续失败按 1/2/4/8/15 秒退避；响应头成功但立即 EOF 仍累计退避，连接持续 15 秒后重置，online/focus 或立即重连可唤醒；45 秒无心跳触发重连，取消与销毁停止恢复。写请求不会自动重发。事件日志不跨 daemon 重启，不提供持久命令回执，不能宣称跨重载的 exactly-once 保证。
 
-`POST /api/application/files?clientId=<id>&version=11` 使用 application/octet-stream 传输文件字节，X-View-Call 携带编码后的文件能力参数。权限仍由已导出的文件视图检查，不提供宿主路径或存储驱动入口。二进制读写省去 JSON/base64 编码；读取响应头与写入回执携带文件 revision，前端在操作完成前更新 onRevision，条件写入参数保持原有含义。文件接口仍使用完整 ArrayBuffer，不是无限大小的流式存储接口。
+`POST /api/application/files?clientId=<id>&version=14` 使用 application/octet-stream 传输文件字节，X-View-Call 携带编码后的文件能力参数。权限仍由已导出的文件视图检查，不提供宿主路径或存储驱动入口。二进制读写省去 JSON/base64 编码；读取响应头与写入回执携带文件 revision，前端在操作完成前更新 onRevision，条件写入参数保持原有含义。文件接口仍使用完整 ArrayBuffer，不是无限大小的流式存储接口。
 
 HTTP 客户端分别报告传输断开和视图更新失败。fetch/SSE 短暂断开恢复原视图且保留页面与输入，恢复成功收起提示；服务重启或视图过期返回 `X-MindOS-View-Expired: 1` 后，旧句柄的查询、命令和二进制文件请求在客户端立即拒绝，避免重复无效轮询。过期后保留页面及草稿，服务就绪才显示手动重载入口，提示先复制未保存内容；DOM 输入事件不能证明所有编辑已保存，健康检查成功也不代表视图已经恢复。快照应用、回调、事件解析和通知过载显示页面数据更新失败，提供手动重载入口，保留当前页面未发送内容，不单独触发健康探测或自动重载。解析失败和过载中止事件消费；写命令始终不自动重放。原生 harness 另行区分连接状态与 `refreshError`：目录监听失败不改变会话在线状态，各 profile 的状态读取错误独立显示阶段和安全错误码，events/list 的实际传输断开均标 offline，协议、权限错误与超时只标 stale，成功空轮询也可恢复传输状态。
 
@@ -100,13 +100,111 @@ bootstrap 不预开文件系统；主题与 UI 状态通过文档端口读取，
 
 ## 业务装配与后台缓存
 
-进入工作台通过 `workbenchView` 获取当前项目、导航首屏和聊天控制；UI 不再分别请求特权命令、Skill 工厂和当前项目。`readUiDocuments` 每次最多读取 32 个不透明 UI 文档；`writeUiDocuments` 在后端串行 upsert，前端合并同一轮修改并跳过未变化的内容，失败保留待写数据，flush 可重试。偏好写入不是业务事务批处理。
+进入工作台通过 `workbenchView` 获取当前项目、导航首屏和聊天控制。HTTP 的 `chat.configuration` 返回已就绪的 `ChatConfigurationView`，一次提供 Agent 展示字段、预设提示词、连接安全元数据、模型目录与默认连接 ID；不包含凭据或系统提示词正文。后端合并配置失效并发布新快照，编辑器共享一个配置订阅，先安装快照再通知本地选择器；本地宿主仍可直接消费配置服务。UI 不再分别请求特权命令、Skill 工厂和当前项目，也不逐 Agent 请求提示词或单独读取连接。聊天深链在主题初始化前预取主题、侧栏、标签和执行器使用记录，合并为一次文档读取；结果各消费一次，新写入优先。`readUiDocuments` 每次最多读取 32 个不透明 UI 文档；`writeUiDocuments` 在后端串行 upsert，前端合并同一轮修改并跳过未变化的内容，失败保留待写数据，flush 可重试。偏好写入不是业务事务批处理。
 
 `ProjectService.navigation` 聚合目标归属、当前项目、离线状态与不透明分组路径；`SessionBrowserPort` 显式声明异步导航失效屏障与目录读取，不依赖 RPC 通用对象的隐式方法。`createSessionDraft` 在服务端完成来源解析和带初始输入的会话创建，客户端收到确认后才导航。`sessionTasks` 返回裁剪后的任务分页，不传输完整任务内部记录。客户端关闭只解绑会话视图，Runtime 保留执行及草稿收尾，闲置上下文按引用和任务状态回收。
 
-打开会话先调用 `openSessionView`，在后端校验/准备访问并取得 manifest、项目、目录权限和文件租约。旧编辑器保存、关闭之后才 `activate(branch)`，后端完成 Bind/分支选择并返回消息快照、设置和元信息，编辑器直接消费。两步顺序用于保留目标准备失败时的旧视图，避免旧编辑器保存/解绑影响新会话。取消或关闭准备中的视图会释放文件租约；不会取消业务 Task。缓存标签恢复会话绑定，关闭其他标签不解除当前绑定。
+冷启动的 `workbenchView({initialSessionId})` 将目标的只读准备与工作台并行完成，通过 `initialSession` 返回；失效链接不阻断工作台，其他准备失败时排空并释放已取得的资源。未使用的准备在更换目标或销毁工作台时释放。普通切换先调用 `openSessionView`，在后端校验/准备访问并取得 manifest、项目、目录权限和文件租约。旧编辑器保存、关闭之后才 `activate(branch)`，后端完成 Bind/分支选择并返回消息快照、设置和元信息，编辑器直接消费，事件绑定后读取同一会话的已观察快照，缺少同步选择器时才回退 GetSnapshot。两步顺序用于保留目标准备失败时的旧视图，避免旧编辑器保存/解绑影响新会话。取消或关闭准备中的视图会释放文件租约；不会取消业务 Task。缓存标签恢复会话绑定，关闭其他标签不解除当前绑定。
 
 连接探测由 Runtime 共享的观察器执行。前端只提交可见项目和打开标签的兴趣集合；后台跳过无远程挂载的项目，最多同时检查 4 个项目，每次检查预算 3 秒，完成后间隔 15 秒再检查。同一挂载的在途检查继续由 remote-mount 服务合并，最后一个观察者退出后中止探测并停止定时器，不取消任务。
+
+### 当前会话后台恢复聚合
+
+`ApplicationBackend.taskAttachment(sessionId, sharedKey)` 是只读应用聚合端口：校验会话后，通过 Kernel 的只读 inspectSession 在宿主读取指定共享记录、活动任务状态和待审批索引，只返回活动任务 ID 与按更新时间排序的候选 ID，不改变任何浏览器的会话绑定。尚未创建 Kernel Session 的有效会话返回空候选；存储故障仍向调用方报错。读取不附着、不审批、不启动或取消 Task。
+
+llm-ui 通过可选 `readTaskAttachment` 回调消费该能力，没有注入时保留原始 Kernel 端口路径。回复到达后继续校验当前编辑器、会话和附着代次；没有候选时跳过额外的 Flow 列表查询。活动候选附着前读取实时任务状态，已终结则继续待交互候选；待交互候选排除当前 Flow 所属任务，并核对同一 Session、非终态和仍有 pending interaction，过期候选跳过后继续查找。任务打开和状态读取之后均检查编辑器代次，读取失败向上传递；聚合返回的是恢复线索，不是执行凭据。真实 Kernel 重建后的审批恢复测试覆盖两种路径，并核对完成的是原任务。
+
+`session.flow.invocations` 纳入共享只读命令集合，查询不触发全域失效。RPC 的订阅屏障也使用动态查询分类：只读命令不等待先前订阅，写命令继续等待订阅确认，不自动重试。OCR 设置表单与附件管理共享一个 Agent 配置源订阅，每个消费者退出时移除自身监听，最后一个消费者退出时释放源订阅。
+
+JSON 应用请求的 `request.complete` 新增可选 `bodyReadMs`（请求体接收及解析）、`viewReadyMs`（等待应用视图）、`rpcMs`（能力执行、快照及 JSON 响应生成）和 `responseFlushMs`（响应提交至 Node finish/close）。`application.complete.durationMs` 保留原含义，通过 requestId 关联。flush 不代表浏览器收到或渲染完成，客户端证书验证也不计入这些阶段；日志不记录文档、命令参数、共享键或用户内容。部署新版本后可据此区分此前 1 秒级 HTTP 请求与毫秒级 RPC 之间的差异。
+
+### RPC 与往返的生命周期边界
+
+RPC 是逻辑操作，HTTP 往返是传输批次；SSE 是独立的持续事件通道，不能把持续连接的存活时间当作一次加载耗时。目前 queries/bindings 只合并同一轮发起的独立调用；组件之间的 await 会把一次打开拆成多轮网络依赖。
+
+| 生命周期/数据 | 当前调用 | 关系与处理方向 |
+|---|---|---|
+| 首次进入聊天资源 | openView：UI 文档、工作台、配置、目标准备 | 已合并为应用用例；普通模块仍使用 navigationView，未打开模块不预热 |
+| 当前会话激活 | 冷启动由 openView 内部激活；切换用 SessionOpenView.activate | 冷启动无旧编辑器；已有编辑器切换需先保存/释放，保留激活屏障 |
+| 初始恢复 | openView 内部读取 taskAttachment、Flow 与 Skill 列表 | 初始编辑器一次消费；读取期间有对应变更则放弃预取，回到实时端口；存在候选时仍核对任务归属 |
+| 持续观察 | observation.observeView(cursor, callback) | 宿主先订阅源，再准备首屏；一个远程观察按 topic 在前端分发；底层文件 onAny 仍按文件视图订阅 |
+| 可见侧栏 | getNodeType、getChildren、ProjectService.navigation | 只有侧栏可见才需要；首层可用一个导航读模型，第二次读取需依据真实失效，不能因无关写入重刷 |
+| 偏好持久化 | writeUiDocuments | 初始化不等于修改；先跳过未变化状态，再按用户操作合并持久化，退出/切换按需 flush |
+| 实际业务命令 | 保存文件、发送、取消、审批 | 独立确认和授权顺序仍需保留；结果未知时不得自动重放 |
+
+更高层的目标是“一个前端视图的打开与观察”，不是一个全局当前页面：携带 resource、uiScope、visiblePanels 等明确兴趣，返回首屏快照、资源句柄及事件水位，再消费同一视图的 SSE 增量。后端必须将初始快照与观察水位对齐，避免快照完成到订阅建立之间漏事件。前端 DOM、滚动、菜单及未提交输入继续在各端独立。冷启动与带未保存内容的会话切换走不同准备顺序，不能用同一个无条件批次覆盖。
+
+### 打开与观察聚合（已实现）
+
+`ApplicationBackend.openView({documents, workbench, branch?, taskAttachmentKey?})` 处理首次进入聊天工作区或本地会话深链，返回不透明 UI 文档、工作台资源、可选会话初始数据、`observation` 与 `cursor`。`workbench.initialNavigation` 表达是否读取首层目录，手机正文与隐藏侧栏继续跳过读取。普通文件、原生会话、草稿沿用各自的打开端口，不提前初始化其他工作区。
+
+1. 宿主先订阅仓储、文件、收藏、Kernel、草稿、挂载、Agent 和当前客户端会话事件，再并行读取工作台和 UI 文档；配置与初始 Skill 观察随对应能力建立。
+2. 当前客户端无绑定时，宿主内部激活目标分支，并行读取任务恢复、Flow 与 Skill 初始数据。已有绑定的冷打开与同客户端并发打开返回 EBUSY；普通标签切换继续先准备、保存旧编辑器、释放旧绑定，再显式 activate。
+3. 返回前同步采集当前会话快照及事件水位，校验绑定仍属于目标；读取期间发生相关变更时不使用过期的恢复/列表预取。恢复缓存同时校验 sessionId 与 sharedKey，一次消费；其他会话事件不会无条件清空当前会话缓存。
+4. 前端通过一个 `observeView(cursor, callback)` 登记；宿主按序补发首屏返回到登记之间的变化，再持续经现有 SSE 发送。应用事件日志最多 256 条 / 1 MiB，历史缺失拒绝订阅，不能静默跳过；SSE 自身的断线日志与恢复规则继续独立生效。
+5. 前端装配期间缓冲应用事件；读取已经更新的会话快照时记录相同 SSE 帧内的观察水位，跳过已包含的流式增量，后续事件按序分发一次。事件缺口、缓冲超限或通知回调失败报告页面更新失败，保留当前页面。此水位仅对当前视图有效，不是持久化事务版本。
+6. 任一打开步骤失败先释放已经取得的资源，仅解绑本次请求激活的目标，不取消 Task；销毁释放源订阅、配置、连接观察和文件租约。每个 HTTP/CLI 客户端有独立绑定与观察，运行任务和业务记录仍由 Runtime 共享。聚合视图是显式受管能力；HTTP 关闭先等待已发起的 RPC（包含从取消订阅到远程释放的整个异步过程）排空，再发送关闭请求。排空、关闭请求和本地清理共用 5 秒上限，超时中止在途请求；重复关闭共用一次过程，不重放命令。
+
+内部仍使用各模块的类型化回调；外部调用使用有结果的异步端口，持续变化走带序号的事件。跨 Task、Flow 与 Skill 的 `SessionPresentationState` 定义在 app-contracts；聚合位于 app-core/app-shell 应用层，llm-ui 保留公开的初始数据与恢复回调，不依赖 HTTP、应用 Runtime 或 app-contracts。
+
+模块关系如下；本地宿主直接将应用端口交给 Shell，HTTP 宿主通过两端传输适配同一契约。
+
+```mermaid
+C4Component
+    Container_Boundary(browser, "浏览器") {
+        Component(shell, "app-shell", "TypeScript / DOM", "路由、编辑器生命周期、事件本地分发")
+        Component(chat, "llm-ui", "独立聊天 UI", "实时核对恢复候选、任务附着、按编辑器释放监听")
+        Component(client, "app-transport 客户端", "HTTP / RPC", "快照安装、SSE、有界关闭")
+    }
+    Container_Boundary(host, "HTTP 宿主") {
+        Component(server, "app-transport 服务端", "RPC 能力适配", "按公开观察契约编码增量快照")
+        Component(core, "app-core", "应用用例", "openView、观察日志、任务恢复聚合")
+        Component(kernel, "durable-kernel", "执行内核", "任务事实、共享提示与只读索引")
+    }
+    Component(contracts, "app-contracts", "共享类型与纯变换", "应用端口、DTO、资源所有权")
+    Rel(shell, client, "调用应用端口，消费快照与事件")
+    Rel(shell, chat, "注入初始数据、恢复回调和领域控制端口")
+    Rel(chat, client, "经 Kernel 端口读取实时任务状态并附着")
+    Rel(client, server, "能力调用、快照补丁、SSE", "RPC v14")
+    Rel(server, core, "openView / getSessionBaseline / observeView")
+    Rel(core, kernel, "宿主只读检查", "KernelInspectionPort")
+    Rel(shell, contracts, "依赖公开类型")
+    Rel(core, contracts, "实现应用契约")
+    Rel(server, contracts, "按公开契约适配")
+```
+
+### 一次打开同步握手与首帧（v14）
+
+HTTP 页面现在由轻入口同时启动数据连接、Shell 模块和当前编辑器代码加载。聊天目标及 UI 文档名称通过 app-shell/startup 的纯函数构造，当前路由之外的工作区保持延迟创建。SSE 建连和初始 POST 并行，不再先等待 SSE 响应头才发送 bootstrap。
+
+初始 `POST /api/application` 的 `kind=bootstrap` 可以携带 `initialView: OpenViewRequest` 与 `knownSnapshots: string[]`。后端在本客户端中完成 openView、注册初始观察，再导出服务图和 `initialView`。初始连接兴趣在 openView 内建立，前端按单调 revision 更新：只有已确认相同集合才省略请求；在途或失败时不能按旧集合去重，较早响应不能覆盖较新确认。装配期间只保留最高 revision。普通的无目标 bootstrap 与后续 openView 接口继续可用；已有编辑器切换仍保存后激活。
+
+初始响应开启缓存时为 `{payload, cache}`：payload 中的 `{$cache: sha256}` 指向本地已验证的数据或本次 cache 字典。未携带 knownSnapshots 的显式协议调用继续返回普通 RPC Reply。初始观察事件使用同一 SSE 帧的 viewEvents 字段发送；HttpViewClient 在安装能力图后按序处理，提供本地 observeView 适配，组件不再远程登记初始订阅。全量快照、版本补丁、回调和应用事件仍使用有界顺序队列。
+
+缓存边界与校准：
+
+- ViewApi 持有跨客户端的有界纯数据缓存，浏览器在 sessionStorage 中按 v14 保存副本。两端最多 128 项 / 8 MiB，单块 1–128 KiB；更大的对象按子树处理。资源句柄、函数、回调和包含句柄的对象不进入缓存。
+- SHA-256 根据当前实际编码数据计算，不使用预设 getConfigVersion，也不复用旧视图的 descriptor.version。相同数据可以只传摘要；数据改变则发送该块完整当前内容。现有视图内的增量补丁机制继续生效。后台不会以客户端上传的状态覆盖业务记录。
+- 前端加载持久副本时验证内容摘要，只有本地确实存在的有效块才声明 knownSnapshots；损坏/不可用缓存按未命中处理，存储配额不足不阻断页面。服务器仍从当前授权视图构造数据和本次连接的新句柄。
+- 响应引用缺失时，客户端只调用 `kind=bootstrap-data` 重读同一份已准备响应，不重新打开、绑定、发送消息或执行命令。此补读只服务当前认证客户端，不能按摘要任意读取后台缓存。
+- 缓存覆盖纯展示数据；各前端的会话、分支绑定、兴趣和资源生命周期仍独立。已有 SSE 断线恢复继续按同一视图的事件序号补发；历史失效仍要求重新加载，不重放写命令。
+- 初始装配使用 observation.getSessionBaseline 的成对快照/水位，避免读取更新的游标后误跳过尚未包含的流式事件。调用者只读使用快照；传输通过公开 observeView 接收失效事件，自行持有不可变 Session 行投影，不依赖具体后端的私有方法。单条流式变更只复制受影响行，分支变化仍全量重建。异步观察登记失败向上报告，关闭后才完成的登记立即释放。
+
+首帧处理：共享 HTML 直接提供当前主题背景和静态页面骨架；主题镜像只用于首帧，后端 UI 文档返回后校准。骨架不显示历史正文或可交互按钮，正常启动没有加载 banner。主样式表以非阻塞方式加载，避免下载大 CSS 时只能显示白色页面。当前目标加载完成后移除骨架；失败时显示现有错误入口。普通 SSE 重连不重建 DOM 或显示首屏骨架。
+
+HTML 的样式处理器在模块加载前记录 load/error，HTTP 和 Web 本地入口共用 `mind-os/startup` 读取已有结果并等待样式，最长 30 秒；超时或失败释放其他样式的等待监听，显示可重载的错误。提示所需样式内联在 HTML，不依赖失败的 CSS。Web 在 IndexedDB 或 Runtime 初始化失败时也解除骨架并显示错误，样式与本地初始化并行。
+
+HTTP 提前连接保留当前连接状态，状态提示安装时同步补报；终结的更新错误或视图过期不会被迟到的重连清除。`mindos:data-ready` 只记录连接数据就绪，不包含编辑器代码和样式等待。服务端通知刷新失败后关闭队列并使 SSE 日志失效，后续请求报告视图过期；不会跳过丢失序号继续发送，也不重放业务命令。回归见 [浏览器启动](../apps/http-app/tests/browser-startup.test.ts)、[Web 初始化失败](../apps/http-app/tests/web-startup-failure.test.ts)、[提前连接状态](../apps/http-app/tests/early-connection-status.test.ts) 和 [通知刷新失败](../apps/http-app/tests/view-notification-failure.test.ts)。
+
+浏览器 Performance 条目 `mindos:document-to-editor` 记录 HTML 脚本开始至编辑器就绪，`mindos:entry-to-editor` 记录入口执行至编辑器就绪；二者包括相应网络/代码/装配等待，不能用服务器 rpcMs 替代。bootstrap 现在也记录 application.complete 和 rpcMs，日志不记录目标、已知摘要或用户正文。
+
+复核范围包括初始握手与快照缓存、Shell 的打开/观察装配、真实 Kernel 重建后的审批恢复，以及过期候选和监听释放。历史样本的请求数、响应大小和测试计数通过 Git 查阅，不作为当前运行版本的性能保证；v14 发布需前后端同步更新。运行版本核对见[启动与认证](#启动与认证)。
+
+```bash
+pnpm --filter @itookit/http-app test tests/view-api.test.ts tests/snapshot-cache.test.ts
+pnpm --filter @itookit/app-shell test --maxWorkers=4 tests/http-handshake-shell.test.ts tests/opened-view-projection.test.ts tests/task-attachment-recovery.test.ts tests/pending-interaction-restore.test.ts
+pnpm --filter @itookit/llm-ui test --minWorkers=1 --maxWorkers=4
+```
 
 原生会话状态由 `RemoteSessionStatus` 按项目共享轮询，缓存读取不触发远端查询；变化才通知，失败退避 1–30 秒。最后一个订阅退出后保留最多 30 秒的过期投影，重新订阅可先展示并立即后台验证。闲置缓存最多 64 个项目、合计 4096 行，单个超过 512 行的项目不保留；缓存身份包含配置、服务器和授权 revision，身份改变立即拒绝旧缓存。过期记录禁止中断/审批操作。任务的最终结果、运行状态与命令回执仍以持久记录为准；缓存不替代写入门、租约、版本校验或结果未知命令的核对。
 
@@ -258,5 +356,7 @@ C4Component
 ## 当前视图恢复
 
 短暂断线复用已有编辑器和 SSE 视图；服务重启后重载只按当前 URL 打开一个资源，不构造未打开的工作区。文件深链不以导航目录为前提，工作台以 initialNavigation=false 跳过根目录与组织预读；目录可见后再独立读取，隐藏目录和非活动会话停止观察与轮询。正常启动和恢复静默进行，失败局部重试。
+
+手机页面的恢复目标由当前 URL 决定，工作区用 `data-workspace-opening` 保持正文呈现，不以编辑器 DOM 暂时为空退回列表。内嵌导航准备期间隐藏中间窗口栏；共享 HTML 的 `data-app-starting` 在首个有效导航完成或失败后释放，冷重载不先展示全局导航与历史窗口入口。该标记只控制首次显示，不参与后端会话状态或写命令恢复；SSE 重连保持既有正文、输入和阅读位置。回归见 [手机正文切换](../ui/app-shell/tests/mobile-workspace-view.test.ts)、[手机导航状态](../ui/app-shell/tests/mobile-shell-state.test.ts) 和 [初始资源恢复](../ui/app-shell/tests/bootstrap-project-routes.test.ts)。
 
 文件编辑通过 app-shell 的 browser/file-recovery 保存浏览器本地恢复副本；backend 文件正文与条件写 revision 仍为真相。当前标签页小文本保存在 sessionStorage，大文本进入 IndexedDB，资源间隔离；重载只读取当前文件的副本，先核对原文摘要和权限，冲突保留副本而不覆盖后端。写请求结果未知时不重发，若重新读取的后端正文已等于副本则按已持久化处理。

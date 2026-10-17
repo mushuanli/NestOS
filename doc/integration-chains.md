@@ -32,6 +32,10 @@ node:renamed
 
 ## 2. LLM Chat 链（Direct 会话）
 
+HTTP 冷启动会话深链由 `workbenchView({initialSessionId})` 并行准备工作台和一个 `initialSession`，旧视图保存后才 `activate`。配置选择器消费 `chat.configuration` 的已就绪快照与共享订阅；主题和工作台 UI 文档按路由合并预取。事件注册后直接消费同会话的已观察快照，避免额外 GetSnapshot；普通切换保持 openSessionView → 保存/释放旧视图 → activate 的顺序。
+
+后台 Task 恢复通过宿主注入的 `readTaskAttachment` 回调一次读取活动任务和待审批 ID，不改变前端会话绑定；无候选跳过重复 Flow 列表读取，有候选继续新鲜读取 Flow 归属并校验编辑器代次后附着。未注入时使用原 Kernel 端口。Flow 列表属于只读命令，不触发全域失效或等待写入的订阅屏障。
+
 打开 Session 时，`SessionService.loadSession` 只绑定一次，完成目标分支选择后复用 manifest；输入状态在 HistoryView 创建前读取。新建 API 的侧栏刷新与编辑器打开并行。历史链读取和首屏 Markdown 去重的证据见 [Session 性能审查](./design/llm-ui-session-performance.md)。
 
 工作台侧栏标题区通过 npm 包 `@itookit/vfs-ui` 的工具栏动作定义呈现创建和刷新入口：“所有项目”只提供新建项目，进入项目后隐藏新建项目及切换器中的创建选项，仅提供新建会话；创建会话继续校验项目归属。导入、导出统一收进宿主标题区的“…”菜单，所有项目及项目内均可使用，操作读取点击时的选择与当前项目，导入完成只刷新列表，不自动打开首个结果。项目内菜单保留“项目操作”，继续使用原项目资源菜单。刷新经 `SessionWorkbench.refresh` 使导航缓存失效并刷新资源树、项目切换器与当前目录列表，等待现有刷新队列完成，复用工具栏的去重与禁用状态，不重新创建已打开的编辑器或恢复输入草稿。
@@ -165,3 +169,7 @@ Web/Tauri 在“工具箱 → MCP → 对应 pi-agent 配置 → 控制中心”
 MCP 配置是唯一连接权威，`/etc/fs` 只保存项目授权；旧连接迁到 `/llm/.mcp`，保留 ID 与 credentialRef，清除旧配置和密码记录。旧文件服务作为 legacy pi-agent 配置继续访问，升级并测试后开放 harness。删除或改指向已绑定配置由宿主注入的管理器钩子拒绝。跨窗口配置重载更新远程连接投影，不维护第二份连接目录。
 
 远程项目 `displayName` 动态组成“服务器名:项目名”，导航 path 与项目 ID 不依赖服务器名；同名项目创建时可使用带项目 ID 的 navigationName 消除内部路径冲突。配置重命名刷新侧栏、切换器、标题和传输目标，不移动会话或远程目录。
+
+聊天冷启动链：`app-shell.initApp` → `backend.openView` → 先登记源观察、并行文档/工作台、无旧绑定时激活、并行恢复读模型 → 返回快照及水位 → `OpenedViewProjection.start` 登记一次 observeView → 宿主补发并经 SSE 持续更新 → 本地分发给组件。已有编辑器切换继续走 openSessionView/保存/activate；不同 HTTP 客户端保持各自绑定。详见 [HTTP 打开与观察聚合](./http-app.md#打开与观察聚合已实现)。
+
+HTTP v14 轻入口并行启动 SSE/初始 POST、Shell 模块与当前编辑器代码；POST 携带目标与已知数据摘要，宿主一次完成准备、激活、观察登记和能力导出。前端安装缓存校准后的服务图，再将 initialView 交给 initApp；首帧骨架保持至当前导航完成，后续变化复用同一 SSE。

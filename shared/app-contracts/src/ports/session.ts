@@ -7,7 +7,6 @@ import type { TaskRecord, EventEnvelope } from '@itookit/durable-kernel/contract
 import type { ProjectTarget, ProjectService, ProjectSearch } from './projects';
 import type { SessionFilesService } from './files';
 import type { ApplicationKernelPort } from './local';
-import type {SessionPresentationState} from '@itookit/llm-session/contracts';
 
 export interface SessionLifecycleService {
     closeSession(sessionId: string): Promise<void>;
@@ -194,6 +193,13 @@ export interface WorkbenchChatControls {
 export interface ConnectionObservation {
     update(projectIds: string[], revision: number): Promise<void>;
     dispose(): Promise<void>;
+}
+
+/** Optional host-prepared metadata, consumed only when opening this Session. */
+export interface SessionPresentationState {
+    taskAttachment?: import('@itookit/durable-kernel/contracts').TaskAttachmentRecovery;
+    flowInvocations?: import('@itookit/llm-session/contracts').FlowInvocationRecord[];
+    skills?: Awaited<ReturnType<import('@itookit/tools/contracts').SessionSkillControls['list']>>;
 }
 
 /** Prepared once by the backend; the editor owns the returned file lease. */

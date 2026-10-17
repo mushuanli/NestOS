@@ -1,6 +1,7 @@
 export * from './domain/types';
 export * from './domain/resource-api';
 export type { CacheApi } from './domain/cache';
+export type { KernelInspectionPort } from './ports/kernel-view';
 export type { TaskStat, TaskStats, SessionStat } from './domain/status';
 // Observation projections are public so hosts can render "requested vs confirmed" without
 // re-deriving control state; see doc/kernel-api.md (domain/status.ts).
@@ -23,4 +24,4 @@ export {
     type TaskClaim,
 } from './infrastructure/seqfile/store';
 
-export type { AttachedTask, TaskControlPlane, PendingInteractionTaskSource, TaskAttachmentSession, EditorTaskControlPlane } from './ports/task-control';
+export type { AttachedTask, TaskControlPlane, PendingInteractionTaskSource, TaskAttachmentSession, EditorTaskControlPlane, TaskAttachmentRecovery, ReadTaskAttachment } from './ports/task-control';

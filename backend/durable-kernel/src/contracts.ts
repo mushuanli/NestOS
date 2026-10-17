@@ -4,4 +4,4 @@ export type * from './domain/resource-api';
 export type { CacheApi } from './domain/cache';
 export type { TaskStat, TaskStats, SessionStat } from './domain/status';
 export type * from './ports/task-control';
-export type { KernelViewPort, KernelChangeReason } from './ports/kernel-view';
+export type { KernelViewPort, KernelInspectionPort, KernelChangeReason } from './ports/kernel-view';

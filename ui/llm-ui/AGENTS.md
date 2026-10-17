@@ -127,3 +127,7 @@ Markdown 嵌入统一通过 MDxController 设置 `scrollMode: 'host'`，正文�
 - 编辑器 cancelPendingRender 暂停不可见视图的消息订阅、任务附着与 FlowInvocation 轮询；activate 读取当前快照并恢复观察，每个异步阶段核验激活代次和销毁状态，旧请求不得恢复隐藏视图；保留原 DOM、输入和草稿，不重发写入、不取消运行。RemoteConversationEditor 的迟到轮询和通知不更新隐藏视图。
 
 - 本地与项目草稿提交先在历史区显示临时用户气泡，提交或首条历史追加时移除欢迎区；仅按提交身份与持久消息关联去除临时气泡。发送回执返回时用宿主 isGenerating 同步按钮，任务 lease/control/compaction 等事件不能推导为 running。SessionDraftEditor.refresh 通过宿主刷新已提升草稿，激活与提升通知共享在途刷新，避免重复销毁和重建编辑器；未保存输入和检查期间的新编辑优先保留，隐藏编辑器不刷新或抢焦点。
+
+- 可选 ChatConfigurationView 由宿主注入；Agent、预设提示词和连接选择器读取该快照，共享一个订阅并在变更时重建选项；每个缓存句柄释放自身监听，最后一个句柄释放源订阅。无注入时沿用配置服务。事件绑定后优先读取 SessionViewPort 的同会话快照，缺省才调用 GetSnapshot；激活、分支选择和保存顺序不变。
+
+- 宿主可注入 readTaskAttachment 读取活动/待审批候选 ID；无候选跳过额外 Flow 查询，活动候选先核对同一 Session 及实时非终态，过期后继续待交互候选；待交互候选核对 Flow 归属、实时非终态及 pending interaction，跳过已解决任务。异步打开和状态读取后仍检查视图和附着代次。不注入时沿用 Kernel 端口，不改变附着和审批语义。

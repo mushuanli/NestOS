@@ -1,6 +1,5 @@
 import {FlowInvocationCommand} from '@itookit/llm-session/contracts';
-import type {SessionPresentationState} from '@itookit/llm-session/contracts';
-import type {ApplicationBackend, ApplicationServices, ApplicationViewEvent, ApplicationViewSources, OpenedApplicationView, WorkbenchView} from '@itookit/app-contracts/services';
+import type {SessionPresentationState, ApplicationBackend, ApplicationServices, ApplicationViewEvent, ApplicationViewSources, OpenedApplicationView, WorkbenchView} from '@itookit/app-contracts/services';
 
 function overlay<T extends object>(target: T, overrides: Partial<T>): T {
     return new Proxy(target, {get(value, key) {

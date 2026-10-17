@@ -30,6 +30,24 @@ export interface AgentInterfaceDef {
  * Re-exported from node-config (part of the unified system-prompt model).
  */
 export type { PromptPreset } from '@itookit/tools/contracts';
+
+/** Safe presentation metadata; credential values and system prompt bodies stay in the host. */
+export interface ChatConfigurationSnapshot {
+    agents: Array<Pick<AgentDefinition, 'id' | 'name' | 'icon' | 'description' | 'defaultPrompts'> & {
+        config: Pick<AgentConfig, 'systemPromptId'>;
+    }>;
+    promptPresets: Record<string, PromptPreset[]>;
+    connections: ConnectionMeta[];
+    defaultConnectionId?: string;
+    providers: Array<Pick<LLMProvider, 'id' | 'name' | 'enabled' | 'models'>>;
+}
+
+export interface ChatConfigurationView {
+    getConfigurationSnapshot(): ChatConfigurationSnapshot;
+    subscribe(listener: () => void): () => void;
+    dispose(): Promise<void>;
+}
+
 export interface AgentDefinition {
     id: string;
     /** Version identifier. Phase 3: derived from SHA-256 of canonical JSON. */

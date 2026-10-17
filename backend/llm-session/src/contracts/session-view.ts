@@ -1,4 +1,4 @@
-import type { SessionGroup, SessionStatus, SessionEventEnvelope, RegistryEvent } from '../core/types';
+import type { SessionGroup, SessionStatus, SessionEventEnvelope, RegistryEvent, SessionSnapshot } from '../core/types';
 import type { ISession } from './session';
 import type { PromptHistoryEntry } from './prompt-history';
 
@@ -10,6 +10,8 @@ export interface PromptHistoryPort {
 
 /** The editor needs observation and a command channel, not a session implementation. */
 export interface SessionViewPort extends ISession {
+    /** Latest observed memory projection; reading never binds or performs I/O. */
+    getSnapshot?(): SessionSnapshot;
     getDirectAgentPolicy?(): import('./direct-agent-policy').ResolvedDirectAgentPolicy;
     getSessions(): SessionGroup[];
     getStatus(): SessionStatus | 'unbound';

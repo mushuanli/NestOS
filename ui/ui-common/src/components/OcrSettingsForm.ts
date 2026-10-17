@@ -26,6 +26,7 @@ export class OcrSettingsForm {
     private revision = 0;
     private saving = false;
     private dirty = false;
+    private rendered?: string;
     constructor(private readonly container: HTMLElement, private readonly controls: OcrControls) {
         this.unsubscribe = controls.subscribe(() => { if (!this.saving && !this.dirty) void this.refresh(); });
         container.addEventListener('change', () => { this.dirty = true; void this.save(); }, { signal: this.abort.signal });
@@ -36,8 +37,14 @@ export class OcrSettingsForm {
         const revision = ++this.revision;
         try {
             const state = await this.controls.readSettings();
-            if (revision === this.revision && !this.abort.signal.aborted) { this.container.innerHTML = renderOcrSettings(state, this.id); this.dirty = false; }
-        } catch (error) { if (revision === this.revision && !this.abort.signal.aborted) this.container.textContent = String(error); }
+            if (revision === this.revision && !this.abort.signal.aborted) {
+                const markup = renderOcrSettings(state, this.id);
+                if (this.dirty || this.rendered !== markup) { this.container.innerHTML = markup; this.rendered = markup; }
+                this.dirty = false;
+            }
+        } catch (error) {
+            if (revision === this.revision && !this.abort.signal.aborted) { this.rendered = undefined; this.container.textContent = String(error); }
+        }
     }
     private async save(): Promise<void> {
         if (this.saving || this.abort.signal.aborted) return;

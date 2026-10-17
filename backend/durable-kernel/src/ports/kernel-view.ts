@@ -6,7 +6,12 @@ import type { SessionStat } from '../domain/status';
 
 export type KernelChangeReason = 'structure' | 'content';
 
-/** Capabilities required by local application views; worker ownership stays with the host. */
+/** Host-only inspection; does not register execution or start the scheduler. */
+export interface KernelInspectionPort {
+    inspectSession(id: string): Promise<Pick<SessionHandle, 'getShared'> & {listPendingInteractionTasks(): Promise<TaskRecord[]>}>;
+}
+
+/** Capabilities shared by local and remote application views. */
 export interface KernelViewPort {
     openSession(id: string, expectedStorage?: StorageBindingRef): Promise<SessionHandle>;
     openTask<O = unknown>(id: string): Promise<TaskHandle<O>>;

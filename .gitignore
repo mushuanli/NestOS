@@ -9,6 +9,7 @@ node_modules/
 # Library crate: the CLI Session Bash fixture builds it, but its lock file is not committed.
 backend/sanbox/native/Cargo.lock
 .pnpm-store/
+.itookit-upload-state/
 target/
 r2/
 r1/

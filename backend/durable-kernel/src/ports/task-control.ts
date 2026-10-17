@@ -6,6 +6,13 @@ export interface TaskControlPlane {
     openTask(id: string): Promise<AttachedTask>;
 }
 
+/** Detached recovery hints; attaching still reads the current task status and events. */
+export interface TaskAttachmentRecovery {
+    activeTaskId?: string;
+    pendingTaskIds: string[];
+}
+export type ReadTaskAttachment = (sessionId: string, sharedKey: string) => Promise<TaskAttachmentRecovery>;
+
 export interface PendingInteractionTaskSource {
     listSessionTasks(sessionId: string): Promise<TaskRecord[]>;
     listSessionPendingInteractionTasks?(sessionId: string): Promise<TaskRecord[]>;

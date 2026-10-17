@@ -2,7 +2,7 @@
 // Agent/Connection data-fetching helpers — extracted from LLMWorkspaceEditor.
 // Pure async functions: no DOM access, no mutable state.
 
-import { resolveChatModelForTier, resolveChatModelTiers, type IAgentConfigService } from '@itookit/kernel-adapters/contracts';
+import { resolveChatModelForTier, resolveChatModelTiers, type IAgentConfigService, type ChatConfigurationSnapshot } from '@itookit/kernel-adapters/contracts';
 import type { ExecutorOption, ConnectionOption } from '../domain/types';
 import { ENTITY_ICONS, formatDefaultFileTitle, t } from '@itookit/common';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
@@ -10,10 +10,12 @@ import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts'
 export async function buildExecutorOptions(
     agentService: IAgentConfigService,
     remote?: import('@itookit/ui-common').RemoteAgentControls,
+    configuration?: ChatConfigurationSnapshot,
 ): Promise<ExecutorOption[]> {
-    const agents = agentService.listAgents();
+    const agents = configuration?.agents ?? agentService.listAgents();
     const promptIds = [...new Set(agents.map(agent => agent.config.systemPromptId).filter((id): id is string => !!id))];
-    const prompts = new Map(await Promise.all(promptIds.map(async id => [id, await agentService.getSystemPrompt(id)] as const)));
+    const prompts = new Map(await Promise.all(promptIds.map(async id => [id, configuration
+        ? {presets: configuration.promptPresets[id] ?? []} : await agentService.getSystemPrompt(id)] as const)));
 
     const seen = new Set<string>();
     const options: ExecutorOption[] = [];
@@ -48,14 +50,17 @@ export function validateAgentId(agentService: IAgentConfigService, id: string): 
 
 export async function buildConnectionOptions(
     agentService: IAgentConfigService,
+    configuration?: ChatConfigurationSnapshot,
 ): Promise<ConnectionOption[]> {
+    if (configuration) return configuration.connections.map(connection => connectionOption(connection,
+        configuration.providers.find(provider => provider.id === connection.providerId), configuration.defaultConnectionId));
     const [connections, defaultConnection] = await Promise.all([agentService.getConnections(), agentService.getDefaultConnection()]);
     const defaultId = defaultConnection?.id;
 
     return connections.map(c => connectionOption(c, agentService.getProvider(c.providerId), defaultId));
 }
 
-function connectionOption(connection: ConnectionMeta, provider: LLMProvider | undefined, defaultId?: string): ConnectionOption {
+function connectionOption(connection: ConnectionMeta, provider: Pick<LLMProvider, 'id' | 'name' | 'enabled' | 'models'> | undefined, defaultId?: string): ConnectionOption {
     const tiers = Object.fromEntries(Object.entries(resolveChatModelTiers(connection, provider))
         .map(([tier, model]) => [tier, model.name || model.id]));
     const resolvedTiers = Object.fromEntries((['optimal', 'standard', 'fast'] as const).map(tier => {

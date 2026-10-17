@@ -20,6 +20,8 @@ const factory = createLLMFactory(agentService, {
 
 `/chat` 创建正式会话编辑器时必须传入 `sessionManager`，或通过 `resolveSessionView` 延迟获取实例；缺少端口会明确报错。提示词历史通过实例上的可选 `promptHistory` 接入。所有入口均要求显式实例注入。当前 UI 仍消费 Session/Flow 契约和仓储能力，并非只依赖通用 UI 的展示组件包。
 
+仅依赖 mdxeditor 的拆分目标、操作回调和快照订阅方案见 [独立模块设计提案](../../doc/design/llm-ui-independent-module.md)（待实施）。
+
 验证：`pnpm --filter @itookit/llm-ui typecheck`、`build`、`test`。
 开发说明见 [AGENTS.md](./AGENTS.md)。
 

@@ -23,6 +23,8 @@
 
 | 接口/类型 | 核心字段/方法 | 定义 | 实现 | 消费 |
 |---|---|---|---|---|
+| `SessionPresentationState` | 可选 taskAttachment/flowInvocations/skills；应用启动组合读模型 | `app-contracts/src/ports/session.ts` | `app-core/host/open-view.ts` | `app-shell/lifecycle/opened-view.ts`，向编辑器注入领域初始数据 |
+| `TaskAttachmentRecovery` / `ReadTaskAttachment` | 活动任务与待审批候选 ID；显式 Session、共享键，只读恢复线索，附着前核对实时状态 | `durable-kernel/src/ports/task-control.ts` | `app-core/host/task-attachment.ts`，由 ApplicationBackend.taskAttachment 提供 | `llm-ui` 可选恢复回调 |
 | `EditorTaskControlPlane` / `AttachedTask` | openTask/openSession/listSessionTasks；共享挂接身份、Task 事件及控制 | `durable-kernel/src/ports/task-control.ts`，从 Kernel 根入口导出 | Kernel 或宿主远程客户端 | 聊天编辑器、任务挂接及 pending 恢复 |
 | `SessionViewBinding` / `LLMFactoryDependencies` | 显式 sessionManager 或 resolveSessionView；仓储及可选宿主端口 | `llm-ui/src/chat.ts` | 宿主组合根 | createLLMFactory |
 | `ILLMService` | `chat()`、`chatStream()`、`abort()`、`getConnection()` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/service.ts` | `kernel-adapters LLMServiceAdapter` | `llm-tasks`（经 effect）、`llm-session` |
@@ -33,6 +35,7 @@
 | `LLMConnection/ConnectionMeta` | `id/name/providerId/tiers/model/protocol/credentialsReady?` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/connection.ts` | `driver-llm` | `llm-session AgentResolver` |
 | `WebSearchMode` | `'builtin'\|'client-tool'\|'disabled'` | `kernel-adapters/src/llm-management/contracts/connection.ts` | `resolveWebSearchStrategy`（纯函数） | `llm-session` |
 | `SettingsAutoSave` / `requestSettingsSave` | 设置表单延迟保存、串行写入、失败重试与安全释放；不重建编辑 DOM | `ui-common/src/components/SettingsAutoSave.ts` | `BaseSettingsEditor`、`configuration-form.ts` | 七类 LLM 设置编辑器 |
+| `ChatConfigurationView` / `ChatConfigurationSnapshot` | getConfigurationSnapshot/subscribe/dispose；安全展示配置，先安装快照再通知 | `kernel-adapters/src/llm-management/contracts/agent.ts` | `app-core/configuration/chat-configuration.ts` | `llm-ui` 选择器，HTTP workbenchView 注入 |
 | `IConnectionService.listProviderModels` | 接受完整未保存 Provider，返回归一化模型目录；无持久化副作用 | `kernel-adapters/src/llm-management/contracts/agent.ts` | `LLMDeviceDriver` → `providers/model-catalog.ts`，`VFSAgentService` 转发 | `ProviderSettingsEditor` |
 | `LLMProvider.supportedProtocols/defaultProtocol/modelsPath`、`LLMModel.preferredProtocol` | Provider 协议集合与默认、模型目录覆盖、模型首选；连接显式协议优先 | `https://github.com/mushuanli/driver-llm/blob/main/src/types/connection.ts`、`https://github.com/mushuanli/driver-llm/blob/main/src/types/protocol.ts` | `driver-llm` registry / Driver / `.llm` 转换 | Provider / Connection 设置页 |
 | `LLMProvider.capabilities.serverSideWebSearch` | 服务端内置联网搜索能力（唯一事实源） | `https://github.com/mushuanli/driver-llm/blob/main/src/types/connection.ts` | `kernel-adapters/src/llm-management/constants/providers.ts` | `resolveWebSearchStrategy` |
@@ -224,3 +227,9 @@ pi-agent 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）。a
 提取请求显式设置 thinking=false、maxTokens=8192、stream=false；预算预留包含输入字节数、8192 token 输出额度及提示词余量，并按返回的 total_tokens 结算。截断/格式错误带有已知 total_tokens 时，job、settings 和 scan-run 原子结算，失败不推进来源游标；重复结算不重复计费。无任务时间的历史记录仅展示其 scanScope.runId 对应扫描时间，并明确标注，不从其他任务或当前时间推断。
 
 数字分析当前使用非流式提取。通过 Kernel 公开任务事件记录 requestStartedAt、responseReceivedAt 和 responseCompletedAt；请求启动不代表服务端接收确认。驱动超时单独标记 TWIN_EXTRACTION_TIMEOUT；非流式未返回完整响应时不能推断网络链路或服务端生成的具体阶段。界面独立展示当前更新、下次调度与全部可展开的历史扫描/任务记录。
+
+`ApplicationBackend.openView` 返回 `OpenedApplicationView`（UI 文档、工作台、可选初始会话、事件水位与观察句柄）；由 app-core 的 host/open-view 实现，app-shell 的 lifecycle/opened-view 消费。`ApplicationViewObservation.observeView(after, listener)` 在登记时有界重放并持续分发；快照水位仅属于当前客户端，已有编辑器切换保留 openSessionView/activate 屏障。详见 [HTTP 打开与观察聚合](./http-app.md#打开与观察聚合已实现)。
+
+HTTP v14 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClient.initialView，先登记观察再导出能力；HttpViewClient 将 SSE viewEvents 适配为本地 ApplicationViewObservation。纯数据按 SHA-256 校准，句柄每个连接独立，见 [一次打开同步握手](./http-app.md#一次打开同步握手与首帧v14)。
+
+`ApplicationViewObservation.getSessionBaseline` 返回成对快照/水位，调用者只读使用；传输按公开 `observeView` 的事件更新行投影，不读取具体宿主的内部会话源。`KernelInspectionPort` 仅供 `LocalApplicationServices` 的宿主聚合使用，不属于前端 `KernelViewPort`，也不注册为远程能力。

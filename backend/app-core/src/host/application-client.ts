@@ -26,14 +26,16 @@ import { openSessionView } from './session-view';
 import { observeConnections } from './connection-observation';
 import { readUiDocuments, writeUiDocuments } from './ui-documents';
 import { ViewScope } from './view-scope';
-import { taskDetails, taskEvents } from './task-view';
+import { taskDetails, taskEvents, sessionTasks } from './task-view';
+import { createSessionDraft } from '../session/create-session-draft';
 import type { ApplicationClient, ApplicationBackend, LocalApplicationServices, LocalBackendOptions, ToolboxView } from '@itookit/app-contracts/services';
 
 export interface ApplicationViewOptions extends LocalBackendOptions { preload?: boolean }
 /** Bind construction dependencies once, inside the host rather than across the UI port. */
 export function createApplicationClient(services: LocalApplicationServices, options: ApplicationViewOptions = {}): ApplicationClient & { close(): Promise<void> } {
     const scope = new ViewScope(), backend = bindApplicationBackend(services, options, scope);
-    return { services: { ...services, agentService: withConfigurationImport(services.agentService),
+    const { acquireConversation: _acquireConversation, ...publicServices } = services;
+    return { services: { ...publicServices, agentService: withConfigurationImport(services.agentService),
         llmDriver: withConfigurationImport(services.llmDriver), flowEngine: { engine: services.flowEngine.engine }, kernel: { kernel: services.kernel.kernel, toolCatalog: services.kernel.toolCatalog } },
         backend, close: () => scope.close() };
 }
@@ -41,10 +43,11 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     const { vfs, agentService, sessionRepository: repository, projects, kernel, commandBus } = services;
     const lifecycle = () => new SessionLifecycleService({ repository, kernel: kernel.kernel });
     return {
+        createSessionDraft: request => createSessionDraft(projects, repository, request),
         navigationView: options => navigationView(vfs, options),
         warmNavigation: roots => warmNavigation(vfs, roots),
         workbenchView: async settings => {
-            const view = await createWorkbenchView({ ...settings, repository, files: services.sessionFiles, kernel: kernel.kernel, projects }, options.preload);
+            const view = await createWorkbenchView({ ...settings, repository, files: services.sessionFiles, kernel: kernel.kernel, projects }, options.preload, settings?.initialNavigation !== false);
             return { ...view, browser: await scope.own(view.browser),
                 chat: settings?.chatControls ? { privilegedCommands: new PrivilegedCommandService(kernel.kernel, agentService),
                     sessionSkills: createSessionSkillControls(kernel.kernel, kernel.sessions) } : undefined,
@@ -68,6 +71,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         unmountProject: id => unmountRemoteProject(projects, lifecycle(), id),
         conversationBranches: (folder, profile, session, settings) => conversationFamily(services, folder, profile, session, settings),
         taskDetails: (session, task) => taskDetails(kernel.kernel, session, task),
+        sessionTasks: (session, settings) => sessionTasks(kernel.kernel, session, settings),
         taskEvents: (session, task, settings) => taskEvents(kernel.kernel, session, task, settings),
     };
 }

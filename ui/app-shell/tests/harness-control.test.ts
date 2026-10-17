@@ -83,3 +83,29 @@ it('adopts a confirmed creation without submitting it again',async () => {
     expect(peer.resume).not.toHaveBeenCalled(); expect(peer.turn).toHaveBeenCalledOnce();
     controller.abort(); await opened;
 });
+
+it('ignores disconnection events belonging to another session', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController(), peer = client();
+    const opened = showHarnessControl(peer, 'node', controller.signal); await settle();
+    button(session.title).click(); await settle();
+    vi.mocked(peer.events).mockResolvedValue({epoch: 'ev', cursor: 1, gap: false, requests: [], events: [
+        {seq: 1, message: {method: 'harness/disconnected', params: {threadId: 'other'}}}]});
+    await vi.advanceTimersByTimeAsync(500);
+    expect(document.body.textContent).not.toContain(t('harness.disconnected'));
+    controller.abort(); await opened;
+});
+
+it('shows polling errors as update failures and recovers without sending a command', async () => {
+    vi.useFakeTimers(); vi.spyOn(console, 'error').mockImplementation(() => {});
+    const controller = new AbortController(), peer = client();
+    const opened = showHarnessControl(peer, 'node', controller.signal); await settle();
+    button(session.title).click(); await settle();
+    vi.mocked(peer.events).mockRejectedValueOnce(new Error('Invalid snapshot'));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(document.body.textContent).toContain(t('harness.updateFailed', {message: 'Invalid snapshot'}));
+    expect(document.body.textContent).not.toContain(t('harness.disconnected'));
+    await vi.advanceTimersByTimeAsync(500);
+    expect(document.body.textContent).not.toContain(t('harness.updateFailed', {message: 'Invalid snapshot'}));
+    expect(peer.turn).not.toHaveBeenCalled(); controller.abort(); await opened;
+});

@@ -25,7 +25,8 @@ it('creates project Sessions from the selected project and edits its files in th
     const kernel = { onChanged: () => () => {}, async *listSessions() {},
         closeSession: vi.fn(async () => {}), sessionStat: vi.fn(async () => ({ phase: 'closed' })), removeSession: vi.fn(async () => {}) };
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
-    const chat = vi.fn(async (element: HTMLElement, _options: any) => { element.textContent = 'chat'; return { destroy: vi.fn() }; });
+    const appendDraft = vi.fn(async () => {});
+    const chat = vi.fn(async (element: HTMLElement, _options: any) => { element.textContent = 'chat'; return { destroy: vi.fn(), commands: {appendDraft} }; });
     const file = vi.fn(async (element: HTMLElement, options: any) => { element.textContent = 'file'; return {
         destroy: vi.fn(), setTitle: vi.fn(), navigateTo: vi.fn(async () => {}), updateNodeId: (path: string) => { options.target.path = path; },
     }; });
@@ -109,6 +110,13 @@ it('creates project Sessions from the selected project and edits its files in th
         expect(workbench.getActiveResourceId()).toBe(`draft:${other.project.id}`);
         const session = await workbench.createResource();
         expect((await repository.getManifest(session)).folder).toBe(other.path + '/@sessions');
+        const beforeSwitch = (await repository.listSummaries()).length;
+        const incoming = {text: 'Continue with another executor', files: [new File(['context'], 'context.txt')]};
+        const switchTarget = chat.mock.calls.at(-1)![1].onStartConversationDraft;
+        expect(switchTarget).toBeTypeOf('function'); await switchTarget(incoming);
+        expect(workbench.getActiveResourceId()).toBe(`draft:${other.project.id}`);
+        expect(appendDraft).toHaveBeenCalledExactlyOnceWith(incoming);
+        expect((await repository.listSummaries()).length).toBe(beforeSwitch);
         await workbench.openResource(projectPath + '/@files');
         const activePanel = () => main.querySelector('.workbench-tabs__panel:not([hidden])')!;
         expect(activePanel().querySelector('.workbench-directory__table')?.textContent).toContain('notes.md');
@@ -117,6 +125,9 @@ it('creates project Sessions from the selected project and edits its files in th
         await vi.waitFor(() => expect(navigation.querySelector(`[data-item-id="${projectPath}/@files/notes.md"]`)).not.toBeNull());
         await workbench.openResource(projectPath + '/@files/notes.md');
         expect(file.mock.calls.at(-1)![1].initialContent).toBe('research notes');
+        expect(main.querySelector('.project-workbench__context')).toBeNull();
+        expect(main.querySelector('.workbench-tabs__tab.is-active .workbench-tabs__context')?.textContent).toBe('Research');
+        expect(file.mock.calls.at(-1)![1].title).not.toContain('Research');
         const options = file.mock.calls.at(-1)![1];
         const activeBeforeRefresh = workbench.getActiveResourceId();
         const filePanel = main.querySelector('.workbench-tabs__panel:not([hidden])');
@@ -139,6 +150,8 @@ it('creates project Sessions from the selected project and edits its files in th
         await options.files.fs.driver.rename('/workspace/notes.md', 'renamed.txt');
         await vi.waitFor(() => expect(options.target.path).toBe('/workspace/renamed.txt'));
         await workbench.openResource(projectPath + '/@files/renamed.txt');
+        expect(main.querySelector('.workbench-tabs__tab.is-active .workbench-tabs__context')?.textContent).toBe('Research');
+        expect((await projects.get(other.project.id))?.name).toBe('Research');
         expect(file).toHaveBeenCalledOnce();
         await options.hostContext.saveContent(options.target.path, 'saved after rename');
         expect(await options.files.fs.driver.readContent('/workspace/renamed.txt', { encoding: 'utf-8' })).toBe('saved after rename');
@@ -158,6 +171,12 @@ it('creates project Sessions from the selected project and edits its files in th
         const sibling = await workbench.createChild(session);
         expect((await repository.getManifest(child)).parentSessionId).toBe(session);
         expect((await repository.getManifest(sibling)).parentSessionId).toBe(session);
+        for (const id of [session, child, sibling]) {
+            const path = folderBrowserPath((await repository.getManifest(id)).folder!) + '/' + id;
+            await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${path}"]`)).not.toBeNull());
+        }
+        expect(main.querySelector('.session-family__toolbar')).toBeNull();
+        expect(chat.mock.calls.at(-1)![1].mountMoreMenu).toBeTypeOf('function');
         expect(sidebar.querySelector('.vfs-columns')).toBeNull();
         await workbench.openResource('/');
         expect(sidebar.querySelector('.workbench-project-navigation select')?.value).toBe('/');

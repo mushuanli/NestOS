@@ -87,14 +87,12 @@ it.each(['start', 'chat', 'minds'])('mounts the complete common shell starting a
         await app.navigate('minds');
         for (const method of ['navigationView', 'getChildren', 'getNodeType']) expect(calls[method]).toBeUndefined();
         const route = location.hash;
-        await vi.waitFor(() => expect(calls.workbenchView).toBe(1), { timeout: 5000 });
-        expect(calls.toolboxView).toBe(1);
-        expect(document.querySelector('.toolbox-navigation')?.textContent).toContain('模型');
+        await new Promise(resolve => setTimeout(resolve, 300));
+        expect(calls.workbenchView).toBeUndefined(); expect(calls.toolboxView).toBeUndefined();
         expect(location.hash).toBe(route);
         expect(document.getElementById('minds-workspace')?.classList.contains('active')).toBe(true);
         expect(calls.openSessionView).toBeUndefined(); expect(document.querySelector('.llm-input')).toBeNull();
         for (const method of ['settings', 'ocr', 'prepareConfiguration', 'prepareSession', 'acquireFiles']) expect(calls[method]).toBeUndefined();
-        // A foreground click joins the existing preload instead of creating another workbench.
         const joined = app.navigate('chat'); releaseWorkbench(); await joined;
         expect(calls.workbenchView).toBe(1);
         await app.navigate('toolbox'); expect(calls.toolboxView).toBe(1);

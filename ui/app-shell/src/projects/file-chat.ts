@@ -1,20 +1,13 @@
 import { t, type NavigationRequest } from '@itookit/common';
-import type { ProjectService } from '@itookit/app-contracts/services';
-import type { ISessionRepository } from '@itookit/llm-session/contracts';
+import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import type { EditorFileReference, EditorHostContext } from '@itookit/ui-common';
 
 /** Store the quote before mounting chat, so a later reopen also restores the draft. */
-export function createFileChatHandler(projects: ProjectService, repository: ISessionRepository,
+export function createFileChatHandler(backend: Pick<ApplicationBackend, 'createSessionDraft'>,
     navigate: (request: NavigationRequest) => Promise<void>): NonNullable<EditorHostContext['chatFromFile']> {
     return async (reference, association) => {
-        const folder = association?.projectFolder ?? (association?.sessionId
-            ? (await repository.getManifest(association.sessionId)).folder : undefined);
-        const owning = await projects.forFolder(folder);
-        if (association?.projectFolder && !owning) throw new Error('Source project no longer exists');
-        const project = owning ?? await projects.personal();
-        const id = await projects.sessions.create(reference.path.split('/').pop() || t('editor.ai.title'),
-            await projects.sessionFolder(project));
-        await repository.updateUIState(id, { branchDrafts: { main: { inputText: quote(reference) } } });
+        const id = await backend.createSessionDraft({ title: reference.path.split('/').pop() || t('editor.ai.title'),
+            inputText: quote(reference), source: association });
         await navigate({ target: 'chat', resourceId: id });
     };
 }

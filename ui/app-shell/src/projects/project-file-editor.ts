@@ -1,3 +1,4 @@
+import {createRecoverableFileEditor} from '../browser/file-recovery';
 import { PROJECT_EDITOR_MAX_BYTES, showLargeFilePreview } from './large-file-preview';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { buildRenamedFilename, traceBoot, t } from '@itookit/common';
@@ -13,6 +14,7 @@ interface ProjectFileOptions {
     deferCleanup(cleanup: Promise<void>): void;
     changed(): void;
     host: EditorHostContext;
+    recoveryScope?: string;
 }
 interface OpenedProjectFile { node: FSNode; editor?: IEditor; context: FileSystemContextOwner; previewCleanup?: () => void }
 
@@ -64,7 +66,7 @@ async function createTextEditor(context: FileSystemContextOwner, path: string, c
     const readOnly = (await fs.capabilitiesAt(path)).readonly;
     load.check();
     const filename = path.split('/').pop()!;
-    return traceBoot('projectFile.editor', () => options.factory(mount, {
+    return traceBoot('projectFile.editor', () => createRecoverableFileEditor(options.factory, mount, {
         ...fileContentFormat(path), target: { kind: 'file', path }, files: context.context,
         initialContent: content, readOnly, signal: load.signal, title: buildRenamedFilename(filename, filename).title,
         hostContext: { ...options.host,
@@ -76,7 +78,7 @@ async function createTextEditor(context: FileSystemContextOwner, path: string, c
                 }
             },
         },
-    }));
+    }, options.recoveryScope ?? context.context.fs.viewId));
 }
 
 export function localizeRemoteWriteError(error: unknown): unknown {

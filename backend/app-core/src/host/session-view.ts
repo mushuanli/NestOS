@@ -5,12 +5,19 @@ import type { LocalApplicationServices, SessionEditorInitialData, SessionOpenVie
 /** Preparation may fail without replacing the editor's current binding. */
 export async function openSessionView(services: LocalApplicationServices, sessionId: string): Promise<SessionOpenView> {
     await services.prepareSession?.(sessionId);
+    const conversation = await services.acquireConversation?.(sessionId);
+    try { return await prepareSessionView(services, sessionId, conversation); }
+    catch (error) { await conversation?.dispose(); throw error; }
+}
+
+async function prepareSessionView(services: LocalApplicationServices, sessionId: string, conversation?: { dispose(): Promise<void> }): Promise<SessionOpenView> {
     const manifest = await services.sessionRepository.getManifest(sessionId);
     const [project, fixed] = await Promise.all([
         services.projects?.forFolder(manifest.folder), services.directoryMounts?.fixedWorkspace(sessionId),
     ]);
     const owner = await services.sessionFiles.acquireFiles(sessionId);
-    return { manifest, project, workspaceReadOnly: fixed !== undefined, context: owner.context, ...activationLease(services, sessionId, owner) };
+    const owned = { context: owner.context, release: async () => { try { await owner.release(); } finally { await conversation?.dispose(); } } };
+    return { manifest, project, workspaceReadOnly: fixed !== undefined, context: owner.context, ...activationLease(services, sessionId, owned) };
 }
 
 function activationLease(services: LocalApplicationServices, sessionId: string, owner: FileSystemContextOwner): Pick<SessionOpenView, 'activate' | 'dispose'> {

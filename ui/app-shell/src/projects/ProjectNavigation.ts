@@ -4,7 +4,7 @@ import { t, FILE_BROWSER_ICONS, VFS_TOOLBAR_ICONS, ENTITY_ICONS, FEEDBACK_ICONS 
 import { ProjectSyncStatusIndicator, projectSyncIcon } from './sync/indicator';
 import type { ProjectSyncIndicator } from './sync/presentation';
 import { browserTargetFolder, folderBrowserPath, resolveBrowserTarget, remoteSessionPath } from '@itookit/app-contracts';
-import type { ProjectFolder, ProjectNavigationSnapshot, ProjectService } from '@itookit/app-contracts/services';
+import type { ProjectFolder, ProjectNavigationView, ProjectService } from '@itookit/app-contracts/services';
 import { ScopeSelector } from '@itookit/vfs-ui';
 import type { VFSActionDefinition, VFSActionContext, VFSToolbarContext, VFSColumnsOptions, VFSNodeUI, VFSUIShell } from '@itookit/vfs-ui';
 import { decorateButton } from '../workbench/controls';
@@ -42,9 +42,6 @@ export class ProjectNavigation {
     private readonly syncStatus: ProjectSyncStatusIndicator;
     private project?: ProjectFolder;
     private path = '/';
-    private session?: string;
-    private familyVisible = false;
-    private family?: string;
     private draftActive = false;
     private readonly remoteCreation = new Map<string, string | undefined>();
     private revision = 0;
@@ -147,8 +144,7 @@ export class ProjectNavigation {
     selectScope(path: string): void {
         const project = this.projectChoices.find(item => folderBrowserPath(item.path) === path);
         if (path !== '/' && !project) return;
-        this.cancelPending(); this.path = path; this.session = undefined; this.draftActive = false;
-        if (this.project?.project.id !== project?.project.id) { this.familyVisible = false; this.family = undefined; }
+        this.cancelPending(); this.path = path; this.draftActive = false;
         this.project = project; this.updateHeader(this.projectChoices, this.pendingDeletions);
         this.ui()?.setTitle(project?.displayName ?? project?.name ?? t('workbench.allProjects')); this.ui()?.refreshList();
     }
@@ -164,34 +160,32 @@ export class ProjectNavigation {
     cancelPending(): void { ++this.revision; ++this.scopeRevision; this.menu.open = false; }
     showDraft(project: ProjectFolder): void {
         this.cancelPending();
-        this.session = undefined;
         this.draftActive = this.project?.project.id === project.project.id;
         this.create.setAttribute('aria-current', this.draftActive ? 'page' : 'false');
     }
     async sync(path: string, options: ProjectNavigationOptions = {}): Promise<void> {
         ++this.scopeRevision;
         this.path = path; this.draftActive = false;
-        const target = resolveBrowserTarget(path); this.session = 'sessionId' in target ? target.sessionId : undefined;
         const revision = ++this.revision;
-        const snapshot = await this.projects.sessions.navigation({ includeSessions: 'sessionId' in target });
-        if (revision === this.revision) await this.apply(snapshot, path, revision, options.project, options.preserveProject);
+        const snapshot = await this.projects.navigation({ path,
+            projectId: options.project?.project.id ?? (options.preserveProject ? this.project?.project.id ?? null : undefined) });
+        if (revision === this.revision) await this.apply(snapshot, revision);
     }
-    private async apply(snapshot: ProjectNavigationSnapshot, path: string, revision: number, resolved?: ProjectFolder, preserveProject = false): Promise<void> {
-        const target = resolveBrowserTarget(path), manifest = 'sessionId' in target ? snapshot.sessions.find(item => item.id === target.sessionId) : undefined;
-        const folder = browserTargetFolder(target, path, manifest?.folder);
-        let project = preserveProject ? this.project : resolved ?? (folder ? await this.projects.forFolder(folder, snapshot.folders) : undefined);
-        const projects = this.projects.navigationFromIndex ? this.projects.listNavigation(snapshot.folders) : await this.projects.list(snapshot.folders);
-        if (preserveProject && project) project = projects.find(item => item.project.id === project!.project.id) ?? project;
+    private async apply(snapshot: ProjectNavigationView, revision: number): Promise<void> {
+        const { project, projects, path } = snapshot;
         if (revision !== this.revision) return;
-        if (this.project?.project.id !== project?.project.id) this.familyVisible = false;
-        const family = manifest ? snapshot.roots.get(manifest.id) : undefined;
-        if (family !== this.family) this.familyVisible = false; this.family = family;
-        this.project = project; this.path = path; this.session = manifest?.id;
-        this.offlinePaths = new Set(projects.filter(item => this.projects.remoteMounts?.projectOffline(item.project.id)).map(item => folderBrowserPath(item.path)));
-        this.updateHeader(projects, snapshot.pending.length);
+        this.project = project; this.path = path;
+        this.offlinePaths = new Set(projects.filter(item => snapshot.offlineProjectIds.includes(item.project.id)).map(item => folderBrowserPath(item.path)));
+        this.updateHeader(projects, snapshot.pendingDeletions);
         this.actions.projectsChanged?.(projects);
         this.ui()?.setTitle(project?.displayName ?? project?.name ?? t('workbench.allProjects')); this.ui()?.refreshList();
-        if (project) await this.ui()?.expandPath(folderBrowserPath(project.path));
+        if (project) {
+            await this.ui()?.expandPath(folderBrowserPath(project.path));
+            for (const group of snapshot.loadPaths) {
+                if (revision !== this.revision) return;
+                await this.ui()?.loadDirectory(group);
+            }
+        }
         if (revision === this.revision) this.ui()?.refreshList();
     }
     private updateHeader(projects: ProjectFolder[], pending: number): void {
@@ -244,7 +238,7 @@ export class ProjectNavigation {
     }
     navigationItems(items: VFSNodeUI[], query = ''): VFSNodeUI[] {
         const root = this.project ? findNode(items, folderBrowserPath(this.project.path)) : undefined;
-        const nodes = projectItems(this.project ? root?.children ?? [] : items, query, this.familyVisible ? this.family : undefined);
+        const nodes = projectItems(this.project ? root?.children ?? [] : items, query);
         return this.syncItems(nodes).sort((a, b) => fileFirst(a, b) ?? 0);
     }
     refreshSyncIndicators(): void {
@@ -264,21 +258,18 @@ export class ProjectNavigation {
                 children: item.children && this.syncItems(item.children)};
         });
     }
-    showContent(): void { this.familyVisible = !this.familyVisible; this.ui()?.refreshList(); }
-    async refresh(initial?: ProjectNavigationSnapshot): Promise<void> {
+    async refresh(initial?: ProjectNavigationView): Promise<void> {
         const revision = ++this.revision;
-        const snapshot = initial ?? await this.projects.sessions.navigation({ includeSessions: 'sessionId' in resolveBrowserTarget(this.path) });
+        let snapshot = initial ?? await this.projects.navigation({ path: this.path, projectId: this.project?.project.id ?? null });
         if (revision !== this.revision) return;
-        const renamed = snapshot.folders.find(folder => folder.project?.id === this.project?.project.id);
+        const renamed = snapshot.projects.find(folder => folder.project.id === this.project?.project.id);
         if (this.project && renamed?.project && renamed.path !== this.project.path) {
             const next = renamed as ProjectFolder;
-            this.path = remapProjectPath(this.path, folderBrowserPath(this.project.path), folderBrowserPath(next.path));
+            snapshot = { ...snapshot, path: remapProjectPath(snapshot.path, folderBrowserPath(this.project.path), folderBrowserPath(next.path)) };
             this.actions.projectRenamed?.(this.project, next);
             this.project = next;
         }
-        const manifest = this.session ? snapshot.sessions.find(item => item.id === this.session) : undefined;
-        const path = this.session && !manifest ? folderBrowserPath(this.project?.path) : manifest ? `${folderBrowserPath(manifest.folder)}/${manifest.id}` : this.path;
-        await this.apply(snapshot, path, revision, undefined, true);
+        await this.apply(snapshot, revision);
     }
     currentProject(): ProjectFolder | undefined { return this.project; }
     registeredProjects(): readonly ProjectFolder[] { return this.projectChoices; }

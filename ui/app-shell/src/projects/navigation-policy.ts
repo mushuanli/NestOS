@@ -1,5 +1,5 @@
 import { getLocale, t } from '@itookit/common';
-import { resolveBrowserTarget, folderPathFromBrowserPath } from '@itookit/app-contracts';
+import { resolveBrowserTarget } from '@itookit/app-contracts';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
 
 /** Fixed project entries keep their order independently of user sort direction. */
@@ -18,31 +18,29 @@ export function fileFirst(a: VFSNodeUI, b: VFSNodeUI): number | undefined {
     if (session(a) && session(b)) return ((Date.parse(b.metadata.lastModified) || 0) - (Date.parse(a.metadata.lastModified) || 0)) || a.id.localeCompare(b.id);
     return undefined;
 }
-function remoteItem(item: VFSNodeUI): VFSNodeUI {
+function datedItem(item: VFSNodeUI): VFSNodeUI {
     const known = (value: string) => Date.parse(value) > 0 ? value : '';
     const createdAt = known(item.metadata.createdAt), lastModified = known(item.metadata.lastModified);
     const subtitle = [[t('workbench.modified'), lastModified], [t('workbench.created'), createdAt]]
         .filter(([, time]) => time).map(([label, time]) => `${label}: ${new Date(time!).toLocaleString(getLocale())}`).join(' · ');
     return {...item, presentation: {...item.presentation, subtitle}, metadata: {...item.metadata, createdAt, lastModified}};
 }
-export function projectItems(items: VFSNodeUI[], query = '', family?: string): VFSNodeUI[] {
+export function projectItems(items: VFSNodeUI[], query = ''): VFSNodeUI[] {
     return items.flatMap(item => {
         const kind = resolveBrowserTarget(item.id).kind;
         if (kind === 'session') {
-            if (!query.trim() && family !== item.metadata.custom.familyRoot && item.metadata.custom.familyRoot && item.metadata.custom.familyRoot !== item.id.split('/').pop()) return [];
-            const count = item.metadata.custom.familyRoot === item.id.split('/').pop() ? Number(item.metadata.custom.familyCount ?? 1) - 1 : 0;
-            return [{ ...item, presentation: { ...item.presentation, quickDelete: true }, children: undefined, metadata: { ...item.metadata,
-                title: item.metadata.title + (count ? ` (${count})` : ''),
-                custom: { ...item.metadata.custom, navigationDescription: (query.trim() || family) && item.metadata.custom.parentTitle
+            const row = datedItem(item);
+            return [{ ...row, presentation: { ...row.presentation, quickDelete: true }, children: undefined, metadata: { ...row.metadata,
+                custom: { ...row.metadata.custom, navigationDescription: item.metadata.custom.parentTitle
                     ? t('project.parentSession', { name: String(item.metadata.custom.parentTitle) }) : '' } } }];
         }
         if (kind === 'favorite') return [{ ...item, children: undefined }];
         if (kind === 'project-draft') return [{...item, children: undefined}];
         if (kind === 'favorites') return [item];
-        if (kind === 'remote') return [{...remoteItem(item), children: item.children && projectItems(item.children, query, family).sort((a, b) => fileFirst(a, b) ?? 0)}];
-        if (kind === 'project-files') return [{ ...item, children: item.children && projectItems(item.children, query, family) }];
+        if (kind === 'remote') return [{...datedItem(item), children: item.children && projectItems(item.children, query).sort((a, b) => fileFirst(a, b) ?? 0)}];
+        if (kind === 'project-files') return [{ ...item, children: item.children && projectItems(item.children, query) }];
         if (kind !== 'folder') return [];
-        if (folderPathFromBrowserPath(item.id)?.endsWith('/@sessions')) return projectItems(item.children ?? [], query, family);
-        return [{ ...item, children: item.children && projectItems(item.children, query, family) }];
+        if (item.metadata.custom.navigationTransparent === true) return projectItems(item.children ?? [], query);
+        return [{ ...item, children: item.children && projectItems(item.children, query) }];
     });
 }

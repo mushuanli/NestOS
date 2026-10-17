@@ -28,6 +28,31 @@ function fixture() {
 function submit() { document.querySelector('form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true })); }
 function field(index: number) { return document.querySelector<HTMLInputElement | HTMLTextAreaElement>(`[data-parameter="${index}"]`)!; }
 
+it('binds node slots to different providers and keeps the optional run default collapsed', async () => {
+    const connection = {connections: [
+        {id: 'analysis', name: 'Analysis connection', providerId: 'provider-a', model: 'reasoner'},
+        {id: 'writing', name: 'Writing connection', providerId: 'provider-b', model: 'writer'}],
+        slots: [{name: 'analyse'}, {name: 'write'}], bindings: {}, onChange: vi.fn()};
+    const result = promptFlowParameters([], undefined, undefined, undefined, connection as never);
+    const fields = [...document.querySelectorAll<HTMLSelectElement>('[data-slot-connection]')];
+    expect(fields[0].textContent).toContain('Analysis connection · provider-a · reasoner');
+    expect(document.querySelector<HTMLDetailsElement>('details')!.open).toBe(false);
+    fields[0].value = 'analysis'; fields[1].value = 'writing'; submit();
+    await result; expect(connection.bindings).toEqual({analyse: 'analysis', write: 'writing'});
+});
+
+it('retains the parameter form when a saved node connection is unavailable and allows correction', async () => {
+    const commit = vi.fn(async () => {});
+    const connection = {connections: [{id: 'locked', name: 'Locked', providerId: 'p', credentialsReady: false},
+        {id: 'ready', name: 'Ready', providerId: 'p', credentialsReady: true}],
+        slots: [{name: 'analyse', connectionId: 'locked'}], bindings: {}, onChange: vi.fn()};
+    const result = promptFlowParameters([], undefined, commit, undefined, connection as never);
+    expect(document.querySelector<HTMLOptionElement>('option[value="locked"]')!.disabled).toBe(true);
+    submit(); expect(commit).not.toHaveBeenCalled(); expect(document.querySelector('[data-form-error]')!.textContent).toContain('locked');
+    document.querySelector<HTMLSelectElement>('[data-slot-connection]')!.value = 'ready'; submit();
+    await result; expect(commit).toHaveBeenCalledOnce(); expect(connection.bindings).toEqual({analyse: 'ready'});
+});
+
 beforeEach(() => {
     HTMLDialogElement.prototype.showModal = function () { this.open = true; };
     HTMLDialogElement.prototype.close = function () { this.open = false; this.dispatchEvent(new Event('close')); };
@@ -131,15 +156,18 @@ describe('Flow parameter form', () => {
     });
 
     it('preserves missing slot ids and validates required slots before changing run selection', async () => {
-        const connection = { connections: [], slots: [{ name: 'required', connectionId: 'missing' }], bindings: {}, onChange: vi.fn() };
+        const connection = { connections: [{id: 'available', name: 'Available', providerId: 'p'}], slots: [{ name: 'required', connectionId: 'missing' }], bindings: {}, onChange: vi.fn() };
         const result = promptFlowParameters([], undefined, undefined, undefined, connection);
         const slot = document.querySelector<HTMLSelectElement>('[data-slot-connection="0"]')!;
         expect(slot.value).toBe('missing'); expect(slot.textContent).toContain('missing');
         slot.value = ''; submit();
         expect(document.querySelector('dialog')!.open).toBe(true);
         expect(connection.onChange).not.toHaveBeenCalled();
-        slot.value = 'missing'; submit(); await result;
-        expect(connection.bindings).toEqual({ required: 'missing' });
+        slot.value = 'missing'; submit();
+        expect(document.querySelector('[data-form-error]')!.textContent).toContain('missing');
+        expect(connection.onChange).not.toHaveBeenCalled();
+        slot.value = 'available'; submit(); await result;
+        expect(connection.bindings).toEqual({ required: 'available' });
     });
 });
 

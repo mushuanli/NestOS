@@ -1,6 +1,8 @@
 import { createUsageCostEstimator } from '../projects/usage-estimator';
 import { applicationStartupPolicy, type ApplicationStartupMode } from './startup-policy';
 import { ConversationContexts } from './conversation-contexts';
+import { conversationIdle } from './conversation-idle';
+import { ConversationViews } from './conversation-views';
 import { StartupCoordinator } from './startup-coordinator';
 import { SessionLifecycleService } from '../session/session-lifecycle';
 import { MCPRemoteConnections } from '../projects/mcp-remote-connections';
@@ -86,7 +88,7 @@ export interface ApplicationRuntime {
     commandBus: import('@itookit/llm-session').CommandBus;
     runCatalog: RunCatalog;
     createView(): Promise<import('./conversation-system').OwnedConversationView>;
-    openConversation(sessionId: string): Promise<import('./conversation-contexts').ConversationClient>;
+    openConversation(sessionId: string): Promise<import('./conversation-contexts').ConversationLease>;
     startBackground?(): void;
     prepareSession?(sessionId: string): Promise<boolean>;
     dispose(): Promise<void>;
@@ -365,14 +367,16 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager } satisfies import('./conversation-system').ConversationSystemOptions;
         const { sessionManager, commandBus, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
             () => createConversationSystem(conversationOptions));
-        const conversationContexts = new ConversationContexts(() => startup.task('host.conversation', async () => {
+        const conversationViews = new ConversationViews();
+        cleanupFns.push(() => conversationViews.close());
+        const createConversationView = async () => {
             const context = await createConversationSystem({ ...conversationOptions,
                 scheduleAgentInitialization: initialize => initialize(), scheduleInvocationRecovery: () => {} });
-            const releaseDrafts = await attachProjectDraftRecovery(projects.drafts, context.sessionManager, false);
-            const dispose = context.dispose;
-            context.dispose = async () => { await releaseDrafts(); await dispose(); };
-            return context;
-        })(), id => recovery.acquireMetadataLease(id));
+            try { return conversationViews.own(context, await attachProjectDraftRecovery(projects.drafts, context.sessionManager, false)); }
+            catch (error) { await context.dispose(); throw error; }
+        };
+        const conversationContexts = new ConversationContexts(() => startup.task('host.conversation', createConversationView)(),
+            id => recovery.acquireMetadataLease(id), { canRelease: id => conversationIdle(kernel.kernel, id) });
         cleanupFns.push(disposeConversations);
         cleanupFns.push(() => conversationContexts.close());
 
@@ -418,8 +422,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         if (policy.projects === 'before-ready') startBackground();
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects,
             kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
-            projectSync, digitalTwin, createView: () => createConversationSystem({ ...conversationOptions,
-                scheduleAgentInitialization: initialize => initialize(), scheduleInvocationRecovery: () => {} }), openConversation: id => conversationContexts.open(id) };
+            projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id) };
     } catch (error) {
         await startup.close();
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {

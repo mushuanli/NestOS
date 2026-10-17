@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { RemoteSessionStatus } from '../src/session/remote-session-status';
 import type { HarnessStatusRow } from '@itookit/piagent-driver';
 
-afterEach(() => vi.useRealTimers());
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 function fixture() {
     vi.useFakeTimers();
     let identity: string | undefined = '[mcp,server,project,revision]';
@@ -21,6 +21,37 @@ it('shares one observer across subscribers and only notifies semantic changes', 
     await vi.advanceTimersByTimeAsync(1000); expect(port.poll).toHaveBeenCalledTimes(2); expect(changed).toHaveBeenCalledOnce();
     first(); expect(port.close).not.toHaveBeenCalled(); second(); expect(port.close).toHaveBeenCalledOnce();
     await vi.advanceTimersByTimeAsync(5000); expect(port.poll).toHaveBeenCalledTimes(2);
+});
+
+it('keeps observation errors separate from connection state and backs off until recovery', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const {status, port} = fixture(); status.subscribe('project', vi.fn());
+    await vi.advanceTimersByTimeAsync(0);
+    port.poll.mockRejectedValueOnce(new Error('Invalid projection'));
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(status.get('project', 'p', 's')).toMatchObject({connection: 'online', stale: true,
+        refreshError: {stage: 'status', code: 'OBSERVATION_ERROR'}, canInterrupt: false, canRespond: false});
+    await vi.advanceTimersByTimeAsync(1999); expect(port.poll).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(status.get('project', 'p', 's')).toMatchObject({connection: 'online', stale: false});
+    expect(status.get('project', 'p', 's')?.refreshError).toBeUndefined(); await status.dispose();
+});
+
+it('backs off explicit refresh errors without requiring an offline state', async () => {
+    const {status, port} = fixture(), [row] = await port.poll(); port.poll.mockClear();
+    port.poll.mockResolvedValue([{...row, observation: {...row.observation, stale: true, refreshError: {stage: 'events', code: 'REQUEST_TIMEOUT'}}}]);
+    status.subscribe('project', vi.fn()); await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1999); expect(port.poll).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1); expect(port.poll).toHaveBeenCalledTimes(2); await status.dispose();
+});
+
+it('isolates subscriber exceptions without losing connection state or other notifications', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const {status} = fixture(), changed = vi.fn();
+    status.subscribe('project', () => { throw new Error('Rendering failed'); }); status.subscribe('project', changed);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(changed).toHaveBeenCalledOnce(); expect(warn).toHaveBeenCalledWith('[Harness] Status subscriber failed');
+    expect(status.get('project', 'p', 's')).toMatchObject({connection: 'online', stale: false}); await status.dispose();
 });
 it('invalidates changed grants before the next poll and closes the old observer', async () => {
     const {status, port, open, change} = fixture(); status.subscribe('project', vi.fn());

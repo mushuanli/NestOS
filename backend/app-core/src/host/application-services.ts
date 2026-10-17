@@ -7,5 +7,9 @@ export function bindLocalApplicationServices(runtime: ApplicationRuntime): Local
         directoryMounts, projects, projectSync, digitalTwin, kernel, sessionManager, commandBus } = runtime;
     return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles,
         directoryMounts, projects, projectSync, digitalTwin, kernel, sessionManager, commandBus,
-        prepareSession: async id => { await runtime.openConversation(id); return await runtime.prepareSession?.(id) ?? true; }, startBackground: runtime.startBackground?.bind(runtime) };
+        acquireConversation: id => runtime.openConversation(id),
+        prepareSession: async id => {
+            const conversation = await runtime.openConversation(id);
+            try { return await runtime.prepareSession?.(id) ?? true; } finally { await conversation.dispose(); }
+        }, startBackground: runtime.startBackground?.bind(runtime) };
 }

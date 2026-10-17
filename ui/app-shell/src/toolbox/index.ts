@@ -23,6 +23,7 @@ interface Options {
     navigate(request: NavigationRequest): Promise<void>; selected(path: string | null): void;
     uiPersistence?: UIPersistencePort;
     uiPreferences?: ToolboxPreferencesPort;
+    executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
 }
 /** The toolbox owns its projection lifetime and editor wiring as one module. */
 export async function createToolboxModule(options: Options): Promise<WorkspaceModule> {

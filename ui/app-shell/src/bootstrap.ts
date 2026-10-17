@@ -1,5 +1,6 @@
-import { withInitialDirectory } from './browser/initial-directory';
-import { scheduleNavigationWarmup } from './navigation/navigation-warmup';
+import {withInitialDirectory} from './browser/initial-directory';
+import { ExecutorUsage } from './persistence/executor-usage';
+import { observeNavigationVisibility } from './navigation/navigation-visibility';
 import { cleanupGroup, type Cleanup } from './lifecycle/cleanup-group';
 import { lazyResource } from './lifecycle/lazy-resource';
 import { installStartPage, START_PAGE_ID, START_PAGE_SLUG } from './navigation/start-page';
@@ -32,6 +33,8 @@ import { MenuItem } from '@itookit/ui-common';
 import { EditorFactory } from '@itookit/ui-common';
 import { Workbench } from './core/Workbench';
 import { setupMobileWorkspaceView } from './navigation/mobile-workspace-view';
+import { installMobileViewport } from './navigation/mobile-viewport';
+import { installMobileShellState } from './navigation/mobile-shell-state';
 
 import { AppOptions, AppHandle, WorkspaceConfig } from './types';
 import { lazyMdxEditorFactory as defaultEditorFactory } from './browser/lazy-mdx';
@@ -79,12 +82,16 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     if (!options.services || !options.backend) throw new Error('AppOptions.services and AppOptions.backend are required');
     const services = options.services, backend = options.backend;
+    cleanupFns.push(installMobileViewport());
+    cleanupFns.push(installMobileShellState());
     const { vfs, llmDriver, sessionRepository, flowEngine, sessionFiles,
         kernel, sessionManager, commandBus } = services;
     const agentService = services.agentService;
     // UI state lives beside the theme in `etc:/ui`, so Web and Tauri share one
     // inspectable store instead of the webview's localStorage.
     const uiDocs = new VfsJsonStore(backend);
+    const executorUsage = new ExecutorUsage(uiDocs);
+    cleanupFns.push(() => uiDocs.flush());
     const themeReady = themeService.init(uiDocs);
     cleanupFns.push(async () => { await themeReady.catch(() => {}); themeService.destroy(); });
     const uiState = new VfsUIPersistence(uiDocs);
@@ -92,7 +99,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     logStep('初始化界面服务…');
     await themeReady;
 
-    const chatFromFile = createFileChatHandler(services.projects, sessionRepository, request => handleNavigationRequest(request));
+    const chatFromFile = createFileChatHandler(backend, request => handleNavigationRequest(request));
     const ocr = createOcrControls(() => backend.ocr(), agentService, request => handleNavigationRequest(request));
     cleanupFns.push(() => ocr.dispose());
     const deletionDialog = new ConfigurationDeletionDialog(services.configuration, undefined, ocr.deletionImpact, services.projects);
@@ -104,11 +111,13 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         requestDelete: targets => deletionDialog.request(targets),
     });
     cleanupFns.push(() => settings.close());
-    const createChatFactory = (controls: import('@itookit/app-contracts/services').WorkbenchChatControls): EditorFactory =>
-        options.ui.createChatEditor(agentService, {
+    const createChatFactory = (controls: import('@itookit/app-contracts/services').WorkbenchChatControls): EditorFactory => {
+        const factory = options.ui.createChatEditor(agentService, {
             defaultHarnessToolIds: DEFAULT_HARNESS_TOOL_IDS, sessionManager, sessionRepository, ocr, commandBus,
             kernel: kernel.kernel, ...controls,
         });
+        return async (container, config) => { await executorUsage.load(); return factory(container, {...config, executorUsage}); };
+    };
     const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS });
 
     // The backend owns the skill filesystem and its service subscriptions.
@@ -208,6 +217,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     // ── 6. Manager cache + workspace loader ────────────────────────────────────
 
     const managerCache = new Map<string, WorkspaceHandle>();
+    const navigationObservers = new Map<WorkspaceController, () => void>();
     let visibleWorkspaceId: string | undefined;
     let navigationRevision = 0, closed = false;
     // Deduplicate concurrent loads: if the same workspace is loading, reuse the promise.
@@ -216,6 +226,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const doLoadWorkspace = async (
         wsConfig: WorkspaceConfig,
         own: (cleanup: Cleanup) => void,
+        initialResource?: string,
     ): Promise<WorkspaceController | undefined> => {
         const { elementId } = wsConfig;
 
@@ -242,7 +253,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         layoutEl.appendChild(editorEl);
         container.appendChild(layoutEl);
         if (visibleWorkspaceId === elementId) options.onWorkspaceMounted?.({ editor: editorEl });
-        own(setupMobileWorkspaceView(layoutEl, sidebarEl, editorEl));
+        own(setupMobileWorkspaceView(layoutEl, sidebarEl, editorEl, !!initialResource));
 
         const strategyType = wsConfig.type ?? 'standard';
         const factory = factories[strategyType] ?? defaultEditorFactory;
@@ -260,12 +271,13 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         }
 
         if (strategyType === 'toolbox') {
+            await executorUsage.load();
             const [storedPreferences, uiPersistence] = await Promise.all([
                 uiDocs.read(TOOLBOX_PREFERENCES_DOC), uiState.port(TOOLBOX_SCOPE),
             ]);
             const module = await createToolboxModule({ services, backend, ocr, ui: options.ui, sidebar: sidebarEl, editor: editorEl,
                 factories: { agents: agentFactory, skills: skillsFactory, flows: flowsFactory },
-                uiPersistence,
+                uiPersistence, executorUsage,
                 uiPreferences: { load: () => storedPreferences, save: value => uiDocs.write(TOOLBOX_PREFERENCES_DOC, value) },
                 navigate: handleNavigationRequest, selected: path => selectionHistory(elementId, path, 'replace') });
             const toolbox = module.workbench;
@@ -288,7 +300,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const [uiPersistence, workbenchState] = await traceBoot('workspace.chatState (parallel)', () => Promise.all([
                 uiState.port(SESSION_BROWSER_SCOPE), uiState.workbenchPort(SESSION_BROWSER_SCOPE),
             ]));
-            const module = createProjectModule({ services, backend, createFactory: createChatFactory, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
+            const module = createProjectModule({ services, backend, createFactory: createChatFactory, deferNavigation: !!initialResource, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
                 fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 onSidebarReady: revealSidebar,
                 uiPersistence, workbenchState,
@@ -349,11 +361,11 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             }),
         };
 
-        const navigation = !wsConfig.files && ['standard', 'agent'].includes(strategyType)
-            ? await backend.navigationView({ root: workspaceRoot(wsConfig.workspaceName), scope: elementId }) : undefined;
+        const navigation = !initialResource && !wsConfig.files && ['standard', 'agent'].includes(strategyType)
+            ? await backend.navigationView({root: workspaceRoot(wsConfig.workspaceName), scope: elementId}) : undefined;
         if (navigation) uiDocs.seed(navigation.documents);
         const [files, uiPersistence, workbenchState] = await Promise.all([
-            navigation ? { ...navigation.files, fs: withInitialDirectory(navigation.files.fs, navigation.directory) } : filesForWorkspace(wsConfig),
+            navigation ? {...navigation.files, fs: withInitialDirectory(navigation.files.fs, navigation.directory)} : filesForWorkspace(wsConfig),
             uiState.port(elementId), uiState.workbenchPort(elementId),
         ]);
         const manager = new Workbench({
@@ -361,7 +373,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             editorContainer: editorEl,
             files,
             editorFactory: factory,
-            scopeId:       elementId,
+            scopeId:       elementId, deferNavigation: !!initialResource,
             uiPersistence, workbenchState,
             fileTypes,
             uiOptions,
@@ -388,6 +400,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const controller: WorkspaceController & WorkspaceCreation = {
             start: () => manager.start(), destroy: () => manager.destroy(),
             setVisible: visible => manager.setVisible?.(visible),
+            ...(manager.setNavigationVisible ? {setNavigationVisible: (visible: boolean) => manager.setNavigationVisible(visible)} : {}),
             openResource: id => manager.openFile(id), createResource: options => manager.createAndOpenFile(options),
             getActiveResourceId: () => manager.getActiveFilePath(),
         };
@@ -412,12 +425,12 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     };
 
     /** Keep workspace creation independent of resource navigation; only the latest route may open content. */
-    const loadWorkspace = (wsConfig: WorkspaceConfig): Promise<WorkspaceController | undefined> => {
+    const loadWorkspace = (wsConfig: WorkspaceConfig, initialResource?: string): Promise<WorkspaceController | undefined> => {
         const { elementId } = wsConfig;
         if (pendingLoads.has(elementId)) return pendingLoads.get(elementId)!;
         if (managerCache.has(elementId)) return Promise.resolve(managerCache.get(elementId));
         const owned = cleanupGroup();
-        const loading = doLoadWorkspace(wsConfig, owned.own).then(manager => {
+        const loading = doLoadWorkspace(wsConfig, owned.own, initialResource).then(manager => {
             cleanupFns.push(owned.close); return manager;
         }).catch(async error => {
             managerCache.delete(elementId); await owned.close(); throw error;
@@ -476,6 +489,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         });
 
         const container = document.getElementById(workspaceId);
+        const targetLayout = container?.querySelector<HTMLElement>('.mm-layout');
+        if (resourceId && targetLayout) targetLayout.dataset.mobileView = 'detail';
         const dismissLoading = workspaceId !== START_PAGE_ID ? workspaceStatus(container) : () => {};
         try {
             if (sourceSlug === 'projects' && resourceId && workspaces.some(ws => ws.elementId === workspaceId && ws.type === 'chat')) {
@@ -488,7 +503,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             }
             if (closed || revision !== navigationRevision) return;
             const wsConfig = workspaces.find(w => w.elementId === workspaceId);
-            const mgr = wsConfig ? await loadWorkspace(wsConfig) : undefined;
+            const mgr = wsConfig ? await loadWorkspace(wsConfig, resourceId) : undefined;
             if (closed || revision !== navigationRevision) return;
             if (mgr && resourceId) {
                 const wasAlreadyOpen = mgr.getActiveResourceId() === resourceId;
@@ -516,7 +531,21 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 console.error('[Shell] Workspace navigation failed', error);
                 workspaceStatus(container, error, () => { void performNavigation(workspaceId, resourceId, sourceSlug); });
             }
-        } finally { dismissLoading(); }
+        } finally {
+            dismissLoading();
+            const manager = managerCache.get(workspaceId), layout = container?.querySelector<HTMLElement>('.mm-layout');
+            const sidebar = layout?.querySelector<HTMLElement>('.mm-sidebar');
+            if (manager?.setNavigationVisible && layout && sidebar && !navigationObservers.has(manager)) {
+                const stop = observeNavigationVisibility(layout, sidebar, visible => {
+                    void Promise.resolve().then(() => manager.setNavigationVisible!(visible)).catch(error => {
+                        console.error('[Navigation]', error);
+                        workspaceStatus(sidebar, error, () => { void Promise.resolve().then(() => manager.setNavigationVisible!(true)).catch(console.error); });
+                    });
+                });
+                navigationObservers.set(manager, stop);
+                cleanupFns.push(() => {stop(); navigationObservers.delete(manager);});
+            }
+        }
         if (closed || revision !== navigationRevision) return;
         requestAnimationFrame(() => { if (!closed) services.startBackground?.(); });
         if (movedSettings || legacyToolbox) updateHistory(workspaceId, resourceId ?? null, 'replace');
@@ -633,17 +662,6 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const initialRevision = navigationRevision;
     options.onShellReady?.();
     await initialLoad;
-    cleanupFns.push(scheduleNavigationWarmup([
-        ...workspaces.filter(ws => ws.type === 'toolbox' || ws.type === 'chat').map(ws => async () => {
-            if (!closed && workspaces.includes(ws) && !managerCache.has(ws.elementId))
-                await traceBoot(`navigation.preload.${ws.type}`, () => loadWorkspace(ws));
-        }),
-        async () => {
-            const roots = workspaces.filter(ws => !ws.files && (ws.type ?? 'standard') === 'standard').slice(0, 2)
-                .filter(ws => !managerCache.has(ws.elementId)).map(ws => workspaceRoot(ws.workspaceName));
-            if (!closed && roots.length) await backend.warmNavigation(roots);
-        },
-    ], () => pendingLoads.size > 0));
     if (initialRevision === navigationRevision) {
         const initialResource = managerCache.get(initWs)?.getActiveResourceId() ?? null;
         updateHistory(initWs, initialResource, 'replace');
@@ -677,7 +695,9 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         async removeWorkspace(elementId: string): Promise<void> {
             const index = workspaces.findIndex(ws => ws.elementId === elementId);
             if (index < 0) return;
-            await managerCache.get(elementId)?.destroy();
+            const manager = managerCache.get(elementId);
+            await manager?.destroy();
+            if (manager) {navigationObservers.get(manager)?.(); navigationObservers.delete(manager);}
             managerCache.delete(elementId); workspaceFiles.delete(elementId);
             workspaces.splice(index, 1);
             for (const [slug, id] of Object.entries(routeMap)) if (id === elementId) delete routeMap[slug];

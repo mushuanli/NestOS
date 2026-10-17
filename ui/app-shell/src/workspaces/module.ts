@@ -16,6 +16,7 @@ export function createWorkspaceModule(controller: WorkspaceHandle, dispose: () =
     return { dispose: destroy, workbench: {
         start: () => controller.start(), destroy,
         ...(controller.setVisible ? { setVisible: (visible: boolean) => controller.setVisible!(visible) } : {}),
+        ...(controller.setNavigationVisible ? { setNavigationVisible: (visible: boolean) => controller.setNavigationVisible!(visible) } : {}),
         openResource: id => controller.openResource(id),
         getActiveResourceId: () => controller.getActiveResourceId(),
         ...(controller.restoreResource ? { restoreResource: (id: string) => controller.restoreResource!(id) } : {}),

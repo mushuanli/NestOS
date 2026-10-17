@@ -22,6 +22,7 @@ it('shows the invocation and running state before results, then renders multilin
         view.processEvent({ type: 'tool:running', payload: { call } } as never);
         const card = host.querySelector<HTMLElement>('[data-id="grep"]')!;
         expect(card.dataset.status).toBe('running');
+        expect(card.querySelector<HTMLDetailsElement>('.llm-ui-tool-details')!.open).toBe(false);
         expect(card.closest('.is-collapsed')).toBeNull();
         expect(card.querySelector('.llm-ui-node__input pre')?.textContent).toContain('<mdx>');
         const result = card.querySelector<HTMLElement>('.llm-ui-node__result')!;
@@ -42,6 +43,7 @@ it('shows the invocation and running state before results, then renders multilin
         expect(result.textContent).toBe('');
         view.processEvent({ type: 'tool:error', payload: { call: { ...call, error: 'Tool execution timed out' } } } as never);
         expect(card.dataset.status).toBe('failed'); expect(result.textContent).toBe('Tool execution timed out');
+        expect(card.querySelector<HTMLDetailsElement>('.llm-ui-tool-details')!.open).toBe(true);
     } finally { view.destroy(); }
 });
 
@@ -50,4 +52,5 @@ it('restores a failed tool with its persisted error and arguments', () => {
         startTime: 1, data: { input: { pattern: 'mdx' }, error: '<error> timeout', output: '' } } as never);
     expect(element.querySelector('.llm-ui-node__result')?.textContent).toBe('<error> timeout');
     expect(element.querySelector('error')).toBeNull();
+    expect(element.querySelector<HTMLDetailsElement>('.llm-ui-tool-details')!.open).toBe(true);
 });

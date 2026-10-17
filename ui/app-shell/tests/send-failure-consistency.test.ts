@@ -49,6 +49,7 @@ function harness(options: HarnessOptions = {}) {
     const ctx = {
         getSessionId: () => 'session-one',
         commands: { execute },
+        isGenerating: () => true,
         chatInput, historyView,
         assetService: { uploadFiles },
         errorHandler: { wrap: (fn: () => Promise<unknown>) => fn() },
@@ -68,6 +69,14 @@ it('preserves accepted rounds when the send response is lost', async () => {
         expect(execute).not.toHaveBeenCalledWith(SessionCommand.DeleteMessage, expect.anything());
         expect(sessions).toEqual(['session-one', 'accepted-user', 'accepted-assistant']);
     } finally { toast.mockRestore(); }
+});
+
+it('uses the host state when completion arrives before the send receipt returns', async () => {
+    const {ctx, execute, chatInput} = harness();
+    execute.mockImplementation(async () => 'completed-task');
+    ctx.isGenerating = () => false;
+    await new SendMessageCommand(ctx).run({text: 'Fast result', files: []});
+    expect(chatInput.setLoading).toHaveBeenLastCalledWith(false);
 });
 
 it('restores the draft even when history queries are unavailable', async () => {

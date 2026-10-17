@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createApplicationRuntime, ProjectService, type ApplicationRuntime } from '@itookit/app-core';
+import { bindApplicationBackend, bindLocalApplicationServices } from '@itookit/app-core/host';
 import { MemoryBackend } from '@itookit/vfs-core';
 import { createFileChatHandler } from '../src/projects/file-chat';
 
@@ -13,7 +14,7 @@ it('persists a quote draft in the owning project before navigating, including se
     const navigate = vi.fn(async request => {
         expect((await repository.getUIState(request.resourceId))?.branchDrafts?.main?.inputText).toContain('````\n```text\nquoted\n```\n````');
     });
-    const chat = createFileChatHandler(projects, repository, navigate);
+    const chat = createFileChatHandler(bindApplicationBackend(bindLocalApplicationServices(runtime)), navigate);
     const reference = { path: '/notes.md', content: '```text\nquoted\n```', selection: true };
     await chat(reference, { projectFolder: research.path });
     const first = navigate.mock.calls[0][0].resourceId;
@@ -32,7 +33,7 @@ it('uses the personal project for unassociated files even when another project i
     await projects.ensureStartup(other.project.directory);
     expect((await projects.current())!.project.id).toBe(other.project.id);
     const navigate = vi.fn(async () => {});
-    const chat = createFileChatHandler(projects, repository, navigate);
+    const chat = createFileChatHandler(bindApplicationBackend(bindLocalApplicationServices(runtime)), navigate);
     await chat({ path: '/unrelated.md', content: 'entire file', selection: false });
     const sessions = await repository.list();
     expect(sessions).toHaveLength(1);
@@ -45,7 +46,7 @@ it('uses the personal project for unassociated files even when another project i
 it('does not redirect a deleted source project into the personal project', async () => {
     runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web' });
     const navigate = vi.fn(async () => {});
-    const chat = createFileChatHandler(runtime.projects, runtime.sessionRepository, navigate);
+    const chat = createFileChatHandler(bindApplicationBackend(bindLocalApplicationServices(runtime)), navigate);
     await expect(chat({ path: '/note.md', content: 'body', selection: false },
         { projectFolder: '/deleted' })).rejects.toThrow('Source project no longer exists');
     expect(await runtime.sessionRepository.list()).toHaveLength(0);

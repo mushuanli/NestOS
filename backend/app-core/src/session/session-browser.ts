@@ -207,7 +207,7 @@ class BrowserBackend implements IStorageBackend {
         // mount dialog, so the workbench shows why a project is degraded.
         const degraded = !!folder.project && !!remote && remote.degraded(folder.project.id);
         return { ...node, ...(folder.project ? { icon: remoteRoot ? ENTITY_ICONS.remoteProject : ENTITY_ICONS.project } : {}),
-            metadata: { ...node.metadata, renameTitle: folder.name, ...(folder.project ? { projectId: folder.project.id, directory: folder.project.directory, remoteProject: remoteRoot,
+            metadata: { ...node.metadata, renameTitle: folder.name, ...(folder.name === '@sessions' ? { navigationTransparent: true } : {}), ...(folder.project ? { projectId: folder.project.id, directory: folder.project.directory, remoteProject: remoteRoot,
                 remoteOffline: offline, _disabled: false, _readOnly: offline,
                 navigationDescription: mounts.length ? t(offline ? 'remote.projectOffline' : degraded ? 'remote.degraded' : 'remote.projectRemote') : '' } : {}) } };
     }
@@ -644,7 +644,7 @@ class BrowserBackend implements IStorageBackend {
     }
     async getAllTags(): Promise<string[]> { return []; }
 }
-export async function createSessionBrowser(deps: SessionBrowserDependencies) {
+export async function createSessionBrowser(deps: SessionBrowserDependencies): Promise<import('@itookit/app-contracts/services').SessionBrowserPort> {
     const backend = new BrowserBackend(deps.displayedFilesPolicy === 'gitignore' ? { ...deps, filterDisplayedFiles: filterDirectoryFiles } : deps);
     const owner = await createFileSystemSource({ tags: false, backend, viewId: 'session-browser:admin', access: 'rw' });
     const rename = owner.fs.driver.rename.bind(owner.fs.driver);
@@ -662,5 +662,5 @@ export async function createSessionBrowser(deps: SessionBrowserDependencies) {
     };
     return Object.assign(owner, { transferItems: (mode: 'copy' | 'move', ids: string[], destination: string) => backend.transfer(mode, ids, destination),
         readFileDirectory: (path: string, options?: FileDirectoryOptions) => backend.readFileDirectory(path, options),
-        invalidateNavigation: () => backend.invalidateNavigation() });
+        invalidateNavigation: async () => { backend.invalidateNavigation(); } });
 }

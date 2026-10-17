@@ -7,7 +7,6 @@ import { Workbench } from '../src/core/Workbench';
 import { withInitialDirectory } from '../src/browser/initial-directory';
 import { VfsJsonStore } from '../src/persistence/vfs-json-store';
 import { VfsUIPersistence } from '../src/persistence/vfs-ui-state-store';
-import { scheduleNavigationWarmup } from '../src/navigation/navigation-warmup';
 
 const cleanup: Array<() => Promise<unknown> | void> = [];
 afterEach(async () => { vi.useRealTimers(); for (const close of cleanup.splice(0).reverse()) await close(); document.body.replaceChildren(); vi.restoreAllMocks(); });
@@ -78,33 +77,6 @@ it('revalidates a normal workbench if hiding interrupts a refresh', async () => 
     const refresh = workbench.refresh(); await vi.waitFor(() => expect(reads).toHaveBeenCalledOnce());
     await workbench.setVisible(false); finish(); await refresh;
     await workbench.setVisible(true); expect(reads).toHaveBeenCalledTimes(2);
-});
-it('runs preparation serially after idle and cancels the remaining work when the app closes', async () => {
-    vi.useFakeTimers(); const warm = vi.fn(async () => {});
-    let finish!: () => void;
-    const toolbox = vi.fn(() => new Promise<void>(resolve => { finish = resolve; }));
-    const close = scheduleNavigationWarmup([toolbox, warm]);
-    expect(toolbox).not.toHaveBeenCalled(); await vi.advanceTimersByTimeAsync(2000);
-    expect(toolbox).toHaveBeenCalledOnce(); expect(warm).not.toHaveBeenCalled();
-    finish(); await vi.advanceTimersByTimeAsync(200); expect(warm).toHaveBeenCalledOnce(); close();
-    const cancel = scheduleNavigationWarmup([warm]); cancel();
-    await vi.advanceTimersByTimeAsync(5000); expect(warm).toHaveBeenCalledOnce();
-    const inFlight = scheduleNavigationWarmup([toolbox, warm]);
-    await vi.advanceTimersByTimeAsync(200); inFlight(); finish();
-    await vi.advanceTimersByTimeAsync(5000); expect(warm).toHaveBeenCalledOnce();
-});
-it('yields to foreground loads, resumes on visibility, and continues after a failed preload', async () => {
-    vi.useFakeTimers(); let busy = true;
-    const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(false);
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const fail = vi.fn(async () => { throw new Error('offline'); }), warm = vi.fn(async () => {});
-    const close = scheduleNavigationWarmup([fail, warm], () => busy);
-    await vi.advanceTimersByTimeAsync(1000); expect(fail).not.toHaveBeenCalled();
-    hidden.mockReturnValue(true); busy = false;
-    await vi.advanceTimersByTimeAsync(1000); expect(fail).not.toHaveBeenCalled();
-    hidden.mockReturnValue(false); document.dispatchEvent(new Event('visibilitychange'));
-    await vi.advanceTimersByTimeAsync(400);
-    expect(fail).toHaveBeenCalledOnce(); expect(warm).toHaveBeenCalledOnce(); expect(warning).toHaveBeenCalledOnce(); close();
 });
 it('discards initial metadata when an observed mutation precedes the first tree read', async () => {
     const f = await fixture();

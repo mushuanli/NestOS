@@ -1,6 +1,13 @@
 # @itookit/app-shell
 
 应用启动引导 + UI 路由 + UI 装配。`initApp()` 是唯一顶层初始化函数。
+
+本地会话通过 `EditorOptions.mountMoreMenu` 将会话信息与归属动作挂入聊天标题栏共用的更多菜单；不再增加正文上方的会话工具栏。关联会话不继承聊天历史，创建动作只在菜单中显示。项目侧栏直接列出全部本地会话及父关系，创建/修改时间与远程会话采用同一投影，按最近活动排序；不再依赖同组切换显示后代。
+
+桌面项目归属作为 WorkbenchTabs 的只读 context 与资源名同行显示，不拼入 title、重命名输入或持久文件名，不另占正文一行。小屏聊天通过 `mountCompactNavigation` 合并返回、项目名、标题与已打开入口；编辑器以公开 `data-editor-mobile-navigation="embedded"` 标记接管导航，mobile-workspace-view 只检查当前标签，隐藏宿主重复返回栏、标签行及项目说明。文档编辑器继续使用独立导航。移动正文切换消费标签显式的 opening/active/empty 与激活代次；打开资源后不会因等待保存、空标签或正文挂载而退回列表，深链从装配时就进入正文，用户返回列表后的普通内容更新不会抢回正文。已打开面板借用原列表，关闭后归还侧栏，不克隆编辑器或丢弃草稿。返回按钮在小屏切回列表，桌面仍切换侧栏。mobile-viewport 随可视视口更新应用高度并在销毁时解绑；mobile-shell-state 将当前活动布局的 detail/embedded 与输入焦点投影到 body[data-mobile-navigation]，不依赖 CSS :has()；小屏聊天正文据此收起全局底部导航，返回列表恢复，保留底部安全区；列表导航高 56px，按钮点按高度 48px。其他编辑器输入焦点通过公开 data-editor-composing 标记收起导航，不读取隐藏工作区状态。
+
+工具箱模型抽屉优先展示默认连接所在 Provider，并显示默认标识及实际就绪状态；其余抽屉/连接按就绪、待配置、停用排序，Provider 设置行保持首位。搜索匹配显示名称与可搜索文本，匹配子项时展开所属抽屉，资源 ID 不随排序改变。智能体与抽屉按最近成功提交排序，时间通过宿主 `ExecutorUsage` 保存到 UI 文档 `mindos_executor_usage_v1`，不改写 Agent 配置时间；聊天与工具箱延迟读取并共享该端口。
+项目会话通过 `onStartConversationDraft` 请求切换执行方式；宿主定位同一项目的草稿，将输入和附件交给 appendDraft。已有草稿追加内容，接收编辑器身份变化后不再写入；不迁移原生历史、不发送输入、不取消原任务。模型和助手的下一轮选择仍由原会话编辑器管理。
 平台无关的 Session/Kernel 组合位于 backend/app-core；app-shell 只通过 shared/app-contracts 接收服务，不导入 app-core。UI 仅消费 ApplicationServices/ApplicationBackend；应用操作异步，宿主内部构造契约不进入 UI。本地与 HTTP 宿主共用 initApp。
 
 peerDependencies: `@itookit/{app-settings,common,driver-llm,llm-session,durable-kernel,kernel-adapters,mdxeditor,vfs-ui,vfs-core,ui-common}`
@@ -118,7 +125,13 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 - 工作台初始聊天控制与导航由 backend.workbenchView 返回；会话先 openSessionView 准备，旧编辑器保存后 activate 返回初始快照。缓存编辑器重新激活绑定，文件租约随标签释放。连接观察只提交兴趣集合，不拥有轮询或后台任务。UI 文档写入合并、去重，后端完成 upsert，flush 失败保留待写内容。
 
 - 普通模块通过 backend.navigationView 聚合首层与不透明 UI 文档；外部注入来源、设置/Flow/Skill 保持各自端口，独立读取并行。browser/initial-directory 只消费一次元数据，已有事件订阅使快照失效，不干预写操作与版本回调。普通侧栏 deferExpansion，首次只展示首层；切回在事件标脏、挂载身份变化或 15 秒到期后刷新。工作台保留隐藏期间的 refreshSources 并合并刷新。
-- navigation/navigation-warmup 在初始路由完成后依次提前装配工具箱和工作台导航，复用 loadWorkspace 的在途 Promise 与模块缓存；不改变路由，不打开旧资源、编辑器或会话租约。任务间让出前台加载，页面隐藏时暂停，返回时继续，销毁取消剩余任务。随后最多预热两个未加载普通根的后端快照，不构造普通工作区。工具箱隐藏时暂停目录读取并合并变化；导航没有显式 startupFileName 时，不从文件类型默认值推导自动创建。
+- 不预热或恢复未打开工作区。显式文件/会话深链只准备当前正文能力；WorkspaceController.setNavigationVisible 由实际活动工作区、手机列表/正文模式与侧栏折叠状态驱动。隐藏目录不读取、不刷新状态；可见目录独立失败与重试，不阻塞或替换正文。
 
 - 工具箱启动消费 backend.toolboxView 的 initial 导航快照，刷新只调用 resources.navigation；技能文件系统、默认工具分类与分组扫描归后端 configuration。browser/directory-snapshot 是通用一次性读取适配，事件或版本变化后回到实时端口。目录面包屑由前端生成路由标签并复用 openResource 同步侧栏，缓存目录重新激活也须同步选择。
 - 技能文件系统端口通过 lazyResource 共享请求并允许失败重试，后端拥有其释放职责。宿主文件类型的 contentFormat 独立于 editorType，未声明时按扩展名回退；项目目录标签和目标只由 directoryBreadcrumbs 解析。
+
+- 普通文件按路径直接打开，不经过目录 selectPath；恢复标签仅保留入口，后台补载目录不重新创建编辑器。隐藏本地/原生会话暂停视图订阅、任务附着和 Flow 面板轮询，重新激活读取当前快照；只分离观察，不取消后端任务。
+- browser/file-recovery 为普通、项目与 Session 文件保存独立于 HTTP 的恢复副本：小文本用 sessionStorage，大文本用 IndexedDB，按标签页与稳定资源身份隔离。只在后端确认保存后清除；重载时按原文摘要核对，冲突或权限变化保留副本并暂时只读，不自动覆盖；存储失败保留编辑器并阻止无保护退出。该副本不是 UI 偏好或后端数据真相，不扫描其他文件。
+
+- 项目侧栏消费 ProjectService.navigation 的聚合结果，按后端提供的不透明 loadPaths 调用 vfs-ui.loadDirectory，按 navigationTransparent 元数据展开分组内容，不解释存储目录名。手动刷新等待异步 invalidateNavigation 确认后再刷新列表；正文编辑器与草稿不随刷新重建。草稿提升通知只刷新当前可见且无未保存输入的草稿，隐藏草稿在重新激活时检查持久提升回执并换用新控制端口。
+- lifecycle/view-refresh 拥有刷新合并、顺序、隐藏标脏与失败重试状态；SessionTaskView 拥有任务详情与分页展示，消费后端 sessionTasks/taskDetails/taskEvents，不枚举内核会话。从文件发起聊天只准备引用文本并调用 backend.createSessionDraft，成功后导航，不在前端组合创建与持久草稿写入。

@@ -4,6 +4,7 @@ import { RemoteConversationEditor } from '../../llm-ui/src/shell/RemoteConversat
 import type { ConversationControls, ConversationSnapshot, EditorOptions } from '@itookit/ui-common';
 import { LLMPrintService } from '@itookit/mdx-adapter';
 import { t } from '@itookit/common';
+import { HistoryView } from '../../llm-ui/src/components/HistoryView';
 const state: ConversationSnapshot = {sessionId:'s',title:'remote',branchName:'main',messages:[{id:'1',role:'assistant',text:'<script>native</script>',turnId:'initial-turn'}],requests:[],canSend:true,canInterrupt:false,canRespond:false,pending:false,disconnected:false,gap:false};
 function setup(options: EditorOptions = {}) {
     const peer: ConversationControls = {read:vi.fn(async () => state),poll:vi.fn(async () => state),send:vi.fn(async () => ({...state,canSend:false,canInterrupt:true})),interrupt:vi.fn(async () => state),respond:vi.fn(async () => state),reconcile:vi.fn(async () => state),close:vi.fn(async () => {})};
@@ -17,6 +18,16 @@ beforeEach(() => {
     Object.defineProperties(Range.prototype,{getClientRects:{configurable:true,value:()=>[]},getBoundingClientRect:{configurable:true,value:()=>new DOMRect()}});
 });
 afterEach(() => {document.body.replaceChildren();vi.useRealTimers();vi.unstubAllGlobals();delete (Range.prototype as any).getClientRects;delete (Range.prototype as any).getBoundingClientRect;delete (HTMLElement.prototype as any).scrollIntoView;});
+it('mounts host actions in the same More menu and releases them when the native editor closes', async () => {
+    const cleanup = vi.fn(), mountMoreMenu = vi.fn((container: HTMLElement) => {
+        const button = document.createElement('button'); button.textContent = 'Host action'; container.append(button);
+        return () => { button.remove(); cleanup(); };
+    });
+    const {editor, host} = setup({mountMoreMenu}); await editor.init(host);
+    expect(mountMoreMenu).toHaveBeenCalledOnce();
+    expect(host.querySelector('.llm-workspace-titlebar__menu')?.textContent).toContain('Host action');
+    await editor.destroy(); expect(cleanup).toHaveBeenCalledOnce();
+});
 it('loads an earlier native page and locates the actual message from a search hit', async () => {
     const {editor, peer, host} = setup();
     vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true});
@@ -33,6 +44,98 @@ it('renders native history safely and sends directly through the injected conver
     expect(host.querySelector('script')).toBeNull();expect(host.textContent).toContain('<script>native</script>');
     await editor.commands.sendMessage({text:'remote prompt'});expect(peer.send).toHaveBeenCalledWith('remote prompt');
     await editor.destroy();expect(peer.close).toHaveBeenCalledOnce();expect(peer.interrupt).not.toHaveBeenCalled();
+});
+
+it('navigates collapsed native prompts and loads earlier directory entries on request', async () => {
+    const {editor, peer, host} = setup();
+    const prompt = {id: 'prompt', role: 'user' as const, turnId: 'turn', text: 'Visible prompt', contentParts: ['Private context', 'Visible prompt'], contentPartKinds: ['agents_md.instructions', 'user.text']};
+    vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true, messages: [prompt, ...state.messages]});
+    peer.loadEarlier = vi.fn(async () => ({...state, hasEarlier: false, messages: [{id: 'older', role: 'user', text: 'Older prompt', turnId: 'older-turn'}, prompt, ...state.messages]}));
+    await editor.init(host);
+    const history = host.querySelector<HTMLElement>('#llm-ui-history')!; history.scrollTo = vi.fn();
+    expect(host.querySelector('#llm-btn-history-visibility')).toBeNull();
+    host.querySelector<HTMLButtonElement>('#llm-btn-collapse')!.click(); expect(history.hidden).toBe(false);
+    host.querySelector<HTMLButtonElement>('#llm-btn-prompt-nav')!.click();
+    const row = host.querySelector<HTMLButtonElement>('[data-prompt-id]')!;
+    expect(row.textContent).toContain('Visible prompt'); expect(row.textContent).not.toContain('Private context');
+    expect(peer.loadEarlier).not.toHaveBeenCalled(); row.click(); expect(history.hidden).toBe(false);
+    expect(host.querySelector('.llm-ui-bubble--user')?.classList.contains('is-collapsed')).toBe(false);
+    expect(host.querySelector<HTMLDetailsElement>('.llm-ui-transcript-context')!.open).toBe(false);
+    host.querySelector<HTMLButtonElement>('[data-action="earlier"]')!.click();
+    await vi.waitFor(() => expect(host.querySelectorAll('[data-prompt-id]')).toHaveLength(2));
+    expect(peer.loadEarlier).toHaveBeenCalledOnce(); expect(host.querySelector('.llm-prompt-nav__list')?.textContent).toContain('Older prompt');
+    await editor.destroy(); expect(host.querySelector('.llm-prompt-nav')).toBeNull();
+});
+
+it('finds user prompts on opening the directory when the latest native page contains only responses', async () => {
+    const {editor, peer, host} = setup();
+    vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true});
+    peer.loadEarlier = vi.fn().mockResolvedValueOnce({...state, hasEarlier: true, messages: [{id: 'tool', role: 'tool', text: 'Tool output'}, ...state.messages]})
+        .mockResolvedValueOnce({...state, hasEarlier: true, messages: [{id: 'p', role: 'user', text: 'The latest user prompt'}, ...state.messages]});
+    await editor.init(host); expect(peer.loadEarlier).not.toHaveBeenCalled();
+    host.querySelector<HTMLButtonElement>('#llm-btn-prompt-nav')!.click();
+    await vi.waitFor(() => expect(host.querySelector('[data-prompt-id]')?.textContent).toContain('The latest user prompt'));
+    expect(peer.loadEarlier).toHaveBeenCalledTimes(2);
+    await editor.destroy();
+});
+
+it('bounds prompt discovery and retains its manual retry when an earlier page fails', async () => {
+    const {editor, peer, host} = setup();
+    vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true});
+    peer.loadEarlier = vi.fn().mockRejectedValueOnce(new Error('Directory history unavailable'));
+    await editor.init(host); host.querySelector<HTMLButtonElement>('#llm-btn-prompt-nav')!.click();
+    await vi.waitFor(() => expect(host.querySelector('.llm-prompt-nav__scope')?.textContent).toContain('Directory history unavailable'));
+    host.querySelector<HTMLButtonElement>('#llm-btn-prompt-nav')!.click(); host.querySelector<HTMLButtonElement>('#llm-btn-prompt-nav')!.click();
+    expect(peer.loadEarlier).toHaveBeenCalledOnce();
+    vi.mocked(peer.loadEarlier).mockResolvedValue({...state, hasEarlier: false, messages: [{id: 'p', role: 'user', text: 'Recovered prompt'}]});
+    host.querySelector<HTMLButtonElement>('[data-action="earlier"]')!.click();
+    await vi.waitFor(() => expect(host.querySelector('[data-prompt-id]')?.textContent).toContain('Recovered prompt'));
+    await editor.destroy();
+});
+
+it('stops an explicit directory search after three pages when no user prompt has been found', async () => {
+    const {editor, peer, host} = setup();
+    vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true});
+    peer.subscribe = () => () => {};
+    peer.loadEarlier = vi.fn(async () => ({...state, hasEarlier: true}));
+    await editor.init(host); host.querySelector<HTMLButtonElement>('#llm-btn-prompt-nav')!.click();
+    await vi.waitFor(() => expect(host.querySelector('.llm-prompt-nav__empty')?.textContent).toBe(t('chat.promptNav.noLoadedPrompts')));
+    expect(peer.loadEarlier).toHaveBeenCalledTimes(3);
+    expect(host.querySelector<HTMLButtonElement>('[data-action="earlier"]')!.disabled).toBe(false);
+    await editor.destroy();
+});
+
+it('reports a subscribed render failure without claiming disconnection and preserves the input draft', async () => {
+    let changed!: () => void;
+    const {editor, peer, host} = setup();
+    peer.subscribe = listener => { changed = listener; return () => {}; };
+    peer.snapshot = () => state;
+    await editor.init(host);
+    const draft = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+    draft.value = 'keep my draft';
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const render = vi.spyOn(HistoryView.prototype, 'renderSnapshot').mockRejectedValueOnce(new Error('render failed'));
+    try {
+        changed();
+        await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent)
+            .toBe(t('harness.updateFailed', {message: 'render failed'})));
+        expect(host.textContent).not.toContain(t('harness.disconnected')); expect(draft.value).toBe('keep my draft');
+        expect(errors).toHaveBeenCalledWith('[Conversation] Update failed', expect.any(Error));
+        changed();
+        await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent).not.toContain('render failed'));
+    } finally { render.mockRestore(); await editor.destroy(); errors.mockRestore(); }
+});
+
+it('reports polling errors with their cause and resumes updates without replaying sends', async () => {
+    const {editor, peer, host} = setup(); await editor.init(host);
+    const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(peer.poll).mockRejectedValueOnce(new Error('invalid snapshot'));
+    try {
+        await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent)
+            .toBe(t('harness.updateFailed', {message: 'invalid snapshot'})), {timeout: 2500});
+        await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent).not.toContain('invalid snapshot'), {timeout: 2500});
+        expect(peer.send).not.toHaveBeenCalled(); expect(host.textContent).not.toContain(t('harness.disconnected'));
+    } finally { await editor.destroy(); errors.mockRestore(); }
 });
 it('preserves failed input and offers reconciliation instead of repeating an unknown operation', async () => {
     const {editor,peer,host}=setup();await editor.init(host);
@@ -65,6 +168,18 @@ it('saves an unsent remote input draft before closing the retained editor',async
     host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.value='changed input';const changed=vi.fn();editor.on('interactiveChange',changed);
     host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.dispatchEvent(new Event('input'));expect(changed).toHaveBeenCalledOnce();
     await editor.destroy();expect(peer.saveDraft).toHaveBeenCalledWith('changed input');expect(peer.send).not.toHaveBeenCalled();
+});
+
+it('saves native input before switching execution targets and leaves the native turn untouched', async () => {
+    const start = vi.fn(async () => {}), {editor, peer, host} = setup({onStartConversationDraft: start});
+    peer.saveDraft = vi.fn(async () => {}); await editor.init(host);
+    const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+    input.value = 'Another executor'; input.dispatchEvent(new Event('input'));
+    host.querySelector<HTMLButtonElement>('.llm-input__btn--switch-target')!.click();
+    await vi.waitFor(() => expect(start).toHaveBeenCalledWith({text: 'Another executor', files: []}));
+    expect(peer.saveDraft).toHaveBeenCalledWith('Another executor');
+    expect(vi.mocked(peer.saveDraft).mock.invocationCallOrder[0]).toBeLessThan(start.mock.invocationCallOrder[0]);
+    expect(peer.send).not.toHaveBeenCalled(); expect(peer.interrupt).not.toHaveBeenCalled(); await editor.destroy();
 });
 
 it('cancels an obsolete history load when the host replaces the view',async () => {
@@ -136,9 +251,12 @@ it('shares titlebar sidebar, history and responsive menu actions for a read-only
     expect(toggle.hidden).toBe(false); toggle.click(); expect(toggleSidebar).toHaveBeenCalledOnce();
     expect(host.querySelector('.llm-workspace-status__dot')?.classList.contains('--idle')).toBe(true);
     const menu = host.querySelector<HTMLDetailsElement>('.llm-workspace-titlebar__menu')!; menu.open = true;
-    const history = host.querySelector<HTMLButtonElement>('#llm-btn-history-visibility')!;
-    history.click(); expect(menu.open).toBe(false); expect(host.querySelector<HTMLElement>('#llm-ui-history')!.hidden).toBe(true);
-    history.click(); expect(host.querySelector<HTMLElement>('#llm-ui-history')!.hidden).toBe(false);
+    expect(host.querySelector('#llm-btn-history-visibility')).toBeNull();
+    const collapse = host.querySelector<HTMLButtonElement>('#llm-btn-collapse')!;
+    collapse.click(); expect(menu.open).toBe(false); expect(host.querySelector<HTMLElement>('#llm-ui-history')!.hidden).toBe(false);
+    expect(collapse.getAttribute('aria-label')).toBe(t('chat.toolbar.expandAll'));
+    collapse.click(); expect(collapse.getAttribute('aria-label')).toBe(t('chat.toolbar.collapseAll'));
+    expect(host.querySelector('#llm-btn-prompt-nav')?.textContent?.trim()).toBe('');
     expect(host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
     await editor.destroy(); toggle.click(); expect(toggleSidebar).toHaveBeenCalledOnce();
 });
@@ -328,6 +446,35 @@ it('groups all native response items with compact tool targets and keeps assista
     await vi.waitFor(() => expect(reply.textContent).toContain('Updated result'));
     expect(host.querySelector('.llm-ui-session--assistant .mdx-editor-renderer')).toBe(reply); await editor.destroy();
 });
+
+it('separates system notes and tool provenance from answer headings and preserves expanded notes during refresh', async () => {
+    const { editor, peer, host } = setup();
+    const messages: ConversationSnapshot['messages'] = [
+        { id: 'u', turnId: 't', role: 'user', text: 'Review this project' },
+        { id: 's', turnId: 't', role: 'system', text: 'Session resumed\n<script>literal</script>\n```\nkeep fences' },
+        { id: 'a', turnId: 't', role: 'assistant', text: 'First answer' },
+        { id: 'tool', turnId: 't', role: 'tool', name: 'Read <file>', operation: 'read', paths: ['src/<sample>.ts'], text: 'private output' },
+        { id: 'final', turnId: 't', role: 'assistant', text: 'Final answer' },
+    ];
+    vi.mocked(peer.read).mockResolvedValue({ ...state, messages }); await editor.init(host);
+    const output = host.querySelector<HTMLElement>('.llm-ui-session--assistant .mdx-editor-renderer')!;
+    const note = output.querySelector<HTMLDetailsElement>('.llm-ui-transcript-note')!;
+    expect(note.open).toBe(false); expect(note.querySelector('summary')?.textContent).toContain(t('chatMessage.systemNote'));
+    expect(note.querySelector('.llm-ui-transcript-note__content')?.textContent).toBe(messages[1].text);
+    expect(output.querySelector('script')).toBeNull(); expect(output.querySelector('h3')).toBeNull();
+    expect(output.querySelector('.llm-ui-transcript-tool__label')?.textContent).toContain(t('harness.roleTool'));
+    expect(output.querySelector('.llm-ui-transcript-tool__name')?.textContent).toContain('Read <file>');
+    expect(output.querySelector('.llm-ui-transcript-tool__targets')?.textContent).toContain('src/<sample>.ts');
+    expect(output.textContent).not.toContain('private output');
+    note.querySelector('summary')!.click(); expect(note.open).toBe(true);
+    note.dispatchEvent(new Event('toggle'));
+    vi.mocked(peer.read).mockResolvedValue({ ...state, messages: messages.map(message => message.id === 'final' ? { ...message, text: 'Updated final answer' } : message) });
+    host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
+    await vi.waitFor(() => expect(output.textContent).toContain('Updated final answer'));
+    expect(output.querySelector<HTMLDetailsElement>('.llm-ui-transcript-note')!.open).toBe(true);
+    expect(host.querySelector('.llm-ui-session--assistant .mdx-editor-renderer')).toBe(output);
+    expect(editor.getText()).toContain('Session resumed'); await editor.destroy();
+});
 it('keeps native turn grouping independent of interleaved events and merges optimistic user echoes', async () => {
     const {editor, peer, host} = setup();
     vi.mocked(peer.read).mockResolvedValue({...state, messages: [
@@ -369,6 +516,52 @@ it('shows all requests and responses in a turn, preserves repeated native reques
     await editor.destroy();
 });
 
+it('collapses only explicitly sourced context and keeps original references copyable across refreshes and printing', async () => {
+    const {editor, peer, host} = setup();
+    const rules = '# AGENTS.md instructions for /project\n\n<script>literal</script>\n```ts\nconst keep = true;\n```';
+    const environment = '<environment_context>\n  <cwd>/project</cwd>\n</environment_context>';
+    const messages: ConversationSnapshot['messages'] = [
+        {id: 'context', turnId: 't', role: 'user', text: rules, contentParts: [rules], contentPartKinds: ['agents_md.instructions']},
+        {id: 'environment', turnId: 't', role: 'user', text: environment, contentParts: [environment], contentPartKinds: ['environments.environment_context']},
+        {id: 'prompt', turnId: 't', role: 'user', text: '**Review this project**\nPreserve this request too',
+            contentParts: ['**Review this project**', 'Preserve this request too'], contentPartKinds: ['user.text', 'user.text']},
+        {id: 'unknown', turnId: 't', role: 'user', text: 'Unknown context stays visible', contentParts: ['Unknown context stays visible'], contentPartKinds: ['unknown']},
+        {id: 'literal', turnId: 't', role: 'user', text: '# AGENTS.md instructions for /real-user-message'},
+        {id: 'answer', turnId: 't', role: 'assistant', text: 'Initial answer'},
+    ];
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, 'clipboard', {configurable: true, value: {writeText}});
+    const print = vi.spyOn(LLMPrintService.prototype, 'printFromHtml').mockResolvedValue(undefined);
+    try {
+        vi.mocked(peer.read).mockResolvedValue({...state, messages}); await editor.init(host);
+        const request = host.querySelector<HTMLElement>('.llm-ui-session--user .mdx-editor-renderer')!;
+        const contexts = request.querySelectorAll<HTMLDetailsElement>('.llm-ui-transcript-context');
+        expect(contexts).toHaveLength(2); expect([...contexts].every(context => !context.open)).toBe(true);
+        expect(request.querySelectorAll('hr')).toHaveLength(3);
+        for (const context of contexts) {
+            expect(context.previousElementSibling?.tagName).not.toBe('HR');
+            expect(context.nextElementSibling?.tagName).not.toBe('HR');
+        }
+        expect(contexts[0].querySelector('summary')?.textContent).toContain(t('chatMessage.contextInstructions'));
+        expect(contexts[0].querySelector('.llm-ui-transcript-context__content')?.textContent).toBe(rules);
+        expect(request.querySelector('script')).toBeNull(); expect(request.querySelector('strong')?.textContent).toBe('Review this project');
+        expect(request.querySelector('h1')?.textContent).toContain('/real-user-message');
+        expect(request.textContent).toContain('Unknown context stays visible');
+        contexts[0].querySelector('summary')!.click(); contexts[0].dispatchEvent(new Event('toggle'));
+        contexts[0].querySelector<HTMLButtonElement>('[data-transcript-copy]')!.click();
+        await vi.waitFor(() => expect(writeText).toHaveBeenCalledExactlyOnceWith(rules));
+        vi.mocked(peer.read).mockResolvedValue({...state, messages: [...messages, {id: 'followup', turnId: 't', role: 'user', text: 'Follow-up'}]});
+        host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
+        await vi.waitFor(() => expect(request.textContent).toContain('Follow-up'));
+        expect(request.querySelector<HTMLDetailsElement>('.llm-ui-transcript-context')!.open).toBe(true);
+        host.querySelector<HTMLButtonElement>('#llm-btn-print')!.click();
+        await vi.waitFor(() => expect(print).toHaveBeenCalledOnce());
+        const printed = document.createElement('div'); printed.innerHTML = print.mock.calls[0][0];
+        expect(printed.querySelector('.llm-ui-transcript-context__content')?.textContent).toBe(rules);
+        expect(printed.querySelector('script')).toBeNull(); expect(editor.getText()).toContain(environment);
+    } finally { await editor.destroy(); print.mockRestore(); delete (navigator as any).clipboard; }
+});
+
 it('enables native title editing only when the injected port grants rename', async () => {
     const {editor, peer, host} = setup();
     peer.rename = vi.fn(async title => ({...state, title, canRename: true}));
@@ -376,7 +569,13 @@ it('enables native title editing only when the injected port grants rename', asy
     const title = host.querySelector<HTMLInputElement>('#llm-title-input')!;
     expect(title.readOnly).toBe(false); title.value = 'Changed native title'; title.dispatchEvent(new Event('blur'));
     await vi.waitFor(() => expect(peer.rename).toHaveBeenCalledExactlyOnceWith('Changed native title'));
+    [...host.querySelectorAll<HTMLButtonElement>('.llm-workspace-titlebar__menu-actions button')]
+        .find(button => button.textContent === t('project.renameSession'))!.click();
+    document.querySelector<HTMLInputElement>('.settings-modal input')!.value = 'Changed through More';
+    document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
+    await vi.waitFor(() => expect(peer.rename).toHaveBeenLastCalledWith('Changed through More'));
     await editor.destroy();
+    await vi.waitFor(() => expect(document.querySelector('.settings-modal-overlay')).toBeNull());
 });
 it('sends bounded inline attachments through the native conversation port and rejects binary data before sending', async () => {
     const {editor, peer, host} = setup();
@@ -464,4 +663,15 @@ it('deletes a non-current native branch through the host without navigating to i
     (document.querySelector('.settings-modal-confirm') as HTMLButtonElement).click();
     await vi.waitFor(() => expect(remove).toHaveBeenCalledExactlyOnceWith('other'));
     expect(navigate).not.toHaveBeenCalled(); await editor.destroy();
+});
+
+it('releases a hidden conversation subscription and reads its latest state when activated again', async () => {
+    const {editor, peer, host} = setup(); let notify!: () => void;
+    const release = vi.fn(); peer.subscribe = vi.fn(listener => {notify = listener; return release;});
+    await editor.init(host); expect(peer.subscribe).toHaveBeenCalledOnce();
+    editor.cancelPendingRender(); notify(); await new Promise(resolve => setTimeout(resolve, 80));
+    expect(release).toHaveBeenCalledOnce(); expect(peer.poll).not.toHaveBeenCalled();
+    vi.mocked(peer.read).mockResolvedValue({...state, messages: [...state.messages, {id: 'latest', role: 'assistant', text: 'Received while hidden'}]});
+    await editor.activate(); expect(peer.read).toHaveBeenCalledTimes(2); expect(peer.subscribe).toHaveBeenCalledTimes(2);
+    expect(host.textContent).toContain('Received while hidden'); await editor.destroy();
 });

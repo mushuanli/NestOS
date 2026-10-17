@@ -25,6 +25,7 @@ it.each([null, '/group'] as const)('creates a sibling Session when the selected 
     try {
         await workbench.start();
         await workbench.openResource(`${folder ? '/folder:group' : ''}/${id}`);
+        await (workbench as any).fileNavigation;
         sidebar.querySelector<HTMLButtonElement>('[data-action="create-file"]')!.click();
         await vi.waitFor(() => { expect(alert.mock.calls).toEqual([]); expect(sidebar.querySelector('.vfs-node-list__item-creator-input')).not.toBeNull(); });
         const input = sidebar.querySelector<HTMLInputElement>('.vfs-node-list__item-creator-input')!;
@@ -40,6 +41,7 @@ it.each([null, '/group'] as const)('creates a sibling Session when the selected 
         expect(await repository.getManifest(id)).toMatchObject({ title: 'Existing' });
         // Real writable directories retain their target instead of creating another Session.
         await workbench.openResource(`${folder ? '/folder:group' : ''}/${id}/files/attachments`);
+        await (workbench as any).fileNavigation;
         sidebar.querySelector<HTMLButtonElement>('[data-action="create-file"]')!.click();
         await vi.waitFor(() => { expect(alert.mock.calls).toEqual([]); expect(sidebar.querySelector('.vfs-node-list__item-creator-input')).not.toBeNull(); });
         const fileInput = sidebar.querySelector<HTMLInputElement>('.vfs-node-list__item-creator-input')!;

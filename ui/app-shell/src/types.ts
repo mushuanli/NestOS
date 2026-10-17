@@ -160,6 +160,7 @@ export interface AppHandle {
 // ── Workbench config ────────────────────────────────────────────────────
 
 export interface WorkbenchConfig {
+    deferNavigation?: boolean;
     chatFromFile?: import('@itookit/ui-common').EditorHostContext['chatFromFile'];
     /** Preferred input: an already authorized file context. The host owns its lifetime. */
     files: import('@itookit/vfs-core').FileSystemContext;

@@ -32,6 +32,7 @@ class HarnessControl {
     private listGeneration = 0;
     private readonly completedTurns = new Set<string>();
     private polling = false;
+    private pollError?: string;
     private submitting = false;
     private interactionKey = '';
     private pending?: { requestId: string; profileId: string; sessionId?: string };
@@ -151,9 +152,18 @@ class HarnessControl {
             try {
                 if (profile) {
                     const page = await this.client.events(profile,this.cursor,this.options());
-                    if (profile === this.profile.value && !this.lifetime.signal.aborted) this.consume(page);
+                    if (profile === this.profile.value && !this.lifetime.signal.aborted) {
+                        if (this.status.textContent === this.pollError) this.status.textContent = '';
+                        this.pollError = undefined; this.consume(page);
+                    }
                 }
-            } catch { if (!this.lifetime.signal.aborted) this.status.textContent = t('harness.disconnected'); }
+            } catch (error) {
+                if (!this.lifetime.signal.aborted) {
+                    console.error('[Harness] Update failed', error);
+                    this.pollError = t('harness.updateFailed', {message: error instanceof Error ? error.message : t('harness.failed')});
+                    this.status.textContent = this.pollError;
+                }
+            }
             await pause(this.lifetime.signal);
         }
     }
@@ -162,7 +172,7 @@ class HarnessControl {
         if (page.gap) this.status.textContent = t('harness.eventGap');
         for (const event of page.events) {
             const { method,params } = event.message;
-            if (method === 'harness/disconnected') this.status.textContent = t('harness.disconnected');
+            if (method === 'harness/disconnected' && (!params?.threadId || params.threadId === this.selected?.id)) this.status.textContent = t('harness.disconnected');
             if (params?.threadId !== this.selected?.id) continue;
             if (method === 'item/agentMessage/delta' && typeof params?.delta === 'string') this.append(params.delta);
             if (method === 'turn/started' || method === 'turn/completed') this.consumeTurn(method,params?.turn);

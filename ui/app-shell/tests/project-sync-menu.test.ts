@@ -123,6 +123,7 @@ it('exposes an invalid sync MCP as a project issue while retaining status and of
 it('opens current-project actions from the sidebar title button and selector context menu', async () => {
     const project = { name: 'Project', path: '/project', project: { id: 'p' } };
     const projects = { sessions: { navigation: async () => ({ sessions: [], folders: [], pending: [], roots: new Map() }) },
+        navigation: async () => ({ path: '/project', projects: [project], project, pendingDeletions: 0, offlineProjectIds: [], loadPaths: [] }),
         forFolder: async () => project, list: async () => [project] };
     const projectMenu = vi.fn(async () => {}), ui = { setTitle: vi.fn(), refreshList: vi.fn(), expandPath: vi.fn(async () => {}), loadDirectories: vi.fn(async () => {}) };
     const navigation = new ProjectNavigation(projects as never, () => ui as never, { projectMenu, createProject: vi.fn(), createSession: vi.fn(),

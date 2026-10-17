@@ -12,6 +12,8 @@ export class RemoteSessionStatusView {
     private current?: string;
     private readonly loadedProjects = new Set<string>();
     private visible = true;
+    private navigationVisible = true;
+    private activeTab?: string;
     private readonly deadlines = new Map<string, number>();
     private refreshTimer?: ReturnType<typeof setTimeout>;
     private observed = '';
@@ -21,11 +23,19 @@ export class RemoteSessionStatusView {
         private readonly filesChanged?: (project: string) => void, private readonly tabTitle?: (id: string, title: string) => void,
         private readonly connections?: import('@itookit/app-contracts/services').ConnectionObservation) {}
     project(id?: string) { this.current = id; this.sync(); }
-    attach(tab: string, project: string) { this.tabs.set(tab, project); this.sync(); }
+    attach(tab: string, project: string) { this.tabs.set(tab, project); this.activeTab = tab; this.sync(); }
+    activate(tab?: string) { this.activeTab = tab; this.sync(); }
+    setNavigationVisible(visible: boolean) {
+        this.navigationVisible = visible;
+        if (!visible) for (const key of this.deadlines.keys()) if (key !== 'tab:' + this.activeTab) this.deadlines.delete(key);
+        this.sync(); this.scheduleRefresh();
+    }
     detach(tab: string) { this.tabs.delete(tab); this.deadlines.delete('tab:' + tab); this.sync(); this.scheduleRefresh(); }
     setVisible(visible: boolean) { this.visible = visible; this.sync(); this.scheduleRefresh(); }
     private sync() {
-        const interested = this.visible ? [...new Set([this.current, ...this.loadedProjects, ...this.tabs.values()]
+        const candidates = this.navigationVisible ? [this.current, ...this.loadedProjects, ...this.tabs.values()]
+            : [this.activeTab && this.tabs.get(this.activeTab)];
+        const interested = this.visible ? [...new Set(candidates
             .filter((id): id is string => !!id))].sort() : [];
         const key = JSON.stringify(interested);
         if (key !== this.observed) {
@@ -34,7 +44,7 @@ export class RemoteSessionStatusView {
         }
         const status = this.projects?.remoteMounts?.sessionStatus;
         if (!status) return;
-        const ids = new Set(this.visible ? [this.current, ...this.loadedProjects, ...this.tabs.values()].filter((id): id is string => !!id
+        const ids = new Set(this.visible ? candidates.filter((id): id is string => !!id
             && !!this.projects?.remoteMounts?.list(id).some(m => m.at === '/' && m.serverProjectId)) : []);
         for (const [tab, project] of this.tabs) if (!ids.has(project)) this.tabStatus(tab, '', '');
         for (const [id, stop] of this.stops) if (!ids.has(id)) { stop(); this.stops.delete(id); }
@@ -47,6 +57,7 @@ export class RemoteSessionStatusView {
     private refreshTabs() {
         const status = this.projects?.remoteMounts?.sessionStatus;
         for (const [tab, project] of this.tabs) {
+            if (!this.navigationVisible && tab !== this.activeTab) continue;
             let target;
             try { target = resolveBrowserTarget(tab); } catch { continue; }
             if (target.kind !== 'remote' || !target.profileId || !target.nativeSessionId) continue;

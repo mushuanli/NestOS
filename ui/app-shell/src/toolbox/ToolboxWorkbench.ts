@@ -37,6 +37,7 @@ interface Options {
     uiPersistence?: UIPersistencePort;
     /** Host-owned preference storage; omitted means the toolbox starts from defaults. */
     uiPreferences?: ToolboxPreferencesPort;
+    executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
 }
 export interface ToolboxPreferences { filter: ToolboxFilter; queries: Partial<Record<ToolboxFilter, string>> }
 /**
@@ -102,6 +103,8 @@ export class ToolboxWorkbench implements WorkspaceController {
             contextMenu: { items: (item, defaults) => this.menu(item, defaults), bulkItems: (items, defaults) => this.bulkMenu(items, defaults) },
         }, this.view);
         this.connectSources();
+        const stopUsage = this.options.executorUsage?.subscribe?.(() => this.ui.refreshList());
+        if (stopUsage) this.cleanups.push(stopUsage);
         await this.ui.start(); this.setFilter(this.prefs.filter, false);
     }
     private connectSources(): void {
@@ -175,7 +178,8 @@ export class ToolboxWorkbench implements WorkspaceController {
             this.titles.set(node.id, description?.name ?? node.metadata.title);
             return { ...node, icon: this.itemIcon(node, kind), children: node.children && decorate(node.children),
                 metadata: { ...node.metadata, title: description?.name ?? node.metadata.title,
-                    tags: node.metadata.tags, custom: { ...node.metadata.custom, toolboxKind: kind, navigationMenu: true } },
+                    tags: node.metadata.tags, custom: { ...node.metadata.custom, toolboxKind: kind, navigationMenu: true,
+                        ...(kind === 'agents' ? {executorLastUsed: this.options.executorUsage?.lastUsed(decodeURIComponent(id)) ?? 0} : {}) } },
                 content: node.type === 'file' ? { ...node.content!, summary: [['connections', 'tools'].includes(kind) ? '' : source, summary.split('\n')[0].slice(0, 160)].filter(Boolean).join(' · '), searchableText: [source, summary, id].join(' ') } : node.content };
         });
         const decorated = decorate(roots.flatMap(node => node.children ?? []).flatMap(node =>

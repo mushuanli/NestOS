@@ -12,14 +12,17 @@ it('does not materialize while opening or on empty send; the first submitted pay
     const sendMessage = vi.fn(async () => {});
     let finish!: (value: any) => void;
     const materialize = vi.fn(() => new Promise<any>(resolve => { finish = resolve; }));
-    const editor = new SessionDraftEditor(document.createElement('div'), {} as never, { sessionDraft: { materialize } });
-    await editor.init(document.createElement('div'));
+    const mount = document.createElement('div');
+    const editor = new SessionDraftEditor(mount, {onChange: () => () => {}} as never, { sessionDraft: { materialize } });
+    await editor.init(mount);
     expect(materialize).not.toHaveBeenCalled();
     await state.options.onSend('  ', [], 'default'); expect(materialize).not.toHaveBeenCalled();
     const sending = state.options.onSend('hello', [], 'writer', { connectionId: 'model-1' });
     await state.options.onSend('duplicate', [], 'writer');
     await Promise.resolve();
     expect(materialize).toHaveBeenCalledOnce();
+    expect(mount.querySelector('.llm-ui-welcome')).toBeNull();
+    expect(mount.querySelector('.llm-ui-header-preview')?.textContent).toBe('hello');
     finish({ editor: { commands: { sendMessage } }, resumeOnly: false }); await sending;
     expect(sendMessage).toHaveBeenCalledExactlyOnceWith({ text: 'hello', files: [], agentId: 'writer', overrides: { connectionId: 'model-1' } });
     await editor.destroy();
@@ -73,7 +76,7 @@ it('restores text, agent, options and binary attachments after reopening', async
     const save = vi.fn(async (data: string) => { stored = data; });
     const config = { text: 'unsent text', agentId: 'writer', settings: { connectionId: 'model-2', temperature: 0.2 } };
     const file = new File([new Uint8Array([0, 255, 12])], 'sample.bin', { type: 'application/octet-stream', lastModified: 100 });
-    const editor = new SessionDraftEditor(document.createElement('div'), {} as never, { sessionDraft: { materialize: vi.fn(), save, attachments } });
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never, { sessionDraft: { materialize: vi.fn(), save, attachments } });
     await editor.init(document.createElement('div'));
     state.options.onDraftChange(config, [file]);
     await editor.destroy();
@@ -85,7 +88,7 @@ it('restores text, agent, options and binary attachments after reopening', async
     await codec.encode({ ...config, text: 'changed' }, [restored]);
     expect(attachments.put).toHaveBeenCalledOnce();
     expect([restored.name, restored.size, restored.type, restored.lastModified]).toEqual(['sample.bin', 3, 'application/octet-stream', 100]);
-    const next = new SessionDraftEditor(document.createElement('div'), {} as never, { sessionDraft: { materialize: vi.fn(), initialData: stored, attachments } });
+    const next = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never, { sessionDraft: { materialize: vi.fn(), initialData: stored, attachments } });
     await next.init(document.createElement('div'));
     expect(state.options.initialConfig).toEqual(config);
     expect(state.restore).toHaveBeenLastCalledWith(config.text, expect.arrayContaining([expect.any(File)]), 'writer');
@@ -94,7 +97,7 @@ it('restores text, agent, options and binary attachments after reopening', async
 it.each([true, false, undefined])('does not replace a draft merely on volatile admission (result %s)', async accepted => {
     const clear = vi.fn(async () => {}), save = vi.fn(async () => {});
     const materialize = vi.fn(async () => ({ editor: { commands: { sendMessage: async () => accepted } }, resumeOnly: false }) as any);
-    const editor = new SessionDraftEditor(document.createElement('div'), {} as never, { sessionDraft: { materialize, save, clear } });
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never, { sessionDraft: { materialize, save, clear } });
     await editor.init(document.createElement('div'));
     state.options.onDraftChange({ text: 'hello', agentId: 'writer', settings: {} }, []);
     await state.options.onSend('hello', [], 'writer');
@@ -104,7 +107,7 @@ it.each([true, false, undefined])('does not replace a draft merely on volatile a
 it('opens a previously linked session without automatically replaying the message', async () => {
     const sendMessage = vi.fn(), clear = vi.fn();
     const materialize = vi.fn(async () => ({ editor: { commands: { sendMessage } }, resumeOnly: true }) as any);
-    const editor = new SessionDraftEditor(document.createElement('div'), {} as never, { sessionDraft: { materialize, clear } });
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never, { sessionDraft: { materialize, clear } });
     await editor.init(document.createElement('div'));
     await state.options.onSend('pending', [], 'writer');
     expect(materialize).toHaveBeenCalledOnce(); expect(sendMessage).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
@@ -113,7 +116,7 @@ it('opens a previously linked session without automatically replaying the messag
 
 it('uses the normal empty-chat layout without a draft landing page', async () => {
     const container = document.createElement('div');
-    const editor = new SessionDraftEditor(container, {} as never, { sessionDraft: { materialize: vi.fn() } });
+    const editor = new SessionDraftEditor(container, {onChange: () => () => {}} as never, { sessionDraft: { materialize: vi.fn() } });
     await editor.init(container);
     expect(container.querySelector<HTMLInputElement>('#llm-title-input')?.value).toBe('新会话');
     expect(container.querySelector('.llm-ui-workspace__history .llm-ui-welcome')).not.toBeNull();
@@ -130,7 +133,7 @@ it('carries only the originating draft identity into the first submitted message
     const options = { materialize: async () => {
         return { editor: { commands: { sendMessage } }, resumeOnly: false, submission: source } as any;
     }, clear };
-    const editor = new SessionDraftEditor(document.createElement('div'), {} as never, { sessionDraft: options });
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never, { sessionDraft: options });
     await editor.init(document.createElement('div'));
     await state.options.onSend('hello', [], 'writer');
     expect(sendMessage).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ text: 'hello', submission: source }));
@@ -143,7 +146,7 @@ it('migrates legacy base64 drafts to binary references when opened', async () =>
     const attachments = { put: vi.fn(async (_bytes: ArrayBuffer) => 'binary-id'), read: vi.fn() };
     const initialData = JSON.stringify({ version: 1, config: { text: 'legacy', agentId: 'default', settings: {} },
         files: [{ name: 'old.bin', type: 'application/octet-stream', lastModified: 1, content: 'AP8=' }] });
-    const editor = new SessionDraftEditor(document.createElement('div'), {} as never, { sessionDraft: {
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never, { sessionDraft: {
         initialData, attachments, save: async data => { stored = data; }, materialize: vi.fn(),
     } });
     await editor.init(document.createElement('div'));
@@ -165,14 +168,14 @@ it('retries failed binary writes without publishing an incomplete reference', as
 
 it('routes a remote harness directly without materializing a local Session', async () => {
     const materialize=vi.fn(),send=vi.fn(async () => {}),clear=vi.fn(async () => {});
-    const editor=new SessionDraftEditor(document.createElement('div'),{} as never,{sessionDraft:{materialize,clear},remoteAgents:{list:async () => [],send}});
+    const editor=new SessionDraftEditor(document.createElement('div'),{onChange: () => () => {}} as never,{sessionDraft:{materialize,clear},remoteAgents:{list:async () => [],send}});
     await editor.init(document.createElement('div'));await state.options.onSend('remote prompt',[],'remote:codex');
     expect(send).toHaveBeenCalledWith('remote:codex','remote prompt');expect(materialize).not.toHaveBeenCalled();expect(clear).toHaveBeenCalledOnce();await editor.destroy();
 });
 
 it('rejects remote attachments before creating or sending a native conversation', async () => {
     const materialize=vi.fn(),send=vi.fn();
-    const editor=new SessionDraftEditor(document.createElement('div'),{} as never,{sessionDraft:{materialize},remoteAgents:{list:async () => [],send}});
+    const editor=new SessionDraftEditor(document.createElement('div'),{onChange: () => () => {}} as never,{sessionDraft:{materialize},remoteAgents:{list:async () => [],send}});
     await editor.init(document.createElement('div'));
     await expect(state.options.onSend('remote prompt',[new File(['data'],'file.txt')],'remote:codex')).rejects.toThrow();
     expect(send).not.toHaveBeenCalled();expect(materialize).not.toHaveBeenCalled();await editor.destroy();

@@ -56,7 +56,8 @@ it('routes a real vfs-ui tree to chat, Task history and the Session mapped file 
         const moreTasks = [...main.querySelectorAll('button')].find(button => button.textContent === '加载更多任务')!;
         moreTasks.click(); moreTasks.click();
         await vi.waitFor(() => expect(main.textContent).toContain('task-two'));
-        expect(kernel.listSessionTaskPage).toHaveBeenLastCalledWith(id, { afterIndex: 1, throughIndex: 2 });
+        expect(kernel.listSessionTaskPage).toHaveBeenCalledWith(id, { afterIndex: 1, throughIndex: 2 });
+        expect(kernel.listSessionTaskPage.mock.calls.filter(([, query]) => query?.afterIndex === 1)).toHaveLength(1);
         expect(moreTasks.hidden).toBe(true);
         await workbench.openResource(`/${id}/tasks/@more`);
         expect(main.textContent).toContain('task-one');

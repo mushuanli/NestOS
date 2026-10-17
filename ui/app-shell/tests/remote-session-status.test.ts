@@ -46,6 +46,16 @@ it('uses each project identity for loaded sessions in the all-project view', () 
     expect(status.subscribe.mock.calls.map(([id]) => id)).toEqual(['a', 'b']); view.destroy();
 });
 
+it('distinguishes observation failures from offline sessions and exposes their stage and code', () => {
+    const observation = harnessObservation({id: 's', title: 'S', cwd: null, status: 'idle', updatedAt: Date.now(), resumable: true});
+    const refreshError = {stage: 'inspect', code: 'EACCES'};
+    const view = conversationStatus({...observation, refreshError, stale: true});
+    expect(view.text).toBe(t('harness.observationFailed', {code: 'EACCES'}));
+    expect(view.tooltip).toContain('inspect: EACCES');
+    expect(conversationStatus({...observation, refreshError, connection: 'offline'}).text).toBe(t('harness.state.offline'));
+    expect(conversationStatus(observation).text).toBe(t('harness.state.idle'));
+});
+
 it('uses the two-minute window only for presentation, with native and offline states taking priority', () => {
     const now = Date.parse('2026-10-09T12:00:00Z');
     const observation = harnessObservation({id: 's', title: 'S', cwd: null, status: 'notLoaded', updatedAt: now - 120_000, resumable: true});
@@ -99,4 +109,13 @@ it('uses native modification time from unopened tree rows when no observer snaps
     const items = [{id: remoteSessionPath('/P', 'codex', 's'), metadata: {lastModified: new Date().toISOString(), custom: {remoteStatus: 'notLoaded'}}}];
     expect(view.items(items as never)[0].presentation!.badges![0]).toContain(t('harness.activity.recent'));
     view.destroy();
+});
+
+it('observes only the active tab while navigation is hidden', async () => {
+    const connections = {update: vi.fn(async (_ids: string[], _revision: number) => {}), dispose: vi.fn(async () => {})};
+    const view = new RemoteSessionStatusView(observeHarness, undefined, () => {}, () => {}, undefined, undefined, connections);
+    view.attach('one', 'project-one'); view.attach('two', 'project-two');
+    view.setNavigationVisible(false); expect(connections.update.mock.calls.at(-1)?.[0]).toEqual(['project-two']);
+    view.activate('one'); expect(connections.update.mock.calls.at(-1)?.[0]).toEqual(['project-one']);
+    view.setVisible(false); expect(connections.update.mock.calls.at(-1)?.[0]).toEqual([]); await view.destroy();
 });

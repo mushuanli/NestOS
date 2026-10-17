@@ -1,3 +1,4 @@
+import {createRecoverableFileEditor} from './file-recovery';
 import { showNameDialog } from '../files/project-dialog';
 import { t, FILE_BROWSER_ICONS, FILE_ICONS, type NavigationRequest } from '@itookit/common';
 import { directoryBulkActions } from '../workbench/vfs-actions';
@@ -34,9 +35,10 @@ const replacePrefix = (path: string, old: string, next: string) => path === old 
 
 /** Each open file owns its editor and save coordinator independently of navigation. */
 export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, container: HTMLElement,
-    factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void> } {
+    factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void>; openResource(path: string): Promise<void>; getActiveResourceId(): string | null } {
     const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, emptyMessage, saveDebounceMs: _debounce, ...extra } = options;
     if (files.fs !== engine) throw new Error('Editor file context differs from its file tree');
+    const revisions = new Map<string, string | undefined>();
     const loads = new LatestViewLoad(), pending = new Set<Promise<void>>();
     let visible = true, closed = false, pendingItem: VFSNodeUI | undefined, sidebar: WorkbenchSidebar | undefined;
     const report = (error: unknown) => {
@@ -44,7 +46,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         notice.textContent = error instanceof Error ? error.message : String(error); tabs.content.append(notice);
     };
     const tabs = new WorkbenchTabs<OpenView>(container, {
-        activate: async id => { if (id === '/') await openDirectory(id); else await vfs.selectPath(id); }, dispose: disposeTab,
+        activate: async id => { if (id === '/') await openDirectory(id); else await openResource(id); }, dispose: disposeTab,
         empty: () => { placeholder(); onEditorCreated?.(null); }, error: report,
         changed: () => sidebar?.save(tabs.snapshot()),
     }, workbenchState?.load()?.tabs);
@@ -65,13 +67,13 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         const external = extra.hostContext as EditorHostContext | undefined;
         return { openFile: async (path, anchor) => {
                 if (!await engine.driver.getNode(path)) throw new FSError('ENOENT', 'File not found', 'open', path);
-                await vfs.selectPath(path); await selectionWork;
+                await openResource(path); await selectionWork;
                 if (anchor && tabs.current?.id === path) await tabs.current.value?.editor?.navigateTo({ elementId: anchor });
             }, chatFromFile: external?.chatFromFile, toggleSidebar: () => vfs.toggleSidebar(),
             navigate: async (request: NavigationRequest) => { await external?.navigate?.(request); }, saveContent: persist };
     }
     async function persist(path: string, content: string): Promise<void> {
-        await engine.driver.writeContent(path, content);
+        await engine.driver.writeContent(path, content, {ifRevision: revisions.get(path), onRevision: value => {revisions.set(path, value);}});
         if (options.refreshFileMetadata === false || fileContentFormat(path, options.fileTypes).contentFormat !== 'markdown') return;
         try { const { metadata, summary } = parseFileInfo(content); await engine.driver.updateMetadata(path, { ...metadata, _summary: summary }); }
         catch (error) { console.error('[EditorConnector] Metadata refresh failed:', error); }
@@ -103,15 +105,15 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         const parent = item.id.slice(0, item.id.lastIndexOf('/')) || '/';
         tab.panel.replaceChildren(createDirectoryList({ title: item.metadata.title, path: item.id,
             breadcrumbs: fileDirectoryBreadcrumbs(item.id, t('project.files')),
-            openDirectory: id => { void (id === '/' ? openDirectory(id).then(() => vfs.setSelection([])) : vfs.selectPath(id)).catch(report); },
+            openDirectory: id => { void (id === '/' ? openDirectory(id).then(() => vfs.setSelection([])) : openResource(id)).catch(report); },
             entries: nodes.map(node => ({ id: node.path, name: node.name, type: node.type, icon: vfs.getResourceIcon(node), created: node.createdAt, modified: node.modifiedAt, size: node.type === 'file' ? node.size : undefined })),
             contextMenu: (event, id) => { void vfs.showItemMenu(event, id).catch(report); }, select: ids => vfs.setSelection(ids),
             selectedIds: () => vfs.getSnapshot().selectedIds,
             bulkActions: directoryBulkActions(vfs),
             actions: readOnly ? undefined : [{ label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'file').catch(report); } },
                 { label: t('project.createFolder'), icon: FILE_BROWSER_ICONS.addFolder, disabled: options.canCreateEntries === false, run: () => { void createEntry(item.id, 'directory').catch(report); } }],
-            open: id => { void vfs.selectPath(id).catch(report); },
-            parent: item.id === '/' ? undefined : () => { void (parent === '/' ? openDirectory(parent) : vfs.selectPath(parent)).catch(report); },
+            open: id => { void openResource(id).catch(report); },
+            parent: item.id === '/' ? undefined : () => { void (parent === '/' ? openDirectory(parent) : openResource(parent)).catch(report); },
             refresh: () => directoryEntries(item.id).catch(error => { report(error); throw error; }) }));
         tab.subscriptions.push(watchDirectoryList(engine, tab.panel, report));
         tab.subscriptions.push(watchDirectorySelection(tab.panel, vfs));
@@ -121,7 +123,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         const view: OpenView = { node: item };
         if (item.type === 'directory') await directory(tab, item, load);
         else {
-            const raw = item.content?.data !== undefined ? item.content.data : await engine.driver.readContent(item.id);
+            const raw = await engine.driver.readContent(item.id, {encoding: 'binary', onRevision: value => {revisions.set(item.id, value);}});
             load.check(); const mime = guessMimeType('file' + (item.metadata.custom?._extension ?? ''));
             const mount = document.createElement('div'); mount.className = 'session-editor-mount'; tab.panel.replaceChildren(mount);
             if (isBinaryViewable(mime)) { const editor = new MediaViewerEditor(mime); await editor.init(mount, raw); view.editor = editor; }
@@ -129,9 +131,9 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 const text = typeof raw === 'string' ? raw : new TextDecoder().decode(raw);
                 const createEditor = resolveEditor?.(item) ?? factory;
                 if (!createEditor) throw new Error('No suitable editor factory found.');
-                view.editor = await createEditor(mount, { ...extra, ...fileContentFormat(item.id, options.fileTypes), files, signal: load.signal,
+                view.editor = await createRecoverableFileEditor(createEditor, mount, { ...extra, ...fileContentFormat(item.id, options.fileTypes), files, signal: load.signal,
                     target: { kind: 'file', path: item.id }, initialContent: text, title: item.metadata.title,
-                    language: item.metadata.custom?._extension, hostContext: host() });
+                    language: item.metadata.custom?._extension, hostContext: host() }, String(options.recoveryScope ?? engine.viewId));
             }
             if (!loads.isCurrent(load) || closed) { await view.editor?.destroy(); return; }
         }
@@ -161,6 +163,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
             for (const tab of tabs.values()) {
                 const next = replacePrefix(tab.id, oldId, newId); if (next === tab.id) continue;
                 const view = tab.value; if (view) { view.node = vfs.getNode(next) ?? { ...view.node, id: next }; view.editor?.updateNodeId?.(next); }
+                revisions.set(next, revisions.get(tab.id)); revisions.delete(tab.id);
                 const title = next === newId ? item.metadata.title : tab.title; view?.editor?.setTitle?.(title); tabs.rename(tab.id, next, title);
                 if (next === newId && item.icon) tabs.setIcon(next, item.icon);
             }
@@ -170,6 +173,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
             const next = replacePrefix(tab.id, oldPath, newPath); if (next === tab.id) continue;
             const title = next.split('/').pop() || tab.title;
             if (tab.value) { tab.value.node = { ...tab.value.node, id: next }; tab.value.editor?.updateNodeId?.(next); tab.value.editor?.setTitle?.(title); }
+            revisions.set(next, revisions.get(tab.id)); revisions.delete(tab.id);
             tabs.rename(tab.id, next, title);
         }
     }), engine.on('node:deleted', event => {
@@ -187,7 +191,16 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         await select({ item: { id: path, type: 'directory', icon: node ? vfs.getResourceIcon(node) : FILE_ICONS.folder, version: '1', metadata: { title: node?.name || t('project.files'), path,
             parentPath: node?.parentPath ?? null, tags: [], createdAt: new Date(node?.createdAt ?? 0).toISOString(), lastModified: new Date(node?.modifiedAt ?? 0).toISOString(), custom: node?.metadata ?? {} } } });
     }
-    return Object.assign(dispose, { openDirectory, async whenReady(): Promise<void> { await selectionWork; }, async setVisible(next: boolean): Promise<void> {
+    async function openResource(path: string): Promise<void> {
+        const node = await engine.driver.getNode(path);
+        if (!node) throw new FSError('ENOENT', 'File not found', 'open', path);
+        const item: VFSNodeUI = {id: path, type: node.type === 'directory' ? 'directory' : 'file', icon: vfs.getResourceIcon(node), version: String(node.version),
+            metadata: {title: node.name, path, parentPath: node.parentPath, tags: [],
+                createdAt: new Date(node.createdAt).toISOString(), lastModified: new Date(node.modifiedAt).toISOString(),
+                custom: {...node.metadata, _extension: node.name.includes('.') ? '.' + node.name.split('.').pop() : ''}}};
+        selectionWork = select({item}); await selectionWork;
+    }
+    return Object.assign(dispose, { openDirectory, openResource, getActiveResourceId: () => tabs.current?.value?.node.id ?? null, async whenReady(): Promise<void> { await selectionWork; }, async setVisible(next: boolean): Promise<void> {
         if (visible === next) return; visible = next;
         if (!next) { loads.cancel(); await Promise.all(tabs.values().map(tab => flush(tab.value?.editor))); }
         else if (pendingItem && (tabs.current?.id !== pendingItem.id || !tabs.current?.value)) await select({ item: pendingItem });

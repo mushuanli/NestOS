@@ -157,7 +157,7 @@ describe('saved project routes at bootstrap', () => {
         const app = await f.start();
         try {
             const selector = document.querySelector<HTMLSelectElement>('.workbench-project-navigation select')!;
-            expect(selector.value).toBe(folderBrowserPath(project.path));
+            await vi.waitFor(() => expect(selector.value).toBe(folderBrowserPath(project.path)));
             await app.navigate('chat'); expect(selector.value).toBe('/');
             expect(parseWorkspaceHash(location.hash, 'chat').resource).toBe('/');
         } finally { await app.destroy(); await f.dispose(); }

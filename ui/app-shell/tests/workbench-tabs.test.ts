@@ -51,6 +51,38 @@ function tabsFixture() {
     const tabs = new WorkbenchTabs(container, { activate: async id => { tabs.activate(id); }, dispose, empty, error });
     return { tabs, container, dispose, empty, error };
 }
+it('keeps project context separate from resource names and rename persistence', async () => {
+    const f = tabsFixture();
+    await f.tabs.open('/note.md', 'note.md', false); f.tabs.context('/note.md', 'Personal');
+    f.tabs.rename('/note.md', '/renamed.md', 'renamed.md');
+    const header = f.container.querySelector('.workbench-tabs__tab')!;
+    expect(header.querySelector('.workbench-tabs__context')?.textContent).toBe('Personal');
+    expect(header.querySelector('.workbench-tabs__label')?.getAttribute('aria-label')).toBe('renamed.md');
+    expect(f.tabs.snapshot()).toEqual([{id: '/renamed.md', title: 'renamed.md', pinned: false}]);
+    expect(f.tabs.get('/renamed.md')?.context).toBe('Personal'); await f.tabs.destroy();
+});
+it('switches opened documents from the compact header without replacing retained editor DOM', async () => {
+    HTMLDialogElement.prototype.showModal ??= function () { this.open = true; };
+    HTMLDialogElement.prototype.close ??= function () { this.open = false; this.dispatchEvent(new Event('close')); };
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () { this.open = true; });
+    vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function () { this.open = false; this.dispatchEvent(new Event('close')); });
+    const f = tabsFixture(), back = vi.fn(), sidebar = document.createElement('aside');
+    sidebar.append(f.tabs.opened); document.body.append(sidebar);
+    const first = await f.tabs.open('a', 'First', false); first.panel.innerHTML = '<textarea>Keep this draft</textarea>';
+    await f.tabs.open('b', 'Second', false); f.tabs.activate('a');
+    const slot = document.createElement('div'); first.panel.append(slot);
+    const release = f.tabs.mountCompactNavigation(slot, 'Project', back);
+    const buttons = slot.querySelectorAll<HTMLButtonElement>('button'); buttons[0].click(); expect(back).toHaveBeenCalledOnce();
+    expect(slot.textContent).toContain('First'); expect(slot.textContent).toContain('Project');
+    buttons[1].click(); const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
+    expect(dialog.open).toBe(true); expect(dialog.contains(f.tabs.opened)).toBe(true);
+    dialog.querySelector<HTMLButtonElement>('[data-opened-id="b"] .workbench-tabs__opened-label')!.click();
+    await vi.waitFor(() => expect(f.tabs.current?.id).toBe('b'));
+    await vi.waitFor(() => expect(document.querySelector('.workbench-opened-sheet')).toBeNull());
+    expect(first.panel.querySelector('textarea')?.value).toBe('Keep this draft');
+    expect(f.tabs.opened.parentElement).toBe(sidebar);
+    release(); await f.tabs.destroy();
+});
 it('promotes an edited preview, preserves its DOM and does not demote it after saving', async () => {
     const f = tabsFixture(), events = new Map<string, () => void>();
     const a = await f.tabs.open('/a.md', 'a.md'); a.panel.textContent = 'cursor and undo owner';

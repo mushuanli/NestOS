@@ -25,7 +25,7 @@ const cleanup: Array<() => unknown> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); await runtime?.dispose(); document.body.replaceChildren(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 class Editor extends BaseSettingsEditor<object> { async render() { this.container.textContent = editorResourceId(this.options) ?? ''; } }
 async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfigurationControls,
-    uiPreferences?: import('../src/toolbox/ToolboxWorkbench').ToolboxPreferencesPort) {
+    uiPreferences?: import('../src/toolbox/ToolboxWorkbench').ToolboxPreferencesPort, executorUsage?: EditorOptions['executorUsage']) {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0));
     vi.stubGlobal('cancelAnimationFrame', clearTimeout);
     HTMLDialogElement.prototype.showModal ??= function () { this.setAttribute('open', ''); };
@@ -49,7 +49,7 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
         tools: async (container: HTMLElement, options: EditorOptions) => { const editor = new ToolDetailsEditor(container, inventory, options, resources); await editor.init(container); return editor; } };
     const files = createToolboxFiles(resources.sources);
     cleanup.push(() => files.dispose());
-    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu: {}, navigate: vi.fn(), selected: vi.fn(), uiPreferences });
+    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu: {}, navigate: vi.fn(), selected: vi.fn(), uiPreferences, executorUsage });
     cleanup.push(() => workbench.destroy()); await workbench.start();
     return { workbench, sidebar, main, factory, resources, inventory };
 }
@@ -186,8 +186,8 @@ it('groups providers by availability and keeps settings before their connections
     const f = await setup();
     for (const [id, name, apiKey, enabled] of [
         ['ready', 'Z Ready', 'secret', true], ['empty', 'A Empty', '', true], ['off', 'A Disabled', 'secret', false],
-    ] as const) await runtime.agentService.saveProvider({ baseURL: '', id, name, apiKey, enabled, icon: 'R', implementation: 'openai-compatible', models: [] });
-    await runtime.agentService.saveConnection({ id: 'drawer-conn', name: 'A Connection', providerId: 'ready' });
+    ] as const) await runtime.agentService.saveProvider({ baseURL: '', id, name, apiKey, enabled, icon: 'R', implementation: 'openai-compatible', models: [{id: 'chat', name: 'Chat model', category: 'chat'}] });
+    await runtime.agentService.saveConnection({ id: 'drawer-conn', name: 'A Connection', providerId: 'ready', model: 'chat' });
     await vi.waitFor(() => expect(f.inventory.connections.has('drawer-conn')).toBe(true));
     f.workbench.setFilter('models');
     const groups = () => [...f.sidebar.querySelectorAll<HTMLElement>('[data-item-type="directory"]')].map(node => node.dataset.itemId);
@@ -196,7 +196,7 @@ it('groups providers by availability and keeps settings before their connections
     expect(before.indexOf('/model-groups/empty')).toBeLessThan(before.indexOf('/model-groups/off'));
     await f.workbench.openResource('/connections/drawer-conn');
     const group = () => f.sidebar.querySelector('[data-item-id="/model-groups/ready"]')!;
-    expect([...group().querySelectorAll<HTMLElement>('[data-item-type="file"]')].map(node => node.dataset.itemId)).toEqual(['/providers/ready', '/connections/drawer-conn']);
+    expect([...group().querySelectorAll<HTMLElement>('[data-item-type="file"]')].map(node => node.dataset.itemId).slice(0, 2)).toEqual(['/providers/ready', '/connections/drawer-conn']);
     expect(group().querySelector('.vfs-directory-item__icon')?.textContent).toBe('R');
     expect(group().querySelector('[aria-label="服务商"]')).not.toBeNull();
     expect(group().querySelector('[data-item-id="/connections/drawer-conn"] .vfs-tag-pill')).toBeNull();
@@ -209,7 +209,7 @@ it('groups providers by availability and keeps settings before their connections
     document.querySelector<HTMLInputElement>('.project-dialog input')!.value = 'New connection';
     document.querySelector<HTMLFormElement>('.project-dialog form')!.requestSubmit();
     await vi.waitFor(async () => expect((await runtime.agentService.getConnections()).find(c => c.name === 'New connection')?.providerId).toBe('ready'));
-    await vi.waitFor(() => expect(group().querySelector('.vfs-directory-item__description')?.textContent).toContain('2 个连接'));
+    await vi.waitFor(() => expect(group().querySelector('.vfs-directory-item__description')?.textContent).toContain('3 个连接'));
 });
 it('keeps metadata title changes out of drawer relocation commands', async () => {
     const f = await setup(), relocate = vi.spyOn(f.resources.drawers, 'relocate');
@@ -217,6 +217,57 @@ it('keeps metadata title changes out of drawer relocation commands', async () =>
     await runtime.agentService.saveProvider({ ...provider, name: 'Renamed provider' });
     await vi.waitFor(() => expect(f.inventory.providers.get('openai')?.name).toBe('Renamed provider'));
     expect(relocate).not.toHaveBeenCalled();
+});
+
+it('pins the default drawer and orders enabled ready connections ahead of incomplete and disabled ones', async () => {
+    const f = await setup();
+    for (const [id, name, apiKey] of [['usage-ready', 'Z Ready provider', 'secret'], ['usage-default', 'Default provider', '']] as const)
+        await runtime.agentService.saveProvider({id, name, apiKey, enabled: true, baseURL: '', implementation: 'openai-compatible', models: [{id: 'chat', name: 'Chat model', category: 'chat'}, {id: 'image', name: 'Image model', category: 'image'}]});
+    for (const connection of [
+        {id: 'usage-ready-chat', name: 'Z Ready chat', providerId: 'usage-ready', model: 'chat'},
+        {id: 'usage-incomplete', name: 'B Missing chat model', providerId: 'usage-ready', model: 'image', tiers: {optimal: 'image'}},
+        {id: 'usage-disabled', name: 'A Disabled chat', providerId: 'usage-ready', model: 'chat', enabled: false},
+        {id: 'usage-default-chat', name: 'Default chat', providerId: 'usage-default', model: 'chat'},
+    ]) await runtime.agentService.saveConnection(connection);
+    await runtime.agentService.setDefaultConnection('usage-default-chat');
+    await vi.waitFor(() => expect(f.inventory.defaultConnectionId).toBe('usage-default-chat'));
+    expect(f.inventory.connections.get('usage-incomplete')).toMatchObject({model: null});
+    f.workbench.setFilter('models');
+    const groups = [...f.sidebar.querySelectorAll<HTMLElement>('[data-item-type="directory"]')];
+    expect(groups[0].dataset.itemId).toBe('/model-groups/usage-default');
+    expect(groups[0].textContent).toContain(t('connection.default'));
+    expect(groups[0].textContent).toContain(t('connection.credentialsRequired'));
+    await f.workbench.openResource('/connections/usage-ready-chat');
+    const group = f.sidebar.querySelector('[data-item-id="/model-groups/usage-ready"]')!;
+    const order = [...group.querySelectorAll<HTMLElement>('[data-item-type="file"]')].map(row => row.dataset.itemId);
+    expect(order[0]).toBe('/providers/usage-ready');
+    expect(order.indexOf('/connections/usage-ready-chat')).toBeLessThan(order.indexOf('/connections/usage-incomplete'));
+    expect(order.indexOf('/connections/usage-incomplete')).toBeLessThan(order.indexOf('/connections/usage-disabled'));
+    expect(group.querySelector('[data-item-id="/connections/usage-disabled"]')?.textContent).toContain(t('connection.status.disabled'));
+});
+
+it('searches providers, connections and assistants by display name and reveals matching drawers after recency sorting', async () => {
+    const times = new Map([['english', 50]]); let changed = () => {};
+    const f = await setup(undefined, undefined, {lastUsed: id => times.get(id) ?? 0, record() {}, subscribe: listener => { changed = listener; return () => {}; }});
+    await runtime.agentService.saveAgent({id: 'writing', name: '中文写作助手', type: 'agent', config: {}});
+    await runtime.agentService.saveProvider({id: 'search-provider', name: '可搜索服务商', enabled: true, apiKey: 'secret', baseURL: '', implementation: 'openai-compatible', models: []});
+    await runtime.agentService.saveConnection({id: 'search-connection', name: '可搜索连接', providerId: 'search-provider', model: 'chat'});
+    await vi.waitFor(() => expect(f.inventory.connections.has('search-connection')).toBe(true));
+    f.workbench.setFilter('models');
+    const input = f.sidebar.querySelector<HTMLInputElement>('input[type="search"]')!;
+    input.value = '可搜索服务商'; input.dispatchEvent(new Event('input'));
+    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/model-groups/search-provider"]')).not.toBeNull());
+    input.value = '可搜索连接'; input.dispatchEvent(new Event('input'));
+    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/connections/search-connection"]')?.textContent).toContain('可搜索连接'));
+    expect(f.sidebar.querySelector('[data-item-id="/model-groups/search-provider"] .vfs-directory-item__header')?.getAttribute('aria-expanded')).toBe('true');
+    f.workbench.setFilter('agents'); input.value = '中文写作助手'; input.dispatchEvent(new Event('input'));
+    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/agents/default/writing.agent"]')?.textContent).toContain('中文写作助手'));
+    input.value = ''; input.dispatchEvent(new Event('input'));
+    await f.workbench.openResource('/agents/default/english.agent');
+    const order = () => [...f.sidebar.querySelectorAll<HTMLElement>('[data-item-type="file"]')].map(row => row.dataset.itemId);
+    expect(order().indexOf('/agents/default/english.agent')).toBeLessThan(order().indexOf('/agents/default/writing.agent'));
+    times.set('writing', 100); changed();
+    await vi.waitFor(() => expect(order().indexOf('/agents/default/writing.agent')).toBeLessThan(order().indexOf('/agents/default/english.agent')));
 });
 it('groups tools by purpose and MCP source, and search reveals nested matches', async () => {
     const f = await setup(); f.workbench.setFilter('tools');

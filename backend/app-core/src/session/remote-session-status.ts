@@ -46,7 +46,7 @@ export class RemoteSessionStatus {
     private async poll(id: string, watch: Watch) {
         try {
             const identity = this.identity(id);
-            if (!identity) { watch.rows = []; for (const listener of watch.listeners) listener(); await this.stop(id, watch); return; }
+            if (!identity) { watch.rows = []; this.notify(watch); await this.stop(id, watch); return; }
             if (watch.identity !== identity) {
                 watch.rows = []; watch.fileVersion = undefined; watch.identity = identity; await watch.port?.close(); watch.port = undefined;
             }
@@ -59,14 +59,22 @@ export class RemoteSessionStatus {
             const fileVersion = watch.port.fileVersion?.();
             const changed = meaningful(rows) !== meaningful(watch.rows) || fileVersion !== watch.fileVersion;
             watch.fileVersion = fileVersion;
-            watch.rows = rows; watch.failures = rows.some(row => row.observation.connection === 'offline') ? watch.failures + 1 : 0;
-            if (changed) for (const listener of watch.listeners) listener();
+            watch.rows = rows; watch.failures = rows.some(row => row.observation.connection === 'offline' || row.observation.refreshError) ? watch.failures + 1 : 0;
+            if (changed) this.notify(watch);
         } catch {
+            if (watch.abort.signal.aborted) return;
             watch.failures++;
-            watch.rows = watch.rows.map(row => ({...row, observation: {...row.observation, stale: true, connection: 'offline', canInterrupt: false, canRespond: false}}));
-            if (!watch.abort.signal.aborted) for (const listener of watch.listeners) listener();
+            if (watch.failures === 1) console.warn('[Harness] Status observation failed');
+            watch.rows = watch.rows.map(row => ({...row, observation: {...row.observation, stale: true,
+                refreshError: {stage: 'status', code: 'OBSERVATION_ERROR'}, canInterrupt: false, canRespond: false}}));
+            this.notify(watch);
         } finally {
             if (!watch.abort.signal.aborted) this.schedule(id, watch, Math.min(30_000, 1000 * 2 ** Math.min(watch.failures, 5)));
+        }
+    }
+    private notify(watch: Watch): void {
+        for (const listener of watch.listeners) {
+            try { listener(); } catch { console.warn('[Harness] Status subscriber failed'); }
         }
     }
     private async stop(id: string, watch: Watch) {

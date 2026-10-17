@@ -5,7 +5,7 @@ import { createStartupStatus } from '../../../apps/http-app/src/client/startup-s
 afterEach(() => document.body.replaceChildren());
 it('keeps a fatal host failure visible after the shell dismissed the startup banner', () => {
     const status = createStartupStatus(); status.progress('Connecting');
-    expect(document.querySelector('[role="status"]')?.textContent).toContain('Connecting');
+    expect(document.querySelector('[role="status"]')).toBeNull();
     status.ready(); expect(document.querySelector('.http-startup')).toBeNull();
     status.fail(new Error('Host failed'));
     expect(document.querySelector('[role="alert"]')?.textContent).toContain('Host failed');

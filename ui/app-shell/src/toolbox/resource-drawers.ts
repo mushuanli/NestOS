@@ -20,5 +20,6 @@ function drawerNode(group: Drawer, children: VFSNodeUI[], showKind: boolean): VF
         presentation: { layout: 'drawer' },
         metadata: { title: group.name, path: group.id, parentPath: null, tags: [], createdAt: '', lastModified: '',
             custom: { _readOnly: true, toolboxKind: group.kind, resourceDrawer: true, navigationMenu: true,
+                executorLastUsed: Math.max(0, ...children.map(item => Number(item.metadata.custom.executorLastUsed) || 0)),
                 navigationDescription: [showKind ? t(`toolbox.${group.kind}`) : '', t('toolbox.drawerCount', { count: children.length })].filter(Boolean).join(' · ') } } };
 }

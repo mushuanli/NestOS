@@ -24,6 +24,8 @@ export class Workbench {
     private lifecycleUnsubscribe: ReturnType<typeof connectEditorLifecycle>;
     private baseEditorFactory: (container: HTMLElement, options: EditorOptions) => Promise<IEditor>;
     private hasStarted = false;
+    private navigationVisible = true;
+    private navigationTask?: Promise<void>;
     private visible = true;
     private dirty = false;
     private refreshing = 0;
@@ -159,7 +161,10 @@ export class Workbench {
 
     public async start(initialResourceId?: string): Promise<void> {
         this.loadedRevision = this.engine.revision;
-        await this.vfsUI.start();
+        this.hasStarted = true;
+        this.navigationVisible = !this.config.deferNavigation;
+        if (this.navigationVisible) await this.setNavigationVisible(true);
+        else this.vfsUI.setVisible(false);
 
         if (initialResourceId) {
             const currentId = this.getActiveFilePath();
@@ -224,8 +229,9 @@ export class Workbench {
     }
     private async openFileInternal(nodeId: string): Promise<void> {
         if (nodeId === '/') { await this.openDirectory(nodeId); return; }
-        await this.vfsUI.selectPath(nodeId);
-        await this.lifecycleUnsubscribe.whenReady();
+        await this.lifecycleUnsubscribe.openResource(nodeId);
+        this.config.onSessionChange?.(nodeId);
+        if (this.navigationVisible) this.vfsUI.setSelection([nodeId]);
     }
 
     public setNodeWaitingInput(nodeId: string, waiting: boolean): void {
@@ -235,19 +241,30 @@ export class Workbench {
     /** @deprecated This is a file path, not a durable Session ID. */
 
     public getActiveFilePath(): string | null {
-        const session = this.vfsUI.getActiveSession();
-        return session?.id ?? null;
+        return this.lifecycleUnsubscribe.getActiveResourceId();
     }
 
     public async setVisible(visible: boolean): Promise<void> {
         if (this.visible === visible) return;
         if (!visible && this.refreshing) this.dirty = true;
-        this.visible = visible; this.vfsUI.setVisible(visible);
+        this.visible = visible; this.vfsUI.setVisible(visible && this.navigationVisible);
         await this.lifecycleUnsubscribe.setVisible(visible);
-        if (visible && (this.dirty || this.engine.revision !== this.loadedRevision || performance.now() - this.loadedAt >= 15000)) await this.refresh();
+        if (visible && this.navigationVisible && (this.dirty || this.engine.revision !== this.loadedRevision || performance.now() - this.loadedAt >= 15000)) await this.refresh();
+    }
+
+    public async setNavigationVisible(visible: boolean): Promise<void> {
+        if (this.dialogs.signal.aborted) return;
+        this.navigationVisible = visible; this.vfsUI.setVisible(visible && this.visible);
+        if (!visible || !this.visible) return;
+        if (!this.navigationTask) this.dirty = false;
+        this.navigationTask ??= this.vfsUI.start().then(() => {}).catch(error => { this.navigationTask = undefined; throw error; });
+        await this.navigationTask;
+        if (this.dirty) await this.refresh();
+        const id = this.getActiveFilePath(); if (id) this.vfsUI.setSelection([id]);
     }
 
     public async refresh(): Promise<void> {
+        if (!this.navigationVisible || !this.visible) { this.dirty = true; return; }
         const revision = this.engine.revision; this.dirty = false; ++this.refreshing;
         try { await this.vfsUI.refresh(); this.loadedRevision = revision; this.loadedAt = performance.now(); }
         catch (error) { this.dirty = true; throw error; }
@@ -257,6 +274,7 @@ export class Workbench {
     public async destroy(): Promise<void> {
         this.dialogs.abort(); this.stopChanges();
         await this.lifecycleUnsubscribe();
+        await this.navigationTask?.catch(() => {});
         this.vfsUI.destroy();
     }
 }

@@ -9,7 +9,9 @@
 - **用例与装配分开**：应用策略放入 configuration/projects/session 等可单测服务；`runtime/` 负责接线与生命周期，不内联业务用例。宿主差异通过端口注入，DOM、导航与确认交互归 app-shell。
 - **显式公共出口**：`src/index.ts` 按需导出服务与契约，不使用 `export *`，内部实现与辅助函数不默认公开。`pnpm architecture:check` 检查生产源码与运行依赖的层次边界。
 - `js-yaml` 仅作为明确允许的纯编解码依赖；平台 I/O 仍由宿主端口提供，不据此开放任意 SDK 依赖。
+- RemoteSessionStatus 的 offline 证据由 harness 端口提供；缓存观察异常仅标 stale/refreshError，不能推断离线。持续刷新错误沿用有界退避，订阅回调异常相互隔离，不改变服务端连接投影。
 - 无构建脚本：`main` 直接指向 `src/index.ts`，由宿主 app（web-app / tauri-app / cli）打包。
+- ToolboxInventory 投影连接的安全 credentialsReady 和聊天模型显示名称；通过 kernel-adapters/contracts 的 resolveChatModelTiers 按 optimal、standard、fast 选择目录中存在的聊天模型，不把未知模型 ID 当作就绪。缺少聊天模型显式返回 null，确保 HTTP JSON 保留未就绪信息，不向 UI 传递 API Key 或 OAuth 凭据。
 
 ## 结构
 
@@ -139,6 +141,10 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 - configuration/skills-files.ts 拥有技能文件系统与服务订阅，tool-groups.ts 拥有产品默认工具分类；toolbox-resources.navigation 聚合目录、分组与说明。host.toolboxView 不接收前端文件系统，返回后端准备的 initial 快照与实时端口。导航初始化/刷新不回调浏览器取数。
 - Skill 的非空导入与所有写入必须先解析、校验再保存；存储错误不得触发空白资源回退，身份变更的旧记录删除失败必须报错。媒体授权转换由 DigitalTwinService.authorizeMedia 统一处理，语音 input/instructions 保持独立文本边界；Runtime 只接线。媒体回执通过 Kernel.inspectSession 按身份定位存储，不枚举其他 Session。
 
-- ToolboxInventory 投影连接的安全 credentialsReady 和聊天模型显示名称；通过 kernel-adapters/contracts 的 resolveChatModelTiers 按 optimal、standard、fast 选择目录中存在的聊天模型，不把未知模型 ID 当作就绪。缺少聊天模型显式返回 null，确保 HTTP JSON 保留未就绪信息，不向 UI 传递 API Key 或 OAuth 凭据。
+- host.workbenchView 的 initialNavigation=false 只准备当前正文需要的能力，不预读项目组织或根目录；目录由可见导航单独读取。ProjectService.navigation 在后端聚合项目归属、当前会话路径、离线项目、删除待办与不透明分组加载路径；session-browser 标记 navigationTransparent，UI 不解析内部目录名。Session/Kernel 执行与恢复始终由 Runtime 持有，不随前端隐藏、取消订阅或释放视图附着而取消。
 
-ProjectDraftComposer.refresh 先核对该项目的持久提交证据，补偿漏通知或收尾失败，再凭提升回执返回新 composer；旧写游标继续拒绝跨代保存。公共 composer/提升事件复用 app-contracts，内部 DraftStore 必须提供 wasPromoted。
+- host.createSessionDraft 在后端解析来源项目，以 SessionRepository 的 initialState 参数将会话身份与初始输入放入同一事务。引用排版和页面跳转属于前端；来源项目失效时拒绝创建，根级旧会话可使用个人项目。
+- ConversationContexts.open 返回可幂等释放的观察租约。SessionOpenView 持有租约至文件视图释放，宿主每分钟检查无引用上下文：默认保留 5 分钟、最多缓存 32 个闲置实例；运行、排队、等待交互或外部副作用未收尾时不得回收。acquireConversation 只在 LocalApplicationServices 接线，不进入前端能力。
+- ConversationViews 由 Runtime 持有所有会话视图；浏览器关闭时仅解绑，仍有运行/排队任务的视图继续保留草稿投影监听，终态后排空收尾再销毁。Runtime 退出统一释放剩余视图，先于 Kernel 与存储关闭。
+
+- runtime.createView 与宿主 ConversationContexts 使用同一会话视图创建函数，每个上下文都接入 ProjectDraftRecovery 并在销毁前排空。ProjectDraftComposer.refresh 先核对该项目的持久提交证据，补偿漏通知或收尾失败，再在旧草稿存在持久提升回执时提供新的 composer；旧写游标仍拒绝跨代写入，不自动跟随下一草稿。composer 与提升事件复用 app-contracts 公共契约，内部 DraftStore 必须提供 wasPromoted。

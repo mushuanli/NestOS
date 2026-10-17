@@ -66,7 +66,7 @@ describe('Session browser projection', () => {
         list.mockClear();
         expect((await f.browser.fs.driver.getChildren('/folder:Work')).map(node => node.metadata.title)).toContain('Moved');
         expect(list).toHaveBeenCalledTimes(1);
-        f.browser.invalidateNavigation();
+        await f.browser.invalidateNavigation();
         await f.browser.fs.driver.getChildren('/folder:Work');
         expect(list).toHaveBeenCalledTimes(2);
     });

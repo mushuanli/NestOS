@@ -46,3 +46,12 @@ it('keeps retrying failed loads and does not render a response after destruction
     expect(document.querySelector('[data-invocation]')).toBeNull();
     await vi.advanceTimersByTimeAsync(60_000); expect(execute).toHaveBeenCalledTimes(2);
 });
+
+it('suspends hidden flow panels without stopping their runs and refreshes on return', async () => {
+    vi.useFakeTimers(); const execute = vi.fn(async () => []);
+    panel = new InvocationPanel({execute} as unknown as ICommandBus, 's', document.body, vi.fn());
+    await panel.refresh(); execute.mockClear(); panel.setVisible(false);
+    window.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(60_000);
+    expect(execute).not.toHaveBeenCalled(); panel.setVisible(true); await panel.refresh();
+    expect(execute).toHaveBeenCalledOnce(); expect(execute).toHaveBeenCalledWith(FlowInvocationCommand.List, {sessionId: 's'});
+});

@@ -12,6 +12,7 @@ import { ProjectDraftStore } from './drafts/store';
 import { ProjectDraftService } from './drafts/service';
 import type { ProjectRemoteMountService } from '@itookit/app-contracts/services';
 import { ProjectSessions } from './project-sessions';
+import { readProjectNavigation } from './navigation-view';
 import { randomUUID, t, translatedValues } from '@itookit/common';
 import { FSError, createFileSystemView, normalizeVirtualPath, type IFileSystem, type OperationOptions } from '@itookit/vfs-core';
 import type { ISessionRepository, SessionFolder } from '@itookit/llm-session';
@@ -23,6 +24,9 @@ export type ProjectFileSource = { kind: 'local'; directory: string } | { kind: '
 
 /** Project identity and file roots survive navigation-folder renames and moves. */
 export class ProjectService {
+    navigation(request: import('@itookit/app-contracts/services').ProjectNavigationRequest) {
+        return readProjectNavigation(this, this.repository, request);
+    }
     execution?: ProjectExecutionService;
     private remote?: ProjectRemoteMountService;
     get remoteMounts(): ProjectRemoteMountService | undefined { return this.remote; }

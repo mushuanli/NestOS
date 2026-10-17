@@ -5,12 +5,12 @@ MindOS 默认消费固定 Git 提交的独立库源码。八个独立库均位�
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
 | @itookit/vfs-core | `libraries/vfs-core` | 5.3.2 |
-| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.8 |
+| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.9 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.3 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
-| @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.0 |
+| @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.3 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
-| @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.2 |
+| @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.3 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
 
 ## 源码开发
@@ -132,3 +132,16 @@ Rust pi-agent 独立于 npm 发布流程；其启动版本输出、日志与并�
 piagent-driver@0.2.0 已发布并从公开注册表重新下载，SHA-256 为 `e43eef38a227f1daa53904135b5beca9e9b6d52c6f2f27c6af8b93ee8aee27c5`，与正式 prepare 制品一致。128 项源码测试通过、1 项跳过；仓库外 ESM/CommonJS、公开子路径及 TypeScript bundler/NodeNext 消费验证通过。新增匿名目录读取、稳定身份与授权版本校验、项目有效能力投影，价格和目录共享策略仍由宿主控制。
 
 Rust pi-agent@0.2.0 提供目录 grants、稳定 owner 和独立执行权限；共享节点可由多个独立 itookit 实例连接。同一 httpd 的多用户登录与存储隔离不在本次实现范围。
+
+### 2026-10-17 独立仓库审查与发布准备
+
+本轮有改动的独立仓库为 mdxeditor、piagent-driver、vfs-ui 与 Rust pi-agent，均已提交并推送 main；其余五个独立库与远端一致，沿用已发布版本。
+
+- mdxeditor@0.5.3：嵌入布局、原始 HTML 策略、片段解析复用及折叠状态保留。
+- piagent-driver@0.2.3：原生消息来源元数据、观察错误分类、profile 隔离与状态恢复。
+- vfs-ui@0.5.9：通用目录预加载保留展开状态，显式加载失败向宿主拒绝并允许重试。
+- pi-agent@0.3.6：历史投影保留用户内容来源与原生 turn 身份；release 二进制和示例配置位于 `release/native/pi-agent-0.3.6-linux-x86_64.tar.gz`，不部署或替换运行中的服务。
+
+三个 npm 制品均通过 dist 导出存在性、固定库间依赖及 SHA-256 校验；仓库外安装这三个 tarball 与其余五个注册表库后，通过八库 ESM/CommonJS、全部公开子路径、CSS、Memory/IndexedDB/SeqFile 与嵌入 HTML/折叠状态验证。TypeScript bundler 检查覆盖八库，NodeNext 检查覆盖其余七库；MDX 声明继续遵循既有 bundler 消费契约。
+
+源码验证：mdxeditor 55、piagent-driver 155、vfs-ui 203 项通过（另 1 项网络测试跳过）；Rust 完整测试 259 项通过、2 项跳过，格式检查与 release 构建通过。npm/registry 脚本 5 项通过，源码工作区冻结离线安装通过。npm 发布已发起，等待浏览器二次认证；本节不表示新版本已公开可下载。

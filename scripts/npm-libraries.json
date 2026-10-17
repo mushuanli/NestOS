@@ -26,7 +26,7 @@
   {
     "directory": "piagent-driver",
     "name": "@itookit/piagent-driver",
-    "version": "0.2.2",
+    "version": "0.2.3",
     "workspace": true
   },
   {
@@ -44,7 +44,7 @@
   {
     "directory": "mdxeditor",
     "name": "@itookit/mdxeditor",
-    "version": "0.5.2",
+    "version": "0.5.3",
     "workspace": true
   }
 ]

@@ -143,14 +143,16 @@ export interface SessionLifecycleDependencies {
     kernel: ApplicationKernelPort;
 }
 
-export declare function createSessionBrowser(deps: SessionBrowserDependencies): Promise<VfsContracts.FileSystemSourceOwner & {
+export interface SessionBrowserPort extends VfsContracts.FileSystemSourceOwner {
     transferItems: (mode: "copy" | "move", ids: string[], destination: string) => Promise<void>;
     readFileDirectory: (path: string, options?: FileDirectoryOptions) => Promise<{
         node: FSNode;
         nodes: FSNode[];
     }>;
-    invalidateNavigation: () => void;
-}>;
+    invalidateNavigation: () => Promise<void>;
+}
+
+export declare function createSessionBrowser(deps: SessionBrowserDependencies): Promise<SessionBrowserPort>;
 
 export interface FileDirectoryOptions extends OperationOptions {
     fs?: IFileSystem;
@@ -170,10 +172,10 @@ export interface SessionBrowserDependencies {
 }
 /** One workspace query supplies the services and the first directory projection. */
 export interface WorkbenchView {
-    browser: Awaited<ReturnType<typeof createSessionBrowser>>;
+    browser: SessionBrowserPort;
     lifecycle: SessionLifecycleService;
     search?: ProjectSearch;
-    navigation?: import('./projects').ProjectNavigationSnapshot;
+    navigation?: import('./projects').ProjectNavigationView;
     directory?: { revision: number; node: FSNode | null; nodes: FSNode[] };
     chat?: WorkbenchChatControls;
     connections?: ConnectionObservation;

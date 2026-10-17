@@ -79,7 +79,21 @@ export interface ProjectNavigationSnapshot {
     }[];
 }
 
+/** A prepared navigation read model; paths are opaque loading targets for the UI. */
+export interface ProjectNavigationView {
+    path: string;
+    projects: ProjectFolder[];
+    project?: ProjectFolder;
+    sessionId?: string;
+    pendingDeletions: number;
+    offlineProjectIds: string[];
+    loadPaths: string[];
+}
+
+export interface ProjectNavigationRequest { path: string; projectId?: string | null }
+
 export interface ProjectService {
+    navigation(request: ProjectNavigationRequest): Promise<ProjectNavigationView>;
     execution?: ProjectExecutionService;
     readonly remoteMounts: ProjectRemoteMountPort | undefined;
     readonly sessions: ProjectSessions;

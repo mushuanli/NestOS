@@ -26,6 +26,7 @@ export interface ConversationSnapshot {
         execution: 'unknown' | 'idle' | 'running' | 'waiting-approval' | 'waiting-input';
         lastResult?: 'completed' | 'failed' | 'cancelled';
         nativeError?: boolean;
+        refreshError?: {stage: string; code: string};
         canInterrupt?: boolean; canRespond?: boolean;
         source: 'list' | 'inspect' | 'history' | 'events'; observedAt: number; connection: 'online' | 'offline'; stale: boolean; receiptUnknown: boolean;
     };

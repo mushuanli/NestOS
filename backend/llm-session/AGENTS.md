@@ -38,6 +38,8 @@ Flow 重新运行通过 `FlowRerunService` 校验参数并创建替代分支，�
 
 FlowInvocationService 通过注入的 prepareRun/submitPrepared 端口先完成完整 DAG 准入，再持久化 preparedGraph 与调用意图，最后提交根 Task。准入图覆盖最终连接选择及子 Flow，提交重试不重新读取模型配置；根 Task 持有执行快照后删除临时图。编译与任务提交仍归 llm-flow，会话层不实现第二套 DAG 编译器或执行器。
 
+SessionRepository.createSession 的可选 initialState 与新会话身份在同一记录事务提交，并在首次变更通知前可读；入口复制调用方数据，不把文件引用或项目选择策略放入 Session 持久化。
+
 ## 联网搜索
 
 - 三态 `ExecutorConfig.webSearchMode`（`WebSearchMode`）由 `AgentResolver.resolveWebSearch` 经 `resolveWebSearchStrategy` 解析。

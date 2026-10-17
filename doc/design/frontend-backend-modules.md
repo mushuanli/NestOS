@@ -45,6 +45,14 @@ await runtime.dispose();
 
 `workbenchView` 返回侧栏文件视图、生命周期、检索、导航/当前项目、可选聊天控制和首目录数据；`openSessionView` 准备元信息与文件租约，activate 在旧编辑器保存后绑定并装配消息/设置；`readUiDocuments/writeUiDocuments` 只存储不透明 UI 文档；`toolboxView` 在后端完成工具箱装配并统一释放资源；`taskDetails/taskEvents` 返回任务状态、摘要与分页关键事件，UI 不把刚读到的任务和事件传回后端加工。界面布局、导航和交互仍归 app-shell。
 
+`ProjectService.navigation` 返回准备好的项目列表、目标归属、会话路径、离线项目、删除待办与不透明分组加载路径；前端不读取全量 Session 清单来判断当前归属，不按内部目录名补载分组。`navigationTransparent` 只表达应用投影的透明容器，通用 vfs-ui 不解释该业务标记。`invalidateNavigation` 是异步失效屏障，列表读取必须等待其确认。`sessionTasks` 在后端完成任务分页与字段裁剪，任务详情和事件分页由独立的 SessionTaskView 展示。
+
+`createSessionDraft` 统一解析来源项目并创建带初始输入的会话；身份与初始输入通过 SessionRepository 同一事务提交。引用文本的排版、页面跳转和未提交输入仍属于前端。ViewRefresh 只协调可见页面刷新，不保存业务真相、不取消后端执行。
+
+宿主会话上下文采用引用计数观察租约；SessionOpenView 持有至释放文件视图。无引用上下文默认闲置 5 分钟或超过 32 个闲置缓存时才进入回收检查，且必须核对任务已结束、无待确认控制和外部副作用。关闭浏览器视图只释放引用，不能取消任务。LocalApplicationServices.acquireConversation 不作为客户端能力暴露。
+
+ConversationViews 将浏览器绑定寿命与执行收尾分开：浏览器关闭立即解绑；尚有运行或排队任务时由 Runtime 继续持有原会话系统和草稿投影监听，终态后排空恢复操作并销毁。Runtime 退出负责统一释放剩余视图，然后关闭 Kernel 与存储。
+
 跨边界操作采用异步接口；同步 selector 只读取已加载快照。收藏身份、项目来源/访问与导航、工具授权默认值、远端会话关联和 Harness 展示状态使用 shared 中的纯规则。后端仍执行实际授权校验，前端 selector 不授予访问权限。
 
 ```mermaid

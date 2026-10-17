@@ -11,6 +11,20 @@ beforeEach(async () => {
 afterEach(async () => { await repository.dispose(); await manager.dispose(); });
 
 describe('Session data repository', () => {
+    it('commits the initial draft with the identity and copies input before asynchronous creation', async () => {
+        const state = { branchDrafts: { main: { inputText: 'Initial input' } } };
+        const notified: Array<Promise<unknown>> = [];
+        const release = repository.subscribe(() => {
+            notified.push(repository.list().then(rows => Promise.all(rows.map(row => repository.getUIState(row.id)))));
+        });
+        try {
+            const pending = repository.createSession('With input', null, null, state);
+            state.branchDrafts.main.inputText = 'Changed by caller';
+            const id = await pending;
+            expect((await repository.getUIState(id))?.branchDrafts?.main?.inputText).toBe('Initial input');
+            expect((await Promise.all(notified)).flat()).toEqual([{ branchDrafts: { main: { inputText: 'Initial input' } } }]);
+        } finally { release(); }
+    });
     it('shares initialization across concurrent consumers and rejects initialization after disposal', async () => {
         const reader = new SessionRepository(fs);
         const first = reader.init(), second = reader.init();

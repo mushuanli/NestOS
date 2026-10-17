@@ -2,6 +2,8 @@
 
 本包是 LLM 设置编辑器（Agent / Provider / Connection / MCP / Skill / Cost / SystemPrompt）+ LLM 配置导入/导出。
 
+连接表单上方独立显示全局默认连接、模型与就绪状态；默认标识不能替代凭据/停用状态。列表将默认连接及所属 Provider 置顶，其余连接按就绪、待配置、停用排列，OAuth 就绪使用安全 credentialsReady 元数据。聊天模型就绪判断复用 contracts.resolveChatModelForTier，未知、已移除或媒体模型不能标为就绪，显式无效档位不跳过回退。
+
 ## 目录
 
 ```text

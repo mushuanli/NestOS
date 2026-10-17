@@ -52,8 +52,8 @@ export class SessionRepository implements ISessionRepository {
         return name;
     }
     private async paths(id: string, reader: Pick<ISeqFileTransaction, 'getEntry'> = this.fs.meta.seq!): Promise<SessionPaths> { const root = await resolveSessionStorageRoot(reader, id); return { root, session: `${root}/session.seq`, history: `${root}/history.seq` }; }
-    async createSession(title: string, folder: string | null = null, parentSessionId: string | null = null): Promise<string> {
-        return this.initializeSession(`node-${ulid()}`, title, 'tauri', folder, parentSessionId, true);
+    async createSession(title: string, folder: string | null = null, parentSessionId: string | null = null, initialState?: ConversationUIState): Promise<string> {
+        return this.initializeSession(`node-${ulid()}`, title, 'tauri', folder, parentSessionId, true, structuredClone(initialState));
     }
     async indexProjectSessions(directory: string): Promise<void> {
         if (!await this.fs.driver.exists(directory)) return;
@@ -105,7 +105,7 @@ export class SessionRepository implements ISessionRepository {
         return this.initializeSession(id, title, origin, folder, parentSessionId, false);
     }
     private async initializeSession(id: string, title: string, origin: SessionOrigin, folder: string | null,
-        parentSessionId: string | null, createOnly: boolean): Promise<string> {
+        parentSessionId: string | null, createOnly: boolean, initialState?: ConversationUIState): Promise<string> {
         if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new FSError('EINVAL', 'Invalid Session identity');
         await this.structuralWriteGuard?.([id, ...(parentSessionId ? [parentSessionId] : [])]);
         await this.prepareStorage(id, folder, createOnly);
@@ -116,7 +116,7 @@ export class SessionRepository implements ISessionRepository {
         let repaired = await this.ensureSessionFiles(p);
         await this.ensureFolderRecord();
         try {
-            if (await this.fs.meta.seq!.transaction!(tx => this.initializeSessionTx(tx, p, { id, title, origin, folder: normalizedFolder, parentSessionId, now, createOnly }))) {
+            if (await this.fs.meta.seq!.transaction!(tx => this.initializeSessionTx(tx, p, { id, title, origin, folder: normalizedFolder, parentSessionId, now, createOnly, initialState }))) {
                 repaired = true;
             }
             if (!existed) await this.initializeNewSession?.(id);
@@ -146,7 +146,7 @@ export class SessionRepository implements ISessionRepository {
     }
     /** Returns whether anything had to be repaired (session, settings or history). */
     private async initializeSessionTx(tx: ISeqFileTransaction, p: SessionPaths, init: {
-        id: string; title: string; origin: SessionOrigin; folder: string | null; parentSessionId: string | null; now: number; createOnly: boolean;
+        id: string; title: string; origin: SessionOrigin; folder: string | null; parentSessionId: string | null; now: number; createOnly: boolean; initialState?: ConversationUIState;
     }): Promise<boolean> {
         await assertSessionAvailable(tx, init.id);
         await assertSessionStorageLocation(tx, init.id, p.root);
@@ -168,7 +168,7 @@ export class SessionRepository implements ISessionRepository {
                 throw new FSError('ENOENT', 'Session folder not found');
             }
             const record = { storageVersion: 1, id: init.id, title: init.title, origin: init.origin, folder: init.folder, parentSessionId: init.parentSessionId,
-                createdAt: init.now, updatedAt: init.now, revision: 0 };
+                createdAt: init.now, updatedAt: init.now, revision: 0, ...(init.initialState ? { uiState: init.initialState } : {}) };
             await tx.setEntry(p.session, 'session', JSON.stringify(record));
             await indexSessionSummary(tx, record, null);
             await touchSessionRelations(tx);

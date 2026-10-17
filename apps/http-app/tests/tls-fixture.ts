@@ -14,17 +14,20 @@ export async function authenticatedFetch(directory: string): Promise<{ fetcher: 
     const fetcher: typeof fetch = async (input, init = {}) => new Promise((resolve, reject) => {
         const url = input instanceof Request ? input.url : String(input);
         const outgoing = request(url, { agent, method: init.method ?? 'GET', headers: Object.fromEntries(new Headers(init.headers)), signal: init.signal ?? undefined }, incoming => {
+            const headers = Object.fromEntries(Object.entries(incoming.headers).filter(([, value]) => value !== undefined)
+                .map(([key, value]) => [key, Array.isArray(value) ? value.join(', ') : String(value)]));
             if (url.includes('/events?')) {
+                let closed = false;
                 const body = new ReadableStream<Uint8Array>({ start(controller) {
-                    incoming.on('data', chunk => controller.enqueue(new Uint8Array(chunk)));
-                    incoming.once('end', () => controller.close()); incoming.once('error', error => controller.error(error));
-                }, cancel() { incoming.destroy(); } });
-                resolve(new Response(body, { status: incoming.statusCode, headers: { 'Content-Type': 'text/event-stream' } })); return;
+                    incoming.on('data', chunk => { if (!closed) controller.enqueue(new Uint8Array(chunk)); });
+                    incoming.once('end', () => { if (!closed) { closed = true; controller.close(); } });
+                    incoming.once('error', error => { if (!closed) { closed = true; controller.error(error); } });
+                }, cancel() { closed = true; incoming.destroy(); } });
+                resolve(new Response(body, { status: incoming.statusCode, headers })); return;
             }
             const chunks: Buffer[] = [];
             incoming.on('data', chunk => chunks.push(Buffer.from(chunk))); incoming.once('error', reject);
-            incoming.once('end', () => resolve(new Response(Buffer.concat(chunks), { status: incoming.statusCode,
-                headers: Object.fromEntries(Object.entries(incoming.headers).filter(([, value]) => value !== undefined).map(([key, value]) => [key, Array.isArray(value) ? value.join(', ') : String(value)])) })));
+            incoming.once('end', () => resolve(new Response(Buffer.concat(chunks), { status: incoming.statusCode, headers })));
         });
         outgoing.once('error', reject); outgoing.end(init.body instanceof ArrayBuffer ? Buffer.from(init.body) : init.body as string | undefined);
     });

@@ -1,8 +1,7 @@
-import { hasConnectionCredentials } from '@itookit/kernel-adapters/contracts';
+import { hasConnectionCredentials, resolveChatModelForTier, resolveModelForTier } from '@itookit/kernel-adapters/contracts';
 import { SettingsValidationError } from '@itookit/ui-common';
 import { renderProtocolOptions } from './provider-form';
 import { getProviderProtocols } from '@itookit/driver-llm/contracts';
-import { resolveModelForTier } from '@itookit/kernel-adapters/contracts';
 import { showConfigurationForm, addConfigurationAction, addConfigurationEnabled } from './configuration-form';
 import { t } from '@itookit/common';
 // @file: llm-ui/editors/ConnectionSettingsEditor.ts
@@ -22,6 +21,7 @@ import { escapeAttr, escapeHTML } from '@itookit/common';
 
 export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionService> {
     private defaultConnectionId?: string;
+    private connections: ConnectionMeta[] = [];
     private currentEditTiers: Partial<Record<ModelTier, string>> = {};
     private currentEditModelEfforts: Record<string, string> = {};
     private providers: Record<string, LLMProvider> = {};
@@ -36,6 +36,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             this.service.getProviders().map(p => [p.id, p])
         );
         const allConnections = await this.service.getConnections();
+        this.connections = allConnections;
         this.defaultConnectionId = (await this.service.getDefaultConnection())?.id;
         if (this.formOnly) {
             const target = this.options.target;
@@ -44,8 +45,10 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             return;
         }
 
-        // Sort: has-apiKey first → enabled first → alphabetical
+        // Keep the global default visible, then prioritize readiness.
         allConnections.sort((a, b) => {
+            const priority = Number(b.id === this.defaultConnectionId) - Number(a.id === this.defaultConnectionId) || this.connectionRank(a) - this.connectionRank(b);
+            if (priority) return priority;
             if (hasConnectionCredentials(a) && !hasConnectionCredentials(b)) return -1;
             if (!hasConnectionCredentials(a) && hasConnectionCredentials(b)) return 1;
             const aOn = a.enabled !== false;
@@ -203,8 +206,11 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             <div class="conn-provider-divider"></div>
         `;
 
-        // Sort sidebar: providers with hasApiKey connections first, then alphabetical
+        // Keep the default provider first, then enabled and configured providers.
         const sortedProviders = Object.entries(this.providers).sort(([, pa], [, pb]) => {
+            const current = allConnections.find(connection => connection.id === this.defaultConnectionId)?.providerId;
+            const priority = Number(pb.id === current) - Number(pa.id === current) || Number(pa.enabled === false) - Number(pb.enabled === false);
+            if (priority) return priority;
             const aHasKey = allConnections.some(c => (c.providerId) === pa.id && hasConnectionCredentials(c));
             const bHasKey = allConnections.some(c => (c.providerId) === pb.id && hasConnectionCredentials(c));
             if (aHasKey && !bHasKey) return -1;
@@ -246,11 +252,9 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         const disabledStyle = enabled ? '' : 'opacity:0.55;';
 
         let badgeHtml = '';
-        if (isDefault) {
-            badgeHtml = '<span class="settings-badge settings-badge--success">默认</span>';
-        } else if (!hasKey) {
-            badgeHtml = '<span class="settings-badge settings-badge--warning">需配置</span>';
-        }
+        if (isDefault) badgeHtml = `<span class="settings-badge">${t('connection.default')}</span>`;
+        const rank = this.connectionRank(conn);
+        badgeHtml += `<span class="settings-badge settings-badge--${rank ? 'warning' : 'success'}">${t(rank === 2 ? 'connection.status.disabled' : rank ? 'connection.status.pending' : 'connection.status.ready')}</span>`;
 
         const isChecked = this._checkedIds.has(conn.id);
 
@@ -499,6 +503,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         }
 
         const modalContent = `
+            ${this.renderDefaultSummary()}
             <form id="connection-form" class="settings-form">
                 <!-- Provider selection (configure providers in "LLM Providers" settings) -->
                 <div class="settings-form__group">
@@ -637,6 +642,25 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
     private tierModelId(tier: ModelTier, provider: LLMProvider | undefined): string {
         return resolveModelForTier({ tiers: this.currentEditTiers,
             model: provider?.models[0]?.id || '' }, tier);
+    }
+
+    private connectionRank(connection: ConnectionMeta): number {
+        const provider = this.providers[connection.providerId];
+        if (connection.enabled === false || provider?.enabled === false) return 2;
+        return hasConnectionCredentials(connection) && resolveChatModelForTier(connection, provider, 'optimal') ? 0 : 1;
+    }
+
+    private renderDefaultSummary(): string {
+        const current = this.connections.find(item => item.id === this.defaultConnectionId);
+        const rank = current ? this.connectionRank(current) : 1;
+        const label = t(rank === 2 ? 'connection.status.disabled' : rank ? 'connection.status.pending' : 'connection.status.ready');
+        return `<div class="settings-connection-default" role="status">
+            <strong>${t('connection.defaultOther')}</strong>
+            <span>${escapeHTML(current?.name ?? t('connection.unset'))}</span>
+            <span class="settings-badge settings-badge--${rank ? 'warning' : 'success'}">${label}</span>
+            <span>${escapeHTML(current ? resolveModelForTier(current, 'optimal') || '' : '')}</span>
+            <small>${t('connection.defaultHelp')}</small>
+        </div>`;
     }
 
     private renderModelEffort(tier: ModelTier, provider: LLMProvider | undefined): string {

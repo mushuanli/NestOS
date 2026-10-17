@@ -11,7 +11,7 @@ import type { SettingsPort, SettingsWorkspaceSource } from '../settings';
 import type { ToolboxInventory, ToolboxResources, OcrService, ModelConfigurationCommands } from './configuration';
 import type { DigitalTwinService } from './digital-twin';
 import type { ProjectSyncService } from './sync';
-import type { TaskDetail, TaskEventQuery, TaskEventView } from './task-view';
+import type { TaskDetail, TaskEventQuery, TaskEventView, SessionTaskQuery, SessionTaskPage } from './task-view';
 
 /** Frontend consumers receive capabilities, never backend construction dependencies. */
 export interface ApplicationServices {
@@ -41,9 +41,10 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    createSessionDraft(request: SessionDraftRequest): Promise<string>;
     navigationView(options: { root: string; scope: string }): Promise<import('./navigation').NavigationView>;
     warmNavigation(roots: string[]): Promise<void>;
-    workbenchView(options?: { displayedFilesPolicy?: 'gitignore' | 'all'; chatControls?: boolean }): Promise<WorkbenchView>;
+    workbenchView(options?: { displayedFilesPolicy?: 'gitignore' | 'all'; chatControls?: boolean; initialNavigation?: boolean }): Promise<WorkbenchView>;
     openSessionView(sessionId: string): Promise<SessionOpenView>;
     readUiDocuments(names: string[]): Promise<Record<string, unknown>>;
     writeUiDocuments(documents: Record<string, unknown>): Promise<void>;
@@ -62,6 +63,12 @@ export interface ApplicationBackend {
     unmountProject(projectId: string): Promise<void>;
     conversationBranches(folder: string, profileId: string, sessionId: string, options?: OperationOptions): Promise<HarnessSession[]>;
     taskDetails(sessionId: string, taskId: string): Promise<TaskDetail>;
+    sessionTasks(sessionId: string, options?: SessionTaskQuery): Promise<SessionTaskPage>;
     taskEvents(sessionId: string, taskId: string, options?: TaskEventQuery): Promise<TaskEventView>;
+}
+export interface SessionDraftRequest {
+    title: string;
+    inputText: string;
+    source?: { projectFolder?: string; sessionId?: string };
 }
 export interface ApplicationClient { services: ApplicationServices; backend: ApplicationBackend }

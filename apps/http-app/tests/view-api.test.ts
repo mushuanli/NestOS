@@ -7,7 +7,7 @@ import { openLocalFSBackend, type LocalFSBackend } from '@itookit/vfsdriver-loca
 import { createApplicationApi } from '@itookit/node-host/http';
 import { createCertificates } from '@itookit/node-host/http';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
-import { HttpViewClient } from '@itookit/app-transport/http';
+import { HttpViewClient, ViewExpiredError } from '@itookit/app-transport/http';
 import { authenticatedFetch, close, secureServers } from './tls-fixture';
 
 let certificateRoot: string, certificates: string, directory: string, backend: LocalFSBackend;
@@ -41,6 +41,21 @@ it('keeps browser bindings separate while both views share the same persisted ba
     expect(first.services.sessionManager.getSnapshot().sessionId).toBe(id1);
     expect(second.services.sessionManager.getSnapshot().sessionId).toBe(id2);
     expect(await second.services.sessionRepository.getManifest(id1)).toHaveProperty('title', 'First');
+});
+it('uses backend draft creation and navigation projections across browsers with an awaited refresh barrier', async () => {
+    const first = await client('draft-writer'), second = await client('navigation-reader');
+    const project = await first.services.projects.create('Shared project');
+    const id = await first.backend.createSessionDraft({ title: 'Quoted document', inputText: 'Keep the original draft', source: { projectFolder: project.path } });
+    expect((await second.services.sessionRepository.getUIState(id))?.branchDrafts?.main?.inputText).toBe('Keep the original draft');
+    const navigation = await second.services.projects.navigation({ path: '/' + id });
+    expect(navigation.project?.project.id).toBe(project.project.id); expect(navigation.loadPaths).toHaveLength(1);
+    expect((second.services as any).acquireConversation).toBeUndefined();
+    const view = await second.backend.workbenchView({ initialNavigation: false });
+    try {
+        const refreshed = view.browser.invalidateNavigation(); expect(refreshed).toBeInstanceOf(Promise); await refreshed;
+        expect((await view.browser.fs.driver.getChildren(navigation.loadPaths[0])).map(row => row.metadata.title)).toContain('Quoted document');
+        expect((await second.backend.sessionTasks(id)).items).toEqual([]);
+    } finally { await view.browser.dispose(); }
 });
 it('rejects incompatible protocols, forged capabilities and cross-origin commands', async () => {
     const post = (body: object, headers: object = {}) => auth.fetcher(server.origin + '/api/application', { method: 'POST', headers: { 'Content-Type': 'application/json', ...headers }, body: JSON.stringify(body) });
@@ -124,4 +139,66 @@ it('records registered RPC names and batch size without recording UI document co
     await Promise.all([root.services.projects.list(), root.services.digitalTwin!.getSettings()]);
     expect(auditEvents).toContainEqual(expect.objectContaining({ rpcKind: 'queries', rpcBatchSize: 2,
         rpcOperations: ['ProjectService.list', 'DigitalTwinService.getSettings'] }));
+});
+
+it('resumes the same view and replays missed configuration updates and callbacks once', async () => {
+    let online = true, disconnect!: () => void;
+    const requests: string[] = [], restored = vi.fn(), disconnected = vi.fn(), changed = vi.fn();
+    const fetcher: typeof fetch = async (input, init) => {
+        requests.push(init?.body ? JSON.parse(String(init.body)).kind : String(input));
+        if (!online) throw new TypeError('Offline');
+        const response = await auth.fetcher(input, init);
+        if (!String(input).includes('/events?')) return response;
+        const pipe = new TransformStream<Uint8Array>(), abort = new AbortController(); disconnect = () => abort.abort();
+        void response.body!.pipeTo(pipe.writable, {signal: abort.signal}).catch(() => {});
+        return new Response(pipe.readable, {headers: response.headers});
+    };
+    const peer = new HttpViewClient('resume', server.origin + '/api/application', fetcher, disconnected, undefined, restored); clients.push(peer);
+    const first = await peer.start(), writer = await client('resume-writer');
+    const stop = first.services.agentService.onChange(changed);
+    await vi.waitFor(() => expect(requests).toContain('bindings'));
+    online = false; disconnect();
+    await vi.waitFor(() => expect(disconnected).toHaveBeenCalledOnce());
+    await writer.services.agentService.saveProvider({id: 'missed', name: 'During interruption', implementation: 'openai-compatible', baseURL: 'https://example.test', models: []});
+    await new Promise(resolve => setTimeout(resolve, 40));
+    online = true; peer.retryConnection();
+    await vi.waitFor(() => expect(restored).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(first.services.agentService.getProvider('missed')?.name).toBe('During interruption'));
+    await vi.waitFor(() => expect(changed).toHaveBeenCalledOnce());
+    expect(requests.filter(request => request === 'bootstrap')).toHaveLength(1);
+    expect(requests.some(request => request.includes('&after='))).toBe(true); stop();
+});
+
+it('stops old-handle requests after the view expires, including binary file requests', async () => {
+    const fetcher = vi.fn(auth.fetcher), disconnected = vi.fn();
+    const peer = new HttpViewClient('lost-view', server.origin + '/api/application', fetcher, disconnected); clients.push(peer);
+    const root = await peer.start(), fs = await root.services.vfs.openFileSystem('/home/admin/minds');
+    await auth.fetcher(server.origin + '/api/application', {method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({kind: 'close', clientId: 'lost-view', version: RPC_VERSION})});
+    await vi.waitFor(() => expect(disconnected.mock.calls.some(([error]) => error instanceof ViewExpiredError)).toBe(true));
+    const count = fetcher.mock.calls.length;
+    await expect(root.services.projects.list()).rejects.toMatchObject({code: 'ECAPABILITY'});
+    await expect(fs.driver.readContent('/missing', {encoding: 'binary'})).rejects.toMatchObject({code: 'ECAPABILITY'});
+    await expect(root.services.projects.sessions.create('Never sent', null)).rejects.toMatchObject({code: 'ECAPABILITY'});
+    expect(fetcher).toHaveBeenCalledTimes(count);
+    const response = await auth.fetcher(server.origin + `/api/application/events?clientId=lost-view&after=0&version=${RPC_VERSION}`);
+    expect(response.status).toBe(400); expect(response.headers.get('X-MindOS-View-Expired')).toBe('1');
+});
+
+it('does not replay a command whose response was lost even after reconnecting successfully', async () => {
+    let loseResponse = false, writes = 0;
+    const restored = vi.fn(), fetcher: typeof fetch = async (input, init) => {
+        const response = await auth.fetcher(input, init);
+        if (loseResponse && init?.body && JSON.parse(String(init.body)).kind === 'call') {
+            writes++; loseResponse = false; await response.body?.cancel(); throw new TypeError('Response lost');
+        }
+        return response;
+    };
+    const peer = new HttpViewClient('unknown-outcome', server.origin + '/api/application', fetcher, () => {}, undefined, restored); clients.push(peer);
+    const root = await peer.start(); loseResponse = true;
+    await expect(root.services.projects.sessions.create('Create only once', null)).rejects.toThrow('Response lost');
+    await vi.waitFor(() => expect(restored).toHaveBeenCalledOnce());
+    expect(writes).toBe(1);
+    const {sessions} = await root.services.projects.sessions.navigation();
+    expect(sessions.filter(session => session.title === 'Create only once')).toHaveLength(1);
 });

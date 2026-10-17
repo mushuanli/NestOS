@@ -24,9 +24,13 @@
 }
 
 .settings-connection-card--default {
-    border-color: var(--st-color-success);
-    background: #f0fdf4;
+    border-color: var(--st-color-primary);
+    background: var(--st-bg-primary);
 }
+
+.settings-connection-default { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; border-left: 3px solid var(--st-color-primary); padding: 10px 14px; margin: 0 0 20px; background: var(--st-bg-secondary); }
+.settings-connection-default strong { color: var(--st-color-primary); }
+.settings-connection-default small { width: 100%; color: var(--st-text-secondary); line-height: 1.5; }
 
 .settings-connection-card--incomplete {
     border-color: var(--st-color-warning, #f59e0b);

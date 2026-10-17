@@ -732,7 +732,7 @@ HTTP 浏览器通过共享服务接口和显式能力传输调用 daemon，完�
 应用门面位于 [application-client](../backend/app-core/src/host/application-client.ts)，前端消费 [ApplicationClient 契约](../shared/app-contracts/src/ports/application-client.ts)。宿主内部直接构造领域服务，不再保留 LocalBackendPort 工厂表。工作台、工具箱和任务读模型在后端聚合；[ViewScope](../backend/app-core/src/host/view-scope.ts) 管理视图资源并移除已释放对象。具体策略/机制图见 [前后端模块](design/frontend-backend-modules.md)。
 
 
-应用视图的业务装配由 app-core/host 统一完成：workbench-view 聚合导航和当前项目，session-view 分离准备文件租约与激活会话绑定；旧编辑器保存后才激活新绑定，关闭视图不取消后台任务。bindLocalApplicationServices 统一先通过 openConversation 准备持久会话，再等待租约，Web/Tauri/HTTP 使用同一规则。连接探测共享观察兴趣，UI 不再枚举项目轮询；远端状态的闲置缓存按授权身份和 TTL 失效。UI 文档仅按名字批量读写，存储 upsert 在后端，布局格式由 UI 解释。端口与 C4 图见 [HTTP 业务装配](http-app.md#业务装配与后台缓存)。
+应用视图的业务装配由 app-core/host 统一完成：workbench-view 聚合导航和当前项目，session-view 分离准备文件租约与激活会话绑定；旧编辑器保存后才激活新绑定，关闭视图不取消后台任务。bindLocalApplicationServices 统一先通过 openConversation 准备持久会话，再等待租约；临时准备完成释放观察引用，SessionOpenView 另持有观察租约至文件视图关闭。无引用上下文由宿主按闲置期限与缓存容量回收，回收前核对持久任务和外部副作用，Web/Tauri/HTTP 使用同一规则。连接探测共享观察兴趣，UI 不再枚举项目轮询；远端状态的闲置缓存按授权身份和 TTL 失效。UI 文档仅按名字批量读写，存储 upsert 在后端，布局格式由 UI 解释。端口与 C4 图见 [HTTP 业务装配](http-app.md#业务装配与后台缓存)。
 
 
 ### 导航读模型与短期元数据缓存

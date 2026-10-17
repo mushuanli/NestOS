@@ -1,5 +1,6 @@
-import type { ServerResponse } from 'node:http';
 import type { Call, Reply } from '@itookit/app-transport/rpc';
+
+interface NotificationStream { destroyed: boolean; writableLength: number; write(frame: string): unknown; end(): unknown; }
 
 /** Preserve event order while computing and transmitting one view update per short batch. */
 export class ViewNotifications {
@@ -11,7 +12,7 @@ export class ViewNotifications {
     private inFlight = 0;
     private queuedBytes = 0;
     private inFlightBytes = 0;
-    constructor(private readonly stream: () => ServerResponse | undefined, private readonly refresh: () => Promise<Reply['updates']>,
+    constructor(private readonly stream: () => NotificationStream | undefined, private readonly refresh: () => Promise<Reply['updates']>,
         private readonly report: (error: unknown) => void, private readonly delay = 16) {}
     enqueue(call?: Call): Promise<Reply> {
         const stream = this.stream();

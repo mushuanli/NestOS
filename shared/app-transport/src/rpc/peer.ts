@@ -9,7 +9,7 @@ import { applyDescriptorPatch, descriptorChanges, type DescriptorPatch } from '.
 const FUNCTION: CapabilitySchema = { markers: [], fields: [], methods: { call: 'async' } };
 const OWNED: CapabilitySchema = { markers: [], fields: ['fs', 'context', 'attachments', 'initialData'], methods: {
     dispose: 'async', release: 'async', put: 'async', read: 'async', save: 'async', clear: 'async', prepare: 'async',
-    next: 'async', return: 'async', transferItems: 'async', readFileDirectory: 'async', invalidateNavigation: 'notify' } };
+    next: 'async', return: 'async' } };
 type Handle = { value: any; kind: string; schema: CapabilitySchema; retired?: boolean };
 /** Both sides transport only explicit capabilities and data, never executable source. */
 export class RpcPeer {

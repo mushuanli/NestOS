@@ -10,10 +10,11 @@ import { json, readJson, readBytes } from './http-response';
 import { MAX_BODY_BYTES } from '@itookit/app-transport/rpc';
 import { createHostedView, type HostedView } from './view-services';
 import { ViewNotifications } from './view-notifications';
+import { ViewEventStream } from './view-event-stream';
 import type { AuditPort } from '../logging/audit-log';
 
 interface Client { peer: RpcPeer; view: HostedView; stream?: ServerResponse; lastSeen: number; active: number;
-    initialized: boolean; notifications: ViewNotifications;
+    initialized: boolean; notifications: ViewNotifications; events: ViewEventStream;
     pending: Map<string, { resolve(reply: Reply): void; reject(error: Error): void; timer: ReturnType<typeof setTimeout> }>; }
 /** A certificate-scoped browser view owns subscriptions; the daemon owns execution. */
 export class ViewApi {
@@ -99,34 +100,45 @@ export class ViewApi {
     }
     private async requireClient(identity: string, response: ServerResponse): Promise<Client> {
         const ready = this.clients.get(identity), client = ready && await ready;
-        if (client?.initialized) return client;
+        if (client?.initialized && !client.events.destroyed) return client;
         response.setHeader('X-MindOS-View-Expired', '1');
         throw new FSError('ECAPABILITY', 'View expired; reload the page');
     }
     private async createClient(): Promise<Client> {
         const view = await createHostedView(await this.runtime);
-        const client = { view, lastSeen: Date.now(), active: 0, initialized: false, pending: new Map() } as Client;
+        const client = { view, lastSeen: Date.now(), active: 0, initialized: false, pending: new Map(), events: new ViewEventStream() } as Client;
         client.peer = new RpcPeer('server', async call => {
             if (call.notification) return client.notifications.enqueue(call);
-            if (!client.stream || client.stream.destroyed) throw new FSError('EIO', 'View event stream is disconnected');
+            if (client.events.destroyed) throw new FSError('EIO', 'View event stream is disconnected');
             if (client.pending.size >= 128) throw new FSError('EBUSY', 'Too many active view callbacks');
             const id = randomUUID(), updates: Reply['updates'] = [];
             return new Promise<Reply>((resolve, reject) => {
-                const timer = setTimeout(() => { client.pending.delete(id); reject(new FSError('EIO', 'View callback timed out')); }, 30000);
+                const timer = setTimeout(() => { client.pending.delete(id); client.events.end(); reject(new FSError('EIO', 'View callback timed out')); }, 30000);
                 client.pending.set(id, { resolve, reject, timer });
-                client.stream!.write(`data: ${JSON.stringify({ id, call, updates })}\n\n`);
+                client.events.write(`data: ${JSON.stringify({ id, call, updates })}\n\n`);
             });
         }, error => console.warn('[View] Callback failed', error), undefined, domains => view.prepare(client.peer, domains));
-        client.notifications = new ViewNotifications(() => client.stream, () => client.initialized ? client.peer.refresh() : Promise.resolve([]), error => console.warn('[View] Notifications failed', error));
+        client.notifications = new ViewNotifications(() => client.events, () => client.initialized ? client.peer.refresh() : Promise.resolve([]), error => console.warn('[View] Notifications failed', error));
         client.peer.onInvalidated(() => { void client.notifications.enqueue(); });
         return client;
     }
     private async stream(request: IncomingMessage, response: ServerResponse, url: URL, authorize?: () => Promise<boolean>): Promise<void> {
         if (request.method !== 'GET') throw new FSError('EINVAL', 'Expected event subscription');
-        const client = await this.client(this.identity(request, url.searchParams.get('clientId')));
-        client.stream?.end(); client.stream = response;
-        response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive' });
+        const identity = this.identity(request, url.searchParams.get('clientId')), resume = url.searchParams.has('after');
+        if (resume && url.searchParams.get('version') !== String(RPC_VERSION)) {
+            response.setHeader('X-MindOS-View-Expired', '1');
+            throw new FSError('ECAPABILITY', 'Unsupported view protocol version');
+        }
+        const client = await (resume ? this.requireClient(identity, response) : this.client(identity));
+        const after = resume ? Number(url.searchParams.get('after')) : 0;
+        if (!client.events.canResume(after)) {
+            response.setHeader('X-MindOS-View-Expired', '1');
+            throw new FSError('ECAPABILITY', 'View event history expired; reload the page');
+        }
+        client.lastSeen = Date.now(); client.stream = response;
+        response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-MindOS-View-Resume': '1' });
         response.write(': connected\n\n');
+        client.events.attach(response, after, resume || url.searchParams.get('resume') === '1');
         const timer = setInterval(() => {
             void (authorize?.() ?? Promise.resolve(true)).then(accepted => {
                 if (!accepted) { response.end(); return; } client.lastSeen = Date.now(); response.write(': heartbeat\n\n');
@@ -142,7 +154,7 @@ export class ViewApi {
     }
     private async release(identity: string): Promise<void> {
         const ready = this.clients.get(identity); if (!ready) return; this.clients.delete(identity);
-        const client = await ready; client.notifications.close(); client.stream?.end();
+        const client = await ready; client.notifications.close(); client.events.end();
         for (const pending of client.pending.values()) { clearTimeout(pending.timer); pending.reject(new Error('View closed')); }
         client.pending.clear(); await client.peer.close(); await client.view.close();
     }

@@ -134,7 +134,8 @@ class SessionRepository implements ISessionRepository {
     subscribe(listener: (change?: SessionRepositoryChange) => void): () => void;
 
     // 会话生命周期
-    createSession(title: string, folder?: string | null): Promise<string>;   // 返回 sessionId
+    createSession(title: string, folder?: string | null, parentSessionId?: string | null,
+        initialState?: ConversationUIState): Promise<string>;   // 返回 sessionId
     ensureSession(id: string, title: string, origin?: SessionOrigin, folder?: string | null): Promise<string>;
 
     // Manifest / 列表 / 删除

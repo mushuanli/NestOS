@@ -85,7 +85,7 @@ export interface ISessionRepository extends SessionDeletionStore {
     init(): Promise<void>;
     dispose(): Promise<void>;
     subscribe(listener: (change?: SessionRepositoryChange) => void): () => void;
-    createSession(title: string, folder?: string | null, parentSessionId?: string | null): Promise<string>;
+    createSession(title: string, folder?: string | null, parentSessionId?: string | null, initialState?: ConversationUIState): Promise<string>;
     /** Idempotently create a Session with a host-supplied durable identity. */
     ensureSession(id: string, title: string, origin?: SessionOrigin, folder?: string | null): Promise<string>;
     getManifest(sessionId: string): Promise<ConversationManifest>;

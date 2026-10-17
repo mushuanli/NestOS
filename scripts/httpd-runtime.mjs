@@ -33,14 +33,14 @@ export function copySource(root, destination, files = sourceFiles(root)) {
     }
 }
 
-export function runtimePaths(mode, id = 'current', env = process.env) {
+export function runtimePaths(mode, env = process.env) {
     const config = path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'mindos');
-    const logs = path.join(config, 'logs', 'http', mode, id);
-    return { config, logs, audit: path.join(logs, `httpd-${mode}-audit.jsonl`), runtime: path.join(logs, `httpd-${mode}-runtime.log`),
+    const logs = path.resolve(env.MINDOS_HTTPD_LOG_DIR || '/var/log/mindos'), prefix = mode === 'dev' ? 'httpd.debug' : 'httpd';
+    return { config, logs, audit: path.join(logs, `${prefix}.audit.jsonl`), runtime: path.join(logs, `${prefix}.runtime.log`),
         auth: path.join(config, 'http-auth', mode), developmentRoot: path.join(config, 'http-dev', 'data') };
 }
-export function hostArguments(mode, id, args, env = process.env) {
-    const paths = runtimePaths(mode, id, env);
+export function hostArguments(mode, args, env = process.env) {
+    const paths = runtimePaths(mode, env);
     const values = [...args];
     const add = (name, value) => { if (!args.some(arg => arg === name || arg.startsWith(name + '='))) values.push(name, value); };
     add('--audit-file', paths.audit); add('--auth-dir', paths.auth);

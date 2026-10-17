@@ -75,10 +75,11 @@ pi-agent 0.1.5+ 的 Codex/Claude profile 声明 `capabilities.usage`，提供只
 | CLI 本地 | `<config>/logs/cli/cli-local-<timestamp>-<pid>.jsonl` 与 `cli-local-<pid>-audit.jsonl` |
 | CLI 连接 httpd | `<config>/logs/cli/cli-remote-<timestamp>-<pid>.jsonl`；服务端审计仍写 httpd 自己的文件 |
 | CLI `-d` | `<config>/logs/cli/httpd-cli-<timestamp>-<pid>.jsonl`、`<config>/logs/http/httpd-cli-audit.jsonl` |
-| httpd dev/release | `<config>/logs/http/<mode>/<release-id>/httpd-<mode>-runtime.log` 与 `httpd-<mode>-audit.jsonl` |
+| httpd release | `/var/log/mindos/httpd.runtime.log` 与 `/var/log/mindos/httpd.audit.jsonl` |
+| httpd dev | `/var/log/mindos/httpd.debug.runtime.log` 与 `/var/log/mindos/httpd.debug.audit.jsonl` |
 | Tauri dev/release | `<config>/logs/desktop/tauri-<mode>-<timestamp>-<pid>.jsonl`；LLM 元数据位于 `<data>/var/log/llm/tauri-<mode>-<session>.json` |
 | pi-agent 0.1.4+ | pi-agent 配置文件同级 `logs/pi-agent-<启动时间>-<pid>.jsonl`；默认每份 10 MiB、每次启动最多 5 份，`[logging]` 可配置 |
 
-`<config>` 遵循 XDG_CONFIG_HOME。CLI 的 `MINDOS_DIAGNOSTICS_DIR` 只覆盖诊断目录，`--audit-file` 只覆盖当前宿主审计路径。新应用诊断记录操作阶段、错误码、提交结果和请求 ID，不写 prompt、消息正文或凭据。旧日志不删除。
+`<config>` 遵循 XDG_CONFIG_HOME。httpd 的 `MINDOS_HTTPD_LOG_DIR` 覆盖运行与审计日志目录；系统默认目录需先授权给运行用户，准备命令和运行版本查询见 [HTTP 宿主](http-app.md#启动与认证)。CLI 的 `MINDOS_DIAGNOSTICS_DIR` 只覆盖诊断目录，`--audit-file` 只覆盖当前宿主审计路径。新应用诊断记录操作阶段、错误码、提交结果和请求 ID，不写 prompt、消息正文或凭据。旧日志不删除。
 
 已有 `run/resume/respond` 等 YAML/RunDefinition 离线执行命令继续使用 `createKernelRuntime` 和自己的 RunStore 工件；它们不是应用 Session 命令，不支持 `--connect`，不能将旧 run-id 当作应用 session-id。`twin` 使用本地共享应用 Runtime；旧 memory/fs 辅助入口按原作用域执行。

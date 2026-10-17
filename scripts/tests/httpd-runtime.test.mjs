@@ -56,15 +56,35 @@ test('captures source bytes independently and detects edits during a release bui
 
 test('release and development isolate logs, credentials, ports and development data', () => {
     const env = { XDG_CONFIG_HOME: '/tmp/mindos-config' };
-    const release = runtimePaths('release', 'v1', env), development = runtimePaths('dev', 'working-tree', env);
+    const release = runtimePaths('release', env), development = runtimePaths('dev', env);
+    assert.equal(release.runtime, '/var/log/mindos/httpd.runtime.log');
+    assert.equal(release.audit, '/var/log/mindos/httpd.audit.jsonl');
+    assert.equal(development.runtime, '/var/log/mindos/httpd.debug.runtime.log');
+    assert.equal(development.audit, '/var/log/mindos/httpd.debug.audit.jsonl');
     assert.notEqual(release.audit, development.audit); assert.notEqual(release.auth, development.auth);
-    const dev = hostArguments('dev', 'working-tree', [], env), prod = hostArguments('release', 'v1', [], env);
+    const dev = hostArguments('dev', [], env), prod = hostArguments('release', [], env);
     assert.equal(dev[dev.indexOf('--port') + 1], '2001');
     assert.equal(dev[dev.indexOf('--root') + 1], development.developmentRoot);
     assert.ok(!prod.includes('--root')); assert.ok(!prod.includes('--port'));
-    const overridden = hostArguments('dev', 'working-tree', ['--port=3000', '--root', '/tmp/explicit'], env);
+    const overridden = hostArguments('dev', ['--port=3000', '--root', '/tmp/explicit'], env);
     assert.equal(overridden.filter(value => value.startsWith('--port')).length, 1);
     assert.equal(overridden.filter(value => value === '--root').length, 1);
+});
+test('redirects both httpd logs without moving config and preserves an explicit audit file', () => {
+    const env = { XDG_CONFIG_HOME: '/tmp/mindos-config', MINDOS_HTTPD_LOG_DIR: '/tmp/mindos-logs' };
+    for (const mode of ['release', 'dev']) {
+        const paths = runtimePaths(mode, env), defaults = runtimePaths(mode, { XDG_CONFIG_HOME: env.XDG_CONFIG_HOME });
+        assert.equal(paths.logs, env.MINDOS_HTTPD_LOG_DIR);
+        assert.equal(path.dirname(paths.runtime), paths.logs); assert.equal(path.dirname(paths.audit), paths.logs);
+        assert.equal(paths.auth, defaults.auth); assert.equal(paths.config, defaults.config);
+        const args = hostArguments(mode, [], env);
+        assert.equal(args[args.indexOf('--audit-file') + 1], paths.audit);
+        for (const explicit of [['--audit-file', '/tmp/custom.jsonl'], ['--audit-file=/tmp/custom.jsonl']]) {
+            const overridden = hostArguments(mode, explicit, env);
+            assert.equal(overridden.filter(value => value.startsWith('--audit-file')).length, 1);
+            assert.deepEqual(overridden.slice(0, explicit.length), explicit);
+        }
+    }
 });
 test('rejects modified release bytes and path traversal before startup', () => {
     const directory = mkdtempSync(path.join(tmpdir(), 'httpd-manifest-'));

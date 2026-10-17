@@ -14,6 +14,7 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 - `_meta` 和 LocalFS rename journal 是宿主内部路径，不向客户端暴露。
 
 - `pnpm httpd:build` 生成独立 release；根目录 `pnpm httpd` 直接运行选定 release，`pnpm httpd:dev` 默认端口 2001、独立数据/凭据/日志；默认读取共享 `mindos.json`（遵循 XDG_CONFIG_HOME），数据根优先级为 --root → MINDOS_ROOT → rootDir → 配置目录/data。
+- 默认排查 release 日志 `/var/log/mindos/httpd.runtime.log` 和 `/var/log/mindos/httpd.audit.jsonl`；目录可由 `MINDOS_HTTPD_LOG_DIR` 覆盖，审计可由 `--audit-file` 覆盖。当前运行版本以认证后的 `/api/health` 返回值为准，`release/httpd/current.json` 仅选择下次启动版本。
 - 对外默认 HTTPS 0.0.0.0:2000，TLS 强制验证客户端证书和 clients.json 的 SHA-256 指纹；不能提供无认证降级。只保留一个 HTTPS 监听；LocalFS/SQLite 由 Runtime 直接使用，--internal-port 已移除。
 - 证书、CA 私钥、浏览器导入包及审计日志必须保存在 VFS 数据根之外；证书不能置于静态目录。日志仅记录认证与请求元数据，不记录请求头、参数、文件正文、模型消息和密钥。
 - `audit-log` 的 JSONL 文件权限 0600；每份 10 MiB，保留当前及 3 份轮转记录。客户端证书撤销在下一次 HTTP 请求重新核对，包括已有连接。

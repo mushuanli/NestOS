@@ -67,9 +67,9 @@ function serve(mode, args) {
         directory = releaseDirectory(releases, id); verifyRelease(directory); entry = path.join(directory, 'server/main.js');
     } else run('pnpm', ['exec', 'vite', 'build', '--outDir', developmentUI, '--emptyOutDir'], app);
     const command = process.execPath;
-    const values = hostArguments(mode, id, args);
+    const values = hostArguments(mode, args);
     const childArgs = mode === 'release' ? [entry, ...values] : ['--import', createRequire(path.join(app, 'package.json')).resolve('tsx'), entry, '--static', developmentUI, ...values];
-    const file = runtimePaths(mode, id).runtime, output = runtimeLog(file);
+    const file = runtimePaths(mode).runtime, output = runtimeLog(file);
     const banner = `HTTP mode: ${mode}\nVersion: ${id}\nRuntime log: ${file}`; console.log(banner); output.write(Buffer.from(banner + '\n'));
     const child = spawn(command, childArgs, { cwd: directory, stdio: ['inherit', 'pipe', 'pipe'], detached: true,
         env: { ...hostEnvironment(), INIT_CWD: root, MINDOS_HTTPD_MODE: mode, MINDOS_HTTPD_VERSION: id } });

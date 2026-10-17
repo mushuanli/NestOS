@@ -150,7 +150,30 @@ pnpm httpd:activate <版本ID>   # 下次启动使用此版本
 
 release 保存在 `release/httpd/<版本ID>/`，包括固定的服务端、UI 与运行依赖副本，启动校验服务端/UI 校验和及 Node 主版本。依赖打包在临时源码副本执行，不修改开发工作区的 node_modules；构建中源码发生变化则拒绝激活。保留旧版本可回滚，正在运行的进程继续使用原版本和对应静态资源。第一次从旧 tsx 启动方式迁移时，需要先结束原实例再启动 release；不能让两个宿主同时使用真实数据。后续版本切换在下次启动生效。
 
-release 沿用原 profile 数据；dev 默认使用 `<configDir>/http-dev/data`，忽略原 profile 数据根。两者的 OAuth 凭据分别在 `<configDir>/http-auth/release` 与 `dev`；审计和控制台日志分别在 `<configDir>/logs/http/<模式>/<版本ID>/httpd-<模式>-audit.jsonl` 与 `httpd-<模式>-runtime.log`，每份 10 MiB、保留 3 份轮转。显式 CLI 参数可覆盖默认路径和端口。数据根和凭据目录分别以 SQLite 排他锁防止新宿主重复打开，崩溃后由操作系统释放。
+release 沿用原 profile 数据；dev 默认使用 `<configDir>/http-dev/data`，忽略原 profile 数据根。两者的 OAuth 凭据分别在 `<configDir>/http-auth/release` 与 `dev`。数据根和凭据目录分别以 SQLite 排他锁防止新宿主重复打开，崩溃后由操作系统释放。
+
+默认排查 release 日志：运行日志 `/var/log/mindos/httpd.runtime.log`，审计日志 `/var/log/mindos/httpd.audit.jsonl`。dev 使用同目录的 `httpd.debug.runtime.log` 和 `httpd.debug.audit.jsonl`。目录和文件名不包含版本 ID，切换 release 后继续追加；版本 ID 保留在运行日志的启动记录中。每份 10 MiB，保留当前文件及追加 `.1`、`.2`、`.3` 的轮转文件，文件权限 0600。旧版本目录中的日志不自动迁移或删除。
+
+系统部署时先创建由服务运行用户拥有的目录。以下命令用于以当前用户运行的服务；独立服务账号应替换 owner/group：
+
+```bash
+sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" /var/log/mindos
+pnpm httpd
+```
+
+目录不可写时启动失败。可用 `MINDOS_HTTPD_LOG_DIR=/path/to/logs pnpm httpd` 同时覆盖运行与审计日志目录，`--audit-file` 单独覆盖审计文件；配置、凭据和数据路径仍按原规则解析。相对日志目录按启动工作目录解析。
+
+查询当前运行版本需要使用已登记的客户端证书，访问证书覆盖的实际主机地址：
+
+```bash
+cert_dir="${XDG_CONFIG_HOME:-$HOME/.config}/mindos/http-certs"
+curl --fail --silent --show-error --cacert "$cert_dir/ca.crt" \
+  --cert "$cert_dir/client.crt" --key "$cert_dir/client.key" \
+  https://127.0.0.1:2000/api/health
+tail -n 100 /var/log/mindos/httpd.runtime.log
+```
+
+健康检查返回 `{"ready":true,"mode":"release","version":"<release-id>"}`，其中 `version` 才是当前服务版本。版本 ID 为 `<UTC构建时间 YYYYMMDDTHHmmss>-<Git提交前8位>[-dirty]`，例如 `20261017T100615-b109df0a-dirty`；`dirty` 表示构建时存在未提交修改。运行日志中最新的 `Version:` 记录可用于核对启动版本，但进程退出后仍保留。`release/httpd/current.json` 只指定下次启动选择，不证明当前服务已切换；修改日志目录后，日志查询命令也应使用新目录。
 
 httpd 使用 `startupMode: 'server'`：LLM 配置与设备、MCP 首次自动连接尝试、依赖的项目目录、Skill、Agent、会话调用恢复和项目草稿初始化完成后才创建监听。失败向启动入口传播，关闭 Runtime、存储、日志并释放目录锁，不打印服务已启动，也不开放健康检查。远端 MCP 首次尝试失败作为已观测的连接状态保留，不要求所有远端服务可达；持续任务恢复、周期扫描与分身分析不等待业务运行结束。Web/Tauri 的交互式延迟初始化策略保持独立。
 
@@ -158,7 +181,9 @@ httpd 使用 `startupMode: 'server'`：LLM 配置与设备、MCP 首次自动连
 
 数据根优先级：`--root` → `MINDOS_ROOT` → mindos.json 的 rootDir → 配置目录/data。配置目录遵循 XDG_CONFIG_HOME，默认 `~/.config/mindos`。SQLite 默认保存在 `<root>/_meta/index.db`；`--sidecar` 可以指定数据根之外的位置。`--internal-port` 已移除。
 
-审计仅记录请求和认证元数据，不记录正文、参数、消息或凭据。服务器退出先结束事件连接，再关闭视图、Runtime、存储和日志。原生目录选择、Shell/TTY、存储快照等平台能力由宿主注入；统一界面不意味着 Node、浏览器和 Tauri 的平台权限相同。
+审计仅记录请求和认证元数据，不记录正文、参数、消息或凭据。服务器退出记录 `server.stopping`，先结束 SSE 并停止接入，最多等待 5 秒排空 HTTP 连接，随后关闭残留连接并记录 `server.stopped`，再关闭视图、Runtime、存储、日志和锁。完整释放后运行日志输出 `HTTP host stopped; data and credential locks released`。原生目录选择、Shell/TTY、存储快照等平台能力由宿主注入；统一界面不意味着 Node、浏览器和 Tauri 的平台权限相同。
+
+`pgrep -af 'httpd.mjs|server/main.js'` 按完整命令行查找宿主；`pgrep -l httpd` 可能漏掉进程名为 node/node-MainThread 的实例。可用 `lslocks --pid <PID>` 核对持锁路径。数据锁位于 `<root>/_meta/httpd-host-lock.sqlite`，凭据锁位于 `<authDir>/httpd-host-lock.sqlite`；进程退出时由操作系统自动释放，锁文件保留不表示仍被占用。停机后应确认旧进程结束再启动新实例，不通过删除锁文件绕过独占保护。
 
 ## ChatGPT 订阅授权
 
@@ -172,7 +197,7 @@ httpd 注入私有 `ProviderAuthorizationHost`，负责 PKCE、state、nonce、O
 
 私有凭据目录权限 0700、文件 0600，必须位于数据根和静态目录之外；注销后保留客户端注册身份，清除本地令牌，远端撤销未确认时明确提示。授权流程、刷新和 RPC 用签名模拟响应验证，尚未使用真实订阅账号验收。
 
-授权交换失败写入当前模式的 `httpd-<模式>-audit.jsonl` 的 `provider.authorization.failed` 事件，`operation` 区分客户端注册检查、令牌交换、令牌结构/权限校验、OIDC 身份校验、账号核对和凭据保存；记录耗时、HTTP 状态及白名单错误分类，合法的远端请求 ID 作为 `providerRequestId` 保留。上游错误正文、异常原文、回调 URL、授权码及令牌不写日志。授权成功保存后记录 `provider.authorization.completed`。回调结果页的 HTTP 200 仅表示结果页已返回，页面正文才表明授权结果；已有账号在重新授权失败后保持可用，结果页仍明确报告本次失败。
+授权交换失败写入当前宿主审计文件（release 默认为 `/var/log/mindos/httpd.audit.jsonl`）的 `provider.authorization.failed` 事件，`operation` 区分客户端注册检查、令牌交换、令牌结构/权限校验、OIDC 身份校验、账号核对和凭据保存；记录耗时、HTTP 状态及白名单错误分类，合法的远端请求 ID 作为 `providerRequestId` 保留。上游错误正文、异常原文、回调 URL、授权码及令牌不写日志。授权成功保存后记录 `provider.authorization.completed`。回调结果页的 HTTP 200 仅表示结果页已返回，页面正文才表明授权结果；已有账号在重新授权失败后保持可用，结果页仍明确报告本次失败。
 
 身份字段校验使用独立错误分类区分 issuer、audience、authorized party、过期时间、签发时间、生效时间、subject 及 nonce 缺失/不匹配，不记录字段值。`aud` 可以是包含当前客户端的字符串或字符串数组；单元素数组不强制要求 `azp`，多个 audience 时要求 `azp`，提供的 `azp` 必须匹配当前客户端。身份校验始终在签名验证成功后执行，失败不保存凭据。
 

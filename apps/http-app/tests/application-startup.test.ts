@@ -1,8 +1,9 @@
 import { afterAll, afterEach, beforeAll, expect, it, vi } from 'vitest';
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServer, connect } from 'node:net';
+import { request } from 'node:https';
 import { VFSAgentService } from '../../../backend/llm-session/src/index';
 import { startHost, type HttpHostOptions } from '@itookit/node-host/http';
 import { createCertificates } from '@itookit/node-host/http';
@@ -52,3 +53,19 @@ it('rejects failed initialization without listening and releases data and creden
     expect(await connected(values.port)).toBe(false);
     for (const where of [path.join(values.root, '_meta'), values.authDir]) (await acquireHostLock(where))();
 });
+it('closes a stalled HTTPS request and releases both locks before a replacement host starts', async () => {
+    const values = await options(), host = await startHost(values); cleanups.push(() => host.close());
+    const [ca, cert, key] = await Promise.all(['ca.crt', 'client.crt', 'client.key'].map(name => readFile(path.join(directory, 'certs', name))));
+    const accepted = new Promise<void>(resolve => host.server.once('request', () => resolve()));
+    const outgoing = request(`https://127.0.0.1:${values.port}/api/application`, {ca, cert, key, agent: false, method: 'POST',
+        headers: {'Content-Type': 'application/json', 'Content-Length': '100'}});
+    outgoing.on('error', () => {}); cleanups.push(() => outgoing.destroy());
+    const disconnected = new Promise<void>(resolve => outgoing.once('close', resolve));
+    outgoing.write('{'); await accepted;
+    for (const where of [path.join(values.root, '_meta'), values.authDir]) await expect(acquireHostLock(where)).rejects.toThrow('another application host');
+    await host.close(); await disconnected;
+    expect(host.server.listening).toBe(false);
+    for (const where of [path.join(values.root, '_meta'), values.authDir]) (await acquireHostLock(where))();
+    const replacement = await startHost(values); cleanups.push(() => replacement.close());
+    expect(replacement.server.listening).toBe(true);
+}, 15000);

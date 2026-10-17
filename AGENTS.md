@@ -29,6 +29,13 @@ pnpm --filter @itookit/<pkg> test     # 单包测试（vitest）
 pnpm --filter @itookit/<pkg> typecheck
 ```
 
+## httpd 日志与运行版本
+
+- 排查 httpd 默认查看 release 日志：运行日志 `/var/log/mindos/httpd.runtime.log`，审计日志 `/var/log/mindos/httpd.audit.jsonl`；轮转文件追加 `.1`、`.2`、`.3`。
+- `MINDOS_HTTPD_LOG_DIR` 可覆盖日志目录，`--audit-file` 可单独覆盖审计文件；以启动参数和启动输出为准。部署时需确保日志目录由运行用户拥有并可写。
+- 当前运行版本通过携带客户端证书请求 `GET /api/health` 的 `version` 字段核对；运行日志中的最新 `Version:` 为启动版本。`release/httpd/current.json` 仅表示下次启动选用的 release，不能代替运行版本核对。
+- 版本 ID 格式为 `<UTC构建时间 YYYYMMDDTHHmmss>-<Git提交前8位>[-dirty]`，文件名和日志目录不带版本。查询命令见 [HTTP 宿主发布与诊断](./doc/http-app.md#启动与认证)。
+
 ## 构建
 
 | 类型 | 工具 |

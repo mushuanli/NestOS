@@ -20,13 +20,17 @@ export async function startHost(options: HttpHostOptions) {
         cleanup.push(() => application.close());
         const server = createHttpServer({ certificates: options.certificates, staticDir: options.staticDir, audit, application,
             build: { mode: options.logMode ?? process.env.MINDOS_HTTPD_MODE ?? 'standalone', version: process.env.MINDOS_HTTPD_VERSION } });
-        cleanup.push(async () => { application.endStreams(); await stopServer(server); });
+        cleanup.push(async () => {
+            application.endStreams(); await stopServer(server);
+            audit.write({ event: 'server.stopped' });
+        });
         await listen(server, options);
         audit.write({ event: 'server.started', route: `https://${options.host}:${options.port}` });
         console.log(`MindOS HTTPS UI: https://${options.host}:${options.port}\nClient certificate required\nAudit log: ${options.auditFile}`);
         let closing: Promise<void> | undefined;
         return { server, close: () => closing ??= (async () => {
-            audit.write({ event: 'server.stopped' }); await closeHostResources(cleanup);
+            audit.write({ event: 'server.stopping' }); await closeHostResources(cleanup);
+            console.log('HTTP host stopped; data and credential locks released');
         })() };
     } catch (error) {
         try { await closeHostResources(cleanup); } catch { /* Preserve the startup error. */ }
@@ -41,5 +45,10 @@ function listen(server: Server, { port, host, backlog }: HttpHostOptions): Promi
     });
 }
 function stopServer(server: Server): Promise<void> {
-    return new Promise(resolve => { server.close(() => resolve()); server.closeIdleConnections(); });
+    return new Promise(resolve => {
+        // A stalled request must not keep the host's storage locks alive indefinitely.
+        const deadline = setTimeout(() => server.closeAllConnections(), 5000); deadline.unref();
+        server.close(() => { clearTimeout(deadline); resolve(); });
+        server.closeIdleConnections();
+    });
 }

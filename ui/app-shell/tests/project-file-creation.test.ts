@@ -41,7 +41,7 @@ it('creates a project file beside the activated file, not at the Files root', as
         expect(panel.textContent).toContain('deep.md');
         expect(panel.querySelector('h2')?.textContent).toBe('sub');
         expect(panel.querySelector('.workbench-directory__path')?.textContent).toBe('所有项目 / 原项目文档 / 文件 / sub');
-        expect([...panel.querySelectorAll<HTMLButtonElement>('.workbench-directory__toolbar button')].map(button => button.title)).toEqual(['刷新列表', '新建文件', '新建目录', '操作', '清除并退出搜索']);
+        expect([...panel.querySelectorAll<HTMLButtonElement>('.workbench-directory__toolbar button')].map(button => button.title)).toEqual(['刷新列表', '新建文件', '新建目录', '清除并退出搜索', '操作']);
         expect(panel.querySelector('.workbench-directory__heading button')).toBeNull();
         const previousShow = HTMLDialogElement.prototype.showModal, previousClose = HTMLDialogElement.prototype.close;
         HTMLDialogElement.prototype.showModal = vi.fn(); HTMLDialogElement.prototype.close = vi.fn();

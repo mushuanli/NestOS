@@ -1,4 +1,4 @@
-import { t, FILE_BROWSER_ICONS } from '@itookit/common';
+import { t, FILE_BROWSER_ICONS, ACTION_ICONS } from '@itookit/common';
 import type { ProjectSearchMatch, ProjectSearchQuery } from '@itookit/app-contracts/services';
 import { decorateButton } from '../workbench/controls';
 import type { ProjectSearch } from '@itookit/app-contracts/services';
@@ -9,6 +9,7 @@ interface SearchPanelOptions {
     hint?: string;
     sessions?: boolean;
     archived?: boolean;
+    compact?: boolean;
 }
 
 /** Search options and async results driven by the shared sidebar query. */
@@ -18,6 +19,8 @@ export class ProjectSearchPanel {
     private query = '';
     private appliedQuery?: (query: string) => void;
     private readonly scope = document.createElement('select');
+    private readonly scopeMenu = document.createElement('details');
+    private readonly listeners = new AbortController();
     private readonly archived = document.createElement('input');
     private readonly results = document.createElement('div');
     private readonly status = document.createElement('p');
@@ -37,12 +40,24 @@ export class ProjectSearchPanel {
         const cancel = document.createElement('button'); cancel.type = 'button'; decorateButton(cancel, FILE_BROWSER_ICONS.close, t('project.search.clear'), true); cancel.dataset.action = 'clear-search';
         cancel.onclick = () => { this.cancel(); this.appliedQuery?.(''); };
         this.status.setAttribute('role', 'status'); this.results.className = 'project-search__results';
-        const controls = this.controls; controls.className = 'project-search__controls'; controls.append(this.scope); if (options.sessions !== false && options.archived !== false) controls.append(archived); controls.append(cancel);
+        const controls = this.controls; controls.className = 'project-search__controls';
+        if (options.compact) controls.append(this.scopePicker()); else controls.append(this.scope);
+        if (options.sessions !== false && options.archived !== false) controls.append(archived); controls.append(cancel);
         this.element.append(controls, this.sources, this.status, this.results);
         if (options.hint) { const hint = document.createElement('p'); hint.textContent = options.hint; controls.after(hint); }
         if (options.query?.archived) this.archived.checked = true;
-        this.scope.onchange = () => this.queue(); this.archived.onchange = () => this.queue();
+        this.scope.onchange = () => { this.scopeMenu.open = false; this.queue(); }; this.archived.onchange = () => this.queue();
         this.element.addEventListener('keydown', event => { if (event.key === 'Escape') this.appliedQuery?.(''); });
+    }
+    private scopePicker(): HTMLElement {
+        const menu = this.scopeMenu; menu.className = 'project-search__scope-menu';
+        const summary = document.createElement('summary'); summary.innerHTML = ACTION_ICONS.search;
+        summary.title = t('project.search.scope'); summary.setAttribute('aria-label', summary.title); summary.dataset.action = 'search-options';
+        const popup = document.createElement('div'); popup.className = 'project-search__scope-options'; popup.append(this.scope);
+        menu.append(summary, popup);
+        document.addEventListener('pointerdown', event => { if (!menu.contains(event.target as Node)) menu.open = false; }, {signal: this.listeners.signal});
+        menu.addEventListener('keydown', event => { if (event.key === 'Escape' && menu.open) { menu.open = false; event.stopPropagation(); summary.focus(); } });
+        return menu;
     }
     project(folder?: string) {
         if (this.folder === folder) return;
@@ -89,5 +104,5 @@ export class ProjectSearchPanel {
     }
     refresh() { this.queue(); }
     cancel(show = false) { ++this.revision; this.request?.abort(); clearTimeout(this.timer); if (show) this.status.textContent = t('project.search.cancelled'); }
-    destroy() { this.cancel(); this.controls.remove(); this.element.remove(); }
+    destroy() { this.listeners.abort(); this.cancel(); this.controls.remove(); this.element.remove(); }
 }

@@ -16,7 +16,7 @@ export async function createProjectDirectorySearch(path: string, projects: Proje
     const panel = new ProjectSearchPanel(search, open, undefined, {
         scopes: files ? ['file-name', 'file-content', 'file-path'] : ['session-title', 'session-content', 'session-prompt'],
         query: files ? {directory} : target.kind === 'remote' ? {profileId: target.profileId, archived: target.archived} : undefined,
-        sessions: !files, archived: false,
+        sessions: !files, archived: false, compact: true,
     });
     panel.project(project.path);
     return panel;

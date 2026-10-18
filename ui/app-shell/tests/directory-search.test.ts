@@ -51,9 +51,15 @@ it('keeps query, scope and clear in order and exits focused search while abortin
     expect(input.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(scope.compareDocumentPosition(clear) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(controller.element.querySelector('select')).toBeNull(); expect(controller.element.hidden).toBe(true);
+    const scopeMenu = scope.closest('details')!; expect(scopeMenu.open).toBe(false);
+    scopeMenu.querySelector('summary')!.click(); expect(scopeMenu.open).toBe(true);
+    scope.value = 'session-content'; scope.dispatchEvent(new Event('change', {bubbles: true})); expect(scopeMenu.open).toBe(false);
+    expect(document.activeElement).toBe(input);
     input.focus(); expect(toolbar.dataset.searching).toBe('true');
     input.value = 'pending'; input.dispatchEvent(new Event('input')); await vi.advanceTimersByTimeAsync(300);
-    expect(panel.querySelector('table')!.hidden).toBe(true); clear.click();
+    expect(panel.querySelector('table')!.hidden).toBe(true);
+    scopeMenu.open = true; scopeMenu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
+    expect(scopeMenu.open).toBe(false); expect(input.value).toBe('pending'); clear.click();
     expect(signal?.aborted).toBe(true); expect(input.value).toBe(''); expect(controller.element.hidden).toBe(true); expect(group.contains(scope)).toBe(true); expect(toolbar.dataset.searching).toBe('false'); expect(panel.querySelector('table')!.hidden).toBe(false);
     controller.destroy();
 });

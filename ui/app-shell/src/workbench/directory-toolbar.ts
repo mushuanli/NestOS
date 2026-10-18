@@ -9,10 +9,10 @@ export class DirectoryToolbar {
     private readonly group = document.createElement('div');
     private focused = false;
     constructor(private readonly options: DirectoryListOptions, refresh: () => void, private readonly render: () => void) {
-        this.element.className = 'workbench-directory__toolbar';
+        this.element.className = 'workbench-directory__toolbar'; this.element.dataset.overflow = String(!!options.menu);
         if (options.parent && !options.breadcrumbs) this.element.append(this.button(t('workbench.parent'), options.parent, FILE_BROWSER_ICONS.up));
         if (options.refresh) this.element.append(this.button(t('workbench.refresh'), refresh, FILE_BROWSER_ICONS.refresh));
-        this.addActions(); this.addMenu(); this.addSearch();
+        this.addActions(); this.addSearch(); this.addMenu();
     }
     get query(): string { return this.input.value; }
     get filtering(): boolean { return !!this.options.search && !!this.query.trim(); }
@@ -44,8 +44,9 @@ export class DirectoryToolbar {
         this.input.setAttribute('aria-label', this.input.placeholder); this.group.append(this.input);
         if (this.options.search?.controls) this.group.append(this.options.search.controls);
         this.element.append(this.group);
+        this.options.search?.controls?.addEventListener('change', () => this.input.focus());
         this.input.oninput = () => this.changed();
-        this.group.addEventListener('focusin', () => { this.focused = true; this.render(); });
+        this.group.addEventListener('focusin', event => { if (event.target === this.input) this.focused = true; this.render(); });
         this.group.addEventListener('focusout', () => queueMicrotask(() => {
             if (!this.group.contains(document.activeElement)) this.focused = false;
             this.render();

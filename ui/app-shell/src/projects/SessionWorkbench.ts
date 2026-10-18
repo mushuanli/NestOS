@@ -373,6 +373,7 @@ export class SessionWorkbench implements WorkspaceController {
                 bulkItems: (items, defaults) => items.some(item => item.metadata.custom.remoteProject)
                     ? defaults.filter(entry => !('id' in entry) || !['bulk-delete', 'bulk-move', 'bulk-copy'].includes(entry.id)) : defaults,
                 items: projectIconMenu((item, defaults) => {
+                    if (item.id === '/' && this.projects) return [{id: 'create-project', label: t('project.create'), onClick: () => this.createProject('/')}];
                     if (isFlowPath(item.id)) return this.flows?.menu.items?.(item,
                         item.id === '/@flows' ? [] : defaults.filter(entry => 'id' in entry && entry.id === 'delete')) ?? [];
                     const target = resolveBrowserTarget(item.id);
@@ -1116,7 +1117,7 @@ export class SessionWorkbench implements WorkspaceController {
             : await Promise.all([projectDirectoryNodes(this.navigationFiles!, path), this.navigationFiles!.driver.getNode(path)])
                 .then(([nodes, node]) => ({nodes, node}));
         if (this.closed || generation !== this.contentVersion) return;
-        const panel = document.createElement('div'); panel.className = 'session-detail';
+        const panel = document.createElement('div'); panel.className = 'session-detail session-detail--directory';
         const heading = document.createElement('h2');
         heading.textContent = path === '/' ? t('workbench.allProjects') : directoryNode ? directoryEntryName(directoryNode) : t('workbench.allProjects');
         if (this.closed || generation !== this.contentVersion) return;
@@ -1166,7 +1167,7 @@ export class SessionWorkbench implements WorkspaceController {
             open: id => { void this.openResource(id, {directory: nodes.find(node => node.path === id)?.type === 'directory'}).catch(error => this.report(error)); },
             parent: path === '/' ? undefined : () => { void this.openResource(parent, {directory: true}).catch(error => this.report(error)); },
             refresh: () => this.directoryEntries(path, favorites?.update),
-            menu: path === '/' ? undefined : event => { void this.showDirectoryMenu(event, target.kind === 'project-conversations' ? folderBrowserPath(target.folder) : path).catch(error => this.report(error)); },
+            menu: event => { void this.showDirectoryMenu(event, target.kind === 'project-conversations' ? folderBrowserPath(target.folder) : path).catch(error => this.report(error)); },
             contextMenu: (event, id) => { void this.showDirectoryMenu(event, id).catch(error => this.report(error)); },
             select: ids => this.sidebarUI?.setSelection(ids),
             selectedIds: () => this.sidebarUI?.getSnapshot().selectedIds ?? [],

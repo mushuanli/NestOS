@@ -35,6 +35,9 @@ it('creates files and conversations with styled icon buttons on fixed directory 
         expect(panel().querySelector('.workbench-directory')?.getAttribute('data-compact-path')).toBe('true');
         expect(panel().querySelector('[data-action="directory-menu"]')).not.toBeNull();
         expect(panel().querySelector('[aria-label="上一级"]')).toBeNull();
+        const toolbar = panel().querySelector('.workbench-directory__toolbar')!;
+        expect(toolbar.lastElementChild?.getAttribute('data-action')).toBe('directory-menu');
+        expect(toolbar.getAttribute('data-overflow')).toBe('true');
         panel().querySelector<HTMLButtonElement>('[data-action="directory-menu"]')!.click();
         await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu [data-action="create-file"]')).not.toBeNull());
         document.body.click();

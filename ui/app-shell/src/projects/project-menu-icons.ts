@@ -3,6 +3,7 @@ import type { ContextMenuBuilder } from '@itookit/ui-common';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
 
 const icons: Record<string, string> = {
+    'create-project': FILE_BROWSER_ICONS.addFolder,
     'create-session': FILE_BROWSER_ICONS.newSession, 'create-file': FILE_BROWSER_ICONS.addFile, 'create-folder': FILE_BROWSER_ICONS.addFolder,
     'enter-project': ENTITY_ICONS.project, 'remount-project': ENTITY_ICONS.remoteProject, 'unmount-project': ACTION_ICONS.close,
     'project-harness': ENTITY_ICONS.agent, 'twin-analysis': ACTION_ICONS.ai,

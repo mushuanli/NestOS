@@ -6,6 +6,8 @@ import { createVFS, MemoryBackend, type IFileSystem } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, ProjectService, SessionFilesService, folderBrowserPath } from '@itookit/app-core';
 import { ProjectNavigation } from '../src/projects/ProjectNavigation';
+import { projectItems } from '../src/projects/navigation-policy';
+import { refreshDirectoryList } from '../src/workbench/directory-list';
 
 function actions() {
     return { createProject: vi.fn(), createSession: vi.fn(), createChild: vi.fn(), importItems: vi.fn(),
@@ -17,6 +19,35 @@ async function projectServices(root: IFileSystem, repository: SessionRepository)
     const mounts = new DirectoryMountService(root, files); await mounts.init();
     return { files, mounts, projects: new ProjectService(root, repository, mounts, files) };
 }
+
+it('keeps all-project sidebar sessions after refresh and shares project rows with the directory', async () => {
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() }), root = await manager.openFileSystem('/');
+    const repository = new SessionRepository(root); await repository.init();
+    const { projects, mounts, files } = await projectServices(root, repository); await projects.ensureStartup();
+    const project = await projects.create('Visible'), hidden = await projects.create('Collapsed');
+    const id = await projects.sessions.create('Visible conversation', await projects.sessionFolder(project));
+    await projects.sessions.create('Collapsed conversation', await projects.sessionFolder(hidden));
+    const path = folderBrowserPath(project.path), sidebar = document.createElement('aside'), main = document.createElement('main');
+    document.body.append(sidebar, main);
+    const workbench = createTestWorkbench({ sidebar, container: main, repository, files, projects, directoryMounts: mounts,
+        kernel: { onChanged: () => () => {}, async *listSessions() {} } as never, factory: async () => ({ destroy() {} }) as never, onSelect() {} });
+    try {
+        await workbench.start();
+        const ui = (workbench as unknown as { sidebarUI: import('@itookit/vfs-ui').VFSUIShell }).sidebarUI;
+        await ui.expandPath(path); await workbench.refresh();
+        expect(sidebar.querySelector(`[data-item-id$="/${id}"]`)).not.toBeNull();
+        expect(sidebar.querySelector<HTMLSelectElement>('.workbench-project-navigation select')!.value).toBe('/');
+        await workbench.openResource(path); await (workbench as unknown as { fileNavigation: Promise<void> }).fileNavigation;
+        const panel = main.querySelector<HTMLElement>('.workbench-tabs__panel:not([hidden])')!;
+        const added = await projects.sessions.create('Fresh conversation', await projects.sessionFolder(project));
+        await refreshDirectoryList(panel);
+        const expected = projectItems(ui.getNode(path)!.children ?? []).map(node => node.id).sort();
+        expect([...panel.querySelectorAll<HTMLElement>('[data-resource-id]')].map(row => row.dataset.resourceId).sort()).toEqual(expected);
+        expect(panel.textContent).toContain('Visible conversation');
+        expect(panel.textContent).toContain('Fresh conversation');
+        expect(sidebar.querySelector(`[data-item-id$="/${added}"]`)).not.toBeNull();
+    } finally { await workbench.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); sidebar.remove(); main.remove(); }
+});
 
 it('resolves project folders from one organization snapshot per sync and refresh', async () => {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });

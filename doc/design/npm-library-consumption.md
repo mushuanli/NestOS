@@ -5,7 +5,7 @@ MindOS 默认消费固定 Git 提交的独立库源码。九个独立库均位�
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
 | @itookit/vfs-core | `libraries/vfs-core` | 5.3.2 |
-| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.9 |
+| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.10 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.3 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
 | @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.3 |
@@ -157,3 +157,9 @@ mdxeditor@0.5.4 提供通用的目标祖先展开入口，由代码块控件保�
 |---|---|
 | @itookit/mdxeditor@0.5.4 | `f1d4a5cf08fd5917fc10ecf48484d809c195711380a99f45a8a54e6092a2cba8` |
 | @itookit/llm-ui@0.2.0 | `773b6a6987734de6400534f41d216375d75555444317ab3102d8774ec572881f` |
+
+### 2026-10-18 项目导航刷新修复
+
+vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展开状态时准备投影容器成员；保留旧双栏选项兼容，不读取折叠项目或执行器历史。app-shell 的项目目录与侧栏统一展开后端声明的透明容器，右侧刷新等待缓存失效和侧栏更新。
+
+验证：vfs-ui 206 项测试、工作台 13 项回归、相关类型检查、模块边界、前端公开入口构建、文档、样式及冻结离线安装通过。正式 prepare tarball 在仓库外配合注册表 vfs-core@5.3.2 验证 TypeScript bundler、ESM/CommonJS、CSS/Vite 构建、恢复展开、刷新新增成员和容器折叠状态，没有工作区源码链接。制品 SHA-256 为 `7c423cf67ee4f0279b040c92af578accacf1e86544d5352a8c9266cd31eee425`。npm 发布已发起，等待该版本的二次认证；尚未确认公开下载。

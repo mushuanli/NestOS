@@ -348,6 +348,26 @@ Session browser 与项目/家族导航优先使用 `ISessionRepository.listSumma
 
 项目侧栏的固定入口使用本地化标题与共享图标，内部 `@favorites` / `@files` 只作为稳定路由身份，不向用户表达引用语义；真实文件仍按文件名展示。远程项目同级显示“收藏夹”“文件”和各原生执行器分组，省掉外层“远程会话”目录；执行器分组保留，以区分来源、权限和分页。后端将远程根标记为 navigationTransparent，并在导航 loadPaths 中提供该根；进入项目只准备执行器列表，不读取各执行器的历史。
 
+右侧目录与侧栏都展开后端声明为 `navigationTransparent` 的容器，直接显示其成员；普通目录和执行器历史仍按需读取。`SessionWorkbench` 将透明子容器通过 vfs-ui 顶层 `navigationChildren` 端口接入单栏导航，在“所有项目”展开项目、恢复已展开项目或刷新时加载其会话分组，折叠项目不预读。`ProjectNavigation` 进入项目时继续消费后端 `loadPaths`，保留显式加载契约。右侧手动刷新先等待导航缓存失效，再读取目录，并等待侧栏和项目导航更新完成。
+
+```mermaid
+C4Component
+  title 项目目录与侧栏的展示及刷新边界
+  Container_Boundary(shell, "app-shell") {
+    Component(workbench, "SessionWorkbench", "Controller", "缓存失效、刷新协调与路由")
+    Component(treePolicy, "ProjectNavigation / projectItems", "UI policy", "项目范围与透明分组展示")
+    Component(directory, "projectDirectoryNodes / DirectoryList", "UI projection", "读取透明组成员并显示目录行")
+  }
+  Component(tree, "VFSUIShell", "vfs-ui", "展开、恢复和刷新时加载宿主声明的子容器")
+  Component(browser, "ProjectService / SessionBrowserFS", "app-core", "项目及会话目录、分组元数据和缓存")
+  Rel(workbench, browser, "等待 invalidateNavigation")
+  Rel(workbench, tree, "刷新并等待完成")
+  Rel(workbench, directory, "打开或刷新目录")
+  Rel(treePolicy, tree, "listItems / navigationChildren")
+  Rel(tree, browser, "读取当前展开分支及声明的子容器")
+  Rel(directory, browser, "读取目录及透明组成员")
+```
+
 新会话只出现在可写且声明 create 能力的 profile 活动首页，固定排在会话之前；归档页和只读根没有创建入口。项目根和远程类型目录不会误创建本地 Session。原有远程根和 profile 深链继续可用。
 
 原生 create 成功只代表预留会话，不代表首条消息提交成功。app-core 在远程草稿恢复记录中保存明确的 submittedTurnId；拒绝发送时保留输入与已创建的原生身份，重开不会再次 create。结果未知时保留 requestId/epoch 并查询回执，不自动重放。只有 turn 的明确成功响应或 committed 回执才允许 UI 转为正式会话；新入口随后提供空白草稿。关闭或刷新视图不会中断原生执行。

@@ -26,6 +26,7 @@ import { watchDirectoryList } from '../workbench/directory-watch';
 import type { WorkbenchStatePort } from '../workbench/state';
 import { projectFavoriteAction } from './project-favorites';
 import { directoryBreadcrumbs, directoryEntryName } from './directory-label';
+import { projectDirectoryNodes } from './project-directory';
 import { WORKSPACE_PATH, projectRelativePath, reportRemoteFailure } from '@itookit/app-contracts';
 import { createProjectDraftControls } from './project-draft-editor';
 import type { SessionOpenView, WorkbenchChatControls, ProjectFolder } from '@itookit/app-contracts/services';
@@ -305,6 +306,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.projects) this.installProjectNavigation();
         if (this.searchPanel && this.projectNavigation) this.projectNavigation.header.after(this.searchPanel.element);
         this.sidebarUI = createVFSUI({ sessionListContainer: tree, title: this.projects ? t('project.workspace') : '会话', scopeId: SESSION_BROWSER_SCOPE,
+            navigationChildren: node => (node.children ?? []).filter(child => child.metadata.custom.navigationTransparent === true).map(child => child.id),
             persistence: presentationPersistence(this.uiPersistence), onError: error => this.report(error),
             listItems: items => {
                 this.remoteStatus.project(this.projectNavigation?.currentProject()?.project.id);
@@ -1093,7 +1095,7 @@ export class SessionWorkbench implements WorkspaceController {
         const generation = ++this.contentVersion;
         const {nodes, node: directoryNode} = target.kind === 'project-files' || target.kind === 'files'
             ? await traceBoot('projectDirectory.read', () => this.browser!.readFileDirectory(path, source))
-            : await Promise.all([this.navigationFiles!.driver.getChildren(path), this.navigationFiles!.driver.getNode(path)])
+            : await Promise.all([projectDirectoryNodes(this.navigationFiles!, path), this.navigationFiles!.driver.getNode(path)])
                 .then(([nodes, node]) => ({nodes, node}));
         if (this.closed || generation !== this.contentVersion) return;
         const panel = document.createElement('div'); panel.className = 'session-detail';
@@ -1164,10 +1166,12 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.navigationFiles?.on) this.tabs.current!.subscriptions.push(watchDirectoryList(this.navigationFiles, panel, error => this.report(error)));
     }
     private async directoryEntries(path: string) {
-        const nodes = await this.navigationFiles!.driver.getChildren(path);
+        await this.browser?.invalidateNavigation();
+        const nodes = await projectDirectoryNodes(this.navigationFiles!, path);
         if (this.active === path) {
             this.projectNavigation?.setRemoteCreation(path, remoteSessionCreationPath(path, nodes));
-            void this.sidebarUI?.refresh().catch(error => this.report(error));
+            await this.sidebarUI?.refresh();
+            if (this.active === path) await this.projectNavigation?.refresh();
         }
         return nodes.map(node => this.directoryEntry(node));
     }

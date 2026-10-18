@@ -21,7 +21,7 @@ export class ProjectSearch {
         if (query.scope.startsWith('file-')) return this.files(folder, project.project.id, query, options);
         const local = this.repository && !query.profileId ? await searchLocalSessions(this.repository, folder, project.project.id, query, options) : undefined;
         const remote = this.projects.remoteMounts;
-        if (!remote || this.repository && !remote.list(project.project.id).length) {
+        if (!remote || this.repository && !remote.list(project.project.id).some(mount => mount.at === '/')) {
             if (local) return local;
             throw new FSError('ECAPABILITY', 'Session search unavailable');
         }

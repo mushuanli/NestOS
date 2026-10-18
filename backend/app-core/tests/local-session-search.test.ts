@@ -47,3 +47,13 @@ it('preserves healthy local results when a native source has no search capabilit
     }} as unknown as ProjectService, repository as never);
     expect(await search.search('/P', {query: 'needle', scope: 'session-title'})).toMatchObject({matches: [{kind: 'session', sessionId: 's'}], truncated: true, unavailableSources: ['remote']});
 });
+
+it('does not claim an unavailable native source for a local project with only a remote reference mount', async () => {
+    const projectHarness = vi.fn();
+    const repository = {listFolders: async () => [], listSummariesInFolder: async () => [{id: 's', folder: '/P', title: 'needle', updatedAt: 1}]};
+    const search = new ProjectSearch({forFolder: async () => ({path: '/P', project: {id: 'p'}}), remoteMounts: {
+        list: () => [{at: '/reference'}], projectHarness,
+    }} as unknown as ProjectService, repository as never);
+    expect(await search.search('/P', {query: 'needle', scope: 'session-title'})).toMatchObject({matches: [{sessionId: 's'}], truncated: false});
+    expect(projectHarness).not.toHaveBeenCalled();
+});

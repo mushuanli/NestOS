@@ -25,8 +25,9 @@ it('searches unopened sessions and all live branches, with prompts separated fro
     const projects = {forFolder: async () => ({path: '/P', project: {id: 'p'}})} as unknown as ProjectService;
     const search = new ProjectSearch(projects, repository), read = vi.spyOn(repository, 'readDocument');
     try {
-        const titles = await search.search('/P', {query: 'Session 0', scope: 'session-title'});
-        expect(titles.matches).toMatchObject([{kind: 'session', sessionId: id, resourcePath: expect.stringContaining('/folder:%40sessions/' + id)}]);
+        const titles = await search.search('/P', {query: '0 Session', scope: 'session-title'});
+        expect(titles.matches).toHaveLength(7);
+        expect(titles.matches).toEqual(expect.arrayContaining([expect.objectContaining({kind: 'session', sessionId: id, resourcePath: expect.stringContaining('/folder:%40sessions/' + id)})]));
         expect(read).not.toHaveBeenCalled();
         expect((await search.search('/P', {query: 'Folder', scope: 'session-title'})).matches).toMatchObject([{sessionId: grouped, title: 'Folder note'}]);
         expect((await search.search('/P', {query: 'Folder', scope: 'session-title'})).matches).toHaveLength(1);
@@ -35,6 +36,9 @@ it('searches unopened sessions and all live branches, with prompts separated fro
         expect((await search.search('/P', {query: 'assistant-only', scope: 'session-prompt'})).matches).toEqual([]);
         expect((await search.search('/P', {query: 'assistant-only', scope: 'session-content'})).matches).toMatchObject([{sessionId: id, summary: 'assistant-only'}]);
         expect((await search.search('/P', {query: 'system-only', scope: 'session-content'})).matches).toEqual([]);
+        expect((await search.search('/P', {query: 'NEEDLE　branch', scope: 'session-prompt'})).matches).toMatchObject([{turnId: 'other', summary: 'branch needle'}]);
+        expect((await search.search('/P', {query: 'needle assistant-only', scope: 'session-content'})).matches).toEqual([]);
+        expect((await search.search('/P', {query: 'reply another', scope: 'session-content'})).matches).toMatchObject([{turnId: 'other', summary: 'another reply'}]);
         expect((await search.search('/P', {query: 'Other', scope: 'session-title'})).matches).toEqual([]);
         expect((await search.search('/P', {query: 'needle', scope: 'session-prompt', archived: true})).matches).toEqual([]);
     } finally { await repository.dispose(); await manager.dispose(); }

@@ -4,6 +4,21 @@ import { ProjectSearch } from '../src/projects/project-search';
 import type { ProjectService } from '../src/projects/project-service';
 
 const project = {path: '/P', project: {id: 'local-p'}};
+it('applies unordered literal AND to file names, paths and content before limiting results', async () => {
+    const owner = await createFileSystemSource({backend: new MemoryBackend(), viewId: 'keyword-search', tags: false});
+    await owner.fs.driver.createFile({parentPath: '/Alpha', name: 'Beta-a.*.md', content: 'longest-only\n'.repeat(150) + 'SECOND longest-only 中文\nlongest-only\nSECOND', recursive: true});
+    await owner.fs.driver.createFile({parentPath: '/Alpha', name: 'other.md', content: 'SECOND', recursive: true});
+    const search = new ProjectSearch({forFolder: async () => project, openFiles: async () => ({fs: owner.fs, dispose: async () => {}})} as unknown as ProjectService);
+    try {
+        expect((await search.search('/P', {query: 'a.*　BETA beta', scope: 'file-name'})).matches).toMatchObject([{path: 'Alpha/Beta-a.*.md'}]);
+        expect((await search.search('/P', {query: 'beta Alpha', scope: 'file-name'})).matches).toEqual([]);
+        expect((await search.search('/P', {query: 'beta\tALPHA', scope: 'file-path'})).matches).toHaveLength(1);
+        expect((await search.search('/P', {query: 'second longest-only 中文', scope: 'file-content'})).matches).toMatchObject([
+            {path: 'Alpha/Beta-a.*.md', line: 151, summary: 'SECOND longest-only 中文'},
+        ]);
+        expect((await search.search('/P', {query: 'second absent', scope: 'file-content'})).matches).toEqual([]);
+    } finally { await owner.dispose(); }
+});
 it('searches unopened local directories with ignored, private and binary files excluded', async () => {
     const owner = await createFileSystemSource({backend: new MemoryBackend(), viewId: 'search', tags: false});
     await owner.fs.driver.createFile({parentPath: '/nested', name: 'notes.md', content: 'old\nneedle quoted "text"\nend', recursive: true});
@@ -90,4 +105,12 @@ it('filters session search by creation source before applying the result limit',
     const repository = {listFolders: async () => [], listSummaries: async () => rows};
     const search = new ProjectSearch({forFolder: async () => project} as never, repository as never);
     expect((await search.search('/P', {query: 'Needle', scope: 'session-title', agentId: 'writer'})).matches).toMatchObject([{sessionId: 'writer'}]);
+});
+
+it('requires all title keywords before counting session matches', async () => {
+    const rows = Array.from({length: 130}, (_, index) => ({id: 'other-' + index, title: 'Needle other', updatedAt: 2000, folder: '/P'}));
+    rows.push({id: 'target', title: 'Target then NEEDLE', updatedAt: 1000, folder: '/P'});
+    const repository = {listFolders: async () => [], listSummaries: async () => rows};
+    const search = new ProjectSearch({forFolder: async () => project} as never, repository as never);
+    expect((await search.search('/P', {query: 'needle target', scope: 'session-title'})).matches).toMatchObject([{sessionId: 'target'}]);
 });

@@ -384,6 +384,8 @@ C4Component
 
 右侧项目文件目录默认按文件名搜索，可切换文件内容、文件路径；范围是当前目录及子目录，不受目录页已加载节点限制。右侧项目/会话集合默认按会话名搜索，可切换会话内容、仅用户提问；范围是该项目的全部会话，不继承 15/50 条导航窗口或分页游标。原生 profile/归档页面保留来源和归档范围。侧栏默认的已加载树过滤不发起 I/O，用户显式选择搜索范围时才调用查询。
 
+工作台、文件目录和会话集合搜索统一使用多关键字 AND：空格、制表符和全角空格分词，忽略大小写与词序，重复词不增加约束，标点按字面匹配。名称/路径要求同一个名称/路径包含所有词，文件内容要求同一个命中行包含所有词，会话内容/用户提问要求同一条消息包含所有词；不跨消息或来源拼接命中。API 中显式换行仍作为字面多行片段。通用分词与匹配由 vfs-core 的纯工具提供，调用方决定匹配单位；不改变底层 `name.contains` 等字面存储查询契约。
+
 `DirectoryList` 只提供搜索插槽和列表/结果切换；`ProjectSearchPanel` 复用防抖、取消、代次隔离、结果提示和安全文本渲染，销毁页面时取消读取。宿主将命中转换为规范资源，打开前核对项目身份与远程授权指纹；本地命中保留分支及轮次消息身份，远程命中保留 profile/session/turn/item，文件命中保留路径与行号。
 
 `ProjectSearch` 位于 app-core 的 projects 用例层：本地文件通过 `openFiles` 的授权 VFS 视图与 `discoverFiles` 遍历，按文件名搜索不读正文；内容读取复用驱动有界 read。隐藏目录、私有目录、忽略文件及二进制不进入正文命中。`vfsdriver-local`、IndexedDB 和 MemoryBackend 保持存储职责，不增加 UI 搜索策略或会话字段。本地会话通过 Repository 读取摘要，内容/用户提问显式读取各存活分支的轮次，按消息角色区分，排除删除/内部轮次和 system 上下文。每次查询有超时、结果与扫描预算；达到预算或某来源不可用时明确报告部分结果。
@@ -394,6 +396,8 @@ C4Component
 
 远程文件扫描由 pi-agent 的 rg 执行并自行选择线程数，不在 HTTP 或 app-core 再复制文件扫描器。子目录范围通过标准输入提供的 rg 忽略规则在遍历时剪枝，项目原有忽略规则保持优先，输出仍核对相对目录；保留项目根作为遍历根，避免显式指定目录后改变链接、隐藏和忽略行为。不能安全表示为逐行忽略规则的目录沿用结果过滤。Node 与浏览器本地来源继续走授权 VFS 视图，不能用物理目录扫描替代组合视图。
 
+多关键字内容查询只启动一次 rg，以最长字面关键字筛选候选，结构化输出经全部关键字验证后才计入结果上限；多词时不使用 rg 的单关键字 `--max-count`，避免提前丢弃真正命中。现有时间、输出容量、目录和授权预算仍生效。文件 discovery metadata 与原生 profile 的 `searchKeywords: true` 明确声明该语义；旧节点不支持时返回能力不足，不能静默按整段短语查询。
+
 原生会话聚合最多并发查询两个 profile，共享 18 秒预算并受外层查询取消约束；不按来源数量平分原生扫描时间。按 profile 目录顺序合并结果，最多返回 100 条；失败或超时来源通过 `unavailableSources` 标识，已完成来源的结果保留。所有查询结束或取消后释放客户端，再返回结果。
 
 文件目录页采用显式刷新：首次进入、用户刷新或当前用户的文件操作读取数据，后台会话、连接和项目事件不重建目录页。会话状态观察不启用文件监听；目录版本仅反映真实服务端版本，不因覆盖不足而拼接时间桶。前端聊天只展示后端快照与订阅更新，不再自行定时查询。后端正文仅在有活动轮次且存在展示订阅时推进事件游标，轮次结束或最后一个订阅离开即停止。原生会话列表初次读取后空闲停止，显式刷新及会话活动变化可以重新触发读取；连接只在新增观察兴趣或授权绑定变化时探测，不周期轮询。浏览器页面隐藏时释放展示兴趣，返回时按需读取最新快照；执行本身继续由后端负责。
@@ -402,7 +406,8 @@ C4Component
 C4Component
   title 页面搜索：表示、项目查询与存储边界
   Component(page, "DirectoryList / ProjectSearchPanel", "app-shell", "名称默认值、范围切换、防抖、取消与命中跳转")
-  Component(query, "ProjectSearch", "app-core", "项目授权、最多两个并发来源、共享预算与部分结果")
+  Component(query, "ProjectSearch", "app-core", "项目授权、AND 匹配单位、共享预算与部分结果")
+  Component(keywords, "searchKeywords / matchesKeywords", "vfs-core pure utilities", "通用字面分词与 AND 匹配；无 I/O")
   Component(files, "VFS discovery + readContent", "vfs-core", "授权目录遍历与有界文件读取")
   Component(store, "LocalFS / IndexedDB", "storage backends", "通用目录和文件 I/O")
   Component(sessions, "SessionRepository", "llm-session", "摘要、存活分支与轮次文档")
@@ -410,6 +415,7 @@ C4Component
   Component(remote, "project_search / harness_session_search", "pi-agent", "远程授权视图、原生结构化历史与角色筛选")
   Component(rg, "ripgrep", "isolated process", "并行扫描、遍历剪枝、忽略规则与有界流式输出")
   Rel(page, query, "调用搜索端口；不携带列表分页游标")
+  Rel(query, keywords, "本地查询在结果截断前匹配全部词")
   Rel(query, files, "查询本地文件")
   Rel(files, store, "复用 list / read；不新增存储搜索策略")
   Rel(query, sessions, "查询本地会话")

@@ -7,6 +7,26 @@ import { createDirectoryList, refreshDirectoryList } from '../src/workbench/dire
 const project = {path: '/P', name: 'P', project: {id: 'p'}};
 const projects = {forFolder: async () => project} as unknown as ProjectService;
 afterEach(() => { vi.useRealTimers(); document.body.replaceChildren(); });
+it('uses literal AND for loaded directory rows without sending backend requests', () => {
+    const panel = createDirectoryList({path: '/P', title: 'P', open() {}, entries: [
+        {id: 'both', name: 'Alpha-a.*.md', description: '中文 Beta', type: 'file'},
+        {id: 'one', name: 'Alpha-only.md', type: 'file'},
+    ]}); document.body.append(panel);
+    const input = panel.querySelector<HTMLInputElement>('input[type=search]')!;
+    input.value = 'BETA　a.* alpha'; input.dispatchEvent(new Event('input'));
+    expect(panel.querySelector('tbody')!.textContent).toContain('Alpha-a.*.md');
+    expect(panel.querySelector('tbody')!.textContent).not.toContain('Alpha-only.md');
+});
+
+it.each([['/@files', 'file-name'], ['/@sessions', 'session-title']] as const)('forwards a multi-keyword query intact from %s', async (suffix, scope) => {
+    vi.useFakeTimers();
+    const search = vi.fn(async () => ({matches: [], truncated: false, nextCursor: null}));
+    const path = suffix === '/@files' ? folderBrowserPath('/P') + suffix : projectConversationsPath('/P');
+    const controller = (await createProjectDirectorySearch(path, projects, {search}, vi.fn()))!;
+    controller.setQuery('Beta  alpha　中文'); await vi.advanceTimersByTimeAsync(300);
+    expect(search).toHaveBeenCalledWith('/P', expect.objectContaining({query: 'Beta  alpha　中文', scope}), expect.anything());
+    controller.destroy();
+});
 it('uses source file-name search beyond loaded rows, preserves scope and restores the page when cleared', async () => {
     vi.useFakeTimers(); const open = vi.fn(async () => {});
     const search = vi.fn(async () => ({matches: [{projectId: 'p', folder: '/P', kind: 'file' as const, path: 'nested/deep/old.md', title: 'old.md', summary: '<script>needle</script>'}], truncated: false, nextCursor: null as null}));

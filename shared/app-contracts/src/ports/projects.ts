@@ -383,6 +383,7 @@ export interface ProjectExecutionService {
 }
 
 export interface ProjectSearchQuery {
+    /** Space-separated literal keywords use case-insensitive AND within each result unit. */
     query: string;
     scope: 'file-name' | 'file-path' | 'file-content' | 'session-title' | 'session-content' | 'session-prompt';
     /** Project-relative directory, including descendants; omitted means the whole project. */

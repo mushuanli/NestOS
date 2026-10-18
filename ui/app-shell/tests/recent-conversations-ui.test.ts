@@ -40,8 +40,9 @@ it('keeps fifteen sidebar sessions and opens a larger paged view when More is cl
         await vi.waitFor(() => expect(panel().querySelectorAll('[data-resource-id]')).toHaveLength(51));
         expect(sessionRows()).toHaveLength(15); expect(sidebar.textContent).toContain('Session 69'); expect(sidebar.textContent).not.toContain('Session 0');
         const search = panel().querySelector<HTMLInputElement>('input[type=search]')!;
-        search.value = 'Session 0'; search.dispatchEvent(new Event('input'));
-        await vi.waitFor(() => expect(panel().querySelector('.project-search__result')?.textContent).toContain('Session 0'));
+        search.value = '0 Session'; search.dispatchEvent(new Event('input'));
+        await vi.waitFor(() => expect(panel().querySelectorAll('.project-search__result')).toHaveLength(7));
+        expect([...panel().querySelectorAll('.project-search__result')].some(row => row.querySelector('strong')?.textContent === 'Session 0 · MindOS')).toBe(true);
         expect(panel().querySelector('table')!.hidden).toBe(true); expect(sessionRows()).toHaveLength(15);
         search.value = ''; search.dispatchEvent(new Event('input'));
         expect(panel().querySelector('table')!.hidden).toBe(false);

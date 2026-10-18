@@ -63,7 +63,7 @@ import type { EditorFactory, IEditor, EditorHostContext, EditorOptions, ContextM
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { KernelViewPort as Kernel } from '@itookit/durable-kernel/contracts';
 import { describeErrorReason, describeCauseChain, type VFSToolbarContext, type VFSUIShell, type VFSNodeUI, type UIPersistencePort } from '@itookit/vfs-ui';
-import { FSError, createFileSystemView, type FSNode, type IFileSystem, type FileSystemContextOwner, type FileSystemView } from '@itookit/vfs-core';
+import { FSError, createFileSystemView, searchKeywords, type FSNode, type IFileSystem, type FileSystemContextOwner, type FileSystemView } from '@itookit/vfs-core';
 
 
 
@@ -1525,7 +1525,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (!this.editor || this.active !== activeId) return;
         if (row.itemId) { await this.editor.navigateTo({elementId: row.kind === 'remote-session' ? 'native-item:' + row.itemId : row.itemId}); return; }
         if (row.kind === 'session') return;
-        const editor = this.editor, results = await editor.search(query);
+        const editor = this.editor, results = await editor.search(searchKeywords(query)[0] ?? query);
         if (this.editor !== editor || this.active !== activeId) return;
         const offset = row.line ? this.editor.getText().split('\n').slice(0, row.line - 1).reduce((size, line) => size + line.length + 1, 0) : 0;
         const result = results.find(match => match.source === 'editor' && match.details.from >= offset) ?? results[0];

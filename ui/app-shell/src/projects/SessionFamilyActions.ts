@@ -1,5 +1,6 @@
 import { showNameDialog } from '../files/project-dialog';
-import { getLocale, t } from '@itookit/common';
+import { t } from '@itookit/common';
+import { setTimePresentation } from '@itookit/ui-common';
 import type { ProjectSessions } from '@itookit/app-contracts/services';
 import type { ConversationManifest, SessionSummary } from '@itookit/llm-session/contracts';
 
@@ -82,11 +83,7 @@ export class SessionFamilyActions {
     private renderMetadata(section: HTMLElement, manifest: ConversationManifest): void {
         for (const time of section.querySelectorAll<HTMLTimeElement>('time[data-session-time]')) {
             const value = manifest[time.dataset.sessionTime as 'createdAt' | 'updatedAt'];
-            const date = new Date(value);
-            time.textContent = Number.isFinite(date.getTime())
-                ? new Intl.DateTimeFormat(getLocale(), { dateStyle: 'medium', timeStyle: 'medium' }).format(date) : t('project.timeUnknown');
-            if (Number.isFinite(date.getTime())) { time.dateTime = date.toISOString(); time.title = date.toLocaleString(getLocale()); }
-            else { time.removeAttribute('datetime'); time.removeAttribute('title'); }
+            setTimePresentation(time, value, t('project.timeUnknown'));
         }
     }
     private async rename(id: string): Promise<void> {

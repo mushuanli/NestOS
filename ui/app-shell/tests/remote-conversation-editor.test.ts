@@ -43,6 +43,61 @@ it('mounts host actions in the same More menu and releases them when the native 
     expect(host.querySelector('.llm-workspace-titlebar__menu')?.textContent).toContain('Host action');
     await editor.destroy(); expect(cleanup).toHaveBeenCalledOnce();
 });
+it('keeps passive native diagnostics in More while preserving live updates and input drafts', async () => {
+    const prototype = HTMLDialogElement.prototype;
+    const descriptors = ['showModal', 'close'].map(name => [name, Object.getOwnPropertyDescriptor(prototype, name)] as const);
+    Object.defineProperties(prototype, {
+        showModal: {configurable: true, value(this: HTMLDialogElement) {this.open = true;}},
+        close: {configurable: true, value(this: HTMLDialogElement) {this.open = false; this.dispatchEvent(new Event('close'));}},
+    });
+    const {editor, peer, host} = setup(); let changed!: () => void;
+    let snapshot: ConversationSnapshot = {...state, observation: {execution: 'unknown', rawStatus: 'notLoaded',
+        source: 'history', observedAt: Date.now(), connection: 'online', stale: false, receiptUnknown: false},
+        createdAt: 1000, updatedAt: 2000,
+        usage: {scope: 'transcript', complete: true, observedAt: Date.now(),
+            totals: {inputTokens: 130454600, outputTokens: 29, cacheReadTokens: 0, cacheWriteTokens: 0, reasoningTokens: 0}},
+        usageEstimate: {currency: 'USD', estimatedCostUsd: 15.833715, complete: true}};
+    vi.mocked(peer.read).mockImplementation(async () => snapshot);
+    peer.snapshot = () => snapshot; peer.subscribe = listener => {changed = listener; return () => {};};
+    try {
+        await editor.init(host);
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!; input.value = 'Keep my draft';
+        const indicator = host.querySelector<HTMLElement>('#llm-status-indicator')!;
+        expect(indicator.hidden).toBe(true); expect(host.querySelector('.remote-conversation__status')?.textContent).toBe('');
+        expect(host.textContent).not.toContain('130,454,629');
+        const menu = host.querySelector<HTMLDetailsElement>('.llm-workspace-titlebar__menu')!; menu.open = true;
+        const openInfo = () => host.querySelector<HTMLButtonElement>('[data-action="conversation-information"]')!.click();
+        openInfo(); const dialog = document.querySelector<HTMLDialogElement>('.remote-conversation-info')!;
+        expect(dialog.open).toBe(true); expect(menu.open).toBe(false);
+        expect([...dialog.querySelectorAll('dt')].map(item => item.textContent)).toEqual([t('project.createdAt'), t('project.lastActivity')]);
+        const time = (field: string) => dialog.querySelector<HTMLTimeElement>(`[data-session-time="${field}"]`)!;
+        expect(time('createdAt').dateTime).toBe(new Date(1000).toISOString());
+        expect(time('updatedAt').dateTime).toBe(new Date(2000).toISOString());
+        expect(dialog.textContent).toContain(t('harness.unloadedHelp'));
+        expect(dialog.textContent).toContain(t('harness.usageHelp')); expect(dialog.textContent).toContain('130,454,629');
+        expect(dialog.textContent).toContain('15.83'); expect(dialog.textContent).not.toContain('15.833715');
+        snapshot = {...snapshot, updatedAt: 4000, observation: {...snapshot.observation!, execution: 'running'}}; changed();
+        await vi.waitFor(() => expect(dialog.querySelector('[data-session-info-status]')?.textContent).toContain(t('harness.state.running')));
+        expect(document.querySelector('.remote-conversation-info')).toBe(dialog); expect(indicator.hidden).toBe(false);
+        expect(time('createdAt').dateTime).toBe(new Date(1000).toISOString());
+        expect(time('updatedAt').dateTime).toBe(new Date(4000).toISOString());
+        expect(input.value).toBe('Keep my draft');
+        snapshot = {...snapshot, createdAt: null, updatedAt: null, disconnected: true,
+            observation: {...snapshot.observation!, connection: 'offline'}}; changed();
+        await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent).toContain(t('harness.state.offline')));
+        expect(time('createdAt').textContent).toBe(t('project.timeUnknown')); expect(time('createdAt').hasAttribute('datetime')).toBe(false);
+        expect(time('updatedAt').textContent).toBe(t('project.timeUnknown')); expect(time('updatedAt').hasAttribute('title')).toBe(false);
+        dialog.querySelector<HTMLButtonElement>('button')!.click(); expect(dialog.isConnected).toBe(false);
+        menu.open = true; openInfo(); expect(document.querySelector('.remote-conversation-info')).not.toBeNull();
+        expect(peer.send).not.toHaveBeenCalled(); expect(peer.interrupt).not.toHaveBeenCalled();
+    } finally {
+        await editor.destroy();
+        for (const [name, descriptor] of descriptors) {
+            if (descriptor) Object.defineProperty(prototype, name, descriptor); else Reflect.deleteProperty(prototype, name);
+        }
+    }
+    expect(document.querySelector('.remote-conversation-info')).toBeNull();
+});
 it('loads an earlier native page and locates the actual message from a search hit', async () => {
     const {editor, peer, host} = setup();
     vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true});

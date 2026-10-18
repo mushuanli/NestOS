@@ -2,6 +2,17 @@
 .remote-conversation__interactions { max-height: 35%; overflow: auto; }
 .remote-conversation__status { margin: 0; padding: 0 .75rem; font-size: .8rem; }
 .remote-conversation__status:empty { display: none; }
+.remote-conversation-info { width: min(480px, calc(100vw - 32px)); max-height: calc(var(--app-visible-height, 100dvh) - 32px); box-sizing: border-box; padding: 0; border: 1px solid var(--llm-border-color); border-radius: 12px; color: var(--llm-text-primary); background: var(--llm-bg-primary); }
+.remote-conversation-info::backdrop { background: #0f172a77; }
+.remote-conversation-info__header { position: sticky; top: 0; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 8px 12px 8px 20px; border-bottom: 1px solid var(--llm-border-color); background: var(--llm-bg-primary); }
+.remote-conversation-info__header button { width: 44px; height: 44px; flex-shrink: 0; border: 0; border-radius: 6px; font-size: 18px; color: inherit; background: transparent; cursor: pointer; }
+.remote-conversation-info__body { padding: 4px 20px 20px; font-size: 14px; line-height: 1.6; overflow-wrap: anywhere; }
+.remote-conversation-info__body h3 { margin: 16px 0 6px; font-size: 14px; }
+.remote-conversation-info__body p { margin: 6px 0; white-space: pre-line; }
+.remote-conversation-info__help { color: var(--llm-text-secondary); font-size: 12px; }
+.remote-conversation-info__times { margin: 16px 0 0; display: grid; gap: 3px; }
+.remote-conversation-info__times dt { color: var(--llm-text-secondary); font-size: 12px; }
+.remote-conversation-info__times dd { margin: 0 0 6px; font-variant-numeric: tabular-nums; }
 .remote-conversation__history-progress { display: flex; flex-direction: column; align-items: center; gap: .5rem; padding: .75rem; margin-bottom: .75rem; font-size: .8rem; text-align: center; }
 .remote-conversation__history-progress[hidden] { display: none; }
 .remote-conversation__earlier { border: 1px solid var(--llm-border-color); border-radius: 999px; padding: .4rem .9rem; background: var(--llm-bg-primary); color: var(--llm-primary-color); font: inherit; cursor: pointer; }

@@ -96,15 +96,23 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         }
         this.view.setTitle(snapshot.title);
         this.view.setSessionTimes(snapshot.createdAt, snapshot.updatedAt);
-        this.view.setUsage(snapshot);
-        const status = conversationStatus(snapshot.observation ?? {execution: snapshot.requests.some(r => r.kind === 'approval') ? 'waiting-approval'
+        this.view.setInformation(snapshot);
+        this.showStatus(snapshot);
+        this.updateControls();
+    }
+    private showStatus(snapshot: ConversationSnapshot): void {
+        const observation: NonNullable<ConversationSnapshot['observation']> = snapshot.observation ?? {execution: snapshot.requests.some(r => r.kind === 'approval') ? 'waiting-approval'
             : snapshot.requests.some(r => r.kind === 'input') ? 'waiting-input' : snapshot.active || snapshot.canInterrupt ? 'running' : 'unknown',
-            updatedAt: snapshot.updatedAt, connection: snapshot.disconnected ? 'offline' : 'online', stale: snapshot.gap, receiptUnknown: snapshot.pending, source: 'history', observedAt: 0}, Date.now(), {inferActivity: false});
+            updatedAt: snapshot.updatedAt, connection: snapshot.disconnected ? 'offline' : 'online', stale: snapshot.gap, receiptUnknown: snapshot.pending, source: 'history', observedAt: 0};
+        const status = conversationStatus(observation, Date.now(), {inferActivity: false});
         const submission = this.submission;
+        const attention = [submission && submission.state !== 'accepted', observation.nativeError, observation.refreshError,
+            observation.connection === 'offline', observation.stale, observation.receiptUnknown,
+            snapshot.pending, snapshot.disconnected, snapshot.gap].some(Boolean);
         this.view.setStatus(submission && submission.state !== 'accepted'
             ? [t(`chat.submission.${submission.state}`), submission.error].filter(Boolean).join(' ') : status.text,
-            submission?.state === 'failed' ? 'failed' : submission && submission.state !== 'accepted' ? 'queued' : status.indicator);
-        this.updateControls();
+            submission?.state === 'failed' ? 'failed' : submission && submission.state !== 'accepted' ? 'queued' : status.indicator,
+            {inline: attention, indicator: attention || status.indicator !== 'idle', tooltip: status.tooltip});
     }
     private restoreDraft(snapshot: ConversationSnapshot) {
         if (this.restoredDraft) return;

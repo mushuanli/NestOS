@@ -22,6 +22,8 @@ HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已�
 
 远程会话快照和渲染更新异常显示「会话更新失败」及原因，不推断连接断开；连接状态消费端口 observation。成功更新清除临时错误，失败保留输入草稿且不自动重发。
 
+原生会话的被动运行状态、累计 token 和估算费用收进标题栏「更多 → 会话信息」，由 ConversationInformation 消费已有快照，不额外请求或改变执行状态。基础信息与本地会话统一为创建时间、最后活动，复用 project 字段文案及 ui-common.setTimePresentation；远端缺失时间显示「暂无记录」，不以页面刷新时间代替。详情说明未加载与外部活动不可见的含义，区分累计用量、正文长度和实际账单；金额通常保留两位小数，非零分以下估算保留必要精度。运行和等待状态保留标题栏指标，错误、离线、历史缺口及未知回执继续在正文显示；打开或更新详情不重建历史和输入，关闭编辑器清理弹层。回归见 app-shell 的 remote-conversation-editor、session-toolbar 与本包 conversation-usage。
+
 原生远程 harness 会话经 `ConversationControls` 注入，复用 `LayoutTemplates`、`HistoryView`/`SessionRenderer`和 `ChatInput`，不另写历史卡片和 textarea。`RemoteConversationEditor` 仅适配原生分页、分支、审批、回执和草稿；`remote-rounds` 按原生 turnId 投影每轮独立的用户 MDx 与响应 MDx，保留请求数组、全部智能体回复及思考。用户数组的文字项由 contentParts 保留边界，展示和复制时用 `\n\n---\n\n` 分隔；单条文本内部换行不拆项。工具显示名称、操作、首个非空命令行（最多 240 个字符）和目标路径，不展示完整参数、后续代码或输出；智能体正文的代码块继续使用共享折叠控件。仅去除 submitted 乐观消息的原生回显，不按文本去重真实请求。时间使用原生毫秒时间，未知时间留空；branchName 独立于会话标题。缺少 turnId 的旧数据按用户消息边界投影。更早历史由顶部加载入口或明确的定位请求按需逐页读取，不自动补齐全部历史；失败保留提示与手动重试入口，不随通知或轮询重复请求。宿主提供订阅时读取本地快照，缺少订阅才使用轮询回退。快照更新保留 MDx 实例。原生历史只读，隐藏未声明的本地编辑/重生成功能；发送与中断直达远程控制端口，不调用本地 Session 或 Kernel。
 
 原生会话标题栏复用 EventBinder 的响应式菜单与事件、StatusIndicatorView、BranchIndicatorTemplates、FloatingNavPanel 和 LLMPrintService。侧栏按钮由宿主 toggleSidebar 决定可用性，与原生执行能力无关。ConversationHistoryNavigation 消费渲染后的轮次，不调用本地 Session 命令；导航只读模式保留复制、滚动和折叠，移除上下文修改、历史删除及轮次分支操作。原生分支切换使用 ID，名称只作显示；创建入口收进共享下拉列表。打印通过带 literalHtml 扩展的 MDxRenderer 保留屏幕上的 HTML 字面显示策略。

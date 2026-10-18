@@ -12,7 +12,7 @@ export function conversationUsage(snapshot: ConversationSnapshot): string {
     const estimate = snapshot.usageEstimate;
     const amount = estimate?.estimatedCostUsd;
     const cost = typeof amount === 'number'
-        ? `${t('harness.estimatedCost')} ≈ ${new Intl.NumberFormat(getLocale(), {style: 'currency', currency: estimate!.currency, maximumFractionDigits: 6}).format(amount)}`
+        ? `${t('harness.estimatedCost')} ≈ ${new Intl.NumberFormat(getLocale(), {style: 'currency', currency: estimate!.currency, maximumFractionDigits: amount > 0 && amount < 0.01 ? 6 : 2}).format(amount)}`
         : t('harness.usageUnknown');
     return [`${t('harness.usage')} ${count}`, cost, !usage.complete || estimate && !estimate.complete ? t('harness.usagePartial') : ''].filter(Boolean).join(' · ');
 }

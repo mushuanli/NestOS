@@ -36,6 +36,7 @@ export { installResponsiveActions, type ResponsiveActionsOptions } from './compo
 
 // ── Browser utilities ──
 export { copyText } from './utils/clipboard';
+export { setTimePresentation } from './utils/time-presentation';
 
 export type { Suggestion, IAutocompleteSource } from './interfaces/IAutocompleteSource';
 

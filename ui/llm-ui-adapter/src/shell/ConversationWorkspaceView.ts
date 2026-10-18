@@ -9,7 +9,7 @@ import { EventBinder } from './EventBinder';
 import { DOMCache } from '../components/common';
 import { StatusIndicatorView } from '../components/indicators/StatusIndicatorView';
 import { RemoteHistory } from './remote-history';
-import { conversationUsage } from './conversation-usage';
+import { ConversationInformation } from './ConversationInformation';
 import type { ConversationSnapshot } from '@itookit/ui-common';
 import { mountConversationSource } from './conversation-source';
 
@@ -32,7 +32,7 @@ export class ConversationWorkspaceView {
     readonly input: ChatInput;
     readonly interactions = document.createElement('div');
     readonly status = document.createElement('p');
-    private readonly usage = document.createElement('p');
+    private readonly information: ConversationInformation;
     readonly reconcile: HTMLButtonElement;
     readonly earlier: HTMLButtonElement;
     private readonly progress = document.createElement('div');
@@ -48,6 +48,7 @@ export class ConversationWorkspaceView {
         this.indicator = new StatusIndicatorView(new DOMCache(container), () => false, () => {});
         this.configureTitle(options); this.events = this.configureToolbar(options, actions);
         const toolbar = container.querySelector<HTMLElement>('.llm-workspace-titlebar__menu-actions')!;
+        this.information = new ConversationInformation(toolbar);
         this.renameButton = this.button(t('project.renameSession'), () => this.rename(actions), toolbar); this.renameButton.hidden = true;
         this.progress.className = 'remote-conversation__history-progress'; this.progress.hidden = true;
         this.progress.append(this.progressText);
@@ -62,9 +63,7 @@ export class ConversationWorkspaceView {
         this.input.setAvailability({canSend: false, canInterrupt: false});
         this.interactions.className = 'remote-conversation__interactions';
         this.status.className = 'remote-conversation__status'; this.status.setAttribute('role', 'status');
-        this.usage.className = 'remote-conversation__status'; this.usage.hidden = true;
-        this.usage.title = t('harness.usageHelp'); this.usage.setAttribute('aria-live', 'polite');
-        const input = container.querySelectorAll('#llm-ui-input')[0]!; input.before(this.interactions, this.status, this.usage);
+        const input = container.querySelectorAll('#llm-ui-input')[0]!; input.before(this.interactions, this.status);
     }
     private configureTitle(options: EditorOptions): void {
         const title = this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!;
@@ -125,9 +124,8 @@ export class ConversationWorkspaceView {
         const input = this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!;
         if (document.activeElement !== input || input.readOnly) input.value = title;
     }
-    setUsage(snapshot: ConversationSnapshot): void {
-        this.usage.textContent = conversationUsage(snapshot);
-        this.usage.hidden = !this.usage.textContent;
+    setInformation(snapshot: ConversationSnapshot): void {
+        this.information.setSnapshot(snapshot);
     }
     setRenameAvailability(enabled: boolean): void {
         this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!.readOnly = !enabled;
@@ -158,9 +156,11 @@ export class ConversationWorkspaceView {
         this.progress.setAttribute('aria-busy', String(loading));
         this.progressText.textContent = t(loading ? 'harness.loadingEarlier' : 'harness.partialHistory', {count}) + (error ? ` ${error}` : '');
     }
-    setStatus(text: string, state = 'failed'): void {
-        this.status.textContent = text;
-        this.indicator.update(state, text || t('harness.ready'));
+    setStatus(text: string, state = 'failed', options: {inline?: boolean; indicator?: boolean; tooltip?: string} = {}): void {
+        this.information.setStatus(text, options.tooltip);
+        this.status.textContent = options.inline === false ? '' : text;
+        this.indicator.update(state, options.indicator === false ? '' : text || t('harness.ready'));
+        this.container.querySelectorAll<HTMLElement>('#llm-status-indicator')[0]!.hidden = options.indicator === false;
     }
-    destroy(): Promise<void> { this.renameDialog?.hide(); this.events.cleanup(); this.indicator.destroy(); this.input.destroy(); this.container.classList.remove('llm-ui-workspace'); return this.history.destroy(); }
+    destroy(): Promise<void> { this.renameDialog?.hide(); this.information.destroy(); this.events.cleanup(); this.indicator.destroy(); this.input.destroy(); this.container.classList.remove('llm-ui-workspace'); return this.history.destroy(); }
 }

@@ -77,6 +77,12 @@ it('places conversation metadata and organization inside the shared More menu an
         expect(header.querySelector('.llm-workspace-titlebar__primary .session-family__section')).toBeNull();
         menu.open = true; menu.dispatchEvent(new KeyboardEvent('keydown', {key: 'Escape', bubbles: true}));
         expect(menu.open).toBe(false);
+        family.updateMetadata({...manifest, createdAt: 0, updatedAt: NaN} as never);
+        for (const field of ['createdAt', 'updatedAt']) {
+            const element = header.querySelector<HTMLTimeElement>(`[data-session-time="${field}"]`)!;
+            expect(element.textContent).toBe(t('project.timeUnknown'));
+            expect(element.hasAttribute('datetime')).toBe(false); expect(element.hasAttribute('title')).toBe(false);
+        }
         const getCount = sessions.get.mock.calls.length; binder.cleanup();
         expect(header.querySelector('.session-family__section')).toBeNull();
         menu.open = true; menu.dispatchEvent(new Event('toggle'));

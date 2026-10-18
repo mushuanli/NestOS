@@ -390,15 +390,19 @@ C4Component
 
 远程文件复用 `project_search`，增加 `name` 模式和项目相对 `directory`；目录范围在结果容量截断前应用，保留只读 pinned 视图、忽略及不跟随符号链接的策略。`fileSearchVersion >= 2` 才允许新参数，防止旧服务忽略目录参数后返回跨范围结果。远程会话复用 `harness_session_search` 的 `title/content/prompt`，Codex、Claude Code、DSH 分别通过其已授权的原生目录和结构化历史实现；DSH 与 Codex 共用有界分页搜索机制，宿主不退回 Shell 或扫描 harness home。`searchPrompts` 单独声明用户提问能力；已知注入上下文按原生来源标记排除，来源未知的用户文本保持可搜索。
 
+文件搜索能力由 `ProjectClient` 在执行查询的同一 MCP 连接上读取 discovery metadata；明确声明 `fileSearch: false` 时拒绝查询。应用层只核对项目授权与 revision，不把文件 HTTP 根地址再次传给要求完整 MCP 地址的 discovery 入口。名称/目录搜索仍要求版本 2；未声明新能力的旧服务保持原有路径/内容搜索契约。
+
+原生会话聚合最多并发查询两个 profile，共享 18 秒预算并受外层查询取消约束；不按来源数量平分原生扫描时间。按 profile 目录顺序合并结果，最多返回 100 条；失败或超时来源通过 `unavailableSources` 标识，已完成来源的结果保留。所有查询结束或取消后释放客户端，再返回结果。
+
 ```mermaid
 C4Component
   title 页面搜索：表示、项目查询与存储边界
   Component(page, "DirectoryList / ProjectSearchPanel", "app-shell", "名称默认值、范围切换、防抖、取消与命中跳转")
-  Component(query, "ProjectSearch", "app-core", "项目身份、来源聚合、预算与部分结果")
+  Component(query, "ProjectSearch", "app-core", "项目授权、最多两个并发来源、共享预算与部分结果")
   Component(files, "VFS discovery + readContent", "vfs-core", "授权目录遍历与有界文件读取")
   Component(store, "LocalFS / IndexedDB", "storage backends", "通用目录和文件 I/O")
   Component(sessions, "SessionRepository", "llm-session", "摘要、存活分支与轮次文档")
-  Component(driver, "ProjectClient / HarnessClient", "piagent-driver", "能力协商、协议、响应校验")
+  Component(driver, "ProjectClient / HarnessClient", "piagent-driver", "同一 MCP 连接的能力协商、查询与响应校验")
   Component(remote, "project_search / harness_session_search", "pi-agent", "远程授权视图、原生结构化历史与角色筛选")
   Rel(page, query, "调用搜索端口；不携带列表分页游标")
   Rel(query, files, "查询本地文件")

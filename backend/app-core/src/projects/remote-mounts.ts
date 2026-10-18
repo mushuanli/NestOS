@@ -432,7 +432,6 @@ export class ProjectRemoteMountService {
         if (!mount?.connectionId || !mount.serverProjectId || !this.provider.projects) throw new FSError('ECAPABILITY', 'Project search unavailable');
         const fingerprint = JSON.stringify(this.list(projectId));
         const connection = await this.resolveConnection(mount.connectionId, options);
-        if (this.provider.discover && !(await this.provider.discover(connection, options)).fileSearch) throw new FSError('ECAPABILITY', 'Server file search unavailable');
         const client = this.provider.projects(connection);
         try {
             const project = await client.read(mount.serverProjectId, options);

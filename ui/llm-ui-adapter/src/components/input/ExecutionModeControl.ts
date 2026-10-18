@@ -24,7 +24,7 @@ export class ExecutionModeControl {
     private readonly explanation = document.createElement('small');
 
     constructor(container: HTMLElement, onChange: (mode: ChatExecutionMode) => void,
-        private readonly maxExchanges = DEFAULT_AGENT_MAX_EXCHANGES, infoContainer?: HTMLElement) {
+        private maxExchanges = DEFAULT_AGENT_MAX_EXCHANGES, infoContainer?: HTMLElement) {
         this.group = container.querySelector('.llm-input__execution-mode')!;
         this.hint = container.querySelector('.llm-input__execution-hint')!;
         this.buttons = Array.from(this.group.querySelectorAll('button'));
@@ -73,6 +73,9 @@ export class ExecutionModeControl {
         this.value.textContent = this.flow ? t('chatSettings.flow')
             : t(this.mode === 'agent' ? 'chatInput.executionMode.agent' : 'chatInput.executionMode.chat');
         this.explanation.textContent = this.flow ? t('chatInput.executionMode.flowHint') : t('chatInput.executionMode.locked');
+    }
+    configure(container?: HTMLElement, maxExchanges = DEFAULT_AGENT_MAX_EXCHANGES): void {
+        this.maxExchanges = maxExchanges; if (container) container.append(this.info); this.render();
     }
     destroy(): void { this.info.remove(); }
 }

@@ -15,8 +15,9 @@ export async function searchLocalSessions(repository: ISessionRepository, folder
     const groups = projectGroups(folder, await repository.listFolders());
     const rows = repository.listSummariesInFolder && groups.length <= 16 ? (await Promise.all(groups.map(group => repository.listSummariesInFolder!(group)))).flat()
         : (await (repository.listSummaries?.() ?? repository.list())).filter(row => groups.includes(row.folder ?? ''));
-    rows.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
-    for (const [index, row] of rows.entries()) {
+    const selected = query.agentId ? rows.filter(row => row.createdWithAgentId === query.agentId) : rows;
+    selected.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
+    for (const [index, row] of selected.entries()) {
         checkOperation(options);
         if (full(budget) || index >= 2000) { budget.truncated = true; break; }
         if (query.scope === 'session-title') {

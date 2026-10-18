@@ -21,6 +21,17 @@ async function setup(providerAuthorization?: ProviderAuthorizationHost) {
     return { root, server, client, runtime };
 }
 describe('full application view ports', () => {
+    it('preserves draft UUIDs over RPC and returns the replacement identity after clearing', async () => {
+        const {root, runtime} = await setup(), projects = root.services.projects;
+        const project = await projects.personal(), folder = await projects.sessionFolder(project);
+        const draft = await projects.drafts.open(project.project.id, folder), first = draft.id;
+        expect(first).toMatch(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+        await draft.save(JSON.stringify({version: 2, config: {text: 'Discard', agentId: 'default'}, files: []}));
+        const replacement = await draft.clear();
+        expect(replacement).not.toBe(first); expect(replacement).toBe((await projects.drafts.open(project.project.id, folder)).id);
+        const prepared = await draft.prepare(); expect(prepared.sessionId).toBe(replacement);
+        expect((await runtime.sessionRepository.getManifest(replacement)).id).toBe(replacement);
+    });
     it('keeps toolbox path checks on the server while retaining managed-path write protection', async () => {
         const { root, server, runtime } = await setup();
         const agents = await runtime.vfs.openFileSystem('/home/admin/agents');

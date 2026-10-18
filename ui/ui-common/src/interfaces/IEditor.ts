@@ -147,6 +147,8 @@ export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
     assets?: import('@itookit/vfs-core').IFileSystem;
     /** 初始 Markdown 内容 */
     initialContent?: string;
+    /** Optional host-owned settings; the editor coordinates their save and disposal. */
+    mountSettings?(container: HTMLElement): Promise<{flush(): Promise<void>; destroy(): Promise<void>; isDirty(): boolean}>;
 
     /** 初始模式 */
     initialMode?: 'edit' | 'render';

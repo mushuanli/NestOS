@@ -9,6 +9,7 @@
 - `taskStoragePath(sessionRoot, taskId)` 从根入口提供 SeqFile Task 的统一寻址与身份校验；能力适配器不得复制任务目录布局，内核不解释媒体或工具专用回执。
 - **一切决策必须可持久**：`Decision` 的 payload 由 `assertDurableValue` 校验；跨重启只依赖持久记录，不依赖进程内 Promise 或内存 Map。
 - **观察与事实分离**：`domain/status.ts` 的 `taskStat`/`taskStats`/`sessionStat` 是只读投影（如「取消已接受」与「外部已停止」可区分），不得写状态。
+- **变化分类**：存储提交仅修改当前 Session 的 events.seq 时通知 content，不能把已分类的流式内容经持久化监听再次升级为 structure。包含 Task/Session 等其他记录的提交仍通知 structure；两类均唤醒事件读取与既有调度，pollMs=0 的外部提交仍可见。回归见 src/protocol.test.ts 与 app-shell 的 draft-promotion.test.ts。
 
 ## 结构
 

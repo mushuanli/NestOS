@@ -141,3 +141,15 @@ it('does not reopen an old inspector when its save finishes after a selection ch
     await vi.waitFor(() => expect(host.operations.getSnapshot()[0]?.status).toBe('accepted'));
     expect(host.host.querySelector<HTMLInputElement>('[name="prompt"]')!.value).toBe('Other node');
 });
+
+it.each(['missing', 'throws'])('starts a Flow without native UUID (%s)', async mode => {
+    const original = globalThis.crypto;
+    vi.stubGlobal('crypto', {getRandomValues: original.getRandomValues.bind(original),
+        ...(mode === 'throws' ? {randomUUID: () => {throw new Error('Unavailable native UUID');}} : {})});
+    try {
+        const run = vi.fn(async (_revision, context) => ({status: 'accepted' as const, operationId: context.operationId}));
+        const host = fixture({run}); await host.open(); click(host.host, 'run');
+        await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+        expect(run.mock.calls[0][1].operationId).toMatch(/^[\da-f]{8}-[\da-f-]{27}$/i);
+    } finally {vi.unstubAllGlobals();}
+});

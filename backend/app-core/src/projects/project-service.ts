@@ -10,6 +10,7 @@ import { WORKSPACE_PATH } from '../vfs/workspace-namespace';
 import type { ProjectExecutionService } from './execution/service';
 import { ProjectDraftStore } from './drafts/store';
 import { ProjectDraftService } from './drafts/service';
+import {RemoteDraftRecovery} from './drafts/remote-submission';
 import type { ProjectRemoteMountService } from '@itookit/app-contracts/services';
 import { ProjectSessions } from './project-sessions';
 import { readProjectNavigation } from './navigation-view';
@@ -48,7 +49,7 @@ export class ProjectService {
     readonly sessionMoves: ProjectSessionMoves;
     private readonly projectRepository: ProjectRepository;
     constructor(private readonly root: IFileSystem, private readonly repository: ISessionRepository,
-        private readonly directories: DirectoryMountService, private readonly files: SessionFilesService) {
+        private readonly directories: DirectoryMountService, private readonly files: SessionFilesService, initializeDraftExecution?: (sessionId: string) => Promise<void>) {
         this.sessions = new ProjectSessions(repository, folders => this.navigationFolders(folders));
         this.favorites = new ProjectFavorites(new SeqProjectFavoriteStore(root), async projectId => {
             const [sessions, folders] = await Promise.all([(repository.listSummaries?.() ?? repository.list()), repository.listFolders()]);
@@ -56,7 +57,13 @@ export class ProjectService {
             return new Map(sessions.filter(session => project && (session.folder === project.path || session.folder?.startsWith(project.path + '/')))
                 .map(session => [session.id, session.title]));
         });
-        this.drafts = new ProjectDraftService(id => new ProjectDraftStore(root, id), repository, async () => (await this.list()).map(item => item.project.id));
+        const remoteDrafts = new RemoteDraftRecovery(root, id => this.remoteMounts?.list(id) ?? []);
+        this.drafts = new ProjectDraftService(id => new ProjectDraftStore(root, id), repository, async () => (await this.list()).map(item => item.project.id), async id => {
+            const project = await this.get(id);
+            if (project.project.source?.kind === 'remote' || this.remoteMounts?.list(id).some(mount => mount.at === '/'))
+                throw new FSError('EACCES', 'Remote project drafts require a remote executor');
+        }, (id, record) => remoteDrafts.receipt(id, record), initializeDraftExecution,
+            (id, record) => remoteDrafts.assertResettable(id, record));
         this.sessionMoves = new ProjectSessionMoves(root, repository, directories, files, this);
         this.projectRepository = new ProjectRepository(root, directories);
         repository.setStorageDirectoryResolver?.(async folder => {

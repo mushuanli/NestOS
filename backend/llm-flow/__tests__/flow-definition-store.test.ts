@@ -2,10 +2,10 @@ import { readFileSync } from 'node:fs';
 import { DagCommandService } from '../src/flow/commands';
 import { FlowCommand } from '../src/flow/command-names';
 import { createBuiltinDagPluginRegistry } from '../src/flow/builtin-plugins';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { FlowDraft, FlowRevision } from '../src/contracts';
 import type { FlowStore } from '../src/flow-definition-store';
-import { FlowDefinitionStore } from '../src/flow-definition-store';
+import { FlowDefinitionStore, generateFlowId } from '../src/flow-definition-store';
 import { flowRevisionDigest } from '../src/flow/validation';
 import { flowToDag } from '../src/flow/to-dag';
 
@@ -207,4 +207,13 @@ it('pins a published parent to its transitive child revisions after the child is
     const secondParent = await store.createRevision(parent);
     expect(secondParent.dependencyLocks?.call.revision).toBe(2);
     expect(secondParent.digest).not.toBe(firstParent.digest);
+});
+
+it.each(['missing', 'throws'])('creates distinct Flow identities in the same millisecond when native UUID %s', mode => {
+    vi.stubGlobal('crypto', mode === 'throws' ? {randomUUID: () => {throw new Error('Native UUID unavailable');}} : {});
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1792300000000);
+    try {
+        const ids = Array.from({length: 100}, () => generateFlowId('New Flow'));
+        expect(new Set(ids).size).toBe(100); expect(ids.every(id => /^new-flow-[a-z0-9-]{8}$/.test(id))).toBe(true);
+    } finally {clock.mockRestore(); vi.unstubAllGlobals();}
 });

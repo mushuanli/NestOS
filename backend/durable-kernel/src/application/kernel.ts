@@ -10,7 +10,7 @@ import { DefaultTaskHandle } from '../public/task-handle';
 import { resourceApi } from '../public/resources';
 import { closedSessionStat, sessionStat } from '../domain/status';
 import { ManagedResourceStore } from '../infrastructure/seqfile/managed-resources';
-import { catalogPath, resourcesPath } from '../infrastructure/seqfile/seqfile-core';
+import { catalogPath, eventsPath, resourcesPath } from '../infrastructure/seqfile/seqfile-core';
 import {
     createId,
     SeqFileKernelStore,
@@ -850,9 +850,13 @@ export class Kernel implements KernelRegistration, KernelViewPort, KernelInspect
         // *any* Session commit made every Task/Effect record write re-read that file (and open a
         // transaction) although nothing about resources had changed.
         const resources = pathUtils.normalize(resourcesPath(root));
+        const log = pathUtils.normalize(eventsPath(root));
         this.storageListeners.set(sessionId, binding.fs.on('seq:committed', event => {
-            if (this.disposed || !event.payload.paths.some(path => pathUtils.isUnder(path, root))) return;
-            this.notify(sessionId);
+            const changed = event.payload.paths.filter(path => pathUtils.isUnder(path, root));
+            if (this.disposed || !changed.length) return;
+            // Event appends wake observers without invalidating task and Session listings.
+            const reason = changed.every(path => pathUtils.normalize(path) === log) ? 'content' : 'structure';
+            this.notify(sessionId, undefined, reason);
             this.queueDrain(sessionId);
             if (event.payload.paths.some(path => pathUtils.normalize(path) === resources)) this.resourcePoller.start(`session:${sessionId}`);
             for (const id of this.sessions.keys()) this.schedulePoll(id);

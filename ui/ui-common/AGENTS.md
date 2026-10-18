@@ -76,3 +76,9 @@ EditorOptions 的第二个泛型参数描述编辑器专属 initialData，本包
 - EditorOptions.mountWindowList 向已有编辑器标题栏挂载宿主窗口切换按钮并返回释放函数；它与用于聊天完整导航的 mountCompactNavigation 分开使用，避免重复标题和侧栏按钮。
 
 - installNavigationButtonPresentation 只管理标题栏按钮的响应式图标及 title/aria-label：手机返回上一页、桌面侧栏切换；不持有浏览器历史、不替换原点击处理器。宿主拥有返回行为，销毁时释放媒体查询监听。
+
+EditorOptions.mountSettings 让宿主挂载业务偏好，返回 isDirty/flush/destroy；配置编辑器在导航、重绘和销毁前保存，失败保留输入。SessionDraftControls.scope 仅表达项目展示候选及选择回调，executorScope 区分本地/远程候选，持久归属与选择策略由宿主提供。
+
+- SessionDraftControls.scope.select 可携带 SessionDraftPreferences；settings 对通用导航保持不透明，由目标输入编辑器验证和应用，不引入 LLM 领域依赖。
+
+- SessionDraftMaterialization.createEditor 是 UI 内部的显式控制器工厂；宿主准备 EditorOptions 后调用它，保持视图所有权，不经应用 RPC 传输 DOM 或工厂。

@@ -1,12 +1,15 @@
 import { FILE_BROWSER_ICONS, t } from '@itookit/common';
 import { decorateButton } from './controls';
+import { Drawer } from '@itookit/vfs-ui';
 import type { WorkbenchSnapshot, WorkbenchStatePort } from './state';
 
-/** One sidebar, two independently scrollable sections and keyboard accessible splitters. */
+/** Host-owned section sizes and persistence around reusable presentation drawers. */
 export class WorkbenchSidebar {
     readonly navigation = document.createElement('div');
-    private readonly top = document.createElement('section');
-    private readonly bottom = document.createElement('section');
+    private readonly top: HTMLElement;
+    private readonly bottom: HTMLElement;
+    private readonly sections = new Map<HTMLElement, {kind: string; drawer: Drawer; maximize: HTMLButtonElement;
+        toggle?: (collapsed: boolean) => void; expanded?: boolean}>();
     private readonly divider = document.createElement('div');
     private readonly resize = document.createElement('div');
     private readonly abort = new AbortController();
@@ -17,23 +20,33 @@ export class WorkbenchSidebar {
         const previous = [...sidebar.childNodes];
         sidebar.classList.add('workbench-sidebar'); this.navigation.className = 'workbench-sidebar__navigation';
         this.navigation.append(...previous);
-        this.section(this.top, t('workbench.navigation'), this.navigation, 'navigation');
-        this.section(this.bottom, t('workbench.opened'), opened, 'opened');
+        this.top = this.section(t('workbench.navigation'), this.navigation, 'navigation');
+        this.bottom = this.section(t('workbench.opened'), opened, 'opened');
         sidebar.append(this.top, this.divider, this.bottom, this.resize);
         this.splitter(this.divider, 'horizontal', t('workbench.resizeSections'), delta => this.height((this.snapshot.navigationHeight ?? 70) + delta / Math.max(sidebar.clientHeight, 1) * 100));
         this.splitter(this.resize, 'vertical', t('workbench.resizeSidebar'), delta => this.width((this.snapshot.width ?? 300) + delta));
         this.apply();
     }
-    private section(section: HTMLElement, label: string, body: HTMLElement, kind: 'navigation' | 'opened'): void {
-        section.className = 'workbench-sidebar__section'; section.dataset.section = kind;
-        const header = document.createElement('div'); header.className = 'workbench-sidebar__header';
-        const toggle = document.createElement('button'); toggle.type = 'button'; toggle.textContent = label;
-        decorateButton(toggle, FILE_BROWSER_ICONS.chevron, label);
-        toggle.onclick = () => { const key = kind === 'navigation' ? 'navigationCollapsed' : 'openedCollapsed'; this.snapshot[key] = !this.snapshot[key]; this.apply(); this.save(); };
+    private section(label: string, body: HTMLElement, kind: string, toggle?: (collapsed: boolean) => void): HTMLElement {
         const maximize = document.createElement('button'); maximize.type = 'button'; maximize.textContent = t('workbench.maximize');
         decorateButton(maximize, FILE_BROWSER_ICONS.maximize, t('workbench.maximize'), true);
+        const drawer = new Drawer({title: label, scrollMode: 'host', onToggle: collapsed => {
+            if (kind === 'navigation') this.snapshot.navigationCollapsed = collapsed;
+            else if (kind === 'opened') this.snapshot.openedCollapsed = collapsed;
+            else (this.snapshot.drawerCollapsed ??= {})[kind] = collapsed;
+            this.apply(); this.save();
+        }, mountActions: container => {container.append(maximize);} });
+        const section = drawer.element;
+        section.classList.add('workbench-sidebar__section'); section.dataset.section = kind;
+        drawer.content.append(body); this.sections.set(section, {kind, drawer, maximize, toggle});
         maximize.onclick = () => { this.maximized = this.maximized === section ? undefined : section; this.apply(); };
-        header.append(toggle, maximize); section.append(header, body);
+        return section;
+    }
+    addDrawer(kind: string, label: string, body: HTMLElement, toggle?: (collapsed: boolean) => void): () => void {
+        const section = this.section(label, body, kind, toggle);
+        section.classList.add('workbench-sidebar__extra'); this.divider.before(section); this.apply();
+        return () => { this.sections.get(section)?.drawer.destroy(); this.sections.delete(section);
+            if (this.maximized === section) this.maximized = undefined; this.apply(); };
     }
     private splitter(element: HTMLElement, orientation: 'horizontal' | 'vertical', label: string, move: (delta: number) => void): void {
         element.className = orientation === 'horizontal' ? 'workbench-sidebar__divider' : 'workbench-sidebar__resize';
@@ -59,12 +72,16 @@ export class WorkbenchSidebar {
     private apply(): void {
         this.sidebar.style.setProperty('--workbench-sidebar-width', `${this.snapshot.width ?? 300}px`);
         this.top.style.flex = `${this.snapshot.navigationHeight ?? 70} 1 0`; this.bottom.style.flex = `${100 - (this.snapshot.navigationHeight ?? 70)} 1 0`;
-        for (const section of [this.top, this.bottom]) {
-            const collapsed = section === this.top ? this.snapshot.navigationCollapsed : this.snapshot.openedCollapsed;
+        for (const [section, entry] of this.sections) {
+            const {kind, drawer, maximize} = entry;
+            const collapsed = kind === 'navigation' ? this.snapshot.navigationCollapsed : kind === 'opened'
+                ? this.snapshot.openedCollapsed : this.snapshot.drawerCollapsed?.[kind] ?? true;
+            if (kind !== 'navigation' && kind !== 'opened') section.style.flex = this.maximized === section ? '1 1 0' : '0 1 240px';
             section.hidden = !!this.maximized && section !== this.maximized;
-            section.classList.toggle('is-collapsed', !!collapsed && this.maximized !== section);
-            const buttons = section.querySelectorAll('button'); buttons[0]?.setAttribute('aria-expanded', String(!collapsed || this.maximized === section));
-            if (buttons[1]) decorateButton(buttons[1], this.maximized === section ? FILE_BROWSER_ICONS.restore : FILE_BROWSER_ICONS.maximize, t(this.maximized === section ? 'workbench.restore' : 'workbench.maximize'), true);
+            drawer.setCollapsed(!!collapsed && this.maximized !== section);
+            const expanded = !section.hidden && (!collapsed || this.maximized === section);
+            if (entry.expanded !== expanded) {entry.expanded = expanded; entry.toggle?.(!expanded);}
+            decorateButton(maximize, this.maximized === section ? FILE_BROWSER_ICONS.restore : FILE_BROWSER_ICONS.maximize, t(this.maximized === section ? 'workbench.restore' : 'workbench.maximize'), true);
         }
         this.divider.hidden = !!this.maximized || !!this.snapshot.navigationCollapsed || !!this.snapshot.openedCollapsed;
         this.resize.setAttribute('aria-valuenow', String(this.snapshot.width ?? 300)); this.resize.setAttribute('aria-valuemin', '220'); this.resize.setAttribute('aria-valuemax', '600');
@@ -74,5 +91,9 @@ export class WorkbenchSidebar {
         if (tabs) this.snapshot.tabs = tabs;
         this.persistence?.save({ ...this.snapshot });
     }
-    destroy(): void { this.abort.abort(); this.top.remove(); this.bottom.remove(); this.divider.remove(); this.resize.remove(); this.sidebar.classList.remove('workbench-sidebar'); }
+    destroy(): void {
+        this.abort.abort();
+        for (const {drawer} of this.sections.values()) drawer.destroy();
+        this.sections.clear(); this.divider.remove(); this.resize.remove(); this.sidebar.classList.remove('workbench-sidebar');
+    }
 }

@@ -3,6 +3,7 @@ import { projectConversationsPath, projectConversationEntryPath, remoteSessionPa
 import type { FSNode } from '@itookit/vfs-core';
 import type { RemoteSessionProjection } from '../session/remote-session-projection';
 import { localConversationSource, readConversationPage } from './conversation-page';
+import { FSError } from '@itookit/vfs-core';
 
 function aliasNode(directory: string, node: FSNode): FSNode {
     return {...node, path: projectConversationEntryPath(directory, node.path), parentPath: directory,
@@ -34,14 +35,21 @@ export function conversationNavigationNodes(folder: string): FSNode[] {
 }
 
 export async function conversationDirectory(directory: string, target: Extract<BrowserTarget, {kind: 'project-conversations'}>,
-    local: Promise<FSNode[]>, remote: () => ReturnType<RemoteSessionProjection['timeline']>): Promise<FSNode[]> {
+    local: Promise<FSNode[]>, remote: () => ReturnType<RemoteSessionProjection['timeline']>, agentId?: string): Promise<FSNode[]> {
     const localNodes = await local, timeline = await remote();
     try {
-        const page = await readConversationPage([localConversationSource(localNodes), ...timeline.sources], target.cursor, target.recent ? 15 : 50);
+        const page = await readConversationPage([localConversationSource(localNodes), ...timeline.sources], filteredCursor(target.cursor, agentId), target.recent ? 15 : 50);
         const errors = page.errors.map(({source}) => unavailableNode(target.folder, source));
         const actions = target.recent ? [] : timeline.actions.filter(action => !action.path.endsWith('/@new'));
         const nodes = [...actions, ...page.nodes, ...errors].map(node => aliasNode(directory, node));
-        if (page.cursor) nodes.push(continuationNode(directory, target, page.cursor));
+        if (page.cursor) nodes.push(continuationNode(directory, target, agentId ? JSON.stringify({agentId, cursor: page.cursor}) : page.cursor));
         return nodes;
     } finally {await timeline.close();}
+}
+function filteredCursor(cursor?: string, agentId?: string): string | undefined {
+    if (!cursor || !agentId) return cursor;
+    let value: {agentId?: unknown; cursor?: unknown};
+    try {value = JSON.parse(cursor);} catch {throw new FSError('EINVAL', 'Invalid filtered conversation cursor');}
+    if (value.agentId !== agentId || typeof value.cursor !== 'string') throw new FSError('EINVAL', 'Conversation filter changed; reopen the conversation list');
+    return value.cursor;
 }

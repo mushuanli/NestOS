@@ -16,6 +16,7 @@ export interface SessionViewPort extends ISession {
     getSessions(): SessionGroup[];
     getStatus(): SessionStatus | 'unbound';
     isGenerating(): boolean;
+    /** Independent observer of the current binding; registration may precede binding and survives rebinds. */
     onEvent(handler: (event: SessionEventEnvelope) => void): () => void;
     onGlobalEvent(handler: (event: RegistryEvent) => void): () => void;
     readonly promptHistory?: PromptHistoryPort;

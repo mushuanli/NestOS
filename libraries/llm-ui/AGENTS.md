@@ -9,3 +9,5 @@
 - 自定义 renderer 是可信宿主代码；模型 Markdown 不登记扩展。显示和打印共用内容策略。
 - 业务兼容工厂在 `../../ui/llm-ui-adapter`，通用 Flow 视图通过本包 `/flow` 提供。
 - 验证：`pnpm typecheck`、`pnpm test`、`pnpm build`；构建扫描源码、JS 和声明的外部依赖。
+
+操作身份和上传项身份统一使用包内 randomUUID 兼容工具，支持原生方法缺失或抛错；不因此增加 common 依赖。根仓库 uuid:check 和 Chat/Flow 回归共同覆盖这些入口。

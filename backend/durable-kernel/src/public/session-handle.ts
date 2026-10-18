@@ -1,3 +1,4 @@
+import { createId } from '../infrastructure/seqfile/seqfile-core';
 import type { Kernel } from '../application/kernel';
 import type {
     BudgetAccount,
@@ -123,8 +124,7 @@ export class DefaultSessionHandle implements SessionHandle {
         }
         const now = Date.now();
         const leaseMs = positiveLease(options?.leaseMs);
-        const leaseToken = globalThis.crypto?.randomUUID?.()
-            ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+        const leaseToken = createId('lease');
         const next = { ...current, status: 'claimed' as const, assigneeTaskId, leaseToken, leaseUntil: now + leaseMs, updatedAt: now };
         await this.setShared(key, next as unknown as JsonValue, { expectedVersion: entry.version, taskId: assigneeTaskId });
         return next;

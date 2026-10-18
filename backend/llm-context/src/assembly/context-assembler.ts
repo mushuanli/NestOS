@@ -11,7 +11,10 @@ import { sha256Hex } from '../content/digest';
 import { collectContextLineage } from './round-history';
 type RoundId = string;
 type Artifact = { content: unknown; contentHash?: string };
-const generateUUID = () => globalThis.crypto?.randomUUID?.() ?? `context-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+function generateUUID(): string {
+    try {const id = globalThis.crypto?.randomUUID?.(); if (id) return id;} catch { /* Use the portable context identity. */ }
+    return `context-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
 import { ProviderMessageAdapter, type ProviderKind } from './provider-message-adapter';
 
 export interface RetrievedMemoryEntry {

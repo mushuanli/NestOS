@@ -1,5 +1,11 @@
 import {backToPreviousPage} from '../navigation/page-history';
 import { SessionTaskView } from './SessionTaskView';
+import { AgentDrawer } from './agent-drawer';
+import type {ProjectDraftPromotion} from '@itookit/app-contracts/services';
+import { AgentProjectPreferences } from './agent-project-preferences';
+import { mountAgentProjectSettings } from './agent-project-settings';
+import { lazyResource } from '../lifecycle/lazy-resource';
+import { RemoteAgentDetailsEditor } from '../toolbox/RemoteAgentDetailsEditor';
 import { ViewRefresh } from '../lifecycle/view-refresh';
 import {createRecoverableFileEditor} from '../browser/file-recovery';
 import { harnessObservation, remoteSessionSources } from '@itookit/app-contracts';
@@ -53,7 +59,7 @@ import { showNameDialog, showProjectDialog } from '../files/project-dialog';
 import { showMountDialog } from '../files/mount-dialog';
 import { localizeMountError } from '../files/localize-mount-error';
 
-import type { EditorFactory, IEditor, EditorHostContext, ContextMenuConfig, MenuItem } from '@itookit/ui-common';
+import type { EditorFactory, IEditor, EditorHostContext, EditorOptions, ContextMenuConfig, MenuItem } from '@itookit/ui-common';
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { KernelViewPort as Kernel } from '@itookit/durable-kernel/contracts';
 import { describeErrorReason, describeCauseChain, type VFSToolbarContext, type VFSUIShell, type VFSNodeUI, type UIPersistencePort } from '@itookit/vfs-ui';
@@ -139,6 +145,8 @@ export interface SessionWorkbenchOptions {
     /** Host-owned snapshot storage; omitted means the sidebar restores nothing. */
     uiPersistence?: UIPersistencePort;
     workbenchState?: WorkbenchStatePort;
+    agents?: {resourceId(id: string): string | undefined; usage?: EditorOptions['executorUsage'];
+        read(id: string): Promise<import('@itookit/kernel-adapters/contracts').AgentDefinition | null>; createEditor: EditorFactory};
 }
 
 function afterSidebarPaint(): Promise<void> {
@@ -163,6 +171,7 @@ interface RetainedEditor {
     previewCleanup?: () => void; renameCleanup?: () => void;
     active: string | null; branch?: string; cancel?: () => void; lease?: EditorLease;
     skills?: { sessionId: string; path: string };
+    draft?: {id: string; projectId: string; remote?: import('@itookit/ui-common').ConversationControls};
 }
 
 /** vfs-ui owns the sidebar; this host owns business views and their file leases. */
@@ -173,6 +182,12 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly dialogs = new AbortController();
     private readonly tabs: WorkbenchTabs<RetainedEditor>;
     private readonly sidebarLayout: WorkbenchSidebar;
+    private readonly agentDrawer?: AgentDrawer;
+    private readonly agentProjects: AgentProjectPreferences;
+    private readonly agentOptions?: SessionWorkbenchOptions['agents'];
+    private readonly agentCatalog;
+    private agentFilter?: string;
+    private readonly agentFilterBar = document.createElement('div');
     private editor?: IEditor;
     private editorLease?: EditorLease;
     private previewCleanup?: () => void;
@@ -241,6 +256,8 @@ export class SessionWorkbench implements WorkspaceController {
     private chatConfiguration?: WorkbenchChatControls['configuration'];
     constructor(options: SessionWorkbenchOptions) {
         this.backend = options.backend;
+        this.agentOptions = options.agents; this.agentProjects = new AgentProjectPreferences(this.backend);
+        this.agentCatalog = lazyResource(() => this.backend.toolboxView(), view => view.dispose());
         this.initialResource = options.initialResource;
         this.taskView = new SessionTaskView(this.backend, {
             begin: () => { const version = ++this.contentVersion; return () => !this.closed && version === this.contentVersion; },
@@ -283,6 +300,15 @@ export class SessionWorkbench implements WorkspaceController {
             error: error => this.report(error), changed: () => this.sidebarLayout?.save(this.tabs.snapshot()),
         }, options.workbenchState?.load()?.tabs);
         this.sidebarLayout = new WorkbenchSidebar(this.sidebar, this.tabs.opened, options.workbenchState);
+        if (options.agents && this.projects) {
+            this.agentDrawer = new AgentDrawer({backend: this.backend, resourceId: options.agents.resourceId,
+                usage: options.agents.usage, navigate: request => this.hostContext?.navigate(request) ?? Promise.resolve(),
+                edit: id => this.hostContext?.navigate({target: 'chat', resourceId: '@agent/' + encodeURIComponent(id)}) ?? this.openAgentSettings(id),
+                start: id => this.startAgentDraft(id)});
+            this.agentDrawer.setVisible(this.navigationVisible);
+            this.sidebarLayout.addDrawer('agents', t('toolbox.agents'), this.agentDrawer.element,
+                collapsed => this.agentDrawer?.setExpanded(!collapsed));
+        }
     }
     private isTransferFile(path: string): boolean {
         if (isFlowPath(path)) return false;
@@ -315,6 +341,8 @@ export class SessionWorkbench implements WorkspaceController {
             this.sidebarLayout.navigation.append(this.searchPanel.element);
         }
         this.sidebarLayout.navigation.append(tree);
+        this.agentFilterBar.className = 'workbench-agent-filter'; this.agentFilterBar.hidden = true;
+        this.sidebarLayout.navigation.prepend(this.agentFilterBar);
         if (this.projects) this.installProjectNavigation();
         if (this.searchPanel && this.projectNavigation) this.projectNavigation.header.after(this.searchPanel.element);
         this.sidebarUI = createVFSUI({ sessionListContainer: tree, title: this.projects ? t('project.workspace') : '会话', scopeId: SESSION_BROWSER_SCOPE,
@@ -395,6 +423,7 @@ export class SessionWorkbench implements WorkspaceController {
                                     await this.sidebarUI?.refresh();
                                     if (command.kind === 'delete') {
                                         for (const tab of this.tabs.values()) {
+                                            if (tab.id.startsWith('@agent/')) continue;
                                             const route = resolveBrowserTarget(tab.id);
                                             if (route.kind === 'remote' && route.folder === target.folder && route.profileId === target.profileId
                                                 && route.nativeSessionId && deletedSessionIds.includes(route.nativeSessionId)) await this.tabs.close(tab.id, false);
@@ -460,10 +489,7 @@ export class SessionWorkbench implements WorkspaceController {
             if (event.reason !== 'content') this.scheduleRefresh('kernel:' + event.reason);
         }));
         if (this.projects) this.subscriptions.add(this.projects.drafts.onPromoted(event => {
-            this.scheduleRefresh('project.draftPromoted');
-            const draft = this.tabs.get(`draft:${event.projectId}`)?.value?.editor;
-            if (this.visible && draft === this.editor)
-                void Promise.resolve().then(() => draft?.commands.refreshDraft?.()).catch(error => this.report(error));
+            void this.promoteDraftTab(event).catch(error => this.report(error));
         }));
         this.startNavigation = async () => {
             await traceBoot('sessionWorkbench.sidebar', () => this.sidebarUI!.start());
@@ -484,6 +510,7 @@ export class SessionWorkbench implements WorkspaceController {
         else this.sidebarUI.setVisible?.(false);
     }
     async setNavigationVisible(visible: boolean): Promise<void> {
+        this.agentDrawer?.setVisible(visible && this.visible);
         if (this.closed) return;
         this.navigationVisible = visible;
         this.sidebarUI?.setVisible?.(visible && this.visible);
@@ -550,7 +577,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private async applyRemoteAvailability(path: string | null): Promise<void> {
         if (!this.projects?.remoteMounts) return;
-        const target = path && !path.startsWith('draft:') ? resolveBrowserTarget(parseSessionRoute(path).path) : undefined;
+        const target = path && !path.startsWith('draft:') && !path.startsWith('@agent/') ? resolveBrowserTarget(parseSessionRoute(path).path) : undefined;
         const folder = target?.kind === 'project-files' ? target.folder : target?.kind === 'files'
             ? (await this.repository.getManifest(target.sessionId)).folder : undefined;
         const project = folder ? await this.projects.forFolder(folder) : undefined;
@@ -692,6 +719,7 @@ export class SessionWorkbench implements WorkspaceController {
     async setVisible(visible: boolean): Promise<void> {
         if (this.visible === visible || this.closed) return;
         this.visible = visible;
+        this.agentDrawer?.setVisible(visible && this.navigationVisible);
         this.remoteStatus?.setVisible(visible);
         if (!visible) this.searchPanel?.cancel();
         this.sidebarUI?.setVisible?.(visible && this.navigationVisible);
@@ -739,6 +767,7 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
     async openResource(resourceId: string, options: OpenResourceOptions = {}): Promise<void> {
+        if (resourceId.startsWith('@agent/')) return this.openAgentSettings(decodeURIComponent(resourceId.slice(7)));
         this.onBeforeNavigate?.();
         this.sessions ??= await this.sessionsReady;
         const intent = ++this.openIntent;
@@ -767,6 +796,14 @@ export class SessionWorkbench implements WorkspaceController {
             if (!current()) return;
             if (!node) throw new FSError('ENOENT', 'Project draft unavailable');
             return this.startSessionDraft(parentBrowserPath(path));
+        }
+        if (target.kind === 'remote' && target.draft) {
+            const choices = await this.remoteAgentControls(target.folder)?.list();
+            const agent = choices?.find(choice => {
+                try {return JSON.parse(decodeURIComponent(choice.id.slice(7)))[2] === target.profileId;} catch {return false;}
+            });
+            if (!agent) throw new Error(t('toolbox.unavailable'));
+            return this.startSessionDraft(folderBrowserPath(target.folder), options.initialInputState?.text ? {text: options.initialInputState.text, files: []} : undefined, agent.id);
         }
         this.cancelViewLoad();
         const load = this.viewLoads.begin();
@@ -848,6 +885,9 @@ export class SessionWorkbench implements WorkspaceController {
                 let remoteEditor: IEditor | undefined;
                 try {
                     const mount = await this.editorMount(target.folder); load.check();
+                    const tab = this.tabs.get(tabId)!;
+                    tab.conversationId = controls.conversationId;
+                    if (controls.conversationId) {tab.panel.dataset.conversationId = controls.conversationId; mount.dataset.conversationId = controls.conversationId;}
                     const root = this.projects!.remoteMounts!.list(project.project.id).find(m => m.at === '/')!;
                     const serverName = this.projects!.remoteMounts!.connectionName(root.connectionId!) ?? project.displayName ?? project.name;
                     remoteEditor = await this.factory(mount, {conversation: controls, signal: load.signal,
@@ -861,6 +901,7 @@ export class SessionWorkbench implements WorkspaceController {
                             if (nativeId === target.nativeSessionId) throw new Error(t('branch.deleteCurrentHint'));
                             const result = await this.backend.manageRemoteSession(target.folder, target.profileId!, nativeId, {kind: 'delete', preserveSessionId: target.nativeSessionId}, {signal: this.dialogs.signal, timeoutMs: 30_000});
                             for (const tab of this.tabs.values()) {
+                                if (tab.id.startsWith('@agent/')) continue;
                                 const route = resolveBrowserTarget(tab.id);
                                 if (route.kind === 'remote' && route.folder === target.folder && route.profileId === target.profileId
                                     && route.nativeSessionId && result.deletedSessionIds.includes(route.nativeSessionId)) await this.tabs.close(tab.id, false);
@@ -902,6 +943,10 @@ export class SessionWorkbench implements WorkspaceController {
                     opened = undefined;
                     load.check();
                     mount = await this.editorMount(manifest.folder, target.kind === 'session' ? manifest.id : undefined, { manifest, ...(prepared ? { project: prepared.project } : {}) });
+                    if (target.kind === 'session') {
+                        const tab = this.tabs.get(tabId)!; tab.conversationId = manifest.id;
+                        tab.panel.dataset.conversationId = manifest.id; mount.dataset.conversationId = manifest.id;
+                    }
                     load.check();
                     const fileNode = target.kind === 'files' ? await load.read(() => context.context.fs.driver.getNode(target.path)) : undefined;
                     if (fileNode) this.tabs.setIcon(tabId, this.sidebarUI!.getResourceIcon(fileNode));
@@ -911,37 +956,8 @@ export class SessionWorkbench implements WorkspaceController {
                     } else if (target.kind === 'session') {
                         load.check();
                         assets = createFileSystemView({ viewId: `editor-attachments:${target.sessionId}`, mounts: [{ mountId: 'attachments', at: '/', root: '/attachments', fs: context.context.fs, access: 'rw' }] });
-                        const project = prepared?.project;
-                        editor = await load.read(async () => editor = await this.factory(mount!, {
-                            mountMoreMenu: this.familyActions ? container => this.familyActions!.mount(container, manifest) : undefined,
-                            mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, prepared?.project?.displayName ?? prepared?.project?.name ?? '', () => this.toggleSidebar()),
-                            onStartConversationDraft: manifest.folder ? input => this.startSessionDraft(folderBrowserPath(manifest.folder), input) : undefined,
-                            initialData: await load.read(() => this.activatePrepared(prepared!, branch)),
-                            remoteAgents: this.remoteAgentControls(manifest.folder, prepared?.project),
-                            initialInputState: options.initialInputState,
-                            resolveSubmission: project ? () => this.projects!.drafts.submissionForSession(project.project.id, target.sessionId) : undefined,
-                            target: { kind: 'session', sessionId: target.sessionId, branch: branch ?? manifest.currentBranch ?? 'main' }, files: context.context, assets, title: manifest.title,
-                            hostContext: { ...this.hostContext!, directoryCommands: this.directoryMounts ? {
-                                workspaceReadOnly: prepared!.workspaceReadOnly,
-                                configureWorkspace: async mode => {
-                                    if (await showMountDialog(this.directoryMounts!, this.files, target.sessionId, mode, this.dialogs.signal)) {
-                                        await this.reloadAfterMount(target.sessionId);
-                                    }
-                                },
-                                addDirectory: async (directory, access) => {
-                                    if (!directory) { await this.manageMounts(target.sessionId); return '挂载管理已关闭'; }
-                                    try {
-                                        const result = await this.directoryMounts!.addDirectory(target.sessionId, directory, access);
-                                        await this.reloadAfterMount(target.sessionId); return result;
-                                    } catch (error) { throw localizeMountError(error); }
-                                },
-                                setHome: async directory => {
-                                    try {
-                                        if (directory) { const result = await this.directoryMounts!.setHome(directory); await this.reloadAfterMount(target.sessionId); return result; }
-                                        if (await showMountDialog(this.directoryMounts!, this.files, target.sessionId, 'home', this.dialogs.signal)) await this.reloadAfterMount(target.sessionId); return '默认目录设置已关闭';
-                                    } catch (error) { throw localizeMountError(error); }
-                                },
-                            } : undefined, toggleSidebar: () => this.toggleSidebar() } }));
+                        editor = await load.read(async () => editor = await this.factory(mount!,
+                            await this.localEditorOptions(prepared!, context, assets!, branch, options.initialInputState, load.signal)));
                     } else {
                         let revision: string | undefined;
                         const bytes = await load.read(() => context.context.fs.driver.readContent(target.path, { encoding: 'binary', signal: load.signal, onRevision: value => { revision = value; } }));
@@ -1067,7 +1083,7 @@ export class SessionWorkbench implements WorkspaceController {
         // Serialize reconciliation with navigation so a stale read cannot close a newer editor.
         const operation = this.tail.then(async () => {
             if (this.closed || !this.visible || !this.active) return;
-            const id = this.active; if (id.startsWith('draft:')) return;
+            const id = this.active; if (id.startsWith('draft:') || id.startsWith('@agent/')) return;
             const target = resolveBrowserTarget(id.startsWith('/') ? id : '/' + id);
             if (!('sessionId' in target)) return;
             const manifest = await this.sessions.get(target.sessionId).catch(async error => {
@@ -1161,6 +1177,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.closed || generation !== this.contentVersion) return;
         const search = this.projects && this.search ? await createProjectDirectorySearch(path, this.projects, this.search,
             (row, query) => this.openSearchMatch(row, query)) : undefined;
+        search?.setSessionFilter(this.agentFilter);
         if (this.closed || generation !== this.contentVersion) { search?.destroy(); return; }
         if (search) this.tabs.current!.subscriptions.push(() => search.destroy());
         const favorites = this.projects ? directoryFavoriteAction(this.projects, this.repository, nodes) : undefined;
@@ -1176,9 +1193,10 @@ export class SessionWorkbench implements WorkspaceController {
             refresh: () => this.directoryEntries(path, favorites?.update),
             menu: event => { void this.showDirectoryMenu(event, target.kind === 'project-conversations' ? folderBrowserPath(target.folder) : path).catch(error => this.report(error)); },
             contextMenu: (event, id) => { void this.showDirectoryMenu(event, id).catch(error => this.report(error)); },
-            select: ids => this.sidebarUI?.setSelection(ids),
+            select: ids => this.selectDirectoryItems(ids),
             selectedIds: () => this.sidebarUI?.getSnapshot().selectedIds ?? [],
-            bulkActions: this.sidebarUI && (target.kind === 'project-files' || target.kind === 'files') ? directoryBulkActions(this.sidebarUI) : undefined,
+            bulkActions: this.sidebarUI && (target.kind === 'project-files' || target.kind === 'files')
+                ? directoryBulkActions(this.sidebarUI, ids => this.selectDirectoryItems(ids)) : undefined,
             favorite: favorites, search,
             actions });
         list.dataset.compactPath = 'true';
@@ -1255,6 +1273,12 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private fileNavigation: Promise<void> = Promise.resolve();
     private fileNavigationRevision = 0;
+    private directorySelectionRevision = 0;
+    private selectDirectoryItems(ids: string[]): void {
+        ++this.directorySelectionRevision;
+        this.sidebarUI?.cancelPendingSelection?.();
+        this.sidebarUI?.setSelection(ids);
+    }
     /** File content is ready before optional navigation I/O; stale work cannot select a newer route. */
     private scheduleFileNavigation(path: string, mode?: ProjectFileView): void {
         this.scheduleNavigation(path, {reveal: true, fileView: mode, preserveProject: true}, mode !== 'preserve');
@@ -1262,14 +1286,14 @@ export class SessionWorkbench implements WorkspaceController {
     private scheduleNavigation(path: string, options: ProjectNavigationOptions, select = true): void {
         this.pendingNavigation = {path, options, select};
         if (!this.navigationVisible || !this.navigationReady) return;
-        const revision = ++this.fileNavigationRevision, active = this.active;
+        const revision = ++this.fileNavigationRevision, active = this.active, selection = this.directorySelectionRevision;
         const current = () => !this.closed && this.visible && this.navigationVisible && revision === this.fileNavigationRevision && this.active === active;
         this.sidebar.inert = true;
         this.fileNavigation = this.fileNavigation.then(async () => {
             if (!current()) return;
             await traceBoot('projectFile.navigation', async () => this.projectNavigation?.sync(path, options));
             if (current() && !this.editor && !this.previewCleanup && !this.tabs.current?.failed && !this.container.inert) await this.sidebarUI?.expandPath(path);
-            if (current() && select) await this.selectPath(path);
+            if (current() && select && selection === this.directorySelectionRevision) await this.selectPath(path);
             if (current()) this.pendingNavigation = undefined;
         }).catch(error => { if (current()) this.report(error); }).finally(() => { if (revision === this.fileNavigationRevision) this.sidebar.inert = false; });
     }
@@ -1425,6 +1449,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
 
     private async describeOpenTab(id: string): Promise<{ context?: string; location?: string }> {
+        if (id.startsWith('@agent/')) return {context: t('toolbox.agents'), location: decodeURIComponent(id.slice(7))};
         if (id.startsWith('draft:')) {
             const project = await this.projects?.get(id.slice(6));
             return { context: project?.displayName ?? project?.name, location: project?.path };
@@ -1551,10 +1576,189 @@ export class SessionWorkbench implements WorkspaceController {
             const grant = projects.remoteMounts!.list(project.project.id).find(m => m.at === '/');
             if (grant?.connectionId !== connectionId || grant.serverProjectId !== serverProjectId) throw new Error(t('toolbox.unavailable'));
             if (!this.editor?.commands.sendMessage) throw new Error('Remote conversation editor unavailable');
-            await this.editor.commands.sendMessage({text});
+            if (await this.editor.commands.sendMessage({text}) === false) throw new Error(t('toolbox.unavailable'));
         }};
     }
-    async startSessionDraft(parent?: string, input?: {text: string; files: File[]}): Promise<void> {
+    private isRemoteProject(project: ProjectFolder): boolean {
+        return project.project.source?.kind === 'remote' || !!this.projects?.remoteMounts?.list(project.project.id).some(mount => mount.at === '/');
+    }
+    private async openAgentSettings(agentId: string): Promise<void> {
+        ++this.openIntent; this.onBeforeNavigate?.(); this.cancelViewLoad(); const load = this.viewLoads.begin();
+        const work = this.tail.then(async () => {
+            await this.leaveEditor(); load.check();
+            const id = '@agent/' + encodeURIComponent(agentId), tab = await this.tabs.open(id, t('toolbox.agents'), false);
+            if (tab.value) {await this.restoreEditor(tab.value); this.onSelect(id); return;}
+            const mount = document.createElement('div'); mount.className = 'session-detail agent-workspace-editor'; tab.panel.append(mount);
+            const editor = await this.createAgentSettingsEditor(agentId, mount, load.signal);
+            try {load.check();} catch (error) {await editor.destroy(); mount.remove(); throw error;}
+            this.editor = editor; this.active = id; this.activeBranch = undefined;
+            this.tabs.context(id, t('toolbox.agents')); this.tabs.setIcon(id, ENTITY_ICONS.agent);
+            this.tabs.bind(tab, editor); this.retainEditor(this.viewLoads.detach(load)); this.onSelect(id);
+        });
+        this.tail = work.catch(() => {}); await work;
+    }
+    private async createAgentSettingsEditor(agentId: string, mount: HTMLElement, signal: AbortSignal): Promise<IEditor> {
+        if (!this.agentOptions || !this.projects) throw new Error(t('toolbox.unavailable'));
+        const projects = this.projects;
+        const mountSettings: NonNullable<EditorOptions['mountSettings']> = element => mountAgentProjectSettings(element, agentId, projects,
+            this.agentProjects, projectId => this.showAgentSessions(agentId, projectId), project => {
+                if (!agentId.startsWith('remote:')) return !this.isRemoteProject(project);
+                const [connection] = JSON.parse(agentId.slice(7)) as string[];
+                return !!projects.remoteMounts?.list(project.project.id).some(item => item.at === '/' && item.connectionId === connection);
+            }, !agentId.startsWith('remote:'));
+        if (agentId.startsWith('remote:')) {
+            const view = await this.agentCatalog.get();
+            const editor = new RemoteAgentDetailsEditor(mount, view.inventory, {target: {kind: 'file', path: '/@remote/' + encodeURIComponent(agentId) + '.agent'},
+                signal, hostContext: this.hostContext, mountSettings}, projects);
+            await editor.init(mount); return editor;
+        }
+        const definition = await this.agentOptions.read(agentId);
+        if (!definition) throw new Error(t('toolbox.unavailable'));
+        this.tabs.title('@agent/' + encodeURIComponent(agentId), definition.name);
+        return this.agentOptions.createEditor(mount, {target: {kind: 'entity', entityType: 'agent', id: agentId}, signal,
+            initialContent: JSON.stringify(definition), title: definition.name, hostContext: this.hostContext, mountSettings});
+    }
+    private async showAgentSessions(agentId: string, projectId?: string): Promise<void> {
+        const configured = projectId ?? await this.agentProjects.read(agentId);
+        const project = configured ? await this.projects!.get(configured) : await this.projects!.personal();
+        await this.setAgentFilter(agentId);
+        await this.openResource(folderBrowserPath(project.path), {reload: true});
+    }
+    private async setAgentFilter(agentId?: string): Promise<void> {
+        if (this.agentFilter === agentId) return;
+        if (!this.browser?.setSessionFilter) throw new Error(t('toolbox.unavailable'));
+        await this.browser.setSessionFilter(agentId); if (this.closed) return;
+        this.agentFilter = agentId; this.agentFilterBar.replaceChildren(); this.agentFilterBar.hidden = !agentId;
+        this.searchPanel?.setSessionFilter(agentId);
+        if (agentId) {
+            const name = agentId.startsWith('remote:') ? (await this.agentCatalog.get()).inventory.remoteAgents.get(agentId)?.name
+                : (await this.agentOptions?.read(agentId))?.name;
+            const text = document.createElement('span'); text.textContent = t('agentWorkspace.sessionFilter', {name: name ?? agentId});
+            this.agentFilterBar.append(text); this.actionButton(this.agentFilterBar, t('agentWorkspace.clearFilter'), async () => {
+                await this.setAgentFilter(); const path = this.projectNavigation?.currentProject()?.path;
+                if (path) await this.openResource(folderBrowserPath(path), {reload: true});
+            });
+        }
+        await this.sidebarUI?.refresh();
+    }
+    private async startAgentDraft(agentId: string): Promise<void> {
+        this.onBeforeNavigate?.();
+        const configured = await this.agentProjects.read(agentId);
+        const project = this.projectNavigation?.currentProject() ?? (configured ? await this.projects!.get(configured) : await this.projects!.personal());
+        if (this.isRemoteProject(project)) throw new Error(t('agentWorkspace.localAgentProject'));
+        if (this.closed) return;
+        await this.startSessionDraft(folderBrowserPath(project.path), undefined, agentId);
+        if (this.closed || !this.active?.startsWith('draft:')) return;
+        this.projectNavigation?.selectScope(folderBrowserPath(project.path));
+        const layout = this.container.closest<HTMLElement>('.mm-layout');
+        if (layout) layout.dataset.mobileView = 'detail';
+    }
+    private draftPresentation(project: ProjectFolder): Pick<import('@itookit/ui-common').SessionDraftControls, 'scope' | 'executorScope'> {
+        return {executorScope: this.isRemoteProject(project) ? 'remote' : 'local', scope: {
+            id: project.project.id, label: project.displayName ?? project.name,
+            choices: async () => (await this.projects!.list()).map(item => ({id: item.project.id, label: item.displayName ?? item.name,
+                disabled: !!sessionCreationReason(this.projects!, item.project.id)})),
+            select: async (id, selectedAgent, preferences) => {
+                const target = await this.projects!.get(id);
+                const localAgent = !this.isRemoteProject(target) && !selectedAgent?.startsWith('remote:') ? selectedAgent : undefined;
+                await this.startSessionDraft(folderBrowserPath(target.path), undefined, preferences ? undefined : localAgent, preferences);
+                this.projectNavigation?.selectScope(folderBrowserPath(target.path));
+            },
+        }};
+    }
+    private async localEditorOptions(prepared: SessionOpenView, context: FileSystemContextOwner, assets: FileSystemView,
+        branch?: string, initialInputState?: EditorOptions['initialInputState'], signal?: AbortSignal): Promise<EditorOptions> {
+        const manifest = prepared.manifest, id = manifest.id, project = prepared.project;
+        return {signal, mountMoreMenu: this.familyActions ? container => this.familyActions!.mount(container, manifest) : undefined,
+            mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, project?.displayName ?? project?.name ?? '', () => this.toggleSidebar()),
+            onStartConversationDraft: manifest.folder ? input => this.startSessionDraft(folderBrowserPath(manifest.folder), input) : undefined,
+            initialData: await this.activatePrepared(prepared, branch), remoteAgents: this.remoteAgentControls(manifest.folder, project), initialInputState,
+            resolveSubmission: project ? () => this.projects!.drafts.submissionForSession(project.project.id, id) : undefined,
+            target: {kind: 'session', sessionId: id, branch: branch ?? manifest.currentBranch ?? 'main'}, files: context.context, assets, title: manifest.title,
+            hostContext: {...this.hostContext!, directoryCommands: this.sessionDirectoryCommands(prepared), toggleSidebar: () => this.toggleSidebar()}};
+    }
+    private sessionDirectoryCommands(prepared: SessionOpenView): EditorHostContext['directoryCommands'] {
+        if (!this.directoryMounts) return;
+        const id = prepared.manifest.id;
+        return {workspaceReadOnly: prepared.workspaceReadOnly,
+            configureWorkspace: async mode => {if (await showMountDialog(this.directoryMounts!, this.files, id, mode, this.dialogs.signal)) await this.reloadAfterMount(id);},
+            addDirectory: async (directory, access) => {
+                if (!directory) {await this.manageMounts(id); return '挂载管理已关闭';}
+                try {const result = await this.directoryMounts!.addDirectory(id, directory, access); await this.reloadAfterMount(id); return result;}
+                catch (error) {throw localizeMountError(error);}
+            }, setHome: async directory => {
+                try {
+                    if (directory) {const result = await this.directoryMounts!.setHome(directory); await this.reloadAfterMount(id); return result;}
+                    if (await showMountDialog(this.directoryMounts!, this.files, id, 'home', this.dialogs.signal)) await this.reloadAfterMount(id);
+                    return '默认目录设置已关闭';
+                } catch (error) {throw localizeMountError(error);}
+            }};
+    }
+    private async prepareLocalDraft(tab: WorkbenchTab<RetainedEditor>, id: string, mount: HTMLElement, signal: AbortSignal, createEditor = this.factory): Promise<IEditor> {
+        const prepared = await this.backend.openSessionView(id), context = {context: prepared.context, release: () => prepared.dispose()};
+        const assets = createFileSystemView({viewId: `editor-attachments:${id}`, mounts: [{mountId: 'attachments', at: '/', root: '/attachments', fs: prepared.context.fs, access: 'rw'}]});
+        let editor: IEditor | undefined;
+        try {
+            signal.throwIfAborted();
+            editor = await createEditor(mount, await this.localEditorOptions(prepared, context, assets, undefined, undefined, signal));
+            signal.throwIfAborted();
+            if (tab.value) {tab.value.context = context; tab.value.assets = assets;}
+            if (this.tabs.current === tab) {this.context = context; this.assets = assets;}
+            return editor;
+        } catch (error) {
+            try {await editor?.destroy();} finally {await Promise.allSettled([assets.dispose(), context.release()]);}
+            throw error;
+        }
+    }
+    private async prepareRemoteDraft(tab: WorkbenchTab<RetainedEditor>, project: ProjectFolder, draftId: string,
+        request: import('@itookit/ui-common').SessionDraftMaterialization, signal: AbortSignal, nativeId?: string): Promise<IEditor> {
+        const choices = await this.remoteAgentControls(project.path)!.list();
+        if (!choices.some(choice => choice.id === request.agentId)) throw new Error(t('toolbox.unavailable'));
+        const [connectionId, serverProjectId, profileId] = JSON.parse(decodeURIComponent(request.agentId!.slice(7))) as string[];
+        const root = this.projects!.remoteMounts!.list(project.project.id).find(item => item.at === '/');
+        if (root?.connectionId !== connectionId || root.serverProjectId !== serverProjectId) throw new Error(t('toolbox.unavailable'));
+        const controls = await this.projects!.remoteMounts!.projectConversation(project.project.id, profileId!, nativeId, {signal, timeoutMs: 3000}, false, nativeId ? undefined : draftId);
+        if (tab.value?.draft) tab.value.draft.remote = controls;
+        let editor: IEditor | undefined;
+        try {
+            editor = await (request.createEditor ?? this.factory)(request.container, {signal, conversation: controls,
+                conversationSource: {kind: controls.kind, label: harnessPresentation(controls.kind, profileId).label},
+                title: choices.find(choice => choice.id === request.agentId)!.name, initialInputState: {agentId: request.agentId},
+                onStartConversationDraft: input => this.startSessionDraft(folderBrowserPath(project.path), input),
+                mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, project.displayName ?? project.name, () => this.toggleSidebar()),
+                hostContext: {...this.hostContext!, toggleSidebar: () => this.toggleSidebar()},
+                onConversationSession: () => {void this.projects!.drafts.reconcile(project.project.id).catch(error => this.report(error));}});
+            if (tab.value?.draft) tab.value.draft.remote = controls;
+            signal.throwIfAborted(); return editor;
+        } catch (error) {
+            try {await editor?.destroy();} finally {await controls.close();}
+            throw error;
+        }
+    }
+    private async promoteDraftTab(event: ProjectDraftPromotion): Promise<void> {
+        const tab = this.tabs.get(`draft:${event.projectId}`), value = tab?.value;
+        if (!tab || value?.draft?.id !== event.draftId || this.closed) return;
+        const project = await this.projects!.get(event.projectId);
+        const path = event.remote ? remoteSessionPath(project.path, event.remote.profileId, event.remote.nativeSessionId) : event.sessionId;
+        const title = event.remote ? value.draft.remote?.snapshot?.().title ?? formatDefaultFileTitle() : (await this.sessions.get(event.sessionId)).title;
+        const duplicate = this.tabs.get(path), replaceActive = duplicate && duplicate !== tab && this.tabs.current === duplicate;
+        if (duplicate && duplicate !== tab) await this.tabs.close(path, false);
+        if (this.closed || this.tabs.get(tab.id) !== tab || value.draft?.id !== event.draftId) return;
+        this.tabs.rename(tab.id, path, title); this.tabs.setIcon(path, event.remote ? ENTITY_ICONS.remoteSession : ENTITY_ICONS.chat);
+        value.active = path; value.branch = event.remote ? undefined : 'main'; value.draft = undefined;
+        const mount = tab.panel.querySelector<HTMLElement>('.session-editor-mount')!;
+        const confirming = value.editor?.commands.confirmDraft?.((createEditor?: EditorFactory) => event.remote
+            ? this.prepareRemoteDraft(tab, project, event.draftId, {container: mount, createEditor,
+                agentId: 'remote:' + encodeURIComponent(JSON.stringify([event.remote.connectionId, event.remote.serverProjectId, event.remote.profileId]))}, this.dialogs.signal, event.remote.nativeSessionId)
+            : this.prepareLocalDraft(tab, event.sessionId, mount, this.dialogs.signal, createEditor));
+        if (event.remote) this.remoteStatus.attach(path, project.project.id);
+        if (this.tabs.current === tab) {this.active = path; this.activeBranch = value.branch; this.onSelect(this.getActiveResourceId()!, 'replace');}
+        this.scheduleRefresh('project.draftPromoted');
+        await confirming;
+        if (replaceActive) {this.tabs.activate(path); await this.restoreEditor(value); this.onSelect(this.getActiveResourceId()!, 'replace');}
+    }
+    async startSessionDraft(parent?: string, input?: {text: string; files: File[]}, agentId?: string,
+        preferences?: import('@itookit/ui-common').SessionDraftPreferences): Promise<void> {
         const folder = await this.creationFolder(parent);
         this.cancelViewLoad(); const load = this.viewLoads.begin();
         let receiver: IEditor | undefined;
@@ -1568,7 +1772,7 @@ export class SessionWorkbench implements WorkspaceController {
             const draftId = `draft:${project.project.id}`;
             const draftPath = folderBrowserPath(project.path) + '/@new';
             const retained = this.tabs.get(draftId);
-            await this.tabs.open(draftId, t('project.createSession'), false);
+            const tab = await this.tabs.open(draftId, t('project.createSession'), false);
             this.tabs.setIcon(draftId, FILE_BROWSER_ICONS.newSession);
             if (retained?.value) { await this.restoreEditor(retained.value); receiver = this.editor;
                 await this.selectPath(draftPath); this.onSelect(draftPath, 'replace'); return; }
@@ -1576,23 +1780,34 @@ export class SessionWorkbench implements WorkspaceController {
             const composer = await this.projects.drafts.open(project.project.id, folder);
             const draftOptions = createProjectDraftControls(composer, {
                 check: async () => { load.check(); await this.creationFolder(folderBrowserPath(folder)); },
-                open: async id => {
+                identity: id => {
+                    tab.conversationId = id; tab.panel.dataset.conversationId = id; mount.dataset.conversationId = id;
+                    if (tab.value?.draft) tab.value.draft.id = id;
+                },
+                remote: request => this.prepareRemoteDraft(tab, project, tab.conversationId ?? composer.id!, request, load.signal),
+                open: async (id, request) => {
+                    if (request) return this.prepareLocalDraft(tab, id, request.container, load.signal, request.createEditor);
                     await Promise.all([this.openResource(id), this.sidebarUI?.refresh()]);
                     await this.tabs.close(draftId, false);
                     await this.selectPath(await this.sessionPath(id));
                     if (!this.editor) throw new Error('Session editor unavailable');
                     return this.editor;
                 },
-            });
+            }, this.draftPresentation(project));
             const editor = await this.factory(mount, { signal: load.signal, hostContext: {...this.hostContext!, toggleSidebar: () => this.toggleSidebar()},
                 mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, project.displayName ?? project.name, () => this.toggleSidebar()), sessionDraft: draftOptions, remoteAgents: this.remoteAgentControls(folder) });
             try { load.check(); } catch (error) { await editor.destroy(); mount.remove(); throw error; }
             this.editor = receiver = editor; this.active = draftId; this.editor.focus?.();
+            tab.conversationId = composer.id; tab.panel.dataset.conversationId = composer.id;
+            mount.dataset.conversationId = composer.id;
             this.retainEditor(this.viewLoads.detach(load));
+            if (tab.value && composer.id) tab.value.draft = {id: composer.id, projectId: project.project.id};
             await this.selectPath(draftPath); this.onSelect(draftPath, 'replace');
         });
         this.tail = work.catch(() => {}); await work;
         if (input && receiver && this.editor === receiver) await receiver.commands.appendDraft?.(input);
+        if (agentId && receiver && this.editor === receiver) await receiver.commands.selectDraftAgent?.(agentId);
+        if (preferences && receiver && this.editor === receiver) await receiver.commands.inheritDraftPreferences?.(preferences);
     }
 
     async createResource(options: { title?: string; parentPath?: string | null; initialInputState?: { text?: string; agentId?: string } } = {}): Promise<string> {
@@ -1694,6 +1909,8 @@ export class SessionWorkbench implements WorkspaceController {
         ++this.openIntent;
         this.cancelViewLoad();
         this.closed = true; ++this.fileNavigationRevision; this.projectNavigation?.destroy();
+        await this.agentDrawer?.destroy();
+        await this.agentCatalog.close();
         await this.remoteStatus?.destroy();
         this.searchPanel?.destroy();
         this.sidebarUI?.cancelPendingSelection?.(); this.dialogs.abort(); this.subscriptions.dispose();

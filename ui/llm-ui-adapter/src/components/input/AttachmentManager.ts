@@ -20,6 +20,7 @@ export interface AttachmentManagerOptions {
     ocr?: import('@itookit/ui-common').OcrControls;
     onRequestFiles?: (query: string) => Promise<any[]>;
     getLoading: () => boolean;
+    canAttach?: () => boolean;
     getFiles: () => File[];
     setFiles: (files: File[]) => void;
     notifyConfigChange: () => void;
@@ -39,7 +40,7 @@ export class AttachmentManager {
     // ── Paste ─────────────────────────────────────────────────────────────
 
     handlePaste(e: ClipboardEvent): void {
-        if (this.opts.getLoading()) return;
+        if (this.opts.getLoading() || this.opts.canAttach?.() === false) return;
         const items = e.clipboardData?.items;
         if (!items) return;
 
@@ -94,7 +95,7 @@ export class AttachmentManager {
         wrapper.addEventListener('dragover', (e) => {
             e.preventDefault();
             e.stopPropagation();
-            if (!this.opts.getLoading()) {
+            if (!this.opts.getLoading() && this.opts.canAttach?.() !== false) {
                 wrapper.classList.add('llm-input__field-wrapper--drag-active');
             }
         });
@@ -109,7 +110,7 @@ export class AttachmentManager {
             e.preventDefault();
             e.stopPropagation();
             wrapper.classList.remove('llm-input__field-wrapper--drag-active');
-            if (this.opts.getLoading()) return;
+            if (this.opts.getLoading() || this.opts.canAttach?.() === false) return;
             const droppedFiles = e.dataTransfer?.files;
             if (droppedFiles && droppedFiles.length > 0) {
                 this.addFiles(Array.from(droppedFiles));
@@ -120,6 +121,7 @@ export class AttachmentManager {
     // ── "+" add-source menu ───────────────────────────────────────────────
 
     toggleAddMenu(createPopup: (anchor: HTMLElement, opts?: any) => PopupPanel): void {
+        if (this.opts.canAttach?.() === false) return;
         if (!this.addPopup) {
             this.addPopup = createPopup(this.opts.attachBtn, { animated: true });
         }

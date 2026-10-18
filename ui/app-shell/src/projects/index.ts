@@ -7,7 +7,9 @@ import { SessionWorkbench, type SessionWorkbenchOptions } from './SessionWorkben
 
 interface ProjectModuleOptions extends Pick<SessionWorkbenchOptions, 'sidebar' | 'container' | 'factory' | 'createFactory' | 'fileFactory' | 'onSelect' | 'onBeforeNavigate' | 'hostContext' | 'sessionSkills' | 'onSidebarReady' | 'initialResource' | 'deferNavigation' | 'uiPersistence' | 'workbenchState' | 'projectSyncSetup' | 'projectSyncDirectory'> {
     backend: import('@itookit/app-contracts/services').ApplicationBackend;
-    services: Pick<ApplicationServices, 'sessionRepository' | 'sessionFiles' | 'kernel' | 'directoryMounts' | 'sessionManager' | 'flowEngine' | 'projects' | 'commandBus' | 'projectSync' | 'digitalTwin' | 'prepareSession'>;
+    services: Pick<ApplicationServices, 'sessionRepository' | 'sessionFiles' | 'kernel' | 'directoryMounts' | 'sessionManager' | 'flowEngine' | 'projects' | 'commandBus' | 'projectSync' | 'digitalTwin' | 'prepareSession' | 'agentService'>;
+    executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
+    agentFactory: import('@itookit/ui-common').EditorFactory;
     createFlowContextMenu: AppUI['createFlowContextMenu'];
 }
 
@@ -18,6 +20,8 @@ export function createProjectModule(options: ProjectModuleOptions): WorkspaceMod
         files: services.sessionFiles, kernel: services.kernel.kernel, directoryMounts: services.directoryMounts,
         prepareSession: services.prepareSession,
         projects: services.projects, digitalTwin: services.digitalTwin, projectSync: services.projectSync,
+        agents: {resourceId: id => services.agentService.getAgentResourceId?.(id), usage: options.executorUsage,
+            read: id => services.agentService.getAgentConfig(id), createEditor: options.agentFactory},
         manageTwin: services.digitalTwin ? async id => { await options.hostContext?.navigate({ target: 'twin', resourceId: '/overview/' + encodeURIComponent(id) }); } : undefined,
         manageMemory: async (id, signal) => showMemoryDialog(await sessionManager.memory.forSession(id), await sessionManager.getAvailableAgents(), signal),
         flows: { fs: services.flowEngine.engine, menu: options.createFlowContextMenu({ commands: services.commandBus,

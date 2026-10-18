@@ -141,3 +141,17 @@ it('ignores late updates for disposed capabilities instead of resurrecting them 
     await expect(view.fs.driver.getNode('/')).rejects.toMatchObject({ code: 'ECAPABILITY' });
     expect(calls.mock.calls.length).toBe(count);
 });
+
+it.each(['missing', 'throws'])('preserves a per-view session filter through RPC without native UUID (%s)', async mode => {
+    const original = globalThis.crypto;
+    vi.stubGlobal('crypto', {getRandomValues: original.getRandomValues.bind(original),
+        ...(mode === 'throws' ? {randomUUID: () => {throw new Error('Native UUID unavailable');}} : {})});
+    try {
+        let filter: string | undefined;
+        const browser = {fs: {}, dispose: async () => {}, transferItems: async () => {}, readFileDirectory: async () => [], invalidateNavigation: async () => {},
+            setSessionFilter: async (agentId?: string) => {filter = agentId;}};
+        const {root} = await pair({workbenchView: async () => ({browser}), toolboxView: async () => {}, taskDetails: async () => {}});
+        const view = await root.workbenchView(); await view.browser.setSessionFilter('writer'); expect(filter).toBe('writer');
+        await view.browser.setSessionFilter(); expect(filter).toBeUndefined();
+    } finally {vi.unstubAllGlobals();}
+});

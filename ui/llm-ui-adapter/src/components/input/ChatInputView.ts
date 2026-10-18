@@ -234,7 +234,7 @@ export class ChatInput implements IChatInputPresenter {
         });
 
         this.connectionReadiness = new ConnectionReadiness(container, {
-            navigate: options.onNavigateSettings,
+            navigate: target => this.options.onNavigateSettings?.(target),
             choose: () => this.openConnectionPicker(), retry: () => { void this.refreshConnections(); },
         });
 
@@ -454,6 +454,31 @@ export class ChatInput implements IChatInputPresenter {
 
     clearInteraction(interactionId?: string): void { this.interactionPanel.clear(interactionId); }
 
+    /** Rebind a prepared conversation without replacing text, files, focus or DOM. */
+    checkpoint(): () => void {
+        const options = this.options, plugins = [...this.plugins];
+        return () => {
+            for (const plugin of this.plugins) if (!plugins.includes(plugin)) plugin.deactivate?.();
+            this.plugins = plugins; this.adopt(options);
+        };
+    }
+    adopt(options: ChatInputOptions): void {
+        const hadFiles = !!this.options.onRequestFiles;
+        this.options = options;
+        if (options.onRequestFiles && !hadFiles) this.registerPlugin(new MentionPlugin({onRequestFiles: options.onRequestFiles}));
+        this.executionMode.configure(options.executionModeInfo, options.maxAgentExchanges);
+        if (options.initialAgents) {
+            this.agentPopup?.hide(); this.updateExecutors(options.initialAgents);
+            this.config.agentId = options.initialAgents.some(agent => agent.id === this.config.agentId)
+                ? this.config.agentId : options.initialConfig?.agentId ?? options.initialAgents[0]?.id ?? 'default';
+            this.currentAgentId = this.config.agentId;
+        }
+        this.attachBtn.hidden = options.attachments === false;
+        this.fileInput.accept = options.attachmentAccept ?? '';
+        if (options.attachmentHint) this.attachBtn.title = options.attachmentHint;
+        this.syncUIFromConfig(); this.applyAvailability(); void this.refreshConnections();
+    }
+
     destroy(): void {
         window.removeEventListener('resize', this.resizeInput);
         window.visualViewport?.removeEventListener('resize', this.resizeInput);
@@ -505,8 +530,9 @@ export class ChatInput implements IChatInputPresenter {
             inputWrapper: this.inputWrapper,
             attachBtn: this.attachBtn,
             ocr: this.options.ocr,
-            onRequestFiles: this.options.onRequestFiles,
+            onRequestFiles: (query: string) => this.options.onRequestFiles?.(query) ?? Promise.resolve([]),
             getLoading: () => this.loading,
+            canAttach: () => this.options.attachments !== false,
             getFiles: () => this.files,
             setFiles: (f) => { this.files = f; this.options.onDraftChange?.(this.getConfig(), [...f]); },
             notifyConfigChange: () => this.notifyConfigChange(),
@@ -620,7 +646,7 @@ export class ChatInput implements IChatInputPresenter {
             }
         });
 
-        if (this.options.attachments !== false) this.textarea.addEventListener('paste', (e) => this.attachmentMgr.handlePaste(e));
+        this.textarea.addEventListener('paste', (e) => this.attachmentMgr.handlePaste(e));
 
         this.sendBtn.addEventListener('click', () => this.triggerSend());
         this.stopBtn.addEventListener('click', () => this.options.onStop());
@@ -634,7 +660,7 @@ export class ChatInput implements IChatInputPresenter {
             ?.addEventListener('click', () => this.toggleSettings(false));
 
         this.fileInput.addEventListener('change', () => {
-            if (this.fileInput.files) {
+            if (this.options.attachments !== false && this.fileInput.files) {
                 this.attachmentMgr.addFiles(Array.from(this.fileInput.files));
                 this.fileInput.value = '';
             }
@@ -659,7 +685,7 @@ export class ChatInput implements IChatInputPresenter {
         });
 
         this.bindSettingsEvents();
-        if (this.options.attachments !== false) this.attachmentMgr.bindDragEvents();
+        this.attachmentMgr.bindDragEvents();
         this.bindOutsideClickHandler();
 
         // 初始化插件系统（放在所有事件绑定之后）
@@ -949,11 +975,11 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private syncUIFromConfig(): void {
-        this.syncExecutionMode();
         if (this.textarea) {
-            this.textarea.value = this.config.text;
+            if (this.textarea.value !== this.config.text) this.textarea.value = this.config.text;
             this.adjustTextareaHeight();
         }
+        this.syncExecutionMode();
         if (this.agentPickerBtn) this.updateAgentTrigger();
         this.connectionTier.setConnectionId(this.config.settings.connectionId);
         this.connectionTier.setModelTier(this.config.settings.modelTier ?? 'auto');

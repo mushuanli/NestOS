@@ -19,8 +19,12 @@ export class ProjectSearch {
         const project = await this.projects.forFolder(folder);
         if (!project || project.path !== folder) throw new FSError('ENOENT', 'Project unavailable');
         if (query.scope.startsWith('file-')) return this.files(folder, project.project.id, query, options);
+        const selected = sessionQuery(this.projects, project.project.id, query);
+        if (!selected) return {matches: [], truncated: false, nextCursor: null};
+        query = selected;
         const local = this.repository && !query.profileId ? await searchLocalSessions(this.repository, folder, project.project.id, query, options) : undefined;
         const remote = this.projects.remoteMounts;
+        if (query.agentId && !query.agentId.startsWith('remote:')) return local ?? {matches: [], truncated: false, nextCursor: null};
         if (!remote || this.repository && !remote.list(project.project.id).some(mount => mount.at === '/')) {
             if (local) return local;
             throw new FSError('ECAPABILITY', 'Session search unavailable');
@@ -48,7 +52,23 @@ export class ProjectSearch {
         return {...result, matches: result.matches.map(row => ({...row, kind: 'file' as const, projectId, folder, title: row.path, bindingIdentity: fingerprint}))};
     }
 }
+function sessionQuery(projects: ProjectService, projectId: string, query: ProjectSearchQuery): ProjectSearchQuery | null {
+    if (!query.agentId?.startsWith('remote:')) return query;
+    const [connectionId, profileId] = JSON.parse(query.agentId.slice(7)) as string[];
+    if (query.profileId && query.profileId !== profileId) return null;
+    return projects.remoteMounts?.list(projectId).some(mount => mount.at === '/' && mount.connectionId === connectionId)
+        ? {...query, profileId} : null;
+}
 function validateQuery(query: ProjectSearchQuery): void {
+    if (query.agentId !== undefined) {
+        if (typeof query.agentId !== 'string' || !query.agentId || query.agentId.length > 4096) throw new FSError('EINVAL', 'Invalid agent filter');
+        if (query.agentId.startsWith('remote:')) {
+            let identity: unknown;
+            try {identity = JSON.parse(query.agentId.slice(7));} catch {throw new FSError('EINVAL', 'Invalid remote agent filter');}
+            if (!Array.isArray(identity) || identity.length !== 2 || identity.some(id => typeof id !== 'string' || !id))
+                throw new FSError('EINVAL', 'Invalid remote agent filter');
+        }
+    }
     if (typeof query.query !== 'string' || !query.query.trim() || query.query.length > 1024 || query.query.includes('\0')
         || !['file-name', 'file-path', 'file-content', 'session-title', 'session-content', 'session-prompt'].includes(query.scope))
         throw new FSError('EINVAL', 'Invalid project search query');

@@ -295,6 +295,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const module = await createToolboxModule({ services, backend, ocr, ui: options.ui, sidebar: sidebarEl, editor: editorEl,
                 factories: { agents: agentFactory, skills: skillsFactory, flows: flowsFactory },
                 uiPersistence, executorUsage,
+                agentsInWorkbench: workspaces.some(workspace => workspace.type === 'chat'),
                 uiPreferences: { load: () => storedPreferences, save: value => uiDocs.write(TOOLBOX_PREFERENCES_DOC, value) },
                 navigate: handleNavigationRequest, selected: path => selectionHistory(elementId, path, 'replace') });
             const toolbox = module.workbench;
@@ -318,6 +319,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 uiState.port(SESSION_BROWSER_SCOPE), uiState.workbenchPort(SESSION_BROWSER_SCOPE),
             ]));
             const module = createProjectModule({ services, backend, createFactory: createChatFactory, initialResource, deferNavigation: !!initialResource, projectSyncSetup: options.projectSyncSetup, projectSyncDirectory: options.projectSyncDirectory, sidebar: sidebarEl, container: editorEl,
+                executorUsage, agentFactory,
                 fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 onSidebarReady: revealSidebar,
                 uiPersistence, workbenchState,

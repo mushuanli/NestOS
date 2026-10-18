@@ -4,7 +4,9 @@ import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/Sessio
 const state = vi.hoisted(() => ({ options: undefined as any, restore: vi.fn(), destroy: vi.fn() }));
 vi.mock('../../llm-ui-adapter/src/shell/AgentProvider', () => ({ buildExecutorOptions: async () => [], buildConnectionOptions: async () => [] }));
 vi.mock('../../llm-ui-adapter/src/components/input/ChatInputView', () => ({ ChatInput: class {
+    private config = {text: '', agentId: 'default', settings: {}};
     constructor(_container: HTMLElement, options: unknown) { state.options = options; }
+    getConfig() {return this.config;} setConfig(value: object) {Object.assign(this.config, value);}
     focus() {} setLoading() {} refreshConnections() {} restoreDraft = state.restore; destroy = state.destroy;
 } }));
 

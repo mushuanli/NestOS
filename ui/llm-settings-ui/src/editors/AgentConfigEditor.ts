@@ -29,6 +29,7 @@ export class AgentConfigEditor implements IEditor {
     private editorEvents = new EventBus<EditorEventMap>();
     private originalContent: string = '';
     private currentTitle: string = '';
+    private hostSettings?: Awaited<ReturnType<NonNullable<EditorOptions['mountSettings']>>>;
 
     constructor(
         _container: HTMLElement,
@@ -132,13 +133,15 @@ export class AgentConfigEditor implements IEditor {
         }
     }
 
-    isDirty() { return this.autoSave?.isDirty ?? this._isDirty; }
+    isDirty() { return (this.autoSave?.isDirty ?? this._isDirty) || !!this.hostSettings?.isDirty(); }
     setDirty(dirty: boolean) { this._isDirty = dirty; }
 
     // --- Rendering ---
 
     async render() {
+        await this.hostSettings?.flush();
         if (this.autoSave && !await this.autoSave.dispose()) return;
+        await this.hostSettings?.destroy(); this.hostSettings = undefined;
         if (!this.content) return;
         const agent = this.content;
         const config = { ...agent.config, systemPrompt: agent.systemPrompt ?? agent.config.systemPrompt };
@@ -335,6 +338,11 @@ export class AgentConfigEditor implements IEditor {
             </div>
         `;
 
+        if (this.options.mountSettings) {
+            const slot = document.createElement('div');
+            this.container.querySelector('.agent-header')!.after(slot);
+            this.hostSettings = await this.options.mountSettings(slot);
+        }
         this.bindEvents();
 
 
@@ -657,11 +665,14 @@ export class AgentConfigEditor implements IEditor {
     // --- IEditor Interface Implementation ---
 
     async flushPendingSave(): Promise<void> {
+        await this.hostSettings?.flush();
         if (this.autoSave && !await this.autoSave.flush()) throw new Error(t('settings.autosave.leaveFailed'));
     }
 
     async destroy() {
+        await this.hostSettings?.flush();
         if (this.autoSave && !await this.autoSave.dispose()) throw new Error(t('settings.autosave.leaveFailed'));
+        await this.hostSettings?.destroy(); this.hostSettings = undefined;
         this.container.innerHTML = '';
         this.editorEvents.clear();
     }

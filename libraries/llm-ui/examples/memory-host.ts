@@ -1,9 +1,10 @@
+import { randomUUID } from '../src/random';
 import { createChatView, createOperationLedger, type ChatOptions, type ConversationSnapshot,
     type OperationReceipt } from '../src';
 
 /** A host owns conversation state and the ledger independently of any mounted view. */
 export function createMemoryHost() {
-    let snapshot: ConversationSnapshot = { conversationId: 'memory-chat', viewId: crypto.randomUUID(), revision: 0,
+    let snapshot: ConversationSnapshot = { conversationId: 'memory-chat', viewId: randomUUID(), revision: 0,
         title: 'Memory chat', loading: false, messages: [], interactions: [], execution: 'idle',
         connection: 'online', hasEarlier: false, allowed: ['send'],
         selectors: [{ id: 'assistant', label: 'Assistant', value: 'echo', choices: [{ id: 'echo', label: 'Echo' }] }] };
@@ -37,5 +38,5 @@ export function createMemoryHost() {
         },
     };
     return { options, mount: (container: HTMLElement) => createChatView(container, options),
-        rebind() { publish({ viewId: crypto.randomUUID() }); } };
+        rebind() { publish({ viewId: randomUUID() }); } };
 }

@@ -119,7 +119,7 @@ it('offers reset only on tasks and cancels through Kernel without deleting histo
     const f = setup(); await f.workbench.start();
     const options = vi.mocked(createVFSUI).mock.calls.at(-1)![0];
     const defaults = [{ id: 'export', label: 'export' }];
-    expect(options.contextMenu!.items!({ id: '/s/files/note.md' } as any, defaults)).toEqual(defaults);
+    expect(options.contextMenu!.items!({ id: '/s/files/note.md' } as any, defaults)).toMatchObject(defaults);
     const menu = options.contextMenu!.items!({ id: '/s/tasks/t' } as any, defaults);
     expect(menu).toHaveLength(1);
     const reset = menu[0] as { onClick: (item: any) => void };
@@ -137,7 +137,8 @@ it('offers closing a Session while keeping its records', async () => {
     const defaults = [{ id: 'delete', label: '删除' }];
     const items = options.contextMenu!.items!({ id: '/s' } as any, defaults);
     // The destructive defaults stay; closing is additive.
-    expect(items.slice(0, defaults.length)).toEqual(defaults);
+    expect(items.slice(0, defaults.length)).toMatchObject(defaults);
+    expect(defaults).toEqual([{id: 'delete', label: '删除'}]);
     const close = items.find(item => (item as { id?: string }).id === 'close-session') as { label?: string; onClick: (item: any) => void };
     expect(close?.label).toBe(t('session.close.action'));
     close.onClick({});

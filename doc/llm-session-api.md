@@ -135,8 +135,9 @@ class SessionRepository implements ISessionRepository {
 
     // 会话生命周期
     createSession(title: string, folder?: string | null, parentSessionId?: string | null,
-        initialState?: ConversationUIState): Promise<string>;   // 返回 sessionId
-    ensureSession(id: string, title: string, origin?: SessionOrigin, folder?: string | null): Promise<string>;
+        initialState?: ConversationUIState, creation?: {agentId?: string}): Promise<string>;   // 返回 sessionId
+    ensureSession(id: string, title: string, origin?: SessionOrigin, folder?: string | null,
+        parentSessionId?: string | null, creation?: {agentId?: string}): Promise<string>;
 
     // Manifest / 列表 / 删除
     getManifest(sessionId: string): Promise<ConversationManifest>;
@@ -490,3 +491,5 @@ TTY 首次结束信息保持不变，后续结束通知与输出不覆盖；已�
 已有中心目录会话迁入项目时只复制 `session` / `settings` 领域记录、历史与附件，再事务提交会话定位；`files` 挂载授权和 kernel 控制记录留在 `/var/lib/sessions/<id>/`。迁移路径先校验后写日志；历史版本留下的中心目录迁移日志可在启动恢复中完成。附件复制出现无法确认的中断时保留来源并报告冲突，不覆盖未知目标。
 
 会话目录迁移恢复对已复制附件逐项校验并补齐缺项，不覆盖不同内容。冲突保持 moving 标记与原始数据，记录 `[Session storage] Recovery deferred`；受影响会话不参与普通枚举和自动运行恢复，直接访问返回 EBUSY，其他项目仍可启动。未知的非空项目归属不回退到当前项目。
+
+`ConversationManifest.createdWithAgentId` 记录创建时智能体，由 createSession/ensureSession 的 creation 参数在首次身份事务写入；SessionSummary 和导航索引包含该字段。之后切换轮次智能体不改变它，普通 manifest 更新不能覆盖；旧记录保持缺省。项目草稿由宿主捕获来源，Session bundle 导入导出保留来源。

@@ -1,3 +1,4 @@
+import { ulid } from '../persistence/ulid';
 import { sha256HexSync } from '@itookit/llm-context';
 import { type MemoryPolicy } from '@itookit/llm-tasks/contracts';
 import { FSError, type IFileSystem, type ISeqFileTransaction } from '@itookit/vfs-core';
@@ -25,7 +26,7 @@ export class SharedMemoryStore {
         return this.transaction(async tx => {
             const old = await tx.getEntry(FILE, resourceKey(id));
             if (old && !parseResource(old).deleted) throw new Error('Shared Memory resource already exists');
-            const resource: SharedMemoryResource = { id, incarnation: crypto.randomUUID(), namespaceId,
+            const resource: SharedMemoryResource = { id, incarnation: ulid(), namespaceId,
                 creatorSessionId, revision: 1, deleted: false, grants: {} };
             await tx.setEntry(FILE, resourceKey(id), JSON.stringify(resource));
             await audit(tx, resource, { action: 'create', sessionId: creatorSessionId });

@@ -236,3 +236,15 @@ it.each(['accepted', 'unknown'] as const)('keeps an approval locked after its re
     expect(updated.disabled).toBe(false); updated.click();
     await vi.waitFor(() => expect(respond).toHaveBeenCalledTimes(2));
 });
+
+it.each(['missing', 'throws'])('uploads and submits without native UUID (%s)', async mode => {
+    const original = globalThis.crypto;
+    vi.stubGlobal('crypto', {getRandomValues: original.getRandomValues.bind(original),
+        ...(mode === 'throws' ? {randomUUID: () => {throw new Error('Unavailable native UUID');}} : {})});
+    try {
+        const host = fixture({upload: async file => ({id: file.name, name: file.name, mimeType: file.type})}), view = await host.open();
+        view.setText('Compatible draft'); await view.addFiles([new File(['x'], 'X.txt')]); await view.submit();
+        expect(host.operations.getSnapshot()[0]).toMatchObject({status: 'accepted'});
+        expect(host.operations.getSnapshot()[0].context.operationId).toMatch(/^[\da-f]{8}-[\da-f-]{27}$/i);
+    } finally {vi.unstubAllGlobals();}
+});

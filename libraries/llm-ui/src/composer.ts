@@ -1,3 +1,4 @@
+import { randomUUID } from './random';
 import type { ChatOptions, ComposerDraft, ConversationSnapshot, DraftAttachment } from './contracts';
 import { button, element, errorText } from './dom';
 import type { Translate } from './i18n';
@@ -67,7 +68,7 @@ export class Composer {
     }
     async addFiles(files: readonly File[]): Promise<void> {
         if (this.closed || !this.options.upload) return;
-        await Promise.all(files.map(file => this.upload(crypto.randomUUID(), file)));
+        await Promise.all(files.map(file => this.upload(randomUUID(), file)));
     }
     private async upload(id: string, file: File): Promise<void> {
         const entry: Upload = { file, abort: new AbortController() };

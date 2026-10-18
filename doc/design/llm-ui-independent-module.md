@@ -164,3 +164,96 @@ destroy 返回同一 Promise，先阻止本地新工作，再解绑并清理全�
 测试位于 [独立库测试](../../libraries/llm-ui/tests/)、[适配实现](../../ui/llm-ui-adapter/src/)、[app-shell 回归](../../ui/app-shell/tests/)。[内存宿主示例](../../libraries/llm-ui/examples/memory-host.ts)展示最小接入。
 
 构建执行 check-llm-ui-entrypoints，边界检查禁止独立源码及类型导入其他包。目录、公共契约和宿主集成同步记录于 [包结构](../pkgstructure.md)、[前后端模块边界](frontend-backend-modules.md)、[接口契约](../interface-contracts.md)、[集成链](../integration-chains.md)与[事件流](../event-flows.md)。
+
+## 9 产品流程收敛方案（2026-10-18，待实施）
+
+本节是架构方案。当前已修复绑定前登记失效、订阅相互替换的问题，并补充真实 Kernel → RPC → 页面回归。提交目标已从可编辑偏好中分离并持久冻结；控制器创建改为显式工厂注入，移除全局 WeakMap 交接注册。产品仍使用既有编辑器控制器，统一 ChatView 和完整单一快照路径的迁移尚未完成。
+
+### 9.1 问题与证据
+
+会话 `09ebfaf7-67eb-4048-b722-3f81b955e803` 的输入、Task、持久 Round 输出使用同一会话身份，Task 成功且重新打开能显示回复。UUID 关联正常不能证明实时观察链路正常。
+
+修复前 SessionRegistry.onEvent 在尚未绑定时返回空 disposer，新增订阅会移除已有订阅；ViewObservation 正需要在打开/绑定前登记。集成回归只替换模型 HTTP 响应，实际运行草稿创建、Kernel、投影、RPC、OpenedViewProjection 和渲染：旧实现只显示提问，修复后显示回复。解绑还曾清除通道上其他所有者的监听。
+
+此前另一个缺陷是草稿控制器销毁时清空共享历史容器，导致正式控制器持有脱离 DOM 的消息节点。两者是不同缺陷，但共同暴露出控制器、可变当前会话、观察和 DOM 的多重所有权。
+
+产品工厂仍选择 SessionDraftEditor / LLMWorkspaceEditor / RemoteConversationEditor；独立 ChatView 的固定 source、snapshot 契约尚未覆盖产品全部行为。独立包已经建立，不等于产品迁移完成。
+
+### 9.2 C4 组件目标
+
+箭头表示运行时交互；以下是现有进程内的职责边界，不新增微服务、消息中间件或业务数据库。
+
+```mermaid
+C4Component
+    title 稳定工作区与固定会话观察
+    Container_Boundary(browser, "浏览器 / 桌面 UI") {
+        Component(workspace, "ConversationWorkspace", "app-shell", "标签与视图生命周期；首次提交不更换工作区")
+        Component(view, "ChatView / FlowView", "llm-ui，仅依赖 mdxeditor", "渲染快照与局部交互")
+        Component(adapter, "ConversationBinding", "llm-ui-adapter", "固定会话与分支；不可变快照")
+        Component(local, "草稿与操作记录", "宿主状态", "恢复输入、附件及待核对操作")
+    }
+    Container_Boundary(host, "应用宿主") {
+        Component(application, "会话用例", "app-core", "准备、接纳、核对与项目策略")
+        Component(source, "固定会话读模型", "llm-session / 原生适配", "流式、终态、恢复与历史读取")
+        Component(execution, "执行内核", "Kernel / Flow / Harness", "持久执行与控制")
+        ComponentDb(storage, "持久记录", "现有仓储", "Round、任务、提交关联与草稿")
+    }
+    Rel(workspace, view, "创建和释放")
+    Rel(workspace, adapter, "打开固定观察绑定")
+    Rel(view, adapter, "具名操作 callback")
+    Rel(adapter, view, "getSnapshot / subscribe")
+    Rel(adapter, local, "恢复与核对")
+    Rel(adapter, application, "显式目标和 operationId；RPC 或本地调用")
+    Rel(application, execution, "提交和控制固定执行")
+    Rel(execution, storage, "记录结果与执行进度")
+    Rel(storage, source, "加载与恢复")
+    Rel(execution, source, "投影实时进度")
+    Rel(source, adapter, "快照及后续更新；SSE 或本地观察")
+```
+
+### 9.3 唯一所有权
+
+| 对象 | 所有者 | 边界 |
+| --- | --- | --- |
+| 工作区与 DOM | app-shell 装配的同一视图 | 转正更新阶段、标题、图标与能力，不交接共享 DOM |
+| 草稿、附件与待核对操作 | 宿主状态及现有保存端口 | 生命周期长于渲染视图；乐观消息不冒充持久事实 |
+| 历史、执行状态与审批事实 | 后端读模型 / 原生适配 | UI 消费统一快照，不维护事件驱动的第二份业务历史 |
+| 观察绑定 | ConversationBinding | 会话和分支固定；独立 disposer，多窗口互不替换 |
+| 接纳与恢复 | app-core 会话用例 | 持久证据决定 accepted；未知操作按原 ID 核对 |
+| Task / Flow / 原生执行 | 执行宿主 | 关闭、隐藏、切换 UI 不隐式停止执行 |
+
+允许持久历史、后端实时投影、传输快照缓存各自存在。约束是同一层有唯一事实写入者，UI 只有一份可恢复的会话状态，首次加载和实时更新使用同一投影语义。传输可继续采用增量补丁；UI 不再同时依赖 append/replace/clear 事件作为第二条公共事实通道。
+
+### 9.4 身份与生命周期
+
+| 身份 | 含义 | 不承担的职责 |
+| --- | --- | --- |
+| conversationId | 草稿到正式会话稳定身份，沿用 UUID | 不证明订阅有效或执行已接纳 |
+| branchId / branchRef | 固定观察分支 | 分支名称不是消息版本 |
+| operationId / submissionId | 单次操作的关联与幂等核对 | 不合并多个 assistant/tool 消息 |
+| executionRef | 一次具体执行目标 | 不依赖可变的“当前任务”定位取消 |
+| viewId | 一次观察绑定实例 | 不是多个窗口共享的会话身份 |
+| cursor / revision | 各自作用域的水位或版本 | 不证明上游数据新旧，不替代目标消息版本 |
+
+工作区阶段是草稿、提交待确认、正式会话；结果未知保留为操作状态。接纳后即使执行失败，仍是正式会话。任务的 queued/running/waiting/terminal 与视图的 active/hidden/disposed 分别管理，不合并成一个 loading。
+
+统一流程：
+
+1. 打开项目草稿时取得已有 UUID，创建稳定工作区和指向该身份的宿主观察绑定；尚无正式 Session 时发布草稿投影，不因此创建任务。
+2. 发送先保存可恢复内容与 operationId；宿主准备正式资源并接纳。空 Session 已创建不等同于首个有效提交成功，跨记录步骤按同一操作核对恢复。
+3. 接纳证据更新原工作区的阶段、标题、图标与能力；项目服务补建下一个草稿 UUID。不销毁旧控制器再接管 DOM。
+4. assistant、tool、Flow、审批进入同一读模型，再发布到绑定；正式用户消息出现后才移除临时气泡。
+5. 关闭视图只释放自身观察；操作核对与任务继续；重开从同一读模型恢复。
+
+观察初始化须有屏障：宿主先建立观察并取得匹配水位的快照，之后从该水位补发。不得先读快照、再无水位订阅。缺口重建只读投影，不重放发送。会话或分支改变时建立新观察实例；已接纳操作继续按原身份核对。
+
+### 9.5 迁移顺序与验收
+
+1. **基线与止损**：保留已验证的订阅修复，覆盖首次创建、既有会话、前后台切换、断线补发、多窗口与终态恢复。
+2. **收敛宿主端口**：复用 openSessionView、ConversationContexts、ViewObservation 和 ConversationSource，形成固定 session/branch 的观察生命周期；写操作显式指定目标。旧 Bind/Unbind 留作兼容实现，逐步退出产品公共路径。
+3. **收敛工作区**：同一工作区消费草稿和正式投影，移除首次提交时的控制器交接。从产品入口逐步接入独立 ChatView，补齐已使用的配置、资源、审批、搜索和 Flow 插槽；每迁移一项就删除对应旧状态通道。
+4. **删除兼容层**：验收通过后移除旧 renderer/事件接线与 handoff，避免永久维护两套产品路径。Flow 执行继续在后端，通用视图仍在 llm-ui 可选子入口。
+
+完成标准：不刷新能看到首个回复；刷新前后持久消息身份与终态正文一致；中途恢复最终收敛；未知提交不重复发送；关闭视图不停止任务；旧绑定不污染新绑定。性能覆盖流式批处理、分页合并和隐藏暂停呈现，不能把统一快照做成每 token 重建全部 DOM。
+
+诊断仅记录 conversationId、operationId、executionRef、viewId、cursor 和阶段时间，用于区分接纳、执行、投影、传输和 UI 应用水位；不在审计中记录消息、附件或凭据。HTTP 200 不代表业务成功。

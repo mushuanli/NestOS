@@ -43,3 +43,5 @@ CostEditor 默认展示本月费用账本摘要；趋势、Provider/会话明细
 - `.llm` 导入 UI 只负责解析、选择冲突策略和展示结果；通过注入服务的 ConfigurationImportPort 查询冲突并提交导入，不编排 Provider/Connection/Agent/Skill 写入。执行用例归宿主后端。
 
 - Provider 媒体 JSON 草稿与模型对象分开保存，搜索、排序和删除不能因草稿无效而失败；保存时才解析为配置。ChatGPT 订阅类型隐藏并禁用媒体字段，切回 API 类型时恢复草稿与校验；隐藏字段不参与保存校验。
+
+AgentConfigEditor 可消费 EditorOptions.mountSettings 挂载宿主偏好，生命周期包含 isDirty、flush 与 destroy；偏好字段不写入 AgentDefinition，保存失败阻止离开并保留表单。

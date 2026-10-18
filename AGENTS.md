@@ -13,6 +13,8 @@
 ## 开发原则
 SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
 
+- 浏览器可达代码使用内部 ID 工具：应用层使用 `@itookit/common.randomUUID()`，独立包使用包内兼容工具；Session 内部沿用 `ulid`。禁止直接调用 `crypto.randomUUID()`（包括可选调用，它仍可能抛错）。`pnpm uuid:check` 已加入架构检查；Node 专用 `node:crypto` 不受此限制。
+
 - 非通用业务通过独立的外部 Tool 包与 Flow 定义接入；新增核心代码只提供通用机制，不内置具体业务的字段、提示词、模板、打包实现或按工具名分支。
 - Flow 可以确定性调用 Tool，Agent 模型调用只是另一入口。平台负责授权、版本、连接绑定及持久执行；工具负责业务规则与副作用核对。详见 [策略与机制边界](./doc/design/application-policy-boundaries.md)。
 

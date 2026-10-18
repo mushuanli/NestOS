@@ -271,9 +271,10 @@ export function generateFlowId(name: string): string {
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')
         .slice(0, 40) || 'flow';
-    const value = globalThis.crypto?.randomUUID?.()
-        ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
-    const suffix = value.replace(/[^a-z0-9-]/g, '').slice(0, 8);
+    let value: string | undefined;
+    try {value = globalThis.crypto?.randomUUID?.();} catch { /* Use the filename-safe fallback. */ }
+    value ??= `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const suffix = value.replace(/[^a-z0-9-]/g, '').slice(-8);
     return `${slug}-${suffix}`;
 }
 

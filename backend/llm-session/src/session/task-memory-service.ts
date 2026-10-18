@@ -1,3 +1,4 @@
+import { ulid } from '../persistence/ulid';
 import type { Kernel, EffectExecutionContext } from '@itookit/durable-kernel';
 import type { DurableAgentInput } from '@itookit/llm-tasks';
 import { SessionMemoryProvider } from './session-memory-provider';
@@ -23,7 +24,7 @@ export class TaskMemoryService {
         const scope = argument(args, 'scope'), entryId = argument(args, 'entryId');
         const options = { expectedContentHash: args.expectedContentHash as string | null | undefined,
             expectedRevision: args.expectedRevision as string | null | undefined,
-            origin: { operationId: context.effectId ? JSON.stringify([context.taskId, context.effectId]) : crypto.randomUUID(),
+            origin: { operationId: context.effectId ? JSON.stringify([context.taskId, context.effectId]) : ulid(),
                 taskId: context.taskId, ...(context.effectId ? { effectId: context.effectId } : {}) } };
         if (toolId === 'memory_compact') await this.memory.compact(context.sessionId, input.memoryPolicy,
             { scope, entryId, content: argument(args, 'content') }, args.sources as import('./session-memory-provider').MemoryCompressionSource[],

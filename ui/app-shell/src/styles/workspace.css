@@ -110,9 +110,8 @@
 .workbench-opened-sheet::backdrop { background: #0f172a77; }
 .workbench-opened-sheet[open] { display: flex; flex-direction: column; box-sizing: border-box; height: min(640px, calc(var(--app-visible-height, 100dvh) - 24px)); max-height: calc(var(--app-visible-height, 100dvh) - 24px); overflow: hidden; }
 .workbench-opened-sheet__header { display: flex; align-items: center; justify-content: space-between; padding: 2px 6px 10px; }
-.workbench-opened-sheet__header, .workbench-opened-sheet__search { flex-shrink: 0; }
+.workbench-opened-sheet__header { flex-shrink: 0; }
 .workbench-opened-sheet__header > button { width: 44px; height: 44px; border: 0; background: transparent; color: inherit; cursor: pointer; }
-.workbench-opened-sheet__search { box-sizing: border-box; width: 100%; min-height: 40px; padding: 8px 10px; border: 1px solid var(--mm-border-color, #e5e7eb); border-radius: 6px; color: inherit; background: transparent; font: inherit; }
 .workbench-opened-sheet .workbench-tabs__opened-row > button { min-height: 44px; }
 .workbench-opened-sheet .workbench-tabs__opened-toolbar { position: sticky; top: 0; z-index: 1; background: var(--mm-bg-color, #fff); }
 .workbench-opened-sheet .workbench-tabs__opened-toolbar button, .workbench-opened-sheet .workbench-tabs__opened-toolbar label { min-height: 44px; }
@@ -233,12 +232,40 @@
 .workbench-sidebar__section { display: flex; flex-direction: column; min-height: 80px; overflow: hidden; }
 .workbench-sidebar__section[hidden], .workbench-sidebar__divider[hidden] { display: none; }
 .workbench-sidebar__section.is-collapsed { flex: 0 0 auto !important; min-height: 0; }
+.workbench-sidebar__extra { flex: 0 1 240px; }
 .workbench-sidebar__section.is-collapsed > :last-child { display: none; }
-.workbench-sidebar__header { display: flex; gap: 8px; align-items: center; flex-shrink: 0; padding: 6px 10px; border-bottom: 1px solid var(--mm-border-color, #e5e7eb); }
-.workbench-sidebar__header button { border: 0; background: transparent; color: inherit; cursor: pointer; padding: 4px; }
-.workbench-sidebar__header button:first-child { flex: 1; text-align: left; font-weight: 600; }
 .workbench-sidebar__navigation { flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; }
 .workbench-sidebar__navigation > * { flex: 1; min-height: 0; }
+.workbench-agents { flex: 1; min-height: 0; }
+.workbench-agents button { display: inline-flex; align-items: center; gap: 8px; min-height: 36px; padding: 6px 10px; border: 0; border-radius: 5px; background: transparent; color: inherit; font: inherit; text-align: left; cursor: pointer; }
+.workbench-agents button:hover:not(:disabled) { background: var(--vfs-active-bg, #eef2ff); }
+.workbench-agents button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
+.workbench-agents button:disabled { opacity: .5; cursor: default; }
+.workbench-agents__row { display: flex; align-items: center; padding: 0 4px; }
+.workbench-agents__toolbar { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; }
+.workbench-agents__launch { flex: 1; min-width: 0; }
+.workbench-agents__launch > span:last-child { display: grid; gap: 3px; min-width: 0; overflow-wrap: anywhere; }
+.workbench-agents__launch small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 11px; color: var(--text-secondary, #64748b); }
+.workbench-agents__list { display: flex; flex-direction: column; flex-shrink: 0; }
+.workbench-agents__status { margin: 4px 10px; font-size: 12px; overflow-wrap: anywhere; }
+.workbench-agents__status:empty { display: none; }
+.agent-workspace-editor { overflow: auto; }
+.agent-project-settings { display: grid; gap: 12px; padding: 16px; margin: 12px 0 20px; border: 1px solid var(--mm-border-color, #e2e8f0); border-radius: 8px; }
+.agent-project-settings label { display: grid; gap: 8px; font-weight: 600; }
+.agent-project-settings select { min-height: 40px; padding: 8px; border: 1px solid var(--mm-border-color, #e2e8f0); border-radius: 6px; background: var(--mm-bg-color, #fff); color: inherit; font: inherit; }
+.agent-project-settings p { margin: 0; color: var(--text-secondary, #64748b); font-size: 12px; }
+.agent-project-settings button { justify-self: start; min-height: 40px; padding: 8px 12px; border: 1px solid var(--mm-border-color, #e2e8f0); border-radius: 6px; color: inherit; background: transparent; cursor: pointer; }
+.workbench-agent-filter { display: flex; flex: 0 0 auto !important; align-items: center; gap: 8px; padding: 8px; font-size: 12px; background: var(--vfs-active-bg, #eef2ff); }
+.workbench-agent-filter[hidden] { display: none; }
+.workbench-agent-filter span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.workbench-agent-filter button { min-height: 40px; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.workbench-directory button, .workbench-tabs button { display: inline-flex; align-items: center; gap: 8px; border-radius: 5px; }
+.workbench-directory button:hover:not(:disabled), .workbench-tabs button:hover:not(:disabled) { background: var(--vfs-active-bg, #eef2ff); }
+.workbench-directory button:focus-visible, .workbench-tabs button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
+@media (max-width: 768px) {
+    .workbench-agents button { min-height: 44px; }
+    .workbench-agents__row > button:not(.workbench-agents__launch) { min-width: 44px; }
+}
 .workbench-sidebar__divider { height: 6px; flex-shrink: 0; cursor: row-resize; touch-action: none; background: var(--mm-border-color, #e5e7eb); }
 .workbench-sidebar__resize { position: absolute; right: 0; top: 0; bottom: 0; width: 6px; cursor: col-resize; touch-action: none; z-index: 15; }
 .workbench-sidebar__resize:hover, .workbench-sidebar__divider:hover { background: var(--primary-color, #6366f1); }
@@ -262,7 +289,8 @@
 .workbench-tabs__body { flex: 1; height: 0; min-height: 0; min-width: 0; position: relative; overflow: hidden; }
 .workbench-tabs__panel { display: flex; flex-direction: column; height: 100%; min-height: 0; min-width: 0; overflow: auto; }
 .workbench-tabs__panel[hidden] { display: none; }
-.workbench-tabs__opened { flex: 1; min-height: 0; overflow: auto; }
+.workbench-tabs__opened { display: flex; flex-direction: column; flex: 1; min-height: 0; overflow: hidden; }
+.workbench-tabs__opened > * { flex: 1; min-height: 0; }
 .workbench-tabs__opened-row { display: flex; align-items: center; }
 .workbench-tabs__opened-row button:first-child { flex: 1; min-width: 0; overflow-wrap: anywhere; text-align: left; }
 .workbench-tabs__opened-row button[aria-current="true"] { background: var(--vfs-active-bg, #e8edff); }
@@ -312,10 +340,6 @@
 /* Compact controls keep resource names and primary tasks prominent. */
 .workbench-icon { display: inline-flex; width: 18px; height: 18px; flex: 0 0 18px; font-size: 18px; line-height: 1; align-items: center; justify-content: center; color: var(--text-secondary, #64748b); }
 .workbench-icon svg, .workbench-compact-navigation > button > svg, .mm-mobile-back > svg { display: block; flex-shrink: 0; width: 18px; height: 18px; max-width: 18px; max-height: 18px; }
-.workbench-sidebar__header button, .workbench-directory button, .workbench-tabs button { display: inline-flex; align-items: center; gap: 8px; border-radius: 5px; }
-.workbench-sidebar__header button:hover, .workbench-directory button:hover:not(:disabled), .workbench-tabs button:hover:not(:disabled) { background: var(--vfs-active-bg, #eef2ff); }
-.workbench-sidebar__header button:focus-visible, .workbench-directory button:focus-visible, .workbench-tabs button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
-.workbench-sidebar__header button[aria-expanded="false"] .workbench-icon { transform: rotate(-90deg); }
 .workbench-project-navigation { flex: 1; width: 100%; min-width: 0; flex-wrap: nowrap; padding: 8px; gap: 6px; --vfs-toolbar-icon-size: 18px; --vfs-scope-font-weight: 600; --vfs-scope-background: var(--mm-bg-color, #fff); }
 .workbench-project-navigation > select { flex: 1; width: 0; }
 .workbench-project-navigation > button { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 32px; height: 34px; padding: 7px; border-radius: 7px; }
@@ -424,9 +448,6 @@
 
 /* Keep secondary section controls discoverable by pointer, keyboard and touch. */
 @media (hover: hover) {
-    .workbench-sidebar__header > button:last-child { opacity: 0; }
-    .workbench-sidebar__header:hover > button:last-child,
-    .workbench-sidebar__header:focus-within > button:last-child { opacity: 1; }
 }
 
 /* Public VFS presentation tokens; internal component selectors belong to vfs-ui. */

@@ -1,3 +1,4 @@
+import { ulid } from '../persistence/ulid';
 import type { RetrievedMemoryEntry } from '@itookit/llm-context';
 import { sha256Hex, type ContextPlan } from '@itookit/llm-context';
 import { type MemoryPolicy } from '@itookit/llm-tasks/contracts';
@@ -37,7 +38,7 @@ export class SessionMemoryProvider {
         if (typeof entry.content !== 'string') throw new Error('Memory content must be a string');
         if (!policy.writeScopes.includes(entry.scope)) throw new Error(`Memory write scope denied: ${entry.scope}`);
         const saved: StoredMemory = { entryId: entry.entryId, scope: entry.scope, content: entry.content, namespaceId: policy.namespaceId,
-            contentHash: await hashContent(entry.content), updatedAt: Date.now(), revision: crypto.randomUUID(),
+            contentHash: await hashContent(entry.content), updatedAt: Date.now(), revision: ulid(),
             source: { sessionId, ...(options.origin?.taskId ? { taskId: options.origin.taskId } : {}),
                 ...(options.origin?.effectId ? { effectId: options.origin.effectId } : {}) } };
         await this.mutate(sessionId, policy, entry.scope,
@@ -96,7 +97,7 @@ export class SessionMemoryProvider {
             throw new Error('Invalid Memory compaction sources or summary');
         }
         for (const source of sources) { requireId(source.entryId); requireId(source.revision); }
-        const summary: StoredMemory = { ...entry, namespaceId: policy.namespaceId, revision: crypto.randomUUID(), updatedAt: Date.now(),
+        const summary: StoredMemory = { ...entry, namespaceId: policy.namespaceId, revision: ulid(), updatedAt: Date.now(),
             contentHash: await hashContent(entry.content), source: { sessionId, ...(options.origin?.taskId ? { taskId: options.origin.taskId } : {}),
                 ...(options.origin?.effectId ? { effectId: options.origin.effectId } : {}) } };
         await this.mutate(sessionId, policy, entry.scope, entries => {
@@ -117,7 +118,7 @@ export class SessionMemoryProvider {
     private async mutate(sessionId: string, policy: MemoryPolicy, scope: string, change: (entries: StoredMemory[]) => StoredMemory[],
         origin: MemoryOrigin | undefined, payload: unknown, requireRead = false): Promise<number> {
         if (!policy.sharedMemory) return mutate(await this.kernel.openSession(sessionId), policy.namespaceId, scope, change);
-        return this.requireShared().mutate(sessionId, policy, scope, origin ?? { operationId: crypto.randomUUID() }, payload, value => {
+        return this.requireShared().mutate(sessionId, policy, scope, origin ?? { operationId: ulid() }, payload, value => {
             const entries = readEntries(value, policy.namespaceId, scope);
             const next = change(entries);
             return { entries: next, result: entries.length - next.length };

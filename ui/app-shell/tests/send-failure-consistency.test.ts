@@ -145,3 +145,15 @@ it.each(['Later draft', ''])('does not restore rejected text over a newer edit %
         expect(chatInput.restoreInput).not.toHaveBeenCalled();
     } finally { toast.mockRestore(); }
 });
+
+it.each(['missing', 'throws'])('sends and projects feedback through the internal UUID helper when native UUID %s', async mode => {
+    const original = globalThis.crypto;
+    vi.stubGlobal('crypto', {getRandomValues: original.getRandomValues.bind(original),
+        ...(mode === 'throws' ? {randomUUID: () => {throw new Error('Unavailable native UUID');}} : {})});
+    try {
+        const {ctx, execute, historyView} = harness(); execute.mockResolvedValue('task');
+        await new SendMessageCommand(ctx).run({text: 'Compatible send', files: []});
+        expect(execute).toHaveBeenCalledWith(SessionCommand.Send, expect.anything());
+        expect(historyView.setSubmission).toHaveBeenCalledWith(expect.objectContaining({id: expect.stringMatching(/^[\da-f]{8}-[\da-f-]{27}$/i)}));
+    } finally {vi.unstubAllGlobals();}
+});

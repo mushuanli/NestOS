@@ -1,3 +1,4 @@
+import { randomUUID } from '@itookit/common';
 /**
  * @file app-shell/session-owner.ts
  * @desc 当前窗口/标签页的 Session 写租约身份。
@@ -12,7 +13,7 @@
 const OWNER_TOKEN_KEY = 'mindos.session-owner-token';
 
 function randomToken(): string {
-    return globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+    return randomUUID();
 }
 
 /** 稳定的单窗口租约 token；同一窗口内多次调用返回同一个值。 */

@@ -7,8 +7,8 @@ export const NAVIGATION_REVISION = 'navigation-revision';
 export const navigationPrefix = (folder: string | null) => `navigation/${encodeURIComponent(folder ?? '')}/`;
 
 export function serializeSessionSummary(session: SessionSummary): string {
-    const { id, title, summary, origin, createdAt, updatedAt, folder, parentSessionId } = session;
-    return JSON.stringify({ id, title, summary, origin, createdAt, updatedAt, folder, parentSessionId });
+    const { id, title, summary, origin, createdAt, updatedAt, folder, parentSessionId, createdWithAgentId } = session;
+    return JSON.stringify({ id, title, summary, origin, createdAt, updatedAt, folder, parentSessionId, createdWithAgentId });
 }
 
 /** Publish directory rows in the same transaction as the authoritative Session metadata. */

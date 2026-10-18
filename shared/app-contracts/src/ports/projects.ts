@@ -14,6 +14,8 @@ import type { MCPDeletedProject, MCPDeletionReference } from './configuration';
 
 export type ProjectConversationSnapshot = HarnessConversationSnapshot & {usageEstimate?: import('@itookit/kernel-adapters/contracts').UsageCostEstimate};
 export interface ProjectConversationPort extends HarnessConversationPort {
+    /** Stable host identity retained when a project draft becomes a native conversation. */
+    readonly conversationId?: string;
     snapshot(): ProjectConversationSnapshot;
     read(): Promise<ProjectConversationSnapshot>;
     poll(): Promise<ProjectConversationSnapshot>;
@@ -248,9 +250,11 @@ export interface ProjectDraftPromotion {
     submissionId: string;
     nextDraftId: string;
     state: 'promoted';
+    remote?: {connectionId: string; serverProjectId: string; principalId?: string; profileId: string; nativeSessionId: string; turnId: string};
 }
 
 export interface ProjectDraftComposer {
+    readonly id?: string;
     /** Reconcile durable submission evidence and replace this cursor only after its promotion. */
     refresh?(): Promise<ProjectDraftComposer | undefined>;
     readonly attachments: {
@@ -259,7 +263,8 @@ export interface ProjectDraftComposer {
     };
     readonly initialData: string;
     save(data: string): Promise<void>;
-    clear(): Promise<void>;
+    /** Return the replacement UUID so clients can update immutable RPC field snapshots. */
+    clear(): Promise<string | void>;
     prepare(): Promise<{
         sessionId: string;
         resumeOnly: boolean;
@@ -310,7 +315,7 @@ export interface ProjectRemoteMountService {
     projectHarness(projectId: string, options?: OperationOptions): Promise<HarnessClient>;
     remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void>;
     searchFiles(projectId: string, query: HarnessContracts.FileSearchQuery, options?: OperationOptions): Promise<HarnessContracts.FileSearchResult>;
-    projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean): Promise<ProjectConversationPort>;
+    projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean, draftId?: string): Promise<ProjectConversationPort>;
     projectOffline(projectId: string): boolean;
     degraded(projectId: string): boolean;
     status(mountId: string): RemoteConnectionStatus;
@@ -381,6 +386,8 @@ export interface ProjectSearchQuery {
     directory?: string;
     archived?: boolean;
     profileId?: string;
+    /** Creation source filter for sessions only; files remain visible. */
+    agentId?: string;
 }
 
 export interface ProjectSearchMatch {

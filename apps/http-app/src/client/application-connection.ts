@@ -1,3 +1,4 @@
+import { randomUUID } from '@itookit/common';
 import {HttpViewClient, SnapshotCache, ViewExpiredError} from '@itookit/app-transport/http';
 import {initialView} from './initial-view';
 
@@ -26,7 +27,7 @@ class ConnectionStatus {
 /** Begin data transfer before importing the DOM shell and editor implementation. */
 export function connectApplication() {
     const listeners = new AbortController(), route = initialView(location.hash), status = new ConnectionStatus();
-    const client = new HttpViewClient(crypto.randomUUID(), '/api/application', globalThis.fetch.bind(globalThis),
+    const client = new HttpViewClient(randomUUID(), '/api/application', globalThis.fetch.bind(globalThis),
         error => status.publish(error instanceof ViewExpiredError ? 'expired' : 'reconnecting'),
         () => status.publish('view-error'), () => status.publish('connected'));
     for (const event of ['online', 'focus', 'mindos:http-retry']) window.addEventListener(event, () => client.retryConnection(), {signal: listeners.signal});

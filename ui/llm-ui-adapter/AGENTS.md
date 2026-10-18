@@ -1,5 +1,7 @@
 # llm-ui-adapter 开发说明
 
+项目草稿的 `selectDraftAgent` 命令只切换明确指定且仍可用的智能体，沿用 ChatInput 的配置通知与保存队列，保留文字、附件和模型偏好；不创建正式 Session、不发送内容。工作台快捷入口消费此命令，项目选择和资源列表不进入聊天组件。
+
 本包承接 MindOS 的 Session、Task、原生会话、配置和权限接线，保留原业务编辑器兼容入口。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。
 
 本地与原生会话的标题栏共享 `EventBinder` 更多菜单；宿主可通过 `EditorOptions.mountMoreMenu` 注入资源动作并返回清理函数。会话归属与关联创建由 app-shell 提供，不进入聊天或 Markdown 组件；关闭编辑器须释放注入菜单。
@@ -12,7 +14,7 @@ HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已�
 
 标题栏「提问目录」由 `PromptNavigator` 提供，按钮仅显示图标；宽屏与折叠/展开所有按钮并列，窄屏两者进入顶部更多菜单，只保留搜索和更多两个常驻入口。菜单在右上角就近展开，不移到底部；历史始终可见，不恢复旧隐藏状态。目录打开即显示最近提问在前的列表及过滤框，不分页；默认展示全部（超过 100 条时先展示最近 100 条，可继续展开），过滤查询全部已加载提问，重开清除旧过滤。保留开头/中间/最近定位、单行/三行摘要；宽屏浮层、窄屏底部面板。点击仅展开目标用户卡片，再在历史容器内滚动、聚焦和高亮；引用 details 保持折叠。原生摘要依据 contentPartKinds 排除明确来源的注入上下文。若打开目录时已加载片段没有用户提问，RemoteConversationEditor 按需最多向前读 3 页，找到提问即停；错误停止并保留手动重试，其余更早历史仍由用户加载，不随通知/轮询自动补齐。本地目录与批量导航共享历史快照和在途读取；两面板均关闭时变更只标脏，可见时合并刷新，打开时读取最新数据，迟到响应不能覆盖新快照。目录语义属于 llm-ui，不进入 mdxeditor 或 pi-agent。回归见 app-shell 的 prompt-navigation、remote-conversation-editor 和 http-full-shell。
 
-新建草稿在同一个智能体选择器中按类别展示本地智能体和可创建的远程 harness（远程智能体），不增加前置执行方式筛选层；切换保留草稿、附件及独立连接设置，不创建或发送会话。工作流入口位于标题栏更多菜单，先保存草稿再导航现有流程库；参数与连接槽继续由 FlowLauncher 和 FlowParameterForm 提交。Agent 不按 Provider 派生新类型。
+项目草稿工具栏按「项目 → 对话/执行 → 智能体」排列；项目选择由宿主 scope 注入。本地项目只显示本地智能体，远程项目只显示当前项目可创建的远程 harness，无候选时禁止发送；原生会话的 harness 创建后固定。切换项目先保存再打开目标项目独立草稿，正式会话隐藏项目和已固定模式的选择。项目选择在导航前捕获输入偏好，通过宿主转交目标草稿；draft-preferences 按目标智能体候选、连接启用/凭据与模型档位校验后应用，保留目标文字和附件，不复制执行锁、Flow 或分支引用。继承期间有新编辑或视图切换时丢弃迟到结果；恢复草稿时刷新项目候选。工作流入口位于标题栏更多菜单，先保存草稿再导航现有流程库；参数与连接槽继续由 FlowLauncher 和 FlowParameterForm 提交。Agent 不按 Provider 派生新类型。
 
 模型菜单按连接及 Provider 分组，展示该连接配置的聊天模型，一次选择原子更新 connectionId/modelTier；`auto` 持久值显示「跟随默认」，不宣称智能选模。模型档位与推理强度独立。harness 显示只读「原生配置」，Flow 显示节点模型并导航流程定义，不展示本地智能体或全局模型设置。智能体指令/工具通过宿主导航配置；设置凭据仍在连接管理。
 
@@ -103,7 +105,7 @@ ChatInput 设置按对话、OCR、高级分组；高级项默认折叠。Skills 
 
 会话呈现以正文为主：共享 780px 阅读列，用户浅色气泡、智能体无外框，操作放在正文下方；成功回答不显示状态标签，运行/失败状态保留。工具参数和结果由原生 details 默认折叠，失败自动展开，进度在摘要外显示；思考默认折叠。输入栏的模型选择器统一连接与档位，更多菜单收纳搜索、设置、预设提示词和帮助，模式说明随模式菜单展开，用量随输入区下方 details 展开。菜单需支持键盘退出及点击外部关闭；远程会话不暴露本地设置。DOM 回归位于 app-shell 的 conversation-layout、chat-input-settings、chat-connection-refresh 与 tool-history-live 测试。
 
-项目新会话 UI 位于 `src/shell/drafts/`：编辑器只消费 ui-common 的 `SessionDraftControls`，输入序列化与保存队列独立。materialize 返回明确的编辑器/提交标识/恢复行为，不能修改宿主 options 传递状态；项目转正策略、持久化和接受判定不进入 UI。
+项目新会话 UI 位于 `src/shell/drafts/`：编辑器只消费 ui-common 的 `SessionDraftControls`，输入序列化与保存队列独立。materialize 返回明确的编辑器/提交标识/恢复行为，不能修改宿主 options 传递状态；项目转正策略、持久化和接受判定不进入 UI。inPlace 路径以 workspace-handoff 在同一 mount 内交接控制器，复用 ChatInput 与原输入 DOM，失败回滚输入绑定；外层编辑器委托正式能力，confirmDraft 接收宿主接纳事实及必要的恢复构造回调。跨视图接纳不重新提交，隐藏接纳不抢焦点。旧草稿 renderer 的 release 必须早于正式 HistoryView 创建子容器，不能在正式视图建立后清空共享历史根节点；首次发送回归必须核验临时提问和后续回复实际出现在已挂载 DOM 中，不能只校验外层容器身份。
 
 - `/chat` 是聊天/Flow 展示入口，`/settings` 承载可选设置编辑器；共享展示源码不得加载 llm-settings-ui。根入口等同 `/chat`；已删除 `/legacy` 聚合入口。
 - UI 经结构化 `SessionViewPort` 接收会话实例，默认工具列表由宿主注入，不从适配器读取产品默认值。Web/Tauri 不使用全局 SessionManager 装配聊天。
@@ -130,8 +132,10 @@ Markdown 嵌入统一通过 MDxController 设置 `scrollMode: 'host'`，正文�
 
 - 编辑器 cancelPendingRender 暂停不可见视图的消息订阅、任务附着与 FlowInvocation 轮询；activate 读取当前快照并恢复观察，每个异步阶段核验激活代次和销毁状态，旧请求不得恢复隐藏视图；保留原 DOM、输入和草稿，不重发写入、不取消运行。RemoteConversationEditor 的迟到轮询和通知不更新隐藏视图。
 
-- 本地与项目草稿提交先在历史区显示临时用户气泡，提交或首条历史追加时移除欢迎区；仅按提交身份与持久消息关联去除临时气泡。发送回执返回时用宿主 isGenerating 同步按钮，任务 lease/control/compaction 等事件不能推导为 running。SessionDraftEditor.refresh 通过宿主刷新已提升草稿，激活与提升通知共享在途刷新，避免重复销毁和重建编辑器；未保存输入和检查期间的新编辑优先保留，隐藏编辑器不刷新或抢焦点。
+- 本地与项目草稿提交先在历史区显示临时用户气泡，提交或首条历史追加时移除欢迎区；仅按提交身份与持久消息关联去除临时气泡。发送回执返回时用宿主 isGenerating 同步按钮，任务 lease/control/compaction 等事件不能推导为 running。SessionDraftEditor.refresh 通过宿主刷新外部替换的草稿，激活与刷新共享在途请求；本视图原地转正由 confirmDraft 固定控制器并隐藏项目选择，不把原视图替换成下一份草稿；未保存输入和检查期间的新编辑优先保留，隐藏编辑器不刷新或抢焦点。
 
 - 可选 ChatConfigurationView 由宿主注入；Agent、预设提示词和连接选择器读取该快照，共享一个订阅并在变更时重建选项；每个缓存句柄释放自身监听，最后一个句柄释放源订阅。无注入时沿用配置服务。事件绑定后优先读取 SessionViewPort 的同会话快照，缺省才调用 GetSnapshot；激活、分支选择和保存顺序不变。
 
 - 宿主可注入 readTaskAttachment 读取活动/待审批候选 ID；无候选跳过额外 Flow 查询，活动候选先核对同一 Session 及实时非终态，过期后继续待交互候选；待交互候选核对 Flow 归属、实时非终态及 pending interaction，跳过已解决任务。异步打开和状态读取后仍检查视图和附着代次。不注入时沿用 Kernel 端口，不改变附着和审批语义。
+
+- 草稿控制器创建通过 SessionDraftMaterialization.createEditor 显式注入，不使用模块全局 DOM/WeakMap 交接表。保留输入时仍应用后端固定的 executionMode/Flow 约束；confirmDraft 不根据旧输入推断模式锁。ChatInput 绑定配置不能触发用户配置保存，附件粘贴/拖拽按当前能力动态判断。

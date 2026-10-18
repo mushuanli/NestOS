@@ -18,6 +18,8 @@ export interface ConversationManifest extends RoundManifest {
     title: string;
     summary?: string;
     origin?: SessionOrigin;
+    /** Agent selected when the host first materialized this identity; never inferred from later rounds. */
+    createdWithAgentId?: string;
     createdAt: number;
     updatedAt: number;
     /** Virtual sidebar folder path, normalized as /A/B; null/undefined means root. */
@@ -37,7 +39,7 @@ export interface ConversationManifest extends RoundManifest {
 
 /** Navigation metadata only; history and editor state are loaded on demand. */
 export type SessionSummary = Pick<ConversationManifest,
-    'id' | 'title' | 'summary' | 'origin' | 'createdAt' | 'updatedAt' | 'folder' | 'parentSessionId'>;
+    'id' | 'title' | 'summary' | 'origin' | 'createdAt' | 'updatedAt' | 'folder' | 'parentSessionId' | 'createdWithAgentId'>;
 
 export interface BranchTreeNode {
     id: string;
@@ -85,9 +87,10 @@ export interface ISessionRepository extends SessionDeletionStore {
     init(): Promise<void>;
     dispose(): Promise<void>;
     subscribe(listener: (change?: SessionRepositoryChange) => void): () => void;
-    createSession(title: string, folder?: string | null, parentSessionId?: string | null, initialState?: ConversationUIState): Promise<string>;
+    createSession(title: string, folder?: string | null, parentSessionId?: string | null, initialState?: ConversationUIState, creation?: {agentId?: string}): Promise<string>;
     /** Idempotently create a Session with a host-supplied durable identity. */
-    ensureSession(id: string, title: string, origin?: SessionOrigin, folder?: string | null): Promise<string>;
+    ensureSession(id: string, title: string, origin?: SessionOrigin, folder?: string | null, parentSessionId?: string | null,
+        creation?: {agentId?: string}): Promise<string>;
     getManifest(sessionId: string): Promise<ConversationManifest>;
     getLoadState?(sessionId: string): Promise<SessionLoadState>;
     /** Read the projection and the selected history chain together, when supported. */

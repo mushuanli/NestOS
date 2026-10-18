@@ -12,6 +12,7 @@ import { RemoteHistory } from './remote-history';
 import { ConversationInformation } from './ConversationInformation';
 import type { ConversationSnapshot } from '@itookit/ui-common';
 import { mountConversationSource } from './conversation-source';
+import {bindWorkspaceInput, type WorkspaceHandoff} from './drafts/workspace-handoff';
 
 interface Actions {
     attachments?: Array<'text' | 'image'>;
@@ -41,9 +42,10 @@ export class ConversationWorkspaceView {
     private readonly indicator: StatusIndicatorView;
     private readonly renameButton: HTMLButtonElement;
     private renameDialog?: Modal;
-    constructor(private readonly container: HTMLElement, options: EditorOptions, actions: Actions) {
+    constructor(private readonly container: HTMLElement, options: EditorOptions, actions: Actions, handoff?: WorkspaceHandoff) {
         container.classList.add('llm-ui-workspace');
-        container.innerHTML = LayoutTemplates.renderWorkspace(options.title ?? t('harness.remoteSessions'));
+        if (!handoff) container.innerHTML = LayoutTemplates.renderWorkspace(options.title ?? t('harness.remoteSessions'));
+        handoff?.prepare(); handoff?.release();
         const history = container.querySelectorAll<HTMLElement>('#llm-ui-history')[0]!;
         this.indicator = new StatusIndicatorView(new DOMCache(container), () => false, () => {});
         this.configureTitle(options); this.events = this.configureToolbar(options, actions);
@@ -59,7 +61,7 @@ export class ConversationWorkspaceView {
             refresh: actions.openPrompts, earlier: actions.earlier,
         });
         this.reconcile = this.button(t('harness.reconcile'), actions.reconcile, toolbar); this.reconcile.disabled = true;
-        this.input = this.createInput(options, actions);
+        this.input = this.createInput(options, actions, handoff);
         this.input.setAvailability({canSend: false, canInterrupt: false});
         this.interactions.className = 'remote-conversation__interactions';
         this.status.className = 'remote-conversation__status'; this.status.setAttribute('role', 'status');
@@ -101,9 +103,9 @@ export class ConversationWorkspaceView {
             await service.printFromHtml(content.innerHTML, {title: this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!.value, showHeader: true});
         } finally { renderer.destroy(); service.destroy?.(); }
     }
-    private createInput(options: EditorOptions, actions: Actions): ChatInput {
+    private createInput(options: EditorOptions, actions: Actions, handoff?: WorkspaceHandoff): ChatInput {
         const executorId = options.initialInputState?.agentId?.startsWith('remote:') ? options.initialInputState.agentId : 'remote:native';
-        return new ChatInput(this.container.querySelectorAll<HTMLElement>('#llm-ui-input')[0]!, {
+        const inputOptions: import('../components/input/ChatInputView').ChatInputOptions = {
             executorUsage: options.executorUsage,
             attachments: !!actions.attachments?.length, executorLocked: true,
             onSwitchExecutionTarget: options.onStartConversationDraft,
@@ -114,7 +116,8 @@ export class ConversationWorkspaceView {
             initialConfig: {text: options.initialInputState?.text ?? '', agentId: executorId},
             onSend: (text, files) => actions.send(text, files),
             onStop: actions.stop, onDraftChange: (_config, files) => actions.changed(files),
-        });
+        };
+        return handoff ? bindWorkspaceInput(inputOptions, handoff) : new ChatInput(this.container.querySelectorAll<HTMLElement>('#llm-ui-input')[0]!, inputOptions);
     }
     private button(label: string, action: () => void, parent: HTMLElement): HTMLButtonElement {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'llm-workspace-titlebar__btn llm-workspace-titlebar__btn--text';
@@ -162,5 +165,5 @@ export class ConversationWorkspaceView {
         this.indicator.update(state, options.indicator === false ? '' : text || t('harness.ready'));
         this.container.querySelectorAll<HTMLElement>('#llm-status-indicator')[0]!.hidden = options.indicator === false;
     }
-    destroy(): Promise<void> { this.renameDialog?.hide(); this.information.destroy(); this.events.cleanup(); this.indicator.destroy(); this.input.destroy(); this.container.classList.remove('llm-ui-workspace'); return this.history.destroy(); }
+    destroy(preserveInput = false): Promise<void> { this.renameDialog?.hide(); this.information.destroy(); this.events.cleanup(); this.indicator.destroy(); if (!preserveInput) this.input.destroy(); this.container.classList.remove('llm-ui-workspace'); return this.history.destroy(); }
 }

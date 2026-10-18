@@ -1,3 +1,4 @@
+import { randomUUID } from './random';
 import { DefaultPrintService } from '@itookit/mdxeditor';
 import type { ActionName, ChatMessage, ChatOptions, ChatView, ConversationSnapshot, JsonValue,
     MessageTarget, MountedToolbar, OperationContext, OperationReceipt, OperationRecord } from './contracts';
@@ -217,7 +218,7 @@ export class ChatController implements ChatView {
     }
     private async dispatch(kind: ActionName, input: JsonValue, action: (context: OperationContext) => Promise<OperationReceipt>,
         draft?: import('./contracts').ComposerDraft): Promise<void> {
-        const context = { viewId: this.snapshot.viewId, operationId: crypto.randomUUID() };
+        const context = { viewId: this.snapshot.viewId, operationId: randomUUID() };
         await this.options.operations.register({ context, conversationId: this.snapshot.conversationId, kind, input, draft, status: 'submitting' });
         let receipt: OperationReceipt;
         try { receipt = await action(context); }

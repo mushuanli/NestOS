@@ -1,3 +1,4 @@
+import { randomUUID } from '@itookit/common';
 import type { FlowDraft, FlowNodeId, DagPluginManifest, FlowEdgeDefinition, FlowEdgeId, FlowNodeDefinition, FlowConnection, FlowParameter, FlowDefaults } from '@itookit/llm-flow/contracts';
 
 export interface DeleteNodeResult {
@@ -233,8 +234,7 @@ function edgeKey(edge: FlowEdgeDefinition): string {
 }
 
 function uniqueId(prefix: string): string {
-    const value = globalThis.crypto?.randomUUID?.()
-        ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    const value = randomUUID();
     return `${prefix}-${value}`;
 }
 

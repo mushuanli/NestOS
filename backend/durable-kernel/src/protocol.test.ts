@@ -501,6 +501,22 @@ describe('durable harness protocols', () => {
         await expect(store.commitTask(binding, claim, { ...claim.task, status: 'succeeded' }, 'task.completed')).rejects.toThrow();
     });
 
+    it('classifies external event appends as content while preserving structural Task notifications', async () => {
+        await kernel.openSession('s');
+        const reasons: string[] = [];
+        const off = kernel.onChanged(event => reasons.push(event.reason));
+        try {
+            await store.appendEvent(binding, 's', undefined, 'test.output', {text: 'first'});
+            await store.appendEvent(binding, 's', undefined, 'test.output', {text: 'second'});
+            expect(reasons).toEqual(['content', 'content']);
+            reasons.length = 0;
+            const task = await store.createTask(binding, 's', {...spec, deferStart: true});
+            expect(reasons).toContain('structure'); reasons.length = 0;
+            await store.signalTask(binding, task.id, {type: 'external'});
+            expect(reasons).toContain('structure');
+        } finally {off();}
+    });
+
     it('notifies task observers on an external SeqFile commit with polling disabled', async () => {
         const observer = new Kernel({ catalog: { fs, rootPath: '/catalog' }, pollMs: 0, maxConcurrent: 0 });
         observer.registerStorageResolver({ kind: 'test', async resolve() { return binding; } });

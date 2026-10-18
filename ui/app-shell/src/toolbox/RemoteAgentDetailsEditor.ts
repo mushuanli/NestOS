@@ -3,8 +3,10 @@ import { remoteSessionPath } from '@itookit/app-contracts';
 import type { ProjectService, ToolboxInventory } from '@itookit/app-contracts/services';
 import { t } from '@itookit/common';
 export class RemoteAgentDetailsEditor extends BaseSettingsEditor<ToolboxInventory> {
+    private projectSettings?: Awaited<ReturnType<NonNullable<EditorOptions['mountSettings']>>>;
     constructor(container: HTMLElement, inventory: ToolboxInventory, options: EditorOptions, private readonly projects?: ProjectService) { super(container, inventory, options); }
     async render() {
+        await this.projectSettings?.flush(); await this.projectSettings?.destroy(); this.projectSettings = undefined;
         const path = editorFilePath(this.options) ?? '';
         const id = decodeURIComponent(path.split('/').pop()!.replace(/\.agent$/, ''));
         const agent = this.service.remoteAgents.get(id);
@@ -27,5 +29,12 @@ export class RemoteAgentDetailsEditor extends BaseSettingsEditor<ToolboxInventor
             }
         }
         this.container.replaceChildren(panel);
+        if (this.options.mountSettings) {
+            const settings = document.createElement('div'); panel.prepend(settings);
+            this.projectSettings = await this.options.mountSettings(settings);
+        }
     }
+    async flushPendingSave(): Promise<void> {await this.projectSettings?.flush(); await super.flushPendingSave();}
+    isDirty(): boolean {return !!this.projectSettings?.isDirty() || super.isDirty();}
+    async destroy(): Promise<void> {await this.projectSettings?.flush(); await this.projectSettings?.destroy(); await super.destroy();}
 }

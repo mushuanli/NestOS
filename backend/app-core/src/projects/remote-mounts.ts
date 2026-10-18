@@ -1,5 +1,7 @@
 import type { ProjectConversationPort } from '@itookit/app-contracts/services';
 import { observeConversation } from './conversation-view';
+import {prepareRemoteDraft, remoteConversationKey} from './drafts/remote-submission';
+import {readConversationIdentity} from './drafts/remote-identity';
 import { RemoteConversationStore } from './remote-conversation-store';
 import {draftHarness, draftConversation, remoteConversationJournal} from './remote-draft-conversation';
 import { RemoteSessionStatus } from '../session/remote-session-status';
@@ -442,7 +444,8 @@ export class ProjectRemoteMountService {
             return result;
         } finally { await client.close(); }
     }
-    async projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false): Promise<ProjectConversationPort> {
+    async projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string): Promise<ProjectConversationPort> {
+        if (draftId !== undefined && !/^[a-zA-Z0-9_-]+$/.test(draftId)) throw new FSError('EINVAL', 'Invalid draft identity');
         if (!this.provider.conversation) throw new FSError('ECAPABILITY', 'Conversation adapter unavailable');
         const client = await this.projectHarness(projectId, options);
         const fingerprint = JSON.stringify(this.list(projectId));
@@ -451,11 +454,17 @@ export class ProjectRemoteMountService {
             const profile = descriptor.profiles.find(p => (p.id === profileId || p.aliases?.includes(profileId)) && p.projectRuntime);
             if (!profile) throw new FSError('ECAPABILITY', 'Project harness profile unavailable');
             const root = this.list(projectId).find(m => m.at === '/')!;
+            const conversationId = sessionId ? await readConversationIdentity(this.store, projectId, {
+                connectionId: root.connectionId!, serverProjectId: root.serverProjectId!, principalId: root.authorization?.principalId,
+                profileId: profile.id, nativeSessionId: sessionId}) : draftId;
+            const target = {connectionId: root.connectionId!, serverProjectId: root.serverProjectId!,
+                ...(root.authorization ? {principalId: root.authorization.principalId} : {}), profileId: conversationId ? profile.id : profileId};
+            if (draftId) await prepareRemoteDraft(this.store, projectId, draftId, target);
             const guarded = this.guardHarness(client, projectId, fingerprint, root.connectionId!);
-            const recovery = new RemoteConversationStore(this.store, JSON.stringify([projectId, root.connectionId, root.serverProjectId, ...(root.authorization ? [root.authorization.principalId] : []), profileId, sessionId ?? '@new']));
+            const recovery = new RemoteConversationStore(this.store, remoteConversationKey(projectId, target, conversationId ?? sessionId ?? '@new'));
             const conversation = await this.provider.conversation(sessionId ? guarded : draftHarness(guarded, recovery), profile, profile.workspaces[0].id, sessionId, (profile.projectCapabilities?.sessionControl ?? root.access === 'rw') && !readOnly,
-                remoteConversationJournal(recovery, descriptor.epoch, !sessionId));
-            return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage);
+                remoteConversationJournal(recovery, descriptor.epoch, !sessionId && !draftId));
+            return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage, conversationId);
         } catch (error) { await client.close(); throw error; }
     }
     private guardHarness(client: HarnessClient, projectId: string, fingerprint: string, connectionId: string): HarnessClient {

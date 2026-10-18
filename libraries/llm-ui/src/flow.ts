@@ -1,3 +1,4 @@
+import { randomUUID } from './random';
 import './flow.css';
 import type { JsonValue, OperationContext, OperationKind, OperationReceipt } from './contracts';
 import type { FlowActionName, FlowEndpoint, FlowNodeChange, FlowNodeView, FlowOptions, FlowSnapshot, FlowView, MountedFlowInspector } from './flow-contracts';
@@ -192,7 +193,7 @@ class FlowController implements FlowView {
             && record.kind.startsWith('flow.') && (record.status === 'unknown' || record.status === 'submitting')))
             throw new Error('A Flow operation is awaiting reconciliation');
         const key = `${name}:${JSON.stringify(input)}`; if (this.inFlight.has(key)) return; this.inFlight.add(key);
-        const context = { viewId: this.snapshot.viewId, operationId: crypto.randomUUID() };
+        const context = { viewId: this.snapshot.viewId, operationId: randomUUID() };
         try {
             await this.options.operations.register({ context, conversationId: this.snapshot.flowId, kind: flowKind(name), input, status: 'submitting' });
             let receipt: OperationReceipt;

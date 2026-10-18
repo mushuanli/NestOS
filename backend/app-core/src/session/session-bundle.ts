@@ -13,6 +13,7 @@ export interface SessionBundleManifest {
     title: string;
     summary?: string;
     origin?: ConversationManifest['origin'];
+    createdWithAgentId?: string;
     folder?: string | null;
     uiState?: ConversationManifest['uiState'];
     flow?: ConversationManifest['flow'];
@@ -47,7 +48,7 @@ export async function exportSessionBundle(repository: ISessionRepository, sessio
         format: SESSION_BUNDLE_FORMAT,
         version: SESSION_BUNDLE_VERSION,
         manifest: {
-            title: manifest.title, summary: manifest.summary, origin: manifest.origin, folder: manifest.folder ?? null,
+            title: manifest.title, summary: manifest.summary, origin: manifest.origin, createdWithAgentId: manifest.createdWithAgentId, folder: manifest.folder ?? null,
             uiState: manifest.uiState, flow: manifest.flow, rootRoundId: manifest.rootRoundId, branches: manifest.branches,
             branchMeta: manifest.branchMeta, currentBranch: manifest.currentBranch,
             currentHead: manifest.currentHead, children: manifest.children,
@@ -70,7 +71,7 @@ export async function importSessionBundle(
 ): Promise<string> {
     const bundle = parseSessionBundle(content);
     const folder = options.folder !== undefined ? options.folder : bundle.manifest.folder ?? null;
-    const id = await repository.createSession(bundle.manifest.title || 'Imported Session', folder);
+    const id = await repository.createSession(bundle.manifest.title || 'Imported Session', folder, null, undefined, {agentId: bundle.manifest.createdWithAgentId});
     try {
         await restoreSession(repository, id, bundle);
         return id;
@@ -140,6 +141,7 @@ function readManifest(value: unknown, documents: Record<string, string>): Sessio
     return {
         title: typeof manifest.title === 'string' ? manifest.title : '',
         summary: typeof manifest.summary === 'string' ? manifest.summary : undefined,
+        createdWithAgentId: typeof manifest.createdWithAgentId === 'string' ? manifest.createdWithAgentId : undefined,
         origin: manifest.origin === 'cli' || manifest.origin === 'tauri' || manifest.origin === 'web' ? manifest.origin : undefined,
         folder: typeof manifest.folder === 'string' ? manifest.folder : null,
         uiState: (asRecord(manifest.uiState) ?? undefined) as ConversationManifest['uiState'],

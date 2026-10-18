@@ -83,3 +83,11 @@ it('forwards remote name/directory scopes and rejects file results when grants c
     remote.searchFiles.mockImplementation(async () => { revision++; return {matches: [], truncated: false, nextCursor: null}; });
     await expect(search.search('/P', {query: 'old', scope: 'file-name', directory: 'nested'})).rejects.toMatchObject({code: 'ECONFLICT'});
 });
+
+it('filters session search by creation source before applying the result limit', async () => {
+    const rows = Array.from({length: 130}, (_, index) => ({id: 'other-' + index, title: 'Needle other', updatedAt: 2000, folder: '/P', createdWithAgentId: 'other'}));
+    rows.push({id: 'writer', title: 'Needle writer', updatedAt: 1000, folder: '/P', createdWithAgentId: 'writer'});
+    const repository = {listFolders: async () => [], listSummaries: async () => rows};
+    const search = new ProjectSearch({forFolder: async () => project} as never, repository as never);
+    expect((await search.search('/P', {query: 'Needle', scope: 'session-title', agentId: 'writer'})).matches).toMatchObject([{sessionId: 'writer'}]);
+});

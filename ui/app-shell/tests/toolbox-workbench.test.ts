@@ -25,7 +25,7 @@ const cleanup: Array<() => unknown> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); await runtime?.dispose(); document.body.replaceChildren(); vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 class Editor extends BaseSettingsEditor<object> { async render() { this.container.textContent = editorResourceId(this.options) ?? ''; } }
 async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfigurationControls,
-    uiPreferences?: import('../src/toolbox/ToolboxWorkbench').ToolboxPreferencesPort, executorUsage?: EditorOptions['executorUsage']) {
+    uiPreferences?: import('../src/toolbox/ToolboxWorkbench').ToolboxPreferencesPort, executorUsage?: EditorOptions['executorUsage'], agentsInWorkbench = false) {
     vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => setTimeout(() => callback(0), 0));
     vi.stubGlobal('cancelAnimationFrame', clearTimeout);
     HTMLDialogElement.prototype.showModal ??= function () { this.setAttribute('open', ''); };
@@ -49,10 +49,20 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
         tools: async (container: HTMLElement, options: EditorOptions) => { const editor = new ToolDetailsEditor(container, inventory, options, resources); await editor.init(container); return editor; } };
     const files = createToolboxFiles(resources.sources);
     cleanup.push(() => files.dispose());
-    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu: {}, navigate: vi.fn(), selected: vi.fn(), uiPreferences, executorUsage });
+    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu: {}, navigate: vi.fn(), selected: vi.fn(), uiPreferences, executorUsage, agentsInWorkbench });
     cleanup.push(() => workbench.destroy()); await workbench.start();
     return { workbench, sidebar, main, factory, resources, inventory };
 }
+it('moves the agent entry out of the toolbox while retaining direct configuration links', async () => {
+    const f = await setup(undefined, {load: () => ({filter: 'agents'}), save: vi.fn()}, undefined, true);
+    expect(f.sidebar.querySelector('[data-filter="agents"]')).toBeNull();
+    expect(f.sidebar.querySelector('[data-item-id="/drawers/ungrouped-agents"]')).toBeNull();
+    const path = '/agents' + runtime.agentService.getAgentResourceId('english');
+    await f.workbench.openResource(path);
+    await vi.waitFor(() => expect(f.factory).toHaveBeenCalled()); expect(f.main.textContent).toContain('english.agent');
+    f.workbench.setFilter('all');
+    expect(f.sidebar.querySelector('[data-item-id="/drawers/ungrouped-agents"]')).toBeNull();
+});
 it('restores and persists toolbox preferences through the host port', async () => {
     const saved: Array<{ filter: string; queries: Record<string, string> }> = [];
     const f = await setup(undefined, { load: () => ({ filter: 'mcp', queries: { mcp: 'docs', bogus: 'ignored' } }), save: value => saved.push(value as never) });

@@ -5,8 +5,10 @@ import type { WorkbenchSnapshot } from './state';
 import {backToPreviousPage} from '../navigation/page-history';
 import {openedButton} from './opened-button';
 import {compactNavigation} from './compact-navigation';
+import { Drawer } from '@itookit/vfs-ui';
 
 export interface WorkbenchTab<T> {
+    conversationId?: string;
     context?: string;
     navigationLabel?: HTMLElement;
     location?: string;
@@ -29,6 +31,8 @@ interface TabActions<T> {
 /** Keeps editor DOM mounted so cursor, undo history and scroll survive switching. */
 export class WorkbenchTabs<T> {
     readonly opened = document.createElement('div');
+    private readonly openedDrawer = new Drawer({title: t('workbench.opened'), showHeader: false, collapsible: false,
+        search: {label: t('workbench.findOpened'), onChange: query => {this.openedQuery = query; this.render();}}});
     private readonly bar = document.createElement('div');
     private readonly body = document.createElement('div');
     private readonly navigation = document.createElement('div');
@@ -53,7 +57,7 @@ export class WorkbenchTabs<T> {
         container.classList.add('workbench-tabs'); this.bar.className = 'workbench-tabs__bar';
         this.bar.setAttribute('role', 'tablist'); this.bar.setAttribute('aria-label', t('workbench.tabs'));
         this.body.className = 'workbench-tabs__body'; this.emptyPanel.className = 'workbench-tabs__panel';
-        this.opened.className = 'workbench-tabs__opened'; this.body.append(this.emptyPanel);
+        this.opened.className = 'workbench-tabs__opened'; this.opened.append(this.openedDrawer.element); this.body.append(this.emptyPanel);
         this.navigation.className = 'workbench-tabs__navigation';
         this.standalone = compactNavigation(this.navigation, '', () => {
             const layout = container.closest<HTMLElement>('.mm-layout');
@@ -62,7 +66,7 @@ export class WorkbenchTabs<T> {
         container.append(this.navigation, this.bar, this.body);
         for (const tab of restored ?? []) {
             const entry = this.create(tab.id, tab.title, false); entry.pinned = tab.pinned;
-            entry.context = tab.context; entry.location = tab.location;
+            entry.context = tab.context; entry.location = tab.location; entry.conversationId = tab.conversationId;
         }
         container.addEventListener('keydown', event => this.keydown(event), { signal: this.abort.signal });
         this.render();
@@ -86,15 +90,11 @@ export class WorkbenchTabs<T> {
         const close = this.button(t('action.close'), () => dialog.close());
         decorateButton(close, FILE_BROWSER_ICONS.close, t('action.close'), true);
         const header = document.createElement('div'); header.className = 'workbench-opened-sheet__header'; header.append(heading, close);
-        const search = document.createElement('input'); search.type = 'search'; search.className = 'workbench-opened-sheet__search';
-        search.placeholder = t('workbench.findOpened'); search.setAttribute('aria-label', search.placeholder);
-        search.oninput = () => { this.openedQuery = search.value; this.render(); };
         const placeholder = document.createComment('opened documents'); this.opened.before(placeholder);
-        dialog.append(header, search, this.opened); document.body.append(dialog); this.openedDialog = dialog;
+        dialog.append(header, this.opened); document.body.append(dialog); this.openedDialog = dialog;
         dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
         dialog.addEventListener('close', () => {
             placeholder.replaceWith(this.opened); dialog.remove(); this.openedDialog = undefined;
-            this.openedQuery = ''; this.filterOpened();
             this.current?.panel.querySelector<HTMLButtonElement>('.workbench-window-list')?.focus();
         }, {once: true});
         dialog.showModal();
@@ -120,8 +120,8 @@ export class WorkbenchTabs<T> {
     get(id: string): WorkbenchTab<T> | undefined { return this.entries.get(id); }
     values(): WorkbenchTab<T>[] { return [...this.entries.values()]; }
     snapshot(): NonNullable<WorkbenchSnapshot['tabs']> {
-        return this.values().filter(tab => !tab.preview).map(({ id, title, pinned, context, location }) => ({ id, title, pinned,
-            ...(context ? { context } : {}), ...(location ? { location } : {}) }));
+        return this.values().filter(tab => !tab.preview).map(({ id, title, pinned, conversationId, context, location }) => ({ id, title, pinned,
+            ...(conversationId ? { conversationId } : {}), ...(context ? { context } : {}), ...(location ? { location } : {}) }));
     }
     async open(id: string, title: string, preview = true): Promise<WorkbenchTab<T>> {
         ++this.opening; this.syncViewState();
@@ -167,8 +167,10 @@ export class WorkbenchTabs<T> {
     }
     rename(id: string, next: string, title: string): void {
         const tab = this.get(id); if (!tab) return;
+        if (next !== id && this.get(next)) throw new Error(`Tab already open: ${next}`);
         this.metadataRevisions.set(tab, (this.metadataRevisions.get(tab) ?? 0) + 1);
-        this.entries.delete(id); tab.id = next; tab.title = title; this.entries.set(next, tab);
+        const entries = [...this.entries].map(([key, value]) => [key === id ? next : key, value] as const);
+        tab.id = next; tab.title = title; this.entries.clear(); for (const [key, value] of entries) this.entries.set(key, value);
         if (this.selected.delete(id)) this.selected.add(next);
         if (this.currentId === id) this.currentId = next;
         this.render();
@@ -208,10 +210,10 @@ export class WorkbenchTabs<T> {
         this.standalone.update(this.current?.title ?? '', this.entries.size, this.current?.context, this.current?.navigationLabel);
         for (const view of this.windowButtons) view.update(this.entries.size);
         for (const view of this.compactViews) view.update(this.current?.title ?? '', this.entries.size);
-        this.bar.replaceChildren(); this.opened.replaceChildren();
-        this.opened.append(this.openedToolbar());
+        this.bar.replaceChildren(); this.openedDrawer.content.replaceChildren();
+        this.openedDrawer.content.append(this.openedToolbar());
         const tabs = this.values().sort((a, b) => Number(b.pinned) - Number(a.pinned));
-        for (const tab of tabs) { this.bar.append(this.tabHeader(tab)); this.opened.append(this.openedRow(tab)); }
+        for (const tab of tabs) { this.bar.append(this.tabHeader(tab)); this.openedDrawer.content.append(this.openedRow(tab)); }
         this.filterOpened();
         const menu = document.createElement('details'); menu.className = 'workbench-tabs__menu';
         const summary = document.createElement('summary'); summary.innerHTML = FILE_BROWSER_ICONS.more; summary.title = t('workbench.tabActions'); summary.setAttribute('aria-label', summary.title); menu.append(summary);
@@ -330,7 +332,7 @@ export class WorkbenchTabs<T> {
         this.disposing = true;
         for (const tab of this.values()) await this.close(tab.id, false);
         for (const view of this.windowButtons) view.button.remove(); this.windowButtons.clear();
-        this.abort.abort(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');
+        this.abort.abort(); this.openedDrawer.destroy(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');
         delete this.container.dataset.workbenchView;
         delete this.container.dataset.workbenchActivation;
     }

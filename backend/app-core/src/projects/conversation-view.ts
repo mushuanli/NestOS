@@ -4,8 +4,8 @@ import type { UsageCostEstimate } from '@itookit/kernel-adapters/contracts';
 
 import type { ProjectConversationPort, ProjectConversationSnapshot } from '@itookit/app-contracts/services';
 /** One host-side cursor pump serves every subscriber to this conversation view. */
-export function observeConversation(source: HarnessConversationPort, quote?: (usage: HarnessUsage) => UsageCostEstimate): ProjectConversationPort {
-    return new ConversationView(source, quote).port();
+export function observeConversation(source: HarnessConversationPort, quote?: (usage: HarnessUsage) => UsageCostEstimate, conversationId?: string): ProjectConversationPort {
+    return new ConversationView(source, quote, conversationId).port();
 }
 class ConversationView {
     private readonly listeners = new Set<() => void>();
@@ -16,7 +16,7 @@ class ConversationView {
     private closed = false;
     private pumping = false;
     private quoteFailed = false;
-    constructor(private readonly source: HarnessConversationPort, private readonly quote?: (usage: HarnessUsage) => UsageCostEstimate) {
+    constructor(private readonly source: HarnessConversationPort, private readonly quote?: (usage: HarnessUsage) => UsageCostEstimate, private readonly conversationId?: string) {
         this.current = immutableData(undefined, this.project(source.snapshot()));
     }
     private project(snapshot: HarnessConversationSnapshot): ProjectConversationSnapshot {
@@ -32,6 +32,7 @@ class ConversationView {
     }
     port(): ProjectConversationPort {
         return new Proxy(this.source as ProjectConversationPort, { get: (target, key) => {
+            if (key === 'conversationId') return this.conversationId;
             if (key === 'snapshot') return () => this.current;
             if (key === 'subscribe') return (listener: () => void) => this.subscribe(listener);
             if (key === 'close') return () => this.close();

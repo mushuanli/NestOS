@@ -38,6 +38,7 @@ interface Options {
     /** Host-owned preference storage; omitted means the toolbox starts from defaults. */
     uiPreferences?: ToolboxPreferencesPort;
     executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
+    agentsInWorkbench?: boolean;
 }
 export interface ToolboxPreferences { filter: ToolboxFilter; queries: Partial<Record<ToolboxFilter, string>> }
 /**
@@ -82,6 +83,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     private refreshTail: Promise<void> = Promise.resolve();
     constructor(private readonly options: Options) {
         this.prefs = preferences(this.options.uiPreferences?.load()); this.snapshot = directorySnapshot(options.files);
+        if (options.agentsInWorkbench && this.prefs.filter === 'agents') this.prefs.filter = 'all';
     }
     async start(): Promise<void> {
         const { resources, sidebar } = this.options;
@@ -145,6 +147,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     private buildFilters(): void {
         this.filters.className = 'toolbox-filters'; this.filters.setAttribute('role', 'group'); this.filters.setAttribute('aria-label', t('toolbox.filters'));
         for (const kind of TOOLBOX_FILTERS) {
+            if (kind === 'agents' && this.options.agentsInWorkbench) continue;
             const button = document.createElement('button'); button.type = 'button'; button.dataset.filter = kind;
             button.textContent = t(`toolbox.${kind}`); button.onclick = () => this.setFilter(kind); this.filters.append(button);
         }
@@ -160,7 +163,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     private updateToolbar(): void {
         this.ui?.setToolbar({ fileLabel: t('toolbox.new'),
             secondary: this.prefs.filter === 'models' ? (this.options.ocr ? { label: t('ocr.configure'), run: async () => { await this.options.ocr!.configure(); } } : undefined) : { label: t('toolbox.organize'), run: () => { const group = this.selectedDrawer();
-                const kind = group?.kind ?? (drawerKind(this.prefs.filter as ToolboxKind) ? this.prefs.filter as import('@itookit/app-contracts').DrawerKind : 'agents');
+                const kind = group?.kind ?? (drawerKind(this.prefs.filter as ToolboxKind) ? this.prefs.filter as import('@itookit/app-contracts').DrawerKind : this.options.agentsInWorkbench ? 'flows' : 'agents');
                 void this.drawerActions.move(kind, group?.paths).catch(error => alert(String(error))); } },
             hiddenActions: this.prefs.filter === 'tools' ? ['create-file', 'create-directory']
                 : ['create-directory'],
@@ -192,9 +195,11 @@ export class ToolboxWorkbench implements WorkspaceController {
         return kind === 'mcp' ? mcpStatusIcon(node.metadata.custom) : resourceIcon(kind);
     }
     private groupResources(items: VFSNodeUI[]): VFSNodeUI[] {
+        if (this.options.agentsInWorkbench && this.prefs.filter !== 'agents') items = items.filter(item => toolboxKind(item.id) !== 'agents');
         const models = items.filter(item => ['providers', 'connections'].includes(toolboxKind(item.id)!));
         return [...(this.prefs.filter === 'all' || this.prefs.filter === 'models' ? modelDrawers(models, this.options.inventory) : []),
-            ...resourceDrawers(items, this.options.resources.drawers, this.prefs.filter)];
+            ...resourceDrawers(items, this.options.resources.drawers, this.prefs.filter)
+                .filter(group => !this.options.agentsInWorkbench || this.prefs.filter === 'agents' || group.metadata.custom.toolboxKind !== 'agents')];
     }
 
     private applyNavigation(navigation: ToolboxNavigation): void {
@@ -295,7 +300,8 @@ export class ToolboxWorkbench implements WorkspaceController {
         if (!kind) throw new Error('Invalid toolbox resource');
         if (path === '/' + kind) { this.setFilter(toolboxFilter(kind)); return; }
         if (toolboxFilter(kind) === 'models' && this.prefs.filter !== 'models') this.setFilter('models');
-        if (this.prefs.filter !== 'all' && this.prefs.filter !== toolboxFilter(kind)) this.setFilter(toolboxFilter(kind));
+        if (kind === 'agents' && this.options.agentsInWorkbench || this.prefs.filter !== 'all' && this.prefs.filter !== toolboxFilter(kind))
+            this.setFilter(toolboxFilter(kind));
         this.ui.setQuery('');
         this.revealDrawer(path);
         await this.ui.selectPath(path);
@@ -312,8 +318,8 @@ export class ToolboxWorkbench implements WorkspaceController {
         let created = '';
         const drawer = (options.drawerId ? this.options.resources.drawers.get(options.drawerId) : undefined) ?? this.selectedDrawer();
         const select = document.createElement('select');
-        for (const kind of TOOLBOX_KINDS.filter(kind => kind !== 'tools')) { const option = document.createElement('option'); option.value = kind; option.textContent = t(`toolbox.${kind}`); select.append(option); }
-        select.value = drawer && drawer.kind !== 'tools' ? drawer.kind : this.prefs.filter === 'models' ? 'connections' : this.prefs.filter !== 'all' && this.prefs.filter !== 'tools' ? this.prefs.filter : 'agents';
+        for (const kind of TOOLBOX_KINDS.filter(kind => kind !== 'tools' && (kind !== 'agents' || !this.options.agentsInWorkbench || this.prefs.filter === 'agents'))) { const option = document.createElement('option'); option.value = kind; option.textContent = t(`toolbox.${kind}`); select.append(option); }
+        select.value = drawer && drawer.kind !== 'tools' ? drawer.kind : this.prefs.filter === 'models' ? 'connections' : this.prefs.filter !== 'all' && this.prefs.filter !== 'tools' ? this.prefs.filter : this.options.agentsInWorkbench ? 'flows' : 'agents';
         const label = document.createElement('label'); label.textContent = t('toolbox.type'); label.append(select);
         const { field, providers } = this.providerField();
         const picker = drawerField(this.options.resources.drawers);

@@ -5,8 +5,7 @@ import { t } from '@itookit/common';
 import { MemoryBackend, createFileSystemSource, FSError } from '@itookit/vfs-core';
 import { createApplicationRuntime, remoteSessionPath, folderBrowserPath } from '@itookit/app-core';
 import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/piagent-driver';
-import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
-import { RemoteConversationEditor } from '../../llm-ui-adapter/src/shell/RemoteConversationEditor';
+import {createLLMFactory} from '../../llm-ui-adapter/src/chat';
 import type { EditorOptions } from '@itookit/ui-common';
 import type { VFSUIShell } from '@itookit/vfs-ui';
 import { projectConversationEntryPath, projectConversationsPath } from '@itookit/app-contracts';
@@ -53,14 +52,8 @@ it('browses mounted native history pages, opens their conversations and routes a
         return new Response(JSON.stringify({jsonrpc:'2.0',id:message.id,result:{resultType:'complete',ttlMs:0,cacheScope:'private',...result}}),{headers:{'content-type':'application/json'}});
     });
     const sidebar=document.createElement('div'),main=document.createElement('div');document.body.append(sidebar,main);
-    const factory=vi.fn(async (container:HTMLElement,options:EditorOptions) => {
-        if (options.sessionDraft) {
-            const editor = new SessionDraftEditor(container, {listAgents: () => [], getConnections: async () => [], getDefaultConnection: async () => null, onChange: () => () => {}} as never, options as never);
-            await editor.init(container); return editor;
-        }
-        if (!options.conversation) throw new Error('Expected native conversation port');
-        const editor=new RemoteConversationEditor(container,options.conversation,options);await editor.init(container);return editor;
-    });
+    const factory = vi.fn(createLLMFactory(runtime.agentService, {sessionRepository: runtime.sessionRepository,
+        sessionManager: runtime.sessionManager, commandBus: runtime.commandBus}));
     const workbench=createTestWorkbench({ sidebar,container:main,repository:runtime.sessionRepository,files:runtime.sessionFiles,projects:runtime.projects,kernel:runtime.kernel.kernel,factory,onSelect() {},hostContext:undefined,fileFactory:factory});
     try {
         const remote=runtime.projects.remoteMounts!,connection=await remote.saveConnection({name:'Server',endpoint:'https://files.test',username:'u'},'secret');
@@ -197,9 +190,38 @@ it('browses mounted native history pages, opens their conversations and routes a
         const controls=(workbench as unknown as {remoteAgentControls(folder:string):import('@itookit/ui-common').RemoteAgentControls}).remoteAgentControls(folder);
         const remoteId=(await controls.list())[0].id;expect(remoteId).toContain('remote:');
         const before=(await runtime.sessionRepository.list()).length;
-        await controls.send(remoteId,'remote task');expect(peer.create).toHaveBeenCalledOnce();expect(peer.turn).toHaveBeenCalledWith('codex','new-native','remote task',expect.anything());
+        await workbench.startSessionDraft(remotePath, undefined, remoteId);
+        const shell = workbench as any, draftTab = shell.tabs.current, draftEditor = shell.editor;
+        const mount = draftTab.panel.querySelector('.session-editor-mount'), textarea = mount.querySelector('.llm-input__textarea');
+        const history = mount.querySelector('#llm-ui-history'), uuid = mount.dataset.conversationId;
+        const composer = await runtime.projects.drafts.open(project.project.id, folder);
+        expect(uuid).toBe(composer.id);
+        let accept!: () => void;
+        const delayed = new Promise<void>(resolve => {accept = resolve;});
+        vi.mocked(peer.turn).mockImplementationOnce(async () => {await delayed; return {turnId: 't'};});
+        textarea.value = 'remote task'; textarea.dispatchEvent(new Event('input', {bubbles: true}));
+        mount.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.click();
+        try {
+            await vi.waitFor(() => expect(peer.turn).toHaveBeenCalledOnce());
+            expect(workbench.getActiveResourceId()).toBe('draft:' + project.project.id);
+            textarea.value = 'Next remote message'; textarea.dispatchEvent(new Event('input', {bubbles: true}));
+            textarea.focus(); textarea.setSelectionRange(4, 4);
+        } finally {accept();}
+        const promoted = remoteSessionPath(project.path, 'codex', 'new-native');
+        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(promoted));
+        expect(shell.tabs.current).toBe(draftTab); expect(shell.editor).toBe(draftEditor);
+        expect(mount.querySelector('.llm-input__textarea')).toBe(textarea); expect(mount.querySelector('#llm-ui-history')).toBe(history);
+        expect(textarea.value).toBe('Next remote message'); expect(textarea.selectionStart).toBe(4);
+        expect(document.activeElement).toBe(textarea); expect(draftTab.conversationId).toBe(uuid);
+        expect(mount.querySelector('.llm-draft-scope')).toBeNull();
+        expect(peer.create).toHaveBeenCalledOnce(); expect(peer.turn).toHaveBeenCalledWith('codex','new-native','remote task',expect.anything());
         expect((await runtime.sessionRepository.list()).length).toBe(before);
-        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(remoteSessionPath(project.path,'codex','new-native')));
+        expect((await runtime.projects.drafts.open(project.project.id, folder)).id).not.toBe(uuid);
+        await workbench.openResource(initialScope); await shell.tabs.close(promoted, false);
+        await workbench.openResource(promoted);
+        expect(shell.tabs.current.conversationId).toBe(uuid);
+        expect(activePanel().querySelector<HTMLElement>('.session-editor-mount')!.dataset.conversationId).toBe(uuid);
+        expect(activePanel().querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.value).toBe('Next remote message');
         vi.mocked(peer.create).mockImplementationOnce(async () => {const session={...native,id:'second-native'};sessionList.push(session);return {session};});
         await controls.send(remoteId,'another task');expect(peer.create).toHaveBeenCalledTimes(2);
         expect(peer.turn).toHaveBeenLastCalledWith('codex','second-native','another task',expect.anything());

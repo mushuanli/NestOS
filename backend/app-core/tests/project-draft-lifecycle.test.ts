@@ -45,6 +45,23 @@ it('only durable first-message evidence promotes a draft; unrelated Session crea
     } finally { await f.manager.dispose(); }
 });
 
+it('captures the creation agent with the draft identity and keeps it immutable on retries and edits', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const fs = await manager.openFileSystem('/'), repo = new SessionRepository(fs); await repo.init();
+    const drafts = new ProjectDraftService(id => new ProjectDraftStore(fs, id), repo, async () => ['p']);
+    try {
+        const draft = await drafts.open('p', '/');
+        await draft.save!(JSON.stringify({version: 2, config: {agentId: 'writer', text: 'Keep identity'}, files: []}));
+        const prepared = await draft.prepare();
+        expect((await repo.getManifest(prepared.sessionId)).createdWithAgentId).toBe('writer');
+        expect((await repo.listSummaries()).find(row => row.id === prepared.sessionId)?.createdWithAgentId).toBe('writer');
+        await repo.ensureSession(prepared.sessionId, 'Retry', 'tauri', '/', null, {agentId: 'other'});
+        await repo.saveSessionSettings(prepared.sessionId, {agentId: 'other'});
+        expect((await repo.getManifest(prepared.sessionId)).createdWithAgentId).toBe('writer');
+        await expect(repo.updateManifest(prepared.sessionId, {createdWithAgentId: 'other'})).rejects.toMatchObject({code: 'EINVAL'});
+    } finally {await repo.dispose(); await manager.dispose();}
+});
+
 it('recovers a lost notification and creates only one successor across concurrent recovery', async () => {
     const f = await fixture();
     try {

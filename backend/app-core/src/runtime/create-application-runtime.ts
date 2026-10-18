@@ -1,4 +1,5 @@
 import { createUsageCostEstimator } from '../projects/usage-estimator';
+import {createSessionExecutionPreparer} from '../session/prepare-session-execution';
 import { applicationStartupPolicy, type ApplicationStartupMode } from './startup-policy';
 import { ConversationContexts } from './conversation-contexts';
 import { conversationIdle } from './conversation-idle';
@@ -20,7 +21,7 @@ import { ModelConfigurationCommands } from '../configuration/model-commands';
 import { resumeSessionDeletions } from './resume-session-deletions';
 import type { IStorageBackend, MountOptions } from '@itookit/vfs-core';
 import type { LLMDeviceDriver, CodexAppServerTransport } from '@itookit/kernel-adapters/llm/core';
-import { t, traceBoot, createModuleLogger } from '@itookit/common';
+import { t, traceBoot, createModuleLogger, randomUUID } from '@itookit/common';
 import { type ILLMLogger } from '@itookit/driver-llm/contracts';
 import {
     SessionRepository, SessionDirectoryStorageResolver,
@@ -195,7 +196,12 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             async (id): Promise<string | undefined> => (await projects.forFolder((await sessionRepository.getManifest(id)).folder))?.project.directory);
         cleanupFns.push(() => directoryMounts.dispose());
         const directoryReady = startup.task('directoryMounts.init (parallel)', () => directoryMounts.init())();
-        const projects = new ProjectService(systemFS, sessionRepository, directoryMounts, sessionFiles);
+        const projects = new ProjectService(systemFS, sessionRepository, directoryMounts, sessionFiles,
+            id => prepareDraftExecution(id));
+        const prepareDraftExecution = createSessionExecutionPreparer({
+            openSession: (...args) => kernel.kernel.openSession(...args),
+            createSession: (...args) => kernel.kernel.createSession(...args),
+        });
         cleanupFns.push(() => projects.dispose());
         let remoteGuard = async (id: string) => mountGuard(id);
         let initializeRemoteConfiguration: () => Promise<void> = () => Promise.resolve();
@@ -292,7 +298,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const leaseStore = new SessionLeaseStore(systemFS, {
             ...(options.sessionLeaseSkewMs ? { skewMs: options.sessionLeaseSkewMs } : {}),
         });
-        const ownerToken = options.sessionOwnerToken ?? globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+        const ownerToken = options.sessionOwnerToken ?? randomUUID();
         const ownerId = `${options.ownerKind ?? "tauri"}-${ownerToken}`;
         await repositoryReady;
         const excluded = await traceBoot('resumeSessionDeletions',

@@ -1,4 +1,4 @@
-import { CHAT_ICONS, TOOLBOX_ICONS, escapeHTML, t } from '@itookit/common';
+import { randomUUID, CHAT_ICONS, TOOLBOX_ICONS, escapeHTML, t } from '@itookit/common';
 import type { MDxPlugin } from '@itookit/mdxeditor';
 import { copyText } from '@itookit/ui-common';
 
@@ -78,7 +78,7 @@ function renderRegisteredBlock(text: string, language: string): string | false {
 
 /** Only blocks registered by this view's native projection receive transcript roles. */
 export function createTranscriptMarkup(): {plugin: MDxPlugin; encode: TranscriptEncoder; clear(): void} {
-    const scope = 'native-transcript-' + crypto.randomUUID() + ':';
+    const scope = 'native-transcript-' + randomUUID() + ':';
     const blocks = new Map<string, {text: string; language: string}>();
     const plugin: MDxPlugin = {name: 'native-transcript-markup', install(context) {
         context.registerSyntaxExtension({renderer: {code(token) {

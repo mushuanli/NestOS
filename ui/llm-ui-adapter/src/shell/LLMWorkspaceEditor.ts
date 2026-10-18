@@ -6,6 +6,7 @@ import type { SessionViewPort } from '@itookit/llm-session/contracts';
 import { acquireConnectionOptions } from './connection-options-cache';
 import { rerunSession } from './rerun-session';
 import { t } from '@itookit/common';
+import { bindWorkspaceInput, type WorkspaceHandoff } from './drafts/workspace-handoff';
 import { mountConversationSource } from './conversation-source';
 import { openSessionFlowOutputs } from '../flows/session-output';
 import { InvocationPanel } from '../flows/InvocationPanel';
@@ -85,6 +86,7 @@ interface InitialSessionData {
 
 
 export interface LLMEditorOptions extends EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission, import('../services/SessionService').SessionLoadResult> {
+    handoff?: WorkspaceHandoff;
     readTaskAttachment?: import('@itookit/durable-kernel/contracts').ReadTaskAttachment;
     configuration?: import('@itookit/kernel-adapters/contracts').ChatConfigurationView;
     sessionId: string;
@@ -266,6 +268,7 @@ export class LLMWorkspaceEditor implements IEditor {
             measurement.mark('branches');
 
             this.initComplete = true;
+            this.options.handoff = undefined;
             this.emit('ready', undefined);
             this.initResolve?.();
             measurement.finish();
@@ -283,8 +286,10 @@ export class LLMWorkspaceEditor implements IEditor {
     }
 
     private initLayout(): void {
-        this.container.innerHTML = LayoutTemplates.renderWorkspace(this.currentTitle);
+        this.options.handoff?.prepare();
+        if (!this.options.handoff) this.container.innerHTML = LayoutTemplates.renderWorkspace(this.currentTitle);
         this.titleInput = this.container.querySelectorAll('#llm-title-input')[0] as HTMLInputElement;
+        this.titleInput.readOnly = false;
         mountConversationSource(this.container, 'mindos');
         this.container.addEventListener('click', this.onWelcomePrompt);
     }
@@ -334,6 +339,8 @@ export class LLMWorkspaceEditor implements IEditor {
             buildExecutorOptions(this.agentService, this.options.remoteAgents, this.options.configuration?.getConfigurationSnapshot()),
             this.stateManager.loadUIState(session.manifest),
         ]);
+        // Retire draft renderers before the new history owns children of the shared mount.
+        this.options.handoff?.release();
         const historyEl = this.domCache.byId('llm-ui-history')!;
         const inputEl = this.domCache.byId('llm-ui-input')!;
         const historyView = new HistoryView(historyEl, {
@@ -384,7 +391,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const savedAgentId = savedUIState?.input_agent_id || 'default';
         const validAgentId = validateAgentId(this.agentService, savedAgentId);
 
-        this.chatInput = new ChatInput(inputEl, {
+        const inputOptions: import('../components/input/ChatInputView').ChatInputOptions = {
             executionModeInfo: this.container.querySelector<HTMLElement>('.llm-workspace-titlebar__mode-info')!,
             executorUsage: this.options.executorUsage,
             onSwitchExecutionTarget: this.options.onStartConversationDraft ? async input => {
@@ -438,7 +445,8 @@ export class LLMWorkspaceEditor implements IEditor {
                     ...(anchor ? { state: { anchor } } : {}),
                 });
             },
-        });
+        };
+        this.chatInput = this.options.handoff ? bindWorkspaceInput(inputOptions, this.options.handoff) : new ChatInput(inputEl, inputOptions);
 
         this.registerInputPlugins();
 
@@ -855,11 +863,16 @@ export class LLMWorkspaceEditor implements IEditor {
 
         const sessionSettings = initial ? initial.settings : settings;
 
-        this.stateManager.restoreInputState(this.chatInput, {
+        if (!this.options.handoff) this.stateManager.restoreInputState(this.chatInput, {
             initialInputState: effectiveInitialInputState,
             savedState: savedUIState,
             sessionSettings,
         });
+        else if (sessionSettings && (sessionSettings.executionModeLocked || sessionSettings.flowId)) {
+            this.chatInput.setConfig({settings: {executionMode: sessionSettings.executionMode,
+                executionModeLocked: sessionSettings.executionModeLocked, flowId: sessionSettings.flowId,
+                flowRevision: sessionSettings.flowRevision, flowParameters: sessionSettings.flowParameters}});
+        }
         if (!effectiveInitialInputState) this.stateManager.rememberRestoredConfiguration(this.chatInput.getConfig());
 
         // 恢复 workflow 实例来源（manifest.flow）→ 恢复参数；新实例则立即运行一次。
@@ -1231,6 +1244,7 @@ export class LLMWorkspaceEditor implements IEditor {
     }
 
     private disposalSteps(attachment?: RunAttachmentController): (() => void | Promise<void>)[] {
+        const preserve = !this.initComplete && !!this.options.handoff;
         return [
             () => this.flushPendingSave(), () => attachment?.detach(),
             () => this.container?.removeEventListener('click', this.onWelcomePrompt),
@@ -1244,14 +1258,14 @@ export class LLMWorkspaceEditor implements IEditor {
             () => this.timers.destroy(), () => this.historyPlugin?.deactivate(),
             () => this.slashPlugin?.deactivate(), () => this.invocationPanel?.destroy(),
             () => this.branchIndicator?.destroy(), () => this.statusIndicator?.destroy(),
-            () => this.historyView?.destroy(), () => this.chatInput?.destroy(),
+            () => this.historyView?.destroy(), () => {if (!preserve) this.chatInput?.destroy();},
             () => this.sessionService?.dispose(), () => this.branchStore?.destroy(),
             () => this.domCache?.destroy(), () => this.bus?.destroy(),
             async () => {
                 if (this.sessionManager.id === this.options.sessionId)
                     await this.commandBus?.execute(SessionCommand.Unbind).catch(() => {});
             },
-            () => { if (this.container) this.container.innerHTML = ''; },
+            () => { if (this.container && !preserve) this.container.innerHTML = ''; },
             () => this.editorEvents.clear(), () => this.nodeCommands.clear(),
         ];
     }

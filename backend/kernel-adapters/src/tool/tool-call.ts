@@ -1,3 +1,4 @@
+import { randomUUID } from '../utils/random';
 // @file: kernel-adapters/src/tool/tool-call.ts
 // Shared helpers for normalising ToolCall across Anthropic and OpenAI formats.
 
@@ -44,7 +45,7 @@ export function extractXmlToolCalls(text: string): { calls: ToolCall[]; cleanTex
                 : JSON.stringify(rawArgs);
 
             calls.push({
-                id: `call_${crypto.randomUUID()}`,
+                id: `call_${randomUUID()}`,
                 type: 'function',
                 function: { name, arguments: argsStr },
             });

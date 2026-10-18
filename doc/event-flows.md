@@ -79,6 +79,10 @@ ConversationRunCoordinator → RoundLog 投影 → SessionEventBus.emitSession()
   → llm-ui SessionEventHandler → HistoryView / StreamController
 ```
 
+`SessionViewPort.onEvent` 的观察者可以在绑定前登记，独立取消且随当前绑定重新挂接；新增观察者不替换已有观察者。解绑只释放该绑定持有的转发，不清除同一 Session 通道上其他所有者的监听。HTTP 的 ViewObservation 在首屏打开前登记源，因此这一契约同样覆盖首次草稿转正后的回复。回归见 [观察生命周期](../backend/llm-session/__tests__/session-observation.test.ts) 与 [真实 Kernel 经 RPC 到页面](../ui/app-shell/tests/draft-promotion.test.ts)。
+
+Kernel 的 `seq:committed` 存储观察将仅修改当前 Session 的 `events.seq` 的提交分类为 `content`，继续唤醒事件观察者；包含 Task、Session 等其他记录的提交保留 `structure`。这样持久流式事件不会被再次提升为结构变化并触发侧栏整树刷新，任务创建和终态仍更新导航。内核回归见 [protocol.test.ts](../backend/durable-kernel/src/protocol.test.ts)，实际流式页面回归见 draft-promotion。
+
 > 联网搜索的 citations 事件链与三态决策详见 [web-search.md](./web-search.md)。
 
 Harness 工具事件无需等待 effect 完成：`tool:running` 随发起 effect 的 decision 持久化，`ConversationRunCoordinator` 先发 `node:appended` 再透传生命周期事件，`HistoryView` 对二者立即处理。工具结果区按预格式文本展示；刷新后的失败卡片读取持久化 `data.error`。Grep 目前通过授权 VFS 遍历并执行 JavaScript 正则，没有实际 shell 命令可展示；Bash 的真实命令在调用参数中。Grep 通过 `ToolInvokeRequest.onProgress` → effect `context.emit` → `agent.event/tool:progress` → `HistoryView` 显示 cwd、搜索路径、扫描数、跳过数和匹配预览。快照按约 250ms 限频，首个匹配及时发送；消息最多 2048 字符，预览最多 8192 字符，不作为 LLM 的最终工具结果。终态覆盖预览，迟到进度不改写终态。通用 `getActivityDescription` 已由 ToolDeviceDriver 接入，并通过工具进度端口发出活动描述。回归：`backend/app-core/tests/harness-default-tools.test.ts` 阻塞搜索完成并确认开始事件已到达；`ui/app-shell/tests/tool-history-live.test.ts` 验证执行中卡片及成功/失败结果。

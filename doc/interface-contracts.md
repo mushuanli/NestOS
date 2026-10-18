@@ -237,3 +237,9 @@ pi-agent 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）。a
 HTTP v14 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClient.initialView，先登记观察再导出能力；HttpViewClient 将 SSE viewEvents 适配为本地 ApplicationViewObservation。纯数据按 SHA-256 校准，句柄每个连接独立，见 [一次打开同步握手](./http-app.md#一次打开同步握手与首帧v14)。
 
 `ApplicationViewObservation.getSessionBaseline` 返回成对快照/水位，调用者只读使用；传输按公开 `observeView` 的事件更新行投影，不读取具体宿主的内部会话源。`KernelInspectionPort` 仅供 `LocalApplicationServices` 的宿主聚合使用，不属于前端 `KernelViewPort`，也不注册为远程能力。
+
+工作台 `SessionBrowserPort.setSessionFilter(agentId?)` 只改变该观察实例的会话投影；RPC 显式登记此方法。项目会话列表在分页前匹配不可变 `ConversationManifest.createdWithAgentId`，`ProjectSearchQuery.agentId` 对会话搜索执行同一条件，文件检索不受影响。宿主 `EditorOptions.mountSettings` 挂载默认项目偏好并参与保存/销毁；`SessionDraftControls.scope` 为草稿提供项目选择候选及切换回调。
+
+项目草稿原地转正：`ProjectDraftComposer.id` 提供草稿 UUID，显式 clear 返回替代 UUID（RPC 字段为句柄创建时的快照，宿主使用返回值更新身份），`ProjectDraftPromotion.remote` 携带已确认的原生会话引用。`projectConversation` 可接收草稿 UUID，并通过 `ProjectConversationPort.conversationId` 返回稳定的宿主身份；RPC 显式传递此字段。首次原生提交 journal 与正式重开使用相同 UUID，只有已确认首 turn 才推进草稿；原生创建和 unknown 不能替代接纳证据。`SessionDraftControls.inPlace` / materialize 的 container 将同一挂载点交给正式控制器，接纳后宿主原地更新标签。详见[项目会话导航](design/project-session-navigation.md)。
+
+`SessionDraftControls.scope.select` 的可选 SessionDraftPreferences 在项目切换前捕获当前输入偏好，导航层仅转交；目标草稿编辑器按当前候选验证智能体与连接/模型后应用，不携带源文本或附件。待接纳控制器及隐藏/关闭视图不接收迟到偏好，执行锁和 Flow 引用不跨项目复制。

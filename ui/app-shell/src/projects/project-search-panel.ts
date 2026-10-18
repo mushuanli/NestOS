@@ -29,6 +29,7 @@ export class ProjectSearchPanel {
     private request?: AbortController;
     private timer?: ReturnType<typeof setTimeout>;
     private revision = 0;
+    private agentId?: string;
     constructor(private readonly search: ProjectSearch, private readonly open: (row: ProjectSearchMatch, query: string) => Promise<void>, private readonly sourceOpen?: (folder: string) => Promise<void>, private readonly options: SearchPanelOptions = {}) {
         this.element.className = 'project-search';
         this.element.hidden = true;
@@ -87,7 +88,7 @@ export class ProjectSearchPanel {
         const request = this.request = new AbortController(), revision = ++this.revision, query = this.query;
         const folder = this.folder!; this.status.textContent = t('project.search.loading');
         try {
-            const result = await this.search.search(folder, {...this.options.query, query, scope: this.scope.value as ProjectSearchQuery['scope'], ...(this.options.sessions === false ? {} : {archived: this.options.archived === false ? !!this.options.query?.archived : this.archived.checked})}, {signal: request.signal, timeoutMs: 20_000});
+            const result = await this.search.search(folder, {...this.options.query, ...(this.agentId ? {agentId: this.agentId} : {}), query, scope: this.scope.value as ProjectSearchQuery['scope'], ...(this.options.sessions === false ? {} : {archived: this.options.archived === false ? !!this.options.query?.archived : this.archived.checked})}, {signal: request.signal, timeoutMs: 20_000});
             if (request.signal.aborted || revision !== this.revision) return;
             this.status.textContent = result.unavailableSources?.length ? t('project.search.sourcesUnavailable', {count: result.matches.length, sources: result.unavailableSources.join(', ')}) : t(result.truncated ? 'project.search.partial' : result.matches.length ? 'project.search.count' : 'project.search.empty', {count: result.matches.length});
             this.results.replaceChildren(...result.matches.map(row => this.row(row, query)));
@@ -103,6 +104,7 @@ export class ProjectSearchPanel {
         button.onclick = () => { void this.open(row, query).catch(() => { this.status.textContent = t('project.search.navigateFailed'); }); }; return button;
     }
     refresh() { this.queue(); }
+    setSessionFilter(agentId?: string) {this.agentId = agentId; this.queue();}
     cancel(show = false) { ++this.revision; this.request?.abort(); clearTimeout(this.timer); if (show) this.status.textContent = t('project.search.cancelled'); }
     destroy() { this.listeners.abort(); this.cancel(); this.controls.remove(); this.element.remove(); }
 }

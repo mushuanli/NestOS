@@ -103,7 +103,7 @@ it('locates same-named windows by project and path and retains their context acr
         expect(dialog.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(true);
         f.tabs.title('one', 'Renamed'); expect(f.tabs.current?.id).toBe('two');
         expect(dialog.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(true);
-        dialog.close(); expect(sidebar.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(false);
+        dialog.close(); expect(sidebar.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(true);
         const saved = readWorkbenchSnapshot({ version: 1, tabs: f.tabs.snapshot() });
         expect(saved!.tabs![0]).toMatchObject({ id: 'one', title: 'Renamed', context: 'Alpha', location: '/work/research' });
         const restoredHost = document.createElement('div'); document.body.append(restoredHost);
@@ -243,6 +243,21 @@ it('remaps an inactive renamed file and preserves pinned metadata during shutdow
     await f.tabs.open('/other.md', 'other.md'); f.tabs.rename('/old.md', '/new.md', 'new.md');
     expect(f.tabs.get('/new.md')?.pinned).toBe(true); expect(f.tabs.get('/old.md')).toBeUndefined();
     expect(f.tabs.snapshot()).toEqual([{ id: '/new.md', title: 'new.md', pinned: true }]); await f.tabs.destroy();
+});
+it('shares the same search input and query between the sidebar and the window dialog', async () => {
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () {this.open = true;});
+    vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function () {this.open = false; this.dispatchEvent(new Event('close'));});
+    const f = tabsFixture(), sidebar = document.createElement('aside'), slot = document.createElement('div');
+    sidebar.append(f.tabs.opened); document.body.append(sidebar, slot);
+    await f.tabs.open('one', 'First', false); await f.tabs.open('two', 'Second', false);
+    const search = sidebar.querySelector<HTMLInputElement>('input[type="search"]')!;
+    search.value = 'First'; search.dispatchEvent(new Event('input'));
+    expect(sidebar.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(true);
+    const release = f.tabs.mountWindowList(slot); slot.querySelector<HTMLButtonElement>('button')!.click();
+    const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
+    expect(dialog.querySelector('input[type="search"]')).toBe(search);
+    dialog.close(); expect(sidebar.querySelector('input[type="search"]')).toBe(search); expect(search.value).toBe('First');
+    release(); await f.tabs.destroy();
 });
 it('resizes sidebar width with the keyboard and restores independent collapsed sections', () => {
     let state: WorkbenchSnapshot = { version: 1, width: 320, navigationHeight: 60 };

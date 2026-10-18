@@ -118,3 +118,16 @@ it('saves explicit anonymous MCP access without retaining API keys or Authorizat
     expect(saved.apiKey).toBeUndefined();expect(saved.headers.Authorization).toBeUndefined();
     expect(JSON.stringify(saved)).not.toContain('fixture-private');
 });
+
+it('flushes host-owned settings on navigation and retains failed settings for retry', async () => {
+    const container = mount(), flush = vi.fn().mockRejectedValueOnce(new Error('Project save failed')).mockResolvedValue(undefined), destroy = vi.fn(async () => {});
+    const saveAgent = vi.fn(), mountSettings = vi.fn(async (slot: HTMLElement) => {
+        slot.textContent = 'Project settings'; return {flush, destroy, isDirty: () => true};
+    });
+    const editor = new AgentConfigEditor(container, {target: {kind: 'entity', entityType: 'agent', id: 'a'}, mountSettings},
+        {listSystemPrompts: async () => [], getMCPServers: async () => [], getSkills: async () => [], saveAgent} as never);
+    editors.push(editor); await editor.init(container, JSON.stringify({id: 'a', name: 'Agent', config: {}}));
+    expect(mountSettings).toHaveBeenCalledOnce(); expect(editor.isDirty()).toBe(true);
+    await expect(editor.flushPendingSave()).rejects.toThrow('Project save failed'); expect(destroy).not.toHaveBeenCalled();
+    await editor.flushPendingSave(); expect(saveAgent).not.toHaveBeenCalled();
+});

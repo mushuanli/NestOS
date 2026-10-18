@@ -147,10 +147,14 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 - ConversationContexts.open 返回可幂等释放的观察租约。SessionOpenView 持有租约至文件视图释放，宿主每分钟检查无引用上下文：默认保留 5 分钟、最多缓存 32 个闲置实例；运行、排队、等待交互或外部副作用未收尾时不得回收。acquireConversation 只在 LocalApplicationServices 接线，不进入前端能力。
 - ConversationViews 由 Runtime 持有所有会话视图；浏览器关闭时仅解绑，仍有运行/排队任务的视图继续保留草稿投影监听，终态后排空收尾再销毁。Runtime 退出统一释放剩余视图，先于 Kernel 与存储关闭。
 
-- runtime.createView 与宿主 ConversationContexts 使用同一会话视图创建函数，每个上下文都接入 ProjectDraftRecovery 并在销毁前排空。ProjectDraftComposer.refresh 先核对该项目的持久提交证据，补偿漏通知或收尾失败，再在旧草稿存在持久提升回执时提供新的 composer；旧写游标仍拒绝跨代写入，不自动跟随下一草稿。composer 与提升事件复用 app-contracts 公共契约，内部 DraftStore 必须提供 wasPromoted。新草稿创建时取得唯一 UUID，prepare 沿用草稿 ID 作为 Session ID；持久确认后才以新 UUID 补建空草稿，名称不充当身份。旧 submitting 记录保留已持久化的 Session 映射。
+- runtime.createView 与宿主 ConversationContexts 使用同一会话视图创建函数，每个上下文都接入 ProjectDraftRecovery 并在销毁前排空。ProjectDraftComposer.refresh 先核对该项目的持久提交证据，补偿漏通知或收尾失败，再在旧草稿存在持久提升回执时提供新的 composer；旧写游标仍拒绝跨代写入，不自动跟随下一草稿。composer 与提升事件复用 app-contracts 公共契约，内部 DraftStore 必须提供 wasPromoted。新草稿创建时取得唯一 UUID，prepare 沿用草稿 ID 作为 Session ID；持久确认后才以新 UUID 补建空草稿，名称不充当身份。旧 submitting 记录保留已持久化的 Session 映射。prepare 通过运行时注入回调初始化同 UUID 的 Kernel，远程入口不创建本地 Session。远程 journal 按草稿 UUID 隔离，只有首 turn 已确认且无 pending 才转正；同一事务保存 native 引用到 UUID 的索引及下一草稿，重开复用原 UUID journal。索引包含连接、远程项目、授权主体和 profile，不能串用其他授权的回执。
 
 - configuration/chat-configuration.ts 将聊天选择器所需的安全配置投影为一个宿主观察；变更期间的读取失效后重读，通知前安装新快照，关闭释放源订阅。workbenchView 的 initialSessionId 与工作台并行准备，不激活绑定；任一准备失败先排空并释放成功结果，过期会话链接保留工作台。
 
 - host/task-attachment.ts 聚合显式 Session 的共享任务提示、非终结状态及待审批索引，仅返回任务 ID，不改变绑定；有效业务会话尚无 Kernel Session 时返回空候选，其他错误不得伪装为空。
 
 - host/open-view.ts 聚合冷启动 UI 文档、工作台、目标激活及只读恢复；host/view-observation.ts 先订阅源、保存有界事件日志，再按水位补发。失败排空资源并仅回滚本次绑定，不取消 Task；同客户端已有绑定/并发冷激活拒绝，多客户端绑定独立。
+
+工作台 session-browser 的 setSessionFilter 是每个观察实例的会话来源过滤，分页和会话搜索前应用，不过滤项目文件或收藏夹。远程 harness 按连接和 profile 身份过滤；筛选后的分页游标包含筛选身份，旧游标不得被其他筛选复用。本地与远程项目均投影固定 @new；远程项目草稿 prepare 不允许创建本地 Session。
+
+- 项目远程草稿的 `remoteTarget` 和提交身份先在 drafts/store 事务中固定，再创建原生控制器。remote-submission 负责日志键、旧记录迁移与回执读取，恢复不得使用后来编辑的智能体偏好覆盖该目标；结果未知时禁止丢弃。输入保存可吸收同一草稿的准备元数据，但仍拒绝其他视图的正文冲突。Session 执行存储准备在 session/prepare-session-execution，runtime 只接线。

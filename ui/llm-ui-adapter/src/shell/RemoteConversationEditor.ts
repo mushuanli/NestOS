@@ -6,6 +6,7 @@ import { RemoteBranches } from './remote-branches';
 import { remoteRounds, remotePrompts } from './remote-rounds';
 import { prepareRemoteAttachments } from './remote-attachments';
 import type { ChatSubmission } from '../domain/submission';
+import type { WorkspaceHandoff } from './drafts/workspace-handoff';
 
 /** Native histories remain remote; this editor only owns a view and input draft. */
 export class RemoteConversationEditor extends BaseSettingsEditor<ConversationControls> {
@@ -31,7 +32,8 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private submission?: ChatSubmission;
     private readonly events = new Map<EditorEvent, Set<(payload: unknown) => void>>();
     private interactionKey = '';
-    constructor(container: HTMLElement, controls: ConversationControls, options: EditorOptions) { super(container, controls, options); }
+    private adoptedInput = false;
+    constructor(container: HTMLElement, controls: ConversationControls, options: EditorOptions, private handoff?: WorkspaceHandoff) { super(container, controls, options); }
     async init(container: HTMLElement) {
         this.container = container;
         const abort = () => { void this.service.close().catch(() => {}); };
@@ -49,6 +51,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         }
     }
     private layout() {
+        this.adoptedInput = !!this.handoff;
         this.view = new ConversationWorkspaceView(this.container, {...this.options,
             onStartConversationDraft: this.options.onStartConversationDraft ? async input => {
                 await this.flushPendingSave(); await this.options.onStartConversationDraft!(input);
@@ -70,7 +73,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                 if (title !== this.snapshot?.title && this.snapshot?.canRename && this.service.rename)
                     void this.run(() => this.service.rename!(title)).catch(() => {});
             },
-        });
+        }, this.handoff); this.handoff = undefined;
         this.branches = new RemoteBranches(this.service, this.options, action => this.run(action), error => this.showError(error));
         this.container.querySelectorAll('#llm-branch-indicator')[0]!.append(this.branches.element);
     }
@@ -117,7 +120,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private restoreDraft(snapshot: ConversationSnapshot) {
         if (this.restoredDraft) return;
         this.savedDraft = snapshot.draft ?? '';
-        if (!this.options.initialInputState?.text) {
+        if (!this.options.initialInputState?.text && !this.adoptedInput) {
             this.draftFiles = (snapshot.draftAttachments ?? []).map(attachment => {
                 const content = attachment.kind === 'text' ? attachment.content : Uint8Array.from(atob(attachment.content.split(',')[1] ?? ''), char => char.charCodeAt(0));
                 return new File([content], attachment.name, {type: attachment.mimeType ?? 'text/plain'});
@@ -261,7 +264,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         const message = error instanceof Error ? error.message : t('harness.failed');
         this.view.setStatus(t('harness.updateFailed', {message}));
     }
-    async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); await this.view?.destroy(); this.container.replaceChildren(); }
+    async destroy(preserveInput = false) { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
     cancelPendingRender(): void {
         this.view?.history.view.setActive(false);
         this.active = false; this.releaseUpdates?.(); this.releaseUpdates = undefined;

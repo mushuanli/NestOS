@@ -1,3 +1,4 @@
+import { randomUUID } from './random';
 import { SnapshotCodec, wireSize } from './snapshot-codec';
 import { FSError } from '@itookit/vfs-core';
 import { affectedDomains, isViewQuery, viewDomain, subscriptionMode, type ViewDomain, type CapabilitySchema, type CapabilityRegistry } from './capabilities';
@@ -44,7 +45,7 @@ export class RpcPeer {
     private readonly projectionsLoaded = new Map<string, unknown>();
     private readonly listeners = new Map<string, Set<(...args: any[]) => void>>();
     private sequence = 0;
-    private readonly identity = crypto.randomUUID();
+    private readonly identity = randomUUID();
     private closed = false;
     private onInvalidation?: () => void;
     private fileTransport?: (target: string, method: string, args: unknown[]) => Promise<unknown>;

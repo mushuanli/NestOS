@@ -1,3 +1,4 @@
+import { randomUUID } from './random';
 import type { WireValue } from './protocol';
 
 /** Capabilities returned together share a lease, released by their cleanup capability. */
@@ -23,7 +24,7 @@ export class CapabilityLifetime {
         this.children.delete(id);
     }
     acquire(value: WireValue): () => void {
-        const key = crypto.randomUUID(); this.leases.set(key, { roots: capabilityReferences(value), owners: new Set() });
+        const key = randomUUID(); this.leases.set(key, { roots: capabilityReferences(value), owners: new Set() });
         return () => { this.leases.delete(key); };
     }
     reachable(): Set<string> {

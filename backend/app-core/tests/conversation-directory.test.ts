@@ -6,7 +6,7 @@ import { createSessionBrowser } from '../src/session/session-browser';
 
 let app: ApplicationRuntime | undefined, browser: Awaited<ReturnType<typeof createSessionBrowser>> | undefined;
 afterEach(async () => {await browser?.dispose(); await app?.dispose(); browser = undefined; app = undefined;});
-async function setup() {
+async function setup(extraAgentSessions = 0) {
     app = await createApplicationRuntime({backend: new MemoryBackend(), ownerKind: 'cli', digitalTwinAutoStart: false});
     const project = await app.projects.create('Mixed'), group = await app.projects.sessionFolder(project);
     const clock = vi.spyOn(Date, 'now');
@@ -16,6 +16,8 @@ async function setup() {
         await app.sessionRepository.updateManifest(id, {updatedAt: 10000 - i * 4});
     }
     clock.mockRestore();
+    for (let index = 0; index < extraAgentSessions; index++)
+        await app.sessionRepository.createSession('Writer ' + index, group, null, undefined, {agentId: 'writer'});
     const profiles = ['codex', 'dsht', 'claudecode'].map(id => ({id, kind: id, projectRuntime: true, workspaces: [], capabilities: {history: true, create: true}}));
     const list = vi.fn(async (profile: string, query?: {cursor?: string}) => {
         const start = Number(query?.cursor ?? 0), end = Math.min(start + 7, 40), index = profiles.findIndex(p => p.id === profile) + 1;
@@ -25,6 +27,7 @@ async function setup() {
     const peer = {profiles: vi.fn(async () => ({profiles})), list, close: vi.fn(async () => {}), inspect: vi.fn()};
     const mounts = [{at: '/', connectionId: 'server', serverProjectId: 'native', access: 'rw', root: '/project', alias: 'docs'}];
     app.projects.remoteMounts = {list: (id: string) => id === project.project.id ? mounts : [], projectHarness: async () => peer,
+        compose: async (_id: string, open: () => Promise<unknown>) => open(),
         status: () => 'online', degraded: () => false, projectOffline: () => false, connections: () => []} as never;
     vi.spyOn(app.projects, 'workspaceReadOnly').mockResolvedValue(false);
     browser = await createSessionBrowser({repository: app.sessionRepository, projects: app.projects, files: app.sessionFiles, kernel: app.kernel.kernel});
@@ -66,4 +69,36 @@ it('keeps healthy harnesses visible after one failure and respects read-only cre
     mounts[0]!.access = 'ro';
     const all = await fs.driver.getChildren(projectConversationsPath(project.path));
     expect(all.some(row => {const target = resolveBrowserTarget(row.path); return target.kind === 'remote' && target.draft;})).toBe(false);
+});
+
+it('filters before recent and full pagination, keeps files/favorites, and isolates another browser view', async () => {
+    const {project, fs} = await setup(61), collection = projectConversationsPath(project.path);
+    await browser!.setSessionFilter!('writer');
+    const root = await fs.driver.getChildren(folderBrowserPath(project.path));
+    expect(root.some(row => resolveBrowserTarget(row.path).kind === 'favorites')).toBe(true);
+    expect(root.some(row => resolveBrowserTarget(row.path).kind === 'project-files')).toBe(true);
+    const recent = (await fs.driver.getChildren(projectConversationsPath(project.path, {recent: true}))).filter(row => isSession(row.path));
+    expect(recent).toHaveLength(15); expect(recent.every(row => row.metadata.createdWithAgentId === 'writer')).toBe(true);
+    const first = await fs.driver.getChildren(collection), next = first.find(row => row.metadata.conversationMore)!.path;
+    expect(first.filter(row => isSession(row.path))).toHaveLength(50);
+    expect((await fs.driver.getChildren(next)).filter(row => isSession(row.path))).toHaveLength(11);
+    await browser!.setSessionFilter!('other');
+    await expect(fs.driver.getChildren(next)).rejects.toThrow();
+    const second = await createSessionBrowser({repository: app!.sessionRepository, projects: app!.projects, files: app!.sessionFiles, kernel: app!.kernel.kernel});
+    try {expect((await second.fs.driver.getChildren(collection)).filter(row => isSession(row.path))).toHaveLength(50);}
+    finally {await second.dispose();}
+    await browser!.setSessionFilter!();
+    expect((await fs.driver.getChildren(collection)).filter(row => isSession(row.path))).toHaveLength(50);
+});
+
+it('shows one fixed new-conversation entry in remote projects and filters the selected remote profile', async () => {
+    const {project, fs} = await setup(), rows = await fs.driver.getChildren(folderBrowserPath(project.path));
+    const draft = rows.find(row => resolveBrowserTarget(row.path).kind === 'project-draft');
+    expect(draft?.metadata._fixedEntry).toBe(true);
+    const composer = await app!.projects.drafts.open(project.project.id, await app!.projects.sessionFolder(project));
+    await expect(composer.prepare()).rejects.toMatchObject({code: 'EACCES'});
+    await browser!.setSessionFilter!('remote:' + JSON.stringify(['server', 'codex']));
+    const entries = await fs.driver.getChildren(projectConversationsPath(project.path, {recent: true}));
+    expect(entries.filter(row => isSession(row.path))).toHaveLength(15);
+    expect(entries.filter(row => isSession(row.path)).every(row => row.metadata.harnessProfileId === 'codex')).toBe(true);
 });

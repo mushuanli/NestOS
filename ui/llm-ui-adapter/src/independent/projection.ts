@@ -1,3 +1,4 @@
+import { randomUUID } from '@itookit/common';
 import type { ChatMessage, ConversationSnapshot, ConversationSource } from '@itookit/llm-ui';
 
 /** Preserve unchanged message identities while converting mutable domain projections. */
@@ -6,7 +7,7 @@ export class ChatProjection implements ConversationSource {
     private readonly messages = new Map<string, { encoded: string; message: ChatMessage }>();
     private snapshot: ConversationSnapshot;
     constructor(readonly conversationId: string, private readonly report: (error: unknown) => void = () => {}) {
-        this.snapshot = { conversationId, viewId: crypto.randomUUID(), revision: 0, title: '', messages: [], interactions: [],
+        this.snapshot = { conversationId, viewId: randomUUID(), revision: 0, title: '', messages: [], interactions: [],
             loading: true, execution: 'unknown', connection: 'online', hasEarlier: false, allowed: [] };
     }
     getSnapshot(): ConversationSnapshot { return this.snapshot; }

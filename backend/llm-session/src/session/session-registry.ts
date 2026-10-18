@@ -45,6 +45,7 @@ export class SessionRegistry {
     private readonly views = new Map<string, SessionLoadState>();
     private bindingVersion = 0;
     private eventUnsubscribe: (() => void) | null = null;
+    private readonly eventListeners = new Set<(event: SessionEventEnvelope) => void>();
 
     // === 内部组件 ===
     private _eventBus: SessionEventBus;
@@ -75,6 +76,7 @@ export class SessionRegistry {
             }
             this._boundSessionId = sessionId;
             this._activeSessionId = sessionId;
+            this.eventUnsubscribe = this._eventBus.onSession(sessionId, event => this.publishBoundEvent(event));
             const runtime = this.sessions.get(sessionId);
             if (runtime && runtime.unreadCount > 0) {
                 runtime.unreadCount = 0;
@@ -96,13 +98,6 @@ export class SessionRegistry {
         if (this.eventUnsubscribe) {
             this.eventUnsubscribe();
             this.eventUnsubscribe = null;
-        }
-
-        if (this._boundSessionId) {
-            const runtime = this.sessions.get(this._boundSessionId);
-            if (runtime && (runtime.status === 'running' || runtime.status === 'queued')) {
-                this._eventBus.clearSessionListeners(this._boundSessionId);
-            }
         }
 
         this._boundSessionId = null;
@@ -248,10 +243,17 @@ export class SessionRegistry {
     // ================================================================
 
     onEvent(handler: (event: SessionEventEnvelope) => void): () => void {
-        if (!this._boundSessionId) return () => {};
-        if (this.eventUnsubscribe) this.eventUnsubscribe();
-        this.eventUnsubscribe = this._eventBus.onSession(this._boundSessionId, handler);
-        return this.eventUnsubscribe;
+        const listener = (event: SessionEventEnvelope) => handler(event);
+        this.eventListeners.add(listener);
+        return () => {this.eventListeners.delete(listener);};
+    }
+
+    private publishBoundEvent(event: SessionEventEnvelope): void {
+        for (const listener of [...this.eventListeners]) {
+            if (!this.eventListeners.has(listener)) continue;
+            try {listener(event);}
+            catch (error) {this.host.logger.error('Session observer failed', {eventType: event.type, error});}
+        }
     }
 
     onGlobalEvent(handler: (event: RegistryEvent) => void): () => void {
@@ -359,6 +361,8 @@ export class SessionRegistry {
 
     clearAll(abortAllFn: () => void): void {
         abortAllFn();
+        this.unbindSession();
+        this.eventListeners.clear();
         this.sessions.clear();
         this.states.clear();
         this._eventBus.clear();

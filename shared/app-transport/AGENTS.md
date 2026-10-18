@@ -19,3 +19,5 @@
 - ApplicationViewObservation 只通过公开 getSessionBaseline/observeView 编码和失效快照，不读取后端会话源或私有通知方法。RPC 支持等待异步观察登记，登记失败向调用者传播，关闭后才完成的登记立即释放。
 
 - v14 初始握手可以同时打开目标并登记观察，SSE 与 bootstrap 并行。http/snapshot-cache 仅对不含能力的 Wire DTO 做 SHA-256 缓存，校验本地内容后才声明版本；缺块只补读已准备响应，不重放打开或写命令。应用事件由有界 viewEvents 队列接收，初始观察在本地适配。
+
+RPC 身份与能力租约使用包内 randomUUID 兼容工具，不直接调用原生 crypto.randomUUID；机制层不因此依赖 common。SessionBrowserPort 显式注册 setSessionFilter，保持每个观察实例独立。

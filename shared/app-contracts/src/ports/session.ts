@@ -114,6 +114,7 @@ export interface SessionBundleManifest {
     title: string;
     summary?: string;
     origin?: ConversationManifest['origin'];
+    createdWithAgentId?: string;
     folder?: string | null;
     uiState?: ConversationManifest['uiState'];
     flow?: ConversationManifest['flow'];
@@ -150,6 +151,8 @@ export interface SessionBrowserPort extends VfsContracts.FileSystemSourceOwner {
         nodes: FSNode[];
     }>;
     invalidateNavigation: () => Promise<void>;
+    /** Per-view conversation filter; files and favorites retain their normal projection. */
+    setSessionFilter?(agentId?: string): Promise<void>;
 }
 
 export declare function createSessionBrowser(deps: SessionBrowserDependencies): Promise<SessionBrowserPort>;

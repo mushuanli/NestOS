@@ -42,13 +42,21 @@ export class RemoteSessionProjection {
         return {...node, icon: source.icon, metadata: {...node.metadata, harnessKind: profile.kind, harnessLabel: source.label, harnessProfileId: profile.id,
             navigationDescription: source.label}};
     }
-    async timeline(project: SessionFolder & {project: {id: string}}): Promise<{sources: ConversationSource[]; actions: FSNode[]; close(): Promise<void>}> {
+    async timeline(project: SessionFolder & {project: {id: string}}, agentId?: string): Promise<{sources: ConversationSource[]; actions: FSNode[]; close(): Promise<void>}> {
         const remote = this.projects?.remoteMounts, root = remote?.list(project.project.id).find(mount => mount.at === '/');
         if (!remote || !remoteSessionRootPath(project, remote.list(project.project.id)) || !root) return {sources: [], actions: [], async close() {}};
+        let filterProfile: string | undefined;
+        if (agentId) {
+            let target: unknown;
+            try {target = agentId.startsWith('remote:') ? JSON.parse(agentId.slice(7)) : null;} catch {target = null;}
+            if (!Array.isArray(target) || target.length !== 2 || target[0] !== root.connectionId || typeof target[1] !== 'string')
+                return {sources: [], actions: [], async close() {}};
+            filterProfile = target[1];
+        }
         let client: import('@itookit/piagent-driver').HarnessClient | undefined;
         try {
             client = await remote.projectHarness(project.project.id, {timeoutMs: 3000});
-            const profiles = (await client.profiles({timeoutMs: 3000})).profiles.filter(profile => profile.projectRuntime);
+            const profiles = (await client.profiles({timeoutMs: 3000})).profiles.filter(profile => profile.projectRuntime && (!filterProfile || profile.id === filterProfile));
             if (root.serverId) await this.projects!.favorites.list(project.project.id);
             const active = client;
             return {sources: profiles.filter(profile => profile.capabilities.history).map(profile => ({id: 'remote:' + profile.id,

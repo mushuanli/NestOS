@@ -69,6 +69,8 @@ export interface SessionBrowserDependencies {
 }
 interface FileDirectoryOptions extends OperationOptions { fs?: IFileSystem; node?: FSNode }
 class BrowserBackend implements IStorageBackend {
+    private agentFilter?: string;
+    setSessionFilter(agentId?: string): void { this.agentFilter = agentId; this.invalidateNavigation(); }
     private get remoteSessions() { return new RemoteSessionProjection(this.deps.projects); }
     readonly name = 'session-browser';
     private readonly lifecycle: import('@itookit/app-contracts/services').SessionLifecycleService;
@@ -183,12 +185,13 @@ class BrowserBackend implements IStorageBackend {
     private sessionBrowserPath(id: string, folder: string | null | undefined): string {
         return `${folderBrowserPath(folder)}/${id}`;
     }
-    private sessionNode(manifest: { id: string; title: string; createdAt: number; updatedAt: number; folder?: string | null; parentSessionId?: string | null }): FSNode {
+    private sessionNode(manifest: { id: string; title: string; createdAt: number; updatedAt: number; folder?: string | null; parentSessionId?: string | null; createdWithAgentId?: string }): FSNode {
         const source = harnessPresentation('mindos');
         return { ...this.node(this.sessionBrowserPath(manifest.id, manifest.folder), manifest.title, true, manifest.updatedAt),
-            createdAt: manifest.createdAt, icon: source.icon, metadata: { title: manifest.title, harnessKind: 'mindos', harnessLabel: source.label, _favorite: this.deps.projects?.favorites.hasSession(manifest.id), _showAll: true, _fileDetails: false, parentSessionId: manifest.parentSessionId ?? null } };
+            createdAt: manifest.createdAt, icon: source.icon, metadata: { title: manifest.title, createdWithAgentId: manifest.createdWithAgentId, harnessKind: 'mindos', harnessLabel: source.label, _favorite: this.deps.projects?.favorites.hasSession(manifest.id), _showAll: true, _fileDetails: false, parentSessionId: manifest.parentSessionId ?? null } };
     }
-    private sessionNodes(sessions: import('@itookit/llm-session').SessionSummary[], folder: string | null): FSNode[] {
+    private sessionNodes(sessions: import('@itookit/llm-session').SessionSummary[], folder: string | null, agentId: string | null = this.agentFilter ?? null): FSNode[] {
+        sessions = sessions.filter(session => !agentId || session.createdWithAgentId === agentId);
         const roots = sessionFamilyRoots(sessions);
         const byId = new Map(sessions.map(session => [session.id, session]));
         const counts = new Map<string, number>();
@@ -249,7 +252,7 @@ class BrowserBackend implements IStorageBackend {
         }
         if (target.kind === 'project-draft') {
             const project = (await this.folders()).find(folder => folder.path === target.folder);
-            return this.localDraft(project) ? this.draftEntry(path) : null;
+            return this.projectDraft(project) ? this.draftEntry(path) : null;
         }
         if (target.kind === 'favorites') return this.favoritesEntry(path);
         if (target.kind === 'favorite') return (await this.favoriteNodes(parentBrowserPath(path), target.folder)).find(node => node.path === path) ?? null;
@@ -302,7 +305,7 @@ class BrowserBackend implements IStorageBackend {
                 ...folders.filter(folder => folder.parentPath === folderPath && !(project?.project && folder.name === '@sessions')).map(folder => this.folderNode(folder)),
                 ...(this.deps.projects && folders.find(folder => folder.path === folderPath)?.project
                     ? [await this.fileEntry(path + '/@files', folderPath), this.favoritesEntry(path + '/@favorites')] : []),
-                ...(this.deps.projects && this.localDraft(project) ? [this.draftEntry(path + '/@new')] : []),
+                ...(this.deps.projects && this.projectDraft(project) ? [this.draftEntry(path + '/@new')] : []),
                 ...(project?.project ? conversationNavigationNodes(project.path) : this.sessionNodes(sessions, folderPath)),
             ];
         }
@@ -332,11 +335,12 @@ class BrowserBackend implements IStorageBackend {
         if (!project || project.path !== target.folder) throw new FSError('ENOENT', 'Project unavailable');
         const folders = await this.folders();
         const groups = [project.path, ...folders.filter(folder => folder.parentPath === project.path && folder.name === '@sessions').map(folder => folder.path)];
+        const agentId = this.agentFilter;
         const local = Promise.all(groups.map(async folder => {
             const [, sessions] = await this.directoryNavigation(folder);
-            return this.sessionNodes(sessions, folder);
+            return this.sessionNodes(sessions, folder, agentId ?? null);
         })).then(rows => rows.flat());
-        return conversationDirectory(path, target, local, () => this.remoteSessions.timeline(project));
+        return conversationDirectory(path, target, local, () => this.remoteSessions.timeline(project, agentId), agentId);
     }
     private async listFiles(path: string, target: FileTarget): Promise<FSNode[]> {
         return this.withFiles(target, fs => this.fileNodes(path, target, fs));
@@ -394,9 +398,8 @@ class BrowserBackend implements IStorageBackend {
             metadata: { ...node.metadata, remoteMountId: mount.mountId, _disabled: offline || status === 'offline', _readOnly: offline || node.metadata._readOnly,
                 navigationDescription: relative === mount.at ? t(`remote.state.${status}`) : node.metadata.navigationDescription } };
     }
-    private localDraft(folder?: SessionFolder): boolean {
-        return !!folder?.project && folder.project.source?.kind !== 'remote'
-            && !this.deps.projects?.remoteMounts?.list(folder.project.id).some(mount => mount.at === '/');
+    private projectDraft(folder?: SessionFolder): boolean {
+        return !!folder?.project;
     }
     private draftEntry(path: string): FSNode {
         const node = this.node(path, t('project.createSession'), false, 0, true);
@@ -689,5 +692,6 @@ export async function createSessionBrowser(deps: SessionBrowserDependencies): Pr
     };
     return Object.assign(owner, { transferItems: (mode: 'copy' | 'move', ids: string[], destination: string) => backend.transfer(mode, ids, destination),
         readFileDirectory: (path: string, options?: FileDirectoryOptions) => backend.readFileDirectory(path, options),
-        invalidateNavigation: async () => { backend.invalidateNavigation(); } });
+        invalidateNavigation: async () => { backend.invalidateNavigation(); },
+        setSessionFilter: async (agentId?: string) => { backend.setSessionFilter(agentId); } });
 }

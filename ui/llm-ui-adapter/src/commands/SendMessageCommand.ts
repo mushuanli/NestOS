@@ -4,7 +4,7 @@
 import { SessionCommand, type SessionOrigin, type HistoryPolicy } from '@itookit/llm-session/contracts';
 import { Command } from './Command';
 import { dispatchDirectCommand } from './direct-command';
-import { t } from '@itookit/common';
+import { randomUUID, t } from '@itookit/common';
 import type { ChatSubmission } from '../domain/submission';
 import { Toast } from '@itookit/ui-common';
 import { ErrorHandler } from '../utils/errorHandler';
@@ -40,7 +40,7 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         const sessionId = this.ctx.getSessionId();
         if (!sessionId) throw new Error('No session loaded');
 
-        let feedback: ChatSubmission = {id: crypto.randomUUID(), text: text.trim() || t('harness.attachmentPrompt'),
+        let feedback: ChatSubmission = {id: randomUUID(), text: text.trim() || t('harness.attachmentPrompt'),
             timestamp: Date.now(), state: 'submitting'};
         const present = (change: Partial<ChatSubmission> = {}) => {
             feedback = {...feedback, ...change};

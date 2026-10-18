@@ -13,7 +13,12 @@ import type { MCPConnectionDiagnostic } from '../index';
 import type { MCPDeletedProject, MCPDeletionReference } from './configuration';
 
 export type ProjectConversationSnapshot = HarnessConversationSnapshot & {usageEstimate?: import('@itookit/kernel-adapters/contracts').UsageCostEstimate};
+export interface ConversationComposerDraft {revision: string; data: string; acceptedOperationIds: readonly string[]}
 export interface ProjectConversationPort extends HarnessConversationPort {
+    readComposerDraft?(): Promise<ConversationComposerDraft>;
+    saveComposerDraft?(data: string, expectedRevision: string, operationId: string): Promise<ConversationComposerDraft>;
+    putComposerAsset?(content: ArrayBuffer): Promise<string>;
+    readComposerAsset?(id: string): Promise<ArrayBuffer>;
     /** Stable host identity retained when a project draft becomes a native conversation. */
     readonly conversationId?: string;
     snapshot(): ProjectConversationSnapshot;

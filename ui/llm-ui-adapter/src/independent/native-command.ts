@@ -9,6 +9,7 @@ export function resolveNativeCommand(text: string, commands: readonly Conversati
 }
 
 export function submitNativeCommand(controls: ConversationControls, command: Pick<ConversationSlashCommand, 'name' | 'kind'>,
-    args: string, text: string, selection?: ConversationModelSelection) {
+    args: string, text: string, selection?: ConversationModelSelection, submissionId?: string) {
+    if (submissionId) return controls.command!(command.name, args, command.kind === 'prompt' ? selection : undefined, text, submissionId);
     return controls.command!(command.name, args, command.kind === 'prompt' ? selection : undefined, text);
 }

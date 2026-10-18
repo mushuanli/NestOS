@@ -28,3 +28,6 @@
 [submodule "libraries/mdxeditor"]
 	path = libraries/mdxeditor
 	url = https://github.com/mushuanli/mdxeditor.git
+[submodule "libraries/image-parser"]
+	path = libraries/image-parser
+	url = git@github.com:mushuanli/image-parser.git

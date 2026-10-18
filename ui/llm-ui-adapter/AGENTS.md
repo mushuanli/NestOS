@@ -146,3 +146,7 @@ Markdown 嵌入统一通过 MDxController 设置 `scrollMode: 'host'`，正文�
 
 
 兼容输入与独立绑定通过 independent/native-command 共享命令解析、原始草稿和 prompt/action 提交语义。独立命令复核只刷新目录，不重读历史及无关模型；目录失败按有界退避重试。模型查询的项目授权与客户端生命周期归 app-core.projectModels。草稿首条 prompt 命令共用原生会话准备及转正，action 的 turnId 不推导用户消息。
+
+图片编辑统一使用 independent/createImageEditingPort，兼容 File 输入经 file-image-editing 桥接；面板 commit 保存成功后才关闭。远程 ConversationComposer 保存原图和参数到宿主不透明存储，输入设置一起恢复；新草稿按 harness attachmentKinds 开放附件。保存使用版本 CAS 和 operationId 核对，不自动重放未知写入。独立视图的 images 配置自动装配端口并拥有其释放，不关闭宿主存储或借入的 processor。
+
+图片处理共用 ImageProcessingSession；renderAttachments 只渲染，输入与策略变化显式调度。独立图片宿主通过 subscribeResize 通知变化，getRevision 同步提供策略版本。ConversationComposer 独立保存可变草稿和冻结提交；拥有 composer 存储时不双写原生草稿，仅按相同 submissionId 的回执清理匹配版本，不以最近 turn 或空草稿推断接纳。

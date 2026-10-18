@@ -16,6 +16,32 @@ vi.mock('@itookit/mdxeditor', async importOriginal => ({
     DefaultPrintService: class { async printFromHtml() {} destroy() {} },
 }));
 const views: ChatView[] = [];
+it('retains a replacement image when the earlier content version is accepted', async () => {
+    const accepted = deferred<OperationReceipt>();
+    const send = vi.fn((_input, context) => accepted.promise.then(() => ({status: 'accepted' as const, operationId: context.operationId})));
+    const imageEditing = {edit: vi.fn(async () => [{id: 'image', expectedFileId: 'old', expectedRevision: 0,
+        file: {id: 'new', name: 'new.png', mimeType: 'image/png'}}])};
+    const host = fixture({initialDraft: {revision: 1, textRevision: 1, text: 'Image', attachments: [
+        {id: 'image', file: {id: 'old', name: 'old.png', mimeType: 'image/png'}},
+    ]}, imageEditing, actions: {send, reconcile: vi.fn()}});
+    const view = await host.open(), submitting = view.submit();
+    await vi.waitFor(() => expect(send).toHaveBeenCalledOnce());
+    host.host.querySelector<HTMLButtonElement>('[data-attachment-id=image] button')!.click();
+    await vi.waitFor(() => expect(view.getDraft().attachments[0].file.id).toBe('new'));
+    accepted.resolve({status: 'accepted', operationId: 'unused'}); await submitting;
+    expect(view.getDraft().attachments).toMatchObject([{id: 'image', revision: 1, file: {id: 'new'}}]);
+});
+it('rejects an image replacement if its attachment was removed while the editor was open', async () => {
+    const result = deferred<readonly {id: string; expectedFileId: string; expectedRevision: number; file: {id: string; name: string}}[]>();
+    const host = fixture({initialDraft: {revision: 1, textRevision: 0, text: '', attachments: [
+        {id: 'image', file: {id: 'old', name: 'old.png', mimeType: 'image/png'}},
+    ]}, imageEditing: {edit: () => result.promise}});
+    const view = await host.open(); host.host.querySelector<HTMLButtonElement>('[data-attachment-id=image] button')!.click();
+    host.host.querySelectorAll<HTMLButtonElement>('[data-attachment-id=image] button')[1].click();
+    result.resolve([{id: 'image', expectedFileId: 'old', expectedRevision: 0, file: {id: 'new', name: 'new.png'}}]);
+    await vi.waitFor(() => expect(host.host.querySelector('.llm-chat__composer .llm-chat__error')!.textContent).not.toBe(''));
+    expect(view.getDraft().attachments).toEqual([]);
+});
 afterEach(async () => { for (const view of views.splice(0)) await view.destroy().catch(() => {}); document.body.replaceChildren(); vi.clearAllMocks(); });
 function deferred<T>() {
     let resolve!: (value: T) => void, reject!: (error: unknown) => void;
@@ -313,4 +339,42 @@ it.each(['missing', 'throws'])('uploads and submits without native UUID (%s)', a
         expect(host.operations.getSnapshot()[0]).toMatchObject({status: 'accepted'});
         expect(host.operations.getSnapshot()[0].context.operationId).toMatch(/^[\da-f]{8}-[\da-f-]{27}$/i);
     } finally {vi.unstubAllGlobals();}
+});
+
+it('regenerates restored images on a host policy notification and blocks sending until ready', async () => {
+    type Changes = NonNullable<Awaited<ReturnType<NonNullable<ChatOptions['imageEditing']>['edit']>>>;
+    let revision = '1024', notify!: () => void;
+    const pending = deferred<Changes>(), release = vi.fn();
+    const refresh = vi.fn(async (_items: readonly import('../src').DraftAttachment[]) => revision === '1024' ? [] : pending.promise);
+    const send = vi.fn(async (_input, context) => ({status: 'accepted' as const, operationId: context.operationId}));
+    const host = fixture({initialDraft: {revision: 0, textRevision: 0, text: 'Prompt', attachments: [
+        {id: 'image', file: {id: 'original', name: 'photo.png', mimeType: 'image/png'}},
+    ]}, imageEditing: {getRevision: () => revision, subscribe: listener => {notify = listener; return release;}, refresh, edit: async () => []}, actions: {send, reconcile: async operationId => ({status: 'unknown', operationId, message: 'Pending'})}});
+    const view = await host.open(); await vi.waitFor(() => expect(host.host.querySelector<HTMLButtonElement>('[type=submit]')!.disabled).toBe(false));
+    revision = '2048'; notify(); await view.submit(); expect(send).not.toHaveBeenCalled();
+    pending.resolve([{id: 'image', expectedFileId: 'original', expectedRevision: 0, file: {id: 'larger', name: 'photo.png', mimeType: 'image/png'}}]);
+    await vi.waitFor(() => expect(view.getDraft().attachments[0].file.id).toBe('larger'));
+    await vi.waitFor(() => expect(host.host.querySelector<HTMLButtonElement>('[type=submit]')!.disabled).toBe(false));
+    await view.submit(); expect(send).toHaveBeenCalledWith(expect.objectContaining({attachments: [expect.objectContaining({id: 'larger'})]}), expect.anything());
+    await view.destroy(); expect(release).toHaveBeenCalledOnce();
+});
+it('restarts an in-flight upload from its original when the host policy changes', async () => {
+    let revision = '1024'; const first = deferred<File>();
+    const original = new File(['original'], 'photo.png', {type: 'image/png'}), large = new File(['2048'], 'photo.png', {type: 'image/png'});
+    const prepare = vi.fn(async (_file: File, _options: {signal: AbortSignal}) => prepare.mock.calls.length === 1 ? first.promise : large);
+    const upload = vi.fn(async file => ({id: String(file.size), name: file.name, mimeType: file.type}));
+    const host = fixture({upload, imageEditing: {getRevision: () => revision, prepare, edit: async () => []}}), view = await host.open();
+    const adding = view.addFiles([original]); revision = '2048'; first.resolve(new File(['1024-small'], 'photo.png', {type: 'image/png'}));
+    await adding; expect(prepare).toHaveBeenCalledTimes(2); expect(prepare.mock.calls.every(call => call[0] === original)).toBe(true);
+    expect(view.getDraft().attachments[0].file.id).toBe(String(large.size));
+});
+
+it('handles invalid policy notifications without recursive rendering and leaves text-only input usable', async () => {
+    let invalid = false, notify!: () => void;
+    const host = fixture({imageEditing: {edit: async () => [], refresh: async () => [],
+        getRevision: () => {if (invalid) throw new Error('invalid-policy'); return 'valid';},
+        subscribe: listener => {notify = listener; return () => {};}}});
+    const view = await host.open(); view.setText('Text only'); invalid = true;
+    expect(() => notify()).not.toThrow(); await view.submit();
+    expect(host.operations.getSnapshot()).toMatchObject([{status: 'accepted'}]);
 });

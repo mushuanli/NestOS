@@ -26,6 +26,7 @@ export interface ConversationSnapshot {
     usageEstimate?: {currency: 'USD'; estimatedCostUsd: number | null; complete: boolean};
     /** Native turn identity acknowledged for the most recent send on this view. */
     submittedTurnId?: string;
+    submission?: {id: string; status: 'pending' | 'accepted' | 'rejected'; turnId?: string};
     draftAttachments?: ConversationAttachment[];
     attachments?: Array<'text' | 'image'>;
     archived?: boolean; canRename?: boolean; canArchive?: boolean; canUnarchive?: boolean;
@@ -44,10 +45,15 @@ export interface ConversationSnapshot {
     draft?: string; sessionId?: string; branchName?: string; title: string; messages: ConversationMessage[]; requests: ConversationRequest[];
     canSend: boolean; canInterrupt: boolean; canRespond: boolean; pending: boolean; disconnected: boolean; gap: boolean;
 }
+export interface ConversationComposerDraft {revision: string; data: string; acceptedOperationIds: readonly string[]}
 export interface ConversationControls {
+    readComposerDraft?(): Promise<ConversationComposerDraft>;
+    saveComposerDraft?(data: string, expectedRevision: string, operationId: string): Promise<ConversationComposerDraft>;
+    putComposerAsset?(content: ArrayBuffer): Promise<string>;
+    readComposerAsset?(id: string): Promise<ArrayBuffer>;
     models?(): Promise<ConversationModelCatalog>;
     commands?(): Promise<ConversationSlashCommand[]>;
-    command?(name: string, args?: string, selection?: ConversationModelSelection, inputText?: string): Promise<ConversationSnapshot>;
+    command?(name: string, args?: string, selection?: ConversationModelSelection, inputText?: string, submissionId?: string): Promise<ConversationSnapshot>;
     subscribe?(listener: () => void): () => void;
     rename?(name: string): Promise<ConversationSnapshot>;
     archive?(archived: boolean): Promise<ConversationSnapshot>;
@@ -59,14 +65,14 @@ export interface ConversationControls {
     saveDraft?(text: string, attachments?: ConversationAttachment[]): Promise<void>;
     read(): Promise<ConversationSnapshot>;
     poll(): Promise<ConversationSnapshot>;
-    send(text: string, attachments?: Array<{kind: 'text' | 'image'; name: string; content: string; mimeType?: string}>, selection?: ConversationModelSelection): Promise<ConversationSnapshot>;
+    send(text: string, attachments?: Array<{kind: 'text' | 'image'; name: string; content: string; mimeType?: string}>, selection?: ConversationModelSelection, submissionId?: string): Promise<ConversationSnapshot>;
     interrupt(): Promise<ConversationSnapshot>;
     respond(id: string | number, response: Record<string, unknown>): Promise<ConversationSnapshot>;
-    reconcile(): Promise<ConversationSnapshot>;
+    reconcile(submissionId?: string): Promise<ConversationSnapshot>;
     close(): Promise<void>;
 }
 export interface RemoteAgentControls {
     models?(id: string): Promise<ConversationModelCatalog>;
-    list(): Promise<Array<{id: string; name: string; icon: string; category: string; description?: string; supportsModels?: boolean}>>;
-    send(id: string, text: string, selection?: ConversationModelSelection): Promise<void>;
+    list(): Promise<Array<{id: string; name: string; icon: string; category: string; description?: string; supportsModels?: boolean; attachmentKinds?: Array<'text' | 'image'>}>>;
+    send(id: string, text: string, selection?: ConversationModelSelection, files?: File[]): Promise<void>;
 }

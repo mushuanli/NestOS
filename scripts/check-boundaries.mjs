@@ -17,6 +17,7 @@ const browserGlobals = new Set(['window', 'document', 'localStorage', 'sessionSt
 
 export function dependencyError(source, target) {
     if (source === target) return;
+    if (source === '@itookit/image-parser' && target.startsWith('@itookit/') && target !== '@itookit/vfs-core') return 'image-parser only accepts optional VFS host adaptation';
     if (source === '@itookit/llm-ui' && target !== '@itookit/mdxeditor') return 'independent llm-ui may only depend on mdxeditor';
     if (source === '@itookit/piagent-driver' && target.startsWith('@itookit/') &&
         !['@itookit/vfs-core', '@itookit/vfs-sync'].includes(target))
@@ -55,6 +56,8 @@ function ownerOf(file, packages) {
 }
 
 export function importError(source, file, specifier, packages) {
+    if (source.name === '@itookit/image-parser' && specifier === '@itookit/vfs-core' && file !== resolve(source.dir, 'src/vfs.ts'))
+        return 'image-parser VFS types and runtime stay in the optional vfs entry';
     if (source.name === '@itookit/llm-ui' && !specifier.startsWith('.') && specifier !== '@itookit/mdxeditor')
         return 'independent llm-ui may only import mdxeditor';
     if ((source.host || source.name === '@itookit/app-transport') && file.startsWith(resolve(source.dir, 'src/rpc') + sep)) {

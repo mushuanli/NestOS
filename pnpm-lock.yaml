@@ -34,6 +34,7 @@ overrides:
   '@types/estree': ^1.0.9
   '@itookit/driver-llm': workspace:*
   '@itookit/mdxeditor': workspace:*
+  '@itookit/image-parser': workspace:*
   '@itookit/piagent-driver': workspace:*
   '@itookit/vfs-core': workspace:*
   '@itookit/vfs-sync': workspace:*
@@ -911,6 +912,34 @@ importers:
         specifier: ^1.6.1
         version: 1.6.1(@types/node@20.19.43)(jsdom@27.2.0)
 
+  libraries/image-parser:
+    dependencies:
+      scanic:
+        specifier: 1.7.1
+        version: 1.7.1
+    devDependencies:
+      '@itookit/vfs-core':
+        specifier: workspace:*
+        version: link:../vfs-core
+      '@types/node':
+        specifier: ^20.19.25
+        version: 20.19.43
+      jsdom:
+        specifier: ^27.2.0
+        version: 27.2.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^5.4.21
+        version: 5.4.21(@types/node@20.19.43)
+      vite-plugin-dts:
+        specifier: ^3.9.1
+        version: 3.9.1(@types/node@20.19.43)(rollup@4.62.2)(typescript@5.9.3)(vite@5.4.21(@types/node@20.19.43))
+      vitest:
+        specifier: ^1.6.1
+        version: 1.6.1(@types/node@20.19.43)(jsdom@27.2.0)
+
   libraries/llm-ui:
     dependencies:
       '@itookit/mdxeditor':
@@ -1402,6 +1431,9 @@ importers:
       '@itookit/durable-kernel':
         specifier: workspace:*
         version: link:../../backend/durable-kernel
+      '@itookit/image-parser':
+        specifier: workspace:*
+        version: link:../../libraries/image-parser
       '@itookit/kernel-adapters':
         specifier: workspace:*
         version: link:../../backend/kernel-adapters
@@ -4612,6 +4644,10 @@ packages:
   saxes@6.0.0:
     resolution: {integrity: sha512-xAg7SOnEhrm5zI3puOOKyy1OMcMlIJZYNJY7xLBwSze0UjhPLnWfj2GF2EpT0jmzaJKIWKHLsaSSajf35bcYnA==}
     engines: {node: '>=v12.22.7'}
+
+  scanic@1.7.1:
+    resolution: {integrity: sha512-KE2cEtaXClYkqWbu5J1AmQ0O8iGCTT67l32x1Y2MPUAhvnyDK6yMuwF0holU0Izo3+hDsCL7TkG2qpadmewayQ==}
+    engines: {node: '>=22'}
 
   section-matter@1.0.0:
     resolution: {integrity: sha512-vfD3pmTzGpufjScBh50YHKzEu2lxBWhVEHsNGoEXmCmn2hKGfeNLYMzCJpe8cD7gqX7TJluOVpBkAequ6dgMmA==}
@@ -8767,6 +8803,8 @@ snapshots:
   saxes@6.0.0:
     dependencies:
       xmlchars: 2.2.0
+
+  scanic@1.7.1: {}
 
   section-matter@1.0.0:
     dependencies:

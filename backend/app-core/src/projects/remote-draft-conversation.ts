@@ -8,7 +8,7 @@ export function remoteConversationJournal(recovery: RemoteConversationStore, epo
         const record = await recovery.load();
         if (draft && record?.submittedTurnId && !record.pending) { await recovery.save({}); return undefined; }
         return record;
-    }, save: record => recovery.save({...record, submittedTurnId: recovery.submittedTurnId})};
+    }, save: record => recovery.save({...record, submittedTurnId: record.submittedTurnId ?? recovery.submittedTurnId})};
 }
 
 /** A native create is provisional until the first turn has a committed receipt. */

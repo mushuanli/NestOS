@@ -1389,3 +1389,19 @@
     .llm-input__help-panel { position: fixed; bottom: 0; left: 0; right: 0; max-height: 65vh; border-radius: 16px 16px 0 0; }
     .llm-input__options-body button { min-height: 44px; }
 }
+dialog.llm-image-dialog { width:min(960px,94vw); height:min(820px,90dvh); max-width:100vw; max-height:100dvh; border:1px solid var(--border-color,#ccc); border-radius:12px; padding:12px; color:var(--text-primary); background:var(--bg-primary,#fff); }
+dialog.llm-image-dialog[open] { display:flex; flex-direction:column; gap:10px; }
+.llm-image-dialog::backdrop { background:#0009; }
+.llm-image-dialog header { display:flex; align-items:center; gap:10px; flex-shrink:0; }
+.llm-image-dialog header strong { flex:1; }
+.llm-image-dialog header button { min-height:44px; padding:8px 16px; cursor:pointer; }
+.llm-image-dialog__content { flex:1; min-height:0; }
+.llm-input__image-edit { cursor:pointer; background:none; color:inherit; border:1px solid var(--border-color,#ccc); border-radius:4px; display:inline-flex; align-items:center; justify-content:center; min-width:52px; min-height:44px; padding:2px; flex-shrink:0; }
+.llm-input__image-status { display:flex; gap:8px; align-items:center; font-size:12px; color:var(--text-secondary,#666); }
+@media (max-width:600px) { dialog.llm-image-dialog { width:100vw; height:100dvh; margin:0; border:0; border-radius:0; box-sizing:border-box; padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom)); } }
+
+.llm-input__image-edit img { display:block; width:52px; height:44px; object-fit:contain; border-radius:4px; }
+.llm-input__image-edited { font-size:11px; color:var(--text-secondary,#666); white-space:nowrap; }
+
+.llm-image-dialog [data-action=finish-images] { background:var(--llm-color-primary,#3b82f6); color:#fff; border:1px solid transparent; border-radius:8px; }
+.llm-image-dialog [data-action=finish-images]:disabled { opacity:0.6; cursor:wait; }

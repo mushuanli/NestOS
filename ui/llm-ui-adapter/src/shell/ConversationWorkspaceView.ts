@@ -16,6 +16,8 @@ import { mountConversationSource } from './conversation-source';
 import {bindWorkspaceInput, type WorkspaceHandoff} from './drafts/workspace-handoff';
 
 interface Actions {
+    flushDraft?(): Promise<void>;
+    persistImageFiles?(files: File[], resize: import('@itookit/image-parser').ImageResizePolicy): Promise<void>;
     models?(): Promise<import('@itookit/ui-common').ConversationModelCatalog>;
     commands?(): Promise<import('@itookit/ui-common').ConversationSlashCommand[]>;
     attachments?: Array<'text' | 'image'>;
@@ -110,14 +112,14 @@ export class ConversationWorkspaceView {
     private createInput(options: EditorOptions, actions: Actions, handoff?: WorkspaceHandoff): ChatInput {
         const executorId = options.initialInputState?.agentId?.startsWith('remote:') ? options.initialInputState.agentId : 'remote:native';
         const inputOptions: import('../components/input/ChatInputView').ChatInputOptions = {
-            executorUsage: options.executorUsage,
+            executorUsage: options.executorUsage, flushDraft: actions.flushDraft, persistImageFiles: actions.persistImageFiles,
             nativeModels: actions.models,
             attachments: !!actions.attachments?.length, executorLocked: true,
             onSwitchExecutionTarget: options.onStartConversationDraft,
             attachmentAccept: [...(actions.attachments?.includes('text') ? ['text/*', 'application/json', 'application/xml'] : []),
                 ...(actions.attachments?.includes('image') ? ['image/png', 'image/jpeg', 'image/webp'] : [])].join(','),
             attachmentHint: t('harness.attachmentType') + ' ' + t('harness.attachmentCapacity'),
-            initialAgents: [{id: executorId, name: options.title ?? t('harness.remoteSessions'), icon: ENTITY_ICONS.remoteAgent, category: t('harness.remoteAgents')}],
+            initialAgents: [{id: executorId, name: options.title ?? t('harness.remoteSessions'), icon: ENTITY_ICONS.remoteAgent, category: t('harness.remoteAgents'), attachmentKinds: actions.attachments}],
             initialConfig: {text: options.initialInputState?.text ?? '', agentId: executorId},
             onSend: (text, files) => actions.send(text, files),
             onStop: actions.stop, onDraftChange: (_config, files) => actions.changed(files),

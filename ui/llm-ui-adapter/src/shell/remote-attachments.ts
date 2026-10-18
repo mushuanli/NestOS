@@ -35,3 +35,10 @@ function image(bytes: Uint8Array, mime: string): string {
     for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192));
     return `data:${mime};base64,${btoa(binary)}`;
 }
+
+export function restoreRemoteAttachments(attachments: NonNullable<import('@itookit/ui-common').ConversationSnapshot['draftAttachments']>): File[] {
+    return attachments.map(attachment => {
+        const content = attachment.kind === 'text' ? attachment.content : Uint8Array.from(atob(attachment.content.split(',')[1] ?? ''), char => char.charCodeAt(0));
+        return new File([content], attachment.name, {type: attachment.mimeType ?? 'text/plain'});
+    });
+}

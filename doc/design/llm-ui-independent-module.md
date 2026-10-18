@@ -108,7 +108,7 @@ cancel 捕获固定 executionRef，宿主在执行端核验。取消旧执行后
 
 saveDraft 串行合并。flushDraft 覆盖调用前仍在防抖等待中的最新编辑；保存失败不推进已保存版本。onDraftChange 不是保存成功通知。宿主保存并恢复完整草稿与台账，视图销毁不承担宿主持久状态的最终所有权。
 
-发送前的多图编辑另见 [聊天图片处理设计](chat-image-editing.md)（待实施）。图片替换需要草稿项内容版本；接纳清理须保留等待期间生成的新版本，不能沿用仅按附件 ID 删除的规则。通用编辑器归独立 llm-ui 的可选能力，宿主负责原图、配方和输出的持久化、条件替换及 OCR 接线。
+发送前的图片处理另见 [image-parser 独立库与聊天接入设计](chat-image-editing.md)。独立图片库封装 Scanic、矩形裁剪及默认最长边 1024 的等比缩小，智能体默认与 ChatInput 覆盖由宿主解析；llm-ui 通过可选 ImageEditingPort 接入，继续只依赖 mdxeditor；宿主适配工厂 createImageEditingPort 负责原图读写与元数据。原生独立绑定通过 images 读取资源并按 harness 声明转换附件，视图工厂自动装配图片端口；工作台兼容输入也复用该适配。图片替换需要草稿项内容版本，接纳清理须保留等待期间生成的新版本。宿主负责原图、处理参数、派生资源的持久化和条件替换。
 
 ## 6 Flow 是 llm-ui 的一部分
 

@@ -158,3 +158,5 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 工作台 session-browser 的 setSessionFilter 是每个观察实例的会话来源过滤，分页和会话搜索前应用，不过滤项目文件或收藏夹。远程 harness 按连接和 profile 身份过滤；筛选后的分页游标包含筛选身份，旧游标不得被其他筛选复用。本地与远程项目均投影固定 @new；远程项目草稿 prepare 不允许创建本地 Session。
 
 - 项目远程草稿的 `remoteTarget` 和提交身份先在 drafts/store 事务中固定，再创建原生控制器。remote-submission 负责日志键、旧记录迁移与回执读取，恢复不得使用后来编辑的智能体偏好覆盖该目标；结果未知时禁止丢弃。输入保存可吸收同一草稿的准备元数据，但仍拒绝其他视图的正文冲突。Session 执行存储准备在 session/prepare-session-execution，runtime 只接线。
+
+- conversation-composer-store 保存宿主不透明输入与不可变资产，资产读取核对固定会话 owner，草稿写入使用版本 CAS 和有界 operationId 回执。原图与图片参数不进入 harness 协议；closed 绑定拒绝后续访问，已发起的保存继续完成。

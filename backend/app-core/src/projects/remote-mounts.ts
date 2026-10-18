@@ -1,3 +1,4 @@
+import {ConversationComposerStore, withConversationComposer} from './conversation-composer-store';
 import type { ProjectConversationPort } from '@itookit/app-contracts/services';
 import { observeConversation } from './conversation-view';
 import {prepareRemoteDraft, remoteConversationKey} from './drafts/remote-submission';
@@ -475,8 +476,13 @@ export class ProjectRemoteMountService {
             const recovery = new RemoteConversationStore(this.store, remoteConversationKey(projectId, target, conversationId ?? sessionId ?? '@new'));
             const conversation = await this.provider.conversation(sessionId ? guarded : draftHarness(guarded, recovery), profile, profile.workspaces[0].id, sessionId, (profile.projectCapabilities?.sessionControl ?? root.access === 'rw') && !readOnly,
                 remoteConversationJournal(recovery, descriptor.epoch, !sessionId && !draftId));
-            return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage, conversationId,
+            const composer = new ConversationComposerStore(this.store, projectId,
+                remoteConversationKey(projectId, target, conversationId ?? sessionId ?? '@new'), !readOnly, () => {
+                    if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
+                });
+            const observed = observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage, conversationId,
                 () => { void this.sessionStatus.refresh(projectId); });
+            return withConversationComposer(observed, composer);
         } catch (error) { await client.close(); throw error; }
     }
     private guardHarness(client: HarnessClient, projectId: string, fingerprint: string, connectionId: string): HarnessClient {

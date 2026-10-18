@@ -1,4 +1,5 @@
 import { SettingsAutoSave, SettingsValidationError, requestSettingsSave } from '@itookit/ui-common';
+import {renderAgentImageSettings, readAgentImageSettings} from './agent-image-settings';
 import { renderPromptReference, bindPromptReference } from './agent-prompt-reference';
 import { editorResourceId } from '@itookit/ui-common';
 // @file: llm-ui/editors/AgentConfigEditor.ts
@@ -211,6 +212,7 @@ export class AgentConfigEditor implements IEditor {
                     </div>
                     <div class="agent-section__body">
                         ${renderPromptReference(systemPrompts, config.systemPromptId)}
+                        ${renderAgentImageSettings(config.imageProcessing)}
                         <div class="agent-form-row">
                             <label class="agent-form-label">${t('prompt.additional')}</label>
                             <textarea class="agent-form-textarea" 
@@ -631,6 +633,7 @@ export class AgentConfigEditor implements IEditor {
             const tempVal = parseFloat(getVal('temperature'));
             this.content.config = {
                 ...this.content.config,
+                imageProcessing: readAgentImageSettings(this.container),
                 systemPromptId: getVal('systemPromptId') || undefined,
                 systemPrompt: getVal('systemPrompt'),
                 maxHistoryLength: Number.isNaN(Number.parseInt(getVal('maxHistoryLength'))) ? -1 : Number.parseInt(getVal('maxHistoryLength')),

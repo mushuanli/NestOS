@@ -914,3 +914,113 @@ it('removes context role after explicit provenance is removed on refresh', async
         expect(host.querySelector('.llm-ui-session--user')?.textContent).toContain('Original context');
     } finally { await editor.destroy(); }
 });
+
+it('restores an unknown image submission across views and clears it only after native reconciliation', async () => {
+    const {editor, peer, host} = setup();
+    let stored = {revision: '0', data: '', acceptedOperationIds: [] as string[]};
+    peer.readComposerDraft = async () => structuredClone(stored);
+    peer.saveComposerDraft = async (data, expected, operationId) => {
+        if (expected !== stored.revision) throw new Error('ECONFLICT');
+        return stored = {data, revision: String(Number(stored.revision) + 1), acceptedOperationIds: [...stored.acceptedOperationIds, operationId]};
+    };
+    peer.putComposerAsset = async () => 'asset'; peer.readComposerAsset = async () => new ArrayBuffer(0);
+    const {ConversationComposer} = await import('../../llm-ui-adapter/src/shell/drafts/conversation-composer');
+    const draft = ConversationComposer.create(peer)!; await draft.restore();
+    await draft.submit({text: 'Pending original', agentId: 'remote:native', settings: {imageResize: {mode: 'original'}}}, [], 'submission-1');
+    vi.mocked(peer.read).mockResolvedValue({...state, pending: true, canSend: false, draft: 'Pending original'});
+    await editor.init(host); await editor.destroy();
+    const reopened = new RemoteConversationEditor(host, peer, {}); await reopened.init(host);
+    try {
+        expect(host.querySelector<HTMLTextAreaElement>('textarea.llm-input__textarea')!.value).toBe('Pending original');
+        expect(host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
+        expect(peer.send).not.toHaveBeenCalled();
+        vi.mocked(peer.reconcile).mockResolvedValue({...state, submission: {id: 'submission-1', status: 'accepted', turnId: 'new-turn'}, submittedTurnId: 'new-turn', draft: '', pending: false});
+        [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === t('harness.reconcile'))!.click();
+        await vi.waitFor(() => expect(host.querySelector<HTMLTextAreaElement>('textarea.llm-input__textarea')!.value).toBe(''));
+        await reopened.flushPendingSave();
+        expect(JSON.parse(stored.data).config.text).toBe(''); expect(JSON.parse(stored.data).remoteSubmission).toBeUndefined();
+        expect(peer.send).not.toHaveBeenCalled();
+    } finally {await reopened.destroy();}
+});
+
+function composerStorage(peer: ConversationControls) {
+    let stored = {revision: '0', data: '', acceptedOperationIds: [] as string[]};
+    const assets = new Map<string, ArrayBuffer>(); let serial = 0;
+    peer.readComposerDraft = async () => structuredClone(stored);
+    peer.saveComposerDraft = async (data, expected, operationId) => {
+        if (expected !== stored.revision) throw Object.assign(new Error('ECONFLICT'), {code: 'ECONFLICT'});
+        return stored = {data, revision: String(++serial), acceptedOperationIds: [...stored.acceptedOperationIds, operationId]};
+    };
+    peer.putComposerAsset = async bytes => {const id = String(++serial); assets.set(id, bytes); return id;};
+    peer.readComposerAsset = async id => assets.get(id)!;
+    return () => stored;
+}
+it('preserves newer persisted input across reopening and exact submission reconciliation', async () => {
+    const {editor, peer, host} = setup(), stored = composerStorage(peer);
+    peer.saveDraft = vi.fn(async () => {throw new Error('Native draft storage must not be used');});
+    const {ConversationComposer} = await import('../../llm-ui-adapter/src/shell/drafts/conversation-composer');
+    const draft = ConversationComposer.create(peer)!; await draft.restore();
+    const config = {text: 'Submitted', agentId: 'remote:native', settings: {}};
+    await draft.submit(config, [new File(['sent'], 'sent.txt')], 'submission-1');
+    await draft.save({...config, text: 'New unsent input'}, [new File(['new'], 'new.txt')]);
+    vi.mocked(peer.read).mockResolvedValue({...state, pending: true, canSend: false, draft: 'Submitted', attachments: ['text']});
+    await editor.init(host);
+    try {
+        vi.mocked(peer.reconcile).mockResolvedValue({...state, submission: {id: 'unrelated', status: 'accepted'}, draft: '', pending: false});
+        const reconcile = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === t('harness.reconcile'))!;
+        reconcile.click(); await vi.waitFor(() => expect(peer.reconcile).toHaveBeenCalledTimes(1));
+        expect(host.querySelector<HTMLTextAreaElement>('textarea.llm-input__textarea')!.value).toBe('New unsent input');
+        expect(JSON.parse(stored().data).remoteSubmission).toMatchObject({id: 'submission-1'});
+        vi.mocked(peer.reconcile).mockResolvedValue({...state, submission: {id: 'submission-1', status: 'accepted', turnId: 'turn'}, draft: '', pending: false});
+        await vi.waitFor(() => expect(reconcile.disabled).toBe(false)); reconcile.click();
+        await vi.waitFor(() => expect(JSON.parse(stored().data).remoteSubmission).toBeUndefined());
+        expect(host.querySelector<HTMLTextAreaElement>('textarea.llm-input__textarea')!.value).toBe('New unsent input');
+        expect(JSON.parse(stored().data).files).toHaveLength(1);
+        expect(JSON.parse(stored().data).files[0].name).toBe('new.txt');
+        expect(peer.saveDraft).not.toHaveBeenCalled(); expect(peer.send).not.toHaveBeenCalled();
+    } finally {await editor.destroy();}
+});
+it('sends the frozen submission identity and clears only its acknowledged draft', async () => {
+    const {editor, peer, host} = setup(), stored = composerStorage(peer);
+    peer.send = vi.fn(async (_text, _attachments, _selection, id) => ({...state, draft: '', submission: {id: id!, status: 'accepted' as const, turnId: 'turn'}}));
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('textarea.llm-input__textarea')!;
+        input.value = 'Prompt'; input.dispatchEvent(new Event('input', {bubbles: true}));
+        await editor.commands.sendMessage({text: 'Prompt'});
+        expect(peer.send).toHaveBeenCalledWith('Prompt', [], undefined, expect.any(String));
+        expect(input.value).toBe(''); expect(JSON.parse(stored().data).remoteSubmission).toBeUndefined();
+    } finally {await editor.destroy();}
+});
+
+it('restores command reconciliation without inventing a temporary user message', async () => {
+    const {editor, peer, host} = setup(), stored = composerStorage(peer);
+    const {ConversationComposer} = await import('../../llm-ui-adapter/src/shell/drafts/conversation-composer');
+    const draft = ConversationComposer.create(peer)!; await draft.restore();
+    await draft.submit({text: '/compact', agentId: 'remote:native', settings: {}}, [], 'command-1', 'command');
+    vi.mocked(peer.read).mockResolvedValue({...state, pending: true, canSend: false}); await editor.init(host);
+    try {
+        expect(host.querySelectorAll('.llm-ui-session--user')).toHaveLength(0);
+        vi.mocked(peer.reconcile).mockResolvedValue({...state, draft: '', submission: {id: 'command-1', status: 'accepted'}});
+        [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === t('harness.reconcile'))!.click();
+        await vi.waitFor(() => expect(JSON.parse(stored().data).remoteSubmission).toBeUndefined());
+        expect(peer.reconcile).toHaveBeenCalledWith('command-1');
+        expect(host.querySelector<HTMLTextAreaElement>('textarea.llm-input__textarea')!.value).toBe('');
+    } finally {await editor.destroy();}
+});
+
+it('offers an explicit draft reload after a CAS conflict and permits saving again', async () => {
+    const {editor, peer, host} = setup(), stored = composerStorage(peer); await editor.init(host);
+    const {ConversationComposer} = await import('../../llm-ui-adapter/src/shell/drafts/conversation-composer');
+    const other = ConversationComposer.create(peer)!; await other.restore();
+    await other.save({text: 'Other window', agentId: 'remote:native', settings: {}}, []);
+    const input = host.querySelector<HTMLTextAreaElement>('textarea.llm-input__textarea')!;
+    input.value = 'Stale input'; input.dispatchEvent(new Event('input', {bubbles: true}));
+    try {
+        await expect(editor.flushPendingSave()).rejects.toMatchObject({code: 'ECONFLICT'});
+        expect(input.value).toBe('Stale input'); host.querySelector<HTMLButtonElement>('[data-reload-composer]')!.click();
+        await vi.waitFor(() => expect(input.value).toBe('Other window'));
+        input.value = 'After explicit reload'; input.dispatchEvent(new Event('input', {bubbles: true})); await editor.flushPendingSave();
+        expect(JSON.parse(stored().data).config.text).toBe('After explicit reload');
+    } finally {await editor.destroy();}
+});

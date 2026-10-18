@@ -207,3 +207,44 @@ it('keeps a resolved request when an older approval response arrives', async () 
     expect(binding.source.getSnapshot().interactions).toEqual([]);
     expect(binding.source.getSnapshot().messages[0].parts[0]).toMatchObject({ text: 'continued' }); binding.dispose();
 });
+
+it('maps immutable native attachments through the host and enforces negotiated kinds', async () => {
+    const host = fixture(); host.emit({attachments: ['text']});
+    host.controls.send = vi.fn(async () => ({...host.state(), submittedTurnId: 'turn'}));
+    const images = {read: vi.fn(async () => new Blob(['Notes'], {type: 'text/plain'}))} as never;
+    const binding = await createNativeChatBinding({...host.options, images});
+    const context = {operationId: 'with-file', viewId: binding.source.getSnapshot().viewId};
+    expect(await binding.actions.send!({text: 'Read', attachments: [{id: 'asset', name: 'notes.txt', mimeType: 'text/plain'}]}, context)).toMatchObject({status: 'accepted'});
+    expect(host.controls.send).toHaveBeenCalledWith('Read', [{kind: 'text', name: 'notes.txt', content: 'Notes'}]);
+    host.emit({attachments: []});
+    expect(await binding.actions.send!({text: 'Read', attachments: [{id: 'asset', name: 'notes.txt', mimeType: 'text/plain'}]}, context)).toMatchObject({status: 'rejected', code: 'INVALID_ATTACHMENT'});
+    expect(host.controls.send).toHaveBeenCalledTimes(1); binding.dispose();
+});
+
+it('rejects a native attachment read finishing after binding disposal', async () => {
+    const host = fixture(), pending = deferred<Blob>(); host.emit({attachments: ['text']});
+    host.controls.send = vi.fn();
+    const binding = await createNativeChatBinding({...host.options, images: {read: () => pending.promise} as never});
+    const send = binding.actions.send!({text: 'Read', attachments: [{id: 'asset', name: 'notes.txt', mimeType: 'text/plain'}]},
+        {operationId: 'late', viewId: binding.source.getSnapshot().viewId});
+    binding.dispose(); pending.resolve(new Blob(['Late']));
+    expect(await send).toMatchObject({status: 'rejected'}); expect(host.controls.send).not.toHaveBeenCalled();
+});
+
+it('assembles image preprocessing and metadata persistence when creating a native ChatView', async () => {
+    const {createChatView} = await import('@itookit/llm-ui'), {createNativeChatView} = await import('./native');
+    const host = fixture(), close = vi.fn(async () => {}), dispose = vi.fn(async () => {});
+    vi.mocked(createChatView).mockResolvedValueOnce({destroy: close} as never);
+    let uploadId = 0;
+    const upload = vi.fn(async (file: File) => ({id: file.name + ++uploadId, name: file.name, mimeType: file.type}));
+    const saveMetadata = vi.fn(async () => {});
+    const images = {upload, saveMetadata, read: async () => new Blob(), loadMetadata: async () => undefined,
+        getResize: () => ({mode: 'max-edge' as const, maxEdge: 1024}), processor: {dispose,
+            process: async () => ({blob: new Blob(['derived'], {type: 'image/png'}), mimeType: 'image/png', changed: true, purpose: 'export'})} as never};
+    const binding = await createNativeChatBinding({...host.options, images}), view = await createNativeChatView({} as HTMLElement, binding);
+    const options = vi.mocked(createChatView).mock.calls.at(-1)![1], signal = new AbortController().signal;
+    const original = new File(['original'], 'image.png', {type: 'image/png'}), prepared = await options.imageEditing!.prepare!(original, {signal});
+    const ref = await options.upload!(prepared, {signal}); await options.imageEditing!.uploaded!(prepared, ref, {signal});
+    expect(upload).toHaveBeenCalledTimes(2); expect(saveMetadata).toHaveBeenCalledWith(ref, expect.objectContaining({original: expect.objectContaining({id: 'image.png2'})}));
+    await view.destroy(); await view.destroy(); expect(close).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled(); binding.dispose();
+});

@@ -17,6 +17,8 @@ import { TokenMeterPlugin } from './plugins/TokenMeterPlugin';
 import { PopupPanel } from './plugins/PopupPanel';
 import type { PopupItem } from './plugins/PopupPanel';
 import { AttachmentManager } from './AttachmentManager';
+import {ImageResizeSettings} from './ImageResizeSettings';
+import {resolveResize, type ImageResizePolicy} from '@itookit/image-parser';
 import { ToolOutputPanel } from './ToolOutputPanel';
 import { HelpPanel } from './HelpPanel';
 import { SkillPanel } from './SkillPanel';
@@ -29,6 +31,8 @@ import { InteractionPanel } from './InteractionPanel';
 import { delegate } from '../../utils/domEvents';
 
 export interface ChatInputOptions {
+    flushDraft?: () => Promise<void>;
+    persistImageFiles?: (files: File[], resize: ImageResizePolicy) => Promise<void>;
     nativeModels?(executorId: string): Promise<import('@itookit/ui-common').ConversationModelCatalog>;
     /** Host-owned menu slot for immutable conversation mode information. */
     executionModeInfo?: HTMLElement;
@@ -205,6 +209,7 @@ export class ChatInput implements IChatInputPresenter {
 
     // ── Attachment manager ────────────────────────────────────────────────────
     private attachmentMgr!: AttachmentManager;
+    private imageSettings?: ImageResizeSettings;
 
     private config: IChatInputConfig = {
         text: '',
@@ -230,6 +235,9 @@ export class ChatInput implements IChatInputPresenter {
         this.currentAgentId = this.config.agentId;
 
         this.render();
+        this.imageSettings = new ImageResizeSettings(this.settingsPanel.querySelector<HTMLElement>('.llm-input__settings-body')!,
+            () => ({override: this.config.settings.imageResize, agent: this.agents.find(agent => agent.id === this.config.agentId)?.imageProcessing?.resize}),
+            resize => {this.config.settings.imageResize = resize; this.notifyConfigChange();});
 
         // 面板必须在 render()（写入模板 + bindElements）之后构造，DOM 才存在。
         this.nativeModels = new NativeModelControl(container, () => this.options.nativeModels!(this.config.agentId), error => Toast.error(String(error)), selection => {
@@ -372,7 +380,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private applyAvailability(): void {
         const command = isDirectCommandInput(this.textarea.value) || this.textarea.value.trimStart().startsWith('/');
-        this.sendBtn.disabled = !this.availability.canSend || this.submitting || this.checkingConnection || (!!this.connectionReadiness?.blocked && !command);
+        this.sendBtn.disabled = !this.availability.canSend || this.submitting || this.checkingConnection || !!this.attachmentMgr?.images.busy || (!!this.connectionReadiness?.blocked && !command);
         this.stopBtn.disabled = !this.availability.canInterrupt;
         this.agentPickerBtn.disabled = this.loading || !!this.options.executorLocked;
     }
@@ -389,6 +397,7 @@ export class ChatInput implements IChatInputPresenter {
     setConfig(config: Partial<IChatInputConfig>): void {
         this.config = this.mergeConfig(this.config, config);
         this.syncUIFromConfig();
+        this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
 
         if (config.agentId && config.agentId !== this.currentAgentId) {
             this.currentAgentId = config.agentId;
@@ -559,10 +568,15 @@ export class ChatInput implements IChatInputPresenter {
             ocr: this.options.ocr,
             onRequestFiles: (query: string) => this.options.onRequestFiles?.(query) ?? Promise.resolve([]),
             getLoading: () => this.loading,
-            canAttach: () => this.options.attachments !== false,
+            canAttach: () => this.canAttach(),
             getFiles: () => this.files,
             setFiles: (f) => { this.files = f; this.options.onDraftChange?.(this.getConfig(), [...f]); },
             notifyConfigChange: () => this.notifyConfigChange(),
+            getImageResize: () => resolveResize(this.config.settings.imageResize, this.agents.find(agent => agent.id === this.config.agentId)?.imageProcessing?.resize),
+            setImageResize: resize => {this.config.settings.imageResize = resize; this.notifyConfigChange();},
+            onImageStateChange: () => {this.applyAvailability(); this.attachmentMgr?.renderAttachments();},
+            flushFiles: () => this.options.flushDraft?.() ?? Promise.resolve(),
+            persistFiles: this.options.persistImageFiles,
         });
     }
 
@@ -703,7 +717,7 @@ export class ChatInput implements IChatInputPresenter {
             event.stopPropagation();
             if (Number.isNaN(index)) return;
             this.files.splice(index, 1);
-            this.attachmentMgr.renderAttachments();
+            this.attachmentMgr.images.refresh(); this.attachmentMgr.renderAttachments(); this.notifyConfigChange();
         });
         delegate(this.attachmentContainer, 'click', '.llm-input__ocr-btn', ({ event, index }) => {
             event.stopPropagation();
@@ -846,6 +860,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private async submitDraft(text: string): Promise<void> {
+        if (this.attachmentMgr.images.busy) return;
         const submitted = this.textarea.value, executor = this.config.agentId, files = [...this.files];
         const revision = this.getDraftRevision();
         const remote = executor.startsWith('remote:');
@@ -891,7 +906,7 @@ export class ChatInput implements IChatInputPresenter {
     private clearSubmittedInput(files: File[], clearText: boolean): void {
         if (clearText) { this.textarea.value = ''; this.config.text = ''; this.getDraftRevision(); }
         this.files = this.files.filter(file => !files.includes(file));
-        this.attachmentMgr.renderAttachments(); this.adjustTextareaHeight();
+        this.attachmentMgr.images.refresh(); this.attachmentMgr.renderAttachments(); this.adjustTextareaHeight();
     }
 
     private buildOverrides(): ChatOverrides {
@@ -974,11 +989,16 @@ export class ChatInput implements IChatInputPresenter {
     // UI 同步
     // ================================================================
 
+    private canAttach(): boolean {
+        return this.options.attachments !== false && (!this.config.agentId.startsWith('remote:') || this.options.attachments === true
+            || !!this.agents.find(agent => agent.id === this.config.agentId)?.attachmentKinds?.length);
+    }
     private syncRemoteControls(): void {
+        this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
         const remote = this.config.agentId.startsWith('remote:');
         const flow = !remote && !!this.config.settings.flowId;
         this.container.classList.toggle('llm-input--remote', remote);
-        for (const selector of ['.llm-input__btn--settings', '.llm-input__model-trigger', '.llm-input__btn--websearch', '.llm-input__active-settings']) {
+        for (const selector of ['.llm-input__model-trigger', '.llm-input__btn--websearch', '.llm-input__active-settings']) {
             for (const element of this.container.querySelectorAll<HTMLElement>(selector)) element.hidden = remote || flow;
         }
         this.container.querySelector<HTMLElement>('.llm-input__agent-picker')!.hidden = flow;
@@ -991,7 +1011,11 @@ export class ChatInput implements IChatInputPresenter {
         const configure = this.container.querySelector<HTMLButtonElement>('.llm-input__btn--configure-agent')!;
         configure.hidden = remote || flow || !this.options.onConfigureExecutor; configure.disabled = this.loading;
         this.container.querySelector<HTMLElement>('.llm-input__btn--switch-target')!.hidden = !this.options.onSwitchExecutionTarget;
-        if (remote || flow) { this.toggleSettings(false); this.connectionTier?.hidePopups(); }
+        this.attachBtn.hidden = !this.canAttach();
+        this.settingsBtn.hidden = flow;
+        for (const element of this.settingsPanel.querySelectorAll<HTMLElement>('[data-local-settings]')) element.hidden = remote;
+        if (flow) this.toggleSettings(false);
+        if (remote || flow) this.connectionTier?.hidePopups();
         if (this.connectionTier) this.refreshConnectionStatus();
     }
     private async switchExecutionTarget(): Promise<void> {
@@ -1245,6 +1269,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private notifyConfigChange(): void {
+        this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
         const config = this.getConfig();
         this.options.onDraftChange?.(config, [...this.files]);
         const settingsJson = JSON.stringify({ agentId: config.agentId, settings: config.settings });

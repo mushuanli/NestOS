@@ -11,6 +11,7 @@ import type { SystemPromptDefinition, PromptPreset } from '@itookit/tools/contra
 export type AgentType = 'agent' | 'composite' | 'tool' | 'workflow';
 
 export interface AgentConfig {
+    imageProcessing?: import('./image-processing').ImageProcessingPreference;
     systemPrompt?: string;
     /** Reference a System Prompt library entry (shared by multiple agents). */
     systemPromptId?: string;
@@ -34,7 +35,7 @@ export type { PromptPreset } from '@itookit/tools/contracts';
 /** Safe presentation metadata; credential values and system prompt bodies stay in the host. */
 export interface ChatConfigurationSnapshot {
     agents: Array<Pick<AgentDefinition, 'id' | 'name' | 'icon' | 'description' | 'defaultPrompts'> & {
-        config: Pick<AgentConfig, 'systemPromptId'>;
+        config: Pick<AgentConfig, 'systemPromptId' | 'imageProcessing'>;
     }>;
     promptPresets: Record<string, PromptPreset[]>;
     connections: ConnectionMeta[];

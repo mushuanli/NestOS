@@ -266,3 +266,11 @@ ConversationControls 的可选 commands/command 端口承接当前原生会话�
 `ConversationControls.command(name, args?, selection?, inputText?)` 的 inputText 保留提交时的原始草稿，独立于用于执行的解析参数；两个输入入口共享 independent/native-command。`ProjectConversationPort.send` 同步传递 selection，command 同步传递 inputText。`ProjectRemoteMountService.projectModels(projectId, profileId)` 是只读应用用例，由 app-core 管理查询客户端，HTTP 传输登记为 query。
 
 `HarnessRecovery.draftRevision` 与 pending.draftRevision/inputText 共同限制接纳清理；commandResults 保存最近 64 条有 commandId 的本地系统结果，原生同 ID 历史优先。Claude 未接管的已有会话仍可发现目录和别名；compact 是不要求用户消息回显的 action。首条 prompt 命令与消息共用会话准备及草稿转正，会话级 action 在尚无会话的草稿中禁用。流程与 C4 职责见[原生提交与恢复](design/llm-ui-independent-module.md#104-原生提交与恢复的共同路径)。
+
+## 图片处理与会话草稿
+
+独立 llm-ui 的 `ImageEditingPort` 描述 File 预处理、上传后关联、按附件版本替换及宿主策略变化后的重新处理；getRevision/subscribe 驱动刷新，不依赖 image-parser。`llm-ui-adapter/independent` 的 `ImageChatOptions.images` 与绑定的 images 配置接入资源读写、原图元数据和 resize；兼容 ChatInput 复用同一图片端口。
+
+`ProjectConversationPort` 的可选 `readComposerDraft/saveComposerDraft/putComposerAsset/readComposerAsset` 属于应用宿主存储，HTTP 能力登记在 HarnessConversationPort 展示端口；它们不是远程 harness RPC。草稿 data 不透明，写入携带 expectedRevision 和 operationId；保存回执未知先查询 acceptedOperationIds，不自动重放。资源按会话授权隔离，原图与选区不进入模型附件。详情见 [图片设计](design/chat-image-editing.md)。
+
+远程输入使用 composer 存储时不双写原生 saveDraft。send 的第四参数和 command 的第五参数可携带 submissionId，HarnessConversation 持久化同 ID 的 submission 回执；UI 只依据该回执接纳或拒绝冻结提交。可编辑草稿与待核对提交分开保存，详细状态及 C4 边界见 [图片与草稿流程](design/chat-image-editing.md#11-审查后的流程收敛)。

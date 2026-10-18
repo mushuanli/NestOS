@@ -1,3 +1,4 @@
+import {prepareRemoteAttachments} from '../remote-attachments';
 import { DraftSaveQueue } from './draft-save-queue';
 import { LayoutTemplates } from '../../components/templates/LayoutTemplates';
 import { DraftDataCodec } from './session-draft-data';
@@ -89,9 +90,15 @@ export class SessionDraftEditor extends IEditor {
         if (this.active) this.input.focus();
     }
     private createInput(input: HTMLElement, agents: Awaited<ReturnType<typeof buildExecutorOptions>>, config?: IChatInputConfig): ChatInput {
-        return new ChatInput(input, {nativeModels: this.options.remoteAgents?.models, initialAgents: agents, ocr: this.ocr,
+        return new ChatInput(input, {flushDraft: () => this.saves.flush(),
+            persistImageFiles: async (files, resize) => {
+                if (!this.input) return;
+                const config = this.input.getConfig();
+                this.persist({...config, settings: {...config.settings, imageResize: resize}}, files);
+                await this.saves.flush();
+            },
+            nativeModels: this.options.remoteAgents?.models, initialAgents: agents, ocr: this.ocr,
             initialConfig: config ?? (this.options.sessionDraft?.executorScope === 'remote' ? {agentId: agents[0]?.id ?? 'remote:unavailable'} : undefined), executorUsage: this.options.executorUsage,
-            attachments: this.options.sessionDraft?.executorScope === 'remote' ? false : undefined,
             onConfigureExecutor: this.options.hostContext?.navigate ? () => {
                 const id = this.input!.getConfig().agentId;
                 void this.options.hostContext!.navigate({target: 'agents', resourceId: this.service.getAgentResourceId?.(id)});
@@ -175,6 +182,10 @@ export class SessionDraftEditor extends IEditor {
         try {
             if (this.options.sessionDraft?.executorScope && (message.agentId?.startsWith('remote:') ?? false) !== (this.options.sessionDraft.executorScope === 'remote'))
                 throw new Error(t('agentWorkspace.executorScopeMismatch'));
+            if (message.agentId?.startsWith('remote:') && message.files.length) {
+                const executor = (await this.executors()).find(item => item.id === message.agentId);
+                await prepareRemoteAttachments(message.files, executor?.attachmentKinds ?? []);
+            }
             await this.saves.flush();
             if (this.options.sessionDraft?.inPlace) {
                 const target = await this.bindConversation(message.agentId);
@@ -182,10 +193,10 @@ export class SessionDraftEditor extends IEditor {
                 return await target.editor.commands.sendMessage!({...message, ...(nativeSelection ? {nativeSelection} : {}), ...(target.submission ? {submission: target.submission} : {})});
             }
             if (message.agentId?.startsWith('remote:')) {
-                if (message.files.length) throw new Error(t('harness.remoteAttachments'));
                 if (!this.options.remoteAgents) throw new Error(t('toolbox.unavailable'));
                 const selected = nativeSelection;
-                if (selected) await this.options.remoteAgents.send(message.agentId, message.text, selected);
+                if (message.files.length) await this.options.remoteAgents.send(message.agentId, message.text, selected, message.files);
+                else if (selected) await this.options.remoteAgents.send(message.agentId, message.text, selected);
                 else await this.options.remoteAgents.send(message.agentId, message.text);
                 await this.options.sessionDraft?.clear?.();
                 this.initialData = '';

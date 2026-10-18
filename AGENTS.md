@@ -8,7 +8,7 @@
 - **itookit**：pnpm monorepo，承载 **MindOS**（浏览器/桌面的个人知识 OS：虚拟文件系统 + Markdown 编辑器 + LLM 对话/Agent 执行）
 - 工具链：`pnpm@10.20.0`（`workspace:*`）、TypeScript 5.9 strict（`target: ES2022`、`moduleResolution: bundler`，见 `tsconfig.base.json`）
 - 无前端框架：原生 DOM + TypeScript
-- 20 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 9 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
+- 20 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 10 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
 
 ## 开发原则
 SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10

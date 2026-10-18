@@ -1,3 +1,4 @@
+import {AttachmentImagePreviews} from './AttachmentImagePreviews';
 // @file: llm-ui/components/input/AttachmentManager.ts
 // File attachment handling: paste, drag-drop, OCR, camera, photo album.
 
@@ -5,6 +6,8 @@ import { ChatInputTemplates } from '../templates/ChatInputTemplates';
 import { downscaleImageForOcr } from '../../utils/imageDownscale';
 import { t } from '@itookit/common';
 import { OcrReviewPanel } from './OcrReviewPanel';
+import {ImageAttachments} from './ImageAttachments';
+import type {ImageResizePolicy} from '@itookit/image-parser';
 import type { PopupPanel, PopupItem } from './plugins/PopupPanel';
 
 let CAMERA_GUARD = false;      // prevent double-open on some mobile browsers
@@ -24,9 +27,16 @@ export interface AttachmentManagerOptions {
     getFiles: () => File[];
     setFiles: (files: File[]) => void;
     notifyConfigChange: () => void;
+    getImageResize?: () => ImageResizePolicy;
+    setImageResize?: (resize: ImageResizePolicy) => void;
+    onImageStateChange?: () => void;
+    flushFiles?: () => Promise<void>;
+    persistFiles?: (files: File[], resize: ImageResizePolicy) => Promise<void>;
 }
 
 export class AttachmentManager {
+    readonly images: ImageAttachments;
+    private readonly previews = new AttachmentImagePreviews();
     private ocrPanel: OcrReviewPanel | null = null;
     private addPopup: PopupPanel | null = null;
     private unsubscribe?: () => void;
@@ -34,6 +44,9 @@ export class AttachmentManager {
     private activeOcr?: AbortController;
 
     constructor(private opts: AttachmentManagerOptions) {
+        this.images = new ImageAttachments({getFiles: opts.getFiles, setFiles: files => {opts.setFiles(files); this.renderAttachments();},
+            getResize: () => opts.getImageResize?.() ?? {mode: 'max-edge', maxEdge: 1024}, setResize: opts.setImageResize,
+            flush: opts.flushFiles, persist: opts.persistFiles, changed: () => {opts.onImageStateChange?.();}});
         this.unsubscribe = opts.ocr?.subscribe(() => this.renderAttachments());
     }
 
@@ -64,13 +77,14 @@ export class AttachmentManager {
 
     addFiles(newFiles: File[]): void {
         this.opts.setFiles([...this.opts.getFiles(), ...newFiles]);
-        this.renderAttachments();
+        this.images.refresh(); this.renderAttachments();
     }
 
     renderAttachments(): void {
         const revision = ++this.revision;
         const files = this.opts.getFiles();
         if (files.length === 0) {
+            this.previews.render([], this.opts.attachmentContainer, () => {});
             this.opts.attachmentContainer.replaceChildren();
             this.opts.attachmentContainer.style.display = 'none';
             return;
@@ -78,6 +92,14 @@ export class AttachmentManager {
         this.opts.attachmentContainer.style.display = 'flex';
         const canOcr = !!this.opts.ocr;
         this.opts.attachmentContainer.innerHTML = ChatInputTemplates.renderAttachments(files, canOcr);
+        this.previews.render(files, this.opts.attachmentContainer, file => {void this.images.open(file);});
+        if (this.images.busy) {
+            const status = document.createElement('span'); status.className = 'llm-input__image-status'; status.setAttribute('role', 'status');
+            status.textContent = this.images.error ? t('image.failed', {error: String(this.images.error)}) : t('image.processing');
+            if (this.images.error) {const retry = document.createElement('button'); retry.type = 'button'; retry.textContent = t('image.retry');
+                retry.addEventListener('click', () => this.images.refresh(true)); status.append(retry);}
+            this.opts.attachmentContainer.append(status);
+        }
         const button = this.opts.attachmentContainer.querySelector<HTMLButtonElement>('[data-ocr-configure]');
         if (button && this.opts.ocr) {
             button.onclick = () => { void this.opts.ocr!.configure().catch(error => { button.title = String(error); }); };
@@ -321,6 +343,7 @@ export class AttachmentManager {
     // ── Cleanup ───────────────────────────────────────────────────────────
 
     destroy(): void {
+        this.images.destroy(); this.previews.destroy();
         this.revision++; this.activeOcr?.abort(); this.unsubscribe?.();
         this.addPopup?.destroy();
         this.addPopup = null;

@@ -1567,10 +1567,10 @@ export class SessionWorkbench implements WorkspaceController {
             const client = await remote.projectHarness(project.project.id, {timeoutMs: 3000});
             try { return (await client.profiles({timeoutMs: 3000})).profiles.filter(p => p.projectRuntime && p.capabilities.create)
                 .map(p => ({id: 'remote:' + encodeURIComponent(JSON.stringify([mount.connectionId, mount.serverProjectId, p.id])), name: `${remote.connectionName(mount.connectionId!) ?? project.displayName ?? project.name} · ${p.kind} · ${p.id}`,
-                    icon: ENTITY_ICONS.remoteAgent, category: t('harness.remoteAgents'), supportsModels: !!p.capabilities.models}));
+                    icon: ENTITY_ICONS.remoteAgent, category: t('harness.remoteAgents'), supportsModels: !!p.capabilities.models, attachmentKinds: p.capabilities.attachments}));
             } finally { await client.close(); }
         };
-        return {list: async () => { try { return await profiles(); } catch { return []; } }, models: id => this.remoteAgentModels(folder, id, profiles), send: async (id, text, nativeSelection) => {
+        return {list: async () => { try { return await profiles(); } catch { return []; } }, models: id => this.remoteAgentModels(folder, id, profiles), send: async (id, text, nativeSelection, files) => {
             if (!(await profiles()).some(p => p.id === id)) throw new Error(t('toolbox.unavailable'));
             const [connectionId, serverProjectId, profileId] = JSON.parse(decodeURIComponent(id.slice('remote:'.length))) as [string, string, string];
             const project = await projects.forFolder(folder);
@@ -1579,7 +1579,7 @@ export class SessionWorkbench implements WorkspaceController {
             const grant = projects.remoteMounts!.list(project.project.id).find(m => m.at === '/');
             if (grant?.connectionId !== connectionId || grant.serverProjectId !== serverProjectId) throw new Error(t('toolbox.unavailable'));
             if (!this.editor?.commands.sendMessage) throw new Error('Remote conversation editor unavailable');
-            if (await this.editor.commands.sendMessage({text, ...(nativeSelection ? {nativeSelection} : {})}) === false) throw new Error(t('toolbox.unavailable'));
+            if (await this.editor.commands.sendMessage({text, ...(files?.length ? {files} : {}), ...(nativeSelection ? {nativeSelection} : {})}) === false) throw new Error(t('toolbox.unavailable'));
         }};
     }
     private async remoteAgentModels(folder: string, id: string, profiles: () => Promise<Array<{id: string; supportsModels?: boolean}>>): Promise<import('@itookit/ui-common').ConversationModelCatalog> {

@@ -1,4 +1,7 @@
-import { createChatView, type ChatOptions, type ChatMessage, type ConversationActions,
+import {createImageChatView, type ImageChatOptions} from './image-chat-view';
+import type {ImageEditingHost} from './image-editing';
+import {prepareRemoteAttachments} from '../shell/remote-attachments';
+import { type ChatMessage, type ConversationActions,
     type InteractionView, type OperationLedger, type CommandSubmission, type OperationContext, type OperationReceipt } from '@itookit/llm-ui';
 import type { ConversationControls, ConversationSnapshot as NativeSnapshot } from '@itookit/ui-common';
 import { t } from '@itookit/common';
@@ -7,6 +10,7 @@ import {submitNativeCommand} from './native-command';
 import { ChatProjection } from './projection';
 
 export interface NativeChatBindingOptions {
+    readonly images?: ImageEditingHost;
     readonly conversationId: string;
     readonly commandProviders?: readonly NativeCommandProvider[];
     readonly controls: ConversationControls;
@@ -18,6 +22,7 @@ export interface NativeChatBindingOptions {
 /** Native transport/recovery stays in controls; this adapter only projects presentation. */
 export async function createNativeChatBinding(options: NativeChatBindingOptions) {
     const source = new ChatProjection(options.conversationId, options.onError);
+    const lifetime = new AbortController();
     let closed = false, generation = 0, native: NativeSnapshot | undefined;
     const capabilities = new NativeComposerCapabilities(options.controls, options.onError);
     const contributions = (state: NativeSnapshot) => options.commandProviders?.map(provider => ({source: provider.source, commands: provider.commands(state)})) ?? [];
@@ -79,13 +84,23 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
     const actions: ConversationActions = {
         async send(input, context) {
             if (!valid(context.viewId)) return { status: 'rejected', operationId: context.operationId, code: 'STALE_VIEW', message: 'Observation binding expired' };
-            if (input.attachments.length) return { status: 'rejected', operationId: context.operationId, code: 'ATTACHMENT_MAPPING_REQUIRED', message: 'Native attachments require host conversion' };
+            let attachments: NonNullable<Parameters<ConversationControls['send']>[1]> = [];
+            if (input.attachments.length) {
+                if (!options.images) return reject(context, 'ATTACHMENT_MAPPING_REQUIRED', 'Native attachments require host conversion');
+                try {
+                    const files: File[] = [];
+                    for (const ref of input.attachments) files.push(new File([await options.images.read(ref, {signal: lifetime.signal})], ref.name, {type: ref.mimeType}));
+                    attachments = await prepareRemoteAttachments(files, native?.attachments ?? []);
+                } catch (error) {return reject(context, 'INVALID_ATTACHMENT', String(error));}
+                if (!valid(context.viewId)) return reject(context, 'STALE_VIEW', 'Observation binding expired');
+            }
             let selection: import('@itookit/ui-common').ConversationModelSelection | undefined;
             try {selection = capabilities.selection(input.selection);}
             catch (error) {return {status: 'rejected', operationId: context.operationId, code: 'INVALID_SELECTION', message: String(error)};}
             const captured = generation;
             return submitNativeOperation(context, async () => {
-                const state = selection ? await options.controls.send(input.text, [], selection) : await options.controls.send(input.text);
+                const state = selection ? await options.controls.send(input.text, attachments, selection)
+                    : attachments.length ? await options.controls.send(input.text, attachments) : await options.controls.send(input.text);
                 publishResponse(state, captured); return state;
             }, true);
         },
@@ -124,12 +139,12 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             }
         } : undefined,
     };
-    return { source: Object.assign(source, { refresh }), actions, operations: options.operations,
-        dispose() { if (closed) return; closed = true; ++generation; capabilities.dispose(); releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]); } };
+    return { images: options.images, source: Object.assign(source, { refresh }), actions, operations: options.operations,
+        dispose() { if (closed) return; closed = true; lifetime.abort(); ++generation; capabilities.dispose(); releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]); } };
 }
 export function createNativeChatView(container: HTMLElement, binding: Awaited<ReturnType<typeof createNativeChatBinding>>,
-    options: Omit<ChatOptions, 'source' | 'actions' | 'operations'> = {}) {
-    return createChatView(container, { ...options, source: binding.source, actions: binding.actions, operations: binding.operations });
+    options: ImageChatOptions = {}) {
+    return createImageChatView(container, {...options, source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
 }
 function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger): ChatMessage {
     const record = operations.getSnapshot().find(item => (item.kind === 'send' || item.kind === 'command') && item.submissionRef && item.submissionRef === message.turnId);

@@ -38,6 +38,7 @@ export async function buildExecutorOptions(
             category: t('chatInput.assistants'),
             description: agent.description,
             defaultPrompts: [...presets.values()],
+            imageProcessing: agent.config.imageProcessing,
         });
     }
 

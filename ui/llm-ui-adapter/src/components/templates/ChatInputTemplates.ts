@@ -30,7 +30,7 @@ export const ChatInputTemplates = {
                     <button type="button" class="llm-input__settings-close" title="${t('chatSettings.close')}" aria-label="${t('chatSettings.close')}">${this.closeIcon()}</button>
                 </div>
                 <div class="llm-input__settings-body">
-                    <section class="llm-input__settings-group">
+                    <section class="llm-input__settings-group" data-local-settings>
                         <h3>${t('chatSettings.conversation')}</h3>
                         ${this.renderConnectionRow()}${this.renderTierRow()}${this.renderContextSetting()}
                         <div class="llm-input__settings-toggles">${this.renderThinkingSetting()}${this.renderWebSearchSetting()}</div>
@@ -38,7 +38,7 @@ export const ChatInputTemplates = {
                     <section class="llm-input__settings-group llm-input__ocr-preferences" data-ocr-preferences hidden>
                         <h3>${ACTION_ICONS.ocr} ${t('ocr.section')}</h3><div data-ocr-fields></div>
                     </section>
-                    <details class="llm-input__settings-advanced">
+                    <details class="llm-input__settings-advanced" data-local-settings>
                         <summary>${t('chatSettings.advanced')}</summary>
                         <div class="llm-input__settings-group">${this.renderSessionProfileSection()}${this.renderAdvancedSection()}${this.renderFlowInvocationRow()}</div>
                     </details>

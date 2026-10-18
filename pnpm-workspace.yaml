@@ -40,6 +40,7 @@ overrides:
   "@types/estree": "^1.0.9"
   "@itookit/driver-llm": "workspace:*"
   "@itookit/mdxeditor": "workspace:*"
+  "@itookit/image-parser": "workspace:*"
   "@itookit/piagent-driver": "workspace:*"
   "@itookit/vfs-core": "workspace:*"
   "@itookit/vfs-sync": "workspace:*"

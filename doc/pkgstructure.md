@@ -1,17 +1,17 @@
 
 ## Workspace Structure
 
-pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `mind-os`）。九个独立库（包括 llm-ui、mdxeditor、vfs-ui）均位于 `libraries/`。目录迁移保留全部包名和公共入口。
+pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应用契约与基础工具位于 `shared/`，宿主位于 `apps/`（`apps/web-app` = `mind-os`）。十个独立库（包括 llm-ui、mdxeditor、vfs-ui）均位于 `libraries/`。目录迁移保留全部包名和公共入口。
 
 | 目录 | 模块 |
 |---|---|
 | `ui/` | app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common |
 | `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、durable-kernel、kernel-adapters、tools、device-tty、sanbox、sync-adapters |
 | `shared/` | app-contracts、common、app-transport |
-| `libraries/` | driver-llm、piagent-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui |
+| `libraries/` | driver-llm、piagent-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser |
 | `apps/` | web-app、tauri-app、cli、http-app、demo、node-host（共享 Node 宿主适配包） |
 
-20 个业务/共享包 + 9 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 tools/pi-agent 工具工作区。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
+20 个业务/共享包 + 10 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 tools/pi-agent 工具工作区。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
 
 ### LLM 子系统分层（单向依赖）
 
@@ -41,6 +41,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/piagent-driver` | 统一 pi-agent 连接/凭据接入：文件、远程进程、HTTP 同步与 MCP harness 控制；独立于应用策略与 UI。 |
 | `@itookit/vfsdriver-local` | SQLite + 本地 FS 后端（Node/Electron）。 |
 | `@itookit/llm-ui` | 独立 Chat + Flow 通用 UI；只依赖 mdxeditor，Flow 由同包 /flow 子入口与功能开关控制。 |
+| `@itookit/image-parser` | 独立图片缩放、裁剪与 Scanic 透视校正；/ui 多图编辑面板，/vfs 可选授权读取。 |
 | `@itookit/llm-ui-adapter` | MindOS 的 Session/Task/Flow/VFS 接线与原产品编辑器兼容入口。 |
 | `@itookit/llm-settings-ui` | LLM 设置 UI：Agent/Provider/Connection/MCP/Skill/Cost/SystemPrompt 编辑器 + 配置导入导出（`llm-import`）。 |
 | `@itookit/vfs-ui` | 独立文件/资源浏览 UI：目录导航、标签、内容大纲；仅依赖 vfs-core，通过公开接口注入数据源、动作、展示和持久化。 |
@@ -66,7 +67,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 
 ### 独立 npm 库与同步接入
 
-八个独立库均位于 `libraries/`，以固定 Git 提交参与 pnpm workspace。应用和业务包消费源码 exports；各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 piagent-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
+独立库均位于 `libraries/`，参与 pnpm workspace；外部独立库以 Git 子模块固定提交，image-parser 也按相同方式管理；npm 发布与主仓库提交分开。应用和业务包消费源码 exports；各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 piagent-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
 
 VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依赖 better-sqlite3。vfs-sync、driver-llm 没有运行时包依赖。`backend/sync-adapters` 负责宿主同步接入，调用 vfs-sync 与驱动公共端口；同步范围和项目绑定由应用决定。
 

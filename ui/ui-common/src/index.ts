@@ -48,7 +48,7 @@ export type { SessionDraftControls, SessionDraftPreferences, SessionDraftMateria
 export { SettingsAutoSave, SettingsValidationError, requestSettingsSave } from './components/SettingsAutoSave';
 export type { SettingsSave } from './components/SettingsAutoSave';
 
-export type { ConversationModelCatalog, ConversationModelSelection, ConversationSlashCommand, ConversationAttachment, ConversationControls, ConversationSnapshot, ConversationMessage, ConversationRequest, RemoteAgentControls } from './interfaces/ConversationControls';
+export type { ConversationComposerDraft, ConversationModelCatalog, ConversationModelSelection, ConversationSlashCommand, ConversationAttachment, ConversationControls, ConversationSnapshot, ConversationMessage, ConversationRequest, RemoteAgentControls } from './interfaces/ConversationControls';
 export { conversationStatus } from './utils/conversation-status';
 
 export { installNavigationButtonPresentation } from './components/navigation-button';

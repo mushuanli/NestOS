@@ -1,4 +1,6 @@
-import { createChatView, type ChatOptions, type ConversationActions, type MessagePart,
+import {createImageChatView, type ImageChatOptions} from './image-chat-view';
+import type {ImageEditingHost} from './image-editing';
+import { type ConversationActions, type MessagePart,
     type OperationContext, type OperationLedger, type OperationReceipt, type SelectorView, type ComposerCommand, type CommandSubmission } from '@itookit/llm-ui';
 import { createAgentSendIntent, type SessionSubmission } from '@itookit/llm-flow/contracts';
 import { SessionCommand, type ExecutionNode, type ICommandBus,
@@ -6,6 +8,7 @@ import { SessionCommand, type ExecutionNode, type ICommandBus,
 import { ChatProjection } from './projection';
 
 export interface SessionChatBindingOptions {
+    readonly images?: ImageEditingHost;
     readonly session: SessionViewPort;
     readonly commands: ICommandBus;
     /** Hosts query committed evidence through the backend's hasCommittedSubmission. */
@@ -26,6 +29,7 @@ export function createSessionChatBinding(options: SessionChatBindingOptions) {
     return new SessionChatBinding(options);
 }
 class SessionChatBinding {
+    get images() {return this.options.images;}
     readonly source: ChatProjection;
     readonly actions: ConversationActions;
     readonly operations: OperationLedger;
@@ -104,8 +108,8 @@ class SessionChatBinding {
     }
 }
 export async function createSessionChatView(container: HTMLElement, binding: ReturnType<typeof createSessionChatBinding>,
-    options: Omit<ChatOptions, 'source' | 'actions' | 'operations'> = {}) {
-    return createChatView(container, { ...options, source: binding.source, actions: binding.actions, operations: binding.operations });
+    options: ImageChatOptions = {}) {
+    return createImageChatView(container, {...options, source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
 }
 function rejected(context: OperationContext, code: string, message: string): OperationReceipt {
     return { status: 'rejected', operationId: context.operationId, code, message };

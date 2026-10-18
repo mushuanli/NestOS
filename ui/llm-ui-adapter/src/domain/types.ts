@@ -60,6 +60,8 @@ export interface UIState {
 // ============================================================
 
 export interface ExecutorOption {
+    attachmentKinds?: Array<'text' | 'image'>;
+    imageProcessing?: import('@itookit/kernel-adapters/contracts').ImageProcessingPreference;
     supportsModels?: boolean;
     id: string;
     name: string;
@@ -102,6 +104,7 @@ export interface ConnectionOption {
 // ============================================================
 
 export interface ChatSessionSettings {
+    imageResize?: import('@itookit/kernel-adapters/contracts').ImageResizePolicy;
     executionMode?: ChatExecutionMode;
     /** Fixed after the first accepted direct run. */
     executionModeLocked?: boolean;

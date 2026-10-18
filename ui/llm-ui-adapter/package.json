@@ -120,7 +120,8 @@
     "@itookit/driver-llm": "workspace:*",
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/llm-tasks": "workspace:*",
-    "@itookit/tools": "workspace:*"
+    "@itookit/tools": "workspace:*",
+    "@itookit/image-parser": "workspace:*"
   },
   "peerDependencies": {
     "@itookit/llm-settings-ui": "workspace:*",

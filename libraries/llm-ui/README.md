@@ -110,3 +110,7 @@ pnpm --filter @itookit/llm-ui build
 ```
 
 构建检查源码、JavaScript、声明和发布出口。工作区使用源码入口，发布 tarball 使用 dist 入口；消费类型使用 TypeScript bundler 解析。浏览器样式由宿主显式导入。
+
+图片预处理及多图编辑通过可选 `ChatOptions.imageEditing` 注入，端口提供 `prepare`、`uploaded` 和 `edit`；宿主负责资源与原图元数据持久化。库本身不依赖图片处理包。编辑替换按附件项、资源 ID 与 revision 整组核对，发送接纳保留等待期间产生的新版本。
+
+ImageEditingPort may expose getRevision, subscribe and refresh to regenerate existing attachments when host policy changes. Upload and replacement results are fenced by policy and attachment versions; failures block submission until retried or removed. The host continues to own original resources and durable metadata.

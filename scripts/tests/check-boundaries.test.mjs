@@ -77,6 +77,16 @@ test('standalone mdxeditor has no internal package dependencies', () => {
     assert.equal(dependencyError('@itookit/mdx-adapter', '@itookit/mdxeditor'), undefined);
 });
 
+test('image-parser keeps VFS optional and outside the root and UI entries', () => {
+    const image = {...pkg('image-parser'), dir: '/repo/libraries/image-parser'};
+    assert.equal(dependencyError(image.name, 'scanic'), undefined);
+    assert.equal(dependencyError(image.name, '@itookit/vfs-core'), undefined);
+    assert.match(dependencyError(image.name, '@itookit/common'), /optional VFS/);
+    for (const entry of ['src/index.ts', 'src/ui.ts'])
+        assert.match(importError(image, resolve(image.dir, entry), '@itookit/vfs-core', packages), /optional vfs entry/);
+    assert.equal(importError(image, resolve(image.dir, 'src/vfs.ts'), '@itookit/vfs-core', packages), undefined);
+});
+
 test('standalone vfs-ui only depends on vfs-core internally', () => {
     for (const name of ['common', 'ui-common', 'llm-common', 'mdxeditor'])
         assert.match(dependencyError(vfs.name, '@itookit/' + name), /public ports/);

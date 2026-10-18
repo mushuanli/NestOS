@@ -7,7 +7,18 @@ export type ActionName = 'send' | 'command' | 'cancel' | 'retry' | 'edit' | 'res
 export type OperationKind = ActionName | 'flow.add-node' | 'flow.update-node' | 'flow.remove-node'
     | 'flow.connect' | 'flow.disconnect' | 'flow.save' | 'flow.run' | 'flow.cancel';
 export interface AttachmentRef { readonly id: string; readonly name: string; readonly mimeType?: string }
-export interface DraftAttachment { readonly id: string; readonly file: AttachmentRef }
+export interface DraftAttachment { readonly id: string; readonly file: AttachmentRef; readonly revision?: number }
+/** The host supplies image processing without introducing an image-library dependency. */
+export interface ImageEditingPort {
+    getRevision?(): string;
+    subscribe?(changed: () => void): () => void;
+    refresh?(items: readonly DraftAttachment[], options: {signal: AbortSignal}): ReturnType<ImageEditingPort['edit']>;
+    prepare?(file: File, options: {signal: AbortSignal}): Promise<File>;
+    uploaded?(file: File, ref: AttachmentRef, options: {signal: AbortSignal}): Promise<void>;
+    edit(items: readonly DraftAttachment[], activeId: string, options: {signal: AbortSignal}): Promise<readonly {
+        readonly id: string; readonly expectedFileId: string; readonly expectedRevision: number; readonly file: AttachmentRef;
+    }[] | undefined>;
+}
 export interface MessageTarget { readonly messageId: string; readonly expectedRevision: number }
 export type MessagePart =
     | { readonly id: string; readonly kind: 'markdown' | 'reasoning'; readonly text: string }
@@ -156,6 +167,7 @@ export interface ChatOptions {
     readonly assets?: AssetProvider;
     readonly onOpenResource?: (id: string) => Promise<void>;
     readonly upload?: (file: File, options: { signal: AbortSignal }) => Promise<AttachmentRef>;
+    readonly imageEditing?: ImageEditingPort;
     readonly searchResources?: (query: string, options: { signal: AbortSignal }) => Promise<readonly ResourceCandidate[]>;
     readonly renderers?: Readonly<Record<string, ExtensionRenderer>>;
     readonly mountToolbar?: (container: HTMLElement, context: ToolbarContext) => MountedToolbar;

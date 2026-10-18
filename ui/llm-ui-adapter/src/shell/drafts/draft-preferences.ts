@@ -1,3 +1,4 @@
+import {isImageResizePolicy} from '@itookit/kernel-adapters/contracts';
 import type {SessionDraftPreferences} from '@itookit/ui-common';
 import type {ChatInputSettings, IChatInputConfig} from '../../domain/ports/IChatInputPresenter';
 import type {ConnectionOption, ExecutorOption} from '../../domain/types';
@@ -10,6 +11,10 @@ export function inheritDraftPreferences(current: IChatInputConfig, preferences: 
     agents: readonly ExecutorOption[], connections: readonly ConnectionOption[], remote = false): IChatInputConfig {
     const next = {...current, settings: {...current.settings}};
     if (agents.some(agent => agent.id === preferences.agentId)) next.agentId = preferences.agentId!;
+    if (preferences.settings && Object.hasOwn(preferences.settings, 'imageResize')) {
+        const resize = preferences.settings.imageResize;
+        if (resize === undefined || isImageResizePolicy(resize)) next.settings.imageResize = resize;
+    }
     if (remote || preferences.agentId?.startsWith('remote:') || !preferences.settings) return next;
     const source = preferences.settings;
     Object.assign(next.settings, Object.fromEntries(portableSettings.filter(key => Object.hasOwn(source, key)).map(key => [key, source[key]])));

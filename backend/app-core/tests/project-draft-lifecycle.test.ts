@@ -33,6 +33,10 @@ it('only durable first-message evidence promotes a draft; unrelated Session crea
         await f.accept(); await f.lifecycle.recover(f.intent.sessionId, f.intent.submissionId);
         const next = await new ProjectDraftStore(f.fs, 'p').load();
         expect(next).toMatchObject({ state: 'draft', data: '' }); expect(next.id).not.toBe(f.intent.id);
+        expect(f.intent.sessionId).toBe(f.intent.id);
+        expect((await f.repo.getManifest(f.intent.id)).id).toBe(f.intent.id);
+        const nextStore = new ProjectDraftStore(f.fs, 'p'); await nextStore.load();
+        expect((await nextStore.begin('Next title')).sessionId).toBe(next.id);
         expect(notify).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
             type: 'project.draftPromoted', draftId: f.intent.id, sessionId: f.intent.sessionId, nextDraftId: next.id,
         }));

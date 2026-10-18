@@ -1,6 +1,6 @@
 # 独立库源码工作区与 npm 构建
 
-MindOS 默认消费固定 Git 提交的独立库源码。八个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui），保留独立仓库和 npm 发布能力。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
+MindOS 默认消费固定 Git 提交的独立库源码。九个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui），保留独立仓库和 npm 发布能力。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
 
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
@@ -10,8 +10,9 @@ MindOS 默认消费固定 Git 提交的独立库源码。八个独立库均位�
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
 | @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.3 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
-| @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.3 |
+| @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.4 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
+| @itookit/llm-ui | `libraries/llm-ui` | 0.2.0 |
 
 ## 源码开发
 
@@ -145,3 +146,14 @@ Rust pi-agent@0.2.0 提供目录 grants、稳定 owner 和独立执行权限；�
 三个 npm 制品均通过 dist 导出存在性、固定库间依赖及 SHA-256 校验；仓库外安装这三个 tarball 与其余五个注册表库后，通过八库 ESM/CommonJS、全部公开子路径、CSS、Memory/IndexedDB/SeqFile 与嵌入 HTML/折叠状态验证。TypeScript bundler 检查覆盖八库，NodeNext 检查覆盖其余七库；MDX 声明继续遵循既有 bundler 消费契约。
 
 源码验证：mdxeditor 55、piagent-driver 155、vfs-ui 203 项通过（另 1 项网络测试跳过）；Rust 完整测试 259 项通过、2 项跳过，格式检查与 release 构建通过。npm/registry 脚本 5 项通过，源码工作区冻结离线安装通过。npm 发布已发起，等待浏览器二次认证；本节不表示新版本已公开可下载。
+
+### 2026-10-18 会话内容搜索发布准备
+
+mdxeditor@0.5.4 提供通用的目标祖先展开入口，由代码块控件保留自身状态；llm-ui@0.2.0 首次发布独立 Chat/Flow 视图及已加载正文搜索，正式制品固定依赖 mdxeditor@0.5.4。
+
+两个正式 prepare tarball 已在仓库外安装，验证 ESM/CommonJS、Chat/Flow/CSS 导出、TypeScript bundler 声明、Vite 构建、搜索高亮、代码块展开与视图生命周期；没有工作区源码链接。相关源码测试 215 项通过；发布脚本 5 项、冻结离线安装与前端公开入口构建通过。npm 登录失效后已启动重新认证，本节尚不表示版本已公开发布。
+
+| 制品 | SHA-256 |
+|---|---|
+| @itookit/mdxeditor@0.5.4 | `f1d4a5cf08fd5917fc10ecf48484d809c195711380a99f45a8a54e6092a2cba8` |
+| @itookit/llm-ui@0.2.0 | `773b6a6987734de6400534f41d216375d75555444317ab3102d8774ec572881f` |

@@ -22,6 +22,8 @@ import { EventDispatcher } from './history/EventDispatcher';
 import { TtyController } from './tty/TtyController';
 import type { MDxPlugin } from '@itookit/mdxeditor';
 import type { MDxControllerOptions } from './mdx/MDxController';
+import type { ContentSearchView } from '@itookit/llm-ui';
+import { mountHistorySearch } from './history/content-search';
 
 export interface HistoryViewOptions {
     /** Optional host-owned controls inside the history scroll pane. */
@@ -72,6 +74,7 @@ export class HistoryView implements IHistoryPresenter {
     private bus?: IEditorEventBus;
     private suppressScrollHighlight = false;
     private onHistoryActivity?: HistoryViewOptions['onHistoryActivity'];
+    private readonly contentSearch?: ContentSearchView;
 
     constructor(container: HTMLElement, options: HistoryViewOptions) {
         this.container = container;
@@ -168,6 +171,10 @@ export class HistoryView implements IHistoryPresenter {
                 ],
             }
         );
+        this.contentSearch = mountHistorySearch(container, {
+            contents: () => this.renderer.searchContents(), prepare: () => this.renderer.prepareSearch(),
+            reveal: id => { this.revealSession(id); },
+        });
     }
 
     // ================================================================
@@ -593,7 +600,10 @@ export class HistoryView implements IHistoryPresenter {
         this.stream = new StreamController(this.container, this.renderer, this.scrollController);
     }
 
+    setActive(active: boolean): void { this.contentSearch?.setActive(active); }
+
     async destroy(): Promise<void> {
+        this.contentSearch?.destroy();
         this.timers.destroy();
         this.eventProcessor.destroy();
         this.scrollController.destroy();

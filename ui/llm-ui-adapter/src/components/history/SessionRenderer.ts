@@ -57,7 +57,18 @@ export class SessionRenderer {
 
     get editors(): Map<string, MDxController> { return this.editorMap; }
 
+    searchContents(): { id: string; element: HTMLElement }[] {
+        const mounts = [...this.editorMounts].filter(([, mount]) => this.container.contains(mount));
+        mounts.sort(([, a], [, b]) => a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
+        return mounts.flatMap(([id, mount]) => {
+            const element = mount.querySelector<HTMLElement>('.mdx-editor-container__render-mode');
+            return element && !this.editorMap.get(id)?.isEditing() ? [{ id, element }] : [];
+        });
+    }
 
+    async prepareSearch(): Promise<void> {
+        await Promise.all([...this.editorMap.values()].map(editor => editor.waitUntilReady()));
+    }
 
     getNode(nodeId: string): HTMLElement | null {
         return this.nodeMap.get(nodeId) || null;

@@ -28,6 +28,8 @@ import { InteractionPanel } from './InteractionPanel';
 import { delegate } from '../../utils/domEvents';
 
 export interface ChatInputOptions {
+    /** Host-owned menu slot for immutable conversation mode information. */
+    executionModeInfo?: HTMLElement;
     executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
     attachments?: boolean;
     attachmentAccept?: string;
@@ -244,7 +246,7 @@ export class ChatInput implements IChatInputPresenter {
         this.executionMode = new ExecutionModeControl(container, mode => {
             this.config.settings.executionMode = mode;
             this.notifyConfigChange();
-        }, options.maxAgentExchanges);
+        }, options.maxAgentExchanges, options.executionModeInfo);
         this.initExecutors();
         this.syncUIFromConfig();
         if (options.attachments === false) this.attachBtn.hidden = true;
@@ -469,6 +471,7 @@ export class ChatInput implements IChatInputPresenter {
         this.agentPopup = null;
         this.connectionTier.destroy();
         this.connectionReadiness.destroy();
+        this.executionMode.destroy();
         this.promptPopup?.destroy();
         this.promptPopup = null;
         this.attachmentMgr?.destroy();
@@ -920,7 +923,6 @@ export class ChatInput implements IChatInputPresenter {
         for (const selector of ['.llm-input__btn--settings', '.llm-input__model-trigger', '.llm-input__btn--websearch', '.llm-input__active-settings']) {
             for (const element of this.container.querySelectorAll<HTMLElement>(selector)) element.hidden = remote || flow;
         }
-        this.container.querySelector<HTMLElement>('.llm-input__execution-picker')!.hidden = remote;
         this.container.querySelector<HTMLElement>('.llm-input__agent-picker')!.hidden = flow;
         this.container.querySelector<HTMLElement>('.llm-input__execution-source')!.hidden = !remote;
         const flowButton = this.container.querySelector<HTMLButtonElement>('.llm-input__flow-configure')!;
@@ -943,7 +945,7 @@ export class ChatInput implements IChatInputPresenter {
     private syncExecutionMode(): void {
         this.syncRemoteControls();
         this.executionMode?.update({ mode: this.config.settings.executionMode, flow: Boolean(this.config.settings.flowId),
-            loading: this.loading, locked: this.config.settings.executionModeLocked });
+            loading: this.loading, locked: this.config.settings.executionModeLocked, remote: this.config.agentId.startsWith('remote:') });
     }
 
     private syncUIFromConfig(): void {
@@ -1256,7 +1258,6 @@ export class ChatInput implements IChatInputPresenter {
         this.config.agentId = id;
         this.currentAgentId = id;
         this.updateAgentTrigger();
-        this.syncRemoteControls();
         this.options.onExecutorChange?.(id);
         this.notifyConfigChange();
     }
@@ -1277,7 +1278,7 @@ export class ChatInput implements IChatInputPresenter {
             this.agentMetaEl.textContent = '';
             this.agentMetaEl.style.display = 'none';
         }
-        this.updatePromptPickerVisibility(); this.syncRemoteControls();
+        this.updatePromptPickerVisibility(); this.syncExecutionMode();
     }
 
     // ── Prompt Picker methods ─────────────────────────────────────────────────

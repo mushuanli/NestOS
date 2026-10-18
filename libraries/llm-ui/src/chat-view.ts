@@ -8,6 +8,7 @@ import { InteractionCard } from './interactions';
 import { translator } from './i18n';
 import { MessageView } from './message';
 import { FlowFeature } from './flow-feature';
+import { ConversationSearch } from './search';
 
 export class ChatController implements ChatView {
     private readonly root = element('section', 'llm-chat');
@@ -23,6 +24,7 @@ export class ChatController implements ChatView {
     private readonly composer: Composer;
     private readonly writer: DraftWriter;
     private readonly flow: FlowFeature;
+    private readonly search: ConversationSearch;
     private readonly rows = new Map<string, { view: MessageView; message: ChatMessage; permissions: string }>();
     private readonly cards = new Map<string, InteractionCard>();
     private readonly disposers: (() => void | Promise<void>)[] = [];
@@ -43,6 +45,7 @@ export class ChatController implements ChatView {
         this.t = translator(options.locale, options.translate);
         this.writer = new DraftWriter(options.saveDraft, error => this.report(error));
         this.flow = new FlowFeature(this.t('flow'), options.flow, error => this.report(error));
+        this.search = new ConversationSearch(this.root, this.history, this.t, () => { this.following = false; });
         this.composer = new Composer(options, this.t, draft => {
             this.writer.changed(draft);
             try { options.onDraftChange?.(draft); } catch (error) { this.report(error); }
@@ -68,11 +71,12 @@ export class ChatController implements ChatView {
             void this.options.source.refresh!().catch(error => this.report(error));
         }));
         header.append(button(this.t('prompts'), () => { this.prompts.hidden = !this.prompts.hidden; }));
+        header.append(this.search.button);
         header.append(button(this.t('print'), () => { void this.print().catch(error => this.report(error)); }));
         this.prompts.hidden = true; this.prompts.setAttribute('aria-label', this.t('prompts'));
         this.history.setAttribute('role', 'log');
         this.history.addEventListener('scroll', () => { this.following = this.history.scrollHeight - this.history.clientHeight - this.history.scrollTop < 32; });
-        this.root.append(header, this.toolbar, this.prompts, this.earlier, this.history, this.flow.pane, this.requests, this.operationStatus, this.composer.element);
+        this.root.append(header, this.toolbar, this.search.element, this.prompts, this.earlier, this.history, this.flow.pane, this.requests, this.operationStatus, this.composer.element);
         this.container.append(this.root);
     }
     private changed(): void {
@@ -143,6 +147,7 @@ export class ChatController implements ChatView {
             next = row.view.element.nextElementSibling;
         }
         this.follow();
+        this.search.refresh();
     }
     private messageRow(message: ChatMessage) {
         let row = this.rows.get(message.id);
@@ -150,7 +155,7 @@ export class ChatController implements ChatView {
         if (!row) {
             const view = new MessageView(this.options, this.t, {
                 edit: (target, text) => this.edit(target, text), retry: target => this.retry(target),
-            }, () => this.follow());
+            }, () => { this.follow(); this.search.refresh(); });
             row = { view, message, permissions }; this.rows.set(message.id, row); view.update(message, this.snapshot);
         } else if (message.revision !== row.message.revision || permissions !== row.permissions) {
             row.message = message; row.permissions = permissions; row.view.update(message, this.snapshot);
@@ -262,7 +267,10 @@ export class ChatController implements ChatView {
         try { await service.printFromHtml(this.history.innerHTML, { title: this.snapshot.title, locale: this.options.locale }); }
         finally { service.destroy(); }
     }
-    setActive(active: boolean): void { if (this.closed) return; this.active = active; this.flow.setActive(active); if (active) this.changed(); }
+    setActive(active: boolean): void {
+        if (this.closed) return;
+        this.active = active; this.flow.setActive(active); this.search.setActive(active); if (active) this.changed();
+    }
     setFlowEnabled(enabled: boolean): Promise<void> { return this.flow.setEnabled(enabled); }
     focus(): void { if (!this.closed && this.active) this.composer.textarea.focus(); }
     getDraft() { return this.composer.getDraft(); }
@@ -274,6 +282,7 @@ export class ChatController implements ChatView {
         this.closed = true; this.composer.destroy(); this.writer.stop();
         for (const abort of this.reads) abort.abort();
         const steps = [...this.disposers, () => this.writer.flush(), () => this.slot?.destroy(), () => this.flow.destroy(),
+            () => this.search.destroy(),
             ...[...this.rows.values()].map(row => () => row.view.destroy()),
             ...[...this.cards.values()].map(card => () => card.destroy()), () => this.root.remove()];
         return this.disposed = disposeAll(steps);

@@ -383,6 +383,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const validAgentId = validateAgentId(this.agentService, savedAgentId);
 
         this.chatInput = new ChatInput(inputEl, {
+            executionModeInfo: this.container.querySelector<HTMLElement>('.llm-workspace-titlebar__mode-info')!,
             executorUsage: this.options.executorUsage,
             onSwitchExecutionTarget: this.options.onStartConversationDraft ? async input => {
                 await this.flushPendingSave(); await this.options.onStartConversationDraft!(input);
@@ -974,6 +975,7 @@ export class LLMWorkspaceEditor implements IEditor {
     cancelPendingRender(): void {
         ++this.activationRevision;
         this.viewActive = false; this.invocationPanel?.setVisible(false);
+        this.historyView?.setActive?.(false);
         if (this.refreshAgentsTimer) clearTimeout(this.refreshAgentsTimer);
         this.refreshAgentsTimer = null;
         void this.runAttachment?.detach().catch(error => console.error('[View] Task detach failed', error));
@@ -985,6 +987,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const revision = ++this.activationRevision;
         const isCurrent = () => revision === this.activationRevision && this.viewActive && !this.destroyPromise;
         this.viewActive = true;
+        this.historyView?.setActive?.(true);
         const loaded = await this.sessionService.loadSession(this.options.sessionId, this.currentTitle, this.branchStore.currentBranch?.name);
         if (!isCurrent()) return;
         this.bindSessionEvents();

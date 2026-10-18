@@ -219,7 +219,7 @@ it('enables native branch creation and announces the new remote identity for hos
 });
 it('shows the remote error details and allows history loading to be retried',async()=>{
     const {editor,peer,host}=setup();vi.mocked(peer.read).mockRejectedValueOnce(new Error('Native path unavailable'));
-    await editor.init(host);expect(host.querySelector('[role="status"]')?.textContent).toContain('Native path unavailable');
+    await editor.init(host);expect(host.querySelector('.remote-conversation__status')?.textContent).toContain('Native path unavailable');
     expect(host.querySelector('.llm-workspace-status__dot')?.classList.contains('--failed')).toBe(true);
     host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
     await vi.waitFor(()=>expect(host.querySelector('.mdx-editor-renderer')).not.toBeNull());await editor.destroy();
@@ -323,7 +323,7 @@ it('keeps the shared input locked against repeated sends after an unknown native
     const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
     const send = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
     input.value = 'keep native input'; input.dispatchEvent(new Event('input')); send.click();
-    await vi.waitFor(() => expect(host.querySelector('[role="status"]')?.textContent).toContain(t('chat.submission.unknown')));
+    await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent).toContain(t('chat.submission.unknown')));
     expect(send.disabled).toBe(true); expect(input.value).toBe('keep native input');
     send.click(); input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
     expect(peer.send).toHaveBeenCalledOnce(); await editor.destroy();
@@ -411,7 +411,7 @@ it('uses local receipt observations when native history cannot be read after an 
     vi.mocked(peer.read).mockRejectedValue(new Error('Network unavailable'));
     await expect(editor.sendText('uncertain')).rejects.toBeDefined();
     expect(host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
-    expect(host.querySelector('[role="status"]')?.textContent).toContain(t('chat.submission.unknown'));
+    expect(host.querySelector('.remote-conversation__status')?.textContent).toContain(t('chat.submission.unknown'));
     expect([...host.querySelectorAll('button')].find(button => button.textContent === t('harness.reconcile'))!.disabled).toBe(false);
     expect(host.querySelector('.llm-workspace-status__dot')?.classList.contains('--queued')).toBe(true);
     await expect(editor.sendText('uncertain')).rejects.toThrow(); expect(peer.send).toHaveBeenCalledOnce(); await editor.destroy();

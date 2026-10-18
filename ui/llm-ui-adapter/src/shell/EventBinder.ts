@@ -44,14 +44,14 @@ export class EventBinder {
         if (!menu) return;
         const content = menu.querySelector<HTMLElement>('.llm-workspace-titlebar__menu-actions');
         this.disposeHostMenu?.();
-        if (content) this.disposeHostMenu = this.callbacks.mountMoreMenu?.(content);
+        if (content) this.disposeHostMenu = this.callbacks.mountMoreMenu?.(content.querySelector('.llm-workspace-titlebar__host-actions') ?? content);
         const titlebar = menu.closest<HTMLElement>('.llm-workspace-titlebar');
         const toolbar = titlebar?.querySelector<HTMLElement>('.llm-workspace-titlebar__primary');
         if (titlebar && toolbar) {
-            const actions = ['llm-btn-refresh', 'llm-btn-session-rerun', 'llm-btn-copy']
+            const actions = ['llm-btn-prompt-nav', 'llm-btn-collapse', 'llm-btn-refresh', 'llm-btn-session-rerun', 'llm-btn-copy']
                 .flatMap(id => { const button = menu.querySelectorAll<HTMLElement>('#' + id)[0]; return button ? [button] : []; });
             this.disposeResponsive?.();
-            this.disposeResponsive = installResponsiveActions({ container: titlebar, toolbar, actions, minWidth: 760,
+            this.disposeResponsive = installResponsiveActions({ container: titlebar, toolbar, actions, minWidth: 769,
                 fallbackFocus: menu.querySelector('summary')! });
         }
         this.events.add(document, 'click', event => {

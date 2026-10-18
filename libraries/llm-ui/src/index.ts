@@ -5,6 +5,8 @@ import { ChatController } from './chat-view';
 export type * from './contracts';
 export { createOperationLedger } from './operations';
 export type { OperationLedgerOptions } from './operations';
+export { createContentSearch } from './search';
+export type { ContentSearchOptions, ContentSearchView, SearchContent } from './search';
 
 export async function createChatView(container: HTMLElement, options: ChatOptions): Promise<ChatView> {
     const controller = new ChatController(container, options);

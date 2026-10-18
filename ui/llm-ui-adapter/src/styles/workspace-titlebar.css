@@ -400,3 +400,8 @@
 .llm-branch-indicator-bar, .llm-workspace-status { flex-shrink: 0; }
 
 .llm-workspace-status[hidden] { display: none; }
+.llm-workspace-titlebar__mode-info:empty, .llm-workspace-titlebar__host-actions:empty { display: none; }
+@media (max-width: 768px) {
+    .llm-workspace-titlebar__menu-actions { width: min(300px, calc(100vw - 16px)); max-height: 70dvh; }
+    .llm-workspace-titlebar__menu-actions .llm-workspace-titlebar__btn:not([hidden]) { min-height: 44px; }
+}

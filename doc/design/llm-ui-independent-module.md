@@ -31,7 +31,7 @@ C4Component
 
 | 模块 | 公开入口 | 职责 |
 | --- | --- | --- |
-| 独立 llm-ui | 根入口 createChatView、createOperationLedger | 聊天展示、草稿附件、消息操作、交互卡片、提及候选、选择器和扩展 |
+| 独立 llm-ui | 根入口 createChatView、createOperationLedger | 聊天展示、已加载内容搜索与定位、草稿附件、消息操作、交互卡片、提及候选、选择器和扩展 |
 | 独立 llm-ui | /flow 的 createFlowView | 节点与端口、连线、检查器、布局、运行状态及输出 |
 | MindOS 适配 | llm-ui-adapter/independent | Session 与原生会话投影到同一 ChatView |
 | MindOS 兼容入口 | llm-ui-adapter/chat、/conversation、/settings、/startup | 保留完整产品编辑器、Flow 业务表单、菜单、项目草稿与设置接线 |
@@ -122,6 +122,21 @@ Chat 通过 features.flow 控制 Flow 入口，默认关闭。启用后点击入
 ## 7 Markdown、扩展与生命周期
 
 mdxeditor 的 [公开契约](../../libraries/mdxeditor/src/editor/contracts.ts)提供 AssetProvider、EditorHost、StoreFactory、翻译、HTML 和滚动策略。独立库直接消费公开 API，资源权限由宿主把关。
+
+已加载内容搜索属于 llm-ui；适配层按当前 DOM 展示顺序投影稳定身份与正文，向前分页后保留当前命中。导航先通过宿主展开历史卡片，再调用 mdxeditor 的 `revealRenderedContent(target, root)` 展开目标祖先 details 与代码块，最后测量并滚动历史视口。代码块控件维护自身展开状态，搜索层不读取其内部样式，也不展开无关代码块。搜索 DOM 标识使用实例序号，不依赖 Web Crypto。
+
+```mermaid
+C4Dynamic
+    title 已加载内容搜索与定位
+    Component(search, "ContentSearch", "llm-ui", "匹配、计数与导航")
+    Component(history, "HistoryView / SessionRenderer", "适配层", "按展示顺序投影正文")
+    Component(mdx, "mdxeditor", "Markdown", "维护 details 与代码块展开")
+    RelIndex(1, search, history, "准备并读取已加载正文")
+    RelIndex(2, search, search, "匹配并保留当前命中身份")
+    RelIndex(3, search, history, "展开命中历史卡片并暂停贴底")
+    RelIndex(4, search, mdx, "revealRenderedContent：展开目标祖先")
+    RelIndex(5, search, search, "测量目标并滚动历史视口")
+```
 
 非可信 Markdown 使用 literal HTML 策略；链接/图片另外限制 URL 协议。结构化 extension 必须由宿主登记 renderer，普通代码围栏不能冒充扩展；未知类型显示占位，不执行 data。宿主 renderer 是可信代码扩展点，不是沙箱。打印使用同一份受控渲染内容。
 

@@ -24,3 +24,12 @@
 
 .llm-chat__flow { min-height: 320px; height: 45%; border-block: 1px solid var(--llm-chat-border); }
 .llm-chat__flow > div { height: 100%; }
+.llm-chat__search:not([hidden]) { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--llm-chat-border); }
+.llm-chat__search-input { flex: 1; min-width: 120px; padding: 6px 8px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--llm-chat-border); border-radius: 5px; }
+.llm-chat__search-status { min-width: 5ch; font-size: .85rem; }
+.llm-chat__search-scope { opacity: .7; }
+.llm-chat__search-match { color: inherit; background: #ffdf70; border-radius: 2px; }
+.llm-chat__search-match[data-active="true"] { background: #ffad42; outline: 2px solid var(--llm-chat-accent); }
+.llm-chat__search button { font: inherit; cursor: pointer; color: inherit; background: transparent; border: 1px solid var(--llm-chat-border); border-radius: 5px; padding: 4px 10px; }
+.llm-chat__search button:disabled { opacity: .5; cursor: default; }
+@media (max-width: 600px) { .llm-chat__search:not([hidden]) { padding: 8px; } .llm-chat__search button { min-height: 36px; } }

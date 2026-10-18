@@ -4,23 +4,25 @@
 
 本地与原生会话的标题栏共享 `EventBinder` 更多菜单；宿主可通过 `EditorOptions.mountMoreMenu` 注入资源动作并返回清理函数。会话归属与关联创建由 app-shell 提供，不进入聊天或 Markdown 组件；关闭编辑器须释放注入菜单。
 
+HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已加载正文；历史卡片与滚动归适配层，Markdown 内部展开归 mdxeditor。生命周期与流程见 [独立模块设计](../../doc/design/llm-ui-independent-module.md#7-markdown扩展与生命周期)，回归见 app-shell 的 conversation-content-search。
+
 本地、原生和草稿标题栏均消费 `mountCompactNavigation`，仅在小屏替代原标题区并通过公开 data-editor-mobile-navigation 标记通知宿主；桌面标题与菜单保持可用。项目标签、窗口切换和返回业务归宿主。小屏输入从一行增长，长草稿限于可视高度的 22%（最多 160px）后内部滚动；触屏 Return 换行，发送按钮或 Ctrl/Meta+Enter 提交，IME 确认不发送。焦点标记 data-editor-composing 供宿主调整导航，销毁清理。历史视口随键盘或输入增长改变时，仅在原本跟随末尾时继续贴底，阅读旧消息时保留位置。
 
-本地模型输入通过 `ConnectionReadiness` 提前呈现配置读取、缺少默认连接、停用、凭据未就绪及缺少聊天模型，提供选择连接、定位 Provider 授权/连接设置和读取重试入口。发送前刷新安全元数据，失败保留文字及附件；不探测密钥有效性，不自动重发。原生执行器使用自身配置，Flow 使用各槽位校验，直接命令和插件消费的斜杠命令保持可用。停用连接仍可见但不可选择。`EditorOptions.executorUsage` 由宿主注入，助手列表在类别内按成功提交时间排序；选择、编辑、直接命令和失败提交不记使用时间。`onSend` 返回 false 表示宿主拒绝提交；本地与原生共用提交确认逻辑，确认前保留原输入，确认后仅移除已提交附件，且不覆盖等待期间的新文字或附件。回归见 app-shell 的 connection-readiness、executor-usage 与 toolbox-workbench。
+本地模型输入通过 `ConnectionReadiness` 提前呈现配置读取、缺少默认连接、停用、凭据未就绪及缺少聊天模型，提供选择连接、定位 Provider 授权/连接设置和读取重试入口。发送前刷新安全元数据，失败保留文字及附件；不探测密钥有效性，不自动重发。原生执行器使用自身配置，Flow 使用各槽位校验，直接命令和插件消费的斜杠命令保持可用。停用连接仍可见但不可选择。`EditorOptions.executorUsage` 由宿主注入，智能体列表在类别内按成功提交时间排序；选择、编辑、直接命令和失败提交不记使用时间。`onSend` 返回 false 表示宿主拒绝提交；本地与原生共用提交确认逻辑，确认前保留原输入，确认后仅移除已提交附件，且不覆盖等待期间的新文字或附件。回归见 app-shell 的 connection-readiness、executor-usage 与 toolbox-workbench。
 
-标题栏「提问目录」由 `PromptNavigator` 提供，按钮仅显示图标，与折叠/展开所有按钮常驻；历史始终可见，不恢复旧隐藏状态。目录打开即显示最近提问在前的列表及过滤框，不分页；默认展示全部（超过 100 条时先展示最近 100 条，可继续展开），过滤查询全部已加载提问，重开清除旧过滤。保留开头/中间/最近定位、单行/三行摘要；宽屏浮层、窄屏底部面板。点击仅展开目标用户卡片，再在历史容器内滚动、聚焦和高亮；引用 details 保持折叠。原生摘要依据 contentPartKinds 排除明确来源的注入上下文。若打开目录时已加载片段没有用户提问，RemoteConversationEditor 按需最多向前读 3 页，找到提问即停；错误停止并保留手动重试，其余更早历史仍由用户加载，不随通知/轮询自动补齐。本地目录与批量导航共享历史快照和在途读取；两面板均关闭时变更只标脏，可见时合并刷新，打开时读取最新数据，迟到响应不能覆盖新快照。目录语义属于 llm-ui，不进入 mdxeditor 或 pi-agent。回归见 app-shell 的 prompt-navigation、remote-conversation-editor 和 http-full-shell。
+标题栏「提问目录」由 `PromptNavigator` 提供，按钮仅显示图标；宽屏与折叠/展开所有按钮并列，窄屏两者进入顶部更多菜单，只保留搜索和更多两个常驻入口。菜单在右上角就近展开，不移到底部；历史始终可见，不恢复旧隐藏状态。目录打开即显示最近提问在前的列表及过滤框，不分页；默认展示全部（超过 100 条时先展示最近 100 条，可继续展开），过滤查询全部已加载提问，重开清除旧过滤。保留开头/中间/最近定位、单行/三行摘要；宽屏浮层、窄屏底部面板。点击仅展开目标用户卡片，再在历史容器内滚动、聚焦和高亮；引用 details 保持折叠。原生摘要依据 contentPartKinds 排除明确来源的注入上下文。若打开目录时已加载片段没有用户提问，RemoteConversationEditor 按需最多向前读 3 页，找到提问即停；错误停止并保留手动重试，其余更早历史仍由用户加载，不随通知/轮询自动补齐。本地目录与批量导航共享历史快照和在途读取；两面板均关闭时变更只标脏，可见时合并刷新，打开时读取最新数据，迟到响应不能覆盖新快照。目录语义属于 llm-ui，不进入 mdxeditor 或 pi-agent。回归见 app-shell 的 prompt-navigation、remote-conversation-editor 和 http-full-shell。
 
-新建草稿的 `DraftExecutionPicker` 区分助手对话、原生执行器和工作流；前两者筛选现有执行器，保留草稿、附件及独立连接设置，切换不创建会话。工作流入口先保存草稿再导航现有流程库，参数与连接槽继续由 FlowLauncher 和 FlowParameterForm 提交。Agent 不按 Provider 派生新类型。
+新建草稿的 `DraftExecutionPicker` 区分智能体对话、原生执行器和工作流；前两者筛选现有执行器，保留草稿、附件及独立连接设置，切换不创建会话。工作流入口先保存草稿再导航现有流程库，参数与连接槽继续由 FlowLauncher 和 FlowParameterForm 提交。Agent 不按 Provider 派生新类型。
 
-模型菜单按连接及 Provider 分组，展示该连接配置的聊天模型，一次选择原子更新 connectionId/modelTier；`auto` 持久值显示「跟随默认」，不宣称智能选模。模型档位与推理强度独立。harness 显示只读「原生配置」，Flow 显示节点模型并导航流程定义，不展示本地助手或全局模型设置。助手指令/工具通过宿主导航配置；设置凭据仍在连接管理。
+模型菜单按连接及 Provider 分组，展示该连接配置的聊天模型，一次选择原子更新 connectionId/modelTier；`auto` 持久值显示「跟随默认」，不宣称智能选模。模型档位与推理强度独立。harness 显示只读「原生配置」，Flow 显示节点模型并导航流程定义，不展示本地智能体或全局模型设置。智能体指令/工具通过宿主导航配置；设置凭据仍在连接管理。
 
 聊天候选复用 kernel-adapters/contracts 的纯函数 resolveChatModelTiers，各档位的真实解析由 resolveChatModelForTier 提供，显式无效模型不回退掩盖；排除目录中不存在或明确非聊天的模型；构建将该纯契约代码内联到独立入口，不增加发布时的后端依赖。
 
-会话中通过更多菜单切换执行方式，宿主注入 `onStartConversationDraft`。编辑器先保存原输入，再将输入及附件交给项目草稿；已存在的草稿追加内容，不覆盖原文字/附件，不自动发送，不中断当前任务，也不自动迁移跨执行器历史。普通模型、连接和助手选择继续在两轮之间生效，当前轮执行配置保持冻结。回归见 app-shell 的 execution-configuration、project-workbench-ui 与 remote-conversation-editor。
+会话中通过更多菜单切换执行方式，宿主注入 `onStartConversationDraft`。编辑器先保存原输入，再将输入及附件交给项目草稿；已存在的草稿追加内容，不覆盖原文字/附件，不自动发送，不中断当前任务，也不自动迁移跨执行器历史。普通模型、连接和智能体选择继续在两轮之间生效，当前轮执行配置保持冻结。回归见 app-shell 的 execution-configuration、project-workbench-ui 与 remote-conversation-editor。
 
 远程会话快照和渲染更新异常显示「会话更新失败」及原因，不推断连接断开；连接状态消费端口 observation。成功更新清除临时错误，失败保留输入草稿且不自动重发。
 
-原生远程 harness 会话经 `ConversationControls` 注入，复用 `LayoutTemplates`、`HistoryView`/`SessionRenderer`和 `ChatInput`，不另写历史卡片和 textarea。`RemoteConversationEditor` 仅适配原生分页、分支、审批、回执和草稿；`remote-rounds` 按原生 turnId 投影每轮独立的用户 MDx 与响应 MDx，保留请求数组、全部助手回复及思考。用户数组的文字项由 contentParts 保留边界，展示和复制时用 `\n\n---\n\n` 分隔；单条文本内部换行不拆项。工具显示名称、操作、首个非空命令行（最多 240 个字符）和目标路径，不展示完整参数、后续代码或输出；助手正文的代码块继续使用共享折叠控件。仅去除 submitted 乐观消息的原生回显，不按文本去重真实请求。时间使用原生毫秒时间，未知时间留空；branchName 独立于会话标题。缺少 turnId 的旧数据按用户消息边界投影。更早历史由顶部加载入口或明确的定位请求按需逐页读取，不自动补齐全部历史；失败保留提示与手动重试入口，不随通知或轮询重复请求。宿主提供订阅时读取本地快照，缺少订阅才使用轮询回退。快照更新保留 MDx 实例。原生历史只读，隐藏未声明的本地编辑/重生成功能；发送与中断直达远程控制端口，不调用本地 Session 或 Kernel。
+原生远程 harness 会话经 `ConversationControls` 注入，复用 `LayoutTemplates`、`HistoryView`/`SessionRenderer`和 `ChatInput`，不另写历史卡片和 textarea。`RemoteConversationEditor` 仅适配原生分页、分支、审批、回执和草稿；`remote-rounds` 按原生 turnId 投影每轮独立的用户 MDx 与响应 MDx，保留请求数组、全部智能体回复及思考。用户数组的文字项由 contentParts 保留边界，展示和复制时用 `\n\n---\n\n` 分隔；单条文本内部换行不拆项。工具显示名称、操作、首个非空命令行（最多 240 个字符）和目标路径，不展示完整参数、后续代码或输出；智能体正文的代码块继续使用共享折叠控件。仅去除 submitted 乐观消息的原生回显，不按文本去重真实请求。时间使用原生毫秒时间，未知时间留空；branchName 独立于会话标题。缺少 turnId 的旧数据按用户消息边界投影。更早历史由顶部加载入口或明确的定位请求按需逐页读取，不自动补齐全部历史；失败保留提示与手动重试入口，不随通知或轮询重复请求。宿主提供订阅时读取本地快照，缺少订阅才使用轮询回退。快照更新保留 MDx 实例。原生历史只读，隐藏未声明的本地编辑/重生成功能；发送与中断直达远程控制端口，不调用本地 Session 或 Kernel。
 
 原生会话标题栏复用 EventBinder 的响应式菜单与事件、StatusIndicatorView、BranchIndicatorTemplates、FloatingNavPanel 和 LLMPrintService。侧栏按钮由宿主 toggleSidebar 决定可用性，与原生执行能力无关。ConversationHistoryNavigation 消费渲染后的轮次，不调用本地 Session 命令；导航只读模式保留复制、滚动和折叠，移除上下文修改、历史删除及轮次分支操作。原生分支切换使用 ID，名称只作显示；创建入口收进共享下拉列表。打印通过带 literalHtml 扩展的 MDxRenderer 保留屏幕上的 HTML 字面显示策略。
 
@@ -28,7 +30,7 @@
 
 Web 首屏仅通过 `@itookit/llm-ui-adapter/startup` 加载 Flow 模板和菜单；完整入口 `@itookit/llm-ui-adapter` 在首次打开聊天、Agent、Flow 或 Skill 正文时异步加载。`vite.startup.config.ts` 为发布包生成独立的 `dist/startup.js`。
 
-ChatInput 工具栏的「对话 / 执行」由 `ExecutionModeControl` 呈现，通过具名 `ExecutionModeViewState` 接收展示状态；模式及 executionModeLocked 随 Session settings 保存；首次直接运行获准入队后固定，停止或失败不解锁，新草稿仍可选择。发送/重新生成显式携带模式，Flow 会话禁用开关。工具由宿主与 llm-session 装配：未配置白名单时执行模式使用宿主默认工具，显式白名单优先；UI 不自行枚举工具或改变目录授权。Task 过滤与预算由 llm-session 固定。相关回归在 app-shell 的 `chat-execution-mode.test.ts`。
+ChatInput 工具栏的「对话 / 执行」由 `ExecutionModeControl` 呈现，通过具名 `ExecutionModeViewState` 接收展示状态；模式及 executionModeLocked 随 Session settings 保存；首次直接运行获准入队后固定，停止或失败不解锁，新草稿仍可选择。模式固定后隐藏输入区选择器，经 ChatInputOptions.executionModeInfo 在顶部更多菜单显示只读模式与说明，销毁释放外部挂载；原生执行器不显示本地模式。发送/重新生成显式携带模式，Flow 会话禁用开关。工具由宿主与 llm-session 装配：未配置白名单时执行模式使用宿主默认工具，显式白名单优先；UI 不自行枚举工具或改变目录授权。Task 过滤与预算由 llm-session 固定。相关回归在 app-shell 的 `chat-execution-mode.test.ts`。
 
 ## 关键边界
 
@@ -52,7 +54,7 @@ Harness 工具卡片由 `node:appended` 立即挂载，再消费 `tool:running/s
 
 斜杠命令链见 [slash-commands.md](./doc/slash-commands.md)。
 
-`commands/direct-command.ts` 分离输入策略 `parseDirectCommand`、宿主执行分派 `dispatchDirectCommand` 与终态读取 `readDirectCommandOutcome`；发送、用户重发、助手重试（追溯关联用户输入）、编辑重跑及会话重新运行共用该规则。`CommandContext.executeDirectCommand` 连接已有 exec 控制面；`resolveSubmission` 仅普通发送使用。普通消息仍走各自轮次/分支命令，直接命令不会回退到 LLM，也不锁定对话模式。编辑器仅装配端口，不识别输入语法。
+`commands/direct-command.ts` 分离输入策略 `parseDirectCommand`、宿主执行分派 `dispatchDirectCommand` 与终态读取 `readDirectCommandOutcome`；发送、用户重发、智能体重试（追溯关联用户输入）、编辑重跑及会话重新运行共用该规则。`CommandContext.executeDirectCommand` 连接已有 exec 控制面；`resolveSubmission` 仅普通发送使用。普通消息仍走各自轮次/分支命令，直接命令不会回退到 LLM，也不锁定对话模式。编辑器仅装配端口，不识别输入语法。
 
 直接命令没有会话轮次：`LLMWorkspaceEditor.handleRunEvent` 在 `task.succeeded/failed/cancelled` 时经 `RunAttachmentController.current()` 读取 `task.exit`，把 stdout/退出码或失败原因渲染到 `ChatInputView.showToolOutput`（`ToolOutputPanel`，图标来自 `FEEDBACK_ICONS`）；输出不写回会话历史，失败不再只留在 console。
 
@@ -97,7 +99,7 @@ Skill 面板区分指令加载与 Agent 工具授权，配置入口通过 Agent 
 
 ChatInput 设置按对话、OCR、高级分组；高级项默认折叠。Skills 和授权管理不嵌入设置，显式 `/skills` 打开独立管理器。OCR 只选择连接并提供当前识别提示词编辑入口。
 
-会话呈现以正文为主：共享 780px 阅读列，用户浅色气泡、助手无外框，操作放在正文下方；成功回答不显示状态标签，运行/失败状态保留。工具参数和结果由原生 details 默认折叠，失败自动展开，进度在摘要外显示；思考默认折叠。输入栏的模型选择器统一连接与档位，更多菜单收纳搜索、设置、预设提示词和帮助，模式说明随模式菜单展开，用量随输入区下方 details 展开。菜单需支持键盘退出及点击外部关闭；远程会话不暴露本地设置。DOM 回归位于 app-shell 的 conversation-layout、chat-input-settings、chat-connection-refresh 与 tool-history-live 测试。
+会话呈现以正文为主：共享 780px 阅读列，用户浅色气泡、智能体无外框，操作放在正文下方；成功回答不显示状态标签，运行/失败状态保留。工具参数和结果由原生 details 默认折叠，失败自动展开，进度在摘要外显示；思考默认折叠。输入栏的模型选择器统一连接与档位，更多菜单收纳搜索、设置、预设提示词和帮助，模式说明随模式菜单展开，用量随输入区下方 details 展开。菜单需支持键盘退出及点击外部关闭；远程会话不暴露本地设置。DOM 回归位于 app-shell 的 conversation-layout、chat-input-settings、chat-connection-refresh 与 tool-history-live 测试。
 
 项目新会话 UI 位于 `src/shell/drafts/`：编辑器只消费 ui-common 的 `SessionDraftControls`，输入序列化与保存队列独立。materialize 返回明确的编辑器/提交标识/恢复行为，不能修改宿主 options 传递状态；项目转正策略、持久化和接受判定不进入 UI。
 

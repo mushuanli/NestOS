@@ -6,6 +6,7 @@ import {compactNavigation} from './compact-navigation';
 
 export interface WorkbenchTab<T> {
     context?: string;
+    location?: string;
     statusIcon?: string; statusTooltip?: string;
     icon?: string;
     id: string; title: string; pinned: boolean; preview: boolean;
@@ -13,6 +14,7 @@ export interface WorkbenchTab<T> {
     subscriptions: (() => void)[];
 }
 interface TabActions<T> {
+    describe?(tab: WorkbenchTab<T>): Promise<{ context?: string; location?: string }>;
     activate(id: string): Promise<void>;
     dispose(tab: WorkbenchTab<T>): Promise<void>;
     empty(): void;
@@ -29,6 +31,7 @@ export class WorkbenchTabs<T> {
     private readonly entries = new Map<string, WorkbenchTab<T>>();
     private readonly closed: { id: string; title: string }[] = [];
     private readonly selected = new Set<string>();
+    private readonly metadataRevisions = new WeakMap<WorkbenchTab<T>, number>();
     private currentId?: string;
     private disposing = false;
     private opening = 0;
@@ -37,13 +40,18 @@ export class WorkbenchTabs<T> {
     private readonly abort = new AbortController();
     private readonly compactViews = new Set<ReturnType<typeof compactNavigation>>();
     private openedDialog?: HTMLDialogElement;
+    private openedQuery = '';
+    private describing?: Promise<void>;
     constructor(private readonly container: HTMLElement, private readonly actions: TabActions<T>, restored?: WorkbenchSnapshot['tabs']) {
         container.classList.add('workbench-tabs'); this.bar.className = 'workbench-tabs__bar';
         this.bar.setAttribute('role', 'tablist'); this.bar.setAttribute('aria-label', t('workbench.tabs'));
         this.body.className = 'workbench-tabs__body'; this.emptyPanel.className = 'workbench-tabs__panel';
         this.opened.className = 'workbench-tabs__opened'; this.body.append(this.emptyPanel);
         container.append(this.bar, this.body);
-        for (const tab of restored ?? []) { const entry = this.create(tab.id, tab.title, false); entry.pinned = tab.pinned; }
+        for (const tab of restored ?? []) {
+            const entry = this.create(tab.id, tab.title, false); entry.pinned = tab.pinned;
+            entry.context = tab.context; entry.location = tab.location;
+        }
         container.addEventListener('keydown', event => this.keydown(event), { signal: this.abort.signal });
         this.render();
     }
@@ -61,14 +69,32 @@ export class WorkbenchTabs<T> {
         const close = this.button(t('action.close'), () => dialog.close());
         decorateButton(close, FILE_BROWSER_ICONS.close, t('action.close'), true);
         const header = document.createElement('div'); header.className = 'workbench-opened-sheet__header'; header.append(heading, close);
+        const search = document.createElement('input'); search.type = 'search'; search.className = 'workbench-opened-sheet__search';
+        search.placeholder = t('workbench.findOpened'); search.setAttribute('aria-label', search.placeholder);
+        search.oninput = () => { this.openedQuery = search.value; this.filterOpened(); };
         const placeholder = document.createComment('opened documents'); this.opened.before(placeholder);
-        dialog.append(header, this.opened); document.body.append(dialog); this.openedDialog = dialog;
+        dialog.append(header, search, this.opened); document.body.append(dialog); this.openedDialog = dialog;
         dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
         dialog.addEventListener('close', () => {
             placeholder.replaceWith(this.opened); dialog.remove(); this.openedDialog = undefined;
+            this.openedQuery = ''; this.filterOpened();
             this.current?.panel.querySelector<HTMLButtonElement>('.workbench-compact-navigation button[aria-haspopup]')?.focus();
         }, {once: true});
         dialog.showModal();
+        this.describeOpened();
+    }
+    private describeOpened(): void {
+        if (this.describing || !this.actions.describe) return;
+        const tabs = this.values().filter(tab => !tab.location);
+        this.describing = Promise.all(tabs.map(async tab => {
+            const id = tab.id, revision = this.metadataRevisions.get(tab);
+            try {
+                const info = await this.actions.describe!(tab);
+                if (!this.disposing && this.get(id) === tab && this.metadataRevisions.get(tab) === revision) {
+                    Object.assign(tab, info); this.render();
+                }
+            } catch (error) { console.warn('[WorkbenchTabs] Reading window location failed', error); }
+        })).then(() => {}).finally(() => { this.describing = undefined; });
     }
     private async activateOpened(id: string): Promise<void> {
         await this.actions.activate(id); this.openedDialog?.close();
@@ -77,7 +103,8 @@ export class WorkbenchTabs<T> {
     get(id: string): WorkbenchTab<T> | undefined { return this.entries.get(id); }
     values(): WorkbenchTab<T>[] { return [...this.entries.values()]; }
     snapshot(): NonNullable<WorkbenchSnapshot['tabs']> {
-        return this.values().filter(tab => !tab.preview).map(({ id, title, pinned }) => ({ id, title, pinned }));
+        return this.values().filter(tab => !tab.preview).map(({ id, title, pinned, context, location }) => ({ id, title, pinned,
+            ...(context ? { context } : {}), ...(location ? { location } : {}) }));
     }
     async open(id: string, title: string, preview = true): Promise<WorkbenchTab<T>> {
         ++this.opening; this.syncViewState();
@@ -103,7 +130,15 @@ export class WorkbenchTabs<T> {
     keep(id: string): void { const tab = this.get(id); if (tab) { tab.preview = false; this.render(); } }
     pin(id: string): void { const tab = this.get(id); if (tab) { tab.pinned = !tab.pinned; if (tab.pinned) this.selected.delete(id); tab.preview = false; this.render(); } }
     title(id: string, title: string): void { const tab = this.get(id); if (tab && tab.title !== title) { tab.title = title; this.render(); } }
-    context(id: string, context?: string): void { const tab = this.get(id); if (tab && tab.context !== context) { tab.context = context; this.render(); } }
+    context(id: string, context?: string): void { this.updateMetadata(id, 'context', context); }
+    location(id: string, location: string): void { this.updateMetadata(id, 'location', location); }
+    private updateMetadata(id: string, field: 'context' | 'location', value?: string): void {
+        const tab = this.get(id);
+        if (!tab || tab[field] === value) return;
+        tab[field] = value;
+        this.metadataRevisions.set(tab, (this.metadataRevisions.get(tab) ?? 0) + 1);
+        this.render();
+    }
     setIcon(id: string, icon: string): void { const tab = this.get(id); if (tab) { tab.icon = icon; this.render(); } }
     setStatus(id: string, icon: string, tooltip: string): void {
         const tab = this.get(id);
@@ -112,6 +147,7 @@ export class WorkbenchTabs<T> {
     }
     rename(id: string, next: string, title: string): void {
         const tab = this.get(id); if (!tab) return;
+        this.metadataRevisions.set(tab, (this.metadataRevisions.get(tab) ?? 0) + 1);
         this.entries.delete(id); tab.id = next; tab.title = title; this.entries.set(next, tab);
         if (this.selected.delete(id)) this.selected.add(next);
         if (this.currentId === id) this.currentId = next;
@@ -154,6 +190,7 @@ export class WorkbenchTabs<T> {
         this.opened.append(this.openedToolbar());
         const tabs = this.values().sort((a, b) => Number(b.pinned) - Number(a.pinned));
         for (const tab of tabs) { this.bar.append(this.tabHeader(tab)); this.opened.append(this.openedRow(tab)); }
+        this.filterOpened();
         const menu = document.createElement('details'); menu.className = 'workbench-tabs__menu';
         const summary = document.createElement('summary'); summary.innerHTML = FILE_BROWSER_ICONS.more; summary.title = t('workbench.tabActions'); summary.setAttribute('aria-label', summary.title); menu.append(summary);
         const popup = document.createElement('div'); popup.className = 'workbench-tabs__menu-panel';
@@ -195,12 +232,28 @@ export class WorkbenchTabs<T> {
         checkbox.onchange = () => { checkbox.checked ? this.selected.add(tab.id) : this.selected.delete(tab.id); this.render(); };
         const label = this.button(tab.title, () => this.run(this.activateOpened(tab.id))); label.title = tab.id;
         decorateResourceButton(label, tab.icon ?? fileTypeIcon(tab.title), tab.title); label.className = 'workbench-tabs__opened-label'; label.title = tab.id;
+        this.openedLabel(label, tab);
         label.setAttribute('aria-current', String(tab.id === this.currentId));
         const pin = decorateButton(this.button(t(tab.pinned ? 'workbench.unpin' : 'workbench.pin'), () => this.pin(tab.id)), FILE_ICONS.pin, t(tab.pinned ? 'workbench.unpin' : 'workbench.pin'), true);
         pin.className = 'workbench-tabs__opened-pin'; pin.setAttribute('aria-pressed', String(tab.pinned));
         row.append(checkbox);
-        if (tab.context) row.append(this.contextLabel(tab.context));
         row.append(label, pin, decorateButton(this.button(t('workbench.close'), () => this.run(this.close(tab.id))), FILE_BROWSER_ICONS.close, t('workbench.close'), true)); return row;
+    }
+    private openedLabel(label: HTMLButtonElement, tab: WorkbenchTab<T>): void {
+        const text = label.lastElementChild!; text.className = 'workbench-tabs__opened-text';
+        const title = document.createElement('span'); title.textContent = tab.title; text.replaceChildren(title);
+        const context = [tab.context, tab.location].filter(Boolean).join(' · ');
+        if (context) {
+            const location = document.createElement('small'); location.textContent = context; text.append(location);
+            label.title = context; label.setAttribute('aria-label', `${tab.title} — ${context}`);
+        }
+    }
+    private filterOpened(): void {
+        const query = this.openedQuery.trim().toLocaleLowerCase();
+        for (const row of this.opened.querySelectorAll<HTMLElement>('[data-opened-id]')) {
+            const tab = this.get(row.dataset.openedId!);
+            row.hidden = !!query && ![tab?.title, tab?.context, tab?.location].filter(Boolean).join('\n').toLocaleLowerCase().includes(query);
+        }
     }
     private contextLabel(context: string): HTMLElement {
         const label = document.createElement('span'); label.className = 'workbench-tabs__context';

@@ -39,5 +39,6 @@ export interface IHistoryPresenter extends ICollapseManager, IStreamingControlle
     processEvent(event: SessionEventEnvelope): void;
 
     // === 生命周期 ===
+    setActive?(active: boolean): void;
     destroy(): void | Promise<void>;
 }

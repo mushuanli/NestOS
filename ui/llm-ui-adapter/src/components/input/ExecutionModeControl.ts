@@ -6,6 +6,7 @@ export interface ExecutionModeViewState {
     flow: boolean;
     loading: boolean;
     locked?: boolean;
+    remote?: boolean;
 }
 
 /** UI preferences affect future sends; the host owns execution and authorization. */
@@ -17,11 +18,20 @@ export class ExecutionModeControl {
     private flow = false;
     private loading = false;
     private locked = false;
+    private remote = false;
+    private readonly info = document.createElement('div');
+    private readonly value = document.createElement('span');
+    private readonly explanation = document.createElement('small');
 
-    constructor(container: HTMLElement, onChange: (mode: ChatExecutionMode) => void, private readonly maxExchanges = DEFAULT_AGENT_MAX_EXCHANGES) {
+    constructor(container: HTMLElement, onChange: (mode: ChatExecutionMode) => void,
+        private readonly maxExchanges = DEFAULT_AGENT_MAX_EXCHANGES, infoContainer?: HTMLElement) {
         this.group = container.querySelector('.llm-input__execution-mode')!;
         this.hint = container.querySelector('.llm-input__execution-hint')!;
         this.buttons = Array.from(this.group.querySelectorAll('button'));
+        this.info.className = 'llm-input__execution-info'; this.info.hidden = true;
+        const label = document.createElement('strong'); label.textContent = t('chatInput.executionMode.label');
+        this.info.append(label, this.value, this.explanation);
+        (infoContainer ?? container.querySelector('.llm-input__options-body'))?.append(this.info);
         this.group.addEventListener('click', event => {
             const button = (event.target as Element).closest<HTMLButtonElement>('[data-execution-mode]');
             if (!button || button.disabled || !this.group.contains(button)) return;
@@ -35,16 +45,19 @@ export class ExecutionModeControl {
         });
     }
 
-    update({ mode, flow, loading, locked = false }: ExecutionModeViewState): void {
+    update({ mode, flow, loading, locked = false, remote = false }: ExecutionModeViewState): void {
         this.mode = mode === 'agent' ? 'agent' : 'chat';
         this.flow = flow;
         this.loading = loading;
         this.locked = locked;
+        this.remote = remote;
         this.render();
     }
 
     private render(): void {
         const picker = this.group.closest('details')!;
+        picker.hidden = this.remote || this.locked || this.flow;
+        if (picker.hidden) picker.open = false;
         picker.querySelector('.llm-input__execution-label')!.textContent = this.flow ? t('chatSettings.flow')
             : t(this.mode === 'agent' ? 'chatInput.executionMode.agent' : 'chatInput.executionMode.chat');
         picker.querySelector('summary')!.title = this.locked ? t('chatInput.executionMode.locked') : t('chatInput.executionMode.label');
@@ -56,5 +69,10 @@ export class ExecutionModeControl {
         this.hint.textContent = this.flow ? t('chatInput.executionMode.flowHint')
             : this.mode === 'agent' ? t('chatInput.executionMode.agentHint', { count: this.maxExchanges })
                 : t('chatInput.executionMode.chatHint');
+        this.info.hidden = this.remote || !(this.locked || this.flow);
+        this.value.textContent = this.flow ? t('chatSettings.flow')
+            : t(this.mode === 'agent' ? 'chatInput.executionMode.agent' : 'chatInput.executionMode.chat');
+        this.explanation.textContent = this.flow ? t('chatInput.executionMode.flowHint') : t('chatInput.executionMode.locked');
     }
+    destroy(): void { this.info.remove(); }
 }

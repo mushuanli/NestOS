@@ -3,7 +3,8 @@ import { createChatView, createOperationLedger } from '../src';
 import type { ChatOptions, ChatView, ConversationSnapshot, OperationReceipt, OperationRecord } from '../src';
 
 const destroyed = vi.hoisted(() => vi.fn());
-vi.mock('@itookit/mdxeditor', () => ({
+vi.mock('@itookit/mdxeditor', async importOriginal => ({
+    ...await importOriginal<typeof import('@itookit/mdxeditor')>(),
     AssetResolverPlugin: class {},
     MDxRenderer: class {
         markedExtensions: unknown[] = [];
@@ -41,6 +42,40 @@ function user(submissionId: string, acceptance: 'confirmed' | 'optimistic' = 'co
     return { id: 'user-1', revision: 0, role: 'user' as const, state: 'complete' as const, submissionId, acceptance,
         parts: [{ id: 'body', kind: 'markdown' as const, text: 'A' }] };
 }
+
+describe('conversation content search integration', () => {
+    it('offers a header button and refreshes matches after streaming and earlier history load', async () => {
+        const host = fixture(), view = await host.open();
+        const message = { ...user('s'), state: 'streaming' as const, parts: [{ id: 'body', kind: 'markdown' as const, text: 'needle' }] };
+        host.publish({ messages: [message] });
+        await vi.waitFor(() => expect(host.host.querySelector('.llm-chat__body')!.textContent).toBe('needle'));
+        [...host.host.querySelectorAll('.llm-chat__header button')].find(button => button.textContent === '搜索内容')!.click();
+        const input = host.host.querySelector<HTMLInputElement>('.llm-chat__search-input')!;
+        input.value = 'needle'; input.dispatchEvent(new Event('input', { bubbles: true }));
+        const status = () => host.host.querySelector('.llm-chat__search-status')!.textContent;
+        expect(status()).toBe('1 / 1');
+        const row = host.host.querySelector('[data-message-id="user-1"]');
+        host.publish({ messages: [{ ...message, revision: 1, parts: [{ ...message.parts[0], text: 'needle needle' }] }] });
+        await vi.waitFor(() => expect(status()).toBe('1 / 2'));
+        expect(host.host.querySelector('[data-message-id="user-1"]')).toBe(row);
+        const latest = host.options.source.getSnapshot().messages[0];
+        host.publish({ messages: [{ ...message, id: 'earlier' }, latest] });
+        await vi.waitFor(() => expect(status()).toBe('2 / 3'));
+        view.setActive(false); host.publish({ messages: [] }); expect(status()).toBe('2 / 3');
+        view.setActive(true); await vi.waitFor(() => expect(status()).toBe('无匹配结果'));
+    });
+    it('leaves custom renderer content and composer drafts outside search', async () => {
+        const host = fixture({ renderers: { custom: container => { container.textContent = 'private needle'; return { destroy() {} }; } } });
+        const view = await host.open(); view.setText('draft needle');
+        host.publish({ messages: [{ ...user('s'), parts: [{ id: 'ext', kind: 'extension', type: 'custom', data: null }] }] });
+        await vi.waitFor(() => expect(host.host.querySelector('[data-search-exclude]')?.textContent).toBe('private needle'));
+        [...host.host.querySelectorAll('button')].find(button => button.textContent === '搜索内容')!.click();
+        const input = host.host.querySelector<HTMLInputElement>('.llm-chat__search-input')!;
+        input.value = 'needle'; input.dispatchEvent(new Event('input', { bubbles: true }));
+        expect(host.host.querySelector('.llm-chat__search-status')!.textContent).toBe('无匹配结果');
+        expect(host.host.querySelector('mark.llm-chat__search-match')).toBeNull(); expect(view.getDraft().text).toBe('draft needle');
+    });
+});
 
 describe('submission acceptance and recovery', () => {
     it('does not revive an observed temporary bubble when its formal message leaves the loaded page', async () => {

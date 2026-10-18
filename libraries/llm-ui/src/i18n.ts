@@ -7,6 +7,8 @@ const zh = {
     answer: '提交回答', note: '说明', prompts: '提问目录', loading: '加载中',
     online: '已连接', offline: '离线', reconnecting: '重新连接中',
     flow: 'Flow',
+    search: '搜索内容', searchPlaceholder: '输入搜索内容', searchPrevious: '上一项', searchNext: '下一项',
+    searchClose: '关闭搜索', searchScope: '已加载的对话内容', searchNoResults: '无匹配结果',
 };
 const en: Record<keyof typeof zh, string> = {
     send: 'Send', cancel: 'Stop', retry: 'Regenerate', edit: 'Edit', save: 'Save', close: 'Cancel',
@@ -17,6 +19,8 @@ const en: Record<keyof typeof zh, string> = {
     answer: 'Submit answer', note: 'Note', prompts: 'Questions', loading: 'Loading',
     online: 'Connected', offline: 'Offline', reconnecting: 'Reconnecting',
     flow: 'Flow',
+    search: 'Find content', searchPlaceholder: 'Search conversation content', searchPrevious: 'Previous match', searchNext: 'Next match',
+    searchClose: 'Close search', searchScope: 'Loaded conversation content', searchNoResults: 'No matches',
 };
 export type Translate = (key: keyof typeof zh) => string;
 export function translator(locale = 'zh-CN', override?: (key: string) => string): Translate {

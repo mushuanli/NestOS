@@ -1,8 +1,8 @@
-import { generateUUID } from '@itookit/common';
+import { randomUUID } from '@itookit/common';
 import { FSError } from '@itookit/vfs-core';
 import type { ProjectDraftRecord } from './contracts';
 
-export const emptyDraft = (): ProjectDraftRecord => ({ version: 1, id: generateUUID(), state: 'draft', data: '' });
+export const emptyDraft = (): ProjectDraftRecord => ({ version: 1, id: randomUUID(), state: 'draft', data: '' });
 const identity = (value: unknown): value is string => typeof value === 'string' && /^[a-zA-Z0-9_-]+$/.test(value);
 
 /** Validate at the storage boundary; the legacy shape had no version or draft identity. */
@@ -18,7 +18,7 @@ export function decodeDraftRecord(raw: string | null): { record: ProjectDraftRec
     if (saved.submissionId && !saved.sessionId) throw invalid();
     const state = saved.sessionId ? 'submitting' : 'draft';
     if (saved.state !== undefined && saved.state !== state) throw invalid();
-    return { migrated: saved.version !== 1 || saved.id === undefined, record: { version: 1, id: saved.id as string ?? generateUUID(), state, data: saved.data,
+    return { migrated: saved.version !== 1 || saved.id === undefined, record: { version: 1, id: saved.id as string ?? randomUUID(), state, data: saved.data,
         ...(saved.sessionId ? { sessionId: saved.sessionId as string, title: saved.title as string | undefined,
             submissionId: saved.submissionId as string | undefined } : {}) } };
 }

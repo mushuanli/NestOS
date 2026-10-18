@@ -29,6 +29,10 @@ export const LayoutTemplates = {
             </div>
 
             <div class="llm-workspace-titlebar__right">
+                <div class="llm-workspace-titlebar__primary"></div>
+                <details class="llm-workspace-titlebar__menu">
+                    <summary aria-label="${escapeHTML(t('chat.toolbar.more'))}" title="${escapeHTML(t('chat.toolbar.more'))}">⋯</summary>
+                    <div class="llm-workspace-titlebar__menu-actions">
                 <button type="button" class="llm-workspace-titlebar__btn llm-prompt-nav-trigger" id="llm-btn-prompt-nav"
                         title="${escapeHTML(t('chat.promptNav.title'))}" aria-label="${escapeHTML(t('chat.promptNav.title'))}" aria-expanded="false">
                     ${ACTION_ICONS.promptList}
@@ -36,10 +40,8 @@ export const LayoutTemplates = {
                 <button type="button" class="llm-workspace-titlebar__btn" id="llm-btn-collapse" title="${escapeHTML(t('chat.toolbar.collapseAll'))}" aria-label="${escapeHTML(t('chat.toolbar.collapseAll'))}">
                     ${LayoutTemplates.collapseIcon()}
                 </button>
-                <div class="llm-workspace-titlebar__primary"></div>
-                <details class="llm-workspace-titlebar__menu">
-                    <summary aria-label="${escapeHTML(t('chat.toolbar.more'))}" title="${escapeHTML(t('chat.toolbar.more'))}">⋯</summary>
-                    <div class="llm-workspace-titlebar__menu-actions">
+                <div class="llm-workspace-titlebar__mode-info"></div>
+                <div class="llm-workspace-titlebar__host-actions"></div>
                 <button class="llm-workspace-titlebar__btn llm-workspace-titlebar__btn--text" id="llm-btn-workspace" hidden aria-haspopup="menu" aria-expanded="false">${escapeHTML(t('workspace.menu'))}</button>
                 <button class="llm-workspace-titlebar__btn llm-workspace-titlebar__btn--text" id="llm-btn-flow-output" title="${escapeHTML(t('flow.output.title'))}">${escapeHTML(t('flow.output.title'))}</button>
                 <button type="button" class="llm-workspace-titlebar__btn" id="llm-btn-session-rerun" title="${escapeHTML(t('session.rerun.hint'))}" aria-label="${escapeHTML(t('session.rerun.title'))}">${ACTION_ICONS.rerun}</button>

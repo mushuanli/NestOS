@@ -255,11 +255,13 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     }
     async destroy() { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); await this.view?.destroy(); this.container.replaceChildren(); }
     cancelPendingRender(): void {
+        this.view?.history.view.setActive(false);
         this.active = false; this.releaseUpdates?.(); this.releaseUpdates = undefined;
         clearTimeout(this.updateTimer); this.updateTimer = undefined; clearTimeout(this.timer);
     }
     async activate(): Promise<void> {
         if (this.closed || this.active) return;
+        this.view?.history.view.setActive(true);
         this.active = true; await this.tail; await this.show(await this.service.read());
         if (!this.active || this.closed) return;
         if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());

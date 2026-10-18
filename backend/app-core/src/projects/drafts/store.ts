@@ -89,7 +89,7 @@ export class ProjectDraftStore {
     }
     private async beginNow(title: string): Promise<ProjectDraftRecord> {
         if (this.record.state !== 'submitting') await this.save({ state: 'submitting',
-            sessionId: generateUUID(), submissionId: generateUUID(), title });
+            sessionId: this.record.id, submissionId: generateUUID(), title });
         return { ...this.record };
     }
     /** Caller must first verify the exact persisted Round and its execution reference. */

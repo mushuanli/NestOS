@@ -94,8 +94,26 @@ it('keeps the accepted mode locked after stopping and restores the lock on reope
     f.button('chat').click();
     expect(f.view.getConfig().settings.executionMode).toBe('agent');
     expect(f.button('chat').title).toContain('新建会话');
+    expect(f.container.querySelector<HTMLDetailsElement>('.llm-input__execution-picker')!.hidden).toBe(true);
+    expect(f.container.querySelector<HTMLElement>('.llm-input__execution-info')!.hidden).toBe(false);
     f.view.setConfig({ settings: { executionMode: 'chat', executionModeLocked: false } });
     expect(f.button('agent').disabled).toBe(false);
+    expect(f.container.querySelector<HTMLDetailsElement>('.llm-input__execution-picker')!.hidden).toBe(false);
+});
+
+it('places immutable mode information in the host menu and removes it when the input closes', () => {
+    const host = document.createElement('div'), menu = document.createElement('div'), input = document.createElement('div');
+    host.append(menu, input); document.body.append(host);
+    const view = new ChatInput(input, { executionModeInfo: menu, onSend: async () => {}, onStop: () => {},
+        initialConfig: { settings: { executionMode: 'agent', executionModeLocked: true } } }); views.push(view);
+    const info = menu.querySelector<HTMLElement>('.llm-input__execution-info')!;
+    expect(info.hidden).toBe(false); expect(info.textContent).toContain('执行'); expect(info.querySelector('button')).toBeNull();
+    expect(input.querySelector('.llm-input__execution-info')).toBeNull();
+    expect(input.querySelector<HTMLDetailsElement>('.llm-input__execution-picker')!.hidden).toBe(true);
+    view.setLoading(true); view.setLoading(false); expect(info.hidden).toBe(false);
+    view.setConfig({ agentId: 'remote:native' }); expect(info.hidden).toBe(true);
+    view.setConfig({ agentId: 'default' }); expect(info.hidden).toBe(false);
+    view.destroy(); views.splice(views.indexOf(view), 1); expect(menu.children).toHaveLength(0);
 });
 
 it('shows the host exchange budget instead of a fixed Agent limit', () => {

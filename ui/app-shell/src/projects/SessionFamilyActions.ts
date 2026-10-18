@@ -20,16 +20,31 @@ export class SessionFamilyActions {
         const events = new AbortController(); this.controllers.set(section, events);
         const heading = document.createElement('strong'); heading.textContent = t('project.sessionActions');
         const hint = document.createElement('small'); hint.textContent = t('project.relatedSessionHint');
-        section.append(heading, this.information(), hint);
+        const metadata = this.information();
+        section.append(heading, metadata, hint);
         for (const action of this.headerActions(manifest)) section.append(this.button(action.label, action.run));
         container.prepend(section); this.updateMetadata(manifest);
-        const menu = container.closest('details');
-        menu?.addEventListener('toggle', () => {
-            if (menu.open) void this.sessions.get(manifest.id).then(current => {
-                if (!events.signal.aborted) this.renderMetadata(section, current);
-            }).catch(error => { if (!events.signal.aborted) this.actions.report(error); });
-        }, {signal: events.signal});
+        this.bindMetadataRefresh(section, metadata, manifest.id, events.signal);
         return () => { this.release(section); section.remove(); };
+    }
+    private bindMetadataRefresh(section: HTMLElement, metadata: HTMLDetailsElement, id: string, signal: AbortSignal): void {
+        const status = document.createElement('p'); status.className = 'session-family__metadata-status';
+        status.setAttribute('role', 'alert'); status.hidden = true; metadata.append(status);
+        let pending = false;
+        metadata.addEventListener('toggle', async () => {
+            if (!metadata.open || pending || signal.aborted) return;
+            pending = true; metadata.setAttribute('aria-busy', 'true');
+            try {
+                const current = await this.sessions.get(id);
+                if (signal.aborted) return;
+                this.renderMetadata(section, current); status.hidden = true; status.textContent = '';
+            } catch (error) {
+                if (signal.aborted) return;
+                const message = error instanceof Error ? error.message : String(error);
+                status.textContent = t('project.sessionInfoRefreshFailed', { message }); status.hidden = false;
+                console.warn('[SessionFamilyActions] Refreshing conversation information failed', error);
+            } finally { pending = false; metadata.removeAttribute('aria-busy'); }
+        }, { signal });
     }
     private headerActions(manifest: ConversationManifest) {
         const actions: Array<{label: string; run: () => Promise<unknown>}> = [];
@@ -42,7 +57,7 @@ export class SessionFamilyActions {
         actions.push({label: t('project.deleteSessionOnly'), run: () => this.remove(manifest.id)});
         return actions;
     }
-    private information(): HTMLElement {
+    private information(): HTMLDetailsElement {
         const info = document.createElement('dl'); info.className = 'session-family__information';
         for (const field of ['createdAt', 'updatedAt'] as const) {
             const label = document.createElement('dt'); label.textContent = t(field === 'createdAt' ? 'project.createdAt' : 'project.lastActivity');

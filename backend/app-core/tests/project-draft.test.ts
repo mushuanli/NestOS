@@ -1,14 +1,35 @@
-import { it, expect } from 'vitest';
+import { it, expect, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { ProjectDraftStore } from '../src/projects/drafts/store';
+
+it('allocates stable draft and session identities without native randomUUID', async () => {
+    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto) });
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+    try {
+        const fs = await manager.openFileSystem('/'), store = new ProjectDraftStore(fs, 'fallback');
+        const draft = await store.load(), intent = await store.begin('Title');
+        expect(draft.id).toMatch(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+        expect(intent.sessionId).toBe(draft.id);
+        await store.reset();
+        const next = await new ProjectDraftStore(fs, 'fallback').load();
+        expect(next.id).not.toBe(draft.id);
+        await fs.meta.seq!.setEntry('/var/lib/projects/fallback/draft.seq', 'draft', JSON.stringify({ data: 'legacy', sessionId: 'reserved' }));
+        const legacy = await new ProjectDraftStore(fs, 'fallback').load();
+        expect(legacy).toMatchObject({ sessionId: 'reserved', data: 'legacy' });
+        expect(legacy.id).toMatch(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+    } finally { await manager.dispose(); vi.unstubAllGlobals(); }
+});
 
 it('persists drafts independently per project, keeps send identity and clears only explicitly', async () => {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
     const fs = await manager.openFileSystem('/');
     try {
-        const a = new ProjectDraftStore(fs, 'a'); await a.load();
+        const a = new ProjectDraftStore(fs, 'a'), draft = await a.load();
         await a.saveData('text and settings');
         const intent = await a.begin('date-time');
+        expect(intent.sessionId).toBe(draft.id);
+        expect(draft.id).toMatch(/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/);
+        expect((await a.begin('a different name')).sessionId).toBe(draft.id);
         expect(await new ProjectDraftStore(fs, 'a').load()).toMatchObject({ data: 'text and settings', sessionId: intent.sessionId, state: 'submitting', title: 'date-time' });
         expect(await new ProjectDraftStore(fs, 'b').load()).toMatchObject({ data: '', state: 'draft' });
         expect(await fs.driver.exists('/var/lib/sessions')).toBe(false);

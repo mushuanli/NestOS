@@ -1338,6 +1338,9 @@
 .llm-input__model-trigger:disabled { opacity: .5; cursor: default; }
 .llm-input__options,
 .llm-input__execution-picker { position: relative; flex-shrink: 0; }
+.llm-input__execution-info:not([hidden]) { display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; padding: 10px; border-bottom: 1px solid var(--llm-border-color); font-size: 13px; }
+.llm-input__execution-info strong { font-weight: 500; }
+.llm-input__execution-info small { grid-column: 1 / -1; font-size: 11px; line-height: 1.5; color: var(--llm-text-secondary); white-space: normal; }
 .llm-input__options-body,
 .llm-input__execution-menu { position: absolute; bottom: calc(100% + 8px); z-index: 30; width: 220px; box-sizing: border-box; padding: 8px; background: var(--llm-bg-primary); border: 1px solid var(--llm-border-color); border-radius: 12px; box-shadow: 0 6px 24px #00000018; }
 .llm-input__options-body { right: 0; }

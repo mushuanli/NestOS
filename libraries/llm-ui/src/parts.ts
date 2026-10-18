@@ -48,7 +48,8 @@ export class PartView {
             this.markdown.usePlugin(new AssetResolverPlugin());
             this.content = element('div');
             if (part.kind === 'reasoning') {
-                const details = element('details'); details.append(element('summary', undefined, this.t('reasoning')), this.content);
+                const details = element('details'), summary = element('summary', undefined, this.t('reasoning'));
+                summary.dataset.searchExclude = ''; details.append(summary, this.content);
                 this.element.append(details);
             } else this.element.append(this.content);
         }
@@ -56,6 +57,7 @@ export class PartView {
         else await this.markdown.render(this.content!, part.text, markdownOptions);
     }
     private async renderExtension(part: Extract<MessagePart, { kind: 'extension' }>, context: RenderContext): Promise<void> {
+        this.element.dataset.searchExclude = '';
         const factory = this.options.renderers?.[part.type];
         if (!factory) { this.element.textContent = `${this.t('unsupported')}: ${part.type}`; return; }
         if (!this.extension) this.extension = factory(this.element, part, context);

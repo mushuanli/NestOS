@@ -58,7 +58,7 @@ it('keeps project context separate from resource names and rename persistence', 
     const header = f.container.querySelector('.workbench-tabs__tab')!;
     expect(header.querySelector('.workbench-tabs__context')?.textContent).toBe('Personal');
     expect(header.querySelector('.workbench-tabs__label')?.getAttribute('aria-label')).toBe('renamed.md');
-    expect(f.tabs.snapshot()).toEqual([{id: '/renamed.md', title: 'renamed.md', pinned: false}]);
+    expect(f.tabs.snapshot()).toEqual([{id: '/renamed.md', title: 'renamed.md', pinned: false, context: 'Personal'}]);
     expect(f.tabs.get('/renamed.md')?.context).toBe('Personal'); await f.tabs.destroy();
 });
 it('switches opened documents from the compact header without replacing retained editor DOM', async () => {
@@ -82,6 +82,89 @@ it('switches opened documents from the compact header without replacing retained
     expect(first.panel.querySelector('textarea')?.value).toBe('Keep this draft');
     expect(f.tabs.opened.parentElement).toBe(sidebar);
     release(); await f.tabs.destroy();
+});
+
+it('locates same-named windows by project and path and retains their context across restoration', async () => {
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () { this.open = true; });
+    vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function () { this.open = false; this.dispatchEvent(new Event('close')); });
+    const f = tabsFixture(), sidebar = document.createElement('aside'); sidebar.append(f.tabs.opened); document.body.append(sidebar);
+    await f.tabs.open('one', 'New conversation', false); f.tabs.context('one', 'Alpha'); f.tabs.location('one', '/work/research');
+    await f.tabs.open('two', 'New conversation', false); f.tabs.context('two', 'Beta'); f.tabs.location('two', '/work/design');
+    const slot = document.createElement('div'); f.tabs.content.append(slot);
+    const release = f.tabs.mountCompactNavigation(slot, 'Beta', () => {});
+    try {
+        slot.querySelector<HTMLButtonElement>('[aria-haspopup]')!.click();
+        const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
+        expect(dialog.querySelector('[data-opened-id="one"] small')!.textContent).toBe('Alpha · /work/research');
+        const search = dialog.querySelector<HTMLInputElement>('input[type="search"]')!;
+        search.value = 'research'; search.dispatchEvent(new Event('input'));
+        expect(dialog.querySelector<HTMLElement>('[data-opened-id="one"]')!.hidden).toBe(false);
+        expect(dialog.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(true);
+        f.tabs.title('one', 'Renamed'); expect(f.tabs.current?.id).toBe('two');
+        expect(dialog.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(true);
+        dialog.close(); expect(sidebar.querySelector<HTMLElement>('[data-opened-id="two"]')!.hidden).toBe(false);
+        const saved = readWorkbenchSnapshot({ version: 1, tabs: f.tabs.snapshot() });
+        expect(saved!.tabs![0]).toMatchObject({ id: 'one', title: 'Renamed', context: 'Alpha', location: '/work/research' });
+        const restoredHost = document.createElement('div'); document.body.append(restoredHost);
+        const restored = new WorkbenchTabs(restoredHost, { activate: vi.fn(), dispose: async () => {}, empty() {}, error() {} }, saved!.tabs);
+        expect(restored.opened.querySelector('[data-opened-id="one"] small')!.textContent).toBe('Alpha · /work/research');
+        await restored.destroy();
+    } finally { release(); await f.tabs.destroy(); }
+});
+
+it('fills legacy window locations on demand without opening their editors', async () => {
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () { this.open = true; });
+    vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function () { this.open = false; this.dispatchEvent(new Event('close')); });
+    const host = document.createElement('div'), slot = document.createElement('div'); document.body.append(host, slot);
+    const activate = vi.fn(), describe = vi.fn(async () => ({ context: 'Legacy project', location: '/old/project' }));
+    const tabs = new WorkbenchTabs(host, { activate, describe, dispose: async () => {}, empty() {}, error() {} }, [
+        { id: 'old-session', title: 'New conversation', pinned: false },
+    ]);
+    const release = tabs.mountCompactNavigation(slot, '', () => {});
+    try {
+        expect(describe).not.toHaveBeenCalled(); slot.querySelector<HTMLButtonElement>('[aria-haspopup]')!.click();
+        await vi.waitFor(() => expect(document.querySelector('.workbench-tabs__opened-text small')!.textContent).toBe('Legacy project · /old/project'));
+        expect(activate).not.toHaveBeenCalled(); expect(describe).toHaveBeenCalledOnce();
+    } finally { release(); await tabs.destroy(); }
+});
+
+it.each(['context', 'location', 'route-roundtrip'] as const)('discards late descriptions after a newer %s update', async field => {
+    HTMLDialogElement.prototype.showModal ??= function () { this.open = true; };
+    HTMLDialogElement.prototype.close ??= function () { this.open = false; this.dispatchEvent(new Event('close')); };
+    let finish!: (info: { context: string; location: string }) => void;
+    const host = document.createElement('div'), slot = document.createElement('div'); document.body.append(host, slot);
+    const tabs = new WorkbenchTabs(host, { describe: () => new Promise(resolve => { finish = resolve; }),
+        activate: vi.fn(), dispose: async () => {}, empty() {}, error() {} }, [
+        { id: 'session', title: 'Conversation', pinned: false },
+    ]);
+    const release = tabs.mountCompactNavigation(slot, '', () => {});
+    try {
+        slot.querySelector<HTMLButtonElement>('[aria-haspopup]')!.click();
+        if (field === 'route-roundtrip') { tabs.rename('session', 'temporary', 'Conversation'); tabs.rename('temporary', 'session', 'Conversation'); }
+        else { tabs[field]('session', 'fresh'); if (field === 'context') tabs.context('session', undefined); }
+        const before = tabs.snapshot();
+        finish({ context: 'Old project', location: '/stale' }); await Promise.resolve(); await Promise.resolve();
+        expect(tabs.snapshot()).toEqual(before);
+        expect(tabs.get('session')!.location).not.toBe('/stale');
+    } finally { release(); await tabs.destroy(); }
+});
+
+it('does not apply a late location lookup after the window route changes', async () => {
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () { this.open = true; });
+    vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function () { this.open = false; this.dispatchEvent(new Event('close')); });
+    let finish!: (value: { location: string }) => void;
+    const host = document.createElement('div'), slot = document.createElement('div'); document.body.append(host, slot);
+    const describe = vi.fn(() => new Promise<{ location: string }>(resolve => { finish = resolve; }));
+    const tabs = new WorkbenchTabs(host, { describe, activate: vi.fn(), dispose: async () => {}, empty() {}, error() {} }, [
+        { id: '/old/name.md', title: 'name.md', pinned: false },
+    ]);
+    const release = tabs.mountCompactNavigation(slot, '', () => {});
+    try {
+        slot.querySelector<HTMLButtonElement>('[aria-haspopup]')!.click(); expect(describe).toHaveBeenCalledOnce();
+        tabs.rename('/old/name.md', '/new/name.md', 'name.md'); finish({ location: '/old/name.md' });
+        await Promise.resolve(); await Promise.resolve();
+        expect(tabs.get('/new/name.md')!.location).toBeUndefined(); expect(tabs.get('/old/name.md')).toBeUndefined();
+    } finally { release(); await tabs.destroy(); }
 });
 it('promotes an edited preview, preserves its DOM and does not demote it after saving', async () => {
     const f = tabsFixture(), events = new Map<string, () => void>();

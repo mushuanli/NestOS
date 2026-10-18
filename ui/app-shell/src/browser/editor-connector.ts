@@ -46,6 +46,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         notice.textContent = error instanceof Error ? error.message : String(error); tabs.content.append(notice);
     };
     const tabs = new WorkbenchTabs<OpenView>(container, {
+        describe: async tab => ({ location: tab.id }),
         activate: async id => { if (id === '/') await openDirectory(id); else await openResource(id); }, dispose: disposeTab,
         empty: () => { placeholder(); onEditorCreated?.(null); }, error: report,
         changed: () => sidebar?.save(tabs.snapshot()),
@@ -119,6 +120,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         tab.subscriptions.push(watchDirectorySelection(tab.panel, vfs));
     }
     async function create(tab: WorkbenchTab<OpenView>, item: VFSNodeUI, load: ViewLoad): Promise<void> {
+        tabs.location(tab.id, item.id);
         if (item.icon) tabs.setIcon(tab.id, item.icon);
         const view: OpenView = { node: item };
         if (item.type === 'directory') await directory(tab, item, load);
@@ -165,6 +167,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 const view = tab.value; if (view) { view.node = vfs.getNode(next) ?? { ...view.node, id: next }; view.editor?.updateNodeId?.(next); }
                 revisions.set(next, revisions.get(tab.id)); revisions.delete(tab.id);
                 const title = next === newId ? item.metadata.title : tab.title; view?.editor?.setTitle?.(title); tabs.rename(tab.id, next, title);
+                tabs.location(next, next);
                 if (next === newId && item.icon) tabs.setIcon(next, item.icon);
             }
         })];

@@ -4,7 +4,7 @@
 
 本地会话通过 `EditorOptions.mountMoreMenu` 将会话信息与归属动作挂入聊天标题栏共用的更多菜单；不再增加正文上方的会话工具栏。关联会话不继承聊天历史，创建动作只在菜单中显示。项目侧栏直接列出全部本地会话及父关系，创建/修改时间与远程会话采用同一投影，按最近活动排序；不再依赖同组切换显示后代。
 
-桌面项目归属作为 WorkbenchTabs 的只读 context 与资源名同行显示，不拼入 title、重命名输入或持久文件名，不另占正文一行。小屏聊天通过 `mountCompactNavigation` 合并返回、项目名、标题与已打开入口；编辑器以公开 `data-editor-mobile-navigation="embedded"` 标记接管导航，mobile-workspace-view 只检查当前标签，隐藏宿主重复返回栏、标签行及项目说明。文档编辑器继续使用独立导航。移动正文切换消费标签显式的 opening/active/empty 与激活代次；打开资源后不会因等待保存、空标签或正文挂载而退回列表，深链从装配时就进入正文，用户返回列表后的普通内容更新不会抢回正文。已打开面板借用原列表，关闭后归还侧栏，不克隆编辑器或丢弃草稿。返回按钮在小屏切回列表，桌面仍切换侧栏。mobile-viewport 随可视视口更新应用高度并在销毁时解绑；mobile-shell-state 将当前活动布局的 detail/embedded 与输入焦点投影到 body[data-mobile-navigation]，不依赖 CSS :has()；小屏聊天正文据此收起全局底部导航，返回列表恢复，保留底部安全区；列表导航高 56px，按钮点按高度 48px。其他编辑器输入焦点通过公开 data-editor-composing 标记收起导航，不读取隐藏工作区状态。
+桌面项目归属作为 WorkbenchTabs 的只读 context 与资源名同行显示，不拼入 title、重命名输入或持久文件名，不另占正文一行。小屏聊天通过 `mountCompactNavigation` 合并返回、项目名、标题与已打开入口；编辑器以公开 `data-editor-mobile-navigation="embedded"` 标记接管导航，mobile-workspace-view 只检查当前标签，隐藏宿主重复返回栏、标签行及项目说明。文档编辑器继续使用独立导航。移动正文切换消费标签显式的 opening/active/empty 与激活代次；打开资源后不会因等待保存、空标签或正文挂载而退回列表，深链从装配时就进入正文，用户返回列表后的普通内容更新不会抢回正文。已打开面板从顶部展开，借用原列表，关闭后归还侧栏，不克隆编辑器或丢弃草稿。窗口列表用标题和项目/目录两层信息区分同名项，支持名称、项目和路径筛选；位置作为展示元数据保存，不拼入资源名或资源 ID，移动/重命名文件后更新；旧版窗口记录只在打开列表时经 describe 补齐位置，不打开后台编辑器，路由或位置元数据版本变化后丢弃迟到结果。返回按钮在小屏切回列表，桌面仍切换侧栏。mobile-viewport 随可视视口更新应用高度并在销毁时解绑；mobile-shell-state 将当前活动布局的 detail/embedded 与输入焦点投影到 body[data-mobile-navigation]，不依赖 CSS :has()；小屏聊天正文据此收起全局底部导航，返回列表恢复，保留底部安全区；列表导航高 56px，按钮点按高度 48px。其他编辑器输入焦点通过公开 data-editor-composing 标记收起导航，不读取隐藏工作区状态。
 
 工具箱模型抽屉优先展示默认连接所在 Provider，并显示默认标识及实际就绪状态；其余抽屉/连接按就绪、待配置、停用排序，Provider 设置行保持首位。搜索匹配显示名称与可搜索文本，匹配子项时展开所属抽屉，资源 ID 不随排序改变。智能体与抽屉按最近成功提交排序，时间通过宿主 `ExecutorUsage` 保存到 UI 文档 `mindos_executor_usage_v1`，不改写 Agent 配置时间；聊天与工具箱延迟读取并共享该端口。
 项目会话通过 `onStartConversationDraft` 请求切换执行方式；宿主定位同一项目的草稿，将输入和附件交给 appendDraft。已有草稿追加内容，接收编辑器身份变化后不再写入；不迁移原生历史、不发送输入、不取消原任务。模型和助手的下一轮选择仍由原会话编辑器管理。
@@ -138,6 +138,8 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 - lifecycle/view-refresh 拥有刷新合并、顺序、隐藏标脏与失败重试状态；SessionTaskView 拥有任务详情与分页展示，消费后端 sessionTasks/taskDetails/taskEvents，不枚举内核会话。从文件发起聊天只准备引用文本并调用 backend.createSessionDraft，成功后导航，不在前端组合创建与持久草稿写入。
 
 - 组合根将 backend.taskAttachment 注入聊天工厂的可选 readTaskAttachment 回调；OCR 的多个 UI 消费者共享一个 Agent 配置源订阅。
+
+- 会话“更多”菜单打开时只展示已有会话信息；展开“会话信息”才读取最新元数据，同一面板的在途读取去重。读取失败保留时间和菜单动作，在该面板内提示并允许重新展开重试，不向 ChatInput 下方追加工作台错误；关闭编辑器后丢弃迟到结果。回归见 session-toolbar。
 
 - 聊天冷启动通过 backend.openView 打开当前目标；lifecycle/opened-view 将一个远程观察投影为组件的本地订阅，并一次消费恢复/Flow/Skill 初始值。装配期间以已安装快照水位过滤重复流式增量；切换已有编辑器仍保存后激活。普通模块不预开聊天资源。
 

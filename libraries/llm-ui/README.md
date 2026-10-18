@@ -33,6 +33,10 @@ await view.destroy();
 
 可运行的内存宿主组合见 [memory-host.ts](./examples/memory-host.ts)。它演示快照发布、提交值捕获、选择器、资源候选及 toolbar 的 update/destroy。MindOS 的 Session 和原生会话接入位于 `@itookit/llm-ui-adapter/independent`。
 
+标题栏提供“搜索内容”按钮，查找当前会话已加载的消息正文、思考、工具文本和附件名。搜索忽略大小写，支持匹配计数、高亮及上一项/下一项定位；视图内按 Ctrl/Cmd+F 打开，搜索框内按 Enter/Shift+Enter 切换，Esc 关闭。流式更新和加载更早消息后刷新结果；不会自动加载未展示的历史，不检索草稿或宿主自定义 renderer 内部内容。
+
+兼容编辑器可通过 `createContentSearch({ root, history, getContents, onOpen, onNavigate })` 复用同一搜索控件。宿主用 getContents 按展示顺序提供稳定 ID 与可读正文 DOM，onOpen 激活尚未呈现的内容，onNavigate 展开目标历史卡片；控件再经 mdxeditor 的 revealRenderedContent 展开命中祖先，随后测量并滚动历史视口。返回的 button 和 element 由宿主挂载。控件只在打开且活动时观察正文变化，过滤表单及 `data-search-exclude` 区域，并在销毁时释放观察和高亮。MindOS 的本地及原生会话标题栏已接入此控件，手机上也直接显示搜索按钮。
+
 ## Flow
 
 Flow 是本库的一部分。聊天集成通过 features.flow 控制，默认关闭；只有启用并点击入口后才加载 Flow 代码：

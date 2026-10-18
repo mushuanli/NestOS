@@ -265,6 +265,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.sessionsReady = Promise.resolve(options.projects?.sessions ?? this.backend.projectSessions());
         void this.sessionsReady.catch(() => {});
         this.tabs = new WorkbenchTabs(this.container, {
+            describe: tab => this.describeOpenTab(tab.id),
             activate: id => this.openResource(id), dispose: tab => this.disposeTab(tab),
             empty: () => { this.clearEditorFields(); this.showWelcome(); this.onSelect('', 'replace'); },
             error: error => this.report(error), changed: () => this.sidebarLayout?.save(this.tabs.snapshot()),
@@ -1381,12 +1382,29 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
 
+    private async describeOpenTab(id: string): Promise<{ context?: string; location?: string }> {
+        if (id.startsWith('draft:')) {
+            const project = await this.projects?.get(id.slice(6));
+            return { context: project?.displayName ?? project?.name, location: project?.path };
+        }
+        const path = parseSessionRoute(id).path, target = resolveBrowserTarget(path);
+        const sessionFolder = 'sessionId' in target ? (await this.sessions.get(target.sessionId)).folder : undefined;
+        const folder = browserTargetFolder(target, path, sessionFolder);
+        const project = await this.projects?.forFolder(folder);
+        return { context: project?.displayName ?? project?.name,
+            location: target.kind === 'files' || target.kind === 'project-files' ? target.path : folder ?? '/' };
+    }
     private async editorMount(folder?: string | null, sessionId?: string, prepared?: { manifest: ConversationManifest; project?: ProjectFolder | null }): Promise<HTMLElement> {
         const mount = document.createElement('div'); mount.className = 'session-editor-mount';
         const project = prepared && 'project' in prepared ? prepared.project : await this.projects?.forFolder(folder);
         const manifest = prepared?.manifest ?? (sessionId ? await this.sessions.get(sessionId) : undefined);
         this.tabs.content.replaceChildren();
-        if (this.tabs.current) this.tabs.context(this.tabs.current.id, project?.displayName ?? project?.name);
+        if (this.tabs.current) {
+            this.tabs.context(this.tabs.current.id, project?.displayName ?? project?.name);
+            const target = this.tabs.current.id.startsWith('draft:') ? undefined : resolveBrowserTarget(parseSessionRoute(this.tabs.current.id).path);
+            this.tabs.location(this.tabs.current.id, target?.kind === 'files' || target?.kind === 'project-files'
+                ? target.path : folder ?? project?.path ?? '/');
+        }
         if (sessionId && manifest) this.tabs.title(this.tabs.current!.id, manifest.title);
         this.tabs.content.append(mount); return mount;
     }
@@ -1446,6 +1464,7 @@ export class SessionWorkbench implements WorkspaceController {
                 const next = folderBrowserPath(folder) + '/@files' + projectRelativePath(path);
                 const selected = this.tabs.current === tab;
                 this.tabs.rename(tab.id, next, filename); if (tab.value) tab.value.active = next;
+                this.tabs.location(next, path);
                 if (selected) { this.active = next; if (this.visible) this.onSelect(next, 'replace'); }
                 this.scheduleRefresh('file-rename');
             }

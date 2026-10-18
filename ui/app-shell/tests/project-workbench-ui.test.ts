@@ -63,6 +63,11 @@ it('creates project Sessions from the selected project and edits its files in th
         await workbench.openResource(projectPath);
         const navigation = sidebar.querySelector('.workbench-sidebar__navigation')!;
         expect(navigation.textContent).toContain('Research');
+        for (const [segment, title] of [['@files', t('project.files')], ['@favorites', t('project.favorites')]]) {
+            const row = navigation.querySelector(`[data-item-id="${projectPath}/${segment}"]`)!;
+            expect(row.querySelector('.vfs-directory-item__title')?.textContent).toBe(title);
+            expect(row.querySelector('.vfs-directory-item__icon')?.innerHTML).toBeTruthy();
+        }
         const header = navigation.querySelector('.workbench-project-navigation')!;
         expect([...header.querySelectorAll<HTMLButtonElement>('button')].filter(button => !button.closest('[hidden], details')).map(button => button.title))
             .toEqual(['新会话', t('action.refresh')]);

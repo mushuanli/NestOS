@@ -2,8 +2,31 @@ import {expect, it} from 'vitest';
 import type {VFSNodeUI} from '@itookit/vfs-ui';
 import {resolveBrowserTarget} from '@itookit/app-contracts';
 import {fileFirst, navigationPriority, projectItems} from '../src/projects/navigation-policy';
+import { ACTION_ICONS, FILE_ICONS, t } from '@itookit/common';
 
 const item = (id: string) => ({id, metadata: {title: id, createdAt: '', lastModified: '', custom: {}}}) as VFSNodeUI;
+
+it('labels fixed entries with localized names and icons while preserving routes and literal file names', () => {
+    const root = '/folder:Project', favorites = item(root + '/@favorites'), files = item(root + '/@files');
+    const literal = item(files.id + '/@favorites'); literal.metadata.title = '@favorites';
+    files.children = [literal]; files.presentation = { fileDetails: true };
+    const rows = projectItems([favorites, files]);
+    expect(rows.map(row => row.id)).toEqual([favorites.id, files.id]);
+    expect(rows.map(row => row.metadata.title)).toEqual([t('project.favorites'), t('project.files')]);
+    expect(rows.map(row => row.icon)).toEqual([ACTION_ICONS.favorite, FILE_ICONS.folder]);
+    expect(rows.every(row => row.presentation?.fileDetails === false)).toBe(true);
+    expect(rows[1].children![0].metadata.title).toBe('@favorites');
+    expect(files.metadata.title).toBe(files.id);
+});
+
+it('removes the transparent remote container but keeps executor groups and unavailable feedback', () => {
+    const group = item('/folder:Project/@harness'), codex = item(group.id + '/codex'), claude = item(group.id + '/claude');
+    group.metadata.custom.navigationTransparent = true; group.children = [codex, claude];
+    expect(projectItems([group]).map(row => row.id)).toEqual([codex.id, claude.id]);
+    const unavailable = item(group.id + '/unavailable'); unavailable.metadata.custom._disabled = true;
+    group.children = [unavailable];
+    expect(projectItems([group])[0].metadata.custom._disabled).toBe(true);
+});
 it('keeps the local draft after favorites/files and before real sessions', () => {
     const root = '/folder:Project', ids = [root + '/session', root + '/@new', root + '/@files', root + '/@favorites'];
     expect(projectItems(ids.map(item)).sort((a, b) => fileFirst(a, b) ?? 0).map(node => node.id))

@@ -1,12 +1,12 @@
-import { getLocale, t } from '@itookit/common';
-import { resolveBrowserTarget } from '@itookit/app-contracts';
+import { ACTION_ICONS, FILE_ICONS, getLocale, t } from '@itookit/common';
+import { resolveBrowserTarget, WORKSPACE_PATH } from '@itookit/app-contracts';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
 
 /** Fixed project entries keep their order independently of user sort direction. */
 export function navigationPriority(path: string): number {
     const target = resolveBrowserTarget(path);
     if (target.kind === 'favorites') return -30;
-    if (target.kind === 'project-files' && target.path === '/workspace') return -20;
+    if (target.kind === 'project-files' && target.path === WORKSPACE_PATH) return -20;
     if (target.kind === 'project-draft' || target.kind === 'remote' && (target.draft || !target.profileId)) return -10;
     if (target.kind === 'remote' && (target.cursor || target.archived)) return 10;
     return 0;
@@ -27,7 +27,8 @@ function datedItem(item: VFSNodeUI): VFSNodeUI {
 }
 export function projectItems(items: VFSNodeUI[], query = ''): VFSNodeUI[] {
     return items.flatMap(item => {
-        const kind = resolveBrowserTarget(item.id).kind;
+        if (item.metadata.custom.navigationTransparent === true) return projectItems(item.children ?? [], query);
+        const target = resolveBrowserTarget(item.id), kind = target.kind;
         if (kind === 'session') {
             const row = datedItem(item);
             return [{ ...row, presentation: { ...row.presentation, quickDelete: true }, children: undefined, metadata: { ...row.metadata,
@@ -36,11 +37,17 @@ export function projectItems(items: VFSNodeUI[], query = ''): VFSNodeUI[] {
         }
         if (kind === 'favorite') return [{ ...item, children: undefined }];
         if (kind === 'project-draft') return [{...item, children: undefined}];
-        if (kind === 'favorites') return [item];
+        if (kind === 'favorites') return [navigationEntry(item, t('project.favorites'), ACTION_ICONS.favorite)];
         if (kind === 'remote') return [{...datedItem(item), children: item.children && projectItems(item.children, query).sort((a, b) => fileFirst(a, b) ?? 0)}];
-        if (kind === 'project-files') return [{ ...item, children: item.children && projectItems(item.children, query) }];
+        if (target.kind === 'project-files') {
+            const entry = target.path === WORKSPACE_PATH ? navigationEntry(item, t('project.files'), FILE_ICONS.folder) : item;
+            return [{ ...entry, children: item.children && projectItems(item.children, query) }];
+        }
         if (kind !== 'folder') return [];
-        if (item.metadata.custom.navigationTransparent === true) return projectItems(item.children ?? [], query);
         return [{ ...item, children: item.children && projectItems(item.children, query) }];
     });
+}
+
+function navigationEntry(item: VFSNodeUI, title: string, icon: string): VFSNodeUI {
+    return { ...item, icon, presentation: { ...item.presentation, fileDetails: false }, metadata: { ...item.metadata, title } };
 }

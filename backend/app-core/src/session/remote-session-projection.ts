@@ -8,6 +8,13 @@ import { reportRemoteFailure } from '../projects/remote-diagnostics';
 import { remoteSessionPath, type BrowserTarget } from './browser-routes';
 import type { ProjectRemoteMount } from '../projects/remote-mounts';
 type Target = Extract<BrowserTarget, {kind: 'remote'}>;
+
+/** Only a complete project root binding can expose native conversation profiles. */
+export function remoteSessionRootPath(project: SessionFolder, mounts: readonly ProjectRemoteMount[]): string | undefined {
+    return project.project && mounts.some(mount => mount.at === '/' && mount.connectionId && mount.serverProjectId)
+        ? remoteSessionPath(project.path) : undefined;
+}
+
 export class RemoteSessionProjection {
     constructor(private readonly projects?: ProjectService) {}
     private node(path: string, title: string, directory: boolean, times?: Pick<HarnessSession, 'createdAt' | 'updatedAt'>): FSNode {
@@ -24,8 +31,10 @@ export class RemoteSessionProjection {
     }
     async root(folder: string, known?: SessionFolder | null): Promise<FSNode[]> {
         const project = known === undefined ? await this.projects?.forFolder(folder) : known;
-        const root = project?.project && project.path === folder && this.projects?.remoteMounts?.list(project.project.id).find(m => m.at === '/' && m.connectionId && m.serverProjectId);
-        return root ? [this.node(remoteSessionPath(folder), t('harness.remoteSessions'), true)] : [];
+        const root = project?.project && project.path === folder
+            ? remoteSessionRootPath(project, this.projects?.remoteMounts?.list(project.project.id) ?? []) : undefined;
+        const node = root && this.node(root, t('harness.remoteSessions'), true);
+        return node ? [{ ...node, metadata: { ...node.metadata, navigationTransparent: true } }] : [];
     }
     async list(path: string, target: Target): Promise<FSNode[]> {
         const project = await this.projects?.forFolder(target.folder), remote = this.projects?.remoteMounts;

@@ -69,6 +69,8 @@ it('browses mounted native history pages, opens their conversations and routes a
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(remotePath));
         await vi.waitFor(() => expect(selector.value).toBe(remotePath));
         await vi.waitFor(() => expect(selector.disabled).toBe(false));
+        await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${remoteSessionPath(project.path, 'codex')}"]`)).not.toBeNull());
+        expect(sidebar.querySelector(`[data-item-id="${remoteSessionPath(project.path)}"]`)).toBeNull();
         selector.value = '/'; selector.dispatchEvent(new Event('change', {bubbles: true}));
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('/'));
         await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${remotePath}"]`)).not.toBeNull());

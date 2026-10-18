@@ -35,7 +35,7 @@ it('routes remote identities independently of local session IDs and round-trips 
 });
 it('only exposes sessions for a complete project binding, not a reference-directory mount', async () => {
     const scoped = setup(false); expect(await scoped.projection.root('/Project')).toEqual([]);
-    const fixture = setup(); expect((await fixture.projection.root('/Project'))[0].metadata.remoteHarness).toBe(true);
+    const fixture = setup(); expect((await fixture.projection.root('/Project'))[0].metadata).toMatchObject({ remoteHarness: true, navigationTransparent: true });
     expect(await fixture.projection.root('/Project/child')).toEqual([]);
 });
 it('projects read-only session rows and a navigable next page without copying native histories', async () => {

@@ -8,7 +8,7 @@ import { WORKSPACE_PATH, projectRelativePath } from '../vfs/workspace-namespace'
 import { sessionFamilyRoots } from '../projects/session-family';
 import { containedProjectRoots, projectFileLocation, type ProjectFileLocation, type ProjectFileRoot } from '../projects/file-location';
 import { transferFileSystemEntry, checkOperation, createFileSystemSource, FSError, type FSNode, type IStorageBackend, type IFileSystem, type OperationOptions } from '@itookit/vfs-core';
-import { t, ENTITY_ICONS, ACTION_ICONS, fileTypeIcon } from '@itookit/common';
+import { t, ENTITY_ICONS, ACTION_ICONS, FILE_ICONS, fileTypeIcon } from '@itookit/common';
 import type { ISessionRepository, SessionFolder } from '@itookit/llm-session';
 import type { EventEnvelope, TaskRecord } from '@itookit/durable-kernel';
 import { taskStat } from '@itookit/durable-kernel';
@@ -347,7 +347,7 @@ class BrowserBackend implements IStorageBackend {
             const mapped = await this.mapped(fs, node, filesBrowserPrefix(path), state);
             const root = target.kind === 'project-files' ? target.path === WORKSPACE_PATH : target.path === '/';
             const directory = root ? {...mapped, metadata: {...mapped.metadata,
-                ...(target.kind === 'project-files' ? {_fixedEntry: true} : {}), title: t('project.files')}} : mapped;
+                ...(target.kind === 'project-files' ? {_fixedEntry: true, _fileDetails: false} : {}), title: t('project.files')}} : mapped;
             return {node: this.withMountStatus(directory, filesBrowserPrefix(path), target, state), nodes};
         };
         return supplied ? read(supplied) : this.withFiles(target, read);
@@ -378,8 +378,9 @@ class BrowserBackend implements IStorageBackend {
         return {...node, icon: ENTITY_ICONS.chat, metadata: {...node.metadata, _fixedEntry: true}};
     }
     private favoritesEntry(path: string): FSNode {
-        return { ...this.node(path, t('project.favorites'), true), icon: ACTION_ICONS.favorite,
-            metadata: { title: t('project.favorites'), _fixedEntry: true, _readOnly: true, _showAll: true } };
+        const node = this.node(path, t('project.favorites'), true);
+        return { ...node, icon: ACTION_ICONS.favorite,
+            metadata: { ...node.metadata, _fixedEntry: true, _readOnly: true } };
     }
     private async favoriteNodes(path: string, folder: string): Promise<FSNode[]> {
         const project = await this.deps.projects?.forFolder(folder);
@@ -398,7 +399,8 @@ class BrowserBackend implements IStorageBackend {
         const offline = !!projection?.offline;
         const availability = offline ? { readOnly: true } : await this.fileAvailability(folder);
         const disabled = offline || !!availability.reason;
-        return { ...this.node(path, t('project.files'), true), metadata: { title: t('project.files'),
+        const node = this.node(path, t('project.files'), true);
+        return { ...node, icon: FILE_ICONS.folder, metadata: { ...node.metadata,
             _favorite: projection?.favorite(WORKSPACE_PATH, 'directory') ?? false, _fixedEntry: true, _disabled: disabled, _readOnly: availability.readOnly,
             ...(disabled ? { navigationDescription: offline ? t('remote.projectOffline') : t('project.filesUnavailable', { reason: availability.reason! }) } : {}) } };
     }

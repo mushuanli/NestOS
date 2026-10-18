@@ -392,6 +392,8 @@ C4Component
 
 文件搜索能力由 `ProjectClient` 在执行查询的同一 MCP 连接上读取 discovery metadata；明确声明 `fileSearch: false` 时拒绝查询。应用层只核对项目授权与 revision，不把文件 HTTP 根地址再次传给要求完整 MCP 地址的 discovery 入口。名称/目录搜索仍要求版本 2；未声明新能力的旧服务保持原有路径/内容搜索契约。
 
+远程文件扫描由 pi-agent 的 rg 执行并自行选择线程数，不在 HTTP 或 app-core 再复制文件扫描器。子目录范围通过标准输入提供的 rg 忽略规则在遍历时剪枝，项目原有忽略规则保持优先，输出仍核对相对目录；保留项目根作为遍历根，避免显式指定目录后改变链接、隐藏和忽略行为。不能安全表示为逐行忽略规则的目录沿用结果过滤。Node 与浏览器本地来源继续走授权 VFS 视图，不能用物理目录扫描替代组合视图。
+
 原生会话聚合最多并发查询两个 profile，共享 18 秒预算并受外层查询取消约束；不按来源数量平分原生扫描时间。按 profile 目录顺序合并结果，最多返回 100 条；失败或超时来源通过 `unavailableSources` 标识，已完成来源的结果保留。所有查询结束或取消后释放客户端，再返回结果。
 
 ```mermaid
@@ -404,12 +406,14 @@ C4Component
   Component(sessions, "SessionRepository", "llm-session", "摘要、存活分支与轮次文档")
   Component(driver, "ProjectClient / HarnessClient", "piagent-driver", "同一 MCP 连接的能力协商、查询与响应校验")
   Component(remote, "project_search / harness_session_search", "pi-agent", "远程授权视图、原生结构化历史与角色筛选")
+  Component(rg, "ripgrep", "isolated process", "并行扫描、遍历剪枝、忽略规则与有界流式输出")
   Rel(page, query, "调用搜索端口；不携带列表分页游标")
   Rel(query, files, "查询本地文件")
   Rel(files, store, "复用 list / read；不新增存储搜索策略")
   Rel(query, sessions, "查询本地会话")
   Rel(query, driver, "查询远程来源")
   Rel(driver, remote, "复用并扩展现有搜索协议")
+  Rel(remote, rg, "只读 pinned 文件视图；目录规则经 stdin 传入")
 ```
 
 页面工具栏的创建、刷新和更多操作使用纯图标，名称保留在 title/aria-label，行菜单触发按钮不依赖 hover 才可见。文件根目录可以是固定导航分组，但创建能力只由后端文件目录的 _readOnly/_disabled 投影决定。搜索控件按搜索框、范围、清除排序；清除同时取消请求并恢复原列表。手机端进入搜索后隐藏其他工具栏动作，退出后恢复，按钮点击区域至少 44px；桌面端保留常用动作。

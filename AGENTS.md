@@ -83,6 +83,12 @@ pnpm --filter @itookit/<pkg> typecheck
 - **图标**: 从 `@itookit/common` import (`ENTITY_ICONS`, `ACTION_ICONS` 等), 禁止硬编码 emoji
 - **i18n**: `t('domain.section.item')`, key 在 `common/src/i18n/zh-CN.ts` 先加 → `en.ts` 同步
 
+## UUID 与稳定身份
+
+- 跨平台、浏览器及 WebView 代码禁止直接调用 `crypto.randomUUID()`；HTTP 局域网地址和部分 WebView 中该方法可能缺失或抛错。需要 UUID v4 时，从 `@itookit/common` 公开入口使用 `randomUUID()`，不要用 `generateUUID()`、时间戳或临时拼接代替 UUID v4。
+- 独立库保持既有依赖边界，复用库内兼容 UUID 工具或注入 ID 生成器，不为生成 UUID 引入应用包；涉及此类代码的修改应覆盖原生 `randomUUID` 缺失和抛错的回归场景。
+- 草稿首次提交复用已分配的 Session ID；同一次提交及其重试保留稳定身份，不在渲染、刷新或重试过程中重新生成会话或操作 ID。
+
 ## LLM 子系统速查
 
 ```

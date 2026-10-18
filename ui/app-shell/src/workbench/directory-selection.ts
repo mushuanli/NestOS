@@ -20,10 +20,10 @@ export class DirectorySelection {
         for (const action of actions) {
             const button = document.createElement('button'); button.type = 'button'; button.dataset.action = `bulk-${action.id}`;
             const icon = action.id === 'copy' ? FILE_ICONS.document : action.id === 'export' ? VFS_TOOLBAR_ICONS.export : FILE_BROWSER_ICONS[action.id];
-            decorateButton(button, icon, action.label); button.onclick = () => { void this.run(action); };
+            decorateButton(button, icon, action.label, true); button.onclick = () => { void this.run(action); };
             this.buttons.push(button); this.bar.append(button);
         }
-        const clear = document.createElement('button'); clear.type = 'button'; decorateButton(clear, FILE_BROWSER_ICONS.close, t('workbench.clearSelection'));
+        const clear = document.createElement('button'); clear.type = 'button'; decorateButton(clear, FILE_BROWSER_ICONS.close, t('workbench.clearSelection'), true);
         clear.onclick = () => { this.ids.clear(); this.commit(); }; this.bar.append(clear); this.update();
     }
     checkbox(id: string, name: string): HTMLInputElement {

@@ -1372,13 +1372,6 @@
 .llm-input__execution-source[hidden],
 .llm-input__flow-configure[hidden],
 .llm-input__agent-picker[hidden] { display: none; }
-.llm-draft-target { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
-.llm-draft-target > button { padding: 7px 12px; border: 0; border-radius: 8px; background: transparent; color: var(--llm-text-secondary); font: inherit; font-size: 13px; cursor: pointer; }
-.llm-draft-target > button:hover,
-.llm-draft-target > button[aria-pressed="true"] { color: var(--llm-text-primary); background: var(--llm-bg-tertiary); }
-.llm-draft-target > button:disabled { opacity: .5; cursor: default; }
-.llm-draft-target > button:focus-visible { outline: 2px solid var(--llm-color-primary); outline-offset: 2px; }
-.llm-draft-target__hint { flex-basis: 100%; margin: 0 0 2px; color: var(--llm-text-secondary); font-size: 12px; line-height: 1.5; }
 .llm-input__toolbar :focus-visible { outline: 2px solid var(--llm-color-primary); outline-offset: 2px; }
 
 @media (max-width: 480px) {

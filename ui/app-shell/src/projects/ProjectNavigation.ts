@@ -1,9 +1,10 @@
+import { sessionCreationReason } from './session-creation-policy';
 import { fileFirst, projectItems } from './navigation-policy';
 import { remapProjectPath } from './project-paths';
 import { t, FILE_BROWSER_ICONS, VFS_TOOLBAR_ICONS, ENTITY_ICONS, FEEDBACK_ICONS } from '@itookit/common';
 import { ProjectSyncStatusIndicator, projectSyncIcon } from './sync/indicator';
 import type { ProjectSyncIndicator } from './sync/presentation';
-import { browserTargetFolder, folderBrowserPath, projectConversationsPath, resolveBrowserTarget, remoteSessionPath } from '@itookit/app-contracts';
+import { browserTargetFolder, folderBrowserPath, resolveBrowserTarget } from '@itookit/app-contracts';
 import type { ProjectFolder, ProjectNavigationView, ProjectService } from '@itookit/app-contracts/services';
 import { ScopeSelector } from '@itookit/vfs-ui';
 import type { VFSActionDefinition, VFSActionContext, VFSToolbarContext, VFSColumnsOptions, VFSNodeUI, VFSUIShell } from '@itookit/vfs-ui';
@@ -43,7 +44,6 @@ export class ProjectNavigation {
     private project?: ProjectFolder;
     private path = '/';
     private draftActive = false;
-    private readonly remoteCreation = new Map<string, string | undefined>();
     private revision = 0;
     private offlinePaths = new Set<string>();
     private projectChoices: ProjectFolder[] = [];
@@ -195,44 +195,25 @@ export class ProjectNavigation {
         this.syncStatus.update(project && this.actions.syncIndicator?.(project.project.id));
         this.updateCreation();
         this.projectActions.hidden = !project || !this.actions.projectMenu;
+        this.menu.hidden = !project;
         this.retry.hidden = !pending; this.retry.textContent = t('project.retryDeletion', { count: pending });
         this.updateSelector(); this.updateTransferControls();
     }
-    setRemoteCreation(path: string, draftPath?: string): void {
-        const target = resolveBrowserTarget(path);
-        if (target.kind !== 'remote' || !target.profileId || target.cursor || target.archived) return;
-        const profile = remoteSessionPath(target.folder, target.profileId);
-        this.remoteCreation.delete(profile); this.remoteCreation.set(profile, draftPath);
-        if (this.remoteCreation.size > 16) this.remoteCreation.delete(this.remoteCreation.keys().next().value!);
-        this.updateCreation();
-    }
-    private remoteDraftPath(): string | undefined {
-        const target = resolveBrowserTarget(this.path);
-        if (target.kind !== 'remote' || !target.profileId || target.archived) return;
-        return this.remoteCreation.get(remoteSessionPath(target.folder, target.profileId));
+    private creationProject(): ProjectFolder | undefined {
+        if (this.project) return this.project;
+        const folder = browserTargetFolder(resolveBrowserTarget(this.path), this.path);
+        return this.projectChoices.find(project => folder === project.path || folder.startsWith(project.path + '/'));
     }
     private async createSession(): Promise<unknown> {
-        const target = resolveBrowserTarget(this.path);
-        if (target.kind === 'remote' && target.profileId) {
-            const draft = this.remoteDraftPath();
-            if (draft) return this.actions.navigate?.(draft);
-            return;
-        }
-        const project = this.project;
-        if (project && (project.project.source?.kind === 'remote' || this.projects.remoteMounts?.list(project.project.id).some(mount => mount.at === '/')))
-            return this.actions.navigate?.(projectConversationsPath(project.path));
-        return this.actions.createSession(folderBrowserPath(project?.path));
+        return this.actions.createSession(folderBrowserPath(this.creationProject()?.path));
     }
     private updateCreation(): void {
-        const target = resolveBrowserTarget(this.path), remote = target.kind === 'remote' && !!target.profileId;
-        const label = t(remote ? 'harness.create' : 'project.createSession');
-        if (this.create.title !== label) decorateButton(this.create, FILE_BROWSER_ICONS.newSession, label, true);
-        const project = this.project, root = project && this.ui()?.getNode(projectConversationsPath(project.path, {recent: true}));
-        const remoteProject = project?.project.source?.kind === 'remote' || !!project && this.projects.remoteMounts?.list(project.project.id).some(mount => mount.at === '/');
-        this.create.hidden = remote ? !this.remoteDraftPath() : !project || !!remoteProject && !root?.children?.some(node => node.metadata.custom.conversationCreate === true);
-        const folder = remote ? target.folder : this.project?.path;
-        this.create.disabled = !!folder && this.offlinePaths.has(folderBrowserPath(folder));
-        this.create.setAttribute('aria-current', this.draftActive || remote && !!target.draft ? 'page' : 'false');
+        const project = this.creationProject();
+        this.create.hidden = !project;
+        const reason = project ? sessionCreationReason(this.projects, project.project.id) : undefined;
+        this.create.disabled = !!reason;
+        this.create.title = reason ?? t('project.createSession');
+        this.create.setAttribute('aria-current', this.draftActive ? 'page' : 'false');
     }
     private updateSelector(): void {
         this.selector.update([{ id: '/', label: t('workbench.allProjects') },

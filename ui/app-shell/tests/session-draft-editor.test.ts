@@ -180,3 +180,14 @@ it('rejects remote attachments before creating or sending a native conversation'
     await expect(state.options.onSend('remote prompt',[new File(['data'],'file.txt')],'remote:codex')).rejects.toThrow();
     expect(send).not.toHaveBeenCalled();expect(materialize).not.toHaveBeenCalled();await editor.destroy();
 });
+
+it.each(['missing', 'throws'])('submits a draft when native UUID support %s', async mode => {
+    const original = globalThis.crypto;
+    vi.stubGlobal('crypto', {getRandomValues: original.getRandomValues.bind(original),
+        ...(mode === 'throws' ? {randomUUID: () => {throw new Error('HTTP WebView');}} : {})});
+    const sendMessage = vi.fn(async () => {}), mount = document.createElement('div');
+    const editor = new SessionDraftEditor(mount, {onChange: () => () => {}} as never,
+        {sessionDraft: {materialize: async () => ({editor: {commands: {sendMessage}} as never, resumeOnly: false})}});
+    try { await editor.init(mount); await state.options.onSend('hello', [], 'default'); expect(sendMessage).toHaveBeenCalledOnce(); }
+    finally {await editor.destroy(); vi.unstubAllGlobals();}
+});

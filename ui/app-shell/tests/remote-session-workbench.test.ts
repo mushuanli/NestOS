@@ -5,6 +5,7 @@ import { t } from '@itookit/common';
 import { MemoryBackend, createFileSystemSource, FSError } from '@itookit/vfs-core';
 import { createApplicationRuntime, remoteSessionPath, folderBrowserPath } from '@itookit/app-core';
 import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/piagent-driver';
+import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
 import { RemoteConversationEditor } from '../../llm-ui-adapter/src/shell/RemoteConversationEditor';
 import type { EditorOptions } from '@itookit/ui-common';
 import type { VFSUIShell } from '@itookit/vfs-ui';
@@ -53,6 +54,10 @@ it('browses mounted native history pages, opens their conversations and routes a
     });
     const sidebar=document.createElement('div'),main=document.createElement('div');document.body.append(sidebar,main);
     const factory=vi.fn(async (container:HTMLElement,options:EditorOptions) => {
+        if (options.sessionDraft) {
+            const editor = new SessionDraftEditor(container, {listAgents: () => [], getConnections: async () => [], getDefaultConnection: async () => null, onChange: () => () => {}} as never, options as never);
+            await editor.init(container); return editor;
+        }
         if (!options.conversation) throw new Error('Expected native conversation port');
         const editor=new RemoteConversationEditor(container,options.conversation,options);await editor.init(container);return editor;
     });
@@ -87,7 +92,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         await vi.waitFor(() => expect(selector.value).toBe(remotePath));
         await vi.waitFor(() => expect(selector.disabled).toBe(false));
         expect([...main.querySelectorAll<HTMLButtonElement>('.workbench-tabs__panel:not([hidden]) button')]
-            .some(button => button.textContent === t('project.createSession'))).toBe(false);
+            .some(button => button.getAttribute('aria-label') === t('project.createSession'))).toBe(true);
         selector.value = initialScope; selector.dispatchEvent(new Event('change', {bubbles: true}));
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(initialScope));
         const diagnostic = vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -113,19 +118,23 @@ it('browses mounted native history pages, opens their conversations and routes a
         await workbench.openResource(profilePath, {preserveProject: true});
         expect(main.textContent).toContain('Native session');
         const create = () => activePanel().querySelector<HTMLButtonElement>('[data-directory-action="enabled"]');
-        expect(create()?.textContent).toBe(t('harness.create'));
-        expect(create()?.getAttribute('aria-label')).toBe(t('harness.create'));
+        expect(create()?.title).toBe(t('project.createSession'));
+        expect(create()?.getAttribute('aria-label')).toBe(t('project.createSession'));
         create()!.click();
-        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(profilePath + '/@new'));
+        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('draft:' + project.project.id));
+        activePanel().querySelector<HTMLButtonElement>('.llm-input__agent-trigger')!.click();
+        expect(document.querySelector('.llm-popup--visible')?.textContent).toContain(t('harness.remoteAgents'));
+        expect(document.querySelector('.llm-popup--visible')?.textContent).toContain('codex'); document.body.click();
+        expect(activePanel().querySelector('[data-execution-target]')).toBeNull();
         expect(peer.create).not.toHaveBeenCalled(); expect(peer.turn).not.toHaveBeenCalled();
         await workbench.openResource(profilePath, {preserveProject: true});
         const sidebarCreate = sidebar.querySelector<HTMLButtonElement>('.workbench-project-navigation__create')!;
         await vi.waitFor(() => expect(sidebarCreate.hidden).toBe(false));
-        expect(sidebarCreate.title).toBe(t('harness.create')); sidebarCreate.click();
-        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(profilePath + '/@new'));
+        expect(sidebarCreate.title).toBe(t('project.createSession')); sidebarCreate.click();
+        await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('draft:' + project.project.id));
         expect(peer.create).not.toHaveBeenCalled(); expect(peer.turn).not.toHaveBeenCalled();
         await workbench.openResource(profilePath + '/@archived', {preserveProject: true});
-        expect(create()).toBeNull(); await vi.waitFor(() => expect(sidebarCreate.hidden).toBe(true));
+        expect(create()).not.toBeNull(); await vi.waitFor(() => expect(sidebarCreate.hidden).toBe(false));
         await workbench.openResource(profilePath, {preserveProject: true});
         const list = activePanel().querySelector('.workbench-directory__table')!;
         expect(list.querySelector('[data-column="modified"]')?.getAttribute('aria-sort')).toBe('descending');
@@ -165,7 +174,7 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(selector.value).toBe('/');
         expect(factory.mock.calls.at(-1)![1].conversation).toBeDefined();expect(peer.resume).not.toHaveBeenCalled();
         const collapsed = sidebar.classList.contains('is-collapsed');
-        const toggle = activePanel().querySelector<HTMLButtonElement>('#llm-btn-sidebar')!;
+        const toggle = activePanel().querySelectorAll<HTMLButtonElement>('#llm-btn-sidebar')[0]!;
         expect(toggle.hidden).toBe(false); toggle.click();
         await vi.waitFor(() => expect(sidebar.classList.contains('is-collapsed')).toBe(!collapsed));
         toggle.click(); await vi.waitFor(() => expect(sidebar.classList.contains('is-collapsed')).toBe(collapsed));
@@ -210,9 +219,9 @@ it('browses mounted native history pages, opens their conversations and routes a
             expect(remote.list(project.project.id)[0].access).toBe(access); expect(workbench.getActiveResourceId()).toBe('/');
         };
         await remountAs('ro'); await workbench.openResource(profilePath, {reload: true});
-        expect(create()).toBeNull();
+        expect(activePanel().querySelector<HTMLButtonElement>('[data-action="create-session"]')!.disabled).toBe(true);
         expect(activePanel().querySelector(`[data-resource-id="${profilePath}/@new"]`)).toBeNull();
-        await vi.waitFor(() => expect(sidebarCreate.hidden).toBe(true));
+        await vi.waitFor(() => expect(sidebarCreate.disabled).toBe(true));
         await workbench.openResource(nativePath);
         expect(activePanel().querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(true);
         await remountAs('rw'); await workbench.openResource(nativePath);

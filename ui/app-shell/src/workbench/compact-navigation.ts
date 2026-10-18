@@ -12,8 +12,9 @@ export function compactNavigation(container: HTMLElement, context: string, back:
     project.textContent = context; project.title = context; project.hidden = !context; label.append(title, project);
     const opened = button(ACTION_ICONS.opened, t('workbench.opened'), open); opened.setAttribute('aria-haspopup', 'dialog');
     const count = document.createElement('span'); count.className = 'workbench-compact-navigation__count'; opened.append(count);
-    root.append(button(ACTION_ICONS.back, t('workspace.mobile.backToList'), back), label, opened); container.append(root);
-    return {update(name: string, total: number) {
+    root.append(button(ACTION_ICONS.sidebar, t('workspace.mobile.showSidebar'), back), label, opened); container.append(root);
+    return {update(name: string, total: number, currentContext = context) {
+        project.textContent = currentContext; project.title = currentContext; project.hidden = !currentContext;
         title.textContent = name; title.title = name; count.textContent = String(total);
         opened.setAttribute('aria-label', `${t('workbench.opened')} (${total})`);
     }, destroy() { root.remove(); }};

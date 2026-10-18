@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { installMobileViewport } from '../src/navigation/mobile-viewport';
 import { setupMobileWorkspaceView } from '../src/navigation/mobile-workspace-view';
+import { ACTION_ICONS, t } from '@itookit/common';
 import { VFS_DOM_EVENTS } from '@itookit/vfs-ui';
 import { WorkbenchTabs } from '../src/workbench/tabs';
 
@@ -140,4 +141,30 @@ it('tracks the mobile keyboard viewport, ignores pinch zoom and releases listene
     viewport.scale = 2; viewport.height = 190; viewport.dispatchEvent(new Event('resize')); expect(value()).toBe('380px');
     narrow = false; window.dispatchEvent(new Event('resize')); expect(value()).toBe('');
     dispose(); narrow = true; viewport.scale = 1; viewport.dispatchEvent(new Event('resize')); expect(value()).toBe('');
+});
+
+it('keeps sidebar and window controls together for standalone documents and preserves the active editor', async () => {
+    HTMLDialogElement.prototype.showModal ??= function () { this.open = true; };
+    HTMLDialogElement.prototype.close ??= function () { this.open = false; this.dispatchEvent(new Event('close')); };
+    const layout = document.createElement('div'), sidebar = document.createElement('div'), editor = document.createElement('div');
+    layout.className = 'mm-layout'; editor.className = 'mm-editor-area'; layout.append(sidebar, editor); document.body.append(layout);
+    const tabs = new WorkbenchTabs(editor, {activate: async id => tabs.activate(id), dispose: async () => {}, empty() {}, error() {}});
+    sidebar.append(tabs.opened);
+    const dispose = setupMobileWorkspaceView(layout, sidebar, editor);
+    try {
+        const doc = await tabs.open('doc', 'Document', false); doc.panel.innerHTML = '<textarea>Unsaved content</textarea>';
+        tabs.context('doc', 'Personal');
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const navigation = editor.querySelector('.workbench-tabs__navigation .workbench-compact-navigation')!;
+        const buttons = navigation.querySelectorAll<HTMLButtonElement>('button');
+        expect(layout.dataset.mobileHeader).toBe('standalone');
+        const icon = document.createElement('div'); icon.innerHTML = ACTION_ICONS.sidebar;
+        expect(buttons[0].firstElementChild!.isEqualNode(icon.firstElementChild)).toBe(true); expect(buttons[0].getAttribute('aria-label')).toBe(t('workspace.mobile.showSidebar'));
+        icon.innerHTML = ACTION_ICONS.opened; expect(buttons[1].firstElementChild!.isEqualNode(icon.firstElementChild)).toBe(true); expect(navigation.textContent).toContain('Document'); expect(navigation.textContent).toContain('Personal');
+        buttons[1].click(); const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
+        expect(dialog.open).toBe(true); expect(dialog.contains(tabs.opened)).toBe(true); dialog.close();
+        buttons[0].click(); expect(layout.dataset.mobileView).toBe('list');
+        expect(doc.panel.querySelector('textarea')!.value).toBe('Unsaved content');
+        tabs.activate('doc'); await new Promise(resolve => setTimeout(resolve, 0)); expect(layout.dataset.mobileView).toBe('detail');
+    } finally { dispose(); await tabs.destroy(); }
 });

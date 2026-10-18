@@ -7,7 +7,8 @@ import { withInitialDirectory } from '../browser/initial-directory';
 import { presentationPersistence } from '../persistence/initial-navigation';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
-import {remoteSessionCreationPath} from './remote-session-creation';
+import { sessionCreationReason } from './session-creation-policy';
+import { projectDirectoryActions } from './directory-actions';
 import {fileFirst, navigationPriority} from './navigation-policy';
 import { ProjectSearchPanel } from './project-search-panel';
 import { createProjectDirectorySearch } from './project-directory-search';
@@ -52,7 +53,7 @@ import { localizeMountError } from '../files/localize-mount-error';
 import type { EditorFactory, IEditor, EditorHostContext, ContextMenuConfig, MenuItem } from '@itookit/ui-common';
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { KernelViewPort as Kernel } from '@itookit/durable-kernel/contracts';
-import { allowsRowAction, describeErrorReason, describeCauseChain, type VFSToolbarContext, type VFSUIShell, type VFSNodeUI, type UIPersistencePort } from '@itookit/vfs-ui';
+import { describeErrorReason, describeCauseChain, type VFSToolbarContext, type VFSUIShell, type VFSNodeUI, type UIPersistencePort } from '@itookit/vfs-ui';
 import { FSError, createFileSystemView, type FSNode, type IFileSystem, type FileSystemContextOwner, type FileSystemView } from '@itookit/vfs-core';
 
 
@@ -404,7 +405,14 @@ export class SessionWorkbench implements WorkspaceController {
                         ] : [];
                     }
                     if (target.kind === 'favorite' || target.kind === 'favorites') return [];
-                    if (target.kind === 'project-files' && target.path === WORKSPACE_PATH) return twin;
+                    if ((target.kind === 'project-files' || target.kind === 'files') && item.type === 'directory') {
+                        const entries = ['file', 'directory'].map(type => ({
+                            disabled: item.metadata.custom._readOnly === true || item.metadata.custom._disabled === true,
+                            id: type === 'file' ? 'create-file' : 'create-folder', label: t(type === 'file' ? 'project.createFile' : 'project.createFolder'),
+                            onClick: () => this.createDirectoryEntry(item.id, type as 'file' | 'directory'),
+                        }));
+                        return [...(target.kind === 'project-files' && target.path === WORKSPACE_PATH ? twin : defaults.filter(entry => !('id' in entry) || !['create-in-folder-session', 'create-in-folder-folder'].includes(entry.id))), ...entries];
+                    }
                     if (this.projects && item.metadata?.custom?.projectId)
                         return this.projectEntryMenu(item, defaults);
                     if (target.kind === 'folder' && item.metadata.custom.navigationTransparent === true)
@@ -556,7 +564,8 @@ export class SessionWorkbench implements WorkspaceController {
     private projectEntryMenu(item: VFSNodeUI, defaults: MenuItem<VFSNodeUI>[]): MenuItem<VFSNodeUI>[] {
         const id = String(item.metadata.custom.projectId), remote = !!item.metadata.custom.remoteProject;
         const hidden = ['create-in-folder-session', 'create-in-folder-folder', ...(remote ? ['delete', 'moveTo', 'copyTo', 'duplicate'] : [])];
-        return [{ id: 'enter-project', label: t('project.enter'), onClick: () => this.openResource(item.id) },
+        return [{id: 'create-session', label: t('project.createSession'), disabled: !!this.projects && !!sessionCreationReason(this.projects, id), onClick: () => this.startSessionDraft(item.id)},
+            { id: 'enter-project', label: t('project.enter'), onClick: () => this.openResource(item.id) },
             ...defaults.filter(entry => !('id' in entry) || !hidden.includes(entry.id))
                 .map(entry => 'id' in entry && entry.id === 'rename' ? {...entry, onClick: () => this.renameProjectDialog(id)} : entry),
             ...(remote ? [
@@ -1115,12 +1124,6 @@ export class SessionWorkbench implements WorkspaceController {
             if (project) {
                 const directory = document.createElement('p'); directory.className = 'project-workbench__directory';
                 directory.textContent = project.project.directory.startsWith('host:') ? project.project.directory.slice(5) : t('project.managedDirectory'); panel.append(directory);
-                const draft = nodes.find(node => resolveBrowserTarget(node.path).kind === 'project-draft');
-                if (draft) {
-                    const create = this.actionButton(panel, t('project.createSession'), () => this.openResource(draft.path));
-                    create.disabled = !!this.projects.remoteMounts?.projectOffline(project.project.id);
-                    if (create.disabled) create.title = t('remote.projectOffline');
-                }
                 const remote = this.projects.remoteMounts?.list(project.project.id).find(mount => mount.at === '/');
                 if (remote?.connectionId) directory.textContent = `${this.projects.remoteMounts!.connectionName(remote.connectionId) ?? project.displayName ?? project.name}: /${remote.alias}${remote.root === '/' ? '' : remote.root}`;
             }
@@ -1139,13 +1142,11 @@ export class SessionWorkbench implements WorkspaceController {
             button.onclick = () => { void this.manageMemory!(target.sessionId, this.dialogs.signal).catch(error => this.report(error)); };
             panel.append(button);
         }
-        const draft = remoteSessionCreationPath(path, nodes);
-        this.projectNavigation?.setRemoteCreation(path, draft);
         const parent = path.slice(0, path.lastIndexOf('/')) || '/';
-        const row = this.sidebarUI?.getNode(path);
-        const writable = (target.kind === 'project-files' || target.kind === 'files') && directoryNode?.type === 'directory'
-            && directoryNode.metadata._readOnly !== true && directoryNode.metadata._disabled !== true
-            && (!row || allowsRowAction('create-in-folder-session', false, row));
+        const actions = await projectDirectoryActions(path, directoryNode, this.projects, {
+            session: folder => this.startSessionDraft(folder), project: () => this.createProject('/'),
+            entry: (directory, type) => this.createDirectoryEntry(directory, type), report: error => this.report(error),
+        });
         if (this.closed || generation !== this.contentVersion) return;
         const search = this.projects && this.search ? await createProjectDirectorySearch(path, this.projects, this.search,
             (row, query) => this.openSearchMatch(row, query)) : undefined;
@@ -1161,16 +1162,13 @@ export class SessionWorkbench implements WorkspaceController {
             open: id => { void this.openResource(id, {directory: nodes.find(node => node.path === id)?.type === 'directory'}).catch(error => this.report(error)); },
             parent: path === '/' ? undefined : () => { void this.openResource(parent, {directory: true}).catch(error => this.report(error)); },
             refresh: () => this.directoryEntries(path, favorites?.update),
+            menu: path === '/' ? undefined : event => { void this.showDirectoryMenu(event, target.kind === 'project-conversations' ? folderBrowserPath(target.folder) : path).catch(error => this.report(error)); },
             contextMenu: (event, id) => { void this.showDirectoryMenu(event, id).catch(error => this.report(error)); },
             select: ids => this.sidebarUI?.setSelection(ids),
             selectedIds: () => this.sidebarUI?.getSnapshot().selectedIds ?? [],
             bulkActions: this.sidebarUI && (target.kind === 'project-files' || target.kind === 'files') ? directoryBulkActions(this.sidebarUI) : undefined,
             favorite: favorites, search,
-            actions: draft ? [{label: t('harness.create'), icon: FILE_BROWSER_ICONS.newSession, iconOnly: false,
-                run: () => {void this.openResource(draft).catch(error => this.report(error));}}] : writable ? [
-                { label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, run: () => { void this.createDirectoryEntry(path, 'file').catch(error => this.report(error)); } },
-                { label: t('project.createFolder'), icon: FILE_BROWSER_ICONS.addFolder, run: () => { void this.createDirectoryEntry(path, 'directory').catch(error => this.report(error)); } },
-            ] : undefined });
+            actions });
         heading.remove(); panel.append(list); this.tabs.title(this.tabs.current!.id, list.querySelector('h2')!.textContent!);
         if (this.sidebarUI) this.tabs.current!.subscriptions.push(watchDirectorySelection(panel, this.sidebarUI));
         this.tabs.setIcon(this.tabs.current!.id, this.sidebarUI?.getNode(path)?.icon ?? FILE_ICONS.folder);
@@ -1182,7 +1180,6 @@ export class SessionWorkbench implements WorkspaceController {
         const nodes = await projectDirectoryNodes(this.navigationFiles!, path);
         update?.(nodes);
         if (this.active === path) {
-            this.projectNavigation?.setRemoteCreation(path, remoteSessionCreationPath(path, nodes));
             await this.sidebarUI?.refresh();
             if (this.active === path) await this.projectNavigation?.refresh();
         }
@@ -1302,7 +1299,8 @@ export class SessionWorkbench implements WorkspaceController {
         if (!this.projects) return folder;
         const project = await this.projects.forFolder(folder);
         if (!project) throw new Error(t('project.selectForSession'));
-        if (this.projects.remoteMounts?.projectOffline(project.project.id)) throw new Error(t('remote.projectOffline'));
+        const reason = sessionCreationReason(this.projects, project.project.id);
+        if (reason) throw new Error(reason);
         return folder && folder.startsWith(project.path + '/') ? folder : this.projects.sessionFolder(project);
     }
     private actionButton(parent: HTMLElement, label: string, action: () => Promise<unknown>): HTMLButtonElement {
@@ -1385,9 +1383,7 @@ export class SessionWorkbench implements WorkspaceController {
         panel.append(mark, title, hint);
         const project = this.projectNavigation?.currentProject();
         if (project) {
-            const remote = project.project.source?.kind === 'remote' || this.projects?.remoteMounts?.list(project.project.id).some(mount => mount.at === '/');
-            this.actionButton(panel, t(remote ? 'harness.remoteSessions' : 'project.createSession'), () =>
-                this.openResource(remote ? remoteSessionPath(project.path) : folderBrowserPath(project.path) + '/@new'));
+            this.actionButton(panel, t('project.createSession'), () => this.startSessionDraft(folderBrowserPath(project.path)));
         }
         else if (this.projects) this.actionButton(panel, t('project.create'), () => this.createProject('/'));
         this.tabs.content.replaceChildren(panel);

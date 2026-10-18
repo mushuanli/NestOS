@@ -39,3 +39,21 @@ it('defaults every conversation page to session names and supports prompts witho
     resolve({matches: [{kind: 'session', projectId: 'p', folder: '/P', title: 'late result', summary: 'late'}], truncated: false, nextCursor: null});
     await vi.advanceTimersByTimeAsync(0); expect(controller.element.textContent).not.toContain('late result');
 });
+
+it('keeps query, scope and clear in order and exits focused search while aborting pending reads', async () => {
+    vi.useFakeTimers(); let signal: AbortSignal | undefined;
+    const search = vi.fn(async (_folder, _query, options) => { signal = options.signal; return new Promise<ProjectSearchResult>(() => {}); });
+    const controller = (await createProjectDirectorySearch(projectConversationsPath('/P'), projects, {search}, vi.fn()))!;
+    const panel = createDirectoryList({path: '/P', title: 'P', entries: [{id: 'visible', name: 'Visible', type: 'session'}], open() {},
+        actions: [{label: 'Create', icon: '<svg></svg>', run() {}}], search: controller}); document.body.append(panel);
+    const group = panel.querySelector<HTMLElement>('.workbench-directory__search')!, toolbar = group.parentElement!;
+    const input = group.querySelector<HTMLInputElement>('input[type=search]')!, scope = group.querySelector('select')!, clear = group.querySelector<HTMLButtonElement>('[data-action="clear-search"]')!;
+    expect(input.compareDocumentPosition(scope) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(scope.compareDocumentPosition(clear) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(controller.element.querySelector('select')).toBeNull(); expect(controller.element.hidden).toBe(true);
+    input.focus(); expect(toolbar.dataset.searching).toBe('true');
+    input.value = 'pending'; input.dispatchEvent(new Event('input')); await vi.advanceTimersByTimeAsync(300);
+    expect(panel.querySelector('table')!.hidden).toBe(true); clear.click();
+    expect(signal?.aborted).toBe(true); expect(input.value).toBe(''); expect(controller.element.hidden).toBe(true); expect(group.contains(scope)).toBe(true); expect(toolbar.dataset.searching).toBe('false'); expect(panel.querySelector('table')!.hidden).toBe(false);
+    controller.destroy();
+});

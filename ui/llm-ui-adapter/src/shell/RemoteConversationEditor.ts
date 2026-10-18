@@ -72,7 +72,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             },
         });
         this.branches = new RemoteBranches(this.service, this.options, action => this.run(action), error => this.showError(error));
-        this.container.querySelector('#llm-branch-indicator')!.append(this.branches.element);
+        this.container.querySelectorAll('#llm-branch-indicator')[0]!.append(this.branches.element);
     }
     private async show(snapshot: ConversationSnapshot) {
         if (this.closed || !this.active) return;
@@ -121,7 +121,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.restoredDraft = true;
     }
     private updateControls() {
-        this.container.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.disabled = this.working || this.loadingHistory;
+        this.container.querySelectorAll<HTMLButtonElement>('#llm-btn-refresh')[0]!.disabled = this.working || this.loadingHistory;
         this.view.setRenameAvailability(!this.working && !this.options.readOnly && !!this.snapshot?.canRename && !!this.service.rename);
         if (this.snapshot) this.branches?.update(this.snapshot, this.working);
         this.view.earlier.hidden = !this.snapshot?.hasEarlier || !this.service.loadEarlier;

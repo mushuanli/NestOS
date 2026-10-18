@@ -1,10 +1,9 @@
 import { DraftSaveQueue } from './draft-save-queue';
-import { DraftExecutionPicker } from './DraftExecutionPicker';
 import { LayoutTemplates } from '../../components/templates/LayoutTemplates';
 import { DraftDataCodec } from './session-draft-data';
 import type { IChatInputConfig } from '../../domain/ports/IChatInputPresenter';
 import { IEditor, Toast, type EditorOptions, type OcrControls } from '@itookit/ui-common';
-import { t } from '@itookit/common';
+import { randomUUID, t } from '@itookit/common';
 import { ChatInput } from '../../components/input/ChatInputView';
 import { EventBinder } from '../EventBinder';
 import { buildExecutorOptions, buildConnectionOptions } from '../AgentProvider';
@@ -15,7 +14,6 @@ import {SubmissionFeedback} from '../../components/history/SubmissionFeedback';
 export class SessionDraftEditor extends IEditor {
     private codec: DraftDataCodec;
     private input?: ChatInput;
-    private targets?: DraftExecutionPicker;
     private closed = false;
     private active = true;
     private sending = false;
@@ -46,13 +44,11 @@ export class SessionDraftEditor extends IEditor {
         const agents = await buildExecutorOptions(this.service, this.options.remoteAgents);
         this.options.signal?.throwIfAborted(); if (this.closed) return;
         this.initLayout();
-        const input = this.container.querySelector<HTMLElement>('#llm-ui-input')!;
+        const input = this.container.querySelectorAll<HTMLElement>('#llm-ui-input')[0]!;
         this.input = this.createInput(input, agents, saved.config);
         this.unsubscribeConnections?.();
         this.unsubscribeConnections = this.service.onChange(() => { void this.input?.refreshConnections(); });
         if (saved.config) this.input.restoreDraft(saved.config.text, saved.files, saved.config.agentId);
-        if (agents.length) this.targets = new DraftExecutionPicker(input, this.input, agents, this.options.hostContext?.navigate
-            ? () => { void this.openFlows().catch(error => Toast.error(String(error))); } : undefined);
         this.restoring = false;
         if (saved.migrated && saved.config) { this.persist(saved.config, saved.files); await this.saves.flush(); }
         window.addEventListener('beforeunload', this.beforeUnload);
@@ -74,14 +70,14 @@ export class SessionDraftEditor extends IEditor {
         this.events?.cleanup();
         this.container.classList.add('llm-ui-workspace');
         this.container.innerHTML = LayoutTemplates.renderWorkspace(t('project.createSession'));
-        const title = this.container.querySelector<HTMLInputElement>('#llm-title-input')!;
+        const title = this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!;
         title.readOnly = true;
-        this.status = this.container.querySelector<HTMLElement>('#llm-status-indicator')!;
+        this.status = this.container.querySelectorAll<HTMLElement>('#llm-status-indicator')[0]!;
         this.status.setAttribute('role', 'status'); this.status.hidden = true;
-        this.container.querySelector<HTMLElement>('#llm-ui-history')!.innerHTML = LayoutTemplates.renderWelcome();
-        this.submission = new SubmissionFeedback(this.container.querySelector<HTMLElement>('#llm-ui-history')!, {htmlPolicy: 'literal'});
-        this.container.querySelector<HTMLButtonElement>('#llm-btn-sidebar')!.hidden = !this.options.hostContext?.toggleSidebar;
-        for (const id of ['llm-btn-prompt-nav', 'llm-btn-collapse']) this.container.querySelector<HTMLElement>('#' + id)!.hidden = true;
+        this.container.querySelectorAll<HTMLElement>('#llm-ui-history')[0]!.innerHTML = LayoutTemplates.renderWelcome();
+        this.submission = new SubmissionFeedback(this.container.querySelectorAll<HTMLElement>('#llm-ui-history')[0]!, {htmlPolicy: 'literal'});
+        this.container.querySelectorAll<HTMLButtonElement>('#llm-btn-sidebar')[0]!.hidden = !this.options.hostContext?.toggleSidebar;
+        for (const id of ['llm-btn-prompt-nav', 'llm-btn-collapse']) this.container.querySelectorAll<HTMLElement>('#' + id)[0]!.hidden = true;
         for (const prompt of this.container.querySelectorAll<HTMLButtonElement>('.llm-ui-welcome__prompt')) {
             prompt.onclick = () => {
                 if (!this.input) return;
@@ -97,6 +93,12 @@ export class SessionDraftEditor extends IEditor {
         discard.textContent = t('project.draftDiscard');
         discard.onclick = () => { void this.discard().catch(error => Toast.error(String(error))); };
         actions.replaceChildren(discard);
+        if (this.options.hostContext?.navigate) {
+            const flows = document.createElement('button'); flows.type = 'button'; flows.dataset.action = 'open-flows';
+            flows.className = 'llm-workspace-titlebar__btn llm-workspace-titlebar__btn--text';
+            flows.textContent = t('chatInput.target.flow'); flows.onclick = () => { void this.openFlows().catch(error => Toast.error(String(error))); };
+            actions.prepend(flows);
+        }
         this.events = new EventBinder(this.container, {mountCompactNavigation: this.options.mountCompactNavigation,
             onToggleSidebar: () => this.options.hostContext?.toggleSidebar()});
         this.events.bindTitleBarEvents();
@@ -116,8 +118,8 @@ export class SessionDraftEditor extends IEditor {
     private async send(message: SendMessageParams): Promise<void | false> {
         if (this.closed || this.sending || (!message.text.trim() && !message.files.length)) return;
         if (this.config) this.persist({ ...this.config, text: message.text, agentId: message.agentId ?? 'default' }, message.files);
-        this.sending = true; this.input!.setLoading(true); this.targets?.setLoading(true);
-        const feedback = {id: crypto.randomUUID(), text: message.text || t('harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting' as const};
+        this.sending = true; this.input!.setLoading(true);
+        const feedback = {id: randomUUID(), text: message.text || t('harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting' as const};
         this.container.querySelector('.llm-ui-welcome')?.remove(); this.submission?.show(feedback);
         try {
             await this.saves.flush();
@@ -143,14 +145,14 @@ export class SessionDraftEditor extends IEditor {
             Toast.error(error instanceof Error ? error.message : String(error));
             if (message.agentId?.startsWith('remote:')) throw error;
             return false;
-        } finally { this.sending = false; if (!this.closed) { this.input?.setLoading(false); this.targets?.setLoading(false); } }
+        } finally { this.sending = false; if (!this.closed) { this.input?.setLoading(false); } }
     }
     private async discard(): Promise<void> {
         if (this.sending) return;
         await this.saves.flush();
         await this.options.sessionDraft?.clear?.();
         await this.submission?.destroy();
-        this.targets?.destroy(); this.input?.destroy();
+        this.input?.destroy();
         this.initialData = '';
         this.codec = new DraftDataCodec(this.options.sessionDraft?.attachments);
         this.restoring = true;
@@ -167,7 +169,7 @@ export class SessionDraftEditor extends IEditor {
     }
     getMode(): 'edit' { return 'edit'; }
     async switchToMode(): Promise<void> {}
-    setTitle(title: string): void { const input = this.container.querySelector<HTMLInputElement>('#llm-title-input'); if (input) input.value = title; }
+    setTitle(title: string): void { const input = this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]; if (input) input.value = title; }
     setReadOnly(readOnly: boolean): void { this.input?.setLoading(readOnly); }
     isDirty(): boolean { return this.saves.dirty; }
     setDirty(): void {}
@@ -187,7 +189,7 @@ export class SessionDraftEditor extends IEditor {
         const revision = this.editRevision, controls = this.options.sessionDraft;
         const next = await controls?.refresh?.();
         if (!next || this.closed || !this.active || this.sending || this.saves.dirty || revision !== this.editRevision || controls !== this.options.sessionDraft) return;
-        this.targets?.destroy(); this.input?.destroy(); await this.submission?.destroy();
+        this.input?.destroy(); await this.submission?.destroy();
         this.options.sessionDraft = next; this.initialData = next.initialData;
         this.codec = new DraftDataCodec(next.attachments); this.restoring = true;
         await this.render();
@@ -198,6 +200,6 @@ export class SessionDraftEditor extends IEditor {
         await this.saves.flush();
         await this.submission?.destroy();
         this.closed = true; this.unsubscribeConnections?.(); window.removeEventListener('beforeunload', this.beforeUnload);
-        this.events?.cleanup(); this.targets?.destroy(); this.input?.destroy(); this.container.replaceChildren();
+        this.events?.cleanup(); this.input?.destroy(); this.container.replaceChildren();
     }
 }

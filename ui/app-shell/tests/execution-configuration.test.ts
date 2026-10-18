@@ -2,7 +2,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
 import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
-import { DraftExecutionPicker } from '../../llm-ui-adapter/src/shell/drafts/DraftExecutionPicker';
 import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
 import { buildConnectionOptions } from '../../llm-ui-adapter/src/shell/AgentProvider';
 import { PopupPanel } from '../../llm-ui-adapter/src/components/input/plugins/PopupPanel';
@@ -60,19 +59,22 @@ it('closes the model picker on a second trigger click after outside-click handli
     expect(button('.llm-input__model-trigger').getAttribute('aria-expanded')).toBe('false');
 });
 
-it('preserves draft text, attachments, model settings and remembered assistants across execution targets', async () => {
+it('chooses local assistants and remote agents in one picker while preserving the complete draft', async () => {
     const {host, view, changed, onSend, button} = setup();
     const file = new File(['context'], 'context.txt'); view.restoreDraft('Unsent draft', [file], 'reviewer');
     view.setConfig({settings: {connectionId: 'second', modelTier: 'fast'}});
-    const picker = new DraftExecutionPicker(host, view, agents); releases.push(() => picker.destroy());
-    button('[data-execution-target="harness"]').click();
+    const choose = (name: string) => {
+        button('.llm-input__agent-trigger').click();
+        const item = [...document.querySelectorAll<HTMLElement>('.llm-popup--visible .llm-popup__item')].find(row => row.textContent?.includes(name));
+        expect(item).toBeDefined(); item!.click();
+    };
+    choose('Server · Codex');
     expect(view.getConfig()).toMatchObject({text: 'Unsent draft', agentId: 'remote:codex', settings: {connectionId: 'second', modelTier: 'fast'}});
     expect(host.querySelector<HTMLElement>('.llm-input__execution-source')!.hidden).toBe(false);
     expect(button('.llm-input__model-trigger').hidden).toBe(true);
-    button('[data-execution-target="chat"]').click();
+    choose('Reviewer');
     expect(view.getConfig().agentId).toBe('reviewer'); expect(button('.llm-input__model-trigger').hidden).toBe(false);
     expect(changed.mock.lastCall?.[1]).toEqual([file]); expect(onSend).not.toHaveBeenCalled();
-    picker.setLoading(true); expect(button('[data-execution-target="harness"]').disabled).toBe(true);
 });
 
 it('switches execution targets while a turn runs without submitting, interrupting or changing that turn', async () => {
@@ -116,7 +118,7 @@ it('saves a project draft before opening the workflow library without materializ
     releases.push(() => editor.destroy()); await editor.init(host);
     const textarea = host.querySelector<HTMLTextAreaElement>('textarea.llm-input__textarea')!;
     textarea.value = 'Keep this draft'; textarea.dispatchEvent(new Event('input'));
-    host.querySelector<HTMLButtonElement>('[data-execution-target="flow"]')!.click();
+    host.querySelector<HTMLButtonElement>('[data-action="open-flows"]')!.click();
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledExactlyOnceWith({target: 'flows'}));
     expect(save).toHaveBeenCalled(); expect(save.mock.invocationCallOrder[0]).toBeLessThan(navigate.mock.invocationCallOrder[0]);
     expect(materialize).not.toHaveBeenCalled(); expect(textarea.value).toBe('Keep this draft');

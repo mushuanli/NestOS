@@ -4,10 +4,6 @@ import type { FSNode } from '@itookit/vfs-core';
 import type { RemoteSessionProjection } from '../session/remote-session-projection';
 import { localConversationSource, readConversationPage } from './conversation-page';
 
-function creationMarker(actions: FSNode[]): FSNode[] {
-    const node = actions.find(action => action.path.endsWith('/@new'));
-    return node ? [{...node, metadata: {...node.metadata, conversationCreate: true, navigationHidden: true}}] : [];
-}
 function aliasNode(directory: string, node: FSNode): FSNode {
     return {...node, path: projectConversationEntryPath(directory, node.path), parentPath: directory,
         name: '@entry:' + encodeURIComponent(node.path), metadata: {...node.metadata, navigationTarget: node.path}};
@@ -43,8 +39,8 @@ export async function conversationDirectory(directory: string, target: Extract<B
     try {
         const page = await readConversationPage([localConversationSource(localNodes), ...timeline.sources], target.cursor, target.recent ? 15 : 50);
         const errors = page.errors.map(({source}) => unavailableNode(target.folder, source));
-        const nodes = [...(target.recent ? creationMarker(timeline.actions) : timeline.actions), ...page.nodes, ...errors]
-            .map(node => aliasNode(directory, node));
+        const actions = target.recent ? [] : timeline.actions.filter(action => !action.path.endsWith('/@new'));
+        const nodes = [...actions, ...page.nodes, ...errors].map(node => aliasNode(directory, node));
         if (page.cursor) nodes.push(continuationNode(directory, target, page.cursor));
         return nodes;
     } finally {await timeline.close();}

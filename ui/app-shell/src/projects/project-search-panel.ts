@@ -1,18 +1,20 @@
-import { t } from '@itookit/common';
+import { t, FILE_BROWSER_ICONS } from '@itookit/common';
 import type { ProjectSearchMatch, ProjectSearchQuery } from '@itookit/app-contracts/services';
+import { decorateButton } from '../workbench/controls';
 import type { ProjectSearch } from '@itookit/app-contracts/services';
 
 interface SearchPanelOptions {
     scopes?: readonly (ProjectSearchQuery['scope'] | 'loaded-tree')[];
     query?: Partial<Omit<ProjectSearchQuery, 'query' | 'scope'>>;
     hint?: string;
-    persistent?: boolean;
     sessions?: boolean;
+    archived?: boolean;
 }
 
 /** Search options and async results driven by the shared sidebar query. */
 export class ProjectSearchPanel {
     readonly element = document.createElement('div');
+    readonly controls = document.createElement('div');
     private query = '';
     private appliedQuery?: (query: string) => void;
     private readonly scope = document.createElement('select');
@@ -32,9 +34,10 @@ export class ProjectSearchPanel {
         }
         this.scope.setAttribute('aria-label', t('project.search.scope'));
         const archived = document.createElement('label'); this.archived.type = 'checkbox'; archived.append(this.archived, document.createTextNode(t('project.search.archived')));
-        const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = t('project.search.cancel'); cancel.onclick = () => this.cancel(true);
+        const cancel = document.createElement('button'); cancel.type = 'button'; decorateButton(cancel, FILE_BROWSER_ICONS.close, t('project.search.clear'), true); cancel.dataset.action = 'clear-search';
+        cancel.onclick = () => { this.cancel(); this.appliedQuery?.(''); };
         this.status.setAttribute('role', 'status'); this.results.className = 'project-search__results';
-        const controls = document.createElement('div'); controls.className = 'project-search__controls'; controls.append(this.scope); if (options.sessions !== false) controls.append(archived); controls.append(cancel);
+        const controls = this.controls; controls.className = 'project-search__controls'; controls.append(this.scope); if (options.sessions !== false && options.archived !== false) controls.append(archived); controls.append(cancel);
         this.element.append(controls, this.sources, this.status, this.results);
         if (options.hint) { const hint = document.createElement('p'); hint.textContent = options.hint; controls.after(hint); }
         if (options.query?.archived) this.archived.checked = true;
@@ -43,13 +46,13 @@ export class ProjectSearchPanel {
     }
     project(folder?: string) {
         if (this.folder === folder) return;
-        this.folder = folder; this.cancel(); this.results.replaceChildren(); this.element.hidden = !folder || !this.options.persistent && !this.query;
+        this.folder = folder; this.cancel(); this.results.replaceChildren(); this.element.hidden = !folder || !this.query.trim();
         this.status.textContent = folder ? t('project.search.projectScope', {name: folder}) : ''; this.queue();
     }
     setQuery(query: string, apply?: (query: string) => void) {
         this.appliedQuery = apply;
         if (this.query === query) return;
-        this.query = query; this.element.hidden = !this.folder || !this.options.persistent && !query.trim(); this.queue();
+        this.query = query; this.element.hidden = !this.folder || !query.trim(); this.queue();
     }
     sessionSources(rows: readonly {path: string; name: string; displayName?: string}[]) {
         this.sources.replaceChildren();
@@ -69,7 +72,7 @@ export class ProjectSearchPanel {
         const request = this.request = new AbortController(), revision = ++this.revision, query = this.query;
         const folder = this.folder!; this.status.textContent = t('project.search.loading');
         try {
-            const result = await this.search.search(folder, {...this.options.query, query, scope: this.scope.value as ProjectSearchQuery['scope'], ...(this.options.sessions === false ? {} : {archived: this.archived.checked})}, {signal: request.signal, timeoutMs: 20_000});
+            const result = await this.search.search(folder, {...this.options.query, query, scope: this.scope.value as ProjectSearchQuery['scope'], ...(this.options.sessions === false ? {} : {archived: this.options.archived === false ? !!this.options.query?.archived : this.archived.checked})}, {signal: request.signal, timeoutMs: 20_000});
             if (request.signal.aborted || revision !== this.revision) return;
             this.status.textContent = result.unavailableSources?.length ? t('project.search.sourcesUnavailable', {count: result.matches.length, sources: result.unavailableSources.join(', ')}) : t(result.truncated ? 'project.search.partial' : result.matches.length ? 'project.search.count' : 'project.search.empty', {count: result.matches.length});
             this.results.replaceChildren(...result.matches.map(row => this.row(row, query)));
@@ -86,5 +89,5 @@ export class ProjectSearchPanel {
     }
     refresh() { this.queue(); }
     cancel(show = false) { ++this.revision; this.request?.abort(); clearTimeout(this.timer); if (show) this.status.textContent = t('project.search.cancelled'); }
-    destroy() { this.cancel(); this.element.remove(); }
+    destroy() { this.cancel(); this.controls.remove(); this.element.remove(); }
 }

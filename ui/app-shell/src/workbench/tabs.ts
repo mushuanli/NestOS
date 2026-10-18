@@ -27,6 +27,8 @@ export class WorkbenchTabs<T> {
     readonly opened = document.createElement('div');
     private readonly bar = document.createElement('div');
     private readonly body = document.createElement('div');
+    private readonly navigation = document.createElement('div');
+    private readonly standalone: ReturnType<typeof compactNavigation>;
     private readonly emptyPanel = document.createElement('div');
     private readonly entries = new Map<string, WorkbenchTab<T>>();
     private readonly closed: { id: string; title: string }[] = [];
@@ -47,7 +49,12 @@ export class WorkbenchTabs<T> {
         this.bar.setAttribute('role', 'tablist'); this.bar.setAttribute('aria-label', t('workbench.tabs'));
         this.body.className = 'workbench-tabs__body'; this.emptyPanel.className = 'workbench-tabs__panel';
         this.opened.className = 'workbench-tabs__opened'; this.body.append(this.emptyPanel);
-        container.append(this.bar, this.body);
+        this.navigation.className = 'workbench-tabs__navigation';
+        this.standalone = compactNavigation(this.navigation, '', () => {
+            const layout = container.closest<HTMLElement>('.mm-layout');
+            if (layout) layout.dataset.mobileView = 'list';
+        }, () => this.showOpened());
+        container.append(this.navigation, this.bar, this.body);
         for (const tab of restored ?? []) {
             const entry = this.create(tab.id, tab.title, false); entry.pinned = tab.pinned;
             entry.context = tab.context; entry.location = tab.location;
@@ -185,6 +192,7 @@ export class WorkbenchTabs<T> {
     }
     private render(): void {
         this.syncViewState();
+        this.standalone.update(this.current?.title ?? '', this.entries.size, this.current?.context);
         for (const view of this.compactViews) view.update(this.current?.title ?? '', this.entries.size);
         this.bar.replaceChildren(); this.opened.replaceChildren();
         this.opened.append(this.openedToolbar());
@@ -304,7 +312,7 @@ export class WorkbenchTabs<T> {
         this.openedDialog?.close();
         this.disposing = true;
         for (const tab of this.values()) await this.close(tab.id, false);
-        this.abort.abort(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');
+        this.abort.abort(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');
         delete this.container.dataset.workbenchView;
         delete this.container.dataset.workbenchActivation;
     }

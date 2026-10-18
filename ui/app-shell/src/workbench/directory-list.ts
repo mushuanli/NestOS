@@ -1,3 +1,4 @@
+import { DirectoryToolbar } from './directory-toolbar';
 import { installColumnResize } from './column-resize';
 import { t, getLocale, FILE_BROWSER_ICONS, ACTION_ICONS, fileTypeIcon } from '@itookit/common';
 import { decorateButton } from './controls';
@@ -16,13 +17,14 @@ export interface DirectoryListOptions {
     openDirectory?(id: string): void;
     initialSort?: {key: 'name' | 'size' | 'modified' | 'type'; ascending: boolean};
     open(id: string): void; parent?: () => void; refresh?: () => Promise<DirectoryEntry[]>;
-    actions?: { label: string; run(): void; disabled?: boolean; icon?: string; iconOnly?: boolean }[];
+    actions?: { id?: string; primary?: boolean; label: string; run(): void; disabled?: boolean; disabledReason?: string; icon?: string; iconOnly?: boolean }[];
+    menu?: (event: MouseEvent) => void;
     contextMenu?: (event: MouseEvent, id: string) => void;
     favorite?: { state(id: string): boolean | undefined; toggle(id: string): Promise<void> };
     select?: (ids: string[]) => void;
     selectedIds?: () => readonly string[];
     bulkActions?: DirectoryBulkAction[];
-    search?: {element: HTMLElement; setQuery(query: string, apply?: (query: string) => void): void; refresh(): void};
+    search?: {element: HTMLElement; controls?: HTMLElement; setQuery(query: string, apply?: (query: string) => void): void; refresh(): void};
 }
 const refreshers = new WeakMap<HTMLElement, () => Promise<void>>();
 const selectionRefreshers = new WeakMap<HTMLElement, () => void>();
@@ -47,37 +49,33 @@ const date = (value?: string | number) => value !== undefined && Number.isFinite
 export function createDirectoryList(options: DirectoryListOptions): HTMLElement {
     const panel = document.createElement('section'); panel.className = 'workbench-directory';
     const heading = document.createElement('h2'); heading.textContent = options.title;
-    const header = document.createElement('div'); header.className = 'workbench-directory__heading'; header.append(heading);
+    const header = document.createElement('div'); header.className = 'workbench-directory__heading'; header.append(heading); header.hidden = !!options.breadcrumbs; panel.setAttribute('aria-label', options.title);
     const path = options.breadcrumbs ? createDirectoryBreadcrumbs(options.breadcrumbs, options.openDirectory ?? options.open)
         : document.createElement('p');
     if (!options.breadcrumbs) { path.className = 'workbench-directory__path'; path.textContent = options.path; }
-    const toolbar = document.createElement('div'); toolbar.className = 'workbench-directory__toolbar';
-    if (options.parent) toolbar.append(action(t('workbench.parent'), options.parent, FILE_BROWSER_ICONS.up, true));
     const fail = (error: unknown) => { const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.textContent = error instanceof Error ? error.message : String(error); panel.append(notice); };
     const missing = document.createElement('p'); missing.setAttribute('role', 'status'); missing.hidden = true;
     missing.textContent = t('workbench.directoryMissing');
-    const refresh = async () => { await refreshEntries(options, missing, toolbar, () => render()); options.search?.refresh(); };
+    const refresh = async () => { await refreshEntries(options, missing, toolbar.element, () => render()); options.search?.refresh(); };
     refreshers.set(panel, refresh);
-    if (options.refresh) toolbar.append(action(t('workbench.refresh'), () => { void refresh().catch(fail); }, FILE_BROWSER_ICONS.refresh, true));
-    for (const entry of options.actions ?? []) { const button = action(entry.label, entry.run, entry.icon, entry.iconOnly ?? true); button.disabled = !!entry.disabled;
-        button.dataset.directoryAction = entry.disabled ? 'disabled' : 'enabled'; toolbar.append(button); }
-    const search = document.createElement('input'); search.type = 'search'; search.placeholder = t(options.search ? 'workbench.search' : 'workbench.filter'); search.setAttribute('aria-label', search.placeholder); toolbar.append(search);
-    const table = document.createElement('table'); table.className = 'workbench-directory__table';
+    const toolbar = new DirectoryToolbar(options, () => { void refresh().catch(fail); }, () => render());
+    const scroll = document.createElement('div'); scroll.className = 'workbench-directory__table-scroll';
+    const table = document.createElement('table'); scroll.append(table); table.className = 'workbench-directory__table';
     const head = table.createTHead().insertRow(), body = table.createTBody();
     let sort: keyof DirectoryEntry = options.initialSort?.key ?? 'name', ascending = options.initialSort?.ascending ?? true;
     const selection = options.select ? new DirectorySelection(options.select, () => render(), options.bulkActions ?? [], refresh, fail) : undefined;
     addHeaders(head, selection, key => { ascending = sort === key ? !ascending : true; sort = key; render(); });
     const render = () => {
         if (options.selectedIds) selection?.restore(options.selectedIds(), options.entries.map(entry => entry.id));
-        const searching = !!options.search && !!search.value.trim();
-        table.hidden = searching;
+        const searching = toolbar.filtering;
+        toolbar.element.dataset.searching = panel.dataset.searching = String(toolbar.searching);
+        table.hidden = searching; scroll.hidden = searching;
         if (selection) selection.bar.hidden = searching;
-        if (!searching) renderEntries(body, options, search.value, sort, ascending, selection);
+        if (!searching) renderEntries(body, options, toolbar.query, sort, ascending, selection);
     };
     selectionRefreshers.set(panel, render);
-    search.oninput = () => {
-        options.search?.setQuery(search.value, query => { search.value = query; search.dispatchEvent(new Event('input')); }); render();
-    }; panel.append(header, path, toolbar, missing); if (selection) panel.append(selection.bar); if (options.search) panel.append(options.search.element); panel.append(table);
+    panel.append(header, path, toolbar.element, missing);
+    if (selection) panel.append(selection.bar); if (options.search) panel.append(options.search.element); panel.append(scroll);
     render(); return panel;
 }
 async function refreshEntries(options: DirectoryListOptions, missing: HTMLElement, toolbar: HTMLElement, render: () => void): Promise<void> {

@@ -16,9 +16,9 @@ export function setupMobileWorkspaceView(layout: HTMLElement, sidebar: HTMLEleme
     const back = document.createElement('button');
     back.type = 'button';
     back.className = 'mm-mobile-back';
-    back.innerHTML = ACTION_ICONS.back;
-    back.title = t('workspace.mobile.backToList');
-    back.setAttribute('aria-label', t('workspace.mobile.backToList'));
+    back.innerHTML = ACTION_ICONS.sidebar;
+    back.title = t('workspace.mobile.showSidebar');
+    back.setAttribute('aria-label', t('workspace.mobile.showSidebar'));
     layout.appendChild(back);
     layout.dataset.mobileView = initialDetail ? 'detail' : 'list';
     let hadContent = false;

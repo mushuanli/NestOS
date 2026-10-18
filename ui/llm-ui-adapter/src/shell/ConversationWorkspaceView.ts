@@ -44,7 +44,7 @@ export class ConversationWorkspaceView {
     constructor(private readonly container: HTMLElement, options: EditorOptions, actions: Actions) {
         container.classList.add('llm-ui-workspace');
         container.innerHTML = LayoutTemplates.renderWorkspace(options.title ?? t('harness.remoteSessions'));
-        const history = container.querySelector<HTMLElement>('#llm-ui-history')!;
+        const history = container.querySelectorAll<HTMLElement>('#llm-ui-history')[0]!;
         this.indicator = new StatusIndicatorView(new DOMCache(container), () => false, () => {});
         this.configureTitle(options); this.events = this.configureToolbar(options, actions);
         const toolbar = container.querySelector<HTMLElement>('.llm-workspace-titlebar__menu-actions')!;
@@ -64,19 +64,19 @@ export class ConversationWorkspaceView {
         this.status.className = 'remote-conversation__status'; this.status.setAttribute('role', 'status');
         this.usage.className = 'remote-conversation__status'; this.usage.hidden = true;
         this.usage.title = t('harness.usageHelp'); this.usage.setAttribute('aria-live', 'polite');
-        const input = container.querySelector('#llm-ui-input')!; input.before(this.interactions, this.status, this.usage);
+        const input = container.querySelectorAll('#llm-ui-input')[0]!; input.before(this.interactions, this.status, this.usage);
     }
     private configureTitle(options: EditorOptions): void {
-        const title = this.container.querySelector<HTMLInputElement>('#llm-title-input')!;
+        const title = this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!;
         title.readOnly = true;
         const source = options.conversationSource;
         mountConversationSource(this.container, source?.kind ?? 'remote', source?.label ?? (source ? undefined : t('harness.remoteSessions')));
     }
     private configureToolbar(options: EditorOptions, actions: Actions): EventBinder {
         for (const id of ['llm-btn-assets', 'llm-btn-flow-output', 'llm-btn-session-rerun']) {
-            this.container.querySelector<HTMLButtonElement>('#' + id)!.hidden = true;
+            this.container.querySelectorAll<HTMLButtonElement>('#' + id)[0]!.hidden = true;
         }
-        this.container.querySelector<HTMLButtonElement>('#llm-btn-sidebar')!.hidden = !options.hostContext?.toggleSidebar;
+        this.container.querySelectorAll<HTMLButtonElement>('#llm-btn-sidebar')[0]!.hidden = !options.hostContext?.toggleSidebar;
         const events = new EventBinder(this.container, {
             mountCompactNavigation: options.mountCompactNavigation,
             mountMoreMenu: options.mountMoreMenu,
@@ -99,12 +99,12 @@ export class ConversationWorkspaceView {
         const content = document.createElement('div');
         try {
             await renderer.render(content, this.history.markdown());
-            await service.printFromHtml(content.innerHTML, {title: this.container.querySelector<HTMLInputElement>('#llm-title-input')!.value, showHeader: true});
+            await service.printFromHtml(content.innerHTML, {title: this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!.value, showHeader: true});
         } finally { renderer.destroy(); service.destroy?.(); }
     }
     private createInput(options: EditorOptions, actions: Actions): ChatInput {
         const executorId = options.initialInputState?.agentId?.startsWith('remote:') ? options.initialInputState.agentId : 'remote:native';
-        return new ChatInput(this.container.querySelector<HTMLElement>('#llm-ui-input')!, {
+        return new ChatInput(this.container.querySelectorAll<HTMLElement>('#llm-ui-input')[0]!, {
             executorUsage: options.executorUsage,
             attachments: !!actions.attachments?.length, executorLocked: true,
             onSwitchExecutionTarget: options.onStartConversationDraft,
@@ -122,7 +122,7 @@ export class ConversationWorkspaceView {
         button.textContent = label; button.onclick = action; parent.append(button); return button;
     }
     setTitle(title: string): void {
-        const input = this.container.querySelector<HTMLInputElement>('#llm-title-input')!;
+        const input = this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!;
         if (document.activeElement !== input || input.readOnly) input.value = title;
     }
     setUsage(snapshot: ConversationSnapshot): void {
@@ -130,11 +130,11 @@ export class ConversationWorkspaceView {
         this.usage.hidden = !this.usage.textContent;
     }
     setRenameAvailability(enabled: boolean): void {
-        this.container.querySelector<HTMLInputElement>('#llm-title-input')!.readOnly = !enabled;
+        this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!.readOnly = !enabled;
         this.renameButton.hidden = !enabled;
     }
     private rename(actions: Actions): void {
-        const title = this.container.querySelector<HTMLInputElement>('#llm-title-input')!.value;
+        const title = this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!.value;
         this.renameDialog?.hide();
         this.renameDialog = new Modal(t('project.renameSession'), `<label class="settings-form__label">${escapeHTML(t('project.sessionName'))}
             <input class="settings-form__input" value="${escapeHTML(title)}" /></label>`, {
@@ -148,7 +148,7 @@ export class ConversationWorkspaceView {
         this.renameDialog.show();
     }
     setSessionTimes(createdAt?: number | null, updatedAt?: number | null): void {
-        this.container.querySelector<HTMLInputElement>('#llm-title-input')!.title = [[t('workbench.created'), createdAt], [t('workbench.modified'), updatedAt]]
+        this.container.querySelectorAll<HTMLInputElement>('#llm-title-input')[0]!.title = [[t('workbench.created'), createdAt], [t('workbench.modified'), updatedAt]]
             .filter(([, time]) => typeof time === 'number' && time > 0)
             .map(([label, time]) => `${label}: ${new Date(time!).toLocaleString(getLocale())}`).join('\n');
     }

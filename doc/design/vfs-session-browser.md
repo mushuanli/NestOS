@@ -348,7 +348,7 @@ Session browser 与项目/家族导航优先使用 `ISessionRepository.listSumma
 
 项目侧栏的固定入口使用本地化标题与共享图标，内部 `@favorites` / `@files` 只作为稳定路由身份，不向用户表达引用语义；真实文件仍按文件名展示。远程项目同级显示“收藏夹”“文件”和各原生执行器分组，省掉外层“远程会话”目录；执行器分组保留，以区分来源、权限和分页。后端将远程根标记为 navigationTransparent，并在导航 loadPaths 中提供该根；进入项目只准备执行器列表，不读取各执行器的历史。
 
-右侧目录与侧栏都展开后端声明为 `navigationTransparent` 的容器，直接显示其成员；普通目录和执行器历史仍按需读取。`SessionWorkbench` 将透明子容器通过 vfs-ui 顶层 `navigationChildren` 端口接入单栏导航，在“所有项目”展开项目、恢复已展开项目或刷新时加载其会话分组，折叠项目不预读。`ProjectNavigation` 进入项目时继续消费后端 `loadPaths`，保留显式加载契约。右侧手动刷新先等待导航缓存失效，再读取目录，并等待侧栏和项目导航更新完成。
+右侧目录与侧栏都展开后端声明为 `navigationTransparent` 的容器，直接显示其成员；普通目录和执行器历史仍按需读取。`SessionWorkbench` 将透明子容器通过 vfs-ui 顶层 `navigationChildren` 端口接入单栏导航，在“所有项目”展开项目、恢复已展开项目或刷新时加载其会话分组，折叠项目不预读。`ProjectNavigation` 进入项目时继续消费后端 `loadPaths`，保留显式加载契约。右侧手动刷新先等待导航缓存失效，再读取目录，并等待侧栏和项目导航更新完成。工作台刷新覆盖与打开相同的目录范围，包含收藏夹及远程执行器目录，避免只更新侧栏而保留旧正文列表。
 
 ```mermaid
 C4Component

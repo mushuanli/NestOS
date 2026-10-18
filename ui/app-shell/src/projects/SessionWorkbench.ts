@@ -624,7 +624,8 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.active?.startsWith('/')) {
             const target = resolveBrowserTarget(this.active);
             if (target.kind === 'task') await this.showTask(this.active);
-            else if (target.kind === 'folder' || target.kind === 'tasks' || ((target.kind === 'files' || target.kind === 'project-files') && !this.editor && !this.previewCleanup)) await this.showDirectory(this.active);
+            else if (target.kind === 'folder' || target.kind === 'favorites' || target.kind === 'remote' && !target.nativeSessionId && !target.draft
+                || target.kind === 'tasks' || ((target.kind === 'files' || target.kind === 'project-files') && !this.editor && !this.previewCleanup)) await this.showDirectory(this.active);
         }
         this.navigationReadAt = performance.now();
     }

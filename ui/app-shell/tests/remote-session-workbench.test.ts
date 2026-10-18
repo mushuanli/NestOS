@@ -133,6 +133,10 @@ it('browses mounted native history pages, opens their conversations and routes a
         expect(nativeRow.cells[2].textContent).not.toContain('1970'); expect(nativeRow.cells[2].textContent).not.toBe('—');
         expect(nativeRow.querySelector('button')!.title).toContain(t('workbench.created'));
         expect(nativeRow.querySelector('button')!.title).toContain(t('workbench.modified'));
+        sessionList.push({...native, id: 'refreshed-native', title: 'Fresh native session'});
+        await workbench.refresh();
+        expect(activePanel().textContent).toContain('Fresh native session');
+        sessionList.pop();
         await workbench.openResource(morePath, {preserveProject: true});
         expect(main.textContent).toContain('Older native session');
         expect(peer.list).toHaveBeenCalledWith('codex',{cursor:'older/before+='},expect.anything());

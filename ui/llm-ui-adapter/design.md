@@ -720,7 +720,7 @@ BranchStore 是分支数据的唯一真实来源(Single Source of Truth)。
             → updateStatusFromEvent() → ChatInput.updateTokenStats(tu)
 ```
 
-确认提交后仅移除本次附件；文字仍与提交时一致才清空。拒绝、未知结果和异常保留草稿，成功后才记录助手使用及调用 afterSend。等待期间新增的输入不被迟到回执覆盖。
+确认提交后仅移除本次附件；文字仍与提交时一致才清空。拒绝、未知结果和异常保留草稿，成功后才记录智能体使用及调用 afterSend。等待期间新增的输入不被迟到回执覆盖。
 
 ### 9.2 分支切换流程
 

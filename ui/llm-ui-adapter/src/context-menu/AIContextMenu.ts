@@ -16,7 +16,7 @@
 import type { IAgentConfigService, AgentDefinition } from '@itookit/kernel-adapters/contracts';
 import type { ContextMenuConfig, MenuItem } from '@itookit/ui-common';
 import type { IFileSystem } from '@itookit/vfs-core';
-import { escapeHTML, escapeAttr } from '@itookit/common';
+import { escapeHTML, escapeAttr, t } from '@itookit/common';
 
 // Matches the shape of VFSNodeUI exposed via the ContextMenuBuilder callback.
 // Avoids a hard dependency on @itookit/vfs-ui.
@@ -112,10 +112,10 @@ async function showAgentDialog(
 
     const DEFAULT_AGENT: AgentDefinition = {
         id: 'default',
-        name: 'Default Assistant',
+        name: t('chatInput.defaultAssistant'),
         icon: '🤖',
         type: 'agent',
-        description: '系统默认 AI 助手',
+        description: t('chatInput.defaultAgentDescription'),
         config: {},
     };
     const allAgents = [DEFAULT_AGENT, ...agents.filter(a => a.id !== 'default')];

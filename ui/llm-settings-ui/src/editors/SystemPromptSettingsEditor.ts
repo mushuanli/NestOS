@@ -82,7 +82,7 @@ export class SystemPromptSettingsEditor extends BaseSettingsEditor<IAgentManagem
                 <h3 class="settings-section__title" style="margin-bottom:.35rem">基本信息</h3>
                 <p style="margin:0 0 1rem;color:var(--st-text-tertiary);font-size:.8125rem">用清晰的名称和描述帮助团队快速识别用途。</p>
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:.875rem">
-                    <div class="settings-form-group"><label for="sp-name">名称</label><input class="settings-input" id="sp-name" data-field="name" value="${escapeHTML(p.name)}" placeholder="例如：高级编程助手"></div>
+                    <div class="settings-form-group"><label for="sp-name">名称</label><input class="settings-input" id="sp-name" data-field="name" value="${escapeHTML(p.name)}" placeholder="例如：高级编程智能体"></div>
                     <div class="settings-form-group"><label for="sp-id">ID <small style="font-weight:400;color:var(--st-text-tertiary)">保存后不可修改</small></label><input class="settings-input" id="sp-id" data-field="id" data-autosave-defer value="${escapeHTML(p.id)}" ${p.id ? 'disabled' : ''} placeholder="coding-expert"></div>
                 </div>
                 <div class="settings-form-group"><label for="sp-desc">描述 <small style="font-weight:400;color:var(--st-text-tertiary)">可选</small></label><input class="settings-input" id="sp-desc" data-field="description" value="${escapeHTML(p.description ?? '')}" placeholder="简要说明适用场景"></div>

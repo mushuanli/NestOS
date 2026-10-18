@@ -182,6 +182,7 @@ export interface WorkbenchConfig {
     };
     onNavigate?: (request: NavigationRequest) => Promise<void>;
     onSessionChange?: (sessionId: string | null) => void;
+    onBeforeNavigate?(): void;
     onSidebarToggle?: (collapsed: boolean) => void;
     workbenchState?: import('./workbench/state').WorkbenchStatePort;
     uiOptions?: Partial<Omit<VFSUIOptions, 'defaultEditorFactory'>>;

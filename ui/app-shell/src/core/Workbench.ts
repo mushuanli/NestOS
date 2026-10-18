@@ -95,6 +95,7 @@ export class Workbench {
             this.enhancedEditorFactory,
             {
                 navigationLabel: config.uiOptions?.title ?? t('project.files'),
+                onBeforeNavigate: config.onBeforeNavigate,
                 fileTypes: config.fileTypes,
                 resolveEditor: resolveFileEditor(config.fileTypes, config.customEditorResolver),
                 hostContext: sharedHostContext,

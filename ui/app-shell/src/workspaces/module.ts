@@ -3,6 +3,8 @@ import type { WorkspaceController, WorkspaceCreation } from '@itookit/app-contra
 /** Route recovery is a shell capability; ordinary resource operations remain strict. */
 export type WorkspaceHandle = WorkspaceController & Partial<WorkspaceCreation> & {
     restoreResource?(id: string): Promise<void>;
+    getNavigationScope?(): string;
+    restoreNavigationScope?(scope: string): Promise<void>;
 };
 export interface WorkspaceModule {
     workbench: WorkspaceHandle;
@@ -20,6 +22,8 @@ export function createWorkspaceModule(controller: WorkspaceHandle, dispose: () =
         openResource: id => controller.openResource(id),
         getActiveResourceId: () => controller.getActiveResourceId(),
         ...(controller.restoreResource ? { restoreResource: (id: string) => controller.restoreResource!(id) } : {}),
+        ...(controller.getNavigationScope ? { getNavigationScope: () => controller.getNavigationScope!() } : {}),
+        ...(controller.restoreNavigationScope ? { restoreNavigationScope: (scope: string) => controller.restoreNavigationScope!(scope) } : {}),
         ...(controller.createResource ? { createResource: (options: Parameters<WorkspaceCreation['createResource']>[0]) => controller.createResource!(options) } : {}),
     } };
 }

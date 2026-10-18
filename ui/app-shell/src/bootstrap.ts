@@ -1,4 +1,4 @@
-import {writePageHistory} from './navigation/page-history';
+import {rememberPagePresentation, writePageHistory, type PagePresentation} from './navigation/page-history';
 import {withInitialDirectory} from './browser/initial-directory';
 import {OpenedViewProjection} from './lifecycle/opened-view';
 import {openInitialView} from './lifecycle/initial-view';
@@ -321,6 +321,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 onSidebarReady: revealSidebar,
                 uiPersistence, workbenchState,
+                onBeforeNavigate: () => {if (visibleWorkspaceId === elementId) rememberCurrentPage();},
                 onSelect: (id, mode = 'push') => selectionHistory(elementId, id, mode),
                 hostContext: { chatFromFile, toggleSidebar: collapsed => sidebarEl.classList.toggle('is-collapsed', collapsed ?? !sidebarEl.classList.contains('is-collapsed')), navigate: handleNavigationRequest } });
             own(module.dispose);
@@ -403,6 +404,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             chatFromFile,
             aiConfig: { enabled: aiEnabled ?? true },
             onNavigate:      async (req: NavigationRequest) => handleNavigationRequest(req),
+            onBeforeNavigate: () => {if (visibleWorkspaceId === elementId) rememberCurrentPage();},
             onSessionChange: (sessionId) => selectionHistory(elementId, sessionId, 'push'),
             onSidebarToggle: (collapsed) => {
                 if (collapsed) {
@@ -472,11 +474,18 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (closed) return;
         const slug = reverseRouteMap[wsId] ?? wsId;
         const hash = resourceId ? `#/${slug}/${encodeURIComponent(resourceId)}` : `#/${slug}`;
-        const view = visibleWorkspaceId === wsId && document.getElementById(wsId)?.querySelector<HTMLElement>('.mm-layout')?.dataset.mobileView;
-        writePageHistory(wsId, resourceId, hash, mode, view || undefined);
+        const view = mode === 'replace' && visibleWorkspaceId === wsId
+            ? document.getElementById(wsId)?.querySelector<HTMLElement>('.mm-layout')?.dataset.mobileView : resourceId ? 'detail' : 'list';
+        writePageHistory(wsId, resourceId, hash, mode, view);
     };
 
     let replayingHistory: symbol | undefined;
+    const rememberCurrentPage = (): void => {
+        if (closed || replayingHistory || !visibleWorkspaceId) return;
+        const layout = document.getElementById(visibleWorkspaceId)?.querySelector<HTMLElement>('.mm-layout');
+        rememberPagePresentation({mobileView: layout?.dataset.mobileView,
+            navigationScope: managerCache.get(visibleWorkspaceId)?.getNavigationScope?.()});
+    };
     const selectionHistory = (id: string, resource: string | null, mode: 'push' | 'replace'): void => {
         if (!closed && visibleWorkspaceId === id) updateHistory(id, resource, replayingHistory ? 'replace' : mode);
     };
@@ -581,6 +590,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     const isProjectWorkspace = (id: string) => workspaces.some(ws => ws.elementId === id && ws.type === 'chat');
     const handleNavigationRequest = async (req: NavigationRequest): Promise<void> => {
+        rememberCurrentPage();
         const moved = toolboxId && req.target === 'settings' ? toolboxSettingsRoute(req.resourceId, req.state?.anchor) : undefined;
         if (moved) req = { ...req, target: 'toolbox', resourceId: moved, state: undefined };
         const targetWsId = resolveTarget(req.target, req.resourceId);
@@ -650,6 +660,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             e.stopPropagation(); // prevent bubbling to delegated handler in app-specific main.ts
             const targetId = (e.currentTarget as HTMLElement).dataset.target;
             if (!targetId) return;
+            rememberCurrentPage();
             const lastId = entryResource(targetId);
             updateHistory(targetId, lastId, 'push');
             void performNavigation(targetId, lastId ?? undefined);
@@ -662,20 +673,23 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     }, { signal: navigationSignal });
 
     window.addEventListener('popstate', (e) => {
-        const state = e.state as { workspaceId: string; resourceId?: string; mobileView?: string } | null;
+        const state = e.state as ({ workspaceId: string; resourceId?: string } & PagePresentation) | null;
         const expectedHash = location.hash;
         const {slug, resource} = parseWorkspaceHash(location.hash, resolvedDefault);
         const replay = Symbol(); replayingHistory = replay;
         void performNavigation(state?.workspaceId ?? resolveTarget(slug, resource), state?.resourceId ?? resource, state ? undefined : slug)
-            .then(() => {
+            .then(async () => {
+                if (closed || replayingHistory !== replay || location.hash !== expectedHash) return;
+                if (state?.mobileView === 'list') await managerCache.get(state.workspaceId)?.restoreNavigationScope?.(state.navigationScope ?? '/');
                 const layout = visibleWorkspaceId && document.getElementById(visibleWorkspaceId)?.querySelector<HTMLElement>('.mm-layout');
-                if (!closed && layout && location.hash === expectedHash && ['list', 'detail'].includes(state?.mobileView ?? '')) layout.dataset.mobileView = state!.mobileView;
+                if (!closed && replayingHistory === replay && layout && location.hash === expectedHash && ['list', 'detail'].includes(state?.mobileView ?? '')) layout.dataset.mobileView = state!.mobileView;
             }).finally(() => {if (replayingHistory === replay) replayingHistory = undefined;});
     }, { signal: navigationSignal });
 
     // ── 9. Initial navigation ──────────────────────────────────────────────────
 
     if (options.startPage) cleanupFns.push(installStartPage(workspaces, navigationSignal, id => {
+        rememberCurrentPage();
         const lastId = entryResource(id);
         updateHistory(id, lastId, 'push'); void performNavigation(id, lastId ?? undefined);
     }));

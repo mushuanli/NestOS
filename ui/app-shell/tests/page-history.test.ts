@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
-import {backToPreviousPage, writePageHistory} from '../src/navigation/page-history';
+import {backToPreviousPage, rememberPagePresentation, writePageHistory} from '../src/navigation/page-history';
 import {installNavigationButtonPresentation} from '@itookit/ui-common';
 import {ACTION_ICONS, t} from '@itookit/common';
 
@@ -26,4 +26,17 @@ it('uses a back icon on mobile and a sidebar icon on desktop, releasing responsi
     media.matches = false; media.dispatchEvent(new Event('change')); icon.innerHTML = ACTION_ICONS.sidebar;
     expect(button.firstElementChild!.isEqualNode(icon.firstElementChild)).toBe(true); expect(button.title).toBe(t('workspace.sidebar.toggle'));
     cleanup(); media.matches = true; media.dispatchEvent(new Event('change')); expect(button.title).toBe(t('workspace.sidebar.toggle'));
+});
+
+it('remembers the sidebar page before a file changes its project scope', async () => {
+    writePageHistory('chat', null, '#/chat', 'replace', 'list');
+    rememberPagePresentation({mobileView: 'list', navigationScope: '/'});
+    writePageHistory('chat', '/folder:personal/@files/note.md', '#/chat/note', 'push', 'detail');
+    const back = new Promise<void>(resolve => window.addEventListener('popstate', () => resolve(), {once: true}));
+    backToPreviousPage(() => {throw new Error('Unexpected fallback');}); await back;
+    expect(history.state).toMatchObject({resourceId: null, mobileView: 'list', navigationScope: '/'});
+    expect(location.hash).toBe('#/chat');
+    const forward = new Promise<void>(resolve => window.addEventListener('popstate', () => resolve(), {once: true}));
+    history.forward(); await forward;
+    expect(history.state).toMatchObject({resourceId: '/folder:personal/@files/note.md', mobileView: 'detail'});
 });

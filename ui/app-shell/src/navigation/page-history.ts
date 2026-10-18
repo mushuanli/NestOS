@@ -1,4 +1,11 @@
-interface PageState { workspaceId: string; resourceId: string | null; mindosPage: number; mobileView?: string }
+export interface PagePresentation { mobileView?: string; navigationScope?: string }
+interface PageState extends PagePresentation { workspaceId: string; resourceId: string | null; mindosPage: number }
+
+/** Capture the page being left before opening a resource changes its sidebar or editor. */
+export function rememberPagePresentation(presentation: PagePresentation): void {
+    if (history.state?.mindosPage === undefined) return;
+    history.replaceState({...history.state, ...presentation}, '');
+}
 
 /** Only return within the application's own history; a direct link has a local fallback. */
 export function backToPreviousPage(fallback: () => void): void {

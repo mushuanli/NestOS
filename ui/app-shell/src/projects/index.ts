@@ -5,7 +5,7 @@ import { setupHitlVfsBridge } from '../workspaces/hitl-bridge';
 import { createWorkspaceModule, type WorkspaceModule } from '../workspaces/module';
 import { SessionWorkbench, type SessionWorkbenchOptions } from './SessionWorkbench';
 
-interface ProjectModuleOptions extends Pick<SessionWorkbenchOptions, 'sidebar' | 'container' | 'factory' | 'createFactory' | 'fileFactory' | 'onSelect' | 'hostContext' | 'sessionSkills' | 'onSidebarReady' | 'initialResource' | 'deferNavigation' | 'uiPersistence' | 'workbenchState' | 'projectSyncSetup' | 'projectSyncDirectory'> {
+interface ProjectModuleOptions extends Pick<SessionWorkbenchOptions, 'sidebar' | 'container' | 'factory' | 'createFactory' | 'fileFactory' | 'onSelect' | 'onBeforeNavigate' | 'hostContext' | 'sessionSkills' | 'onSidebarReady' | 'initialResource' | 'deferNavigation' | 'uiPersistence' | 'workbenchState' | 'projectSyncSetup' | 'projectSyncDirectory'> {
     backend: import('@itookit/app-contracts/services').ApplicationBackend;
     services: Pick<ApplicationServices, 'sessionRepository' | 'sessionFiles' | 'kernel' | 'directoryMounts' | 'sessionManager' | 'flowEngine' | 'projects' | 'commandBus' | 'projectSync' | 'digitalTwin' | 'prepareSession'>;
     createFlowContextMenu: AppUI['createFlowContextMenu'];

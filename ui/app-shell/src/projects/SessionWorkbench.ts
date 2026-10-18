@@ -119,6 +119,7 @@ export interface SessionWorkbenchOptions {
     factory?: EditorFactory;
     createFactory?(controls: WorkbenchChatControls): EditorFactory;
     onSelect: (id: string, mode?: 'push' | 'replace') => void;
+    onBeforeNavigate?(): void;
     hostContext: EditorHostContext | undefined;
     kernel: Kernel;
     fileFactory: EditorFactory;
@@ -217,6 +218,7 @@ export class SessionWorkbench implements WorkspaceController {
     private factory!: EditorFactory;
     private readonly createFactory: SessionWorkbenchOptions['createFactory'];
     private readonly onSelect: SessionWorkbenchOptions['onSelect'];
+    private readonly onBeforeNavigate: SessionWorkbenchOptions['onBeforeNavigate'];
     private readonly digitalTwin?: import('@itookit/app-contracts/services').DigitalTwinService;
     private readonly hostContext: SessionWorkbenchOptions['hostContext'];
     private readonly kernel: SessionWorkbenchOptions['kernel'];
@@ -257,6 +259,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (options.factory) this.factory = options.factory;
         this.createFactory = options.createFactory;
         this.onSelect = options.onSelect;
+        this.onBeforeNavigate = options.onBeforeNavigate;
         this.hostContext = options.hostContext; this.digitalTwin = options.digitalTwin;
         this.kernel = options.kernel;
         this.fileFactory = options.fileFactory;
@@ -736,6 +739,7 @@ export class SessionWorkbench implements WorkspaceController {
         }
     }
     async openResource(resourceId: string, options: OpenResourceOptions = {}): Promise<void> {
+        this.onBeforeNavigate?.();
         this.sessions ??= await this.sessionsReady;
         const intent = ++this.openIntent;
         const current = () => intent === this.openIntent && !this.closed;
@@ -1323,6 +1327,15 @@ export class SessionWorkbench implements WorkspaceController {
         for (const tab of this.tabs.values()) if (tab.value?.active === id) await this.tabs.close(tab.id);
         await this.sidebarUI?.refresh();
         await this.projectNavigation?.refresh();
+    }
+    getNavigationScope(): string {
+        return folderBrowserPath(this.projectNavigation?.currentProject()?.path) || '/';
+    }
+    async restoreNavigationScope(scope: string): Promise<void> {
+        ++this.fileNavigationRevision; this.pendingNavigation = undefined;
+        this.sidebar.inert = false;
+        this.projectNavigation?.cancelPending(); this.sidebarUI?.cancelPendingSelection?.();
+        this.projectNavigation?.selectScope(scope); this.sidebarUI?.setSelection([]);
     }
     private toggleSidebar(): void {
         const layout = this.sidebar.closest<HTMLElement>('.mm-layout');

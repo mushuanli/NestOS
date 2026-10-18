@@ -10,7 +10,7 @@ import { fileContentFormat } from '../src/browser/file-format';
 
 const visibility = vi.hoisted(() => vi.fn());
 const lifecycle = vi.hoisted(() => ({ start: vi.fn(async () => {}), open: vi.fn(async (_id: string) => {}),
-    destroy: vi.fn(async () => {}), configure: vi.fn(), selection: undefined as ((id: string) => void) | undefined }));
+    destroy: vi.fn(async () => {}), scope: '/', restoreScope: vi.fn(async (_scope: string) => {}), before: undefined as (() => void) | undefined, configure: vi.fn(), selection: undefined as ((id: string) => void) | undefined }));
 
 vi.mock('../src/ThemeService', () => ({
     themeService: { init: vi.fn(async () => {}), destroy: vi.fn(), setMode: vi.fn(async () => {}) },
@@ -33,7 +33,7 @@ vi.mock('@itookit/app-settings', () => ({
 
 vi.mock('../src/core/Workbench', () => ({
     Workbench: class {
-        constructor(config: any) { lifecycle.selection = config.onSessionChange; lifecycle.configure(config); }
+        constructor(config: any) { lifecycle.selection = config.onSessionChange; lifecycle.before = config.onBeforeNavigate; lifecycle.configure(config); }
         setVisible = visibility;
         start = lifecycle.start;
         destroy = lifecycle.destroy;
@@ -45,10 +45,14 @@ vi.mock('../src/core/Workbench', () => ({
 }));
 
 vi.mock('../src/projects/SessionWorkbench', () => ({
+    SESSION_BROWSER_SCOPE: 'sessions-v2',
     SessionWorkbench: class {
+        constructor(config: any) {lifecycle.selection = config.onSelect; lifecycle.before = config.onBeforeNavigate;}
+        getNavigationScope = () => lifecycle.scope;
+        restoreNavigationScope = lifecycle.restoreScope;
         start = vi.fn(async () => {});
         destroy = vi.fn(async () => {});
-        openResource = vi.fn(async () => {});
+        openResource = lifecycle.open;
         createResource = vi.fn(async () => 'new-id');
         getActiveResourceId = vi.fn(() => null);
         setWaitingInput = vi.fn();
@@ -88,6 +92,7 @@ function makeRuntime(): ApplicationRuntime {
 afterEach(() => {
     document.body.innerHTML = '';
     history.replaceState(null, '', '/');
+    lifecycle.scope = '/'; lifecycle.restoreScope.mockReset().mockImplementation(async scope => {lifecycle.scope = scope;});
     vi.restoreAllMocks(); lifecycle.start.mockReset().mockResolvedValue(); lifecycle.open.mockReset().mockResolvedValue(); lifecycle.destroy.mockReset().mockResolvedValue();
 });
 
@@ -337,4 +342,25 @@ it('releases replay mode after the newest Back navigation even when an older pag
         const push = vi.spyOn(history, 'pushState'); lifecycle.selection?.('user-selected');
         expect(push).toHaveBeenCalledOnce(); expect(history.state.resourceId).toBe('user-selected');
     } finally {finish(); await app.destroy();}
+});
+
+it('returns from a directly opened file to the original sidebar scope and forwards back to the file', async () => {
+    lifecycle.restoreScope.mockImplementation(async scope => {lifecycle.scope = scope;});
+    navigationDOM();
+    const app = await initTestApp({services: makeRuntime(), workspaces: [{...workspace, type: 'chat', workspaceName: 'chat', slug: 'chat'}], ui: testUI()});
+    const layout = document.querySelector<HTMLElement>('.mm-layout')!;
+    try {
+        layout.dataset.mobileView = 'list'; lifecycle.scope = '/';
+        lifecycle.before?.();
+        layout.dataset.mobileView = 'detail'; lifecycle.scope = '/folder:file-project';
+        lifecycle.selection?.('direct-file');
+        expect(history.state.mobileView).toBe('detail');
+        history.back();
+        await vi.waitFor(() => expect(lifecycle.restoreScope).toHaveBeenCalledWith('/'));
+        expect(layout.dataset.mobileView).toBe('list'); expect(lifecycle.scope).toBe('/');
+        expect(lifecycle.open).not.toHaveBeenCalled(); expect(location.hash).toBe('#/chat');
+        history.forward();
+        await vi.waitFor(() => expect(lifecycle.open).toHaveBeenCalledWith('direct-file'));
+        await vi.waitFor(() => expect(layout.dataset.mobileView).toBe('detail'));
+    } finally {await app.destroy();}
 });

@@ -29,6 +29,7 @@ export interface ConnectOptions<Node extends VFSNodeUI = VFSNodeUI> {
     refreshFileMetadata?: boolean;
     canCreateEntries?: boolean;
     navigationLabel?: string;
+    onBeforeNavigate?(): void;
     [key: string]: any;
 }
 interface OpenView { node: VFSNodeUI; editor?: IEditor; lease?: EditorLease; cancel?: () => void }
@@ -37,7 +38,7 @@ const replacePrefix = (path: string, old: string, next: string) => path === old 
 /** Each open file owns its editor and save coordinator independently of navigation. */
 export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, container: HTMLElement,
     factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void>; openResource(path: string): Promise<void>; getActiveResourceId(): string | null } {
-    const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, emptyMessage, navigationLabel, saveDebounceMs: _debounce, ...extra } = options;
+    const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, emptyMessage, navigationLabel, onBeforeNavigate, saveDebounceMs: _debounce, ...extra } = options;
     if (files.fs !== engine) throw new Error('Editor file context differs from its file tree');
     const revisions = new Map<string, string | undefined>();
     const loads = new LatestViewLoad(), pending = new Set<Promise<void>>();
@@ -147,6 +148,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
     }
     async function select({ item }: { item?: VFSNodeUI }, reload = false): Promise<void> {
         pendingItem = item; if (!visible || closed) return;
+        onBeforeNavigate?.();
         const load = loads.begin();
         try { await flush(tabs.current?.value?.editor); } catch (error) { report(error); return; }
         if (!loads.isCurrent(load)) return;

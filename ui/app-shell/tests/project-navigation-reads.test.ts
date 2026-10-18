@@ -331,3 +331,36 @@ it('ignores a delayed project choice after its navigation intent has been cancel
         release(); navigation.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose();
     }
 });
+
+it('restores the original project scope without opening a parent directory or replacing the file editor', async () => {
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() }), root = await manager.openFileSystem('/');
+    const repository = new SessionRepository(root); await repository.init();
+    const { projects, mounts, files } = await projectServices(root, repository); await projects.ensureStartup();
+    const project = await projects.create('Origin'), projectPath = folderBrowserPath(project.path);
+    const seed = await projects.openFiles(project.path);
+    await seed.fs.driver.createFile({parentPath: '/', name: 'note.md', content: '# Content'}); await seed.dispose();
+    const sidebar = document.createElement('aside'), main = document.createElement('main'); document.body.append(sidebar, main);
+    const destroy = vi.fn(async () => {}), factory = vi.fn(async (mount: HTMLElement) => {
+        mount.textContent = 'Retained file'; return {destroy, flushPendingSave: async () => {}, on: () => () => {}};
+    });
+    const before = vi.fn();
+    const workbench = createTestWorkbench({sidebar, container: main, repository, files, projects, directoryMounts: mounts,
+        kernel: {onChanged: () => () => {}, async *listSessions() {}} as never, fileFactory: factory as never,
+        factory: factory as never, onSelect() {}, onBeforeNavigate: before});
+    try {
+        await workbench.start(); expect(workbench.getNavigationScope()).toBe('/');
+        await workbench.openResource(projectPath); await (workbench as unknown as {fileNavigation: Promise<void>}).fileNavigation;
+        expect(workbench.getNavigationScope()).toBe(projectPath);
+        const route = projectPath + '/@files/note.md';
+        await workbench.openResource(route);
+        const file = main.querySelector('.workbench-tabs__panel:not([hidden])');
+        await workbench.restoreNavigationScope('/');
+        await (workbench as unknown as {fileNavigation: Promise<void>}).fileNavigation;
+        expect(workbench.getNavigationScope()).toBe('/'); expect(sidebar.inert).toBe(false);
+        expect(sidebar.querySelector<HTMLSelectElement>('.workbench-project-navigation select')!.value).toBe('/');
+        expect(workbench.getActiveResourceId()).toBe(route);
+        expect(main.querySelector('.workbench-tabs__panel:not([hidden])')).toBe(file);
+        expect(factory).toHaveBeenCalledOnce(); expect(destroy).not.toHaveBeenCalled(); expect(before).toHaveBeenCalledTimes(2);
+        await workbench.restoreNavigationScope(projectPath); expect(workbench.getNavigationScope()).toBe(projectPath);
+    } finally {await workbench.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); sidebar.remove(); main.remove();}
+});

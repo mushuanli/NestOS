@@ -23,6 +23,18 @@
 }
 
 .llm-workspace-titlebar__left { min-width: 0; }
+.llm-workspace-titlebar__source {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+    max-width: 140px;
+    overflow: hidden;
+    white-space: nowrap;
+    color: var(--llm-text-secondary);
+    font-size: 12px;
+}
+.llm-workspace-titlebar__source svg { display: block; width: 18px; height: 18px; }
 .llm-workspace-titlebar__compact-navigation { display: none; min-width: 0; flex: 1; }
 .llm-workspace-titlebar__right { flex-shrink: 0; }
 

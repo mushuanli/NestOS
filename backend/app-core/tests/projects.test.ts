@@ -554,7 +554,7 @@ it('projects an empty Sessions section when a discovered project has no organiza
             expect.objectContaining({ name: '@sessions', parentPath: project.path }),
         ]);
         const listing = await runtime.browser.fs.driver.getChildren(folderBrowserPath(project.path));
-        expect(listing.some(node => node.path === route)).toBe(true);
+        expect(listing.some(node => node.metadata.navigationTransparent === true)).toBe(true);
         expect((await runtime.browser.fs.driver.getNode(route))?.type).toBe('directory');
         expect(await runtime.browser.fs.driver.getChildren(route)).toEqual([]);
         expect((await runtime.sessionRepository.listFolders()).some(folder => folder.path === section)).toBe(false);

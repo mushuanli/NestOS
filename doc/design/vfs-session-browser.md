@@ -344,31 +344,37 @@ Session browser 与项目/家族导航优先使用 `ISessionRepository.listSumma
 
 目录转换由 `project-directory-recovery` 负责，在初始化来源及创建名称检查前执行。`ProjectRepository.adoptLocal` 条件登记 `info.seq`，会话索引通过 `promoteProjectFolder` 补上项目身份，不把已有会话分配给新 ID。转换成功记录 `[Project recovery] Converted directory`；权限、I/O、身份或根重叠失败保留来源并记录失败，相关创建不能绕过错误并退役索引。重复执行沿用已经发布的身份。
 
-### 远程项目的固定新会话入口
+### 项目最近会话与完整列表
 
-项目侧栏的固定入口使用本地化标题与共享图标，内部 `@favorites` / `@files` 只作为稳定路由身份，不向用户表达引用语义；真实文件仍按文件名展示。远程项目同级显示“收藏夹”“文件”和各原生执行器分组，省掉外层“远程会话”目录；执行器分组保留，以区分来源、权限和分页。后端将远程根标记为 navigationTransparent，并在导航 loadPaths 中提供该根；进入项目只准备执行器列表，不读取各执行器的历史。
+项目侧栏的固定入口使用本地化标题与共享图标，内部 `@favorites` / `@files` 只作为稳定路由身份，不向用户表达引用语义；真实文件仍按文件名展示。每个项目直接合并 MindOS 与原生执行器会话，按最近活动显示最多 15 条，不再展示远程根或各 harness 目录。超过 15 条时，“更多会话”打开右侧完整列表，每页最多 50 条会话，下一页保持各来源游标与页内位置；固定入口、新建动作、归档入口和错误提示不占会话名额。
 
-右侧目录与侧栏都展开后端声明为 `navigationTransparent` 的容器，直接显示其成员；普通目录和执行器历史仍按需读取。`SessionWorkbench` 将透明子容器通过 vfs-ui 顶层 `navigationChildren` 端口接入单栏导航，在“所有项目”展开项目、恢复已展开项目或刷新时加载其会话分组，折叠项目不预读。`ProjectNavigation` 进入项目时继续消费后端 `loadPaths`，保留显式加载契约。右侧手动刷新先等待导航缓存失效，再读取目录，并等待侧栏和项目导航更新完成。工作台刷新覆盖与打开相同的目录范围，包含收藏夹及远程执行器目录，避免只更新侧栏而保留旧正文列表。
+后端 `conversation-page` 按各来源有序页进行合并，只补读形成当前窗口所需的后续页；不读取原生会话正文或扫描全部历史。一个 harness 失败时保留其他来源和明确的不可用提示。聚合目录的行使用目录内别名，并通过 `navigationTarget` 保留规范资源身份；打开时解析回原路径，避免不同页面创建重复标签，也不放宽 VFS 的父目录包含校验。已打开资源继续按规范身份管理收藏、删除与会话控制。
+
+`SessionWorkbench` 将后端声明为 `navigationTransparent` 的最近会话容器通过 vfs-ui 的 `navigationChildren` 接入单栏导航，在“所有项目”展开项目、恢复展开或刷新时加载，折叠项目不预读。右侧消费该容器声明的 `directoryPath`，显示更大的完整列表。完整目录在原始树中保留可定位身份并标记 `navigationHidden`，不额外占据侧栏；右侧行菜单仍通过公开导航 API 准备对应目录。右侧刷新先等待缓存失效，再读取目录，并等待侧栏和项目导航更新；工作台刷新覆盖收藏夹及远程目录。
+
+会话图标由共享 `harnessPresentation` 根据来源声明选择，未知类型保留标签并使用通用图标。进入会话后，标题栏独立显示来源标识，不改写会话名称；列表提示包含来源，右侧当前页搜索可匹配来源名称。
 
 ```mermaid
 C4Component
-  title 项目目录与侧栏的展示及刷新边界
+  title 最近会话、完整列表及来源展示边界
   Container_Boundary(shell, "app-shell") {
     Component(workbench, "SessionWorkbench", "Controller", "缓存失效、刷新协调与路由")
     Component(treePolicy, "ProjectNavigation / projectItems", "UI policy", "项目范围与透明分组展示")
-    Component(directory, "projectDirectoryNodes / DirectoryList", "UI projection", "读取透明组成员并显示目录行")
+    Component(directory, "projectDirectoryNodes / DirectoryList", "UI projection", "更多入口、完整分页列表与规范身份跳转")
   }
   Component(tree, "VFSUIShell", "vfs-ui", "展开、恢复和刷新时加载宿主声明的子容器")
   Component(browser, "ProjectService / SessionBrowserFS", "app-core", "项目及会话目录、分组元数据和缓存")
+  Component(recent, "conversation-directory / conversation-page", "app-core", "15/50 条窗口、跨来源合并与游标续读")
   Rel(workbench, browser, "等待 invalidateNavigation")
   Rel(workbench, tree, "刷新并等待完成")
   Rel(workbench, directory, "打开或刷新目录")
   Rel(treePolicy, tree, "listItems / navigationChildren")
   Rel(tree, browser, "读取当前展开分支及声明的子容器")
   Rel(directory, browser, "读取目录及透明组成员")
+  Rel(browser, recent, "请求最近窗口或完整分页")
 ```
 
-新会话只出现在可写且声明 create 能力的 profile 活动首页，固定排在会话之前；归档页和只读根没有创建入口。项目根和远程类型目录不会误创建本地 Session。原有远程根和 profile 深链继续可用。
+远程项目的“新建会话”只在后端发现可写且声明 create 能力的来源时显示，打开完整列表选择对应执行器；创建入口固定排在会话之前。归档页和只读根没有创建入口。项目根和远程类型目录不会误创建本地 Session。原有远程根、profile 和分页深链继续可用。
 
 原生 create 成功只代表预留会话，不代表首条消息提交成功。app-core 在远程草稿恢复记录中保存明确的 submittedTurnId；拒绝发送时保留输入与已创建的原生身份，重开不会再次 create。结果未知时保留 requestId/epoch 并查询回执，不自动重放。只有 turn 的明确成功响应或 committed 回执才允许 UI 转为正式会话；新入口随后提供空白草稿。关闭或刷新视图不会中断原生执行。
 

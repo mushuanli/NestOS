@@ -1,8 +1,7 @@
 import { FSError } from '@itookit/vfs-core';
-import { browserTargetFolder, folderBrowserPath, resolveBrowserTarget } from '@itookit/app-contracts';
+import { browserTargetFolder, folderBrowserPath, projectConversationsPath, resolveBrowserTarget } from '@itookit/app-contracts';
 import type { ISessionRepository } from '@itookit/llm-session/contracts';
 import type { ProjectNavigationRequest, ProjectNavigationView, ProjectService } from '@itookit/app-contracts/services';
-import { remoteSessionRootPath } from '../session/remote-session-projection';
 
 /** Resolve organization beside storage; the frontend only consumes prepared navigation. */
 export async function readProjectNavigation(projects: ProjectService,
@@ -19,11 +18,9 @@ export async function readProjectNavigation(projects: ProjectService,
             .sort((a, b) => b.path.length - a.path.length)[0];
     const path = 'sessionId' in target ? manifest ? `${folderBrowserPath(manifest.folder)}/${manifest.id}`
         : folderBrowserPath(project?.path) || '/' : request.path;
-    const remote = project && remoteSessionRootPath(project, projects.remoteMounts?.list(project.project.id) ?? []);
     return { path, project, projects: choices, sessionId: manifest?.id, pendingDeletions: snapshot.pending.length,
         offlineProjectIds: choices.filter(item => projects.remoteMounts?.projectOffline(item.project.id)).map(item => item.project.id),
-        loadPaths: project ? [...snapshot.folders.filter(item => item.parentPath === project.path && item.name === '@sessions')
-            .map(item => folderBrowserPath(item.path)), ...(remote ? [remote] : [])] : [] };
+        loadPaths: project ? [projectConversationsPath(project.path, {recent: true})] : [] };
 }
 
 async function readManifest(repository: Pick<ISessionRepository, 'getManifest'>, sessionId: string) {

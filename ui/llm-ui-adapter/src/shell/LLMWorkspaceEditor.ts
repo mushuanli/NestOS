@@ -6,6 +6,7 @@ import type { SessionViewPort } from '@itookit/llm-session/contracts';
 import { acquireConnectionOptions } from './connection-options-cache';
 import { rerunSession } from './rerun-session';
 import { t } from '@itookit/common';
+import { mountConversationSource } from './conversation-source';
 import { openSessionFlowOutputs } from '../flows/session-output';
 import { InvocationPanel } from '../flows/InvocationPanel';
 import { invokeFlowText } from '../flows/invoke-flow';
@@ -284,6 +285,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private initLayout(): void {
         this.container.innerHTML = LayoutTemplates.renderWorkspace(this.currentTitle);
         this.titleInput = this.container.querySelectorAll('#llm-title-input')[0] as HTMLInputElement;
+        mountConversationSource(this.container, 'mindos');
         this.container.addEventListener('click', this.onWelcomePrompt);
     }
 

@@ -372,6 +372,10 @@ export const zhCN = {
     "twin.job.failed": "失败",
     "twin.job.cancelled": "已取消",
 
+    'project.conversations': '全部会话',
+    'project.moreConversations': '更多会话',
+    'project.createWith': '新建 · {name}',
+    'project.sourceUnavailable': '{name} 暂不可用，刷新重试',
     'project.sync.indicator.configured': '已设置同步',
     'project.sync.indicator.pending': '同步待处理',
     'project.sync.indicator.error': '同步异常',

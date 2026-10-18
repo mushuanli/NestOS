@@ -3,7 +3,7 @@ import { remapProjectPath } from './project-paths';
 import { t, FILE_BROWSER_ICONS, VFS_TOOLBAR_ICONS, ENTITY_ICONS, FEEDBACK_ICONS } from '@itookit/common';
 import { ProjectSyncStatusIndicator, projectSyncIcon } from './sync/indicator';
 import type { ProjectSyncIndicator } from './sync/presentation';
-import { browserTargetFolder, folderBrowserPath, resolveBrowserTarget, remoteSessionPath } from '@itookit/app-contracts';
+import { browserTargetFolder, folderBrowserPath, projectConversationsPath, resolveBrowserTarget, remoteSessionPath } from '@itookit/app-contracts';
 import type { ProjectFolder, ProjectNavigationView, ProjectService } from '@itookit/app-contracts/services';
 import { ScopeSelector } from '@itookit/vfs-ui';
 import type { VFSActionDefinition, VFSActionContext, VFSToolbarContext, VFSColumnsOptions, VFSNodeUI, VFSUIShell } from '@itookit/vfs-ui';
@@ -183,7 +183,7 @@ export class ProjectNavigation {
             await this.ui()?.expandPath(folderBrowserPath(project.path));
             for (const group of snapshot.loadPaths) {
                 if (revision !== this.revision) return;
-                await this.ui()?.loadDirectory(group);
+                if (this.ui()?.getNode(group)?.children === undefined) await this.ui()?.loadDirectory(group);
             }
         }
         if (revision === this.revision) this.ui()?.refreshList();
@@ -218,15 +218,18 @@ export class ProjectNavigation {
             if (draft) return this.actions.navigate?.(draft);
             return;
         }
-        return this.actions.createSession(folderBrowserPath(this.project?.path));
+        const project = this.project;
+        if (project && (project.project.source?.kind === 'remote' || this.projects.remoteMounts?.list(project.project.id).some(mount => mount.at === '/')))
+            return this.actions.navigate?.(projectConversationsPath(project.path));
+        return this.actions.createSession(folderBrowserPath(project?.path));
     }
     private updateCreation(): void {
         const target = resolveBrowserTarget(this.path), remote = target.kind === 'remote' && !!target.profileId;
         const label = t(remote ? 'harness.create' : 'project.createSession');
         if (this.create.title !== label) decorateButton(this.create, FILE_BROWSER_ICONS.newSession, label, true);
-        const remoteProject = this.project?.project.source?.kind === 'remote'
-            || !!this.project && !!this.projects.remoteMounts?.list(this.project.project.id).some(mount => mount.at === '/');
-        this.create.hidden = remote ? !this.remoteDraftPath() : !this.project || remoteProject;
+        const project = this.project, root = project && this.ui()?.getNode(projectConversationsPath(project.path, {recent: true}));
+        const remoteProject = project?.project.source?.kind === 'remote' || !!project && this.projects.remoteMounts?.list(project.project.id).some(mount => mount.at === '/');
+        this.create.hidden = remote ? !this.remoteDraftPath() : !project || !!remoteProject && !root?.children?.some(node => node.metadata.custom.conversationCreate === true);
         const folder = remote ? target.folder : this.project?.path;
         this.create.disabled = !!folder && this.offlinePaths.has(folderBrowserPath(folder));
         this.create.setAttribute('aria-current', this.draftActive || remote && !!target.draft ? 'page' : 'false');
@@ -237,6 +240,7 @@ export class ProjectNavigation {
             ...(!this.project ? [{ id: '@new-project', label: t('project.create') + '…' }] : [])], this.project ? folderBrowserPath(this.project.path) : '/');
     }
     navigationItems(items: VFSNodeUI[], query = ''): VFSNodeUI[] {
+        this.updateCreation();
         const root = this.project ? findNode(items, folderBrowserPath(this.project.path)) : undefined;
         const nodes = projectItems(this.project ? root?.children ?? [] : items, query);
         return this.syncItems(nodes).sort((a, b) => fileFirst(a, b) ?? 0);

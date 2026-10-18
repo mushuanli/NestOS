@@ -1,4 +1,4 @@
-export { isFileTarget, FOLDER_SEGMENT_PREFIX, isFolderSegment, folderBrowserPath, folderPathFromBrowserPath, filesBrowserPrefix, parentBrowserPath, browserName, resolveBrowserTarget, browserTargetFolder, remoteSessionPath } from './session/browser-routes';
+export { isFileTarget, FOLDER_SEGMENT_PREFIX, isFolderSegment, folderBrowserPath, folderPathFromBrowserPath, filesBrowserPrefix, parentBrowserPath, browserName, resolveBrowserTarget, browserTargetFolder, remoteSessionPath, projectConversationsPath, projectConversationEntryPath, conversationResourcePath } from './session/browser-routes';
 export type { BrowserTarget, FileTarget } from './session/browser-routes';
 export { parseSessionRoute, sessionRoute } from './session/session-route';
 export { workspaceRoot } from './session/workspace-paths';

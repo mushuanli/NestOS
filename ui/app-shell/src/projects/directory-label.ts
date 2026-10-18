@@ -15,6 +15,7 @@ export function directoryBreadcrumbs(path: string, title?: string): DirectoryBre
         for (const item of children) result.push({ id: root + (item.id === '/' ? '' : item.id), label: item.label });
         if (title && children.length > 1) result[result.length - 1].label = title;
     } else if (target.kind === 'favorites') result.push({ id: path, label: t('project.favorites') });
+    else if (target.kind === 'project-conversations') result.push({id: path, label: t('project.conversations')});
     else if (target.kind === 'remote') {
         result.push({ id: remoteSessionPath(target.folder), label: t('harness.remoteSessions') });
         if (target.profileId) result.push({ id: remoteSessionPath(target.folder, target.profileId), label: target.profileId });

@@ -273,3 +273,17 @@ export const TOOLBOX_PROVIDER_ICONS: Readonly<Record<string, string>> = {
     openai: providerMark('O'), chatgpt: providerMark('GPT'), openrouter: providerMark('OR'), cloudapi: providerMark('C'),
     volcengine: providerMark('V'), codex: TOOLBOX_ICONS.terminal, custom: TOOLBOX_ICONS.providers,
 };
+
+const harnessMark = (label: string, mark: string) => ({label, icon: providerMark(mark)
+    .replace('aria-hidden="true"', `role="img" aria-label="${label}"`).replace('><rect', `><title>${label}</title><rect`)});
+const HARNESS_MARKS: Readonly<Record<string, {label: string; icon: string}>> = {
+    mindos: harnessMark('MindOS', 'M'), codex: harnessMark('Codex', 'CX'), dsht: harnessMark('DSHT', 'DS'),
+    dsh: harnessMark('DSHT', 'DS'), claude: harnessMark('Claude Code', 'CC'),
+    'claude-code': harnessMark('Claude Code', 'CC'), claudecode: harnessMark('Claude Code', 'CC'),
+};
+/** Provider-declared kinds choose a visual mark; unknown kinds retain a readable label. */
+export function harnessPresentation(kind: string, profileId?: string): {label: string; icon: string} {
+    const key = kind.toLowerCase();
+    const source = Object.hasOwn(HARNESS_MARKS, key) ? HARNESS_MARKS[key]! : {label: kind, icon: TOOLBOX_ICONS.terminal};
+    return profileId && profileId !== kind ? {...source, label: `${source.label} · ${profileId}`} : source;
+}

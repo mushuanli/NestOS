@@ -5,6 +5,7 @@ import { t } from '@itookit/common';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '@itookit/llm-session';
 import { DirectoryMountService, SessionFilesService, ProjectService, folderBrowserPath } from '@itookit/app-core';
+import { projectConversationEntryPath, projectConversationsPath } from '@itookit/app-contracts';
 
 it('creates project Sessions from the selected project and edits its files in the same tree', async () => {
     const storage = new Map<string, string>();
@@ -177,7 +178,7 @@ it('creates project Sessions from the selected project and edits its files in th
         expect((await repository.getManifest(child)).parentSessionId).toBe(session);
         expect((await repository.getManifest(sibling)).parentSessionId).toBe(session);
         for (const id of [session, child, sibling]) {
-            const path = folderBrowserPath((await repository.getManifest(id)).folder!) + '/' + id;
+            const path = projectConversationEntryPath(projectConversationsPath(other.path, {recent: true}), folderBrowserPath((await repository.getManifest(id)).folder!) + '/' + id);
             await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${path}"]`)).not.toBeNull());
         }
         expect(main.querySelector('.session-family__toolbar')).toBeNull();

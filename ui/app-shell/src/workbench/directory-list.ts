@@ -108,7 +108,7 @@ function action(label: string, callback: () => void, icon?: string, iconOnly = f
 function renderEntries(body: HTMLTableSectionElement, options: DirectoryListOptions, query: string, sort: keyof DirectoryEntry, ascending: boolean, selection?: DirectorySelection): void {
     body.replaceChildren();
     for (const cell of body.parentElement!.querySelectorAll('th')) cell.setAttribute('aria-sort', cell.dataset.column === sort ? ascending ? 'ascending' : 'descending' : 'none');
-    const entries = options.entries.filter(entry => entry.name.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
+    const entries = options.entries.filter(entry => `${entry.name} ${entry.description ?? ''}`.toLocaleLowerCase().includes(query.toLocaleLowerCase()))
         .sort((a, b) => compareEntries(a, b, sort, ascending));
     selection?.show(entries.filter(entry => !entry.disabled).map(entry => entry.id), options.entries.map(entry => entry.id));
     for (const entry of entries) renderEntry(body, entry, options, () => renderEntries(body, options, query, sort, ascending, selection), selection);

@@ -18,6 +18,21 @@ beforeEach(() => {
     Object.defineProperties(Range.prototype,{getClientRects:{configurable:true,value:()=>[]},getBoundingClientRect:{configurable:true,value:()=>new DOMRect()}});
 });
 afterEach(() => {document.body.replaceChildren();vi.useRealTimers();vi.unstubAllGlobals();delete (Range.prototype as any).getClientRects;delete (Range.prototype as any).getBoundingClientRect;delete (HTMLElement.prototype as any).scrollIntoView;});
+it.each(['missing', 'throwing'])('submits native conversations when randomUUID is %s', async mode => {
+    const {editor, host, peer} = setup(); await editor.init(host);
+    const native = globalThis.crypto;
+    vi.stubGlobal('crypto', {getRandomValues: native.getRandomValues.bind(native),
+        randomUUID: mode === 'missing' ? undefined : () => {throw new Error('Insecure context');}});
+    try {await editor.commands.sendMessage({text: 'HTTP compatible'}); expect(peer.send).toHaveBeenCalledWith('HTTP compatible');}
+    finally {await editor.destroy();}
+});
+it.each([['codex', 'Codex'], ['dsht', 'DSHT'], ['claudecode', 'Claude Code']])('shows %s beside the editable conversation name', async (kind, label) => {
+    const {editor, host} = setup({conversationSource: {kind}}); await editor.init(host);
+    try {
+        expect(host.querySelector(`[data-conversation-source="${kind}"]`)?.textContent).toContain(label);
+        expect(host.querySelector<HTMLInputElement>('#llm-title-input')?.value).toBe('remote');
+    } finally {await editor.destroy();}
+});
 it('mounts host actions in the same More menu and releases them when the native editor closes', async () => {
     const cleanup = vi.fn(), mountMoreMenu = vi.fn((container: HTMLElement) => {
         const button = document.createElement('button'); button.textContent = 'Host action'; container.append(button);

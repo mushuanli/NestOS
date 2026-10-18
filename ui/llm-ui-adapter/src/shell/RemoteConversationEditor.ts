@@ -1,5 +1,5 @@
 import { BaseSettingsEditor, conversationStatus, type ConversationControls, type ConversationSnapshot, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap } from '@itookit/ui-common';
-import { t } from '@itookit/common';
+import { randomUUID, t } from '@itookit/common';
 import { conversationRequests } from './remote-interactions';
 import { ConversationWorkspaceView } from './ConversationWorkspaceView';
 import { RemoteBranches } from './remote-branches';
@@ -164,7 +164,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     async sendText(text: string, files: File[] = []): Promise<void> {
         if (!text.trim() && !files.length) return;
         if (this.closed || this.working || this.submission?.state === 'unknown' || this.options.readOnly || !this.snapshot?.canSend) throw new Error(t('harness.remoteBusy'));
-        this.submission = {id: crypto.randomUUID(), text: text.trim() || t('harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting'};
+        this.submission = {id: randomUUID(), text: text.trim() || t('harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting'};
         await this.run(async () => {
             try {
                 this.view.history.view.setSubmission(this.submission);

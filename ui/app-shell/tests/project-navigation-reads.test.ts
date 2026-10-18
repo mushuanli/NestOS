@@ -8,6 +8,7 @@ import { DirectoryMountService, ProjectService, SessionFilesService, folderBrows
 import { ProjectNavigation } from '../src/projects/ProjectNavigation';
 import { projectItems } from '../src/projects/navigation-policy';
 import { refreshDirectoryList } from '../src/workbench/directory-list';
+import { conversationResourcePath } from '@itookit/app-contracts';
 
 function actions() {
     return { createProject: vi.fn(), createSession: vi.fn(), createChild: vi.fn(), importItems: vi.fn(),
@@ -25,7 +26,7 @@ it('keeps all-project sidebar sessions after refresh and shares project rows wit
     const repository = new SessionRepository(root); await repository.init();
     const { projects, mounts, files } = await projectServices(root, repository); await projects.ensureStartup();
     const project = await projects.create('Visible'), hidden = await projects.create('Collapsed');
-    const id = await projects.sessions.create('Visible conversation', await projects.sessionFolder(project));
+    await projects.sessions.create('Visible conversation', await projects.sessionFolder(project));
     await projects.sessions.create('Collapsed conversation', await projects.sessionFolder(hidden));
     const path = folderBrowserPath(project.path), sidebar = document.createElement('aside'), main = document.createElement('main');
     document.body.append(sidebar, main);
@@ -35,17 +36,17 @@ it('keeps all-project sidebar sessions after refresh and shares project rows wit
         await workbench.start();
         const ui = (workbench as unknown as { sidebarUI: import('@itookit/vfs-ui').VFSUIShell }).sidebarUI;
         await ui.expandPath(path); await workbench.refresh();
-        expect(sidebar.querySelector(`[data-item-id$="/${id}"]`)).not.toBeNull();
+        expect(sidebar.textContent).toContain('Visible conversation');
         expect(sidebar.querySelector<HTMLSelectElement>('.workbench-project-navigation select')!.value).toBe('/');
         await workbench.openResource(path); await (workbench as unknown as { fileNavigation: Promise<void> }).fileNavigation;
         const panel = main.querySelector<HTMLElement>('.workbench-tabs__panel:not([hidden])')!;
-        const added = await projects.sessions.create('Fresh conversation', await projects.sessionFolder(project));
+        await projects.sessions.create('Fresh conversation', await projects.sessionFolder(project));
         await refreshDirectoryList(panel);
-        const expected = projectItems(ui.getNode(path)!.children ?? []).map(node => node.id).sort();
-        expect([...panel.querySelectorAll<HTMLElement>('[data-resource-id]')].map(row => row.dataset.resourceId).sort()).toEqual(expected);
+        const expected = projectItems(ui.getNode(path)!.children ?? []).map(node => conversationResourcePath(node.id)).sort();
+        expect([...panel.querySelectorAll<HTMLElement>('[data-resource-id]')].map(row => conversationResourcePath(row.dataset.resourceId!)).sort()).toEqual(expected);
         expect(panel.textContent).toContain('Visible conversation');
         expect(panel.textContent).toContain('Fresh conversation');
-        expect(sidebar.querySelector(`[data-item-id$="/${added}"]`)).not.toBeNull();
+        expect(sidebar.textContent).toContain('Fresh conversation');
     } finally { await workbench.destroy(); await mounts.dispose(); await files.dispose(); await repository.dispose(); await manager.dispose(); sidebar.remove(); main.remove(); }
 });
 

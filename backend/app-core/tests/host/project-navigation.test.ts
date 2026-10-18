@@ -10,17 +10,17 @@ async function setup() {
     return runtime;
 }
 
-it('loads remote executor groups beside local groups without reading native histories', async () => {
+it('prepares one recent-conversation container without reading native histories', async () => {
     const app = await setup(); await app.projects.create('Remote');
     const harness = vi.fn(), list = vi.fn().mockReturnValue([
         { at: '/', connectionId: 'connection', serverProjectId: 'server-project', access: 'rw' } as never,
     ]);
     app.projects.remoteMounts = { list, projectHarness: harness, connections: () => [], projectOffline: () => false } as never;
     const view = await app.projects.navigation({ path: '/folder:Remote' });
-    expect(view.loadPaths).toContain('/folder:Remote/@harness');
+    expect(view.loadPaths).toEqual(['/folder:Remote/@recent-conversations']);
     expect(harness).not.toHaveBeenCalled();
     list.mockReturnValue([{ at: '/reference', connectionId: 'connection', serverProjectId: 'server-project' } as never]);
-    expect((await app.projects.navigation({ path: '/folder:Remote' })).loadPaths).not.toContain('/folder:Remote/@harness');
+    expect((await app.projects.navigation({ path: '/folder:Remote' })).loadPaths).toEqual(view.loadPaths);
     app.projects.remoteMounts = undefined;
 });
 
@@ -31,7 +31,7 @@ it('prepares project navigation and opaque group loading without scanning other 
     const view = await app.projects.navigation({ path: '/folder:Stale/' + session });
     expect(view.project?.project.id).toBe(project.project.id);
     expect(view.path).toContain(session);
-    expect(view.loadPaths).toEqual(['/folder:Work/folder:%40sessions']);
+    expect(view.loadPaths).toEqual(['/folder:Work/@recent-conversations']);
     expect(summaries).not.toHaveBeenCalled();
     const backend = bindApplicationBackend(bindLocalApplicationServices(app));
     const workbench = await backend.workbenchView({ initialNavigation: false });

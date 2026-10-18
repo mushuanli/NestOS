@@ -4,6 +4,7 @@ import { workspacePath } from '../vfs/workspace-namespace';
 export type BrowserTarget =
     | { kind: 'folder'; path: string }
     | { kind: 'project-draft'; folder: string }
+    | { kind: 'project-conversations'; folder: string; recent?: boolean; cursor?: string }
     | { kind: 'remote'; folder: string; profileId?: string; nativeSessionId?: string; draft?: boolean; cursor?: string; archived?: boolean }
     | { kind: 'project-files'; folder: string; path: string }
     | { kind: 'favorites'; folder: string }
@@ -60,6 +61,8 @@ export function browserName(path: string): string {
 }
 export function resolveBrowserTarget(path: string): BrowserTarget {
     const normalized = normalizeVirtualPath(path);
+    const resource = conversationResourcePath(normalized);
+    if (resource !== normalized) return resolveBrowserTarget(resource);
     if (normalized === '/') return { kind: 'folder', path: '/' };
     const segments = normalized.slice(1).split('/').filter(Boolean);
     let index = 0;
@@ -69,6 +72,9 @@ export function resolveBrowserTarget(path: string): BrowserTarget {
     if (segments[index] === '@new' && index > 0 && segments.length === index + 1)
         return { kind: 'project-draft', folder: folderPathFromBrowserPath(folderPrefix)! };
     if (segments[index] === '@harness' && index > 0) return remoteTarget(segments.slice(index + 1), folderPathFromBrowserPath(folderPrefix)!);
+    if (['@conversations', '@recent-conversations'].includes(segments[index]!) && index > 0) {
+        return conversationTarget(segments.slice(index + 1), folderPathFromBrowserPath(folderPrefix)!, segments[index] === '@recent-conversations');
+    }
     if (segments[index] === '@favorites' && index > 0) {
         const favoriteId = segments[index + 1];
         if (segments.length > index + 2 || favoriteId && !/^[a-zA-Z0-9_-]{1,128}$/.test(favoriteId))
@@ -110,6 +116,33 @@ export function remoteSessionPath(folder: string, profileId?: string, nativeSess
     return folderBrowserPath(folder) + '/@harness' + (profileId ? '/' + encodeURIComponent(profileId) : '')
         + (archived && profileId ? '/@archived' : '')
         + (nativeSessionId ? '/' + encodeURIComponent(nativeSessionId) : '');
+}
+export function projectConversationsPath(folder: string, options: {recent?: boolean; cursor?: string} = {}): string {
+    return folderBrowserPath(folder) + (options.recent ? '/@recent-conversations' : '/@conversations') + (options.cursor ? '/@page:' + encodeURIComponent(options.cursor) : '');
+}
+function conversationTarget(pages: string[], folder: string, recent: boolean): Extract<BrowserTarget, {kind: 'project-conversations'}> {
+    if (pages.some(page => !page.startsWith('@page:')) || recent && pages.length) throw new FSError('EINVAL', 'Invalid conversation directory');
+    let cursor: string | undefined;
+    try { cursor = pages.length ? decodeURIComponent(pages.at(-1)!.slice(6)) : undefined; }
+    catch { throw new FSError('EINVAL', 'Invalid conversation cursor'); }
+    if (cursor !== undefined && (!cursor || cursor.length > 16384 || /[\x00-\x1f]/.test(cursor))) throw new FSError('EINVAL', 'Invalid conversation cursor');
+    return {kind: 'project-conversations', folder, recent: recent || undefined, cursor};
+}
+/** Collection rows keep VFS parent containment while retaining canonical resource identity. */
+export function projectConversationEntryPath(directory: string, resource: string): string {
+    return directory + '/@entry:' + encodeURIComponent(resource);
+}
+export function conversationResourcePath(path: string): string {
+    const marker = path.lastIndexOf('/@entry:');
+    if (marker < 0) return path;
+    const collection = path.slice(0, marker), target = resolveBrowserTarget(collection);
+    if (target.kind !== 'project-conversations') return path;
+    let resource: string;
+    try { resource = decodeURIComponent(path.slice(marker + 8)); } catch { throw new FSError('EINVAL', 'Invalid conversation entry'); }
+    if (!resource.startsWith(folderBrowserPath(target.folder) + '/') || normalizeVirtualPath(resource) !== resource || resource.includes('/@entry:') || resource.length > 20000)
+        throw new FSError('EINVAL', 'Invalid conversation resource');
+    resolveBrowserTarget(resource);
+    return resource;
 }
 function remoteIdentity(value: string, cursor = false): string {
     let id: string;

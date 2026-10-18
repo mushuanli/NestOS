@@ -371,6 +371,10 @@ export const en: LocaleStrings = {
     "twin.job.failed": "Failed",
     "twin.job.cancelled": "Cancelled",
 
+    'project.conversations': 'All conversations',
+    'project.moreConversations': 'More conversations',
+    'project.createWith': 'New · {name}',
+    'project.sourceUnavailable': '{name} unavailable; refresh to retry',
     'project.sync.indicator.configured': 'Sync configured',
     'project.sync.indicator.pending': 'Sync needs attention',
     'project.sync.indicator.error': 'Sync error',

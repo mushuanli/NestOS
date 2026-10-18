@@ -11,6 +11,7 @@ import { StatusIndicatorView } from '../components/indicators/StatusIndicatorVie
 import { RemoteHistory } from './remote-history';
 import { conversationUsage } from './conversation-usage';
 import type { ConversationSnapshot } from '@itookit/ui-common';
+import { mountConversationSource } from './conversation-source';
 
 interface Actions {
     attachments?: Array<'text' | 'image'>;
@@ -45,7 +46,7 @@ export class ConversationWorkspaceView {
         container.innerHTML = LayoutTemplates.renderWorkspace(options.title ?? t('harness.remoteSessions'));
         const history = container.querySelector<HTMLElement>('#llm-ui-history')!;
         this.indicator = new StatusIndicatorView(new DOMCache(container), () => false, () => {});
-        this.configureTitle(); this.events = this.configureToolbar(options, actions);
+        this.configureTitle(options); this.events = this.configureToolbar(options, actions);
         const toolbar = container.querySelector<HTMLElement>('.llm-workspace-titlebar__menu-actions')!;
         this.renameButton = this.button(t('project.renameSession'), () => this.rename(actions), toolbar); this.renameButton.hidden = true;
         this.progress.className = 'remote-conversation__history-progress'; this.progress.hidden = true;
@@ -65,11 +66,11 @@ export class ConversationWorkspaceView {
         this.usage.title = t('harness.usageHelp'); this.usage.setAttribute('aria-live', 'polite');
         const input = container.querySelector('#llm-ui-input')!; input.before(this.interactions, this.status, this.usage);
     }
-    private configureTitle(): void {
+    private configureTitle(options: EditorOptions): void {
         const title = this.container.querySelector<HTMLInputElement>('#llm-title-input')!;
         title.readOnly = true;
-        const marker = document.createElement('span'); marker.textContent = ENTITY_ICONS.remoteSession;
-        marker.title = t('harness.remoteSessions'); title.before(marker);
+        const source = options.conversationSource;
+        mountConversationSource(this.container, source?.kind ?? 'remote', source?.label ?? (source ? undefined : t('harness.remoteSessions')));
     }
     private configureToolbar(options: EditorOptions, actions: Actions): EventBinder {
         for (const id of ['llm-btn-assets', 'llm-btn-flow-output', 'llm-btn-session-rerun']) {

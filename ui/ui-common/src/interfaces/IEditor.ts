@@ -109,6 +109,8 @@ export interface ConfigurationFormControls<T, TDiscovery> {
 }
 
 export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
+    /** Execution source shown independently of the editable conversation name. */
+    conversationSource?: {kind: string; label?: string};
     /** Mount host navigation in the editor header on narrow screens; return its cleanup. */
     mountCompactNavigation?(container: HTMLElement): () => void;
     /** Mount host-owned resource actions in the editor's More menu; return its cleanup. */

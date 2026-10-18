@@ -1,5 +1,7 @@
 import { filterDirectoryFiles } from './directory-visibility';
 import { RemoteSessionProjection } from './remote-session-projection';
+import { conversationDirectory, conversationDirectoryNode, conversationNavigationNodes } from '../projects/conversation-directory';
+import { conversationResourcePath } from '@itookit/app-contracts';
 import { FOLDER_SEGMENT_PREFIX, isFolderSegment, isFileTarget, filesBrowserPrefix, parentBrowserPath, browserName,
     resolveBrowserTarget, browserTargetFolder, folderBrowserPath, folderPathFromBrowserPath, type FileTarget, type BrowserTarget } from './browser-routes';
 export { resolveBrowserTarget, browserTargetFolder, folderBrowserPath, folderPathFromBrowserPath } from './browser-routes';
@@ -8,7 +10,7 @@ import { WORKSPACE_PATH, projectRelativePath } from '../vfs/workspace-namespace'
 import { sessionFamilyRoots } from '../projects/session-family';
 import { containedProjectRoots, projectFileLocation, type ProjectFileLocation, type ProjectFileRoot } from '../projects/file-location';
 import { transferFileSystemEntry, checkOperation, createFileSystemSource, FSError, type FSNode, type IStorageBackend, type IFileSystem, type OperationOptions } from '@itookit/vfs-core';
-import { t, ENTITY_ICONS, ACTION_ICONS, FILE_ICONS, fileTypeIcon } from '@itookit/common';
+import { t, ENTITY_ICONS, ACTION_ICONS, FILE_ICONS, fileTypeIcon, harnessPresentation } from '@itookit/common';
 import type { ISessionRepository, SessionFolder } from '@itookit/llm-session';
 import type { EventEnvelope, TaskRecord } from '@itookit/durable-kernel';
 import { taskStat } from '@itookit/durable-kernel';
@@ -182,8 +184,9 @@ class BrowserBackend implements IStorageBackend {
         return `${folderBrowserPath(folder)}/${id}`;
     }
     private sessionNode(manifest: { id: string; title: string; createdAt: number; updatedAt: number; folder?: string | null; parentSessionId?: string | null }): FSNode {
+        const source = harnessPresentation('mindos');
         return { ...this.node(this.sessionBrowserPath(manifest.id, manifest.folder), manifest.title, true, manifest.updatedAt),
-            createdAt: manifest.createdAt, icon: ENTITY_ICONS.chat, metadata: { title: manifest.title, _favorite: this.deps.projects?.favorites.hasSession(manifest.id), _showAll: true, _fileDetails: false, parentSessionId: manifest.parentSessionId ?? null } };
+            createdAt: manifest.createdAt, icon: source.icon, metadata: { title: manifest.title, harnessKind: 'mindos', harnessLabel: source.label, _favorite: this.deps.projects?.favorites.hasSession(manifest.id), _showAll: true, _fileDetails: false, parentSessionId: manifest.parentSessionId ?? null } };
     }
     private sessionNodes(sessions: import('@itookit/llm-session').SessionSummary[], folder: string | null): FSNode[] {
         const roots = sessionFamilyRoots(sessions);
@@ -219,6 +222,12 @@ class BrowserBackend implements IStorageBackend {
         return new TextEncoder().encode((await exportSessionBundle(this.deps.repository, id)).content);
     }
     async stat(path: string): Promise<FSNode | null> {
+        const resource = conversationResourcePath(path);
+        if (resource !== path) {
+            const node = await this.stat(resource);
+            return node && {...node, path, name: path.slice(path.lastIndexOf('/') + 1), parentPath: parentBrowserPath(path),
+                metadata: {...node.metadata, navigationTarget: resource}};
+        }
         if (path === '/') return this.node('/', 'Sessions', true);
         let target: BrowserTarget;
         try { target = resolveBrowserTarget(path); }
@@ -233,6 +242,11 @@ class BrowserBackend implements IStorageBackend {
             return folder ? this.folderNode(folder) : null;
         }
         if (target.kind === 'remote') return this.remoteSessions.stat(path, target);
+        if (target.kind === 'project-conversations') {
+            const project = await this.deps.projects?.forFolder(target.folder);
+            const node = conversationDirectoryNode(target.folder, target.recent, target.cursor);
+            return project?.path === target.folder ? {...node, path, parentPath: parentBrowserPath(path), name: browserName(path)} : null;
+        }
         if (target.kind === 'project-draft') {
             const project = (await this.folders()).find(folder => folder.path === target.folder);
             return this.localDraft(project) ? this.draftEntry(path) : null;
@@ -285,14 +299,14 @@ class BrowserBackend implements IStorageBackend {
             const [folders, sessions] = await this.directoryNavigation(folderPath);
             const project = folders.find(folder => folder.path === folderPath);
             return [
-                ...folders.filter(folder => folder.parentPath === folderPath).map(folder => this.folderNode(folder)),
+                ...folders.filter(folder => folder.parentPath === folderPath && !(project?.project && folder.name === '@sessions')).map(folder => this.folderNode(folder)),
                 ...(this.deps.projects && folders.find(folder => folder.path === folderPath)?.project
                     ? [await this.fileEntry(path + '/@files', folderPath), this.favoritesEntry(path + '/@favorites')] : []),
                 ...(this.deps.projects && this.localDraft(project) ? [this.draftEntry(path + '/@new')] : []),
-                ...(folderPath ? await this.remoteSessions.root(folderPath, folders.find(folder => folder.path === folderPath) ?? null) : []),
-                ...this.sessionNodes(sessions, folderPath),
+                ...(project?.project ? conversationNavigationNodes(project.path) : this.sessionNodes(sessions, folderPath)),
             ];
         }
+        if (target.kind === 'project-conversations') return this.projectConversations(path, target);
         if (target.kind === 'remote') return this.remoteSessions.list(path, target);
         if (target.kind === 'project-draft') return [];
         if (target.kind === 'favorites') return this.favoriteNodes(path, target.folder);
@@ -312,6 +326,17 @@ class BrowserBackend implements IStorageBackend {
         }
         if (target.kind === 'files') return this.listFiles(path, target);
         throw new FSError('ENOTDIR', 'Task is a history entry');
+    }
+    private async projectConversations(path: string, target: Extract<BrowserTarget, {kind: 'project-conversations'}>): Promise<FSNode[]> {
+        const project = await this.deps.projects?.forFolder(target.folder);
+        if (!project || project.path !== target.folder) throw new FSError('ENOENT', 'Project unavailable');
+        const folders = await this.folders();
+        const groups = [project.path, ...folders.filter(folder => folder.parentPath === project.path && folder.name === '@sessions').map(folder => folder.path)];
+        const local = Promise.all(groups.map(async folder => {
+            const [, sessions] = await this.directoryNavigation(folder);
+            return this.sessionNodes(sessions, folder);
+        })).then(rows => rows.flat());
+        return conversationDirectory(path, target, local, () => this.remoteSessions.timeline(project));
     }
     private async listFiles(path: string, target: FileTarget): Promise<FSNode[]> {
         return this.withFiles(target, fs => this.fileNodes(path, target, fs));
@@ -424,7 +449,7 @@ class BrowserBackend implements IStorageBackend {
         const target = resolveBrowserTarget(path);
         if (isFileTarget(target)) await this.assertAvailable(path);
         if (target.kind === 'favorite' || target.kind === 'favorites') throw new FSError('EISDIR', 'Open favorites through navigation');
-        if (target.kind === 'folder') throw new FSError('EISDIR', 'Open this folder using its browser target');
+        if (target.kind === 'folder' || target.kind === 'project-conversations') throw new FSError('EISDIR', 'Open this folder using its browser target');
         if (target.kind === 'remote') throw new FSError('EROFS', 'Remote sessions use the conversation port');
         if (target.kind === 'project-draft') throw new FSError('EROFS', 'Project drafts use the composer port');
         if (target.kind === 'session') return this.sessionBundle(target.sessionId);

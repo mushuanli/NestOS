@@ -8,6 +8,7 @@ import { HarnessConversation, type HarnessClient, type ProjectClient } from '@it
 import { RemoteConversationEditor } from '../../llm-ui-adapter/src/shell/RemoteConversationEditor';
 import type { EditorOptions } from '@itookit/ui-common';
 import type { VFSUIShell } from '@itookit/vfs-ui';
+import { projectConversationEntryPath, projectConversationsPath } from '@itookit/app-contracts';
 
 const dialogMethods = new Map<string, PropertyDescriptor | undefined>();
 beforeEach(() => {
@@ -59,6 +60,7 @@ it('browses mounted native history pages, opens their conversations and routes a
     try {
         const remote=runtime.projects.remoteMounts!,connection=await remote.saveConnection({name:'Server',endpoint:'https://files.test',username:'u'},'secret');
         const project=await runtime.projects.createRemote('Notes',null,connection,'/docs/project','rw');
+        const preview = (resource: string) => projectConversationEntryPath(projectConversationsPath(project.path, {recent: true}), resource);
         await workbench.start();
         const selector = sidebar.querySelector<HTMLSelectElement>('.workbench-project-navigation select')!;
         const initialScope = selector.value;
@@ -69,9 +71,10 @@ it('browses mounted native history pages, opens their conversations and routes a
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe(remotePath));
         await vi.waitFor(() => expect(selector.value).toBe(remotePath));
         await vi.waitFor(() => expect(selector.disabled).toBe(false));
-        await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${remoteSessionPath(project.path, 'codex')}"]`)).not.toBeNull());
+        await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${preview(remoteSessionPath(project.path, 'codex', 'native'))}"]`)).not.toBeNull());
+        expect(sidebar.querySelector(`[data-item-id="${remoteSessionPath(project.path, 'codex')}"]`)).toBeNull();
         expect(sidebar.querySelector(`[data-item-id="${remoteSessionPath(project.path)}"]`)).toBeNull();
-        expect(main.querySelector(`.workbench-tabs__panel:not([hidden]) [data-resource-id="${remoteSessionPath(project.path, 'codex')}"]`)).not.toBeNull();
+        expect(main.querySelector('.workbench-tabs__panel:not([hidden])')!.textContent).toContain('Native session');
         expect(main.querySelector(`.workbench-tabs__panel:not([hidden]) [data-resource-id="${remoteSessionPath(project.path)}"]`)).toBeNull();
         selector.value = '/'; selector.dispatchEvent(new Event('change', {bubbles: true}));
         await vi.waitFor(() => expect(workbench.getActiveResourceId()).toBe('/'));
@@ -150,14 +153,15 @@ it('browses mounted native history pages, opens their conversations and routes a
         const ui = (workbench as unknown as {sidebarUI: VFSUIShell}).sidebarUI;
         await ui.expandPath(profilePath);
         const nativePath = remoteSessionPath(project.path,'codex','native');
-        await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${nativePath}"] .vfs-node-item__title`)?.textContent).toBe('Native session'));
-        const nativeItem = sidebar.querySelector(`[data-item-id="${nativePath}"]`)!;
+        await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${preview(nativePath)}"] .vfs-node-item__title`)?.textContent).toBe('Native session'));
+        const nativeItem = sidebar.querySelector(`[data-item-id="${preview(nativePath)}"]`)!;
         expect(nativeItem.textContent).toContain(t('workbench.modified')); expect(nativeItem.textContent).toContain(t('workbench.created'));
         expect(nativeItem.textContent).not.toContain('1970');
         const visible = [...sidebar.querySelectorAll<HTMLElement>('[data-item-type="file"][data-item-id]')].map(item => item.dataset.itemId);
-        expect(visible.indexOf(nativePath)).toBeLessThan(visible.indexOf(remoteSessionPath(project.path,'codex','earlier-native')));
+        expect(visible.indexOf(preview(nativePath))).toBeLessThan(visible.indexOf(preview(remoteSessionPath(project.path,'codex','earlier-native'))));
         await workbench.openResource(remoteSessionPath(project.path,'codex','native'));
         expect(main.textContent).toContain('Remote native history');expect(main.textContent).toContain('Server');
+        expect(main.querySelector('[data-conversation-source="codex"]')?.textContent).toContain('Codex');
         expect(selector.value).toBe('/');
         expect(factory.mock.calls.at(-1)![1].conversation).toBeDefined();expect(peer.resume).not.toHaveBeenCalled();
         const collapsed = sidebar.classList.contains('is-collapsed');

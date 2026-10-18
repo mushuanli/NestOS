@@ -12,6 +12,8 @@
 
 peerDependencies: `@itookit/{app-settings,common,driver-llm,llm-session,durable-kernel,kernel-adapters,mdxeditor,vfs-ui,vfs-core,ui-common}`
 
+项目目录页搜索默认文件名、会话页默认会话名，复用 ProjectSearchPanel 的异步查询与生命周期；内容和仅用户提问显式切换。目录分页游标不能限制搜索，通用 DirectoryList 通过插槽接入，不包含后端或 harness 分支。
+
 ## Architecture
 
 ```

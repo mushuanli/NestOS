@@ -90,3 +90,20 @@ it.each([false, true])('exposes mobile search outside More in the compatibility 
     } finally { await view.destroy(); }
     expect(host.querySelector('#llm-btn-search')).toBeNull(); expect(host.querySelector('.llm-chat__search')).toBeNull();
 });
+
+it('reveals the local search message by its stable projected identity', async () => {
+    const { LLMWorkspaceEditor } = await import('../../llm-ui-adapter/src/shell/LLMWorkspaceEditor');
+    const f = mountSearch();
+    const scroll = vi.fn();
+    try {
+        f.view.renderFull([{id: 'round-old-user', role: 'user', content: 'old question', timestamp: 1},
+            {id: 'round-new-user', role: 'user', content: 'new question', timestamp: 2}]);
+        f.view.toggleSessionCollapse('round-old-user', true);
+        const old = f.view.getElement('round-old-user')!; old.scrollIntoView = scroll;
+        const bubble = old.querySelector('.llm-ui-bubble') ?? old;
+        expect(bubble.classList.contains('is-collapsed')).toBe(true);
+        await LLMWorkspaceEditor.prototype.navigateTo.call({historyView: f.view} as never, {elementId: 'round-old-user'});
+        expect(bubble.classList.contains('is-collapsed')).toBe(false);
+        expect(scroll.mock.instances).toContain(old);
+    } finally { await f.view.destroy(); }
+});

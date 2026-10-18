@@ -3,17 +3,18 @@ import type { ProjectService } from '@itookit/app-contracts/services';
 import type { ProjectSearchQuery, ProjectSearchMatch, ProjectSearchResult } from './project-search';
 
 export async function searchLocalFiles(projects: ProjectService, folder: string, projectId: string, query: ProjectSearchQuery, options?: OperationOptions): Promise<ProjectSearchResult> {
+    if (query.directory?.split('/').some(part => part.startsWith('.'))) return {matches: [], truncated: false, nextCursor: null};
     const owner = await projects.openFiles(folder), matches: ProjectSearchMatch[] = [];
     const source = createVFSFileDiscoverySource(owner.fs, options), list = source.list.bind(source);
     let count = 0, bytes = 0, truncated = false;
-    source.list = async path => { if (++count > 2000) throw new FSError('EFBIG', 'Search directory capacity reached'); return list(path); };
+    source.list = async path => { if (++count > 2000) throw new FSError('EFBIG', 'Search directory capacity reached'); return (await list(path)).filter(entry => !entry.name.startsWith('.')); };
     try {
-        for await (const node of discoverFiles(source, '/', {signal: options?.signal, excludeDirectories: ['.git', '.codex', '.claude', '.ssh', '.aws', '.agents', 'node_modules']})) {
+        for await (const node of discoverFiles(source, query.directory ? '/' + query.directory : '/', {signal: options?.signal, excludeDirectories: ['.git', '.codex', '.claude', '.ssh', '.aws', '.agents', 'node_modules']})) {
             checkOperation(options);
             if (++count > 2000 || bytes > 16 * 1024 * 1024 || matches.length >= 100) { truncated = true; break; }
             if (node.name.startsWith('.')) continue;
             const path = node.path.slice(1), base = {kind: 'file' as const, projectId, folder, path, title: path};
-            if (query.scope === 'file-path') { if (path.toLowerCase().includes(query.query.toLowerCase())) matches.push({...base, summary: path}); continue; }
+            if (query.scope === 'file-path' || query.scope === 'file-name') { if ((query.scope === 'file-name' ? node.name : path).toLowerCase().includes(query.query.toLowerCase())) matches.push({...base, summary: path}); continue; }
             if ((node.size ?? 0) > 2 * 1024 * 1024) { truncated = true; continue; }
             const text = await read(owner.fs, node.path, options); bytes += text.length * 2;
             if (text.includes('\0')) continue;

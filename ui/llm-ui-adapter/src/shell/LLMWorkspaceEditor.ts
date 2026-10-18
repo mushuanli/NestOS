@@ -1031,7 +1031,11 @@ export class LLMWorkspaceEditor implements IEditor {
     async getHeadings() { return []; }
     async getSearchableText() { return this.commandBus.execute<string>(SessionCommand.Export).catch(() => ''); }
     async getSummary() { return null; }
-    async navigateTo(): Promise<void> { }
+    async navigateTo(target: {elementId: string}): Promise<void> {
+        const element = this.historyView.revealSession(target.elementId);
+        if (!element) throw new Error(t('project.search.navigateFailed'));
+        element.scrollIntoView({block: 'start', behavior: 'smooth'});
+    }
     async search() { return []; }
     gotoMatch(): void { }
     clearSearch(): void { }

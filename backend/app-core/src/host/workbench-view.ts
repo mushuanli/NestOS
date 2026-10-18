@@ -27,7 +27,7 @@ export async function createWorkbenchView(deps: SessionBrowserDependencies, prel
         const [directory, navigation] = await Promise.all([
             preload && initialNavigation ? Promise.all([browser.fs.driver.getNode('/'), browser.fs.driver.getChildren('/')]) : undefined,
             initialNavigation ? deps.projects?.navigation({ path: '/' }) : undefined]);
-        return { browser, lifecycle, search: deps.projects ? new ProjectSearch(deps.projects) : undefined,
+        return { browser, lifecycle, search: deps.projects ? new ProjectSearch(deps.projects, deps.repository) : undefined,
             navigation,
             directory: directory ? { revision: browser.fs.revision, node: directory[0], nodes: directory[1] } : undefined };
     } catch (error) { await browser.dispose(); throw error; }

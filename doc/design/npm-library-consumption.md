@@ -8,7 +8,7 @@ MindOS 默认消费固定 Git 提交的独立库源码。九个独立库均位�
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.10 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.3 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
-| @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.3 |
+| @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.4 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.4 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
@@ -163,3 +163,6 @@ mdxeditor@0.5.4 提供通用的目标祖先展开入口，由代码块控件保�
 vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展开状态时准备投影容器成员；保留旧双栏选项兼容，不读取折叠项目或执行器历史。app-shell 的项目目录与侧栏统一展开后端声明的透明容器，右侧刷新等待缓存失效和侧栏更新。
 
 验证：vfs-ui 206 项测试、工作台 13 项回归、相关类型检查、模块边界、前端公开入口构建、文档、样式及冻结离线安装通过。正式 prepare tarball 在仓库外配合注册表 vfs-core@5.3.2 验证 TypeScript bundler、ESM/CommonJS、CSS/Vite 构建、恢复展开、刷新新增成员和容器折叠状态，没有工作区源码链接。制品 SHA-256 为 `7c423cf67ee4f0279b040c92af578accacf1e86544d5352a8c9266cd31eee425`。npm publish 已退出码 0 完成，公开注册表重新下载的 tarball 与正式制品 SHA-256 一致。
+
+- piagent-driver@0.2.4：名称/目录文件搜索与仅用户提问搜索，显式协商 fileSearchVersion/searchPrompts，旧服务拒绝不支持的新范围。
+- pi-agent@0.3.7：project_search 名称/目录范围、harness_session_search 用户提问与 DSH 有界分页搜索；原生制品 `release/native/pi-agent-0.3.7-linux-x86_64.tar.gz`，不自动替换正在运行的远程服务。

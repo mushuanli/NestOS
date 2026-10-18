@@ -352,7 +352,7 @@ Session browser 与项目/家族导航优先使用 `ISessionRepository.listSumma
 
 `SessionWorkbench` 将后端声明为 `navigationTransparent` 的最近会话容器通过 vfs-ui 的 `navigationChildren` 接入单栏导航，在“所有项目”展开项目、恢复展开或刷新时加载，折叠项目不预读。右侧消费该容器声明的 `directoryPath`，显示更大的完整列表。完整目录在原始树中保留可定位身份并标记 `navigationHidden`，不额外占据侧栏；右侧行菜单仍通过公开导航 API 准备对应目录。右侧刷新先等待缓存失效，再读取目录，并等待侧栏和项目导航更新；工作台刷新覆盖收藏夹及远程目录。
 
-会话图标由共享 `harnessPresentation` 根据来源声明选择，未知类型保留标签并使用通用图标。进入会话后，标题栏独立显示来源标识，不改写会话名称；列表提示包含来源，右侧当前页搜索可匹配来源名称。
+会话图标由共享 `harnessPresentation` 根据来源声明选择，未知类型保留标签并使用通用图标。进入会话后，标题栏独立显示来源标识，不改写会话名称；列表提示包含来源；右侧搜索范围遵循下文的页面搜索契约。
 
 ```mermaid
 C4Component
@@ -379,3 +379,31 @@ C4Component
 原生 create 成功只代表预留会话，不代表首条消息提交成功。app-core 在远程草稿恢复记录中保存明确的 submittedTurnId；拒绝发送时保留输入与已创建的原生身份，重开不会再次 create。结果未知时保留 requestId/epoch 并查询回执，不自动重放。只有 turn 的明确成功响应或 committed 回执才允许 UI 转为正式会话；新入口随后提供空白草稿。关闭或刷新视图不会中断原生执行。
 
 首次 turn 提交后，app-core 对声明 rename 能力的适配器应用日期时间默认标题；不支持 rename 的原生服务保留自身标题。命名失败不把已提交消息报告为发送失败；若命名结果未知，仍通过原生回执核对。标题策略和草稿转正归 app-core，pi-agent/driver 保持原生 create/turn/rename 与回执机制。
+
+## 目录和会话页面搜索
+
+右侧项目文件目录默认按文件名搜索，可切换文件内容、文件路径；范围是当前目录及子目录，不受目录页已加载节点限制。右侧项目/会话集合默认按会话名搜索，可切换会话内容、仅用户提问；范围是该项目的全部会话，不继承 15/50 条导航窗口或分页游标。原生 profile/归档页面保留来源和归档范围。侧栏默认的已加载树过滤不发起 I/O，用户显式选择搜索范围时才调用查询。
+
+`DirectoryList` 只提供搜索插槽和列表/结果切换；`ProjectSearchPanel` 复用防抖、取消、代次隔离、结果提示和安全文本渲染，销毁页面时取消读取。宿主将命中转换为规范资源，打开前核对项目身份与远程授权指纹；本地命中保留分支及轮次消息身份，远程命中保留 profile/session/turn/item，文件命中保留路径与行号。
+
+`ProjectSearch` 位于 app-core 的 projects 用例层：本地文件通过 `openFiles` 的授权 VFS 视图与 `discoverFiles` 遍历，按文件名搜索不读正文；内容读取复用驱动有界 read。隐藏目录、私有目录、忽略文件及二进制不进入正文命中。`vfsdriver-local`、IndexedDB 和 MemoryBackend 保持存储职责，不增加 UI 搜索策略或会话字段。本地会话通过 Repository 读取摘要，内容/用户提问显式读取各存活分支的轮次，按消息角色区分，排除删除/内部轮次和 system 上下文。每次查询有超时、结果与扫描预算；达到预算或某来源不可用时明确报告部分结果。
+
+远程文件复用 `project_search`，增加 `name` 模式和项目相对 `directory`；目录范围在结果容量截断前应用，保留只读 pinned 视图、忽略及不跟随符号链接的策略。`fileSearchVersion >= 2` 才允许新参数，防止旧服务忽略目录参数后返回跨范围结果。远程会话复用 `harness_session_search` 的 `title/content/prompt`，Codex、Claude Code、DSH 分别通过其已授权的原生目录和结构化历史实现；DSH 与 Codex 共用有界分页搜索机制，宿主不退回 Shell 或扫描 harness home。`searchPrompts` 单独声明用户提问能力；已知注入上下文按原生来源标记排除，来源未知的用户文本保持可搜索。
+
+```mermaid
+C4Component
+  title 页面搜索：表示、项目查询与存储边界
+  Component(page, "DirectoryList / ProjectSearchPanel", "app-shell", "名称默认值、范围切换、防抖、取消与命中跳转")
+  Component(query, "ProjectSearch", "app-core", "项目身份、来源聚合、预算与部分结果")
+  Component(files, "VFS discovery + readContent", "vfs-core", "授权目录遍历与有界文件读取")
+  Component(store, "LocalFS / IndexedDB", "storage backends", "通用目录和文件 I/O")
+  Component(sessions, "SessionRepository", "llm-session", "摘要、存活分支与轮次文档")
+  Component(driver, "ProjectClient / HarnessClient", "piagent-driver", "能力协商、协议、响应校验")
+  Component(remote, "project_search / harness_session_search", "pi-agent", "远程授权视图、原生结构化历史与角色筛选")
+  Rel(page, query, "调用搜索端口；不携带列表分页游标")
+  Rel(query, files, "查询本地文件")
+  Rel(files, store, "复用 list / read；不新增存储搜索策略")
+  Rel(query, sessions, "查询本地会话")
+  Rel(query, driver, "查询远程来源")
+  Rel(driver, remote, "复用并扩展现有搜索协议")
+```

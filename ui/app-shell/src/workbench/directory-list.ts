@@ -22,6 +22,7 @@ export interface DirectoryListOptions {
     select?: (ids: string[]) => void;
     selectedIds?: () => readonly string[];
     bulkActions?: DirectoryBulkAction[];
+    search?: {element: HTMLElement; setQuery(query: string, apply?: (query: string) => void): void; refresh(): void};
 }
 const refreshers = new WeakMap<HTMLElement, () => Promise<void>>();
 const selectionRefreshers = new WeakMap<HTMLElement, () => void>();
@@ -55,12 +56,12 @@ export function createDirectoryList(options: DirectoryListOptions): HTMLElement 
     const fail = (error: unknown) => { const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.textContent = error instanceof Error ? error.message : String(error); panel.append(notice); };
     const missing = document.createElement('p'); missing.setAttribute('role', 'status'); missing.hidden = true;
     missing.textContent = t('workbench.directoryMissing');
-    const refresh = () => refreshEntries(options, missing, toolbar, () => render());
+    const refresh = async () => { await refreshEntries(options, missing, toolbar, () => render()); options.search?.refresh(); };
     refreshers.set(panel, refresh);
     if (options.refresh) toolbar.append(action(t('workbench.refresh'), () => { void refresh().catch(fail); }, FILE_BROWSER_ICONS.refresh, true));
     for (const entry of options.actions ?? []) { const button = action(entry.label, entry.run, entry.icon, entry.iconOnly ?? true); button.disabled = !!entry.disabled;
         button.dataset.directoryAction = entry.disabled ? 'disabled' : 'enabled'; toolbar.append(button); }
-    const search = document.createElement('input'); search.type = 'search'; search.placeholder = t('workbench.filter'); search.setAttribute('aria-label', t('workbench.filter')); toolbar.append(search);
+    const search = document.createElement('input'); search.type = 'search'; search.placeholder = t(options.search ? 'workbench.search' : 'workbench.filter'); search.setAttribute('aria-label', search.placeholder); toolbar.append(search);
     const table = document.createElement('table'); table.className = 'workbench-directory__table';
     const head = table.createTHead().insertRow(), body = table.createTBody();
     let sort: keyof DirectoryEntry = options.initialSort?.key ?? 'name', ascending = options.initialSort?.ascending ?? true;
@@ -68,10 +69,15 @@ export function createDirectoryList(options: DirectoryListOptions): HTMLElement 
     addHeaders(head, selection, key => { ascending = sort === key ? !ascending : true; sort = key; render(); });
     const render = () => {
         if (options.selectedIds) selection?.restore(options.selectedIds(), options.entries.map(entry => entry.id));
-        renderEntries(body, options, search.value, sort, ascending, selection);
+        const searching = !!options.search && !!search.value.trim();
+        table.hidden = searching;
+        if (selection) selection.bar.hidden = searching;
+        if (!searching) renderEntries(body, options, search.value, sort, ascending, selection);
     };
     selectionRefreshers.set(panel, render);
-    search.oninput = render; panel.append(header, path, toolbar, missing); if (selection) panel.append(selection.bar); panel.append(table);
+    search.oninput = () => {
+        options.search?.setQuery(search.value, query => { search.value = query; search.dispatchEvent(new Event('input')); }); render();
+    }; panel.append(header, path, toolbar, missing); if (selection) panel.append(selection.bar); if (options.search) panel.append(options.search.element); panel.append(table);
     render(); return panel;
 }
 async function refreshEntries(options: DirectoryListOptions, missing: HTMLElement, toolbar: HTMLElement, render: () => void): Promise<void> {

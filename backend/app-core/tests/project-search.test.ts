@@ -41,3 +41,45 @@ it('does not fall back to histories or shell commands on an unsupported harness'
     await expect(search.search('/P', {query: 'needle', scope: 'session-content'})).rejects.toMatchObject({code: 'ECAPABILITY'});
     expect(read).not.toHaveBeenCalled(); expect(close).toHaveBeenCalledOnce();
 });
+
+it('limits recursive file queries before matching and distinguishes names from paths', async () => {
+    const owner = await createFileSystemSource({backend: new MemoryBackend(), viewId: 'scoped-search', tags: false});
+    await owner.fs.driver.createFile({parentPath: '/needle/child', name: 'plain.txt', content: 'target', recursive: true});
+    await owner.fs.driver.createFile({parentPath: '/other', name: 'needle.txt', content: 'target', recursive: true});
+    const dispose = vi.fn(async () => {});
+    const search = new ProjectSearch({forFolder: async () => project, openFiles: async () => ({fs: owner.fs, dispose})} as unknown as ProjectService);
+    try {
+        expect((await search.search('/P', {query: 'needle', scope: 'file-name', directory: 'needle'})).matches).toEqual([]);
+        expect((await search.search('/P', {query: 'needle', scope: 'file-path', directory: 'needle'})).matches).toMatchObject([{path: 'needle/child/plain.txt'}]);
+        expect((await search.search('/P', {query: 'target', scope: 'file-content', directory: 'needle'})).matches).toMatchObject([{path: 'needle/child/plain.txt'}]);
+        for (const directory of ['../other', '/other', 'a//b', 'a/../b', 'a\\b'])
+            await expect(search.search('/P', {query: 'x', scope: 'file-name', directory})).rejects.toMatchObject({code: 'EINVAL'});
+        const controller = new AbortController(); controller.abort();
+        await expect(search.search('/P', {query: 'x', scope: 'file-name'}, {signal: controller.signal})).rejects.toBeDefined();
+        expect(dispose).toHaveBeenCalledTimes(3);
+    } finally { await owner.dispose(); }
+});
+
+it('aggregates healthy native prompt searches and reports unsupported or failed profiles', async () => {
+    const client = {profiles: async () => ({profiles: [
+        {id: 'good', projectRuntime: true, capabilities: {search: true, searchPrompts: true}},
+        {id: 'old', projectRuntime: true, capabilities: {search: true}},
+        {id: 'broken', projectRuntime: true, capabilities: {search: true, searchPrompts: true}},
+    ]}), search: vi.fn(async (id: string) => {
+        if (id === 'broken') throw new Error('unavailable');
+        return {matches: [{sessionId: 's', title: 'Found', summary: 'user needle', updatedAt: 1}], truncated: false, nextCursor: null};
+    }), close: vi.fn(async () => {})};
+    const search = new ProjectSearch({forFolder: async () => project, remoteMounts: {list: () => [], projectHarness: async () => client}} as unknown as ProjectService);
+    expect(await search.search('/P', {query: 'needle', scope: 'session-prompt'})).toMatchObject({matches: [{profileId: 'good', sessionId: 's'}], truncated: true, unavailableSources: ['old', 'broken']});
+    expect(client.search.mock.calls.map(args => args[0])).toEqual(['good', 'broken']); expect(client.close).toHaveBeenCalledOnce();
+});
+
+it('forwards remote name/directory scopes and rejects file results when grants change', async () => {
+    let revision = 1;
+    const remote = {list: () => [{at: '/', revision}], searchFiles: vi.fn(async () => ({matches: [{path: 'nested/old.md', summary: 'old.md'}], truncated: false, nextCursor: null}))};
+    const search = new ProjectSearch({forFolder: async () => project, remoteMounts: remote} as unknown as ProjectService);
+    expect((await search.search('/P', {query: 'old', scope: 'file-name', directory: 'nested'})).matches).toMatchObject([{kind: 'file', path: 'nested/old.md', bindingIdentity: JSON.stringify(remote.list())}]);
+    expect(remote.searchFiles).toHaveBeenCalledWith('local-p', {query: 'old', mode: 'name', directory: 'nested'}, expect.anything());
+    remote.searchFiles.mockImplementation(async () => { revision++; return {matches: [], truncated: false, nextCursor: null}; });
+    await expect(search.search('/P', {query: 'old', scope: 'file-name', directory: 'nested'})).rejects.toMatchObject({code: 'ECONFLICT'});
+});

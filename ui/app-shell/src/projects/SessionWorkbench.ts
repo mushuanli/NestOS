@@ -10,6 +10,7 @@ import { RemoteSessionStatusView } from './remote-session-status';
 import {remoteSessionCreationPath} from './remote-session-creation';
 import {fileFirst, navigationPriority} from './navigation-policy';
 import { ProjectSearchPanel } from './project-search-panel';
+import { createProjectDirectorySearch } from './project-directory-search';
 import { showRemoteSessionFamily } from './remote-session-family';
 import { nativeSessionMenu } from './remote-session-management';
 import type { ProjectSearchMatch } from '@itookit/app-contracts/services';
@@ -163,6 +164,7 @@ interface RetainedEditor {
 export class SessionWorkbench implements WorkspaceController {
     private remoteStatus!: RemoteSessionStatusView;
     private searchPanel?: ProjectSearchPanel;
+    private search?: import('@itookit/app-contracts/services').ProjectSearch;
     private readonly dialogs = new AbortController();
     private readonly tabs: WorkbenchTabs<RetainedEditor>;
     private readonly sidebarLayout: WorkbenchSidebar;
@@ -294,6 +296,7 @@ export class SessionWorkbench implements WorkspaceController {
             (id, title) => this.tabs.title(id, title), view.connections);
         this.browser = view.browser;
         this.lifecycle = view.lifecycle;
+        this.search = view.search;
         this.navigationFiles = createFileSystemView({ viewId: 'session-navigation:admin', mounts: [
             { mountId: 'sessions', at: '/', fs: view.directory ? withInitialDirectory(this.browser.fs, view.directory) : this.browser.fs, access: 'rw' },
             ...(this.flows && !this.projects ? [{ mountId: 'flows', at: '/@flows', fs: this.flows.fs, access: 'rw' as const }] : []),
@@ -1144,6 +1147,10 @@ export class SessionWorkbench implements WorkspaceController {
             && directoryNode.metadata._readOnly !== true && directoryNode.metadata._disabled !== true
             && (!row || allowsRowAction('create-in-folder-session', false, row));
         if (this.closed || generation !== this.contentVersion) return;
+        const search = this.projects && this.search ? await createProjectDirectorySearch(path, this.projects, this.search,
+            (row, query) => this.openSearchMatch(row, query)) : undefined;
+        if (this.closed || generation !== this.contentVersion) { search?.destroy(); return; }
+        if (search) this.tabs.current!.subscriptions.push(() => search.destroy());
         const favorites = this.projects ? directoryFavoriteAction(this.projects, this.repository, nodes) : undefined;
         const list = createDirectoryList({ title: heading.textContent || t('project.workspace'), path,
             breadcrumbs: directoryBreadcrumbs(path, heading.textContent),
@@ -1158,7 +1165,7 @@ export class SessionWorkbench implements WorkspaceController {
             select: ids => this.sidebarUI?.setSelection(ids),
             selectedIds: () => this.sidebarUI?.getSnapshot().selectedIds ?? [],
             bulkActions: this.sidebarUI && (target.kind === 'project-files' || target.kind === 'files') ? directoryBulkActions(this.sidebarUI) : undefined,
-            favorite: favorites,
+            favorite: favorites, search,
             actions: draft ? [{label: t('harness.create'), icon: FILE_BROWSER_ICONS.newSession, iconOnly: false,
                 run: () => {void this.openResource(draft).catch(error => this.report(error));}}] : writable ? [
                 { label: t('project.createFile'), icon: FILE_BROWSER_ICONS.addFile, run: () => { void this.createDirectoryEntry(path, 'file').catch(error => this.report(error)); } },
@@ -1458,11 +1465,20 @@ export class SessionWorkbench implements WorkspaceController {
         if (!project || project.project.id !== row.projectId) throw new Error(t('project.search.navigateFailed'));
         if (row.bindingIdentity && row.bindingIdentity !== JSON.stringify(this.projects?.remoteMounts?.list(row.projectId))) throw new Error(t('project.search.navigateFailed'));
         const route = row.kind === 'remote-session' ? remoteSessionPath(row.folder, row.profileId!, row.sessionId!, row.archived)
-            : folderBrowserPath(row.folder) + '/@files/' + row.path;
-        await this.openResource(route);
-        if (!this.editor || this.active !== route) return;
-        if (row.kind === 'remote-session' && row.itemId) { await this.editor.navigateTo({elementId: 'native-item:' + row.itemId}); return; }
-        const results = await this.editor.search(query);
+            : row.kind === 'session' ? row.resourcePath! : folderBrowserPath(row.folder) + '/@files/' + row.path;
+        if (row.kind === 'session') {
+            const manifest = await this.repository.getManifest(row.sessionId!);
+            const owner = await this.projects?.forFolder(manifest.folder);
+            if (owner?.project.id !== row.projectId || folderBrowserPath(manifest.folder ?? null) + '/' + manifest.id !== route)
+                throw new Error(t('project.search.navigateFailed'));
+        }
+        await this.openResource(row.kind === 'session' && row.branch ? sessionRoute(route, row.branch) : route);
+        const activeId = row.kind === 'session' ? row.sessionId : route;
+        if (!this.editor || this.active !== activeId) return;
+        if (row.itemId) { await this.editor.navigateTo({elementId: row.kind === 'remote-session' ? 'native-item:' + row.itemId : row.itemId}); return; }
+        if (row.kind === 'session') return;
+        const editor = this.editor, results = await editor.search(query);
+        if (this.editor !== editor || this.active !== activeId) return;
         const offset = row.line ? this.editor.getText().split('\n').slice(0, row.line - 1).reduce((size, line) => size + line.length + 1, 0) : 0;
         const result = results.find(match => match.source === 'editor' && match.details.from >= offset) ?? results[0];
         if (result) this.editor.gotoMatch(result);

@@ -376,7 +376,9 @@ export interface ProjectExecutionService {
 
 export interface ProjectSearchQuery {
     query: string;
-    scope: 'file-path' | 'file-content' | 'session-title' | 'session-content';
+    scope: 'file-name' | 'file-path' | 'file-content' | 'session-title' | 'session-content' | 'session-prompt';
+    /** Project-relative directory, including descendants; omitted means the whole project. */
+    directory?: string;
     archived?: boolean;
     profileId?: string;
 }
@@ -384,7 +386,7 @@ export interface ProjectSearchQuery {
 export interface ProjectSearchMatch {
     projectId: string;
     folder: string;
-    kind: 'file' | 'remote-session';
+    kind: 'file' | 'session' | 'remote-session';
     summary: string;
     title: string;
     bindingIdentity?: string;
@@ -396,6 +398,8 @@ export interface ProjectSearchMatch {
     itemId?: string;
     updatedAt?: number | null;
     archived?: boolean;
+    resourcePath?: string;
+    branch?: string;
 }
 
 export interface ProjectSearch {
@@ -406,6 +410,7 @@ export interface ProjectSearchResult {
     matches: ProjectSearchMatch[];
     truncated: boolean;
     nextCursor: null;
+    unavailableSources?: string[];
 }
 
 export type NativeSessionCommand = {

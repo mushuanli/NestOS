@@ -425,6 +425,7 @@
 .project-search { padding: 8px; border-bottom: 1px solid var(--border-color); }
 .project-search__controls { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; }
 .project-search__results { display: grid; max-height: 45vh; overflow: auto; gap: 4px; }
+.workbench-directory .project-search__results { max-height: none; }
 .project-search__result { text-align: left; display: grid; gap: 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 
 .app-start { box-sizing: border-box; padding: clamp(24px, 6vw, 72px); overflow: auto; color: var(--mm-text-color, #111827); background: var(--mm-bg-color, #fff); }

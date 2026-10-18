@@ -147,6 +147,11 @@ it('notifies cached workspaces when nav visibility changes', async () => {
         visibility.mockClear();
         await handle.navigate('settings');
         expect(visibility.mock.calls).toEqual([[true], [false]]);
+        const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true);
+        visibility.mockClear(); document.dispatchEvent(new Event('visibilitychange'));
+        expect(visibility.mock.calls).toEqual([[false], [false]]);
+        hidden.mockReturnValue(false); visibility.mockClear(); document.dispatchEvent(new Event('visibilitychange'));
+        expect(visibility.mock.calls).toEqual([[true], [false]]);
     } finally { await handle.destroy(); }
 });
 

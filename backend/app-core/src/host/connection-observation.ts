@@ -3,7 +3,7 @@ import type { ConnectionObservation, ProjectRemoteMountPort } from '@itookit/app
 
 const monitors = new WeakMap<ProjectRemoteMountPort, ConnectionMonitor>();
 
-/** All clients of one runtime share a bounded probe loop. */
+/** Share a one-time probe when a view acquires a new connection interest. */
 export function observeConnections(remote: ProjectRemoteMountPort): ConnectionObservation {
     let monitor = monitors.get(remote);
     if (!monitor) { monitor = new ConnectionMonitor(remote); monitors.set(remote, monitor); }
@@ -12,7 +12,6 @@ export function observeConnections(remote: ProjectRemoteMountPort): ConnectionOb
 
 class ConnectionMonitor {
     private readonly interests = new Map<object, Set<string>>();
-    private timer?: ReturnType<typeof setTimeout>;
     private running?: AbortController;
     private rerun = false;
     private signatures = new Set<string>();
@@ -44,16 +43,14 @@ class ConnectionMonitor {
     private ids(): Set<string> {
         return new Set([...this.interests.values()].flatMap(ids => [...ids]).filter(id => this.remote.list(id).length > 0));
     }
-    private stop(): void { clearTimeout(this.timer); this.timer = undefined; this.running?.abort(); this.rerun = false; }
+    private stop(): void { this.running?.abort(); this.rerun = false; }
     private request(): void {
-        clearTimeout(this.timer); this.timer = undefined;
         if (this.running) { this.rerun = true; return; }
         const controller = this.running = new AbortController();
         void this.poll(controller).finally(() => {
             this.running = undefined;
             if (!this.ids().size) return;
             if (this.rerun || controller.signal.aborted) { this.rerun = false; this.request(); }
-            else this.timer = setTimeout(() => this.request(), 15_000);
         });
     }
     private async poll(controller: AbortController): Promise<void> {

@@ -12,7 +12,7 @@ export type { LogEntry, LogFilter, LoggerStats, ModuleLog } from './interfaces/I
 
 // ── 工具 ──
 export { errorDetails } from './utils/error-details';
-export { traceBoot } from './utils/boot-trace';
+export { traceBoot, setBootTraceEnabled } from './utils/boot-trace';
 export {
     simpleHash, escapeHTML, escapeAttr,
     generateUUID, generateShortUUID, generateId,

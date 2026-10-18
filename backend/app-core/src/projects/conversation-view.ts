@@ -4,8 +4,8 @@ import type { UsageCostEstimate } from '@itookit/kernel-adapters/contracts';
 
 import type { ProjectConversationPort, ProjectConversationSnapshot } from '@itookit/app-contracts/services';
 /** One host-side cursor pump serves every subscriber to this conversation view. */
-export function observeConversation(source: HarnessConversationPort, quote?: (usage: HarnessUsage) => UsageCostEstimate, conversationId?: string): ProjectConversationPort {
-    return new ConversationView(source, quote, conversationId).port();
+export function observeConversation(source: HarnessConversationPort, quote?: (usage: HarnessUsage) => UsageCostEstimate, conversationId?: string, activityChanged?: () => void): ProjectConversationPort {
+    return new ConversationView(source, quote, conversationId, activityChanged).port();
 }
 class ConversationView {
     private readonly listeners = new Set<() => void>();
@@ -16,7 +16,8 @@ class ConversationView {
     private closed = false;
     private pumping = false;
     private quoteFailed = false;
-    constructor(private readonly source: HarnessConversationPort, private readonly quote?: (usage: HarnessUsage) => UsageCostEstimate, private readonly conversationId?: string) {
+    constructor(private readonly source: HarnessConversationPort, private readonly quote?: (usage: HarnessUsage) => UsageCostEstimate, private readonly conversationId?: string,
+        private readonly activityChanged?: () => void) {
         this.current = immutableData(undefined, this.project(source.snapshot()));
     }
     private project(snapshot: HarnessConversationSnapshot): ProjectConversationSnapshot {
@@ -46,12 +47,13 @@ class ConversationView {
         return () => { this.listeners.delete(listener); if (!this.listeners.size) { clearTimeout(this.timer); this.timer = undefined; } };
     }
     private schedule(): void {
-        if (this.closed || this.timer || this.pumping || !this.listeners.size) return;
+        if (this.closed || this.timer || this.pumping || !this.listeners.size || !this.isActive(this.current)) return;
         this.timer = setTimeout(() => {
             this.timer = undefined; this.pumping = true;
             void this.invoke(this.source.poll, []).catch(() => {}).finally(() => { this.pumping = false; this.schedule(); });
-        }, this.current.canInterrupt || this.current.active ? 200 : 1000);
+        }, 200);
     }
+    private isActive(snapshot: ProjectConversationSnapshot): boolean { return !!(snapshot.active || snapshot.canInterrupt); }
     private invoke(method: (...args: any[]) => unknown, args: unknown[]): Promise<any> {
         if (this.closed) return Promise.reject(new FSError('EIO', 'Conversation view closed'));
         const work = this.tail.then(async () => {
@@ -66,7 +68,11 @@ class ConversationView {
     private update(): void {
         const next = immutableData(this.current, this.project(this.source.snapshot()));
         if (next === this.current) return;
+        const activityChanged = this.isActive(this.current) !== this.isActive(next);
         this.current = next;
+        if (activityChanged) this.activityChanged?.();
+        if (!this.isActive(next)) { clearTimeout(this.timer); this.timer = undefined; }
+        else this.schedule();
         for (const listener of this.listeners) { try { listener(); } catch (error) { console.warn('[Conversation] View listener failed', error); } }
     }
     private close(): Promise<void> {

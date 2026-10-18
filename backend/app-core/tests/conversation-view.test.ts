@@ -12,12 +12,24 @@ function setup() {
 }
 it('shares one cursor pump and stops it after the final subscriber leaves', async () => {
     vi.useFakeTimers(); const { source, view, state } = setup(), first = vi.fn(), second = vi.fn();
+    state.canInterrupt = true;
+    await view.read();
     const stopFirst = view.subscribe(first), stopSecond = view.subscribe(second);
-    await vi.advanceTimersByTimeAsync(1000); expect(source.poll).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(200); expect(source.poll).toHaveBeenCalledOnce();
     expect(first).not.toHaveBeenCalled(); expect(second).not.toHaveBeenCalled();
     state.messages[1].text = 'changed';
-    await vi.advanceTimersByTimeAsync(1000); expect(first).toHaveBeenCalledOnce(); expect(second).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(200); expect(first).toHaveBeenCalledOnce(); expect(second).toHaveBeenCalledOnce();
     stopFirst(); stopSecond(); await vi.advanceTimersByTimeAsync(5000); expect(source.poll).toHaveBeenCalledTimes(2);
+});
+it('stays idle until a submitted turn starts, pushes execution updates, then stops again', async () => {
+    vi.useFakeTimers(); const {source, view, state} = setup(), changed = vi.fn();
+    view.subscribe(changed); await vi.advanceTimersByTimeAsync(30_000); expect(source.poll).not.toHaveBeenCalled();
+    source.send.mockImplementationOnce(async () => {state.canInterrupt = true; return state;});
+    await view.send('prompt'); await vi.advanceTimersByTimeAsync(200); expect(source.poll).toHaveBeenCalledOnce();
+    source.poll.mockImplementationOnce(async () => {state.canInterrupt = false; state.messages[1].text = 'done'; return state;});
+    await vi.advanceTimersByTimeAsync(200); expect(view.snapshot().canInterrupt).toBe(false);
+    await vi.advanceTimersByTimeAsync(30_000); expect(source.poll).toHaveBeenCalledTimes(2);
+    expect(changed).toHaveBeenCalledTimes(2);
 });
 it('keeps unchanged message identities and isolates previous snapshots from mutable driver state', async () => {
     const { view, state } = setup(); const before = await view.read();

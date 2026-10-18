@@ -44,6 +44,7 @@ class HarnessControl {
         this.layout(); document.body.append(this.dialog); this.dialog.showModal();
         const closed = new Promise<void>(resolve => { this.resolve = resolve; });
         this.signal.addEventListener('abort',this.close,{ once: true });
+        document.addEventListener('visibilitychange', () => this.updateControls(), {signal: this.lifetime.signal});
         await this.run(async () => {
             const result = await this.client.profiles(this.options());
             this.profiles = result.profiles;
@@ -107,7 +108,6 @@ class HarnessControl {
         const profile = this.profiles.find(p => p.id === this.profile.value);
         this.workspace.replaceChildren(...(profile?.workspaces ?? []).map(w => option(w.id,w.id)));
         await this.loadSessions();
-        if (!this.polling) { this.polling = true; void this.poll(); }
     }
     private async loadSessions(cursor?: string) {
         const generation = this.generation, listGeneration = ++this.listGeneration, profile = this.profile.value;
@@ -147,7 +147,7 @@ class HarnessControl {
         } finally { this.submitting = false; this.updateControls(); }
     }
     private async poll() {
-        while (!this.lifetime.signal.aborted) {
+        while (!this.lifetime.signal.aborted && (this.turnId || this.submitting) && !document.hidden) {
             const profile = this.profile.value;
             try {
                 if (profile) {
@@ -209,6 +209,10 @@ class HarnessControl {
         this.send.disabled = !this.selected?.resumable || !!this.turnId || this.selected.status === 'active' || !!this.pending || this.submitting;
         this.interrupt.disabled = !this.turnId || !this.owned;
         this.profile.disabled = !!this.turnId || !!this.pending || this.submitting;
+        if (!this.polling && (this.turnId || this.submitting) && !this.lifetime.signal.aborted && !document.hidden) {
+            this.polling = true;
+            void this.poll().finally(() => {this.polling = false; this.updateControls();});
+        }
     }
     private async reconcile() {
         if (!this.pending) return;

@@ -26,6 +26,15 @@ function setup() {
     return { rerunSession, kernel, sidebar, workbench, repository, files, factory, release, dispose, destroy, onSelect, manifest, changed: () => listeners.forEach(listener => listener()) };
 }
 afterEach(() => vi.unstubAllGlobals());
+it.each(['/folder:P/@files', '/s/files'])('keeps the file directory %s unchanged during background invalidations', async path => {
+    const f = setup(); await f.workbench.start();
+    const workbench = f.workbench as any, showDirectory = vi.spyOn(workbench, 'showDirectory').mockResolvedValue(undefined);
+    workbench.active = path;
+    try {
+        await workbench.refreshView(['repository', 'remote-status', 'files']);
+        expect(showDirectory).not.toHaveBeenCalled();
+    } finally {await f.workbench.destroy();}
+});
 describe('Session workbench lifecycle', () => {
     it('retains an unavailable MCP binding when restoring a route instead of replacing it as stale', async () => {
         const f = setup(); await f.workbench.start();

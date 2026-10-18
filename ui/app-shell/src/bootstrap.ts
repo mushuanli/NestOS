@@ -32,7 +32,7 @@ import { parseWorkspaceHash, resolveLegacyProjectResource } from './navigation/w
 import type { VFSNodeUI } from '@itookit/vfs-ui';
 import type { EditorFileType as FileTypeDefinition } from './browser/types';
 import { connectEditorLifecycle } from './browser/editor-connector';
-import {NavigationRequest, NAVIGATION_EVENTS, formatDefaultFileTitle, traceBoot} from '@itookit/common';
+import {NavigationRequest, NAVIGATION_EVENTS, formatDefaultFileTitle, traceBoot, setBootTraceEnabled} from '@itookit/common';
 import { MenuItem } from '@itookit/ui-common';
 import { EditorFactory } from '@itookit/ui-common';
 import { Workbench } from './core/Workbench';
@@ -46,6 +46,9 @@ import { FILE_REGISTRY, EditorTypeKey } from './config/file-registry';
 import { themeService, ThemeMode } from './ThemeService';
 
 export async function initApp(options: AppOptions): Promise<AppHandle> {
+    let diagnostics = false;
+    try { diagnostics = localStorage.getItem('vfs:debug') === '1'; } catch { /* Diagnostics remain opt-in when storage is unavailable. */ }
+    setBootTraceEnabled(diagnostics);
     const { defaultSlug, routeAliases = {}, onProgress } = options;
     const t0 = performance.now();
     let t = t0;
@@ -54,7 +57,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     try {
     const logStep = (label: string) => {
         const now = performance.now();
-        console.log(`[Boot] ${label}: +${(now - t).toFixed(0)}ms (累计 ${(now - t0).toFixed(0)}ms)`);
+        if (diagnostics) console.debug(`[Boot] ${label}: +${(now - t).toFixed(0)}ms (累计 ${(now - t0).toFixed(0)}ms)`);
         t = now;
         onProgress?.(label);
     };
@@ -282,7 +285,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                     .map(connection => ({ id: connection.id, name: connection.name })),
                 selected: path => selectionHistory(elementId, path, 'replace') });
             own(module.dispose); await module.workbench.start(); managerCache.set(elementId, module.workbench);
-            if (visibleWorkspaceId !== elementId) await module.workbench.setVisible?.(false);
+            if (visibleWorkspaceId !== elementId || document.hidden) await module.workbench.setVisible?.(false);
             else options.onWorkspaceReady?.({ editor: editorEl });
             return module.workbench;
         }
@@ -301,7 +304,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const toolbox = module.workbench;
             own(module.dispose); await toolbox.start(); managerCache.set(elementId, toolbox);
             // The toolbox renders inside the editor area, so both stages are already painted.
-            if (visibleWorkspaceId !== elementId) await toolbox.setVisible?.(false);
+            if (visibleWorkspaceId !== elementId || document.hidden) await toolbox.setVisible?.(false);
             else options.onWorkspaceReady?.({ editor: editorEl });
             return toolbox;
         }
@@ -328,7 +331,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 hostContext: { chatFromFile, toggleSidebar: collapsed => sidebarEl.classList.toggle('is-collapsed', collapsed ?? !sidebarEl.classList.contains('is-collapsed')), navigate: handleNavigationRequest } });
             own(module.dispose);
             await module.workbench.start(); managerCache.set(elementId, module.workbench);
-            if (visibleWorkspaceId && visibleWorkspaceId !== elementId) {
+            if (document.hidden || visibleWorkspaceId && visibleWorkspaceId !== elementId) {
                 await module.workbench.setVisible?.(false); return module.workbench;
             }
             // Sidebar is populated from the catalog snapshot now; the editor area mounts later.
@@ -431,7 +434,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         own(module.dispose);
         await module.workbench.start();
         managerCache.set(elementId, module.workbench);
-        if (visibleWorkspaceId && visibleWorkspaceId !== elementId) {
+        if (document.hidden || visibleWorkspaceId && visibleWorkspaceId !== elementId) {
             await module.workbench.setVisible?.(false); return module.workbench;
         }
 
@@ -503,9 +506,9 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (closed || revision !== navigationRevision) return;
         visibleWorkspaceId = workspaceId;
         for (const [id, workbench] of managerCache) {
-            void Promise.resolve(workbench.setVisible?.(id === workspaceId)).catch(error => console.error('[Shell] Workspace save failed', error));
+            void Promise.resolve(workbench.setVisible?.(id === workspaceId && !document.hidden)).catch(error => console.error('[Shell] Workspace save failed', error));
         }
-        console.log(`[Shell] performNavigation: ${workspaceId} resourceId=${resourceId ?? '—'} cached=${managerCache.has(workspaceId)}`);
+        if (diagnostics) console.debug(`[Shell] performNavigation: ${workspaceId} resourceId=${resourceId ?? '—'} cached=${managerCache.has(workspaceId)}`);
         document.querySelectorAll('.workspace-view').forEach(ws => {
             ws.classList.toggle('active', ws.id === workspaceId);
         });
@@ -653,6 +656,11 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const navigationAbort = new AbortController();
     cleanupFns.push(() => navigationAbort.abort());
     const navigationSignal = navigationAbort.signal;
+    document.addEventListener('visibilitychange', () => {
+        for (const [id, workbench] of managerCache)
+            void Promise.resolve(workbench.setVisible?.(id === visibleWorkspaceId && !document.hidden))
+                .catch(error => console.error('[Shell] Workspace visibility failed', error));
+    }, {signal: navigationSignal});
     const entryResource = (id: string) => isProjectWorkspace(id)
         ? '/' : managerCache.get(id)?.getActiveResourceId() ?? null;
 

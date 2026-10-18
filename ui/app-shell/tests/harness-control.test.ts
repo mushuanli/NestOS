@@ -32,6 +32,13 @@ function client(): HarnessClient {
 function button(text: string): HTMLButtonElement {
     return [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text)!;
 }
+it('does not request events while an idle native history is displayed', async () => {
+    vi.useFakeTimers(); const controller = new AbortController(), peer = client();
+    const opened = showHarnessControl(peer, 'node', controller.signal); await settle();
+    button(session.title).click(); await settle();
+    await vi.advanceTimersByTimeAsync(30_000); expect(peer.events).not.toHaveBeenCalled();
+    controller.abort(); await opened;
+});
 it('renders histories safely, resumes before sending, and leaves running turns intact when closed',async () => {
     const controller = new AbortController(), peer = client();
     const opened = showHarnessControl(peer,'node',controller.signal); await settle();
@@ -96,9 +103,10 @@ it('ignores disconnection events belonging to another session', async () => {
     controller.abort(); await opened;
 });
 
-it('shows polling errors as update failures and recovers without sending a command', async () => {
+it('shows active turn polling errors as update failures and recovers without sending a command', async () => {
     vi.useFakeTimers(); vi.spyOn(console, 'error').mockImplementation(() => {});
     const controller = new AbortController(), peer = client();
+    vi.mocked(peer.read).mockResolvedValue({session: {...session, activeTurnId: 'active'}, turns: []});
     const opened = showHarnessControl(peer, 'node', controller.signal); await settle();
     button(session.title).click(); await settle();
     vi.mocked(peer.events).mockRejectedValueOnce(new Error('Invalid snapshot'));

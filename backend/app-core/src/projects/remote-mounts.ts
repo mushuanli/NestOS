@@ -33,7 +33,7 @@ export interface RemoteProcessRequest {
 export interface RemoteProcessHandle { nativeShell: NonNullable<ProjectExecutionContext['nativeShell']>; release(): Promise<void> }
 
 export interface RemoteFileSourceProvider {
-    observeHarness?(client: HarnessClient, writable?: boolean): import('@itookit/piagent-driver').HarnessStatusPort;
+    observeHarness?(client: HarnessClient, writable?: boolean, options?: {watchFiles?: boolean}): import('@itookit/piagent-driver').HarnessStatusPort;
     conversation?(client: HarnessClient, profile: HarnessProfile, workspaceId: string, sessionId?: string, writable?: boolean, journal?: HarnessConversationJournal): HarnessConversationPort;
     resolveCredential?(reference: string): string | Promise<string>;
     discover?(connection: Omit<RemoteFileConnection, 'alias'>, options?: OperationOptions): Promise<import('@itookit/piagent-driver').PiAgentDescriptor>;
@@ -67,7 +67,7 @@ export class ProjectRemoteMountService {
     }, async (id, options) => {
         if (!this.provider.observeHarness) throw new FSError('ECAPABILITY', 'Harness observation unavailable');
         const client = await this.projectHarness(id, options), root = this.list(id).find(m => m.at === '/')!;
-        return this.provider.observeHarness(this.guardHarness(client, id, JSON.stringify(this.list(id)), root.connectionId!), root.access === 'rw');
+        return this.provider.observeHarness(this.guardHarness(client, id, JSON.stringify(this.list(id)), root.connectionId!), root.access === 'rw', {watchFiles: false});
     });
     inspectRemoteProjects?: (ids: readonly string[]) => Promise<MCPDeletedProject[]>;
     removeRemoteProjects?: (ids: readonly string[]) => Promise<void>;
@@ -475,7 +475,8 @@ export class ProjectRemoteMountService {
             const recovery = new RemoteConversationStore(this.store, remoteConversationKey(projectId, target, conversationId ?? sessionId ?? '@new'));
             const conversation = await this.provider.conversation(sessionId ? guarded : draftHarness(guarded, recovery), profile, profile.workspaces[0].id, sessionId, (profile.projectCapabilities?.sessionControl ?? root.access === 'rw') && !readOnly,
                 remoteConversationJournal(recovery, descriptor.epoch, !sessionId && !draftId));
-            return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage, conversationId);
+            return observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage, conversationId,
+                () => { void this.sessionStatus.refresh(projectId); });
         } catch (error) { await client.close(); throw error; }
     }
     private guardHarness(client: HarnessClient, projectId: string, fingerprint: string, connectionId: string): HarnessClient {

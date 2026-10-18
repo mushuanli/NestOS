@@ -326,7 +326,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.createFactory) this.factory = this.createFactory(view.chat!);
         this.sessionSkills ??= view.chat?.sessionSkills;
         this.remoteStatus = new RemoteSessionStatusView(harnessObservation, this.projects, () => this.sidebarUI?.refreshList(),
-            (id, icon, tooltip) => this.tabs.setStatus(id, icon, tooltip), () => this.scheduleRefresh('native-files'),
+            (id, icon, tooltip) => this.tabs.setStatus(id, icon, tooltip),
             (id, title) => this.tabs.title(id, title), view.connections);
         this.browser = view.browser;
         this.lifecycle = view.lifecycle;
@@ -652,7 +652,7 @@ export class SessionWorkbench implements WorkspaceController {
     private scheduleRefresh(source: string): void {
         this.viewRefresh.mark(source, this.navigationVisible || !!this.active);
     }
-    private refresh(): Promise<void> { return this.viewRefresh.flush(); }
+    private async refresh(): Promise<void> { await this.remoteStatus?.refresh(); await this.viewRefresh.flush(); }
     private async refreshView(sources: readonly string[]): Promise<void> {
         if (debugEnabled()) {
             const now = performance.now();
@@ -674,7 +674,7 @@ export class SessionWorkbench implements WorkspaceController {
             const target = resolveBrowserTarget(this.active);
             if (target.kind === 'task') await this.showTask(this.active);
             else if (target.kind === 'folder' || target.kind === 'favorites' || target.kind === 'project-conversations' || target.kind === 'remote' && !target.nativeSessionId && !target.draft
-                || target.kind === 'tasks' || ((target.kind === 'files' || target.kind === 'project-files') && !this.editor && !this.previewCleanup)) await this.showDirectory(this.active);
+                || target.kind === 'tasks') await this.showDirectory(this.active);
         }
         this.navigationReadAt = performance.now();
     }
@@ -841,7 +841,9 @@ export class SessionWorkbench implements WorkspaceController {
             if (existing?.value && !existing.failed && !options.reload && target.kind !== 'task' && target.kind !== 'tasks' && (target.kind !== 'session' || existing.value.branch === (branch ?? openingManifest!.currentBranch ?? 'main'))) {
                 this.tabs.activate(tabId); await this.restoreEditor(existing.value);
                 if (!await load.read(() => this.checkRemoteFiles(path, target, load))) { this.onSelect(this.getActiveResourceId()!); return; }
-                if (directoryTarget) { await refreshDirectoryList(existing.panel); load.check(); }
+                if (directoryTarget || (target.kind === 'files' || target.kind === 'project-files') && !existing.value.editor && !existing.value.previewCleanup) {
+                    await refreshDirectoryList(existing.panel); load.check();
+                }
                 const navigationPath = openingManifest ? `${folderBrowserPath(openingManifest.folder)}/${openingManifest.id}` : path;
                 if (target.kind === 'project-files' || target.kind === 'files') this.scheduleFileNavigation(path, options.fileNavigation);
                 else if (directoryTarget) {
@@ -1205,7 +1207,8 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.sidebarUI) this.tabs.current!.subscriptions.push(watchDirectorySelection(panel, this.sidebarUI));
         this.tabs.setIcon(this.tabs.current!.id, this.sidebarUI?.getNode(path)?.icon ?? FILE_ICONS.folder);
         if (!this.closed) this.tabs.content.replaceChildren(panel);
-        if (this.navigationFiles?.on) this.tabs.current!.subscriptions.push(watchDirectoryList(this.navigationFiles, panel, error => this.report(error)));
+        if (this.navigationFiles?.on && target.kind !== 'files' && target.kind !== 'project-files')
+            this.tabs.current!.subscriptions.push(watchDirectoryList(this.navigationFiles, panel, error => this.report(error)));
     }
     private async directoryEntries(path: string, update?: (nodes: FSNode[]) => void) {
         await this.browser?.invalidateNavigation();

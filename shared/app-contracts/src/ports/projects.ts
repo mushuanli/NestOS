@@ -369,6 +369,7 @@ export interface RemoteSessionStatus {
     record(projectId: string, profileId: string, sessionId: string): HarnessStatusRow | undefined;
     fileVersion(projectId: string): string | undefined;
     subscribe(projectId: string, listener: () => void): () => void;
+    refresh(projectId: string): Promise<void>;
 }
 
 export interface ProjectExecutionService {

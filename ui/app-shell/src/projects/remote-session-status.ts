@@ -8,7 +8,6 @@ import type { VFSNodeUI } from '@itookit/vfs-ui';
 export class RemoteSessionStatusView {
     private readonly stops = new Map<string, () => void>();
     private readonly tabs = new Map<string, string>();
-    private readonly fileVersions = new Map<string, string>();
     private current?: string;
     private readonly loadedProjects = new Set<string>();
     private visible = true;
@@ -20,7 +19,7 @@ export class RemoteSessionStatusView {
     private revision = 0;
     constructor(private readonly harnessObservation: typeof observeHarness, private readonly projects: ProjectService | undefined, private readonly changed: () => void,
         private readonly tabStatus: (id: string, icon: string, tooltip: string) => void,
-        private readonly filesChanged?: (project: string) => void, private readonly tabTitle?: (id: string, title: string) => void,
+        private readonly tabTitle?: (id: string, title: string) => void,
         private readonly connections?: import('@itookit/app-contracts/services').ConnectionObservation) {}
     project(id?: string) { this.current = id; this.sync(); }
     attach(tab: string, project: string) { this.tabs.set(tab, project); this.activeTab = tab; this.sync(); }
@@ -32,6 +31,10 @@ export class RemoteSessionStatusView {
     }
     detach(tab: string) { this.tabs.delete(tab); this.deadlines.delete('tab:' + tab); this.sync(); this.scheduleRefresh(); }
     setVisible(visible: boolean) { this.visible = visible; this.sync(); this.scheduleRefresh(); }
+    async refresh(): Promise<void> {
+        const status = this.projects?.remoteMounts?.sessionStatus;
+        if (status) await Promise.all([...this.stops.keys()].map(id => status.refresh(id)));
+    }
     private sync() {
         const candidates = this.navigationVisible ? [this.current, ...this.loadedProjects, ...this.tabs.values()]
             : [this.activeTab && this.tabs.get(this.activeTab)];
@@ -50,7 +53,6 @@ export class RemoteSessionStatusView {
         for (const [id, stop] of this.stops) if (!ids.has(id)) { stop(); this.stops.delete(id); }
         for (const id of ids) if (!this.stops.has(id)) this.stops.set(id, status.subscribe(id, () => {
             this.refreshTabs();
-            this.checkFiles(id);
             this.changed();
         }));
     }
@@ -81,10 +83,6 @@ export class RemoteSessionStatusView {
             for (const [id, time] of this.deadlines) if (time <= Date.now()) this.deadlines.delete(id);
             this.refreshTabs(); this.changed(); this.scheduleRefresh();
         }, Math.max(0, next - Date.now()));
-    }
-    private checkFiles(project: string) {
-        const version = this.projects?.remoteMounts?.sessionStatus?.fileVersion(project);
-        if (version && this.fileVersions.get(project) !== version) { this.fileVersions.set(project, version); this.filesChanged?.(project); }
     }
     items(items: VFSNodeUI[]): VFSNodeUI[] {
         this.loadedProjects.clear();
@@ -120,7 +118,7 @@ export class RemoteSessionStatusView {
     async destroy(): Promise<void> {
         this.visible = false; clearTimeout(this.refreshTimer); this.deadlines.clear();
         for (const stop of this.stops.values()) stop();
-        this.stops.clear(); this.tabs.clear(); this.loadedProjects.clear(); this.fileVersions.clear();
+        this.stops.clear(); this.tabs.clear(); this.loadedProjects.clear();
         await this.connections?.dispose();
     }
 }

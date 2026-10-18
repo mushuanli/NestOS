@@ -72,8 +72,28 @@ it('notifies directory versions independently of empty native session rows and f
     const {status, port, change} = fixture(), changed = vi.fn(); let version = 'watch:1';
     port.poll.mockResolvedValue([]); Object.assign(port, {fileVersion: () => version}); status.subscribe('project', changed);
     await vi.advanceTimersByTimeAsync(0); expect(status.fileVersion('project')).toBe('watch:1');
-    version = 'watch:2'; await vi.advanceTimersByTimeAsync(1000); expect(changed).toHaveBeenCalledTimes(2);
+    version = 'watch:2'; await status.refresh('project'); expect(changed).toHaveBeenCalledTimes(2);
     change(); expect(status.fileVersion('project')).toBeUndefined(); await status.dispose();
+});
+it('does not poll idle sessions and restarts only after an explicit refresh reports active work', async () => {
+    const {status, port} = fixture(), [row] = await port.poll(); port.poll.mockClear();
+    port.poll.mockResolvedValue([{...row, observation: {...row.observation, execution: 'idle'}}]);
+    const stop = status.subscribe('project', vi.fn()); await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(60_000); expect(port.poll).toHaveBeenCalledOnce();
+    port.poll.mockResolvedValue([row]); await status.refresh('project');
+    await vi.advanceTimersByTimeAsync(1000); expect(port.poll).toHaveBeenCalledTimes(3);
+    port.poll.mockResolvedValue([{...row, observation: {...row.observation, execution: 'idle'}}]);
+    await vi.advanceTimersByTimeAsync(1000); await vi.advanceTimersByTimeAsync(60_000);
+    expect(port.poll).toHaveBeenCalledTimes(4); stop(); await status.dispose(); expect(vi.getTimerCount()).toBe(0);
+});
+it('retains an activity refresh requested while the initial idle read is still pending', async () => {
+    const {status, port} = fixture(), [row] = await port.poll(); port.poll.mockClear();
+    let finish!: () => void;
+    port.poll.mockImplementationOnce(() => new Promise(resolve => {finish = () => resolve([{...row, observation: {...row.observation, execution: 'idle'}}]);}));
+    status.subscribe('project', vi.fn()); await vi.advanceTimersByTimeAsync(0);
+    const refresh = status.refresh('project'); finish(); await refresh;
+    await vi.advanceTimersByTimeAsync(1); expect(port.poll).toHaveBeenCalledTimes(2);
+    await status.dispose(); expect(vi.getTimerCount()).toBe(0);
 });
 
 it('serves a bounded stale projection on revisit without keeping an idle poll alive', async () => {

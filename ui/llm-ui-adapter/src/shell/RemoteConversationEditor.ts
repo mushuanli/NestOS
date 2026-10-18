@@ -20,7 +20,6 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private releaseUpdates?: () => void;
     private updateTimer?: ReturnType<typeof setTimeout>;
     private working = false;
-    private timer?: ReturnType<typeof setTimeout>;
     private loadingHistory = false;
     private historyError = '';
     private findingPrompts = false;
@@ -49,7 +48,6 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         try { await this.show(await this.service.read()); } catch (error) { this.showError(error); }
         if (!this.closed && this.active) {
             if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
-            else this.schedule();
         }
     }
     private layout() {
@@ -270,30 +268,18 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             this.tail = work.catch(error => this.showUpdateError(error));
         }, 50);
     }
-    private schedule() {
-        clearTimeout(this.timer);
-        if (this.closed || !this.active) return;
-        this.timer = setTimeout(() => {
-            if (this.closed || !this.active) return;
-            if (!this.working) {
-                const poll = this.tail.then(async () => { if (!this.closed && this.active) await this.show(await this.service.poll()); });
-                this.tail = poll.catch(error => this.showUpdateError(error));
-            }
-            void this.tail.finally(() => { if (!this.closed) this.schedule(); });
-        }, 1000);
-    }
     private showUpdateError(error: unknown): void {
         if (this.closed || !this.active) return;
         console.error('[Conversation] Update failed', error);
         const message = error instanceof Error ? error.message : t('harness.failed');
         this.view.setStatus(t('harness.updateFailed', {message}));
     }
-    async destroy(preserveInput = false) { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
+    async destroy(preserveInput = false) { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); await this.service.close(); await this.tail; this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
     cancelPendingRender(): void {
         this.view?.input.hideNativeModelPicker();
         this.view?.history.view.setActive(false);
         this.active = false; this.releaseUpdates?.(); this.releaseUpdates = undefined;
-        clearTimeout(this.updateTimer); this.updateTimer = undefined; clearTimeout(this.timer);
+        clearTimeout(this.updateTimer); this.updateTimer = undefined;
     }
     async activate(): Promise<void> {
         if (this.closed || this.active) return;
@@ -301,7 +287,6 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.active = true; await this.tail; await this.show(await this.service.read());
         if (!this.active || this.closed) return;
         if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
-        else this.schedule();
     }
     getText() { return remoteRounds(this.snapshot?.messages ?? []).map(group => group.content ?? group.executionRoot?.data.output ?? '').join('\n\n'); }
     async navigateTo(target: {elementId: string}): Promise<void> {

@@ -5,6 +5,7 @@ interface Watch {
     fileVersion?: string;
     identity: string; listeners: Set<() => void>; rows: HarnessStatusRow[]; abort: AbortController;
     port?: HarnessStatusPort; timer?: ReturnType<typeof setTimeout>; work?: Promise<void>; failures: number;
+    refreshRequested?: boolean;
 }
 interface CachedStatus { identity: string; rows: HarnessStatusRow[]; fileVersion?: string; expiresAt: number }
 /** Ref-counted project observers. Identity includes configuration, server, grants and revision. */
@@ -40,6 +41,14 @@ export class RemoteSessionStatus {
         if (!watch.timer && !watch.work) this.schedule(projectId, watch, 0);
         return () => { watch!.listeners.delete(notify); if (!watch!.listeners.size) void this.stop(projectId, watch!).catch(() => {}); };
     }
+    async refresh(projectId: string): Promise<void> {
+        const watch = this.watches.get(projectId);
+        if (!watch || watch.abort.signal.aborted) return;
+        clearTimeout(watch.timer); watch.timer = undefined;
+        if (watch.work) { watch.refreshRequested = true; await watch.work; return; }
+        watch.work ??= this.poll(projectId, watch).finally(() => { watch.work = undefined; });
+        await watch.work;
+    }
     private schedule(id: string, watch: Watch, delay: number) {
         watch.timer = setTimeout(() => { watch.timer = undefined; watch.work = this.poll(id, watch).finally(() => { watch.work = undefined; }); }, delay);
     }
@@ -68,9 +77,13 @@ export class RemoteSessionStatus {
             watch.rows = watch.rows.map(row => ({...row, observation: {...row.observation, stale: true,
                 refreshError: {stage: 'status', code: 'OBSERVATION_ERROR'}, canInterrupt: false, canRespond: false}}));
             this.notify(watch);
-        } finally {
-            if (!watch.abort.signal.aborted) this.schedule(id, watch, Math.min(30_000, 1000 * 2 ** Math.min(watch.failures, 5)));
-        }
+        } finally { this.scheduleAfterPoll(id, watch); }
+    }
+    private scheduleAfterPoll(id: string, watch: Watch): void {
+        const active = watch.rows.some(row => row.observation.execution === 'running'
+            || row.observation.execution === 'waiting-approval' || row.observation.execution === 'waiting-input' || row.observation.receiptUnknown);
+        const requested = watch.refreshRequested; watch.refreshRequested = false;
+        if (!watch.abort.signal.aborted && (active || requested)) this.schedule(id, watch, requested ? 0 : Math.min(30_000, 1000 * 2 ** Math.min(watch.failures, 5)));
     }
     private notify(watch: Watch): void {
         for (const listener of watch.listeners) {

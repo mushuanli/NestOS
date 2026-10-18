@@ -323,16 +323,24 @@ it('reports a subscribed render failure without claiming disconnection and prese
     } finally { render.mockRestore(); await editor.destroy(); errors.mockRestore(); }
 });
 
-it('reports polling errors with their cause and resumes updates without replaying sends', async () => {
-    const {editor, peer, host} = setup(); await editor.init(host);
+it('reports event-triggered update errors and recovers without replaying sends', async () => {
+    const {editor, peer, host} = setup(); let changed!: () => void;
+    peer.subscribe = listener => {changed = listener; return () => {};};
+    await editor.init(host);
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
     vi.mocked(peer.poll).mockRejectedValueOnce(new Error('invalid snapshot'));
     try {
+        changed();
         await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent)
             .toBe(t('harness.updateFailed', {message: 'invalid snapshot'})), {timeout: 2500});
-        await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent).not.toContain('invalid snapshot'), {timeout: 2500});
+        changed(); await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent).not.toContain('invalid snapshot'), {timeout: 2500});
         expect(peer.send).not.toHaveBeenCalled(); expect(host.textContent).not.toContain(t('harness.disconnected'));
     } finally { await editor.destroy(); errors.mockRestore(); }
+});
+it('does not poll or re-read an idle displayed conversation', async () => {
+    const {editor, peer, host} = setup(); await editor.init(host);
+    try {await new Promise(resolve => setTimeout(resolve, 1200)); expect(peer.read).toHaveBeenCalledOnce(); expect(peer.poll).not.toHaveBeenCalled();}
+    finally {await editor.destroy();}
 });
 it('preserves failed input and offers reconciliation instead of repeating an unknown operation', async () => {
     const {editor,peer,host}=setup();await editor.init(host);

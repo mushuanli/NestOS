@@ -19,9 +19,9 @@ it('shares probes across browsers, excludes local projects and stops after the l
     await vi.advanceTimersByTimeAsync(0);
     expect(f.checkConnections.mock.calls.map(([id]) => id)).toEqual(['remote', 'other']);
     await first.dispose(); await vi.advanceTimersByTimeAsync(0); expect(f.checkConnections).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(15_000); expect(f.checkConnections).toHaveBeenCalledTimes(3);
+    await vi.advanceTimersByTimeAsync(15_000); expect(f.checkConnections).toHaveBeenCalledTimes(2);
     await second.dispose(); await vi.advanceTimersByTimeAsync(30_000);
-    expect(f.checkConnections).toHaveBeenCalledTimes(3); expect(f.listeners.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
+    expect(f.checkConnections).toHaveBeenCalledTimes(2); expect(f.listeners.size).toBe(0); expect(vi.getTimerCount()).toBe(0);
 });
 it('ignores late interest updates and starts checking a newly mounted observed project', async () => {
     const f = fixture(), observer = observeConnections(f.remote);

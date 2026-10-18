@@ -6,7 +6,7 @@
 interface IRegularMenuItem<TItem extends object = Record<string, unknown>> {
     id: string;
     label: string;
-    iconHTML?: string;
+    iconHTML?: string; iconOnly?: boolean;
     disabled?: boolean;
     type?: 'item'; // 'type' 是可辨识的属性
     hidden?: (item: TItem) => boolean;
@@ -30,6 +30,8 @@ export type ContextMenuBuilder<TItem extends object = Record<string, unknown>> =
 ) => MenuItem<TItem>[];
 
 export interface ContextMenuConfig<TItem extends object = Record<string, unknown>> {
+    /** Present individually resolved resources consistently with list projections. */
+    mapItem?(item: TItem): TItem;
     items?: ContextMenuBuilder<TItem>;
     bulkItems?: (items: TItem[], defaults: MenuItem<TItem>[]) => MenuItem<TItem>[];
 }

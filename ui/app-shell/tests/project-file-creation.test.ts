@@ -41,7 +41,7 @@ it('creates a project file beside the activated file, not at the Files root', as
         expect(panel.textContent).toContain('deep.md');
         expect(panel.querySelector('h2')?.textContent).toBe('sub');
         expect(panel.querySelector('.workbench-directory__path')?.textContent).toBe('所有项目 / 原项目文档 / 文件 / sub');
-        expect([...panel.querySelectorAll<HTMLButtonElement>('.workbench-directory__toolbar button')].map(button => button.title)).toEqual(['上一级', '刷新列表', '新建文件', '新建目录']);
+        expect([...panel.querySelectorAll<HTMLButtonElement>('.workbench-directory__toolbar button')].map(button => button.title)).toEqual(['刷新列表', '新建文件', '新建目录', '操作', '清除并退出搜索']);
         expect(panel.querySelector('.workbench-directory__heading button')).toBeNull();
         const previousShow = HTMLDialogElement.prototype.showModal, previousClose = HTMLDialogElement.prototype.close;
         HTMLDialogElement.prototype.showModal = vi.fn(); HTMLDialogElement.prototype.close = vi.fn();
@@ -79,8 +79,8 @@ it('creates a project file beside the activated file, not at the Files root', as
         expect(ui.getSnapshot().selectedIds).toEqual([]);
         await workbench.openResource(projectPath + '/@files/readonly');
         const readonlyPanel = main.querySelector('.workbench-tabs__panel:not([hidden])')!;
-        expect(readonlyPanel.querySelector('[aria-label="新建文件"]')).toBeNull();
-        expect(readonlyPanel.querySelector('[aria-label="新建目录"]')).toBeNull();
+        expect(readonlyPanel.querySelector<HTMLButtonElement>('[aria-label="新建文件"]')!.disabled).toBe(true);
+        expect(readonlyPanel.querySelector<HTMLButtonElement>('[aria-label="新建目录"]')!.disabled).toBe(true);
         expect(readonlyPanel.querySelector('[aria-label="刷新列表"]')).not.toBeNull();
         await workbench.openResource('/');
         const allProjects = main.querySelector('.workbench-tabs__panel:not([hidden])')!;

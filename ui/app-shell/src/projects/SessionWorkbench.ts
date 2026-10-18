@@ -7,9 +7,10 @@ import { withInitialDirectory } from '../browser/initial-directory';
 import { presentationPersistence } from '../persistence/initial-navigation';
 import { showHarnessControl } from '../harness/control';
 import { RemoteSessionStatusView } from './remote-session-status';
+import { projectIconMenu } from './project-menu-icons';
 import { sessionCreationReason } from './session-creation-policy';
 import { projectDirectoryActions } from './directory-actions';
-import {fileFirst, navigationPriority} from './navigation-policy';
+import {fileFirst, navigationPriority, projectItems} from './navigation-policy';
 import { ProjectSearchPanel } from './project-search-panel';
 import { createProjectDirectorySearch } from './project-directory-search';
 import { showRemoteSessionFamily } from './remote-session-family';
@@ -368,9 +369,10 @@ export class SessionWorkbench implements WorkspaceController {
             },
             fileCreation: { label: '会话', title: formatDefaultFileTitle(), resolveParent: sessionCreationParent },
             contextMenu: {
+                mapItem: item => projectItems([item])[0] ?? item,
                 bulkItems: (items, defaults) => items.some(item => item.metadata.custom.remoteProject)
                     ? defaults.filter(entry => !('id' in entry) || !['bulk-delete', 'bulk-move', 'bulk-copy'].includes(entry.id)) : defaults,
-                items: (item, defaults) => {
+                items: projectIconMenu((item, defaults) => {
                     if (isFlowPath(item.id)) return this.flows?.menu.items?.(item,
                         item.id === '/@flows' ? [] : defaults.filter(entry => 'id' in entry && entry.id === 'delete')) ?? [];
                     const target = resolveBrowserTarget(item.id);
@@ -434,7 +436,7 @@ export class SessionWorkbench implements WorkspaceController {
                             onClick: () => { void this.closeSession(target.sessionId).catch(error => this.report(error)); } }];
                     }
                     return defaults;
-                },
+                }),
             },
         }, this.navigationFiles) as VFSUIShell;
         this.subscriptions.add(this.sidebarUI.on('resourceActivated', ({item}) => {

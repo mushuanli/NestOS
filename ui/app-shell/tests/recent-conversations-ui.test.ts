@@ -50,7 +50,7 @@ it('keeps fifteen sidebar sessions and opens a larger paged view when More is cl
         await vi.waitFor(async () => expect(await projects.favorites.list(project.project.id)).toHaveLength(1));
         await workbench.refresh();
         panel().querySelector<HTMLElement>(`[data-resource-id="${older.dataset.resourceId}"]`)!.dispatchEvent(new MouseEvent('contextmenu', {bubbles: true, cancelable: true}));
-        await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu')?.textContent).toContain('取消收藏'));
+        await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu [aria-label="取消收藏"]')).not.toBeNull());
         expect(sessionRows()).toHaveLength(15); document.body.click();
         const next = [...panel().querySelectorAll<HTMLElement>('[data-resource-id]')].find(row => resolveBrowserTarget(row.dataset.resourceId!).kind === 'project-conversations')!;
         const nextPath = conversationResourcePath(next.dataset.resourceId!); next.querySelector<HTMLButtonElement>('.workbench-directory__name')!.click();

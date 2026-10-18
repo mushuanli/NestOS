@@ -207,7 +207,7 @@ it('browses mounted native history pages, opens their conversations and routes a
             await workbench.openResource('/'); await ui.showItemMenu(new MouseEvent('contextmenu'), remotePath);
             const host = document.querySelector<HTMLElement>('.vfs-context-menu')!;
             expect(host.querySelector('[data-action="delete"]')).toBeNull(); expect(host.querySelector('[data-action="moveTo"]')).toBeNull();
-            expect(host.querySelector('[data-action="copyTo"]')).toBeNull(); expect(host.textContent).toContain(t('remote.unmountProject'));
+            expect(host.querySelector('[data-action="copyTo"]')).toBeNull(); expect(host.querySelector('[data-action="unmount-project"]')?.getAttribute('aria-label')).toBe(t('remote.unmountProject'));
             return host;
         };
         const remountAs = async (access: 'ro' | 'rw') => {

@@ -10,7 +10,7 @@ export class DirectoryToolbar {
     private focused = false;
     constructor(private readonly options: DirectoryListOptions, refresh: () => void, private readonly render: () => void) {
         this.element.className = 'workbench-directory__toolbar';
-        if (options.parent) this.element.append(this.button(t('workbench.parent'), options.parent, FILE_BROWSER_ICONS.up));
+        if (options.parent && !options.breadcrumbs) this.element.append(this.button(t('workbench.parent'), options.parent, FILE_BROWSER_ICONS.up));
         if (options.refresh) this.element.append(this.button(t('workbench.refresh'), refresh, FILE_BROWSER_ICONS.refresh));
         this.addActions(); this.addMenu(); this.addSearch();
     }

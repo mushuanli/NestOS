@@ -25,7 +25,7 @@ it('creates files and conversations with styled icon buttons on fixed directory 
         kernel: {onChanged: () => () => {}, async *listSessions() {}} as never, factory, onSelect() {}});
     const panel = () => main.querySelector<HTMLElement>('.workbench-tabs__panel:not([hidden])')!;
     try {
-        await workbench.start(); await workbench.openResource(path + '/@files');
+        await workbench.start(); await workbench.setNavigationVisible(false); await workbench.openResource(path + '/@files');
         expect(getComputedStyle(panel().querySelector<HTMLElement>('.workbench-directory__heading')!).display).toBe('none');
         expect(panel().textContent).not.toContain('搜索目录及子目录');
         const navigation = main.querySelector('.workbench-tabs__navigation .workbench-compact-navigation__label')!;
@@ -34,11 +34,25 @@ it('creates files and conversations with styled icon buttons on fixed directory 
         expect(navigation.textContent).toContain('所有项目');
         expect(panel().querySelector('.workbench-directory')?.getAttribute('data-compact-path')).toBe('true');
         expect(panel().querySelector('[data-action="directory-menu"]')).not.toBeNull();
+        expect(panel().querySelector('[aria-label="上一级"]')).toBeNull();
+        panel().querySelector<HTMLButtonElement>('[data-action="directory-menu"]')!.click();
+        await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu [data-action="create-file"]')).not.toBeNull());
+        document.body.click();
+        panel().querySelector<HTMLButtonElement>('[data-action="directory-menu"]')!.click();
+        await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu [data-action="create-file"]')).not.toBeNull());
+        const menuAction = document.querySelector<HTMLButtonElement>('.vfs-context-menu [data-action="create-file"]')!;
+        expect(menuAction.querySelector('svg')).not.toBeNull(); expect(menuAction.textContent).toBe(''); expect(menuAction.getAttribute('aria-label')).toBe('新建文件');
+        document.body.click();
         for (const [action, name] of [['create-file', 'created.md'], ['create-folder', 'child']] as const) {
             const button = panel().querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;
             expect(button.disabled).toBe(false); expect(button.getAttribute('aria-label')).toBeTruthy(); expect(button.children).toHaveLength(1);
             expect(button.querySelector('svg')).not.toBeNull(); expect(getComputedStyle(button.querySelector('svg')!).width).toBe('18px'); expect(getComputedStyle(button).display).toBe('inline-flex');
-            button.click(); await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
+            if (action === 'create-file') {
+                panel().querySelector<HTMLButtonElement>('[data-action="directory-menu"]')!.click();
+                await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu [data-action="create-file"]')).not.toBeNull());
+                document.querySelector<HTMLButtonElement>('.vfs-context-menu [data-action="create-file"]')!.click();
+            } else button.click();
+            await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
             document.querySelector<HTMLInputElement>('dialog input')!.value = name;
             document.querySelector('dialog form')!.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));
             await vi.waitFor(() => expect(document.querySelector('dialog')).toBeNull());
@@ -46,6 +60,8 @@ it('creates files and conversations with styled icon buttons on fixed directory 
         }
         const more = panel().querySelector<HTMLButtonElement>('.workbench-directory__row-action')!;
         expect(getComputedStyle(more).opacity).toBe('1');
+        more.click(); await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu')).not.toBeNull());
+        document.body.click();
         await workbench.openResource(projectConversationsPath(project.path));
         const create = panel().querySelector<HTMLButtonElement>('[data-action="create-session"]')!;
         expect(create.disabled).toBe(false); expect(create.children).toHaveLength(1); create.click();

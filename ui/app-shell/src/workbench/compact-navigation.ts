@@ -13,7 +13,9 @@ export function compactNavigation(container: HTMLElement, context: string, back:
     const opened = button(ACTION_ICONS.opened, t('workbench.opened'), open); opened.setAttribute('aria-haspopup', 'dialog');
     const count = document.createElement('span'); count.className = 'workbench-compact-navigation__count'; opened.append(count);
     root.append(button(ACTION_ICONS.sidebar, t('workspace.mobile.showSidebar'), back), label, opened); container.append(root);
-    return {update(name: string, total: number, currentContext = context) {
+    return {update(name: string, total: number, currentContext = context, navigationLabel?: HTMLElement) {
+        if (navigationLabel) { if (label.firstElementChild !== navigationLabel) label.replaceChildren(navigationLabel); }
+        else if (label.firstElementChild !== title) label.replaceChildren(title, project);
         project.textContent = currentContext; project.title = currentContext; project.hidden = !currentContext;
         title.textContent = name; title.title = name; count.textContent = String(total);
         opened.setAttribute('aria-label', `${t('workbench.opened')} (${total})`);

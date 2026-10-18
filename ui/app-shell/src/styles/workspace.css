@@ -95,12 +95,16 @@
 }
 
 .workbench-compact-navigation { display: flex; align-items: center; width: 100%; min-width: 0; gap: 3px; }
-.workbench-compact-navigation > button { position: relative; display: grid; place-items: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: inherit; border-radius: 7px; cursor: pointer; }
+.workbench-compact-navigation > button { position: relative; display: grid; place-items: center; justify-content: center; flex: 0 0 44px; width: 44px; height: 44px; padding: 0; border: 0; background: transparent; color: inherit; border-radius: 7px; cursor: pointer; }
 .workbench-compact-navigation > button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
 .workbench-compact-navigation__label { flex: 1; min-width: 0; overflow: hidden; }
 .workbench-compact-navigation__label > strong, .workbench-compact-navigation__label > small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .workbench-compact-navigation__label > strong { font-size: 14px; font-weight: 600; line-height: 1.4; }
 .workbench-compact-navigation__label > small { color: var(--text-secondary, #64748b); font-size: 10px; line-height: 1.3; }
+.workbench-compact-navigation__label > .workbench-directory__path { margin: 0; overflow-x: auto; overflow-wrap: normal; scrollbar-width: none; }
+.workbench-compact-navigation__label > .workbench-directory__path ol { flex-wrap: nowrap; align-items: center; width: max-content; }
+.workbench-compact-navigation__label > .workbench-directory__path li { flex-shrink: 0; white-space: nowrap; }
+.workbench-compact-navigation__label > .workbench-directory__path button { min-height: 44px; padding: 0 3px; border: 0; background: transparent; color: var(--primary-color, #6366f1); font: inherit; cursor: pointer; }
 .workbench-compact-navigation__count { position: absolute; top: 3px; right: 2px; font-size: 10px; line-height: 1.2; background: var(--mm-bg-color, #fff); border-radius: 3px; }
 .workbench-opened-sheet { position: fixed; inset: max(8px, env(safe-area-inset-top, 0px)) 8px auto; width: auto; max-width: none; max-height: calc(100dvh - 24px); margin: 0; padding: 12px; border: 1px solid var(--mm-border-color, #e5e7eb); border-radius: 12px; background: var(--mm-bg-color, #fff); color: var(--text-primary, #111827); overflow: auto; }
 .workbench-opened-sheet::backdrop { background: #0f172a77; }
@@ -304,8 +308,8 @@
 .workbench-directory__resize:hover, .workbench-directory__resize:focus-visible { background: var(--primary-color, #6366f1); outline: none; }
 
 /* Compact controls keep resource names and primary tasks prominent. */
-.workbench-icon { display: inline-flex; width: 18px; height: 18px; flex: 0 0 18px; align-items: center; justify-content: center; color: var(--text-secondary, #64748b); }
-.workbench-icon svg { width: 18px; height: 18px; }
+.workbench-icon { display: inline-flex; width: 18px; height: 18px; flex: 0 0 18px; font-size: 18px; line-height: 1; align-items: center; justify-content: center; color: var(--text-secondary, #64748b); }
+.workbench-icon svg, .workbench-compact-navigation > button > svg, .mm-mobile-back > svg { display: block; flex-shrink: 0; width: 18px; height: 18px; max-width: 18px; max-height: 18px; }
 .workbench-sidebar__header button, .workbench-directory button, .workbench-tabs button { display: inline-flex; align-items: center; gap: 8px; border-radius: 5px; }
 .workbench-sidebar__header button:hover, .workbench-directory button:hover:not(:disabled), .workbench-tabs button:hover:not(:disabled) { background: var(--vfs-active-bg, #eef2ff); }
 .workbench-sidebar__header button:focus-visible, .workbench-directory button:focus-visible, .workbench-tabs button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
@@ -494,6 +498,7 @@
     .workbench-directory__toolbar > button, .project-search__controls select, .project-search__controls > button { min-height: 44px; }
     .workbench-directory__toolbar input { min-height: 44px; }
     .workbench-directory__table { min-width: 540px; }
+    .workbench-directory[data-compact-path="true"] > .workbench-directory__path { display: none; }
     .workbench-directory__toolbar[data-searching="true"] > button { display: none; }
     .workbench-directory__search { flex-basis: 100%; }
     .workbench-directory__search > input { flex-basis: 80px; }

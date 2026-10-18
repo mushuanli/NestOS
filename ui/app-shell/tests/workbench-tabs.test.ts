@@ -7,6 +7,7 @@ import { readWorkbenchSnapshot, type WorkbenchSnapshot } from '../src/workbench/
 import { connectEditorLifecycle } from '../src/browser/editor-connector';
 import { LatestViewLoad } from '../src/lifecycle/view-load';
 import { Workbench } from '../src/core/Workbench';
+import { createDirectoryBreadcrumbs } from '../src/workbench/directory-breadcrumbs';
 import { FILE_ICONS } from '@itookit/common';
 import { createVFS, MemoryBackend, FSError } from '@itookit/vfs-core';
 
@@ -408,4 +409,20 @@ it('restores layout and tab entries without opening the saved file; an explicit 
         await workbench.openFile('/saved.md');
         expect(factory).toHaveBeenCalledOnce(); expect(main.textContent).toContain('editor ready');
     } finally { await workbench.destroy(); await manager.dispose(); }
+});
+
+it('uses a display-only path in compact directory navigation and restores document titles on activation', async () => {
+    const f = tabsFixture(), open = vi.fn();
+    const dir = await f.tabs.open('directory', '文件', false);
+    f.tabs.context(dir.id, '个人');
+    f.tabs.setNavigationLabel(dir.id, createDirectoryBreadcrumbs([{id: '/', label: '所有项目'}, {id: '/p', label: '个人'}, {id: '/p/files', label: '文件'}], open));
+    const label = () => f.container.querySelector('.workbench-tabs__navigation .workbench-compact-navigation__label')!;
+    try {
+        expect(label().textContent).toBe('所有项目 / 个人 / 文件');
+        expect(label().querySelector('strong')).toBeNull();
+        label().querySelector<HTMLButtonElement>('[data-directory-path="/p"]')!.click(); expect(open).toHaveBeenCalledWith('/p');
+        expect(f.tabs.snapshot()[0]).toEqual({id: 'directory', title: '文件', pinned: false, context: '个人'});
+        await f.tabs.open('doc', 'notes.md', false); expect(label().querySelector('nav')).toBeNull(); expect(label().textContent).toContain('notes.md');
+        f.tabs.activate(dir.id); expect(label().textContent).toBe('所有项目 / 个人 / 文件');
+    } finally { await f.tabs.destroy(); }
 });

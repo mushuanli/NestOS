@@ -22,6 +22,7 @@ import { createMindOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { WorkbenchTabs, type WorkbenchTab } from '../workbench/tabs';
 import { WorkbenchSidebar } from '../workbench/sidebar';
 import { createDirectoryList, refreshDirectoryList, watchDirectorySelection, type DirectoryEntry } from '../workbench/directory-list';
+import { createDirectoryBreadcrumbs } from '../workbench/directory-breadcrumbs';
 import { directoryBulkActions } from '../workbench/vfs-actions';
 import { ENTITY_ICONS, FILE_BROWSER_ICONS, FILE_ICONS, harnessPresentation } from '@itookit/common';
 import { watchDirectoryList } from '../workbench/directory-watch';
@@ -1153,9 +1154,10 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.closed || generation !== this.contentVersion) { search?.destroy(); return; }
         if (search) this.tabs.current!.subscriptions.push(() => search.destroy());
         const favorites = this.projects ? directoryFavoriteAction(this.projects, this.repository, nodes) : undefined;
+        const breadcrumbs = directoryBreadcrumbs(path, heading.textContent);
+        const openDirectory = (id: string) => { void this.openResource(id, {directory: true}).catch(error => this.report(error)); };
         const list = createDirectoryList({ title: heading.textContent || t('project.workspace'), path,
-            breadcrumbs: directoryBreadcrumbs(path, heading.textContent),
-            openDirectory: id => { void this.openResource(id, {directory: true}).catch(error => this.report(error)); },
+            breadcrumbs, openDirectory,
             entries: nodes.map(node => this.directoryEntry(node)),
             initialSort: target.kind === 'project-conversations' || target.kind === 'folder' && nodes.some(node => node.metadata.harnessKind)
                 || target.kind === 'remote' && target.profileId ? {key: 'modified', ascending: false} : undefined,
@@ -1169,6 +1171,8 @@ export class SessionWorkbench implements WorkspaceController {
             bulkActions: this.sidebarUI && (target.kind === 'project-files' || target.kind === 'files') ? directoryBulkActions(this.sidebarUI) : undefined,
             favorite: favorites, search,
             actions });
+        list.dataset.compactPath = 'true';
+        this.tabs.setNavigationLabel(this.tabs.current!.id, createDirectoryBreadcrumbs(breadcrumbs, openDirectory));
         heading.remove(); panel.append(list); this.tabs.title(this.tabs.current!.id, list.querySelector('h2')!.textContent!);
         if (this.sidebarUI) this.tabs.current!.subscriptions.push(watchDirectorySelection(panel, this.sidebarUI));
         this.tabs.setIcon(this.tabs.current!.id, this.sidebarUI?.getNode(path)?.icon ?? FILE_ICONS.folder);

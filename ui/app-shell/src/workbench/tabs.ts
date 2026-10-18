@@ -6,6 +6,7 @@ import {compactNavigation} from './compact-navigation';
 
 export interface WorkbenchTab<T> {
     context?: string;
+    navigationLabel?: HTMLElement;
     location?: string;
     statusIcon?: string; statusTooltip?: string;
     icon?: string;
@@ -138,6 +139,9 @@ export class WorkbenchTabs<T> {
     pin(id: string): void { const tab = this.get(id); if (tab) { tab.pinned = !tab.pinned; if (tab.pinned) this.selected.delete(id); tab.preview = false; this.render(); } }
     title(id: string, title: string): void { const tab = this.get(id); if (tab && tab.title !== title) { tab.title = title; this.render(); } }
     context(id: string, context?: string): void { this.updateMetadata(id, 'context', context); }
+    setNavigationLabel(id: string, label: HTMLElement): void {
+        const tab = this.get(id); if (tab) { tab.navigationLabel = label; this.render(); }
+    }
     location(id: string, location: string): void { this.updateMetadata(id, 'location', location); }
     private updateMetadata(id: string, field: 'context' | 'location', value?: string): void {
         const tab = this.get(id);
@@ -192,7 +196,7 @@ export class WorkbenchTabs<T> {
     }
     private render(): void {
         this.syncViewState();
-        this.standalone.update(this.current?.title ?? '', this.entries.size, this.current?.context);
+        this.standalone.update(this.current?.title ?? '', this.entries.size, this.current?.context, this.current?.navigationLabel);
         for (const view of this.compactViews) view.update(this.current?.title ?? '', this.entries.size);
         this.bar.replaceChildren(); this.opened.replaceChildren();
         this.opened.append(this.openedToolbar());

@@ -28,11 +28,16 @@ it('creates files and conversations with styled icon buttons on fixed directory 
         await workbench.start(); await workbench.openResource(path + '/@files');
         expect(getComputedStyle(panel().querySelector<HTMLElement>('.workbench-directory__heading')!).display).toBe('none');
         expect(panel().textContent).not.toContain('搜索目录及子目录');
+        const navigation = main.querySelector('.workbench-tabs__navigation .workbench-compact-navigation__label')!;
+        expect(navigation.querySelector('strong')).toBeNull();
+        expect(navigation.querySelector('[aria-current="page"]')?.textContent).toBe('文件');
+        expect(navigation.textContent).toContain('所有项目');
+        expect(panel().querySelector('.workbench-directory')?.getAttribute('data-compact-path')).toBe('true');
         expect(panel().querySelector('[data-action="directory-menu"]')).not.toBeNull();
         for (const [action, name] of [['create-file', 'created.md'], ['create-folder', 'child']] as const) {
             const button = panel().querySelector<HTMLButtonElement>(`[data-action="${action}"]`)!;
             expect(button.disabled).toBe(false); expect(button.getAttribute('aria-label')).toBeTruthy(); expect(button.children).toHaveLength(1);
-            expect(button.querySelector('svg')).not.toBeNull(); expect(getComputedStyle(button).display).toBe('inline-flex');
+            expect(button.querySelector('svg')).not.toBeNull(); expect(getComputedStyle(button.querySelector('svg')!).width).toBe('18px'); expect(getComputedStyle(button).display).toBe('inline-flex');
             button.click(); await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull());
             document.querySelector<HTMLInputElement>('dialog input')!.value = name;
             document.querySelector('dialog form')!.dispatchEvent(new Event('submit', {bubbles: true, cancelable: true}));

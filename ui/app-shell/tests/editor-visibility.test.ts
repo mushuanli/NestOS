@@ -2,7 +2,7 @@
 import { expect, it, vi } from 'vitest';
 import { connectEditorLifecycle } from '../src/browser/editor-connector';
 
-function fixture(chatFromFile?: import('@itookit/ui-common').EditorHostContext['chatFromFile']) {
+function fixture(chatFromFile?: import('@itookit/ui-common').EditorHostContext['chatFromFile'], toggleSidebar?: () => void) {
     const events = new Map<string, (event: any) => Promise<void>>();
     const ui = { on: (name: string, callback: any) => { events.set(name, callback); return () => {}; },
         getNode: () => undefined, updateNodeMetadata: vi.fn() };
@@ -13,7 +13,7 @@ function fixture(chatFromFile?: import('@itookit/ui-common').EditorHostContext['
         return { destroy: vi.fn(async () => { mount.replaceChildren(); }), flushPendingSave: vi.fn(async () => {}), on: () => () => {} };
     });
     const container = document.createElement('div');
-    const lifecycle = connectEditorLifecycle(ui as any, engine as any, container, factory as any, { hostContext: { chatFromFile } });
+    const lifecycle = connectEditorLifecycle(ui as any, engine as any, container, factory as any, { hostContext: { chatFromFile, toggleSidebar } });
     const select = (id: string) => events.get('sessionSelected')!({ item: { id, type: 'file', metadata: { title: id, custom: { _extension: '.md' } } } });
     return { read, factory, container, lifecycle, select };
 }
@@ -79,5 +79,15 @@ it('passes the host chat capability through the generic editor connector', async
         await f.select('/note.md');
         await vi.waitFor(() => expect(f.factory).toHaveBeenCalledOnce());
         expect(f.factory.mock.calls[0][1].hostContext.chatFromFile).toBe(chat);
+    } finally { await f.lifecycle(); }
+});
+
+it('keeps the host navigation callback when a file editor is connected', async () => {
+    const back = vi.fn(), f = fixture(undefined, back);
+    try {
+        await f.select('/note.md');
+        await vi.waitFor(() => expect(f.factory).toHaveBeenCalledOnce());
+        f.factory.mock.calls[0][1].hostContext.toggleSidebar();
+        expect(back).toHaveBeenCalledOnce();
     } finally { await f.lifecycle(); }
 });

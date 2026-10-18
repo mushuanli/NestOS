@@ -1,3 +1,5 @@
+import {randomUUID} from '@itookit/common';
+
 export interface FileRecovery { base: string; text: string; }
 
 /** Per-tab small drafts are synchronous; larger documents use browser storage without an RPC. */
@@ -8,7 +10,7 @@ export class FileRecoveryStore {
         let tab = 'unavailable';
         try {
             const existing = sessionStorage.getItem('mindos.file-recovery.tab');
-            tab = existing ?? crypto.randomUUID();
+            tab = existing ?? randomUUID();
             if (!existing) sessionStorage.setItem('mindos.file-recovery.tab', tab);
         } catch { this.available = false; }
         this.key = 'mindos.file-recovery.v1:' + JSON.stringify([tab, scope, path]);

@@ -1,3 +1,4 @@
+import {writePageHistory} from './navigation/page-history';
 import {withInitialDirectory} from './browser/initial-directory';
 import {OpenedViewProjection} from './lifecycle/opened-view';
 import {openInitialView} from './lifecycle/initial-view';
@@ -320,7 +321,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 onSidebarReady: revealSidebar,
                 uiPersistence, workbenchState,
-                onSelect: (id, mode = 'replace') => selectionHistory(elementId, id, mode),
+                onSelect: (id, mode = 'push') => selectionHistory(elementId, id, mode),
                 hostContext: { chatFromFile, toggleSidebar: collapsed => sidebarEl.classList.toggle('is-collapsed', collapsed ?? !sidebarEl.classList.contains('is-collapsed')), navigate: handleNavigationRequest } });
             own(module.dispose);
             await module.workbench.start(); managerCache.set(elementId, module.workbench);
@@ -402,7 +403,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             chatFromFile,
             aiConfig: { enabled: aiEnabled ?? true },
             onNavigate:      async (req: NavigationRequest) => handleNavigationRequest(req),
-            onSessionChange: (sessionId) => selectionHistory(elementId, sessionId, 'replace'),
+            onSessionChange: (sessionId) => selectionHistory(elementId, sessionId, 'push'),
             onSidebarToggle: (collapsed) => {
                 if (collapsed) {
                     sidebarEl.classList.add('is-collapsed');
@@ -471,16 +472,13 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (closed) return;
         const slug = reverseRouteMap[wsId] ?? wsId;
         const hash = resourceId ? `#/${slug}/${encodeURIComponent(resourceId)}` : `#/${slug}`;
-        if (location.hash !== hash) {
-            const state = { workspaceId: wsId, resourceId };
-            mode === 'push'
-                ? history.pushState(state, '', hash)
-                : history.replaceState(state, '', hash);
-        }
+        const view = visibleWorkspaceId === wsId && document.getElementById(wsId)?.querySelector<HTMLElement>('.mm-layout')?.dataset.mobileView;
+        writePageHistory(wsId, resourceId, hash, mode, view || undefined);
     };
 
+    let replayingHistory: symbol | undefined;
     const selectionHistory = (id: string, resource: string | null, mode: 'push' | 'replace'): void => {
-        if (!closed && visibleWorkspaceId === id) updateHistory(id, resource, mode);
+        if (!closed && visibleWorkspaceId === id) updateHistory(id, resource, replayingHistory ? 'replace' : mode);
     };
 
     const performNavigation = async (workspaceId: string, resourceId?: string, sourceSlug?: string): Promise<void> => {
@@ -664,13 +662,15 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     }, { signal: navigationSignal });
 
     window.addEventListener('popstate', (e) => {
-        const state = e.state as { workspaceId: string; resourceId?: string } | null;
-        if (state) {
-            performNavigation(state.workspaceId, state.resourceId);
-        } else {
-            const { slug, resource } = parseWorkspaceHash(location.hash, resolvedDefault);
-            performNavigation(resolveTarget(slug, resource), resource, slug);
-        }
+        const state = e.state as { workspaceId: string; resourceId?: string; mobileView?: string } | null;
+        const expectedHash = location.hash;
+        const {slug, resource} = parseWorkspaceHash(location.hash, resolvedDefault);
+        const replay = Symbol(); replayingHistory = replay;
+        void performNavigation(state?.workspaceId ?? resolveTarget(slug, resource), state?.resourceId ?? resource, state ? undefined : slug)
+            .then(() => {
+                const layout = visibleWorkspaceId && document.getElementById(visibleWorkspaceId)?.querySelector<HTMLElement>('.mm-layout');
+                if (!closed && layout && location.hash === expectedHash && ['list', 'detail'].includes(state?.mobileView ?? '')) layout.dataset.mobileView = state!.mobileView;
+            }).finally(() => {if (replayingHistory === replay) replayingHistory = undefined;});
     }, { signal: navigationSignal });
 
     // ── 9. Initial navigation ──────────────────────────────────────────────────

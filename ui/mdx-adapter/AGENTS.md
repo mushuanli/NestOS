@@ -17,3 +17,7 @@ MindOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJ
 运行：`pnpm --filter @itookit/mdx-adapter typecheck` / `test` / `build`。
 
 文件窗口入口经 EditorOptions.mountWindowList → core:titlebar.mountActions 加入编辑器已有标题栏；插槽通过公开 data-editor-mobile-navigation 标记接管手机导航并在销毁时释放。适配层启用 overflowActions，把次要按钮收进原标题栏更多菜单；不再在编辑器之外加同名标题栏。
+
+标题栏 presentButton 通过公开按钮挂载钩子接入响应式显示：手机返回图标、桌面侧栏图标；点击仍经过编辑器原有重命名/保存屏障，再委托宿主导航。
+
+Markdown 文件默认通过 defaultEditorFactory 以 render 模式打开，大文件语法预算不能强制改成 edit；显式 initialMode 仍保留。纯文本继续源码显示，不启用 Markdown 解析。

@@ -225,7 +225,7 @@ durable-kernel 的 `taskEntries`（`listTasks`/`listTaskIds` 共用）改为：�
 
 针对 WebKitGTK 录制中的 `pnpm-lock.yaml` 被默认 Markdown 预览解析，通用文件页、项目文件和 Session 文件现在统一传入 `contentFormat`。`fileContentFormat` 根据文件注册表保留 `.md/.markdown/.mdx` 及 `.prj/.mind/.anki/.email/.private` 等 Markdown 文档；其他扩展名和无扩展名文件走可编辑源码。专用编辑器选择仍由原 resolver 决定。默认 MDX 工厂不再覆盖显式的 edit 模式；源码模式只加载核心编辑、标题栏和自动保存，不启用 Markdown 语言、预览和任务等插件，禁用预览切换，打印通过文本节点生成，避免把源码当 HTML。只读能力仍取自文件视图。
 
-超过 256 KiB UTF-8、5000 行或单行 10000 UTF-16 单元的 Markdown 默认先打开源码，显示提示，用户仍可主动切换阅读模式。大文档源码首次打开不启用 CodeMirror Markdown 语法分析。此为集中定义的初始阈值，不是 300 ms 延迟保证；主动预览仍使用现有主线程解析，并未实现 Worker 或任意长任务的中途抢占。
+Markdown 默认进入阅读渲染模式，超过 256 KiB UTF-8、5000 行或单行 10000 UTF-16 单元也不覆盖宿主选择的初始模式。大文档仍关闭 CodeMirror Markdown 语法分析与源码自动换行；显式以编辑模式打开时保留大文件提示。阈值约束源码语法能力，不承诺预览延迟；词法分析现已支持 Worker，HTML 生成与 DOM/插件更新仍在主线程。
 
 任务插件在整篇文档不存在 `[ ]/[x]/[X]` 候选时直接跳过额外 lexer；有候选时保留原 AST 定位，不采用容易误判代码块、表格和嵌套结构的逐行替换。行号查询改为一次扫描行首偏移，再二分查找。完整渲染耗时达到 50 ms 时输出 `[MDX render]`，分别记录 beforeParse、parse、afterRender、DOM 注入、插件后处理与总耗时；这里只记录字符数和时长，不记录正文。DOM 注入计时不等于最终布局与绘制耗时。
 

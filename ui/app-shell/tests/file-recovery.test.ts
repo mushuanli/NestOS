@@ -22,6 +22,18 @@ async function file(original = 'Server content', path = '/note.md') {
     return {editor, mount, emit, factory, saved() {saved = text; emit('saved');}, store: new FileRecoveryStore('documents', path)};
 }
 
+it.each(['missing', 'throws'])('stores recovery drafts when native randomUUID %s over HTTP', async native => {
+    vi.stubGlobal('crypto', { getRandomValues: crypto.getRandomValues.bind(crypto),
+        randomUUID: native === 'missing' ? undefined : () => {throw new Error('Unavailable in this context');} });
+    const f = await file();
+    expect(f.mount.querySelector('[data-file-recovery-error]')).toBeNull();
+    expect(sessionStorage.getItem('mindos.file-recovery.tab')).toMatch(/^[\da-f]{8}-[\da-f]{4}-4[\da-f]{3}-[89ab][\da-f]{3}-[\da-f]{12}$/i);
+    f.editor.setText('HTTP draft');
+    await vi.waitFor(async () => expect((await f.store.read())?.text).toBe('HTTP draft'));
+    expect(f.mount.querySelector('[data-file-recovery-error]')).toBeNull();
+    const next = await file(); expect(next.editor.getText()).toBe('HTTP draft');
+});
+
 it('retains unsaved edits through a failed save and restores them after rebuilding the page', async () => {
     const first = await file(); first.editor.setText('Offline edits'); first.emit('saveError');
     await vi.waitFor(async () => expect((await first.store.read())?.text).toBe('Offline edits'));

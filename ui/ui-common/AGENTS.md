@@ -73,3 +73,5 @@ EditorOptions 的第二个泛型参数描述编辑器专属 initialData，本包
 - OcrSettingsForm 对相同配置保留输入 DOM 和保存反馈；失败替换内容后清除渲染缓存，下一次读取成功必须能恢复表单。
 
 - EditorOptions.mountWindowList 向已有编辑器标题栏挂载宿主窗口切换按钮并返回释放函数；它与用于聊天完整导航的 mountCompactNavigation 分开使用，避免重复标题和侧栏按钮。
+
+- installNavigationButtonPresentation 只管理标题栏按钮的响应式图标及 title/aria-label：手机返回上一页、桌面侧栏切换；不持有浏览器历史、不替换原点击处理器。宿主拥有返回行为，销毁时释放媒体查询监听。

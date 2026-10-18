@@ -1,3 +1,4 @@
+import {backToPreviousPage} from '../navigation/page-history';
 import { createMindOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { connectEditorLifecycle } from '../browser/editor-connector';
 import { resolveFileEditor } from '../browser/types';
@@ -71,7 +72,9 @@ export class Workbench {
         const sharedHostContext: EditorHostContext = {
             chatFromFile: config.chatFromFile,
             toggleSidebar: (_collapsed?: boolean) => {
-                this.vfsUI.toggleSidebar();
+                const layout = config.editorContainer.closest<HTMLElement>('.mm-layout');
+                if (layout && window.matchMedia?.('(max-width: 768px)').matches) backToPreviousPage(() => {layout.dataset.mobileView = 'list';});
+                else this.vfsUI.toggleSidebar();
             },
             saveContent: async (nodeId: string, content: string) => {
                 await this.engine.driver.writeContent(nodeId, content);
@@ -91,6 +94,7 @@ export class Workbench {
             config.editorContainer,
             this.enhancedEditorFactory,
             {
+                navigationLabel: config.uiOptions?.title ?? t('project.files'),
                 fileTypes: config.fileTypes,
                 resolveEditor: resolveFileEditor(config.fileTypes, config.customEditorResolver),
                 hostContext: sharedHostContext,

@@ -1,7 +1,7 @@
 import { createMDxEditor as createEditor, defaultEditorFactory as createDefaultEditor, fileReference,
     type MDxEditor, type PluginConfig, type MDxEditorFactoryConfig } from '@itookit/mdxeditor';
 import { t } from '@itookit/common';
-import { editorFilePath, normalizeEditorOptions, type EditorOptions } from '@itookit/ui-common';
+import { installNavigationButtonPresentation, editorFilePath, normalizeEditorOptions, type EditorOptions } from '@itookit/ui-common';
 import { EngineMetadataStore } from './metadata-store';
 import { createAssetProvider } from './assets';
 import { createDocumentHost } from './document-host';
@@ -35,6 +35,12 @@ function pluginDefaults(options: MDxAdapterOptions, path?: string): Record<strin
         onSidebarToggle: titlebar.onSidebarToggle ?? (options.hostContext ? () => options.hostContext!.toggleSidebar() : undefined),
         saveCallback: async (editor: MDxEditor) => { await editor.save(); },
         overflowActions: titlebar.overflowActions ?? true,
+        presentButton: (id: string, button: HTMLButtonElement) => {
+            const provided = typeof titlebar.presentButton === 'function' ? titlebar.presentButton(id, button) : undefined;
+            const navigation = id === 'toggle-sidebar' ? installNavigationButtonPresentation(button) : undefined;
+            if (!navigation && typeof provided !== 'function') return;
+            return () => {navigation?.(); if (typeof provided === 'function') provided();};
+        },
         mountActions: titlebar.mountActions ?? (options.mountWindowList ? (container: HTMLElement) => {
             container.dataset.editorMobileNavigation = 'embedded';
             const cleanup = options.mountWindowList!(container);

@@ -1,4 +1,5 @@
-import { ACTION_ICONS, t } from '@itookit/common';
+import {installNavigationButtonPresentation} from '@itookit/ui-common';
+import {backToPreviousPage} from './page-history';
 import { VFS_DOM_EVENTS } from '@itookit/vfs-ui';
 
 function hasEditorContent(editor: HTMLElement): boolean {
@@ -16,9 +17,7 @@ export function setupMobileWorkspaceView(layout: HTMLElement, sidebar: HTMLEleme
     const back = document.createElement('button');
     back.type = 'button';
     back.className = 'mm-mobile-back';
-    back.innerHTML = ACTION_ICONS.sidebar;
-    back.title = t('workspace.mobile.showSidebar');
-    back.setAttribute('aria-label', t('workspace.mobile.showSidebar'));
+    const cleanupButton = installNavigationButtonPresentation(back);
     layout.appendChild(back);
     layout.dataset.mobileView = initialDetail ? 'detail' : 'list';
     let hadContent = false;
@@ -42,8 +41,8 @@ export function setupMobileWorkspaceView(layout: HTMLElement, sidebar: HTMLEleme
         layout.dataset.mobileView = 'list';
     };
     const showDetail = () => { layout.dataset.mobileView = 'detail'; };
-    back.addEventListener('click', showList);
+    back.addEventListener('click', () => backToPreviousPage(showList));
     sidebar.addEventListener(VFS_DOM_EVENTS.resourceActivated, showDetail);
     sync();
-    return () => { observer.disconnect(); back.remove(); sidebar.removeEventListener(VFS_DOM_EVENTS.resourceActivated, showDetail); };
+    return () => { cleanupButton(); observer.disconnect(); back.remove(); sidebar.removeEventListener(VFS_DOM_EVENTS.resourceActivated, showDetail); };
 }

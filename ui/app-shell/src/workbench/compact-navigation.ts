@@ -1,3 +1,4 @@
+import {installNavigationButtonPresentation} from '@itookit/ui-common';
 import {openedButton} from './opened-button';
 import {ACTION_ICONS, t} from '@itookit/common';
 
@@ -12,11 +13,13 @@ export function compactNavigation(container: HTMLElement, context: string, back:
     const title = document.createElement('strong'), project = document.createElement('small');
     project.textContent = context; project.title = context; project.hidden = !context; label.append(title, project);
     const opened = openedButton(open);
-    root.append(button(ACTION_ICONS.sidebar, t('workspace.mobile.showSidebar'), back), label, opened.button); container.append(root);
+    const navigate = button(ACTION_ICONS.sidebar, t('workspace.sidebar.toggle'), back);
+    const cleanup = installNavigationButtonPresentation(navigate);
+    root.append(navigate, label, opened.button); container.append(root);
     return {update(name: string, total: number, currentContext = context, navigationLabel?: HTMLElement) {
         if (navigationLabel) { if (label.firstElementChild !== navigationLabel) label.replaceChildren(navigationLabel); }
         else if (label.firstElementChild !== title) label.replaceChildren(title, project);
         project.textContent = currentContext; project.title = currentContext; project.hidden = !currentContext;
         title.textContent = name; title.title = name; opened.update(total);
-    }, destroy() { root.remove(); }};
+    }, destroy() { cleanup(); root.remove(); }};
 }

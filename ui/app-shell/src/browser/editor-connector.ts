@@ -28,6 +28,7 @@ export interface ConnectOptions<Node extends VFSNodeUI = VFSNodeUI> {
     workbenchState?: WorkbenchStatePort;
     refreshFileMetadata?: boolean;
     canCreateEntries?: boolean;
+    navigationLabel?: string;
     [key: string]: any;
 }
 interface OpenView { node: VFSNodeUI; editor?: IEditor; lease?: EditorLease; cancel?: () => void }
@@ -36,7 +37,7 @@ const replacePrefix = (path: string, old: string, next: string) => path === old 
 /** Each open file owns its editor and save coordinator independently of navigation. */
 export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, container: HTMLElement,
     factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void>; openResource(path: string): Promise<void>; getActiveResourceId(): string | null } {
-    const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, emptyMessage, saveDebounceMs: _debounce, ...extra } = options;
+    const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, emptyMessage, navigationLabel, saveDebounceMs: _debounce, ...extra } = options;
     if (files.fs !== engine) throw new Error('Editor file context differs from its file tree');
     const revisions = new Map<string, string | undefined>();
     const loads = new LatestViewLoad(), pending = new Set<Promise<void>>();
@@ -46,6 +47,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         notice.textContent = error instanceof Error ? error.message : String(error); tabs.content.append(notice);
     };
     const tabs = new WorkbenchTabs<OpenView>(container, {
+        navigation: navigationLabel,
         describe: async tab => ({ location: tab.id }),
         activate: async id => { if (id === '/') await openDirectory(id); else await openResource(id); }, dispose: disposeTab,
         empty: () => { placeholder(); onEditorCreated?.(null); }, error: report,
@@ -70,7 +72,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 if (!await engine.driver.getNode(path)) throw new FSError('ENOENT', 'File not found', 'open', path);
                 await openResource(path); await selectionWork;
                 if (anchor && tabs.current?.id === path) await tabs.current.value?.editor?.navigateTo({ elementId: anchor });
-            }, chatFromFile: external?.chatFromFile, toggleSidebar: () => vfs.toggleSidebar(),
+            }, chatFromFile: external?.chatFromFile, toggleSidebar: () => external?.toggleSidebar ? external.toggleSidebar() : vfs.toggleSidebar(),
             navigate: async (request: NavigationRequest) => { await external?.navigate?.(request); }, saveContent: persist };
     }
     async function persist(path: string, content: string): Promise<void> {

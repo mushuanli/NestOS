@@ -159,7 +159,7 @@ it('keeps sidebar and window controls together for standalone documents and pres
         const buttons = navigation.querySelectorAll<HTMLButtonElement>('button');
         expect(layout.dataset.mobileHeader).toBe('standalone');
         const icon = document.createElement('div'); icon.innerHTML = ACTION_ICONS.sidebar;
-        expect(buttons[0].firstElementChild!.isEqualNode(icon.firstElementChild)).toBe(true); expect(buttons[0].getAttribute('aria-label')).toBe(t('workspace.mobile.showSidebar'));
+        expect(buttons[0].firstElementChild!.isEqualNode(icon.firstElementChild)).toBe(true); expect(buttons[0].getAttribute('aria-label')).toBe(t('workspace.sidebar.toggle'));
         icon.innerHTML = ACTION_ICONS.opened; expect(buttons[1].firstElementChild!.isEqualNode(icon.firstElementChild)).toBe(true); expect(navigation.textContent).toContain('Document'); expect(navigation.textContent).toContain('Personal');
         buttons[1].click(); const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
         expect(dialog.open).toBe(true); expect(dialog.contains(tabs.opened)).toBe(true); dialog.close();

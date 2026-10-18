@@ -22,6 +22,7 @@ it('uses the existing file title bar for windows and overflow actions while reta
         await vi.waitFor(() => expect(layout.dataset.mobileHeader).toBe('embedded'));
         expect(tab.panel.querySelectorAll('.mdx-editor-titlebar')).toHaveLength(1);
         expect(tab.panel.querySelectorAll('.workbench-window-list')).toHaveLength(1);
+        expect(tab.panel.querySelector('[data-button-id="toggle-sidebar"]')?.getAttribute('aria-label')).toBe('返回上一页');
         const title = tab.panel.querySelector<HTMLInputElement>('.mdx-editor-titlebar__title')!; expect(title.value).toBe('note.md');
         const menu = tab.panel.querySelector<HTMLDetailsElement>('.mdx-editor-titlebar__menu')!;
         expect(menu.querySelector('[data-button-id="copy-content"]')).not.toBeNull(); expect(menu.querySelector('[data-button-id="save-action"]')).not.toBeNull();

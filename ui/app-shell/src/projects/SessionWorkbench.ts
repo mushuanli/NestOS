@@ -1,3 +1,4 @@
+import {backToPreviousPage} from '../navigation/page-history';
 import { SessionTaskView } from './SessionTaskView';
 import { ViewRefresh } from '../lifecycle/view-refresh';
 import {createRecoverableFileEditor} from '../browser/file-recovery';
@@ -272,6 +273,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.sessionsReady = Promise.resolve(options.projects?.sessions ?? this.backend.projectSessions());
         void this.sessionsReady.catch(() => {});
         this.tabs = new WorkbenchTabs(this.container, {
+            navigation: t('project.workspace'),
             describe: tab => this.describeOpenTab(tab.id),
             activate: id => this.openResource(id), dispose: tab => this.disposeTab(tab),
             empty: () => { this.clearEditorFields(); this.showWelcome(); this.onSelect('', 'replace'); },
@@ -1324,7 +1326,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private toggleSidebar(): void {
         const layout = this.sidebar.closest<HTMLElement>('.mm-layout');
-        if (layout && window.matchMedia('(max-width: 768px)').matches) layout.dataset.mobileView = 'list';
+        if (layout && window.matchMedia('(max-width: 768px)').matches) backToPreviousPage(() => { layout.dataset.mobileView = 'list'; });
         else this.sidebarUI?.toggleSidebar();
     }
     private installProjectNavigation(): void {

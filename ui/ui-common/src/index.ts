@@ -49,3 +49,5 @@ export type { SettingsSave } from './components/SettingsAutoSave';
 
 export type { ConversationAttachment, ConversationControls, ConversationSnapshot, ConversationMessage, ConversationRequest, RemoteAgentControls } from './interfaces/ConversationControls';
 export { conversationStatus } from './utils/conversation-status';
+
+export { installNavigationButtonPresentation } from './components/navigation-button';

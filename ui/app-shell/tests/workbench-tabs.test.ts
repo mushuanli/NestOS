@@ -113,6 +113,40 @@ it('locates same-named windows by project and path and retains their context acr
     } finally { release(); await f.tabs.destroy(); }
 });
 
+it('lists windows immediately and closes a filtered multi-selection while retaining failed and pinned windows', async () => {
+    vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () { this.open = true; });
+    vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function () { this.open = false; this.dispatchEvent(new Event('close')); });
+    const host = document.createElement('div'), slot = document.createElement('div'); document.body.append(host, slot);
+    const dispose = vi.fn(async () => {}), error = vi.fn();
+    const tabs = new WorkbenchTabs(host, { navigation: 'Workbench', activate: async id => {tabs.activate(id);}, dispose, error, empty() {} });
+    for (const id of ['one', 'two', 'three', 'pinned']) {
+        await tabs.open(id, id + '.md', false); tabs.context(id, id === 'three' ? 'Beta' : 'Alpha'); tabs.location(id, '/notes/' + id + '.md');
+    }
+    tabs.pin('pinned'); const release = tabs.mountWindowList(slot);
+    try {
+        slot.querySelector<HTMLButtonElement>('button')!.click();
+        const dialog = document.querySelector<HTMLDialogElement>('.workbench-opened-sheet')!;
+        expect(dialog.querySelectorAll('[data-opened-id]')).toHaveLength(4);
+        expect([...dialog.querySelectorAll<HTMLElement>('[data-opened-id]')].every(row => !row.hidden)).toBe(true);
+        expect(dialog.querySelector('[data-opened-id="one"] small')!.textContent).toBe('Workbench · Alpha · /notes/one.md');
+        const search = dialog.querySelector<HTMLInputElement>('input[type="search"]')!;
+        search.value = 'alpha'; search.dispatchEvent(new Event('input'));
+        expect(dialog.querySelector<HTMLElement>('[data-opened-id="three"]')!.hidden).toBe(true);
+        dialog.querySelector<HTMLInputElement>('.workbench-tabs__opened-toolbar input')!.click();
+        expect(dialog.querySelector<HTMLInputElement>('[data-opened-id="one"] input')!.checked).toBe(true);
+        expect(dialog.querySelector<HTMLInputElement>('[data-opened-id="two"] input')!.checked).toBe(true);
+        expect(dialog.querySelector<HTMLInputElement>('[data-opened-id="three"] input')!.checked).toBe(false);
+        expect(dialog.querySelector<HTMLInputElement>('[data-opened-id="pinned"] input')!.disabled).toBe(true);
+        dispose.mockRejectedValueOnce(new Error('save failed'));
+        dialog.querySelector<HTMLButtonElement>('[data-action="close-selected-tabs"]')!.click();
+        await vi.waitFor(() => expect(tabs.get('two')).toBeUndefined());
+        expect(tabs.get('one')!.failed).toBe(true); expect(tabs.get('three')).toBeDefined(); expect(tabs.get('pinned')).toBeDefined();
+        expect(error).toHaveBeenCalledOnce(); expect(dialog.open).toBe(true);
+        search.value = ''; search.dispatchEvent(new Event('input'));
+        expect(dialog.querySelector<HTMLElement>('[data-opened-id="three"]')!.hidden).toBe(false);
+    } finally { release(); await tabs.destroy(); }
+});
+
 it('fills legacy window locations on demand without opening their editors', async () => {
     vi.spyOn(HTMLDialogElement.prototype, 'showModal').mockImplementation(function () { this.open = true; });
     vi.spyOn(HTMLDialogElement.prototype, 'close').mockImplementation(function () { this.open = false; this.dispatchEvent(new Event('close')); });

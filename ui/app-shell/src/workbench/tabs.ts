@@ -2,6 +2,7 @@ import { FILE_ICONS, FILE_BROWSER_ICONS, fileTypeIcon, t } from '@itookit/common
 import { decorateButton, decorateResourceButton } from './controls';
 import type { IEditor } from '@itookit/ui-common';
 import type { WorkbenchSnapshot } from './state';
+import {backToPreviousPage} from '../navigation/page-history';
 import {openedButton} from './opened-button';
 import {compactNavigation} from './compact-navigation';
 
@@ -16,6 +17,7 @@ export interface WorkbenchTab<T> {
     subscriptions: (() => void)[];
 }
 interface TabActions<T> {
+    navigation?: string;
     describe?(tab: WorkbenchTab<T>): Promise<{ context?: string; location?: string }>;
     activate(id: string): Promise<void>;
     dispose(tab: WorkbenchTab<T>): Promise<void>;
@@ -55,7 +57,7 @@ export class WorkbenchTabs<T> {
         this.navigation.className = 'workbench-tabs__navigation';
         this.standalone = compactNavigation(this.navigation, '', () => {
             const layout = container.closest<HTMLElement>('.mm-layout');
-            if (layout) layout.dataset.mobileView = 'list';
+            if (layout) backToPreviousPage(() => { layout.dataset.mobileView = 'list'; });
         }, () => this.showOpened());
         container.append(this.navigation, this.bar, this.body);
         for (const tab of restored ?? []) {
@@ -86,7 +88,7 @@ export class WorkbenchTabs<T> {
         const header = document.createElement('div'); header.className = 'workbench-opened-sheet__header'; header.append(heading, close);
         const search = document.createElement('input'); search.type = 'search'; search.className = 'workbench-opened-sheet__search';
         search.placeholder = t('workbench.findOpened'); search.setAttribute('aria-label', search.placeholder);
-        search.oninput = () => { this.openedQuery = search.value; this.filterOpened(); };
+        search.oninput = () => { this.openedQuery = search.value; this.render(); };
         const placeholder = document.createComment('opened documents'); this.opened.before(placeholder);
         dialog.append(header, search, this.opened); document.body.append(dialog); this.openedDialog = dialog;
         dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
@@ -262,18 +264,21 @@ export class WorkbenchTabs<T> {
     private openedLabel(label: HTMLButtonElement, tab: WorkbenchTab<T>): void {
         const text = label.lastElementChild!; text.className = 'workbench-tabs__opened-text';
         const title = document.createElement('span'); title.textContent = tab.title; text.replaceChildren(title);
-        const context = [tab.context, tab.location].filter(Boolean).join(' · ');
+        const context = [this.actions.navigation, tab.context, tab.location].filter(Boolean).join(' · ');
         if (context) {
             const location = document.createElement('small'); location.textContent = context; text.append(location);
             label.title = context; label.setAttribute('aria-label', `${tab.title} — ${context}`);
         }
     }
     private filterOpened(): void {
-        const query = this.openedQuery.trim().toLocaleLowerCase();
         for (const row of this.opened.querySelectorAll<HTMLElement>('[data-opened-id]')) {
             const tab = this.get(row.dataset.openedId!);
-            row.hidden = !!query && ![tab?.title, tab?.context, tab?.location].filter(Boolean).join('\n').toLocaleLowerCase().includes(query);
+            row.hidden = !tab || !this.matchesOpened(tab);
         }
+    }
+    private matchesOpened(tab: WorkbenchTab<T>): boolean {
+        return [this.actions.navigation, tab.title, tab.context, tab.location].filter(Boolean).join('\n')
+            .toLocaleLowerCase().includes(this.openedQuery.trim().toLocaleLowerCase());
     }
     private contextLabel(context: string): HTMLElement {
         const label = document.createElement('span'); label.className = 'workbench-tabs__context';
@@ -283,13 +288,13 @@ export class WorkbenchTabs<T> {
     private openedToolbar(): HTMLElement {
         const bar = document.createElement('div'); bar.className = 'workbench-tabs__opened-toolbar';
         const all = document.createElement('input'); all.type = 'checkbox'; all.setAttribute('aria-label', t('workbench.selectAllOpened'));
-        const eligible = this.values().filter(tab => !tab.pinned);
+        const eligible = this.values().filter(tab => !tab.pinned && this.matchesOpened(tab));
         all.checked = eligible.length > 0 && eligible.every(tab => this.selected.has(tab.id));
         all.indeterminate = !all.checked && eligible.some(tab => this.selected.has(tab.id)); all.disabled = !eligible.length;
-        all.onchange = () => { this.selected.clear(); if (all.checked) eligible.forEach(tab => this.selected.add(tab.id)); this.render(); };
+        all.onchange = () => { eligible.forEach(tab => {if (all.checked) this.selected.add(tab.id); else this.selected.delete(tab.id);}); this.render(); };
         const label = document.createElement('label'); label.append(all, document.createTextNode(t('workbench.selectAllOpened')));
         const close = this.button(t('workbench.closeSelected'), () => this.run(this.closeSelected())); close.dataset.action = 'close-selected-tabs';
-        decorateButton(close, FILE_BROWSER_ICONS.close, t('workbench.closeSelected')); close.disabled = !eligible.some(tab => this.selected.has(tab.id));
+        decorateButton(close, FILE_BROWSER_ICONS.close, `${t('workbench.closeSelected')} (${this.selected.size})`, true); close.disabled = !this.selected.size;
         bar.append(label, close); return bar;
     }
     private async closeSelected(): Promise<void> {

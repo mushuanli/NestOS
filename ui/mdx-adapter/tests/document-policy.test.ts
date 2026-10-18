@@ -28,12 +28,12 @@ it.each(['pnpm-lock.yaml', 'package.json', 'debug.log', 'LICENSE', 'source.txt']
     } finally { await editor.destroy(); }
 });
 
-it('keeps explicit source mode and Markdown document aliases while deferring large previews', async () => {
+it('keeps explicit source mode and Markdown document aliases', async () => {
     const render = vi.spyOn(MDxRenderer.prototype, 'render');
     for (const options of [
         { target: { kind: 'file' as const, path: '/note.md' }, initialMode: 'edit' as const, initialContent: '# normal' },
-        { target: { kind: 'file' as const, path: '/large.md' }, initialContent: 'line\n'.repeat(5001) },
-        { target: { kind: 'file' as const, path: '/one-line.md' }, initialContent: 'x'.repeat(10_002) },
+        { target: { kind: 'file' as const, path: '/large.md' }, initialMode: 'edit' as const, initialContent: 'line\n'.repeat(5001) },
+        { target: { kind: 'file' as const, path: '/one-line.md' }, initialMode: 'edit' as const, initialContent: 'x'.repeat(10_002) },
     ]) {
         const element = document.createElement('div');
         const editor = await defaultEditorFactory(element, options) as MDxEditor;
@@ -43,6 +43,22 @@ it('keeps explicit source mode and Markdown document aliases while deferring lar
     const editor = await defaultEditorFactory(document.createElement('div'), { target: { kind: 'file', path: '/lesson.prj' },
         contentFormat: 'markdown', initialContent: '# Lesson' }) as MDxEditor;
     expect(editor.getMode()).toBe('render'); expect(render).toHaveBeenCalledOnce(); await editor.destroy();
+});
+
+it('opens Markdown in preview and preserves content across manual mode switches', async () => {
+    const content = '# Small note';
+    const mount = document.createElement('div'); document.body.append(mount);
+    const editor = await defaultEditorFactory(mount, { target: { kind: 'file', path: '/note.md' }, initialContent: content }) as MDxEditor;
+    try {
+        expect(editor.getMode()).toBe('render');
+        expect(editor.getRenderContainer()!.textContent).toContain(content.startsWith('#') ? 'Small note' : content.trim());
+        expect(mount.querySelector('.mdx-source-notice')).toBeNull();
+        expect(editor.isDirty()).toBe(false);
+        await editor.switchToMode('edit');
+        expect(editor.getMode()).toBe('edit'); expect(editor.getText()).toBe(content);
+        await editor.switchToMode('render');
+        expect(editor.getMode()).toBe('render'); expect(editor.isDirty()).toBe(false);
+    } finally { await editor.destroy(); }
 });
 
 it('opens the repository lockfile without a Markdown parser and respects readonly access', async () => {
@@ -104,7 +120,7 @@ it('exposes independent source and preview wrapping through the titlebar without
 
 it('keeps large source wrapping off by default but allows opting in', async () => {
     const editor = await defaultEditorFactory(document.createElement('div'), {
-        initialContent: 'x'.repeat(10_001),
+        initialContent: 'x'.repeat(10_001), initialMode: 'edit',
     }) as MDxEditor;
     try {
         expect(editor.getLineWrapping()).toBe(false);

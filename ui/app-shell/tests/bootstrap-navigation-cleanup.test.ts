@@ -306,3 +306,35 @@ it('shares a pending workspace load and opens only the latest requested resource
         expect(location.hash).toBe('#/settings/new-file');
     } finally { await app.destroy(); }
 });
+
+it('records resource selections and replays Back without pushing another page', async () => {
+    navigationDOM();
+    const app = await initTestApp({services: makeRuntime(), workspaces: [workspace], ui: testUI()});
+    try {
+        await app.navigate('settings', 'one');
+        lifecycle.selection?.('two'); expect(history.state.resourceId).toBe('two');
+        const push = vi.spyOn(history, 'pushState');
+        lifecycle.open.mockImplementation(async (id: string) => {lifecycle.selection?.(id);});
+        history.back(); await vi.waitFor(() => expect(location.hash).toBe('#/settings/one'));
+        await vi.waitFor(() => expect(lifecycle.open).toHaveBeenLastCalledWith('one'));
+        expect(push).not.toHaveBeenCalled(); expect(history.state.resourceId).toBe('one');
+    } finally {await app.destroy();}
+});
+
+it('releases replay mode after the newest Back navigation even when an older page is still pending', async () => {
+    navigationDOM(); const app = await initTestApp({services: makeRuntime(), workspaces: [workspace], ui: testUI()});
+    let finish!: () => void;
+    const slow = new Promise<void>(resolve => {finish = resolve;});
+    lifecycle.open.mockImplementation(async (id: string) => {if (id === 'slow') await slow; else lifecycle.selection?.(id);});
+    const replay = (id: string) => {
+        const state = {workspaceId: workspace.elementId, resourceId: id, mindosPage: 1};
+        history.replaceState(state, '', '#/settings/' + id); window.dispatchEvent(new PopStateEvent('popstate', {state}));
+    };
+    try {
+        replay('slow'); await vi.waitFor(() => expect(lifecycle.open).toHaveBeenCalledWith('slow'));
+        replay('fast'); await vi.waitFor(() => expect(lifecycle.open).toHaveBeenLastCalledWith('fast'));
+        await new Promise(resolve => setTimeout(resolve, 0));
+        const push = vi.spyOn(history, 'pushState'); lifecycle.selection?.('user-selected');
+        expect(push).toHaveBeenCalledOnce(); expect(history.state.resourceId).toBe('user-selected');
+    } finally {finish(); await app.destroy();}
+});

@@ -15,3 +15,5 @@ MindOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJ
 核心只能使用自己的公共接口，不得反向依赖适配包或其他内部包。新增宿主业务逻辑放在这里。消息 ID、Session 和权限上下文不得进入核心契约。
 
 运行：`pnpm --filter @itookit/mdx-adapter typecheck` / `test` / `build`。
+
+文件窗口入口经 EditorOptions.mountWindowList → core:titlebar.mountActions 加入编辑器已有标题栏；插槽通过公开 data-editor-mobile-navigation 标记接管手机导航并在销毁时释放。适配层启用 overflowActions，把次要按钮收进原标题栏更多菜单；不再在编辑器之外加同名标题栏。

@@ -2,7 +2,7 @@ import {createRecoverableFileEditor} from '../browser/file-recovery';
 import { PROJECT_EDITOR_MAX_BYTES, showLargeFilePreview } from './large-file-preview';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { buildRenamedFilename, traceBoot, t } from '@itookit/common';
-import type { EditorFactory, EditorHostContext, IEditor } from '@itookit/ui-common';
+import type { EditorFactory, EditorHostContext, EditorOptions, IEditor } from '@itookit/ui-common';
 import { FSError, type FSNode, type FileSystemContextOwner } from '@itookit/vfs-core';
 import { fileContentFormat } from '../browser/file-format';
 import { ViewLoad, ViewLoadCancelled } from '../lifecycle/view-load';
@@ -15,6 +15,7 @@ interface ProjectFileOptions {
     changed(): void;
     host: EditorHostContext;
     recoveryScope?: string;
+    mountWindowList?: EditorOptions['mountWindowList'];
 }
 interface OpenedProjectFile { node: FSNode; editor?: IEditor; context: FileSystemContextOwner; previewCleanup?: () => void }
 
@@ -68,6 +69,7 @@ async function createTextEditor(context: FileSystemContextOwner, path: string, c
     const filename = path.split('/').pop()!;
     return traceBoot('projectFile.editor', () => createRecoverableFileEditor(options.factory, mount, {
         ...fileContentFormat(path), target: { kind: 'file', path }, files: context.context,
+        mountWindowList: options.mountWindowList,
         initialContent: content, readOnly, signal: load.signal, title: buildRenamedFilename(filename, filename).title,
         hostContext: { ...options.host,
             saveContent: readOnly ? undefined : async (file, text) => {

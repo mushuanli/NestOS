@@ -1,4 +1,4 @@
-import { FILE_BROWSER_ICONS, t } from '@itookit/common';
+import { ACTION_ICONS, FILE_BROWSER_ICONS, t } from '@itookit/common';
 import { decorateButton } from './controls';
 import type { DirectoryListOptions } from './directory-list';
 
@@ -8,6 +8,7 @@ export class DirectoryToolbar {
     readonly input = document.createElement('input');
     private readonly group = document.createElement('div');
     private focused = false;
+    private localSearch?: HTMLButtonElement;
     constructor(private readonly options: DirectoryListOptions, refresh: () => void, private readonly render: () => void) {
         this.element.className = 'workbench-directory__toolbar'; this.element.dataset.overflow = String(!!options.menu);
         if (options.parent && !options.breadcrumbs) this.element.append(this.button(t('workbench.parent'), options.parent, FILE_BROWSER_ICONS.up));
@@ -17,6 +18,11 @@ export class DirectoryToolbar {
     get query(): string { return this.input.value; }
     get filtering(): boolean { return !!this.options.search && !!this.query.trim(); }
     get searching(): boolean { return !!this.query.trim() || this.focused; }
+    sync(): void {
+        this.element.dataset.searching = String(this.searching);
+        if (this.localSearch) decorateButton(this.localSearch, this.searching ? FILE_BROWSER_ICONS.close : ACTION_ICONS.search,
+            t(this.searching ? 'project.search.clear' : 'workbench.filter'), true);
+    }
     private button(label: string, run: () => void, icon?: string, iconOnly = true): HTMLButtonElement {
         const button = document.createElement('button'); button.type = 'button'; button.textContent = label; button.onclick = run;
         return icon ? decorateButton(button, icon, label, iconOnly) : button;
@@ -43,6 +49,10 @@ export class DirectoryToolbar {
         this.input.placeholder = t(this.options.search ? 'workbench.search' : 'workbench.filter');
         this.input.setAttribute('aria-label', this.input.placeholder); this.group.append(this.input);
         if (this.options.search?.controls) this.group.append(this.options.search.controls);
+        else {
+            this.localSearch = this.button(t('workbench.filter'), () => this.searching ? this.apply('') : this.input.focus(), ACTION_ICONS.search);
+            this.localSearch.dataset.action = 'toggle-search'; this.group.append(this.localSearch);
+        }
         this.element.append(this.group);
         this.options.search?.controls?.addEventListener('change', () => this.input.focus());
         this.input.oninput = () => this.changed();

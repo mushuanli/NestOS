@@ -63,3 +63,15 @@ it('keeps query, scope and clear in order and exits focused search while abortin
     expect(signal?.aborted).toBe(true); expect(input.value).toBe(''); expect(controller.element.hidden).toBe(true); expect(group.contains(scope)).toBe(true); expect(toolbar.dataset.searching).toBe('false'); expect(panel.querySelector('table')!.hidden).toBe(false);
     controller.destroy();
 });
+
+it('offers the same search and cancel slot for a local directory filter', () => {
+    const panel = createDirectoryList({title: 'All projects', path: '/', entries: [
+        {id: 'one', name: 'First', type: 'directory'}, {id: 'two', name: 'Second', type: 'directory'}], open() {}, menu() {}});
+    document.body.append(panel);
+    const input = panel.querySelector<HTMLInputElement>('input[type="search"]')!, toggle = panel.querySelector<HTMLButtonElement>('[data-action="toggle-search"]')!;
+    expect(toggle.getAttribute('aria-label')).toBe('筛选当前目录'); toggle.click(); expect(document.activeElement).toBe(input);
+    input.value = 'Second'; input.dispatchEvent(new Event('input')); expect(panel.querySelectorAll('[data-resource-id]')).toHaveLength(1);
+    expect(toggle.getAttribute('aria-label')).toBe('清除并退出搜索'); toggle.click();
+    expect(input.value).toBe(''); expect(panel.querySelectorAll('[data-resource-id]')).toHaveLength(2);
+    expect(panel.querySelector<HTMLElement>('.workbench-directory__toolbar')!.dataset.searching).toBe('false');
+});

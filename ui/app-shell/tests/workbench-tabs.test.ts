@@ -303,7 +303,7 @@ it('opens files from the root details, filters ignored files and returns to the 
         await vi.waitFor(() => expect(refresh.disabled).toBe(false)); read.mockRestore();
         expect(main.querySelector('[data-resource-id="/hidden.log"]')).toBeNull(); expect(sidebar.textContent).toContain('完整文件名称.md');
         const toolbar = main.querySelector('.workbench-directory__toolbar')!;
-        expect([...toolbar.querySelectorAll('button')].map(button => button.title)).toEqual(['刷新列表', '新建文件', '新建目录']);
+        expect([...toolbar.querySelectorAll(':scope > button')].map(button => button.title)).toEqual(['刷新列表', '新建文件', '新建目录']);
         expect(main.querySelector('.workbench-directory__heading button')).toBeNull();
         expect(main.querySelector('[data-resource-id="/docs"] [data-row-create]')).toBeNull();
 

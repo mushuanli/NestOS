@@ -2,6 +2,7 @@ import { FILE_ICONS, FILE_BROWSER_ICONS, fileTypeIcon, t } from '@itookit/common
 import { decorateButton, decorateResourceButton } from './controls';
 import type { IEditor } from '@itookit/ui-common';
 import type { WorkbenchSnapshot } from './state';
+import {openedButton} from './opened-button';
 import {compactNavigation} from './compact-navigation';
 
 export interface WorkbenchTab<T> {
@@ -43,6 +44,7 @@ export class WorkbenchTabs<T> {
     private readonly abort = new AbortController();
     private readonly compactViews = new Set<ReturnType<typeof compactNavigation>>();
     private openedDialog?: HTMLDialogElement;
+    private readonly windowButtons = new Set<ReturnType<typeof openedButton>>();
     private openedQuery = '';
     private describing?: Promise<void>;
     constructor(private readonly container: HTMLElement, private readonly actions: TabActions<T>, restored?: WorkbenchSnapshot['tabs']) {
@@ -69,6 +71,11 @@ export class WorkbenchTabs<T> {
         this.compactViews.add(view); view.update(this.current?.title ?? '', this.entries.size);
         return () => { this.compactViews.delete(view); view.destroy(); };
     }
+    mountWindowList(container: HTMLElement): () => void {
+        const view = openedButton(() => this.showOpened()); container.append(view.button);
+        this.windowButtons.add(view); view.update(this.entries.size);
+        return () => {this.windowButtons.delete(view); view.button.remove();};
+    }
     private showOpened(): void {
         if (this.openedDialog?.open) return;
         const dialog = document.createElement('dialog'); dialog.className = 'workbench-opened-sheet';
@@ -86,7 +93,7 @@ export class WorkbenchTabs<T> {
         dialog.addEventListener('close', () => {
             placeholder.replaceWith(this.opened); dialog.remove(); this.openedDialog = undefined;
             this.openedQuery = ''; this.filterOpened();
-            this.current?.panel.querySelector<HTMLButtonElement>('.workbench-compact-navigation button[aria-haspopup]')?.focus();
+            this.current?.panel.querySelector<HTMLButtonElement>('.workbench-window-list')?.focus();
         }, {once: true});
         dialog.showModal();
         this.describeOpened();
@@ -197,6 +204,7 @@ export class WorkbenchTabs<T> {
     private render(): void {
         this.syncViewState();
         this.standalone.update(this.current?.title ?? '', this.entries.size, this.current?.context, this.current?.navigationLabel);
+        for (const view of this.windowButtons) view.update(this.entries.size);
         for (const view of this.compactViews) view.update(this.current?.title ?? '', this.entries.size);
         this.bar.replaceChildren(); this.opened.replaceChildren();
         this.opened.append(this.openedToolbar());
@@ -316,6 +324,7 @@ export class WorkbenchTabs<T> {
         this.openedDialog?.close();
         this.disposing = true;
         for (const tab of this.values()) await this.close(tab.id, false);
+        for (const view of this.windowButtons) view.button.remove(); this.windowButtons.clear();
         this.abort.abort(); this.standalone.destroy(); this.navigation.remove(); this.bar.remove(); this.body.remove(); this.opened.remove(); this.container.classList.remove('workbench-tabs');
         delete this.container.dataset.workbenchView;
         delete this.container.dataset.workbenchActivation;

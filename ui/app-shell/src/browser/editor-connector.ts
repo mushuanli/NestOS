@@ -134,6 +134,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 const createEditor = resolveEditor?.(item) ?? factory;
                 if (!createEditor) throw new Error('No suitable editor factory found.');
                 view.editor = await createRecoverableFileEditor(createEditor, mount, { ...extra, ...fileContentFormat(item.id, options.fileTypes), files, signal: load.signal,
+                    mountWindowList: container => tabs.mountWindowList(container),
                     target: { kind: 'file', path: item.id }, initialContent: text, title: item.metadata.title,
                     language: item.metadata.custom?._extension, hostContext: host() }, String(options.recoveryScope ?? engine.viewId));
             }

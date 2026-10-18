@@ -34,6 +34,12 @@ function pluginDefaults(options: MDxAdapterOptions, path?: string): Record<strin
         } : undefined),
         onSidebarToggle: titlebar.onSidebarToggle ?? (options.hostContext ? () => options.hostContext!.toggleSidebar() : undefined),
         saveCallback: async (editor: MDxEditor) => { await editor.save(); },
+        overflowActions: titlebar.overflowActions ?? true,
+        mountActions: titlebar.mountActions ?? (options.mountWindowList ? (container: HTMLElement) => {
+            container.dataset.editorMobileNavigation = 'embedded';
+            const cleanup = options.mountWindowList!(container);
+            return () => {cleanup(); delete container.dataset.editorMobileNavigation;};
+        } : undefined),
     };
     return defaults;
 }

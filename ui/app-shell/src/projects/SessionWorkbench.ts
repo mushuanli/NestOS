@@ -951,6 +951,7 @@ export class SessionWorkbench implements WorkspaceController {
                         } else {
                             const readOnly = (await context.context.fs.capabilitiesAt(target.path)).readonly;
                             editor = await load.read(async () => editor = await createRecoverableFileEditor(this.fileFactory, mount!, { ...fileContentFormat(target.path), target: { kind: 'file', path: target.path }, files: context.context,
+                                mountWindowList: container => this.tabs.mountWindowList(container),
                                 initialContent: content, signal: load.signal, title: target.path.split('/').pop(), readOnly,
                                 hostContext: { chatFromFile: this.hostContext?.chatFromFile
                                     ? reference => this.hostContext!.chatFromFile!(reference, { sessionId: target.sessionId }) : undefined,
@@ -1438,6 +1439,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (!this.projects) throw new Error('Projects unavailable');
         const project = await this.projects.forFolder(target.folder); load.check();
         const opened = await openProjectFileEditor(this.projects, target, load, {
+            mountWindowList: container => this.tabs.mountWindowList(container),
             factory: this.fileFactory, recoveryScope: 'project:' + (project?.project.id ?? target.folder), mount: () => this.editorMount(target.folder),
             showBinary: (mount, path, bytes) => this.showBinary(mount, path, bytes),
             deferCleanup: cleanup => this.finishReads(cleanup),

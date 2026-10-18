@@ -1015,6 +1015,7 @@ export const en: LocaleStrings = {
     'ocr.request': "Process this image following the system instructions.",
     'configuration.deleteConfirm': 'Delete the selected {count} configuration items?',
     'vfs.toolbar.directory': 'Folder',
+    'editor.moreActions': 'More actions',
     'editor.copyContent': 'Copy file contents',
     'editor.copySuccess': 'Copied to clipboard',
     'editor.copyFailed': 'Copy failed. Check clipboard permissions.',

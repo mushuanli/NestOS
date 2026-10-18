@@ -113,6 +113,8 @@ export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
     conversationSource?: {kind: string; label?: string};
     /** Mount host navigation in the editor header on narrow screens; return its cleanup. */
     mountCompactNavigation?(container: HTMLElement): () => void;
+    /** Mount a window switcher into an existing editor title bar; return its cleanup. */
+    mountWindowList?(container: HTMLElement): () => void;
     /** Mount host-owned resource actions in the editor's More menu; return its cleanup. */
     mountMoreMenu?(container: HTMLElement): () => void;
     /** Host-owned presentation history; viewing or editing an executor does not record usage. */

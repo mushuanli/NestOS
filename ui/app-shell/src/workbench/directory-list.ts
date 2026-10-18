@@ -68,7 +68,7 @@ export function createDirectoryList(options: DirectoryListOptions): HTMLElement 
     const render = () => {
         if (options.selectedIds) selection?.restore(options.selectedIds(), options.entries.map(entry => entry.id));
         const searching = toolbar.filtering;
-        toolbar.element.dataset.searching = panel.dataset.searching = String(toolbar.searching);
+        toolbar.sync(); panel.dataset.searching = String(toolbar.searching);
         table.hidden = searching; scroll.hidden = searching;
         if (selection) selection.bar.hidden = searching;
         if (!searching) renderEntries(body, options, toolbar.query, sort, ascending, selection);

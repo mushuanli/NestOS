@@ -243,3 +243,26 @@ HTTP v14 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClie
 项目草稿原地转正：`ProjectDraftComposer.id` 提供草稿 UUID，显式 clear 返回替代 UUID（RPC 字段为句柄创建时的快照，宿主使用返回值更新身份），`ProjectDraftPromotion.remote` 携带已确认的原生会话引用。`projectConversation` 可接收草稿 UUID，并通过 `ProjectConversationPort.conversationId` 返回稳定的宿主身份；RPC 显式传递此字段。首次原生提交 journal 与正式重开使用相同 UUID，只有已确认首 turn 才推进草稿；原生创建和 unknown 不能替代接纳证据。`SessionDraftControls.inPlace` / materialize 的 container 将同一挂载点交给正式控制器，接纳后宿主原地更新标签。详见[项目会话导航](design/project-session-navigation.md)。
 
 `SessionDraftControls.scope.select` 的可选 SessionDraftPreferences 在项目切换前捕获当前输入偏好，导航层仅转交；目标草稿编辑器按当前候选验证智能体与连接/模型后应用，不携带源文本或附件。待接纳控制器及隐藏/关闭视图不接收迟到偏好，执行锁和 Flow 引用不跨项目复制。
+
+## 原生 Harness 斜杠命令
+
+ConversationControls 的可选 commands/command 端口承接当前原生会话的命令目录和执行；snapshot.supportsSlashCommands 只在宿主声明能力时启用。piagent-driver 通过 profile.capabilities.slashCommands 协商，目录为纯数据，具体命令名与原生 RPC 留在 pi-agent 对应插件内。Claude 使用 SDK 目录及 slash prompt，Codex 将 compact/review 映射为专用控制调用，DSH 使用原生 commands/list 与 commands/execute。
+
+原生会话输入使用 NativeSlashCommandPlugin 提供候选，不混入本地 Kernel slash 操作；选择只填入输入，发送时再次验证当前目录。command 沿用 epoch、requestId、项目 revision、操作队列和 reconcile，可接纳但不产生 turnId；只有 prompt 类命令产生原生用户消息时才按该消息身份呈现。DSH command/run、command/done 以稳定 commandId 进入系统记录。未知操作跨视图保留，接纳不清除提交后的新草稿；关闭输入释放插件并拒绝迟到目录恢复弹层。
+
+
+## 原生 Harness 模型与推理能力
+
+`profile.capabilities.models` 协商可选的 `HarnessClient.models(profileId, sessionId?)` / `ConversationControls.models()`。目录只包含模型 ID、显示名称、该模型支持的 reasoningEfforts、可选默认值与已知当前选择；推理 ID 保留原生值，不映射为本地 Connection 的 modelTier。当前值未知时不伪造会话配置。旧节点不查询新工具，不提供选择入口。
+
+`harness_models` 是带项目/授权范围的只读查询；`harness_turn.selection` 为 `{modelId, reasoningEffort?}`。客户端和对应原生适配器均按模型目录校验，配置与提示词沿用同一次 epoch/requestId 提交及回执核对，禁止自动重放。Codex 使用 model/list 和 turn/start 的 model/effort；Claude 使用 SDK initialize.models、set_model 及只作用于本会话的 apply_flag_settings.effortLevel；DSH 使用 session/modelCatalog、session/selectModel，再 session/prompt。Claude 未附着会话的目录发现使用不持久化的临时 SDK 进程，不发送模型请求。
+
+模型菜单复用 ChatInput 的 PopupPanel，只有一个紧凑入口；先选模型，再展示这个模型的推理选项，也可以跟随原生配置。项目草稿的选择按 executorId 保存，切换执行器不继承过期选择；草稿转正前捕获配置并传入第一条消息。关闭或切换绑定拒绝迟到目录恢复弹层。发送后的配置修改只影响下一次提交。prompt 类原生命令可携带选择，action 类控制命令按原生语义执行，不强行覆盖模型。
+
+
+独立 llm-ui 输入新增 ConversationSnapshot.commands、ConversationActions.command 和 composeCommandCatalogs；命令的 source / commandId / id / revision 与 prompt/action 语义分开表示来源、路由目标和展示。NativeChatBindingOptions.commandProviders 聚合 UI、宿主与当前 harness 的有效贡献；SessionChatBindingOptions.composerCommands 接入应用命令目录及自己的操作核对。selectors.variants 支持按独立父选择器切换选项，模型改变时推理选择不跨模型遗留。当前工作台兼容输入与独立 ChatView 分别验收，迁移边界见 [独立模块设计](./design/llm-ui-independent-module.md#10-输入能力连接与命令聚合)。
+
+
+`ConversationControls.command(name, args?, selection?, inputText?)` 的 inputText 保留提交时的原始草稿，独立于用于执行的解析参数；两个输入入口共享 independent/native-command。`ProjectConversationPort.send` 同步传递 selection，command 同步传递 inputText。`ProjectRemoteMountService.projectModels(projectId, profileId)` 是只读应用用例，由 app-core 管理查询客户端，HTTP 传输登记为 query。
+
+`HarnessRecovery.draftRevision` 与 pending.draftRevision/inputText 共同限制接纳清理；commandResults 保存最近 64 条有 commandId 的本地系统结果，原生同 ID 历史优先。Claude 未接管的已有会话仍可发现目录和别名；compact 是不要求用户消息回显的 action。首条 prompt 命令与消息共用会话准备及草稿转正，会话级 action 在尚无会话的草稿中禁用。流程与 C4 职责见[原生提交与恢复](design/llm-ui-independent-module.md#104-原生提交与恢复的共同路径)。

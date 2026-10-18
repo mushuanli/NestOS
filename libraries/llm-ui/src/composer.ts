@@ -1,3 +1,6 @@
+import {isCommandInput} from './commands';
+import {CommandPicker} from './command-picker';
+import {ComposerSelectors} from './selectors';
 import { randomUUID } from './random';
 import type { ChatOptions, ComposerDraft, ConversationSnapshot, DraftAttachment } from './contracts';
 import { button, element, errorText } from './dom';
@@ -13,7 +16,10 @@ export class Composer {
     private readonly selectors = element('div', 'llm-chat__selectors');
     private readonly candidates = element('div', 'llm-chat__candidates');
     private readonly uploads = new Map<string, Upload>();
-    private readonly selection = new Map<string, { current: string; incoming: string }>();
+    private readonly selection = new ComposerSelectors();
+    private readonly commands: CommandPicker;
+    private snapshot?: ConversationSnapshot;
+    private selectorSignature?: string;
     private draft: ComposerDraft;
     private search?: AbortController;
     private closed = false;
@@ -21,14 +27,16 @@ export class Composer {
         private readonly changed: (draft: ComposerDraft) => void, private readonly submit: () => void) {
         this.draft = options.initialDraft ?? { revision: 0, textRevision: 0, text: '', attachments: [] };
         this.textarea.value = this.draft.text; this.textarea.setAttribute('aria-label', t('input'));
+        this.commands = new CommandPicker(this.textarea, text => this.setText(text), t);
         this.send = element('button', undefined, t('send')); this.send.type = 'submit';
-        this.element.append(this.attachments, this.selectors, this.textarea, this.candidates, this.send, this.feedback);
+        this.element.append(this.attachments, this.selectors, this.textarea, this.commands.element, this.candidates, this.send, this.feedback);
         this.bind(); this.renderAttachments();
     }
     private bind(): void {
         this.element.addEventListener('submit', event => { event.preventDefault(); this.submit(); });
-        this.textarea.addEventListener('input', () => { this.setText(this.textarea.value); void this.findResources(); });
+        this.textarea.addEventListener('input', () => { this.setText(this.textarea.value); this.commands.refresh(); void this.findResources(); });
         this.textarea.addEventListener('keydown', event => {
+            if (this.commands.key(event)) return;
             if (event.isComposing || event.keyCode === 229 || event.key !== 'Enter' || event.shiftKey) return;
             if (!event.ctrlKey && !event.metaKey && globalThis.matchMedia?.('(pointer: coarse)').matches) return;
             event.preventDefault(); this.submit();
@@ -45,11 +53,14 @@ export class Composer {
         this.element.addEventListener('drop', event => { event.preventDefault(); void this.addFiles(Array.from(event.dataTransfer?.files ?? [])); });
     }
     getDraft(): ComposerDraft { return this.draft; }
-    getSelection(): Readonly<Record<string, string>> { return Object.fromEntries([...this.selection].map(([id, value]) => [id, value.current])); }
+    getSelection(): Readonly<Record<string, string>> { return this.selection.snapshot(); }
+    getCommand() {return this.commands.resolve(this.draft.text);}
+    get commandDraft(): boolean {return this.snapshot?.commands !== undefined && isCommandInput(this.draft.text);}
+    setActive(active: boolean): void {this.commands.setActive(active); if (!active) {this.search?.abort(); this.candidates.replaceChildren();}}
     get uploading(): boolean { return [...this.uploads.values()].some(upload => !upload.error); }
     setText(text: string): void {
         if (this.closed || text === this.draft.text) return;
-        this.textarea.value = text;
+        this.textarea.value = text; this.commands.refresh();
         this.publish({ ...this.draft, text, textRevision: this.draft.textRevision + 1 });
     }
     accept(submitted: ComposerDraft): void {
@@ -58,7 +69,7 @@ export class Composer {
         const attachments = this.draft.attachments.filter(item => !ids.has(item.id));
         if (!clear && attachments.length === this.draft.attachments.length) return;
         const text = clear ? '' : this.draft.text;
-        this.textarea.value = text;
+        this.textarea.value = text; this.commands.refresh();
         this.publish({ ...this.draft, text, attachments, textRevision: this.draft.textRevision + (clear ? 1 : 0) });
         this.renderAttachments();
     }
@@ -103,15 +114,21 @@ export class Composer {
     }
     update(snapshot: ConversationSnapshot, canSend: boolean): void {
         this.send.disabled = !canSend || this.uploading || !this.draft.text.trim() && !this.draft.attachments.length;
-        this.selectors.replaceChildren();
-        for (const selector of snapshot.selectors ?? []) {
-            let value = this.selection.get(selector.id);
-            if (!value || value.incoming !== selector.value) this.selection.set(selector.id, value = { current: selector.value, incoming: selector.value });
+        this.snapshot = snapshot; this.commands.update(snapshot.commands ?? []);
+        this.renderSelectors();
+    }
+    private renderSelectors(): void {
+        const selectors = this.snapshot?.selectors ?? [];
+        this.selection.update(selectors);
+        const signature = JSON.stringify([selectors, this.selection.snapshot()]);
+        if (signature === this.selectorSignature) return;
+        this.selectorSignature = signature; this.selectors.replaceChildren();
+        for (const selector of selectors) {
             const label = element('label', undefined, selector.label), select = element('select');
-            select.disabled = selector.disabled ?? false;
-            for (const choice of selector.choices) { const option = element('option', undefined, choice.label); option.value = choice.id; select.append(option); }
-            select.value = value.current;
-            select.addEventListener('change', () => { this.selection.get(selector.id)!.current = select.value; });
+            select.dataset.selectorId = selector.id; select.disabled = selector.disabled ?? false;
+            for (const choice of this.selection.choices(selector)) {const option = element('option', undefined, choice.label); option.value = choice.id; select.append(option);}
+            select.value = this.selection.get(selector.id);
+            select.addEventListener('change', () => {this.selection.set(selector.id, select.value); this.renderSelectors();});
             label.append(select); this.selectors.append(label);
         }
     }
@@ -130,7 +147,7 @@ export class Composer {
         } catch (error) { if (!search.signal.aborted) this.options.onError?.(error); }
     }
     destroy(): void {
-        this.closed = true; this.search?.abort();
+        this.closed = true; this.commands.setActive(false); this.search?.abort();
         for (const upload of this.uploads.values()) upload.abort.abort();
         this.uploads.clear();
     }

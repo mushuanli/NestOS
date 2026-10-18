@@ -1,5 +1,5 @@
 import { createChatView, type ChatOptions, type ConversationActions, type MessagePart,
-    type OperationContext, type OperationLedger, type OperationReceipt, type SelectorView } from '@itookit/llm-ui';
+    type OperationContext, type OperationLedger, type OperationReceipt, type SelectorView, type ComposerCommand, type CommandSubmission } from '@itookit/llm-ui';
 import { createAgentSendIntent, type SessionSubmission } from '@itookit/llm-flow/contracts';
 import { SessionCommand, type ExecutionNode, type ICommandBus,
     type SessionGroup, type SessionViewPort } from '@itookit/llm-session/contracts';
@@ -13,6 +13,12 @@ export interface SessionChatBindingOptions {
     readonly operations: OperationLedger;
     readonly title?: string;
     readonly selectors?: () => readonly SelectorView[];
+    readonly composerCommands?: {
+        getSnapshot(): readonly ComposerCommand[];
+        execute(input: CommandSubmission, context: OperationContext): Promise<OperationReceipt>;
+        reconcile: NonNullable<ConversationActions['reconcile']>;
+        subscribe?(listener: () => void): () => void;
+    };
     readonly onError?: (error: unknown) => void;
 }
 /** Hosts own this binding; disposing it releases observation, never the Session or its tasks. */
@@ -35,7 +41,9 @@ class SessionChatBinding {
         this.operations = options.operations;
         this.source = new ChatProjection(this.sessionId, options.onError);
         this.actions = { send: (input, context) => this.send(input, context), reconcile: id => this.reconcile(id) };
+        if (options.composerCommands) this.actions.command = (input, context) => this.command(input, context);
         this.releases = [options.session.onEvent(() => this.publish()), options.operations.subscribe(() => this.publish())];
+        if (options.composerCommands?.subscribe) this.releases.push(options.composerCommands.subscribe(() => this.publish()));
         this.publish();
     }
     private current(): boolean {
@@ -46,8 +54,9 @@ class SessionChatBinding {
         if (!this.current()) return;
         const messages = this.options.session.getSessions().map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId));
         this.source.publish({ title: this.options.title ?? this.options.session.getSnapshot?.().view?.manifest.title ?? '',
-            messages, interactions: [], selectors: this.options.selectors?.(), loading: false,
-            execution: this.options.session.isGenerating() ? 'running' : 'idle', connection: 'online', hasEarlier: false, allowed: ['send'] });
+            messages, interactions: [], selectors: this.options.selectors?.(), commands: this.options.composerCommands?.getSnapshot(), loading: false,
+            execution: this.options.session.isGenerating() ? 'running' : 'idle', connection: 'online', hasEarlier: false,
+            allowed: ['send', ...(this.options.composerCommands ? ['command' as const] : [])] });
         for (const message of messages) if (message.submissionId && !this.confirmed.has(message.submissionId)) {
             void this.check(message.submissionId).then(accepted => { if (accepted) this.publish(); }).catch(error => this.options.onError?.(error));
         }
@@ -73,7 +82,17 @@ class SessionChatBinding {
             sendIntent: { ...createAgentSendIntent(agentId), submission: this.submission(context.operationId) } });
         return this.reconcile(context.operationId);
     }
+    private command(input: CommandSubmission, context: OperationContext): Promise<OperationReceipt> {
+        if (!this.current() || context.viewId !== this.source.getSnapshot().viewId)
+            return Promise.resolve(rejected(context, 'STALE_VIEW', 'Observation binding expired'));
+        const target = this.options.composerCommands?.getSnapshot().find(command => command.id === input.target.id
+            && command.revision === input.target.expectedRevision && command.kind === input.kind && !command.disabled);
+        return target ? this.options.composerCommands!.execute(input, context)
+            : Promise.resolve(rejected(context, 'STALE_COMMAND', 'Command changed or is unavailable'));
+    }
     private async reconcile(operationId: string): Promise<OperationReceipt> {
+        if (this.operations.getSnapshot().some(record => record.context.operationId === operationId && record.kind === 'command') && this.options.composerCommands)
+            return this.options.composerCommands.reconcile(operationId);
         if (await this.check(operationId)) {
             this.publish(); return { status: 'accepted', operationId };
         }
@@ -92,7 +111,7 @@ function rejected(context: OperationContext, code: string, message: string): Ope
     return { status: 'rejected', operationId: context.operationId, code, message };
 }
 function projectGroup(group: SessionGroup, ledger: OperationLedger, confirmed: ReadonlySet<string>, sessionId: string) {
-    const operation = ledger.getSnapshot().find(record => record.kind === 'send' && record.conversationId === sessionId
+    const operation = ledger.getSnapshot().find(record => (record.kind === 'send' || record.kind === 'command') && record.conversationId === sessionId
         && group.id === `round-${record.context.operationId}-user`);
     const parts: MessagePart[] = group.role === 'user' ? [{ id: 'body', kind: 'markdown', text: group.content ?? '' }]
         : projectNode(group.executionRoot);

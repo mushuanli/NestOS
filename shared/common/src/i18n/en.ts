@@ -4,6 +4,9 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    'harness.followNativeSettings': 'Follow native settings',
+    'harness.reasoning': 'Reasoning effort',
+    'harness.commandUnavailable': 'This native command is unavailable or cannot include attachments. Send a message or resume the session first.',
     "application.startTitle": "What would you like to do?",
     "application.startHelp": "Choose a workspace to load it. Saved tabs remain available when you need them.",
     "application.workspaceLoading": "Loading workspace…",

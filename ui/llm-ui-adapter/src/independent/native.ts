@@ -1,14 +1,17 @@
 import { createChatView, type ChatOptions, type ChatMessage, type ConversationActions,
-    type InteractionView, type OperationLedger } from '@itookit/llm-ui';
+    type InteractionView, type OperationLedger, type CommandSubmission, type OperationContext, type OperationReceipt } from '@itookit/llm-ui';
 import type { ConversationControls, ConversationSnapshot as NativeSnapshot } from '@itookit/ui-common';
 import { t } from '@itookit/common';
+import {NativeComposerCapabilities, type NativeCommandProvider} from './native-composer';
+import {submitNativeCommand} from './native-command';
 import { ChatProjection } from './projection';
 
 export interface NativeChatBindingOptions {
     readonly conversationId: string;
+    readonly commandProviders?: readonly NativeCommandProvider[];
     readonly controls: ConversationControls;
     readonly operations: OperationLedger;
-    /** The host maps this stable ID to its durable native request journal. */
+    /** Hosts reconcile this stable ID through the native or contributed command owner. */
     readonly reconcile: NonNullable<ConversationActions['reconcile']>;
     readonly onError?: (error: unknown) => void;
 }
@@ -16,19 +19,28 @@ export interface NativeChatBindingOptions {
 export async function createNativeChatBinding(options: NativeChatBindingOptions) {
     const source = new ChatProjection(options.conversationId, options.onError);
     let closed = false, generation = 0, native: NativeSnapshot | undefined;
+    const capabilities = new NativeComposerCapabilities(options.controls, options.onError);
+    const contributions = (state: NativeSnapshot) => options.commandProviders?.map(provider => ({source: provider.source, commands: provider.commands(state)})) ?? [];
+    const commands = (state: NativeSnapshot) => capabilities.compose(state, contributions(state));
     const requests = new Map<string, { encoded: string; revision: number }>();
     const publish = (state: NativeSnapshot) => {
         if (closed) return;
         native = state;
-        source.publish({ title: state.title, messages: state.messages.map(message => nativeMessage(message, options.operations)),
+        const catalog = commands(state);
+        source.publish({ title: state.title, selectors: capabilities.selectors(),
+            commands: state.supportsSlashCommands || options.commandProviders?.length ? catalog : undefined, messages: state.messages.map(message => nativeMessage(message, options.operations)),
             interactions: state.requests.filter(request => request.kind !== 'unsupported').map(request => interaction(request, requests)),
             loading: false, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
             connection: state.disconnected ? 'offline' : 'online', hasEarlier: state.hasEarlier ?? false,
-            allowed: [...(state.canSend && !state.pending ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : [])] });
+            allowed: [...(state.canSend && !state.pending ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
+                ...(catalog.some(command => !command.disabled) ? ['command' as const] : [])] });
+    };
+    const loadCapabilities = async (state: NativeSnapshot, force = false) => {
+        if (await capabilities.load(state, force) && !closed && native) publish(native);
     };
     const refresh = async () => {
         const captured = ++generation, state = await options.controls.read();
-        if (captured === generation) publish(state);
+        if (captured === generation) {publish(state); await loadCapabilities(state, true);}
     };
     const publishResponse = (state: NativeSnapshot, captured: number) => {
         if (captured !== generation) return;
@@ -37,19 +49,54 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
     const off = options.controls.subscribe?.(() => {
         ++generation;
         const state = options.controls.snapshot?.();
-        if (state) publish(state); else void refresh().catch(error => options.onError?.(error));
+        if (state) {publish(state); void loadCapabilities(state).catch(error => options.onError?.(error));} else void refresh().catch(error => options.onError?.(error));
     });
+    const providerStops = options.commandProviders?.flatMap(provider => provider.subscribe ? [provider.subscribe(() => {if (native) publish(native);})] : []) ?? [];
     const offLedger = options.operations.subscribe(() => { if (native) publish(native); });
-    try { await refresh(); } catch (error) { off?.(); offLedger(); throw error; }
+    try { await refresh(); } catch (error) { closed = true; capabilities.dispose();
+        try {releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]);}
+        catch (cleanup) {throw new AggregateError([error, cleanup], 'Native binding initialization failed');}
+        throw error; }
     const valid = (viewId: string) => !closed && viewId === source.getSnapshot().viewId;
+    const findCommand = (input: CommandSubmission) => commands(native!).find(command => command.id === input.target.id
+        && command.revision === input.target.expectedRevision && command.kind === input.kind && !command.disabled);
+    const nativeCommand = async (input: CommandSubmission, context: OperationContext) => {
+        try {await capabilities.refreshCommands(native!);}
+        catch {return reject(context, 'DIRECTORY_UNAVAILABLE', 'Native command directory unavailable');}
+        if (!valid(context.viewId)) return reject(context, 'STALE_VIEW', 'Observation binding expired');
+        publish(native!);
+        const command = findCommand(input);
+        if (!command) return reject(context, 'STALE_COMMAND', 'Command changed or is unavailable');
+        let selection: import('@itookit/ui-common').ConversationModelSelection | undefined;
+        try {selection = command.kind === 'prompt' ? capabilities.selection(input.selection) : undefined;}
+        catch (error) {return reject(context, 'INVALID_SELECTION', String(error));}
+        const captured = generation;
+        return submitNativeOperation(context, async () => {
+            const state = await submitNativeCommand(options.controls, {name: command.commandId, kind: command.kind}, input.arguments, input.text, selection);
+            publishResponse(state, captured); return state;
+        }, false);
+    };
     const actions: ConversationActions = {
         async send(input, context) {
             if (!valid(context.viewId)) return { status: 'rejected', operationId: context.operationId, code: 'STALE_VIEW', message: 'Observation binding expired' };
             if (input.attachments.length) return { status: 'rejected', operationId: context.operationId, code: 'ATTACHMENT_MAPPING_REQUIRED', message: 'Native attachments require host conversion' };
-            const captured = generation, state = await options.controls.send(input.text);
-            publishResponse(state, captured);
-            return state.submittedTurnId && !state.pending ? { status: 'accepted', operationId: context.operationId, submissionRef: state.submittedTurnId }
-                : { status: 'unknown', operationId: context.operationId, message: 'Awaiting native receipt' };
+            let selection: import('@itookit/ui-common').ConversationModelSelection | undefined;
+            try {selection = capabilities.selection(input.selection);}
+            catch (error) {return {status: 'rejected', operationId: context.operationId, code: 'INVALID_SELECTION', message: String(error)};}
+            const captured = generation;
+            return submitNativeOperation(context, async () => {
+                const state = selection ? await options.controls.send(input.text, [], selection) : await options.controls.send(input.text);
+                publishResponse(state, captured); return state;
+            }, true);
+        },
+        async command(input, context) {
+            if (!valid(context.viewId)) return reject(context, 'STALE_VIEW', 'Observation binding expired');
+            const command = findCommand(input);
+            if (!command) return reject(context, 'STALE_COMMAND', 'Command changed or is unavailable');
+            if (command.source.id === 'harness') return nativeCommand(input, context);
+            const provider = options.commandProviders?.find(provider => provider.source.id === command.source.id);
+            return provider ? provider.execute({...input, target: {...input.target, id: command.commandId}}, context)
+                : reject(context, 'STALE_COMMAND', 'Command provider unavailable');
         },
         async respond(request, context) {
             if (!valid(context.viewId)) return { status: 'rejected', operationId: context.operationId, code: 'STALE_VIEW', message: 'Observation binding expired' };
@@ -78,14 +125,14 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         } : undefined,
     };
     return { source: Object.assign(source, { refresh }), actions, operations: options.operations,
-        dispose() { if (closed) return; closed = true; ++generation; off?.(); offLedger(); } };
+        dispose() { if (closed) return; closed = true; ++generation; capabilities.dispose(); releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]); } };
 }
 export function createNativeChatView(container: HTMLElement, binding: Awaited<ReturnType<typeof createNativeChatBinding>>,
     options: Omit<ChatOptions, 'source' | 'actions' | 'operations'> = {}) {
     return createChatView(container, { ...options, source: binding.source, actions: binding.actions, operations: binding.operations });
 }
 function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger): ChatMessage {
-    const record = operations.getSnapshot().find(item => item.kind === 'send' && item.submissionRef && item.submissionRef === message.turnId);
+    const record = operations.getSnapshot().find(item => (item.kind === 'send' || item.kind === 'command') && item.submissionRef && item.submissionRef === message.turnId);
     return { id: message.id, revision: 0, role: message.role, state: message.status === 'streaming' ? 'streaming' : 'complete',
         submissionId: record?.context.operationId, acceptance: message.id.startsWith('submitted:') ? 'optimistic' : 'confirmed',
         parts: message.role === 'tool' ? [{ id: message.id, kind: 'tool', name: message.name ?? '',
@@ -99,4 +146,26 @@ function interaction(request: NativeSnapshot['requests'][number], versions: Map<
     const base = { id, revision, title: request.detail, state: 'pending' as const };
     return request.kind === 'approval' ? { ...base, kind: 'approval', decisions: [{ id: 'accept', label: t('harness.approve') }, { id: 'decline', label: t('harness.decline') }] }
         : { ...base, kind: 'input', fields: (request.questions ?? []).map(question => ({ id: question.id, label: question.question, kind: 'text', required: true })) };
+}
+
+function reject(context: OperationContext, code: string, message: string) {
+    return {status: 'rejected' as const, operationId: context.operationId, code, message};
+}
+
+async function submitNativeOperation(context: OperationContext, action: () => Promise<NativeSnapshot>, expectsTurn: boolean): Promise<OperationReceipt> {
+    let state: NativeSnapshot;
+    try {state = await action();}
+    catch (error) {
+        if ((error as {outcome?: string})?.outcome !== 'not-committed') throw error;
+        return reject(context, 'NATIVE_REJECTED', String(error));
+    }
+    return state.pending || expectsTurn && !state.submittedTurnId
+        ? {status: 'unknown', operationId: context.operationId, message: 'Awaiting native receipt'}
+        : {status: 'accepted', operationId: context.operationId, ...(state.submittedTurnId ? {submissionRef: state.submittedTurnId} : {})};
+}
+
+function releaseBinding(stops: readonly (() => void)[]): void {
+    const errors: unknown[] = [];
+    for (const stop of stops) {try {stop();} catch (error) {errors.push(error);}}
+    if (errors.length) throw new AggregateError(errors, 'Native binding cleanup failed');
 }

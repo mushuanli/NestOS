@@ -18,6 +18,133 @@ beforeEach(() => {
     Object.defineProperties(Range.prototype,{getClientRects:{configurable:true,value:()=>[]},getBoundingClientRect:{configurable:true,value:()=>new DOMRect()}});
 });
 afterEach(() => {document.body.replaceChildren();vi.useRealTimers();vi.unstubAllGlobals();delete (Range.prototype as any).getClientRects;delete (Range.prototype as any).getBoundingClientRect;delete (HTMLElement.prototype as any).scrollIntoView;});
+
+it('selects native models and exposes reasoning options for the selected model only', async () => {
+    const {editor, peer, host} = setup();
+    peer.models = vi.fn(async () => ({models: [
+        {id: 'reasoning', label: 'Reasoning model', reasoningEfforts: [{id: 'high', label: 'High effort'}]},
+        {id: 'plain', label: 'Plain model', reasoningEfforts: []},
+    ]}));
+    vi.mocked(peer.read).mockResolvedValue({...state, supportsModels: true});
+    vi.mocked(peer.poll).mockResolvedValue({...state, supportsModels: true});
+    vi.mocked(peer.send).mockResolvedValue({...state, supportsModels: true});
+    await editor.init(host);
+    const trigger = host.querySelector<HTMLButtonElement>('.llm-input__native-model')!;
+    const choose = async (label: string) => {
+        trigger.click();
+        await vi.waitFor(() => expect(document.querySelector('.llm-popup--visible')?.textContent ?? '', label).toContain(label));
+        const item = [...document.querySelectorAll<HTMLElement>('.llm-popup--visible [data-index]')].find(row => row.textContent?.includes(label));
+        expect(item).toBeDefined(); item!.click();
+    };
+    try {
+        expect(trigger.hidden).toBe(false);
+        await choose('Reasoning model'); await choose('High effort');
+        await editor.commands.sendMessage({text: 'Prompt'});
+        expect(peer.send).toHaveBeenCalledWith('Prompt', [], {modelId: 'reasoning', reasoningEffort: 'high'});
+        await choose('Plain model'); trigger.click();
+        await vi.waitFor(() => expect(document.querySelector('.llm-popup--visible')?.textContent).toContain('Plain model'));
+        expect(document.querySelector('.llm-popup--visible')?.textContent).not.toContain('High effort');
+    } finally {await editor.destroy();}
+});
+
+it.each(['destroyed', 'hidden'])('discards model discovery results after the native input is %s', async mode => {
+    const {editor, peer, host} = setup();
+    let finish!: (catalog: import('@itookit/ui-common').ConversationModelCatalog) => void;
+    peer.models = vi.fn(() => new Promise(resolve => {finish = resolve;}));
+    vi.mocked(peer.read).mockResolvedValue({...state, supportsModels: true});
+    vi.mocked(peer.poll).mockResolvedValue({...state, supportsModels: true});
+    vi.mocked(peer.send).mockResolvedValue({...state, supportsModels: true});
+    await editor.init(host); host.querySelector<HTMLButtonElement>('.llm-input__native-model')!.click();
+    if (mode === 'hidden') editor.cancelPendingRender(); else await editor.destroy();
+    finish({models: [{id: 'late', label: 'Late model', reasoningEfforts: []}]});
+    await Promise.resolve(); expect(document.querySelector('.llm-popup--visible')).toBeNull(); await editor.destroy();
+});
+
+it('captures model selection for native prompt commands and keeps action commands independent', async () => {
+    const {editor, peer, host} = setup();
+    peer.commands = vi.fn(async () => [{name: 'team:verify', description: 'Verify', kind: 'prompt'}, {name: 'compact', description: 'Compact', kind: 'action'}]);
+    peer.command = vi.fn(async () => ({...state, supportsSlashCommands: true, draft: ''}));
+    vi.mocked(peer.read).mockResolvedValue({...state, supportsSlashCommands: true});
+    await editor.init(host);
+    try {
+        const nativeSelection = {modelId: 'native', reasoningEffort: 'high'};
+        await editor.commands.sendMessage({text: '/team:verify', nativeSelection});
+        expect(peer.command).toHaveBeenLastCalledWith('team:verify', '', nativeSelection, '/team:verify');
+        await editor.commands.sendMessage({text: '/compact', nativeSelection});
+        expect(peer.command).toHaveBeenLastCalledWith('compact', '', undefined, '/compact');
+        expect(peer.send).not.toHaveBeenCalled();
+    } finally {await editor.destroy();}
+});
+
+it('suggests only the current harness commands and dispatches commands through its control port', async () => {
+    const {editor, peer, host} = setup();
+    peer.commands = vi.fn(async () => [{name: 'compact', description: 'Native compact', kind: 'action'}]);
+    peer.command = vi.fn(async () => ({...state, supportsSlashCommands: true, draft: ''}));
+    vi.mocked(peer.read).mockResolvedValue({...state, supportsSlashCommands: true});
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        input.value = '/com'; input.dispatchEvent(new Event('input', {bubbles: true}));
+        await vi.waitFor(() => expect(document.querySelector('.llm-popup--slash')?.textContent).toContain('/compact'));
+        expect(document.querySelector('.llm-popup--slash')?.textContent).not.toContain('/exec');
+        await editor.commands.sendMessage({text: '/compact'});
+        expect(peer.command).toHaveBeenCalledWith('compact', '', undefined, '/compact'); expect(peer.send).not.toHaveBeenCalled();
+        await expect(editor.commands.sendMessage({text: '/exec secret'})).rejects.toThrow();
+        expect(peer.command).toHaveBeenCalledOnce();
+    } finally {await editor.destroy();}
+});
+
+it.each(['closed', 'hidden'])('does not restore native command suggestions after the input is %s', async mode => {
+    const {editor, peer, host} = setup();
+    let finish!: (rows: import('@itookit/ui-common').ConversationSlashCommand[]) => void;
+    peer.commands = vi.fn(() => new Promise(resolve => {finish = resolve;}));
+    await editor.init(host);
+    const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+    input.value = '/'; input.dispatchEvent(new Event('input', {bubbles: true}));
+    if (mode === 'closed') await editor.destroy(); else editor.cancelPendingRender();
+    finish([{name: 'compact', description: 'Native', kind: 'action'}]);
+    await Promise.resolve();
+    expect(document.querySelector('.llm-popup--visible.llm-popup--slash')).toBeNull();
+    await editor.destroy();
+});
+
+it('coalesces candidate discovery across keystrokes and revalidates the raw command on send', async () => {
+    const {editor, peer, host} = setup();
+    let finish!: (rows: import('@itookit/ui-common').ConversationSlashCommand[]) => void;
+    peer.commands = vi.fn(() => new Promise(resolve => {finish = resolve;}));
+    peer.command = vi.fn(async () => ({...state, supportsSlashCommands: true, draft: ''}));
+    vi.mocked(peer.read).mockResolvedValue({...state, supportsSlashCommands: true});
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        for (const text of ['/', '/c', '/com']) {input.value = text; input.dispatchEvent(new Event('input', {bubbles: true}));}
+        expect(peer.commands).toHaveBeenCalledOnce();
+        const commands = [{name: 'compact', description: 'Compact', kind: 'action' as const}];
+        finish(commands); await vi.waitFor(() => expect(document.querySelector('.llm-popup--visible')?.textContent).toContain('/compact'));
+        vi.mocked(peer.commands).mockResolvedValue(commands);
+        input.value = '/compact '; input.dispatchEvent(new Event('input', {bubbles: true}));
+        host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.click();
+        await vi.waitFor(() => expect(peer.command).toHaveBeenCalledWith('compact', '', undefined, '/compact '));
+        expect(peer.commands).toHaveBeenCalledTimes(2);
+    } finally {await editor.destroy();}
+});
+
+it('preserves a command draft edited back to identical text while acceptance is pending', async () => {
+    const {editor, peer, host} = setup();
+    peer.commands = vi.fn(async () => [{name: 'compact', description: 'Compact', kind: 'action'}]);
+    let finish!: (snapshot: ConversationSnapshot) => void;
+    peer.command = vi.fn(() => new Promise(resolve => {finish = resolve;}));
+    vi.mocked(peer.read).mockResolvedValue({...state, supportsSlashCommands: true});
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        const edit = (text: string) => {input.value = text; input.dispatchEvent(new Event('input', {bubbles: true}));};
+        edit('/compact '); const sending = editor.commands.sendMessage({text: '/compact'});
+        await vi.waitFor(() => expect(peer.command).toHaveBeenCalledOnce());
+        edit('New draft'); edit('/compact '); finish({...state, supportsSlashCommands: true, draft: ''});
+        await sending; expect(input.value).toBe('/compact ');
+    } finally {await editor.destroy();}
+});
 it.each(['missing', 'throwing'])('submits native conversations when randomUUID is %s', async mode => {
     const {editor, host, peer} = setup(); await editor.init(host);
     const native = globalThis.crypto;

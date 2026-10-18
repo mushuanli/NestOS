@@ -1,6 +1,7 @@
+import {isCommandInput} from './commands';
 import { randomUUID } from './random';
 import { DefaultPrintService } from '@itookit/mdxeditor';
-import type { ActionName, ChatMessage, ChatOptions, ChatView, ConversationSnapshot, JsonValue,
+import type { ActionName, ChatMessage, ChatOptions, ChatView, CommandSubmission, ConversationSnapshot, JsonValue,
     MessageTarget, MountedToolbar, OperationContext, OperationReceipt, OperationRecord } from './contracts';
 import { Composer } from './composer';
 import { DraftWriter } from './draft';
@@ -59,7 +60,7 @@ export class ChatController implements ChatView {
     initialize(): void {
         if (this.options.features?.flow && !this.options.flow) throw new Error('Flow options are required to enable the Flow feature');
         void this.flow.setEnabled(this.options.features?.flow ?? false);
-        if (['send', 'cancel', 'edit', 'retry', 'respond'].some(kind => !!this.options.actions[kind as ActionName])
+        if (['send', 'command', 'cancel', 'edit', 'retry', 'respond'].some(kind => !!this.options.actions[kind as ActionName])
             && !this.options.actions.reconcile) throw new Error('Mutating hosts must provide operation reconciliation');
         this.disposers.push(this.options.source.subscribe(() => this.changed()));
         this.disposers.push(this.options.operations.subscribe(() => this.operationChanged()));
@@ -93,7 +94,7 @@ export class ChatController implements ChatView {
         const records = this.records();
         for (const message of this.snapshot.messages) {
             if (message.role !== 'user' || message.acceptance !== 'confirmed' || !message.submissionId) continue;
-            const record = records.find(item => item.kind === 'send' && item.context.operationId === message.submissionId);
+            const record = records.find(item => submissionRecord(item) && item.context.operationId === message.submissionId);
             if (!record || record.observedUserMessageId || this.confirming.has(message.submissionId)) continue;
             const id = message.submissionId; this.confirming.add(id);
             void this.options.operations.settle({ status: 'accepted', operationId: id, observedUserMessageId: message.id })
@@ -106,7 +107,7 @@ export class ChatController implements ChatView {
     private operationChanged(): void {
         if (this.closed || !this.snapshot) return;
         this.confirmMessages();
-        for (const record of this.records()) if (record.kind === 'send' && record.status === 'accepted' && record.draft)
+        for (const record of this.records()) if ((record.kind === 'send' || record.kind === 'command') && record.status === 'accepted' && record.draft)
             this.composer.accept(record.draft);
         if (this.active) this.render();
     }
@@ -117,14 +118,15 @@ export class ChatController implements ChatView {
         try { this.slot?.update?.({ snapshot: this.snapshot, view: this }); } catch (error) { this.options.onError?.(error); }
     }
     private updateAvailability(): void {
-        this.composer.update(this.snapshot, !this.sending && this.can('send') && !this.records().some(record => record.kind === 'send' && unresolved(record)));
+        this.composer.update(this.snapshot, !this.sending && (this.snapshot.commands !== undefined && isCommandInput(this.composer.getDraft().text) ? this.can('command')
+            : this.can('send') && !this.records().some(record => submissionRecord(record) && unresolved(record))));
         this.cancel.hidden = !this.can('cancel') || !this.snapshot.executionRef;
         this.cancel.disabled = this.records().some(record => record.kind === 'cancel' && unresolved(record));
         this.earlier.hidden = !this.snapshot.hasEarlier || !this.options.actions.loadEarlier;
         this.earlier.disabled = this.reading;
     }
     private renderHistory(): void {
-        const records = this.records().filter(record => record.kind === 'send');
+        const records = this.records().filter(submissionRecord);
         const messages = this.snapshot.messages.filter(message => !(message.role === 'user' && message.acceptance === 'optimistic'
             && records.some(record => record.context.operationId === message.submissionId)));
         const temporary = records.filter(record => !record.observedUserMessageId && !messages.some(message => message.role === 'user'
@@ -195,14 +197,30 @@ export class ChatController implements ChatView {
         }
     }
     async submit(): Promise<void> {
-        if (this.closed || this.sending || !this.can('send') || this.composer.uploading) return;
-        if (this.records().some(record => record.kind === 'send' && unresolved(record))) return;
+        if (this.closed || this.sending || this.composer.uploading) return;
+        if (this.composer.commandDraft) {await this.submitCommand(); return;}
+        if (!this.can('send')) return;
+        if (this.records().some(record => submissionRecord(record) && unresolved(record))) return;
         const draft = this.composer.getDraft();
         if (!draft.text.trim() && !draft.attachments.length) return;
         const input = { text: draft.text, attachments: draft.attachments.map(item => item.file), selection: this.composer.getSelection() };
         this.sending = true; this.updateAvailability();
         try { await this.perform('send', input as unknown as JsonValue, context => this.options.actions.send!(input, context), draft); }
         finally { this.sending = false; if (!this.closed) this.updateAvailability(); }
+    }
+    private async submitCommand(): Promise<void> {
+        if (!this.can('command')) return;
+        const resolved = this.composer.getCommand();
+        if (!resolved) throw new Error(this.t('commandUnavailable'));
+        if (resolved.command.kind === 'prompt' && this.records().some(record => submissionRecord(record) && unresolved(record)))
+            throw new Error('Operation is awaiting reconciliation');
+        const draft = this.composer.getDraft();
+        if (draft.attachments.length) throw new Error('Command attachments require host support');
+        const input: CommandSubmission = {target: {id: resolved.command.id, expectedRevision: resolved.command.revision},
+            text: draft.text, arguments: resolved.arguments, kind: resolved.command.kind, selection: this.composer.getSelection()};
+        this.sending = true; this.updateAvailability();
+        try {await this.perform('command', input as unknown as JsonValue, context => this.options.actions.command!(input, context), draft);}
+        finally {this.sending = false; if (!this.closed) this.updateAvailability();}
     }
     private async perform(kind: ActionName, input: JsonValue, action: (context: OperationContext) => Promise<OperationReceipt>,
         draft?: import('./contracts').ComposerDraft): Promise<void> {
@@ -270,7 +288,7 @@ export class ChatController implements ChatView {
     }
     setActive(active: boolean): void {
         if (this.closed) return;
-        this.active = active; this.flow.setActive(active); this.search.setActive(active); if (active) this.changed();
+        this.active = active; this.composer.setActive(active); this.flow.setActive(active); this.search.setActive(active); if (active) this.changed();
     }
     setFlowEnabled(enabled: boolean): Promise<void> { return this.flow.setEnabled(enabled); }
     focus(): void { if (!this.closed && this.active) this.composer.textarea.focus(); }
@@ -291,6 +309,10 @@ export class ChatController implements ChatView {
 }
 function unresolved(record: OperationRecord): boolean { return record.status === 'submitting' || record.status === 'unknown'; }
 function operationKey(kind: OperationRecord['kind'], input: JsonValue): string {
+    if (kind === 'command' && input && typeof input === 'object' && 'target' in input) {
+        const target = input.target;
+        if (target && typeof target === 'object' && 'id' in target && typeof target.id === 'string') return `command:${target.id}`;
+    }
     if (typeof input === 'object' && input !== null && !Array.isArray(input)) {
         if ((kind === 'edit' || kind === 'retry') && 'messageId' in input) return `message:${input.messageId}`;
         if (kind === 'respond' && 'id' in input && 'revision' in input) return `respond:${input.id}:${input.revision}`;
@@ -304,4 +326,9 @@ function temporaryMessage(record: OperationRecord): ChatMessage {
             { id: 'status', kind: 'tool', name: record.status, summary: record.message ?? '', state: record.status === 'rejected' ? 'failed' : 'running' },
             ...(record.draft?.attachments ?? []).map(item => ({ id: item.id, kind: 'attachment' as const, file: item.file }))],
     };
+}
+
+function submissionRecord(record: OperationRecord): boolean {
+    return record.kind === 'send' || record.kind === 'command' && !!record.input && typeof record.input === 'object'
+        && !Array.isArray(record.input) && (record.input as Record<string, JsonValue>).kind === 'prompt';
 }

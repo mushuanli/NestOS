@@ -30,6 +30,21 @@ it('does not acknowledge a Session request that has only entered the in-memory q
     binding.dispose();
 });
 
+it('routes contributed commands and reconciliation through their owner instead of Session.Send', async () => {
+    const host = fixture(), command = {id: 'view-copy', commandId: 'copy', source: {id: 'ui', label: 'UI'}, revision: 1,
+        name: 'copy', description: 'Copy', kind: 'action' as const};
+    const operations = {...host.options.operations, getSnapshot: () => [{...host.record, kind: 'command' as const}]};
+    const execute = vi.fn(async (_input, context) => ({status: 'unknown' as const, operationId: context.operationId, message: 'pending'}));
+    const reconcile = vi.fn(async operationId => ({status: 'accepted' as const, operationId}));
+    const binding = createSessionChatBinding({...host.options, operations, composerCommands: {getSnapshot: () => [command], execute, reconcile}});
+    const context = {operationId: 'op', viewId: binding.source.getSnapshot().viewId};
+    const receipt = await binding.actions.command!({target: {id: command.id, expectedRevision: 1}, kind: 'action', text: '/copy', arguments: ''}, context);
+    expect(receipt.status).toBe('unknown'); expect(host.execute).not.toHaveBeenCalled();
+    expect(await binding.actions.reconcile!('op')).toMatchObject({status: 'accepted'});
+    expect(reconcile).toHaveBeenCalledWith('op'); expect(host.hasCommittedSubmission).not.toHaveBeenCalled();
+    binding.dispose();
+});
+
 it('confirms observed messages from backend evidence independently of the operation ledger status', async () => {
     const host = fixture(), binding = createSessionChatBinding(host.options);
     host.emit(); await vi.waitFor(() => expect(host.hasCommittedSubmission).toHaveBeenCalledOnce());

@@ -89,7 +89,7 @@ export class SessionDraftEditor extends IEditor {
         if (this.active) this.input.focus();
     }
     private createInput(input: HTMLElement, agents: Awaited<ReturnType<typeof buildExecutorOptions>>, config?: IChatInputConfig): ChatInput {
-        return new ChatInput(input, { initialAgents: agents, ocr: this.ocr,
+        return new ChatInput(input, {nativeModels: this.options.remoteAgents?.models, initialAgents: agents, ocr: this.ocr,
             initialConfig: config ?? (this.options.sessionDraft?.executorScope === 'remote' ? {agentId: agents[0]?.id ?? 'remote:unavailable'} : undefined), executorUsage: this.options.executorUsage,
             attachments: this.options.sessionDraft?.executorScope === 'remote' ? false : undefined,
             onConfigureExecutor: this.options.hostContext?.navigate ? () => {
@@ -159,9 +159,12 @@ export class SessionDraftEditor extends IEditor {
     }
     private async send(message: SendMessageParams): Promise<void | false> {
         if (this.closed || this.sending || (!message.text.trim() && !message.files.length)) return;
+        const nativeSelection = this.input?.getNativeModelSelection?.();
         if (this.confirmed) {
             this.sending = true;
-            try {const target = await this.bindConversation(message.agentId); return await target.editor.commands.sendMessage!(message);}
+            try {
+                const target = await this.bindConversation(message.agentId); return await target.editor.commands.sendMessage!({...message, ...(nativeSelection ? {nativeSelection} : {})});
+            }
             catch (error) {Toast.error(error instanceof Error ? error.message : String(error)); return false;}
             finally {this.sending = false;}
         }
@@ -176,12 +179,14 @@ export class SessionDraftEditor extends IEditor {
             if (this.options.sessionDraft?.inPlace) {
                 const target = await this.bindConversation(message.agentId);
                 if (target.resumeOnly) {Toast.info(t('project.draftResume')); return false;}
-                return await target.editor.commands.sendMessage!({...message, ...(target.submission ? {submission: target.submission} : {})});
+                return await target.editor.commands.sendMessage!({...message, ...(nativeSelection ? {nativeSelection} : {}), ...(target.submission ? {submission: target.submission} : {})});
             }
             if (message.agentId?.startsWith('remote:')) {
                 if (message.files.length) throw new Error(t('harness.remoteAttachments'));
                 if (!this.options.remoteAgents) throw new Error(t('toolbox.unavailable'));
-                await this.options.remoteAgents.send(message.agentId, message.text);
+                const selected = nativeSelection;
+                if (selected) await this.options.remoteAgents.send(message.agentId, message.text, selected);
+                else await this.options.remoteAgents.send(message.agentId, message.text);
                 await this.options.sessionDraft?.clear?.();
                 this.initialData = '';
                 if (!this.closed && this.input) {
@@ -356,7 +361,7 @@ export class SessionDraftEditor extends IEditor {
         this.codec = new DraftDataCodec(next.attachments); this.restoring = true;
         await this.render();
     }
-    cancelPendingRender(): void {this.active = false; this.delegate?.cancelPendingRender?.();}
+    cancelPendingRender(): void {this.input?.hideNativeModelPicker?.(); this.active = false; this.delegate?.cancelPendingRender?.();}
     async activate(): Promise<void> {
         this.active = true; await this.delegate?.activate?.(); await this.refreshDraft();
         await Promise.all([this.projectScope?.refresh(), this.input?.refreshConnections()]);

@@ -91,6 +91,16 @@ Markdown 使用 literal HTML 策略及链接/图片协议限制；附件由 Asse
 
 隐藏暂停昂贵呈现，仍处理操作和草稿确认。destroy 幂等，尝试全部清理后汇总异常；它不关闭 source、操作台账或共享运行时，不取消后台任务。
 
+## 输入能力与 slash 命令
+
+UI 不解析 LLMConnection、MCP connection 或 harness 的内部配置。宿主向 `snapshot.selectors` 提供选择器，`variants` 可按一个独立父选择器的当前值切换选项，例如模型切换推理档位。子选择随父值隔离，已经移除的选择器不进入 `ChatSubmission.selection`。
+
+`snapshot.commands` 是当前绑定内可用命令的集合，`actions.command(input, context)` 是唯一提交入口。`composeCommandCatalogs` 合并各来源贡献，保留 `source`、局部 `commandId`、命名空间后的 `id` 与 `revision`；同名命令在菜单中并列展示来源，手工输入有歧义时要求选择。候选点击或 Enter 补全不执行，下一次明确提交才执行。
+
+命令意图包含目标 ID、expectedRevision、原始文字、参数、kind 和捕获的 selection。执行方重新校验能力与版本。`action` 命令不创建临时用户消息；`prompt` 命令沿用提交确认与正式消息替换。未知回执保留草稿、核对原 operationId，不自动重放，不回退为普通模型请求。旧宿主没有 commands 投影时保留普通输入行为。
+
+各功能只贡献自身公开、当前可用的命令。UI、宿主、Agent、Flow、当前 harness 的贡献可合并；权限、会话状态、初始化条件由宿主过滤。MCP tool 或内部函数不自动成为 slash 命令。完整可运行的声明、分来源路由与回执示例见 `examples/memory-host.ts` 的 View/Agent 命令目录。
+
 ## 验证
 
 ```bash

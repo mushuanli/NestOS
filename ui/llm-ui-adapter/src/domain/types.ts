@@ -60,6 +60,7 @@ export interface UIState {
 // ============================================================
 
 export interface ExecutorOption {
+    supportsModels?: boolean;
     id: string;
     name: string;
     icon?: string;

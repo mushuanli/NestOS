@@ -9,12 +9,15 @@ import { EventBinder } from './EventBinder';
 import { DOMCache } from '../components/common';
 import { StatusIndicatorView } from '../components/indicators/StatusIndicatorView';
 import { RemoteHistory } from './remote-history';
+import {NativeSlashCommandPlugin} from '../components/input/plugins/NativeSlashCommandPlugin';
 import { ConversationInformation } from './ConversationInformation';
 import type { ConversationSnapshot } from '@itookit/ui-common';
 import { mountConversationSource } from './conversation-source';
 import {bindWorkspaceInput, type WorkspaceHandoff} from './drafts/workspace-handoff';
 
 interface Actions {
+    models?(): Promise<import('@itookit/ui-common').ConversationModelCatalog>;
+    commands?(): Promise<import('@itookit/ui-common').ConversationSlashCommand[]>;
     attachments?: Array<'text' | 'image'>;
     rename?(title: string): void;
     send(text: string, files?: File[]): Promise<void>;
@@ -62,6 +65,7 @@ export class ConversationWorkspaceView {
         });
         this.reconcile = this.button(t('harness.reconcile'), actions.reconcile, toolbar); this.reconcile.disabled = true;
         this.input = this.createInput(options, actions, handoff);
+        if (actions.commands) this.input.registerPlugin(new NativeSlashCommandPlugin(actions.commands));
         this.input.setAvailability({canSend: false, canInterrupt: false});
         this.interactions.className = 'remote-conversation__interactions';
         this.status.className = 'remote-conversation__status'; this.status.setAttribute('role', 'status');
@@ -107,6 +111,7 @@ export class ConversationWorkspaceView {
         const executorId = options.initialInputState?.agentId?.startsWith('remote:') ? options.initialInputState.agentId : 'remote:native';
         const inputOptions: import('../components/input/ChatInputView').ChatInputOptions = {
             executorUsage: options.executorUsage,
+            nativeModels: actions.models,
             attachments: !!actions.attachments?.length, executorLocked: true,
             onSwitchExecutionTarget: options.onStartConversationDraft,
             attachmentAccept: [...(actions.attachments?.includes('text') ? ['text/*', 'application/json', 'application/xml'] : []),

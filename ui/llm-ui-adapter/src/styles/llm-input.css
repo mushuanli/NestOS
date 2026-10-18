@@ -1319,10 +1319,12 @@
 }
 
 /* Model, mode and secondary menus share the composer's quiet visual language. */
+.llm-input__native-model,
 .llm-input__model-trigger,
 .llm-input__execution-picker > summary,
 .llm-input__options > summary { display: flex; align-items: center; justify-content: center; gap: 3px; padding: 4px 6px; min-height: 32px; box-sizing: border-box; border: 0; border-radius: 6px; background: transparent; color: var(--llm-text-secondary); font: inherit; font-size: 12px; cursor: pointer; list-style: none; }
 .llm-input__model-trigger { min-width: 0; max-width: 240px; }
+.llm-input__native-model { display: block; min-width: 0; max-width: 240px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .llm-input__model-label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .llm-input__model-trigger > svg,
 .llm-input__agent-chevron > svg,
@@ -1332,9 +1334,11 @@
 .llm-input__options > summary { width: 32px; }
 .llm-input__options > summary::-webkit-details-marker,
 .llm-input__execution-picker > summary::-webkit-details-marker { display: none; }
+.llm-input__native-model:hover,
 .llm-input__model-trigger:hover,
 .llm-input__options > summary:hover,
 .llm-input__execution-picker > summary:hover { background: var(--llm-bg-tertiary); }
+.llm-input__native-model:disabled,
 .llm-input__model-trigger:disabled { opacity: .5; cursor: default; }
 .llm-input__options,
 .llm-input__execution-picker { position: relative; flex-shrink: 0; }
@@ -1364,6 +1368,7 @@
 .llm-input__textarea { line-height: 1.65; }
 .llm-input__options[hidden],
 .llm-input__execution-picker[hidden],
+.llm-input__native-model[hidden],
 .llm-input__model-trigger[hidden] { display: none; }
 .llm-input__execution-source,
 .llm-input__flow-configure { padding: 5px 8px; border: 0; border-radius: 6px; background: transparent; color: var(--llm-text-secondary); font: inherit; font-size: 12px; white-space: nowrap; }
@@ -1375,6 +1380,7 @@
 .llm-input__toolbar :focus-visible { outline: 2px solid var(--llm-color-primary); outline-offset: 2px; }
 
 @media (max-width: 480px) {
+    .llm-input__native-model,
     .llm-input__model-trigger { max-width: 110px; }
     .llm-input__agent-name { max-width: 64px; }
     .llm-input__toolbar-left,

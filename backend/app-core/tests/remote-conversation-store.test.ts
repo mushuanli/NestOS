@@ -15,3 +15,15 @@ it('persists inline native draft attachments with CAS and rejects malformed or e
         await expect(new RemoteConversationStore(fs, 'key').load()).rejects.toMatchObject({code: 'EINVAL'});
     } finally {await manager.dispose();}
 });
+
+it('bounds and validates persisted command results and draft revisions', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    try {
+        const fs = await manager.openFileSystem('/'), store = new RemoteConversationStore(fs, 'receipts');
+        const record = {draft: '/compact ', draftRevision: 3, commandResults: [{commandId: 'command', output: 'Done', failed: true}]};
+        await store.save(record); expect(await new RemoteConversationStore(fs, 'receipts').load()).toEqual(record);
+        await expect(store.save({...record, draftRevision: -1})).rejects.toMatchObject({code: 'EINVAL'});
+        await expect(store.save({...record, commandResults: Array(65).fill(record.commandResults[0])})).rejects.toMatchObject({code: 'EINVAL'});
+        await expect(store.save({...record, commandResults: [{commandId: '', output: 'Invalid'}]})).rejects.toMatchObject({code: 'EINVAL'});
+    } finally {await manager.dispose();}
+});

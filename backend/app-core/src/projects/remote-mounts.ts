@@ -444,6 +444,18 @@ export class ProjectRemoteMountService {
             return result;
         } finally { await client.close(); }
     }
+    async projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<import('@itookit/piagent-driver').HarnessModelCatalog> {
+        const client = await this.projectHarness(projectId, options);
+        const fingerprint = JSON.stringify(this.list(projectId));
+        try {
+            const descriptor = await client.profiles(options);
+            const profile = descriptor.profiles.find(profile => (profile.id === profileId || profile.aliases?.includes(profileId)) && profile.projectRuntime && profile.capabilities.create);
+            if (!profile) throw new FSError('ECAPABILITY', 'Project harness profile unavailable');
+            if (!profile.capabilities.models || !client.models) return {models: []};
+            const root = this.list(projectId).find(mount => mount.at === '/')!;
+            return await this.guardHarness(client, projectId, fingerprint, root.connectionId!).models!(profile.id, undefined, options);
+        } finally {await client.close();}
+    }
     async projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string): Promise<ProjectConversationPort> {
         if (draftId !== undefined && !/^[a-zA-Z0-9_-]+$/.test(draftId)) throw new FSError('EINVAL', 'Invalid draft identity');
         if (!this.provider.conversation) throw new FSError('ECAPABILITY', 'Conversation adapter unavailable');

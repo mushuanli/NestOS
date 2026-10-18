@@ -15,7 +15,7 @@ export type ChatInputSettings =
         ChatOverrides,
         'branchMode' | 'retentionMode' | 'flowId' | 'flowRevision' | 'flowParameters'
     >
-    & { modelId?: string };
+    & { modelId?: string; nativeModelSelection?: import('@itookit/ui-common').ConversationModelSelection & {executorId: string} };
 
 export interface IChatInputConfig {
     text: string;
@@ -41,6 +41,8 @@ export type InteractionReply = { approved: boolean; note?: string } | string;
  * Command 层只依赖此接口，不知道 ChatInput 的 DOM 实现。
  */
 export interface IChatInputPresenter {
+    hideNativeModelPicker?(): void;
+    getNativeModelSelection?(): import('@itookit/ui-common').ConversationModelSelection | undefined;
     openConnectionPicker(): void;
     setLoading(loading: boolean): void;
     setConfig(config: Partial<IChatInputConfig>): void;

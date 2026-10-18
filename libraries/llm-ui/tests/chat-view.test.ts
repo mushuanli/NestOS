@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { createChatView, createOperationLedger } from '../src';
+import { createChatView, createOperationLedger, composeCommandCatalogs } from '../src';
 import type { ChatOptions, ChatView, ConversationSnapshot, OperationReceipt, OperationRecord } from '../src';
 
 const destroyed = vi.hoisted(() => vi.fn());
@@ -42,6 +42,72 @@ function user(submissionId: string, acceptance: 'confirmed' | 'optimistic' = 'co
     return { id: 'user-1', revision: 0, role: 'user' as const, state: 'complete' as const, submissionId, acceptance,
         parts: [{ id: 'body', kind: 'markdown' as const, text: 'A' }] };
 }
+
+describe('composer command capabilities', () => {
+    const catalogs = () => composeCommandCatalogs(['ui', 'harness'].map(id => ({source: {id, label: id}, commands: [
+        {id: 'compact', revision: 1, name: 'compact', description: id + ' compact', kind: 'action' as const},
+    ]})));
+    it('preserves both sources, requires disambiguation and never executes completion', async () => {
+        const command = vi.fn(async (_input, context) => ({status: 'accepted' as const, operationId: context.operationId}));
+        const send = vi.fn();
+        const host = fixture({actions: {send, command, reconcile: async operationId => ({status: 'unknown', operationId, message: 'unknown'})}});
+        host.publish({commands: catalogs(), allowed: ['send', 'command']}); const view = await host.open();
+        view.setText('/compact');
+        expect(host.host.querySelectorAll('.llm-chat__commands button')).toHaveLength(2);
+        await expect(view.submit()).rejects.toThrow('同名');
+        expect(command).not.toHaveBeenCalled(); expect(send).not.toHaveBeenCalled();
+        const choice = [...host.host.querySelectorAll<HTMLButtonElement>('.llm-chat__commands button')].find(row => row.textContent?.includes('harness'))!;
+        choice.click(); expect(command).not.toHaveBeenCalled(); expect(view.getDraft().text).toBe('/compact ');
+        await view.submit();
+        expect(command.mock.calls[0][0]).toMatchObject({target: {id: JSON.stringify(['harness', 'compact']), expectedRevision: 1}, kind: 'action'});
+        expect(view.getDraft().text).toBe(''); expect(host.host.querySelectorAll('[data-message-id]')).toHaveLength(0);
+        view.setText('/missing'); await expect(view.submit()).rejects.toThrow('不可用'); expect(send).not.toHaveBeenCalled();
+    });
+    it('rejects a selected command whose revision changed before submission', async () => {
+        const command = vi.fn(), host = fixture({actions: {command, reconcile: vi.fn()}});
+        host.publish({commands: catalogs().slice(0, 1), allowed: ['command']}); const view = await host.open();
+        view.setText('/com'); host.host.querySelector<HTMLButtonElement>('.llm-chat__commands button')!.click();
+        host.publish({commands: [{...catalogs()[0], revision: 2}]});
+        await expect(view.submit()).rejects.toThrow('不可用'); expect(command).not.toHaveBeenCalled();
+        expect(view.getDraft().text).toBe('/compact ');
+    });
+    it('uses Enter to complete a command without executing it and closes the menu when hidden', async () => {
+        const command = vi.fn(), host = fixture({actions: {command, reconcile: vi.fn()}});
+        host.publish({commands: catalogs().slice(0, 1), allowed: ['command']}); const view = await host.open();
+        view.setText('/com'); host.host.querySelector('textarea')!.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true, cancelable: true}));
+        expect(command).not.toHaveBeenCalled(); expect(view.getDraft().text).toBe('/compact ');
+        view.setText('/com'); view.setActive(false);
+        expect(host.host.querySelector<HTMLElement>('.llm-chat__commands')!.hidden).toBe(true);
+    });
+    it('retains an unknown command and never falls through to a model send or automatic replay', async () => {
+        const command = vi.fn(async (_input, context) => ({status: 'unknown' as const, operationId: context.operationId, message: 'unknown'})), send = vi.fn();
+        const host = fixture({actions: {command, send, reconcile: vi.fn()}});
+        host.publish({commands: catalogs().slice(0, 1), allowed: ['send', 'command']}); const view = await host.open();
+        view.setText('/compact'); await expect(view.submit()).rejects.toThrow('unknown');
+        view.setText('/compact '); await expect(view.submit()).rejects.toThrow('awaiting reconciliation');
+        expect(command).toHaveBeenCalledOnce(); expect(send).not.toHaveBeenCalled(); expect(view.getDraft().text).toBe('/compact ');
+    });
+});
+
+it('scopes dependent reasoning choices to the selected model and removes obsolete selector values', async () => {
+    const send = vi.fn(async (_input, context) => ({status: 'accepted' as const, operationId: context.operationId}));
+    const host = fixture({actions: {send, reconcile: vi.fn()}});
+    host.publish({selectors: [
+        {id: 'modelId', label: 'Model', value: 'thinking', choices: [{id: 'thinking', label: 'Thinking'}, {id: 'plain', label: 'Plain'}]},
+        {id: 'effort', label: 'Effort', value: '', choices: [{id: '', label: 'Default'}], variants: {selectorId: 'modelId', values: {
+            thinking: {value: 'high', choices: [{id: 'high', label: 'High'}]}, plain: {value: '', choices: [{id: '', label: 'Default'}]},
+        }}},
+    ]});
+    const view = await host.open();
+    const parent = host.host.querySelector<HTMLSelectElement>('[data-selector-id="modelId"]')!;
+    host.publish({execution: 'running'});
+    expect(host.host.querySelector('[data-selector-id="modelId"]')).toBe(parent);
+    parent.value = 'plain'; parent.dispatchEvent(new Event('change'));
+    expect(host.host.querySelector<HTMLSelectElement>('[data-selector-id="effort"]')!.value).toBe('');
+    host.publish({selectors: host.options.source.getSnapshot().selectors!.slice(0, 1)});
+    view.setText('Prompt'); await view.submit();
+    expect(send.mock.calls[0][0].selection).toEqual({modelId: 'plain'});
+});
 
 describe('conversation content search integration', () => {
     it('offers a header button and refreshes matches after streaming and earlier history load', async () => {

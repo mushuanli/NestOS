@@ -394,6 +394,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const inputOptions: import('../components/input/ChatInputView').ChatInputOptions = {
             executionModeInfo: this.container.querySelector<HTMLElement>('.llm-workspace-titlebar__mode-info')!,
             executorUsage: this.options.executorUsage,
+            nativeModels: this.options.remoteAgents?.models,
             onSwitchExecutionTarget: this.options.onStartConversationDraft ? async input => {
                 await this.flushPendingSave(); await this.options.onStartConversationDraft!(input);
             } : undefined,
@@ -923,7 +924,7 @@ export class LLMWorkspaceEditor implements IEditor {
         if (!message.agentId?.startsWith('remote:')) return await this.sendCommand.run(message) ? undefined : false;
         if (message.files.length) throw new Error(t('harness.remoteAttachments'));
         if (!this.options.remoteAgents) throw new Error(t('toolbox.unavailable'));
-        try { await this.options.remoteAgents.send(message.agentId, message.text); }
+        try { await this.options.remoteAgents.send(message.agentId, message.text, this.chatInput.getNativeModelSelection?.()); }
         catch (error) { this.chatInput?.restoreInput(message.text, message.agentId); throw error; }
     }
     private async refreshAgents(): Promise<void> {
@@ -988,6 +989,7 @@ export class LLMWorkspaceEditor implements IEditor {
     setDirty(_dirty: boolean): void { }
     focus(): void { this.chatInput?.focus(); }
     cancelPendingRender(): void {
+        this.chatInput?.hideNativeModelPicker?.();
         ++this.activationRevision;
         this.viewActive = false; this.invocationPanel?.setVisible(false);
         this.historyView?.setActive?.(false);

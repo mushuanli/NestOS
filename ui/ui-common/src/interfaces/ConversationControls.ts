@@ -10,7 +10,16 @@ export interface ConversationMessage {
 }
 export interface ConversationRequest { id: string | number; kind: 'approval' | 'input' | 'unsupported'; detail: string; questions?: Array<{id: string; question: string; options?: Array<{label: string}>}> }
 export interface ConversationAttachment {kind: 'text' | 'image'; name: string; content: string; mimeType?: string}
+export interface ConversationSlashCommand {name: string; description: string; argumentHint?: string; kind: 'prompt' | 'action'; disabled?: boolean}
+export interface ConversationModelSelection {modelId: string; reasoningEffort?: string}
+export interface ConversationModelCatalog {
+    models: Array<{id: string; label: string; reasoningEfforts: Array<{id: string; label: string}>; defaultReasoningEffort?: string}>;
+    current?: ConversationModelSelection; default?: ConversationModelSelection;
+}
 export interface ConversationSnapshot {
+    supportsModels?: boolean;
+    supportsSlashCommands?: boolean;
+    slashCommands?: ConversationSlashCommand[];
     usage?: {scope: 'transcript'; complete: boolean; observedAt: number;
         totals: {inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number}};
     usageUnavailable?: boolean;
@@ -36,6 +45,9 @@ export interface ConversationSnapshot {
     canSend: boolean; canInterrupt: boolean; canRespond: boolean; pending: boolean; disconnected: boolean; gap: boolean;
 }
 export interface ConversationControls {
+    models?(): Promise<ConversationModelCatalog>;
+    commands?(): Promise<ConversationSlashCommand[]>;
+    command?(name: string, args?: string, selection?: ConversationModelSelection, inputText?: string): Promise<ConversationSnapshot>;
     subscribe?(listener: () => void): () => void;
     rename?(name: string): Promise<ConversationSnapshot>;
     archive?(archived: boolean): Promise<ConversationSnapshot>;
@@ -47,13 +59,14 @@ export interface ConversationControls {
     saveDraft?(text: string, attachments?: ConversationAttachment[]): Promise<void>;
     read(): Promise<ConversationSnapshot>;
     poll(): Promise<ConversationSnapshot>;
-    send(text: string, attachments?: Array<{kind: 'text' | 'image'; name: string; content: string; mimeType?: string}>): Promise<ConversationSnapshot>;
+    send(text: string, attachments?: Array<{kind: 'text' | 'image'; name: string; content: string; mimeType?: string}>, selection?: ConversationModelSelection): Promise<ConversationSnapshot>;
     interrupt(): Promise<ConversationSnapshot>;
     respond(id: string | number, response: Record<string, unknown>): Promise<ConversationSnapshot>;
     reconcile(): Promise<ConversationSnapshot>;
     close(): Promise<void>;
 }
 export interface RemoteAgentControls {
-    list(): Promise<Array<{id: string; name: string; icon: string; category: string; description?: string}>>;
-    send(id: string, text: string): Promise<void>;
+    models?(id: string): Promise<ConversationModelCatalog>;
+    list(): Promise<Array<{id: string; name: string; icon: string; category: string; description?: string; supportsModels?: boolean}>>;
+    send(id: string, text: string, selection?: ConversationModelSelection): Promise<void>;
 }

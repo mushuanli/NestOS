@@ -9,9 +9,10 @@ async function fixture() {
     const fs = await manager.openFileSystem('/'), recovery = new RemoteConversationStore(fs, 'draft');
     const session = {id: 'native', title: 'Native preview', cwd: '/', status: 'idle', updatedAt: 1, resumable: true, owned: true};
     const profile: HarnessProfile = {id: 'p', kind: 'native', workspaces: [{id: 'w'}],
-        capabilities: {create: true, history: true, resume: true, interrupt: true, interactions: true, rename: true}};
+        capabilities: {create: true, history: true, resume: true, interrupt: true, interactions: true, rename: true, slashCommands: true}};
     const client = {create: vi.fn(async () => ({session})), read: vi.fn(async () => ({session, turns: []})),
-        turn: vi.fn(async () => ({turnId: 'turn'})), operation: vi.fn(), close: vi.fn(async () => {}),
+        commands: vi.fn(async () => [{name: 'verify', description: 'Verify', kind: 'prompt'}]),
+        command: vi.fn(async () => ({turnId: 'command-turn'})), turn: vi.fn(async () => ({turnId: 'turn'})), operation: vi.fn(), close: vi.fn(async () => {}),
         rename: vi.fn(async (_profile, _session, name) => ({session: {...session, title: name}})),
         events: vi.fn(async () => ({epoch: 'events', cursor: 0, gap: false, events: [], requests: []}))} as unknown as HarnessClient;
     const open = () => draftConversation(new HarnessConversation(draftHarness(client, recovery), profile, 'w', undefined, true,
@@ -61,5 +62,23 @@ it('keeps an accepted turn distinct from an uncertain automatic title update', a
         expect(await f.recovery.load()).toMatchObject({submittedTurnId: 'turn', pending: {operation: 'rename'}});
         await expect(view.send('Already accepted')).rejects.toMatchObject({code: 'EBUSY'});
         expect(f.client.turn).toHaveBeenCalledOnce();
+    } finally {await view.close(); await f.manager.dispose();}
+});
+
+it.each([false, true])('promotes the first prompt command through the same durable draft journal (lost response: %s)', async lost => {
+    const f = await fixture(), view = f.open();
+    try {
+        await view.read();
+        if (lost) vi.mocked(f.client.command!).mockRejectedValueOnce({outcome: 'unknown'});
+        if (lost) {
+            await expect(view.command!('verify')).rejects.toMatchObject({outcome: 'unknown'});
+            expect(view.snapshot().sessionId).toBeUndefined();
+            vi.mocked(f.client.operation).mockResolvedValue({requestId: 'receipt', outcome: 'committed', result: {turnId: 'command-turn'}});
+            await view.reconcile();
+        } else await view.command!('verify');
+        expect(view.snapshot()).toMatchObject({sessionId: 'native', submittedTurnId: 'command-turn', pending: false, draft: ''});
+        expect((await new RemoteConversationStore(f.fs, 'draft').load())?.submittedTurnId).toBe('command-turn');
+        expect(f.client.create).toHaveBeenCalledOnce(); expect(f.client.command).toHaveBeenCalledOnce();
+        expect(f.client.turn).not.toHaveBeenCalled(); expect(f.client.rename).toHaveBeenCalledOnce();
     } finally {await view.close(); await f.manager.dispose();}
 });

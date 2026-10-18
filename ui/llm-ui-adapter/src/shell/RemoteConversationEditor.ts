@@ -7,6 +7,8 @@ import { remoteRounds, remotePrompts } from './remote-rounds';
 import { prepareRemoteAttachments } from './remote-attachments';
 import type { ChatSubmission } from '../domain/submission';
 import type { WorkspaceHandoff } from './drafts/workspace-handoff';
+import {isCommandInput} from '@itookit/llm-ui';
+import {resolveNativeCommand, submitNativeCommand} from '../independent/native-command';
 
 /** Native histories remain remote; this editor only owns a view and input draft. */
 export class RemoteConversationEditor extends BaseSettingsEditor<ConversationControls> {
@@ -28,7 +30,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private restoredDraft = false;
     private draftFiles: File[] = [];
     private savedFiles: File[] = [];
-    private submittedDraft?: {text: string; files: File[]};
+    private submittedDraft?: {text: string; files: File[]; revision: number};
     private submission?: ChatSubmission;
     private readonly events = new Map<EditorEvent, Set<(payload: unknown) => void>>();
     private interactionKey = '';
@@ -57,6 +59,8 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                 await this.flushPendingSave(); await this.options.onStartConversationDraft!(input);
             } : undefined}, {
             send: (text, files) => this.sendText(text, files),
+            models: this.service.models ? () => this.service.models!() : undefined,
+            commands: this.service.commands ? () => this.service.commands!() : undefined,
             attachments: this.options.readOnly ? undefined : this.service.snapshot?.().attachments,
             stop: () => { void this.run(() => this.service.interrupt()).catch(() => {}); },
             refresh: () => { void this.run(() => this.service.read()).catch(() => {}); },
@@ -80,7 +84,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private async show(snapshot: ConversationSnapshot) {
         if (this.closed || !this.active) return;
         if (this.snapshot?.pending && !snapshot.pending && snapshot.draft === '' && !snapshot.draftAttachments?.length && this.submittedDraft) {
-            this.acceptSubmission(this.submittedDraft.text, this.submittedDraft.files); this.submittedDraft = undefined;
+            this.acceptSubmission(this.submittedDraft.text, this.submittedDraft.files, this.submittedDraft.revision); this.submittedDraft = undefined;
         }
         this.snapshot = snapshot;
         this.restoreDraft(snapshot);
@@ -128,7 +132,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             this.view.input.restoreDraft(this.savedDraft, this.draftFiles, this.view.input.getConfig().agentId);
             this.savedFiles = [...this.draftFiles];
         }
-        if (snapshot.pending) this.submittedDraft = {text: this.savedDraft, files: [...this.draftFiles]};
+        if (snapshot.pending) this.submittedDraft = {text: this.savedDraft, files: [...this.draftFiles], revision: this.view.input.getDraftRevision()};
         this.restoredDraft = true;
     }
     private updateControls() {
@@ -143,6 +147,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             canSend: !this.working && this.submission?.state !== 'unknown' && !this.options.readOnly && !!this.snapshot?.canSend,
             canInterrupt: !this.working && !this.options.readOnly && !!this.snapshot?.canInterrupt,
         });
+        this.view.input.setNativeModelsAvailable(!!this.snapshot?.supportsModels && !this.options.readOnly);
         this.view.reconcile.disabled = this.working || !this.snapshot?.pending && this.submission?.state !== 'unknown';
         for (const button of this.view.interactions.querySelectorAll('button')) button.disabled = this.working || !!this.options.readOnly || !this.snapshot?.canRespond;
     }
@@ -172,9 +177,14 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         return !this.closed && !this.working && !!this.snapshot?.hasEarlier && !!this.service.loadEarlier
             && remotePrompts(this.snapshot.messages).length === 0;
     }
-    async sendText(text: string, files: File[] = []): Promise<void> {
+    async sendText(text: string, files: File[] = [], nativeSelection?: import('@itookit/ui-common').ConversationModelSelection): Promise<void> {
         if (!text.trim() && !files.length) return;
         if (this.closed || this.working || this.submission?.state === 'unknown' || this.options.readOnly || !this.snapshot?.canSend) throw new Error(t('harness.remoteBusy'));
+        const selection = nativeSelection ? {...nativeSelection} : this.view.input.getNativeModelSelection();
+        const revision = this.view.input.getDraftRevision(), currentText = this.view.input.getConfig().text;
+        if (isCommandInput(text) && this.snapshot?.supportsSlashCommands && this.service.command && this.service.commands) {
+            await this.sendCommand(currentText.trim() === text.trim() ? currentText : text, files, selection, revision); return;
+        }
         this.submission = {id: randomUUID(), text: text.trim() || t('harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting'};
         await this.run(async () => {
             try {
@@ -182,11 +192,12 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                 this.view.history.view.scrollToBottom(true);
                 this.view.setStatus(t('chat.submission.submitting'), 'queued');
                 const attachments = await prepareRemoteAttachments(files, this.snapshot?.attachments ?? []);
-                this.submittedDraft = {text, files: [...files]};
-                const result = attachments.length ? await this.service.send(text.trim() || t('harness.attachmentPrompt'), attachments) : await this.service.send(text);
+                this.submittedDraft = {text, files: [...files], revision};
+                const result = selection ? await this.service.send(text.trim() || t('harness.attachmentPrompt'), attachments, selection)
+                    : attachments.length ? await this.service.send(text.trim() || t('harness.attachmentPrompt'), attachments) : await this.service.send(text);
                 const accepted = !!result.submittedTurnId || !result.pending;
                 this.submission = {...this.submission!, state: accepted ? 'accepted' : 'unknown', messageId: this.submittedMessageId(result.submittedTurnId)};
-                if (!this.closed && accepted) { this.acceptSubmission(text, files); this.submittedDraft = undefined; }
+                if (!this.closed && accepted) { this.acceptSubmission(text, files, revision); this.submittedDraft = undefined; }
                 return result;
             } catch (error) {
                 this.submission = {...this.submission!, state: this.service.snapshot?.().pending || (error as {outcome?: string})?.outcome === 'unknown' ? 'unknown' : 'failed',
@@ -200,13 +211,26 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private submittedMessageId(turnId?: string): string | undefined {
         return turnId ? remoteRounds([{id: 'ack', role: 'user', text: '', turnId}])[0]?.id : undefined;
     }
+    private async sendCommand(text: string, files: File[], selection: import('@itookit/ui-common').ConversationModelSelection | undefined, revision: number): Promise<void> {
+        const commands = await this.service.commands!();
+        const resolved = resolveNativeCommand(text, commands);
+        if (!resolved || files.length) throw new Error(t('harness.commandUnavailable'));
+        if (this.closed || this.working || this.options.readOnly || !this.snapshot?.canSend) throw new Error(t('harness.remoteBusy'));
+        this.submittedDraft = {text, files: [], revision};
+        await this.run(async () => {
+            const snapshot = await submitNativeCommand(this.service, resolved.command, resolved.arguments, text, selection);
+            if (!snapshot.pending && !this.closed) {this.acceptSubmission(text, [], revision); this.submittedDraft = undefined;}
+            return snapshot;
+        });
+        if (this.snapshot?.pending) throw new Error(t('chat.submission.unknown'));
+    }
     private sendError(error: unknown): string | undefined {
         const code = (error as {remoteCode?: string})?.remoteCode;
         return code === 'HARNESS_SESSION_BUSY' || error instanceof Error && error.message.includes('HARNESS_SESSION_BUSY')
             ? t('chat.submission.occupied') : error instanceof Error ? error.message : undefined;
     }
-    private acceptSubmission(text: string, files: File[]) {
-        this.view.input.acceptSubmittedDraft(text, files);
+    private acceptSubmission(text: string, files: File[], revision: number) {
+        this.view.input.acceptSubmittedDraft(text, files, revision);
         this.draftFiles = this.draftFiles.filter(file => !files.includes(file)); this.savedFiles = [];
         this.savedDraft = ''; this.emit(this.isDirty() ? 'interactiveChange' : 'saved', undefined);
     }
@@ -266,6 +290,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     }
     async destroy(preserveInput = false) { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearTimeout(this.timer); await this.service.close(); await this.tail; this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
     cancelPendingRender(): void {
+        this.view?.input.hideNativeModelPicker();
         this.view?.history.view.setActive(false);
         this.active = false; this.releaseUpdates?.(); this.releaseUpdates = undefined;
         clearTimeout(this.updateTimer); this.updateTimer = undefined; clearTimeout(this.timer);
@@ -310,7 +335,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.events.get(event)!.add(listener); return () => { this.events.get(event)?.delete(listener); };
     }
     setReadOnly(value: boolean) { this.options.readOnly = value; this.updateControls(); }
-    get commands() { return {sendMessage: (message: {text: string; files?: File[]}) => {
-        return this.sendText(message.text, message.files);
+    get commands() { return {sendMessage: (message: {text: string; files?: File[]; nativeSelection?: import('@itookit/ui-common').ConversationModelSelection}) => {
+        return this.sendText(message.text, message.files, message.nativeSelection);
     }}; }
 }

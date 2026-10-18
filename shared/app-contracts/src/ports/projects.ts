@@ -19,7 +19,8 @@ export interface ProjectConversationPort extends HarnessConversationPort {
     snapshot(): ProjectConversationSnapshot;
     read(): Promise<ProjectConversationSnapshot>;
     poll(): Promise<ProjectConversationSnapshot>;
-    send(text: string, attachments?: HarnessContracts.HarnessAttachment[]): Promise<ProjectConversationSnapshot>;
+    send(text: string, attachments?: HarnessContracts.HarnessAttachment[], selection?: HarnessContracts.HarnessModelSelection): Promise<ProjectConversationSnapshot>;
+    command?(name: string, args?: string, selection?: HarnessContracts.HarnessModelSelection, inputText?: string): Promise<ProjectConversationSnapshot>;
     loadEarlier(): Promise<ProjectConversationSnapshot>;
     interrupt(): Promise<ProjectConversationSnapshot>;
     reconcile(): Promise<ProjectConversationSnapshot>;
@@ -313,6 +314,7 @@ export interface ProjectRemoteMountService {
         projectName?: string;
     }): Promise<void>;
     projectHarness(projectId: string, options?: OperationOptions): Promise<HarnessClient>;
+    projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<HarnessContracts.HarnessModelCatalog>;
     remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void>;
     searchFiles(projectId: string, query: HarnessContracts.FileSearchQuery, options?: OperationOptions): Promise<HarnessContracts.FileSearchResult>;
     projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly?: boolean, draftId?: string): Promise<ProjectConversationPort>;

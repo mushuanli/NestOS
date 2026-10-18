@@ -12,9 +12,12 @@ export class RemoteConversationStore {
         this.raw = await this.fs.meta.seq!.getEntry(this.path, this.key);
         if (!this.raw) { this.record = {}; return; }
         const record = JSON.parse(this.raw) as RemoteConversationRecovery;
+        validateSubmissions(record);
         if (record.submittedTurnId !== undefined && (typeof record.submittedTurnId !== 'string' || !record.submittedTurnId))
             throw new FSError('EINVAL', 'Invalid remote submission receipt');
         if (record.draft !== undefined && (typeof record.draft !== 'string' || record.draft.length > 1024 * 1024)) throw new FSError('EINVAL', 'Invalid remote input draft');
+        if (record.pending?.inputText !== undefined && (typeof record.pending.inputText !== 'string' || record.pending.inputText.length > 1024 * 1024))
+            throw new FSError('EINVAL', 'Invalid remote command input');
         if (record.sessionId !== undefined && typeof record.sessionId !== 'string' || record.pending &&
             (!record.pending.requestId || typeof record.pending.epoch !== 'string' || typeof record.pending.operation !== 'string')) throw new FSError('EINVAL', 'Invalid remote conversation recovery');
         if (record.deletedSessionIds !== undefined && (!Array.isArray(record.deletedSessionIds) || record.deletedSessionIds.length > 16401
@@ -25,6 +28,7 @@ export class RemoteConversationStore {
     get submittedTurnId(): string | undefined { return this.record.submittedTurnId; }
     async submitted(turnId: string): Promise<void> { await this.save({...this.record, submittedTurnId: turnId}); }
     async save(record: RemoteConversationRecovery): Promise<void> {
+        validateSubmissions(record);
         if (record.deletedSessionIds !== undefined && (!Array.isArray(record.deletedSessionIds) || record.deletedSessionIds.length > 16401
             || record.deletedSessionIds.some(id => typeof id !== 'string' || !id))) throw new FSError('EINVAL', 'Invalid native deletion recovery');
         validateAttachments(record.draftAttachments);
@@ -38,6 +42,19 @@ export class RemoteConversationStore {
         });
         this.raw = value;
         this.record = record;
+    }
+}
+
+function validateSubmissions(record: RemoteConversationRecovery): void {
+    for (const revision of [record.draftRevision, record.pending?.draftRevision]) {
+        if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0)) throw new FSError('EINVAL', 'Invalid remote draft revision');
+    }
+    if (record.commandResults === undefined) return;
+    if (!Array.isArray(record.commandResults) || record.commandResults.length > 64) throw new FSError('EINVAL', 'Invalid command receipts');
+    for (const result of record.commandResults) {
+        if (!result || typeof result.commandId !== 'string' || !result.commandId || result.commandId.length > 1024
+            || typeof result.output !== 'string' || result.output.length > 128 * 1024
+            || result.failed !== undefined && typeof result.failed !== 'boolean') throw new FSError('EINVAL', 'Invalid command receipt');
     }
 }
 

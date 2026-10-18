@@ -3,8 +3,9 @@ import type { ConversationControls, ConversationSnapshot } from '@itookit/ui-com
 import type { OperationLedger } from '@itookit/llm-ui';
 import { createNativeChatBinding } from './native';
 import { ChatProjection } from './projection';
+import {NativeComposerCapabilities} from './native-composer';
 
-vi.mock('@itookit/llm-ui', () => ({ createChatView: vi.fn() }));
+vi.mock('@itookit/llm-ui', async () => ({ createChatView: vi.fn(), composeCommandCatalogs: (await vi.importActual<typeof import('@itookit/llm-ui')>('@itookit/llm-ui')).composeCommandCatalogs }));
 function deferred<T>() {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve };
@@ -31,6 +32,119 @@ it('discards an older refresh result after a newer native update', async () => {
     host.emit({ messages: [{ id: 'm', role: 'assistant', text: 'new output' }] });
     pending.resolve({ ...host.state(), messages: [{ id: 'm', role: 'assistant', text: 'old output' }] }); await refreshing;
     expect(binding.source.getSnapshot().messages[0].parts[0]).toMatchObject({ text: 'new output' }); binding.dispose();
+});
+
+it('projects model capabilities and forwards validated selections without using a local connection', async () => {
+    const host = fixture(); host.emit({supportsModels: true});
+    host.controls.models = vi.fn(async () => ({models: [{id: 'native', label: 'Native model', reasoningEfforts: [{id: 'high', label: 'High'}]}]}));
+    host.controls.send = vi.fn(async () => ({...host.state(), submittedTurnId: 'turn'}));
+    const binding = await createNativeChatBinding(host.options);
+    const selectors = binding.source.getSnapshot().selectors!;
+    expect(selectors[0].choices).toContainEqual({id: 'native', label: 'Native model'});
+    expect(selectors[1].variants!.values.native.choices).toContainEqual({id: 'high', label: 'High'});
+    const context = {operationId: 'send', viewId: binding.source.getSnapshot().viewId};
+    expect(await binding.actions.send!({text: 'Prompt', attachments: [], selection: {modelId: 'native', reasoningEffort: 'high'}}, context)).toMatchObject({status: 'accepted'});
+    expect(host.controls.send).toHaveBeenCalledWith('Prompt', [], {modelId: 'native', reasoningEffort: 'high'});
+    const invalid = await binding.actions.send!({text: 'Prompt', attachments: [], selection: {modelId: 'native', reasoningEffort: 'invalid'}}, context);
+    expect(invalid).toMatchObject({status: 'rejected', code: 'INVALID_SELECTION'}); expect(host.controls.send).toHaveBeenCalledOnce(); binding.dispose();
+});
+
+it('retries failed metadata with bounded backoff while keeping repeated snapshots quiet', async () => {
+    vi.useFakeTimers();
+    const host = fixture(); host.emit({supportsSlashCommands: true});
+    host.controls.commands = vi.fn().mockRejectedValueOnce(new Error('Temporary')).mockResolvedValue([{name: 'compact', description: 'Compact', kind: 'action'}]);
+    const capabilities = new NativeComposerCapabilities(host.controls);
+    try {
+        await capabilities.load(host.state()); await capabilities.load(host.state());
+        expect(host.controls.commands).toHaveBeenCalledOnce();
+        await vi.advanceTimersByTimeAsync(1000); await capabilities.load(host.state());
+        expect(host.controls.commands).toHaveBeenCalledTimes(2);
+        expect(capabilities.catalog(host.state()).commands).toHaveLength(1);
+        await capabilities.load(host.state()); expect(host.controls.commands).toHaveBeenCalledTimes(2);
+    } finally {capabilities.dispose(); vi.useRealTimers();}
+});
+
+it('revalidates native commands without rereading history or unrelated model metadata', async () => {
+    const host = fixture(); host.emit({supportsModels: true, supportsSlashCommands: true});
+    host.controls.models = vi.fn(async () => ({models: []}));
+    host.controls.commands = vi.fn(async () => [{name: 'compact', description: 'Compact', kind: 'action' as const}]);
+    host.controls.command = vi.fn(async () => host.state());
+    const binding = await createNativeChatBinding(host.options), target = binding.source.getSnapshot().commands![0];
+    host.read.mockClear(); vi.mocked(host.controls.models!).mockClear();
+    const input = {target: {id: target.id, expectedRevision: target.revision}, kind: target.kind, text: '/compact ', arguments: ''};
+    const context = {operationId: 'compact', viewId: binding.source.getSnapshot().viewId};
+    expect(await binding.actions.command!(input, context)).toMatchObject({status: 'accepted'});
+    expect(host.read).not.toHaveBeenCalled(); expect(host.controls.models).not.toHaveBeenCalled();
+    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact ');
+    vi.mocked(host.controls.commands!).mockRejectedValueOnce(new Error('Directory unavailable'));
+    expect(await binding.actions.command!(input, context)).toMatchObject({status: 'rejected', code: 'DIRECTORY_UNAVAILABLE'});
+    expect(host.controls.command).toHaveBeenCalledOnce(); binding.dispose();
+});
+
+it('keeps definite native rejection distinct from an unknown submission', async () => {
+    const host = fixture(); host.emit({supportsSlashCommands: true});
+    host.controls.commands = vi.fn(async () => [{name: 'compact', description: 'Compact', kind: 'action' as const}]);
+    host.controls.command = vi.fn(async () => {throw Object.assign(new Error('Rejected'), {outcome: 'not-committed'});});
+    const binding = await createNativeChatBinding(host.options), command = binding.source.getSnapshot().commands![0];
+    const receipt = await binding.actions.command!({target: {id: command.id, expectedRevision: command.revision}, kind: command.kind,
+        arguments: '', text: '/compact'}, {operationId: 'rejected', viewId: binding.source.getSnapshot().viewId});
+    expect(receipt).toMatchObject({status: 'rejected', code: 'NATIVE_REJECTED'}); binding.dispose();
+});
+
+it('refreshes a changed command contribution without dropping the last usable model catalog', async () => {
+    const host = fixture(); host.emit({supportsModels: true, supportsSlashCommands: true});
+    host.controls.models = vi.fn(async () => ({models: [{id: 'native', label: 'Native', reasoningEfforts: []}]}));
+    host.controls.commands = vi.fn(async () => [{name: 'compact', description: 'Compact', kind: 'action' as const}]);
+    host.controls.command = vi.fn();
+    const binding = await createNativeChatBinding(host.options);
+    const next = [{name: 'verify', description: 'Verify', kind: 'prompt' as const}];
+    vi.mocked(host.controls.commands).mockResolvedValue(next);
+    vi.mocked(host.controls.models).mockRejectedValueOnce(new Error('temporary metadata failure'));
+    host.emit({slashCommands: next});
+    await vi.waitFor(() => expect(binding.source.getSnapshot().commands?.[0].name).toBe('verify'));
+    expect(binding.source.getSnapshot().selectors?.[0].choices).toContainEqual({id: 'native', label: 'Native'});
+    binding.dispose();
+});
+
+it('aggregates host and harness commands with distinct routes and keeps UI commands usable offline', async () => {
+    const host = fixture(); host.emit({supportsSlashCommands: true});
+    host.controls.commands = vi.fn(async () => [{name: 'compact', description: 'Native compact', kind: 'action' as const}]);
+    host.controls.command = vi.fn(async () => host.state());
+    const execute = vi.fn(async (_input, context) => ({status: 'accepted' as const, operationId: context.operationId}));
+    const binding = await createNativeChatBinding({...host.options, commandProviders: [{source: {id: 'ui', label: 'UI'},
+        commands: () => [{id: 'compact', revision: 0, name: 'compact', description: 'View compact', kind: 'action'}], execute}]});
+    const catalog = binding.source.getSnapshot().commands!;
+    expect(catalog).toHaveLength(2); expect(new Set(catalog.map(command => command.id)).size).toBe(2);
+    const context = {operationId: 'command', viewId: binding.source.getSnapshot().viewId};
+    const run = (command: typeof catalog[number]) => binding.actions.command!({target: {id: command.id, expectedRevision: command.revision}, kind: command.kind,
+        text: '/compact', arguments: ''}, context);
+    await run(catalog.find(command => command.source.id === 'harness')!);
+    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact');
+    host.emit({canSend: false, disconnected: true}); host.read.mockRejectedValue(new Error('offline'));
+    expect(await run(catalog.find(command => command.source.id === 'ui')!)).toMatchObject({status: 'accepted'});
+    expect(execute).toHaveBeenCalledWith(expect.objectContaining({target: {id: 'compact', expectedRevision: 0}}), context);
+    expect(host.controls.command).toHaveBeenCalledOnce(); binding.dispose();
+});
+
+it('rejects a harness command removed after completion rather than falling through to a model', async () => {
+    const host = fixture(); host.emit({supportsSlashCommands: true});
+    host.controls.commands = vi.fn(async () => [{name: 'compact', description: 'Native compact', kind: 'action' as const}]);
+    host.controls.command = vi.fn(async () => host.state()); host.controls.send = vi.fn();
+    const binding = await createNativeChatBinding(host.options), command = binding.source.getSnapshot().commands![0];
+    vi.mocked(host.controls.commands!).mockResolvedValue([]);
+    const receipt = await binding.actions.command!({target: {id: command.id, expectedRevision: command.revision}, kind: 'action', text: '/compact', arguments: ''},
+        {operationId: 'cmd', viewId: binding.source.getSnapshot().viewId});
+    expect(receipt).toMatchObject({status: 'rejected', code: 'STALE_COMMAND'});
+    expect(host.controls.command).not.toHaveBeenCalled(); expect(host.controls.send).not.toHaveBeenCalled(); binding.dispose();
+});
+
+it('releases every provider even if one command contribution throws during cleanup', async () => {
+    const host = fixture(), first = vi.fn(() => {throw new Error('cleanup');}), second = vi.fn();
+    const binding = await createNativeChatBinding({...host.options, commandProviders: [
+        {source: {id: 'one', label: 'One'}, commands: () => [], execute: vi.fn(), subscribe: () => first},
+        {source: {id: 'two', label: 'Two'}, commands: () => [], execute: vi.fn(), subscribe: () => second},
+    ]});
+    expect(() => binding.dispose()).toThrow('cleanup'); expect(second).toHaveBeenCalledOnce(); expect(host.listeners.size).toBe(0);
 });
 it('merges an earlier page into the latest streaming state', async () => {
     const host = fixture(); host.emit({ messages: [{ id: 'm', role: 'assistant', text: 'old' }], hasEarlier: true });

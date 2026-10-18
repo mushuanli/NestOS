@@ -4,6 +4,8 @@
 
 本包承接 MindOS 的 Session、Task、原生会话、配置和权限接线，保留原业务编辑器兼容入口。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。
 
+原生会话的斜杠候选由 ConversationControls.commands 按当前绑定提供，NativeSlashCommandPlugin 只负责候选和插入，不注册本地 Kernel 命令。RemoteConversationEditor 在发送时重新校验目录并委托 command；命令接纳与普通消息分别呈现，未知结果保留输入并走原 reconcile。ChatInput 拥有 registerPlugin 激活的插件，销毁须逐一 deactivate；关闭后迟到目录不能恢复弹层。
+
 本地与原生会话的标题栏共享 `EventBinder` 更多菜单；宿主可通过 `EditorOptions.mountMoreMenu` 注入资源动作并返回清理函数。会话归属与关联创建由 app-shell 提供，不进入聊天或 Markdown 组件；关闭编辑器须释放注入菜单。
 
 HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已加载正文；历史卡片与滚动归适配层，Markdown 内部展开归 mdxeditor。生命周期与流程见 [独立模块设计](../../doc/design/llm-ui-independent-module.md#7-markdown扩展与生命周期)，回归见 app-shell 的 conversation-content-search。
@@ -16,7 +18,7 @@ HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已�
 
 项目草稿工具栏按「项目 → 对话/执行 → 智能体」排列；项目选择由宿主 scope 注入。本地项目只显示本地智能体，远程项目只显示当前项目可创建的远程 harness，无候选时禁止发送；原生会话的 harness 创建后固定。切换项目先保存再打开目标项目独立草稿，正式会话隐藏项目和已固定模式的选择。项目选择在导航前捕获输入偏好，通过宿主转交目标草稿；draft-preferences 按目标智能体候选、连接启用/凭据与模型档位校验后应用，保留目标文字和附件，不复制执行锁、Flow 或分支引用。继承期间有新编辑或视图切换时丢弃迟到结果；恢复草稿时刷新项目候选。工作流入口位于标题栏更多菜单，先保存草稿再导航现有流程库；参数与连接槽继续由 FlowLauncher 和 FlowParameterForm 提交。Agent 不按 Provider 派生新类型。
 
-模型菜单按连接及 Provider 分组，展示该连接配置的聊天模型，一次选择原子更新 connectionId/modelTier；`auto` 持久值显示「跟随默认」，不宣称智能选模。模型档位与推理强度独立。harness 显示只读「原生配置」，Flow 显示节点模型并导航流程定义，不展示本地智能体或全局模型设置。智能体指令/工具通过宿主导航配置；设置凭据仍在连接管理。
+模型菜单按连接及 Provider 分组，展示该连接配置的聊天模型，一次选择原子更新 connectionId/modelTier；`auto` 持久值显示「跟随默认」，不宣称智能选模。模型档位与推理强度独立。harness 按 profile 的 models 能力显示原生模型菜单，目录与每个模型的推理档位由宿主提供；旧节点继续显示只读「原生配置」。选择绑定 executorId，草稿保存且第一条消息在转正前捕获；普通发送与 prompt 类原生命令将选择冻结到提交，action 命令沿用原生控制语义。Flow 显示节点模型并导航流程定义，不展示本地智能体或全局模型设置。智能体指令/工具通过宿主导航配置；设置凭据仍在连接管理。
 
 聊天候选复用 kernel-adapters/contracts 的纯函数 resolveChatModelTiers，各档位的真实解析由 resolveChatModelForTier 提供，显式无效模型不回退掩盖；排除目录中不存在或明确非聊天的模型；构建将该纯契约代码内联到独立入口，不增加发布时的后端依赖。
 
@@ -139,3 +141,8 @@ Markdown 嵌入统一通过 MDxController 设置 `scrollMode: 'host'`，正文�
 - 宿主可注入 readTaskAttachment 读取活动/待审批候选 ID；无候选跳过额外 Flow 查询，活动候选先核对同一 Session 及实时非终态，过期后继续待交互候选；待交互候选核对 Flow 归属、实时非终态及 pending interaction，跳过已解决任务。异步打开和状态读取后仍检查视图和附着代次。不注入时沿用 Kernel 端口，不改变附着和审批语义。
 
 - 草稿控制器创建通过 SessionDraftMaterialization.createEditor 显式注入，不使用模块全局 DOM/WeakMap 交接表。保留输入时仍应用后端固定的 executionMode/Flow 约束；confirmDraft 不根据旧输入推断模式锁。ChatInput 绑定配置不能触发用户配置保存，附件粘贴/拖拽按当前能力动态判断。
+
+独立入口 independent/native 经 NativeComposerCapabilities 将当前原生模型目录投影为 selector/variants，并聚合宿主 NativeCommandProvider 与 harness 命令；commands 的来源 id、局部 commandId、revision 与绑定一起校验。UI/项目/Flow/Agent provider 由宿主显式贡献，不把所有 MCP 工具自动改成 slash。界面 provider 不依赖远程 refresh；原生命令先刷新核对，参数与模型选择直达原生端口。independent/session 的 composerCommands 由命令拥有者核对操作，不能用 Session.Send 的提交证据替代。此路径与仍在工作台使用的兼容编辑器区分验收，不宣称工作台迁移已完成。
+
+
+兼容输入与独立绑定通过 independent/native-command 共享命令解析、原始草稿和 prompt/action 提交语义。独立命令复核只刷新目录，不重读历史及无关模型；目录失败按有界退避重试。模型查询的项目授权与客户端生命周期归 app-core.projectModels。草稿首条 prompt 命令共用原生会话准备及转正，action 的 turnId 不推导用户消息。

@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { MemoryBackend, createFileSystemSource } from '@itookit/vfs-core';
-import type { ProjectClient, RemoteProject } from '@itookit/piagent-driver';
+import type { HarnessClient, HarnessProfile, ProjectClient, RemoteProject } from '@itookit/piagent-driver';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { RemoteMountStore } from '../src/projects/remote-mount-store';
 import { ProjectRemoteMountService } from '../src/projects/remote-mounts';
@@ -38,6 +38,24 @@ it('upgrades the registered root once and persists attenuation without changing 
         expect((await f.store.load())?.projects.project[0].access).toBe('rw');
         expect(f.before).toHaveBeenCalledTimes(3); expect(f.after).toHaveBeenCalledTimes(3);
     } finally { await f.dispose(); }
+});
+
+it('queries project models through the application service and closes every capability lookup', async () => {
+    const f = await fixture();
+    const profile: HarnessProfile = {id: 'native', kind: 'codex', projectRuntime: true, aliases: ['alias'], workspaces: [{id: 'w'}],
+        capabilities: {create: true, history: true, resume: true, interrupt: true, interactions: true, models: true}};
+    const catalog = {models: [{id: 'model', label: 'Model', reasoningEfforts: []}]};
+    const close = vi.fn(async () => {}), models = vi.fn(async () => catalog);
+    const client = {profiles: vi.fn(async () => ({epoch: 'e', profiles: [profile]})), models, close} as unknown as HarnessClient;
+    vi.spyOn(f.remote, 'projectHarness').mockResolvedValue(client);
+    try {
+        expect(await f.remote.projectModels('project', 'alias')).toEqual(catalog);
+        expect(models).toHaveBeenCalledWith('native', undefined, undefined); expect(close).toHaveBeenCalledOnce();
+        profile.capabilities.models = false;
+        expect(await f.remote.projectModels('project', 'alias')).toEqual({models: []}); expect(models).toHaveBeenCalledOnce();
+        await expect(f.remote.projectModels('project', 'missing')).rejects.toMatchObject({code: 'ECAPABILITY'});
+        expect(close).toHaveBeenCalledTimes(3);
+    } finally {await f.dispose();}
 });
 
 it('retains the local readonly grant after a lost response and reconciles by reading before retrying', async () => {

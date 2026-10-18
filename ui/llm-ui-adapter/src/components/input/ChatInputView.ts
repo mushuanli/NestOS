@@ -20,6 +20,7 @@ import { AttachmentManager } from './AttachmentManager';
 import { ToolOutputPanel } from './ToolOutputPanel';
 import { HelpPanel } from './HelpPanel';
 import { SkillPanel } from './SkillPanel';
+import {NativeModelControl} from './NativeModelControl';
 import { ConnectionTierController } from './ConnectionTierController';
 import { ConnectionReadiness, type ConnectionLoadState } from './ConnectionReadiness';
 import { isDirectCommandInput } from '../../commands/direct-command';
@@ -28,6 +29,7 @@ import { InteractionPanel } from './InteractionPanel';
 import { delegate } from '../../utils/domEvents';
 
 export interface ChatInputOptions {
+    nativeModels?(executorId: string): Promise<import('@itookit/ui-common').ConversationModelCatalog>;
     /** Host-owned menu slot for immutable conversation mode information. */
     executionModeInfo?: HTMLElement;
     executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
@@ -144,6 +146,21 @@ export class ChatInput implements IChatInputPresenter {
 
     // ── Agent Picker (custom combobox, popup via PopupPanel) ─────────────────
     private agents: ExecutorOption[] = [];
+    private readonly nativeModels: NativeModelControl;
+    hideNativeModelPicker(): void {this.nativeModels.hide(); for (const plugin of this.plugins) plugin.onBlur?.();}
+    private textRevision = 0;
+    private observedText = '';
+    getDraftRevision(): number {
+        if (this.observedText !== this.textarea.value) {this.observedText = this.textarea.value; ++this.textRevision;}
+        return this.textRevision;
+    }
+    getNativeModelSelection() {return this.nativeModels.selection();}
+    setNativeModelsAvailable(enabled: boolean): void {
+        const agent = this.agents.find(row => row.id === this.config.agentId);
+        if (agent) agent.supportsModels = enabled;
+        this.nativeModels.setAvailable(enabled);
+        if (enabled) this.container.querySelector<HTMLElement>('.llm-input__execution-source')!.hidden = true;
+    }
     private agentPickerBtn!: HTMLButtonElement;
     private agentNameEl!: HTMLSpanElement;
     private agentMetaEl!: HTMLSpanElement;
@@ -215,6 +232,10 @@ export class ChatInput implements IChatInputPresenter {
         this.render();
 
         // 面板必须在 render()（写入模板 + bindElements）之后构造，DOM 才存在。
+        this.nativeModels = new NativeModelControl(container, () => this.options.nativeModels!(this.config.agentId), error => Toast.error(String(error)), selection => {
+            this.config.settings.nativeModelSelection = selection ? {executorId: this.config.agentId, ...selection} : undefined;
+            this.notifyConfigChange();
+        });
         this.toolOutput = new ToolOutputPanel(container, () => this.textarea?.focus());
         this.interactionPanel = new InteractionPanel(container);
         this.helpPanel = new HelpPanel(container, {
@@ -296,6 +317,7 @@ export class ChatInput implements IChatInputPresenter {
             setText: (text) => {
                 this.textarea.value = text;
                 this.config.text = text;
+                this.getDraftRevision();
                 this.adjustTextareaHeight();
             },
             insertAtCursor: (text) => {
@@ -387,6 +409,7 @@ export class ChatInput implements IChatInputPresenter {
         if (text) {
             this.config.text = text;
             this.textarea.value = text;
+            this.getDraftRevision();
             this.adjustTextareaHeight();
         }
         if (agentId) {
@@ -480,6 +503,10 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     destroy(): void {
+        this.nativeModels.destroy();
+        for (const plugin of this.plugins.splice(0)) {
+            try {plugin.deactivate();} catch (error) {console.error('Input plugin cleanup failed', error);}
+        }
         window.removeEventListener('resize', this.resizeInput);
         window.visualViewport?.removeEventListener('resize', this.resizeInput);
         delete this.container.dataset.editorComposing;
@@ -609,6 +636,7 @@ export class ChatInput implements IChatInputPresenter {
             this.notifyConfigChange();
         });
         this.textarea.addEventListener('input', () => {
+            this.getDraftRevision();
             this.adjustTextareaHeight();
             this.config.text = this.textarea.value;
             this.applyAvailability();
@@ -622,7 +650,10 @@ export class ChatInput implements IChatInputPresenter {
             }
         });
         this.textarea.addEventListener('focus', () => { this.container.dataset.editorComposing = 'true'; });
-        this.textarea.addEventListener('blur', () => { delete this.container.dataset.editorComposing; });
+        this.textarea.addEventListener('blur', () => {
+            delete this.container.dataset.editorComposing;
+            for (const plugin of this.plugins) plugin.onBlur?.();
+        });
 
         this.textarea.addEventListener('keydown', (e) => {
             if (e.isComposing || e.keyCode === 229) return;
@@ -816,6 +847,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private async submitDraft(text: string): Promise<void> {
         const submitted = this.textarea.value, executor = this.config.agentId, files = [...this.files];
+        const revision = this.getDraftRevision();
         const remote = executor.startsWith('remote:');
         const overrides = remote ? undefined : this.buildOverrides();
         this.submitting = true; this.applyAvailability();
@@ -823,7 +855,7 @@ export class ChatInput implements IChatInputPresenter {
             if (await this.options.onSend(text, files, executor, overrides) === false) return;
             if (!overrides?.flowId && (remote || !isDirectCommandInput(text))) this.recordExecutor(executor);
             if (this.connectionsDisposed) return;
-            this.clearSubmittedInput(files, this.textarea.value === submitted);
+            this.clearSubmittedInput(files, this.getDraftRevision() === revision && this.textarea.value === submitted);
             if (!remote) {
                 this.notifyConfigChange(); this.clearToolOutput();
                 for (const plugin of this.plugins) plugin.onAfterSend?.(text, executor);
@@ -853,11 +885,11 @@ export class ChatInput implements IChatInputPresenter {
     openConnectionPicker(): void { this.connectionTier.openConnPicker(); }
 
     private submitting = false;
-    acceptSubmittedDraft(text: string, files: File[]): void {
-        this.clearSubmittedInput(files, this.textarea.value.trim() === text.trim());
+    acceptSubmittedDraft(text: string, files: File[], revision?: number): void {
+        this.clearSubmittedInput(files, (revision === undefined || this.getDraftRevision() === revision) && this.textarea.value.trim() === text.trim());
     }
     private clearSubmittedInput(files: File[], clearText: boolean): void {
-        if (clearText) { this.textarea.value = ''; this.config.text = ''; }
+        if (clearText) { this.textarea.value = ''; this.config.text = ''; this.getDraftRevision(); }
         this.files = this.files.filter(file => !files.includes(file));
         this.attachmentMgr.renderAttachments(); this.adjustTextareaHeight();
     }
@@ -950,7 +982,10 @@ export class ChatInput implements IChatInputPresenter {
             for (const element of this.container.querySelectorAll<HTMLElement>(selector)) element.hidden = remote || flow;
         }
         this.container.querySelector<HTMLElement>('.llm-input__agent-picker')!.hidden = flow;
-        this.container.querySelector<HTMLElement>('.llm-input__execution-source')!.hidden = !remote;
+        const supportsModels = remote && !!this.options.nativeModels && !!this.agents.find(agent => agent.id === this.config.agentId)?.supportsModels;
+        const selected = this.config.settings.nativeModelSelection;
+        this.nativeModels?.setBinding(this.config.agentId, supportsModels, selected?.executorId === this.config.agentId ? selected : undefined);
+        this.container.querySelector<HTMLElement>('.llm-input__execution-source')!.hidden = !remote || supportsModels;
         const flowButton = this.container.querySelector<HTMLButtonElement>('.llm-input__flow-configure')!;
         flowButton.hidden = !flow; flowButton.disabled = this.loading || !this.options.onConfigureExecutor;
         const configure = this.container.querySelector<HTMLButtonElement>('.llm-input__btn--configure-agent')!;
@@ -976,7 +1011,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private syncUIFromConfig(): void {
         if (this.textarea) {
-            if (this.textarea.value !== this.config.text) this.textarea.value = this.config.text;
+            if (this.textarea.value !== this.config.text) {this.textarea.value = this.config.text; this.getDraftRevision();}
             this.adjustTextareaHeight();
         }
         this.syncExecutionMode();

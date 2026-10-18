@@ -3,6 +3,7 @@ import type { ChatOptions, ChatView } from './contracts';
 import { ChatController } from './chat-view';
 
 export type * from './contracts';
+export {composeCommandCatalogs, parseCommand, isCommandInput} from './commands';
 export { createOperationLedger } from './operations';
 export type { OperationLedgerOptions } from './operations';
 export { createContentSearch } from './search';

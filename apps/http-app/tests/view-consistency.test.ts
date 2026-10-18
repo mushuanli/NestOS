@@ -70,6 +70,33 @@ it('refreshes a conversation snapshot after a poll without a domain event', asyn
     expect(root.snapshot()).toEqual({ state: 'before' });
     await root.poll(); expect(root.snapshot()).toEqual({ state: 'after' });
 });
+
+it('transports a native command catalog and refreshes its snapshot after a command receipt', async () => {
+    const catalog = [{name: 'compact', description: 'Compact', kind: 'action'}];
+    let messages: unknown[] = [];
+    const {root} = await pair({snapshot: () => ({messages}), respond: async () => {}, commands: async () => catalog,
+        command: async (name: string, args: string) => {
+            messages = [{id: 'native-command', role: 'system', text: name + ':' + args}]; return {messages};
+        }});
+    expect(await root.commands()).toEqual(catalog);
+    await root.command('compact', 'retain decisions');
+    expect(root.snapshot().messages).toEqual([{id: 'native-command', role: 'system', text: 'compact:retain decisions'}]);
+});
+it('transports native model metadata and preserves the per-submission selection', async () => {
+    const catalog = {models: [{id: 'native', label: 'Native', reasoningEfforts: [{id: 'high', label: 'High'}]}]};
+    const send = vi.fn(async () => ({messages: []}));
+    const {root} = await pair({snapshot: () => ({messages: [], supportsModels: true}), respond: async () => {}, models: async () => catalog, send});
+    expect(await root.models()).toEqual(catalog);
+    await root.send('Prompt', [], {modelId: 'native', reasoningEffort: 'high'});
+    expect(send).toHaveBeenCalledExactlyOnceWith('Prompt', [], {modelId: 'native', reasoningEffort: 'high'});
+});
+
+it('preserves original command input independently of its parsed arguments over RPC', async () => {
+    const command = vi.fn(async () => ({messages: []}));
+    const {root} = await pair({snapshot: () => ({messages: []}), respond: async () => {}, command});
+    await root.command('verify', 'src', {modelId: 'native'}, '  /verify src\n');
+    expect(command).toHaveBeenCalledExactlyOnceWith('verify', 'src', {modelId: 'native'}, '  /verify src\n');
+});
 it('refreshes toolbox grouping and inventory with navigation without a configuration event', async () => {
     let groups = [{ id: 'old', kind: 'skills', name: 'Old', paths: ['/skills/old'] }];
     const inventory = { remoteAgentSource: {}, providers: new Map([['old', { name: 'Old' }]]) };

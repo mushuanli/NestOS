@@ -3,7 +3,7 @@ import type { FlowOptions } from './flow-contracts';
 
 export type JsonValue = null | boolean | number | string | readonly JsonValue[]
     | { readonly [key: string]: JsonValue };
-export type ActionName = 'send' | 'cancel' | 'retry' | 'edit' | 'respond';
+export type ActionName = 'send' | 'command' | 'cancel' | 'retry' | 'edit' | 'respond';
 export type OperationKind = ActionName | 'flow.add-node' | 'flow.update-node' | 'flow.remove-node'
     | 'flow.connect' | 'flow.disconnect' | 'flow.save' | 'flow.run' | 'flow.cancel';
 export interface AttachmentRef { readonly id: string; readonly name: string; readonly mimeType?: string }
@@ -45,7 +45,22 @@ export type InteractionResponse =
     | { readonly kind: 'approval'; readonly decisionId: string; readonly note?: string }
     | { readonly kind: 'input'; readonly values: Readonly<Record<string, string | readonly string[]>> };
 export interface SelectorView { readonly id: string; readonly label: string; readonly value: string;
-    readonly choices: readonly Choice[]; readonly disabled?: boolean }
+    readonly choices: readonly Choice[]; readonly disabled?: boolean;
+    /** Dependent choices are scoped to one parent value, such as a selected model. */
+    readonly variants?: { readonly selectorId: string;
+        readonly values: Readonly<Record<string, { readonly value: string; readonly choices: readonly Choice[] }>> } }
+export interface CommandDefinition {
+    readonly id: string; readonly revision: number; readonly name: string; readonly description: string;
+    readonly kind: 'prompt' | 'action'; readonly argumentHint?: string; readonly disabled?: boolean;
+}
+export interface CommandSource { readonly id: string; readonly label: string }
+export interface ComposerCommand extends CommandDefinition { readonly commandId: string; readonly source: CommandSource }
+export interface CommandCatalog { readonly source: CommandSource; readonly commands: readonly CommandDefinition[] }
+export interface CommandSubmission {
+    readonly target: { readonly id: string; readonly expectedRevision: number };
+    readonly text: string; readonly arguments: string; readonly kind: 'prompt' | 'action';
+    readonly selection?: Readonly<Record<string, string>>;
+}
 export interface ConversationSnapshot {
     /** Stable across observation bindings; it is not an authorization token. */
     readonly conversationId: string;
@@ -55,6 +70,8 @@ export interface ConversationSnapshot {
     readonly messages: readonly ChatMessage[];
     readonly interactions: readonly InteractionView[];
     readonly selectors?: readonly SelectorView[];
+    /** The host contributes only commands available to this binding and target. */
+    readonly commands?: readonly ComposerCommand[];
     readonly loading: boolean;
     readonly execution: 'unknown' | 'idle' | 'running' | 'waiting-input';
     readonly executionRef?: string;
@@ -78,6 +95,7 @@ export interface ChatSubmission { readonly text: string; readonly attachments: r
     readonly selection?: Readonly<Record<string, string>> }
 export interface ConversationActions {
     send?(input: ChatSubmission, context: OperationContext): Promise<OperationReceipt>;
+    command?(input: CommandSubmission, context: OperationContext): Promise<OperationReceipt>;
     cancel?(executionRef: string, context: OperationContext): Promise<OperationReceipt>;
     /** Regenerate a reply from this message; never retry an uncertain send. */
     retry?(target: MessageTarget, context: OperationContext): Promise<OperationReceipt>;

@@ -18,6 +18,11 @@ export function draftHarness(client: HarnessClient, recovery: RemoteConversation
             const result = await target.turn(...args);
             await recovery.submitted(result.turnId); return result;
         };
+        if (key === 'command' && target.command) return async (...args: Parameters<NonNullable<HarnessClient['command']>>) => {
+            const result = await target.command!(...args);
+            if (result.turnId) await recovery.submitted(result.turnId);
+            return result;
+        };
         if (key === 'operation') return async (...args: Parameters<HarnessClient['operation']>) => {
             const receipt: HarnessReceipt = await target.operation(...args);
             const result = receipt.result as {turnId?: unknown} | undefined;
@@ -42,7 +47,7 @@ export function draftConversation(source: HarnessConversationPort, recovery: Rem
         return typeof value === 'function' ? async (...args: unknown[]) => {
             const submitted = !!recovery.submittedTurnId;
             const result = await Reflect.apply(value, target, args);
-            if (!submitted && (key === 'send' || key === 'reconcile') && snapshot().submittedTurnId && source.snapshot().canRename && source.rename) {
+            if (!submitted && (key === 'send' || key === 'command' || key === 'reconcile') && snapshot().submittedTurnId && source.snapshot().canRename && source.rename) {
                 try { await source.rename(formatDefaultFileTitle()); }
                 catch (error) { reportRemoteFailure(error, {stage: 'draft.rename', sessionId: source.snapshot().sessionId}); }
             }

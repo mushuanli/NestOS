@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 import { it, expect, vi } from 'vitest';
 import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
-const state = vi.hoisted(() => ({ options: undefined as any, restore: vi.fn(), destroy: vi.fn() }));
+const state = vi.hoisted(() => ({selection: undefined as {modelId: string; reasoningEffort?: string} | undefined, options: undefined as any, restore: vi.fn(), destroy: vi.fn() }));
 vi.mock('../../llm-ui-adapter/src/shell/AgentProvider', () => ({ buildExecutorOptions: async () => [], buildConnectionOptions: async () => [] }));
 vi.mock('../../llm-ui-adapter/src/components/input/ChatInputView', () => ({ ChatInput: class {
     private config = {text: '', agentId: 'default', settings: {}};
     constructor(_container: HTMLElement, options: unknown) { state.options = options; }
     getConfig() {return this.config;} setConfig(value: object) {Object.assign(this.config, value);}
+    getNativeModelSelection() {return state.selection ? {...state.selection} : undefined;}
     focus() {} setLoading() {} refreshConnections() {} restoreDraft = state.restore; destroy = state.destroy;
 } }));
 
@@ -173,6 +174,24 @@ it('routes a remote harness directly without materializing a local Session', asy
     const editor=new SessionDraftEditor(document.createElement('div'),{onChange: () => () => {}} as never,{sessionDraft:{materialize,clear},remoteAgents:{list:async () => [],send}});
     await editor.init(document.createElement('div'));await state.options.onSend('remote prompt',[],'remote:codex');
     expect(send).toHaveBeenCalledWith('remote:codex','remote prompt');expect(materialize).not.toHaveBeenCalled();expect(clear).toHaveBeenCalledOnce();await editor.destroy();
+});
+
+it('captures the first native model choice before waiting for a draft save', async () => {
+    let finish!: () => void;
+    const pending = new Promise<void>(resolve => {finish = resolve;});
+    const save = vi.fn(async () => {}).mockImplementationOnce(() => pending), send = vi.fn(async () => {});
+    state.selection = {modelId: 'original', reasoningEffort: 'high'};
+    const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never,
+        {sessionDraft: {materialize: vi.fn(), save}, remoteAgents: {list: async () => [], send}});
+    await editor.init(document.createElement('div'));
+    try {
+        state.options.onDraftChange({text: 'Prompt', agentId: 'remote:codex', settings: {}}, []);
+        const sending = state.options.onSend('Prompt', [], 'remote:codex');
+        await vi.waitFor(() => expect(save).toHaveBeenCalledOnce());
+        state.selection = {modelId: 'next', reasoningEffort: 'low'}; finish();
+        await sending;
+        expect(send).toHaveBeenCalledWith('remote:codex', 'Prompt', {modelId: 'original', reasoningEffort: 'high'});
+    } finally {state.selection = undefined; await editor.destroy();}
 });
 
 it('rejects remote attachments before creating or sending a native conversation', async () => {

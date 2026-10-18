@@ -108,6 +108,8 @@ cancel 捕获固定 executionRef，宿主在执行端核验。取消旧执行后
 
 saveDraft 串行合并。flushDraft 覆盖调用前仍在防抖等待中的最新编辑；保存失败不推进已保存版本。onDraftChange 不是保存成功通知。宿主保存并恢复完整草稿与台账，视图销毁不承担宿主持久状态的最终所有权。
 
+发送前的多图编辑另见 [聊天图片处理设计](chat-image-editing.md)（待实施）。图片替换需要草稿项内容版本；接纳清理须保留等待期间生成的新版本，不能沿用仅按附件 ID 删除的规则。通用编辑器归独立 llm-ui 的可选能力，宿主负责原图、配方和输出的持久化、条件替换及 OCR 接线。
+
 ## 6 Flow 是 llm-ui 的一部分
 
 Flow 的 UI 契约使用通用 FlowSnapshot、节点类型、字段、端口与边，不导入后端 FlowDraft/FlowRevision/Kernel 类型，不按具体插件或工具名分支。
@@ -257,3 +259,77 @@ C4Component
 完成标准：不刷新能看到首个回复；刷新前后持久消息身份与终态正文一致；中途恢复最终收敛；未知提交不重复发送；关闭视图不停止任务；旧绑定不污染新绑定。性能覆盖流式批处理、分页合并和隐藏暂停呈现，不能把统一快照做成每 token 重建全部 DOM。
 
 诊断仅记录 conversationId、operationId、executionRef、viewId、cursor 和阶段时间，用于区分接纳、执行、投影、传输和 UI 应用水位；不在审计中记录消息、附件或凭据。HTTP 200 不代表业务成功。
+
+
+## 10. 输入能力、连接与命令聚合
+
+### 10.1 当前缺口与实现边界
+
+工作台仍使用 `ui/llm-ui-adapter` 的 LLMWorkspaceEditor / RemoteConversationEditor 兼容入口。独立 ChatView 经 independent/session、independent/native 接入；不能用兼容组件的测试宣称独立输入契约已经覆盖，也不能用独立绑定测试宣称工作台已整体迁移。未更新的 pi-agent 不会因只更新前端就宣称新的模型或命令能力。
+
+本轮补齐独立输入的 commands / actions.command、命令来源与版本、模型依赖选择器，以及 native/session 绑定的命令贡献与路由。工作台整体切换仍按 9.5 逐项迁移，不另建第三套输入组件。
+
+### 10.2 连接与执行目标
+
+| 概念 | 当前职责 | 输入层边界 |
+| --- | --- | --- |
+| LLMConnection | 直连 Provider 的模型配置与档位解析 | 不作为远程 harness 的配置容器 |
+| MCP connection | 远程节点的通信、凭据和服务发现；pi-agent 能力复用这份连接记录 | 不直接决定模型或可用 slash |
+| 远程项目与 harness profile | 目录授权、执行隔离和具体原生执行器选择 | 宿主绑定并投影当前能力 |
+| 会话绑定 | 固定观察与操作目标；持有 session/branch/view 身份 | UI 不解析 remote: 字符串或 endpoint |
+| Composer 能力投影 | 选择器、当前可用命令、来源与版本 | ChatInput 只展示和提交意图 |
+
+```mermaid
+flowchart LR
+  Conn[MCP connection] --> Grant[远程项目授权]
+  Grant --> Harness[harness profile]
+  Harness --> Session[会话绑定]
+  Session --> Aggregate[宿主能力聚合]
+  UI[UI 展示动作] --> Aggregate
+  Host[项目与宿主动作] --> Aggregate
+  Agent[当前 Agent / Flow 能力] --> Aggregate
+  Aggregate --> Composer[ChatInput 选择器与命令菜单]
+  Composer --> Intent[带目标、版本、参数和配置的意图]
+  Intent --> Owner[命令拥有者复核并执行]
+```
+
+### 10.3 有效命令并集
+
+菜单是当前上下文内各功能**公开且可用**命令的并集。宿主按目标、授权、运行状态及初始化条件过滤贡献；不可因为位于调用链中就公开所有函数或 MCP 工具。UI 保留独立的来源 ID、命令 ID、名称、revision 和 prompt/action 语义。不同来源可以同名，不能按注册顺序覆盖，也不能在执行失败后尝试另一来源或把未知命令发给模型。
+
+独立库通过 composeCommandCatalogs 形成稳定身份；source.commands 提供纯数据，actions.command 按明确目标执行。NativeCommandProvider 接入宿主贡献，原生目录属于 harness 来源；Session 的 composerCommands 接入应用侧聚合并由自己的 reconcile 查询操作结果。界面动作可在原生运行中或离线时可用，原生命令的可执行性仍由原生适配器判断。公开目录不等同于授权，执行方再次校验目标版本及权限。
+
+模型与推理选项同样来自当前执行目标，不让 UI 猜测固定档位。selectors.variants 只支持一个独立父选择器的条件选项；更复杂业务表单仍由宿主扩展，不扩张为通用表单引擎。提交捕获当时的 selection，后续修改只影响下一次意图。
+
+
+### 10.4 原生提交与恢复的共同路径
+
+兼容输入与独立 ChatView 通过 independent/native-command 共享解析和提交语义。两者都捕获原始输入、命令目标、参数和模型选择；解析后的 slash 文本不作为清理草稿的依据。piagent-driver 的 HarnessConversation 为消息和 prompt 命令共用 prepareSession、接纳清理和提交后刷新；新草稿中的会话级 action 标为不可用，不为查看候选提前创建会话。
+
+HarnessRecovery 保存 draftRevision，turn/command 的 pending 捕获当时的 inputText 与 draftRevision。接纳或核对回执后仅清理匹配版本；等待期间编辑再恢复为相同文字也属于新版本。create、resume、turn、command 各自持有稳定 requestId，unknown 只核对既有回执，不重新提交。app-core 的 draftHarness 同时记录 turn 与 command 的首轮接纳，只有持久确认后发布正式会话身份。
+
+接纳与执行结果分开：failed 的命令结果仍是已提交操作。最近 64 个有 commandId 的本地命令结果随恢复记录保存，不复制原生历史；历史刷新后仍可展示，原生同 ID 记录到达后以原生记录为准。每条 output 上限为 128 Ki 个字符。Claude compact 及其别名属于 action，即使返回 turnId 也不生成临时用户气泡；SDK 未回显用户消息时由完成帧确认接纳。
+
+能力发现失败保留最后可用目录，相同快照按 1/2/4/8/15 秒退避允许重试，显式刷新可立即重试。原生命令执行前单独刷新命令目录，不为校验命令重读完整历史或模型目录。兼容输入的连续补全共享在途读取，候选最多缓存 1 秒；发送时仍重新校验。DSH 目录始终来自当前 agent，Claude 未接管会话按已授权 cwd 启动不持久化的 SDK 发现进程，保留合法别名。
+
+远程项目模型查询通过 app-core 的 projectModels 用例完成 profile 能力检查、授权绑定及客户端释放，app-shell 只选择候选并调用应用端口。模型选择与原始命令输入通过 app-contracts 和 app-transport 完整传递，不进入传输层策略。
+
+```mermaid
+C4Component
+    title 原生输入能力与提交职责
+    Container_Boundary(ui, "浏览器 / WebView") {
+        Component(views, "兼容输入与独立 ChatView", "DOM", "展示候选并捕获草稿")
+        Component(binding, "输入绑定", "llm-ui-adapter", "共享命令解析、来源路由和回执投影")
+    }
+    Container_Boundary(host, "应用宿主") {
+        Component(app, "项目用例", "app-core", "授权绑定、模型查询与草稿转正")
+        Component(driver, "原生会话", "piagent-driver", "准备会话、提交、接纳与恢复")
+    }
+    Component(native, "Harness 适配器", "pi-agent", "动态目录、别名与原生协议")
+    System_Ext(executor, "Claude / Codex / DSH", "执行与原生历史")
+    Rel(views, binding, "原始输入、目标、参数及选择")
+    Rel(binding, app, "显式操作意图")
+    Rel(app, driver, "授权范围与恢复存储")
+    Rel(driver, native, "稳定子操作 ID 与回执查询")
+    Rel(native, executor, "权威校验后执行")
+```

@@ -5,6 +5,9 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    'harness.followNativeSettings': '跟随原生配置',
+    'harness.reasoning': '推理强度',
+    'harness.commandUnavailable': '此命令尚不可用，或不能与附件一起执行。请先发送消息或恢复原生会话。',
     "application.startTitle": "今天想做什么？",
     "application.startHelp": "选择功能后加载。历史标签仍会保留，点击后继续。",
     "application.workspaceLoading": "正在加载工作区…",

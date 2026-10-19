@@ -123,7 +123,7 @@ export type { ProjectSyncProvider, ProjectSyncSession, ProjectSyncComparison, Pr
 
 export { prepareProjectSync } from './projects/sync/prepare';
 export type { ProjectSyncPreparationRemote } from './projects/sync/prepare';
-export type { HarnessClient, HarnessProfile, HarnessSession, HarnessPage, HarnessHistory, HarnessEvent, HarnessEvents, HarnessReceipt } from '@itookit/mindos-node-client/harness';
+export type { HarnessClient, HarnessProfile, HarnessSession, HarnessPage, HarnessHistory, HarnessEvent, HarnessEvents, HarnessReceipt } from '@itookit/mindos-node-driver/harness';
 
 export { MCPRemoteConnections, MINDOS_NODE_EXTENSION, remoteMCPConnection, mindosNodeConfiguration, isMindOSNodeTool } from './projects/mcp-remote-connections';
 export type { MindOSNodeConfiguration, MCPConfigurationStore } from './projects/mcp-remote-connections';

@@ -1,5 +1,5 @@
 import { estimateUsageCost, type ModelPricingConfig, type UsageCostEstimate } from '@itookit/kernel-adapters/contracts';
-import type { HarnessUsage } from '@itookit/mindos-node-client';
+import type { HarnessUsage } from '@itookit/mindos-node-driver';
 
 /** Host-injected policy: no prices or provider names enter the conversation mechanism. */
 export function createUsageCostEstimator(pricing: () => ModelPricingConfig): (usage: HarnessUsage) => UsageCostEstimate {

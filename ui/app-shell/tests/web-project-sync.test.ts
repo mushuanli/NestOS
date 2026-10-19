@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { IndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { IndexedDBSyncStore } from '@itookit/sync-adapters';
-import { createMindOSNodeClient } from '@itookit/mindos-node-client';
+import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
 import { webcrypto } from 'node:crypto';
 import { randomId } from '@itookit/vfs-sync';
 import type { ProjectService } from '@itookit/app-core';
@@ -45,7 +45,7 @@ async function server(directoryProjects = false, apiKey = false) {
 async function device(endpoint: string) {
     const backend = new IndexedDBBackend({ dbName: 'web-sync-' + randomId() }); await backend.init();
     const directory = '/home/admin/projects/local'; await backend.mkdir(directory);
-    const http = createMindOSNodeClient(); http.setCredential('saved', 'test-secret');
+    const http = createMindOSNodeDriver(); http.setCredential('saved', 'test-secret');
     const project = { name: 'Local', project: { id: 'local', directory } };
     const connection = () => ({id: 'server', name: 'Server', endpoint, username: 'owner', credentialRef: 'saved'});
     const projects = { get: async () => project, assertIndependent: async () => {}, remoteMounts: { list: () => [], connection,
@@ -108,7 +108,7 @@ it('discovers mindos-node on the generic MCP connection without extra verificati
         if (String(input).endsWith('/mcp') && typeof init?.body === 'string') methods.push(JSON.parse(init.body).method);
         return originalFetch(input,init);
     });
-    const driver = createMindOSNodeClient();
+    const driver = createMindOSNodeDriver();
     const runtime = await createApplicationRuntime({backend,ownerKind:'web',remoteSourceProvider:driver});
     try {
         const draft = {id:'office',name:'Office',transport:'http' as const,endpoint:running.endpoint+'/mcp',apiKey:'fixed-network-api-key-at-least-24-bytes'};

@@ -63,7 +63,7 @@ mindos-node 0.1.5+ 的 Codex/Claude profile 声明 `capabilities.usage`，提供
 - mindos-node 只读取已授权原生历史，按文件身份与偏移缓存新增记录；重启后重建，不保存价格或消息副本。每次最多扫描 32 MiB，单记录最多 2 MiB，最多 8192 个计量项，超过扫描窗口、记录异常或计数器重置时明确返回 `complete: false`；条目容量超限明确报错。读取失败保留会话可用性并标记 `usageUnavailable`。
 - `usage.scope = "transcript"`：估算当前原生历史中可见的用量，包含分支继承的历史，不代表该分支新增消费；独立子会话或原生未提供的用量不会凭空补齐。此投影不能跨分支直接相加当作实际账单。
 - 输入、缓存读取、缓存写入为互斥 token 桶；推理 token 是输出的子集，不重复计价。Codex 的累计快照只取增量；Claude 按原生 message ID 替换重复帧。失败和取消不会清空已观察用量。
-- `mindos-node-client` 校验身份、非负安全整数、重复项和汇总一致性，只搬运用量。`app-core` 注入估算函数；`kernel-adapters/contracts` 提供纯定价解析与计算，不读取 VFS 或网络。UI 只展示结果。
+- `mindos-node-driver` 校验身份、非负安全整数、重复项和汇总一致性，只搬运用量。`app-core` 注入估算函数；`kernel-adapters/contracts` 提供纯定价解析与计算，不读取 VFS 或网络。UI 只展示结果。
 - 价格优先级：供应商与模型精确匹配 → 模型名称/别名 → `fallbackFor` 包含供应商 ID 的默认价 → 全局 `default`。具体默认金额只放在可选产品预设，已有配置只补缺失的供应商默认条目，不覆盖用户设置；新增自定义供应商从用户配置的全局默认价生成可编辑条目，没有全局模板时不凭空生成价格。
 - 定价编辑器可修改 `fallbackFor`（供应商 ID，逗号分隔），`.llm` 的 pricing 条目保留此字段。示例：`{id: "my-default", fallbackFor: ["my-provider"], providers: {}, price: [2, 8, 2, 0.2]}`，单位 USD/百万 token。
 - `usageEstimate` 使用当前定价，并携带各条目的价格快照、匹配依据与用量 revision；未知价格返回 null，不把缺失数据当作零费用。远程估算不写入本地 `cost.seq`，不修改已入账历史费用，避免重复统计。

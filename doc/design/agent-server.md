@@ -192,7 +192,7 @@ PTY、自动 materialization、增量传输、缓存和结果导出，分别按�
 
 ## 已实现：外部 harness 控制与统一接入
 
-mindos-node-client 统一文件、进程、同步和外部 harness 连接。服务端在现有认证端口新增无状态 MCP 2026-07-28 `/mcp`，使用 MCP SDK 2.0 客户端验证。文件字节和原有进程接口继续 HTTP；不替换文件修订/操作收据，也不把 Codex 原生 stdio 称为 MCP。
+mindos-node-driver 统一文件、进程、同步和外部 harness 连接。服务端在现有认证端口新增无状态 MCP 2026-07-28 `/mcp`，使用 MCP SDK 2.0 客户端验证。文件字节和原有进程接口继续 HTTP；不替换文件修订/操作收据，也不把 Codex 原生 stdio 称为 MCP。
 
 通用 `HarnessDriver` 与注册/修改收据层分开，当前驱动为 Codex。每个配置 profile 懒启动独立 app-server，通过原生 thread/list/read/start/resume、turn/start/interrupt、通知和反向请求控制。显式 CODEX_HOME 和 workspace 白名单为部署授权，不自动扫描宿主所有 home。配置可指向 ~/.codex 的实际绝对路径，分页读取各来源和归档会话；不修改原生数据库或 JSONL。历史只读 fallback 限于 sessions/archived_sessions 中的常规 JSONL，拒绝链接与目录逃逸。
 

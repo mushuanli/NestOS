@@ -1,7 +1,7 @@
 import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import { openApplicationView } from '@itookit/app-core/host';
 import { createMindosFlowLibrary } from '@itookit/app-core';
-import { createMindOSNodeClient } from '@itookit/mindos-node-client';
+import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
 import { createTauriMCPTransport } from './shell/tauri-mcp-transport';
 import { recordDiagnostic, observeTools } from './log/desktop-diagnostics';
 import { errorDetails, t } from '@itookit/common';
@@ -292,7 +292,7 @@ async function bootstrap(): Promise<void> {
     const llmLogger = new TauriLLMLogger(rootDir);
     const runtime = await createApplicationRuntime({
         startupMode: 'interactive',
-        remoteSourceProvider: createMindOSNodeClient(),
+        remoteSourceProvider: createMindOSNodeDriver(),
         backend: rootBackend,
         additionalMounts: [...workspaceMounts],
         ownerKind: 'tauri',

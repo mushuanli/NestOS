@@ -4,9 +4,9 @@
 [submodule "tools/mindos-node"]
 	path = tools/mindos-node
 	url = git@github.com:mushuanli/mindos-node.git
-[submodule "libraries/mindos-node-client"]
-	path = libraries/mindos-node-client
-	url = https://github.com/mushuanli/piagent-driver.git
+[submodule "libraries/mindos-node-driver"]
+	path = libraries/mindos-node-driver
+	url = https://github.com/mushuanli/mindos-node-driver.git
 [submodule "libraries/vfs-core"]
 	path = libraries/vfs-core
 	url = https://github.com/mushuanli/vfs-core.git

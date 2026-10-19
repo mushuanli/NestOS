@@ -1,5 +1,5 @@
 import { ENTITY_ICONS, t } from '@itookit/common';
-import type { HarnessProfile } from '@itookit/mindos-node-client';
+import type { HarnessProfile } from '@itookit/mindos-node-driver';
 import type { ProjectRemoteMountPort } from '@itookit/app-contracts/services';
 export interface RemoteHarnessAgent { id: string; name: string; description: string; source: string; icon: string; connectionId: string; profile: HarnessProfile }
 /** Only verified mindos-node connections and server-advertised project harnesses appear. */

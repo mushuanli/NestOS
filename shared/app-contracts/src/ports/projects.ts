@@ -2,10 +2,10 @@
 import type * as ToolContracts from '@itookit/tools/contracts';
 import type * as VfsContracts from '@itookit/vfs-core';
 import type { IFileSystem, FileSystemSourceOwner, OperationOptions } from '@itookit/vfs-core';
-import type * as HarnessContracts from '@itookit/mindos-node-client';
-import type { HarnessObservation, HarnessStatusRow, HarnessProfile, HarnessConversationPort, HarnessConversationSnapshot } from '@itookit/mindos-node-client';
+import type * as HarnessContracts from '@itookit/mindos-node-driver';
+import type { HarnessObservation, HarnessStatusRow, HarnessProfile, HarnessConversationPort, HarnessConversationSnapshot } from '@itookit/mindos-node-driver';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
-import type { HarnessClient } from '@itookit/mindos-node-client/harness';
+import type { HarnessClient } from '@itookit/mindos-node-driver/harness';
 import type { ISessionRepository, SessionFolder, SessionSummary, ConversationManifest } from '@itookit/llm-session/contracts';
 import type * as FlowContracts from '@itookit/llm-flow/contracts';
 import type { SessionSubmission } from '@itookit/llm-flow/contracts';
@@ -154,7 +154,7 @@ export type ProjectFolder = SessionFolder & {
 };
 
 export interface ProjectRemoteMount extends RemoteFileConnection {
-    capabilities?: import('@itookit/mindos-node-client').RemoteProjectCapabilities;
+    capabilities?: import('@itookit/mindos-node-driver').RemoteProjectCapabilities;
     serverProjectId?: string;
     serverProjectRevision?: number;
     serverId?: string;
@@ -167,7 +167,7 @@ export interface ProjectRemoteMount extends RemoteFileConnection {
 
 export interface RemoteFileConnection {
     anonymous?: boolean;
-    authorization?: import('@itookit/mindos-node-client').RemoteAuthorization;
+    authorization?: import('@itookit/mindos-node-driver').RemoteAuthorization;
     endpoint: string;
     alias: string;
     credentialRef: string;
@@ -344,7 +344,7 @@ export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpo
 
 export interface RemoteFileSystemConfig {
     anonymous?: boolean;
-    authorization?: import('@itookit/mindos-node-client').RemoteAuthorization;
+    authorization?: import('@itookit/mindos-node-driver').RemoteAuthorization;
     id: string;
     name: string;
     endpoint: string;

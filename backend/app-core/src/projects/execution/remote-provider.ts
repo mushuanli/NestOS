@@ -23,7 +23,7 @@ export function createRemoteExecutionProvider(files: Pick<SessionFilesService, '
             if (JSON.stringify(await files.inspect(sessionId)) !== JSON.stringify(record))
                 throw new FSError('ECONFLICT', 'Session directory authorization changed');
             const root=mounts.find(mount => mount.at==='/');
-            let remoteProject: import('@itookit/mindos-node-client').RemoteProject | undefined;
+            let remoteProject: import('@itookit/mindos-node-driver').RemoteProject | undefined;
             if (root?.serverProjectId && (!provider.projects || !provider.projectProcess)) throw new FSError('ECAPABILITY','Project-scoped remote execution unavailable');
             if (root?.serverProjectId && provider.projects) {
                 const client=provider.projects(connection);

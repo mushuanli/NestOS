@@ -404,7 +404,7 @@ C4Component
 
 文件目录页采用显式刷新：首次进入、用户刷新或当前用户的文件操作读取数据，后台会话、连接和项目事件不重建目录页。会话状态观察不启用文件监听；目录版本仅反映真实服务端版本，不因覆盖不足而拼接时间桶。前端聊天只展示后端快照与订阅更新，不再自行定时查询。后端正文仅在有活动轮次且存在展示订阅时推进事件游标，轮次结束或最后一个订阅离开即停止。原生会话列表初次读取后空闲停止，显式刷新及会话活动变化可以重新触发读取；连接只在新增观察兴趣或授权绑定变化时探测，不周期轮询。浏览器页面隐藏时释放展示兴趣，返回时按需读取最新快照；执行本身继续由后端负责。
 
-原生交互由 mindos-node-client 提供结构化问题、选项说明、多选/自由回答/密码输入标记与审批决策目录；UI 适配到 llm-ui 的共享 InteractionCard，主工作台和独立 ChatView 使用同一转换与渲染。未知交互保留只读提示，不能静默隐藏。相同请求的观察更新保留未提交回答；密码回答只进入明确的回复调用，不进入会话草稿或恢复记录。
+原生交互由 mindos-node-driver 提供结构化问题、选项说明、多选/自由回答/密码输入标记与审批决策目录；UI 适配到 llm-ui 的共享 InteractionCard，主工作台和独立 ChatView 使用同一转换与渲染。未知交互保留只读提示，不能静默隐藏。相同请求的观察更新保留未提交回答；密码回答只进入明确的回复调用，不进入会话草稿或恢复记录。
 
 启动本轮的响应可能等待审批，因此 conversation-view 在 send/command 尚未完成时独立推进事件读取，respond 不排在该响应之后；driver 独立保存每个回复的 requestId/epoch，不覆盖正在等待的 turn 回执。未知回复通过原操作回执核对，不自动重发。重新打开会话的首次 read 同时读取未解决请求，恢复待答框，不依赖新执行事件；普通发送前按需刷新超过 30 秒的投影，防止空闲回收后沿用旧 owned 状态。
 
@@ -417,7 +417,7 @@ C4Component
   title 原生交互与运行时生命周期
   Component(ui, "ChatInput / InteractionCard", "llm-ui + adapter", "展示结构化问题，保留输入，提交用户选择")
   Component(view, "ConversationView", "app-core", "共享事件推进；回复通道独立于等待中的启动调用")
-  Component(driver, "HarnessConversation", "mindos-node-client", "原生交互、回复回执与恢复引用")
+  Component(driver, "HarnessConversation", "mindos-node-driver", "原生交互、回复回执与恢复引用")
   Component(slot, "DriverSlot", "mindos-node", "空闲卸载；保留执行、待答与在途调用")
   System_Ext(native, "Codex / Claude / DSH", "原生执行、交互与持久历史")
   Rel(ui, view, "提交回复或订阅展示状态")
@@ -435,7 +435,7 @@ C4Component
   Component(files, "VFS discovery + readContent", "vfs-core", "授权目录遍历与有界文件读取")
   Component(store, "LocalFS / IndexedDB", "storage backends", "通用目录和文件 I/O")
   Component(sessions, "SessionRepository", "llm-session", "摘要、存活分支与轮次文档")
-  Component(driver, "ProjectClient / HarnessClient", "mindos-node-client", "同一 MCP 连接的能力协商、查询与响应校验")
+  Component(driver, "ProjectClient / HarnessClient", "mindos-node-driver", "同一 MCP 连接的能力协商、查询与响应校验")
   Component(remote, "project_search / harness_session_search", "mindos-node", "远程授权视图、原生结构化历史与角色筛选")
   Component(rg, "ripgrep", "isolated process", "并行扫描、遍历剪枝、忽略规则与有界流式输出")
   Rel(page, query, "调用搜索端口；不携带列表分页游标")

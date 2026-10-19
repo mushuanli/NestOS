@@ -1,5 +1,5 @@
 import { createApplicationRuntime, type ApplicationRuntime, type ApplicationRuntimeOptions } from '@itookit/app-core';
-import { createMindOSNodeClient } from '@itookit/mindos-node-client';
+import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
 import { guardHostStorage } from '../storage/host-storage';
 import type { IStorageBackend } from '@itookit/vfs-core';
 import type { AuditPort } from '../logging/audit-log';
@@ -27,5 +27,5 @@ export function createNodeRuntime(source: IStorageBackend, root?: string, option
         if (key === 'close') return async () => {};
         const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
     }});
-    return createApplicationRuntime({remoteSourceProvider: createMindOSNodeClient(), ownerKind: 'cli', ...options, backend: borrowed});
+    return createApplicationRuntime({remoteSourceProvider: createMindOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed});
 }

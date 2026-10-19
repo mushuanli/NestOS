@@ -35,7 +35,7 @@ overrides:
   '@itookit/driver-llm': workspace:*
   '@itookit/mdxeditor': workspace:*
   '@itookit/image-parser': workspace:*
-  '@itookit/mindos-node-client': workspace:*
+  '@itookit/mindos-node-driver': workspace:*
   '@itookit/vfs-core': workspace:*
   '@itookit/vfs-sync': workspace:*
   '@itookit/vfs-ui': workspace:*
@@ -122,9 +122,9 @@ importers:
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../node-host
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
@@ -259,9 +259,9 @@ importers:
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../node-host
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -311,9 +311,9 @@ importers:
       '@itookit/kernel-adapters':
         specifier: workspace:*
         version: link:../../backend/kernel-adapters
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/vfs-core':
         specifier: workspace:*
         version: link:../../libraries/vfs-core
@@ -369,9 +369,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
@@ -481,9 +481,9 @@ importers:
       '@itookit/mdxeditor':
         specifier: workspace:*
         version: link:../../libraries/mdxeditor
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/sync-adapters':
         specifier: workspace:*
         version: link:../../backend/sync-adapters
@@ -557,9 +557,9 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../llm-tasks
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../tools
@@ -831,9 +831,9 @@ importers:
 
   backend/sync-adapters:
     dependencies:
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/vfs-sync':
         specifier: workspace:*
         version: link:../../libraries/vfs-sync
@@ -1035,7 +1035,7 @@ importers:
         specifier: ^3.2.4
         version: 3.2.4(@types/debug@4.1.13)(@types/node@20.19.43)(jiti@1.21.7)(jsdom@27.2.0)(tsx@4.20.6)(yaml@2.8.2)
 
-  libraries/mindos-node-client:
+  libraries/mindos-node-driver:
     dependencies:
       '@itookit/vfs-core':
         specifier: workspace:*
@@ -1199,9 +1199,9 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../../backend/llm-tasks
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools
@@ -1331,9 +1331,9 @@ importers:
       '@itookit/node-host':
         specifier: workspace:*
         version: link:../../apps/node-host
-      '@itookit/mindos-node-client':
+      '@itookit/mindos-node-driver':
         specifier: workspace:*
-        version: link:../../libraries/mindos-node-client
+        version: link:../../libraries/mindos-node-driver
       '@itookit/sync-adapters':
         specifier: workspace:*
         version: link:../../backend/sync-adapters

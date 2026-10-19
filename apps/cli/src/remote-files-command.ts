@@ -1,4 +1,4 @@
-import { HttpFSBackend } from '@itookit/mindos-node-client';
+import { HttpFSBackend } from '@itookit/mindos-node-driver';
 import { writeFile } from 'node:fs/promises';
 import type { CommandOptions } from './commands';
 

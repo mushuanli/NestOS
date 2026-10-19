@@ -32,7 +32,7 @@ flowchart LR
     Shell --> Workbench
 ```
 
-使用官方 `@modelcontextprotocol/client` / `@modelcontextprotocol/core` **2.0.0**，Node 最低版本为 20。通用 MCP 客户端采用 `Client.versionNegotiation.mode: 'auto'` 和 SDK 支持的协议版本：优先 `server/discover`，遇到旧协议或未知方法时由 SDK 使用 `initialize` 协商。认证失败及服务器故障不会触发协议降级。`MCPDiscovery.protocolVersion` 返回实际协商版本；`MCP_PROTOCOL_VERSION` 是现代协议版本常量。mindos-node-client 的专用 harness 网关仍要求服务声明的 2026-07-28 契约。
+使用官方 `@modelcontextprotocol/client` / `@modelcontextprotocol/core` **2.0.0**，Node 最低版本为 20。通用 MCP 客户端采用 `Client.versionNegotiation.mode: 'auto'` 和 SDK 支持的协议版本：优先 `server/discover`，遇到旧协议或未知方法时由 SDK 使用 `initialize` 协商。认证失败及服务器故障不会触发协议降级。`MCPDiscovery.protocolVersion` 返回实际协商版本；`MCP_PROTOCOL_VERSION` 是现代协议版本常量。mindos-node-driver 的专用 harness 网关仍要求服务声明的 2026-07-28 契约。
 
 只保留 stdio 和 Streamable HTTP（JSON-RPC over HTTP，可返回 JSON 或 SSE）。移除旧 HTTP+SSE 和 WebSocket 配置入口；已有旧传输配置显示“不支持”，连接或保存时明确拒绝，需要选择支持的传输。SDK 按协商版本生成请求头、客户端元数据并验证响应；现代协议不建立 MCP 协议级 Session，旧协议的初始化及 Session 生命周期由 SDK 管理。
 

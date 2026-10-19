@@ -1,5 +1,5 @@
 import { prepareFlowConnections } from '@itookit/llm-session';
-import { createMindOSNodeClient } from '@itookit/mindos-node-client';
+import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
 import { selectFinalResult } from './run-store';
 import { recordRuntimeDiagnostic, traceRuntimeStage } from './diagnostics';
 import { leaseSkewConfig } from './lease-config';
@@ -146,7 +146,7 @@ export async function createCliRuntime(
     const sidecarDir = vfsRoot ? path.join(vfsRoot, '_meta') : path.join(workflow.stateDir, 'runtime', 'meta');
     const additionalMounts = hostOptions.useProfileConfig ? [] : [{ path: '/etc', backend: new MemoryBackend() }];
     const { manager: vfs } = await openCliVfs(root, sidecarDir, additionalMounts);
-    const remoteProvider = createMindOSNodeClient(ref => process.env[`MINDOS_REMOTE_${ref.replace(/-/g, '_')}`] ?? '');
+    const remoteProvider = createMindOSNodeDriver(ref => process.env[`MINDOS_REMOTE_${ref.replace(/-/g, '_')}`] ?? '');
     let remoteConnections: ProjectRemoteMountService | undefined;
     const llmDriver = new LLMDeviceDriver(vfs, {
         presets: createMindosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,

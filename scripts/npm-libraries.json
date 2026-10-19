@@ -24,9 +24,9 @@
     "workspace": true
   },
   {
-    "directory": "mindos-node-client",
-    "name": "@itookit/mindos-node-client",
-    "version": "0.3.0",
+    "directory": "mindos-node-driver",
+    "name": "@itookit/mindos-node-driver",
+    "version": "0.3.1",
     "workspace": true
   },
   {

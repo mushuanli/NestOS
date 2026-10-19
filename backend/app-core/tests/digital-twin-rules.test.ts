@@ -8,7 +8,7 @@ import { DigitalTwinService, type TwinDiscoveredSource, type TwinSourceCatalog }
 import { matchesRules, ruleLines } from '../src/digital-twin/scan-rules';
 import { publicHarnessText, readHarness, discoverHarness } from '../src/digital-twin/harness-reader';
 import type { ProjectService, ProjectFolder } from '../src/projects/project-service';
-import type { HarnessClient } from '@itookit/mindos-node-client';
+import type { HarnessClient } from '@itookit/mindos-node-driver';
 
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of closes.splice(0).reverse()) await close(); });

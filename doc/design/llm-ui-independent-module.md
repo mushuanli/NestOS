@@ -304,7 +304,7 @@ flowchart LR
 
 ### 10.4 原生提交与恢复的共同路径
 
-兼容输入与独立 ChatView 通过 independent/native-command 共享解析和提交语义。两者都捕获原始输入、命令目标、参数和模型选择；解析后的 slash 文本不作为清理草稿的依据。mindos-node-client 的 HarnessConversation 为消息和 prompt 命令共用 prepareSession、接纳清理和提交后刷新；新草稿中的会话级 action 标为不可用，不为查看候选提前创建会话。
+兼容输入与独立 ChatView 通过 independent/native-command 共享解析和提交语义。两者都捕获原始输入、命令目标、参数和模型选择；解析后的 slash 文本不作为清理草稿的依据。mindos-node-driver 的 HarnessConversation 为消息和 prompt 命令共用 prepareSession、接纳清理和提交后刷新；新草稿中的会话级 action 标为不可用，不为查看候选提前创建会话。
 
 HarnessRecovery 保存 draftRevision，turn/command 的 pending 捕获当时的 inputText 与 draftRevision。接纳或核对回执后仅清理匹配版本；等待期间编辑再恢复为相同文字也属于新版本。create、resume、turn、command 各自持有稳定 requestId，unknown 只核对既有回执，不重新提交。app-core 的 draftHarness 同时记录 turn 与 command 的首轮接纳，只有持久确认后发布正式会话身份。
 
@@ -323,7 +323,7 @@ C4Component
     }
     Container_Boundary(host, "应用宿主") {
         Component(app, "项目用例", "app-core", "授权绑定、模型查询与草稿转正")
-        Component(driver, "原生会话", "mindos-node-client", "准备会话、提交、接纳与恢复")
+        Component(driver, "原生会话", "mindos-node-driver", "准备会话、提交、接纳与恢复")
     }
     Component(native, "Harness 适配器", "mindos-node", "动态目录、别名与原生协议")
     System_Ext(executor, "Claude / Codex / DSH", "执行与原生历史")

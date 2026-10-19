@@ -17,10 +17,10 @@ import { checkOperation, createFileSystemView, FSError, normalizeVirtualPath, op
     type FileSystemSourceOwner, type FileSystemMount, type IFileSystem, type OperationOptions } from '@itookit/vfs-core';
 import { createUnavailableDirectory } from '../vfs/unavailable-directory';
 import { canReaddressConnection, normalizeConnection, remoteProjectPath, type RemoteFileSystemConfig, type RemoteFileSystemInput } from './remote-connections';
-import type { HarnessClient } from '@itookit/mindos-node-client/harness';
-import type { ProjectClient, RemoteProject, HarnessConversationPort, HarnessProfile, HarnessConversationJournal } from '@itookit/mindos-node-client';
+import type { HarnessClient } from '@itookit/mindos-node-driver/harness';
+import type { ProjectClient, RemoteProject, HarnessConversationPort, HarnessProfile, HarnessConversationJournal } from '@itookit/mindos-node-driver';
 
-export interface RemoteFileConnection { endpoint: string; alias: string; credentialRef: string; username?: string; anonymous?: boolean; authorization?: import('@itookit/mindos-node-client').RemoteAuthorization; }
+export interface RemoteFileConnection { endpoint: string; alias: string; credentialRef: string; username?: string; anonymous?: boolean; authorization?: import('@itookit/mindos-node-driver').RemoteAuthorization; }
 
 /** One directory grant as the execution node must expose it to a process. */
 export interface RemoteProcessMount { alias: string; path: string; at: string; access: 'ro' | 'rw' }
@@ -34,10 +34,10 @@ export interface RemoteProcessRequest {
 export interface RemoteProcessHandle { nativeShell: NonNullable<ProjectExecutionContext['nativeShell']>; release(): Promise<void> }
 
 export interface RemoteFileSourceProvider {
-    observeHarness?(client: HarnessClient, writable?: boolean, options?: {watchFiles?: boolean}): import('@itookit/mindos-node-client').HarnessStatusPort;
+    observeHarness?(client: HarnessClient, writable?: boolean, options?: {watchFiles?: boolean}): import('@itookit/mindos-node-driver').HarnessStatusPort;
     conversation?(client: HarnessClient, profile: HarnessProfile, workspaceId: string, sessionId?: string, writable?: boolean, journal?: HarnessConversationJournal): HarnessConversationPort;
     resolveCredential?(reference: string): string | Promise<string>;
-    discover?(connection: Omit<RemoteFileConnection, 'alias'>, options?: OperationOptions): Promise<import('@itookit/mindos-node-client').MindOSNodeDescriptor>;
+    discover?(connection: Omit<RemoteFileConnection, 'alias'>, options?: OperationOptions): Promise<import('@itookit/mindos-node-driver').MindOSNodeDescriptor>;
     projects?(connection: Omit<RemoteFileConnection, 'alias'>): ProjectClient;
     projectProcess?(connection: Omit<RemoteFileConnection, 'alias'>, project: RemoteProject, request: RemoteProcessRequest): Promise<RemoteProcessHandle>;
     harness?(connection: Omit<RemoteFileConnection, 'alias'>): HarnessClient;
@@ -54,14 +54,14 @@ export interface RemoteFileSourceProvider {
     dispose(): Promise<void>;
 }
 export interface ProjectRemoteMount extends RemoteFileConnection {
-    capabilities?: import('@itookit/mindos-node-client').RemoteProjectCapabilities;
+    capabilities?: import('@itookit/mindos-node-driver').RemoteProjectCapabilities;
     serverProjectId?: string; serverProjectRevision?: number; serverId?: string; mountId: string; at: string; root: string; access: 'ro' | 'rw'; connectionId?: string;
 }
 export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offline';
 
 /** Project-owned grants; credentials stay in the injected host provider. */
 export class ProjectRemoteMountService {
-    estimateUsage?: (usage: import('@itookit/mindos-node-client').HarnessUsage) => import('@itookit/kernel-adapters/contracts').UsageCostEstimate;
+    estimateUsage?: (usage: import('@itookit/mindos-node-driver').HarnessUsage) => import('@itookit/kernel-adapters/contracts').UsageCostEstimate;
     readonly sessionStatus = new RemoteSessionStatus(id => {
         const grants = this.list(id), root = grants.find(m => m.at === '/');
         return !this.closed && root?.connectionId && root.serverProjectId ? JSON.stringify(grants) : undefined;
@@ -428,7 +428,7 @@ export class ProjectRemoteMountService {
             const granted=this.list(projectId);
             if (expected.length!==granted.length || expected.some(m=>!granted.some(g=>g.alias===m.alias && g.root===m.root && g.at===m.at)) || mount.access==='rw' && project.mounts.some(m=>granted.find(g=>g.at===m.at.slice('/workspace'.length))?.access!==m.access)) throw new FSError('ECONFLICT','Server project mounts changed; refresh the project binding');
     }
-    async searchFiles(projectId: string, query: import('@itookit/mindos-node-client').FileSearchQuery, options?: OperationOptions) {
+    async searchFiles(projectId: string, query: import('@itookit/mindos-node-driver').FileSearchQuery, options?: OperationOptions) {
         const mount = this.list(projectId).find(m => m.at === '/');
         if (!mount?.connectionId || !mount.serverProjectId || !this.provider.projects) throw new FSError('ECAPABILITY', 'Project search unavailable');
         const fingerprint = JSON.stringify(this.list(projectId));
@@ -444,7 +444,7 @@ export class ProjectRemoteMountService {
             return result;
         } finally { await client.close(); }
     }
-    async projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<import('@itookit/mindos-node-client').HarnessModelCatalog> {
+    async projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<import('@itookit/mindos-node-driver').HarnessModelCatalog> {
         const client = await this.projectHarness(projectId, options);
         const fingerprint = JSON.stringify(this.list(projectId));
         try {

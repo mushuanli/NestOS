@@ -5,7 +5,7 @@
 ## 定位与铁律
 
 - **平台无关**：`src/` 内不出现 `node:*`、DOM、`window`、`localStorage`；宿主差异一律通过注入传入（`ApplicationKernelPlatform`：`createSessionProcesses` / `skillSourceForSession` / `configureSession` / `configure`）。
-- **依赖只朝下**：只依赖共享 `app-contracts`、`llm-context`、`common`、`vfs-core`、`durable-kernel`、`kernel-adapters`、`llm-flow`、`llm-session`、`llm-tasks`、`tools`、`driver-llm`、`vfs-sync`、`mindos-node-client`（harness 类型端口及纯 authorization 校验入口）；不得依赖 `app-shell`、UI 包或任何 app。
+- **依赖只朝下**：只依赖共享 `app-contracts`、`llm-context`、`common`、`vfs-core`、`durable-kernel`、`kernel-adapters`、`llm-flow`、`llm-session`、`llm-tasks`、`tools`、`driver-llm`、`vfs-sync`、`mindos-node-driver`（harness 类型端口及纯 authorization 校验入口）；不得依赖 `app-shell`、UI 包或任何 app。
 - **用例与装配分开**：应用策略放入 configuration/projects/session 等可单测服务；`runtime/` 负责接线与生命周期，不内联业务用例。宿主差异通过端口注入，DOM、导航与确认交互归 app-shell。
 - **显式公共出口**：`src/index.ts` 按需导出服务与契约，不使用 `export *`，内部实现与辅助函数不默认公开。`pnpm architecture:check` 检查生产源码与运行依赖的层次边界。
 - `js-yaml` 仅作为明确允许的纯编解码依赖；平台 I/O 仍由宿主端口提供，不据此开放任意 SDK 依赖。

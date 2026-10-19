@@ -38,7 +38,7 @@ C4Component
         Component(vfs, "vfs-core", "独立仓库", "文件系统契约、引擎、SeqFile、事件与 IPlugin")
         Component(idb, "vfsdriver-indexeddb", "独立仓库", "通用文件、记录及原生事务端口")
         Component(localDriver, "vfsdriver-local", "独立仓库", "通用文件、SQLite SeqFile、持久性与宿主事务端口")
-        Component(agent, "mindos-node-client", "驱动", "通用 HTTP 通道、凭据解析、文件与执行协议")
+        Component(agent, "mindos-node-driver", "驱动", "通用 HTTP 通道、凭据解析、文件与执行协议")
     }
     System_Ext(server, "mindos-node", "同步存储服务")
     Rel(ui, project, "设置、状态、预览、执行、解决冲突")

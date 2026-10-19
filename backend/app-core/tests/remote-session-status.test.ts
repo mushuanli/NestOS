@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { RemoteSessionStatus } from '../src/session/remote-session-status';
-import type { HarnessStatusRow } from '@itookit/mindos-node-client';
+import type { HarnessStatusRow } from '@itookit/mindos-node-driver';
 
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 function fixture() {

@@ -1,4 +1,4 @@
-import { validateAuthorization } from '@itookit/mindos-node-client/authorization';
+import { validateAuthorization } from '@itookit/mindos-node-driver/authorization';
 import type { MCPDiscovery, MCPServer } from '@itookit/tools/mcp-contracts';
 import { FSError, checkOperation, type OperationOptions } from '@itookit/vfs-core';
 import { remoteLog, type MCPConnectionDiagnostic, type MCPConnectionReason } from './remote-diagnostics';

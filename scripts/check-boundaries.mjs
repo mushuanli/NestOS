@@ -9,7 +9,7 @@ import { WORKSPACE_GROUPS } from './workspace-packages.mjs';
 
 const application = new Set(['@itookit/app-core', '@itookit/app-shell', '@itookit/app-settings']);
 const coreDependencies = new Set(['app-contracts', 'common', 'llm-context', 'vfs-core', 'durable-kernel', 'kernel-adapters',
-    'llm-flow', 'llm-session', 'llm-tasks', 'tools', 'driver-llm', 'vfs-sync', 'mindos-node-client'].map(name => '@itookit/' + name));
+    'llm-flow', 'llm-session', 'llm-tasks', 'tools', 'driver-llm', 'vfs-sync', 'mindos-node-driver'].map(name => '@itookit/' + name));
 // Portable codecs are allowed explicitly; native I/O still requires host ports.
 coreDependencies.add('js-yaml');
 const browserGlobals = new Set(['window', 'document', 'localStorage', 'sessionStorage', 'navigator',
@@ -19,9 +19,9 @@ export function dependencyError(source, target) {
     if (source === target) return;
     if (source === '@itookit/image-parser' && target.startsWith('@itookit/') && target !== '@itookit/vfs-core') return 'image-parser only accepts optional VFS host adaptation';
     if (source === '@itookit/llm-ui' && target !== '@itookit/mdxeditor') return 'independent llm-ui may only depend on mdxeditor';
-    if (source === '@itookit/mindos-node-client' && target.startsWith('@itookit/') &&
+    if (source === '@itookit/mindos-node-driver' && target.startsWith('@itookit/') &&
         !['@itookit/vfs-core', '@itookit/vfs-sync'].includes(target))
-        return 'mindos-node-client must receive application policy through public ports';
+        return 'mindos-node-driver must receive application policy through public ports';
     if ((source === '@itookit/vfs-core' || source.startsWith('@itookit/vfsdriver-')) && target.startsWith('@itookit/') && target !== '@itookit/vfs-core')
         return 'VFS core and drivers must remain independent; drivers may only depend on vfs-core';
     if (source === '@itookit/vfs-sync') return 'vfs-sync must receive all I/O through owned ports';

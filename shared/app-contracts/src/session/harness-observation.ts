@@ -1,4 +1,4 @@
-import type { HarnessSession, HarnessObservation } from '@itookit/mindos-node-client/harness';
+import type { HarnessSession, HarnessObservation } from '@itookit/mindos-node-driver/harness';
 
 export function harnessObservation(session: HarnessSession | undefined, requests: Array<{kind: string}> = [],
     evidence: Partial<HarnessObservation> = {}): HarnessObservation {

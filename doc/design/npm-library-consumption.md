@@ -8,7 +8,7 @@ MindOS 默认消费固定 Git 提交的独立库源码。十个独立库均位�
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.6.0 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.4 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.1 |
-| @itookit/mindos-node-client | `libraries/mindos-node-client` | 0.3.0 |
+| @itookit/mindos-node-driver | `libraries/mindos-node-driver` | 0.3.1 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.1 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.8 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
@@ -43,14 +43,14 @@ build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从�
 
 默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的源码模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
 
-`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。改名后的 @itookit/mindos-node-client@0.3.0、vfs-ui@0.6.0 与 image-parser@0.2.0 均已发布，并完成公开制品下载与仓库外消费验证。下方历史发布记录沿用当时的真实包名。
+`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。新命名 @itookit/mindos-node-driver@0.3.1 已完成本地制品验证，尚未发布；旧名 mindos-node-client@0.3.0、vfs-ui@0.6.0 与 image-parser@0.2.0 的历史发布与制品核对不变。下方历史发布记录沿用当时的真实包名。
 
 ## 独立库发布
 
 ```bash
 pnpm npm:prepare
 # 可只准备一个库：
-node scripts/release-npm-libraries.mjs prepare ./libraries @itookit/mindos-node-client
+node scripts/release-npm-libraries.mjs prepare ./libraries @itookit/mindos-node-driver
 # 明确决定对外发布时执行：
 pnpm npm:publish
 ```
@@ -211,3 +211,12 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 | @itookit/image-parser@0.2.0 | `831da8756ab66c7bded83e96a0304a6e481b25827556441b425065fa86ce7fea` |
 
 发布状态：三个 npm 包均已公开发布，重新下载的 SHA-256 与上表一致，v0.3.0 / v0.6.0 / v0.2.0 标签已推送到各自独立仓库。仓库外使用公开注册表安装三个固定版本，锁文件均解析到 registry.npmjs.org；ESM/CommonJS、所有公开子路径、CSS 入口、旧工厂别名、15 条目录预览与 bundler/NodeNext 类型检查通过。image-parser 首次返回 HTTP 202 后经历处理与下载短暂不可用，最终以公开文件下载成功和摘要一致确认完成。节点 v0.3.8 标签也已推送，Linux release 制品已生成，不自动替换运行实例。
+
+
+### 2026-10-19 mindos-node-driver 名称统一
+
+源码工作区改为 `libraries/mindos-node-driver`，npm 包为 `@itookit/mindos-node-driver@0.3.1`，主工厂与类型为 `createMindOSNodeDriver()` / `MindOSNodeDriver`。GitHub 目标为 <https://github.com/mushuanli/mindos-node-driver>；旧独立仓库 piagent-driver 已包含客户端此前的全部提交。旧 Client 与 PiAgent 工厂/类型保留为弃用别名，原协议、配置键、serverId 和会话 UUID 不变。
+
+当前状态：本地改名、204 项测试、全仓类型/架构/文档检查已完成；正式 tarball 的仓库外 ESM/CommonJS、公开子路径、旧工厂别名与 bundler/NodeNext 声明解析通过。新 GitHub 地址仍返回 404，推送及 npm 发布等待仓库地址可访问。上文的 mindos-node-client@0.3.0 是真实历史发布名，不改写其制品身份或摘要。
+
+待发布制品 `@itookit/mindos-node-driver@0.3.1` 的 SHA-256：`1af9a23b40506ff27cc7738c3455064775fd96d208816a1455469d60e10ddaca`。本地制品验证不代表新版本已公开发布。

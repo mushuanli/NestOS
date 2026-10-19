@@ -10,7 +10,7 @@
 
 | 接口 | 核心方法 | 定义 | 实现 | 消费 |
 |---|---|---|---|---|
-| `FileStorageBackend` / `OperationOptions` | `files` + 可选 `mutations`，signal/timeoutMs，opaque revision | `https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/storage/file-storage.ts`、`https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/core/operation.ts` | `mindos-node-client` | `FileStorageAdapter` → VFS |
+| `FileStorageBackend` / `OperationOptions` | `files` + 可选 `mutations`，signal/timeoutMs，opaque revision | `https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/storage/file-storage.ts`、`https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/core/operation.ts` | `mindos-node-driver` | `FileStorageAdapter` → VFS |
 | `IStorageBackend` | `stat/list/read/write/mkdir/delete/rename` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/storage/` | `vfsdriver-indexeddb`、`vfsdriver-local` | `vfs-core (VFSEngine)` |
 | `IVFSManager` | `openFileSystem()/mounts/devices/plugins` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/services/vfs-manager.ts` | `vfs-core (VFSManager)` | `app-core`、`app-shell`、`kernel-adapters` |
 | `IFileSystem` | `openFile()/driver/meta/capabilities/capabilitiesAt()/discoveryRoot?()` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/services/file-system.ts` | `vfs-core (FileSystemView)` | `vfs-ui`、`llm-ui`、`llm-session`、`app-core` |
@@ -168,7 +168,7 @@ HTTP 外挂的条件写入、取消与项目授权见 [HTTP VFS 设计](design/v
 
 ## 外部 harness 端口
 
-`MindOSNodeClient` 由宿主装配并注入远程来源服务，统一凭据，暴露文件/进程 provider、sync 与 harness。`HarnessClient`、`HarnessProfile`、`HarnessSession`、`HarnessEvents`、`HarnessReceipt` 位于 mindos-node-client `/harness` 公共入口，app-core 只使用类型并转发给 app-shell。
+`MindOSNodeDriver` 由宿主装配并注入远程来源服务，统一凭据，暴露文件/进程 provider、sync 与 harness。`HarnessClient`、`HarnessProfile`、`HarnessSession`、`HarnessEvents`、`HarnessReceipt` 位于 mindos-node-driver `/harness` 公共入口，app-core 只使用类型并转发给 app-shell。
 
 创建仅使用服务端声明的 workspaceId；继续先核对 native cwd 授权并拒绝抢占活跃会话；发送、响应和中断必须属于本服务接管的会话。只读历史不触发 resume。修改必须使用当前 epoch/requestId，未知结果查询 operation 收据，禁止自动重放。事件有独立 epoch、递增 seq 与 cursor；gap 要求刷新历史，不能宣称完整输出。客户端关闭不代表原生 turn 停止。
 
@@ -179,13 +179,13 @@ mindos-node 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）�
 `ProjectFolder.displayName` 是当前服务器名与项目名的组合；持久身份 name 与可选 navigationName 区分人类名称和稳定路由。`MCPRemoteConnections` 是 MCP 目录的只读投影及旧连接迁移适配，不在挂载目录保存第二份连接配置。
 
 
-`MindOSNodeClient.projects` 暴露 ProjectClient/RemoteProject/ProjectMount/RegisterProject；服务端目录项目与 sync 数据项目是不同身份。项目文件请求使用项目 ID、revision 与只读衰减 headers，project_exec/harness 从服务端同一份授权获取 mounts。ProjectLauncher 是进程/harness 共用启动端口，当前 bubblewrap，VMM 尚未实现。详见 [项目模型](design/mindos-node-project-model.md)。
+`MindOSNodeDriver.projects` 暴露 ProjectClient/RemoteProject/ProjectMount/RegisterProject；服务端目录项目与 sync 数据项目是不同身份。项目文件请求使用项目 ID、revision 与只读衰减 headers，project_exec/harness 从服务端同一份授权获取 mounts。ProjectLauncher 是进程/harness 共用启动端口，当前 bubblewrap，VMM 尚未实现。详见 [项目模型](design/mindos-node-project-model.md)。
 
 `ProjectRemoteMountService.remountProject` 修改客户端项目权限，必要时经可选 `ProjectClient.remount` 调用 `project_remount` 提升服务端项目根授权；所有写入均校验当前权限与版本，不修改项目身份。客户端降为只读只衰减本地绑定。`ApplicationBackend.unmountProject` 是本地卸载用例，允许远端离线，不通过远程文件删除或服务端 `project_forget` 执行。
 
 ### 远程项目会话展示端口
 
-`ui-common` 的 `ConversationControls` 由宿主注入，提供 read/poll/send/respond/interrupt/reconcile/close 及能力限定的 rename/archive，返回规范化历史、待交互卡片及操作可用状态。`mindos-node-client` 的 `HarnessConversation` 按结构实现；app-core 的 `ProjectRemoteMountService.projectConversation` 注入项目授权和持久回执 journal；llm-ui 只消费该端口。`RemoteAgentControls` 提供项目范围内目标列表及发送路由，远程选择不进入本地 SessionCommand.Send。原生会话引用、输入草稿和待确认回执位于 `/etc/fs/harness-conversations.seq`，不复制原生历史。 `ConversationSnapshot` 可携带 `canFork` / `hasEarlier`，对应可选 `fork` / `branches` / `loadEarlier`；分支切换仍由宿主导航处理。`HarnessHistory.nextCursor` 与 `HarnessHistoryOptions.cursor` 描述只读历史分页；`HarnessClient.inspect` 读取元信息，`fork` 是带 epoch/requestId 的原生修改。
+`ui-common` 的 `ConversationControls` 由宿主注入，提供 read/poll/send/respond/interrupt/reconcile/close 及能力限定的 rename/archive，返回规范化历史、待交互卡片及操作可用状态。`mindos-node-driver` 的 `HarnessConversation` 按结构实现；app-core 的 `ProjectRemoteMountService.projectConversation` 注入项目授权和持久回执 journal；llm-ui 只消费该端口。`RemoteAgentControls` 提供项目范围内目标列表及发送路由，远程选择不进入本地 SessionCommand.Send。原生会话引用、输入草稿和待确认回执位于 `/etc/fs/harness-conversations.seq`，不复制原生历史。 `ConversationSnapshot` 可携带 `canFork` / `hasEarlier`，对应可选 `fork` / `branches` / `loadEarlier`；分支切换仍由宿主导航处理。`HarnessHistory.nextCursor` 与 `HarnessHistoryOptions.cursor` 描述只读历史分页；`HarnessClient.inspect` 读取元信息，`fork` 是带 epoch/requestId 的原生修改。
 
 `ModelConfigurationCommands.inspectMCPDeletion` 返回配置和项目挂载引用的删除预览；`deleteMCPServers` 校验预览并要求有引用时显式 force。`MCPDeletionPort` 由 ProjectRemoteMountService 实现，预览由 ProjectService 提供远程项目与本地会话信息；经 SessionLifecycleService 清理以目标 MCP 为根来源的本地远程项目及其本地会话，再批量移除引用并释放视图。普通本地项目只解除附加挂载，服务器内容和原生会话保留。普通 MCP 删除仍禁止有引用的配置。
 
@@ -246,7 +246,7 @@ HTTP v14 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClie
 
 ## 原生 Harness 斜杠命令
 
-ConversationControls 的可选 commands/command 端口承接当前原生会话的命令目录和执行；snapshot.supportsSlashCommands 只在宿主声明能力时启用。mindos-node-client 通过 profile.capabilities.slashCommands 协商，目录为纯数据，具体命令名与原生 RPC 留在 mindos-node 对应插件内。Claude 使用 SDK 目录及 slash prompt，Codex 将 compact/review 映射为专用控制调用，DSH 使用原生 commands/list 与 commands/execute。
+ConversationControls 的可选 commands/command 端口承接当前原生会话的命令目录和执行；snapshot.supportsSlashCommands 只在宿主声明能力时启用。mindos-node-driver 通过 profile.capabilities.slashCommands 协商，目录为纯数据，具体命令名与原生 RPC 留在 mindos-node 对应插件内。Claude 使用 SDK 目录及 slash prompt，Codex 将 compact/review 映射为专用控制调用，DSH 使用原生 commands/list 与 commands/execute。
 
 原生会话输入使用 NativeSlashCommandPlugin 提供候选，不混入本地 Kernel slash 操作；选择只填入输入，发送时再次验证当前目录。command 沿用 epoch、requestId、项目 revision、操作队列和 reconcile，可接纳但不产生 turnId；只有 prompt 类命令产生原生用户消息时才按该消息身份呈现。DSH command/run、command/done 以稳定 commandId 进入系统记录。未知操作跨视图保留，接纳不清除提交后的新草稿；关闭输入释放插件并拒绝迟到目录恢复弹层。
 

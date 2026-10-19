@@ -3,7 +3,7 @@ import type { ConfigurationImportPort, IConnectionService, IAgentManagementServi
 import type { ISessionRepository, SessionManagementPort, ICommandBus } from '@itookit/llm-session/contracts';
 import type { KernelViewPort } from '@itookit/durable-kernel/contracts';
 import type { IToolService } from '@itookit/tools/contracts';
-import type { HarnessSession, HarnessConversationSnapshot } from '@itookit/mindos-node-client/harness';
+import type { HarnessSession, HarnessConversationSnapshot } from '@itookit/mindos-node-driver/harness';
 import type { SessionFilesPort, DirectoryMountPort, FileSystemsPort } from './files';
 import type { ProjectService, ProjectSessions, NativeSessionCommand, ResolvedProjectFavorite } from './projects';
 import type { SessionExport, WorkbenchView, SessionOpenView, WorkbenchArchiveExporter, WorkbenchArchiveImporter, MindosInitialFiles } from './session';

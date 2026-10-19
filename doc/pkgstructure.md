@@ -8,7 +8,7 @@ pnpm monorepo：前端包位于 `ui/`，后端包位于 `backend/`，共享应�
 | `ui/` | app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common |
 | `backend/` | app-core、llm-context、llm-session、llm-flow、llm-tasks、durable-kernel、kernel-adapters、tools、device-tty、sanbox、sync-adapters |
 | `shared/` | app-contracts、common、app-transport |
-| `libraries/` | driver-llm、mindos-node-client、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser |
+| `libraries/` | driver-llm、mindos-node-driver、vfs-core、vfs-sync、vfsdriver-indexeddb、vfsdriver-local、vfs-ui、mdxeditor、llm-ui、image-parser |
 | `apps/` | web-app、tauri-app、cli、http-app、demo、node-host（共享 Node 宿主适配包） |
 
 20 个业务/共享包 + 10 个独立库 + 5 个应用 + 1 个共享 Node 宿主适配包；另有 tools/mindos-node 工具工作区。原 `packages/` 已清理，不再使用。目录和加载规则见 [前后端模块边界](design/frontend-backend-modules.md)。
@@ -38,7 +38,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 | `@itookit/vfs-sync` | 多端文件同步核心：规范 manifest、扫描完整性与三方计划、持久操作序列、冲突决策和恢复；零运行时依赖，I/O 由端口注入。 |
 | `@itookit/vfs-core` | VFS 引擎核心：协议层 + 引擎实现 + 事件总线 + 通用 IO（IIOStream/pipe）。 |
 | `@itookit/vfsdriver-indexeddb` | IndexedDB 存储后端（浏览器）；既有 SeqFile 记录存储与通用原生事务能力；同步适配、原子应用与 Web Locks 由 sync-adapters 提供。 |
-| `@itookit/mindos-node-client` | 统一 mindos-node 连接/凭据接入：文件、远程进程、HTTP 同步与 MCP harness 控制；独立于应用策略与 UI。 |
+| `@itookit/mindos-node-driver` | 统一 mindos-node 连接/凭据接入：文件、远程进程、HTTP 同步与 MCP harness 控制；独立于应用策略与 UI。 |
 | `@itookit/vfsdriver-local` | SQLite + 本地 FS 后端（Node/Electron）。 |
 | `@itookit/llm-ui` | 独立 Chat + Flow 通用 UI；只依赖 mdxeditor，Flow 由同包 /flow 子入口与功能开关控制。 |
 | `@itookit/image-parser` | 独立图片缩放、裁剪与 Scanic 透视校正；/ui 多图编辑面板，/vfs 可选授权读取。 |
@@ -67,7 +67,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 
 ### 独立 npm 库与同步接入
 
-独立库均位于 `libraries/`，参与 pnpm workspace；外部独立库以 Git 子模块固定提交，image-parser 也按相同方式管理；npm 发布与主仓库提交分开。应用和业务包消费源码 exports；各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 mindos-node-client，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
+独立库均位于 `libraries/`，参与 pnpm workspace；外部独立库以 Git 子模块固定提交，image-parser 也按相同方式管理；npm 发布与主仓库提交分开。应用和业务包消费源码 exports；各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 mindos-node-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
 
 VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依赖 better-sqlite3。vfs-sync、driver-llm 没有运行时包依赖。`backend/sync-adapters` 负责宿主同步接入，调用 vfs-sync 与驱动公共端口；同步范围和项目绑定由应用决定。
 

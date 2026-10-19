@@ -39,8 +39,8 @@
 | [ProjectService](../../backend/app-core/src/projects/project-service.ts) | 稳定项目 ID、目录绑定和项目视图；openFiles 会组合挂载，不能直接把该视图全部递归复制 |
 | [ProjectRemoteMountService](../../backend/app-core/src/projects/remote-mounts.ts) | 连接、凭据引用、项目授权和可用状态；同步关系需要独立记录 |
 | [SessionFilesService](../../backend/app-core/src/vfs/session-files.ts) | 授权 revision、cwd、派生视图撤销和挂载守卫；该 revision 不代表目录内容版本 |
-| [HTTP capabilities](https://github.com/mushuanli/piagent-driver/blob/main/src/files/capabilities.ts) | 客户端目前只解析 sync.push；需要独立读取 /v1/sync/capabilities，不能由一个布尔值推导同步保证 |
-| [HttpFSBackend](https://github.com/mushuanli/piagent-driver/blob/main/src/files/backend.ts) | 条件替换、Range 读取、操作结果查询；删除和重命名目前没有相同的版本条件 |
+| [HTTP capabilities](https://github.com/mushuanli/mindos-node-driver/blob/main/src/files/capabilities.ts) | 客户端目前只解析 sync.push；需要独立读取 /v1/sync/capabilities，不能由一个布尔值推导同步保证 |
+| [HttpFSBackend](https://github.com/mushuanli/mindos-node-driver/blob/main/src/files/backend.ts) | 条件替换、Range 读取、操作结果查询；删除和重命名目前没有相同的版本条件 |
 | [mindos-node revision](../../tools/mindos-node/src/fs/revision.rs) | 服务生命周期内的文件身份凭证，不能作为内容摘要；命令后会使凭证失效 |
 | [mindos-node router](../../tools/mindos-node/src/http/mod.rs) 与 [同步传输](../../tools/mindos-node/src/sync/transport.rs) | 已有 /v1/sync 的项目、数据集、对象、发布、catalog、changes、回执、历史及恢复接口；同一实例可同时提供普通 export 与同步存储 |
 | [SessionBundle](../../backend/app-core/src/session/session-bundle.ts) | 格式版本、历史和附件交换；导入创建新身份，导出没有跨多个读取的快照边界 |
@@ -121,7 +121,7 @@ flowchart TD
 | app-core 的 projects/sync | 范围及覆盖语义、新会话纳入策略、同步关系、触发、守卫和数据集编排 | HTTP 实现、DOM 交互、直接递归复制所有挂载 |
 | 新增 vfs-sync | 三方比较、局部计划、基线推进、传输、部分成功和恢复 | 项目导航、Session 业务、宿主路径、具体服务商 |
 | 本地同步 store 及宿主适配 | 操作日志、基线对象、冲突、待应用结果、同副本串行协调 | 自行选择冲突赢家、隐式覆盖应用结果 |
-| mindos-node-client 的 sync 适配 | 云端协议、能力发现、对象传输和结果查询 | 决定冲突赢家、持有项目业务状态 |
+| mindos-node-driver 的 sync 适配 | 云端协议、能力发现、对象传输和结果查询 | 决定冲突赢家、持有项目业务状态 |
 | vfs-core | 文件访问、通用条件 IO 和必要的可选能力 | 项目同步调度、会话合并、云端账号模型 |
 | llm-session | 快照闭包、历史对象版本、祖先判断、稳定分支去重和条件应用 | 云端 HTTP、项目同步触发和凭据管理 |
 | app-core 的 session 用例 | 会话同步和目标端依赖绑定 | 直接覆盖原始存储文件来合并会话 |
@@ -928,7 +928,7 @@ C4Component
         Component(files, "文件适配", "VFS 来源适配", "稳定扫描与条件应用")
         Component(session, "会话同步适配", "llm-session + app-core", "快照闭包、祖先、分支与条件导入")
         Component(store, "本地控制存储", "宿主适配", "日志、基线、对象缓存和副本协调")
-        Component(http, "同步 HTTP 适配", "mindos-node-client", "规范编码、epoch、传输及错误映射")
+        Component(http, "同步 HTTP 适配", "mindos-node-driver", "规范编码、epoch、传输及错误映射")
     }
     System_Ext(cloud, "mindos-node", "存储协议，不理解会话正文")
     Rel(project, core, "传入已解析策略及领域计划")
@@ -1061,7 +1061,7 @@ sequenceDiagram
 | 代码 | 已实现 | 尚未交付 |
 | --- | --- | --- |
 | vfs-sync | 规范 manifest／服务端 fixture、完整性观察、逐项 B/L/R 比较、双向与单向计划、保留未选范围、父子删除保护、文件冲突选侧、有界文本三方合并、catalog/changes 发现与 ACK 恢复、持久序列和 FileSync 恢复 | 完整目录类型转换决策、保留两份及资源级应用拆分 |
-| mindos-node-client/sync | 独立能力发现、epoch 头、注册激活、对象检查与摘要验证、CAS 发布、回执查询／取消、读取 pin | 灾备／过期副本的自动绑定迁移、历史恢复用例 |
+| mindos-node-driver/sync | 独立能力发现、epoch 头、注册激活、对象检查与摘要验证、CAS 发布、回执查询／取消、读取 pin | 灾备／过期副本的自动绑定迁移、历史恢复用例 |
 | sync-adapters 的 IndexedDB 适配 | 既有 state.seq 控制 schema、源目录重叠检查、稳定快照、持久对象及计划、原生条件应用与幂等回执；确认发布 P 并保留 P2 | 自动缓存 GC、原生目录来源、真实浏览器持久保留和多标签页验收 |
 | app-core/projects/sync | prepareProjectSync 接入准备、注入式 preview/execute/resolve/mergeText/recover、过期回执对账入口、方向策略变更与解绑；runtime.projectSync 可选装配 | Tauri／CLI 同步装配、项目范围配置和自动触发 |
 | app-shell/projects/sync | 项目右键与标题操作入口、状态、方向设置、预览、文件冲突选侧／文本合并、执行、恢复／过期回执对账与解绑确认；共享服务器／同步目录选择与创建面板、zh/en 文案 | 执行中断、覆盖／镜像及历史恢复 |

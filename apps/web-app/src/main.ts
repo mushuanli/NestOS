@@ -2,7 +2,7 @@ import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import { SnapshotService } from './storage/snapshots';
 import { createApplicationClient, bindLocalApplicationServices } from '@itookit/app-core/host';
 import { configureAppCache } from './app-cache';
-import { createMindOSNodeClient } from '@itookit/mindos-node-client';
+import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
 import { initApp, installMobileNavigation, windowSessionLeaseToken } from '@itookit/app-shell';
 import { createApplicationRuntime, createMindosFlowLibrary } from '@itookit/app-core';
 import { openIndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
@@ -39,7 +39,7 @@ async function main(styles: Promise<void>) {
 }
 
 async function createLocalClient() {
-    const backend = await openIndexedDBBackend({dbName: 'MindOS-v3'}), remoteSourceProvider = createMindOSNodeClient();
+    const backend = await openIndexedDBBackend({dbName: 'MindOS-v3'}), remoteSourceProvider = createMindOSNodeDriver();
     const sync = new WebProjectSync(backend, remoteSourceProvider);
     const runtime = await createApplicationRuntime({
         startupMode: 'interactive', remoteSourceProvider, backend, ownerKind: 'web',

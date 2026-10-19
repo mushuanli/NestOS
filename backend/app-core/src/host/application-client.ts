@@ -20,7 +20,7 @@ import { ToolboxInventory } from '../configuration/toolbox-catalog';
 import { SkillsEngine } from '../configuration/skills-files';
 import { ToolboxResources } from '../configuration/toolbox-resources';
 import { listRemoteHarnessAgents } from '../projects/remote-agent-catalog';
-import { conversationBranches } from '@itookit/mindos-node-client';
+import { conversationBranches } from '@itookit/mindos-node-driver';
 import { prepareWorkbenchView } from './workbench-view';
 import { openSessionView } from './session-view';
 import { observeConnections } from './connection-observation';

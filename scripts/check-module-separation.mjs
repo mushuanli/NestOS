@@ -87,7 +87,7 @@ export function moduleRole(path, root = repository) {
         if (['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui'].includes(name)) return 'frontend';
         if (name === 'vfs-core') return 'shared';
         if (name === 'driver-llm' && (tail === 'contracts.ts' || tail.startsWith('types/'))) return 'shared';
-        if (['driver-llm', 'mindos-node-client', 'vfs-sync'].includes(name) || name.startsWith('vfsdriver-')) return 'backend';
+        if (['driver-llm', 'mindos-node-driver', 'vfs-sync'].includes(name) || name.startsWith('vfsdriver-')) return 'backend';
         return undefined;
     }
     if (frontend.includes(name)) return 'frontend';

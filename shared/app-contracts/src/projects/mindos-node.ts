@@ -3,7 +3,7 @@ import type { MCPServer } from '@itookit/tools/mcp-contracts';
 export const MINDOS_NODE_EXTENSION = 'itookit/pi-agent';
 const LEGACY_EXTENSION = 'itookit/fs-agent';
 export interface MindOSNodeConfiguration {
-    authorization?: import('@itookit/mindos-node-client').RemoteAuthorization;
+    authorization?: import('@itookit/mindos-node-driver').RemoteAuthorization;
     version: 1; mcpEndpoint: string; httpEndpoint: string; fileProtocol: 'fs-agent-http-v1';
     serverId: string | null; harness: boolean; projects?: boolean; projectProtocol?: string; legacy?: boolean;
 }

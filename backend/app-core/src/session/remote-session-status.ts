@@ -1,4 +1,4 @@
-import type { HarnessObservation, HarnessStatusPort, HarnessStatusRow } from '@itookit/mindos-node-client';
+import type { HarnessObservation, HarnessStatusPort, HarnessStatusRow } from '@itookit/mindos-node-driver';
 import type { OperationOptions } from '@itookit/vfs-core';
 
 interface Watch {

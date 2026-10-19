@@ -44,7 +44,7 @@
     "@itookit/llm-tasks": "workspace:*",
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
-    "@itookit/mindos-node-client": "workspace:*",
+    "@itookit/mindos-node-driver": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
     "js-yaml": "^4.1.1"
   },

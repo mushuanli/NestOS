@@ -19,7 +19,7 @@
     "@itookit/llm-ui-adapter": "workspace:*",
     "@itookit/mdxeditor": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
-    "@itookit/mindos-node-client": "workspace:*",
+    "@itookit/mindos-node-driver": "workspace:*",
     "@itookit/vfsdriver-local": "workspace:*",
     "mind-os": "workspace:*",
     "@codemirror/state": "^6.5.2",

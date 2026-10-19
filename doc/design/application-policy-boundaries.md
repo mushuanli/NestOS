@@ -122,6 +122,6 @@ app-settings 仍属于应用功能包；apps/demo 是使用部分历史 API 的 
 
 ## 原生用量与费用
 
-原生适配器拥有计量协议的解释、恢复与去重；价格和供应商默认价不进入 mindos-node 或 mindos-node-client。定价解析和算术位于 kernel-adapters 的纯 contracts 入口，模型目录与默认金额只通过产品 presets 或用户配置提供。app-core 在装配时注入估算器，按会话 revision 缓存估算并随定价快照失效；没有估算器时仍可浏览和操作会话。
+原生适配器拥有计量协议的解释、恢复与去重；价格和供应商默认价不进入 mindos-node 或 mindos-node-driver。定价解析和算术位于 kernel-adapters 的纯 contracts 入口，模型目录与默认金额只通过产品 presets 或用户配置提供。app-core 在装配时注入估算器，按会话 revision 缓存估算并随定价快照失效；没有估算器时仍可浏览和操作会话。
 
 远程原生历史估算与本地已入账调用是不同来源：展示携带 transcript 范围和估算标识，不把含继承历史的分支估算累计进费用账本。前端不选择价格、不猜模型归属，也不依赖原生协议或日志文件。

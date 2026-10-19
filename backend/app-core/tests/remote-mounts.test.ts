@@ -400,7 +400,7 @@ it('binds a server-managed writable subdirectory while keeping workbench Session
         if (input.createDirectory) await remoteBackend.mkdir('/group/new'); return record;
     });
     const harnessClose=vi.fn(async () => {}), harness=vi.fn(() => ({close:harnessClose}));
-    const client={register,read:async()=>record,close:vi.fn(async()=>{}),harness} as unknown as import('@itookit/mindos-node-client').ProjectClient;
+    const client={register,read:async()=>record,close:vi.fn(async()=>{}),harness} as unknown as import('@itookit/mindos-node-driver').ProjectClient;
     const runtime=await createApplicationRuntime({backend:new MemoryBackend(),ownerKind:'web',remoteSourceProvider:{
         setCredential() {},async dispose() {},projects:()=>client,
         resolveCredential:()=>'secret',discover:vi.fn(async()=>{throw new Error('Use generic MCP discovery');}),

@@ -1,5 +1,5 @@
 import { FSError } from '@itookit/vfs-core';
-import type { HarnessConversationPort, HarnessConversationSnapshot, HarnessUsage } from '@itookit/mindos-node-client';
+import type { HarnessConversationPort, HarnessConversationSnapshot, HarnessUsage } from '@itookit/mindos-node-driver';
 import type { UsageCostEstimate } from '@itookit/kernel-adapters/contracts';
 
 import type { ProjectConversationPort, ProjectConversationSnapshot } from '@itookit/app-contracts/services';

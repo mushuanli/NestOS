@@ -71,7 +71,7 @@ C4Component
         Component(browser, "SessionBrowser", "app-core", "一次投影目录节点及条目")
         Component(project, "ProjectService", "app-core", "项目目录、重叠校验、授权文件视图")
         Component(ignore, "directory-visibility", "app-shell / FileIgnoreFilter", "并行祖先规则读取、保留忽略语义")
-        Component(http, "HttpFSBackend", "mindos-node-client", "项目授权 HTTP 文件读取、stat 批处理")
+        Component(http, "HttpFSBackend", "mindos-node-driver", "项目授权 HTTP 文件读取、stat 批处理")
     }
     System_Ext(remote, "mindos-node 文件服务", "项目授权、目录分页、文件属性及规则内容")
     Rel(user, view, "激活资源")
@@ -201,7 +201,7 @@ Codex 会话从显式配置的 home 通过原生 `thread/list` 发现，再以�
 
 项目聊天和草稿的 Agent 选择器通过宿主注入 `RemoteAgentControls` 获取可用远程目标；本地会话仍使用原执行链。选择远程目标后，输入直接进入远程会话，不创建本地 Session、不经本地模型 Provider，也不把本地 Slash 工具提前执行。远程模式隐藏本地模型/执行模式设置，使用原生 harness 的配置。原生 capability 声明附件时可发送内联 UTF-8 文本及 PNG/JPEG/WebP 图片：每次最多 5 个，文本每个 64 KiB、图片解码每个 256 KiB、全部编码内容 512 KiB。浏览器和服务端分别核验格式、容量与文件名，不接受远程 URL 或宿主路径。附件草稿与输入一起保存在客户端，不支持的格式在发送前拒绝并保留输入。
 
-`mindos-node-client/HarnessConversation` 封装原生会话读取、创建/恢复、turn、事件、审批、中断和回执查询；`app-core` 为它提供项目授权及恢复记录，调用前检查当前本地挂载授权与连接仍与打开时一致。`ui-common/ConversationControls` 是注入 llm-ui 的展示接口，UI 不调用 MCP 或设备协议。远程编辑器显示原生 user/assistant 历史、工具摘要、增量回复及审批/人工输入卡片。内容通过共享 MDx 渲染，远端 HTML 按字面显示。打开历史不自动恢复执行；读档不可恢复、只读绑定、运行中、失联或结果未知时禁用发送，中断与审批按授权和网关原生会话控制权开放。
+`mindos-node-driver/HarnessConversation` 封装原生会话读取、创建/恢复、turn、事件、审批、中断和回执查询；`app-core` 为它提供项目授权及恢复记录，调用前检查当前本地挂载授权与连接仍与打开时一致。`ui-common/ConversationControls` 是注入 llm-ui 的展示接口，UI 不调用 MCP 或设备协议。远程编辑器显示原生 user/assistant 历史、工具摘要、增量回复及审批/人工输入卡片。内容通过共享 MDx 渲染，远端 HTML 按字面显示。打开历史不自动恢复执行；读档不可恢复、只读绑定、运行中、失联或结果未知时禁用发送，中断与审批按授权和网关原生会话控制权开放。
 
 事件按原生 item ID 合并；完成内容替换增量，迟到增量不覆写已完成卡片。事件游标缺口或 epoch 改变时重读原生历史，避免把已经记录的 delta 再附加一次。关闭编辑器只释放客户端，不隐式中断远程 turn。
 
@@ -213,7 +213,7 @@ Codex 会话从显式配置的 home 通过原生 `thread/list` 发现，再以�
 
 服务配置使用 `api_key` 或 `api_key_env`，以 Bearer 认证（兼容旧 `token`/`token_env`）。启动连接提示在 console 输出实际 API Key；结构化事件和 HTTP 响应不携带密钥。itookit 只需填写 MCP endpoint 和 API Key；通用 MCP 发现后，app-core 注册的扩展验证 `server/discover._meta['itookit/pi-agent']` 中的能力描述，同源端点和项目协议符合要求才生成远程连接。旧服务通过同一连接调用已声明的能力工具。名称或 API Key 本身不授予项目绑定资格。
 
-API Key 通过既有 MCP 配置持久保存，启动时恢复到 mindos-node-client 的凭据解析器；文件、sync、bash 与 harness 共用 Bearer。项目挂载记录只保留 credentialRef，不复制密钥。旧 Basic 连接仍兼容；已被项目引用的连接不能直接改变认证身份，需先解除绑定。
+API Key 通过既有 MCP 配置持久保存，启动时恢复到 mindos-node-driver 的凭据解析器；文件、sync、bash 与 harness 共用 Bearer。项目挂载记录只保留 credentialRef，不复制密钥。旧 Basic 连接仍兼容；已被项目引用的连接不能直接改变认证身份，需先解除绑定。
 
 连接 ID 是项目引用，endpoint 是可替换的网络位置。修改已引用连接的地址时，通用 MCP 管理器先对新地址重新发现并验证能力；只有 serverId、principalId 和资源授权 revision 均与原连接一致，且认证模式与凭据引用不变，才允许保留原 ID 保存。旧协议没有授权快照时，只允许保留原凭据和认证头、相同 serverId，并在新地址明确发现为 owner 的兼容迁移；不能同时更换凭据或切换身份。缺少服务器身份时不自动迁移。保存前检查受影响项目的运行保护，保存后释放旧文件来源与派生视图，后续访问使用新地址；不删除项目、会话，也不自动重放操作。httpd 模式下的 127.0.0.1 指 httpd 所在主机。
 
@@ -238,7 +238,7 @@ API Key 通过既有 MCP 配置持久保存，启动时恢复到 mindos-node-cli
 
 ## 命名兼容
 
-服务及工具目录为 mindos-node（MindOS 节点），统一接入包为 mindos-node-client，公开创建函数为 createMindOSNodeClient。标准发现增加 itookit/mindos-node；持久配置扩展键仍为 itookit/pi-agent；读取旧 itookit/fs-agent 配置时保留 serverId、项目、挂载与凭据引用。能力描述优先随标准发现返回，主能力工具为 mindos_node_capabilities，piagent_capabilities 和 fsagent_capabilities 作为兼容别名保留；无标准元数据的旧服务使用工具发现。共享文件／项目协议标识、HTTP 授权头和 fs-agent.files／fs-agent.bundle 规范编码保持原值，避免使已有内容摘要、回执或上游同步库失效。升级继续沿用原配置数据根及原生会话 home。
+服务及工具目录为 mindos-node（MindOS 节点），统一接入包为 mindos-node-driver，公开创建函数为 createMindOSNodeDriver。标准发现增加 itookit/mindos-node；持久配置扩展键仍为 itookit/pi-agent；读取旧 itookit/fs-agent 配置时保留 serverId、项目、挂载与凭据引用。能力描述优先随标准发现返回，主能力工具为 mindos_node_capabilities，piagent_capabilities 和 fsagent_capabilities 作为兼容别名保留；无标准元数据的旧服务使用工具发现。共享文件／项目协议标识、HTTP 授权头和 fs-agent.files／fs-agent.bundle 规范编码保持原值，避免使已有内容摘要、回执或上游同步库失效。升级继续沿用原配置数据根及原生会话 home。
 
 
 ## 原生状态观察与项目检索
@@ -277,7 +277,7 @@ Claude 配置 `kind="claude"`、显式 command 和私有 home（CLAUDE_CONFIG_DI
 
 `config/authorization.rs` 编译部署策略；`auth.rs` 提供身份解析、权限查询及缓存的授权版本；文件与进程边界消费同一授权。Bearer 使用摘要索引、Basic 使用用户名索引，读取不扫描全部用户。授权版本包含有效操作、可见目录物理身份和原生 home 范围；请求 headers 可绑定 principal/revision，旧上下文在执行前拒绝。文件 revision、项目布局 revision、授权 revision 各自独立。权限配置目前重启生效，没有在线 ACL 修改、组或任意嵌套规则。
 
-mindos-node-client 的纯 authorization 入口负责校验 DTO，连接支持显式匿名，来源池包含身份、授权版本和认证模式。app-core 持有连接与挂载策略，阻止引用中的连接改为其他 principal；授权变化释放旧来源。服务端 ProjectCapabilities 分别投影 fileRead/fileWrite/run/sessionRead/sessionControl。只读挂载可以显式允许自己的原生会话，旧节点无该能力快照时仍按旧只读行为处理。UI 只展示认证模式、文件能力及会话控制能力，不解释 ACL。
+mindos-node-driver 的纯 authorization 入口负责校验 DTO，连接支持显式匿名，来源池包含身份、授权版本和认证模式。app-core 持有连接与挂载策略，阻止引用中的连接改为其他 principal；授权变化释放旧来源。服务端 ProjectCapabilities 分别投影 fileRead/fileWrite/run/sessionRead/sessionControl。只读挂载可以显式允许自己的原生会话，旧节点无该能力快照时仍按旧只读行为处理。UI 只展示认证模式、文件能力及会话控制能力，不解释 ACL。
 
 配置示例见 [config.access.example.toml](../../tools/mindos-node/config.access.example.toml)。同一 mindos-node 可由不同用户的独立 itookit 实例连接；单个 httpd 的多租户 profile、凭据和订阅隔离尚未实现，不能把 mTLS 准入作为多人应用隔离。同步仍是单个配置主体的 namespace，不隐式共享。
 
@@ -293,9 +293,9 @@ mindos-node@0.3.1 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适�
 
 DSH 原生 workspace 还会按原 cwd 的规范化结果过滤成员；仅将项目挂到虚拟路径时，session/list 能读到日志，但 workspace/follow 成员为空，最终项目列表为空。DSH 驱动通过通用 ProjectRuntime.prepare_with_source_paths 请求已授权目录的等权物理路径别名；运行时从固定目录身份的挂载生成别名，并复制嵌套覆盖和只读限制，不开放父目录、其他共享或运行时保留路径。其他驱动保持默认虚拟命名空间。真实 DSH 原生 API 的对比验收确认同一存储在虚拟路径下为 0 个 workspace 成员，加上授权物理路径后恢复 44 个。
 
-2026-10-16 部署 mindos-node@0.3.4 后，生产 MCP HTTP API 和已发布 mindos-node-client@0.2.1 均返回 x1 的 41 个未归档 DSH 会话，另有 3 个归档会话，与原生 workspace 的 44 个成员一致。用户提供的 `session-a455bf84-d57b-4817-aad3-ba160e78fa9f` 可读取 243 项历史，保持 owned=false，未恢复执行或调用模型。此次修复不需要前端绕过成员校验或自行读取原生日志。
+2026-10-16 部署 mindos-node@0.3.4 后，生产 MCP HTTP API 和已发布 mindos-node-driver@0.2.1 均返回 x1 的 41 个未归档 DSH 会话，另有 3 个归档会话，与原生 workspace 的 44 个成员一致。用户提供的 `session-a455bf84-d57b-4817-aad3-ba160e78fa9f` 可读取 243 项历史，保持 owned=false，未恢复执行或调用模型。此次修复不需要前端绕过成员校验或自行读取原生日志。
 
-历史投影按每条持久事件的原生 turn 编号生成稳定身份，分页从轮次中间开始也保留相同 ID；不能将后续所有轮次沿用首轮 ID，否则多轮回复会合成超大卡片并触发 Markdown 编辑器的源码视图降级。实时流保留当前提交的 requestId，历史投影不修改实时回执身份。DSH 的会话 DTO 还返回可选 archiveAllowed，说明原生归档是否适用于当前状态，独立于 owned；mindos-node-client 统一应用该提示与空闲、归档状态检查，app-core 消费同一判断，UI 只展示结果。旧节点未返回提示时保留既有的保守判断，最终操作仍由节点校验目录权限和原生状态。
+历史投影按每条持久事件的原生 turn 编号生成稳定身份，分页从轮次中间开始也保留相同 ID；不能将后续所有轮次沿用首轮 ID，否则多轮回复会合成超大卡片并触发 Markdown 编辑器的源码视图降级。实时流保留当前提交的 requestId，历史投影不修改实时回执身份。DSH 的会话 DTO 还返回可选 archiveAllowed，说明原生归档是否适用于当前状态，独立于 owned；mindos-node-driver 统一应用该提示与空闲、归档状态检查，app-core 消费同一判断，UI 只展示结果。旧节点未返回提示时保留既有的保守判断，最终操作仍由节点校验目录权限和原生状态。
 
 已实现新建/继续、历史分页、流式文本/推理、工具摘要、交互确认、中断、重命名和归档；能力描述不声明未实现的分支、永久删除、附件、取消归档或用量。网络结果不明时保留 unknown，不自动重放；WS 断线后实例拒绝续写，节点重启后可显式恢复持久会话。
 

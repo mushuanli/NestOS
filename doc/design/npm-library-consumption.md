@@ -43,7 +43,7 @@ build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从�
 
 默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的源码模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
 
-`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。本次改名后的 @itookit/mindos-node-client 尚未发布，npm 模式应明确报告缺少该制品；下方历史发布记录沿用当时的真实包名。
+`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。改名后的 @itookit/mindos-node-client@0.3.0 已发布并核对公开制品；vfs-ui@0.6.0 与 image-parser@0.2.0 仍等待 npm 二次认证，npm 模式应明确报告尚缺的制品。下方历史发布记录沿用当时的真实包名。
 
 ## 独立库发布
 
@@ -210,4 +210,4 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 | @itookit/vfs-ui@0.6.0 | `ff919033c11bd9432e9d95c6d861826a0adbb213da0518018282ead19d052761` |
 | @itookit/image-parser@0.2.0 | `831da8756ab66c7bded83e96a0304a6e481b25827556441b425065fa86ce7fea` |
 
-发布状态：制品准备完成，等待 npm 二次认证与公开注册表核对；本条尚不表示发布成功。
+发布状态：mindos-node-client@0.3.0 已发布，公开注册表重新下载的 SHA-256 与上表一致，v0.3.0 标签已推送。vfs-ui@0.6.0 与 image-parser@0.2.0 的命令仍等待各自 npm 浏览器二次认证，尚未确认发布；不能将源码推送或制品准备完成视为这两个包已公开可下载。

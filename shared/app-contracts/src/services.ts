@@ -6,7 +6,7 @@ export type * from './ports/files';
 export type * from './ports/session';
 export type * from './ports/sync';
 export type * from './ports/local';
-export type { HarnessClient, HarnessEvent, HarnessEvents, HarnessProfile, HarnessSession } from '@itookit/piagent-driver/harness';
+export type { HarnessClient, HarnessEvent, HarnessEvents, HarnessProfile, HarnessSession } from '@itookit/mindos-node-client/harness';
 export type * from './ports/application-client';
 export type * from './ports/task-view';
 

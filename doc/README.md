@@ -33,7 +33,7 @@
 | 聊天 UI 独立化 | [单依赖边界、操作回调与快照订阅（设计提案）](design/llm-ui-independent-module.md) |
 | 图片处理与聊天接入 | [image-parser、Scanic、裁剪及默认 1024 resize](design/chat-image-editing.md) |
 | 非 ML 纸边检测验收 | [风险、68例回归与正式接入门槛](design/image-parser-detector-validation.md) |
-| 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/pi-agent-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/pi-agent-sync.md) |
+| 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/mindos-node-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/mindos-node-sync.md) |
 | Anki 工作流 | [外部 Anki Tool + Flow、通用机制与业务边界（待实施）](design/anki-flow.md) |
 | 数字分身 | [当前规则驱动设计与支持边界](design/digital-twin.md) |
 | Durable 契约 | [主协议](design/durable-harness-protocol.md)、[目标与证据映射](design/durable-harness-evidence.md) |

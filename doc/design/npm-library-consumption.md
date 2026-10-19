@@ -8,7 +8,7 @@ MindOS 默认消费固定 Git 提交的独立库源码。十个独立库均位�
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.12 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.4 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.1 |
-| @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.5 |
+| @itookit/mindos-node-client | `libraries/mindos-node-client` | 0.2.5 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.1 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.8 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
@@ -18,7 +18,7 @@ MindOS 默认消费固定 Git 提交的独立库源码。十个独立库均位�
 ## 源码开发
 
 ```bash
-git submodule update --init --recursive -- libraries tools/pi-agent
+git submodule update --init --recursive -- libraries tools/mindos-node
 pnpm install --frozen-lockfile
 pnpm workspace:check --installed
 pnpm dev
@@ -43,14 +43,14 @@ build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从�
 
 默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的源码模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
 
-`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。当前清单版本均已发布；driver-llm@0.4.0、piagent-driver@0.1.3 及此前的 vfs-core@5.3.2、vfsdriver-indexeddb@5.3.3 均已从注册表重新下载并核对制品。
+`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。本次改名后的 @itookit/mindos-node-client 尚未发布，npm 模式应明确报告缺少该制品；下方历史发布记录沿用当时的真实包名。
 
 ## 独立库发布
 
 ```bash
 pnpm npm:prepare
 # 可只准备一个库：
-node scripts/release-npm-libraries.mjs prepare ./libraries @itookit/piagent-driver
+node scripts/release-npm-libraries.mjs prepare ./libraries @itookit/mindos-node-client
 # 明确决定对外发布时执行：
 pnpm npm:publish
 ```
@@ -187,3 +187,10 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 准备发布 image-parser@0.2.0：正式 classical 检测增加低分裁剪保护，非 ML paper 检测器通过显式选项接入，检测契约增加 partial/uncertain 并支持协作式取消。完整回归与未完成门槛见[检测器验收](image-parser-detector-validation.md)。版本升级同步处理器版本，避免派生结果缓存继续使用旧版本标识。应用默认检测器不切换，性能和 Safari 真机验收尚未通过，不将可选 paper 路径声明为全面生产就绪。
 
 发布状态：等待正式 tarball 发布及公开下载核对。
+
+
+### mindos-node 命名迁移
+
+服务源码工作区由 `tools/pi-agent` 更名为 `tools/mindos-node`，服务仓库为 <https://github.com/mushuanli/mindos-node>。客户端工作区由 `libraries/piagent-driver` 更名为 `libraries/mindos-node-client`，包名为 `@itookit/mindos-node-client`，工厂为 `createMindOSNodeClient()`；源码仓库暂沿用 `mushuanli/piagent-driver`。此改动更新源码、构建与 npm 制品目录配置，不表示新包已经发布到 npm。
+
+现有 MCP 配置、serverId、项目和会话 UUID、数据根与协议编码不迁移。节点增加 `itookit/mindos-node` 发现描述及 `mindos_node_capabilities` 工具，保留旧描述、能力工具与 HTTP 授权头；客户端同时接受新旧名称。持久配置仍使用原扩展键，已有凭据和项目绑定无需重建。

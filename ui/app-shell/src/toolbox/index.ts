@@ -1,7 +1,7 @@
 import { RemoteAgentDetailsEditor } from './RemoteAgentDetailsEditor';
-import { PiAgentMCPControls } from './pi-agent-controls';
+import { MindOSNodeMCPControls } from './mindos-node-controls';
 import { MCPConfigurationControlsRegistry } from './mcp-controls';
-import { PI_AGENT_EXTENSION, piAgentConfiguration } from '@itookit/app-contracts';
+import { MINDOS_NODE_EXTENSION, mindosNodeConfiguration } from '@itookit/app-contracts';
 import type { ApplicationServices } from '@itookit/app-contracts/services';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import type { NavigationRequest } from '@itookit/common';
@@ -51,8 +51,8 @@ function configurationFactories(options: Options, inventory: ToolboxInventory, r
     }, prompts: create(editors.SystemPromptSettingsEditor), providers: create(editors.ProviderSettingsEditor), connections: create(editors.ConnectionSettingsEditor),
         mcp: async (element: HTMLElement, config: import('@itookit/ui-common').EditorOptions) => {
             const editor = new editors.MCPSettingsEditor(element, agentService, config, options.services.projects?.remoteMounts
-                ? new MCPConfigurationControlsRegistry().register(PI_AGENT_EXTENSION,new PiAgentMCPControls(options.services.projects.remoteMounts, options.services.projects),
-                    server => !!piAgentConfiguration(server)) : undefined); await editor.init(element); return editor;
+                ? new MCPConfigurationControlsRegistry().register(MINDOS_NODE_EXTENSION,new MindOSNodeMCPControls(options.services.projects.remoteMounts, options.services.projects),
+                    server => !!mindosNodeConfiguration(server)) : undefined); await editor.init(element); return editor;
         }, tools: async (element: HTMLElement, config: import('@itookit/ui-common').EditorOptions) => {
             const editor = new ToolDetailsEditor(element, inventory, config, resources); await editor.init(element); return editor;
         } };

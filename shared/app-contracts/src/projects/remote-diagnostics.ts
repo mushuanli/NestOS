@@ -10,7 +10,7 @@ export interface MCPConnectionDiagnostic {
 interface RemoteFailureContext {
     stage: string; projectId?: string; profileId?: string; sessionId?: string; connectionId?: string;
 }
-export const remoteLog = createModuleLogger('pi-agent');
+export const remoteLog = createModuleLogger('mindos-node');
 const reported = new WeakSet<object>();
 
 /** Only catalog identities and fixed reason codes cross the diagnostic boundary. */
@@ -30,8 +30,8 @@ export function reportRemoteFailure(error: unknown, context: RemoteFailureContex
     if (error instanceof Error && reported.has(error)) { remoteLog.debug('remote.operation.failed', data); return; }
     if (error instanceof Error) reported.add(error);
     remoteLog.error('remote.operation.failed', data);
-    if (getLogger().getLevel('pi-agent') <= LogLevel.ERROR)
-        console.error(`${new Date().toISOString()} [itookit/pi-agent] remote.operation.failed`, data);
+    if (getLogger().getLevel('mindos-node') <= LogLevel.ERROR)
+        console.error(`${new Date().toISOString()} [itookit/mindos-node] remote.operation.failed`, data);
 }
 
 function failureCodes(error: unknown): string[] {

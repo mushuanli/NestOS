@@ -1,7 +1,7 @@
 import { expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
-import { mockPiAgentDiscovery } from './helpers/mcp-discovery';
+import { mockMindOSNodeDiscovery } from './helpers/mcp-discovery';
 
 async function startupFixture() {
     const backend = new MemoryBackend();
@@ -10,7 +10,7 @@ async function startupFixture() {
         transport: 'http', endpoint: 'https://office.test/mcp', apiKey: 'test-key' })));
     let release!: () => void;
     const gate = new Promise<void>(resolve => { release = resolve; });
-    const fetch = mockPiAgentDiscovery({ version: 1, httpEndpoint: 'https://office.test', serverId: 'office',
+    const fetch = mockMindOSNodeDiscovery({ version: 1, httpEndpoint: 'https://office.test', serverId: 'office',
         fileProtocol: 'fs-agent-http-v1', harness: true, projects: true, projectProtocol: 'fs-agent-project-v1' });
     const transport = fetch.getMockImplementation()!;
     fetch.mockImplementation(async (...args) => { await gate; return transport(...args); });

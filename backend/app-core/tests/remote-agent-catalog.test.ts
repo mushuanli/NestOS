@@ -3,7 +3,7 @@ import { listRemoteHarnessAgents } from '../src/projects/remote-agent-catalog';
 import { ToolboxInventory } from '../src/configuration/toolbox-catalog';
 import { createFileSystemView, createFileSystemSource, MemoryBackend } from '@itookit/vfs-core';
 import type { ProjectRemoteMountService } from '../src/projects/remote-mounts';
-it('advertises only configured project harnesses from verified pi-agent connections', async () => {
+it('advertises only configured project harnesses from verified mindos-node connections', async () => {
     const close=vi.fn(async () => {}),harness=vi.fn(() => ({profiles:async () => ({profiles:[
         {id:'c',kind:'codex',projectRuntime:true,workspaces:[],capabilities:{}},
         {id:'legacy',kind:'codex',projectRuntime:false,workspaces:[],capabilities:{}}

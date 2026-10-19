@@ -149,7 +149,7 @@ pnpm --filter @itookit/vfs-core test
 libraries/               # 独立 Git 库，统一源码工作区
 ├── driver-llm/ # 模型通信
 ├── mdxeditor/ # 独立 Markdown 编辑器
-├── piagent-driver/ # pi-agent 文件、同步和执行客户端
+├── mindos-node-client/ # mindos-node 文件、同步和执行客户端
 ├── vfs-core/ # VFS 引擎与协议
 ├── vfs-sync/ # 多端文件同步核心
 ├── vfs-ui/ # 文件与资源浏览 UI

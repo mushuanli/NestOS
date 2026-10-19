@@ -33,7 +33,7 @@ export async function applicationCommand(command: string, args: string[], option
 }
 
 function recordApplicationDiagnostics(started: number, command: string, action: string | undefined, mode: string): void {
-    for (const entry of getLogger().query({modules: ['pi-agent'], minLevel: LogLevel.ERROR, startTime: started})) {
+    for (const entry of getLogger().query({modules: ['mindos-node'], minLevel: LogLevel.ERROR, startTime: started})) {
         const data = entry.data as Record<string, unknown> | undefined;
         if (entry.message === 'remote.operation.failed' && data) recordRuntimeDiagnostic('remote.operation.failed',
             Object.fromEntries(['stage', 'projectId', 'profileId', 'sessionId', 'connectionId', 'code', 'causeCodes'].filter(key => data[key] !== undefined).map(key => [key, data[key]])));

@@ -1,9 +1,9 @@
 import { expect, it, vi } from 'vitest';
 import { createFileSystemSource, MemoryBackend } from '@itookit/vfs-core';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
-import { PI_AGENT_EXTENSION } from '../src/projects/mcp-remote-connections';
+import { MINDOS_NODE_EXTENSION } from '../src/projects/mcp-remote-connections';
 import { canReaddressConnection, type RemoteFileSystemConfig } from '../src/projects/remote-connections';
-import { mockPiAgentDiscovery } from './helpers/mcp-discovery';
+import { mockMindOSNodeDiscovery } from './helpers/mcp-discovery';
 
 const authorization = { principalId: 'owner', anonymous: false, revision: 'a'.repeat(64) };
 const original: RemoteFileSystemConfig = { id: 'node', name: 'Node', endpoint: 'http://files.test:8787',
@@ -36,7 +36,7 @@ it('only upgrades an implicit legacy owner when its original credential is retai
 async function fixture(legacy = false) {
     const descriptor = { version: 1, fileProtocol: 'fs-agent-http-v1', httpEndpoint: './',
         serverId: 'stable-node', harness: false, authorization: legacy ? undefined : authorization };
-    const fetch = mockPiAgentDiscovery(descriptor);
+    const fetch = mockMindOSNodeDiscovery(descriptor);
     const disposed = vi.fn(), opened: string[] = [];
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web', remoteSourceProvider: {
         setCredential() {}, async dispose() {}, async open(connection) {
@@ -53,7 +53,7 @@ async function fixture(legacy = false) {
     try {
         await runtime.agentService.saveMCPServer({ id: 'node', name: 'Node', transport: 'http',
             endpoint: 'http://files.test:8787/mcp', apiKey: 'test-credential',
-            extensions: { [PI_AGENT_EXTENSION]: { requested: true } } });
+            extensions: { [MINDOS_NODE_EXTENSION]: { requested: true } } });
         const project = await runtime.projects.createRemote('Bound', null, 'node', '/docs', 'ro');
         const configured = (await runtime.agentService.getMCPServers()).find(server => server.id === 'node')!;
         return { runtime, remote, project, configured, fetch, disposed, opened, descriptor,

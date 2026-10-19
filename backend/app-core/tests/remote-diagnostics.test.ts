@@ -3,25 +3,25 @@ import { getLogger, LogLevel } from '@itookit/common';
 import { MemoryBackend } from '@itookit/vfs-core';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
-import { MCPRemoteConnections, PI_AGENT_EXTENSION } from '../src/projects/mcp-remote-connections';
+import { MCPRemoteConnections, MINDOS_NODE_EXTENSION } from '../src/projects/mcp-remote-connections';
 import { ProjectRemoteMountService } from '../src/projects/remote-mounts';
 import { reportRemoteFailure } from '../src/projects/remote-diagnostics';
 import { RemoteMountStore } from '../src/projects/remote-mount-store';
 
 const server: MCPServer = {id: 'office', name: 'Office', transport: 'http', endpoint: 'https://office.test/mcp',
     apiKey: 'private-api-key', auth: {type: 'bearer', credentialRef: 'private-reference'},
-    headers: {Authorization: 'private-header'}, extensions: {[PI_AGENT_EXTENSION]: {
+    headers: {Authorization: 'private-header'}, extensions: {[MINDOS_NODE_EXTENSION]: {
         version: 1, mcpEndpoint: 'https://office.test/mcp', httpEndpoint: 'https://office.test',
         fileProtocol: 'fs-agent-http-v1', harness: true}}};
 const provider = () => ({setCredential: vi.fn(), dispose: vi.fn(), open: vi.fn()});
-afterEach(() => {getLogger().clear(); getLogger().removeModuleLevel('pi-agent'); vi.restoreAllMocks();});
+afterEach(() => {getLogger().clear(); getLogger().removeModuleLevel('mindos-node'); vi.restoreAllMocks();});
 
 it.each([
     ['ready', {}], ['extension-missing', {extensions: undefined}],
     ['unsupported-transport', {transport: 'stdio'}], ['auth-missing', {auth: undefined, apiKey: undefined}],
     ['endpoint-mismatch', {endpoint: 'https://other.test/mcp'}],
-    ['invalid-descriptor', {extensions: {[PI_AGENT_EXTENSION]: {requested: true}}}],
-    ['invalid-endpoint', {extensions: {[PI_AGENT_EXTENSION]: {...server.extensions![PI_AGENT_EXTENSION], httpEndpoint: 'https://foreign.test'}}}],
+    ['invalid-descriptor', {extensions: {[MINDOS_NODE_EXTENSION]: {requested: true}}}],
+    ['invalid-endpoint', {extensions: {[MINDOS_NODE_EXTENSION]: {...server.extensions![MINDOS_NODE_EXTENSION], httpEndpoint: 'https://foreign.test'}}}],
 ] as const)('distinguishes %s without exposing authentication or endpoint details', async (reason, change) => {
     const registry = new MCPRemoteConnections({getMCPServers: async () => [{...server, ...change} as MCPServer],
         saveMCPServer: vi.fn(), deleteMCPServer: vi.fn()}, provider());
@@ -48,10 +48,10 @@ it('records the missing binding and its project without remapping it to another 
         await expect(remote.resolveConnection('old-office')).rejects.toMatchObject({code: 'ENOENT', projectIds: ['notes'],
             diagnostic: {connectionId: 'old-office', reason: 'mcp-not-found', configured: [{id: 'office', name: 'Office'}]}});
         expect(source.open).not.toHaveBeenCalled();
-        const logs = getLogger().query({modules: ['pi-agent']}); expect(logs).toHaveLength(1);
+        const logs = getLogger().query({modules: ['mindos-node']}); expect(logs).toHaveLength(1);
         expect(JSON.stringify(logs)).not.toMatch(/private-|https:/);
         expect(consoleError).toHaveBeenCalledOnce();
-        expect(consoleError.mock.calls[0][0]).toMatch(/^\d{4}-\d\d-\d\dT.* \[itookit\/pi-agent\]/);
+        expect(consoleError.mock.calls[0][0]).toMatch(/^\d{4}-\d\d-\d\dT.* \[itookit\/mindos-node\]/);
     } finally {await remote.dispose(); await runtime.dispose();}
 });
 
@@ -59,7 +59,7 @@ it('does not log provider response bodies, URLs, headers or session content', ()
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
     reportRemoteFailure(new Error('private-response-body https://host/?api_key=private-key'),
         {stage: 'session-list', projectId: 'notes', profileId: 'codex'});
-    expect(JSON.stringify(getLogger().query({modules: ['pi-agent']}))).not.toContain('private-');
+    expect(JSON.stringify(getLogger().query({modules: ['mindos-node']}))).not.toContain('private-');
     expect(JSON.stringify(consoleError.mock.calls)).not.toContain('private-');
 });
 
@@ -68,26 +68,26 @@ it('preserves MCP and network cause codes without their sensitive messages', () 
     const network = Object.assign(new Error('private-api-key'), {code: 'ECONNREFUSED'});
     const sdk = Object.assign(new Error('private-response-body', {cause: network}), {code: 'ERA_NEGOTIATION_FAILED'});
     reportRemoteFailure(sdk, {stage: 'mcp-connection-recovery', connectionId: 'office'});
-    const log = getLogger().query({modules: ['pi-agent']})[0];
+    const log = getLogger().query({modules: ['mindos-node']})[0];
     expect(log.data).toMatchObject({source: 'itookit', code: 'ERA_NEGOTIATION_FAILED', causeCodes: ['ECONNREFUSED']});
     expect(JSON.stringify(log)).not.toContain('private-');
 });
 
 it('honors the module SILENT setting in both the log viewer and console', () => {
     const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
-    getLogger().setLevel('pi-agent', LogLevel.SILENT);
+    getLogger().setLevel('mindos-node', LogLevel.SILENT);
     reportRemoteFailure(new Error('Offline'), {stage: 'session-list', projectId: 'notes'});
-    expect(getLogger().query({modules: ['pi-agent']})).toEqual([]); expect(consoleError).not.toHaveBeenCalled();
+    expect(getLogger().query({modules: ['mindos-node']})).toEqual([]); expect(consoleError).not.toHaveBeenCalled();
 });
 
 it('keeps catalog refresh detail at DEBUG and does not overwrite a newer diagnostic snapshot', async () => {
-    getLogger().setLevel('pi-agent', LogLevel.DEBUG);
+    getLogger().setLevel('mindos-node', LogLevel.DEBUG);
     let finish!: (value: MCPServer[]) => void;
     const getMCPServers = vi.fn().mockImplementationOnce(() => new Promise(resolve => {finish = resolve;})).mockResolvedValue([]);
     const registry = new MCPRemoteConnections({getMCPServers, saveMCPServer: vi.fn(), deleteMCPServer: vi.fn()}, provider());
     const old = registry.refresh(); await registry.refresh(); finish([server]); await old;
     expect(registry.diagnostic('office')).toMatchObject({reason: 'mcp-not-found', revision: 2, configured: []});
-    expect(getLogger().query({modules: ['pi-agent']}).map(log => log.message)).toEqual(['mcp.catalog.refreshed']);
+    expect(getLogger().query({modules: ['mindos-node']}).map(log => log.message)).toEqual(['mcp.catalog.refreshed']);
 });
 
 it('recovers a rejected configuration before a foreground capability check', async () => {

@@ -14,11 +14,11 @@ import { HttpSyncClient } from '../src';
 import { IndexedDBFileLocal, IndexedDBSyncStore } from '../src';
 import { prepareProjectSync } from '@itookit/app-core';
 
-it('roundtrips IndexedDB and local clients against pi-agent without overwriting offline edits', async () => {
+it('roundtrips IndexedDB and local clients against mindos-node without overwriting offline edits', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'itookit-sync-'));
     const config = join(directory, 'server.toml');
     await writeFile(config, `listen = "127.0.0.1:0"\nexecution = false\nusername = "owner"\npassword_env = "SYNC_TEST_PASSWORD"\n[sync]\nenabled = true\nroot = ${JSON.stringify(join(directory, 'store'))}\n`);
-    const child = spawn('cargo', ['run', '--quiet', '--offline', '--manifest-path', resolve('../../tools/pi-agent/Cargo.toml'), '--', config],
+    const child = spawn('cargo', ['run', '--quiet', '--offline', '--manifest-path', resolve('../../tools/mindos-node/Cargo.toml'), '--', config],
         { env: { ...process.env, SYNC_TEST_PASSWORD: 'sync-secret' }, stdio: ['ignore', 'ignore', 'pipe'] });
     const exited = once(child, 'exit'); const backends: Array<IndexedDBBackend | LocalFSBackend> = [], clients: HttpSyncClient[] = [];
     try {

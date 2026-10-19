@@ -8,7 +8,7 @@ import { join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { IndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { IndexedDBSyncStore } from '@itookit/sync-adapters';
-import { createPiAgentDriver } from '@itookit/piagent-driver';
+import { createMindOSNodeClient } from '@itookit/mindos-node-client';
 import { webcrypto } from 'node:crypto';
 import { randomId } from '@itookit/vfs-sync';
 import type { ProjectService } from '@itookit/app-core';
@@ -28,7 +28,7 @@ async function server(directoryProjects = false, apiKey = false) {
         const original=await readFile(config,'utf-8');
         await writeFile(config,`server_id = "web-directory-test"\n${original}\n[projects]\nroot = ${JSON.stringify(join(directory,'catalog'))}\n[[exports]]\nalias = "home"\npath = ${JSON.stringify(join(directory,'exports'))}\naccess = "rw"\n`);
     }
-    const child = spawn('cargo' , ['run', '--quiet', '--offline', '--manifest-path', resolve('../../tools/pi-agent/Cargo.toml'), '--', config],
+    const child = spawn('cargo' , ['run', '--quiet', '--offline', '--manifest-path', resolve('../../tools/mindos-node/Cargo.toml'), '--', config],
         { env: { ...process.env, SYNC_TEST_PASSWORD: 'test-secret' }, stdio: ['ignore', 'ignore', 'pipe'] });
     const exited = once(child, 'exit');
     const close = async () => { child.kill('SIGTERM'); await exited; await rm(directory, { recursive: true, force: true }); };
@@ -45,7 +45,7 @@ async function server(directoryProjects = false, apiKey = false) {
 async function device(endpoint: string) {
     const backend = new IndexedDBBackend({ dbName: 'web-sync-' + randomId() }); await backend.init();
     const directory = '/home/admin/projects/local'; await backend.mkdir(directory);
-    const http = createPiAgentDriver(); http.setCredential('saved', 'test-secret');
+    const http = createMindOSNodeClient(); http.setCredential('saved', 'test-secret');
     const project = { name: 'Local', project: { id: 'local', directory } };
     const connection = () => ({id: 'server', name: 'Server', endpoint, username: 'owner', credentialRef: 'saved'});
     const projects = { get: async () => project, assertIndependent: async () => {}, remoteMounts: { list: () => [], connection,
@@ -100,15 +100,15 @@ it('only resolves a sync client when an operation needs it and preserves its met
         expect(resolve).toHaveBeenCalledOnce(); expect(receiver).toBeInstanceOf(HttpSyncClient);
     } finally {await service.dispose(); await a.close(); vi.restoreAllMocks();}
 });
-it('discovers pi-agent on the generic MCP connection without extra verification and binds its native project',async()=>{
+it('discovers mindos-node on the generic MCP connection without extra verification and binds its native project',async()=>{
     const running = await server(true,true);
-    const backend = new IndexedDBBackend({dbName:'mcp-pi-agent-'+randomId()}), originalFetch = globalThis.fetch;
+    const backend = new IndexedDBBackend({dbName:'mcp-mindos-node-'+randomId()}), originalFetch = globalThis.fetch;
     const methods:string[] = [];
     const fetch = vi.spyOn(globalThis,'fetch').mockImplementation(async (input,init) => {
         if (String(input).endsWith('/mcp') && typeof init?.body === 'string') methods.push(JSON.parse(init.body).method);
         return originalFetch(input,init);
     });
-    const driver = createPiAgentDriver();
+    const driver = createMindOSNodeClient();
     const runtime = await createApplicationRuntime({backend,ownerKind:'web',remoteSourceProvider:driver});
     try {
         const draft = {id:'office',name:'Office',transport:'http' as const,endpoint:running.endpoint+'/mcp',apiKey:'fixed-network-api-key-at-least-24-bytes'};

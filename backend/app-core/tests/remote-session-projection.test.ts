@@ -3,7 +3,7 @@ import { createFileSystemSource, createFileSystemView, MemoryBackend } from '@it
 import { resolveBrowserTarget, remoteSessionPath } from '../src/session/browser-routes';
 import { RemoteSessionProjection } from '../src/session/remote-session-projection';
 import type { ProjectService } from '../src/projects/project-service';
-import type { HarnessSession } from '@itookit/piagent-driver';
+import type { HarnessSession } from '@itookit/mindos-node-client';
 import { t } from '@itookit/common';
 const project = {path:'/Project', name:'Project', project:{id:'p'}};
 function setup(root = true) {

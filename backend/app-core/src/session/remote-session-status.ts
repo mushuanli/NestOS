@@ -1,4 +1,4 @@
-import type { HarnessObservation, HarnessStatusPort, HarnessStatusRow } from '@itookit/piagent-driver';
+import type { HarnessObservation, HarnessStatusPort, HarnessStatusRow } from '@itookit/mindos-node-client';
 import type { OperationOptions } from '@itookit/vfs-core';
 
 interface Watch {

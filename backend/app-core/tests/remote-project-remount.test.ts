@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { MemoryBackend, createFileSystemSource } from '@itookit/vfs-core';
-import type { HarnessClient, HarnessProfile, ProjectClient, RemoteProject } from '@itookit/piagent-driver';
+import type { HarnessClient, HarnessProfile, ProjectClient, RemoteProject } from '@itookit/mindos-node-client';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { RemoteMountStore } from '../src/projects/remote-mount-store';
 import { ProjectRemoteMountService } from '../src/projects/remote-mounts';

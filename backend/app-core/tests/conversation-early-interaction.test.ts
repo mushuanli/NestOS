@@ -1,5 +1,5 @@
 import {expect, it, vi} from 'vitest';
-import {HarnessConversation} from '@itookit/piagent-driver';
+import {HarnessConversation} from '@itookit/mindos-node-client';
 import {observeConversation} from '../src/projects/conversation-view';
 
 it.each([false, true])('observes and answers early approval without blocking on history repair (gap: %s)', async gap => {

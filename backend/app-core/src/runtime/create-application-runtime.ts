@@ -7,7 +7,7 @@ import { ConversationViews } from './conversation-views';
 import { StartupCoordinator } from './startup-coordinator';
 import { SessionLifecycleService } from '../session/session-lifecycle';
 import { MCPRemoteConnections } from '../projects/mcp-remote-connections';
-import { createPiAgentMCPExtension } from '../projects/pi-agent-mcp-extension';
+import { createMindOSNodeMCPExtension } from '../projects/mindos-node-mcp-extension';
 import { ProjectSyncService, type ProjectSyncProvider } from '../projects/sync/service';
 import type { Coordinator } from '@itookit/vfs-sync';
 import { seedDefaultFlows } from '../presets/default-flows';
@@ -137,7 +137,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
     let remoteConnections: ProjectRemoteMountService | undefined;
     const injectedMCP = options.mcp;
     options = { ...options,mcp:{ ...injectedMCP,
-        extensions:[...(injectedMCP?.extensions ?? []),...(options.remoteSourceProvider ? [createPiAgentMCPExtension()] : [])],
+        extensions:[...(injectedMCP?.extensions ?? []),...(options.remoteSourceProvider ? [createMindOSNodeMCPExtension()] : [])],
         resolveCredential:injectedMCP?.resolveCredential ?? options.remoteSourceProvider?.resolveCredential?.bind(options.remoteSourceProvider),
         beforeSave:async (server,previous) => { await injectedMCP?.beforeSave?.(server,previous); await remoteConnections?.beforeMCPChange(server,previous); },
         beforeDelete:async id => { await injectedMCP?.beforeDelete?.(id); remoteConnections?.beforeMCPDelete(id); },

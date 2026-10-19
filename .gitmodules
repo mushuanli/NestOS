@@ -1,11 +1,11 @@
 [submodule "tookit/cc-proxy"]
 	path = tookit/cc-proxy
 	url = git@github.com:mushuanli/cc-proxy.git
-[submodule "tools/pi-agent"]
-	path = tools/pi-agent
-	url = git@github.com:mushuanli/pi-agent.git
-[submodule "libraries/piagent-driver"]
-	path = libraries/piagent-driver
+[submodule "tools/mindos-node"]
+	path = tools/mindos-node
+	url = git@github.com:mushuanli/mindos-node.git
+[submodule "libraries/mindos-node-client"]
+	path = libraries/mindos-node-client
 	url = https://github.com/mushuanli/piagent-driver.git
 [submodule "libraries/vfs-core"]
 	path = libraries/vfs-core

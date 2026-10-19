@@ -22,7 +22,7 @@
     "@itookit/common": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "@itookit/vfsdriver-local": "workspace:*",
-    "@itookit/piagent-driver": "workspace:*",
+    "@itookit/mindos-node-client": "workspace:*",
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/driver-llm": "workspace:*"
   },

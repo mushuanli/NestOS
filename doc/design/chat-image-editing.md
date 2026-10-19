@@ -383,7 +383,7 @@ C4Component
     }
     Container_Boundary(host, "应用宿主") {
         Component(store, "ConversationComposerStore", "app-core", "不透明草稿 CAS、资源权限与保存回执")
-        Component(native, "HarnessConversation", "piagent-driver", "稳定请求 ID、持久接纳事实和核对")
+        Component(native, "HarnessConversation", "mindos-node-client", "稳定请求 ID、持久接纳事实和核对")
     }
     Rel(view, images, "附件或策略变更；渲染不调度")
     Rel(images, processor, "从原图处理；完成后核对策略")

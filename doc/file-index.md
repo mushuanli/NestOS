@@ -94,7 +94,7 @@
 | 事件总线（EventBus/FSEventBus） | `https://github.com/mushuanli/vfs-core/blob/main/src/eventbus/`、`impl/event/` |
 | IndexedDB 后端 | `https://github.com/mushuanli/vfsdriver-indexeddb/blob/main/src/` |
 | HTTP 外挂驱动 | `https://github.com/mushuanli/piagent-driver/blob/main/src/files/` |
-| 远程连接与项目 | `app-core/src/projects/remote-mounts.ts`、`app-core/src/projects/remote-mount-store.ts`、`app-core/src/projects/remote-connections.ts`、`app-core/src/projects/mcp-remote-connections.ts`、`app-shell/src/toolbox/pi-agent-controls.ts`、`app-shell/src/files/remote-project-fields.ts` |
+| 远程连接与项目 | `app-core/src/projects/remote-mounts.ts`、`app-core/src/projects/remote-mount-store.ts`、`app-core/src/projects/remote-connections.ts`、`app-core/src/projects/mcp-remote-connections.ts`、`app-shell/src/toolbox/mindos-node-controls.ts`、`app-shell/src/files/remote-project-fields.ts` |
 | LocalFS 后端 | `https://github.com/mushuanli/vfsdriver-local/blob/main/src/localfs-backend.ts` |
 
 ## CLI（@itookit/cli）
@@ -162,7 +162,7 @@
 | 项目 UI 模块装配 | `ui/app-shell/src/projects/index.ts` |
 
 
-- pi-agent 目录项目、目录身份与策略版本：`tools/pi-agent/src/projects/`；客户端：`libraries/piagent-driver/src/projects.ts`、`libraries/piagent-driver/src/project-process.ts`；设计：[项目模型](design/pi-agent-project-model.md)。
+- mindos-node 目录项目、目录身份与策略版本：`tools/mindos-node/src/projects/`；客户端：`libraries/mindos-node-client/src/projects.ts`、`libraries/mindos-node-client/src/project-process.ts`；设计：[项目模型](design/mindos-node-project-model.md)。
 
 ## CLI 与共享宿主
 

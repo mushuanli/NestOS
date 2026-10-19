@@ -24,8 +24,8 @@
     "workspace": true
   },
   {
-    "directory": "piagent-driver",
-    "name": "@itookit/piagent-driver",
+    "directory": "mindos-node-client",
+    "name": "@itookit/mindos-node-client",
     "version": "0.2.5",
     "workspace": true
   },

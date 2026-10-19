@@ -378,7 +378,7 @@ C4Component
 
 原生 create 成功只代表预留会话，不代表首条消息提交成功。app-core 在远程草稿恢复记录中保存明确的 submittedTurnId；拒绝发送时保留输入与已创建的原生身份，重开不会再次 create。结果未知时保留 requestId/epoch 并查询回执，不自动重放。只有 turn 的明确成功响应或 committed 回执才允许 UI 转为正式会话；新入口随后提供空白草稿。关闭或刷新视图不会中断原生执行。
 
-首次 turn 提交后，app-core 对声明 rename 能力的适配器应用日期时间默认标题；不支持 rename 的原生服务保留自身标题。命名失败不把已提交消息报告为发送失败；若命名结果未知，仍通过原生回执核对。标题策略和草稿转正归 app-core，pi-agent/driver 保持原生 create/turn/rename 与回执机制。
+首次 turn 提交后，app-core 对声明 rename 能力的适配器应用日期时间默认标题；不支持 rename 的原生服务保留自身标题。命名失败不把已提交消息报告为发送失败；若命名结果未知，仍通过原生回执核对。标题策略和草稿转正归 app-core，mindos-node/driver 保持原生 create/turn/rename 与回执机制。
 
 ## 目录和会话页面搜索
 
@@ -394,7 +394,7 @@ C4Component
 
 文件搜索能力由 `ProjectClient` 在执行查询的同一 MCP 连接上读取 discovery metadata；明确声明 `fileSearch: false` 时拒绝查询。应用层只核对项目授权与 revision，不把文件 HTTP 根地址再次传给要求完整 MCP 地址的 discovery 入口。名称/目录搜索仍要求版本 2；未声明新能力的旧服务保持原有路径/内容搜索契约。
 
-远程文件扫描由 pi-agent 的 rg 执行并自行选择线程数，不在 HTTP 或 app-core 再复制文件扫描器。子目录范围通过标准输入提供的 rg 忽略规则在遍历时剪枝，项目原有忽略规则保持优先，输出仍核对相对目录；保留项目根作为遍历根，避免显式指定目录后改变链接、隐藏和忽略行为。不能安全表示为逐行忽略规则的目录沿用结果过滤。Node 与浏览器本地来源继续走授权 VFS 视图，不能用物理目录扫描替代组合视图。
+远程文件扫描由 mindos-node 的 rg 执行并自行选择线程数，不在 HTTP 或 app-core 再复制文件扫描器。子目录范围通过标准输入提供的 rg 忽略规则在遍历时剪枝，项目原有忽略规则保持优先，输出仍核对相对目录；保留项目根作为遍历根，避免显式指定目录后改变链接、隐藏和忽略行为。不能安全表示为逐行忽略规则的目录沿用结果过滤。Node 与浏览器本地来源继续走授权 VFS 视图，不能用物理目录扫描替代组合视图。
 
 多关键字内容查询只启动一次 rg，以最长字面关键字筛选候选，结构化输出经全部关键字验证后才计入结果上限；多词时不使用 rg 的单关键字 `--max-count`，避免提前丢弃真正命中。现有时间、输出容量、目录和授权预算仍生效。文件 discovery metadata 与原生 profile 的 `searchKeywords: true` 明确声明该语义；旧节点不支持时返回能力不足，不能静默按整段短语查询。
 
@@ -402,21 +402,21 @@ C4Component
 
 文件目录页采用显式刷新：首次进入、用户刷新或当前用户的文件操作读取数据，后台会话、连接和项目事件不重建目录页。会话状态观察不启用文件监听；目录版本仅反映真实服务端版本，不因覆盖不足而拼接时间桶。前端聊天只展示后端快照与订阅更新，不再自行定时查询。后端正文仅在有活动轮次且存在展示订阅时推进事件游标，轮次结束或最后一个订阅离开即停止。原生会话列表初次读取后空闲停止，显式刷新及会话活动变化可以重新触发读取；连接只在新增观察兴趣或授权绑定变化时探测，不周期轮询。浏览器页面隐藏时释放展示兴趣，返回时按需读取最新快照；执行本身继续由后端负责。
 
-原生交互由 piagent-driver 提供结构化问题、选项说明、多选/自由回答/密码输入标记与审批决策目录；UI 适配到 llm-ui 的共享 InteractionCard，主工作台和独立 ChatView 使用同一转换与渲染。未知交互保留只读提示，不能静默隐藏。相同请求的观察更新保留未提交回答；密码回答只进入明确的回复调用，不进入会话草稿或恢复记录。
+原生交互由 mindos-node-client 提供结构化问题、选项说明、多选/自由回答/密码输入标记与审批决策目录；UI 适配到 llm-ui 的共享 InteractionCard，主工作台和独立 ChatView 使用同一转换与渲染。未知交互保留只读提示，不能静默隐藏。相同请求的观察更新保留未提交回答；密码回答只进入明确的回复调用，不进入会话草稿或恢复记录。
 
 启动本轮的响应可能等待审批，因此 conversation-view 在 send/command 尚未完成时独立推进事件读取，respond 不排在该响应之后；driver 独立保存每个回复的 requestId/epoch，不覆盖正在等待的 turn 回执。未知回复通过原操作回执核对，不自动重发。重新打开会话的首次 read 同时读取未解决请求，恢复待答框，不依赖新执行事件；普通发送前按需刷新超过 30 秒的投影，防止空闲回收后沿用旧 owned 状态。
 
 执行中的 Codex 最新历史从原生运行时读取，不能以尚未写入完整回答的 rollout 文件替代；空闲历史和加载更早页继续使用文件分页。原生 `thread/read` 回复在有序输出读取点标记 `eventCursor`，会话从该边界继续读增量，避免刷新后重复拼接已包含的正文；事件缓冲区溢出后的历史修复不能把游标倒退到旧事件页。启动尚未完成时遇到事件缺口，先投影待答请求，历史修复留到启动结束，避免审批通路等待自身。
 
-HTTP 网页视图的 60 秒空闲租约与 pi-agent 原生运行时分别管理。pi-agent 每分钟仅做内存状态检查：项目/profile 运行时连续空闲且无读取 5 分钟后卸载原生进程与连接；其中任一会话有执行、待答请求或在途调用就保留整个共享运行时。历史由原生存储保留，profile 的回执表与授权上下文独立于可卸载 driver 保留；下次实际访问延迟重建，并在发送前核对/恢复原生会话。等待用户回答不自动超时取消，网页断开或隐藏也不批准、不拒绝该交互。
+HTTP 网页视图的 60 秒空闲租约与 mindos-node 原生运行时分别管理。mindos-node 每分钟仅做内存状态检查：项目/profile 运行时连续空闲且无读取 5 分钟后卸载原生进程与连接；其中任一会话有执行、待答请求或在途调用就保留整个共享运行时。历史由原生存储保留，profile 的回执表与授权上下文独立于可卸载 driver 保留；下次实际访问延迟重建，并在发送前核对/恢复原生会话。等待用户回答不自动超时取消，网页断开或隐藏也不批准、不拒绝该交互。
 
 ```mermaid
 C4Component
   title 原生交互与运行时生命周期
   Component(ui, "ChatInput / InteractionCard", "llm-ui + adapter", "展示结构化问题，保留输入，提交用户选择")
   Component(view, "ConversationView", "app-core", "共享事件推进；回复通道独立于等待中的启动调用")
-  Component(driver, "HarnessConversation", "piagent-driver", "原生交互、回复回执与恢复引用")
-  Component(slot, "DriverSlot", "pi-agent", "空闲卸载；保留执行、待答与在途调用")
+  Component(driver, "HarnessConversation", "mindos-node-client", "原生交互、回复回执与恢复引用")
+  Component(slot, "DriverSlot", "mindos-node", "空闲卸载；保留执行、待答与在途调用")
   System_Ext(native, "Codex / Claude / DSH", "原生执行、交互与持久历史")
   Rel(ui, view, "提交回复或订阅展示状态")
   Rel(view, driver, "独立观察和 respond")
@@ -433,8 +433,8 @@ C4Component
   Component(files, "VFS discovery + readContent", "vfs-core", "授权目录遍历与有界文件读取")
   Component(store, "LocalFS / IndexedDB", "storage backends", "通用目录和文件 I/O")
   Component(sessions, "SessionRepository", "llm-session", "摘要、存活分支与轮次文档")
-  Component(driver, "ProjectClient / HarnessClient", "piagent-driver", "同一 MCP 连接的能力协商、查询与响应校验")
-  Component(remote, "project_search / harness_session_search", "pi-agent", "远程授权视图、原生结构化历史与角色筛选")
+  Component(driver, "ProjectClient / HarnessClient", "mindos-node-client", "同一 MCP 连接的能力协商、查询与响应校验")
+  Component(remote, "project_search / harness_session_search", "mindos-node", "远程授权视图、原生结构化历史与角色筛选")
   Component(rg, "ripgrep", "isolated process", "并行扫描、遍历剪枝、忽略规则与有界流式输出")
   Rel(page, query, "调用搜索端口；不携带列表分页游标")
   Rel(query, keywords, "本地查询在结果截断前匹配全部词")

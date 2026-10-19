@@ -4,7 +4,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
 import { MemoryBackend, createFileSystemSource, FSError } from '@itookit/vfs-core';
 import { createApplicationRuntime, remoteSessionPath, folderBrowserPath } from '@itookit/app-core';
-import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/piagent-driver';
+import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/mindos-node-client';
 import {createLLMFactory} from '../../llm-ui-adapter/src/chat';
 import type { EditorOptions } from '@itookit/ui-common';
 import type { VFSUIShell } from '@itookit/vfs-ui';

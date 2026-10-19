@@ -265,7 +265,7 @@ C4Component
 
 ### 10.1 当前缺口与实现边界
 
-工作台仍使用 `ui/llm-ui-adapter` 的 LLMWorkspaceEditor / RemoteConversationEditor 兼容入口。独立 ChatView 经 independent/session、independent/native 接入；不能用兼容组件的测试宣称独立输入契约已经覆盖，也不能用独立绑定测试宣称工作台已整体迁移。未更新的 pi-agent 不会因只更新前端就宣称新的模型或命令能力。
+工作台仍使用 `ui/llm-ui-adapter` 的 LLMWorkspaceEditor / RemoteConversationEditor 兼容入口。独立 ChatView 经 independent/session、independent/native 接入；不能用兼容组件的测试宣称独立输入契约已经覆盖，也不能用独立绑定测试宣称工作台已整体迁移。未更新的 mindos-node 不会因只更新前端就宣称新的模型或命令能力。
 
 本轮补齐独立输入的 commands / actions.command、命令来源与版本、模型依赖选择器，以及 native/session 绑定的命令贡献与路由。工作台整体切换仍按 9.5 逐项迁移，不另建第三套输入组件。
 
@@ -274,7 +274,7 @@ C4Component
 | 概念 | 当前职责 | 输入层边界 |
 | --- | --- | --- |
 | LLMConnection | 直连 Provider 的模型配置与档位解析 | 不作为远程 harness 的配置容器 |
-| MCP connection | 远程节点的通信、凭据和服务发现；pi-agent 能力复用这份连接记录 | 不直接决定模型或可用 slash |
+| MCP connection | 远程节点的通信、凭据和服务发现；mindos-node 能力复用这份连接记录 | 不直接决定模型或可用 slash |
 | 远程项目与 harness profile | 目录授权、执行隔离和具体原生执行器选择 | 宿主绑定并投影当前能力 |
 | 会话绑定 | 固定观察与操作目标；持有 session/branch/view 身份 | UI 不解析 remote: 字符串或 endpoint |
 | Composer 能力投影 | 选择器、当前可用命令、来源与版本 | ChatInput 只展示和提交意图 |
@@ -304,7 +304,7 @@ flowchart LR
 
 ### 10.4 原生提交与恢复的共同路径
 
-兼容输入与独立 ChatView 通过 independent/native-command 共享解析和提交语义。两者都捕获原始输入、命令目标、参数和模型选择；解析后的 slash 文本不作为清理草稿的依据。piagent-driver 的 HarnessConversation 为消息和 prompt 命令共用 prepareSession、接纳清理和提交后刷新；新草稿中的会话级 action 标为不可用，不为查看候选提前创建会话。
+兼容输入与独立 ChatView 通过 independent/native-command 共享解析和提交语义。两者都捕获原始输入、命令目标、参数和模型选择；解析后的 slash 文本不作为清理草稿的依据。mindos-node-client 的 HarnessConversation 为消息和 prompt 命令共用 prepareSession、接纳清理和提交后刷新；新草稿中的会话级 action 标为不可用，不为查看候选提前创建会话。
 
 HarnessRecovery 保存 draftRevision，turn/command 的 pending 捕获当时的 inputText 与 draftRevision。接纳或核对回执后仅清理匹配版本；等待期间编辑再恢复为相同文字也属于新版本。create、resume、turn、command 各自持有稳定 requestId，unknown 只核对既有回执，不重新提交。app-core 的 draftHarness 同时记录 turn 与 command 的首轮接纳，只有持久确认后发布正式会话身份。
 
@@ -323,9 +323,9 @@ C4Component
     }
     Container_Boundary(host, "应用宿主") {
         Component(app, "项目用例", "app-core", "授权绑定、模型查询与草稿转正")
-        Component(driver, "原生会话", "piagent-driver", "准备会话、提交、接纳与恢复")
+        Component(driver, "原生会话", "mindos-node-client", "准备会话、提交、接纳与恢复")
     }
-    Component(native, "Harness 适配器", "pi-agent", "动态目录、别名与原生协议")
+    Component(native, "Harness 适配器", "mindos-node", "动态目录、别名与原生协议")
     System_Ext(executor, "Claude / Codex / DSH", "执行与原生历史")
     Rel(views, binding, "原始输入、目标、参数及选择")
     Rel(binding, app, "显式操作意图")

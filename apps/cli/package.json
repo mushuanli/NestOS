@@ -30,7 +30,7 @@
     "@itookit/app-core": "workspace:*",
     "yaml": "^2.8.2",
     "zod": "^4.1.0",
-    "@itookit/piagent-driver": "workspace:*",
+    "@itookit/mindos-node-client": "workspace:*",
     "@itookit/node-host": "workspace:*",
     "@itookit/app-transport": "workspace:*",
     "@itookit/app-contracts": "workspace:*"

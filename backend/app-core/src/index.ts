@@ -123,10 +123,10 @@ export type { ProjectSyncProvider, ProjectSyncSession, ProjectSyncComparison, Pr
 
 export { prepareProjectSync } from './projects/sync/prepare';
 export type { ProjectSyncPreparationRemote } from './projects/sync/prepare';
-export type { HarnessClient, HarnessProfile, HarnessSession, HarnessPage, HarnessHistory, HarnessEvent, HarnessEvents, HarnessReceipt } from '@itookit/piagent-driver/harness';
+export type { HarnessClient, HarnessProfile, HarnessSession, HarnessPage, HarnessHistory, HarnessEvent, HarnessEvents, HarnessReceipt } from '@itookit/mindos-node-client/harness';
 
-export { MCPRemoteConnections, PI_AGENT_EXTENSION, remoteMCPConnection, piAgentConfiguration, isPiAgentTool } from './projects/mcp-remote-connections';
-export type { PiAgentConfiguration, MCPConfigurationStore } from './projects/mcp-remote-connections';
+export { MCPRemoteConnections, MINDOS_NODE_EXTENSION, remoteMCPConnection, mindosNodeConfiguration, isMindOSNodeTool } from './projects/mcp-remote-connections';
+export type { MindOSNodeConfiguration, MCPConfigurationStore } from './projects/mcp-remote-connections';
 
 export { listRemoteHarnessAgents } from './projects/remote-agent-catalog';
 export type { RemoteHarnessAgent } from './projects/remote-agent-catalog';

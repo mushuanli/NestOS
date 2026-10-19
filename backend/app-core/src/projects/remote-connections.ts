@@ -2,7 +2,7 @@ import { FSError, normalizeVirtualPath } from '@itookit/vfs-core';
 
 export interface RemoteFileSystemConfig {
     anonymous?: boolean;
-    authorization?: import('@itookit/piagent-driver').RemoteAuthorization;
+    authorization?: import('@itookit/mindos-node-client').RemoteAuthorization;
     id: string; name: string; endpoint: string; username?: string; credentialRef: string; serverId?: string; projects?: boolean;
 }
 export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpoint' | 'username' | 'anonymous'>;

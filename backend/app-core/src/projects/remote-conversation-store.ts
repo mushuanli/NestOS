@@ -1,5 +1,5 @@
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
-import type { HarnessAttachment, HarnessRecovery } from '@itookit/piagent-driver';
+import type { HarnessAttachment, HarnessRecovery } from '@itookit/mindos-node-client';
 export interface RemoteConversationRecovery extends HarnessRecovery { submittedTurnId?: string }
 /** Persist native references and pending receipts; never native conversation histories. */
 export class RemoteConversationStore {

@@ -1,4 +1,4 @@
-import { validateAuthorization } from '@itookit/piagent-driver/authorization';
+import { validateAuthorization } from '@itookit/mindos-node-client/authorization';
 import type { MCPDiscovery, MCPServer } from '@itookit/tools/mcp-contracts';
 import { FSError, checkOperation, type OperationOptions } from '@itookit/vfs-core';
 import { remoteLog, type MCPConnectionDiagnostic, type MCPConnectionReason } from './remote-diagnostics';
@@ -6,8 +6,8 @@ import { normalizeConnection, type RemoteFileSystemConfig, type RemoteFileSystem
 import type { RemoteFileSourceProvider } from './remote-mounts';
 
 const LEGACY_EXTENSION = 'itookit/fs-agent';
-import { piAgentConfiguration, type PiAgentConfiguration } from '@itookit/app-contracts';
-export { PI_AGENT_EXTENSION, piAgentConfiguration, isPiAgentTool, type PiAgentConfiguration } from '@itookit/app-contracts';
+import { mindosNodeConfiguration, type MindOSNodeConfiguration } from '@itookit/app-contracts';
+export { MINDOS_NODE_EXTENSION, mindosNodeConfiguration, isMindOSNodeTool, type MindOSNodeConfiguration } from '@itookit/app-contracts';
 export interface MCPConfigurationStore {
     getMCPServers(): Promise<MCPServer[]>;
     saveMCPServer(server: MCPServer): Promise<void>;
@@ -88,7 +88,7 @@ export class MCPRemoteConnections {
 }
 export function remoteMCPConnection(server: MCPServer): RemoteFileSystemConfig | undefined {
     if (remoteMCPReason(server) !== 'ready') return undefined;
-    const extension = piAgentConfiguration(server);
+    const extension = mindosNodeConfiguration(server);
     const credentialRef = server.auth?.credentialRef ?? `mcp-${server.id}`;
     const basic = server.auth?.type === 'basic';
     return { ...normalizeConnection({ name: server.name, endpoint: extension!.httpEndpoint, username: basic ? server.auth?.username : undefined, anonymous: server.auth?.type === 'anonymous' }),
@@ -98,7 +98,7 @@ export function remoteMCPConnection(server: MCPServer): RemoteFileSystemConfig |
 }
 function remoteMCPReason(server: MCPServer): MCPConnectionReason {
     if (server.transport !== 'http') return 'unsupported-transport';
-    const extension = piAgentConfiguration(server);
+    const extension = mindosNodeConfiguration(server);
     if (!hasRemoteAuth(server)) return 'auth-missing';
     if (server.auth?.type === 'anonymous' && extension?.authorization?.anonymous !== true) return 'auth-missing';
     if (extension?.authorization && extension.authorization.anonymous !== (server.auth?.type === 'anonymous')) return 'auth-missing';
@@ -119,7 +119,7 @@ function hasRemoteAuth(server: MCPServer): boolean {
     if (server.auth?.type === 'basic') return !!server.auth.username;
     return server.auth?.type === 'bearer' || !!server.apiKey;
 }
-function validRemoteDescriptor(extension: PiAgentConfiguration): boolean {
+function validRemoteDescriptor(extension: MindOSNodeConfiguration): boolean {
     try { validateAuthorization(extension.authorization); } catch { return false; }
     return extension.version === 1 && extension.fileProtocol === 'fs-agent-http-v1'
         && typeof extension.harness === 'boolean' && typeof extension.httpEndpoint === 'string';
@@ -132,7 +132,7 @@ function legacyMCPConnection(connection: RemoteFileSystemConfig): MCPServer {
     return { id:connection.id,name:connection.name,transport:'http',endpoint,
         auth:{type:connection.anonymous ? 'anonymous' : connection.username ? 'basic' : 'bearer',username:connection.username,credentialRef:connection.credentialRef},
         extensions:{[LEGACY_EXTENSION]:{version:1,mcpEndpoint:endpoint,httpEndpoint:connection.endpoint,
-            fileProtocol:'fs-agent-http-v1',serverId:null,harness:false,legacy:true} satisfies PiAgentConfiguration} };
+            fileProtocol:'fs-agent-http-v1',serverId:null,harness:false,legacy:true} satisfies MindOSNodeConfiguration} };
 }
 
 function sameConnection(a: RemoteFileSystemConfig | undefined, b: RemoteFileSystemConfig): boolean {

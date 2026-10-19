@@ -2,7 +2,7 @@
 import { beforeEach,afterEach,it,expect,vi } from 'vitest';
 import { t } from '@itookit/common';
 import { showDirectorySync,type DirectorySyncPorts } from '../src/projects/sync/directory';
-import type { DirectorySyncBinding,DirectorySyncPlan } from '@itookit/piagent-driver';
+import type { DirectorySyncBinding,DirectorySyncPlan } from '@itookit/mindos-node-client';
 const plan:DirectorySyncPlan={id:'plan',manifestHash:'hash',generation:'1',state:'ready',actions:[],conflicts:['note.txt'],accepted:{}};
 const binding:DirectorySyncBinding={id:'b',projectId:'p',revision:1,syncProjectId:'s',datasetId:'files',historyEpoch:'e',target:'',baseline:{},plan};
 beforeEach(()=> {for (const name of ['showModal','close']) Object.defineProperty(HTMLDialogElement.prototype,name,{configurable:true,value:vi.fn()});});

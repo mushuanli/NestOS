@@ -14,7 +14,7 @@ HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已�
 
 本地模型输入通过 `ConnectionReadiness` 提前呈现配置读取、缺少默认连接、停用、凭据未就绪及缺少聊天模型，提供选择连接、定位 Provider 授权/连接设置和读取重试入口。发送前刷新安全元数据，失败保留文字及附件；不探测密钥有效性，不自动重发。原生执行器使用自身配置，Flow 使用各槽位校验，直接命令和插件消费的斜杠命令保持可用。停用连接仍可见但不可选择。`EditorOptions.executorUsage` 由宿主注入，智能体列表在类别内按成功提交时间排序；选择、编辑、直接命令和失败提交不记使用时间。`onSend` 返回 false 表示宿主拒绝提交；本地与原生共用提交确认逻辑，确认前保留原输入，确认后仅移除已提交附件，且不覆盖等待期间的新文字或附件。回归见 app-shell 的 connection-readiness、executor-usage 与 toolbox-workbench。
 
-标题栏「提问目录」由 `PromptNavigator` 提供，按钮仅显示图标；宽屏与折叠/展开所有按钮并列，窄屏两者进入顶部更多菜单，只保留搜索和更多两个常驻入口。菜单在右上角就近展开，不移到底部；历史始终可见，不恢复旧隐藏状态。目录打开即显示最近提问在前的列表及过滤框，不分页；默认展示全部（超过 100 条时先展示最近 100 条，可继续展开），过滤查询全部已加载提问，重开清除旧过滤。保留开头/中间/最近定位、单行/三行摘要；宽屏浮层、窄屏底部面板。点击仅展开目标用户卡片，再在历史容器内滚动、聚焦和高亮；引用 details 保持折叠。原生摘要依据 contentPartKinds 排除明确来源的注入上下文。若打开目录时已加载片段没有用户提问，RemoteConversationEditor 按需最多向前读 3 页，找到提问即停；错误停止并保留手动重试，其余更早历史仍由用户加载，不随通知/轮询自动补齐。本地目录与批量导航共享历史快照和在途读取；两面板均关闭时变更只标脏，可见时合并刷新，打开时读取最新数据，迟到响应不能覆盖新快照。目录语义属于 llm-ui，不进入 mdxeditor 或 pi-agent。回归见 app-shell 的 prompt-navigation、remote-conversation-editor 和 http-full-shell。
+标题栏「提问目录」由 `PromptNavigator` 提供，按钮仅显示图标；宽屏与折叠/展开所有按钮并列，窄屏两者进入顶部更多菜单，只保留搜索和更多两个常驻入口。菜单在右上角就近展开，不移到底部；历史始终可见，不恢复旧隐藏状态。目录打开即显示最近提问在前的列表及过滤框，不分页；默认展示全部（超过 100 条时先展示最近 100 条，可继续展开），过滤查询全部已加载提问，重开清除旧过滤。保留开头/中间/最近定位、单行/三行摘要；宽屏浮层、窄屏底部面板。点击仅展开目标用户卡片，再在历史容器内滚动、聚焦和高亮；引用 details 保持折叠。原生摘要依据 contentPartKinds 排除明确来源的注入上下文。若打开目录时已加载片段没有用户提问，RemoteConversationEditor 按需最多向前读 3 页，找到提问即停；错误停止并保留手动重试，其余更早历史仍由用户加载，不随通知/轮询自动补齐。本地目录与批量导航共享历史快照和在途读取；两面板均关闭时变更只标脏，可见时合并刷新，打开时读取最新数据，迟到响应不能覆盖新快照。目录语义属于 llm-ui，不进入 mdxeditor 或 mindos-node。回归见 app-shell 的 prompt-navigation、remote-conversation-editor 和 http-full-shell。
 
 项目草稿工具栏按「项目 → 对话/执行 → 智能体」排列；项目选择由宿主 scope 注入。本地项目只显示本地智能体，远程项目只显示当前项目可创建的远程 harness，无候选时禁止发送；原生会话的 harness 创建后固定。切换项目先保存再打开目标项目独立草稿，正式会话隐藏项目和已固定模式的选择。项目选择在导航前捕获输入偏好，通过宿主转交目标草稿；draft-preferences 按目标智能体候选、连接启用/凭据与模型档位校验后应用，保留目标文字和附件，不复制执行锁、Flow 或分支引用。继承期间有新编辑或视图切换时丢弃迟到结果；恢复草稿时刷新项目候选。工作流入口位于标题栏更多菜单，先保存草稿再导航现有流程库；参数与连接槽继续由 FlowLauncher 和 FlowParameterForm 提交。Agent 不按 Provider 派生新类型。
 
@@ -130,7 +130,7 @@ Session 编辑器可消费泛型 EditorOptions.initialData 的已激活读模型
 
 Markdown 嵌入统一通过 MDxController 设置 `scrollMode: 'host'`，正文背景、文本色和留白使用 `--mdx-content-*` 公共变量；不覆盖编辑器内部模式容器。系统/工具角色、编码、摘要长度和配色属于 llm-ui；mdx-adapter 仅转发公共显示选项。
 
-用户上下文折叠仅消费 `ConversationMessage.contentPartKinds` 的明确原生来源，和 contentParts 对齐后将已知项目指令、环境及附加上下文编码为 `mindos-context`；真实正文、未知来源、长度不匹配和旧服务数据继续直接显示。引用邻接处仅空行，相邻普通正文项之间保留原有 Markdown 分隔线，跨原生消息亦然。引用原文转义显示并可独立复制，展开状态沿用 mdxeditor 通用 disclosure key。来源判定不按文本内容、文件名或数组位置猜测；不得改变发送语义。Codex rollout 元数据由 pi-agent/driver 保留，Claude 缺少同类元数据时不推断。
+用户上下文折叠仅消费 `ConversationMessage.contentPartKinds` 的明确原生来源，和 contentParts 对齐后将已知项目指令、环境及附加上下文编码为 `mindos-context`；真实正文、未知来源、长度不匹配和旧服务数据继续直接显示。引用邻接处仅空行，相邻普通正文项之间保留原有 Markdown 分隔线，跨原生消息亦然。引用原文转义显示并可独立复制，展开状态沿用 mdxeditor 通用 disclosure key。来源判定不按文本内容、文件名或数组位置猜测；不得改变发送语义。Codex rollout 元数据由 mindos-node/driver 保留，Claude 缺少同类元数据时不推断。
 
 - 编辑器 cancelPendingRender 暂停不可见视图的消息订阅、任务附着与 FlowInvocation 轮询；activate 读取当前快照并恢复观察，每个异步阶段核验激活代次和销毁状态，旧请求不得恢复隐藏视图；保留原 DOM、输入和草稿，不重发写入、不取消运行。RemoteConversationEditor 的迟到轮询和通知不更新隐藏视图。
 

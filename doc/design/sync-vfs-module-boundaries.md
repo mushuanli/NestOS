@@ -12,7 +12,7 @@ C4Context
     Person(user, "用户", "选择服务器、项目、范围、方向和冲突处理")
     System(clientA, "itookit 客户端 A", "本地项目、文件、独立同步基线")
     System(clientB, "itookit 客户端 B", "另一个副本及其独立基线")
-    System_Ext(server, "pi-agent", "文件访问、同步对象库、manifest 与条件发布")
+    System_Ext(server, "mindos-node", "文件访问、同步对象库、manifest 与条件发布")
     Rel(user, clientA, "设置、预览、执行同步")
     Rel(user, clientB, "设置、预览、执行同步")
     Rel(clientA, server, "上传对象、CAS 发布、目录发现、读取保护", "HTTP")
@@ -38,9 +38,9 @@ C4Component
         Component(vfs, "vfs-core", "独立仓库", "文件系统契约、引擎、SeqFile、事件与 IPlugin")
         Component(idb, "vfsdriver-indexeddb", "独立仓库", "通用文件、记录及原生事务端口")
         Component(localDriver, "vfsdriver-local", "独立仓库", "通用文件、SQLite SeqFile、持久性与宿主事务端口")
-        Component(agent, "piagent-driver", "驱动", "通用 HTTP 通道、凭据解析、文件与执行协议")
+        Component(agent, "mindos-node-client", "驱动", "通用 HTTP 通道、凭据解析、文件与执行协议")
     }
-    System_Ext(server, "pi-agent", "同步存储服务")
+    System_Ext(server, "mindos-node", "同步存储服务")
     Rel(ui, project, "设置、状态、预览、执行、解决冲突")
     Rel(project, host, "通过 ProjectSyncProvider 获取项目同步会话")
     Rel(host, sync, "初始化与恢复操作")
@@ -87,7 +87,7 @@ sequenceDiagram
     participant Host as 宿主项目同步
     participant Core as FileSync / OperationManager
     participant Local as 本地适配与控制存储
-    participant Cloud as pi-agent
+    participant Cloud as mindos-node
     User->>Host: 请求预览
     Host->>Host: 校验来源、绑定及服务身份
     Host->>Core: preview()

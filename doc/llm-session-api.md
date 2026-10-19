@@ -415,7 +415,7 @@ backend/llm-session/src/
 │   └── history-plugin.ts         createHistoryPlugin
 ├── services/                    业务服务（注入文件系统持久化）
 │   ├── agent-service.ts          IAgentConfigService/IAgentManagementService/IConnectionService 接口
-│   ├── vpi-agent-service.ts      VFSAgentService（Agent 配置 CRUD）
+│   ├── vmindos-node-service.ts      VFSAgentService（Agent 配置 CRUD）
 │   ├── privileged-command.ts     IPrivilegedCommandService/PlanCommandRequest/ExecCommandRequest
 │   └── prompt-history-service.ts PromptHistoryService（实例生命周期）
 └── utils/                        error-formatter / file-backed-service / logger / vfs-entity-store

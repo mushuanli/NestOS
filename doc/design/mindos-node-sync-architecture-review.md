@@ -1,18 +1,18 @@
 # fs agent 同步架构与代码评审
 
-本评审对照当前工作树中的 pi-agent 源码，聚焦新实现的 sync 子系统及其与认证、export、执行、管理员命令的边界。结论是：存储协议方向正确，客户端与服务端的职责划分合理；当前优先级是错误分类、准入协调、失败结果可信与恢复不丢数据。共享 `SyncService` 和单连接事务协调本身合理，内部边界应依据不变量与重复规则收紧，组件数量不是质量目标。
+本评审对照当前工作树中的 mindos-node 源码，聚焦新实现的 sync 子系统及其与认证、export、执行、管理员命令的边界。结论是：存储协议方向正确，客户端与服务端的职责划分合理；当前优先级是错误分类、准入协调、失败结果可信与恢复不丢数据。共享 `SyncService` 和单连接事务协调本身合理，内部边界应依据不变量与重复规则收紧，组件数量不是质量目标。
 
-这是源码评审与修复记录，不替代 [同步设计](pi-agent-sync.md) 或 [部署与协议说明](../../tools/pi-agent/doc/sync.md)。第 6、9、10 节保留修复前的发现和验收缺口；2026-10-03 已实施正确性修复，当前处理结果与证据见第 11、12 节。全局串行协调与同一发布事务继续保留。
+这是源码评审与修复记录，不替代 [同步设计](mindos-node-sync.md) 或 [部署与协议说明](../../tools/mindos-node/doc/sync.md)。第 6、9、10 节保留修复前的发现和验收缺口；2026-10-03 已实施正确性修复，当前处理结果与证据见第 11、12 节。全局串行协调与同一发布事务继续保留。
 
 ## 1 系统职责与 C4 上下文
 
 ```mermaid
 C4Context
-    title pi-agent 多端同步上下文
+    title mindos-node 多端同步上下文
     Person(user, "用户", "在多个设备间工作")
     Person(admin, "管理员", "部署、校验、灾备恢复")
     System(client, "itookit 多端客户端", "扫描、基线、合并、覆盖、会话语义与接续")
-    System(server, "pi-agent", "对象存储、条件发布、发现、历史和恢复")
+    System(server, "mindos-node", "对象存储、条件发布、发现、历史和恢复")
     System_Ext(backup, "独立备份位置", "保存完整停机备份")
     Rel(user, client, "选择同步范围与冲突结果")
     Rel(client, server, "上传对象、发布版本、下载与对账", "HTTP")
@@ -20,7 +20,7 @@ C4Context
     Rel(server, backup, "复制与验证备份", "文件系统")
 ```
 
-pi-agent 保存已发布版本，不读取其他设备未发布的修改。服务端不决定冲突采用哪一侧、不维护设备的共同基线、不拼接会话 Round，也不自动重放旧工具调用。这些客户端策略边界应保留。
+mindos-node 保存已发布版本，不读取其他设备未发布的修改。服务端不决定冲突采用哪一侧、不维护设备的共同基线、不拼接会话 Round，也不自动重放旧工具调用。这些客户端策略边界应保留。
 
 同步的基本单位是数据集。files 使用文件 manifest；session 等使用不透明 bundle。一个项目可以有多个独立 head。项目撤销删除已经有入口，任意时间点的项目整体 checkpoint 尚未交付。
 
@@ -30,10 +30,10 @@ pi-agent 保存已发布版本，不读取其他设备未发布的修改。服�
 
 ```mermaid
 C4Container
-    title pi-agent 单节点运行与存储
+    title mindos-node 单节点运行与存储
     Container_Ext(device, "设备 A B C", "itookit", "各自工作副本与共同基线")
-    System_Boundary(host, "pi-agent 单节点") {
-        Container(agent, "pi-agent 进程", "Rust Axum Tokio", "HTTP、同步用例、普通文件服务与可选执行")
+    System_Boundary(host, "mindos-node 单节点") {
+        Container(agent, "mindos-node 进程", "Rust Axum Tokio", "HTTP、同步用例、普通文件服务与可选执行")
         ContainerDb(db, "sync.root/metadata.db", "SQLite WAL FULL", "head、历史、操作、catalog、引用与回收意图")
         ContainerDb(objects, "sync.root/objects 与 staging", "私有文件目录", "不可变对象与上传暂存")
         ContainerDb(exports, "export 目录", "普通文件目录", "已授权的文件访问与执行工作区")
@@ -49,14 +49,14 @@ C4Container
     Rel(admincli, backups, "备份或恢复")
 ```
 
-**当前 sync 使用独立 `sync.root`，与 export 目录不同。** 对象路径由 namespace、project、hash 派生，不是项目工作目录的直接镜像。数据库和对象库都不应被普通文件 API 或 Bash 当作可编辑目录。路径隔离由 [boundary.rs](../../tools/pi-agent/src/sync/store/boundary.rs) 检查；真实执行隔离还依赖已有 sandbox 的挂载与权限边界，不能只依据“两个目录不同”得出结论。
+**当前 sync 使用独立 `sync.root`，与 export 目录不同。** 对象路径由 namespace、project、hash 派生，不是项目工作目录的直接镜像。数据库和对象库都不应被普通文件 API 或 Bash 当作可编辑目录。路径隔离由 [boundary.rs](../../tools/mindos-node/src/sync/store/boundary.rs) 检查；真实执行隔离还依赖已有 sandbox 的挂载与权限边界，不能只依据“两个目录不同”得出结论。
 
 ## 3 C4 组件与实际依赖
 
 ```mermaid
 C4Component
     title 当前代码中的 sync 组件
-    Container_Boundary(sync, "pi-agent sync") {
+    Container_Boundary(sync, "mindos-node sync") {
         Component(http, "transport.rs", "HTTP 适配", "认证、路由、预算、流式上传下载")
         Component(service, "service.rs / SyncService", "共享门面与状态", "配置、身份、数据库锁、健康、对象用例")
         Component(ops, "operations.rs", "操作协议", "准入、序号、回执、取消")
@@ -231,8 +231,8 @@ sequenceDiagram
 
 | 决策或规则 | 应负责的层 | 机制应负责的内容 |
 | --- | --- | --- |
-| 哪些目录同步、采用本地还是云端 | itookit | pi-agent 原子保存指定结果 |
-| 会话分叉、字段冲突、依赖闭包 | itookit 会话领域 | pi-agent 保存并校验通用 bundle 引用 |
+| 哪些目录同步、采用本地还是云端 | itookit | mindos-node 原子保存指定结果 |
+| 会话分叉、字段冲突、依赖闭包 | itookit 会话领域 | mindos-node 保存并校验通用 bundle 引用 |
 | 被替代和删除后保护多久 | 服务端 RetentionPolicy | 仓储更新期限、GC 根据计划执行 |
 | 对象与元数据是否允许增长 | 服务端 AdmissionPolicy | 事务内计量、预留、磁盘空间检查 |
 | 命令是否满足 head 与生命周期 | 同步领域用例 | 仓储条件提交及持久回执 |
@@ -247,14 +247,14 @@ P1 表示应在进一步依赖该协议前修正；P2 表示应纳入近期维�
 
 | 优先级 | 源码证据与问题 | 后果与建议 |
 | --- | --- | --- |
-| P1 | [catalog.rs](../../tools/pi-agent/src/sync/catalog.rs) `ack()` 没有 write_allowed、capacity 或 quota | 不健康/停止准入后仍可能写 ACK；新增 ACK 行绕过增长门禁。所有写入口统一准入，区分新增与更新，验证副本状态及消费位置 |
+| P1 | [catalog.rs](../../tools/mindos-node/src/sync/catalog.rs) `ack()` 没有 write_allowed、capacity 或 quota | 不健康/停止准入后仍可能写 ACK；新增 ACK 行绕过增长门禁。所有写入口统一准入，区分新增与更新，验证副本状态及消费位置 |
 | P1 | catalog `version_available()` 对 closure_ready 使用 is_ok；version_value 再查一次并将多数错误显示为 expired | SQL/存储故障可能伪装成普通版本过期。返回类型化 available/expired/corrupt，基础设施错误向上传播，避免重复查询 |
-| P1 | [service.rs](../../tools/pi-agent/src/sync/service.rs) verify_existing、对象读取；[admin.rs](../../tools/pi-agent/src/sync/admin.rs) verify_objects 对验证错误进行折叠 | 暂时 I/O 失败可能被持久标记为 corrupt。摘要或长度不符、对象缺失、读失败应分别处理；健康故障不伪装成内容损坏 |
-| 契约修正 | [operations.rs](../../tools/pi-agent/src/sync/operations.rs) command_inner 全程持锁，cancel_operation 返回已有 pending 回执 | 当前可接受先到取消，公开协议说明也描述了未准入取消；应收窄设计验收中的竞争承诺。运行中取消属于后续能力，COMMIT 后不能回滚 |
+| P1 | [service.rs](../../tools/mindos-node/src/sync/service.rs) verify_existing、对象读取；[admin.rs](../../tools/mindos-node/src/sync/admin.rs) verify_objects 对验证错误进行折叠 | 暂时 I/O 失败可能被持久标记为 corrupt。摘要或长度不符、对象缺失、读失败应分别处理；健康故障不伪装成内容损坏 |
+| 契约修正 | [operations.rs](../../tools/mindos-node/src/sync/operations.rs) command_inner 全程持锁，cancel_operation 返回已有 pending 回执 | 当前可接受先到取消，公开协议说明也描述了未准入取消；应收窄设计验收中的竞争承诺。运行中取消属于后续能力，COMMIT 后不能回滚 |
 | P1 | command、activate、pin、reserve 等先检查 write_allowed，随后等待数据库锁，没有锁内准入复核 | 等待期间关闭或存储不确定后，尚未准入的请求仍可能继续写。门禁、准入登记与不确定状态更新需要同一协调边界；已接受操作收尾另行授权 |
 | P2 | execute_command 的事务内调用 apply，再调用 manifest 进行文件读取、摘要、解析和逐引用 SQL | 大 manifest 阻塞所有元数据工作，增加事务时长。准备阶段使用受保护对象生成验证结果，提交阶段复核 CAS、对象状态和配额 |
 | P2 | service 的对象读取和安装、retention GC 在全局锁内做摘要或文件 I/O | 一个大对象读取可能拖慢无关项目。先测锁等待与持锁时间，分离元数据短临界区和文件 I/O，保留 GC 保护 |
-| P2 | [model.rs](../../tools/pi-agent/src/sync/model.rs) 导入 Axum 并实现 IntoResponse，Error 携带 HTTP status | 领域和离线命令依赖 HTTP。使用领域错误分类，在 transport 中映射状态和响应 |
+| P2 | [model.rs](../../tools/mindos-node/src/sync/model.rs) 导入 Axum 并实现 IntoResponse，Error 携带 HTTP status | 领域和离线命令依赖 HTTP。使用领域错误分类，在 transport 中映射状态和响应 |
 | P2 | commands 以字符串 target 分发，Value 输入/输出与字符串 state/kind 广泛使用 | 改字段容易在运行时出错。优先类型化 Command、Receipt、DatasetKind、State，保留线协议兼容 |
 | P2 | retention prune 仅清理到期 pin 与终态回执，catalog/change/version/op-id 索引保守留存 | 长期运行会达到元数据上限；分页 LIMIT 不保证窗口查询只扫描一页。设计索引压缩、删除身份保留与防重放记录的独立生命周期 |
 | P1 待验证 | capacity 在操作入口计数；一次操作可能新增多个 records/refs，拒绝回执仍需持久化 | 当前上限不是严格的逐新增行预算。但正常逻辑拒绝不等于回执必然无法保存：回执更新并未再次检查 capacity。物理空间不足时的终态写入与恢复能力需故障注入，预留预算应覆盖这两者 |
@@ -400,7 +400,7 @@ HTTP 同步调用经 `transport::work` 获取已有 Workers 预算后进入 spaw
 
 ## 11 正确性修复实施结果
 
-保留 `SyncService`、一个 SQLite 连接及一次发布的原子事务。新增 [运行协调](../../tools/pi-agent/src/sync/coordination.rs) 和 [正确性测试](../../tools/pi-agent/src/sync/tests.rs)，没有增加新包、连接池或服务端合并器。
+保留 `SyncService`、一个 SQLite 连接及一次发布的原子事务。新增 [运行协调](../../tools/mindos-node/src/sync/coordination.rs) 和 [正确性测试](../../tools/mindos-node/src/sync/tests.rs)，没有增加新包、连接池或服务端合并器。
 
 | 修复项 | 实际行为与证据 |
 | --- | --- |
@@ -416,7 +416,7 @@ HTTP 同步调用经 `transport::work` 获取已有 Workers 预算后进入 spaw
 
 测试范围包括全 features、故障子进程、原生 Bash 隔离和真实 HTTP 三端验收。故障矩阵串行运行；CAS 用例仍显式创建并发线程。一次默认并行故障矩阵出现了 init/open 间的瞬时 SYNC_LOCKED，串行运行通过；没有放宽生产独占锁或增加掩盖争用的自动重试。
 
-最终验证：`PI_AGENT_PROCESS_TEST=1 cargo test --all-features --offline -- --test-threads=1` 共 106 项通过；默认构建的真实 HTTP 脚本验证 3 个设备、3 个历史版本、完整摘要、epoch 更换及旧 epoch 隔离。2 个共享 fixture、cargo fmt、Clippy（沿用非同步模块 manual_inspect 豁免）和 pnpm docs:check 通过；文档检查仍有 5 条既有历史表述告警。90 天删除场景的加强用例另行通过，包含 manifest 与实际文件内容。
+最终验证：`MINDOS_NODE_PROCESS_TEST=1 cargo test --all-features --offline -- --test-threads=1` 共 106 项通过；默认构建的真实 HTTP 脚本验证 3 个设备、3 个历史版本、完整摘要、epoch 更换及旧 epoch 隔离。2 个共享 fixture、cargo fmt、Clippy（沿用非同步模块 manual_inspect 豁免）和 pnpm docs:check 通过；文档检查仍有 5 条既有历史表述告警。90 天删除场景的加强用例另行通过，包含 manifest 与实际文件内容。
 
 性能工作继续以指标为前提：发布校验仍在全局锁/事务内，catalog/version/身份索引仍保守保留。当前没有宣称完成锁优化或长期索引压缩。项目 checkpoint 与 itookit 会话安全接续仍是单独能力。
 
@@ -478,4 +478,4 @@ sequenceDiagram
     end
 ```
 
-最终回归：`PI_AGENT_PROCESS_TEST=1 cargo test --all-features --offline -- --test-threads=1` 共 110 项通过；诊断负载单独通过。默认构建的 HTTP 验收通过三端同步、3 个历史版本恢复、完整摘要、灾备 epoch 更换及旧请求隔离。Clippy（既有非 sync manual_inspect 豁免）、fmt、2 个共享 fixture 和文档检查通过。
+最终回归：`MINDOS_NODE_PROCESS_TEST=1 cargo test --all-features --offline -- --test-threads=1` 共 110 项通过；诊断负载单独通过。默认构建的 HTTP 验收通过三端同步、3 个历史版本恢复、完整摘要、灾备 epoch 更换及旧请求隔离。Clippy（既有非 sync manual_inspect 豁免）、fmt、2 个共享 fixture 和文档检查通过。

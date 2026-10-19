@@ -1,12 +1,12 @@
 # itookit 项目多端同步设计方案
 
-状态：客户端实施设计及首批交付记录，2026-10-03。pi-agent 存储协议已实现；itookit 已实现文件同步核心、HTTP 适配、IndexedDB 条件应用及可选项目用例。宿主交互与会话同步尚未交付，准确边界见第 22 节。未标为实施记录的契约仍是设计要求。
+状态：客户端实施设计及首批交付记录，2026-10-03。mindos-node 存储协议已实现；itookit 已实现文件同步核心、HTTP 适配、IndexedDB 条件应用及可选项目用例。宿主交互与会话同步尚未交付，准确边界见第 22 节。未标为实施记录的契约仍是设计要求。
 
-本文面向 itookit 的 Web、Tauri、CLI 和 pi-agent 维护者。目标是让 pi-agent 提供类似云存储的作用：同一项目可以关联多个设备副本，设备离线修改后通过云端交换变化，同时保留冲突、删除和操作结果的明确语义。
+本文面向 itookit 的 Web、Tauri、CLI 和 mindos-node 维护者。目标是让 mindos-node 提供类似云存储的作用：同一项目可以关联多个设备副本，设备离线修改后通过云端交换变化，同时保留冲突、删除和操作结果的明确语义。
 
-核心决策是采用云端中心模型。pi-agent 持有经过条件发布的项目数据版本、不可变内容对象和变更日志；每台设备独立保存自己的同步基线。项目同步策略归 app-core，目录同步机制归独立同步核心，会话语义归 llm-session。远程挂载、目录同步、会话同步和执行权转移分别建模。
+核心决策是采用云端中心模型。mindos-node 持有经过条件发布的项目数据版本、不可变内容对象和变更日志；每台设备独立保存自己的同步基线。项目同步策略归 app-core，目录同步机制归独立同步核心，会话语义归 llm-session。远程挂载、目录同步、会话同步和执行权转移分别建模。
 
-服务端优先实施，具体存储、事务、路由、恢复和测试计划见 [pi-agent 多端同步服务实施方案](pi-agent-sync.md)。其中的副本操作序号和通用对象包进一步细化本文协议草图；客户端按该明确契约接入。
+服务端优先实施，具体存储、事务、路由、恢复和测试计划见 [mindos-node 多端同步服务实施方案](mindos-node-sync.md)。其中的副本操作序号和通用对象包进一步细化本文协议草图；客户端按该明确契约接入。
 
 服务端首版备份边界为数据集级历史及回收站恢复，并提供管理员停机灾备。历史窗口从旧版本被替代时起算；项目删除恢复与任意时间点项目 checkpoint 分别建模。发布同时检查项目生命周期 revision；云端灾备恢复后，客户端按新 historyEpoch 注册新副本并全量对账，不沿用旧操作序列。具体字段、接口和验收以服务端方案为准。
 
@@ -41,19 +41,19 @@
 | [SessionFilesService](../../backend/app-core/src/vfs/session-files.ts) | 授权 revision、cwd、派生视图撤销和挂载守卫；该 revision 不代表目录内容版本 |
 | [HTTP capabilities](https://github.com/mushuanli/piagent-driver/blob/main/src/files/capabilities.ts) | 客户端目前只解析 sync.push；需要独立读取 /v1/sync/capabilities，不能由一个布尔值推导同步保证 |
 | [HttpFSBackend](https://github.com/mushuanli/piagent-driver/blob/main/src/files/backend.ts) | 条件替换、Range 读取、操作结果查询；删除和重命名目前没有相同的版本条件 |
-| [pi-agent revision](../../tools/pi-agent/src/fs/revision.rs) | 服务生命周期内的文件身份凭证，不能作为内容摘要；命令后会使凭证失效 |
-| [pi-agent router](../../tools/pi-agent/src/http/mod.rs) 与 [同步传输](../../tools/pi-agent/src/sync/transport.rs) | 已有 /v1/sync 的项目、数据集、对象、发布、catalog、changes、回执、历史及恢复接口；同一实例可同时提供普通 export 与同步存储 |
+| [mindos-node revision](../../tools/mindos-node/src/fs/revision.rs) | 服务生命周期内的文件身份凭证，不能作为内容摘要；命令后会使凭证失效 |
+| [mindos-node router](../../tools/mindos-node/src/http/mod.rs) 与 [同步传输](../../tools/mindos-node/src/sync/transport.rs) | 已有 /v1/sync 的项目、数据集、对象、发布、catalog、changes、回执、历史及恢复接口；同一实例可同时提供普通 export 与同步存储 |
 | [SessionBundle](../../backend/app-core/src/session/session-bundle.ts) | 格式版本、历史和附件交换；导入创建新身份，导出没有跨多个读取的快照边界 |
 | [RoundGraphService](../../backend/llm-session/src/persistence/round-graph-service.ts) | 已有历史父引用和分支 head；输出、状态、执行引用及删除标记仍可原地更新，Round ID 不是不可变内容身份 |
 | [SessionLeaseStore](../../backend/app-core/src/kernel/session-lease.ts) | 基于共享 SeqFile 事务的单写者租约；复制租约记录不能实现跨副本互斥 |
 
-现有执行边界见 [pi-agent 与 Harness](agent-server.md)，文件协议见 [HTTP 外挂文件系统](vfs-http-driver.md)，会话持久化见 [llm-session API](../llm-session-api.md)。本文新增独立同步协议，不改变已有文件接口的语义。
+现有执行边界见 [mindos-node 与 Harness](agent-server.md)，文件协议见 [HTTP 外挂文件系统](vfs-http-driver.md)，会话持久化见 [llm-session API](../llm-session-api.md)。本文新增独立同步协议，不改变已有文件接口的语义。
 
 ## 3 多端拓扑与身份
 
 ```mermaid
 flowchart TD
-    A[设备 A 本地副本和基线] <--> S[pi-agent 云端同步中心]
+    A[设备 A 本地副本和基线] <--> S[mindos-node 云端同步中心]
     B[设备 B 本地副本和基线] <--> S
     C[设备 C 本地副本和基线] <--> S
     S --> H[版本化 manifest 和变更日志]
@@ -121,12 +121,12 @@ flowchart TD
 | app-core 的 projects/sync | 范围及覆盖语义、新会话纳入策略、同步关系、触发、守卫和数据集编排 | HTTP 实现、DOM 交互、直接递归复制所有挂载 |
 | 新增 vfs-sync | 三方比较、局部计划、基线推进、传输、部分成功和恢复 | 项目导航、Session 业务、宿主路径、具体服务商 |
 | 本地同步 store 及宿主适配 | 操作日志、基线对象、冲突、待应用结果、同副本串行协调 | 自行选择冲突赢家、隐式覆盖应用结果 |
-| piagent-driver 的 sync 适配 | 云端协议、能力发现、对象传输和结果查询 | 决定冲突赢家、持有项目业务状态 |
+| mindos-node-client 的 sync 适配 | 云端协议、能力发现、对象传输和结果查询 | 决定冲突赢家、持有项目业务状态 |
 | vfs-core | 文件访问、通用条件 IO 和必要的可选能力 | 项目同步调度、会话合并、云端账号模型 |
 | llm-session | 快照闭包、历史对象版本、祖先判断、稳定分支去重和条件应用 | 云端 HTTP、项目同步触发和凭据管理 |
 | app-core 的 session 用例 | 会话同步和目标端依赖绑定 | 直接覆盖原始存储文件来合并会话 |
 | app-shell 和 CLI | 计划预览、用户决策、进度和本地化 | 无条件覆盖、绕过提交前校验 |
-| pi-agent | 同步存储、授权、对象校验、条件发布、日志和操作恢复 | Agent 推理、项目冲突选择、Session 调度 |
+| mindos-node | 同步存储、授权、对象校验、条件发布、日志和操作恢复 | Agent 推理、项目冲突选择、Session 调度 |
 
 vfs-sync 通过注入端口工作，可以依赖 vfs-core 的通用契约，不依赖 app-core、llm-session、UI 或具体 HTTP 驱动。HTTP 适配可以依赖 vfs-sync 的端点契约。app-core 负责装配，宿主差异通过端口注入。
 
@@ -185,7 +185,7 @@ interface PublishReceipt {
 
 首个 head 通过独立的条件创建操作建立。发布新 manifest 前，引用的对象必须完整可读且归当前授权范围。head、变更日志和发布回执必须在同一持久提交边界内落地，或通过 journal 恢复出等价结果。
 
-客户端不依赖具体数据库。当前 pi-agent 使用 SQLite 元数据与独立对象目录；正常重启不改变持久 authorityId、generation 或发布结果。
+客户端不依赖具体数据库。当前 mindos-node 使用 SQLite 元数据与独立对象目录；正常重启不改变持久 authorityId、generation 或发布结果。
 
 ### 6.2 变更日志与 cursor
 
@@ -435,7 +435,7 @@ S4 必须分别证明历史可查看，以及受支持配置下历史、附件�
 
 上传若有真实稳定快照可允许任务并行，否则等待写入屏障或检测变化后重新规划。下载和镜像需要取得与目标写入方协调的保护；无法阻止外部写入的宿主只能提供明确的降级保证，不能使用先 stat 再覆盖冒充强 CAS。
 
-未来对 HTTP export／执行 checkout 应用结果时，可以评估复用 pi-agent 的命令与文件访问互斥；单请求 FileGate 不自动覆盖多请求应用边界。普通同步对象库由同步服务自身的事务、对象保护与运行协调管理，不使用执行 FileGate。
+未来对 HTTP export／执行 checkout 应用结果时，可以评估复用 mindos-node 的命令与文件访问互斥；单请求 FileGate 不自动覆盖多请求应用边界。普通同步对象库由同步服务自身的事务、对象保护与运行协调管理，不使用执行 FileGate。
 
 自动同步默认不自动解决冲突、不自动镜像删除、不接管执行所有权。断线重连先恢复未确认操作，再增量对账。执行前准备和结果回传是 app-core 的显式策略，失败时不能把文件工具和 Bash 指向不同版本的目录。
 
@@ -470,9 +470,9 @@ S4 必须分别证明历史可查看，以及受支持配置下历史、附件�
 
 CLI 非交互模式默认停止需要选择的项，独立项可完成；输出结构化 completed、partial、conflict、unknown 或 failed。只有请求范围全部已确认完成才返回成功，其他结果返回非零并保留恢复记录。显式策略参数的含义与 UI 一致，不能把无交互理解为默认覆盖。
 
-## 14 pi-agent 协议与能力
+## 14 mindos-node 协议与能力
 
-以下以当前 pi-agent 已实现协议为接入基准，具体请求字段见 [服务端使用说明](../../tools/pi-agent/doc/sync.md) 和 [同步传输实现](../../tools/pi-agent/src/sync/transport.rs)。不能把这些操作隐藏在现有 content 写入中。
+以下以当前 mindos-node 已实现协议为接入基准，具体请求字段见 [服务端使用说明](../../tools/mindos-node/doc/sync.md) 和 [同步传输实现](../../tools/mindos-node/src/sync/transport.rs)。不能把这些操作隐藏在现有 content 写入中。
 
 | API | 作用 |
 | --- | --- |
@@ -526,7 +526,7 @@ GC 以已发布 manifest、保留历史、暂存上传保护、有效读取 pin 
 
 本地 GC 固定三方合并基线正文、未解决冲突的 B/L/R 对象、待应用结果和恢复日志引用。冲突内容在创建冲突记录前持久化到本地，完成后可释放云端读取 pin，避免无限占用云端历史。空间不足时停止需要该保证的操作并明确提示，不能先清理基线再声称支持自动合并。解除冲突或推进基线后通过引用计数或可达性扫描回收旧对象。
 
-同步服务单节点首期只允许一个持久版本权威，防止两个 pi-agent 实例各自签发 generation。多实例高可用需共享事务存储或一致的单写者机制，不能仅复用普通目录的 advisory lock 声称具备分布式一致性。
+同步服务单节点首期只允许一个持久版本权威，防止两个 mindos-node 实例各自签发 generation。多实例高可用需共享事务存储或一致的单写者机制，不能仅复用普通目录的 advisory lock 声称具备分布式一致性。
 
 ## 16 实施阶段与验收
 
@@ -582,7 +582,7 @@ GC 以已发布 manifest、保留历史、暂存上传保护、有效读取 pin 
 | Web 控制存储丢失、空间不足或事务 abort | 不执行旧删除计划；新副本保守接入；失败事务不清理现有恢复证据 |
 | 用户长时间停留预览，另一个窗口同步 | 预览不持续占协调锁；执行重取锁并检验过期条件 |
 
-测试层次包括纯策略与三方比较、端口契约、pi-agent 存储崩溃恢复、HTTP 客户端到服务端集成，以及 Web/Tauri/CLI 多副本验收。实施时同步更新包依赖守卫与相关活文档。
+测试层次包括纯策略与三方比较、端口契约、mindos-node 存储崩溃恢复、HTTP 客户端到服务端集成，以及 Web/Tauri/CLI 多副本验收。实施时同步更新包依赖守卫与相关活文档。
 
 ## 17 实施前需确定的参数
 
@@ -690,7 +690,7 @@ replicaId、credentialRef、基线、cursor、操作恢复、缓存和运行租�
 /work/client-app/ ── binding ──┐             /home/user/client/ ── binding ──┐
                               └───────────── 同一个 cloudProjectId ──────┘
 
-pi-agent sync.root/
+mindos-node sync.root/
 ├── metadata.db
 └── objects/<namespaceId>/
     ├── <client-project-id>/<prefix>/<hash>
@@ -895,7 +895,7 @@ S4 编码前必须提交版本化 schema、规范字节 fixture 和适配映射�
 
 ## 20 C4 架构与依赖方向
 
-下图中的客户端同步组件为拟新增；现有项目、VFS、会话和 pi-agent 为接入基础。C4 方框表示职责，不要求每个方框独立成包。
+下图中的客户端同步组件为拟新增；现有项目、VFS、会话和 mindos-node 为接入基础。C4 方框表示职责，不要求每个方框独立成包。
 
 ```mermaid
 C4Container
@@ -906,7 +906,7 @@ C4Container
         Container(app, "itookit 应用运行时", "app-core + vfs-sync", "项目策略、数据集编排、比较与恢复")
         ContainerDb(local, "本地项目及控制存储", "VFS + 宿主存储", "工作文件、会话、独立基线与日志")
     }
-    System_Boundary(server, "pi-agent 单节点") {
+    System_Boundary(server, "mindos-node 单节点") {
         Container(api, "同步接口", "Rust / HTTP", "对象、catalog、changes、条件命令和回执")
         ContainerDb(metadata, "元数据", "SQLite", "项目、head、生命周期、历史、操作结果")
         ContainerDb(objects, "项目对象目录", "文件系统", "按 namespaceId / projectId 隔离的不可变对象")
@@ -928,9 +928,9 @@ C4Component
         Component(files, "文件适配", "VFS 来源适配", "稳定扫描与条件应用")
         Component(session, "会话同步适配", "llm-session + app-core", "快照闭包、祖先、分支与条件导入")
         Component(store, "本地控制存储", "宿主适配", "日志、基线、对象缓存和副本协调")
-        Component(http, "同步 HTTP 适配", "piagent-driver", "规范编码、epoch、传输及错误映射")
+        Component(http, "同步 HTTP 适配", "mindos-node-client", "规范编码、epoch、传输及错误映射")
     }
-    System_Ext(cloud, "pi-agent", "存储协议，不理解会话正文")
+    System_Ext(cloud, "mindos-node", "存储协议，不理解会话正文")
     Rel(project, core, "传入已解析策略及领域计划")
     Rel(project, session, "解析成员、导出与领域合并")
     Rel(core, files, "通过 LocalDatasetPort 捕获与应用")
@@ -953,7 +953,7 @@ sequenceDiagram
     participant P as projects/sync
     participant C as vfs-sync
     participant L as 本地来源与控制存储
-    participant S as pi-agent
+    participant S as mindos-node
     U->>P: 同步项目
     P->>C: 已解析绑定、范围和策略
     C->>L: 取得副本协调权，恢复旧操作
@@ -994,7 +994,7 @@ sequenceDiagram
 ```mermaid
 sequenceDiagram
     participant P as projects/sync
-    participant S as pi-agent
+    participant S as mindos-node
     participant D as llm-session 同步领域
     participant L as 本地成员与会话存储
     participant R as 新运行用例
@@ -1020,7 +1020,7 @@ sequenceDiagram
     participant C as vfs-sync
     participant J as 控制存储
     participant F as 本地文件适配
-    participant S as pi-agent
+    participant S as mindos-node
     C->>J: 持久意图：B=0、输入=0、输出=1
     C->>F: 条件替换为 1，确认持久化
     Note over C,J: baseline 提交前崩溃
@@ -1050,7 +1050,7 @@ sequenceDiagram
 
 代码质量验收关注依赖和失败边界：策略纯函数可独立验证；发布与基线更新不存在多份实现；HTTP 不决定冲突赢家；UI/CLI 不绕过统一用例；错误保留阶段与提交结果；重试、取消及 GC 共享持久记录。函数拆分服务于这些边界，组件数量与行数不作为通过标准。
 
-保留现有 SessionBundle 的离线交换语义、远程挂载与普通文件接口。同步 HTTP 客户端复用认证、传输和 Range 基础，使用 pi-agent 的 `/v1/sync` 协议。旧 sync-server 已移除；其按哈希及 mtime 比较的算法缺少多端基线、项目分区和条件发布，未被当前项目同步链路复用。
+保留现有 SessionBundle 的离线交换语义、远程挂载与普通文件接口。同步 HTTP 客户端复用认证、传输和 Range 基础，使用 mindos-node 的 `/v1/sync` 协议。旧 sync-server 已移除；其按哈希及 mtime 比较的算法缺少多端基线、项目分区和条件发布，未被当前项目同步链路复用。
 
 首个可交付版本为 S2：受支持宿主上的多端文件同步。S3 交付明确覆盖与数据集恢复；S4 才可宣称“文件与会话多端接续”。项目整体时间点备份、运行中任务迁移和远程 checkout 自动回传仍属于后续独立能力。
 
@@ -1061,7 +1061,7 @@ sequenceDiagram
 | 代码 | 已实现 | 尚未交付 |
 | --- | --- | --- |
 | vfs-sync | 规范 manifest／服务端 fixture、完整性观察、逐项 B/L/R 比较、双向与单向计划、保留未选范围、父子删除保护、文件冲突选侧、有界文本三方合并、catalog/changes 发现与 ACK 恢复、持久序列和 FileSync 恢复 | 完整目录类型转换决策、保留两份及资源级应用拆分 |
-| piagent-driver/sync | 独立能力发现、epoch 头、注册激活、对象检查与摘要验证、CAS 发布、回执查询／取消、读取 pin | 灾备／过期副本的自动绑定迁移、历史恢复用例 |
+| mindos-node-client/sync | 独立能力发现、epoch 头、注册激活、对象检查与摘要验证、CAS 发布、回执查询／取消、读取 pin | 灾备／过期副本的自动绑定迁移、历史恢复用例 |
 | sync-adapters 的 IndexedDB 适配 | 既有 state.seq 控制 schema、源目录重叠检查、稳定快照、持久对象及计划、原生条件应用与幂等回执；确认发布 P 并保留 P2 | 自动缓存 GC、原生目录来源、真实浏览器持久保留和多标签页验收 |
 | app-core/projects/sync | prepareProjectSync 接入准备、注入式 preview/execute/resolve/mergeText/recover、过期回执对账入口、方向策略变更与解绑；runtime.projectSync 可选装配 | Tauri／CLI 同步装配、项目范围配置和自动触发 |
 | app-shell/projects/sync | 项目右键与标题操作入口、状态、方向设置、预览、文件冲突选侧／文本合并、执行、恢复／过期回执对账与解绑确认；共享服务器／同步目录选择与创建面板、zh/en 文案 | 执行中断、覆盖／镜像及历史恢复 |
@@ -1076,7 +1076,7 @@ FileSync 先缓存选中云端对象和稳定本地快照，再保存预览并�
 
 当前 IndexedDB 捕获上限为 10000 个节点、单文件 32 MiB；HTTP 默认接收预算也是 32 MiB，宿主可显式配置传输预算。超限或记录型文件不被当作删除。下载应用目前将无冲突下载项作为一个本地事务，事务内任何新编辑会使这一批应用拒绝；已发布的上传基线仍独立确认。取消可放弃该计划的后续自动应用并保留其内容，然后重新预览；更细的关联组拆分另行实现。
 
-验证包括：核心策略与持久序列测试、共享服务端 manifest fixture、fake-indexeddb 原子应用／输入竞争／绑定变化／父删除保护／记录文件和 Unicode 路径测试、app-core 生命周期回归，以及真实 pi-agent HTTP 的 A/B/C 接入、离线不同文件收敛、同文件冲突选侧、旧预览失效、发布响应丢失后数据库重开、P1 发布与 P2 保留。真实服务器测试使用临时独立 root，IndexedDB 使用测试实现；不能据此声称已完成真实浏览器跨标签页或掉电验收。
+验证包括：核心策略与持久序列测试、共享服务端 manifest fixture、fake-indexeddb 原子应用／输入竞争／绑定变化／父删除保护／记录文件和 Unicode 路径测试、app-core 生命周期回归，以及真实 mindos-node HTTP 的 A/B/C 接入、离线不同文件收敛、同文件冲突选侧、旧预览失效、发布响应丢失后数据库重开、P1 发布与 P2 保留。真实服务器测试使用临时独立 root，IndexedDB 使用测试实现；不能据此声称已完成真实浏览器跨标签页或掉电验收。
 
 ### 22.2 项目侧栏同步交互
 
@@ -1101,6 +1101,6 @@ Web 本地来源按实际目录与挂载判定，不依赖项目显示名称或 
 
 项目绑定时可以选择方向，预览内也可显式改方向；configure 在持久协调锁内拒绝 pending／activePlanId，方向变更使旧 bindingToken 无效，必须生成并审阅新预览。摘要和表格显示路径、上传／下载目标、新增／覆盖／删除数量，并支持路径筛选。冲突显示可读原因、两侧摘要、基线及正文比较；有界 LCS 标出文本行差异，大比较保留完整纯文本。正文来自持久预览缓存而非后来修改的工作文件，二进制和超大文件返回说明，未缓存基线明确不可用，存储损坏继续报错。逐项／批量选侧仍生成新计划并要求再次确认。
 
-目录绑定新增项目内子目录浏览、目录回传及双向同步，与本地／数据集关系分开配置。完整服务端语义、MCP 工具与恢复边界见 [pi-agent 项目模型](pi-agent-project-model.md)。当前默认更新、不传播删除；镜像和自动触发属于后续模式，未作为当前交付能力显示。
+目录绑定新增项目内子目录浏览、目录回传及双向同步，与本地／数据集关系分开配置。完整服务端语义、MCP 工具与恢复边界见 [mindos-node 项目模型](mindos-node-project-model.md)。当前默认更新、不传播删除；镜像和自动触发属于后续模式，未作为当前交付能力显示。
 
 交互参考 [FreeFileSync 同步设置](https://freefilesync.org/manual.php?topic=synchronization-settings) 的方向／更新语义和 [rclone bisync](https://rclone.org/bisync/) 的预演、冲突选择与恢复原则。只采用本项目已能验证的机制，不按文件时间戳自动猜测冲突赢家。验证包括界面确认链、固定缓存内容比较、方向与输入竞争、Rust 目录双向收敛、回执恢复以及真实 HTTP 的浏览器／数据集／服务器目录往返。

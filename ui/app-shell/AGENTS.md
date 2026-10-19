@@ -81,7 +81,7 @@ const factory = factories[strategyType] ?? defaultEditorFactory;
 ## Conventions
 
 - `initApp()` 是唯一 UI 装配点 — VFS/LLM/Kernel 由宿主调用 `app-core` 的 `createApplicationRuntime()` 装配，UI 只接收 `services` 和 `backend`，编辑器/AI 菜单/LLM 设置编辑器经 `AppOptions.ui` 注入
-- 项目收藏只做端口适配：`project-favorites.ts` 把 `resolveBrowserTarget` 路由翻译成 `ProjectFavorites` 命令。远程命令由 pi-agent 能力声明控制，工作台不提供启用/禁用开关。
+- 项目收藏只做端口适配：`project-favorites.ts` 把 `resolveBrowserTarget` 路由翻译成 `ProjectFavorites` 命令。远程命令由 mindos-node 能力声明控制，工作台不提供启用/禁用开关。
 - 项目范围选择复用 vfs-ui 的 ScopeSelector；导入导出通过 toolbarOptions.definitions 统一按钮、菜单、图标与异步执行，工作台只注入业务命令和目标策略。
 - 通用 Workbench 保留 vfs-ui 默认的创建文件、创建目录按钮，并透传宿主 toolbarOptions；项目侧栏的精简操作只由 ProjectNavigation 配置，不影响其他模块。
 - vfs-ui 内部 DOM/CSS 由库维护；宿主只使用 appearance、NodePresentation、toolbarOptions.variant 和公开 CSS 变量。移动端正文切换订阅 VFS_DOM_EVENTS.resourceActivated，不能依赖内部类名或模拟点击。

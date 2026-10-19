@@ -1,4 +1,4 @@
-import type { HarnessClient, HarnessConversationJournal, HarnessConversationPort, HarnessConversationSnapshot, HarnessReceipt } from '@itookit/piagent-driver';
+import type { HarnessClient, HarnessConversationJournal, HarnessConversationPort, HarnessConversationSnapshot, HarnessReceipt } from '@itookit/mindos-node-client';
 import type { RemoteConversationStore } from './remote-conversation-store';
 import {formatDefaultFileTitle, t} from '@itookit/common';
 import {reportRemoteFailure} from './remote-diagnostics';

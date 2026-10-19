@@ -1,8 +1,8 @@
 import { ENTITY_ICONS, harnessPresentation, t } from '@itookit/common';
 import { FSError, type FSNode } from '@itookit/vfs-core';
 import type { SessionFolder } from '@itookit/llm-session/contracts';
-import type { HarnessSession, HarnessProfile } from '@itookit/piagent-driver';
-import { harnessArchiveAllowed } from '@itookit/piagent-driver';
+import type { HarnessSession, HarnessProfile } from '@itookit/mindos-node-client';
+import { harnessArchiveAllowed } from '@itookit/mindos-node-client';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { reportRemoteFailure } from '../projects/remote-diagnostics';
 import { remoteSessionPath, type BrowserTarget } from './browser-routes';
@@ -53,7 +53,7 @@ export class RemoteSessionProjection {
                 return {sources: [], actions: [], async close() {}};
             filterProfile = target[1];
         }
-        let client: import('@itookit/piagent-driver').HarnessClient | undefined;
+        let client: import('@itookit/mindos-node-client').HarnessClient | undefined;
         try {
             client = await remote.projectHarness(project.project.id, {timeoutMs: 3000});
             const profiles = (await client.profiles({timeoutMs: 3000})).profiles.filter(profile => profile.projectRuntime && (!filterProfile || profile.id === filterProfile));
@@ -67,7 +67,7 @@ export class RemoteSessionProjection {
             return {sources: [{id: 'remote', async read() {throw error;}}], actions: [], async close() {}};
         }
     }
-    private async timelinePage(client: import('@itookit/piagent-driver').HarnessClient, project: SessionFolder & {project: {id: string}},
+    private async timelinePage(client: import('@itookit/mindos-node-client').HarnessClient, project: SessionFolder & {project: {id: string}},
         root: ProjectRemoteMount, profile: HarnessProfile, cursor?: string) {
         try {
             const page = await client.list(profile.id, {cursor}, {timeoutMs: 3000});
@@ -87,7 +87,7 @@ export class RemoteSessionProjection {
         const project = await this.projects?.forFolder(target.folder), remote = this.projects?.remoteMounts;
         if (!remote || !project || project.path !== target.folder) throw new FSError('ENOENT', 'Remote project unavailable');
         if (target.nativeSessionId || target.draft) return [];
-        let client: import('@itookit/piagent-driver').HarnessClient | undefined;
+        let client: import('@itookit/mindos-node-client').HarnessClient | undefined;
         try {
             client = await remote.projectHarness(project.project.id, {timeoutMs: 3000});
             const profiles = (await client.profiles({timeoutMs: 3000})).profiles.filter(p => p.projectRuntime && (p.capabilities.history || p.capabilities.create));

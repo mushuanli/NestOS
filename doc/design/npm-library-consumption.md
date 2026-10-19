@@ -43,7 +43,7 @@ build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从�
 
 默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的源码模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
 
-`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。改名后的 @itookit/mindos-node-client@0.3.0 与 vfs-ui@0.6.0 已发布并核对公开制品；image-parser@0.2.0 的版本和 latest 已登记，但公开 tarball 仍返回 404，npm 模式仍可能因制品不可下载而失败。下方历史发布记录沿用当时的真实包名。
+`--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。改名后的 @itookit/mindos-node-client@0.3.0、vfs-ui@0.6.0 与 image-parser@0.2.0 均已发布，并完成公开制品下载与仓库外消费验证。下方历史发布记录沿用当时的真实包名。
 
 ## 独立库发布
 
@@ -184,21 +184,21 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 
 ### 2026-10-19 image-parser 扫描保护发布
 
-准备发布 image-parser@0.2.0：正式 classical 检测增加低分裁剪保护，非 ML paper 检测器通过显式选项接入，检测契约增加 partial/uncertain 并支持协作式取消。完整回归与未完成门槛见[检测器验收](image-parser-detector-validation.md)。版本升级同步处理器版本，避免派生结果缓存继续使用旧版本标识。应用默认检测器不切换，性能和 Safari 真机验收尚未通过，不将可选 paper 路径声明为全面生产就绪。
+已发布 image-parser@0.2.0：正式 classical 检测增加低分裁剪保护，非 ML paper 检测器通过显式选项接入，检测契约增加 partial/uncertain 并支持协作式取消。完整回归与未完成门槛见[检测器验收](image-parser-detector-validation.md)。版本升级同步处理器版本，避免派生结果缓存继续使用旧版本标识。应用默认检测器不切换，性能和 Safari 真机验收尚未通过，不将可选 paper 路径声明为全面生产就绪。
 
-发布状态：等待正式 tarball 发布及公开下载核对。
+发布状态：已完成正式 tarball 发布及公开下载核对；制品摘要与公共消费验证见下方“节点命名、回执恢复与侧栏预览发布”。
 
 
 ### mindos-node 命名迁移
 
-服务源码工作区由 `tools/pi-agent` 更名为 `tools/mindos-node`，服务仓库为 <https://github.com/mushuanli/mindos-node>。客户端工作区由 `libraries/piagent-driver` 更名为 `libraries/mindos-node-client`，包名为 `@itookit/mindos-node-client`，工厂为 `createMindOSNodeClient()`；源码仓库暂沿用 `mushuanli/piagent-driver`。此改动更新源码、构建与 npm 制品目录配置，不表示新包已经发布到 npm。
+服务源码工作区由 `tools/pi-agent` 更名为 `tools/mindos-node`，服务仓库为 <https://github.com/mushuanli/mindos-node>。客户端工作区由 `libraries/piagent-driver` 更名为 `libraries/mindos-node-client`，包名为 `@itookit/mindos-node-client`，工厂为 `createMindOSNodeClient()`；源码仓库暂沿用 `mushuanli/piagent-driver`。源码、构建与 npm 制品目录配置均已更新，新包首次发布与消费验证见下一节。
 
 现有 MCP 配置、serverId、项目和会话 UUID、数据根与协议编码不迁移。节点增加 `itookit/mindos-node` 发现描述及 `mindos_node_capabilities` 工具，保留旧描述、能力工具与 HTTP 授权头；客户端同时接受新旧名称。持久配置仍使用原扩展键，已有凭据和项目绑定无需重建。
 
 
 ### 2026-10-19 节点命名、回执恢复与侧栏预览发布
 
-准备发布 mindos-node-client@0.3.0、vfs-ui@0.6.0 和 image-parser@0.2.0。客户端首次使用新包名，提交前只读失败明确为未提交，未知回执按原 ID 核对并保留拒绝原因；工作台发送丢失响应后只核对一次，不自动重发。侧栏文件与收藏各预览最多 15 条，更多入口打开右侧完整目录。image-parser 制品与此前已验证的 0.2.0 扫描保护制品一致。
+本轮已发布 mindos-node-client@0.3.0、vfs-ui@0.6.0 和 image-parser@0.2.0。客户端首次使用新包名，提交前只读失败明确为未提交，未知回执按原 ID 核对并保留拒绝原因；工作台发送丢失响应后只核对一次，不自动重发。侧栏文件与收藏各预览最多 15 条，更多入口打开右侧完整目录。image-parser 制品与此前已验证的 0.2.0 扫描保护制品一致。
 
 节点 mindos-node@0.3.8 将当前 epoch 尚未准入的请求与迟到投递在同一回执锁内核对；查询结果明确为未提交时保留拒绝记录，避免 UI 已恢复输入后旧请求又执行。Linux x86_64 release 制品为 `release/native/mindos-node-0.3.8-linux-x86_64.tar.gz`，不替换运行中的服务。
 
@@ -210,4 +210,4 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 | @itookit/vfs-ui@0.6.0 | `ff919033c11bd9432e9d95c6d861826a0adbb213da0518018282ead19d052761` |
 | @itookit/image-parser@0.2.0 | `831da8756ab66c7bded83e96a0304a6e481b25827556441b425065fa86ce7fea` |
 
-发布状态：mindos-node-client@0.3.0、vfs-ui@0.6.0 已发布，公开注册表重新下载的 SHA-256 与上表一致，v0.3.0 / v0.6.0 标签已推送。image-parser@0.2.0 的发布请求返回 HTTP 202，npm 提示正在处理；版本元数据及 latest 随后已登记，dist.integrity 与正式 tarball 的 SHA-512 一致，但公开 tarball 仍返回 404，待审批列表为空。该项尚未完成公开下载验收，v0.2.0 标签与公开制品 SHA-256 核对继续等待注册表处理。
+发布状态：三个 npm 包均已公开发布，重新下载的 SHA-256 与上表一致，v0.3.0 / v0.6.0 / v0.2.0 标签已推送到各自独立仓库。仓库外使用公开注册表安装三个固定版本，锁文件均解析到 registry.npmjs.org；ESM/CommonJS、所有公开子路径、CSS 入口、旧工厂别名、15 条目录预览与 bundler/NodeNext 类型检查通过。image-parser 首次返回 HTTP 202 后经历处理与下载短暂不可用，最终以公开文件下载成功和摘要一致确认完成。节点 v0.3.8 标签也已推送，Linux release 制品已生成，不自动替换运行实例。

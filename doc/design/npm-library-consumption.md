@@ -13,7 +13,7 @@ MindOS 默认消费固定 Git 提交的独立库源码。十个独立库均位�
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.8 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
 | @itookit/llm-ui | `libraries/llm-ui` | 0.2.1 |
-| @itookit/image-parser | `libraries/image-parser` | 0.1.0 |
+| @itookit/image-parser | `libraries/image-parser` | 0.2.0 |
 
 ## 源码开发
 
@@ -180,3 +180,10 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 九个正式 prepare tarball 已在仓库外安装，通过 ESM/CommonJS、公开子路径、CSS、Memory/IndexedDB SeqFile、图片与视图生命周期、TypeScript bundler/NodeNext 声明及 Vite 构建验证，没有工作区源码链接。文档和已安装工作区检查通过。
 
 发布状态：制品验证完成，等待 npm 发布与公开下载核对。制品及 SHA-256 保存在 release/npm-libraries，后续核对后更新本节。
+
+
+### 2026-10-19 image-parser 扫描保护发布
+
+准备发布 image-parser@0.2.0：正式 classical 检测增加低分裁剪保护，非 ML paper 检测器通过显式选项接入，检测契约增加 partial/uncertain 并支持协作式取消。完整回归与未完成门槛见[检测器验收](image-parser-detector-validation.md)。版本升级同步处理器版本，避免派生结果缓存继续使用旧版本标识。应用默认检测器不切换，性能和 Safari 真机验收尚未通过，不将可选 paper 路径声明为全面生产就绪。
+
+发布状态：等待正式 tarball 发布及公开下载核对。

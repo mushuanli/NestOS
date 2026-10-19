@@ -355,7 +355,7 @@ Scanic 四角编辑器优先读取 image.width 而非 naturalWidth。现传入�
 
 根因证据：传统路径按边缘、轮廓与几何评分选候选，纸面文字和横线也会构成候选。当前照片的纸张部分超出图框；默认算法选中的内部候选在其几何规则中仍为 valid。Scanic 1.7.1 类型声明中虽有 minDetectionConfidence，安装包及已核对源码均未读取该字段；只设置它不会起到拒绝低分候选的作用。提高 minDocumentCoverageRatio 会改变 valid 排序，但没有保证 success=false；因此未来质量筛选仍需由封装层明确执行。
 
-非 ML 实验位于 [page-lines.ts](../../libraries/image-parser/examples/page-lines.ts) 与 [paper-edges.html](../../libraries/image-parser/examples/paper-edges.html)。流程为有界灰度/平滑 → 梯度定向 Hough 投票 → 长边候选 → 边界内外亮度差 → 四边求交。只验证居中浅色纸张，先保留为不打包的原型；没有将单图有效的参数当作生产默认，也不引入 OpenCV 或新的运行时依赖。
+最初的非 ML 实验保存在 [page-lines-v1.ts](../../libraries/image-parser/examples/page-lines-v1.ts) 与 [paper-edges.html](../../libraries/image-parser/examples/paper-edges.html)。流程为有界灰度/平滑 → 梯度定向 Hough 投票 → 长边候选 → 边界内外亮度差 → 四边求交。当时只验证居中浅色纸张，作为原型保留；没有将单图有效的参数当作生产默认，也不引入 OpenCV 或新的运行时依赖。
 
 本图归一化交点约为 TL(0.229,0.028)、TR(1.004,0.089)、BR(0.914,1.057)、BL(-0.093,0.869)。由可见长边估计，三个角超出图框。它说明 partial 是有实际必要的状态，不能将交点强行夹到 [0,1] 后当作完整纸面，也不能恢复未拍入画面的内容。原型通过完整合成纸张、带文字的边界、部分出画、纯白及纯黑图检查；这不是广泛准确率评测。
 
@@ -400,3 +400,13 @@ C4Component
 ### 9.5 新检测器正式接入验收
 
 2026-10-18 完成68例验收（50合成、17上游标注样图、1用户照片状态检查）。新方案通过45例，现有 Scanic 通过36例；新方案有10例改善、1例回归，仍出现误裁、偏置漏检和 partial 契约不兼容。验收未通过，正式自动扫描没有切换。完整门槛、真实反例、性能和复现命令见 [非 ML 检测器接入验收](image-parser-detector-validation.md)。
+
+
+2026-10-19 修复后，同一68例开发数据通过66例：完整纸张49/51、出画7/7、拒绝10/10，错误完整框为0。新实现位于 [paper/detect.ts](../../libraries/image-parser/src/paper/detect.ts)，连通区域负责偏置候选，长边提案须经过四边联合核验及更大纸面反证筛选。原始居中 Hough 原型保留用于追溯，不作为默认检测器。
+
+库内通过 `createImageProcessor({detector: 'paper'})` 显式接入；应用默认继续 Scanic classical。ImageDetection 增加 partial（仅可见候选轮廓，不含 spec）与 uncertain（歧义、低证据、预算耗尽）。partial 表示候选不完整或触边风险，不证明实际纸张一定出画。界面保留选区并提供手动调整/补拍提示；全图选区是恒等操作，未经调整的 partial 结果不会生成裁剪步骤或重复编码。应用/完成等待检测，取消、销毁和手动调整优先于迟到结果。
+
+纯 TS 内核以最长边480处理，生成器按小段计算并主动让出事件循环，目标每4ms检查让出，2秒耗时预算到达时返回 uncertain。不是 Worker，也不能中断同步解码或 Canvas；不能将目标时间当作硬实时保证。检测代码按需加载，npm ESM/CJS 和源码引用共用实现，不增加运行时依赖或资源 URL。浏览器验收覆盖公共 processor、离线检测、partial 展示及应用/完成的无变更行为。Safari 真机和独立照片集仍是正式默认切换前的待办，现有68例用于修复回归，不代表独立泛化准确率。
+
+
+正式 classical 封装也将已有的0.6低可信度提示升级为裁剪保护：低分、缺失或无效分数返回 uncertain，保留手动选区，不让“完成”直接采用低分小框。这是保守拒绝规则，不把分数解释为纸边定位概率；高分候选仍需人工核对。

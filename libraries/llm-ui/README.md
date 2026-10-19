@@ -37,6 +37,8 @@ await view.destroy();
 
 兼容编辑器可通过 `createContentSearch({ root, history, getContents, onOpen, onNavigate })` 复用同一搜索控件。宿主用 getContents 按展示顺序提供稳定 ID 与可读正文 DOM，onOpen 激活尚未呈现的内容，onNavigate 展开目标历史卡片；控件再经 mdxeditor 的 revealRenderedContent 展开命中祖先，随后测量并滚动历史视口。返回的 button 和 element 由宿主挂载。控件只在打开且活动时观察正文变化，过滤表单及 `data-search-exclude` 区域，并在销毁时释放观察和高亮。MindOS 的本地及原生会话标题栏已接入此控件，手机上也直接显示搜索按钮。
 
+`createInteractionCard(request, submit, {locale, translate})` 提供与 ChatView 共用的审批和问答卡片，支持单选、多选、选项说明、自定义答案及密码字段。宿主挂载返回的 `element`，用 `setPending` 更新提交权限，结束时调用 `destroy`；同一请求的观察更新应复用卡片，保留未提交的输入。未知交互显示只读提示。
+
 ## Flow
 
 Flow 是本库的一部分。聊天集成通过 features.flow 控制，默认关闭；只有启用并点击入口后才加载 Flow 代码：

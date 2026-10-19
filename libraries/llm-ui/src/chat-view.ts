@@ -178,7 +178,7 @@ export class ChatController implements ChatView {
             const operation = this.records().find(record => record.kind === 'respond'
                 && typeof record.input === 'object' && record.input !== null && 'id' in record.input
                 && record.input.id === request.id && record.input.revision === request.revision && record.status !== 'rejected');
-            card.setPending(!this.can('respond') || !!operation, operation ? this.t(operation.status === 'submitting' ? 'pending' : operation.status) : undefined);
+            card.setPending(!this.can('respond') || !!request.responding || !!operation, operation ? this.t(operation.status === 'submitting' ? 'pending' : operation.status) : undefined);
             this.requests.append(card.element);
         }
         for (const [key, card] of this.cards) if (!keys.has(key)) { card.destroy(); this.cards.delete(key); }

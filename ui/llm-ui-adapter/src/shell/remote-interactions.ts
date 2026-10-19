@@ -1,35 +1,29 @@
-import type { ConversationRequest } from '@itookit/ui-common';
-import { t } from '@itookit/common';
-export function conversationRequests(requests: ConversationRequest[], respond: (id: string | number, response: Record<string, unknown>) => Promise<void>): HTMLElement[] {
-    return requests.map(request => {
-        const card = document.createElement('section');
-        const heading = document.createElement('h3'); heading.textContent = t('harness.interaction');
-        const detail = document.createElement('pre'); detail.textContent = request.detail;
-        card.append(heading, detail);
-        if (request.kind === 'approval') {
-            action(card, t('harness.approve'), () => respond(request.id, {decision: 'accept'}));
-            action(card, t('harness.decline'), () => respond(request.id, {decision: 'decline'}));
-        } else if (request.kind === 'input') input(card, request, respond);
-        else { const hint = document.createElement('p'); hint.textContent = t('harness.unsupportedInteraction'); card.append(hint); }
-        return card;
-    });
-}
-function input(card: HTMLElement, request: ConversationRequest, respond: (id: string | number, response: Record<string, unknown>) => Promise<void>) {
-    const fields = new Map<string, HTMLInputElement>();
-    for (const question of request.questions ?? []) {
-        const label = document.createElement('label'); label.textContent = question.question;
-        const field = document.createElement('input'); field.setAttribute('aria-label', question.question);
-        field.placeholder = question.options?.map(o => o.label).join(' / ') ?? '';
-        label.append(field); card.append(label); fields.set(question.id, field);
+import type {ConversationRequest} from '@itookit/ui-common';
+import {createInteractionCard, type InteractionCard} from '@itookit/llm-ui';
+import {getLocale} from '@itookit/common';
+import {nativeInteraction, nativeResponse} from '../native-interactions';
+
+type Respond = (id: string | number, response: Record<string, unknown>) => Promise<void>;
+const cards = new WeakMap<HTMLElement, Map<string, {encoded: string; card: InteractionCard}>>();
+/** Stable cards preserve unfinished answers while observations and permissions change. */
+export function renderConversationRequests(container: HTMLElement, requests: ConversationRequest[], respond: Respond, allowed: boolean): void {
+    const current = cards.get(container) ?? new Map(); cards.set(container, current);
+    const alive = new Set<string>();
+    for (const request of requests) {
+        const view = nativeInteraction(request), key = view.id;
+        const encoded = JSON.stringify({...request, responding: undefined}); alive.add(key);
+        let row = current.get(key);
+        if (row?.encoded !== encoded) {
+            row?.card.destroy();
+            row = {encoded, card: createInteractionCard({...view, responding: false}, async response => {await respond(request.id, nativeResponse(response));}, {locale: getLocale()})};
+            current.set(key, row);
+        }
+        row.card.setPending(!allowed || !!request.responding);
+        container.append(row.card.element);
     }
-    action(card, t('harness.answer'), () => respond(request.id, {answers: Object.fromEntries([...fields].map(([id, field]) => [id, {answers: [field.value]}]))}));
+    for (const [key, row] of current) if (!alive.has(key)) {row.card.destroy(); current.delete(key);}
 }
-function action(card: HTMLElement, label: string, run: () => Promise<void>) {
-    const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
-    button.onclick = async () => {
-        button.disabled = true;
-        try { await run(); } catch { const status = document.createElement('p'); status.textContent = t('harness.failed'); status.setAttribute('role', 'alert'); card.append(status); }
-        finally { if (button.isConnected) button.disabled = false; }
-    };
-    card.append(button);
+export function clearConversationRequests(container: HTMLElement): void {
+    for (const row of cards.get(container)?.values() ?? []) row.card.destroy();
+    cards.delete(container);
 }

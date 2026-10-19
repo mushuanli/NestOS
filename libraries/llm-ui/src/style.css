@@ -8,13 +8,19 @@
 .llm-chat__message { max-width: var(--llm-chat-width); margin: 0 auto 24px; overflow-wrap: anywhere; }
 .llm-chat__message[data-role="user"] .llm-chat__body { padding: 8px 16px; border-radius: 12px; background: color-mix(in srgb, var(--llm-chat-accent) 8%, transparent); }
 .llm-chat__message-actions { margin-top: 6px; }
-.llm-chat button { font: inherit; cursor: pointer; border: 1px solid var(--llm-chat-border); border-radius: 5px; padding: 4px 10px; background: transparent; color: inherit; }
-.llm-chat button:disabled { opacity: .5; cursor: default; }
+.llm-chat button, .llm-chat__interaction button { font: inherit; cursor: pointer; border: 1px solid var(--llm-chat-border, #d8dce3); border-radius: 5px; padding: 4px 10px; background: transparent; color: inherit; }
+.llm-chat button:disabled, .llm-chat__interaction button:disabled { opacity: .5; cursor: default; }
 .llm-chat__composer { width: calc(100% - 32px); max-width: var(--llm-chat-width); margin: 8px auto 16px; }
 .llm-chat__input, .llm-chat__edit textarea { box-sizing: border-box; width: 100%; min-height: 40px; max-height: 160px; field-sizing: content; resize: vertical; font: inherit; color: inherit; background: transparent; border: 1px solid var(--llm-chat-border); border-radius: 8px; padding: 10px; }
 .llm-chat__error { color: #d24444; margin: 4px 0; font-size: .85rem; }
 .llm-chat__interactions, .llm-chat__prompts { max-height: 35vh; overflow: auto; }
-.llm-chat__interaction { max-width: var(--llm-chat-width); margin: 8px auto; padding: 12px; border: 1px solid var(--llm-chat-border); border-radius: 8px; }
+.llm-chat__interaction { max-width: var(--llm-chat-width, 780px); margin: 8px auto; padding: 12px; border: 1px solid var(--llm-chat-border, #d8dce3); border-radius: 8px; overflow-wrap: anywhere; }
+.llm-chat__interaction form { display: flex; flex-wrap: wrap; gap: 8px; }
+.llm-chat__interaction fieldset { box-sizing: border-box; flex: 1 0 100%; min-width: 0; margin: 0; border: 1px solid var(--llm-chat-border, #d8dce3); border-radius: 6px; }
+.llm-chat__interaction label { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: start; gap: 4px 8px; margin-block: 8px; }
+.llm-chat__interaction small, .llm-chat__interaction label input[type="text"] { grid-column: 2; }
+.llm-chat__interaction small { opacity: .75; }
+.llm-chat__interaction input:not([type="checkbox"]):not([type="radio"]), .llm-chat__interaction textarea { box-sizing: border-box; width: 100%; min-width: 0; padding: 8px; font: inherit; color: inherit; background: transparent; border: 1px solid var(--llm-chat-border, #d8dce3); border-radius: 5px; }
 .llm-chat__part { --mdx-content-background: transparent; --mdx-content-color: inherit; --mdx-content-padding: 0; }
 .llm-chat__part img { max-width: 100%; }
 .llm-chat__part pre { white-space: pre-wrap; overflow-wrap: anywhere; }

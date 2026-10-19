@@ -1,6 +1,13 @@
 import type { InputField, InteractionResponse, InteractionView } from './contracts';
 import { button, element, errorText } from './dom';
 import type { Translate } from './i18n';
+import {translator} from './i18n';
+import {interactionField} from './interaction-fields';
+
+export function createInteractionCard(request: InteractionView, submit: (response: InteractionResponse) => Promise<void>,
+    options: {locale?: string; translate?: (key: string) => string} = {}): InteractionCard {
+    return new InteractionCard(request, translator(options.locale, options.translate), submit);
+}
 
 export class InteractionCard {
     readonly element = element('section', 'llm-chat__interaction');
@@ -15,7 +22,8 @@ export class InteractionCard {
         this.element.append(element('h3', undefined, request.title), element('p', undefined, request.detail ?? ''), this.form, this.feedback);
         if (request.state !== 'pending') { this.form.textContent = request.state; return; }
         if (request.kind === 'approval') this.approval();
-        else this.input(request.fields);
+        else if (request.kind === 'input') this.input(request.fields);
+        else this.form.textContent = this.t('unsupportedInteraction');
     }
     private approval(): void {
         const request = this.request;
@@ -27,13 +35,14 @@ export class InteractionCard {
         }));
     }
     private input(fields: readonly InputField[]): void {
-        for (const field of fields) this.form.append(fieldControl(field));
+        const controls = fields.map(field => ({field, control: interactionField(field)}));
+        controls.forEach(({control}) => this.form.append(control.element));
         const send = element('button', undefined, this.t('answer')); send.type = 'submit'; this.form.append(send);
         this.form.addEventListener('submit', event => {
             event.preventDefault();
-            const data = new FormData(this.form), values: Record<string, string | string[]> = {};
-            for (const field of fields) {
-                const items = data.getAll(field.id).map(String);
+            const values: Record<string, string | string[]> = Object.create(null);
+            for (const {field, control} of controls) {
+                const items = control.values();
                 if (field.required && !items.some(value => value.trim())) { this.feedback.textContent = this.t('required'); return; }
                 if (field.kind === 'multi-choice' && (items.length < (field.min ?? 0) || items.length > (field.max ?? Infinity))) {
                     this.feedback.textContent = this.t('range'); return;
@@ -51,8 +60,8 @@ export class InteractionCard {
         finally { this.busy = false; if (!this.closed) this.disable(this.pending); }
     }
     setPending(pending: boolean, message?: string): void {
-        this.pending = pending;
-        this.disable(pending || this.busy);
+        this.pending = pending || !!this.request.responding;
+        this.disable(this.pending || this.busy);
         if (message) this.feedback.textContent = message;
     }
     private disable(value: boolean): void {
@@ -60,18 +69,4 @@ export class InteractionCard {
             .forEach(control => { control.disabled = value; });
     }
     destroy(): void { this.closed = true; this.element.remove(); }
-}
-
-function fieldControl(field: InputField): HTMLElement {
-    const group = element('fieldset'); group.append(element('legend', undefined, field.label));
-    if (field.kind === 'text') {
-        const input = element(field.multiline ? 'textarea' : 'input');
-        input.name = field.id; input.required = field.required ?? false; group.append(input); return group;
-    }
-    for (const choice of field.choices) {
-        const label = element('label'), input = element('input');
-        input.type = field.kind === 'single-choice' ? 'radio' : 'checkbox'; input.name = field.id; input.value = choice.id;
-        label.append(input, document.createTextNode(choice.label)); group.append(label);
-    }
-    return group;
 }

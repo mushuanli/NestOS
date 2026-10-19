@@ -38,19 +38,21 @@ export interface ChatMessage {
     readonly allowed?: readonly ('edit' | 'retry')[];
     readonly timestamp?: number;
 }
-export interface Choice { readonly id: string; readonly label: string }
+export interface Choice { readonly id: string; readonly label: string; readonly description?: string }
 export type InputField = { readonly id: string; readonly label: string; readonly required?: boolean } & (
-    | { readonly kind: 'text'; readonly multiline?: boolean }
-    | { readonly kind: 'single-choice'; readonly choices: readonly Choice[] }
-    | { readonly kind: 'multi-choice'; readonly choices: readonly Choice[]; readonly min?: number; readonly max?: number }
+    | { readonly kind: 'text'; readonly multiline?: boolean; readonly secret?: boolean }
+    | { readonly kind: 'single-choice'; readonly choices: readonly Choice[]; readonly other?: string }
+    | { readonly kind: 'multi-choice'; readonly choices: readonly Choice[]; readonly min?: number; readonly max?: number; readonly other?: string }
 );
 export type InteractionView = {
     readonly id: string; readonly revision: number; readonly title: string; readonly detail?: string;
     readonly state: 'pending' | 'resolved' | 'cancelled' | 'expired';
     readonly messageId?: string; readonly partId?: string;
+    readonly responding?: boolean;
 } & (
     | { readonly kind: 'approval'; readonly decisions: readonly Choice[]; readonly note?: boolean }
     | { readonly kind: 'input'; readonly fields: readonly InputField[] }
+    | { readonly kind: 'unsupported' }
 );
 export type InteractionResponse =
     | { readonly kind: 'approval'; readonly decisionId: string; readonly note?: string }

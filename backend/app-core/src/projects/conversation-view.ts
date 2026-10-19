@@ -15,6 +15,8 @@ class ConversationView {
     private closing?: Promise<void>;
     private closed = false;
     private pumping = false;
+    private starting = 0;
+    private polling: Promise<unknown> = Promise.resolve();
     private quoteFailed = false;
     constructor(private readonly source: HarnessConversationPort, private readonly quote?: (usage: HarnessUsage) => UsageCostEstimate, private readonly conversationId?: string,
         private readonly activityChanged?: () => void) {
@@ -38,7 +40,7 @@ class ConversationView {
             if (key === 'subscribe') return (listener: () => void) => this.subscribe(listener);
             if (key === 'close') return () => this.close();
             const value = Reflect.get(target, key, target);
-            return typeof value === 'function' ? (...args: unknown[]) => this.invoke(value, args) : value;
+            return typeof value === 'function' ? (...args: unknown[]) => this.invoke(value, args, String(key)) : value;
         } });
     }
     private subscribe(listener: () => void): () => void {
@@ -47,22 +49,29 @@ class ConversationView {
         return () => { this.listeners.delete(listener); if (!this.listeners.size) { clearTimeout(this.timer); this.timer = undefined; } };
     }
     private schedule(): void {
-        if (this.closed || this.timer || this.pumping || !this.listeners.size || !this.isActive(this.current)) return;
+        if (this.closed || this.timer || this.pumping || !this.listeners.size || !this.starting && !this.isActive(this.current)) return;
         this.timer = setTimeout(() => {
             this.timer = undefined; this.pumping = true;
-            void this.invoke(this.source.poll, []).catch(() => {}).finally(() => { this.pumping = false; this.schedule(); });
+            void this.invoke(this.source.poll, [], 'poll').catch(() => {}).finally(() => { this.pumping = false; this.schedule(); });
         }, 200);
     }
-    private isActive(snapshot: ProjectConversationSnapshot): boolean { return !!(snapshot.active || snapshot.canInterrupt); }
-    private invoke(method: (...args: any[]) => unknown, args: unknown[]): Promise<any> {
+    private isActive(snapshot: ProjectConversationSnapshot): boolean { return !!(snapshot.active || snapshot.canInterrupt || snapshot.requests?.length); }
+    private invoke(method: (...args: any[]) => unknown, args: unknown[], key: string): Promise<any> {
         if (this.closed) return Promise.reject(new FSError('EIO', 'Conversation view closed'));
-        const work = this.tail.then(async () => {
+        const execute = async () => {
             if (this.closed) throw new FSError('EIO', 'Conversation view closed');
+            const starting = key === 'send' || key === 'command';
+            if (starting) {++this.starting; this.schedule();}
             let result: any;
             try { result = await Reflect.apply(method, this.source, args); }
-            finally { if (!this.closed) this.update(); }
+            finally {if (starting) --this.starting; if (!this.closed) {this.update(); this.schedule();}}
             return result && typeof result === 'object' && 'messages' in result ? this.current : result;
-        });
+        };
+        if (key === 'respond' || key === 'interrupt') return execute();
+        if (key === 'poll' && this.starting) {
+            const work = this.polling.then(execute); this.polling = work.catch(() => {}); return work;
+        }
+        const work = this.tail.then(execute);
         this.tail = work.catch(() => {}); return work;
     }
     private update(): void {
@@ -79,7 +88,7 @@ class ConversationView {
         if (!this.closing) {
             this.closed = true; clearTimeout(this.timer); this.listeners.clear();
             const closing = this.source.close();
-            this.closing = Promise.all([this.tail, closing]).then(() => {});
+            this.closing = Promise.all([this.tail, this.polling, closing]).then(() => {});
         }
         return this.closing;
     }

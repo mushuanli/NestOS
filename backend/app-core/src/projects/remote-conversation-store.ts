@@ -46,6 +46,10 @@ export class RemoteConversationStore {
 }
 
 function validateSubmissions(record: RemoteConversationRecovery): void {
+    if (record.responses !== undefined && (!Array.isArray(record.responses) || record.responses.length > 128
+        || record.responses.some(row => !row || !['string', 'number'].includes(typeof row.id)
+            || typeof row.requestId !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(row.requestId) || typeof row.epoch !== 'string' || !row.epoch)))
+        throw new FSError('EINVAL', 'Invalid native response receipts');
     for (const revision of [record.draftRevision, record.pending?.draftRevision]) {
         if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 0)) throw new FSError('EINVAL', 'Invalid remote draft revision');
     }

@@ -1,5 +1,5 @@
 .remote-conversation__interactions pre { white-space: pre-wrap; overflow-wrap: anywhere; font-family: inherit; }
-.remote-conversation__interactions { max-height: 35%; overflow: auto; }
+.remote-conversation__interactions { --llm-chat-border: var(--llm-border-color); max-height: 35%; overflow: auto; }
 .remote-conversation__status { margin: 0; padding: 0 .75rem; font-size: .8rem; }
 .remote-conversation__status:empty { display: none; }
 .remote-conversation-info { width: min(480px, calc(100vw - 32px)); max-height: calc(var(--app-visible-height, 100dvh) - 32px); box-sizing: border-box; padding: 0; border: 1px solid var(--llm-border-color); border-radius: 12px; color: var(--llm-text-primary); background: var(--llm-bg-primary); }

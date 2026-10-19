@@ -5,6 +5,7 @@ import { QueryBatcher } from '@itookit/app-transport/http';
 import { ViewNotifications } from '@itookit/node-host/http';
 import type { ServerResponse } from 'node:http';
 import type { Call, Reply, WireValue } from '@itookit/app-transport/rpc';
+import {observeConversation} from '../../../backend/app-core/src/projects/conversation-view';
 
 const peers: RpcPeer[] = [];
 afterEach(async () => { vi.useRealTimers(); await Promise.all(peers.splice(0).map(peer => peer.close())); });
@@ -82,6 +83,25 @@ it('coalesces streaming changes and sends token deltas instead of repeating long
     client.applyUpdates(updates);
     expect(root.getSnapshot()).toEqual(manager.snapshot);
     expect(root.getSnapshot().messages[1]).toBe(unchanged);
+});
+it('carries a long native answer through subscription patches and explicit refresh', async () => {
+    const state = {messages: [{id: 'a', role: 'assistant', text: 'Long native answer. '.repeat(8192)}], requests: [], active: true};
+    const source = {kind: 'codex', snapshot: () => state, read: async () => state, poll: async () => state,
+        respond: async () => state, close: async () => {}};
+    const view = observeConversation(source as never);
+    try {
+        const {root, server, client} = await pair(view);
+        const stop = root.subscribe(() => {}); await client.whenIdle();
+        const before = await root.read();
+        expect(before.messages[0].text).toBe(state.messages[0].text);
+        state.messages[0].text += ' streamed-tail'; await view.poll(); await server.whenIdle();
+        const updates = await server.refresh(); client.applyUpdates(updates);
+        expect(root.snapshot().messages[0].text).toBe(state.messages[0].text);
+        expect(JSON.stringify(updates).length).toBeLessThan(2048);
+        state.messages[0].text += ' refreshed-tail';
+        expect((await root.read()).messages[0].text).toBe(state.messages[0].text);
+        expect(before.messages[0].text).not.toContain('streamed-tail'); stop(); await client.whenIdle();
+    } finally {await view.close();}
 });
 it('buffers out-of-order view patches and ignores stale snapshots', async () => {
     const manager = session(); const { root, server, client } = await pair(manager);

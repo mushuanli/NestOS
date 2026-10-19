@@ -208,6 +208,18 @@ it('keeps a resolved request when an older approval response arrives', async () 
     expect(binding.source.getSnapshot().messages[0].parts[0]).toMatchObject({ text: 'continued' }); binding.dispose();
 });
 
+it('answers an observed early approval without waiting for another history read', async () => {
+    const host = fixture(); host.emit({pending: true, canSend: false, requests: [{id: 'early', kind: 'approval', detail: 'Approve?'}]});
+    host.controls.respond = vi.fn(async () => ({...host.state(), requests: []}));
+    const binding = await createNativeChatBinding(host.options), request = binding.source.getSnapshot().interactions[0];
+    host.read.mockRejectedValue(new Error('History is blocked behind turn startup'));
+    try {
+        expect(await binding.actions.respond!({id: request.id, revision: request.revision, response: {kind: 'approval', decisionId: 'accept'}},
+            {operationId: 'early-answer', viewId: binding.source.getSnapshot().viewId})).toMatchObject({status: 'accepted'});
+        expect(host.read).toHaveBeenCalledOnce(); expect(host.controls.respond).toHaveBeenCalledWith('early', {decision: 'accept'});
+    } finally {binding.dispose();}
+});
+
 it('maps immutable native attachments through the host and enforces negotiated kinds', async () => {
     const host = fixture(); host.emit({attachments: ['text']});
     host.controls.send = vi.fn(async () => ({...host.state(), submittedTurnId: 'turn'}));

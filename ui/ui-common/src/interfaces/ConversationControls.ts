@@ -8,7 +8,12 @@ export interface ConversationMessage {
     turnId?: string; name?: string; input?: string; inputLanguage?: 'bash' | 'json' | 'text';
     timestamp?: number; paths?: string[]; operation?: 'read' | 'write' | 'search' | 'list' | 'execute'; commandPreview?: string;
 }
-export interface ConversationRequest { id: string | number; kind: 'approval' | 'input' | 'unsupported'; detail: string; questions?: Array<{id: string; question: string; options?: Array<{label: string}>}> }
+export interface ConversationRequest {
+    id: string | number; kind: 'approval' | 'input' | 'unsupported'; detail: string; title?: string;
+    decisions?: string[]; responding?: boolean;
+    questions?: Array<{id: string; question: string; header?: string; multiSelect?: boolean; isSecret?: boolean; isOther?: boolean;
+        options?: Array<{label: string; description?: string}>}>;
+}
 export interface ConversationAttachment {kind: 'text' | 'image'; name: string; content: string; mimeType?: string}
 export interface ConversationSlashCommand {name: string; description: string; argumentHint?: string; kind: 'prompt' | 'action'; disabled?: boolean}
 export interface ConversationModelSelection {modelId: string; reasoningEffort?: string}

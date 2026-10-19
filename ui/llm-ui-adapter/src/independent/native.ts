@@ -4,10 +4,10 @@ import {prepareRemoteAttachments} from '../shell/remote-attachments';
 import { type ChatMessage, type ConversationActions,
     type InteractionView, type OperationLedger, type CommandSubmission, type OperationContext, type OperationReceipt } from '@itookit/llm-ui';
 import type { ConversationControls, ConversationSnapshot as NativeSnapshot } from '@itookit/ui-common';
-import { t } from '@itookit/common';
 import {NativeComposerCapabilities, type NativeCommandProvider} from './native-composer';
 import {submitNativeCommand} from './native-command';
 import { ChatProjection } from './projection';
+import {nativeInteraction, nativeResponse} from '../native-interactions';
 
 export interface NativeChatBindingOptions {
     readonly images?: ImageEditingHost;
@@ -34,7 +34,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         const catalog = commands(state);
         source.publish({ title: state.title, selectors: capabilities.selectors(),
             commands: state.supportsSlashCommands || options.commandProviders?.length ? catalog : undefined, messages: state.messages.map(message => nativeMessage(message, options.operations)),
-            interactions: state.requests.filter(request => request.kind !== 'unsupported').map(request => interaction(request, requests)),
+            interactions: state.requests.map(request => interaction(request, requests)),
             loading: false, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
             connection: state.disconnected ? 'offline' : 'online', hasEarlier: state.hasEarlier ?? false,
             allowed: [...(state.canSend && !state.pending ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
@@ -115,15 +115,18 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         },
         async respond(request, context) {
             if (!valid(context.viewId)) return { status: 'rejected', operationId: context.operationId, code: 'STALE_VIEW', message: 'Observation binding expired' };
-            await refresh();
+            const latest = options.controls.snapshot?.();
+            if (latest) publish(latest);
             const target = source.getSnapshot().interactions.find(item => item.id === request.id && item.revision === request.revision && item.state === 'pending');
             if (!target) return { status: 'rejected', operationId: context.operationId, code: 'STALE_REQUEST', message: 'Interaction changed or expired' };
-            const response = request.response.kind === 'approval' ? { decision: request.response.decisionId }
-                : { answers: Object.fromEntries(Object.entries(request.response.values).map(([id, value]) => [id, { answers: Array.isArray(value) ? value : [value] }])) };
-            const original = native!.requests.find(item => String(item.id) === request.id)!;
+            if (!native?.canRespond) return reject(context, 'INTERACTION_UNAVAILABLE', 'Interaction control unavailable');
+            if (target.kind === 'unsupported' || target.responding) return reject(context, 'UNSUPPORTED_REQUEST', 'Interaction cannot be answered');
+            const response = nativeResponse(request.response);
+            const original = native!.requests.find(item => nativeInteraction(item).id === request.id)!;
             const captured = generation, state = await options.controls.respond(original.id, response);
             publishResponse(state, captured);
-            return { status: 'accepted', operationId: context.operationId };
+            return state.requests.some(item => item.id === original.id && item.responding)
+                ? {status: 'unknown', operationId: context.operationId, message: 'Response receipt pending'} : { status: 'accepted', operationId: context.operationId };
         },
         async reconcile(operationId) {
             const receipt = await options.reconcile(operationId);
@@ -155,12 +158,10 @@ function nativeMessage(message: NativeSnapshot['messages'][number], operations: 
             : (message.contentParts ?? [message.text]).map((text, index) => ({ id: `${message.id}-${index}`, kind: 'markdown', text })) };
 }
 function interaction(request: NativeSnapshot['requests'][number], versions: Map<string, { encoded: string; revision: number }>): InteractionView {
-    const id = String(request.id), encoded = JSON.stringify(request), previous = versions.get(id);
+    const id = nativeInteraction(request).id, encoded = JSON.stringify(request), previous = versions.get(id);
     const revision = previous?.encoded === encoded ? previous.revision : (previous?.revision ?? -1) + 1;
     versions.set(id, { encoded, revision });
-    const base = { id, revision, title: request.detail, state: 'pending' as const };
-    return request.kind === 'approval' ? { ...base, kind: 'approval', decisions: [{ id: 'accept', label: t('harness.approve') }, { id: 'decline', label: t('harness.decline') }] }
-        : { ...base, kind: 'input', fields: (request.questions ?? []).map(question => ({ id: question.id, label: question.question, kind: 'text', required: true })) };
+    return nativeInteraction(request, revision);
 }
 
 function reject(context: OperationContext, code: string, message: string) {

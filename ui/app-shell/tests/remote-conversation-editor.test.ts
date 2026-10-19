@@ -11,6 +11,50 @@ function setup(options: EditorOptions = {}) {
     const host=document.createElement('div');document.body.append(host);
     const editor=new RemoteConversationEditor(host,peer,{title:'Server · Project · Codex', ...options});return {editor,peer,host};
 }
+it('renders growing long answers during a pending send and reads the latest answer on manual refresh and reopen', async () => {
+    vi.stubGlobal('Worker', class {
+        onmessage?: (event: unknown) => void;
+        terminate() {}
+        postMessage({text}: {text: string}) {
+            queueMicrotask(() => this.onmessage?.({data: {tokens: [{type: 'paragraph', raw: text, text, tokens: [{type: 'text', raw: text, text}]}]}}));
+        }
+    });
+    const {editor, peer, host} = setup(); let changed!: () => void, finish!: (value: ConversationSnapshot) => void;
+    let current = {...state, messages: [{id: 'long', role: 'assistant' as const, text: 'Long response. '.repeat(8192), turnId: 'long-turn'}]};
+    peer.snapshot = () => current; peer.subscribe = listener => {changed = listener; return () => {};};
+    vi.mocked(peer.read).mockImplementation(async () => current);
+    vi.mocked(peer.send).mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+    await editor.init(host); const sending = editor.commands.sendMessage({text: 'Continue'});
+    try {
+        await vi.waitFor(() => expect(peer.send).toHaveBeenCalledOnce());
+        current = {...current, messages: [{...current.messages[0], text: current.messages[0].text + ' streamed-tail-marker'}]}; changed();
+        await vi.waitFor(() => expect(host.textContent).toContain('streamed-tail-marker'));
+        finish(current); await sending;
+        current = {...current, messages: [{...current.messages[0], text: current.messages[0].text + ' refreshed-tail-marker'}]};
+        host.querySelector<HTMLButtonElement>('#llm-btn-refresh')!.click();
+        await vi.waitFor(() => expect(host.textContent).toContain('refreshed-tail-marker'));
+    } finally {finish?.(current); await sending.catch(() => {}); await editor.destroy();}
+    const reopened = new RemoteConversationEditor(host, peer, {});
+    try {await reopened.init(host); expect(host.textContent).toContain('refreshed-tail-marker');}
+    finally {await reopened.destroy();}
+});
+it('shows and answers an interaction while the send response is still pending', async () => {
+    const {editor, peer, host} = setup(); let changed!: () => void, finish!: (value: ConversationSnapshot) => void;
+    let current = state;
+    peer.snapshot = () => current; peer.subscribe = listener => {changed = listener; return () => {};};
+    vi.mocked(peer.send).mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+    vi.mocked(peer.respond).mockImplementation(async () => {current = {...state, canSend: false, canInterrupt: true}; finish(current); return current;});
+    await editor.init(host);
+    const sending = editor.commands.sendMessage({text: 'Please execute'});
+    try {
+        await vi.waitFor(() => expect(peer.send).toHaveBeenCalledOnce());
+        current = {...state, canSend: false, canRespond: true, pending: true, requests: [{id: 'early', kind: 'approval', detail: 'Early approval'}]}; changed();
+        await vi.waitFor(() => expect(host.querySelector('.remote-conversation__interactions button')).not.toBeNull());
+        const approve = host.querySelector<HTMLButtonElement>('.remote-conversation__interactions button')!;
+        expect(approve.disabled).toBe(false); approve.click(); await sending;
+        expect(peer.respond).toHaveBeenCalledWith('early', {decision: 'accept'});
+    } finally {finish?.(state); await sending.catch(() => {}); await editor.destroy();}
+});
 beforeEach(() => {
     vi.stubGlobal('matchMedia', () => ({matches:false,addEventListener() {},removeEventListener() {}}));
     vi.stubGlobal('ResizeObserver', class {observe() {} disconnect() {} unobserve() {}});

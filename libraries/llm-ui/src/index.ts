@@ -5,6 +5,8 @@ import { ChatController } from './chat-view';
 export type * from './contracts';
 export {composeCommandCatalogs, parseCommand, isCommandInput} from './commands';
 export { createOperationLedger } from './operations';
+export {createInteractionCard} from './interactions';
+export type {InteractionCard} from './interactions';
 export type { OperationLedgerOptions } from './operations';
 export { createContentSearch } from './search';
 export type { ContentSearchOptions, ContentSearchView, SearchContent } from './search';

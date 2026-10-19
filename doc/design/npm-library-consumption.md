@@ -5,10 +5,10 @@ MindOS 默认消费固定 Git 提交的独立库源码。十个独立库均位�
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
 | @itookit/vfs-core | `libraries/vfs-core` | 5.3.3 |
-| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.12 |
+| @itookit/vfs-ui | `libraries/vfs-ui` | 0.6.0 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.4 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.1 |
-| @itookit/mindos-node-client | `libraries/mindos-node-client` | 0.2.5 |
+| @itookit/mindos-node-client | `libraries/mindos-node-client` | 0.3.0 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.1 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.8 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
@@ -194,3 +194,20 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 服务源码工作区由 `tools/pi-agent` 更名为 `tools/mindos-node`，服务仓库为 <https://github.com/mushuanli/mindos-node>。客户端工作区由 `libraries/piagent-driver` 更名为 `libraries/mindos-node-client`，包名为 `@itookit/mindos-node-client`，工厂为 `createMindOSNodeClient()`；源码仓库暂沿用 `mushuanli/piagent-driver`。此改动更新源码、构建与 npm 制品目录配置，不表示新包已经发布到 npm。
 
 现有 MCP 配置、serverId、项目和会话 UUID、数据根与协议编码不迁移。节点增加 `itookit/mindos-node` 发现描述及 `mindos_node_capabilities` 工具，保留旧描述、能力工具与 HTTP 授权头；客户端同时接受新旧名称。持久配置仍使用原扩展键，已有凭据和项目绑定无需重建。
+
+
+### 2026-10-19 节点命名、回执恢复与侧栏预览发布
+
+准备发布 mindos-node-client@0.3.0、vfs-ui@0.6.0 和 image-parser@0.2.0。客户端首次使用新包名，提交前只读失败明确为未提交，未知回执按原 ID 核对并保留拒绝原因；工作台发送丢失响应后只核对一次，不自动重发。侧栏文件与收藏各预览最多 15 条，更多入口打开右侧完整目录。image-parser 制品与此前已验证的 0.2.0 扫描保护制品一致。
+
+节点 mindos-node@0.3.8 将当前 epoch 尚未准入的请求与迟到投递在同一回执锁内核对；查询结果明确为未提交时保留拒绝记录，避免 UI 已恢复输入后旧请求又执行。Linux x86_64 release 制品为 `release/native/mindos-node-0.3.8-linux-x86_64.tar.gz`，不替换运行中的服务。
+
+验证：Rust 完整测试 293 项通过；客户端 203 项单元/文件链路测试及显式 MCP 网络测试通过；vfs-ui 214 项、image-parser 33 项、工作台相关 75 项通过。全仓类型、文档、样式和 Rust 格式检查通过。三个正式 tarball 在仓库外共同安装，验证 ESM/CommonJS、公开子路径、旧工厂别名、15 条预览行为及 bundler/NodeNext 声明解析。发布脚本 5 项通过。
+
+| npm 制品 | SHA-256 |
+|---|---|
+| @itookit/mindos-node-client@0.3.0 | `9f0d33a7f6c4e1de567746fe51d1e75ceef3ae0e0caa1771d2a70378fa5f0a32` |
+| @itookit/vfs-ui@0.6.0 | `ff919033c11bd9432e9d95c6d861826a0adbb213da0518018282ead19d052761` |
+| @itookit/image-parser@0.2.0 | `831da8756ab66c7bded83e96a0304a6e481b25827556441b425065fa86ce7fea` |
+
+发布状态：制品准备完成，等待 npm 二次认证与公开注册表核对；本条尚不表示发布成功。

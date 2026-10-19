@@ -999,6 +999,45 @@ function composerStorage(peer: ConversationControls) {
     peer.readComposerAsset = async id => assets.get(id)!;
     return () => stored;
 }
+it.each(['accepted', 'rejected', 'unavailable'] as const)('queries the exact submission after Load failed and the receipt is %s', async outcome => {
+    const {editor, peer, host} = setup(), stored = composerStorage(peer);
+    vi.mocked(peer.send).mockRejectedValue(new TypeError('Load failed'));
+    vi.mocked(peer.reconcile).mockImplementation(async id => {
+        if (outcome === 'unavailable') throw new TypeError('Load failed');
+        return {...state, submission: {id: id!, status: outcome, ...(outcome === 'accepted' ? {turnId: 'confirmed'} : {code: 'HARNESS_SESSION_BUSY'})},
+            ...(outcome === 'accepted' ? {submittedTurnId: 'confirmed'} : {})};
+    });
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        input.value = 'Keep input'; input.dispatchEvent(new Event('input'));
+        const sending = editor.sendText('Keep input');
+        if (outcome === 'accepted') await sending;
+        else await expect(sending).rejects.toThrow('Load failed');
+        const id = vi.mocked(peer.send).mock.calls[0][3];
+        expect(peer.reconcile).toHaveBeenCalledExactlyOnceWith(id);
+        expect(peer.send).toHaveBeenCalledOnce();
+        expect(input.value).toBe(outcome === 'accepted' ? '' : 'Keep input');
+        expect(!!JSON.parse(stored().data).remoteSubmission).toBe(outcome === 'unavailable');
+        if (outcome === 'rejected') expect(host.textContent).toContain(t('chat.submission.occupied'));
+    } finally {await editor.destroy();}
+});
+it('recovers a native command receipt after a lost HTTP response without executing it twice', async () => {
+    const {editor, peer, host} = setup(), stored = composerStorage(peer);
+    vi.mocked(peer.read).mockResolvedValue({...state, supportsSlashCommands: true});
+    peer.commands = vi.fn(async () => [{name: 'compact', description: 'Compact', kind: 'action'}]);
+    peer.command = vi.fn(async () => {throw new TypeError('Load failed');});
+    vi.mocked(peer.reconcile).mockImplementation(async id => ({...state, submission: {id: id!, status: 'accepted'}}));
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        input.value = '/compact'; input.dispatchEvent(new Event('input'));
+        await editor.sendText('/compact');
+        expect(peer.command).toHaveBeenCalledOnce(); expect(peer.send).not.toHaveBeenCalled();
+        expect(peer.reconcile).toHaveBeenCalledExactlyOnceWith(vi.mocked(peer.command).mock.calls[0][4]);
+        expect(input.value).toBe(''); expect(JSON.parse(stored().data).remoteSubmission).toBeUndefined();
+    } finally {await editor.destroy();}
+});
 it('preserves newer persisted input across reopening and exact submission reconciliation', async () => {
     const {editor, peer, host} = setup(), stored = composerStorage(peer);
     peer.saveDraft = vi.fn(async () => {throw new Error('Native draft storage must not be used');});

@@ -18,6 +18,7 @@ import { projectIconMenu } from './project-menu-icons';
 import { sessionCreationReason } from './session-creation-policy';
 import { projectDirectoryActions } from './directory-actions';
 import {fileFirst, navigationPriority, projectItems} from './navigation-policy';
+import {projectNavigationPreview} from './navigation-preview';
 import { ProjectSearchPanel } from './project-search-panel';
 import { createProjectDirectorySearch } from './project-directory-search';
 import { showRemoteSessionFamily } from './remote-session-family';
@@ -346,6 +347,7 @@ export class SessionWorkbench implements WorkspaceController {
         if (this.projects) this.installProjectNavigation();
         if (this.searchPanel && this.projectNavigation) this.projectNavigation.header.after(this.searchPanel.element);
         this.sidebarUI = createVFSUI({ sessionListContainer: tree, title: this.projects ? t('project.workspace') : '会话', scopeId: SESSION_BROWSER_SCOPE,
+            directoryPreview: node => projectNavigationPreview(node, path => this.openResource(path, {directory: true})),
             navigationChildren: node => (node.children ?? []).filter(child => child.metadata.custom.navigationTransparent === true).map(child => child.id),
             persistence: presentationPersistence(this.uiPersistence), onError: error => this.report(error),
             listItems: items => {

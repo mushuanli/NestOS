@@ -404,6 +404,8 @@ export const zhCN = {
 
     'project.conversations': '全部会话',
     'project.moreConversations': '更多会话',
+    'project.moreFiles': '更多文件',
+    'project.moreFavorites': '更多收藏',
     'project.createWith': '新建 · {name}',
     'project.sourceUnavailable': '{name} 暂不可用，刷新重试',
     'project.sync.indicator.configured': '已设置同步',
@@ -753,7 +755,7 @@ export const zhCN = {
     'harness.reconcile': '查询操作结果',
     'harness.prompt': '输入任务或后续消息',
     'harness.send': '发送',
-    'chat.submission.occupied': '会话正被另一个 Codex 实例占用，请在原客户端释放会话后再发送，或创建新分支。',
+    'chat.submission.occupied': 'Codex 后台进程仍持有会话写入锁，退出界面后也可能延迟释放。请稍后重试，或创建新分支继续。',
     'chat.submission.unconfirmed': '本轮消息未得到提交确认，输入已保留。',
     'chat.submission.submitting': '正在提交，等待确认…',
     'chat.submission.accepted': '已提交',

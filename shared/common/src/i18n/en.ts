@@ -403,6 +403,8 @@ export const en: LocaleStrings = {
 
     'project.conversations': 'All conversations',
     'project.moreConversations': 'More conversations',
+    'project.moreFiles': 'More files',
+    'project.moreFavorites': 'More favorites',
     'project.createWith': 'New · {name}',
     'project.sourceUnavailable': '{name} unavailable; refresh to retry',
     'project.sync.indicator.configured': 'Sync configured',
@@ -752,7 +754,7 @@ export const en: LocaleStrings = {
     'harness.reconcile': 'Check operation result',
     'harness.prompt': 'Enter a task or follow-up message',
     'harness.send': 'Send',
-    'chat.submission.occupied': 'Another Codex instance owns this session. Release it in that client before sending, or create a new branch.',
+    'chat.submission.occupied': 'A Codex background process still holds this session’s write lock. It may remain after the client closes. Retry later or continue in a new branch.',
     'chat.submission.unconfirmed': 'This message was not acknowledged. Your input is retained.',
     'chat.submission.submitting': 'Submitting; waiting for acknowledgement…',
     'chat.submission.accepted': 'Submitted',

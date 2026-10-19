@@ -31,7 +31,7 @@ export interface ConversationSnapshot {
     usageEstimate?: {currency: 'USD'; estimatedCostUsd: number | null; complete: boolean};
     /** Native turn identity acknowledged for the most recent send on this view. */
     submittedTurnId?: string;
-    submission?: {id: string; status: 'pending' | 'accepted' | 'rejected'; turnId?: string};
+    submission?: {id: string; status: 'pending' | 'accepted' | 'rejected'; turnId?: string; code?: string};
     draftAttachments?: ConversationAttachment[];
     attachments?: Array<'text' | 'image'>;
     archived?: boolean; canRename?: boolean; canArchive?: boolean; canUnarchive?: boolean;

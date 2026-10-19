@@ -172,7 +172,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             await this.acceptSubmission(draft.text, draft.files, draft.revision);
         } else {
             this.composer.accepted();
-            if (this.submission?.id === receipt.id) this.submission = {...this.submission, state: 'failed', error: t('chat.submission.unconfirmed')};
+            if (this.submission?.id === receipt.id) this.submission = {...this.submission, state: 'failed', error: this.sendError({remoteCode: receipt.code}) ?? t('chat.submission.unconfirmed')};
             await this.composer.save(this.view.input.getConfig(), this.draftFiles);
         }
         this.submittedDraft = undefined;
@@ -257,13 +257,25 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         return selection ? this.service.send(text.trim() || t('harness.attachmentPrompt'), attachments, selection)
             : attachments.length ? this.service.send(text.trim() || t('harness.attachmentPrompt'), attachments) : this.service.send(text);
     }
-    private async submissionFailure(error: unknown, beforeSend: boolean): Promise<never> {
+    private async submissionFailure(error: unknown, beforeSend: boolean): Promise<ConversationSnapshot> {
         if (beforeSend && this.composer) {this.composer.accepted(); await this.composer.save(this.view.input.getConfig(), this.draftFiles).catch(failure => this.emit('saveError', failure));}
         await this.releaseRejectedSubmission(error);
         this.submission = {...this.submission!, state: this.composer?.hasSubmission || this.service.snapshot?.().pending || (error as {outcome?: string})?.outcome === 'unknown' ? 'unknown' : 'failed',
             error: this.sendError(error)};
+        const recovered = await this.recoverSubmission();
+        if (recovered?.submission?.status === 'accepted') return recovered;
         if (!this.closed) {this.view.history.view.setSubmission(this.submission); this.showError(error);}
         throw error;
+    }
+    private async recoverSubmission(): Promise<ConversationSnapshot | undefined> {
+        const id = this.composer?.submissionId;
+        if (!id || this.submission && this.submission.state !== 'unknown' || this.closed) return;
+        try {
+            // Query the exact receipt once; never replay the failed send.
+            const snapshot = await this.service.reconcile(id);
+            if (snapshot.submission?.id !== id || snapshot.submission.status === 'pending') return;
+            await this.show(snapshot); return snapshot;
+        } catch { /* Keep the frozen submission until a later explicit receipt query succeeds. */ }
     }
     private submittedMessageId(turnId?: string): string | undefined {
         return turnId ? remoteRounds([{id: 'ack', role: 'user', text: '', turnId}])[0]?.id : undefined;
@@ -288,7 +300,9 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             });
         } catch (error) {
             if (ready && !invoked && this.composer) {this.composer.accepted(); await this.composer.save(this.view.input.getConfig(), this.draftFiles).catch(failure => this.emit('saveError', failure));}
-            await this.releaseRejectedSubmission(error); throw error;
+            await this.releaseRejectedSubmission(error);
+            if ((await this.recoverSubmission())?.submission?.status === 'accepted') return;
+            throw error;
         }
         if (this.snapshot?.pending || this.composer?.hasSubmission) throw new Error(t('chat.submission.unknown'));
     }
@@ -302,7 +316,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.draftFiles = this.draftFiles.filter(file => !files.includes(file)); this.savedFiles = [];
         this.savedDraft = '';
         this.composer?.accepted();
-        if (this.composer) {try {await this.flushPendingSave();} catch (error) {this.emit('saveError', error);}}
+        if (this.composer) {try {await this.flushPendingSave(true);} catch (error) {this.emit('saveError', error);}}
         this.emit(this.isDirty() ? 'interactiveChange' : 'saved', undefined);
     }
     private async run(action: () => Promise<ConversationSnapshot>) {
@@ -415,8 +429,8 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     }
     focus() { this.view.input.focus(); }
     isDirty() { return (this.composer && JSON.stringify(this.view?.input.getConfig()) !== this.savedConfig) || (this.view?.input.getConfig().text ?? '') !== this.savedDraft || this.draftFiles.length !== this.savedFiles.length || this.draftFiles.some((file, index) => file !== this.savedFiles[index]); }
-    async flushPendingSave() {
-        if (!this.isDirty() || this.closed) return;
+    async flushPendingSave(force = false) {
+        if (!force && !this.isDirty() || this.closed) return;
         try {
             const files = [...this.draftFiles], config = this.view.input.getConfig(), text = config.text;
             if (this.composer) {

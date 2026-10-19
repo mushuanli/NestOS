@@ -1,18 +1,19 @@
 # 独立库源码工作区与 npm 构建
 
-MindOS 默认消费固定 Git 提交的独立库源码。九个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui），保留独立仓库和 npm 发布能力。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
+MindOS 默认消费固定 Git 提交的独立库源码。十个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui），保留独立仓库和 npm 发布能力。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
 
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
-| @itookit/vfs-core | `libraries/vfs-core` | 5.3.2 |
-| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.10 |
-| @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.3 |
-| @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.0 |
-| @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.4 |
-| @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.0 |
-| @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.4 |
+| @itookit/vfs-core | `libraries/vfs-core` | 5.3.3 |
+| @itookit/vfs-ui | `libraries/vfs-ui` | 0.5.12 |
+| @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.4 |
+| @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.1 |
+| @itookit/piagent-driver | `libraries/piagent-driver` | 0.2.5 |
+| @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.1 |
+| @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.8 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
-| @itookit/llm-ui | `libraries/llm-ui` | 0.2.0 |
+| @itookit/llm-ui | `libraries/llm-ui` | 0.2.1 |
+| @itookit/image-parser | `libraries/image-parser` | 0.1.0 |
 
 ## 源码开发
 
@@ -166,3 +167,16 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 
 - piagent-driver@0.2.4：名称/目录文件搜索与仅用户提问搜索，显式协商 fileSearchVersion/searchPrompts，旧服务拒绝不支持的新范围。
 - pi-agent@0.3.7：project_search 名称/目录范围、harness_session_search 用户提问与 DSH 有界分页搜索；原生制品 `release/native/pi-agent-0.3.7-linux-x86_64.tar.gz`，不自动替换正在运行的远程服务。
+
+
+### 2026-10-19 图片处理、输入恢复与依赖同步发布
+
+本轮准备发布 image-parser@0.1.0、llm-ui@0.2.1、piagent-driver@0.2.5、vfs-core@5.3.3、vfs-sync@0.1.1、vfs-ui@0.5.12、vfsdriver-indexeddb@5.3.4、vfsdriver-local@5.3.1 和 mdxeditor@0.5.8。存储驱动同步固定新 core，避免独立消费者混用 core 版本；driver-llm@0.4.0 沿用已有制品。
+
+首次仓库外消费核对发现，公开 mdxeditor@0.5.7 的 exports 指向 src，但 tarball 没有 src，不能作为新聊天库的依赖。0.5.8 使用 prepare 规范化的 dist 入口，修复制品发布方式，不覆盖已有版本；llm-ui@0.2.1 固定使用新版本。
+
+源码验证共868项通过、1项网络测试跳过，覆盖上述九个库；全仓类型检查、发布脚本、架构和文档检查通过。图片检测实验和验收记录一并提交，但正式检测仍保持 Scanic classical；实验门槛未通过不作为可用生产能力发布。图片库 npm files 仅包含 dist、README 和 LICENSE，不携带实验输入照片。
+
+九个正式 prepare tarball 已在仓库外安装，通过 ESM/CommonJS、公开子路径、CSS、Memory/IndexedDB SeqFile、图片与视图生命周期、TypeScript bundler/NodeNext 声明及 Vite 构建验证，没有工作区源码链接。文档和已安装工作区检查通过。
+
+发布状态：制品验证完成，等待 npm 发布与公开下载核对。制品及 SHA-256 保存在 release/npm-libraries，后续核对后更新本节。

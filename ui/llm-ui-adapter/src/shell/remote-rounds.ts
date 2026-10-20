@@ -6,6 +6,14 @@ import { TRANSCRIPT_CONTEXT, TRANSCRIPT_SYSTEM, TRANSCRIPT_TOOL, contextLabel, t
 interface Round { key: string; users: ConversationMessage[]; responses: ConversationMessage[] }
 interface UserPart { markdown: string; context: boolean }
 
+/** Keep presentation IDs separate from the native identities used by branch commands. */
+export function remoteBranchTargets(messages: ConversationMessage[]): Array<{id: string; messageId: string; turnId?: string; latest: boolean}> {
+    const rounds = collectRounds(messages);
+    return rounds.filter(round => round.users.length).map(round => ({id: roundId(round) + '-user',
+        messageId: round.users[0].id, turnId: round.users.find(message => message.turnId)?.turnId,
+        latest: round === rounds.at(-1)}));
+}
+
 /** Turn identities survive paging; older clients fall back to user-message boundaries. */
 export function remoteRounds(messages: ConversationMessage[], encode: TranscriptEncoder = transcriptCodeBlock): SessionGroup[] {
     return collectRounds(messages).flatMap(round => projectRound(round, encode));

@@ -3,6 +3,7 @@ import type { ConversationExecution, ConversationRunCoordinatorOptions } from '.
 import type { ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
 import { ContextProfileStore } from '../persistence/context-profile-store';
 import { directExecutionMode } from './direct-execution-mode';
+import type {RoundManifest} from '../persistence/round-types';
 
 export interface ConversationLocation { branchRef: string; branchHead: string | null; }
 type ContextOptions = Pick<ConversationRunCoordinatorOptions, 'engine' | 'loadArtifact' | 'retrieveMemory' | 'resolveSessionContext'>;
@@ -33,7 +34,7 @@ export class ConversationContextBuilder {
         const manifest = await execution.log.loadManifest();
         const profile = manifest.branchMeta[location.branchRef]?.contextProfile
             ?? { id: '', revision: 0 };
-        const assembler = this.contextAssembler(execution, includeMemory);
+        const assembler = this.contextAssembler(execution, location.branchRef, manifest, includeMemory);
         const version = execution.task.frozen?.agentVersion
             ?? execution.config.agentVersion
             ?? 'unversioned';
@@ -53,12 +54,14 @@ export class ConversationContextBuilder {
 
     private contextAssembler(
         execution: ConversationExecution,
+        branchRef: string,
+        manifest: RoundManifest,
         includeMemory = true,
     ): IContextAssembler {
         return createContextAssembler({
             log: execution.log,
             profileStore: new ContextProfileStore(this.options.engine, execution.task.sessionId),
-            readRound: roundId => execution.log.readRound(roundId),
+            readRound: roundId => execution.log.readRound(roundId, branchRef, manifest),
             loadArtifact: id => this.options.loadArtifact(id),
             retrieveMemory: includeMemory && this.options.retrieveMemory ? (plan, agent) => this.options.retrieveMemory!(plan, agent, {
                 sessionId: execution.task.sessionId, policy: structuredClone(execution.config.memoryPolicy),

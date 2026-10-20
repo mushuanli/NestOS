@@ -180,15 +180,60 @@ export class RoundGraphService {
 
     // ── Read / Write ───────────────────────────────────────────────────────
 
-    async readRound(roundId: RoundId): Promise<PersistedRound | null> {
-        return readRoundDocument(() => this.engine.readDocument(this.sessionId, `round-${roundId}.json`));
+    async readRound(roundId: RoundId, ref?: Ref, manifest?: RoundManifest): Promise<PersistedRound | null> {
+        const state = manifest ?? await this.loadManifest();
+        const documentId = state.branchMeta[ref ?? state.currentBranch]?.roundOverrides?.[roundId] ?? roundId;
+        const round = await readRoundDocument(() => this.engine.readDocument(this.sessionId, `round-${documentId}.json`));
+        return round && documentId !== roundId ? {...round, id: roundId} : round;
     }
 
     private async writeRound(roundId: RoundId, round: PersistedRound): Promise<void> {
         await this.engine.writeDocument(this.sessionId, `round-${roundId}.json`, JSON.stringify(round, null, 2));
     }
 
+    /** Detach shared payloads on first mutation without changing message or lineage identities. */
+    private async writeRoundUpdate(roundId: RoundId, round: PersistedRound): Promise<void> {
+        await this.withWrite(async () => {
+            const manifest = await this.loadManifest(), ref = manifest.currentBranch;
+            const metadata = manifest.branchMeta[ref];
+            const documentId = metadata?.roundOverrides?.[roundId] ?? roundId;
+            const shared = sharesPayload(manifest, ref, roundId, documentId);
+            if (!shared) {await this.writeRound(documentId, {...round, id: documentId}); return;}
+            const ownedId = ulid();
+            await this.writeRound(ownedId, {...round, id: ownedId});
+            manifest.branchMeta[ref] = {...(metadata ?? {createdAt: Date.now(), createdFrom: 'manual',
+                forkedFromBranch: ref, branchRootRoundId: manifest.branches[ref] ?? roundId}),
+                roundOverrides: {...metadata?.roundOverrides, [roundId]: ownedId}};
+            await this.saveManifest(manifest);
+        });
+    }
+
     // ── Fork — create sibling Round on a new branch ────────────────────────
+
+    /** Continue after a complete Round, sharing its immutable history and output. */
+    async branchAfterRound(sourceRoundId: RoundId, name?: Ref): Promise<{branchName: Ref; headRoundId: RoundId}> {
+        if (name && (name.length > 256 || name !== name.trim() || /[\x00-\x1f]/.test(name))) throw new RoundGraphError('Invalid branch name', 'INVALID_NAME');
+        return this.withWrite(async () => {
+            const source = await this.readRound(sourceRoundId);
+            if (!source || source._deleted) throw new RoundGraphError('Branch source is unavailable', 'NOT_FOUND');
+            if (!['completed', 'failed', 'cancelled'].includes(source.status)) throw new RoundGraphError('Branch source is still running', 'ROUND_ACTIVE');
+            const manifest = await this.loadManifest(), fromBranch = manifest.currentBranch;
+            let branchName = name;
+            if (!branchName) {
+                let index = Object.keys(manifest.branches).length;
+                do { branchName = `branch-${index++}`; } while (Object.hasOwn(manifest.branches, branchName));
+            }
+            if (branchName in manifest.branches) throw new RoundGraphError(`Branch already exists: ${branchName}`, 'BRANCH_EXISTS');
+            manifest.branches[branchName] = sourceRoundId;
+            manifest.branchMeta[branchName] = {createdAt: Date.now(), createdFrom: 'manual', forkedFromBranch: fromBranch,
+                sourceRoundId, commonHeadId: sourceRoundId, branchRootRoundId: sourceRoundId,
+                contextProfile: manifest.branchMeta[fromBranch]?.contextProfile,
+                roundOverrides: manifest.branchMeta[fromBranch]?.roundOverrides};
+            manifest.currentBranch = branchName; manifest.currentHead = sourceRoundId;
+            await this.saveManifest(manifest);
+            return {branchName, headRoundId: sourceRoundId};
+        });
+    }
 
     async forkUserRound(
         sourceRoundId: RoundId,
@@ -247,6 +292,7 @@ export class RoundGraphService {
             branchRootRoundId: newRoundId,
             // Inherit context profile from parent branch (copy-on-write)
             contextProfile: manifest.branchMeta[fromBranch]?.contextProfile,
+            roundOverrides: manifest.branchMeta[fromBranch]?.roundOverrides,
         };
         manifest.branches[branchName] = newRoundId;
         manifest.branchMeta[branchName] = meta;
@@ -285,6 +331,7 @@ export class RoundGraphService {
             commonHeadId,
             branchRootRoundId: newRootRoundId,
             contextProfile: manifest.branchMeta[fromBranch]?.contextProfile,
+            roundOverrides: manifest.branchMeta[fromBranch]?.roundOverrides,
         };
         manifest.currentBranch = branchName;
         manifest.currentHead = commonHeadId ?? null;
@@ -325,7 +372,7 @@ export class RoundGraphService {
             ...(update.agentId ? { agentId: update.agentId } : {}),
             result: update.result,
         };
-        await this.writeRound(roundId, updated);
+        await this.writeRoundUpdate(roundId, updated);
 
         const assistant = update.assistantMessages.find(message => message.role === 'assistant');
         const changes: RoundChangeSet = {
@@ -353,7 +400,7 @@ export class RoundGraphService {
         // Cancellation is a terminal failure too: dropping its reason made a reloaded run show an
         // unexplained empty assistant bubble while the live transcript had shown the reason.
         const failure = status === 'failed' || status === 'cancelled' ? error : undefined;
-        await this.writeRound(roundId, { ...round, status, completedAt, error: failure,
+        await this.writeRoundUpdate(roundId, { ...round, status, completedAt, error: failure,
             // A failed Round keeps the Tool calls it managed to start, so a reloaded transcript can
             // still show which tool failed instead of dropping the node entirely.
             ...(result ? { result } : {}) });
@@ -370,7 +417,7 @@ export class RoundGraphService {
         if (!round) throw new RoundGraphError(`Round not found: ${roundId}`, 'NOT_FOUND');
         const executions = [...round.executions];
         if (!executions.some(item => item.taskId === execution.taskId)) executions.push(execution);
-        await this.writeRound(roundId, { ...round, executions, status: 'running' });
+        await this.writeRoundUpdate(roundId, { ...round, executions, status: 'running' });
         this.onEvent?.({ type: 'round:updated', roundId, changes: {} });
     }
 
@@ -385,7 +432,7 @@ export class RoundGraphService {
             status: 'pending',
             completedAt: undefined,
         };
-        await this.writeRound(roundId, updated);
+        await this.writeRoundUpdate(roundId, updated);
 
         if (this.onEvent) {
             this.onEvent({ type: 'round:updated', roundId, changes: { assistantContent: '', thinking: '' } });
@@ -396,7 +443,7 @@ export class RoundGraphService {
     async deleteRound(roundId: RoundId): Promise<void> {
         const round = await this.readRound(roundId);
         if (!round) return;
-        await this.writeRound(roundId, { ...round, _deleted: true });
+        await this.writeRoundUpdate(roundId, { ...round, _deleted: true });
 
         if (this.onEvent) {
             this.onEvent({ type: 'round:deleted', roundId });
@@ -407,7 +454,7 @@ export class RoundGraphService {
     async markStale(roundId: RoundId): Promise<void> {
         const round = await this.readRound(roundId);
         if (!round) return;
-        await this.writeRound(roundId, { ...round, stale: true });
+        await this.writeRoundUpdate(roundId, { ...round, stale: true });
 
         if (this.onEvent) {
             this.onEvent({ type: 'round:updated', roundId, changes: { stale: true } });
@@ -524,6 +571,18 @@ export class RoundGraphService {
                 return (ra?.createdAt ?? 0) - (rb?.createdAt ?? 0) || a.localeCompare(b);
             });
     }
+}
+
+/** Only live descendant heads can share this logical Round's payload. */
+function sharesPayload(manifest: RoundManifest, ref: Ref, roundId: RoundId, documentId: RoundId): boolean {
+    const pending = [roundId], descendants = new Set<RoundId>();
+    while (pending.length) {
+        const id = pending.pop()!;
+        if (descendants.has(id)) continue;
+        descendants.add(id); pending.push(...(manifest.children[id] ?? []));
+    }
+    return Object.entries(manifest.branches).some(([branch, head]) => branch !== ref && head && descendants.has(head)
+        && (manifest.branchMeta[branch]?.roundOverrides?.[roundId] ?? roundId) === documentId);
 }
 
 function isTerminalConversationStatus(status: NonNullable<Round['status']>): boolean {

@@ -1,25 +1,29 @@
 import {ConversationComposer} from './drafts/conversation-composer';
 import type {IChatInputConfig} from '../domain/ports/IChatInputPresenter';
 interface SubmittedInput {text: string; files: File[]; revision: number; config: IChatInputConfig}
-import { BaseSettingsEditor, conversationStatus, type ConversationControls, type ConversationSnapshot, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap } from '@itookit/ui-common';
-import { randomUUID, t } from '@itookit/common';
+import { BaseSettingsEditor, Toast, conversationStatus, type ConversationControls, type ConversationSnapshot, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap } from '@itookit/ui-common';
+import { escapeHTML, randomUUID, t } from '@itookit/common';
 import {renderConversationRequests, clearConversationRequests} from './remote-interactions';
 import { ConversationWorkspaceView } from './ConversationWorkspaceView';
 import { RemoteBranches } from './remote-branches';
+import {RemoteHistoryBranches} from './remote-history-branches';
 import { remoteRounds, remotePrompts } from './remote-rounds';
 import { prepareRemoteAttachments, restoreRemoteAttachments } from './remote-attachments';
 import type { ChatSubmission } from '../domain/submission';
 import type { WorkspaceHandoff } from './drafts/workspace-handoff';
 import {isCommandInput} from '@itookit/llm-ui';
 import {resolveNativeCommand, submitNativeCommand} from '../independent/native-command';
+import {nativeBranchCommand, withNativeBranchCommands} from '../commands/native-branch-command';
 
 /** Native histories remain remote; this editor only owns a view and input draft. */
 export class RemoteConversationEditor extends BaseSettingsEditor<ConversationControls> {
     private view!: ConversationWorkspaceView;
     private branches?: RemoteBranches;
+    private historyBranches?: RemoteHistoryBranches;
     private snapshot?: ConversationSnapshot;
     private closed = false;
     private active = true;
+    private branchRevision = 0;
     private releaseUpdates?: () => void;
     private updateTimer?: ReturnType<typeof setTimeout>;
     private working = false;
@@ -69,7 +73,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             flushDraft: () => this.flushPendingSave(),
             persistImageFiles: this.composer ? (files, resize) => this.persistImages(files, resize) : undefined,
             models: this.service.models ? () => this.service.models!() : undefined,
-            commands: this.service.commands ? () => this.service.commands!() : undefined,
+            commands: () => this.readCommands(),
             attachments: this.options.readOnly ? undefined : this.service.snapshot?.().attachments,
             stop: () => { void this.runControl(() => this.service.interrupt()).catch(() => {}); },
             refresh: () => { void this.run(() => this.service.read()).catch(() => {}); },
@@ -87,8 +91,12 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
                     void this.run(() => this.service.rename!(title)).catch(() => {});
             },
         }, this.handoff); this.handoff = undefined;
-        this.branches = new RemoteBranches(this.service, this.options, action => this.run(action), error => this.showError(error));
+        const fork = (action: () => Promise<ConversationSnapshot>) => this.runBranch(action);
+        this.branches = new RemoteBranches(this.service, this.options, fork, error => this.showError(error));
         this.container.querySelectorAll('#llm-branch-indicator')[0]!.append(this.branches.element);
+        this.historyBranches = new RemoteHistoryBranches(this.container, this.service, this.options, fork, error => {
+            if (!this.closed && this.active) {this.showError(error); Toast.error(escapeHTML(error instanceof Error ? error.message : String(error)));}
+        });
     }
     private persistImages(files: File[], resize: import('@itookit/image-parser').ImageResizePolicy): Promise<void> {
         const config = this.view.input.getConfig();
@@ -181,6 +189,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.container.querySelectorAll<HTMLButtonElement>('#llm-btn-refresh')[0]!.disabled = this.working || this.loadingHistory;
         this.view.setRenameAvailability(!this.working && !this.options.readOnly && !!this.snapshot?.canRename && !!this.service.rename);
         if (this.snapshot) this.branches?.update(this.snapshot, this.working);
+        if (this.snapshot) this.historyBranches?.update(this.snapshot, this.working);
         this.view.earlier.hidden = !this.snapshot?.hasEarlier || !this.service.loadEarlier;
         this.view.earlier.disabled = this.working || this.loadingHistory;
         this.view.setHistoryProgress(this.snapshot?.messages.length ?? 0, !!this.snapshot?.hasEarlier, this.loadingHistory, this.historyError);
@@ -222,6 +231,10 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     }
     async sendText(text: string, files: File[] = [], nativeSelection?: import('@itookit/ui-common').ConversationModelSelection): Promise<void> {
         if (!text.trim() && !files.length) return;
+        const command = nativeBranchCommand(text);
+        if (command) {
+            await this.sendBranchCommand(command, text, files); return;
+        }
         if (this.closed || this.working || this.submission?.state === 'unknown' || this.composer?.hasSubmission || this.options.readOnly || !this.snapshot?.canSend) throw new Error(t('harness.remoteBusy'));
         const selection = nativeSelection ? {...nativeSelection} : this.view.input.getNativeModelSelection();
         const revision = this.view.input.getDraftRevision(), currentText = this.view.input.getConfig().text;
@@ -234,6 +247,30 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         await this.run(() => this.sendInput(input, selection, frozen));
         if (this.submission?.state === 'unknown' || this.composer?.hasSubmission) throw new Error(t('chat.submission.unknown'));
         if (this.submission?.state === 'failed') throw new Error(t('chat.submission.unconfirmed'));
+    }
+    private async sendBranchCommand(command: {name: string; arguments: string}, text: string, files: File[]): Promise<void> {
+        try {
+            if (files.length) throw new Error(t('harness.commandUnavailable'));
+            if (this.closed || !this.active || this.options.readOnly || this.working || this.composer?.hasSubmission) throw new Error(t('branch.unavailable'));
+            const revision = this.view.input.getDraftRevision(), draft = this.view.input.getConfig().text;
+            const accepted = () => this.acceptSubmission(draft.trim() === text.trim() ? draft : text, [], revision);
+            if (command.name === 'branch') await this.branches!.createLatest(command.arguments, accepted);
+            else {if (command.arguments.trim()) throw new Error(t('harness.commandUnavailable')); await this.branches!.open(); await accepted();}
+        } catch (error) {if (!this.closed) this.showError(error); throw error;}
+    }
+    private async runBranch(action: () => Promise<ConversationSnapshot>): Promise<void> {
+        const revision = this.branchRevision, sessionId = this.snapshot?.sessionId;
+        const available = () => !this.closed && this.active && !this.options.readOnly
+            && revision === this.branchRevision && sessionId === this.snapshot?.sessionId && !!this.snapshot?.canFork;
+        if (!available()) throw new Error(t('branch.unavailable'));
+        await this.run(async () => {
+            await this.flushPendingSave();
+            if (!available()) throw new Error(t('branch.unavailable'));
+            return action();
+        });
+    }
+    private async readCommands(): Promise<import('@itookit/ui-common').ConversationSlashCommand[]> {
+        return withNativeBranchCommands(await this.service.commands?.() ?? []);
     }
     private async sendInput(input: SubmittedInput, selection: import('@itookit/ui-common').ConversationModelSelection | undefined, frozen?: Promise<string>): Promise<ConversationSnapshot> {
         let ready = false, invoked = false;
@@ -401,8 +438,10 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         const message = error instanceof Error ? error.message : t('harness.failed');
         this.view.setStatus(t('harness.updateFailed', {message}));
     }
-    async destroy(preserveInput = false) { if (this.closed) return; await this.flushPendingSave(); this.closed = true; this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearConversationRequests(this.view.interactions); await this.service.close(); await this.tail; await this.renderTail; this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
+    async destroy(preserveInput = false) { if (this.closed) return; this.cancelPendingRender(); await this.flushPendingSave(); this.closed = true; this.historyBranches?.destroy(); this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearConversationRequests(this.view.interactions); await this.service.close(); await this.tail; await this.renderTail; this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
     cancelPendingRender(): void {
+        ++this.branchRevision;
+        this.historyBranches?.setActive(false);
         this.view?.input.hideNativeModelPicker();
         this.view?.history.view.setActive(false);
         this.active = false; this.releaseUpdates?.(); this.releaseUpdates = undefined;
@@ -410,6 +449,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     }
     async activate(): Promise<void> {
         if (this.closed || this.active) return;
+        this.historyBranches?.setActive(true);
         this.view?.history.view.setActive(true);
         this.active = true; await this.tail; await this.show(await this.service.read());
         if (!this.active || this.closed) return;
@@ -450,7 +490,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         if (!this.events.has(event)) this.events.set(event, new Set());
         this.events.get(event)!.add(listener); return () => { this.events.get(event)?.delete(listener); };
     }
-    setReadOnly(value: boolean) { this.options.readOnly = value; this.updateControls(); }
+    setReadOnly(value: boolean) { if (value !== !!this.options.readOnly) ++this.branchRevision; this.options.readOnly = value; this.updateControls(); }
     get commands() { return {sendMessage: (message: {text: string; files?: File[]; nativeSelection?: import('@itookit/ui-common').ConversationModelSelection}) => {
         return this.sendText(message.text, message.files, message.nativeSelection);
     }}; }

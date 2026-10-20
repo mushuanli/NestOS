@@ -18,6 +18,7 @@ class ConversationView {
     private starting = 0;
     private polling: Promise<unknown> = Promise.resolve();
     private quoteFailed = false;
+    private failures = 0;
     constructor(private readonly source: HarnessConversationPort, private readonly quote?: (usage: HarnessUsage) => UsageCostEstimate, private readonly conversationId?: string,
         private readonly activityChanged?: () => void) {
         this.current = immutableData(undefined, this.project(source.snapshot()));
@@ -49,11 +50,11 @@ class ConversationView {
         return () => { this.listeners.delete(listener); if (!this.listeners.size) { clearTimeout(this.timer); this.timer = undefined; } };
     }
     private schedule(): void {
-        if (this.closed || this.timer || this.pumping || !this.listeners.size || !this.starting && !this.isActive(this.current)) return;
+        if (this.closed || this.timer || this.pumping || !this.listeners.size) return;
         this.timer = setTimeout(() => {
             this.timer = undefined; this.pumping = true;
             void this.invoke(this.source.poll, [], 'poll').catch(() => {}).finally(() => { this.pumping = false; this.schedule(); });
-        }, 200);
+        }, this.failures ? Math.min(30_000, 1000 * 2 ** Math.min(this.failures - 1, 5)) : this.starting || this.isActive(this.current) ? 200 : 15_000);
     }
     private isActive(snapshot: ProjectConversationSnapshot): boolean { return !!(snapshot.active || snapshot.canInterrupt || snapshot.requests?.length); }
     private invoke(method: (...args: any[]) => unknown, args: unknown[], key: string): Promise<any> {
@@ -61,10 +62,17 @@ class ConversationView {
         const execute = async () => {
             if (this.closed) throw new FSError('EIO', 'Conversation view closed');
             const starting = key === 'send' || key === 'command';
-            if (starting) {++this.starting; this.schedule();}
-            let result: any;
-            try { result = await Reflect.apply(method, this.source, args); }
-            finally {if (starting) --this.starting; if (!this.closed) {this.update(); this.schedule();}}
+            if (starting) {++this.starting; clearTimeout(this.timer); this.timer = undefined; this.schedule();}
+            let result: any, succeeded = false;
+            try { result = await Reflect.apply(method, this.source, args); succeeded = true; }
+            finally {
+                if (starting) --this.starting;
+                if (key === 'poll' || key === 'read') {
+                    const state = this.source.snapshot();
+                    this.failures = !succeeded || state.disconnected || state.observation?.refreshError ? this.failures + 1 : 0;
+                }
+                if (!this.closed) {this.update(); this.schedule();}
+            }
             return result && typeof result === 'object' && 'messages' in result ? this.current : result;
         };
         if (key === 'respond' || key === 'interrupt') return execute();
@@ -80,8 +88,8 @@ class ConversationView {
         const activityChanged = this.isActive(this.current) !== this.isActive(next);
         this.current = next;
         if (activityChanged) this.activityChanged?.();
-        if (!this.isActive(next)) { clearTimeout(this.timer); this.timer = undefined; }
-        else this.schedule();
+        if (activityChanged) {clearTimeout(this.timer); this.timer = undefined;}
+        this.schedule();
         for (const listener of this.listeners) { try { listener(); } catch (error) { console.warn('[Conversation] View listener failed', error); } }
     }
     private close(): Promise<void> {

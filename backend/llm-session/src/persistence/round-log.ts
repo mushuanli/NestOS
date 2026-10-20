@@ -132,14 +132,14 @@ export class RoundLog implements ILog {
         const headId = manifest.branches[ref];
         if (!headId) return []; // empty branch — no phantom root
         const profilePointer = manifest.branchMeta[ref]?.contextProfile;
-        const cacheKey = `${ref}@${headId}@${profilePointer?.id ?? 'default'}:${profilePointer?.revision ?? 0}`;
+        const cacheKey = `${ref}@${headId}@${profilePointer?.id ?? 'default'}:${profilePointer?.revision ?? 0}@${JSON.stringify(manifest.branchMeta[ref]?.roundOverrides ?? {})}`;
         const cached = this._cache.get(cacheKey);
         if (cached) return cached;
         const profile = profilePointer
             ? await this.profileStore.getProfile(profilePointer.id, profilePointer.revision)
             : null;
 
-        const messages = await foldContextHistory(headId, id => this.readRound(id), profile);
+        const messages = await foldContextHistory(headId, id => this.graph.readRound(id, ref, manifest), profile);
         this._cache.set(cacheKey, messages);
         return messages;
     }
@@ -247,6 +247,13 @@ export class RoundLog implements ILog {
         return result;
     }
 
+    /** Create and activate a continuation without replacing the selected Round. */
+    async branchAfterRound(sourceRoundId: RoundId, name?: Ref): Promise<{branchName: Ref; headRoundId: RoundId}> {
+        const result = await this.graph.branchAfterRound(sourceRoundId, name);
+        this._cache.invalidateAll();
+        return result;
+    }
+
     async createBranchForReplacement(
         sourceRoundId: RoundId | null,
         newRootRoundId: RoundId,
@@ -288,8 +295,8 @@ export class RoundLog implements ILog {
 
     // ── Internal helpers ──────────────────────────────────────────────────
 
-    async readRound(roundId: RoundId): Promise<PersistedRound | null> {
-        return this.graph.readRound(roundId);
+    async readRound(roundId: RoundId, ref?: Ref, manifest?: RoundManifest): Promise<PersistedRound | null> {
+        return this.graph.readRound(roundId, ref, manifest);
     }
 
     // ── Manifest access (package-internal, used by RoundRefStore) ─────────

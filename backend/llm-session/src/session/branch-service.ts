@@ -127,7 +127,7 @@ export class BranchService {
 
     async createBranch(
         branchNodeId: string,
-        options?: { name?: string; copyContent?: boolean }
+        options?: { name?: string }
     ): Promise<string> {
         const { sessionId, state } = this.registry.ensureBound();
         this.registry.ensureNotGenerating('create branch');
@@ -142,11 +142,8 @@ export class BranchService {
         }
 
         const roundLog = new RoundLog(this.registry.engine, sessionId);
-        const forked = await roundLog.forkUserRound(session.persistedNodeId, {
-            branchName: options?.name,
-            createdFrom: 'manual',
-        });
-        const newNodeId = forked.newRoundId;
+        const forked = await roundLog.branchAfterRound(session.persistedNodeId, options?.name);
+        const newNodeId = forked.headRoundId;
 
         await this.registry.reloadSessionData(sessionId, state);
 
@@ -154,17 +151,11 @@ export class BranchService {
             type: 'branch:switched',
             payload: {
                 branchName: forked.branchName,
-                headRoundId: forked.newRoundId,
-                branchRootRoundId: forked.newRoundId,
+                headRoundId: forked.headRoundId,
+                branchRootRoundId: forked.headRoundId,
                 reason: 'create',
                 displayPosition: 'top',
             },
-        });
-
-        eventBus.emitSession(sessionId, {
-            type: 'log:appended',
-            ref: forked.branchName,
-            roundId: newNodeId,
         });
 
         eventBus.emitSession(sessionId, {
@@ -292,21 +283,27 @@ export class BranchService {
         }));
     }
 
-    async getBranchMessages(branchHeadNodeId: string): Promise<SessionGroup[]> {
+    async getBranchMessages(branchHeadNodeId: string, branchName?: string): Promise<SessionGroup[]> {
         const { sessionId } = this.registry.ensureBound();
         const roundLog = new RoundLog(this.registry.engine, sessionId);
-        const rounds = await collectRoundChain(roundLog, branchHeadNodeId);
+        const manifest = await roundLog.loadManifest();
+        const matches = Object.entries(manifest.branches).filter(([, head]) => head === branchHeadNodeId);
+        if (!branchName && matches.length > 1) throw new ConversationError(ConversationErrorCode.SESSION_INVALID, 'Branch name required for a shared head');
+        const ref = branchName ?? matches[0]?.[0] ?? manifest.currentBranch;
+        if (!Object.hasOwn(manifest.branches, ref)) throw new ConversationError(ConversationErrorCode.SESSION_INVALID, `Branch not found: ${ref}`);
+        const rounds = await collectRoundChain(roundLog, branchHeadNodeId, ref);
         return rounds.flatMap(round => projectionGroups(roundToProjection(round, round.id)));
     }
 }
 
-async function collectRoundChain(log: RoundLog, headId: string): Promise<PersistedRound[]> {
+async function collectRoundChain(log: RoundLog, headId: string, ref?: string): Promise<PersistedRound[]> {
     const rounds: PersistedRound[] = [];
+    const manifest = await log.loadManifest();
     const visited = new Set<string>();
     let current: string | undefined = headId;
     while (current && !visited.has(current)) {
         visited.add(current);
-        const round = await log.readRound(current);
+        const round = await log.readRound(current, ref, manifest);
         if (!round) break;
         if (!round._deleted) rounds.unshift(round);
         current = round.historyParentIds[0];
@@ -320,7 +317,7 @@ async function collectBranchMemberships(
 ): Promise<Map<string, Set<string>>> {
     const memberships = new Map<string, Set<string>>();
     for (const [name, head] of Object.entries(manifest.branches)) {
-        memberships.set(name, new Set((await collectRoundChain(log, head ?? '')).map(round => round.id)));
+        memberships.set(name, new Set((await collectRoundChain(log, head ?? '', name)).map(round => round.id)));
     }
     return memberships;
 }

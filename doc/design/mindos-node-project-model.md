@@ -189,6 +189,8 @@ Codex 会话从显式配置的 home 通过原生 `thread/list` 发现，再以�
 
 原生分支通过 `harness_fork` → `thread/fork` 创建，名称存入原生会话，epoch/requestId 回执覆盖创建与未知结果恢复。`parentSessionId` 定义分支家族，界面可查看、切换及创建分支；创建后导航到新原生 session 路由，不生成本地 Session。只读项目、空历史、活动会话或待确认操作禁用创建。会话继续使用原生 resume；CLI 不支持的操作保持明确失败，不自动转换或重放。
 
+工作台用户提问下方提供独立分支图标，含义为保留该完整轮次后继续；编辑图标用于替换该提问并在新分支运行。原生观察快照以 `forkSupport: none | latest | turn` 声明位置范围，以 canFork 表达暂时可用性。当前 driver 将已有原生 fork 能力声明为 latest，不声明未接入的历史 turn 分叉；Claude/dsh 当前未支持 fork。选择旧提问时明确确认是否改从末尾分叉，取消或隐藏视图后不执行；支持 turn 的宿主通过 ConversationControls.forkAt 接收真实 messageId/turnId，不能使用展示卡片 ID 或按提问文字匹配。`/branch [name]` 与 `/branches` 是宿主命令，分别创建末尾分支和打开分支列表，不透传终端导航、不发送模型消息。失败保留输入，成功只清理仍匹配的命令草稿。小屏将分支切换器收进顶部更多菜单。
+
 原生会话节点使用语义标题显示模式，路由和原生 ID 保持稳定。名称优先原生 name，再使用 preview；均为空时显示未命名会话。createdAt 与 updatedAt 独立保留为毫秒，驱动兼容旧服务的原生秒时间和 native.createdAt，未知时间不显示 1970 年。侧栏显示创建／修改时间，目录列表的修改时间列和名称悬浮提示使用真实时间；会话标题悬浮提示也包含两种时间。侧栏和目录列表默认按最后修改时间倒序，未知时间排末尾；新建／分页操作保持独立顺序。
 
 原生会话与本地会话共用 llm-ui 的标题栏、历史展示、输入组件、复制/折叠与历史可见性控制。`ConversationWorkspaceView` 装配共享视图，`RemoteConversationEditor` 仅将宿主的 `ConversationControls` 绑定到视图。`remote-rounds` 按原生 turnId 汇总：每轮一个用户请求 MDxEditor 和一个响应 MDxEditor，用户内容数组经 contentParts 保留文字项边界，展示和复制时在各项之间插入 `\n\n---\n\n`；保留同轮全部助手回复及思考，真实重复请求不会按文本去重。工具显示名称、操作、首个非空命令行和目标路径；命令预览最多 240 个字符，不展开后续代码、完整参数或结果；助手正文的代码块仍使用现有折叠控件。时间从原生日志及事件保留为毫秒，未知时间留空。分支标签使用 branchName，根分支为 main；未命名原生分支明确显示未命名，不使用请求预览冒充分支名。缺少 turnId 的旧数据按用户消息边界投影。同一原生轮次的编辑器标识不因分页或增量输出改变，快照刷新保留现有实例。打开会话先显示最近一页，再自动逐页补齐到开头；顶部显示加载进度，失败保留已加载内容并允许手动重试，不随轮询重复失败请求。驱动检测重复和循环游标，并保留已加载的全部页面，刷新和事件缺口恢复不丢弃早期历史。总容量达到 10,000 条或 32 MiB 时明确失败，保留现有历史和游标，不静默裁剪。发送、停止及审批直达远端，不创建本地会话或走本地模型驱动。界面根据原生控制权禁用发送、停止与审批，未知结果保留草稿并提供核对入口。
@@ -311,3 +313,60 @@ DSH 原生 workspace 还会按原 cwd 的规范化结果过滤成员；仅将项
 mindos-node 0.3.2 的 `access` CLI 管理 `principals`、exports、grants 与 public，复用运行时授权编译器。CLI 参数与输出归 cli，配置修改用例和安全文件替换归 admin；HTTP 文件访问和原生执行仍在既有机制内校验，不引入在线 ACL 写入口。旧单用户配置通过显式 init 迁到 owner，保留凭据、目录权限、项目身份与会话归属；修改后需重启。
 
 `list` / `validate` / `check` 针对磁盘上的配置，不对运行中进程宣称已应用；只读打开 export 避免争抢运行服务的写锁，且不会初始化项目、同步库或启动模型。itookit 无需复制目录授权管理策略，继续通过 MCP 能力发现读取 principal/grant revision 与有效权限。
+
+## 工作台提交与观察的恢复边界
+
+```mermaid
+C4Component
+    title 工作台与节点的提交、回执和观察职责
+    Container(ui, "工作台", "原生 DOM / TypeScript", "编辑输入、发起命令、订阅可见视图")
+    Container_Boundary(app, "MindOS 应用运行时：Web / Tauri / httpd") {
+        Component(policy, "应用用例", "app-core", "冻结目标与草稿、维护稳定会话身份")
+        Component(driver, "节点驱动", "mindos-node-driver", "持久操作身份、原生协议和观察投影")
+        ComponentDb(profile, "Profile", "SeqFile 等", "输入草稿、提交证据与原生引用")
+    }
+    Container_Boundary(node, "mindos-node") {
+        Component(auth, "项目授权", "Rust", "当前主体、目录身份、能力与 revision")
+        Component(ledger, "回执账本", "SQLite 临时库", "当前 epoch 的稳定操作身份与防重")
+        Component(runtime, "原生运行时", "HarnessDriver", "原生执行、历史和事件")
+    }
+    Rel(ui, policy, "命令与观察")
+    Rel(policy, profile, "持久化应用状态")
+    Rel(policy, driver, "原生会话端口")
+    Rel(driver, auth, "MCP 请求")
+    Rel(auth, ledger, "查询或准入操作")
+    Rel(auth, runtime, "按当前授权执行新操作")
+    Rel(runtime, ledger, "记录操作结果")
+    Rel(driver, runtime, "读取授权范围内的历史与事件")
+```
+
+HTTP 宿主模式由应用 API 连接工作台与运行时；直连模式在本地调用。文件访问、本地 Session 调用远程工具、原生会话、数据集同步保留各自的身份与恢复边界；图中展开原生会话链路。
+
+提交接纳、原生执行、观察新鲜度和视图生命周期独立。`accepted` 只表示用户操作已接纳，模型完成/失败/取消由原生事件与 `lastResult` 表达。create/resume 是准备子操作，确认它们不能接纳尚未发送的用户消息。
+
+```mermaid
+stateDiagram-v2
+    [*] --> Draft
+    Draft --> Frozen: 持久化提交身份、输入与目标
+    Frozen --> Preparing: 准备原生会话
+    Preparing --> Pending: 持久化操作身份后发送
+    Preparing --> Unknown: 准备结果未知
+    Preparing --> Rejected: 确认未发送用户操作
+    Pending --> Accepted: committed 回执
+    Pending --> Rejected: not-committed 回执
+    Pending --> Unknown: 响应丢失或结果不确定
+    Unknown --> Accepted: 原用户操作已提交
+    Unknown --> Rejected: 原用户操作未提交或仅准备已确认
+    Unknown --> Unknown: 原 epoch 失效或证据不可查询
+    Rejected --> Draft: 保留输入，允许明确重试
+```
+
+回执账本位于 [receipts.rs](../../tools/mindos-node/src/harness/receipts.rs)，与按 revision/readOnly 缓存的原生运行时分离。项目操作以 owner、projectId、规范 profileId、requestId 定位，同一 epoch 内重新挂载和运行时关闭不删除历史事实。查询仍校验当前主体与项目访问权限，过期 revision 只能用于查原回执，不能授权新执行。账本使用有限缓存和 256 MiB 主库上限的私有临时数据库；并发修改上限为 1024，终态不占并发名额。服务重启仍使用新 epoch，不宣称持久回执恢复；存储失败返回 unknown 并保留防重记录。
+
+工作台和项目观察在存在订阅时保持低频空闲检查：空闲 15 秒，项目活跃观察 1 秒、会话流式观察 200 毫秒；失败有界退避。最后一个订阅释放后停止定时器，隐藏/关闭不取消原生任务。首次观察失败且没有缓存行时同样继续退避重试。
+
+会话列表先暂存分页结果，完整成功后替换旧范围并删除缺失成员；分页失败保留最近快照并标 stale。最多读取 8 页、保留 512 项，截断返回 `HarnessStatusRow.truncated=true`，优先保留已观察的会话，未观察到的旧项标 `LIST_TRUNCATED` 并关闭控制能力；容量已满时暂不接入新项，不把截断当作删除。随后完整枚举成功可以清除旧项。
+
+远程分支操作在保存草稿后、调用原生端口前再次检查生命周期版本、绑定身份和只读状态；隐藏、销毁或权限切换使已排队操作失效，快速重新激活也不能恢复旧操作。宿主斜杠命令的识别与候选位于 `commands/native-branch-command.ts`，编辑器只负责接线和草稿接纳。
+
+公共 [HarnessConversationSnapshot](../../libraries/mindos-node-driver/src/harness/conversation-snapshot.ts) 是独立 DTO，不从实现类返回值派生。操作能力集中计算，发送与分支使用一致的新鲜度条件；顶层 active/pending/disconnected 是 observation 的兼容投影。应用端口显式透传 submissionId，确保冻结提交与回执始终对应同一次用户操作。

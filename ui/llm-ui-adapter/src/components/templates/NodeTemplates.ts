@@ -72,19 +72,7 @@ export class NodeTemplates {
         `
             : '';
 
-        const manageHtml = `
-            <button class="llm-icon-btn" data-action="create-branch" title="Create Branch">
-                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
-                    <line x1="6" y1="3" x2="6" y2="15"></line>
-                    <circle cx="18" cy="6" r="3"></circle>
-                    <circle cx="6" cy="18" r="3"></circle>
-                    <path d="M18 9a9 9 0 0 1-9 9"></path>
-                </svg>
-            </button>
-            <div class="llm-ui-sep"></div>
-        `;
-
-        return navHtml + manageHtml;
+        return navHtml;
     }
 
     static statusLabel(status: string): string {
@@ -117,10 +105,11 @@ export class NodeTemplates {
             ${this.action('copy', t('action.copy'), CHAT_ICONS.copy)}
             ${this.action(user ? 'resend' : 'regenerate', t(user ? 'chatMessage.resend' : 'chatMessage.retry'), ACTION_ICONS.rerun)}
             ${this.collapseButton(collapsed)}
+            ${user ? this.action('edit', t('branch.edit'), CHAT_ICONS.edit) + this.action('create-branch', t('branch.continue'), ACTION_ICONS.branch) : ''}
             <details class="llm-ui-message-more">
                 <summary title="${t('chat.toolbar.more')}" aria-label="${t('chat.toolbar.more')}">${CHAT_ICONS.more}</summary>
                 <div class="llm-ui-message-more__items">${branch}
-                    ${this.action('edit', t('action.edit'), CHAT_ICONS.edit)}
+                    ${user ? '' : this.action('create-branch', t('branch.continue'), ACTION_ICONS.branch) + this.action('edit', t('action.edit'), CHAT_ICONS.edit)}
                     ${this.action('delete', t('action.delete'), CHAT_ICONS.delete)}
                 </div>
             </details>
@@ -136,8 +125,7 @@ export class NodeTemplates {
             <div class="llm-ui-bubble__content">
                 <div class="llm-ui-mount-point" id="user-mount-${group.id}"></div>
                 <div class="llm-ui-edit-actions" style="display:none;">
-                    <button class="llm-btn llm-btn--primary" data-action="confirm-edit">${t('chatMessage.saveAndRun')}</button>
-                    <button class="llm-btn" data-action="save-only">${t('chatMessage.saveOnly')}</button>
+                    <button class="llm-btn llm-btn--primary" data-action="confirm-edit">${t('branch.editAndRun')}</button>
                     <button class="llm-btn" data-action="cancel-edit">${t('action.cancel')}</button>
                 </div>
             </div>

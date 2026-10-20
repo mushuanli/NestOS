@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
-import { SessionRepository } from '@itookit/llm-session';
+import { RoundLog, SessionRepository } from '@itookit/llm-session';
 import { exportSessionBundle, importSessionBundle, isSessionBundle, SESSION_BUNDLE_VERSION } from '../src/session/session-bundle';
 
 let cleanup: Array<() => Promise<void>> = [];
@@ -30,6 +30,23 @@ async function seeded() {
 }
 
 describe('Session bundle', () => {
+    it('round-trips branch-owned payloads and rejects missing versions before creating a Session', async () => {
+        const {repository} = await setup(), id = await repository.createSession('Shared history');
+        const log = new RoundLog(repository, id);
+        const round = await log.append('main', {id: 'shared', sessionId: id, historyParentIds: [], input: [{role: 'user', content: 'Q'}],
+            output: [{role: 'assistant', content: 'Original'}], executions: [], status: 'completed', createdAt: 1, origin: 'user'});
+        await log.branchAfterRound(round, 'alternative'); await log.clearAssistantInRound(round);
+        const exported = await exportSessionBundle(repository, id);
+        const imported = await importSessionBundle(repository, exported.content);
+        const restored = new RoundLog(repository, imported);
+        expect((await restored.fold('main')).map(message => message.content)).toEqual(['Q', 'Original']);
+        expect((await restored.fold('alternative')).map(message => message.content)).toEqual(['Q']);
+        expect((await repository.loadView(imported)).chain.rounds[0]).toMatchObject({id: round, output: []});
+        const bundle = JSON.parse(exported.content), before = (await repository.list()).length;
+        delete bundle.documents[`round-${bundle.manifest.branchMeta.alternative.roundOverrides[round]}.json`];
+        await expect(importSessionBundle(repository, JSON.stringify(bundle))).rejects.toMatchObject({code: 'EINVAL'});
+        expect(await repository.list()).toHaveLength(before);
+    });
     it('round-trips the index, settings, documents and attachments', async () => {
         const { repository, id } = await seeded();
         const exported = await exportSessionBundle(repository, id);

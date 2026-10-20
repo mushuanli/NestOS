@@ -1,6 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository } from '../src/persistence/session-repository';
+import {RoundLog} from '../src/persistence/round-log';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.restoreAllMocks(); });
@@ -18,6 +19,22 @@ async function fixture() {
     await repository.updateManifest(id, { rootRoundId: 'r0', currentHead: 'r1', branches: { main: 'r1', other: 'other' } });
     return { repository, id, write, backend };
 }
+
+it('loads branch-owned payloads through indexed and fallback snapshots without changing logical IDs', async () => {
+    const {repository, id, backend} = await fixture();
+    const log = new RoundLog(repository, id);
+    const round = await log.append('main', {id: 'r2', sessionId: id, historyParentIds: ['r1'],
+        input: [{role: 'user', content: 'Question'}], output: [{role: 'assistant', content: 'Original'}],
+        executions: [], status: 'completed', createdAt: 1, origin: 'user'});
+    await log.branchAfterRound(round, 'alternative'); await log.clearAssistantInRound(round);
+    const transaction = vi.spyOn(backend.records!, 'transaction');
+    expect((await repository.loadView(id)).chain.rounds.at(-1)).toMatchObject({id: round, output: []});
+    expect(transaction).toHaveBeenCalledTimes(1);
+    await repository.updateManifest(id, {children: {}});
+    expect((await repository.readHistoryChain(id)).rounds.at(-1)).toMatchObject({id: round, output: []});
+    await repository.updateManifest(id, {currentBranch: 'main', currentHead: round});
+    expect((await repository.loadView(id)).chain.rounds.at(-1)).toMatchObject({id: round, output: [{content: 'Original'}]});
+});
 
 it('reads one selected chain without writes, and sees later branch changes on the next snapshot', async () => {
     const { repository, id, backend } = await fixture();

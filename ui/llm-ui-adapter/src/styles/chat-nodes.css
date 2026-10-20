@@ -751,9 +751,10 @@
 .llm-ui-node__icon svg { width: 16px; height: 16px; }
 .llm-ui-node__status--queued { color: var(--llm-text-secondary); }
 .llm-ui-node__status--aborted { color: var(--llm-text-secondary); }
-.llm-ui-message-footer { display: flex; align-items: center; gap: 8px; min-height: 32px; position: relative; }
+.llm-ui-message-footer { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 32px; position: relative; }
 .llm-ui-message-footer .llm-ui-time { font-size: 11px; color: var(--llm-text-muted); }
 .llm-ui-message-footer .llm-ui-actions { margin-left: 0; }
+.llm-ui-actions [data-native-branch][aria-disabled="true"] { opacity: .5; }
 .llm-ui-bubble--user .llm-ui-message-footer { justify-content: flex-end; }
 .llm-ui-message-more { position: relative; }
 .llm-ui-message-more > summary { display: grid; place-items: center; width: 28px; height: 28px; cursor: pointer; list-style: none; border-radius: 6px; }

@@ -13,7 +13,7 @@ export function createVcsPlugin(sessionManager: SessionManager): ILLMPlugin {
             const sm = sessionManager;
 
             ctx.commands.register('vcs.branch.create', async (args) => {
-                const { branchNodeId, options } = args as { branchNodeId: string; options?: { name?: string; copyContent?: boolean } };
+                const { branchNodeId, options } = args as { branchNodeId: string; options?: { name?: string } };
                 return sm.createBranch(branchNodeId, options);
             });
             ctx.commands.register('vcs.branch.switch', async (args) => {
@@ -31,8 +31,8 @@ export function createVcsPlugin(sessionManager: SessionManager): ILLMPlugin {
             });
             ctx.commands.register('vcs.branch.list', async () => sm.listBranches());
             ctx.commands.register('vcs.branch.messages', async (args) => {
-                const { branchHeadNodeId } = args as { branchHeadNodeId: string };
-                return sm.getBranchMessages(branchHeadNodeId);
+                const { branchHeadNodeId, branchName } = args as { branchHeadNodeId: string; branchName?: string };
+                return sm.getBranchMessages(branchHeadNodeId, branchName);
             });
         },
     };

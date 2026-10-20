@@ -36,6 +36,15 @@ it('keeps observation errors separate from connection state and backs off until 
     expect(status.get('project', 'p', 's')).toMatchObject({connection: 'online', stale: false});
     expect(status.get('project', 'p', 's')?.refreshError).toBeUndefined(); await status.dispose();
 });
+it('retries an initial failed observation even when no session rows are available yet', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const {status, port} = fixture(); port.poll.mockRejectedValueOnce(new Error('Unavailable'));
+    status.subscribe('project', vi.fn()); await vi.advanceTimersByTimeAsync(0);
+    await vi.advanceTimersByTimeAsync(1999); expect(port.poll).toHaveBeenCalledOnce();
+    await vi.advanceTimersByTimeAsync(1); expect(port.poll).toHaveBeenCalledTimes(2);
+    expect(status.get('project', 'p', 's')).toMatchObject({execution: 'running', stale: false});
+    await status.dispose(); expect(vi.getTimerCount()).toBe(0);
+});
 
 it('backs off explicit refresh errors without requiring an offline state', async () => {
     const {status, port} = fixture(), [row] = await port.poll(); port.poll.mockClear();
@@ -75,16 +84,18 @@ it('notifies directory versions independently of empty native session rows and f
     version = 'watch:2'; await status.refresh('project'); expect(changed).toHaveBeenCalledTimes(2);
     change(); expect(status.fileVersion('project')).toBeUndefined(); await status.dispose();
 });
-it('does not poll idle sessions and restarts only after an explicit refresh reports active work', async () => {
+it('discovers external work through slow idle observation and stops after unsubscribe', async () => {
     const {status, port} = fixture(), [row] = await port.poll(); port.poll.mockClear();
     port.poll.mockResolvedValue([{...row, observation: {...row.observation, execution: 'idle'}}]);
     const stop = status.subscribe('project', vi.fn()); await vi.advanceTimersByTimeAsync(0);
-    await vi.advanceTimersByTimeAsync(60_000); expect(port.poll).toHaveBeenCalledOnce();
-    port.poll.mockResolvedValue([row]); await status.refresh('project');
+    await vi.advanceTimersByTimeAsync(14_999); expect(port.poll).toHaveBeenCalledOnce();
+    port.poll.mockResolvedValue([row]); await vi.advanceTimersByTimeAsync(1);
     await vi.advanceTimersByTimeAsync(1000); expect(port.poll).toHaveBeenCalledTimes(3);
     port.poll.mockResolvedValue([{...row, observation: {...row.observation, execution: 'idle'}}]);
-    await vi.advanceTimersByTimeAsync(1000); await vi.advanceTimersByTimeAsync(60_000);
-    expect(port.poll).toHaveBeenCalledTimes(4); stop(); await status.dispose(); expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(1000); await vi.advanceTimersByTimeAsync(14_999);
+    expect(port.poll).toHaveBeenCalledTimes(4); await vi.advanceTimersByTimeAsync(1); expect(port.poll).toHaveBeenCalledTimes(5);
+    stop(); await vi.advanceTimersByTimeAsync(30_000); expect(port.poll).toHaveBeenCalledTimes(5);
+    await status.dispose(); expect(vi.getTimerCount()).toBe(0);
 });
 it('retains an activity refresh requested while the initial idle read is still pending', async () => {
     const {status, port} = fixture(), [row] = await port.poll(); port.poll.mockClear();

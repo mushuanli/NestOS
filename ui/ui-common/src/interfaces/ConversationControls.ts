@@ -46,6 +46,8 @@ export interface ConversationSnapshot {
         source: 'list' | 'inspect' | 'history' | 'events'; observedAt: number; connection: 'online' | 'offline'; stale: boolean; receiptUnknown: boolean;
     };
     active?: boolean; createdAt?: number | null; updatedAt?: number | null;
+    /** Scope of native history branching, independent of temporary availability. */
+    forkSupport?: 'none' | 'latest' | 'turn';
     canFork?: boolean; hasEarlier?: boolean;
     draft?: string; sessionId?: string; branchName?: string; title: string; messages: ConversationMessage[]; requests: ConversationRequest[];
     canSend: boolean; canInterrupt: boolean; canRespond: boolean; pending: boolean; disconnected: boolean; gap: boolean;
@@ -65,6 +67,8 @@ export interface ConversationControls {
     /** Local observation of receipts and control ownership, including while offline. */
     snapshot?(): ConversationSnapshot;
     fork?(name?: string): Promise<ConversationSnapshot>;
+    /** Preserve the complete selected native turn; never silently substitute the latest turn. */
+    forkAt?(target: {messageId: string; turnId: string}, name?: string): Promise<ConversationSnapshot>;
     branches?(): Promise<Array<{id:string; title:string; branchName?:string | null; parentSessionId?:string | null}>>;
     loadEarlier?(): Promise<ConversationSnapshot>;
     saveDraft?(text: string, attachments?: ConversationAttachment[]): Promise<void>;

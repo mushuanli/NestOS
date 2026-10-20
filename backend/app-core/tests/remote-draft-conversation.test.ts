@@ -47,7 +47,7 @@ it('does not promote or repeat an unknown turn until its receipt confirms commit
         await expect(view.send('Only once')).rejects.toMatchObject({outcome: 'unknown'});
         expect(view.snapshot()).toMatchObject({sessionId: undefined, draft: 'Only once', pending: true});
         await expect(view.send('Only once')).rejects.toMatchObject({code: 'EBUSY'});
-        vi.mocked(f.client.operation).mockResolvedValue({requestId: 'receipt', outcome: 'committed', result: {turnId: 'turn'}});
+        vi.mocked(f.client.operation).mockImplementation(async (_profile, requestId) => ({requestId, outcome: 'committed', result: {turnId: 'turn'}}));
         expect(await view.reconcile()).toMatchObject({sessionId: 'native', submittedTurnId: 'turn', pending: false, draft: ''});
         expect(f.client.turn).toHaveBeenCalledOnce();
     } finally {await view.close(); await f.manager.dispose();}
@@ -73,7 +73,7 @@ it.each([false, true])('promotes the first prompt command through the same durab
         if (lost) {
             await expect(view.command!('verify')).rejects.toMatchObject({outcome: 'unknown'});
             expect(view.snapshot().sessionId).toBeUndefined();
-            vi.mocked(f.client.operation).mockResolvedValue({requestId: 'receipt', outcome: 'committed', result: {turnId: 'command-turn'}});
+            vi.mocked(f.client.operation).mockImplementation(async (_profile, requestId) => ({requestId, outcome: 'committed', result: {turnId: 'command-turn'}}));
             await view.reconcile();
         } else await view.command!('verify');
         expect(view.snapshot()).toMatchObject({sessionId: 'native', submittedTurnId: 'command-turn', pending: false, draft: ''});

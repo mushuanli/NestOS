@@ -29,3 +29,17 @@ it('rejects deleting the current branch through the backend command boundary', a
     await expect(f.service.deleteBranch('experiment')).rejects.toThrow('Cannot delete the current branch');
     expect(f.registry.engine.updateManifest).not.toHaveBeenCalled();
 });
+
+it('requires a branch name to query distinct payloads at a shared logical head', async () => {
+    const round = {id: 'shared', historyParentIds: [], input: [{role: 'user', content: 'Q'}],
+        output: [{role: 'assistant', content: 'Original'}], status: 'completed', executions: [], createdAt: 1, origin: 'user'};
+    const manifest = {rootRoundId: 'shared', children: {}, currentBranch: 'alternative', currentHead: 'shared',
+        branches: {main: 'shared', alternative: 'shared'}, branchMeta: {alternative: {roundOverrides: {shared: 'owned'}}}};
+    const registry = {ensureBound: () => ({sessionId: 's'}), engine: {getManifest: async () => manifest,
+        readDocument: async (_id: string, name: string) => JSON.stringify(name === 'round-owned.json'
+            ? {...round, id: 'owned', output: [{role: 'assistant', content: 'Alternative'}]} : round)}};
+    const service = new BranchService(registry as unknown as SessionRegistry);
+    await expect(service.getBranchMessages('shared')).rejects.toThrow('Branch name required');
+    expect((await service.getBranchMessages('shared', 'main')).map(message => message.content)).toEqual(['Q', 'Original']);
+    expect((await service.getBranchMessages('shared', 'alternative')).map(message => message.content)).toEqual(['Q', 'Alternative']);
+});

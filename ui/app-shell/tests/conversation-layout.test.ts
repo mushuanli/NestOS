@@ -4,8 +4,34 @@ import { t } from '@itookit/common';
 import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
 import { NodeRenderer } from '../../llm-ui-adapter/src/components/history/NodeRenderer';
 import { NodeTemplates } from '../../llm-ui-adapter/src/components/templates/NodeTemplates';
+import {EditController} from '../../llm-ui-adapter/src/components/history/EditController';
 
 const views: ChatInput[] = [];
+it('cancels prompt editing without creating a branch and dispatches replacement only on explicit confirmation', () => {
+    const changed = vi.fn(), action = vi.fn(), commit = vi.fn();
+    const edit = new EditController(changed, action, commit), wrapper = document.createElement('div');
+    wrapper.innerHTML = '<button data-action="edit"></button>';
+    const actions = document.createElement('div');
+    const controller = {content: 'Original', toggleEdit: vi.fn(), setContent(text: string) {this.content = text;}};
+    edit.toggleUserEdit('u', controller as never, actions, wrapper); controller.content = 'Cancelled';
+    edit.toggleUserEdit('u', controller as never, actions, wrapper);
+    expect(controller.content).toBe('Original'); expect(action).not.toHaveBeenCalled(); expect(commit).not.toHaveBeenCalled();
+    edit.toggleUserEdit('u', controller as never, actions, wrapper); controller.content = 'Replacement';
+    edit.confirmEdit('u', controller as never, actions, wrapper, true);
+    expect(changed).toHaveBeenCalledWith('u', 'Replacement', 'user'); expect(action).toHaveBeenCalledWith('edit-and-retry', 'u');
+    edit.destroy();
+});
+it('places distinct edit and continuation branch actions directly below the user prompt', () => {
+    const host = document.createElement('div');
+    host.innerHTML = NodeTemplates.renderUserBubble({id: 'u', role: 'user', content: 'Prompt', timestamp: 1}, 'Prompt');
+    const edit = host.querySelector('[data-action="edit"]')!, branch = host.querySelector('[data-action="create-branch"]')!;
+    expect(edit.getAttribute('aria-label')).toBe(t('branch.edit'));
+    expect(branch.getAttribute('aria-label')).toBe(t('branch.continue'));
+    expect(edit.closest('details')).toBeNull(); expect(branch.closest('details')).toBeNull();
+    expect(host.querySelectorAll('[data-action="create-branch"]')).toHaveLength(1);
+    expect(host.querySelector('[data-action="confirm-edit"]')?.textContent).toBe(t('branch.editAndRun'));
+    expect(host.querySelector('[data-action="save-only"]')).toBeNull();
+});
 afterEach(() => {
     views.splice(0).forEach(view => view.destroy());
     document.body.replaceChildren(); vi.restoreAllMocks();

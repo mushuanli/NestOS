@@ -43,7 +43,7 @@ export class EditController {
         if (!this.editingNodes.has(nodeId)) {
             this.enterEdit(nodeId, controller, actionsEl, wrapper);
         } else {
-            this.confirmEdit(nodeId, controller, actionsEl, wrapper, false);
+            this.cancelEdit(nodeId, controller, actionsEl, wrapper);
         }
     }
 

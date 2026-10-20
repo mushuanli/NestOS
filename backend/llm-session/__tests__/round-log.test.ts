@@ -353,6 +353,81 @@ describe('RoundLog', () => {
 
     // ── Fork (regenerate) ─────────────────────────────────────────────────
 
+    describe('continuation branches', () => {
+        it('updates branch-exclusive descendants without creating redundant payload copies', async () => {
+            const shared = await log.append('main', makeRound({messages: makeUserPayload('Shared')}));
+            await log.branchAfterRound(shared, 'alternative');
+            const own = await log.append('alternative', makeRound({historyParentIds: [shared],
+                messages: [{role: 'user', content: 'Own'}, {role: 'assistant', content: 'Reply'}]}));
+            await log.clearAssistantInRound(own);
+            expect((await log.loadManifest()).branchMeta.alternative.roundOverrides).toBeUndefined();
+            expect(await log.readRound(own)).toMatchObject({id: own, output: []});
+        });
+        it('isolates reply deletion and replacement across branches while retaining logical IDs and tools', async () => {
+            const id = await log.append('main', makeRound({messages: [{role: 'user', content: 'Q'}, {role: 'assistant', content: 'Original'}],
+                result: {toolCalls: [{id: 'tool', name: 'read', input: {}, result: 'kept'}]} as never}));
+            const original = await log.readRound(id);
+            await log.branchAfterRound(id, 'alternative');
+            await log.clearAssistantInRound(id);
+            expect(await log.readRound(id, 'main')).toEqual(original);
+            expect(await log.readRound(id)).toMatchObject({id, output: [], status: 'pending'});
+            expect((await log.fold('main')).map(message => message.content)).toEqual(['Q', 'Original']);
+            await log.setAssistantInRound(id, {assistantMessages: [{role: 'assistant', content: 'Alternative'}]});
+            const reopened = new RoundLog(engine as ISessionRepository, sessionId);
+            expect((await reopened.fold('alternative')).map(message => message.content)).toEqual(['Q', 'Alternative']);
+            expect(await reopened.readRound(id, 'main')).toEqual(original);
+            const documentId = (await reopened.loadManifest()).branchMeta.alternative.roundOverrides![id];
+            expect(JSON.parse((await engine.readDocument(sessionId, `round-${documentId}.json`))!)).toMatchObject({id: documentId});
+        });
+        it('inherits branch payloads and detaches them again when deleting shared ancestors or replies', async () => {
+            const first = await log.append('main', makeRound({messages: [{role: 'user', content: 'Q1'}, {role: 'assistant', content: 'A1'}]}));
+            const last = await log.append('main', makeRound({historyParentIds: [first], messages: [{role: 'user', content: 'Q2'}, {role: 'assistant', content: 'A2'}]}));
+            await log.branchAfterRound(last, 'alternative');
+            await log.clearAssistantInRound(first);
+            await log.branchAfterRound(last, 'nested');
+            await log.deleteRound(first);
+            await log.clearAssistantInRound(last);
+            expect((await log.fold('nested')).map(message => message.content)).toEqual(['Q2']);
+            expect((await log.fold('alternative')).map(message => message.content)).toEqual(['Q1', 'Q2', 'A2']);
+            expect((await log.fold('main')).map(message => message.content)).toEqual(['Q1', 'A1', 'Q2', 'A2']);
+            const reloaded = new RoundLog(engine as ISessionRepository, sessionId);
+            expect(await reloaded.readRound(first)).toMatchObject({id: first, _deleted: true});
+            expect((await reloaded.readRound(first, 'alternative'))?._deleted).toBeUndefined();
+            await reloaded.renameRef('nested', 'renamed');
+            expect((await reloaded.fold('renamed')).map(message => message.content)).toEqual(['Q2']);
+        });
+        it('preserves the selected prompt, reply and tools while excluding later rounds and retaining the original branch', async () => {
+            const first = await log.append('main', makeRound({messages: [{role: 'user', content: 'Q1'}, {role: 'assistant', content: 'A1'}],
+                result: {toolCalls: [{id: 'tool-1', name: 'read', input: {path: 'a.txt'}, result: 'tool result'}]} as never}));
+            const later = await log.append('main', makeRound({historyParentIds: [first], messages: [{role: 'user', content: 'Q2'}, {role: 'assistant', content: 'A2'}]}));
+            const original = await log.readRound(first), originalMessages = await log.fold('main');
+            const fork = await log.branchAfterRound(first, 'alternative');
+            expect(fork).toEqual({branchName: 'alternative', headRoundId: first});
+            expect(await log.readRound(first)).toEqual(original);
+            expect((await log.fold('alternative')).map(message => message.content)).toEqual(['Q1', 'A1']);
+            expect(await log.fold('main')).toEqual(originalMessages);
+            expect(await log.loadManifest()).toMatchObject({currentBranch: 'alternative', currentHead: first, branches: {main: later, alternative: first}});
+            const next = await log.append('alternative', makeRound({historyParentIds: [first], messages: [{role: 'user', content: 'Q3'}]}));
+            expect((await log.loadManifest()).branches).toEqual({main: later, alternative: next});
+            expect((await log.readRound(first))?.result).toEqual(original?.result);
+            const reopened = new RoundLog(engine as ISessionRepository, sessionId);
+            expect((await reopened.fold('alternative')).map(message => message.content)).toEqual(['Q1', 'A1', 'Q3']);
+            await reopened.branchAfterRound(first, 'spare');
+            await reopened.refs().delete('alternative');
+            expect(await reopened.readRound(first)).toEqual(original);
+        });
+        it('supports distinct names at the same head and rejects active, missing and conflicting targets', async () => {
+            const round = await log.append('main', makeRound({messages: makeUserPayload('Q')}));
+            await log.branchAfterRound(round, 'one'); await log.branchAfterRound(round, 'two');
+            expect((await log.loadManifest()).branches).toEqual({main: round, one: round, two: round});
+            await expect(log.branchAfterRound(round, 'one')).rejects.toMatchObject({code: 'BRANCH_EXISTS'});
+            await expect(log.branchAfterRound(round, '__proto__')).rejects.toMatchObject({code: 'BRANCH_EXISTS'});
+            await expect(log.branchAfterRound('missing')).rejects.toMatchObject({code: 'NOT_FOUND'});
+            const active = await log.append('two', makeRound({historyParentIds: [round], status: 'waiting', messages: makeUserPayload('Waiting')}));
+            await expect(log.branchAfterRound(active)).rejects.toMatchObject({code: 'ROUND_ACTIVE'});
+        });
+    });
+
     describe('forkUserRound for regenerate', () => {
         it('persists the new user round and points currentHead at it so the chain resolves', async () => {
             const t1Id = await log.append('main', makeRound({ messages: makeUserPayload('Q1') }));

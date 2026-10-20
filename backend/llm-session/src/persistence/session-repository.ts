@@ -210,7 +210,7 @@ export class SessionRepository implements ISessionRepository {
             const rows = await tx.getEntries(p.session, ['session', 'settings']);
             const manifest = await this.readManifestTx(tx, p, id, rows.session ?? null);
             const chain = await this.readIndexedHistoryChain(tx, p, manifest)
-                ?? await collectHistoryChain(manifest, roundId => this.readRound(tx, p, roundId));
+                ?? await collectHistoryChain(manifest, roundId => this.readRound(tx, p, roundId, manifest));
             return {
                 manifest,
                 settings: sessionSettings(rows.settings, manifest),
@@ -223,24 +223,30 @@ export class SessionRepository implements ISessionRepository {
             const p = await this.paths(id, tx);
             const manifest = await this.readManifestTx(tx, p, id);
             return await this.readIndexedHistoryChain(tx, p, manifest)
-                ?? collectHistoryChain(manifest, roundId => this.readRound(tx, p, roundId));
+                ?? collectHistoryChain(manifest, roundId => this.readRound(tx, p, roundId, manifest));
         });
     }
     private async readIndexedHistoryChain(tx: ISeqFileTransaction, p: SessionPaths,
         manifest: ConversationManifest): Promise<SessionHistoryChain | null> {
         const candidates = indexedHistoryCandidates(manifest);
         if (!candidates) return null;
-        const keys = candidates.map(id => `document/${this.name(`round-${id}.json`)}`);
+        const overrides = manifest.branchMeta[manifest.currentBranch]?.roundOverrides;
+        const keys = candidates.map(id => `document/${this.name(`round-${overrides?.[id] ?? id}.json`)}`);
         const rows = await tx.getEntries(p.history, keys);
-        const parsed = await Promise.all(keys.map(key => readRoundDocument(async () => rows[key] ?? null)));
+        const parsed = await Promise.all(keys.map(async (key, index) => {
+            const round = await readRoundDocument(async () => rows[key] ?? null);
+            return round && overrides?.[candidates[index]] ? {...round, id: candidates[index]} : round;
+        }));
         if (!historyIndexMatches(candidates, parsed)) return null;
         const byId = new Map(candidates.map((id, index) => [id, parsed[index]]));
         return collectHistoryChain(manifest, async roundId => byId.get(roundId) ?? null);
     }
-    private readRound(tx: ISeqFileTransaction, p: SessionPaths, roundId: string) {
-        return readRoundDocument(() => tx.getEntry(
-            p.history, `document/${this.name(`round-${roundId}.json`)}`,
+    private async readRound(tx: ISeqFileTransaction, p: SessionPaths, roundId: string, manifest: ConversationManifest) {
+        const documentId = manifest.branchMeta[manifest.currentBranch]?.roundOverrides?.[roundId] ?? roundId;
+        const round = await readRoundDocument(() => tx.getEntry(
+            p.history, `document/${this.name(`round-${documentId}.json`)}`,
         ));
+        return round && documentId !== roundId ? {...round, id: roundId} : round;
     }
     private async readManifestTx(tx: ISeqFileTransaction, p: SessionPaths, id: string,
         sessionValue?: string | null): Promise<ConversationManifest> {

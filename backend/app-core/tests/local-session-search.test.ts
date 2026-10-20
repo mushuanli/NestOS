@@ -1,8 +1,27 @@
 import { expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
-import { SessionRepository } from '@itookit/llm-session';
+import { RoundLog, SessionRepository } from '@itookit/llm-session';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { ProjectSearch } from '../src/projects/project-search';
+
+it('searches distinct ancestor payloads even when branches share the same logical head', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    const repository = new SessionRepository(await manager.openFileSystem('/')); await repository.init();
+    await repository.createFolder('/P'); const id = await repository.createSession('Shared', '/P');
+    const log = new RoundLog(repository, id);
+    const make = (round: string, parents: string[], answer: string) => ({id: round, sessionId: id, historyParentIds: parents,
+        input: [{role: 'user' as const, content: 'Q'}], output: [{role: 'assistant' as const, content: answer}],
+        executions: [], status: 'completed' as const, createdAt: 1, origin: 'user' as const});
+    const first = await log.append('main', make('first', [], 'original-only'));
+    const head = await log.append('main', make('head', [first], 'last'));
+    await log.branchAfterRound(head, 'alternative'); await log.clearAssistantInRound(first);
+    await log.setAssistantInRound(first, {assistantMessages: [{role: 'assistant', content: 'alternative-only'}]});
+    const search = new ProjectSearch({forFolder: async () => ({path: '/P', project: {id: 'p'}})} as unknown as ProjectService, repository);
+    try {
+        expect((await search.search('/P', {query: 'original-only', scope: 'session-content'})).matches).toMatchObject([{branch: 'main', turnId: first}]);
+        expect((await search.search('/P', {query: 'alternative-only', scope: 'session-content'})).matches).toMatchObject([{branch: 'alternative', turnId: first}]);
+    } finally {await repository.dispose(); await manager.dispose();}
+});
 
 it('searches unopened sessions and all live branches, with prompts separated from assistant and private context', async () => {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()}), fs = await manager.openFileSystem('/');

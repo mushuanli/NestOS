@@ -26,6 +26,7 @@ src/
 - Round 只表达对话历史，使用 `historyParentIds`。
 - Run 引用通过 `executions` 附着到 Round。
 - Branch/merge 拓扑归本包；Context 历史选择、Profile 规则和装配经 `@itookit/llm-context` 接口执行，`RoundLog` 只提供存储和缓存。
+- 共享 Round 的修改通过 branchMeta.roundOverrides 写时复制内容文档，逻辑 ID 与父子拓扑保持稳定；快照、Context 与分支读取必须按目标 ref 解析内容，不能直接修改其他分支共享的文档。
 - Chat/Agent 与 Flow 的提交统一经过 llm-flow 的 `submitRun(CompiledRunDefinition)`；上下文组装和结果解析保留各自策略，运行成员使用 `RunExecution.tasks()` 实时读取。
 - 普通 Chat 走 `ConversationRunCoordinator` 的直接任务路径（`directTaskSpec`），不包装成单节点 DAG。
 - 首次显式模式的直接运行通过准入后，将 executionMode 与 executionModeLocked 在设置事务中一并保存；后续发送/重新生成校验固定模式，省略模式时继承。持久化层拒绝改模式并忽略解锁补丁；旧有历史会话保留已保存模式。Flow 不参与该锁。

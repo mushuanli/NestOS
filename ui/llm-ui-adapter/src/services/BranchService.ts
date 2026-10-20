@@ -1,16 +1,16 @@
 // @file: llm-ui/services/BranchService.ts
 
 
-import { SessionCommand, type SessionGroup } from '@itookit/llm-session/contracts';
 import type { BranchItem } from '../domain/types';
 import type { IBranchStore } from '../domain/ports/IBranchStore';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
+import {t} from '@itookit/common';
 
 
 export class BranchError extends Error {
     constructor(
         public code: 'NOT_FOUND' | 'ALREADY_CURRENT' | 'CANNOT_DELETE_CURRENT'
-            | 'NO_OTHER' | 'NO_CURRENT' | 'INVALID_NAME',
+            | 'NO_OTHER' | 'NO_CURRENT' | 'INVALID_NAME' | 'AMBIGUOUS_TARGET',
         message: string,
     ) {
         super(message);
@@ -40,16 +40,10 @@ export class BranchService {
     // ── Create ──────────────────────────────────────────
 
     async create(sourceNodeId: string, name: string): Promise<void> {
-        const branchPoint = await this.findBranchPoint(sourceNodeId);
-        const newNodeId = await this.commands.execute<string>('vcs.branch.create', {
-            branchNodeId: branchPoint,
-            options: { name: name || undefined, copyContent: true },
+        await this.commands.execute<string>('vcs.branch.create', {
+            branchNodeId: sourceNodeId,
+            options: { name: name || undefined },
         });
-        const branches = await this.commands.execute<Array<{ name: string; headNodeId: string; isCurrent: boolean }>>('vcs.branch.list');
-        const branch = branches.find(b => b.headNodeId === newNodeId);
-        if (branch) {
-            await this.commands.execute('vcs.branch.switch', { branchName: branch.name });
-        }
     }
 
     // ── Switch ─────────────────────────────────────────
@@ -73,7 +67,9 @@ export class BranchService {
     /** 按 headNodeId 切换 */
     async switchById(headNodeId: string): Promise<void> {
         const branches = await this.commands.execute<Array<{ name: string; headNodeId: string }>>('vcs.branch.list');
-        const branch = branches.find(b => b.headNodeId === headNodeId);
+        const matches = branches.filter(b => b.headNodeId === headNodeId);
+        if (matches.length > 1) throw new BranchError('AMBIGUOUS_TARGET', t('branch.chooseByName'));
+        const branch = matches[0];
         if (!branch) throw new BranchError('NOT_FOUND', `No branch found for head node: ${headNodeId}`);
         await this.commands.execute('vcs.branch.switch', { branchName: branch.name });
     }
@@ -110,14 +106,4 @@ export class BranchService {
         await this.commands.execute('vcs.branch.delete', { branchName: target.name });
     }
 
-    // ── Helpers ────────────────────────────────────────
-
-    private async findBranchPoint(sourceNodeId: string): Promise<string> {
-        const sessions = await this.commands.execute<SessionGroup[]>(SessionCommand.GetSessions);
-        const idx = sessions.findIndex(s => s.id === sourceNodeId);
-        if (idx === -1) return sourceNodeId;
-        const session = sessions[idx];
-        if (session.role !== 'user') return sourceNodeId;
-        return idx > 0 ? sessions[idx - 1].id : sourceNodeId;
-    }
 }

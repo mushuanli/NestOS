@@ -147,10 +147,25 @@ function readManifest(value: unknown, documents: Record<string, string>): Sessio
         uiState: (asRecord(manifest.uiState) ?? undefined) as ConversationManifest['uiState'],
         flow: (asRecord(manifest.flow) ?? undefined) as ConversationManifest['flow'],
         rootRoundId, branches,
-        branchMeta: (asRecord(manifest.branchMeta) ?? {}) as ConversationManifest['branchMeta'],
+        branchMeta: readBranchMetadata(manifest.branchMeta, documents),
         currentBranch, currentHead,
         children: readChildren(manifest.children, documents),
     };
+}
+
+function readBranchMetadata(value: unknown, documents: Record<string, string>): ConversationManifest['branchMeta'] {
+    const metadata = (asRecord(value) ?? {}) as ConversationManifest['branchMeta'];
+    for (const branch of Object.values(metadata)) {
+        if (!branch?.roundOverrides) continue;
+        const overrides = asRecord(branch.roundOverrides);
+        if (!overrides) throw new FSError('EINVAL', 'Invalid Session branch payloads');
+        for (const [roundId, documentId] of Object.entries(overrides)) {
+            requireRound(documents, roundId, 'branch logical round');
+            if (typeof documentId !== 'string') throw new FSError('EINVAL', 'Invalid Session branch payload identity');
+            requireRound(documents, documentId, 'branch payload');
+        }
+    }
+    return metadata;
 }
 
 function readDocuments(value: unknown): Record<string, string> {

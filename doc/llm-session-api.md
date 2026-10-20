@@ -241,12 +241,18 @@ Chat/Harness 重跑沿用 regenerate：已有回复时创建替代分支和新 T
 
 ## 分支：BranchService
 
+手动创建分支与编辑提问具有不同边界：`createBranch` 保留目标消息所属完整 Round（用户提问、智能体回复与工具记录），将新分支 head 指向该已有 Round，后续轮次不进入新分支，也不自动运行。目标用户消息和对应回复均解析到同一 persisted Round；原分支及历史身份保留。RoundLog.branchAfterRound 通过结构写入队列创建并激活新 ref，不复制用户消息或生成占位 Round。多个分支可以暂时共享同一 head，切换必须使用分支名，不能用 head 反推唯一分支。
+
+编辑并运行继续使用 createBranchForReplacement：从目标 Round 的父级建立替换分支，保存修改后的提问并重新运行。原来的提问和回复留在原分支。执行中或等待交互的 Round 不允许作为手动分支的新边界。
+
+共享历史的首次修改使用写时复制：`branchMeta.roundOverrides` 将逻辑 Round ID 映射到分支独立的内容文档 ID。文档文件名与存储 ID 一致，读取投影恢复逻辑 ID，父子拓扑、消息身份和 Context 规则不变；删除回复、删除轮次与后续更新只影响当前分支。新分支继承现有映射，之后修改再独立复制。批量历史快照、Context 装配、分支查询、项目搜索和导入导出均按目标分支解析映射；共享 head 的 `getBranchMessages` 查询必须显式提供分支名。回归见 `round-log.test.ts`、`history-snapshot.test.ts`、`session-bundle.test.ts` 与 `local-session-search.test.ts`。
+
 ```ts
 class BranchService {
     constructor(registry: SessionRegistry);
     async switchToSibling(messageId: string, siblingIndex: number): Promise<void>;
     async getSiblings(messageId: string): Promise<SessionGroup[]>;
-    async createBranch(branchNodeId: string, options?: { name?: string; copyContent?: boolean }): Promise<string>;
+    async createBranch(branchNodeId: string, options?: { name?: string }): Promise<string>;
     async switchBranch(branchName: string): Promise<void>;
     async getBranchTree(): Promise<BranchTreeNode>;
     async renameBranch(oldName: string, newName: string): Promise<void>;

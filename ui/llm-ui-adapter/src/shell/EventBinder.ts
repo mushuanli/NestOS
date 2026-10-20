@@ -33,6 +33,7 @@ export class EventBinder {
     private disposeResponsive?: () => void;
     private disposeHostMenu?: () => void;
     private disposeHostNavigation?: () => void;
+    private disposeBranchNavigation?: () => void;
 
     constructor(
         private container: HTMLElement,
@@ -47,6 +48,7 @@ export class EventBinder {
         if (content) this.disposeHostMenu = this.callbacks.mountMoreMenu?.(content.querySelector('.llm-workspace-titlebar__host-actions') ?? content);
         const titlebar = menu.closest<HTMLElement>('.llm-workspace-titlebar');
         const toolbar = titlebar?.querySelector<HTMLElement>('.llm-workspace-titlebar__primary');
+        if (titlebar && content) this.bindBranchNavigation(titlebar, content, menu.querySelector('summary')!);
         if (titlebar && toolbar) {
             const actions = ['llm-btn-prompt-nav', 'llm-btn-collapse', 'llm-btn-refresh', 'llm-btn-session-rerun', 'llm-btn-copy']
                 .flatMap(id => { const button = menu.querySelectorAll<HTMLElement>('#' + id)[0]; return button ? [button] : []; });
@@ -62,6 +64,16 @@ export class EventBinder {
             if ((event as KeyboardEvent).key !== 'Escape') return;
             menu.open = false; menu.querySelector('summary')?.focus();
         });
+    }
+
+    private bindBranchNavigation(titlebar: HTMLElement, menu: HTMLElement, fallbackFocus: HTMLElement): void {
+        this.disposeBranchNavigation?.();
+        const branch = titlebar.querySelector<HTMLElement>('#llm-branch-indicator');
+        const title = titlebar.querySelector<HTMLElement>('.llm-workspace-titlebar__left');
+        if (!branch || !title) return;
+        const marker = document.createComment('branch-navigation'); branch.before(marker); menu.append(branch);
+        const stop = installResponsiveActions({container: titlebar, toolbar: title, actions: [branch], minWidth: 769, fallbackFocus});
+        this.disposeBranchNavigation = () => {stop(); marker.after(branch); marker.remove();};
     }
 
     bindTitleBarEvents(): void {
@@ -163,6 +175,7 @@ export class EventBinder {
     }
 
     cleanup(): void {
+        this.disposeBranchNavigation?.(); this.disposeBranchNavigation = undefined;
         this.disposeHostNavigation?.(); this.disposeHostNavigation = undefined;
         delete this.container.dataset.editorMobileNavigation;
         this.disposeHostMenu?.(); this.disposeHostMenu = undefined;

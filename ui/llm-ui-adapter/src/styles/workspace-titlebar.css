@@ -175,6 +175,10 @@
     margin-left: 8px;
 }
 
+.llm-workspace-titlebar__menu-actions .llm-branch-indicator-bar { margin-left: 0; }
+.llm-workspace-titlebar__menu-actions .llm-branch-dropdown { position: static; max-width: 100%; box-shadow: none; }
+.llm-workspace-titlebar__menu-actions .remote-conversation__branches { flex-direction: column; width: 100%; }
+
 .llm-branch-indicator-btn {
     display: inline-flex;
     align-items: center;

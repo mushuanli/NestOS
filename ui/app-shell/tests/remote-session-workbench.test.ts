@@ -100,7 +100,7 @@ it('browses mounted native history pages, opens their conversations and routes a
             expect(workbench.getActiveResourceId()).toBe(remotePath);
             expect(selector.value).toBe(remotePath);
             expect(main.querySelector('.workbench-tabs__panel:not([hidden])')!.textContent).toContain('Remote directory unavailable');
-            expect(diagnostic.mock.calls.some(([message, details]) => String(message).includes('[itookit/pi-agent]')
+            expect(diagnostic.mock.calls.some(([message, details]) => String(message).includes('[itookit/mindos-node]')
                 && details?.stage === 'project-open' && details?.projectId === project.project.id && details?.code === 'EIO')).toBe(true);
         } finally {listFailure.mockRestore(); diagnostic.mockRestore();}
         await workbench.openResource(remotePath);

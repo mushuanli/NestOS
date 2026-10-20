@@ -19,13 +19,13 @@ export class RemoteBranches {
     private branches: BranchItem[] = [];
     private renderKey = '';
     constructor(private readonly controls: ConversationControls, private readonly options: EditorOptions,
-        run: (action: () => Promise<ConversationSnapshot>) => Promise<void>, error: (error: unknown) => void) {
+        private readonly run: (action: () => Promise<ConversationSnapshot>) => Promise<void>, error: (error: unknown) => void) {
         this.element.className = 'remote-conversation__branches'; this.element.hidden = true;
         this.create.disabled = this.name.disabled = true;
         this.name.placeholder = t('harness.branchName'); this.name.maxLength = 256; this.name.setAttribute('aria-label', t('harness.branchName'));
         this.create.type = 'button'; this.create.textContent = t('harness.createBranch');
         this.create.onclick = () => {
-            if (!this.create.disabled) void run(() => controls.fork!(this.name.value.trim() || t('harness.defaultBranch', {time: new Date().toLocaleString()}))).catch(error);
+            if (!this.create.disabled) void this.createLatest(this.name.value.trim()).catch(error);
         };
         this.form.className = 'remote-conversation__branch-create'; this.form.append(this.name, this.create);
         this.events.add(this.element, 'click', event => { void this.click(event).catch(error); });
@@ -38,6 +38,7 @@ export class RemoteBranches {
         this.unavailable = working || snapshot.pending || !this.options.onConversationSession;
         this.create.disabled = working || !!this.options.readOnly || !snapshot.canFork || !this.options.onConversationSession;
         this.name.disabled = this.create.disabled;
+        this.create.title = snapshot.forkSupport === 'none' ? t('branch.unsupported') : this.create.disabled ? t('branch.unavailable') : t('branch.create');
         this.element.hidden = !this.sessionId || !this.controls.fork && !this.controls.branches;
         if (changed) this.branches = [{name: this.title, headNodeId: this.sessionId, isCurrent: true}];
         else if (snapshot.branchName) this.branches = this.branches.map(branch => branch.headNodeId === this.sessionId ? {...branch, name: snapshot.branchName!} : branch);
@@ -53,6 +54,23 @@ export class RemoteBranches {
         const button = this.element.querySelector<HTMLButtonElement>('.llm-branch-indicator-btn')!;
         button.disabled = this.unavailable || this.loading; button.setAttribute('aria-haspopup', 'menu');
         this.setOpen(open);
+    }
+    async createLatest(name?: string, accepted?: () => Promise<void>): Promise<void> {
+        if (!this.controls.fork) throw new Error(t('branch.unsupported'));
+        if (this.closed || this.create.disabled) throw new Error(this.create.title || t('branch.unavailable'));
+        await this.run(async () => {
+            const snapshot = await this.controls.fork!(name?.trim() || t('harness.defaultBranch', {time: new Date().toLocaleString()}));
+            await accepted?.(); return snapshot;
+        });
+    }
+    async open(): Promise<void> {
+        if (this.closed || this.unavailable || !this.sessionId) throw new Error(t('branch.unavailable'));
+        await this.load();
+        if (!this.closed && !this.unavailable) {
+            const menu = this.element.closest<HTMLDetailsElement>('.llm-workspace-titlebar__menu');
+            if (menu) menu.open = true;
+            this.setOpen(true);
+        }
     }
     private async click(event: Event): Promise<void> {
         const target = event.target as Element;

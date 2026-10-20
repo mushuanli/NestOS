@@ -4,6 +4,7 @@ import { Command } from './Command';
 import { Toast, showConfirmDialog } from '@itookit/ui-common';
 import { BranchError } from '../services/BranchService';
 import type { BranchItem } from '../domain/types';
+import {escapeHTML, t} from '@itookit/common';
 
 // ── Create ────────────────────────────────────────────
 
@@ -14,7 +15,7 @@ export class CreateBranchCommand extends Command<{ sourceNodeId: string }> {
         const branchName = await this.promptBranchName();
         if (branchName === null) return;
         await this.ctx.branchService.create(sourceNodeId, branchName);
-        Toast.success(`Branch "${branchName || 'Untitled'}" created`);
+        Toast.success(t('branch.created'));
     }
 
     private promptBranchName(): Promise<string | null> {
@@ -24,12 +25,12 @@ export class CreateBranchCommand extends Command<{ sourceNodeId: string }> {
             dialog.innerHTML = `
                 <div class="llm-branch-name-dialog__overlay"></div>
                 <div class="llm-branch-name-dialog__content">
-                    <h4>Create New Branch</h4>
-                    <p>Enter a name for this branch (optional):</p>
-                    <input type="text" class="llm-input" placeholder="Branch name">
+                    <h4>${escapeHTML(t('branch.create'))}</h4>
+                    <p>${escapeHTML(t('branch.namePrompt'))}</p>
+                    <input type="text" class="llm-input" maxlength="256" aria-label="${escapeHTML(t('harness.branchName'))}" placeholder="${escapeHTML(t('harness.branchName'))}">
                     <div class="llm-branch-name-dialog__actions">
-                        <button class="llm-btn" data-action="cancel">Cancel</button>
-                        <button class="llm-btn llm-btn--primary" data-action="create">Create</button>
+                        <button class="llm-btn" data-action="cancel">${escapeHTML(t('action.cancel'))}</button>
+                        <button class="llm-btn llm-btn--primary" data-action="create">${escapeHTML(t('branch.create'))}</button>
                     </div>
                 </div>
             `;

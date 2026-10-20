@@ -83,7 +83,8 @@ export class RemoteSessionStatus {
         const active = watch.rows.some(row => row.observation.execution === 'running'
             || row.observation.execution === 'waiting-approval' || row.observation.execution === 'waiting-input' || row.observation.receiptUnknown);
         const requested = watch.refreshRequested; watch.refreshRequested = false;
-        if (!watch.abort.signal.aborted && (active || requested)) this.schedule(id, watch, requested ? 0 : Math.min(30_000, 1000 * 2 ** Math.min(watch.failures, 5)));
+        if (!watch.abort.signal.aborted && watch.listeners.size) this.schedule(id, watch,
+            requested ? 0 : Math.min(30_000, (active || watch.failures ? 1000 : 15_000) * 2 ** Math.min(watch.failures, 5)));
     }
     private notify(watch: Watch): void {
         for (const listener of watch.listeners) {

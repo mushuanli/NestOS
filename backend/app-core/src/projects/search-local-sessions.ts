@@ -40,32 +40,35 @@ function base(row: SessionSummary, folder: string, projectId: string): Omit<Proj
 }
 async function searchHistory(repository: ISessionRepository, row: SessionSummary, folder: string, projectId: string,
     query: ProjectSearchQuery, keywords: readonly string[], budget: Budget, options: OperationOptions): Promise<void> {
-    const manifest = await repository.getManifest(row.id), seen = new Set<string>();
+    const manifest = await repository.getManifest(row.id), payloads = new Map<string, SearchRound | null>();
     if ((manifest.folder ?? null) !== (row.folder ?? null)) throw new FSError('ECONFLICT', 'Session project changed');
-    const branches = [[manifest.currentBranch, manifest.currentHead], ...Object.entries(manifest.branches)] as Array<[string, string | null]>;
+    const branches = new Map([[manifest.currentBranch, manifest.currentHead], ...Object.entries(manifest.branches)]);
     for (const [branch, head] of branches) {
-        let id = head;
-        while (id && !seen.has(id)) {
+        let id = head; const visited = new Set<string>();
+        const overrides = manifest.branchMeta[branch]?.roundOverrides;
+        while (id && !visited.has(id)) {
             checkOperation(options);
             if (full(budget)) { budget.truncated = true; return; }
-            seen.add(id); ++budget.rounds;
-            const round = await readRound(repository, manifest, id, budget);
+            visited.add(id); ++budget.rounds;
+            const documentId = overrides?.[id] ?? id, cached = payloads.has(documentId);
+            const round = cached ? payloads.get(documentId) : await readRound(repository, manifest, id, budget, documentId);
             if (!round) break;
-            if (!round._deleted && round.exposure !== 'internal') recordRound(round, {...base(row, folder, projectId), branch}, query, keywords, budget);
+            payloads.set(documentId, round);
+            if (!cached && !round._deleted && round.exposure !== 'internal') recordRound(round, {...base(row, folder, projectId), branch}, query, keywords, budget);
             id = round.historyParentIds[0] ?? null;
         }
     }
     if ((await repository.getManifest(row.id)).folder !== manifest.folder) throw new FSError('ECONFLICT', 'Session project changed');
 }
-async function readRound(repository: ISessionRepository, manifest: ConversationManifest, id: string, budget: Budget): Promise<SearchRound | null> {
-    if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new FSError('EIO', 'Invalid history identity');
-    const recordText = await repository.readDocument(manifest.id, `round-${id}.json`);
+async function readRound(repository: ISessionRepository, manifest: ConversationManifest, id: string, budget: Budget, documentId = id): Promise<SearchRound | null> {
+    if (![id, documentId].every(value => /^[a-zA-Z0-9_-]+$/.test(value))) throw new FSError('EIO', 'Invalid history identity');
+    const recordText = await repository.readDocument(manifest.id, `round-${documentId}.json`);
     if (!recordText) { budget.truncated = true; return null; }
     budget.bytes += recordText.length * 2;
     if (full(budget) || recordText.length > 2 * 1024 * 1024) { budget.truncated = true; return null; }
     const round = JSON.parse(recordText) as SearchRound;
-    if (round.id !== id || !Array.isArray(round.input) || !Array.isArray(round.output) || !Array.isArray(round.historyParentIds)) throw new FSError('EIO', 'Invalid session history');
-    return round;
+    if (round.id !== documentId || !Array.isArray(round.input) || !Array.isArray(round.output) || !Array.isArray(round.historyParentIds)) throw new FSError('EIO', 'Invalid session history');
+    return documentId === id ? round : {...round, id};
 }
 function recordRound(round: SearchRound, base: Omit<ProjectSearchMatch, 'summary'>, query: ProjectSearchQuery, keywords: readonly string[], budget: Budget): void {
     const messages = query.scope === 'session-prompt' ? round.input.filter(message => message.role === 'user')

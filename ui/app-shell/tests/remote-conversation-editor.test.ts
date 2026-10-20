@@ -6,11 +6,124 @@ import { LLMPrintService } from '@itookit/mdx-adapter';
 import { t } from '@itookit/common';
 import { HistoryView } from '../../llm-ui-adapter/src/components/HistoryView';
 const state: ConversationSnapshot = {sessionId:'s',title:'remote',branchName:'main',messages:[{id:'1',role:'assistant',text:'<script>native</script>',turnId:'initial-turn'}],requests:[],canSend:true,canInterrupt:false,canRespond:false,pending:false,disconnected:false,gap:false};
+function branchState(): ConversationSnapshot {
+    return {...state, canFork: true, forkSupport: 'latest', messages: [
+        {id: 'u1', role: 'user', text: 'Same prompt', turnId: 'turn-one'},
+        {id: 'a1', role: 'assistant', text: 'First reply', turnId: 'turn-one'},
+        {id: 'u2', role: 'user', text: 'Same prompt', turnId: 'turn-two'},
+        {id: 'a2', role: 'assistant', text: 'Second reply', turnId: 'turn-two'},
+    ]};
+}
 function setup(options: EditorOptions = {}) {
     const peer: ConversationControls = {read:vi.fn(async () => state),poll:vi.fn(async () => state),send:vi.fn(async () => ({...state,canSend:false,canInterrupt:true})),interrupt:vi.fn(async () => state),respond:vi.fn(async () => state),reconcile:vi.fn(async () => state),close:vi.fn(async () => {})};
     const host=document.createElement('div');document.body.append(host);
     const editor=new RemoteConversationEditor(host,peer,{title:'Server · Project · Codex', ...options});return {editor,peer,host};
 }
+it('exposes a branch button under native prompts and preserves the draft when branching from the latest turn', async () => {
+    const navigate = vi.fn(), {editor, peer, host} = setup({onConversationSession: navigate});
+    const current = {...branchState(), draft: 'Unsent follow-up'};
+    vi.mocked(peer.read).mockResolvedValue(current);
+    peer.fork = vi.fn(async () => ({...current, sessionId: 'forked'}));
+    await editor.init(host);
+    try {
+        const buttons = host.querySelectorAll<HTMLButtonElement>('[data-native-branch]');
+        expect(buttons).toHaveLength(2); buttons[1].click(); buttons[1].click();
+        await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith('forked'));
+        expect(peer.fork).toHaveBeenCalledOnce(); expect(peer.send).not.toHaveBeenCalled();
+        expect(host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe('Unsent follow-up');
+    } finally {await editor.destroy();}
+});
+it('requires explicit confirmation before substituting the latest turn for an older prompt', async () => {
+    const {editor, peer, host} = setup({onConversationSession: vi.fn()});
+    vi.mocked(peer.read).mockResolvedValue(branchState()); peer.fork = vi.fn(async () => branchState());
+    await editor.init(host);
+    try {
+        const button = host.querySelector<HTMLButtonElement>('[data-native-branch]')!;
+        button.click(); expect(document.body.textContent).toContain(t('branch.latestOnly'));
+        expect(document.querySelector('.settings-modal-confirm')?.textContent).toBe(t('branch.create'));
+        document.querySelector<HTMLButtonElement>('.settings-modal-cancel')!.click();
+        await vi.waitFor(() => expect(document.querySelector('.settings-modal-overlay')).toBeNull());
+        expect(peer.fork).not.toHaveBeenCalled();
+        button.click(); document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
+        await vi.waitFor(() => expect(peer.fork).toHaveBeenCalledOnce());
+    } finally {await editor.destroy();}
+});
+it('reports unsupported native branching and retains input without dispatching a prompt', async () => {
+    const {editor, peer, host} = setup({onConversationSession: vi.fn()});
+    vi.mocked(peer.read).mockResolvedValue({...branchState(), forkSupport: 'none', canFork: false, draft: 'Keep me'});
+    await editor.init(host);
+    try {
+        host.querySelector<HTMLButtonElement>('[data-native-branch]')!.click();
+        await vi.waitFor(() => expect(document.querySelector('.settings-toast--error')?.textContent).toContain(t('branch.unsupported')));
+        expect(host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe('Keep me'); expect(peer.send).not.toHaveBeenCalled();
+    } finally {await editor.destroy();}
+});
+it('passes exact native turn and message IDs to a host that supports historical branching', async () => {
+    const {editor, peer, host} = setup({onConversationSession: vi.fn()});
+    vi.mocked(peer.read).mockResolvedValue({...branchState(), forkSupport: 'turn'});
+    peer.forkAt = vi.fn(async () => branchState()); peer.fork = vi.fn(async () => branchState());
+    await editor.init(host);
+    try {
+        host.querySelector<HTMLButtonElement>('[data-native-branch]')!.click();
+        await vi.waitFor(() => expect(peer.forkAt).toHaveBeenCalledExactlyOnceWith({messageId: 'u1', turnId: 'turn-one'}));
+        expect(peer.fork).not.toHaveBeenCalled(); expect(document.querySelector('.settings-modal-overlay')).toBeNull();
+    } finally {await editor.destroy();}
+});
+it('dismisses an unconfirmed branch substitution when the view is hidden', async () => {
+    const {editor, peer, host} = setup({onConversationSession: vi.fn()});
+    vi.mocked(peer.read).mockResolvedValue(branchState()); peer.fork = vi.fn(async () => branchState());
+    await editor.init(host);
+    try {
+        host.querySelector<HTMLButtonElement>('[data-native-branch]')!.click(); editor.cancelPendingRender();
+        document.querySelector<HTMLButtonElement>('.settings-modal-confirm')?.click();
+        await vi.waitFor(() => expect(document.querySelector('.settings-modal-overlay')).toBeNull());
+        expect(peer.fork).not.toHaveBeenCalled();
+    } finally {await editor.destroy();}
+});
+it('routes native /branch through host branching and keeps the branch switcher reachable in the mobile menu', async () => {
+    const {editor, peer, host} = setup({onConversationSession: vi.fn(), mountCompactNavigation: slot => {slot.textContent = 'Mobile navigation'; return () => {};}});
+    vi.mocked(peer.read).mockResolvedValue({...branchState(), draft: '/branch Review'});
+    peer.fork = vi.fn(async () => branchState()); peer.command = vi.fn(async () => branchState());
+    await editor.init(host);
+    try {
+        expect(host.querySelector('.llm-workspace-titlebar__menu #llm-branch-indicator')).not.toBeNull();
+        await editor.commands.sendMessage({text: '/branch Review'});
+        expect(peer.fork).toHaveBeenCalledExactlyOnceWith('Review');
+        expect(peer.command).not.toHaveBeenCalled(); expect(peer.send).not.toHaveBeenCalled();
+        expect(host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe('');
+    } finally {await editor.destroy();}
+});
+it('keeps a rejected branch command visible and never falls back to sending it as a prompt', async () => {
+    const {editor, peer, host} = setup({onConversationSession: vi.fn()});
+    vi.mocked(peer.read).mockResolvedValue({...branchState(), forkSupport: 'none', canFork: false, draft: '/branch Review'});
+    await editor.init(host);
+    try {
+        await expect(editor.commands.sendMessage({text: '/branch Review'})).rejects.toThrow();
+        expect(host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe('/branch Review');
+        expect(peer.send).not.toHaveBeenCalled();
+    } finally {await editor.destroy();}
+});
+it.each(['hidden', 'reactivated', 'readOnly', 'destroyed'] as const)('invalidates a queued native branch when the editor is %s during draft saving', async lifecycle => {
+    const {editor, peer, host} = setup({onConversationSession: vi.fn()});
+    const current = {...branchState(), draft: '/branch Review'};
+    vi.mocked(peer.read).mockResolvedValue(current); peer.fork = vi.fn(async () => current);
+    await editor.init(host);
+    let release!: () => void;
+    const saving = new Promise<void>(resolve => {release = resolve;});
+    const flush = vi.spyOn(editor, 'flushPendingSave').mockReturnValueOnce(saving);
+    let dispose: Promise<void> | undefined, activate: Promise<void> | undefined;
+    try {
+        const pending = editor.commands.sendMessage({text: '/branch Review'});
+        const rejected = expect(pending).rejects.toThrow();
+        await vi.waitFor(() => expect(flush).toHaveBeenCalled());
+        if (lifecycle === 'readOnly') editor.setReadOnly(true);
+        else if (lifecycle === 'destroyed') dispose = editor.destroy();
+        else {editor.cancelPendingRender(); if (lifecycle === 'reactivated') activate = editor.activate();}
+        release(); await rejected; await activate; await dispose;
+        expect(peer.fork).not.toHaveBeenCalled(); expect(peer.send).not.toHaveBeenCalled();
+        if (lifecycle !== 'destroyed') expect(host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe('/branch Review');
+    } finally {release(); await editor.destroy();}
+});
 it('renders growing long answers during a pending send and reads the latest answer on manual refresh and reopen', async () => {
     vi.stubGlobal('Worker', class {
         onmessage?: (event: unknown) => void;

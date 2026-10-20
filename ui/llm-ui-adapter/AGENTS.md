@@ -6,6 +6,8 @@
 
 原生会话的斜杠候选由 ConversationControls.commands 按当前绑定提供，NativeSlashCommandPlugin 只负责候选和插入，不注册本地 Kernel 命令。RemoteConversationEditor 在发送时重新校验目录并委托 command；命令接纳与普通消息分别呈现，未知结果保留输入并走原 reconcile。ChatInput 拥有 registerPlugin 激活的插件，销毁须逐一 deactivate；关闭后迟到目录不能恢复弹层。
 
+用户提问下方分别提供编辑和分支图标：编辑替换提问并运行，手动分支保留完整所选轮次后继续，不自动发送。原生历史仍只读，RemoteHistoryBranches 单独挂接分支动作，使用原生 messageId/turnId，不能发送渲染 ID。forkSupport 表达 none/latest/turn，canFork 表达当前可用性；历史位置不支持时明确确认是否改从末尾分叉，不能自动退化。原生宿主 /branch [name] 与 /branches 由编辑器处理，不透传为模型提示词或原生命令；分支命令失败保留输入。隐藏、销毁或绑定变化后不得执行待确认的分支动作。小屏分支切换器移入顶部更多菜单。
+
 本地与原生会话的标题栏共享 `EventBinder` 更多菜单；宿主可通过 `EditorOptions.mountMoreMenu` 注入资源动作并返回清理函数。会话归属与关联创建由 app-shell 提供，不进入聊天或 Markdown 组件；关闭编辑器须释放注入菜单。
 
 HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已加载正文；历史卡片与滚动归适配层，Markdown 内部展开归 mdxeditor。生命周期与流程见 [独立模块设计](../../doc/design/llm-ui-independent-module.md#7-markdown扩展与生命周期)，回归见 app-shell 的 conversation-content-search。

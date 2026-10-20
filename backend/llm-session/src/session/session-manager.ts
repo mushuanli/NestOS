@@ -435,7 +435,7 @@ export class SessionManager implements ISession, SessionQuery {
         const assembler = createContextAssembler({
             log,
             profileStore: new ContextProfileStore(this.registry.engine, sessionId),
-            readRound: roundId => log.readRound(roundId),
+            readRound: roundId => log.readRound(roundId, branchRef, manifest),
             loadArtifact: async () => null,
         });
         return (await assembler.assemble({
@@ -484,7 +484,7 @@ export class SessionManager implements ISession, SessionQuery {
         return this.branchService.getSiblings(messageId);
     }
 
-    async createBranch(branchNodeId: string, options?: { name?: string; copyContent?: boolean }): Promise<string> {
+    async createBranch(branchNodeId: string, options?: { name?: string }): Promise<string> {
         return this.branchService.createBranch(branchNodeId, options);
     }
 
@@ -508,8 +508,8 @@ export class SessionManager implements ISession, SessionQuery {
         return this.branchService.listBranches();
     }
 
-    async getBranchMessages(branchHeadNodeId: string): Promise<SessionGroup[]> {
-        return this.branchService.getBranchMessages(branchHeadNodeId);
+    async getBranchMessages(branchHeadNodeId: string, branchName?: string): Promise<SessionGroup[]> {
+        return this.branchService.getBranchMessages(branchHeadNodeId, branchName);
     }
 
     // ================================================================

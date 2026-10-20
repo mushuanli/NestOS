@@ -11,7 +11,7 @@ export async function flowBranchExecutions(repository: ISessionRepository, sessi
             const id = pending.pop()!;
             if (visited.has(id)) continue;
             visited.add(id);
-            const round = await log.readRound(id);
+            const round = await log.readRound(id, name, manifest);
             if (!round || round._deleted) continue;
             for (const execution of round.executions) {
                 taskIds.add(execution.taskId);

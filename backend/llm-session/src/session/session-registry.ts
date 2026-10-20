@@ -406,7 +406,8 @@ export class SessionRegistry {
         }
         if (this._engine.readHistoryChain) return this._engine.readHistoryChain(sessionId);
         const log = new RoundLog(this._engine, sessionId);
-        return collectHistoryChain(await log.loadManifest(), id => log.readRound(id));
+        const manifest = await log.loadManifest();
+        return collectHistoryChain(manifest, id => log.readRound(id, manifest.currentBranch, manifest));
     }
 
     private async populateFromRoundLog(

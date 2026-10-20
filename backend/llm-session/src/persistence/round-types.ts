@@ -59,6 +59,9 @@ export interface BranchMeta {
     commonHeadId?: RoundId;
     branchRootRoundId: RoundId;
 
+    /** Logical Round ID to branch-owned payload document ID; lineage keeps logical IDs. */
+    roundOverrides?: Record<RoundId, RoundId>;
+
     /** Context profile pointer for this branch. */
     contextProfile?: {
         id: ContextProfileId;

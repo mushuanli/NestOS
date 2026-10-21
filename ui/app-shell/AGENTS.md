@@ -15,6 +15,7 @@ SessionWorkbench 统一项目草稿、智能体快捷入口和原生新会话入
 桌面项目归属作为 WorkbenchTabs 的只读 context 与资源名同行显示，不拼入 title、重命名输入或持久文件名，不另占正文一行。小屏聊天通过 `mountCompactNavigation` 合并返回、项目名、标题与已打开入口；编辑器以公开 `data-editor-mobile-navigation="embedded"` 标记接管导航，mobile-workspace-view 只检查当前标签，隐藏宿主重复返回栏、标签行及项目说明。目录页使用 compactNavigation 呈现路径；文件编辑器通过 mountWindowList 把窗口入口注入已有标题栏，并由适配层声明内嵌导航，不额外叠加宿主标题栏。小屏隐藏独立返回栏和桌面标签行；侧栏面板图标、标题和窗口清单入口同一行，Web/httpd 不分叉。移动正文切换消费标签显式的 opening/active/empty 与激活代次；打开资源后不会因等待保存、空标签或正文挂载而退回列表，深链从装配时就进入正文，用户返回列表后的普通内容更新不会抢回正文。已打开面板从顶部展开，借用原列表，关闭后归还侧栏，不克隆编辑器或丢弃草稿。窗口列表用标题和项目/目录两层信息区分同名项，支持名称、项目和路径筛选；位置作为展示元数据保存，不拼入资源名或资源 ID，移动/重命名文件后更新；旧版窗口记录只在打开列表时经 describe 补齐位置，不打开后台编辑器，路由或位置元数据版本变化后丢弃迟到结果。手机标题栏使用返回图标并返回站内前一页面，桌面仍使用侧栏图标。资源导航 push 历史、初始装配和规范路径校正 replace；popstate 回放不能追加历史。直接打开的首个页面没有站内历史时才回到列表。mobile-viewport 随可视视口更新应用高度并在销毁时解绑；mobile-shell-state 将当前活动布局的 detail/embedded 与输入焦点投影到 body[data-mobile-navigation]，不依赖 CSS :has()；小屏聊天正文据此收起全局底部导航，返回列表恢复，保留底部安全区；列表导航高 56px，按钮点按高度 48px。其他编辑器输入焦点通过公开 data-editor-composing 标记收起导航，不读取隐藏工作区状态。
 
 工具箱模型抽屉优先展示默认连接所在 Provider，并显示默认标识及实际就绪状态；其余抽屉/连接按就绪、待配置、停用排序，Provider 设置行保持首位。搜索匹配显示名称与可搜索文本，匹配子项时展开所属抽屉，资源 ID 不随排序改变。智能体与抽屉按最近成功提交排序，时间通过宿主 `ExecutorUsage` 保存到 UI 文档 `mindos_executor_usage_v1`，不改写 Agent 配置时间；聊天与工具箱延迟读取并共享该端口。
+工具箱能力筛选通过折叠标签按钮组合现有 tag: 查询，与名称搜索同时匹配，多标签取交集；手机按钮至少 44px。后端按 Provider 模型目录及 Connection 实际档位投影 capabilityTags；图像生成和 TTS 必须有明确 operation 与受支持适配器，不能用名称、audio 输入或分类猜测。标签不代表凭据就绪，媒体连接不再被误判为缺少聊天模型。前端只翻译能力名，不持久化自动派生标签，不按具体工具或厂商分支。
 项目会话通过 `onStartConversationDraft` 请求切换执行方式；宿主定位同一项目的草稿，将输入和附件交给 appendDraft。已有草稿追加内容，接收编辑器身份变化后不再写入；不迁移原生历史、不发送输入、不取消原任务。模型和助手的下一轮选择仍由原会话编辑器管理。
 平台无关的 Session/Kernel 组合位于 backend/app-core；app-shell 只通过 shared/app-contracts 接收服务，不导入 app-core。UI 仅消费 ApplicationServices/ApplicationBackend；应用操作异步，宿主内部构造契约不进入 UI。本地与 HTTP 宿主共用 initApp。
 
@@ -86,6 +87,8 @@ const factory = factories[strategyType] ?? defaultEditorFactory;
 - 项目收藏只做端口适配：`project-favorites.ts` 把 `resolveBrowserTarget` 路由翻译成 `ProjectFavorites` 命令。远程命令由 mindos-node 能力声明控制，工作台不提供启用/禁用开关。
 - 项目范围选择复用 vfs-ui 的 ScopeSelector；导入导出通过 toolbarOptions.definitions 统一按钮、菜单、图标与异步执行，工作台只注入业务命令和目标策略。
 - 通用 Workbench 保留 vfs-ui 默认的创建文件、创建目录按钮，并透传宿主 toolbarOptions；项目侧栏的精简操作只由 ProjectNavigation 配置，不影响其他模块。
+- 普通工作区侧栏通过 toolbarOptions.root 在刷新按钮前显示 `/` 根目录入口，不再为工作区名称单独增加一行目录按钮。
+- 普通工作区将导航标题合并为「资源浏览 + 模块名」，通过 appearance.showTitle 隐藏内层重复标题；手机/触屏的导入导出由 vfs-ui 移入更多菜单并保留原动作状态，项目选择框保持自定义布局。
 - vfs-ui 内部 DOM/CSS 由库维护；宿主只使用 appearance、NodePresentation、toolbarOptions.variant 和公开 CSS 变量。移动端正文切换订阅 VFS_DOM_EVENTS.resourceActivated，不能依赖内部类名或模拟点击。
 - 项目进入文件复用单侧栏；`ProjectNavigation` 投影当前项目目录、收藏与会话，目录详情和编辑标签位于 `workbench/`。`ProjectFileView` 只保留收藏导航的选择兼容提示；收藏解析在 `openFavorite` 完成。
 - `WorkbenchTabs` 保留每个标签的编辑器 DOM；修改将预览转为保持打开，固定标签受批量关闭保护。`WorkbenchSidebar` 管理上下分区与可访问分隔线，布局/非预览标签通过宿主 workbenchPort 存到 etc:/ui。关闭先完成保存，失败保留编辑器及文件租约。

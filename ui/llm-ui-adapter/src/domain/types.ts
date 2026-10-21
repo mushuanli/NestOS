@@ -82,6 +82,7 @@ export interface ModelOption {
 
 /** 连接选项（用于 ChatInput 连接选择器，不含 apiKey） */
 export interface ConnectionOption {
+    reasoningByTier?: Partial<Record<ModelTier, import('@itookit/driver-llm/contracts').ReasoningCapabilities>>;
     /** Actual chat resolution for each tier; null preserves an explicitly invalid model across JSON. */
     resolvedTiers?: Partial<Record<ModelTier, string | null>>;
     enabled?: boolean;
@@ -125,7 +126,7 @@ export interface ChatSessionSettings {
     temperature?: number;
     streamMode: boolean;
     /** 推理强度（仅支持 thinking 的模型生效），'auto' 表示使用连接默认 */
-    reasoningEffort?: 'auto' | 'low' | 'medium' | 'high' | 'xhigh';
+    reasoningEffort?: string;
     /** 强制开启/关闭 thinking，undefined=auto（跟随模型默认） */
     thinkingEnabled?: boolean;
     /** 强制开启/关闭联网搜索，undefined=auto（provider 支持内置则用内置，否则客户端工具） */
@@ -154,7 +155,7 @@ export interface ChatOverrides {
     temperature?: number;
     streamMode?: boolean;
     /** 推理强度（仅支持 thinking 的模型生效） */
-    reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+    reasoningEffort?: string;
     /** 强制开启/关闭 thinking（覆盖模型默认） */
     thinkingEnabled?: boolean;
     /** 强制开启/关闭联网搜索（覆盖 provider 自动决策；走底层内置或客户端 WebSearchTool） */

@@ -162,7 +162,7 @@
 | 项目 UI 模块装配 | `ui/app-shell/src/projects/index.ts` |
 
 
-- mindos-node 目录项目、目录身份与策略版本：`tools/mindos-node/src/projects/`；客户端：`libraries/mindos-node-driver/src/projects.ts`、`libraries/mindos-node-driver/src/project-process.ts`；设计：[项目模型](design/mindos-node-project-model.md)。
+- mindos-node 目录项目、目录身份与策略版本：`tools/mindos-node/src/plugin/projects/`；客户端：`libraries/mindos-node-driver/src/projects.ts`、`libraries/mindos-node-driver/src/project-process.ts`；设计：[项目模型](design/mindos-node-project-model.md)。
 
 ## CLI 与共享宿主
 

@@ -89,11 +89,11 @@ Flow 端口采用严格 fail：保存原始输出和具体错误，不派发不�
 ## 5. 证据入口
 
 - `backend/llm-flow/__tests__/scheduler-lease.test.ts`：到期边界、释放、迟到心跳、skew 与接管。
-- `backend/durable-kernel/src/kernel.test.ts`：旧条件的 Task/shared/signal 写入被拒、新 owner 复用逻辑 requestId。
+- `libraries/durable-kernel/src/kernel.test.ts`：旧条件的 Task/shared/signal 写入被拒、新 owner 复用逻辑 requestId。
 - `backend/llm-flow/__tests__/durable-flow-executor.test.ts`：旧宿主卡在回调、接管者完成后旧宿主恢复，不重复提交、不执行失败清理；工作区收尾。
 - `apps/cli/tests/crash-matrix.test.ts`：真实 SIGKILL 的提交/完成检查点间隙、委派在途、显式 Effect 重放。
 - `ui/app-shell/tests/scheduler-paused-owner.test.ts`：真实旧进程暂停、过期接管、恢复后的迟到控制隔离。
-- `apps/cli/tests/20-kernel-ipc.test.ts`：消息消费后 SIGKILL、并发 GC、物理清理与缓存回执原子性。
+- `libraries/durable-kernel/tests/ipc.test.ts`：消息消费后 SIGKILL、并发 GC、物理清理与缓存回执原子性。
 - [完整目标与缺口](../todo.md)、[Durable 证据映射](durable-harness-evidence.md)、[本机验收记录](../minimal-system-acceptance.md)。
 
 本地 YAML 委派入口已落地：`tasks[].delegation` 指定子 Agent、指令、数量/并发上限与失败策略。子任务工具取父子交集，当前不暴露嵌套委派。真实 CLI crash-matrix 的委派用例通过这一公开入口运行，夹具只负责注入进程崩溃。

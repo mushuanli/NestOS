@@ -28,6 +28,7 @@ import { FSCapabilityError } from '@itookit/vfs-core';
 
 // UI 定义：ID -> 元数据
 export const SETTINGS_PAGES: Record<string, { name: string, icon: string }> = {
+    'appearance':  { name: '外观',           icon: '🎨' },
     'storage':     { name: '文件系统',     icon: '💾' },
     'tags':        { name: 'Tags',          icon: '🏷️' },
     'contacts':    { name: 'Contacts',      icon: '📒' },
@@ -40,7 +41,6 @@ export const SETTINGS_PAGES: Record<string, { name: string, icon: string }> = {
     'log':         { name: '系统日志',      icon: '📋' },
     'about':       { name: 'About',         icon: 'ℹ️' },
     'fs-explorer': { name: 'FS Explorer',   icon: '🗂️' },
-    'appearance':  { name: '外观',           icon: '🎨' },
 };
 
 function toFSNode(id: string, config: (typeof SETTINGS_PAGES)[string]): FSFileNode {

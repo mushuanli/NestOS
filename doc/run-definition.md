@@ -20,7 +20,7 @@ mindos.yml ──┐
 - `.flow` 已通过 `backend/app-core/src/run/run-definition.ts` 的 `createRunDefinitionFromFlow()` 转为 `RunDefinition`；
 - `RunDefinition → DagRunSpec` 已通过 `toDagRunSpec()` 实现，CLI `run` 已走该路径；
 - CLI `run -f xxx.flow` 已支持 inline `.flow` 节点和 desktop profile LLM 配置；
-  可用 `--params input.json` 传入运行参数；编译参数作用域与模板标记完整传到 DAG，运行快照支持补填、恢复和重跑。真实模型验证与命令见 [作文 CLI 验证](./design/essay-review-cli-verification.md)。
+  可用 `--params input.json` 传入运行参数；编译参数作用域与模板标记完整传到 DAG，运行快照支持补填、恢复和重跑。定义声明 `outputs` 时，CLI 从生成的返回节点提取所有具名输出保存为 `result.json`；未声明时继续选择最后一个作者节点的 result。真实模型验证与命令见 [作文 CLI 验证](./design/essay-review-cli-verification.md)。
 - `RunCatalog` 只读投影已提供；
 - `.flow` 的 `agentId` / `systemPromptId` / `skillIds` 引用解析已由 `backend/llm-session/src/session/flow-node-binder.ts`（`bindFlowNode` / `bindStandaloneFlowNode`）实现，并被 `backend/llm-session/src/session/session-run-coordinator.ts` 与 `DagCommandService` 使用；CLI `.flow` 入口（`apps/cli/src/commands.ts` 调用 `createRunDefinitionFromFlow()` 时未传 `bind`）与 Tauri Runs 视图仍待接线。
 
@@ -139,3 +139,5 @@ tasks:
 ```
 
 同样可接入 builtin.route@2.0.0 的结构化派发循环和 builtin.aggregate@1.0.0。详细配置与 .flow 示例见 [作文评审实现](design/essay-review-flow.md)。
+
+CLI 运行组合 `.flow` 时，从入口文件所在目录加载 `<flowId>.flow`；ID 必须是安全文件名且与定义身份一致，显式 revision 必须匹配。展开后的图、连接快照和参数作用域保存进 RunDefinition，resume 使用已有快照，不重新读取最新子定义。

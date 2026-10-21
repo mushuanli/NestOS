@@ -1,5 +1,7 @@
-import { escapeHTML, FEEDBACK_ICONS, t } from '@itookit/common';
+import { escapeHTML, FEEDBACK_ICONS, getLocale, t } from '@itookit/common';
+import { createInteractionCard, type InteractionCard, type InteractionResponse } from '@itookit/llm-ui';
 import type { ChatInputInteraction, InteractionReply } from '../../domain/ports/IChatInputPresenter';
+import { agentQuestionAnswer } from './agent-questions';
 
 type Pending = { request: ChatInputInteraction; respond: (reply: InteractionReply) => Promise<void> };
 
@@ -8,6 +10,7 @@ export class InteractionPanel {
     private element?: HTMLElement;
     private pending?: Pending;
     private submitting = false;
+    private questionCard?: InteractionCard;
 
     constructor(private readonly container: HTMLElement) {}
 
@@ -15,6 +18,7 @@ export class InteractionPanel {
         if (this.pending?.request.key === request.key) return;
         this.clear();
         this.pending = { request, respond };
+        if (request.fields?.length && request.kind === 'input') return this.showQuestions(this.pending, focus);
         const element = document.createElement('section');
         element.className = 'llm-input__interaction';
         element.setAttribute('role', 'region');
@@ -26,8 +30,7 @@ export class InteractionPanel {
         element.addEventListener('click', event => this.handleClick(event));
         this.element = element;
         this.renderOptions(request.options ?? []);
-        const wrapper = this.container.querySelector('.llm-input__field-wrapper');
-        (wrapper?.parentElement ?? this.container).insertBefore(element, wrapper ?? null);
+        this.mount(element);
         if (focus) element.querySelector('textarea')!.focus({ preventScroll: true });
     }
 
@@ -35,8 +38,41 @@ export class InteractionPanel {
         if (interactionId && this.pending?.request.id !== interactionId) return;
         this.pending = undefined;
         this.submitting = false;
+        this.questionCard?.destroy(); this.questionCard = undefined;
         this.element?.remove();
         this.element = undefined;
+    }
+
+    private mount(element: HTMLElement): void {
+        const wrapper = this.container.querySelector('.llm-input__field-wrapper');
+        (wrapper?.parentElement ?? this.container).insertBefore(element, wrapper ?? null);
+    }
+
+    private showQuestions(pending: Pending, focus: boolean): void {
+        const { request } = pending, fields = request.fields!;
+        this.questionCard = createInteractionCard({ id: request.id, revision: 0, state: 'pending', kind: 'input',
+            title: title(request), detail: [fields.some(field => field.label === request.prompt) ? undefined : request.prompt,
+                request.details].filter(Boolean).join('\n') || undefined,
+            fields }, response => this.respondQuestions(pending, response), { locale: getLocale() });
+        this.element = this.questionCard.element;
+        this.element.classList.add('llm-input__interaction', 'llm-input__interaction--questions');
+        this.mount(this.element);
+        if (focus) this.element.querySelector<HTMLElement>('input, textarea')?.focus({ preventScroll: true });
+    }
+
+    private async respondQuestions(pending: Pending, response: InteractionResponse): Promise<void> {
+        const started = performance.now();
+        try {
+            await pending.respond(agentQuestionAnswer(pending.request.fields!, response));
+            console.debug('[Interaction]', { operation: 'interaction.respond', stage: 'complete', outcome: 'success',
+                requestId: pending.request.id, durationMs: Math.round(performance.now() - started) });
+            if (this.pending === pending) this.clear();
+        } catch (error) {
+            console.warn('[Interaction]', { operation: 'interaction.respond', stage: 'submit', outcome: 'failure',
+                requestId: pending.request.id, durationMs: Math.round(performance.now() - started),
+                errorCode: error instanceof Error ? error.name : 'UNKNOWN_ERROR' });
+            throw error;
+        }
     }
 
     private renderOptions(options: string[]): void {

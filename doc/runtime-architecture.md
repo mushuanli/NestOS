@@ -620,7 +620,7 @@ Session 回归补迁了 pending-user 测试中遗漏的 ContextAssembler 导入�
 - [宿主装配](../backend/app-core/src/runtime/create-application-runtime.ts)、[内核装配](../backend/app-core/src/runtime/create-kernel-runtime.ts)。
 - [Session 实例装配](../backend/llm-session/src/index.ts)、[会话运行协调](../backend/llm-session/src/session/conversation-run-coordinator.ts)。
 - [统一提交](../backend/llm-flow/src/run-submission.ts)、[Flow 执行器](../backend/llm-flow/src/flow/executor.ts)。
-- [Program/Effect 契约](../backend/durable-kernel/src/domain/types.ts)、[Context v2 bridge](../backend/llm-tasks/src/durable/context-program.ts)、[LLM Effect 构造与重试](../backend/llm-tasks/src/durable/program-helpers.ts)。
+- [Program/Effect 契约](../libraries/durable-kernel/src/domain/types.ts)、[Context v2 bridge](../backend/llm-tasks/src/durable/context-program.ts)、[LLM Effect 构造与重试](../backend/llm-tasks/src/durable/program-helpers.ts)。
 - [Context 端口](../backend/llm-context/src/domain/durable.ts)、[通信驱动](https://github.com/mushuanli/driver-llm/blob/main/src/core/driver.ts)、[Provider 注册表](https://github.com/mushuanli/driver-llm/blob/main/src/providers/registry.ts)。
 - [UI 实例端口](../backend/llm-session/src/contracts/session-view.ts)、[任务挂接](../ui/llm-ui-adapter/src/shell/RunAttachmentController.ts)。
 

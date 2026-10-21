@@ -1,5 +1,6 @@
 import type { DagNodeOutcome, JsonValue, SerializableExpression } from '../contracts';
 import { mergeResults } from './structured/results';
+import { scopeSpawn } from './spawn-scope';
 
 export function aggregateOutcome(_config: Record<string, unknown>, inputs: Record<string, unknown>): DagNodeOutcome {
     // Dependency bindings already extract artifact content; keys belong to the caller.
@@ -25,7 +26,7 @@ export function spawnOutcome(
     parentId?: string,
 ): DagNodeOutcome {
     const base = transformOutcome(config, inputs);
-    const spawn = record(config.spawn);
+    const spawn = config.scope === 'local' ? scopeSpawn(record(config.spawn), parentId) : record(config.spawn);
     const patch = {
         idempotencyKey: string(spawn.idempotencyKey, parentId ? `spawn:${parentId}` : 'spawn'),
         nodes: Array.isArray(spawn.nodes) ? spawn.nodes.filter(isRecord) : [],

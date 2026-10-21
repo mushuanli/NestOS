@@ -11,7 +11,7 @@ export function assertModelConnection(connection: ConnectionMeta | undefined, pr
     if (!model) throw new Error(`Unknown model: ${modelId}`);
     if (!requirements) return;
     if (requirements.operation === 'image.generate' || requirements.operation === 'speech.synthesize') {
-        if (!connection.hasApiKey) throw new Error('Media adapter requires API-key credentials');
+        if (!connection.hasApiKey && provider.credentialMode !== 'host') throw new Error('Media adapter requires API-key credentials');
         const caps = requireMediaCapabilities(provider, model, requirements.operation);
         for (const [needed, actual] of [[requirements.inputModalities, caps.inputModalities], [requirements.outputModalities, caps.outputModalities],
             [requirements.features, caps.features]] as const)

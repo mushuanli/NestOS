@@ -32,6 +32,8 @@ it('projects safe connection readiness and preserves missing chat models as null
         await inventory.init();
         expect(inventory.connections.get('chat')).toMatchObject({credentialsReady: true, model: 'Chat model'});
         expect(JSON.parse(JSON.stringify(inventory.connections.get('image')))).toMatchObject({credentialsReady: false, model: null});
+        expect(inventory.connections.get('chat')?.capabilityTags).toEqual(['chat']);
+        expect(inventory.connections.get('image')?.capabilityTags).toEqual([]);
         expect(JSON.stringify([...inventory.connections])).not.toContain('never expose');
     } finally { await inventory.dispose(); }
 });

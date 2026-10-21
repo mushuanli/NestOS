@@ -210,7 +210,7 @@ export class ConnectionManager {
     private connToMeta(conn: LLMConnection): ConnectionMeta {
         const provider = this.getProviderForConn(conn);
         const meta = toConnectionMeta(conn, provider, this.providerManager.getFullProviderMap().values());
-        return { ...meta, credentialsReady: this.credentialReadiness?.(conn.providerId) ?? (meta.hasApiKey || conn.providerId === 'codex') };
+        return { ...meta, credentialsReady: this.credentialReadiness?.(conn.providerId) ?? (meta.hasApiKey || provider?.credentialMode === 'host' || conn.providerId === 'codex') };
     }
 
     private getProviderForConn(conn: LLMConnection) {

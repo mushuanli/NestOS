@@ -78,6 +78,13 @@ export class ProviderManager {
                     ...def,
                     ...p,
                     capabilities: { ...(def.capabilities ?? {}), ...(p.capabilities ?? {}) },
+                    media: p.media ?? def.media,
+                    connectionTestModel: p.connectionTestModel ?? def.connectionTestModel,
+                    models: p.models.map(model => {
+                        const preset = def.models.find(item => item.id === model.id);
+                        return { ...model, operations: model.operations ?? preset?.operations,
+                            reasoning: model.reasoning ?? preset?.reasoning, reasoningByProtocol: model.reasoningByProtocol ?? preset?.reasoningByProtocol };
+                    }),
                 });
             } else {
                 merged.set(p.id, p);

@@ -285,7 +285,7 @@ mindos-node-driver 的纯 authorization 入口负责校验 DTO，连接支持显
 
 ## DSH 驱动
 
-mindos-node@0.3.1 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适配通用 HarnessDriver。驱动目录 `tools/mindos-node/src/harness/dsh/` 持有原生传输、历史投影和进程生命周期；通用 harness 服务继续持有目录授权、epoch/requestId 回执与会话修改队列，itookit 前端不依赖 DSH 协议。
+mindos-node@0.3.1 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适配通用 HarnessDriver。驱动目录 `tools/mindos-node/src/plugin/harness/drivers/dsh/` 持有原生传输、历史投影和进程生命周期；通用 harness 服务继续持有目录授权、epoch/requestId 回执与会话修改队列，itookit 前端不依赖 DSH 协议。
 
 托管模式启动 DSH `web` profile，项目实例使用 ProjectRuntime/launcher 与独立授权的模型 home；多个会话共享该实例的 WS mux，HTTP 只等提交回执。连接已有服务时必须显式配置 origin、令牌环境变量和 legacy workspaces，拒绝声明项目沙箱或多身份隔离。配置示例见 [config.dsh.example.toml](../../tools/mindos-node/config.dsh.example.toml)。
 
@@ -361,7 +361,7 @@ stateDiagram-v2
     Rejected --> Draft: 保留输入，允许明确重试
 ```
 
-回执账本位于 [receipts.rs](../../tools/mindos-node/src/harness/receipts.rs)，与按 revision/readOnly 缓存的原生运行时分离。项目操作以 owner、projectId、规范 profileId、requestId 定位，同一 epoch 内重新挂载和运行时关闭不删除历史事实。查询仍校验当前主体与项目访问权限，过期 revision 只能用于查原回执，不能授权新执行。账本使用有限缓存和 256 MiB 主库上限的私有临时数据库；并发修改上限为 1024，终态不占并发名额。服务重启仍使用新 epoch，不宣称持久回执恢复；存储失败返回 unknown 并保留防重记录。
+回执账本位于 [receipts.rs](../../tools/mindos-node/src/plugin/harness/receipts.rs)，与按 revision/readOnly 缓存的原生运行时分离。项目操作以 owner、projectId、规范 profileId、requestId 定位，同一 epoch 内重新挂载和运行时关闭不删除历史事实。查询仍校验当前主体与项目访问权限，过期 revision 只能用于查原回执，不能授权新执行。账本使用有限缓存和 256 MiB 主库上限的私有临时数据库；并发修改上限为 1024，终态不占并发名额。服务重启仍使用新 epoch，不宣称持久回执恢复；存储失败返回 unknown 并保留防重记录。
 
 工作台和项目观察在存在订阅时保持低频空闲检查：空闲 15 秒，项目活跃观察 1 秒、会话流式观察 200 毫秒；失败有界退避。最后一个订阅释放后停止定时器，隐藏/关闭不取消原生任务。首次观察失败且没有缓存行时同样继续退避重试。
 

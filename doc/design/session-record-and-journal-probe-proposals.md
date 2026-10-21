@@ -27,7 +27,7 @@
 `session.seq` 的 `record` 键是会话的权威状态（`SessionRecord`：`id` / `status` / `layout` / `closeMode` / `version` …）。每次事务开始时 Kernel 都要求「本宿主能理解这个会话的布局」，实现就是：
 
 ```ts
-// backend/durable-kernel/src/infrastructure/seqfile/store-helpers.ts:324
+// libraries/durable-kernel/src/infrastructure/seqfile/store-helpers.ts:324
 export async function requireSessionTx(tx: ISeqFileTransaction, root: string): Promise<SessionRecord> {
     const value = await tx.getEntry(sessionPath(root), SESSION_KEY);   // 1 次记录读
     if (!value) throw new Error(`Session record missing at ${root}`);
@@ -89,10 +89,10 @@ export async function writeSessionTx(tx: ISeqFileTransaction, root: string, reco
 
 | 文件 | 改动 |
 |---|---|
-| `backend/durable-kernel/src/infrastructure/seqfile/store-helpers.ts` | `requireSessionTx` 加 `WeakMap<tx, Map<root, SessionRecord>>` 记忆化 + `Object.freeze`；新增 `writeSessionTx` |
-| `backend/durable-kernel/src/infrastructure/seqfile/store.ts:122/245/273` | 三处 `tx.setEntry(sessionPath(...), SESSION_KEY, ...)` 改走 `writeSessionTx`（create / 状态迁移 / reopen） |
-| `backend/durable-kernel/src/infrastructure/seqfile/store.ts:358` | `listShared` 的守卫事务与随后的 `walkEntries` 合并到一个事务：一次布局断言 + 一次前缀遍历（省 1 个事务信封） |
-| `backend/durable-kernel/src/infrastructure/seqfile/managed-resources.ts:687-688`、`232/237`、`347/353` | 无需改动；同事务同 `root` 的第二次读自动命中记忆化 |
+| `libraries/durable-kernel/src/infrastructure/seqfile/store-helpers.ts` | `requireSessionTx` 加 `WeakMap<tx, Map<root, SessionRecord>>` 记忆化 + `Object.freeze`；新增 `writeSessionTx` |
+| `libraries/durable-kernel/src/infrastructure/seqfile/store.ts:122/245/273` | 三处 `tx.setEntry(sessionPath(...), SESSION_KEY, ...)` 改走 `writeSessionTx`（create / 状态迁移 / reopen） |
+| `libraries/durable-kernel/src/infrastructure/seqfile/store.ts:358` | `listShared` 的守卫事务与随后的 `walkEntries` 合并到一个事务：一次布局断言 + 一次前缀遍历（省 1 个事务信封） |
+| `libraries/durable-kernel/src/infrastructure/seqfile/managed-resources.ts:687-688`、`232/237`、`347/353` | 无需改动；同事务同 `root` 的第二次读自动命中记忆化 |
 
 **正确性论证**
 
@@ -189,7 +189,7 @@ sidecar_begin(IPC) → sidecar_select(journal intent, IPC) → 业务 SQL(IPC) �
 | `https://github.com/mushuanli/vfsdriver-local/blob/main/src/localfs-backend.ts:78/307/661` | `beforeTransaction` 增加 `probeRows` 形参；`runInTransaction` 优先 `transactionWithProbe`；`recoverRename` 接受探测结果 |
 | `https://github.com/mushuanli/vfsdriver-local/blob/main/src/db/sidecar.ts`、`apps/node-host/src/storage/sqlite-sidecar.ts` | `transactionWithProbe` 实现（本地调用，收益为少一次 JS 调用，SQL 不变） |
 | `ui/app-shell/tests/fake-sidecar.ts`、`https://github.com/mushuanli/vfsdriver-local/blob/main/tests/{18,24,25}-*.test.ts` | fake/计数实现补齐新端口；`25-journal-probe.test.ts` 的 `journalProbes` 断言改为「begin 携带探测」计数 |
-| `apps/cli/tests/20-kernel-ipc.test.ts` | 两进程 SIGKILL 场景保持在改后路径下通过（探测仍每事务执行） |
+| `libraries/durable-kernel/tests/ipc.test.ts` | 两进程 SIGKILL 场景保持在改后路径下通过（探测仍每事务执行） |
 
 **收益**：桌面每事务少 1 次 IPC；启动 175 次、每次 poll 19 次探测不再各自成为一次往返（-21.5% / -22% IPC）。**SQL 与事务数不变**，`sidecarStats` 逻辑调用数只有在实现成「探测在 begin 内执行」时才下降——这一点必须写清楚，否则指标会被误读为「优化掉了检查」。
 

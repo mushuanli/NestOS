@@ -20,6 +20,10 @@ test('registry build staging excludes sources and secrets without changing devel
     t.after(() => rmSync(root, { recursive: true, force: true }));
     mkdirSync(join(root, 'ui/host/src'), { recursive: true });
     mkdirSync(join(root, 'libraries/core/src'), { recursive: true });
+    mkdirSync(join(root, 'tools/image-tools/src'), {recursive: true});
+    writeFileSync(join(root, 'tools/image-tools/package.json'), JSON.stringify({name:'@itookit/image-tools',dependencies:{'@itookit/core':'workspace:*'}}));
+    writeFileSync(join(root, 'tools/image-tools/src/node.ts'), 'export {};');
+    writeFileSync(join(root, 'tools/image-tools/.env.local'), 'secret');
     mkdirSync(join(root, 'ui/host/src/mdx'), { recursive: true });
     writeFileSync(join(root, 'ui/host/src/mdx/controller.ts'), 'export {};');
     const manifest = { name: 'example', scripts: { preinstall: 'guard' }, dependencies: { '@itookit/core': 'workspace:*' } };
@@ -36,6 +40,9 @@ test('registry build staging excludes sources and secrets without changing devel
     assert.doesNotMatch(readFileSync(join(destination, 'pnpm-workspace.yaml'), 'utf8'), /patchedDependencies/);
     assert.equal(existsSync(join(destination, 'ui/host/.env.local')), false);
     assert.equal(existsSync(join(destination, 'ui/host/src/mdx/controller.ts')), true);
+    assert.equal(existsSync(join(destination, 'tools/image-tools/src/node.ts')), true);
+    assert.equal(existsSync(join(destination, 'tools/image-tools/.env.local')), false);
+    assert.equal(JSON.parse(readFileSync(join(destination, 'tools/image-tools/package.json'))).dependencies['@itookit/core'],'1.0.0');
     assert.equal(readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8'), 'development-lock');
     assert.equal(JSON.parse(readFileSync(join(root, 'package.json'))).dependencies['@itookit/core'], 'workspace:*');
     assert.equal(JSON.parse(readFileSync(join(destination, 'package.json'))).scripts.preinstall, undefined);

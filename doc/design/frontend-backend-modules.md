@@ -11,12 +11,14 @@
 | 前端 | ui/app-shell、app-settings、llm-ui-adapter、llm-settings-ui、mdx-adapter、ui-common 的 src | 不导入后端实现，不创建执行 Runtime |
 | 前端独立库 | libraries/vfs-ui、libraries/mdxeditor、libraries/llm-ui | 保留通用展示、编辑和注入端口 |
 | 后端应用 | backend/app-core/src/host、configuration、settings、projects、session、runtime 等 | 不加载 UI、CSS 或 DOM 组件 |
-| 后端领域与能力 | backend/ 下的 llm-context、llm-session、llm-flow、llm-tasks、durable-kernel、kernel-adapters、tools、device-tty、sanbox、sync-adapters | 领域契约与实现入口分开 |
-| 后端独立库 | driver-llm、mindos-node-driver、vfs-sync、vfsdriver-* 的实现 | 存储、网络和执行能力由宿主选择 |
+| 独立持久执行内核 | libraries/durable-kernel | 仅依赖 vfs-core，运行与纯契约入口分开 |
+| 后端领域与能力 | backend/ 下的 llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、tools、sanbox、sync-adapters | 领域契约与实现入口分开 |
+| 后端独立库 | device-tty、driver-llm、mindos-node-driver、vfs-sync、vfsdriver-* 的实现 | 存储、网络和执行能力由宿主选择 |
 | 共享应用契约 | shared/app-contracts/src | 应用 DTO、事件、设置端口、身份与纯变换；无执行或存储实现 |
 | 所属领域契约 | 各包公开 contracts 入口及目录 | 类型、命令标识与纯校验；不转发执行类的运行时值 |
 | 共享文件机制 | libraries/vfs-core | 文件接口和通用机制；展示文件源可使用 MemoryBackend，不装配应用执行 Runtime |
 | 宿主装配 | apps/* 的 main 与平台装配代码 | 本地宿主可同时装配双方，前端模块本身不能反向创建后端 |
+| 外部工具浏览器装配 | tools/image-tools/src/browser.ts | 独立 /browser 入口供 Web/Tauri 宿主共用；不作为后端根入口扫描，Node 入口仍禁止传递加载 DOM 实现 |
 | 共享传输 | shared/app-transport | 无 DOM/Node 的 HTTP/SSE、RPC、应用描述与 selector；不执行后端业务 |
 | Node 宿主 | apps/node-host | Node 存储、私密授权、锁、日志与 HTTPS；不导入 UI |
 | HTTP 入口 | apps/http-app/src/client 与 src/server | client 挂载完整 UI；server 委托 node-host，不复制业务 |

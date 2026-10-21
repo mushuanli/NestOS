@@ -16,6 +16,23 @@ export function createVFSToolContext(context: FileSystemContext): ToolVFSContext
     };
     return {
         walkFiles,
+        async readBinaryFile(path, options) {
+            const target = resolve(path), maxBytes = options?.maxBytes;
+            if (maxBytes !== undefined) {
+                if (!Number.isSafeInteger(maxBytes) || maxBytes < 1) throw new Error('Invalid binary read budget');
+                const node = await context.fs.driver.getNode(target);
+                if (node && 'size' in node && (node.size ?? 0) > maxBytes) throw new Error('Binary file exceeds byte budget');
+            }
+            const bytes = await context.fs.driver.readContent(target, {encoding: 'binary', ...(maxBytes === undefined ? {} : {offset: 0, length: maxBytes + 1}), onRevision: value => {revisions.set(target, value);}});
+            if (maxBytes !== undefined && bytes.byteLength > maxBytes) throw new Error('Binary file exceeds byte budget');
+            return new Uint8Array(bytes);
+        },
+        async writeBinaryFile(path, content) {
+            const target = resolve(path);
+            const bytes = new Uint8Array(content).buffer;
+            if (await context.fs.driver.exists(target)) await context.fs.driver.writeContent(target, bytes, { ifRevision: revisions.get(target), onRevision: value => { revisions.set(target, value); } });
+            else await context.fs.driver.createFile({ name: pathUtils.basename(target), parentPath: pathUtils.dirname(target), content: bytes, recursive: true });
+        },
         async readFile(path, options) {
             const target = resolve(path), maxBytes = options?.maxBytes;
             if (maxBytes === undefined) return context.fs.driver.readContent(target, { encoding: 'utf-8', onRevision: value => { revisions.set(target, value); } });

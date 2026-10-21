@@ -18,6 +18,9 @@
     flex-direction: column;
     flex: 1;
     min-height: 0;
+    min-width: 0;
+    height: 100%;
+    overflow: hidden;
     color: var(--dag-text-primary);
     background: var(--dag-bg-primary);
 }
@@ -29,14 +32,14 @@
     padding: 10px;
     border-bottom: 1px solid var(--dag-border);
     overflow-x: auto;
+    flex-shrink: 0;
 }
 
 .dag-toolbar > * { flex: 0 0 auto; }
 
-.dag-toolbar > span {
-    margin-right: auto;
-    color: var(--dag-text-secondary);
-}
+.dag-toolbar__name { flex-shrink: 1; min-width: 0; max-width: min(28vw, 320px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dag-toolbar [data-action="runs"] { margin-right: auto; }
+.dag-toolbar > span { margin-right: auto; color: var(--dag-text-secondary); }
 
 .dag-toolbar button,
 .dag-toolbar select,
@@ -48,17 +51,28 @@
     background: var(--dag-bg-secondary);
 }
 
+.flow-run-icon { display: inline-flex; align-items: center; justify-content: center; flex: 0 0 auto; color: color-mix(in srgb, var(--llm-color-success, #10b981) 65%, var(--llm-text-primary, #333333)); }
+.flow-run-icon svg { display: block; width: 18px; height: 18px; }
+.dag-inspector button.dag-run-button { display: inline-flex; align-items: center; justify-content: center; gap: 6px; margin-left: auto; min-height: 36px; font-weight: 600; border-color: color-mix(in srgb, var(--llm-color-success, #10b981) 45%, var(--dag-border)); background: color-mix(in srgb, var(--llm-color-success, #10b981) 12%, var(--dag-bg-primary)); }
+.dag-inspector button.dag-run-button:hover:not(:disabled) { background: color-mix(in srgb, var(--llm-color-success, #10b981) 20%, var(--dag-bg-primary)); }
+.dag-inspector button.dag-run-button:focus-visible { outline: 2px solid var(--dag-focus); outline-offset: 2px; }
+.dag-inspector button.dag-run-button:disabled { color: var(--dag-text-muted); border-color: var(--dag-border); background: var(--dag-bg-secondary); opacity: .55; cursor: not-allowed; }
+.dag-run-button:disabled .flow-run-icon { color: inherit; }
+
 .dag-workbench__body {
     display: grid;
     grid-template-columns: minmax(0, 1fr) clamp(300px, 25vw, 380px);
+    grid-template-rows: minmax(0, 1fr);
     flex: 1;
     min-height: 0;
+    min-width: 0;
+    overflow: hidden;
 }
 
 @media (max-width: 600px) {
     .dag-workbench__body {
         grid-template-columns: minmax(0, 1fr);
-        grid-template-rows: minmax(180px, 40%) minmax(0, 1fr);
+        grid-template-rows: minmax(120px, 28%) minmax(0, 1fr);
     }
     .dag-inspector { border-left: 0; border-top: 1px solid var(--dag-border); }
 }
@@ -239,9 +253,11 @@
 .dag-canvas.is-connecting { cursor: crosshair; }
 
 .dag-inspector {
-    overflow: auto;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
     min-height: 0;
-    padding: 14px;
+    min-width: 0;
     border-left: 1px solid var(--dag-border);
     color: var(--dag-text-primary);
     background: var(--dag-bg-primary);
@@ -253,7 +269,22 @@
     margin: 12px 0;
 }
 
+.dag-inspector__tabs { display: flex; align-items: center; flex-shrink: 0; gap: 6px; padding: 10px; border-bottom: 1px solid var(--dag-border); }
+.dag-inspector__tabs button { white-space: nowrap; }
+.dag-inspector__tabs button[aria-pressed="true"] { color: var(--dag-focus); border-color: var(--dag-focus); }
+.dag-run-parameters, .dag-inspector [data-inspector-content] { flex: 1; min-height: 0; min-width: 0; overflow: auto; overscroll-behavior: contain; padding: 14px; }
+.dag-run-parameters[hidden], .dag-inspector [data-inspector-content][hidden] { display: none; }
+.dag-run-parameters form { margin-top: 12px; }
+.dag-run-parameters__status { color: var(--dag-text-secondary); }
+.dag-inspector .dag-run-parameters fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.dag-run-parameters label { display: grid; gap: 5px; margin: 12px 0; }
+.dag-run-parameters small { color: var(--dag-text-secondary); overflow-wrap: anywhere; }
+.dag-run-parameters input[type="checkbox"] { width: auto; justify-self: start; }
+.dag-run-parameters input[type="file"] { max-width: 100%; }
+.dag-run-parameters [data-image-preview] { display: flex; flex-wrap: wrap; gap: 8px; }
+
 .dag-inspector > label,
+.dag-inspector [data-inspector-content] > label,
 .dag-inspector details label {
     display: grid;
     gap: 5px;
@@ -338,6 +369,8 @@
 }
 
 .dag-validation {
+    flex-shrink: 0;
+    max-height: 20%;
     display: flex;
     gap: 10px;
     overflow: auto;
@@ -351,7 +384,12 @@
     color: var(--llm-color-error, #ef4444);
 }
 
+.dag-dialog__image { object-fit: contain; }
+
 .dag-dialog {
+    margin: auto;
+    padding: 20px;
+    box-sizing: border-box;
     width: min(680px, 90vw);
     max-height: 85vh;
     overflow: auto;

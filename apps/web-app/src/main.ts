@@ -1,3 +1,4 @@
+import {createBrowserImageTools} from '@itookit/image-tools/browser';
 import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import { SnapshotService } from './storage/snapshots';
 import { createApplicationClient, bindLocalApplicationServices } from '@itookit/app-core/host';
@@ -46,7 +47,7 @@ async function createLocalClient() {
         sync: {provider: sync, coordinator: sync.coordinator},
         // Same tab keeps its lease identity across reloads; other tabs keep their own.
         sessionOwnerToken: windowSessionLeaseToken(),
-        kernelPlatform: {skillToolHandlerFactory: new BrowserSkillToolHandlerFactory()},
+        kernelPlatform: {additionalTools: createBrowserImageTools(), skillToolHandlerFactory: new BrowserSkillToolHandlerFactory()},
     });
     try {
         const client = createApplicationClient(bindLocalApplicationServices(runtime), {snapshots: vfs => new SnapshotService(vfs, 'MindOS-v3')});

@@ -16,6 +16,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@itookit/tools": "workspace:*",
+    "zod": "^4.4.2",
     "@itookit/app-core": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
     "@itookit/app-transport": "workspace:*",
@@ -24,7 +26,8 @@
     "@itookit/vfsdriver-local": "workspace:*",
     "@itookit/mindos-node-driver": "workspace:*",
     "@itookit/kernel-adapters": "workspace:*",
-    "@itookit/driver-llm": "workspace:*"
+    "@itookit/driver-llm": "workspace:*",
+    "@itookit/image-tools": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.9.3",

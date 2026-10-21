@@ -58,15 +58,16 @@
   },
   "dependencies": {
     "@itookit/durable-kernel": "workspace:*",
+    "@itookit/llm-context": "workspace:*",
     "@itookit/llm-tasks": "workspace:*",
-    "@itookit/llm-context": "workspace:*"
+    "jsonc-parser": "3.3.1"
   },
   "devDependencies": {
+    "@itookit/driver-llm": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "@types/node": "^20.19.25",
     "rimraf": "^5.0.5",
     "typescript": "^5.9.3",
-    "vitest": "^1.6.1",
-    "@itookit/driver-llm": "workspace:*"
+    "vitest": "^1.6.1"
   }
 }

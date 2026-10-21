@@ -11,6 +11,7 @@ import { validateWaitPolicy } from './control/join-program';
 import { validateFields } from './structured/input';
 import { dataEdgeSchemaIssue } from './port-contract';
 import { withFlowReturns } from './function-outputs';
+import {equalJson, matchesSchemaType as matchesType} from './schema-values';
 
 export interface ValidationIssue {
     code: string;
@@ -96,6 +97,18 @@ function validateConnectionReferences(flow: FlowRevision, issues: ValidationIssu
     const value = flow.defaults?.connectionId;
     if (typeof value === 'string' && value && !slots.has(value)) {
         issues.push({ code: 'unknown-connection-slot', message: `Flow defaults references unknown connection slot: ${value}` });
+    }
+    for (const node of flow.nodes) {
+        if (!isRecord(node.config)) continue;
+        const name = node.config.connectionSlot;
+        if (name !== undefined && (typeof name !== 'string' || !slots.has(name)))
+            add(issues, 'unknown-connection-slot', `Node ${node.id} references unknown connection slot: ${String(name)}`, node.id);
+        const slotName = name ?? node.config.connectionId;
+        const slot = flow.connections?.find(slot => slot.name === slotName);
+        const declared = isRecord(node.config.connectionRequirements) ? node.config.connectionRequirements.operation : undefined;
+        const operation = declared ?? (node.plugin === 'builtin.agent' ? 'chat' : node.plugin === 'builtin.media' ? node.config.operation : undefined);
+        if (slot?.requirements && operation && slot.requirements.operation !== operation)
+            add(issues, 'connection-requirements-conflict', `Node ${node.id} operation ${String(operation)} conflicts with slot ${slot.name}: ${slot.requirements.operation}`, node.id);
     }
 }
 
@@ -313,13 +326,18 @@ function validateConnections(
 }
 
 export function validateSchema(schema: JsonValue, value: JsonValue, path = '$'): string[] {
+    if (isParameterTemplate(value)) return [];
+    if (schema === false) return [`${path} is forbidden`];
     if (!isRecord(schema)) return [];
     const errors: string[] = [];
-    // A whole `${params.name}` placeholder is resolved at run time to the
-    // parameter's native type, so skip static type checking for it here.
-    if (typeof schema.type === 'string' && !isParameterTemplate(value) && !matchesType(schema.type, value)) {
-        errors.push(`${path} must be ${schema.type}`);
-    }
+    if (typeof schema.type === 'string' && !matchesType(schema.type, value)) errors.push(`${path} must be ${schema.type}`);
+    if (Array.isArray(schema.enum) && !schema.enum.some(item => equalJson(item, value))) errors.push(`${path} is outside enum`);
+    if (typeof value === 'number' && (!Number.isFinite(value) || typeof schema.minimum === 'number' && value < schema.minimum
+        || typeof schema.maximum === 'number' && value > schema.maximum)) errors.push(`${path} is outside numeric range`);
+    if (typeof value === 'string' && typeof schema.minLength === 'number' && value.length < schema.minLength) errors.push(`${path} is too short`);
+    if (typeof value === 'string' && typeof schema.maxLength === 'number' && value.length > schema.maxLength) errors.push(`${path} is too long`);
+    if (typeof value === 'string' && typeof schema.pattern === 'string' && !new RegExp(schema.pattern).test(value)) errors.push(`${path} has an invalid format`);
+    if (Array.isArray(value) && schema.items !== undefined) value.forEach((item, index) => errors.push(...validateSchema(schema.items!, item, `${path}[${index}]`)));
     if (Array.isArray(schema.required) && isRecord(value)) {
         for (const key of schema.required) {
             if (typeof key === 'string' && !(key in value)) errors.push(`${path}.${key} is required`);
@@ -330,21 +348,16 @@ export function validateSchema(schema: JsonValue, value: JsonValue, path = '$'):
             if (key in value) errors.push(...validateSchema(child, value[key], `${path}.${key}`));
         }
     }
+    if (isRecord(value)) for (const [key, item] of Object.entries(value)) {
+        if (isRecord(schema.properties) && Object.hasOwn(schema.properties, key)) continue;
+        if (schema.additionalProperties !== undefined) errors.push(...validateSchema(schema.additionalProperties, item, `${path}.${key}`));
+    }
     return errors;
-}
-
-function matchesType(type: string, value: JsonValue): boolean {
-    if (type === 'object') return isRecord(value);
-    if (type === 'array') return Array.isArray(value);
-    if (type === 'null') return value === null;
-    if (type === 'integer') return typeof value === 'number' && Number.isInteger(value);
-    if (type === 'number') return typeof value === 'number';
-    return typeof value === type;
 }
 
 /** True when the value is exactly one `${params.path}` template placeholder. */
 function isParameterTemplate(value: JsonValue): boolean {
-    return typeof value === 'string' && /^\$\{(?:params|param|nodes|state|iteration)\.([A-Za-z0-9_.-]+)\}$/.test(value.trim());
+    return typeof value === 'string' && /^\$\{(?:params?|nodes|state|iteration|vars|output)(?:\.[A-Za-z0-9_./-]+)?\}$/.test(value.trim());
 }
 
 function canonicalJson(value: unknown): string {

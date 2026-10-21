@@ -1,3 +1,4 @@
+import {flowImageAssets} from './image-assets';
 import { flowConnectionSelection } from './connection-selection';
 import { escapeHTML, randomUUID, t } from '@itookit/common';
 import { type ICommandBus } from '@itookit/llm-session/contracts';
@@ -9,6 +10,7 @@ import type { InteractionRequest, TaskRecord } from '@itookit/durable-kernel/con
 import { InteractionPanel } from '../components/input/InteractionPanel';
 import { promptFlowParameters } from '../components/FlowParameterForm';
 import { DagWorkbench } from '../components/DagWorkbench';
+import { inputInteraction } from '../shell/input-interaction';
 
 const terminal = (status: string) => ['succeeded', 'failed', 'cancelled'].includes(status);
 interface Card { element: HTMLElement; interactions: Map<string, InteractionPanel | HTMLElement>; snapshot?: DurableFlowSnapshot; active: boolean }
@@ -138,13 +140,12 @@ export class InvocationPanel {
         if (request.kind === 'input' && payload?.fields) {
             const button = this.button(container, 'flow.invoke.reply', async () => {
                 const fields = Object.entries(payload.fields!).map(([name, field]) => ({ ...field, name, default: payload.values?.[name] })) as FlowParameter[];
-                await promptFlowParameters(fields, request.prompt, respond, this.abort.signal);
+                await promptFlowParameters(fields, request.prompt, respond, this.abort.signal, undefined, flowImageAssets(this.commands));
             });
             button.title = request.prompt; return button;
         }
         const panel = new InteractionPanel(container);
-        panel.show({ key, id: request.id, kind: request.kind === 'approval' ? 'approval' : 'input', prompt: request.prompt,
-            details: request.payload ? JSON.stringify(request.payload, null, 2) : undefined }, respond, false);
+        panel.show({ ...inputInteraction(request, 0), key }, respond, false);
         return panel;
     }
 
@@ -166,7 +167,7 @@ export class InvocationPanel {
     }
 
     private async repeat(call: FlowInvocationRecord): Promise<void> {
-        const connection = await flowConnectionSelection(this.commands, call.connectionId, call.flow.connections, call.connectionBindings);
+        const connection = await flowConnectionSelection(this.commands, call.connectionId, call.flow.connections, call.connectionBindings, call.flow);
         const requests = new Map<string, string>();
         const submit = async (parameters: Record<string, JsonValue>) => {
             if (this.abort.signal.aborted) throw new Error('Invocation view closed');

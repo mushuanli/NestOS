@@ -27,3 +27,6 @@ export { toolGrant } from './configuration/tool-grant';
 export { harnessObservation } from './session/harness-observation';
 export { APPLICATION_WORKSPACES } from './presets/workspaces';
 export { isApplicationReadCommand } from './session/command-policy';
+export { FlowLibraryCommand } from './presets/flow-library';
+
+export {InputAssetCommand} from './presets/input-assets';

@@ -222,6 +222,10 @@ function supportsServerSideSearch(protocol?: ApiProtocol): boolean {
 }
 
 export interface DefaultConnectionDef {
+    baseURL?: string;
+    enabled?: boolean;
+    temperature?: number;
+    metadata?: LLMConnection['metadata'];
     /** 连接唯一 ID，'default' 表示系统默认连接 */
     id: string;
     /** 连接显示名称 */

@@ -4,7 +4,7 @@
 // budget exhausted) and require `resume` to converge without duplicating work.
 //
 // The storage-level SIGKILL matrix lives in
-// apps/cli/tests/20-kernel-ipc.test.ts; this file covers the
+// libraries/durable-kernel/tests/ipc.test.ts; this file covers the
 // Flow/program layer: first step, loop iteration, route-free single node,
 // terminal commit and budget accounting.
 import { execFile, spawn, type ChildProcess } from 'node:child_process';

@@ -4,7 +4,7 @@
 // 图标与颜色统一来自 @itookit/common 的 MODEL_CAPABILITY_META / MODEL_CATEGORY_META。
 
 import type { LLMModel } from '@itookit/driver-llm/contracts';
-import { t, MODEL_CAPABILITY_META, MODEL_CATEGORY_META } from '@itookit/common';
+import { t, escapeAttr, MODEL_CAPABILITY_META, MODEL_CATEGORY_META } from '@itookit/common';
 
 /** 能力键 → LLMModel 字段映射（固定渲染顺序） */
 const CAPABILITY_FIELDS: ReadonlyArray<[string, keyof LLMModel]> = [
@@ -27,14 +27,25 @@ function badgeStyle(color: string): string {
  * 只渲染值为 true 的 supportsXXX 字段；无任何能力时返回空字符串。
  */
 export function renderModelCapabilityBadges(model: LLMModel): string {
-    return CAPABILITY_FIELDS
+    const badges = CAPABILITY_FIELDS
         .filter(([, field]) => model[field] === true)
         .map(([cap]) => {
             const meta = MODEL_CAPABILITY_META[cap];
             const label = t(`model.capability.${cap}` as Parameters<typeof t>[0]);
-            return `<span class="model-cap-badge" style="${badgeStyle(meta.color)}" title="${label}">${meta.icon}</span>`;
+            return `<span class="model-cap-badge" data-capability="${cap}" role="img" aria-label="${escapeAttr(label)}" style="${badgeStyle(meta.color)}" title="${escapeAttr(label)}">${meta.icon}</span>`;
         })
         .join('');
+    const operations = (['image.generate', 'speech.synthesize'] as const).filter(operation => model.operations?.[operation]);
+    const media = operations.map(operation => {
+        const meta = MODEL_CATEGORY_META[operation === 'image.generate' ? 'image' : 'audio'];
+        const label = t(operation === 'image.generate' ? 'model.capability.imageGeneration' : 'model.capability.speechSynthesis');
+        return `<span class="model-cap-badge" data-capability="${operation}" role="img" aria-label="${escapeAttr(label)}" style="${badgeStyle(meta.color)}" title="${escapeAttr(label)}">${meta.icon}</span>`;
+    }).join('');
+    if (!badges && !media && model.category && MODEL_CATEGORY_META[model.category] && model.capabilitiesKnown !== false) {
+        const meta = MODEL_CATEGORY_META[model.category], label = t(`model.category.${model.category}` as Parameters<typeof t>[0]);
+        return `<span class="model-cap-badge" data-capability="category.${model.category}" role="img" aria-label="${escapeAttr(label)}" style="${badgeStyle(meta.color)}" title="${escapeAttr(label)}">${meta.icon}</span>`;
+    }
+    return badges + media || (model.capabilitiesKnown === true ? '' : `<span class="model-cap-badge" role="img" aria-label="${escapeAttr(t('model.capability.unknown'))}" title="${escapeAttr(t('model.capability.unknown'))}">?</span>`);
 }
 
 /**

@@ -149,7 +149,7 @@ CLI 使用 `uncaughtExceptionMonitor` 记录致命异常，不安装吞错的异
 
 ## 2026-09-27 恢复投影与首屏等待链（第二轮）
 
-Kernel 恢复不再为每个 Task 反复读取记录：一次目录扫描解出全部 `TaskRecord`，接管栅栏只在存在存活 attempt 或 leased Effect 时进入事务；索引改为比对后修复，干净重启不写任何投影，投影缺失或不一致时才按原逻辑稠密重建（同时重建 `task-order` 槽位，`listTaskPage` 要求其连续）；catalog 的 `session/`、`task/` 记录也在写前比对。等待图重建复用同一批记录，只有未完成父任务、运行中 attempt 或 leased Effect 的 Task 才会在末段被重新读取。回归在 `backend/durable-kernel/src/session-open-cost.test.ts`：旧实现在一次干净恢复中写入 25 处投影，改动后为 0 次写、每个 Task 只读一次；另有用例覆盖投影损坏时的稠密重建与 Task 分页可读性。
+Kernel 恢复不再为每个 Task 反复读取记录：一次目录扫描解出全部 `TaskRecord`，接管栅栏只在存在存活 attempt 或 leased Effect 时进入事务；索引改为比对后修复，干净重启不写任何投影，投影缺失或不一致时才按原逻辑稠密重建（同时重建 `task-order` 槽位，`listTaskPage` 要求其连续）；catalog 的 `session/`、`task/` 记录也在写前比对。等待图重建复用同一批记录，只有未完成父任务、运行中 attempt 或 leased Effect 的 Task 才会在末段被重新读取。回归在 `libraries/durable-kernel/src/session-open-cost.test.ts`：旧实现在一次干净恢复中写入 25 处投影，改动后为 0 次写、每个 Task 只读一次；另有用例覆盖投影损坏时的稠密重建与 Task 分页可读性。
 
 Flow invocation 恢复不再为每个 Session 额外调用 `sessionStat`（catalog 记录的 `status` 已足够判断 open/archived），并把已读到的持久记录传给 `list()`，避免同一前缀被 `listShared` 两次；损坏存储的 Session 跳过并留下一条告警，与原 `sessionStat` 的容错语义一致。
 
@@ -183,7 +183,7 @@ Kernel 的 Task 扫描原本是「每个 Task 读一次记录」：`listTasks`/`
 
 durable-kernel 的 `taskEntries`（`listTasks`/`listTaskIds` 共用）改为：一次目录枚举 → 在一个事务内一次 `getEntriesMany` 读全部 Task 记录 → 崩溃残留的空目录（无 seq 文件）自然得到 `null` 并被跳过。实测（CLI 引导成本 fixture，临时 LocalFS + Node SQLite，3 Session + 9 个终态 Task）：sidecar 调用 **994 → 814**，事务 **220 → 175**；`getRecordField` 热点中的 `tasks/task_<uuid>/task.seq :: record` 由每次 1 条降为 9 次批量调用（每次 3 条请求）。3 个空 Session 场景（无 Task）保持 **697 / 157** 不变，作为该改动只影响 Task 扫描路径的对照组。
 
-回归：`https://github.com/mushuanli/vfs-core/blob/main/tests/06-seq-file.test.ts`（请求顺序与缺失 → `null`、事务内同样语义、后端批量能力被调用一次、后端缺少能力时退化）、`backend/durable-kernel/src/protocol.test.ts`「reads Task records once per scan and observes later changes while skipping crash leftovers」（现在断言一次事务内的一次批量调用，且崩溃残留目录被请求但不产出 Task）、`backend/durable-kernel/src/session-open-cost.test.ts`（干净恢复仍为 0 次投影写入，Task 记录读收敛为一次批量读、事务数上限不变）。
+回归：`https://github.com/mushuanli/vfs-core/blob/main/tests/06-seq-file.test.ts`（请求顺序与缺失 → `null`、事务内同样语义、后端批量能力被调用一次、后端缺少能力时退化）、`libraries/durable-kernel/src/protocol.test.ts`「reads Task records once per scan and observes later changes while skipping crash leftovers」（现在断言一次事务内的一次批量调用，且崩溃残留目录被请求但不产出 Task）、`libraries/durable-kernel/src/session-open-cost.test.ts`（干净恢复仍为 0 次投影写入，Task 记录读收敛为一次批量读、事务数上限不变）。
 
 剩余可继续压缩的同类热点（本轮未动）：每个 Task 仍有约 3 次 `getMetaExt`（`tasks/task_<uuid>` 前缀检查/元数据读取）与 `graph.seq` 的 `listRecordFields` 前缀遍历；`session.seq :: record` 每个事务重复读取一次（`requireSessionTx`）。这些都不属于「按 Task 逐条记录读」，需要各自的批量原语。
 

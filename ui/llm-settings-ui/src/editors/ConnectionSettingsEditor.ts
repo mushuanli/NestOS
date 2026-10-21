@@ -1,7 +1,7 @@
 import { hasConnectionCredentials, resolveChatModelForTier, resolveModelForTier } from '@itookit/kernel-adapters/contracts';
 import { SettingsValidationError } from '@itookit/ui-common';
 import { renderProtocolOptions } from './provider-form';
-import { getProviderProtocols } from '@itookit/driver-llm/contracts';
+import { getProviderDefaultProtocol, modelReasoning, getProviderProtocols } from '@itookit/driver-llm/contracts';
 import { showConfigurationForm, addConfigurationAction, addConfigurationEnabled } from './configuration-form';
 import { t } from '@itookit/common';
 // @file: llm-ui/editors/ConnectionSettingsEditor.ts
@@ -23,6 +23,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
     private defaultConnectionId?: string;
     private connections: ConnectionMeta[] = [];
     private currentEditTiers: Partial<Record<ModelTier, string>> = {};
+    private currentEditModelBudgets: Record<string, number> = {};
     private currentEditModelEfforts: Record<string, string> = {};
     private providers: Record<string, LLMProvider> = {};
     private _checkedIds = new Set<string>();
@@ -452,7 +453,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         const allConns = await this.service.getConnections();
         const selected = allConns.filter(c => ids.includes(c.id));
         const connDefs = selected.map(c =>
-            fromConnectionDef({ id: c.id, name: c.name, providerId: c.providerId, tiers: c.tiers }),
+            fromConnectionDef(c),
         );
 
         const yaml = serializeLLMConfig({ connections: connDefs });
@@ -495,6 +496,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
         this.currentEditTiers = connection?.tiers ? { ...connection.tiers } : {};
         this.currentEditModelEfforts = { ...(connection?.metadata?.modelReasoningEfforts ?? {}) };
+        this.currentEditModelBudgets = { ...(connection?.metadata?.modelThinkingBudgets ?? {}) };
         if (connection?.metadata?.reasoningEffort) {
             for (const tier of ['optimal', 'standard', 'fast'] as ModelTier[]) {
                 const modelId = this.tierModelId(tier, initialProvider);
@@ -532,7 +534,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                 </div>
 
                 <!-- Temperature override -->
-                <div class="settings-form__group">
+                <div class="settings-form__group" data-connection-chat>
                     <label class="settings-form__label">温度 (0-2)</label>
                     <input type="number" class="settings-form__input" name="temperature"
                            value="${connection?.temperature ?? ''}"
@@ -560,8 +562,8 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                 </div>
 
                 <div class="settings-form__group">
-                    <label class="settings-form__label">${t('provider.protocol.connection')}</label>
-                    <select class="settings-form__select" name="protocol">
+                    <label class="settings-form__label" data-connection-chat>${t('provider.protocol.connection')}</label>
+                    <select class="settings-form__select" name="protocol" data-connection-chat>
                         ${initialProvider ? renderProtocolOptions(initialProvider, connection?.protocol) : ''}
                     </select>
                     <small class="settings-form__help">${t('provider.protocol.connectionHelp')}</small>
@@ -597,6 +599,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                 const metadata: Record<string, unknown> = { ...(savedConnection?.metadata ?? {}) };
                 delete metadata.reasoningEffort;
                 delete metadata.tierThinking;
+                metadata.modelThinkingBudgets = Object.keys(this.currentEditModelBudgets).length ? { ...this.currentEditModelBudgets } : undefined;
                 const efforts = Object.fromEntries(Object.entries(this.currentEditModelEfforts).filter(([, value]) => value));
                 if (Object.keys(efforts).length) metadata.modelReasoningEfforts = efforts;
                 else delete metadata.modelReasoningEfforts;
@@ -666,10 +669,16 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
     private renderModelEffort(tier: ModelTier, provider: LLMProvider | undefined): string {
         const modelId = this.tierModelId(tier, provider);
         if (!modelId) return '';
-        const value = this.currentEditModelEfforts[modelId] || '';
-        const options = ['', 'low', 'medium', 'high', 'xhigh'].map(effort =>
-            `<option value="${effort}" ${value === effort ? 'selected' : ''}>${effort || t('connection.reasoningDefault')}</option>`).join('');
-        return `<select class="settings-form__select settings-form__select--sm" data-effort-tier="${tier}"
+        const model = provider?.models.find(item => item.id === modelId);
+        const protocol = this.container.querySelector<HTMLSelectElement>('[name="protocol"]')?.value as ApiProtocol || model?.preferredProtocol || (provider && getProviderDefaultProtocol(provider));
+        const caps = modelReasoning(model, protocol);
+        if (!caps) return `<small class="settings-form__help">${t('connection.reasoningUnavailable')}</small>`;
+        const saved = this.currentEditModelEfforts[modelId] || '';
+        const value = caps.efforts.some(option => option.id === saved) || saved === 'off' && caps.canDisable ? saved : '';
+        const options = `<option value="">${t('connection.reasoningDefault')}</option>${caps.canDisable ? `<option value="off" ${value === 'off' ? 'selected' : ''}>${t('connection.reasoningOff')}</option>` : ''}` + caps.efforts.map(option =>
+            `<option value="${escapeAttr(option.id)}" ${value === option.id ? 'selected' : ''}>${escapeHTML(option.label ?? option.id)}</option>`).join('');
+        const budget = caps.budget ? `<input type="number" class="settings-form__input" data-budget-tier="${tier}" min="${caps.budget.min}" max="${caps.budget.max}" value="${this.currentEditModelBudgets[modelId] ?? ''}" placeholder="${t('connection.reasoningBudget')}" aria-label="${t('connection.reasoningBudget')}">` : '';
+        return `${budget}<select class="settings-form__select settings-form__select--sm" data-effort-tier="${tier}"
             aria-label="${t('connection.reasoningEffort')}" title="${t('connection.reasoningEffort')}">${options}</select>`;
     }
 
@@ -691,9 +700,10 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         };
 
         return `
-            ${tierRow('optimal',  '最优', 'settings-tier-badge--optimal')}
+            ${tierRow('optimal', t('connection.primaryModel'), 'settings-tier-badge--optimal')}
+            <details><summary>${t('connection.advancedRouting')}</summary>
             ${tierRow('standard', '标准', 'settings-tier-badge--standard')}
-            ${tierRow('fast',     '快速', 'settings-tier-badge--fast')}
+            ${tierRow('fast', '快速', 'settings-tier-badge--fast')}</details>
         `;
     }
 
@@ -702,6 +712,9 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         const tierSection    = document.getElementById('tier-config-section') as HTMLElement | null;
 
         const refreshEffortSlots = (provider: LLMProvider | undefined) => {
+            const model = provider?.models.find(item => item.id === this.tierModelId('optimal', provider));
+            const media = !!model?.category && model.category !== 'chat';
+            this.container.querySelectorAll<HTMLElement>('[data-connection-chat]').forEach(element => { element.hidden = media; });
             for (const tier of ['optimal', 'standard', 'fast'] as ModelTier[]) {
                 const slot = this.container.querySelector(`#tier-effort-${tier}`);
                 if (slot) slot.innerHTML = this.renderModelEffort(tier, provider);
@@ -724,6 +737,13 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         const initTiers = connection?.tiers ?? {};
         refreshTierSelects(this.providers[initialPid], initTiers);
 
+        tierSection?.addEventListener('input', event => {
+            const field = event.target as HTMLInputElement;
+            if (!field.matches('[data-budget-tier]')) return;
+            const modelId = this.tierModelId(field.dataset.budgetTier as ModelTier, this.providers[providerSelect?.value || initialPid]);
+            if (field.value) this.currentEditModelBudgets[modelId] = Number(field.value); else delete this.currentEditModelBudgets[modelId];
+        });
+
         // Single delegated handler for all tier-section changes.
         tierSection?.addEventListener('change', (e) => {
             const target = e.target as HTMLElement;
@@ -731,6 +751,11 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             if (sel) {
                 const tier = sel.dataset.tier as ModelTier;
                 this.currentEditTiers[tier] = sel.value || undefined;
+                const provider = this.providers[providerSelect?.value || initialPid];
+                const model = provider?.models.find(item => item.id === sel.value);
+                const caps = modelReasoning(model, model?.preferredProtocol ?? (provider && getProviderDefaultProtocol(provider)));
+                const saved = this.currentEditModelEfforts[sel.value];
+                if (saved && !(saved === 'off' && caps?.canDisable) && !caps?.efforts.some(option => option.id === saved)) delete this.currentEditModelEfforts[sel.value];
                 const pid = providerSelect?.value || initialPid;
                 refreshEffortSlots(this.providers[pid]);
                 return;
@@ -747,13 +772,15 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             }
         });
 
+        this.container.querySelector('[name="protocol"]')?.addEventListener('change', () => refreshEffortSlots(this.providers[providerSelect?.value || initialPid]));
+
         // Provider switch → refresh tier selects
         providerSelect?.addEventListener('change', () => {
             const provider = this.providers[providerSelect.value];
             const protocolSelect = document.querySelector<HTMLSelectElement>('#connection-form [name="protocol"]');
             if (protocolSelect && provider) protocolSelect.innerHTML = renderProtocolOptions(provider);
             this.currentEditTiers = {};
-            this.currentEditModelEfforts = {};
+            this.currentEditModelEfforts = {}; this.currentEditModelBudgets = {};
             refreshTierSelects(provider, this.currentEditTiers);
         });
 

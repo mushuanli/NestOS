@@ -32,7 +32,7 @@ it('filters connection protocols and resets to automatic when switching Provider
 
 it('saves reasoning effort by model and removes legacy capability controls', async () => {
     const provider = { id: 'p', name: 'Provider', implementation: 'openai-compatible', baseURL: 'https://example.com',
-        models: [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }] };
+        models: [{ id: 'a', name: 'A', reasoning: { efforts: [{ id: 'low' }, { id: 'high' }] } }, { id: 'b', name: 'B', reasoning: { efforts: [{ id: 'high' }] } }] };
     const connection = { id: 'c', name: 'Connection', providerId: 'p', tiers: { optimal: 'a', standard: 'b', fast: 'a' },
         metadata: { reasoningEffort: 'high', tierThinking: { optimal: false }, retained: true } };
     const saveConnection = vi.fn().mockResolvedValue(undefined);

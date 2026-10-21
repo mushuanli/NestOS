@@ -1,5 +1,6 @@
 import type { FlowNodeId } from './flow';
 import type { LlmNodeConfig } from '@itookit/llm-tasks/contracts';
+import type { FlowImageConstraints } from './flow-images';
 
 export type Brand<T, Name extends string> = T & { readonly __brand: Name };
 export type FlowId = Brand<string, 'FlowId'>;
@@ -118,7 +119,8 @@ export interface FlowDraft {
  * reference it via the `${params.<name>}` template; each run supplies a value.
  */
 export interface FlowParameter {
-    widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox';
+    imageConstraints?: FlowImageConstraints;
+    widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'images';
     label?: string;
     nonBlank?: boolean;
     options?: JsonValue[];

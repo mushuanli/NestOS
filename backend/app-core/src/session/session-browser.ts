@@ -1,4 +1,5 @@
 import { filterDirectoryFiles } from './directory-visibility';
+import { SessionActivityProjection } from './session-activity';
 import { RemoteSessionProjection } from './remote-session-projection';
 import { conversationDirectory, conversationDirectoryNode, conversationNavigationNodes } from '../projects/conversation-directory';
 import { conversationResourcePath } from '@itookit/app-contracts';
@@ -78,19 +79,25 @@ class BrowserBackend implements IStorageBackend {
     private folderSnapshot?: Promise<SessionFolder[]>;
     private directorySnapshots = new Map<string | null, Promise<import('@itookit/llm-session').SessionSummary[]>>();
     private subscriptions: Array<() => void> = [];
+    private readonly activity: SessionActivityProjection;
     constructor(private readonly deps: SessionBrowserDependencies) {
+        this.activity = new SessionActivityProjection(deps.kernel);
         this.lifecycle = deps.lifecycle ?? new SessionLifecycleService({ repository: deps.repository, kernel: deps.kernel });
     }
     async init() {
         this.subscriptions.push(this.deps.repository.subscribe(() => this.invalidateNavigation()));
         if (this.deps.projects) this.subscriptions.push(this.deps.projects.subscribeChanges(() => this.invalidateNavigation()));
         const unsubscribe = this.deps.kernel.onChanged?.(event => {
-            if (event.reason !== 'content') this.invalidateNavigation();
+            if (event.reason !== 'content') { this.activity.invalidate(event.sessionId); this.invalidateNavigation(); }
         });
         if (unsubscribe) this.subscriptions.push(unsubscribe);
     }
-    async close() { for (const unsubscribe of this.subscriptions.splice(0)) unsubscribe(); this.invalidateNavigation(); }
+    async close() { for (const unsubscribe of this.subscriptions.splice(0)) unsubscribe(); this.activity.invalidate(); this.invalidateNavigation(); }
     invalidateNavigation(): void { this.snapshot = undefined; this.folderSnapshot = undefined; this.directorySnapshots.clear(); }
+    refreshNavigation(options?: {activity?: boolean}): void {
+        if (options?.activity !== false) this.activity.invalidate();
+        this.invalidateNavigation();
+    }
     private folders(): Promise<SessionFolder[]> {
         if (!this.folderSnapshot) {
             const work = this.deps.repository.listFolders().then(folders => this.deps.projects?.navigationFolders(folders) ?? folders);
@@ -266,7 +273,7 @@ class BrowserBackend implements IStorageBackend {
         let manifest;
         try { manifest = await this.deps.repository.getManifest(target.sessionId); }
         catch (error) { if (error instanceof FSError && error.code === 'ENOENT') return null; throw error; }
-        if (target.kind === 'session') return this.sessionNode(manifest);
+        if (target.kind === 'session') return (await this.activity.nodes([this.sessionNode(manifest)]))[0]!;
         if (target.kind === 'tasks') return this.node(path, path.endsWith('/@more') ? t('session.tasks.more') : 'tasks', !path.endsWith('/@more'), 0, true);
         if (target.kind === 'task') {
             const task = await this.deps.kernel.task(target.sessionId, target.taskId);
@@ -286,6 +293,9 @@ class BrowserBackend implements IStorageBackend {
         });
     }
     async list(path: string): Promise<FSNode[]> {
+        return this.activity.nodes(await this.listNodes(path));
+    }
+    private async listNodes(path: string): Promise<FSNode[]> {
         // The root projection reuses the shared catalog like every folder does. Writes that
         // change the catalog invalidate it through `repository.subscribe` / `kernel.onChanged`,
         // and hosts can force a re-read with the owner's `invalidateNavigation` (see `init`).
@@ -692,6 +702,6 @@ export async function createSessionBrowser(deps: SessionBrowserDependencies): Pr
     };
     return Object.assign(owner, { transferItems: (mode: 'copy' | 'move', ids: string[], destination: string) => backend.transfer(mode, ids, destination),
         readFileDirectory: (path: string, options?: FileDirectoryOptions) => backend.readFileDirectory(path, options),
-        invalidateNavigation: async () => { backend.invalidateNavigation(); },
+        invalidateNavigation: async (options?: {activity?: boolean}) => { backend.refreshNavigation(options); },
         setSessionFilter: async (agentId?: string) => { backend.setSessionFilter(agentId); } });
 }

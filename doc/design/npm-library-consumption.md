@@ -1,9 +1,10 @@
 # 独立库源码工作区与 npm 构建
 
-MindOS 默认消费固定 Git 提交的独立库源码。十个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui），保留独立仓库和 npm 发布能力。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
+MindOS 默认消费固定 Git 提交的独立库源码。十二个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui、durable-kernel、device-tty），保留 npm 发布能力；durable-kernel、llm-ui、device-tty 和其他库统一使用各自独立仓库与 Git 子模块。libraries 下的子模块目录是唯一开发工作树，不维护另一份发布源码。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
 
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
+| @itookit/durable-kernel | `libraries/durable-kernel` | 0.1.0（目标版本，以 registry 为准） |
 | @itookit/vfs-core | `libraries/vfs-core` | 5.3.3 |
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.6.0 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.4 |
@@ -13,7 +14,8 @@ MindOS 默认消费固定 Git 提交的独立库源码。十个独立库均位�
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.8 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
 | @itookit/llm-ui | `libraries/llm-ui` | 0.2.1 |
-| @itookit/image-parser | `libraries/image-parser` | 0.2.0 |
+| @itookit/device-tty | `libraries/device-tty` | 0.1.0（目标版本，以 registry 为准） |
+| @itookit/image-parser | `libraries/image-parser` | 0.3.0（待发布） |
 
 ## 源码开发
 
@@ -220,3 +222,16 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 当前状态：本地改名、204 项测试、全仓类型/架构/文档检查已完成；正式 tarball 的仓库外 ESM/CommonJS、公开子路径、旧工厂别名与 bundler/NodeNext 声明解析通过。新 GitHub 地址仍返回 404，推送及 npm 发布等待仓库地址可访问。上文的 mindos-node-client@0.3.0 是真实历史发布名，不改写其制品身份或摘要。
 
 待发布制品 `@itookit/mindos-node-driver@0.3.1` 的 SHA-256：`1af9a23b40506ff27cc7738c3455064775fd96d208816a1455469d60e10ddaca`。本地制品验证不代表新版本已公开发布。
+
+图片处理新增纯 processing 入口，源码工作区使用 image-parser 0.3.0；npm 构建清单同步要求 0.3.0，需另行发布该版本后才能运行 registry 构建。本轮没有执行 npm 发布。工具工作区 tools/image-tools 也进入源码扫描、边界检查和隔离构建目录。
+
+## 2026-10-21 Git 仓库独立化复核
+
+llm-ui 与 device-tty 已提取各自的目录提交历史并推送独立 main，主仓库通过子模块接入；durable-kernel 同样使用子模块。libraries 下的十二个包均拥有独立 Git 根目录和对应远端。原 backend/device-tty 已迁到 libraries/device-tty，durable-kernel 的重复临时发布工作树已核对后删除。
+
+| 仓库 | 提交 | 直接运行依赖 | 验证 |
+|---|---|---|---|
+| [llm-ui](https://github.com/mushuanli/llm-ui) | c4226b7 | mdxeditor ^0.5.8 | 独立锁文件安装、62 项测试、类型检查与构建 |
+| [device-tty](https://github.com/mushuanli/device-tty) | 3343c56 | node-pty ^1.1.0、Node 内置模块 | 独立锁文件安装、8 项测试、真实 pipe/PTY 交互、类型检查与构建 |
+
+device-tty 拥有独立 /contracts 子入口，tools/contracts 兼容转发类型；它不再依赖 tools。Node 驱动入口和纯接口入口分开，原生模块仅在 PTY spawn 时加载；驱动不承诺跨宿主重启恢复。两份 tarball 在仓库外完成 ESM/CJS 导入、交互进程和 NodeNext 类型消费检查。主项目 tools、kernel-adapters 与 CLI 类型检查、kernel-adapters 的 273 项测试以及架构与文档检查通过。Git 推送、主仓库提交和 npm 发布是分别执行的动作，不能以远端代码存在推断 npm 已发布。

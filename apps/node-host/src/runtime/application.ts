@@ -4,6 +4,7 @@ import { guardHostStorage } from '../storage/host-storage';
 import type { IStorageBackend } from '@itookit/vfs-core';
 import type { AuditPort } from '../logging/audit-log';
 import { openHostRuntime, closeHostResources } from './host-runtime';
+import { createStandardNodeTools, loadNodeToolModules } from './tool-modules';
 
 export interface NodeApplicationOptions {
     root: string; sidecar: string; authDir: string; auditFile: string;
@@ -21,11 +22,13 @@ export async function openNodeApplication(options: NodeApplicationOptions): Prom
 }
 
 /** Backend ownership remains with the resource host; this factory never closes borrowed storage. */
-export function createNodeRuntime(source: IStorageBackend, root?: string, options: Omit<ApplicationRuntimeOptions, 'backend'> = {}) {
+export async function createNodeRuntime(source: IStorageBackend, root?: string, options: Omit<ApplicationRuntimeOptions, 'backend'> = {}) {
     const backend = root ? guardHostStorage(source, root) : source;
     const borrowed = new Proxy(backend, {get(target, key) {
         if (key === 'close') return async () => {};
         const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
     }});
-    return createApplicationRuntime({remoteSourceProvider: createMindOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed});
+    const additionalTools = [...createStandardNodeTools(), ...await loadNodeToolModules(), ...options.kernelPlatform?.additionalTools ?? []];
+    return createApplicationRuntime({remoteSourceProvider: createMindOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
+        kernelPlatform: { ...options.kernelPlatform, additionalTools } });
 }

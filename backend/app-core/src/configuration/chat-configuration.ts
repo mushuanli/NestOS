@@ -1,3 +1,4 @@
+import { getProviderDefaultProtocol } from '@itookit/driver-llm/contracts';
 import type { ChatConfigurationSnapshot, ChatConfigurationView, IAgentConfigService } from '@itookit/kernel-adapters/contracts';
 
 /** One host observation supplies all metadata needed by chat selectors. */
@@ -43,6 +44,6 @@ async function readConfiguration(service: IAgentConfigService): Promise<ChatConf
             ...(config.imageProcessing ? {imageProcessing: structuredClone(config.imageProcessing)} : {})},
     })), connections, defaultConnectionId: fallback?.id,
         promptPresets: Object.fromEntries(presets),
-        providers: service.getProviders().map(({id, name, enabled, models}) => ({id, name, enabled, models})),
+        providers: service.getProviders().map(provider => ({id: provider.id, name: provider.name, enabled: provider.enabled, models: provider.models, defaultProtocol: getProviderDefaultProtocol(provider)})),
     });
 }

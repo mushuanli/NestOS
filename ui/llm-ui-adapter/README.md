@@ -59,6 +59,8 @@ const factory = createLLMFactory(agentService, {
 
 移动端可通过 `EditorOptions.mountCompactNavigation` 在同一标题栏挂载宿主返回、项目与窗口切换控件，避免多排导航。输入框从一行自适应增长，长草稿内部滚动；触屏 Return 换行，发送按钮提交。键盘改变历史区高度时，贴底阅读继续跟随，已滚到前面的阅读位置保持不变。
 
+Flow 编辑器右侧默认显示运行参数与连接选择，「运行」位于参数面板顶部固定栏；参数区域独立滚动。运行前通过只读命令校验必选绑定、凭据和模型能力，校验失败原位提示且不保存/发布或创建会话。切换「节点与连线」、选择节点或缩放画布保留输入；运行记录仍通过页面顶部入口打开。图片错误区分字段约束、读取、上传和预览阶段，flow-images 内存日志与 HTTP 审计通过 requestId 关联。
+
 Flow 模板由宿主提供，不再从 UI 导出 `builtinFlowLibrary`。安装与恢复必须显式传入 `readonly FlowDraft[]`：
 
 ```ts
@@ -67,7 +69,7 @@ await restoreFlowLibrary(commands, hostTemplates);
 const menu = createFlowContextMenuConfig({ ...runOptions, library: hostTemplates });
 ```
 
-未提供 `library` 的菜单不显示恢复入口。MindOS 使用 app-core 的 `createMindosFlowLibrary()`，其他用户可提供任意符合公共契约的模板。
+未提供 `library` 的菜单不显示恢复入口。MindOS 使用 app-core 的 `createMindosFlowLibrary()`，其他宿主可提供符合公共契约的模板。恢复入口委托应用命令 `app.flow-library.restore`（见 app-contracts 的 FlowLibraryCommand），宿主负责恢复与发布策略；MindOS 的 app-core 已注册。只使用核心 Flow 命令的宿主应显式协调 DraftRestore 与 RevisionCreate，核心恢复本身不会发布。
 
 Agent 设置工厂使用 `createAgentEditorFactory(service, { defaultToolIds: hostToolIds })` 显式注入宿主默认授权；不传则默认目录为空。UI 不选择 Read/Write/Bash 等工具。该默认列表仅用于展示与编辑，实际工具授权由执行层校验。
 

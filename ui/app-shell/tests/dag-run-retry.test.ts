@@ -170,6 +170,7 @@ it('opens persisted Runs from the visible history action and resumes the selecte
     let resumed = false;
     const execute = vi.fn(async (name: string) => {
         if (name === 'plugin.dag.presentations') return [];
+        if (name === 'flow.source.check') return { valid: true, diagnostics: [] };
         if (name === 'dag.run.list') return [{ taskId: 'root', sessionId: 'session', name: '<saved run>', status: 'waiting', createdAt: 1 }];
         if (name === 'dag.run.resume') { resumed = true; return { taskId: 'root' }; }
         return { ...snapshot(), attachedFromStorage: !resumed };
@@ -178,6 +179,12 @@ it('opens persisted Runs from the visible history action and resumes the selecte
     const workbench = new DagWorkbench(root, { commands: { execute } as never });
     try {
         await workbench.initialize();
+        expect(root.querySelector('[data-action="run"]')).toBeNull();
+        workbench.setDraft({ id: 'example', name: '<sample>', draftVersion: 1, layout: {}, nodes: [], edges: [] } as never);
+        expect([...root.querySelector('.dag-toolbar')!.children].slice(0, 2).map(item => item.textContent)).toEqual(['<sample>', '运行记录']);
+        expect(root.querySelector('.dag-inspector__tabs [data-action="run"]')?.textContent).toBe('运行');
+        expect(root.querySelector('sample')).toBeNull();
+        expect(root.querySelector<HTMLButtonElement>('[data-action="run"]')!.disabled).toBe(false);
         root.querySelector<HTMLButtonElement>('[data-action="runs"]')!.click();
         await vi.waitFor(() => expect(document.querySelector('[data-run-index]')?.textContent).toContain('<saved run>'));
         expect(document.querySelector('saved')).toBeNull();

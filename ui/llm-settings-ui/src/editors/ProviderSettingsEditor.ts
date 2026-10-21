@@ -1,3 +1,7 @@
+import { mountProviderTabs, renderTextProbe, textTestModels } from './provider-layout';
+import { mountMediaProbe } from './provider-media-probe';
+import {providerTestResult} from './provider-test-result';
+import { bindReasoningFields, readReasoningDeclaration, renderReasoningDeclaration } from './model-reasoning-form';
 import { renderMediaDeclaration, readMediaEndpoints, readModelOperations, bindMediaDeclarations, syncMediaDeclarations } from './provider-media-form';
 import { SettingsValidationError } from '@itookit/ui-common';
 import { ProviderAuthorizationPanel } from './provider-authorization';
@@ -5,7 +9,8 @@ import { readProviderForm, renderProviderAdvanced, syncProtocolControls, renderP
 import { getPrimaryProtocol, getProviderProtocols } from '@itookit/driver-llm/contracts';
 import type { ApiProtocol } from '@itookit/driver-llm/contracts';
 import { showConfigurationForm, addConfigurationAction, addConfigurationEnabled } from './configuration-form';
-import { t, escapeAttr, ACTION_ICONS } from '@itookit/common';
+import { t, escapeAttr, ACTION_ICONS, MODEL_CAPABILITY_META } from '@itookit/common';
+import { renderModelCapabilityBadges } from '../utils/modelBadges';
 // @file: llm-ui/editors/ProviderSettingsEditor.ts
 //
 // Provider 配置编辑器（三层架构第一层）。
@@ -19,7 +24,7 @@ import { t, escapeAttr, ACTION_ICONS } from '@itookit/common';
 //
 // 注意：tier 配置（optimal/standard/fast 映射）属于 Connection 层，不在此处配置。
 
-import {generateShortUUID} from '@itookit/common';
+import { randomUUID, generateShortUUID } from '@itookit/common';
 import { BaseSettingsEditor, requestSettingsSave } from '@itookit/ui-common';
 import type { IConnectionService } from '@itookit/kernel-adapters/contracts';
 import type { ProviderAuthorizationState } from '@itookit/kernel-adapters/contracts';
@@ -31,14 +36,16 @@ import { runLLMImport } from './llm-import';
 /** 模型用途分类选项（顺序即下拉顺序） */
 const MODEL_CATEGORIES: ModelCategory[] = ['chat', 'image', 'video', 'audio', 'embedding'];
 /** 能力 chip：[能力键, LLMModel 字段, emoji] */
-const MODEL_CAP_CHIPS: ReadonlyArray<[string, keyof LLMModel, string]> = [
-    ['audio', 'supportsAudio', '🎵'],
-    ['video', 'supportsVideo', '🎬'],
-    ['structuredOutput', 'supportsStructuredOutput', '📋'],
+const MODEL_CAP_CHIPS: ReadonlyArray<[string, keyof LLMModel]> = [
+    ['vision', 'supportsVision'], ['thinking', 'supportsThinking'], ['tools', 'supportsTools'],
+    ['audio', 'supportsAudio'], ['video', 'supportsVideo'], ['structuredOutput', 'supportsStructuredOutput'],
 ];
 
 export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionService> {
     private editModels: LLMModel[] = [];
+    private reasoningDrafts = new WeakMap<LLMModel, [string | undefined, string | undefined]>();
+    private disposeMediaProbe?: () => void;
+    private clearStoredKey = false;
     private modelOperationDrafts = new WeakMap<LLMModel, string>();
     private _checkedIds = new Set<string>();
     private currentProviderId?: string;
@@ -75,7 +82,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         // Sort: has-apiKey first → enabled first → alphabetical
         const keyedIds = new Set<string>();
         for (const p of providers) {
-            if (p.hasApiKey || this.authorizations.get(p.id)?.status === 'authorized') keyedIds.add(p.id);
+            if (p.hasApiKey || p.credentialMode === 'host' || this.authorizations.get(p.id)?.status === 'authorized') keyedIds.add(p.id);
         }
         const sorted = [...providers].sort((a, b) => {
             const aKey = keyedIds.has(a.id);
@@ -138,7 +145,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     private renderProviderCard(p: LLMProvider & { hasApiKey?: boolean }): string {
         const subscription = p.implementation === 'chatgpt', authorization = this.authorizations.get(p.id);
-        const hasKey = subscription ? authorization?.status === 'authorized' : p.hasApiKey === true;
+        const hasKey = subscription ? authorization?.status === 'authorized' : p.credentialMode === 'host' || p.hasApiKey === true;
         const enabled  = p.enabled !== false;
         // A provider is "currently built-in" only if it exists in the live catalog.
         const currentBuiltins = this.service.getProviderDefaults?.() ?? {};
@@ -188,7 +195,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                     <div class="settings-detail-item">
                         <span class="settings-detail-item__label">${subscription ? t('provider.auth.title') : 'API Key'}</span>
                         <span class="settings-detail-item__value">
-                            ${subscription ? t(`provider.auth.${authorization?.supported ? authorization.status : 'unsupported'}`) : hasKey
+                            ${subscription ? t(`provider.auth.${authorization?.supported ? authorization.status : 'unsupported'}`) : p.credentialMode === 'host' ? t('provider.credentials.host') : hasKey
                                 ? '<span style="color:var(--st-color-success,#10b981)">✓ 已配置</span>'
                                 : '<span style="color:var(--st-text-disabled)">未配置</span>'
                             }
@@ -334,7 +341,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         const allConns = await this.service.getConnections();
         const connections = allConns
             .filter(c => ids.includes(c.providerId))
-            .map(c => fromConnectionDef({ id: c.id, name: c.name, providerId: c.providerId, tiers: c.tiers }));
+            .map(c => fromConnectionDef(c));
 
         const yamlStr = exportBundleToLLM(providers, connections);
         const filename = providers.length === 1 ? `${providers[0].id}.llm` : 'providers-export.llm';
@@ -360,7 +367,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     // ── Edit modal ─────────────────────────────────────────────────────────────
 
     async destroy(): Promise<void> {
-        this.authorizationPanel?.destroy();
+        this.disposeMediaProbe?.(); this.authorizationPanel?.destroy();
         await super.destroy(); this.editorDisposed = true; this.editGeneration++;
     }
 
@@ -369,13 +376,16 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     }
 
     private async loadEditModal(provider: LLMProvider | null) {
-        this.authorizationPanel?.destroy(); this.authorizationPanel = undefined;
+        this.disposeMediaProbe?.(); this.authorizationPanel?.destroy(); this.authorizationPanel = undefined;
+        this.clearStoredKey = false;
         const generation = ++this.editGeneration;
         const isNew   = !provider;
         const isBuiltin = !!provider?.isBuiltin;
 
-        // Load full provider (with apiKey) when editing an existing one
-        const fullProvider = provider ? ((await this.service.getFullProvider(provider.id)) ?? provider) : null;
+        // Read safe Provider metadata; stored credentials are resolved by the host.
+        const supplied = provider ? this.service.getProviders().find(item => item.id === provider.id) ?? provider : null;
+        const { apiKey: storedKey, ...safeProvider } = supplied ?? {};
+        const fullProvider = supplied ? { ...safeProvider, hasApiKey: !!storedKey || !!(supplied as LLMProvider & { hasApiKey?: boolean }).hasApiKey } as LLMProvider & { hasApiKey: boolean } : null;
         if (this.editorDisposed || generation !== this.editGeneration) return;
         this.currentProviderId = provider?.id;
         this.editingProvider = fullProvider ?? { id: `prov-${generateShortUUID()}`, name: '', implementation: 'openai-compatible', baseURL: '', models: [] };
@@ -383,16 +393,12 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         this.modelOperationDrafts = new WeakMap();
         this.providerForm = undefined;
 
-        this.editModels = (fullProvider?.models ?? []).map(model => fullProvider?.implementation === 'chatgpt' ? { ...model } : ({
-            ...model,
-            supportsVision: model.supportsVision ?? true,
-            supportsThinking: model.supportsThinking ?? true,
-            supportsTools: model.supportsTools ?? true,
-        }));
-        const existingApiKey = fullProvider?.apiKey ?? '';
+        this.editModels = (fullProvider?.models ?? []).map(model => ({...model}));
+        const hasStoredKey = fullProvider?.hasApiKey ?? false;
 
         const modalContent = `
-            <form id="provider-form" class="settings-form">
+            <form id="provider-form" class="settings-form provider-settings">
+                <section data-provider-panel="overview">
                 <div class="settings-form__group">
                     <label class="settings-form__label">Provider 名称 *</label>
                     <input type="text" class="settings-form__input" name="name"
@@ -408,13 +414,15 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 </div>
                 <section class="provider-authorization" data-provider-authorization hidden></section>
                 <div class="settings-form__group" data-provider-api-key>
-                    <label class="settings-form__label">API Key</label>
+                    <div data-provider-key-input><label class="settings-form__label">API Key</label>
                     <input type="password" class="settings-form__input" name="apiKey"
-                           value="${existingApiKey}"
-                           placeholder="sk-... （留空则不修改现有 Key）">
-                    <small class="settings-form__help">所有绑定此 Provider 的连接共享此 Key。</small>
-                    <small class="settings-form__help">Key 以<strong>明文</strong>保存在数据根的 <code>/etc/llm/.providers/&lt;id&gt;.json</code>；Provider 列表与 <code>.llm</code> 导出不含此字段，但文件本身可读。</small>
-                    <small class="settings-form__help">Session Bash 不继承宿主环境：子进程需要凭证时，请在命令里显式传入，或让它从自己读取的受控文件 / 环境变量名取值。</small>
+                           value=""
+                           placeholder="${hasStoredKey ? t('provider.test.savedKey') : 'sk-...'}">
+                    <small class="settings-form__help provider-settings__status" data-provider-credential-state>${t(hasStoredKey ? 'provider.settings.configured' : 'provider.settings.unconfigured')}</small>
+                    <label class="settings-form__help"><input type="checkbox" data-clear-provider-key>${t('provider.test.clearKey')}</label>
+                    </div>${renderTextProbe(this.editingProvider)}
+                    <details class="provider-settings__storage"><summary>${t('provider.credentials.details')}</summary><small class="settings-form__help">Key 以<strong>明文</strong>保存在数据根的 <code>/etc/llm/.providers/&lt;id&gt;.json</code>；Provider 列表与 <code>.llm</code> 导出不含此字段，但文件本身可读。</small>
+                    <small class="settings-form__help">Session Bash 不继承宿主环境：子进程需要凭证时，请在命令里显式传入，或让它从自己读取的受控文件 / 环境变量名取值。</small></details>
                     <div style="margin-top:6px">
                         <button type="button" id="btn-test-provider"
                                 class="settings-btn settings-btn--secondary settings-btn--sm" style="width:100%">
@@ -428,9 +436,11 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                     <label class="settings-form__label">Base URL *</label>
                     <input type="text" class="settings-form__input" name="baseURL"
                            value="${fullProvider?.baseURL ?? provider?.baseURL ?? ''}" required placeholder="https://api.example.com">
-                    <small class="settings-form__help">Provider 根域地址，不含路径（如 https://api.deepseek.com）。</small>
+                    <small class="settings-form__help">${t('provider.form.addressHelp')}</small>
                 </div>
 
+                </section>
+                <section data-provider-panel="models">
                 <h4 class="settings-section-title" style="display:flex;justify-content:space-between;align-items:center">
                     模型列表
                     <button type="button" id="btn-refresh-models" class="settings-btn settings-btn--xs settings-btn--secondary">${t('provider.models.refresh')}</button>
@@ -442,7 +452,9 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                     ${this.renderModelListHTML()}
                 </div>
                 <small class="settings-form__help">${t('provider.models.help')}</small>
-                ${renderProviderAdvanced(this.editingProvider)}
+                </section>
+                <section data-provider-panel="connections"><div data-provider-connections></div></section>
+                <section data-provider-panel="advanced">${renderProviderAdvanced(this.editingProvider)}</section>
             </form>
         `;
 
@@ -461,7 +473,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 const data = Object.fromEntries(formData) as Record<string, string>;
 
                 const providerConfig = readProviderForm(form, this.editingProvider!);
-                if (!providerConfig.supportedProtocols?.length) { throw new SettingsValidationError(t('provider.protocol.required')); }
+                if (textTestModels(providerConfig).length && !providerConfig.supportedProtocols?.length) { throw new SettingsValidationError(t('provider.protocol.required')); }
                 if (this.editModels.some(model => model.preferredProtocol && !getProviderProtocols(providerConfig).includes(model.preferredProtocol))) {
                     throw new SettingsValidationError(t('provider.protocol.unavailable'));
                 }
@@ -489,7 +501,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                     responsesPath: providerConfig.implementation === 'chatgpt' ? '/responses' : (data.responsesPath as string || '').trim() || undefined,
                     anthropicPath: providerConfig.implementation === 'chatgpt' ? undefined : (data.anthropicPath as string || '').trim() || undefined,
                     // Keep existing apiKey if field was left empty
-                    apiKey: providerConfig.implementation === 'chatgpt' ? undefined : newApiKey || existingApiKey || undefined,
+                    apiKey: providerConfig.implementation === 'chatgpt' ? undefined : this.clearStoredKey ? '' : newApiKey || undefined,
                     models: structuredClone(this.collectModels(form)),
                     isBuiltin: isBuiltin,
                     enabled: this.formOnly ? data.enabled === 'on' : provider?.enabled,
@@ -501,7 +513,12 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 };
 
                 await this.service.saveProvider(updated);
-                this.editingProvider = structuredClone(updated);
+                this.editingProvider = { ...structuredClone(updated), apiKey: undefined, hasApiKey: !this.clearStoredKey && (!!newApiKey || hasSavedCredential(this.editingProvider) || hasStoredKey) } as LLMProvider;
+                const key = form.querySelector<HTMLInputElement>('[name="apiKey"]')!;
+                key.value = ''; key.placeholder = hasSavedCredential(this.editingProvider) ? t('provider.test.savedKey') : 'sk-...';
+                form.querySelector('[data-provider-credential-state]')!.textContent = t(hasSavedCredential(this.editingProvider) ? 'provider.settings.configured' : 'provider.settings.unconfigured');
+                this.clearStoredKey = false;
+                form.querySelector<HTMLInputElement>('[data-clear-provider-key]')!.checked = false;
                 this.currentProviderId = updated.id;
                 this.syncAuthorizationForm(form);
                 const heading = this.container.querySelector('.settings-page__title');
@@ -510,9 +527,22 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         }, this.formOnly);
 
         this.providerForm = (this.formOnly ? this.container : document.body.lastElementChild)?.querySelector<HTMLFormElement>('#provider-form') ?? undefined;
+        if (this.providerForm) {
+            mountProviderTabs(this.providerForm);
+            this.disposeMediaProbe = mountMediaProbe(this.providerForm, () => this.readDraft(), request => this.service.testConnection(request));
+            const connectionsForm = this.providerForm, connectionsStarted = performance.now(), connectionsOperationId = randomUUID();
+            void this.loadConnections(connectionsForm).catch(error => {
+                if (!connectionsForm.isConnected) return;
+                const root = connectionsForm.querySelector('[data-provider-connections]');
+                if (root) root.textContent = t('provider.settings.connectionsFailed', { message: error instanceof Error ? error.message : String(error) });
+                console.error('provider.connections.failed', { operation: 'provider.connections', operationId: connectionsOperationId, stage: 'query', code: 'PROVIDER_CONNECTIONS_QUERY', durationMs: Math.round(performance.now() - connectionsStarted) });
+            });
+        }
         if (this.formOnly) {
             this.bindModalEvents();
             addConfigurationEnabled(this.container, provider?.enabled !== false);
+            const enabled = this.providerForm?.querySelector('[name="enabled"]')?.closest('label');
+            if (enabled) { enabled.classList.add('provider-settings__enabled'); this.providerForm?.querySelector('[data-provider-panel="overview"]')?.prepend(enabled); }
             if (provider?.id === 'openai' && this.options.hostContext?.navigate) {
                 addConfigurationAction(this.container, t('provider.auth.title'), () => {
                     void this.openSubscription().catch(error => Toast.error(String(error)));
@@ -536,6 +566,8 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     private syncAuthorizationForm(form: HTMLFormElement): void {
         const chatgpt = form.querySelector<HTMLSelectElement>('[name="implementation"]')?.value === 'chatgpt';
         syncMediaDeclarations(form);
+        const keyFields = form.querySelector<HTMLElement>('[data-provider-key-input]');
+        if (keyFields) keyFields.hidden = this.editingProvider?.credentialMode === 'host';
         form.querySelector<HTMLElement>('[data-provider-api-key]')!.hidden = chatgpt;
         const root = form.querySelector<HTMLElement>('[data-provider-authorization]')!; root.hidden = !chatgpt;
         form.querySelector<HTMLElement>('[data-provider-advanced]')!.hidden = chatgpt;
@@ -584,7 +616,17 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         for (const entry of entries) {
             if (!entry || typeof entry !== 'object' || !('id' in entry) || typeof entry.id !== 'string') continue;
             const id = entry.id.trim();
-            if (!id || ids.has(id)) continue;
+            if (!id) continue;
+            if (ids.has(id)) {
+                const existing = this.editModels.find(model => model.id === id)!;
+                for (const field of ['category', 'supportsVision', 'supportsThinking', 'supportsTools', 'supportsAudio', 'supportsVideo', 'supportsStructuredOutput', 'contextWindow', 'maxOutput', 'operations', 'reasoning', 'reasoningByProtocol', 'capabilitiesKnown'] as const)
+                    if (entry[field] !== undefined && !(field === 'capabilitiesKnown' && entry[field] === false)
+                        && !(field === 'reasoning' && existing.reasoning && existing.reasoning.source === 'user'))
+                        (existing as unknown as Record<string, unknown>)[field] = field === 'reasoning' && existing.reasoning && entry.reasoning
+                            ? { ...existing.reasoning, ...entry.reasoning } : field === 'reasoningByProtocol'
+                            ? { ...entry.reasoningByProtocol, ...existing.reasoningByProtocol } : entry[field];
+                continue;
+            }
             this.editModels.push({ ...entry, id });
             ids.add(id);
             added++;
@@ -600,14 +642,16 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             <div class="settings-model-item" ${this.matchesModelSearch(m) ? '' : 'hidden style="display:none"'}>
                 <div class="settings-model-item__drag">::</div>
                 <div class="settings-model-item__content" style="flex-direction:column;gap:4px;align-items:stretch">
-                    <div style="display:flex;gap:4px">
+                    <div class="settings-model-item__identity">
                         <input type="text" class="settings-input-sm model-id-input" data-idx="${i}"
                                required value="${escapeAttr(m.id)}" placeholder="Model ID" title="Model ID（API 用）">
                         <input type="text" class="settings-input-sm model-name-input" data-idx="${i}"
                                value="${escapeAttr(m.name)}" placeholder="显示名称">
+                        <span class="settings-model-item__capabilities" data-model-capabilities>${renderModelCapabilityBadges(m)}</span>
                     </div>
                     <details><summary>${t('provider.models.details')}</summary>
                     ${renderMediaDeclaration(m.operations, true, this.modelOperationDrafts.get(m))}
+                    ${renderReasoningDeclaration(m, ...this.reasoningDrafts.get(m) ?? [])}
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                         <select class="settings-input-sm model-category-select" data-idx="${i}" title="模型用途" style="max-width:110px">
                             ${MODEL_CATEGORIES.map(cat => `
@@ -624,12 +668,12 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                             <option value="enabled" ${m.thinkingMode === 'enabled' ? 'selected' : ''}>think: on</option>
                             <option value="disabled" ${m.thinkingMode === 'disabled' ? 'selected' : ''}>think: off</option>
                         </select>
-                        ${MODEL_CAP_CHIPS.map(([cap, field, emoji]) => `
+                        ${MODEL_CAP_CHIPS.map(([cap, field]) => `
                             <label class="model-cap-chip" title="${cap}"
                                    style="display:inline-flex;align-items:center;cursor:pointer;font-size:13px;padding:2px 4px;border-radius:4px;opacity:${m[field] === true ? '1' : '0.35'}">
                                 <input type="checkbox" class="model-cap-chk" data-cap="${cap}" data-idx="${i}"
                                        ${m[field] === true ? 'checked' : ''} style="display:none">
-                                ${emoji}
+                                ${MODEL_CAPABILITY_META[cap].icon}
                             </label>
                         `).join('')}
                     </div></details>
@@ -654,7 +698,20 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         if (!list) return;
         list.innerHTML = this.renderModelListHTML();
         this.updateModelCount();
+        this.refreshTextModels();
         if (this.providerForm) syncMediaDeclarations(this.providerForm);
+    }
+
+    private refreshTextModels(): void {
+        const select = this.providerForm?.querySelector<HTMLSelectElement>('[name="connectionTestModel"]');
+        if (!select) return;
+        const previous = select.value, models = textTestModels({ ...this.editingProvider!, models: this.editModels });
+        select.replaceChildren(...models.map(model => new Option(`${model.name} · ${model.id}`, model.id)));
+        if (models.some(model => model.id === previous)) select.value = previous;
+        select.disabled = !models.length;
+        const chat = this.providerForm?.querySelector<HTMLElement>('[data-provider-chat-settings]');
+        if (chat) chat.hidden = !models.length;
+        if (!models.length) select.add(new Option(t('provider.test.noTextModel'), ''));
     }
 
     private bindModalEvents() {
@@ -679,14 +736,18 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 if (testBtn.disabled) return;
                 const form = this.formElement('provider-form') as HTMLFormElement;
                 this.syncInputsToModelData();
-                const definition = readProviderForm(form, this.editingProvider!);
+                let definition: LLMProvider;
+                try { definition = this.readDraft(); } catch (error) { testResult.textContent = error instanceof Error ? error.message : String(error); testResult.style.display = 'block'; return; }
                 const apiKey = definition.apiKey;
                 const provId  = this.currentProviderId ?? 'custom';
                 const baseURL = ((form.querySelector('[name="baseURL"]') as HTMLInputElement)?.value || '').trim();
                 const models  = this.editModels;
-                const model   = models[0]?.id;
+                const model = form.querySelector<HTMLSelectElement>('[name="connectionTestModel"]')?.value;
 
-                if (!apiKey) {
+                if (!model) {
+                    testResult.textContent = t('provider.test.noTextModel'); testResult.style.display = 'block'; return;
+                }
+                if (!apiKey && !hasSavedCredential(this.editingProvider) && definition.credentialMode !== 'host') {
                     testResult.style.cssText = 'display:block;padding:8px;border-radius:4px;background:var(--st-warning-bg,#fff3cd);color:var(--st-warning,#856404);font-size:12px';
                     testResult.textContent = '⚠️ 请先填写 API Key';
                     return;
@@ -695,9 +756,10 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 testResult.style.display = 'none';
                 try {
                     const r = await this.service.testConnection({ provider: provId, apiKey, baseURL, model,
-                        protocol: this.editModels[0]?.preferredProtocol ?? definition.defaultProtocol, providerDefinition: definition });
+                        protocol: models.find(item => item.id === model)?.preferredProtocol ?? definition.defaultProtocol, providerDefinition: definition });
                     testResult.style.cssText = `display:block;padding:8px;border-radius:4px;font-size:12px;background:${r.success ? 'var(--st-success-bg,#d4edda)' : 'var(--st-danger-bg,#f8d7da)'};color:${r.success ? 'var(--st-success,#155724)' : 'var(--st-danger,#721c24)'}`;
-                    testResult.textContent = `${r.success ? '✅' : '❌'} ${r.message || (r.success ? '连接测试成功' : '连接测试失败')}`;
+                    if (JSON.stringify(definition) !== JSON.stringify(this.readDraft())) { testResult.textContent = t('provider.test.stale'); return; }
+                    testResult.textContent = providerTestResult(r);
                 } catch (e: unknown) {
                     testResult.style.cssText = 'display:block;padding:8px;border-radius:4px;font-size:12px;background:var(--st-danger-bg,#f8d7da);color:var(--st-danger,#721c24)';
                     testResult.textContent = `❌ 测试出错: ${e instanceof Error ? e.message : String(e)}`;
@@ -715,7 +777,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         // Add model
         addModelBtn?.addEventListener('click', () => {
             this.syncInputsToModelData();
-            this.editModels.push({ id: '', name: '', category: 'chat', supportsVision: true, supportsThinking: true, supportsTools: true });
+            this.editModels.push({ id: '', name: '', category: 'chat' });
             renderList();
             listContainer?.scrollTo({ top: listContainer.scrollHeight, behavior: 'smooth' });
         });
@@ -740,10 +802,35 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         // Capability chip toggle — visual feedback (dim when unchecked)
         listContainer?.addEventListener('change', (e) => {
             const chk = e.target as HTMLElement;
+            if (chk.classList.contains('model-category-select')) { this.editModels[Number(chk.dataset.idx)].capabilitiesKnown = true; this.syncInputsToModelData(); this.refreshTextModels(); }
             if (!chk.classList.contains('model-cap-chk')) return;
             const label = chk.closest('.model-cap-chip') as HTMLElement | null;
             if (label) label.style.opacity = (chk as HTMLInputElement).checked ? '1' : '0.35';
+            this.syncInputsToModelData();
+            const badges = chk.closest('.settings-model-item')?.querySelector('[data-model-capabilities]');
+            if (badges) badges.innerHTML = renderModelCapabilityBadges(this.editModels[Number(chk.dataset.idx)]);
         });
+    }
+
+    private readDraft(): LLMProvider {
+        const form = this.providerForm!;
+        this.syncInputsToModelData();
+        const provider = readProviderForm(form, this.editingProvider!);
+        return { ...provider, apiKey: this.clearStoredKey ? '' : provider.apiKey, media: readMediaEndpoints(form, provider), models: structuredClone(this.collectModels(form)) };
+    }
+
+    private async loadConnections(form: HTMLFormElement): Promise<void> {
+        const root = form.querySelector<HTMLElement>('[data-provider-connections]')!;
+        const connections = (await this.service.getConnections?.() ?? []).filter(item => item.providerId === this.editingProvider?.id);
+        if (!form.isConnected) return;
+        if (!connections.length) { root.textContent = t('provider.settings.connectionsEmpty'); return; }
+        for (const connection of connections) {
+            const button = document.createElement('button'); button.type = 'button'; button.className = 'provider-settings__connection';
+            const title = document.createElement('strong'); title.textContent = connection.name;
+            const detail = document.createElement('small'); detail.textContent = Object.entries(connection.tiers ?? {}).map(([tier, model]) => `${tier}: ${model}`).join(' · ');
+            button.append(title, detail); button.onclick = () => { void this.options.hostContext?.navigate?.({ target: 'toolbox', resourceId: '/connections/' + encodeURIComponent(connection.id) }); };
+            root.append(button);
+        }
     }
 
     private renderModelProtocolOptions(selected?: ApiProtocol): string {
@@ -771,10 +858,17 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     }
 
     private bindTestInvalidation(form: HTMLFormElement): void {
-        bindMediaDeclarations(form);
+        bindMediaDeclarations(form); bindReasoningFields(form);
+        form.addEventListener('change', event => {
+            if ((event.target as HTMLElement).matches('[data-clear-provider-key]')) this.clearStoredKey = (event.target as HTMLInputElement).checked;
+        });
         form.addEventListener('input', event => {
             const input = event.target as HTMLInputElement;
-            if (!['baseURL', 'apiKey', 'implementation', 'chatPath', 'responsesPath', 'anthropicPath', 'geminiPath'].includes(input.name)) return;
+            if (input.matches('.model-id-input, .model-name-input')) { this.syncInputsToModelData(); this.refreshTextModels(); }
+            if (!input.closest('[data-probe-fields]') && input.tagName !== 'BUTTON') {
+                const result = form.querySelector<HTMLElement>('#provider-test-result');
+                if (result) result.textContent = t('provider.test.stale');
+            }
             form.querySelectorAll<HTMLElement>('[data-protocol-result]').forEach(result => {
                 result.textContent = t('provider.protocol.unverified');
             });
@@ -824,14 +918,15 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         const protocol = button.dataset.testProtocol as ApiProtocol;
         const result = form.querySelector<HTMLElement>(`[data-protocol-result="${protocol}"]`)!;
         this.syncInputsToModelData();
-        const definition = readProviderForm(form, this.editingProvider!);
+        const definition = this.readDraft();
         button.disabled = true;
         result.textContent = t('provider.protocol.testing');
         try {
             const response = await this.service.testConnection({ provider: definition.id,
-                apiKey: definition.apiKey, baseURL: definition.baseURL, model: this.editModels[0]?.id,
+                apiKey: definition.apiKey, baseURL: definition.baseURL, model: form.querySelector<HTMLSelectElement>('[name="connectionTestModel"]')?.value,
                 protocol, providerDefinition: definition });
-            result.textContent = `${t(response.success ? 'provider.protocol.verified' : 'provider.protocol.failed')}: ${response.message ?? ''}`;
+            if (JSON.stringify(definition) !== JSON.stringify(this.readDraft())) { result.textContent = t('provider.test.stale'); return; }
+            result.textContent = providerTestResult(response);
         } catch (error) {
             result.textContent = `${t('provider.protocol.failed')}: ${error instanceof Error ? error.message : String(error)}`;
         } finally { button.disabled = false; }
@@ -841,7 +936,10 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     private collectModels(form: HTMLFormElement): LLMModel[] {
         const rows = form.querySelectorAll('.settings-model-item');
-        const models = this.editModels.map((model, index) => ({ ...model, operations: readModelOperations(rows[index], model) }));
+        const models = this.editModels.map((model, index) => {
+            const operations = readModelOperations(rows[index], model);
+            return {...model, ...readReasoningDeclaration(rows[index]), operations, ...(operations ? {capabilitiesKnown: true} : {})};
+        });
         // Keep validated values when a later implementation change disables their controls.
         models.forEach((model, index) => { this.editModels[index].operations = model.operations; });
         return models;
@@ -851,6 +949,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         const container = this.formElement('model-list-container');
         if (!container) return;
         const capMap: Record<string, keyof LLMModel> = {
+            vision: 'supportsVision', thinking: 'supportsThinking', tools: 'supportsTools',
             audio: 'supportsAudio',
             video: 'supportsVideo',
             structuredOutput: 'supportsStructuredOutput',
@@ -874,15 +973,24 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 this.editModels[i].thinkingMode = val || undefined;
             }
 
-            const operations = row.querySelector<HTMLTextAreaElement>('[name="modelOperations"]');
-            if (operations) this.modelOperationDrafts.set(this.editModels[i], operations.value);
+            this.captureDeclarationDrafts(row, this.editModels[i]);
             const model = this.editModels[i] as unknown as Record<string, unknown>;
             row.querySelectorAll('.model-cap-chk').forEach((chk) => {
                 const el = chk as HTMLInputElement;
                 const field = capMap[el.dataset.cap ?? ''];
-                if (field) model[field] = el.checked || undefined;
+                if (field && el.checked !== (model[field] === true)) {model[field] = el.checked; model.capabilitiesKnown = true;}
             });
         });
+    }
+
+    private captureDeclarationDrafts(row: Element, model: LLMModel): void {
+        const operations = declarationDraft(row, 'modelOperations', model.operations ?? {});
+        if (operations === undefined) this.modelOperationDrafts.delete(model);
+        else this.modelOperationDrafts.set(model, operations);
+        const reasoning = declarationDraft(row, 'modelReasoning', model.reasoning ?? null);
+        const protocols = declarationDraft(row, 'modelReasoningByProtocol', model.reasoningByProtocol ?? {});
+        if (reasoning === undefined && protocols === undefined) this.reasoningDrafts.delete(model);
+        else this.reasoningDrafts.set(model, [reasoning, protocols]);
     }
 
     // ── Delete / Reset ─────────────────────────────────────────────────────────
@@ -914,4 +1022,17 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         const btn = this.container.querySelector(selector);
         if (btn) this.addEventListener(btn, 'click', handler);
     }
+}
+
+function hasSavedCredential(provider: LLMProvider | undefined): boolean {
+    return !!(provider as LLMProvider & { hasApiKey?: boolean } | undefined)?.hasApiKey;
+}
+
+/** Only authored changes override later catalog values; invalid drafts stay editable. */
+function declarationDraft(row: Element, name: string, baseline: unknown): string | undefined {
+    const field = row.querySelector<HTMLTextAreaElement>(`[name="${name}"]`);
+    if (!field) return;
+    try { if (JSON.stringify(JSON.parse(field.value)) === JSON.stringify(baseline)) return; }
+    catch { /* Preserve malformed input until the user corrects it. */ }
+    return field.value;
 }

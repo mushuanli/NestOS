@@ -45,8 +45,6 @@ export class Workbench {
 
         const scopeId = config.scopeId || this.engine.viewId;
 
-        const root = document.createElement('button'); root.type = 'button'; root.className = 'workbench-root'; root.textContent = config.uiOptions?.title ?? t('project.files');
-        root.onclick = () => { void this.openDirectory('/'); };
         this.vfsUI = createVFSUI(
             {
                 ...config.uiOptions,
@@ -61,7 +59,11 @@ export class Workbench {
                 },
                 fileTypes: config.fileTypes,
                 showFileExtensions: config.showFileExtensions ?? true,
-                activateDirectories: true, autoSelectFirst: false, listHeader: root,
+                appearance: { ...config.uiOptions?.appearance,
+                    showTitle: config.uiOptions?.appearance?.showTitle ?? (!!config.uiOptions?.titleHeader || config.uiOptions?.toolbar === 'compact') },
+                activateDirectories: true, autoSelectFirst: false,
+                toolbarOptions: { ...config.uiOptions?.toolbarOptions,
+                    root: { label: '/', title: `${t('workbench.directoryPath')}: /`, run: () => this.openDirectory('/') } },
                 deferExpansion: config.uiOptions?.deferExpansion ?? true,
                 listItems: config.uiOptions?.listItems,
                 rowCreation: config.uiOptions?.rowCreation ?? { visible: () => config.uiOptions?.readOnly !== true, run: (node, type) => this.createInDirectory(node.id, type) },

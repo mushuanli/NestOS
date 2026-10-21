@@ -3,6 +3,7 @@
 // connections + one default) and declared runtime parameters with defaults.
 
 import type { FlowConnection, FlowVariables, FlowDefaults, FlowParameter, FlowRunPolicy, JsonValue } from '@itookit/llm-flow/contracts';
+import { validImageConstraints } from '@itookit/llm-flow/contracts';
 import { escapeHTML, t } from '@itookit/common';
 
 export interface FlowSettingsOptions {
@@ -113,7 +114,7 @@ function defaultsSection(options: FlowSettingsOptions): string {
             <label>Thinking${triStateSelect('default-thinking', value.thinking)}</label>
             <label>Streaming${triStateSelect('default-stream', value.stream)}</label>
             <label>Web search${triStateSelect('default-web-search', value.webSearch)}</label>
-            <label>Reasoning effort${optionSelect('default-reasoning', value.reasoningEffort, ['low', 'medium', 'high', 'xhigh'])}</label>
+            <label>Reasoning effort<input data-default-reasoning value="${escapeHTML(value.reasoningEffort ?? '')}" placeholder="${t('provider.reasoning.default')}"></label>
             <label>Approval${optionSelect('default-approval', value.approval, ['none', 'external', 'all'])}</label>
             <label>History${optionSelect('default-history', value.historyPolicy, ['inherit', 'upstream', 'none'])}</label>
             <label>System prompt policy${optionSelect('default-system-policy', value.systemPromptPolicy, ['inherit', 'replace', 'none'])}</label>
@@ -187,6 +188,9 @@ function connectionRow(
             `<option value="${escapeHTML(item.id)}" ${item.id === connection.connectionId ? 'selected' : ''}>${escapeHTML(item.name)}</option>`,
         ).join('')}</select>
         <input data-conn-desc placeholder="description" value="${escapeHTML(connection.description ?? '')}">
+        <label><input type="checkbox" data-conn-required ${connection.required === false ? '' : 'checked'}>${escapeHTML(t('flow.connections.required'))}</label>
+        <label>${escapeHTML(t('flow.connections.tier'))}<select data-conn-tier>${['optimal', 'standard', 'fast'].map(tier => `<option value="${tier}" ${tier === (connection.tier ?? 'optimal') ? 'selected' : ''}>${tier}</option>`).join('')}</select></label>
+        <label>${escapeHTML(t('flow.connections.requirements'))}<textarea data-conn-requirements rows="3">${escapeHTML(JSON.stringify(connection.requirements ?? {}, null, 2))}</textarea></label>
         <button type="button" data-remove-conn>×</button>
     </div>`;
 }
@@ -194,7 +198,7 @@ function connectionRow(
 function parameterRow(parameter?: FlowParameter): string {
     const param = parameter ?? { name: '', type: 'string' as const };
     const value = param.default !== undefined ? stringifyDefault(param.default, param.type) : '';
-    return `<div class="dag-setting-row" data-param-row>
+    return `<div class="dag-setting-row" data-param-row data-param-original="${escapeHTML(JSON.stringify(param))}">
         <input data-param-name placeholder="name" value="${escapeHTML(param.name)}">
         <select data-param-type>${PARAM_TYPES.map(type =>
             `<option ${type === param.type ? 'selected' : ''}>${type}</option>`,
@@ -214,11 +218,16 @@ function parameterConstraints(param: FlowParameter): string {
         <label>${escapeHTML(t('flow.parameters.onMissing'))}<select data-param-missing>
             <option value="error">${escapeHTML(t('flow.parameters.reject'))}</option>
             <option value="interact" ${param.onMissing === 'interact' ? 'selected' : ''}>${escapeHTML(t('flow.parameters.interact'))}</option>
-        </select></label>`;
+        </select></label>${param.widget === 'images' ? `<label>${escapeHTML(t('flow.parameters.imageConstraints'))}<input data-param-images value="${escapeHTML(JSON.stringify(param.imageConstraints ?? {}))}"></label>` : ''}`;
 }
 
 function readParameterConstraints(row: HTMLElement, type: FlowParameter['type']): Partial<FlowParameter> {
     const result: Partial<FlowParameter> = {};
+    const image = row.querySelector<HTMLInputElement>('[data-param-images]');
+    if (image && type === 'json') {
+        result.imageConstraints = JSON.parse(image.value || '{}');
+        if (!validImageConstraints(result.imageConstraints)) throw new Error(t('flow.launch.invalidValue'));
+    }
     if (readInput(row, '[data-param-missing]') === 'interact') result.onMissing = 'interact';
     if (type !== 'number') return result;
     for (const [key, selector] of [['minimum', '[data-param-min]'], ['maximum', '[data-param-max]']] as const) {
@@ -254,16 +263,28 @@ function bindRowControls(dialog: HTMLDialogElement, options: FlowSettingsOptions
     });
 }
 
+function readConnectionRow(row: HTMLElement): FlowConnection {
+    const name = readInput(row, '[data-conn-name]').trim();
+    const connectionId = readInput(row, '[data-conn-id]');
+    const description = readInput(row, '[data-conn-desc]').trim();
+    if (!name) throw new Error('Every connection needs a name');
+    const original = JSON.parse(row.dataset.connOriginal ?? '{}') as FlowConnection;
+    const requirements = JSON.parse(readInput(row, '[data-conn-requirements]') || '{}');
+    if (!requirements || typeof requirements !== 'object' || Array.isArray(requirements)
+        || Object.keys(requirements).length && (typeof requirements.operation !== 'string' || !requirements.operation.trim())) throw new Error('Connection requirements must declare an operation');
+    for (const key of ['inputModalities', 'outputModalities', 'features']) if (requirements[key] !== undefined
+        && (!Array.isArray(requirements[key]) || requirements[key].some((item: unknown) => typeof item !== 'string' || !item.trim()))) throw new Error(`Invalid connection requirement: ${key}`);
+    const required = row.querySelector<HTMLInputElement>('[data-conn-required]')!.checked;
+    const tier = readInput(row, '[data-conn-tier]') as FlowConnection['tier'];
+    const changed = connectionId !== (original.connectionId ?? '') || required !== (original.required !== false)
+        || tier !== (original.tier ?? 'optimal') || JSON.stringify(requirements) !== JSON.stringify(original.requirements ?? {});
+    return { ...original, name, connectionId: connectionId || undefined, description: description || undefined, required, tier,
+        requirements: Object.keys(requirements).length ? requirements : undefined,
+        ...(changed ? {resolved: undefined} : {}) };
+}
+
 function readSettings(dialog: HTMLDialogElement): FlowSettingsResult {
-    const connections = [...dialog.querySelectorAll<HTMLElement>('[data-conn-row]')].map(row => {
-        const name = readInput(row, '[data-conn-name]').trim();
-        const connectionId = readInput(row, '[data-conn-id]');
-        const description = readInput(row, '[data-conn-desc]').trim();
-        if (!name) throw new Error('Every connection needs a name');
-        const original = JSON.parse(row.dataset.connOriginal ?? '{}') as FlowConnection;
-        return { ...original, name, connectionId: connectionId || undefined, description: description || undefined,
-            ...(connectionId !== original.connectionId ? { resolved: undefined } : {}) };
-    });
+    const connections = [...dialog.querySelectorAll<HTMLElement>('[data-conn-row]')].map(readConnectionRow);
     if (new Set(connections.map(item => item.name)).size !== connections.length) {
         throw new Error('Connection names must be unique');
     }
@@ -280,7 +301,12 @@ function readSettings(dialog: HTMLDialogElement): FlowSettingsResult {
         const description = readInput(row, '[data-param-desc]').trim();
         if (!name) throw new Error('Every parameter needs a name');
         const raw = readInput(row, '[data-param-default]');
-        const result: FlowParameter = { name, type, ...readParameterConstraints(row, type), ...(description ? { description } : {}) };
+        const original = JSON.parse(row.dataset.paramOriginal ?? '{}') as FlowParameter;
+        const { name: _name, type: _type, required: _required, description: _description, default: _default,
+            minimum: _min, maximum: _max, integer: _integer, onMissing: _missing, imageConstraints: _images, ...presentation } = original;
+        const result: FlowParameter = { ...presentation, name, type, ...readParameterConstraints(row, type), ...(description ? { description } : {}) };
+        if (type !== 'json' && result.widget === 'images') delete result.widget;
+        if (type !== 'string') delete result.nonBlank;
         if (required) result.required = true;
         if (raw !== '') result.default = parseDefault(raw, type);
         return result;

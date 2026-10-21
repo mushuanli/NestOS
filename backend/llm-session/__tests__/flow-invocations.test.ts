@@ -11,6 +11,7 @@ import { SessionDirectoryStorageResolver } from '../src/persistence/session-dire
 import { createSessionPlugin, SessionCommand } from '../src/plugins/session-plugin';
 import { prepareFlowConnections } from '../src/session/flow-connections';
 import { bindStandaloneFlowNode } from '../src/session/flow-node-binder';
+import { checkFlowConnections } from '../src/session/flow-connection-check';
 
 let manager: Awaited<ReturnType<typeof createVFS>>['manager'], kernel: Kernel, service: FlowInvocationService, commands: CommandBus;
 const flow: FlowRevision = { id: 'wait' as never, name: 'Wait', revision: 1, digest: 'wait-v1', createdAt: 0,
@@ -179,6 +180,7 @@ it('starts the launcher call before any view binds the new Session and leaves it
     const sessionManager = new SessionManager(repository, {} as never, { kernel,
         dagPlugins: createBuiltinDagPluginRegistry(), flowStore: {} as never, canWriteSession: async () => true });
     service.register();
+    commands.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as never, {getDefaultConnection: async () => null} as never, definitions));
     await createSessionPlugin(sessionManager).activate({ commands } as never);
     const created = await commands.execute<{ sessionId: string }>(SessionCommand.CreateFromFlow, {
         invocation: true, flowId: 'wait', revision: 1, parameters: { text: 'launch before navigation' },

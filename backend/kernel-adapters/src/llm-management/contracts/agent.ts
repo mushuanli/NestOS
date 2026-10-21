@@ -40,7 +40,7 @@ export interface ChatConfigurationSnapshot {
     promptPresets: Record<string, PromptPreset[]>;
     connections: ConnectionMeta[];
     defaultConnectionId?: string;
-    providers: Array<Pick<LLMProvider, 'id' | 'name' | 'enabled' | 'models'>>;
+    providers: Array<Pick<LLMProvider, 'id' | 'name' | 'enabled' | 'models' | 'defaultProtocol'>>;
 }
 
 export interface ChatConfigurationView {

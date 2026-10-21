@@ -187,7 +187,7 @@ Session 上传使用该 Session 的 `attachments/`，Round/history 存在业务�
 | mount:added / mount:removed | mountPath、mountId |
 | error | code、message、operation、path 等 |
 
-事件在所属层完成写入后发出；记录回滚不发成功通知。事务事件缓冲在提交后逐条重放，回滚丢弃。视图订阅只投递获授权的映射事件，并添加本视图身份；没有 module:mounted/module:unmounted 生命周期。
+事件在所属层完成写入后发出；记录回滚不发成功通知。事务事件缓冲在提交后逐条重放，回滚丢弃。视图订阅只投递获授权的映射事件，并添加本视图身份；来源挂载使用 mount:added / mount:removed，视图释放由其生命周期拥有者管理。
 
 PluginPipeline 是可信宿主注册的中间件链。它按优先级执行 before/core/after，可修改参数、短路或调整结果。设备注册也属于宿主，manager.openDevice 返回独立句柄；流式设备使用 write/readStream/close。Session 文件视图禁用设备节点，LLM 等工具通过授权 adapter 调用。
 

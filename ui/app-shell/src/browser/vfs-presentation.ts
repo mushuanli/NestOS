@@ -10,7 +10,7 @@ export const mindOSVFSPresentation: VFSPresentationOptions = {
     icons: { delete: ACTION_ICONS.delete, close: ACTION_ICONS.close, favorite: ACTION_ICONS.favorite,
         pin: FILE_ICONS.pin, folder: FILE_ICONS.folder, addFile: FILE_BROWSER_ICONS.addFile,
         addFolder: FILE_BROWSER_ICONS.addFolder, refresh: FILE_BROWSER_ICONS.refresh,
-        import: VFS_TOOLBAR_ICONS.import, export: VFS_TOOLBAR_ICONS.export },
+        import: VFS_TOOLBAR_ICONS.import, export: VFS_TOOLBAR_ICONS.export, more: FILE_BROWSER_ICONS.more },
 };
 
 export function createMindOSVFSUI(options: VFSUIOptions, fs: IFileSystem) {

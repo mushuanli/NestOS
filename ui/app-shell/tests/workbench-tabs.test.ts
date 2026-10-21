@@ -340,7 +340,7 @@ it('opens files from the root details, filters ignored files and returns to the 
     try {
         await workbench.start();
         expect(factory).not.toHaveBeenCalled();
-        sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
+        sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!.click();
         await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/完整文件名称.md"]'), main.innerHTML).not.toBeNull());
         const refresh = sidebar.querySelector<HTMLButtonElement>('.workbench-sidebar__navigation [data-action="refresh"]')!;
         expect(refresh).not.toBeNull(); expect(refresh.hidden).toBe(false);
@@ -380,7 +380,7 @@ it('uses deletion confirmation and refreshes root details after a bulk delete', 
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main, editorFactory: (async () => ({ destroy() {} })) as never });
     const confirm = vi.fn(() => false); vi.stubGlobal('confirm', confirm);
     try {
-        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
+        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!.click();
         await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/a.md"]')).not.toBeNull());
         main.querySelector<HTMLInputElement>('[data-selection-id="/a.md"]')!.click(); main.querySelector<HTMLInputElement>('[data-selection-id="/b.md"]')!.click();
         main.querySelector<HTMLButtonElement>('[data-action="bulk-delete"]')!.click();
@@ -400,7 +400,7 @@ it('moves a pinned open file through the shared picker and saves to its new path
         updateNodeId: (path: string) => { options.target.path = path; } }));
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main, editorFactory: factory as never });
     try {
-        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
+        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!.click();
         await vi.waitFor(() => expect(main.querySelector('[data-resource-id="/source.md"]')).not.toBeNull());
         main.querySelector<HTMLButtonElement>('[data-resource-id="/source.md"] .workbench-directory__name')!.click();
         await vi.waitFor(() => expect(factory).toHaveBeenCalledOnce());

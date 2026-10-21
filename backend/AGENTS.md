@@ -1,6 +1,6 @@
 # backend/ 后端模块
 
-本目录包含 app-core、llm-context、llm-session、llm-flow、llm-tasks、durable-kernel、kernel-adapters、tools、device-tty、sanbox、sync-adapters。各包自身的 AGENTS.md 补充本约定。
+本目录包含 app-core、llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、tools、sanbox、sync-adapters。各包自身的 AGENTS.md 补充本约定。
 
 - 负责应用用例、持久化、授权、执行、调度与恢复，不导入 UI（包含类型引用）。
 - app-core 装配平台无关能力；平台、进程和存储实现由 apps 宿主注入。

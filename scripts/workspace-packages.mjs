@@ -1,7 +1,7 @@
 import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-export const WORKSPACE_GROUPS = ['ui', 'backend', 'shared', 'libraries', 'apps'];
+export const WORKSPACE_GROUPS = ['ui', 'backend', 'shared', 'libraries', 'apps', 'tools'];
 
 export function workspacePackages(root) {
     return WORKSPACE_GROUPS.flatMap(group => {

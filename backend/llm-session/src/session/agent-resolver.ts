@@ -2,7 +2,7 @@
 
 import { ExecutorConfig } from '../core/types';
 import { resolveModelForTier, resolveWebSearchStrategy } from '../contracts';
-import { ModelTier } from '@itookit/driver-llm/contracts';
+import { modelReasoning, getProviderDefaultProtocol, type ModelTier } from '@itookit/driver-llm/contracts';
 import { sha256Hex } from '@itookit/llm-context';
 import type { ConnectionMeta } from '@itookit/driver-llm/contracts';
 import type { WebSearchMode } from '../contracts';
@@ -295,24 +295,29 @@ export class AgentResolver {
         connMeta: ConnectionMeta,
         tier: ModelTier,
         modelId: string,
-    ): { enableThinking: boolean; reasoningEffort: 'low' | 'medium' | 'high' | 'xhigh' | undefined } {
+    ): { enableThinking: boolean; reasoningEffort: string | undefined } {
         const pid = connMeta.providerId;
         const cmData = connMeta.metadata as Record<string, unknown> | undefined;
-        const modelEfforts = cmData?.modelReasoningEfforts as Record<string, 'low' | 'medium' | 'high' | 'xhigh'> | undefined;
+        const modelEfforts = cmData?.modelReasoningEfforts as Record<string, string> | undefined;
+        const reasoningEffort = (modelEfforts?.[modelId] ?? cmData?.reasoningEffort) as string | undefined;
+        const configuredThinking = reasoningEffort === undefined ? undefined : reasoningEffort !== 'off';
         const tierThinking = cmData?.tierThinking as Record<string, boolean> | undefined;
         const tierOverride = tierThinking?.[tier];
 
-        let enableThinking = false;
+        let enableThinking = configuredThinking ?? false;
         if (pid && modelId) {
             const provider = this.agentService.getProvider(pid);
             const modelDef = provider?.models.find(m => m.id === modelId);
-            // Per-tier override takes priority; fall back to model's supportsThinking default.
-            enableThinking = tierOverride !== undefined ? tierOverride : (modelDef?.supportsThinking ?? true);
+            const protocol = connMeta.protocol ?? modelDef?.preferredProtocol ?? (provider && getProviderDefaultProtocol(provider));
+            const caps = modelReasoning(modelDef, protocol);
+            const declaration = protocol && modelDef?.reasoningByProtocol?.[protocol] !== undefined ? modelDef.reasoningByProtocol[protocol] : modelDef?.reasoning;
+            const supported = declaration === false ? false : !!caps || (modelDef?.supportsThinking ?? false);
+            enableThinking = tierOverride ?? configuredThinking ?? (modelDef?.thinkingMode === 'disabled' ? false : modelDef?.thinkingMode === 'enabled' ? true : supported);
         }
 
         return {
             enableThinking,
-            reasoningEffort: (modelEfforts?.[modelId] ?? cmData?.reasoningEffort) as 'low' | 'medium' | 'high' | 'xhigh' | undefined,
+            reasoningEffort,
         };
     }
 

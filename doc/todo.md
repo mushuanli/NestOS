@@ -6,6 +6,8 @@
 
 2026-09-28 修复：按只读审查结论校正 Range 校验、写入结果分类与错误码、批量 stat 预算、命名语义门控、删除项目忙时预检、连接/挂载状态分离、catalog 容错与来源复用；离线远程项目不再抛错中断启动恢复，只禁用受影响项目的视图。服务端源码以 submodule 形式落在 `tools/mindos-node`，驱动集成测试改为对该仓库的 Cargo manifest 真机运行。逐项见 [HTTP VFS 第 14.4 节](design/vfs-http-driver.md#144-断线降级与契约校正2026-09-28-修复)。
 
+2026-10-21 Durable 增量：独立库、幂等输入、drain、持久定时、归档及活动汇总已实施；401 项库测试（含 52 项真实进程）通过。同 Session/跨 Session 多 Task Harness 组合与审批恢复已有证据，工作台侧栏数量、刷新和 SSE 已在隔离 httpd 验收；现有 2000 端口仍未部署。参见[接口审查](design/durable-kernel-interface-review.md)及[实施验收](design/flow-cli-capabilities-verification.md)。此增量不代表其余 P0/P2 或跨主机目标全部完成。
+
 ## 1. 目标与完成标准
 
 原始目标：扫描 `doc/design`，保证设计与代码同步，并完成仍有效的未完成任务。明确被取代的方案不重新实施；最小系统优先不代表其他要求被移出范围。
@@ -53,7 +55,7 @@ Web 保留平台接口，不启用本机 Bash。跨 Session Memory 已有实现�
 
 | 归属 | 尚未完成 | 性质 |
 | --- | --- | --- |
-| 外部 Anki Tool + Flow | 在独立业务包实现制卡规则、工具、Flow、模板与打包，按声明仅在 HTTP 宿主执行；itookit 只补通用 Tool 节点、连接绑定、版本/授权/恢复及扩展资源机制。已修订[设计方案](design/anki-flow.md)，尚无可运行实现 | 通用机制 + 外部业务实现 + 验收 |
+| 外部 Anki Tool + Flow | 已提供独立 Rust anki-cli、文本/图片双入口与公共 Flow、资产引用与可定制图片预处理、视觉识别与人工校对、确定性字段合并、旧项目迁移、媒体生成、YAML 清单与 apkg 打包，通过模拟端点和包内容验收；厂商专用语音、宿主要求匹配和真实 Anki 导入仍待完成。详见[设计方案](design/anki-flow.md) | 后续能力 + 真实导入验收 |
 | P0-05 | 定位 `scheduler-paused-owner.test.ts` 的 `Host exited: 1`，修复后重跑；原因未确定，不能归因为环境或视作已解决 | 当前回归失败 |
 | P0-02 | 发送性能达到 ≤2 秒 / ≤100 次公开 IPC；IPC/发送失败、保存重试、pause 与未确认停止的真实窗口闭环 | 实现优化 + 验收 |
 | P0-04 | 原生目录选择完整授权路径、支持平台及发布安装包、深层 cwd 的 Skill 级联 | 平台验收 |
@@ -271,3 +273,5 @@ cargo build --offline --features tauri/custom-protocol --manifest-path apps/taur
 - 数字分身：邮件默认扫描，文档/目录/本地及远程会话“数字分析”菜单、首次加入后台立即扫描、类型选择与证据对话框、移除派生知识及再次加入、模型与姓名/别名配置、实际提取提示词展示已接入；真实 DeepSeek API 已在独立内存存储的完整 Kernel 链中完成提取、严格校验、提交及清理；正式浏览器界面和远程 harness 来源仍需验收。
 
 - 初始文件恢复：设置 → 文件系统/系统恢复提供折叠、默认全选的文件清单，支持 demo.md 与两份作文 Flow 的选择性恢复；只补缺失、保留修改、逐文件反馈，写入当前宿主文件系统。
+
+2026-10-20 增量：通用 image.process Tool、浏览器/Node 配方引擎、原图与派生资产、单图回执恢复及发送时解析已接通；Flow 源码检查 API、编辑器诊断和 CLI validate 同步落地。验证入口及当前资产保留策略见 [图片处理](design/flow-image-processing.md) 和 [Flow API](llm-flow-api.md#用户定义-flow-的源码检查)。

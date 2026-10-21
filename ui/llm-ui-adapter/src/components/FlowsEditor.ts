@@ -10,13 +10,12 @@ import { type FlowDraft } from '@itookit/llm-flow/contracts';
 import { type ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import { DagWorkbench } from './DagWorkbench';
-import { FlowLauncher, flowIdFromNodeId } from '../flows/run-flow';
-import { Toast } from '@itookit/ui-common';
+import { FlowLauncher, flowIdFromNodeId, type FlowRunInput } from '../flows/run-flow';
 
 export interface FlowsEditorDeps {
     commands: ICommandBus;
     /** Optional override for the run action (defaults to create-session + navigate). */
-    onRunFlow?: (flowId: string, revision: number) => void;
+    onRunFlow?: (flowId: string, revision: number, input?: FlowRunInput) => void | Promise<void>;
     /** Global LLM connections available to bind flow-level connection slots to. */
     listConnections?: () => Promise<Array<{ id: string; name: string }>>;
     listAgents?: () => Promise<Array<{ id: string; name: string; description?: string }>>;
@@ -47,7 +46,7 @@ export class FlowsEditor extends IEditor {
         container.innerHTML = '';
         this.workbench = new DagWorkbench(container, {
             commands: this.deps.commands,
-            onSelectFlow: (flowId, revision) => void this.handleRunFlow(flowId, revision),
+            onSelectFlow: (flowId, revision, input) => this.handleRunFlow(flowId, revision, input),
             listConnections: this.deps.listConnections,
             listAgents: this.deps.listAgents,
             listSystemPrompts: this.deps.listSystemPrompts,
@@ -79,14 +78,13 @@ export class FlowsEditor extends IEditor {
         }
     }
 
-    /** Publish → fill parameters → create a session instance → open it in chat. */
-    private async handleRunFlow(flowId: string, revision: number): Promise<void> {
+    /** Use validated sidebar parameters to create a session and open it in chat. */
+    private async handleRunFlow(flowId: string, revision: number, input?: FlowRunInput): Promise<void> {
         if (this.deps.onRunFlow) {
-            this.deps.onRunFlow(flowId, revision);
+            await this.deps.onRunFlow(flowId, revision, input);
             return;
         }
-        try { await this.launcher.run(flowId, revision); }
-        catch (error) { Toast.error(String(error)); }
+        await this.launcher.run(flowId, revision, input);
     }
 
     async destroy(): Promise<void> {

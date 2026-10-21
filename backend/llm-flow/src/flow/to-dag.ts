@@ -171,7 +171,8 @@ async function expandCompositeNodes(spec: DagRunSpec, context: CompilationContex
             ...context, compositeStack: [...compositeStack, reference],
             dependencyLocks: lock?.children ?? flow.dependencyLocks,
             isolated: callable || context.isolated,
-            connectionBindings: childConnectionBindings(context.connectionBindings, composite.id),
+            connectionBindings: childConnectionBindings(context.connectionBindings, composite.id,
+                config.connectionBindings, spec.nodeConnections?.[composite.id]?.connections),
         });
         const entry = callable ? callEntry(composite) : undefined;
         if (entry && spec.nodes.some(node => node.id === entry.id || node.id.startsWith(`${composite.id}/`))) throw new Error(`Flow call namespace collision: ${composite.id}`);
@@ -233,10 +234,18 @@ async function expandCompositeNodes(spec: DagRunSpec, context: CompilationContex
     return { ...spec, variableScopes, parameterScopes, nodeDefaults, nodeConnections, nodes: mappedNodes, edges: expandedEdges };
 }
 
-function childConnectionBindings(bindings: Record<string, string> | undefined, nodeId: string): Record<string, string> {
+function childConnectionBindings(bindings: Record<string, string> | undefined, nodeId: string,
+    forwarding: unknown, slots: FlowRevision['connections']): Record<string, string> {
     const prefix = `${nodeId}/`;
-    return Object.fromEntries(Object.entries(bindings ?? {}).filter(([key]) => key.startsWith(prefix))
-        .map(([key, value]) => [key.slice(prefix.length), value]));
+    const inherited: Record<string, string> = {};
+    if (forwarding !== undefined && !isRecord(forwarding)) throw new Error(`Invalid child connection bindings: ${nodeId}`);
+    for (const [child, parent] of Object.entries(isRecord(forwarding) ? forwarding : {})) {
+        const slot = slots?.find(slot => slot.name === parent);
+        if (!slot) throw new Error(`Unknown parent connection slot: ${String(parent)}`);
+        inherited[child] = slot.connectionId ?? '';
+    }
+    return { ...inherited, ...Object.fromEntries(Object.entries(bindings ?? {}).filter(([key]) => key.startsWith(prefix))
+        .map(([key, value]) => [key.slice(prefix.length), value])) };
 }
 
 /** Apply Flow defaults before the session/agent binder applies its higher layers. */

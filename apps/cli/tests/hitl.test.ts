@@ -41,6 +41,18 @@ describe('HITL run → respond → resume', () => {
         const rootTaskId = manifest.rootTaskId;
         const requestId = (manifest.pendingInteractions as Array<{ interactionId: string }>)[0].interactionId;
 
+        // Reattaching without an answer must preserve the question and execution identity.
+        expect(mode.process ? await childCli(['resume', runId, '--state-dir', stateDir, '--headless', '--json'])
+            : await resumeCommand(runId, { stateDir, headless: true, json: true })).toBe(3);
+        expect(await readManifest(stateDir, runId)).toMatchObject({
+            status: 'waiting', rootTaskId, nodeTaskIds: manifest.nodeTaskIds,
+            pendingInteractions: manifest.pendingInteractions,
+        });
+        expect(hitlCalls).toBe(1);
+        const journal = await readFile(path.join(stateDir, 'runs', runId, 'events.jsonl'), 'utf8');
+        expect(journal.trim().split('\n').map(line => JSON.parse(line))
+            .filter(event => event.type === 'task.interaction.requested')).toHaveLength(1);
+
         // 2) respond 批准后，resume 继续执行到完成。
         expect(mode.process ? await childCli(['respond', runId, requestId, '--state-dir', stateDir, '--approve', '--json'])
             : await respondCommand(runId, requestId, { stateDir, approve: true, json: true })).toBe(0);

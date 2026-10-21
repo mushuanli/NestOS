@@ -1,8 +1,16 @@
 # 外部 Anki Tool 与 Flow：策略和机制边界
 
-状态：**通用执行子集已实施，外部业务包及安装/宿主要求匹配待实现**。2026-10-16，同步到当前主工作区并通过独立进程 CLI 验收；此前的业务分析来自相邻 `anki-helper` 仓库，不要求核心依赖该目录。当前模块边界与工作树审查见[策略与机制](application-policy-boundaries.md)。
+状态：**Rust 外部工具、文本/图片双入口与公共 Flow、YAML 清单与打包已实施**。2026-10-20，从相邻 `anki-helper` 迁入独立仓库 [tools/anki-cli](../../tools/anki-cli/README.md)，不依赖原 helper 运行。通用扩展市场/宿主要求匹配、豆包原生语音适配和真实 Anki 导入验收仍待实现。当前模块边界见[策略与机制](application-policy-boundaries.md)。
 
-**目前没有可运行的 Anki Flow 或对应工具扩展。** 本文按“itookit 仅提供通用机制，非通用功能通过外部 Tool 实现”的要求重新确定归属，替代此前将 Anki 业务放入 app-core、HTTP 宿主和内置模板库的方案。默认 Anki 提示词、工作区、文件模板和演示反馈场景已移除；已有文件不会删除，外部宿主可通过 AppOptions.fileTypes 显式注册自己的文件类型。
+当前由三个外部定义组成：[文本入口](../../tools/anki-cli/flows/anki-generate.flow)、[图片入口](../../tools/anki-cli/flows/anki-from-image.flow)、[公共制卡](../../tools/anki-cli/flows/anki-build.flow)。文本入口保留 `anki-generate` ID；图片入口通过 `vision` 连接转录教材，保留 name/unit/symbol/chn，使用 `builtin.input` 的 `review: true` 强制用户校对提交。两入口经 `anki.prepare@1` 规范化，将 WordData 数组及制卡设置显式传给 `builtin.flow@2`；公共流程提供 `text` 补全、可选 `image` / `speech` 生成、`anki.plan@1` 合并与派发、`anki.package@1` 输出清单和包。每批最多 20 张，已有非空字段与扩展字段由 Rust 确定性保留。
+
+平台仅新增通用机制：`widget: images` 接受标准 inline 消息与资产引用，imageConstraints 由外部定义声明原图 PNG/JPEG/WebP、12 张和合计 80 MiB；单图上传仍受宿主 20 MiB 上限保护。图片入口通过外部 image.process Tool 缩放最长边 2048、转灰度、编码 JPEG，处理后单图 2 MiB、合计 6 MiB；Agent messageTemplates 渲染统一多模态消息，已有消息快照保持字面值；`builtin.input.review` 要求显式回复；子 Flow 的 `config.connectionBindings` 显式把子槽映射到父槽；`builtin.spawn` 的 `scope: local` 对运行时产生的节点、引用、上游端点和幂等键应用当前子流程作用域，旧默认 run 作用域保持兼容。两个入口拥有整次运行的 runPolicy，公共流程没有子 runPolicy。CLI 可加载同目录子 Flow，展开后的运行快照用于恢复。
+
+Flow 的 `outputs.manifest` / `outputs.package` 显式声明清单及 `.apkg` 的路径和 MIME 类型。Rust 工具拥有清单版本、牌组/笔记身份、卡片字段、媒体映射与校验、51 字段模板、临时 ZIP 和完成替换。最终文件保存到工作区 `输出目录/<操作摘要>/`，回执核对清单、包和媒体 SHA-256；没有完整回执时不自动重放写操作。当前 Node 扩展导出限制单包 128 MiB。
+
+Node 宿主通过 `MINDOS_TOOL_MODULES`（绝对模块路径 JSON 数组）加载外部 `createTools` 工厂，通过 `ANKI_CLI_BIN` 指向 Rust 二进制。HTTP 与 CLI 共用加载机制，业务源码不进入 backend/apps；浏览器/Tauri 不自动获得 Rust 能力。平台新增的 Task 资产读取端口只允许同 Session、同 Flow 的节点间读取，并校验资产身份与摘要；二进制工作区写入沿用挂载权限。库恢复与发布由应用层 app.flow-library.restore 显式协调，核心 DraftRestore 仍只恢复草稿。应用预设 [anki-generate.json](../../backend/app-core/src/presets/anki-generate.json) 保留定义副本，并接入工作流库及设置 / 系统恢复的“工作流”分组，已有文件与安装回执仍保留。
+
+当前验收：Rust 包数据库/媒体、旧项目与 GUID、字段合并、背诵往返、失败保留旧包；Node 回执与损坏检测；平台资产权限与通用执行回归；[完整 CLI 模拟端点验收](../../apps/cli/scripts/verify-anki-flow.mjs) 已实际生成媒体和 `.apkg`，并验证图片校对前后进程退出/恢复、校正字段写入最终包，以及恢复不重复识别或媒体请求。未调用真实付费模型、未做 Anki 桌面导入。下文保留完整扩展架构方向，尚未交付的部分不能视为当前能力。
 
 ## 1. 设计结论
 
@@ -13,7 +21,7 @@
 - Flow 通过通用 Tool 节点调用外部工具，确定性步骤不经过 LLM 决策。模型也可以通过已有 Agent 机制调用获授权的同一工具。
 - itookit 提供工具发现/注册/调用、Schema 校验、连接解析、权限、持久执行、取消、恢复、资产引用和结果展示。
 - 不在 app-core、kernel-adapters、llm-flow、tools 或 apps/http-app 中新增 Anki 专用服务、节点、Program、Effect、路由或打包代码。
-- HTTP 专有运行限制由外部扩展/Flow 声明，框架提供通用宿主要求匹配，不在核心中判断工具名是否为 Anki。
+- 当前工具运行于 Node 宿主；后续宿主要求声明与匹配应保持通用，不在核心中判断工具名是否为 Anki。
 
 “策略/机制”是相对层次：Anki 工具内部可以再拆字段策略与打包机制，但这两部分都属于外部业务包；不能因为打包是确定性算法，就把它归入 itookit 的通用基础设施。
 
@@ -29,7 +37,7 @@
 | Connection 槽、运行绑定、能力要求与快照 | itookit 通用机制 | 处理声明的操作、模态和能力，不内置 text/vision/image/speech 四个业务槽名 |
 | Task/Effect 日志、租约、请求身份、取消与恢复调度 | Durable Kernel 与通用适配层 | 核心保存执行事实，工具核对业务结果 |
 | “哪个字段该补”“包是否符合本次制卡目标” | 外部工具/Flow | 框架只执行 Schema、权限和通用产物约束 |
-| 已安装扩展的 Flow 清单、导入/恢复与完整性校验 | 通用扩展资源机制 | 读取扩展清单，不把 Anki 写入产品默认目录 |
+| 已安装扩展的 Flow 清单、导入/恢复与完整性校验 | 通用扩展资源机制 | 当前定义由外部仓库提供、应用预设保留恢复副本；通用扩展资源清单仍待实施 |
 
 依赖方向：
 
@@ -56,7 +64,7 @@ flowchart TD
 | 崩溃核对 | 原生 Tool 可提供 reconcile 并取得相同 operationId | 无核对能力的非只读工具保持 indeterminate，不静默重放 |
 | Flow 授权 | Tool / 媒体 Task 延迟到能力句柄绑定后启动 | Tool 只取得工具资源，媒体只取得模型资源 |
 | 连接 | 支持节点 connectionId/connectionSlot 和运行 connectionBindings，持久化模型/媒体端点快照 | 准入和执行前校验操作、模态、格式、音色及授权，未知即拒绝 |
-| 模型通信 | chat + image.generate / speech.synthesize；媒体使用独立的 OpenAI 兼容端点 | Provider.media 和 model.operations 显式声明，category/audio 标记不等于生成能力 |
+| 模型通信 | chat + image.generate / speech.synthesize；媒体协议由独立 driver-llm 适配 | Provider.media 和 model.operations 显式声明，category/audio 标记不等于生成能力；Provider 目录、凭据及厂商协议归平台，anki-cli 只接收媒体打包 |
 | 扩展资源 | 有产品内置 Flow 库和初始文件恢复 | 外部业务 Flow 通过导入/安装清单接入；通用恢复只处理已安装来源 |
 
 源码入口：
@@ -65,7 +73,7 @@ flowchart TD
 - [宿主工具注入](../../backend/kernel-adapters/src/runtime/create-kernel-adapters-runtime.ts)、[现有通用审批 Effect Program](../../backend/kernel-adapters/src/programs/approved-effect-program.ts)。
 - [内置 Flow 插件](../../backend/llm-flow/src/flow/builtin-plugins.ts)、[Task 构造](../../backend/llm-flow/src/flow/task-factory.ts)、[Flow Task 授权](../../backend/llm-flow/src/flow/task-capabilities.ts)。
 - [连接槽](../../backend/llm-flow/src/contracts/flow-definition.ts)、[槽解析](../../backend/llm-flow/src/flow/connections.ts)、[Flow 编译](../../backend/llm-flow/src/flow/to-dag.ts)。
-- [调用记录](../../backend/llm-session/src/session/flow-invocations.ts)、[当前连接表单](../../ui/llm-ui-adapter/src/components/FlowParameterForm.ts)、[Kernel Effect 契约](../../backend/durable-kernel/src/domain/types.ts)。
+- [调用记录](../../backend/llm-session/src/session/flow-invocations.ts)、[当前连接表单](../../ui/llm-ui-adapter/src/components/FlowParameterForm.ts)、[Kernel Effect 契约](../../libraries/durable-kernel/src/domain/types.ts)。
 
 上表区分当前实现与待补要求；后文的扩展安装、宿主要求匹配和业务流程仍是设计目标。
 
@@ -145,17 +153,16 @@ flowchart LR
 
 ## 6. 从 anki-helper 迁移的外部包
 
-推荐在相邻业务仓库演进独立 Anki 工具包，沿用其语言和打包实现；不要把源码搬进 itookit 的 backend、libraries 或 apps 目录。其建议逻辑结构为：
+当前使用独立 Git 仓库 `tools/anki-cli`，远端为 `git@github.com:mushuanli/anki-cli.git`。卡片模板、字段规则和打包实现均在该仓库，结构为：
 
 ```text
-external-anki-package/
-  manifest.json             # Package identity, versions and execution requirements.
-  flows/anki-generate.flow  # Business orchestration and connection slot declarations.
-  tools/                    # Parsing, validation, merge, pack and publish handlers.
-  schemas/                  # WordData, input and result schemas.
-  prompts/                  # Text/vision instructions owned by the business.
-  templates/                # Versioned Anki model templates.
-  runtime/                  # Business receipts and optional native worker.
+tools/anki-cli/
+  Cargo.toml               # Independent Rust CLI.
+  flows/anki-generate.flow # Workflow, prompts and connection slots.
+  src/                     # Parsing, merging, manifests, packing and Markdown.
+  template/ankimodel.json  # Embedded legacy-compatible model.
+  node/extension.mjs       # External Tool factory and Rust process bridge.
+  tests/                   # Database/media, compatibility and receipt tests.
 ```
 
 | 现有 helper 源码 | 在外部包中复用 |
@@ -166,7 +173,7 @@ external-anki-package/
 | `src/modules/pack.rs` | 稳定牌组/笔记身份、流式媒体、临时包与 Anki 格式处理 |
 | `src/modules/md.rs`、`template/ankimodel.json` | Markdown 与卡片模板 |
 
-示意工具名为 `anki.prepare`、`anki.validate`、`anki.apply`、`anki.pack`、`anki.publish`，均属于外部包，不是平台内置 API；最终粒度按独立重试与业务事务边界确定，不要求每个纯函数都成为 Tool。
+已注册工具为 `anki.prepare`、`anki.plan`、`anki.package`，协议版本均为 `1`，属于外部包。Rust CLI 同时提供 init、merge、migrate、validate、manifest、pack、md 和 pkg2md 子命令；不要求每个纯函数成为 Tool。
 
 业务包使用 itookit 管理的授权连接/资产端口，不再读取 helper 的独立 `config.toml`、项目列表和凭据。原 helper Web 服务不作为必要运行依赖；固定流程不能整个藏进 `helper init`，否则 Flow 看不到阶段、预算和失败边界。
 
@@ -277,7 +284,7 @@ flowchart TD
 - 不为 Anki 新增后台队列或事件总线。工具上报有界进度，平台统一节流与推送；大数据通过资产引用传递。
 - 打包工作由外部工具在独立 worker 中执行，流式读写，避免阻塞 HTTP 事件循环；其分块/压缩策略属于工具实现。
 - 表单/运行页使用通用 Schema、节点标题、结构化结果和资产下载。需要专用编辑器时由外部 UI 扩展提供，不能让共用设置页引用 Anki DTO。
-- 外部工作流经通用导入/安装清单提供；恢复页只补已安装来源中的缺失定义、保留修改。Anki 不加入 app-core 的内置 Flow/初始文件数组，也不因打开恢复页自动安装。
+- 通用导入/安装清单仍属于后续范围；当前 Flow 按用户要求加入应用定义库与初始文件清单，恢复页只补缺失定义、保留修改，打开页面本身不执行恢复。
 - 平台缓存描述/候选及通用运行状态，业务缓存由工具按内容/规则版本维护；没有核心的 Anki 缓存服务。
 
 现有通用 Flow 输出仍有按秒刷新的路径，见[输出设计](flow-capabilities-and-output.md)。若本轮实现运行订阅，应作为通用改进，不额外给 Anki 创建独立轮询。
@@ -306,7 +313,7 @@ flowchart TD
 
 外部业务另行验收：文本/JSON/照片输入、保留修改与冲突、媒体默认关闭、不同 Connection 组合、失败项重试、崩溃后的业务回执、稳定 deck/note 身份、ZIP/媒体完整性、真实 Anki 导入和重复导入、独立包发布及无相邻源码依赖。
 
-独立 npm 若在机制实施中修改，分别提交、推送、构建和发布；外部 Anki 包也独立发布。本轮已修改通用机制与 driver-llm 源码并进行构建/本地 tarball 验证；未发布 npm，未实现或发布 Anki 业务包。
+独立 npm 若在机制实施中修改，分别提交、推送、构建和发布。2026-10-16 的通用机制验收未发布 npm；2026-10-20 的外部 Anki 工具位于独立 Rust 仓库，本轮未新增厂商媒体驱动，也未发布 npm 包。
 
 
 ## 本轮通用媒体与 CLI 接入
@@ -324,7 +331,9 @@ Connection 执行；请求、输出与快照均不包含 Anki 业务字段。准
 CLI 运行 `.flow` 时通过 `--connection-bindings file.json` 绑定独立槽；能力声明从隔离
 profile 的 Provider 配置读取。配置示例见 [Flow API](../llm-flow-api.md)，可重复验收脚本见
 [verify-media-connections.mjs](../../apps/cli/scripts/verify-media-connections.mjs)。验收使用本地
-模拟端点，不调用真实付费服务。外部 Anki 制卡、打包与真实 Anki 导入仍待外部工具包完成。
+模拟端点，不调用真实付费服务。外部 Anki 制卡、媒体拼装和打包已由 anki-cli 与 Flow 接通；真实 Anki 导入仍待验收。
 
 脚本直接执行 CLI 源码，不依赖旧 dist；普通媒体/工具与连接快照验收由 CLI 的 flow-run 测试执行，
 付费请求中断恢复由 crash-matrix 单独执行，两者随现有测试矩阵运行。
+
+通用配方、资产端口和恢复机制见 [Flow 图片处理与资产引用](./flow-image-processing.md)。

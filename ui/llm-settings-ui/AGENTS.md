@@ -43,5 +43,10 @@ CostEditor 默认展示本月费用账本摘要；趋势、Provider/会话明细
 - `.llm` 导入 UI 只负责解析、选择冲突策略和展示结果；通过注入服务的 ConfigurationImportPort 查询冲突并提交导入，不编排 Provider/Connection/Agent/Skill 写入。执行用例归宿主后端。
 
 - Provider 媒体 JSON 草稿与模型对象分开保存，搜索、排序和删除不能因草稿无效而失败；保存时才解析为配置。ChatGPT 订阅类型隐藏并禁用媒体字段，切回 API 类型时恢复草稿与校验；隐藏字段不参与保存校验。
+- Provider 模型能力图标与显示名称同行，手机将 API ID 放上一行；详情只保留声明编辑。无 API 能力信息显示未知，不在加载或新增时默认填 true。目录刷新合并同 ID 的显式能力、上下文及操作声明，保留自定义名称/协议/思考模式和接口未返回的配置；supportsXXX 的 false 与 undefined 分别保留。媒体操作有独立文生图/TTS 图标，不从音频输入推断语音合成。
 
 AgentConfigEditor 可消费 EditorOptions.mountSettings 挂载宿主偏好，生命周期包含 isDirty、flush 与 destroy；偏好字段不写入 AgentDefinition，保存失败阻止离开并保留表单。
+
+- Provider 连接测试仅使用显式文本模型，纯媒体服务提示没有文本测试模型；图片/TTS 在独立操作验证中复用正式适配器并提供临时预览。测试不依赖先保存，结果必须与当前配置及操作参数一致；不得把 HTTP/RPC 成功当作业务成功。
+- Provider 表单只消费安全 getProviders 元数据，不读取 getFullProvider 回填密钥。省略 apiKey 由宿主保持同地址凭据，空字符串显式清除；更换地址不得自动复用旧凭据。原明文存储约定不变，相关说明折叠展示。
+- 模型推理选项来自 reasoning/reasoningByProtocol，不硬编码固定等级。Connection 按模型保存 effort/预算；无声明时显示服务端默认，媒体模型隐藏聊天专用参数。原始配置与常用控件共享同一草稿，不因切页签或渲染丢失未展示字段。

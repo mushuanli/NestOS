@@ -186,6 +186,8 @@ export class ChatInput implements IChatInputPresenter {
 
     private skillPanel?: SkillPanel;
     private skillModal?: Modal;
+    private reasoningIdentity?: string;
+    private reasoningPreferences = new Map<string, { effort?: string; thinking?: boolean }>();
     private connectionTier!: ConnectionTierController;
     private executionMode!: ExecutionModeControl;
 
@@ -251,6 +253,7 @@ export class ChatInput implements IChatInputPresenter {
             onCloseSettings: () => this.toggleSettings(false),
         });
         this.connectionTier = new ConnectionTierController(container, {
+            onReasoning: (caps, identity, selected) => this.syncModelReasoning(caps, identity, selected),
             onRefreshConnections: () => this.refreshConnections(),
             onNavigateSettings: (target) => this.options.onNavigateSettings?.(target),
             onChange: () => {
@@ -737,6 +740,25 @@ export class ChatInput implements IChatInputPresenter {
         this.initPluginSystem();
     }
 
+    private syncModelReasoning(caps: import('@itookit/driver-llm/contracts').ReasoningCapabilities | undefined, identity: string, selected: boolean): void {
+        const select = this.container.querySelector<HTMLSelectElement>('.llm-input__reasoning-select');
+        const toggle = this.container.querySelector<HTMLInputElement>('.llm-input__thinking-toggle');
+        if (!select || !toggle) return;
+        if (selected && this.reasoningIdentity && this.reasoningIdentity !== identity) {
+            this.reasoningPreferences.set(this.reasoningIdentity, { effort: this.config.settings.reasoningEffort, thinking: this.config.settings.thinkingEnabled });
+            const saved = this.reasoningPreferences.get(identity);
+            this.config.settings.reasoningEffort = saved?.effort ?? 'auto'; this.config.settings.thinkingEnabled = saved?.thinking;
+        }
+        this.reasoningIdentity = identity;
+        select.replaceChildren(new Option(t('thinking.effort.auto'), 'auto'), ...(caps?.efforts ?? []).map(option => new Option(option.label ?? option.id, option.id)));
+        const effort = this.config.settings.reasoningEffort;
+        select.value = effort && [...select.options].some(option => option.value === effort) ? effort : 'auto';
+        toggle.disabled = !caps || caps.canDisable === false;
+        const row = toggle.closest<HTMLElement>('.llm-input__setting-row')!; row.hidden = !caps; row.style.display = caps ? '' : 'none';
+        toggle.checked = this.config.settings.thinkingEnabled ?? true;
+        select.disabled = !caps?.efforts.length;
+    }
+
     private bindSettingsEvents(): void {
         // Agent Picker combobox — popup handled by PopupPanel
         this.agentPickerBtn.addEventListener('click', () => this.toggleAgentPicker());
@@ -775,11 +797,12 @@ export class ChatInput implements IChatInputPresenter {
         thinkingToggle?.addEventListener('change', () => {
             syncThinkingUI();
             this.config.settings.thinkingEnabled = thinkingToggle?.checked;
+            if (!thinkingToggle?.checked) { this.config.settings.reasoningEffort = 'auto'; if (reasoningSelect) reasoningSelect.value = 'auto'; }
             this.notifyConfigChange();
         });
 
         reasoningSelect?.addEventListener('change', () => {
-            const val = reasoningSelect.value as 'auto' | 'low' | 'medium' | 'xhigh';
+            const val = reasoningSelect.value;
             this.config.settings.reasoningEffort = val;
             this.notifyConfigChange();
         });
@@ -1040,8 +1063,7 @@ export class ChatInput implements IChatInputPresenter {
         }
         this.syncExecutionMode();
         if (this.agentPickerBtn) this.updateAgentTrigger();
-        this.connectionTier.setConnectionId(this.config.settings.connectionId);
-        this.connectionTier.setModelTier(this.config.settings.modelTier ?? 'auto');
+        this.connectionTier.setSelection(this.config.settings.connectionId, this.config.settings.modelTier ?? 'auto');
         if (this.flowIdInput) this.flowIdInput.value = this.config.settings.flowId ?? '';
         if (this.branchModeSelect) this.branchModeSelect.value = this.config.settings.branchMode ?? 'continue';
         if (this.retentionModeSelect) this.retentionModeSelect.value = this.config.settings.retentionMode ?? 'persistent';

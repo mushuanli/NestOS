@@ -7,7 +7,7 @@
  *   2. 反引号里的仓库文件路径不存在（悬空引用）；
  *   3. 相对 Markdown 链接失效。
  *
- * 活文档 = doc/*.md + doc/design/*.md + 工作区各目录的 AGENTS.md / README.md / doc/*.md。
+ * 活文档 = doc/*.md + doc/design/*.md + 工作区各目录的 AGENTS.md / README.md / doc(s)/*.md。
  * Historical protocol background in doc/feat/ checks links only, preserving historical API examples.
  *
  * 用法：node scripts/check-docs.mjs   （或 pnpm docs:check）
@@ -27,8 +27,8 @@ const REMOVED_SYMBOLS = [
     'ChatKernelStorageResolver', 'chatKernelStorage',
     'updateBoundNodeId', 'getSessionNodeId', 'getSessionIdFromNodeId', 'initializeExistingFile',
     'llm-runtime', 'AssemblyInput', 'DependencyCollector',
-    'module:mounted', 'module:unmounted', 'session.closed', 'effect.succeeded',
-    'session.message.delivered', 'app-shell/src/strategies', 'llm-ui/src/editors/',
+    'module:mounted', 'module:unmounted',
+    'app-shell/src/strategies', 'llm-ui/src/editors/',
 ];
 const HISTORICAL_CONTEXT = /(取代|替代|已删除|已移除|更名|旧|原|历史|迁移|归档|没有|不再|不存在|弃用)/;
 /** 允许出现在文档中的非仓库路径（示例、外部路径、占位符）。 */
@@ -46,10 +46,12 @@ function collectDocs() {
         for (const filename of ['AGENTS.md', 'README.md']) {
             if (existsSync(join(ROOT, directory, filename))) docs.push(`${directory}/${filename}`);
         }
-        const docDir = join(ROOT, directory, 'doc');
-        if (!existsSync(docDir)) continue;
-        for (const name of readdirSync(docDir)) {
-            if (name.endsWith('.md')) docs.push(`${directory}/doc/${name}`);
+        for (const folder of ['doc', 'docs']) {
+            const docDir = join(ROOT, directory, folder);
+            if (!existsSync(docDir)) continue;
+            for (const name of readdirSync(docDir)) {
+                if (name.endsWith('.md')) docs.push(`${directory}/${folder}/${name}`);
+            }
         }
     }
     return docs.sort();

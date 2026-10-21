@@ -1,3 +1,5 @@
+import {createTaskAssetReader} from './task-assets';
+import {registerInputAssets} from './input-assets';
 import { createMindosDirectAgentPolicy } from '../presets/direct-agent-policy';
 import { createFlowCapabilities } from './flow-capabilities';
 import { createFlowInvocationSessions, initializeConversationSystem, type CommandBus, type FlowEngine, type SessionManager, type SessionRepository, type VFSAgentService } from '@itookit/llm-session';
@@ -6,6 +8,7 @@ import type { IFileSystem, IVFSManager } from '@itookit/vfs-core';
 import type { HeadlessKernelRuntime } from './create-kernel-runtime';
 import { withWorkspaceScopeCleanup } from './workspace-scope-cleanup';
 import { t, createModuleLogger, traceBoot } from '@itookit/common';
+import { registerFlowLibraryRecovery } from '../presets/restore-flows';
 
 export interface OwnedConversationView { sessionManager: SessionManager; commandBus: CommandBus; dispose(): Promise<void> }
 
@@ -42,7 +45,7 @@ export async function createConversationSystem(
 ): Promise<{ sessionManager: SessionManager; commandBus: CommandBus; dispose(): Promise<void> }> {
     const { vfs, agentService, sessionRepository, flowEngine, kernel, systemFS } = options;
     const capabilities = createFlowCapabilities(kernel);
-    return initializeConversationSystem({
+    const system = await initializeConversationSystem({
         scheduleAgentInitialization: options.scheduleAgentInitialization,
         scheduleInvocationRecovery: options.scheduleInvocationRecovery,
         directAgentPolicy: options.directAgentPolicy ?? createMindosDirectAgentPolicy(),
@@ -68,4 +71,7 @@ export async function createConversationSystem(
         resolveHarnessToolIds: capabilities.resolveHarnessToolIds,
         resolveMCPToolIds: capabilities.resolveMCPToolIds,
     });
+    const inputs = registerInputAssets(system.commandBus, systemFS, reference => createTaskAssetReader(() => kernel.kernel, systemFS)(reference, {...reference, operationId: 'preview', effectId: 'preview'}));
+    const recovery = registerFlowLibraryRecovery(system.commandBus);
+    return { ...system, async dispose() { inputs.dispose(); recovery.dispose(); await system.dispose(); } };
 }

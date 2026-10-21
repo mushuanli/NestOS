@@ -4,7 +4,13 @@ import { type FlowDraft, type FlowRevision, type JsonValue } from '@itookit/llm-
 import { type ICommandBus } from '@itookit/llm-session/contracts';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
-import { promptFlowParameters } from '../components/FlowParameterForm';
+import { promptFlowParameters, type FlowConnectionSelection } from '../components/FlowParameterForm';
+
+export interface FlowRunInput {
+    parameters: Record<string, JsonValue>;
+    connection: FlowConnectionSelection;
+    signal?: AbortSignal;
+}
 
 export interface FlowRunOptions {
     commands: ICommandBus;
@@ -17,35 +23,38 @@ export class FlowLauncher {
     private pending = false;
     constructor(private readonly options: FlowRunOptions) {}
 
-    async run(flowId: string, revision?: number): Promise<void> {
+    async run(flowId: string, revision?: number, input?: FlowRunInput): Promise<void> {
         if (this.pending) return;
         this.pending = true;
-        try { await this.launch(flowId, revision); }
+        try { await this.launch(flowId, revision, input); }
         finally { this.pending = false; }
     }
 
-    private async launch(flowId: string, revision?: number): Promise<void> {
+    private async launch(flowId: string, revision?: number, input?: FlowRunInput): Promise<void> {
+        if (input?.signal?.aborted) return;
         const { commands } = this.options;
         const flow = await commands.execute<FlowDraft | FlowRevision | null>(
             revision === undefined ? FlowCommand.DraftLoad : FlowCommand.RevisionGet,
             { id: flowId, ...(revision === undefined ? {} : { revision }) });
+        if (input?.signal?.aborted) return;
         if (!flow?.id) throw new Error(t('flow.launch.invalid'));
-        const connection = await flowConnectionSelection(commands, undefined, flow.connections);
-        const values = await (this.options.prompt ?? promptFlowParameters)(flow.parameters ?? [], undefined, undefined, undefined, connection);
+        const connection = input?.connection ?? await flowConnectionSelection(commands, undefined, flow.connections, undefined, flow);
+        const values = input?.parameters ?? await (this.options.prompt ?? promptFlowParameters)(flow.parameters ?? [], undefined, undefined, undefined, connection);
         if (values === null) return;
         const published = revision === undefined
             ? (await commands.execute<{ revision: FlowRevision }>(FlowCommand.RevisionCreate,
                 { draftId: flow.id, expectedDraftVersion: (flow as FlowDraft).draftVersion })).revision
             : flow as FlowRevision;
-        await this.createSession(published, values, connection.selected, connection.bindings);
+        if (input?.signal?.aborted) return;
+        await this.createSession(published, values, connection.selected, connection.bindings, input?.signal);
     }
 
-    private async createSession(flow: FlowRevision, parameters: Record<string, JsonValue>, connectionId?: string, connectionBindings?: Record<string, string>): Promise<void> {
+    private async createSession(flow: FlowRevision, parameters: Record<string, JsonValue>, connectionId?: string, connectionBindings?: Record<string, string>, signal?: AbortSignal): Promise<void> {
         const created = await this.options.commands.execute<{ sessionId: string }>(SessionCommand.CreateFromFlow, {
             flowId: flow.id, revision: flow.revision, parameters, title: flow.name,
             invocation: true, connectionId, ...(Object.keys(connectionBindings ?? {}).length ? { connectionBindings } : {}),
         });
-        await this.options.navigate(created.sessionId);
+        if (!signal?.aborted) await this.options.navigate(created.sessionId);
     }
 }
 

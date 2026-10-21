@@ -10,12 +10,12 @@ interface InitialFilesControls {
 }
 const label = (key: string) => t(`initialFiles.${key}` as LocaleKey);
 
-/** Recovery selection is explicit, initially all checked, and survives list refreshes. */
+/** Recovery starts unselected and preserves explicit choices across list refreshes. */
 export class InitialFilesSection {
     private container?: HTMLElement;
     private entries: Awaited<ReturnType<InitialFilesPort['list']>> = [];
     private results: Awaited<ReturnType<InitialFilesPort['restore']>> = [];
-    private selected?: Set<string>;
+    private selected = new Set<string>();
     private expanded = new Set<string>();
     private busy = false;
     private disabled = false;
@@ -33,8 +33,8 @@ export class InitialFilesSection {
         const generation = ++this.generation;
         try {
             const entries = await this.port.list(); if (generation !== this.generation) return;
-            this.entries = entries; this.selected ??= new Set(entries.map(entry => entry.id));
-            this.selected = new Set(entries.filter(entry => this.selected!.has(entry.id)).map(entry => entry.id));
+            this.entries = entries;
+            this.selected = new Set(entries.filter(entry => this.selected.has(entry.id)).map(entry => entry.id));
         } catch (error) { if (generation === this.generation) this.error = String(error); }
         if (generation === this.generation) this.render();
     }

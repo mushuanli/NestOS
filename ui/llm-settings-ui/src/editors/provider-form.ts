@@ -40,8 +40,9 @@ function renderProtocolRow(provider: LLMProvider, protocol: ApiProtocol): string
 
 export function renderProviderAdvanced(provider: LLMProvider): string {
     const protocols = getProviderProtocols(provider);
+    const text = provider.models.some(model => (model.category ?? 'chat') === 'chat');
     return `<details class="settings-form__group" data-provider-advanced><summary>${t('provider.form.advanced')}</summary>
-        <label class="settings-form__label">${t('provider.protocol.default')}</label>
+        <div data-provider-chat-settings ${text ? '' : 'hidden'}><label class="settings-form__label">${t('provider.protocol.default')}</label>
         <select class="settings-form__select" name="defaultProtocol">${protocols.map(protocol =>
             `<option value="${protocol}" ${getProviderDefaultProtocol(provider) === protocol ? 'selected' : ''}>${PROTOCOL_LABELS[protocol]}</option>`).join('')}</select>
         <label class="settings-form__label">${t('provider.protocol.available')}</label>
@@ -52,7 +53,7 @@ export function renderProviderAdvanced(provider: LLMProvider): string {
         <input class="settings-form__input" name="modelsPath" value="${escapeAttr(provider.modelsPath ?? '')}" placeholder="${t('provider.models.endpointDefault')}">
         <label class="settings-form__label">${t('provider.form.temperature')}</label>
         <input type="number" class="settings-form__input" name="defaultTemperature" value="${provider.defaultTemperature ?? ''}" min="0" max="2" step="0.1">
-        ${renderMediaDeclaration(provider.media)}
+        </div>${renderMediaDeclaration(provider.media)}
     </details>`;
 }
 
@@ -67,7 +68,7 @@ export function readProviderForm(form: HTMLFormElement, previous: LLMProvider): 
     const paths = Object.fromEntries(Object.values(PATH_FIELDS).map(field => [field, data[field]?.trim() || undefined]));
     const primary = getPrimaryProtocol({ implementation });
     return { ...previous, ...paths, implementation, baseURL: data.baseURL.trim(),
-        apiKey: data.apiKey.trim() || previous.apiKey, supportedProtocols,
+        apiKey: data.apiKey.trim() || previous.apiKey, connectionTestModel: data.connectionTestModel || previous.connectionTestModel, supportedProtocols,
         defaultProtocol: form.querySelector<HTMLSelectElement>('[name="defaultProtocol"]')?.value as ApiProtocol,
         defaultPath: paths[PATH_FIELDS[primary]], modelsPath: data.modelsPath?.trim() || undefined };
 }

@@ -25,12 +25,13 @@ export async function resolveFlowTaskWorkspace(session: SessionHandle, taskId: s
 }
 
 /** Resolve independent Flow nodes and their descendants using authoritative Run membership. */
-export async function resolveFlowRunForTask(session: SessionHandle, taskId: string): Promise<TaskRecord | undefined> {
+export async function resolveFlowRunForTask(session: Pick<SessionHandle, 'id' | 'listTasks' | 'getShared'>, taskId: string): Promise<TaskRecord | undefined> {
     const tasks = await session.listTasks();
+    const snapshot = {getShared: session.getShared.bind(session), listTasks: async () => tasks};
     const ancestors = taskAncestry(session.id, tasks, taskId);
     let selected: TaskRecord | undefined, nearest = Infinity;
     for (const root of tasks.filter(task => task.program.kind === 'flow.aggregate' && task.labels?.kind === 'flow-root')) {
-        const members = await readFlowRunMembers(session, root);
+        const members = await readFlowRunMembers(snapshot, root);
         const distance = Math.min(...[root.id, ...members.map(member => member.taskId)]
             .map(id => ancestors.indexOf(id)).filter(index => index >= 0));
         if (distance === Infinity || distance > nearest) continue;

@@ -40,6 +40,8 @@ import { ExecProgram } from '../programs/exec-program';
 import { ContextPrepareEffect, ContextLlmEffect, ContextToolEffect, type ContextServiceResolver } from '../context/effects';
 
 export interface KernelAdaptersRuntimeOptions extends KernelAdapterDiagnostics {
+    taskAssetStore?: import('@itookit/tools/contracts').TaskAssetStore;
+    readTaskAsset?: import('@itookit/tools/contracts').TaskAssetReader;
     mediaResultStore?: MediaResultStore;
     contextService?: ContextServiceResolver;
     effectTools?: import('../effects/tool-call-effect').EffectToolBinding[];
@@ -302,6 +304,8 @@ class KernelAdaptersSessionRegistry implements SessionCapabilityRegistry {
             ...BUILTIN_TOOLS,
             ...(this.options.additionalTools ?? []),
         ]);
+        if (this.options.taskAssetStore) toolDriver.setAssetStore(this.options.taskAssetStore);
+        if (this.options.readTaskAsset) toolDriver.setAssetReader(this.options.readTaskAsset);
         if (files) toolDriver.setFileContext(files.vfs, files.cwd);
         else toolDriver.setFileContext({
             readFile: async () => { throw new Error('Session has no file capability'); },
@@ -387,14 +391,14 @@ function createEffects(
     registry: KernelAdaptersSessionRegistry,
     ttyEnabled: boolean,
     effectTools: import('../effects/tool-call-effect').EffectToolBinding[] = [],
-    diagnostics: KernelAdapterDiagnostics = {},
+    diagnostics: KernelAdaptersRuntimeOptions,
 ): import('@itookit/durable-kernel').EffectAdapter[] {
     const tools = async (context: import('@itookit/durable-kernel').EffectExecutionContext) =>
         (await registry.getForContext(context)).toolService;
     const skills = async (context: import('@itookit/durable-kernel').EffectExecutionContext) =>
         (await registry.getForContext(context)).skillService;
     const effects: import('@itookit/durable-kernel').EffectAdapter[] = [
-        new LlmChatEffectAdapter(llm, diagnostics.logger, diagnostics.authorizeLlm),
+        new LlmChatEffectAdapter(llm, diagnostics.logger, diagnostics.authorizeLlm, diagnostics.readTaskAsset),
         new ToolCallEffectAdapter(async (context, request) => {
             const scope = await registry.getForEffect(context);
             const meta = scope.toolService.getToolMeta(request.toolId);

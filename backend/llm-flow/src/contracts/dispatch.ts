@@ -1,4 +1,5 @@
 import type { FlowNodeDefinition, JsonValue, SerializableExpression } from './flow-definition';
+import type { FlowImageConstraints } from './flow-images';
 
 /** Invocation context is explicit; no ambient Session or parent history is imported. */
 export interface DispatchContextPolicy {
@@ -86,7 +87,8 @@ export interface DispatchConfig {
 }
 
 export interface FlowInputField {
-    widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox';
+    imageConstraints?: FlowImageConstraints;
+    widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'images';
     options?: JsonValue[];
     minimum?: number;
     maximum?: number;
@@ -98,6 +100,8 @@ export interface FlowInputField {
 }
 
 export interface FlowInputConfig {
+    /** Always collect an explicit response, including when initial values are valid. */
+    review?: boolean;
     param?: Record<string, FlowInputField>;
     fields?: Record<string, FlowInputField>;
     prompt?: string;

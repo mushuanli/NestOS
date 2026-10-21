@@ -1,4 +1,5 @@
-import type { FlowRevision, FlowDependencyLock } from '../contracts';
+import type { FlowRevision, FlowDependencyLock, JsonValue } from '../contracts';
+import { validateFlowCallParameters } from './call-parameters';
 
 /** Resolve transitive dependencies at publication, never again against latest on rerun. */
 export async function lockFlowDependencies(flow: Pick<FlowRevision, 'id' | 'nodes' | 'dependencyLocks'>,
@@ -8,12 +9,16 @@ export async function lockFlowDependencies(flow: Pick<FlowRevision, 'id' | 'node
     const locks: Record<string, FlowDependencyLock> = {};
     for (const node of flow.nodes.filter(item => item.plugin === 'builtin.flow')) {
         if (--budget.remaining < 0) throw new Error('Too many Flow dependencies');
-        const config = node.config as { flowId?: string; revision?: number };
+        const config = node.config as { flowId?: string; revision?: number; parameters?: Record<string, JsonValue> };
         const previous = flow.dependencyLocks?.[node.id];
         const child = await resolve(config.flowId ?? '', previous?.revision ?? config.revision);
         if (!child) throw new Error(`Flow dependency not found: ${config.flowId}`);
         if (previous && child.digest !== previous.digest) throw new Error(`Flow dependency changed: ${child.id}`);
         const children = await lockFlowDependencies({ ...child, ...(previous ? { dependencyLocks: previous.children } : {}) }, resolve, [...stack, String(flow.id)], budget);
+        if (node.pluginVersion === '2.0.0') {
+            const issues = validateFlowCallParameters(child.parameters, config.parameters);
+            if (issues.length) throw new Error(`Flow call ${node.id}: ${issues.map(issue => issue.message).join('; ')}`);
+        }
         locks[node.id] = { flowId: String(child.id), revision: child.revision, digest: child.digest, children };
     }
     return locks;

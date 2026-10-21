@@ -243,6 +243,7 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
     },
 
     anthropic: {
+        connectionTestModel: 'claude-haiku-4-5',
         id: 'anthropic', isBuiltin: true,
         name: 'Anthropic',
         implementation: 'anthropic',
@@ -250,15 +251,16 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
         icon: '🏺',
         supportsThinking: true,
         models: [
-            { id: 'claude-fable-5', name: 'Claude Fable 5', icon: '🧙' },
-            { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', icon: '👑' },
-            { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', icon: '🎯' },
-            { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', icon: '🎭' },
+            { id: 'claude-fable-5', name: 'Claude Fable 5', icon: '🧙', supportsThinking: true, reasoning: { efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }, { id: 'xhigh' }, { id: 'max' }], transport: 'adaptive' } },
+            { id: 'claude-opus-4-8', name: 'Claude Opus 4.8', icon: '👑', supportsThinking: true, reasoning: { efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }, { id: 'xhigh' }, { id: 'max' }], transport: 'adaptive' } },
+            { id: 'claude-sonnet-5', name: 'Claude Sonnet 5', icon: '🎯', supportsThinking: true, reasoning: { efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }, { id: 'xhigh' }, { id: 'max' }], transport: 'adaptive' } },
+            { id: 'claude-sonnet-4-6', name: 'Claude Sonnet 4.6', icon: '🎭', supportsThinking: true, reasoning: { efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }, { id: 'max' }], transport: 'adaptive' } },
             { id: 'claude-haiku-4-5', name: 'Claude Haiku 4.5', icon: '🍃' },
         ],
     },
 
     gemini: {
+        connectionTestModel: 'gemini-3.5-flash',
         id: 'gemini', isBuiltin: true,
         name: 'Google Gemini',
         implementation: 'gemini',
@@ -276,6 +278,7 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
     },
 
     deepseek: {
+        connectionTestModel: 'deepseek-v4-flash',
         id: 'deepseek', isBuiltin: true,
         name: 'DeepSeek',
         implementation: 'openai-compatible',
@@ -292,8 +295,8 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
             defaultThinkingEnabled: true, // DeepSeek Responses 默认开启思考，关闭需 effort='none'
         },
         models: [
-            { id: 'deepseek-v4-pro', name: MODEL_NAME_DEEPSEEK_V4_PRO, icon: '👑', supportsThinking: true },
-            { id: 'deepseek-v4-flash', name: MODEL_NAME_DEEPSEEK_V4_FLASH, icon: '⚡' },
+            { id: 'deepseek-v4-pro', name: MODEL_NAME_DEEPSEEK_V4_PRO, icon: '👑', supportsThinking: true, reasoning: { efforts: [{ id: 'low' }, { id: 'high' }, { id: 'max' }], canDisable: true, transport: 'deepseek' } },
+            { id: 'deepseek-v4-flash', name: MODEL_NAME_DEEPSEEK_V4_FLASH, icon: '⚡', reasoning: { efforts: [{ id: 'low' }, { id: 'high' }, { id: 'max' }], canDisable: true, transport: 'deepseek' } },
         ],
     },
 
@@ -337,6 +340,7 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
     },
 
     openai: {
+        connectionTestModel: 'gpt-5-mini',
         id: 'openai', isBuiltin: true,
         name: 'OpenAI',
         implementation: 'openai-compatible',
@@ -352,6 +356,7 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
     },
 
     codex: {
+        credentialMode: 'host',
         id: 'codex', isBuiltin: true,
         name: 'Codex (Local)',
         implementation: 'custom',
@@ -376,6 +381,8 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
         implementation: 'openai-compatible',
         baseURL: 'https://ark.cn-beijing.volces.com',
         defaultPath: '/api/v3/chat/completions',
+        connectionTestModel: 'doubao-seed-2-0-lite-260428',
+        media: { 'image.generate': { adapter: 'volcengine-images', path: '/api/v3/images/generations', responseFormat: 'b64_json' } },
         icon: '🌋',
         capabilities: {
             vision: true,
@@ -386,9 +393,13 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
             streaming: true,
         },
         models: [
+            // Official text catalog; account access remains a separate verification.
+            { id: 'doubao-seed-2-1-lite-260915', name: 'Doubao Seed 2.1 Lite', category: 'chat', capabilitiesKnown: false },
+            { id: 'doubao-seed-2-1-pro-260915', name: 'Doubao Seed 2.1 Pro', category: 'chat', capabilitiesKnown: false },
             // Seed-2.0 系列：对话 + 多模态视觉 + 工具调用 + 深度思考
             { id: 'doubao-seed-2-0-pro-260215', name: MODEL_NAME_DOUBAO_SEED_20_PRO, icon: '👑', category: 'chat', supportsThinking: true, supportsVision: true, supportsTools: true },
-            { id: 'doubao-seed-2-0-lite-260428', name: MODEL_NAME_DOUBAO_SEED_20_LITE, icon: '⚡', category: 'chat', supportsThinking: true, supportsVision: true, supportsTools: true },
+            { id: 'doubao-seed-2-0-lite-260428', name: MODEL_NAME_DOUBAO_SEED_20_LITE, icon: '⚡', category: 'chat', supportsThinking: true, supportsVision: true, supportsTools: true,
+                reasoning: { efforts: [{ id: 'low' }, { id: 'medium' }, { id: 'high' }], canDisable: true, transport: 'deepseek' } },
             { id: 'doubao-seed-2-0-mini-260428', name: MODEL_NAME_DOUBAO_SEED_20_MINI, icon: '🍃', category: 'chat', supportsThinking: true, supportsVision: true, supportsTools: true },
             // Seed-2.0 Code：对话 + 工具调用（代码增强）
             { id: 'doubao-seed-2-0-code-preview-260215', name: MODEL_NAME_DOUBAO_SEED_20_CODE, icon: '💻', category: 'chat', supportsTools: true },
@@ -396,10 +407,31 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
             { id: 'deepseek-v4-pro-260425', name: MODEL_NAME_DEEPSEEK_V4_PRO, icon: '🧠', category: 'chat', supportsThinking: true, supportsTools: true },
             { id: 'deepseek-v4-flash-260425', name: MODEL_NAME_DEEPSEEK_V4_FLASH, icon: '🚀', category: 'chat', supportsThinking: true, supportsTools: true },
             // 文生图 (Seedream)：按张计费，走 images/generations 端点（非 chat/completions）
-            { id: 'doubao-seedream-5-0-260128', name: MODEL_NAME_DOUBAO_SEEDREAM_50, icon: '🎨', category: 'image' },
+            { id: 'doubao-seedream-5-0-260128', name: MODEL_NAME_DOUBAO_SEEDREAM_50, icon: '🎨', category: 'image', capabilitiesKnown: true,
+                operations: { 'image.generate': { inputModalities: ['text'], outputModalities: ['image'], formats: ['png', 'jpeg'], sizes: ['2K', '3K', '4K'], maxOutputs: 1 } } },
             // 视频生成 (Seedance)：按时长计费，走异步任务端点（非 chat/completions）
             { id: 'doubao-seedance-2-0-260128', name: MODEL_NAME_DOUBAO_SEEDANCE_20, icon: '🎬', category: 'video' },
         ],
+    },
+
+    'doubao-speech': {
+        id: 'doubao-speech', isBuiltin: true,
+        name: 'Doubao (豆包语音)',
+        implementation: 'custom',
+        baseURL: 'https://openspeech.bytedance.com',
+        defaultPath: '/api/v3/tts/unidirectional',
+        media: {
+            'speech.synthesize': { adapter: 'doubao-speech', path: '/api/v3/tts/unidirectional', sampleRate: 24000 },
+        },
+        models: [{
+            id: 'seed-tts-2.0', name: 'Doubao Speech 2.0', category: 'audio', capabilitiesKnown: true,
+            operations: {
+                'speech.synthesize': {
+                    inputModalities: ['text'], outputModalities: ['audio'], formats: ['mp3', 'opus', 'pcm'],
+                    voices: ['zh_female_vv_uranus_bigtts'], speedRange: { min: 0.5, max: 2 },
+                },
+            },
+        }],
     },
 
     custom: {

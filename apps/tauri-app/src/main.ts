@@ -1,3 +1,4 @@
+import {createBrowserImageTools} from '@itookit/image-tools/browser';
 import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import { openApplicationView } from '@itookit/app-core/host';
 import { createMindosFlowLibrary } from '@itookit/app-core';
@@ -305,6 +306,7 @@ async function bootstrap(): Promise<void> {
         directorySourceProvider: new TauriSessionDirectories(rootDir),
         defaultSessionDirectory: `host:${homeDir}`,
         kernelPlatform: {
+            additionalTools: createBrowserImageTools(),
             configureSession: (sessionId, { toolDriver }) => observeTools(toolDriver, sessionId),
             configure: (kernel, services) => flowWorkspaces.bind(kernel, services),
             beforeSessionRecovery: sessionId => flowWorkspaces.reconcile(sessionId),

@@ -4,6 +4,8 @@
 
 import type { FlowParameter, JsonValue } from '../contracts';
 import type { ValidationIssue } from './validation';
+import { validFlowImages, validImageConstraints } from '../contracts/flow-images';
+import { flowSchemaIssue } from './schema-registry';
 
 export function flowParameterValues(schema: FlowParameter[] | undefined, values?: Record<string, JsonValue>): Record<string, JsonValue> {
     const defaults = Object.fromEntries((schema ?? []).filter(param => param.default !== undefined).map(param => [param.name, param.default!]));
@@ -68,6 +70,7 @@ export function validateFlowParameters(
     const issues: ValidationIssue[] = [];
     const provided = flowParameterValues(schema, values);
     for (const param of schema ?? []) {
+        if (!validImageConstraints(param.imageConstraints)) issues.push({ code: 'invalid-parameter', message: `Invalid image constraints: ${param.name}` });
         const present = param.name in provided && provided[param.name] !== undefined;
         if (param.required && !present) {
             if (param.onMissing !== 'interact') issues.push({ code: 'missing-parameter', message: `Missing required parameter: ${param.name}` });
@@ -78,11 +81,26 @@ export function validateFlowParameters(
             issues.push({ code: 'invalid-parameter', message: `Parameter ${param.name} must be ${param.type}` });
         }
         const value = provided[param.name];
+        if (param.widget === 'images' && param.onMissing !== 'interact' && !validFlowImages(value, param.imageConstraints)) {
+            issues.push({ code: 'invalid-parameter', message: `Parameter ${param.name} requires supported images within the size limit` });
+        }
         if (param.onMissing !== 'interact' && typeof value === 'number' && (
             (param.integer && !Number.isInteger(value)) || (param.minimum !== undefined && value < param.minimum)
             || (param.maximum !== undefined && value > param.maximum))) {
             issues.push({ code: 'invalid-parameter', message: `Parameter ${param.name} is outside its numeric constraints` });
         }
+        if (param.onMissing !== 'interact') issues.push(...validateValueConstraints(param, value));
+    }
+    return issues;
+}
+
+function validateValueConstraints(param: FlowParameter, value: JsonValue): ValidationIssue[] {
+    const issues: ValidationIssue[] = [];
+    if (param.nonBlank && typeof value === 'string' && !value.trim()) {
+        issues.push({ code: 'invalid-parameter', message: `Parameter ${param.name} must not be blank` });
+    }
+    if (param.options && (!param.options.length || flowSchemaIssue({ enum: param.options }, value))) {
+        issues.push({ code: 'invalid-parameter', message: `Parameter ${param.name} is outside its options` });
     }
     return issues;
 }

@@ -30,7 +30,8 @@ async function resolveSlot(slot: FlowConnection, connectionId: string | undefine
     if (!connectionId) { if (slot.required === false) return { ...slot, connectionId: undefined, resolved: undefined }; throw new Error(`Missing connection binding: ${slot.name}`); }
     const connection = await agents.getConnection(connectionId), provider = connection && agents.getProvider(connection.providerId);
     const modelId = slot.resolved?.modelId ?? connection?.tiers?.[slot.tier ?? 'optimal'] ?? connection?.model ?? '';
-    assertModelConnection(connection, provider, modelId, slot.requirements);
+    try { assertModelConnection(connection, provider, modelId, slot.requirements); }
+    catch (error) { throw new Error(`Connection slot ${slot.name}: ${error instanceof Error ? error.message : 'Connection validation failed'}`, {cause: error}); }
     if (slot.resolved && (slot.resolved.providerId !== connection!.providerId || slot.resolved.protocol !== connection!.protocol)) throw new Error(`Connection changed after admission: ${slot.name}`);
     const mediaEndpoint = mediaEndpointIdentity(provider!, connection!.baseURL, slot.requirements?.operation ?? 'chat');
     if (slot.resolved?.mediaEndpoint && slot.resolved.mediaEndpoint !== mediaEndpoint) throw new Error('Media endpoint changed after admission');
@@ -80,8 +81,20 @@ function nodeRequirements(operation: string, config: Record<string, JsonValue>, 
     if (declared && declared.operation !== operation) throw new Error('Node requirements conflict with operation');
     if (slot?.requirements && slot.requirements.operation !== operation) throw new Error('Node operation conflicts with connection slot');
     const output = operation === 'chat' ? 'text' : operation === 'image.generate' ? 'image' : 'audio';
-    return { operation, inputModalities: [...new Set(['text', ...declared?.inputModalities ?? [], ...slot?.requirements?.inputModalities ?? []])],
+    return { operation, inputModalities: [...new Set(['text', ...messageModalities(config.messageTemplates ?? config.messages), ...declared?.inputModalities ?? [], ...slot?.requirements?.inputModalities ?? []])],
         outputModalities: [...new Set([output, ...declared?.outputModalities ?? [], ...slot?.requirements?.outputModalities ?? []])],
         features: [...new Set([...declared?.features ?? [], ...slot?.requirements?.features ?? []])] };
+}
+function messageModalities(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap(message => contentModalities(message?.content));
+}
+function contentModalities(value: unknown): string[] {
+    if (!Array.isArray(value)) return [];
+    return value.flatMap(part => {
+        if (!part || typeof part !== 'object') return [];
+        const modality = { image_url: 'image', image: 'image', input_audio: 'audio', audio: 'audio', video: 'video' }[String(part.type)];
+        return modality ? [modality] : part.type === 'tool_result' ? contentModalities(part.content) : [];
+    });
 }
 function record(value: unknown): Record<string, JsonValue> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, JsonValue> : {}; }

@@ -108,6 +108,7 @@
     "node": ">=16.0.0"
   },
   "dependencies": {
+    "@itookit/app-contracts": "workspace:*",
     "@itookit/common": "workspace:*",
     "@itookit/durable-kernel": "workspace:*",
     "@itookit/llm-flow": "workspace:*",

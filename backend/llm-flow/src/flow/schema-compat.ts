@@ -9,6 +9,7 @@
 // an incompatible graph fails at publish/patch time instead of mid-run.
 
 import { assertFlowSchema } from './schema-registry';
+import {equalJson} from './schema-values';
 import type { JsonValue } from '../contracts';
 
 type Schema = Record<string, JsonValue>;
@@ -107,14 +108,6 @@ function arrayCompatibility(source: Schema, target: Schema, path: string): strin
     if (target.items === undefined) return undefined;
     if (source.items === undefined) return `${path}[]: source does not restrict item types`;
     return schemaCompatibilityIssue(source.items, target.items, `${path}[]`);
-}
-
-function equalJson(left: unknown, right: unknown): boolean {
-    if (left === right) return true;
-    if (Array.isArray(left)) return Array.isArray(right) && left.length === right.length && left.every((item, i) => equalJson(item, right[i]));
-    if (left === null || right === null || typeof left !== 'object' || typeof right !== 'object') return false;
-    const a = left as Schema, b = right as Schema;
-    return Object.keys(a).length === Object.keys(b).length && Object.keys(a).every(key => Object.hasOwn(b, key) && equalJson(a[key], b[key]));
 }
 
 function numericCompatibility(source: Schema, target: Schema, path: string): string | undefined {

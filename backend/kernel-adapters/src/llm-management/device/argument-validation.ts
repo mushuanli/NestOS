@@ -1,4 +1,4 @@
-import { isMediaCatalog } from '@itookit/driver-llm/contracts';
+import { isReasoningCapabilities, isMediaCatalog } from '@itookit/driver-llm/contracts';
 import type { LLMConnection, LLMProvider } from '@itookit/driver-llm/contracts';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 import type { ChatMessage } from '@itookit/llm-context';
@@ -39,12 +39,14 @@ export function isStoredProvider(value: unknown): value is LLMProvider {
 export function isProvider(value: unknown): value is LLMProvider {
     return isRecord(value) && storageId(value.id) && text(value.name) && text(value.baseURL)
         && enumValue(value.implementation, ['openai-compatible', 'chatgpt', 'anthropic', 'gemini', 'custom'])
-        && Array.isArray(value.models) && value.models.every(model => isRecord(model) && identifier(model.id) && isMediaCatalog(undefined, model.operations))
+        && Array.isArray(value.models) && value.models.every(model => isRecord(model) && identifier(model.id) && isMediaCatalog(undefined, model.operations) && isReasoningCapabilities(model.reasoning)
+            && optional(model.reasoningByProtocol, value => isRecord(value) && Object.entries(value).every(([key, caps]) => protocol(key) && isReasoningCapabilities(caps))))
         && isMediaCatalog(value.media, undefined)
+        && optional(value.credentialMode, mode => enumValue(mode, ['api-key', 'host']))
         && optional(value.defaultProtocol, protocol)
         && optional(value.supportedProtocols, value => Array.isArray(value) && value.every(protocol))
         && optional(value.capabilities, isRecord) && optional(value.defaultTiers, stringMap)
-        && ['apiKey', 'defaultPath', 'chatPath', 'anthropicPath', 'responsesPath', 'geminiPath', 'modelsPath'].every(key => optional(value[key], text))
+        && ['apiKey', 'defaultPath', 'chatPath', 'anthropicPath', 'responsesPath', 'geminiPath', 'modelsPath', 'connectionTestModel'].every(key => optional(value[key], text))
         && optional(value.enabled, value => typeof value === 'boolean');
 }
 
@@ -79,6 +81,8 @@ const validators: Record<string, (value: unknown) => boolean> = {
     [LLM_IOCTL.SAVE_SKILL]: isRecord,
     [LLM_IOCTL.TEST_CONNECTION_PARAMS]: value => isRecord(value) && identifier(value.provider)
         && optional(value.apiKey, text) && optional(value.baseURL, text) && optional(value.model, text)
+        && optional(value.operation, operation => enumValue(operation, ['chat', 'image.generate', 'speech.synthesize']))
+        && optional(value.request, isRecord)
         && optional(value.protocol, protocol) && optional(value.providerDefinition, isProvider),
     [LLM_IOCTL.MEDIA_GENERATE]: value => isRecord(value) && enumValue(value.operation, ['image.generate', 'speech.synthesize'])
         && identifier(value.model) && identifier(value.format) && optional(value.signal, isAbortSignal),

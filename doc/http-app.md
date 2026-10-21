@@ -122,6 +122,8 @@ llm-ui 通过可选 `readTaskAttachment` 回调消费该能力，没有注入时
 
 JSON 应用请求的 `request.complete` 新增可选 `bodyReadMs`（请求体接收及解析）、`viewReadyMs`（等待应用视图）、`rpcMs`（能力执行、快照及 JSON 响应生成）和 `responseFlushMs`（响应提交至 Node finish/close）。`application.complete.durationMs` 保留原含义，通过 requestId 关联。flush 不代表浏览器收到或渲染完成，客户端证书验证也不计入这些阶段；日志不记录文档、命令参数、共享键或用户内容。部署新版本后可据此区分此前 1 秒级 HTTP 请求与毫秒级 RPC 之间的差异。
 
+`application.complete` 还记录注册命令目录确认的 `rpcCommands`、业务回复的 `rpcErrorCount/rpcErrorCodes`；HTTP 200 不能代替业务成功。图片上传只额外记录声明的 MIME 与字节数 `uploads`，不写文件名、data URL 或异常正文。上传错误区分 `INPUT_ASSET_FORMAT`、`INPUT_ASSET_TOO_LARGE`、`INPUT_ASSET_PERSISTENCE`，存储错误保留安全错误码；业务错误回复附加 HTTP requestId，前端 flow-images 日志可据此关联。当前宿主输入暂存单文件预算为 20 MiB，与 Flow 自行声明的总字节/数量限制分别校验。
+
 ### RPC 与往返的生命周期边界
 
 RPC 是逻辑操作，HTTP 往返是传输批次；SSE 是独立的持续事件通道，不能把持续连接的存活时间当作一次加载耗时。目前 queries/bindings 只合并同一轮发起的独立调用；组件之间的 await 会把一次打开拆成多轮网络依赖。

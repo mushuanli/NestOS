@@ -1,5 +1,7 @@
 # @itookit/llm-flow — API 参考
 
+`spawn.scope=local` 与函数调用共用节点、边和控制身份映射；除模板引用外，路由规则、默认边、分组成员、join 身份及公开结果键均保持正确作用域。`builtin.agent.config.reasoningEffort` 接受 1–64 字符的字母、数字、下划线或连字符；合法等级由实际模型声明在通信前校验，不固定为跨厂商枚举。
+
 Flow 函数调用使用 `builtin.flow@2.0.0`：`config.flowId/revision/parameters` 绑定子 Flow，子定义通过 `outputs` 声明命名返回值，父节点通过 `${nodes.call.outputs.name}` 使用结果。发布 revision 时固定递归依赖版本和 digest；调用参数在父作用域求值一次，子参数、变量及 Agent 上下文隔离。`builtin.flow@1.0.0` 保留原行为。当前子 Flow 的 `runPolicy` 与调用级 retry/compensate/assign/budget/capabilities 不受支持，会明确拒绝；限额与工作区配置在父 Flow。契约与示例见 [Flow 调用与组合](design/flow-invocation-composition.md)。
 
 当前新图采用独立的 route、taskGroup、join、aggregate@3、loop 控制节点；作文评审模板已迁移。实现、策略默认值及边界见 [Flow 控制节点](design/flow-control-primitives.md)。下文 route@2/@3 的派发模型保留用于旧定义兼容。
@@ -439,6 +441,8 @@ Flow.connections 支持 `name/connectionId?/required?/tier?/requirements?`；调
 运行/会话默认连接，不能把缺少的媒体连接替换为文本连接。可选槽未绑定时保留空绑定，
 若分支最终执行该媒体节点，仍须通过执行时完整校验。
 
+`required` 省略时视为必选，`required: false` 允许不绑定；参数的 `required/default/onMissing` 独立控制必填、默认值与运行时补齐。检查器校验槽位 required 的布尔类型、模型档位和 requirements 的结构，定位未知 connectionSlot 及节点/槽位操作冲突。离线检查不要求安装实际连接；配置可用性和模型能力由宿主的只读连接预检与正式准入核对，需求始终来自 Flow 定义。
+
 可选槽的运行绑定可以显式传空字符串以清除定义中的默认连接；必需槽拒绝空绑定，
 嵌套槽使用 `节点路径/槽名`。表单保留已有嵌套绑定，并将清空可选槽与沿用默认值区分。
 
@@ -494,3 +498,26 @@ models:
 CLI 使用 `node apps/cli/dist/cli.js run -f job.flow --profile <profile> --connection-bindings bindings.json --json`；
 绑定文件为 `{ "illustrations": "configured-connection-id" }`。复现实验：
 `pnpm cli:build && node apps/cli/scripts/verify-media-connections.mjs`。
+
+## 图片输入、校对与组合派发
+
+运行参数和 `builtin.input` 字段可声明 `{ type: 'json', widget: 'images', imageConstraints: { maxItems: 4, maxBytes: 6291456, mimeTypes: ['image/png', 'image/jpeg', 'image/webp'] } }`。约束均可省略，核心没有固定数量、字节或格式上限；宿主传输限制仍生效。Anki 的原图数量与总字节限制、处理配方、处理后发送预算均由外部定义声明，详见 [图片处理](design/flow-image-processing.md)。
+
+上传值复用现有多模态消息内容块，例如 `[{ type: 'image_url', image_url: { url: 'data:image/png;base64,...' } }]`；UI 提供选择、预览、清除；浏览器及 CLI 在持久化前把 inline 图片暂存成资产引用。底层执行器保留 inline 调用兼容，模型发送前再解析授权引用。`builtin.agent.config.messageTemplates` 声明标准消息数组，例如 `[{ role: 'user', content: '${param.images}' }]`，支持文本、图片、音频等已有内容块。模板在节点执行前仅渲染一次，并建立上游引用依赖；插入数据中的 `${...}` 不再解释。`messages` 继续表示已有消息快照，不能整体作为模板再次渲染。连接准入推断可见的内容块模态；整体动态内容引用应在连接槽或节点 requirements 中显式声明所需模态。
+
+`builtin.input.config.review: true` 即使初始值有效也会请求用户提交，并在交互 payload.values 中携带预填内容；恢复保持同一待回复交互。默认行为仍只询问缺失或无效字段。
+
+`builtin.flow@2` 的 `config.connectionBindings` 显式映射子槽到父槽，例如 `{ writer: 'text' }`。父槽先完成准入，子槽继续按自己的能力要求校验；运行时的 `callId/writer` 绑定优先于该映射。不隐式继承未映射的槽。
+
+`builtin.spawn.config.scope: 'local'` 使 Tool 返回的局部节点、`${nodes.local.outputs.result}` 引用、`$upstream:local` 端点和幂等键属于当前子 Flow 命名空间，避免多次调用冲突；默认 `run` 保持原行为。公共子 Flow 仍须声明 outputs，不带 runPolicy；并发和工作区策略配置在入口。核心 DraftRestore 仅恢复草稿。应用层通过 app.flow-library.restore 显式协调库恢复和发布，设置恢复也复用同一应用策略；仅新恢复定义会发布，已有用户修改保持原样，依赖定义须按顺序先恢复。
+
+
+## 用户定义 Flow 的源码检查
+
+`checkFlowSyntax(source, options)` 接受严格 JSON 源码或未信任对象，返回 `{valid, diagnostics, flow?}`；`diagnostics` 含 code、message、severity 以及可定位的 path/line/column。检测 JSON 错误与重复键、定义形状、插件与版本、节点配置 Schema 的类型/必填/枚举/范围/嵌套约束、图/端口/连接、参数默认值及未声明参数引用。消息历史与 systemPrompt 保持字面数据，不误作运行模板。旧 data 边省略 kind 时保留兼容并返回 warning，拼写错误的 kind 仍报错。
+
+`checkFlowSource(source, {resolveComposite, plugins?})` 在此基础上离线展开子 Flow，检查缺失依赖、循环、输出契约和版本锁。`builtin.flow@2` 同时按子流程声明检查未知参数、缺失必填参数、字面值类型、数值范围/整数、非空、选项及图片约束；应用子流程自己的默认值，不隐式继承父参数，允许显式 `onMissing: interact` 收集器补值。整值动态引用的实际类型与值留到运行时校验；插值字符串及包含动态引用的容器仍检查已知外层类型，选项及图片内容约束在引用解析后校验。嵌套调用错误指向当前源码的调用节点，并在消息中标明完整调用路径。诊断代码为 `unknown-call-parameter`、`missing-call-parameter`、`invalid-call-parameter`。不执行模型或 Tool，不要求绑定凭据。没有 resolver 时只检查当前定义，不声称已校验子依赖。扩展插件需要传入相同的 DagPluginCatalog。默认格式为严格 JSON；其他宿主可注入 `parse`，解析错误可携带零基 mark.line/column。
+
+命令 `FlowCommand.SourceCheck`（`flow.source.check`）接收 `{source}`，返回 `{valid,diagnostics}`，使用运行时插件目录和持久子流程解析器。编辑器验证面板、草稿校验与发布共用检查器；`DraftSave` 保存不完整内容并返回校验错误，`DraftValidate` 只校验不写入。草稿安装/恢复只校验自身语法，允许随后安装依赖。发布解析并锁定依赖时再次检查调用参数，错误不写入新发布版本。运行时在动态值解析后再次检查类型、范围、非空和选项约束。
+
+CLI 用 `mindos validate -f example.flow --json` 检查源码和同目录子流程，成功退出 0，错误退出 1。已有 Workflow YAML 的 validate 入口继续使用对应 DSL 校验。检查结果不能证明外部工具已安装、连接凭据可用、图片可解码或业务规则满足；这些由运行准入和 Tool 验证。

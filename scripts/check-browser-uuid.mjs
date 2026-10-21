@@ -7,7 +7,7 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const roots = ['ui', 'shared', 'apps/http-app/src/client', 'apps/web-app/src', 'apps/tauri-app/src',
     'backend', 'libraries'];
 const implementations = new Set(['shared/common/src/utils/random.ts', 'libraries/llm-ui/src/random.ts', 'backend/kernel-adapters/src/utils/random.ts', 'shared/app-transport/src/rpc/random.ts',
-    'backend/durable-kernel/src/infrastructure/seqfile/seqfile-core.ts', 'backend/llm-flow/src/flow-definition-store.ts',
+    'libraries/durable-kernel/src/identity.ts', 'backend/llm-flow/src/flow-definition-store.ts',
     'backend/llm-context/src/assembly/context-assembler.ts', 'libraries/vfs-ui/src/utils/local.ts',
     'libraries/vfs-sync/src/random-id.ts', 'libraries/mindos-node-driver/src/files/request-id.ts']);
 

@@ -35,7 +35,7 @@ src/
 
 ## 公共契约
 
-`@itookit/tools/contracts` 提供 Tool/TTY、Skill 和子代理执行契约与最小 `SkillLoaderPort`、`AgentDelegationPort`，入口没有运行时初始化。实现不依赖 common 或 llm-common；消息与内容引用类型来自 llm-context，模型层级类型来自 driver-llm/contracts；MCP 协议版本、发现类型与超时规范化在 tools/mcp-contracts，入口不加载 MCP SDK。Skill/Agent 工厂仅接收其使用的操作，宿主不必实现完整的管理服务。
+`@itookit/tools/contracts` 提供 Tool/TTY、Skill 和子代理执行契约与最小 `SkillLoaderPort`、`AgentDelegationPort`，入口没有运行时初始化。TTY 契约由独立库 @itookit/device-tty/contracts 拥有，本包只做兼容类型转发，不加载 Node 驱动。实现不依赖 common 或 llm-common；消息与内容引用类型来自 llm-context，模型层级类型来自 driver-llm/contracts；MCP 协议版本、发现类型与超时规范化在 tools/mcp-contracts，入口不加载 MCP SDK。Skill/Agent 工厂仅接收其使用的操作，宿主不必实现完整的管理服务。
 
 ## 核心模式
 
@@ -83,6 +83,7 @@ src/
 - 已知且可纠正的操作前提错误抛 `ToolInputError(code, message)`，驱动返回 `success: false, recoverable: true`；普通异常保持不可自动纠正，避免重放未知副作用。
 - ToolInvokeResult 保留 output 和有界的 JSON data；文本/结构化数据分别最多 100000 字符且服从工具上限，超大 data 省略。Bash 退出码和 Edit 替换信息保存在 data 中。
 - 固定版本的确定性调用使用 structured 结果模式，完整 JSON 必须有界并符合 outputSchema；输出校验/序列化失败发生在执行后，不标为可纠正输入错误。reconcile 接收相同 operationId，重验版本、启用、Schema、权限和取消；不重跑业务执行前提，不接受权限检查改写原参数。业务回执核对由工具实现，缺少核对能力的写操作保持不确定状态。
+- ToolUseContext.readAsset 由宿主按可信 executionIdentity 注入，只读取授权 Task 资产；不把模型参数作为读取身份。ToolVFSContext 可选二进制读写与文本共用工作区挂载及版本校验；外部工具通过端口导出媒体或二进制产物。
 - `mapToolResultToToolResultBlockParam()` 将结构化输出转为 LLM 文本
 
 ## 命令

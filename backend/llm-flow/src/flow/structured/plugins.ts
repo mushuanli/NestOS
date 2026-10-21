@@ -17,7 +17,7 @@ function plugin(manifest: DagPluginManifest, programKind: string): DagPlugin {
 function inputManifest(): DagPluginManifest {
     return { id: 'builtin.input', version: '1.0.0', authoring: { scopeRole: 'input' }, kind: 'input', title: 'Collect Input', category: 'Execution',
         configSchema: { type: 'object', properties: {
-            param: { type: 'object' }, fields: { type: 'object' }, prompt: { type: 'string' }, initial: { type: 'object' } } },
+            param: { type: 'object' }, fields: { type: 'object' }, prompt: { type: 'string' }, initial: { type: 'object' }, review: { type: 'boolean' } } },
         defaultConfig: { param: {}, initial: {} }, inputs: [{ name: 'input', cardinality: 'one', required: false, order: 0 }],
         outputs: [{ name: 'result', required: true, order: 0 }] };
 }

@@ -2,11 +2,11 @@
 
 独立 llm-ui 的 Chat/Flow 通过宿主 source 发布事实、actions 提交意图，操作结果进入宿主持有的 OperationLedger；视图关闭只释放 UI。以下原产品的 Session/Kernel 接线与编辑器兼容实现位于 llm-ui-adapter。
 
-> 事件层分两套：**Kernel 持久化事件**（落盘，经 `eventList`/`TaskHandle.events()` 轮询消费）与 **业务流式事件**（`agent.event` payload，流式渲染）。
+> Kernel journal、持久 reducer 输入、onChanged 唤醒和诊断回调是不同通道；业务流式事件可嵌入 journal 的 `agent.event` payload。独立内核的顺序、补读及已知限制见[事件契约](../libraries/durable-kernel/docs/events.md)，对照其他 harness 的结论见[接口审查](./design/durable-kernel-interface-review.md)。
 
 ## 1. Kernel 持久化事件（EventEnvelope）
 
-所有 Task/Effect 生命周期事件写进会话事件日志（seqfile），消费方按 `sequence > after` 轮询（`session.events(after)` / `TaskHandle.events(after)`），或订阅 `onChanged` 通知。
+Task/Effect 的持久观察事件写进会话事件日志（seqfile），消费方按 `sequence > after` 补读（`session.events({ after })` / `TaskHandle.events({ after })`）。`onChanged` 只表示需要重新读取，不能代替持久事件消费。Task 状态及输入 / 收据是恢复依据，journal 不单独构成完整的可重建执行状态。
 
 | 事件 | 触发 |
 |---|---|
@@ -14,7 +14,8 @@
 | `task.created` / `task.started` / `task.leased` | 任务提交/启动/领取 |
 | `task.signal` / `task.spawned` | capabilities 等信号 / patch-graph 子任务 |
 | `task.failed` / `task.attempt.lost` | 任务失败 / worker 丢失重试 |
-| `effect.leased` / `effect.resolved` / `effect.attempt.lost` | effect 领取/完成或失败/重试 |
+| `effect.leased` / `effect.succeeded` / `effect.failed` / `effect.indeterminate` | Effect 领取及执行结果，v2 信封含 effectId / attemptId |
+| `effect.resolved` / `effect.retry.scheduled` / `effect.interrupt.requested` / `effect.cleanup.confirmed` | 人工裁决、重试登记及物理清理确认 |
 | `budget.configured` / `budget.consumed` | 预算设置/扣减 |
 | `session.shared.set` / `session.shared.deleted` | 会话内共享状态（task 间） |
 | `session.context.committed` | context commit（分支） |
@@ -28,6 +29,8 @@ Kernel store.appendEvent → 事件日志 → kernel.eventList(sessionId, after)
                                         → cli RunStore.appendEvent（events.jsonl）
                                         → llm-ui 流式渲染
 ```
+
+Task watch 默认在逻辑终态及 Effect 清理均完成（settled）后排空结束；until: exit 只观察逻辑终态。Session watch 在 closed 后排空；AbortSignal 取消观察不取消执行，dispose 结束事件流。新 readEvents / watch 发现裁剪游标过期时抛 CURSOR_EXPIRED，使用 snapshot.asOfSequence 重建后补读；详见独立事件契约。
 
 ## 2. 业务流式事件（agent.event payload）
 
@@ -81,7 +84,7 @@ ConversationRunCoordinator → RoundLog 投影 → SessionEventBus.emitSession()
 
 `SessionViewPort.onEvent` 的观察者可以在绑定前登记，独立取消且随当前绑定重新挂接；新增观察者不替换已有观察者。解绑只释放该绑定持有的转发，不清除同一 Session 通道上其他所有者的监听。HTTP 的 ViewObservation 在首屏打开前登记源，因此这一契约同样覆盖首次草稿转正后的回复。回归见 [观察生命周期](../backend/llm-session/__tests__/session-observation.test.ts) 与 [真实 Kernel 经 RPC 到页面](../ui/app-shell/tests/draft-promotion.test.ts)。
 
-Kernel 的 `seq:committed` 存储观察将仅修改当前 Session 的 `events.seq` 的提交分类为 `content`，继续唤醒事件观察者；包含 Task、Session 等其他记录的提交保留 `structure`。这样持久流式事件不会被再次提升为结构变化并触发侧栏整树刷新，任务创建和终态仍更新导航。内核回归见 [protocol.test.ts](../backend/durable-kernel/src/protocol.test.ts)，实际流式页面回归见 draft-promotion。
+Kernel 的 `seq:committed` 存储观察将仅修改当前 Session 的 `events.seq` 的提交分类为 `content`，继续唤醒事件观察者；包含 Task、Session 等其他记录的提交保留 `structure`。这样持久流式事件不会被再次提升为结构变化并触发侧栏整树刷新，任务创建和终态仍更新导航。内核回归见 [protocol.test.ts](../libraries/durable-kernel/src/protocol.test.ts)，实际流式页面回归见 draft-promotion。
 
 > 联网搜索的 citations 事件链与三态决策详见 [web-search.md](./web-search.md)。
 
@@ -90,13 +93,16 @@ Harness 工具事件无需等待 effect 完成：`tool:running` 随发起 effect
 ## 5. 跨会话同步（outbox/inbox）
 
 ```
-session A: sendCrossSession(source, target, topic, payload)
-  → store.createOutboxMessage → 事件 session.message.queued
-  → relayMessage → 投递到 target 的 inbox → 事件 session.message.received（拒绝时 session.message.rejected）
-  → target: session.inbox(after) 读取
+source.send({ idempotencyKey, targetSessionId, targetTaskId?, topic, payload })
+  → 幂等登记 outbox → session.message.queued
+  → relay / 恢复重投 → 目标 inbox 去重 → session.message.received 或 session.message.rejected
+  → 源端保存投递结算；双方补齐结算确认
+  → 未指定 Task：宿主 inboxPage() 读取并 acknowledgeMessage()
+  → 指定 Task：登记 pendingEvents，随 Decision 原子消费
+  → 目标 consumedAt + message.consumed
 ```
 
-用于会话间的消息传递（与 session 内 `setShared/getShared` 互补：前者跨会话、后者会话内 task 间）。
+消息可用于同 Session 或跨 Session 的 Task 通信，也可进入宿主邮箱。`delivered` 不表示已消费，消费不表示业务回复；跨 Session 没有全局事件顺序。inbox 的增量游标是接收方 deliverySequence，watch 的游标是 Session event sequence，均不能用发送时间替代。跨主机网络传输由宿主提供。
 
 ## 6. VFS 事件
 
@@ -118,7 +124,7 @@ FSEventBus（vfs-core/src/impl/event/event-bus.ts）：
 | `cli`（RunStore） | `session.events(after)` | events.jsonl 落盘 + 运行渲染 |
 | `llm-ui` | `TaskHandle.events()` / SessionEventBus | 流式聊天渲染、DagWorkbench |
 | `app-shell` | VFS FSEventBus / kernel onChanged | 树刷新、skill 同步 |
-| kernel 内部 | 事件日志 | drain 推进、recover 恢复 |
+| kernel 内部 | 持久 Task / pendingEvents / wait / lease / 收据 | drain 推进、recover 恢复；journal 用于观察 |
 
 ## 执行取消的错误事件标记
 
@@ -136,3 +142,5 @@ UI 挂接恢复通过 EditorTaskControlPlane 获取状态和事件，每次异�
 本地与远程共用 `HistoryView.setSubmission` → `SubmissionFeedback` 的临时用户卡片，展示提交中、已接受、失败或结果未知。卡片不写入会话历史，不将 HTTP 返回成功等同于模型开始运行。本地通过既有 `SendIntent.submission.id` 对齐 `round-<id>-user`；远程通过 `ConversationSnapshot.submittedTurnId` 对齐原生用户轮次。真实历史到达后仅按身份移除临时卡片，不按正文去重。直接 Tool 命令不创建聊天卡片。未知远程结果保留草稿并通过既有 reconcile 查询回执，不自动重复提交。原生 `HARNESS_SESSION_BUSY` 明确提示其他 Codex 实例持有写入权，不能通过删除锁或自动抢占恢复。
 
 历史分页入口通过 `HistoryViewOptions.header` 放在历史滚动区顶部；点击才读取下一页，保留原卡片实例及阅读锚点。对话正文禁用“近期活跃”的时间推测，侧栏保留原有观察策略。
+
+本地多 Session 待办总览由 `Kernel.sessionActivity` → SessionBrowser 的 `metadata.sessionActivity` → SessionWorkbench / 本地状态投影呈现。初次加载和显式刷新从持久活动索引读基线；后续 structure 通知按 Session 失效，HTTP 沿既有观察通知与 SSE 刷新，content 不扫描导航。跨进程补扫批读活动修订和 Session 控制记录，状态变化发 structure，纯事件追加发 content。完整交互验收见[Flow/CLI 验收记录](./design/flow-cli-capabilities-verification.md)。

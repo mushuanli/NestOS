@@ -20,6 +20,7 @@ export interface RunAttachmentCallbacks {
 export class RunAttachmentController {
     private handle?: AttachedTask;
     private iterator?: AsyncIterator<EventEnvelope>;
+    private observation?: AbortController;
     private generation = 0;
 
     constructor(
@@ -46,7 +47,8 @@ export class RunAttachmentController {
         const handle = await this.controlPlane.openTask(taskId);
         if (generation !== this.generation) return;
         this.handle = handle;
-        const events = handle.events()[Symbol.asyncIterator]();
+        this.observation = new AbortController();
+        const events = handle.events({ signal: this.observation.signal })[Symbol.asyncIterator]();
         this.iterator = events;
         void this.consume(events, generation).catch(error => {
             if (generation === this.generation) this.callbacks.onError?.(toError(error));
@@ -73,7 +75,8 @@ export class RunAttachmentController {
         if (task.status === 'created') return handle.start();
         if (task.status === 'ready' || task.status === 'running') return;
         if (task.status === 'waiting' && acceptsSignal(task.wait, 'resume')) {
-            return handle.signal({ type: 'resume' });
+            await handle.signal({ type: 'resume' });
+            return;
         }
         if (task.status === 'waiting') throw new Error('Task is waiting for an effect or approval');
         throw new Error(`Task cannot be resumed from ${task.status}`);
@@ -127,6 +130,8 @@ export class RunAttachmentController {
     async detach(): Promise<void> {
         const taskId = this.handle?.id;
         this.generation++;
+        this.observation?.abort();
+        this.observation = undefined;
         void this.iterator?.return?.();
         this.iterator = undefined;
         this.handle = undefined;

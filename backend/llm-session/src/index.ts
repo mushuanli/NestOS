@@ -1,4 +1,5 @@
 import { prepareFlowConnections } from './session/flow-connections';
+import { checkFlowConnections, type FlowConnectionCheckInput } from './session/flow-connection-check';
 import { skillContextResolver } from './session/direct-conversation';
 import { createSessionHost, type SessionHostPorts } from './utils/host-ports';
 import { FlowInvocationService } from './session/flow-invocations';
@@ -218,6 +219,7 @@ function createDagCommands(
         options.flowStore,
         options.dagPlugins,
     );
+    commandBus.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as FlowConnectionCheckInput, options.agentService, flowStore, options.dagPlugins));
     const dag = new DagCommandService({
         prepareConnections: (flow, bindings) => prepareFlowConnections(flow, bindings, options.agentService),
         resolveConnection: (id, selected) => resolveSessionConnection(options, id, selected),

@@ -33,7 +33,7 @@ export class FlowRunProjection {
         const root = all.find(task => task.id === options.rootTaskId);
         if (!root) return;
         await this.readEvents(options.sessionId);
-        const session = await this.kernel.openSession(options.sessionId);
+        const session = await this.kernel.inspectSession(options.sessionId);
         const identities = await readFlowRunMembers(session, root);
         const members = runTasks(root, all, identities.map(item => item.taskId));
         const signature = JSON.stringify([this.cursor, members.map(task => [task.id, task.version])]);

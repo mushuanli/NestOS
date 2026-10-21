@@ -1,8 +1,9 @@
 import { afterEach, beforeEach, expect, it } from 'vitest';
 import { Kernel } from '@itookit/durable-kernel';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
-import { createBuiltinDagPluginRegistry, DurableFlowExecutor, registerDurablePrograms, flowToDag } from '../src/flow';
+import { checkFlowSource, createBuiltinDagPluginRegistry, DurableFlowExecutor, registerDurablePrograms, flowToDag } from '../src/flow';
 import { lockFlowDependencies } from '../src/flow/dependency-locks';
+import { scopeSpawn } from '../src/flow/spawn-scope';
 import type { FlowRevision, FlowNodeDefinition } from '../src/contracts';
 
 const value = (id: string, content: unknown): FlowNodeDefinition => ({ id: id as never, name: id, plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: { value: content } as never });
@@ -38,6 +39,20 @@ it('rejects missing arguments without implicitly inheriting parent parameters', 
     const invocation = call('a', 'unused'); invocation.config = { flowId: 'child', parameters: {} };
     const graph = await flowToDag(definition('parent', [invocation]), undefined, undefined, async () => child());
     const run = await executor.submit('s', graph, { text: 'Must not inherit' });
+    expect((await run.root.wait({ timeoutMs: 4000 })).status).toBe('failed');
+    expect(run.nodes.has('a/echo')).toBe(false);
+});
+
+it.each([
+    { parameter: { type: 'string' as const }, supplied: 42 },
+    { parameter: { type: 'string' as const, nonBlank: true }, supplied: '  ' },
+    { parameter: { type: 'string' as const, options: ['allowed'] }, supplied: 'typo' },
+])('validates dynamic call arguments at runtime before admitting child tasks: %j', async ({ parameter, supplied }) => {
+    const dependency = child(); dependency.parameters = [{ name: 'text', required: true, ...parameter }];
+    const parent = definition('parent', [value('source', supplied), call('a', '${nodes.source.outputs.result}')]);
+    expect(await checkFlowSource(parent, { resolveComposite: async () => dependency })).toMatchObject({ valid: true });
+    const graph = await flowToDag(parent, undefined, undefined, async () => dependency);
+    const run = await executor.submit('s', graph);
     expect((await run.root.wait({ timeoutMs: 4000 })).status).toBe('failed');
     expect(run.nodes.has('a/echo')).toBe(false);
 });
@@ -97,6 +112,27 @@ it('fails the call when its return violates the declared schema and never runs i
     await expect(flowToDag(definition('collision', [call('a', 'A'), value('a__input', 1)]), undefined, undefined, async () => child())).rejects.toThrow('namespace collision');
 });
 
+it('isolates locally scoped tool-produced graph patches across concurrent calls and restored runs', async () => {
+    const fn: FlowRevision = { ...definition('child', [value('plan', '${param.graph}'),
+        { ...value('spawn', null), plugin: 'builtin.spawn', config: { scope: 'local', spawn: '${nodes.plan.outputs.result}' } }]),
+        parameters: [{ name: 'graph', type: 'json', required: true }], outputs: { result: { value: '${nodes.plan.outputs.result.data}' } } };
+    const graph = (data: string) => ({ data, idempotencyKey: 'same-local-key', nodes: [
+        value('media', '${nodes.plan.outputs.result.data}'), value('package', '${nodes.media.outputs.result}'),
+    ], edges: [{ id: 'source', from: '$upstream:plan', to: 'media', kind: 'control' },
+        { id: 'parent', from: '$parent', to: 'media', kind: 'control' }, { id: 'package', from: 'media', to: 'package', kind: 'control' }] });
+    const a = call('a', ''); a.config = { flowId: 'child', parameters: { graph: '${param.graphA}' } };
+    const b = call('b', ''); b.config = { flowId: 'child', parameters: { graph: '${param.graphB}' } };
+    const spec = await flowToDag(definition('parent', [a, b]), undefined, undefined, async () => fn);
+    const run = await executor.submit('s', spec, { graphA: graph('A'), graphB: graph('B') } as never);
+    const exit = await run.root.wait({ timeoutMs: 6000 });
+    expect(exit.status, JSON.stringify(exit)).toBe('succeeded');
+    for (const [prefix, content] of [['a', 'A'], ['b', 'B']]) {
+        expect((await run.nodes.get(`${prefix}/package`)!.status()).task.output).toMatchObject({ outputs: { result: { content } } });
+    }
+    const restored = await executor.resume('s', run.root.id);
+    expect((await restored.root.wait({ timeoutMs: 4000 })).status).toBe('succeeded');
+});
+
 it('preserves control node ownership and join result keys across parallel function instances', async () => {
     const grouped = definition('child', [
         { ...value('group', null), plugin: 'builtin.taskGroup', config: { maxConcurrency: 1 } },
@@ -112,6 +148,52 @@ it('preserves control node ownership and join result keys across parallel functi
     const run = await executor.submit('s', graph);
     expect((await run.root.wait({ timeoutMs: 4000 })).status).toBe('succeeded');
     expect((await run.nodes.get('a/__flow_return')!.status()).task.output).toMatchObject({ outputs: { result: { content: { results: { one: 1, two: 2 } } } } });
+});
+
+it('keeps local dynamic route choices isolated and skips the unselected branch after recovery', async () => {
+    const patch = {nodes: [
+        {...value('route', null), plugin: 'builtin.route', config: {defaultEdgeId: 'selected', rules: [
+            {edgeId: 'other', expression: {kind: 'literal', value: false}},
+        ]}}, value('selected', 'chosen'), value('other', 'must not execute'),
+    ], edges: [
+        {id: 'start', from: '$parent', to: 'route', kind: 'control'},
+        {id: 'selected', from: 'route', to: 'selected', kind: 'control'},
+        {id: 'other', from: 'route', to: 'other', kind: 'control'},
+    ]};
+    const nodes = ['a', 'b'].map(prefix => ({...value(`${prefix}/spawn`, null), plugin: 'builtin.spawn', config: {scope: 'local', spawn: patch}}));
+    const run = await executor.submit('s', {nodes, edges: []});
+    expect((await run.root.wait({timeoutMs: 5000})).status).toBe('succeeded');
+    for (const prefix of ['a', 'b']) {
+        expect(run.nodes.has(`${prefix}/other`)).toBe(false);
+        expect((await run.nodes.get(`${prefix}/selected`)!.status()).task.output).toMatchObject({outputs: {result: {content: 'chosen'}}});
+    }
+    const restored = await executor.resume('s', run.root.id);
+    expect((await restored.root.wait({timeoutMs: 4000})).status).toBe('succeeded');
+    expect(restored.nodes.has('a/other')).toBe(false);
+});
+
+it('shares function control identity mapping with local dynamic groups and loops', () => {
+    const patch = scopeSpawn({nodes: [
+        {...value('group', null), plugin: 'builtin.taskGroup', config: {members: ['work'], joinId: 'join'}},
+        {...value('loop', null), plugin: 'builtin.loop', config: {members: ['work']}}, value('work', 1),
+        {...value('join', null), plugin: 'builtin.join', config: {groupId: 'group', keys: {work: 'public-key'}}},
+    ], edges: [{id: 'result', from: 'work', to: 'join', kind: 'data'}]}, 'a/spawn');
+    expect(patch.nodes).toEqual(expect.arrayContaining([
+        expect.objectContaining({id: 'a/group', config: {members: ['a/work'], joinId: 'a/join'}}),
+        expect.objectContaining({id: 'a/loop', config: {members: ['a/work']}}),
+        expect.objectContaining({id: 'a/join', config: {groupId: 'a/group', keys: {'a/work': 'public-key'}}}),
+    ]));
+});
+
+it('preserves scalar and array configuration contracts of custom locally spawned plugins', () => {
+    const patch = scopeSpawn({nodes: [value('work', 1),
+        {...value('scalar', null), plugin: 'custom.scalar', config: '${nodes.work.outputs.result}'},
+        {...value('array', null), plugin: 'custom.array', config: ['${nodes.work.outputs.result}', 0]},
+    ], edges: []}, 'a/spawn');
+    expect(patch.nodes).toEqual(expect.arrayContaining([
+        expect.objectContaining({id: 'a/scalar', config: '${nodes.a/work.outputs.result}'}),
+        expect.objectContaining({id: 'a/array', config: ['${nodes.a/work.outputs.result}', 0]}),
+    ]));
 });
 
 it('remaps a caller route edge to its selected function and namespaces routes inside functions', async () => {

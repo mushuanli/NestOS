@@ -1,3 +1,4 @@
+import {stageInputAssets} from '@itookit/app-core';
 import { prepareFlowConnections } from '@itookit/llm-session';
 import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
 import { selectFinalResult } from './run-store';
@@ -55,6 +56,7 @@ import { createShell, OciTtyDriver, NodeNativeShell } from './shell';
 import type { AgentConfig, CompiledWorkflow, RunManifest, TaskConfig, WorkspaceGrant } from './types';
 import { createWorkspaceAccessTool, WorkspaceGrantRegistry } from './workspace';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
+import { createStandardNodeTools, loadNodeToolModules } from '@itookit/node-host/runtime';
 
 const STORAGE_KIND = 'cli-run';
 const TOOL_ALIASES: Record<string, string> = {
@@ -69,6 +71,7 @@ const TOOL_ALIASES: Record<string, string> = {
 };
 
 export interface CliRuntime {
+    stageInput<T>(value: T): Promise<T>;
     prepareConnections(flow: import('@itookit/llm-flow/contracts').FlowRevision, bindings?: Record<string, string>): Promise<import('@itookit/llm-flow/contracts').FlowRevision>;
     flowCapabilities: ReturnType<typeof createFlowCapabilities>;
     kernel: Kernel;
@@ -138,6 +141,7 @@ export async function createCliRuntime(
     mode: 'execute' | 'control' = 'execute',
     hostOptions: CliRuntimeOptions = {},
 ): Promise<CliRuntime> {
+    const additionalTools = [...createStandardNodeTools(), ...await loadNodeToolModules()];
     const skew = leaseSkewConfig(process.env);
     const readOnly = workflow.config.runtime?.workspace?.mode === 'read-only';
     if (readOnly && hostOptions.setHome) throw new Error('read-only workspace cannot be combined with --set-home');
@@ -297,7 +301,7 @@ export async function createCliRuntime(
         skillSourceForSession: files => new SessionFileSkillSource(files.vfs, files.cwd, parse),
         fileContextForSession: acquireFiles,
         fileContextForScope: acquireFiles,
-        additionalTools: [...(hasRemoteMounts ? [] : [createBashTool(shell)]), createWorkspaceAccessTool(grants)],
+        additionalTools: [...additionalTools, ...(hasRemoteMounts ? [] : [createBashTool(shell)]), createWorkspaceAccessTool(grants)],
         beforeRecover: async runtime => {
             runtime.kernel.registerStorageResolver(new SessionDirectoryStorageResolver(systemFS));
             digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, runtime.kernel, llmDriver, 'cli', projects);
@@ -336,6 +340,7 @@ export async function createCliRuntime(
     };
     recordRuntimeDiagnostic('runtime.ready', { sessionId: manifest.sessionId, runId: manifest.id });
     return {
+        stageInput: value => stageInputAssets(systemFS, value),
         kernel,
         syncHistory,
         prepareConnections: (flow, bindings) => prepareFlowConnections(flow, bindings, {

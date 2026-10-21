@@ -388,8 +388,8 @@ function isChatMessage(value: unknown): value is ChatMessage {
     return Boolean(value) && typeof value === 'object' && typeof (value as { role?: unknown }).role === 'string';
 }
 
-function reasoningValue(value: unknown): 'low' | 'medium' | 'high' | 'xhigh' | undefined {
-    return value === 'low' || value === 'medium' || value === 'high' || value === 'xhigh' ? value : undefined;
+function reasoningValue(value: unknown): string | undefined {
+    return typeof value === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(value) ? value : undefined;
 }
 
 function webSearchValue(config: ExecutorConfig | undefined): boolean | undefined {

@@ -4,6 +4,7 @@ import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts'
 import { flowToDag } from '@itookit/llm-flow';
 import { prepareFlowConnections } from '../src/session/flow-connections';
 import { bindStandaloneFlowNode } from '../src/session/flow-node-binder';
+import { checkFlowConnections } from '../src/session/flow-connection-check';
 const provider: LLMProvider = { id: 'p', name: 'P', baseURL: 'https://example.test', implementation: 'openai-compatible',
     media: { 'image.generate': { adapter: 'openai-images' } }, models: [{ id: 'picture', name: 'Picture', operations: { 'image.generate': {
         inputModalities: ['text'], outputModalities: ['image'], formats: ['png'],
@@ -11,6 +12,22 @@ const provider: LLMProvider = { id: 'p', name: 'P', baseURL: 'https://example.te
 const catalog = { getProvider: () => provider, getConnection: async (id: string): Promise<ConnectionMeta> => ({
     id, name: id, providerId: 'p', model: id === 'pictures' ? 'picture' : 'text', enabled: true, hasApiKey: true, protocol: 'openai-chat',
 }) };
+const preflightCatalog = {...catalog, getDefaultConnection: async () => undefined};
+
+it('preflights required and optional slots without creating a Session or calling a model', async () => {
+    const definition = flow();
+    await expect(checkFlowConnections({flow: definition}, preflightCatalog as never)).rejects.toMatchObject({code: 'FLOW_CONNECTION_INVALID'});
+    await expect(checkFlowConnections({flow: definition, connectionBindings: {illustrations: 'text'}}, preflightCatalog as never)).rejects.toThrow('illustrations');
+    await expect(checkFlowConnections({flow: definition, connectionBindings: {illustrations: 'pictures'}}, preflightCatalog as never)).resolves.toEqual({valid: true});
+    definition.connections![0].required = false;
+    await expect(checkFlowConnections({flow: definition}, preflightCatalog as never)).resolves.toEqual({valid: true});
+});
+
+it.each([{enabled: false}, {hasApiKey: false, credentialsReady: false}])('preflight rejects unavailable credentials or disabled connections: %j', async overrides => {
+    await expect(checkFlowConnections({flow: flow(), connectionBindings: {illustrations: 'pictures'}}, {
+        ...preflightCatalog, getConnection: async id => ({...await catalog.getConnection(id), ...overrides}),
+    } as never)).rejects.toThrow('illustrations');
+});
 function flow(): FlowRevision {
     return { id: 'f' as never, name: 'F', revision: 1, digest: 'f', createdAt: 0, edges: [], connections: [{ name: 'illustrations' }], nodes: [
         { id: 'picture' as never, name: 'Picture', plugin: 'builtin.media', pluginVersion: '1.0.0', inputs: {}, config: {
@@ -158,4 +175,29 @@ it.each([false, true])('does not inherit a different default model into an expli
         (value, bindings) => prepareFlowConnections(value, bindings, catalog));
     expect(dag.nodes[0].config).toMatchObject({ connectionId: 'text', modelName: 'text' });
     expect(definition.defaults).toEqual({ connectionId: 'obsolete', modelName: 'obsolete-model' });
+});
+
+it('infers image capability from Agent message templates without relying on a manually declared requirement', async () => {
+    const definition = agentFlow();
+    definition.nodes[0].config = { connectionId: 'text', messageTemplates: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: '${param.image}' } }] }] };
+    await expect(prepareFlowConnections(definition, {}, catalog)).rejects.toThrow('input capability');
+});
+
+it('forwards explicit parent slots to child slots and preserves nested runtime overrides', async () => {
+    const child = agentFlow();
+    child.nodes[0].config = { connectionId: 'writer' };
+    child.connections = [{ name: 'writer', requirements: { operation: 'chat', inputModalities: ['text'] } }];
+    child.outputs = { result: { value: 'done' } };
+    const parent = { ...child, connections: [{ name: 'text' }], outputs: undefined, nodes: [{
+        ...child.nodes[0], id: 'call' as never, plugin: 'builtin.flow', pluginVersion: '2.0.0',
+        config: { flowId: 'child', connectionBindings: { writer: 'text' } },
+    }] };
+    const prepare = (value: FlowRevision, bindings?: Record<string, string>) => prepareFlowConnections(value, bindings, catalog);
+    const dag = await flowToDag(parent, undefined, undefined, async () => child, [], undefined, false, undefined, { text: 'text' }, prepare);
+    expect(dag.nodes.find(node => node.id.startsWith('call/'))?.config).toMatchObject({ connectionId: 'text' });
+    const overridden = await flowToDag(parent, undefined, undefined, async () => child, [], undefined, false, undefined,
+        { text: 'text', 'call/writer': 'pictures' }, prepare);
+    expect(overridden.nodes.find(node => node.id.startsWith('call/'))?.config).toMatchObject({ connectionId: 'pictures' });
+    parent.nodes[0].config.connectionBindings.writer = 'missing';
+    await expect(flowToDag(parent, undefined, undefined, async () => child, [], undefined, false, undefined, { text: 'text' }, prepare)).rejects.toThrow('Unknown parent connection slot');
 });

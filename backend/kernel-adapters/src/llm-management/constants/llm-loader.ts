@@ -21,6 +21,9 @@ export interface LLMModelDef {
     preferredProtocol?: LLMModel['preferredProtocol'];
     category?: LLMModel['category'];
     operations?: LLMModel['operations'];
+    reasoning?: LLMModel['reasoning'];
+    reasoningByProtocol?: LLMModel['reasoningByProtocol'];
+    capabilitiesKnown?: boolean;
     thinkingMode?: LLMModel['thinkingMode'];
     contextWindow?: number;
     maxOutput?: number;
@@ -35,6 +38,7 @@ export interface LLMModelDef {
 }
 
 export interface LLMProviderDef {
+    credentialMode?: LLMProvider['credentialMode'];
     id: string;
     name: string;
     implementation: string;
@@ -59,10 +63,16 @@ export interface LLMProviderDef {
     /** Responses API 推理行为配置（defaultThinkingEnabled 等），可选 */
     responses?: { defaultThinkingEnabled?: boolean };
     media?: LLMProvider['media'];
+    connectionTestModel?: string;
     models: LLMModelDef[];
 }
 
 export interface LLMConnectionDef {
+    protocol?: LLMConnection['protocol'];
+    baseURL?: string;
+    enabled?: boolean;
+    temperature?: number;
+    metadata?: LLMConnection['metadata'];
     id: string;
     name: string;
     providerId: string;
@@ -254,7 +264,9 @@ export function toLLMProvider(def: LLMProviderDef): LLMProvider {
         defaultProtocol: def.defaultProtocol,
         responsesPath: def.responsesPath,
         responses: def.responses,
+        credentialMode: def.credentialMode,
         media: def.media,
+        connectionTestModel: def.connectionTestModel,
         models: def.models.map(m => ({ ...m } as LLMModel)),
         capabilities: {
             thinking: def.supportsThinking,
@@ -297,6 +309,7 @@ export function toRuntimeConnection(def: LLMConnectionDef): LLMConnection {
         name: def.name,
         providerId: def.providerId,
         tiers: def.tiers as LLMConnection['tiers'],
+        protocol: def.protocol, baseURL: def.baseURL, enabled: def.enabled, temperature: def.temperature, metadata: def.metadata,
         createdAt: Date.now(),
     };
 }
@@ -319,6 +332,7 @@ export function toConnectionDef(def: LLMConnectionDef): DefaultConnectionDef {
         name: def.name,
         providerId: def.providerId,
         tiers: Object.keys(tiers).length > 0 ? tiers : undefined,
+        protocol: def.protocol, baseURL: def.baseURL, enabled: def.enabled, temperature: def.temperature, metadata: def.metadata,
     };
 }
 
@@ -349,7 +363,9 @@ export function fromLLMProvider(p: LLMProvider): LLMProviderDef {
         defaultProtocol: p.defaultProtocol,
         responsesPath: p.responsesPath,
         responses: p.responses,
+        credentialMode: p.credentialMode,
         media: p.media,
+        connectionTestModel: p.connectionTestModel,
         models: p.models.map(m => ({
             id: m.id,
             name: m.name,
@@ -357,6 +373,9 @@ export function fromLLMProvider(p: LLMProvider): LLMProviderDef {
             preferredProtocol: m.preferredProtocol,
             category: m.category,
             operations: m.operations,
+            reasoning: m.reasoning,
+            reasoningByProtocol: m.reasoningByProtocol,
+            capabilitiesKnown: m.capabilitiesKnown,
             thinkingMode: m.thinkingMode,
             supportsAudio: m.supportsAudio,
             supportsVideo: m.supportsVideo,
@@ -390,6 +409,7 @@ export function fromConnectionDef(conn: DefaultConnectionDef): LLMConnectionDef 
         name: conn.name,
         providerId: conn.providerId,
         tiers: conn.tiers as Record<string, string> | undefined,
+        protocol: conn.protocol, baseURL: conn.baseURL, enabled: conn.enabled, temperature: conn.temperature, metadata: conn.metadata,
     };
 }
 

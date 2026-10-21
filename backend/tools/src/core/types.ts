@@ -30,6 +30,10 @@ export interface PermissionResult {
  * Tool execution context passed to Tool.call().
  */
 export interface ToolUseContext {
+  readAsset?: (reference: import('../contracts').BinaryAssetReference) => Promise<Uint8Array>;
+  writeAsset?: (data: Uint8Array, mimeType: string) => Promise<import('../contracts').TaskAssetReference>;
+  getAssetRecord?: (key: string) => Promise<unknown | undefined>;
+  putAssetRecord?: (key: string, value: unknown) => Promise<void>;
   operationId?: string;
   executionIdentity?: import('../contracts').ToolExecutionIdentity;
   onProgress?: (progress: import('../contracts').ToolProgress) => Promise<void>;

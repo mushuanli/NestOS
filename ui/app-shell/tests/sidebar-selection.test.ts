@@ -10,10 +10,15 @@ it('keeps the shared sidebar file and directory creation actions usable', async 
     const sidebar = document.createElement('div'), main = document.createElement('div');
     document.body.append(sidebar, main);
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main,
-        uiOptions: { fileCreation: { content: 'created from sidebar' } },
+        uiOptions: { title: 'Minds', fileCreation: { content: 'created from sidebar' } },
         editorFactory: async () => ({ destroy() {} }) as never });
     try {
         await workbench.start();
+        expect(sidebar.querySelector('[data-section="navigation"] > .vfs-drawer__header')?.textContent).toBe('资源浏览 Minds');
+        expect(sidebar.querySelector('.vfs-node-list--hide-title')).not.toBeNull();
+        const root = sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!;
+        expect(root.textContent).toBe('/');
+        expect(root.nextElementSibling?.getAttribute('data-action')).toBe('refresh');
         sidebar.querySelector<HTMLButtonElement>('[data-action="create-directory"]')!.click();
         await vi.waitFor(() => expect(sidebar.querySelector('.vfs-node-list__item-creator-input')).not.toBeNull());
         const input = sidebar.querySelector<HTMLInputElement>('.vfs-node-list__item-creator-input')!;
@@ -53,7 +58,7 @@ it('keeps file-page select-all and sidebar checkbox toggles in sync', async () =
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main,
         editorFactory: async () => ({ destroy() {} }) as never });
     try {
-        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
+        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!.click();
         const all = () => main.querySelector<HTMLInputElement>('.workbench-tabs__panel:not([hidden]) thead input')!;
         await vi.waitFor(() => expect(all()).not.toBeNull());
         all().click();
@@ -81,7 +86,7 @@ it('exports selected page files and opens the shared Copy to picker from the sel
     const workbench = new Workbench({ files: { fs, cwd: '/' }, sidebarContainer: sidebar, editorContainer: main,
         editorFactory: async () => ({ destroy() {} }) as never });
     try {
-        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('.workbench-root')!.click();
+        await workbench.start(); sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!.click();
         await vi.waitFor(() => expect(main.querySelector('[data-selection-id="/a.md"]')).not.toBeNull());
         main.querySelector<HTMLInputElement>('[data-selection-id="/a.md"]')!.click();
         const exportButton = main.querySelector<HTMLButtonElement>('[data-action="bulk-export"]')!;

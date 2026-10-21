@@ -38,6 +38,7 @@ import { watchDirectoryList } from '../workbench/directory-watch';
 import type { WorkbenchStatePort } from '../workbench/state';
 import { directoryFavoriteAction, projectFavoriteAction } from './project-favorites';
 import { directoryBreadcrumbs, directoryEntryName } from './directory-label';
+import {localSessionStatus} from './local-session-status';
 import { projectDirectoryNodes } from './project-directory';
 import { conversationResourcePath, projectConversationsPath } from '@itookit/app-contracts';
 import { WORKSPACE_PATH, projectRelativePath, reportRemoteFailure } from '@itookit/app-contracts';
@@ -664,7 +665,7 @@ export class SessionWorkbench implements WorkspaceController {
         }
         this.kernelChanges = {};
         if (this.navigationVisible && this.navigationReady) {
-            await this.browser?.invalidateNavigation();
+            await this.browser?.invalidateNavigation({activity: sources.length === 0});
             await this.sidebarUI?.refresh();
             if (!this.visible || this.closed) { this.viewRefresh.mark('visibility-interrupted', false); return; }
             await this.projectNavigation?.refresh(); this.updateRemoteAvailability();
@@ -1235,7 +1236,8 @@ export class SessionWorkbench implements WorkspaceController {
             icon: this.sidebarUI!.getResourceIcon(node), created: node.createdAt > 0 ? node.createdAt : undefined,
             modified: node.modifiedAt > 0 ? node.modifiedAt : undefined, size: !remote && node.type === 'file' ? node.size : undefined,
             priority: navigationPriority(node.path),
-            disabled: node.metadata._disabled === true, description: String(node.metadata.navigationDescription ?? node.metadata.harnessLabel ?? '')};
+            disabled: node.metadata._disabled === true, description: localSessionStatus(node.metadata.sessionActivity)?.text
+                || String(node.metadata.navigationDescription ?? node.metadata.harnessLabel ?? '')};
     }
     private async createDirectoryEntry(path: string, type: 'file' | 'directory'): Promise<void> {
         await showNameDialog(t(type === 'file' ? 'project.createFile' : 'project.createFolder'), t('project.newFileName'), this.dialogs.signal, async name => {

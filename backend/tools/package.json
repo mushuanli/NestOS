@@ -89,7 +89,8 @@
     "@itookit/vfs-core": "workspace:*",
     "zod": "^4.4.2",
     "@itookit/llm-context": "workspace:*",
-    "@itookit/driver-llm": "workspace:*"
+    "@itookit/driver-llm": "workspace:*",
+    "@itookit/device-tty": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

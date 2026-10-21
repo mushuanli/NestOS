@@ -27,7 +27,7 @@ function preparePackage(library, sourceRoot) {
     rmSync(staging, { recursive: true, force: true });
     mkdirSync(staging, { recursive: true });
     cpSync(join(source, 'dist'), join(staging, 'dist'), { recursive: true });
-    for (const name of ['README.md', 'LICENSE']) if (existsSync(join(source, name))) cpSync(join(source, name), join(staging, name));
+    for (const name of ['README.md', 'LICENSE', 'docs']) if (existsSync(join(source, name))) cpSync(join(source, name), join(staging, name), { recursive: true });
     validateExports(manifest.exports, staging);
     writeFileSync(join(staging, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
     run('npm', ['pack', '--ignore-scripts', '--pack-destination', releaseRoot], staging);

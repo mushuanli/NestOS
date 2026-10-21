@@ -15,6 +15,7 @@ import type { AuditPort } from '../logging/audit-log';
 import { recordRequestPhase } from '../logging/audit-log';
 import {SnapshotCache} from '@itookit/app-transport/http';
 import {bootstrapView, type BootstrapRequest} from './view-bootstrap';
+import { callDiagnostics, replyDiagnostics } from './call-diagnostics';
 
 interface Client { peer: RpcPeer; view: HostedView; stream?: ServerResponse; lastSeen: number; active: number;
     bootstrap?: Promise<Reply>; stopObservation?: () => void;
@@ -73,12 +74,20 @@ export class ViewApi {
         const started = Date.now();
         const calls = body.kind === 'call' ? [body.call!] : (Array.isArray(body.calls) ? body.calls : []).filter(validCall).slice(0, 32);
         const operations = calls.map(call => client.peer.operationName(call));
-        try { json(response, 200, ['queries', 'bindings'].includes(body.kind!) ? await this.queries(client, body.calls, body.kind === 'bindings') : await client.peer.handle(body.call!)); }
+        let replies: Reply[] = [];
+        try {
+            const result = ['queries', 'bindings'].includes(body.kind!) ? await this.queries(client, body.calls, body.kind === 'bindings') : await client.peer.handle(body.call!);
+            replies = 'replies' in result ? result.replies : [result];
+            const requestId = String(response.getHeader('X-Request-ID') ?? '');
+            for (const reply of replies) if (reply.error && !reply.error.requestId && /^[a-f0-9-]{36}$/.test(requestId)) reply.error.requestId = requestId;
+            json(response, 200, result);
+        }
         finally {
             client.active--; client.lastSeen = Date.now();
             recordRequestPhase(response, 'rpcMs', Date.now() - started);
             this.audit?.write({ event: 'application.complete', requestId: String(response.getHeader('X-Request-ID') ?? ''),
                 rpcKind: body.kind, rpcBatchSize: calls.length, rpcOperations: operations,
+                ...callDiagnostics(calls, operations, new Set(client.view.root.services.commandBus.list().map(command => command.name))), ...replyDiagnostics(replies),
                 durationMs: Date.now() - started });
         }
     }

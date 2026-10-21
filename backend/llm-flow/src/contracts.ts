@@ -7,6 +7,7 @@ export * from './contracts/harness-hook';
 export * from './contracts/dispatch';
 export * from './contracts/flow-templates';
 export * from './contracts/flow-output';
+export { validFlowImages, validImageConstraints, type FlowImageConstraints } from './contracts/flow-images';
 export * from './contracts/control-flow';
 export type { FlowCommandRegistrar } from './contracts/command-registrar';
 export { FlowCommand } from './flow/command-names';

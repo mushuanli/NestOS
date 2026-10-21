@@ -1,9 +1,10 @@
 import type { IFileSystem } from '@itookit/vfs-core';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
-import { FlowCommand, type FlowDraft } from '@itookit/llm-flow/contracts';
+import { FlowCommand } from '@itookit/llm-flow/contracts';
 import demo from './digital-twin-demo.json';
 import { createMindosFlowLibrary } from './flow-library';
 import { essayReviewDraft } from './default-flows';
+import { restoreAndPublishFlow } from './restore-flows';
 
 const noteWrites = new WeakMap<IFileSystem, Promise<boolean>>();
 
@@ -28,8 +29,8 @@ export class MindosInitialFiles {
         const results: InitialFileResult[] = [];
         for (const id of new Set(ids)) {
             try {
-                const restored = id === 'note:demo' ? await this.restoreNote() : Boolean(await this.commands.execute<FlowDraft | null>(
-                    FlowCommand.DraftRestore, structuredClone(this.flows.find(flow => 'flow:' + flow.id === id)!)));
+                const restored = id === 'note:demo' ? await this.restoreNote() : Boolean(await restoreAndPublishFlow(
+                    this.commands, this.flows.find(flow => 'flow:' + flow.id === id)!));
                 results.push({ id, status: restored ? 'restored' : 'preserved' });
             } catch (error) { results.push({ id, status: 'failed', error: error instanceof Error ? error.message : String(error) }); }
         }

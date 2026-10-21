@@ -194,6 +194,7 @@ function routeManifest(): DagPluginManifest {
 
 function spawnManifest(): DagPluginManifest {
     return manifest('spawn', 'Spawn', 'Control', {
+        scope: enumSchema(['run', 'local']),
         value: {}, outputName: { type: 'string' }, type: enumSchema(['text', 'json']),
         spawn: {
             type: 'object', title: 'Static graph patch', description: 'Deterministically add the declared nodes and edges. History belongs to spawned Agent nodes, not this control node.',
@@ -217,6 +218,7 @@ function compositeManifest(): DagPluginManifest {
         flowId: { type: 'string', title: 'Flow' },
         revision: { type: 'integer', title: 'Revision' },
         parameters: { type: 'object', title: 'Parameter bindings' },
+        connectionBindings: { type: 'object', title: 'Child slot to parent slot bindings', additionalProperties: { type: 'string' } },
     }, { flowId: '', parameters: {} });
 }
 
@@ -230,8 +232,9 @@ function agentManifest(): DagPluginManifest {
         mcpProfileIds: { type: 'array', items: { type: 'string' } },
         // Inline task instruction + model
         instruction: { type: 'string' }, systemPrompt: { type: 'array', items: { type: 'string' } }, modelName: { type: 'string' },
+        messageTemplates: { type: 'array', title: 'Message templates', items: { type: 'object' } },
         temperature: { type: 'number' }, maxTokens: { type: 'integer' },
-        thinking: { type: 'boolean' }, reasoningEffort: enumSchema(['low', 'medium', 'high', 'xhigh']),
+        thinking: { type: 'boolean' }, reasoningEffort: { type: 'string', minLength: 1, maxLength: 64, pattern: '^[A-Za-z0-9_-]+$' },
         stream: { type: 'boolean' }, webSearch: { type: 'boolean' },
         responseFormat: {
             type: 'object', title: 'Structured response', advancedProperties: ['json_schema'],

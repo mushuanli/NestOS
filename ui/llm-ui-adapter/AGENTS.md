@@ -45,7 +45,9 @@ ChatInput 工具栏的「对话 / 执行」由 `ExecutionModeControl` 呈现，�
 - 会话标题栏共用 `llm-btn-refresh`，宽屏优先展示、窄屏收进响应式菜单。普通会话通过 `SessionCommand.GetSnapshot` 刷新当前内存投影的历史、状态、分支与导航，不重新绑定会话、不恢复草稿、不启动执行；远程会话调用原生 `ConversationControls.read()`。刷新期间去重，销毁或会话切换后丢弃旧结果。回归见 app-shell 的 `conversation-refresh.test.ts` 和 `remote-conversation-editor.test.ts`。
 
 - `RunAttachmentController` 经 `TaskControlPlane.openTask()` 取得 `AttachedTask`（`TaskHandle` 子集）后 attach、消费事件流，并转发 signal / cancel / resume。
+- 任务事件订阅携带观察专用 AbortSignal；detach / 视图关闭先 abort 释放挂起的 next，再归还迭代器，不取消后台 Task。重挂接使用新的控制器，旧代次的预期取消不呈现为业务失败。
 - `ChatInput` 的 `InteractionPanel` 常驻显示审批/简单人工回复，备注与聊天草稿独立；经 `respondApproval` / `respondInput` 校验固定 interaction id、attachment revision 和非终态 pending 状态后提交。失败留在卡片内，解除挂接/解决/终态清理；复杂 Flow 输入沿用参数表单。DOM 与实际 Kernel Exec 审批回归在 app-shell 的 `input-interaction.test.ts`、`input-approval-exec.test.ts`。
+- Agent 的 `questions[].options[]` 经 `components/input/agent-questions.ts` 投影为独立 llm-ui 的交互字段，复用其单选、多选、描述和自填答案控件；聊天挂接和 InvocationPanel 共用 inputInteraction。所有问题一起校验，答案按问题文案形成 answers，重复文案加题号，多选值用 JSON 数组字符串表达；整个对象序列化为字符串交给既有 respondInput，避免 Agent 的字符串回应契约收到对象后丢失内容。相同挂接重复通知保留选择，失败可重试，隐藏/销毁/终态清理。回归见 input-interaction.test.ts 与 app-shell 的 agent-question-interaction.test.ts。
 - 会话打开时除恢复特权任务外，还用 `src/shell/pending-interaction.ts` 的 `restoreWaitingAttachment` 重新挂接「仍有 pending interaction 的非终态 Task」，以重放其 `task.interaction.requested`（宿主崩溃期间的批准通道恢复）；回归 `ui/app-shell/tests/pending-interaction-restore.test.ts`。
 - `DagWorkbench` 从 `FlowCommand.Presentations` 返回的插件呈现（manifest + `ui.palette`）构建 Palette、端口和表单。
 - UI 不 import DAG Runtime；对 `@itookit/durable-kernel` 只有 `import type`。
@@ -87,7 +89,8 @@ Flow Session 标题栏「流程输出」挂接当前 Session 的持久 Run，显
 
 - `src/flows/library.ts` 只提供显式恢复机制，模板数组由宿主显式传入；不携带业务模板。MindOS 通过 app-core 的 `createMindosFlowLibrary` 提供模板，Web/Tauri 在装配时向恢复菜单注入；普通安装由 app-core 完成，保留安装记录和用户草稿。
 - `src/flows/context-menu.ts` 提供 `.flow` 文件右键「运行」菜单；`FlowLauncher` 与 FlowsEditor 工具栏共用参数 → 固定 revision → CreateFromFlow → 导航流程。
-- 参数校验在关闭对话框前执行；取消不创建 Session，草稿版本冲突不启动。新入口通过 CreateFromFlow 的 invocation 模式直接创建持久调用，旧 manifest.flow 会话保持兼容。
+- Flow 编辑器右侧默认显示「运行参数」，「节点与连线」切换到原编辑能力；参数表单 DOM 在节点选择、画布重绘和面板切换时保留，参数/连接声明变化或更换 Flow 时重建。运行按钮位于参数面板顶部固定栏，参数和节点内容各自滚动；错误仅滚动参数区域，不调用跨祖先 scrollIntoView。运行先校验参数、图片，并通过 session.check-flow-connections 校验当前连接和模型能力，再保存发布并通过 FlowLauncher 直接提交；提交去重，销毁/切换草稿后不得启动旧提交。
+- 其他入口的参数对话框在关闭前校验；取消不创建 Session，草稿版本冲突不启动。新入口通过 CreateFromFlow 的 invocation 模式直接创建持久调用，旧 manifest.flow 会话保持兼容。
 - `/flow` 在当前 Session 启动独立调用；`InvocationPanel` 按 root Task 显示各调用及人工确认，结果可放入聊天草稿。`builtin.flow@2.0.0` 提供参数与命名返回值组合。契约见 [Flow 调用与组合](../../doc/design/flow-invocation-composition.md)。
 - UI 通过命令总线接入，不读写 Kernel 存储。DOM 回归见 `ui/app-shell/tests/flow-launch.test.ts`，实际模板 DAG 执行见 llm-flow 的 structured-flow 测试。
 
@@ -152,3 +155,9 @@ Markdown 嵌入统一通过 MDxController 设置 `scrollMode: 'host'`，正文�
 图片编辑统一使用 independent/createImageEditingPort，兼容 File 输入经 file-image-editing 桥接；面板 commit 保存成功后才关闭。远程 ConversationComposer 保存原图和参数到宿主不透明存储，输入设置一起恢复；新草稿按 harness attachmentKinds 开放附件。保存使用版本 CAS 和 operationId 核对，不自动重放未知写入。独立视图的 images 配置自动装配端口并拥有其释放，不关闭宿主存储或借入的 processor。
 
 图片处理共用 ImageProcessingSession；renderAttachments 只渲染，输入与策略变化显式调度。独立图片宿主通过 subscribeResize 通知变化，getRevision 同步提供策略版本。ConversationComposer 独立保存可变草稿和冻结提交；拥有 composer 存储时不双写原生草稿，仅按相同 submissionId 的回执清理匹配版本，不以最近 turn 或空草稿推断接纳。
+
+FlowParameterForm 的 images/json 字段通过 FlowImageFields 按 imageConstraints 校验可选 MIME、总字节和数量限制，返回标准 image_url 或宿主不透明资源引用并显示预览；Flow 核心没有固定上传上限，宿主上传预算独立生效。数量、总大小、格式、文件读取、上传和预览失败显示具体原因。flow-images 内存日志只保存 operationId、requestId、阶段、错误分类、数量、字节和格式，不记录文件名、正文或原始异常消息；上传错误 requestId 可关联宿主审计。提交等待当前文件读取完成，清除或关闭后忽略迟到结果。库恢复通过 app.flow-library.restore 交给应用层协调，UI 不自行发布修订。
+
+Flow 文件的更多菜单将「运行…」放在首项，随后才是分组、导出和编辑操作；宿主把完整资源菜单交给 Flow 菜单扩展排序，子流程分组内的文件共用同一入口。
+右侧 Flow 工具栏以「流程名称 → 运行记录」开头，不重复显示 Flow Design；「运行」移至参数面板顶部固定栏，与菜单共用 ACTION_ICONS.run 和主题绿色提示，禁用态恢复中性色。连接表单标注必选/可选，设置可编辑 required、tier 和 requirements；需求由 Flow 声明，不按业务名称推断。文案走中英文 i18n。
+运行表单的缺项提示区分填写参数、选择图片/选项和选择模型连接；参数优先显示 label，连接优先显示 description，缺省回退 name，与表单标签保持一致，不按业务或槽名映射文案。

@@ -1,6 +1,7 @@
 // @file: llm-ui/domain/ports/IChatInputPresenter.ts
 
 import type { JsonValue } from '@itookit/llm-flow/contracts';
+import type { InputField } from '@itookit/llm-ui';
 import type {
     ChatOverrides,
     ChatSessionSettings,
@@ -31,6 +32,7 @@ export interface ChatInputInteraction {
     prompt: string;
     details?: string;
     options?: string[];
+    fields?: readonly InputField[];
 }
 
 export type InteractionReply = { approved: boolean; note?: string } | string;

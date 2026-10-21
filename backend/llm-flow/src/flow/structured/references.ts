@@ -19,7 +19,7 @@ export function compileReferenceGraph<T extends Graph>(source: T): T {
     }
     for (const scope of new Set(graph.nodes.map(node => nodeScope(node.id)))) inputProducers(graph.nodes, scope);
     const oldBackEdges = findCycles(source.nodes, source.edges as DagEdgeDefinition[]).backEdges;
-    for (const node of graph.nodes) for (const ref of flowTemplateReferences([withoutHistory(node.config), node.inputs, node.assign, ...(nodeUsesVariables(node, graph.variables ?? {}) ? Object.values(graph.variables ?? {}).map(value => value.initial) : [])])) {
+    for (const node of graph.nodes) for (const ref of flowTemplateReferences([flowReferenceSource(node.config), node.inputs, node.assign, ...(nodeUsesVariables(node, graph.variables ?? {}) ? Object.values(graph.variables ?? {}).map(value => value.initial) : [])])) {
         const id = ref.root === 'nodes' ? ref.path[0] : ref.root === 'param' ? inputProducers(graph.nodes, nodeScope(node.id)).get(ref.path[0]) : undefined;
         if (!id || id === node.id && ref.root === 'param') continue;
         if (!graph.nodes.some(item => item.id === id) || id === node.id) throw new Error(`Invalid reference producer: ${id}`);
@@ -94,9 +94,10 @@ function nodeScope(id: string): string { return id.slice(0, id.lastIndexOf('/') 
 
 function renderNodeConfig(value: unknown, context: FlowTemplateContext): unknown {
     const config = object(value);
-    const { prompt, instruction, messages, systemPrompt, sessionContext, ...rest } = config;
+    const { prompt, instruction, messages, messageTemplates, systemPrompt, sessionContext, ...rest } = config;
     return { ...object(renderFlowTemplate(rest, context)),
-        ...(messages !== undefined ? { messages: invocationMessages(messages, prompt ?? instruction, context) } : {}),
+        ...(messageTemplates !== undefined ? { messages: renderFlowTemplate(messageTemplates, context) }
+            : messages !== undefined ? { messages: invocationMessages(messages, prompt ?? instruction, context) } : {}),
         ...(systemPrompt !== undefined ? { systemPrompt } : {}),
         ...(sessionContext !== undefined ? { sessionContext } : {}),
         ...(prompt !== undefined ? { prompt: typeof prompt === 'string' ? renderFlowText(prompt, context) : prompt } : {}),
@@ -126,10 +127,10 @@ export function scopedParameters(spec: DagRunSpec, nodeId: string, root: Record<
     return key ? visit(key, new Set()) : root;
 }
 
-function withoutHistory(value: unknown): unknown {
-    if (Array.isArray(value)) return value.map(withoutHistory);
+export function flowReferenceSource(value: unknown): unknown {
+    if (Array.isArray(value)) return value.map(flowReferenceSource);
     if (!value || typeof value !== 'object') return value;
-    return Object.fromEntries(Object.entries(value).filter(([key]) => !['messages', 'systemPrompt', 'sessionContext'].includes(key)).map(([key, item]) => [key, withoutHistory(item)]));
+    return Object.fromEntries(Object.entries(value).filter(([key]) => !['messages', 'systemPrompt', 'sessionContext'].includes(key)).map(([key, item]) => [key, flowReferenceSource(item)]));
 }
 function invocationMessages(messages: unknown, prompt: unknown, context: FlowTemplateContext): unknown {
     if (!Array.isArray(messages) || typeof prompt !== 'string' || !flowTemplateReferences(prompt).length) return messages;

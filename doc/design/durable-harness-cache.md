@@ -8,7 +8,7 @@
 
 ## 当前实现基线（2026-09-08）
 
-当前接口以 [domain/cache.ts](../../backend/durable-kernel/src/domain/cache.ts) 为准，事务实现见 [cache-store.ts](../../backend/durable-kernel/src/infrastructure/seqfile/cache-store.ts)。以下编号章节仍描述完整目标。
+当前接口以 [domain/cache.ts](../../libraries/durable-kernel/src/domain/cache.ts) 为准，事务实现见 [cache-store.ts](../../libraries/durable-kernel/src/infrastructure/seqfile/cache-store.ts)。以下编号章节仍描述完整目标。
 
 - `CacheSpec` 支持 `step/task/session`、`reusable/single-use`、可选 `ttlMs` 和 namespace 容量；默认 task/reusable、256 entries、4 MiB。没有独立 retention 字段、聚合 Task/Session 容量预留或 pin。
 - `CacheRead` 使用 `operationId`、有序 `sources: { handleId, key, fingerprint, expectedVersion? }[]`、顶层 `maxAgeMs` 和四种 mode。新操作先校验并授权全部显式来源，再选择首个命中；`refresh/bypass` 也校验来源，返回 bypass。`cache-only` 未命中返回 miss，由调用方决定后续行为；没有 `allowStale` 或隐式写入目标。
@@ -21,7 +21,7 @@
 
 **Session 关闭时的物理回收（2026-09-11 第二轮，同日）**：`cleanupSessionCachesTx` 在 Session 转为 `closed` 的同一事务里删除该 Session 的全部 cache namespace（含 `session` scope）、entry、发布序号、owner 索引与 handle/resource，并追加 `cache.cleaned`（`scope: session`）。`closed` 转换前已校验没有未结束 Task，且 cache 操作对 closed Session 一律拒绝，因此回收时不可能存在活跃引用；artifact 族资源与幂等事实同样不动。回归：`protocol.test.ts`「reclaims every cache namespace when the Session closes, including session scope」。
 
-跨 Session owner、provider cache、artifact 大值、容量账本与跨 Session 的 retention/GC 竞争仍待实施。当前 namespace 的 `ownerTaskId` 记录创建者，Session scope 授权不要求该 Task 本体仍存在。基础回归见 [protocol.test.ts](../../backend/durable-kernel/src/protocol.test.ts)；独立进程竞争与提交前/后 SIGKILL 回执原子性见 [LocalFS IPC 测试](../../apps/cli/tests/20-kernel-ipc.test.ts)，覆盖根后端和非根挂载、失效后的原回执重放；本轮实测 durable-kernel 全套 189 项通过（其中 protocol.test.ts 112 项）、20-kernel-ipc 所属 vfsdriver-local 54 项通过，不能替代上述扩展的验收。测试计数随代码演进，以实际测试输出为准。
+跨 Session owner、provider cache、artifact 大值、容量账本与跨 Session 的 retention/GC 竞争仍待实施。当前 namespace 的 `ownerTaskId` 记录创建者，Session scope 授权不要求该 Task 本体仍存在。基础回归见 [protocol.test.ts](../../libraries/durable-kernel/src/protocol.test.ts)；独立进程竞争与提交前/后 SIGKILL 回执原子性见 [LocalFS IPC 测试](../../libraries/durable-kernel/tests/ipc.test.ts)，覆盖根后端和非根挂载、失效后的原回执重放；本轮实测 durable-kernel 全套 189 项通过（其中 protocol.test.ts 112 项）、20-kernel-ipc 所属 vfsdriver-local 54 项通过，不能替代上述扩展的验收。测试计数随代码演进，以实际测试输出为准。
 
 ## 1. 设计裁决
 
@@ -207,4 +207,4 @@ grant 撤销立即阻止未来 cache 读取/发布；历史已提交的 Task 输
 
 Task 终态在同一事务清理其 step/task namespace、条目、发布序号与相关 resource/handle；Session namespace 保留至 Session closed。Effect 幂等事实、cache-operation 回执及 artifact 不删除。step 的可见性仍在逻辑 step 改变时失效，剩余物理记录在 Task 终态回收。
 
-`cache/owner/<taskId>/<namespaceId>` 只是派生索引。`cache/owner-index-version` 缺失时，创建或 Task 清理先从 namespace 记录事务内重建索引并写版本 1；未知版本拒绝。删除前核对索引键、namespace id 和 ownerTaskId，错误索引不允许删除另一 Task 的缓存；终态提交也回滚。Session closed 时移除索引版本标记。回归位于 `backend/durable-kernel/src/retention.test.ts`。旧宿主继续写入但不维护索引的混合部署，以及跨 Session/provider/大值与 GC 竞争仍需独立验收。
+`cache/owner/<taskId>/<namespaceId>` 只是派生索引。`cache/owner-index-version` 缺失时，创建或 Task 清理先从 namespace 记录事务内重建索引并写版本 1；未知版本拒绝。删除前核对索引键、namespace id 和 ownerTaskId，错误索引不允许删除另一 Task 的缓存；终态提交也回滚。Session closed 时移除索引版本标记。回归位于 `libraries/durable-kernel/src/retention.test.ts`。旧宿主继续写入但不维护索引的混合部署，以及跨 Session/provider/大值与 GC 竞争仍需独立验收。

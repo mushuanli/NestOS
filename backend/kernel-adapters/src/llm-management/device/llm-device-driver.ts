@@ -131,8 +131,11 @@ export interface IShellRunner {
 // ─── LLMDeviceDriver ─────────────────────────────────────────────────────────
 
 export interface LLMDeviceDriverOptions {
+    /** Diagnostics only; request bodies and credentials never enter this sink. */
+    logger?: import('@itookit/driver-llm/contracts').LLMLogSink;
     providerAuthorization?: ProviderAuthorizationHost;
     providerFactory?: import('@itookit/driver-llm/contracts').ProviderFactory;
+    mediaAdapterFactory?: import('@itookit/driver-llm/contracts').MediaAdapterFactory;
     mcp?: MCPConnectionOptions;
     presets?: Partial<LlmManagementPresets>;
     providerConnectionPolicy?: ProviderConnectionPolicy;
@@ -177,8 +180,10 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     private readonly shellRunner: IShellRunner | undefined;
     private readonly codexRunner: CodexCommandRunner | undefined;
     private readonly codexTransport: CodexAppServerTransport | undefined;
+    private readonly mediaAdapterFactory?: import('@itookit/driver-llm/contracts').MediaAdapterFactory;
     private readonly providerFactory?: import('@itookit/driver-llm/contracts').ProviderFactory;
     private readonly llmLogger: import('@itookit/driver-llm/contracts').ILLMLogger | undefined;
+    private readonly logger?: import('@itookit/driver-llm/contracts').LLMLogSink;
 
     // ── Managers (initialised in init()) ──
     private vfsHelpers!: VFSHelpers;
@@ -199,6 +204,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     }
 
     constructor(private readonly vfs: IVFSManager, options?: LLMDeviceDriverOptions) {
+        this.logger = options?.logger;
         this.authorization = new ProviderAuthorization(options?.providerAuthorization, id => this.getFullProvider(id));
         if (options?.providerAuthorization) this._eventUnsubs.push(options.providerAuthorization.onChange(() => this.notify()));
         this.mcpOptions = snapshotMCPConnectionOptions(options?.mcp);
@@ -206,6 +212,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         this.providerConnectionPolicy = options?.providerConnectionPolicy;
         this.shellRunner = options?.shellRunner;
         this.providerFactory = options?.providerFactory;
+        this.mediaAdapterFactory = options?.mediaAdapterFactory;
         this.codexRunner = options?.codexRunner;
         this.codexTransport = options?.codexTransport;
         this.llmLogger = options?.llmLogger;
@@ -371,11 +378,18 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         const target = server.transport === 'stdio' ? server.command : server.endpoint;
         if (this.disposed || !target?.trim() || (server.transport === 'stdio' && !this.supportsMCPStdio())) return;
         const started = performance.now();
-        this.mcpOptions.logger?.info('MCP startup connection started', { serverId: server.id, name: server.name });
+        const metadata = {operation: 'mcp.startup', operationId: server.id, serverId: server.id, transport: server.transport};
+        this.mcpOptions.logger?.info('MCP startup connection started', {...metadata, stage: 'connect'});
         const work = this.mcpManager.initializeMCPServer(server.id);
         this.autoConnections.add(work);
-        void work.then(ready => { if (ready) this.mcpOptions.logger?.info('MCP startup connection ready', { serverId: server.id, durationMs: Math.round(performance.now() - started) }); })
-            .catch(error => console.warn(`[LLMDeviceDriver] Auto-connect failed: ${server.id}`, error))
+        void work.then(ready => { if (ready) this.mcpOptions.logger?.info('MCP startup connection ready', {...metadata, stage: 'complete', outcome: 'success', durationMs: Math.round(performance.now() - started)}); })
+            .catch(() => {
+                const issue = this.mcpManager.getMCPServers().find(item => item.id === server.id)?.connectionState?.issues[0];
+                const details = {...metadata, stage: issue?.stage ?? 'connect', outcome: 'failure',
+                    code: `MCP_${(issue?.reason ?? 'unknown').toUpperCase()}`, durationMs: Math.round(performance.now() - started)};
+                if (this.mcpOptions.logger) this.mcpOptions.logger.warn('MCP startup connection failed', details);
+                else console.warn('[LLMDeviceDriver] MCP startup connection failed', details);
+            })
             .finally(() => this.autoConnections.delete(work));
     }
 
@@ -870,6 +884,8 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
 
     async saveProvider(provider: LLMProvider, systemFS?: IFileSystem): Promise<void> {
         await this.ensureReady();
+        const previous = this.getFullProvider(provider.id);
+        if (provider.apiKey === undefined && previous?.baseURL === provider.baseURL) provider = { ...provider, apiKey: previous.apiKey };
         this.cancelPendingSync();
         await this.providerManager.saveProvider(provider, systemFS);
         await this.connectionManager.ensureProviderConnection(provider, systemFS);
@@ -885,11 +901,19 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     async testConnection(params: ProviderConnectionTestParams): Promise<ConnectionTestResult> {
         await this.ensureReady();
         const provider = params.providerDefinition ?? this.getFullProvider(params.provider);
-        return testLLMConnection({ ...params, providerDefinition: provider, chatgpt: this.authorization.credentials(provider), codex: this.resolveCodexConfig() });
+        const apiKey = params.apiKey ?? this.savedProviderKey(provider && { ...provider, baseURL: params.baseURL || provider.baseURL });
+        return testLLMConnection({ ...params, apiKey, providerDefinition: provider, logger: this.logger, mediaAdapterFactory: this.mediaAdapterFactory,
+            chatgpt: this.authorization.credentials(provider), codex: this.resolveCodexConfig() });
     }
 
     async listProviderModels(provider: LLMProvider) {
-        return listProviderModels(provider, { chatgpt: this.authorization.credentials(provider) });
+        return listProviderModels({ ...provider, apiKey: provider.apiKey ?? this.savedProviderKey(provider) },
+            { chatgpt: this.authorization.credentials(provider), logger: this.logger });
+    }
+
+    private savedProviderKey(provider: LLMProvider | undefined): string | undefined {
+        const saved = provider && this.getFullProvider(provider.id);
+        return saved?.baseURL === provider?.baseURL && saved?.implementation === provider?.implementation ? saved?.apiKey : undefined;
     }
 
     async getProviderAuthorization(id: string) { await this.ensureReady(); return this.authorization.state(id); }
@@ -930,7 +954,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
             throw new Error(`LLMDeviceDriver: provider '${conn.providerId}' is disabled`);
         }
         const apiKey = provider?.apiKey?.trim();
-        if (!apiKey && pid !== 'codex' && provider?.implementation !== 'chatgpt') {
+        if (!apiKey && pid !== 'codex' && provider?.implementation !== 'chatgpt' && provider?.credentialMode !== 'host') {
             throw new Error(
                 `LLMDeviceDriver: provider '${conn.providerId}' has no API key configured`
             );
@@ -965,7 +989,9 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         const baseLabel = sanitizeLabel((opts?.sessionLabel as string) ?? '');
         const sessionId = baseLabel || `llm-${++this.sessionSeq}`;
         const driver = new LLMDriver({
+            logger: this.logger,
             providerFactory: this.providerFactory,
+            mediaAdapterFactory: this.mediaAdapterFactory,
             connection: connForDriver,
             customProviderDefaults,
             codex: this.resolveCodexConfig(),

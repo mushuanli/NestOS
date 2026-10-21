@@ -18,6 +18,7 @@
 | 文档 | 内容 |
 | --- | --- |
 | [Kernel](kernel-api.md) / [Context](context-api.md) | 执行内核与上下文 |
+| [独立 durable-kernel API](../libraries/durable-kernel/docs/api.md) / [事件契约](../libraries/durable-kernel/docs/events.md) / [Harness 验证](../libraries/durable-kernel/docs/harness-scenarios.md) | 随 npm 制品提供的接口、停止恢复、补读与验证边界 |
 | [Tasks](llm-tasks-api.md) / [Flow](llm-flow-api.md) / [Session](llm-session-api.md) | 持久程序、编排与会话 |
 | [RunDefinition](run-definition.md) / [联网搜索](web-search.md) | 调用输入与搜索策略 |
 | [HTTP 宿主](http-app.md) / [CLI HTTP 模式](http-mode.md) | 共用界面、应用 API 与远程 CLI |
@@ -34,9 +35,9 @@
 | 图片处理与聊天接入 | [image-parser、Scanic、裁剪及默认 1024 resize](design/chat-image-editing.md) |
 | 非 ML 纸边检测验收 | [风险、68例回归与正式接入门槛](design/image-parser-detector-validation.md) |
 | 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/mindos-node-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/mindos-node-sync.md) |
-| Anki 工作流 | [外部 Anki Tool + Flow、通用机制与业务边界（待实施）](design/anki-flow.md) |
+| Anki 工作流 | [三连接 Flow、Rust 工具、YAML 清单与打包](design/anki-flow.md) |
 | 数字分身 | [当前规则驱动设计与支持边界](design/digital-twin.md) |
-| Durable 契约 | [主协议](design/durable-harness-protocol.md)、[目标与证据映射](design/durable-harness-evidence.md) |
+| Durable 契约 | [主协议](design/durable-harness-protocol.md)、[目标与证据映射](design/durable-harness-evidence.md)、[接口与事件审查](design/durable-kernel-interface-review.md) |
 | 性能诊断 | [启动与导航](design/startup-diagnostics.md)、[会话打开](design/llm-ui-session-performance.md)、[VFS 读取](design/vfs-read-performance-review.md) |
 | 待办与验收 | [目标与待办](todo.md)、[按日期记录的验收证据](minimal-system-acceptance.md) |
 
@@ -48,3 +49,5 @@
 - 已废弃方案、旧包文档副本和逐轮状态快照从工作树删除，历史内容通过 Git 查阅。
 - 保留尚未完成的契约、支持限制和可复现验收依据；删除文档不改变交付状态。
 - 更新文档后运行 `pnpm docs:check`；历史归档的文件链接也应保持可解析。
+
+- [Flow 图片处理与资产引用](./design/flow-image-processing.md)：版本化配方、宿主引擎、原图与派生图、处理回执及发送预算。

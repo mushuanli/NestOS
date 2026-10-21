@@ -10,3 +10,5 @@ CLI 是应用表示层和 Node 入口；本地/远程传输选择属于宿主。
 - 旧 YAML/RunDefinition 离线执行入口保留独立 RunStore；不能将 run-id 与应用 session-id 混用，不隐式支持 --connect。
 - 真实诊断发送、interrupt、取消等具有副作用；测试使用临时 profile 和确定性 fixture，禁止试发用户真实消息。
 - CLI 全套回归按 scripts/test-all.mjs 串行，crash-matrix 单独隔离。
+
+离线 `.flow` 的组合定义通过 siblingFlowResolver 从入口同目录读取 `<flowId>.flow`，校验安全 ID、实际身份与显式 revision。编译图保存到 RunDefinition，恢复不重新解析最新子定义；不静态依赖任何业务 Flow。

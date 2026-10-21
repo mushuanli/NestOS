@@ -1,3 +1,4 @@
+import {flowImageAssets} from '../flows/image-assets';
 import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { disposeEditorResources } from './editor-disposal';
 import { rememberTaskAttachment, restoreTaskAttachment } from './task-attachment-lifecycle';
@@ -597,7 +598,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.inputDialogAbort?.abort();
         this.inputDialogAbort = new AbortController();
         this.inputDialogKey = key;
-        void promptFlowParameters(parameters, request.prompt, result => attachment.respondInput(request.id, result, revision), this.inputDialogAbort.signal)
+        void promptFlowParameters(parameters, request.prompt, result => attachment.respondInput(request.id, result, revision), this.inputDialogAbort.signal, undefined, flowImageAssets(this.commandBus))
             .finally(() => { if (this.inputDialogKey === key) this.inputDialogKey = undefined; });
         return true;
     }

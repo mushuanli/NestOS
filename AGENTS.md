@@ -8,7 +8,7 @@
 - **itookit**：pnpm monorepo，承载 **MindOS**（浏览器/桌面的个人知识 OS：虚拟文件系统 + Markdown 编辑器 + LLM 对话/Agent 执行）
 - 工具链：`pnpm@10.20.0`（`workspace:*`）、TypeScript 5.9 strict（`target: ES2022`、`moduleResolution: bundler`，见 `tsconfig.base.json`）
 - 无前端框架：原生 DOM + TypeScript
-- 20 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 10 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
+- 18 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 12 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
 
 ## 开发原则
 SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
@@ -30,6 +30,12 @@ pnpm test                             # 全量测试矩阵（含 Rust 边界；c
 pnpm --filter @itookit/<pkg> test     # 单包测试（vitest）
 pnpm --filter @itookit/<pkg> typecheck
 ```
+
+## 新功能诊断日志要求
+
+- 开发新功能或修改关键流程时，必须在关键步骤、跨层调用和失败路径记录足以定位具体错误原因的日志，优先复用现有日志通道；不得只输出笼统的“失败”或将不同原因合并成同一个错误。
+- 日志应包含操作名称、执行阶段、成功/失败结果、具体错误分类、耗时及可关联的 requestId/operationId；按需记录数量、格式、大小、约束等非敏感元数据，能区分前端校验、文件读取、网络传输、后端校验和持久化失败。HTTP 状态码不能代替业务执行结果。
+- 前端提示须保留可操作的具体原因；日志不得记录文件/图片正文、完整参数、用户消息、密钥或令牌。验证功能时同时覆盖失败场景，确认日志能定位原因且不泄露敏感数据。
 
 ## httpd 日志与运行版本
 

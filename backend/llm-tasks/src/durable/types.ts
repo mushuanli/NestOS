@@ -24,7 +24,7 @@ export interface DurableProgramInput {
     /** Additional attempts per LLM exchange; default 3, configured by the host. */
     llmRetry?: import('../contracts').LlmRetryPolicy;
     thinking?: boolean;
-    reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+    reasoningEffort?: string;
     /** stream !== false → LLM streams (default); false → non-streaming fallback. */
     stream?: boolean;
     /** 走底层内置 server-side search（如 DeepSeek/OpenAI Responses 的 web_search、Gemini 的 googleSearch）。 */

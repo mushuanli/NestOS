@@ -3,6 +3,22 @@ import type { EventEnvelope } from '@itookit/durable-kernel/contracts';
 import { RunAttachmentController, type TaskControlPlane, type AttachedTask } from './RunAttachmentController';
 
 describe('RunAttachmentController', () => {
+    it('aborts a pending observation when detached without cancelling the running task', async () => {
+        const task = handle('task-1'), handlers = { ...callbacks(), onError: vi.fn() };
+        let signal: AbortSignal | undefined, released = false;
+        task.events = async function* (options) {
+            signal = options?.signal;
+            try {
+                await new Promise<void>((_resolve, reject) => signal?.addEventListener('abort', () => reject(new Error('Observation aborted')), { once: true }));
+                yield statusEvent();
+            } finally { released = true; }
+        };
+        const controller = new RunAttachmentController(controlPlane(task), handlers);
+        await controller.attach(task.id); await controller.detach();
+        await until(() => released);
+        expect(signal?.aborted).toBe(true); expect(released).toBe(true);
+        expect(task.cancel).not.toHaveBeenCalled(); expect(handlers.onError).not.toHaveBeenCalled();
+    });
     it.each([true, false])('responds to the exact approval with a note (%s)', async approved => {
         const task = handle('task-1');
         const controller = new RunAttachmentController(controlPlane(task), callbacks());

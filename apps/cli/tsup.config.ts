@@ -9,5 +9,5 @@ export default defineConfig({
     banner: { js: '#!/usr/bin/env node\nimport { createRequire as __cliCreateRequire } from "node:module";\nconst require = __cliCreateRequire(import.meta.url);' },
     // Bundle workspace TypeScript; native bindings stay external at runtime.
     noExternal: [/^@itookit\//],
-    external: ['better-sqlite3', 'node-pty'],
+    external: ['better-sqlite3', 'node-pty', 'sharp'],
 });

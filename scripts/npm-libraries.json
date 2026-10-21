@@ -56,7 +56,19 @@
   {
     "directory": "image-parser",
     "name": "@itookit/image-parser",
-    "version": "0.2.0",
+    "version": "0.3.0",
+    "workspace": true
+  },
+  {
+    "directory": "durable-kernel",
+    "name": "@itookit/durable-kernel",
+    "version": "0.1.0",
+    "workspace": true
+  },
+  {
+    "directory": "device-tty",
+    "name": "@itookit/device-tty",
+    "version": "0.1.0",
     "workspace": true
   }
 ]

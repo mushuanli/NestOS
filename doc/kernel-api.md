@@ -2,6 +2,8 @@
 
 > 持久化执行内核：`DurableTaskProgram`（init/reduce 状态机）+ `EffectAdapter`（副作用）+ Task/Resource/Budget/Interaction 的调度与恢复。所有 API 从 `@itookit/durable-kernel` 根导出。
 
+独立包使用者请先读随包提供的[接口参考](../libraries/durable-kernel/docs/api.md)和[事件契约](../libraries/durable-kernel/docs/events.md)。本文保留根入口及宿主集成扩展；[接口审查](./design/durable-kernel-interface-review.md)区分当前行为与建议修订。
+
 ## 目录
 
 - [入口：Kernel](#入口kernel)
@@ -27,7 +29,11 @@ class Kernel implements KernelRegistration {
     constructor(options: KernelOptions);
     initialize(): Promise<void>;
     dispose(): void;
-    /** 等待所有 in-flight drain/execute 完成（dispose 后调用），默认超时 5000ms */
+    shutdown(options?: ShutdownOptions): Promise<ShutdownReport>;
+    drain(options?: ShutdownOptions): Promise<WorkerDrainReport>;
+    readonly archives: SessionArchiveApi;
+    recoveryIssues(sessionId: string, taskId?: string): Promise<RecoveryIssue[]>;
+    /** 等待所有 in-flight drain/execute 完成（dispose 后调用），默认超时 5000ms，超时抛 IDLE_TIMEOUT */
     waitIdle(timeoutMs?: number): Promise<void>;
     get isDisposed(): boolean;
 
@@ -63,7 +69,8 @@ class Kernel implements KernelRegistration {
 
     // 任务（全局 / 按会话）
     openTask<O>(id: TaskId): Promise<TaskHandle<O>>;
-    inspectTask(id: TaskId): Promise<TaskSnapshot>;
+    inspectTask(id: TaskId): Promise<TaskEventSnapshot>; // Cold read: task + asOfSequence
+    inspectSession(id: SessionId): Promise<SessionReader>;
     attachTask<O>(sessionId: SessionId, taskId: TaskId): Promise<TaskHandle<O>>;
     listSessionTasks(sessionId: SessionId): Promise<TaskRecord[]>;
     listSessionPendingInteractionTasks(sessionId: SessionId): Promise<TaskRecord[]>;
@@ -74,7 +81,7 @@ class Kernel implements KernelRegistration {
     taskHistory(sessionId: string, taskId: string, afterVersion?: number): Promise<TaskRecord[]>;
     taskHistoryPage(sessionId: string, taskId: string, query?: TaskHistoryQuery): Promise<TaskHistoryPage>;
     taskAttempts(sessionId: string, taskId: string): Promise<TaskAttempt[]>;
-    signal(sessionId: string, taskId: string, signal: TaskSignal): Promise<void>;
+    signal(sessionId: string, taskId: string, signal: TaskSignal, options?: SignalOptions): Promise<SignalReceipt>;
     controlTask(sessionId: string, taskId: string, mode: TaskControl['mode'],
         options: TaskControlOptions & { signal?: TaskSignal }): Promise<TaskControl>;
     startTask(sessionId: string, taskId: string, options?: TaskStartOptions): Promise<void>;
@@ -84,7 +91,10 @@ class Kernel implements KernelRegistration {
     sendTaskMessage(sessionId: string, taskId: string, request: TaskMessageRequest): Promise<CrossSessionMessage>;
 
     // 事件
-    eventList(sessionId: string, after: number): Promise<EventEnvelope[]>;
+    eventList(sessionId: string, after: number): Promise<EventEnvelope[]>; // Legacy unbounded API
+    readEvents(sessionId: string, query?: EventQuery, taskId?: string): Promise<EventPage>;
+    taskSnapshot(sessionId: string, taskId: string): Promise<TaskEventSnapshot>;
+    sessionSnapshot(sessionId: string): Promise<SessionEventSnapshot>;
     taskEventPage(sessionId: string, taskId: string, query?: TaskEventQuery): Promise<TaskEventPage>;
     onChanged(listener: (e: { sessionId: string; taskId?: string; reason: KernelChangeReason }) => void): () => void;
 
@@ -96,7 +106,7 @@ class Kernel implements KernelRegistration {
     sharedHistory<T>(sessionId, key): Promise<SharedStateRevision<T>[]>;
 
     // 跨会话消息
-    sendCrossSession<T>(sourceSessionId, targetSessionId, topic, payload, options?: { expiresAt?: number }): Promise<CrossSessionMessage<T>>;
+    sendCrossSession<T>(sourceSessionId, targetSessionId, topic, payload, options?: SessionSendOptions): Promise<CrossSessionMessage<T>>;
     outbox(sessionId: string): Promise<CrossSessionMessage[]>;
     inbox(sessionId: string, after?: number): Promise<CrossSessionMessage[]>;
     relayPendingMessages(): Promise<number>;
@@ -147,7 +157,7 @@ class Kernel implements KernelRegistration {
 }
 ```
 
-**`KernelOptions`**：`catalog`（目录 fs，`rootPath` 默认 `/.config/kernel`）、`maxConcurrent` / `maxConcurrentEffects`（并发上限，均默认 4）、`leaseMs`（租约时长，默认 30s）、`effectCleanupTimeoutMs`（Effect 清理等待上限，默认 30s，整数范围 1–2147483647ms）、`pollMs`（兼容轮询间隔，默认 0，使用提交通知与期限定时器）、`workerId`（可选）。
+**`KernelOptions`**：`catalog`（目录 fs，`rootPath` 默认 `/.config/kernel`）、`maxConcurrent` / `maxConcurrentEffects`（并发上限，均默认 4）、`leaseMs`（租约时长，默认 30s）、`effectCleanupTimeoutMs`（Effect 清理等待上限，默认 30s，整数范围 1–2147483647ms）、`pollMs`（兼容轮询间隔，默认 0）、`rescanMs`（安全补扫默认 1000ms，批量读取水位而非空闲全扫 Task；关闭时必须提供 wakeSource）、`workerId`（可选）、`onDiagnostic`（非敏感操作/阶段/分类/耗时观察回调）。并发上限属于单个 Kernel 实例。
 
 **`KernelChangeReason = 'structure' | 'content'`**：`onChanged` 通知的成因。`structure` 表示 Task/Session 被创建、删除或状态变化（列表视图需重读）；`content` 表示 Task 内容推进（流式增量、日志、共享状态、context 提交）而列表成员未变，每秒可能触发多次，消费者不应据此重渲染。
 
@@ -169,7 +179,7 @@ interface SessionHandle extends
     recover(options?: RecoveryOptions): Promise<RecoveryReport>;
     spawn<I, O>(spec: TaskSpec<I>): Promise<TaskHandle<O>>;   // submit() 的别名
     stat(): Promise<SessionStat>;
-    watch(options?: { after?: number }): AsyncIterable<EventEnvelope>;   // events() 的别名
+    watch(options?: WatchOptions): AsyncIterable<EventEnvelope>;   // events() 的别名
 }
 ```
 
@@ -180,7 +190,7 @@ interface SessionHandle extends
 | `submit<I,O>(spec: TaskSpec<I>): Promise<TaskHandle<O>>` | 提交任务 |
 | `attachTask<O>(taskId): Promise<TaskHandle<O>>` | 重启/重连后挂载已有 Task |
 | `listTasks(): Promise<TaskRecord[]>` | 读取完整 Task 树（含终态） |
-| `signal(taskId, signal): Promise<void>` | 发信号 |
+| `signal(taskId, signal, options?): Promise<SignalReceipt>` | 发信号 |
 | `respond<T>(taskId, response): Promise<void>` | 回应交互（HITL） |
 | `events(options?): AsyncIterable<EventEnvelope>` | 按序消费会话事件 |
 
@@ -210,8 +220,11 @@ interface SessionHandle extends
 
 | 方法 | 说明 |
 |---|---|
-| `sendToSession<T>(targetSessionId, topic, payload, options?)` | 发消息到另一会话（可带 `expiresAt`） |
-| `inbox(options?)` | 读取收件箱 |
+| `send(request)` | 强制稳定幂等键；可指定目标 Task，省略时投递 Session 邮箱 |
+| `sendToSession<T>(targetSessionId, topic, payload, options?)` | 兼容发送；可带 `idempotencyKey`、`targetTaskId`、`correlationId`、`expiresAt` |
+| `inbox(options?)` | after 为接收方 deliverySequence，不是发送时间 |
+| `inboxPage(query?)` | 接收序号分页，可固定 throughSequence |
+| `acknowledgeMessage(id, options?)` | 幂等确认宿主拥有的 Session 消息；Task 输入仅随 Decision 消费 |
 | `outbox(): Promise<CrossSessionMessage[]>` | 读取本会话发件箱 |
 
 **`SessionContextApi`** — Context 分支/提交
@@ -259,11 +272,14 @@ interface TaskHandle<O = unknown> {
     send(request: TaskMessageRequest): Promise<CrossSessionMessage>;
     stat(): Promise<TaskStat>;
     stats(): Promise<TaskStats>;
-    watch(options?: { after?: number }): AsyncIterable<EventEnvelope>;   // events() 的别名
+    watch(options?: WatchOptions): AsyncIterable<EventEnvelope>;   // events() 的别名
     status(): Promise<TaskSnapshot>;
-    wait(options?: { timeoutMs?: number }): Promise<ExitRecord<O>>;   // 阻塞等待终态
+    wait(options?: TaskWaitOptions): Promise<ExitRecord<O>>;
+    waitStopped(options?: { timeoutMs?: number; signal?: AbortSignal }): Promise<TaskStat>;
+    readEvents(query?: EventQuery): Promise<EventPage>;
+    snapshot(): Promise<TaskEventSnapshot>;   // 阻塞等待终态
     poll(): Promise<ExitRecord<O> | undefined>;                        // 非阻塞
-    signal(signal: TaskSignal): Promise<void>;
+    signal(signal: TaskSignal, options?: SignalOptions): Promise<SignalReceipt>;
     start(options?: TaskStartOptions): Promise<void>;
     pause(options: TaskControlOptions): Promise<TaskControl>;
     interrupt(options: TaskControlOptions): Promise<TaskControl>;
@@ -271,7 +287,7 @@ interface TaskHandle<O = unknown> {
     respond<T>(response: InteractionResponse<T>): Promise<void>;
     createResource(spec: TaskResourceSpec): Promise<ResourceGrant>;
     cancel(reason?: string): Promise<void>;
-    events(options?: { after?: number }): AsyncIterable<EventEnvelope>;
+    events(options?: WatchOptions): AsyncIterable<EventEnvelope>;
     history(options?: { afterVersion?: number }): Promise<TaskRecord[]>;
     attempts(): Promise<TaskAttempt[]>;
     /** 幂等创建延迟启动的新 root Task；资源需重新授权 */
@@ -533,8 +549,8 @@ interface ExitRecord<O = unknown> { taskId; status: 'succeeded'|'failed'|'cancel
 **常用事件名**（`store.ts`/`store-helpers.ts`/`cache-store.ts`/`mailbox-store.ts`/`managed-resources.ts` 落盘）：
 
 - 会话：`session.created`、`session.reopened`、`session.open/suspending/suspended/closing/closed/archived`（`setSessionStatus` 按状态派生）。
-- Task：`task.created`、`task.spawned`、`task.started`、`task.signal`、`task.blocked/ready/running/waiting/succeeded/failed/cancelled`（提交与完成时按状态派生）、`task.retry.scheduled`、`task.program.unavailable`、`task.attempt.lost`、`task.control.run/pause/interrupt`、`task.control.acknowledged`、`task.wait.progress`、`task.wait.satisfied`。
-- Effect / 交互：`effect.leased`、`effect.pending/succeeded/failed/cancelled/indeterminate`、`effect.retry.scheduled`、`effect.resolved`、`effect.attempt.lost`、`task.interaction.requested`、`task.interaction.resolved`。
+- Task：`task.created`、`task.spawned`、`task.started`、`task.signal`、`task.ready/waiting/succeeded/failed/cancelled`（Decision / 结束路径按状态派生；初始 blocked 与领取 running 从 created / leased 及快照观察）、`task.retry.scheduled`、`task.program.unavailable`、`task.attempt.lost`、`task.control.run/pause/interrupt`、`task.control.acknowledged`、`task.wait.progress`、`task.wait.satisfied`。
+- Effect / 交互：`effect.leased`、`effect.succeeded/failed/indeterminate`、`effect.retry.scheduled`、`effect.resolved`、`effect.attempt.lost`、`effect.interrupt.requested`、`effect.cleanup.confirmed`、`task.interaction.requested`、`task.interaction.resolved`。
 - 资源 / 预算：`resource.created`、`resource.granted`、`resource.revoked`、`resource.requested`、`resource.resolved`、`budget.configured`、`budget.consumed`。
 - 共享状态 / Context / 工作区：`session.shared.set`、`session.shared.deleted`、`session.context.committed`、`workspace.snapshot.created`、`workspace.diff.created`。
 - 消息：`session.message.queued`、`session.message.received`、`session.message.rejected`、`message.consumed`。
@@ -591,10 +607,10 @@ catch (e) {
 
 ## 源码结构：文件与路径
 
-`@itookit/durable-kernel` 的公共 API 全部从 `backend/durable-kernel/src/index.ts` 根导出（`exports['.']` 指向 `src/index.ts`）。包内按 **六层** 组织，依赖单向向下：
+`@itookit/durable-kernel` 的公共 API 全部从 `libraries/durable-kernel/src/index.ts` 根导出（`exports['.']` 指向 `src/index.ts`）。包内按 **六层** 组织，依赖单向向下：
 
 ```
-backend/durable-kernel/src/
+libraries/durable-kernel/src/
 ├── index.ts                      根导出（唯一公共入口）
 ├── core.ts                       精简入口：createHarness() + Harness/Session/Task 窄接口
 ├── domain/                       纯类型 + 错误模型（无逻辑）
@@ -674,11 +690,11 @@ backend/durable-kernel/src/
                        cache-operation/<operationId>
 ```
 
-**观察投影的取消三态**：`taskStat(task)` 的 `control.requested` 在取消请求被接受后即为 `'cancel'`，而 `control.acknowledged` 只有在**没有任何在途/待清理操作**（`activeOperations === 0`，含 `cleanupPending` 的 Effect）时才为 true——即“请求已接受/逻辑状态已变化”与“外部确已停止”可区分；`taskStat`/`taskStats`/`sessionStat` 现由包入口公开导出，`@itookit/app-core` 的 `taskSummary` 透传 `control`/`activeOperations` 供宿主渲染。回归 `backend/durable-kernel/src/kernel.test.ts`「distinguishes an accepted cancel request from a confirmed external stop」。
+**观察投影的取消三态**：`taskStat(task)` 的 `control.requested` 在取消请求被接受后即为 `'cancel'`，而 `control.acknowledged` 只有在**没有任何在途/待清理操作**（`activeOperations === 0`，含 `cleanupPending` 的 Effect）时才为 true——即“请求已接受/逻辑状态已变化”与“外部确已停止”可区分；`taskStat`/`taskStats`/`sessionStat` 现由包入口公开导出，`@itookit/app-core` 的 `taskSummary` 透传 `control`/`activeOperations` 供宿主渲染。回归 `libraries/durable-kernel/src/kernel.test.ts`「distinguishes an accepted cancel request from a confirmed external stop」。
 
-**预算结算幂等**：`chargeBudget` 可选 `usageId`——扣费与 `usage/<usageId>` 回执在同一事务写入，同 id 重放返回记录的回执（不再扣费），同 id 不同金额/资源/维度抛冲突；Effect 路径由内核默认按逻辑 Effect 结算（`effect:<taskId>:<effectId>:<handleId>:<dimension>`），未提供 `usageId` 的宿主直调保持每次调用都扣。回归 `backend/durable-kernel/src/kernel.test.ts`。
+**预算结算幂等**：`chargeBudget` 可选 `usageId`——扣费与 `usage/<usageId>` 回执在同一事务写入，同 id 重放返回记录的回执（不再扣费），同 id 不同金额/资源/维度抛冲突；Effect 路径由内核默认按逻辑 Effect 结算（`effect:<taskId>:<effectId>:<handleId>:<dimension>`），未提供 `usageId` 的宿主直调保持每次调用都扣。回归 `libraries/durable-kernel/src/kernel.test.ts`。
 
-**authority 归属**：`managed/authority/<id>` 记录 `{authorityId, ownerEpoch, ownerId, binding, serviceEndpoint, status, updatedAt}`；首次 `claimAuthority` 写 epoch 1，接管必须提交 `expectedEpoch` 并 CAS 递增（失配报 `Authority epoch conflict: …`）；命令携带 `authority: {authorityId, epoch}` 时在同一权威事务内校验，过期 leader 的新写入被拒，已受理请求的重放仍返回原结果。回归见 `backend/durable-kernel/src/resources.test.ts`。
+**authority 归属**：`managed/authority/<id>` 记录 `{authorityId, ownerEpoch, ownerId, binding, serviceEndpoint, status, updatedAt}`；首次 `claimAuthority` 写 epoch 1，接管必须提交 `expectedEpoch` 并 CAS 递增（失配报 `Authority epoch conflict: …`）；命令携带 `authority: {authorityId, epoch}` 时在同一权威事务内校验，过期 leader 的新写入被拒，已受理请求的重放仍返回原结果。回归见 `libraries/durable-kernel/src/resources.test.ts`。
 
 **约定补充**：托管资源（`managed/*`）按作用域落在对应存储根的 `resources.seq`——kernel 作用域落在 `catalog` 根，`session:<id>` 作用域落在该 Session 根；Cache 的 operation 收据（`cache-operation/<operationId>`）落在发起 Task 的 `task.seq`，与 namespace/entry 分离。
 
@@ -747,7 +763,7 @@ Task 历史裁剪：`Kernel.compactTaskHistory(sessionId, taskId, { keepVersions
 
 Task 事件裁剪：`Kernel.pruneTaskEvents(sessionId, taskId, { keepEvents? })` 默认保留最近 200 条已索引事件；数量须为正安全整数。删除旧事件及 Task 索引、写入保留水位和裁剪审计事件在同一事务内完成。裁剪会校验索引指向的事件属于当前 Session/Task，损坏索引或非法水位均拒绝。审计事件本身也进入索引，因此本次保留窗口之外会新增一条事件；重复裁剪可能移除一条旧事件。Session 级事件、其他 Task、当前 Task 记录和历史快照不受影响。
 
-`taskEventPage` 返回可选 `firstAvailableIndex`；旧游标被推进到保留窗口，固定的 `throughIndex` 早于窗口时返回空页，调用方应据水位重新同步。这一水位仅用于 Task 索引分页，未给通用 Session 事件流增加断档通知，也不实现跨进程订阅者的保留租约。
+`taskEventPage` 返回可选 `firstAvailableIndex`；旧游标被推进到保留窗口，固定的 `throughIndex` 早于窗口时返回空页，调用方应据水位重新同步。这一兼容水位仅用于 Task 索引分页。新 readEvents / watch 统一使用 Session sequence，过期游标抛 CURSOR_EXPIRED；Task / Session snapshot 的 asOfSequence 与状态同事务读取，可据此重同步。未实现跨进程订阅者的保留租约。
 
 提交事件触发调度：catalog 文件变化唤醒 Kernel 资源清理和已打开 Session 的轮询；Kernel 的 resources 文件变化仅唤醒资源清理。同一文件系统内其他文件的提交（例如 Session 租约心跳）不通过 catalog 监听器触发扫描。Session 监听器仍处理所属存储根下的提交，但仅 resources 文件变化直接唤醒该 Session 的资源清理。定时截止和正常调度保持原有行为；这项触发范围优化本身不证明桌面发送延迟或 IPC 总量达标。
 
@@ -769,7 +785,7 @@ retention 的 before 必须为非负有限数，limit 必须为非负安全整�
 
 ### 保留与清理 API 批次
 
-`Kernel.pruneSessionMessages(sessionId, before, limit?)` 返回 `{outbox, inbox}`；跨 Session 回收以双方持久结算确认为前提。已终态源恢复只补确认，不重新投递。缓存按 Task/Session 生命周期在同一事务清理，旧 owner 索引事务内重建并校验真实所有者。详见 [Cache 设计](design/durable-harness-cache.md) 与 [Storage 设计](design/durable-harness-storage.md)；自动回归在 `backend/durable-kernel/src/retention.test.ts`。
+`Kernel.pruneSessionMessages(sessionId, before, limit?)` 返回 `{outbox, inbox}`；跨 Session 回收以双方持久结算确认为前提。已终态源恢复只补确认，不重新投递。缓存按 Task/Session 生命周期在同一事务清理，旧 owner 索引事务内重建并校验真实所有者。详见 [Cache 设计](design/durable-harness-cache.md) 与 [Storage 设计](design/durable-harness-storage.md)；自动回归在 `libraries/durable-kernel/src/retention.test.ts`。
 
 
 ## 2026-09-14：托管资源 authority 事务隔离
@@ -804,7 +820,7 @@ Kernel 在恢复 sweep 后复用一次任务扫描供任务遍历、Effect 候�
 
 **显式重新运行**：`openSession()` 不改变 closed 状态。用户明确重跑时可调用 `reopenSession()`：等待本机关闭清理并清理旧能力作用域，事务内只允许 closed → open（open 幂等），拒绝 closing/archived 以及未完成 Task/Effect 清理；记录 `session.reopened`。旧 Task 终态和已回收 cache 不恢复。普通 `setSessionStatus` 仍拒绝 closed → open。宿主负责持有 Session 写租约；llm-session 在 Flow 重跑创建替代分支前调用此入口。
 
-Task 事件流按 Task 事件索引分页追尾，`events({ after })` 的 after 仍使用 Session sequence；订阅单 Task 不扫描其他 Task 的 Session 日志。终态后继续排空最终页面以保留末尾增量。
+Task 事件流按 Task 事件索引分页追尾，`events({ after })` 的 after 仍使用 Session sequence；订阅单 Task 不扫描其他 Task 的 Session 日志。默认在 settled 后排空结束，包含物理清理确认；until: exit 可显式只等逻辑终态。watch 支持 AbortSignal，过期游标抛 CURSOR_EXPIRED；详见独立包[事件契约](../libraries/durable-kernel/docs/events.md)。
 
 
 `EffectAdapter.shouldRetry?(error, context)` 分类当前 worker 的执行失败；若未实现，沿用 recoveryPolicy 判断。
@@ -814,3 +830,33 @@ Task 事件流按 Task 事件索引分页追尾，`events({ after })` 的 after 
 ## 列表读取成本（2026-09-27）
 
 `listSessionTaskPage` 在同一事务内分两阶段批量读取：先取本页 `task-order` 指针，再用 `getEntriesMany` 取当前 Task；固定 `throughIndex`，缺失指针/记录或身份不匹配仍拒绝。旧索引首次查询仍需补建，超过后端批量上限时由后端分批。全量 Task 扫描只枚举目录的轻量 name/type 条目。`listShared` 的布局校验与 shared 遍历处于同一个事务，不再单独打开守卫事务。
+
+
+## 独立库与停止恢复契约（2026-10-21）
+
+源码位于 `libraries/durable-kernel`，唯一运行依赖为 vfs-core，TypeScript 配置可独立使用。根、`/core`、`/contracts` 继续保留；独立使用和打包步骤见 [库 README](../libraries/durable-kernel/README.md)。
+
+`/core` 提供 Session 提交/分页/消息/消费确认和 Task 快照/恢复问题检查/Effect 裁决；`recoveryIssues` 返回具体 Session、Task、Effect 及缺失程序、缺失适配器、未知结果、待清理或在途操作的分类。`RecoveryReport.issues` 为恢复读取时的持久阻塞快照，后续异步派发后的状态应重新查询。
+
+`shutdown({timeoutMs})` 对当前实例已登记的 open Session 持久请求暂停，等待在途操作排空，再 dispose 本地 worker。返回 `{status: 'stopped' | 'blocked', localIdle, issues, pendingSessions}`；重复调用复用同一过程。恢复后暂停仍保留，须显式 resume。关闭存储前应确认 localIdle；`dispose` 本身不证明物理停止，`waitIdle` 超时抛 IDLE_TIMEOUT。
+
+Effect 超时保留 cleanupPending，取消确认成功后才清除此标记；Session 暂停和 Task 控制确认均受该责任约束。缺失或失败的取消适配器保持阻塞，不把失败结果解释成外部已停止。真实进程回归覆盖 failed Effect 的清理意图落盘后 SIGKILL，重建后继续确认，确认后再次重建不重复取消。
+
+Session.send 使用源 Session 内稳定幂等键，同键异内容冲突；Task.send 终态后允许重放已有消息，拒绝新发送。消息按接收方 deliverySequence 读取，迟到和同毫秒消息不会被发送时间游标跳过。宿主消费的 Session 邮箱须显式 acknowledgeMessage，Task 消息仍随 Decision 原子确认。跨 Session 不承诺原子提交、全局顺序或外部副作用恰好一次。
+
+## v2 事件与可取消观察
+
+新信封 schemaVersion 2，Session manifest 的 events schema 在首次新写时同事务提升；新宿主兼容读取 v1 / v2，旧 writer 须退出后再升级。Effect 生命周期携带 effectId 和已有 attemptId；正常 Decision 与直接取消的 Task 终态都携带 ExitRecord。KernelEventMap / KernelEvent 提供内建判别联合，parseEventEnvelope / parseKernelEvent 验证信封及已收录 v2 payload。旧 v1 与未收录事件保留为原始事实，自定义 emit 不得冒用内核保留名字。
+
+interrupt 保存 pending + cleanupPending 以及 lost attempt，再 abort / cancel；旧结果和进度不能提交。树内清理确认后 task.control.acknowledged 才为真；resume 先 reconcile，不能盲目重放未知副作用。context 的 attemptId / attemptNumber 可供外部系统 fence 迟到执行者，cancel 必须确认指定 attempt 不能再次启动。
+
+Task wait 默认等逻辑 exit，until: settled 等清理；waitStopped 等控制停止确认。Task watch 默认 settled，Session watch 在 closed / archived 后结束；dispose 结束流并拒绝未完成的等待，恢复后重新附加句柄。readEvents 使用有界 sequence 页；snapshot 与 asOfSequence 提供原子重同步边界。核心签名和错误分类以随包提供的[接口参考](../libraries/durable-kernel/docs/api.md)为准。
+
+
+## 独立库新增运行契约
+
+本地 worker 退出使用 drain，业务暂停使用 shutdown；signal 支持稳定 requestId 与 SignalReceipt；Session.schedule 提供持久定时任务；archives 提供 JSONL 导出、校验和暂停导入。完整签名与验收边界分别见独立库[接口](../libraries/durable-kernel/docs/api.md)、[存储与通知](../libraries/durable-kernel/docs/storage.md)、[定时](../libraries/durable-kernel/docs/scheduling.md)、[归档](../libraries/durable-kernel/docs/archives.md)。
+
+## Session 活动摘要
+
+`Kernel.sessionActivity(sessionId)` / `Harness.sessionActivity(sessionId)` 同事务冷读生命周期、各 Task 阶段数量、pending approval/input/cleanup、最近终态和 asOfSequence。用途是轻量会话总览；控制是否确认仍使用 Session/Task stat，导出恢复使用 archives。活动投影与 Task 原子提交，正常查询不读 Task 正文或对话历史；旧存储缺少投影时批读缺少摘要的记录，包含需要核对清理责任的终态任务。详细契约见[独立库 API](../libraries/durable-kernel/docs/api.md#session-执行摘要)，验证见[Harness 场景](../libraries/durable-kernel/docs/harness-scenarios.md)。

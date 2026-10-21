@@ -66,6 +66,7 @@ async function initializeDevices(options: ApplicationInfrastructureOptions, vfs:
 
     logStep(t('boot.llmDriver'));
     const llmDriver = new LLMDeviceDriver(vfs, {
+        logger: createModuleLogger('llm-driver'),
         presets: createMindosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
         providerAuthorization: options.providerAuthorization,
         llmLogger: options.llmLogger ? new TwinSafeLlmLogger(options.llmLogger) : undefined, mcp: { clientInfo: { name: 'mindos', version: '1.0.0' }, logger: createModuleLogger('llm:mcp'), ...options.mcp }, codexTransport: options.codexTransport,

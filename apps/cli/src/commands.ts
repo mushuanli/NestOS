@@ -14,7 +14,7 @@ import { resolveProfileRoot } from './mindos';
 import { compileDag, createCliRuntime, cliStorage, type CliRuntime } from './runtime';
 import { compileRunDefinition } from './run-definition';
 import { createRunDefinitionFromFlow, toDagRunSpec, type RunDefinition } from '@itookit/app-core';
-import { loadFlowDefinition } from './flow-config';
+import { loadFlowDefinition, siblingFlowResolver } from './flow-config';
 import { readFlowTaskTranscript } from '@itookit/llm-flow';
 import { RunStore, selectFinalResult } from './run-store';
 import { sandboxDoctor } from './shell';
@@ -93,6 +93,12 @@ function isTerminalTaskStatus(status: string): boolean {
 }
 
 export async function validateCommand(options: CommandOptions): Promise<number> {
+    if (options.file?.endsWith('.flow')) {
+        const { checkFlowSource } = await import('@itookit/llm-flow');
+        const report = await checkFlowSource(await readFile(options.file, 'utf8'), { resolveComposite: siblingFlowResolver(options.file) });
+        print(options, { valid: report.valid, diagnostics: report.diagnostics });
+        return report.valid ? 0 : 1;
+    }
     // --offline skips the environment check so configs can be validated without API keys set.
     const loaded = await loadWorkflow(options.file ?? 'mindos.yml', !options.offline);
     print(options, { valid: true, name: loaded.workflow.config.name, tasks: loaded.workflow.config.tasks.length });
@@ -129,7 +135,7 @@ async function runFlowCommand(file: string, options: CommandOptions): Promise<nu
         ? await loadRunParameters(options.connectionBindingsFile, '--connection-bindings') as Record<string, string> : undefined;
     const parameters = options.paramsFile ? await loadRunParameters(options.paramsFile) : undefined;
     const workspaceRoot = path.resolve(options.setHome ?? process.cwd());
-    const resultTask = String(flow.nodes.at(-1)?.id ?? '');
+    const resultTask = flow.outputs ? '__flow_return' : String(flow.nodes.at(-1)?.id ?? '');
     if (!resultTask) throw new Error('.flow has no nodes to use as the result task');
     const stateDir = resolveStateDir(options, workspaceRoot);
     const workflow: CompiledWorkflow = {
@@ -141,14 +147,14 @@ async function runFlowCommand(file: string, options: CommandOptions): Promise<nu
             connections: [],
             agents: [],
             tasks: [],
-            result: { task: resultTask, output: 'result' },
+            result: { task: resultTask, output: flow.outputs ? '*' : 'result' },
             sandbox: { mode: 'native' },
         },
         workspaceRoot,
         stateDir,
     };
     const loaded = { workflow, source: JSON.stringify(flow), hash: flow.digest };
-    return runLoaded(loaded, options, { flow, connectionBindings, parameters });
+    return runLoaded(loaded, options, { flow, connectionBindings, parameters, resolveComposite: siblingFlowResolver(file) });
 }
 
 async function loadRunParameters(file: string, option = '--params'): Promise<Record<string, JsonValue>> {
@@ -232,7 +238,7 @@ export async function promptCommand(options: CommandOptions): Promise<number> {
 type LoadedWorkflow = Awaited<ReturnType<typeof loadWorkflow>>;
 type FlowRunInput = { parameters?: Record<string, JsonValue> } & (
     | { definition: RunDefinition }
-    | { flow: FlowRevision; connectionBindings?: Record<string, string> }
+    | { flow: FlowRevision; connectionBindings?: Record<string, string>; resolveComposite?: ReturnType<typeof siblingFlowResolver> }
 );
 
 async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, override?: FlowRunInput): Promise<number> {
@@ -244,7 +250,7 @@ async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, overri
     const manifest: RunManifest = {
         version: 1,
         id,
-        ...(override && 'definition' in override ? { flow: { definition: structuredClone(override.definition), parameters: override.parameters, config: loaded.workflow.config } } : {}),
+        ...(override && 'definition' in override ? { flow: { definition: structuredClone(override.definition), config: loaded.workflow.config } } : {}),
         name: loaded.workflow.config.name,
         goal: loaded.workflow.config.goal,
         workspaceRoot: loaded.workflow.workspaceRoot,
@@ -266,11 +272,13 @@ async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, overri
     let runtime: CliRuntime | undefined;
     try {
         runtime = await runtimeFor(loaded.workflow, manifest, store, options, 'execute', Boolean(override));
+        if (override?.parameters) override.parameters = await runtime.stageInput(override.parameters);
         await runtime.kernel.createSession({ id, storage: cliStorage(id) });
         const definition = override && 'flow' in override
             ? await createRunDefinitionFromFlow(override.flow, {
                 workspaceRoot: loaded.workflow.workspaceRoot, result: loaded.workflow.config.result,
                 connectionBindings: override.connectionBindings, prepareConnections: runtime.prepareConnections,
+                resolveComposite: override.resolveComposite,
                 bind: (node, defaults) => runtime!.flowCapabilities.bindNode(id, node, defaults),
             }) : override?.definition ?? compileRunDefinition(loaded.workflow, loaded.hash, runtime.workspaceRoot);
         if (override) {
@@ -469,7 +477,7 @@ export async function respondCommand(
     try {
         await runtime.kernel.respondInteraction(manifest.sessionId, pending.taskId, {
             interactionId: requestId,
-            value: resolveRespondValue(options),
+            value: await runtime.stageInput(resolveRespondValue(options)),
         });
         manifest.pendingInteractions = manifest.pendingInteractions.filter(item => item !== pending);
         manifest.status = 'running';
@@ -883,7 +891,7 @@ async function resolveInteractive(manifest: RunManifest, runtime: CliRuntime, st
             const value = request.kind === 'approval' ? /^(y|yes)$/i.test(answer.trim()) : answer;
             await runtime.kernel.respondInteraction(manifest.sessionId, request.taskId, {
                 interactionId: request.interactionId,
-                value,
+                value: await runtime.stageInput(value),
             });
             manifest.pendingInteractions.shift();
             manifest.status = 'running';

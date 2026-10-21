@@ -33,14 +33,14 @@ SQLite 在 WAL 模式下使用 FULL 会在每次提交增加同步写盘，NORMA
 | [app::State](../../tools/mindos-node/src/app/mod.rs) | 增加可选 SyncService 装配；管理独立准入、恢复和关闭 |
 | [配置模型](../../tools/mindos-node/src/config/model.rs) | 增加可选 sync 配置，缺省关闭，保持旧配置可解析 |
 | [export 初始化](../../tools/mindos-node/src/config/exports.rs) | 当前拒绝空 exports；仅在 sync 启用且 execution 关闭时允许纯同步实例使用空集合 |
-| [auth](../../tools/mindos-node/src/auth.rs) | 复用 Basic/Bearer 认证；把运行期 usize 身份映射为持久 principalId 和 namespace 授权 |
-| [operations](../../tools/mindos-node/src/operations/mod.rs) | 当前为 Mutex<HashMap>，保留一小时，重启后未知；只保留普通文件操作用途 |
+| [auth](../../tools/mindos-node/src/core/auth.rs) | 复用 Basic/Bearer 认证；把运行期 usize 身份映射为持久 principalId 和 namespace 授权 |
+| [operations](../../tools/mindos-node/src/plugin/files/operations/mod.rs) | 当前为 Mutex<HashMap>，保留一小时，重启后未知；只保留普通文件操作用途 |
 | [HTTP router](../../tools/mindos-node/src/http/mod.rs) | 增加独立 sync 子路由、对象流预算和结构化错误映射 |
 | [能力发现](../../tools/mindos-node/src/http/handlers/capabilities.rs) | 增加同步协议发现入口，仅在恢复和能力验收完成后开启 |
-| [文件 revision](../../tools/mindos-node/src/fs/revision.rs) | 不用于同步 generation 或内容标识 |
-| [workspace journal](../../tools/mindos-node/src/workspace/journal.rs) | 可参考写盘故障分类和存储锁思路，不复用租约模型或整份 JSON journal |
+| [文件 revision](../../tools/mindos-node/src/plugin/files/fs/revision.rs) | 不用于同步 generation 或内容标识 |
+| [workspace journal](../../tools/mindos-node/src/plugin/common/workspace/journal.rs) | 可参考写盘故障分类和存储锁思路，不复用租约模型或整份 JSON journal |
 | [main](../../tools/mindos-node/src/main.rs) | 启动时恢复同步存储，关闭时停止同步准入并等待持久提交 |
-| [sandbox](../../tools/mindos-node/src/process/sandbox.rs) | 当前使用 bubblewrap、授权目录 fd 及只读运行库挂载；补充同步根不可达检查和真实进程验收 |
+| [sandbox](../../tools/mindos-node/src/plugin/process/sandbox.rs) | 当前使用 bubblewrap、授权目录 fd 及只读运行库挂载；补充同步根不可达检查和真实进程验收 |
 
 已增加并锁定 rusqlite 0.31.0（bundled SQLite）；数据库连接与文件同步操作放在专用存储执行器或有界 blocking worker 中，不阻塞 Tokio 网络线程。
 
@@ -541,7 +541,7 @@ itookit 后续按同一协议接入。服务端完成不代表客户端基线、
 
 当前实现的 C4 架构、接口事件流、策略与机制边界及改进项见 [同步架构与代码评审](mindos-node-sync-architecture-review.md)。
 
-实现位于 [sync](../../tools/mindos-node/src/sync/mod.rs)，纯同步启动、现有认证、独立 JSON/对象流预算、CORS、能力发现与停机 drain 已接入原服务。默认 sync 关闭；生产构建默认不启用故障注入。
+实现位于 [sync](../../tools/mindos-node/src/plugin/sync/mod.rs)，纯同步启动、现有认证、独立 JSON/对象流预算、CORS、能力发现与停机 drain 已接入原服务。默认 sync 关闭；生产构建默认不启用故障注入。
 
 | 设计职责 | 实际交付 |
 | --- | --- |
@@ -560,7 +560,7 @@ changes 和重复 catalog 快照按保留窗口分批压缩；历史版本目录
 
 管理员支持同服务灾备恢复，保留 authorityId、更新 historyEpoch；另一个 authority 的克隆命令未在首版交付。项目时间点 checkpoint 和会话安全接续继续作为独立后续能力，当前 projectCheckpoint=false，opaqueBundle 不表示可继续旧运行。
 
-验收入口为 [同步测试](../../tools/mindos-node/tests/sync/main.rs)、[故障测试](../../tools/mindos-node/tests/sync/crash.rs)、[共享 fixture](../../tools/mindos-node/tests/sync/fixtures/manifests.json) 和 [真实 HTTP 脚本](../../tools/mindos-node/scripts/sync-smoke.py)。故障注入使用独立测试构建，涵盖提交、安装、GC、修复与恢复边界；不把这些证据等同于真实断电、磁盘控制器故障或 itookit 客户端同步验收。
+验收入口为 [同步测试](../../tools/mindos-node/src/plugin/sync/tests/integration/main.rs)、[故障测试](../../tools/mindos-node/src/plugin/sync/tests/integration/crash.rs)、[共享 fixture](../../tools/mindos-node/src/plugin/sync/tests/integration/fixtures/manifests.json) 和 [真实 HTTP 脚本](../../tools/mindos-node/scripts/sync-smoke.py)。故障注入使用独立测试构建，涵盖提交、安装、GC、修复与恢复边界；不把这些证据等同于真实断电、磁盘控制器故障或 itookit 客户端同步验收。
 
 ### 16.1 正确性评审修复
 
@@ -575,7 +575,7 @@ init.pending 续作先核对已有身份和存储证据，不能因数据库缺�
 
 ### 16.2 发现索引清理与测量驱动优化
 
-新增 [发现索引清理](../../tools/mindos-node/src/sync/compaction.rs) 和 [性能计量](../../tools/mindos-node/src/sync/metrics.rs)。纯策略 change_cutoff 计算回收边界，存储机制在同一事务更新项目 changeFloor、清理 changes 并保留 catalog 的成员边界快照。默认 changes 保留 7 天，另加一个完整 cursor TTL；每批最多删除 2000 行发现索引。分页续读保留原期限，落后于边界的读取、ACK 和 activate 明确返回 CURSOR_EXPIRED，全量对账后重新接入。缺失可靠事件时间的旧数据保守阻止清理。
+新增 [发现索引清理](../../tools/mindos-node/src/plugin/sync/compaction.rs) 和 [性能计量](../../tools/mindos-node/src/plugin/sync/metrics.rs)。纯策略 change_cutoff 计算回收边界，存储机制在同一事务更新项目 changeFloor、清理 changes 并保留 catalog 的成员边界快照。默认 changes 保留 7 天，另加一个完整 cursor TTL；每批最多删除 2000 行发现索引。分页续读保留原期限，落后于边界的读取、ACK 和 activate 明确返回 CURSOR_EXPIRED，全量对账后重新接入。缺失可靠事件时间的旧数据保守阻止清理。
 
 历史恢复目录、删除成员身份和防重放操作身份独立保留，不因 changes 到期丢失。单节点仍存在元数据增长上限；这次未改变永久身份契约，也未承诺无限历史审计或数据库物理压缩。
 

@@ -9,6 +9,8 @@ import { createCertificates } from '@itookit/node-host/http';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { HttpViewClient, SnapshotCache, ViewExpiredError } from '@itookit/app-transport/http';
 import { authenticatedFetch, close, secureServers } from './tls-fixture';
+import { InputAssetCommand } from '@itookit/app-contracts';
+import { validFlowImages } from '@itookit/llm-flow/contracts';
 
 let certificateRoot: string, certificates: string, directory: string, backend: LocalFSBackend;
 let api: Awaited<ReturnType<typeof createApplicationApi>>, server: Awaited<ReturnType<typeof secureServers>>, auth: Awaited<ReturnType<typeof authenticatedFetch>>;
@@ -25,6 +27,19 @@ beforeEach(async () => {
 });
 afterEach(async () => { await Promise.all(clients.splice(0).map(client => client.close())); await api.close(); auth.close(); await close(server.server); await backend.close(); await rm(directory, { recursive: true, force: true }); });
 async function client(id: string) { const peer = new HttpViewClient(id, server.origin + '/api/application', auth.fetcher); clients.push(peer); return peer.start(); }
+it('keeps staged image references valid across the authenticated command transport', async () => {
+    const root = await client('image-upload');
+    const url = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aO9sAAAAASUVORK5CYII=';
+    const asset = await root.services.commandBus.execute(InputAssetCommand.Import, {url});
+    expect(validFlowImages([{type: 'image', source: {type: 'asset', asset}}], {mimeTypes: ['image/png']})).toBe(true);
+    expect(await root.services.commandBus.execute(InputAssetCommand.Read, {reference: asset})).toBe(url);
+    expect(auditEvents).toContainEqual(expect.objectContaining({event: 'application.complete', rpcCommands: [InputAssetCommand.Import],
+        rpcErrorCount: 0, uploads: [{mimeType: 'image/png', bytes: (asset as {bytes: number}).bytes}]}));
+    await expect(root.services.commandBus.execute(InputAssetCommand.Import, {url: 'data:image/svg+xml;base64,AQID'})).rejects.toMatchObject({code: 'INPUT_ASSET_FORMAT'});
+    expect(auditEvents).toContainEqual(expect.objectContaining({event: 'application.complete', rpcCommands: [InputAssetCommand.Import],
+        rpcErrorCount: 1, rpcErrorCodes: ['INPUT_ASSET_FORMAT']}));
+    expect(JSON.stringify(auditEvents)).not.toContain(url); expect(JSON.stringify(auditEvents)).not.toContain('AQID');
+});
 it('uses one authenticated application transport for user files and backend commands', async () => {
     const root = await client('reader'), fs = await root.services.vfs.openFileSystem('/home/admin/minds');
     const file = await fs.driver.createFile({ name: 'http.md', parentPath: '/' }); await fs.driver.writeContent(file.path, '# HTTP');

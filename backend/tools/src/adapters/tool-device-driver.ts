@@ -72,6 +72,10 @@ function toolDefinitionFromTool(tool: Tool): ToolDefinition {
 // ── Driver ──
 
 export class ToolDeviceDriver implements IDeviceDriver, IToolService {
+  private assetStore?: import('../contracts').TaskAssetStore;
+  setAssetStore(store: import('../contracts').TaskAssetStore): void { this.assetStore = store; }
+  private assetReader?: import('../contracts').TaskAssetReader;
+  setAssetReader(reader: import('../contracts').TaskAssetReader): void { this.assetReader = reader; }
   readonly handlerId = 'tools';
   readonly description = 'Built-in tool execution device';
   readonly writable = false;
@@ -230,9 +234,22 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
 
   private invocationContext(request: ToolInvokeRequest, timeoutMs: number, controller: AbortController): ToolUseContext {
     const appState = this.sessionAppState;
+    const identity = () => {
+      if (!request.executionIdentity) throw new Error('Task asset access requires execution identity');
+      return request.executionIdentity;
+    };
     return {
       cwd: request.cwd ?? this.fileCwd ?? (typeof process !== 'undefined' ? process.cwd() : '/'),
       signal: controller.signal, timeoutMs, vfs: this.vfsContext, shell: this.shellContext,
+      ...(this.assetReader ? { readAsset: (reference: import('../contracts').BinaryAssetReference) => {
+        if (!request.executionIdentity) throw new Error('Task asset access requires execution identity');
+        return this.assetReader!(reference, request.executionIdentity);
+      } } : {}),
+      ...(this.assetStore ? {
+        writeAsset: (data: Uint8Array, mime: string) => this.assetStore!.write(data, mime, identity(), controller.signal),
+        getAssetRecord: (key: string) => this.assetStore!.getRecord(key, identity()),
+        putAssetRecord: (key: string, value: unknown) => this.assetStore!.putRecord(key, value, identity(), controller.signal),
+      } : {}),
       onProgress: request.onProgress, operationId: request.executionIdentity?.operationId, executionIdentity: request.executionIdentity,
       abortController: controller, appState,
       setAppState: (key, value) => { appState[key] = value; },

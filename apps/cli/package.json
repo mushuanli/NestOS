@@ -33,7 +33,8 @@
     "@itookit/mindos-node-driver": "workspace:*",
     "@itookit/node-host": "workspace:*",
     "@itookit/app-transport": "workspace:*",
-    "@itookit/app-contracts": "workspace:*"
+    "@itookit/app-contracts": "workspace:*",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

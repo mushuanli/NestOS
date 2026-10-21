@@ -216,6 +216,18 @@
     flex: 1;
     display: flex;
     gap: 4px;
+    min-width: 0;
+}
+
+.settings-model-item__identity { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto; align-items: center; gap: 6px; }
+.settings-model-item__identity input { min-width: 0; box-sizing: border-box; }
+.settings-model-item__capabilities { display: inline-flex; flex-wrap: nowrap; align-items: center; gap: 3px; white-space: nowrap; }
+.settings-model-item__capabilities .model-cap-badge { flex: 0 0 auto; }
+@media (max-width: 600px) {
+    .settings-model-item { gap: 4px; }
+    .settings-model-item__identity { grid-template-columns: minmax(0, 1fr) auto; }
+    .settings-model-item__identity .model-id-input { grid-column: 1 / -1; }
+    .settings-model-item__capabilities .model-cap-badge { padding: 2px 3px !important; }
 }
 
 .settings-input-sm {

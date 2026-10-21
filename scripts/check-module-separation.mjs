@@ -55,7 +55,7 @@ function contractErrors(roots, role, root) {
 }
 
 export function directoryErrors(root = repository) {
-    const groups = new Map([...frontend.map(name => [name, ['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui'].includes(name) ? 'libraries' : 'ui']), ...backend.map(name => [name, 'backend']), ...shared.map(name => [name, 'shared'])]);
+    const groups = new Map([...frontend.map(name => [name, ['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui'].includes(name) ? 'libraries' : 'ui']), ...backend.map(name => [name, ['durable-kernel', 'device-tty'].includes(name) ? 'libraries' : 'backend']), ...shared.map(name => [name, 'shared'])]);
     const legacy = resolve(root, 'packages');
     const misplaced = existsSync(legacy) ? readdirSync(legacy).filter(name => existsSync(resolve(legacy, name, 'package.json'))) : [];
     return [...misplaced.map(name => `packages/${name} must move to ui/, backend/, shared/ or apps/`), ...workspacePackages(root).flatMap(pkg => {
@@ -78,14 +78,18 @@ export function moduleRole(path, root = repository) {
     if (file.startsWith('apps/node-host/src/')) return 'backend';
     if (file.startsWith('apps/http-app/src/client/')) return 'frontend';
     if (file.startsWith('apps/http-app/src/server/') || file.startsWith('apps/web-app/src/storage/') || file.startsWith('apps/cli/src/')) return 'backend';
-    const match = /^(ui|backend|shared|packages|libraries)\/([^/]+)\/src\/(.*)$/.exec(file);
+    const match = /^(ui|backend|shared|packages|libraries|tools)\/([^/]+)\/src\/(.*)$/.exec(file);
     if (!match) return undefined;
     const [, group, name, tail] = match;
     if (group === 'ui') return 'frontend';
     if (group === 'shared') return 'shared';
+    if (group === 'tools') return name === 'image-tools' && tail === 'browser.ts' ? 'host' : tail === 'contract.ts' ? 'shared' : 'backend';
     if (group === 'libraries') {
+        if (name === 'image-parser' && /^(processing|policy|validation|contracts)\.ts$/.test(tail)) return 'shared';
         if (['vfs-ui', 'image-parser', 'mdxeditor', 'llm-ui'].includes(name)) return 'frontend';
         if (name === 'vfs-core') return 'shared';
+        if (name === 'durable-kernel') return tail === 'contracts.ts' ? 'shared' : 'backend';
+        if (name === 'device-tty') return tail === 'contracts.ts' ? 'shared' : 'backend';
         if (name === 'driver-llm' && (tail === 'contracts.ts' || tail.startsWith('types/'))) return 'shared';
         if (['driver-llm', 'mindos-node-driver', 'vfs-sync'].includes(name) || name.startsWith('vfsdriver-')) return 'backend';
         return undefined;
@@ -134,7 +138,7 @@ export function separationErrors(root = repository) {
     for (const [role, forbidden] of [['frontend', 'backend'], ['backend', 'frontend'], ['shared', 'backend']]) {
         const roots = workspacePackages(root)
             .filter(pkg => moduleRole(resolve(pkg.directory, 'src/index.ts'), root) === role)
-            .flatMap(pkg => sourceFiles(resolve(pkg.directory, 'src')));
+            .flatMap(pkg => sourceFiles(resolve(pkg.directory, 'src')).filter(file => moduleRole(file, root) !== 'host'));
         if (role === 'frontend') roots.push(...sourceFiles(resolve(root, 'apps/http-app/src/client')));
         if (role === 'backend') roots.push(...sourceFiles(resolve(root, 'apps/http-app/src/server')), ...sourceFiles(resolve(root, 'apps/cli/src')));
         errors.push(...contractErrors(roots, role, root));

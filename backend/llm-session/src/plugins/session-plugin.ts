@@ -31,6 +31,7 @@ export function createSessionPlugin(sessionManager: SessionManager): ILLMPlugin 
                     connectionId?: string;
                     connectionBindings?: Record<string, string>;
                 };
+                await ctx.commands.execute(SessionCommand.CheckFlowConnections, {flowId, revision, connectionId, connectionBindings});
                 const created = await sm.createSessionFromFlow(
                     flowId,
                     revision,

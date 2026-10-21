@@ -85,6 +85,8 @@ export class RunStore {
 export function selectFinalResult(output: unknown, taskId: string, outputName: string): unknown {
     const node = record(record(output).nodes)[taskId];
     if (node === undefined) return undefined;
+    if (outputName === '*') return Object.fromEntries(Object.keys(record(record(node).outputs))
+        .map(name => [name, extractNodeOutput(node, name)]));
     return extractNodeOutput(node, outputName);
 }
 

@@ -150,7 +150,8 @@ export interface SessionBrowserPort extends VfsContracts.FileSystemSourceOwner {
         node: FSNode;
         nodes: FSNode[];
     }>;
-    invalidateNavigation: () => Promise<void>;
+    /** Explicit refresh includes activity; structural notifications may retain unaffected summaries. */
+    invalidateNavigation: (options?: {activity?: boolean}) => Promise<void>;
     /** Per-view conversation filter; files and favorites retain their normal projection. */
     setSessionFilter?(agentId?: string): Promise<void>;
 }

@@ -6,11 +6,11 @@
 
 简化审查：面向日常使用的三对象模型、精简 API、状态/统计和 SeqFile/普通文件边界见 [简化核心提案](durable-harness-core.md)。该提案收敛公共概念和首版范围；本文保留恢复正确性的详细约束，不要求调用方手工管理所有内部记录。
 
-本文定义支持长时间、可交互、可跨进程恢复 harness 的目标协议。它补充并修订 [原 Session/Task 设计](../feat/harness-session-task-final-design.md)，不代表当前 `backend/durable-kernel` 已具备这些行为。生命周期、重试、mailbox、共享等待和跨 Session 协作发生冲突时，以本文为目标设计；源码是当前已实现 API 的依据。
+本文定义支持长时间、可交互、可跨进程恢复 harness 的目标协议。它补充并修订 [原 Session/Task 设计](../feat/harness-session-task-final-design.md)，不代表当前 `libraries/durable-kernel` 已具备这些行为。生命周期、重试、mailbox、共享等待和跨 Session 协作发生冲突时，以本文为目标设计；源码是当前已实现 API 的依据。
 
 ## 当前控制与恢复基线（2026-09-08）
 
-接口以 [domain/types.ts](../../backend/durable-kernel/src/domain/types.ts)、[Kernel](../../backend/durable-kernel/src/application/kernel.ts) 和 [SeqFile store](../../backend/durable-kernel/src/infrastructure/seqfile/store.ts) 为准。后续编号章节仍是完整目标约束，不是当前字段列表。
+接口以 [domain/types.ts](../../libraries/durable-kernel/src/domain/types.ts)、[Kernel](../../libraries/durable-kernel/src/application/kernel.ts) 和 [SeqFile store](../../libraries/durable-kernel/src/infrastructure/seqfile/store.ts) 为准。后续编号章节仍是完整目标约束，不是当前字段列表。
 
 - TaskStatus 当前没有 `paused/finalizing`，暂停由 `control.mode=run/pause/interrupt`、epoch 和 acknowledged 独立表达；取消走单独的终态操作。TaskControlOptions 有 requestId、可选 expectedEpoch/reason，不能把目标表中的 actorRef、propagation cursor 等字段当作已实现接口。
 - Kernel 默认 `pollMs=0`，由提交唤醒和截止期定时器驱动；正 pollMs 是可选周期检查。nextWakeDelay 检查持久 timer、readyAt、Task/Effect lease、outbox 重试和资源期限。当前每次仍枚举 Task 来求期限，并非所有调度扫描都已有游标分页。
@@ -19,7 +19,7 @@
 - WaitSpec 当前支持 signal/effect/task/child/interaction/shared-version/timer/message/cache/resource 及 any/all/quorum；完整 Endpoint、业务 stream、通用 deadline WaitSet、跨 authority transport 和迁移器仍不是这些类型的现成功能。Shared revision 和选定输入已有持久恢复路径。
 - 观察查询现在包含 listSessionTaskPage、taskHistoryPage、taskEventPage，浏览主视图已经接入；分页上界、Task 当前状态与不可变版本的差别、旧派生索引补建成本见 [浏览设计](vfs-session-browser.md)。eventList、部分 mailbox/恢复扫描仍全量，不能据此宣称 §13 的所有分页已完成。
 
-自动故障场景见 [protocol.test.ts](../../backend/durable-kernel/src/protocol.test.ts)。独立 OS 进程/LocalFS SQLite 验证见 [20-kernel-ipc.test.ts](../../apps/cli/tests/20-kernel-ipc.test.ts)：两种挂载模式下覆盖 SIGKILL 后显式接管、带重试预算的自然到期恢复、多文件事务回滚、等待唤醒竞争、资源清理、single-use Cache 回执及父取消落盘后后代清理前的崩溃恢复。当前该文件共 28 项通过。无周期轮询的到期恢复依赖已登记的期限；这不证明完全空闲 worker 能收到另一个进程任意时刻的新提交，跨进程 notifier/主动唤醒或可选 pollMs 仍属宿主部署条件。现有场景不等于全部 §15 kill 矩阵、跨主机时钟或 GUI 人工验收。
+自动故障场景见 [protocol.test.ts](../../libraries/durable-kernel/src/protocol.test.ts)。独立 OS 进程/LocalFS SQLite 验证见 [20-kernel-ipc.test.ts](../../libraries/durable-kernel/tests/ipc.test.ts)：两种挂载模式下覆盖 SIGKILL 后显式接管、带重试预算的自然到期恢复、多文件事务回滚、等待唤醒竞争、资源清理、single-use Cache 回执及父取消落盘后后代清理前的崩溃恢复。当前该文件共 34 项通过。无周期轮询的到期恢复依赖已登记的期限；这不证明完全空闲 worker 能收到另一个进程任意时刻的新提交，跨进程 notifier/主动唤醒或可选 pollMs 仍属宿主部署条件。现有场景不等于全部 §15 kill 矩阵、跨主机时钟或 GUI 人工验收。
 
 ### 初始信号与启动
 

@@ -158,9 +158,6 @@ export const ChatInputTemplates = {
                 <span class="llm-input__reasoning-wrapper">
                     <select class="llm-input__reasoning-select" title="${t('thinking.effort.label')}">
                         <option value="auto" selected>${t('thinking.effort.auto')}</option>
-                        <option value="low">${t('thinking.effort.low')}</option>
-                        <option value="medium">${t('thinking.effort.medium')}</option>
-                        <option value="xhigh">${t('thinking.effort.xhigh')}</option>
                     </select>
                 </span>
             </div>

@@ -1,3 +1,4 @@
+import { FlowLibraryCommand } from '@itookit/app-contracts';
 import { createMindosFlowLibrary } from '@itookit/app-core';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -16,6 +17,7 @@ function fixture() {
     const revision = { ...draft, revision: 2 };
     const execute = vi.fn(async (command: string) => {
         if (command === SessionCommand.GetConnections) return { connections: [{ id: 'run-model', name: 'Run model', providerId: 'p' }] };
+        if (command === SessionCommand.CheckFlowConnections) return {valid: true};
         if (command === FlowCommand.DraftLoad) return draft;
         if (command === FlowCommand.RevisionGet) return revision;
         if (command === FlowCommand.RevisionCreate) return { revision };
@@ -63,7 +65,8 @@ describe('Flow file launch', () => {
     it('offers Run only on .flow files and keeps existing menu actions', () => {
         const menu = createFlowContextMenuConfig(fixture());
         const defaults = [{ id: 'rename', label: 'Rename' }];
-        expect(menu.items!({ id: '/essay.flow', type: 'file' }, defaults).map(item => item.id)).toContain('flow:run');
+        expect(menu.items!({ id: '/essay.flow', type: 'file' }, defaults).map(item => item.id)).toEqual(['flow:run', undefined, 'rename']);
+        expect(menu.items!({ id: '/essay.flow', type: 'file' }, []).map(item => item.id)).toEqual(['flow:run']);
         expect(menu.items!({ id: '/essay.flow', type: 'directory' }, defaults)).toEqual(defaults);
         expect(menu.items!({ id: '/essay.md', type: 'file' }, defaults)).toEqual(defaults);
     });
@@ -162,6 +165,7 @@ describe('Flow parameter form', () => {
         expect(slot.value).toBe('missing'); expect(slot.textContent).toContain('missing');
         slot.value = ''; submit();
         expect(document.querySelector('dialog')!.open).toBe(true);
+        expect(document.querySelector('[data-form-error]')!.textContent).toBe('请选择模型连接：required');
         expect(connection.onChange).not.toHaveBeenCalled();
         slot.value = 'missing'; submit();
         expect(document.querySelector('[data-form-error]')!.textContent).toContain('missing');
@@ -238,15 +242,17 @@ it('restores the builtin library from System Recovery without duplicate requests
 it('offers explicit restore on the Flow directory and sends the dedicated restore command', async () => {
     const f = fixture();
     f.execute.mockImplementation(async command => {
-        expect(command).toBe(FlowCommand.DraftRestore);
-        return { id: 'restored' } as never;
+        expect(command).toBe(FlowLibraryCommand.Restore);
+        return 4 as never;
     });
-    const menu = createFlowContextMenuConfig({ ...f, library: createMindosFlowLibrary() });
+    const library = createMindosFlowLibrary();
+    const menu = createFlowContextMenuConfig({ ...f, library });
     const directory = { id: '/@flows', type: 'directory' as const };
     const action = menu.items!(directory, []).find(item => 'id' in item && item.id === 'flow:restore');
     expect(action).toBeDefined();
     await (action as any).onClick(directory);
     expect(f.execute).toHaveBeenCalledTimes(1);
+    expect(f.execute).toHaveBeenCalledWith(FlowLibraryCommand.Restore, { templates: library });
 });
 
 it('keeps parameter bindings editable in numeric node fields and supports multiline reviewer instructions', async () => {
@@ -327,4 +333,50 @@ it('does not offer template restoration without a host catalog', () => {
     const menu = createFlowContextMenuConfig(f);
     expect(menu.items!({ id: '/@flows', type: 'directory' }, [])).toEqual([]);
     expect(f.execute).not.toHaveBeenCalled();
+});
+
+it('uploads multiple Flow images as durable values and preserves them when reopening the form', async () => {
+    const fields = [{ name: 'images', type: 'json' as const, widget: 'images' as const, required: true }];
+    const result = promptFlowParameters(fields);
+    const picker = document.querySelector<HTMLInputElement>('[data-image-picker]')!;
+    Object.defineProperty(picker, 'files', { value: [new File(['picture'], 'page.png', { type: 'image/png' }),
+        new File(['page-two'], 'page.jpg', { type: 'image/jpeg' })] });
+    picker.dispatchEvent(new Event('change'));
+    submit();
+    const values = await result;
+    expect(values!.images).toEqual([{ type: 'image_url', image_url: { url: 'data:image/png;base64,cGljdHVyZQ==' } }, { type: 'image_url', image_url: { url: 'data:image/jpeg;base64,cGFnZS10d28=' } }]);
+    const reopened = promptFlowParameters([{ ...fields[0], default: values!.images }]);
+    await vi.waitFor(() => expect(document.querySelectorAll('[data-image-preview] img')).toHaveLength(2));
+    submit(); expect(await reopened).toEqual(values);
+});
+
+it('keeps unsupported images out of Flow submissions and allows replacement', async () => {
+    const commit = vi.fn(async () => {});
+    const result = promptFlowParameters([{ name: 'images', type: 'json', widget: 'images', required: true, imageConstraints: { mimeTypes: ['image/png', 'image/webp'] } }], undefined, commit);
+    const picker = document.querySelector<HTMLInputElement>('[data-image-picker]')!;
+    Object.defineProperty(picker, 'files', { configurable: true, value: [new File(['bad'], 'script.svg', { type: 'image/svg+xml' })] });
+    picker.dispatchEvent(new Event('change')); submit();
+    await vi.waitFor(() => expect(document.querySelector('[data-form-error]')!.textContent).not.toBe(''));
+    expect(commit).not.toHaveBeenCalled();
+    Object.defineProperty(picker, 'files', { configurable: true, value: [new File(['good'], 'photo.webp', { type: 'image/webp' })] });
+    picker.dispatchEvent(new Event('change')); submit();
+    expect((await result)!.images).toEqual([{ type: 'image_url', image_url: { url: 'data:image/webp;base64,Z29vZA==' } }]);
+    expect(commit).toHaveBeenCalledTimes(1);
+});
+
+it('honors workflow-specific image limits and preserves them in the settings editor', async () => {
+    const limits = { maxItems: 5, maxBytes: 100, mimeTypes: ['image/gif'] };
+    const parameter = { name: 'images', label: 'Pages', type: 'json' as const, widget: 'images' as const, imageConstraints: limits, required: true };
+    const result = promptFlowParameters([parameter]);
+    const picker = document.querySelector<HTMLInputElement>('[data-image-picker]')!;
+    expect(picker.accept).toBe('image/gif');
+    Object.defineProperty(picker, 'files', { value: Array.from({ length: 5 }, (_, i) => new File(['gif'], `${i}.gif`, { type: 'image/gif' })) });
+    picker.dispatchEvent(new Event('change')); submit();
+    expect((await result)!.images).toHaveLength(5);
+    const { openFlowSettings } = await import('../../llm-ui-adapter/src/components/dag/FlowSettingsDialog');
+    const settings = openFlowSettings({ connections: [], parameters: [parameter], availableConnections: [] });
+    const dialog = document.querySelector<HTMLDialogElement>('dialog')!;
+    dialog.querySelector<HTMLInputElement>('[data-param-images]')!.value = JSON.stringify({ ...limits, maxItems: 8 });
+    dialog.returnValue = 'save'; dialog.close();
+    expect((await settings)!.parameters[0]).toMatchObject({ widget: 'images', label: 'Pages', imageConstraints: { ...limits, maxItems: 8 } });
 });

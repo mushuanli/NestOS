@@ -1,6 +1,6 @@
 # 跨包接口契约
 
-调用方只依赖接口，不依赖实现。契约按能力归属：driver-llm/contracts（模型通信与服务端口）、llm-context（领域消息与上下文）、tools/contracts（Tool/TTY 执行）、vfs-core（文件系统）；llm-tasks/contracts、llm-flow/contracts 和 llm-session/contracts 分别承载执行、编排与会话契约；kernel-adapters/contracts 承载配置管理与定价；common 不再转发 LLM 契约。
+调用方只依赖接口，不依赖实现。契约按能力归属：driver-llm/contracts（模型通信与服务端口）、llm-context（领域消息与上下文）、tools/contracts（Tool 执行）、device-tty/contracts（TTY 接口，tools/contracts 保留兼容类型导出）、vfs-core（文件系统）；llm-tasks/contracts、llm-flow/contracts 和 llm-session/contracts 分别承载执行、编排与会话契约；kernel-adapters/contracts 承载配置管理与定价；common 不再转发 LLM 契约。
 
 独立 `@itookit/llm-ui` 的 ChatOptions/ConversationSource/ConversationActions/OperationLedger 定义于 [contracts.ts](../libraries/llm-ui/src/contracts.ts)，FlowSource/FlowActions 定义于 [flow-contracts.ts](../libraries/llm-ui/src/flow-contracts.ts)。两者只依赖展示数据与 mdxeditor；MindOS 接线位于 `llm-ui-adapter/independent`，原工厂兼容入口迁至适配包。Flow 通过 `features.flow` 与 `setFlowEnabled` 控制，默认关闭。
 
@@ -44,7 +44,7 @@
 | `LLMProvider.supportedProtocols/defaultProtocol/modelsPath`、`LLMModel.preferredProtocol` | Provider 协议集合与默认、模型目录覆盖、模型首选；连接显式协议优先 | `https://github.com/mushuanli/driver-llm/blob/main/src/types/connection.ts`、`https://github.com/mushuanli/driver-llm/blob/main/src/types/protocol.ts` | `driver-llm` registry / Driver / `.llm` 转换 | Provider / Connection 设置页 |
 | `LLMProvider.capabilities.serverSideWebSearch` | 服务端内置联网搜索能力（唯一事实源） | `https://github.com/mushuanli/driver-llm/blob/main/src/types/connection.ts` | `kernel-adapters/src/llm-management/constants/providers.ts` | `resolveWebSearchStrategy` |
 | `ToolCall` / `ToolDefinition` | `id/name/arguments` | `https://github.com/mushuanli/driver-llm/blob/main/src/types/message.ts` | driver-llm | 宿主通信适配 |
-| `ToolInvokeResult` | `success/output/durationMs`；可选 `data/errorCode/recoverable/truncated` | `tools/src/contracts/tool-types.ts` | `tools`、`kernel-adapters` | `llm-tasks`：显式 recoverable 失败反馈模型，其余失败终止任务 |
+| `ToolInvokeResult` | `success/output/durationMs`；可选 `data/errorCode/recoverable/truncated` | `backend/tools/src/contracts/tool-types.ts` | `tools`、`kernel-adapters` | `llm-tasks`：显式 recoverable 失败反馈模型，其余失败终止任务 |
 | `DagNodeDefinition/DagEdgeDefinition/DagRunSpec/DagNodeOutcome` | `id/plugin/config/outputs/effects` | `llm-flow/src/contracts/dag-plugin.ts` | `llm-flow` | `llm-session`、`cli` |
 | `FlowDraft/FlowRevision/FlowNodeDefinition` | `nodes/edges/layout` | `llm-flow/src/contracts/flow-definition.ts` | `llm-flow FlowDefinitionStore` | `llm-ui`、`llm-session` |
 | `SerializableExpression` | `kind: eq/neq/in/and/or/not/…` | `llm-flow/src/contracts/flow-definition.ts` | `llm-flow operations` | `cli` 编译路由条件 |

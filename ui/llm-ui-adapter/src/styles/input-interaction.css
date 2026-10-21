@@ -1,3 +1,5 @@
+@import '@itookit/llm-ui/style.css';
+
 .llm-input__interaction {
     padding: 14px;
     margin: 10px 10px 0;
@@ -63,3 +65,18 @@
 .llm-input__interaction-choice:hover { background: var(--llm-bg-hover); }
 .llm-input__interaction button:disabled { opacity: 0.6; cursor: wait; }
 .llm-input__interaction :focus-visible { outline: 2px solid var(--llm-color-primary); outline-offset: 2px; }
+
+.llm-input__interaction--questions {
+    --llm-chat-border: var(--llm-border-color);
+    box-sizing: border-box;
+    max-width: calc(100% - 20px);
+}
+.llm-input__interaction--questions h3 { margin: 0 0 8px; }
+.llm-input__interaction--questions legend { white-space: pre-wrap; }
+.llm-input__interaction--questions .llm-chat__error:empty { display: none; }
+.llm-input__interaction--questions button[type="submit"] {
+    background: var(--llm-color-primary);
+    border-color: var(--llm-color-primary);
+    color: #fff;
+    margin-left: auto;
+}

@@ -17,7 +17,7 @@
 
 ## 外部业务扩展与通用机制
 
-新增非通用业务通过外部工具包与 Flow 定义接入。以 [Anki 方案](anki-flow.md)为例，卡片字段、提示词、补缺/覆盖规则、模板、打包代码和业务回执都由外部包拥有，不放入 app-core、通用 tools、kernel-adapters 或 HTTP 宿主。
+新增非通用业务通过外部工具包与 Flow 定义接入。以 [Anki 方案](anki-flow.md)为例，确定性补缺/覆盖规则、卡片模板、打包代码和业务回执由独立 `tools/anki-cli` Rust 仓库拥有。其 Flow 在应用预设保留声明副本，接入已有安装和恢复机制；Node 宿主按配置加载通用外部 Tool 工厂。平台只新增同 Flow Task 资产读取、授权二进制文件 I/O 等通用端口，不解释卡片字段，不包含 Anki 专用执行分支。
 
 平台提供确定性 Tool 节点、注册/发现、版本与连接绑定、Schema、权限、取消、持久执行、恢复分派及通用资产/资源导入。Tool 同时可由 Flow 和 Agent 调用，不等同于模型自主选择的调用入口。核心通过契约分派到外部实现，不按具体工具名增加业务分支；HTTP 等宿主限制由外部清单声明，平台负责通用校验。
 
@@ -35,7 +35,7 @@ C4Component
         Component(session, "会话与连接准入", "backend/llm-session", "调用身份、连接绑定、能力校验与快照")
         Component(flow, "图编排", "backend/llm-flow", "解释声明图、构造任务、统一能力启动")
         Component(program, "持久程序", "backend/llm-tasks + kernel-adapters/programs", "Agent、Tool、媒体状态机")
-        Component(kernel, "持久执行", "backend/durable-kernel", "授权句柄、日志、调度、取消与恢复")
+        Component(kernel, "持久执行", "libraries/durable-kernel", "授权句柄、日志、调度、取消与恢复")
         Component(adapter, "能力适配", "backend/kernel-adapters/effects", "模型通信、工具分派、媒体回执与资产")
         Component(tools, "工具契约与注册", "backend/tools", "版本、Schema、受限上下文、invoke/reconcile")
     }
@@ -125,3 +125,5 @@ app-settings 仍属于应用功能包；apps/demo 是使用部分历史 API 的 
 原生适配器拥有计量协议的解释、恢复与去重；价格和供应商默认价不进入 mindos-node 或 mindos-node-driver。定价解析和算术位于 kernel-adapters 的纯 contracts 入口，模型目录与默认金额只通过产品 presets 或用户配置提供。app-core 在装配时注入估算器，按会话 revision 缓存估算并随定价快照失效；没有估算器时仍可浏览和操作会话。
 
 远程原生历史估算与本地已入账调用是不同来源：展示携带 transcript 范围和估算标识，不把含继承历史的分支估算累计进费用账本。前端不选择价格、不猜模型归属，也不依赖原生协议或日志文件。
+
+Flow 库恢复时是否发布修订属于应用策略，由 app-core/presets/restore-flows.ts 显式协调；核心 DraftRestore 保持只恢复草稿。图片上传限制由字段声明，Agent 使用标准多模态消息内容契约，声明模板与历史快照分开处理。

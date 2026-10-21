@@ -41,8 +41,8 @@
 | [SessionFilesService](../../backend/app-core/src/vfs/session-files.ts) | 授权 revision、cwd、派生视图撤销和挂载守卫；该 revision 不代表目录内容版本 |
 | [HTTP capabilities](https://github.com/mushuanli/mindos-node-driver/blob/main/src/files/capabilities.ts) | 客户端目前只解析 sync.push；需要独立读取 /v1/sync/capabilities，不能由一个布尔值推导同步保证 |
 | [HttpFSBackend](https://github.com/mushuanli/mindos-node-driver/blob/main/src/files/backend.ts) | 条件替换、Range 读取、操作结果查询；删除和重命名目前没有相同的版本条件 |
-| [mindos-node revision](../../tools/mindos-node/src/fs/revision.rs) | 服务生命周期内的文件身份凭证，不能作为内容摘要；命令后会使凭证失效 |
-| [mindos-node router](../../tools/mindos-node/src/http/mod.rs) 与 [同步传输](../../tools/mindos-node/src/sync/transport.rs) | 已有 /v1/sync 的项目、数据集、对象、发布、catalog、changes、回执、历史及恢复接口；同一实例可同时提供普通 export 与同步存储 |
+| [mindos-node revision](../../tools/mindos-node/src/plugin/files/fs/revision.rs) | 服务生命周期内的文件身份凭证，不能作为内容摘要；命令后会使凭证失效 |
+| [mindos-node router](../../tools/mindos-node/src/http/mod.rs) 与 [同步传输](../../tools/mindos-node/src/plugin/sync/transport.rs) | 已有 /v1/sync 的项目、数据集、对象、发布、catalog、changes、回执、历史及恢复接口；同一实例可同时提供普通 export 与同步存储 |
 | [SessionBundle](../../backend/app-core/src/session/session-bundle.ts) | 格式版本、历史和附件交换；导入创建新身份，导出没有跨多个读取的快照边界 |
 | [RoundGraphService](../../backend/llm-session/src/persistence/round-graph-service.ts) | 已有历史父引用和分支 head；输出、状态、执行引用及删除标记仍可原地更新，Round ID 不是不可变内容身份 |
 | [SessionLeaseStore](../../backend/app-core/src/kernel/session-lease.ts) | 基于共享 SeqFile 事务的单写者租约；复制租约记录不能实现跨副本互斥 |
@@ -472,7 +472,7 @@ CLI 非交互模式默认停止需要选择的项，独立项可完成；输出�
 
 ## 14 mindos-node 协议与能力
 
-以下以当前 mindos-node 已实现协议为接入基准，具体请求字段见 [服务端使用说明](../../tools/mindos-node/doc/sync.md) 和 [同步传输实现](../../tools/mindos-node/src/sync/transport.rs)。不能把这些操作隐藏在现有 content 写入中。
+以下以当前 mindos-node 已实现协议为接入基准，具体请求字段见 [服务端使用说明](../../tools/mindos-node/doc/sync.md) 和 [同步传输实现](../../tools/mindos-node/src/plugin/sync/transport.rs)。不能把这些操作隐藏在现有 content 写入中。
 
 | API | 作用 |
 | --- | --- |

@@ -81,3 +81,7 @@ GraphRetryController 在同次消费中对每个 requestId 只执行一次内存
 FlowRunLifecycle 接收宿主工作区 manager、已 fencing 的 Session 和租约；清理先确认任务停止及能力释放，detached drain 保持调度所有权。公共 workspace 类型与 workspaceLeaseKey 定义移入 run-lifecycle，其中 workspace 类型继续从原 executor/root 入口导出，lease key 继续仅从源码 executor 入口转发，内部组件不新增根 API。
 
 FlowScheduler 消费显式运行状态与提交、预算、Hook、checkpoint 端口；保留控制组并发、交互等待、生产者校验和补偿顺序。lease 失权或宿主关闭仅解除本地调度，不将 Run 标成失败。外部图效果整批解码后才修改图；重试队列和持久 checkpoint 在恢复前检查结构，未知插件配置仍归插件校验。
+
+图片字段通过 imageConstraints 声明可选数量、总字节和 MIME 限制，核心不固定上传策略。上传值使用 llm-context 的标准 image_url 内容块，Agent 的 messageTemplates 一次性渲染为 messages；已有 messages 保持字面快照，不重新解释历史数据。连接准入从消息内容及显式 requirements 校验模态。builtin.input.review 在初始值有效时也等待人工提交。子调用的 connectionBindings 显式映射父槽；动态 Tool 图通过 spawn.scope=local 使用当前子 Flow 命名空间，默认 run 保持旧图兼容。DraftRestore 只恢复草稿，是否发布由应用层显式协调。
+
+源码检查与发布锁定通过 flow/call-parameters.ts 校验 builtin.flow@2 的实参名称、必填项和字面约束；动态整值引用留到运行时校验，不用父参数或示例值补齐子流程缺参。草稿允许保存未完成调用并返回校验错误，安装/恢复只检查自身语法。旧版组合 Flow 保持既有参数继承行为。

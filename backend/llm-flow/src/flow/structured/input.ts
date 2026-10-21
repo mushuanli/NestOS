@@ -3,6 +3,7 @@ import type { Decision, DurableTaskProgram, TaskInputEvent } from '@itookit/dura
 import { collectDependency, dependenciesReady, dependencyWait } from '@itookit/llm-tasks';
 import type { FlowDependencyBinding } from '../programs';
 import { assertKey, object, outcome } from './value';
+import { validFlowImages, validImageConstraints } from '../../contracts/flow-images';
 
 export interface InputProgramInput extends FlowInputConfig {
     fields: Record<string, FlowInputField>;
@@ -23,7 +24,9 @@ export function validateFields(fields: Record<string, FlowInputField> | undefine
     for (const [key, field] of Object.entries(fields)) {
         assertKey(key);
         if (!['string', 'number', 'boolean', 'json'].includes(field.type)) throw new Error(`Invalid input type: ${key}`);
-        if (field.widget && !['text', 'textarea', 'number', 'select', 'checkbox'].includes(field.widget)) throw new Error(`Invalid input widget: ${key}`);
+        if (field.widget && !['text', 'textarea', 'number', 'select', 'checkbox', 'images'].includes(field.widget)) throw new Error(`Invalid input widget: ${key}`);
+        if (field.widget === 'images' && field.type !== 'json') throw new Error(`Images require json: ${key}`);
+        if (!validImageConstraints(field.imageConstraints)) throw new Error(`Invalid image constraints: ${key}`);
         if (field.widget === 'select' && !field.options?.length) throw new Error(`Select requires options: ${key}`);
         if (field.nonBlank && field.type !== 'string') throw new Error(`nonBlank requires string: ${key}`);
     }
@@ -33,6 +36,7 @@ export function invalidFields(fields: Record<string, FlowInputField>, values: Re
     return Object.entries(fields).filter(([key, field]) => {
         const value = values[key];
         if (value === undefined || value === null) return field.required !== false;
+        if (field.widget === 'images' && !validFlowImages(value, field.imageConstraints)) return true;
         if (field.type !== 'json' && typeof value !== field.type) return true;
         if (field.type === 'number' && (!Number.isFinite(value) || (field.minimum !== undefined && Number(value) < field.minimum) || (field.maximum !== undefined && Number(value) > field.maximum))) return true;
         if (field.options && !field.options.some(option => JSON.stringify(option) === JSON.stringify(value))) return true;
@@ -79,6 +83,7 @@ function advanceInput(state: InputState): Decision<InputState, unknown> {
         state.phase = 'input';
     }
     state.requested = invalidFields(state.fields, state.values);
+    if (state.review && state.sequence === 0) state.requested = Object.keys(state.fields);
     if (!state.requested.length) return { state, next: { type: 'complete', output: outcome(state.values) } };
     return askInput(state, true);
 }

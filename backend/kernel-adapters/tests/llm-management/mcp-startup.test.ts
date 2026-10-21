@@ -51,3 +51,17 @@ it('isolates connection failures and drains other startup connections during shu
         ])));
     } finally { await f.close(); }
 });
+
+it('classifies MCP startup transport failures without logging credentials or raw exceptions', async () => {
+    const f = await fixture([server('failing', {endpoint: 'https://example.invalid/mcp?key=private-key'})]);
+    vi.spyOn(MCPServerConnection.prototype, 'connect').mockRejectedValue(new TypeError('Failed to fetch private-key'));
+    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+        await f.driver.init(); await f.driver.waitForMCPStartup();
+        await vi.waitFor(() => expect(warning).toHaveBeenCalledOnce());
+        expect(warning).toHaveBeenCalledWith('[LLMDeviceDriver] MCP startup connection failed', expect.objectContaining({
+            operation: 'mcp.startup', operationId: 'failing', serverId: 'failing', stage: 'connect', code: 'MCP_NETWORK', outcome: 'failure',
+        }));
+        expect(JSON.stringify(warning.mock.calls)).not.toMatch(/private-key|Failed to fetch|example.invalid/);
+    } finally {await f.close();}
+});

@@ -26,6 +26,7 @@ export function prepareRegistryWorkspace(repository, destination, catalog = libr
     writeFileSync(join(destination, 'package.json'), JSON.stringify(root, null, 4) + '\n');
     for (const pkg of workspacePackages(repository).filter(pkg => pkg.group !== 'libraries')) {
         const path = join(destination, pkg.group, basename(pkg.directory), 'package.json');
+        if (pkg.group === 'tools') cpSync(pkg.directory, join(destination, pkg.group, basename(pkg.directory)), {recursive: true, filter: file => !excluded.has(basename(file)) && !basename(file).startsWith('.env.')});
         const { directory, group, ...manifest } = pkg;
         void directory; void group;
         writeFileSync(path, JSON.stringify(registryManifest(manifest, catalog), null, 2) + '\n');

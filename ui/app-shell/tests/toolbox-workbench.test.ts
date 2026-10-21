@@ -14,6 +14,9 @@ import { MCPSettingsEditor } from '../../llm-settings-ui/src/editors/MCPSettings
 import { FlowCommand } from '@itookit/llm-session';
 import { ToolboxInventory } from '@itookit/app-core';
 import { ToolboxResources } from '@itookit/app-core';
+import { createMindosFlowDrawers } from '../../../backend/app-core/src/presets/flow-library';
+import { MindosInitialFiles } from '../../../backend/app-core/src/presets/initial-files';
+import { createFlowContextMenuConfig } from '../../llm-ui-adapter/src/flows/context-menu';
 import { ToolboxWorkbench } from '../src/toolbox/ToolboxWorkbench';
 import { ToolDetailsEditor } from '../src/toolbox/ToolDetailsEditor';
 import { legacyToolboxRoute, TOOLBOX_KINDS } from '../src/toolbox/routes';
@@ -39,7 +42,7 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
     const skills = new SkillsEngine(runtime.agentService); cleanup.push(() => skills.dispose());
     const inventory = new ToolboxInventory(() => runtime.agentService.getMCPServers(), runtime.kernel.toolCatalog, runtime.agentService, () => runtime.agentService.listSystemPrompts()); await inventory.init(); cleanup.push(() => inventory.dispose());
     const resources = new ToolboxResources({ agents: await runtime.vfs.openFileSystem('/home/admin/agents'), skills,
-        flows: runtime.flowEngine.engine, ...inventory.sources }, runtime.agentService, runtime.commandBus, await runtime.vfs.openFileSystem('/etc'), inventory);
+        flows: runtime.flowEngine.engine, ...inventory.sources }, runtime.agentService, runtime.commandBus, await runtime.vfs.openFileSystem('/etc'), inventory, createMindosFlowDrawers());
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const factory = vi.fn(async (container: HTMLElement, options: EditorOptions) => { const editor = new Editor(container, {}, options); await editor.init(container); return editor; });
     const factories = { prompts: async (container: HTMLElement, options: EditorOptions) => { const editor = new SystemPromptSettingsEditor(container, runtime.agentService, options); await editor.init(container); return editor; }, agents: factory, skills: factory, flows: factory,
@@ -49,10 +52,28 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
         tools: async (container: HTMLElement, options: EditorOptions) => { const editor = new ToolDetailsEditor(container, inventory, options, resources); await editor.init(container); return editor; } };
     const files = createToolboxFiles(resources.sources);
     cleanup.push(() => files.dispose());
-    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu: {}, navigate: vi.fn(), selected: vi.fn(), uiPreferences, executorUsage, agentsInWorkbench });
+    const flowMenu = createFlowContextMenuConfig({ commands: runtime.commandBus, navigate: vi.fn() });
+    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu, navigate: vi.fn(), selected: vi.fn(), uiPreferences, executorUsage, agentsInWorkbench });
     cleanup.push(() => workbench.destroy()); await workbench.start();
     return { workbench, sidebar, main, factory, resources, inventory };
 }
+it('shows the recovered shared Flow in the Subflows drawer and leaves entry Flows outside it', async () => {
+    const f = await setup(); f.workbench.setFilter('flows');
+    await f.workbench.setVisible(false);
+    await runtime.flowEngine.engine.driver.delete(['/anki-build.flow']);
+    const recovery = new MindosInitialFiles(runtime.commandBus);
+    expect(await recovery.restore(['flow:anki-build'])).toEqual([{ id: 'flow:anki-build', status: 'restored' }]);
+    await f.workbench.setVisible(true);
+    const group = () => f.sidebar.querySelector<HTMLElement>('[data-item-id="/drawers/flows-subflows"]')!;
+    expect(group().textContent).toContain('子流程');
+    group().querySelector<HTMLElement>('.vfs-directory-item__header')!.click();
+    await vi.waitFor(() => expect(group().querySelector('[data-item-id="/flows/anki-build.flow"]')).not.toBeNull());
+    expect(group().querySelector('[data-item-id="/flows/anki-generate.flow"]')).toBeNull();
+    expect(group().querySelector('[data-item-id="/flows/anki-from-image.flow"]')).toBeNull();
+    group().querySelector<HTMLButtonElement>('[data-item-id="/flows/anki-build.flow"] [data-action="item-menu"]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu button[data-action]')?.getAttribute('data-action')).toBe('flow:run'));
+});
+
 it('moves the agent entry out of the toolbox while retaining direct configuration links', async () => {
     const f = await setup(undefined, {load: () => ({filter: 'agents'}), save: vi.fn()}, undefined, true);
     expect(f.sidebar.querySelector('[data-filter="agents"]')).toBeNull();
@@ -209,7 +230,7 @@ it('groups providers by availability and keeps settings before their connections
     expect([...group().querySelectorAll<HTMLElement>('[data-item-type="file"]')].map(node => node.dataset.itemId).slice(0, 2)).toEqual(['/providers/ready', '/connections/drawer-conn']);
     expect(group().querySelector('.vfs-directory-item__icon')?.textContent).toBe('R');
     expect(group().querySelector('[aria-label="服务商"]')).not.toBeNull();
-    expect(group().querySelector('[data-item-id="/connections/drawer-conn"] .vfs-tag-pill')).toBeNull();
+    expect(group().querySelector('[data-item-id="/connections/drawer-conn"] .vfs-tag-pill')?.textContent).toBe(t('toolbox.capability.chat'));
     expect(group().querySelector('[data-item-id="/connections/drawer-conn"] [aria-label="模型连接"]')).not.toBeNull();
     expect(f.sidebar.textContent).not.toContain('secret');
     expect(groups()).toEqual(before);
@@ -300,7 +321,7 @@ it('edits model resources inline, keeps provider keys out of the list and remaps
     f.workbench.setFilter('models');
     await f.workbench.openResource('/providers/custom');
     await vi.waitFor(() => expect(f.main.querySelector('#provider-form')).not.toBeNull());
-    expect(f.main.querySelector<HTMLInputElement>('[name="apiKey"]')?.value).toBe('private-key');
+    expect(f.main.querySelector<HTMLInputElement>('[name="apiKey"]')?.value).toBe('');
     expect(f.main.querySelector('#providers-list')).toBeNull();
     await f.workbench.openResource('/connections/custom-conn');
     await vi.waitFor(() => expect(f.main.querySelector('#connection-form')).not.toBeNull());
@@ -723,4 +744,60 @@ it('updates MCP icon observations after explicit tests without probing during to
     expect(connect).toHaveBeenCalledTimes(2);
     const exported = JSON.parse(await f.workbench.exportSelection(['/mcp/docs'])).entries[0].data;
     expect(exported.status).toBeUndefined(); expect(exported.connectionState).toBeUndefined();
+});
+
+it('imports an external standard bundle with remapped provider references and no credentials', async () => {
+    const f = await setup();
+    const externalConnections = { format: 'itookit.toolbox', version: 1, entries: [
+        { kind: 'providers', data: { id: 'fixture-image', name: 'Image fixture', implementation: 'openai-compatible', baseURL: 'https://example.invalid',
+            media: { 'image.generate': { adapter: 'openai-images' } }, models: [{ id: 'image', name: 'Image', category: 'image',
+                operations: { 'image.generate': { inputModalities: ['text'], outputModalities: ['image'], formats: ['png'] } } }] } },
+        { kind: 'providers', data: { id: 'fixture-speech', name: 'Speech fixture', implementation: 'openai-compatible', baseURL: 'https://example.invalid',
+            media: { 'speech.synthesize': { adapter: 'openai-speech' } }, models: [{ id: 'speech', name: 'Speech', category: 'audio',
+                operations: { 'speech.synthesize': { inputModalities: ['text'], outputModalities: ['audio'], formats: ['mp3'], voices: ['fixture-voice'] } } }] } },
+        { kind: 'connections', data: { id: 'image', name: 'Image connection', providerId: 'fixture-image', tiers: { optimal: 'image' } } },
+        { kind: 'connections', data: { id: 'speech', name: 'TTS connection', providerId: 'fixture-speech', tiers: { optimal: 'speech' }, enabled: true } },
+    ] };
+    const paths = await f.resources.import(JSON.stringify(externalConnections));
+    expect(paths).toHaveLength(4);
+    const providers = await Promise.all(paths.filter(path => path.startsWith('/providers/')).map(path => runtime.agentService.getFullProvider(path.slice('/providers/'.length))));
+    expect(providers).toHaveLength(2); expect(providers.every(provider => !provider?.apiKey)).toBe(true);
+    const connections = await Promise.all(paths.filter(path => path.startsWith('/connections/')).map(path => runtime.agentService.getFullConnection(path.slice('/connections/'.length))));
+    expect(connections.every(connection => providers.some(provider => provider?.id === connection?.providerId))).toBe(true);
+    expect(connections.find(connection => connection?.name.includes('TTS'))?.enabled).toBe(true);
+    await vi.waitFor(() => expect([...f.inventory.providers.values()].some(provider => provider.capabilityTags?.includes('image.generate'))).toBe(true));
+    expect(providers.some(provider => provider?.id === 'fixture-image')).toBe(false);
+});
+
+it('combines capability chips with search, keeps provider groups, and never labels input audio as TTS', async () => {
+    const f = await setup();
+    await runtime.agentService.saveProvider({id: 'media-filter', name: 'Media fixture', implementation: 'openai-compatible', baseURL: 'https://example.invalid', apiKey: 'private',
+        media: {'image.generate': {adapter: 'openai-images'}, 'speech.synthesize': {adapter: 'openai-speech'}}, models: [
+            {id: 'picture', name: 'Picture', category: 'image', operations: {'image.generate': {inputModalities: ['text'], outputModalities: ['image'], formats: ['png']}}},
+            {id: 'speech', name: 'Speech', category: 'audio', operations: {'speech.synthesize': {inputModalities: ['text'], outputModalities: ['audio'], formats: ['mp3'], voices: ['voice']}}},
+            {id: 'ordinary', name: 'Ordinary', supportsAudio: true},
+        ]});
+    for (const model of ['picture', 'speech', 'ordinary']) await runtime.agentService.saveConnection({id: 'media-' + model, name: 'Media ' + model, providerId: 'media-filter', tiers: {optimal: model}});
+    await vi.waitFor(() => expect(f.inventory.connections.get('media-speech')?.capabilityTags).toContain('speech.synthesize'));
+    f.workbench.setFilter('models');
+    const details = f.sidebar.querySelector<HTMLDetailsElement>('.toolbox-capabilities')!;
+    expect(details.hidden).toBe(false); expect(details.open).toBe(false); details.open = true;
+    f.sidebar.querySelector<HTMLButtonElement>('[data-capability="image.generate"]')!.click();
+    expect(f.sidebar.querySelector('[data-item-id="/connections/media-picture"]')).not.toBeNull();
+    expect(f.sidebar.querySelector('[data-item-id="/connections/media-speech"]')).toBeNull();
+    const search = f.sidebar.querySelector<HTMLInputElement>('input[type=search]')!;
+    search.value = 'Media ' + search.value; search.dispatchEvent(new Event('input', {bubbles: true}));
+    await vi.waitFor(() => expect(search.value).toContain('Media'));
+    f.sidebar.querySelector<HTMLButtonElement>('.toolbox-capabilities > button')!.click();
+    expect(search.value).toBe('Media');
+    f.sidebar.querySelector<HTMLButtonElement>('[data-capability="speech.synthesize"]')!.click();
+    expect(search.value).toBe('Media tag:speech.synthesize');
+    await new Promise(resolve => setTimeout(resolve, 350));
+    expect(search.value).toBe('Media tag:speech.synthesize');
+    expect(f.sidebar.querySelector('[data-item-id="/connections/media-speech"]')).not.toBeNull();
+    expect(f.sidebar.querySelector('[data-item-id="/connections/media-ordinary"]')).toBeNull();
+    expect(f.sidebar.querySelector('[data-item-id="/connections/media-picture"]')).toBeNull();
+    f.workbench.setFilter('skills'); expect(details.hidden).toBe(true);
+    f.workbench.setFilter('models'); expect(search.value).toBe('Media tag:speech.synthesize');
+    expect(f.sidebar.querySelector<HTMLButtonElement>('[data-capability="speech.synthesize"]')!.getAttribute('aria-pressed')).toBe('true');
 });

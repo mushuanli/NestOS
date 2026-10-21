@@ -1,4 +1,5 @@
 import { createFileSystemSource, MemoryBackend, type FileSystemSourceOwner } from '@itookit/vfs-core';
+import { configuredModels, modelCapabilities, runnableModel } from './model-capabilities';
 import { ENTITY_ICONS, t } from '@itookit/common';
 import { type SystemPromptDefinition } from '@itookit/llm-tasks/contracts';
 import { type MCPServer, type MCPConnectionState } from '@itookit/tools/mcp-contracts';
@@ -17,8 +18,8 @@ export class ToolboxInventory {
     private owners: Partial<Record<'remoteAgents' | 'mcp' | 'tools' | 'providers' | 'connections' | 'prompts', FileSystemSourceOwner>> = {};
     readonly remoteAgents = new Map<string, RemoteHarnessAgent>();
     get remoteAgentSource() { return this.owners.remoteAgents!.fs; }
-    readonly providers = new Map<string, { id: string; name: string; icon?: string; enabled: boolean; configured: boolean; authentication?: 'chatgpt'; authorizationAvailable?: boolean }>();
-    readonly connections = new Map<string, { providerId: string; enabled: boolean; credentialsReady?: boolean; model?: string | null }>();
+    readonly providers = new Map<string, { id: string; name: string; icon?: string; enabled: boolean; configured: boolean; capabilityTags?: string[]; authentication?: 'chatgpt'; authorizationAvailable?: boolean }>();
+    readonly connections = new Map<string, { providerId: string; enabled: boolean; credentialsReady?: boolean; model?: string | null; configuredModel?: string | null; capabilityTags?: string[] }>();
     defaultConnectionId?: string;
     readonly tools = new Map<string, ToolboxTool>();
     constructor(private readonly servers: () => Promise<MCPServer[]>, private readonly catalog: Catalog, private readonly models?: IConnectionService, private readonly prompts?: () => Promise<SystemPromptDefinition[]>, private readonly harnesses?: () => Promise<RemoteHarnessAgent[]>) {}
@@ -63,15 +64,17 @@ export class ToolboxInventory {
         for (const item of providers) {
             const subscription = item.implementation === 'chatgpt';
             const authorization = subscription ? await this.models?.getProviderAuthorization?.(item.id) : undefined;
-            this.providers.set(item.id, { id: item.id, name: item.name,
+            this.providers.set(item.id, { id: item.id, name: item.name, capabilityTags: modelCapabilities(item),
             icon: item.icon === defaults[item.id]?.icon ? undefined : item.icon, enabled: item.enabled !== false,
             ...(subscription ? { authentication: 'chatgpt', authorizationAvailable: authorization?.supported === true } : {}),
-            configured: subscription ? authorization?.status === 'authorized' : item.id === 'codex' || !!(await this.models?.getFullProvider(item.id))?.apiKey?.trim() });
+            configured: subscription ? authorization?.status === 'authorized' : item.credentialMode === 'host' || item.id === 'codex' || !!(await this.models?.getFullProvider(item.id))?.apiKey?.trim() });
         }
         for (const item of connections) {
             const provider = providers.find(provider => provider.id === item.providerId);
             const [model] = Object.values(resolveChatModelTiers(item, provider));
+            const selected = configuredModels(item, provider), available = runnableModel(provider, selected);
             this.connections.set(item.id, {providerId: item.providerId, enabled: item.enabled !== false,
+                capabilityTags: modelCapabilities(provider, selected), configuredModel: available ? available.name || available.id : null,
                 credentialsReady: hasConnectionCredentials(item), model: model ? model.name || model.id : null});
         }
         await this.replace('providers', providers.map(item => ({ id: item.id, name: item.name,

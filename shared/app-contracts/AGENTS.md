@@ -25,3 +25,6 @@
 - openView 是冷启动应用用例：UI 文档、工作台、可选激活/恢复初始数据及带水位观察一起返回；ApplicationViewObservation 只描述当前客户端事件，不能成为全局页面状态。普通切换继续保留准备/保存/激活顺序。
 
 - HostedApplicationClient.initialView/AppOptions.initialView 连接一次打开同步握手与 Shell；ApplicationViewObservation.getSessionBaseline 成对返回当前快照和事件水位。缓存摘要不是授权或资源句柄，初始连接兴趣随打开返回。
+
+FlowLibraryCommand 是应用层恢复入口的纯命令常量；恢复与发布策略由 app-core 实现，契约不加载执行器，也不改变核心 FlowCommand 的语义。
+ToolboxInventory 的 capabilityTags 是不含凭据的派生能力列表，configuredModel 表达受支持的已配置模型，model 继续只表达聊天模型；标签用于查找，运行授权仍由连接准入校验决定。

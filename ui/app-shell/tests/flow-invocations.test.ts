@@ -27,6 +27,7 @@ beforeEach(async () => {
     ] }, draft.draftVersion);
     commands = new CommandBus();
     commands.register(SessionCommand.GetConnections, async () => ({ connections: [] }));
+    commands.register(SessionCommand.CheckFlowConnections, async () => ({valid: true}));
     new DagCommandService({ kernel, plugins, flowStore: store }).register(commands);
     new FlowInvocationService(kernel, store, commands).register();
 });

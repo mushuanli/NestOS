@@ -233,12 +233,12 @@ Session manifest 的现有业务类型名仍是 `ConversationManifest`，包含 
 
 | 包/调用链 | 当前入口及改动 |
 | --- | --- |
-| vfs-core | 删除 IModuleFS、ModuleFS、模块注册、getEngine、BaseModuleService 和 manager 便捷 IO；DirectoryFS 为内部来源适配；公共身份为 viewId；FileSystemStats 取代 FSModuleStats，删除模块生命周期事件及 ENOMODULE；文件句柄只保留 path |
+| vfs-core | 公共文件视图使用 IFileSystem，身份为 viewId；DirectoryFS 为内部来源适配，统计使用 FileSystemStats；挂载与视图生命周期分别管理，文件句柄以 path 定位；不提供旧模块注册和 manager 便捷 IO |
 | app-core | `vfs/session-files.ts` 持有 SessionFilesService，将 files 配置存入该 Session 的 session.seq；`vfs/directory-mounts.ts` 持有 DirectoryMountService 与宿主来源登记；`session/session-browser.ts` 提供可写浏览投影与删除链路；`vfs/session-process-context.ts` 把显式挂载交给平台进程工厂 |
 | app-shell | SessionWorkbench 从 repository 列会话，按 sessionId 打开；文件 Workbench 注入 FileSystemContext，WorkspaceConfig.workspaceName 取代 moduleName；`files/*` 仅保留兼容 re-export |
 | ui-common | 删除 EditorOptions.nodeId/ownerNodeId；目标通过 EditorTarget 表达；saveContent 为可选宿主能力，Session 不走普通文件保存 |
 | llm-ui | 工厂只接受 Session target，未知 ID 报错；上传、历史渲染、资产管理和打印注入 Session 附件；搜索使用当前 Session 文件上下文 |
-| llm-session | SessionRepository 取代 ChatEngine；绑定、运行状态和 TaskInput 删除重复文件 nodeId；删除 chatFileParser 和隐式文件初始化；Round/Profile 写 history 记录 |
+| llm-session | SessionRepository 持有会话持久化；绑定、运行状态和 TaskInput 使用 Session 身份，Round/Profile 写 history 记录，不再通过聊天文件解析或隐式文件初始化创建会话 |
 | vfs-ui / mdx | 删除 .chat 保存特判、模块路径猜测；文档使用 target.path；Session 嵌入 Markdown 使用当前 Session 上下文派生的 /attachments 子视图，上传/预览/管理均随撤销失效；文件文档仍可使用伴生附件 |
 | llm-flow / llm-settings-ui / app-settings | Flow 创建会话返回 sessionId；实体编辑器消费显式 target；配置、同步和备份使用注入的文件来源 |
 | driver-llm | 系统配置从 /etc 受限来源注入；凭据通过专用服务；无旧配置迁移探测。Skill 统一 `.yaml`，启动/reload 不加载旧 `.json/.yml`，保存不删除旧格式文件；Provider/Connection/MCP 继续使用各自当前 JSON 格式 |

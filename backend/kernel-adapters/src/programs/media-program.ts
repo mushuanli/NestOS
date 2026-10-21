@@ -13,7 +13,10 @@ export class MediaProgram implements DurableTaskProgram<State, MediaProgramInput
         return { state: { input: structuredClone(input), phase: 'capability' }, next: { type: 'wait', on: { type: 'signal', id: 'capabilities' } } };
     }
     reduce(state: Readonly<State>, event: TaskInputEvent): MediaDecision {
-        if (state.phase === 'capability') return bind(state, event);
+        if (state.phase === 'capability') {
+            if (event.type !== 'signal' || event.signal.type !== 'capabilities') return { state: { ...state }, next: { type: 'wait', on: { type: 'signal', id: 'capabilities' } } };
+            return bind(state, event);
+        }
         if (event.type === 'effect-failed') return { state: { ...state }, next: { type: 'fail', error: event.error } };
         if (event.type !== 'effect-completed' || event.effectId !== 'media') throw new Error('Unexpected media event');
         return { state: { ...state }, next: { type: 'complete', output: { outputs: { result: { outputName: 'result', type: 'json', content: event.result as StoredMediaResult } } } } };

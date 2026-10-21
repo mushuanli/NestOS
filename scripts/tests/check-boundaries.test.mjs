@@ -30,7 +30,8 @@ test('public execution and conversation capabilities cannot depend on legacy sha
             assert.match(dependencyError(source, target), /owned contracts/);
     }
     assert.equal(dependencyError('@itookit/tools', '@itookit/llm-context'), undefined);
-    assert.equal(dependencyError('@itookit/device-tty', '@itookit/tools'), undefined);
+    assert.match(dependencyError('@itookit/device-tty', '@itookit/tools'), /owned contracts/);
+    assert.equal(dependencyError('@itookit/tools', '@itookit/device-tty'), undefined);
 });
 
 test('dependency direction keeps domain capabilities independent of applications', () => {

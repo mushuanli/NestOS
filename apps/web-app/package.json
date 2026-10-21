@@ -41,7 +41,8 @@
     "@itookit/tools": "workspace:*",
     "@itookit/sync-adapters": "workspace:*",
     "@itookit/mindos-node-driver": "workspace:*",
-    "@itookit/app-contracts": "workspace:*"
+    "@itookit/app-contracts": "workspace:*",
+    "@itookit/image-tools": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

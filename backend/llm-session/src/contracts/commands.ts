@@ -34,6 +34,7 @@ export const SessionCommand = {
     GetSettings: 'session.get-settings',
     SaveSettings: 'session.save-settings',
     GetConnections: 'session.get-connections',
+    CheckFlowConnections: 'session.check-flow-connections',
     GetAgents: 'session.get-agents',
     GetModels: 'session.get-models',
     Export: 'session.export',

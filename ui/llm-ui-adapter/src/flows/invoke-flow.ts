@@ -16,7 +16,7 @@ export async function invokeFlowText(commands: ICommandBus, sessionId: string, t
     if (!draft) throw new Error(t('flow.launch.invalid'));
     const provided = parseArguments(match?.[2]), fields = draft.parameters ?? [];
     for (const name of Object.keys(provided)) if (!fields.some(field => field.name === name)) throw new Error(t('flow.invoke.unknownParameter', { name }));
-    const connection = await flowConnectionSelection(commands, undefined, draft.connections);
+    const connection = await flowConnectionSelection(commands, undefined, draft.connections, undefined, draft);
     const requests = new Map<string, string>();
     let revision: FlowRevision | undefined;
     const submit = async (parameters: Record<string, JsonValue>) => {

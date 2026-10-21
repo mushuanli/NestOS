@@ -29,7 +29,8 @@
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/llm-flow": "workspace:*",
     "@itookit/node-host": "workspace:*",
-    "@itookit/app-transport": "workspace:*"
+    "@itookit/app-transport": "workspace:*",
+    "sharp": "0.35.5"
   },
   "devDependencies": {
     "@types/node": "^20.19.25",

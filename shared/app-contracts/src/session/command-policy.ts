@@ -1,5 +1,7 @@
 /** Read-only application commands; unknown commands retain write semantics. */
 const reads = new Set<string>([
+    "app.assets.read",
+    "flow.source.check",
     "session.get-snapshot",
     "session.get-sessions",
     "session.get-current-id",
@@ -16,6 +18,7 @@ const reads = new Set<string>([
     "session.get-siblings",
     "session.get-settings",
     "session.get-connections",
+    "session.check-flow-connections",
     "session.get-agents",
     "session.get-models",
     "session.flow-branch-executions",

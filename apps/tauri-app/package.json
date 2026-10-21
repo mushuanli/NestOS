@@ -37,7 +37,8 @@
     "yaml": "^2.8.2",
     "@itookit/llm-flow": "workspace:*",
     "@itookit/mindos-node-driver": "workspace:*",
-    "@itookit/app-contracts": "workspace:*"
+    "@itookit/app-contracts": "workspace:*",
+    "@itookit/image-tools": "workspace:*"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

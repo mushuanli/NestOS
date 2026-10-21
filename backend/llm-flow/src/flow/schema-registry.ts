@@ -1,4 +1,5 @@
 import type { JsonSchemaRef, JsonValue } from '../contracts';
+import {equalJson, matchesSchemaType as matchesType} from './schema-values';
 
 type Schema = Record<string, JsonValue>;
 const keywords = new Set(['type', 'properties', 'required', 'items', 'additionalProperties', 'enum', 'title', 'description', 'minimum', 'maximum']);
@@ -76,23 +77,6 @@ function objectIssue(schema: Schema, value: Schema, path: string): string | unde
     }
 }
 
-function matchesType(type: string, value: unknown): boolean {
-    if (type === 'null') return value === null;
-    if (type === 'object') return isObject(value);
-    if (type === 'array') return Array.isArray(value);
-    if (type === 'integer') return Number.isInteger(value);
-    if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
-    return typeof value === type;
-}
-
 function isObject(value: unknown): value is Schema {
     return value !== null && typeof value === 'object' && !Array.isArray(value);
-}
-
-function equalJson(left: unknown, right: unknown): boolean {
-    if (left === right) return true;
-    if (Array.isArray(left)) return Array.isArray(right) && left.length === right.length && left.every((item, i) => equalJson(item, right[i]));
-    if (!isObject(left) || !isObject(right)) return false;
-    return Object.keys(left).length === Object.keys(right).length
-        && Object.keys(left).every(key => Object.hasOwn(right, key) && equalJson(left[key], right[key]));
 }

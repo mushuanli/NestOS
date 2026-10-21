@@ -1,3 +1,4 @@
+import {materializeAssetMessages} from './asset-messages';
 import { assertModelConnection, type ModelConnectionSnapshot } from '../llm-management/contracts/model-requirements';
 import { assertEffectGrant } from '@itookit/durable-kernel';
 import type { LLMLogSink } from '@itookit/driver-llm/contracts';
@@ -27,7 +28,8 @@ export class LlmChatEffectAdapter implements EffectAdapter<LlmChatEffectRequest,
     private readonly inFlight = new InFlightEffects();
 
     constructor(private readonly service: CapabilitySource<ILLMService>, private readonly log: LLMLogSink = silentAdapterLog,
-        private readonly authorize?: KernelAdapterDiagnostics['authorizeLlm']) {}
+        private readonly authorize?: KernelAdapterDiagnostics['authorizeLlm'],
+        private readonly readAsset?: import('@itookit/tools/contracts').TaskAssetReader) {}
 
     async execute(
         request: LlmChatEffectRequest,
@@ -64,7 +66,7 @@ export class LlmChatEffectAdapter implements EffectAdapter<LlmChatEffectRequest,
             await this.authorize?.(request, context);
             await assertFrozenConnection(service, request);
             context.abortSignal.throwIfAborted();
-            const params: ChatCompletionParams = { ...request.request, signal: controller.signal };
+            const params: ChatCompletionParams = { ...await materializeAssetMessages(request.request, context, this.readAsset), signal: controller.signal };
             const response = request.request.stream === false
                 ? await completeChat(service, request.connectionId, params, emit)
                 : await streamChat(service, request.connectionId, params, emit);

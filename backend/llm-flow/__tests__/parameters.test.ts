@@ -35,6 +35,13 @@ describe('resolveFlowParameters', () => {
 });
 
 describe('validateFlowParameters', () => {
+    it('enforces nonblank and option constraints after dynamic values have been resolved', () => {
+        expect(validateFlowParameters([{ name: 'word', type: 'string', nonBlank: true }], { word: '  ' }))
+            .toEqual([expect.objectContaining({ code: 'invalid-parameter' })]);
+        expect(validateFlowParameters([{ name: 'mode', type: 'string', options: ['allowed'] }], { mode: 'typo' }))
+            .toEqual([expect.objectContaining({ code: 'invalid-parameter' })]);
+        expect(validateFlowParameters([{ name: 'mode', type: 'json', options: [{ a: 1, b: 2 }] }], { mode: { b: 2, a: 1 } })).toEqual([]);
+    });
     it('reports missing required and type mismatches', () => {
         const issues = validateFlowParameters(
             [{ name: 'q', type: 'string', required: true }, { name: 'n', type: 'number' }],
@@ -63,4 +70,23 @@ describe('numeric runtime parameter contracts', () => {
     it('accepts custom bounded integer counts', () => {
         expect(validateFlowParameters(schema, { rounds: 2 })).toEqual([]);
     });
+});
+
+it('applies image policy from each field without imposing a global upload limit', async () => {
+    const { validFlowImages, validImageConstraints } = await import('../src/contracts/flow-images');
+    const image = (url: string) => ({ type: 'image_url', image_url: { url } });
+    const png = image('data:image/png;base64,aGVsbG8=');
+    const gif = image('data:image/gif;base64,aGVsbG8=');
+    expect(validFlowImages(Array(5).fill(png))).toBe(true);
+    expect(validFlowImages([gif], { mimeTypes: ['image/gif'], maxBytes: 5 })).toBe(true);
+    expect(validFlowImages([png, png], { maxItems: 1 })).toBe(false);
+    expect(validFlowImages([png], { maxBytes: 4 })).toBe(false);
+    expect(validFlowImages([gif], { mimeTypes: ['image/png'] })).toBe(false);
+    for (const input of [[], ['data:image/png;base64,aGVsbG8='], [image('file:///private.png')], [image('data:image/png;base64,???')]]) {
+        expect(validFlowImages(input)).toBe(false);
+    }
+    for (const constraints of [{ maxItems: 0 }, { maxBytes: -1 }, { maxItems: 1.5 }, { mimeTypes: ['text/plain'] }]) {
+        expect(validImageConstraints(constraints)).toBe(false);
+        expect(validateFlowParameters([{ name: 'images', type: 'json', widget: 'images', imageConstraints: constraints }], {})).toHaveLength(1);
+    }
 });

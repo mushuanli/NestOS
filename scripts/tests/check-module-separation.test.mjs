@@ -47,7 +47,26 @@ test('domain contracts and codecs are shared while host factories and independen
     assert.equal(moduleRole('/repo/backend/app-core/src/host/application-client.ts', '/repo'), 'backend');
     assert.equal(moduleRole('/repo/backend/kernel-adapters/src/llm-management/config.ts', '/repo'), 'shared');
     assert.equal(moduleRole('/repo/libraries/vfsdriver-local/src/index.ts', '/repo'), 'backend');
+    assert.equal(moduleRole('/repo/libraries/durable-kernel/src/application/kernel.ts', '/repo'), 'backend');
+    assert.equal(moduleRole('/repo/libraries/durable-kernel/src/contracts.ts', '/repo'), 'shared');
+    assert.equal(moduleRole('/repo/libraries/device-tty/src/contracts.ts', '/repo'), 'shared');
+    assert.equal(moduleRole('/repo/libraries/device-tty/src/index.ts', '/repo'), 'backend');
     assert.equal(moduleRole('/repo/libraries/driver-llm/src/types/provider.ts', '/repo'), 'shared');
+    assert.equal(moduleRole('/repo/libraries/image-parser/src/processing.ts', '/repo'), 'shared');
+    assert.equal(moduleRole('/repo/libraries/image-parser/src/processor.ts', '/repo'), 'frontend');
+    assert.equal(moduleRole('/repo/tools/image-tools/src/node.ts', '/repo'), 'backend');
+    assert.equal(moduleRole('/repo/tools/image-tools/src/browser.ts', '/repo'), 'host');
+});
+
+test('browser tool assembly is host-owned and stays unreachable from Node entrypoints', t => {
+    const {root, add} = fixture(t); add('app-shell', 'export const ui = 1;');
+    const directory = join(root, 'tools/image-tools'); mkdirSync(join(directory, 'src'), {recursive: true});
+    writeFileSync(join(directory, 'package.json'), JSON.stringify({name: '@itookit/image-tools', exports: {'.': './src/node.ts'}}));
+    writeFileSync(join(directory, 'src/node.ts'), 'export const node = 1;');
+    writeFileSync(join(directory, 'src/browser.ts'), "import '@itookit/app-shell';");
+    assert.deepEqual(separationErrors(root), []);
+    writeFileSync(join(directory, 'src/node.ts'), "import './browser';");
+    assert.ok(separationErrors(root).some(error => /backend loads frontend.*browser.*app-shell/.test(error)));
 });
 
 

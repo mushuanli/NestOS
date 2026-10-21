@@ -1,18 +1,20 @@
 import { escapeAttr, t } from '@itookit/common';
 import { SettingsValidationError } from '@itookit/ui-common';
 import { isMediaCatalog, type LLMModel, type LLMProvider } from '@itookit/driver-llm/contracts';
+import { bindMediaFields, renderMediaFields } from './media-fields';
 export function renderMediaDeclaration(value: unknown, model = false, draft?: string): string {
     return `<div data-media-declaration><label class="settings-form__label">${t(model ? 'provider.media.operations' : 'provider.media.endpoints')}</label>
-        <textarea class="settings-form__input" rows="5" name="${model ? 'modelOperations' : 'mediaEndpoints'}">${escapeAttr(draft ?? JSON.stringify(value ?? {}, null, 2))}</textarea>
-        <small class="settings-form__help">${t('provider.media.help')}</small></div>`;
+        ${renderMediaFields(value, model)}
+        <details><summary>${t('provider.media.raw')}</summary><textarea class="settings-form__input" rows="5" name="${model ? 'modelOperations' : 'mediaEndpoints'}">${escapeAttr(draft ?? JSON.stringify(value ?? {}, null, 2))}</textarea>
+        <small class="settings-form__help">${t('provider.media.help')}</small></details></div>`;
 }
 export function readMediaEndpoints(form: HTMLFormElement, previous: LLMProvider): LLMProvider['media'] {
     const field = form.querySelector<HTMLTextAreaElement>('[name="mediaEndpoints"]');
-    return field && !field.disabled ? readDeclaration(field, false) as LLMProvider['media'] : previous.media;
+    return field && !field.disabled ? readDeclaration(field, false) as LLMProvider['media'] ?? (previous.media ? {} : undefined) : previous.media;
 }
 export function readModelOperations(row: Element, previous: LLMModel): LLMModel['operations'] {
     const field = row.querySelector<HTMLTextAreaElement>('[name="modelOperations"]');
-    return field && !field.disabled ? readDeclaration(field, true) as LLMModel['operations'] : previous.operations;
+    return field && !field.disabled ? readDeclaration(field, true) as LLMModel['operations'] ?? (previous.operations ? {} : undefined) : previous.operations;
 }
 function readDeclaration(field: HTMLTextAreaElement, model: boolean): unknown {
     try {
@@ -38,9 +40,14 @@ export function syncMediaDeclarations(form: HTMLFormElement): void {
 }
 /** Keep invalid JSON editable while blocking automatic persistence. */
 export function bindMediaDeclarations(form: HTMLFormElement): void {
+    bindMediaFields(form);
     form.addEventListener('input', event => {
         const field = event.target;
         if (!(field instanceof HTMLTextAreaElement) || !['modelOperations', 'mediaEndpoints'].includes(field.name)) return;
         validateDraft(field);
+        if (field.validity.valid && !(event instanceof CustomEvent && event.detail?.structured)) {
+            const guided = field.closest('[data-media-declaration]')?.querySelector('[data-media-fields]');
+            if (guided) guided.outerHTML = renderMediaFields(JSON.parse(field.value || '{}'), field.name === 'modelOperations');
+        }
     });
 }

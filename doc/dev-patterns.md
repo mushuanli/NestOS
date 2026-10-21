@@ -7,17 +7,41 @@
 3. 如需新 Provider 类（非 OpenAI 兼容）：`https://github.com/mushuanli/driver-llm/blob/main/src/providers/` 新建类 → `extends BaseProvider`
 4. `https://github.com/mushuanli/driver-llm/blob/main/src/index.ts` — 导出
 
-Provider 设置页通过 `IConnectionService.listProviderModels(provider)` 获取模型目录；`https://github.com/mushuanli/driver-llm/blob/main/src/providers/model-catalog.ts` 按接入类型处理 OpenAI 兼容、Anthropic、Gemini 的地址、认证、返回结构和分页。请求使用尚未保存的表单地址、Key 与 `modelsPath` 覆盖（相对路径或完整 URL），失败不返回部分目录。刷新只按 ID 追加新模型，已有模型、顺序和未保存编辑保留，刷新成功后自动保存新增模型。新增模型默认启用 `supportsVision`、`supportsThinking`、`supportsTools`，这三个能力不提供开关；模型分类、Thinking 模式、首选协议和其他能力在折叠详情中配置。浏览器访问目录仍受 CORS 限制。
+Provider 设置页通过 `IConnectionService.listProviderModels(provider)` 获取模型目录；`https://github.com/mushuanli/driver-llm/blob/main/src/providers/model-catalog.ts` 按接入类型处理 OpenAI 兼容、Anthropic、Gemini 的地址、认证、返回结构和分页。请求使用尚未保存的表单地址、Key 与 `modelsPath` 覆盖（相对路径或完整 URL），失败不返回部分目录。未声明 modelsPath 时从聊天端点的 API 前缀派生目录地址。刷新按 ID 追加新模型并合并已有模型的显式能力和操作声明，保留名称、协议、思考模式及未返回的配置，成功后自动保存。模型能力从接口的明确字段、模态及 supported_parameters 读取，缺失显示未知（capabilitiesKnown=false），不再默认启用视觉、推理或工具；能力图标与模型显示名称同行，声明在详情中编辑。浏览器访问目录仍受 CORS 限制。
 
 Provider 高级设置以 `supportedProtocols` 声明可用协议，以 `defaultProtocol` 选择默认协议；每个协议的端点可独立覆盖（`chatPath` / `responsesPath` / `anthropicPath` / `geminiPath`），留空采用内置路径。Connection 只列出该 Provider 已配置的协议。模型的 `preferredProtocol` 用于连接未指定协议时：连接显式协议 → 当前请求模型的首选协议 → Provider 默认协议 → 旧实现回退；同一 Driver 切换模型时也重新选取协议。旧配置从 implementation 和非空兼容路径推断支持集合；原 Session 的 Anthropic 路径默认选择保持兼容。显式配置协议后，内置 Provider 的启动同步不覆盖用户的地址和路径。目录刷新成功不代表协议验证成功，高级设置可逐个协议发起真实模型请求，验证结果仅对当前编辑有效。新增字段及模型首选协议支持 `.llm` 导入导出，导出继续剥离 API Key。
 
 ## LLM 配置自动保存
+
+Provider/Connection 配置可以打包为标准 `itookit.toolbox` v1 归档，从工具箱导入；通用导入器按资源分配新 ID 并重写 Provider 引用，不加载第三方专用解析器，也不自动绑定已有 Flow。内置厂商目录由 itookit 的 `createMindosLlmPresets()` 提供，并出现在系统恢复中；豆包语音与火山方舟分别配置。厂商协议由独立 driver-llm 适配，业务工具不携带 Provider、模型目录或凭据；Flow 经连接槽执行音频生成，再将媒体交给 anki-cli 打包。
+
+工具箱的模型分类提供折叠能力筛选，按钮组合稳定的 `tag:chat`、`tag:vision`、`tag:image.generate`、`tag:speech.synthesize` 等查询，与普通文字搜索取交集；显示名称通过 presentation.tagLabel 本地化，查询和资源身份不随语言改变。能力来自 Provider 模型目录及 Connection 实际档位，生成操作还须具有受支持的媒体适配器；音频输入与音频分类不等于 TTS。标签与凭据就绪状态分别呈现，不能代替运行前准入检查。
 
 `ui/ui-common/src/components/SettingsAutoSave.ts` 统一管理 LLM 设置编辑器的延迟、校验、串行写入和状态提示。普通文本停止输入 600ms、长文本 1000ms 后保存；开关/选择立即保存，API Key 和带 `data-autosave-defer` 的标识输入失去焦点后保存。输入法组合输入完成前不写入。程序修改列表时调用 `requestSettingsSave(root)`，搜索和临时图标输入不触发保存。
 
 Provider / Connection 使用 `configuration-form.ts` 的自动保存表单，新增资源使用稳定 ID；API 刷新也自动保存，失败保留编辑草稿并提供重试。Agent 优先通过宿主 `saveContent` 写入当前源，未注入宿主时使用 `saveAgent`，避免与宿主 `interactiveChange` 自动保存重复写入。Skill / MCP / SystemPrompt / Cost 使用同一控制器，完整配置经校验后整体写入；不合法的 JSON、路径/协议或未完成条目不覆盖上一次有效配置。
 
 保存成功只更新状态和局部标题，不调用整页 `render()`；服务自己的变更通知在保存/编辑期间不重建表单。切换资源和销毁前先提交有效草稿，失败保留 DOM；删除、重置、导入仍通过显式操作执行。自动保存不会主动重启 Agent 或 Flow，后续请求使用保存后的配置。
+
+## 模型设置、文本测试与媒体验证
+
+工具箱 Provider 详情使用概览、模型目录、连接配置、高级四个页签；切换页签保留同一份 DOM、无效草稿与自动保存状态。模型媒体能力和端点提供常用字段表单，原始 JSON 仍可编辑。凭据输入框只写，不读取已保存密钥；宿主仅在同一 Provider、基础地址和认证实现下解析现有凭据，显式空字符串表示清除，省略则保持同地址的已保存值。存储后端仍沿用原 Provider 存储，不宣称已迁移加密凭据库。
+
+Provider 的“测试连接”统一使用用户选定的文本模型：目录中 category 为 chat（含兼容缺省值）的模型才可选，connectionTestModel 可声明预设选项。通信库不猜模型、不把媒体模型送到聊天端点；纯语音 Provider 显示没有文本测试模型，不能借用其他服务商或其他地址的密钥。文本测试成功只证明该次文本请求，不证明其他操作可用。
+
+图片和语音通过独立的操作验证调用同一 testConnection 服务，但必须显式提供 operation 和匹配的 MediaGenerationInput；它们复用正式生成适配器，一次提交、不自动重放。小于等于 8 MiB 的测试产物经已有字节 DTO 返回并由浏览器临时 Blob URL 预览，超出预算仅返回验证成功信息；URL 在重新验证、配置变化与编辑器关闭时释放，不写入正式任务产物。正式 Flow 继续使用 llm.media Effect 的授权、资产校验与持久回执。验证结果绑定开始时的完整配置和操作参数，变化后不能显示旧成功。
+
+reasoning 声明属于模型，reasoningByProtocol 可针对具体路由协议覆盖或禁用；包含 efforts（稳定 ID、显示名及可选 API 值）、canDisable、defaultEffort、预算范围及 transport。未声明不生成一组猜测的等级；服务端默认与显式关闭分开。设置页与聊天输入按实际模型显示选项，主力/常规/快速是路由档位，不是推理等级。切换模型恢复当前会话中该路由的选择，不改变全局默认。旧的未声明能力请求保留兼容；明确声明的等级、关闭和预算在通信前校验。
+
+内置目录是产品预设，厂商变更只更新 presets；通信模块不按模型名称猜协议。豆包文本目录与语音服务分开配置，Seedream 使用 volcengine-images 原生图片适配器及显式能力。参照 [方舟文本目录](https://docs.volcengine.com/docs/ark/model-list?lang=zh)、[图片 API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh)、[语音 HTTP API](https://docs.volcengine.com/docs/DoubaoVoice/unidirectional-streaming-text-to-speech-http?lang=zh) 与 [DeepSeek 模型元数据](https://api-docs.deepseek.com/api/list-models/)，本次核对日期为 2026-10-22；目录声明不是账号权限验证。
+
+诊断关联 connection.test.started/completed、media.request.started/completed/failed，记录 requestId/operationId、阶段、结果、错误分类、上游业务码、状态码和耗时。HTTP 200 与 RPC 正常返回不能替代 success；日志不记录输入、产物、完整请求/响应或凭据。失败详情供前端展示，诊断日志只使用安全元数据。
+
+文本、协议和媒体操作验证共用结果呈现：显示操作、模型、stage、业务错误码、可用的 HTTP 状态/上游错误码、耗时及 requestId。浏览器 `Failed to fetch` 归为 transport/NETWORK_ERROR，没有响应时不猜测 HTTP 状态、密钥错误或服务不稳定；Node 的 DNS/TCP/TLS 已知原因通过 transportCode 保留，原始异常内容不进入诊断日志。MCP 启动错误单独记录 mcp.startup、serverId、连接/发现阶段和安全分类，不能当作模型验证失败。
+
+2026-10-22 无凭据 OPTIONS 核对：方舟图片接口允许请求的 Authorization/Content-Type；豆包语音 HTTP 接口当前允许头列表缺少官方鉴权所需的 X-Api-Key，浏览器直连可能被预检拦截。此时应使用 Node HTTP 宿主或支持跨域的授权网关，不修改为不匹配的鉴权头，也不通过连续重试规避。预检不是账号权限或真实生成成功验收。
+
+目录刷新只保留用户改过的媒体/推理 JSON 草稿；未修改字段跟随新目录更新，不能将旧 textarea 快照重新保存覆盖新能力。聊天配置恢复和能力刷新只更新展示，不改写已保存的推理偏好；只有用户切换模型时才恢复该模型的临时偏好。
 
 ## 新增 Provider 内置联网搜索能力
 

@@ -7,6 +7,7 @@ import type { ConnectionOption } from '../../domain/types';
 interface ConnectionTierDeps {
     onNavigateSettings: (target: { resourceId: string }) => void;
     onChange: () => void;
+    onReasoning?: (capabilities: import('@itookit/driver-llm/contracts').ReasoningCapabilities | undefined, identity: string, selected: boolean) => void;
     onRefreshConnections?: () => Promise<void>;
 }
 
@@ -34,11 +35,12 @@ export class ConnectionTierController {
         this.tierCards = container.querySelector('.llm-input__tier-cards')!;
         this.trigger.addEventListener('click', () => this.popup?.isVisible ? this.hidePopups() : this.openConnPicker());
         this.connectionSelect.addEventListener('change', () => {
-            this.setConnectionId(this.connectionSelect.value || undefined); this.deps.onChange();
+            this.connectionId = this.connectionSelect.value || undefined;
+            this.updateUI(true); this.deps.onChange();
         });
         this.tierCards.addEventListener('click', event => {
             const card = (event.target as Element).closest<HTMLButtonElement>('[data-tier]');
-            if (card && !card.disabled) { this.setModelTier(card.dataset.tier as 'auto' | ModelTier); this.deps.onChange(); }
+            if (card && !card.disabled) { this.modelTier = card.dataset.tier as 'auto' | ModelTier; this.updateUI(true); this.deps.onChange(); }
         });
     }
     getConnectionId(): string | undefined { return this.connectionId; }
@@ -57,6 +59,9 @@ export class ConnectionTierController {
     }
     setConnectionId(id: string | undefined): void { this.connectionId = id; this.updateUI(); }
     setModelTier(tier: ModelTier | 'auto'): void { this.modelTier = tier; this.updateUI(); }
+    setSelection(id: string | undefined, tier: ModelTier | 'auto'): void {
+        this.connectionId = id; this.modelTier = tier; this.updateUI();
+    }
     setConnections(connections: ConnectionOption[]): void {
         this.connections = connections;
         this.connectionSelect.innerHTML = ChatInputTemplates.renderConnectionOptions(connections, this.connectionId);
@@ -83,8 +88,9 @@ export class ConnectionTierController {
         if ((tier === 'fast' || tier === 'standard') && tiers?.standard) return tiers.standard;
         return tiers?.optimal;
     }
-    private updateUI(): void {
+    private updateUI(selected = false): void {
         const connection = this.effectiveConnection(), model = this.modelName(connection);
+        this.deps.onReasoning?.(connection?.reasoningByTier?.[this.modelTier === 'auto' ? 'optimal' : this.modelTier], `${connection?.id ?? ''}/${model ?? ''}`, selected);
         const source = connection?.name ?? (this.connectionId ? t('connection.unavailable', {id: this.connectionId}) : t('connection.unset'));
         this.label.textContent = model ? `${model} · ${this.connectionId ? source : t('connection.followDefault', {name: source})}` : source;
         this.trigger.title = [t('chatInput.modelHint'), source, connection?.providerName ?? connection?.provider, this.tierLabel(this.modelTier)].filter(Boolean).join(' · ');
@@ -121,7 +127,7 @@ export class ConnectionTierController {
             if (connection?.enabled === false || !(connection?.credentialsReady ?? connection?.hasApiKey) || !connection?.tiers?.[tier]) return;
             this.connectionId = connectionId; this.modelTier = tier;
         }
-        this.updateUI(); this.deps.onChange();
+        this.updateUI(true); this.deps.onChange();
     }
     private buildItems(): PopupItem[] {
         const connection = this.connections.find(c => c.isDefault);

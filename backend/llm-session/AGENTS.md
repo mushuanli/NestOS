@@ -22,6 +22,7 @@ src/
 - 实现不依赖 common/llm-common；模型、上下文、工具和编排契约直接来自所属模块。
 - 翻译、日志、启动追踪经 `ConversationSystemOptions.hostPorts` 实例注入。工厂返回独立 SessionManager、提示词历史和幂等异步 dispose；禁止通过全局配置覆盖其他实例。不提供单例工厂或全局 getter。默认英文提示、空日志和直接启动操作。
 - Agent 缺失行为经 `agentResolution` 注入；精确解析、授权和持久执行模式约束保持严格。业务提示词、评分阈值与预设留在宿主，不进入本包。
+- session.check-flow-connections 复用宿主插件目录、Flow 编译和连接准入作只读预检，支持草稿快照或发布修订；session.create-from-flow 在创建任何会话前重检。必选、可选和能力需求来自 Flow 声明，不按业务名称分支，正式运行保留完整准入。
 
 - Round 只表达对话历史，使用 `historyParentIds`。
 - Run 引用通过 `executions` 附着到 Round。

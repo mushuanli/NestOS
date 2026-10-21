@@ -27,7 +27,7 @@ export function modelDrawers(items: VFSNodeUI[], inventory: ToolboxInventory): V
         const status = t(!provider ? 'toolbox.providerMissing' : !provider.enabled ? 'toolbox.providerDisabled' : subscription
             ? !provider.authorizationAvailable ? 'provider.auth.unsupported' : provider.configured ? 'provider.auth.authorized' : 'provider.auth.signed-out'
             : !provider.configured ? 'toolbox.providerUnconfigured' : 'toolbox.providerConfigured');
-        if (file) children.unshift({ ...file, icon: `<span role="img" aria-label="${t('toolbox.providerSettings')}" title="${t('toolbox.providerSettings')}">${TOOLBOX_ICONS.settings}</span>`, metadata: { ...file.metadata, title: t('toolbox.providerSettings'), tags: [],
+        if (file) children.unshift({ ...file, icon: `<span role="img" aria-label="${t('toolbox.providerSettings')}" title="${t('toolbox.providerSettings')}">${TOOLBOX_ICONS.settings}</span>`, metadata: { ...file.metadata, title: t('toolbox.providerSettings'),
             custom: { ...file.metadata.custom, modelSettings: true } }, content: { ...file.content!, searchableText: provider!.name + ' ' + file.content?.searchableText } });
         return { ...seed, id: modelDrawerId(id), type: 'directory', kind: 'group', icon: providerIcon(id, provider?.icon), content: undefined, children,
             presentation: { ...seed.presentation, layout: 'drawer', titleLayout: 'stacked' },

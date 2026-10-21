@@ -179,6 +179,44 @@ it('installs, validates, saves and publishes the bundled variable Flow through r
     await files.deleteFile((await files.findFile(`${template.id}.flow`))!.nodeId);
     await expect(execute(FlowCommand.DraftInstall, template)).resolves.toBeNull();
     await expect(execute(FlowCommand.DraftRestore, template)).resolves.toMatchObject({ variables: template.variables });
+    expect(await store.loadRevision(template.id)).toEqual(published.revision);
+});
+
+it('restores a draft without implicitly creating a published revision', async () => {
+    const { store, template, execute } = libraryCommands();
+    await execute(FlowCommand.DraftRestore, template);
+    expect(await store.loadRevision(template.id)).toBeNull();
+});
+
+async function callableDrafts() {
+    const context = libraryCommands(), { store } = context;
+    const child = await store.createDraft({ id: 'child', name: 'Child' });
+    child.parameters = [{ name: 'word', type: 'string', required: true }];
+    child.nodes = [{ id: 'work' as never, name: 'Work', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: { value: '${param.word}' } }];
+    child.outputs = { result: { value: '${nodes.work.outputs.result}' } };
+    await store.createRevision(child);
+    const parent = await store.createDraft({ id: 'parent', name: 'Parent' });
+    parent.nodes = [{ id: 'call' as never, name: 'Call', plugin: 'builtin.flow', pluginVersion: '2.0.0', inputs: {}, config: { flowId: 'child', parameters: {} } }];
+    return { ...context, parent };
+}
+
+it.each([{ wrod: 'hello' }, {}, { word: 42 }])('rejects invalid call bindings in source checks and publication: %j', async parameters => {
+    const { store, parent, execute } = await callableDrafts();
+    parent.nodes[0].config = { flowId: 'child', parameters };
+    const saved = await execute(FlowCommand.DraftSave, { draft: parent, expectedDraftVersion: parent.draftVersion });
+    expect(saved.valid).toBe(false);
+    expect(await store.loadDraft('parent')).not.toBeNull();
+    expect(await execute(FlowCommand.SourceCheck, { source: saved.draft })).toMatchObject({ valid: false });
+    expect(await execute(FlowCommand.DraftValidate, saved.draft)).toMatchObject({ valid: false });
+    await expect(execute(FlowCommand.RevisionCreate, { draftId: 'parent', expectedDraftVersion: saved.draft.draftVersion })).rejects.toThrow(/Flow parameter|required parameter|must be string/);
+    await expect(store.createRevision(saved.draft)).rejects.toThrow(/Flow parameter|required parameter|must be string/);
+    expect(await store.loadRevision('parent')).toBeNull();
+    const corrected = await execute(FlowCommand.DraftSave, { draft: { ...saved.draft, nodes: [{ ...saved.draft.nodes[0], config: {
+        flowId: 'child', parameters: { word: 'hello' },
+    } }] }, expectedDraftVersion: saved.draft.draftVersion });
+    expect(corrected.valid).toBe(true);
+    expect(await execute(FlowCommand.RevisionCreate, { draftId: 'parent', expectedDraftVersion: corrected.draft.draftVersion }))
+        .toMatchObject({ revision: { dependencyLocks: { call: { flowId: 'child', revision: 1 } } } });
 });
 
 it('still rejects an actually undeclared variable before installing any file', async () => {

@@ -71,7 +71,7 @@ export interface LlmNodeConfig {
     modelName?: string;
     temperature?: number;
     thinking?: boolean;
-    reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+    reasoningEffort?: string;
     maxTokens?: number;
     stream?: boolean;
     webSearch?: boolean;

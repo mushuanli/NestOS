@@ -3,6 +3,7 @@ import { conversationStatus } from '@itookit/ui-common';
 import { resolveBrowserTarget } from '@itookit/app-contracts';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
+import {localSessionStatus} from './local-session-status';
 
 /** Host presentation over public tree ports; no access to the library's internal DOM. */
 export class RemoteSessionStatusView {
@@ -98,6 +99,8 @@ export class RemoteSessionStatusView {
             let target;
             try { target = resolveBrowserTarget(item.id); } catch { return item; }
             let presentation = item.presentation;
+            const local = localSessionStatus(item.metadata.custom.sessionActivity);
+            if (local) presentation = {...presentation, subtitle: local.text, attention: local.attention};
             if (target.kind === 'remote' && target.profileId && target.nativeSessionId) {
                 const raw = item.metadata.custom;
                 if (projectId && this.loadedProjects.size < 16) this.loadedProjects.add(projectId);

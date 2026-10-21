@@ -286,6 +286,8 @@ class BranchService {
 
 会话 `ChatSessionSettings.connectionId` 为可选覆盖；未设置时使用 `IConnectionService.getDefaultConnection()`。
 `setDefaultConnection(id | null)` 显式设置或清空全局默认。`session.get-connections` 返回连接列表与 `defaultId`，供 Flow 运行表单使用。
+
+`session.check-flow-connections` 是只读预检：接收 `flow` 草稿/修订快照，或 `flowId/revision`，以及 `connectionId?/connectionBindings?`，在不创建 Session、不启动 Task、不请求模型的情况下展开依赖并执行连接准入。缺少必选绑定、停用/缺少凭据、模型不存在或能力不匹配时抛出 `FLOW_CONNECTION_INVALID`；可选空绑定保留为空。表单提交时预检，`session.create-from-flow` 在创建会话前再次按当前配置预检，正式运行仍执行完整授权和连接准入。
 Agent 定义不再包含连接、模型层级和 `modelPolicy`。普通执行在接收请求时冻结解析后的配置。
 Flow Invocation 记录请求的 `connectionId`、`connectionBindings` 与接收时的 `resolvedConnectionId`。正式装配通过 `DagCommandService.prepareRun` 完成默认值、宿主身份与子 Flow 展开，将包含模型身份、协议和能力要求的完整 `preparedGraph` 与调用意图一并持久化，再通过 `submitPrepared` 创建根 Task。提交中断后重试复用该图；根 Task 创建成功后，调用记录移除临时图，由根 Task 的执行快照持有配置。已有根 Task 直接重挂，旧的无根调用记录在再次提交前补做准入；普通命令调用仍通过 `RunStart` 校验和编译。
 

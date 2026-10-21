@@ -14,6 +14,8 @@ import {
 } from '@itookit/llm-flow';
 import type { IFileSystem } from '@itookit/vfs-core';
 import { createMemoryTools } from './memory-tools';
+import {createTaskAssetStore} from './task-asset-store';
+import { createTaskAssetReader } from './task-assets';
 import { SessionMemoryProvider, SharedMemoryStore } from '@itookit/llm-session';
 import { createRuntimeContextResolver } from './context-service';
 import { createRuntimeContextGc, type RuntimeContextGc, type RuntimeContextGcOptions } from './context-gc';
@@ -91,6 +93,8 @@ export async function createKernelRuntime(
         skillSourceForSession: options.skillSourceForSession,
         skillToolHandlerFactory: options.skillToolHandlerFactory,
         additionalTools: options.additionalTools,
+        readTaskAsset: createTaskAssetReader(() => kernel, options.systemFS),
+        taskAssetStore: createTaskAssetStore(() => kernel),
         effectTools: createMemoryTools(() => kernel, () => memory),
     });
 

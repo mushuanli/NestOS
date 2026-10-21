@@ -1,13 +1,14 @@
+import {checkFlowSource, checkFlowSyntax} from './syntax-check';
 import { hasLocalScheduler, withFlowControl } from './control-session';
 import { workspaceFinalizationKey, type WorkspaceFinalization } from './workspace-finalization';
 import type { DagPluginCatalog, DagPluginPresentation, FlowDraft, FlowNodeDefinition, FlowRevision, FlowCommandRegistrar, JsonValue, FlowRunGoal } from '../contracts';
 import type { ToolDefinition } from '@itookit/llm-context';
 import type { Kernel, SessionHandle, TaskRecord, TaskSnapshot } from '@itookit/durable-kernel';
-import { createFlowRevision, type FlowDefinitionStore } from '../flow-definition-store';
+import { type FlowDefinitionStore } from '../flow-definition-store';
 import { submitRun, type GraphRunDefinition } from '../run-submission';
 import { expandDispatchDraft } from './structured/expand';
 import { flowToDag, type FlowNodeBinder } from './to-dag';
-import { hasValidationErrors, validateFlowRevision } from './validation';
+import { hasValidationErrors } from './validation';
 import { validateFlowParameters } from './parameters';
 import { FlowCommand } from './command-names';
 import { retryFlowTask } from './retry-task';
@@ -188,7 +189,7 @@ export class DagCommandService {
         if (!sessionId) throw new Error('DAG run requires sessionId');
         if (this.options.canWriteSession && !await this.options.canWriteSession(sessionId)) throw new Error('Session is read-only on this host');
         const issues = [
-            ...validateFlowRevision(flow, this.options.plugins),
+            ...checkFlowSyntax(flow, {plugins: this.options.plugins}).diagnostics,
             ...validateFlowParameters(flow.parameters, parameters),
         ];
         if (hasValidationErrors(issues)) throw new Error(issues.map(issue => issue.message).join('; '));
@@ -320,10 +321,15 @@ function registerDraftCommands(
     store: FlowDefinitionStore,
     plugins: DagPluginCatalog,
 ): void {
+    bus.register(FlowCommand.SourceCheck, async args => {
+        const { checkFlowSource } = await import('./syntax-check');
+        const {valid, diagnostics} = await checkFlowSource((args as { source?: unknown } | undefined)?.source, { plugins, resolveComposite: (id, revision) => store.loadRevision(id, revision) });
+        return {valid, diagnostics};
+    });
     bus.register(FlowCommand.DraftList, async () => store.listDrafts());
     for (const command of [FlowCommand.DraftInstall, FlowCommand.DraftRestore]) bus.register(command, async args => {
         const draft = args as FlowDraft;
-        const validation = validateDraft(draft, plugins);
+        const validation = await validateDraft(draft, plugins);
         if (!validation.valid) throw new Error(validation.validationIssues.map(issue => issue.message).join('; '));
         return store.installBuiltinDraft(draft, { restoreMissing: command === FlowCommand.DraftRestore });
     });
@@ -342,7 +348,7 @@ function registerDraftCommands(
         plugins,
         args as { draft: FlowDraft; expectedDraftVersion: number },
     ));
-    bus.register(FlowCommand.DraftValidate, async args => validateDraft(args as FlowDraft, plugins));
+    bus.register(FlowCommand.DraftValidate, async args => validateDraft(args as FlowDraft, plugins, store));
     bus.register(FlowCommand.RevisionCreate, async args => createRevision(
         store,
         plugins,
@@ -363,13 +369,13 @@ async function saveDraft(
     input: { draft: FlowDraft; expectedDraftVersion: number },
 ) {
     const draft = await store.saveDraft(input.draft, input.expectedDraftVersion);
-    return { draft, version: draft.draftVersion, ...validateDraft(draft, plugins) };
+    return { draft, version: draft.draftVersion, ...await validateDraft(draft, plugins, store) };
 }
 
-function validateDraft(draft: FlowDraft, plugins: DagPluginCatalog) {
-    const revision = createFlowRevision(draft, draft.baseRevision ?? 0, draft.updatedAt);
-    const validationIssues = validateFlowRevision(revision, plugins);
-    return { valid: !hasValidationErrors(validationIssues), validationIssues };
+async function validateDraft(draft: FlowDraft, plugins: DagPluginCatalog, store?: FlowDefinitionStore) {
+    const result = store ? await checkFlowSource(draft, { plugins, resolveComposite: (id, revision) => store.loadRevision(id, revision) })
+        : checkFlowSyntax(draft, {plugins});
+    return {valid: result.valid, validationIssues: result.diagnostics};
 }
 
 async function createRevision(
@@ -382,7 +388,7 @@ async function createRevision(
     if (draft.draftVersion !== input.expectedDraftVersion) {
         throw new Error(`Flow draft ${input.draftId} version conflict`);
     }
-    const validation = validateDraft(draft, plugins);
+    const validation = await validateDraft(draft, plugins, store);
     if (!validation.valid) {
         throw new Error(validation.validationIssues.map(issue => issue.message).join('; '));
     }

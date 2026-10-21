@@ -1,4 +1,5 @@
 import { renderVariables } from './dag/VariableView';
+import {bindAssetPreviews} from './dag/AssetPreview';
 import { renderFlowOutput } from './dag/FlowOutput';
 import { enhanceInputFieldsEditor } from './dag/InputFieldsEditor';
 import { enhanceInvocationEditor } from './dag/InvocationEditor';
@@ -8,7 +9,7 @@ import type { ICommandBus } from '@itookit/llm-session/contracts';
 import type { DurableFlowSnapshot } from '@itookit/llm-flow/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import type { TaskSnapshot, TaskStatus } from '@itookit/durable-kernel/contracts';
-import {escapeHTML, randomUUID, t} from '@itookit/common';
+import {ACTION_ICONS, escapeHTML, randomUUID, t} from '@itookit/common';
 import { showConfirmDialog, Toast } from '@itookit/ui-common';
 import { DagDraftController, createFlowEdge } from './dag/DagDraftController';
 import { SchemaForm } from './dag/SchemaForm';
@@ -16,13 +17,15 @@ import { DagCanvas } from './dag/DagCanvas';
 import { openTaskTranscript } from './dag/TaskTranscriptDialog';
 import { openFlowSettings } from './dag/FlowSettingsDialog';
 import type { EntityOption } from './dag/FlowSettingsDialog';
+import { FlowRunParameters } from './dag/FlowRunParameters';
+import type { FlowRunInput } from '../flows/run-flow';
 
 export interface DagWorkbenchOptions {
     readOnly?: boolean;
     backLabel?: string;
     commands: ICommandBus;
     onModeChange?: (mode: 'design' | 'run') => void;
-    onSelectFlow?: (flowId: string, revision: number) => void;
+    onSelectFlow?: (flowId: string, revision: number, input?: FlowRunInput) => void | Promise<void>;
     /** Global LLM connections available to bind flow-level connection slots to. */
     listConnections?: () => Promise<Array<{ id: string; name: string }>>;
     listAgents?: () => Promise<EntityOption[]>;
@@ -44,6 +47,9 @@ export class DagWorkbench {
     private refreshRequest = 0;
     private runRefreshTimer?: ReturnType<typeof setTimeout>;
     private callSignatures = new Map<string, FlowDraft | null>();
+    private parameterPanel?: FlowRunParameters;
+    private inspectorMode: 'parameters' | 'edit' = 'parameters';
+    private preparingRun = false;
 
     constructor(
         private readonly root: HTMLElement,
@@ -60,6 +66,9 @@ export class DagWorkbench {
 
     setDraft(draft: FlowDraft, selectedNodeId?: FlowNodeId): void {
         this.viewRequest++;
+        this.parameterPanel?.destroy();
+        this.parameterPanel = undefined;
+        this.inspectorMode = 'parameters';
         this.stopRunRefresh();
         this.controller = new DagDraftController(draft);
         this.selectedNodeId = selectedNodeId;
@@ -110,6 +119,7 @@ export class DagWorkbench {
 
     destroy(): void {
         this.viewRequest++;
+        this.parameterPanel?.destroy();
         this.stopRunRefresh();
         this.root.innerHTML = '';
     }
@@ -137,20 +147,18 @@ export class DagWorkbench {
             legacyScopePlugin(item.manifest) ? '' : `<option value="${index}">${escapeHTML(paletteLabel(item))}</option>`,
         ).join('');
         return `<header class="dag-toolbar">
-            <strong>Flow Design</strong>
+            <strong class="dag-toolbar__name" title="${escapeHTML(draft?.name ?? '')}">${escapeHTML(draft?.name ?? t('flow.toolbar.noSelection'))}</strong>
             <button data-action="runs">${escapeHTML(t('flow.runs.title'))}</button>
-            <span>${escapeHTML(draft?.name ?? 'No Flow selected')}</span>
-            <select data-action="add-kind" ${draft ? '' : 'disabled'}><option value="">Add node…</option>${addOptions}</select>
-            <button data-action="undo" ${draft ? '' : 'disabled'}>Undo</button>
-            <button data-action="redo" ${draft ? '' : 'disabled'}>Redo</button>
-            <button data-action="layout" ${draft ? '' : 'disabled'}>Auto layout</button>
-            <button data-action="zoom-out" ${draft ? '' : 'disabled'}>−</button>
-            <button data-action="zoom-in" ${draft ? '' : 'disabled'}>＋</button>
-            <button data-action="fit" ${draft ? '' : 'disabled'}>Fit</button>
-            <button data-action="settings" ${draft ? '' : 'disabled'}>Settings</button>
-            <button data-action="save" ${draft ? '' : 'disabled'}>Save</button>
-            <button data-action="publish" ${draft ? '' : 'disabled'}>Publish</button>
-            <button data-action="run" ${draft ? '' : 'disabled'}>Run</button>
+            <select data-action="add-kind" aria-label="${escapeHTML(t('flow.toolbar.addNode'))}" ${draft ? '' : 'disabled'}><option value="">${escapeHTML(t('flow.toolbar.addNode'))}</option>${addOptions}</select>
+            <button data-action="undo" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.undo'))}</button>
+            <button data-action="redo" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.redo'))}</button>
+            <button data-action="layout" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.layout'))}</button>
+            <button data-action="zoom-out" title="${escapeHTML(t('flow.toolbar.zoomOut'))}" aria-label="${escapeHTML(t('flow.toolbar.zoomOut'))}" ${draft ? '' : 'disabled'}>−</button>
+            <button data-action="zoom-in" title="${escapeHTML(t('flow.toolbar.zoomIn'))}" aria-label="${escapeHTML(t('flow.toolbar.zoomIn'))}" ${draft ? '' : 'disabled'}>＋</button>
+            <button data-action="fit" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.fit'))}</button>
+            <button data-action="settings" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.settings'))}</button>
+            <button data-action="save" ${draft ? '' : 'disabled'}>${escapeHTML(t('action.save'))}</button>
+            <button data-action="publish" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.publish'))}</button>
         </header>`;
     }
 
@@ -176,6 +184,28 @@ export class DagWorkbench {
 
     private async renderInspector(draft: FlowDraft): Promise<void> {
         const inspector = this.root.querySelector<HTMLElement>('.dag-inspector')!;
+        if (this.parameterPanel?.key !== FlowRunParameters.keyFor(draft)) {
+            this.parameterPanel?.destroy();
+            this.parameterPanel = new FlowRunParameters(draft, this.options.commands);
+        }
+        inspector.innerHTML = `<nav class="dag-inspector__tabs" aria-label="${escapeHTML(t('flow.parameters.panel'))}">
+            <button type="button" data-inspector-tab="parameters" aria-pressed="${this.inspectorMode === 'parameters'}">${escapeHTML(t('flow.parameters.title'))}</button>
+            <button type="button" data-inspector-tab="edit" aria-pressed="${this.inspectorMode === 'edit'}">${escapeHTML(t('flow.parameters.edit'))}</button>
+            <button type="button" class="dag-run-button" data-action="run" ${this.preparingRun ? 'disabled aria-busy="true"' : ''}><span class="flow-run-icon">${ACTION_ICONS.run}</span>${escapeHTML(t('flow.toolbar.run'))}</button>
+            </nav><div data-inspector-content></div>`;
+        inspector.querySelector('[data-action="run"]')!.addEventListener('click', () => void this.prepareRun());
+        inspector.querySelectorAll<HTMLButtonElement>('[data-inspector-tab]').forEach(button => button.addEventListener('click', () => {
+            this.inspectorMode = button.dataset.inspectorTab as 'parameters' | 'edit';
+            void this.renderInspector(this.controller!.value);
+        }));
+        this.parameterPanel.root.hidden = this.inspectorMode !== 'parameters';
+        inspector.append(this.parameterPanel.root);
+        const content = inspector.querySelector<HTMLElement>('[data-inspector-content]')!;
+        content.hidden = this.inspectorMode !== 'edit';
+        if (this.inspectorMode === 'edit') await this.renderNodeInspector(draft, content);
+    }
+
+    private async renderNodeInspector(draft: FlowDraft, inspector: HTMLElement): Promise<void> {
         const edge = draft.edges.find(item => String(item.id) === this.selectedEdgeId);
         if (edge) {
             this.renderInlineEdgeEditor(inspector, draft, edge);
@@ -221,6 +251,7 @@ export class DagWorkbench {
             schema = withAgentEntityEnums(schema, formValue, { agents, prompts, tools, skills });
         } else if (node.plugin === 'builtin.flow') {
             const flows = await this.options.commands.execute<FlowDraft[]>(FlowCommand.DraftList);
+            if (this.selectedNodeId !== node.id || !inspector.isConnected) return;
             schema = withCompositeFlowEnum(schema, formValue, flows);
         }
         const formRoot = inspector.querySelector<HTMLElement>('[data-inline-config]')!;
@@ -349,7 +380,6 @@ export class DagWorkbench {
             settings: () => void this.openFlowSettings(),
             save: () => void this.save(),
             publish: () => void this.publish(),
-            run: () => void this.prepareRun(),
         };
         for (const [action, callback] of Object.entries(actions)) {
             this.root.querySelector(`[data-action="${action}"]`)?.addEventListener('click', callback);
@@ -479,13 +509,15 @@ export class DagWorkbench {
 
     private async save(): Promise<FlowDraft | null> {
         if (!this.controller) return null;
+        const controller = this.controller, request = this.viewRequest;
         const draft = this.controller.value;
         try {
             const result = await this.options.commands.execute<{ draft: FlowDraft }>(FlowCommand.DraftSave, {
                 draft,
                 expectedDraftVersion: draft.draftVersion,
             });
-            this.controller.replace(result.draft);
+            if (request !== this.viewRequest || this.controller !== controller) return null;
+            controller.replace(result.draft);
             this.render();
             Toast.success(`Saved draft v${result.draft.draftVersion}`);
             return result.draft;
@@ -496,8 +528,9 @@ export class DagWorkbench {
     }
 
     private async publish(): Promise<FlowRevision | null> {
+        const request = this.viewRequest;
         const saved = await this.save();
-        if (!saved) return null;
+        if (!saved || request !== this.viewRequest) return null;
         try {
             const result = await this.options.commands.execute<{ revision: FlowRevision }>(FlowCommand.RevisionCreate, {
                 draftId: saved.id,
@@ -512,18 +545,36 @@ export class DagWorkbench {
     }
 
     private async prepareRun(): Promise<void> {
-        const revision = await this.publish();
-        if (!revision) return;
-        this.options.onSelectFlow?.(String(revision.id), revision.revision);
+        if (this.preparingRun || !this.parameterPanel) return;
+        this.preparingRun = true;
+        const panel = this.parameterPanel, request = this.viewRequest;
+        if (this.inspectorMode !== 'parameters') {
+            this.inspectorMode = 'parameters';
+            void this.renderInspector(this.controller!.value);
+        }
+        const button = this.root.querySelector<HTMLButtonElement>('[data-action="run"]');
+        if (button) {button.disabled = true; button.setAttribute('aria-busy', 'true');}
+        try {
+            const input = await panel.read();
+            if (!input || request !== this.viewRequest || panel !== this.parameterPanel) return;
+            const revision = await this.publish();
+            if (!revision || request !== this.viewRequest || panel !== this.parameterPanel) return;
+            await this.options.onSelectFlow?.(String(revision.id), revision.revision, input);
+        } catch (error) { panel.showError(error); }
+        finally {
+            this.preparingRun = false;
+            const button = this.root.querySelector<HTMLButtonElement>('[data-action="run"]');
+            if (button) {button.disabled = !this.controller; button.removeAttribute('aria-busy');}
+        }
     }
 
     private async refreshValidation(draft: FlowDraft): Promise<void> {
         const target = this.root.querySelector<HTMLElement>('.dag-validation');
         if (!target) return;
         try {
-            const result = await this.options.commands.execute<{ valid: boolean; validationIssues: Array<{ message: string }> }>(FlowCommand.DraftValidate, draft);
+            const result = await this.options.commands.execute<{valid: boolean; diagnostics: Array<{path?: string; message: string}>}>(FlowCommand.SourceCheck, {source: draft});
             target.classList.toggle('has-errors', !result.valid);
-            target.innerHTML = result.validationIssues.map(issue => `<span>${escapeHTML(issue.message)}</span>`).join('')
+            target.innerHTML = result.diagnostics.map(issue => `<span>${escapeHTML([issue.path, issue.message].filter(Boolean).join(": "))}</span>`).join('')
                 || '<span>Flow is valid</span>';
         } catch (error) {
             target.textContent = error instanceof Error ? error.message : 'Validation failed';
@@ -561,6 +612,7 @@ export class DagWorkbench {
                 </article>`;
             }).join('')}</div>
         </section>`;
+        bindAssetPreviews(this.root, this.options.commands);
         if (this.options.readOnly) this.root.querySelectorAll(
             '[data-run-action]:not([data-run-action="back"]), [data-run-retry], [data-run-retry-downstream], [data-run-signal], [data-run-cancel-task], [data-run-respond]',
         ).forEach(control => control.remove());

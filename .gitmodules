@@ -31,3 +31,15 @@
 [submodule "libraries/image-parser"]
 	path = libraries/image-parser
 	url = git@github.com:mushuanli/image-parser.git
+[submodule "tools/anki-cli"]
+	path = tools/anki-cli
+	url = git@github.com:mushuanli/anki-cli.git
+[submodule "libraries/durable-kernel"]
+	path = libraries/durable-kernel
+	url = git@github.com:mushuanli/durable-kernel.git
+[submodule "libraries/llm-ui"]
+	path = libraries/llm-ui
+	url = git@github.com:mushuanli/llm-ui.git
+[submodule "libraries/device-tty"]
+	path = libraries/device-tty
+	url = git@github.com:mushuanli/device-tty.git

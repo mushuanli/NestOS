@@ -5,7 +5,7 @@
 import { resolveChatModelForTier, resolveChatModelTiers, type IAgentConfigService, type ChatConfigurationSnapshot } from '@itookit/kernel-adapters/contracts';
 import type { ExecutorOption, ConnectionOption } from '../domain/types';
 import { ENTITY_ICONS, formatDefaultFileTitle, t } from '@itookit/common';
-import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
+import { modelReasoning, type ConnectionMeta, type LLMProvider } from '@itookit/driver-llm/contracts';
 
 export async function buildExecutorOptions(
     agentService: IAgentConfigService,
@@ -61,7 +61,7 @@ export async function buildConnectionOptions(
     return connections.map(c => connectionOption(c, agentService.getProvider(c.providerId), defaultId));
 }
 
-function connectionOption(connection: ConnectionMeta, provider: Pick<LLMProvider, 'id' | 'name' | 'enabled' | 'models'> | undefined, defaultId?: string): ConnectionOption {
+function connectionOption(connection: ConnectionMeta, provider: Pick<LLMProvider, 'id' | 'name' | 'enabled' | 'models' | 'defaultProtocol'> | undefined, defaultId?: string): ConnectionOption {
     const tiers = Object.fromEntries(Object.entries(resolveChatModelTiers(connection, provider))
         .map(([tier, model]) => [tier, model.name || model.id]));
     const resolvedTiers = Object.fromEntries((['optimal', 'standard', 'fast'] as const).map(tier => {
@@ -71,7 +71,11 @@ function connectionOption(connection: ConnectionMeta, provider: Pick<LLMProvider
     return {id: connection.id, isDefault: connection.id === defaultId, name: connection.name, enabled: connection.enabled !== false && provider?.enabled !== false,
         provider: connection.providerId, providerName: provider?.name ?? connection.providerId,
         hasApiKey: connection.hasApiKey, credentialsReady: connection.credentialsReady,
-        hasTiers: !!(tiers.standard || tiers.fast), tiers, resolvedTiers};
+        hasTiers: !!(tiers.standard || tiers.fast), tiers, resolvedTiers,
+        reasoningByTier: Object.fromEntries((['optimal', 'standard', 'fast'] as const).map(tier => {
+            const model = resolveChatModelForTier(connection, provider, tier);
+            return [tier, modelReasoning(model, connection.protocol ?? model?.preferredProtocol ?? provider?.defaultProtocol)];
+        }))};
 }
 export function formatDefaultTitle(agentId: string, agentService: IAgentConfigService): string {
     const base = formatDefaultFileTitle();

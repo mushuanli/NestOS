@@ -80,6 +80,23 @@ describe('createVFSToolContext.stat', () => {
 
 
 describe('workspace mount namespace', () => {
+    it('round-trips binary files through the same mount permissions as text files', async () => {
+        const source = await openFs();
+        await source.driver.createDirectory({ name: 'project', parentPath: '/' });
+        await source.driver.createDirectory({ name: 'reference', parentPath: '/' });
+        const fs = createFileSystemView({ viewId: 'binary', mounts: [
+            { mountId: 'workspace', at: '/workspace', fs: source, root: '/project', access: 'rw' },
+            { mountId: 'reference', at: '/reference', fs: source, root: '/reference', access: 'ro' },
+        ] });
+        cleanup.push(() => fs.dispose());
+        const context = createVFSToolContext({ fs, cwd: '/workspace' });
+        const bytes = new Uint8Array([0, 255, 127, 0, 42]);
+        await context.writeBinaryFile!('media/card.bin', bytes);
+        expect(await context.readBinaryFile!('media/card.bin')).toEqual(bytes);
+        await expect(context.readBinaryFile!('media/card.bin',{maxBytes:2})).rejects.toThrow('budget');
+        await expect(context.writeBinaryFile!('/reference/card.bin', bytes)).rejects.toThrow();
+        await expect(context.readBinaryFile!('/private/card.bin')).rejects.toThrow();
+    });
     it('resolves sibling paths while preserving mount permissions and source confinement', async () => {
         const source = await openFs();
         await source.driver.createFile({ name: 'main.txt', parentPath: '/project', recursive: true, content: 'project' });

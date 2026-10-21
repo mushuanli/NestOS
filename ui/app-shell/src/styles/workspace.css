@@ -173,6 +173,13 @@
 .toolbox-filters button { border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary, #64748b); font: inherit; font-size: 12px; padding: 6px 8px; cursor: pointer; }
 .toolbox-filters button[aria-pressed="true"] { background: var(--vfs-active-bg, #e8edff); color: var(--primary-color, #4f46e5); }
 .toolbox-filters button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: 1px; }
+.toolbox-capabilities { grid-column: 1 / -1; min-width: 0; padding: 4px 0; border-top: 1px solid var(--mm-border-color, #e2e8f0); }
+.toolbox-capabilities[hidden], .toolbox-capabilities button[hidden] { display: none; }
+.toolbox-capabilities summary { padding: 8px; cursor: pointer; color: var(--text-secondary, #64748b); font-size: 12px; }
+.toolbox-capabilities summary:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: -2px; }
+.toolbox-capabilities__choices { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 6px; max-height: min(30vh, 220px); overflow: auto; overscroll-behavior: contain; }
+.toolbox-capabilities__choices button { border: 1px solid var(--mm-border-color, #e2e8f0); border-radius: 999px; white-space: nowrap; }
+@media (max-width: 768px) { .toolbox-filters .toolbox-capabilities summary, .toolbox-filters .toolbox-capabilities button { min-height: 44px; box-sizing: border-box; } .toolbox-capabilities summary { padding-block: 12px; } }
 .toolbox-detail { padding: 24px; overflow: auto; line-height: 1.65; }
 .toolbox-detail h1 { font-size: 22px; margin-bottom: 12px; }
 .toolbox-detail p { margin-bottom: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -329,7 +336,6 @@
 }
 
 .workbench-project-navigation__create { font-weight: 600; }
-.workbench-root { border: 0; padding: 8px 12px; background: transparent; color: var(--primary-color, #6366f1); text-align: left; cursor: pointer; }
 .workbench-project-navigation { flex-wrap: wrap; }
 .workbench-project-navigation > select { min-width: 0; max-width: 100%; }
 .workbench-tabs__keep { font-size: 11px; white-space: nowrap; }

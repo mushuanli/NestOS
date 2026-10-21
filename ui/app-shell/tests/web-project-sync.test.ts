@@ -116,7 +116,10 @@ it('discovers mindos-node on the generic MCP connection without extra verificati
         expect(discovery.extensions?.['itookit/pi-agent']).toMatchObject({serverId:'web-directory-test',projects:true});
         await runtime.agentService.saveMCPServer({...draft,...discovery});
         await runtime.agentService.saveMCPServer({...draft,...discovery,name:'Personal server'});
-        expect(methods).toEqual(['server/discover','tools/list']);
+        expect(methods).toEqual(['server/discover','tools/list','resources/list']);
+        expect(discovery.resources).toMatchObject([{uri:'mindos-node://web-directory-test/directories',mimeType:'application/json'}]);
+        const contents = await runtime.agentService.readMCPResource(draft.id,discovery.resources[0].uri) as {contents:Array<{text:string}>};
+        expect(JSON.parse(contents.contents[0].text)).toMatchObject({serverId:'web-directory-test',exports:[{alias:'home',virtualPath:'/home'}]});
         const remote = await runtime.projects.createRemote('Notes',null,draft.id,'/home/target','rw');
         expect(runtime.projects.remoteMounts!.list(remote.project.id)[0]).toMatchObject({connectionId:draft.id,root:'/target',access:'rw'});
         expect(runtime.projects.remoteMounts!.connection(draft.id)).toMatchObject({name:'Personal server',credentialRef:'mcp-office'});

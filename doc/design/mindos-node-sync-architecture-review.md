@@ -49,7 +49,7 @@ C4Container
     Rel(admincli, backups, "备份或恢复")
 ```
 
-**当前 sync 使用独立 `sync.root`，与 export 目录不同。** 对象路径由 namespace、project、hash 派生，不是项目工作目录的直接镜像。数据库和对象库都不应被普通文件 API 或 Bash 当作可编辑目录。路径隔离由 [boundary.rs](../../tools/mindos-node/src/sync/store/boundary.rs) 检查；真实执行隔离还依赖已有 sandbox 的挂载与权限边界，不能只依据“两个目录不同”得出结论。
+**当前 sync 使用独立 `sync.root`，与 export 目录不同。** 对象路径由 namespace、project、hash 派生，不是项目工作目录的直接镜像。数据库和对象库都不应被普通文件 API 或 Bash 当作可编辑目录。路径隔离由 [boundary.rs](../../tools/mindos-node/src/plugin/sync/store/boundary.rs) 检查；真实执行隔离还依赖已有 sandbox 的挂载与权限边界，不能只依据“两个目录不同”得出结论。
 
 ## 3 C4 组件与实际依赖
 
@@ -247,14 +247,14 @@ P1 表示应在进一步依赖该协议前修正；P2 表示应纳入近期维�
 
 | 优先级 | 源码证据与问题 | 后果与建议 |
 | --- | --- | --- |
-| P1 | [catalog.rs](../../tools/mindos-node/src/sync/catalog.rs) `ack()` 没有 write_allowed、capacity 或 quota | 不健康/停止准入后仍可能写 ACK；新增 ACK 行绕过增长门禁。所有写入口统一准入，区分新增与更新，验证副本状态及消费位置 |
+| P1 | [catalog.rs](../../tools/mindos-node/src/plugin/sync/catalog.rs) `ack()` 没有 write_allowed、capacity 或 quota | 不健康/停止准入后仍可能写 ACK；新增 ACK 行绕过增长门禁。所有写入口统一准入，区分新增与更新，验证副本状态及消费位置 |
 | P1 | catalog `version_available()` 对 closure_ready 使用 is_ok；version_value 再查一次并将多数错误显示为 expired | SQL/存储故障可能伪装成普通版本过期。返回类型化 available/expired/corrupt，基础设施错误向上传播，避免重复查询 |
-| P1 | [service.rs](../../tools/mindos-node/src/sync/service.rs) verify_existing、对象读取；[admin.rs](../../tools/mindos-node/src/sync/admin.rs) verify_objects 对验证错误进行折叠 | 暂时 I/O 失败可能被持久标记为 corrupt。摘要或长度不符、对象缺失、读失败应分别处理；健康故障不伪装成内容损坏 |
-| 契约修正 | [operations.rs](../../tools/mindos-node/src/sync/operations.rs) command_inner 全程持锁，cancel_operation 返回已有 pending 回执 | 当前可接受先到取消，公开协议说明也描述了未准入取消；应收窄设计验收中的竞争承诺。运行中取消属于后续能力，COMMIT 后不能回滚 |
+| P1 | [service.rs](../../tools/mindos-node/src/plugin/sync/service.rs) verify_existing、对象读取；[admin.rs](../../tools/mindos-node/src/plugin/sync/admin.rs) verify_objects 对验证错误进行折叠 | 暂时 I/O 失败可能被持久标记为 corrupt。摘要或长度不符、对象缺失、读失败应分别处理；健康故障不伪装成内容损坏 |
+| 契约修正 | [operations.rs](../../tools/mindos-node/src/plugin/sync/operations.rs) command_inner 全程持锁，cancel_operation 返回已有 pending 回执 | 当前可接受先到取消，公开协议说明也描述了未准入取消；应收窄设计验收中的竞争承诺。运行中取消属于后续能力，COMMIT 后不能回滚 |
 | P1 | command、activate、pin、reserve 等先检查 write_allowed，随后等待数据库锁，没有锁内准入复核 | 等待期间关闭或存储不确定后，尚未准入的请求仍可能继续写。门禁、准入登记与不确定状态更新需要同一协调边界；已接受操作收尾另行授权 |
 | P2 | execute_command 的事务内调用 apply，再调用 manifest 进行文件读取、摘要、解析和逐引用 SQL | 大 manifest 阻塞所有元数据工作，增加事务时长。准备阶段使用受保护对象生成验证结果，提交阶段复核 CAS、对象状态和配额 |
 | P2 | service 的对象读取和安装、retention GC 在全局锁内做摘要或文件 I/O | 一个大对象读取可能拖慢无关项目。先测锁等待与持锁时间，分离元数据短临界区和文件 I/O，保留 GC 保护 |
-| P2 | [model.rs](../../tools/mindos-node/src/sync/model.rs) 导入 Axum 并实现 IntoResponse，Error 携带 HTTP status | 领域和离线命令依赖 HTTP。使用领域错误分类，在 transport 中映射状态和响应 |
+| P2 | [model.rs](../../tools/mindos-node/src/plugin/sync/model.rs) 导入 Axum 并实现 IntoResponse，Error 携带 HTTP status | 领域和离线命令依赖 HTTP。使用领域错误分类，在 transport 中映射状态和响应 |
 | P2 | commands 以字符串 target 分发，Value 输入/输出与字符串 state/kind 广泛使用 | 改字段容易在运行时出错。优先类型化 Command、Receipt、DatasetKind、State，保留线协议兼容 |
 | P2 | retention prune 仅清理到期 pin 与终态回执，catalog/change/version/op-id 索引保守留存 | 长期运行会达到元数据上限；分页 LIMIT 不保证窗口查询只扫描一页。设计索引压缩、删除身份保留与防重放记录的独立生命周期 |
 | P1 待验证 | capacity 在操作入口计数；一次操作可能新增多个 records/refs，拒绝回执仍需持久化 | 当前上限不是严格的逐新增行预算。但正常逻辑拒绝不等于回执必然无法保存：回执更新并未再次检查 capacity。物理空间不足时的终态写入与恢复能力需故障注入，预留预算应覆盖这两者 |
@@ -400,7 +400,7 @@ HTTP 同步调用经 `transport::work` 获取已有 Workers 预算后进入 spaw
 
 ## 11 正确性修复实施结果
 
-保留 `SyncService`、一个 SQLite 连接及一次发布的原子事务。新增 [运行协调](../../tools/mindos-node/src/sync/coordination.rs) 和 [正确性测试](../../tools/mindos-node/src/sync/tests.rs)，没有增加新包、连接池或服务端合并器。
+保留 `SyncService`、一个 SQLite 连接及一次发布的原子事务。新增 [运行协调](../../tools/mindos-node/src/plugin/sync/coordination.rs) 和 [正确性测试](../../tools/mindos-node/src/plugin/sync/tests.rs)，没有增加新包、连接池或服务端合并器。
 
 | 修复项 | 实际行为与证据 |
 | --- | --- |

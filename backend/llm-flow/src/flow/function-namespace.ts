@@ -3,8 +3,11 @@ import { remapFlowNodeReferences } from '../contracts';
 import { object } from './structured/value';
 
 /** Rename control identities while preserving user data and public join result keys. */
-export function namespaceCallConfig(node: DagNodeDefinition, child: DagRunSpec, prefix: string): unknown {
-    const config = object(remapFlowNodeReferences(node.config, Object.fromEntries(child.nodes.map(item => [item.id, prefix + item.id]))));
+export function namespaceCallConfig(node: DagNodeDefinition, child: Pick<DagRunSpec, 'nodes' | 'edges'>, prefix: string,
+    aliases = Object.fromEntries(child.nodes.map(item => [item.id, prefix + item.id]))): unknown {
+    const mapped = remapFlowNodeReferences(node.config, aliases);
+    if (!mapped || typeof mapped !== 'object' || Array.isArray(mapped)) return mapped;
+    const config = object(mapped);
     if (['builtin.taskGroup', 'builtin.loop'].includes(node.plugin) && Array.isArray(config.members)) {
         config.members = config.members.map(id => prefix + id);
     }

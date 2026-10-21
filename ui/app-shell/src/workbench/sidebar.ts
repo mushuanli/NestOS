@@ -15,12 +15,12 @@ export class WorkbenchSidebar {
     private readonly abort = new AbortController();
     private snapshot: WorkbenchSnapshot;
     private maximized?: HTMLElement;
-    constructor(private readonly sidebar: HTMLElement, opened: HTMLElement, private readonly persistence?: WorkbenchStatePort) {
+    constructor(private readonly sidebar: HTMLElement, opened: HTMLElement, private readonly persistence?: WorkbenchStatePort, navigationLabel?: string) {
         this.snapshot = persistence?.load() ?? { version: 1 };
         const previous = [...sidebar.childNodes];
         sidebar.classList.add('workbench-sidebar'); this.navigation.className = 'workbench-sidebar__navigation';
         this.navigation.append(...previous);
-        this.top = this.section(t('workbench.navigation'), this.navigation, 'navigation');
+        this.top = this.section([t('workbench.navigation'), navigationLabel].filter(Boolean).join(' '), this.navigation, 'navigation');
         this.bottom = this.section(t('workbench.opened'), opened, 'opened');
         sidebar.append(this.top, this.divider, this.bottom, this.resize);
         this.splitter(this.divider, 'horizontal', t('workbench.resizeSections'), delta => this.height((this.snapshot.navigationHeight ?? 70) + delta / Math.max(sidebar.clientHeight, 1) * 100));

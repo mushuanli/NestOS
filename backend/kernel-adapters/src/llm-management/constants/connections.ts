@@ -121,4 +121,11 @@ export const DEFAULT_CONNECTIONS: DefaultConnectionDef[] = [
             fast: 'doubao-seed-2-0-mini-260428',
         },
     },
+    // Native speech uses the platform media adapter and an independently configured credential.
+    {
+        id: 'conn-doubao-speech',
+        name: '豆包语音 · TTS',
+        providerId: 'doubao-speech',
+        tiers: { optimal: 'seed-tts-2.0' },
+    },
 ];

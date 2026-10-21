@@ -9,7 +9,7 @@
 //   llm-configs/  — 外部 .llm 配置聚合入口（新增配置在此注册）
 
 /** 配置版本号（修改任意层内容必须递增，触发 ensureDefaults 重新同步） */
-export const CONST_CONFIG_VERSION = 19;
+export const CONST_CONFIG_VERSION = 20;
 
 export * from './providers';
 export * from './connections';

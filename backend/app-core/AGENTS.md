@@ -12,6 +12,7 @@
 - RemoteSessionStatus 的 offline 证据由 harness 端口提供；缓存观察异常仅标 stale/refreshError，不能推断离线。持续刷新错误沿用有界退避，订阅回调异常相互隔离，不改变服务端连接投影。
 - 无构建脚本：`main` 直接指向 `src/index.ts`，由宿主 app（web-app / tauri-app / cli）打包。
 - ToolboxInventory 投影连接的安全 credentialsReady 和聊天模型显示名称；通过 kernel-adapters/contracts 的 resolveChatModelTiers 按 optimal、standard、fast 选择目录中存在的聊天模型，不把未知模型 ID 当作就绪。缺少聊天模型显式返回 null，确保 HTTP JSON 保留未就绪信息，不向 UI 传递 API Key 或 OAuth 凭据。
+- ToolboxInventory 的 capabilityTags 由模型声明派生，Provider 聚合目录，Connection 仅使用实际档位；configuredModel 另外表示具有受支持聊天/图片生成/语音合成操作的已配置模型，保留 model 原有聊天语义。未知操作、缺少媒体适配器和语音输入能力均不能当作 TTS。工具箱导入沿用标准归档与身份重映射，第三方连接包归外部工具仓库；通用导入日志记录 operationId、阶段、类别、索引和安全错误码，不记录定义或凭据。
 
 ## 结构
 
@@ -117,7 +118,8 @@ pnpm --filter @itookit/app-core typecheck
 - 作文业务预设位于 `src/presets/essay-review.json`，以声明数据保存提示词与参数；`presets/default-flows.ts` 只负责复制和播种。产品文案不得混入通用 Session 机制。
 - `contextEngineOptions` 与 `agentResolution` 由应用装配透传；Conversation 系统的清理使用返回实例的 dispose，不重置进程单例。
 
-- UI 模板目录位于 `src/presets/essay-review-isolated.json`，公共 `createMindosFlowLibrary()` 返回副本；Web/Tauri 显式接入 UI 的安装、恢复和菜单机制。产品提示词不进入 llm-ui 包。
+- UI 模板目录包含 `src/presets/essay-review-isolated.json` 与 Anki 三个定义 `anki-build.json` / `anki-generate.json` / `anki-from-image.json`，公共 `createMindosFlowLibrary()` 返回副本；宿主共用安装、恢复和菜单机制。Anki 定义源在独立 `tools/anki-cli/flows/`，通过通用媒体节点及外部 Rust 工具生成清单与包，不新增业务执行分支。产品提示词不进入 llm-ui 包。
+- `presets/flow-library.ts` 声明 Flow 默认逻辑分组，host 注入 ToolboxResources；配置机制不按业务 Flow ID 分支。用户抽屉归属优先于产品默认，导出/导入先准备分组目录，归档保存实际分组名；分组不移动文件或改变调用身份。
 
 MindOS 默认工具列表属于 `src/presets/harness-tools.ts`，通过 app-core 公共出口供 app-shell 装配聊天与 Agent 设置 UI；禁止从公共配置契约读取产品默认授权。
 
@@ -160,3 +162,5 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 - 项目远程草稿的 `remoteTarget` 和提交身份先在 drafts/store 事务中固定，再创建原生控制器。remote-submission 负责日志键、旧记录迁移与回执读取，恢复不得使用后来编辑的智能体偏好覆盖该目标；结果未知时禁止丢弃。输入保存可吸收同一草稿的准备元数据，但仍拒绝其他视图的正文冲突。Session 执行存储准备在 session/prepare-session-execution，runtime 只接线。
 
 - conversation-composer-store 保存宿主不透明输入与不可变资产，资产读取核对固定会话 owner，草稿写入使用版本 CAS 和有界 operationId 回执。原图与图片参数不进入 harness 协议；closed 绑定拒绝后续访问，已发起的保存继续完成。
+
+Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.restore 与设置初始文件恢复共用 restoreAndPublishFlow，显式串联恢复草稿和发布 revision；不把发布副作用加入核心 DraftRestore，也不发布已有用户草稿。

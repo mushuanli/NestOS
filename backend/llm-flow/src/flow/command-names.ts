@@ -3,6 +3,7 @@
 // bus string contract between the flow layer and UI/session consumers.
 
 export const FlowCommand = {
+    SourceCheck: 'flow.source.check',
     DraftInstall: 'flow.draft.install',
     DraftRestore: 'flow.draft.restore',
     DraftList: 'flow.draft.list',

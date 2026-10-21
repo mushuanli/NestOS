@@ -55,7 +55,7 @@
 | [context-compaction.ts](../../backend/llm-context/src/window/compact-messages.ts) | 保留 system、最后 user、最近消息与完整工具组 | 本质为按消息数裁剪，不是语义压缩；不存在摘要、原文读取或窗口世代 |
 | [agent-program.ts](../../backend/llm-tasks/src/durable/agent-program.ts) | 持久 messages、pending calls、审批键、独立 Skill 快照 | 循环仅消费 context 接口；去除长 messages 副本；保留 Kernel 执行控制与审批事实 |
 | [context-profile-store.ts](../../backend/llm-session/src/persistence/context-profile-store.ts) | Profile 不可变版本与进程内写序列 | Profile 规则/版本语义迁入 context；持久化端口实现留 adapter，进程内 Promise 链不能充当跨进程 CAS |
-| [Kernel domain](../../backend/durable-kernel/src/domain/types.ts)、[SeqFile store](../../backend/durable-kernel/src/infrastructure/seqfile/store.ts) | `context.seq` commit/branch/head CAS；Task state、effects、shared mutations 可同事务提交 | 既有 `commitContext()` 是单独事务，不能当成与 Task checkpoint 联合原子提交；Context 语义 API 最终迁出 Kernel |
+| [Kernel domain](../../libraries/durable-kernel/src/domain/types.ts)、[SeqFile store](../../libraries/durable-kernel/src/infrastructure/seqfile/store.ts) | `context.seq` commit/branch/head CAS；Task state、effects、shared mutations 可同事务提交 | 既有 `commitContext()` 是单独事务，不能当成与 Task checkpoint 联合原子提交；Context 语义 API 最终迁出 Kernel |
 | [tool-call-effect.ts](../../backend/kernel-adapters/src/effects/tool-call-effect.ts)、[llm-chat-effect.ts](../../backend/kernel-adapters/src/effects/llm-chat-effect.ts) | 工具/LLM 的 grant、取消、reconcile 和用量结算 | 大 payload 在进入持久 Effect 结果之前外置；不要只截断模型侧 messages |
 
 特别注意：裁掉 `state.messages` 不会自动消除 `input.messages`、`effects[*].request/result` 和历史 Task snapshot 中的重复内容。新设计要同时缩小模型输入和恢复记录，否则只是降低 token，无法改善长任务的状态写放大。

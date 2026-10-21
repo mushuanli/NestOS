@@ -31,7 +31,7 @@ src/
 
 [架构设计](./Architecture.md)
 
-文件系统与系统恢复页通过 createSettingsFactory 的可选 InitialFilesPort 提供初始文件清单与勾选恢复。initial-files.ts 负责折叠分组、默认全选、存在状态与逐文件结果；系统恢复页由顶部统一提供选中项恢复和全局状态刷新，不重复展示文件级操作按钮，刷新保留勾选与展开状态；每个笔记/Flow/Provider/Connection/Agent 折叠组标题旁的全选仅影响本组；app-shell 注入 app-core 的 MindosInitialFiles，写入当前笔记文件系统并经原 Flow 命令恢复工作流。设置包不依赖 app-core 或 Flow 运行器。旧 restoreFlows 回调保留兼容；初始文件恢复与 Provider/Connection/Agent 强制重置分开。
+文件系统与系统恢复页通过 createSettingsFactory 的可选 InitialFilesPort 提供初始文件清单与勾选恢复。initial-files.ts 负责折叠分组、默认不勾选、存在状态与逐文件结果；系统恢复页由顶部统一提供选中项恢复和全局状态刷新，不重复展示文件级操作按钮，刷新保留用户手动勾选与展开状态；每个笔记/Flow/Provider/Connection/Agent 折叠组标题旁的全选仅影响本组；app-shell 注入 app-core 的 MindosInitialFiles，写入当前笔记文件系统并经原 Flow 命令恢复工作流。设置包不依赖 app-core 或 Flow 运行器。旧 restoreFlows 回调保留兼容；初始文件恢复与 Provider/Connection/Agent 强制重置分开。
 
 mindos-node 连接统一由工具箱 MCP 管理，StorageSettingsEditor 只负责存储维护。MCP 编辑器通过中立 ConfigurationFormControls 接收宿主字段与操作，不使设置包依赖 app-core。
 

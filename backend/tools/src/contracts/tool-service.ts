@@ -69,6 +69,8 @@ export type ToolHandler = (
  * `cwd` 是当前模块的 VFS 根路径，由调用方注入。
  */
 export interface ToolVFSContext {
+    readBinaryFile?(path: string, options?: {maxBytes?: number}): Promise<Uint8Array>;
+    writeBinaryFile?(path: string, content: Uint8Array): Promise<void>;
     /** 读取 VFS 文件，返回 UTF-8 字符串。 */
     readFile(path: string, options?: { maxBytes?: number }): Promise<string>;
     /** 写入 VFS 文件（upsert 语义）。 */
@@ -90,6 +92,15 @@ export interface ToolVFSContext {
     stat?(path: string): Promise<'file' | 'directory' | 'seqfile' | 'device' | 'symlink' | null>;
 }
 
+/** Immutable reference to a binary asset owned by a durable Task. */
+export interface TaskAssetReference {
+    sessionId: string; taskId: string; owner: string; name: string;
+    mimeType: string; bytes: number; sha256: string;
+}
+export interface InputAssetReference { kind: 'input'; id: string; mimeType: string; bytes: number; sha256: string }
+export type BinaryAssetReference = TaskAssetReference | InputAssetReference;
+export type TaskAssetReader = (reference: BinaryAssetReference, identity: import('./tool-lifecycle').ToolExecutionIdentity) => Promise<Uint8Array>;
+
 export interface ToolExecutionContext {
     onProgress?: (progress: import('./tool-types').ToolProgress) => Promise<void>;
     /** 工作目录（Node.js 真实路径 或 VFS 模块相对路径） */
@@ -105,4 +116,11 @@ export interface ToolExecutionContext {
      * 这样同一套工具代码同时支持 Node.js（真实 FS）和浏览器（VFS）。
      */
     vfs?: ToolVFSContext;
+}
+
+/** Host derives the owner from trusted execution identity, never from tool arguments. */
+export interface TaskAssetStore {
+    write(data: Uint8Array, mimeType: string, identity: import('./tool-lifecycle').ToolExecutionIdentity, signal?: AbortSignal): Promise<TaskAssetReference>;
+    getRecord(key: string, identity: import('./tool-lifecycle').ToolExecutionIdentity): Promise<unknown | undefined>;
+    putRecord(key: string, value: unknown, identity: import('./tool-lifecycle').ToolExecutionIdentity, signal?: AbortSignal): Promise<void>;
 }

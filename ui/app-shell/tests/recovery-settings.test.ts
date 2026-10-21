@@ -25,12 +25,14 @@ it('uses one page action for selected files and configurations, without fetching
     const { container, service, port } = await fixture();
     expect(container.querySelector('[data-initial-restore]')).toBeNull();
     expect(container.querySelector('[data-initial-refresh]')).toBeNull();
-    expect(container.querySelector('#btn-batch-restore')!.textContent).toBe(t('recovery.restoreSelected', { count: 1 }));
+    expect(container.querySelector('#btn-batch-restore')!.textContent).toBe(t('recovery.restoreSelected', { count: 0 }));
+    expect(container.querySelector<HTMLButtonElement>('#btn-batch-restore')!.disabled).toBe(true);
     click(container, '.chk-select-all');
     expect(service.getRestorableItems).toHaveBeenCalledOnce(); expect(port.list).toHaveBeenCalledOnce();
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.checked).toBe(true);
     expect(container.querySelector<HTMLInputElement>('.chk-item[value="connection:two"]')!.checked).toBe(false);
-    expect(container.querySelector<HTMLInputElement>('[data-initial-group=notes]')!.checked).toBe(true);
+    expect(container.querySelector<HTMLInputElement>('[data-initial-group=notes]')!.checked).toBe(false);
+    click(container, '[data-initial-group=notes]');
     expect(container.querySelector('#btn-batch-restore')!.textContent).toBe(t('recovery.restoreSelected', { count: 2 }));
     click(container, '#btn-batch-restore');
     expect(document.querySelector('.settings-modal__body')!.textContent).toContain(t('recovery.confirmSelection', { files: 1, configurations: 1 }));
@@ -50,7 +52,7 @@ it('refreshes every group while retaining selection and expanded files', async (
     await vi.waitFor(() => expect(container.querySelector<HTMLButtonElement>('#btn-refresh-recovery')!.disabled).toBe(false));
     expect(service.getRestorableItems).toHaveBeenCalledTimes(2); expect(port.list).toHaveBeenCalledTimes(2);
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.checked).toBe(true);
-    expect(container.querySelector<HTMLInputElement>('[data-initial-id]')!.checked).toBe(false);
+    expect(container.querySelector<HTMLInputElement>('[data-initial-id]')!.checked).toBe(true);
     expect(container.querySelector('details')!.open).toBe(true);
     expect(container.querySelector<HTMLDetailsElement>('[data-recovery-group=provider]')!.open).toBe(false);
     expect(port.restore).not.toHaveBeenCalled(); expect(service.restoreItem).not.toHaveBeenCalled();
@@ -67,7 +69,7 @@ it('retains failed configurations for retry and locks every selection while rest
     finish(); await vi.waitFor(() => expect(document.querySelector('.settings-modal')).toBeNull());
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.checked).toBe(true);
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.disabled).toBe(false);
-    expect(port.restore).toHaveBeenCalledOnce();
+    expect(port.restore).not.toHaveBeenCalled();
     expect(document.querySelector('.settings-toast--warning')!.textContent).toContain(t('recovery.partialFailure', { count: 1 }));
 });
 

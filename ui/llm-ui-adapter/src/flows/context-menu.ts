@@ -1,4 +1,4 @@
-import { t } from '@itookit/common';
+import { ACTION_ICONS, t } from '@itookit/common';
 import { Toast, type ContextMenuConfig } from '@itookit/ui-common';
 import { FlowLauncher, flowIdFromNodeId, type FlowRunOptions } from './run-flow';
 import { restoreFlowLibrary } from './library';
@@ -25,10 +25,10 @@ export function createFlowContextMenuConfig<TNode extends FlowMenuNode>(options:
             } }];
         const id = node.type === 'file' ? flowIdFromNodeId(node.id) : null;
         if (!id) return defaults;
-        return [...defaults, { type: 'separator' }, { id: 'flow:run', label: t('flow.launch.run'),
+        return [{ id: 'flow:run', label: t('flow.launch.run'), iconHTML: `<span class="flow-run-icon">${ACTION_ICONS.run}</span>`,
             onClick: async () => {
                 try { await launcher.run(id); }
                 catch (error) { Toast.error(error instanceof Error ? error.message : t('flow.launch.failed')); }
-            } }];
+            } }, ...(defaults.length ? [{ type: 'separator' as const }, ...defaults] : [])];
     } };
 }

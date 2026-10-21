@@ -14,7 +14,10 @@ export class ToolProgram implements DurableTaskProgram<State, ToolProgramInput, 
         return { state: { input: structuredClone(input), phase: 'capability' }, next: { type: 'wait', on: { type: 'signal', id: 'capabilities' } } };
     }
     reduce(state: Readonly<State>, event: TaskInputEvent): ToolDecision {
-        if (state.phase === 'capability') return bind(state, event);
+        if (state.phase === 'capability') {
+            if (event.type !== 'signal' || event.signal.type !== 'capabilities') return { state: { ...state }, next: { type: 'wait', on: { type: 'signal', id: 'capabilities' } } };
+            return bind(state, event);
+        }
         if (state.phase === 'approval') {
             if (event.type !== 'interaction-resolved' || event.interactionId !== 'approve:tool' || !interactionApproved(event.value)) return fail(state, 'Tool approval denied');
             return invoke(state);

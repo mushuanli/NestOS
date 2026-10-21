@@ -87,6 +87,8 @@ export interface ToolboxInventory {
         icon?: string;
         enabled: boolean;
         configured: boolean;
+        /** Affirmative model capabilities from the provider catalog, independent of credentials. */
+        capabilityTags?: string[];
         authentication?: 'chatgpt';
         authorizationAvailable?: boolean;
     }>;
@@ -96,6 +98,9 @@ export interface ToolboxInventory {
         credentialsReady?: boolean;
         /** First available configured chat tier (optimal, standard, fast); null when none exists in the catalog. */
         model?: string | null;
+        /** A configured model with a supported runtime operation, including image and speech models. */
+        configuredModel?: string | null;
+        capabilityTags?: string[];
     }>;
     defaultConnectionId?: string;
     readonly tools: Map<string, ToolboxTool>;

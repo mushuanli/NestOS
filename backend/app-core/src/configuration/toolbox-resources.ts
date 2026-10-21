@@ -13,6 +13,7 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import { TOOLBOX_KINDS, toolboxPath, type ToolboxKind } from './toolbox-identity';
 import { defaultToolDrawers } from './tool-groups';
 import { createToolboxFiles } from './toolbox-files';
+import { ToolboxImportTrace } from './toolbox-import-trace';
 import type { ToolboxInventory, ToolboxNavigation } from '@itookit/app-contracts/services';
 
 /** Resource creation retains the owning services' identity and validation rules. */
@@ -20,13 +21,13 @@ export class ToolboxResources {
     readonly drawers: ToolboxDrawers;
     private initialized?: Promise<void>;
     constructor(readonly sources: Record<ToolboxKind, IFileSystem>, private readonly agents: ApplicationAgentPort, private readonly commands: ICommandBus, settings: IFileSystem,
-        private readonly inventory?: ToolboxInventory & { refresh(): Promise<void> }) { this.drawers = new ToolboxDrawers(settings); }
+        private readonly inventory?: ToolboxInventory & { refresh(): Promise<void> },
+        private readonly defaultDrawers: readonly Drawer[] = []) { this.drawers = new ToolboxDrawers(settings); }
     /** Prepare the whole navigation read model where the source services live. */
     async navigation(refresh = true): Promise<ToolboxNavigation> {
-        await (this.initialized ??= this.drawers.init().catch(error => { this.initialized = undefined; throw error; }));
         if (refresh) await this.inventory?.refresh();
         const [loadedDirectories, descriptions] = await Promise.all([
-            this.refreshGroups(this.inventory ? defaultToolDrawers(this.inventory) : []), this.descriptions(),
+            this.prepareGroups(), this.descriptions(),
         ]);
         const files = createToolboxFiles(this.sources);
         let stale = false;
@@ -47,12 +48,17 @@ export class ToolboxResources {
     getAgents(): Promise<AgentDefinition[]> { return this.agents.getAgents(); }
     hasProvider(id: string): boolean { return this.agents.getProviders().some(item => item.id === id); }
     setToolGrant(tool: ToolGrantTarget, agentId: string, enabled: boolean): Promise<void> { return saveToolGrant(this.agents, tool, agentId, enabled); }
+    private async prepareGroups(): Promise<string[]> {
+        await (this.initialized ??= this.drawers.init().catch(error => { this.initialized = undefined; throw error; }));
+        return this.refreshGroups(this.inventory ? defaultToolDrawers(this.inventory) : []);
+    }
     private async refreshGroups(toolGroups: readonly Drawer[]): Promise<string[]> {
-        const defaults: Drawer[] = [...toolGroups], resources: Array<{ path: string; kind: DrawerKind; groupId?: string }> = [];
+        const defaults: Drawer[] = [...toolGroups, ...this.defaultDrawers], resources: Array<{ path: string; kind: DrawerKind; groupId?: string }> = [];
         const directories = TOOLBOX_KINDS.map(kind => '/' + kind);
         for (const group of toolGroups) for (const path of group.paths) resources.push({ path, kind: 'tools', groupId: group.id });
         for (const skill of await this.agents.getSkills()) resources.push({ path: toolboxPath('skills', '/' + skill.id), kind: 'skills' });
         for (const kind of ['agents', 'flows', 'prompts', 'mcp'] as const) await this.scanGroups(kind, '/', defaults, resources, directories);
+        for (const item of resources) item.groupId ??= this.defaultDrawers.find(group => group.kind === item.kind && group.paths.includes(item.path))?.id;
         this.drawers.setCatalog(resources, defaults);
         return directories;
     }
@@ -131,6 +137,7 @@ export class ToolboxResources {
         return map;
     }
     async export(paths: string[], drawers: Array<{ kind: DrawerKind; name: string }> = []): Promise<string> {
+        await this.prepareGroups();
         const entries = [];
         const queue = [...new Set(paths)];
         for (const path of queue) {
@@ -152,7 +159,12 @@ export class ToolboxResources {
         return JSON.stringify({ format: 'itookit.toolbox', version: 1, entries, drawers }, null, 2);
     }
     async import(content: string): Promise<string[]> {
+        const trace = new ToolboxImportTrace();
+        return trace.run(() => this.importArchive(content, trace));
+    }
+    private async importArchive(content: string, trace: ToolboxImportTrace): Promise<string[]> {
         const archive = JSON.parse(content);
+        trace.step('validate');
         if (archive?.format !== 'itookit.toolbox' || archive.version !== 1 || !Array.isArray(archive.entries)) throw new Error(t('toolbox.importInvalid'));
         for (const entry of archive.entries) {
             validateEntry(entry);
@@ -161,27 +173,36 @@ export class ToolboxResources {
         }
         const drawers = archive.drawers ?? [];
         if (!Array.isArray(drawers) || drawers.some(group => !group || !drawerKind(group.kind) || typeof group.name !== 'string' || !group.name.trim())) throw new Error(t('toolbox.importInvalid'));
+        trace.step('prepare'); await this.prepareGroups();
         const plan = planImport(archive.entries);
         const created: string[] = [];
         try {
-            for (const entry of plan) created.push(await this.importEntry(entry.kind, entry.data, entry.id));
+            for (const [index, entry] of plan.entries()) {
+                trace.step('write', entry.kind, index); created.push(await this.importEntry(entry.kind, entry.data, entry.id));
+            }
             const grouped = plan.flatMap((entry, index) => entry.drawer === undefined ? [] : [{ path: created[index], name: entry.drawer }]);
+            trace.step('groups');
             if (grouped.length || drawers.length) await this.drawers.assign(grouped, drawers, { restoreNames: true });
             return created;
         } catch (error) {
-            const errors = [error];
-            for (const path of created.reverse()) {
-                const kind = path.split('/')[1] as ToolboxKind;
-                try { if (kind === 'tools') continue;
-                    if (kind === 'providers') await this.agents.deleteProvider(decodeURIComponent(path.split('/').pop()!));
-                    else if (kind === 'connections') await this.agents.deleteConnection(decodeURIComponent(path.split('/').pop()!));
-                    else if (kind === 'prompts') await this.agents.deleteSystemPrompt(decodeURIComponent(path.split('/').pop()!));
-                    else if (kind === 'skills') await this.agents.deleteSkill(path.split('/').pop()!);
-                    else if (kind === 'mcp') await this.agents.deleteMCPServer(decodeURIComponent(path.split('/').pop()!)); else await this.sources[kind].driver.delete([path.slice(kind.length + 1)]); } catch (cleanup) { errors.push(cleanup); }
-            }
-            if (errors.length > 1) throw new AggregateError(errors, 'Toolbox import and cleanup failed');
-            throw error;
+            return this.rollbackImport(created, error, trace);
         }
+    }
+    private async rollbackImport(created: string[], error: unknown, trace: ToolboxImportTrace): Promise<never> {
+        const errors = [error];
+        for (const path of created.reverse()) {
+            const kind = path.split('/')[1] as ToolboxKind;
+            try { if (kind === 'tools') continue;
+                if (kind === 'providers') await this.agents.deleteProvider(decodeURIComponent(path.split('/').pop()!));
+                else if (kind === 'connections') await this.agents.deleteConnection(decodeURIComponent(path.split('/').pop()!));
+                else if (kind === 'prompts') await this.agents.deleteSystemPrompt(decodeURIComponent(path.split('/').pop()!));
+                else if (kind === 'skills') await this.agents.deleteSkill(path.split('/').pop()!);
+                else if (kind === 'mcp') await this.agents.deleteMCPServer(decodeURIComponent(path.split('/').pop()!));
+                else await this.sources[kind].driver.delete([path.slice(kind.length + 1)]);
+            } catch (cleanup) { trace.rollbackFailed(cleanup); errors.push(cleanup); }
+        }
+        if (errors.length > 1) throw new AggregateError(errors, 'Toolbox import and cleanup failed');
+        throw error;
     }
     private async toolReference(id: string): Promise<string> {
         const local = '/' + encodeURIComponent(id);

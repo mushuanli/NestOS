@@ -136,3 +136,18 @@ it('uses a host fallback only for chat and reports why resolution failed', async
     await expect(resolver.resolveExact('missing')).rejects.toThrow('Agent not found');
     expect(failures).toHaveLength(1);
 });
+
+it('copies Agent purpose defaults into versioned identities and preserves explicit connection priority', async () => {
+    const definition = { id: 'owned', name: 'Owned', type: 'agent', config: {}, modelDefaults: { chat: 'agent-chat', 'image.generate': 'pictures' } };
+    const resolver = new AgentResolver(service({ getAgentConfig: async () => definition,
+        getConnection: async (id: string) => ({ id, name: id, providerId: 'p', model: `${id}-model` }),
+        getModelDefaults: async () => ({ chat: 'system-chat', 'speech.synthesize': 'speech' }) }));
+    const identity = await resolver.resolveExact('owned');
+    expect(identity.connectionId).toBeUndefined();
+    expect((await resolver.reResolveModel(identity, {})).connectionId).toBe('agent-chat');
+    expect((await resolver.reResolveModel(identity, { connectionId: 'explicit' })).connectionId).toBe('explicit');
+    expect(await resolver.getModelDefaults(identity)).toEqual({ chat: 'agent-chat', 'image.generate': 'pictures', 'speech.synthesize': 'speech' });
+    definition.modelDefaults.chat = 'later';
+    expect(identity.modelDefaults?.chat).toBe('agent-chat');
+    expect((await resolver.resolveExact('owned')).agentVersion).not.toBe(identity.agentVersion);
+});

@@ -9,6 +9,11 @@ export function isModelOperation(value: unknown): value is ModelOperation {
     return typeof value === 'string' && MODEL_OPERATIONS.some(operation => operation === value);
 }
 
+export function isModelDefaults(value: unknown): value is ModelDefaults {
+    return !!value && typeof value === 'object' && !Array.isArray(value)
+        && Object.entries(value).every(([operation, id]) => isModelOperation(operation) && typeof id === 'string' && !!id.trim());
+}
+
 /** Resolve models selected by connection metadata, without skipping invalid tier bindings. */
 export function modelForOperation(connection: ConnectionMeta, provider: LLMProvider | undefined,
     operation: ModelOperation): LLMModel | undefined {

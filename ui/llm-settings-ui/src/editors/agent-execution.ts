@@ -1,45 +1,239 @@
-import { escapeHTML, t } from '@itookit/common';
+import { ACTION_ICONS, FILE_BROWSER_ICONS, escapeHTML, randomUUID, t } from '@itookit/common';
+import { requestSettingsSave } from '@itookit/ui-common';
 import type { AgentDefinition } from '@itookit/kernel-adapters/contracts';
+import { renderAgentComposition, bindAgentComposition, readAgentComposition } from './agent-composition';
+import { readAgentFlowFields, renderAgentFlowFields } from './agent-flow-fields';
+import type { AgentExecutionOptions, AgentFlowChoice, AgentFlowDefinition, AgentFlowRevision } from './agent-execution-options';
 
-export interface AgentFlowChoice { id: string; name: string; }
+export type { AgentFlowChoice } from './agent-execution-options';
+type Defaults = { parameters?: Record<string, unknown>; connectionBindings?: Record<string, string> };
+type Catalog = { revisions: AgentFlowRevision[]; latest?: AgentFlowRevision | null };
 
-export function renderAgentExecution(agent: AgentDefinition, flows: AgentFlowChoice[]): string {
+export function renderAgentExecution(agent: AgentDefinition, flows: AgentFlowChoice[], agents: AgentDefinition[] = []): string {
     const execution = agent.execution?.kind === 'flow' ? agent.execution : undefined;
+    const composite = !!agent.composition;
+    const selected = execution?.flowId ?? flows[0]?.id ?? '';
     const choices = [...flows];
-    if (execution && !choices.some(flow => flow.id === execution.flowId)) choices.push({ id: execution.flowId, name: execution.flowId });
-    const json = (value: unknown) => escapeHTML(JSON.stringify(value ?? {}, null, 2));
-    return `<div class="agent-section" data-agent-execution><div class="agent-section__body">
-        <label>${t('agent.execution.title')}<select name="executionKind"><option value="agent">${t('agent.execution.agent')}</option><option value="flow" ${execution ? 'selected' : ''}>${t('agent.execution.flow')}</option></select></label>
-        <div data-agent-flow-fields ${execution ? '' : 'hidden'}>
-            <label>${t('agent.execution.definition')}<select name="executionFlowId"><option value=""></option>${choices.map(flow => `<option value="${escapeHTML(flow.id)}" ${execution?.flowId === flow.id ? 'selected' : ''}>${escapeHTML(flow.name)}</option>`).join('')}</select></label>
-            <label>${t('agent.execution.revision')}<input name="executionRevision" type="number" min="1" step="1" value="${escapeHTML(String(execution?.revision ?? ''))}"></label>
-            <label>${t('agent.execution.parameters')}<textarea name="executionParameters" rows="5">${json(execution?.parameters)}</textarea></label>
-            <label>${t('agent.execution.bindings')}<textarea name="executionBindings" rows="3">${json(execution?.connectionBindings)}</textarea></label>
-            <p class="agent-form-help">${t('agent.execution.promptHint')}</p>
-        </div></div></div>`;
+    if (selected && !choices.some(flow => flow.id === selected)) choices.push({ id: selected, name: t('agent.execution.missingFlow', { id: selected }) });
+    return `<section class="agent-section" data-agent-execution data-bound-execution="${escapeHTML(JSON.stringify(agent.execution ?? {kind: 'agent'}))}">
+        <button type="button" class="agent-section__header" aria-expanded="true"><span class="agent-section__icon">${ACTION_ICONS.run}</span><span class="agent-section__title">${t('agent.execution.title')}</span><span class="agent-section__toggle">${FILE_BROWSER_ICONS.chevron}</span></button>
+        <div class="agent-section__body">
+            <label class="agent-form-field">${t('agent.execution.title')}<select class="agent-form-select" name="executionKind"><option value="agent">${t('agent.execution.agent')}</option><option value="composite" ${composite ? 'selected' : ''}>${t('agent.composition.kind')}</option><option value="flow" ${execution && !composite ? 'selected' : ''}>${t('agent.execution.flow')}</option></select></label>
+            <p class="agent-form-help" data-agent-binding-summary role="status"></p>
+            ${renderAgentComposition(agent, agents)}
+            <fieldset class="agent-flow-fields__group" data-agent-flow-fields ${execution && !composite ? '' : 'hidden disabled'}>
+                <div class="agent-form-grid">
+                    <label class="agent-form-field">${t('agent.execution.definition')}<select class="agent-form-select" name="executionFlowId" required>${selected ? '' : `<option value="">${t('agent.execution.required')}</option>`}${choices.map(flow => `<option value="${escapeHTML(flow.id)}" ${selected === flow.id ? 'selected' : ''}>${escapeHTML(flow.name)}</option>`).join('')}</select></label>
+                    <label class="agent-form-field">${t('agent.execution.revision')}<select class="agent-form-select" name="executionRevision">${revisionOptions([], execution?.revision)}</select></label>
+                </div>
+                <p class="agent-form-help" data-agent-flow-status role="status"></p>
+                <button type="button" class="agent-prompt-btn" data-open-bound-flow hidden>${t('agent.execution.openFlow')}</button>
+                <button type="button" class="agent-prompt-btn" data-agent-flow-retry hidden>${t('flow.parameters.retry')}</button>
+                <div data-agent-flow-editor></div>
+                <p class="agent-form-help">${t('agent.execution.promptHint')}</p>
+            </fieldset>
+        </div></section>`;
+}
+
+function revisionOptions(revisions: AgentFlowRevision[], selected?: number): string {
+    const available = [...new Set(revisions.map(item => item.revision))].sort((a, b) => b - a);
+    const missing = selected !== undefined && !available.includes(selected)
+        ? `<option value="${selected}" selected>${escapeHTML(t('agent.execution.missingRevision', { revision: selected }))}</option>` : '';
+    return `<option value="" ${selected === undefined ? 'selected' : ''}>${t('agent.execution.latest')}</option>${missing}${available.map(revision => `<option value="${revision}" ${revision === selected ? 'selected' : ''}>v${revision}</option>`).join('')}`;
+}
+
+function field(root: HTMLElement, name: string): HTMLSelectElement {
+    return root.querySelector<HTMLSelectElement>(`[name="${name}"]`)!;
 }
 
 export function readAgentExecution(root: HTMLElement): AgentDefinition['execution'] {
-    const field = (name: string) => root.querySelector<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>(`[name="${name}"]`)!.value;
-    if (field('executionKind') !== 'flow') return { kind: 'agent' };
-    const flowId = field('executionFlowId'), rawRevision = field('executionRevision');
+    if (field(root, 'executionKind').value === 'composite') {
+        readAgentComposition(root);
+        return JSON.parse(root.querySelector<HTMLElement>('[data-agent-execution]')?.dataset.boundExecution ?? '{"kind":"agent"}') as AgentDefinition['execution'];
+    }
+    if (field(root, 'executionKind').value !== 'flow') return { kind: 'agent' };
+    const flowId = field(root, 'executionFlowId').value;
     if (!flowId) throw new Error(t('agent.execution.required'));
-    const revision = rawRevision ? Number(rawRevision) : undefined;
-    if (revision !== undefined && (!Number.isSafeInteger(revision) || revision < 1)) throw new Error(t('agent.execution.invalidRevision'));
-    const parameters = object(field('executionParameters'));
-    const connectionBindings = object(field('executionBindings'));
-    if (Object.values(connectionBindings).some(value => typeof value !== 'string')) throw new Error(t('agent.execution.invalidBindings'));
-    return { kind: 'flow', flowId, revision, parameters, connectionBindings: connectionBindings as Record<string, string> };
+    const section = root.querySelector<HTMLElement>('[data-agent-execution]')!;
+    if (section.dataset.state !== 'ready') throw new Error(section.dataset.error || t('agent.execution.loading'));
+    const revision = field(root, 'executionRevision').value;
+    return { kind: 'flow', flowId, revision: revision ? Number(revision) : undefined, ...readAgentFlowFields(root) };
 }
 
-function object(source: string): Record<string, unknown> {
-    let value: unknown;
-    try { value = JSON.parse(source || '{}'); } catch { throw new Error(t('agent.execution.invalidObject')); }
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error(t('agent.execution.invalidObject'));
-    return value as Record<string, unknown>;
+export function bindAgentExecution(root: HTMLElement, agent: AgentDefinition, flows: AgentFlowChoice[], options: AgentExecutionOptions = {}): AgentExecutionController {
+    return new AgentExecutionController(root, agent, flows, options);
 }
 
-export function bindAgentExecution(root: HTMLElement): void {
-    const kind = root.querySelector<HTMLSelectElement>('[name="executionKind"]');
-    kind?.addEventListener('change', () => { root.querySelector<HTMLElement>('[data-agent-flow-fields]')!.hidden = kind.value !== 'flow'; });
+/** Own only form drafts and reads; publishing, persistence and execution stay with the host. */
+export class AgentExecutionController {
+    private generation = 0;
+    private disposed = false;
+    private pending?: Promise<void>;
+    private interrupt?: () => void;
+    private interrupted = new Promise<void>(resolve => { this.interrupt = resolve; });
+    private readonly lifetime = new AbortController();
+    private readonly views = new Map<string, HTMLElement>();
+    private readonly defaults = new Map<string, Defaults>();
+    private readonly catalog = new Map<string, Catalog>();
+    private readonly selections = new Map<string, string>();
+    private activeFlow?: string;
+    private connections?: Array<{ id: string; name: string }>;
+    private readonly section: HTMLElement;
+    private readonly fields: HTMLFieldSetElement;
+    private readonly status: HTMLElement;
+
+    constructor(private readonly root: HTMLElement, agent: AgentDefinition, private readonly flows: AgentFlowChoice[], private readonly options: AgentExecutionOptions) {
+        this.section = root.querySelector('[data-agent-execution]')!;
+        this.fields = root.querySelector('[data-agent-flow-fields]')!;
+        this.status = root.querySelector('[data-agent-flow-status]')!;
+        if (agent.execution?.kind === 'flow') this.defaults.set(agent.execution.flowId, agent.execution);
+        for (const name of ['executionKind', 'executionFlowId', 'executionRevision']) {
+            field(root, name).addEventListener('change', () => this.update(true), { signal: this.lifetime.signal });
+        }
+        root.querySelector('[data-agent-flow-retry]')!.addEventListener('click', () => {
+            this.catalog.delete(field(root, 'executionFlowId').value); this.connections = undefined; this.update(true);
+        }, { signal: this.lifetime.signal });
+        const open = root.querySelector<HTMLButtonElement>('[data-open-bound-flow]')!;
+        open.hidden = !options.openFlow;
+        open.addEventListener('click', () => { void this.openFlow(open); }, { signal: this.lifetime.signal });
+        bindAgentComposition(root);
+        this.update(false);
+    }
+
+    async ready(): Promise<void> {
+        while (this.pending) {
+            const pending = this.pending;
+            await Promise.race([pending, this.interrupted]);
+            if (this.pending === pending) return;
+        }
+    }
+
+    destroy(): void { this.disposed = true; this.invalidate(); this.pending = undefined; this.lifetime.abort(); this.views.clear(); }
+
+    private invalidate(): number {
+        this.interrupt?.();
+        this.interrupted = new Promise<void>(resolve => { this.interrupt = resolve; });
+        return ++this.generation;
+    }
+
+    private update(changed: boolean): void {
+        const enabled = field(this.root, 'executionKind').value === 'flow';
+        const composite = field(this.root, 'executionKind').value === 'composite';
+        const composition = this.root.querySelector<HTMLFieldSetElement>('[data-agent-composition]')!;
+        composition.hidden = !composite; composition.disabled = !composite;
+        this.summary();
+        this.fields.hidden = !enabled; this.fields.disabled = !enabled;
+        const generation = this.invalidate();
+        if (!enabled || this.disposed) { this.pending = undefined; return; }
+        this.capture();
+        this.pending = this.load(generation, changed);
+    }
+
+    private capture(): void {
+        if (!this.activeFlow || this.section.dataset.state !== 'ready') return;
+        this.selections.set(this.activeFlow, field(this.root, 'executionRevision').value);
+        try { this.defaults.set(this.activeFlow, readAgentFlowFields(this.root)); }
+        catch { /* Keep the existing DOM draft, including invalid input, for correction. */ }
+    }
+
+    private async load(generation: number, changed: boolean): Promise<void> {
+        const flowId = field(this.root, 'executionFlowId').value;
+        const operationId = randomUUID(), started = performance.now();
+        this.setState('loading', t('agent.execution.loading'));
+        try {
+            if (!this.flows.some(flow => flow.id === flowId)) throw new Error(t(this.flows.length ? 'agent.execution.required' : 'agent.execution.noFlows'));
+            const data = await this.loadCatalog(flowId, operationId);
+            if (!this.current(generation)) return;
+            this.apply(flowId, data);
+            console.info('agent.flow.configuration.loaded', { operation: 'agent.flow.configuration', operationId, stage: 'render', result: 'success', durationMs: Math.round(performance.now() - started), revisionCount: data.revisions.length });
+            if (changed) requestSettingsSave(this.root);
+        } catch (error) {
+            if (!this.current(generation)) return;
+            this.setState('error', error instanceof Error ? error.message : t('agent.execution.unavailable'));
+            console.error('agent.flow.configuration.failed', { operation: 'agent.flow.configuration', operationId, stage: 'load', result: 'failure', code: 'FLOW_CONFIGURATION_LOAD_FAILED', durationMs: Math.round(performance.now() - started) });
+        }
+    }
+
+    private async loadCatalog(id: string, operationId: string): Promise<Catalog> {
+        let data = this.catalog.get(id);
+        if (!data) {
+            const [revisions, latest] = await Promise.all([
+                this.stage('revisions', operationId, () => this.options.listFlowRevisions?.(id) ?? Promise.resolve([])),
+                this.stage('definition', operationId, () => this.options.getFlowRevision?.(id) ?? Promise.resolve(undefined)),
+            ]);
+            data = { revisions, latest }; this.catalog.set(id, data);
+        }
+        this.connections ??= await this.stage('connections', operationId, () => this.options.listConnections?.() ?? Promise.resolve([]));
+        return data;
+    }
+
+    private async stage<T>(stage: string, operationId: string, read: () => Promise<T>): Promise<T> {
+        const started = performance.now();
+        try { return await read(); }
+        catch (error) {
+            console.error('agent.flow.configuration.read.failed', { operation: 'agent.flow.configuration', operationId, stage, result: 'failure', code: `FLOW_${stage.toUpperCase()}_READ_FAILED`, durationMs: Math.round(performance.now() - started) });
+            throw error;
+        }
+    }
+
+    private apply(flowId: string, data: Catalog): void {
+        const revisionField = field(this.root, 'executionRevision');
+        const raw = this.activeFlow && this.activeFlow !== flowId ? this.selections.get(flowId) ?? '' : revisionField.value;
+        const selected = raw ? Number(raw) : undefined;
+        revisionField.innerHTML = revisionOptions(data.revisions, selected);
+        const latest = this.options.getFlowRevision ? data.latest : [...data.revisions].sort((a, b) => b.revision - a.revision)[0];
+        const revision = selected === undefined ? latest : data.revisions.find(item => item.revision === selected);
+        if (selected !== undefined && !revision) throw new Error(t('agent.execution.missingRevision', { revision: selected }));
+        const definition: AgentFlowDefinition = revision ?? this.flows.find(flow => flow.id === flowId)!;
+        const key = JSON.stringify([flowId, selected ?? 'latest']);
+        let view = this.views.get(key);
+        if (!view) {
+            view = document.createElement('div');
+            view.innerHTML = renderAgentFlowFields(definition, this.defaults.get(flowId) ?? {}, this.connections ?? []);
+            this.views.set(key, view);
+        }
+        this.root.querySelector('[data-agent-flow-editor]')!.replaceChildren(view);
+        this.activeFlow = flowId;
+        this.setState('ready', revision ? t('agent.execution.inheritHint') : t('agent.execution.unpublished'));
+        this.summary();
+    }
+
+    private current(generation: number): boolean { return !this.disposed && this.generation === generation; }
+
+    syncSaved(agent: AgentDefinition): void {
+        this.section.dataset.boundExecution = JSON.stringify(agent.execution ?? {kind: 'agent'});
+        this.summary();
+    }
+
+    private async openFlow(button: HTMLButtonElement): Promise<void> {
+        button.disabled = true;
+        try { await this.options.openFlow?.(field(this.root, 'executionFlowId').value); }
+        catch (error) {
+            if (this.disposed) return;
+            this.status.textContent = error instanceof Error ? error.message : String(error);
+            this.status.setAttribute('role', 'alert');
+        } finally { if (!this.disposed) button.disabled = false; }
+    }
+
+    private summary(): void {
+        const kind = field(this.root, 'executionKind').value;
+        const revision = field(this.root, 'executionRevision').value;
+        const name = field(this.root, 'executionFlowId').selectedOptions[0]?.textContent ?? '';
+        this.root.querySelector('[data-agent-binding-summary]')!.textContent = kind === 'flow'
+            ? t('agent.execution.boundSummary', { name, version: revision ? `v${revision}` : 'latest' })
+            : t(kind === 'composite' ? 'agent.composition.hint' : 'agent.execution.directSummary');
+        const status = this.root.querySelector('[data-agent-composition-status]');
+        if (status && kind === 'composite') {
+            const binding = JSON.parse(this.section.dataset.boundExecution ?? '{}') as AgentDefinition['execution'];
+            status.textContent = binding?.kind === 'flow' ? t('agent.composition.bound', { version: binding.revision ?? 'latest' }) : t('agent.composition.pending');
+        }
+    }
+
+    private setState(state: 'loading' | 'ready' | 'error', message: string): void {
+        this.section.dataset.state = state; this.section.dataset.error = state === 'error' ? message : '';
+        this.status.textContent = message; this.status.setAttribute('role', state === 'error' ? 'alert' : 'status');
+        this.section.setAttribute('aria-busy', String(state === 'loading'));
+        this.root.querySelector<HTMLButtonElement>('[data-agent-flow-retry]')!.hidden = state !== 'error';
+        this.root.querySelector<HTMLElement>('[data-agent-flow-editor]')!.hidden = state !== 'ready';
+    }
 }

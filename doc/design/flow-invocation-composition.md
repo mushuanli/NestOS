@@ -114,6 +114,52 @@ Flow 文件只定义参数、变量、节点和返回值，不反向定义 Agent
 
 `execution.revision` 省略时，每次新请求采用最新已发布版本；指定正整数则固定该版本。编辑草稿后需要发布，才影响跟随最新版本的 Agent；固定版本需显式升级绑定。Agent 保留引用和参数默认值，不复制 Flow 正文。设置编辑器选择内部 Flow、可选版本、默认参数与连接槽；实际入口由 `execution.kind` 决定，旧 `type: workflow` 标签本身不触发执行。
 
+Composite 采用明确的单轮主持模式：指定普通 Agent 作为主持，并声明可选成员目录；主持根据输入动态选择一个有界任务批次，成员完成后由同一主持汇总答复。主持和成员不能是当前 Composite、其他 Composite 或已绑定 Flow 的 Agent；主持与成员分离。同一成员可以接收不同分工，总任务数受 `maxDelegations` 限制，成员并发数受 `maxConcurrency` 限制；这两个值分别不超过 100 和 32，省略时沿用通用 delegation 的默认值。它不表示多轮循环调度。
+
+```json
+{
+  "type": "composite",
+  "composition": {
+    "coordinatorAgentId": "coordinator",
+    "memberAgentIds": ["researcher", "reviewer"],
+    "maxDelegations": 8,
+    "maxConcurrency": 4
+  }
+}
+```
+
+作者配置经 [Composite 保存用例](../../backend/app-core/src/configuration/agent-composition.ts) 校验并编译为受管 Flow：第一阶段为带成员白名单的 `builtin.agent` 主持节点，第二阶段为禁用委派的主持汇总节点。动态成员结果通过通用 `delegation.result.targetNodeId` 数据依赖接入汇总节点，最终返回汇总答复；模型声明的 `agentId` 必须属于 `delegation.agents` 目录，不能借分工参数覆盖身份、连接或授权。所有候选身份在指令接纳时冻结，并复用既有 Flow 调度、重试、任务持久化与回放。
+
+Composite 仍保存 `execution.kind: flow` 和固定受管 revision，不增加执行器。Flow 发布前先持久化 `.agent-composition-<编码 Agent ID>.json` 所有权收据；收据写入失败时不发布，后续 Agent 写入失败时保留已登记 Flow，重试或重启复用原 Flow ID。调用方提供的旧 `execution.flowId` 不能作为受管归属证明，也不会用于覆写用户流程。工具箱导出携带作者配置、主持和成员依赖；导入先重映射并保存普通成员，再为新的 Composite 身份重新编译受管 Flow。
+
+同一宿主内同一 Agent 的准备与保存串行执行，接纳保存请求时复制作者配置。复用受管修订以已发布正文与目标正文一致为条件，草稿相同不能证明发布成功；草稿写入后发布失败，重试仍继续发布。保存只在发布成功后写入 Agent 绑定，不宣称跨文件原子事务。删除 Agent、导入回滚或切换执行方式均保留已经登记的受管 Flow 和所有权收据，使历史绑定与发布失败恢复仍可核对；本次不按 Agent 是否存在自动回收发布资源。
+
+### 配置发布与运行准入的边界
+
+应用策略选择主持模式、成员和提示词，编排层只解释候选约束与动态依赖。预检与会话绑定共用 `flow-agent-connections` 的连接优先级规则；完整准入后把节点及递归委派模板的连接、模型和端点选择投影回源图，保存为运行计划。源图继续保留指令与上下文策略，派发重新装配对话上下文时复用已接纳的连接投影。预检不代替正式准入，派发仍复验当前授权和可用性。
+
+```mermaid
+C4Component
+    Container_Boundary(application, "应用运行时：组件边界，不表示独立进程") {
+        Component(author, "配置发布策略", "app-core", "Composite 作者配置、受管发布与归档映射")
+        Component(config, "Agent 配置服务", "llm-session", "同身份串行准备与持久保存")
+        Component(admission, "运行准入", "llm-session", "统一连接规则、身份捕获、完整图检查")
+        Component(plan, "持久运行计划", "Session 指令队列", "源图、身份与连接选择")
+        Component(dispatch, "上下文绑定与复验", "llm-session", "使用冻结选择装配当前对话上下文")
+        Component(flow, "图编译与调度", "llm-flow", "候选约束、动态依赖与并发")
+        Component(kernel, "持久任务执行", "durable-kernel", "提交、恢复与取消")
+    }
+    Rel(config, author, "通过注入的准备端口发布派生产物")
+    Rel(author, flow, "发布普通 Flow 定义")
+    Rel(admission, flow, "复用 prepareFlowRun 编译")
+    Rel(admission, plan, "保存源配方及已接纳的连接选择")
+    Rel(plan, dispatch, "出队或恢复")
+    Rel(dispatch, flow, "提交已绑定且复验通过的图")
+    Rel(flow, kernel, "执行任务")
+```
+
+Flow 的 Agent 引用位置由 `llm-flow/contracts` 的 `mapFlowAgentReferences` 定义：Flow 默认 Agent、`builtin.agent` 节点、委派模板和成员目录，以及内联函数。app-core 只提供归档身份替换表，不递归解释任意插件配置中的同名 `agentId`；外部 Tool 参数、转换节点数据和用户正文保持业务原义。Agent 的用途默认和流程连接覆盖在对应连接一并导入时重映射，未包含的外部引用保持原 ID。
+
 聊天中选择该 Agent 并发送提示词，会读取所选版本的当前参数签名，复用 Flow 参数及图片表单。合并顺序是 Flow 字段默认值 → Agent 的 `execution.parameters` → 本次运行参数；连接槽同样允许本次覆盖 Agent 的 `connectionBindings`。未知参数、缺失必填项、类型和范围错误在请求入队前拒绝。确定性 Flow 不要求配置聊天模型，实际模型/媒体节点仍按 Flow 声明检查连接和授权。
 
 提示词通过只读运行输入 `${input.prompt}` 提供，不占用 Flow 的参数名。需要可修改的内部稿件时，可声明：

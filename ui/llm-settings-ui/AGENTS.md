@@ -51,7 +51,11 @@ CostEditor 默认展示本月费用账本摘要；趋势、Provider/会话明细
 
 AgentConfigEditor 可消费 EditorOptions.mountSettings 挂载宿主偏好，生命周期包含 isDirty、flush 与 destroy；偏好字段不写入 AgentDefinition，保存失败阻止离开并保留表单。
 
-Agent 执行方式通过 execution 绑定内部注册 Flow；第四个参数的 listFlows 由宿主提供目录。可跟随最新发布或固定 revision，并编辑默认参数及连接绑定 JSON。普通 Agent 策略与未展示字段继续保留，非法 JSON 阻止保存；Flow 不反向声明 Agent。回归见 tests/agent-execution.test.ts。
+Agent 表单的共享样式统一位于 `ui/app-settings/src/styles/_agents.css`，Web/Tauri 宿主不重复定义同名选择器。页头与四个配置页签常驻，活动 `.agent-editor-panel` 是唯一纵向滚动区域，宿主承载层不增加滚动或 padding。页签切换仅设置 hidden，保留各页 DOM 草稿与滚动位置；只读模式仍支持页签与折叠导航。旧版 type 分类在高级页只读展示，不控制行为、授权字段的显示和保存；执行行为由执行配置决定。隐藏页面的校验失败会切回对应页面并展开字段所在段。折叠标题和页签使用原生 button，并同步 aria-expanded/aria-selected。
+
+主执行入口分为 Agent、Composite 和 Workflow。Composite 编辑主持者、允许成员及分工/并发限制，保存后由应用服务发布受管 Flow 并返回规范绑定；无额外运行参数时不弹空表单。已登记 Agent 通过 saveAgent 保存，不能借 hostContext 原始写入绕过校验与编排准备；独立未登记的文件草稿仍交宿主保存。行为与模型页的「模型选择」按 chat/image.generate/speech.synthesize 配置 modelDefaults，未设置继承系统，候选复用模型能力声明过滤，不以音频输入推断 TTS。Workflow 的具名槽位另称「流程连接覆盖」，只作用于所绑定流程，不能另建一套 Agent 用途默认；输入图片处理明确表示发给模型的图片缩放。
+
+Agent 执行方式通过 execution 绑定内部注册 Flow；第四个参数由宿主提供目录、发布版本、当前发布定义及连接候选。版本下拉包含 latest 与真实发布列表，默认参数及连接槽按所选发布定义生成控件，公共渲染与校验复用 llm-ui/forms；设置包不加载 Chat/Flow 视图。普通 Agent 策略与未展示字段继续保留，非法字段阻止保存并保留草稿；Flow 不反向声明 Agent。切换 Flow/版本保留窗口草稿，迟到读取不覆盖新选择。回归见 tests/agent-execution.test.ts 与 tests/agent-execution-controller.test.ts。
 
 - Provider 连接测试仅使用显式文本模型，无可用文本模型时隐藏文本模型选择、凭据存储与子进程说明及「测试连接」，保留凭据输入和独立操作验证；模型分类变化时同步显示状态；图片/TTS 在独立操作验证中复用正式适配器并提供临时预览。测试不依赖先保存，结果必须与当前配置及操作参数一致；不得把 HTTP/RPC 成功当作业务成功。
 - Provider 表单只消费安全 getProviders 元数据，不读取 getFullProvider 回填密钥。省略 apiKey 由宿主保持同地址凭据，空字符串显式清除；更换地址不得自动复用旧凭据。原明文存储约定不变，相关说明折叠展示。

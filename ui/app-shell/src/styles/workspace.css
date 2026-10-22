@@ -257,6 +257,7 @@
 .workbench-agents__status { margin: 4px 10px; font-size: 12px; overflow-wrap: anywhere; }
 .workbench-agents__status:empty { display: none; }
 .agent-workspace-editor { overflow: auto; }
+.session-detail.agent-workspace-editor.agent-config-editor { padding: 0; }
 .agent-project-settings { display: grid; gap: 12px; padding: 16px; margin: 12px 0 20px; border: 1px solid var(--mm-border-color, #e2e8f0); border-radius: 8px; }
 .agent-project-settings label { display: grid; gap: 8px; font-weight: 600; }
 .agent-project-settings select { min-height: 40px; padding: 8px; border: 1px solid var(--mm-border-color, #e2e8f0); border-radius: 6px; background: var(--mm-bg-color, #fff); color: inherit; font: inherit; }

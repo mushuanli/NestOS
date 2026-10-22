@@ -24,6 +24,8 @@ HistoryView 经 `mountHistorySearch` 按展示顺序向独立 llm-ui 投影已�
 
 模型菜单按连接及 Provider 分组，展示该连接配置的聊天模型，一次选择原子更新 connectionId/modelTier；`auto` 持久值显示「跟随默认」，不宣称智能选模。模型档位与推理强度独立。harness 按 profile 的 models 能力显示原生模型菜单，目录与每个模型的推理档位由宿主提供；旧节点继续显示只读「原生配置」。选择绑定 executorId，草稿保存且第一条消息在转正前捕获；普通发送与 prompt 类原生命令将选择冻结到提交，action 命令沿用原生控制语义。Flow 显示节点模型并导航流程定义，不展示本地智能体或全局模型设置。智能体指令/工具通过宿主导航配置；设置凭据仍在连接管理。
 
+普通 Agent 聊天连接按会话显式 connectionId → 当前 Agent.modelDefaults.chat → 系统默认连接解析。“跟随默认”保持 connectionId 未设置，切换智能体或刷新配置仅更新继承来源与显示，不把继承值写回会话。Agent 指定的默认连接缺失、停用、凭据未就绪或无聊天模型时显示具体原因，不跳过它改用系统默认。原生 harness 继续使用自身模型配置。
+
 聊天候选复用 kernel-adapters/contracts 的纯函数 resolveChatModelTiers，各档位的真实解析由 resolveChatModelForTier 提供，显式无效模型不回退掩盖；排除目录中不存在或明确非聊天的模型；构建将该纯契约代码内联到独立入口，不增加发布时的后端依赖。
 
 会话中通过更多菜单切换执行方式，宿主注入 `onStartConversationDraft`。编辑器先保存原输入，再将输入及附件交给项目草稿；已存在的草稿追加内容，不覆盖原文字/附件，不自动发送，不中断当前任务，也不自动迁移跨执行器历史。普通模型、连接和智能体选择继续在两轮之间生效，当前轮执行配置保持冻结。回归见 app-shell 的 execution-configuration、project-workbench-ui 与 remote-conversation-editor。

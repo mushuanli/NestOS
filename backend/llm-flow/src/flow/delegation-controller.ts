@@ -84,6 +84,11 @@ export class DelegationController {
     }
 
     private assertPlan(plan: DelegationPlan): void {
+        if (plan.targetNodeId && (!this.state.nodes.some(node => node.id === plan.targetNodeId)
+            || this.state.instances.has(plan.targetNodeId)
+            || !this.state.edges.some(edge => edge.from === plan.parentId && edge.to === plan.targetNodeId))) {
+            throw new Error('Delegation result target must be an unstarted direct successor');
+        }
         if (plan.detached && !plan.waitTimeoutMs) {
             throw new Error(`Detached delegation requires wait.timeoutMs: ${plan.groupId}`);
         }

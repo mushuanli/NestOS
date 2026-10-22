@@ -1,6 +1,7 @@
 /** Flow contracts and pure helpers; no executor or storage initialization. */
 export * from './contracts/flow';
 export * from './contracts/flow-definition';
+export { mapFlowAgentReferences } from './contracts/flow-agent-references';
 export * from './contracts/dag-plugin';
 export * from './contracts/delegation-defaults';
 export * from './contracts/harness-hook';

@@ -170,6 +170,7 @@ export class AgentResolver {
             systemPrompt: systemPromptSegments,
             icon: agentDef.icon,
             temperature: agentDef.config.temperature,
+            ...(agentDef.modelDefaults ? { modelDefaults: structuredClone(agentDef.modelDefaults) } : {}),
             agentVersion: agentDef.version ?? await this.hashDefinition(agentDef),
             ...(agentDef.execution ? { execution: structuredClone(agentDef.execution) } : {}),
             capabilityPolicy: structuredClone(agentDef.capabilityPolicy ?? (agentDef.config.mcpServers?.length
@@ -274,16 +275,21 @@ export class AgentResolver {
      */
     getConnection(id: string) { return this.agentService.getConnection(id); }
     getProvider(id: string) { return this.agentService.getProvider(id); }
-    async getModelDefaults() { return await this.agentService.getModelDefaults?.() ?? {}; }
+    async getModelDefaults(agent?: Pick<ExecutorConfig, 'modelDefaults'>) {
+        return { ...await this.agentService.getModelDefaults?.() ?? {}, ...agent?.modelDefaults };
+    }
 
     async reResolveModel(config: ExecutorConfig, overrides: {
         connectionId?: string;
         modelTier?: ModelTier;
         allowUnconfigured?: boolean;
         useDefault?: boolean;
+        frozenConnection?: ConnectionMeta;
     }): Promise<ExecutorConfig> {
-        const connId = overrides.connectionId ?? config.connectionId;
-        const connMeta = connId ? await this.agentService.getConnection(connId) : overrides.useDefault === false ? null : await this.agentService.getDefaultConnection();
+        const connId = overrides.connectionId ?? config.connectionId
+            ?? (overrides.useDefault === false ? undefined : config.modelDefaults?.chat);
+        const connMeta = connId ? overrides.frozenConnection ?? await this.agentService.getConnection(connId)
+            : overrides.useDefault === false ? null : await this.agentService.getDefaultConnection();
         if (!connMeta && !connId && overrides.allowUnconfigured) return config;
         if (!connMeta) throw new Error(connId ? `Connection not found: ${connId}` : 'No default connection configured');
         const provider = this.agentService.getProvider(connMeta.providerId);

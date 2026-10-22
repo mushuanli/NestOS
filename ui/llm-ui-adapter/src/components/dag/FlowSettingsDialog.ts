@@ -41,28 +41,8 @@ export function openFlowSettings(options: FlowSettingsOptions): Promise<FlowSett
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
         dialog.className = 'dag-dialog dag-settings';
-        dialog.innerHTML = `<form method="dialog">
-            <h2>Flow settings</h2>
-            ${defaultsSection(options)}
-            ${runPolicySection(options.runPolicy)}
-            <fieldset>
-                <legend>Connections</legend>
-                <div data-connections>${options.connections.map(connection => connectionRow(connection, options.availableConnections, options.defaultConnection)).join('')}</div>
-                <button type="button" data-add-connection class="dag-settings__add">Add connection</button>
-            </fieldset>
-            <fieldset>
-                <legend>Parameters</legend>
-                <div data-parameters>${options.parameters.map(parameterRow).join('')}</div>
-                <button type="button" data-add-parameter class="dag-settings__add">Add parameter</button>
-            </fieldset>
-            <fieldset><legend>${escapeHTML(t('flow.variables.title'))}</legend>
-                <p>${escapeHTML(t('flow.variables.hint'))}</p>
-                <textarea data-variables rows="6">${escapeHTML(JSON.stringify(options.variables ?? {}, null, 2))}</textarea>
-            </fieldset>
-            <p data-dialog-error class="dag-dialog__error"></p>
-            <label>${escapeHTML(t('flow.invoke.outputs'))}<textarea data-outputs rows="5">${escapeHTML(JSON.stringify(options.outputs ?? {}, null, 2))}</textarea></label>
-            <menu><button value="cancel">Cancel</button><button value="save">Save settings</button></menu>
-        </form>`;
+        dialog.setAttribute('aria-labelledby', 'dag-settings-title');
+        dialog.innerHTML = settingsTemplate(options);
         document.body.append(dialog);
         bindRowControls(dialog, options);
         dialog.showModal();
@@ -73,65 +53,135 @@ export function openFlowSettings(options: FlowSettingsOptions): Promise<FlowSett
                 dialog.remove();
                 resolve(result);
             } catch (error) {
-                dialog.querySelector<HTMLElement>('[data-dialog-error]')!.textContent =
-                    error instanceof Error ? error.message : 'Invalid settings';
+                const feedback = dialog.querySelector<HTMLElement>('[data-dialog-error]')!;
+                feedback.textContent = error instanceof Error ? error.message : t('flow.settings.invalid');
                 dialog.showModal();
+                feedback.focus();
             }
         });
     });
 }
 
+function settingsTemplate(options: FlowSettingsOptions): string {
+    return `<form method="dialog">
+        <header class="dag-settings__header"><h2 id="dag-settings-title" tabindex="-1" autofocus>${text('flow.settings.title')}</h2>
+            <p>${text('flow.settings.description')}</p></header>
+        <div class="dag-settings__body">
+            ${connectionsSection(options)}${parametersSection(options.parameters)}${defaultsSection(options)}
+            ${runPolicySection(options.runPolicy)}${variablesSection(options)}
+        </div>
+        <footer class="dag-settings__footer"><p data-dialog-error class="dag-dialog__error" role="alert" tabindex="-1"></p>
+            <menu><button value="cancel">${text('flow.settings.cancel')}</button>
+                <button value="save" class="dag-settings__save">${text('flow.settings.save')}</button></menu>
+        </footer>
+    </form>`;
+}
+
+function connectionsSection(options: FlowSettingsOptions): string {
+    return `<fieldset><legend>${text('flow.settings.connections')}</legend>
+        <p class="dag-settings__hint">${text('flow.settings.connectionsHint')}</p>
+        <div data-connections class="dag-settings__list">
+            <p class="dag-settings__empty">${text('flow.settings.noConnections')}</p>
+            ${options.connections.map(connection => connectionRow(connection, options.availableConnections, options.defaultConnection)).join('')}
+        </div>
+        <button type="button" data-add-connection class="dag-settings__add">${text('flow.settings.addConnection')}</button>
+    </fieldset>`;
+}
+
+function parametersSection(parameters: FlowParameter[]): string {
+    return `<fieldset><legend>${text('flow.parameters.title')}</legend>
+        <p class="dag-settings__hint">${text('flow.settings.parametersHint')}</p>
+        <div data-parameters class="dag-settings__list"><p class="dag-settings__empty">${text('flow.settings.noParameters')}</p>
+            ${parameters.map(parameterRow).join('')}</div>
+        <button type="button" data-add-parameter class="dag-settings__add">${text('flow.settings.addParameter')}</button>
+    </fieldset>`;
+}
+
+function variablesSection(options: FlowSettingsOptions): string {
+    return disclosure('flow.settings.variablesOutputs', `<div class="dag-settings__stack">
+        <p class="dag-settings__hint">${text('flow.variables.hint')}</p>
+        ${field('flow.variables.title', `<textarea class="dag-settings__code" data-variables rows="6">${escapeHTML(JSON.stringify(options.variables ?? {}, null, 2))}</textarea>`)}
+        ${field('flow.invoke.outputs', `<textarea class="dag-settings__code" data-outputs rows="5">${escapeHTML(JSON.stringify(options.outputs ?? {}, null, 2))}</textarea>`)}
+    </div>`);
+}
+
 function runPolicySection(policy: FlowRunPolicy = {}): string {
     const workspace: Partial<NonNullable<FlowRunPolicy['workspace']>> = policy.workspace ?? {};
-    return `<fieldset class="dag-settings__run-policy">
-        <legend>Run limits & workspace</legend>
-        <p class="dag-settings__hint">为动态 spawn、并行执行和长任务设置安全边界。留空表示使用运行时默认值。</p>
+    return disclosure('flow.settings.runPolicy', `<p class="dag-settings__hint">${text('flow.settings.runPolicyHint')}</p>
+        <h3 class="dag-settings__group-title">${text('flow.settings.runLimits')}</h3>
         <div class="dag-settings__grid">
-            <label>Max nodes<input data-run-max-nodes type="number" min="1" value="${policy.maxNodes ?? ''}" placeholder="1000"></label>
-            <label>Max concurrency<input data-run-max-concurrency type="number" min="1" value="${policy.maxConcurrency ?? ''}" placeholder="Unlimited"></label>
-            <label>Run timeout (ms)<input data-run-timeout type="number" min="1" value="${policy.timeoutMs ?? ''}" placeholder="Unlimited"></label>
-            <label>Token budget<input data-run-max-tokens type="number" min="1" value="${policy.maxTokens ?? ''}" placeholder="Unlimited"></label>
-            <label>Workspace mode${optionSelect('run-workspace-mode', workspace.mode, ['shared', 'read-only', 'worktree'])}</label>
-            <label>Merge policy${optionSelect('run-workspace-merge', workspace.merge, ['manual', 'auto-if-clean', 'discard'])}</label>
-            <label>Cleanup${optionSelect('run-workspace-cleanup', workspace.cleanup, ['on-success', 'always', 'keep'])}</label>
-            <label>Base revision<input data-run-workspace-base value="${escapeHTML(workspace.base ?? '')}" placeholder="current / head / revision"></label>
+            ${field('flow.settings.maxNodes', `<input data-run-max-nodes type="number" min="1" value="${policy.maxNodes ?? ''}" placeholder="1000">`)}
+            ${field('flow.settings.maxConcurrency', policyInput('run-max-concurrency', policy.maxConcurrency))}
+            ${field('flow.settings.runTimeout', policyInput('run-timeout', policy.timeoutMs))}
+            ${field('flow.settings.tokenBudget', policyInput('run-max-tokens', policy.maxTokens))}
         </div>
-    </fieldset>`;
+        <h3 class="dag-settings__group-title">${text('flow.settings.workspace')}</h3>
+        <div class="dag-settings__grid">
+            ${field('flow.settings.workspaceMode', optionSelect('run-workspace-mode', workspace.mode, ['shared', 'read-only', 'worktree']))}
+            ${field('flow.settings.mergePolicy', optionSelect('run-workspace-merge', workspace.merge, ['manual', 'auto-if-clean', 'discard']))}
+            ${field('flow.settings.cleanup', optionSelect('run-workspace-cleanup', workspace.cleanup, ['on-success', 'always', 'keep']))}
+            ${field('flow.settings.baseRevision', `<input data-run-workspace-base value="${escapeHTML(workspace.base ?? '')}" placeholder="current / head / revision">`)}
+        </div>`);
+}
+
+function policyInput(name: string, value?: number): string {
+    return `<input data-${name} type="number" min="1" value="${value ?? ''}" placeholder="${text('flow.settings.runtimeDefault')}">`;
 }
 
 function defaultsSection(options: FlowSettingsOptions): string {
     const value = options.defaults ?? {};
-    return `<fieldset class="dag-settings__defaults">
-        <legend>Agent defaults</legend>
-        <p class="dag-settings__hint">节点未单独设置时继承这里的值；留空则继续继承当前 Session Agent。</p>
+    return `<fieldset><legend>${text('flow.settings.defaults')}</legend>
+        <p class="dag-settings__hint">${text('flow.settings.defaultsHint')}</p>
         <div class="dag-settings__grid">
-            <label>Default Agent${entitySelect('default-agent', value.agentId, options.agents ?? [], 'Inherit session agent')}</label>
-            <label>System Prompt${entitySelect('default-system-prompt', value.systemPromptId, options.systemPrompts ?? [], 'Inherit agent prompt')}</label>
-            <label>Connection slot${slotSelect(options.connections, value.connectionId)}</label>
-            <label>Model<input data-default-model value="${escapeHTML(value.modelName ?? '')}" placeholder="Inherit model"></label>
-            <label>Temperature<input data-default-temperature type="number" step="0.1" min="0" max="2" value="${value.temperature ?? ''}" placeholder="Inherit"></label>
-            <label>Max tokens<input data-default-max-tokens type="number" min="1" value="${value.maxTokens ?? ''}" placeholder="Inherit"></label>
-            <label>Thinking${triStateSelect('default-thinking', value.thinking)}</label>
-            <label>Streaming${triStateSelect('default-stream', value.stream)}</label>
-            <label>Web search${triStateSelect('default-web-search', value.webSearch)}</label>
-            <label>Reasoning effort<input data-default-reasoning value="${escapeHTML(value.reasoningEffort ?? '')}" placeholder="${t('provider.reasoning.default')}"></label>
-            <label>Approval${optionSelect('default-approval', value.approval, ['none', 'external', 'all'])}</label>
-            <label>History${optionSelect('default-history', value.historyPolicy, ['inherit', 'upstream', 'none'])}</label>
-            <label>System prompt policy${optionSelect('default-system-policy', value.systemPromptPolicy, ['inherit', 'replace', 'none'])}</label>
-            <label>Persist output${triStateSelect('default-persist-output', value.persistOutput)}</label>
-            <label>Max exchanges<input data-default-max-exchanges type="number" min="1" value="${value.maxExchanges ?? ''}" placeholder="Inherit"></label>
-            <label>Timeout (ms)<input data-default-timeout type="number" min="1000" value="${value.timeoutMs ?? ''}" placeholder="Inherit"></label>
-            <label>Working directory<input data-default-working-directory value="${escapeHTML(value.workingDirectory ?? '')}" placeholder="Inherit"></label>
+            ${field('flow.settings.agent', entitySelect('default-agent', value.agentId, options.agents ?? [], t('flow.settings.inheritAgent')))}
+            ${field('flow.settings.systemPrompt', entitySelect('default-system-prompt', value.systemPromptId, options.systemPrompts ?? [], t('flow.settings.inheritPrompt')))}
+            ${field('flow.settings.connectionSlot', slotSelect(options.connections, value.connectionId))}
+            ${field('flow.settings.model', `<input data-default-model value="${escapeHTML(value.modelName ?? '')}" placeholder="${text('flow.settings.inheritModel')}">`)}
         </div>
-        <label>Flow system instructions<textarea data-default-prompt rows="4" placeholder="每行一段 system 消息">${escapeHTML((value.systemPrompt ?? []).join('\n'))}</textarea></label>
-        ${multiSelect('default-tools', 'Tools', value.toolIds, options.tools ?? [])}
-        ${multiSelect('default-skills', 'Skills', value.skillIds, options.skills ?? [])}
+        ${field('flow.settings.instructions', `<textarea data-default-prompt rows="4" placeholder="${text('flow.settings.instructionsHint')}">${escapeHTML((value.systemPrompt ?? []).join('\n'))}</textarea>`)}
+        ${disclosure('flow.settings.advancedDefaults', `${modelDefaults(value)}${executionDefaults(value)}
+            <h3 class="dag-settings__group-title">${text('flow.settings.capabilities')}</h3>
+            <div class="dag-settings__grid">${multiSelect('default-tools', t('flow.settings.tools'), value.toolIds, options.tools ?? [])}
+                ${multiSelect('default-skills', t('flow.settings.skills'), value.skillIds, options.skills ?? [])}</div>`)}
     </fieldset>`;
+}
+
+function modelDefaults(value: FlowDefaults): string {
+    return `<h3 class="dag-settings__group-title">${text('flow.settings.modelBehavior')}</h3><div class="dag-settings__grid">
+        ${field('flow.settings.temperature', `<input data-default-temperature type="number" step="0.1" min="0" max="2" value="${value.temperature ?? ''}" placeholder="${text('flow.settings.inherit')}">`)}
+        ${field('flow.settings.maxTokens', `<input data-default-max-tokens type="number" min="1" value="${value.maxTokens ?? ''}" placeholder="${text('flow.settings.inherit')}">`)}
+        ${field('flow.settings.thinking', triStateSelect('default-thinking', value.thinking))}
+        ${field('flow.settings.reasoning', `<input data-default-reasoning value="${escapeHTML(value.reasoningEffort ?? '')}" placeholder="${text('provider.reasoning.default')}">`)}
+        ${field('flow.settings.streaming', triStateSelect('default-stream', value.stream))}
+        ${field('flow.settings.webSearch', triStateSelect('default-web-search', value.webSearch))}
+    </div>`;
+}
+
+function executionDefaults(value: FlowDefaults): string {
+    return `<h3 class="dag-settings__group-title">${text('flow.settings.executionBehavior')}</h3><div class="dag-settings__grid">
+        ${field('flow.settings.approval', optionSelect('default-approval', value.approval, ['none', 'external', 'all']))}
+        ${field('flow.settings.history', optionSelect('default-history', value.historyPolicy, ['inherit', 'upstream', 'none']))}
+        ${field('flow.settings.systemPromptPolicy', optionSelect('default-system-policy', value.systemPromptPolicy, ['inherit', 'replace', 'none']))}
+        ${field('flow.settings.persistOutput', triStateSelect('default-persist-output', value.persistOutput))}
+        ${field('flow.settings.maxExchanges', `<input data-default-max-exchanges type="number" min="1" value="${value.maxExchanges ?? ''}" placeholder="${text('flow.settings.inherit')}">`)}
+        ${field('flow.settings.timeout', `<input data-default-timeout type="number" min="1000" value="${value.timeoutMs ?? ''}" placeholder="${text('flow.settings.inherit')}">`)}
+        ${field('flow.settings.workingDirectory', `<input data-default-working-directory value="${escapeHTML(value.workingDirectory ?? '')}" placeholder="${text('flow.settings.inherit')}">`)}
+    </div>`;
+}
+
+function text(key: Parameters<typeof t>[0]): string { return escapeHTML(t(key)); }
+
+function field(key: Parameters<typeof t>[0], control: string): string {
+    return `<label class="dag-settings__field"><span>${text(key)}</span>${control}</label>`;
+}
+
+function disclosure(key: Parameters<typeof t>[0], content: string): string {
+    return `<details class="dag-settings__disclosure"><summary>${text(key)}</summary><div class="dag-settings__disclosure-body">${content}</div></details>`;
 }
 
 function entitySelect(name: string, selected: string | undefined, values: EntityOption[], empty: string): string {
     const options = selected && !values.some(item => item.id === selected)
-        ? [{ id: selected, name: `${selected} (unavailable)` }, ...values]
+        ? [{ id: selected, name: t('flow.settings.unavailable', { id: selected }) }, ...values]
         : values;
     return selectControl(name, selected, options.map(item => ({ value: item.id, label: item.name })), empty);
 }
@@ -140,17 +190,27 @@ function slotSelect(connections: FlowConnection[], selected?: string): string {
     const values = selected && !connections.some(item => item.name === selected)
         ? [{ name: selected, connectionId: '' }, ...connections]
         : connections;
-    return selectControl('default-connection', selected, values.map(item => ({ value: item.name, label: item.name })), 'Use default slot');
+    return selectControl('default-connection', selected, values.map(item => ({ value: item.name, label: item.name })), t('flow.settings.useDefaultSlot'));
 }
 
+const OPTION_LABELS: Record<string, Parameters<typeof t>[0]> = {
+    shared: 'flow.settings.option.shared', 'read-only': 'flow.settings.option.readOnly', worktree: 'flow.settings.option.worktree',
+    manual: 'flow.settings.option.manual', 'auto-if-clean': 'flow.settings.option.autoIfClean', discard: 'flow.settings.option.discard',
+    'on-success': 'flow.settings.option.onSuccess', always: 'flow.settings.option.always', keep: 'flow.settings.option.keep',
+    none: 'flow.settings.option.none', external: 'flow.settings.option.external', all: 'flow.settings.option.all',
+    inherit: 'flow.settings.option.inherit', upstream: 'flow.settings.option.upstream', replace: 'flow.settings.option.replace',
+    optimal: 'flow.settings.option.optimal', standard: 'flow.settings.option.standard', fast: 'flow.settings.option.fast',
+    string: 'flow.settings.option.string', number: 'flow.settings.option.number', boolean: 'flow.settings.option.boolean', json: 'flow.settings.option.json',
+};
+
 function optionSelect(name: string, selected: string | undefined, values: string[]): string {
-    return selectControl(name, selected, values.map(value => ({ value, label: value })), 'Inherit');
+    return selectControl(name, selected, values.map(value => ({ value, label: OPTION_LABELS[value] ? t(OPTION_LABELS[value]) : value })), t('flow.settings.inherit'));
 }
 
 function triStateSelect(name: string, selected: boolean | undefined): string {
     return selectControl(name, selected === undefined ? undefined : String(selected), [
-        { value: 'true', label: 'On' }, { value: 'false', label: 'Off' },
-    ], 'Inherit');
+        { value: 'true', label: t('flow.settings.on') }, { value: 'false', label: t('flow.settings.off') },
+    ], t('flow.settings.inherit'));
 }
 
 function selectControl(
@@ -166,11 +226,11 @@ function selectControl(
 
 function multiSelect(name: string, label: string, selected: string[] | undefined, values: EntityOption[]): string {
     const chosen = new Set(selected ?? []);
-    const missing = [...chosen].filter(id => !values.some(item => item.id === id)).map(id => ({ id, name: `${id} (unavailable)` }));
+    const missing = [...chosen].filter(id => !values.some(item => item.id === id)).map(id => ({ id, name: t('flow.settings.unavailable', { id }) }));
     const options = [...missing, ...values];
-    return `<label>${label}<select data-${name} multiple size="${Math.min(6, Math.max(3, options.length))}">${options.map(item =>
+    return `<label class="dag-settings__field"><span>${escapeHTML(label)}</span><select data-${name} multiple size="${Math.min(6, Math.max(3, options.length))}">${options.map(item =>
         `<option value="${escapeHTML(item.id)}" ${chosen.has(item.id) ? 'selected' : ''}>${escapeHTML(item.name)}</option>`,
-    ).join('')}</select><small>按 Ctrl/Cmd 可多选；节点可继续追加。</small></label>`;
+    ).join('')}</select><small>${text('flow.settings.multiSelectHint')}</small></label>`;
 }
 
 function connectionRow(
@@ -182,16 +242,18 @@ function connectionRow(
     const missing = connection.connectionId && !available.some(item => item.id === connection.connectionId)
         ? `<option value="${escapeHTML(connection.connectionId)}" selected>${escapeHTML(t('connection.unavailable', { id: connection.connectionId }))}</option>` : '';
     return `<div class="dag-setting-row" data-conn-row data-conn-original="${escapeHTML(JSON.stringify(connection))}">
-        <label class="dag-settings__default" title="Default"><input type="radio" name="dag-default-conn" ${isDefault ? 'checked' : ''}>default</label>
-        <input data-conn-name placeholder="name" value="${escapeHTML(connection.name)}">
-        <select data-conn-id><option value="">${escapeHTML(t('connection.slotUnbound'))}</option>${missing}${available.map(item =>
-            `<option value="${escapeHTML(item.id)}" ${item.id === connection.connectionId ? 'selected' : ''}>${escapeHTML(item.name)}</option>`,
-        ).join('')}</select>
-        <input data-conn-desc placeholder="description" value="${escapeHTML(connection.description ?? '')}">
-        <label><input type="checkbox" data-conn-required ${connection.required === false ? '' : 'checked'}>${escapeHTML(t('flow.connections.required'))}</label>
-        <label>${escapeHTML(t('flow.connections.tier'))}<select data-conn-tier>${['optimal', 'standard', 'fast'].map(tier => `<option value="${tier}" ${tier === (connection.tier ?? 'optimal') ? 'selected' : ''}>${tier}</option>`).join('')}</select></label>
-        <label>${escapeHTML(t('flow.connections.requirements'))}<textarea data-conn-requirements rows="3">${escapeHTML(JSON.stringify(connection.requirements ?? {}, null, 2))}</textarea></label>
-        <button type="button" data-remove-conn>×</button>
+        <div class="dag-settings__row-actions"><label class="dag-settings__check"><input type="radio" name="dag-default-conn" ${isDefault ? 'checked' : ''}>${text('flow.settings.defaultConnection')}</label>
+            <label class="dag-settings__check"><input type="checkbox" data-conn-required ${connection.required === false ? '' : 'checked'}>${text('flow.connections.required')}</label>
+            <button type="button" data-remove-conn>${text('flow.settings.remove')}</button></div>
+        <div class="dag-settings__grid">
+            ${field('flow.settings.slotName', `<input data-conn-name placeholder="analysis" value="${escapeHTML(connection.name)}">`)}
+            ${field('flow.settings.boundConnection', `<select data-conn-id><option value="">${text('connection.slotUnbound')}</option>${missing}${available.map(item =>
+                `<option value="${escapeHTML(item.id)}" ${item.id === connection.connectionId ? 'selected' : ''}>${escapeHTML(item.name)}</option>`).join('')}</select>`)}
+        </div>
+        ${field('flow.settings.connectionDescription', `<input data-conn-desc placeholder="${text('flow.settings.connectionDescriptionHint')}" value="${escapeHTML(connection.description ?? '')}">`)}
+        ${disclosure('flow.settings.connectionAdvanced', `<div class="dag-settings__grid">
+            ${field('flow.connections.tier', `<select data-conn-tier>${['optimal', 'standard', 'fast'].map(tier => `<option value="${tier}" ${tier === (connection.tier ?? 'optimal') ? 'selected' : ''}>${text(OPTION_LABELS[tier])}</option>`).join('')}</select>`)}
+            </div>${field('flow.connections.requirements', `<textarea class="dag-settings__code" data-conn-requirements rows="3">${escapeHTML(JSON.stringify(connection.requirements ?? {}, null, 2))}</textarea>`)}`)}
     </div>`;
 }
 
@@ -199,26 +261,29 @@ function parameterRow(parameter?: FlowParameter): string {
     const param = parameter ?? { name: '', type: 'string' as const };
     const value = param.default !== undefined ? stringifyDefault(param.default, param.type) : '';
     return `<div class="dag-setting-row" data-param-row data-param-original="${escapeHTML(JSON.stringify(param))}">
-        <input data-param-name placeholder="name" value="${escapeHTML(param.name)}">
-        <select data-param-type>${PARAM_TYPES.map(type =>
-            `<option ${type === param.type ? 'selected' : ''}>${type}</option>`,
-        ).join('')}</select>
-        <input data-param-default placeholder="default" value="${escapeHTML(value)}">
-        <label class="dag-settings__check" title="Required"><input type="checkbox" data-param-required ${param.required ? 'checked' : ''}>required</label>
-        <input data-param-desc placeholder="description" value="${escapeHTML(param.description ?? '')}">
-        ${parameterConstraints(param)}
-        <button type="button" data-remove-param>×</button>
+        <div class="dag-settings__row-actions"><label class="dag-settings__check"><input type="checkbox" data-param-required ${param.required ? 'checked' : ''}>${text('flow.settings.requiredParameter')}</label>
+            <button type="button" data-remove-param>${text('flow.settings.remove')}</button></div>
+        <div class="dag-settings__grid">
+            ${field('flow.settings.parameterName', `<input data-param-name placeholder="prompt" value="${escapeHTML(param.name)}">`)}
+            ${field('flow.settings.parameterType', `<select data-param-type>${PARAM_TYPES.map(type => `<option value="${type}" ${type === param.type ? 'selected' : ''}>${text(OPTION_LABELS[type])}</option>`).join('')}</select>`)}
+            ${field('flow.settings.parameterDefault', `<input data-param-default placeholder="${text('flow.settings.noDefault')}" value="${escapeHTML(value)}">`)}
+            ${field('flow.settings.parameterDescription', `<input data-param-desc value="${escapeHTML(param.description ?? '')}">`)}
+        </div>
+        ${disclosure('flow.settings.parameterValidation', parameterConstraints(param))}
     </div>`;
 }
 
 function parameterConstraints(param: FlowParameter): string {
-    return `<label>${escapeHTML(t('flow.parameters.minimum'))}<input type="number" step="any" data-param-min value="${escapeHTML(String(param.minimum ?? ''))}"></label>
-        <label>${escapeHTML(t('flow.parameters.maximum'))}<input type="number" step="any" data-param-max value="${escapeHTML(String(param.maximum ?? ''))}"></label>
-        <label><input type="checkbox" data-param-integer ${param.integer ? 'checked' : ''}>${escapeHTML(t('flow.parameters.integer'))}</label>
-        <label>${escapeHTML(t('flow.parameters.onMissing'))}<select data-param-missing>
-            <option value="error">${escapeHTML(t('flow.parameters.reject'))}</option>
-            <option value="interact" ${param.onMissing === 'interact' ? 'selected' : ''}>${escapeHTML(t('flow.parameters.interact'))}</option>
-        </select></label>${param.widget === 'images' ? `<label>${escapeHTML(t('flow.parameters.imageConstraints'))}<input data-param-images value="${escapeHTML(JSON.stringify(param.imageConstraints ?? {}))}"></label>` : ''}`;
+    return `<div class="dag-settings__grid" data-param-number-fields ${param.type !== 'number' ? 'hidden' : ''}>
+        ${field('flow.parameters.minimum', `<input type="number" step="any" data-param-min value="${escapeHTML(String(param.minimum ?? ''))}">`)}
+        ${field('flow.parameters.maximum', `<input type="number" step="any" data-param-max value="${escapeHTML(String(param.maximum ?? ''))}">`)}
+        <label class="dag-settings__check"><input type="checkbox" data-param-integer ${param.integer ? 'checked' : ''}>${text('flow.parameters.integer')}</label>
+        </div>
+        ${field('flow.parameters.onMissing', `<select data-param-missing>
+            <option value="error">${text('flow.parameters.reject')}</option>
+            <option value="interact" ${param.onMissing === 'interact' ? 'selected' : ''}>${text('flow.parameters.interact')}</option>
+        </select>`)}
+        ${param.widget === 'images' ? field('flow.parameters.imageConstraints', `<input class="dag-settings__code" data-param-images value="${escapeHTML(JSON.stringify(param.imageConstraints ?? {}))}">`) : ''}`;
 }
 
 function readParameterConstraints(row: HTMLElement, type: FlowParameter['type']): Partial<FlowParameter> {
@@ -241,6 +306,12 @@ function readParameterConstraints(row: HTMLElement, type: FlowParameter['type'])
 }
 
 function bindRowControls(dialog: HTMLDialogElement, options: FlowSettingsOptions): void {
+    dialog.addEventListener('change', event => {
+        const target = event.target as HTMLSelectElement;
+        if (!target.matches('[data-param-type]')) return;
+        const fields = target.closest('[data-param-row]')?.querySelector<HTMLElement>('[data-param-number-fields]');
+        if (fields) fields.hidden = target.value !== 'number';
+    });
     dialog.querySelector('[data-add-connection]')?.addEventListener('click', () => {
         const container = dialog.querySelector<HTMLElement>('[data-connections]')!;
         container.insertAdjacentHTML('beforeend', connectionRow(
@@ -267,13 +338,13 @@ function readConnectionRow(row: HTMLElement): FlowConnection {
     const name = readInput(row, '[data-conn-name]').trim();
     const connectionId = readInput(row, '[data-conn-id]');
     const description = readInput(row, '[data-conn-desc]').trim();
-    if (!name) throw new Error('Every connection needs a name');
+    if (!name) throw new Error(t('flow.settings.connectionNameRequired'));
     const original = JSON.parse(row.dataset.connOriginal ?? '{}') as FlowConnection;
     const requirements = JSON.parse(readInput(row, '[data-conn-requirements]') || '{}');
     if (!requirements || typeof requirements !== 'object' || Array.isArray(requirements)
-        || Object.keys(requirements).length && (typeof requirements.operation !== 'string' || !requirements.operation.trim())) throw new Error('Connection requirements must declare an operation');
+        || Object.keys(requirements).length && (typeof requirements.operation !== 'string' || !requirements.operation.trim())) throw new Error(t('flow.settings.connectionOperationRequired'));
     for (const key of ['inputModalities', 'outputModalities', 'features']) if (requirements[key] !== undefined
-        && (!Array.isArray(requirements[key]) || requirements[key].some((item: unknown) => typeof item !== 'string' || !item.trim()))) throw new Error(`Invalid connection requirement: ${key}`);
+        && (!Array.isArray(requirements[key]) || requirements[key].some((item: unknown) => typeof item !== 'string' || !item.trim()))) throw new Error(t('flow.settings.invalidRequirement', { key }));
     const required = row.querySelector<HTMLInputElement>('[data-conn-required]')!.checked;
     const tier = readInput(row, '[data-conn-tier]') as FlowConnection['tier'];
     const changed = connectionId !== (original.connectionId ?? '') || required !== (original.required !== false)
@@ -286,7 +357,7 @@ function readConnectionRow(row: HTMLElement): FlowConnection {
 function readSettings(dialog: HTMLDialogElement): FlowSettingsResult {
     const connections = [...dialog.querySelectorAll<HTMLElement>('[data-conn-row]')].map(readConnectionRow);
     if (new Set(connections.map(item => item.name)).size !== connections.length) {
-        throw new Error('Connection names must be unique');
+        throw new Error(t('flow.settings.connectionNamesUnique'));
     }
     const defaultRow = [...dialog.querySelectorAll<HTMLElement>('[data-conn-row]')]
         .find(row => row.querySelector<HTMLInputElement>('[data-conn-default], input[type="radio"]')?.checked);
@@ -299,7 +370,7 @@ function readSettings(dialog: HTMLDialogElement): FlowSettingsResult {
         const type = readInput(row, '[data-param-type]') as FlowParameter['type'];
         const required = row.querySelector<HTMLInputElement>('[data-param-required]')?.checked ?? false;
         const description = readInput(row, '[data-param-desc]').trim();
-        if (!name) throw new Error('Every parameter needs a name');
+        if (!name) throw new Error(t('flow.settings.parameterNameRequired'));
         const raw = readInput(row, '[data-param-default]');
         const original = JSON.parse(row.dataset.paramOriginal ?? '{}') as FlowParameter;
         const { name: _name, type: _type, required: _required, description: _description, default: _default,
@@ -312,7 +383,7 @@ function readSettings(dialog: HTMLDialogElement): FlowSettingsResult {
         return result;
     });
     if (new Set(parameters.map(item => item.name)).size !== parameters.length) {
-        throw new Error('Parameter names must be unique');
+        throw new Error(t('flow.settings.parameterNamesUnique'));
     }
     const defaults = readDefaults(dialog);
     const runPolicy = readRunPolicy(dialog);
@@ -387,7 +458,7 @@ function stringifyDefault(value: JsonValue, type: FlowParameter['type']): string
 function parseDefault(raw: string, type: FlowParameter['type']): JsonValue {
     if (type === 'number') {
         const value = Number(raw);
-        if (!Number.isFinite(value)) throw new Error(`Default for a number parameter must be numeric`);
+        if (!Number.isFinite(value)) throw new Error(t('flow.settings.numberDefaultInvalid'));
         return value;
     }
     if (type === 'boolean') return raw === 'true';

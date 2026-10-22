@@ -886,7 +886,8 @@ describe('DurableFlowExecutor', () => {
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         const flow = { ...agentFlow(), id: 'flow', name: 'Flow', revision: 1, createdAt: 1, digest: '', systemPrompt: ['flow rules'] };
         await handlers.get(FlowCommand.RunStart)!({ sessionId: 'session-one', flow });
-        expect(bindNode).toHaveBeenCalledWith('session-one', expect.objectContaining({ id: 'agent' }), expect.objectContaining({ systemPrompt: ['flow rules'] }));
+        expect(bindNode).toHaveBeenCalledWith('session-one', expect.objectContaining({ id: 'agent' }),
+            expect.objectContaining({ systemPrompt: ['flow rules'] }), { runConnectionId: undefined, fallbackConnectionId: undefined });
         let task!: Awaited<ReturnType<typeof kernel.listSessionTasks>>[number];
         await vi.waitFor(async () => {
             task = (await kernel.listSessionTasks('session-one')).find(item => item.program.kind === 'llm.agent')!;

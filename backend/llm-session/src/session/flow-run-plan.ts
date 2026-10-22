@@ -3,6 +3,20 @@ import { isDagRunSpec, type FlowNodeBinder } from '@itookit/llm-flow';
 import type { DagRunSpec, FlowRevision } from '@itookit/llm-flow/contracts';
 import type { FlowIdentitySnapshot, FlowRunPlan } from '../contracts/flow-run-plan';
 import { prepareFlowConnections, type FlowConnectionCatalog } from './flow-connections';
+import { withAdmittedConnections } from './flow-agent-connections';
+
+/** Persist admitted choices while preserving source instructions and context policies for dispatch. */
+export function freezePlannedFlowConnections(source: DagRunSpec, admitted: DagRunSpec): DagRunSpec {
+    const graph = structuredClone(source), nodes = new Map(admitted.nodes.map(node => [node.id, node]));
+    for (const node of graph.nodes) {
+        const config = nodes.get(node.id)?.config;
+        if (record(node.config) && record(config)) node.config = withAdmittedConnections(node.config, config);
+    }
+    for (const [id, template] of Object.entries(graph.functionCalls ?? {})) {
+        template.child = freezePlannedFlowConnections(template.child, admitted.functionCalls![id].child);
+    }
+    return graph;
+}
 
 /** Complete source binding can be replayed with a fresh conversation context and frozen identities. */
 export async function bindPlannedFlowGraph(graph: DagRunSpec, bind: FlowNodeBinder): Promise<DagRunSpec> {
@@ -18,14 +32,19 @@ export async function bindPlannedFlowGraph(graph: DagRunSpec, bind: FlowNodeBind
     return result;
 }
 
-/** Recheck live authorization and capability availability without recompiling or choosing new identities. */
-export async function validatePlannedFlowConnections(graph: DagRunSpec, flow: FlowRevision, catalog: FlowConnectionCatalog): Promise<void> {
+/** Recheck authorization and materialize admitted connection fields without choosing new identities. */
+export async function validatePlannedFlowConnections(source: DagRunSpec, flow: FlowRevision, catalog: FlowConnectionCatalog,
+    defaults?: import('@itookit/kernel-adapters/contracts').ModelDefaults): Promise<DagRunSpec> {
+    const graph = structuredClone(source);
     const nodes = graph.nodes.filter(node => {
         const config = node.config as Record<string, unknown> | null;
         return config && typeof config === 'object' && !!config.connectionId;
     });
-    await prepareFlowConnections({ ...flow, connections: [], defaultConnection: undefined, nodes: nodes as FlowRevision['nodes'] }, {}, catalog);
-    for (const template of Object.values(graph.functionCalls ?? {})) await validatePlannedFlowConnections(template.child, flow, catalog);
+    const prepared = await prepareFlowConnections({ ...flow, connections: [], defaultConnection: undefined, nodes: nodes as FlowRevision['nodes'] }, {}, catalog, defaults);
+    const admitted = new Map(prepared.nodes.map(node => [String(node.id), node.config]));
+    for (const node of graph.nodes) if (admitted.has(node.id)) node.config = admitted.get(node.id)!;
+    for (const template of Object.values(graph.functionCalls ?? {})) template.child = await validatePlannedFlowConnections(template.child, flow, catalog, defaults);
+    return graph;
 }
 
 export function createFlowRunPlan(graph: DagRunSpec, identities: FlowIdentitySnapshot): FlowRunPlan {

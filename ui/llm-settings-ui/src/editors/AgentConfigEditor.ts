@@ -1,20 +1,25 @@
 import { SettingsAutoSave, SettingsValidationError, requestSettingsSave } from '@itookit/ui-common';
-import {renderAgentImageSettings, readAgentImageSettings} from './agent-image-settings';
+import {bindAgentImageSettings, renderAgentImageSettings, readAgentImageSettings} from './agent-image-settings';
 import { renderPromptReference, bindPromptReference } from './agent-prompt-reference';
 import { editorResourceId } from '@itookit/ui-common';
-import { renderAgentExecution, readAgentExecution, bindAgentExecution } from './agent-execution';
+import { renderAgentExecution, readAgentExecution, bindAgentExecution, type AgentExecutionController } from './agent-execution';
+import { renderAgentModelDefaults, readAgentModelDefaults, bindAgentModelDefaults } from './agent-model-defaults';
+import { readAgentComposition } from './agent-composition';
 // @file: llm-ui/editors/AgentConfigEditor.ts
 
 import {
-    generateUUID,
+    generateUUID, randomUUID,
     buildRenamedFilename,
-    Heading, t
+    ACTION_ICONS, ENTITY_ICONS, FILE_BROWSER_ICONS, Heading, t
 } from '@itookit/common';
 import { IEditor, EditorOptions, EditorEvent, EditorEventMap, EditorEventCallback, UnifiedSearchResult, CollapseExpandResult } from '@itookit/ui-common';
 import type { AgentType, AgentDefinition, IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import type { PromptPreset } from '@itookit/tools/contracts';
 import { EventBus } from '@itookit/vfs-core';
 import { bindAgentCapabilities, readAgentCapabilities, renderAgentCapabilities, type AgentCapabilityOptions } from './agent-capabilities';
+
+type AgentEditorPage = 'general' | 'behavior' | 'capabilities' | 'advanced';
+const agentEditorPages: readonly AgentEditorPage[] = ['general', 'behavior', 'capabilities', 'advanced'];
 
 /**
  * Agent 配置编辑器
@@ -23,6 +28,11 @@ import { bindAgentCapabilities, readAgentCapabilities, renderAgentCapabilities, 
 export class AgentConfigEditor implements IEditor {
     private readonly defaultToolIds: readonly string[];
     private autoSave?: SettingsAutoSave;
+    private readonly viewId = `agent-config-${randomUUID()}`;
+    private activePage: AgentEditorPage = 'general';
+    private validationObserver?: MutationObserver;
+    private navigationEvents?: AbortController;
+    private executionForm?: AgentExecutionController;
     private rendering?: Promise<void>;
     private promptLibrary: import('@itookit/tools/contracts').SystemPromptDefinition[] = [];
     private container!: HTMLElement;
@@ -143,6 +153,9 @@ export class AgentConfigEditor implements IEditor {
     async render() {
         await this.hostSettings?.flush();
         if (this.autoSave && !await this.autoSave.dispose()) return;
+        this.executionForm?.destroy();
+        this.validationObserver?.disconnect();
+        this.navigationEvents?.abort();
         await this.hostSettings?.destroy(); this.hostSettings = undefined;
         if (!this.content) return;
         const agent = this.content;
@@ -160,63 +173,48 @@ export class AgentConfigEditor implements IEditor {
             <div class="agent-editor-container">
                 <!-- Header with Icon & Name -->
                 <div class="agent-header">
-                    <div class="agent-header__icon-picker" id="icon-picker" title="点击更换图标">
-                        ${agent.icon || '🤖'}
-                    </div>
+                    <button type="button" class="agent-header__icon-picker" id="icon-picker" title="${t('agent.layout.changeIcon')}" aria-label="${t('agent.layout.changeIcon')}">
+                        ${this.escapeHtml(agent.icon || ENTITY_ICONS.agent)}
+                    </button>
                     <div class="agent-header__info">
                         <input type="text" 
                                class="agent-header__name-input" 
                                name="name" 
                                value="${this.escapeHtml(agent.name)}" 
-                               placeholder="Agent 名称">
+                               aria-label="${t('agent.layout.name')}"
+                               placeholder="${t('agent.layout.name')}">
                         <textarea class="agent-header__desc-input" 
                                   name="description" 
-                                  placeholder="描述这个 Agent 的用途..."
+                                  aria-label="${t('agent.layout.description')}"
+                                  placeholder="${t('agent.layout.description')}"
                                   rows="2">${this.escapeHtml(agent.description || '')}</textarea>
                     </div>
                 </div>
 
-                <!-- Type Selection -->
-                <div class="agent-section">
-                    <div class="agent-section__header">
-                        <span class="agent-section__icon">🎯</span>
-                        <span class="agent-section__title">Agent 类型</span>
-                        <span class="agent-section__toggle">▼</span>
-                    </div>
-                    <div class="agent-section__body">
-                        <div class="agent-type-selector">
-                            <div class="agent-type-option ${agent.type === 'agent' ? 'selected' : ''}" data-type="agent">
-                                <div class="agent-type-option__icon">🤖</div>
-                                <div class="agent-type-option__title">Agent</div>
-                                <div class="agent-type-option__desc">单一 LLM 驱动的智能体</div>
-                            </div>
-                            <div class="agent-type-option ${agent.type === 'composite' ? 'selected' : ''}" data-type="composite">
-                                <div class="agent-type-option__icon">🕸️</div>
-                                <div class="agent-type-option__title">Composite</div>
-                                <div class="agent-type-option__desc">协调多个 Agent 协作</div>
-                            </div>
-                            <div class="agent-type-option ${agent.type === 'workflow' ? 'selected' : ''}" data-type="workflow">
-                                <div class="agent-type-option__icon">📋</div>
-                                <div class="agent-type-option__title">Workflow</div>
-                                <div class="agent-type-option__desc">预定义的工作流程</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                ${this.renderPageTabs()}
+                <div class="agent-editor-panels">
+                ${this.renderPageStart('general')}
+                <div class="agent-editor-page">
+                <div data-agent-execution-slot></div>
+                <div class="agent-host-settings" data-agent-host-settings></div>
 
+                </div></section>
+                ${this.renderPageStart('behavior')}
+                <div class="agent-editor-page">
+                <div data-agent-model-defaults-slot></div>
                 <!-- Agent behavior -->
-                <div class="agent-section" id="llm-config-section" style="${agent.type !== 'agent' ? 'display:none' : ''}">
-                    <div class="agent-section__header">
-                        <span class="agent-section__icon">🧠</span>
+                <div class="agent-section" id="llm-config-section">
+                    <button type="button" class="agent-section__header" aria-expanded="true">
+                        <span class="agent-section__icon" aria-hidden="true">${ENTITY_ICONS.llm}</span>
                         <span class="agent-section__title">${t('agent.behavior.title')}</span>
-                        <span class="agent-section__toggle">▼</span>
-                    </div>
+                        <span class="agent-section__toggle" aria-hidden="true">${FILE_BROWSER_ICONS.chevron}</span>
+                    </button>
                     <div class="agent-section__body">
                         ${renderPromptReference(systemPrompts, config.systemPromptId)}
-                        ${renderAgentImageSettings(config.imageProcessing)}
                         <div class="agent-form-row">
-                            <label class="agent-form-label">${t('prompt.additional')}</label>
+                            <label class="agent-form-label" for="agent-system-prompt">${t('prompt.additional')}</label>
                             <textarea class="agent-form-textarea" 
+                                      id="agent-system-prompt"
                                       name="systemPrompt" 
                                       placeholder="You are a helpful assistant...">${this.escapeHtml(config.systemPrompt || '')}</textarea>
                             <p class="agent-form-help">
@@ -224,54 +222,75 @@ export class AgentConfigEditor implements IEditor {
                             </p>
                         </div>
 
+                        <div class="agent-form-grid">
                         <div class="agent-form-row">
-                            <label class="agent-form-label">
-                                历史消息数量 <small>-1 表示不限制</small>
-                            </label>
+                            <label class="agent-form-label" for="agent-history-length">${t('agent.layout.history')}</label>
                             <input type="number"
+                                   id="agent-history-length"
                                    class="agent-form-input"
                                    name="maxHistoryLength"
                                    value="${config.maxHistoryLength ?? -1}"
-                                   min="-1"
-                                   style="max-width: 150px;">
+                                   min="-1">
+                            <p class="agent-form-help">${t('agent.layout.historyHint')}</p>
                         </div>
 
                         <div class="agent-form-row">
-                            <label class="agent-form-label">
-                                温度 (0-2) <small>控制输出随机性</small>
-                            </label>
+                            <label class="agent-form-label" for="agent-temperature">${t('agent.layout.temperature')}</label>
                             <input type="number"
+                                   id="agent-temperature"
                                    class="agent-form-input"
                                    name="temperature"
                                    value="${config.temperature ?? ''}"
                                    min="0" max="2" step="0.1"
-                                   placeholder="未设置（使用 Provider 默认）"
-                                   style="max-width: 120px;">
+                                   placeholder="${t('agent.layout.temperatureDefault')}">
                             <p class="agent-form-help">
-                                值越高越随机。留空则使用 Provider 默认温度。
+                                ${t('agent.layout.temperatureHint')}
                             </p>
+                        </div>
+                        </div>
+                        ${renderAgentImageSettings(config.imageProcessing)}
+                    </div>
+                </div>
+
+                <!-- Default Prompts -->
+                <div class="agent-section">
+                    <button type="button" class="agent-section__header" aria-expanded="true">
+                        <span class="agent-section__icon" aria-hidden="true">${ENTITY_ICONS.chat}</span>
+                        <span class="agent-section__title">${t('agent.layout.presets')}</span>
+                        <span class="agent-section__toggle" aria-hidden="true">${FILE_BROWSER_ICONS.chevron}</span>
+                    </button>
+                    <div class="agent-section__body">
+                        <p class="agent-form-help" style="margin-bottom:12px;">
+                            ${t('agent.layout.presetsHint')}
+                        </p>
+                        <div class="agent-prompt-list" id="prompt-list">
+                            ${(agent.defaultPrompts || []).map((p, i) => this.renderPromptRow(p, i)).join('')}
                         </div>
                     </div>
                 </div>
 
+                </div></section>
+                ${this.renderPageStart('capabilities')}
+                <div class="agent-editor-page agent-editor-page--tools">
+
                 ${renderAgentCapabilities(agent, allSkills, this.defaultToolIds)}
 
                 <!-- MCP Tools -->
-                <div class="agent-section" id="mcp-section" style="${agent.type !== 'agent' ? 'display:none' : ''}">
-                    <div class="agent-section__header">
-                        <span class="agent-section__icon">🔧</span>
-                        <span class="agent-section__title">工具能力 (MCP)</span>
-                        <span class="agent-section__toggle">▼</span>
-                    </div>
+                <div class="agent-section" id="mcp-section">
+                    <button type="button" class="agent-section__header" aria-expanded="true">
+                        <span class="agent-section__icon" aria-hidden="true">${ENTITY_ICONS.mcp}</span>
+                        <span class="agent-section__title">${t('agent.layout.mcp')}</span>
+                        <span class="agent-section__toggle" aria-hidden="true">${FILE_BROWSER_ICONS.chevron}</span>
+                    </button>
                     <div class="agent-section__body">
                         ${allMCPServers.length === 0
                 ? `<div class="agent-empty-state">
-                                    <div class="agent-empty-state__icon">🔌</div>
-                                    <p>暂无可用的 MCP 服务器</p>
-                                    <p style="font-size:0.8rem; margin-top:8px;">请在设置 → MCP Servers 中添加</p>
+                                    <div class="agent-empty-state__icon" aria-hidden="true">${ENTITY_ICONS.mcp}</div>
+                                    <p>${t('agent.layout.mcpEmpty')}</p>
+                                    <p class="agent-form-help">${t('agent.layout.mcpEmptyHint')}</p>
                                </div>`
                 : `<p class="agent-form-help" style="margin-bottom:12px;">
-                                    选择此 Agent 可以调用的工具服务
+                                    ${t('agent.layout.mcpHint')}
                                </p>
                                <div class="agent-mcp-list">
                                     ${allMCPServers.map(server => `
@@ -282,14 +301,14 @@ export class AgentConfigEditor implements IEditor {
                                                    ${(agent.capabilityPolicy?.mcpProfileIds ?? config.mcpServers ?? []).includes(server.id) ? 'checked' : ''}>
                                             <div class="agent-mcp-item__info">
                                                 <div class="agent-mcp-item__name">
-                                                    ${server.icon || '🔌'} ${this.escapeHtml(server.name)}
+                                                    ${this.escapeHtml(server.icon || ENTITY_ICONS.mcp)} ${this.escapeHtml(server.name)}
                                                 </div>
                                                 <div class="agent-mcp-item__desc">
-                                                    ${this.escapeHtml(server.description || '无描述')}
+                                                    ${this.escapeHtml(server.description || t('agent.layout.noDescription'))}
                                                 </div>
                                             </div>
                                             <span class="agent-mcp-item__status ${server.status === 'connected' ? 'connected' : ''}">
-                                                ${server.status === 'connected' ? '已连接' : '未连接'}
+                                                ${t(server.status === 'connected' ? 'agent.layout.connected' : 'agent.layout.disconnected')}
                                             </span>
                                         </label>
                                     `).join('')}
@@ -298,61 +317,165 @@ export class AgentConfigEditor implements IEditor {
                     </div>
                 </div>
 
-                <!-- Default Prompts -->
-                <div class="agent-section">
-                    <div class="agent-section__header">
-                        <span class="agent-section__icon">💬</span>
-                        <span class="agent-section__title">预设 Prompt</span>
-                        <span class="agent-section__toggle">▼</span>
-                    </div>
-                    <div class="agent-section__body">
-                        <p class="agent-form-help" style="margin-bottom:12px;">
-                            快捷 Prompt 现在作为 System Prompt 库的一部分（presets）管理。请在 System Prompt 库中编辑。
-                        </p>
-                        <div class="agent-prompt-list" id="prompt-list">
-                            ${(agent.defaultPrompts || []).map((p, i) => this.renderPromptRow(p, i)).join('')}
-                        </div>
-                    </div>
-                </div>
-
+                </div></section>
+                ${this.renderPageStart('advanced')}
+                <div class="agent-editor-page">
+                ${this.renderAgentType(agent.type)}
                 <!-- Advanced Settings -->
-                <div class="agent-section collapsed">
-                    <div class="agent-section__header">
-                        <span class="agent-section__icon">⚙️</span>
-                        <span class="agent-section__title">高级设置</span>
-                        <span class="agent-section__toggle">▼</span>
-                    </div>
+                <div class="agent-section">
+                    <button type="button" class="agent-section__header" aria-expanded="true">
+                        <span class="agent-section__icon" aria-hidden="true">${ACTION_ICONS.settings}</span>
+                        <span class="agent-section__title">${t('agent.layout.advanced')}</span>
+                        <span class="agent-section__toggle" aria-hidden="true">${FILE_BROWSER_ICONS.chevron}</span>
+                    </button>
                     <div class="agent-section__body">
                         <div class="agent-form-row">
-                            <label class="agent-form-label">Agent ID</label>
+                            <label class="agent-form-label" for="agent-id">Agent ID</label>
                             <input type="text" 
                                    class="agent-form-input" 
+                                   id="agent-id"
                                    name="id" 
                                    value="${this.escapeHtml(agent.id)}" 
-                                   readonly 
-                                   style="background: var(--st-bg-tertiary, #f3f4f6); cursor: not-allowed;">
-                            <p class="agent-form-help">系统生成的唯一标识符，不可修改</p>
+                                   readonly>
+                            <p class="agent-form-help">${t('agent.layout.idHint')}</p>
                         </div>
                     </div>
                 </div>
 
+                </div></section>
+                </div>
                 <!-- Hidden field for icon -->
-                <input type="hidden" name="icon" value="${agent.icon || '🤖'}">
+                <input type="hidden" name="icon" value="${this.escapeHtml(agent.icon || ENTITY_ICONS.agent)}">
             </div>
         `;
 
+        const flows = await this.capabilities.listFlows?.() ?? [];
+        const agents = await this.service.getAgents?.() ?? [];
         const execution = document.createElement('div');
-        execution.innerHTML = renderAgentExecution(agent, await this.capabilities.listFlows?.() ?? []);
-        this.container.querySelector('.agent-header')!.after(execution);
+        execution.innerHTML = renderAgentExecution(agent, flows, agents);
+        this.container.querySelector('[data-agent-execution-slot]')!.replaceWith(execution);
+        this.container.querySelector('[data-agent-model-defaults-slot]')!.innerHTML = await renderAgentModelDefaults(agent, this.service);
+        bindAgentModelDefaults(this.container);
 
         if (this.options.mountSettings) {
-            const slot = document.createElement('div');
-            this.container.querySelector('.agent-header')!.after(slot);
+            const slot = this.container.querySelector<HTMLElement>('[data-agent-host-settings]')!;
             this.hostSettings = await this.options.mountSettings(slot);
         }
+        this.executionForm = bindAgentExecution(this.container, agent, flows, this.capabilities);
+        await this.executionForm.ready();
         this.bindEvents();
+        this.activatePage(this.activePage);
+    }
 
+    private renderPageTabs(): string {
+        return `<nav class="agent-editor-tabs" role="tablist" aria-label="${t('agent.layout.pages')}">
+            ${agentEditorPages.map(page => `<button type="button" class="agent-editor-tab" role="tab"
+                id="${this.viewId}-tab-${page}" aria-controls="${this.viewId}-panel-${page}"
+                data-agent-page-link="${page}" aria-selected="${this.activePage === page}"
+                tabindex="${this.activePage === page ? 0 : -1}">${t(`agent.layout.page.${page}`)}</button>`).join('')}
+        </nav>`;
+    }
 
+    private renderPageStart(page: AgentEditorPage): string {
+        return `<section class="agent-editor-panel" role="tabpanel" tabindex="0"
+            id="${this.viewId}-panel-${page}" aria-labelledby="${this.viewId}-tab-${page}"
+            data-agent-page="${page}" ${page === this.activePage ? '' : 'hidden'}>`;
+    }
+
+    private activatePage(page: AgentEditorPage, focus = false): void {
+        this.activePage = page;
+        this.container.querySelectorAll<HTMLButtonElement>('[data-agent-page-link]').forEach(tab => {
+            const selected = tab.dataset.agentPageLink === page;
+            tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+            if (selected && focus) { tab.focus(); tab.scrollIntoView?.({ block: 'nearest', inline: 'nearest' }); }
+        });
+        this.container.querySelectorAll<HTMLElement>('[data-agent-page]').forEach(panel => {
+            panel.hidden = panel.dataset.agentPage !== page;
+        });
+    }
+
+    private bindPageNavigation(): void {
+        this.navigationEvents = new AbortController();
+        this.container.addEventListener('focusout', event => {
+            const next = event.relatedTarget;
+            if (next instanceof HTMLElement && next.closest('.agent-editor-tabs')) event.stopImmediatePropagation();
+        }, { capture: true, signal: this.navigationEvents.signal });
+        const tabs = this.container.querySelector<HTMLElement>('[role=tablist]')!;
+        tabs.addEventListener('click', event => {
+            const tab = (event.target as HTMLElement).closest<HTMLElement>('[data-agent-page-link]');
+            if (tab) this.activatePage(tab.dataset.agentPageLink as AgentEditorPage);
+        });
+        tabs.addEventListener('keydown', event => {
+            const tab = (event.target as HTMLElement).closest<HTMLElement>('[data-agent-page-link]');
+            if (!tab || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const current = agentEditorPages.indexOf(tab.dataset.agentPageLink as AgentEditorPage);
+            const next = event.key === 'Home' ? 0 : event.key === 'End' ? agentEditorPages.length - 1
+                : (current + (event.key === 'ArrowRight' ? 1 : -1) + agentEditorPages.length) % agentEditorPages.length;
+            this.activatePage(agentEditorPages[next]!, true);
+        });
+    }
+
+    private bindSectionNavigation(): void {
+        this.container.querySelectorAll<HTMLElement>('.agent-section__header').forEach(header => {
+            header.addEventListener('click', () => {
+                const section = header.closest('.agent-section');
+                section?.classList.toggle('collapsed');
+                header.setAttribute('aria-expanded', String(!section?.classList.contains('collapsed')));
+            });
+        });
+    }
+
+    private observeValidation(): void {
+        const status = this.container.querySelector<HTMLElement>('[data-autosave-status]')!;
+        this.validationObserver = new MutationObserver(() => {
+            if (status.dataset.state !== 'invalid') return;
+            const invalid = this.container.querySelector<HTMLElement>('input:invalid, select:invalid, textarea:invalid');
+            if (invalid) this.revealField(invalid);
+        });
+        this.validationObserver.observe(status, { attributes: true, attributeFilter: ['data-state'] });
+    }
+
+    private revealField(field: HTMLElement): void {
+        const panel = field.closest<HTMLElement>('[data-agent-page]');
+        if (panel) this.activatePage(panel.dataset.agentPage as AgentEditorPage);
+        const section = field.closest<HTMLElement>('.agent-section.collapsed');
+        section?.classList.remove('collapsed');
+        section?.querySelector('.agent-section__header')?.setAttribute('aria-expanded', 'true');
+        if (document.activeElement !== field) field.focus();
+        field.scrollIntoView?.({ block: 'nearest' });
+    }
+
+    private readDraftField<T>(selector: string, read: () => T): T {
+        try { return read(); }
+        catch (error) {
+            const field = this.container.querySelector<HTMLElement>(selector);
+            if (field) this.revealField(field);
+            throw error;
+        }
+    }
+
+    private async flushHostSettings(): Promise<void> {
+        try { await this.hostSettings?.flush(); }
+        catch (error) {
+            const field = this.container.querySelector<HTMLElement>('[data-agent-host-settings] input:invalid, [data-agent-host-settings] select:invalid, [data-agent-host-settings] select');
+            if (field) this.revealField(field);
+            throw error;
+        }
+    }
+
+    private renderAgentType(type: AgentType): string {
+        return `<section class="agent-section">
+            <button type="button" class="agent-section__header" aria-expanded="true">
+                <span class="agent-section__icon" aria-hidden="true">${ENTITY_ICONS.agent}</span>
+                <span class="agent-section__title">${t('agent.layout.type')}</span>
+                <span class="agent-section__toggle" aria-hidden="true">${FILE_BROWSER_ICONS.chevron}</span>
+            </button>
+            <div class="agent-section__body">
+                <p class="agent-form-help agent-type-help">${t('agent.layout.typeHint')}</p>
+                <input class="agent-form-input" data-agent-type-metadata value="${this.escapeHtml(type)}" readonly>
+            </div>
+        </section>`;
     }
 
     /** 渲染单个预设 Prompt 行（name + prompt + 排序/删除操作） */
@@ -391,12 +514,15 @@ export class AgentConfigEditor implements IEditor {
     }
 
     private bindEvents() {
+        this.bindPageNavigation();
+        this.bindSectionNavigation();
         if (this.options.readOnly) {
-            this.container.querySelectorAll<HTMLInputElement>('input, select, textarea, button').forEach(field => { field.disabled = true; });
+            bindPromptReference(this.container, this.promptLibrary, this.service, this.options.hostContext, () => {});
+            this.container.querySelectorAll<HTMLInputElement>('input, select, textarea, button:not([role="tab"]):not(.agent-section__header)').forEach(field => { field.disabled = true; });
             return;
         }
         bindAgentCapabilities(this.container, this.defaultToolIds);
-        bindAgentExecution(this.container);
+        bindAgentImageSettings(this.container);
         // 全局变更监听
         const handleChange = () => {
             this._isDirty = true;
@@ -404,7 +530,8 @@ export class AgentConfigEditor implements IEditor {
         };
 
         this.autoSave = new SettingsAutoSave(this.container, () => this.saveDraft(),
-            this.container.querySelector<HTMLElement>('.agent-header') ?? undefined);
+            this.container.querySelector<HTMLElement>('.agent-header__info') ?? undefined);
+        this.observeValidation();
 
         bindPromptReference(this.container, this.promptLibrary, this.service, this.options.hostContext, handleChange);
 
@@ -431,49 +558,6 @@ export class AgentConfigEditor implements IEditor {
                 if (e.key === 'Escape') { nameInput.value = this.currentTitle; nameInput.blur(); }
             });
         }
-
-        // Section 折叠/展开
-        this.container.querySelectorAll('.agent-section__header').forEach(header => {
-            header.addEventListener('click', () => {
-                const section = header.closest('.agent-section');
-                section?.classList.toggle('collapsed');
-            });
-        });
-
-        // Type 选择
-        this.container.querySelectorAll('.agent-type-option').forEach(option => {
-            option.addEventListener('click', () => {
-                const typeStr = (option as HTMLElement).dataset.type;
-                if (!typeStr) return;
-
-                // 更新 UI
-                this.container.querySelectorAll('.agent-type-option').forEach(o =>
-                    o.classList.remove('selected')
-                );
-                option.classList.add('selected');
-
-                // 显示/隐藏相关配置区域
-                const llmSection = this.container.querySelector('#llm-config-section') as HTMLElement;
-                const mcpSection = this.container.querySelector('#mcp-section') as HTMLElement;
-
-                // 修复：composite 和 workflow 类型隐藏 LLM 配置
-                if (typeStr === 'composite' || typeStr === 'workflow') {
-                    llmSection?.style.setProperty('display', 'none');
-                    mcpSection?.style.setProperty('display', 'none');
-                } else {
-                    llmSection?.style.setProperty('display', 'block');
-                    mcpSection?.style.setProperty('display', 'block');
-                }
-
-                // 更新内部状态
-                const type = this.normalizeAgentType(typeStr);
-                if (this.content) {
-                    this.content.type = type;
-                }
-
-                handleChange();
-            });
-        });
 
         // Icon Picker
         const iconPicker = this.container.querySelector('#icon-picker');
@@ -620,47 +704,53 @@ export class AgentConfigEditor implements IEditor {
             return el?.value || '';
         };
 
-        // 获取选中的类型
-        const selectedType = this.container.querySelector('.agent-type-option.selected') as HTMLElement;
-        // 修复：使用 normalizeAgentType 确保类型有效
-        const type = this.normalizeAgentType(selectedType?.dataset.type);
-
         this.content.name = getVal('name');
         this.content.icon = getVal('icon');
         this.content.description = getVal('description');
-        this.content.type = type;
-        this.content.execution = readAgentExecution(this.container);
+        this.content.execution = this.readDraftField('[name=executionKind]', () => readAgentExecution(this.container));
+        this.content.composition = this.readDraftField('[name=compositionCoordinator]', () => readAgentComposition(this.container));
+        if (this.content.composition) this.content.type = 'composite';
+        this.content.modelDefaults = this.readDraftField('[data-agent-model-operation]', () => readAgentModelDefaults(this.container, this.content?.modelDefaults));
 
         // 回写预设 Prompt 列表（过滤掉 name 和 prompt 均为空的行）
         this.collectPromptsToContent();
         this.content.defaultPrompts = (this.content.defaultPrompts ?? [])
             .filter(p => p.name.trim() !== '' || p.prompt.trim() !== '');
 
-        if (type === 'agent') {
-            const tempVal = parseFloat(getVal('temperature'));
-            this.content.config = {
-                ...this.content.config,
-                imageProcessing: readAgentImageSettings(this.container),
-                systemPromptId: getVal('systemPromptId') || undefined,
-                systemPrompt: getVal('systemPrompt'),
-                maxHistoryLength: Number.isNaN(Number.parseInt(getVal('maxHistoryLength'))) ? -1 : Number.parseInt(getVal('maxHistoryLength')),
-                mcpServers: undefined,
-                temperature: !isNaN(tempVal) ? tempVal : undefined,
-            };
-            this.content.capabilityPolicy = readAgentCapabilities(this.container, this.content.capabilityPolicy);
-            if (this.content.systemPrompt !== undefined) this.content.systemPrompt = this.content.config.systemPrompt;
-
-        }
+        const tempVal = parseFloat(getVal('temperature'));
+        this.content.config = {
+            ...this.content.config,
+            imageProcessing: this.readDraftField('[name=imageMaxEdge]', () => readAgentImageSettings(this.container)),
+            systemPromptId: getVal('systemPromptId') || undefined,
+            systemPrompt: getVal('systemPrompt'),
+            maxHistoryLength: Number.isNaN(Number.parseInt(getVal('maxHistoryLength'))) ? -1 : Number.parseInt(getVal('maxHistoryLength')),
+            mcpServers: undefined,
+            temperature: !isNaN(tempVal) ? tempVal : undefined,
+        };
+        this.content.capabilityPolicy = readAgentCapabilities(this.container, this.content.capabilityPolicy);
+        if (this.content.systemPrompt !== undefined) this.content.systemPrompt = this.content.config.systemPrompt;
     }
 
     private async saveDraft(): Promise<void> {
+        await this.executionForm?.ready();
         const name = this.container.querySelector<HTMLInputElement>('[name="name"]')?.value.trim();
-        if (!name) throw new SettingsValidationError(t('settings.autosave.invalid'));
+        if (!name) {
+            this.revealField(this.container.querySelector<HTMLElement>('[name=name]')!);
+            throw new SettingsValidationError(t('settings.autosave.invalid'));
+        }
         this.syncModelFromUI();
         const draft = structuredClone(this.content!);
         const save = this.options.hostContext?.saveContent;
         const id = editorResourceId(this.options);
-        if (save && id) await save(id, JSON.stringify(draft, null, 2));
+        const registered = this.options.target?.kind !== 'file' || !!this.service.getAgentResourceId?.(draft.id);
+        if (this.service.saveAgent && registered) {
+            await this.service.saveAgent(draft);
+            const canonical = await this.service.getAgentConfig?.(draft.id);
+            if (canonical && this.content) {
+                this.content.execution = canonical.execution;
+                this.executionForm?.syncSaved(canonical);
+            }
+        } else if (save && id) await save(id, JSON.stringify(draft, null, 2));
         else await this.service.saveAgent(draft);
         this._isDirty = false;
         this.emit('saved', undefined);
@@ -675,13 +765,16 @@ export class AgentConfigEditor implements IEditor {
     // --- IEditor Interface Implementation ---
 
     async flushPendingSave(): Promise<void> {
-        await this.hostSettings?.flush();
+        await this.flushHostSettings();
         if (this.autoSave && !await this.autoSave.flush()) throw new Error(t('settings.autosave.leaveFailed'));
     }
 
     async destroy() {
-        await this.hostSettings?.flush();
+        await this.flushHostSettings();
         if (this.autoSave && !await this.autoSave.dispose()) throw new Error(t('settings.autosave.leaveFailed'));
+        this.executionForm?.destroy();
+        this.validationObserver?.disconnect();
+        this.navigationEvents?.abort();
         await this.hostSettings?.destroy(); this.hostSettings = undefined;
         this.container.innerHTML = '';
         this.editorEvents.clear();

@@ -1054,6 +1054,7 @@ export class ChatInput implements IChatInputPresenter {
     private syncRemoteControls(): void {
         this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
         const remote = this.config.agentId.startsWith('remote:');
+        this.connectionTier?.setAgentDefaultConnectionId(remote ? undefined : this.selectedExecutor()?.modelDefaults?.chat);
         const flow = !remote && (!!this.config.settings.flowId || this.agentFlow());
         this.container.classList.toggle('llm-input--remote', remote);
         for (const selector of ['.llm-input__model-trigger', '.llm-input__btn--websearch', '.llm-input__active-settings']) {

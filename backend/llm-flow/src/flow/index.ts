@@ -17,6 +17,7 @@ export { FlowAggregateProgram, FlowHumanProgram, FlowValueProgram } from './prog
 export { registerDurablePrograms } from './register-programs';
 export { findCycles, type GraphCycles, type GraphEdge, type GraphNode } from './graph';
 export type { FlowNodeBinder } from './to-dag';
+export { mergeAgentConfig } from './to-dag';
 export {
     flowRevisionDigest,
     hasValidationErrors,

@@ -3,7 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
 import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
 import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
-import { buildConnectionOptions } from '../../llm-ui-adapter/src/shell/AgentProvider';
+import { buildConnectionOptions, buildExecutorOptions } from '../../llm-ui-adapter/src/shell/AgentProvider';
+import type { ExecutorOption } from '../../llm-ui-adapter/src/domain/types';
 import { PopupPanel } from '../../llm-ui-adapter/src/components/input/plugins/PopupPanel';
 
 const releases: Array<() => void | Promise<void>> = [];
@@ -11,10 +12,10 @@ afterEach(async () => { for (const release of releases.splice(0)) await release(
 const agents = [{id: 'writer', name: 'Writer'}, {id: 'reviewer', name: 'Reviewer'}, {id: 'remote:codex', name: 'Server · Codex'}];
 const connection = (id: string, ready = true) => ({id, name: id, provider: id + '-provider', hasApiKey: ready,
     credentialsReady: ready, hasTiers: true, tiers: {optimal: 'Shared model', fast: id + '-fast'}});
-function setup() {
+function setup(executors: ExecutorOption[] = agents) {
     const host = document.createElement('div'); document.body.append(host);
     const onSend = vi.fn(async () => {}), changed = vi.fn(), configure = vi.fn();
-    const view = new ChatInput(host, {onSend, onStop: vi.fn(), onDraftChange: changed, initialAgents: agents,
+    const view = new ChatInput(host, {onSend, onStop: vi.fn(), onDraftChange: changed, initialAgents: executors,
         onConfigureExecutor: configure, initialConfig: {agentId: 'writer'},
         onRequestConnections: async () => [{...connection('first'), isDefault: true}, connection('second'), connection('locked', false)]});
     releases.push(() => view.destroy());
@@ -144,4 +145,33 @@ it('skips disabled choices when opening and navigating a picker with the keyboar
     expect(document.querySelector('[aria-selected="true"]')?.textContent).toContain('Two');
     popup.handleKeyDown(new KeyboardEvent('keydown', {key: 'Enter'}));
     expect(selected).toHaveBeenCalledWith(expect.objectContaining({id: 'two'}));
+});
+
+it('updates inherited Agent models on selection and refresh while preserving explicit choices', async () => {
+    const choices = [{id: 'writer', name: 'Writer', modelDefaults: {chat: 'second'}}, {id: 'reviewer', name: 'Reviewer'}];
+    const {view, button} = setup(choices); await view.refreshConnections();
+    expect(button('.llm-input__model-trigger').textContent).toContain(t('connection.followAgentDefault', {name: 'second'}));
+    view.setConfig({agentId: 'reviewer'});
+    expect(button('.llm-input__model-trigger').textContent).toContain(t('connection.followDefault', {name: 'first'}));
+    view.setConfig({agentId: 'writer', settings: {connectionId: 'first'}});
+    expect(button('.llm-input__model-trigger').textContent).not.toContain(t('connection.followAgentDefault', {name: 'second'}));
+    button('.llm-input__model-trigger').click();
+    [...document.querySelectorAll<HTMLElement>('.llm-popup--visible .llm-popup__item')]
+        .find(item => item.querySelector('.llm-popup__item-label')?.textContent === t('chatSettings.followDefault'))!.click();
+    expect(view.getConfig().settings.connectionId).toBeUndefined();
+    expect(button('.llm-input__model-trigger').textContent).toContain(t('connection.followAgentDefault', {name: 'second'}));
+    view.refreshAgents([{id: 'writer', name: 'Writer', modelDefaults: {chat: 'first'}}], id => id);
+    expect(button('.llm-input__model-trigger').textContent).toContain(t('connection.followAgentDefault', {name: 'first'}));
+    expect(view.getConfig().settings.connectionId).toBeUndefined();
+});
+
+it('projects Agent purpose defaults from both service metadata and configuration snapshots', async () => {
+    const modelDefaults = {chat: 'chat', 'image.generate': 'images', 'speech.synthesize': 'speech'};
+    const agent = {id: 'writer', name: 'Writer', config: {}, modelDefaults};
+    const service = {listAgents: () => [agent]};
+    const options = await buildExecutorOptions(service as never);
+    expect(options.find(option => option.id === agent.id)?.modelDefaults).toEqual(modelDefaults);
+    const snapshot = {agents: [{...agent, modelDefaults: {chat: 'snapshot'}}], promptPresets: {}, connections: [], providers: []};
+    const projected = await buildExecutorOptions(service as never, undefined, snapshot as never);
+    expect(projected.find(option => option.id === agent.id)?.modelDefaults).toEqual({chat: 'snapshot'});
 });

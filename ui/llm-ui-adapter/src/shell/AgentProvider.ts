@@ -39,7 +39,9 @@ export async function buildExecutorOptions(
             description: agent.description,
             defaultPrompts: [...presets.values()],
             imageProcessing: agent.config.imageProcessing,
+            modelDefaults: agent.modelDefaults,
             execution: agent.execution,
+            composition: agent.composition,
             availability: agent.availability,
             supportsModels: agent.execution?.kind === 'flow' ? false : undefined,
         });

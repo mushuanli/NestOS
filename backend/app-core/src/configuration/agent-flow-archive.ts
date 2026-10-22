@@ -1,5 +1,5 @@
 import type { AgentDefinition } from '@itookit/kernel-adapters/contracts';
-import { FlowCommand, type FlowDraft, type FlowRevision } from '@itookit/llm-flow/contracts';
+import { FlowCommand, mapFlowAgentReferences, type FlowDraft, type FlowRevision } from '@itookit/llm-flow/contracts';
 import { externalFlowReferences, flowRevisionToDraft, visitFlowCalls, type FlowReference } from '@itookit/llm-flow';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { createModuleLogger, randomUUID } from '@itookit/common';
@@ -9,7 +9,7 @@ export interface ArchivePlanEntry { kind: string; id: string; data: unknown }
 const log = createModuleLogger('toolbox-flow-export');
 
 export function agentFlowReference(agent: AgentDefinition): FlowReference | undefined {
-    return agent.execution?.kind === 'flow' ? agent.execution : undefined;
+    return !agent.composition && agent.execution?.kind === 'flow' ? agent.execution : undefined;
 }
 
 export async function publishedFlowSnapshot(commands: ICommandBus, reference: FlowReference) {
@@ -58,6 +58,15 @@ async function collectAgentFlows(commands: ICommandBus, agents: AgentDefinition[
 
 export function rewriteAgentFlow(agent: AgentDefinition, replacements: Map<string, string>): AgentDefinition {
     const { availability: _, ...source } = structuredClone(agent);
+    if (source.composition) source.composition = { ...source.composition,
+        coordinatorAgentId: replacements.get('agents/' + source.composition.coordinatorAgentId) ?? source.composition.coordinatorAgentId,
+        memberAgentIds: source.composition.memberAgentIds.map(id => replacements.get('agents/' + id) ?? id) };
+    if (source.modelDefaults) source.modelDefaults = Object.fromEntries(Object.entries(source.modelDefaults)
+        .map(([purpose, id]) => [purpose, replacements.get('connections/' + id) ?? id]));
+    if (source.execution?.kind === 'flow' && source.execution.connectionBindings) {
+        source.execution.connectionBindings = Object.fromEntries(Object.entries(source.execution.connectionBindings)
+            .map(([slot, id]) => [slot, replacements.get('connections/' + id) ?? id]));
+    }
     const reference = agentFlowReference(source), id = reference && replacements.get('flows/' + reference.flowId);
     if (id && source.execution?.kind === 'flow') source.execution = { ...source.execution, flowId: id,
         ...(source.execution.revision !== undefined ? { revision: 1 } : {}) };
@@ -65,6 +74,7 @@ export function rewriteAgentFlow(agent: AgentDefinition, replacements: Map<strin
 }
 
 export function rewriteFlowCalls(flow: FlowDraft, replacements: Map<string, string>): void {
+    mapFlowAgentReferences(flow, id => replacements.get('agents/' + id) ?? id);
     visitFlowCalls(flow, ({ node, local }) => {
         const config = node.config as Record<string, unknown>;
         if (local) { delete config.revision; delete config.digest; return; }

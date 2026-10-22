@@ -5,6 +5,8 @@ import type { RestorableItem } from './restore';
 import type { ProviderAuthorizationService } from './provider-authorization';
 import type { SkillDefinition } from '@itookit/tools/contracts';
 import type { SystemPromptDefinition, PromptPreset } from '@itookit/tools/contracts';
+import type { AgentComposition } from './agent-composition';
+export type { AgentComposition } from './agent-composition';
 
 // ─── Agent ────────────────────────────────────────────────────────────────────
 
@@ -48,7 +50,7 @@ export type { PromptPreset } from '@itookit/tools/contracts';
 
 /** Safe presentation metadata; credential values and system prompt bodies stay in the host. */
 export interface ChatConfigurationSnapshot {
-    agents: Array<Pick<AgentDefinition, 'id' | 'name' | 'icon' | 'description' | 'defaultPrompts' | 'execution' | 'availability'> & {
+    agents: Array<Pick<AgentDefinition, 'id' | 'name' | 'icon' | 'description' | 'defaultPrompts' | 'execution' | 'availability' | 'modelDefaults' | 'composition'> & {
         config: Pick<AgentConfig, 'systemPromptId' | 'imageProcessing'>;
     }>;
     promptPresets: Record<string, PromptPreset[]>;
@@ -72,6 +74,9 @@ export interface AgentDefinition {
     icon?: string;
     description?: string;
     config: AgentConfig;
+    /** Purpose-specific connection defaults; explicit run/Flow bindings keep priority. */
+    modelDefaults?: import('./model-defaults').ModelDefaults;
+    composition?: AgentComposition;
     execution?: AgentExecution;
     /** Derived by the host; never persisted in the Agent source document. */
     readonly availability?: AgentAvailability;

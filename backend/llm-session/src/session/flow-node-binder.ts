@@ -3,6 +3,8 @@ import { type ChatMessage, type ContextSnapshot } from '@itookit/llm-context';
 import { type LLMSkill } from '../contracts';
 import type { ExecutionTask, ExecutorConfig } from '../core/types';
 import { AgentResolver } from './agent-resolver';
+import { agentConnectionId, normalizeLegacyFields, preferredTaskConnection, withAdmittedConnections } from './flow-agent-connections';
+import type { TaskInput } from '../core/types';
 
 export type FlowIdentityResolver = Pick<AgentResolver, 'resolveExact' | 'getSkills' | 'getSystemPrompt'> & Partial<Pick<AgentResolver, 'getMCPToolIds'>>;
 
@@ -14,7 +16,8 @@ interface BindingSetup {
 interface BindingContext {
     flowDefaults: Record<string, unknown>;
     snapshot: Pick<ContextSnapshot, 'blocks' | 'canonicalMessages'>;
-    task: Pick<ExecutionTask, 'sessionId'> & { input: { text: string } };
+    task: Pick<ExecutionTask, 'sessionId'> & { input: Pick<TaskInput, 'text' | 'overrides' | 'instructionConnectionBinding'> };
+    preferredConnectionId?: string;
     standalone?: boolean;
     setup: BindingSetup;
     agents: FlowIdentityResolver;
@@ -41,7 +44,7 @@ export async function bindFlowNode(
     agents: FlowIdentityResolver,
 ) {
     if (record(node.config).invocationContext === 'isolated') {
-        return bindIsolatedInvocation(node, flowDefaultsValue, task.sessionId, agents);
+        return bindIsolatedInvocation(node, flowDefaultsValue, task.sessionId, agents, preferredTaskConnection(task.input));
     }
     if (node.plugin !== 'builtin.agent') {
         return { inputs: { ...node.inputs, prompt: '${input.prompt}' } };
@@ -51,14 +54,16 @@ export async function bindFlowNode(
         name: node.name,
         config: normalizeLegacyFields(record(node.config)),
         capabilities: node.capabilities ?? [],
-    }, { flowDefaults: normalizeLegacyFields(record(flowDefaultsValue)), snapshot, task, setup, agents });
+    }, { flowDefaults: normalizeLegacyFields(record(flowDefaultsValue)), snapshot, task, setup, agents,
+        preferredConnectionId: preferredTaskConnection(task.input) });
 }
 
 /** Resolve identities without inventing a conversation Round or inherited chat history. */
 export async function bindStandaloneFlowNode(
     node: FlowNodeDefinition, defaults: FlowNodeDefinition['config'] | undefined, sessionId: string, agents: FlowIdentityResolver,
+    preferredConnectionId?: string,
 ) {
-    if (record(node.config).invocationContext === 'isolated') return bindIsolatedInvocation(node, defaults, sessionId, agents);
+    if (record(node.config).invocationContext === 'isolated') return bindIsolatedInvocation(node, defaults, sessionId, agents, preferredConnectionId);
     if (node.plugin !== 'builtin.agent') return {};
     const config = normalizeLegacyFields(record(node.config));
     const flowDefaults = normalizeLegacyFields(record(defaults));
@@ -67,21 +72,24 @@ export async function bindStandaloneFlowNode(
     }
     return bindAgentSource({ id: String(node.id), name: node.name,
         config, capabilities: node.capabilities ?? [],
-    }, { flowDefaults, agents, standalone: true,
+    }, { flowDefaults, agents, standalone: true, preferredConnectionId,
         snapshot: { blocks: [], canonicalMessages: [] }, task: { sessionId, input: { text: '' } },
         setup: { config: { id: 'flow', name: 'Flow', type: 'agent' }, roundId: 'flow' },
     });
 }
 
 /** Resolve the target identity without importing the caller's conversational context. */
-async function bindIsolatedInvocation(node: FlowNodeDefinition, _defaults: FlowNodeDefinition['config'] | undefined,
-    sessionId: string, agents: FlowIdentityResolver) {
+async function bindIsolatedInvocation(node: FlowNodeDefinition, defaults: FlowNodeDefinition['config'] | undefined,
+    sessionId: string, agents: FlowIdentityResolver, preferredConnectionId?: string) {
     if (node.plugin !== 'builtin.agent') return {};
     const config = { ...record(node.config), invocationContext: undefined, messages: undefined, historyPolicy: 'none' };
     const agentId = stringValue(record(node.config).agentId);
     if (agentId) await agents.resolveExact(agentId);
+    const flowDefaults = record(defaults);
     const bound = await bindAgentSource({ id: String(node.id), name: node.name,
-        config, capabilities: node.capabilities ?? [] }, { flowDefaults: {}, agents, standalone: true,
+        config, capabilities: node.capabilities ?? [] }, { flowDefaults: {
+            connectionId: flowDefaults.connectionId, modelName: flowDefaults.modelName,
+        }, agents, standalone: true, preferredConnectionId,
         snapshot: { blocks: [], canonicalMessages: [] }, task: { sessionId, input: { text: '' } },
         setup: { config: { id: 'flow', name: 'Flow', type: 'agent' }, roundId: 'flow' } });
     const resolved = record(bound.config);
@@ -251,7 +259,7 @@ function resolveModelSettings(
     const defaults = context.flowDefaults;
     const explicitConnection = stringValue(config.connectionSlot) ?? stringValue(config.connectionId);
     return {
-        connectionId: stringValue(config.connectionId) ?? (explicitConnection ? undefined : stringValue(defaults.connectionId)),
+        connectionId: agentConnectionId(config, defaults, agent, context.preferredConnectionId),
         modelName: stringValue(config.modelName)
             ?? (explicitConnection ? undefined : stringValue(defaults.modelName)),
         temperature: numberValue(config.temperature) ?? agent?.temperature
@@ -297,20 +305,27 @@ async function resolveDelegation(
         throw new Error(`Delegation template nesting exceeds ${DELEGATION_LIMITS.maxDepth}`);
     }
     const template = record(delegation.template);
+    const candidates = Array.isArray(delegation.agents) ? delegation.agents.map(record) : undefined;
+    const resolvedTemplate = candidates ? undefined : await resolveDelegationTemplate(parent, parentMessages,
+        withAdmittedConnections(template, record(record(delegation.resolvedTemplate).config)), context, templateDepth);
+    const resolvedTemplates = candidates && Object.fromEntries(await Promise.all(candidates.map(async candidate => {
+        const agentId = stringValue(candidate.agentId);
+        if (!agentId) throw new Error('Delegation Agent id is required');
+        const admitted = record(record(record(delegation.resolvedTemplates)[agentId]).config);
+        return [agentId, await resolveDelegationTemplate(parent, parentMessages,
+            withAdmittedConnections({ ...template, agentId }, admitted), context, templateDepth)];
+    })));
+    return { ...delegation, resolvedTemplate, ...(resolvedTemplates ? { resolvedTemplates } : {}) };
+}
+
+async function resolveDelegationTemplate(parent: AgentSource, parentMessages: ChatMessage[], template: Record<string, unknown>,
+    context: BindingContext, templateDepth: number) {
     const contextSource = delegationContextSource(template.contextSource);
     const child = await bindAgentSource(childSource(parent, template, contextSource), context, templateDepth + 1);
     const resolvedConfig = record(child.config);
     ensureDelegationInstruction(resolvedConfig, template);
     applyDelegationContext(resolvedConfig, parentMessages, template, contextSource);
-    return {
-        ...delegation,
-        resolvedTemplate: {
-            plugin: 'builtin.agent',
-            pluginVersion: '1.0.0',
-            config: resolvedConfig,
-            capabilities: child.capabilities,
-        },
-    };
+    return { plugin: 'builtin.agent', pluginVersion: '1.0.0', config: resolvedConfig, capabilities: child.capabilities };
 }
 
 function childSource(
@@ -406,17 +421,6 @@ function numberValue(value: unknown): number | undefined { return typeof value =
 function booleanValue(value: unknown): boolean | undefined { return typeof value === 'boolean' ? value : undefined; }
 function record(value: unknown): Record<string, unknown> {
     return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
-}
-
-/** Normalize deprecated field aliases once at the binding boundary. */
-function normalizeLegacyFields(config: Record<string, unknown>): Record<string, unknown> {
-    const instruction = stringValue(config.instruction) ?? stringValue(config.prompt);
-    const modelName = stringValue(config.modelName) ?? stringValue(config.model);
-    return {
-        ...config,
-        ...(instruction ? { instruction } : {}),
-        ...(modelName ? { modelName } : {}),
-    };
 }
 
 function applySkillSubagentModel(config: Record<string, unknown>, source: Record<string, unknown>, identity: IdentityLayer): void {

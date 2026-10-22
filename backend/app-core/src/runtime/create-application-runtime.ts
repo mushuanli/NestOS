@@ -13,6 +13,7 @@ import { ProjectSyncService, type ProjectSyncProvider } from '../projects/sync/s
 import type { Coordinator } from '@itookit/vfs-sync';
 import { seedDefaultFlows } from '../presets/default-flows';
 import { createAgentFlowAvailability } from '../configuration/agent-flow-availability';
+import { createAgentCompositionPreparation } from '../configuration/agent-composition';
 import { createRemoteExecutionProvider } from '../projects/execution/remote-provider';
 import { ProjectExecutionService } from '../projects/execution/service';
 import type { ProjectExecutionProvider } from '../projects/execution/contracts';
@@ -294,6 +295,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         }));
         const kernelCore = kernel.kernel;
         agentService.configureFlowAvailability(createAgentFlowAvailability(flowEngine, new FlowDefinitionStore(flowEngine, kernel.dagPlugins), kernel.dagPlugins));
+        agentService.configureAgentPreparation(createAgentCompositionPreparation(new FlowDefinitionStore(flowEngine, kernel.dagPlugins), agentService, flowEngine));
         const skillsReady = traceBoot(policy.skills === 'before-ready' ? 'syncSkillsToKernel' : 'syncSkillsToKernel (background)', () => syncSkillsToKernel(llmDriver, kernel));
         void skillsReady.catch(error => console.warn('[Boot] Skill initialization failed', error));
 

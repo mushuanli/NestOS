@@ -168,6 +168,8 @@ export type DelegationContextSource = 'session' | 'parent' | 'upstream' | 'isola
 /** Structured dynamic delegation for an LLM Agent node. */
 export interface DelegationConfig {
     enabled: boolean;
+    /** When present, each child must select one admitted Agent from this catalog. */
+    agents?: Array<{ agentId: string; name?: string; description?: string }>;
     /** Defaults to DELEGATION_DEFAULTS.toolName. */
     toolName?: string;
     toolDescription?: string;
@@ -202,6 +204,8 @@ export interface DelegationConfig {
     result?: {
         mode?: 'collect' | 'discard';
         order?: 'declared' | 'completion';
+        /** Existing downstream node that must wait for, and receive, all declared children. */
+        targetNodeId?: string;
     };
     failure?: {
         policy?: 'fail-fast' | 'continue' | 'retry';

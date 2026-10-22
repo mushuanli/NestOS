@@ -17,7 +17,7 @@ function change(container: HTMLElement, selector: string, value: string): HTMLIn
     field.focus(); field.value = value; field.dispatchEvent(new Event('input', { bubbles: true })); return field;
 }
 
-it('saves Agent instructions through the host without a second writer or replacing the DOM', async () => {
+it('saves registered Agent instructions through the management service without a second writer or replacing the DOM', async () => {
     vi.useFakeTimers(); const container = mount(); const saveContent = vi.fn().mockResolvedValue(undefined);
     const saveAgent = vi.fn();
     const service = { listSystemPrompts: async () => [], getMCPServers: async () => [], getSkills: async () => [], saveAgent };
@@ -27,8 +27,8 @@ it('saves Agent instructions through the host without a second writer or replaci
     const interactive = vi.fn(); editor.on('interactiveChange', interactive);
     const field = change(container, '[name="systemPrompt"]', 'new instructions');
     await vi.advanceTimersByTimeAsync(1000);
-    expect(saveContent).toHaveBeenCalledOnce(); expect(saveAgent).not.toHaveBeenCalled(); expect(interactive).not.toHaveBeenCalled();
-    expect(JSON.parse(saveContent.mock.calls[0][1])).toMatchObject({ config: { systemPrompt: 'new instructions' }, capabilityPolicy: { toolIds: ['Read'] } });
+    expect(saveAgent).toHaveBeenCalledOnce(); expect(saveContent).not.toHaveBeenCalled(); expect(interactive).not.toHaveBeenCalled();
+    expect(saveAgent.mock.calls[0][0]).toMatchObject({ config: { systemPrompt: 'new instructions' }, capabilityPolicy: { toolIds: ['Read'] } });
     expect(document.activeElement).toBe(field); expect(field.isConnected).toBe(true);
 });
 

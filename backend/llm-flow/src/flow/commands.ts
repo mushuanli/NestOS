@@ -19,6 +19,8 @@ import { prepareFlowRun } from './prepare-run';
 
 export interface DagCommandServiceOptions {
     prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>;
+    /** Capture host-owned defaults once for this preparation, including nested calls. */
+    prepareConnectionResolver?(sessionId: string): Promise<NonNullable<DagCommandServiceOptions['prepareConnections']>>;
     resolveConnection?(sessionId: string, connectionId?: string): Promise<string | undefined>;
     resolveSkillContexts?: import('./executor').DurableFlowExecutorOptions['resolveSkillContexts'];
     canWriteSession?(sessionId: string): Promise<boolean>;
@@ -189,9 +191,10 @@ export class DagCommandService {
         if (this.options.canWriteSession && !await this.options.canWriteSession(sessionId)) throw new Error('Session is read-only on this host');
         const resolved = fallbackConnectionId !== undefined ? fallbackConnectionId ?? undefined
             : await this.options.resolveConnection?.(sessionId, connectionId);
+        const prepareConnections = await this.options.prepareConnectionResolver?.(sessionId) ?? this.options.prepareConnections;
         return prepareFlowRun(flow, { plugins: this.options.plugins, parameters, fallbackConnectionId: resolved, connectionId, connectionBindings,
-            bindNode: this.options.bindNode ? (node, defaults) => this.options.bindNode!(sessionId, node, defaults) : undefined,
-            resolveComposite: (id, revision) => this.options.flowStore.loadRevision(id, revision), prepareConnections: this.options.prepareConnections });
+            bindNode: this.options.bindNode ? (node, defaults, context) => this.options.bindNode!(sessionId, node, defaults, context) : undefined,
+            resolveComposite: (id, revision) => this.options.flowStore.loadRevision(id, revision), prepareConnections });
     }
 
     /** Submit trusted compiled input; command callers continue through RunStart admission. */

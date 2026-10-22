@@ -179,3 +179,78 @@ it('assembles queued conversation history at dispatch rather than freezing an em
         expect.objectContaining({ role: 'user', content: 'second queued request' }),
     ]));
 }, 15_000);
+
+it('uses Flow Agent purpose defaults for unbound required slots and freezes them before dispatch', async () => {
+    const { runtime, id, session, requests } = await setup(worker(), [], async runtime => {
+        await runtime.agentService.saveConnection({ id: 'agent-chat', name: 'Agent chat', providerId: 'mock', protocol: 'openai-chat', tiers: { optimal: 'model-b', standard: 'model-b' } });
+        const agent = (await runtime.agentService.getAgentConfig('flow-agent'))!;
+        await runtime.agentService.saveAgent({ ...agent, modelDefaults: { chat: 'agent-chat' }, execution: { kind: 'flow', flowId: 'chat-worker' } });
+    });
+    const queue = await readSessionInstructionQueue(runtime.kernel.kernel, id);
+    expect(queue.items[0].connectionBinding).toMatchObject({ source: 'agent', connectionId: 'agent-chat', defaults: { chat: 'agent-chat' } });
+    expect(queue.items[0].flowBinding!.plan!.graph.nodes[0].config).toMatchObject({ connectionId: 'agent-chat', modelName: 'model-b' });
+    await runtime.agentService.saveConnection({ id: 'agent-chat', name: 'Changed', providerId: 'mock', protocol: 'openai-chat', tiers: { optimal: 'model-a', standard: 'model-a' } });
+    const agent = (await runtime.agentService.getAgentConfig('flow-agent'))!;
+    await runtime.agentService.saveAgent({ ...agent, modelDefaults: { chat: 'default' } });
+    await session.resume(); await completed(runtime, id);
+    expect(requests.map(request => request.model)).toEqual(['model-b']);
+}, 15_000);
+
+it.each(['agent', 'session', 'run'] as const)('freezes ordinary Chat connection priority and model tiers before queue dispatch (%s)', async source => {
+    const requests = model(), backend = await storage();
+    const runtime = await createApplicationRuntime({ backend, ownerKind: 'tauri', digitalTwinAutoStart: false });
+    cleanup.push(() => runtime.dispose());
+    for (const id of ['agent', 'session', 'run']) await runtime.agentService.saveConnection({ id, name: id, providerId: 'mock', protocol: 'openai-chat', tiers: { optimal: id === 'agent' ? 'model-b' : 'model-a' } });
+    await runtime.agentService.saveAgent({ id: 'personal', name: 'Personal', type: 'agent', config: {}, modelDefaults: { chat: 'agent' } });
+    const id = await runtime.sessionRepository.createSession('Purpose defaults');
+    if (source !== 'agent') await runtime.sessionRepository.saveSessionSettings(id, { connectionId: 'session' });
+    await runtime.commandBus.execute(SessionCommand.Bind, { sessionId: id });
+    const session = await runtime.kernel.kernel.openSession(id); await session.suspend();
+    await runtime.commandBus.execute(SessionCommand.Send, { text: 'frozen request', files: [], agentId: 'personal', overrides: {
+        streamMode: false, ...(source === 'run' ? { connectionId: 'run' } : {}),
+    } });
+    const queue = await readSessionInstructionQueue(runtime.kernel.kernel, id);
+    expect(queue.items[0].connectionBinding).toMatchObject({ source, connectionId: source, defaults: { chat: 'agent' } });
+    await runtime.agentService.saveConnection({ id: source, name: source, providerId: 'mock', protocol: 'openai-chat', tiers: { optimal: source === 'agent' ? 'model-a' : 'model-b' } });
+    await runtime.agentService.saveAgent({ id: 'personal', name: 'Changed', type: 'agent', config: {}, modelDefaults: { chat: 'default' } });
+    await runtime.sessionRepository.saveSessionSettings(id, { connectionId: 'default' });
+    await session.resume(); await completed(runtime, id);
+    expect(requests.map(request => request.model)).toEqual([source === 'agent' ? 'model-b' : 'model-a']);
+}, 15_000);
+
+it('rejects invalid Agent defaults before persistence and records classified save failures without content', async () => {
+    const { runtime } = await setup();
+    const input = { id: 'invalid-purpose-default', name: 'Invalid', type: 'agent' as const, config: {}, systemPrompt: 'PRIVATE-INSTRUCTIONS', modelDefaults: { chat: 'missing' } };
+    await expect(runtime.agentService.saveAgent(input)).rejects.toMatchObject({ code: 'AGENT_MODEL_DEFAULT_CONNECTION_MISSING' });
+    expect(await runtime.agentService.getAgentConfig(input.id)).toBeNull();
+    const create = { ...input, modelDefaults: { chat: 'default' } };
+    await runtime.agentService.saveAgent(create);
+    vi.spyOn(runtime.agentService.engine.driver, 'writeContent').mockRejectedValueOnce(new Error('PRIVATE-STORAGE-DETAIL'));
+    await expect(runtime.agentService.saveAgent({ ...create, name: 'Changed' })).rejects.toMatchObject({ code: 'AGENT_SAVE_PERSISTENCE_FAILED' });
+    const logs = getLogger().query().filter(entry => entry.message === 'Agent save failed' && (entry.data as { agentId?: string })?.agentId === input.id);
+    expect(logs.map(entry => entry.data)).toEqual(expect.arrayContaining([
+        expect.objectContaining({ stage: 'validation', errorCode: 'AGENT_MODEL_DEFAULT_CONNECTION_MISSING', operationId: expect.any(String), elapsedMs: expect.any(Number) }),
+        expect.objectContaining({ stage: 'persistence', errorCode: 'AGENT_SAVE_PERSISTENCE_FAILED', operationId: expect.any(String), elapsedMs: expect.any(Number) }),
+    ]));
+    expect(JSON.stringify(logs)).not.toMatch(/PRIVATE-|fixture-key/);
+});
+
+it.each([false, true])('uses a referenced member Agent default only without an explicit Flow slot (bound=%s)', async bound => {
+    const definition = worker('member-defaults');
+    Object.assign(definition.nodes[0].config as object, { agentId: 'member' });
+    if (!bound) { definition.connections = []; delete (definition.nodes[0].config as Record<string, unknown>).connectionSlot; }
+    const { runtime, id, session, requests } = await setup(definition, [], async runtime => {
+        await runtime.agentService.saveConnection({ id: 'member-chat', name: 'Member chat', providerId: 'mock', protocol: 'openai-chat', tiers: { optimal: 'model-b' } });
+        await runtime.agentService.saveAgent({ id: 'member', name: 'Member', type: 'agent', config: {}, modelDefaults: { chat: 'member-chat' } });
+        if (!bound) {
+            const agent = (await runtime.agentService.getAgentConfig('flow-agent'))!;
+            await runtime.agentService.saveAgent({ ...agent, execution: { kind: 'flow', flowId: definition.id } });
+        }
+    });
+    const queue = await readSessionInstructionQueue(runtime.kernel.kernel, id);
+    expect(queue.items[0].flowBinding!.plan!.graph.nodes[0].config).toMatchObject({ connectionId: bound ? 'default' : 'member-chat', modelName: bound ? 'model-a' : 'model-b' });
+    await runtime.agentService.saveConnection({ id: 'member-chat', name: 'Changed', providerId: 'mock', protocol: 'openai-chat', tiers: { optimal: 'model-a' } });
+    await runtime.agentService.saveAgent({ id: 'member', name: 'Changed', type: 'agent', config: {}, modelDefaults: { chat: 'default' } });
+    await session.resume(); await completed(runtime, id);
+    expect(requests.map(request => request.model)).toEqual([bound ? 'model-a' : 'model-b']);
+}, 15_000);

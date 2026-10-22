@@ -16,6 +16,9 @@ import type { SystemPromptDefinition } from '@itookit/llm-tasks/contracts';
 
 import { IAgentManagementService } from './agent-service';
 import { createSessionHost, type SessionHost } from '../utils/host-ports';
+import { isModelDefaults } from '@itookit/kernel-adapters/contracts';
+import { validateAgentModelDefaults } from './agent-model-defaults';
+import { ulid } from '../persistence/ulid';
 
 // Agent 默认存储目录（VFS module-relative path）
 const AGENT_DEFAULT_DIR = '/default';
@@ -35,6 +38,8 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     private _systemPromptCache = new Map<string, SystemPromptDefinition>();
     private _systemPromptListLoaded = false;
     private readonly flowAvailability: AgentFlowAvailabilityProjection;
+    private prepareAgent?: (agent: AgentDefinition) => Promise<AgentDefinition>;
+    private readonly agentSaves = new Map<string, Promise<void>>();
 
     constructor(
         fs: IFileSystem,
@@ -50,6 +55,10 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
             void this.flowAvailability.refresh(this._agents).then(() => this.notify());
         });
         if (this.initialized) void this.flowAvailability.refresh(this._agents).then(() => this.notify());
+    }
+
+    configureAgentPreparation(prepare: (agent: AgentDefinition) => Promise<AgentDefinition>): void {
+        this.prepareAgent = prepare;
     }
 
     // ─── FileBackedService lifecycle ─────────────────────────────────────────
@@ -275,8 +284,43 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     // ─── IAgentManagementService — Agent CRUD ─────────────────────────────────
 
     async saveAgent(agent: AgentDefinition, options?: { onDuplicate?: 'merge' | 'error' }): Promise<void> {
-        await this.waitForLoad();
-        agent = agentSource(agent);
+        const source = agentSource(agent);
+        const pending = (this.agentSaves.get(source.id) ?? Promise.resolve()).catch(() => {})
+            .then(() => this.savePreparedAgent(source, options));
+        this.agentSaves.set(source.id, pending);
+        return pending.finally(() => {
+            if (this.agentSaves.get(source.id) === pending) this.agentSaves.delete(source.id);
+        });
+    }
+
+    private async savePreparedAgent(agent: AgentDefinition, options?: { onDuplicate?: 'merge' | 'error' }): Promise<void> {
+        const started = Date.now(), operationId = ulid();
+        let stage = 'initialization';
+        try {
+            await this.waitForLoad();
+            agent = agentSource(agent);
+            stage = 'validation';
+            await validateAgentModelDefaults(agent.modelDefaults, this);
+            if (this.prepareAgent) {
+                stage = 'preparation';
+                agent = agentSource(await this.prepareAgent(agent));
+                stage = 'validation';
+                await validateAgentModelDefaults(agent.modelDefaults, this);
+            }
+            stage = 'persistence';
+            await this.persistAgent(agent, options);
+            this.host.logger.info('Agent saved', { operation: 'agent.save', operationId, stage: 'complete', result: 'success',
+                agentId: agent.id, purposeCount: Object.keys(agent.modelDefaults ?? {}).length, elapsedMs: Date.now() - started });
+        } catch (error) {
+            const reason = (error as { code?: unknown })?.code;
+            const code = typeof reason === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(reason) ? reason : `AGENT_SAVE_${stage.toUpperCase()}_FAILED`;
+            this.host.logger.warn('Agent save failed', { operation: 'agent.save', operationId, stage, result: 'failure',
+                agentId: agent.id, errorCode: code, elapsedMs: Date.now() - started });
+            throw Object.assign(error instanceof Error ? error : new Error('Agent save failed'), { code });
+        }
+    }
+
+    private async persistAgent(agent: AgentDefinition, options?: { onDuplicate?: 'merge' | 'error' }): Promise<void> {
         const filename = `${agent.id}.agent`;
         const contentStr = JSON.stringify(agent, null, 2);
         const metadata = { icon: agent.icon || '🤖', title: agent.name, description: agent.description };
@@ -525,6 +569,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
         if (current.config.systemPrompt !== expected.config.systemPrompt) return true;
         if (current.config.temperature !== def.config.temperature) return true;
         if (current.config.maxHistoryLength !== def.config.maxHistoryLength) return true;
+        if (!deepEqual(current.modelDefaults, def.modelDefaults)) return true;
         if (!deepEqual(current.defaultPrompts, expected.defaultPrompts)) return true;
         return false;
     }
@@ -608,11 +653,17 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
 
             const scanned = await Promise.all(Array.from(result.nodes).map(async (node) => {
                 if (!node.name.endsWith('.agent')) return null;
+                const started = Date.now(), operationId = ulid();
                 try {
                     const content = await this.engine.driver.readContent(node.path, { representation: 'bytes' });
                     if (!content) return null;
                     const jsonStr = typeof content === 'string' ? content : new TextDecoder().decode(content as ArrayBuffer);
                     const data = agentSource(JSON.parse(jsonStr) as AgentDefinition);
+                    if (data.modelDefaults !== undefined && !isModelDefaults(data.modelDefaults)) {
+                        this.host.logger.warn('Agent model defaults skipped', { operation: 'agent.load', stage: 'validation',
+                            operationId, result: 'failure', agentId: data.id, errorCode: 'AGENT_MODEL_DEFAULT_INPUT', elapsedMs: Date.now() - started });
+                        return null;
+                    }
                     if (data.id) {
                         return { ...data, tags: node.tags, _scanPath: node.path } as AgentDefinition & { _scanPath: string };
                     }
@@ -669,6 +720,8 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     }
 
     async dispose(): Promise<void> {
+        await Promise.allSettled(this.agentSaves.values());
+        this.prepareAgent = undefined;
         this.flowAvailability.dispose();
         await super.dispose();
         this._eventUnsubscribers.forEach(fn => fn());

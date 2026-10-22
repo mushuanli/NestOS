@@ -4,6 +4,8 @@ import { assertModelConnection, isModelOperation, modelForOperation, mediaEndpoi
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import type { IAgentConfigService } from '../contracts';
 import { inferFlowConnectionRequirements, nodeRequirements, nodeSlot } from '../contracts/flow-connection-policy';
+import { resolveNodeConnection as resolveFlowNodeConnection } from '@itookit/llm-flow';
+import { DELEGATION_LIMITS } from '@itookit/llm-flow/contracts';
 export type FlowConnectionCatalog = Pick<IAgentConfigService, 'getConnection' | 'getProvider'> & Partial<Pick<IAgentConfigService, 'getDefaultConnection' | 'getModelDefaults'>> & {
     operationModelId?(connectionId: string, operation: ModelOperation): string | undefined;
     assertOperationIdentity?(connection: ConnectionMeta, provider: LLMProvider, operation: ModelOperation): void;
@@ -26,9 +28,10 @@ export async function prepareFlowConnections(flow: FlowRevision, bindings: Recor
     }
     const connections = await Promise.all(slots.map(slot => resolveSlot(slot, bindings[slot.name] ?? slot.connectionId, agents)));
     const nodes = await Promise.all(flow.nodes.map(async node => {
-        const config = record(node.config);
+        let config = record(node.config);
         if (node.plugin === 'builtin.media') return prepareMediaNode(node, config, connections, agents, runConnectionId);
         if (node.plugin !== 'builtin.agent') return node;
+        config = await prepareDelegationConnections(config, connections, flow.defaultConnection, agents, runConnectionId);
         const requirements = nodeRequirements('chat', config, nodeSlot(node, slots));
         if (config.connectionSlot || typeof config.connectionId !== 'string' || slots.some(slot => slot.name === config.connectionId))
             return { ...node, config: { ...config, connectionRequirements: requirements } };
@@ -36,6 +39,31 @@ export async function prepareFlowConnections(flow: FlowRevision, bindings: Recor
         return { ...node, config: { ...config, connectionRequirements: requirements, modelName: resolved.modelId, frozenConnection: resolved } };
     }));
     return { ...flow, connections, nodes };
+}
+
+async function prepareDelegationConnections(config: Record<string, JsonValue>, connections: FlowConnection[],
+    defaultConnection: string | undefined, agents: FlowConnectionCatalog, runConnectionId?: string, depth = 0): Promise<Record<string, JsonValue>> {
+    const delegation = record(config.delegation);
+    if (!delegation.resolvedTemplate && !delegation.resolvedTemplates) return config;
+    if (depth >= DELEGATION_LIMITS.maxDepth) throw new Error('Delegation connection nesting exceeds the supported depth');
+    const prepare = (value: JsonValue) => prepareDelegationTemplate(record(value), connections, defaultConnection, agents, runConnectionId, depth + 1);
+    const resolvedTemplate = !Array.isArray(delegation.agents) && delegation.resolvedTemplate ? await prepare(delegation.resolvedTemplate) : undefined;
+    const resolvedTemplates = delegation.resolvedTemplates ? Object.fromEntries(await Promise.all(Object.entries(record(delegation.resolvedTemplates))
+        .map(async ([id, value]) => [id, await prepare(value)]))) : undefined;
+    const prepared = { ...delegation, ...(resolvedTemplate ? { resolvedTemplate } : {}), ...(resolvedTemplates ? { resolvedTemplates } : {}) };
+    if (Array.isArray(delegation.agents)) delete prepared.resolvedTemplate;
+    return { ...config, delegation: prepared };
+}
+
+async function prepareDelegationTemplate(template: Record<string, JsonValue>, connections: FlowConnection[],
+    defaultConnection: string | undefined, agents: FlowConnectionCatalog, runConnectionId: string | undefined, depth: number): Promise<Record<string, JsonValue>> {
+    let config = structuredClone(record(template.config));
+    const requirements = nodeRequirements('chat', config, nodeSlot({ config } as FlowRevision['nodes'][number], connections));
+    resolveFlowNodeConnection(config, connections, defaultConnection, (await agents.getModelDefaults?.())?.chat, runConnectionId);
+    config = await prepareDelegationConnections(config, connections, defaultConnection, agents, runConnectionId, depth);
+    if (!config.connectionId) return { ...template, config: { ...config, connectionRequirements: requirements } };
+    const resolved = await resolveNodeConnection({ ...config, connectionRequirements: requirements }, agents);
+    return { ...template, config: { ...config, connectionRequirements: requirements, modelName: resolved.modelId, frozenConnection: resolved } };
 }
 async function resolveSlot(slot: FlowConnection, connectionId: string | undefined, agents: FlowConnectionCatalog): Promise<FlowConnection> {
     const operation = slot.requirements?.operation ?? 'chat';

@@ -1,10 +1,32 @@
 import { expect, it } from 'vitest';
-import type { FlowDraft, FlowRevision } from '../src/contracts';
+import { mapFlowAgentReferences, type FlowDraft, type FlowRevision } from '../src/contracts';
 import { externalFlowReferences, visitFlowCalls } from '../src/flow/definition-references';
 const call = (id: string, flowId: string) => ({ id, name: id, plugin: 'builtin.flow', pluginVersion: '2.0.0', inputs: {}, config: { flowId } });
 const draft = (id: string, nodes: unknown[] = [], functions: FlowDraft[] = []): FlowDraft => ({ id, name: id, nodes, functions,
     edges: [], layout: {}, draftVersion: 1, updatedAt: 0 } as FlowDraft);
 const lock = (flowId: string, revision: number, children = {}) => ({ flowId, revision, digest: `${flowId}-${revision}`, children });
+
+it('maps only declared Agent references across defaults, delegation and inline functions', () => {
+    const config = { agentId: 'host', request: { agentId: 'business' }, delegation: {
+        enabled: true, agents: [{ agentId: 'member' }], template: { agentId: 'template',
+            delegation: { enabled: true, agents: [{ agentId: 'nested' }] } },
+    } };
+    const flow = draft('root', [
+        { id: 'agent', plugin: 'builtin.agent', config },
+        { id: 'tool', plugin: 'builtin.tool', config: { toolId: 'external.business', args: { agentId: 'member' } } },
+        { id: 'value', plugin: 'builtin.transform', config: { value: { agentId: 'host' } } },
+    ], [draft('child', [{ id: 'agent', plugin: 'builtin.agent', config: { agentId: 'member' } }])]);
+    flow.defaults = { agentId: 'host' };
+    mapFlowAgentReferences(flow, id => 'imported-' + id);
+    expect(flow.defaults).toEqual({ agentId: 'imported-host' });
+    expect(config).toMatchObject({ agentId: 'imported-host', request: { agentId: 'business' }, delegation: {
+        agents: [{ agentId: 'imported-member' }], template: { agentId: 'imported-template',
+            delegation: { agents: [{ agentId: 'imported-nested' }] } },
+    } });
+    expect(flow.nodes[1].config).toMatchObject({ args: { agentId: 'member' } });
+    expect(flow.nodes[2].config).toMatchObject({ value: { agentId: 'host' } });
+    expect(flow.functions![0].nodes[0].config).toEqual({ agentId: 'imported-member' });
+});
 
 it('keeps direct locks separate from equally named transitive dependencies', () => {
     const flow = { ...draft('root', [call('direct', 'shared'), call('wrapper', 'wrapper')]), dependencyLocks: {

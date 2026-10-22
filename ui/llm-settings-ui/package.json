@@ -37,6 +37,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@itookit/llm-ui": "workspace:*",
     "@itookit/common": "workspace:*",
     "@itookit/ui-common": "workspace:*",
     "@itookit/driver-llm": "workspace:*",

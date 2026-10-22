@@ -29,6 +29,8 @@ export interface DelegationPlan {
     parentId: string;
     parentIteration: number;
     template: Record<string, unknown>;
+    templates?: Record<string, Record<string, unknown>>;
+    targetNodeId?: string;
     payloads: unknown[];
     depth: number;
     concurrency: number;
@@ -64,7 +66,8 @@ export function delegationPlan(
     const config = isRecord(node.config) ? node.config : {};
     const runtime = normalizeDelegation(config);
     if (!runtime) return undefined;
-    const templateValue = runtime.delegation.resolvedTemplate ?? runtime.template;
+    const templateValue = runtime.delegation.resolvedTemplate ?? runtime.template
+        ?? (Array.isArray(runtime.delegation.agents) ? {} : undefined);
     if (!isRecord(templateValue)) return undefined;
     const fanout = delegationFanout(runtime.delegation, runtime.legacyMax);
     if (depth >= fanout.maxDepth) return undefined;
@@ -77,11 +80,14 @@ export function delegationPlan(
     const waitMode = wait.mode === 'any' || wait.mode === 'first-success' || wait.mode === 'quorum'
         ? wait.mode : 'all';
     const payloads = parseSubtaskPayloads(output).slice(0, fanout.maxTasks);
+    const templates = candidateTemplates(runtime.delegation, payloads, output, fanout.maxTasks);
     return {
         groupId: key,
         parentId: String(node.id),
         parentIteration,
         template: templateValue,
+        ...(templates ? { templates } : {}),
+        ...(typeof result.targetNodeId === 'string' ? { targetNodeId: scopedTarget(String(node.id), result.targetNodeId) } : {}),
         payloads,
         depth,
         concurrency: fanout.concurrency,
@@ -153,7 +159,14 @@ export function subtaskToolDescription(config: unknown): string | undefined {
 }
 
 /** ToolDefinition for the declarative subtask tool (call = declare sub-tasks). */
-export function subtaskToolDef(name: string, description?: string): ToolDefinition {
+export function subtaskToolDef(name: string, description?: string, config?: unknown): ToolDefinition {
+    const delegation = isRecord(config) && isRecord(config.delegation) ? config.delegation : {};
+    const agents = Array.isArray(delegation.agents) ? delegation.agents.filter(isRecord) : [];
+    const item = agents.length ? { type: 'object', properties: {
+        agentId: { type: 'string', enum: agents.map(agent => agent.agentId), description: agents.map(agent =>
+            `${agent.agentId}: ${agent.name ?? ''}${agent.description ? ` — ${agent.description}` : ''}`).join('\n') },
+        instruction: { type: 'string', minLength: 1 },
+    }, required: ['agentId', 'instruction'], additionalProperties: false } : { type: 'object' };
     return {
         type: 'function',
         function: {
@@ -162,7 +175,7 @@ export function subtaskToolDef(name: string, description?: string): ToolDefiniti
             parameters: {
                 type: 'object',
                 properties: {
-                    items: { type: 'array', items: { type: 'object' } },
+                    items: { type: 'array', items: item, ...(agents.length ? { maxItems: delegationFanout(delegation).maxTasks } : {}) },
                 },
                 required: ['items'],
             },
@@ -218,7 +231,7 @@ function delegatedNode(
     payload: unknown,
     index: number,
 ): DagNodeDefinition {
-    const template = plan.template;
+    const template = plan.templates && isRecord(payload) ? plan.templates[String(payload.agentId)] : plan.template;
     const templateConfig = isRecord(template.config) ? template.config : template;
     return {
         id,
@@ -280,6 +293,11 @@ function connectDelegatedNode(
         from: plan.parentId, to: childId, output: 'result', input: 'input',
         ...(plan.failurePolicy === 'continue' ? { onFailure: 'continue' as const } : {}),
     });
+    if (plan.targetNodeId) activateEdge(state, {
+        id: `${childId}->${plan.targetNodeId}:delegation-result`, from: childId, to: plan.targetNodeId,
+        output: 'result', input: 'input', kind: 'data',
+        ...(plan.failurePolicy === 'continue' ? { onFailure: 'continue' as const } : {}),
+    });
     if (createdIds.length < plan.concurrency) return;
     const predecessor = createdIds[createdIds.length - plan.concurrency];
     activateEdge(state, {
@@ -317,6 +335,24 @@ function bounded(value: unknown, fallback: number, maximum: number): number {
 
 function positiveInteger(value: unknown): number | undefined {
     return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : undefined;
+}
+
+function scopedTarget(parentId: string, target: string): string {
+    const prefix = parentId.slice(0, parentId.lastIndexOf('/') + 1);
+    return !prefix || target.startsWith(prefix) ? target : prefix + target;
+}
+
+function candidateTemplates(delegation: Record<string, unknown>, payloads: unknown[], output: unknown, maxTasks: number) {
+    if (!Array.isArray(delegation.agents)) return undefined;
+    if (parseSubtaskPayloads(output).length > maxTasks) throw new Error('Delegation task count exceeds the configured limit');
+    const allowed = new Set(delegation.agents.filter(isRecord).map(agent => agent.agentId));
+    const templates = isRecord(delegation.resolvedTemplates) ? delegation.resolvedTemplates : {};
+    for (const payload of payloads) {
+        if (!isRecord(payload) || typeof payload.agentId !== 'string' || !allowed.has(payload.agentId)) throw new Error('Delegation Agent is not in the allowed catalog');
+        if (typeof payload.instruction !== 'string' || !payload.instruction.trim()) throw new Error('Delegation task instruction is required');
+        if (!Object.hasOwn(templates, payload.agentId) || !isRecord(templates[payload.agentId])) throw new Error('Delegation Agent template was not admitted');
+    }
+    return templates as Record<string, Record<string, unknown>>;
 }
 
 function payloadMessage(payload: unknown): { role: 'user'; content: string } {

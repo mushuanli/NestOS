@@ -24,10 +24,12 @@ export async function prepareAgentFlow(commands: ICommandBus, agent: ExecutorOpt
         const parameters = (flow.parameters ?? []).map(field => ({ ...field,
             ...(Object.hasOwn(execution.parameters ?? {}, field.name) ? { default: execution.parameters![field.name] as JsonValue } : {}) }));
         stage = 'connections';
-        const connection = await flowConnectionSelection(commands, undefined, flow.connections, execution.connectionBindings, flow);
+        const connection = await flowConnectionSelection(commands, undefined, flow.connections, execution.connectionBindings, flow, agent);
         if (signal.aborted) return null;
         stage = 'parameters';
-        const values = await promptFlowParameters(parameters, `${agent.name} · ${t('agent.execution.runParameters')}`, undefined, signal, connection, undefined, t('agent.execution.promptHint'));
+        const composite = !!agent.composition && !parameters.length && !flow.connections?.length;
+        if (composite) await connection.validate?.();
+        const values = composite ? {} : await promptFlowParameters(parameters, `${agent.name} · ${t('agent.execution.runParameters')}`, undefined, signal, connection, undefined, t('agent.execution.promptHint'));
         const result = values === null || signal.aborted ? null : { flowParameters: values, flowConnectionBindings: connection.bindings, connectionId: connection.selected };
         console.info('[Agent Flow]', { operation: 'agent.flow.prepare', stage, operationId, result: result === null ? 'cancelled' : 'ready', durationMs: Date.now() - started, parameterCount: parameters.length });
         return result;

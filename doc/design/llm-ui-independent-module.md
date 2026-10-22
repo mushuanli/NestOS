@@ -123,6 +123,35 @@ Flow 的 UI 契约使用通用 FlowSnapshot、节点类型、字段、端口与�
 
 Chat 通过 features.flow 控制 Flow 入口，默认关闭。启用后点击入口才动态加载同包的 Flow 子入口；setFlowEnabled 支持运行时切换，关闭释放视图但不取消执行。异步加载期间关闭或销毁，迟到结果不得重新挂载界面。
 
+### 6.1 配置表单共用与宿主定制
+
+智能体的 Flow 默认配置、Flow 运行参数面板及独立 llm-ui 的节点检查器共用 `@itookit/llm-ui/forms`，不在设置包中重新实现一套类型控件。公共层只接受轻量 `FormParameter`、JSON 值和展示选项，不引用 FlowDraft、AgentDefinition、Session、注册服务或配置存储。MindOS 适配层将领域定义投影到公共字段；公开 `/forms` 入口可独立使用，不加载 Chat、Markdown 或 Flow 执行代码。
+
+| 层次 | 职责 | 定制方式 |
+| --- | --- | --- |
+| llm-ui/forms | text、textarea、number、boolean、choice、JSON 的渲染、取值、类型与约束校验 | `labels`、`classes`、`optionLabel`、`renderField`、`parseField` |
+| 智能体配置 | 选择已注册 Flow、读取发布版本、保存默认参数和槽位绑定 | 宿主注入 `listFlows`、`listFlowRevisions`、`getFlowRevision`、`listConnections` |
+| Flow 运行面板 | 必填校验、图片读取/上传、连接可用性与能力检查、提交运行 | 图片通过字段 hooks 接入；连接与授权仍由宿主检查 |
+| 独立 Flow 节点检查器 | 当前节点值、带 expectedRevision 的修改、操作回执 | `parameterForm` 定制通用字段，`mountInspector` 可替换整个检查器 |
+
+公共表单分两种使用方式：`mode: 'defaults'` 的空值表示继承定义默认值，运行时必填也允许暂不填写，布尔值提供“继承/开启/关闭”；`mode: 'run'` 预填定义默认值并执行本次必填检查。显式 `false`、`0` 与未设置分别保留。单个 JSON 类型参数仍使用 JSON 编辑，普通字符串、数字、选项和连接无需手写 JSON。嵌入智能体表单时通过 `namePrefix` 隔离参数与连接控件，避免 Flow 参数名与 systemPrompt、temperature 等智能体字段重名而覆盖配置。
+
+智能体选择 Flow 执行时必须绑定一个注册流程，有可用项时预选首项。版本选择器始终提供 `latest`，保存时以省略 revision 表示跟随当前发布；固定版本来自真实的 `flow.revision.list`，`latest` 的定义通过 `flow.revision.get` 读取，不以未发布草稿替代已发布版本。未发布时可预配置草稿参数，但明确提示发布前不能运行。默认连接按所选版本定义的具名槽位逐项选择，留空继承 Flow 绑定；旧配置中未展示的参数和连接保留，避免编辑时静默丢失。
+
+编辑器按 Flow 与版本保留当前窗口的表单 DOM 草稿，切换回来能继续修正无效 JSON。异步读取携带界面代次，切换、关闭后旧结果不能更新当前界面；切回普通 Agent 也不等待已失效的 Flow 请求。读取失败提供具体原因和重试，保存等待当前加载完成；诊断仅记录阶段、错误分类、operationId、数量与耗时，不记录参数值或提示词。
+
+表单布局遵循 [Carbon Forms](https://www.carbondesignsystem.com/building-blocks/core/patterns/forms) 的相关字段分组与渐进展示，以及 [GOV.UK Question pages](https://design-system.service.gov.uk/patterns/question-pages/) 的顶部标签与简短辅助说明。Agent 分成基本与执行、行为与模型、工具与授权、高级四页，名称与描述共用，页头与页签常驻，只有活动页面滚动；切页不销毁字段，保留草稿及各页滚动位置。校验仍覆盖全部配置，失败自动切到对应页面并展开字段，只读模式保留导航。手机页签自身横滚，不撑宽页面。连接/参数定义采用字段卡片，窄屏单列；弹窗标题与底部操作固定、正文独立滚动。
+
+### 6.2 Agent、Composite 与 Workflow
+
+基本页的三个入口表达实际行为：Agent 使用自身指令与授权；Composite 由主持 Agent 动态选择白名单成员分工，再由同一主持汇总；Workflow 运行指定发布的 Flow，编辑版本、默认参数与连接槽。旧 `type` 仅在高级页作为只读兼容元数据，不能代替执行配置或作为已绑定证明。
+
+Composite 的作者配置为 `composition`，包含主持者、允许成员和可选分工/并发限制。主持者与成员均为普通 Agent，排除自身与嵌套 Composite/Flow。应用层将其编译为受管 Flow，并以既有 `execution.kind: 'flow'` 绑定不可变发布；运行端根据候选目录限制动态 agentId，冻结全部候选身份与连接。主持先选择一个有界任务批次，成员执行完毕后汇总节点读取结果产生最终答复；本轮不提供多轮反复调度。已登记 Agent 的保存必须进入管理服务的校验与编排准备，不能直接写 JSON 绕过准备。
+
+「行为与模型」是页面分类，其「模型选择」按对话、绘图、语音合成分别配置 Agent 用途默认，候选由用途能力筛选；不另设同级「默认连接」入口。没有显式选择时遵循 Agent 默认再系统默认，Session 或 Flow 的显式配置优先；继承值不写回会话选择，已失效的 Agent 默认报具体错误，不静默替换。Workflow 基本页的具名槽位称为「流程连接覆盖」，独立于用途默认：同类用途可以声明多个槽位，各自绑定不同连接；未绑定的可选槽不因用途默认而启用。输入图片处理是发给模型的图片缩放，界面名称应与图像生成输出尺寸区分。
+
+自定义字段是可信宿主代码，必须提供相同 `data-parameter` 索引的原生 input/select/textarea 作为值通道；公共层继续执行类型与数值约束。图片上传、特殊选择器的事件绑定和释放由注入它们的宿主负责，公共组件不拥有后台执行或存储服务。独立使用时可导入 `@itookit/llm-ui/forms.css`，也可通过 classes 使用宿主主题。
+
 ## 7 Markdown、扩展与生命周期
 
 mdxeditor 的 [公开契约](../../libraries/mdxeditor/src/editor/contracts.ts)提供 AssetProvider、EditorHost、StoreFactory、翻译、HTML 和滚动策略。独立库直接消费公开 API，资源权限由宿主把关。

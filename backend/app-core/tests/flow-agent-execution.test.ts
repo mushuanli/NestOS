@@ -79,9 +79,10 @@ it('follows new published configuration on subsequent calls and supports a pinne
 it('does not require an unrelated disabled default model connection for a deterministic Flow', async () => {
     const { runtime, id } = await setup();
     vi.spyOn(runtime.agentService, 'getModelDefaults').mockResolvedValue({ chat: 'disabled-chat' });
-    vi.spyOn(runtime.agentService, 'getConnection').mockResolvedValue({ id: 'disabled-chat', name: 'Disabled', providerId: 'missing', enabled: false } as never);
+    const connection = vi.spyOn(runtime.agentService, 'getConnection').mockResolvedValue({ id: 'disabled-chat', name: 'Disabled', providerId: 'missing', enabled: false } as never);
     await send(runtime, 'deterministic request');
     expect((await results(runtime, id))[0].prompt).toBe('deterministic request');
+    expect(connection).not.toHaveBeenCalled();
 });
 
 it('blocks deleted Flow bindings before accepting new work and becomes available after restoration', async () => {

@@ -235,3 +235,49 @@ it('preserves an invalid explicit tier instead of displaying and sending the opt
     input.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
     await view.refreshConnections(); expect(onSend).not.toHaveBeenCalled(); expect(input.value).toBe('Blocked draft');
 });
+
+it('follows the Agent chat default without requiring or persisting a system default', async () => {
+    const own = ready({id: 'agent-chat', name: 'Agent chat', isDefault: false});
+    const f = setup(async () => [own], {initialAgents: [{id: 'writer', name: 'Writer', modelDefaults: {chat: own.id}}],
+        initialConfig: {agentId: 'writer'}});
+    await f.view.refreshConnections();
+    expect(f.send.disabled).toBe(false); expect(f.notice.hidden).toBe(true);
+    expect(f.button('.llm-input__model-trigger').textContent).toContain(t('connection.followAgentDefault', {name: own.name}));
+    expect(f.view.getConfig().settings.connectionId).toBeUndefined();
+    f.type('Use the inherited connection'); f.send.click();
+    await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
+    expect(f.onSend.mock.calls[0][3]?.connectionId).toBeUndefined();
+    expect(f.view.getConfig().settings.connectionId).toBeUndefined();
+});
+
+it.each(['missing', 'disabled', 'credentials', 'noModel'] as const)('keeps a %s Agent default visible instead of falling back to a ready system connection', async kind => {
+    const own = ready({id: 'agent-chat', name: 'Agent chat', isDefault: false,
+        ...(kind === 'disabled' ? {enabled: false} : kind === 'credentials' ? {credentialsReady: false} : kind === 'noModel' ? {tiers: {}} : {})});
+    const f = setup(async () => [ready(), ...(kind === 'missing' ? [] : [own])], {
+        initialAgents: [{id: 'writer', name: 'Writer', modelDefaults: {chat: own.id}}], initialConfig: {agentId: 'writer'},
+    });
+    await f.view.refreshConnections();
+    expect(f.send.disabled).toBe(true);
+    expect(f.notice.textContent).toContain(t(`chatInput.connectionStatus.${kind === 'missing' ? 'unavailable' : kind}`, {name: kind === 'missing' ? own.id : own.name}));
+    f.button('[data-connection-configure]').click();
+    expect(f.navigate).toHaveBeenCalledWith(kind === 'credentials' ? {resourceId: 'providers', anchor: 'provider-a'} : {resourceId: 'connections', anchor: 'conn:' + own.id});
+    f.type('Preserve this draft'); f.enter(); await f.view.refreshConnections();
+    expect(f.onSend).not.toHaveBeenCalled(); expect(f.input.value).toBe('Preserve this draft');
+    expect(f.view.getConfig().settings.connectionId).toBeUndefined();
+});
+
+it('lets an explicit session connection override an unavailable Agent default', async () => {
+    const f = setup(async () => [ready()], {
+        initialAgents: [{id: 'writer', name: 'Writer', modelDefaults: {chat: 'removed'}}],
+        initialConfig: {agentId: 'writer', settings: {connectionId: 'main'}},
+    });
+    await f.view.refreshConnections();
+    expect(f.send.disabled).toBe(false); expect(f.notice.hidden).toBe(true);
+    expect(f.button('.llm-input__model-trigger').textContent).not.toContain(t('connection.followAgentDefault', {name: 'removed'}));
+    expect(f.view.getConfig().settings.connectionId).toBe('main');
+    f.button('.llm-input__model-trigger').click();
+    const inherited = [...document.querySelectorAll<HTMLElement>('.llm-popup--visible .llm-popup__item')]
+        .find(row => row.querySelector('.llm-popup__item-label')?.textContent === t('chatSettings.followDefault'))!;
+    expect(inherited.getAttribute('aria-disabled')).toBe('true'); inherited.click();
+    expect(f.view.getConfig().settings.connectionId).toBe('main');
+});

@@ -75,6 +75,8 @@ VFSAgentService 的 `configureFlowAvailability` 接受宿主提供的最小 Flow
 
 Flow 指令接纳通过 llm-flow 的 prepareFlowRun 生成图，在 flowBinding.plan 保存图、引用身份与摘要。对话历史和宿主上下文在派发时绑定；静态引用与批量子模板不能重读源定义。派发仍复验当前连接/授权，动态新身份在扩展时准入并随图持久化。计划损坏拒绝恢复，无计划的旧队列沿用兼容路径。可用性按 Flow ID/修订缓存并合并在途检查，资源事件失效，单个 Agent 读取不刷新整个目录。
 
+flow-agent-connections 统一预检与上下文绑定的连接选择规则；完整准入的连接选择通过 freezePlannedFlowConnections 写回源图，递归覆盖委派模板和批量子调用，保持源指令与上下文策略。派发只重建消息并复验已冻结的连接，不根据新的默认值重选。VFSAgentService 按 Agent ID 串行执行准备及保存，接纳时复制输入，关闭时等待已接纳保存结束。
+
 Agent、连接管理、恢复与定价的权威契约位于 kernel-adapters/contracts。本包为既有 Session API 保留具名转发，构建必须内联其 JavaScript 与声明，发布产物不得保留对适配器包的导入；它仅列为开发依赖。
 
 DirectAgentPolicy 控制显式 Agent 模式的附加提示与 maxExchanges。构造时验证预算、复制并冻结；附加提示必须在 Context 装配前加入并参与 token 计量，不得在 Task 构造时绕过预算追加消息。实际预算写入 Task，Chat/Flow 与旧模式不消费附加提示。

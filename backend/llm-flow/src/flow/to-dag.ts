@@ -14,6 +14,7 @@ import { namespaceCallConfig, remapRouteEdges } from './function-namespace';
 export type FlowNodeBinder = (
     node: FlowNodeDefinition,
     flowDefaults?: FlowNodeDefinition['config'],
+    connections?: { runConnectionId?: string; fallbackConnectionId?: string },
 ) =>
     | Partial<Pick<FlowNodeDefinition, 'config' | 'inputs' | 'capabilities' | 'budget'>>
     | Promise<Partial<Pick<FlowNodeDefinition, 'config' | 'inputs' | 'capabilities' | 'budget'>>>;
@@ -99,13 +100,16 @@ function createDagSpec(flow: FlowRevision, nodes: FlowNodeDefinition[], { fallba
     };
 }
 
-async function bindCompilationNode(node: FlowNodeDefinition, flow: FlowRevision, { bind, isolated, runConnectionId }: CompilationContext): Promise<FlowNodeDefinition> {
+async function bindCompilationNode(node: FlowNodeDefinition, flow: FlowRevision, { bind, isolated, runConnectionId, fallbackConnectionId }: CompilationContext): Promise<FlowNodeDefinition> {
     if (node.plugin === 'builtin.flow' && node.pluginVersion === '2.0.0') return {
         ...structuredClone(node), capabilities: node.capabilities ?? [], budget: node.budget ?? {},
     };
     const defaults = node.plugin === 'builtin.agent' ? flowAgentDefaults(flow) : undefined;
+    const inherited = defaults ? mergeAgentConfig(defaults, node.config) : node.config;
+    const inheritedSlot = nodeConnectionSlot(inherited as FlowNodeDefinition['config'], flow.connections, flow.defaultConnection, runConnectionId);
+    if (inheritedSlot && isRecord(node.config)) node = { ...node, config: { ...node.config, connectionSlot: inheritedSlot } };
     if (isolated) node = { ...node, config: { ...(defaults ? mergeAgentConfig(defaults, node.config) : isRecord(node.config) ? node.config : {}), invocationContext: 'isolated' } as FlowNodeDefinition['config'] };
-    const patch = (await bind?.(node, defaults as FlowNodeDefinition['config'])) ?? {};
+    const patch = (await bind?.(node, defaults as FlowNodeDefinition['config'], { runConnectionId, fallbackConnectionId })) ?? {};
     const config = cloneJson((patch.config ?? (defaults && !isolated ? mergeAgentConfig(defaults, node.config) : node.config)) as FlowNodeDefinition['config']);
     const slot = nodeConnectionSlot(config, flow.connections, flow.defaultConnection, runConnectionId);
     if (slot && isRecord(config)) config.connectionSlot = slot;

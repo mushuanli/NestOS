@@ -229,13 +229,19 @@ function createDagCommands(
     commandBus.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as FlowConnectionCheckInput, options.agentService, flowStore, options.dagPlugins));
     const dag = new DagCommandService({
         prepareConnections: (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, options.agentService, undefined, runConnectionId),
+        prepareConnectionResolver: async () => {
+            const defaults = await options.agentService.getModelDefaults?.() ?? {};
+            return (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, options.agentService, defaults, runConnectionId);
+        },
         resolveConnection: (id, selected) => resolveSessionConnection(options, id, selected),
         flowStore,
         canWriteSession: options.canWriteSession,
         workspaceManager: options.workspaceManager,
         kernel: options.kernel,
         plugins: options.dagPlugins,
-        bindNode: (sessionId, node, defaults) => bindStandaloneFlowNode(node, defaults, sessionId, new AgentResolver(options.agentService, options.resolveSessionSkills, options.resolveMCPToolIds, createSessionHost(options.hostPorts), options.agentResolution)),
+        bindNode: async (sessionId, node, defaults, context) => bindStandaloneFlowNode(node, defaults, sessionId,
+            new AgentResolver(options.agentService, options.resolveSessionSkills, options.resolveMCPToolIds, createSessionHost(options.hostPorts), options.agentResolution),
+            context?.runConnectionId ?? (await options.sessionEngine.getSessionSettings(sessionId)).connectionId),
         resolveSessionContext: options.resolveSessionContext,
         resolveTools: options.resolveTools,
         resolveSkillContexts: skillContextResolver({ resolveSkills: (ids, sessionId) => options.resolveSessionSkills?.(sessionId!, ids) ?? Promise.resolve([]), resolveTools: options.resolveTools }),
@@ -268,7 +274,8 @@ export { buildSkillContexts } from '@itookit/llm-tasks';
 export { FlowRunProjection, projectTaskInteractions, type FlowRunProjectionOptions } from './persistence/flow-run-projection';
 
 async function resolveSessionConnection(options: ConversationSystemOptions, sessionId: string, selected?: string): Promise<string | undefined> {
-    const id = selected ?? (await options.sessionEngine.getSessionSettings(sessionId)).connectionId;
+    const settings = await options.sessionEngine.getSessionSettings(sessionId);
+    const id = selected ?? settings.connectionId;
     const connection = id ? await options.agentService.getConnection(id) : await options.agentService.getDefaultConnection();
     if (id && !connection) throw new Error(`Connection not found: ${id}`);
     if (connection && (connection.enabled === false || options.agentService.getProvider(connection.providerId)?.enabled === false))

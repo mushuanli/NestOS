@@ -6,8 +6,9 @@ import type { SessionHost } from '../utils/host-ports';
 import { captureFlowConnections } from './flow-connection-snapshot';
 import { prepareFlowConnections, type FlowConnectionCatalog } from './flow-connections';
 import { bindFlowNode, type FlowIdentityResolver } from './flow-node-binder';
+import { bindFlowAgentConnection, preferredTaskConnection } from './flow-agent-connections';
 import { captureFlowIdentities } from './flow-identity-snapshot';
-import { bindPlannedFlowGraph, createFlowRunPlan, validatePlannedFlowConnections } from './flow-run-plan';
+import { bindPlannedFlowGraph, createFlowRunPlan, freezePlannedFlowConnections, validatePlannedFlowConnections } from './flow-run-plan';
 
 export interface FlowAgentPorts {
     definitions: Pick<FlowDefinitionStore, 'loadRevision'>;
@@ -74,10 +75,12 @@ function boundParameters(flow: FlowRevision, defaults: Record<string, unknown> |
 async function freezeDependencies(ports: FlowAgentPorts, flow: FlowRevision, input: TaskInput, bindings: Record<string, string>,
     parameters: Record<string, JsonValue>, agent: ExecutorConfig) {
     const revisions = new Map<string, FlowRevision>();
+    const identities = captureFlowIdentities(ports.identityResolver, input.sessionId);
     const capture = ports.connectionCatalog && captureFlowConnections(ports.connectionCatalog);
     const prepare = capture ? (definition: FlowRevision, values?: Record<string, string>, runId?: string) =>
         prepareFlowConnections(definition, values, capture.catalog, input.instructionConnectionBinding?.defaults, runId) : ports.prepareConnections;
     const graph = await prepareFlowRun(flow, { parameters, plugins: ports.plugins,
+        bindNode: (node, defaults) => bindFlowAgentConnection(node, defaults, identities.resolver, preferredTaskConnection(input)),
         fallbackConnectionId: input.instructionConnectionBinding?.connectionId ?? input.overrides?.connectionId,
         connectionId: input.overrides?.connectionId, connectionBindings: bindings, prepareConnections: prepare,
         resolveComposite: async (id, revision) => {
@@ -85,13 +88,12 @@ async function freezeDependencies(ports: FlowAgentPorts, flow: FlowRevision, inp
             revisions.set(`${found.id}@${found.revision}`, found);
             return found;
         } });
-    const identities = captureFlowIdentities(ports.identityResolver, input.sessionId);
     const bound = await bindPlannedFlowGraph(graph, (node, defaults) => bindFlowNode(node, defaults,
-        { blocks: [], canonicalMessages: [] }, { sessionId: input.sessionId, input: { text: '' } },
+        { blocks: [], canonicalMessages: [] }, { sessionId: input.sessionId, input: { ...input, text: '' } },
         { roundId: 'admission', config: agent }, identities.resolver));
-    if (capture) await validatePlannedFlowConnections(bound, flow, capture.catalog);
+    const admitted = capture ? await validatePlannedFlowConnections(bound, flow, capture.catalog, input.instructionConnectionBinding?.defaults) : bound;
     return { dependencies: [...revisions.values()], connections: capture?.snapshot() ?? { connections: [] },
-        plan: createFlowRunPlan(graph, identities.snapshot()) };
+        plan: createFlowRunPlan(freezePlannedFlowConnections(graph, admitted), identities.snapshot()) };
 }
 
 /** Runtime resolution is closed over accepted definitions, never the mutable Flow library. */

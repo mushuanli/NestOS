@@ -140,7 +140,12 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         return async (container, config) => { await executorUsage.load(); return factory(container, {...config, executorUsage}); };
     };
     const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS,
-        listFlows: () => commandBus.execute<Array<{id: string; name: string}>>(FlowCommand.DraftList) });
+        listFlows: () => commandBus.execute<import('@itookit/llm-flow/contracts').FlowDraft[]>(FlowCommand.DraftList),
+        listFlowRevisions: id => commandBus.execute<import('@itookit/llm-flow/contracts').FlowRevision[]>(FlowCommand.RevisionList, {id}),
+        getFlowRevision: (id, revision) => commandBus.execute<import('@itookit/llm-flow/contracts').FlowRevision | null>(FlowCommand.RevisionGet, {id, revision}),
+        listConnections: () => agentService.getConnections(),
+        openFlow: id => handleNavigationRequest({target: 'toolbox', resourceId: '/flows/' + id + '.flow'}),
+    });
 
     // The backend owns the skill filesystem and its service subscriptions.
     const skillsFiles = lazyResource(() => backend.skillsFiles(), () => {});

@@ -46,6 +46,7 @@ export interface ExecutorConfig {
      */
     webSearchMode?: WebSearchMode;
     connectionId?: string;
+    modelDefaults?: AgentDefinition['modelDefaults'];
     systemPrompt?: string[];
     /** Frozen AgentDefinition version used for reproducible AgentTasks. */
     agentVersion?: string;

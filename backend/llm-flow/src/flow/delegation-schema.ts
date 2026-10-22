@@ -9,6 +9,9 @@ export function delegationSchema(): JsonValue {
         advancedProperties: ['toolDescription', 'fanout', 'execution', 'wait', 'result', 'join', 'failure', 'budget'],
         properties: {
             enabled: { type: 'boolean', title: 'Enable delegation' },
+            agents: { type: 'array', title: 'Allowed child Agents', items: { type: 'object', properties: {
+                agentId: { type: 'string' }, name: { type: 'string' }, description: { type: 'string' },
+            }, required: ['agentId'] } },
             toolName: { type: 'string', title: 'Tool name', unsetLabel: `${DELEGATION_DEFAULTS.toolName} (default)` },
             toolDescription: { type: 'string', title: 'Tool description' },
             template: childTemplateSchema(),
@@ -33,6 +36,7 @@ export function delegationSchema(): JsonValue {
                 properties: {
                     mode: { ...enumSchema(['collect', 'discard']), title: 'Results', unsetLabel: 'collect (default)' },
                     order: { ...enumSchema(['declared', 'completion']), title: 'Result order', unsetLabel: 'declared (default)' },
+                    targetNodeId: { type: 'string', title: 'Result consumer node' },
                 },
             },
             join: {

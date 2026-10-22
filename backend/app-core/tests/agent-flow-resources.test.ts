@@ -177,3 +177,20 @@ it('rejects incompatible published versions across the entire archive closure', 
     await publish(runtime, root); await runtime.agentService.saveAgent(agent({ kind: 'flow', flowId: root.id }));
     await expect(resources.export(['/agents' + runtime.agentService.getAgentResourceId('flow-agent')])).rejects.toThrow('conflicting Flow revisions');
 });
+
+it('round-trips Agent purpose defaults through resource archives and safe chat projections', async () => {
+    const source = await setup(), target = await setup();
+    for (const { runtime } of [source, target]) {
+        await runtime.agentService.saveProvider({ id: 'purpose-provider', name: 'Purpose', implementation: 'openai-compatible', baseURL: 'https://purpose.invalid', models: [{ id: 'chat', name: 'Chat' }] });
+        await runtime.agentService.saveConnection({ id: 'purpose-connection', name: 'Purpose', providerId: 'purpose-provider', tiers: { optimal: 'chat' } });
+    }
+    await source.runtime.agentService.saveAgent({ id: 'purpose-agent', name: 'Purpose Agent', type: 'agent', config: {}, modelDefaults: { chat: 'purpose-connection' } });
+    const path = '/agents' + source.runtime.agentService.getAgentResourceId('purpose-agent');
+    const archive = await source.resources.export([path]);
+    expect(JSON.parse(archive).entries[0].data.modelDefaults).toEqual({ chat: 'purpose-connection' });
+    const imported = await target.resources.import(archive);
+    const restored = target.runtime.agentService.listAgents().find(agent => imported.includes('/agents' + target.runtime.agentService.getAgentResourceId(agent.id)))!;
+    expect(restored.modelDefaults).toEqual({ chat: 'purpose-connection' });
+    const view = await createChatConfigurationView(target.runtime.agentService); cleanup.push(() => view.dispose());
+    expect(view.getConfigurationSnapshot().agents.find(agent => agent.id === restored.id)?.modelDefaults).toEqual(restored.modelDefaults);
+});

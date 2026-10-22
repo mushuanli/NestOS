@@ -149,6 +149,13 @@ export class ToolboxResources {
         const queue = [...new Set(paths)], selected = new Map<string, ToolboxDefinition>();
         for (const path of queue) selected.set(path, await this.exportData(path));
         const agents = [...selected].filter(([path]) => path.startsWith('/agents/')).map(([, data]) => data as AgentDefinition);
+        for (const agent of [...agents]) for (const id of compositionReferences(agent)) {
+            const source = await this.agents.getAgentConfig(id), resource = this.agents.getAgentResourceId(id);
+            if (!source || !resource) throw new Error('Composition Agent dependency is unavailable');
+            const path = toolboxPath('agents', resource);
+            if (selected.has(path)) continue;
+            selected.set(path, rewriteAgentFlow(source, new Map())); agents.push(source); queue.push(path);
+        }
         const snapshots = await planAgentFlowExport(this.commands, agents);
         for (const [id, snapshot] of snapshots) {
             const path = toolboxPath('flows', '/' + id + '.flow');
@@ -211,7 +218,7 @@ export class ToolboxResources {
     }
     private async writeArchivePlan(plan: ReturnType<typeof planImport>, trace: ToolboxImportTrace, created: string[]): Promise<Map<string, string>> {
         const ordered = plan.map((entry, index) => ({ entry, index }))
-            .sort((a, b) => Number(a.entry.kind === 'agents') - Number(b.entry.kind === 'agents'));
+            .sort((a, b) => archiveWriteRank(a.entry) - archiveWriteRank(b.entry));
         const written = new Map<string, string>();
         let preparedAgentFlows = false;
         for (const { entry, index } of ordered) {
@@ -301,6 +308,12 @@ function validateEntry(entry: { kind?: string; data?: Record<string, unknown> })
 }
 
 type ToolboxDefinition = SystemPromptDefinition | AgentDefinition | LLMSkill | FlowDraft | MCPServer | LLMProvider | LLMConnection;
+function compositionReferences(agent: AgentDefinition): string[] {
+    return agent.composition ? [agent.composition.coordinatorAgentId, ...agent.composition.memberAgentIds] : [];
+}
+function archiveWriteRank(entry: { kind: ToolboxKind; data: ToolboxDefinition }): number {
+    return entry.kind !== 'agents' ? 0 : (entry.data as AgentDefinition).composition ? 2 : 1;
+}
 function planImport(entries: Array<{ kind: ToolboxKind; data: ToolboxDefinition; drawer?: string }>) {
     const plan = entries.map(entry => ({ ...entry, id: randomUUID() }));
     const replacements = new Map(plan.map(entry => [entry.kind + '/' + entry.data.id, entry.id]));

@@ -21,6 +21,7 @@ export interface ConnectionIssue {
 export class ConnectionTierController {
     private connections: ConnectionOption[] = [];
     private connectionId?: string;
+    private agentDefaultConnectionId?: string;
     private modelTier: ModelTier | 'auto' = 'auto';
     private readonly trigger: HTMLButtonElement;
     private readonly label: HTMLElement;
@@ -47,9 +48,9 @@ export class ConnectionTierController {
     getModelTier(): ModelTier | 'auto' { return this.modelTier; }
     getConnections(): ConnectionOption[] { return this.connections; }
     getIssue(): ConnectionIssue | undefined {
-        const connection = this.effectiveConnection();
-        if (!connection) return {kind: this.connectionId ? 'unavailable' : 'noDefault', name: this.connectionId,
-            target: {resourceId: 'connections', ...(this.connectionId ? {anchor: 'conn:' + this.connectionId} : {})}};
+        const connection = this.effectiveConnection(), requested = this.connectionId ?? this.agentDefaultConnectionId;
+        if (!connection) return {kind: requested ? 'unavailable' : 'noDefault', name: requested,
+            target: {resourceId: 'connections', ...(requested ? {anchor: 'conn:' + requested} : {})}};
         if (connection.enabled === false) return {kind: 'disabled', name: connection.name, target: {resourceId: 'connections', anchor: 'conn:' + connection.id}};
         if (!(connection.credentialsReady ?? connection.hasApiKey)) return {kind: 'credentials', name: connection.name,
             target: connection.provider ? {resourceId: 'providers', anchor: connection.provider} : {resourceId: 'connections', anchor: 'conn:' + connection.id}};
@@ -58,6 +59,11 @@ export class ConnectionTierController {
         return undefined;
     }
     setConnectionId(id: string | undefined): void { this.connectionId = id; this.updateUI(); }
+    setAgentDefaultConnectionId(id: string | undefined): void {
+        if (this.agentDefaultConnectionId === id) return;
+        this.agentDefaultConnectionId = id; this.updateUI();
+        if (this.popup?.isVisible) this.popup.updateItems(this.buildItems());
+    }
     setModelTier(tier: ModelTier | 'auto'): void { this.modelTier = tier; this.updateUI(); }
     setSelection(id: string | undefined, tier: ModelTier | 'auto'): void {
         this.connectionId = id; this.modelTier = tier; this.updateUI();
@@ -75,7 +81,10 @@ export class ConnectionTierController {
     }
     destroy(): void { this.popup?.destroy(); }
     private effectiveConnection(): ConnectionOption | undefined {
-        return this.connectionId ? this.connections.find(c => c.id === this.connectionId) : this.connections.find(c => c.isDefault);
+        return this.connectionId ? this.connections.find(c => c.id === this.connectionId) : this.defaultConnection();
+    }
+    private defaultConnection(): ConnectionOption | undefined {
+        return this.agentDefaultConnectionId ? this.connections.find(c => c.id === this.agentDefaultConnectionId) : this.connections.find(c => c.isDefault);
     }
     private tierLabel(tier: string): string {
         return ({auto: t('chatSettings.followDefault'), optimal: t('ocr.tier.optimal'),
@@ -91,11 +100,16 @@ export class ConnectionTierController {
     private updateUI(selected = false): void {
         const connection = this.effectiveConnection(), model = this.modelName(connection);
         this.deps.onReasoning?.(connection?.reasoningByTier?.[this.modelTier === 'auto' ? 'optimal' : this.modelTier], `${connection?.id ?? ''}/${model ?? ''}`, selected);
-        const source = connection?.name ?? (this.connectionId ? t('connection.unavailable', {id: this.connectionId}) : t('connection.unset'));
-        this.label.textContent = model ? `${model} · ${this.connectionId ? source : t('connection.followDefault', {name: source})}` : source;
+        const requested = this.connectionId ?? this.agentDefaultConnectionId;
+        const source = connection?.name ?? (requested ? t('connection.unavailable', {id: requested}) : t('connection.unset'));
+        const inherited = this.agentDefaultConnectionId ? t('connection.followAgentDefault', {name: source}) : t('connection.followDefault', {name: source});
+        this.label.textContent = model ? `${model} · ${this.connectionId ? source : inherited}` : !this.connectionId && this.agentDefaultConnectionId ? inherited : source;
         this.trigger.title = [t('chatInput.modelHint'), source, connection?.providerName ?? connection?.provider, this.tierLabel(this.modelTier)].filter(Boolean).join(' · ');
         this.trigger.setAttribute('aria-label', `${t('chatInput.model')}: ${this.label.textContent} · ${this.trigger.title}`);
         this.connectionSelect.value = this.connectionId ?? '';
+        const defaultOption = this.connectionSelect.querySelector<HTMLOptionElement>('option[value=""]');
+        if (defaultOption) defaultOption.textContent = this.agentDefaultConnectionId
+            ? t('connection.followAgentDefault', {name: this.defaultConnection()?.name ?? this.agentDefaultConnectionId}) : t('connection.followDefaultShort');
         for (const card of this.tierCards.querySelectorAll<HTMLButtonElement>('[data-tier]')) {
             const tier = card.dataset.tier!;
             card.classList.toggle('active', tier === this.modelTier); card.setAttribute('aria-pressed', String(tier === this.modelTier));
@@ -117,7 +131,7 @@ export class ConnectionTierController {
     private select(id: string): void {
         if (id === 'manage') { this.deps.onNavigateSettings({resourceId: 'connections'}); return; }
         if (id === 'default') {
-            const connection = this.connections.find(c => c.isDefault);
+            const connection = this.defaultConnection();
             if (connection?.enabled === false || !(connection?.credentialsReady ?? connection?.hasApiKey) || !this.modelName(connection, 'auto')) return;
             this.connectionId = undefined; this.modelTier = 'auto';
         }
@@ -130,9 +144,10 @@ export class ConnectionTierController {
         this.updateUI(true); this.deps.onChange();
     }
     private buildItems(): PopupItem[] {
-        const connection = this.connections.find(c => c.isDefault);
+        const connection = this.defaultConnection();
         return [{id: 'default', label: t('chatSettings.followDefault'),
-            description: [connection?.name, connection?.providerName ?? connection?.provider, this.modelName(connection, 'auto')].filter(Boolean).join(' · '),
+            description: [this.agentDefaultConnectionId ? t('connection.followAgentDefault', {name: connection?.name ?? this.agentDefaultConnectionId}) : connection?.name,
+                connection?.providerName ?? connection?.provider, this.modelName(connection, 'auto')].filter(Boolean).join(' · '),
             disabled: connection?.enabled === false || !(connection?.credentialsReady ?? connection?.hasApiKey) || !this.modelName(connection, 'auto')},
             ...[...this.connections].sort((a, b) => this.priority(a) - this.priority(b) || Number(!!b.isDefault) - Number(!!a.isDefault)).flatMap(c => this.connectionItems(c)),
             {id: 'manage', label: t('chatInput.manageConnections'), icon: TOOLBOX_ICONS.connections}];

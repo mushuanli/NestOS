@@ -60,6 +60,8 @@ export interface UIState {
 // ============================================================
 
 export interface ExecutorOption {
+    composition?: import('@itookit/kernel-adapters/contracts').AgentDefinition['composition'];
+    modelDefaults?: import('@itookit/kernel-adapters/contracts').AgentDefinition['modelDefaults'];
     execution?: import('@itookit/kernel-adapters/contracts').AgentDefinition['execution'];
     availability?: import('@itookit/kernel-adapters/contracts').AgentDefinition['availability'];
     attachmentKinds?: Array<'text' | 'image'>;

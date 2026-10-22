@@ -69,7 +69,7 @@ export class FlowTaskFactory {
             ? await this.options.resolveSkillContexts(this.options.sessionId, skillIds, allowed) : [];
         return {
             ...record(task.input),
-            tools: [...catalog.definitions, ...(subtaskTool ? [subtaskToolDef(subtaskTool, subtaskToolDescription(node.config))] : [])],
+            tools: [...catalog.definitions, ...(subtaskTool ? [subtaskToolDef(subtaskTool, subtaskToolDescription(node.config), node.config)] : [])],
             externalToolIds: catalog.externalIds,
             allowedToolIds: allowed,
             ...(skillContexts.length ? { skillContexts } : {}),

@@ -7,17 +7,17 @@ import { Toast, type EditorHostContext } from '@itookit/ui-common';
 export function renderPromptReference(prompts: SystemPromptDefinition[], selected?: string): string {
     const missing = selected && !prompts.some(prompt => prompt.id === selected);
     return `<div class="agent-form-row"><label class="agent-form-label" for="system-prompt-preset">${t('prompt.reference')}</label>
-        <select id="system-prompt-preset" name="systemPromptId">
+        <select class="agent-form-select" id="system-prompt-preset" name="systemPromptId">
             <option value="">${t('prompt.none')}</option>
             ${missing ? `<option value="${escapeHTML(selected)}" selected>${escapeHTML(t('prompt.missing', { id: selected }))}</option>` : ''}
             ${prompts.map(prompt => `<option value="${escapeHTML(prompt.id)}" ${prompt.id === selected ? 'selected' : ''}>${escapeHTML(prompt.name)}</option>`).join('')}
         </select>
         <p class="agent-form-help">${t('prompt.referenceHint')}</p>
-        <div data-prompt-actions>
+        <div class="agent-prompt-reference-actions" data-prompt-actions>
             <button type="button" class="settings-btn settings-btn--secondary settings-btn--sm" data-prompt-edit>${t('prompt.editShared')}</button>
             <button type="button" class="settings-btn settings-btn--secondary settings-btn--sm" data-prompt-copy>${t('prompt.copy')}</button>
         </div>
-        <textarea class="agent-form-textarea" data-prompt-preview readonly aria-label="${t('prompt.reference')}"></textarea>
+        <textarea class="agent-form-textarea agent-prompt-preview" data-prompt-preview readonly aria-label="${t('prompt.reference')}"></textarea>
     </div>`;
 }
 

@@ -3,6 +3,7 @@ import type { SessionInstructionQueue } from '../contracts/instruction-queue';
 import { flowRevisionDigest } from '@itookit/llm-flow';
 import { isFlowConnectionSnapshot } from '../session/flow-connection-snapshot';
 import { isFlowRunPlan } from '../session/flow-run-plan';
+import { isModelDefaults } from '@itookit/kernel-adapters/contracts';
 
 export const INSTRUCTION_QUEUE_KEY = 'conversation/instructions';
 export interface StoredInstructionQueue extends SessionInstructionQueue {
@@ -50,6 +51,9 @@ function validateQueue(value: StoredInstructionQueue & {schemaVersion?: number},
             || item.submissionDigest !== undefined && !/^[a-f0-9]{64}$/.test(item.submissionDigest)
             || !Array.isArray(item.files) || item.files.some(file => !file || typeof file.name !== 'string' || typeof file.type !== 'string')) invalid();
         if (item.flowBinding !== undefined && !validFlowBinding(item)) invalid();
+        if (item.connectionBinding !== undefined && (!item.connectionBinding || !isModelDefaults(item.connectionBinding.defaults)
+            || item.connectionBinding.connectionId !== undefined && typeof item.connectionBinding.connectionId !== 'string'
+            || item.connectionBinding.connections !== undefined && !isFlowConnectionSnapshot(item.connectionBinding.connections))) invalid();
         ids.add(item.id);
     }
     if (value.accepted !== undefined && (!Array.isArray(value.accepted) || value.accepted.some(receipt =>

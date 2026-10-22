@@ -97,7 +97,14 @@ export interface AppUI {
         navigate(sessionId: string): void | Promise<void>;
     }): ContextMenuConfig<TNode>;
     createChatEditor(agentService: IAgentConfigService, deps: ChatEditorDeps): EditorFactory;
-    createAgentEditor(agentService: IAgentManagementService, options?: { defaultToolIds?: readonly string[]; listFlows?(): Promise<Array<{id: string; name: string}>> }): EditorFactory;
+    createAgentEditor(agentService: IAgentManagementService, options?: {
+        defaultToolIds?: readonly string[];
+        listFlows?(): Promise<Array<Pick<import('@itookit/llm-flow/contracts').FlowDraft, 'id' | 'name' | 'parameters' | 'connections'>>>;
+        listFlowRevisions?(id: string): Promise<Array<Pick<import('@itookit/llm-flow/contracts').FlowRevision, 'revision' | 'createdAt' | 'parameters' | 'connections'>>>;
+        getFlowRevision?(id: string, revision?: number): Promise<import('@itookit/llm-flow/contracts').FlowRevision | null>;
+        listConnections?(): Promise<Array<{ id: string; name: string }>>;
+        openFlow?(id: string): Promise<void>;
+    }): EditorFactory;
     createFlowEditor(deps: FlowEditorDeps): EditorFactory;
     createSkillEditor(agentService: IAgentManagementService): EditorFactory;
     createAIContextMenu<TNode extends AIContextMenuNode>(deps: AIContextMenuDeps): ContextMenuConfig<TNode>;

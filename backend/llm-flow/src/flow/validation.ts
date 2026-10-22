@@ -61,6 +61,7 @@ export function validateFlowRevision(
         catch (error) { return [{ code: 'invalid-port-schema', message: String(error) }]; }
     }
     const nodes = validateNodes(flow.nodes, plugins, issues);
+    validateDelegationTargets(flow, issues);
     validateCompensations(flow.nodes, nodes, issues);
     validateEdges(flow.edges, nodes, plugins, issues);
     validateAcyclic(flow.nodes, flow.edges, issues);
@@ -164,6 +165,11 @@ function validateDelegation(node: FlowNodeDefinition, issues: ValidationIssue[])
     if (node.plugin !== 'builtin.agent' || !isRecord(node.config)) return;
     const delegation = isRecord(node.config.delegation) ? node.config.delegation : undefined;
     if (!delegation) return;
+    if (delegation.agents !== undefined && (!Array.isArray(delegation.agents) || !delegation.agents.length
+        || delegation.agents.some(agent => !isRecord(agent) || typeof agent.agentId !== 'string' || !agent.agentId.trim())
+        || new Set(delegation.agents.map(agent => isRecord(agent) ? agent.agentId : '')).size !== delegation.agents.length)) {
+        add(issues, 'invalid-delegation-agents', `${node.id}: delegation Agents must be a nonempty unique catalog`, String(node.id));
+    }
     if (delegation.enabled !== true) {
         if (Object.keys(delegation).some(key => key !== 'enabled')) {
             issues.push({ code: 'delegation-disabled', severity: 'warning', nodeId: String(node.id), message: `${node.id}: delegation is configured but not enabled` });
@@ -218,6 +224,19 @@ function validateDelegation(node: FlowNodeDefinition, issues: ValidationIssue[])
             code: 'unsupported-delegation-cost', severity: 'warning', nodeId: String(node.id),
             message: `${node.id}: budget.maxCostUsd is no longer supported because no runtime cost meter is available`,
         });
+    }
+}
+
+function validateDelegationTargets(flow: FlowRevision, issues: ValidationIssue[]): void {
+    for (const node of flow.nodes) {
+        const config = isRecord(node.config) ? node.config : {};
+        const delegation = isRecord(config.delegation) ? config.delegation : {};
+        const result = isRecord(delegation.result) ? delegation.result : {};
+        if (result.targetNodeId === undefined) continue;
+        if (typeof result.targetNodeId !== 'string' || !flow.nodes.some(target => target.id === result.targetNodeId)
+            || !flow.edges.some(edge => edge.from === node.id && edge.to === result.targetNodeId)) {
+            add(issues, 'invalid-delegation-target', `${node.id}: delegation result target must be a direct successor`, String(node.id));
+        }
     }
 }
 

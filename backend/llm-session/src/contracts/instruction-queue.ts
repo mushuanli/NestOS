@@ -16,7 +16,13 @@ export interface SessionInstructionInput {
 export interface SessionInstruction extends SessionInstructionInput {
     /** Digest of the original request, before host-derived bindings or attachment paths. */
     submissionDigest?: string;
-    connectionBinding?: { connectionId?: string; defaults: import('@itookit/kernel-adapters/contracts').ModelDefaults };
+    connectionBinding?: {
+        connectionId?: string;
+        source?: 'run' | 'session' | 'agent' | 'system';
+        defaults: import('@itookit/kernel-adapters/contracts').ModelDefaults;
+        /** Safe connection/model choices captured before queue acceptance. */
+        connections?: import('./flow-connection-snapshot').FlowConnectionSnapshot;
+    };
     /** Host-resolved source definitions; accepted instructions do not follow later edits. */
     flowBinding?: {
         source?: 'explicit';

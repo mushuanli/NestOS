@@ -1464,6 +1464,9 @@ importers:
       '@itookit/kernel-adapters':
         specifier: workspace:*
         version: link:../../backend/kernel-adapters
+      '@itookit/llm-ui':
+        specifier: workspace:*
+        version: link:../../libraries/llm-ui
       '@itookit/tools':
         specifier: workspace:*
         version: link:../../backend/tools

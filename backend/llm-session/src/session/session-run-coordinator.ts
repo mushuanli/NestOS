@@ -31,7 +31,7 @@ import { snapshotTaskInput, directExecutionMode } from './direct-execution-mode'
 import { resolveSessionExecutionMode } from './session-execution-mode';
 import type { SessionExecutionActivity } from './session-execution-activity';
 import { prepareFlowAgentInput, frozenFlowResolver } from './flow-agent';
-import { frozenFlowConnections } from './flow-connection-snapshot';
+import { captureFlowConnections, frozenFlowConnections } from './flow-connection-snapshot';
 import { frozenFlowIdentities } from './flow-identity-snapshot';
 import { bindPlannedFlowGraph, validatePlannedFlowConnections } from './flow-run-plan';
 
@@ -112,10 +112,9 @@ export class SessionRunCoordinator {
     }
 
     async bindQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
-        const defaults = await this.agents.getModelDefaults(), settings = await this.engine.getSessionSettings(sessionId);
-        const connectionId = (item.overrides && 'connectionId' in item.overrides ? item.overrides.connectionId : settings.connectionId) ?? defaults.chat;
-        const connectionBinding = { connectionId, defaults };
-        const bound = await this.prepareFlowInput({ ...item, sessionId, instructionConnectionBinding: connectionBinding });
+        const identity = await this.agents.resolve(item.agentId);
+        const connectionBinding = await this.freezeConnectionBinding({ ...item, sessionId, instructionId: item.id }, identity);
+        const bound = await this.prepareFlowInput({ ...item, sessionId, instructionConnectionBinding: connectionBinding }, identity);
         return { ...item, sendIntent: bound.sendIntent, flowBinding: bound.instructionFlowBinding, connectionBinding };
     }
 
@@ -245,8 +244,8 @@ export class SessionRunCoordinator {
             bindFlowNode(node, defaults, snapshot, task, setup, identities);
         if (binding?.plan) {
             const graph = await bindPlannedFlowGraph(binding.plan.graph, bind);
-            await validatePlannedFlowConnections(graph, revision, catalog);
-            return { ...graph, input: { prompt: task.input.text } };
+            const admitted = await validatePlannedFlowConnections(graph, revision, catalog, task.input.instructionConnectionBinding?.defaults);
+            return { ...admitted, input: { prompt: task.input.text } };
         }
         const definitions = new FlowDefinitionStore(this.flowStore), execution = task.input.sendIntent?.execution;
         const graph = await flowToDag(revision, bind, setup.config.connectionId,
@@ -359,30 +358,58 @@ export class SessionRunCoordinator {
         const identity = input.instructionFlowBinding?.agent ?? await this.agents.resolve(input.agentId);
         const connectionId = input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
             : input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId;
+        const snapshot = input.instructionConnectionBinding?.connections;
+        const frozenConnection = input.sendIntent?.execution.kind !== 'flow' && snapshot && connectionId
+            ? await frozenFlowConnections(this.agents, snapshot).getConnection(connectionId) : undefined;
         const config = input.sendIntent?.execution.kind === 'flow'
-            ? { ...identity, connectionId: connectionId ?? (await this.agents.getModelDefaults()).chat }
+            ? { ...identity, connectionId: connectionId ?? (input.instructionConnectionBinding ? undefined : (await this.agents.getModelDefaults(identity)).chat) }
             : await this.agents.reResolveModel(identity, {
             connectionId,
             modelTier: input.overrides?.modelTier,
             useDefault: !input.instructionConnectionBinding,
+            frozenConnection,
         });
         return input.overrides ? applyOverrides(config, input.overrides) : config;
     }
 
-    private async prepareFlowInput(input: TaskInput): Promise<TaskInput> {
+    private async prepareFlowInput(input: TaskInput, identity?: ExecutorConfig): Promise<TaskInput> {
         if (input.instructionFlowBinding) return input;
-        const identity = await this.agents.resolve(input.agentId);
+        identity ??= await this.agents.resolve(input.agentId);
         if (identity.execution?.kind !== 'flow' && input.sendIntent?.execution.kind !== 'flow') return input;
         if (!input.instructionConnectionBinding) {
-            const defaults = await this.agents.getModelDefaults(), settings = await this.engine.getSessionSettings(input.sessionId);
-            const connectionId = (input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId) ?? defaults.chat;
-            input = { ...input, instructionConnectionBinding: { connectionId, defaults } };
+            input = { ...input, instructionConnectionBinding: await this.freezeConnectionBinding(input, identity) };
         }
         const definitions = new FlowDefinitionStore(this.flowStore);
-        return prepareFlowAgentInput(input, { definitions, resolveAgent: async () => identity, host: this.host,
+        const frozenIdentity = identity;
+        return prepareFlowAgentInput(input, { definitions, resolveAgent: async () => frozenIdentity, host: this.host,
             connectionCatalog: this.agents, identityResolver: this.agents, plugins: this.dagPlugins,
             prepareConnections: (definition, bindings, connectionId) => prepareFlowConnections(definition, bindings, this.agents,
                 input.instructionConnectionBinding?.defaults, connectionId) });
+    }
+
+    private async freezeConnectionBinding(input: TaskInput, identity: ExecutorConfig) {
+        const started = Date.now(), operationId = input.instructionId ?? ulid();
+        let stage = 'defaults';
+        try {
+            const defaults = await this.agents.getModelDefaults(identity), settings = await this.engine.getSessionSettings(input.sessionId);
+            const explicit = input.overrides && 'connectionId' in input.overrides;
+            const connectionId = (explicit ? input.overrides!.connectionId : settings.connectionId) ?? defaults.chat;
+            const source = explicit && input.overrides!.connectionId ? 'run' as const : !explicit && settings.connectionId ? 'session' as const
+                : identity.modelDefaults?.chat ? 'agent' as const : 'system' as const;
+            stage = 'connection-metadata';
+            const capture = captureFlowConnections(this.agents);
+            const flow = identity.execution?.kind === 'flow' || input.sendIntent?.execution.kind === 'flow';
+            if (connectionId && !flow) await capture.catalog.getConnection(connectionId);
+            this.host.logger.info('Model defaults admitted', { operation: 'session.model-defaults', operationId, stage: 'admission', result: 'success',
+                sessionId: input.sessionId, agentId: identity.id, purposeCount: Object.keys(defaults).length,
+                source,
+                elapsedMs: Date.now() - started });
+            return { connectionId, source, defaults, connections: capture.snapshot() };
+        } catch (error) {
+            this.host.logger.warn('Model default binding failed', { operation: 'session.model-defaults', operationId, stage, result: 'failure',
+                sessionId: input.sessionId, agentId: identity.id, errorCode: 'MODEL_DEFAULT_BINDING_READ_FAILED', elapsedMs: Date.now() - started });
+            throw error;
+        }
     }
 
     private async validateFrozenFlow(input: TaskInput): Promise<void> {
@@ -391,7 +418,7 @@ export class SessionRunCoordinator {
         const started = Date.now(), operationId = input.instructionId ?? input.sendIntent?.submission?.id ?? input.sessionId;
         try {
             const catalog = frozenFlowConnections(this.agents, binding.connections);
-            if (binding.plan) await validatePlannedFlowConnections(binding.plan.graph, binding.definition, catalog);
+            if (binding.plan) await validatePlannedFlowConnections(binding.plan.graph, binding.definition, catalog, input.instructionConnectionBinding?.defaults);
             else await flowToDag(binding.definition, undefined, input.instructionConnectionBinding?.connectionId,
                 frozenFlowResolver(input, async () => null), [], binding.definition.dependencyLocks, false,
                 input.overrides?.connectionId, input.sendIntent?.execution.kind === 'flow' ? input.sendIntent.execution.connectionBindings : undefined,

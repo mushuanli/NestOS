@@ -115,7 +115,7 @@ export function imageParameterField(param: FlowParameter, index: number, label: 
     const constraints = param.imageConstraints ?? {};
     const hints = [constraints.maxItems === undefined ? '' : t('flow.launch.imagesMaxItems', { count: constraints.maxItems }),
         constraints.maxBytes === undefined ? '' : t('flow.launch.imagesMaxBytes', { bytes: formatFileSize(constraints.maxBytes) })].filter(Boolean).join(' · ');
-    return `<label>${label}<small>${escapeHTML(hints)}</small>
+    return `<label class="llm-parameter-field llm-parameter-field__wide flow-parameter-image">${label}<small class="llm-parameter-field__help">${escapeHTML(hints)}</small>
         <input type="file" data-image-picker="${index}" accept="${escapeHTML(constraints.mimeTypes?.join(',') ?? 'image/*')}" multiple>
         <textarea ${attr} hidden>${escapeHTML(param.default === undefined ? '' : JSON.stringify(param.default))}</textarea>
         <span data-image-preview></span><button type="button" data-clear-images>${escapeHTML(t('flow.launch.imagesClear'))}</button></label>`;

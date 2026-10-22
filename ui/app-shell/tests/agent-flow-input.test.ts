@@ -117,3 +117,24 @@ it('passes an explicit run connection selected in the shared Flow form', async (
     await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
     expect(f.onSend.mock.calls[0][3]).toMatchObject({ connectionId: 'chosen' });
 });
+
+it('sends a configured Composite without an empty run-parameter dialog and checks its Agent connection context', async () => {
+    const f = setup({...agent, composition: {coordinatorAgentId: 'host', memberAgentIds: ['member']}});
+    f.changeFlow({...baseFlow(), parameters: []}); await f.view.refreshConnections();
+    f.type('Coordinate this request'); f.send.click();
+    await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
+    expect(document.querySelector('dialog')).toBeNull();
+    expect(f.execute).toHaveBeenCalledWith(SessionCommand.CheckFlowConnections, expect.objectContaining({agentId: 'reader'}));
+    expect(f.onSend.mock.calls[0][3]).toMatchObject({flowParameters: {}});
+});
+
+it('prefills required Flow slots from this Agent purpose defaults before the system defaults', async () => {
+    const f = setup({...agent, modelDefaults: {chat: 'agent-chat'}}), previous = f.execute.getMockImplementation()!;
+    f.changeFlow({...baseFlow(), connections: [{name: 'analysis', requirements: {operation: 'chat'}}]} as never);
+    f.execute.mockImplementation(async name => name === SessionCommand.GetConnections ? {
+        modelDefaults: {chat: 'system-chat'}, connections: ['agent-chat', 'system-chat'].map(id => ({id, name: id, providerId: 'p', credentialsReady: true})),
+    } : previous(name));
+    await f.view.refreshConnections(); f.type('Use the assigned model'); f.send.click(); const dialog = await form();
+    expect(dialog.querySelector<HTMLSelectElement>('[data-slot-connection="0"]')!.value).toBe('agent-chat');
+    dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.click();
+});

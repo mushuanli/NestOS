@@ -49,11 +49,11 @@ export function renderProviderAdvanced(provider: LLMProvider): string {
         <div id="provider-protocols">${API_PROTOCOLS.map(protocol => renderProtocolRow(provider, protocol)).join('')}</div>
         <select class="settings-form__select" id="provider-add-protocol"><option value="">${t('provider.protocol.add')}</option>${API_PROTOCOLS.map(protocol =>
             `<option value="${protocol}" ${protocols.includes(protocol) ? 'hidden' : ''}>${PROTOCOL_LABELS[protocol]}</option>`).join('')}</select>
-        <label class="settings-form__label">${t('provider.models.endpoint')}</label>
-        <input class="settings-form__input" name="modelsPath" value="${escapeAttr(provider.modelsPath ?? '')}" placeholder="${t('provider.models.endpointDefault')}">
         <label class="settings-form__label">${t('provider.form.temperature')}</label>
         <input type="number" class="settings-form__input" name="defaultTemperature" value="${provider.defaultTemperature ?? ''}" min="0" max="2" step="0.1">
-        </div>${renderMediaDeclaration(provider.media)}
+        </div><label class="settings-form__label">${t('provider.models.endpoint')}</label>
+        <input class="settings-form__input" name="modelsPath" value="${escapeAttr(provider.modelsPath || '')}" placeholder="${t(provider.modelsPath === false ? 'provider.models.unavailable' : 'provider.models.endpointDefault')}">
+        ${renderMediaDeclaration(provider.media)}
     </details>`;
 }
 
@@ -70,7 +70,7 @@ export function readProviderForm(form: HTMLFormElement, previous: LLMProvider): 
     return { ...previous, ...paths, implementation, baseURL: data.baseURL.trim(),
         apiKey: data.apiKey.trim() || previous.apiKey, connectionTestModel: data.connectionTestModel || previous.connectionTestModel, supportedProtocols,
         defaultProtocol: form.querySelector<HTMLSelectElement>('[name="defaultProtocol"]')?.value as ApiProtocol,
-        defaultPath: paths[PATH_FIELDS[primary]], modelsPath: data.modelsPath?.trim() || undefined };
+        defaultPath: paths[PATH_FIELDS[primary]], modelsPath: data.modelsPath?.trim() || (previous.modelsPath === false ? false : undefined) };
 }
 
 export function syncProtocolControls(form: HTMLFormElement): void {

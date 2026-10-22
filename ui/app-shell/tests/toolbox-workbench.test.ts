@@ -53,9 +53,10 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
     const files = createToolboxFiles(resources.sources);
     cleanup.push(() => files.dispose());
     const flowMenu = createFlowContextMenuConfig({ commands: runtime.commandBus, navigate: vi.fn() });
-    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu, navigate: vi.fn(), selected: vi.fn(), uiPreferences, executorUsage, agentsInWorkbench });
+    const navigate = vi.fn();
+    const workbench = new ToolboxWorkbench({ ocr, sidebar, editor: main, resources, inventory, files, configuration: runtime.configuration, factories, flowMenu, navigate, selected: vi.fn(), uiPreferences, executorUsage, agentsInWorkbench });
     cleanup.push(() => workbench.destroy()); await workbench.start();
-    return { workbench, sidebar, main, factory, resources, inventory };
+    return { workbench, sidebar, main, factory, resources, inventory, navigate };
 }
 it('shows the recovered shared Flow in the Subflows drawer and leaves entry Flows outside it', async () => {
     const f = await setup(); f.workbench.setFilter('flows');
@@ -266,7 +267,7 @@ it('pins the default drawer and orders enabled ready connections ahead of incomp
     f.workbench.setFilter('models');
     const groups = [...f.sidebar.querySelectorAll<HTMLElement>('[data-item-type="directory"]')];
     expect(groups[0].dataset.itemId).toBe('/model-groups/usage-default');
-    expect(groups[0].textContent).toContain(t('modelDefaults.badge', { purpose: t('modelDefaults.purpose.chat') }));
+    expect(groups[0].textContent).toContain(t('modelDefaults.default'));
     expect(groups[0].textContent).toContain(t('connection.credentialsRequired'));
     await f.workbench.openResource('/connections/usage-ready-chat');
     const group = f.sidebar.querySelector('[data-item-id="/model-groups/usage-ready"]')!;
@@ -605,12 +606,14 @@ it('remaps prompt references in Flow defaults and nested node configuration', as
     expect(flow.nodes[0].config.systemPromptId).toBe(promptId);
 });
 
-it('opens shared OCR configuration from the models toolbar', async () => {
+it('opens shared model defaults from one toolbar button without loading OCR', async () => {
     const configure = vi.fn().mockResolvedValue(true);
     const f = await setup({ readSettings: async () => ({ value: {}, connections: [] }), saveSettings: async () => {}, openSettings: async () => {}, configure, recognize: async () => '', label: async () => 'OCR', subscribe: () => () => {}, deletionImpact: async () => '' });
     await f.workbench.openResource('/connections');
-    const button = [...f.sidebar.querySelectorAll<HTMLButtonElement>('button')].find(item => item.textContent?.includes('文字识别设置'));
-    expect(button).toBeDefined(); button!.click(); expect(configure).toHaveBeenCalledOnce();
+    const button = f.sidebar.querySelector<HTMLButtonElement>('.vfs-node-list__secondary-action')!;
+    expect(button.textContent).toContain(t('modelDefaults.button')); button.click();
+    expect(f.navigate).toHaveBeenCalledWith({ target: 'settings', resourceId: 'model-defaults' });
+    expect(configure).not.toHaveBeenCalled(); expect(f.sidebar.querySelector('.toolbox-defaults')).toBeNull();
 });
 
 async function selectDrawer(f: Awaited<ReturnType<typeof setup>>, id: string): Promise<void> {

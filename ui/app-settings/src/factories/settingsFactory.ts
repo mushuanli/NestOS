@@ -21,7 +21,7 @@ import { AppearanceSettingsEditor } from '../editors/AppearanceSettingsEditor';
 
 /** Injected UI editors from @itookit/llm-ui-adapter (to avoid upward dependency). */
 export interface LLMUIEditors {
-    ModelDefaultsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions) => IEditor;
+    ModelDefaultsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions, ocr?: import('@itookit/ui-common').OcrControls) => IEditor;
     ProviderSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions) => IEditor;
     ConnectionSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions) => IEditor;
     MCPSettingsEditor: new (container: HTMLElement, service: IAgentManagementService, options: EditorOptions, controls?: ConfigurationFormControls<MCPServer,MCPDiscovery>) => IEditor;
@@ -44,6 +44,7 @@ function resolveSettingsSlug(nodeId: string): string {
 }
 
 export interface SettingsFactoryOptions {
+    ocr?: import('@itookit/ui-common').OcrControls;
     settingsService: SettingsService;
     agentService: IAgentManagementService;
     connectionService: IConnectionService;
@@ -54,7 +55,7 @@ export interface SettingsFactoryOptions {
     requestDelete?: import('@itookit/ui-common').EditorHostContext['requestDelete'];
 }
 export const createSettingsFactory = ({ settingsService, agentService, connectionService, llmUiEditors,
-    connectBrowser, restoreFlows, initialFiles, requestDelete }: SettingsFactoryOptions): EditorFactory => {
+    connectBrowser, restoreFlows, initialFiles, requestDelete, ocr }: SettingsFactoryOptions): EditorFactory => {
     return async (container: HTMLElement, options: EditorOptions) => {
         if (requestDelete) options = { ...options, hostContext: { toggleSidebar: () => {}, navigate: async () => {}, ...options.hostContext, requestDelete } };
         const nodeId = resolveSettingsSlug(editorResourceId(options) || '');
@@ -62,7 +63,7 @@ export const createSettingsFactory = ({ settingsService, agentService, connectio
         let editor: IEditor | null = null;
 
         switch (nodeId) {
-            case 'model-defaults': editor = new llmUiEditors.ModelDefaultsEditor(container, connectionService, options); break;
+            case 'model-defaults': editor = new llmUiEditors.ModelDefaultsEditor(container, connectionService, options, ocr); break;
             case 'storage':     editor = new StorageSettingsEditor(container, settingsService, options, initialFiles); break;
             case 'tags':        editor = new TagSettingsEditor(container, settingsService, options); break;
             case 'contacts':    editor = new ContactSettingsEditor(container, settingsService, options); break;

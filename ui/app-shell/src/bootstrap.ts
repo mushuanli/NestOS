@@ -123,6 +123,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     cleanupFns.push(() => ocr.dispose());
     const deletionDialog = new ConfigurationDeletionDialog(services.configuration, undefined, ocr.deletionImpact, services.projects);
     const settings = createSettingsAccess(backend, () => workspaces, {
+        ocr,
         agentService, connectionService: llmDriver, llmUiEditors: options.ui.llmUiEditors,
         excludedPages: toolboxId ? ['providers', 'connections', 'mcp-servers', 'system-prompts'] : [],
         connectBrowser: (browser, fs, container, factory) => connectEditorLifecycle(browser, fs, container, factory, { readOnly: true }),

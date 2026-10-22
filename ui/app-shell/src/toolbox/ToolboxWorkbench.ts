@@ -1,5 +1,5 @@
 import { presentationPersistence } from '../persistence/initial-navigation';
-import { defaultConnectionMenu, updateDefaultShortcuts } from './model-defaults';
+import { defaultConnectionMenu } from './model-defaults';
 import { createMindOSVFSUI as createVFSUI, mindOSVFSPresentation } from '../browser/vfs-presentation';
 import { ToolboxDeletion, toolboxSelectionPaths } from './ToolboxDeletion';
 import { directorySnapshot } from '../browser/directory-snapshot';
@@ -74,7 +74,6 @@ export class ToolboxWorkbench implements WorkspaceController {
     private readonly abort = new AbortController();
     private readonly prefs: ToolboxPreferences;
     private readonly filters = document.createElement('div');
-    private readonly defaultShortcuts = document.createElement('div');
     private readonly capabilities = new CapabilityFilters(() => this.ui?.getQuery() ?? '', query => this.ui.setQuery(query));
     private descriptions = new Map<string, { name: string; description?: string }>();
     private cleanups: Array<() => void | Promise<void>> = [];
@@ -157,7 +156,6 @@ export class ToolboxWorkbench implements WorkspaceController {
             const button = document.createElement('button'); button.type = 'button'; button.dataset.filter = kind;
             button.textContent = t(`toolbox.${kind}`); button.onclick = () => this.setFilter(kind); this.filters.append(button);
         }
-        this.filters.prepend(this.defaultShortcuts);
         this.filters.append(this.capabilities.root);
     }
     setFilter(filter: ToolboxFilter, remember = true): void {
@@ -170,7 +168,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     }
     private updateToolbar(): void {
         this.ui?.setToolbar({ fileLabel: t('toolbox.new'),
-            secondary: this.prefs.filter === 'models' ? (this.options.ocr ? { label: t('ocr.configure'), run: async () => { await this.options.ocr!.configure(); } } : undefined) : { label: t('toolbox.organize'), run: () => { const group = this.selectedDrawer();
+            secondary: this.prefs.filter === 'models' ? { label: t('modelDefaults.button'), run: () => { void this.options.navigate({ target: 'settings', resourceId: 'model-defaults' }); } } : { label: t('toolbox.organize'), run: () => { const group = this.selectedDrawer();
                 const kind = group?.kind ?? (drawerKind(this.prefs.filter as ToolboxKind) ? this.prefs.filter as import('@itookit/app-contracts').DrawerKind : this.options.agentsInWorkbench ? 'flows' : 'agents');
                 void this.drawerActions.move(kind, group?.paths).catch(error => alert(String(error))); } },
             hiddenActions: this.prefs.filter === 'tools' ? ['create-file', 'create-directory']
@@ -178,8 +176,6 @@ export class ToolboxWorkbench implements WorkspaceController {
             actions: { 'create-file': async () => { await this.createResource(); }, import: context => this.import(context), export: context => this.export(context) } });
     }
     private project(items: VFSNodeUI[]): VFSNodeUI[] {
-        this.defaultShortcuts.hidden = this.prefs.filter !== 'all' && this.prefs.filter !== 'models';
-        updateDefaultShortcuts(this.defaultShortcuts, this.options.inventory, this.options.navigate);
         this.capabilities.update([...this.options.inventory.providers.values()].flatMap(provider => provider.capabilityTags ?? []), this.prefs.filter === 'all' || this.prefs.filter === 'models');
         const roots = items;
         const decorate = (nodes: VFSNodeUI[]): VFSNodeUI[] => nodes.filter(node =>

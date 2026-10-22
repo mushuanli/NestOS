@@ -2,9 +2,10 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ModelDefaultsEditor } from '../src/editors/ModelDefaultsEditor';
 import { t } from '@itookit/common';
+import type { OcrControls } from '@itookit/ui-common';
 
 afterEach(() => { document.body.replaceChildren(); });
-function fixture() {
+function fixture(ocr?: OcrControls) {
     const provider = { id: 'p', name: '<Provider>', implementation: 'openai-compatible', media: {
         'image.generate': { adapter: 'openai-images' }, 'speech.synthesize': { adapter: 'openai-speech' },
     }, models: [{ id: 'chat', name: 'Chat' }, { id: 'image', name: 'Picture', category: 'image', operations: {
@@ -19,7 +20,7 @@ function fixture() {
         testConnection: vi.fn(async () => ({ success: true, message: 'verified', model: 'chat' })) };
     const root = document.createElement('div'); document.body.append(root);
     const navigate = vi.fn(async () => {});
-    const editor = new ModelDefaultsEditor(root, service as never, { hostContext: { navigate } } as never);
+    const editor = new ModelDefaultsEditor(root, service as never, { hostContext: { navigate } } as never, ocr);
     return { editor, root, service, connections, navigate, defaults: (value: Record<string, string>) => { defaults = value; } };
 }
 
@@ -87,4 +88,69 @@ it('retries a failed settings read without installing an empty default map', asy
     f.root.querySelector('button')!.click();
     await vi.waitFor(() => expect(f.root.querySelector<HTMLSelectElement>('[data-default-operation="chat"]')?.value).toBe('chat'));
     expect(f.service.setModelDefault).not.toHaveBeenCalled(); await f.editor.destroy();
+});
+
+function ocrFixture() {
+    const listeners = new Set<() => void>();
+    const state = { value: { connectionId: 'vision' as string | undefined }, connections: [
+        { id: '', label: 'Unset' }, { id: 'vision', label: '<Vision>', supported: true },
+        { id: 'no-key', label: 'Vision · missing credentials', supported: true, disabled: true },
+        { id: 'text', label: 'Text only', supported: false, disabled: true },
+    ] };
+    const controls = { readSettings: vi.fn(async () => structuredClone(state)),
+        saveSettings: vi.fn(async (value: { connectionId?: string }) => { state.value = value; listeners.forEach(listener => listener()); }),
+        openSettings: vi.fn(async () => {}), configure: vi.fn(async () => true), recognize: vi.fn(async () => ''), label: async () => '',
+        subscribe: (listener: () => void) => { listeners.add(listener); return () => { listeners.delete(listener); }; } };
+    return { controls, state, notify: () => listeners.forEach(listener => listener()), listeners };
+}
+
+it('selects the OCR default inline and opens its prompt only from the adjacent icon', async () => {
+    const ocr = ocrFixture(), f = fixture(ocr.controls); await f.editor.init(f.root);
+    const select = f.root.querySelector<HTMLSelectElement>('[name="ocr-connection"]')!;
+    expect([...select.options].map(option => option.value)).toEqual(['', 'vision', 'no-key']);
+    expect(select.options[2].disabled).toBe(true); expect(select.value).toBe('vision');
+    expect(f.root.querySelector('Vision')).toBeNull(); expect(f.root.querySelector('textarea[data-ocr-prompt]')).toBeNull();
+    select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true })); await f.editor.flushPendingSave();
+    expect(ocr.controls.saveSettings).toHaveBeenCalledWith({ connectionId: undefined });
+    expect(f.service.setModelDefault).not.toHaveBeenCalled(); expect(f.service.testConnection).not.toHaveBeenCalled();
+    expect(ocr.controls.openSettings).not.toHaveBeenCalled();
+    const button = f.root.querySelector<HTMLButtonElement>('[data-ocr-open="prompt"]')!;
+    expect(button.textContent).toBe(''); expect(button.getAttribute('aria-label')).toBe(t('ocr.editPrompt'));
+    button.querySelector('svg')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(ocr.controls.openSettings).toHaveBeenCalledWith('prompt'); expect(ocr.controls.configure).not.toHaveBeenCalled();
+    await f.editor.destroy(); expect(ocr.listeners.size).toBe(0);
+});
+
+it('preserves failed OCR drafts across model refreshes and blocks closing until saved', async () => {
+    const ocr = ocrFixture(), f = fixture(ocr.controls); await f.editor.init(f.root);
+    ocr.controls.saveSettings.mockRejectedValueOnce(new Error('Disk unavailable'));
+    const select = f.root.querySelector<HTMLSelectElement>('[name="ocr-connection"]')!;
+    select.value = ''; select.dispatchEvent(new Event('change', { bubbles: true }));
+    await expect(f.editor.flushPendingSave()).rejects.toThrow('Disk unavailable');
+    expect(f.editor.isDirty()).toBe(true); await expect(f.editor.destroy()).rejects.toThrow('Disk unavailable');
+    expect(select.value).toBe(''); expect(select.disabled).toBe(false); expect(ocr.state.value.connectionId).toBe('vision');
+    f.defaults({ chat: 'chat' }); await f.editor.render(); ocr.notify();
+    expect(f.root.querySelector('[name="ocr-connection"]')).toBe(select); expect(f.root.textContent).toContain('Disk unavailable');
+    select.dispatchEvent(new Event('change', { bubbles: true })); await f.editor.flushPendingSave();
+    expect(ocr.state.value.connectionId).toBeUndefined(); expect(f.editor.isDirty()).toBe(false); await f.editor.destroy();
+});
+
+it('refreshes the OCR selection from shared changes and retains incompatible saved references', async () => {
+    const ocr = ocrFixture(), f = fixture(ocr.controls); await f.editor.init(f.root);
+    ocr.state.value.connectionId = 'text'; ocr.notify();
+    await vi.waitFor(() => expect(f.root.querySelector<HTMLSelectElement>('[name="ocr-connection"]')?.value).toBe('text'));
+    const select = f.root.querySelector<HTMLSelectElement>('[name="ocr-connection"]')!;
+    expect(select.selectedOptions[0].disabled).toBe(true);
+    await f.editor.navigateToAnchor('ocr'); expect(document.activeElement).toBe(select);
+    await f.editor.destroy();
+});
+
+it('retries OCR configuration reads in place without rewriting any defaults', async () => {
+    const ocr = ocrFixture(); ocr.controls.readSettings.mockRejectedValueOnce(new Error('OCR service offline'));
+    const f = fixture(ocr.controls); await f.editor.init(f.root);
+    expect(f.root.textContent).toContain('OCR service offline');
+    f.root.querySelector<HTMLButtonElement>('[data-ocr-retry]')!.click();
+    await vi.waitFor(() => expect(f.root.querySelector<HTMLSelectElement>('[name="ocr-connection"]')?.value).toBe('vision'));
+    expect(ocr.controls.saveSettings).not.toHaveBeenCalled(); expect(f.service.setModelDefault).not.toHaveBeenCalled();
+    await f.editor.destroy();
 });

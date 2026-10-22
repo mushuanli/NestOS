@@ -170,9 +170,6 @@
 .session-family__picker { max-height: 85vh; overflow: auto; }
 
 .toolbox-filters { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; margin-top: 9px; }
-.toolbox-defaults { grid-column: 1 / -1; display: flex; flex-direction: column; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); padding-bottom: 8px; }
-.toolbox-defaults[hidden] { display: none; }
-.toolbox-filters .toolbox-defaults button { text-align: left; overflow-wrap: anywhere; }
 .toolbox-filters button { border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary, #64748b); font: inherit; font-size: 12px; padding: 6px 8px; cursor: pointer; }
 .toolbox-filters button[aria-pressed="true"] { background: var(--vfs-active-bg, #e8edff); color: var(--primary-color, #4f46e5); }
 .toolbox-filters button:focus-visible { outline: 2px solid var(--primary-color, #6366f1); outline-offset: 1px; }

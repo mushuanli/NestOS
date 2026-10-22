@@ -56,7 +56,7 @@ export interface LLMProviderDef {
     anthropicPath?: string;
     geminiPath?: string;
     chatPath?: string;
-    modelsPath?: string;
+    modelsPath?: LLMProvider['modelsPath'];
     supportedProtocols?: LLMProvider['supportedProtocols'];
     defaultProtocol?: LLMProvider['defaultProtocol'];
     responsesPath?: string;

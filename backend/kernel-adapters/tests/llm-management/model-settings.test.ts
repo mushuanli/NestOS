@@ -4,6 +4,7 @@ import { LLM_PROVIDERS } from '../../src/llm-management/constants/providers';
 import { fromLLMProvider, toLLMProvider, fromConnectionDef, toRuntimeConnection } from '../../src/llm-management/constants/llm-loader';
 import { isProvider } from '../../src/llm-management/device/argument-validation';
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
+import { ProviderManager } from '../../src/llm-management/device/provider-manager';
 
 afterEach(() => vi.unstubAllGlobals());
 function setup() {
@@ -39,6 +40,12 @@ it('preserves a write-only credential on ordinary saves and honors explicit clea
     expect(save.mock.calls[1][0].apiKey).toBe('');
 });
 
+it('rejects unsupported model discovery at the service boundary without an HTTP request', async () => {
+    const { driver, draft } = setup(), fetch = vi.fn(); vi.stubGlobal('fetch', fetch);
+    await expect(driver.listProviderModels({ ...draft, modelsPath: false })).rejects.toMatchObject({ code: 'MODEL_CATALOG_UNSUPPORTED' });
+    expect(fetch).not.toHaveBeenCalled();
+});
+
 it('round trips reasoning, operation endpoints and the text test model without credentials', () => {
     const provider: LLMProvider = { ...LLM_PROVIDERS.volcengine, models: [
         { id: 'r', name: 'R', reasoning: { efforts: [{ id: 'max', value: 'xhigh' }] }, reasoningByProtocol: { 'anthropic-messages': false } },
@@ -52,9 +59,24 @@ it('round trips reasoning, operation endpoints and the text test model without c
 
 it('keeps speech and text credentials separate and declares native Seedream execution', () => {
     expect(LLM_PROVIDERS['doubao-speech'].models.every(model => model.category === 'audio')).toBe(true);
+    expect(LLM_PROVIDERS['doubao-speech'].modelsPath).toBe(false);
     expect(LLM_PROVIDERS.volcengine.models.find(model => model.id === LLM_PROVIDERS.volcengine.connectionTestModel)?.category).toBe('chat');
     expect(LLM_PROVIDERS.volcengine.media?.['image.generate']?.adapter).toBe('volcengine-images');
     expect(LLM_PROVIDERS.volcengine.models.find(model => model.category === 'image')?.operations?.['image.generate']?.formats).toContain('png');
+});
+
+it('round trips unsupported catalog discovery and inherits it for stored built-ins without overriding custom endpoints', () => {
+    const definition = LLM_PROVIDERS['doubao-speech'];
+    expect(toLLMProvider(fromLLMProvider(definition)).modelsPath).toBe(false);
+    expect(isProvider(definition)).toBe(true); expect(isProvider({ ...definition, modelsPath: true })).toBe(false);
+    const manager = new ProviderManager({} as never, {} as never, () => {}, { providers: { [definition.id]: definition }, pricing: { model_pricing: [] } } as never);
+    Object.assign(manager, { _pricingConfig: { model_pricing: [] } });
+    const legacy = { ...definition, modelsPath: undefined, apiKey: 'existing-key' };
+    manager.reloadProvidersFrom([legacy]);
+    expect(manager.getProvider(definition.id)?.modelsPath).toBe(false);
+    expect(manager.getFullProvider(definition.id)?.apiKey).toBe('existing-key');
+    manager.reloadProvidersFrom([{ ...legacy, modelsPath: '/proxy/catalog' }]);
+    expect(manager.getProvider(definition.id)?.modelsPath).toBe('/proxy/catalog');
 });
 
 it('preserves connection routing, model-specific reasoning and budgets through export/import', () => {

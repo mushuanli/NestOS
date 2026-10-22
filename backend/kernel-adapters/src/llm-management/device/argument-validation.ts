@@ -46,7 +46,8 @@ export function isProvider(value: unknown): value is LLMProvider {
         && optional(value.defaultProtocol, protocol)
         && optional(value.supportedProtocols, value => Array.isArray(value) && value.every(protocol))
         && optional(value.capabilities, isRecord) && optional(value.defaultTiers, stringMap)
-        && ['apiKey', 'defaultPath', 'chatPath', 'anthropicPath', 'responsesPath', 'geminiPath', 'modelsPath', 'connectionTestModel'].every(key => optional(value[key], text))
+        && optional(value.modelsPath, value => value === false || text(value))
+        && ['apiKey', 'defaultPath', 'chatPath', 'anthropicPath', 'responsesPath', 'geminiPath', 'connectionTestModel'].every(key => optional(value[key], text))
         && optional(value.enabled, value => typeof value === 'boolean');
 }
 

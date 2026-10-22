@@ -5,6 +5,8 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    'modelDefaults.button': '默认模型',
+    'modelDefaults.default': '默认',
     'modelDefaults.badge': '默认：{purpose}',
     'modelDefaults.verified': '最近验证通过',
     'modelDefaults.verificationFailed': '最近验证失败，请查看具体原因',
@@ -26,7 +28,6 @@ export const zhCN = {
     "modelDefaults.priority": "本次调用或 Flow 显式指定优先，其次使用会话配置，最后使用对应用途的系统默认。已固定的任务不会随默认值改变。",
     "modelDefaults.harness": "远程原生执行器使用自身的模型和凭据配置；此处的绘图和语音默认值用于 MindOS 工具。",
     "modelDefaults.verify": "运行验证（可能计费）",
-    "modelDefaults.shortcut": "默认模型：{purpose} · {model}",
     "modelDefaults.set": "设为默认：{purpose}",
     "modelDefaults.clear": "清除默认：{purpose}",
     "modelDefaults.configure": "配置默认模型",
@@ -688,6 +689,7 @@ export const zhCN = {
     'provider.models.help': '刷新合并接口明确返回的能力，保留名称、协议及未返回的配置；有效修改自动保存。目录不可用时可手动添加。',
     'provider.models.count': '显示 {visible} / {total} 个模型',
     'provider.models.refresh': '从 API 刷新',
+    'provider.models.unavailable': '此服务不提供在线模型列表，可使用预置模型或手动添加。',
     'provider.models.refreshing': '刷新中…',
     'provider.models.invalidResponse': '模型目录格式错误（需要 data 数组）',
     'provider.models.refreshed': '获取 {total} 个模型，新增 {count} 个，已有 {existing} 个合并能力信息',
@@ -1175,6 +1177,8 @@ export const zhCN = {
     'ocr.configure': "文字识别设置",
     'ocr.connection': "文字识别默认连接",
     'ocr.prompt': "识别提示词",
+    'ocr.promptEmpty': '识别提示词不能为空，请输入内容后保存。',
+    'ocr.promptChanged': '提示词已在其他位置修改，请重新打开后编辑。',
     'ocr.unconfigured': "未配置文字识别连接",
     'ocr.help': "快速 → 标准 → 最优，自动选择支持图片输入的模型。所有会话共用。",
     'ocr.manageModels': "管理模型与连接",

@@ -2,7 +2,7 @@
 
 ## 当前实现
 
-「设置 → 模型与服务」管理对话、图像生成和语音合成三个用途的默认连接。工具箱顶部提供对应摘要与设置页快捷入口，连接菜单只提供兼容用途的设为默认／清除默认操作。凭据、模型目录及连接配置继续复用工具箱原有编辑器，不复制配置存储。
+「设置 → 模型与服务」管理对话、图像生成和语音合成三个用途的默认连接。工具箱模型页顶部仅提供一个「默认模型」按钮，复用原文字识别设置按钮的位置，不常驻三条用途摘要。文字识别在同一页直接选择支持视觉输入的默认连接，选择后经原 OCR 端口自动保存；缺少凭据或停用的视觉连接禁用选择，已失效的选中项保留以说明原因。下拉框右侧仅保留提示词图标，点击弹窗编辑引用的共享提示词，确认保存时保留名称、描述及快捷项，取消或原文未改动不写入，空内容、并发修改和持久化失败保留草稿并提示原因。OCR 继续保存独立的视觉连接和识别提示词，不映射为图像生成用途。连接菜单只提供兼容用途的设为默认／清除默认操作。凭据、模型目录及连接配置继续复用工具箱原有编辑器，不复制配置存储。
 
 默认值引用现有连接 ID。对话使用连接的 optimal 档及既有回退规则；媒体按 optimal、standard、fast、连接 model 的顺序查找支持该操作的模型。候选模型必须存在于所属 Provider 的目录，媒体还须声明操作并具有受支持的适配器；音频输入能力不表示语音合成。配置默认值不会调用模型；缺失凭据、停用、模型缺失和用途不兼容分别呈现，运行验证为用户主动操作并标明可能计费。
 
@@ -12,23 +12,31 @@
 C4Component
     Container_Boundary(ui, "前端 UI") {
         Component(settings, "ModelDefaultsEditor", "llm-settings-ui", "默认用途、状态与主动验证")
-        Component(toolbox, "ToolboxWorkbench", "app-shell", "默认摘要、快捷菜单与配置导航")
+        Component(toolbox, "ToolboxWorkbench", "app-shell", "单个默认设置按钮、快捷菜单与配置导航")
+        Component(ocrControls, "OcrControls / 提示词弹窗", "app-shell", "共享 OCR 配置与按需提示词编辑")
     }
     Container_Boundary(host, "应用后端（本地或 HTTP 宿主）") {
         Component(projection, "ToolboxInventory / Resources", "app-core", "安全投影与配置入口")
         Component(config, "ConnectionManager", "kernel-adapters", "用途校验、串行读写与变更通知")
+        Component(prompts, "SystemPrompt 管理", "kernel-adapters", "共享提示词定义与保存")
         Component(session, "Session / Flow admission", "llm-session", "显式绑定优先、默认解析与执行快照")
         ComponentDb(store, "ModelDefaultStore", "VFS", "/llm/.connection-settings.json")
+        Component(ocr, "OcrService", "app-core", "视觉连接校验与 /llm/ocr.json 持久化")
     }
     Rel(settings, config, "读取与保存配置；运行验证经原服务", "配置端口 / RPC")
     Rel(toolbox, projection, "读取安全摘要、快捷设置", "应用端口 / RPC")
     Rel(toolbox, settings, "导航至同一个默认设置页")
+    Rel(settings, ocrControls, "复用 OcrSettingsForm 读取、保存与订阅")
+    Rel(ocrControls, ocr, "原 OCR 服务端口 / RPC")
+    Rel(ocrControls, prompts, "通过配置端口读写共享提示词")
     Rel(projection, config, "委托配置管理")
     Rel(config, store, "读写 version 1 文档")
     Rel(session, config, "读取安全连接及用途默认值")
 ```
 
 共享配置契约位于 kernel-adapters/contracts；工具箱读模型位于 app-contracts。app-transport 显式声明新查询、写入及投影字段，本地与 HTTP 使用相同端口。driver-llm 继续只负责模型通信及媒体协议适配。
+
+Provider 使用 modelsPath:false 声明不提供在线模型目录；豆包语音预设关闭目录刷新，保留预置资源 ID 和手动新增入口。UI 禁用刷新并说明原因，driver-llm 同时在发请求前校验，避免误向原生媒体域名请求 /v1/models。旧内置配置缺失声明时继承预设，显式自定义目录地址仍优先，导入导出保留该声明。
 
 ## 解析与稳定性
 

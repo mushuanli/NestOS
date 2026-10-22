@@ -443,7 +443,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 <section data-provider-panel="models">
                 <h4 class="settings-section-title" style="display:flex;justify-content:space-between;align-items:center">
                     模型列表
-                    <button type="button" id="btn-refresh-models" class="settings-btn settings-btn--xs settings-btn--secondary">${t('provider.models.refresh')}</button>
+                    <button type="button" id="btn-refresh-models" class="settings-btn settings-btn--xs settings-btn--secondary" ${this.editingProvider?.modelsPath === false ? 'disabled' : ''}>${t('provider.models.refresh')}</button>
                     <button type="button" id="btn-add-model" class="settings-btn settings-btn--xs settings-btn--primary">+ 新增</button>
                 </h4>
                 <input type="search" id="provider-model-search" class="settings-form__input" placeholder="${t('provider.models.search')}">
@@ -451,7 +451,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 <div class="settings-model-list-container" id="model-list-container">
                     ${this.renderModelListHTML()}
                 </div>
-                <small class="settings-form__help">${t('provider.models.help')}</small>
+                <small class="settings-form__help" data-model-catalog-help>${t(this.editingProvider?.modelsPath === false ? 'provider.models.unavailable' : 'provider.models.help')}</small>
                 </section>
                 <section data-provider-panel="connections"><div data-provider-connections></div></section>
                 <section data-provider-panel="advanced">${renderProviderAdvanced(this.editingProvider)}</section>
@@ -585,6 +585,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     private async refreshModels(button: HTMLButtonElement, list: HTMLElement): Promise<void> {
         const form = button.closest('form')!;
+        if (readProviderForm(form, this.editingProvider!).modelsPath === false) return;
         button.disabled = true;
         button.textContent = t('provider.models.refreshing');
         try {
@@ -716,6 +717,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
     private bindModalEvents() {
         if (!this.providerForm?.isConnected || this.editorDisposed) return;
+        const form = this.providerForm;
         const listContainer = this.formElement('model-list-container') as HTMLElement | null;
         const addModelBtn   = this.formElement('btn-add-model') as HTMLButtonElement | null;
 
@@ -770,6 +772,11 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         }
 
         const refreshBtn = this.formElement('btn-refresh-models') as HTMLButtonElement | null;
+        if (refreshBtn) form.querySelector('[name="modelsPath"]')?.addEventListener('input', () => {
+            const enabled = readProviderForm(form, this.editingProvider!).modelsPath !== false;
+            refreshBtn.disabled = !enabled;
+            form.querySelector('[data-model-catalog-help]')!.textContent = t(enabled ? 'provider.models.help' : 'provider.models.unavailable');
+        });
         refreshBtn?.addEventListener('click', () => {
             if (!refreshBtn.disabled && listContainer) void this.refreshModels(refreshBtn, listContainer);
         });

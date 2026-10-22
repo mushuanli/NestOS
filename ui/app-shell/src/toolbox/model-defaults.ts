@@ -1,4 +1,4 @@
-import { t, type NavigationRequest } from '@itookit/common';
+import { t } from '@itookit/common';
 import { MODEL_OPERATIONS, type ModelOperation } from '@itookit/kernel-adapters/contracts';
 import type { ToolboxInventory, ToolboxResources } from '@itookit/app-contracts/services';
 import type { MenuItem } from '@itookit/ui-common';
@@ -6,22 +6,8 @@ import type { VFSNodeUI } from '@itookit/vfs-ui';
 
 function defaults(inventory: ToolboxInventory) { return inventory.modelDefaults ?? (inventory.defaultConnectionId ? { chat: inventory.defaultConnectionId } : {}); }
 function label(operation: ModelOperation): string { return t(`modelDefaults.purpose.${operation}`); }
-export function defaultPurposeLabels(inventory: ToolboxInventory, connectionId: string): string[] {
-    return MODEL_OPERATIONS.filter(operation => defaults(inventory)[operation] === connectionId).map(operation => t('modelDefaults.badge', { purpose: label(operation) }));
-}
-
-export function updateDefaultShortcuts(root: HTMLElement, inventory: ToolboxInventory,
-    navigate: (request: NavigationRequest) => Promise<void>): void {
-    root.className = 'toolbox-defaults';
-    root.replaceChildren(...MODEL_OPERATIONS.map(operation => {
-        const id = defaults(inventory)[operation], connection = id && inventory.connections.get(id);
-        const model = connection && (connection.operationModels ? connection.operationModels[operation] : operation === 'chat' ? connection.model : connection.configuredModel);
-        const button = document.createElement('button'); button.type = 'button';
-        button.textContent = t('modelDefaults.shortcut', { purpose: label(operation), model: model || t('modelDefaults.unset') });
-        button.title = t('modelDefaults.configure');
-        button.onclick = () => { void navigate({ target: 'settings', resourceId: 'model-defaults', state: { anchor: operation } }); };
-        return button;
-    }));
+export function isDefaultConnection(inventory: ToolboxInventory, connectionId: string): boolean {
+    return MODEL_OPERATIONS.some(operation => defaults(inventory)[operation] === connectionId);
 }
 
 export function defaultConnectionMenu(id: string, inventory: ToolboxInventory, resources: ToolboxResources): MenuItem<VFSNodeUI>[] {

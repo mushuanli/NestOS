@@ -1,5 +1,5 @@
 import { providerIcon } from './resource-icons';
-import { defaultPurposeLabels } from './model-defaults';
+import { isDefaultConnection } from './model-defaults';
 import { connectionReadiness } from './model-readiness';
 import { TOOLBOX_ICONS, t } from '@itookit/common';
 import { TOOLBOX_FILTERS } from './routes';
@@ -22,9 +22,8 @@ export function modelDrawers(items: VFSNodeUI[], inventory: ToolboxInventory): V
     return [...groups].map(([id, seed]) => {
         const provider = inventory.providers.get(id), file = providers.find(item => item.id === '/providers/' + encodeURIComponent(id));
         const children = connections.filter(item => inventory.connections.get(decodeURIComponent(item.id.slice('/connections/'.length)))?.providerId === id);
-        const defaultId = [...inventory.connections].find(([connectionId, connection]) => connection.providerId === id && defaultPurposeLabels(inventory, connectionId).length)?.[0];
+        const defaultId = [...inventory.connections].find(([connectionId, connection]) => connection.providerId === id && isDefaultConnection(inventory, connectionId))?.[0];
         const isDefault = !!defaultId;
-        const purposes = [...new Set([...inventory.connections].filter(([, connection]) => connection.providerId === id).flatMap(([connectionId]) => defaultPurposeLabels(inventory, connectionId)))];
         const rank = drawerRank(id, children, inventory);
         const subscription = provider?.authentication === 'chatgpt';
         const status = t(!provider ? 'toolbox.providerMissing' : !provider.enabled ? 'toolbox.providerDisabled' : subscription
@@ -34,7 +33,7 @@ export function modelDrawers(items: VFSNodeUI[], inventory: ToolboxInventory): V
             custom: { ...file.metadata.custom, modelSettings: true } }, content: { ...file.content!, searchableText: provider!.name + ' ' + file.content?.searchableText } });
         return { ...seed, id: modelDrawerId(id), type: 'directory', kind: 'group', icon: providerIcon(id, provider?.icon), content: undefined, children,
             presentation: { ...seed.presentation, layout: 'drawer', titleLayout: 'stacked' },
-            metadata: { ...seed.metadata, path: modelDrawerId(id), title: (provider?.name ?? id) + (isDefault ? ` · ${purposes.join(' / ')}` : '') + (subscription ? ` · ${t('provider.auth.subscription')}` : ''), parentPath: null, tags: [],
+            metadata: { ...seed.metadata, path: modelDrawerId(id), title: (provider?.name ?? id) + (isDefault ? ` · ${t('modelDefaults.default')}` : '') + (subscription ? ` · ${t('provider.auth.subscription')}` : ''), parentPath: null, tags: [],
                 custom: { _readOnly: true, modelDrawer: true, navigationMenu: true, modelRank: rank, modelDefault: isDefault,
                     navigationDescription: [isDefault ? connectionReadiness(defaultId!, inventory).label : rank === 2 ? t('connection.status.disabled') : rank === 1 ? t('connection.status.pending') : '', t('toolbox.providerSummary', { count: children.length - (file ? 1 : 0), status })].filter(Boolean).join(' · ') } } };
     });
@@ -42,10 +41,11 @@ export function modelDrawers(items: VFSNodeUI[], inventory: ToolboxInventory): V
 
 function decorateConnection(item: VFSNodeUI, inventory: ToolboxInventory): VFSNodeUI {
     const id = decodeURIComponent(item.id.slice('/connections/'.length)), status = connectionReadiness(id, inventory);
-    const purposes = defaultPurposeLabels(inventory, id), isDefault = purposes.length > 0;
-    return {...item, presentation: {...item.presentation, subtitle: isDefault ? purposes.join(' / ') : undefined},
+    const isDefault = isDefaultConnection(inventory, id);
+    return {...item, presentation: {...item.presentation, subtitle: undefined},
         content: {...item.content!, summary: [status.label, item.content?.summary].filter(Boolean).join(' · ')},
-        metadata: {...item.metadata, custom: {...item.metadata.custom, modelRank: status.rank, modelDefault: isDefault}}};
+        metadata: {...item.metadata, title: item.metadata.title + (isDefault ? ` · ${t('modelDefaults.default')}` : ''),
+            custom: {...item.metadata.custom, modelRank: status.rank, modelDefault: isDefault}}};
 }
 
 function drawerRank(id: string, children: VFSNodeUI[], inventory: ToolboxInventory): number {

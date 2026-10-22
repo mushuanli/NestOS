@@ -79,6 +79,7 @@ export class ProviderManager {
                     ...p,
                     capabilities: { ...(def.capabilities ?? {}), ...(p.capabilities ?? {}) },
                     media: p.media ?? def.media,
+                    modelsPath: p.modelsPath ?? def.modelsPath,
                     connectionTestModel: p.connectionTestModel ?? def.connectionTestModel,
                     models: p.models.map(model => {
                         const preset = def.models.find(item => item.id === model.id);

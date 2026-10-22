@@ -90,7 +90,8 @@ it('opens the referenced shared prompt from configuration without silently savin
     element.querySelector<HTMLSelectElement>('[name="ocr-connection"]')!.value = 'ocr';
     element.querySelector<HTMLButtonElement>('[data-ocr-open="prompt"]')!.click();
     await expect(pending).resolves.toBe(false);
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ target: 'toolbox', resourceId: '/prompts/' + service.snapshot().systemPromptId }));
+    await vi.waitFor(() => expect(document.querySelector('[data-ocr-prompt]')).not.toBeNull());
+    expect(navigate).not.toHaveBeenCalled();
     expect(service.snapshot().connectionId).toBeUndefined();
 });
 it('reports batch failures and preserves the failed image while inserting successful text', async () => {
@@ -137,9 +138,10 @@ it('configures the OCR connection directly in chat settings and offers editing w
     await vi.waitFor(() => expect(host.querySelector('[data-ocr-status]')?.textContent).toBe(t('ocr.saved')));
     expect(host.querySelector('[name="ocr-prompt"]')).toBeNull();
     host.querySelector<HTMLButtonElement>('[data-ocr-open="prompt"]')!.click();
-    await vi.waitFor(() => expect(navigate).toHaveBeenCalledWith({ target: 'toolbox', resourceId: '/prompts/' + service.snapshot().systemPromptId }));
+    await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('[data-ocr-prompt]')?.value).toBe(t('ocr.promptContent')));
+    expect(navigate).not.toHaveBeenCalled();
     expect(service.snapshot().systemPromptId).not.toBe('tables');
-    expect(document.querySelector('.settings-modal-overlay')).toBeNull();
+    expect(document.querySelectorAll('.settings-modal-overlay')).toHaveLength(1);
     expect(view.getConfig().settings.connectionId).toBeUndefined();
 });
 it('updates open chat settings after OCR is changed elsewhere and keeps failed edits visible', async () => {
@@ -168,4 +170,62 @@ it('opens attachment OCR settings without starting batch recognition', async () 
     input.dispatchEvent(new Event('change'));
     host.querySelector<HTMLButtonElement>('[data-ocr-configure]')!.click();
     await vi.waitFor(() => expect(configure).toHaveBeenCalledOnce()); expect(recognize).not.toHaveBeenCalled();
+});
+
+async function promptDialog() {
+    await vi.waitFor(() => expect(document.querySelector('[data-ocr-prompt]')).not.toBeNull());
+    const input = document.querySelector<HTMLTextAreaElement>('[data-ocr-prompt]')!;
+    return { input, modal: input.closest<HTMLElement>('.settings-modal-overlay')! };
+}
+
+it('opens one prompt dialog and leaves unchanged content and metadata untouched', async () => {
+    const { controls, agents } = await setup();
+    const save = vi.spyOn(agents, 'saveSystemPrompt');
+    const first = controls.openSettings('prompt'), second = controls.openSettings('prompt');
+    const { input, modal } = await promptDialog();
+    expect(input.value).toBe(t('ocr.promptContent')); expect(document.querySelectorAll('[data-ocr-prompt]')).toHaveLength(1);
+    modal.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
+    await Promise.all([first, second]); expect(save).not.toHaveBeenCalled();
+});
+
+it('saves prompt edits into the shared definition while preserving presets and the OCR connection', async () => {
+    const { controls, service, agents, chat } = await setup();
+    const id = service.snapshot().systemPromptId;
+    const original = (await agents.getSystemPrompt(id))!;
+    await agents.saveSystemPrompt({ ...original, description: 'Keep metadata', presets: [{ name: 'Tables', prompt: 'Extract tables' }] });
+    await controls.saveSettings({ connectionId: 'ocr' });
+    const pending = controls.openSettings('prompt'), { input, modal } = await promptDialog();
+    input.value = '<extract>\nKeep tables';
+    modal.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click(); await pending;
+    expect(await agents.getSystemPrompt(id)).toMatchObject({ name: original.name, content: ['<extract>\nKeep tables'],
+        description: 'Keep metadata', presets: [{ name: 'Tables', prompt: 'Extract tables' }] });
+    expect(service.snapshot().connectionId).toBe('ocr'); expect(chat).not.toHaveBeenCalled();
+});
+
+it('keeps prompt edits after validation and storage errors and logs stages without prompt contents', async () => {
+    const { controls, service, agents } = await setup(), log = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const pending = controls.openSettings('prompt'), { input, modal } = await promptDialog();
+    const confirm = modal.querySelector<HTMLButtonElement>('.settings-modal-confirm')!;
+    input.value = '  '; confirm.click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain(t('ocr.promptEmpty')));
+    expect(log).toHaveBeenLastCalledWith('ocr.prompt.failed', expect.objectContaining({ stage: 'validation', code: 'OCR_PROMPT_VALIDATION_FAILED' }));
+    const save = vi.spyOn(agents, 'saveSystemPrompt').mockRejectedValueOnce(new Error('Disk read only'));
+    input.value = 'private prompt text'; confirm.click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Disk read only'));
+    expect(log).toHaveBeenLastCalledWith('ocr.prompt.failed', expect.objectContaining({ stage: 'persistence', code: 'OCR_PROMPT_PERSISTENCE_FAILED' }));
+    expect(JSON.stringify(log.mock.calls)).not.toContain('private prompt text');
+    expect(input.value).toBe('private prompt text'); expect(modal.classList.contains('show')).toBe(true);
+    expect((await agents.getSystemPrompt(service.snapshot().systemPromptId))!.content).toEqual([t('ocr.promptContent')]);
+    confirm.click(); await pending; expect(save).toHaveBeenCalledTimes(2);
+});
+
+it('cancels prompt edits without saving and rejects overwriting a concurrently changed prompt', async () => {
+    const { controls, service, agents } = await setup();
+    const pending = controls.openSettings('prompt'), { input, modal } = await promptDialog();
+    const current = (await agents.getSystemPrompt(service.snapshot().systemPromptId))!;
+    await agents.saveSystemPrompt({ ...current, content: ['Changed elsewhere'] });
+    input.value = 'Unsaved draft'; modal.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain(t('ocr.promptChanged')));
+    modal.querySelector<HTMLButtonElement>('.settings-modal-cancel')!.click(); await pending;
+    expect((await agents.getSystemPrompt(current.id))!.content).toEqual(['Changed elsewhere']);
 });

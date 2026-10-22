@@ -1,6 +1,6 @@
 export interface OcrSettingsState {
     value: { connectionId?: string };
-    connections: Array<{ id: string; label: string; disabled?: boolean }>;
+    connections: Array<{ id: string; label: string; disabled?: boolean; supported?: boolean }>;
 }
 
 /** Host-owned image recognition and configuration, shared across chat editors. */

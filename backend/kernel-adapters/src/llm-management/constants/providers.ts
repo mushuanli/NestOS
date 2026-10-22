@@ -419,6 +419,7 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
         name: 'Doubao (豆包语音)',
         implementation: 'custom',
         baseURL: 'https://openspeech.bytedance.com',
+        modelsPath: false,
         defaultPath: '/api/v3/tts/unidirectional',
         media: {
             'speech.synthesize': { adapter: 'doubao-speech', path: '/api/v3/tts/unidirectional', sampleRate: 24000 },

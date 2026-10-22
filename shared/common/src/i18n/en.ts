@@ -4,6 +4,8 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    'modelDefaults.button': 'Model defaults',
+    'modelDefaults.default': 'Default',
     'modelDefaults.badge': 'Default: {purpose}',
     'modelDefaults.verified': 'Last verification succeeded',
     'modelDefaults.verificationFailed': 'Last verification failed; see details below',
@@ -25,7 +27,6 @@ export const en: LocaleStrings = {
     "modelDefaults.priority": "Explicit call or Flow bindings take priority, followed by conversation settings, then the default for the purpose. Frozen tasks keep their bindings.",
     "modelDefaults.harness": "Remote native harnesses manage their own models and credentials. Image and speech defaults here apply to MindOS tools.",
     "modelDefaults.verify": "Run verification (may incur charges)",
-    "modelDefaults.shortcut": "Default: {purpose} \u00b7 {model}",
     "modelDefaults.set": "Set default: {purpose}",
     "modelDefaults.clear": "Clear default: {purpose}",
     "modelDefaults.configure": "Configure default models",
@@ -687,6 +688,7 @@ export const en: LocaleStrings = {
     'provider.models.help': 'Refresh merges explicit API capabilities while preserving names, protocols and configuration absent from the response. Valid changes save automatically; add models manually if the catalog is unavailable.',
     'provider.models.count': 'Showing {visible} / {total} models',
     'provider.models.refresh': 'Refresh from API',
+    'provider.models.unavailable': 'This service has no remote model catalog. Use preset models or add models manually.',
     'provider.models.refreshing': 'Refreshing…',
     'provider.models.invalidResponse': 'Invalid model catalog (expected a data array)',
     'provider.models.refreshed': 'Fetched {total} models; added {count}, merged capabilities for {existing} existing models',
@@ -1174,6 +1176,8 @@ export const en: LocaleStrings = {
     'ocr.configure': "Text recognition settings",
     'ocr.connection': "Default text recognition connection",
     'ocr.prompt': "Recognition prompt",
+    'ocr.promptEmpty': 'The recognition prompt cannot be empty. Enter content before saving.',
+    'ocr.promptChanged': 'The prompt was changed elsewhere. Reopen it before editing.',
     'ocr.unconfigured': "No text recognition connection configured",
     'ocr.help': "Automatically selects a vision model: fast → standard → optimal. Shared across all sessions.",
     'ocr.manageModels': "Manage models and connections",

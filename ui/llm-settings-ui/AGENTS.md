@@ -4,6 +4,8 @@
 
 ModelDefaultsEditor 是「模型与服务」的统一默认用途设置页，复用连接、Provider 及现有探测端口；保存不运行验证。对话、绘图和语音候选按用途过滤，凭据与模型目录仍由原有工具箱编辑器管理；详见 [用途默认](../../doc/design/model-purpose-defaults.md)。旧全局默认展示及操作仅表示对话默认。
 
+文字识别通过注入 OcrControls 和共享 OcrSettingsForm 在同页直接选择默认视觉连接，右侧图标按需打开宿主提示词弹窗；不另建 OCR 配置存储。modelsPath:false 的 Provider 禁用目录刷新并说明原因，保留预置和手动模型；显式目录地址可覆盖该声明。
+
 连接表单上方独立显示默认对话连接、模型与就绪状态；默认标识不能替代凭据/停用状态。列表将默认连接及所属 Provider 置顶，其余连接按就绪、待配置、停用排列，OAuth 就绪使用安全 credentialsReady 元数据。聊天模型就绪判断复用 contracts.resolveChatModelForTier，未知、已移除或媒体模型不能标为就绪，显式无效档位不跳过回退。
 
 ## 目录

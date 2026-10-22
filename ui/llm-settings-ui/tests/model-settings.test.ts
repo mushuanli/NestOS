@@ -3,6 +3,8 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ProviderSettingsEditor } from '../src/editors/ProviderSettingsEditor';
 import { ConnectionSettingsEditor } from '../src/editors/ConnectionSettingsEditor';
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
+import { t } from '@itookit/common';
+import { readProviderForm } from '../src/editors/provider-form';
 
 const editors: Array<ProviderSettingsEditor | ConnectionSettingsEditor> = [];
 afterEach(async () => {
@@ -19,7 +21,7 @@ async function mount(p = provider()) {
     const testConnection = vi.fn().mockResolvedValue({ success: true, message: 'Verified', model: 'text' });
     const saveProvider = vi.fn().mockResolvedValue(undefined), getFullProvider = vi.fn(() => { throw new Error('Credentials must not be read'); });
     const service = { getProviders: () => [{ ...p, hasApiKey: true }], getFullProvider, saveProvider, testConnection,
-        getConnections: async () => [], onChange: () => () => {}, getProviderAuthorization: async () => ({ supported: false, status: 'signed-out' }) };
+        listProviderModels: vi.fn(), getConnections: async () => [], onChange: () => () => {}, getProviderAuthorization: async () => ({ supported: false, status: 'signed-out' }) };
     const root = document.createElement('div'); document.body.append(root);
     const editor = new ProviderSettingsEditor(root, service as never, { target: { kind: 'entity', entityType: 'provider', id: 'p' } });
     editors.push(editor); await editor.render();
@@ -44,6 +46,20 @@ it('never sends a text request from a speech-only service and exposes a separate
     expect(service.testConnection).not.toHaveBeenCalled();
     expect(root.querySelector('[data-probe-model] option')?.getAttribute('value')).toContain('speech.synthesize');
     expect(root.querySelector('[data-provider-chat-settings]')?.hasAttribute('hidden')).toBe(true);
+});
+
+it('disables unsupported catalog discovery and preserves the capability through form saves', async () => {
+    const p = { ...provider(), modelsPath: false as const };
+    const { root, service } = await mount(p), button = root.querySelector<HTMLButtonElement>('#btn-refresh-models')!;
+    expect(button.disabled).toBe(true); expect(root.textContent).toContain(t('provider.models.unavailable'));
+    button.click(); expect(service.listProviderModels).not.toHaveBeenCalled();
+    const form = root.querySelector('form')!;
+    expect(readProviderForm(form, p).modelsPath).toBe(false);
+    const endpoint = form.querySelector<HTMLInputElement>('[name="modelsPath"]')!;
+    endpoint.value = '/custom/catalog'; endpoint.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(button.disabled).toBe(false); expect(readProviderForm(form, p).modelsPath).toBe('/custom/catalog');
+    endpoint.value = ''; endpoint.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(button.disabled).toBe(true);
 });
 
 it('preserves drafts when switching accessible tabs and invalidates an in-flight text result', async () => {

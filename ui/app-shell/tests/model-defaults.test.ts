@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { expect, it, vi } from 'vitest';
-import { defaultConnectionMenu, updateDefaultShortcuts } from '../src/toolbox/model-defaults';
+import { defaultConnectionMenu } from '../src/toolbox/model-defaults';
 import { flowConnectionSelection } from '../../llm-ui-adapter/src/flows/connection-selection';
 import { flowParameterFields } from '../../llm-ui-adapter/src/components/FlowParameterForm';
 
@@ -16,14 +16,6 @@ it('offers only compatible defaults and clears the selected purpose independentl
     await (menu[0] as { onClick: () => Promise<void> }).onClick();
     expect(f.resources.setModelDefault).toHaveBeenCalledWith('speech.synthesize', null);
 });
-it('routes all three default summaries to the central settings page', () => {
-    const f = fixture(), root = document.createElement('div');
-    updateDefaultShortcuts(root, f.inventory as never, f.navigate);
-    expect(root.querySelectorAll('button')).toHaveLength(3); expect(root.textContent).toContain('Voice');
-    root.querySelectorAll('button')[2].click();
-    expect(f.navigate).toHaveBeenCalledWith({ target: 'settings', resourceId: 'model-defaults', state: { anchor: 'speech.synthesize' } });
-});
-
 it('prefills required Flow purposes without overriding explicit or optional slots and filters incompatible choices', async () => {
     const commands = { execute: vi.fn(async () => ({ connections: [
         { id: 'chat', name: 'Chat', model: 'text', providerId: 'p', operationModels: { chat: 'Text' } },

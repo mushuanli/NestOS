@@ -1,5 +1,5 @@
 import { escapeAttr, escapeHTML, randomUUID, t } from '@itookit/common';
-import { BaseSettingsEditor } from '@itookit/ui-common';
+import { BaseSettingsEditor, OcrSettingsForm, type EditorOptions, type OcrControls } from '@itookit/ui-common';
 import { MODEL_OPERATIONS, hasConnectionCredentials, modelForOperation, type IConnectionService, type ModelDefaults, type ModelOperation } from '@itookit/kernel-adapters/contracts';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import { mountMediaProbe } from './provider-media-probe';
@@ -15,6 +15,11 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
     private closed = false;
     private generation = 0;
     private fingerprint?: string;
+    private ocrForm?: OcrSettingsForm;
+    private readonly ocrContainer = document.createElement('section');
+
+    constructor(container: HTMLElement, service: IConnectionService, options: EditorOptions,
+        private readonly ocr?: OcrControls) { super(container, service, options); }
 
     protected onServiceChange(): void { if (!this.pending) void this.render(); }
     async render(): Promise<void> {
@@ -30,12 +35,24 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
             this.stops.splice(0).forEach(stop => stop()); this.clearListeners();
             this.container.innerHTML = `<section class="model-defaults"><h2>${t('modelDefaults.title')}</h2>
                 <p>${t('modelDefaults.description')}</p>${MODEL_OPERATIONS.map(operation => this.row(operation)).join('')}
+                ${this.ocr ? '<section data-ocr-default></section>' : ''}
                 <p role="status" data-defaults-result></p><div class="model-defaults__actions">
                 <button type="button" class="settings-btn settings-btn--secondary" data-manage="connections">${t('modelDefaults.manageModels')}</button>
                 <button type="button" class="settings-btn settings-btn--secondary" data-manage="providers">${t('modelDefaults.manageServices')}</button></div>
                 <details><summary>${t('modelDefaults.advanced')}</summary><p>${t('modelDefaults.priority')}</p><p>${t('modelDefaults.harness')}</p></details></section>`;
             this.bind();
+            await this.mountOcr();
         } catch (error) { if (!this.closed && generation === this.generation) { this.fingerprint = undefined; this.showError(error); } }
+    }
+
+    private async mountOcr(): Promise<void> {
+        if (!this.ocr) return;
+        this.ocrContainer.className = 'model-defaults__row';
+        this.container.querySelector('[data-ocr-default]')!.replaceWith(this.ocrContainer);
+        if (!this.ocrForm) {
+            this.ocrForm = new OcrSettingsForm(this.ocrContainer, this.ocr, true);
+            await this.ocrForm.refresh();
+        }
     }
 
     private row(operation: ModelOperation): string {
@@ -133,13 +150,15 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
         retry.onclick = () => { void this.render(); };
         this.container.replaceChildren(description, retry);
     }
-    async flushPendingSave(): Promise<void> { await this.pending; }
+    async flushPendingSave(): Promise<void> { await Promise.all([this.pending, this.ocrForm?.flushPendingSave()]); }
+    isDirty(): boolean { return !!this.pending || !!this.ocrForm?.isDirty() || super.isDirty(); }
     async navigateToAnchor(anchor: string): Promise<void> {
+        if (anchor === 'ocr') { this.ocrContainer.querySelector('select')?.focus(); this.ocrContainer.scrollIntoView?.({ block: 'nearest' }); return; }
         const select = [...this.container.querySelectorAll<HTMLSelectElement>('[data-default-operation]')].find(select => select.dataset.defaultOperation === anchor);
         select?.focus(); select?.scrollIntoView?.({ block: 'nearest' });
     }
     async destroy(): Promise<void> {
-        await this.pending; this.closed = true; ++this.generation;
+        await this.flushPendingSave(); this.closed = true; ++this.generation; this.ocrForm?.destroy();
         this.stops.splice(0).forEach(stop => stop()); await super.destroy();
     }
 }

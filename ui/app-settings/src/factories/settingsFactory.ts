@@ -3,7 +3,7 @@ import type { MCPServer, MCPDiscovery } from '@itookit/tools/mcp-contracts';
 import type { ConfigurationFormControls } from '@itookit/ui-common';
 import { editorResourceId } from '@itookit/ui-common';
 // @file app-settings/factories/settingsFactory.ts
-import type { IConnectionService } from '@itookit/kernel-adapters/contracts';
+import type { IConnectionService, MediaProbeExamples } from '@itookit/kernel-adapters/contracts';
 import type { EditorOptions } from '@itookit/ui-common';
 import type { IAgentManagementService } from '@itookit/kernel-adapters/contracts';
 import type { EditorFactory, IEditor } from '@itookit/ui-common';
@@ -21,8 +21,8 @@ import { AppearanceSettingsEditor } from '../editors/AppearanceSettingsEditor';
 
 /** Injected UI editors from @itookit/llm-ui-adapter (to avoid upward dependency). */
 export interface LLMUIEditors {
-    ModelDefaultsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions, ocr?: import('@itookit/ui-common').OcrControls) => IEditor;
-    ProviderSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions) => IEditor;
+    ModelDefaultsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions, ocr?: import('@itookit/ui-common').OcrControls, examples?: MediaProbeExamples) => IEditor;
+    ProviderSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions, examples?: MediaProbeExamples) => IEditor;
     ConnectionSettingsEditor: new (container: HTMLElement, service: IConnectionService, options: EditorOptions) => IEditor;
     MCPSettingsEditor: new (container: HTMLElement, service: IAgentManagementService, options: EditorOptions, controls?: ConfigurationFormControls<MCPServer,MCPDiscovery>) => IEditor;
     CostEditor: new (container: HTMLElement, service: IAgentManagementService, options: EditorOptions) => IEditor;
@@ -44,6 +44,7 @@ function resolveSettingsSlug(nodeId: string): string {
 }
 
 export interface SettingsFactoryOptions {
+    mediaProbeExamples?: MediaProbeExamples;
     ocr?: import('@itookit/ui-common').OcrControls;
     settingsService: SettingsService;
     agentService: IAgentManagementService;
@@ -55,7 +56,7 @@ export interface SettingsFactoryOptions {
     requestDelete?: import('@itookit/ui-common').EditorHostContext['requestDelete'];
 }
 export const createSettingsFactory = ({ settingsService, agentService, connectionService, llmUiEditors,
-    connectBrowser, restoreFlows, initialFiles, requestDelete, ocr }: SettingsFactoryOptions): EditorFactory => {
+    connectBrowser, restoreFlows, initialFiles, requestDelete, ocr, mediaProbeExamples }: SettingsFactoryOptions): EditorFactory => {
     return async (container: HTMLElement, options: EditorOptions) => {
         if (requestDelete) options = { ...options, hostContext: { toggleSidebar: () => {}, navigate: async () => {}, ...options.hostContext, requestDelete } };
         const nodeId = resolveSettingsSlug(editorResourceId(options) || '');
@@ -63,11 +64,11 @@ export const createSettingsFactory = ({ settingsService, agentService, connectio
         let editor: IEditor | null = null;
 
         switch (nodeId) {
-            case 'model-defaults': editor = new llmUiEditors.ModelDefaultsEditor(container, connectionService, options, ocr); break;
+            case 'model-defaults': editor = new llmUiEditors.ModelDefaultsEditor(container, connectionService, options, ocr, mediaProbeExamples); break;
             case 'storage':     editor = new StorageSettingsEditor(container, settingsService, options, initialFiles); break;
             case 'tags':        editor = new TagSettingsEditor(container, settingsService, options); break;
             case 'contacts':    editor = new ContactSettingsEditor(container, settingsService, options); break;
-            case 'providers':   editor = new llmUiEditors.ProviderSettingsEditor(container, connectionService, options); break;
+            case 'providers':   editor = new llmUiEditors.ProviderSettingsEditor(container, connectionService, options, mediaProbeExamples); break;
             case 'connections': editor = new llmUiEditors.ConnectionSettingsEditor(container, connectionService, options); break;
             case 'mcp-servers': editor = new llmUiEditors.MCPSettingsEditor(container, agentService, options); break;
             case 'cost':        editor = new llmUiEditors.CostEditor(container, agentService, options); break;

@@ -24,6 +24,8 @@ export function snapshotTaskInput(input: TaskInput): TaskInput {
     const copy = { ...input,
         overrides: input.overrides ? structuredClone(input.overrides) : undefined,
         sendIntent: input.sendIntent ? structuredClone(input.sendIntent) : undefined,
+        instructionFlowBinding: input.instructionFlowBinding ? structuredClone(input.instructionFlowBinding) : undefined,
+        instructionConnectionBinding: input.instructionConnectionBinding ? structuredClone(input.instructionConnectionBinding) : undefined,
     };
     if (copy.sendIntent?.execution.kind === 'agent') copy.sendIntent.execution.mode = directExecutionMode(copy);
     return copy;

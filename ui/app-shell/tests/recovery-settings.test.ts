@@ -11,8 +11,9 @@ async function fixture() {
     const port: InitialFilesPort = { list: vi.fn(async () => entries), restore: vi.fn(async ids => {
         entries[0].exists = true; return ids.map(id => ({ id, status: 'restored' as const }));
     }) };
-    const items = [{ type: 'provider' as const, id: 'one', name: 'One', status: 'modified' as const },
-        { type: 'connection' as const, id: 'two', name: 'Two', status: 'ok' as const }];
+    const items = [{ type: 'agent' as const, id: 'one', name: 'One', status: 'modified' as const },
+        { type: 'connection' as const, id: 'two', name: 'Two', status: 'ok' as const },
+        { type: 'provider' as const, id: 'three', name: 'Three', status: 'modified' as const }];
     const service = { getRestorableItems: vi.fn(async () => items), restoreItem: vi.fn(async () => {}), resetAllDefaults: vi.fn(async () => {}) };
     const container = document.createElement('div'); document.body.append(container);
     const editor = new RecoverySettingsEditor(container, service as never, {} as never, undefined, port);
@@ -30,7 +31,9 @@ it('uses one page action for selected files and configurations, without fetching
     click(container, '.chk-select-all');
     expect(service.getRestorableItems).toHaveBeenCalledOnce(); expect(port.list).toHaveBeenCalledOnce();
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.checked).toBe(true);
-    expect(container.querySelector<HTMLInputElement>('.chk-item[value="connection:two"]')!.checked).toBe(false);
+    expect(container.querySelector('.chk-item[value="connection:two"]')).toBeNull();
+    expect(container.querySelector('[data-recovery-group=provider]')).toBeNull();
+    expect(container.querySelector('[data-recovery-group=connection]')).toBeNull();
     expect(container.querySelector<HTMLInputElement>('[data-initial-group=notes]')!.checked).toBe(false);
     click(container, '[data-initial-group=notes]');
     expect(container.querySelector('#btn-batch-restore')!.textContent).toBe(t('recovery.restoreSelected', { count: 2 }));
@@ -38,7 +41,7 @@ it('uses one page action for selected files and configurations, without fetching
     expect(document.querySelector('.settings-modal__body')!.textContent).toContain(t('recovery.confirmSelection', { files: 1, configurations: 1 }));
     expect(document.querySelector('.settings-modal__body')!.textContent).toContain(t('recovery.configurationHelp'));
     await confirm();
-    expect(port.restore).toHaveBeenCalledWith(['note']); expect(service.restoreItem).toHaveBeenCalledWith('provider', 'one');
+    expect(port.restore).toHaveBeenCalledWith(['note']); expect(service.restoreItem).toHaveBeenCalledWith('agent', 'one');
     expect(service.resetAllDefaults).not.toHaveBeenCalled();
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.checked).toBe(false);
     expect(container.querySelector('[role=status]')!.textContent).toContain(t('initialFiles.restored'));
@@ -47,14 +50,14 @@ it('uses one page action for selected files and configurations, without fetching
 it('refreshes every group while retaining selection and expanded files', async () => {
     const { container, service, port } = await fixture();
     click(container, '.chk-item'); const details = container.querySelector('details')!; details.open = true;
-    container.querySelector<HTMLDetailsElement>('[data-recovery-group=provider]')!.open = false;
+    container.querySelector<HTMLDetailsElement>('[data-recovery-group=agent]')!.open = false;
     click(container, '[data-initial-group=notes]'); click(container, '#btn-refresh-recovery');
     await vi.waitFor(() => expect(container.querySelector<HTMLButtonElement>('#btn-refresh-recovery')!.disabled).toBe(false));
     expect(service.getRestorableItems).toHaveBeenCalledTimes(2); expect(port.list).toHaveBeenCalledTimes(2);
     expect(container.querySelector<HTMLInputElement>('.chk-item')!.checked).toBe(true);
     expect(container.querySelector<HTMLInputElement>('[data-initial-id]')!.checked).toBe(true);
     expect(container.querySelector('details')!.open).toBe(true);
-    expect(container.querySelector<HTMLDetailsElement>('[data-recovery-group=provider]')!.open).toBe(false);
+    expect(container.querySelector<HTMLDetailsElement>('[data-recovery-group=agent]')!.open).toBe(false);
     expect(port.restore).not.toHaveBeenCalled(); expect(service.restoreItem).not.toHaveBeenCalled();
 });
 
@@ -78,6 +81,7 @@ it('keeps full configuration reset independent from file restoration', async () 
     click(container, '#btn-reset-all');
     expect(document.querySelector('.settings-modal__body')!.textContent).toContain(t('recovery.resetHelp'));
     await confirm();
-    expect(service.resetAllDefaults).toHaveBeenCalledOnce(); expect(port.restore).not.toHaveBeenCalled();
-    expect(service.restoreItem).not.toHaveBeenCalled();
+    expect(service.resetAllDefaults).not.toHaveBeenCalled(); expect(port.restore).not.toHaveBeenCalled();
+    expect(service.restoreItem).toHaveBeenCalledOnce();
+    expect(service.restoreItem).toHaveBeenCalledWith('agent', 'one');
 });

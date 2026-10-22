@@ -72,10 +72,11 @@ export class SessionInstructions {
 
     private async prepare(id: string, item: SessionInstruction, immediate: boolean): Promise<SessionInstruction> {
         await this.runs.assertCanSubmit(id);
-        const input = await resolveSessionExecutionMode(this.registry.engine, { ...item, sessionId: id }, this.registry.host.translate);
-        const bound = await this.runs.bindQueuedInstruction(id, { ...item, overrides: input.overrides, sendIntent: input.sendIntent });
-        if (immediate) await this.runs.validateSubmission({ ...bound, sessionId: id, instructionConnectionBinding: bound.connectionBinding });
-        return bound;
+        const bound = await this.runs.bindQueuedInstruction(id, item);
+        const input = await resolveSessionExecutionMode(this.registry.engine, { ...bound, sessionId: id }, this.registry.host.translate);
+        if (immediate) await this.runs.validateSubmission({ ...input, instructionConnectionBinding: bound.connectionBinding,
+            instructionFlowBinding: bound.flowBinding });
+        return { ...bound, overrides: input.overrides, sendIntent: input.sendIntent };
     }
 
     private async previouslyAccepted(id: string, item: SessionInstruction, digest: string): Promise<boolean> {
@@ -106,7 +107,7 @@ export class SessionInstructions {
         await this.assertHistoryReady(id);
         await this.registry.reloadSessionData(id, state);
         return this.rounds.sendInSession({ ...item, sessionId: id, instructionId: item.id, instructionBranch: item.branch,
-            instructionConnectionBinding: item.connectionBinding }, state, runtime);
+            instructionConnectionBinding: item.connectionBinding, instructionFlowBinding: item.flowBinding }, state, runtime);
     }
 
     private async assertHistoryReady(id: string): Promise<void> {

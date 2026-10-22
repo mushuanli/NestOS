@@ -7,6 +7,7 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import type { WorkspaceConfig } from '../types';
 import { traceBoot } from '@itookit/common';
 import { lazyResource } from '../lifecycle/lazy-resource';
+import mediaProbeExamples from '../config/media-probe-examples.json';
 
 type Options = Omit<SettingsFactoryOptions, 'settingsService' | 'initialFiles'> & { excludedPages?: readonly string[] };
 interface SettingsAccess { factory: EditorFactory; files(): IFileSystem; close(): Promise<void> }
@@ -17,7 +18,7 @@ export function createSettingsAccess(backend: ApplicationBackend, workspaces: ()
     let navigation: ReturnType<typeof createSettingsNavigation> | undefined, editor: EditorFactory | undefined;
     const factory: EditorFactory = async (element, config) => {
         const ready = await service.get();
-        editor ??= createSettingsFactory({ ...options, settingsService: ready, initialFiles: {
+        editor ??= createSettingsFactory({ ...options, mediaProbeExamples: options.mediaProbeExamples ?? mediaProbeExamples, settingsService: ready, initialFiles: {
             list: async () => (await initial.get()).list(), restore: async ids => (await initial.get()).restore(ids),
         } });
         return editor(element, config);

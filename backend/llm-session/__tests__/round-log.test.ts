@@ -907,3 +907,27 @@ describe('Flow rerun branches', () => {
         } finally { revision.mockRestore(); draftLoad.mockRestore(); publish.mockRestore(); }
     });
 });
+
+it('compares inline draft and published function contents without generated version or lock metadata', async () => {
+    const { FlowRerunService } = await import('../src/session/flow-rerun');
+    const { FlowDefinitionStore, createFlowRevision } = await import('@itookit/llm-flow');
+    const { vi } = await import('vitest');
+    const fn = { id: 'worker', name: 'Worker', draftVersion: 1, updatedAt: 0, layout: {}, edges: [], parameters: [],
+        nodes: [{ id: 'echo', name: 'Echo', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: { value: 'original' } }],
+        outputs: { result: { value: '${nodes.echo.outputs.result}' } } };
+    const source = { id: 'inline-rerun', name: 'Inline rerun', draftVersion: 1, updatedAt: 0, layout: {}, edges: [], parameters: [],
+        nodes: [{ id: 'invoke', name: 'Invoke', plugin: 'builtin.flow', pluginVersion: '2.0.0', inputs: {}, config: { flowId: 'worker' } }], functions: [fn] };
+    const published = createFlowRevision(source as never, 9, 42);
+    published.dependencyLocks = { invoke: { flowId: 'worker', revision: 9, digest: published.functions![0].digest, children: {} } };
+    const engine = new InMemorySessionRepository(); engine.setManifest({ flow: { flowId: 'inline-rerun', revision: 9, parameters: {} } });
+    const registry = { engine, ensureBound: () => ({ sessionId: 's' }) };
+    const draftLoad = vi.spyOn(FlowDefinitionStore.prototype, 'loadDraft').mockResolvedValue(source as never);
+    const revisionLoad = vi.spyOn(FlowDefinitionStore.prototype, 'loadRevision').mockResolvedValue(published);
+    try {
+        const service = new FlowRerunService(registry as never, {} as never, {} as never);
+        const draftContext = await service.context(); draftLoad.mockResolvedValue(null);
+        expect((await service.context())!.definitionKey).toBe(draftContext!.definitionKey);
+        source.functions[0].nodes[0].config.value = 'changed'; draftLoad.mockResolvedValue(source as never);
+        expect((await service.context())!.definitionKey).not.toBe(draftContext!.definitionKey);
+    } finally { draftLoad.mockRestore(); revisionLoad.mockRestore(); }
+});

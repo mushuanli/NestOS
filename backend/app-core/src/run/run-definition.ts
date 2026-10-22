@@ -94,6 +94,8 @@ export interface RunDefinition {
         maxNodes?: number;
         templateVersion?: import('@itookit/llm-flow/contracts').DagRunSpec['templateVersion'];
         parameterScopes?: import('@itookit/llm-flow/contracts').DagRunSpec['parameterScopes'];
+        functionCalls?: import('@itookit/llm-flow/contracts').DagRunSpec['functionCalls'];
+        input?: import('@itookit/llm-flow/contracts').DagRunSpec['input'];
         variables?: import('@itookit/llm-flow/contracts').DagRunSpec['variables'];
         variableScopes?: import('@itookit/llm-flow/contracts').DagRunSpec['variableScopes'];
     };
@@ -144,6 +146,8 @@ export async function createRunDefinitionFromFlow(flow: FlowRevision, options: {
             edges: structuredClone(dag.edges) as DagEdgeDefinition[],
             templateVersion: dag.templateVersion,
             parameterScopes: structuredClone(dag.parameterScopes),
+            functionCalls: structuredClone(dag.functionCalls),
+            input: structuredClone(dag.input),
             variables: structuredClone(dag.variables),
             variableScopes: structuredClone(dag.variableScopes),
             ...(dag.nodeDefaults ? { nodeDefaults: structuredClone(dag.nodeDefaults) as Record<string, Record<string, JsonValue>> } : {}),
@@ -184,6 +188,8 @@ export function toDagRunSpec(definition: RunDefinition): import('@itookit/llm-fl
         edges: structuredClone(definition.graph.edges),
         templateVersion: definition.graph.templateVersion,
         parameterScopes: structuredClone(definition.graph.parameterScopes),
+        functionCalls: structuredClone(definition.graph.functionCalls),
+        input: structuredClone(definition.graph.input),
         variables: structuredClone(definition.graph.variables),
         variableScopes: structuredClone(definition.graph.variableScopes),
         parameterSchema: structuredClone(definition.parameters),

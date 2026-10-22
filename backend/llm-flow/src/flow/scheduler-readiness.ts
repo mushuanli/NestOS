@@ -22,7 +22,11 @@ export interface SchedulerReadiness {
 }
 
 export function readyFlowNodes(state: SchedulerReadiness): DagNodeDefinition[] {
-    const candidates = state.nodes.filter(node => nodeReady(state, node));
+    let candidates: DagNodeDefinition[], skippedCount: number;
+    do {
+        skippedCount = state.skipped.size;
+        candidates = state.nodes.filter(node => nodeReady(state, node));
+    } while (state.skipped.size !== skippedCount);
     return candidates.filter(node => {
         if (node.plugin !== 'builtin.return') return true;
         const prefix = node.id.slice(0, node.id.lastIndexOf('/') + 1);
@@ -33,8 +37,9 @@ export function readyFlowNodes(state: SchedulerReadiness): DagNodeDefinition[] {
 }
 
 function nodeReady(state: SchedulerReadiness, node: DagNodeDefinition): boolean {
-    if (Object.entries(state.spec.parameterScopes ?? {}).some(([prefix, scope]) =>
-        node.id.startsWith(prefix) && scope.source && !Object.hasOwn(state.callInputs, scope.source))) return false;
+    const calls = Object.entries(state.spec.parameterScopes ?? {}).filter(([prefix]) => node.id.startsWith(prefix));
+    if (calls.some(([, scope]) => scope.source && state.skipped.has(scope.source))) return skipNode(state, node);
+    if (calls.some(([, scope]) => scope.source && !Object.hasOwn(state.callInputs, scope.source))) return false;
     const iteration = (state.instances.get(node.id)?.length ?? 0) + 1;
     if (iteration > state.maxIterations(node) || state.skipped.has(node.id)) return false;
     if (iteration > 1 && !state.doneAt(node.id, iteration - 1)) return false;
@@ -47,7 +52,10 @@ function incomingReady(state: SchedulerReadiness, node: DagNodeDefinition, itera
     const incoming = state.edges.filter(edge => edge.to === node.id);
     if (!incoming.length) return true;
     const gates = incoming.filter(edge => state.routeEdgeIds.has(edge.id));
-    if (gates.length && gates.every(edge => state.edgeState.get(edge.id) === 'inactive')) return skipNode(state, node);
+    if (gates.length && gates.every(edge => edgeStatus(state, edge) === 'inactive')) return skipNode(state, node);
+    // Reference and function input barriers cannot reactivate a disabled branch.
+    const branchEdges = incoming.filter(edge => !edge.dependencyOnly && !isCallInputBarrier(state, node, edge));
+    if (branchEdges.length && branchEdges.every(edge => edgeStatus(state, edge) === 'inactive')) return skipNode(state, node);
     const active = incoming.filter(edge => !state.backEdges.has(edge.id) && edgeStatus(state, edge) === 'active');
     const pending = incoming.filter(edge => !state.backEdges.has(edge.id) && edgeStatus(state, edge) === 'pending');
     const backActive = incoming.filter(edge => state.backEdges.has(edge.id) && edgeStatus(state, edge) === 'active');
@@ -80,7 +88,12 @@ function skipNode(state: SchedulerReadiness, node: DagNodeDefinition): false {
 }
 
 function edgeStatus(state: SchedulerReadiness, edge: DagEdgeDefinition): EdgeState {
-    return state.edgeState.get(edge.id) ?? 'active';
+    return state.skipped.has(edge.from) ? 'inactive' : state.edgeState.get(edge.id) ?? 'active';
+}
+
+function isCallInputBarrier(state: SchedulerReadiness, node: DagNodeDefinition, edge: DagEdgeDefinition): boolean {
+    return edge.kind === 'control' && Object.entries(state.spec.parameterScopes ?? {})
+        .some(([prefix, scope]) => node.id.startsWith(prefix) && scope.source === edge.from);
 }
 
 function loopMembers(node: DagNodeDefinition): string[] {

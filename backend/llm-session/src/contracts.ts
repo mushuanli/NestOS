@@ -64,3 +64,4 @@ export type { SessionViewPort, PromptHistoryPort } from './contracts/session-vie
 export type * from './contracts/memory';
 
 export { inferFlowConnectionRequirements } from './contracts/flow-connection-policy';
+export type { FlowConnectionSelection, FlowConnectionSnapshot } from './contracts/flow-connection-snapshot';

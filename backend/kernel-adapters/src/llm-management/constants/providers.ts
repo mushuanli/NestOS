@@ -4,6 +4,7 @@
 
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
 import { externalProviders } from './llm-configs';
+import { createDoubaoSpeechProvider } from './catalogs/doubao-speech';
 
 // ─── VFS 存储路径 ──────────────────────────────────────────────────────────────
 /** VFS __config 模块中 Provider 数据的存储目录 */
@@ -414,26 +415,7 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
         ],
     },
 
-    'doubao-speech': {
-        id: 'doubao-speech', isBuiltin: true,
-        name: 'Doubao (豆包语音)',
-        implementation: 'custom',
-        baseURL: 'https://openspeech.bytedance.com',
-        modelsPath: false,
-        defaultPath: '/api/v3/tts/unidirectional',
-        media: {
-            'speech.synthesize': { adapter: 'doubao-speech', path: '/api/v3/tts/unidirectional', sampleRate: 24000 },
-        },
-        models: [{
-            id: 'seed-tts-2.0', name: 'Doubao Speech 2.0', category: 'audio', capabilitiesKnown: true,
-            operations: {
-                'speech.synthesize': {
-                    inputModalities: ['text'], outputModalities: ['audio'], formats: ['mp3', 'opus', 'pcm'],
-                    voices: ['zh_female_vv_uranus_bigtts'], speedRange: { min: 0.5, max: 2 },
-                },
-            },
-        }],
-    },
+    'doubao-speech': createDoubaoSpeechProvider(),
 
     custom: {
         id: 'custom', isBuiltin: true,

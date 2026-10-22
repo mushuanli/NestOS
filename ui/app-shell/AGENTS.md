@@ -14,6 +14,8 @@ SessionWorkbench 统一项目草稿、智能体快捷入口和原生新会话入
 
 桌面项目归属作为 WorkbenchTabs 的只读 context 与资源名同行显示，不拼入 title、重命名输入或持久文件名，不另占正文一行。小屏聊天通过 `mountCompactNavigation` 合并返回、项目名、标题与已打开入口；编辑器以公开 `data-editor-mobile-navigation="embedded"` 标记接管导航，mobile-workspace-view 只检查当前标签，隐藏宿主重复返回栏、标签行及项目说明。目录页使用 compactNavigation 呈现路径；文件编辑器通过 mountWindowList 把窗口入口注入已有标题栏，并由适配层声明内嵌导航，不额外叠加宿主标题栏。小屏隐藏独立返回栏和桌面标签行；侧栏面板图标、标题和窗口清单入口同一行，Web/httpd 不分叉。移动正文切换消费标签显式的 opening/active/empty 与激活代次；打开资源后不会因等待保存、空标签或正文挂载而退回列表，深链从装配时就进入正文，用户返回列表后的普通内容更新不会抢回正文。已打开面板从顶部展开，借用原列表，关闭后归还侧栏，不克隆编辑器或丢弃草稿。窗口列表用标题和项目/目录两层信息区分同名项，支持名称、项目和路径筛选；位置作为展示元数据保存，不拼入资源名或资源 ID，移动/重命名文件后更新；旧版窗口记录只在打开列表时经 describe 补齐位置，不打开后台编辑器，路由或位置元数据版本变化后丢弃迟到结果。手机标题栏使用返回图标并返回站内前一页面，桌面仍使用侧栏图标。资源导航 push 历史、初始装配和规范路径校正 replace；popstate 回放不能追加历史。直接打开的首个页面没有站内历史时才回到列表。mobile-viewport 随可视视口更新应用高度并在销毁时解绑；mobile-shell-state 将当前活动布局的 detail/embedded 与输入焦点投影到 body[data-mobile-navigation]，不依赖 CSS :has()；小屏聊天正文据此收起全局底部导航，返回列表恢复，保留底部安全区；列表导航高 56px，按钮点按高度 48px。其他编辑器输入焦点通过公开 data-editor-composing 标记收起导航，不读取隐藏工作区状态。
 
+工具箱新建弹窗先选择添加类型，再填写对应参数；完整保留原有可创建类型，当前分类不删减 MCP 等选项，模型相关类型显示为「模型服务商」和「模型连接」。服务商名称使用单一可搜索、可输入字段，不另设配置名称；选择列表预设或输入其精确名称时，自动使用该预设及其名称，列表外输入作为自定义服务商名称。预设元数据来自 ToolboxResources.providerTemplates；提交对应预设 ID 与名称，由后端初始化配置，前端不复制厂商目录或凭据。已有服务商预设标记「已添加」并禁选，名称输入也校验重复；后端最终核对预设稳定 ID 和归一化名称，重复创建不得覆盖配置。自定义服务商从空白配置开始，新建不自动验证。新服务商/连接创建后在同一弹窗内复用原编辑器继续配置，连接引导也仅在弹窗内装配；工具栏、菜单及已有详情页保持原样。编辑器 form 与创建 form 为兄弟节点，完成前提交待保存配置，失败保留弹窗；创建成功后的加载失败不重复创建，日志区分阶段并保留安全错误分类。
+
 工具箱模型抽屉优先展示默认连接所在 Provider，并显示默认标识及实际就绪状态；其余抽屉/连接按就绪、待配置、停用排序，Provider 设置行保持首位。搜索匹配显示名称与可搜索文本，匹配子项时展开所属抽屉，资源 ID 不随排序改变。智能体与抽屉按最近成功提交排序，时间通过宿主 `ExecutorUsage` 保存到 UI 文档 `mindos_executor_usage_v1`，不改写 Agent 配置时间；聊天与工具箱延迟读取并共享该端口。
 工具箱能力筛选通过折叠标签按钮组合现有 tag: 查询，与名称搜索同时匹配，多标签取交集；手机按钮至少 44px。后端按 Provider 模型目录及 Connection 实际档位投影 capabilityTags；图像生成和 TTS 必须有明确 operation 与受支持适配器，不能用名称、audio 输入或分类猜测。标签不代表凭据就绪，媒体连接不再被误判为缺少聊天模型。前端只翻译能力名，不持久化自动派生标签，不按具体工具或厂商分支。
 项目会话通过 `onStartConversationDraft` 请求切换执行方式；宿主定位同一项目的草稿，将输入和附件交给 appendDraft。已有草稿追加内容，接收编辑器身份变化后不再写入；不迁移原生历史、不发送输入、不取消原任务。模型和助手的下一轮选择仍由原会话编辑器管理。
@@ -140,7 +142,7 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 - 普通模块通过 backend.navigationView 聚合首层与不透明 UI 文档；外部注入来源、设置/Flow/Skill 保持各自端口，独立读取并行。browser/initial-directory 只消费一次元数据，已有事件订阅使快照失效，不干预写操作与版本回调。普通侧栏 deferExpansion，首次只展示首层；切回在事件标脏、挂载身份变化或 15 秒到期后刷新。工作台保留隐藏期间的 refreshSources 并合并刷新。
 - 不预热或恢复未打开工作区。显式文件/会话深链只准备当前正文能力；WorkspaceController.setNavigationVisible 由实际活动工作区、手机列表/正文模式与侧栏折叠状态驱动。隐藏目录不读取、不刷新状态；可见目录独立失败与重试，不阻塞或替换正文。
 
-- 工具箱启动消费 backend.toolboxView 的 initial 导航快照，刷新只调用 resources.navigation；技能文件系统、默认工具分类与分组扫描归后端 configuration。browser/directory-snapshot 是通用一次性读取适配，事件或版本变化后回到实时端口。目录面包屑由前端生成路由标签并复用 openResource 同步侧栏，缓存目录重新激活也须同步选择。
+- 工具箱启动消费 backend.toolboxView 的 initial 导航快照，刷新只调用 resources.navigation；外部业务 Flow 及其分组由用户导入或宿主显式注入，UI 不预设业务 Flow ID；技能文件系统、默认工具分类与分组扫描归后端 configuration。browser/directory-snapshot 是通用一次性读取适配，事件或版本变化后回到实时端口。目录面包屑由前端生成路由标签并复用 openResource 同步侧栏，缓存目录重新激活也须同步选择。
 - 技能文件系统端口通过 lazyResource 共享请求并允许失败重试，后端拥有其释放职责。宿主文件类型的 contentFormat 独立于 editorType，未声明时按扩展名回退；项目目录标签和目标只由 directoryBreadcrumbs 解析。
 
 - 普通文件按路径直接打开，不经过目录 selectPath；恢复标签仅保留入口，后台补载目录不重新创建编辑器。隐藏本地/原生会话暂停视图订阅、任务附着和 Flow 面板轮询，重新激活读取当前快照；只分离观察，不取消后端任务。
@@ -176,3 +178,5 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 智能体「…」在工作台 @agent/<encoded-id> 标签打开设置。agent-project-preferences 按智能体单独持久化默认项目；通过 EditorOptions.mountSettings 挂载到配置表单。查看会话使用宿主来源过滤并保留文件/收藏夹；项目草稿工具栏选择项目只切换各项目自己的草稿，先 flush，不迁移内容。
 
 输入区项目切换通过 SessionDraftPreferences 转交不透明设置，SessionWorkbench 不解释聊天配置字段；目标编辑器负责合法性过滤并持久化。目标项目已有正文、附件和 UUID 保留，不能用源草稿覆盖。
+
+媒体验证的产品示例统一保存在 src/config/media-probe-examples.json，工具箱 Provider 编辑器（含新建引导）与设置模型用途编辑器共用宿主注入；不将示例混入 Provider 连接配置或 i18n 文案。

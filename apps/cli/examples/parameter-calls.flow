@@ -1,0 +1,33 @@
+{
+  "id": "parameter-calls",
+  "name": "Call one Flow with multiple sets of arguments",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "parameters": [
+    {
+      "name": "jobs",
+      "type": "json",
+      "default": [
+        { "source": "first document", "language": "zh-CN" },
+        { "source": "second document", "language": "en" }
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "calls",
+      "name": "Call once per argument set",
+      "plugin": "builtin.flow",
+      "pluginVersion": "2.0.0",
+      "inputs": {},
+      "config": {
+        "flowId": "parameter-record",
+        "parameters": { "detail": 2 },
+        "parameterSets": "${param.jobs}",
+        "maxConcurrency": 1
+      }
+    }
+  ],
+  "edges": [],
+  "outputs": { "results": { "value": "${nodes.calls.outputs.result}" } }
+}

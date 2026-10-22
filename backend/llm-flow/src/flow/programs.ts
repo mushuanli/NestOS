@@ -92,6 +92,9 @@ export class FlowHumanProgram implements DurableTaskProgram<FlowHumanState, Flow
             next.phase = 'interaction';
             return requestHuman(next);
         }
+        if (event.type === 'task-exited' && next.resolvedDependencyIds.includes(event.taskId)) {
+            return { state: next, next: { type: 'wait', on: { type: 'interaction', id: next.requestId } } };
+        }
         if (event.type !== 'interaction-resolved') return fail(next, `Expected interaction, received ${event.type}`);
         return {
             state: next,
@@ -150,7 +153,7 @@ export class FlowAggregateProgram implements DurableTaskProgram<FlowAggregateSta
             if (dependency) {
                 if (event.exit.status === 'failed' && dependency.tolerated !== true) {
                     const reason = event.exit.error?.message ?? `${event.taskId} exited with failed`;
-                    return { state: next, next: { type: 'fail', error: { message: `Flow node ${dependency.nodeId} failed: ${reason}` } } };
+                    return { state: next, next: { type: 'fail', error: { ...event.exit.error, message: `Flow node ${dependency.nodeId} failed: ${reason}` } } };
                 }
                 if (!next.resolved.includes(dependency.taskId)) next.resolved.push(dependency.taskId);
                 if (dependency.collectOutput !== false) next.outputs[dependency.nodeId] = jsonValue(event.exit.output);

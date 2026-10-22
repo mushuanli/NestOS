@@ -2,7 +2,7 @@
 
 ## 语义与配置
 
-新流程用 `param` 表示运行输入，用 `vars` 表示可修改的运行状态。补全输入节点先收集必需字段；变量消费者等待其完成，再用补全后的输入初始化变量。声明保存在 `.flow` 草稿中，发布时进入 revision 和 digest。
+新流程用 `param` 表示声明的运行参数，用 `input.prompt` 表示只读提示词，用 `vars` 表示可修改的运行状态。补全输入节点先收集必需字段；变量消费者等待其完成，再用补全后的输入初始化变量。声明保存在 `.flow` 草稿中，发布时进入 revision 和 digest。
 
 ```yaml
 variables:
@@ -11,7 +11,9 @@ variables:
     initial: ${param.essay}
 ```
 
-变量类型为 string、number、boolean、json；必须声明 initial。初值只允许引用 param，不能依赖其他变量或节点，避免初始化顺序歧义。变量名称必须是合法标识符，禁止原型相关名称。
+变量类型为 string、number、boolean、json；必须声明 initial。初值允许引用 param 与只读 input，不能依赖其他变量或节点，避免初始化顺序歧义。变量名称必须是合法标识符，禁止原型相关名称。
+
+Agent 执行绑定为 Flow 时，发送正文作为 `${input.prompt}`，其他运行参数按 Flow 签名分别填写。可声明 `variables.prompt: {type: string, initial: '${input.prompt}'}`，再通过 `${vars.prompt}` 读取和修改当前稿件；内置输入不需要声明，不能通过 assign 修改。未提供输入的调用默认提示词为空串。`DagRunSpec.input` 随检查点冻结，函数、批次、动态节点和结构化派发共享同一份只读输入；用户正文不再次作为模板解释。历史对象条件路径 `['input', x]` 仍表示原数据端口，新内置输入使用字符串 `${input.prompt}`。
 
 可执行节点在顶层声明赋值映射：
 
@@ -37,7 +39,7 @@ Prompt 使用 `${vars.essay}` 读取当前稿件；`${param.essay}` 保留最初
 
 ## 作文模板
 
-`essay-review-isolated.flow` 声明 `vars.essay`，初值来自 `param.essay`。评审与修改的 prompt 都读取 vars.essay；修改节点返回完整 essay，通过 assign 写回。四维评审 → 汇总 → 判断 → 修改 → 重新评审，全部达标或到达 maxRounds 后退出，最后一轮不再生成未经评审的稿件。
+`essay-review.flow` 声明 `vars.essay`，初值来自 `param.essay`。评审与修改的 prompt 都读取 vars.essay；修改节点返回完整 essay，通过 assign 写回。四维评审 → 汇总 → 判断 → 修改 → 重新评审，全部达标或到达 maxRounds 后退出，最后一轮不再生成未经评审的稿件。
 
 旧版本没有 variables/assign 的结构化流程仍保留原有 revision.fields 更新输入的语义。已有用户文件不自动改写；要迁移需添加 variables 和 assign，并将读取当前稿件的 prompt 改为 vars.essay。保存后重新运行会创建新发布版本和新分支，旧运行继续使用原版本。
 

@@ -49,6 +49,7 @@ export interface ExecutorConfig {
     systemPrompt?: string[];
     /** Frozen AgentDefinition version used for reproducible AgentTasks. */
     agentVersion?: string;
+    execution?: AgentDefinition['execution'];
     capabilityPolicy?: AgentDefinition['capabilityPolicy'];
     memoryPolicy?: AgentDefinition['memoryPolicy'];
     defaultContextPolicy?: AgentDefinition['defaultContextPolicy'];
@@ -139,6 +140,8 @@ export interface ExecutionOverrides {
     /** Optional Flow/branch controls supplied by ChatInput. */
     flowId?: string;
     flowRevision?: number;
+    flowParameters?: Record<string, import('@itookit/llm-flow/contracts').JsonValue>;
+    flowConnectionBindings?: Record<string, string>;
     branchMode?: 'continue' | 'fork';
     baseRoundId?: string;
     newBranchName?: string;
@@ -357,6 +360,7 @@ export interface TaskInput {
     submissionDigest?: string;
     instructionBranch?: string;
     instructionConnectionBinding?: import('../contracts/instruction-queue').SessionInstruction['connectionBinding'];
+    instructionFlowBinding?: import('../contracts/instruction-queue').SessionInstruction['flowBinding'];
     text: string;
     files: ChatAttachment[];
     agentId: string;

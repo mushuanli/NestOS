@@ -66,7 +66,9 @@ export class FlowEngine extends FileBackedService implements FlowStore {
         filename: string,
         content: string | ArrayBuffer,
     ): Promise<unknown> {
-        return this.engine.meta.assets.putAsset(ownerNodeId, filename, content);
+        const result = await this.engine.meta.assets.putAsset(ownerNodeId, filename, content);
+        this.notify();
+        return result;
     }
 
     async readAsset(

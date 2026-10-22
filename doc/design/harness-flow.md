@@ -1,5 +1,56 @@
 # llm-flow 的 Flow / Node 定义与 Harness 覆盖分析
 
+## 2026-10-22 当前实现复验
+
+此前章节保留历史核查背景；组合调用以当前 `builtin.flow@2` 为准。它已提供显式实参、命名返回、参数与变量作用域、上下文隔离和依赖版本锁定。旧文中的“没有输入/输出签名映射”不适用于该版本。当前仍没有独立子 Run 生命周期：子流程运行策略以及调用级 retry/compensate/assign/budget/capabilities 会明确拒绝，不能视为独立资源容器。
+
+| 需求 | 当前实现与边界 |
+| --- | --- |
+| 确定性函数/工具调用 | `builtin.flow@2` 和 `builtin.tool@1`；Agent 的模型工具循环是另一入口 |
+| 串联与并行 | 依赖边、全局并发、静态 taskGroup；动态任务使用有界 spawn |
+| 同步汇合 | join all/any/first-success/quorum，剩余任务 continue/cancel；OR 条件不等于抢先汇合 |
+| 循环 | 显式反馈边、有界 loop、每轮独立任务身份与同轮数据绑定 |
+| 与／或／非 | SerializableExpression 及 YAML 条件支持 and/or/not；可视 FlowCondition 只有 all/any 与比较，没有直接 NOT |
+| 多组参数函数调用 | `builtin.flow@2.parameterSets` 接收运行时参数对象数组，公共参数可复用；整次调用有界并发、每组作用域隔离、按输入序返回，空集合返回空数组。仍不支持嵌套 taskGroup 或独立子 Run |
+| 图片与文本分批 | 通用 `builtin.transform.operation: batch` 接收任意内容数组或原组，按大小合并分批或保留组界，再调用同一个 Flow 函数；图片持久为输入资产 |
+| 单文件函数定义 | `functions` 内嵌完整 Flow，按定义处词法作用域解析，主文件发布递归冻结与锁定依赖，恢复和归档保留内联内容 |
+| Agent 调用内部 Flow | Agent.execution 引用任意注册的已发布定义，默认跟随最新发布或固定修订；文件缺失禁用新调用，prompt 与其他参数分离，接纳请求冻结 Flow 和安全连接选择 |
+| 耐久执行 | Kernel 事务、租约与 fencing、持久等待、结果核对；外部副作用不自动获得 exactly-once |
+
+此前 Anki 的两个入口是当时的业务预设划分，不能归因为引擎缺少 OR；现在已合并成应用资源层的单一主文件及内联函数，业务 Tool 保留在外部包。本次多级分支实测发现了真实调度缺陷：未选分支的后继误执行，以及整个函数跳过后共同汇合不执行。修复与回归见 [控制节点](flow-control-primitives.md)。本次还解除整批 20 张及工具结构化结果固定 100k 的限制，并修复跨单元同名身份；目前业务定义限制总量最多 1000 张、模型每批最多 20 张。完整图片验收逐项核对来源与包内笔记，不能用“产生了 apkg 文件”作为充分证据。
+
+与其他 harness 的对照采用官方源码或文档：
+
+- [Codex 工具并行调度](https://github.com/openai/codex/blob/main/codex-rs/core/src/tools/parallel.rs) 使用工具并行声明及读写锁门控；图并发额度不能替代共享资源互斥。
+- [Claude Code 执行循环](https://code.claude.com/docs/en/how-claude-code-works) 与[子 Agent](https://code.claude.com/docs/en/sub-agents) 是模型驱动的工具调用和隔离上下文协作，固定业务分支仍应由 Flow 明确表达。
+- [pi agent-loop](https://github.com/earendil-works/pi/blob/main/packages/agent/src/agent-loop.ts) 分离校验、并发执行与按调用顺序记录结果；全局和单工具执行模式共同决定是否串行。
+- [DeepSeek Harness 工具调度](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/core/agent-loop/src/tool-calls.ts) 使用有界池和独占屏障，取消后收敛在途调用并保留调用结果配对；[DSH Workflow](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/workflow/workflow/README.md) 的 JS 条件、循环、parallel/pipeline 更直接，但契约明确不提供 journaling/resume。不能用它替换本项目已有耐久保证。
+
+本轮基础证据：durable-kernel 全包 15 文件 402 测试通过，包含真实 LocalFS/SQLite、多进程竞争、SIGKILL、等待注册竞态、消息回执与物理清理恢复；CLI 独立崩溃矩阵 23 测试通过，覆盖已提交循环不重放、动态扩图、委派汇合、预算、调度检查点，以及结果未知的媒体请求不自动重发。测试证明其覆盖的不变量，不证明所有外部设备或任意分布式存储正确。
+
+本次批量图片运行发现并修复的通用问题：
+
+- 分支跳过传播至稳定态；自动引用边以 `dependencyOnly` 保留数据等待，不重新激活未选分支。函数输入屏障不作为额外分支入口。
+- 已失败依赖在模板解析前交给 Kernel 的依赖事务处理，避免 `Missing Flow reference` 遮盖原始错误。函数返回纳入同作用域的动态成员，动态任务失败或取消时不能先发布成功结果；显式容错和 detached 策略保持原契约。
+- 动态节点可回连 spawn 尚未启动的直接下游汇合节点；整批绑定后检查越权、闭环与幂等，恢复不会重复扩图。
+- 未使用的可选连接允许无 `connectionId`，检查点解码不再阻止图片校对后的恢复；损坏字段仍明确报错。
+- 工具结构化结果尊重工具声明的大小上限，平台最高 16 MiB 字符；超限明确失败，禁止把截断展示数据交给下游。Context GC 区分输入图片资产和上下文内容引用，真实损坏的内容引用仍阻止删除。
+- 条件路径安全读取数组的长度与索引，空图片数组走文本分支；只读对象自身属性，不读取原型。`outputValidation.schema` 独立于模型协议执行本地校验和有界修复，`json_object` 也能在批次内修复漏字段；诊断记录错误路径与数量，不记录模型正文。
+
+已终结 Run 的根 Task 不可原地复活。图级 retry 仅支持仍可恢复的非终态 Run；终态失败应建立新 Run，不能改写检查点伪装恢复。真实模型漏字段时，严格汇总会阻止打包，这属于正确的失败传播；模型语义正确性和任务持久执行正确性需要分别验收。
+
+此前 llm-flow 全包 36 文件 458 测试、llm-tasks 73 测试、llm-context 35 测试通过。真实图片执行与最终 312 笔记/624 复习卡证据见 [Anki 验收](anki-flow.md)；18 个动态补全任务的实测并发峰值为 4，校对恢复和终态恢复均没有重复模型请求。
+
+随后解耦修订曾将 Anki 初始恢复项一并移除；按用户要求已纠正：单一声明源回到 `app-core/src/presets/anki-generate.json`，产品目录和系统恢复提供一个 `anki-generate.flow`，业务 Tool 仍在外部包且核心没有业务分支。多组输入建模为同一 Flow 函数的多组实参；分批由通用 transform 完成，新定义不依赖 `anki.batch`。调用模板、参数作用域与运行图通过同一 Kernel 检查点恢复，损坏的参数组索引或输入结构明确拒绝，不能回退默认参数继续执行。
+
+最终核心全包 42 文件 529 项通过，覆盖函数串/并行、按序返回、多命名参数、内联词法定义与 digest、嵌套调用、变量隔离、循环、路由、动态 spawn、整批校验、模板冻结和恢复。应用层 114 文件 709 项通过；CLI 通用调用、混合图片文本及实际 SIGKILL 恢复共 5 项通过。外部单文件新定义的 16 项集成和孤立目录完整模拟 CLI 验收通过，实际生成媒体及 Rust 包，验证 combined/grouped 与恢复不重复请求；此前真实模型证据仍对应其当时冻结的定义。命令、范围和源码摘要见[验收记录](fixtures/flow-parameter-calls-evidence.json)。
+
+随后完成通用 Agent→内部 Flow 入口：Agent 只保存引用，Flow 不反向声明 Agent；发布变更供后续新请求使用，删除文件禁用新调用，已接纳的队列与运行保留原定义。`${input.prompt}` 是只读运行输入，其他参数按 Flow 签名校验；图片表单、连接覆盖、归档依赖和损坏快照拒绝均接入。最新 llm-flow 全包 43 文件 543 项、llm-session 41 文件 326 项、app-core 117 文件 731 项通过；真实发送表单和连接配置变更使用本地模拟服务验收。具体范围与实际 Run 构造时的间接身份解析边界见[Flow Agent 验收记录](fixtures/flow-agent-evidence.json)。
+
+系统恢复清单现包含新版作文与单一 Anki Flow。旧启动逻辑同时播种两代作文；当前新版统一命名为 `essay-review`，停止新装 `essay-review-isolated`。两种已有文件、发布版本和历史引用保留，同名旧版不自动覆盖。真实系统恢复页面覆盖 Anki 可见、单主文件及三个内联函数、重复恢复保留修改；外部 16 项集成和完整本地模拟 CLI 均使用迁回应用的同一 JSON 源通过，覆盖文本/多图、combined/grouped、实际打包与校对恢复，无付费模型请求。
+
+以下为此前核查记录。
+
 当前新图采用独立的 route、taskGroup、join、aggregate@3、loop 控制节点；作文评审模板已迁移。实现、策略默认值及边界见 [Flow 控制节点](flow-control-primitives.md)。下文 route@2/@3 的派发模型保留用于旧定义兼容。
 
 2026-09-16 补充：已接通 CLI/UI 的 MCP/tools/Skill 装配、隔离任务 Skill 上下文与批准恢复，并新增会话「流程输出」入口。当前能力、边界及验证见 [Flow 能力与输出](flow-capabilities-and-output.md)。下文核查记录保留当时的测试范围。
@@ -25,7 +76,7 @@
 
 ## 2. 当前定义哪些 Flow
 
-本包提供通用定义、编译和执行设施，并提供可配置的 [作文评审示例](../../backend/app-core/src/presets/essay-review-isolated.json)。示例使用通用节点配置，不在运行器中硬编码作文业务。
+本包提供通用定义、编译和执行设施，并提供可配置的 [作文评审示例](../../backend/app-core/src/presets/essay-review.json)。示例使用通用节点配置，不在运行器中硬编码作文业务。
 
 ### 2.1 三种表示与运行身份
 
@@ -221,7 +272,7 @@ delegation.budget.maxTokens/timeoutMs 只是子任务单次请求默认限制；
 
 - Edit 拒绝空目标和相同替换，默认要求唯一匹配，替换内容始终按字面量写入（包括 `$&`、`$$` 等）；结构化结果包含实际匹配文本、替换文本和次数。
 - Write 判断文件是否存在时，不再把任意读取失败当成文件不存在；仅明确 ENOENT 或 stat 的不存在结果允许按创建记录。
-- Read 的 offset/limit 必须为正整数，单次最多 2000 行。工具驱动限制模型文本和结构化数据各自的序列化大小，遵循工具上限且最多 100000 字符；超大文本带截断提示，超大 data 省略并标记 truncated。此限制不等于底层文件读取或进程输出的内存上限。
+- Read 的 offset/limit 必须为正整数，单次最多 2000 行。模型调用模式的文本和 data 遵循工具上限且最多 100000 字符；超大文本带截断提示，超大 data 省略并标记 truncated。确定性 structured 模式完整返回 JSON，遵循工具声明的 `maxResultSizeChars`，缺省 100000，平台硬上限为 `16 * 1024 * 1024` 字符；超限返回 `OUTPUT_TOO_LARGE`，不静默截断。invoke 与 reconcile 使用相同规则，错误只包含数量和限额。此限制不等于底层文件读取或进程输出的内存上限。
 - `ToolInvokeResult` 保留兼容的 output 文本，新增可选 data/errorCode/recoverable/truncated。Bash 结构化结果保留 exitCode；命令非零退出作为已完成命令返回给模型。请求的 Bash 超时不能超过宿主调用超时。
 - 已取消请求不会进入工具；取消监听器在调用结束后移除，Edit/Write 在异步读取后、写入前检查取消。实际进程停止仍依赖宿主 Shell 和 Effect cancel 的确认协议。
 

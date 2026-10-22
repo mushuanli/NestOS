@@ -1,3 +1,4 @@
+import type { FlowRuntimeInput } from './flow-templates';
 import type {
     ArtifactDraft,
     NodePortSchemas,
@@ -51,15 +52,21 @@ export interface DagEdgeDefinition {
     input: string;
     /** Control edges order execution without contributing model input. */
     kind?: 'control' | 'data';
+    /** Wait for this dependency without activating an otherwise unselected branch. */
+    dependencyOnly?: boolean;
     /** 依赖失败时的下游行为。 */
     onFailure?: 'fail' | 'skip' | 'continue';
 }
 
 export interface DagRunSpec {
+    /** Immutable invocation data, separate from declared parameters and variables. */
+    input?: FlowRuntimeInput;
     variables?: import('./flow-definition').FlowVariables;
     variableScopes?: Record<string, import('./flow-definition').FlowVariables>;
     templateVersion?: 1;
-    parameterScopes?: Record<string, { parent: string; source?: string; defaults: Record<string, JsonValue>; values: Record<string, JsonValue>; schema?: import('./flow-definition').FlowParameter[] }>;
+    parameterScopes?: Record<string, { parent: string; source?: string; parameterSet?: number; defaults: Record<string, JsonValue>; values: Record<string, JsonValue>; schema?: import('./flow-definition').FlowParameter[] }>;
+    /** Frozen callable templates; expanded only after their input task succeeds. */
+    functionCalls?: Record<string, { child: DagRunSpec; collector: string; maxConcurrency: number }>;
     invocation?: { requestId: string; flowId: string; revision: number; digest: string; name: string; createdAt: number; branch?: string; head?: string | null };
     parameterSchema?: import('./flow-definition').FlowParameter[];
     /** Compiler-owned identity defaults by node; dynamic descendants inherit their parent's scope. */
@@ -173,6 +180,7 @@ export interface GraphPatch {
         input?: string;
         output?: string;
         kind?: 'control' | 'data';
+        dependencyOnly?: boolean;
         onFailure?: 'fail' | 'skip' | 'continue';
     }>;
 }

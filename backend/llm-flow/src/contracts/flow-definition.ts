@@ -44,6 +44,8 @@ export interface FlowEdgeDefinition {
     from: FlowNodeId;
     to: FlowNodeId;
     kind: 'control' | 'data';
+    /** Wait for this dependency without activating an otherwise unselected branch. */
+    dependencyOnly?: boolean;
     order?: number;
     output?: string;
     input?: string;
@@ -88,6 +90,8 @@ export interface FlowLayout {
 }
 
 export interface FlowDraft {
+    /** Lexically scoped callable Flow definitions stored in the same file. */
+    functions?: FlowDraft[];
     outputs?: Record<string, { value: JsonValue; schema?: JsonValue }>;
     id: FlowId;
     draftVersion: number;
@@ -261,6 +265,8 @@ export interface FlowRunGoal {
 }
 
 export interface FlowRevision {
+    /** Immutable inline definitions, recursively frozen with the owning revision. */
+    functions?: FlowRevision[];
     dependencyLocks?: Record<string, FlowDependencyLock>;
     outputs?: FlowDraft['outputs'];
     id: FlowId;

@@ -14,15 +14,21 @@ import { TOOLBOX_KINDS, toolboxPath, type ToolboxKind } from './toolbox-identity
 import { defaultToolDrawers } from './tool-groups';
 import { createToolboxFiles } from './toolbox-files';
 import { ToolboxImportTrace } from './toolbox-import-trace';
+import { ProviderTemplates } from './provider-templates';
+import { planAgentFlowExport, publishAgentFlows, rewriteAgentFlow, rewriteFlowCalls } from './agent-flow-archive';
 import type { ToolboxInventory, ToolboxNavigation } from '@itookit/app-contracts/services';
 
 /** Resource creation retains the owning services' identity and validation rules. */
 export class ToolboxResources {
     readonly drawers: ToolboxDrawers;
     private initialized?: Promise<void>;
+    private readonly templates: ProviderTemplates;
+    get providerTemplates(): Array<{id: string; name: string}> { return this.templates.list(); }
     constructor(readonly sources: Record<ToolboxKind, IFileSystem>, private readonly agents: ApplicationAgentPort, private readonly commands: ICommandBus, settings: IFileSystem,
         private readonly inventory?: ToolboxInventory & { refresh(): Promise<void> },
-        private readonly defaultDrawers: readonly Drawer[] = []) { this.drawers = new ToolboxDrawers(settings); }
+        private readonly defaultDrawers: readonly Drawer[] = [], providerTemplates: readonly LLMProvider[] = []) {
+        this.drawers = new ToolboxDrawers(settings); this.templates = new ProviderTemplates(providerTemplates, () => this.agents.getProviders(), this.agents);
+    }
     /** Prepare the whole navigation read model where the source services live. */
     async navigation(refresh = true): Promise<ToolboxNavigation> {
         if (refresh) await this.inventory?.refresh();
@@ -78,12 +84,12 @@ export class ToolboxResources {
             }
         }
     }
-    async create(kind: ToolboxKind, name: string, providerId?: string): Promise<string> {
+    async create(kind: ToolboxKind, name: string, providerId?: string, providerTemplateId?: string): Promise<string> {
         if (!name.trim()) throw new Error(t('toolbox.nameRequired'));
         name = name.trim();
         if (kind === 'tools') throw new Error(t('toolbox.toolsCreate'));
         const id = randomUUID();
-        if (kind === 'providers' || kind === 'connections') return this.createModel(kind, id, name, providerId);
+        if (kind === 'providers' || kind === 'connections') return this.createModel(kind, id, name, providerId, providerTemplateId);
         if (kind === 'prompts') {
             await this.agents.saveSystemPrompt({ id, name, content: [] });
             return toolboxPath(kind, '/' + id);
@@ -105,8 +111,8 @@ export class ToolboxResources {
             triggerPatterns: [], autoLoad: false, priority: 50, createdAt: now, modifiedAt: now });
         return toolboxPath(kind, '/' + id);
     }
-    async createInDrawer(kind: ToolboxKind, name: string, drawer: string, providerId?: string): Promise<string> {
-        const path = await this.create(kind, name, providerId);
+    async createInDrawer(kind: ToolboxKind, name: string, drawer: string, providerId?: string, providerTemplateId?: string): Promise<string> {
+        const path = await this.create(kind, name, providerId, providerTemplateId);
         if (kind === 'providers' || kind === 'connections') return path;
         try { await this.drawers.assign([{ path, name: drawer }]); return path; }
         catch (error) {
@@ -119,8 +125,8 @@ export class ToolboxResources {
             throw error;
         }
     }
-    private async createModel(kind: 'providers' | 'connections', id: string, name: string, selectedProvider?: string): Promise<string> {
-        if (kind === 'providers') await this.agents.saveProvider({ id, name, implementation: 'openai-compatible', baseURL: '', models: [], isBuiltin: false });
+    private async createModel(kind: 'providers' | 'connections', id: string, name: string, selectedProvider?: string, templateId?: string): Promise<string> {
+        if (kind === 'providers') id = await this.templates.create(id, name, templateId, provider => this.agents.saveProvider(provider));
         else {
             const providerId = selectedProvider ?? this.agents.getProviders()[0]?.id;
             if (!providerId || !this.agents.getProviders().some(provider => provider.id === providerId)) throw new Error(t('toolbox.providerRequired'));
@@ -128,11 +134,11 @@ export class ToolboxResources {
         }
         return toolboxPath(kind, '/' + encodeURIComponent(id));
     }
-    private async descriptions(): Promise<Map<string, { name: string; description?: string }>> {
+    private async descriptions(): Promise<Map<string, { name: string; description?: string; availability?: AgentDefinition['availability'] }>> {
         const [agents, skills, flows] = await Promise.all([this.agents.getAgents(), this.agents.getSkills(),
             this.commands.execute<FlowDraft[]>(FlowCommand.DraftList, {})]);
-        const map = new Map<string, { name: string; description?: string }>();
-        for (const item of agents) map.set('agents/' + item.id, item);
+        const map = new Map<string, { name: string; description?: string; availability?: AgentDefinition['availability'] }>();
+        for (const item of agents) map.set('agents/' + item.id, { name: item.name, description: item.description, availability: item.availability });
         for (const item of skills) map.set('skills/' + item.id, item);
         for (const item of flows) map.set('flows/' + item.id, item);
         return map;
@@ -140,16 +146,17 @@ export class ToolboxResources {
     async export(paths: string[], drawers: Array<{ kind: DrawerKind; name: string }> = []): Promise<string> {
         await this.prepareGroups();
         const entries = [];
-        const queue = [...new Set(paths)];
+        const queue = [...new Set(paths)], selected = new Map<string, ToolboxDefinition>();
+        for (const path of queue) selected.set(path, await this.exportData(path));
+        const agents = [...selected].filter(([path]) => path.startsWith('/agents/')).map(([, data]) => data as AgentDefinition);
+        const snapshots = await planAgentFlowExport(this.commands, agents);
+        for (const [id, snapshot] of snapshots) {
+            const path = toolboxPath('flows', '/' + id + '.flow');
+            selected.set(path, snapshot.draft); if (!queue.includes(path)) queue.push(path);
+        }
         for (const path of queue) {
-            const kind = path.split('/')[1] as ToolboxKind, source = this.sources[kind], local = path.slice(kind.length + 1);
-            if (!source || kind !== 'prompts' && kind !== 'skills' && (await source.driver.getNode(local))?.type !== 'file') throw new Error(t('toolbox.selectFiles'));
-            const data = kind === 'providers' ? await this.agents.getFullProvider(decodeURIComponent(local.slice(1)))
-                : kind === 'prompts' ? await this.agents.getSystemPrompt(decodeURIComponent(local.slice(1)))
-                : kind === 'connections' ? await this.agents.getFullConnection(decodeURIComponent(local.slice(1)))
-                : kind === 'mcp' ? (await this.agents.getMCPServers()).find(item => item.id === decodeURIComponent(local.slice(1))) : kind === 'skills' ? (await this.agents.getSkills()).find(item => item.id === local.slice(1))
-                : JSON.parse(await source.driver.readContent(local, { encoding: 'utf-8' }));
-            if (!data) throw new Error(t('toolbox.resourceMissing'));
+            const kind = path.split('/')[1] as ToolboxKind;
+            const data = selected.get(path) ?? await this.exportData(path);
             for (const id of promptIds(kind, data)) {
                 const dependency = toolboxPath('prompts', '/' + encodeURIComponent(id));
                 if (!queue.includes(dependency)) queue.push(dependency);
@@ -158,6 +165,21 @@ export class ToolboxResources {
             entries.push({ kind, data: kind === 'mcp' ? mcpConfiguration(data as MCPServer) : data, drawer: group && group.id === ungroupedId(group.kind) ? '' : group?.name });
         }
         return JSON.stringify({ format: 'itookit.toolbox', version: 1, entries, drawers }, null, 2);
+    }
+    private async exportData(path: string): Promise<ToolboxDefinition> {
+        const kind = path.split('/')[1] as ToolboxKind, source = this.sources[kind], local = path.slice(kind.length + 1);
+        if (!source || kind !== 'prompts' && kind !== 'skills' && (await source.driver.getNode(local))?.type !== 'file') throw new Error(t('toolbox.selectFiles'));
+        let data = kind === 'providers' ? await this.agents.getFullProvider(decodeURIComponent(local.slice(1)))
+            : kind === 'prompts' ? await this.agents.getSystemPrompt(decodeURIComponent(local.slice(1)))
+            : kind === 'connections' ? await this.agents.getFullConnection(decodeURIComponent(local.slice(1)))
+            : kind === 'mcp' ? (await this.agents.getMCPServers()).find(item => item.id === decodeURIComponent(local.slice(1)))
+            : kind === 'skills' ? (await this.agents.getSkills()).find(item => item.id === local.slice(1))
+            : JSON.parse(await source.driver.readContent(local, { encoding: 'utf-8' }));
+        if (!data) throw new Error(t('toolbox.resourceMissing'));
+        if (kind === 'agents') {
+            data = rewriteAgentFlow(data as AgentDefinition, new Map());
+        }
+        return data;
     }
     async import(content: string): Promise<string[]> {
         const trace = new ToolboxImportTrace();
@@ -178,16 +200,27 @@ export class ToolboxResources {
         const plan = planImport(archive.entries);
         const created: string[] = [];
         try {
-            for (const [index, entry] of plan.entries()) {
-                trace.step('write', entry.kind, index); created.push(await this.importEntry(entry.kind, entry.data, entry.id));
-            }
-            const grouped = plan.flatMap((entry, index) => entry.drawer === undefined ? [] : [{ path: created[index], name: entry.drawer }]);
+            const written = await this.writeArchivePlan(plan, trace, created);
+            const grouped = plan.flatMap(entry => entry.drawer === undefined ? [] : [{ path: written.get(entry.id)!, name: entry.drawer }]);
             trace.step('groups');
             if (grouped.length || drawers.length) await this.drawers.assign(grouped, drawers, { restoreNames: true });
-            return created;
+            return plan.map(entry => written.get(entry.id)!);
         } catch (error) {
             return this.rollbackImport(created, error, trace);
         }
+    }
+    private async writeArchivePlan(plan: ReturnType<typeof planImport>, trace: ToolboxImportTrace, created: string[]): Promise<Map<string, string>> {
+        const ordered = plan.map((entry, index) => ({ entry, index }))
+            .sort((a, b) => Number(a.entry.kind === 'agents') - Number(b.entry.kind === 'agents'));
+        const written = new Map<string, string>();
+        let preparedAgentFlows = false;
+        for (const { entry, index } of ordered) {
+            if (entry.kind === 'agents' && !preparedAgentFlows) { await publishAgentFlows(this.commands, plan); preparedAgentFlows = true; }
+            trace.step('write', entry.kind, index);
+            const path = await this.importEntry(entry.kind, entry.data, entry.id);
+            created.push(path); written.set(entry.id, path);
+        }
+        return written;
     }
     private async rollbackImport(created: string[], error: unknown, trace: ToolboxImportTrace): Promise<never> {
         const errors = [error];
@@ -258,7 +291,7 @@ function validateEntry(entry: { kind?: string; data?: Record<string, unknown> })
     if (entry.kind === 'providers' && typeof data.implementation === 'string' && Array.isArray(data.models)) return;
     if (entry.kind === 'connections' && typeof data.providerId === 'string') return;
     if (entry.kind === 'tools' && typeof data.id === 'string') return;
-    if (entry.kind === 'agents' && data.type === 'agent' && data.config && typeof data.config === 'object') return;
+    if (entry.kind === 'agents' && ['agent', 'composite', 'tool', 'workflow'].includes(String(data.type)) && data.config && typeof data.config === 'object') return;
     if (entry.kind === 'skills' && typeof data.instructions === 'string' && typeof data.enabled === 'boolean'
         && Array.isArray(data.tools) && Array.isArray(data.triggerPatterns) && typeof data.autoLoad === 'boolean' && typeof data.priority === 'number'
         && ['builtin', 'http', 'shell', 'prompt', 'mcp', 'custom'].includes(String(data.type))) return;
@@ -275,6 +308,8 @@ function planImport(entries: Array<{ kind: ToolboxKind; data: ToolboxDefinition;
         if (entry.kind === 'agents' || entry.kind === 'flows') {
             entry.data = structuredClone(entry.data);
             rewritePromptReferences(entry.kind, entry.data, id => replacements.get('prompts/' + id) ?? id);
+            if (entry.kind === 'agents') entry.data = rewriteAgentFlow(entry.data as AgentDefinition, replacements);
+            else rewriteFlowCalls(entry.data as FlowDraft, replacements);
         }
         if (entry.kind === 'connections') {
             const connection = entry.data as LLMConnection;
@@ -294,7 +329,12 @@ function rewritePromptReferences(kind: ToolboxKind, data: ToolboxDefinition, res
         for (const child of Object.values(item)) visit(child);
     };
     if (kind === 'agents') visit((data as AgentDefinition).config);
-    if (kind === 'flows') { visit((data as FlowDraft).defaults); for (const node of (data as FlowDraft).nodes) visit(node.config); }
+    const visitFlow = (flow: FlowDraft): void => {
+        visit(flow.defaults);
+        for (const node of flow.nodes) visit(node.config);
+        for (const child of flow.functions ?? []) visitFlow(child);
+    };
+    if (kind === 'flows') visitFlow(data as FlowDraft);
 }
 function promptIds(kind: ToolboxKind, data: ToolboxDefinition): string[] {
     const ids: string[] = [];

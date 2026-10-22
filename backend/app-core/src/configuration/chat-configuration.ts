@@ -39,8 +39,8 @@ async function readConfiguration(service: IAgentConfigService): Promise<ChatConf
         service.getConnections(), service.getDefaultConnection(),
         Promise.all(ids.map(async id => [id, (await service.getSystemPrompt(id))?.presets ?? []] as const)),
     ]);
-    return structuredClone({ agents: agents.map(({id, name, icon, description, defaultPrompts, config}) => ({
-        id, name, icon, description, defaultPrompts, config: {systemPromptId: config.systemPromptId,
+    return structuredClone({ agents: agents.map(({id, name, icon, description, defaultPrompts, config, execution, availability}) => ({
+        id, name, icon, description, defaultPrompts, ...(execution ? { execution } : {}), ...(availability ? { availability } : {}), config: {systemPromptId: config.systemPromptId,
             ...(config.imageProcessing ? {imageProcessing: structuredClone(config.imageProcessing)} : {})},
     })), connections, defaultConnectionId: fallback?.id,
         promptPresets: Object.fromEntries(presets),

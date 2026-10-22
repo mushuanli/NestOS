@@ -43,6 +43,7 @@ export type InteractionReply = { approved: boolean; note?: string } | string;
  * Command 层只依赖此接口，不知道 ChatInput 的 DOM 实现。
  */
 export interface IChatInputPresenter {
+    cancelPendingSend?(): void;
     hideNativeModelPicker?(): void;
     getNativeModelSelection?(): import('@itookit/ui-common').ConversationModelSelection | undefined;
     openConnectionPicker(): void;

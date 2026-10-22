@@ -4,7 +4,7 @@ import { remoteProjectFields } from './remote-project-fields';
 
 /** Keep validation errors and the user's draft inside the dialog. */
 export function showNameDialog(title: string, label: string, signal: AbortSignal,
-    save: (name: string) => Promise<void>, extra?: HTMLElement, options?: { initialName?: string; confirmLabel?: string; hideName?: boolean }): Promise<void> {
+    save: (name: string) => Promise<void>, extra?: HTMLElement, options?: { initialName?: string; confirmLabel?: string; hideName?: boolean; nameInput?: HTMLInputElement }): Promise<void> {
     if (signal.aborted) return Promise.resolve();
     return new Promise(resolve => {
         const dialog = document.createElement('dialog'); dialog.className = 'project-dialog';
@@ -12,7 +12,7 @@ export function showNameDialog(title: string, label: string, signal: AbortSignal
         const heading = document.createElement('h2'); heading.textContent = title;
         const form = document.createElement('form');
         const field = document.createElement('label'); field.textContent = label;
-        const input = document.createElement('input'); input.required = !options?.hideName; field.hidden = !!options?.hideName; input.autofocus = !options?.hideName; input.value = options?.initialName ?? ''; field.append(input);
+        const input = options?.nameInput ?? document.createElement('input'); input.required = !options?.hideName; field.hidden = !!options?.hideName; input.autofocus = !options?.hideName; input.value = options?.initialName ?? ''; field.append(input);
         const status = document.createElement('p'); status.setAttribute('role', 'alert');
         const actions = document.createElement('div'); actions.className = 'project-dialog__actions';
         const cancel = document.createElement('button'); cancel.type = 'button'; cancel.textContent = t('project.cancel');

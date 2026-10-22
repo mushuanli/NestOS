@@ -235,3 +235,58 @@ it('forwards explicit parent slots to child slots and preserves nested runtime o
     parent.nodes[0].config.connectionBindings.writer = 'missing';
     await expect(flowToDag(parent, undefined, undefined, async () => child, [], undefined, false, undefined, { text: 'text' }, prepare)).rejects.toThrow('Unknown parent connection slot');
 });
+
+it.each([false, true])('keeps an unbound optional parent slot empty in a required child (multiple=%s)', async multiple => {
+    const child = agentFlow();
+    child.nodes[0].config = { connectionId: 'writer' };
+    child.connections = [{ name: 'writer', required: true, connectionId: 'text' }];
+    child.outputs = { result: { value: 'done' } };
+    const parent = { ...child, connections: [{ name: 'secondary', required: false }], outputs: undefined, nodes: [{
+        ...child.nodes[0], id: 'call' as never, plugin: 'builtin.flow', pluginVersion: '2.0.0',
+        config: { flowId: 'child', connectionBindings: { writer: 'secondary' }, ...(multiple ? { parameterSets: [{}] } : {}) },
+    }] };
+    const prepare = (value: FlowRevision, bindings?: Record<string, string>) => prepareFlowConnections(value, bindings, {
+        ...catalog, getModelDefaults: async () => ({ chat: 'text' }),
+    });
+    const dag = await flowToDag(parent, undefined, 'text', async () => child, [], undefined, false, 'text', {}, prepare);
+    const nodes = multiple ? dag.functionCalls!['call__input'].child.nodes : dag.nodes;
+    expect(nodes.find(node => node.plugin === 'builtin.agent')?.config).toMatchObject({ connectionId: '' });
+    expect(child.connections[0]).toEqual({ name: 'writer', required: true, connectionId: 'text' });
+});
+
+it.each([false, true])('checks an unbound required child only when its branch executes (multiple=%s)', async multiple => {
+    const { Kernel } = await import('@itookit/durable-kernel');
+    const { createVFS, MemoryBackend } = await import('@itookit/vfs-core');
+    const { DurableFlowExecutor, createBuiltinDagPluginRegistry, registerDurablePrograms } = await import('@itookit/llm-flow');
+    const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
+    const fs = await manager.openFileSystem('/test');
+    const kernel = new Kernel({ catalog: { fs }, pollMs: 5 });
+    kernel.registerStorageResolver({ kind: 'test', async resolve(descriptor) { return { fs, rootPath: '/s/' + String(descriptor.locator) }; } });
+    registerDurablePrograms(kernel); await kernel.initialize();
+    const executor = new DurableFlowExecutor({ kernel, plugins: createBuiltinDagPluginRegistry() });
+    try {
+        for (const selected of [false, true]) {
+            const child = agentFlow();
+            child.nodes[0].config = { connectionId: 'writer' };
+            child.connections = [{ name: 'writer', required: true }];
+            child.outputs = { result: { value: 'done' } };
+            const parent = { ...child, connections: [{ name: 'secondary', required: false }], outputs: undefined,
+                nodes: [{ id: 'choose', name: 'Choose', plugin: 'builtin.route', pluginVersion: '1.0.0', inputs: {},
+                    config: { rules: [{ edgeId: 'take-call', expression: { kind: 'literal', value: selected } }], defaultEdgeId: 'take-safe' } },
+                { id: 'call', name: 'Call', plugin: 'builtin.flow', pluginVersion: '2.0.0', inputs: {},
+                    config: { flowId: 'child', connectionBindings: { writer: 'secondary' }, ...(multiple ? { parameterSets: [{}] } : {}) } },
+                { id: 'safe', name: 'Safe', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: { value: 'safe' } }],
+                edges: [{ id: 'take-call', from: 'choose', to: 'call', kind: 'control' },
+                    { id: 'take-safe', from: 'choose', to: 'safe', kind: 'control' }] } as FlowRevision;
+            const sessionId = 's-' + selected;
+            await kernel.createSession({ id: sessionId, storage: { kind: 'test', locator: sessionId } });
+            const dag = await flowToDag(parent, undefined, 'text', async () => child, [], undefined, false, 'text', {},
+                (value, bindings) => prepareFlowConnections(value, bindings, catalog));
+            const run = await executor.submit(sessionId, dag);
+            const exit = await run.root.wait({ timeoutMs: 5000 });
+            expect(exit.status).toBe(selected ? 'failed' : 'succeeded');
+            if (selected) expect(exit.error?.message).toContain('Missing connection binding');
+            expect((await kernel.listSessionTasks(sessionId)).some(task => task.program.kind === 'llm.agent')).toBe(false);
+        }
+    } finally { kernel.dispose(); await executor.waitIdle(); await manager.dispose(); }
+});

@@ -7,7 +7,6 @@ import { ConfigurationDeletionDialog } from '../configuration/delete-dialog';
 import type { ModelConfigurationCommands } from '@itookit/app-contracts/services';
 import { connectEditorLifecycle } from '../browser/editor-connector';
 import { DrawerActions } from './DrawerActions';
-import { drawerField } from './drawer-field';
 import { drawerKind, ungroupedId, type Drawer } from '@itookit/app-contracts';
 import { resourceDrawers } from './resource-drawers';
 import { resourceIcon } from './resource-icons';
@@ -19,7 +18,8 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import { ENTITY_ICONS, t, type NavigationRequest } from '@itookit/common';
 import { editorResourceId, type EditorFactory, type MenuItem, type ContextMenuConfig } from '@itookit/ui-common';
 import type { WorkspaceController } from '@itookit/app-contracts';
-import { showNameDialog } from '../files/project-dialog';
+import { showToolboxCreationDialog } from './create-resource-dialog';
+import { configureCreatedModel } from './creation-model-setup';
 import { chooseArchive, downloadArchive } from '../files/archive-transfer';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import { TOOLBOX_KINDS, TOOLBOX_FILTERS, toolboxFilter, toolboxKind, toolboxSourcePath, type ToolboxKind, type ToolboxFilter } from './routes';
@@ -323,35 +323,26 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.ui.setExpanded(folderId, true);
     }
     async createResource(options: { title?: string; parentPath?: string | null; content?: string; drawerId?: string } = {}): Promise<string> {
-        let created = '';
         const drawer = (options.drawerId ? this.options.resources.drawers.get(options.drawerId) : undefined) ?? this.selectedDrawer();
-        const select = document.createElement('select');
-        for (const kind of TOOLBOX_KINDS.filter(kind => kind !== 'tools' && (kind !== 'agents' || !this.options.agentsInWorkbench || this.prefs.filter === 'agents'))) { const option = document.createElement('option'); option.value = kind; option.textContent = t(`toolbox.${kind}`); select.append(option); }
-        select.value = drawer && drawer.kind !== 'tools' ? drawer.kind : this.prefs.filter === 'models' ? 'connections' : this.prefs.filter !== 'all' && this.prefs.filter !== 'tools' ? this.prefs.filter : this.options.agentsInWorkbench ? 'flows' : 'agents';
-        const label = document.createElement('label'); label.textContent = t('toolbox.type'); label.append(select);
-        const { field, providers } = this.providerField();
-        const picker = drawerField(this.options.resources.drawers);
-        const fields = document.createElement('div'); fields.append(label, field, picker.field);
-        const update = () => { const kind = select.value as ToolboxKind; field.hidden = kind !== 'connections'; picker.field.hidden = !drawerKind(kind);
-            if (drawerKind(kind)) picker.update(kind, drawer?.kind === kind ? drawer.name : ''); };
-        select.onchange = update; update();
-        await showNameDialog(t('toolbox.create'), t('toolbox.name'), this.abort.signal, async name => {
-            created = await this.options.resources.createInDrawer(select.value as ToolboxKind, name, picker.input.value, select.value === 'connections' ? providers.value : undefined);
-            await this.refresh(); await this.openResource(created);
-        }, fields, { initialName: options.title });
-        return created;
+        const kind = options.drawerId && drawer && drawer.kind !== 'tools' ? drawer.kind : undefined;
+        const kinds = TOOLBOX_KINDS.filter(item => item !== 'tools'
+            && (item !== 'agents' || !this.options.agentsInWorkbench || this.prefs.filter === 'agents'));
+        return showToolboxCreationDialog({ kinds, initialKind: kind, initialName: options.title, drawer,
+            drawers: this.options.resources.drawers, providers: [...this.options.inventory.providers].map(([id, item]) => ({ id, name: item.name }))
+                .sort((a, b) => a.name.localeCompare(b.name, 'zh-CN')), providerId: this.creationProvider(),
+            templates: this.options.resources.providerTemplates, signal: this.abort.signal,
+            save: draft => this.options.resources.createInDrawer(draft.kind, draft.name, draft.drawer, draft.providerId, draft.providerTemplateId),
+            configure: (container, path, done) => configureCreatedModel(container, path, { factories: this.options.factories,
+                resources: this.options.resources, inventory: this.options.inventory, navigate: this.options.navigate,
+                requestDelete: targets => this.deletion.request(targets), done, signal: this.abort.signal }),
+            completed: () => this.refresh(),
+            open: async path => { await this.refresh(); if (!this.closed) await this.openResource(path); } });
     }
-    private providerField(): { field: HTMLLabelElement; providers: HTMLSelectElement } {
-        const field = document.createElement('label'); field.textContent = t('toolbox.providers');
-        const providers = document.createElement('select'); providers.name = 'providerId'; field.append(providers);
-        for (const provider of [...this.options.inventory.providers.values()].sort((a, b) => a.name.localeCompare(b.name, 'zh-CN'))) {
-            const option = document.createElement('option'); option.value = provider.id; option.textContent = provider.name; providers.append(option);
-        }
+    private creationProvider(): string | undefined {
         const state = this.ui.getSnapshot(), path = [...state.selectedIds][0] ?? state.activeId ?? '';
         const id = decodeURIComponent(toolboxSourcePath(path).slice(1));
         const selected = modelDrawerProvider(path) ?? (toolboxKind(path) === 'providers' ? id : this.options.inventory.connections.get(id)?.providerId);
-        if (selected && this.options.inventory.providers.has(selected)) providers.value = selected;
-        return { field, providers };
+        return selected && this.options.inventory.providers.has(selected) ? selected : undefined;
     }
     private async export(context: VFSToolbarContext): Promise<void> {
         downloadArchive(await this.exportSelection(context.selectedIds), 'toolbox.json');

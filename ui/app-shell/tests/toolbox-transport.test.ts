@@ -23,6 +23,9 @@ it('renders and refreshes prepared toolbox data without frontend filesystem call
             instructions: 'test', tools: [], triggerPatterns: [], autoLoad: false, priority: 1 });
         const root = client.decode(await server.expose(view.root)); client.applyUpdates(await server.refresh());
         const toolbox = await root.backend.toolboxView();
+        const reference = root.services.agentService.getProviderReferences()['doubao-speech'];
+        expect(reference.reviewedAt).toBe('2026-10-22'); expect(reference.voices.length).toBeGreaterThan(1);
+        expect(reference.models.find((model: {id: string}) => model.id === 'seed-icl-2.0').support).toBe('unsupported');
         const sidebar = document.createElement('div'), editor = document.createElement('div'); document.body.append(sidebar, editor);
         const factories = Object.fromEntries(TOOLBOX_KINDS.map(kind => [kind, vi.fn()])) as never;
         workbench = new ToolboxWorkbench({ sidebar, editor, ...toolbox, factories, configuration: root.services.configuration,
@@ -40,6 +43,20 @@ it('renders and refreshes prepared toolbox data without frontend filesystem call
         await vi.waitFor(() => expect(sidebar.textContent).toContain('Updated prepared skill'));
         expect(reverseReads).toEqual([]);
         expect(methods).not.toContain('getChildren'); expect(methods).not.toContain('getNodeType');
+        expect(toolbox.resources.providerTemplates).toContainEqual({id: 'doubao-speech', name: 'Doubao (豆包语音)'});
+        expect(toolbox.resources.providerTemplates.every((item: object) => Object.keys(item).sort().join(',') === 'id,name')).toBe(true);
+        const before = runtime.agentService.getProviders().length;
+        await expect(toolbox.resources.create('providers', 'Missing preset', undefined, 'missing')).rejects.toMatchObject({code: 'PROVIDER_TEMPLATE_MISSING'});
+        expect(runtime.agentService.getProviders()).toHaveLength(before);
+        await expect(toolbox.resources.create('providers', 'Renamed speech', undefined, 'doubao-speech')).rejects.toMatchObject({code: 'PROVIDER_ALREADY_EXISTS'});
+        expect(runtime.agentService.getProviders()).toHaveLength(before);
+        await runtime.agentService.deleteProvider('doubao-speech');
+        const path = await toolbox.resources.createInDrawer('providers', 'Remote speech', '', undefined, 'doubao-speech');
+        expect(path).toBe('/providers/doubao-speech');
+        await expect(toolbox.resources.create('providers', 'Another speech', undefined, 'doubao-speech')).rejects.toMatchObject({code: 'PROVIDER_ALREADY_EXISTS'});
+        const created = (await runtime.agentService.getFullProvider(path.slice('/providers/'.length)))!;
+        expect(created).toMatchObject({name: 'Remote speech', isBuiltin: false, media: {'speech.synthesize': {adapter: 'doubao-speech'}}});
+        expect(created.apiKey).toBeUndefined(); expect(created.models[0].operations?.['speech.synthesize']?.formats).toContain('mp3');
         const skills = await root.backend.skillsFiles();
         expect((await skills.driver.getChildren('/')).some((node: {metadata: {title: string}}) => node.metadata.title === 'Updated prepared skill')).toBe(true);
         expect(reverseReads).toEqual([]);

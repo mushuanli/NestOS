@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { FlowStore } from '@itookit/llm-flow';
 import { FlowDefinitionStore } from '@itookit/llm-flow';
-import { createMindosFlowLibrary } from '../src/presets/flow-library';
+import { createMindosFlowLibrary, createMindosFlowDrawers } from '../src/presets/flow-library';
 import { essayReviewDraft, seedDefaultFlows, ESSAY_REVIEW_FLOW_ID } from '../src/presets/default-flows';
+import { externalFlow } from './fixtures/flow-library';
 
 interface MemoryFile { nodeId: string; name: string; content: string; }
 
@@ -45,29 +46,27 @@ function memoryStore(): FlowStore {
 }
 
 describe('default essay-review flow', () => {
-    it('declares connection slots and routes verdict/report to premium', () => {
+    it('uses the single current implementation with isolated review and explicit loop controls', () => {
         const draft = essayReviewDraft();
-        expect(draft.connections?.map(connection => connection.name)).toEqual(['default', 'premium']);
-        expect(draft.defaultConnection).toBe('default');
-        const verdict = draft.nodes.find(node => node.id === 'verdict');
-        const report = draft.nodes.find(node => node.id === 'report');
-        expect((verdict?.config as Record<string, unknown>).connectionId).toBe('premium');
-        expect((report?.config as Record<string, unknown>).connectionId).toBe('premium');
+        expect(draft.id).toBe('essay-review');
+        expect(draft.nodes.map(node => node.plugin)).toEqual(expect.arrayContaining(['builtin.loop', 'builtin.taskGroup', 'builtin.join']));
+        expect(draft.variables?.essay).toEqual({ type: 'string', initial: '${param.essay}' });
+        expect(draft.nodes.find(node => node.id === 'report')?.plugin).toBe('builtin.transform');
     });
 
-    it('seeds connections into both the persisted draft and revision', async () => {
+    it('publishes the same current template once with its variables and control settings', async () => {
         const store = new FlowDefinitionStore(memoryStore());
         await seedDefaultFlows(store);
         const draft = await store.loadDraft(ESSAY_REVIEW_FLOW_ID);
-        expect(draft?.connections?.map(connection => connection.name)).toEqual(['default', 'premium']);
-        expect(draft?.defaultConnection).toBe('default');
+        expect(draft?.parameters?.find(parameter => parameter.name === 'maxRounds')?.default).toBe(10);
         const revision = await store.loadRevision(ESSAY_REVIEW_FLOW_ID, 1);
-        expect(revision?.connections?.map(connection => connection.name)).toEqual(['default', 'premium']);
-        expect(revision?.defaultConnection).toBe('default');
+        expect(revision?.nodes).toEqual(draft?.nodes);
+        expect(revision?.variables).toEqual(draft?.variables);
+        expect(await store.loadDraft('essay-review-isolated')).toBeNull();
     });
 });
 
-it('does not recreate the legacy essay Flow after deletion and restart', async () => {
+it('does not recreate the current essay Flow after deletion and restart', async () => {
     const storage = memoryStore();
     await seedDefaultFlows(new FlowDefinitionStore(storage));
     await storage.deleteFile(`/${ESSAY_REVIEW_FLOW_ID}.flow`);
@@ -87,4 +86,29 @@ it('installs product templates in the backend and preserves user edits and delet
     await storage.deleteFile(`/${template.id}.flow`);
     await seedDefaultFlows(new FlowDefinitionStore(storage));
     expect(await new FlowDefinitionStore(storage).loadDraft(template.id)).toBeNull();
+});
+
+it('uses one essay template and one Anki entry while preserving explicitly installed external flows on restart', async () => {
+    const storage = memoryStore(), store = new FlowDefinitionStore(storage);
+    const external = externalFlow('external-workflow');
+    await store.installBuiltinDraft(external);
+    await seedDefaultFlows(store);
+    expect((await store.listDrafts()).map(draft => draft.id).sort()).toEqual([
+        'anki-generate', 'essay-review', 'external-workflow',
+    ]);
+    expect(createMindosFlowLibrary().map(draft => draft.id)).toEqual(['essay-review', 'anki-generate']);
+    expect(createMindosFlowDrawers()).toEqual([]);
+    await seedDefaultFlows(new FlowDefinitionStore(storage));
+    expect(await store.loadDraft(external.id)).toMatchObject({ name: external.name });
+});
+
+it.each(['essay-review', 'essay-review-isolated'])('keeps existing %s files and revisions while offering one canonical template', async id => {
+    const storage = memoryStore(), store = new FlowDefinitionStore(storage);
+    const previous = externalFlow(id); previous.name = 'Existing legacy essay with personal edits';
+    const installed = (await store.installBuiltinDraft(previous))!;
+    const published = await store.createRevision(installed);
+    await seedDefaultFlows(store);
+    expect(await store.loadDraft(id)).toEqual(installed);
+    expect(await store.loadRevision(id, published.revision)).toEqual(published);
+    expect(createMindosFlowLibrary().filter(flow => flow.id.startsWith('essay-review')).map(flow => flow.id)).toEqual(['essay-review']);
 });

@@ -94,7 +94,7 @@ function validateDeclarations(definitions: FlowVariables): void {
     for (const [key, value] of Object.entries(definitions)) {
         if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(key) || ['__proto__', 'prototype', 'constructor'].includes(key)) throw new Error(`Invalid Flow variable name: ${key}`);
         if (!value || !['string', 'number', 'boolean', 'json'].includes(value.type) || !Object.hasOwn(value, 'initial')) throw new Error(`Invalid Flow variable declaration: ${key}`);
-        if (flowTemplateReferences(value.initial).some(ref => ref.root !== 'param')) throw new Error(`Variable initial values may reference only param: ${key}`);
+        if (flowTemplateReferences(value.initial).some(ref => !['param', 'input'].includes(ref.root))) throw new Error(`Variable initial values may reference only param or input: ${key}`);
         if (!flowTemplateReferences(value.initial).length) assertVariableValue(key, value.initial, definitions);
     }
 }

@@ -1,3 +1,4 @@
+import { prepareFlowRuntimeInput } from './runtime-input';
 import { memberGroup } from './control/scheduling';
 import { decodeSchedulerCheckpoint } from './checkpoint-decoder';
 import { FlowScheduler } from './scheduler';
@@ -24,6 +25,7 @@ import { restoreFlowHandle } from './restore-handle';
 import { acquireSchedulerLease, isSchedulerOwnershipLost, type SchedulerLease } from './scheduler-lease';
 import type { WorkspaceFinalization } from './workspace-finalization';
 import { createRunCatalog } from './run-catalog';
+import { expandFunctionCalls, functionTemplateNodes, functionCallFailureCategory } from './function-batch';
 import type { DagEdgeDefinition, DagNodeDefinition, DagPluginCatalog, DagRunSpec, JsonValue as CommonJsonValue } from '../contracts';
 import type { ToolDefinition } from '@itookit/llm-context';
 import {
@@ -180,10 +182,11 @@ export class DurableFlowExecutor {
         const contextProgramVersion = saved ? saved.contextProgramVersion ?? '1'
             : this.options.kernel.programs?.has('llm.agent', '2') && this.options.kernel.programs?.has('llm.chat', '2') ? '2' : '1';
         spec = saved || spec.templateVersion === 1 ? structuredClone(spec) : compileReferenceGraph(compileControlGraph(compileDispatchGraph(structuredClone(spec))));
+        spec.input = prepareFlowRuntimeInput(spec.input);
         parameters = prepareFlowParameters(spec.parameterSchema, parameters);
         validateDispatchCapacity(spec, parameters);
         validateVariableGraph(spec);
-        const plugins = createRunCatalog(this.options.plugins, saved?.nodes ?? spec.nodes, saved?.catalog);
+        const plugins = createRunCatalog(this.options.plugins, [...(saved?.nodes ?? []), ...functionTemplateNodes(spec)], saved?.catalog);
         const sessionContext = structuredClone(saved ? saved.sessionContext
             : this.options.resolveNewRunContext ? await this.options.resolveNewRunContext(sessionId) : this.options.sessionContext);
         const nodeDefaults = new Map(Object.entries(structuredClone(spec.nodeDefaults ?? {}))
@@ -222,8 +225,8 @@ export class DurableFlowExecutor {
             const timeoutMs = positiveInteger(spec.timeoutMs ?? spec.runPolicy?.timeoutMs);
             const maxTokens = positiveInteger(spec.maxTokens ?? spec.runPolicy?.maxTokens);
             const startedAt = saved?.startedAt ?? Date.now();
-            const routeEdgeIds = collectRouteEdgeIds(spec);
-            const { backEdges, loopNodes } = findCycles(spec.nodes, spec.edges);
+            const routeEdgeIds = collectRouteEdgeIds(saved ?? spec);
+            const { backEdges, loopNodes } = findCycles(saved?.nodes ?? spec.nodes, saved?.edges ?? spec.edges);
             const collections = createSchedulerCollections(spec, saved, routeEdgeIds, workspace?.directory);
             const { nodes, edges, delegationDepth, delegationGroups, delegationGroupByChild, skipped,
                 detachedNodes, appliedPatches, appliedGraphRetries, completionOrder, dispatchOrder, variableStore, nodeGenerations, edgeState } = collections;
@@ -287,8 +290,9 @@ export class DurableFlowExecutor {
                 bindPatchNode: this.options.bindPatchNode
                     ? (id, node, defaults) => this.options.bindPatchNode!(id, node, defaults) : undefined,
             });
-            const preparation = { sessionId, spec, nodes, edges, instances, skipped, backEdges, loopNodes,
-                edgeState, plugins, parameters, callInputs, variableStore, nodeConnections, sessionContext, maxConcurrency, latestDone };
+            const preparation = { sessionId, spec, nodes, edges, instances, skipped, detachedNodes, backEdges, loopNodes,
+                edgeState, plugins, parameters, callInputs, variableStore, nodeConnections, sessionContext, maxConcurrency, latestDone,
+                toleratedFailureNodes: () => toleratedFailureNodes() };
             const submitNode = async (source: DagNodeDefinition, historyGroup?: string): Promise<void> => {
                 const { node, iteration, task, dependencies, parameters: localParameters, context } = await prepareNodeTask(preparation, source);
                 await this.emitHook('task.started', sessionId, { nodeId: node.id, iteration });
@@ -315,12 +319,47 @@ export class DurableFlowExecutor {
             };
 
             const graphMutations = new GraphMutationRuntime({
-                spec, parameters, nodes, edges, plugins, maxNodes, appliedPatches, nodeDefaults, nodeConnections,
+                spec, parameters, callInputs, nodes, edges, plugins, maxNodes, appliedPatches, nodeDefaults, nodeConnections,
                 edgeState, backEdges, skipped, dispatchOrder, instances, workspaceDirectory: workspace?.directory,
                 bindNode: this.options.bindPatchNode
                     ? (node, defaults) => this.options.bindPatchNode!(sessionId, node, defaults) : undefined,
             });
-            const applyEffects = (output: unknown, parentId: string) => graphMutations.applyEffects(output, parentId);
+            const expandCalls = async (output: unknown, parentId: string): Promise<void> => {
+                const started = Date.now();
+                const template = spec.functionCalls?.[parentId];
+                const previousCalls = Object.values(spec.parameterScopes ?? {}).filter(scope => scope.source === parentId && scope.parameterSet !== undefined).length;
+                const existingCount = previousCalls * (template?.child.nodes.length ?? 0);
+                const batch = expandFunctionCalls(spec, parentId, output, nodes.length - existingCount, maxNodes);
+                if (batch) {
+                    callInputs[parentId] = output;
+                    graphMutations.applyCompiledPatch(batch.patch, parentId, batch.scopes);
+                    const collector = nodes.find(node => node.id === spec.functionCalls![parentId].collector)!;
+                    collector.config = { value: batch.results };
+                    const cycles = findCycles(nodes, edges);
+                    for (const id of cycles.backEdges) backEdges.add(id);
+                    for (const id of cycles.loopNodes) loopNodes.add(id);
+                    for (const id of collectRouteEdgeIds({ nodes })) {
+                        if (!routeEdgeIds.has(id)) edgeState.set(id, 'pending');
+                        routeEdgeIds.add(id);
+                    }
+                    await this.emitHook('flow.calls.expanded', sessionId, { nodeId: parentId, operation: 'flow.call.expand',
+                        stage: 'graph', result: 'success', rootTaskId: published!.root.id, operationId: `${published!.root.id}:${parentId}`, count: batch.count,
+                        maxConcurrency: spec.functionCalls![parentId].maxConcurrency, elapsedMs: Date.now() - started });
+                }
+            };
+            const applyEffects = async (output: unknown, parentId: string): Promise<void> => {
+                const started = Date.now();
+                try {
+                    await expandCalls(output, parentId);
+                    await graphMutations.applyEffects(output, parentId);
+                } catch (error) {
+                    if (spec.functionCalls?.[parentId]) await this.emitHook('flow.calls.failed', sessionId, {
+                        nodeId: parentId, operation: 'flow.call.expand', stage: 'graph', result: 'failure',
+                        rootTaskId: published!.root.id, operationId: `${published!.root.id}:${parentId}`,
+                        errorCategory: functionCallFailureCategory(error), elapsedMs: Date.now() - started });
+                    throw error;
+                }
+            };
 
             const delegation = new DelegationController({
                 nodes, edges, edgeState, depths: delegationDepth, groups: delegationGroups,
@@ -499,7 +538,7 @@ export class DurableFlowExecutor {
 
 
 /** 收集 route 节点声明的出边 id（含默认边；这些边默认 pending，等 route 决定激活/禁用）。 */
-function collectRouteEdgeIds(spec: DagRunSpec): Set<string> {
+function collectRouteEdgeIds(spec: Pick<DagRunSpec, 'nodes'>): Set<string> {
     const ids = new Set<string>();
     for (const node of spec.nodes) {
         if (node.plugin !== 'builtin.route' || !isRecord(node.config)) continue;

@@ -115,11 +115,13 @@ pnpm --filter @itookit/app-core typecheck
 
 - `browser-routes.ts` 是路由语义唯一来源；显式的 Session manifest `folder: null` 表示根目录，不回退到陈旧路由前缀。远程 provider 的实例方法必须保留 receiver，不能取出后无绑定调用。
 
-- 作文业务预设位于 `src/presets/essay-review.json`，以声明数据保存提示词与参数；`presets/default-flows.ts` 只负责复制和播种。产品文案不得混入通用 Session 机制。
+- 作文业务预设统一位于 `src/presets/essay-review.json`，以声明数据保存提示词与参数；`presets/default-flows.ts` 只负责复制和播种。旧用户文件与发布版本保留，产品文案不得混入通用 Session 机制。
 - `contextEngineOptions` 与 `agentResolution` 由应用装配透传；Conversation 系统的清理使用返回实例的 dispose，不重置进程单例。
 
-- UI 模板目录包含 `src/presets/essay-review-isolated.json` 与 Anki 三个定义 `anki-build.json` / `anki-generate.json` / `anki-from-image.json`，公共 `createMindosFlowLibrary()` 返回副本；宿主共用安装、恢复和菜单机制。Anki 定义源在独立 `tools/anki-cli/flows/`，通过通用媒体节点及外部 Rust 工具生成清单与包，不新增业务执行分支。产品提示词不进入 llm-ui 包。
-- `presets/flow-library.ts` 声明 Flow 默认逻辑分组，host 注入 ToolboxResources；配置机制不按业务 Flow ID 分支。用户抽屉归属优先于产品默认，导出/导入先准备分组目录，归档保存实际分组名；分组不移动文件或改变调用身份。
+- 产品 Flow 库包含 `src/presets/essay-review.json` 和 `src/presets/anki-generate.json`，公共 `createMindosFlowLibrary()` 返回副本；宿主共用安装、系统恢复和菜单机制。二合一 Anki Flow 只有此一份声明源，三个内联函数随主版本发布，不单独安装。`tools/anki-cli` 维护业务 Tool 实现，其集成验收读取应用声明源，不保留 Flow 副本；产品提示词不进入 llm-ui 包。已有用户文件、发布版本及手动分组保留，通用核心不按业务 ID 分支。
+- `presets/flow-library.ts` 保留 Flow 默认逻辑分组入口（当前为空），host 可向 ToolboxResources 显式注入通用分组；配置机制不按业务 Flow ID 分支。用户抽屉归属优先于产品默认，导出/导入先准备分组目录，归档保存实际分组名；分组不移动文件或改变调用身份。
+- 外部 Flow 可用通用 `functions` 数组携带内联函数；显式恢复、发布、导入与归档只创建主 Flow 资源，不把内联函数加入全局库。工具箱递归收集及重映射内联函数的提示词依赖，保持局部函数 ID 和调用引用不变；回归见 inline-flow-library。
+- Agent 可通过通用 `execution.kind=flow` 引用任意内部 Flow；app-core 注入资源存在、发布版本及语法观察，`availability` 只作投影，不写回 Agent 文件。Flow 删除后禁用新调用，恢复或重新发布后重检；运行准入与已接纳快照由 Session 层负责。Agent 归档携带发布 Flow 及跨文件依赖，导入先发布依赖再创建 Agent 并重映射全局身份，内联函数 ID 保留。
 
 MindOS 默认工具列表属于 `src/presets/harness-tools.ts`，通过 app-core 公共出口供 app-shell 装配聊天与 Agent 设置 UI；禁止从公共配置契约读取产品默认授权。
 

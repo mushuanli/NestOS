@@ -6,6 +6,8 @@ export type HarnessHookEvent =
     | 'task.started'
     | 'task.completed'
     | 'task.failed'
+    | 'flow.calls.expanded'
+    | 'flow.calls.failed'
     | 'agent.spawned'
     | 'agent.stopped'
     | 'tool.before'

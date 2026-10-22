@@ -5,7 +5,8 @@ import { createBuiltinDagPluginRegistry } from '../src/flow/builtin-plugins';
 import { describe, expect, it, vi } from 'vitest';
 import type { FlowDraft, FlowRevision } from '../src/contracts';
 import type { FlowStore } from '../src/flow-definition-store';
-import { FlowDefinitionStore, generateFlowId } from '../src/flow-definition-store';
+import { createFlowRevision, FlowDefinitionStore, generateFlowId } from '../src/flow-definition-store';
+import { flowRevisionToDraft } from '../src/flow/definition-projection';
 import { flowRevisionDigest } from '../src/flow/validation';
 import { flowToDag } from '../src/flow/to-dag';
 
@@ -62,6 +63,24 @@ function revision(number: number, name: string): FlowRevision {
 }
 
 describe('FlowDefinitionStore', () => {
+    it('keeps nested authored definitions through adoption, publication and archive projection', async () => {
+        const storage = memoryStore(), store = new FlowDefinitionStore(storage);
+        const child: FlowDraft = { id: 'helper' as never, name: 'Helper', nodes: [], edges: [], layout: {},
+            parameters: [{ name: 'value', type: 'string' }], draftVersion: 1, updatedAt: 0 };
+        const original = { ...child, id: '' as never, functions: [{ ...child, functions: [child] }],
+            variables: { count: { type: 'number' as const, initial: 2 } }, outputs: { result: { value: 'literal' } },
+            defaults: { stream: false }, runPolicy: { maxNodes: 20 } };
+        const file = await storage.createFile('template.flow', JSON.stringify(original));
+        const adopted = await store.adoptDraft(file.nodeId, 'Adopted');
+        expect(adopted.functions).toEqual(original.functions);
+        const published = createFlowRevision(adopted, 3, 100);
+        const projected = flowRevisionToDraft(published);
+        expect(projected.functions?.[0].functions?.[0]).toMatchObject({ id: 'helper', draftVersion: 3 });
+        expect(projected).toMatchObject({ variables: original.variables, outputs: original.outputs,
+            defaults: original.defaults, runPolicy: original.runPolicy });
+        adopted.functions![0].name = 'Changed';
+        expect(published.functions![0].name).toBe('Helper');
+    });
     it('creates, lists and saves drafts with engine-owned optimistic versions', async () => {
         const store = new FlowDefinitionStore(memoryStore());
         const created = await store.createDraft({ id: 'draft', name: 'Draft' });
@@ -160,7 +179,7 @@ function libraryCommands() {
     const handlers = new Map<string, (args: any) => Promise<any>>();
     new DagCommandService({ kernel: {} as never, plugins, flowStore: store })
         .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
-    const template: FlowDraft = JSON.parse(readFileSync(new URL('../../app-core/src/presets/essay-review-isolated.json', import.meta.url), 'utf8'));
+    const template: FlowDraft = JSON.parse(readFileSync(new URL('../../app-core/src/presets/essay-review.json', import.meta.url), 'utf8'));
     return { store, files, template, execute: (name: string, args: unknown) => handlers.get(name)!(args) };
 }
 
@@ -254,4 +273,24 @@ it.each(['missing', 'throws'])('creates distinct Flow identities in the same mil
         const ids = Array.from({length: 100}, () => generateFlowId('New Flow'));
         expect(new Set(ids).size).toBe(100); expect(ids.every(id => /^new-flow-[a-z0-9-]{8}$/.test(id))).toBe(true);
     } finally {clock.mockRestore(); vi.unstubAllGlobals();}
+});
+
+it('publishes inline callable revisions and their dependency locks in one stored Flow', async () => {
+    const storage = memoryStore(), store = new FlowDefinitionStore(storage, createBuiltinDagPluginRegistry());
+    const parent = await store.createDraft({ id: 'single-file', name: 'Single file' });
+    parent.nodes = [{ id: 'invoke' as never, name: 'Invoke', plugin: 'builtin.flow', pluginVersion: '2.0.0', inputs: {}, config: { flowId: 'local', parameterSets: [{}] } }];
+    parent.functions = [{ ...parent, id: 'local' as never, name: 'Local', functions: undefined,
+        nodes: [{ id: 'value' as never, name: 'Value', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: { value: 'original' } }],
+        outputs: { result: { value: '${nodes.value.outputs.result}' } } }];
+    const first = await store.createRevision(parent);
+    expect((await storage.listFiles()).filter(file => file.name.endsWith('.flow'))).toHaveLength(1);
+    expect(first.functions![0]).toMatchObject({ id: 'local', revision: 1 });
+    expect(first.dependencyLocks!.invoke).toMatchObject({ flowId: 'local', revision: 1, digest: first.functions![0].digest });
+    const saved = (await store.loadRevision('single-file', 1))!;
+    expect((await flowToDag(saved)).functionCalls!.invoke__input.child.nodes.some(node => node.id === 'value')).toBe(true);
+    parent.functions![0].nodes[0].config = { value: 'changed' };
+    const second = await store.createRevision(parent);
+    expect(second.functions![0].revision).toBe(2);
+    expect(second.functions![0].digest).not.toBe(first.functions![0].digest);
+    expect((await store.loadRevision('single-file', 1))!.functions![0].nodes[0].config).toEqual({ value: 'original' });
 });

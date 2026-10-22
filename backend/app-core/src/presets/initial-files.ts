@@ -3,7 +3,6 @@ import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import demo from './digital-twin-demo.json';
 import { createMindosFlowLibrary } from './flow-library';
-import { essayReviewDraft } from './default-flows';
 import { restoreAndPublishFlow } from './restore-flows';
 
 const noteWrites = new WeakMap<IFileSystem, Promise<boolean>>();
@@ -13,7 +12,7 @@ export interface InitialFileResult { id: string; status: 'restored' | 'preserved
 
 /** Explicit recovery writes through the active workspace and existing Flow commands. */
 export class MindosInitialFiles {
-    private readonly flows = [...createMindosFlowLibrary(), essayReviewDraft()];
+    private readonly flows = createMindosFlowLibrary();
     constructor(private readonly commands: ICommandBus, private readonly notes?: IFileSystem) {}
     async list(): Promise<InitialFileEntry[]> {
         const entries: InitialFileEntry[] = [];

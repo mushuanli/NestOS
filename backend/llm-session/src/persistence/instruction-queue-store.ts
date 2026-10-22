@@ -1,5 +1,8 @@
 import type { JsonValue, Kernel } from '@itookit/durable-kernel';
 import type { SessionInstructionQueue } from '../contracts/instruction-queue';
+import { flowRevisionDigest } from '@itookit/llm-flow';
+import { isFlowConnectionSnapshot } from '../session/flow-connection-snapshot';
+import { isFlowRunPlan } from '../session/flow-run-plan';
 
 export const INSTRUCTION_QUEUE_KEY = 'conversation/instructions';
 export interface StoredInstructionQueue extends SessionInstructionQueue {
@@ -46,8 +49,27 @@ function validateQueue(value: StoredInstructionQueue & {schemaVersion?: number},
             || typeof item.branch !== 'string' || typeof item.agentId !== 'string' || !Number.isFinite(item.createdAt)
             || item.submissionDigest !== undefined && !/^[a-f0-9]{64}$/.test(item.submissionDigest)
             || !Array.isArray(item.files) || item.files.some(file => !file || typeof file.name !== 'string' || typeof file.type !== 'string')) invalid();
+        if (item.flowBinding !== undefined && !validFlowBinding(item)) invalid();
         ids.add(item.id);
     }
     if (value.accepted !== undefined && (!Array.isArray(value.accepted) || value.accepted.some(receipt =>
         typeof receipt.id !== 'string' || !/^[a-f0-9]{64}$/.test(receipt.digest)))) invalid();
+}
+
+function validFlowBinding(item: SessionInstructionQueue['items'][number]): boolean {
+    try {
+        const binding = item.flowBinding, execution = item.sendIntent?.execution;
+        if (!binding || !binding.definition || !Array.isArray(binding.dependencies) || !binding.agent
+            || binding.agent.id !== item.agentId || typeof binding.agent.agentVersion !== 'string'
+            || execution?.kind !== 'flow' || binding.source !== undefined && binding.source !== 'explicit') return false;
+        if (!isFlowConnectionSnapshot(binding.connections)) return false;
+        if (binding.plan !== undefined && !isFlowRunPlan(binding.plan)) return false;
+        const flow = binding.definition, agent = binding.agent.execution;
+        if (execution.flowId !== flow.id || execution.revision !== flow.revision) return false;
+        if (binding.source !== 'explicit' && (agent?.kind !== 'flow' || agent.flowId !== flow.id
+            || agent.revision !== undefined && agent.revision !== flow.revision)) return false;
+        return [flow, ...binding.dependencies].every(definition => !!definition && typeof definition.id === 'string'
+            && Number.isSafeInteger(definition.revision) && definition.revision > 0 && Array.isArray(definition.nodes)
+            && Array.isArray(definition.edges) && definition.digest === flowRevisionDigest(definition));
+    } catch { return false; }
 }

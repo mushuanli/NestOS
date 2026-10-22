@@ -1,4 +1,4 @@
-import { flowTemplateReferences } from '../../contracts';
+import { flowTemplateReferences, renderFlowText } from '../../contracts';
 import { assignmentUpdates } from '../variables';
 import type { JsonValue } from '../../contracts';
 import type { Decision, DurableTaskProgram, KernelAction, TaskInputEvent } from '@itookit/durable-kernel';
@@ -6,7 +6,7 @@ import { collectDependency, dependenciesReady, dependencyWait } from '@itookit/l
 import { evaluate } from '../operations';
 import { flowSchemaIssue } from '../schema-registry';
 import { invalidFields, mergeInput } from './input';
-import { createInvocation, dispatchView, invocationKey, resultValue } from './invocation';
+import { createInvocation, dispatchView, dispatchTemplateContext, invocationKey, resultValue } from './invocation';
 import type { DispatchInput, DispatchState } from './types';
 import { FlowReducerRegistry, orderedUpdates, projectSummary } from './join';
 import { mergeResults } from './results';
@@ -130,7 +130,7 @@ function afterBatch(state: DispatchState): Step {
 function requestRevision(state: DispatchState): Step {
     const id = `revision-${++state.revisionSequence}`;
     return { state, actions: [{ type: 'request-interaction', interaction: { id, kind: 'input',
-        prompt: state.revision!.prompt, payload: { fields: state.revision!.fields, state: dispatchView(state) } as unknown as JsonValue } }],
+        prompt: renderFlowText(state.revision!.prompt, dispatchTemplateContext(state)), payload: { fields: state.revision!.fields, state: dispatchView(state) } as unknown as JsonValue } }],
         next: { type: 'wait', on: { type: 'interaction', id } } };
 }
 
@@ -172,7 +172,7 @@ function receiveRevision(state: DispatchState, event: TaskInputEvent): Step {
         const changed = Object.entries(updates).some(([key, value]) => JSON.stringify(state.values[key]) !== JSON.stringify(value));
         const hasAssignments = Object.keys(branch.assign ?? {}).length > 0;
         if (hasAssignments) {
-            const patch = assignmentUpdates(branch.assign, value, { param: state.initialParameters ?? state.values, vars: state.variableValues }, state.variables ?? {});
+            const patch = assignmentUpdates(branch.assign, value, dispatchTemplateContext(state), state.variables ?? {});
             updateVariables(state, patch, event.taskId, branch.key);
         } else state.values = { ...state.values, ...updates };
         if (changed && !hasAssignments) state.inputRevision = `${state.inputRevision}:${state.round}`;
@@ -202,7 +202,7 @@ function applyBranchAssignments(state: DispatchState): void {
         const branch = state.branches.find(item => item.key === key)!;
         if (!branch.assign || !state.received[key]) continue;
         const patch = assignmentUpdates(branch.assign, state.received[key].value,
-            { param: state.initialParameters ?? state.values, vars: state.variableValues }, state.variables ?? {});
+            dispatchTemplateContext(state), state.variables ?? {});
         for (const name of Object.keys(patch)) if (Object.hasOwn(updates, name)) throw new Error(`Concurrent variable assignment: ${name}`);
         Object.assign(updates, patch);
         commits.push({ key, patch });

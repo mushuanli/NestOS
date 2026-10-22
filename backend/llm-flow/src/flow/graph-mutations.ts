@@ -9,6 +9,7 @@ import { mergeAgentConfig } from './to-dag';
 import { resolveNodeConnection } from './connections';
 import { withDispatchWorkspace, validateDispatchCapacity } from './structured/limits';
 import { validateVariableGraph } from './variables';
+import type { CompiledCallScopes } from './function-batch';
 
 type ConnectionScope = NonNullable<DagRunSpec['nodeConnections']>[string];
 type BoundNode = Partial<Pick<DagNodeDefinition, 'config' | 'inputs'>>;
@@ -17,6 +18,7 @@ type BoundNode = Partial<Pick<DagNodeDefinition, 'config' | 'inputs'>>;
 export interface GraphMutationState {
     spec: DagRunSpec;
     parameters?: Record<string, JsonValue>;
+    callInputs?: Record<string, unknown>;
     nodes: DagNodeDefinition[];
     edges: DagEdgeDefinition[];
     plugins: ReturnType<typeof createRunCatalog>;
@@ -48,6 +50,27 @@ export class GraphMutationRuntime {
         }
     }
 
+    /** Compiler-owned templates retain their already admitted identities and lexical scopes. */
+    applyCompiledPatch(patch: GraphPatch, parentId: string, scopes: CompiledCallScopes): void {
+        const state = this.state, fingerprint = graphPatchFingerprint(patch);
+        const previous = state.appliedPatches.get(patch.idempotencyKey);
+        if (previous !== undefined) {
+            if (previous !== fingerprint) throw new Error(`Graph patch ${patch.idempotencyKey}: idempotency conflict`);
+            return;
+        }
+        this.assertCapacity(patch);
+        const nodes = patch.nodes.map(node => withDispatchWorkspace(node, state.workspaceDirectory));
+        state.plugins.addNodes(nodes);
+        const edges = validateGraphPatch({ ...patch, nodes }, state.nodes, state.edges, parentId, state.plugins, this.unavailableTargets(), true);
+        const scoped = Object.fromEntries(Object.entries(scopes).map(([key, value]) => [key, { ...state.spec[key as keyof CompiledCallScopes], ...value }]));
+        const spec = { ...state.spec, ...scoped, nodes: [...state.nodes, ...nodes], edges: [...state.edges, ...edges] };
+        validateDispatchCapacity(spec, state.parameters, state.callInputs); validateVariableGraph(spec);
+        this.publishPatch(patch, nodes, edges, parentId, fingerprint);
+        Object.assign(state.spec, scoped);
+        for (const [id, defaults] of Object.entries(scopes.nodeDefaults ?? {})) state.nodeDefaults.set(id, defaults);
+        for (const [id, connections] of Object.entries(scopes.nodeConnections ?? {})) state.nodeConnections.set(id, connections);
+    }
+
     private async applyPatch(patch: GraphPatch, parentId: string): Promise<void> {
         const state = this.state;
         const fingerprint = graphPatchFingerprint(patch);
@@ -57,7 +80,7 @@ export class GraphMutationRuntime {
             return;
         }
         state.plugins.addNodes(patch.nodes);
-        const additions = validateGraphPatch(patch, state.nodes, state.edges, parentId, state.plugins);
+        const additions = validateGraphPatch(patch, state.nodes, state.edges, parentId, state.plugins, this.unavailableTargets());
         this.assertCapacity(patch);
         const boundNodes: DagNodeDefinition[] = [];
         for (const node of patch.nodes) boundNodes.push(await this.bindNode(node, parentId));
@@ -90,10 +113,15 @@ export class GraphMutationRuntime {
     private validateBoundPatch(patch: GraphPatch, boundNodes: DagNodeDefinition[], additions: DagEdgeDefinition[], parentId: string): void {
         const state = this.state;
         state.plugins.addNodes(boundNodes);
-        validateGraphPatch({ ...patch, nodes: boundNodes }, state.nodes, state.edges, parentId, state.plugins);
+        validateGraphPatch({ ...patch, nodes: boundNodes }, state.nodes, state.edges, parentId, state.plugins, this.unavailableTargets());
         const spec = { ...state.spec, nodes: [...state.nodes, ...boundNodes], edges: [...state.edges, ...additions] };
-        validateDispatchCapacity(spec, state.parameters);
+        validateDispatchCapacity(spec, state.parameters, state.callInputs);
         validateVariableGraph(spec);
+    }
+
+    private unavailableTargets(): Set<string> {
+        return new Set([...this.state.skipped, ...[...this.state.instances]
+            .filter(([, handles]) => handles.length > 0).map(([id]) => id)]);
     }
 
     private publishPatch(patch: GraphPatch, nodes: DagNodeDefinition[], edges: DagEdgeDefinition[], parentId: string, fingerprint: string): void {

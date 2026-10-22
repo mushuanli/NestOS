@@ -102,6 +102,7 @@ function signature(item: SessionInstruction, includeBinding = true): string {
     const owner = source?.kind === 'project-draft' ? source : source ? { kind: source.kind, ownerId: source.ownerId } : null;
     const values = [item.branch, item.agentId, item.overrides ?? null, item.origin ?? 'user', item.historyPolicy ?? 'include', intent, owner];
     if (includeBinding && item.connectionBinding) values.push(item.connectionBinding);
+    if (includeBinding && item.flowBinding) values.push(item.flowBinding);
     return canonical(values);
 }
 

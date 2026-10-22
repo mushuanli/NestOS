@@ -23,7 +23,7 @@ async function mount(p = provider()) {
     const service = { getProviders: () => [{ ...p, hasApiKey: true }], getFullProvider, saveProvider, testConnection,
         listProviderModels: vi.fn(), getConnections: async () => [], onChange: () => () => {}, getProviderAuthorization: async () => ({ supported: false, status: 'signed-out' }) };
     const root = document.createElement('div'); document.body.append(root);
-    const editor = new ProviderSettingsEditor(root, service as never, { target: { kind: 'entity', entityType: 'provider', id: 'p' } });
+    const editor = new ProviderSettingsEditor(root, service as never, { target: { kind: 'entity', entityType: 'provider', id: 'p' } }, {'speech.synthesize': {input: '你好'}});
     editors.push(editor); await editor.render();
     return { root, editor, service };
 }
@@ -32,6 +32,7 @@ it('keeps stored credentials write-only and tests the chosen text model even whe
     const { root, service } = await mount();
     expect(service.getFullProvider).not.toHaveBeenCalled();
     expect(root.querySelector<HTMLInputElement>('[name="apiKey"]')!.value).toBe('');
+    expect(root.querySelector<HTMLElement>('[data-provider-text-test]')!.hidden).toBe(false);
     expect([...root.querySelectorAll<HTMLOptionElement>('[name="connectionTestModel"] option')].map(option => option.value)).toEqual(['text']);
     root.querySelector<HTMLButtonElement>('#btn-test-provider')!.click();
     await vi.waitFor(() => expect(service.testConnection).toHaveBeenCalledOnce());
@@ -42,6 +43,10 @@ it('keeps stored credentials write-only and tests the chosen text model even whe
 it('never sends a text request from a speech-only service and exposes a separate media verification', async () => {
     const p = provider(); p.models = p.models.slice(0, 1);
     const { root, service } = await mount(p);
+    expect(root.querySelector<HTMLElement>('[data-provider-text-test]')!.hidden).toBe(true);
+    expect(root.querySelector('.provider-settings__storage')!.closest('[hidden]')).not.toBeNull();
+    expect(root.querySelector('#btn-test-provider')!.closest('[hidden]')).not.toBeNull();
+    expect(root.querySelector('[name="apiKey"]')!.closest('[hidden]')).toBeNull();
     root.querySelector<HTMLButtonElement>('#btn-test-provider')!.click();
     expect(service.testConnection).not.toHaveBeenCalled();
     expect(root.querySelector('[data-probe-model] option')?.getAttribute('value')).toContain('speech.synthesize');
@@ -51,6 +56,17 @@ it('never sends a text request from a speech-only service and exposes a separate
     await vi.waitFor(() => expect(service.testConnection).toHaveBeenCalledWith(expect.objectContaining({
         operation: 'speech.synthesize', request: expect.objectContaining({ input: '你好', model: 'speech' }),
     })));
+});
+
+it('updates text verification visibility when the last text model changes category', async () => {
+    const { root } = await mount();
+    const textTest = root.querySelector<HTMLElement>('[data-provider-text-test]')!;
+    const category = root.querySelectorAll<HTMLSelectElement>('.model-category-select')[1];
+    category.value = 'audio'; category.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(textTest.hidden).toBe(true);
+    category.value = 'chat'; category.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(textTest.hidden).toBe(false);
+    expect(root.querySelector<HTMLSelectElement>('[name="connectionTestModel"]')!.value).toBe('text');
 });
 
 it('disables unsupported catalog discovery and preserves the capability through form saves', async () => {

@@ -1,0 +1,275 @@
+{
+  "date": "2026-10-22",
+  "runId": "20261022104654-932f7435",
+  "flow": "anki-generate",
+  "processingMode": "grouped",
+  "inputInventory": "anki-yimg-input-inventory.json",
+  "model": "deepseek-v4-flash",
+  "review": {
+    "runId": "20261022104654-932f7435",
+    "sourceCards": 312,
+    "groupSizes": [
+      66,
+      73,
+      74,
+      75,
+      24
+    ],
+    "missing": 0,
+    "extra": 0,
+    "corrections": {
+      "nameNormalization": 2
+    }
+  },
+  "inspection": {
+    "passed": true,
+    "run_id": "20261022104654-932f7435",
+    "checks": [
+      {
+        "check": "source_images_and_groups",
+        "passed": true,
+        "images": 5,
+        "groups": [
+          66,
+          73,
+          74,
+          75,
+          24
+        ]
+      },
+      {
+        "check": "expected_source_count",
+        "passed": true,
+        "notes": 312
+      },
+      {
+        "check": "durable_batch_count",
+        "passed": true,
+        "batches": 18
+      },
+      {
+        "check": "ocr_task_count",
+        "passed": true,
+        "ocr_tasks": 5
+      },
+      {
+        "check": "single_durable_task_per_worker",
+        "passed": true,
+        "unexpected_creation_counts": 0
+      },
+      {
+        "check": "concurrency_limit",
+        "passed": true,
+        "configured": 4,
+        "observed_batch_peak": 4
+      },
+      {
+        "check": "group_boundaries_preserved",
+        "passed": true,
+        "groups": [
+          66,
+          73,
+          74,
+          75,
+          24
+        ]
+      },
+      {
+        "check": "batch_partition",
+        "passed": true,
+        "batch_sizes": [
+          20,
+          20,
+          20,
+          6,
+          20,
+          20,
+          20,
+          13,
+          20,
+          20,
+          20,
+          14,
+          20,
+          20,
+          20,
+          15,
+          20,
+          4
+        ]
+      },
+      {
+        "check": "batch_partition_identity_and_order",
+        "passed": true
+      },
+      {
+        "check": "manifest_valid",
+        "passed": true
+      },
+      {
+        "check": "package_zip_crc",
+        "passed": true,
+        "entries": 2
+      },
+      {
+        "check": "package_media_index",
+        "passed": true,
+        "media": 0
+      },
+      {
+        "check": "package_sqlite_integrity",
+        "passed": true
+      },
+      {
+        "check": "package_counts",
+        "passed": true,
+        "notes": 312,
+        "cards": 624
+      },
+      {
+        "check": "package_guid_and_field_layout",
+        "passed": true,
+        "fields_per_note": 51
+      },
+      {
+        "check": "all_11_fields_nonempty",
+        "passed": true,
+        "missing_field_counts": {}
+      },
+      {
+        "check": "exact_name_unit_multiset",
+        "passed": true,
+        "missing": 0,
+        "extra": 0
+      },
+      {
+        "check": "fair_in_distinct_units",
+        "passed": true,
+        "units": [
+          "3",
+          "8"
+        ]
+      },
+      {
+        "check": "reviewed_symbol_and_chn_preserved",
+        "passed": true,
+        "checked": {
+          "symbol": 261,
+          "chn": 312
+        },
+        "mismatches": {}
+      },
+      {
+        "check": "source_order_preserved",
+        "passed": true
+      },
+      {
+        "check": "pkg2md_312",
+        "passed": true,
+        "json_cards": 312,
+        "markdown_rows": 312
+      },
+      {
+        "check": "repacked_zip_crc",
+        "passed": true,
+        "entries": 2
+      },
+      {
+        "check": "repacked_media_index",
+        "passed": true,
+        "media": 0
+      },
+      {
+        "check": "repacked_sqlite_integrity",
+        "passed": true
+      },
+      {
+        "check": "repacked_counts",
+        "passed": true,
+        "notes": 312,
+        "cards": 624
+      },
+      {
+        "check": "repacked_guid_and_field_layout",
+        "passed": true,
+        "fields_per_note": 51
+      },
+      {
+        "check": "repack_guid_and_all_51_fields",
+        "passed": true,
+        "changed_notes": 0,
+        "compared_notes": 312,
+        "compared_fields": 15912
+      },
+      {
+        "check": "original_package_unchanged",
+        "passed": true,
+        "sha256": "ef3a727e0132fc953a19acc1447dafb71c9f864fa3c0c2fb9f75f32fc1f023cf"
+      }
+    ]
+  },
+  "resumeAtReview": {
+    "exitCode": 3,
+    "newModelRequests": 0
+  },
+  "resumeAfterCompletion": {
+    "runId": "20261022104654-932f7435",
+    "exitCode": 0,
+    "newTasks": 0,
+    "newEffects": 0,
+    "newModelRequests": 0,
+    "packageUnchanged": true,
+    "packageSha256": "ef3a727e0132fc953a19acc1447dafb71c9f864fa3c0c2fb9f75f32fc1f023cf"
+  },
+  "scope": {
+    "realModel": true,
+    "generatedImages": false,
+    "generatedAudio": false,
+    "ankiDesktopImport": false
+  },
+  "modelRequests": {
+    "recognition": 5,
+    "completion": 18,
+    "resumeAtReview": 0,
+    "resumeAfterCompletion": 0
+  },
+  "regressionTests": {
+    "durableKernel": 402,
+    "cliCrashMatrix": 23,
+    "llmFlow": 458,
+    "llmTasks": 73,
+    "llmContext": 35,
+    "tools": 51,
+    "ankiFlowAndDrawers": 18,
+    "ankiRust": 13,
+    "ankiNode": 8
+  },
+  "mockCliVerification": {
+    "success": true,
+    "restoredWithoutRequests": true,
+    "textOnly": true,
+    "invalidInputBlockedBeforeModel": true,
+    "photoReviewAndResume": true,
+    "grouped": [
+      {
+        "mode": "combined",
+        "textCards": 45,
+        "batchSizes": [
+          20,
+          20,
+          5
+        ]
+      },
+      {
+        "mode": "grouped",
+        "textCards": 45,
+        "batchSizes": [
+          20,
+          1,
+          20,
+          4
+        ]
+      }
+    ]
+  }
+}

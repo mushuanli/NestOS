@@ -1,0 +1,85 @@
+.toolbox-create { box-sizing: border-box; }
+.toolbox-create--setup.settings-root {
+    width: min(960px, calc(100vw - 32px));
+    height: min(900px, calc(100dvh - 32px));
+    max-height: calc(100dvh - 32px);
+    margin: auto;
+    padding: 24px;
+    overflow: hidden;
+    border: 1px solid var(--st-border-color, #e2e8f0);
+    border-radius: 16px;
+    color: var(--st-text-primary, #0f172a);
+    background: var(--st-bg-primary, #fff);
+}
+.toolbox-create--setup[open] { display: flex; flex-direction: column; }
+.toolbox-create--setup::backdrop { background: #0f172a66; }
+.toolbox-create--setup > [role="alert"] { color: var(--st-color-danger, #b91c1c); }
+.toolbox-create__setup { display: grid; flex: 1; min-height: 0; grid-template-rows: auto minmax(0, 1fr) auto; gap: 16px; }
+.toolbox-create__setup[hidden] { display: none; }
+.toolbox-create__setup > h2 { margin: 0; }
+.toolbox-create__setup > .project-dialog__actions { flex-wrap: wrap; }
+.toolbox-create__setup > .project-dialog__actions > button[hidden] { display: none; }
+.toolbox-create__setup-content { overflow: auto; min-height: 0; }
+.toolbox-create__setup-editor { min-width: 0; }
+.toolbox-create__setup-connections { padding: 16px; border: 1px solid var(--st-border-color, #e2e8f0); border-radius: 12px; }
+.toolbox-create__setup-connections > small { display: block; margin-bottom: 12px; color: var(--st-text-secondary, #64748b); }
+.toolbox-create__setup-list { display: flex; flex-wrap: wrap; gap: 8px; margin-block: 12px; }
+.toolbox-create__connection-form { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-block: 12px; }
+.toolbox-create__connection-form[hidden] { display: none; }
+.toolbox-create__connection-form > label { display: grid; gap: 8px; flex: 1 1 200px; }
+.toolbox-create__connection-form input { width: 100%; min-height: 44px; padding: 8px 12px; color: inherit; background: inherit; border: 1px solid var(--st-border-color, #cbd5e1); border-radius: 8px; font: inherit; }
+@media (max-width: 640px) {
+    .toolbox-create--setup { padding: 16px; }
+    .toolbox-create__setup .settings-btn { min-height: 44px; }
+}
+
+.toolbox-create__fields {
+    border: 0;
+    margin: 0;
+    padding: 0;
+    min-width: 0;
+}
+
+.toolbox-create__fields[hidden], .toolbox-create__choices[hidden] { display: none; }
+.toolbox-create__choices { display: grid; gap: 8px; margin-bottom: 16px; }
+.toolbox-create__choices > p { margin: 0 0 8px; }
+.project-dialog .toolbox-create__choice { display: flex; align-items: center; gap: 12px; width: 100%; min-height: 44px; text-align: start; }
+.toolbox-create__choice > span { display: flex; align-items: center; }
+.toolbox-create__choice svg { width: 18px; height: 18px; }
+.toolbox-create__back { margin-inline-end: auto; }
+
+.toolbox-create__provider { margin-bottom: 16px; }
+.toolbox-create__provider > label { margin-bottom: 8px; }
+.toolbox-create__provider > input { margin-bottom: 8px; box-sizing: border-box; }
+.toolbox-create__provider > small { display: block; line-height: 1.5; }
+.toolbox-create__options {
+    max-height: min(220px, 30dvh);
+    overflow-y: auto;
+    border: 1px solid var(--mm-border-color, #cbd5e1);
+    border-radius: 8px;
+    margin-bottom: 8px;
+    background: var(--mm-bg-color, #fff);
+}
+
+.toolbox-create__options[hidden] { display: none; }
+.project-dialog .toolbox-create__option {
+    display: block;
+    width: 100%;
+    min-height: 44px;
+    border: 0;
+    border-radius: 0;
+    text-align: start;
+}
+
+.project-dialog .toolbox-create__option:hover,
+.project-dialog .toolbox-create__option[data-active="true"],
+.project-dialog .toolbox-create__option[aria-selected="true"] { background: var(--vfs-active-bg, #eef2ff); }
+.project-dialog .toolbox-create__option:disabled { opacity: 0.5; cursor: default; }
+.project-dialog .toolbox-create__custom {
+    position: sticky;
+    bottom: 0;
+    border-top: 1px solid var(--mm-border-color, #cbd5e1);
+    background: var(--mm-bg-color, #fff);
+}
+
+.toolbox-create__empty { padding: 12px; color: var(--text-secondary, #64748b); font-size: 13px; }

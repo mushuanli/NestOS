@@ -2,7 +2,10 @@ import { escapeHTML, t } from '@itookit/common';
 import type { AgentDefinition, LLMSkill } from '@itookit/kernel-adapters/contracts';
 
 /** Defaults describe host policy; undefined grants continue to inherit that policy. */
-export interface AgentCapabilityOptions { defaultToolIds?: readonly string[]; }
+export interface AgentCapabilityOptions {
+    defaultToolIds?: readonly string[];
+    listFlows?(): Promise<Array<{ id: string; name: string }>>;
+}
 
 const ids = (value: string) => [...new Set(value.split(/[\s,]+/).filter(Boolean))];
 

@@ -33,6 +33,7 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         overrides = { ...overrides,
             executionMode: overrides?.executionMode ?? this.ctx.chatInput.getConfig?.().settings?.executionMode ?? 'chat',
             ...(overrides?.flowParameters ? { flowParameters: structuredClone(overrides.flowParameters) } : {}),
+            ...(overrides?.flowConnectionBindings ? { flowConnectionBindings: { ...overrides.flowConnectionBindings } } : {}),
         };
         try {
             if (await dispatchDirectCommand(text, files, this.ctx.executeDirectCommand)) return true;

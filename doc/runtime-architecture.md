@@ -316,7 +316,7 @@ Session 实现不依赖 common。`ConversationSystemOptions.hostPorts` 注入实
 Session 的发布构建内联 kernel-adapters/contracts 的纯配置函数和类型声明；适配器包只作为开发依赖，不新增发布运行时依赖。
 
 
-公共机制与产品策略：作文评审的提示词、评分阈值和默认流程位于 `backend/app-core/src/presets/essay-review.json`，播种位于 `backend/app-core/src/presets/default-flows.ts`。Session 不再持有或导出这些内容。`agentResolution.missingAgent` 可由宿主拒绝或提供回退；精确身份解析和授权约束保持严格。
+公共机制与产品策略：作文评审的提示词、评分阈值和默认流程位于 `backend/app-core/src/presets/essay-review.json`，播种位于 `backend/app-core/src/presets/default-flows.ts`，与系统恢复共用产品 Flow 目录。旧作文文件及发布版本保留，但不再作为第二个默认模板安装。Session 不再持有或导出这些内容。`agentResolution.missingAgent` 可由宿主拒绝或提供回退；精确身份解析和授权约束保持严格。
 
 Context 的 `ContextEngineOptions` 注入默认窗口、输入预算和完整请求计量；服务与宿主摘要请求共同使用该计量。默认采用 UTF-8 字节估算；`IContextEngine` 可替换窗口选择和预算计量。应用通过 `contextEngineOptions` 接入。
 

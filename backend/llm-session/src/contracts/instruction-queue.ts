@@ -17,6 +17,16 @@ export interface SessionInstruction extends SessionInstructionInput {
     /** Digest of the original request, before host-derived bindings or attachment paths. */
     submissionDigest?: string;
     connectionBinding?: { connectionId?: string; defaults: import('@itookit/kernel-adapters/contracts').ModelDefaults };
+    /** Host-resolved source definitions; accepted instructions do not follow later edits. */
+    flowBinding?: {
+        source?: 'explicit';
+        definition: import('@itookit/llm-flow/contracts').FlowRevision;
+        dependencies: import('@itookit/llm-flow/contracts').FlowRevision[];
+        agent: import('../core/types').ExecutorConfig;
+        connections: import('./flow-connection-snapshot').FlowConnectionSnapshot;
+        /** Absent only for legacy accepted instructions. */
+        plan?: import('./flow-run-plan').FlowRunPlan;
+    };
     id: string;
     branch: string;
     createdAt: number;

@@ -73,7 +73,8 @@ export const createLLMFactory = (
             try { await editor.init(container); return editor; } catch (error) { await editor.destroy(!!handoff); throw error; }
         }
         if (options.sessionDraft) {
-            const draft = new SessionDraftEditor(container, agentService, chatOptions, deps.ocr, createEditor);
+            const draft = new SessionDraftEditor(container, agentService, chatOptions, deps.ocr, createEditor,
+                { commands: deps.commandBus, configuration: deps.configuration });
             await draft.init(container); return draft;
         }
         let pendingCreations = pendingByContainer.get(container);

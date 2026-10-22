@@ -119,3 +119,7 @@ MCP 日志与客户端身份经 MCPConnectionOptions.logger/clientInfo 实例注
 设备 ioctl 在分派前验证身份、配置、消息和调用参数；Connection/Provider 直接保存路径也验证，加载时跳过无效配置并保留合法删除回执。模型 URL、密钥和协议字段不允许依赖 JavaScript 隐式转换；配置身份禁止路径分隔符。Skill 定义和 MCP 配置继续由各自管理器检查语义。
 
 ChatConfigurationView 是聊天选择器的只读聚合观察契约；Snapshot 仅包含 Agent 展示字段及 systemPromptId、预设提示词、ConnectionMeta 与 Provider 模型目录，不含凭据和系统提示词正文。宿主实现聚合和订阅，契约入口不加载服务。
+
+AgentDefinition.execution 可声明普通 Agent 或 Flow 引用（flowId、可选 revision、默认参数与连接绑定）；契约只使用基础数据，不依赖 llm-flow。availability 是宿主派生的只读可用性，禁止写回 Agent 源文件；ChatConfigurationSnapshot 保留 execution/availability 供通用入口展示，Flow 执行、Schema 和版本冻结由上层负责。
+
+豆包语音产品目录与只读 API 资料在 llm-management/constants/catalogs/doubao-speech.json；运行目录仅派生已实现的资源模型/格式/音色。模型请求体变体与资源 ID 分开，文档支持不代表适配器实现或账号授权。getProviderReferences 返回预设资料副本，不混入用户 Provider 存储或覆盖已有配置；不得让机制入口反向加载产品目录。

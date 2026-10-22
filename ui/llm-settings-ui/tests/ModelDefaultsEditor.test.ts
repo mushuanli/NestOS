@@ -3,9 +3,10 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ModelDefaultsEditor } from '../src/editors/ModelDefaultsEditor';
 import { t } from '@itookit/common';
 import type { OcrControls } from '@itookit/ui-common';
+import type { MediaProbeExamples } from '@itookit/kernel-adapters/contracts';
 
 afterEach(() => { document.body.replaceChildren(); });
-function fixture(ocr?: OcrControls) {
+function fixture(ocr?: OcrControls, examples: MediaProbeExamples = {'speech.synthesize': {input: '你好'}}) {
     const provider = { id: 'p', name: '<Provider>', implementation: 'openai-compatible', media: {
         'image.generate': { adapter: 'openai-images' }, 'speech.synthesize': { adapter: 'openai-speech' },
     }, models: [{ id: 'chat', name: 'Chat' }, { id: 'image', name: 'Picture', category: 'image', operations: {
@@ -20,7 +21,7 @@ function fixture(ocr?: OcrControls) {
         testConnection: vi.fn(async () => ({ success: true, message: 'verified', model: 'chat' })) };
     const root = document.createElement('div'); document.body.append(root);
     const navigate = vi.fn(async () => {});
-    const editor = new ModelDefaultsEditor(root, service as never, { hostContext: { navigate } } as never, ocr);
+    const editor = new ModelDefaultsEditor(root, service as never, { hostContext: { navigate } } as never, ocr, examples);
     return { editor, root, service, connections, navigate, defaults: (value: Record<string, string>) => { defaults = value; } };
 }
 
@@ -68,6 +69,14 @@ it('shows request identifiers and specific network failures from the shared prob
     await vi.waitFor(() => expect(f.root.textContent).toContain('TLS certificate rejected'));
     expect(f.root.textContent).toContain('request-test'); expect(f.root.textContent).toContain('15 ms');
     await f.editor.destroy();
+});
+
+it('uses host examples for both media operations without starting a test', async () => {
+    const f = fixture(undefined, {'image.generate': {input: 'Example picture'}, 'speech.synthesize': {input: 'Example speech'}});
+    await f.editor.init(f.root);
+    expect(f.root.querySelector<HTMLTextAreaElement>('[data-purpose="image.generate"] [data-probe-input]')!.value).toBe('Example picture');
+    expect(f.root.querySelector<HTMLTextAreaElement>('[data-purpose="speech.synthesize"] [data-probe-input]')!.value).toBe('Example speech');
+    expect(f.service.testConnection).not.toHaveBeenCalled(); await f.editor.destroy();
 });
 
 it('preserves verification input across unchanged service notifications and scopes speech verification to speech', async () => {

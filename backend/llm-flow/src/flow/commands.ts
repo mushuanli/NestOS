@@ -7,9 +7,7 @@ import type { Kernel, SessionHandle, TaskRecord, TaskSnapshot } from '@itookit/d
 import { type FlowDefinitionStore } from '../flow-definition-store';
 import { submitRun, type GraphRunDefinition } from '../run-submission';
 import { expandDispatchDraft } from './structured/expand';
-import { flowToDag, type FlowNodeBinder } from './to-dag';
-import { hasValidationErrors } from './validation';
-import { validateFlowParameters } from './parameters';
+import { type FlowNodeBinder } from './to-dag';
 import { FlowCommand } from './command-names';
 import { retryFlowTask } from './retry-task';
 import { requestFlowGraphRetry } from './graph-retry';
@@ -17,6 +15,7 @@ import { readFlowRunMembers } from './run-members';
 import { restoreFlowHandle } from './restore-handle';
 import { readFlowTaskTranscript, type FlowTranscriptQuery } from './transcript';
 import { DurableFlowExecutor, type FlowExecutionHandle } from './executor';
+import { prepareFlowRun } from './prepare-run';
 
 export interface DagCommandServiceOptions {
     prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>;
@@ -188,15 +187,11 @@ export class DagCommandService {
     async prepareRun({ sessionId, flow, parameters, connectionId, fallbackConnectionId, connectionBindings }: FlowRunPreparation) {
         if (!sessionId) throw new Error('DAG run requires sessionId');
         if (this.options.canWriteSession && !await this.options.canWriteSession(sessionId)) throw new Error('Session is read-only on this host');
-        const issues = [
-            ...checkFlowSyntax(flow, {plugins: this.options.plugins}).diagnostics,
-            ...validateFlowParameters(flow.parameters, parameters),
-        ];
-        if (hasValidationErrors(issues)) throw new Error(issues.map(issue => issue.message).join('; '));
         const resolved = fallbackConnectionId !== undefined ? fallbackConnectionId ?? undefined
             : await this.options.resolveConnection?.(sessionId, connectionId);
-        return flowToDag(flow, this.options.bindNode ? (node, defaults) => this.options.bindNode!(sessionId, node, defaults) : undefined, resolved, (id, revision) =>
-            this.options.flowStore.loadRevision(id, revision), [], flow.dependencyLocks, false, connectionId, connectionBindings, this.options.prepareConnections);
+        return prepareFlowRun(flow, { plugins: this.options.plugins, parameters, fallbackConnectionId: resolved, connectionId, connectionBindings,
+            bindNode: this.options.bindNode ? (node, defaults) => this.options.bindNode!(sessionId, node, defaults) : undefined,
+            resolveComposite: (id, revision) => this.options.flowStore.loadRevision(id, revision), prepareConnections: this.options.prepareConnections });
     }
 
     /** Submit trusted compiled input; command callers continue through RunStart admission. */

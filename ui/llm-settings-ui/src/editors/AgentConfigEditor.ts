@@ -2,6 +2,7 @@ import { SettingsAutoSave, SettingsValidationError, requestSettingsSave } from '
 import {renderAgentImageSettings, readAgentImageSettings} from './agent-image-settings';
 import { renderPromptReference, bindPromptReference } from './agent-prompt-reference';
 import { editorResourceId } from '@itookit/ui-common';
+import { renderAgentExecution, readAgentExecution, bindAgentExecution } from './agent-execution';
 // @file: llm-ui/editors/AgentConfigEditor.ts
 
 import {
@@ -36,7 +37,7 @@ export class AgentConfigEditor implements IEditor {
         _container: HTMLElement,
         private readonly options: EditorOptions,
         private service: IAgentManagementService,
-        capabilities: AgentCapabilityOptions = {},
+        private readonly capabilities: AgentCapabilityOptions = {},
     ) { this.defaultToolIds = [...new Set(capabilities.defaultToolIds ?? [])]; }
 
     async init(container: HTMLElement, initialContent?: string) {
@@ -340,6 +341,10 @@ export class AgentConfigEditor implements IEditor {
             </div>
         `;
 
+        const execution = document.createElement('div');
+        execution.innerHTML = renderAgentExecution(agent, await this.capabilities.listFlows?.() ?? []);
+        this.container.querySelector('.agent-header')!.after(execution);
+
         if (this.options.mountSettings) {
             const slot = document.createElement('div');
             this.container.querySelector('.agent-header')!.after(slot);
@@ -391,6 +396,7 @@ export class AgentConfigEditor implements IEditor {
             return;
         }
         bindAgentCapabilities(this.container, this.defaultToolIds);
+        bindAgentExecution(this.container);
         // 全局变更监听
         const handleChange = () => {
             this._isDirty = true;
@@ -623,6 +629,7 @@ export class AgentConfigEditor implements IEditor {
         this.content.icon = getVal('icon');
         this.content.description = getVal('description');
         this.content.type = type;
+        this.content.execution = readAgentExecution(this.container);
 
         // 回写预设 Prompt 列表（过滤掉 name 和 prompt 均为空的行）
         this.collectPromptsToContent();

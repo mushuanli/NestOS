@@ -878,6 +878,9 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     getProviderDefaults(): Record<string, LLMProvider> {
         return structuredClone(this.presets.providers);
     }
+    getProviderReferences(): Record<string, import('../contracts/provider-reference').ProviderApiReference> {
+        return structuredClone(this.presets.providerReferences ?? {});
+    }
 
     getProvider(providerId: string): LLMProvider | undefined {
         return this.providerManager?.getProvider(providerId);

@@ -5,6 +5,7 @@ import type { ProviderConnectionTestParams } from '@itookit/driver-llm/contracts
 // 连接 / MCP / Skill 管理全部委托给注入的 ILLMManagementService（由 LLMDeviceDriver 实现）。
 
 import { FileBackedService } from '../utils/file-backed-service';
+import { AgentFlowAvailabilityProjection, agentSource, type AgentFlowAvailabilitySource } from './agent-flow-availability';
 import type { IFileSystem } from '@itookit/vfs-core';
 import type { FSNode, FSSearchQuery } from '@itookit/vfs-core';
 import type { RestorableItem } from '../contracts';
@@ -33,6 +34,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     private _eventUnsubscribers: Array<() => void> = [];
     private _systemPromptCache = new Map<string, SystemPromptDefinition>();
     private _systemPromptListLoaded = false;
+    private readonly flowAvailability: AgentFlowAvailabilityProjection;
 
     constructor(
         fs: IFileSystem,
@@ -40,6 +42,14 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
         private readonly host: SessionHost = createSessionHost(),
     ) {
         super(fs, host.logger);
+        this.flowAvailability = new AgentFlowAvailabilityProjection(host.logger);
+    }
+
+    configureFlowAvailability(source: AgentFlowAvailabilitySource): void {
+        this.flowAvailability.configure(source, () => {
+            void this.flowAvailability.refresh(this._agents).then(() => this.notify());
+        });
+        if (this.initialized) void this.flowAvailability.refresh(this._agents).then(() => this.notify());
     }
 
     // ─── FileBackedService lifecycle ─────────────────────────────────────────
@@ -87,6 +97,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     private async refreshData(): Promise<void> {
         try {
             this._agents = await this.scanAgentFiles();
+            await this.flowAvailability.refresh(this._agents);
             this.host.logger.info('Agent service data refreshed', { agentCount: this._agents.length });
         } catch (e) {
             this.host.logger.error('Failed to refresh agent service data', { error: e });
@@ -156,13 +167,14 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     // ─── IAgentConfigService — reads ────────────────────────────────────────────────
 
     listAgents(): AgentDefinition[] {
-        return [...this._agents];
+        return this._agents.map(agent => this.flowAvailability.project(agent));
     }
 
     getAgentResourceId(id: string): string | undefined { return this._agentNodeIds.get(id); }
 
     findAgent(id: string): AgentDefinition | undefined {
-        return this._agents.find(a => a.id === id);
+        const agent = this._agents.find(a => a.id === id);
+        return agent && this.flowAvailability.project(agent);
     }
 
     /** Resolve a System Prompt library entry (stored as /system-prompts/{id}.sp), in-memory cached. */
@@ -229,7 +241,8 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
 
     async getAgents(): Promise<AgentDefinition[]> {
         await this.waitForLoad();
-        return [...this._agents];
+        await this.flowAvailability.refresh(this._agents);
+        return this._agents.map(agent => this.flowAvailability.project(agent));
     }
 
     async getAgentConfig(agentId: string): Promise<AgentDefinition | null> {
@@ -244,8 +257,8 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
         }
         if (!found) return null;
 
-        const result: AgentDefinition = JSON.parse(JSON.stringify(found));
-        return result;
+        await this.flowAvailability.refresh([found]);
+        return this.flowAvailability.project(found);
     }
 
     async getConnection(id: string): Promise<ConnectionMeta | undefined> {
@@ -263,6 +276,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
 
     async saveAgent(agent: AgentDefinition, options?: { onDuplicate?: 'merge' | 'error' }): Promise<void> {
         await this.waitForLoad();
+        agent = agentSource(agent);
         const filename = `${agent.id}.agent`;
         const contentStr = JSON.stringify(agent, null, 2);
         const metadata = { icon: agent.icon || '🤖', title: agent.name, description: agent.description };
@@ -326,6 +340,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
         } else {
             this._agents.push(agent);
         }
+        await this.flowAvailability.refresh(this._agents);
         this.notify();
     }
 
@@ -362,6 +377,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     getDefaultAgents(): InitialAgentDef[] { return this.llmService.getDefaultAgents(); }
     getDefaultConnections() { return this.llmService.getDefaultConnections(); }
     getProviderDefaults(): Record<string, LLMProvider> { return this.llmService.getProviderDefaults(); }
+    getProviderReferences() { return this.llmService.getProviderReferences?.() ?? {}; }
     getProvider(providerId: string): LLMProvider | undefined { return this.llmService.getProvider(providerId); }
     getProviders(): LLMProvider[] { return this.llmService.getProviders(); }
     getFullProvider(id: string): LLMProvider | undefined | Promise<LLMProvider | undefined> { return this.llmService.getFullProvider(id); }
@@ -596,7 +612,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
                     const content = await this.engine.driver.readContent(node.path, { representation: 'bytes' });
                     if (!content) return null;
                     const jsonStr = typeof content === 'string' ? content : new TextDecoder().decode(content as ArrayBuffer);
-                    const data = JSON.parse(jsonStr) as AgentDefinition;
+                    const data = agentSource(JSON.parse(jsonStr) as AgentDefinition);
                     if (data.id) {
                         return { ...data, tags: node.tags, _scanPath: node.path } as AgentDefinition & { _scanPath: string };
                     }
@@ -653,6 +669,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     }
 
     async dispose(): Promise<void> {
+        this.flowAvailability.dispose();
         await super.dispose();
         this._eventUnsubscribers.forEach(fn => fn());
         this._eventUnsubscribers = [];

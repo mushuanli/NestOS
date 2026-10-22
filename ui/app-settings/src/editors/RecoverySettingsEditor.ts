@@ -4,7 +4,7 @@ import { BaseSettingsEditor, Toast, Modal, type EditorOptions } from '@itookit/u
 import { InitialFilesSection, type InitialFilesPort } from './initial-files';
 
 type ItemType = RestorableItem['type'];
-const groups: ItemType[] = ['provider', 'connection', 'agent'];
+const groups: ItemType[] = ['agent'];
 
 export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementService> {
     private initialFiles?: InitialFilesSection;
@@ -23,7 +23,7 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
     }
 
     async render(): Promise<void> {
-        const generation = ++this.generation, items = await this.service.getRestorableItems();
+        const generation = ++this.generation, items = (await this.service.getRestorableItems()).filter(item => groups.includes(item.type));
         if (this.disposed || generation !== this.generation) return;
         this.allItems = items;
         this.selectedItems = new Set(items.filter(item => this.selectedItems.has(this.key(item))).map(item => this.key(item)));
@@ -166,7 +166,7 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
     }
 
     private async refreshConfigurations(): Promise<void> {
-        const items = await this.service.getRestorableItems(); if (this.disposed) return;
+        const items = (await this.service.getRestorableItems()).filter(item => groups.includes(item.type)); if (this.disposed) return;
         this.rememberExpansion();
         this.allItems = items;
         this.selectedItems = new Set(items.filter(item => this.selectedItems.has(this.key(item))).map(item => this.key(item)));
@@ -196,10 +196,7 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
         if (this.busy || this.disposed) return;
         new Modal(t('recovery.resetAll'), `<p>${escapeHTML(t('recovery.resetHelp'))}</p><p>${escapeHTML(t('recovery.mergeDuplicates'))}</p>`, {
             type: 'danger', confirmText: t('action.confirm'), cancelText: t('action.cancel'),
-            onConfirm: () => this.runBusy(async () => {
-                await this.service.resetAllDefaults(); this.selectedItems.clear();
-                Toast.success(t('recovery.completed')); await this.refreshConfigurations();
-            }),
+            onConfirm: () => this.runBusy(() => this.restoreSelection(this.allItems, false)),
         }).show();
     }
 

@@ -60,6 +60,8 @@ export interface UIState {
 // ============================================================
 
 export interface ExecutorOption {
+    execution?: import('@itookit/kernel-adapters/contracts').AgentDefinition['execution'];
+    availability?: import('@itookit/kernel-adapters/contracts').AgentDefinition['availability'];
     attachmentKinds?: Array<'text' | 'image'>;
     imageProcessing?: import('@itookit/kernel-adapters/contracts').ImageProcessingPreference;
     supportsModels?: boolean;
@@ -166,6 +168,7 @@ export interface ChatOverrides {
     flowRevision?: number;
     /** Workflow runtime parameters (matched against FlowRevision.parameters). */
     flowParameters?: Record<string, JsonValue>;
+    flowConnectionBindings?: Record<string, string>;
     branchMode?: 'continue' | 'fork';
     baseRoundId?: string;
     newBranchName?: string;

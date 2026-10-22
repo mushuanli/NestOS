@@ -35,8 +35,8 @@ interface IdentityLayer {
 export async function bindFlowNode(
     node: FlowNodeDefinition,
     flowDefaultsValue: FlowNodeDefinition['config'] | undefined,
-    snapshot: ContextSnapshot,
-    task: ExecutionTask,
+    snapshot: Pick<ContextSnapshot, 'blocks' | 'canonicalMessages'>,
+    task: BindingContext['task'],
     setup: BindingSetup,
     agents: FlowIdentityResolver,
 ) {
@@ -44,7 +44,7 @@ export async function bindFlowNode(
         return bindIsolatedInvocation(node, flowDefaultsValue, task.sessionId, agents);
     }
     if (node.plugin !== 'builtin.agent') {
-        return { inputs: { ...node.inputs, prompt: task.input.text } };
+        return { inputs: { ...node.inputs, prompt: '${input.prompt}' } };
     }
     return bindAgentSource({
         id: String(node.id),

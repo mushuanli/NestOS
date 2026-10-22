@@ -40,6 +40,127 @@
 
 后续节点可引用 `${nodes.review.outputs.result}`、`${nodes.review.outputs.score}`。独立调用节点自动并行，显式引用建立串联/汇合依赖。
 
+同一个函数以多组实参调用时，继续使用 `builtin.flow@2`，通过 `parameterSets` 提供参数对象数组：
+
+```json
+{
+  "id": "calls",
+  "name": "Call with argument sets",
+  "plugin": "builtin.flow",
+  "pluginVersion": "2.0.0",
+  "inputs": {},
+  "config": {
+    "flowId": "parameter-record",
+    "parameters": {"detail": 2},
+    "parameterSets": [
+      {"source": "first document", "language": "zh-CN"},
+      {"source": "second document", "language": "en"}
+    ],
+    "maxConcurrency": 1
+  }
+}
+```
+
+`parameters` 是公共实参，每组对象的同名字段覆盖公共值，再使用子函数声明的默认值。每组都按完整函数签名校验；不是把多个参数分别调用，也不隐式进行笛卡尔积或数组配对。`parameterSets` 可使用整值引用 `${param.jobs}` 或 `${nodes.prepare.outputs.result.parameterSets}`，因此上游确定性 Tool 只需产生参数数据，不必生成执行图。数组为空时返回空数组；非数组、非对象行、未知字段、缺失必填项或类型错误均明确失败。
+
+`maxConcurrency` 默认 1，表示串行完成各组；大于 1 时限制完整子调用的并发数，而非只限制其入口节点。当前使用固定并发通道，后续组等待同通道前一组返回；慢组可能降低通道利用率。父 Run 的并发、节点总数与其他限额仍生效；整批节点容量在展开前验证，不能超限后仅执行前半批。
+
+批量调用只暴露单一 `result` 数组端口，即 `${nodes.calls.outputs.result}`。数组顺序与输入一致，每项是对应调用的全部命名返回，例如 `[{"result": {...}}, {"result": {...}}]`。单次调用继续保留原有命名端口。每组有稳定的调用路径、独立参数、变量和 Agent 上下文；模型/工具的业务副作用仍沿用原 Task/Effect 核对规则。
+
+子函数及其递归依赖在编译时解析、绑定并冻结；运行时展开后的参数作用域、节点、边和汇合状态随检查点保存。`RunDefinition.graph.functionCalls` 保留冻结模板，CLI 往返和恢复不重新读取最新子文件。运行中参数正文只求值一次，数据里的 `${...}` 保持字面值。示例见 [多组调用](../../apps/cli/examples/parameter-calls.flow)与[被调用函数](../../apps/cli/examples/parameter-record.flow)。
+
+已展开调用的图级重试会重新验证实参；相同组数可以重算，改变组数会报幂等冲突，不能静默保留旧图并丢弃新增组。要改变组数，应建立新调用或新 Run。未绑定的可选父连接槽可转发给条件子调用：未选分支不要求绑定，实际执行到 Agent/媒体节点时必须存在连接，不能回退到其他默认模型。子定义原有必需声明和已绑定能力检查保持有效。
+
+## 单文件函数与图片、文本分批
+
+`FlowDraft.functions` 是完整 Flow 定义数组；同一个 `.flow` 可同时保存主入口及其局部函数。调用仍写 `builtin.flow@2.config.flowId`，先查定义处最近的局部函数，再查外部定义库。被调用函数使用自己的定义环境，调用者的同名局部函数不会改变它的依赖。发布主文件时递归冻结函数正文、版本、digest 与依赖锁，只创建一个资源；同级重名、调用环、超过 32 层或 1000 个定义会被拒绝。设计器、恢复及工具箱归档保留内联定义和提示词依赖。
+
+图片使用标准内容块及 Task 输入资产，文字可使用字符串或文本块；一个参数对象可以同时携带多张图片和多段文字。Flow 不解释其中的业务字段。表单的 `widget: images`、多模态消息模板、CLI 输入规范化、连接模态准入与资产权限共用现有机制。
+
+`builtin.transform` 的 `operation: batch` 把任意数组转换为多组命名实参，供后续函数调用使用：
+
+```json
+{
+  "operation": "batch",
+  "value": "${param.content}",
+  "batchSize": 2,
+  "parameter": "content"
+}
+```
+
+返回 `[{"content": [前两项]}, {"content": [后两项]}]`，再把整个结果绑定到调用节点的 `parameterSets`。`batchSize` 默认为 1，必须为正安全整数；大于输入长度时一次处理全部输入，空输入不调用子函数。`parameter` 默认为 `items`，必须为安全字段名。
+
+需要保留原分组时，传 `groups`（数组的数组）与 `mode: grouped`。可以只提供 `groups`，自动拼接为输入，图片与文本只需提交一次；也可以同时提供 `value` 供完整性核对。非空 `groups` 的每组必须非空，拼接结果必须与 `value` 的 JSON 值及顺序完全一致，不能遗漏、复制或重排输入。`combined` 为默认模式，跨组统一分批；`grouped` 在各原组内分批；省略 `groups` 或传 `[]` 视为单组。45 项按 21/24 分组且大小为 20 时，combined 得到 20/20/5，grouped 得到 20/1/20/4。分批步骤只生成参数数据，调度、并发、失败传播和恢复仍属于同一函数调用机制。
+
+可独立运行的[单文件图片与文本分批示例](../../apps/cli/examples/parameter-batches.flow)不依赖业务工具或模型服务；[CLI 回归](../../apps/cli/tests/flow-parameter-calls.test.ts)验证混合输入、图片持久资产、字面文本和无相邻子文件运行。[进程强杀回归](../../apps/cli/tests/flow-parameter-calls-crash.test.ts)在实际 CLI 等待时发送 SIGKILL，再由新进程回复并恢复，校验已成功 Task 记录、调用顺序与冻结子定义保持不变。
+
+## Agent 引用内部 Flow
+
+Flow 文件只定义参数、变量、节点和返回值，不反向定义 Agent。Agent 可通过通用执行绑定引用内部注册库中的任意已发布 Flow，源码所在目录不参与运行解析：
+
+```json
+{
+  "id": "content-assistant",
+  "name": "Content assistant",
+  "type": "workflow",
+  "config": {},
+  "execution": {
+    "kind": "flow",
+    "flowId": "registered-worker",
+    "parameters": { "language": "zh-CN" }
+  }
+}
+```
+
+`execution.revision` 省略时，每次新请求采用最新已发布版本；指定正整数则固定该版本。编辑草稿后需要发布，才影响跟随最新版本的 Agent；固定版本需显式升级绑定。Agent 保留引用和参数默认值，不复制 Flow 正文。设置编辑器选择内部 Flow、可选版本、默认参数与连接槽；实际入口由 `execution.kind` 决定，旧 `type: workflow` 标签本身不触发执行。
+
+聊天中选择该 Agent 并发送提示词，会读取所选版本的当前参数签名，复用 Flow 参数及图片表单。合并顺序是 Flow 字段默认值 → Agent 的 `execution.parameters` → 本次运行参数；连接槽同样允许本次覆盖 Agent 的 `connectionBindings`。未知参数、缺失必填项、类型和范围错误在请求入队前拒绝。确定性 Flow 不要求配置聊天模型，实际模型/媒体节点仍按 Flow 声明检查连接和授权。
+
+提示词通过只读运行输入 `${input.prompt}` 提供，不占用 Flow 的参数名。需要可修改的内部稿件时，可声明：
+
+```yaml
+variables:
+  prompt:
+    type: string
+    initial: ${input.prompt}
+```
+
+此时 `${vars.prompt}` 是可赋值的当前稿件，`${input.prompt}` 保留本次最初提示词；`${param.prompt}` 仍是用户自行声明的普通参数，三者互不覆盖。未提供运行输入的其他入口默认使用空提示词。输入属于执行快照，不进入 Flow 定义或 digest；嵌套函数、批量调用、动态节点和结构化派发读取同一个冻结输入。用户正文里的 `${...}` 保持字面数据。
+
+`availability` 是 Agent 的只读可用性投影，不写回 Agent 源文件。被引用文件删除、未发布、固定修订缺失或定义损坏时，Agent 显示禁用及具体原因，已有选择保留，发送被阻止，不切换到默认助手。恢复文件并发布所需版本后重新核对可用性。发布及文件变化通知会刷新聊天和草稿选择器。
+
+请求接纳时冻结所选 Agent 身份、Flow 正文、外部 Flow 依赖版本、参数和连接选择；已接纳的排队请求与已启动运行继续使用快照，后续 Flow 文件删除只阻止新请求。连接快照只含安全选择字段，不缓存凭据；模型档位改变仍用已选模型，服务商、协议、端点、授权或能力不再兼容时，在提交前明确失败并持久保存原因。
+
+独立调用的 `DagCommandService.prepareRun` 与会话队列共用 `prepareFlowRun` 完成定义校验和编译。新会话指令的 `flowBinding.plan` 保存版本化图、图中引用的 Agent/Skill/提示词/MCP 配置快照及摘要，覆盖批量调用的冻结子模板。派发仅绑定当前对话历史与宿主上下文，复验连接后经原 `submitRun` 执行，不重读已接纳的源定义或再次展开 Flow。第二条排队指令可以看到第一条的已完成结果；用户文本仍保持字面值。运行时新声明的动态图身份在图扩展时准入并由原检查点持久化，已知身份始终优先使用接纳快照；工具发现和权限检查保持当前授权边界。
+
+Skill 选择仍经过宿主既有版本存储与 Session 操作队列，不能将内容快照当作恢复已撤销授权的凭据。Skill 被删除、禁用或其版本策略要求重新加载时，宿主上下文恢复仍可拒绝执行；拒绝发生在模型请求前。Agent/提示词/Flow 源文件删除与 Skill 授权撤销分别验证。
+
+队列恢复校验定义摘要、Agent/Flow 身份、连接快照和执行计划摘要；损坏计划不能回退为重新编译。无 `plan` 的旧队列保留原冻结定义恢复路径，已有根运行继续使用 Kernel 检查点。`availability` 按 Flow ID/修订号缓存并合并在途查询，资源发布、删除或恢复事件使缓存失效；普通 Agent 读取不重新编译整个目录，新调用仍执行正式准入。
+
+Agent 归档先发现完整发布依赖闭包并检查冲突，再生成所有条目，所选子 Flow 草稿若同时属于 Agent 依赖则采用锁定发布快照。依赖锁按调用节点及其 `children` 读取，不按 Flow ID 扁平合并；同一个归档资源目前只支持一个发布版本，冲突明确拒绝。词法引用遍历、发布转草稿及定义正文投影归 `llm-flow`；`app-core` 协调归档重映射、发布和 Agent 创建。内部 `functions` 的局部 ID 保留，接管模板文件同样保留完整内联声明。
+
+```mermaid
+C4Component
+    Container_Boundary(runtime, "共享执行链：逻辑组件") {
+        Component(entry, "调用入口", "UI / CLI", "提交统一调用意图")
+        Component(session, "会话用例", "llm-session", "指令身份、队列、Round 和派发历史")
+        Component(prepare, "定义准备", "llm-flow / prepareFlowRun", "校验、锁定依赖、编译含批量模板的图")
+        Component(plan, "接纳快照", "Session shared", "图、引用定义、连接选择及计划摘要")
+        Component(bind, "派发绑定", "llm-session", "冻结身份加当前历史，复验连接")
+        Component(executor, "统一执行器", "llm-flow", "submitRun、图扩展、调度与检查点")
+        Component(kernel, "持久内核", "durable-kernel", "Task、授权、Effect 与恢复")
+    }
+    Rel(entry, session, "提交调用")
+    Rel(session, prepare, "请求接纳前准备")
+    Rel(prepare, plan, "保存图与引用快照")
+    Rel(session, plan, "绑定指令身份并持久接纳")
+    Rel(plan, bind, "派发或重启后读取")
+    Rel(bind, executor, "提交同一计划")
+    Rel(executor, kernel, "执行与持久恢复")
+```
+
+验证见[真实发送与宿主重启](../../backend/app-core/tests/flow-agent-execution.test.ts)、[资源删除恢复与归档](../../backend/app-core/tests/agent-flow-resources.test.ts)、[连接冻结](../../backend/app-core/tests/flow-agent-connections.test.ts)、[准入诊断与损坏记录](../../backend/llm-session/__tests__/flow-agent-binding.test.ts)、[实际发送表单](../../ui/app-shell/tests/agent-flow-input.test.ts)及[运行输入恢复](../../backend/llm-flow/__tests__/runtime-input.test.ts)。命令、范围和源码摘要保存于[机器可读验收记录](fixtures/flow-agent-evidence.json)。
+
 ## 已实现的边界
 
 - v2 调用先通过持久入口节点解析父参数、上游结果或变量，再按子参数 schema 验证；只传显式实参与默认值，不隐式继承全部父参数。入口输出作为子作用域的参数来源，恢复使用同一持久 Task 输出，数据不二次插值。
@@ -52,7 +173,7 @@
 
 当前显式限制：v2 不支持子 Flow 自带 runPolicy，运行限额/工作区应配置在父 Flow；调用节点的 retry、compensate、assign、budget、capabilities 也不能隐式传递，非空配置会被拒绝，应配置在子流程执行节点上。尚未实现跨子作用域的独立限额和整个子调用的自动重试。共享目录仍共享文件副作用，可使用既有父 Run worktree 策略。设计器签名按所选发布版本读取；参数表单以定义库字段为引导，最终运行验证仍以发布版本为准。
 
-子 Flow 内部可以使用 taskGroup；函数调用节点不能直接作为父 taskGroup 的 worker，因为其成员并发额度尚不支持整个子调用的生命周期，此组合会明确拒绝。多个普通函数节点仍可并行，受父 Run 并发上限约束。
+子 Flow 内部可以使用 taskGroup；函数调用节点不能直接作为父 taskGroup 的 worker，此组合会明确拒绝。多组调用使用函数节点自身的 `parameterSets/maxConcurrency` 控制完整子调用；多个普通函数节点仍可并行，受父 Run 并发上限约束。
 
 恢复不会抢占仍有效的 Session/调度租约。宿主启动恢复失败会保留持久运行，用户可在卡片“恢复此调用”重试。此次新增恢复测试覆盖 Kernel 重建与持久提交意图，并非多个 Flow 调用的真实桌面强杀验收。
 

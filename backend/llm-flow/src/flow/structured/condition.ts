@@ -15,10 +15,11 @@ export function compileCondition(condition: FlowCondition, depth = 0): Serializa
 }
 
 export function conditionOperand(value: unknown): SerializableExpression {
-    const match = typeof value === 'string' ? /^\$\{(param|params|state|iteration|nodes|vars)\.([A-Za-z0-9_.-]+)\}$/.exec(value) : null;
+    const match = typeof value === 'string' ? /^\$\{(param|params|input|state|iteration|nodes|vars)\.([A-Za-z0-9_.-]+)\}$/.exec(value) : null;
     if (!match) return { kind: 'literal', value: value as never };
     const path = match[2].split('.');
     if (path.some(key => ['__proto__', 'prototype', 'constructor'].includes(key))) throw new Error('Unsafe condition path');
+    if (match[1] === 'input') return { kind: 'path', path: ['input', ...path] };
     if (match[1] === 'vars') return { kind: 'path', path: ['vars', ...path] };
     if (match[1] === 'nodes') return { kind: 'path', path: ['nodes', ...path] };
     if (match[1] === 'state') return { kind: 'path', path };

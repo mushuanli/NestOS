@@ -10,6 +10,20 @@ import type { SystemPromptDefinition, PromptPreset } from '@itookit/tools/contra
 
 export type AgentType = 'agent' | 'composite' | 'tool' | 'workflow';
 
+export type AgentExecution = { kind: 'agent' } | {
+    kind: 'flow';
+    flowId: string;
+    revision?: number;
+    parameters?: Record<string, unknown>;
+    connectionBindings?: Record<string, string>;
+};
+
+export interface AgentAvailability {
+    status: 'ready' | 'disabled';
+    reason?: 'flow-missing' | 'flow-unpublished' | 'flow-revision-missing' | 'flow-invalid';
+    flowId?: string;
+}
+
 export interface AgentConfig {
     imageProcessing?: import('./image-processing').ImageProcessingPreference;
     systemPrompt?: string;
@@ -34,7 +48,7 @@ export type { PromptPreset } from '@itookit/tools/contracts';
 
 /** Safe presentation metadata; credential values and system prompt bodies stay in the host. */
 export interface ChatConfigurationSnapshot {
-    agents: Array<Pick<AgentDefinition, 'id' | 'name' | 'icon' | 'description' | 'defaultPrompts'> & {
+    agents: Array<Pick<AgentDefinition, 'id' | 'name' | 'icon' | 'description' | 'defaultPrompts' | 'execution' | 'availability'> & {
         config: Pick<AgentConfig, 'systemPromptId' | 'imageProcessing'>;
     }>;
     promptPresets: Record<string, PromptPreset[]>;
@@ -58,6 +72,9 @@ export interface AgentDefinition {
     icon?: string;
     description?: string;
     config: AgentConfig;
+    execution?: AgentExecution;
+    /** Derived by the host; never persisted in the Agent source document. */
+    readonly availability?: AgentAvailability;
     tags?: string[];
     interface?: AgentInterfaceDef;
     defaultPrompts?: PromptPreset[];
@@ -162,6 +179,8 @@ export interface IConnectionService extends IConnectionReader, Partial<ProviderA
     deleteConnection(id: string): Promise<void>;
     /** 返回所有内置 Provider 目录（含模型列表、baseURL 等） */
     getProviderDefaults(): Record<string, LLMProvider>;
+    /** Documentation metadata is read-only and never carries credentials. */
+    getProviderReferences?(): Record<string, import('./provider-reference').ProviderApiReference>;
     /** 保存 Provider 到 VFS（新建或更新，含 apiKey） */
     saveProvider(provider: LLMProvider): Promise<void>;
     /** 删除用户自定义 Provider（内置 Provider 不可删除） */

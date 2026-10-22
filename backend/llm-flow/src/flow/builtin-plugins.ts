@@ -167,8 +167,10 @@ function agentTask(context: DagNodeContext) {
 
 function transformManifest(): DagPluginManifest {
     return manifest('transform', 'Transform', 'Data', {
-        operation: enumSchema(['identity', 'pick']), value: {},
+        operation: enumSchema(['identity', 'pick', 'batch']), value: {},
         path: { type: 'array', items: { type: 'string' } },
+        batchSize: { type: 'integer', minimum: 1 }, parameter: { type: 'string' },
+        groups: { type: 'array', items: { type: 'array' } }, mode: enumSchema(['combined', 'grouped']),
         outputName: { type: 'string' }, type: enumSchema(['text', 'json']),
     }, { operation: 'identity', outputName: 'result', type: 'json' });
 }
@@ -218,6 +220,8 @@ function compositeManifest(): DagPluginManifest {
         flowId: { type: 'string', title: 'Flow' },
         revision: { type: 'integer', title: 'Revision' },
         parameters: { type: 'object', title: 'Parameter bindings' },
+        parameterSets: { title: 'Parameter object array or whole-value reference' },
+        maxConcurrency: { type: 'integer', minimum: 1, title: 'Concurrent function calls' },
         connectionBindings: { type: 'object', title: 'Child slot to parent slot bindings', additionalProperties: { type: 'string' } },
     }, { flowId: '', parameters: {} });
 }
@@ -248,6 +252,7 @@ function agentManifest(): DagPluginManifest {
             properties: {
                 retries: { type: 'integer' },
                 onInvalid: enumSchema(['fail', 'repair', 'continue']),
+                schema: {},
             },
         },
         contextCompaction: {
@@ -357,7 +362,9 @@ function outputValidation(value: unknown): LlmTaskInputOptions['outputValidation
     const retries = optionalNumber(value.retries);
     const onInvalid = value.onInvalid === 'repair' || value.onInvalid === 'continue' || value.onInvalid === 'fail'
         ? value.onInvalid : undefined;
-    return retries === undefined && onInvalid === undefined ? undefined : { retries, onInvalid };
+    const schema = value.schema;
+    if (schema !== undefined && !isRecord(schema) && typeof schema !== 'boolean') throw new Error('outputValidation.schema must be a JSON Schema object or boolean');
+    return retries === undefined && onInvalid === undefined && schema === undefined ? undefined : { retries, onInvalid, ...(schema === undefined ? {} : { schema }) };
 }
 function contextCompaction(value: unknown): LlmTaskInputOptions['contextCompaction'] {
     if (!isRecord(value) || typeof value.maxMessages !== 'number') return undefined;

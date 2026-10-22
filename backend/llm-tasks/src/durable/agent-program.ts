@@ -280,7 +280,7 @@ function complete(
 }
 
 function structuredResult(state: DurableAgentState, message: ChatMessage): Pick<DurableAgentOutput, 'outputs'> {
-    if (state.input.responseFormat?.type !== 'json_schema' || typeof message.content !== 'string') return {};
+    if (outputSchema(state.input) === undefined || typeof message.content !== 'string') return {};
     try { return { outputs: { result: { content: JSON.parse(message.content), type: 'json' } } }; }
     catch { return {}; }
 }
@@ -316,8 +316,7 @@ function handleInvalidOutput(
 }
 
 function outputRepairPrompt(state: DurableAgentState, issue: string): string {
-    const format = state.input.responseFormat;
-    const schema = format?.type === 'json_schema' ? JSON.stringify(format.json_schema.schema) : undefined;
+    const schema = JSON.stringify(outputSchema(state.input));
     return `The previous response did not satisfy the required output contract: ${issue}.
 Return only a complete valid JSON result, without Markdown fences or explanations.
 Escape newlines, quotes and backslashes inside JSON strings. Do not truncate the result.
@@ -331,24 +330,28 @@ function outputValidationDiagnostic(state: DurableAgentState, value: ReturnType<
         sessionId: state.input.sessionId, roundId: state.input.roundId, connectionId: state.input.connectionId,
         effectId: `llm-exchange-${state.exchanges}`, model: value.model ?? state.input.model ?? null,
         responseId: value.id ?? null, finishReason: value.choices[0]?.finish_reason ?? null,
-        usage: value.usage ?? {}, issue, contentLength: text.length,
-        contentHead: text.slice(0, 256), contentTail: text.length > 256 ? text.slice(-256) : '',
-        repairAttempts: state.outputValidationAttempts, policy: state.input.outputValidation ?? {},
+        usage: value.usage ?? {}, issue, category: issue.startsWith('response is not valid JSON') ? 'invalid-json' : 'output-contract',
+        contentLength: text.length, contentBytes: new TextEncoder().encode(text).length,
+        repairAttempts: state.outputValidationAttempts, policy: { onInvalid: state.input.outputValidation?.onInvalid ?? 'fail',
+            retries: state.input.outputValidation?.retries ?? null, hasSchema: outputSchema(state.input) !== undefined },
         maxExchanges: state.input.maxExchanges ?? DEFAULT_AGENT_MAX_EXCHANGES,
     } };
 }
 
 function outputValidationIssue(input: DurableAgentInput, content: unknown): string | undefined {
-    const format = input.responseFormat;
-    if (!format || format.type === 'text') return undefined;
+    const format = input.responseFormat, schema = outputSchema(input);
+    if ((!format || format.type === 'text') && schema === undefined) return undefined;
     if (typeof content !== 'string') return 'response content must be text for structured output';
     let value: unknown;
     try { value = JSON.parse(content); }
-    catch (error) { return `response is not valid JSON: ${error instanceof Error ? error.message : String(error)}`; }
-    if (format.type === 'json_object') {
-        return isRecord(value) ? undefined : 'response must be a JSON object';
-    }
-    return validateSchemaValue(value, format.json_schema.schema, '$');
+    catch { return 'response is not valid JSON'; }
+    if (format?.type === 'json_object' && !isRecord(value)) return 'response must be a JSON object';
+    return schema === undefined ? undefined : validateSchemaValue(value, schema, '$');
+}
+
+function outputSchema(input: DurableAgentInput): Record<string, unknown> | boolean | undefined {
+    if (input.outputValidation?.schema !== undefined) return input.outputValidation.schema;
+    return input.responseFormat?.type === 'json_schema' ? input.responseFormat.json_schema.schema : undefined;
 }
 
 function validateSchemaValue(value: unknown, schema: Record<string, unknown> | boolean, path: string): string | undefined {
@@ -378,10 +381,10 @@ function validateObjectValue(value: Record<string, unknown>, schema: Record<stri
     const properties = isRecord(schema.properties) ? schema.properties : {};
     for (const [key, item] of Object.entries(value)) {
         const declared = Object.hasOwn(properties, key);
-        if (!declared && schema.additionalProperties === false) return `${path}.${key}: unexpected property`;
+        if (!declared && schema.additionalProperties === false) return `${path}: unexpected property`;
         const child = declared ? properties[key] : schema.additionalProperties;
         if (isRecord(child) || typeof child === 'boolean') {
-            const issue = validateSchemaValue(item, child, `${path}.${key}`);
+            const issue = validateSchemaValue(item, child, declared ? `${path}.${key}` : `${path}.[additional-property]`);
             if (issue) return issue;
         }
     }
@@ -525,4 +528,6 @@ function validate(input: DurableAgentInput): void {
         throw new Error('DurableAgentProgram requires sessionId, roundId and connectionId');
     }
     if (!input.messages.length) throw new Error('DurableAgentProgram requires messages');
+    const schema = input.outputValidation?.schema;
+    if (schema !== undefined && !isRecord(schema) && typeof schema !== 'boolean') throw new Error('Output validation schema must be an object or boolean');
 }

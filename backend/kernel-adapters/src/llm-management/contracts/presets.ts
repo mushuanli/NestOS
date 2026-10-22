@@ -4,6 +4,7 @@ import type { DefaultConnectionDef } from './connection';
 import type { ModelPricingConfig } from './pricing';
 
 export interface LlmManagementPresets {
+    providerReferences?: Record<string, import('./provider-reference').ProviderApiReference>;
     version: number;
     providers: Record<string, LLMProvider>;
     connections: DefaultConnectionDef[];
@@ -14,7 +15,7 @@ export type ProviderConnectionPolicy = (provider: LLMProvider, connections: read
 
 /** Snapshot caller-owned data so different runtimes never share mutable preset catalogs. */
 export function snapshotLlmPresets(presets?: Partial<LlmManagementPresets>): LlmManagementPresets {
-    return structuredClone({ version: presets?.version ?? 0, providers: presets?.providers ?? {},
+    return structuredClone({ version: presets?.version ?? 0, providers: presets?.providers ?? {}, providerReferences: presets?.providerReferences ?? {},
         connections: presets?.connections ?? [], agents: presets?.agents ?? [],
         pricing: presets?.pricing ?? { model_pricing: [] } });
 }

@@ -42,3 +42,5 @@ ContextTaskProgram 为 Agent/Chat v2 bridge，负责把 context 写集转换为 
 执行策略：llmRetry.retries 是附加尝试次数（默认 3），没有固定业务上限，只校验可安全表示的总尝试次数。toolTimeoutMs 默认 300000，可由宿主覆盖；buildLlmTaskInput 验证并快照策略，Agent 每轮工具 Effect 使用持久输入中的值。
 
 Context 装配、消息适配和压缩的兼容转发已删除。消费者直接使用 llm-context，装配及协议组测试归实现所属包。
+
+`outputValidation.schema` 可声明独立于 Provider `responseFormat` 的本地 JSON Schema；采用既有结构化输出校验子集，并优先于 `json_schema.schema`。例如 `json_object` 连接可在本地校验必填字段并按持久化的 repair 次数修复，schema 不加入 Provider 的 responseFormat 请求。诊断只记录长度、校验路径/类别和重试计数，不记录模型正文、任意输出属性名或完整 schema；JSON 解析错误不透传包含正文的原始异常。

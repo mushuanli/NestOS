@@ -57,6 +57,9 @@ interface RunDefinition {
     nodeConnections?: Record<string, Record<string, JsonValue>>;
     variables?: DagRunSpec['variables'];
     variableScopes?: DagRunSpec['variableScopes'];
+    parameterScopes?: DagRunSpec['parameterScopes'];
+    functionCalls?: DagRunSpec['functionCalls'];
+    input?: DagRunSpec['input'];
     maxNodes?: number;
   };
   parameters?: FlowParameter[];
@@ -91,6 +94,9 @@ interface RunDefinition {
 
 CLI 的 `flow-config` 只读取文件并调用 llm-flow 公开的 `createFlowRevision`，不另行维护草稿字段清单。
 首次运行在同一次编译中完成宿主绑定与最终连接准入，`variables` 与组合流程的 `variableScopes` 随执行定义保存，提交前不再二次绑定。
+多组参数的函数调用模板保存在 `graph.functionCalls`，包含冻结的子图和整次调用并发上限；`createRunDefinitionFromFlow` 与 `toDagRunSpec` 双向保留该字段。恢复不能只保存入口和空汇合节点，否则会误报成功但没有实际执行参数组。CLI 的 [多组调用回归](../apps/cli/tests/flow-parameter-calls.test.ts) 覆盖完整结果和跨运行时恢复。
+
+`graph.input` 同样双向保留只读运行输入 `{prompt: string}`。Agent 绑定内部 Flow 时，提示词通过该快照提供给 `${input.prompt}`，其他参数仍使用声明的参数 schema；它属于运行实例，不改变定义的业务参数、版本或 digest。
 `rerun` 创建新 Run 并复用原执行定义，不从源码重新选择当前 tier 的模型；模型仍需可用，媒体端点变化仍在执行前拒绝。
 运行时连接绑定通过 `--connection-bindings file.json` 独立传入，不改写源 Flow 及其 digest。
 Agent Task 的 Session 身份取自当前运行上下文，重跑不会沿用旧定义中的 Session ID。

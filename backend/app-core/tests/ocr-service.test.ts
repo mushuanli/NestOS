@@ -104,6 +104,9 @@ it('does not publish failed writes or alter the previous OCR selection', async (
 });
 it('accepts local Codex vision without an API key but rejects empty prompts', async () => {
     const { service, agents } = await setup();
+    await agents.saveProvider({id: 'codex', name: 'Codex', implementation: 'custom', credentialMode: 'host', baseURL: '',
+        models: [{id: 'local-vision', name: 'Local vision', supportsVision: true}]});
+    await agents.saveConnection({ id: 'conn-codex', name: 'Codex', providerId: 'codex', tiers: { optimal: 'local-vision' } });
     const codex = agents.getProvider('codex')!;
     await service.save({ ...service.snapshot(), connectionId: 'conn-codex' });
     expect(codex.models.some(m => m.supportsVision)).toBe(true);

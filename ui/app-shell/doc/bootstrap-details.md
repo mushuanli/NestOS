@@ -36,7 +36,7 @@ Web 入口的图标与各工作区 CSS 由 HTML 引用的首批样式提供；`l
 
 参数确认后创建 Session 并导航到 chat；会话 manifest.flow 保存固定 revision 和参数，LLMWorkspaceEditor 首次打开空会话后自动执行。定义与 UI 边界见 [作文评审实现](../../../doc/design/essay-review-flow.md)。
 
-内置模板安装通过 `flow.draft.install` 保存独立安装记录；删除 `.flow` 后记录仍在，重启不再恢复该模板。聊天侧栏将同一 FlowEngine 挂到 `/@flows`，支持展开、打开和右键运行/删除。新增作文文件统一名为 `essay-review-isolated.flow`。
+内置模板安装通过 `flow.draft.install` 保存独立安装记录；删除 `.flow` 后记录仍在，重启不再恢复该模板。聊天侧栏将同一 FlowEngine 挂到 `/@flows`，支持展开、打开和右键运行/删除。新增作文文件统一名为 `essay-review.flow`。
 
 ## 编辑标签与侧栏布局
 

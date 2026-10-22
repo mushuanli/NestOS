@@ -1,3 +1,4 @@
+import { assertInlineFunctionTree } from './inline-functions';
 import { createRunCatalog } from './run-catalog';
 import type { DagPluginCatalog, FlowRevision, FlowConnection, JsonValue, FlowEdgeDefinition, FlowNodeDefinition } from '../contracts';
 import { DELEGATION_LIMITS } from '../contracts';
@@ -30,6 +31,7 @@ export function flowRevisionDigest(flow: Omit<FlowRevision, 'digest'>): string {
         edges: flow.edges,
         parameters: flow.parameters,
         ...(flow.outputs ? { outputs: flow.outputs } : {}),
+        ...(flow.functions ? { functions: flow.functions.map(fn => ({ id: fn.id, revision: fn.revision, digest: flowRevisionDigest(fn) })) } : {}),
         ...(flow.dependencyLocks ? { dependencyLocks: flow.dependencyLocks } : {}),
         ...(flow.variables ? { variables: flow.variables } : {}),
         connections: flow.connections,
@@ -46,6 +48,12 @@ export function validateFlowRevision(
     plugins?: DagPluginCatalog,
 ): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
+    try { assertInlineFunctionTree(flow); }
+    catch (error) { return [{ code: 'invalid-inline-functions', message: String(error) }]; }
+    for (const fn of flow.functions ?? []) {
+        if (fn.digest !== flowRevisionDigest(fn)) issues.push({ code: 'invalid-inline-digest', message: `Inline Flow digest mismatch: ${fn.id}` });
+        for (const issue of validateFlowRevision(fn, plugins)) issues.push({ ...issue, message: `Inline Flow ${fn.id}: ${issue.message}` });
+    }
     try { flow = compileReferenceGraph(withFlowReturns(compileControlGraph(compileDispatchGraph(flow)))); }
     catch (error) { return [{ code: 'invalid-dispatch-graph', message: String(error) }]; }
     if (plugins) {
@@ -357,7 +365,7 @@ export function validateSchema(schema: JsonValue, value: JsonValue, path = '$'):
 
 /** True when the value is exactly one `${params.path}` template placeholder. */
 function isParameterTemplate(value: JsonValue): boolean {
-    return typeof value === 'string' && /^\$\{(?:params?|nodes|state|iteration|vars|output)(?:\.[A-Za-z0-9_./-]+)?\}$/.test(value.trim());
+    return typeof value === 'string' && /^\$\{(?:params?|input|nodes|state|iteration|vars|output)(?:\.[A-Za-z0-9_./-]+)?\}$/.test(value.trim());
 }
 
 function canonicalJson(value: unknown): string {

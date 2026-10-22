@@ -26,7 +26,7 @@ export function compileReferenceGraph<T extends Graph>(source: T): T {
         if (ref.root === 'nodes' && nodeScope(id) !== nodeScope(node.id) && !graph.edges.some(edge => edge.from === id && edge.to === node.id)) throw new Error('Cross-scope references require explicit ports');
         if (ref.root === 'nodes' && (ref.path[1] !== 'outputs' || !ref.path[2])) throw new Error('Node references require nodes.id.outputs.port');
         if (!graph.edges.some(edge => edge.from === id && edge.to === node.id)) graph.edges.push({
-            id: `reference:${id}:${node.id}`, from: id, to: node.id, kind: 'control',
+            id: `reference:${id}:${node.id}`, from: id, to: node.id, kind: 'control', dependencyOnly: true,
         });
     }
     const cycles = findCycles(graph.nodes, graph.edges as DagEdgeDefinition[]).backEdges;
@@ -46,7 +46,7 @@ export function inputProducers(nodes: DagNodeDefinition[], scope = ''): Map<stri
     return producers;
 }
 
-export function invocationReferenceContext(nodes: DagNodeDefinition[], outputs: Record<string, unknown>, parameters: Record<string, unknown>, round: number, consumerId = ''): FlowTemplateContext {
+export function invocationReferenceContext(nodes: DagNodeDefinition[], outputs: Record<string, unknown>, parameters: Record<string, unknown>, round: number, consumerId = '', input?: import('../../contracts').FlowRuntimeInput): FlowTemplateContext {
     const param = { ...parameters };
     for (const [key, id] of inputProducers(nodes, nodeScope(consumerId))) if (Object.hasOwn(outputs, id)) {
         const value = object(extractNodeOutput(outputs[id], 'result'));
@@ -57,16 +57,17 @@ export function invocationReferenceContext(nodes: DagNodeDefinition[], outputs: 
         const ports = Object.keys(artifacts).length ? Object.keys(artifacts) : ['result'];
         return [id, { outputs: Object.fromEntries(ports.map(port => [port, extractNodeOutput(output, port)])) }];
     }));
-    return { param, nodes: visible, iteration: { round } };
+    return { input: input ?? { prompt: '' }, param, nodes: visible, iteration: { round } };
 }
 
 export function resolveExecutionNode(node: DagNodeDefinition, context: FlowTemplateContext): DagNodeDefinition {
+    if (node.plugin === 'builtin.spawn') return resolveSpawnNode(node, context);
     if (node.plugin === 'builtin.route' && node.pluginVersion === '2.0.0') {
         const { branches, invocationDefaults, until, revision, ...config } = object(node.config);
         return { ...node, config: { ...object(renderFlowTemplate(config, context)), branches: resolveBranchSettings(branches, context),
             ...(revision ? { revision: { ...object(revision), ...(object(revision).invocation ? {
                 invocation: (resolveBranchSettings([object(revision).invocation], context) as unknown[])[0],
-            } : {}) } } : {}), invocationDefaults, until: renderFlowTemplate(until, context), referenceNodes: context.nodes, ...(context.vars ? { variableValues: context.vars, initialParameters: context.param } : {}) },
+            } : {}) } } : {}), invocationDefaults, until: renderFlowTemplate(until, context), runtimeInput: context.input ?? { prompt: '' }, referenceNodes: context.nodes, ...(context.vars ? { variableValues: context.vars, initialParameters: context.param } : {}) },
             inputs: { ...context.param, ...object(renderFlowTemplate(node.inputs, context)) } };
     }
     return { ...node, config: renderNodeConfig(node.config, context), inputs: object(renderFlowTemplate(node.inputs, context)) };
@@ -116,7 +117,7 @@ export function scopedParameters(spec: DagRunSpec, nodeId: string, root: Record<
         const scope = scopes[id], parent = visit(scope.parent, seen);
         if (scope.source) {
             if (!Object.hasOwn(outputs, scope.source)) throw new Error(`Missing Flow call input: ${scope.source}`);
-            const supplied = object(extractNodeOutput(outputs[scope.source], 'result')) as Record<string, JsonValue>;
+            const supplied = callScopeValues(outputs[scope.source], scope.parameterSet);
             const allowed = new Set((scope.schema ?? []).map(field => field.name));
             for (const key of Object.keys(supplied)) if (!allowed.has(key)) throw new Error(`Unknown Flow parameter: ${key}`);
             return prepareFlowParameters(scope.schema, { ...scope.defaults, ...supplied });
@@ -139,4 +140,28 @@ function invocationMessages(messages: unknown, prompt: unknown, context: FlowTem
         return !(message.content === prompt && (message.role === 'system' || index === messages.length - 1));
     });
     return [...retained, { role: 'user', content: renderFlowText(prompt, context) }];
+}
+
+/** Restored scopes must refer to a real saved row; defaults cannot hide corrupt indices. */
+function callScopeValues(output: unknown, index?: number): Record<string, JsonValue> {
+    const raw = object(extractNodeOutput(output, 'result'));
+    if (index === undefined) return raw as Record<string, JsonValue>;
+    if (!isBindings(raw.parameters) || !Array.isArray(raw.parameterSets)) throw new Error('Invalid Flow call parameter-set source');
+    if (!Number.isSafeInteger(index) || index < 0 || index >= raw.parameterSets.length || !Object.hasOwn(raw.parameterSets, index)) {
+        throw new Error(`Invalid Flow call parameter-set index: ${index}`);
+    }
+    const row = raw.parameterSets[index];
+    if (!isBindings(row)) throw new Error(`Invalid Flow call parameter-set row: ${index}`);
+    return { ...raw.parameters, ...row } as Record<string, JsonValue>;
+}
+function isBindings(value: unknown): value is Record<string, unknown> {
+    return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+/** Global immutable input can stay a reference until the spawned node actually starts. */
+function resolveSpawnNode(node: DagNodeDefinition, context: FlowTemplateContext): DagNodeDefinition {
+    const { spawn, ...config } = object(node.config);
+    return { ...node, config: { ...object(renderNodeConfig(config, context)),
+        ...(spawn === undefined ? {} : { spawn: renderFlowTemplate(spawn, context, new Set(['input'])) }) },
+        inputs: object(renderFlowTemplate(node.inputs, context)) };
 }

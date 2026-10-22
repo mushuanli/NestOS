@@ -28,6 +28,23 @@ export function validateFlowCallParameters(schema: FlowParameter[] = [], values:
 }
 
 function wholeReference(value: JsonValue | undefined): boolean {
-    return typeof value === 'string' && /^\$\{(?:params?|nodes|state|iteration|vars|output)(?:\.[A-Za-z0-9_./-]+)?\}$/.test(value.trim())
+    return typeof value === 'string' && /^\$\{(?:params?|input|nodes|state|iteration|vars|output)(?:\.[A-Za-z0-9_./-]+)?\}$/.test(value.trim())
         && flowTemplateReferences(value).length === 1;
+}
+
+/** Parameter sets are repeated named calls, with row values overriding shared bindings. */
+export function validateFlowCallConfig(schema: FlowParameter[] = [], config: { parameters?: Record<string, JsonValue>; parameterSets?: unknown }): CallParameterIssue[] {
+    if (config.parameterSets === undefined) return validateFlowCallParameters(schema, config.parameters);
+    const shared = config.parameters ?? {};
+    if (!shared || typeof shared !== 'object' || Array.isArray(shared)) return validateFlowCallParameters(schema, shared);
+    if (!Array.isArray(config.parameterSets)) {
+        if (typeof config.parameterSets === 'string' && wholeReference(config.parameterSets)) {
+            return validateFlowCallParameters(schema.map(field => ({ ...field, required: false })), shared);
+        }
+        return [{ code: 'invalid-call-parameter', parameter: '', message: 'Flow parameterSets must be an object array or whole-value reference' }];
+    }
+    return config.parameterSets.flatMap((row, index) => {
+        if (!row || typeof row !== 'object' || Array.isArray(row)) return [{ code: 'invalid-call-parameter', parameter: '', message: `Flow parameterSets[${index}] must be an object` }];
+        return validateFlowCallParameters(schema, { ...shared, ...row }).map(issue => ({ ...issue, message: `parameterSets[${index}]: ${issue.message}` }));
+    });
 }

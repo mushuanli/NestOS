@@ -68,10 +68,11 @@ export class FlowRerunService {
         const previous = await log.loadManifest();
         const branch = await log.createBranchForReplacement(null, roundId, { createdFrom: 'regenerate' });
         const flow: NonNullable<Round['flow']> = { flowId: context.definition.id, revision: context.definition.revision, parameters, ...(connectionBindings ? { connectionBindings } : {}) };
+        const originalInput = (context.flow as NonNullable<Round['flow']>).input;
         try {
             await this.registry.reloadSessionData(sessionId, state);
             this.switched(sessionId, branch.branchName, branch.commonHeadId ?? '', roundId);
-            const taskId = await this.runs.submit({ sessionId, text: `${context.definition.name} · ${context.definition.id}@v${context.definition.revision}\n\n${JSON.stringify(parameters, null, 2)}`,
+            const taskId = await this.runs.submit({ sessionId, text: originalInput?.prompt ?? `${context.definition.name} · ${context.definition.id}@v${context.definition.revision}\n\n${JSON.stringify(parameters, null, 2)}`,
                 files: [], agentId: context.agentId, overrides: connectionId ? { connectionId } : undefined, roundTarget: { mode: 'append-new', roundId },
                 sendIntent: { branch: { mode: 'continue' }, retention: { mode: 'persistent' }, execution: { kind: 'flow', ...flow } },
             }, runtime);
@@ -97,5 +98,10 @@ export class FlowRerunService {
 }
 
 function definitionKey(definition: FlowDraft | FlowRevision): string {
-    return flowRevisionDigest({ ...definition, parameters: definition.parameters ?? [], revision: 0, createdAt: 0 });
+    return flowRevisionDigest(definitionSnapshot(definition));
+}
+
+function definitionSnapshot(definition: FlowDraft | FlowRevision): FlowRevision {
+    return { ...definition, dependencyLocks: undefined, connections: definition.connections ?? [], parameters: definition.parameters ?? [], functions: definition.functions?.map(definitionSnapshot),
+        revision: 0, createdAt: 0, digest: '' };
 }

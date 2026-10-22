@@ -63,6 +63,33 @@ it('retains all candidates when a persisted reference has lost required metadata
     expect(f.blobs.size).toBe(2);
 });
 
+it('distinguishes input and task assets from context blobs without dropping reachable context', async () => {
+    const f = fixture();
+    const input = { kind: 'input', id: '0e2380bb-3690-47aa-a26b-51e219b8faef', mimeType: 'image/jpeg', bytes: 42, sha256: 'a'.repeat(64) };
+    const taskAsset = { sessionId: 's', taskId: 't', owner: 'tasks/t/task.seq', name: 'asset.bin', mimeType: 'image/png', bytes: 24, sha256: 'b'.repeat(64) };
+    const business = { id: 'invoice-42', sha256: 'c'.repeat(64) };
+    const reachable = await f.content.publish(JSON.stringify({ input, taskAsset, business, preview: JSON.stringify(input) }));
+    const orphan = await f.content.publish('orphan', 'text/plain');
+    f.roots.push({ contentRef: reachable, assets: [input, taskAsset], business });
+    expect(await createContextGc(f.store, { retentionMs: 0 }).collect({ now: 200 })).toMatchObject({ status: 'collected', marked: 1, candidates: 1, deleted: 1 });
+    expect(f.blobs.has(reachable.id)).toBe(true);
+    expect(f.blobs.has(orphan.id)).toBe(false);
+    expect(await f.content.read(reachable)).toContain('image/jpeg');
+});
+
+it.each(['missing-bytes', 'wrong-type', 'renamed-media-type'])('fails closed for %s context metadata alongside image assets', async kind => {
+    const f = fixture(), ref = await f.content.publish('reachable', 'text/plain');
+    const corrupt: Record<string, unknown> = { ...ref };
+    if (kind === 'missing-bytes') delete corrupt.bytes;
+    if (kind === 'wrong-type') corrupt.sha256 = 42;
+    if (kind === 'renamed-media-type') { delete corrupt.mediaType; corrupt.mimeType = 'text/plain'; }
+    f.roots.push({ contentRef: corrupt, input: { kind: 'input', id: 'image-id', mimeType: 'image/jpeg', bytes: 42, sha256: 'a'.repeat(64) } });
+    const orphan = await f.content.publish('orphan', 'text/plain');
+    expect(await createContextGc(f.store, { retentionMs: 0 }).collect({ now: 200 })).toMatchObject({ status: 'failed', deleted: 0 });
+    expect(f.blobs.has(ref.id)).toBe(true);
+    expect(f.blobs.has(orphan.id)).toBe(true);
+});
+
 afterEach(() => vi.useRealTimers());
 it('coalesces timer/manual passes, survives errors, and waits for work before disposal', async () => {
     vi.useFakeTimers();

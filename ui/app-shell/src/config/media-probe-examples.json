@@ -1,0 +1,8 @@
+{
+  "image.generate": {
+    "input": "生成一只鹈鹕骑自行车的图片"
+  },
+  "speech.synthesize": {
+    "input": "你好，这是一段语音合成测试。"
+  }
+}

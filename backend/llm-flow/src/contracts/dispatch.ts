@@ -1,3 +1,4 @@
+import type { FlowRuntimeInput } from './flow-templates';
 import type { FlowNodeDefinition, JsonValue, SerializableExpression } from './flow-definition';
 import type { FlowImageConstraints } from './flow-images';
 
@@ -62,6 +63,8 @@ export interface FlowLogicEvent {
 }
 
 export interface DispatchConfig {
+    /** Frozen Run input used by deferred invocation templates. */
+    runtimeInput?: FlowRuntimeInput;
     logicNodes?: { aggregate: { id: string; name: string }; judge: { id: string; name: string } };
     variables?: import('./flow-definition').FlowVariables;
     variableValues?: Record<string, JsonValue>;

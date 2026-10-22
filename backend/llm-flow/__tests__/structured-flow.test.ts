@@ -263,7 +263,7 @@ describe('structured route / spawn / aggregate DAG', () => {
         const exit = await run.root.wait({ timeoutMs: 6000 });
         expect(exit.status, JSON.stringify(exit)).toBe('succeeded');
         expect(requests).toHaveLength(2);
-        expect(requests[1].request.messages.at(-1).content).toContain('$.additionalProperties: unexpected property');
+        expect(requests[1].request.messages.at(-1).content).toContain('$: unexpected property');
     });
 
     it('spawns isolated Tasks and preserves other result types across batches, then feeds a downstream DAG node', async () => {

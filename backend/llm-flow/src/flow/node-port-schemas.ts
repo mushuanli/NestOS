@@ -5,15 +5,17 @@ import { schemaCompatibilityIssue } from './schema-compat';
 /** The generated identity is scoped to the node; an explicit result reference may rename it. */
 export function nodePortSchemas(node: DagNodeDefinition): NodePortSchemas {
     const declared = structuredClone(node.portSchemas ?? {});
-    const config = node.config as { responseFormat?: { type?: string; json_schema?: { name?: string; schema?: JsonValue } } } | null;
+    const config = node.config as { responseFormat?: { type?: string; json_schema?: { name?: string; schema?: JsonValue } }; outputValidation?: { schema?: JsonValue } } | null;
     const format = config?.responseFormat;
-    if (node.plugin !== 'builtin.agent' || format?.type !== 'json_schema') return declared;
-    const json = format.json_schema;
-    if (!json?.name?.trim() || json.schema === undefined) throw new Error(`Invalid responseFormat on ${node.id}`);
+    if (node.plugin !== 'builtin.agent') return declared;
+    const json = format?.type === 'json_schema' ? format.json_schema : undefined;
+    if (format?.type === 'json_schema' && (!json?.name?.trim() || json.schema === undefined)) throw new Error(`Invalid responseFormat on ${node.id}`);
+    const schema = config?.outputValidation?.schema ?? json?.schema;
+    if (schema === undefined) return declared;
     const result = declared.outputs?.result;
     return { ...declared, outputs: { ...declared.outputs, result: {
-        id: result?.id ?? `agent.response.${node.id}.${json.name}`, version: result?.version ?? '1',
-        definition: result?.definition ?? json.schema,
+        id: result?.id ?? `agent.response.${node.id}.${json?.name ?? 'local'}`, version: result?.version ?? '1',
+        definition: result?.definition ?? schema,
     } } };
 }
 

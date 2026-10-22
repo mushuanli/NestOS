@@ -22,10 +22,11 @@ export interface ToolboxTool {
 export interface ToolboxNavigation {
     directories: Array<import('./navigation').NavigationDirectory & { path: string }>;
     loadedDirectories: string[];
-    descriptions: Map<string, { name: string; description?: string }>;
+    descriptions: Map<string, { name: string; description?: string; availability?: AgentDefinition['availability'] }>;
 }
 
 export interface ToolboxResources {
+    readonly providerTemplates: ReadonlyArray<{id: string; name: string}>;
     navigation(): Promise<ToolboxNavigation>;
     readonly sources: Record<ToolboxKind, IFileSystem>;
     readonly drawers: ToolboxDrawers;
@@ -36,8 +37,8 @@ export interface ToolboxResources {
     getAgents(): Promise<AgentDefinition[]>;
     hasProvider(id: string): boolean;
     setToolGrant(tool: ToolGrantTarget, agentId: string, enabled: boolean): Promise<void>;
-    create(kind: ToolboxKind, name: string, providerId?: string): Promise<string>;
-    createInDrawer(kind: ToolboxKind, name: string, drawer: string, providerId?: string): Promise<string>;
+    create(kind: ToolboxKind, name: string, providerId?: string, providerTemplateId?: string): Promise<string>;
+    createInDrawer(kind: ToolboxKind, name: string, drawer: string, providerId?: string, providerTemplateId?: string): Promise<string>;
     export(paths: string[], drawers?: Array<{
         kind: DrawerKind;
         name: string;

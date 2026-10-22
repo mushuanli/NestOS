@@ -1,15 +1,28 @@
 // @vitest-environment jsdom
 import { it, expect, vi } from 'vitest';
 import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
-const state = vi.hoisted(() => ({selection: undefined as {modelId: string; reasoningEffort?: string} | undefined, options: undefined as any, restore: vi.fn(), destroy: vi.fn() }));
+const state = vi.hoisted(() => ({selection: undefined as {modelId: string; reasoningEffort?: string} | undefined, options: undefined as any, restore: vi.fn(), destroy: vi.fn(), refreshAgents: vi.fn() }));
 vi.mock('../../llm-ui-adapter/src/shell/AgentProvider', () => ({ buildExecutorOptions: async () => [], buildConnectionOptions: async () => [] }));
 vi.mock('../../llm-ui-adapter/src/components/input/ChatInputView', () => ({ ChatInput: class {
     private config = {text: '', agentId: 'default', settings: {}};
     constructor(_container: HTMLElement, options: unknown) { state.options = options; }
     getConfig() {return this.config;} setConfig(value: object) {Object.assign(this.config, value);}
     getNativeModelSelection() {return state.selection ? {...state.selection} : undefined;}
-    focus() {} setLoading() {} refreshConnections() {} restoreDraft = state.restore; destroy = state.destroy;
+    focus() {} setLoading() {} refreshConnections() {} cancelPendingSend() {} refreshAgents = state.refreshAgents; restoreDraft = state.restore; destroy = state.destroy;
 } }));
+
+it('refreshes Agent availability from the shared configuration and defers hidden updates until activation', async () => {
+    let changed!: () => void;
+    const unsubscribe = vi.fn(); state.refreshAgents.mockClear();
+    const configuration = { getConfigurationSnapshot: () => ({}), subscribe: (listener: () => void) => { changed = listener; return unsubscribe; } };
+    const editor = new SessionDraftEditor(document.createElement('div'), { onChange: vi.fn(() => () => {}) } as never,
+        { sessionDraft: { materialize: vi.fn() } }, undefined, undefined, { configuration } as never);
+    await editor.init(document.createElement('div'));
+    changed(); await vi.waitFor(() => expect(state.refreshAgents).toHaveBeenCalledOnce());
+    editor.cancelPendingRender(); changed(); await Promise.resolve(); expect(state.refreshAgents).toHaveBeenCalledOnce();
+    await editor.activate(); expect(state.refreshAgents).toHaveBeenCalledTimes(2);
+    await editor.destroy(); expect(unsubscribe).toHaveBeenCalledOnce();
+});
 
 it('does not materialize while opening or on empty send; the first submitted payload reaches the real editor once', async () => {
     const sendMessage = vi.fn(async () => {});

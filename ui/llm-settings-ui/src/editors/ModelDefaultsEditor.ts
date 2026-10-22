@@ -1,6 +1,6 @@
 import { escapeAttr, escapeHTML, randomUUID, t } from '@itookit/common';
 import { BaseSettingsEditor, OcrSettingsForm, type EditorOptions, type OcrControls } from '@itookit/ui-common';
-import { MODEL_OPERATIONS, hasConnectionCredentials, modelForOperation, type IConnectionService, type ModelDefaults, type ModelOperation } from '@itookit/kernel-adapters/contracts';
+import { MODEL_OPERATIONS, hasConnectionCredentials, modelForOperation, type IConnectionService, type ModelDefaults, type ModelOperation, type MediaProbeExamples } from '@itookit/kernel-adapters/contracts';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import { mountMediaProbe } from './provider-media-probe';
 import { providerTestResult } from './provider-test-result';
@@ -19,7 +19,7 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
     private readonly ocrContainer = document.createElement('section');
 
     constructor(container: HTMLElement, service: IConnectionService, options: EditorOptions,
-        private readonly ocr?: OcrControls) { super(container, service, options); }
+        private readonly ocr?: OcrControls, private readonly mediaProbeExamples: MediaProbeExamples = {}) { super(container, service, options); }
 
     protected onServiceChange(): void { if (!this.pending) void this.render(); }
     async render(): Promise<void> {
@@ -120,7 +120,7 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
         this.stops.push(mountMediaProbe(root.querySelector('form')!, () => draft,
             request => this.service.testConnection({ ...request, protocol: connection.protocol }).then(response => {
                 this.showVerification(root, response.success); return response;
-            }, error => { this.showVerification(root, false); throw error; })));
+            }, error => { this.showVerification(root, false); throw error; }), this.mediaProbeExamples, this.service.getProviderReferences?.()[provider.id]));
     }
     private async probeChat(button: HTMLButtonElement): Promise<void> {
         const connection = this.connections.find(item => item.id === this.defaults.chat)!;

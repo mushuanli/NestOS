@@ -1,23 +1,35 @@
 # 外部 Anki Tool 与 Flow：策略和机制边界
 
-状态：**Rust 外部工具、文本/图片双入口与公共 Flow、YAML 清单与打包已实施**。2026-10-20，从相邻 `anki-helper` 迁入独立仓库 [tools/anki-cli](../../tools/anki-cli/README.md)，不依赖原 helper 运行。通用扩展市场/宿主要求匹配、豆包原生语音适配和真实 Anki 导入验收仍待实现。当前模块边界见[策略与机制](application-policy-boundaries.md)。
+状态：**Rust 外部工具、文本/图片统一入口与公共 Flow、自动分组补全、YAML 清单与打包已实施**。2026-10-20，从相邻 `anki-helper` 迁入独立仓库 [tools/anki-cli](../../tools/anki-cli/README.md)，不依赖原 helper 运行。通用扩展市场/宿主要求匹配、豆包原生语音适配和真实 Anki 导入验收仍待实现。当前模块边界见[策略与机制](application-policy-boundaries.md)。
 
-当前由三个外部定义组成：[文本入口](../../tools/anki-cli/flows/anki-generate.flow)、[图片入口](../../tools/anki-cli/flows/anki-from-image.flow)、[公共制卡](../../tools/anki-cli/flows/anki-build.flow)。文本入口保留 `anki-generate` ID；图片入口通过 `vision` 连接转录教材，保留 name/unit/symbol/chn，使用 `builtin.input` 的 `review: true` 强制用户校对提交。两入口经 `anki.prepare@1` 规范化，将 WordData 数组及制卡设置显式传给 `builtin.flow@2`；公共流程提供 `text` 补全、可选 `image` / `speech` 生成、`anki.plan@1` 合并与派发、`anki.package@1` 输出清单和包。每批最多 20 张，已有非空字段与扩展字段由 Rust 确定性保留。
+代码中只保存一份 [anki-generate.json](../../backend/app-core/src/presets/anki-generate.json)，应用安装和系统恢复时生成 `anki-generate.flow`。主入口及公共制卡、单组识图、单批补全函数均保存在该文件的 `functions` 中，使用通用 `builtin.flow@2` 调用。恢复和发布主文件即可，无需相邻子文件或单独安装内部函数；发布后可由 Agent 引用。可提供 `words`、`wordsGroups`、`images`，图片和文字可同时提交。`builtin.route@1` 按是否有非空图片选择识别链或文本链，纯文本不需要 `vision` 连接。图片经外部 `anki.recognize@1` 产生业务实参，再以 `parameterSets` 调用单组识图函数，`builtin.input` 的 `review: true` 强制校对完整结果，再经 `anki.prepare@1` 规范化；两路汇合后调用公共制卡函数。系统恢复包含这一主资源，默认抽屉为空；旧冻结运行继续使用其持久快照。
 
-平台仅新增通用机制：`widget: images` 接受标准 inline 消息与资产引用，imageConstraints 由外部定义声明原图 PNG/JPEG/WebP、12 张和合计 80 MiB；单图上传仍受宿主 20 MiB 上限保护。图片入口通过外部 image.process Tool 缩放最长边 2048、转灰度、编码 JPEG，处理后单图 2 MiB、合计 6 MiB；Agent messageTemplates 渲染统一多模态消息，已有消息快照保持字面值；`builtin.input.review` 要求显式回复；子 Flow 的 `config.connectionBindings` 显式把子槽映射到父槽；`builtin.spawn` 的 `scope: local` 对运行时产生的节点、引用、上游端点和幂等键应用当前子流程作用域，旧默认 run 作用域保持兼容。两个入口拥有整次运行的 runPolicy，公共流程没有子 runPolicy。CLI 可加载同目录子 Flow，展开后的运行快照用于恢复。
+`processingMode: combined` 合并输入后处理；`grouped` 按 `wordsGroups` 的内容组或 `imageGroups` 的图片索引组分别处理。`imageGroups` 留空时每张图片一组，显式索引必须恰好覆盖全部图片。`groupUnits` 可补充各图片组页首延续的单元号。全部识别结果先汇合校对，同时展示各图片组卡片数量。分组边界在文本补全阶段保留；增删卡片后必须同步修改组数量，数量不匹配会明确失败。分批使用平台通用 `builtin.transform.operation: batch`，绑定内容、原组、模式、每批 20 条和参数名 `cards`；其结果直接作为同文件补全函数的 `parameterSets`。新定义不调用 `anki.batch`，业务工具不生成 Agent 调度图。通用机制负责组作用域、并发、顺序汇合和持久恢复；外部 Tool 校验返回数量、身份、字段与顺序，最终只发布一个含完整结果的包。单次总量上限为 1000 张，超限明确失败，不截断。现有非空文本与扩展字段仍由 Rust 确定性保留。
+
+模型请求使用 `json_object`、完整输出字段说明、流式响应及关闭 thinking；不假设模型服务支持 `json_schema`。`outputValidation.schema` 在本地校验 JSON、必需字段和类型，并可有限修复；请求仍只向模型服务发送 `json_object`。模型身份变化、漏卡和业务规则仍由外部 `anki.collect` 与 Rust 校验并明确失败。动态节点的用户输入通过工具结果引用传递，防止 `${...}` 字面内容在二次展开时成为模板。
+
+平台仅新增通用机制：`widget: images` 接受标准 inline 消息与资产引用，imageConstraints 由外部定义声明原图 PNG/JPEG/WebP、12 张和合计 80 MiB；单图上传仍受宿主 20 MiB 上限保护。图片入口通过外部 image.process Tool 缩放最长边 2048、转灰度、编码 JPEG，处理后单图 2 MiB、合计 6 MiB；Agent messageTemplates 渲染统一多模态消息，已有消息快照保持字面值；`builtin.input.review` 要求显式回复；子 Flow 的 `config.connectionBindings` 显式把子槽映射到父槽；`builtin.spawn` 的 `scope: local` 对运行时产生的节点、引用、上游端点和幂等键应用当前子流程作用域，旧默认 run 作用域保持兼容。主入口拥有整次运行的 runPolicy，内联函数没有子 runPolicy。CLI 直接解析同文件 `functions`，展开及冻结后的运行快照用于恢复。
 
 Flow 的 `outputs.manifest` / `outputs.package` 显式声明清单及 `.apkg` 的路径和 MIME 类型。Rust 工具拥有清单版本、牌组/笔记身份、卡片字段、媒体映射与校验、51 字段模板、临时 ZIP 和完成替换。最终文件保存到工作区 `输出目录/<操作摘要>/`，回执核对清单、包和媒体 SHA-256；没有完整回执时不自动重放写操作。当前 Node 扩展导出限制单包 128 MiB。
 
-Node 宿主通过 `MINDOS_TOOL_MODULES`（绝对模块路径 JSON 数组）加载外部 `createTools` 工厂，通过 `ANKI_CLI_BIN` 指向 Rust 二进制。HTTP 与 CLI 共用加载机制，业务源码不进入 backend/apps；浏览器/Tauri 不自动获得 Rust 能力。平台新增的 Task 资产读取端口只允许同 Session、同 Flow 的节点间读取，并校验资产身份与摘要；二进制工作区写入沿用挂载权限。库恢复与发布由应用层 app.flow-library.restore 显式协调，核心 DraftRestore 仍只恢复草稿。应用预设 [anki-generate.json](../../backend/app-core/src/presets/anki-generate.json) 保留定义副本，并接入工作流库及设置 / 系统恢复的“工作流”分组，已有文件与安装回执仍保留。
+Node 宿主通过 `MINDOS_TOOL_MODULES`（绝对模块路径 JSON 数组）加载外部 `createTools` 工厂，通过 `ANKI_CLI_BIN` 指向 Rust 二进制。HTTP 与 CLI 共用加载机制，业务工具实现保留在外部包；浏览器/Tauri 不自动获得 Rust 能力。平台新增的 Task 资产读取端口只允许同 Session、同 Flow 的节点间读取，并校验资产身份与摘要；二进制工作区写入沿用挂载权限。库恢复与发布由应用层 app.flow-library.restore 显式协调，核心 DraftRestore 仍只恢复草稿。Anki 的单一 JSON 声明源位于应用预设目录，外部包和 CLI 示例不再保存 Flow 副本；已有用户文件、发布版本和安装回执保留。普通平台测试可验证应用资源恢复，但不加载 Anki 子模块或 Rust 工具，业务执行集成测试在外部包中显式运行。
 
-当前验收：Rust 包数据库/媒体、旧项目与 GUID、字段合并、背诵往返、失败保留旧包；Node 回执与损坏检测；平台资产权限与通用执行回归；[完整 CLI 模拟端点验收](../../apps/cli/scripts/verify-anki-flow.mjs) 已实际生成媒体和 `.apkg`，并验证图片校对前后进程退出/恢复、校正字段写入最终包，以及恢复不重复识别或媒体请求。未调用真实付费模型、未做 Anki 桌面导入。下文保留完整扩展架构方向，尚未交付的部分不能视为当前能力。
+当前验收：Rust 包数据库/媒体、旧项目与 GUID、字段合并、背诵往返、失败保留旧包；Node 回执与损坏检测；平台资产权限与通用执行回归；[完整 CLI 模拟端点验收](../../apps/cli/scripts/verify-anki-flow.mjs) 实际生成媒体和 `.apkg`，覆盖统一入口文本/图片、combined/grouped、校对前后进程退出/恢复，以及恢复不重复识别或媒体请求。45 条内容合并为 20/20/5；按 21/24 两组处理时为 20/1/20/4。
+
+[系统恢复页面回归](../../ui/app-shell/tests/recovery-flow-catalog.test.ts) 使用真实 ApplicationClient 和 Memory Runtime 验证恢复清单、单主文件发布、三个内联函数及重复恢复保留修改；不加载外部工具。外部 16 项集成与完整模拟 CLI 也已从应用 JSON 唯一源重跑通过，模拟请求全部发往本地测试端点。
+
+2026-10-22 在此前动态 Tool 图版本上使用真实 `deepseek-v4-flash` 完成 `yimg/` 全部五张图片，运行 ID `20261022104654-932f7435`。按页分组数量为 66/73/74/75/24，共 312 条；与[独立原图清单](fixtures/anki-yimg-input-inventory.json)逐条对照无缺失、无多余、单元一致，校对仅统一两处撇号。18 个补全批次，每批最多 20 条，实测并发峰值 4；最终包包含 312 条笔记、624 张复习卡，11 项学习字段全部非空，原有非空音标与中文释义逐值保留，跨单元同名词不合并。ZIP CRC、SQLite 完整性、解包和重新打包通过，312 个 GUID 与全部 15,912 个字段值保持一致。该证据证明当次冻结定义；新的多组参数函数调用另由通用运行和外部集成回归验证，不把旧运行声称为新定义实跑。
+
+校对等待时重启新增模型请求为 0；完成后再次 resume 新增 Task、Effect、模型请求均为 0，包摘要不变。产物位于本地忽略目录 `out/anki-yimg/`；[机器可读验收记录](fixtures/anki-yimg-cli-evidence.json)保存计数、分组、并发与摘要，不包含凭据或模型正文。此次真实运行未启用配图/语音；媒体链通过模拟端点验收，Anki 桌面导入仍未实测。
+
+此前实跑曾暴露可选连接检查点拒绝、图片资产被 Context GC 误判、补全漏字段与 `image_prompt` 导出遗漏，均保留失败证据并修复或补足验证。缺字段不能以空值填补：本地 Schema 有界修复后仍无效就失败，不发布部分包。包写入与摘要核对由业务 Tool 负责；动态打包节点显式使用 180 秒限时，避免大批量发布沿用通用 30 秒默认值。下文保留完整扩展架构方向，尚未交付的部分不能视为当前能力。
 
 ## 1. 设计结论
 
-采用 **外部 Anki 业务包提供 Tool 与 Flow 定义，itookit 提供通用执行机制**。
+采用 **外部 Anki 业务包提供 Tool，应用资源层保存单一 Flow 定义，itookit 核心提供通用执行机制**。
 
-- Anki 的卡片字段、提示词、Unit/牌组规则、补缺/覆盖策略、模板、媒体依赖、导出与打包程序都在外部业务包。
-- 外部 `.flow` 定义决定制卡顺序、业务分支、人工确认、连接用途和失败处理；itookit 的 Flow 引擎解释并执行定义。
+- Anki 的卡片字段、Unit/牌组规则、补缺/覆盖策略、模板、媒体依赖、导出与打包程序都在外部业务包。
+- 应用资源层的 Flow 声明保存提示词，决定制卡顺序、业务分支、人工确认、连接用途和失败处理；itookit 的 Flow 引擎按通用契约解释并执行定义。
 - Flow 通过通用 Tool 节点调用外部工具，确定性步骤不经过 LLM 决策。模型也可以通过已有 Agent 机制调用获授权的同一工具。
 - itookit 提供工具发现/注册/调用、Schema 校验、连接解析、权限、持久执行、取消、恢复、资产引用和结果展示。
 - 不在 app-core、kernel-adapters、llm-flow、tools 或 apps/http-app 中新增 Anki 专用服务、节点、Program、Effect、路由或打包代码。
@@ -30,21 +42,21 @@ Node 宿主通过 `MINDOS_TOOL_MODULES`（绝对模块路径 JSON 数组）加�
 | 内容 | 归属 | itookit 如何消费 |
 | --- | --- | --- |
 | WordData、cardId/deckId、Unit、字段合并与完整性规则 | 外部 Anki 工具包 | 不解释内容，通过工具输入/输出 Schema 与资产引用交互 |
-| 卡片生成提示词、照片确认、补缺/重生成与部分导出策略 | 外部 Flow/工具包 | 通用 LLM、人工交互、控制与 Tool 节点 |
+| 卡片生成提示词、照片确认、补缺/重生成与部分导出策略 | 应用 Flow 声明与外部工具包 | 通用 LLM、人工交互、控制与 Tool 节点 |
 | Anki 模板、SQLite/媒体映射、`.apkg` 打包程序 | 外部工具包及其 worker | 通用工具执行和文件/进程能力 |
 | 工具注册、发现、参数/结果 Schema、版本与授权 | itookit 通用 Tool 机制 | 对所有业务工具一致处理 |
-| Flow 图、依赖、并发、分支、失败策略的执行 | itookit 通用 Flow 机制 | 解释外部定义，不内置制卡流程 |
+| Flow 图、依赖、并发、分支、失败策略的执行 | itookit 通用 Flow 机制 | 解释声明定义，核心不内置制卡流程 |
 | Connection 槽、运行绑定、能力要求与快照 | itookit 通用机制 | 处理声明的操作、模态和能力，不内置 text/vision/image/speech 四个业务槽名 |
 | Task/Effect 日志、租约、请求身份、取消与恢复调度 | Durable Kernel 与通用适配层 | 核心保存执行事实，工具核对业务结果 |
 | “哪个字段该补”“包是否符合本次制卡目标” | 外部工具/Flow | 框架只执行 Schema、权限和通用产物约束 |
-| 已安装扩展的 Flow 清单、导入/恢复与完整性校验 | 通用扩展资源机制 | 当前定义由外部仓库提供、应用预设保留恢复副本；通用扩展资源清单仍待实施 |
+| 应用 Flow 产品清单、安装/恢复与发布 | 应用资源层与通用恢复机制 | 从唯一 JSON 源恢复主文件，保留已有修改；通用扩展资源清单仍待实施 |
 
 依赖方向：
 
 ```mermaid
 flowchart TD
     Package[外部 Anki 业务包] --> SDK[itookit 公开 Tool 契约与能力端口]
-    Definition[外部 Anki Flow 与提示词] --> Contracts[通用 Flow 契约]
+    Definition[应用资源中的 Anki Flow 与提示词] --> Contracts[通用 Flow 契约]
     Host[HTTP 宿主] --> Loader[通用扩展装配与注册]
     Loader --> Package
     Runtime[Flow 与 Kernel] --> Registry[通用 Tool 注册表]
@@ -65,7 +77,7 @@ flowchart TD
 | Flow 授权 | Tool / 媒体 Task 延迟到能力句柄绑定后启动 | Tool 只取得工具资源，媒体只取得模型资源 |
 | 连接 | 支持节点 connectionId/connectionSlot 和运行 connectionBindings，持久化模型/媒体端点快照 | 准入和执行前校验操作、模态、格式、音色及授权，未知即拒绝 |
 | 模型通信 | chat + image.generate / speech.synthesize；媒体协议由独立 driver-llm 适配 | Provider.media 和 model.operations 显式声明，category/audio 标记不等于生成能力；Provider 目录、凭据及厂商协议归平台，anki-cli 只接收媒体打包 |
-| 扩展资源 | 有产品内置 Flow 库和初始文件恢复 | 外部业务 Flow 通过导入/安装清单接入；通用恢复只处理已安装来源 |
+| 扩展资源 | 产品 Flow 库和系统恢复包含单一 Anki 主定义 | 工具包按宿主配置注入；通用扩展安装清单仍待实施 |
 
 源码入口：
 
@@ -85,15 +97,17 @@ C4Container
     System_Boundary(platform, "itookit 通用运行平台") {
         Container(ui, "共用界面", "ui/*", "通用 Flow 表单、工具目录与运行展示")
         Container(httpd, "HTTP 执行宿主", "apps/http-app + backend/*", "通用扩展装配、能力校验和持久执行")
+        Container(definition, "应用 Flow 资源", "app-core/presets", "单一 Anki 编排声明、提示词与系统恢复目录")
         ContainerDb(storage, "通用存储", "VFS + Kernel records + assets", "授权文件、Task/Effect 和不透明业务数据")
     }
     System_Boundary(extension, "外部 Anki 工具包，独立版本与发布") {
-        Container(tools, "Anki Tools 与业务 Flow", "外部模块", "卡片规则、业务流程、Schema、提示词与清单")
+        Container(tools, "Anki Tools", "外部模块", "卡片规则、Schema、校验与业务清单")
         Container(worker, "Anki 打包 worker", "外部包私有组件", "生成 Anki 数据库、媒体映射和包体")
     }
     System_Ext(models, "模型与媒体服务", "按已绑定的通用操作提供能力")
     Rel(user, ui, "使用")
     Rel(ui, httpd, "提交、订阅、下载", "既有应用 API")
+    Rel(definition, httpd, "通用恢复、发布与执行")
     Rel(httpd, tools, "按注册契约调用", "通用 Tool API")
     Rel(tools, worker, "业务实现委派")
     Rel(httpd, storage, "通用授权与持久化")
@@ -158,12 +172,13 @@ flowchart LR
 ```text
 tools/anki-cli/
   Cargo.toml               # Independent Rust CLI.
-  flows/anki-generate.flow # Workflow, prompts and connection slots.
   src/                     # Parsing, merging, manifests, packing and Markdown.
   template/ankimodel.json  # Embedded legacy-compatible model.
   node/extension.mjs       # External Tool factory and Rust process bridge.
   tests/                   # Database/media, compatibility and receipt tests.
 ```
+
+应用声明源为 `backend/app-core/src/presets/anki-generate.json`。外部包的 Flow 集成测试读取该源；恢复后的运行资源为 `/home/admin/flows/anki-generate.flow`，其中三个局部函数不生成独立文件。
 
 | 现有 helper 源码 | 在外部包中复用 |
 | --- | --- |
@@ -173,11 +188,11 @@ tools/anki-cli/
 | `src/modules/pack.rs` | 稳定牌组/笔记身份、流式媒体、临时包与 Anki 格式处理 |
 | `src/modules/md.rs`、`template/ankimodel.json` | Markdown 与卡片模板 |
 
-已注册工具为 `anki.prepare`、`anki.plan`、`anki.package`，协议版本均为 `1`，属于外部包。Rust CLI 同时提供 init、merge、migrate、validate、manifest、pack、md 和 pkg2md 子命令；不要求每个纯函数成为 Tool。
+已注册工具为 `anki.prepare`、`anki.recognize`、`anki.batch`、`anki.collect`、`anki.plan`、`anki.package`，协议版本均为 `1`，属于外部包。识图工具按业务约束产生识图参数；新主定义的补全分批使用通用 transform，图展开及函数并发归通用 Flow。`anki.batch` 与旧版模板参数分支保留已有冻结运行兼容，新定义不依赖它们。Rust CLI 同时提供 init、merge、migrate、validate、manifest、pack、md 和 pkg2md 子命令；不要求每个纯函数成为 Tool。
 
 业务包使用 itookit 管理的授权连接/资产端口，不再读取 helper 的独立 `config.toml`、项目列表和凭据。原 helper Web 服务不作为必要运行依赖；固定流程不能整个藏进 `helper init`，否则 Flow 看不到阶段、预算和失败边界。
 
-平台执行通用 LLM/媒体节点，业务包提供提示词、输出 Schema 及校验/合并工具。若一个外部工具确实需要自行调用模型，必须使用能保留子操作身份、用量和恢复语义的通用受限模型端口；该端口尚未具备时，先把模型调用保留为显式 Flow 节点，不能直接携带 API Key 绕过框架。
+平台执行通用 LLM/媒体节点，应用 Flow 资源提供提示词与输出 Schema，业务包提供校验/合并工具。若一个外部工具确实需要自行调用模型，必须使用能保留子操作身份、用量和恢复语义的通用受限模型端口；该端口尚未具备时，先把模型调用保留为显式 Flow 节点，不能直接携带 API Key 绕过框架。
 
 ## 7. 多 Connection：机制在平台，用途在业务定义
 
@@ -205,7 +220,7 @@ tools/anki-cli/
 
 普通文本可以使用提示、解析和有界修复；严格 structured-output 只在声明为必需时强制。付费连接测试由用户显式触发，不在打开表单或后台启动时自动运行。
 
-框架冻结 Flow/工具版本、参数、输入版本/摘要、槽映射、实际模型/协议和通用授权范围；外部包冻结自己的 Schema、提示词、模板及业务清单。调用记录与请求一致性校验必须包含这些绑定/来源，不能只保存在前端。
+框架冻结 Flow/工具版本、参数、输入版本/摘要、槽映射、实际模型/协议和通用授权范围；Flow 发布版本包含提示词与输出 Schema，外部包冻结自己的工具 Schema、模板及业务清单。调用记录与请求一致性校验必须包含这些绑定/来源，不能只保存在前端。
 
 认证凭据仍由宿主管理，正常刷新不会改变冻结的认证主体；删除/禁用连接或撤销授权后阻止新的调用，不能凭快照绕过撤销，也不能静默换模型。准备后配置变化要求重新准备。
 
@@ -245,7 +260,7 @@ flowchart TD
     L --> M[通用运行视图与资产下载]
 ```
 
-图中的业务逻辑全部来自外部 Flow/工具。完整字段跳过生成、照片确认前不正式写入、媒体默认关闭、失败是否允许部分包，均由外部定义表达；框架没有 Anki 分支。
+图中的业务逻辑来自应用 Flow 声明与外部工具。完整字段跳过生成、照片确认前不正式写入、媒体默认关闭、失败是否允许部分包，均由业务定义表达；框架没有 Anki 分支。
 
 外部业务验收需覆盖：稳定 card/deck 身份；同词不同 Unit；保留已有非空字段和扩展字段；显式重新生成；编辑冲突/CAS；媒体依赖变化后的失效与替换；不采纳模型伪造的媒体路径；现有项目导入；`.apkg` 和 Markdown 导出。
 

@@ -4,6 +4,7 @@ import type { ToolUseContext } from '../core/types';
 import { ToolInputError, ToolOutputError } from '../core/tool-error';
 
 const MAX_RESULT_CHARS = 100_000;
+const MAX_STRUCTURED_RESULT_CHARS = 16 * 1024 * 1024;
 const TRUNCATION_NOTICE = '\n[output truncated]';
 
 async function validate(tool: Tool, args: Record<string, unknown>, context: ToolUseContext) {
@@ -76,9 +77,17 @@ function structuredSuccess(tool: Tool, data: unknown, started: number): ToolInvo
       return value;
     });
   } catch { throw new ToolOutputError('INVALID_OUTPUT', 'Complete JSON result required'); }
-  const limit = Math.max(0, Math.floor(Math.min(tool.maxResultSizeChars, MAX_RESULT_CHARS)));
-  if (serialized === undefined || !Number.isFinite(limit) || serialized.length > limit) throw new ToolOutputError('OUTPUT_TOO_LARGE', 'Complete JSON result required; return asset references for large results');
+  const limit = structuredResultLimit(tool);
+  if (serialized === undefined || serialized.length > limit) throw new ToolOutputError('OUTPUT_TOO_LARGE',
+    `Complete JSON result requires ${serialized?.length ?? 0} characters; limit is ${limit}; return asset references for larger results`);
   return { toolId: tool.name, success: true, durationMs: Date.now() - started, output: serialized, data: JSON.parse(serialized) };
+}
+
+function structuredResultLimit(tool: Tool): number {
+  const declared = tool.maxResultSizeChars ?? MAX_RESULT_CHARS;
+  if (typeof declared !== 'number' || Number.isNaN(declared) || declared < 0)
+    throw new ToolOutputError('INVALID_OUTPUT_LIMIT', 'Structured result limit must be a non-negative number');
+  return Math.floor(Math.min(declared, MAX_STRUCTURED_RESULT_CHARS));
 }
 
 export function toolFailure(toolId: string, error: unknown, started: number): ToolInvokeResult {

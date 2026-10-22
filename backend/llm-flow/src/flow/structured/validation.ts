@@ -1,3 +1,4 @@
+import { isFlowRuntimeInput } from '../runtime-input';
 import type { DispatchConfig, SerializableExpression } from '../../contracts';
 import { assertFlowSchema } from '../schema-registry';
 import { assertKey } from './value';
@@ -16,6 +17,7 @@ export function validateExpression(expression: SerializableExpression, depth = 0
 }
 
 export function validateDispatch(config: DispatchConfig, allowTemplates = false): void {
+    if (config.runtimeInput !== undefined && !isFlowRuntimeInput(config.runtimeInput)) throw new Error('Invalid dispatch runtime input');
     if (!deferredNumber(config.maxRounds, allowTemplates) && (!Number.isSafeInteger(config.maxRounds) || config.maxRounds < 1 || config.maxRounds > 1000)) throw new Error('maxRounds must be between 1 and 1000');
     if (!['exclusive', 'multicast'].includes(config.mode)) throw new Error('Invalid dispatch mode');
     if (config.selectionOrder && !['missing-first', 'declared'].includes(config.selectionOrder)) throw new Error('Invalid selectionOrder');

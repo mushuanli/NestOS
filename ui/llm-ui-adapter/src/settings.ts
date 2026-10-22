@@ -14,7 +14,7 @@ export function createSkillsEditorFactory(agentService: IAgentManagementService)
 }
 
 export function createAgentEditorFactory(agentService: IAgentManagementService, capabilities: AgentCapabilityOptions = {}): EditorFactory {
-    const policy = { defaultToolIds: [...(capabilities.defaultToolIds ?? [])] };
+    const policy = { ...capabilities, defaultToolIds: [...(capabilities.defaultToolIds ?? [])] };
     return async (container, options) => {
         const editor = new AgentConfigEditor(container, options, agentService, policy);
         await editor.init(container, options.initialContent);

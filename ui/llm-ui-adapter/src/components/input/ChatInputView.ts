@@ -26,6 +26,7 @@ import {NativeModelControl} from './NativeModelControl';
 import { ConnectionTierController } from './ConnectionTierController';
 import { ConnectionReadiness, type ConnectionLoadState } from './ConnectionReadiness';
 import { isDirectCommandInput } from '../../commands/direct-command';
+import { agentUnavailableReason, type AgentFlowSubmission } from '../../flows/agent-flow';
 import { ExecutionModeControl } from './ExecutionModeControl';
 import { InteractionPanel } from './InteractionPanel';
 import { delegate } from '../../utils/domEvents';
@@ -44,6 +45,7 @@ export interface ChatInputOptions {
     executorLocked?: boolean;
     maxAgentExchanges?: number;
     onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides) => Promise<void | false>;
+    prepareAgentFlow?(agent: ExecutorOption, signal: AbortSignal): Promise<AgentFlowSubmission | null>;
     onStop: () => void;
     onExecutorChange?: (executorId: string) => void;
     onConfigureExecutor?: () => void;
@@ -125,6 +127,8 @@ export interface ChatInputOptions {
  * 内部 DOM 操作完全封装。
  */
 export class ChatInput implements IChatInputPresenter {
+    private flowPreparation?: AbortController;
+    private agentNotice?: HTMLElement;
     private connectionLoadRevision = 0;
     private connectionsDisposed = false;
     private connectionLoadState: ConnectionLoadState = 'loading';
@@ -388,7 +392,8 @@ export class ChatInput implements IChatInputPresenter {
 
     private applyAvailability(): void {
         const command = isDirectCommandInput(this.textarea.value) || this.textarea.value.trimStart().startsWith('/');
-        this.sendBtn.disabled = !this.availability.canSend || this.submitting || this.checkingConnection || !!this.attachmentMgr?.images.busy || (!!this.connectionReadiness?.blocked && !command);
+        this.sendBtn.disabled = !this.availability.canSend || this.submitting || this.checkingConnection || !!this.attachmentMgr?.images.busy || (!!this.connectionReadiness?.blocked && !command)
+            || (!!agentUnavailableReason(this.selectedExecutor()) && !command);
         this.stopBtn.disabled = !this.availability.canInterrupt;
         this.agentPickerBtn.disabled = (this.loading && !this.canQueue()) || !!this.options.executorLocked;
     }
@@ -398,8 +403,12 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private requiresConnection(): boolean {
-        return !!this.options.onRequestConnections && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId;
+        return !!this.options.onRequestConnections && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId && !this.agentFlow();
     }
+
+    private selectedExecutor(): ExecutorOption | undefined { return this.agents.find(agent => agent.id === this.config.agentId); }
+    private agentFlow(): boolean { return this.selectedExecutor()?.execution?.kind === 'flow'; }
+    cancelPendingSend(): void { this.flowPreparation?.abort(); }
 
     private refreshConnectionStatus(): void {
         this.connectionReadiness?.update(this.requiresConnection(), this.connectionLoadState, this.connectionTier.getIssue(), this.sendBtn);
@@ -407,6 +416,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     setConfig(config: Partial<IChatInputConfig>): void {
+        if (config.agentId && config.agentId !== this.config.agentId) this.flowPreparation?.abort();
         this.config = this.mergeConfig(this.config, config);
         this.syncUIFromConfig();
         this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
@@ -524,6 +534,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     destroy(): void {
+        this.flowPreparation?.abort();
         this.nativeModels.destroy();
         for (const plugin of this.plugins.splice(0)) {
             try {plugin.deactivate();} catch (error) {console.error('Input plugin cleanup failed', error);}
@@ -876,6 +887,8 @@ export class ChatInput implements IChatInputPresenter {
     private async triggerSend(): Promise<void> {
         if (!this.availability.canSend || this.checkingConnection || this.submitting) return;
         const text = this.textarea.value.trim();
+        const unavailable = agentUnavailableReason(this.selectedExecutor());
+        if (unavailable && !isDirectCommandInput(text)) { Toast.error(unavailable); return; }
         if (!text && this.files.length === 0) return;
         if (this.loading && !this.canQueue() && !/^\/(flow|cancel|approve|resume)(?:\s|$)/.test(text)) return;
 
@@ -899,6 +912,7 @@ export class ChatInput implements IChatInputPresenter {
         const overrides = remote ? undefined : this.buildOverrides();
         this.submitting = true; this.applyAvailability();
         try {
+            if (!await this.prepareFlowSubmission(text, executor, submitted, revision, overrides)) return;
             if (await this.options.onSend(text, files, executor, overrides) === false) return;
             if (!overrides?.flowId && (remote || !isDirectCommandInput(text))) this.recordExecutor(executor);
             if (this.connectionsDisposed) return;
@@ -907,8 +921,20 @@ export class ChatInput implements IChatInputPresenter {
                 this.notifyConfigChange(); this.clearToolOutput();
                 for (const plugin of this.plugins) plugin.onAfterSend?.(text, executor);
             }
-        } catch { /* The host reports errors; keep submitted input and later edits. */ }
+        } catch (error) { if (this.agentFlow()) Toast.error(error instanceof Error ? error.message : t('agent.execution.unavailable')); }
         finally { this.submitting = false; if (!this.connectionsDisposed) this.applyAvailability(); }
+    }
+
+    private async prepareFlowSubmission(text: string, executor: string, submitted: string, revision: number, overrides?: ChatOverrides): Promise<boolean> {
+        if (!this.agentFlow() || isDirectCommandInput(text)) return true;
+        if (!this.options.prepareAgentFlow) throw new Error(t('agent.execution.unavailable'));
+        const preparation = this.flowPreparation = new AbortController();
+        const values = await this.options.prepareAgentFlow(this.selectedExecutor()!, preparation.signal);
+        if (!values || preparation.signal.aborted || this.connectionsDisposed || executor !== this.config.agentId
+            || revision !== this.getDraftRevision() || this.textarea.value !== submitted) return false;
+        Object.assign(overrides!, values);
+        delete overrides!.flowId; delete overrides!.flowRevision;
+        return true;
     }
 
     private recordExecutor(id: string): void {
@@ -1028,20 +1054,20 @@ export class ChatInput implements IChatInputPresenter {
     private syncRemoteControls(): void {
         this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
         const remote = this.config.agentId.startsWith('remote:');
-        const flow = !remote && !!this.config.settings.flowId;
+        const flow = !remote && (!!this.config.settings.flowId || this.agentFlow());
         this.container.classList.toggle('llm-input--remote', remote);
         for (const selector of ['.llm-input__model-trigger', '.llm-input__btn--websearch', '.llm-input__active-settings']) {
             for (const element of this.container.querySelectorAll<HTMLElement>(selector)) element.hidden = remote || flow;
         }
-        this.container.querySelector<HTMLElement>('.llm-input__agent-picker')!.hidden = flow;
+        this.container.querySelector<HTMLElement>('.llm-input__agent-picker')!.hidden = !!this.config.settings.flowId;
         const supportsModels = remote && !!this.options.nativeModels && !!this.agents.find(agent => agent.id === this.config.agentId)?.supportsModels;
         const selected = this.config.settings.nativeModelSelection;
         this.nativeModels?.setBinding(this.config.agentId, supportsModels, selected?.executorId === this.config.agentId ? selected : undefined);
         this.container.querySelector<HTMLElement>('.llm-input__execution-source')!.hidden = !remote || supportsModels;
         const flowButton = this.container.querySelector<HTMLButtonElement>('.llm-input__flow-configure')!;
-        flowButton.hidden = !flow; flowButton.disabled = this.loading || !this.options.onConfigureExecutor;
+        flowButton.hidden = !this.config.settings.flowId; flowButton.disabled = this.loading || !this.options.onConfigureExecutor;
         const configure = this.container.querySelector<HTMLButtonElement>('.llm-input__btn--configure-agent')!;
-        configure.hidden = remote || flow || !this.options.onConfigureExecutor; configure.disabled = this.loading;
+        configure.hidden = remote || !!this.config.settings.flowId || !this.options.onConfigureExecutor; configure.disabled = this.loading;
         this.container.querySelector<HTMLElement>('.llm-input__btn--switch-target')!.hidden = !this.options.onSwitchExecutionTarget;
         this.attachBtn.hidden = !this.canAttach();
         this.settingsBtn.hidden = flow;
@@ -1061,7 +1087,7 @@ export class ChatInput implements IChatInputPresenter {
     }
     private syncExecutionMode(): void {
         this.syncRemoteControls();
-        this.executionMode?.update({ mode: this.config.settings.executionMode, flow: Boolean(this.config.settings.flowId),
+        this.executionMode?.update({ mode: this.config.settings.executionMode, flow: Boolean(this.config.settings.flowId) || this.agentFlow(),
             loading: this.loading, locked: this.config.settings.executionModeLocked, remote: this.config.agentId.startsWith('remote:') });
     }
 
@@ -1363,7 +1389,8 @@ export class ChatInput implements IChatInputPresenter {
                 id: a.id,
                 label: a.name,
                 icon: a.icon ?? ENTITY_ICONS.agent,
-                description: a.description,
+                description: agentUnavailableReason(a) ?? a.description,
+                disabled: a.availability?.status === 'disabled',
                 group: a.category,
                 searchText: a.category,
             };
@@ -1372,6 +1399,8 @@ export class ChatInput implements IChatInputPresenter {
 
     /** Select an agent from the picker. */
     private selectAgent(id: string): void {
+        if (agentUnavailableReason(this.agents.find(agent => agent.id === id))) return;
+        this.flowPreparation?.abort();
         this.config.agentId = id;
         this.currentAgentId = id;
         this.updateAgentTrigger();
@@ -1395,7 +1424,19 @@ export class ChatInput implements IChatInputPresenter {
             this.agentMetaEl.textContent = '';
             this.agentMetaEl.style.display = 'none';
         }
-        this.updatePromptPickerVisibility(); this.syncExecutionMode();
+        this.updatePromptPickerVisibility(); this.syncExecutionMode(); this.updateAgentNotice();
+    }
+
+    private updateAgentNotice(): void {
+        if (!this.agentNotice) {
+            this.agentNotice = document.createElement('p'); this.agentNotice.dataset.agentUnavailable = '';
+            this.agentNotice.className = 'llm-input__connection-notice'; this.agentNotice.setAttribute('role', 'status');
+            this.container.querySelector('.llm-input__connection-notice')?.after(this.agentNotice);
+        }
+        const reason = agentUnavailableReason(this.selectedExecutor());
+        this.agentNotice.textContent = reason ?? ''; this.agentNotice.hidden = !reason;
+        if (reason) this.flowPreparation?.abort();
+        this.applyAvailability();
     }
 
     // ── Prompt Picker methods ─────────────────────────────────────────────────

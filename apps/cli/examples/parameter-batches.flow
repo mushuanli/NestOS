@@ -1,0 +1,72 @@
+{
+  "id": "parameter-batches",
+  "name": "Batch text and image content through a local Flow function",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "parameters": [
+    {
+      "name": "content",
+      "type": "json",
+      "default": [
+        { "type": "text", "text": "first document" },
+        { "type": "text", "text": "second document" },
+        { "type": "text", "text": "third document" }
+      ]
+    },
+    { "name": "batchSize", "type": "number", "integer": true, "minimum": 1, "default": 2 }
+  ],
+  "functions": [
+    {
+      "id": "record-content",
+      "name": "Return one content batch",
+      "draftVersion": 1,
+      "updatedAt": 0,
+      "parameters": [
+        { "name": "content", "type": "json", "required": true },
+        { "name": "language", "type": "string", "default": "zh-CN" }
+      ],
+      "nodes": [
+        {
+          "id": "record",
+          "name": "Return generic content",
+          "plugin": "builtin.transform",
+          "pluginVersion": "1.0.0",
+          "inputs": {},
+          "config": { "value": { "content": "${param.content}", "language": "${param.language}" } }
+        }
+      ],
+      "edges": [],
+      "outputs": { "result": { "value": "${nodes.record.outputs.result}" } }
+    }
+  ],
+  "nodes": [
+    {
+      "id": "batches",
+      "name": "Partition input without interpreting its content",
+      "plugin": "builtin.transform",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "operation": "batch",
+        "value": "${param.content}",
+        "batchSize": "${param.batchSize}",
+        "parameter": "content"
+      }
+    },
+    {
+      "id": "calls",
+      "name": "Call once per content batch",
+      "plugin": "builtin.flow",
+      "pluginVersion": "2.0.0",
+      "inputs": {},
+      "config": {
+        "flowId": "record-content",
+        "parameters": { "language": "zh-CN" },
+        "parameterSets": "${nodes.batches.outputs.result}",
+        "maxConcurrency": 1
+      }
+    }
+  ],
+  "edges": [],
+  "outputs": { "results": { "value": "${nodes.calls.outputs.result}" } }
+}

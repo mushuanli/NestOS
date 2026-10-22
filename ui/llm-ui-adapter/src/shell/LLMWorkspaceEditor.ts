@@ -1,4 +1,5 @@
 import {flowImageAssets} from '../flows/image-assets';
+import { prepareAgentFlow } from '../flows/agent-flow';
 import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { disposeEditorResources } from './editor-disposal';
 import { rememberTaskAttachment, restoreTaskAttachment } from './task-attachment-lifecycle';
@@ -438,6 +439,7 @@ export class LLMWorkspaceEditor implements IEditor {
             onConfigChange: (config) => this.handleConfigChange(config),
             onExecutorChange: () => { this.skillRefreshBinding?.refresh(); },
             onRequestConnections: () => this.connectionOptions!.read(),
+            prepareAgentFlow: (agent, signal) => prepareAgentFlow(this.commandBus, agent, signal),
 
             // ── @mention file reference ───────────────────────────────────────
             onRequestFiles: async (query, options) => this.fileSearchService.search(query, options),
@@ -998,6 +1000,7 @@ export class LLMWorkspaceEditor implements IEditor {
     setDirty(_dirty: boolean): void { }
     focus(): void { this.chatInput?.focus(); }
     cancelPendingRender(): void {
+        this.chatInput?.cancelPendingSend?.();
         this.chatInput?.hideNativeModelPicker?.();
         ++this.activationRevision;
         this.viewActive = false; this.invocationPanel?.setVisible(false);

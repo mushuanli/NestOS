@@ -39,7 +39,7 @@ export interface Tool<
   /** One-line hint for tool search discovery. 3-10 words, no trailing period. */
   searchHint?: string;
 
-  /** Max result size in characters before truncation. */
+  /** Serialized result character limit; structured calls fail rather than truncate (platform cap: 16 * 1024 * 1024). */
   maxResultSizeChars: number;
 
   // ── Schema ──

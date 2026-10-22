@@ -97,7 +97,7 @@ export interface AppUI {
         navigate(sessionId: string): void | Promise<void>;
     }): ContextMenuConfig<TNode>;
     createChatEditor(agentService: IAgentConfigService, deps: ChatEditorDeps): EditorFactory;
-    createAgentEditor(agentService: IAgentManagementService, options?: { defaultToolIds?: readonly string[] }): EditorFactory;
+    createAgentEditor(agentService: IAgentManagementService, options?: { defaultToolIds?: readonly string[]; listFlows?(): Promise<Array<{id: string; name: string}>> }): EditorFactory;
     createFlowEditor(deps: FlowEditorDeps): EditorFactory;
     createSkillEditor(agentService: IAgentManagementService): EditorFactory;
     createAIContextMenu<TNode extends AIContextMenuNode>(deps: AIContextMenuDeps): ContextMenuConfig<TNode>;

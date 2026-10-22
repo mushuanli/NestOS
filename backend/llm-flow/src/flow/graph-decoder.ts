@@ -17,6 +17,7 @@ export function isGraphEdge(value: unknown): boolean {
     return isRecord(value) && ['id', 'from', 'to'].every(key => isIdentity(value[key]))
         && ['input', 'output'].every(key => optional(value[key], value => typeof value === 'string'))
         && optional(value.kind, value => value === 'control' || value === 'data')
+        && optional(value.dependencyOnly, value => typeof value === 'boolean')
         && optional(value.onFailure, value => value === 'fail' || value === 'skip' || value === 'continue');
 }
 

@@ -1,5 +1,6 @@
 import { mountProviderTabs, renderTextProbe, textTestModels } from './provider-layout';
 import { mountMediaProbe } from './provider-media-probe';
+import { renderProviderApiReference } from './provider-api-reference';
 import {providerTestResult} from './provider-test-result';
 import { bindReasoningFields, readReasoningDeclaration, renderReasoningDeclaration } from './model-reasoning-form';
 import { renderMediaDeclaration, readMediaEndpoints, readModelOperations, bindMediaDeclarations, syncMediaDeclarations } from './provider-media-form';
@@ -26,7 +27,7 @@ import { renderModelCapabilityBadges } from '../utils/modelBadges';
 
 import { randomUUID, generateShortUUID } from '@itookit/common';
 import { BaseSettingsEditor, requestSettingsSave } from '@itookit/ui-common';
-import type { IConnectionService } from '@itookit/kernel-adapters/contracts';
+import type { IConnectionService, MediaProbeExamples } from '@itookit/kernel-adapters/contracts';
 import type { ProviderAuthorizationState } from '@itookit/kernel-adapters/contracts';
 import type { LLMProvider, LLMModel, ModelCategory } from '@itookit/driver-llm/contracts';
 import { Modal, Toast } from '@itookit/ui-common';
@@ -42,6 +43,8 @@ const MODEL_CAP_CHIPS: ReadonlyArray<[string, keyof LLMModel]> = [
 ];
 
 export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionService> {
+    constructor(container: HTMLElement, service: IConnectionService, options: import('@itookit/ui-common').EditorOptions,
+        private readonly mediaProbeExamples: MediaProbeExamples = {}) { super(container, service, options); }
     private editModels: LLMModel[] = [];
     private reasoningDrafts = new WeakMap<LLMModel, [string | undefined, string | undefined]>();
     private disposeMediaProbe?: () => void;
@@ -420,7 +423,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                            placeholder="${hasStoredKey ? t('provider.test.savedKey') : 'sk-...'}">
                     <small class="settings-form__help provider-settings__status" data-provider-credential-state>${t(hasStoredKey ? 'provider.settings.configured' : 'provider.settings.unconfigured')}</small>
                     <label class="settings-form__help"><input type="checkbox" data-clear-provider-key>${t('provider.test.clearKey')}</label>
-                    </div>${renderTextProbe(this.editingProvider)}
+                    </div><div data-provider-text-test ${textTestModels(this.editingProvider).length ? '' : 'hidden'}>${renderTextProbe(this.editingProvider)}
                     <details class="provider-settings__storage"><summary>${t('provider.credentials.details')}</summary><small class="settings-form__help">Key 以<strong>明文</strong>保存在数据根的 <code>/etc/llm/.providers/&lt;id&gt;.json</code>；Provider 列表与 <code>.llm</code> 导出不含此字段，但文件本身可读。</small>
                     <small class="settings-form__help">Session Bash 不继承宿主环境：子进程需要凭证时，请在命令里显式传入，或让它从自己读取的受控文件 / 环境变量名取值。</small></details>
                     <div style="margin-top:6px">
@@ -430,6 +433,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                         </button>
                     </div>
                     <div id="provider-test-result" style="display:none; margin-top:8px; padding:8px 10px; border-radius:4px; font-size:12px;"></div>
+                    </div>
                 </div>
 
                 <div class="settings-form__group">
@@ -454,7 +458,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 <small class="settings-form__help" data-model-catalog-help>${t(this.editingProvider?.modelsPath === false ? 'provider.models.unavailable' : 'provider.models.help')}</small>
                 </section>
                 <section data-provider-panel="connections"><div data-provider-connections></div></section>
-                <section data-provider-panel="advanced">${renderProviderAdvanced(this.editingProvider)}</section>
+                <section data-provider-panel="advanced">${renderProviderAdvanced(this.editingProvider)}${renderProviderApiReference(this.service.getProviderReferences?.()[this.editingProvider.id])}</section>
             </form>
         `;
 
@@ -529,7 +533,8 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         this.providerForm = (this.formOnly ? this.container : document.body.lastElementChild)?.querySelector<HTMLFormElement>('#provider-form') ?? undefined;
         if (this.providerForm) {
             mountProviderTabs(this.providerForm);
-            this.disposeMediaProbe = mountMediaProbe(this.providerForm, () => this.readDraft(), request => this.service.testConnection(request));
+            this.disposeMediaProbe = mountMediaProbe(this.providerForm, () => this.readDraft(), request => this.service.testConnection(request), this.mediaProbeExamples,
+                this.service.getProviderReferences?.()[this.editingProvider!.id]);
             const connectionsForm = this.providerForm, connectionsStarted = performance.now(), connectionsOperationId = randomUUID();
             void this.loadConnections(connectionsForm).catch(error => {
                 if (!connectionsForm.isConnected) return;
@@ -712,6 +717,8 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         select.disabled = !models.length;
         const chat = this.providerForm?.querySelector<HTMLElement>('[data-provider-chat-settings]');
         if (chat) chat.hidden = !models.length;
+        const test = this.providerForm?.querySelector<HTMLElement>('[data-provider-text-test]');
+        if (test) test.hidden = !models.length;
         if (!models.length) select.add(new Option(t('provider.test.noTextModel'), ''));
     }
 

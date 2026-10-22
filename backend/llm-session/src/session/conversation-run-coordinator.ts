@@ -106,6 +106,7 @@ export class ConversationRunCoordinator {
         parameters: Record<string, JsonValue> | undefined,
         createSpec: (snapshot: ContextSnapshot) => DagRunSpec | Promise<DagRunSpec>,
         bindPatchNode?: (node: DagNodeDefinition, snapshot: ContextSnapshot, defaults?: Record<string, unknown>) => Promise<Partial<Pick<DagNodeDefinition, 'config' | 'inputs'>>>,
+        resolveSkills = this.options.resolveSkills,
     ): Promise<void> {
         await this.execute(execution, async snapshot => {
             const flow = new DurableFlowExecutor({
@@ -114,7 +115,7 @@ export class ConversationRunCoordinator {
                 resolveTools: this.options.resolveTools,
                 // Flow Agent nodes activate their initially selected Skills the same way
                 // direct chat does, inside the node's declared capability set.
-                resolveSkillContexts: skillContextResolver(this.options),
+                resolveSkillContexts: skillContextResolver({ ...this.options, resolveSkills }),
                 sessionContext: flowSessionContext(snapshot),
                 workspaceManager: this.options.workspaceManager,
                 bindPatchNode: bindPatchNode ? (_sessionId, node, defaults) => bindPatchNode(node, snapshot, defaults) : undefined,
@@ -453,7 +454,9 @@ function conversationRound(
         status: 'running',
         createdAt: Date.now(),
         origin: 'user',
+        agentId: execution.config?.id ?? execution.task.input.agentId,
         ...(execution.task.input.sendIntent?.execution.kind === 'flow' ? { flow: {
+            input: { prompt: execution.task.input.text },
             flowId: execution.task.input.sendIntent.execution.flowId,
             connectionId: execution.task.input.overrides?.connectionId,
             connectionBindings: execution.task.input.sendIntent.execution.connectionBindings,

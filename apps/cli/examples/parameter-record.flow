@@ -1,0 +1,29 @@
+{
+  "id": "parameter-record",
+  "name": "Return one set of named arguments",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "parameters": [
+    { "name": "source", "type": "string", "required": true },
+    { "name": "language", "type": "string", "default": "zh-CN" },
+    { "name": "detail", "type": "number", "default": 1, "integer": true, "minimum": 1 }
+  ],
+  "nodes": [
+    {
+      "id": "record",
+      "name": "Return named arguments",
+      "plugin": "builtin.transform",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "value": {
+          "source": "${param.source}",
+          "language": "${param.language}",
+          "detail": "${param.detail}"
+        }
+      }
+    }
+  ],
+  "edges": [],
+  "outputs": { "result": { "value": "${nodes.record.outputs.result}" } }
+}

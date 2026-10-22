@@ -1,6 +1,6 @@
 import { prepareFlowConnections } from './flow-connections';
 import { type Signal } from '../contracts';
-import { type ToolDefinition } from '@itookit/llm-context';
+import { type ToolDefinition, type ContextSnapshot } from '@itookit/llm-context';
 import type { Kernel } from '@itookit/durable-kernel';
 import { ulid } from '../persistence/ulid';
 import type {
@@ -23,13 +23,17 @@ import { formatErrorMessage } from '../utils/error-formatter';
 import { createSessionHost, type SessionHost } from '../utils/host-ports';
 import { AgentResolver } from './agent-resolver';
 import { AttachmentProcessor } from './attachment-processor';
-import { ConversationRunCoordinator } from './conversation-run-coordinator';
+import { ConversationRunCoordinator, type ConversationExecution } from './conversation-run-coordinator';
 import { SessionEventBus } from './session-event-bus';
 import { SessionState } from './session-state';
-import { bindFlowNode } from './flow-node-binder';
+import { bindFlowNode, type FlowIdentityResolver } from './flow-node-binder';
 import { snapshotTaskInput, directExecutionMode } from './direct-execution-mode';
 import { resolveSessionExecutionMode } from './session-execution-mode';
 import type { SessionExecutionActivity } from './session-execution-activity';
+import { prepareFlowAgentInput, frozenFlowResolver } from './flow-agent';
+import { frozenFlowConnections } from './flow-connection-snapshot';
+import { frozenFlowIdentities } from './flow-identity-snapshot';
+import { bindPlannedFlowGraph, validatePlannedFlowConnections } from './flow-run-plan';
 
 export interface SessionRunCallbacks {
     /** Commit persisted rounds to the projection before exposing a terminal status. */
@@ -63,7 +67,7 @@ export class SessionRunCoordinator {
         private readonly attachments: AttachmentProcessor,
         private readonly callbacks: SessionRunCallbacks,
         private readonly kernel: Kernel,
-        dagPlugins: import('@itookit/llm-flow/contracts').DagPluginCatalog,
+        private readonly dagPlugins: import('@itookit/llm-flow/contracts').DagPluginCatalog,
         private readonly flowStore: FlowStore,
         resolveTools?: (sessionId: string, allowedIds: string[]) => Promise<{
             definitions: ToolDefinition[];
@@ -110,7 +114,9 @@ export class SessionRunCoordinator {
     async bindQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
         const defaults = await this.agents.getModelDefaults(), settings = await this.engine.getSessionSettings(sessionId);
         const connectionId = (item.overrides && 'connectionId' in item.overrides ? item.overrides.connectionId : settings.connectionId) ?? defaults.chat;
-        return { ...item, connectionBinding: { connectionId, defaults } };
+        const connectionBinding = { connectionId, defaults };
+        const bound = await this.prepareFlowInput({ ...item, sessionId, instructionConnectionBinding: connectionBinding });
+        return { ...item, sendIntent: bound.sendIntent, flowBinding: bound.instructionFlowBinding, connectionBinding };
     }
 
     async validateSubmission(input: TaskInput): Promise<void> {
@@ -169,15 +175,18 @@ export class SessionRunCoordinator {
         if (!context) return this.finishMissingContext(task, runtime);
         this.callbacks.onStatusChange(task.sessionId, 'running');
         let roundLog: RoundLog | undefined;
+        let stage = 'history-load';
         try {
             roundLog = await this.getLog(task);
+            stage = 'attachments-and-round';
             const setup = await this.setup(task, context.state);
+            stage = 'run-prepare-execute';
             try { await this.executeRequest(task, context.state, roundLog, setup); }
             finally { await this.callbacks.refreshSession?.(task.sessionId); }
             this.callbacks.onStatusChange(task.sessionId, 'completed');
             this.callbacks.onUnread(task.sessionId);
         } catch (error) {
-            this.handleError(error, task, runtime, context.state);
+            this.handleError(error, task, runtime, context.state, stage);
         } finally {
             this.active.delete(task.sessionId);
             runtime.currentTaskId = undefined;
@@ -203,27 +212,54 @@ export class SessionRunCoordinator {
         };
         const flow = task.input.sendIntent?.execution;
         if (flow?.kind !== 'flow') return this.runs.executeDirect(execution);
+        return this.executeFlow(execution, setup, flow);
+    }
+
+    private async executeFlow(execution: ConversationExecution, setup: ExecutionSetup,
+        flow: Extract<NonNullable<TaskInput['sendIntent']>['execution'], { kind: 'flow' }>): Promise<void> {
+        const { task } = execution;
         const definitions = new FlowDefinitionStore(this.flowStore);
-        const revision = await definitions.loadRevision(flow.flowId, flow.revision);
+        const revision = task.input.instructionFlowBinding?.definition ?? await definitions.loadRevision(flow.flowId, flow.revision);
         if (!revision) throw new Error(`Flow revision not found: ${flow.flowId}`);
         flow.revision = revision.revision;
         const parameterIssues = validateFlowParameters(revision.parameters, flow.parameters);
         if (hasValidationErrors(parameterIssues)) {
             throw new Error(parameterIssues.map(issue => issue.message).join('; '));
         }
-        return this.runs.executeDag(execution, flow.parameters, async snapshot =>
-            flowToDag(
-                revision,
-                (node, defaults) => bindFlowNode(node, defaults, snapshot, task, setup, this.agents),
-                setup.config.connectionId,
-                (id, childRevision) => definitions.loadRevision(id, childRevision),
-                [], revision.dependencyLocks, false, task.input.overrides?.connectionId, flow.connectionBindings, (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, this.agents, task.input.instructionConnectionBinding?.defaults, runConnectionId),
-            ),
-            (node, snapshot, defaults) => bindFlowNode(node as Parameters<typeof bindFlowNode>[0], defaults as Parameters<typeof bindFlowNode>[1], snapshot, task, setup, this.agents),
+        const plan = task.input.instructionFlowBinding?.plan;
+        const identities = plan ? frozenFlowIdentities(plan.identities) : this.agents;
+        const dynamicIdentities = plan ? frozenFlowIdentities(plan.identities, this.agents) : identities;
+        const createSpec = (snapshot: ContextSnapshot) => this.flowSpecification(task, setup, revision, snapshot, identities);
+        return this.runs.executeDag(execution, flow.parameters, createSpec,
+            (node, snapshot, defaults) => bindFlowNode(node as Parameters<typeof bindFlowNode>[0],
+                defaults as Parameters<typeof bindFlowNode>[1], snapshot, task, setup, dynamicIdentities),
+            plan ? (ids, sessionId) => dynamicIdentities.getSkills(ids, sessionId) : undefined,
         );
     }
 
+    private async flowSpecification(task: ExecutionTask, setup: ExecutionSetup, revision: import('@itookit/llm-flow/contracts').FlowRevision,
+        snapshot: ContextSnapshot, identities: FlowIdentityResolver) {
+        const binding = task.input.instructionFlowBinding;
+        const catalog = binding ? frozenFlowConnections(this.agents, binding.connections) : this.agents;
+        const bind = (node: Parameters<typeof bindFlowNode>[0], defaults: Parameters<typeof bindFlowNode>[1]) =>
+            bindFlowNode(node, defaults, snapshot, task, setup, identities);
+        if (binding?.plan) {
+            const graph = await bindPlannedFlowGraph(binding.plan.graph, bind);
+            await validatePlannedFlowConnections(graph, revision, catalog);
+            return { ...graph, input: { prompt: task.input.text } };
+        }
+        const definitions = new FlowDefinitionStore(this.flowStore), execution = task.input.sendIntent?.execution;
+        const graph = await flowToDag(revision, bind, setup.config.connectionId,
+            frozenFlowResolver(task.input, (id, version) => definitions.loadRevision(id, version)), [], revision.dependencyLocks, false,
+            task.input.overrides?.connectionId, execution?.kind === 'flow' ? execution.connectionBindings : undefined,
+            (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, catalog,
+                task.input.instructionConnectionBinding?.defaults, runConnectionId));
+        return { ...graph, input: { prompt: task.input.text } };
+    }
+
     private async createTask(input: TaskInput): Promise<ExecutionTask> {
+        input = await this.prepareFlowInput(input);
+        await this.validateFrozenFlow(input);
         input = await resolveSessionExecutionMode(this.engine, input, this.host.translate);
         const roundLog = this.logs.get(input.sessionId)
             ?? new RoundLog(this.engine, input.sessionId);
@@ -320,15 +356,56 @@ export class SessionRunCoordinator {
 
     private async resolveConfig(input: TaskInput): Promise<ExecutorConfig> {
         const settings = await this.engine.getSessionSettings(input.sessionId);
-        const identity = await this.agents.resolve(input.agentId);
-        const config = await this.agents.reResolveModel(identity, {
-            connectionId: input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
-                : input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId,
+        const identity = input.instructionFlowBinding?.agent ?? await this.agents.resolve(input.agentId);
+        const connectionId = input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
+            : input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId;
+        const config = input.sendIntent?.execution.kind === 'flow'
+            ? { ...identity, connectionId: connectionId ?? (await this.agents.getModelDefaults()).chat }
+            : await this.agents.reResolveModel(identity, {
+            connectionId,
             modelTier: input.overrides?.modelTier,
             useDefault: !input.instructionConnectionBinding,
-            allowUnconfigured: input.sendIntent?.execution.kind === 'flow',
         });
         return input.overrides ? applyOverrides(config, input.overrides) : config;
+    }
+
+    private async prepareFlowInput(input: TaskInput): Promise<TaskInput> {
+        if (input.instructionFlowBinding) return input;
+        const identity = await this.agents.resolve(input.agentId);
+        if (identity.execution?.kind !== 'flow' && input.sendIntent?.execution.kind !== 'flow') return input;
+        if (!input.instructionConnectionBinding) {
+            const defaults = await this.agents.getModelDefaults(), settings = await this.engine.getSessionSettings(input.sessionId);
+            const connectionId = (input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId) ?? defaults.chat;
+            input = { ...input, instructionConnectionBinding: { connectionId, defaults } };
+        }
+        const definitions = new FlowDefinitionStore(this.flowStore);
+        return prepareFlowAgentInput(input, { definitions, resolveAgent: async () => identity, host: this.host,
+            connectionCatalog: this.agents, identityResolver: this.agents, plugins: this.dagPlugins,
+            prepareConnections: (definition, bindings, connectionId) => prepareFlowConnections(definition, bindings, this.agents,
+                input.instructionConnectionBinding?.defaults, connectionId) });
+    }
+
+    private async validateFrozenFlow(input: TaskInput): Promise<void> {
+        const binding = input.instructionFlowBinding;
+        if (!binding) return;
+        const started = Date.now(), operationId = input.instructionId ?? input.sendIntent?.submission?.id ?? input.sessionId;
+        try {
+            const catalog = frozenFlowConnections(this.agents, binding.connections);
+            if (binding.plan) await validatePlannedFlowConnections(binding.plan.graph, binding.definition, catalog);
+            else await flowToDag(binding.definition, undefined, input.instructionConnectionBinding?.connectionId,
+                frozenFlowResolver(input, async () => null), [], binding.definition.dependencyLocks, false,
+                input.overrides?.connectionId, input.sendIntent?.execution.kind === 'flow' ? input.sendIntent.execution.connectionBindings : undefined,
+                (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, catalog,
+                    input.instructionConnectionBinding?.defaults, runConnectionId));
+            this.host.logger.debug('Flow plan revalidated', { operation: 'flow.plan', stage: 'dispatch-admission', result: 'success',
+                operationId, planVersion: binding.plan?.version ?? 0, elapsedMs: Date.now() - started });
+        } catch (error) {
+            const code = (error as { code?: unknown })?.code;
+            this.host.logger.warn('Flow plan revalidation failed', { operation: 'flow.plan', stage: 'dispatch-admission', result: 'failure',
+                operationId, errorCode: typeof code === 'string' && /^FLOW_CONNECTION_[A-Z_]+$/.test(code) ? code : 'FLOW_PLAN_INVALID',
+                elapsedMs: Date.now() - started });
+            throw error;
+        }
     }
 
     private assertAgentVersion(agent: ExecutorConfig, agentId: string): asserts agent is ExecutorConfig & { agentVersion: string } {
@@ -350,11 +427,15 @@ export class SessionRunCoordinator {
         task: ExecutionTask,
         runtime: SessionRuntime,
         state: SessionState,
+        stage: string,
     ): void {
         const aborted = task.abortController.signal.aborted
             || (error instanceof Error && error.name === 'AbortError');
         const status = aborted ? 'aborted' as const : 'failed' as const;
         runtime.error = error instanceof Error ? error : new Error(String(error));
+        this.host.logger.warn('Session run failed', { operation: 'session.run', stage, result: status,
+            sessionId: task.sessionId, operationId: task.input.instructionId ?? task.id,
+            errorCode: runFailureCode(error), elapsedMs: Date.now() - task.createdAt });
         this.callbacks.onStatusChange(task.sessionId, status);
         const message = formatErrorMessage(error);
         projectError(this.eventBus, task.sessionId, state, status, message);
@@ -367,6 +448,16 @@ export class SessionRunCoordinator {
         this.activity?.finish(task.sessionId, 'failed', task.input?.instructionId);
         this.host.logger.error('Session context not found', { sessionId: task.sessionId });
     }
+}
+
+function runFailureCode(error: unknown): string {
+    const code = (error as { code?: unknown })?.code;
+    if (typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code)) return code;
+    const message = error instanceof Error ? error.message : '';
+    if (/skill.*(?:not found|missing|disabled|unavailable)/i.test(message)) return 'SKILL_UNAVAILABLE';
+    if (/reload required|skill.*drift/i.test(message)) return 'SKILL_RELOAD_REQUIRED';
+    if (/identity was not admitted/i.test(message)) return 'FLOW_IDENTITY_NOT_ADMITTED';
+    return 'RUN_EXECUTION_FAILED';
 }
 
 function executionNode(id: string, config: ExecutorConfig): ExecutionNode {

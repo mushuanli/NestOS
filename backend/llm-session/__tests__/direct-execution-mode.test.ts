@@ -152,6 +152,7 @@ it('locks mode at admission and leaves rejected first submissions configurable',
         const coordinator = new SessionRunCoordinator(...[repository, ...Array(7).fill({})] as ConstructorParameters<typeof SessionRunCoordinator>);
         const internal = coordinator as any;
         vi.spyOn(coordinator, 'assertCanSubmit').mockResolvedValue(undefined);
+        vi.spyOn(internal, 'prepareFlowInput').mockImplementation(async (input: unknown) => input);
         const resolve = vi.spyOn(internal, 'resolveConfig').mockRejectedValueOnce(new Error('Invalid agent'))
             .mockResolvedValue({ id: 'a', agentVersion: '1' });
         vi.spyOn(internal, 'execute').mockResolvedValue(undefined);

@@ -151,6 +151,8 @@ export class AgentResolver {
 
     /** Build ExecutorConfig from an AgentDefinition. */
     private async buildConfig(agentDef: import('../contracts').AgentDefinition): Promise<ExecutorConfig> {
+        if (agentDef.availability?.status === 'disabled') throw new ConversationError(ConversationErrorCode.AGENT_DISABLED,
+            `Agent unavailable: ${agentDef.name} (${agentDef.availability.reason ?? 'disabled'})`);
         const systemPromptSegments: string[] = [];
         if (agentDef.config.systemPromptId) {
             const prompt = await this.agentService.getSystemPrompt(agentDef.config.systemPromptId);
@@ -169,6 +171,7 @@ export class AgentResolver {
             icon: agentDef.icon,
             temperature: agentDef.config.temperature,
             agentVersion: agentDef.version ?? await this.hashDefinition(agentDef),
+            ...(agentDef.execution ? { execution: structuredClone(agentDef.execution) } : {}),
             capabilityPolicy: structuredClone(agentDef.capabilityPolicy ?? (agentDef.config.mcpServers?.length
                 ? { mcpProfileIds: [...agentDef.config.mcpServers] } : undefined)),
             memoryPolicy: structuredClone(agentDef.memoryPolicy),
@@ -181,6 +184,7 @@ export class AgentResolver {
             ...agentDef,
             version: undefined,
             modifiedAt: undefined,
+            availability: undefined,
         });
         // sha256Hex falls back to pure JS where crypto.subtle is missing (WebKitGTK/Tauri).
         return sha256Hex(canonical);

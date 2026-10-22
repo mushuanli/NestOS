@@ -8,6 +8,7 @@ import { randomUUID, t } from '@itookit/common';
 import { ChatInput } from '../../components/input/ChatInputView';
 import { EventBinder } from '../EventBinder';
 import { buildExecutorOptions, buildConnectionOptions } from '../AgentProvider';
+import { prepareAgentFlow } from '../../flows/agent-flow';
 import type { SendMessageParams } from '../../commands/SendMessageCommand';
 import {SubmissionFeedback} from '../../components/history/SubmissionFeedback';
 import { mountDraftProjectScope } from './draft-project-scope';
@@ -45,6 +46,7 @@ export class SessionDraftEditor extends IEditor {
     private config?: IChatInputConfig;
     private initialData?: string;
     private unsubscribeConnections?: () => void;
+    private configurationRevision = 0;
     private status?: HTMLElement;
     private submission?: SubmissionFeedback;
     private editRevision = 0;
@@ -57,7 +59,8 @@ export class SessionDraftEditor extends IEditor {
     };
     constructor(private container: HTMLElement, private service: Parameters<typeof buildExecutorOptions>[0], private options: EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission>,
         private readonly ocr?: OcrControls,
-        private readonly createConversation?: (container: HTMLElement, options: EditorOptions, workspace: WorkspaceHandoff) => Promise<IEditor>) {
+        private readonly createConversation?: (container: HTMLElement, options: EditorOptions, workspace: WorkspaceHandoff) => Promise<IEditor>,
+        private readonly flowControls?: { commands?: import('@itookit/llm-session/contracts').ICommandBus; configuration?: import('@itookit/kernel-adapters/contracts').ChatConfigurationView }) {
         super(); this.initialData = options.sessionDraft?.initialData; this.codec = new DraftDataCodec(options.sessionDraft?.attachments);
     }
     async init(container: HTMLElement): Promise<void> { this.container = container; await this.render(); }
@@ -82,7 +85,7 @@ export class SessionDraftEditor extends IEditor {
                 return config ? {agentId: config.agentId, settings: {...config.settings}} : undefined;
             });
         this.unsubscribeConnections?.();
-        this.unsubscribeConnections = this.service.onChange(() => { void this.input?.refreshConnections(); });
+        this.bindConfiguration();
         if (saved.config) this.input.restoreDraft(saved.config.text, saved.files, saved.config.agentId);
         this.restoring = false;
         if ((saved.migrated || changedAgent) && saved.config) { this.persist(saved.config, saved.files); await this.saves.flush(); }
@@ -105,6 +108,7 @@ export class SessionDraftEditor extends IEditor {
             } : undefined,
             onDraftChange: (config, files) => { if (!this.restoring && !this.sending) this.persist(config, files); },
             onRequestConnections: () => buildConnectionOptions(this.service), onStop: () => {},
+            prepareAgentFlow: this.flowControls?.commands ? (agent, signal) => prepareAgentFlow(this.flowControls!.commands!, agent, signal) : undefined,
             onSend: (text, files, agentId, overrides) => this.send({ text, files, agentId, overrides }),
             onNavigateSettings: ({resourceId, anchor}) => { void this.options.hostContext?.navigate?.({ target: 'settings', resourceId, ...(anchor ? {state: {anchor}} : {}) }); },
         });
@@ -270,7 +274,7 @@ export class SessionDraftEditor extends IEditor {
         const history = this.container.querySelector<HTMLElement>('#llm-ui-history')!;
         history.innerHTML = LayoutTemplates.renderWelcome(); this.submission = new SubmissionFeedback(history, {htmlPolicy: 'literal'});
         this.bindDraftEvents();
-        this.unsubscribeConnections ??= this.service.onChange(() => {void this.input?.refreshConnections();});
+        if (!this.unsubscribeConnections) this.bindConfiguration();
     }
     private conversationInput(options: ChatInputOptions): ChatInputOptions {
         return {...options, onDraftChange: (config, files) => {
@@ -325,10 +329,23 @@ export class SessionDraftEditor extends IEditor {
         this.container.querySelector('.llm-input__textarea')?.dispatchEvent(new Event('input', {bubbles: true}));
         await this.saves.flush();
     }
+    private bindConfiguration(): void {
+        const changed = () => { void this.refreshInputConfiguration().catch(error => console.error('[SessionDraft] Agent availability refresh failed', error)); };
+        this.unsubscribeConnections = this.flowControls?.configuration?.subscribe(changed) ?? this.service.onChange(changed);
+    }
+    private async refreshInputConfiguration(): Promise<void> {
+        const input = this.input;
+        const revision = ++this.configurationRevision;
+        if (!input || this.closed || this.confirmed || !this.active) return;
+        const agents = await this.executors();
+        if (this.closed || this.confirmed || !this.active || input !== this.input || revision !== this.configurationRevision) return;
+        input.refreshAgents(agents, id => agents.some(agent => agent.id === id) ? id : 'default');
+        await input.refreshConnections();
+    }
     private executors(): Promise<Awaited<ReturnType<typeof buildExecutorOptions>>> {
         const scope = this.options.sessionDraft?.executorScope;
         return scope === 'remote' ? this.options.remoteAgents?.list() ?? Promise.resolve([])
-            : buildExecutorOptions(this.service, scope === 'local' ? undefined : this.options.remoteAgents);
+            : buildExecutorOptions(this.service, scope === 'local' ? undefined : this.options.remoteAgents, this.flowControls?.configuration?.getConfigurationSnapshot());
     }
     setText(text: string): void {
         if (this.confirmed) {this.delegate?.setText(text); return;}
@@ -372,10 +389,10 @@ export class SessionDraftEditor extends IEditor {
         this.codec = new DraftDataCodec(next.attachments); this.restoring = true;
         await this.render();
     }
-    cancelPendingRender(): void {this.input?.hideNativeModelPicker?.(); this.active = false; this.delegate?.cancelPendingRender?.();}
+    cancelPendingRender(): void {this.input?.cancelPendingSend(); this.input?.hideNativeModelPicker?.(); this.active = false; this.delegate?.cancelPendingRender?.();}
     async activate(): Promise<void> {
         this.active = true; await this.delegate?.activate?.(); await this.refreshDraft();
-        await Promise.all([this.projectScope?.refresh(), this.input?.refreshConnections()]);
+        await Promise.all([this.projectScope?.refresh(), this.refreshInputConfiguration()]);
     }
     destroy(): Promise<void> {
         this.closed = true;

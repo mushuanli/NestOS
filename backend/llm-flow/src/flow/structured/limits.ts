@@ -22,12 +22,15 @@ export function withDispatchWorkspace(node: DagNodeDefinition, directory?: strin
 }
 
 /** Reserve the worst-case child count before creating any task, across every scope. */
-export function validateDispatchCapacity(spec: DagRunSpec, parameters?: Record<string, JsonValue>): void {
+export function validateDispatchCapacity(spec: DagRunSpec, parameters?: Record<string, JsonValue>, callInputs: Record<string, unknown> = {}): void {
     const cycles = findCycles(spec.nodes, spec.edges);
     let reserved = spec.nodes.length;
     for (const node of spec.nodes) {
         if (node.plugin !== 'builtin.route' || node.pluginVersion !== '2.0.0') continue;
-        const values = scopedParameters(spec, node.id, parameters ?? {});
+        const pending = Object.entries(spec.parameterScopes ?? {}).some(([prefix, scope]) => node.id.startsWith(prefix)
+            && scope.source && !Object.hasOwn(callInputs, scope.source));
+        if (pending) continue;
+        const values = scopedParameters(spec, node.id, parameters ?? {}, callInputs);
         const config = object(resolveFlowParameters(node.config, values));
         validateDispatch(config as unknown as import('../../contracts').DispatchConfig);
         if (cycles.loopNodes.has(node.id) || (config.maxIterations !== undefined && config.maxIterations !== 1)) {

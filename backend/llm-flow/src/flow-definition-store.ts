@@ -1,4 +1,6 @@
-import type { DagPluginCatalog, FlowConnection, FlowDraft, FlowRevision } from './contracts';
+import type { DagPluginCatalog, FlowDraft, FlowRevision } from './contracts';
+import { assertInlineFunctionTree } from './flow/inline-functions';
+import { flowDefinitionBody } from './flow/definition-projection';
 import { flowRevisionDigest, hasValidationErrors, validateFlowRevision } from './flow/validation';
 
 /**
@@ -165,7 +167,7 @@ export class FlowDefinitionStore {
         const latest = await this.loadRevision(String(draft.id));
         const revision = createFlowRevision(draft, (latest?.revision ?? 0) + 1);
         const { lockFlowDependencies } = await import('./flow/dependency-locks');
-        const locks = await lockFlowDependencies(draft, (id, version) => this.loadRevision(id, version));
+        const locks = await lockFlowDependencies(revision, (id, version) => this.loadRevision(id, version));
         if (Object.keys(locks).length) revision.dependencyLocks = locks;
         revision.digest = flowRevisionDigest(revision);
         return this.saveRevision(revision);
@@ -180,20 +182,12 @@ export class FlowDefinitionStore {
         const existing = parseFlowDraft(await this.store.readFile(nodeId));
         const id = generateFlowId(name || existing?.name || 'flow');
         const draft: FlowDraft = {
+            ...(existing ? flowDefinitionBody(existing) : { nodes: [], edges: [], parameters: [], connections: [] }),
             id: id as FlowDraft['id'],
             draftVersion: (existing?.draftVersion ?? 0) + 1,
             name: name.trim() || existing?.name || id,
-            nodes: existing?.nodes ?? [],
-            edges: existing?.edges ?? [],
             layout: existing?.layout ?? {},
-            parameters: existing?.parameters ?? [],
-            ...(existing?.outputs ? { outputs: structuredClone(existing.outputs) } : {}),
-            ...(existing?.variables ? { variables: structuredClone(existing.variables) } : {}),
-            ...cloneConnections(existing ?? {}),
-            ...(existing?.systemPrompt ? { systemPrompt: structuredClone(existing.systemPrompt) } : {}),
-            ...(existing?.toolIds ? { toolIds: structuredClone(existing.toolIds) } : {}),
-            ...(existing?.defaults ? { defaults: structuredClone(existing.defaults) } : {}),
-            ...(existing?.runPolicy ? { runPolicy: structuredClone(existing.runPolicy) } : {}),
+            ...(existing?.functions ? { functions: structuredClone(existing.functions) } : {}),
             updatedAt: Date.now(),
         };
         await this.store.writeFile(nodeId, JSON.stringify(draft, null, 2));
@@ -226,17 +220,6 @@ export class FlowDefinitionStore {
 function fileName(id: string): string {
     assertFlowId(id);
     return `${id}${FLOW_EXTENSION}`;
-}
-
-/** Deep-copy a draft's connection slots so draft/revision copies stay in sync. */
-function cloneConnections(source: Pick<FlowDraft, 'connections' | 'defaultConnection'>): {
-    connections: FlowConnection[];
-    defaultConnection?: string;
-} {
-    return {
-        connections: structuredClone(source.connections ?? []),
-        defaultConnection: source.defaultConnection,
-    };
 }
 
 function revisionName(id: string, revision: number): string {
@@ -280,20 +263,15 @@ export function generateFlowId(name: string): string {
 
 /** Share the complete draft-to-revision projection across validation and publication. */
 export function createFlowRevision(draft: FlowDraft, revision: number, createdAt = Date.now()): FlowRevision {
+    assertInlineFunctionTree(draft);
+    return freezeFlowDraft(draft, revision, createdAt);
+}
+
+function freezeFlowDraft(draft: FlowDraft, revision: number, createdAt: number): FlowRevision {
     const withoutDigest = {
-        id: draft.id,
+        ...flowDefinitionBody(draft),
         revision,
-        name: draft.name,
-        nodes: structuredClone(draft.nodes),
-        edges: structuredClone(draft.edges),
-        parameters: structuredClone(draft.parameters ?? []),
-        ...(draft.outputs ? { outputs: structuredClone(draft.outputs) } : {}),
-        ...(draft.variables ? { variables: structuredClone(draft.variables) } : {}),
-        ...cloneConnections(draft),
-        ...(draft.systemPrompt ? { systemPrompt: structuredClone(draft.systemPrompt) } : {}),
-        ...(draft.toolIds ? { toolIds: structuredClone(draft.toolIds) } : {}),
-        ...(draft.defaults ? { defaults: structuredClone(draft.defaults) } : {}),
-        ...(draft.runPolicy ? { runPolicy: structuredClone(draft.runPolicy) } : {}),
+        ...(draft.functions ? { functions: draft.functions.map(fn => freezeFlowDraft(fn, revision, createdAt)) } : {}),
         createdAt,
     };
     return { ...withoutDigest, digest: flowRevisionDigest(withoutDigest) };

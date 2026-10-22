@@ -1,16 +1,22 @@
 import { validateMediaRequest, type MediaGenerationRequest } from '@itookit/driver-llm/contracts';
 import type { FlowRevision, FlowConnection, JsonValue } from '@itookit/llm-flow/contracts';
-import { assertModelConnection, isModelOperation, modelForOperation, mediaEndpointIdentity, type ModelRequirements } from '@itookit/kernel-adapters/contracts';
+import { assertModelConnection, isModelOperation, modelForOperation, mediaEndpointIdentity, type ModelRequirements, type ModelOperation } from '@itookit/kernel-adapters/contracts';
+import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import type { IAgentConfigService } from '../contracts';
 import { inferFlowConnectionRequirements, nodeRequirements, nodeSlot } from '../contracts/flow-connection-policy';
-type ConnectionCatalog = Pick<IAgentConfigService, 'getConnection' | 'getProvider'> & Partial<Pick<IAgentConfigService, 'getDefaultConnection' | 'getModelDefaults'>>;
+export type FlowConnectionCatalog = Pick<IAgentConfigService, 'getConnection' | 'getProvider'> & Partial<Pick<IAgentConfigService, 'getDefaultConnection' | 'getModelDefaults'>> & {
+    operationModelId?(connectionId: string, operation: ModelOperation): string | undefined;
+    assertOperationIdentity?(connection: ConnectionMeta, provider: LLMProvider, operation: ModelOperation): void;
+};
 /** Resolve each named slot independently; snapshots never contain credentials. */
-export async function prepareFlowConnections(flow: FlowRevision, bindings: Record<string, string> = {}, agents: ConnectionCatalog,
+export async function prepareFlowConnections(flow: FlowRevision, bindings: Record<string, string> = {}, agents: FlowConnectionCatalog,
     frozenDefaults?: import('@itookit/kernel-adapters/contracts').ModelDefaults, runConnectionId?: string): Promise<FlowRevision> {
     if (!bindings || typeof bindings !== 'object' || Array.isArray(bindings)) throw new Error('Invalid connection bindings');
     const defaults = frozenDefaults ?? await agents.getModelDefaults?.() ?? {};
     const catalog = agents;
-    agents = { getConnection: id => catalog.getConnection(id), getProvider: id => catalog.getProvider(id), getModelDefaults: async () => defaults };
+    agents = { getConnection: id => catalog.getConnection(id), getProvider: id => catalog.getProvider(id), getModelDefaults: async () => defaults,
+        ...(catalog.operationModelId ? { operationModelId: (id, operation) => catalog.operationModelId!(id, operation) } : {}),
+        ...(catalog.assertOperationIdentity ? { assertOperationIdentity: (connection, provider, operation) => catalog.assertOperationIdentity!(connection, provider, operation) } : {}) };
     const slots = inferFlowConnectionRequirements(flow);
     for (const [name, id] of Object.entries(bindings)) {
         const nested = flow.nodes.some(node => node.plugin === 'builtin.flow' && name.startsWith(node.id + '/'));
@@ -31,35 +37,38 @@ export async function prepareFlowConnections(flow: FlowRevision, bindings: Recor
     }));
     return { ...flow, connections, nodes };
 }
-async function resolveSlot(slot: FlowConnection, connectionId: string | undefined, agents: ConnectionCatalog): Promise<FlowConnection> {
+async function resolveSlot(slot: FlowConnection, connectionId: string | undefined, agents: FlowConnectionCatalog): Promise<FlowConnection> {
     const operation = slot.requirements?.operation ?? 'chat';
     const fallback = connectionId === undefined && slot.required !== false && !slot.resolved && isModelOperation(operation)
         ? (await agents.getModelDefaults?.())?.[operation] : undefined;
     connectionId ??= fallback;
     if (!connectionId) { if (slot.required === false) return { ...slot, connectionId: undefined, resolved: undefined }; throw new Error(`Missing connection binding: ${slot.name}`); }
     const connection = await agents.getConnection(connectionId), provider = connection && agents.getProvider(connection.providerId);
-    const defaultModel = connection && !slot.tier && operation !== 'chat' && isModelOperation(operation) ? modelForOperation(connection, provider, operation)?.id : undefined;
+    const defaultModel = connection && !slot.tier && operation !== 'chat' && isModelOperation(operation) ? operationModelId(connection, provider, operation, agents) : undefined;
     const modelId = slot.resolved?.modelId ?? defaultModel ?? connection?.tiers?.[slot.tier ?? 'optimal'] ?? connection?.model ?? '';
-    try { assertModelConnection(connection, provider, modelId, slot.requirements); }
-    catch (error) { throw new Error(`Connection slot ${slot.name}: ${error instanceof Error ? error.message : 'Connection validation failed'}`, {cause: error}); }
+    try { assertConnection(connection, provider, modelId, slot.requirements);
+        if (isModelOperation(operation)) agents.assertOperationIdentity?.(connection!, provider!, operation); }
+    catch (error) { throw Object.assign(new Error(`Connection slot ${slot.name}: ${error instanceof Error ? error.message : 'Connection validation failed'}`, {cause: error}),
+        { code: connectionErrorCode(error) }); }
     if (slot.resolved && (slot.resolved.providerId !== connection!.providerId || slot.resolved.protocol !== connection!.protocol)) throw new Error(`Connection changed after admission: ${slot.name}`);
     const mediaEndpoint = mediaEndpointIdentity(provider!, connection!.baseURL, slot.requirements?.operation ?? 'chat');
     if (slot.resolved?.mediaEndpoint && slot.resolved.mediaEndpoint !== mediaEndpoint) throw new Error('Media endpoint changed after admission');
     return { ...slot, connectionId, resolved: { providerId: connection!.providerId, modelId, ...(connection!.protocol ? { protocol: connection!.protocol } : {}), ...(mediaEndpoint ? { mediaEndpoint } : {}) } };
 }
-async function resolveNodeConnection(config: Record<string, JsonValue>, agents: ConnectionCatalog) {
+async function resolveNodeConnection(config: Record<string, JsonValue>, agents: FlowConnectionCatalog) {
     const connection = await agents.getConnection(String(config.connectionId)), provider = connection && agents.getProvider(connection.providerId);
     const requirements = config.connectionRequirements as unknown as ModelRequirements | undefined;
     const operation = requirements?.operation;
-    const selected = connection && isModelOperation(operation) ? modelForOperation(connection, provider, operation)?.id : undefined;
+    const selected = connection && isModelOperation(operation) ? operationModelId(connection, provider, operation, agents) : undefined;
     const modelId = typeof config.modelName === 'string' ? config.modelName : selected ?? connection?.tiers?.optimal ?? connection?.model ?? '';
-    assertModelConnection(connection, provider, modelId, requirements);
+    assertConnection(connection, provider, modelId, requirements);
+    if (isModelOperation(operation)) agents.assertOperationIdentity?.(connection!, provider!, operation);
     const mediaEndpoint = mediaEndpointIdentity(provider!, connection!.baseURL, requirements?.operation ?? 'chat'), saved = config.frozenConnection;
     if (saved && typeof saved === 'object' && !Array.isArray(saved) && (saved.providerId !== connection!.providerId || saved.protocol !== connection!.protocol || saved.modelId !== modelId || saved.mediaEndpoint !== mediaEndpoint)) throw new Error('Node connection changed after admission');
     return { providerId: connection!.providerId, modelId, ...(mediaEndpoint ? { mediaEndpoint } : {}), ...(connection!.protocol ? { protocol: connection!.protocol } : {}),
         ...(requirements ? { requirements: JSON.parse(JSON.stringify(requirements)) as JsonValue } : {}) };
 }
-async function prepareMediaNode(node: FlowRevision['nodes'][number], config: Record<string, JsonValue>, slots: FlowConnection[], agents: ConnectionCatalog, runConnectionId?: string): Promise<FlowRevision['nodes'][number]> {
+async function prepareMediaNode(node: FlowRevision['nodes'][number], config: Record<string, JsonValue>, slots: FlowConnection[], agents: FlowConnectionCatalog, runConnectionId?: string): Promise<FlowRevision['nodes'][number]> {
     if (config.operation !== 'image.generate' && config.operation !== 'speech.synthesize') throw new Error('Unsupported media operation');
     const slotName = typeof config.connectionSlot === 'string' ? config.connectionSlot : slots.find(slot => slot.name === config.connectionId)?.name;
     const slot = slots.find(item => item.name === slotName);
@@ -72,12 +81,23 @@ async function prepareMediaNode(node: FlowRevision['nodes'][number], config: Rec
     if (slot?.required === false && !slot.connectionId) return { ...node, config: { ...config, connectionRequirements: requirements } };
     if (typeof connectionId !== 'string' || !connectionId.trim()) throw new Error('Media node requires an explicit connection or bound slot');
     const defaultConnection = fallback ? await agents.getConnection(fallback) : undefined;
-    const defaultModel = defaultConnection && modelForOperation(defaultConnection, agents.getProvider(defaultConnection.providerId), config.operation)?.id;
+    const defaultModel = defaultConnection && operationModelId(defaultConnection, agents.getProvider(defaultConnection.providerId), config.operation, agents);
     const resolved = await resolveNodeConnection({ ...config, connectionId, connectionRequirements: requirements,
         ...(slot?.resolved ? { modelName: slot.resolved.modelId } : !config.modelName && defaultModel ? { modelName: defaultModel } : {}) }, agents);
     if (config.modelName && config.modelName !== resolved.modelId) throw new Error('Media node model conflicts with slot');
     const connection = await agents.getConnection(connectionId), request = { ...record(config.request), operation: config.operation, model: resolved.modelId };
     if (!JSON.stringify(request).includes('${')) validateMediaRequest(agents.getProvider(connection!.providerId)!, request as MediaGenerationRequest);
     return { ...node, config: { ...config, ...(!slotName && !runOverride ? { connectionId } : {}), connectionRequirements: requirements, modelName: resolved.modelId, frozenConnection: resolved } };
+}
+function operationModelId(connection: ConnectionMeta, provider: LLMProvider | undefined, operation: ModelOperation, agents: FlowConnectionCatalog): string | undefined {
+    return agents.operationModelId ? agents.operationModelId(connection.id, operation) : modelForOperation(connection, provider, operation)?.id;
+}
+function assertConnection(...args: Parameters<typeof assertModelConnection>): void {
+    try { assertModelConnection(...args); }
+    catch (error) { throw Object.assign(error instanceof Error ? error : new Error('Connection validation failed'), { code: connectionErrorCode(error) }); }
+}
+function connectionErrorCode(error: unknown): string {
+    const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+    return typeof code === 'string' && /^FLOW_CONNECTION_[A-Z_]+$/.test(code) ? code : 'FLOW_CONNECTION_INVALID';
 }
 function record(value: unknown): Record<string, JsonValue> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, JsonValue> : {}; }

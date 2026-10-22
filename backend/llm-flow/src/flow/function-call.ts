@@ -7,12 +7,13 @@ export function callEntry(call: DagNodeDefinition): DagNodeDefinition {
         throw new Error(`Flow call ${call.id}: retry, compensate, assign, budget and capabilities must be configured inside the child`);
     }
     if (Object.keys(call.inputs).length) throw new Error(`Flow call ${call.id}: use parameters instead of inputs`);
-    const config = call.config as { parameters?: Record<string, unknown> };
+    const config = call.config as { parameters?: Record<string, unknown>; parameterSets?: unknown; maxConcurrency?: number };
+    if (config.maxConcurrency !== undefined && (!Number.isSafeInteger(config.maxConcurrency) || config.maxConcurrency < 1)) throw new Error(`Flow call ${call.id}: maxConcurrency must be a positive integer`);
     if (config.parameters !== undefined && (!config.parameters || Array.isArray(config.parameters) || typeof config.parameters !== 'object')) {
         throw new Error(`Flow call ${call.id}: parameters must be an object`);
     }
     return { id: `${call.id}__input`, name: `${call.name} · input`, priority: call.priority, plugin: 'builtin.transform', pluginVersion: '1.0.0',
-        inputs: {}, config: { value: config.parameters ?? {}, outputName: 'result', type: 'json' } };
+        inputs: {}, config: { value: config.parameterSets === undefined ? config.parameters ?? {} : { parameters: config.parameters ?? {}, parameterSets: config.parameterSets }, outputName: 'result', type: 'json' } };
 }
 
 export function assertCallable(flow: FlowRevision, child: DagRunSpec): void {

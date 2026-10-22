@@ -52,6 +52,8 @@ ChatInput 工具栏的「对话 / 执行」由 `ExecutionModeControl` 呈现，�
 - Agent 的 `questions[].options[]` 经 `components/input/agent-questions.ts` 投影为独立 llm-ui 的交互字段，复用其单选、多选、描述和自填答案控件；聊天挂接和 InvocationPanel 共用 inputInteraction。所有问题一起校验，答案按问题文案形成 answers，重复文案加题号，多选值用 JSON 数组字符串表达；整个对象序列化为字符串交给既有 respondInput，避免 Agent 的字符串回应契约收到对象后丢失内容。相同挂接重复通知保留选择，失败可重试，隐藏/销毁/终态清理。回归见 input-interaction.test.ts 与 app-shell 的 agent-question-interaction.test.ts。
 - 会话打开时除恢复特权任务外，还用 `src/shell/pending-interaction.ts` 的 `restoreWaitingAttachment` 重新挂接「仍有 pending interaction 的非终态 Task」，以重放其 `task.interaction.requested`（宿主崩溃期间的批准通道恢复）；回归 `ui/app-shell/tests/pending-interaction-restore.test.ts`。
 - `DagWorkbench` 从 `FlowCommand.Presentations` 返回的插件呈现（manifest + `ui.palette`）构建 Palette、端口和表单。
+- `builtin.flow@2` 单次调用按子 Flow 声明展示命名输出；`parameterSets` 多组调用仅展示按组返回的 `result` 端口。参数组数组或整值引用、共享 `parameters` 和 `maxConcurrency` 通过通用 SchemaForm 编辑，切换函数签名及保存须保留这些字段；DOM 回归见 app-shell 的 flow-function-authoring。
+- 函数选择与签名优先读取当前草稿的 `functions`，同名全局定义只作外部回退。内联函数不请求全局 RevisionGet；设计器、Controller 的编辑、撤销、重做及保存完整保留嵌套函数表，不能为展示签名将其拆成全局资源。
 - UI 不 import DAG Runtime；对 `@itookit/durable-kernel` 只有 `import type`。
 - `/skills` 独立对话框中的 Skill 面板列表经 `src/shell/skill-refresh.ts` 的 `bindSkillRefresh(controls, sessionId, refresh)` 与 `SessionSkillControls.onChange` 保持同步：绑定后拉取一次、每次目录变更通知重新拉取，`LLMWorkspaceEditor.destroy()` 解绑（无轮询）。通知仅在宿主进程内传播，在途 Task 的上下文不变。
 - TTY 面板（`TtyPanel` / `TtyController`）只展示运行输出，输出块以文本节点写入（禁止拼接未转义 HTML）；交互输入必须通过 Kernel 控制面。 终态语义：`finalize(exitCode)` 如实报告退出码，`null`（`tty_close` 未观测到退出码）显示 `Process stopped (exit code unknown)`，且终态后到达的输出被忽略。回归在 `ui/app-shell/tests/tty-panel.test.ts`（jsdom；llm-ui 的 vitest 无 jsdom）。
@@ -96,7 +98,7 @@ Flow Session 标题栏「流程输出」挂接当前 Session 的持久 Run，显
 - `/flow` 在当前 Session 启动独立调用；`InvocationPanel` 按 root Task 显示各调用及人工确认，结果可放入聊天草稿。`builtin.flow@2.0.0` 提供参数与命名返回值组合。契约见 [Flow 调用与组合](../../doc/design/flow-invocation-composition.md)。
 - UI 通过命令总线接入，不读写 Kernel 存储。DOM 回归见 `ui/app-shell/tests/flow-launch.test.ts`，实际模板 DAG 执行见 llm-flow 的 structured-flow 测试。
 
-内置模板安装通过 `flow.draft.install` 保存独立安装记录；删除 `.flow` 后记录仍在，重启不再恢复该模板。聊天侧栏将同一 FlowEngine 挂到 `/@flows`，支持展开、打开和右键运行/删除。新增作文文件统一名为 `essay-review-isolated.flow`。
+内置模板安装通过 `flow.draft.install` 保存独立安装记录；删除 `.flow` 后记录仍在，重启不再恢复该模板。聊天侧栏将同一 FlowEngine 挂到 `/@flows`，支持展开、打开和右键运行/删除。新增作文文件统一名为 `essay-review.flow`。
 
 作文评审图按路由、检查、汇总、判断分节点编辑；打开旧 route@2 草稿时请求 `expandScopes`，仅显式保存才持久化。插件端口按 id + version 匹配，判断回路自动使用 repeat 控制边。数字表单支持运行参数引用。
 
@@ -161,5 +163,7 @@ Markdown 嵌入统一通过 MDxController 设置 `scrollMode: 'host'`，正文�
 FlowParameterForm 的 images/json 字段通过 FlowImageFields 按 imageConstraints 校验可选 MIME、总字节和数量限制，返回标准 image_url 或宿主不透明资源引用并显示预览；Flow 核心没有固定上传上限，宿主上传预算独立生效。数量、总大小、格式、文件读取、上传和预览失败显示具体原因。flow-images 内存日志只保存 operationId、requestId、阶段、错误分类、数量、字节和格式，不记录文件名、正文或原始异常消息；上传错误 requestId 可关联宿主审计。提交等待当前文件读取完成，清除或关闭后忽略迟到结果。库恢复通过 app.flow-library.restore 交给应用层协调，UI 不自行发布修订。
 
 Flow 文件的更多菜单将「运行…」放在首项，随后才是分组、导出和编辑操作；宿主把完整资源菜单交给 Flow 菜单扩展排序，子流程分组内的文件共用同一入口。
+
+普通输入选择 execution.kind=flow 的 Agent 时，发送前按绑定读取当前发布或固定 Flow，复用 FlowParameterForm 收集额外参数及连接；默认顺序为 Flow → Agent → 本次输入，提示词由 input.prompt 提供。发送只透传 flowParameters/flowConnectionBindings，后端重新解析 Agent 绑定，不相信 UI 的 flowId。availability=disabled 保留原选择和草稿、禁选禁发并显示原因，配置通知更新可用性；隐藏、销毁及删除 Flow 时取消尚未提交的参数表单。Flow Agent 不要求全局聊天模型，图片经共享 input-assets 端口持久化。DOM 回归见 app-shell/tests/agent-flow-input.test.ts。
 右侧 Flow 工具栏以「流程名称 → 运行记录」开头，不重复显示 Flow Design；「运行」移至参数面板顶部固定栏，与菜单共用 ACTION_ICONS.run 和主题绿色提示，禁用态恢复中性色。连接表单标注必选/可选，设置可编辑 required、tier 和 requirements；需求由 Flow 声明，不按业务名称推断。文案走中英文 i18n。
 运行表单的缺项提示区分填写参数、选择图片/选项和选择模型连接；参数优先显示 label，连接优先显示 description，缺省回退 name，与表单标签保持一致，不按业务或槽名映射文案。

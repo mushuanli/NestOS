@@ -1,9 +1,11 @@
 import { randomUUID, escapeAttr, t } from '@itookit/common';
 import { requireMediaCapabilities, type LLMProvider, type MediaGenerationInput, type MediaOperation, type ProviderConnectionTestParams, type ConnectionTestResult } from '@itookit/driver-llm/contracts';
 import {providerTestResult} from './provider-test-result';
+import type { MediaProbeExamples, ProviderApiReference } from '@itookit/kernel-adapters/contracts';
 
 type RunProbe = (request: ProviderConnectionTestParams) => Promise<ConnectionTestResult>;
-export function mountMediaProbe(form: HTMLFormElement, draft: () => LLMProvider, run: RunProbe): () => void {
+export function mountMediaProbe(form: HTMLFormElement, draft: () => LLMProvider, run: RunProbe, examples: MediaProbeExamples = {}, reference?: ProviderApiReference): () => void {
+    const defaults = structuredClone(examples);
     const panel = document.createElement('section'); panel.className = 'provider-settings__probe';
     panel.innerHTML = `<h4>${t('provider.media.verify')}</h4><select class="settings-form__select" data-probe-model></select>
         <div data-probe-fields></div><button type="button" class="settings-btn settings-btn--secondary" data-probe-run>${t('provider.media.run')}</button>
@@ -11,7 +13,7 @@ export function mountMediaProbe(form: HTMLFormElement, draft: () => LLMProvider,
     form.querySelector('[data-provider-panel="overview"]')?.append(panel);
     let disposed = false, busy = false, urls: string[] = [];
     const clear = () => { urls.forEach(url => URL.revokeObjectURL(url)); urls = []; panel.querySelector('[data-probe-preview]')!.replaceChildren(); };
-    const refresh = () => { if (!disposed && !busy) { try { populateProbe(panel, draft()); } catch { /* Keep the last valid probe while editing a draft. */ } } };
+    const refresh = () => { if (!disposed && !busy) { try { populateProbe(panel, draft(), defaults, reference); } catch { /* Keep the last valid probe while editing a draft. */ } } };
     panel.querySelector<HTMLButtonElement>('[data-probe-run]')!.onclick = async () => {
         if (busy) return; busy = true; clear();
         const started = performance.now(), operationId = randomUUID();
@@ -44,14 +46,14 @@ export function mountMediaProbe(form: HTMLFormElement, draft: () => LLMProvider,
     return () => { disposed = true; clear(); form.removeEventListener('change', change); form.removeEventListener('input', change); };
 }
 
-function populateProbe(panel: HTMLElement, provider: LLMProvider): void {
+function populateProbe(panel: HTMLElement, provider: LLMProvider, examples: MediaProbeExamples, reference?: ProviderApiReference): void {
     const select = panel.querySelector<HTMLSelectElement>('[data-probe-model]')!, previous = select.value;
     select.innerHTML = provider.models.flatMap(model => (['image.generate', 'speech.synthesize'] as const).flatMap(operation => {
         try { requireMediaCapabilities(provider, model, operation); return [`<option value="${escapeAttr(encodeURIComponent(model.id))}:${operation}">${escapeAttr(model.name)} · ${t(operation === 'image.generate' ? 'model.capability.imageGeneration' : 'model.capability.speechSynthesis')}</option>`]; } catch { return []; }
     })).join('');
     if ([...select.options].some(option => option.value === previous)) select.value = previous;
     const saved = Object.fromEntries([...panel.querySelectorAll<HTMLInputElement>('[data-probe-input], [data-probe-format], [data-probe-voice], [data-probe-size]')].map(field => [field.getAttributeNames().find(name => name.startsWith('data-probe-'))!, field.value]));
-    const render = () => renderProbeFields(panel, provider);
+    const render = () => renderProbeFields(panel, provider, examples, reference);
     select.onchange = render; render();
     if (select.value === previous) for (const [key, value] of Object.entries(saved)) {
         const field = panel.querySelector<HTMLInputElement | HTMLSelectElement>(`[${key}]`);
@@ -60,18 +62,21 @@ function populateProbe(panel: HTMLElement, provider: LLMProvider): void {
     panel.querySelector<HTMLButtonElement>('[data-probe-run]')!.disabled = !select.value;
 }
 
-function renderProbeFields(panel: HTMLElement, provider: LLMProvider): void {
+function renderProbeFields(panel: HTMLElement, provider: LLMProvider, examples: MediaProbeExamples, reference?: ProviderApiReference): void {
     const [identity, operation] = panel.querySelector<HTMLSelectElement>('[data-probe-model]')!.value.split(':');
     const model = provider.models.find(item => item.id === decodeURIComponent(identity)), caps = model?.operations?.[operation as MediaOperation];
     const root = panel.querySelector<HTMLElement>('[data-probe-fields]')!;
     if (!caps) { root.textContent = t('provider.media.noOperation'); return; }
     root.innerHTML = `<label class="settings-form__label">${t('provider.media.input')}</label><textarea class="settings-form__input" data-probe-input rows="2"></textarea>
-        ${probeSelect('format', caps.formats)}${operation === 'speech.synthesize' ? probeSelect('voice', caps.voices ?? []) : caps.sizes?.length ? probeSelect('size', caps.sizes) : ''}`;
-    if (operation === 'speech.synthesize') root.querySelector<HTMLTextAreaElement>('[data-probe-input]')!.value = t('provider.media.speechTestText');
+        ${probeSelect('format', caps.formats)}${operation === 'speech.synthesize' ? probeSelect('voice', caps.voices ?? [], reference?.voices) : caps.sizes?.length ? probeSelect('size', caps.sizes) : ''}`;
+    root.querySelector<HTMLTextAreaElement>('[data-probe-input]')!.value = examples[operation as MediaOperation]?.input ?? '';
 }
 
-function probeSelect(field: 'format' | 'voice' | 'size', values: string[]): string {
-    return `<label class="settings-form__label">${t(`provider.media.${field}`)}</label><select class="settings-form__select" data-probe-${field}>${values.map(value => `<option>${escapeAttr(value)}</option>`).join('')}</select>`;
+function probeSelect(field: 'format' | 'voice' | 'size', values: string[], labels: ReadonlyArray<{id: string; name: string}> = []): string {
+    return `<label class="settings-form__label">${t(`provider.media.${field}`)}</label><select class="settings-form__select" data-probe-${field}>${values.map(value => {
+        const name = labels.find(label => label.id === value)?.name;
+        return `<option value="${escapeAttr(value)}">${escapeAttr(name ? `${name} · ${value}` : value)}</option>`;
+    }).join('')}</select>`;
 }
 
 function probeRequest(panel: HTMLElement, provider: LLMProvider): MediaGenerationInput {

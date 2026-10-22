@@ -250,14 +250,14 @@ export class DagWorkbench {
             if (this.selectedNodeId !== node.id || !inspector.isConnected) return;
             schema = withAgentEntityEnums(schema, formValue, { agents, prompts, tools, skills });
         } else if (node.plugin === 'builtin.flow') {
-            const flows = await this.options.commands.execute<FlowDraft[]>(FlowCommand.DraftList);
+            const flows = await this.callableFlows();
             if (this.selectedNodeId !== node.id || !inspector.isConnected) return;
             schema = withCompositeFlowEnum(schema, formValue, flows);
         }
         const formRoot = inspector.querySelector<HTMLElement>('[data-inline-config]')!;
         const schemaForm = new SchemaForm(formRoot, schema, formValue, presentation.ui?.inspector.layout);
         schemaForm.render();
-        if (node.plugin === 'builtin.flow') bindCompositeForm(formRoot, schemaForm, presentation.manifest.configSchema, this.options.commands);
+        if (node.plugin === 'builtin.flow') bindCompositeForm(formRoot, schemaForm, presentation.manifest.configSchema, () => this.callableFlows());
         enhanceInvocationEditor(formRoot, this.controller!.value, node, node.plugin === 'builtin.agent' || presentation.manifest.authoring?.invocation === true);
         if (presentation.manifest.authoring?.scopeRole === 'input') enhanceInputFieldsEditor(formRoot, isRecord(formValue) ? formValue : {});
         if (node.plugin === 'builtin.spawn') enhanceSpawnForm(formRoot);
@@ -427,7 +427,7 @@ export class DagWorkbench {
             ]);
             schema = withAgentEntityEnums(schema, formValue, { agents, prompts, tools, skills });
         } else if (node.plugin === 'builtin.flow') {
-            const flows = await this.options.commands.execute<FlowDraft[]>(FlowCommand.DraftList);
+            const flows = await this.callableFlows();
             schema = withCompositeFlowEnum(schema, formValue, flows);
         }
         const schemaForm = new SchemaForm(
@@ -437,7 +437,7 @@ export class DagWorkbench {
             presentation.ui?.inspector.layout,
         );
         schemaForm.render();
-        if (node.plugin === 'builtin.flow') bindCompositeForm(formRoot, schemaForm, presentation.manifest.configSchema, this.options.commands);
+        if (node.plugin === 'builtin.flow') bindCompositeForm(formRoot, schemaForm, presentation.manifest.configSchema, () => this.callableFlows());
         enhanceInvocationEditor(formRoot, this.controller!.value, node, node.plugin === 'builtin.agent' || presentation.manifest.authoring?.invocation === true);
         if (presentation.manifest.authoring?.scopeRole === 'input') enhanceInputFieldsEditor(formRoot, isRecord(formValue) ? formValue : {});
         if (node.plugin === 'builtin.spawn') enhanceSpawnForm(formRoot);
@@ -892,16 +892,26 @@ export class DagWorkbench {
     private findDescriptor(node: FlowNodeDefinition): DagPluginManifest | undefined {
         const manifest = this.findPresentation(node)?.manifest;
         const config = isRecord(node.config) ? node.config : {};
-        const flow = this.callSignatures.get(`${config.flowId}@${config.revision ?? 'latest'}`);
-        if (!manifest || node.plugin !== 'builtin.flow' || node.pluginVersion !== '2.0.0' || !flow?.outputs) return manifest;
+        const flow = this.controller?.value.functions?.find(item => item.id === config.flowId)
+            ?? this.callSignatures.get(`${config.flowId}@${config.revision ?? 'latest'}`);
+        if (!manifest || node.plugin !== 'builtin.flow' || node.pluginVersion !== '2.0.0') return manifest;
+        if (config.parameterSets !== undefined) return { ...manifest, outputs: [{ name: 'result', required: true, order: 0 }] };
+        if (!flow?.outputs) return manifest;
         return { ...manifest, outputs: Object.keys(flow.outputs).map((name, order) => ({ name, required: true, order })) };
+    }
+
+    private async callableFlows(): Promise<FlowDraft[]> {
+        const local = this.controller?.value.functions ?? [];
+        const global = await this.options.commands.execute<FlowDraft[]>(FlowCommand.DraftList);
+        const ids = new Set(local.map(flow => flow.id));
+        return [...local, ...global.filter(flow => !ids.has(flow.id))];
     }
 
     private async loadCallSignatures(draft: FlowDraft): Promise<void> {
         const request = this.viewRequest;
         for (const node of draft.nodes.filter(item => item.plugin === 'builtin.flow' && item.pluginVersion === '2.0.0')) {
             const config = isRecord(node.config) ? node.config : {};
-            if (!config.flowId) continue;
+            if (!config.flowId || draft.functions?.some(flow => flow.id === config.flowId)) continue;
             const key = `${config.flowId}@${config.revision ?? 'latest'}`;
             if (this.callSignatures.has(key)) continue;
             this.callSignatures.set(key, null);
@@ -1103,18 +1113,18 @@ function withCompositeFlowEnum(schema: JsonValue, config: JsonValue, flows: Flow
             flowId: {
                 ...schema.properties.flowId,
                 enum: ids,
-                description: '复用已发布 Flow；运行前展开为同一个 DAG，不创建第二套调度器。',
+                description: t('flow.function.selectorHint'),
             },
         },
     } as JsonValue;
 }
 
-function bindCompositeForm(root: HTMLElement, form: SchemaForm, schema: JsonValue, commands: ICommandBus): void {
+function bindCompositeForm(root: HTMLElement, form: SchemaForm, schema: JsonValue, listFlows: () => Promise<FlowDraft[]>): void {
     root.addEventListener('change', event => {
         if ((event.target as HTMLElement).dataset.schemaPath !== '$.flowId') return;
         const value = form.read().value;
         if (!value) return;
-        void commands.execute<FlowDraft[]>(FlowCommand.DraftList).then(flows => {
+        void listFlows().then(flows => {
             if (root.isConnected) form.update(withCompositeFlowEnum(schema, value, flows), value);
         }).catch(error => Toast.error(String(error)));
     });

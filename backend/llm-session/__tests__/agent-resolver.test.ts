@@ -98,6 +98,18 @@ describe('shared Agent prompts', () => {
     });
 });
 
+it('rejects a disabled Flow Agent without falling back and keeps derived availability out of its identity', async () => {
+    const definition = { id: 'workflow', name: 'Workflow', type: 'workflow', config: {},
+        execution: { kind: 'flow', flowId: 'registered' }, availability: { status: 'ready' } };
+    const resolver = new AgentResolver(service({ getAgentConfig: async () => definition }));
+    const first = await resolver.resolveForChat('workflow');
+    definition.availability = { status: 'ready', reason: undefined } as typeof definition.availability;
+    expect((await resolver.resolveForChat('workflow')).agentVersion).toBe(first.agentVersion);
+    expect(first.execution).toEqual({ kind: 'flow', flowId: 'registered' });
+    definition.availability.status = 'disabled';
+    await expect(resolver.resolveForChat('workflow')).rejects.toMatchObject({ code: 'AGENT_DISABLED' });
+});
+
 
 it('resolves independent model reasoning efforts with legacy fallback', () => {
     const resolver = new AgentResolver(service({ getProvider: () => ({ models: [{ id: 'a' }, { id: 'b' }] }) }));

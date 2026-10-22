@@ -1,4 +1,5 @@
 import { navigationView, warmNavigation } from './navigation-view';
+import { createMindosProviderTemplates } from '@itookit/kernel-adapters/llm/presets';
 import { createFileSystemView, FSError } from '@itookit/vfs-core';
 import { createToolboxFiles } from '../configuration/toolbox-files';
 import { withConfigurationImport } from '../configuration/configuration-import';
@@ -126,7 +127,7 @@ async function toolboxView(services: LocalApplicationServices, scope: ViewScope)
             { mountId: 'remote', at: '/@remote', fs: inventory.remoteAgentSource, access: 'ro' }] }));
         const skills = await resources.own(new SkillsEngine(agentService));
         const toolbox = new ToolboxResources({ ...inventory.sources, agents, skills, flows: services.flowEngine.engine },
-            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory, createMindosFlowDrawers());
+            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory, createMindosFlowDrawers(), createMindosProviderTemplates());
         const files = await resources.own(createToolboxFiles(toolbox.sources));
         const initial = await toolbox.navigation(false);
         return scope.own({ inventory, resources: toolbox, files, initial, dispose: () => resources.close() });

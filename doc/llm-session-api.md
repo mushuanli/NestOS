@@ -1,5 +1,9 @@
 # @itookit/llm-session — API 参考
 
+Agent 可声明 `execution: {kind: 'flow', flowId, revision?, parameters?, connectionBindings?}`，通过普通发送入口运行内部注册的 Flow；省略修订号时跟随最新已发布版本。`ExecutionOverrides.flowParameters/flowConnectionBindings` 为本次覆盖，提示词通过 `DagRunSpec.input.prompt` 传入。接纳队列时冻结 Agent、所选定义及外部依赖，既有请求不受后续文件删除影响；新请求检查只读 `availability`，被引用文件缺失时拒绝且不回退默认助手。资源可用性由宿主通过 `VFSAgentService.configureFlowAvailability` 注入，具体交互、版本与归档见 [Agent 引用内部 Flow](design/flow-invocation-composition.md#agent-引用内部-flow)。
+
+会话 Flow 与 Flow Agent 的新指令在 `flowBinding.plan` 持久保存预编译图及引用身份快照；派发时补入当前历史并复验连接，不重新选择定义或模型。计划摘要损坏会拒绝恢复，无计划的旧队列保持兼容。可用性检查按 Flow ID/修订缓存，资源事件失效，读取单个 Agent 只等待相关绑定；正式准入独立执行。静态引用的 Skill 初始上下文也使用已接纳版本，工具发现与运行授权仍由现有执行链负责。
+
 `FlowInvocationService` 提供 `session.flow.invoke` / `session.flow.invocations`：以 `sessionId + requestId` 幂等启动固定 revision 的独立 Flow Run，同一 Session 可并行调用，调用意图和根 Task 引用持久化，结果不会推进普通对话的 branch head。`SessionCommand.CreateFromFlow` 的 `invocation: true` 直接创建调用；未指定时保留旧 Flow Session 路径。恢复与 UI 交互边界见 [Flow 调用与组合](design/flow-invocation-composition.md)。启动恢复先用上述标记筛出候选 Session：标记存在且不含该 Session 时完全不做 `listShared` 探测；先按标记写入、后写调用记录的顺序保证标记故障只会多扫一次，不会漏恢复。
 
 > 用户可见的会话语义 + 持久化：Session 生命周期、Round/Branch、SessionRepository（会话目录持久化）、RoundLog、SessionEventBus、UI projections、Durable Conversation。同时是上层装配入口：`initializeConversationSystem()` 统一注册 `llm.chat/agent/plan` 与 `flow.*` Programs 并装配 CommandBus/DAG。公共 API 从 `@itookit/llm-session` 根导出；少数内部工具（`RUNTIME_KEY`、`ulid`/`extractTimestamp`、`log`、`ContextProfileStore`、`VFSEntityStore`、`SessionFolder` 类型）仅按源码路径可用。
@@ -493,7 +497,7 @@ TTY 首次结束信息保持不变，后续结束通知与输出不覆盖；已�
 
 `prepareSessionDeletion(id)` 记录可恢复意图并提升直接子会话；`pendingSessionDeletions()` 提供待清理 ID。宿主仍应通过 `SessionLifecycleService` 先停止执行再删除。删除意图在物理清理完成后移除，重启可以继续处理。此字段属于 `session.seq` 元信息，不写入 `history.seq` 的 Round 索引，也不编码成物理子目录。详见 [项目抽屉与子会话导航](design/project-session-navigation.md)。
 
-会话工厂接受实例级 `hostPorts` 与 `agentResolution`，返回独立 SessionManager 和幂等异步 dispose。UI 必须接入返回实例；不再提供全局单例入口。业务预设移到 `backend/app-core/src/presets/default-flows.ts` 与 `backend/app-core/src/presets/essay-review.json`。
+会话工厂接受实例级 `hostPorts` 与 `agentResolution`，返回独立 SessionManager 和幂等异步 dispose。UI 必须接入返回实例；不再提供全局单例入口。业务预设移到 `backend/app-core/src/presets/default-flows.ts` 与 `backend/app-core/src/presets/essay-review.json`；默认安装和系统恢复仅提供这一版作文模板，已有旧文件保留。
 
 
 会话领域存储支持项目定位：`setStorageDirectoryResolver` 为新会话选择数据目录，`indexProjectSessions` 从项目目录重建会话位置索引；索引位于 `/var/lib/sessions/folders.seq`。本地项目使用 `.mindos/sessions/<sessionId>/`，只读远程项目使用本地 `.mindos/readonly/<项目名>/sessions/<sessionId>/`。没有设置定位器的独立仓库继续使用原默认路径。运行控制文件与执行内核存储不随领域目录移动。移动日志位于 `/var/lib/sessions/storage-moves.seq`，恢复完成前相关领域记录报告 EBUSY；来源与目标同时存在时保留双方并报告冲突，不猜测或清理正文。

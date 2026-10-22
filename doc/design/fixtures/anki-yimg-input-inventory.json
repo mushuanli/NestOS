@@ -1,0 +1,1286 @@
+{
+  "date": "2026-10-22",
+  "source": "User supplied yimg/ JPEG files; names and units independently read from the images",
+  "identityNormalization": "Normalize typographic apostrophes to ASCII; compare (name, unit) in source order",
+  "totalCards": 312,
+  "pages": [
+    {
+      "file": "y-1.jpg",
+      "sha256": "f3e8337778923eb0c8a9bfc734cd3b42e0d064a880b4dd95b02eab2d6be7c382",
+      "cards": [
+        {
+          "name": "energetic",
+          "unit": 1
+        },
+        {
+          "name": "organized",
+          "unit": 1
+        },
+        {
+          "name": "order",
+          "unit": 1
+        },
+        {
+          "name": "keep ... in (good) order",
+          "unit": 1
+        },
+        {
+          "name": "explain",
+          "unit": 1
+        },
+        {
+          "name": "come up with",
+          "unit": 1
+        },
+        {
+          "name": "careless",
+          "unit": 1
+        },
+        {
+          "name": "neither",
+          "unit": 1
+        },
+        {
+          "name": "neither ... nor ...",
+          "unit": 1
+        },
+        {
+          "name": "nor",
+          "unit": 1
+        },
+        {
+          "name": "accountant",
+          "unit": 1
+        },
+        {
+          "name": "suppose",
+          "unit": 1
+        },
+        {
+          "name": "social",
+          "unit": 1
+        },
+        {
+          "name": "either ... or ...",
+          "unit": 1
+        },
+        {
+          "name": "impress",
+          "unit": 1
+        },
+        {
+          "name": "imagination",
+          "unit": 1
+        },
+        {
+          "name": "manager",
+          "unit": 1
+        },
+        {
+          "name": "suit",
+          "unit": 1
+        },
+        {
+          "name": "railway",
+          "unit": 1
+        },
+        {
+          "name": "mention",
+          "unit": 1
+        },
+        {
+          "name": "standard",
+          "unit": 1
+        },
+        {
+          "name": "tough",
+          "unit": 1
+        },
+        {
+          "name": "at all times",
+          "unit": 1
+        },
+        {
+          "name": "passenger",
+          "unit": 1
+        },
+        {
+          "name": "personality",
+          "unit": 1
+        },
+        {
+          "name": "winner",
+          "unit": 1
+        },
+        {
+          "name": "outgoing",
+          "unit": 1
+        },
+        {
+          "name": "opposite",
+          "unit": 1
+        },
+        {
+          "name": "kindness",
+          "unit": 1
+        },
+        {
+          "name": "let sb down",
+          "unit": 1
+        },
+        {
+          "name": "pass sth on (to sb)",
+          "unit": 1
+        },
+        {
+          "name": "son",
+          "unit": 1
+        },
+        {
+          "name": "remain",
+          "unit": 1
+        },
+        {
+          "name": "confident",
+          "unit": 1
+        },
+        {
+          "name": "likely",
+          "unit": 1
+        },
+        {
+          "name": "negative",
+          "unit": 1
+        },
+        {
+          "name": "study",
+          "unit": 1
+        },
+        {
+          "name": "point",
+          "unit": 1
+        },
+        {
+          "name": "point out",
+          "unit": 1
+        },
+        {
+          "name": "pay off",
+          "unit": 1
+        },
+        {
+          "name": "challenge",
+          "unit": 1
+        },
+        {
+          "name": "succeed",
+          "unit": 1
+        },
+        {
+          "name": "president",
+          "unit": 1
+        },
+        {
+          "name": "position",
+          "unit": 1
+        },
+        {
+          "name": "cooperate",
+          "unit": 1
+        },
+        {
+          "name": "voice",
+          "unit": 1
+        },
+        {
+          "name": "consider",
+          "unit": 1
+        },
+        {
+          "name": "teenage",
+          "unit": 2
+        },
+        {
+          "name": "drive",
+          "unit": 2
+        },
+        {
+          "name": "mad",
+          "unit": 2
+        },
+        {
+          "name": "be in low spirits",
+          "unit": 2
+        },
+        {
+          "name": "lately",
+          "unit": 2
+        },
+        {
+          "name": "decision",
+          "unit": 2
+        },
+        {
+          "name": "patience",
+          "unit": 2
+        },
+        {
+          "name": "stick",
+          "unit": 2
+        },
+        {
+          "name": "stick to",
+          "unit": 2
+        },
+        {
+          "name": "stress",
+          "unit": 2
+        },
+        {
+          "name": "under stress",
+          "unit": 2
+        },
+        {
+          "name": "waste",
+          "unit": 2
+        },
+        {
+          "name": "mobile phone",
+          "unit": 2
+        },
+        {
+          "name": "regret",
+          "unit": 2
+        },
+        {
+          "name": "cut back on sth",
+          "unit": 2
+        },
+        {
+          "name": "hate",
+          "unit": 2
+        },
+        {
+          "name": "exam",
+          "unit": 2
+        },
+        {
+          "name": "focused",
+          "unit": 2
+        },
+        {
+          "name": "argue",
+          "unit": 2
+        }
+      ]
+    },
+    {
+      "file": "y-2.jpg",
+      "sha256": "45e74171952e922cffe692e28e27b58f7fb87ef1ac76ddce9bb3dc5d5af1bc35",
+      "cards": [
+        {
+          "name": "silly",
+          "unit": 2
+        },
+        {
+          "name": "normal",
+          "unit": 2
+        },
+        {
+          "name": "stressed",
+          "unit": 2
+        },
+        {
+          "name": "bottom",
+          "unit": 2
+        },
+        {
+          "name": "dialogue",
+          "unit": 2
+        },
+        {
+          "name": "communicate",
+          "unit": 2
+        },
+        {
+          "name": "dictionary",
+          "unit": 2
+        },
+        {
+          "name": "youth",
+          "unit": 2
+        },
+        {
+          "name": "stage",
+          "unit": 2
+        },
+        {
+          "name": "experience",
+          "unit": 2
+        },
+        {
+          "name": "rapid",
+          "unit": 2
+        },
+        {
+          "name": "mood",
+          "unit": 2
+        },
+        {
+          "name": "ugly",
+          "unit": 2
+        },
+        {
+          "name": "probably",
+          "unit": 2
+        },
+        {
+          "name": "risk",
+          "unit": 2
+        },
+        {
+          "name": "risk sth/doing sth",
+          "unit": 2
+        },
+        {
+          "name": "go through",
+          "unit": 2
+        },
+        {
+          "name": "unkind",
+          "unit": 2
+        },
+        {
+          "name": "stranger",
+          "unit": 2
+        },
+        {
+          "name": "bully",
+          "unit": 2
+        },
+        {
+          "name": "stand up for sb/sth",
+          "unit": 2
+        },
+        {
+          "name": "screen",
+          "unit": 2
+        },
+        {
+          "name": "bedtime",
+          "unit": 2
+        },
+        {
+          "name": "pain",
+          "unit": 2
+        },
+        {
+          "name": "put up with sb/sth",
+          "unit": 2
+        },
+        {
+          "name": "get sb down",
+          "unit": 2
+        },
+        {
+          "name": "shame",
+          "unit": 2
+        },
+        {
+          "name": "adult",
+          "unit": 2
+        },
+        {
+          "name": "seed",
+          "unit": 3
+        },
+        {
+          "name": "dancer",
+          "unit": 3
+        },
+        {
+          "name": "recognize",
+          "unit": 3
+        },
+        {
+          "name": "inspire",
+          "unit": 3
+        },
+        {
+          "name": "shortly",
+          "unit": 3
+        },
+        {
+          "name": "take away",
+          "unit": 3
+        },
+        {
+          "name": "muscle",
+          "unit": 3
+        },
+        {
+          "name": "condition",
+          "unit": 3
+        },
+        {
+          "name": "progress",
+          "unit": 3
+        },
+        {
+          "name": "yet",
+          "unit": 3
+        },
+        {
+          "name": "final",
+          "unit": 3
+        },
+        {
+          "name": "universe",
+          "unit": 3
+        },
+        {
+          "name": "scientific",
+          "unit": 3
+        },
+        {
+          "name": "audience",
+          "unit": 3
+        },
+        {
+          "name": "highly",
+          "unit": 3
+        },
+        {
+          "name": "whenever",
+          "unit": 3
+        },
+        {
+          "name": "achievement",
+          "unit": 3
+        },
+        {
+          "name": "will",
+          "unit": 3
+        },
+        {
+          "name": "however",
+          "unit": 3
+        },
+        {
+          "name": "musician",
+          "unit": 3
+        },
+        {
+          "name": "death",
+          "unit": 3
+        },
+        {
+          "name": "shoulder",
+          "unit": 3
+        },
+        {
+          "name": "coach",
+          "unit": 3
+        },
+        {
+          "name": "pretty",
+          "unit": 3
+        },
+        {
+          "name": "knee",
+          "unit": 3
+        },
+        {
+          "name": "cheers",
+          "unit": 3
+        },
+        {
+          "name": "fair",
+          "unit": 3
+        },
+        {
+          "name": "fair play",
+          "unit": 3
+        },
+        {
+          "name": "Irish",
+          "unit": 3
+        },
+        {
+          "name": "gymnast",
+          "unit": 3
+        },
+        {
+          "name": "compete",
+          "unit": 3
+        },
+        {
+          "name": "make it (to)",
+          "unit": 3
+        },
+        {
+          "name": "runner",
+          "unit": 3
+        },
+        {
+          "name": "semi-final",
+          "unit": 3
+        },
+        {
+          "name": "finishing line",
+          "unit": 3
+        },
+        {
+          "name": "whatever",
+          "unit": 3
+        },
+        {
+          "name": "inspiring",
+          "unit": 3
+        },
+        {
+          "name": "diary",
+          "unit": 3
+        },
+        {
+          "name": "victory",
+          "unit": 3
+        },
+        {
+          "name": "live through sth",
+          "unit": 3
+        },
+        {
+          "name": "perform",
+          "unit": 3
+        },
+        {
+          "name": "disappoint",
+          "unit": 3
+        },
+        {
+          "name": "self",
+          "unit": 3
+        },
+        {
+          "name": "cactus",
+          "unit": 4
+        },
+        {
+          "name": "lotus",
+          "unit": 4
+        }
+      ]
+    },
+    {
+      "file": "y-3.jpg",
+      "sha256": "c0616e989aeaf09844383bdd029e729204cb7ed3b8cb3f32f5fc35b8578b3682",
+      "cards": [
+        {
+          "name": "exactly",
+          "unit": 4
+        },
+        {
+          "name": "peanut",
+          "unit": 4
+        },
+        {
+          "name": "unused",
+          "unit": 4
+        },
+        {
+          "name": "pity",
+          "unit": 4
+        },
+        {
+          "name": "dig",
+          "unit": 4
+        },
+        {
+          "name": "dig up",
+          "unit": 4
+        },
+        {
+          "name": "a couple of",
+          "unit": 4
+        },
+        {
+          "name": "celebration",
+          "unit": 4
+        },
+        {
+          "name": "oil",
+          "unit": 4
+        },
+        {
+          "name": "unlike",
+          "unit": 4
+        },
+        {
+          "name": "stem",
+          "unit": 4
+        },
+        {
+          "name": "bear",
+          "unit": 4
+        },
+        {
+          "name": "attractive",
+          "unit": 4
+        },
+        {
+          "name": "compare",
+          "unit": 4
+        },
+        {
+          "name": "usefulness",
+          "unit": 4
+        },
+        {
+          "name": "judge",
+          "unit": 4
+        },
+        {
+          "name": "hidden",
+          "unit": 4
+        },
+        {
+          "name": "society",
+          "unit": 4
+        },
+        {
+          "name": "purpose",
+          "unit": 4
+        },
+        {
+          "name": "satisfied",
+          "unit": 4
+        },
+        {
+          "name": "boss",
+          "unit": 4
+        },
+        {
+          "name": "wife",
+          "unit": 4
+        },
+        {
+          "name": "dentist",
+          "unit": 4
+        },
+        {
+          "name": "passage",
+          "unit": 4
+        },
+        {
+          "name": "stamp",
+          "unit": 4
+        },
+        {
+          "name": "daughter",
+          "unit": 4
+        },
+        {
+          "name": "digitalize",
+          "unit": 4
+        },
+        {
+          "name": "graduate",
+          "unit": 4
+        },
+        {
+          "name": "drop out of school",
+          "unit": 4
+        },
+        {
+          "name": "research",
+          "unit": 4
+        },
+        {
+          "name": "make up one’s mind",
+          "unit": 4
+        },
+        {
+          "name": "musical",
+          "unit": 5
+        },
+        {
+          "name": "instrument",
+          "unit": 5
+        },
+        {
+          "name": "keyboard",
+          "unit": 5
+        },
+        {
+          "name": "bow",
+          "unit": 5
+        },
+        {
+          "name": "guitar",
+          "unit": 5
+        },
+        {
+          "name": "pear-shaped",
+          "unit": 5
+        },
+        {
+          "name": "strength",
+          "unit": 5
+        },
+        {
+          "name": "boundary",
+          "unit": 5
+        },
+        {
+          "name": "composer",
+          "unit": 5
+        },
+        {
+          "name": "unique",
+          "unit": 5
+        },
+        {
+          "name": "gift",
+          "unit": 5
+        },
+        {
+          "name": "familiar",
+          "unit": 5
+        },
+        {
+          "name": "familiar with sth",
+          "unit": 5
+        },
+        {
+          "name": "flow",
+          "unit": 5
+        },
+        {
+          "name": "gentle",
+          "unit": 5
+        },
+        {
+          "name": "drip",
+          "unit": 5
+        },
+        {
+          "name": "wave",
+          "unit": 5
+        },
+        {
+          "name": "eastern",
+          "unit": 5
+        },
+        {
+          "name": "award",
+          "unit": 5
+        },
+        {
+          "name": "bell",
+          "unit": 5
+        },
+        {
+          "name": "talented",
+          "unit": 5
+        },
+        {
+          "name": "press",
+          "unit": 5
+        },
+        {
+          "name": "ticket",
+          "unit": 5
+        },
+        {
+          "name": "performance",
+          "unit": 5
+        },
+        {
+          "name": "concert",
+          "unit": 5
+        },
+        {
+          "name": "country",
+          "unit": 5
+        },
+        {
+          "name": "jazz",
+          "unit": 5
+        },
+        {
+          "name": "rock",
+          "unit": 5
+        },
+        {
+          "name": "cowboy",
+          "unit": 5
+        },
+        {
+          "name": "drum",
+          "unit": 5
+        },
+        {
+          "name": "African American",
+          "unit": 5
+        },
+        {
+          "name": "make up",
+          "unit": 5
+        },
+        {
+          "name": "attend",
+          "unit": 5
+        },
+        {
+          "name": "quick",
+          "unit": 5
+        },
+        {
+          "name": "brain",
+          "unit": 5
+        },
+        {
+          "name": "flute",
+          "unit": 5
+        },
+        {
+          "name": "download",
+          "unit": 5
+        },
+        {
+          "name": "all the time",
+          "unit": 5
+        },
+        {
+          "name": "calligrapher",
+          "unit": 6
+        },
+        {
+          "name": "ink",
+          "unit": 6
+        },
+        {
+          "name": "date back (to ...)",
+          "unit": 6
+        },
+        {
+          "name": "bottled",
+          "unit": 6
+        },
+        {
+          "name": "calligraphy",
+          "unit": 6
+        }
+      ]
+    },
+    {
+      "file": "y-4.jpg",
+      "sha256": "729549760b959dc78899a700d2dab12975c5f84d59f94b71394eacd152c6beb0",
+      "cards": [
+        {
+          "name": "stroke",
+          "unit": 6
+        },
+        {
+          "name": "appear",
+          "unit": 6
+        },
+        {
+          "name": "doorway",
+          "unit": 6
+        },
+        {
+          "name": "amazed",
+          "unit": 6
+        },
+        {
+          "name": "still",
+          "unit": 6
+        },
+        {
+          "name": "over time",
+          "unit": 6
+        },
+        {
+          "name": "pleasure",
+          "unit": 6
+        },
+        {
+          "name": "take pleasure in",
+          "unit": 6
+        },
+        {
+          "name": "character",
+          "unit": 6
+        },
+        {
+          "name": "artistic",
+          "unit": 6
+        },
+        {
+          "name": "breath",
+          "unit": 6
+        },
+        {
+          "name": "slow down",
+          "unit": 6
+        },
+        {
+          "name": "pressure",
+          "unit": 6
+        },
+        {
+          "name": "under pressure",
+          "unit": 6
+        },
+        {
+          "name": "pride",
+          "unit": 6
+        },
+        {
+          "name": "beautifully",
+          "unit": 6
+        },
+        {
+          "name": "basket",
+          "unit": 6
+        },
+        {
+          "name": "brushwork",
+          "unit": 6
+        },
+        {
+          "name": "similarity",
+          "unit": 6
+        },
+        {
+          "name": "perhaps",
+          "unit": 6
+        },
+        {
+          "name": "sometime",
+          "unit": 6
+        },
+        {
+          "name": "expert",
+          "unit": 6
+        },
+        {
+          "name": "a great deal",
+          "unit": 6
+        },
+        {
+          "name": "the big screen",
+          "unit": 7
+        },
+        {
+          "name": "action",
+          "unit": 7
+        },
+        {
+          "name": "comedy",
+          "unit": 7
+        },
+        {
+          "name": "cartoon",
+          "unit": 7
+        },
+        {
+          "name": "documentary",
+          "unit": 7
+        },
+        {
+          "name": "romance",
+          "unit": 7
+        },
+        {
+          "name": "all-time",
+          "unit": 7
+        },
+        {
+          "name": "actress",
+          "unit": 7
+        },
+        {
+          "name": "humanitarian",
+          "unit": 7
+        },
+        {
+          "name": "ballet",
+          "unit": 7
+        },
+        {
+          "name": "charm",
+          "unit": 7
+        },
+        {
+          "name": "insist",
+          "unit": 7
+        },
+        {
+          "name": "based",
+          "unit": 7
+        },
+        {
+          "name": "based upon/on",
+          "unit": 7
+        },
+        {
+          "name": "major",
+          "unit": 7
+        },
+        {
+          "name": "mark",
+          "unit": 7
+        },
+        {
+          "name": "princess",
+          "unit": 7
+        },
+        {
+          "name": "radio",
+          "unit": 7
+        },
+        {
+          "name": "discover",
+          "unit": 7
+        },
+        {
+          "name": "cancer",
+          "unit": 7
+        },
+        {
+          "name": "pass away",
+          "unit": 7
+        },
+        {
+          "name": "peacefully",
+          "unit": 7
+        },
+        {
+          "name": "a number of",
+          "unit": 7
+        },
+        {
+          "name": "rush hour",
+          "unit": 7
+        },
+        {
+          "name": "park",
+          "unit": 7
+        },
+        {
+          "name": "mistake",
+          "unit": 7
+        },
+        {
+          "name": "steal",
+          "unit": 7
+        },
+        {
+          "name": "steal the show",
+          "unit": 7
+        },
+        {
+          "name": "supporting",
+          "unit": 7
+        },
+        {
+          "name": "kung fu",
+          "unit": 7
+        },
+        {
+          "name": "actor",
+          "unit": 7
+        },
+        {
+          "name": "handsome",
+          "unit": 7
+        },
+        {
+          "name": "price",
+          "unit": 7
+        },
+        {
+          "name": "dinosaur",
+          "unit": 7
+        },
+        {
+          "name": "script",
+          "unit": 7
+        },
+        {
+          "name": "scriptwriter",
+          "unit": 7
+        },
+        {
+          "name": "director",
+          "unit": 7
+        },
+        {
+          "name": "film-maker",
+          "unit": 7
+        },
+        {
+          "name": "shoot",
+          "unit": 7
+        },
+        {
+          "name": "editor",
+          "unit": 7
+        },
+        {
+          "name": "bring sb/sth to life",
+          "unit": 7
+        },
+        {
+          "name": "come to life",
+          "unit": 7
+        },
+        {
+          "name": "world-class",
+          "unit": 7
+        },
+        {
+          "name": "wrestler",
+          "unit": 7
+        },
+        {
+          "name": "touching",
+          "unit": 7
+        },
+        {
+          "name": "fighter",
+          "unit": 7
+        },
+        {
+          "name": "elder",
+          "unit": 7
+        },
+        {
+          "name": "classic",
+          "unit": 8
+        },
+        {
+          "name": "short story",
+          "unit": 8
+        },
+        {
+          "name": "take one’s time",
+          "unit": 8
+        },
+        {
+          "name": "branch",
+          "unit": 8
+        },
+        {
+          "name": "bedside",
+          "unit": 8
+        }
+      ]
+    },
+    {
+      "file": "y-5.jpg",
+      "sha256": "881f124306ccaca6f42f418939401874f2a505b50ddf6982c22b127bc1c39b0a",
+      "cards": [
+        {
+          "name": "anger",
+          "unit": 8
+        },
+        {
+          "name": "make sense",
+          "unit": 8
+        },
+        {
+          "name": "have (...) to do with",
+          "unit": 8
+        },
+        {
+          "name": "apartment",
+          "unit": 8
+        },
+        {
+          "name": "masterpiece",
+          "unit": 8
+        },
+        {
+          "name": "fool",
+          "unit": 8
+        },
+        {
+          "name": "actually",
+          "unit": 8
+        },
+        {
+          "name": "widely",
+          "unit": 8
+        },
+        {
+          "name": "run out of",
+          "unit": 8
+        },
+        {
+          "name": "fair",
+          "unit": 8
+        },
+        {
+          "name": "act",
+          "unit": 8
+        },
+        {
+          "name": "unable",
+          "unit": 8
+        },
+        {
+          "name": "enemy",
+          "unit": 8
+        },
+        {
+          "name": "writing",
+          "unit": 8
+        },
+        {
+          "name": "image",
+          "unit": 8
+        },
+        {
+          "name": "lasting",
+          "unit": 8
+        },
+        {
+          "name": "loss",
+          "unit": 8
+        },
+        {
+          "name": "show up",
+          "unit": 8
+        },
+        {
+          "name": "mirror",
+          "unit": 8
+        },
+        {
+          "name": "knock",
+          "unit": 8
+        },
+        {
+          "name": "hurry up",
+          "unit": 8
+        },
+        {
+          "name": "matter",
+          "unit": 8
+        },
+        {
+          "name": "doorbell",
+          "unit": 8
+        },
+        {
+          "name": "ring",
+          "unit": 8
+        }
+      ]
+    }
+  ]
+}

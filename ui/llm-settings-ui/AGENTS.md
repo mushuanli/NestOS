@@ -51,6 +51,12 @@ CostEditor 默认展示本月费用账本摘要；趋势、Provider/会话明细
 
 AgentConfigEditor 可消费 EditorOptions.mountSettings 挂载宿主偏好，生命周期包含 isDirty、flush 与 destroy；偏好字段不写入 AgentDefinition，保存失败阻止离开并保留表单。
 
-- Provider 连接测试仅使用显式文本模型，纯媒体服务提示没有文本测试模型；图片/TTS 在独立操作验证中复用正式适配器并提供临时预览。测试不依赖先保存，结果必须与当前配置及操作参数一致；不得把 HTTP/RPC 成功当作业务成功。
+Agent 执行方式通过 execution 绑定内部注册 Flow；第四个参数的 listFlows 由宿主提供目录。可跟随最新发布或固定 revision，并编辑默认参数及连接绑定 JSON。普通 Agent 策略与未展示字段继续保留，非法 JSON 阻止保存；Flow 不反向声明 Agent。回归见 tests/agent-execution.test.ts。
+
+- Provider 连接测试仅使用显式文本模型，无可用文本模型时隐藏文本模型选择、凭据存储与子进程说明及「测试连接」，保留凭据输入和独立操作验证；模型分类变化时同步显示状态；图片/TTS 在独立操作验证中复用正式适配器并提供临时预览。测试不依赖先保存，结果必须与当前配置及操作参数一致；不得把 HTTP/RPC 成功当作业务成功。
 - Provider 表单只消费安全 getProviders 元数据，不读取 getFullProvider 回填密钥。省略 apiKey 由宿主保持同地址凭据，空字符串显式清除；更换地址不得自动复用旧凭据。原明文存储约定不变，相关说明折叠展示。
 - 模型推理选项来自 reasoning/reasoningByProtocol，不硬编码固定等级。Connection 按模型保存 effort/预算；无声明时显示服务端默认，媒体模型隐藏聊天专用参数。原始配置与常用控件共享同一草稿，不因切页签或渲染丢失未展示字段。
+
+媒体验证示例通过 MediaProbeExamples 由宿主注入 ProviderSettingsEditor 与 ModelDefaultsEditor，设置组件不内置测试提示词，不从 i18n 获取测试正文。按操作选择示例，仅在初始化或切换操作时预填；同一操作刷新保留用户编辑和显式清空，预填不触发验证。
+
+Provider 高级页通过可选 getProviderReferences 快照展示只读接口资料；不按厂商 ID 分支，不将文档记录的未实现能力转换成可编辑请求参数。音色名称用于展示，提交和校验仍使用配置中允许的真实音色 ID。

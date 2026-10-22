@@ -4,11 +4,19 @@
 
 Flow 函数调用使用 `builtin.flow@2.0.0`：`config.flowId/revision/parameters` 绑定子 Flow，子定义通过 `outputs` 声明命名返回值，父节点通过 `${nodes.call.outputs.name}` 使用结果。发布 revision 时固定递归依赖版本和 digest；调用参数在父作用域求值一次，子参数、变量及 Agent 上下文隔离。`builtin.flow@1.0.0` 保留原行为。当前子 Flow 的 `runPolicy` 与调用级 retry/compensate/assign/budget/capabilities 不受支持，会明确拒绝；限额与工作区配置在父 Flow。契约与示例见 [Flow 调用与组合](design/flow-invocation-composition.md)。
 
+同一函数的多组调用使用 `config.parameterSets`（参数对象数组或整值引用），`parameters` 为公共参数，逐组字段覆盖公共值。`maxConcurrency` 默认 1，限制整次子调用的并发；各组参数/变量/上下文隔离，`outputs.result` 按输入序返回命名返回对象数组，空输入返回 `[]`。冻结模板保存于 `DagRunSpec.functionCalls`，应用层 RunDefinition 同步保留；组实例及参数作用域通过检查点恢复，不重新解析子定义。它是通用函数调用能力，不识别业务字段或工具名。示例见 [parameter-calls.flow](../apps/cli/examples/parameter-calls.flow)。
+
+`FlowDraft.functions` / `FlowRevision.functions` 可内嵌完整子 Flow，随主文件递归冻结和发布。`flowId` 优先按定义处的局部作用域解析，外部定义仍从库读取；主文件可独立运行，不必逐个安装内部函数。`builtin.transform.config.operation: batch` 接收 `value` 数组、正整数 `batchSize` 和参数名 `parameter`，返回可直接用作 `parameterSets` 的命名实参数组。可选 `groups` 声明原始分组，`mode: combined | grouped` 决定合并分批或保留组界，完整性检查拒绝漏项、重复和重排。图片、文本及混合内容都按原值传递；见[单文件通用示例](../apps/cli/examples/parameter-batches.flow)及[详细契约](design/flow-invocation-composition.md#单文件函数与图片文本分批)。
+
 当前新图采用独立的 route、taskGroup、join、aggregate@3、loop 控制节点；作文评审模板已迁移。实现、策略默认值及边界见 [Flow 控制节点](design/flow-control-primitives.md)。下文 route@2/@3 的派发模型保留用于旧定义兼容。
+
+`DagRunSpec.input?: FlowRuntimeInput` 保存只读 `{prompt: string}`，缺省为空提示词。模板通过 `${input.prompt}` 读取，变量初值可引用它；参数名 `param.prompt` 和可写 `vars.prompt` 保持独立。输入在提交时复制，随检查点恢复；嵌套调用及结构化派发沿用同一个快照，不属于定义 digest。Agent 的 Flow 执行绑定和运行表单见[内部 Flow Agent](design/flow-invocation-composition.md#agent-引用内部-flow)。
 
 > DAG 编排层：把 `llm-tasks` 的 LLM 任务单元连成动态图（route/loop/spawn/compensate/on_failure/budget），并持久化 Flow 定义。提供 `DurableFlowExecutor`（动态图调度）、`DagCommandService`（命令面）、内置 Flow Programs 与插件。公共 API 从 `@itookit/llm-flow` 根导出；`flow/operations.ts` 的纯操作、`flow/programs.ts` 的输入类型（`FlowDependencyBinding` / `FlowValueInput` / `FlowHumanInput` / `FlowAggregateInput`）与 `flow/executor.ts` 的 `upstreamOf` 未从根导出，需按源码路径导入。
 
 **依赖方向**：`llm-flow → durable-kernel + llm-tasks`（`llm-session` 依赖本包）。不持有会话语义（Round/Branch 属于 `llm-session`）；能力经 Kernel Effect 使用。
+
+`prepareFlowRun(flow, options)` 是共享的校验与编译入口，接受参数、宿主插件目录、节点 binder、定义解析和连接准入端口，返回 `DagRunSpec`；`DagCommandService.prepareRun` 和会话指令准备复用它。`isDagRunSpec` 复用检查点的图 envelope 校验。`externalFlowReferences` 按词法作用域及调用节点的依赖锁收集外部引用；`visitFlowCalls` 用于身份重映射，区分局部与全局名称。`flowRevisionToDraft` 和存储层共用定义正文投影，保留递归内联函数。
 
 ## 目录
 
@@ -404,7 +412,7 @@ DagWorkbench 在 Run 未终态时为终态成员提供「重试并重算下游�
 
 `builtin.route@2.0.0` 是普通 DAG 节点：显式 branches 模板、input/prompt/history 策略、maxRounds/maxConcurrency 和 until；每轮通过 Kernel spawn 独立 Task，校验后按 key 保留各类型最新结果。默认不继承上下文，也不发布子 Task 事件到主会话。输出端口为 result。
 
-`builtin.aggregate@1.0.0` 将 previous/updates 按键合并输出 result。节点 outputPolicy 可分别配置 includeInRunOutput/publishToHistory。完整参数与限制见 [结构化派发](design/essay-review-flow.md)；可运行示例见 [作文评审 .flow](../backend/app-core/src/presets/essay-review-isolated.json)。旧 route@1 和回边循环行为保留。
+`builtin.aggregate@1.0.0` 将 previous/updates 按键合并输出 result。节点 outputPolicy 可分别配置 includeInRunOutput/publishToHistory。完整参数与限制见 [结构化派发](design/essay-review-flow.md)；可运行示例见 [作文评审 .flow](../backend/app-core/src/presets/essay-review.json)。旧 route@1 和回边循环行为保留。
 
 运行参数支持 `minimum` / `maximum` / `integer`。`flowToDag` 将参数声明保存为 `DagRunSpec.parameterSchema`；`prepareFlowParameters` 合并默认值并校验，执行器在创建 Task 前调用。route@2 的 maxRounds/maxConcurrency 可使用完整参数模板，运行时保持 number 类型。详见 [参数契约](design/essay-review-flow.md)。
 

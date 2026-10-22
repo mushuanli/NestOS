@@ -95,7 +95,7 @@ describe('ordinary task groups and joins', () => {
 
     it.each([1, 2])('executes the shipped ordinary graph with maxRounds=%s and three revision repairs', async maxRounds => {
         automatic = true; scores = Array(8).fill(7); invalidRevisions = 3;
-        const draft = JSON.parse(readFileSync(new URL('../../app-core/src/presets/essay-review-isolated.json', import.meta.url), 'utf8'));
+        const draft = JSON.parse(readFileSync(new URL('../../app-core/src/presets/essay-review.json', import.meta.url), 'utf8'));
         const revision = { ...draft, revision: 1, createdAt: 0, digest: '' };
         expect(validateFlowRevision(revision, createBuiltinDagPluginRegistry()).filter(issue => issue.severity !== 'warning')).toEqual([]);
         const spec = await flowToDag(revision);
@@ -116,7 +116,7 @@ describe('ordinary task groups and joins', () => {
 
     it('rechecks passing dimensions after revision and gates the report until the new draft passes', async () => {
         automatic = true; scores = [9, 7, 9, 9, 9, 9, 9, 9];
-        const draft = JSON.parse(readFileSync(new URL('../../app-core/src/presets/essay-review-isolated.json', import.meta.url), 'utf8'));
+        const draft = JSON.parse(readFileSync(new URL('../../app-core/src/presets/essay-review.json', import.meta.url), 'utf8'));
         const spec = await flowToDag({ ...draft, revision: 1, createdAt: 0, digest: '' }, async item => item.plugin === 'builtin.agent'
             ? { config: { ...item.config, invocationInstructions: item.config.systemPrompt, messages: [] } } : {});
         executor = new DurableFlowExecutor({ kernel, plugins: createBuiltinDagPluginRegistry(),
@@ -134,7 +134,7 @@ describe('ordinary task groups and joins', () => {
 
     it('runs the shipped review graph as a function and returns its final report after revision', async () => {
         automatic = true; scores = [9, 7, 9, 9, 9, 9, 9, 9];
-        const draft = JSON.parse(readFileSync(new URL('../../app-core/src/presets/essay-review-isolated.json', import.meta.url), 'utf8'));
+        const draft = JSON.parse(readFileSync(new URL('../../app-core/src/presets/essay-review.json', import.meta.url), 'utf8'));
         const child = { ...draft, revision: 1, digest: 'child', createdAt: 0, runPolicy: undefined,
             outputs: { report: { value: '${nodes.report.outputs.result}' } } };
         const parent = { id: 'parent', name: 'Parent', revision: 1, digest: 'parent', createdAt: 0, edges: [],

@@ -12,7 +12,7 @@ export function contextReferences(value: unknown): ContentRef[] {
             }
         } else if (item && typeof item === 'object') {
             const ref = item as ContentRef;
-            if ('id' in item && 'sha256' in item) {
+            if (isContextReference(item)) {
                 if (typeof ref.id !== 'string' || typeof ref.sha256 !== 'string' || typeof ref.bytes !== 'number'
                     || typeof ref.mediaType !== 'string') throw new Error('Malformed context reference');
                 result.push(ref);
@@ -21,4 +21,11 @@ export function contextReferences(value: unknown): ContentRef[] {
         }
     }
     return result;
+}
+
+function isContextReference(item: object): boolean {
+    const value = item as Record<string, unknown>;
+    // Context IDs are content hashes; binary asset IDs and business IDs use other namespaces.
+    if ('mediaType' in value && ('id' in value || 'sha256' in value)) return true;
+    return typeof value.id === 'string' && /^[a-f0-9]{64}$/.test(value.id) && 'sha256' in value;
 }

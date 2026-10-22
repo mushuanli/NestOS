@@ -14,9 +14,40 @@ export function transformOutcome(
     config: Record<string, unknown>,
     inputs: Record<string, unknown>,
 ): DagNodeOutcome {
-    const source = config.value ?? firstInput(inputs) ?? null;
-    const content = config.operation === 'pick' ? pick(source, stringArray(config.path)) : source;
+    const source = config.value ?? firstInput(inputs)
+        ?? (config.operation === 'batch' && Array.isArray(config.groups) ? config.groups.flat() : null);
+    const content = config.operation === 'batch' ? batchValue(source, config)
+        : config.operation === 'pick' ? pick(source, stringArray(config.path)) : source;
     return outcome(config, content);
+}
+
+/** Partition arbitrary input values into named argument sets without interpreting their contents. */
+function batchValue(source: unknown, config: Record<string, unknown>): unknown[] {
+    if (!Array.isArray(source)) throw new Error('Flow batch input must be an array');
+    const size = config.batchSize ?? 1, parameter = config.parameter ?? 'items';
+    if (typeof size !== 'number' || !Number.isSafeInteger(size) || size < 1) throw new Error('Flow batchSize must be a positive integer');
+    if (typeof parameter !== 'string' || !/^[A-Za-z_][A-Za-z0-9_.-]*$/.test(parameter)
+        || ['__proto__', 'constructor', 'prototype'].includes(parameter)) throw new Error('Flow batch parameter must be a safe name');
+    const groups = batchGroups(source, config);
+    const batches = [];
+    for (const group of groups) {
+        for (let offset = 0; offset < group.length; offset += size) batches.push({ [parameter]: group.slice(offset, offset + size) });
+    }
+    return batches;
+}
+
+function batchGroups(source: unknown[], config: Record<string, unknown>): unknown[][] {
+    const mode = config.mode ?? 'combined', groups = config.groups;
+    if (mode !== 'combined' && mode !== 'grouped') throw new Error('Flow batch mode must be combined or grouped');
+    if (groups === undefined) return [source];
+    if (!Array.isArray(groups) || groups.some(group => !Array.isArray(group) || group.length === 0)) {
+        throw new Error('Flow batch groups must contain non-empty arrays');
+    }
+    if (groups.length === 0) return [source];
+    if (JSON.stringify(groups.flat()) !== JSON.stringify(source)) {
+        throw new Error('Flow batch groups must match input values and order exactly');
+    }
+    return mode === 'grouped' ? groups : [source];
 }
 
 /** 产出本节点的输出，并附带 patch-graph effect 动态添加节点/边。 */
@@ -38,6 +69,7 @@ export function spawnOutcome(
                 ...(edge.input !== undefined ? { input: String(edge.input) } : {}),
                 ...(edge.output !== undefined ? { output: String(edge.output) } : {}),
                 ...(edge.kind === 'control' || edge.kind === 'data' ? { kind: edge.kind } : {}),
+                ...(edge.dependencyOnly === true ? { dependencyOnly: true } : {}),
                 ...(edge.onFailure === 'fail' || edge.onFailure === 'skip' || edge.onFailure === 'continue'
                     ? { onFailure: edge.onFailure }
                     : {}),
@@ -160,13 +192,7 @@ function compare(left: unknown, right: unknown): number {
 }
 
 function pickParam(parameters: Record<string, JsonValue> | undefined, path: string[]): unknown {
-    if (!parameters) return undefined;
-    let current: JsonValue = parameters;
-    for (const part of path) {
-        if (!isRecord(current) || !(part in current)) return undefined;
-        current = current[part];
-    }
-    return current;
+    return readOwnPath(parameters, path);
 }
 
 function firstInput(inputs: Record<string, unknown>): unknown {
@@ -174,20 +200,28 @@ function firstInput(inputs: Record<string, unknown>): unknown {
 }
 
 function artifactContent(value: unknown): unknown {
-    return isRecord(value) && 'content' in value ? value.content : value;
+    return isRecord(value) && Object.hasOwn(value, 'content') ? value.content : value;
 }
 
 function pick(value: unknown, path: string[]): unknown {
+    return artifactContent(readOwnPath(value, path, true));
+}
+
+function readOwnPath(value: unknown, path: string[], parseJson = false): unknown {
     let current = value;
     for (const part of path) {
-        // Upstream agent nodes emit JSON text; parse it at any nesting level so
-        // `path: ['input','score']` can read a field from a `{"score":55}` string.
-        if (typeof current === 'string' && current.trim().startsWith('{')) {
+        // Upstream JSON text is decoded only for input paths, never for parameter literals.
+        if (parseJson && typeof current === 'string' && ['{', '['].includes(current.trim()[0])) {
             try { current = JSON.parse(current); } catch { /* keep the raw string */ }
         }
-        current = record(current)[part];
+        if (Array.isArray(current)) {
+            if (part === 'length') { current = current.length; continue; }
+            if (!/^(?:0|[1-9]\d*)$/.test(part) || !Number.isSafeInteger(Number(part)) || Number(part) >= current.length) return undefined;
+        } else if (!isRecord(current)) return undefined;
+        if (!Object.hasOwn(current, part)) return undefined;
+        current = Array.isArray(current) ? current[Number(part)] : current[part];
     }
-    return artifactContent(current);
+    return current;
 }
 
 function compareRule(left: Record<string, unknown>, right: Record<string, unknown>): number {

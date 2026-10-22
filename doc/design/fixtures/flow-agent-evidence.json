@@ -1,0 +1,164 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-10-22T13:06:08.888499+00:00",
+  "objective": "Agents execute registered Flow files; missing Flow disables new calls; runtime prompt and declared parameters remain separate.",
+  "sourceSha256": {
+    "backend/kernel-adapters/src/llm-management/contracts/agent.ts": "eea468e72a8afd2492921f90e343fc5cbdcd55881fd4cba3cbe066060290ac2c",
+    "backend/llm-session/src/session/flow-agent.ts": "ec6aacdc904c1212cb262570e1a32830c12e04c86eb0dacb496fb9e47269c3fa",
+    "backend/llm-session/src/session/flow-connection-snapshot.ts": "6e63e713ed1eaabf416a467ffc988e40d2f906d8f8d767f0427b6902e6e567f8",
+    "backend/llm-session/src/session/session-run-coordinator.ts": "3c547d702bccef337d7dad54770e92853dad384614211adb41f7a84db36b07e7",
+    "backend/llm-session/src/session/session-instructions.ts": "b6e0296c503526be7589efc7cab162150d7afa24c9b46cdbefe7ed14d26a0963",
+    "backend/llm-session/src/persistence/instruction-queue-store.ts": "bb709efbe12b18369c50196f84ee8290d33537ff9af7e4f5c420858f8a706793",
+    "backend/llm-flow/src/contracts/flow-templates.ts": "f76211ecdf472e01dedecc85609543e54cd35552005e3b20706ed38a4ea1cab3",
+    "backend/llm-flow/src/flow/node-task-preparation.ts": "ba29c3d6f7a352dde8c917bed76779a9c9c7acc18b9fe46b99f823949b39eab1",
+    "backend/llm-flow/src/flow/variables.ts": "bb263994b14b8a1e9b1b5e332e6bf377359b87e354946e7d2740d4e004366ffb",
+    "backend/app-core/src/configuration/agent-flow-availability.ts": "4f430714ee23d80ac6d8cd447d12b74f309d20a0986f1303dfed0e03197f479c",
+    "backend/app-core/src/configuration/agent-flow-archive.ts": "34c4ac80c79bb950d83ae05d643acc6e14a73d7d229e14d2b04dd81b6480b080",
+    "backend/app-core/src/run/run-definition.ts": "a49f2487385693997163680c9fceafa9a5fc909e4296ab64675d251bc5b2d606",
+    "ui/llm-ui-adapter/src/flows/agent-flow.ts": "d1a26f7b8adb8a33e4113734af523c84d76756cc73e52c48f5b4977e3feb9065",
+    "ui/llm-settings-ui/src/editors/agent-execution.ts": "0795365c69c437e13de7717adbb6e9ebebd6c605b28a8cc672b3e074cba920b2"
+  },
+  "requirements": [
+    {
+      "requirement": "Agent references any registered published Flow without reverse Agent declarations or source-path coupling",
+      "evidence": [
+        "backend/app-core/tests/flow-agent-execution.test.ts",
+        "backend/app-core/tests/agent-flow-resources.test.ts"
+      ],
+      "checks": [
+        "Deterministic execution without a model",
+        "Actual plugin catalog used for custom Flow availability",
+        "Direct, nested and parameter-set Flow invocation"
+      ]
+    },
+    {
+      "requirement": "Deleting the referenced file disables new calls and restoration rechecks availability",
+      "evidence": [
+        "backend/app-core/tests/agent-flow-resources.test.ts",
+        "ui/app-shell/tests/agent-flow-input.test.ts"
+      ],
+      "checks": [
+        "Agent source bytes unchanged",
+        "Read-only availability delivered to configuration snapshots",
+        "Disabled picker and send button preserve user input",
+        "Recovery restores availability",
+        "Deletion closes an unsubmitted parameter form"
+      ]
+    },
+    {
+      "requirement": "Runtime prompt and other parameters are supported",
+      "evidence": [
+        "backend/llm-flow/__tests__/runtime-input.test.ts",
+        "backend/app-core/tests/flow-agent-execution.test.ts",
+        "ui/app-shell/tests/agent-flow-input.test.ts"
+      ],
+      "checks": [
+        "Readonly input.prompt, optional mutable vars.prompt initialized from input",
+        "Flow defaults then Agent defaults then runtime override",
+        "Typed validation before durable acceptance",
+        "Image assets persisted through the runtime form",
+        "Per-run connection and slot binding overrides",
+        "Literal template-like user text is never reinterpreted"
+      ]
+    },
+    {
+      "requirement": "Published changes apply to subsequent calls while existing accepted requests retain their definitions",
+      "evidence": [
+        "backend/app-core/tests/flow-agent-execution.test.ts",
+        "backend/app-core/tests/agent-flow-resources.test.ts"
+      ],
+      "checks": [
+        "Latest published revision without rewriting Agent",
+        "Optional pinned revision",
+        "Unpublished incomplete drafts do not disable a valid published definition",
+        "Host restart after deleting source and external Flow dependencies still executes accepted snapshots"
+      ]
+    },
+    {
+      "requirement": "Runtime configuration and durability preserve admitted choices and report failures precisely",
+      "evidence": [
+        "backend/app-core/tests/flow-agent-connections.test.ts",
+        "backend/llm-session/__tests__/flow-agent-binding.test.ts",
+        "backend/llm-session/__tests__/flow-connection-snapshot.test.ts"
+      ],
+      "checks": [
+        "Tier edits retain the admitted model in direct, nested and batch calls",
+        "Provider or protocol changes reject before any model request",
+        "Missing or corrupt required snapshots fail closed",
+        "Frozen execution settings participate in queue merge compatibility",
+        "Admission failures retain specific diagnostics without prompt or parameter bodies"
+      ]
+    }
+  ],
+  "validation": [
+    {
+      "command": "pnpm --filter @itookit/llm-flow exec vitest run --maxWorkers=4 --minWorkers=1",
+      "files": 43,
+      "passed": 543
+    },
+    {
+      "command": "pnpm --filter @itookit/llm-session exec vitest run --maxWorkers=3 --minWorkers=1",
+      "files": 41,
+      "passed": 326
+    },
+    {
+      "command": "pnpm --filter @itookit/app-core exec vitest run --maxWorkers=2 --silent=true",
+      "files": 117,
+      "passed": 731
+    },
+    {
+      "scope": "Actual Flow Agent execution and connection identity tests",
+      "files": 2,
+      "passed": 14
+    },
+    {
+      "scope": "UI Flow Agent form and settings additions",
+      "files": [
+        "ui/app-shell/tests/agent-flow-input.test.ts",
+        "ui/llm-settings-ui/tests/agent-execution.test.ts"
+      ],
+      "passed": 8
+    },
+    {
+      "scope": "Toolbox import/export regression file",
+      "passed": 49
+    },
+    {
+      "scope": "CLI parameter calls and actual SIGKILL recovery regression",
+      "passed": 5
+    },
+    {
+      "scope": "Typechecks",
+      "packages": [
+        "llm-flow",
+        "llm-session",
+        "kernel-adapters",
+        "app-core",
+        "cli",
+        "app-shell",
+        "llm-ui-adapter",
+        "llm-settings-ui"
+      ],
+      "passed": true
+    },
+    {
+      "scope": "Repository checks",
+      "commands": [
+        "pnpm architecture:check",
+        "pnpm docs:check",
+        "pnpm styles:check",
+        "git diff --check"
+      ],
+      "passed": true
+    }
+  ],
+  "executionSemantics": {
+    "flowUpdate": "New calls follow latest published revision unless explicitly pinned; drafts do not change execution.",
+    "queueSnapshot": "Selected Agent, Flow source and external Flow closure, arguments, default bindings and safe connection selection are frozen at acceptance.",
+    "indirectResources": "Other Agent, Skill and Prompt references inside Flow retain the existing resolution and freezing boundary at actual Run construction.",
+    "authorization": "Credentials are never snapshotted; live connection availability, authorization and selected-model capabilities are rechecked.",
+    "recovery": "Accepted instructions and running graphs survive Flow source deletion; new calls are blocked."
+  },
+  "paidModelRequests": 0,
+  "deployment": "Workspace implementation and local verification only; no deployment or publishing was performed."
+}

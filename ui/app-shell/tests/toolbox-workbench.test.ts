@@ -15,13 +15,14 @@ import { FlowCommand } from '@itookit/llm-session';
 import { ToolboxInventory } from '@itookit/app-core';
 import { ToolboxResources } from '@itookit/app-core';
 import { createMindosFlowDrawers } from '../../../backend/app-core/src/presets/flow-library';
-import { MindosInitialFiles } from '../../../backend/app-core/src/presets/initial-files';
+import { createMindosProviderTemplates } from '@itookit/kernel-adapters/llm/presets';
 import { createFlowContextMenuConfig } from '../../llm-ui-adapter/src/flows/context-menu';
 import { ToolboxWorkbench } from '../src/toolbox/ToolboxWorkbench';
 import { ToolDetailsEditor } from '../src/toolbox/ToolDetailsEditor';
 import { legacyToolboxRoute, TOOLBOX_KINDS } from '../src/toolbox/routes';
 import { MCPServerConnection } from '../../../backend/kernel-adapters/src/llm-management/skills/mcp-client';
 import { t } from '@itookit/common';
+import mediaProbeExamples from '../src/config/media-probe-examples.json';
 
 let runtime: ApplicationRuntime;
 const cleanup: Array<() => unknown> = [];
@@ -42,11 +43,11 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
     const skills = new SkillsEngine(runtime.agentService); cleanup.push(() => skills.dispose());
     const inventory = new ToolboxInventory(() => runtime.agentService.getMCPServers(), runtime.kernel.toolCatalog, runtime.agentService, () => runtime.agentService.listSystemPrompts()); await inventory.init(); cleanup.push(() => inventory.dispose());
     const resources = new ToolboxResources({ agents: await runtime.vfs.openFileSystem('/home/admin/agents'), skills,
-        flows: runtime.flowEngine.engine, ...inventory.sources }, runtime.agentService, runtime.commandBus, await runtime.vfs.openFileSystem('/etc'), inventory, createMindosFlowDrawers());
+        flows: runtime.flowEngine.engine, ...inventory.sources }, runtime.agentService, runtime.commandBus, await runtime.vfs.openFileSystem('/etc'), inventory, createMindosFlowDrawers(), createMindosProviderTemplates());
     const sidebar = document.createElement('div'), main = document.createElement('div'); document.body.append(sidebar, main);
     const factory = vi.fn(async (container: HTMLElement, options: EditorOptions) => { const editor = new Editor(container, {}, options); await editor.init(container); return editor; });
     const factories = { prompts: async (container: HTMLElement, options: EditorOptions) => { const editor = new SystemPromptSettingsEditor(container, runtime.agentService, options); await editor.init(container); return editor; }, agents: factory, skills: factory, flows: factory,
-        providers: async (container: HTMLElement, options: EditorOptions) => { const editor = new ProviderSettingsEditor(container, runtime.agentService, options); await editor.init(container); return editor; },
+        providers: async (container: HTMLElement, options: EditorOptions) => { const editor = new ProviderSettingsEditor(container, runtime.agentService, options, mediaProbeExamples); await editor.init(container); return editor; },
         connections: async (container: HTMLElement, options: EditorOptions) => { const editor = new ConnectionSettingsEditor(container, runtime.agentService, options); await editor.init(container); return editor; },
         mcp: async (container: HTMLElement, options: EditorOptions) => { const editor = new MCPSettingsEditor(container, runtime.agentService, options); await editor.init(container); return editor; },
         tools: async (container: HTMLElement, options: EditorOptions) => { const editor = new ToolDetailsEditor(container, inventory, options, resources); await editor.init(container); return editor; } };
@@ -58,20 +59,19 @@ async function setup(ocr?: import('../src/configuration/ocr-controls').OcrConfig
     cleanup.push(() => workbench.destroy()); await workbench.start();
     return { workbench, sidebar, main, factory, resources, inventory, navigate };
 }
-it('shows the recovered shared Flow in the Subflows drawer and leaves entry Flows outside it', async () => {
+it('shows explicitly grouped external Flows with the generic Flow context menu', async () => {
     const f = await setup(); f.workbench.setFilter('flows');
     await f.workbench.setVisible(false);
-    await runtime.flowEngine.engine.driver.delete(['/anki-build.flow']);
-    const recovery = new MindosInitialFiles(runtime.commandBus);
-    expect(await recovery.restore(['flow:anki-build'])).toEqual([{ id: 'flow:anki-build', status: 'restored' }]);
+    await runtime.commandBus.execute(FlowCommand.DraftCreate, { id: 'shared-child', name: 'Shared child' });
+    await f.resources.drawers.assign([{ path: '/flows/shared-child.flow', name: 'Reusable flows' }]);
     await f.workbench.setVisible(true);
-    const group = () => f.sidebar.querySelector<HTMLElement>('[data-item-id="/drawers/flows-subflows"]')!;
-    expect(group().textContent).toContain('子流程');
+    const drawer = f.resources.drawers.forPath('/flows/shared-child.flow')!;
+    const group = () => f.sidebar.querySelector<HTMLElement>(`[data-item-id="${drawer.id}"]`)!;
+    expect(group().textContent).toContain('Reusable flows');
     group().querySelector<HTMLElement>('.vfs-directory-item__header')!.click();
-    await vi.waitFor(() => expect(group().querySelector('[data-item-id="/flows/anki-build.flow"]')).not.toBeNull());
-    expect(group().querySelector('[data-item-id="/flows/anki-generate.flow"]')).toBeNull();
-    expect(group().querySelector('[data-item-id="/flows/anki-from-image.flow"]')).toBeNull();
-    group().querySelector<HTMLButtonElement>('[data-item-id="/flows/anki-build.flow"] [data-action="item-menu"]')!.click();
+    await vi.waitFor(() => expect(group().querySelector('[data-item-id="/flows/shared-child.flow"]')).not.toBeNull());
+    expect(group().querySelector('[data-item-id="/flows/review.flow"]')).toBeNull();
+    group().querySelector<HTMLButtonElement>('[data-item-id="/flows/shared-child.flow"] [data-action="item-menu"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('.vfs-context-menu button[data-action]')?.getAttribute('data-action')).toBe('flow:run'));
 });
 
@@ -181,7 +181,7 @@ it('copies editable definitions and resolves tool references without installing 
     for (let i = 0; i < 4; i++) {
         expect(imported[i]).not.toBe(paths[i]);
         const kind = ['agents', 'skills', 'flows', 'mcp'][i] as typeof TOOLBOX_KINDS[number];
-        expect(await f.resources.sources[kind].driver.exists(imported[i].slice(kind.length + 1))).toBe(true);
+        expect(await f.resources.sources[kind].driver.exists(imported[i].slice(kind.length + 1)), `${kind}: ${imported[i]}`).toBe(true);
     }
     expect(imported[4]).toBe(paths[4]);
     expect(await runtime.agentService.getAgents()).toEqual(expect.arrayContaining([expect.objectContaining({ id: 'english', name: 'English teacher' })]));
@@ -237,17 +237,19 @@ it('groups providers by availability and keeps settings before their connections
     expect(groups()).toEqual(before);
     f.sidebar.querySelector<HTMLButtonElement>('[data-action="create-file"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('.project-dialog')).not.toBeNull());
+    document.querySelector<HTMLButtonElement>('[data-create-kind="connections"]')!.click();
+    expect(document.querySelector('.project-dialog h2')?.textContent).toBe(t('toolbox.connectionType'));
     expect(document.querySelector<HTMLSelectElement>('.project-dialog [name="providerId"]')?.value).toBe('ready');
-    document.querySelector<HTMLInputElement>('.project-dialog input')!.value = 'New connection';
+    document.querySelector<HTMLInputElement>('.project-dialog [name="resourceName"]')!.value = 'New connection';
     document.querySelector<HTMLFormElement>('.project-dialog form')!.requestSubmit();
     await vi.waitFor(async () => expect((await runtime.agentService.getConnections()).find(c => c.name === 'New connection')?.providerId).toBe('ready'));
     await vi.waitFor(() => expect(group().querySelector('.vfs-directory-item__description')?.textContent).toContain('3 个连接'));
 });
 it('keeps metadata title changes out of drawer relocation commands', async () => {
     const f = await setup(), relocate = vi.spyOn(f.resources.drawers, 'relocate');
-    const provider = (await runtime.agentService.getFullProvider('openai'))!;
+    const provider = (await runtime.agentService.getFullProvider('doubao-speech'))!;
     await runtime.agentService.saveProvider({ ...provider, name: 'Renamed provider' });
-    await vi.waitFor(() => expect(f.inventory.providers.get('openai')?.name).toBe('Renamed provider'));
+    await vi.waitFor(() => expect(f.inventory.providers.get('doubao-speech')?.name).toBe('Renamed provider'));
     expect(relocate).not.toHaveBeenCalled();
 });
 
@@ -361,7 +363,8 @@ it('creates every editable category in named drawers and persists their organiza
         f.workbench.setFilter(kind);
         const pending = f.workbench.createResource();
         const dialog = document.querySelector('.project-dialog')!;
-        dialog.querySelector<HTMLInputElement>('input')!.value = 'Grouped ' + kind;
+        dialog.querySelector<HTMLButtonElement>(`[data-create-kind="${kind}"]`)!.click();
+        dialog.querySelector<HTMLInputElement>('[name="resourceName"]')!.value = 'Grouped ' + kind;
         dialog.querySelector<HTMLInputElement>('[name="drawer"]')!.value = '学习';
         dialog.querySelector('form')!.requestSubmit();
         const path = await pending;
@@ -370,6 +373,7 @@ it('creates every editable category in named drawers and persists their organiza
         expect(f.sidebar.querySelector(`[data-item-id="${group.id}"] [data-item-id="${path}"]`)).not.toBeNull();
         expect(await f.resources.sources[kind].driver.exists(path.slice(kind.length + 1))).toBe(true);
         const again = f.workbench.createResource();
+        document.querySelector<HTMLButtonElement>(`[data-create-kind="${kind}"]`)!.click();
         expect(document.querySelector<HTMLInputElement>('.project-dialog [name="drawer"]')?.value).toBe('学习');
         expect([...document.querySelectorAll<HTMLOptionElement>('.project-dialog datalist option')].map(option => option.value)).toContain('学习');
         document.querySelector('.project-dialog')!.dispatchEvent(new Event('cancel', { cancelable: true })); await again;
@@ -402,6 +406,92 @@ it('moves tool references in bulk without changing definitions and deleting a dr
     expect(f.sidebar.querySelector(`[data-item-id="${group.id}"]`)).toBeNull();
     for (const path of paths) expect(await f.resources.sources.tools.driver.exists(path.slice('/tools'.length))).toBe(true);
 });
+it('keeps the original toolbar and all resource types available from model creation', async () => {
+    const f = await setup(); f.workbench.setFilter('models');
+    expect(f.sidebar.querySelector('[data-action="create-file"]')?.textContent).toContain(t('toolbox.new'));
+    expect(f.sidebar.querySelector('[data-action="create-connection"]')).toBeNull();
+    const pending = f.workbench.createResource();
+    const dialog = document.querySelector('.project-dialog')!;
+    expect(dialog.querySelector('fieldset')?.hidden).toBe(true);
+    expect([...dialog.querySelectorAll<HTMLButtonElement>('[data-create-kind]')].map(button => button.dataset.createKind)).toEqual(TOOLBOX_KINDS.filter(kind => kind !== 'tools'));
+    expect(dialog.querySelector('[data-create-kind="providers"]')?.textContent).toBe('模型服务商');
+    expect(dialog.querySelector('[data-create-kind="connections"]')?.textContent).toBe('模型连接');
+    dialog.querySelector<HTMLButtonElement>('[data-create-kind="providers"]')!.click();
+    const providers = dialog.querySelector<HTMLSelectElement>('[name="providerId"]')!;
+    expect(providers.closest('label')!.hidden).toBe(true);
+    expect(dialog.querySelector('[role="combobox"]')).not.toBeNull();
+    expect(dialog.querySelector('button[type="submit"]')?.textContent).toBe(t('toolbox.addAndConfigure'));
+    dialog.querySelector<HTMLButtonElement>('.toolbox-create__back')!.click();
+    dialog.querySelector<HTMLButtonElement>('[data-create-kind="connections"]')!.click();
+    expect(providers.closest('label')!.hidden).toBe(false);
+    expect(providers.value).toBe('');
+    expect(dialog.querySelector<HTMLInputElement>('[role="combobox"]')?.disabled).toBe(true);
+    dialog.dispatchEvent(new Event('cancel', {cancelable: true})); await pending;
+});
+
+it('keeps global creation broad after selecting a drawer', async () => {
+    const f = await setup(); await f.workbench.openResource('/skills/phrases'); f.workbench.setFilter('all');
+    const first = f.workbench.createResource();
+    expect(document.querySelector<HTMLFieldSetElement>('.toolbox-create fieldset')?.hidden).toBe(true);
+    expect(document.querySelector<HTMLDivElement>('.toolbox-create__choices')?.hidden).toBe(false);
+    document.querySelector('.toolbox-create')!.dispatchEvent(new Event('cancel', {cancelable: true})); await first;
+});
+
+it('loads the JSON image example for Volcengine without validating automatically', async () => {
+    const f = await setup(), verify = vi.spyOn(runtime.agentService, 'testConnection');
+    await f.workbench.openResource('/providers/volcengine');
+    await vi.waitFor(() => expect(f.main.querySelector('[data-probe-input]')).not.toBeNull());
+    const input = f.main.querySelector<HTMLTextAreaElement>('[data-probe-input]')!;
+    expect(input.value).toBe(mediaProbeExamples['image.generate'].input);
+    expect(input.value).toContain('鹈鹕'); expect(verify).not.toHaveBeenCalled();
+});
+
+it('uses preset names and configures new speech providers inside the creation dialog', async () => {
+    const f = await setup(); f.workbench.setFilter('models');
+    await runtime.agentService.deleteProvider('doubao-speech');
+    await vi.waitFor(() => expect(f.inventory.providers.has('doubao-speech')).toBe(false));
+    const verify = vi.spyOn(runtime.agentService, 'testConnection');
+    const pending = f.workbench.createResource();
+    const dialog = document.querySelector('.project-dialog')!;
+    dialog.querySelector<HTMLButtonElement>('[data-create-kind="providers"]')!.click();
+    const search = dialog.querySelector<HTMLInputElement>('[name="providerTemplateSearch"]')!;
+    const choose = (id: string) => { search.click(); dialog.querySelector<HTMLButtonElement>(`[data-template-id="${id}"]`)!.click(); };
+    choose('doubao-speech');
+    const name = dialog.querySelector<HTMLInputElement>('[name="resourceName"]')!;
+    expect(name.closest('label')?.hidden).toBe(true); expect(search.value).toBe('Doubao (豆包语音)');
+    choose('deepseek'); expect(search.value).toBe('Doubao (豆包语音)');
+    expect(dialog.querySelector<HTMLButtonElement>('[data-template-id="deepseek"]')!.disabled).toBe(true);
+    search.value = '豆包'; search.dispatchEvent(new Event('input'));
+    expect(search.checkValidity()).toBe(true);
+    expect(dialog.querySelector('[data-template-id="openai"]')).toBeNull();
+    expect(dialog.querySelector('[data-template-id="custom"]')).not.toBeNull();
+    dialog.querySelector<HTMLButtonElement>('[data-template-id="doubao-speech"]')!.click();
+    dialog.querySelector('form')!.requestSubmit();
+    await vi.waitFor(() => expect(dialog.classList.contains('toolbox-create--setup')).toBe(true));
+    await vi.waitFor(() => expect(dialog.querySelector('[data-probe-voice] option')?.textContent).toContain('Vivi 2.0'));
+    expect(dialog.querySelector('[data-provider-reference]')).not.toBeNull();
+    expect(dialog.querySelector('[name="baseURL"]')).not.toBeNull(); expect(f.main.querySelector('[name="baseURL"]')).toBeNull();
+    dialog.querySelector<HTMLButtonElement>('[data-action="complete-setup"]')!.click(); const path = await pending;
+    const provider = (await runtime.agentService.getFullProvider(decodeURIComponent(path.slice('/providers/'.length))))!;
+    expect(provider).toMatchObject({name: 'Doubao (豆包语音)', isBuiltin: false, media: {'speech.synthesize': {adapter: 'doubao-speech'}}});
+    expect(provider.models[0].operations?.['speech.synthesize']?.voices?.length).toBeGreaterThan(0);
+    expect(provider.id).toBe('doubao-speech'); expect(provider.apiKey).toBeUndefined();
+    expect(verify).not.toHaveBeenCalled();
+});
+
+it('creates an empty custom provider without requiring a preset or generating requests', async () => {
+    const f = await setup(); f.workbench.setFilter('models');
+    const pending = f.workbench.createResource(), dialog = document.querySelector('.project-dialog')!;
+    dialog.querySelector<HTMLButtonElement>('[data-create-kind="providers"]')!.click();
+    dialog.querySelector<HTMLInputElement>('[role="combobox"]')!.click();
+    const customName = dialog.querySelector<HTMLInputElement>('[role="combobox"]')!;
+    customName.value = 'My gateway'; customName.dispatchEvent(new Event('input'));
+    dialog.querySelector('form')!.requestSubmit();
+    await vi.waitFor(() => expect(dialog.classList.contains('toolbox-create--setup')).toBe(true));
+    dialog.querySelector<HTMLButtonElement>('[data-action="complete-setup"]')!.click(); const path = await pending;
+    expect(await runtime.agentService.getFullProvider(path.slice('/providers/'.length))).toMatchObject({name: 'My gateway', baseURL: '', models: [], isBuiltin: false});
+});
+
 it('round trips drawer names with resources and keeps cancelled new drawer names out of storage', async () => {
     const f = await setup(); f.workbench.setFilter('skills');
     const pending = f.workbench.createResource();
@@ -479,7 +569,7 @@ it('exposes provider drawer export and deletion for custom and builtin providers
     expect(document.querySelector('.settings-modal')?.textContent).toContain('Linked connection');
     expect((await runtime.agentService.getFullProvider('deletable'))).toBeDefined();
     document.querySelector<HTMLButtonElement>('.settings-modal-cancel')!.click();
-    f.sidebar.querySelector<HTMLButtonElement>('[data-item-id="/model-groups/openai"] [data-action="item-menu"]')!.click();
+    f.sidebar.querySelector<HTMLButtonElement>('[data-item-id="/model-groups/doubao-speech"] [data-action="item-menu"]')!.click();
     expect(document.querySelector('[data-action="delete-resource"]')).not.toBeNull();
     expect(document.querySelector('[data-action="export-json"]')).not.toBeNull();
 });
@@ -525,23 +615,23 @@ it('deletes a provider with the selected default connection and clears the prefe
 });
 it('deletes builtin providers and their connections while retaining independent agents', async () => {
     const f = await setup(), service = runtime.agentService;
-    await service.saveConnection({ id: 'cascade-connection', name: 'Cascade connection', providerId: 'anthropic' });
+    await service.saveConnection({ id: 'cascade-connection', name: 'Cascade connection', providerId: 'volcengine' });
     await service.saveAgent({ id: 'cascade-agent', name: 'Affected agent', type: 'agent', config: {} });
     f.workbench.setFilter('models');
-    f.sidebar.querySelector<HTMLButtonElement>('[data-item-id="/model-groups/anthropic"] [data-action="item-menu"]')!.click();
+    f.sidebar.querySelector<HTMLButtonElement>('[data-item-id="/model-groups/volcengine"] [data-action="item-menu"]')!.click();
     document.querySelector<HTMLButtonElement>('[data-action="delete-resource"]')!.click();
     await vi.waitFor(() => expect(document.querySelector('.settings-modal')?.textContent).toContain('Cascade connection'));
     expect(document.querySelector('.settings-modal')?.textContent).toContain('Cascade connection');
     document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
     await vi.waitFor(() => expect(document.querySelector('.settings-modal')).toBeNull());
-    expect(service.getFullProvider('anthropic')).toBeUndefined();
-    expect((await service.getConnections()).filter(connection => connection.providerId === 'anthropic')).toHaveLength(0);
+    expect(service.getFullProvider('volcengine')).toBeUndefined();
+    expect((await service.getConnections()).filter(connection => connection.providerId === 'volcengine')).toHaveLength(0);
     const agent = (await service.getAgents()).find(item => item.id === 'cascade-agent');
     expect(agent?.config).toEqual({});
     expect((await service.getAgents()).find(item => item.id === 'english')).toBeDefined();
-    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/model-groups/anthropic"]')).toBeNull());
+    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/model-groups/volcengine"]')).toBeNull());
     const config = await runtime.vfs.openFileSystem('/etc');
-    const persisted = JSON.parse(await config.driver.readContent('/llm/.providers/anthropic.json', { encoding: 'utf-8' }));
+    const persisted = JSON.parse(await config.driver.readContent('/llm/.providers/volcengine.json', { encoding: 'utf-8' }));
     expect(persisted.__deleted).toBe(true);
 });
 
@@ -692,17 +782,17 @@ it('deletes empty drawers and excludes tool drawers from bulk deletion', async (
 });
 it('deletes selected model drawers through provider impact confirmation including their connections', async () => {
     const f = await setup();
-    await runtime.agentService.saveConnection({ id: 'drawer-connection', name: 'Drawer connection', providerId: 'openai' });
+    await runtime.agentService.saveConnection({ id: 'drawer-connection', name: 'Drawer connection', providerId: 'doubao-speech' });
     await vi.waitFor(() => expect(f.inventory.connections.has('drawer-connection')).toBe(true));
     f.workbench.setFilter('models');
-    f.sidebar.querySelector<HTMLElement>('[data-item-id="/model-groups/openai"] .vfs-directory-item__header')!.click();
-    f.sidebar.querySelector<HTMLElement>('[data-item-id="/model-groups/anthropic"] .vfs-directory-item__header')!
+    f.sidebar.querySelector<HTMLElement>('[data-item-id="/model-groups/doubao-speech"] .vfs-directory-item__header')!.click();
+    f.sidebar.querySelector<HTMLElement>('[data-item-id="/model-groups/volcengine"] .vfs-directory-item__header')!
         .dispatchEvent(new MouseEvent('click', { bubbles: true, ctrlKey: true }));
     vi.stubGlobal('confirm', () => true); deleteSelected(f.sidebar);
     await vi.waitFor(() => expect(document.querySelector('.settings-modal')?.textContent).toContain('Drawer connection'));
     document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
-    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/model-groups/openai"]')).toBeNull());
-    expect((await runtime.agentService.getFullProvider('anthropic'))).toBeUndefined();
+    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/model-groups/doubao-speech"]')).toBeNull());
+    expect((await runtime.agentService.getFullProvider('volcengine'))).toBeUndefined();
     expect(await runtime.agentService.getFullConnection('drawer-connection')).toBeNull();
 });
 

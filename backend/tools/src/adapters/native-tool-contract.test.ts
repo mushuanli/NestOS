@@ -26,6 +26,49 @@ it('validates output schema and rejects oversized structured results instead of 
     expect(await f.service.invoke({ toolId: 'fixture', args: {}, resultMode: 'structured' })).toMatchObject({ success: false, errorCode: 'OUTPUT_TOO_LARGE', recoverable: false });
 });
 
+it('preserves declared large structured results through invocation and reconciliation while bounding model output', async () => {
+    const f = fixture(), data = { id: 'a'.repeat(150_000) };
+    f.tool.maxResultSizeChars = 200_000;
+    f.call.mockResolvedValue({ data });
+    vi.spyOn(f.tool, 'reconcile').mockResolvedValue({ status: 'completed', data });
+    const request = { toolId: 'fixture', toolVersion: '2', args: {}, resultMode: 'structured' as const };
+    const result = await f.service.invoke({ ...request, executionIdentity: identity });
+    expect(result.success).toBe(true);
+    expect(result.output === JSON.stringify(data)).toBe(true);
+    expect(JSON.stringify(result.data) === JSON.stringify(data)).toBe(true);
+    expect(result.truncated).toBeUndefined();
+    const reconciled = await f.service.reconcile({ ...request, ...identity });
+    expect(reconciled).toMatchObject({ status: 'completed', result: { success: true } });
+    expect(reconciled.status === 'completed' && JSON.stringify(reconciled.result.data) === JSON.stringify(data)).toBe(true);
+    const modelResult = await f.service.invoke({ toolId: 'fixture', args: {} });
+    expect(modelResult).toMatchObject({ success: true, truncated: true });
+    expect(modelResult.output.length).toBeLessThanOrEqual(100_000);
+    expect(modelResult.data).toBeUndefined();
+});
+
+it('rejects structured results above the platform ceiling with size diagnostics and no partial data', async () => {
+    const f = fixture();
+    f.tool.maxResultSizeChars = Infinity;
+    f.call.mockResolvedValueOnce({ data: { id: 'secret'.repeat(2_800_000) } });
+    const result = await f.service.invoke({ toolId: 'fixture', args: {}, resultMode: 'structured' });
+    expect(result).toMatchObject({ success: false, errorCode: 'OUTPUT_TOO_LARGE', recoverable: false });
+    expect(result.error).toContain('16777216');
+    expect(result.error).not.toContain('secret');
+    expect(result.data).toBeUndefined();
+    expect(result.truncated).toBeUndefined();
+});
+
+it('defaults legacy missing structured limits to 100000 characters and rejects invalid declarations', async () => {
+    const f = fixture();
+    f.tool.maxResultSizeChars = undefined as never;
+    f.call.mockResolvedValue({ data: { id: 'a'.repeat(110_000) } });
+    expect(await f.service.invoke({ toolId: 'fixture', args: {}, resultMode: 'structured' }))
+        .toMatchObject({ success: false, errorCode: 'OUTPUT_TOO_LARGE', recoverable: false });
+    f.tool.maxResultSizeChars = NaN;
+    expect(await f.service.invoke({ toolId: 'fixture', args: {}, resultMode: 'structured' }))
+        .toMatchObject({ success: false, errorCode: 'INVALID_OUTPUT_LIMIT', recoverable: false });
+});
+
 it('checks cancellation, live enablement, timeouts and permissions before reconciliation', async () => {
     const f = fixture(), reconcile = vi.spyOn(f.tool, 'reconcile');
     const request = { toolId: 'fixture', args: {}, ...identity };

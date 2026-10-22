@@ -7,7 +7,7 @@ import { validateFlowRevision, hasValidationErrors, type ValidationIssue } from 
 import {flowTemplateReferences} from '../contracts';
 import { validateFields, invalidFields } from './structured/input';
 import { flowToDag } from './to-dag';
-import { validateFlowCallParameters } from './call-parameters';
+import { validateFlowCallParameters, validateFlowCallConfig } from './call-parameters';
 
 export interface FlowDiagnostic extends ValidationIssue { path?: string; line?: number; column?: number }
 export interface FlowCheckResult { valid: boolean; diagnostics: FlowDiagnostic[]; flow?: FlowRevision }
@@ -28,7 +28,7 @@ export function checkFlowSyntax(source: string | unknown, options: FlowCheckOpti
         const raw = value as FlowDraft & FlowRevision;
         const flow = raw.draftVersion !== undefined ? createFlowRevision(raw, raw.draftVersion, raw.updatedAt ?? 0) : structuredClone(raw);
         diagnostics.push(...validateFlowRevision(explicitEdgeKinds(flow, diagnostics), options.plugins ?? createBuiltinDagPluginRegistry()));
-        diagnostics.push(...parameterDiagnostics(raw), ...referenceDiagnostics(raw));
+        diagnostics.push(...parameterDiagnostics(raw), ...referenceDiagnostics(raw), ...inlineSyntaxDiagnostics(raw, options));
         for (const issue of diagnostics) if (!issue.path) {
             const node = flow.nodes.findIndex(node => node.id === issue.nodeId), edge = flow.edges.findIndex(edge => edge.id === issue.edgeId);
             issue.path = node >= 0 ? `$.nodes[${node}]` : edge >= 0 ? `$.edges[${edge}]` : '$';
@@ -47,10 +47,10 @@ function explicitEdgeKinds(flow: FlowRevision, diagnostics: FlowDiagnostic[]): F
 /** Resolve child contracts as a separate offline check; no credentials are required. */
 export async function checkFlowSource(source: string | unknown, options: FlowCheckOptions = {}): Promise<FlowCheckResult> {
     const result = checkFlowSyntax(source, options);
-    if (!result.valid || !result.flow || !options.resolveComposite) return result;
+    if (!result.valid || !result.flow || !options.resolveComposite && !result.flow.functions?.length) return result;
     const slots = async (flow: FlowRevision) => ({ ...flow, connections: flow.connections?.map(slot => ({ ...slot, connectionId: slot.connectionId ?? `check:${slot.name}` })) });
     const resolve = async (id: string, revision?: number) => {
-        const child = await options.resolveComposite!(id, revision);
+        const child = await options.resolveComposite?.(id, revision);
         if (!child) return null;
         const checked = checkFlowSyntax(child, options);
         if (!checked.valid) throw new Error(`Child ${id}: ${checked.diagnostics.map(issue => issue.message).join('; ')}`);
@@ -66,7 +66,7 @@ export async function checkFlowSource(source: string | unknown, options: FlowChe
 }
 
 function callParameterDiagnostics(flow: FlowRevision, spec: DagRunSpec): FlowDiagnostic[] {
-    return Object.entries(spec.parameterScopes ?? {}).flatMap(([scope, binding]) => {
+    const single = Object.entries(spec.parameterScopes ?? {}).flatMap(([scope, binding]) => {
         if (!binding.source) return [];
         const call = scope.slice(0, -1);
         const index = flow.nodes.findIndex(node => call === node.id || call.startsWith(`${node.id}/`));
@@ -78,10 +78,21 @@ function callParameterDiagnostics(flow: FlowRevision, spec: DagRunSpec): FlowDia
             message: `Flow call ${call}: ${issue.message}`,
         }));
     });
+    const batches = Object.entries(spec.functionCalls ?? {}).flatMap(([inputId, template]) => {
+        const input = spec.nodes.find(node => node.id === inputId);
+        const value = (input?.config as { value?: Parameters<typeof validateFlowCallConfig>[1] })?.value ?? {};
+        const call = inputId.replace(/__input$/, '');
+        const index = flow.nodes.findIndex(node => call === node.id || call.startsWith(`${node.id}/`));
+        return validateFlowCallConfig(template.child.parameterSchema, value).map(issue => ({ ...issue,
+            nodeId: flow.nodes[index]?.id, path: index < 0 ? '$.nodes' : `$.nodes[${index}].config.parameterSets`,
+            message: `Flow call ${call}: ${issue.message}` }));
+    });
+    return [...single, ...batches];
 }
 
 type ShapeAssert = (valid: boolean, path: string, message: string) => void;
-function shapeDiagnostics(value: unknown): FlowDiagnostic[] {
+function shapeDiagnostics(value: unknown, depth = 0, budget = { remaining: 1000 }): FlowDiagnostic[] {
+    if (depth > 32 || --budget.remaining < 0) return [{ code: 'invalid-inline-functions', path: '$.functions', message: 'Inline Flow declaration limit exceeded' }];
     if (!object(value)) return [{code: 'invalid-definition', message: 'Flow must be an object', path: '$'}];
     const issues: FlowDiagnostic[] = [];
     const require: ShapeAssert = (valid, path, message) => {if (!valid) issues.push({code: 'invalid-shape', path, message});};
@@ -93,6 +104,9 @@ function shapeDiagnostics(value: unknown): FlowDiagnostic[] {
         if (Array.isArray(entries)) entries.forEach((item, index) => require(object(item) && typeof item.name === 'string' && !!item.name.trim(), `$.${key}[${index}]`, `${key} entry requires a name`));
     }
     if (Array.isArray(value.connections)) value.connections.forEach((slot, index) => connectionShape(slot, `$.connections[${index}]`, require));
+    if (Array.isArray(value.functions)) value.functions.forEach((fn, index) => {
+        issues.push(...shapeDiagnostics(fn, depth + 1, budget).map(issue => ({ ...issue, path: `$.functions[${index}]${issue.path?.slice(1) ?? ''}` })));
+    });
     return issues;
 }
 
@@ -115,7 +129,7 @@ function rootShape(value: Record<string, unknown>, require: ShapeAssert): void {
     require(typeof value.name === 'string' && !!value.name.trim(), '$.name', 'Flow requires a name');
     const version = value.draftVersion ?? value.revision;
     require(typeof version === 'number' && Number.isSafeInteger(version) && version > 0, value.draftVersion === undefined ? '$.revision' : '$.draftVersion', 'Flow requires a positive draftVersion or revision');
-    for (const key of ['nodes', 'edges', 'parameters', 'connections']) require(value[key] === undefined && !['nodes', 'edges'].includes(key) || Array.isArray(value[key]), `$.${key}`, `${key} must be an array`);
+    for (const key of ['nodes', 'edges', 'parameters', 'connections', 'functions']) require(value[key] === undefined && !['nodes', 'edges'].includes(key) || Array.isArray(value[key]), `$.${key}`, `${key} must be an array`);
 }
 function nodeShape(node: unknown, path: string, require: ShapeAssert): void {
     require(object(node), path, 'Node must be an object');
@@ -129,6 +143,7 @@ function edgeShape(edge: unknown, path: string, require: ShapeAssert): void {
     const legacyData = object(edge) && edge.kind === undefined && typeof edge.output === 'string' && typeof edge.input === 'string';
     require(legacyData || object(edge) && ['control', 'data'].includes(String(edge.kind)), `${path}.kind`, 'Edge kind must be control or data');
     if (object(edge) && edge.onFailure !== undefined) require(['fail', 'skip', 'continue'].includes(String(edge.onFailure)), `${path}.onFailure`, 'Invalid edge failure policy');
+    if (object(edge) && edge.dependencyOnly !== undefined) require(typeof edge.dependencyOnly === 'boolean', `${path}.dependencyOnly`, 'Dependency-only flag must be boolean');
 }
 
 function parameterDiagnostics(flow: FlowDraft | FlowRevision): FlowDiagnostic[] {
@@ -173,9 +188,20 @@ function referenceDiagnostics(flow: FlowDraft | FlowRevision): FlowDiagnostic[] 
     const sources = flow.nodes.map((node, index) => ({value: [flowReferenceSource(node.config), node.inputs], path: `$.nodes[${index}]`, nodeId: node.id as string | undefined}));
     sources.push({value: [flow.outputs, flow.variables], path: '$', nodeId: undefined});
     return sources.flatMap(source => {
-        return flowTemplateReferences(source.value).filter(ref => ref.root === 'param' && ref.path.length && !names.has(ref.path[0]) && !names.has(ref.path.join('.')))
-            .map(ref => ({code: 'unknown-parameter', path: source.path, nodeId: source.nodeId, message: `Undeclared parameter: ${ref.path[0]}`}));
+        const refs = flowTemplateReferences(source.value);
+        return [
+            ...refs.filter(ref => ref.root === 'param' && ref.path.length && !names.has(ref.path[0]) && !names.has(ref.path.join('.')))
+                .map(ref => ({code: 'unknown-parameter', path: source.path, nodeId: source.nodeId, message: `Undeclared parameter: ${ref.path[0]}`})),
+            ...refs.filter(ref => ref.root === 'input' && (ref.path.length !== 1 || ref.path[0] !== 'prompt'))
+                .map(() => ({ code: 'unknown-runtime-input', path: source.path, nodeId: source.nodeId, message: 'Runtime input only defines input.prompt' })),
+        ];
     });
+}
+
+function inlineSyntaxDiagnostics(flow: FlowDraft | FlowRevision, options: FlowCheckOptions): FlowDiagnostic[] {
+    return (flow.functions ?? []).flatMap((fn, index) => checkFlowSyntax(fn, options).diagnostics.map(issue => ({
+        ...issue, path: `$.functions[${index}]${issue.path?.slice(1) ?? ''}`, message: `Inline Flow ${fn.id}: ${issue.message}`,
+    })));
 }
 
 function parseDiagnostic(error: unknown, source: string): FlowDiagnostic {

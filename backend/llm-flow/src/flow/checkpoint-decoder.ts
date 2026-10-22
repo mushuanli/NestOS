@@ -1,3 +1,4 @@
+import { isFlowRuntimeInput } from './runtime-input';
 import type { SchedulerCheckpoint } from './scheduler-checkpoint';
 import { isRecord, isIdentity, strings, isGraphNode, isGraphEdge } from './graph-decoder';
 
@@ -6,10 +7,19 @@ const enumValue = (value: unknown, values: string[]) => typeof value === 'string
 const pairs = (value: unknown, check: (value: unknown) => boolean) => Array.isArray(value)
     && value.every(pair => Array.isArray(pair) && pair.length === 2 && isIdentity(pair[0]) && check(pair[1]));
 const optional = (value: unknown, check: (value: unknown) => boolean) => value === undefined || check(value);
-const graph = (value: unknown) => isRecord(value) && Array.isArray(value.nodes) && value.nodes.every(isGraphNode)
-    && Array.isArray(value.edges) && value.edges.every(isGraphEdge);
+const graph = (value: unknown, depth = 0): boolean => depth <= 32 && isRecord(value) && Array.isArray(value.nodes) && value.nodes.every(isGraphNode)
+    && Array.isArray(value.edges) && value.edges.every(isGraphEdge)
+    && optional(value.input, isFlowRuntimeInput)
+    && optional(value.functionCalls, calls => isFunctionCalls(calls, depth + 1))
+    && optional(value.parameterScopes, isParameterScopes);
+
+/** Prepared plans and scheduler recovery share the same graph envelope validation. */
+export function isDagRunSpec(value: unknown): value is import('../contracts').DagRunSpec { return graph(value); }
 
 const fields: Record<string, (value: unknown) => boolean> = {
+    version: value => value === 1,
+    nodes: value => Array.isArray(value) && value.every(isGraphNode),
+    edges: value => Array.isArray(value) && value.every(isGraphEdge),
     spec: graph,
     instances: value => pairs(value, strings),
     edgeState: value => pairs(value, value => enumValue(value, ['active', 'inactive', 'pending'])),
@@ -33,10 +43,9 @@ const fields: Record<string, (value: unknown) => boolean> = {
 /** Validate the persisted scheduler envelope before restoring collections or dispatching. */
 export function decodeSchedulerCheckpoint(value: unknown): SchedulerCheckpoint | undefined {
     if (value === undefined) return undefined;
-    if (!isRecord(value) || value.version !== 1 || !graph(value)
-        || !Object.entries(fields).every(([key, check]) => check(value[key]))) {
-        throw new TypeError('Invalid Flow scheduler checkpoint');
-    }
+    if (!isRecord(value)) throw new TypeError('Invalid Flow scheduler checkpoint: envelope');
+    const invalid = Object.entries(fields).filter(([key, check]) => !check(value[key])).map(([key]) => key);
+    if (invalid.length) throw new TypeError(`Invalid Flow scheduler checkpoint: ${invalid.join(', ')}`);
     return value as unknown as SchedulerCheckpoint;
 }
 
@@ -60,9 +69,21 @@ function isVariables(value: unknown): boolean {
 function isConnections(value: unknown): boolean {
     return isRecord(value) && ['defaultConnection', 'fallbackConnectionId', 'runConnectionId'].every(key => optional(value[key], isIdentity))
         && optional(value.connections, value => Array.isArray(value) && value.every(slot =>
-            isRecord(slot) && isIdentity(slot.name) && isIdentity(slot.connectionId)));
+            isRecord(slot) && isIdentity(slot.name) && optional(slot.connectionId, isIdentity)));
 }
 function isCatalog(value: unknown): boolean {
     return isRecord(value) && pairs(value.manifests, value => value === null || isRecord(value))
         && pairs(value.schemas, value => value !== undefined) && optional(value.localSchemas, strings);
+}
+
+function isFunctionCalls(value: unknown, depth: number): boolean {
+    return isRecord(value) && Object.entries(value).every(([id, template]) => isIdentity(id) && isRecord(template)
+        && isIdentity(template.collector) && Number.isSafeInteger(template.maxConcurrency) && Number(template.maxConcurrency) > 0
+        && graph(template.child, depth));
+}
+function isParameterScopes(value: unknown): boolean {
+    return isRecord(value) && Object.values(value).every(scope => isRecord(scope)
+        && typeof scope.parent === 'string' && optional(scope.source, isIdentity)
+        && optional(scope.parameterSet, index => Number.isSafeInteger(index) && Number(index) >= 0)
+        && isRecord(scope.defaults) && isRecord(scope.values) && optional(scope.schema, Array.isArray));
 }

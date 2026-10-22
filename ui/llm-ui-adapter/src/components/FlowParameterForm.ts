@@ -15,11 +15,12 @@ export interface FlowConnectionSelection {
 }
 
 /** Validate before closing so invalid input can be corrected repeatedly. */
-export function promptFlowParameters(parameters: FlowParameter[], title?: string, submit?: (values: Record<string, JsonValue>) => Promise<void>, signal?: AbortSignal, connection?: FlowConnectionSelection, assets = connection?.assets): Promise<Record<string, JsonValue> | null> {
+export function promptFlowParameters(parameters: FlowParameter[], title?: string, submit?: (values: Record<string, JsonValue>) => Promise<void>, signal?: AbortSignal, connection?: FlowConnectionSelection, assets = connection?.assets, description?: string): Promise<Record<string, JsonValue> | null> {
     return new Promise(resolve => {
         const dialog = document.createElement('dialog');
         dialog.className = 'dag-dialog';
         dialog.innerHTML = `<form novalidate><h2>${escapeHTML(title ?? t('flow.launch.title'))}</h2>
+            ${description ? `<p>${escapeHTML(description)}</p>` : ''}
             ${flowParameterFields(parameters, connection)}
             <p data-form-error class="dag-dialog__error" role="alert"></p>
             <menu><button type="button" data-cancel>${escapeHTML(t('flow.launch.cancel'))}</button>

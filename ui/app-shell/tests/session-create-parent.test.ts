@@ -62,7 +62,7 @@ it('maps Flow files into the chat sidebar and deletes through to the shared Flow
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
     const root = await manager.openFileSystem('/');
     const flowFiles = await manager.openFileSystem('/home/admin/flows');
-    await flowFiles.driver.createFile({ parentPath: '/', name: 'essay-review-isolated.flow', content: '{}' });
+    await flowFiles.driver.createFile({ parentPath: '/', name: 'essay-review.flow', content: '{}' });
     const repository = new SessionRepository(root); await repository.init();
     const intrinsic = createSessionAttachmentMounts(repository);
     const files = new SessionFilesService(root, id => intrinsic.forSession(id)); await files.initialize();
@@ -75,11 +75,11 @@ it('maps Flow files into the chat sidebar and deletes through to the shared Flow
         const view = (workbench as any).navigationFiles;
         expect((await view.driver.getChildren('/')).map((node: any) => node.path)).toContain('/@flows');
         expect(sidebar.textContent).toMatch(/flows/i);
-        expect((await view.driver.getChildren('/@flows')).map((node: any) => node.name)).toContain('essay-review-isolated.flow');
-        await workbench.openResource('/@flows/essay-review-isolated.flow');
-        expect(navigate).toHaveBeenCalledWith({ target: 'flows', resourceId: '/essay-review-isolated.flow' });
-        await view.driver.delete(['/@flows/essay-review-isolated.flow']);
-        expect(await flowFiles.driver.exists('/essay-review-isolated.flow')).toBe(false);
+        expect((await view.driver.getChildren('/@flows')).map((node: any) => node.name)).toContain('essay-review.flow');
+        await workbench.openResource('/@flows/essay-review.flow');
+        expect(navigate).toHaveBeenCalledWith({ target: 'flows', resourceId: '/essay-review.flow' });
+        await view.driver.delete(['/@flows/essay-review.flow']);
+        expect(await flowFiles.driver.exists('/essay-review.flow')).toBe(false);
     } finally {
         await workbench.destroy(); await files.dispose(); await repository.dispose(); await manager.dispose();
         sidebar.remove(); main.remove();

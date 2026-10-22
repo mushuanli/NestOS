@@ -2,6 +2,12 @@
 
 ## 新增 Provider
 
+MindOS 默认仅装配 DeepSeek、火山引擎和豆包语音及对应连接。其他服务从工具箱「新建 → 模型服务商」按需添加，旧工作区已保存的配置保留；系统恢复不再提供 Provider/Connection 条目，配置异常时从工具箱删除后重新添加。完整厂商定义仍可供宿主显式组合，默认选择只在产品预设入口 `createMindosLlmPresets` 中决定。
+
+新建 Provider 的预设来自 `createMindosProviderTemplates`，由宿主注入 `ToolboxResources`。该目录不自动创建 Provider；本地 Codex 等固定身份的宿主服务不作为可复制的 API 预设。UI/RPC 只读取预设 ID 和名称；新建界面不另设配置名称，选择列表预设或输入其精确名称时，提交对应预设 ID 及其名称，列表外输入作为自定义服务商名称。后端按配置字段白名单深拷贝并清除内置身份、凭据、费用等运行数据。预设服务商使用预设的稳定 ID，自定义服务商分配 UUID；已有预设 ID 或同名服务商（去除首尾空白、忽略大小写）时拒绝创建，未知预设同样在持久化前拒绝。多个视图的创建按同一管理服务串行核对，避免并发覆盖已有配置；删除后可从预设重新添加。自定义创建空白 OpenAI 兼容配置。创建不调用验证，也不改变已有实例或全局默认。
+
+工具箱新建弹窗先选类型，再填写对应参数，保留 MCP 等原有可创建类型；模型相关类型显示为「模型服务商」和「模型连接」。新服务商详情与连接引导仅在弹窗内装配，复用已有编辑器并在完成前提交待保存配置；创建后的加载失败重试已有资源，不重复创建。现有工具栏、菜单和详情页沿用原有布局。
+
 1. `backend/kernel-adapters/src/llm-management/constants/providers.ts` — 在 `LLM_PROVIDERS`（`Record<string, LLMProvider>`，key = provider.id）中追加 provider 定义
 2. `https://github.com/mushuanli/driver-llm/blob/main/src/providers/registry.ts` — 注册 provider 名→构造函数映射
 3. 如需新 Provider 类（非 OpenAI 兼容）：`https://github.com/mushuanli/driver-llm/blob/main/src/providers/` 新建类 → `extends BaseProvider`
@@ -27,15 +33,21 @@ Provider / Connection 使用 `configuration-form.ts` 的自动保存表单，新
 
 工具箱 Provider 详情使用概览、模型目录、连接配置、高级四个页签；切换页签保留同一份 DOM、无效草稿与自动保存状态。模型媒体能力和端点提供常用字段表单，原始 JSON 仍可编辑。凭据输入框只写，不读取已保存密钥；宿主仅在同一 Provider、基础地址和认证实现下解析现有凭据，显式空字符串表示清除，省略则保持同地址的已保存值。存储后端仍沿用原 Provider 存储，不宣称已迁移加密凭据库。
 
-Provider 的“测试连接”统一使用用户选定的文本模型：目录中 category 为 chat（含兼容缺省值）的模型才可选，connectionTestModel 可声明预设选项。通信库不猜模型、不把媒体模型送到聊天端点；纯语音 Provider 显示没有文本测试模型，不能借用其他服务商或其他地址的密钥。文本测试成功只证明该次文本请求，不证明其他操作可用。
+Provider 的“测试连接”统一使用用户选定的文本模型：目录中 category 为 chat（含兼容缺省值）的模型才可选，connectionTestModel 可声明预设选项。通信库不猜模型、不把媒体模型送到聊天端点；无可用文本模型时隐藏文本模型选择、凭据存储与子进程说明及「测试连接」，保留凭据配置和独立操作验证，不能借用其他服务商或其他地址的密钥。文本测试成功只证明该次文本请求，不证明其他操作可用。
 
 图片和语音通过独立的操作验证调用同一 testConnection 服务，但必须显式提供 operation 和匹配的 MediaGenerationInput；它们复用正式生成适配器，一次提交、不自动重放。小于等于 8 MiB 的测试产物经已有字节 DTO 返回并由浏览器临时 Blob URL 预览，超出预算仅返回验证成功信息；URL 在重新验证、配置变化与编辑器关闭时释放，不写入正式任务产物。正式 Flow 继续使用 llm.media Effect 的授权、资产校验与持久回执。验证结果绑定开始时的完整配置和操作参数，变化后不能显示旧成功。
+
+媒体操作的默认测试输入保存在应用层 `ui/app-shell/src/config/media-probe-examples.json`，按 image.generate / speech.synthesize 声明。宿主将同一份示例注入 Provider 配置页、新建配置弹窗和「模型与服务」页；设置组件只消费 MediaProbeExamples，不内置产品提示词或从 i18n 读取测试正文。用户编辑或清空输入后，同一表单刷新保留当前内容；示例不写入 Provider JSON，不自动发起生成请求。
 
 reasoning 声明属于模型，reasoningByProtocol 可针对具体路由协议覆盖或禁用；包含 efforts（稳定 ID、显示名及可选 API 值）、canDisable、defaultEffort、预算范围及 transport。未声明不生成一组猜测的等级；服务端默认与显式关闭分开。设置页与聊天输入按实际模型显示选项，主力/常规/快速是路由档位，不是推理等级。切换模型恢复当前会话中该路由的选择，不改变全局默认。旧的未声明能力请求保留兼容；明确声明的等级、关闭和预算在通信前校验。
 
 内置目录是产品预设，厂商变更只更新 presets；通信模块不按模型名称猜协议。豆包文本目录与语音服务分开配置，Seedream 使用 volcengine-images 原生图片适配器及显式能力。参照 [方舟文本目录](https://docs.volcengine.com/docs/ark/model-list?lang=zh)、[图片 API](https://docs.volcengine.com/docs/ark/image-generation-api?lang=zh)、[语音 HTTP API](https://docs.volcengine.com/docs/DoubaoVoice/unidirectional-streaming-text-to-speech-http?lang=zh) 与 [DeepSeek 模型元数据](https://api-docs.deepseek.com/api/list-models/)，本次核对日期为 2026-10-22；目录声明不是账号权限验证。
 
 诊断关联 connection.test.started/completed、media.request.started/completed/failed，记录 requestId/operationId、阶段、结果、错误分类、上游业务码、状态码和耗时。HTTP 200 与 RPC 正常返回不能替代 success；日志不记录输入、产物、完整请求/响应或凭据。失败详情供前端展示，诊断日志只使用安全元数据。
+
+豆包语音的产品目录位于 `backend/kernel-adapters/src/llm-management/constants/catalogs/doubao-speech.json`，记录版本、核对日期、官方来源、HTTP 鉴权与参数、格式/采样率约束、公开音色快照及适配器支持状态。`createDoubaoSpeechProvider` 只将已实现的资源模型、格式与音色派生为可运行配置；请求体模型变体与未实现能力仅作为资料，不能自动启用。`getProviderReferences` 经既有模型管理服务和 RPC 快照公开只读资料，Provider 高级页展示来源和支持状态，音色选择显示名称与 ID。该资料不是用户凭据或账号权限清单，不写入用户 Provider JSON；旧配置中的地址、音色及能力限制保持用户值。官方 ListSpeakers 是独立目录 API，当前尚未接入，不能使用通用 /models 或假设 TTS Key 能直接鉴权。
+
+豆包语音 JSON 行流与 SSE 响应的成功结束帧可携带 `code:20000000,data:null`，该帧不作为音频解码；无音频、非法 Base64 或后续业务错误仍拒绝返回产物。
 
 文本、协议和媒体操作验证共用结果呈现：显示操作、模型、stage、业务错误码、可用的 HTTP 状态/上游错误码、耗时及 requestId。浏览器 `Failed to fetch` 归为 transport/NETWORK_ERROR，没有响应时不猜测 HTTP 状态、密钥错误或服务不稳定；Node 的 DNS/TCP/TLS 已知原因通过 transportCode 保留，原始异常内容不进入诊断日志。MCP 启动错误单独记录 mcp.startup、serverId、连接/发现阶段和安全分类，不能当作模型验证失败。
 

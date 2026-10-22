@@ -1,0 +1,1250 @@
+{
+  "provider": {
+    "id": "doubao-speech",
+    "isBuiltin": true,
+    "name": "Doubao (豆包语音)",
+    "implementation": "custom",
+    "baseURL": "https://openspeech.bytedance.com",
+    "modelsPath": false,
+    "defaultPath": "/api/v3/tts/unidirectional",
+    "media": {
+      "speech.synthesize": {
+        "adapter": "doubao-speech",
+        "path": "/api/v3/tts/unidirectional",
+        "sampleRate": 24000
+      }
+    }
+  },
+  "reference": {
+    "version": 1,
+    "reviewedAt": "2026-10-22",
+    "scope": "HTTP 单向流式合成与公开的 2.0 音色目录快照；不包含账号私有音色，也不代表账号授权。",
+    "sources": [
+      {
+        "id": "http",
+        "title": "单向流式语音合成 HTTP",
+        "url": "https://docs.volcengine.com/docs/DoubaoVoice/unidirectional-streaming-text-to-speech-http?lang=zh"
+      },
+      {
+        "id": "voices",
+        "title": "公开音色列表",
+        "url": "https://docs.volcengine.com/docs/DoubaoVoice/Tonelist-1?lang=zh"
+      },
+      {
+        "id": "discovery",
+        "title": "ListSpeakers 音色查询",
+        "url": "https://docs.volcengine.com/docs/DoubaoVoice/ListSpeakers-LargeModelSoundListNewInterface?lang=zh"
+      }
+    ],
+    "models": [
+      {
+        "id": "seed-tts-2.0",
+        "name": "Doubao Speech 2.0",
+        "kind": "resource",
+        "support": "implemented",
+        "notes": "X-Api-Resource-Id；使用公开 2.0 音色。"
+      },
+      {
+        "id": "seed-icl-2.0",
+        "name": "豆包声音复刻 2.0",
+        "kind": "resource",
+        "support": "unsupported",
+        "notes": "需要账号私有复刻音色及独立配置，默认目录不启用。"
+      },
+      {
+        "id": "seed-tts-2.0-standard",
+        "name": "复刻标准版",
+        "kind": "body-model",
+        "support": "unsupported",
+        "notes": "请求体 req_params.model 的变体，不能作为资源 ID；默认不支持指令 QA/Cot。"
+      },
+      {
+        "id": "seed-tts-2.0-expressive",
+        "name": "复刻表现力增强版",
+        "kind": "body-model",
+        "support": "unsupported",
+        "notes": "请求体模型变体，不能替代 X-Api-Resource-Id；当前适配器未暴露此参数。"
+      }
+    ],
+    "formats": [
+      {
+        "id": "mp3",
+        "name": "MP3",
+        "wireValue": "mp3",
+        "support": "implemented",
+        "sampleRates": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100,
+          48000
+        ],
+        "defaultSampleRate": 24000
+      },
+      {
+        "id": "opus",
+        "name": "Opus",
+        "wireValue": "ogg_opus",
+        "support": "implemented",
+        "sampleRates": [
+          48000
+        ],
+        "defaultSampleRate": 48000,
+        "notes": "客户端格式为 opus，适配器转换为 ogg_opus 并使用 48000 Hz。"
+      },
+      {
+        "id": "pcm",
+        "name": "PCM",
+        "wireValue": "pcm",
+        "support": "implemented",
+        "sampleRates": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100,
+          48000
+        ],
+        "defaultSampleRate": 24000,
+        "notes": "原始音频不含文件头，当前验证页不提供 PCM 播放预览。"
+      },
+      {
+        "id": "wav",
+        "name": "WAV",
+        "wireValue": "wav",
+        "support": "unsupported",
+        "sampleRates": [
+          8000,
+          16000,
+          22050,
+          24000,
+          32000,
+          44100,
+          48000
+        ],
+        "defaultSampleRate": 24000,
+        "notes": "官方支持但流式返回可能重复文件头；当前适配器不提供 WAV 输出，推荐使用 PCM。"
+      }
+    ],
+    "voices": [
+      {
+        "id": "zh_female_vv_uranus_bigtts",
+        "name": "Vivi 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_xiaohe_uranus_bigtts",
+        "name": "小何 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_m191_uranus_bigtts",
+        "name": "云舟 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_taocheng_uranus_bigtts",
+        "name": "小天 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_liufei_uranus_bigtts",
+        "name": "刘飞 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_sophie_uranus_bigtts",
+        "name": "魅力苏菲 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_qingxinnvsheng_uranus_bigtts",
+        "name": "清新女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_cancan_uranus_bigtts",
+        "name": "知性灿灿 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_sajiaoxuemei_uranus_bigtts",
+        "name": "撒娇学妹 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_tianmeixiaoyuan_uranus_bigtts",
+        "name": "甜美小源 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_tianmeitaozi_uranus_bigtts",
+        "name": "甜美桃子 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_shuangkuaisisi_uranus_bigtts",
+        "name": "爽快思思 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_peiqi_uranus_bigtts",
+        "name": "佩奇猪 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_linjianvhai_uranus_bigtts",
+        "name": "邻家女孩 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_shaonianzixin_uranus_bigtts",
+        "name": "少年梓辛 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_sunwukong_uranus_bigtts",
+        "name": "猴哥 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_yingyujiaoxue_uranus_bigtts",
+        "name": "Tina老师 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_kefunvsheng_uranus_bigtts",
+        "name": "暖阳女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_xiaoxue_uranus_bigtts",
+        "name": "儿童绘本 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_dayi_uranus_bigtts",
+        "name": "大壹 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_mizai_uranus_bigtts",
+        "name": "黑猫侦探社咪仔 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_jitangnv_uranus_bigtts",
+        "name": "鸡汤女 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_meilinvyou_uranus_bigtts",
+        "name": "魅力女友 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_liuchangnv_uranus_bigtts",
+        "name": "流畅女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_ruyayichen_uranus_bigtts",
+        "name": "儒雅逸辰 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "en_male_tim_uranus_bigtts",
+        "name": "Tim",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "en_female_dacey_uranus_bigtts",
+        "name": "Dacey",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "en_female_stokie_uranus_bigtts",
+        "name": "Stokie",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_wenroumama_uranus_bigtts",
+        "name": "温柔妈妈 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_jieshuoxiaoming_uranus_bigtts",
+        "name": "解说小明 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_tvbnv_uranus_bigtts",
+        "name": "TVB女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_yizhipiannan_uranus_bigtts",
+        "name": "译制片男 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_qiaopinv_uranus_bigtts",
+        "name": "俏皮女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_zhishuaiyingzi_uranus_bigtts",
+        "name": "直率英子 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_linjiananhai_uranus_bigtts",
+        "name": "邻家男孩 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_silang_uranus_bigtts",
+        "name": "四郎 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_ruyaqingnian_uranus_bigtts",
+        "name": "儒雅青年 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_qingcang_uranus_bigtts",
+        "name": "擎苍 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_xionger_uranus_bigtts",
+        "name": "熊二 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_yingtaowanzi_uranus_bigtts",
+        "name": "樱桃丸子 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_wennuanahu_uranus_bigtts",
+        "name": "温暖阿虎 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_naiqimengwa_uranus_bigtts",
+        "name": "奶气萌娃 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_huolixiaoge_uranus_bigtts",
+        "name": "活力小哥 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_baqiqingshu_uranus_bigtts",
+        "name": "霸气青叔 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_xuanyijieshuo_uranus_bigtts",
+        "name": "悬疑解说 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_mengyatou_uranus_bigtts",
+        "name": "萌丫头 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_tiexinnvsheng_uranus_bigtts",
+        "name": "贴心女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_jitangmei_uranus_bigtts",
+        "name": "鸡汤妹妹 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_cixingjieshuonan_uranus_bigtts",
+        "name": "磁性解说男声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_liangsangmengzai_uranus_bigtts",
+        "name": "亮嗓萌仔 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_kailangjiejie_uranus_bigtts",
+        "name": "开朗姐姐 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_gaolengchenwen_uranus_bigtts",
+        "name": "高冷沉稳 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_shenyeboke_uranus_bigtts",
+        "name": "深夜播客 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_lubanqihao_uranus_bigtts",
+        "name": "鲁班七号 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_jiaochuannv_uranus_bigtts",
+        "name": "娇喘女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_linxiao_uranus_bigtts",
+        "name": "林潇 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_lingling_uranus_bigtts",
+        "name": "玲玲姐姐 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_chunribu_uranus_bigtts",
+        "name": "春日部姐姐 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_tangseng_uranus_bigtts",
+        "name": "唐僧 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_zhuangzhou_uranus_bigtts",
+        "name": "庄周 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_kailangdidi_uranus_bigtts",
+        "name": "开朗弟弟 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_zhubajie_uranus_bigtts",
+        "name": "猪八戒 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_ganmaodianyin_uranus_bigtts",
+        "name": "感冒电音姐姐 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_chanmeinv_uranus_bigtts",
+        "name": "谄媚女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_nvleishen_uranus_bigtts",
+        "name": "女雷神 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_qinqienv_uranus_bigtts",
+        "name": "亲切女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_kuailexiaodong_uranus_bigtts",
+        "name": "快乐小东 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_kailangxuezhang_uranus_bigtts",
+        "name": "开朗学长 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_youyoujunzi_uranus_bigtts",
+        "name": "悠悠君子 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_wenjingmaomao_uranus_bigtts",
+        "name": "文静毛毛 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_zhixingnv_uranus_bigtts",
+        "name": "知性女声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_qingshuangnanda_uranus_bigtts",
+        "name": "清爽男大 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_yuanboxiaoshu_uranus_bigtts",
+        "name": "渊博小叔 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_yangguangqingnian_uranus_bigtts",
+        "name": "阳光青年 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_qingchezizi_uranus_bigtts",
+        "name": "清澈梓梓 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_tianmeiyueyue_uranus_bigtts",
+        "name": "甜美悦悦 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_xinlingjitang_uranus_bigtts",
+        "name": "心灵鸡汤 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_wenrouxiaoge_uranus_bigtts",
+        "name": "温柔小哥 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_roumeinvyou_uranus_bigtts",
+        "name": "柔美女友 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_dongfanghaoran_uranus_bigtts",
+        "name": "东方浩然 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_wenrouxiaoya_uranus_bigtts",
+        "name": "温柔小雅 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_tiancaitongsheng_uranus_bigtts",
+        "name": "天才童声 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_wuzetian_uranus_bigtts",
+        "name": "武则天 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_gujie_uranus_bigtts",
+        "name": "顾姐 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_male_guanggaojieshuo_uranus_bigtts",
+        "name": "广告解说 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "zh_female_shaoergushi_uranus_bigtts",
+        "name": "少儿故事 2.0",
+        "languages": [
+          "zh",
+          "en"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "ICL_uranus_en_female_charlie_tob",
+        "name": "Charlie 2.0",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "ICL_uranus_en_male_ethan_tob",
+        "name": "Ethan 2.0",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "ICL_uranus_en_male_alastor_tob",
+        "name": "Alastor 2.0",
+        "languages": [
+          "en-GB"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "ICL_uranus_en_male_chucky_tob",
+        "name": "Chucky 2.0",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "ICL_uranus_en_male_noah_tob",
+        "name": "Noah 2.0",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "ICL_uranus_en_male_jigsaw_tob",
+        "name": "Jigsaw 2.0",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "ICL_uranus_en_male_clown_man_tob",
+        "name": "Clown Man 2.0",
+        "languages": [
+          "en-US"
+        ],
+        "notes": ""
+      },
+      {
+        "id": "en_male_ryan_uranus_bigtts",
+        "name": "Ryan",
+        "languages": [
+          "en-US"
+        ],
+        "notes": "HTTP 单向流可用，双向流受限。"
+      }
+    ],
+    "parameters": [
+      {
+        "path": "Content-Type",
+        "name": "请求编码",
+        "type": "string",
+        "required": true,
+        "support": "implemented",
+        "default": "application/json"
+      },
+      {
+        "path": "X-Api-Key",
+        "name": "API Key",
+        "type": "string",
+        "required": true,
+        "support": "implemented",
+        "notes": "仅记录鉴权方式；密钥值不属于此目录。"
+      },
+      {
+        "path": "X-Api-Resource-Id",
+        "name": "资源 ID",
+        "type": "string",
+        "required": true,
+        "support": "implemented",
+        "clientField": "model",
+        "notes": "使用 resource 类型条目，不能填 body-model 变体。"
+      },
+      {
+        "path": "X-Api-Request-Id",
+        "name": "请求 ID",
+        "type": "uuid",
+        "required": false,
+        "support": "implemented",
+        "notes": "用于关联请求与排障；当前适配器总是生成 UUID，不需要用户配置。"
+      },
+      {
+        "path": "req_params.text",
+        "name": "合成文本",
+        "type": "string",
+        "required": true,
+        "support": "implemented",
+        "clientField": "input",
+        "notes": "不将其他旧版接口的文本长度限制套用于此接口。"
+      },
+      {
+        "path": "req_params.speaker",
+        "name": "音色 ID",
+        "type": "string",
+        "required": true,
+        "support": "implemented",
+        "clientField": "voice",
+        "notes": "必须匹配资源版本及账号权限。"
+      },
+      {
+        "path": "req_params.audio_params.format",
+        "name": "输出格式",
+        "type": "string",
+        "required": false,
+        "support": "implemented",
+        "clientField": "format",
+        "default": "mp3",
+        "notes": "仅启用 formats 中已实现的格式；流式 WAV 不列为可选输出。"
+      },
+      {
+        "path": "req_params.audio_params.sample_rate",
+        "name": "采样率",
+        "type": "integer",
+        "required": false,
+        "support": "implemented",
+        "clientField": "media.sampleRate",
+        "default": 24000,
+        "notes": "必须遵守所选格式的 sampleRates；Opus 固定 48000 Hz。"
+      },
+      {
+        "path": "req_params.audio_params.speech_rate",
+        "name": "语速",
+        "type": "integer",
+        "required": false,
+        "support": "implemented",
+        "clientField": "speed",
+        "default": 0,
+        "min": -50,
+        "max": 100,
+        "notes": "客户端 speed 为 0.5～2，适配器使用 round((speed - 1) * 100) 转换。"
+      },
+      {
+        "path": "req_params.model",
+        "name": "复刻模型变体",
+        "type": "string",
+        "required": false,
+        "support": "unsupported",
+        "default": "seed-tts-2.0-standard",
+        "notes": "仅在对应复刻场景使用，不是模型目录资源 ID。"
+      },
+      {
+        "path": "req_params.audio_params.bit_rate",
+        "name": "比特率",
+        "type": "integer",
+        "required": false,
+        "support": "unsupported",
+        "notes": "MP3/Opus 的常规可选值为 64000、160000；disable_default_bit_rate 扩展为 16000、32000、64000、160000。PCM/WAV 不支持指定。当前不传此字段。"
+      },
+      {
+        "path": "req_params.audio_params.loudness_rate",
+        "name": "音量",
+        "type": "integer",
+        "required": false,
+        "support": "unsupported",
+        "default": 0,
+        "min": -50,
+        "max": 100,
+        "notes": "混音场景存在限制，当前适配器未实现。"
+      },
+      {
+        "path": "req_params.audio_params.emotion",
+        "name": "情感",
+        "type": "string",
+        "required": false,
+        "support": "unsupported",
+        "notes": "取值依赖音色，不提供全局猜测枚举。"
+      },
+      {
+        "path": "req_params.audio_params.emotion_scale",
+        "name": "情感强度",
+        "type": "number",
+        "required": false,
+        "support": "unsupported",
+        "default": 4,
+        "min": 1,
+        "max": 5,
+        "notes": "依赖音色支持及 emotion 参数。"
+      },
+      {
+        "path": "req_params.ssml",
+        "name": "SSML 文本",
+        "type": "string",
+        "required": false,
+        "support": "unsupported",
+        "notes": "不能假设 2.0 音色支持 SSML，当前客户端只发送普通文本。"
+      },
+      {
+        "path": "req_params.additions",
+        "name": "扩展配置",
+        "type": "JSON string",
+        "required": false,
+        "support": "unsupported",
+        "notes": "公开文档存在扩展参数，当前适配器未提供通用透传。"
+      },
+      {
+        "path": "context_texts",
+        "name": "语音指令",
+        "type": "string[]",
+        "required": false,
+        "support": "partial",
+        "clientField": "instructions",
+        "notes": "依赖音色；当前适配器存在映射但默认目录不启用 instructions。须核对具体接口版本的字段位置后再启用。"
+      },
+      {
+        "path": "section_id",
+        "name": "上下文段落 ID",
+        "type": "string",
+        "required": false,
+        "support": "unsupported",
+        "notes": "依赖接口及音色版本，当前不持久化或透传。"
+      },
+      {
+        "path": "req_params.additions.pronunciation_dict",
+        "name": "发音词典",
+        "type": "object",
+        "required": false,
+        "support": "unsupported",
+        "notes": "属于扩展配置，当前不透传。"
+      },
+      {
+        "path": "req_params.audio_params.enable_timestamp",
+        "name": "时间戳",
+        "type": "boolean",
+        "required": false,
+        "support": "unsupported",
+        "default": false,
+        "notes": "需区分 1.0 时间戳与 2.0 字幕能力，当前只消费音频。"
+      },
+      {
+        "path": "req_params.audio_params.enable_subtitle",
+        "name": "字幕",
+        "type": "boolean",
+        "required": false,
+        "support": "unsupported",
+        "default": false,
+        "notes": "官方标注中英文适用；当前适配器只返回音频，不消费字幕。"
+      },
+      {
+        "path": "req_params.additions.disable_default_bit_rate",
+        "name": "扩展比特率范围",
+        "type": "boolean",
+        "required": false,
+        "support": "unsupported",
+        "default": false,
+        "notes": "需与比特率和编码格式的组合规则一起处理。"
+      },
+      {
+        "path": "req_params.additions.max_length_to_filter_parenthesis",
+        "name": "括号内容过滤长度",
+        "type": "integer",
+        "required": false,
+        "support": "unsupported",
+        "default": 0,
+        "notes": "推荐值为 0～100；超过指定长度的括号内容仍会朗读，不作为文本最大长度。"
+      },
+      {
+        "path": "req_params.additions.pronunciation_dict.tone",
+        "name": "发音与文本替换规则",
+        "type": "string[]",
+        "required": false,
+        "support": "unsupported",
+        "notes": "最多 5000 个词条；原词最多 9 个字符且不为空、无空格、不重复；需注意与 SSML 的互斥限制。"
+      },
+      {
+        "path": "req_params.additions.aigc_metadata",
+        "name": "音频元数据水印",
+        "type": "object",
+        "required": false,
+        "support": "unsupported",
+        "notes": "适用 MP3/WAV/Opus；当前适配器未暴露此扩展配置。"
+      },
+      {
+        "path": "req_params.additions.aigc_metadata.enable",
+        "name": "启用元数据水印",
+        "type": "boolean",
+        "required": false,
+        "support": "unsupported",
+        "default": false
+      },
+      {
+        "path": "req_params.additions.aigc_metadata.content_producer",
+        "name": "内容制作方",
+        "type": "string",
+        "required": false,
+        "support": "unsupported",
+        "notes": "水印元数据字段，不由平台推断或自动填入。"
+      },
+      {
+        "path": "req_params.additions.aigc_metadata.produce_id",
+        "name": "内容制作编号",
+        "type": "string",
+        "required": false,
+        "support": "unsupported",
+        "notes": "水印元数据字段，不由平台推断或自动填入。"
+      },
+      {
+        "path": "req_params.additions.aigc_metadata.content_propagator",
+        "name": "内容传播方",
+        "type": "string",
+        "required": false,
+        "support": "unsupported",
+        "notes": "水印元数据字段，不由平台推断或自动填入。"
+      },
+      {
+        "path": "req_params.additions.aigc_metadata.propagate_id",
+        "name": "内容传播编号",
+        "type": "string",
+        "required": false,
+        "support": "unsupported",
+        "notes": "水印元数据字段，不由平台推断或自动填入。"
+      }
+    ],
+    "discovery": {
+      "models": "当前通用 /models 刷新关闭；模型及约束来自此文档快照。",
+      "voices": "官方提供独立 ListSpeakers 接口，当前未接入；不能假设 TTS API Key 可直接查询其音色列表。"
+    },
+    "response": {
+      "audioCode": 0,
+      "completionCode": 20000000,
+      "emptyCompletionData": true
+    },
+    "notes": [
+      "支持状态表示当前适配器实现范围，不代表账号已开通。",
+      "公开音色只记录名称、ID 与基础语言；方言、情感、混音和语种自动识别仍须按来源文档核对。",
+      "目录仅覆盖本次核对的 HTTP 接口和公开 2.0 音色，不宣称包含所有历史接口或未来新增参数。",
+      "已有用户配置不会因目录更新被覆盖；新建或显式重置预设时使用新目录。"
+    ]
+  }
+}

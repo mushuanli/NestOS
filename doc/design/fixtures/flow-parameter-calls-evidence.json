@@ -1,0 +1,116 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-10-22T12:03:18.060849+00:00",
+  "scope": "Generic Flow function calls, inline definitions, mixed image/text batching and Anki decoupling",
+  "sourceSha256": {
+    "backend/llm-flow/src/contracts/flow-definition.ts": "de36ba2819deac30fa8819e581d82a514a6d4c0e6c5af55fa6543fe23903f444",
+    "backend/llm-flow/src/flow-definition-store.ts": "bdd73840066e3d3eda8cba7d2f3157436363090ef319d28baa0ed970fa5f2ee2",
+    "backend/llm-flow/src/flow/inline-functions.ts": "0c739b2bcac100b7893dd4fc190947ba90feede0294ec80abddebea96b773789",
+    "backend/llm-flow/src/flow/function-call.ts": "3dbc0c2e47b5d8eb2fbca25f45b0add1e62ed2d6911b01392e1e78d2d99b71b7",
+    "backend/llm-flow/src/flow/function-batch.ts": "549dc363abd920a99e40bcbf71b13f9ad556e88f8d7b9610f928cea6dea685b8",
+    "backend/llm-flow/src/flow/operations.ts": "1c88ce033fff1752a899617f3ff9a089905488c838b37fbe015da6117e3c415d",
+    "backend/llm-flow/src/flow/parameters.ts": "34427520017e0a10ce10ddd6a946ab92975a2d76ecd27b38593deca3b6105610",
+    "backend/llm-flow/src/flow/to-dag.ts": "6c55555672d7e69e45146a6ccd0673ed423788d5a4ab4717771e6606c061a5d1",
+    "backend/app-core/src/run/run-definition.ts": "2274ba15429bb9aeefd1b8a9cd581b0505958338ec211c991e950d6a25e041d7",
+    "apps/cli/examples/parameter-batches.flow": "f77f49b3279c1b4cb58b0230257a1333aa975b8d65dc47ba48abb7471f0f83f4",
+    "backend/app-core/src/presets/anki-generate.json": "a9e255836adcb9647fbef7b1d2689fe27af9e04aa19321c35fb9a9e44a6e4502",
+    "backend/llm-flow/src/flow/structured/references.ts": "c68b80f28b3376b1831a275c9bb23f56194df6b92093879e3c8b26d51e166f9c"
+  },
+  "sourceRelocation": {
+    "from": "tools/anki-cli/flows/anki-generate.flow",
+    "to": "backend/app-core/src/presets/anki-generate.json",
+    "reason": "Byte-identical move after this baseline to restore the single application Flow to System Recovery; earlier validation counts remain historical"
+  },
+  "contracts": {
+    "inlineFunctions": "Complete Flow definitions in functions; lexical resolution; frozen recursively with the parent revision",
+    "parameterSets": "Named argument objects; common arguments overridden by row; isolated scopes; ordered named return objects",
+    "batch": "Arbitrary arrays or groups-only input; positive batchSize; combined/grouped modes; no domain field interpretation",
+    "durability": "Frozen compiled templates and graph scopes persist in the existing Kernel checkpoint; malformed restored rows fail closed",
+    "businessBoundary": "The baseline used one external Flow file. A later byte-identical relocation restores it as application product data; the external package owns Tool implementations, and core execution remains generic."
+  },
+  "validation": [
+    {
+      "command": "pnpm --filter @itookit/llm-flow test",
+      "files": 42,
+      "passed": 529
+    },
+    {
+      "command": "pnpm --filter @itookit/app-core exec vitest run --silent=true",
+      "files": 114,
+      "passed": 709
+    },
+    {
+      "command": "pnpm --filter @itookit/cli exec vitest run tests/flow-parameter-calls.test.ts tests/flow-parameter-calls-crash.test.ts",
+      "files": 2,
+      "passed": 5,
+      "checks": [
+        "Multiple named arguments and ordered results",
+        "Frozen definitions across runtime restart",
+        "Single-file mixed image/text batches in combined and grouped modes",
+        "Actual CLI SIGKILL; original completed Task records retained; terminal resume creates no tasks"
+      ]
+    },
+    {
+      "command": "pnpm --filter @itookit/cli exec vitest run --config ../../tools/anki-cli/tests/mindos-vitest.config.mjs",
+      "passed": 16
+    },
+    {
+      "command": "node tools/anki-cli/tests/verify-flow.mjs",
+      "kind": "Complete local mock CLI integration",
+      "success": true,
+      "singleIsolatedFlowFile": true,
+      "restoredWithoutRequests": true,
+      "textOnly": true,
+      "invalidInputBlockedBeforeModel": true,
+      "photoReviewAndResume": true,
+      "batchSizes": {
+        "combined": [
+          20,
+          20,
+          5
+        ],
+        "grouped": [
+          20,
+          1,
+          20,
+          4
+        ]
+      },
+      "paidModelRequests": 0
+    },
+    {
+      "kind": "Targeted typechecks",
+      "packages": [
+        "llm-flow",
+        "llm-session",
+        "app-core",
+        "app-shell",
+        "llm-ui-adapter",
+        "cli"
+      ],
+      "passed": true
+    },
+    {
+      "kind": "Repository checks",
+      "commands": [
+        "pnpm docs:check",
+        "pnpm architecture:check",
+        "git diff --check",
+        "git -C tools/anki-cli diff --check"
+      ],
+      "passed": true
+    }
+  ],
+  "durableKernelBaseline": {
+    "files": 15,
+    "passed": 402,
+    "cliCrashMatrixPassed": 23,
+    "scope": "Earlier baseline in the same task; the generic function-call revision does not modify durable-kernel source. CLI parameter-call SIGKILL verification is listed separately."
+  },
+  "limits": [
+    "Concurrency uses fixed lanes; a slow lane can reduce utilization",
+    "Changing parameter-set count in an already expanded graph retry is rejected; start a new call or Run",
+    "Child runPolicy and call-level retry/compensate/assign/budget/capabilities are rejected"
+  ],
+  "realModelEvidence": "anki-yimg-cli-evidence.json refers to its earlier frozen dynamic Tool graph, not this revised definition"
+}

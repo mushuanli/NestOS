@@ -20,7 +20,7 @@ it.each([false, true])('defaults to three durable output repairs (recover=%s)', 
         expect(step.next).toMatchObject({ error: { code: 'INVALID_OUTPUT', message: expect.stringContaining('(3/3)') } });
         expect(step.actions).toContainEqual(expect.objectContaining({ eventType: 'llm.output.invalid', payload: expect.objectContaining({
             responseId: 'response-id', finishReason: 'length', contentLength: 16, repairAttempts: 3,
-            issue: expect.stringContaining('JSON'), contentHead: '{"essay":"broken',
+            issue: expect.stringContaining('JSON'), category: 'invalid-json',
         }) }));
     }
 });
@@ -51,9 +51,9 @@ it.each([1, 2])('keeps output validation evidence and respects a %s-exchange bud
 });
 
 it.each([
-    { schema: { type: 'object', properties: { score: { type: 'number' } }, required: ['score'], additionalProperties: false }, invalid: { score: 9, additionalProperties: false }, valid: { score: 9 }, path: '$.additionalProperties' },
-    { schema: { type: 'object', properties: { review: { type: 'object', properties: {}, additionalProperties: false } } }, invalid: { review: { extra: 1 } }, valid: { review: {} }, path: '$.review.extra' },
-    { schema: { type: 'object', additionalProperties: { type: 'number' } }, invalid: { extra: 'bad' }, valid: { extra: 9 }, path: '$.extra' },
+    { schema: { type: 'object', properties: { score: { type: 'number' } }, required: ['score'], additionalProperties: false }, invalid: { score: 9, additionalProperties: false }, valid: { score: 9 }, path: '$' },
+    { schema: { type: 'object', properties: { review: { type: 'object', properties: {}, additionalProperties: false } } }, invalid: { review: { extra: 1 } }, valid: { review: {} }, path: '$.review' },
+    { schema: { type: 'object', additionalProperties: { type: 'number' } }, invalid: { extra: 'bad' }, valid: { extra: 9 }, path: '$.[additional-property]' },
     { schema: { type: 'object', properties: { forbidden: false } }, invalid: { forbidden: 1 }, valid: {}, path: '$.forbidden' },
     { schema: { type: 'array', items: false }, invalid: [1], valid: [], path: '$[0]' },
 ])('repairs schema violations at $path before reporting Task success', ({ schema, invalid, valid, path }) => {

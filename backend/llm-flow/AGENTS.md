@@ -62,7 +62,7 @@ pnpm --filter @itookit/llm-flow typecheck
 pnpm --filter @itookit/llm-flow test
 ```
 
-结构化派发配置与边界见 [作文评审实现](../../doc/design/essay-review-flow.md)，可运行定义见 [essay-review-isolated.flow](../app-core/src/presets/essay-review-isolated.json)。紧凑派发使用 route@2；可视分节点使用 route@3 → check@1 → aggregate@2 → judge@1，`structured/graph.ts` 编译为持久作用域，`expand.ts` 展开旧草稿；业务轮数在判断节点配置 `maxRounds`。
+结构化派发配置与边界见 [作文评审实现](../../doc/design/essay-review-flow.md)，可运行定义见 [essay-review.flow](../app-core/src/presets/essay-review.json)。紧凑派发使用 route@2；可视分节点使用 route@3 → check@1 → aggregate@2 → judge@1，`structured/graph.ts` 编译为持久作用域，`expand.ts` 展开旧草稿；业务轮数在判断节点配置 `maxRounds`。
 
 统一契约：`structured/references.ts` 编译引用依赖并在节点提交前解析；`condition.ts` 将可视条件编译为表达式；`join.ts` 注册版本化纯 reducer。公共 prompt 在每次 spawn 时渲染一次，不能重解释插入数据。修改 schema 支持范围时同步 schema-registry、schema-compat 和结构化输出校验。
 
@@ -70,7 +70,13 @@ pnpm --filter @itookit/llm-flow test
 
 Scheduler 就绪判定在 flow/scheduler-readiness.ts，以显式运行状态消费循环、路由、join 与 return 范围；跳过状态仍由调度器持有，不改变 checkpoint 或租约边界。
 
+编译生成的引用依赖使用 `dependencyOnly`：保留执行等待与数据绑定，但不能把未选分支重新激活。函数输入屏障同样不作为分支入口；跳过状态传播至稳定后再派发。节点准备先检查已终结依赖，`fail/skip` 在解析模板或加载插件之前交给 Kernel 的依赖事务形成失败/取消 Task，`continue` 才继续正常准备；根聚合保留原始失败分类与原因。
+
+函数返回在提交时补齐同作用域动态成员的依赖，失败或取消不能仅由根聚合发现后仍让调用者继续执行。恢复从保存的图重建相同依赖，显式 continue 与委派容错沿用现有策略，detached 成员不纳入返回等待。
+
 GraphMutationRuntime 只持有单次运行的显式图状态；宿主通过 bindNode 解析动态节点身份。整批绑定和校验完成后才发布节点、边与幂等记录，checkpoint 和租约仍由 executor 管理，不在此模块新增持久化或产品策略。
+
+动态 patch 允许新增节点回连 spawn 的直接下游消费节点，目标必须尚未启动且未被跳过；不得增加 existing → existing 边或连接无关目标。整图环检测拒绝新增节点加入循环，幂等回执保证恢复不重复展开。
 
 DelegationController 消费单次运行的显式状态，执行已声明的 wait/failure 策略；agent.spawned 通过宿主回调发出。它不提交任务、不写 checkpoint、不取得租约。detached 工作的持久恢复、所有权保持与工作区收尾继续由 executor 协调。
 
@@ -82,6 +88,10 @@ FlowRunLifecycle 接收宿主工作区 manager、已 fencing 的 Session 和租�
 
 FlowScheduler 消费显式运行状态与提交、预算、Hook、checkpoint 端口；保留控制组并发、交互等待、生产者校验和补偿顺序。lease 失权或宿主关闭仅解除本地调度，不将 Run 标成失败。外部图效果整批解码后才修改图；重试队列和持久 checkpoint 在恢复前检查结构，未知插件配置仍归插件校验。
 
+Checkpoint 连接槽允许合法的未绑定 `connectionId`，是否必需由节点连接准入决定；恢复校验不得把未使用的可选连接变成必填。检查点错误仅报告无效的结构字段名，不包含节点配置或输入正文。
+
 图片字段通过 imageConstraints 声明可选数量、总字节和 MIME 限制，核心不固定上传策略。上传值使用 llm-context 的标准 image_url 内容块，Agent 的 messageTemplates 一次性渲染为 messages；已有 messages 保持字面快照，不重新解释历史数据。连接准入从消息内容及显式 requirements 校验模态。builtin.input.review 在初始值有效时也等待人工提交。子调用的 connectionBindings 显式映射父槽；动态 Tool 图通过 spawn.scope=local 使用当前子 Flow 命名空间，默认 run 保持旧图兼容。DraftRestore 只恢复草稿，是否发布由应用层显式协调。
 
 源码检查与发布锁定通过 flow/call-parameters.ts 校验 builtin.flow@2 的实参名称、必填项和字面约束；动态整值引用留到运行时校验，不用父参数或示例值补齐子流程缺参。草稿允许保存未完成调用并返回校验错误，安装/恢复只检查自身语法。旧版组合 Flow 保持既有参数继承行为。
+
+prepareFlowRun 是跨入口共享的定义校验与编译边界，不持有 Session 历史或队列。definition-references 拥有词法调用遍历与按调用节点/children 解析的外部依赖，应用归档不能按 Flow ID 扁平化锁。definition-projection 统一存储与归档正文转换，接管、发布和发布转草稿均保留递归 functions。

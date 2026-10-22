@@ -11,7 +11,7 @@ export function essayReviewDraft(): FlowDraft {
 }
 
 export async function seedDefaultFlows(store: FlowDefinitionStore): Promise<void> {
-    for (const template of [essayReviewDraft(), ...createMindosFlowLibrary()]) {
+    for (const template of createMindosFlowLibrary()) {
         const draft = await store.installBuiltinDraft(template);
         if (draft) await store.createRevision(draft);
     }

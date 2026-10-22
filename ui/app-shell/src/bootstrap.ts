@@ -1,4 +1,5 @@
 import {rememberPagePresentation, writePageHistory, type PagePresentation} from './navigation/page-history';
+import { FlowCommand } from '@itookit/llm-flow/contracts';
 import {withInitialDirectory} from './browser/initial-directory';
 import {OpenedViewProjection} from './lifecycle/opened-view';
 import {openInitialView} from './lifecycle/initial-view';
@@ -138,7 +139,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         });
         return async (container, config) => { await executorUsage.load(); return factory(container, {...config, executorUsage}); };
     };
-    const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS });
+    const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS,
+        listFlows: () => commandBus.execute<Array<{id: string; name: string}>>(FlowCommand.DraftList) });
 
     // The backend owns the skill filesystem and its service subscriptions.
     const skillsFiles = lazyResource(() => backend.skillsFiles(), () => {});

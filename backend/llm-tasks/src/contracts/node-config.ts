@@ -37,6 +37,8 @@ export interface MemoryPolicy {
 
 /** Runtime handling when a model response does not satisfy responseFormat. */
 export interface OutputValidationPolicy {
+    /** Local JSON Schema validation, independent of the provider response format. */
+    schema?: Record<string, unknown> | boolean;
     /** Additional repair requests after the first invalid response. */
     retries?: number;
     onInvalid?: 'fail' | 'repair' | 'continue';

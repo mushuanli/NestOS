@@ -15,7 +15,7 @@ function branchState(): ConversationSnapshot {
     ]};
 }
 function setup(options: EditorOptions = {}) {
-    const peer: ConversationControls = {read:vi.fn(async () => state),poll:vi.fn(async () => state),send:vi.fn(async () => ({...state,canSend:false,canInterrupt:true})),interrupt:vi.fn(async () => state),respond:vi.fn(async () => state),reconcile:vi.fn(async () => state),close:vi.fn(async () => {})};
+    const peer: ConversationControls = {read:vi.fn(async () => state),refresh:vi.fn(async () => state),send:vi.fn(async () => ({...state,canSend:false,canInterrupt:true})),interrupt:vi.fn(async () => state),respond:vi.fn(async () => state),reconcile:vi.fn(async () => state),close:vi.fn(async () => {})};
     const host=document.createElement('div');document.body.append(host);
     const editor=new RemoteConversationEditor(host,peer,{title:'Server · Project · Codex', ...options});return {editor,peer,host};
 }
@@ -183,7 +183,7 @@ it('selects native models and exposes reasoning options for the selected model o
         {id: 'plain', label: 'Plain model', reasoningEfforts: []},
     ]}));
     vi.mocked(peer.read).mockResolvedValue({...state, supportsModels: true});
-    vi.mocked(peer.poll).mockResolvedValue({...state, supportsModels: true});
+    vi.mocked(peer.refresh).mockResolvedValue({...state, supportsModels: true});
     vi.mocked(peer.send).mockResolvedValue({...state, supportsModels: true});
     await editor.init(host);
     const trigger = host.querySelector<HTMLButtonElement>('.llm-input__native-model')!;
@@ -209,7 +209,7 @@ it.each(['destroyed', 'hidden'])('discards model discovery results after the nat
     let finish!: (catalog: import('@itookit/ui-common').ConversationModelCatalog) => void;
     peer.models = vi.fn(() => new Promise(resolve => {finish = resolve;}));
     vi.mocked(peer.read).mockResolvedValue({...state, supportsModels: true});
-    vi.mocked(peer.poll).mockResolvedValue({...state, supportsModels: true});
+    vi.mocked(peer.refresh).mockResolvedValue({...state, supportsModels: true});
     vi.mocked(peer.send).mockResolvedValue({...state, supportsModels: true});
     await editor.init(host); host.querySelector<HTMLButtonElement>('.llm-input__native-model')!.click();
     if (mode === 'hidden') editor.cancelPendingRender(); else await editor.destroy();
@@ -485,7 +485,7 @@ it('reports event-triggered update errors and recovers without replaying sends',
     peer.subscribe = listener => {changed = listener; return () => {};};
     await editor.init(host);
     const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
-    vi.mocked(peer.poll).mockRejectedValueOnce(new Error('invalid snapshot'));
+    vi.mocked(peer.refresh).mockRejectedValueOnce(new Error('invalid snapshot'));
     try {
         changed();
         await vi.waitFor(() => expect(host.querySelector('.remote-conversation__status')?.textContent)
@@ -496,7 +496,7 @@ it('reports event-triggered update errors and recovers without replaying sends',
 });
 it('does not poll or re-read an idle displayed conversation', async () => {
     const {editor, peer, host} = setup(); await editor.init(host);
-    try {await new Promise(resolve => setTimeout(resolve, 1200)); expect(peer.read).toHaveBeenCalledOnce(); expect(peer.poll).not.toHaveBeenCalled();}
+    try {await new Promise(resolve => setTimeout(resolve, 1200)); expect(peer.read).toHaveBeenCalledOnce(); expect(peer.refresh).not.toHaveBeenCalled();}
     finally {await editor.destroy();}
 });
 it('preserves failed input and offers reconciliation instead of repeating an unknown operation', async () => {
@@ -725,7 +725,7 @@ it('loads one earlier history page per request and stops at the beginning', asyn
 it('keeps a history paging failure visible through polls and retries only when requested', async () => {
     const {editor, peer, host} = setup();
     vi.mocked(peer.read).mockResolvedValue({...state, hasEarlier: true});
-    vi.mocked(peer.poll).mockResolvedValue({...state, hasEarlier: true});
+    vi.mocked(peer.refresh).mockResolvedValue({...state, hasEarlier: true});
     peer.loadEarlier = vi.fn().mockRejectedValueOnce(new Error('Conversation history capacity reached'))
         .mockResolvedValueOnce({...state, hasEarlier: false});
     await editor.init(host);
@@ -1032,7 +1032,7 @@ it('releases a hidden conversation subscription and reads its latest state when 
     const release = vi.fn(); peer.subscribe = vi.fn(listener => {notify = listener; return release;});
     await editor.init(host); expect(peer.subscribe).toHaveBeenCalledOnce();
     editor.cancelPendingRender(); notify(); await new Promise(resolve => setTimeout(resolve, 80));
-    expect(release).toHaveBeenCalledOnce(); expect(peer.poll).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce(); expect(peer.refresh).not.toHaveBeenCalled();
     vi.mocked(peer.read).mockResolvedValue({...state, messages: [...state.messages, {id: 'latest', role: 'assistant', text: 'Received while hidden'}]});
     await editor.activate(); expect(peer.read).toHaveBeenCalledTimes(2); expect(peer.subscribe).toHaveBeenCalledTimes(2);
     expect(host.textContent).toContain('Received while hidden'); await editor.destroy();

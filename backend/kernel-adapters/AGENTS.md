@@ -100,6 +100,8 @@ pnpm --filter @itookit/kernel-adapters typecheck
 
 ## 配置契约入口
 
+ModelDefaults / ModelOperation / modelForOperation 属于模型管理契约。ConnectionManager 串行读写对话、绘图、语音默认表；旧默认 API 仅表示对话，旧文档不推断媒体默认。配置保存不发起网络验证，配置和用途能力校验不替代执行准入。详见 [用途默认](../../doc/design/model-purpose-defaults.md)。
+
 `@itookit/kernel-adapters/contracts` 定义 Agent、连接管理、恢复与定价契约及纯策略，不加载适配器运行时、VFS、YAML 或 MCP SDK。Session 与设置 UI 直接消费此入口；适配层不得反向依赖 Session、Flow 或 Tasks。模型事件来自 driver-llm/contracts 的 LlmCommunicationEvent。
 
 `resolveChatModelTiers` 统一工具箱与聊天菜单的模型档位解析：只返回 Provider 目录中存在的聊天模型，保留缺省 category 的聊天语义，不为 standard/fast 添加未配置档位；optimal 缺省时沿用连接 model。未知 ID 和媒体模型不可作为聊天候选，执行准入继续由 assertModelConnection 校验。`resolveChatModelForTier` 复用执行档位的回退规则，解析任意指定档位的实际聊天模型；显式配置的媒体/未知模型返回 undefined，不能跳过它回退到其他聊天档位。

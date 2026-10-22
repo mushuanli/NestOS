@@ -68,7 +68,7 @@ export class ProjectRemoteMountService {
     }, async (id, options) => {
         if (!this.provider.observeHarness) throw new FSError('ECAPABILITY', 'Harness observation unavailable');
         const client = await this.projectHarness(id, options), root = this.list(id).find(m => m.at === '/')!;
-        return this.provider.observeHarness(this.guardHarness(client, id, JSON.stringify(this.list(id)), root.connectionId!), root.access === 'rw', {watchFiles: false});
+        return this.provider.observeHarness(this.guardHarness(client, id, JSON.stringify(this.list(id)), root.connectionId!), root.access === 'rw', {watchFiles: true});
     });
     inspectRemoteProjects?: (ids: readonly string[]) => Promise<MCPDeletedProject[]>;
     removeRemoteProjects?: (ids: readonly string[]) => Promise<void>;
@@ -489,6 +489,10 @@ export class ProjectRemoteMountService {
         return new Proxy(client, {get: (target, key) => {
             const value = Reflect.get(target, key);
             if (key === 'close' || typeof value !== 'function') return typeof value === 'function' ? value.bind(target) : value;
+            if (key === 'subscribe' || key === 'subscribeDirectory' || key === 'directorySnapshot') return (...args: unknown[]) => {
+                if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
+                this.connection(connectionId); return value.apply(target,args);
+            };
             return async (...args: unknown[]) => {
                 try {
                     if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');

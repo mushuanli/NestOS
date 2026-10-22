@@ -25,9 +25,11 @@ import type {
     ITagOperations,
 } from '@itookit/vfs-core';
 import { FSCapabilityError } from '@itookit/vfs-core';
+import { ENTITY_ICONS, t } from '@itookit/common';
 
 // UI 定义：ID -> 元数据
 export const SETTINGS_PAGES: Record<string, { name: string, icon: string }> = {
+    'model-defaults': { get name() { return t('modelDefaults.title'); }, icon: ENTITY_ICONS.model },
     'appearance':  { name: '外观',           icon: '🎨' },
     'storage':     { name: '文件系统',     icon: '💾' },
     'tags':        { name: 'Tags',          icon: '🏷️' },

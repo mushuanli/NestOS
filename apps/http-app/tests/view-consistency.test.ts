@@ -66,9 +66,9 @@ it('reclaims disposed resource graphs without revoking a shared filesystem', asy
 });
 it('refreshes a conversation snapshot after a poll without a domain event', async () => {
     let state = 'before';
-    const { root } = await pair({ snapshot: () => ({ state }), respond: async () => {}, poll: async () => { state = 'after'; return { state }; } });
+    const { root } = await pair({ snapshot: () => ({ state }), respond: async () => {}, refresh: async () => { state = 'after'; return { state }; } });
     expect(root.snapshot()).toEqual({ state: 'before' });
-    await root.poll(); expect(root.snapshot()).toEqual({ state: 'after' });
+    await root.refresh(); expect(root.snapshot()).toEqual({ state: 'after' });
 });
 
 it('transports a native command catalog and refreshes its snapshot after a command receipt', async () => {

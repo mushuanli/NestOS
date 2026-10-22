@@ -266,7 +266,7 @@ it('pins the default drawer and orders enabled ready connections ahead of incomp
     f.workbench.setFilter('models');
     const groups = [...f.sidebar.querySelectorAll<HTMLElement>('[data-item-type="directory"]')];
     expect(groups[0].dataset.itemId).toBe('/model-groups/usage-default');
-    expect(groups[0].textContent).toContain(t('connection.default'));
+    expect(groups[0].textContent).toContain(t('modelDefaults.badge', { purpose: t('modelDefaults.purpose.chat') }));
     expect(groups[0].textContent).toContain(t('connection.credentialsRequired'));
     await f.workbench.openResource('/connections/usage-ready-chat');
     const group = f.sidebar.querySelector('[data-item-id="/model-groups/usage-ready"]')!;
@@ -510,7 +510,7 @@ it('keeps bulk deletion and JSON export for editable files while tool references
 });
 it('deletes a provider with the selected default connection and clears the preference', async () => {
     const f = await setup();
-    await runtime.agentService.saveProvider({ baseURL: '', id: 'protected-provider', name: 'Protected', implementation: 'openai-compatible', models: [] });
+    await runtime.agentService.saveProvider({ baseURL: '', id: 'protected-provider', name: 'Protected', implementation: 'openai-compatible', models: [{ id: 'chat', name: 'Chat' }] });
     await runtime.agentService.saveConnection({ id: 'default', name: 'Protected default', providerId: 'protected-provider' });
     await runtime.agentService.setDefaultConnection('default');
     await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/model-groups/protected-provider"]')).not.toBeNull());

@@ -54,6 +54,8 @@ export function createSessionPlugin(sessionManager: SessionManager): ILLMPlugin 
             });
 
             ctx.commands.register(SessionCommand.GetSnapshot, async () => sm.getSnapshot());
+            ctx.commands.register(SessionCommand.GetInstructionQueue, () => sm.getInstructionQueue());
+            ctx.commands.register(SessionCommand.EditInstructionQueue, args => sm.editInstructionQueue(args as import('../contracts/instruction-queue').InstructionQueueEdit));
             ctx.commands.register(SessionCommand.GetSessions, async () => sm.getSessions());
             ctx.commands.register(SessionCommand.GetCurrentId, async () => sm.getCurrentSessionId());
             ctx.commands.register(SessionCommand.GetStatus, async () => sm.getStatus());

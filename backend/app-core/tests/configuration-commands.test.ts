@@ -9,7 +9,7 @@ afterEach(async () => { vi.restoreAllMocks(); await runtime?.dispose(); });
 async function setup() {
     runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'web' });
     const store = runtime.agentService;
-    await store.saveProvider({ baseURL: '', id: 'remove-me', name: 'Remove', implementation: 'openai-compatible', models: [] });
+    await store.saveProvider({ baseURL: '', id: 'remove-me', name: 'Remove', implementation: 'openai-compatible', models: [{ id: 'chat', name: 'Chat' }] });
     await store.saveConnection({ id: 'linked', name: 'Linked', providerId: 'remove-me' });
     await store.saveAgent({ id: 'dependent', name: 'Dependent', type: 'agent', config: {} });
     return { store, commands: new ModelConfigurationCommands(store) };
@@ -60,7 +60,7 @@ it('persists an explicit global default and never substitutes the first availabl
     expect(await store.getDefaultConnection()).toBeNull();
     await store.setDefaultConnection('linked');
     const fs = await runtime.vfs.openFileSystem('/etc');
-    expect(JSON.parse(await fs.driver.readContent('/llm/.connection-settings.json', { encoding: 'utf-8' }))).toEqual({ defaultConnectionId: 'linked' });
+    expect(JSON.parse(await fs.driver.readContent('/llm/.connection-settings.json', { encoding: 'utf-8' }))).toEqual({ version: 1, defaults: { chat: 'linked' } });
     expect((await store.getDefaultConnection())?.id).toBe('linked');
     await expect(store.setDefaultConnection('missing')).rejects.toThrow();
     expect((await store.getDefaultConnection())?.id).toBe('linked');

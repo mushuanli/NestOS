@@ -31,6 +31,7 @@ import { InteractionPanel } from './InteractionPanel';
 import { delegate } from '../../utils/domEvents';
 
 export interface ChatInputOptions {
+    instructionQueue?: boolean;
     flushDraft?: () => Promise<void>;
     persistImageFiles?: (files: File[], resize: ImageResizePolicy) => Promise<void>;
     nativeModels?(executorId: string): Promise<import('@itookit/ui-common').ConversationModelCatalog>;
@@ -363,15 +364,19 @@ export class ChatInput implements IChatInputPresenter {
 
     setLoading(loading: boolean): void {
         this.loading = loading;
+        const queue = this.canQueue();
+        const locked = loading && !queue;
         this.syncExecutionMode();
-        this.sendBtn.style.display = loading ? 'none' : 'flex';
+        this.sendBtn.style.display = locked ? 'none' : 'flex';
+        this.sendBtn.title = t(loading && queue ? 'session.instructions.add' : 'chatInput.send');
+        this.sendBtn.setAttribute('aria-label', this.sendBtn.title);
         this.stopBtn.style.display = loading ? 'flex' : 'none';
         this.textarea.disabled = false;
-        this.agentPickerBtn.disabled = loading;
-        this.connectionTier.setLoading(loading);
-        this.attachBtn.disabled = loading;
-        this.settingsBtn.disabled = loading;
-        if (this.moreBtn) this.moreBtn.disabled = loading;
+        this.agentPickerBtn.disabled = locked;
+        this.connectionTier.setLoading(locked);
+        this.attachBtn.disabled = locked;
+        this.settingsBtn.disabled = locked;
+        if (this.moreBtn) this.moreBtn.disabled = locked;
 
         if (loading) { this.toggleSettings(false); this.closeToolbarMenus(); }
         this.applyAvailability();
@@ -385,7 +390,11 @@ export class ChatInput implements IChatInputPresenter {
         const command = isDirectCommandInput(this.textarea.value) || this.textarea.value.trimStart().startsWith('/');
         this.sendBtn.disabled = !this.availability.canSend || this.submitting || this.checkingConnection || !!this.attachmentMgr?.images.busy || (!!this.connectionReadiness?.blocked && !command);
         this.stopBtn.disabled = !this.availability.canInterrupt;
-        this.agentPickerBtn.disabled = this.loading || !!this.options.executorLocked;
+        this.agentPickerBtn.disabled = (this.loading && !this.canQueue()) || !!this.options.executorLocked;
+    }
+
+    private canQueue(): boolean {
+        return !!this.options.instructionQueue && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId;
     }
 
     private requiresConnection(): boolean {
@@ -868,7 +877,7 @@ export class ChatInput implements IChatInputPresenter {
         if (!this.availability.canSend || this.checkingConnection || this.submitting) return;
         const text = this.textarea.value.trim();
         if (!text && this.files.length === 0) return;
-        if (this.loading && !/^\/(flow|cancel|approve|resume)(?:\s|$)/.test(text)) return;
+        if (this.loading && !this.canQueue() && !/^\/(flow|cancel|approve|resume)(?:\s|$)/.test(text)) return;
 
         if (this.config.agentId.startsWith('remote:')) { await this.submitDraft(text); return; }
 
@@ -913,7 +922,7 @@ export class ChatInput implements IChatInputPresenter {
         try {
             const revision = this.connectionLoadRevision + 1;
             await this.loadConnections();
-            return !this.connectionsDisposed && !this.connectionReadiness.blocked && !this.loading
+            return !this.connectionsDisposed && !this.connectionReadiness.blocked && (!this.loading || this.canQueue())
                 && revision === this.connectionLoadRevision
                 && this.availability.canSend && this.textarea.value.trim() === text
                 && selection === JSON.stringify([this.config.agentId, this.config.settings]);

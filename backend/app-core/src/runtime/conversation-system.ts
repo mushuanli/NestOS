@@ -13,6 +13,8 @@ import { registerFlowLibraryRecovery } from '../presets/restore-flows';
 export interface OwnedConversationView { sessionManager: SessionManager; commandBus: CommandBus; dispose(): Promise<void> }
 
 export interface ConversationSystemOptions {
+    executionActivity?: import('@itookit/llm-session').SessionExecutionActivity;
+    instructionQueueSessions?: import('@itookit/llm-session').InstructionQueueSessions;
     scheduleAgentInitialization?: (initialize: () => Promise<void>) => void | Promise<void>;
     scheduleInvocationRecovery?: (recover: () => Promise<void>) => void | Promise<void>;
     digitalTwin?: import('../digital-twin/service').DigitalTwinService;
@@ -46,6 +48,8 @@ export async function createConversationSystem(
     const { vfs, agentService, sessionRepository, flowEngine, kernel, systemFS } = options;
     const capabilities = createFlowCapabilities(kernel);
     const system = await initializeConversationSystem({
+        executionActivity: options.executionActivity,
+        instructionQueueSessions: options.instructionQueueSessions,
         scheduleAgentInitialization: options.scheduleAgentInitialization,
         scheduleInvocationRecovery: options.scheduleInvocationRecovery,
         directAgentPolicy: options.directAgentPolicy ?? createMindosDirectAgentPolicy(),

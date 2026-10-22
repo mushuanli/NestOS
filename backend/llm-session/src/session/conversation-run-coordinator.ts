@@ -443,6 +443,7 @@ function conversationRound(
     return {
         id: execution.roundId,
         submission: execution.task.input.sendIntent?.submission,
+        submissionDigest: execution.task.input.submissionDigest,
         sessionId: execution.task.sessionId,
         historyParentIds: parents,
         exposure: temporary ? 'internal' : 'public',

@@ -9,6 +9,7 @@ import type { ChatSubmission } from '../domain/submission';
 import { Toast } from '@itookit/ui-common';
 import { ErrorHandler } from '../utils/errorHandler';
 import type { ChatOverrides } from '../domain/types';
+import { attachmentStorageName } from '../services/AssetService';
 
 import { createAgentSendIntent } from '@itookit/llm-flow/contracts';
 
@@ -24,6 +25,8 @@ export interface SendMessageParams {
 
 export class SendMessageCommand extends Command<SendMessageParams, boolean> {
     protected name = 'Send Message';
+    private pending?: { sessionId: string; key: string; files: File[]; id: string;
+        submission?: import('@itookit/llm-flow/contracts').SendIntent['submission']; finalText?: string };
 
     protected async execute({ text, files, agentId, overrides, origin, historyPolicy, submission }: SendMessageParams): Promise<boolean> {
         const restoreInput = this.rejectedInputRestorer(text, agentId);
@@ -40,7 +43,14 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         const sessionId = this.ctx.getSessionId();
         if (!sessionId) throw new Error('No session loaded');
 
-        let feedback: ChatSubmission = {id: randomUUID(), text: text.trim() || t('harness.attachmentPrompt'),
+        const key = JSON.stringify([text, agentId, overrides, origin, historyPolicy]);
+        const previous = this.pending;
+        if (!previous || previous.sessionId !== sessionId || previous.key !== key
+            || files.length !== previous.files.length || files.some((file, index) => file !== previous.files[index])) {
+            this.pending = { sessionId, key, files: [...files], id: randomUUID() };
+        }
+        const pending = this.pending!;
+        let feedback: ChatSubmission = {id: pending.id, text: text.trim() || t('harness.attachmentPrompt'),
             timestamp: Date.now(), state: 'submitting'};
         const present = (change: Partial<ChatSubmission> = {}) => {
             feedback = {...feedback, ...change};
@@ -51,33 +61,36 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         this.ctx.historyView.scrollToBottom(true);
 
         try {
+            submission ??= pending.submission;
             if (submission === undefined && this.ctx.resolveSubmission) submission = await this.ctx.resolveSubmission();
             submission ??= {id: feedback.id, source: {kind: 'conversation', ownerId: sessionId, id: feedback.id}};
+            pending.submission = submission;
             present({messageId: `round-${submission.id}-user`});
-            let finalText = text || '';
+            let finalText = pending.finalText ?? text ?? '';
 
-            if (files.length > 0) {
+            if (files.length > 0 && pending.finalText === undefined) {
                 try {
-                    const refs = await this.ctx.assetService.uploadFiles(files);
+                    const refs = await this.ctx.assetService.uploadFiles(files, submission.id);
                     finalText += '\n\n' + refs.join('\n\n');
                 } catch (uploadErr: any) {
                     present({state: 'failed', error: uploadErr.message});
                     Toast.error(uploadErr.message || 'Failed to upload files');
                     restoreInput();
-                    this.ctx.chatInput.setLoading(false);
+                    this.syncLoading(sessionId);
                     return false;
                 }
             }
 
             if (!finalText.trim()) {
                 if (this.ctx.getSessionId() === sessionId) this.ctx.historyView.setSubmission?.();
-                this.ctx.chatInput.setLoading(false);
+                this.syncLoading(sessionId);
                 return false;
             }
+            pending.finalText = finalText;
 
-            await this.ctx.commands.execute(SessionCommand.Send, {
+            const acceptedId = await this.ctx.commands.execute<string>(SessionCommand.Send, {
                 text: finalText.trim(),
-                files,
+                files: files.map((file, index) => ({ name: attachmentStorageName(submission!.id, index, file.name), type: file.type, size: file.size })),
                 agentId: agentId || 'default',
                 overrides,
                 origin,
@@ -101,8 +114,11 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
                         : { kind: 'agent', agentId: agentId || 'default', mode: overrides.executionMode },
                 },
             });
-            present({state: 'accepted'});
-            if (this.ctx.getSessionId() === sessionId && this.ctx.isGenerating) this.ctx.chatInput.setLoading(this.ctx.isGenerating());
+            const queue = await this.ctx.commands.execute<import('@itookit/llm-session/contracts').SessionInstructionQueue>(SessionCommand.GetInstructionQueue).catch(() => undefined);
+            if (queue?.items?.some(item => item.id === acceptedId && item.state !== 'dispatching')) this.ctx.historyView.setSubmission?.();
+            else present({state: 'accepted'});
+            if (this.pending === pending) this.pending = undefined;
+            this.syncLoading(sessionId);
             if (!overrides.flowId && this.ctx.getSessionId() === sessionId) this.ctx.chatInput.setConfig?.({ settings: { executionMode: overrides.executionMode, executionModeLocked: true } });
             return true;
         } catch (error: any) {
@@ -117,9 +133,13 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
                 this.ctx.historyView.renderError(error);
             }
 
-            this.ctx.chatInput.setLoading(false);
+            this.syncLoading(sessionId);
             return false;
         }
+    }
+
+    private syncLoading(sessionId: string): void {
+        if (this.ctx.getSessionId() === sessionId) this.ctx.chatInput.setLoading(this.ctx.isGenerating?.() ?? false);
     }
 
     private rejectedInputRestorer(text: string, agentId?: string): () => void {

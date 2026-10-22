@@ -19,7 +19,7 @@ async function checks() {
     };
     let state: ConversationSnapshot = {title: 'Native', messages: [], requests: [], attachments: ['image'],
         canSend: true, canRespond: false, canInterrupt: false, pending: false, disconnected: false, gap: false};
-    const controls: ConversationControls = {read: async () => state, snapshot: () => state, poll: async () => state,
+    const controls: ConversationControls = {read: async () => state, snapshot: () => state, refresh: async () => state,
         send: async (_text, attachments = []) => {sent.push(attachments); return state = {...state, submittedTurnId: 'independent-turn'};},
         respond: async () => state, reconcile: async () => state, interrupt: async () => state, close: async () => {}};
     const binding = await createNativeChatBinding({conversationId: 'independent', controls, images, operations: createOperationLedger(),

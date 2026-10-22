@@ -73,7 +73,7 @@ export interface ConversationControls {
     loadEarlier?(): Promise<ConversationSnapshot>;
     saveDraft?(text: string, attachments?: ConversationAttachment[]): Promise<void>;
     read(): Promise<ConversationSnapshot>;
-    poll(): Promise<ConversationSnapshot>;
+    refresh(): Promise<ConversationSnapshot>;
     send(text: string, attachments?: Array<{kind: 'text' | 'image'; name: string; content: string; mimeType?: string}>, selection?: ConversationModelSelection, submissionId?: string): Promise<ConversationSnapshot>;
     interrupt(): Promise<ConversationSnapshot>;
     respond(id: string | number, response: Record<string, unknown>): Promise<ConversationSnapshot>;

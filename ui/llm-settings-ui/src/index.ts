@@ -4,6 +4,7 @@
 
 export { AgentConfigEditor } from './editors/AgentConfigEditor';
 export { ConnectionSettingsEditor } from './editors/ConnectionSettingsEditor';
+export { ModelDefaultsEditor } from './editors/ModelDefaultsEditor';
 export { ProviderSettingsEditor } from './editors/ProviderSettingsEditor';
 export { MCPSettingsEditor } from './editors/MCPSettingsEditor';
 export { SkillSettingsEditor } from './editors/SkillSettingsEditor';

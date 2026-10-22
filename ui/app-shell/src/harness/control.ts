@@ -31,7 +31,10 @@ class HarnessControl {
     private generation = 0;
     private listGeneration = 0;
     private readonly completedTurns = new Set<string>();
-    private polling = false;
+    private refreshing = false;
+    private refreshRequested = false;
+    private stopEvents?: () => void;
+    private subscribedProfile?: string;
     private pollError?: string;
     private submitting = false;
     private interactionKey = '';
@@ -55,7 +58,7 @@ class HarnessControl {
         await closed;
     }
     private readonly close = () => {
-        this.lifetime.abort(); this.signal.removeEventListener('abort',this.close);
+        this.stopEvents?.(); this.lifetime.abort(); this.signal.removeEventListener('abort',this.close);
         this.dialog.close(); this.dialog.remove(); this.resolve?.();
     };
     private options() { return { signal: this.lifetime.signal, timeoutMs: 30_000 }; }
@@ -146,26 +149,36 @@ class HarnessControl {
             this.turnId = this.completedTurns.has(result.turnId) ? undefined : result.turnId; this.prompt.value = ''; this.append(`\n\n${text}\n`);
         } finally { this.submitting = false; this.updateControls(); }
     }
-    private async poll() {
-        while (!this.lifetime.signal.aborted && (this.turnId || this.submitting) && !document.hidden) {
-            const profile = this.profile.value;
-            try {
-                if (profile) {
-                    const page = await this.client.events(profile,this.cursor,this.options());
+    private async refreshEvents() {
+        if (this.refreshing || this.lifetime.signal.aborted) return;
+        this.refreshing = true;
+        try {
+            do {
+                this.refreshRequested = false;
+                const profile = this.profile.value;
+                try {
+                    const page = await this.client.eventSnapshot(profile,this.cursor,this.options());
                     if (profile === this.profile.value && !this.lifetime.signal.aborted) {
                         if (this.status.textContent === this.pollError) this.status.textContent = '';
                         this.pollError = undefined; this.consume(page);
                     }
+                } catch (error) {
+                    if (!this.lifetime.signal.aborted) {
+                        console.error('[Harness] Update failed', {stage:'events',code:(error as {code?: string})?.code ?? 'EVENT_OBSERVATION'});
+                        this.pollError = t('harness.updateFailed', {message: error instanceof Error ? error.message : t('harness.failed')});
+                        this.status.textContent = this.pollError;
+                    }
                 }
-            } catch (error) {
-                if (!this.lifetime.signal.aborted) {
-                    console.error('[Harness] Update failed', error);
-                    this.pollError = t('harness.updateFailed', {message: error instanceof Error ? error.message : t('harness.failed')});
-                    this.status.textContent = this.pollError;
-                }
-            }
-            await pause(this.lifetime.signal);
-        }
+            } while (this.refreshRequested && !this.lifetime.signal.aborted);
+        } finally { this.refreshing = false; }
+    }
+    private syncEvents() {
+        const profile = !document.hidden && !this.lifetime.signal.aborted ? this.profile.value : undefined;
+        if (profile === this.subscribedProfile) return;
+        this.stopEvents?.(); this.stopEvents = undefined; this.subscribedProfile = profile;
+        if (profile) this.stopEvents = this.client.subscribe(profile,() => {
+            this.refreshRequested = true; void this.refreshEvents();
+        });
     }
     private consume(page: HarnessEvents) {
         this.cursor = { after: page.cursor,eventEpoch:page.epoch };
@@ -209,10 +222,7 @@ class HarnessControl {
         this.send.disabled = !this.selected?.resumable || !!this.turnId || this.selected.status === 'active' || !!this.pending || this.submitting;
         this.interrupt.disabled = !this.turnId || !this.owned;
         this.profile.disabled = !!this.turnId || !!this.pending || this.submitting;
-        if (!this.polling && (this.turnId || this.submitting) && !this.lifetime.signal.aborted && !document.hidden) {
-            this.polling = true;
-            void this.poll().finally(() => {this.polling = false; this.updateControls();});
-        }
+        this.syncEvents();
     }
     private async reconcile() {
         if (!this.pending) return;
@@ -248,10 +258,3 @@ class HarnessControl {
 }
 
 function option(value: string, label: string) { const item = document.createElement('option'); item.value = value; item.textContent = label; return item; }
-function pause(signal: AbortSignal): Promise<void> {
-    if (signal.aborted) return Promise.resolve();
-    return new Promise(resolve => {
-        const done = () => { clearTimeout(timer); signal.removeEventListener('abort',done); resolve(); };
-        const timer = setTimeout(done,500); signal.addEventListener('abort',done,{ once:true });
-    });
-}

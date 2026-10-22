@@ -1,5 +1,7 @@
 # llm-ui-adapter 开发说明
 
+本地 Session 指令队列由 InstructionQueuePanel 展示并经命令编辑，发送与自动续发归 Session 后端。忙时保留发送与停止按钮，确认持久接纳后清除本次输入；排序、合并、删除携带已展示 revision，冲突时刷新，不自动重试写命令。
+
 项目草稿的 `selectDraftAgent` 命令只切换明确指定且仍可用的智能体，沿用 ChatInput 的配置通知与保存队列，保留文字、附件和模型偏好；不创建正式 Session、不发送内容。工作台快捷入口消费此命令，项目选择和资源列表不进入聊天组件。
 
 本包承接 MindOS 的 Session、Task、原生会话、配置和权限接线，保留原业务编辑器兼容入口。独立聊天库位于 ../../libraries/llm-ui，通用 Flow 视图位于 ../../libraries/llm-ui 的 /flow 子入口；新的统一 ChatView 适配从 /independent 导出。

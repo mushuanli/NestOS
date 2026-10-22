@@ -38,6 +38,7 @@ import { VFSHelpers } from './vfs-helpers';
 import { CostManager } from './cost-manager';
 import { ProviderManager } from './provider-manager';
 import { ConnectionManager } from './connection-manager';
+import type { ModelDefaults, ModelOperation } from '../contracts/model-defaults';
 import { MCPManager } from './mcp-manager';
 import { SkillManager } from './skill-manager';
 
@@ -253,7 +254,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         this.vfsHelpers = new VFSHelpers(this.engine);
         this.providerManager = new ProviderManager(this.engine, this.vfsHelpers, () => this.notify(), this.presets);
         this.connectionManager = new ConnectionManager(this.vfsHelpers, this.vfs, this.providerManager, () => this.notify(), this.presets, this.providerConnectionPolicy,
-            id => this.getFullProvider(id)?.implementation === 'chatgpt' ? this.authorization.state(id).status === 'authorized' : undefined);
+            id => this.getFullProvider(id)?.implementation === 'chatgpt' ? this.authorization.state(id).status === 'authorized' : undefined, this.logger);
         this.mcpManager = new MCPManager(this.vfsHelpers, this.vfs, () => this.notify(), this.mcpOptions);
         this.skillManager = new SkillManager(this.vfsHelpers, this.vfs, this.mcpManager, this.shellRunner, () => this.notify());
 
@@ -730,13 +731,21 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
         return this.connectionManager.getConnection(id);
     }
 
-    async getDefaultConnection(): Promise<ConnectionMeta | null> {
+    async getDefaultConnection(operation: ModelOperation = 'chat'): Promise<ConnectionMeta | null> {
         await this.ensureReady();
-        return this.connectionManager.getDefaultConnection();
+        return this.connectionManager.getDefaultConnection(operation);
     }
     async setDefaultConnection(id: string | null): Promise<void> {
+        return this.setModelDefault('chat', id);
+    }
+
+    async getModelDefaults(): Promise<ModelDefaults> {
         await this.ensureReady();
-        await this.connectionManager.setDefaultConnection(id);
+        return this.connectionManager.getModelDefaults();
+    }
+    async setModelDefault(operation: ModelOperation, id: string | null): Promise<void> {
+        await this.ensureReady();
+        return this.connectionManager.setModelDefault(operation, id);
     }
 
     async getFullConnection(id: string): Promise<LLMConnection | null> {

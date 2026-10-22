@@ -14,6 +14,40 @@ const catalog = { getProvider: () => provider, getConnection: async (id: string)
 }) };
 const preflightCatalog = {...catalog, getDefaultConnection: async () => undefined};
 
+it('resolves required media slots from purpose defaults and freezes the admitted selection', async () => {
+    let defaults = { 'image.generate': 'pictures' };
+    const models = { ...catalog, getModelDefaults: async () => defaults };
+    const admitted = await prepareFlowConnections(flow(), {}, models);
+    expect(admitted.connections![0]).toMatchObject({ connectionId: 'pictures', resolved: { modelId: 'picture' } });
+    defaults = { 'image.generate': 'text' };
+    const replay = await prepareFlowConnections(admitted, {}, models);
+    expect(replay.connections![0].connectionId).toBe('pictures');
+    await expect(prepareFlowConnections(flow(), { illustrations: 'text' }, models)).rejects.toThrow();
+    await expect(prepareFlowConnections(flow(), { illustrations: '' }, models)).rejects.toThrow('Invalid connection');
+});
+
+it('honors a queued defaults snapshot and leaves optional media slots unbound', async () => {
+    const models = { ...catalog, getModelDefaults: async () => ({ 'image.generate': 'text' }) };
+    const admitted = await prepareFlowConnections(flow(), {}, models, { 'image.generate': 'pictures' });
+    expect(admitted.connections![0].connectionId).toBe('pictures');
+    const optional = flow(); optional.connections![0].required = false;
+    expect((await prepareFlowConnections(optional, {}, models, { 'image.generate': 'pictures' })).connections![0].connectionId).toBeUndefined();
+    const direct = flow(); direct.connections = []; delete (direct.nodes[0].config as any).connectionSlot;
+    const resolved = await prepareFlowConnections(direct, {}, models, { 'image.generate': 'pictures' });
+    expect(resolved.nodes[0].config).toMatchObject({ connectionId: 'pictures', modelName: 'picture' });
+    await expect(prepareFlowConnections(flow(), {}, models, {})).rejects.toThrow('Missing connection');
+});
+
+it('admits an explicit run connection before consulting a purpose default for an unslotted node', async () => {
+    const direct = flow(); direct.connections = []; delete (direct.nodes[0].config as any).connectionSlot;
+    const models = { ...catalog, getModelDefaults: async () => ({ 'image.generate': 'text' }) };
+    const dag = await flowToDag(direct, undefined, undefined, undefined, [], undefined, false, 'pictures', {},
+        (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, models, undefined, runConnectionId));
+    expect(dag.nodes[0].config).toMatchObject({ connectionId: 'pictures', modelName: 'picture' });
+    await expect(flowToDag(direct, undefined, undefined, undefined, [], undefined, false, 'text', {},
+        (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, { ...models, getModelDefaults: async () => ({ 'image.generate': 'pictures' }) }, undefined, runConnectionId))).rejects.toThrow();
+});
+
 it('preflights required and optional slots without creating a Session or calling a model', async () => {
     const definition = flow();
     await expect(checkFlowConnections({flow: definition}, preflightCatalog as never)).rejects.toMatchObject({code: 'FLOW_CONNECTION_INVALID'});

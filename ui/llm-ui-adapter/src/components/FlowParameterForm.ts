@@ -6,7 +6,7 @@ import { bindFlowImageFields, imageParameterField } from './FlowImageFields';
 type Field = HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement;
 export interface FlowConnectionSelection {
     assets?: import('./FlowImageFields').FlowImageAssetPort;
-    connections: ConnectionMeta[];
+    connections: Array<ConnectionMeta & { operationModels?: Partial<Record<import('@itookit/kernel-adapters/contracts').ModelOperation, string>> }>;
     slots?: import('@itookit/llm-flow/contracts').FlowConnection[];
     bindings?: Record<string, string>;
     selected?: string;
@@ -84,9 +84,12 @@ function slotFields(selection: FlowConnectionSelection): string {
         const selected = selection.bindings?.[slot.name] ?? slot.connectionId;
         const missing = selected && !selection.connections.some(item => item.id === selected)
             ? `<option value="${escapeHTML(selected)}" selected>${escapeHTML(t('connection.unavailable', { id: selected }))}</option>` : '';
-        const options = selection.connections.map(item => {
-            const model = item.tiers?.[slot.tier ?? 'optimal'] ?? item.model;
-            return `<option value="${escapeHTML(item.id)}" ${item.id === selected ? 'selected' : ''} ${connectionUnavailable(item) ? 'disabled' : ''}>${escapeHTML(item.name)} · ${escapeHTML(item.providerId)}${model ? ` · ${escapeHTML(model)}` : ''}</option>`;
+        const operation = slot.requirements?.operation as import('@itookit/kernel-adapters/contracts').ModelOperation | undefined;
+        const compatible = selection.connections.filter(item => !operation || !item.operationModels || item.operationModels[operation] || item.id === selected);
+        const options = compatible.map(item => {
+            const model = operation && item.operationModels ? item.operationModels[operation] : item.tiers?.[slot.tier ?? 'optimal'] ?? item.model;
+            const unsupported = operation && item.operationModels && !item.operationModels[operation];
+            return `<option value="${escapeHTML(item.id)}" ${item.id === selected ? 'selected' : ''} ${unsupported || connectionUnavailable(item) ? 'disabled' : ''}>${escapeHTML(item.name)} · ${escapeHTML(item.providerId)}${model ? ` · ${escapeHTML(model)}` : ''}${unsupported ? ` · ${escapeHTML(t('modelDefaults.incompatible'))}` : ''}</option>`;
         }).join('');
         return `<label>${escapeHTML(slot.description?.trim() || slot.name)} · ${escapeHTML(t(slot.required === false ? 'flow.connections.optional' : 'flow.connections.required'))}${slot.requirements ? ` · ${escapeHTML(slot.requirements.operation)}` : ''}<select data-slot-connection="${index}"><option value="">${escapeHTML(t('connection.slotUnbound'))}</option>${missing}${options}</select></label>`;
     }).join('');

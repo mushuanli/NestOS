@@ -9,6 +9,7 @@ export * from './contracts/pricing';
 export * from './contracts/chat';
 export * from './contracts/restore';
 export * from './contracts/commands';
+export type * from './contracts/instruction-queue';
 export * from './contracts/flow-invocations';
 export type * from './contracts/prompt-history';
 export type {
@@ -61,3 +62,5 @@ export { snapshotDirectAgentPolicy, type DirectAgentPolicy, type ResolvedDirectA
 export type { SessionViewPort, PromptHistoryPort } from './contracts/session-view';
 
 export type * from './contracts/memory';
+
+export { inferFlowConnectionRequirements } from './contracts/flow-connection-policy';

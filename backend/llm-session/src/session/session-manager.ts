@@ -52,6 +52,9 @@ import { sessionDirectoryStorage } from '../persistence/session-directory-storag
 import { DurableConversationProjection, RUNTIME_KEY } from '../persistence/durable-conversation-projection';
 import { SessionMemoryProvider } from './session-memory-provider';
 import { SessionMemoryControls } from './session-memory-controls';
+import { SessionInstructions } from './session-instructions';
+import type { InstructionQueueEdit } from '../contracts/instruction-queue';
+import { SessionExecutionActivity } from './session-execution-activity';
 
 /**
  * 会话管理器 — llm-conversation 对外的唯一入口
@@ -67,6 +70,8 @@ export class SessionManager implements ISession, SessionQuery {
     private roundOps: RoundOperations;
     private branchService: BranchService;
     private runs: SessionRunCoordinator;
+    private readonly instructions: SessionInstructions;
+    private readonly ownedExecutionActivity?: SessionExecutionActivity;
     private agentResolver: AgentResolver;
     private readonly kernel: Kernel;
     private readonly canWriteSession?: (sessionId: string) => Promise<boolean>;
@@ -85,6 +90,8 @@ export class SessionManager implements ISession, SessionQuery {
         engine: ISessionRepository,
         agentService: IAgentConfigService,
         options: {
+            executionActivity?: SessionExecutionActivity;
+            instructionQueueSessions?: import('../persistence/instruction-queue-sessions').InstructionQueueSessions;
             directAgentPolicy?: import('../contracts/direct-agent-policy').DirectAgentPolicy;
             agentResolution?: import('./agent-resolver').AgentResolutionPolicy;
             hostPorts?: import('../utils/host-ports').SessionHostPorts;
@@ -119,6 +126,8 @@ export class SessionManager implements ISession, SessionQuery {
         this.memory = new SessionMemoryControls(options.memoryProvider ?? new SessionMemoryProvider(this.kernel), agentService,
             () => this.registry.ensureBound().sessionId, options.canWriteSession);
         this.durableProjection = new DurableConversationProjection(engine);
+        const executionActivity = options.executionActivity ?? new SessionExecutionActivity();
+        if (!options.executionActivity) this.ownedExecutionActivity = executionActivity;
         this.runs = new SessionRunCoordinator(
             engine,
             this.registry.eventBus,
@@ -155,9 +164,12 @@ export class SessionManager implements ISession, SessionQuery {
             options.resolveHarnessToolIds,
             this.host,
             this.directAgentPolicy,
+            executionActivity,
         );
 
         this.roundOps = new RoundOperations(this.registry, this.runs, this.promptHistory);
+        this.instructions = new SessionInstructions(this.registry, this.runs, this.roundOps, this.kernel,
+            this.canWriteSession, options.instructionQueueSessions, executionActivity);
         this.flowRerun = new FlowRerunService(this.registry, this.runs, options.flowStore, options.dagPlugins);
         this.branchService = new BranchService(this.registry);
     }
@@ -173,7 +185,7 @@ export class SessionManager implements ISession, SessionQuery {
     signal(s: Signal): void {
         switch (s.type) {
             case 'send':
-                this.roundOps.sendMessage(s.text, (s.attachments ?? []).map(a => ({
+                this.sendMessage(s.text, (s.attachments ?? []).map(a => ({
                     name: a.name ?? a.filename ?? '',
                     type: a.type ?? 'file',
                     size: a.size,
@@ -182,10 +194,10 @@ export class SessionManager implements ISession, SessionQuery {
                 });
                 break;
             case 'abort':
-                this.roundOps.abort();
+                this.abort();
                 break;
             case 'inject':
-                this.roundOps.sendMessage(s.text, [], 'default', undefined, 'inject', undefined).catch(() => {});
+                this.sendMessage(s.text, [], 'default', undefined, 'inject', undefined).catch(() => {});
                 break;
             case 'respond':
                 this.runs.respondToSignal(this.registry.boundSessionId ?? '', s);
@@ -245,11 +257,12 @@ export class SessionManager implements ISession, SessionQuery {
             if (options?.createMissing === false || !(error instanceof KernelError) || error.code !== KernelErrorCode.SESSION_NOT_FOUND) throw error;
             this.durableSession = await this.kernel.createSession({ id: sessionId, storage });
         }
-        const snapshot = await this.registry.bindSession(sessionId);
+        await this.registry.bindSession(sessionId);
         await this.bindDurableProjection(sessionId);
+        await this.instructions.restore(sessionId);
         // Hand the projection loaded with the binding to the caller so the editor does not read
         // the Session record a second time.
-        return { ...snapshot, view: this.registry.getLoadedView(sessionId) };
+        return { ...this.getSnapshot(), view: this.registry.getLoadedView(sessionId) };
     }
 
     unbindSession(): void {
@@ -313,7 +326,9 @@ export class SessionManager implements ISession, SessionQuery {
             this.registry.getLoadedView(sessionId)?.manifest,
         );
         this.durableProjectionUnsubscribe?.();
-        this.durableProjectionUnsubscribe = this.registry.eventBus.onSession(sessionId, () => {
+        this.durableProjectionUnsubscribe = this.registry.eventBus.onSession(sessionId, event => {
+            // Queue observers do not own the running context's durable conversation projection.
+            if (event.type === 'instructions:changed') return;
             this.queueDurableProjection(sessionId);
         });
     }
@@ -365,11 +380,20 @@ export class SessionManager implements ISession, SessionQuery {
     // 状态查询 → SessionRegistry
     // ================================================================
 
-    getSnapshot(): SessionSnapshot { return this.registry.getSnapshot(); }
+    getSnapshot(): SessionSnapshot {
+        const snapshot = this.registry.getSnapshot();
+        const isRunning = snapshot.isRunning || this.runs.isActive(snapshot.sessionId);
+        return { ...snapshot, isRunning, status: isRunning && !snapshot.isRunning ? 'running' : snapshot.status,
+            instructionQueue: this.instructions.snapshot(snapshot.sessionId) };
+    }
+    getInstructionQueue() { return this.instructions.queues.view(this.registry.ensureBound().sessionId); }
+    hasPendingInstructions(): boolean { return this.instructions.hasPending(); }
+    waitForInstructionWrites(): Promise<void> { return this.instructions.whenIdle(); }
+    editInstructionQueue(edit: InstructionQueueEdit) { return this.instructions.edit(this.registry.ensureBound().sessionId, edit); }
     getSessions(): SessionGroup[] { return this.registry.getSessions(); }
     getCurrentSessionId(): string | null { return this.registry.getCurrentSessionId(); }
     getStatus(): SessionStatus | 'unbound' { return this.registry.getStatus(); }
-    isGenerating(): boolean { return this.registry.isGenerating(); }
+    isGenerating(): boolean { return this.registry.isGenerating() || this.runs.isActive(this.id); }
     getAllSessions(): SessionRuntime[] { return this.registry.getAllSessions(); }
     getSessionRuntime(sessionId: string): SessionRuntime | undefined { return this.registry.getSessionRuntime(sessionId); }
 
@@ -399,14 +423,18 @@ export class SessionManager implements ISession, SessionQuery {
         // is appended, so the two hosts cannot race the same durable conversation. `ensureBound()`
         // resolves the same Session the write would target, including a lazy first bind.
         const sessionId = this.registry.ensureBound().sessionId;
-        if (this.canWriteSession && !await this.canWriteSession(sessionId)) {
-            throw new ConversationError(ConversationErrorCode.SESSION_INVALID,
-                'Session is owned by another host; this host can only read it');
-        }
-        return this.roundOps.sendMessage(text, files, agentId, overrides, origin, historyPolicy, sendIntent);
+        return this.instructions.send({ sessionId, text, files: files ?? [], agentId, overrides, origin, historyPolicy, sendIntent });
     }
 
-    abort(): void { this.roundOps.abort(); }
+    abort(): void {
+        const id = this.registry.getCurrentSessionId();
+        if (!id) return;
+        void this.instructions.pause(id).catch(error => {
+            this.host.logger.warn('Instruction queue pause failed', { operation: 'session.instructions', stage: 'stop',
+                outcome: 'failure', sessionId: id, code: (error as {code?: string})?.code ?? 'QUEUE_PAUSE' });
+        });
+        this.runs.abort(id);
+    }
 
     async setContextMode(roundIds: string[], mode: 'include' | 'exclude', scope: 'node' | 'subtree' = 'subtree') {
         return this.roundOps.setContextMode(roundIds, mode, scope);
@@ -589,6 +617,8 @@ export class SessionManager implements ISession, SessionQuery {
     }
 
     destroy(): void {
+        this.instructions.dispose();
+        void this.ownedExecutionActivity?.dispose();
         this.unbindSession();
 
         const runningTasks = this.registry.getAllSessions()

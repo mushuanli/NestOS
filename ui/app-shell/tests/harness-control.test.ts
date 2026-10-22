@@ -20,14 +20,18 @@ afterEach(() => {
     }
 });
 const settle = async () => { for (let i=0;i<15;i++) await Promise.resolve(); };
+const changes = new WeakMap<HarnessClient, () => void>();
+function emit(client: HarnessClient) { changes.get(client)!(); }
 function client(): HarnessClient {
-    return { profiles:vi.fn(async () => ({ epoch:'e',profiles:[{ id:'codex',kind:'codex',workspaces:[{id:'project'}],
+    let notify = () => {};
+    const peer = { subscribe:vi.fn((_profile: string, listener: () => void) => { notify = listener; return () => {notify = () => {};}; }), profiles:vi.fn(async () => ({ epoch:'e',profiles:[{ id:'codex',kind:'codex',workspaces:[{id:'project'}],
         capabilities:{ history:true,create:true,resume:true,interrupt:true,interactions:true } }] })),
         list:vi.fn(async () => ({ sessions:[session],nextCursor:null })),
         read:vi.fn(async () => ({ session,turns:[{ items:[{ type:'agentMessage',text:'<script>history</script>' }] }] })),
         create:vi.fn(async () => ({session})),resume:vi.fn(async () => ({session})),turn:vi.fn(async () => ({turnId:'t'})),
-        events:vi.fn(async () => ({epoch:'ev',cursor:0,gap:false,events:[],requests:[]})),interrupt:vi.fn(async () => {}),
+        eventSnapshot:vi.fn(async () => ({epoch:'ev',cursor:0,gap:false,events:[],requests:[]})),interrupt:vi.fn(async () => {}),
         respond:vi.fn(async () => {}),operation:vi.fn(),close:vi.fn(async () => {}) };
+    changes.set(peer,() => notify()); return peer;
 }
 function button(text: string): HTMLButtonElement {
     return [...document.querySelectorAll<HTMLButtonElement>('button')].find(b => b.textContent === text)!;
@@ -36,7 +40,7 @@ it('does not request events while an idle native history is displayed', async ()
     vi.useFakeTimers(); const controller = new AbortController(), peer = client();
     const opened = showHarnessControl(peer, 'node', controller.signal); await settle();
     button(session.title).click(); await settle();
-    await vi.advanceTimersByTimeAsync(30_000); expect(peer.events).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(30_000); expect(peer.eventSnapshot).not.toHaveBeenCalled();
     controller.abort(); await opened;
 });
 it('renders histories safely, resumes before sending, and leaves running turns intact when closed',async () => {
@@ -70,9 +74,9 @@ it('keeps an early completion from being overwritten by a late turn response',as
     button(session.title).click(); await settle();
     document.querySelector('textarea')!.value = 'quick task';
     document.querySelector('form')!.dispatchEvent(new Event('submit',{cancelable:true})); await settle();
-    vi.mocked(peer.events).mockResolvedValue({epoch:'ev',cursor:1,gap:false,requests:[],events:[
+    vi.mocked(peer.eventSnapshot).mockResolvedValue({epoch:'ev',cursor:1,gap:false,requests:[],events:[
         {seq:1,message:{method:'turn/completed',params:{threadId:'s',turn:{id:'quick'}}}}]});
-    await vi.advanceTimersByTimeAsync(500); expect(button(t('harness.send')).disabled).toBe(true);
+    emit(peer); await settle(); expect(button(t('harness.send')).disabled).toBe(true);
     finish({turnId:'quick'}); await settle();
     expect(button(t('harness.send')).disabled).toBe(false); expect(button(t('harness.interrupt')).disabled).toBe(true);
     controller.abort(); await opened; vi.useRealTimers();
@@ -96,24 +100,24 @@ it('ignores disconnection events belonging to another session', async () => {
     const controller = new AbortController(), peer = client();
     const opened = showHarnessControl(peer, 'node', controller.signal); await settle();
     button(session.title).click(); await settle();
-    vi.mocked(peer.events).mockResolvedValue({epoch: 'ev', cursor: 1, gap: false, requests: [], events: [
+    vi.mocked(peer.eventSnapshot).mockResolvedValue({epoch: 'ev', cursor: 1, gap: false, requests: [], events: [
         {seq: 1, message: {method: 'harness/disconnected', params: {threadId: 'other'}}}]});
-    await vi.advanceTimersByTimeAsync(500);
+    emit(peer); await settle();
     expect(document.body.textContent).not.toContain(t('harness.disconnected'));
     controller.abort(); await opened;
 });
 
-it('shows active turn polling errors as update failures and recovers without sending a command', async () => {
+it('shows pushed event errors as update failures and recovers without sending a command', async () => {
     vi.useFakeTimers(); vi.spyOn(console, 'error').mockImplementation(() => {});
     const controller = new AbortController(), peer = client();
     vi.mocked(peer.read).mockResolvedValue({session: {...session, activeTurnId: 'active'}, turns: []});
     const opened = showHarnessControl(peer, 'node', controller.signal); await settle();
     button(session.title).click(); await settle();
-    vi.mocked(peer.events).mockRejectedValueOnce(new Error('Invalid snapshot'));
-    await vi.advanceTimersByTimeAsync(500);
+    vi.mocked(peer.eventSnapshot).mockRejectedValueOnce(new Error('Invalid snapshot'));
+    emit(peer); await settle();
     expect(document.body.textContent).toContain(t('harness.updateFailed', {message: 'Invalid snapshot'}));
     expect(document.body.textContent).not.toContain(t('harness.disconnected'));
-    await vi.advanceTimersByTimeAsync(500);
+    emit(peer); await settle();
     expect(document.body.textContent).not.toContain(t('harness.updateFailed', {message: 'Invalid snapshot'}));
     expect(peer.turn).not.toHaveBeenCalled(); controller.abort(); await opened;
 });

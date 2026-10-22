@@ -86,7 +86,7 @@ it('coalesces streaming changes and sends token deltas instead of repeating long
 });
 it('carries a long native answer through subscription patches and explicit refresh', async () => {
     const state = {messages: [{id: 'a', role: 'assistant', text: 'Long native answer. '.repeat(8192)}], requests: [], active: true};
-    const source = {kind: 'codex', snapshot: () => state, read: async () => state, poll: async () => state,
+    const source = {kind: 'codex', snapshot: () => state, read: async () => state, refresh: async () => state, subscribe: () => () => {},
         respond: async () => state, close: async () => {}};
     const view = observeConversation(source as never);
     try {
@@ -94,7 +94,7 @@ it('carries a long native answer through subscription patches and explicit refre
         const stop = root.subscribe(() => {}); await client.whenIdle();
         const before = await root.read();
         expect(before.messages[0].text).toBe(state.messages[0].text);
-        state.messages[0].text += ' streamed-tail'; await view.poll(); await server.whenIdle();
+        state.messages[0].text += ' streamed-tail'; await view.refresh(); await server.whenIdle();
         const updates = await server.refresh(); client.applyUpdates(updates);
         expect(root.snapshot().messages[0].text).toBe(state.messages[0].text);
         expect(JSON.stringify(updates).length).toBeLessThan(2048);
@@ -229,9 +229,9 @@ it('returns a snapshot reference instead of retransmitting unchanged native hist
     let server!: RpcPeer, client!: RpcPeer; const replies: Reply[] = [];
     server = new RpcPeer('server', call => client.handle(call));
     client = new RpcPeer('client', async call => { const reply = await server.handle(call); replies.push(reply); return reply; }); peers.push(server, client);
-    const boot = await server.bootstrap({ snapshot: () => snapshot, poll: async () => snapshot, respond: async () => snapshot });
+    const boot = await server.bootstrap({ snapshot: () => snapshot, refresh: async () => snapshot, respond: async () => snapshot });
     client.applyUpdates(boot.updates); const root = client.decode(boot.value!);
-    expect(await root.poll()).toEqual(snapshot); expect(JSON.stringify(replies.at(-1)).length).toBeLessThan(500);
+    expect(await root.refresh()).toEqual(snapshot); expect(JSON.stringify(replies.at(-1)).length).toBeLessThan(500);
 });
 it('bounds notification bytes including a blocked in-flight batch', async () => {
     vi.useFakeTimers(); let resume!: () => void;

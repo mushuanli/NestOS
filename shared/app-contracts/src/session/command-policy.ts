@@ -3,6 +3,7 @@ const reads = new Set<string>([
     "app.assets.read",
     "flow.source.check",
     "session.get-snapshot",
+    "session.instructions.get",
     "session.get-sessions",
     "session.get-current-id",
     "session.get-status",

@@ -1,7 +1,7 @@
 import type { AppUI } from '@itookit/app-shell';
 import { createFlowContextMenuConfig, createAIContextMenuConfig,
     restoreFlowLibrary } from '@itookit/llm-ui-adapter/startup';
-import { ProviderSettingsEditor, ConnectionSettingsEditor, MCPSettingsEditor,
+import { ProviderSettingsEditor, ConnectionSettingsEditor, ModelDefaultsEditor, MCPSettingsEditor,
     CostEditor, SystemPromptSettingsEditor } from '@itookit/llm-settings-ui';
 
 import {loadChatEditor} from './editor-modules';
@@ -29,7 +29,7 @@ export function createBrowserUI(library: Parameters<typeof restoreFlowLibrary>[1
         createAIContextMenu: createAIContextMenuConfig,
         llmUiEditors: {
             ProviderSettingsEditor,
-            ConnectionSettingsEditor,
+            ConnectionSettingsEditor, ModelDefaultsEditor,
             MCPSettingsEditor,
             CostEditor,
             SystemPromptSettingsEditor,

@@ -53,6 +53,12 @@ export class RoundOperations {
         sendIntent?: SendIntent,
     ): Promise<string> {
         const { sessionId, runtime, state } = this.registry.ensureBound();
+        return this.sendInSession({ sessionId, text, files, agentId, overrides, origin, historyPolicy, sendIntent }, state, runtime);
+    }
+
+    async sendInSession(input: import('../core/types').TaskInput, state: SessionState,
+        runtime: import('../core/types').SessionRuntime): Promise<string> {
+        const { text, agentId, sessionId } = input;
 
         const lastSession = state.getLastSession();
         if (lastSession && lastSession.role === 'user') {
@@ -66,10 +72,7 @@ export class RoundOperations {
             this.host.logger.warn('Failed to record prompt history', { error: e });
         });
 
-        return this.runs.submit(
-            { sessionId, text, files, agentId, overrides, origin, historyPolicy, sendIntent },
-            runtime
-        );
+        return this.runs.submit(input, runtime);
     }
 
     abort(): void {

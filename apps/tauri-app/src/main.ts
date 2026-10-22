@@ -35,6 +35,7 @@ import { createFlowContextMenuConfig, createAIContextMenuConfig,
 import {
     ProviderSettingsEditor,
     ConnectionSettingsEditor,
+    ModelDefaultsEditor,
     MCPSettingsEditor,
     CostEditor,
     SystemPromptSettingsEditor,
@@ -283,7 +284,7 @@ async function bootstrap(): Promise<void> {
         createAIContextMenu: createAIContextMenuConfig,
         llmUiEditors: {
             ProviderSettingsEditor,
-            ConnectionSettingsEditor,
+            ConnectionSettingsEditor, ModelDefaultsEditor,
             MCPSettingsEditor,
             CostEditor,
             SystemPromptSettingsEditor,

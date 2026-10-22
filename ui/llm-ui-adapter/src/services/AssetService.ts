@@ -2,6 +2,11 @@
 
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
 
+export function attachmentStorageName(submissionId: string, index: number, original: string): string {
+    if (!/^[\w-]{1,128}$/.test(submissionId)) throw new FSError('EINVAL', 'Invalid attachment submission identity');
+    return `${submissionId}-${index}${original.match(/\.[a-zA-Z0-9]{1,16}$/)?.[0] ?? ''}`;
+}
+
 /**
  * 资源管理服务
  * 职责：附件的上传、获取、管理
@@ -21,19 +26,21 @@ export class AssetService {
     /**
      * 批量上传文件并返回 Markdown 引用
      */
-    async uploadFiles(files: File[]): Promise<string[]> {
+    async uploadFiles(files: File[], submissionId?: string): Promise<string[]> {
         const refs: string[] = [];
 
-        for (const file of files) {
+        for (const [index, file] of files.entries()) {
             try {
                 const arrayBuffer = await file.arrayBuffer();
-                await this.createAsset(file.name, arrayBuffer);
+                const storedName = submissionId ? attachmentStorageName(submissionId, index, file.name) : file.name;
+                await this.createAsset(storedName, arrayBuffer);
 
 
                 const isImage = file.type.startsWith('image/');
+                const label = file.name.replace(/[\\[\]]/g, '\\$&');
                 const ref = isImage
-                    ? `![${file.name}](@asset/${file.name})`
-                    : `[📄 ${file.name}](@asset/${file.name})`;
+                    ? `![${label}](@asset/${storedName})`
+                    : `[${label}](@asset/${storedName})`;
 
                 refs.push(ref);
             } catch (e) {

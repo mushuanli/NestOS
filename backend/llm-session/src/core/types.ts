@@ -299,6 +299,7 @@ export type RegenerateTrigger = 'from_assistant' | 'from_user' | 'from_edit';
 
 export interface SessionSnapshot {
     sessionId: string;
+    instructionQueue?: import('../contracts/instruction-queue').SessionInstructionQueue;
     /**
      * Projection read together with the binding, when the host reads it in the same snapshot.
      * Consumers must still fall back to a repository read when it is absent.
@@ -351,6 +352,11 @@ export interface SessionRuntime {
  */
 export interface TaskInput {
     sessionId: string;
+    /** Internal queue identity; absent for directly submitted requests. */
+    instructionId?: string;
+    submissionDigest?: string;
+    instructionBranch?: string;
+    instructionConnectionBinding?: import('../contracts/instruction-queue').SessionInstruction['connectionBinding'];
     text: string;
     files: ChatAttachment[];
     agentId: string;
@@ -502,6 +508,7 @@ export type MessageProjectionEvent =
  * but are NOT agent-loop events (branch ops, message deletion, etc).
  */
 export type SessionStructuralEvent =
+    | { type: 'instructions:changed'; payload: import('../contracts/instruction-queue').SessionInstructionQueue }
     | { type: 'messages:cleared'; payload: Record<string, never> }
     | { type: 'messages:deleted'; payload: { deletedIds: string[] } }
     | { type: 'message:edited';  payload: { messageId: string; newContent: string; newPersistedNodeId?: string } }
@@ -555,6 +562,7 @@ export type SessionEventEnvelope = {
  * 注册表事件
  */
 export type RegistryEvent =
+    | { type: 'session_instructions_changed'; payload: { sessionId: string; count: number; paused: boolean } }
     | { type: 'session_registered'; payload: { sessionId: string } }
     | { type: 'session_unregistered'; payload: { sessionId: string } }
     | { type: 'session_status_changed'; payload: { sessionId: string; status: SessionStatus; prevStatus?: SessionStatus } }

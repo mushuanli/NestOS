@@ -69,6 +69,7 @@ export class ConversationContexts {
             if (this.options.canRelease && !await this.options.canRelease(id)) continue;
             const snapshot = context.sessionManager.getSnapshot();
             if (entry.users || entry.touched !== touched || snapshot.isRunning || snapshot.status === 'queued' || snapshot.status === 'running') continue;
+            if (!snapshot.instructionQueue?.paused && snapshot.instructionQueue?.items.length) continue;
             this.contexts.delete(id); excess--;
             await context.dispose();
         }

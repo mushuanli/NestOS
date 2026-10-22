@@ -1,5 +1,7 @@
 # @itookit/app-transport
 
+同一观察回调的通知必须按调用顺序完成编码与传送，不能让较大的队列快照被后来的运行事件超越。只串行同一回调，普通查询及不同观察通道继续并行；失败回执继续报告，不重放写入。回归见 app-shell 的 rpc-notification-order 与 draft-promotion。
+
 平台中立的应用传输适配；不依赖 DOM、Node、app-core 或 UI。
 
 - rpc/ 仅负责协议、句柄、回调、快照和资源机制，通过注入获取应用描述；禁止反向导入 application/。
@@ -21,3 +23,5 @@
 - v14 初始握手可以同时打开目标并登记观察，SSE 与 bootstrap 并行。http/snapshot-cache 仅对不含能力的 Wire DTO 做 SHA-256 缓存，校验本地内容后才声明版本；缺块只补读已准备响应，不重放打开或写命令。应用事件由有界 viewEvents 队列接收，初始观察在本地适配。
 
 RPC 身份与能力租约使用包内 randomUUID 兼容工具，不直接调用原生 crypto.randomUUID；机制层不因此依赖 common。SessionBrowserPort 显式注册 setSessionFilter，保持每个观察实例独立。
+
+HarnessClient 的能力表显式注册 subscribe/eventSnapshot 与目录订阅/快照，禁止保留已移除的轮询 RPC。变更客户端接口时同时验证真实 RpcPeer 往返和取消订阅释放，不能只用直接对象替身验证 UI。

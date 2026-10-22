@@ -72,7 +72,7 @@ const TOOL_ALIASES: Record<string, string> = {
 
 export interface CliRuntime {
     stageInput<T>(value: T): Promise<T>;
-    prepareConnections(flow: import('@itookit/llm-flow/contracts').FlowRevision, bindings?: Record<string, string>): Promise<import('@itookit/llm-flow/contracts').FlowRevision>;
+    prepareConnections(flow: import('@itookit/llm-flow/contracts').FlowRevision, bindings?: Record<string, string>, runConnectionId?: string): Promise<import('@itookit/llm-flow/contracts').FlowRevision>;
     flowCapabilities: ReturnType<typeof createFlowCapabilities>;
     kernel: Kernel;
     executor: DurableFlowExecutor;
@@ -343,9 +343,10 @@ export async function createCliRuntime(
         stageInput: value => stageInputAssets(systemFS, value),
         kernel,
         syncHistory,
-        prepareConnections: (flow, bindings) => prepareFlowConnections(flow, bindings, {
+        prepareConnections: (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, {
             getConnection: async id => llmDriver.getConnection(id), getProvider: id => llmDriver.getProvider(id),
-        }),
+            getModelDefaults: () => llmDriver.getModelDefaults(),
+        }, undefined, runConnectionId),
         flowCapabilities,
         executor,
         grants,

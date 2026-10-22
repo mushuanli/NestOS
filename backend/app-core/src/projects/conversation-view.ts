@@ -15,6 +15,9 @@ class ConversationView {
     private closing?: Promise<void>;
     private closed = false;
     private pumping = false;
+    private stopSource?: () => void;
+    private eventTimer?: ReturnType<typeof setTimeout>;
+    private refreshRequested = false;
     private starting = 0;
     private polling: Promise<unknown> = Promise.resolve();
     private quoteFailed = false;
@@ -46,15 +49,36 @@ class ConversationView {
     }
     private subscribe(listener: () => void): () => void {
         if (this.closed) throw new FSError('EIO', 'Conversation view closed');
-        this.listeners.add(listener); this.schedule();
-        return () => { this.listeners.delete(listener); if (!this.listeners.size) { clearTimeout(this.timer); this.timer = undefined; } };
+        this.listeners.add(listener);
+        this.stopSource ??= this.source.subscribe(() => this.invalidate());
+        this.schedule();
+        return () => {
+            this.listeners.delete(listener);
+            if (!this.listeners.size) {
+                this.stopSource?.(); this.stopSource = undefined;
+                clearTimeout(this.timer); clearTimeout(this.eventTimer); this.timer = undefined; this.eventTimer = undefined;
+            }
+        };
+    }
+    private invalidate(): void {
+        if (this.closed || !this.listeners.size || this.eventTimer) return;
+        this.eventTimer = setTimeout(() => {
+            this.eventTimer = undefined;
+            if (this.pumping) this.refreshRequested = true; else this.pump();
+        },20);
+    }
+    private pump(): void {
+        if (this.closed || !this.listeners.size || this.pumping) return;
+        this.pumping = true;
+        void this.invoke(this.source.refresh, [], 'refresh').catch(() => {}).finally(() => {
+            this.pumping = false;
+            if (this.refreshRequested) { this.refreshRequested = false; this.invalidate(); }
+            this.schedule();
+        });
     }
     private schedule(): void {
         if (this.closed || this.timer || this.pumping || !this.listeners.size) return;
-        this.timer = setTimeout(() => {
-            this.timer = undefined; this.pumping = true;
-            void this.invoke(this.source.poll, [], 'poll').catch(() => {}).finally(() => { this.pumping = false; this.schedule(); });
-        }, this.failures ? Math.min(30_000, 1000 * 2 ** Math.min(this.failures - 1, 5)) : this.starting || this.isActive(this.current) ? 200 : 15_000);
+        this.timer = setTimeout(() => { this.timer = undefined; this.pump(); },15_000);
     }
     private isActive(snapshot: ProjectConversationSnapshot): boolean { return !!(snapshot.active || snapshot.canInterrupt || snapshot.requests?.length); }
     private invoke(method: (...args: any[]) => unknown, args: unknown[], key: string): Promise<any> {
@@ -67,7 +91,7 @@ class ConversationView {
             try { result = await Reflect.apply(method, this.source, args); succeeded = true; }
             finally {
                 if (starting) --this.starting;
-                if (key === 'poll' || key === 'read') {
+                if (key === 'refresh' || key === 'read') {
                     const state = this.source.snapshot();
                     this.failures = !succeeded || state.disconnected || state.observation?.refreshError ? this.failures + 1 : 0;
                 }
@@ -76,7 +100,7 @@ class ConversationView {
             return result && typeof result === 'object' && 'messages' in result ? this.current : result;
         };
         if (key === 'respond' || key === 'interrupt') return execute();
-        if (key === 'poll' && this.starting) {
+        if (key === 'refresh' && this.starting) {
             const work = this.polling.then(execute); this.polling = work.catch(() => {}); return work;
         }
         const work = this.tail.then(execute);
@@ -94,7 +118,7 @@ class ConversationView {
     }
     private close(): Promise<void> {
         if (!this.closing) {
-            this.closed = true; clearTimeout(this.timer); this.listeners.clear();
+            this.closed = true; clearTimeout(this.timer); clearTimeout(this.eventTimer); this.stopSource?.(); this.listeners.clear();
             const closing = this.source.close();
             this.closing = Promise.all([this.tail, this.polling, closing]).then(() => {});
         }

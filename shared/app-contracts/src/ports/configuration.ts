@@ -31,6 +31,7 @@ export interface ToolboxResources {
     readonly drawers: ToolboxDrawers;
     subscribe(listener: () => void): () => void;
     setDefaultConnection(id: string | null): Promise<void>;
+    setModelDefault(operation: import('@itookit/kernel-adapters/contracts').ModelOperation, id: string | null): Promise<void>;
     toolGrant: typeof toolGrant;
     getAgents(): Promise<AgentDefinition[]>;
     hasProvider(id: string): boolean;
@@ -100,9 +101,11 @@ export interface ToolboxInventory {
         model?: string | null;
         /** A configured model with a supported runtime operation, including image and speech models. */
         configuredModel?: string | null;
+        operationModels?: Partial<Record<import('@itookit/kernel-adapters/contracts').ModelOperation, string>>;
         capabilityTags?: string[];
     }>;
     defaultConnectionId?: string;
+    modelDefaults?: import('@itookit/kernel-adapters/contracts').ModelDefaults;
     readonly tools: Map<string, ToolboxTool>;
     readonly sources: {
         prompts: VfsContracts.IFileSystem;

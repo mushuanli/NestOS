@@ -3,7 +3,7 @@ import { configuredModels, modelCapabilities, runnableModel } from './model-capa
 import { ENTITY_ICONS, t } from '@itookit/common';
 import { type SystemPromptDefinition } from '@itookit/llm-tasks/contracts';
 import { type MCPServer, type MCPConnectionState } from '@itookit/tools/mcp-contracts';
-import { hasConnectionCredentials, resolveChatModelTiers, type IConnectionService } from '@itookit/kernel-adapters/contracts';
+import { operationModelNames, hasConnectionCredentials, resolveChatModelTiers, type IConnectionService } from '@itookit/kernel-adapters/contracts';
 import { type ToolMeta } from '@itookit/tools/contracts';
 import { type ToolDefinition } from '@itookit/llm-context';
 
@@ -19,8 +19,9 @@ export class ToolboxInventory {
     readonly remoteAgents = new Map<string, RemoteHarnessAgent>();
     get remoteAgentSource() { return this.owners.remoteAgents!.fs; }
     readonly providers = new Map<string, { id: string; name: string; icon?: string; enabled: boolean; configured: boolean; capabilityTags?: string[]; authentication?: 'chatgpt'; authorizationAvailable?: boolean }>();
-    readonly connections = new Map<string, { providerId: string; enabled: boolean; credentialsReady?: boolean; model?: string | null; configuredModel?: string | null; capabilityTags?: string[] }>();
+    readonly connections = new Map<string, { providerId: string; enabled: boolean; credentialsReady?: boolean; model?: string | null; configuredModel?: string | null; operationModels?: Partial<Record<import('@itookit/kernel-adapters/contracts').ModelOperation, string>>; capabilityTags?: string[] }>();
     defaultConnectionId?: string;
+    modelDefaults: import('@itookit/kernel-adapters/contracts').ModelDefaults = {};
     readonly tools = new Map<string, ToolboxTool>();
     constructor(private readonly servers: () => Promise<MCPServer[]>, private readonly catalog: Catalog, private readonly models?: IConnectionService, private readonly prompts?: () => Promise<SystemPromptDefinition[]>, private readonly harnesses?: () => Promise<RemoteHarnessAgent[]>) {}
     async init(): Promise<void> {
@@ -60,6 +61,7 @@ export class ToolboxInventory {
         const defaults = this.models?.getProviderDefaults() ?? {};
         const connections = await this.models?.getConnections() ?? [];
         this.defaultConnectionId = (await this.models?.getDefaultConnection())?.id;
+        this.modelDefaults = await this.models?.getModelDefaults?.() ?? (this.defaultConnectionId ? { chat: this.defaultConnectionId } : {});
         this.providers.clear(); this.connections.clear();
         for (const item of providers) {
             const subscription = item.implementation === 'chatgpt';
@@ -74,6 +76,7 @@ export class ToolboxInventory {
             const [model] = Object.values(resolveChatModelTiers(item, provider));
             const selected = configuredModels(item, provider), available = runnableModel(provider, selected);
             this.connections.set(item.id, {providerId: item.providerId, enabled: item.enabled !== false,
+                operationModels: operationModelNames(item, provider),
                 capabilityTags: modelCapabilities(provider, selected), configuredModel: available ? available.name || available.id : null,
                 credentialsReady: hasConnectionCredentials(item), model: model ? model.name || model.id : null});
         }

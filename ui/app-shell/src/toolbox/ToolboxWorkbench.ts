@@ -1,4 +1,5 @@
 import { presentationPersistence } from '../persistence/initial-navigation';
+import { defaultConnectionMenu, updateDefaultShortcuts } from './model-defaults';
 import { createMindOSVFSUI as createVFSUI, mindOSVFSPresentation } from '../browser/vfs-presentation';
 import { ToolboxDeletion, toolboxSelectionPaths } from './ToolboxDeletion';
 import { directorySnapshot } from '../browser/directory-snapshot';
@@ -73,6 +74,7 @@ export class ToolboxWorkbench implements WorkspaceController {
     private readonly abort = new AbortController();
     private readonly prefs: ToolboxPreferences;
     private readonly filters = document.createElement('div');
+    private readonly defaultShortcuts = document.createElement('div');
     private readonly capabilities = new CapabilityFilters(() => this.ui?.getQuery() ?? '', query => this.ui.setQuery(query));
     private descriptions = new Map<string, { name: string; description?: string }>();
     private cleanups: Array<() => void | Promise<void>> = [];
@@ -155,6 +157,7 @@ export class ToolboxWorkbench implements WorkspaceController {
             const button = document.createElement('button'); button.type = 'button'; button.dataset.filter = kind;
             button.textContent = t(`toolbox.${kind}`); button.onclick = () => this.setFilter(kind); this.filters.append(button);
         }
+        this.filters.prepend(this.defaultShortcuts);
         this.filters.append(this.capabilities.root);
     }
     setFilter(filter: ToolboxFilter, remember = true): void {
@@ -175,6 +178,8 @@ export class ToolboxWorkbench implements WorkspaceController {
             actions: { 'create-file': async () => { await this.createResource(); }, import: context => this.import(context), export: context => this.export(context) } });
     }
     private project(items: VFSNodeUI[]): VFSNodeUI[] {
+        this.defaultShortcuts.hidden = this.prefs.filter !== 'all' && this.prefs.filter !== 'models';
+        updateDefaultShortcuts(this.defaultShortcuts, this.options.inventory, this.options.navigate);
         this.capabilities.update([...this.options.inventory.providers.values()].flatMap(provider => provider.capabilityTags ?? []), this.prefs.filter === 'all' || this.prefs.filter === 'models');
         const roots = items;
         const decorate = (nodes: VFSNodeUI[]): VFSNodeUI[] => nodes.filter(node =>
@@ -226,9 +231,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         if (provider !== undefined) return [...this.modelMenu(provider), ...actions];
         if (kind === 'connections') {
             const id = decodeURIComponent(toolboxSourcePath(item.id).slice(1));
-            const current = this.options.inventory.defaultConnectionId === id;
-            actions.push({ id: 'default-connection', label: t(current ? 'connection.clearDefault' : 'connection.setDefault'),
-                onClick: async () => { await this.options.resources.setDefaultConnection(current ? null : id); } });
+            actions.push(...defaultConnectionMenu(id, this.options.inventory, this.options.resources));
         }
         const drawers = this.drawerActions.menu(item);
         if (kind === 'prompts' || kind === 'mcp' || kind === 'connections'

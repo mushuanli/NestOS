@@ -11,6 +11,7 @@ import { bindWorkspaceInput, type WorkspaceHandoff } from './drafts/workspace-ha
 import { mountConversationSource } from './conversation-source';
 import { openSessionFlowOutputs } from '../flows/session-output';
 import { InvocationPanel } from '../flows/InvocationPanel';
+import { InstructionQueuePanel } from '../components/InstructionQueuePanel';
 import { invokeFlowText } from '../flows/invoke-flow';
 import { promptFlowParameters } from '../components/FlowParameterForm';
 // @file: llm-ui/shell/LLMWorkspaceEditor.ts
@@ -159,6 +160,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private rerunPending = false;
     private flowOutputAbort?: AbortController;
     private invocationPanel?: InvocationPanel;
+    private instructionQueuePanel?: InstructionQueuePanel;
     private invocationAbort = new AbortController();
     private invocationPending?: Promise<boolean>;
     private inputDialogKey?: string;
@@ -365,6 +367,9 @@ export class LLMWorkspaceEditor implements IEditor {
         const calls = document.createElement('div'); inputEl.before(calls);
         this.invocationPanel = new InvocationPanel(this.commandBus, this.options.sessionId, calls,
             text => this.chatInput.restoreInput(text));
+        const queue = document.createElement('section'); inputEl.before(queue);
+        this.instructionQueuePanel = new InstructionQueuePanel(queue, this.commandBus, this.options.sessionId);
+        this.instructionQueuePanel.update(session.snapshot.instructionQueue);
 
         // Create NavigationHelper now that historyView is available
         this.navigation = new NavigationHelper({
@@ -393,6 +398,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const validAgentId = validateAgentId(this.agentService, savedAgentId);
 
         const inputOptions: import('../components/input/ChatInputView').ChatInputOptions = {
+            instructionQueue: true,
             executionModeInfo: this.container.querySelector<HTMLElement>('.llm-workspace-titlebar__mode-info')!,
             executorUsage: this.options.executorUsage,
             nativeModels: this.options.remoteAgents?.models,
@@ -840,6 +846,7 @@ export class LLMWorkspaceEditor implements IEditor {
             this.historyView.renderWelcome();
         }
         this.navigation.updatePrompts(snapshot.sessions);
+        this.instructionQueuePanel?.update(snapshot.instructionQueue);
 
         // Assign before prompting because the callback reads the active session.
         if (this.currentSessionId && this.currentSessionId !== sessionId) await this.runAttachment?.detach();
@@ -911,6 +918,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.sessionEventUnsub?.();
         this.sessionEventUnsub = this.sessionManager.onEvent(
             (event) => {
+                if (event.type === 'instructions:changed') this.instructionQueuePanel?.update(event.payload);
                 if (event.type === 'branch:switched') void this.stateManager.switchDraftBranch(event.payload.branchName).catch(error => console.error('Branch draft switch failed', error));
                 this.sessionEventHandler.handleSessionEvent(event);
             }
@@ -1260,6 +1268,7 @@ export class LLMWorkspaceEditor implements IEditor {
             () => this.commandRegistry?.destroy(), () => this.navigation?.destroy(),
             () => this.timers.destroy(), () => this.historyPlugin?.deactivate(),
             () => this.slashPlugin?.deactivate(), () => this.invocationPanel?.destroy(),
+            () => this.instructionQueuePanel?.destroy(),
             () => this.branchIndicator?.destroy(), () => this.statusIndicator?.destroy(),
             () => this.historyView?.destroy(), () => {if (!preserve) this.chatInput?.destroy();},
             () => this.sessionService?.dispose(), () => this.branchStore?.destroy(),

@@ -24,7 +24,8 @@ src/
 - `SettingsEngine` 把 `SETTINGS_PAGES` 映射为只读虚拟文件节点；技能文件系统归 [后端技能文件系统](../../backend/app-core/src/configuration/skills-files.ts)，UI 通过后端端口使用
 - `SystemFSExploreEditor` 经 `createSystemFileInspector()` 组装只读视图：`/dev` 挂载设备描述，`/workspaces/<name>` 挂载各工作区文件系统
 - `SystemFSExploreEditor` 的 MDX 文件编辑器按需导入；设置模块初始化与 VFS 列表显示不加载正文编辑器代码。
-- `LLMUIEditors` 注入 5 个编辑器（来自 `@itookit/llm-settings-ui`）：Provider / Connection / MCP / Cost / SystemPrompt；Skill / Agent 编辑器由 llm-ui 的 skills/agent 工作区直接使用，不经过本包
+- `LLMUIEditors` 注入 6 个编辑器（来自 `@itookit/llm-settings-ui`）：ModelDefaults / Provider / Connection / MCP / Cost / SystemPrompt；Skill / Agent 编辑器由 llm-ui 的 skills/agent 工作区直接使用，不经过本包
+- `model-defaults` 页注入 ModelDefaultsEditor，作为「模型与服务」入口；即使 Provider/Connection 导航移至工具箱，此页仍保留。工具箱快捷入口导航至同一页，不创建第二套默认值存储。
 - `AppearanceSettingsEditor` 写入 `/ui/theme.json`，通过 `app:theme-change` 事件广播
 
 运行: `pnpm --filter @itookit/app-settings build`（`dev` 为 watch 模式）

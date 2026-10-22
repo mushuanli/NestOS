@@ -36,6 +36,7 @@ export class RpcPeer {
     private readonly pendingBindings = new Set<Promise<unknown>>();
     private readonly pendingInvocations = new Set<Promise<unknown>>();
     private readonly eventCallbacks = new Set<string>();
+    private readonly notificationTails = new Map<string, Promise<unknown>>();
     private readonly cleanupFunctions = new WeakSet<object>();
     private readonly callbackUses = new Map<string, { active: number; persistent: number }>();
     private readonly emitted = new Map<string, Descriptor>();
@@ -443,8 +444,18 @@ export class RpcPeer {
         const bindings = this.side === 'client' && !subscriptionMode(mode)
             && !this.remoteQuery({target: id, method, args: args as Call['args']})
             ? [...this.pendingBindings] : [];
-        return this.trackInvocation(this.operation(() => bindings.length ? Promise.all(bindings).then(() => this.invokeRemote(id, method, args))
-            : this.invokeRemote(id, method, args)));
+        return this.trackInvocation(this.operation(() => bindings.length ? Promise.all(bindings).then(() => this.invokeOrdered(id, method, args))
+            : this.invokeOrdered(id, method, args)));
+    }
+
+    /** Encode and deliver each observer's notifications in invocation order. */
+    private invokeOrdered(id: string, method: string, args: unknown[]): Promise<any> {
+        if (!this.eventCallbacks.has(id)) return this.invokeRemote(id, method, args);
+        const previous = this.notificationTails.get(id) ?? Promise.resolve();
+        const next = previous.catch(() => {}).then(() => this.invokeRemote(id, method, args));
+        this.notificationTails.set(id, next);
+        void next.finally(() => { if (this.notificationTails.get(id) === next) this.notificationTails.delete(id); }).catch(() => {});
+        return next;
     }
     private trackInvocation<T>(pending: Promise<T>): Promise<T> {
         this.pendingInvocations.add(pending);
@@ -603,7 +614,7 @@ export class RpcPeer {
         await Promise.allSettled([...this.releases].map(release => release()));
         this.releases.clear(); this.pendingBindings.clear(); this.subscriptionReleases.clear(); this.observerReleases.clear(); this.lifetime.clear(); this.retired.clear(); this.remoteRetirements.clear(); this.handles.clear(); this.remote.clear();
         this.descriptors.clear(); this.emitted.clear(); this.dirty.clear(); this.pendingPatches.clear(); this.domains.clear();
-        this.callbackUses.clear(); this.listeners.clear(); this.eventCallbacks.clear(); this.projectionsLoaded.clear(); this.lookupArgs.clear();
+        this.callbackUses.clear(); this.listeners.clear(); this.eventCallbacks.clear(); this.notificationTails.clear(); this.projectionsLoaded.clear(); this.lookupArgs.clear();
     }
 }
 function iteratorCapability(source: AsyncIterable<unknown>) {

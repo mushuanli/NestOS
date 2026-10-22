@@ -44,6 +44,7 @@ export function draftConversation(source: HarnessConversationPort, recovery: Rem
     return new Proxy(source, {get: (target, key) => {
         if (key === 'snapshot') return snapshot;
         const value = Reflect.get(target, key, target);
+        if (key === 'subscribe') return value.bind(target);
         return typeof value === 'function' ? async (...args: unknown[]) => {
             const submitted = !!recovery.submittedTurnId;
             const result = await Reflect.apply(value, target, args);

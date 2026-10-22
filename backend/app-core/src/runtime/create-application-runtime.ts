@@ -4,6 +4,7 @@ import { applicationStartupPolicy, type ApplicationStartupMode } from './startup
 import { ConversationContexts } from './conversation-contexts';
 import { conversationIdle } from './conversation-idle';
 import { ConversationViews } from './conversation-views';
+import { recoverInstructionQueues } from '../session/instruction-queue-recovery';
 import { StartupCoordinator } from './startup-coordinator';
 import { SessionLifecycleService } from '../session/session-lifecycle';
 import { MCPRemoteConnections } from '../projects/mcp-remote-connections';
@@ -24,7 +25,7 @@ import type { LLMDeviceDriver, CodexAppServerTransport } from '@itookit/kernel-a
 import { t, traceBoot, createModuleLogger, randomUUID } from '@itookit/common';
 import { type ILLMLogger } from '@itookit/driver-llm/contracts';
 import {
-    SessionRepository, SessionDirectoryStorageResolver,
+    SessionRepository, SessionDirectoryStorageResolver, createInstructionQueueSessions, SessionExecutionActivity,
     VFSAgentService, FlowEngine, FlowDefinitionStore,
 } from '@itookit/llm-session';
 import { createKernelRuntime, type HeadlessKernelRuntime, type CreateKernelRuntimeOptions } from './create-kernel-runtime';
@@ -364,7 +365,10 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         logStep(t('boot.llmEngine'));
         // Writes are only allowed while this host holds the Session's single-writer lease; the
         // gate acquires a lease on demand so a freshly created Session is writable immediately.
-        const conversationOptions = { vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
+        const instructionQueueSessions = createInstructionQueueSessions(systemFS);
+        const executionActivity = new SessionExecutionActivity();
+        cleanupFns.push(() => executionActivity.dispose());
+        const conversationOptions = { executionActivity, instructionQueueSessions, vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
                 digitalTwin,
                 scheduleAgentInitialization: run => startup.schedule(policy.agents, 'agents.initialize', run),
                 scheduleInvocationRecovery: run => startup.schedule(policy.invocations, 'invocations.recover', async () => { await initializeProjects(); await run(); }),
@@ -385,6 +389,10 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             id => recovery.acquireMetadataLease(id), { canRelease: id => conversationIdle(kernel.kernel, id) });
         cleanupFns.push(disposeConversations);
         cleanupFns.push(() => conversationContexts.close());
+        await startup.schedule(policy.invocations, 'instructions.recover', async () => {
+            await initializeProjects();
+            await recoverInstructionQueues(instructionQueueSessions, kernel.kernel, conversationContexts);
+        });
 
         const acquireSessionLease = (sessionId: string): Promise<boolean> => recovery.acquireLater(sessionId);
         const unsubscribeSessionLease = sessionManager.onGlobalEvent(event => {
@@ -412,6 +420,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             if (disposed) return;
             disposed = true;
             await startup.close();
+            await executionActivity.dispose();
             const errors: unknown[] = [];
             for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
                 try { await close(); } catch (error) { errors.push(error); }

@@ -44,6 +44,8 @@ SessionRepository.createSession 的可选 initialState 与新会话身份在同�
 
 ## 观察生命周期
 
+指令队列归 Session 后端，通过 Kernel shared version CAS 持久接纳与领取。SessionExecutionActivity 持有 Runtime 唯一 SessionInstructionRuntime；所有视图共用接纳串行入口、队列、回执与版本投影，视图只登记上下文端口和观察者。空闲发送也先持久接纳；原始摘要保存到 Round，历史身份缺少可信摘要时不能静默接纳。收尾必须按原 instructionId 确认，不按当前队首删除；持久排空后清除恢复索引。UI 只消费快照与队列编辑命令，未知执行结果不自动重发。Flow 槽位需求推导由 contracts/flow-connection-policy 统一提供给表单与准入。详见 [Session 指令队列](../../doc/design/session-instruction-queue.md)。
+
 SessionViewPort.onEvent 允许绑定前登记，多个观察者独立拥有 disposer，并随当前绑定重新挂接。解绑只释放自身转发，不清除其他所有者的通道监听；视图取消订阅不停止执行。生命周期回归位于 __tests__/session-observation.test.ts，完整 RPC/页面回归位于 app-shell 的 draft-promotion.test.ts。
 
 ## 联网搜索

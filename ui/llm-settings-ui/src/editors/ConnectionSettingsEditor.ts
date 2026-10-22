@@ -1,4 +1,4 @@
-import { hasConnectionCredentials, resolveChatModelForTier, resolveModelForTier } from '@itookit/kernel-adapters/contracts';
+import { hasConnectionCredentials, modelForOperation, resolveChatModelForTier, resolveModelForTier } from '@itookit/kernel-adapters/contracts';
 import { SettingsValidationError } from '@itookit/ui-common';
 import { renderProtocolOptions } from './provider-form';
 import { getProviderDefaultProtocol, modelReasoning, getProviderProtocols } from '@itookit/driver-llm/contracts';
@@ -633,11 +633,15 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                 const id = this.container.querySelector<HTMLSelectElement>('[name="providerId"]')?.value;
                 if (id) void this.options.hostContext?.navigate({ target: 'toolbox', resourceId: '/providers/' + encodeURIComponent(id) });
             });
-            if (connection) addConfigurationAction(this.container,
+            const current = this.connections.find(item => item.id === connection?.id);
+            if (connection && current && modelForOperation(current, this.providers[connection.providerId], 'chat')) addConfigurationAction(this.container,
                 t(connection.id === this.defaultConnectionId ? 'connection.clearDefault' : 'connection.setDefault'), async () => {
                     await this.service.setDefaultConnection(connection.id === this.defaultConnectionId ? null : connection.id);
                     await this.render();
                 });
+            addConfigurationAction(this.container, t('modelDefaults.configure'), () => {
+                void this.options.hostContext?.navigate({ target: 'settings', resourceId: 'model-defaults' });
+            });
             if (connection) addConfigurationAction(this.container, t('action.delete'), () => this.deleteConnection(connection.id, connection.name));
         } else setTimeout(() => this.bindModalEvents(connection, initialPid), 100);
     }

@@ -160,7 +160,7 @@ TTY：TtyEffectAdapter → device-tty（node-pty）
 
 ## mindos-node 与外部 harness 控制链
 
-Web/Tauri/CLI → `createMindOSNodeDriver` → 同一命名连接和凭据解析器。文件/远程进程交给 mindos-node-driver HTTP；同步交给 mindos-node-driver 的 HttpSyncClient；外部会话交给 MCPHarnessClient → mindos-node `/mcp` → 通用 Harnesses/收据表 → Codex HarnessDriver → `codex app-server --stdio`。
+Web/Tauri/CLI → `createMindOSNodeDriver` → 同一命名连接和凭据解析器。节点 0.4 起，Harness、项目目录与进程观察复用按节点/身份共享的 fetch SSE；修改命令与回执查询继续使用 HTTP/MCP。文件/远程进程交给 mindos-node-driver HTTP；同步交给 mindos-node-driver 的 HttpSyncClient；外部会话交给 MCPHarnessClient → mindos-node `/mcp` → 通用 Harnesses/收据表 → Codex HarnessDriver → `codex app-server --stdio`。
 
 Web/Tauri 在“工具箱 → MCP → 对应 mindos-node 配置 → 控制中心”打开 profile/workspace、会话和归档分页、历史、消息、输出、审批与中断。app-core 只解析连接并暴露 HarnessClient 类型端口；原生协议、主机目录和启动命令不进入 UI。外部会话不写入 MindOS 的 llm-session/Kernel，不共享其恢复日志或 Session 租约。
 

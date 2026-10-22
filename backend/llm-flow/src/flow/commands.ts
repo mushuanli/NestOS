@@ -19,7 +19,7 @@ import { readFlowTaskTranscript, type FlowTranscriptQuery } from './transcript';
 import { DurableFlowExecutor, type FlowExecutionHandle } from './executor';
 
 export interface DagCommandServiceOptions {
-    prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>) => Promise<FlowRevision>;
+    prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>;
     resolveConnection?(sessionId: string, connectionId?: string): Promise<string | undefined>;
     resolveSkillContexts?: import('./executor').DurableFlowExecutorOptions['resolveSkillContexts'];
     canWriteSession?(sessionId: string): Promise<boolean>;

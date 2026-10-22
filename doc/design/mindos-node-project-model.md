@@ -260,7 +260,7 @@ Claude 配置 `kind="claude"`、显式 command 和私有 home（CLAUDE_CONFIG_DI
 
 原生 projects JSONL 按实际 cwd/sessionId 核验，拒绝链接与目录逃逸；目录名称只用于缩小扫描，不能决定授权。历史分页最多 100 项/2 MiB，用户 UUID 定义真实轮次；工具摘要和增量消息共用原生 item 身份。目录元信息扫描有 2048 个目录名称、8192 个文件、16 MiB/5 秒上限。恢复使用核验后的日志绝对路径，兼容宿主 cwd 与沙箱虚拟路径；整份恢复日志最多 16 MiB并逐记录核验。独立 CLI 仅返回 notLoaded/owned=false，显式 resume 建立新受控进程，不能接管外部进程。真实 CLI 2.1.209 在临时数据和本地 Anthropic peer 下完成原生审批写文件、图片、历史、独立 CLI 发现与恢复；未做桌面人工视觉验收。
 
-`fileWatch` 协商 project_watch/project_unwatch。服务端使用 pinned 根及 mount 的有界 inotify，返回不含路径/正文的 watchId/version/gap/truncated；owner/project/revision 和根身份在观察前后核验。排除隐藏目录、私有 home、链接与挂载遮蔽；新目录及队列溢出重扫，溢出报告 gap。最多 16 个观察，60 秒空闲后在后续请求清理；扫描上限 2048 个目录、50000 项、2 秒，truncated 时 driver 以 30 秒补充刷新。客户端 close 释放，项目配置变化移除监听。共享状态观察在零会话时仍轮询目录版本，宿主合并通知刷新项目树；此版本不推断外部执行状态或控制所有权。
+`directoryEvents` 与统一 events 元数据协商 projects SSE 订阅。订阅使用 projectId/revision，推送 version/gap/truncated；owner、revision 与 pinned 根身份在发送前核验。排除隐藏目录、私有 home、链接与挂载遮蔽；新目录及溢出重建 inotify 并重新注册异步等待，溢出报告 gap。最多 16 个目录订阅，关闭流释放；扫描上限 2048 个目录、50000 项、2 秒，覆盖不足明确报告。零会话项目同样接收变化。旧目录轮询工具及 watchId 租约已删除；目录变化不推断外部执行状态或控制所有权。
 
 
 ## 会话活跃提示

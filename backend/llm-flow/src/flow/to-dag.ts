@@ -25,7 +25,7 @@ interface CompilationContext {
     isolated: boolean;
     runConnectionId?: string;
     connectionBindings?: Record<string, string>;
-    prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>) => Promise<FlowRevision>;
+    prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>;
 }
 
 export async function flowToDag(
@@ -38,7 +38,7 @@ export async function flowToDag(
     isolated = false,
     runConnectionId?: string,
     connectionBindings?: Record<string, string>,
-    prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>) => Promise<FlowRevision>,
+    prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>,
 ): Promise<DagRunSpec> {
     return compileFlow(flow, { bind, fallbackConnectionId, resolveComposite, compositeStack, dependencyLocks,
         isolated, runConnectionId, connectionBindings, prepareConnections });
@@ -54,7 +54,7 @@ async function compileFlow(flow: FlowRevision, context: CompilationContext): Pro
     const boundNodes = await Promise.all(flow.nodes.map(node => bindCompilationNode(node, flow, context)));
     // Admit bound configuration before resolving named slots to their frozen models.
     flow = { ...flow, nodes: boundNodes };
-    if (prepareConnections) flow = await prepareConnections(flow, connectionBindings);
+    if (prepareConnections) flow = await prepareConnections(flow, connectionBindings, runConnectionId);
     for (const node of flow.nodes) {
         if (node.plugin === 'builtin.flow' && node.pluginVersion === '2.0.0') continue;
         resolveNodeConnection(node.config, flow.connections, flow.defaultConnection, fallbackConnectionId, runConnectionId);

@@ -27,6 +27,7 @@ export interface ConversationRound {
 
 export interface Round extends ConversationRound {
     submission?: import('@itookit/llm-flow/contracts').SessionSubmission;
+    submissionDigest?: string;
     /** Frozen workflow invocation owned by this branch round. */
     flow?: { connectionBindings?: Record<string, string>; flowId: import('@itookit/llm-flow/contracts').FlowId; connectionId?: string; revision: number; parameters?: Record<string, import('@itookit/llm-flow/contracts').JsonValue> };
     exposure?: 'public' | 'internal' | 'artifact';

@@ -60,13 +60,13 @@ it('freezes the send mode before an attachment upload and keeps Flow routing aut
     overrides.executionMode = 'agent';
     await vi.waitFor(() => expect(uploaded).toBeTypeOf('function'));
     uploaded([]); await sending;
-    expect(execute).toHaveBeenLastCalledWith(SessionCommand.Send, expect.objectContaining({
+    expect(execute).toHaveBeenCalledWith(SessionCommand.Send, expect.objectContaining({
         overrides: expect.objectContaining({ executionMode: 'chat' }),
         sendIntent: expect.objectContaining({ execution: { kind: 'agent', agentId: 'default', mode: 'chat' } }),
     }));
     expect(context.chatInput.setConfig).toHaveBeenCalledWith({ settings: { executionMode: 'chat', executionModeLocked: true } });
     await command.run({ text: 'flow', files: [], overrides: { executionMode: 'chat', flowId: 'review', flowRevision: 3 } });
-    expect(execute).toHaveBeenLastCalledWith(SessionCommand.Send, expect.objectContaining({ sendIntent: expect.objectContaining({
+    expect(execute).toHaveBeenCalledWith(SessionCommand.Send, expect.objectContaining({ sendIntent: expect.objectContaining({
         execution: { kind: 'flow', flowId: 'review', revision: 3, parameters: undefined },
     }) }));
 });

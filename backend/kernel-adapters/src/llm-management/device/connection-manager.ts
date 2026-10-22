@@ -9,14 +9,18 @@ import { toConnectionMeta, aggregateProviderCosts } from '@itookit/kernel-adapte
 import { snapshotLlmPresets, type LlmManagementPresets, type ProviderConnectionPolicy } from '../contracts/presets';
 import { VFSHelpers } from './vfs-helpers';
 import type { ProviderManager } from './provider-manager';
+import { ModelDefaultStore } from './model-default-store';
+import { isModelOperation, modelForOperation, type ModelDefaults, type ModelOperation } from '../contracts/model-defaults';
+import type { LLMLogSink } from '@itookit/driver-llm/contracts';
 
 const CONNECTIONS_DIR  = '/llm/.connections';
 const DEFAULTS_VERSION = '/llm/.connections_version.json';
-const SETTINGS_PATH = '/llm/.connection-settings.json';
 
 export class ConnectionManager {
     private _connections: LLMConnection[] = [];
-    private defaultId?: string;
+    private defaults: ModelDefaults = {};
+    private mutations: Promise<unknown> = Promise.resolve();
+    private defaultOperationSequence = 0;
 
     constructor(
         private readonly helpers: VFSHelpers,
@@ -26,6 +30,7 @@ export class ConnectionManager {
         private readonly presets: LlmManagementPresets = snapshotLlmPresets(),
         private readonly providerConnectionPolicy?: ProviderConnectionPolicy,
         private readonly credentialReadiness?: (providerId: string) => boolean | undefined,
+        private readonly logger?: LLMLogSink,
     ) {}
 
     // ─── Public read accessors ─────────────────────────────────────────────
@@ -39,25 +44,68 @@ export class ConnectionManager {
         return c ? this.connToMeta(c) : undefined;
     }
 
-    getDefaultConnection(): ConnectionMeta | null {
-        const c = this.defaultConnection;
+    getDefaultConnection(operation: ModelOperation = 'chat'): ConnectionMeta | null {
+        const id = this.defaults[operation];
+        const c = id ? this.findConn(id) : undefined;
         return c ? this.connToMeta(c) : null;
     }
 
-    async loadSettings(): Promise<void> {
-        this.defaultId = (await this.helpers.readJson<{ defaultConnectionId?: string }>(SETTINGS_PATH))?.defaultConnectionId;
+    loadSettings(): Promise<void> {
+        return this.mutate(() => this.readModelDefaults());
+    }
+    private async readModelDefaults(): Promise<void> {
+        const started = performance.now(), operationId = ++this.defaultOperationSequence;
+        try {
+            const stored = await new ModelDefaultStore(this.helpers.getFileSystem()).read();
+            this.defaults = stored.defaults;
+            const legacy = stored.legacy && this.getConnection(stored.legacy);
+            if (legacy && modelForOperation(legacy, this.getProviderForConn(this.findConn(legacy.id)!), 'chat')) this.defaults.chat = legacy.id;
+            else if (stored.legacy) this.logger?.warn('model.defaults.legacy.skipped', { operation: 'model.defaults.load', operationId, stage: 'migration', outcome: 'skipped', code: 'MODEL_DEFAULT_LEGACY_INCOMPATIBLE' });
+            this.logger?.debug('model.defaults.loaded', { operation: 'model.defaults.load', operationId, stage: 'complete', outcome: 'success', count: Object.keys(this.defaults).length, durationMs: Math.round(performance.now() - started) });
+        } catch (error) {
+            const invalid = (error as { code?: string })?.code === 'MODEL_DEFAULT_SCHEMA_INVALID';
+            const code = error instanceof SyntaxError ? 'MODEL_DEFAULT_PARSE_FAILED' : invalid ? 'MODEL_DEFAULT_SCHEMA_INVALID' : 'MODEL_DEFAULT_READ_FAILED';
+            const stage = error instanceof SyntaxError ? 'parse' : invalid ? 'validation' : 'read';
+            this.logger?.warn('model.defaults.load.failed', { operation: 'model.defaults.load', operationId, stage, outcome: 'failure', code, durationMs: Math.round(performance.now() - started) });
+            throw error;
+        }
     }
 
-    async setDefaultConnection(id: string | null): Promise<void> {
-        if (id !== null) {
-            const connection = this.findConn(id);
-            const provider = connection && this.getProviderForConn(connection);
-            if (!connection || connection.enabled === false || !provider || provider.enabled === false)
-                throw new Error(`Connection is missing or disabled: ${id}`);
+    getModelDefaults(): ModelDefaults { return { ...this.defaults }; }
+    setDefaultConnection(id: string | null): Promise<void> { return this.setModelDefault('chat', id); }
+    setModelDefault(operation: ModelOperation, id: string | null): Promise<void> {
+        return this.mutate(() => this.writeModelDefault(operation, id));
+    }
+    private async writeModelDefault(operation: ModelOperation, id: string | null): Promise<void> {
+        const started = performance.now(), operationId = ++this.defaultOperationSequence;
+        let stage = 'validation';
+        try {
+            this.validateModelDefault(operation, id);
+            const next = { ...this.defaults };
+            if (id === null) delete next[operation]; else next[operation] = id;
+            stage = 'persistence';
+            await new ModelDefaultStore(this.helpers.getFileSystem()).write(next);
+            this.defaults = next;
+            this.onChanged();
+            this.logger?.info('model.defaults.saved', { operation: 'model.defaults.set', purpose: operation, operationId, stage: 'complete', outcome: 'success', durationMs: Math.round(performance.now() - started) });
+        } catch (error) {
+            const code = stage === 'validation' ? (error as { code?: string }).code ?? 'MODEL_DEFAULT_INVALID' : 'MODEL_DEFAULT_SAVE_FAILED';
+            this.logger?.warn('model.defaults.failed', { operation: 'model.defaults.set', purpose: isModelOperation(operation) ? operation : 'unknown', operationId, stage, code, outcome: 'failure', durationMs: Math.round(performance.now() - started) });
+            throw Object.assign(error instanceof Error ? error : new Error('Model default update failed'), { code });
         }
-        await this.helpers.writeJson(SETTINGS_PATH, id === null ? {} : { defaultConnectionId: id });
-        this.defaultId = id ?? undefined;
-        this.onChanged();
+    }
+
+    private validateModelDefault(operation: ModelOperation, id: string | null): void {
+        if (!isModelOperation(operation)) throw Object.assign(new Error('Unsupported default model operation'), { code: 'MODEL_DEFAULT_INPUT' });
+        if (id === null) return;
+        if (typeof id !== 'string' || !id.trim()) throw Object.assign(new Error('Invalid default connection identity'), { code: 'MODEL_DEFAULT_INPUT' });
+        const raw = this.findConn(id);
+        if (!raw) throw Object.assign(new Error('Default connection is missing'), { code: 'MODEL_DEFAULT_CONNECTION_MISSING' });
+        const provider = this.getProviderForConn(raw);
+        if (!provider) throw Object.assign(new Error('Default connection provider is missing'), { code: 'MODEL_DEFAULT_PROVIDER_MISSING' });
+        if (raw.enabled === false) throw Object.assign(new Error('Default connection is disabled'), { code: 'MODEL_DEFAULT_CONNECTION_DISABLED' });
+        if (provider.enabled === false) throw Object.assign(new Error('Default connection provider is disabled'), { code: 'MODEL_DEFAULT_PROVIDER_DISABLED' });
+        if (!modelForOperation(this.connToMeta(raw), provider, operation)) throw Object.assign(new Error(`Connection has no configured model for ${operation}`), { code: 'MODEL_DEFAULT_CAPABILITY' });
     }
 
     getFullConnection(id: string): LLMConnection | null {
@@ -85,15 +133,24 @@ export class ConnectionManager {
 
     // ─── Mutations ─────────────────────────────────────────────────────────
 
-    async ensureProviderConnection(provider: LLMProvider, systemFS?: IFileSystem): Promise<void> {
+    ensureProviderConnection(provider: LLMProvider, systemFS?: IFileSystem): Promise<void> {
+        return this.mutate(() => this.ensureProviderConnectionNow(provider, systemFS));
+    }
+
+    private async ensureProviderConnectionNow(provider: LLMProvider, systemFS?: IFileSystem): Promise<void> {
         if (provider.enabled === false || this._connections.some(connection => connection.providerId === provider.id)) return;
         const connection = this.providerConnectionPolicy?.(structuredClone(provider), structuredClone(this._connections));
         if (!connection) return;
         if (connection.providerId !== provider.id || this.findConn(connection.id)) throw new Error('Invalid provider connection policy result');
-        await this.saveConnection(connection, systemFS);
+        await this.saveConnectionNow(connection, systemFS);
     }
 
-    async saveConnection(conn: LLMConnection, systemFS?: IFileSystem): Promise<void> {
+    saveConnection(conn: LLMConnection, systemFS?: IFileSystem): Promise<void> {
+        const snapshot = structuredClone(conn);
+        return this.mutate(() => this.saveConnectionNow(snapshot, systemFS));
+    }
+
+    private async saveConnectionNow(conn: LLMConnection, systemFS?: IFileSystem): Promise<void> {
         if (!isConnection(conn)) throw new TypeError('Invalid LLM connection');
         await this.writeToDisk(conn, systemFS);
         const idx = this._connections.findIndex(c => c.id === conn.id);
@@ -110,12 +167,29 @@ export class ConnectionManager {
         }
     }
 
-    async deleteConnection(id: string, systemFS?: IFileSystem): Promise<void> {
-        if (id === this.defaultId) await this.setDefaultConnection(null);
-        await this.deleteFromDisk(id, systemFS);
-        this._connections = this._connections.filter(c => c.id !== id);
-        await this.vfs.removeDeviceNode(`/dev/llm/connection/${id}`);
-        this.onChanged();
+    deleteConnection(id: string, systemFS?: IFileSystem): Promise<void> {
+        return this.mutate(() => this.deleteConnectionNow(id, systemFS));
+    }
+
+    private async deleteConnectionNow(id: string, systemFS?: IFileSystem): Promise<void> {
+        const started = performance.now(), operationId = ++this.defaultOperationSequence;
+        let stage = 'defaults';
+        try {
+            const next = Object.fromEntries(Object.entries(this.defaults).filter(([, value]) => value !== id));
+            if (Object.keys(next).length !== Object.keys(this.defaults).length) {
+                await new ModelDefaultStore(this.helpers.getFileSystem()).write(next);
+                this.defaults = next;
+                this.onChanged();
+            }
+            stage = 'connection'; await this.deleteFromDisk(id, systemFS);
+            this._connections = this._connections.filter(c => c.id !== id);
+            stage = 'device'; await this.vfs.removeDeviceNode(`/dev/llm/connection/${id}`);
+            this.onChanged();
+            this.logger?.info('connection.deleted', { operation: 'connection.delete', operationId, stage: 'complete', outcome: 'success', durationMs: Math.round(performance.now() - started) });
+        } catch (error) {
+            this.logger?.warn('connection.delete.failed', { operation: 'connection.delete', operationId, stage, outcome: 'failure', code: 'CONNECTION_DELETE_FAILED', durationMs: Math.round(performance.now() - started) });
+            throw error;
+        }
     }
 
     // ─── Init helpers ──────────────────────────────────────────────────────
@@ -140,9 +214,17 @@ export class ConnectionManager {
 
     // ─── VFS reload (called from bindVFSEvents debounce) ──────────────────
 
-    async reload(): Promise<void> {
-        this._connections = await this.loadAll();
-        await this.loadSettings();
+    reload(): Promise<void> {
+        return this.mutate(async () => {
+            this._connections = await this.loadAll();
+            await this.readModelDefaults();
+        });
+    }
+
+    private mutate<T>(work: () => Promise<T>): Promise<T> {
+        const next = this.mutations.catch(() => {}).then(work);
+        this.mutations = next;
+        return next;
     }
 
     // ─── Private helpers ───────────────────────────────────────────────────
@@ -201,10 +283,6 @@ export class ConnectionManager {
 
     private findConn(id: string): LLMConnection | undefined {
         return this._connections.find(c => c.id === id);
-    }
-
-    private get defaultConnection(): LLMConnection | undefined {
-        return this.defaultId ? this.findConn(this.defaultId) : undefined;
     }
 
     private connToMeta(conn: LLMConnection): ConnectionMeta {

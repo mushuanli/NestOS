@@ -49,7 +49,7 @@ function harness(options: HarnessOptions = {}) {
     const ctx = {
         getSessionId: () => 'session-one',
         commands: { execute },
-        isGenerating: () => true,
+        isGenerating: () => false,
         chatInput, historyView,
         assetService: { uploadFiles },
         errorHandler: { wrap: (fn: () => Promise<unknown>) => fn() },
@@ -68,6 +68,34 @@ it('preserves accepted rounds when the send response is lost', async () => {
         expect(historyView.removeMessages).not.toHaveBeenCalled();
         expect(execute).not.toHaveBeenCalledWith(SessionCommand.DeleteMessage, expect.anything());
         expect(sessions).toEqual(['session-one', 'accepted-user', 'accepted-assistant']);
+    } finally { toast.mockRestore(); }
+});
+
+it('keeps the current execution controls active when enqueueing the next instruction fails', async () => {
+    const toast = vi.spyOn(Toast, 'error').mockImplementation(() => {});
+    try {
+        const f = harness(); f.ctx.isGenerating = () => true;
+        await new SendMessageCommand(f.ctx).run({ text: 'Keep this queued draft', files: [] });
+        expect(f.chatInput.setLoading).toHaveBeenLastCalledWith(true);
+        expect(f.chatInput.restoreInput).toHaveBeenCalledWith('Keep this queued draft', undefined);
+    } finally { toast.mockRestore(); }
+});
+
+it('reuses submission identity and uploaded references when retrying an unknown queued submission', async () => {
+    const toast = vi.spyOn(Toast, 'error').mockImplementation(() => {});
+    try {
+        const f = harness({ sendError: Object.assign(new Error('Response lost'), { outcome: 'unknown' }) });
+        const command = new SendMessageCommand(f.ctx), files = [new File(['attachment'], 'one.txt')];
+        await command.run({ text: 'queued request', files });
+        const original = f.execute.mock.calls.find(([name]) => name === SessionCommand.Send)![1];
+        f.execute.mockImplementation(async (name: string) => name === SessionCommand.Send ? original.sendIntent.submission.id
+            : { sessionId: 'session-one', revision: 1, paused: false, items: [{ id: original.sendIntent.submission.id }] });
+        await command.run({ text: 'queued request', files });
+        const sends = f.execute.mock.calls.filter(([name]) => name === SessionCommand.Send);
+        expect(sends[1][1].sendIntent.submission).toEqual(original.sendIntent.submission);
+        expect(sends[1][1].text).toBe(original.text);
+        expect(f.uploadFiles).toHaveBeenCalledOnce();
+        expect(f.historyView.setSubmission).toHaveBeenLastCalledWith();
     } finally { toast.mockRestore(); }
 });
 

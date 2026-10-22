@@ -1,4 +1,5 @@
 import { prepareFlowConnections } from './session/flow-connections';
+import { operationModelNames } from '@itookit/kernel-adapters/contracts';
 import { checkFlowConnections, type FlowConnectionCheckInput } from './session/flow-connection-check';
 import { skillContextResolver } from './session/direct-conversation';
 import { createSessionHost, type SessionHostPorts } from './utils/host-ports';
@@ -98,6 +99,8 @@ import { DagCommandService } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
+    executionActivity?: import('./session/session-execution-activity').SessionExecutionActivity;
+    instructionQueueSessions?: import('./persistence/instruction-queue-sessions').InstructionQueueSessions;
     scheduleAgentInitialization?: (initialize: () => Promise<void>) => void | Promise<void>;
     scheduleInvocationRecovery?: (recover: () => Promise<void>) => void | Promise<void>;
     directAgentPolicy?: import('./contracts').DirectAgentPolicy;
@@ -161,6 +164,8 @@ export async function initializeConversationSystem(
 
 function createManagedSession(options: ConversationSystemOptions, promptHistory: PromptHistoryService): SessionManager {
     return new SessionManager(options.sessionEngine, options.agentService, {
+        executionActivity: options.executionActivity,
+        instructionQueueSessions: options.instructionQueueSessions,
         directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, hostPorts: options.hostPorts, promptHistory,
         kernel: options.kernel, dagPlugins: options.dagPlugins, flowStore: options.flowStore,
         resolveTools: options.resolveTools, resolveHarnessToolIds: options.resolveHarnessToolIds,
@@ -202,12 +207,14 @@ function createControlPlane(
     let disposal: Promise<void> | undefined;
     const commandBus = new CommandBus();
     commandBus.register(SessionCommand.GetConnections, async () => ({ connections: (await options.agentService.getConnections()).map(connection => ({ ...connection,
+        operationModels: operationModelNames(connection, options.agentService.getProvider(connection.providerId)),
         enabled: connection.enabled !== false && options.agentService.getProvider(connection.providerId)?.enabled !== false })),
-        defaultId: (await options.agentService.getDefaultConnection())?.id }));
+        defaultId: (await options.agentService.getDefaultConnection())?.id,
+        modelDefaults: await options.agentService.getModelDefaults?.() ?? {} }));
     const dag = createDagCommands(options, commandBus);
     activateConversationPlugins(sessionManager, commandBus);
     return { sessionManager, commandBus, dag, dispose: () => disposal ??= (async () => {
-        sessionManager.destroy(); await sessionManager.promptHistory?.dispose();
+        sessionManager.destroy(); await sessionManager.waitForInstructionWrites(); await sessionManager.promptHistory?.dispose();
     })() };
 }
 
@@ -221,7 +228,7 @@ function createDagCommands(
     );
     commandBus.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as FlowConnectionCheckInput, options.agentService, flowStore, options.dagPlugins));
     const dag = new DagCommandService({
-        prepareConnections: (flow, bindings) => prepareFlowConnections(flow, bindings, options.agentService),
+        prepareConnections: (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, options.agentService, undefined, runConnectionId),
         resolveConnection: (id, selected) => resolveSessionConnection(options, id, selected),
         flowStore,
         canWriteSession: options.canWriteSession,
@@ -270,6 +277,9 @@ async function resolveSessionConnection(options: ConversationSystemOptions, sess
 }
 
 export { hasCommittedSubmission } from './persistence/submission-receipt';
+export { createInstructionQueueSessions, type InstructionQueueSessions } from './persistence/instruction-queue-sessions';
+export { SessionExecutionActivity } from './session/session-execution-activity';
+export { readSessionInstructionQueue } from './persistence/instruction-queue-store';
 
 export * from './contracts';
 export { createSessionHost, type SessionHostPorts, type SessionHost, type SessionLogger, type SessionTextKey } from './utils/host-ports';

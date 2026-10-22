@@ -399,7 +399,7 @@ it('binds a server-managed writable subdirectory while keeping workbench Session
     const register=vi.fn(async (input: {createDirectory?: boolean}) => {
         if (input.createDirectory) await remoteBackend.mkdir('/group/new'); return record;
     });
-    const harnessClose=vi.fn(async () => {}), harness=vi.fn(() => ({close:harnessClose}));
+    const harnessClose=vi.fn(async () => {}), stopEvents=vi.fn(), subscribeEvents=vi.fn(() => stopEvents), harness=vi.fn(() => ({close:harnessClose,subscribe:subscribeEvents}));
     const client={register,read:async()=>record,close:vi.fn(async()=>{}),harness} as unknown as import('@itookit/mindos-node-driver').ProjectClient;
     const runtime=await createApplicationRuntime({backend:new MemoryBackend(),ownerKind:'web',remoteSourceProvider:{
         setCredential() {},async dispose() {},projects:()=>client,
@@ -420,7 +420,9 @@ it('binds a server-managed writable subdirectory while keeping workbench Session
         expect(new TextDecoder().decode(await remoteBackend.read('/group/new/note.txt'))).toBe('remote write');
         expect(await runtime.sessionRepository.readDocument(id,'record.json')).toBe('{"local":true}');
         const control=await remote.projectHarness(project.project.id);
-        expect(harness).toHaveBeenCalledWith(record,{readOnly:false});await control.close();expect(harnessClose).toHaveBeenCalled();
+        expect(harness).toHaveBeenCalledWith(record,{readOnly:false});
+        const unsubscribe = control.subscribe('codex',vi.fn()); expect(typeof unsubscribe).toBe('function'); unsubscribe(); expect(stopEvents).toHaveBeenCalledOnce();
+        await control.close();expect(harnessClose).toHaveBeenCalled();
     }finally{await runtime.dispose();fetch.mockRestore();}
 });
 

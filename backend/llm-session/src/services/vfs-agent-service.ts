@@ -252,10 +252,12 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
         return this.llmService.getConnection(id);
     }
 
-    async getDefaultConnection(): Promise<ConnectionMeta | null> {
-        return this.llmService.getDefaultConnection();
+    async getDefaultConnection(operation?: import('@itookit/kernel-adapters/contracts').ModelOperation): Promise<ConnectionMeta | null> {
+        return this.llmService.getDefaultConnection(operation);
     }
     async setDefaultConnection(id: string | null): Promise<void> { return this.llmService.setDefaultConnection(id); }
+    getModelDefaults() { return this.llmService.getModelDefaults(); }
+    setModelDefault(operation: import('@itookit/kernel-adapters/contracts').ModelOperation, id: string | null) { return this.llmService.setModelDefault(operation, id); }
 
     // ─── IAgentManagementService — Agent CRUD ─────────────────────────────────
 

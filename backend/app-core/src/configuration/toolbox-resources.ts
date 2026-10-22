@@ -44,6 +44,7 @@ export class ToolboxResources {
     }
     subscribe(listener: () => void): () => void { return this.agents.onChange(listener); }
     setDefaultConnection(id: string | null): Promise<void> { return this.agents.setDefaultConnection(id); }
+    setModelDefault(operation: import('@itookit/kernel-adapters/contracts').ModelOperation, id: string | null): Promise<void> { return this.agents.setModelDefault(operation, id); }
     toolGrant = toolGrant;
     getAgents(): Promise<AgentDefinition[]> { return this.agents.getAgents(); }
     hasProvider(id: string): boolean { return this.agents.getProviders().some(item => item.id === id); }

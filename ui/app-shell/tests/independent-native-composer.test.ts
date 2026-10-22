@@ -11,7 +11,7 @@ it('routes an actual independent composer selection through the binding and repl
     let state: ConversationSnapshot = {sessionId: 'session', title: 'Native', messages: [], requests: [], canSend: true,
         canInterrupt: false, canRespond: false, pending: false, disconnected: false, gap: false, supportsModels: true, supportsSlashCommands: true};
     const controls: ConversationControls = {read: vi.fn(async () => state), snapshot: () => state,
-        subscribe: listener => {listeners.add(listener); return () => {listeners.delete(listener);};}, poll: vi.fn(async () => state),
+        subscribe: listener => {listeners.add(listener); return () => {listeners.delete(listener);};}, refresh: vi.fn(async () => state),
         models: vi.fn(async () => ({models: [{id: 'native', label: 'Native', reasoningEfforts: [{id: 'high', label: 'High'}]}]})),
         commands: vi.fn(async () => [{name: 'verify', description: 'Native verify', kind: 'prompt'}]),
         command: vi.fn(async () => ({...state, submittedTurnId: 'turn'})), send: vi.fn(), interrupt: vi.fn(), respond: vi.fn(), reconcile: vi.fn(), close: vi.fn()};

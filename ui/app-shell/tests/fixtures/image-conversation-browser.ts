@@ -19,7 +19,7 @@ async function checks() {
     let snapshot: ConversationSnapshot = {sessionId: 'native', title: 'Fixture', messages: [], requests: [], attachments: ['image'],
         canSend: true, canRespond: false, canInterrupt: false, pending: false, disconnected: false, gap: false};
     const sent: NonNullable<Parameters<ConversationControls['send']>[1]>[] = [];
-    const controls = (): ConversationControls => ({snapshot: () => snapshot, read: async () => snapshot, poll: async () => snapshot,
+    const controls = (): ConversationControls => ({snapshot: () => snapshot, read: async () => snapshot, refresh: async () => snapshot,
         send: async (_text, attachments = [], _selection, id) => {sent.push(attachments); snapshot = {...snapshot, submittedTurnId: 'accepted-turn', submission: {id: id!, status: 'accepted', turnId: 'accepted-turn'}, draft: ''}; return snapshot;},
         respond: async () => snapshot, interrupt: async () => snapshot, reconcile: async () => snapshot, close: async () => {},
         saveDraft: async text => {snapshot = {...snapshot, draft: text};},

@@ -424,7 +424,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         }, 50);
     }
     private async showUpdate(): Promise<void> {
-        try {await this.show(this.service.snapshot?.() ?? await this.service.poll());}
+        try {await this.show(this.service.snapshot?.() ?? await this.service.refresh());}
         catch (error) {this.showUpdateError(error);}
     }
     private async runControl(action: () => Promise<ConversationSnapshot>): Promise<void> {

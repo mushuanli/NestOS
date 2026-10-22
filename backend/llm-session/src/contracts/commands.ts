@@ -18,6 +18,8 @@ export const SessionCommand = {
     CanDelete: 'session.can-delete',
     CanEdit: 'session.can-edit',
     Send: 'session.send',
+    GetInstructionQueue: 'session.instructions.get',
+    EditInstructionQueue: 'session.instructions.edit',
     Abort: 'session.abort',
     ContextSet: 'session.context.set',
     ContextGet: 'session.context.get',

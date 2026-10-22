@@ -11,6 +11,7 @@ import { HttpViewClient, SnapshotCache, ViewExpiredError } from '@itookit/app-tr
 import { authenticatedFetch, close, secureServers } from './tls-fixture';
 import { InputAssetCommand } from '@itookit/app-contracts';
 import { validFlowImages } from '@itookit/llm-flow/contracts';
+type SessionInstructionQueue = NonNullable<import('@itookit/app-contracts/services').SessionEditorInitialData['snapshot']['instructionQueue']>;
 
 let certificateRoot: string, certificates: string, directory: string, backend: LocalFSBackend;
 let api: Awaited<ReturnType<typeof createApplicationApi>>, server: Awaited<ReturnType<typeof secureServers>>, auth: Awaited<ReturnType<typeof authenticatedFetch>>;
@@ -27,6 +28,43 @@ beforeEach(async () => {
 });
 afterEach(async () => { await Promise.all(clients.splice(0).map(client => client.close())); await api.close(); auth.close(); await close(server.server); await backend.close(); await rm(directory, { recursive: true, force: true }); });
 async function client(id: string) { const peer = new HttpViewClient(id, server.origin + '/api/application', auth.fetcher); clients.push(peer); return peer.start(); }
+it('shares purpose defaults between HTTP settings and toolbox and rejects incompatible models', async () => {
+    const root = await client('model-defaults'), service = root.services.agentService;
+    await service.saveProvider({ id: 'defaults-test', name: 'Defaults', implementation: 'openai-compatible', apiKey: 'private-key', baseURL: 'https://example.test',
+        models: [{ id: 'image', name: 'Image', category: 'image', operations: { 'image.generate': {
+            inputModalities: ['text'], outputModalities: ['image'], formats: ['png'],
+        } } }], media: { 'image.generate': { adapter: 'openai-images' } } });
+    await service.saveConnection({ id: 'defaults-image', name: 'Image', providerId: 'defaults-test', tiers: { optimal: 'image' } });
+    await root.services.llmDriver.setModelDefault('image.generate', 'defaults-image');
+    expect(await service.getModelDefaults()).toEqual({ 'image.generate': 'defaults-image' });
+    const view = await root.backend.toolboxView();
+    try {
+        expect(view.inventory.modelDefaults).toEqual({ 'image.generate': 'defaults-image' });
+        expect(view.inventory.connections.get('defaults-image')?.operationModels).toEqual({ 'image.generate': 'Image' });
+        expect(JSON.stringify([...view.inventory.connections])).not.toContain('private-key');
+        await expect(service.setModelDefault('chat', 'defaults-image')).rejects.toMatchObject({ code: 'MODEL_DEFAULT_CAPABILITY' });
+        await view.resources.setModelDefault('image.generate', null);
+        expect(await root.services.llmDriver.getModelDefaults()).toEqual({});
+    } finally { await view.dispose(); }
+});
+it('transports durable instruction queue edits and rejects stale client versions', async () => {
+    const root = await client('instruction-queue');
+    const id = await root.services.projects.sessions.create('Queued HTTP session', null);
+    const commands = root.services.commandBus;
+    await commands.execute('session.bind', { sessionId: id });
+    await commands.execute('session.instructions.edit', { action: 'pause', expectedRevision: 0 });
+    const a = await commands.execute('session.send', { text: 'first queued', files: [], agentId: 'default' });
+    const b = await commands.execute('session.send', { text: 'second queued', files: [], agentId: 'default' });
+    let queue = await commands.execute<SessionInstructionQueue>('session.instructions.get');
+    expect(queue.items.map(item => item.text)).toEqual(['first queued', 'second queued']);
+    expect(queue).not.toHaveProperty('accepted');
+    await expect(commands.execute('session.instructions.edit', { action: 'remove', id: a, expectedRevision: 0 })).rejects.toMatchObject({ code: 'QUEUE_CONFLICT' });
+    queue = await commands.execute<SessionInstructionQueue>('session.instructions.edit', { action: 'reorder', ids: [b, a], expectedRevision: queue.revision });
+    queue = await commands.execute<SessionInstructionQueue>('session.instructions.edit', { action: 'merge', ids: [a, b], expectedRevision: queue.revision });
+    expect(queue.items).toHaveLength(1); expect(queue.items[0].text).toBe('second queued\n\nfirst queued');
+    await commands.execute('session.instructions.edit', { action: 'remove', id: b, expectedRevision: queue.revision });
+    await vi.waitFor(() => expect(root.services.sessionManager.getSnapshot().instructionQueue?.items).toEqual([]));
+});
 it('keeps staged image references valid across the authenticated command transport', async () => {
     const root = await client('image-upload');
     const url = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aO9sAAAAASUVORK5CYII=';

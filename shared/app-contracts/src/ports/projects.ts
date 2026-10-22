@@ -23,7 +23,7 @@ export interface ProjectConversationPort extends HarnessConversationPort {
     readonly conversationId?: string;
     snapshot(): ProjectConversationSnapshot;
     read(): Promise<ProjectConversationSnapshot>;
-    poll(): Promise<ProjectConversationSnapshot>;
+    refresh(): Promise<ProjectConversationSnapshot>;
     send(text: string, attachments?: HarnessContracts.HarnessAttachment[], selection?: HarnessContracts.HarnessModelSelection, submissionId?: string): Promise<ProjectConversationSnapshot>;
     command?(name: string, args?: string, selection?: HarnessContracts.HarnessModelSelection, inputText?: string, submissionId?: string): Promise<ProjectConversationSnapshot>;
     loadEarlier(): Promise<ProjectConversationSnapshot>;

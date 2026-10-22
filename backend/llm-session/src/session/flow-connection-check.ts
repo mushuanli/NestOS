@@ -23,7 +23,7 @@ export async function checkFlowConnections(input: FlowConnectionCheckInput, agen
         await flowToDag(checked.flow, undefined, fallback,
             definitions ? (id, revision) => definitions.loadRevision(id, revision) : undefined, [], checked.flow.dependencyLocks, false,
             input.connectionId, input.connectionBindings,
-            (flow, bindings) => prepareFlowConnections(flow, bindings, agents));
+            (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, agents, undefined, runConnectionId));
         return {valid: true};
     } catch (error) { throw connectionError(error instanceof Error ? error.message : 'Flow connection admission failed'); }
 }

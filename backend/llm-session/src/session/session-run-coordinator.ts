@@ -29,6 +29,7 @@ import { SessionState } from './session-state';
 import { bindFlowNode } from './flow-node-binder';
 import { snapshotTaskInput, directExecutionMode } from './direct-execution-mode';
 import { resolveSessionExecutionMode } from './session-execution-mode';
+import type { SessionExecutionActivity } from './session-execution-activity';
 
 export interface SessionRunCallbacks {
     /** Commit persisted rounds to the projection before exposing a terminal status. */
@@ -51,6 +52,7 @@ interface ExecutionSetup {
 
 export class SessionRunCoordinator {
     private readonly active = new Map<string, ExecutionTask>();
+    private readonly admitting = new Set<string>();
     private readonly logs = new Map<string, RoundLog>();
     private readonly runs: ConversationRunCoordinator;
 
@@ -73,6 +75,7 @@ export class SessionRunCoordinator {
         resolveHarnessToolIds?: (sessionId: string) => Promise<string[]>,
         private readonly host: SessionHost = createSessionHost(),
         directAgentPolicy?: import('../contracts/direct-agent-policy').DirectAgentPolicy,
+        private readonly activity?: SessionExecutionActivity,
     ) {
         this.runs = new ConversationRunCoordinator({
             hostPorts: host,
@@ -104,19 +107,44 @@ export class SessionRunCoordinator {
         }
     }
 
+    async bindQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
+        const defaults = await this.agents.getModelDefaults(), settings = await this.engine.getSessionSettings(sessionId);
+        const connectionId = (item.overrides && 'connectionId' in item.overrides ? item.overrides.connectionId : settings.connectionId) ?? defaults.chat;
+        return { ...item, connectionBinding: { connectionId, defaults } };
+    }
+
+    async validateSubmission(input: TaskInput): Promise<void> {
+        const config = await this.resolveConfig(input);
+        this.assertAgentVersion(config, input.agentId);
+    }
+
     async submit(input: TaskInput, runtime: SessionRuntime): Promise<string> {
         input = snapshotTaskInput(input);
-        await this.assertCanSubmit(input.sessionId);
-        if (this.active.has(input.sessionId)) {
+        if (this.isActive(input.sessionId)) {
             throw new ConversationError(ConversationErrorCode.SESSION_BUSY, 'Session already has an active run');
         }
-        const task = await this.createTask(input);
-        this.active.set(input.sessionId, task);
-        runtime.currentTaskId = task.id;
-        this.callbacks.onStatusChange(input.sessionId, 'queued');
-        void this.execute(task, runtime);
-        return task.id;
+        this.admitting.add(input.sessionId);
+        const admission = new AbortController();
+        this.activity?.begin(input.sessionId, () => { admission.abort(); this.runs.cancel(input.sessionId); });
+        let accepted = false;
+        try {
+            await this.assertCanSubmit(input.sessionId);
+            const task = await this.createTask(input);
+            if (admission.signal.aborted) throw new ConversationError(ConversationErrorCode.ABORTED, 'Submission was cancelled during admission');
+            this.active.set(input.sessionId, task);
+            this.activity?.begin(input.sessionId, () => { task.abortController.abort(); this.runs.cancel(input.sessionId); });
+            accepted = true;
+            runtime.currentTaskId = task.id;
+            this.callbacks.onStatusChange(input.sessionId, 'queued');
+            void this.execute(task, runtime);
+            return task.id;
+        } finally {
+            this.admitting.delete(input.sessionId);
+            if (!accepted) this.activity?.finish(input.sessionId);
+        }
     }
+
+    isActive(sessionId: string): boolean { return this.admitting.has(sessionId) || this.active.has(sessionId) || !!this.activity?.isActive(sessionId); }
 
     respondToSignal(sessionId: string, signal: Signal): void {
         if (this.runs.signal(sessionId, signal)) return;
@@ -125,7 +153,7 @@ export class SessionRunCoordinator {
 
     abort(sessionId: string): void {
         const task = this.active.get(sessionId);
-        if (!task) return;
+        if (!task) { this.activity?.abort(sessionId); return; }
         task.abortController.abort();
         this.runs.cancel(sessionId);
     }
@@ -153,6 +181,7 @@ export class SessionRunCoordinator {
         } finally {
             this.active.delete(task.sessionId);
             runtime.currentTaskId = undefined;
+            this.activity?.finish(task.sessionId, runtime.status, task.input.instructionId);
         }
     }
 
@@ -188,7 +217,7 @@ export class SessionRunCoordinator {
                 (node, defaults) => bindFlowNode(node, defaults, snapshot, task, setup, this.agents),
                 setup.config.connectionId,
                 (id, childRevision) => definitions.loadRevision(id, childRevision),
-                [], revision.dependencyLocks, false, task.input.overrides?.connectionId, flow.connectionBindings, (definition, bindings) => prepareFlowConnections(definition, bindings, this.agents),
+                [], revision.dependencyLocks, false, task.input.overrides?.connectionId, flow.connectionBindings, (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, this.agents, task.input.instructionConnectionBinding?.defaults, runConnectionId),
             ),
             (node, snapshot, defaults) => bindFlowNode(node as Parameters<typeof bindFlowNode>[0], defaults as Parameters<typeof bindFlowNode>[1], snapshot, task, setup, this.agents),
         );
@@ -200,14 +229,11 @@ export class SessionRunCoordinator {
             ?? new RoundLog(this.engine, input.sessionId);
         this.logs.set(input.sessionId, roundLog);
         const manifest = await roundLog.loadManifest();
-        const agent = await this.resolveConfig(input);
-        if (!agent.agentVersion) {
-            throw new Error(
-                `Agent version is required: ${agent.id} — requested agentId='${input.agentId}' `
-                + 'resolved to the fallback config (unknown/empty agent id, or resolution failed). '
-                + 'See the [AgentResolver] warning in the console.',
-            );
+        if (input.instructionBranch && input.instructionBranch !== manifest.currentBranch) {
+            throw new ConversationError(ConversationErrorCode.SESSION_BUSY, 'Queued instruction branch changed during admission');
         }
+        const agent = await this.resolveConfig(input);
+        this.assertAgentVersion(agent, input.agentId);
         const mode = input.overrides?.flowId ? undefined : directExecutionMode(input);
         if (mode) await this.engine.saveSessionSettings(input.sessionId, { executionMode: mode, executionModeLocked: true });
         const branchRef = manifest.currentBranch || 'main';
@@ -296,11 +322,19 @@ export class SessionRunCoordinator {
         const settings = await this.engine.getSessionSettings(input.sessionId);
         const identity = await this.agents.resolve(input.agentId);
         const config = await this.agents.reResolveModel(identity, {
-            connectionId: input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId,
+            connectionId: input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
+                : input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId,
             modelTier: input.overrides?.modelTier,
+            useDefault: !input.instructionConnectionBinding,
             allowUnconfigured: input.sendIntent?.execution.kind === 'flow',
         });
         return input.overrides ? applyOverrides(config, input.overrides) : config;
+    }
+
+    private assertAgentVersion(agent: ExecutorConfig, agentId: string): asserts agent is ExecutorConfig & { agentVersion: string } {
+        if (!agent.agentVersion) throw new Error(`Agent version is required: ${agent.id} — requested agentId='${agentId}' `
+            + 'resolved to the fallback config (unknown/empty agent id, or resolution failed). '
+            + 'See the [AgentResolver] warning in the console.');
     }
 
     private async getLog(task: ExecutionTask): Promise<RoundLog> {
@@ -330,6 +364,7 @@ export class SessionRunCoordinator {
         this.active.delete(task.sessionId);
         runtime.currentTaskId = undefined;
         this.callbacks.onStatusChange(task.sessionId, 'failed');
+        this.activity?.finish(task.sessionId, 'failed', task.input?.instructionId);
         this.host.logger.error('Session context not found', { sessionId: task.sessionId });
     }
 }

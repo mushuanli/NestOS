@@ -270,14 +270,16 @@ export class AgentResolver {
      */
     getConnection(id: string) { return this.agentService.getConnection(id); }
     getProvider(id: string) { return this.agentService.getProvider(id); }
+    async getModelDefaults() { return await this.agentService.getModelDefaults?.() ?? {}; }
 
     async reResolveModel(config: ExecutorConfig, overrides: {
         connectionId?: string;
         modelTier?: ModelTier;
         allowUnconfigured?: boolean;
+        useDefault?: boolean;
     }): Promise<ExecutorConfig> {
         const connId = overrides.connectionId ?? config.connectionId;
-        const connMeta = connId ? await this.agentService.getConnection(connId) : await this.agentService.getDefaultConnection();
+        const connMeta = connId ? await this.agentService.getConnection(connId) : overrides.useDefault === false ? null : await this.agentService.getDefaultConnection();
         if (!connMeta && !connId && overrides.allowUnconfigured) return config;
         if (!connMeta) throw new Error(connId ? `Connection not found: ${connId}` : 'No default connection configured');
         const provider = this.agentService.getProvider(connMeta.providerId);

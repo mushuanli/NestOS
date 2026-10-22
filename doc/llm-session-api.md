@@ -104,6 +104,8 @@ class SessionManager implements ISession, SessionQuery {
 
 ## 会话核心
 
+Session 指令队列由 Runtime 共享的后端服务持久接纳及自动续发；空闲和运行中的 `session.send` 均返回稳定指令 ID，持久写入成功后才进入执行。`session.instructions.get` 读取 `SessionInstructionQueue`，`session.instructions.edit` 使用 `InstructionQueueEdit.expectedRevision` 删除、调整顺序、合并、暂停、继续或重试准入失败的指令。各视图的 `SessionSnapshot.instructionQueue` 和 `instructions:changed` 提供同一版本读模型。状态、恢复边界及前后端 C4 见 [Session 指令队列](design/session-instruction-queue.md)。
+
 ### CommandBus
 
 `CommandBus implements ICommandBus` —— 会话命令总线（slash 命令注册/分发；`DagCommandService.register(bus)` 与插件命令均注册于此）。

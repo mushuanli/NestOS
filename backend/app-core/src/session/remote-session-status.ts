@@ -6,6 +6,7 @@ interface Watch {
     identity: string; listeners: Set<() => void>; rows: HarnessStatusRow[]; abort: AbortController;
     port?: HarnessStatusPort; timer?: ReturnType<typeof setTimeout>; work?: Promise<void>; failures: number;
     refreshRequested?: boolean;
+    stopSource?: () => void;
 }
 interface CachedStatus { identity: string; rows: HarnessStatusRow[]; fileVersion?: string; expiresAt: number }
 /** Ref-counted project observers. Identity includes configuration, server, grants and revision. */
@@ -46,23 +47,24 @@ export class RemoteSessionStatus {
         if (!watch || watch.abort.signal.aborted) return;
         clearTimeout(watch.timer); watch.timer = undefined;
         if (watch.work) { watch.refreshRequested = true; await watch.work; return; }
-        watch.work ??= this.poll(projectId, watch).finally(() => { watch.work = undefined; });
+        watch.work ??= this.readStatus(projectId, watch).finally(() => { watch.work = undefined; });
         await watch.work;
     }
     private schedule(id: string, watch: Watch, delay: number) {
-        watch.timer = setTimeout(() => { watch.timer = undefined; watch.work = this.poll(id, watch).finally(() => { watch.work = undefined; }); }, delay);
+        watch.timer = setTimeout(() => { watch.timer = undefined; watch.work = this.readStatus(id, watch).finally(() => { watch.work = undefined; }); }, delay);
     }
-    private async poll(id: string, watch: Watch) {
+    private async readStatus(id: string, watch: Watch) {
         try {
             const identity = this.identity(id);
             if (!identity) { watch.rows = []; this.notify(watch); await this.stop(id, watch); return; }
             if (watch.identity !== identity) {
-                watch.rows = []; watch.fileVersion = undefined; watch.identity = identity; await watch.port?.close(); watch.port = undefined;
+                watch.rows = []; watch.fileVersion = undefined; watch.identity = identity; await watch.port?.close(); watch.stopSource?.(); watch.stopSource = undefined; watch.port = undefined;
             }
             const options = {signal: watch.abort.signal, timeoutMs: 5000};
             watch.port ??= await this.open(id, options);
             if (watch.abort.signal.aborted) { await watch.port.close(); return; }
-            const rows = await watch.port.poll(options);
+            watch.stopSource ??= watch.port.subscribe(() => { void this.refresh(id).catch(() => {}); });
+            const rows = await watch.port.refresh(options);
             if (watch.abort.signal.aborted || identity !== this.identity(id)) return;
             const meaningful = (values: HarnessStatusRow[]) => JSON.stringify(values.map(row => ({...row, observation: {...row.observation, observedAt: 0}})));
             const fileVersion = watch.port.fileVersion?.();
@@ -80,11 +82,9 @@ export class RemoteSessionStatus {
         } finally { this.scheduleAfterPoll(id, watch); }
     }
     private scheduleAfterPoll(id: string, watch: Watch): void {
-        const active = watch.rows.some(row => row.observation.execution === 'running'
-            || row.observation.execution === 'waiting-approval' || row.observation.execution === 'waiting-input' || row.observation.receiptUnknown);
         const requested = watch.refreshRequested; watch.refreshRequested = false;
         if (!watch.abort.signal.aborted && watch.listeners.size) this.schedule(id, watch,
-            requested ? 0 : Math.min(30_000, (active || watch.failures ? 1000 : 15_000) * 2 ** Math.min(watch.failures, 5)));
+            requested ? 0 : Math.min(30_000, (watch.failures ? 1000 : 15_000) * 2 ** Math.min(watch.failures, 5)));
     }
     private notify(watch: Watch): void {
         for (const listener of watch.listeners) {
@@ -93,7 +93,7 @@ export class RemoteSessionStatus {
     }
     private async stop(id: string, watch: Watch) {
         this.remember(id, watch);
-        watch.abort.abort(); clearTimeout(watch.timer);
+        watch.abort.abort(); clearTimeout(watch.timer); watch.stopSource?.();
         if (this.watches.get(id) === watch) this.watches.delete(id);
         await watch.port?.close();
     }

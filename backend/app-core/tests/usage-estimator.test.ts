@@ -15,10 +15,10 @@ it('caches quotes per session revision and invalidates them when the supplied pr
 });
 it('projects injected quotes through all host calls and leaves the native snapshot unmodified', async () => {
     const state = {usage, title: 'native', messages: [], requests: [], pending: false, canSend: true, gap: false, disconnected: false};
-    const source = {snapshot: () => state, read: async () => state, poll: async () => state, close: async () => {}};
+    const source = {snapshot: () => state, read: async () => state, subscribe: () => () => {}, refresh: async () => state, close: async () => {}};
     const view = observeConversation(source as never, createUsageCostEstimator(() => ({model_pricing: [{id: 'default', price: [3, 0, 0, 0], providers: {}}]})));
     expect((await view.read()).usageEstimate?.estimatedCostUsd).toBe(3);
-    expect((await view.poll()).usageEstimate?.estimatedCostUsd).toBe(3);
+    expect((await view.refresh()).usageEstimate?.estimatedCostUsd).toBe(3);
     expect('usageEstimate' in state).toBe(false);
     await view.close();
 });

@@ -27,7 +27,7 @@ export class ConversationViews {
     private releaseIfIdle(entry: Entry): Promise<void> {
         if (entry.disposal) return entry.disposal;
         const busy = entry.view.sessionManager.getAllSessions().some(session => session.status === 'running' || session.status === 'queued');
-        return busy ? Promise.resolve() : this.finish(entry);
+        return busy || entry.view.sessionManager.hasPendingInstructions?.() ? Promise.resolve() : this.finish(entry);
     }
     private finish(entry: Entry): Promise<void> {
         return entry.disposal ??= (async () => {

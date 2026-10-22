@@ -121,12 +121,13 @@ import type { MCPServer, MCPDiscovery } from '@itookit/tools/mcp-contracts';
  * IConnectionService 和 IAgentConfigService 共同继承此接口，消除重复方法声明。
  */
 export interface IConnectionReader {
+    getModelDefaults(): Promise<import('./model-defaults').ModelDefaults>;
     /** 返回安全元数据列表（不含 apiKey） */
     getConnections(): Promise<ConnectionMeta[]>;
     /** 按 ID 返回安全元数据 */
     getConnection(id: string): Promise<ConnectionMeta | undefined>;
     /** 返回默认连接的安全元数据 */
-    getDefaultConnection(): Promise<ConnectionMeta | null>;
+    getDefaultConnection(operation?: import('./model-defaults').ModelOperation): Promise<ConnectionMeta | null>;
     /** 返回完整连接（含 apiKey），仅供 Settings UI 编辑表单使用 */
     getFullConnection(id: string): Promise<LLMConnection | null>;
     /** 监听连接数据变化 */
@@ -152,6 +153,7 @@ export interface IConnectionReader {
  * 仅 getFullConnection() / getFullProvider() 返回完整对象，供 Settings UI 编辑使用。
  */
 export interface IConnectionService extends IConnectionReader, Partial<ProviderAuthorizationService> {
+    setModelDefault(operation: import('./model-defaults').ModelOperation, id: string | null): Promise<void>;
     /** Persist the global default; null clears it without choosing a replacement. */
     setDefaultConnection(id: string | null): Promise<void>;
     /** 保存连接（接受完整连接，含 apiKey） */

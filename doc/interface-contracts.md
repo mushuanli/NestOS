@@ -185,7 +185,7 @@ mindos-node 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）�
 
 ### 远程项目会话展示端口
 
-`ui-common` 的 `ConversationControls` 由宿主注入，提供 read/poll/send/respond/interrupt/reconcile/close 及能力限定的 rename/archive，返回规范化历史、待交互卡片及操作可用状态。`mindos-node-driver` 的 `HarnessConversation` 按结构实现；app-core 的 `ProjectRemoteMountService.projectConversation` 注入项目授权和持久回执 journal；llm-ui 只消费该端口。`RemoteAgentControls` 提供项目范围内目标列表及发送路由，远程选择不进入本地 SessionCommand.Send。原生会话引用、输入草稿和待确认回执位于 `/etc/fs/harness-conversations.seq`，不复制原生历史。 `ConversationSnapshot` 可携带 `canFork` / `hasEarlier`，对应可选 `fork` / `branches` / `loadEarlier`；分支切换仍由宿主导航处理。`HarnessHistory.nextCursor` 与 `HarnessHistoryOptions.cursor` 描述只读历史分页；`HarnessClient.inspect` 读取元信息，`fork` 是带 epoch/requestId 的原生修改。
+`ui-common` 的 `ConversationControls` 由宿主注入，提供 read/refresh/subscribe/send/respond/interrupt/reconcile/close 及能力限定的 rename/archive，返回规范化历史、待交互卡片及操作可用状态。`mindos-node-driver` 的 `HarnessConversation` 按结构实现；app-core 的 `ProjectRemoteMountService.projectConversation` 注入项目授权和持久回执 journal；llm-ui 只消费该端口。`RemoteAgentControls` 提供项目范围内目标列表及发送路由，远程选择不进入本地 SessionCommand.Send。原生会话引用、输入草稿和待确认回执位于 `/etc/fs/harness-conversations.seq`，不复制原生历史。 `ConversationSnapshot` 可携带 `canFork` / `hasEarlier`，对应可选 `fork` / `branches` / `loadEarlier`；分支切换仍由宿主导航处理。`HarnessHistory.nextCursor` 与 `HarnessHistoryOptions.cursor` 描述只读历史分页；`HarnessClient.inspect` 读取元信息，`fork` 是带 epoch/requestId 的原生修改。
 
 `ModelConfigurationCommands.inspectMCPDeletion` 返回配置和项目挂载引用的删除预览；`deleteMCPServers` 校验预览并要求有引用时显式 force。`MCPDeletionPort` 由 ProjectRemoteMountService 实现，预览由 ProjectService 提供远程项目与本地会话信息；经 SessionLifecycleService 清理以目标 MCP 为根来源的本地远程项目及其本地会话，再批量移除引用并释放视图。普通本地项目只解除附加挂载，服务器内容和原生会话保留。普通 MCP 删除仍禁止有引用的配置。
 
@@ -198,7 +198,7 @@ mindos-node 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）�
 `HarnessProfile.capabilities` 可声明 rename/archive/unarchive 和 attachments（text/image）；`HarnessSession.archived` 表示原生归档。管理调用沿用 epoch/requestId/receipt，不以 VFS rename/delete 替代原生操作。`ConversationSnapshot` 暴露 canRename/canArchive/canUnarchive 与附件种类；`send` 和 `saveDraft` 接受有界内联附件，`draftAttachments` 只保存未发送的输入，不复制原生历史。未知 turn 回执确认后清空已提交草稿，保留后续编辑，不自动重发。`HarnessStatusRow` 带可选 title/archived/fileVersion，宿主通过共享订阅更新标签及有限目录刷新；普通文本 delta 不推进 fileVersion。
 
 
-`HarnessClient.directoryVersion`、`HarnessStatusPort.fileVersion` 是可选的目录观察端口。发现元数据 `MindOSNodeDescriptor.fileWatch` 协商 project_watch/project_unwatch，使用项目 revision 和私有 watchId；响应只返回版本、gap 及覆盖不足标记。`RemoteSessionStatus.fileVersion` 合并独立目录版本与原生文件事件，零会话仍可通知，授权变更失效。Claude 与 Codex 共用公共会话契约；Claude 子进程断线的 harness/disconnected 携带 threadId，只影响该会话。Claude capability 不声明未实现的分支、重命名或归档操作。
+`HarnessClient.subscribeDirectory` 和 `directorySnapshot` 分别提供项目目录通知与本地最近版本，`HarnessStatusPort.subscribe/refresh/fileVersion` 提供状态投影。节点发现的 events 元数据协商统一 fetch SSE，Harness、目录、进程共享节点与身份下的连接，仍核验项目 revision。`RemoteSessionStatus.fileVersion` 合并独立目录版本与原生文件事件，零会话仍可通知，授权变更失效。会话与侧栏保留 15 秒权威快照核对，实时事件不走轮询。旧事件/目录轮询接口已删除，需要配套升级节点和 driver。Claude 与 Codex 共用公共契约；单个 Claude 子进程断线只影响其 thread。
 
 ## 数字分身宿主接口
 

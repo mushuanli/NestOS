@@ -9,6 +9,27 @@ afterEach(() => { views.splice(0).forEach(view => view.destroy()); document.body
 const ready = (extra: Partial<ConnectionOption> = {}): ConnectionOption => ({id: 'main', name: 'Main connection', provider: 'provider-a',
     hasApiKey: true, credentialsReady: true, isDefault: true, hasTiers: false, tiers: {optimal: 'Chat model'}, ...extra});
 
+it('allows another instruction and attachments while a local queued session runs', async () => {
+    const f = setup(async () => [ready()], { instructionQueue: true });
+    await f.view.refreshConnections(); f.view.setLoading(true); f.type('Next instruction');
+    expect(f.send.style.display).toBe('flex');
+    expect(f.send.getAttribute('aria-label')).toBe(t('session.instructions.add'));
+    expect(f.button('.llm-input__btn--stop').style.display).toBe('flex');
+    f.enter();
+    await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
+    expect(f.onSend.mock.calls[0][0]).toBe('Next instruction');
+    await vi.waitFor(() => expect(f.input.value).toBe(''));
+    expect(f.send.style.display).toBe('flex');
+    expect(f.button('.llm-input__btn--stop').style.display).toBe('flex');
+});
+
+it('keeps busy sending disabled for hosts without backend queue support', async () => {
+    const f = setup(async () => [ready()]);
+    await f.view.refreshConnections(); f.view.setLoading(true); f.type('Keep this draft'); f.enter();
+    expect(f.onSend).not.toHaveBeenCalled(); expect(f.input.value).toBe('Keep this draft');
+    expect(f.send.style.display).toBe('none');
+});
+
 function setup(request: () => Promise<ConnectionOption[]>, options: Partial<ChatInputOptions> = {}) {
     const host = document.createElement('div'); document.body.append(host);
     const onSend = vi.fn(async () => {}), navigate = vi.fn();

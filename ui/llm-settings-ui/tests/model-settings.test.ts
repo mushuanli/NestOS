@@ -46,6 +46,11 @@ it('never sends a text request from a speech-only service and exposes a separate
     expect(service.testConnection).not.toHaveBeenCalled();
     expect(root.querySelector('[data-probe-model] option')?.getAttribute('value')).toContain('speech.synthesize');
     expect(root.querySelector('[data-provider-chat-settings]')?.hasAttribute('hidden')).toBe(true);
+    expect(root.querySelector<HTMLTextAreaElement>('[data-probe-input]')!.value).toBe('你好');
+    root.querySelector<HTMLButtonElement>('[data-probe-run]')!.click();
+    await vi.waitFor(() => expect(service.testConnection).toHaveBeenCalledWith(expect.objectContaining({
+        operation: 'speech.synthesize', request: expect.objectContaining({ input: '你好', model: 'speech' }),
+    })));
 });
 
 it('disables unsupported catalog discovery and preserves the capability through form saves', async () => {

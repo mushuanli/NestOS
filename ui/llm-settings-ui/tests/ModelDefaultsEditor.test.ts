@@ -74,6 +74,8 @@ it('preserves verification input across unchanged service notifications and scop
     const f = fixture(); await f.editor.init(f.root);
     const root = f.root.querySelector<HTMLElement>('[data-purpose="speech.synthesize"]')!;
     const input = root.querySelector<HTMLTextAreaElement>('[data-probe-input]')!;
+    expect(input.value).toBe('你好');
+    expect(f.root.querySelector<HTMLTextAreaElement>('[data-purpose="image.generate"] [data-probe-input]')!.value).toBe('');
     input.value = 'private verification draft';
     await f.editor.render();
     expect(root.querySelector('[data-probe-input]')).toBe(input);

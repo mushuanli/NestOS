@@ -96,6 +96,7 @@ export const en: LocaleStrings = {
     "provider.media.verify": "Operation verification",
     "provider.media.run": "Run verification",
     "provider.media.input": "Test text or prompt",
+    "provider.media.speechTestText": "你好",
     "provider.media.voice": "Voice",
     "provider.media.format": "Format",
     "provider.media.size": "Size",

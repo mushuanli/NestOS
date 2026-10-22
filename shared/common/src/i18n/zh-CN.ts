@@ -97,6 +97,7 @@ export const zhCN = {
     "provider.media.verify": "操作验证",
     "provider.media.run": "运行验证",
     "provider.media.input": "测试文本或提示词",
+    "provider.media.speechTestText": "你好",
     "provider.media.voice": "音色",
     "provider.media.format": "格式",
     "provider.media.size": "尺寸",

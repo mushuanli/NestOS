@@ -67,6 +67,7 @@ function renderProbeFields(panel: HTMLElement, provider: LLMProvider): void {
     if (!caps) { root.textContent = t('provider.media.noOperation'); return; }
     root.innerHTML = `<label class="settings-form__label">${t('provider.media.input')}</label><textarea class="settings-form__input" data-probe-input rows="2"></textarea>
         ${probeSelect('format', caps.formats)}${operation === 'speech.synthesize' ? probeSelect('voice', caps.voices ?? []) : caps.sizes?.length ? probeSelect('size', caps.sizes) : ''}`;
+    if (operation === 'speech.synthesize') root.querySelector<HTMLTextAreaElement>('[data-probe-input]')!.value = t('provider.media.speechTestText');
 }
 
 function probeSelect(field: 'format' | 'voice' | 'size', values: string[]): string {

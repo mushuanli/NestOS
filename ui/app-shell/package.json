@@ -42,6 +42,7 @@
     "@itookit/mdx-adapter": "workspace:*"
   },
   "devDependencies": {
+    "@itookit/llm-ui": "workspace:*",
     "@itookit/app-settings": "workspace:*",
     "@itookit/common": "workspace:*",
     "@itookit/driver-llm": "workspace:*",

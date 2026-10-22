@@ -8,12 +8,12 @@ export const versions = new Map(libraries.map(library => [library.name, library.
 export const releaseRoot = resolve(root, 'release/npm-libraries');
 export const libraryRoot = resolve(root, 'libraries');
 
-export function releaseManifest(manifest, version) {
+export function releaseManifest(manifest, version, dependencyVersions = versions) {
     const result = { ...manifest, ...manifest.publishConfig, version };
     delete result.publishConfig;
     for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies', 'devDependencies']) {
         if (!result[section]) continue;
-        result[section] = Object.fromEntries(Object.entries(result[section]).map(([name, spec]) => [name, versions.get(name) ?? spec]));
+        result[section] = Object.fromEntries(Object.entries(result[section]).map(([name, spec]) => [name, dependencyVersions.get(name) ?? spec]));
     }
     for (const section of ['dependencies', 'peerDependencies', 'optionalDependencies']) {
         for (const spec of Object.values(result[section] ?? {})) {

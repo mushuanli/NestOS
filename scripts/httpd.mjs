@@ -5,12 +5,14 @@ import { createHash, randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
 import path from 'node:path';
-import { hostArguments, hostEnvironment, runtimePaths, runtimeLog, releaseDirectory, verifyRelease, freezeWorkspaceDependencies, sourceFiles, sourceFingerprint, copySource } from './httpd-runtime.mjs';
+import { hostArguments, hostEnvironment, runtimePaths, runtimeLog, releaseDirectory, verifyRelease, freezeWorkspaceDependencies, sourceFiles, sourceFingerprint, copySource, copyLibrarySnapshot, pinSnapshotDependencies, copyNativeRuntimes } from './httpd-runtime.mjs';
+import libraryState from './local-library-state.mjs';
+import { preparedSnapshot } from './local-library-plan.mjs';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
 const app = path.join(root, 'apps/http-app'), releases = path.join(root, 'release/httpd');
 const developmentUI = path.join(root, 'release/httpd-dev/dist');
-function run(command, args, cwd = root) { execFileSync(command, args, { cwd, stdio: 'inherit' }); }
+function run(command, args, cwd = root, env = process.env) { execFileSync(command, args, { cwd, stdio: 'inherit', env }); }
 function git(args) { return execFileSync('git', args, { cwd: root, encoding: 'utf8' }).trim(); }
 function hashes(directory, relative = '') {
     return readdirSync(path.join(directory, relative), { withFileTypes: true }).flatMap(entry => {
@@ -31,25 +33,57 @@ function assertDependencies(directory, snapshot, visited = new Set()) {
     }
 }
 
+function prepareDeployment(source, staging, inputs, librarySnapshot) {
+    const operationId = path.basename(staging), started = Date.now();
+    console.log(`[HTTPBuild] operationId=${operationId} stage=dependencies result=start`);
+    try {
+        copySource(root, source, inputs);
+        copyLibrarySnapshot(root, source, librarySnapshot);
+        const deploymentEnv = librarySnapshot ? { ...process.env, MINDOS_LIBRARY_DEPLOYMENT: '1' } : process.env;
+        if (librarySnapshot) {
+            pinSnapshotDependencies(path.join(source, 'apps/http-app/package.json'), libraryState.readSelection(source));
+            run('pnpm', ['install', '--offline', '--ignore-scripts', '--no-frozen-lockfile'], source, deploymentEnv);
+        }
+        run('pnpm', ['--config.package-import-method=copy', ...(librarySnapshot ? ['--config.offline=true'] : []), '--ignore-scripts', '--filter', '@itookit/http-app', 'deploy', '--prod', '--legacy', staging], source, deploymentEnv);
+        freezeWorkspaceDependencies(staging);
+        copyNativeRuntimes(app, staging);
+        run(process.execPath, [path.join(root, 'scripts/check-node-native-runtime.mjs'), staging], staging);
+        console.log(`[HTTPBuild] operationId=${operationId} stage=dependencies result=success durationMs=${Date.now() - started}`);
+    } catch (error) {
+        console.error(`[HTTPBuild] operationId=${operationId} stage=dependencies result=failure durationMs=${Date.now() - started} code=${error.code ?? error.status ?? 'unknown'} reason=${error.message}`);
+        throw error;
+    }
+}
+
+function selectedLibraries() {
+    const snapshot = preparedSnapshot(root);
+    if (!snapshot) throw new Error('LOCAL_LIBRARIES_SNAPSHOT_REQUIRED: run pnpm lib:build before pnpm httpd:build');
+    console.log(`HTTP build libraries: ${snapshot?.id ?? 'source'}`);
+    return snapshot;
+}
+function buildInputs(snapshot) {
+    return sourceFiles(root).filter(file => !snapshot || !file.startsWith('libraries/'));
+}
+
 function build() {
+    const librarySnapshot = selectedLibraries();
     mkdirSync(releases, { recursive: true });
     const commit = git(['rev-parse', 'HEAD']), dirty = Boolean(git(['status', '--porcelain']));
     const id = new Date().toISOString().replace(/[-:]/g, '').replace(/\..*/, '') + '-' + commit.slice(0, 8) + (dirty ? '-dirty' : '');
     const destination = releaseDirectory(releases, id), staging = path.join(releases, '.building-' + randomUUID());
-    const source = path.join(releases, '.source-' + randomUUID()), inputs = sourceFiles(root), fingerprint = sourceFingerprint(root, inputs);
+    const source = path.join(releases, '.source-' + randomUUID()), inputs = buildInputs(librarySnapshot), fingerprint = sourceFingerprint(root, inputs);
     try {
-        copySource(root, source, inputs);
-        run('pnpm', ['--config.package-import-method=copy', '--ignore-scripts', '--filter', '@itookit/http-app', 'deploy', '--prod', '--legacy', staging], source);
-        freezeWorkspaceDependencies(staging);
+        prepareDeployment(source, staging, inputs, librarySnapshot);
         for (const entry of readdirSync(staging)) if (!['package.json', 'node_modules'].includes(entry)) rmSync(path.join(staging, entry), { recursive: true, force: true });
-        run('pnpm', ['exec', 'vite', 'build', '--outDir', path.join(staging, 'dist'), '--emptyOutDir'], app);
-        run('pnpm', ['exec', 'tsup', 'src/server/main.ts', '--format', 'esm', '--platform', 'node', '--out-dir', path.join(staging, 'server'), '--splitting', '--clean'], app);
+        const capturedApp = path.join(source, 'apps/http-app'), buildEnv = { ...process.env, MINDOS_LIBRARY_DEPLOYMENT: '1' };
+        run('pnpm', ['exec', 'vite', 'build', '--outDir', path.join(staging, 'dist'), '--emptyOutDir'], capturedApp, buildEnv);
+        run('pnpm', ['exec', 'tsup', 'src/server/main.ts', '--format', 'esm', '--platform', 'node', '--out-dir', path.join(staging, 'server'), '--splitting', '--clean'], capturedApp, buildEnv);
         assertDependencies(path.join(staging, 'node_modules'), staging);
         run(process.execPath, [path.join(staging, 'server/main.js'), '--help'], staging);
-        if (fingerprint !== sourceFingerprint(root)) throw new Error('Source changed during the build. Retry after saving your changes.');
+        if (fingerprint !== sourceFingerprint(root, buildInputs(librarySnapshot))) throw new Error('Business source changed during the build. Retry after saving your changes.');
         const files = [...hashes(staging, 'server'), ...hashes(staging, 'dist')];
         writeFileSync(path.join(staging, 'release.json'), JSON.stringify({ id, commit, dirty, builtAt: new Date().toISOString(),
-            nodeMajor: Number(process.versions.node.split('.')[0]), files }, null, 2) + '\n');
+            librarySnapshot: librarySnapshot?.id ?? null, nodeMajor: Number(process.versions.node.split('.')[0]), files }, null, 2) + '\n');
         renameSync(staging, destination); activate(id);
         console.log(`HTTP release ready: ${id}\nStart: pnpm httpd\nDevelopment: pnpm httpd:dev`);
     } catch (error) { rmSync(staging, { recursive: true, force: true }); throw error; }
@@ -81,8 +115,8 @@ function serve(mode, args) {
     child.once('error', error => { output.close(); console.error(error.message); process.exitCode = 1; });
     child.once('exit', (code, signal) => { output.close(); process.exitCode = code ?? (signal ? 1 : 0); });
 }
+const [command = 'start', ...args] = process.argv.slice(2);
 try {
-    const [command = 'start', ...args] = process.argv.slice(2);
     if (command === 'build') build();
     else if (command === 'dev') serve('dev', args);
     else if (command === 'start') serve('release', args);
@@ -92,5 +126,5 @@ try {
     }
     else throw new Error('Usage: httpd.mjs build | start [httpd options] | dev [httpd options] | list | activate <release-id>');
 } catch (error) {
-    console.error(error.code === 'ENOENT' ? 'No HTTP release found. Run pnpm httpd:build first.' : error.message); process.exitCode = 1;
+    console.error(error.code === 'ENOENT' && command === 'start' ? 'No HTTP release found. Run pnpm httpd:build first.' : error.message); process.exitCode = 1;
 }

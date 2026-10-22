@@ -21,15 +21,32 @@ SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
 ## 常用命令
 
 ```bash
-pnpm dev                              # Web app 开发服务器
-pnpm build:libs                       # 构建 ui/backend/shared/libraries 工作区
-pnpm typecheck                        # 全仓类型检查
+pnpm dev                              # Web app 源码联调
+pnpm cli <参数>                       # CLI 源码运行，例如 pnpm cli help
+pnpm cli:build                        # 构建 CLI
+pnpm cli:built <参数>                 # 验证已有 CLI 编译产物
+pnpm lib:build [库名]                  # 增量准备 HTTP 库快照，不改源码开发依赖
+pnpm httpd:build                      # 隔离构建 HTTP release，使用已准备的库快照
+pnpm libraries:snapshot               # 强制全量准备 HTTP 库快照
+pnpm libraries:use <ID>               # 可选：整个工作区切到制品验收模式
+pnpm libraries:source                  # 恢复源码联调
+pnpm libraries:status                  # 检查当前模式与实际安装
+pnpm build:libs                       # 构建业务包；源码模式还构建 libraries
+pnpm typecheck                        # 当前消费模式的类型检查
 pnpm docs:check                       # 活文档与代码同步检查
 pnpm styles:check                     # markup 类名 ↔ CSS 规则一致性检查
 pnpm test                             # 全量测试矩阵（含 Rust 边界；crash-matrix 自动隔离）
 pnpm --filter @itookit/<pkg> test     # 单包测试（vitest）
 pnpm --filter @itookit/<pkg> typecheck
 ```
+
+## 源码联调与库快照
+
+- 日常开发保持源码模式：`pnpm dev` 和 `pnpm cli` 直接使用本地 libraries 源码；修改库后无需先执行 `lib:build`。CLI 再次执行加载最新修改，已运行的 CLI 进程需要重启。
+- `pnpm lib:build` 首次准备全部库，之后仅更新有修改的库及需要重建的依赖方；`pnpm lib:build driver-llm`（也接受完整包名）仅更新指定库及必要依赖方，未选中的库复用原制品。无变化时复用已有快照。
+- `lib:build` 仅准备不可变本地库制品，不修改开发依赖或切换开发模式。`pnpm httpd:build` 在隔离目录使用已准备的快照安装、编译，不受后续 libraries 源码修改影响；构建前需运行 `lib:build` 准备所需版本。
+- `pnpm libraries:use <ID>` 是显式切换整个工作区的制品验收模式，会影响 dev、CLI 等命令；验收后用 `pnpm libraries:source` 恢复源码联调。`pnpm libraries:status` 可检查开发模式和 HTTP 已准备快照。
+- 快照、模式选择与 prepared 指针位于忽略的 `release/local-libraries/`，不随 Git 提交；构建不会重启运行中的 httpd。设计与 Mermaid C4 见 [独立库消费模式](./doc/design/npm-library-consumption.md)。
 
 ## 新功能诊断日志要求
 

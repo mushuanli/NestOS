@@ -1,6 +1,6 @@
-# 独立库源码工作区与 npm 构建
+# 独立库本地快照、源码开发与 npm 构建
 
-MindOS 默认消费固定 Git 提交的独立库源码。十二个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui、durable-kernel、device-tty），保留 npm 发布能力；durable-kernel、llm-ui、device-tty 和其他库统一使用各自独立仓库与 Git 子模块。libraries 下的子模块目录是唯一开发工作树，不维护另一份发布源码。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
+MindOS 日常开发默认使用源码，HTTP 发布构建单独消费固定本地制品快照；可选的全工作区快照模式用于制品验收。十二个独立库均位于 `libraries/`（包括 mdxeditor、vfs-ui、durable-kernel、device-tty），保留 npm 发布能力；durable-kernel、llm-ui、device-tty 和其他库统一使用各自独立仓库与 Git 子模块。libraries 下的子模块目录是唯一开发工作树，不维护另一份发布源码。业务包按前端、后端、共享职责位于 `ui/`、`backend/`、`shared/`；`apps/` 保存宿主。所有目录统一由 pnpm workspace 安装、排序和链接。
 
 | 库 | 源码目录 | npm 构建版本 |
 |---|---|---|
@@ -16,6 +16,72 @@ MindOS 默认消费固定 Git 提交的独立库源码。十二个独立库均�
 | @itookit/llm-ui | `libraries/llm-ui` | 0.2.1 |
 | @itookit/device-tty | `libraries/device-tty` | 0.1.0（目标版本，以 registry 为准） |
 | @itookit/image-parser | `libraries/image-parser` | 0.3.0（待发布） |
+
+## 开发源码与 HTTP 制品
+
+日常开发使用源码；HTTP 发布构建在独立目录消费制品快照，两者不共享安装目录。
+
+| 命令 | 行为 |
+|---|---|
+| `pnpm dev` | 源码开发，库修改无需先打包 |
+| `pnpm cli <参数>` | 通过 tsx 运行 CLI 源码，直接消费库源码 |
+| `pnpm cli:built <参数>` | 运行已有 CLI 编译产物 |
+| `pnpm lib:build` | 构建修改过的库及其依赖方，复用未修改制品 |
+| `pnpm lib:build driver-llm` | 指定库及其依赖方；也接受完整包名 |
+| `pnpm libraries:snapshot` | 强制全量生成所有库的快照 |
+| `pnpm httpd:build` | 在隔离目录安装最近准备的快照，构建前后端及独立 release |
+| `pnpm libraries:status` | 查看开发依赖模式与 HTTP 构建快照 |
+
+```bash
+pnpm dev                            # 日常源码联调，不需要 lib:build
+pnpm cli help                     # CLI 源码验证
+pnpm lib:build                      # 准备 HTTP 所需的制品
+pnpm lib:build driver-llm            # 只更新指定库及需要重建的依赖方
+pnpm httpd:build                     # 消费制品，不改开发工作区的 node_modules
+```
+
+首次没有快照时构建全部库；之后以最近准备的快照为基线（没有准备记录时兼容使用已启用快照）。源文件摘要或共享构建配置变化触发重建，按依赖图向上重建所有受影响的库；首次迁移旧快照时，缺少摘要的库会重建一次。没有变化时不安装、不构建、不打包，继续使用同一快照。指定参数是库名而非快照 ID；指定库时，未选择的库即使存在未完成修改，也使用基线中的制品，必要的 API 更新应一并准备。缺少需要重建的源码时明确失败。
+
+构建只捕获选中的源码（含未提交修改），未选中的库在隔离工作区从基线 tarball 解包，避免源码依赖意外泄漏。安装后按拓扑顺序构建，复用 npm 发布的 manifest 规范化、exports 校验和 pack，不查询内部库的 npm 版本，也不发布。第三方依赖仍可能需要网络和 pnpm 缓存。不可变 tarball 与摘要清单位于 `release/local-libraries/snapshots/<ID>/`；源摘要、构建配置摘要、依赖关系与制品摘要共同区分同版本的不同快照。
+
+只有构建成功才原子更新 `release/local-libraries/prepared.json`。生成制品不修改开发依赖、根锁文件或正在运行的服务；失败保留原先可用快照。`httpd:build` 复制当前业务代码及选定制品，在隔离目录安装、编译 UI 与服务端，记录 release.json 的 librarySnapshot。构建不读取库源码，也不重启正在运行的 httpd。Node 宿主显式声明外部原生依赖，复制同版本已构建运行文件，并在激活前验证 SQLite 内存读写、PTY 加载与 Sharp 图像编码。
+
+源码联调不需要每次运行 lib:build；验证制品或发布 HTTP 服务时才需要。CLI 修改后可直接用 pnpm cli 验证；验证打包结果时先执行 pnpm cli:build，再用 pnpm cli:built。
+
+### 可选的全工作区快照模式
+
+`pnpm libraries:use <完整快照ID>` 仍保留为显式的全工作区制品验收入口；它会同时影响 dev、CLI 源码入口、类型检查及业务构建，而非只影响 HTTP。日常开发应使用 `pnpm libraries:source` 恢复源码模式，再重启开发服务。恢复时保留 HTTP 构建快照。
+
+该可选模式由 `.pnpmfile.cjs` 统一覆盖直接、间接库依赖，peer 保留版本号；Vite 不再指向 libraries/src，库源码不参与业务安装。选择记录在 active.json，每个快照使用 `release/local-libraries/locks/<ID>/pnpm-lock.yaml` 及 `node_modules/.pnpm-libraries/<ID>/`。安装验证成功才更新选择，失败尝试恢复原模式。锁包含本地绝对路径，换 checkout 路径后需重新 use。制品损坏时可显式执行 `MINDOS_LIBRARY_SNAPSHOT=source pnpm libraries:source` 恢复。architecture 等全仓静态审查仍可包含库源码。
+
+捕获、切换命令使用 operation.lock 互斥；进程被强制终止后，确认记录中的 PID 已退出再删除锁。不要修改或清理正在使用的制品。prepared.json、active.json 和快照均是当前 checkout 的本地状态，不会随 Git 提交分发。
+
+```mermaid
+C4Component
+    title 源码联调与 HTTP 制品构建
+    Person(dev, "开发者", "源码验证与显式准备制品")
+    Container_Boundary(workspace, "开发工作区 · 源码") {
+        Component(source, "libraries 源码", "独立 Git 子模块", "持续修改")
+        Component(business, "业务代码", "backend / ui / apps", "dev 与 cli 直接消费源码")
+    }
+    Container_Boundary(buildspace, "隔离构建目录") {
+        Component(builder, "增量库构建", "scripts", "源码摘要与依赖图决定重建范围")
+        Component(installer, "快照安装", ".pnpmfile.cjs", "统一绑定直接和间接依赖")
+        Component(http, "HTTP 构建", "Vite / tsup", "同一快照构建前后端")
+    }
+    ComponentDb(artifacts, "不可变快照", "本地 tgz + SHA-256", "prepared.json 指定构建基线")
+    Component(release, "HTTP release", "独立部署目录", "记录快照 ID")
+    Rel(source, business, "源码公共入口")
+    Rel(dev, builder, "lib:build 或 lib:build 库名")
+    Rel(source, builder, "只捕获需要重建的源码")
+    Rel(artifacts, builder, "复用未修改制品")
+    Rel(builder, artifacts, "验证后生成新快照")
+    Rel(dev, http, "httpd:build")
+    Rel(business, http, "复制业务代码")
+    Rel(artifacts, installer, "安装固定制品")
+    Rel(installer, http, "提供固定库依赖")
+    Rel(http, release, "构建并验证")
+```
 
 ## 源码开发
 
@@ -43,7 +109,7 @@ pnpm build:registry --filter @itookit/cli build
 
 build:registry 先验证 `scripts/npm-libraries.json` 中的版本是否可从注册表取得，再在 `release/registry-*` 创建独立工作区。该目录不包含独立库源码、node_modules、dist 或环境文件；独立库依赖改为明确的 npm 版本，业务包仍使用 workspace。修复随独立库新版本发布，不再复制 patches/ 或生成 patchedDependencies。
 
-默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的源码模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
+默认构建 Web 应用，不部署或发布。日常开发的 package.json、pnpm-lock.yaml 和 node_modules 保持原来的选择模式。首次成功构建保存独立的 `pnpm-lock.registry.yaml`；后续构建冻结此锁文件，升级版本时使用 `--update-lock` 并审查更新。
 
 `--prepare-only` 生成可检查的目录而不查询注册表、安装或构建。缺少已发布版本时，正常 npm 构建明确失败并指出包名；应用依赖新 API 或源码修复时，也必须先发布匹配版本并更新清单。新命名 @itookit/mindos-node-driver@0.3.1 已完成本地制品验证，尚未发布；旧名 mindos-node-client@0.3.0、vfs-ui@0.6.0 与 image-parser@0.2.0 的历史发布与制品核对不变。下方历史发布记录沿用当时的真实包名。
 
@@ -63,7 +129,7 @@ prepare 默认从 libraries 构建、检查发布 exports，固定库间 npm 版
 
 ## 验证
 
-源码模式验证冻结安装、工作区链接、类型检查、库与宿主构建，以及跨库集成测试。根测试矩阵会运行 libraries 的单元测试，各库仍可单独测试。npm 模式在隔离工作区验证固定发布版本，保留独立锁文件和构建目录用于审查。
+源码模式验证冻结安装、工作区链接、类型检查、库与宿主构建，以及跨库集成测试。源码模式的根测试矩阵会运行 libraries 的单元测试，各库仍可单独测试。快照模式额外验证完整性、同版本更新、直接/间接依赖唯一性、源码修改隔离、切换失败恢复和 HTTP 捕获。npm 模式在隔离工作区验证固定发布版本，保留独立锁文件和构建目录用于审查。
 
 发布前额外验证 ESM、CommonJS、CSS 导出、TypeScript 类型解析和 VFS SeqFile 读写。编辑器类型消费使用 moduleResolution: bundler。
 

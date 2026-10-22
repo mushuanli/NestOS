@@ -1,13 +1,33 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, realpathSync, statSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync, symlinkSync, realpathSync, statSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { execFile, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { promisify } from 'node:util';
-import { hostArguments, hostEnvironment, runtimePaths, releaseDirectory, verifyRelease, runtimeLog, freezeWorkspaceDependencies, sourceFingerprint, copySource } from '../httpd-runtime.mjs';
+import { hostArguments, hostEnvironment, runtimePaths, releaseDirectory, verifyRelease, runtimeLog, freezeWorkspaceDependencies, sourceFingerprint, copySource, copyNativeRuntimes } from '../httpd-runtime.mjs';
+
+test('deployment retains native runtime files and rejects incompatible package builds', t => {
+    const root = mkdtempSync(path.join(tmpdir(), 'httpd-native-'));
+    t.after(() => rmSync(root, {recursive: true, force: true}));
+    const source = path.join(root, 'source'), destination = path.join(root, 'deployment');
+    for (const directory of [source, destination]) {
+        const pkg = path.join(directory, 'node_modules/addon'); mkdirSync(pkg, {recursive: true});
+        writeFileSync(path.join(pkg, 'package.json'), JSON.stringify({name: 'addon', version: '1.0.0'}));
+    }
+    const built = path.join(source, 'node_modules/addon/build/Release');
+    mkdirSync(path.join(built, 'obj.target'), {recursive: true});
+    writeFileSync(path.join(built, 'addon.node'), 'compiled native runtime');
+    writeFileSync(path.join(built, 'obj.target/intermediate.o'), 'build-only');
+    copyNativeRuntimes(source, destination, ['addon']);
+    const installed = path.join(destination, 'node_modules/addon');
+    assert.equal(readFileSync(path.join(installed, 'build/Release/addon.node'), 'utf8'), 'compiled native runtime');
+    assert.equal(existsSync(path.join(installed, 'build/Release/obj.target')), false);
+    writeFileSync(path.join(installed, 'package.json'), JSON.stringify({name: 'addon', version: '2.0.0'}));
+    assert.throws(() => copyNativeRuntimes(source, destination, ['addon']), /NATIVE_RUNTIME_VERSION_MISMATCH.*installed=1.0.0 deployed=2.0.0/);
+});
 
 test('inherits proxy settings and honors explicit activation or opt-out without changing the parent', () => {
     for (const name of ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY']) {

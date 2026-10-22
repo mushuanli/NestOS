@@ -3,8 +3,8 @@ import { resolve } from 'node:path';
 
 export const WORKSPACE_GROUPS = ['ui', 'backend', 'shared', 'libraries', 'apps', 'tools'];
 
-export function workspacePackages(root) {
-    return WORKSPACE_GROUPS.flatMap(group => {
+export function workspacePackages(root, { includeLibraries = true } = {}) {
+    return WORKSPACE_GROUPS.filter(group => includeLibraries || group !== 'libraries').flatMap(group => {
         const parent = resolve(root, group);
         if (!existsSync(parent)) return [];
         return readdirSync(parent, { withFileTypes: true }).flatMap(entry => {

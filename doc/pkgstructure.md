@@ -67,7 +67,7 @@ llm-session ──▶ llm-flow ──▶ llm-tasks ──▶ durable-kernel ─�
 
 ### 独立 npm 库与同步接入
 
-独立库均位于 `libraries/`，参与 pnpm workspace；全部以 Git 子模块固定提交，包括 [durable-kernel](https://github.com/mushuanli/durable-kernel)、[llm-ui](https://github.com/mushuanli/llm-ui) 与 [device-tty](https://github.com/mushuanli/device-tty)。libraries 下的目录就是唯一开发工作树；先向各自远端提交，再由主仓库记录子模块提交；npm 发布独立进行。应用和业务包消费源码 exports；各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 mindos-node-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
+独立库均位于 `libraries/`，参与 pnpm workspace；全部以 Git 子模块固定提交，包括 [durable-kernel](https://github.com/mushuanli/durable-kernel)、[llm-ui](https://github.com/mushuanli/llm-ui) 与 [device-tty](https://github.com/mushuanli/device-tty)。libraries 下的目录就是唯一开发工作树；先向各自远端提交，再由主仓库记录子模块提交；npm 发布独立进行。日常开发通过源码 exports 联调；`pnpm lib:build [库名]` 增量准备本地 tarball 快照，供 `pnpm httpd:build` 在隔离目录消费。`pnpm libraries:use <ID>` 可显式将整个工作区切到制品验收模式，`pnpm libraries:source` 恢复源码。各库保留独立 npm 发布能力，`pnpm build:registry` 在隔离目录构建固定 npm 版本。原 HTTP 驱动并入 mindos-node-driver，文件与进程实现位于其 src/files。目录、安装和发布流程见 [独立库接入](design/npm-library-consumption.md)。
 
 VFS 驱动和 vfs-ui 的内部运行依赖仅为 vfs-core；本地驱动另依赖 better-sqlite3。vfs-sync、driver-llm 没有运行时包依赖。`backend/sync-adapters` 负责宿主同步接入，调用 vfs-sync 与驱动公共端口；同步范围和项目绑定由应用决定。
 

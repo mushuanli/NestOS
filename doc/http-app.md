@@ -249,7 +249,7 @@ C4Component
 ## 启动与认证
 
 ```bash
-pnpm httpd:build              # 构建并选择独立 release，不重启当前服务
+pnpm httpd:build              # 构建并选择独立 release，不重启当前服务；隔离消费最近准备的库快照，开发工作区保持源码
 pnpm httpd                    # 直接运行已选 release，无构建步骤
 pnpm httpd:dev                # 开发工作树，默认端口 2001
 pnpm httpd:list

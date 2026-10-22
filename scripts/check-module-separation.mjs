@@ -75,6 +75,11 @@ function sourceFiles(directory) {
 
 export function moduleRole(path, root = repository) {
     const file = relative(root, path).replaceAll('\\', '/');
+    const installed = /(?:^|\/)node_modules\/@itookit\/([^/]+)\/dist\/(.*)$/.exec(file);
+    if (installed) {
+        const tail = installed[2].replace(/^(processing|policy|validation|contracts)-[\w-]+\./, '$1.').replace(/\.(?:cjs|js)$/, '.ts');
+        return moduleRole(resolve(root, 'libraries', installed[1], 'src', tail), root);
+    }
     if (file.startsWith('apps/node-host/src/')) return 'backend';
     if (file.startsWith('apps/http-app/src/client/')) return 'frontend';
     if (file.startsWith('apps/http-app/src/server/') || file.startsWith('apps/web-app/src/storage/') || file.startsWith('apps/cli/src/')) return 'backend';

@@ -43,6 +43,8 @@ overrides:
   '@itookit/vfsdriver-local': workspace:*
   '@itookit/durable-kernel': workspace:*
 
+pnpmfileChecksum: sha256-wOX9GQ9mJtNLwMBl5UC1rGfdg+KupQ040tuunIyGtLU=
+
 importers:
 
   .:
@@ -135,6 +137,12 @@ importers:
       '@itookit/vfsdriver-local':
         specifier: workspace:*
         version: link:../../libraries/vfsdriver-local
+      better-sqlite3:
+        specifier: ^12.11.1
+        version: 12.11.1
+      node-pty:
+        specifier: ^1.1.0
+        version: 1.1.0
       sharp:
         specifier: 0.35.5
         version: 0.35.5(@types/node@20.19.43)
@@ -272,9 +280,15 @@ importers:
       '@itookit/vfsdriver-local':
         specifier: workspace:*
         version: link:../../libraries/vfsdriver-local
+      better-sqlite3:
+        specifier: ^12.11.1
+        version: 12.11.1
       mind-os:
         specifier: workspace:*
         version: link:../web-app
+      node-pty:
+        specifier: ^1.1.0
+        version: 1.1.0
       sharp:
         specifier: 0.35.5
         version: 0.35.5(@types/node@20.19.25)
@@ -1381,6 +1395,9 @@ importers:
       '@itookit/llm-tasks':
         specifier: workspace:*
         version: link:../../backend/llm-tasks
+      '@itookit/llm-ui':
+        specifier: workspace:*
+        version: link:../../libraries/llm-ui
       '@itookit/mdx-adapter':
         specifier: workspace:*
         version: link:../mdx-adapter

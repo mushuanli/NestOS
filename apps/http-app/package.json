@@ -13,6 +13,8 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "better-sqlite3": "^12.11.1",
+    "node-pty": "^1.1.0",
     "@itookit/common": "workspace:*",
     "@itookit/app-core": "workspace:*",
     "@itookit/app-shell": "workspace:*",

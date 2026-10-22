@@ -4,16 +4,46 @@ import { mkdirSync, openSync, writeSync, closeSync, statSync, renameSync, exists
 import { createHash } from 'node:crypto';
 import { execFileSync } from 'node:child_process';
 import { copyFileSync, readlinkSync } from 'node:fs';
+import { cpSync, writeFileSync } from 'node:fs';
+import libraryState from './local-library-state.mjs';
 
 /** Capture Git inputs, including initialized library repositories, without build output. */
 export function sourceFiles(root, prefix = '') {
     const names = execFileSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], { cwd: root }).toString().split('\0').filter(Boolean);
+    const snapshot = !prefix && libraryState.readSelection(root);
     return [...new Set(names)].sort().flatMap(name => {
+        if (snapshot && (name === 'libraries' || name.startsWith('libraries/'))) return [];
         const file = path.join(root, name), relative = path.join(prefix, name);
         if (!existsSync(file)) return [];
         if (lstatSync(file).isDirectory()) return existsSync(path.join(file, '.git')) ? sourceFiles(file, relative) : [];
         return [relative];
     });
+}
+/** Carry the selected artifacts into the release capture, with no live library sources. */
+export function copyLibrarySnapshot(root, destination, snapshot = libraryState.readSelection(root)) {
+    if (!snapshot) return;
+    const target = path.join(libraryState.localRoot(destination), 'snapshots', snapshot.id);
+    cpSync(snapshot.directory, target, { recursive: true });
+    writeFileSync(libraryState.activeFile(destination), JSON.stringify({ format: 1, mode: 'snapshot', id: snapshot.id }));
+}
+/** Explicit host providers prevent injected peers from being resolved through the registry. */
+export function pinSnapshotDependencies(file, snapshot) {
+    const manifest = JSON.parse(readFileSync(file, 'utf8'));
+    manifest.dependencies = { ...manifest.dependencies, ...libraryState.snapshotOverrides(snapshot) };
+    writeFileSync(file, JSON.stringify(manifest, null, 2) + '\n');
+}
+/** Deployment skips lifecycle scripts; preserve the verified host-native build outputs. */
+export function copyNativeRuntimes(source, destination, names = ['better-sqlite3', 'node-pty']) {
+    for (const name of names) {
+        const from = realpathSync(path.join(source, 'node_modules', name));
+        const to = realpathSync(path.join(destination, 'node_modules', name));
+        const original = JSON.parse(readFileSync(path.join(from, 'package.json'), 'utf8'));
+        const deployed = JSON.parse(readFileSync(path.join(to, 'package.json'), 'utf8'));
+        if (original.name !== deployed.name || original.version !== deployed.version) throw new Error(`NATIVE_RUNTIME_VERSION_MISMATCH: ${name} installed=${original.version} deployed=${deployed.version}`);
+        const built = path.join(from, 'build/Release');
+        if (existsSync(built)) cpSync(built, path.join(to, 'build/Release'), { recursive: true,
+            filter: file => !['obj', 'obj.target', '.deps'].includes(path.basename(file)) && !file.endsWith('.o') });
+    }
 }
 export function sourceFingerprint(root, files = sourceFiles(root)) {
     const hash = createHash('sha256');

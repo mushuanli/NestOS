@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
-import {createOperationLedger} from '../../../libraries/llm-ui/src';
+import {createOperationLedger} from '@itookit/llm-ui';
 import type {ConversationControls, ConversationSnapshot} from '@itookit/ui-common';
 import {createNativeChatBinding, createNativeChatView} from '../../llm-ui-adapter/src/independent/native';
 

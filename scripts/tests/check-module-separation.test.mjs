@@ -58,6 +58,16 @@ test('domain contracts and codecs are shared while host factories and independen
     assert.equal(moduleRole('/repo/tools/image-tools/src/browser.ts', '/repo'), 'host');
 });
 
+test('installed library artifacts retain frontend, backend and shared boundaries', () => {
+    const base = '/repo/release/local-libraries/locks/id/node_modules/.pnpm/artifact/node_modules/@itookit';
+    assert.equal(moduleRole(base + '/llm-ui/dist/llm-ui.js', '/repo'), 'frontend');
+    assert.equal(moduleRole(base + '/vfs-core/dist/index.cjs', '/repo'), 'shared');
+    assert.equal(moduleRole(base + '/durable-kernel/dist/index.js', '/repo'), 'backend');
+    assert.equal(moduleRole(base + '/device-tty/dist/contracts.js', '/repo'), 'shared');
+    assert.equal(moduleRole(base + '/image-parser/dist/validation-C_H52RVd.cjs', '/repo'), 'shared');
+    assert.equal(moduleRole(base + '/image-parser/dist/ui.js', '/repo'), 'frontend');
+});
+
 test('browser tool assembly is host-owned and stays unreachable from Node entrypoints', t => {
     const {root, add} = fixture(t); add('app-shell', 'export const ui = 1;');
     const directory = join(root, 'tools/image-tools'); mkdirSync(join(directory, 'src'), {recursive: true});

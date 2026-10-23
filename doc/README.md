@@ -23,7 +23,7 @@
 | [RunDefinition](run-definition.md) / [联网搜索](web-search.md) | 调用输入与搜索策略 |
 | [HTTP 宿主](http-app.md) / [CLI HTTP 模式](http-mode.md) | 共用界面、应用 API 与远程 CLI |
 | [Profile 与数据根](mindos-profile.md) / [最小系统](minimal-system.md) | 配置、部署和运行步骤 |
-| [Firecracker 隔离服务](../tools/firecracker-server/README.md) | Rust microVM API、Debian 13、virtio-fs 目录直通、持久卷与 vsock |
+| [Firecracker 隔离服务](../tools/fc-server/README.md) | Rust microVM API、Debian 13、virtio-fs 目录直通、持久卷与 vsock |
 
 ## 领域设计与验证
 

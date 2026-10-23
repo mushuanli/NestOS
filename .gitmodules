@@ -43,3 +43,6 @@
 [submodule "libraries/device-tty"]
 	path = libraries/device-tty
 	url = git@github.com:mushuanli/device-tty.git
+[submodule "tools/fc-server"]
+	path = tools/fc-server
+	url = git@github.com:mushuanli/fc-server.git

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { createFlowRevision } from '@itookit/llm-flow';
+import { createFlowRevision, createBuiltinDagPluginRegistry } from '@itookit/llm-flow';
 import type { FlowDraft } from '@itookit/llm-flow/contracts';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
 import { captureFlowConnections, frozenFlowConnections, isFlowConnectionSnapshot } from '../src/session/flow-connection-snapshot';
@@ -81,6 +81,7 @@ it('uses media purpose defaults instead of treating a queued chat fallback as an
         connectionId: 'chat', defaults: { chat: 'chat', 'image.generate': 'pictures' } } };
     const prepared = await prepareFlowAgentInput(input, { definitions: { loadRevision: async () => definition },
         resolveAgent: async () => ({ id: 'agent', name: 'Agent', type: 'agent', agentVersion: 'v1', execution: { kind: 'flow', flowId: 'f' } }),
+        plugins: createBuiltinDagPluginRegistry(), identityResolver: {resolveExact: async id => ({id, name: id, type: 'agent'}), getSkills: async () => [], getSystemPrompt: async () => null},
         connectionCatalog: connections, prepareConnections: async flow => flow, host: { logger: { info() {}, warn() {} } as never } });
     expect(prepared.instructionFlowBinding!.connections!.connections.map(item => item.id)).toEqual(['pictures']);
 });

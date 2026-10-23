@@ -27,6 +27,7 @@ export interface ConversationManifest extends RoundManifest {
     /** Organizational parent; history, drafts and executions remain independent. */
     parentSessionId?: string | null;
     uiState?: ConversationUIState;
+    initialContext?: import('../contracts/content-transfer').ContentTransfer;
     /** Workflow instance source: set when the session is created from a workflow run. */
     flow?: {
         connectionBindings?: Record<string, string>;
@@ -82,15 +83,17 @@ export interface SessionDeletionStore {
     pendingSessionDeletions(): Promise<Array<{ id: string }>>;
 }
 
+export interface SessionCreation { agentId?: string; initialContext?: import('../contracts/content-transfer').ContentTransfer }
+
 /** Domain storage. History and attachments belong to the Session identity. */
 export interface ISessionRepository extends SessionDeletionStore {
     init(): Promise<void>;
     dispose(): Promise<void>;
     subscribe(listener: (change?: SessionRepositoryChange) => void): () => void;
-    createSession(title: string, folder?: string | null, parentSessionId?: string | null, initialState?: ConversationUIState, creation?: {agentId?: string}): Promise<string>;
+    createSession(title: string, folder?: string | null, parentSessionId?: string | null, initialState?: ConversationUIState, creation?: SessionCreation): Promise<string>;
     /** Idempotently create a Session with a host-supplied durable identity. */
     ensureSession(id: string, title: string, origin?: SessionOrigin, folder?: string | null, parentSessionId?: string | null,
-        creation?: {agentId?: string}): Promise<string>;
+        creation?: SessionCreation): Promise<string>;
     getManifest(sessionId: string): Promise<ConversationManifest>;
     getLoadState?(sessionId: string): Promise<SessionLoadState>;
     /** Read the projection and the selected history chain together, when supported. */

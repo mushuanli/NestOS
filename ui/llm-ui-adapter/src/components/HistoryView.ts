@@ -182,6 +182,10 @@ export class HistoryView implements IHistoryPresenter {
     // IHistoryPresenter 实现
     // ================================================================
 
+    mountInvocation(element: HTMLElement, head: string | null): () => void {
+        return this.renderer.mountInvocation(element, head);
+    }
+
     renderFull(sessions: SessionGroup[], options?: { position?: 'top' | 'bottom' }): void {
         this.clear();
         this.submission.clear();

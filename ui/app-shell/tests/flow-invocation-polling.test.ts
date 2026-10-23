@@ -2,6 +2,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { FlowCommand, FlowInvocationCommand } from '@itookit/llm-session';
+import { t } from '@itookit/common';
 import { InvocationPanel } from '../../llm-ui-adapter/src/flows/InvocationPanel';
 
 let panel: InvocationPanel | undefined;
@@ -54,4 +55,24 @@ it('suspends hidden flow panels without stopping their runs and refreshes on ret
     window.dispatchEvent(new Event('focus')); await vi.advanceTimersByTimeAsync(60_000);
     expect(execute).not.toHaveBeenCalled(); panel.setVisible(true); await panel.refresh();
     expect(execute).toHaveBeenCalledOnce(); expect(execute).toHaveBeenCalledWith(FlowInvocationCommand.List, {sessionId: 's'});
+});
+
+it('distinguishes pause, continue and reattachment, and keeps action buttons stable during streaming updates', async () => {
+    let paused = false, stored = false;
+    const execute = vi.fn(async (command: string, input?: any) => {
+        if (command === FlowInvocationCommand.List) return [{requestId: 'call', rootTaskId: 'root', flow: {name: 'Flow'}, revision: 1}];
+        if (command === FlowCommand.RunGet) return {root: {task: {status: 'running', control: {mode: paused ? 'pause' : 'run'}}}, taskTree: [], attachedFromStorage: stored};
+        if (command === FlowCommand.RunGoalUpdate) {paused = input.goal.status === 'paused'; return {};}
+        throw new Error(command);
+    });
+    panel = new InvocationPanel({execute} as unknown as ICommandBus, 's', document.body, vi.fn());
+    await panel.refresh();
+    const button = (key: Parameters<typeof t>[0]) => [...document.querySelectorAll<HTMLButtonElement>('[data-actions] button')].find(button => button.textContent === t(key));
+    const pause = button('flow.invoke.pause')!;
+    expect(button('flow.invoke.resume')).toBeUndefined();
+    await panel.refresh(); expect(button('flow.invoke.pause')).toBe(pause);
+    pause.click(); await vi.waitFor(async () => {await panel!.refresh(); expect(button('flow.invoke.continue')).toBeDefined();});
+    expect(document.querySelector('[data-status]')!.textContent).toBe(t('flow.invoke.paused'));
+    button('flow.invoke.continue')!.click(); await vi.waitFor(async () => {await panel!.refresh(); expect(button('flow.invoke.pause')).toBeDefined();});
+    stored = true; await panel.refresh(); expect(button('flow.invoke.resume')).toBeDefined();
 });

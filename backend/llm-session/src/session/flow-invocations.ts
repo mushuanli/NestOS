@@ -2,6 +2,8 @@ import type { JsonValue, DagRunSpec } from '@itookit/llm-flow/contracts';
 import type { ICommandBus } from '../contracts';
 import type { Kernel, TaskRecord, SessionHandle } from '@itookit/durable-kernel';
 import { FlowCommand, FlowDefinitionStore, validateFlowParameters, type DagCommandService } from '@itookit/llm-flow';
+import type { ContentTransferService } from './content-transfers';
+import { createSessionHost, type SessionHostPorts } from '../utils/host-ports';
 import type { FlowInvocationSessions } from '../persistence/flow-invocation-sessions';
 
 import { FlowInvocationCommand, type FlowInvocationInput, type FlowInvocationRecord } from '../contracts/flow-invocations';
@@ -18,7 +20,8 @@ export class FlowInvocationService {
         private source?: (id: string) => Promise<{ branch: string; head: string | null }>,
         private resolveConnection?: (sessionId: string, connectionId?: string) => Promise<string | undefined>,
         private invocationSessions?: FlowInvocationSessions,
-        private runs?: Pick<DagCommandService, 'prepareRun' | 'submitPrepared'>) {}
+        private runs?: Pick<DagCommandService, 'prepareRun' | 'submitPrepared'>,
+        private transfers?: Pick<ContentTransferService, 'read'>, private hostPorts?: SessionHostPorts) {}
 
     register(): void {
         this.commands.register(FlowInvocationCommand.Invoke, args => this.invoke(args as FlowInvocationInput));
@@ -30,7 +33,7 @@ export class FlowInvocationService {
         const key = `${input.sessionId}/${input.requestId}`;
         const previous = this.pending.get(key);
         if (previous) { const record = await previous; this.assertSame(record, input); return record; }
-        const operation = this.submit(structuredClone(input));
+        const operation = this.traceAdmission(structuredClone(input));
         this.pending.set(key, operation);
         try { return await operation; } finally { this.pending.delete(key); }
     }
@@ -154,11 +157,41 @@ export class FlowInvocationService {
             const issues = validateFlowParameters(flow.parameters, input.parameters);
             for (const name of Object.keys(input.parameters)) if (!(flow.parameters ?? []).some(field => field.name === name)) throw new Error(`Unknown Flow parameter: ${name}`);
             if (issues.length) throw new Error(issues.map(issue => issue.message).join('; '));
-            record = { ...input, resolvedConnectionId: await this.resolveConnection?.(input.sessionId, input.connectionId) ?? null, flow, createdAt: Date.now(), ...await this.source?.(input.sessionId) };
+            const inputTransfers = await this.bindInputs(input);
+            record = { ...input, ...(inputTransfers ? { inputTransfers } : {}), resolvedConnectionId: await this.resolveConnection?.(input.sessionId, input.connectionId) ?? null, flow, createdAt: Date.now(), ...await this.source?.(input.sessionId) };
             record = await this.prepare(record);
             await session.setShared(key, json(record), { expectedVersion: null });
         }
         return record;
+    }
+
+    private async bindInputs(input: FlowInvocationInput): Promise<FlowInvocationRecord['inputTransfers']> {
+        if (!input.inputSources || !Object.keys(input.inputSources).length) return;
+        if (!this.transfers) throw new Error('CONTENT_TRANSFER_UNAVAILABLE');
+        const result: NonNullable<FlowInvocationRecord['inputTransfers']> = Object.create(null);
+        for (const [name, reference] of Object.entries(input.inputSources)) {
+            const transfer = await this.transfers.read(reference, input.sessionId);
+            if (!Object.hasOwn(input.parameters, name) || canonical(input.parameters[name]) !== canonical(transfer.value))
+                throw new Error('CONTENT_PARAMETER_MISMATCH');
+            result[name] = transfer;
+        }
+        return result;
+    }
+
+    private async traceAdmission(input: FlowInvocationInput): Promise<FlowInvocationRecord> {
+        const started = Date.now(), logger = createSessionHost(this.hostPorts).logger;
+        const metadata = {operation: 'flow.invoke', stage: 'admission', sessionId: input.sessionId, operationId: input.requestId,
+            flowId: input.flowId, revision: input.revision, parameterCount: Object.keys(input.parameters).length, sourceCount: Object.keys(input.inputSources ?? {}).length};
+        try {
+            const record = await this.submit(input);
+            logger.info('Flow invocation admitted', {...metadata, outcome: 'success', taskId: record.rootTaskId, durationMs: Date.now() - started});
+            return record;
+        } catch (error) {
+            const code = error instanceof Error && /^CONTENT_[A-Z_]+$/.test(error.message) ? error.message : 'FLOW_ADMISSION_FAILED';
+            logger.error('Flow invocation admission failed', {...metadata, outcome: 'failure', errorCode: code,
+                errorClass: error instanceof Error ? error.name : typeof error, durationMs: Date.now() - started});
+            throw error;
+        }
     }
 
     private findRoot(tasks: TaskRecord[], requestId: string): TaskRecord | undefined {
@@ -167,7 +200,7 @@ export class FlowInvocationService {
     }
 
     private assertSame(record: FlowInvocationRecord, input: FlowInvocationInput): void {
-        if (canonical(record.connectionBindings ?? {}) !== canonical(input.connectionBindings ?? {}) || record.connectionId !== input.connectionId || record.flowId !== input.flowId || record.revision !== input.revision || canonical(record.parameters) !== canonical(input.parameters)) {
+        if (canonical(record.inputSources ?? {}) !== canonical(input.inputSources ?? {}) || canonical(record.connectionBindings ?? {}) !== canonical(input.connectionBindings ?? {}) || record.connectionId !== input.connectionId || record.flowId !== input.flowId || record.revision !== input.revision || canonical(record.parameters) !== canonical(input.parameters)) {
             throw new Error('Flow invocation request id was already used with different arguments');
         }
     }

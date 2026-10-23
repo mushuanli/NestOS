@@ -2,6 +2,22 @@
 
 状态：已实现并发调用、slash 入口和 `builtin.flow@2` 函数式组合。旧版 `builtin.flow@1` 及既有 Flow Session 保持兼容。
 
+## 显式内容来源与独立子会话
+
+每个参数可选择手填、上一条完整助手回复、当前分支全部对话、全部助手回复、所选消息、对话摘要或已完成调用的命名输出。图片仍通过既有资产字段选择。来源需“准备并预览”，修改参数会解除旧来源绑定。首次选择来源捕获当前分支的固定文本与输出；后续回复、分支编辑和运行完成不改变这份快照。只选择 user/assistant 文本，排除系统、工具、思考和未完成助手输出。
+
+`ContentTransferService` 注册 `session.content.capture`、`session.content.resolve`、`session.content.create-child`。捕获及转换材料存放在源 Session 的 Kernel shared；Invocation 的 `inputSources` 引用材料，准入复核参数值后将完整 `inputTransfers` 复制到调用记录。恢复已有调用消费保存的参数与材料，不重新选取“最后一条回复”或重新生成摘要。原始材料不进入诊断日志。
+
+摘要由宿主 `createTransferSummarizer` 注入，检查模型输入预算；不可用、超限和空摘要保留启动表单并显示具体原因。摘要与人工选择都需要预览后再启动；不会把 Flow 参数隐式注入聊天 history。
+
+运行位置可选择当前会话或新独立子会话。后者先持久登记创建意图，以同一请求身份恢复子会话，并在导航前准备 Kernel Session、提交调用。切换或启动其他 Flow 不取消原运行。取消启动配置、隐藏或销毁视图后，不执行尚未发起的后续准入步骤；已提交运行继续归宿主管理。
+
+关联创建也可显式选择初始材料。`ConversationManifest.initialContext` 在身份创建事务中保存且不可变；父子关系与内容来源分开。材料作为 ContextPlan 的显式输入参与装配和预算，不伪造用户 Round，不持续拼接父历史。导入导出保留材料副本，导入不恢复父关系。未选择材料的子会话保持空历史。
+
+调用卡片锚定发起 Round，历史重建保留卡片及交互；输入区保留活动/待处理汇总和当前接收会话。非终态按状态提供暂停、继续、取消；重新附着仅在存储恢复时显示。重试节点仍在运行详情，终态“再次调用”产生新身份。终态结果经显式“用于对话”追加到当前草稿。
+
+回归：`backend/llm-session/__tests__/content-transfers.test.ts`、`ui/app-shell/tests/flow-content-sources.test.ts`、`ui/app-shell/tests/flow-timeline.test.ts`、`ui/app-shell/tests/flow-invocation-polling.test.ts` 和 `backend/app-core/tests/session-bundle.test.ts`。本轮浏览器预览使用模拟端口检查启动表单的桌面和窄屏布局，不代表真实模型及完整应用的端到端验收。
+
 ## 当前使用方式
 
 - 聊天输入 `/flow` 选择流程，或 `/flow <id> {"参数名":"值"}` 预填参数表单。提交后仍停留在当前聊天，可以继续调用其他 Flow、重复调用同一 Flow 或发送普通聊天。
@@ -10,7 +26,7 @@
 - 多个后台调用存在时，普通 `/cancel`、`/approve`、`/resume` 会提示使用对应卡片，避免选错目标。复杂输入仍使用参数表单；审批和简单回复在各自卡片中完成，草稿彼此独立。
 - 设计器新增 Call Flow（v2）节点，选择已发布的 Flow、填写参数绑定。流程设置中的“返回值声明（JSON）”保存 outputs；命名返回端口在图和连线编辑器显示。
 
-参数在模态表单中填写，不嵌在 ChatInput 中；命令 JSON 优先预填，其余字段采用参数默认值。不会自动从聊天、附件或文件提取值。有参数时即使预填完整也需提交表单；无参数时直接启动。文件路径作为普通字符串传递，需要读取正文时由 Flow 节点显式调用文件工具。可运行的工具、Skill、MCP 例子见 [Harness 验证例子](../../apps/cli/examples/harness-validation/README.md)。
+参数在模态表单中填写，不嵌在 ChatInput 中；命令 JSON 优先预填，其余字段采用参数默认值。聊天输入区提供“调用 Flow”入口，slash 与再次调用共用启动配置。每次启动均需提交表单；不会自动从聊天、附件或文件提取值。文件路径作为普通字符串传递，需要读取正文时由 Flow 节点显式调用文件工具。可运行的工具、Skill、MCP 例子见 [Harness 验证例子](../../apps/cli/examples/harness-validation/README.md)。
 
 被调用 Flow 必须声明参数及返回值。例如返回声明：
 

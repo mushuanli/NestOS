@@ -30,6 +30,20 @@ async function seeded() {
 }
 
 describe('Session bundle', () => {
+    it('round-trips frozen initial material without reattaching the imported conversation to its source', async () => {
+        const {repository} = await setup();
+        const material = {id: 'transfer', sessionId: 'source', captureId: 'capture', branch: 'main', head: 'r1', createdAt: 1,
+            selection: {kind: 'latest' as const}, messageIds: ['message'], value: 'Frozen material'};
+        const id = await repository.createSession('Child', null, null, undefined, {initialContext: material});
+        const exported = await exportSessionBundle(repository, id), restored = await importSessionBundle(repository, exported.content);
+        expect((await repository.getManifest(restored)).initialContext).toEqual(material);
+        expect((await repository.getManifest(restored)).parentSessionId).toBeNull();
+        expect(await repository.listHistory(restored)).toEqual([]);
+        const broken = JSON.parse(exported.content); broken.manifest.initialContext.selection = {kind: 'unknown'};
+        const before = (await repository.list()).length;
+        await expect(importSessionBundle(repository, JSON.stringify(broken))).rejects.toThrow('Invalid Session initial material');
+        expect(await repository.list()).toHaveLength(before);
+    });
     it('round-trips branch-owned payloads and rejects missing versions before creating a Session', async () => {
         const {repository} = await setup(), id = await repository.createSession('Shared history');
         const log = new RoundLog(repository, id);

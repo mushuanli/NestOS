@@ -13,6 +13,8 @@ import { mountConversationSource } from './conversation-source';
 import { openSessionFlowOutputs } from '../flows/session-output';
 import { InvocationPanel } from '../flows/InvocationPanel';
 import { InstructionQueuePanel } from '../components/InstructionQueuePanel';
+import { sessionMaterialHeader, mountSessionInputActions } from './session-material';
+import { promptChildConversation } from '../flows/create-child';
 import { invokeFlowText } from '../flows/invoke-flow';
 import { promptFlowParameters } from '../components/FlowParameterForm';
 // @file: llm-ui/shell/LLMWorkspaceEditor.ts
@@ -200,6 +202,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private connectionOptions?: ReturnType<typeof acquireConnectionOptions>;
     private refreshAgentsTimer: ReturnType<typeof setTimeout> | null = null;
     private titleInput!: HTMLInputElement;
+    private inputReceiver?: HTMLElement;
     private currentTitle: string = 'New Chat';
     private currentSessionId: string | null = null;
     private isBeingDeleted = false;
@@ -348,6 +351,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const historyEl = this.domCache.byId('llm-ui-history')!;
         const inputEl = this.domCache.byId('llm-ui-input')!;
         const historyView = new HistoryView(historyEl, {
+            header: sessionMaterialHeader(session.manifest),
             onContentChange: (id: string, content: string, type: 'user' | 'node') =>
                 this.handleContentChange(id, content, type),
             onNodeAction: (action: string, nodeId: string) =>
@@ -367,7 +371,10 @@ export class LLMWorkspaceEditor implements IEditor {
         this.historyView = historyView;
         const calls = document.createElement('div'); inputEl.before(calls);
         this.invocationPanel = new InvocationPanel(this.commandBus, this.options.sessionId, calls,
-            text => this.chatInput.restoreInput(text));
+            text => this.chatInput.restoreInput([this.chatInput.getConfig().text, text].filter(Boolean).join('\n\n')), {
+                mountCard: (card, call) => historyView.mountInvocation(card, call.head ?? null),
+                openChild: id => this.openInvocationChild(id),
+            });
         const queue = document.createElement('section'); inputEl.before(queue);
         this.instructionQueuePanel = new InstructionQueuePanel(queue, this.commandBus, this.options.sessionId);
         this.instructionQueuePanel.update(session.snapshot.instructionQueue);
@@ -458,6 +465,10 @@ export class LLMWorkspaceEditor implements IEditor {
         };
         this.chatInput = this.options.handoff ? bindWorkspaceInput(inputOptions, this.options.handoff) : new ChatInput(inputEl, inputOptions);
 
+        this.inputReceiver = mountSessionInputActions(inputEl, session.manifest, async () => {
+            try { await this.startFlowInvocation(''); }
+            catch (error) { this.errorHandler.handle(error, 'Invoke flow'); }
+        });
         this.registerInputPlugins();
 
         // 运行中索引更新：Skill 目录变化后重新拉取并刷新输入区（无轮询）
@@ -651,6 +662,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.eventBinder = new EventBinder(this.container, {
             mountCompactNavigation: this.options.mountCompactNavigation,
             mountMoreMenu: this.options.mountMoreMenu,
+            mountConversationNavigation: this.options.mountConversationNavigation,
             onToggleSidebar: () => this.hostContext?.toggleSidebar(),
             onTitleChange: (title) => this.handleTitleChange(title),
             onOpenAssetManager: () => this.handleOpenAssetManager(),
@@ -749,6 +761,7 @@ export class LLMWorkspaceEditor implements IEditor {
 
     private async handleTitleChange(title: string): Promise<void> {
         this.currentTitle = title;
+        if (this.inputReceiver) this.inputReceiver.textContent = t('project.currentConversation', {name: title});
         this.emit('change', undefined);
         if (this.options.sessionId) {
             await this.errorHandler.wrap(
@@ -854,6 +867,7 @@ export class LLMWorkspaceEditor implements IEditor {
         if (this.currentSessionId && this.currentSessionId !== sessionId) await this.runAttachment?.detach();
         this.currentSessionId = sessionId;
         this.currentTitle = title;
+        if (this.inputReceiver) this.inputReceiver.textContent = t('project.currentConversation', {name: title});
 
         // Check if this session was interrupted (VFS meta.status === 'running')
         promptInterruptedRun(snapshot, (interruptedAssistantId) => {
@@ -1044,11 +1058,12 @@ export class LLMWorkspaceEditor implements IEditor {
 
     setTitle(title: string): void {
         this.currentTitle = title;
+        if (this.inputReceiver) this.inputReceiver.textContent = t('project.currentConversation', {name: title});
         if (this.titleInput) this.titleInput.value = title;
     }
 
     setReadOnly(): void { }
-    get commands() { return { rerunSession: () => this.rerunSession(),
+    get commands() { return { createChildWithMaterial: () => this.createChildWithMaterial(), rerunSession: () => this.rerunSession(),
         sendMessage: (message: import('../commands/SendMessageCommand').SendMessageParams) => this.routeMessage(message),
     }; }
 
@@ -1106,6 +1121,24 @@ export class LLMWorkspaceEditor implements IEditor {
     // 插件注册
     // ================================================================
 
+    private async startFlowInvocation(args: string): Promise<boolean> {
+        if (this.invocationPending || !this.viewActive || this.invocationAbort.signal.aborted) return false;
+        const operation = invokeFlowText(this.commandBus, this.options.sessionId, args, this.invocationAbort.signal, id => this.openInvocationChild(id));
+        this.invocationPending = operation;
+        try { return await operation; }
+        finally { if (this.invocationPending === operation) this.invocationPending = undefined; void this.invocationPanel?.refresh(); }
+    }
+
+    private async createChildWithMaterial(): Promise<void> {
+        const id = await promptChildConversation(this.commandBus, this.options.sessionId, this.invocationAbort.signal);
+        if (id) await this.openInvocationChild(id);
+    }
+
+    private async openInvocationChild(id: string): Promise<void> {
+        if (this.invocationAbort.signal.aborted) return;
+        await this.hostContext?.navigate?.({target: 'chat', resourceId: id});
+    }
+
     private registerInputPlugins(): void {
         const chatInput = this.chatInput as ChatInput;
 
@@ -1118,12 +1151,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.slashPlugin = new SlashCommandPlugin(
             buildSlashCallbacks({
                 commands: this.commandBus,
-                onFlow: async args => {
-                    if (this.invocationPending) return false;
-                    this.invocationPending = invokeFlowText(this.commandBus, this.options.sessionId, args, this.invocationAbort.signal);
-                    try { return await this.invocationPending; }
-                    finally { this.invocationPending = undefined; void this.invocationPanel?.refresh(); }
-                },
+                onFlow: args => this.startFlowInvocation(args),
                 chatInput: this.chatInput,
                 saveConfiguration: () => this.handleConfigChange(this.chatInput.getConfig()),
                 bus: this.bus,

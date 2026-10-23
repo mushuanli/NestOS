@@ -1,6 +1,7 @@
 import { archivePath, decodeArchiveBytes } from './file-archive';
 import { FSError } from '@itookit/vfs-core';
 import type { ChatSessionSettings, ConversationManifest, ISessionRepository } from '@itookit/llm-session';
+import { isContentTransfer } from '@itookit/llm-session/contracts';
 
 /** Durable Session bundle shared by the browser projection and the workbench export action. */
 export const SESSION_BUNDLE_FORMAT = 'itookit.session';
@@ -14,6 +15,7 @@ export interface SessionBundleManifest {
     summary?: string;
     origin?: ConversationManifest['origin'];
     createdWithAgentId?: string;
+    initialContext?: ConversationManifest['initialContext'];
     folder?: string | null;
     uiState?: ConversationManifest['uiState'];
     flow?: ConversationManifest['flow'];
@@ -48,7 +50,7 @@ export async function exportSessionBundle(repository: ISessionRepository, sessio
         format: SESSION_BUNDLE_FORMAT,
         version: SESSION_BUNDLE_VERSION,
         manifest: {
-            title: manifest.title, summary: manifest.summary, origin: manifest.origin, createdWithAgentId: manifest.createdWithAgentId, folder: manifest.folder ?? null,
+            title: manifest.title, summary: manifest.summary, origin: manifest.origin, createdWithAgentId: manifest.createdWithAgentId, initialContext: manifest.initialContext, folder: manifest.folder ?? null,
             uiState: manifest.uiState, flow: manifest.flow, rootRoundId: manifest.rootRoundId, branches: manifest.branches,
             branchMeta: manifest.branchMeta, currentBranch: manifest.currentBranch,
             currentHead: manifest.currentHead, children: manifest.children,
@@ -71,7 +73,8 @@ export async function importSessionBundle(
 ): Promise<string> {
     const bundle = parseSessionBundle(content);
     const folder = options.folder !== undefined ? options.folder : bundle.manifest.folder ?? null;
-    const id = await repository.createSession(bundle.manifest.title || 'Imported Session', folder, null, undefined, {agentId: bundle.manifest.createdWithAgentId});
+    const id = await repository.createSession(bundle.manifest.title || 'Imported Session', folder, null, undefined,
+        {agentId: bundle.manifest.createdWithAgentId, initialContext: bundle.manifest.initialContext});
     try {
         await restoreSession(repository, id, bundle);
         return id;
@@ -128,6 +131,7 @@ export function parseSessionBundle(content: string): SessionBundle {
 function readManifest(value: unknown, documents: Record<string, string>): SessionBundleManifest {
     const manifest = asRecord(value);
     if (!manifest) throw new FSError('EINVAL', 'Session bundle has no manifest');
+    if (manifest.initialContext !== undefined && !isContentTransfer(manifest.initialContext)) throw new FSError('EINVAL', 'Invalid Session initial material');
     const branches = readHeads(manifest.branches);
     const currentHead = readHead(manifest.currentHead);
     const rootRoundId = readHead(manifest.rootRoundId);
@@ -142,6 +146,7 @@ function readManifest(value: unknown, documents: Record<string, string>): Sessio
         title: typeof manifest.title === 'string' ? manifest.title : '',
         summary: typeof manifest.summary === 'string' ? manifest.summary : undefined,
         createdWithAgentId: typeof manifest.createdWithAgentId === 'string' ? manifest.createdWithAgentId : undefined,
+        initialContext: manifest.initialContext as ConversationManifest['initialContext'],
         origin: manifest.origin === 'cli' || manifest.origin === 'tauri' || manifest.origin === 'web' ? manifest.origin : undefined,
         folder: typeof manifest.folder === 'string' ? manifest.folder : null,
         uiState: (asRecord(manifest.uiState) ?? undefined) as ConversationManifest['uiState'],

@@ -1,4 +1,5 @@
 import {createTaskAssetReader} from './task-assets';
+import { createTransferSummarizer } from './transfer-summary';
 import {registerInputAssets} from './input-assets';
 import { createMindosDirectAgentPolicy } from '../presets/direct-agent-policy';
 import { createFlowCapabilities } from './flow-capabilities';
@@ -56,6 +57,7 @@ export async function createConversationSystem(
         agentResolution: options.agentResolution,
         hostPorts: { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot },
         agentService,
+        summarizeContent: createTransferSummarizer(sessionRepository, agentService, kernel.llmService),
         sessionEngine: sessionRepository,
         promptHistoryFiles: options.promptHistoryFiles ?? await vfs.openFileSystem('/home/admin/.config/mindos/prompt-history'),
         flowInvocationSessions: createFlowInvocationSessions(systemFS),

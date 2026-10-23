@@ -6,6 +6,7 @@ import type { ConversationManifest, SessionSummary } from '@itookit/llm-session/
 
 interface Actions {
     open(id: string): Promise<void>; child(id: string): Promise<unknown>; remove(id: string): Promise<void>;
+    childWithMaterial?(id: string): Promise<unknown>;
     changed(): Promise<void>; report(error: unknown): void;
 }
 
@@ -20,7 +21,7 @@ export class SessionFamilyActions {
         section.dataset.sessionId = manifest.id; this.currentHeader = section;
         const events = new AbortController(); this.controllers.set(section, events);
         const heading = document.createElement('strong'); heading.textContent = t('project.sessionActions');
-        const hint = document.createElement('small'); hint.textContent = t('project.relatedSessionHint');
+        const hint = document.createElement('small'); hint.textContent = t(manifest.initialContext ? 'project.childInitialMaterial' : 'project.relatedSessionHint');
         const metadata = this.information();
         section.append(heading, metadata, hint);
         for (const action of this.headerActions(manifest)) section.append(this.button(action.label, action.run));
@@ -28,6 +29,17 @@ export class SessionFamilyActions {
         this.bindMetadataRefresh(section, metadata, manifest.id, events.signal);
         return () => { this.release(section); section.remove(); };
     }
+    mountNavigation(container: HTMLElement, manifest: ConversationManifest): () => void {
+        const events = new AbortController(), button = document.createElement('button');
+        button.type = 'button'; button.className = 'session-family__switcher';
+        button.textContent = t('project.family'); button.title = t('project.currentConversation', {name: manifest.title});
+        button.setAttribute('aria-haspopup', 'dialog'); container.append(button);
+        button.addEventListener('click', () => {
+            if (!this.signal.aborted) void this.showFamily(manifest.id).catch(error => this.actions.report(error));
+        }, {signal: events.signal});
+        return () => { events.abort(); button.remove(); };
+    }
+
     private bindMetadataRefresh(section: HTMLElement, metadata: HTMLDetailsElement, id: string, signal: AbortSignal): void {
         const status = document.createElement('p'); status.className = 'session-family__metadata-status';
         status.setAttribute('role', 'alert'); status.hidden = true; metadata.append(status);
@@ -56,6 +68,7 @@ export class SessionFamilyActions {
             {label: t('project.moveUnder'), run: () => this.move(manifest.id)});
         if (manifest.parentSessionId) actions.push({label: t('project.promoteSession'), run: () => this.promote(manifest.id)});
         actions.push({label: t('project.deleteSessionOnly'), run: () => this.remove(manifest.id)});
+        if (this.actions.childWithMaterial) actions.splice(manifest.parentSessionId ? 3 : 2, 0, {label: t('project.createChildWithMaterial'), run: () => this.actions.childWithMaterial!(manifest.id)});
         return actions;
     }
     private information(): HTMLDetailsElement {

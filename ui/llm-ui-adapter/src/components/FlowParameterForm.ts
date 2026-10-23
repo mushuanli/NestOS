@@ -13,42 +13,69 @@ export interface FlowConnectionSelection {
     onChange(id: string | undefined): void;
     validate?(): Promise<void>;
 }
+export interface FlowParameterExtension {
+    mount(dialog: HTMLElement): () => void;
+    validate?(): void;
+    submitLabel?: Parameters<typeof t>[0];
+    formatError?(error: unknown): string;
+    withSubmissionSignal?: boolean;
+}
 
 /** Validate before closing so invalid input can be corrected repeatedly. */
-export function promptFlowParameters(parameters: FlowParameter[], title?: string, submit?: (values: Record<string, JsonValue>) => Promise<void>, signal?: AbortSignal, connection?: FlowConnectionSelection, assets = connection?.assets, description?: string): Promise<Record<string, JsonValue> | null> {
+export function promptFlowParameters(parameters: FlowParameter[], title?: string, submit?: (values: Record<string, JsonValue>, signal?: AbortSignal) => Promise<void>, signal?: AbortSignal, connection?: FlowConnectionSelection, assets = connection?.assets, description?: string, extension?: FlowParameterExtension): Promise<Record<string, JsonValue> | null> {
     return new Promise(resolve => {
-        const dialog = document.createElement('dialog');
+        const dialog = document.createElement('dialog'), lifetime = new AbortController();
         dialog.className = 'dag-dialog flow-parameter-dialog';
         dialog.setAttribute('aria-labelledby', 'flow-parameter-dialog-title');
         dialog.innerHTML = parameterDialogTemplate(parameters, title, Boolean(submit), connection, description);
-        let result: Record<string, JsonValue> | null = null;
-        const imagesReady = bindFlowImageFields(dialog, parameters, assets);
+        const imagesReady = bindFlowImageFields(dialog, parameters, assets), unmount = extension?.mount(dialog);
+        if (extension?.submitLabel) dialog.querySelector('button[type="submit"]')!.textContent = t(extension.submitLabel);
+        const isCurrent = () => !lifetime.signal.aborted && !signal?.aborted;
+        const collect = () => {
+            if (!isCurrent()) throw new Error(t('flow.launch.cancel'));
+            extension?.validate?.();
+            const values = readFlowParameterForm(dialog, parameters, connection), validation = connection?.validate?.();
+            return validation ? validation.then(() => values) : values;
+        };
+        const read = () => { const pending = imagesReady(); return pending ? pending.then(collect) : collect(); };
+        const result = bindParameterSubmission(dialog, read, submit, lifetime.signal, isCurrent, extension);
         dialog.querySelector('[data-cancel]')!.addEventListener('click', () => dialog.close());
-        let submitting = false;
-        dialog.querySelector('form')!.addEventListener('submit', async event => {
-            event.preventDefault();
-            if (submitting) return;
-            submitting = true;
-            try {
-                const pendingImages = imagesReady();
-                if (pendingImages) await pendingImages;
-                if (signal?.aborted || !dialog.isConnected) return;
-                const values = readFlowParameterForm(dialog, parameters, connection);
-                if (connection?.validate) await connection.validate();
-                if (signal?.aborted || !dialog.isConnected) return;
-                await submit?.(values); result = values; dialog.close();
-            }
-            catch (error) { dialog.querySelector('[data-form-error]')!.textContent =
-                error instanceof Error ? error.message : t('flow.launch.invalidValue'); }
-            finally { submitting = false; }
-        });
-        const abort = () => { result = null; dialog.close(); };
-        signal?.addEventListener('abort', abort, { once: true });
-        dialog.addEventListener('close', () => { signal?.removeEventListener('abort', abort); dialog.remove(); resolve(result); }, { once: true });
-        document.body.append(dialog);
-        dialog.showModal();
-        if (signal?.aborted) abort();
+        const abort = () => dialog.close(); signal?.addEventListener('abort', abort, {once: true});
+        dialog.addEventListener('close', () => {
+            const values = signal?.aborted ? null : result();
+            lifetime.abort(); signal?.removeEventListener('abort', abort); unmount?.(); dialog.remove(); resolve(values);
+        }, {once: true});
+        document.body.append(dialog); dialog.showModal(); if (signal?.aborted) abort();
     });
+}
+
+function bindParameterSubmission(dialog: HTMLElement, read: () => Record<string, JsonValue> | Promise<Record<string, JsonValue>>,
+    submit: ((values: Record<string, JsonValue>, signal?: AbortSignal) => Promise<void>) | undefined,
+    signal: AbortSignal, isCurrent: () => boolean, extension?: FlowParameterExtension): () => Record<string, JsonValue> | null {
+    let submitting = false, result: Record<string, JsonValue> | null = null;
+    dialog.querySelector('form')!.addEventListener('submit', async event => {
+        event.preventDefault(); if (submitting || !isCurrent()) return;
+        submitting = true;
+        const restore = freezeParameterControls(dialog);
+        try {
+            const pending = read(), values = pending instanceof Promise ? await pending : pending;
+            if (!isCurrent()) return;
+            await (extension?.withSubmissionSignal ? submit?.(values, signal) : submit?.(values));
+            if (!isCurrent()) return;
+            result = values; (dialog as HTMLDialogElement).close();
+        } catch (error) {
+            if (isCurrent()) dialog.querySelector('[data-form-error]')!.textContent = extension?.formatError?.(error)
+                ?? (error instanceof Error ? error.message : t('flow.launch.invalidValue'));
+        } finally { submitting = false; restore(); }
+    });
+    return () => result;
+}
+
+function freezeParameterControls(dialog: HTMLElement): () => void {
+    const controls = [...dialog.querySelectorAll<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement | HTMLButtonElement>('input, select, textarea, button')]
+        .filter(control => !control.hasAttribute('data-cancel')).map(control => ({control, disabled: control.disabled}));
+    controls.forEach(({control}) => {control.disabled = true;});
+    return () => controls.forEach(({control, disabled}) => {control.disabled = disabled;});
 }
 
 export function flowParameterFields(parameters: FlowParameter[], connection?: FlowConnectionSelection): string {

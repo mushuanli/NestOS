@@ -11,6 +11,7 @@ export * from './contracts/restore';
 export * from './contracts/commands';
 export type * from './contracts/instruction-queue';
 export * from './contracts/flow-invocations';
+export * from './contracts/content-transfer';
 export type * from './contracts/prompt-history';
 export type {
     NodeStatus,
@@ -44,6 +45,7 @@ export type {
 } from './core/types';
 export type {
     ConversationUIState,
+    SessionCreation,
     ConversationManifest,
     SessionSummary,
     BranchTreeNode,

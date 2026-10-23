@@ -115,6 +115,8 @@ export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
     mountCompactNavigation?(container: HTMLElement): () => void;
     /** Mount a window switcher into an existing editor title bar; return its cleanup. */
     mountWindowList?(container: HTMLElement): () => void;
+    /** Mount a host-owned related-conversation switcher in the existing title bar. */
+    mountConversationNavigation?(container: HTMLElement): () => void;
     /** Mount host-owned resource actions in the editor's More menu; return its cleanup. */
     mountMoreMenu?(container: HTMLElement): () => void;
     /** Host-owned presentation history; viewing or editing an executor does not record usage. */

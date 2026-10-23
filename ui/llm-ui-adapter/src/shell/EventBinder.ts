@@ -5,6 +5,7 @@ import { EventCleanup } from '../components/common/EventCleanup';
 
 export interface EventBinderCallbacks {
     mountCompactNavigation: NonNullable<EditorOptions['mountCompactNavigation']>;
+    mountConversationNavigation: NonNullable<EditorOptions['mountConversationNavigation']>;
     mountMoreMenu: NonNullable<EditorOptions['mountMoreMenu']>;
     onToggleSidebar: () => void;
     onTitleChange: (title: string) => void;
@@ -31,6 +32,7 @@ export interface GlobalShortcutCallbacks {
 export class EventBinder {
     private events = new EventCleanup();
     private disposeResponsive?: () => void;
+    private disposeConversationNavigation?: () => void;
     private disposeHostMenu?: () => void;
     private disposeHostNavigation?: () => void;
     private disposeBranchNavigation?: () => void;
@@ -48,6 +50,8 @@ export class EventBinder {
         if (content) this.disposeHostMenu = this.callbacks.mountMoreMenu?.(content.querySelector('.llm-workspace-titlebar__host-actions') ?? content);
         const titlebar = menu.closest<HTMLElement>('.llm-workspace-titlebar');
         const toolbar = titlebar?.querySelector<HTMLElement>('.llm-workspace-titlebar__primary');
+        this.disposeConversationNavigation?.();
+        if (toolbar) this.disposeConversationNavigation = this.callbacks.mountConversationNavigation?.(toolbar);
         if (titlebar && content) this.bindBranchNavigation(titlebar, content, menu.querySelector('summary')!);
         if (titlebar && toolbar) {
             const actions = ['llm-btn-prompt-nav', 'llm-btn-collapse', 'llm-btn-refresh', 'llm-btn-session-rerun', 'llm-btn-copy']
@@ -179,6 +183,7 @@ export class EventBinder {
         this.disposeHostNavigation?.(); this.disposeHostNavigation = undefined;
         delete this.container.dataset.editorMobileNavigation;
         this.disposeHostMenu?.(); this.disposeHostMenu = undefined;
+        this.disposeConversationNavigation?.(); this.disposeConversationNavigation = undefined;
         this.disposeResponsive?.(); this.disposeResponsive = undefined;
         this.events.cleanup();
     }

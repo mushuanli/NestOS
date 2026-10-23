@@ -5,7 +5,7 @@ import { ConversationContextBuilder } from '../src/session/conversation-context'
 import { snapshotDirectAgentPolicy } from '../src/contracts/direct-agent-policy';
 
 function builder(): ConversationContextBuilder {
-    return new ConversationContextBuilder({ engine: {}, loadArtifact: async () => null } as never, snapshotDirectAgentPolicy());
+    return new ConversationContextBuilder({ engine: {getManifest: async () => ({})}, loadArtifact: async () => null } as never, snapshotDirectAgentPolicy());
 }
 
 /** Regenerate/resend reuses the Round as branch head; the plan must still carry the prompt. */

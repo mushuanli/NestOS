@@ -1,13 +1,12 @@
 import { flowConnectionSelection } from './connection-selection';
-import { escapeHTML, randomUUID, t } from '@itookit/common';
+import { escapeHTML, t } from '@itookit/common';
 import { type FlowDraft, type FlowRevision, type JsonValue } from '@itookit/llm-flow/contracts';
 import { type ICommandBus } from '@itookit/llm-session/contracts';
-import { FlowInvocationCommand } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
-import { promptFlowParameters } from '../components/FlowParameterForm';
+import { promptInvocation } from './prompt-invocation';
 
 /** Slash calls leave the Session's ordinary chat execution mode untouched. */
-export async function invokeFlowText(commands: ICommandBus, sessionId: string, text: string, signal?: AbortSignal): Promise<boolean> {
+export async function invokeFlowText(commands: ICommandBus, sessionId: string, text: string, signal?: AbortSignal, openChild?: (id: string) => void | Promise<void>): Promise<boolean> {
     const match = text.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
     const drafts = await commands.execute<FlowDraft[]>(FlowCommand.DraftList);
     const id = match?.[1] ?? await pickFlow(drafts, signal);
@@ -17,17 +16,11 @@ export async function invokeFlowText(commands: ICommandBus, sessionId: string, t
     const provided = parseArguments(match?.[2]), fields = draft.parameters ?? [];
     for (const name of Object.keys(provided)) if (!fields.some(field => field.name === name)) throw new Error(t('flow.invoke.unknownParameter', { name }));
     const connection = await flowConnectionSelection(commands, undefined, draft.connections, undefined, draft);
-    const requests = new Map<string, string>();
     let revision: FlowRevision | undefined;
-    const submit = async (parameters: Record<string, JsonValue>) => {
-        if (signal?.aborted) throw new Error(t('flow.launch.cancel'));
-        revision ??= (await commands.execute<{ revision: FlowRevision }>(FlowCommand.RevisionCreate, { draftId: id, expectedDraftVersion: draft.draftVersion })).revision;
-        if (signal?.aborted) throw new Error(t('flow.launch.cancel'));
-        const key = JSON.stringify([parameters, connection.selected, connection.bindings]), requestId = requests.get(key) ?? randomUUID(); requests.set(key, requestId);
-        await commands.execute(FlowInvocationCommand.Invoke, { sessionId, requestId, flowId: id, revision: revision.revision, parameters, connectionId: connection.selected, ...(Object.keys(connection.bindings ?? {}).length ? { connectionBindings: connection.bindings } : {}) });
-    };
-    return await promptFlowParameters(fields.map(field => ({ ...field, ...(Object.hasOwn(provided, field.name) ? { default: provided[field.name] } : {}) })),
-        `${t('flow.invoke.title')} · ${draft.name}`, submit, signal, connection) !== null;
+    return promptInvocation({ commands, sessionId, name: draft.name, connection, signal, openChild,
+        fields: fields.map(field => ({ ...field, ...(Object.hasOwn(provided, field.name) ? { default: provided[field.name] } : {}) })),
+        revision: async () => revision ??= (await commands.execute<{ revision: FlowRevision }>(FlowCommand.RevisionCreate,
+            { draftId: id, expectedDraftVersion: draft.draftVersion })).revision });
 }
 
 function parseArguments(text?: string): Record<string, JsonValue> {

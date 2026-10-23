@@ -3,3 +3,29 @@
 .flow-invocations__card header { display: flex; justify-content: space-between; gap: 12px; }
 .flow-invocations__card pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
 .flow-invocations__card button { margin: 4px; }
+
+.flow-invocations__summary { margin: 0 0 4px; font-size: 13px; font-weight: 600; }
+.flow-content-field { grid-column: 1 / -1; min-width: 0; }
+.flow-content-field > .llm-parameter-field { display: flex; flex-direction: column; gap: 8px; }
+.flow-content-source { margin-top: 8px; padding: 10px; border: 1px solid var(--border-color, #8885); border-radius: 6px; font-size: 13px; }
+.flow-content-source label, .flow-launch-location { display: flex; flex-direction: column; gap: 6px; }
+.flow-content-source select, .flow-launch-location select { max-width: 100%; min-height: 36px; color: inherit; background: var(--dag-bg, inherit); border: 1px solid var(--border-color, #8885); border-radius: 4px; padding: 6px; }
+.flow-content-source pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; }
+.flow-content-source [data-source-choices] { max-height: 220px; overflow: auto; margin: 8px 0; }
+.flow-content-source .flow-content-source__message { flex-direction: row; align-items: start; padding: 6px 0; }
+.flow-content-source__message input { flex-shrink: 0; }
+.flow-content-source [data-source-error] { color: var(--error-color, #dc2626); overflow-wrap: anywhere; }
+.flow-content-source [data-source-error]:empty { display: none; }
+.flow-content-source button { min-height: 36px; }
+.flow-launch-location { margin-bottom: 20px; }
+@media (max-width: 768px) {
+    .flow-content-source button, .flow-content-source select, .flow-launch-location select { min-height: 44px; }
+    .flow-content-source__message { min-height: 44px; }
+}
+
+.llm-input-receiver { margin: 4px 12px; color: var(--text-secondary, #64748b); font-size: 12px; }
+.llm-input__flow-launch { min-height: 32px; padding: 4px 8px; border: 1px solid var(--border-color, #8885); border-radius: 6px; color: inherit; background: transparent; cursor: pointer; white-space: nowrap; }
+.llm-session-material { margin: 12px; padding: 12px; border: 1px solid var(--border-color, #8885); border-radius: 8px; }
+.llm-session-material summary { cursor: pointer; }
+.llm-session-material pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; }
+@media (max-width: 768px) { .llm-input__flow-launch { min-height: 44px; } }

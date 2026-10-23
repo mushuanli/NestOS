@@ -34,7 +34,7 @@ it.each([false, true])('persists selected Skill and scoped memory in direct chat
         const coordinator = new ConversationRunCoordinator({ kernel, resolveSkills, retrieveMemory, resolveTools,
             resolveSessionContext: async () => ({ projectInstructions: 'Project rules from AGENT.md',
                 skillInstructions: 'Loaded skill rules', skillIndex: 'Available skill metadata' }),
-            engine: {}, eventBus: {}, dagPlugins: {}, loadArtifact: async () => null } as never);
+            engine: {getManifest: async () => ({})}, eventBus: {}, dagPlugins: {}, loadArtifact: async () => null } as never);
         // Keep the actual context assembly, submission, and capability binding; bypass UI projection/consumption.
         const internal = coordinator as any;
         vi.spyOn(internal, 'startRound').mockResolvedValue(undefined);

@@ -3,6 +3,8 @@ import { operationModelNames } from '@itookit/kernel-adapters/contracts';
 import { checkFlowConnections, type FlowConnectionCheckInput } from './session/flow-connection-check';
 import { skillContextResolver } from './session/direct-conversation';
 import { createSessionHost, type SessionHostPorts } from './utils/host-ports';
+import { ContentTransferService } from './session/content-transfers';
+export { ContentTransferService } from './session/content-transfers';
 import { FlowInvocationService } from './session/flow-invocations';
 import type { FlowInvocationSessions } from './persistence/flow-invocation-sessions';
 import { RoundLog as InvocationRoundLog } from './persistence/round-log';
@@ -51,6 +53,7 @@ export type {
     ConversationManifest,
     SessionSummary,
     ConversationUIState,
+    SessionCreation,
     SessionLoadState,
     SessionRepositoryChange,
     BranchTreeNode,
@@ -99,6 +102,7 @@ import { DagCommandService } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
+    summarizeContent?: (sessionId: string, text: string) => Promise<string>;
     executionActivity?: import('./session/session-execution-activity').SessionExecutionActivity;
     instructionQueueSessions?: import('./persistence/instruction-queue-sessions').InstructionQueueSessions;
     scheduleAgentInitialization?: (initialize: () => Promise<void>) => void | Promise<void>;
@@ -177,10 +181,13 @@ function createManagedSession(options: ConversationSystemOptions, promptHistory:
 }
 
 async function initializeInvocations(options: ConversationSystemOptions, system: ConversationSystem): Promise<void> {
+    const transfers = new ContentTransferService({kernel: options.kernel, repository: options.sessionEngine, commands: system.commandBus,
+        hostPorts: options.hostPorts, canWrite: options.canWriteSession, summarize: options.summarizeContent});
+    transfers.register();
     const invocations = new FlowInvocationService(options.kernel, new FlowDefinitionStore(options.flowStore, options.dagPlugins), system.commandBus, options.canWriteSession, async id => {
         const manifest = await new InvocationRoundLog(options.sessionEngine, id).loadManifest();
         return { branch: manifest.currentBranch, head: manifest.currentHead };
-    }, (id, selected) => resolveSessionConnection(options, id, selected), options.flowInvocationSessions, system.dag);
+    }, (id, selected) => resolveSessionConnection(options, id, selected), options.flowInvocationSessions, system.dag, transfers, options.hostPorts);
     invocations.register();
     const recover = () => createSessionHost(options.hostPorts).traceBoot('flowInvocations.recover', () => invocations.recover());
     if (options.scheduleInvocationRecovery) await options.scheduleInvocationRecovery(recover);

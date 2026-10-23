@@ -36,6 +36,7 @@ export interface RendererContext {
 export class SessionRenderer {
     private readonly disposals = new Set<Promise<void>>();
     private readonly disposalFailures: unknown[] = [];
+    private timeline = new Map<HTMLElement, string | null>();
     private flowWindows = new Map<string, HTMLElement>();
     private nodeMap = new Map<string, HTMLElement>();
     private editorMap = new Map<string, MDxController>();
@@ -54,6 +55,23 @@ export class SessionRenderer {
     // ================================================================
     // 访问器（供其他 Controller 使用）
     // ================================================================
+
+    mountInvocation(element: HTMLElement, head: string | null): () => void {
+        this.timeline.set(element, head); this.placeInvocations();
+        return () => { this.timeline.delete(element); element.remove(); };
+    }
+
+    private placeInvocations(): void {
+        const previous = new Map<string | null, HTMLElement>();
+        for (const [element, head] of this.timeline) {
+            const anchor = previous.get(head) ?? (head ? this.getSessionElement(`round-${head}-assistant`)
+                ?? this.getSessionElement(`round-${head}-user`) : null);
+            const before = anchor?.nextSibling ?? (head ? null : this.container.firstChild);
+            if (element.parentElement !== this.container || element.nextSibling !== before) this.container.insertBefore(element, before);
+            previous.set(head, element);
+        }
+        if (this.timeline.size) this.container.querySelector('.llm-ui-welcome')?.remove();
+    }
 
     get editors(): Map<string, MDxController> { return this.editorMap; }
 
@@ -154,6 +172,7 @@ export class SessionRenderer {
             this.lastExecutionRoot = wrapper.querySelector('.llm-ui-execution-root');
         }
         this.restrictActions(wrapper);
+        this.placeInvocations();
     }
 
     async reconcileSessions(groups: SessionGroup[]): Promise<void> {
@@ -175,6 +194,7 @@ export class SessionRenderer {
         }
         if (!groups.length) this.renderWelcome();
         await Promise.all([...this.editorMap.entries()].filter(([id]) => this.isEditorVisible(id)).map(([, editor]) => editor.waitUntilReady()));
+        this.placeInvocations();
     }
 
     private updateSnapshotContent(group: SessionGroup): void {
@@ -424,6 +444,7 @@ export class SessionRenderer {
     renderWelcome(): void {
         this.clear();
         this.container.innerHTML = LayoutTemplates.renderWelcome();
+        this.placeInvocations();
     }
 
     // ================================================================
@@ -471,6 +492,7 @@ export class SessionRenderer {
 
     async destroy(): Promise<void> {
         this.timers.destroy();
+        this.timeline.clear();
         this.clear();
         await Promise.all(this.disposals);
         if (this.disposalFailures.length) throw new AggregateError(this.disposalFailures, 'History editor disposal failed');

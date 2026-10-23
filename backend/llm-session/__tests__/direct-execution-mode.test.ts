@@ -28,7 +28,7 @@ it.each([
         const resolveTools = vi.fn(async () => ({ definitions: [{ name: 'write_file' }, { name: 'WebSearch' }], externalIds: ['write_file'] }));
         const resolveHarnessToolIds = vi.fn(async () => ['write_file']);
         const policy = mode === 'agent' && ids === undefined ? { systemPrompt: ['Host custom policy'], maxExchanges: 3, llmRetry: { retries: 8, backoffMs: 20 }, toolTimeoutMs: 2500 } : undefined;
-        const coordinator = new ConversationRunCoordinator({ directAgentPolicy: policy, kernel, resolveTools, resolveHarnessToolIds, engine: {}, eventBus: {}, dagPlugins: {} } as never);
+        const coordinator = new ConversationRunCoordinator({ directAgentPolicy: policy, kernel, resolveTools, resolveHarnessToolIds, engine: {getManifest: async () => ({})}, eventBus: {}, dagPlugins: {} } as never);
         if (policy) { policy.systemPrompt[0] = 'Changed after construction'; policy.maxExchanges = 99; policy.llmRetry.retries = 0; }
         const internal = coordinator as any;
         vi.spyOn(internal, 'startRound').mockResolvedValue(undefined);
@@ -98,7 +98,7 @@ it.each(['agent', 'chat'] as const)('resolves configured MCP profiles only for %
         const name = 'mcp__server__lookup';
         const resolveMCPToolIds = vi.fn(async () => [name]);
         const coordinator = new ConversationRunCoordinator({ kernel, resolveMCPToolIds,
-            resolveTools: async () => ({ definitions: [{ name }], externalIds: [name] }), engine: {}, eventBus: {}, dagPlugins: {} } as never);
+            resolveTools: async () => ({ definitions: [{ name }], externalIds: [name] }), engine: {getManifest: async () => ({})}, eventBus: {}, dagPlugins: {} } as never);
         const internal = coordinator as any;
         vi.spyOn(internal, 'startRound').mockResolvedValue(undefined);
         vi.spyOn(internal, 'projectRun').mockReturnValue(undefined);

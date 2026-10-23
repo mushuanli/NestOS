@@ -6,6 +6,8 @@ Agent 可声明 `execution: {kind: 'flow', flowId, revision?, parameters?, conne
 
 `FlowInvocationService` 提供 `session.flow.invoke` / `session.flow.invocations`：以 `sessionId + requestId` 幂等启动固定 revision 的独立 Flow Run，同一 Session 可并行调用，调用意图和根 Task 引用持久化，结果不会推进普通对话的 branch head。`SessionCommand.CreateFromFlow` 的 `invocation: true` 直接创建调用；未指定时保留旧 Flow Session 路径。恢复与 UI 交互边界见 [Flow 调用与组合](design/flow-invocation-composition.md)。启动恢复先用上述标记筛出候选 Session：标记存在且不含该 Session 时完全不做 `listShared` 探测；先按标记写入、后写调用记录的顺序保证标记故障只会多扫一次，不会漏恢复。
 
+`ContentTransferService` 提供显式材料传递：`session.content.capture({sessionId})` 固定当前分支的可见文本和已完成 Flow 输出；`session.content.resolve({sessionId,captureId,selection})` 准备消息选择或摘要；`session.content.create-child({sessionId,requestId,title,transfer?})` 幂等创建独立子会话并准备执行存储。`FlowInvocationInput.inputSources` 按参数名引用 `{sessionId,id}`，准入核对实际参数后保存完整 `inputTransfers`。`SessionCreation.initialContext` 与身份同事务创建且不可变；Context 装配将它作为显式材料，父子关系本身不继承聊天历史。摘要由可选 `ConversationSystemOptions.summarizeContent` 宿主端口注入。来源、预算及界面边界见 [显式内容来源与独立子会话](design/flow-invocation-composition.md#显式内容来源与独立子会话)。
+
 > 用户可见的会话语义 + 持久化：Session 生命周期、Round/Branch、SessionRepository（会话目录持久化）、RoundLog、SessionEventBus、UI projections、Durable Conversation。同时是上层装配入口：`initializeConversationSystem()` 统一注册 `llm.chat/agent/plan` 与 `flow.*` Programs 并装配 CommandBus/DAG。公共 API 从 `@itookit/llm-session` 根导出；少数内部工具（`RUNTIME_KEY`、`ulid`/`extractTimestamp`、`log`、`ContextProfileStore`、`VFSEntityStore`、`SessionFolder` 类型）仅按源码路径可用。
 
 **依赖方向**：`llm-session → llm-flow → llm-tasks → durable-kernel`（本包 re-export `@itookit/llm-flow` 全部 API）。
@@ -179,6 +181,8 @@ class SessionRepository implements ISessionRepository {
 **`ISessionRepository`**（`persistence/types.ts`）：上述契约接口。会话身份即 `<id>` 目录，不存在 UI 节点 ↔ 会话的映射 API；会话标题是 manifest 的 `title` 字段，经 `updateManifest()` 修改。
 
 创建与恢复使用不同语义：`createSession` 在事务中预占存储身份，已有 ID 返回 `EEXIST`；`ensureSession` 幂等沿用已登记位置，未登记的中央会话优先保留原位置，安装项目 resolver 不会复制旧会话。读取始终核对持久存储索引，不使用实例启动时的“存在项目存储”标志。`validateProjectSessions(directory)` 是只读预检，项目创建及旧目录接管在写项目身份前调用；`indexProjectSessions` 在同一事务先验证整批目录名、manifest ID、已有位置与迁移状态，再发布索引。重复身份返回 `ECONFLICT`，包含 ID、登记路径和候选路径，不自动覆盖或删除副本。中央迁移和恢复也必须核对来源仍是登记位置，拒绝用过期来源重置索引。正式导入继续分配新 Session ID。
+
+`SessionRepository` 构造函数第三个可选参数接受实例级 logger。存储扫描、身份校验、迁移意图、目录传输、附件复制、索引提交及恢复记录 `session.storage` 事件，包含 operation、operationId、stage、outcome、durationMs 和安全错误分类。重复身份额外记录 sessionId、registered、candidate；迁移及恢复通过稳定 moveKey 关联。日志不写 manifest、历史、附件正文或原始异常；实际 HTTP 运行时输出到 runtime 日志，独立仓储默认静默。
 
 `listSummaries()` 是导航专用读取：每批最多 64 个 Session，使用跨文件 `getEntriesMany` 只读取 `session.seq::session`，返回 `SessionSummary`（身份、标题、摘要、来源、时间及组织关系），不读取 history index，也不返回分支、草稿和 UI 状态。缺失 Session 记录跳过，身份/版本错误仍拒绝。摘要不证明历史完整；打开会话时仍由完整读取校验历史。该能力在 `ISessionRepository` 上可选，旧实现回退 `list()`。Session browser、项目导航和家族选择均使用摘要；完整编辑、导出及恢复保留原接口。
 

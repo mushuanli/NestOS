@@ -39,7 +39,10 @@ export class ConversationContextBuilder {
             ?? execution.config.agentVersion
             ?? 'unversioned';
         const sessionContext = await this.options.resolveSessionContext?.(execution.task.sessionId, execution.task.input.text);
-        const result = await assembler.assemble(contextPlan(execution, location, profile), execution.task.id, {
+        const plan = contextPlan(execution, location, profile);
+        const seed = (await this.options.engine.getManifest(execution.task.sessionId)).initialContext;
+        if (seed) plan.explicitInputs.push({ kind: 'text', content: typeof seed.value === 'string' ? seed.value : JSON.stringify(seed.value), label: 'Initial conversation material', order: 0 });
+        const result = await assembler.assemble(plan, execution.task.id, {
             id: execution.config.id,
             version,
         }, this.systemPrompt(execution), skillsPrompt, { persist: false, ...sessionContext });
@@ -84,7 +87,7 @@ function contextPlan(
         // Round excluded by context policy can never drop the prompt entirely.
         pendingUserMessage: { role: 'user' as const, content: execution.task.input.text },
         pendingRoundId: execution.roundId,
-        explicitInputs: [],
+        explicitInputs: [] as import('@itookit/llm-context').InputBinding[],
         tokenBudget: execution.config.defaultContextPolicy?.tokenBudget,
     };
 }

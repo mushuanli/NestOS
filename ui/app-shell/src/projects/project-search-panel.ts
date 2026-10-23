@@ -10,6 +10,7 @@ interface SearchPanelOptions {
     sessions?: boolean;
     archived?: boolean;
     compact?: boolean;
+    changed?(): void;
 }
 
 /** Search options and async results driven by the shared sidebar query. */
@@ -47,8 +48,19 @@ export class ProjectSearchPanel {
         this.element.append(controls, this.sources, this.status, this.results);
         if (options.hint) { const hint = document.createElement('p'); hint.textContent = options.hint; controls.after(hint); }
         if (options.query?.archived) this.archived.checked = true;
-        this.scope.onchange = () => { this.scopeMenu.open = false; this.queue(); }; this.archived.onchange = () => this.queue();
+        this.scope.onchange = () => { this.scopeMenu.open = false; this.queue(); options.changed?.(); };
+        this.archived.onchange = () => { this.queue(); options.changed?.(); };
         this.element.addEventListener('keydown', event => { if (event.key === 'Escape') this.appliedQuery?.(''); });
+    }
+    filterChips(): import('../workbench/navigation-filters').NavigationFilterChip[] {
+        const chips: import('../workbench/navigation-filters').NavigationFilterChip[] = [];
+        if (this.scope.selectedIndex > 0) chips.push({label: this.scope.selectedOptions[0].textContent!, remove: () => {
+            this.scope.selectedIndex = 0; this.queue(); this.options.changed?.();
+        }});
+        if (this.archived.checked) chips.push({label: t('project.search.archived'), remove: () => {
+            this.archived.checked = false; this.queue(); this.options.changed?.();
+        }});
+        return chips;
     }
     private scopePicker(): HTMLElement {
         const menu = this.scopeMenu; menu.className = 'project-search__scope-menu';

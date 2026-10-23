@@ -2,6 +2,8 @@
 
 OcrSettingsForm 已挂载的字段在后台读取失败时保留 DOM 和程序赋值，仅更新错误状态与重试入口；不能以网络错误清空草稿或改变恢复表单结构。form-recovery 只记录字段数量和结构差异位置，不记录字段值或设置密钥。
 
+OcrSettingsForm 可通过可选 selectionChanged 回调向宿主提供当前连接 ID 和选择控件所在容器，供宿主挂载相邻操作；syncSelection 在恢复表单值后同步这些操作，不触发保存。共享组件不持有工具箱路由。
+
 共享 **UI 契约与基础组件**：编辑器接口（`IEditor`/`IEditorFactory`）、Session 视图接口（`ISessionUI`）、可复用的原生 DOM 组件（`Modal`/`Toast`/确认框）、设置编辑器基类与剪贴板工具。供 `app-settings`、`app-shell` 等 UI 装配层复用。技术栈为原生 DOM + TypeScript，无前端框架。
 
 ## 定位与铁律

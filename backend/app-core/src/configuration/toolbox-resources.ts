@@ -130,7 +130,7 @@ export class ToolboxResources {
         else {
             const providerId = selectedProvider ?? this.agents.getProviders()[0]?.id;
             if (!providerId || !this.agents.getProviders().some(provider => provider.id === providerId)) throw new Error(t('toolbox.providerRequired'));
-            await this.agents.saveConnection({ id, name, providerId });
+            await this.agents.saveConnection({ id, name, providerId, enabled: true });
         }
         return toolboxPath(kind, '/' + encodeURIComponent(id));
     }

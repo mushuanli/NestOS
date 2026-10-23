@@ -18,6 +18,8 @@ import { Toast } from '@itookit/ui-common';
 import { fromConnectionDef, serializeLLMConfig } from '@itookit/kernel-adapters/llm/config';
 import { runLLMImport } from './llm-import';
 import { escapeAttr, escapeHTML } from '@itookit/common';
+import './connection-form.css';
+import {ModelPicker} from '../utils/model-picker';
 import {matchesModelQuery, modelChoiceLabel, modelPriceLabel} from '../utils/modelChoice';
 import {renderModelCapabilityBadges} from '../utils/modelBadges';
 import type {ModelPricingConfig} from '@itookit/kernel-adapters/contracts';
@@ -34,23 +36,26 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
     private _checkedIds = new Set<string>();
     private _selectedProviderId: string | null = null;
     private pricing?: ModelPricingConfig;
+    private editingContainer?: HTMLElement;
+    private get formContainer(): HTMLElement { return this.editingContainer ?? this.container; }
+    private readonly modelPickers = new Map<HTMLSelectElement, ModelPicker>();
     protected captureRecoveryModel(): unknown {
-        return structuredClone({tiers: this.currentEditTiers, budgets: this.currentEditModelBudgets, efforts: this.currentEditModelEfforts,
-            providerId: this.container.querySelector<HTMLSelectElement>('#conn-provider')?.value});
+        return structuredClone({tiers: this.container.querySelector('select[data-tier]') ? Object.fromEntries([...this.container.querySelectorAll<HTMLSelectElement>('select[data-tier]')].map(select => [select.dataset.tier, select.value])) : this.currentEditTiers, budgets: this.currentEditModelBudgets, efforts: this.currentEditModelEfforts,
+            providerId: this.container.querySelector<HTMLSelectElement>('[id="conn-provider"]')?.value});
     }
     protected restoreRecoveryModel(snapshot: unknown): void {
         const state = snapshot as {tiers: Partial<Record<ModelTier, string>>; budgets: Record<string, number>; efforts: Record<string, string>; providerId?: string};
         this.currentEditTiers = state.tiers; this.currentEditModelBudgets = state.budgets; this.currentEditModelEfforts = state.efforts;
-        const section = this.container.querySelector('#tier-config-section'), provider = state.providerId && this.providers[state.providerId];
-        if (section && provider) section.innerHTML = this.renderTierForm(provider);
+        const section = this.container.querySelector('[id="tier-config-section"]'), provider = state.providerId && this.providers[state.providerId];
+        if (section && provider) {this.clearModelPickers(); section.innerHTML = this.renderTierForm(provider);}
         const protocol = this.container.querySelector('[name="protocol"]');
         if (protocol && provider) protocol.innerHTML = renderProtocolOptions(provider);
     }
-    protected afterRestoreRecovery(): void { this.applyModelSearch(); }
+    protected afterRestoreRecovery(): void { this.mountModelPickers(); }
 
     protected override onServiceChange(): void {
         // The mounted form owns its draft, including edits assigned without DOM events.
-        if (this.formOnly && this.container.querySelector('#connection-form')) return;
+        if (this.formOnly && this.container.querySelector('form')) return;
         super.onServiceChange();
     }
 
@@ -74,7 +79,8 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
         // Keep the global default visible, then prioritize readiness.
         allConnections.sort((a, b) => {
-            const priority = Number(b.id === this.defaultConnectionId) - Number(a.id === this.defaultConnectionId) || this.connectionRank(a) - this.connectionRank(b);
+            const priority = Number(a.enabled === false) - Number(b.enabled === false)
+                || Number(b.id === this.defaultConnectionId) - Number(a.id === this.defaultConnectionId) || this.connectionRank(a) - this.connectionRank(b);
             if (priority) return priority;
             if (hasConnectionCredentials(a) && !hasConnectionCredentials(b)) return -1;
             if (!hasConnectionCredentials(a) && hasConnectionCredentials(b)) return 1;
@@ -514,11 +520,12 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
     // ── Edit modal ─────────────────────────────────────────────────────────────
 
     private showEditModal(connection: LLMConnection | null) {
+        this.clearModelPickers(); this.editingContainer = undefined;
         let savedConnection = connection;
         const connectionId = connection?.id ?? `conn-${generateShortUUID()}`;
         const providerKeys = Object.keys(this.providers);
         const initialPid = connection?.providerId ?? this._selectedProviderId ?? providerKeys[0];
-        const initialProvider = this.providers[initialPid] ?? this.providers[providerKeys[0]];
+        const initialProvider = this.providers[initialPid];
 
         this.currentEditTiers = connection?.tiers ? { ...connection.tiers } : {};
         this.currentEditModelEfforts = { ...(connection?.metadata?.modelReasoningEfforts ?? {}) };
@@ -531,43 +538,27 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         }
 
         const modalContent = `
-            <form id="connection-form" class="settings-form">
-                <!-- Provider selection (configure providers in "LLM Providers" settings) -->
-                <div class="settings-form__group">
-                    <label class="settings-form__label">云提供商 *</label>
-                    <select class="settings-form__select" id="conn-provider" name="providerId" required>
-                        ${providerKeys.map(k => {
-                            const p = this.providers[k];
-                            return `<option value="${k}" ${initialPid === k ? 'selected' : ''}>${p.icon ?? ''} ${p.name}</option>`;
-                        }).join('')}
-                    </select>
-                    <small class="settings-form__help">
-                        Provider 的模型列表和地址在
-                        <strong>${this.formOnly ? t('toolbox.providerLocation') : '设置 → LLM Providers'}</strong> 中管理。
-                    </small>
-                </div>
-
-                <!-- Connection name -->
-                <div class="settings-form__group">
-                    <label class="settings-form__label">连接名称 *</label>
-                    <input type="text" class="settings-form__input" name="name"
-                           value="${connection?.name || ''}" required
-                           placeholder="例如: RDSec-Claude、RDSec-Gemini">
-                    <small class="settings-form__help">
-                        同一 Provider 可创建多个连接，用于配置不同的模型层级组合。
-                    </small>
-                </div>
-
-                <!-- Temperature override -->
-                <div class="settings-form__group" data-connection-chat>
-                    <label class="settings-form__label">温度 (0-2)</label>
-                    <input type="number" class="settings-form__input" name="temperature"
-                           value="${connection?.temperature ?? ''}"
-                           min="0" max="2" step="0.1" placeholder="未设置（使用 Provider 默认）"
-                           style="max-width:120px">
-                    <small class="settings-form__help">
-                        覆盖 Provider 的默认温度。留空则使用 Provider 设置。
-                    </small>
+            <form id="connection-form" class="settings-form connection-form">
+                <div class="connection-form__service-row">
+                    <label class="settings-form__group">
+                        <span class="settings-form__label">${t('connection.provider')}</span>
+                        <select class="settings-form__select" id="conn-provider" name="providerId" disabled aria-readonly="true">
+                            <option value="${escapeAttr(initialPid)}">${escapeHTML(initialProvider?.name ?? initialPid)}</option>
+                        </select>
+                    </label>
+                    <input type="hidden" name="providerId" value="${escapeAttr(initialPid)}">
+                    <label class="settings-form__group">
+                        <span class="settings-form__label">${t('provider.protocol.connection')}</span>
+                        <select class="settings-form__select" name="protocol">
+                            ${initialProvider ? renderProtocolOptions(initialProvider, connection?.protocol) : ''}
+                        </select>
+                    </label>
+                    <label class="settings-form__group" data-connection-chat>
+                        <span class="settings-form__label">温度 (0-2)</span>
+                        <input type="number" class="settings-form__input" name="temperature"
+                               value="${connection?.temperature ?? ''}"
+                               min="0" max="2" step="0.1" placeholder="未设置（使用 Provider 默认）">
+                    </label>
                 </div>
 
                 <!-- Tier configuration (Connection's core responsibility) -->
@@ -580,41 +571,31 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                     <div class="settings-tier-config" id="tier-config-section">
                         ${this.renderTierForm(initialProvider)}
                     </div>
-                    <small class="settings-form__help">${t('connection.reasoningHelp')}</small>
-                    <small class="settings-form__help">
-                        API Key 和模型列表在 <strong>${this.formOnly ? t('toolbox.providerLocation') : '设置 → LLM Providers'}</strong> 中管理。
-                    </small>
-                </div>
-
-                <div class="settings-form__group">
-                    <label class="settings-form__label" data-connection-chat>${t('provider.protocol.connection')}</label>
-                    <select class="settings-form__select" name="protocol" data-connection-chat>
-                        ${initialProvider ? renderProtocolOptions(initialProvider, connection?.protocol) : ''}
-                    </select>
-                    <small class="settings-form__help">${t('provider.protocol.connectionHelp')}</small>
                 </div>
             </form>
         `;
 
-        showConfigurationForm(this.container, connection?.name ?? '添加连接', modalContent, {
+        this.editingContainer = showConfigurationForm(this.container, connection?.name ?? '添加连接', modalContent, {
             width: '560px',
+            editableTitle: {name: 'name', value: connection?.name ?? '', label: t('connection.name')},
+            statusBelowHeader: true,
             confirmText: '',
             onAutoSave: save => this.trackAutoSave(save),
             onClose: () => { void this.render(); },
             onConfirm: async () => {
-                const form = document.getElementById('connection-form') as HTMLFormElement;
+                const form = this.formContainer.querySelector('form') as HTMLFormElement;
                 if (!form.checkValidity()) return false;
 
                 const formData = new FormData(form);
                 const data = Object.fromEntries(formData) as Record<string, string>;
                 if (!data.name.trim()) throw new SettingsValidationError(t('settings.autosave.invalid'));
-                const pid = data.providerId;
+                const pid = savedConnection?.providerId ?? initialPid;
                 data.protocol = form.querySelector<HTMLSelectElement>('[name="protocol"]')!.value;
 
                 // Read all three tier selections
-                const tierOptimal  = (document.getElementById('tier-optimal')  as HTMLSelectElement)?.value || '';
-                const tierStandard = (document.getElementById('tier-standard') as HTMLSelectElement)?.value || '';
-                const tierFast     = (document.getElementById('tier-fast')     as HTMLSelectElement)?.value || '';
+                const tierOptimal  = (this.formContainer.querySelector('[data-tier="optimal"]')  as HTMLSelectElement)?.value || '';
+                const tierStandard = (this.formContainer.querySelector('[data-tier="standard"]') as HTMLSelectElement)?.value || '';
+                const tierFast     = (this.formContainer.querySelector('[data-tier="fast"]')     as HTMLSelectElement)?.value || '';
                 const tiers: Partial<Record<ModelTier, string>> = {};
                 if (tierOptimal)  tiers.optimal  = tierOptimal;
                 if (tierStandard) tiers.standard = tierStandard;
@@ -633,7 +614,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                 }
                 const newConn: LLMConnection = {
                     ...savedConnection,
-                    enabled: this.formOnly ? data.enabled === 'on' : connection?.enabled,
+                    enabled: this.formOnly ? data.enabled === 'on' : savedConnection?.enabled !== false,
                     id: connectionId,
                     name: data.name.trim(),
                     providerId: pid,
@@ -646,8 +627,8 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
                 await this.service.saveConnection(newConn);
                 savedConnection = structuredClone(newConn);
-                const heading = this.container.querySelector('.settings-page__title');
-                if (this.formOnly && heading) heading.textContent = newConn.name;
+                const heading = this.formContainer.querySelector('.settings-page__title');
+                if (this.formOnly && heading && !heading.querySelector('input')) heading.textContent = newConn.name;
             },
         }, this.formOnly);
 
@@ -655,7 +636,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             this.bindModalEvents(connection, initialPid);
             addConfigurationEnabled(this.container, connection?.enabled !== false);
             addConfigurationAction(this.container, t('toolbox.configureProvider'), () => {
-                const id = this.container.querySelector<HTMLSelectElement>('[name="providerId"]')?.value;
+                const id = this.formContainer.querySelector<HTMLSelectElement>('[name="providerId"]')?.value;
                 if (id) void this.options.hostContext?.navigate({ target: 'toolbox', resourceId: '/providers/' + encodeURIComponent(id) });
             });
             const current = this.connections.find(item => item.id === connection?.id);
@@ -663,13 +644,15 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                 t(connection.id === this.defaultConnectionId ? 'connection.clearDefault' : 'connection.setDefault'), async () => {
                     await this.service.setDefaultConnection(connection.id === this.defaultConnectionId ? null : connection.id);
                     await this.render();
-                });
+                }, true);
             addConfigurationAction(this.container, t('modelDefaults.configure'), () => {
                 void this.options.hostContext?.navigate({ target: 'settings', resourceId: 'model-defaults' });
-            });
-            if (connection) addConfigurationAction(this.container, t('action.delete'), () => this.deleteConnection(connection.id, connection.name));
+            }, true);
+            if (connection) addConfigurationAction(this.container, t('action.delete'), () => this.deleteConnection(connection.id, connection.name), true);
         } else setTimeout(() => this.bindModalEvents(connection, initialPid), 100);
     }
+
+    override async destroy(): Promise<void> { this.clearModelPickers(); await super.destroy(); }
 
     private tierModelId(tier: ModelTier, provider: LLMProvider | undefined): string {
         return resolveModelForTier({ tiers: this.currentEditTiers,
@@ -686,9 +669,9 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         const modelId = this.tierModelId(tier, provider);
         if (!modelId) return '';
         const model = provider?.models.find(item => item.id === modelId);
-        const protocol = this.container.querySelector<HTMLSelectElement>('[name="protocol"]')?.value as ApiProtocol || model?.preferredProtocol || (provider && getProviderDefaultProtocol(provider));
+        const protocol = this.formContainer.querySelector<HTMLSelectElement>('[name="protocol"]')?.value as ApiProtocol || model?.preferredProtocol || (provider && getProviderDefaultProtocol(provider));
         const caps = modelReasoning(model, protocol);
-        if (!caps) return `<small class="settings-form__help">${t('connection.reasoningUnavailable')}</small>`;
+        if (!caps) return `<small class="settings-form__help" title="${t('connection.reasoningUnavailable')}">${t('connection.reasoningDefault')}</small>`;
         const saved = this.currentEditModelEfforts[modelId] || '';
         const value = caps.efforts.some(option => option.id === saved) || saved === 'off' && caps.canDisable ? saved : '';
         const options = `<option value="">${t('connection.reasoningDefault')}</option>${caps.canDisable ? `<option value="off" ${value === 'off' ? 'selected' : ''}>${t('connection.reasoningOff')}</option>` : ''}` + caps.efforts.map(option =>
@@ -702,7 +685,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         // Operations are validated at admission; tiers may select any declared model.
         const models = provider?.models ?? [];
         const modelOpts = models.map(m =>
-            `<option value="${escapeAttr(m.id)}">${escapeHTML(modelChoiceLabel(m, provider?.id ?? '', this.pricing))}</option>`
+            `<option value="${escapeAttr(m.id)}">${escapeHTML(m.name || m.id)}</option>`
         ).join('');
 
         const tierRow = (tier: ModelTier, label: string, badgeClass: string) => {
@@ -710,18 +693,13 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             return `
                 <div class="settings-tier-row">
                     <span class="settings-tier-badge ${badgeClass}">${label}</span>
-                    <div class="settings-tier-model"><select class="settings-form__select settings-form__select--sm" id="tier-${tier}" data-tier="${tier}" aria-label="${escapeAttr(label)}">${noneOpt}${modelOpts}</select>
-                    <small class="settings-tier-model__info" data-model-info="${tier}">${this.renderTierModelInfo(tier, provider)}</small></div>
-                    <div id="tier-effort-${tier}">${this.renderModelEffort(tier, provider)}</div>
+                    <div class="settings-tier-model"><select class="settings-form__select settings-form__select--sm" id="tier-${tier}" data-tier="${tier}" aria-label="${escapeAttr(label)}">${noneOpt}${modelOpts}</select></div>
+                    <div class="connection-form__reasoning" id="tier-effort-${tier}">${this.renderModelEffort(tier, provider)}</div>
+                    <small class="settings-tier-model__info" data-model-info="${tier}">${this.renderTierModelInfo(tier, provider)}</small>
                 </div>`;
         };
 
         return `
-            <label class="settings-form__label" for="connection-model-search">${t('connection.modelSearch')}</label>
-            <input type="search" id="connection-model-search" class="settings-form__input" data-model-search data-autosave-ignore
-                placeholder="${t('connection.modelSearchPlaceholder')}" aria-describedby="connection-model-search-help connection-model-search-count">
-            <small class="settings-form__help" id="connection-model-search-help">${t('connection.modelSearchHelp')}</small>
-            <small class="settings-form__help" id="connection-model-search-count" role="status" aria-live="polite"></small>
             ${tierRow('optimal', t('connection.primaryModel'), 'settings-tier-badge--optimal')}
             <details><summary>${t('connection.advancedRouting')}</summary>
             ${tierRow('standard', '标准', 'settings-tier-badge--standard')}
@@ -737,51 +715,52 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         return `${renderModelCapabilityBadges(model)} <span>${escapeHTML(modelPriceLabel(model, provider!.id, this.pricing))}</span>${link}`;
     }
 
-    private applyModelSearch(): void {
-        const search = this.container.querySelector<HTMLInputElement>('[data-model-search]');
-        const providerId = this.container.querySelector<HTMLSelectElement>('#conn-provider')?.value ?? '';
-        const models = this.providers[providerId]?.models ?? [], filtered = models.filter(model => matchesModelQuery(model, search?.value ?? ''));
-        for (const select of this.container.querySelectorAll<HTMLSelectElement>('select[data-tier]')) {
-            const value = select.value, selected = models.find(model => model.id === value);
-            const options = filtered.map(model => new Option(modelChoiceLabel(model, providerId, this.pricing), model.id));
-            if (value && !filtered.some(model => model.id === value)) options.unshift(new Option(t('connection.modelSelectedOutsideFilter',
-                {model: selected ? modelChoiceLabel(selected, providerId, this.pricing) : value}), value));
-            select.replaceChildren(new Option(t(select.dataset.tier === 'optimal' ? 'connection.primaryFallback' : 'connection.routingFallback'), ''), ...options);
-            select.value = value;
+    private clearModelPickers(): void {
+        for (const picker of this.modelPickers.values()) picker.destroy();
+        this.modelPickers.clear();
+    }
+    private mountModelPickers(): void {
+        const providerId = this.formContainer.querySelector<HTMLSelectElement>('[id="conn-provider"]')?.value ?? '';
+        const models = this.providers[providerId]?.models ?? [];
+        for (const select of this.formContainer.querySelectorAll<HTMLSelectElement>('select[data-tier]')) {
+            if (this.modelPickers.has(select)) {this.modelPickers.get(select)!.sync(); continue;}
+            const tier = select.dataset.tier as ModelTier;
+            this.modelPickers.set(select, new ModelPicker(select, {label: select.getAttribute('aria-label') ?? '',
+                choices: () => [{value: '', name: t(tier === 'optimal' ? 'connection.primaryFallback' : 'connection.routingFallback')},
+                    ...models.map(model => ({value: model.id, name: model.name || model.id, detail: modelChoiceLabel(model, providerId, this.pricing)}))],
+                matches: (choice, query) => {const model = models.find(item => item.id === choice.value); return !!model && matchesModelQuery(model, query);},
+            }));
         }
-        const count = this.container.querySelector('#connection-model-search-count');
-        if (count) count.textContent = t('connection.modelSearchCount', {visible: filtered.length, total: models.length});
     }
 
     private bindModalEvents(connection: LLMConnection | null, initialPid: string) {
-        const providerSelect = document.getElementById('conn-provider') as HTMLSelectElement | null;
-        const tierSection    = document.getElementById('tier-config-section') as HTMLElement | null;
+        const providerSelect = this.formContainer.querySelector('[id="conn-provider"]') as HTMLSelectElement | null;
+        const tierSection    = this.formContainer.querySelector('[id="tier-config-section"]') as HTMLElement | null;
 
         const refreshEffortSlots = (provider: LLMProvider | undefined) => {
             const model = provider?.models.find(item => item.id === this.tierModelId('optimal', provider));
             const media = !!model?.category && model.category !== 'chat';
-            this.container.querySelectorAll<HTMLElement>('[data-connection-chat]').forEach(element => { element.hidden = media; });
+            this.formContainer.querySelectorAll<HTMLElement>('[data-connection-chat]').forEach(element => { element.hidden = media; });
             for (const tier of ['optimal', 'standard', 'fast'] as ModelTier[]) {
-                const slot = this.container.querySelector(`#tier-effort-${tier}`);
+                const slot = this.formContainer.querySelector(`[id="tier-effort-${tier}"]`);
                 if (slot) slot.innerHTML = this.renderModelEffort(tier, provider);
-                const info = this.container.querySelector(`[data-model-info="${tier}"]`);
+                const info = this.formContainer.querySelector(`[data-model-info="${tier}"]`);
                 if (info) info.innerHTML = this.renderTierModelInfo(tier, provider);
             }
         };
 
         const refreshTierSelects = (provider: LLMProvider | undefined, tiers: Partial<Record<ModelTier, string>>) => {
             if (!tierSection) return;
-            const query = tierSection.querySelector<HTMLInputElement>('[data-model-search]')?.value ?? '';
+            this.clearModelPickers();
             tierSection.innerHTML = this.renderTierForm(provider);
-            tierSection.querySelector<HTMLInputElement>('[data-model-search]')!.value = query;
-            const optSel  = document.getElementById('tier-optimal')  as HTMLSelectElement | null;
-            const stdSel  = document.getElementById('tier-standard') as HTMLSelectElement | null;
-            const fastSel = document.getElementById('tier-fast')     as HTMLSelectElement | null;
+            const optSel  = this.formContainer.querySelector('[data-tier="optimal"]')  as HTMLSelectElement | null;
+            const stdSel  = this.formContainer.querySelector('[data-tier="standard"]') as HTMLSelectElement | null;
+            const fastSel = this.formContainer.querySelector('[data-tier="fast"]')     as HTMLSelectElement | null;
             if (optSel  && tiers.optimal)  optSel.value  = tiers.optimal;
             if (stdSel  && tiers.standard) stdSel.value  = tiers.standard;
             if (fastSel && tiers.fast)     fastSel.value = tiers.fast;
             refreshEffortSlots(provider);
-            this.applyModelSearch();
+            this.mountModelPickers();
         };
 
         // Initialize tier selects with current connection tiers
@@ -790,7 +769,6 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
         tierSection?.addEventListener('input', event => {
             const field = event.target as HTMLInputElement;
-            if (field.matches('[data-model-search]')) {this.applyModelSearch(); return;}
             if (!field.matches('[data-budget-tier]')) return;
             const modelId = this.tierModelId(field.dataset.budgetTier as ModelTier, this.providers[providerSelect?.value || initialPid]);
             if (field.value) this.currentEditModelBudgets[modelId] = Number(field.value); else delete this.currentEditModelBudgets[modelId];
@@ -810,7 +788,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                 if (saved && !(saved === 'off' && caps?.canDisable) && !caps?.efforts.some(option => option.id === saved)) delete this.currentEditModelEfforts[sel.value];
                 const pid = providerSelect?.value || initialPid;
                 refreshEffortSlots(this.providers[pid]);
-                this.applyModelSearch();
+                this.mountModelPickers();
                 return;
             }
             const effort = target.closest('select[data-effort-tier]') as HTMLSelectElement | null;
@@ -825,17 +803,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             }
         });
 
-        this.container.querySelector('[name="protocol"]')?.addEventListener('change', () => refreshEffortSlots(this.providers[providerSelect?.value || initialPid]));
-
-        // Provider switch → refresh tier selects
-        providerSelect?.addEventListener('change', () => {
-            const provider = this.providers[providerSelect.value];
-            const protocolSelect = document.querySelector<HTMLSelectElement>('#connection-form [name="protocol"]');
-            if (protocolSelect && provider) protocolSelect.innerHTML = renderProtocolOptions(provider);
-            this.currentEditTiers = {};
-            this.currentEditModelEfforts = {}; this.currentEditModelBudgets = {};
-            refreshTierSelects(provider, this.currentEditTiers);
-        });
+        this.formContainer.querySelector('[name="protocol"]')?.addEventListener('change', () => refreshEffortSlots(this.providers[providerSelect?.value || initialPid]));
 
         // Receive anchor navigation when the settings page is already open (openFile is a no-op)
         const wsEl = this.container.closest<HTMLElement>('[id]');

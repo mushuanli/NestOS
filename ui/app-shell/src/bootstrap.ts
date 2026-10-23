@@ -1,3 +1,4 @@
+import { WorkbenchWindows } from './workbench/windows';
 import {t as translate} from '@itookit/common';
 import {rememberPagePresentation, writePageHistory, type PagePresentation} from './navigation/page-history';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
@@ -249,6 +250,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     const navigationObservers = new Map<WorkspaceController, () => void>();
     let visibleWorkspaceId: string | undefined;
+    const windows = new WorkbenchWindows(); windows.query = options.recovery?.openedQuery ?? '';
     let navigationRevision = 0, closed = false;
     // Deduplicate concurrent loads: if the same workspace is loading, reuse the promise.
     const pendingLoads = new Map<string, Promise<WorkspaceController | undefined>>();
@@ -259,6 +261,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         initialResource?: string,
     ): Promise<WorkspaceController | undefined> => {
         const { elementId } = wsConfig;
+        const windowBinding = {registry: windows, id: elementId, isActive: () => visibleWorkspaceId === elementId,
+            navigate: (id: string) => handleNavigationRequest({target: wsConfig.slug, resourceId: id})};
 
         const container = document.getElementById(elementId);
         if (!container) {
@@ -303,12 +307,12 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
         if (strategyType === 'toolbox') {
             await executorUsage.load();
-            const [storedPreferences, uiPersistence] = await Promise.all([
-                uiDocs.read(TOOLBOX_PREFERENCES_DOC), uiState.port(TOOLBOX_SCOPE),
+            const [storedPreferences, uiPersistence, workbenchState] = await Promise.all([
+                uiDocs.read(TOOLBOX_PREFERENCES_DOC), uiState.port(TOOLBOX_SCOPE), uiState.workbenchPort(TOOLBOX_SCOPE),
             ]);
             const module = await createToolboxModule({ services, backend, ocr, ui: options.ui, sidebar: sidebarEl, editor: editorEl,
                 factories: { agents: agentFactory, skills: skillsFactory, flows: flowsFactory },
-                uiPersistence, executorUsage,
+                uiPersistence, workbenchState, executorUsage, windows: windowBinding,
                 agentsInWorkbench: workspaces.some(workspace => workspace.type === 'chat'),
                 uiPreferences: { load: () => storedPreferences, save: value => uiDocs.write(TOOLBOX_PREFERENCES_DOC, value) },
                 navigate: handleNavigationRequest, selected: path => selectionHistory(elementId, path, 'replace') });
@@ -336,7 +340,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
                 executorUsage, agentFactory,
                 fileFactory: defaultEditorFactory, createFlowContextMenu: options.ui.createFlowContextMenu,
                 onSidebarReady: revealSidebar,
-                uiPersistence, workbenchState,
+                uiPersistence, workbenchState, windows: windowBinding,
                 onBeforeNavigate: () => {if (visibleWorkspaceId === elementId) rememberCurrentPage();},
                 onSelect: (id, mode = 'push') => selectionHistory(elementId, id, mode),
                 hostContext: { chatFromFile, toggleSidebar: collapsed => sidebarEl.classList.toggle('is-collapsed', collapsed ?? !sidebarEl.classList.contains('is-collapsed')), navigate: handleNavigationRequest } });
@@ -408,7 +412,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             files,
             editorFactory: factory,
             scopeId:       elementId, deferNavigation: !!initialResource,
-            uiPersistence, workbenchState,
+            uiPersistence, workbenchState, windows: windowBinding,
             fileTypes,
             uiOptions,
             showFileExtensions,
@@ -521,7 +525,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         const legacyToolbox = toolboxId ? legacyToolboxRoute(sourceSlug ?? workspaceId, resourceId) : undefined;
         if (legacyToolbox) { workspaceId = toolboxId!; resourceId = legacyToolbox.path ?? '/' + legacyToolbox.kind; }
         if (closed || revision !== navigationRevision) return;
-        visibleWorkspaceId = workspaceId;
+        visibleWorkspaceId = workspaceId; windows.changed();
         for (const [id, workbench] of managerCache) {
             void Promise.resolve(workbench.setVisible?.(id === workspaceId && !document.hidden)).catch(error => console.error('[Shell] Workspace save failed', error));
         }
@@ -756,7 +760,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             rememberCurrentPage();
             const id = visibleWorkspaceId;
             const layout = id && document.getElementById(id)?.querySelector<HTMLElement>('.mm-layout');
-            return {workspaces, presentation: id ? {workspaceId: id, mobileView: layout ? layout.dataset.mobileView : undefined,
+            return {workspaces, openedQuery: windows.query, presentation: id ? {workspaceId: id, mobileView: layout ? layout.dataset.mobileView : undefined,
                 navigationScope: managerCache.get(id)?.getNavigationScope?.()} : undefined};
         },
         suspendForRecovery() {

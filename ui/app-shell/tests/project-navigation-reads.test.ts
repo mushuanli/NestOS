@@ -70,7 +70,7 @@ it('resolves project folders from one organization snapshot per sync and refresh
         expect(folders).toHaveBeenCalledTimes(1);
         expect(navigation.currentProject()?.path).toBe('/Demo');
         expect(navigation.toolbarContainer.hidden).toBe(false);
-        expect(navigation.header.querySelectorAll(':scope > button')).toHaveLength(2);
+        expect(navigation.header.querySelectorAll(':scope > button')).toHaveLength(1);
         const selector = navigation.header.querySelector('select')!;
         expect(selector.querySelector('option[value="/"]')?.textContent).toBe('所有项目');
         expect(selector.querySelector('option[value="@new-project"]')).toBeNull();

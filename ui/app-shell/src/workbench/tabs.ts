@@ -6,6 +6,7 @@ import {backToPreviousPage} from '../navigation/page-history';
 import {openedButton} from './opened-button';
 import {compactNavigation} from './compact-navigation';
 import { Drawer } from '@itookit/vfs-ui';
+import type { WorkbenchWindowBinding, WorkbenchWindow } from './windows';
 import {captureEditor, restoreEditor, type EditorRecoveryState} from './recovery';
 
 interface TabsRecovery {
@@ -38,7 +39,7 @@ interface TabActions<T> {
 export class WorkbenchTabs<T> {
     readonly opened = document.createElement('div');
     private readonly openedDrawer = new Drawer({title: t('workbench.opened'), showHeader: false, collapsible: false,
-        search: {label: t('workbench.findOpened'), onChange: query => {this.openedQuery = query; this.render();}}});
+        search: {label: t('workbench.findOpened'), onChange: query => {if (this.windows) this.windows.registry.setQuery(query); else {this.openedQuery = query; this.render();}}}});
     private readonly bar = document.createElement('div');
     private readonly body = document.createElement('div');
     private readonly navigation = document.createElement('div');
@@ -63,7 +64,8 @@ export class WorkbenchTabs<T> {
     private readonly recovery = new Map<string, EditorRecoveryState>();
     private readonly recoveryFailures = new Map<string, unknown>();
     private recovering = false;
-    constructor(private readonly container: HTMLElement, private readonly actions: TabActions<T>, restored?: WorkbenchSnapshot['tabs']) {
+    private unregisterWindows?: () => void;
+    constructor(private readonly container: HTMLElement, private readonly actions: TabActions<T>, restored?: WorkbenchSnapshot['tabs'], private readonly windows?: WorkbenchWindowBinding) {
         container.classList.add('workbench-tabs'); this.bar.className = 'workbench-tabs__bar';
         this.bar.setAttribute('role', 'tablist'); this.bar.setAttribute('aria-label', t('workbench.tabs'));
         this.body.className = 'workbench-tabs__body'; this.emptyPanel.className = 'workbench-tabs__panel';
@@ -79,17 +81,19 @@ export class WorkbenchTabs<T> {
             entry.context = tab.context; entry.location = tab.location; entry.conversationId = tab.conversationId;
         }
         container.addEventListener('keydown', event => this.keydown(event), { signal: this.abort.signal });
+        if (windows) this.unregisterWindows = windows.registry.register(windows.id, {items: () => this.windowItems(),
+            describe: () => this.describeOpened(), reopen: () => this.reopen()}, () => this.renderShared());
         this.render();
     }
     get current(): WorkbenchTab<T> | undefined { return this.currentId ? this.entries.get(this.currentId) : undefined; }
     mountCompactNavigation(container: HTMLElement, context: string, back: () => void): () => void {
         const view = compactNavigation(container, context, back, () => this.showOpened());
-        this.compactViews.add(view); view.update(this.current?.title ?? '', this.entries.size);
+        this.compactViews.add(view); view.update(this.current?.title ?? '', this.windowCount());
         return () => { this.compactViews.delete(view); view.destroy(); };
     }
     mountWindowList(container: HTMLElement): () => void {
         const view = openedButton(() => this.showOpened()); container.append(view.button);
-        this.windowButtons.add(view); view.update(this.entries.size);
+        this.windowButtons.add(view); view.update(this.windowCount());
         return () => {this.windowButtons.delete(view); view.button.remove();};
     }
     private showOpened(): void {
@@ -108,7 +112,7 @@ export class WorkbenchTabs<T> {
             this.current?.panel.querySelector<HTMLButtonElement>('.workbench-window-list')?.focus();
         }, {once: true});
         dialog.showModal();
-        this.describeOpened();
+        if (this.windows) this.windows.registry.describe(); else this.describeOpened();
     }
     private describeOpened(): void {
         if (this.describing || !this.actions.describe) return;
@@ -124,7 +128,8 @@ export class WorkbenchTabs<T> {
         })).then(() => {}).finally(() => { this.describing = undefined; });
     }
     private async activateOpened(id: string): Promise<void> {
-        await this.actions.activate(id); this.openedDialog?.close();
+        await this.requestActivate(id);
+        document.querySelectorAll<HTMLDialogElement>('.workbench-opened-sheet[open]').forEach(dialog => dialog.close());
     }
     get content(): HTMLElement { return this.current?.panel ?? this.emptyPanel; }
     get(id: string): WorkbenchTab<T> | undefined { return this.entries.get(id); }
@@ -241,42 +246,87 @@ export class WorkbenchTabs<T> {
         this.editors.delete(tab); this.recovery.delete(tab.id);
         this.recoveryFailures.delete(tab.id);
         this.selected.delete(tab.id);
-        if (record && !tab.preview) this.closed.push({ id: tab.id, title: tab.title });
+        if (record && !tab.preview) { this.closed.push({ id: tab.id, title: tab.title }); this.windows?.registry.noteClosed(this.windows.id); }
         if (this.currentId === tab.id) {
             this.currentId = undefined; this.emptyPanel.hidden = false;
             if (record) { const next = this.values().at(-1); if (next) await this.actions.activate(next.id); else this.actions.empty(); }
         }
         this.render();
     }
-    private run(task: Promise<unknown>): void { void task.catch(error => this.actions.error(error)); }
+    private run(task: Promise<unknown>): void { void task.catch(error => {this.windows?.registry.report(error); this.actions.error(error);}); }
     private button(label: string, action: () => void, className = ''): HTMLButtonElement {
         const button = document.createElement('button'); button.type = 'button'; button.textContent = label;
         button.className = className; button.title = label; button.setAttribute('aria-label', label); button.onclick = action; return button;
     }
     private render(): void {
+        this.renderShared();
+        if (!this.disposing) { this.actions.changed?.(); this.windows?.registry.changed(); }
+    }
+    private renderShared(): void {
         this.syncViewState();
-        this.standalone.update(this.current?.title ?? '', this.entries.size, this.current?.context, this.current?.navigationLabel);
-        for (const view of this.windowButtons) view.update(this.entries.size);
-        for (const view of this.compactViews) view.update(this.current?.title ?? '', this.entries.size);
+        this.standalone.update(this.current?.title ?? '', this.windowCount(), this.current?.context, this.current?.navigationLabel);
+        for (const view of this.windowButtons) view.update(this.windowCount());
+        for (const view of this.compactViews) view.update(this.current?.title ?? '', this.windowCount());
         this.bar.replaceChildren(); this.openedDrawer.content.replaceChildren();
+        if (this.windows?.registry.error) {
+            const notice = document.createElement('p'); notice.setAttribute('role', 'alert'); notice.className = 'workbench-tabs__error';
+            notice.textContent = this.windows.registry.error; notice.append(this.button(t('action.close'), () => this.windows?.registry.clearError()));
+            this.openedDrawer.content.append(notice);
+        }
         this.openedDrawer.content.append(this.openedToolbar());
-        const tabs = this.values().sort((a, b) => Number(b.pinned) - Number(a.pinned));
-        for (const tab of tabs) { this.bar.append(this.tabHeader(tab)); this.openedDrawer.content.append(this.openedRow(tab)); }
-        this.filterOpened();
+        if (this.windows) this.renderWindows();
+        else {
+            const tabs = this.values().sort((a, b) => Number(b.pinned) - Number(a.pinned));
+            for (const tab of tabs) { this.bar.append(this.tabHeader(tab)); this.openedDrawer.content.append(this.openedRow(tab)); }
+            this.filterOpened();
+        }
         const menu = document.createElement('details'); menu.className = 'workbench-tabs__menu';
         const summary = document.createElement('summary'); summary.innerHTML = FILE_BROWSER_ICONS.more; summary.title = t('workbench.tabActions'); summary.setAttribute('aria-label', summary.title); menu.append(summary);
         const popup = document.createElement('div'); popup.className = 'workbench-tabs__menu-panel';
-        popup.append(this.button(t('workbench.closeSaved'), () => this.run(this.closeSaved())),
-            this.button(t('workbench.reopen'), () => this.run(this.reopen())));
+        popup.append(this.button(t('workbench.closeSaved'), () => this.run(this.windows?.registry.closeSaved() ?? this.closeSaved())),
+            this.button(t('workbench.reopen'), () => this.run(this.windows?.registry.reopen() ?? this.reopen())));
         menu.append(popup); menu.ontoggle = () => { popup.style.top = `${summary.getBoundingClientRect().bottom + 6}px`; };
         popup.onclick = () => { menu.open = false; };
-        this.bar.append(menu); if (!this.disposing) this.actions.changed?.();
+        this.bar.append(menu);
+    }
+    private windowCount(): number { return this.windows?.registry.items().length ?? this.entries.size; }
+    private isCurrent(id: string): boolean { return id === this.currentId && (!this.windows || this.windows.isActive()); }
+    private requestActivate(id: string): Promise<void> {
+        return this.windows && !this.windows.isActive() ? this.windows.navigate(id) : this.actions.activate(id);
+    }
+    private windowItems(): WorkbenchWindow[] {
+        return this.values().map(tab => ({id: tab.id, title: tab.title, scope: this.actions.navigation,
+            context: tab.context, location: tab.location, pinned: tab.pinned, dirty: tab.dirty, failed: tab.failed,
+            selected: this.selected.has(tab.id), active: this.isCurrent(tab.id), activate: () => this.requestActivate(tab.id), header: () => this.tabHeader(tab), row: () => this.openedRow(tab),
+            select: selected => { if (selected) this.selected.add(tab.id); else this.selected.delete(tab.id); },
+            close: () => this.close(tab.id)}));
+    }
+    private renderWindows(): void {
+        const registry = this.windows!.registry;
+        this.openedDrawer.setQuery(registry.query);
+        for (const item of registry.items()) {
+            this.bar.append(item.header()); const row = item.row(); row.hidden = !registry.matches(item);
+            this.openedDrawer.content.append(row);
+        }
+    }
+    private sharedOpenedToolbar(): HTMLElement {
+        const registry = this.windows!.registry, eligible = registry.items().filter(item => !item.pinned && registry.matches(item));
+        const bar = document.createElement('div'); bar.className = 'workbench-tabs__opened-toolbar';
+        const all = document.createElement('input'); all.type = 'checkbox'; all.setAttribute('aria-label', t('workbench.selectAllOpened'));
+        all.checked = !!eligible.length && eligible.every(item => item.selected);
+        all.indeterminate = !all.checked && eligible.some(item => item.selected); all.disabled = !eligible.length;
+        all.onchange = () => registry.selectAll(all.checked);
+        const label = document.createElement('label'); label.append(all, document.createTextNode(t('workbench.selectAllOpened')));
+        const close = this.button(t('workbench.closeSelected'), () => this.run(registry.closeSelected()));
+        close.dataset.action = 'close-selected-tabs'; const count = registry.items().filter(item => item.selected).length;
+        decorateButton(close, FILE_BROWSER_ICONS.close, `${t('workbench.closeSelected')} (${count})`, true); close.disabled = !count;
+        bar.append(label, close); return bar;
     }
     private tabHeader(tab: WorkbenchTab<T>): HTMLElement {
         const header = document.createElement('div'); header.className = 'workbench-tabs__tab'; header.dataset.tabId = tab.id;
-        header.classList.toggle('is-active', tab.id === this.currentId); header.classList.toggle('is-preview', tab.preview);
-        const label = this.button(tab.title, () => this.run(this.actions.activate(tab.id)), 'workbench-tabs__label');
-        label.setAttribute('role', 'tab'); label.setAttribute('aria-selected', String(tab.id === this.currentId));
+        header.classList.toggle('is-active', this.isCurrent(tab.id)); header.classList.toggle('is-preview', tab.preview);
+        const label = this.button(tab.title, () => this.run(this.requestActivate(tab.id)), 'workbench-tabs__label');
+        label.setAttribute('role', 'tab'); label.setAttribute('aria-selected', String(this.isCurrent(tab.id)));
         decorateResourceButton(label, tab.icon ?? fileTypeIcon(tab.title), tab.title);
         label.title = tab.statusTooltip ?? tab.id; label.ondblclick = () => this.keep(tab.id);
         const state = document.createElement('span'); state.className = 'workbench-tabs__state';
@@ -298,14 +348,14 @@ export class WorkbenchTabs<T> {
     }
     private openedRow(tab: WorkbenchTab<T>): HTMLElement {
         const row = document.createElement('div'); row.className = 'workbench-tabs__opened-row'; row.dataset.openedId = tab.id;
-        row.classList.toggle('is-active', tab.id === this.currentId);
+        row.classList.toggle('is-active', this.isCurrent(tab.id));
         const checkbox = document.createElement('input'); checkbox.type = 'checkbox'; checkbox.checked = this.selected.has(tab.id); checkbox.disabled = tab.pinned;
         checkbox.setAttribute('aria-label', `${t('workbench.select')} ${tab.title}`);
         checkbox.onchange = () => { checkbox.checked ? this.selected.add(tab.id) : this.selected.delete(tab.id); this.render(); };
         const label = this.button(tab.title, () => this.run(this.activateOpened(tab.id))); label.title = tab.id;
         decorateResourceButton(label, tab.icon ?? fileTypeIcon(tab.title), tab.title); label.className = 'workbench-tabs__opened-label'; label.title = tab.id;
         this.openedLabel(label, tab);
-        label.setAttribute('aria-current', String(tab.id === this.currentId));
+        label.setAttribute('aria-current', String(this.isCurrent(tab.id)));
         const pin = decorateButton(this.button(t(tab.pinned ? 'workbench.unpin' : 'workbench.pin'), () => this.pin(tab.id)), FILE_ICONS.pin, t(tab.pinned ? 'workbench.unpin' : 'workbench.pin'), true);
         pin.className = 'workbench-tabs__opened-pin'; pin.setAttribute('aria-pressed', String(tab.pinned));
         row.append(checkbox);
@@ -336,6 +386,7 @@ export class WorkbenchTabs<T> {
     }
     private syncViewState(): void { this.container.dataset.workbenchView = this.opening ? 'opening' : this.currentId ? 'active' : 'empty'; }
     private openedToolbar(): HTMLElement {
+        if (this.windows) return this.sharedOpenedToolbar();
         const bar = document.createElement('div'); bar.className = 'workbench-tabs__opened-toolbar';
         const all = document.createElement('input'); all.type = 'checkbox'; all.setAttribute('aria-label', t('workbench.selectAllOpened'));
         const eligible = this.values().filter(tab => !tab.pinned && this.matchesOpened(tab));
@@ -359,7 +410,7 @@ export class WorkbenchTabs<T> {
     }
     private async reopen(): Promise<void> {
         const tab = this.closed.pop(); if (!tab) return;
-        await this.actions.activate(tab.id); this.keep(tab.id);
+        await this.requestActivate(tab.id); this.keep(tab.id);
     }
     private keydown(event: KeyboardEvent): void {
         if (event.key === 'Escape') {
@@ -368,15 +419,18 @@ export class WorkbenchTabs<T> {
         }
         if (!(event.ctrlKey || event.metaKey)) return;
         if (event.key === 'Tab') {
-            event.preventDefault(); const tabs = this.values(), index = tabs.findIndex(tab => tab.id === this.currentId);
+            event.preventDefault();
+            if (this.windows) {this.run(this.windows.registry.cycle(event.shiftKey ? -1 : 1)); return;}
+            const tabs = this.values(), index = tabs.findIndex(tab => tab.id === this.currentId);
             const next = tabs[(index + (event.shiftKey ? tabs.length - 1 : 1)) % tabs.length];
             if (next) this.run(this.actions.activate(next.id));
         } else if (event.shiftKey && event.key.toLowerCase() === 't') {
-            event.preventDefault(); this.run(this.reopen());
+            event.preventDefault(); this.run(this.windows?.registry.reopen() ?? this.reopen());
         }
     }
     async destroy(): Promise<void> {
         this.openedDialog?.close();
+        this.unregisterWindows?.(); this.unregisterWindows = undefined;
         this.disposing = true;
         for (const tab of this.values()) await this.close(tab.id, false);
         for (const view of this.windowButtons) view.button.remove(); this.windowButtons.clear();

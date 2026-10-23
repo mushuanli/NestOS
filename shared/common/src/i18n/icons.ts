@@ -41,7 +41,7 @@ export interface ModelMeta {
 /** 模型能力标志元数据（对应 LLMModel.supportsXXX 字段，用于能力 badge） */
 export const MODEL_CAPABILITY_META: Record<string, ModelMeta> = {
     vision:           { icon: '👁️', color: '#0ea5e9' }, // sky-500
-    thinking:         { icon: '🧠', color: '#8b5cf6' }, // violet-500
+    thinking:         { icon: '🔮', color: '#8b5cf6' }, // violet-500
     tools:            { icon: '🔧', color: '#f97316' }, // orange-500
     audio:            { icon: '🎵', color: '#10b981' }, // emerald-500
     video:            { icon: '🎬', color: '#ef4444' }, // red-500
@@ -160,11 +160,11 @@ export const ENTITY_ICONS = {
     tool:    '🔧',
     flow:    '🔀',
     mcp:     '🔌',
-    llm:     '🧠',
+    llm:     '🔮',
     branch:  '🌿',
     history: '📚',
     nav:     '🧭',
-    model:   '🧠',
+    model:   '🔮',
 } as const;
 
 // ── Slash commands ────────────────────────────────────────────────────────────
@@ -223,13 +223,13 @@ export const SLASH_ICONS = {
 // ── Agent icon picker palette ─────────────────────────────────────────────────
 
 export const AGENT_ICON_PALETTE = [
-    '🤖','🧠','💡','🎯','🚀','⚡','🔥','✨',
+    '🤖','🔮','💡','🎯','🚀','⚡','🔥','✨',
     '🎨','📝','📊','📈','🔍','🔧','⚙️','🛠️',
     '💻','🖥️','📱','🌐','☁️','🔒','🔑','📡',
     '📚','📖','✏️','🖊️','📌','📎','🗂️','📁',
     '💬','💭','🗨️','👤','👥','🤝','👋','✋',
     '🌟','⭐','🌙','☀️','🌈','🍀','🌸','🌺',
-    '🦾','🦿','🕸️','🔮','💎','🏆','🎖️','🥇',
+    '🦾','🦿','🕸️','💎','🏆','🎖️','🥇',
 ] as const;
 
 
@@ -262,7 +262,7 @@ export const TOOLBOX_ICONS = {
     tools: toolboxIcon('<path d="M14 6a5 5 0 0 0-6 6l-5 5a3 3 0 0 0 4 4l5-5a5 5 0 0 0 6-6l-4 3-3-3 3-4z"/>'),
     files: toolboxIcon('<path d="M3 7V5a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/>'),
     web: toolboxIcon('<circle cx="12" cy="12" r="9"/><ellipse cx="12" cy="12" rx="4" ry="9"/><path d="M3 12h18"/>'),
-    memory: toolboxIcon('<path d="M12 4a4 4 0 0 0-7 2 4 4 0 0 0-2 7 4 4 0 0 0 5 6 3 3 0 0 0 4 1V4zm0 0a4 4 0 0 1 7 2 4 4 0 0 1 2 7 4 4 0 0 1-5 6 3 3 0 0 1-4 1M8 8l4 3m4-3-4 3M7 15l5-1m5 1-5-1"/>'),
+    memory: ENTITY_ICONS.llm,
     tasks: toolboxIcon('<rect x="4" y="3" width="16" height="18" rx="2"/><path d="m7 8 1 1 2-2m-3 7 1 1 2-2m3-5h4m-4 6h4"/>'),
     terminal: toolboxIcon('<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m6 8 4 4-4 4m7 0h5"/>'),
     collaboration: toolboxIcon('<path d="M21 11a8 8 0 0 1-8 8H6l-4 3V11a8 8 0 0 1 8-8h3a8 8 0 0 1 8 8zM7 10h10M7 14h6"/>'),

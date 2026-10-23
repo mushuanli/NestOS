@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { resolveChatModelForTier, resolveChatModelTiers } from '../../src/contracts';
+import { resolveChatModelForTier, resolveChatModelTiers, resolveModelForTier } from '../../src/contracts';
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
 
 const provider: Pick<LLMProvider, 'models'> = {models: [
@@ -25,7 +25,15 @@ it('matches execution tier fallback without skipping explicitly invalid models',
     const connection = {model: 'legacy', tiers: {optimal: 'chat', standard: 'image'}};
     expect(resolveChatModelForTier(connection, provider, 'optimal')).toBe(provider.models[0]);
     expect(resolveChatModelForTier(connection, provider, 'standard')).toBeUndefined();
-    expect(resolveChatModelForTier(connection, provider, 'fast')).toBeUndefined();
+    expect(resolveChatModelForTier(connection, provider, 'fast')).toBe(provider.models[0]);
     expect(resolveChatModelForTier({model: 'legacy'}, provider, 'fast')).toBe(provider.models[1]);
     expect(resolveChatModelForTier({model: 'chat', tiers: {fast: 'removed'}}, provider, 'fast')).toBeUndefined();
+});
+
+it('routes an unspecified fast tier to the primary model even when standard is configured', () => {
+    const connection = {model: 'legacy', tiers: {optimal: 'chat', standard: 'legacy'}};
+    expect(resolveModelForTier(connection, 'fast')).toBe('chat');
+    expect(resolveModelForTier(connection, 'standard')).toBe('legacy');
+    expect(resolveModelForTier({model: 'legacy', tiers: {optimal: 'chat'}}, 'standard')).toBe('chat');
+    expect(resolveModelForTier({...connection, tiers: {...connection.tiers, fast: 'image'}}, 'fast')).toBe('image');
 });

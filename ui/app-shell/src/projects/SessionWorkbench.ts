@@ -20,6 +20,7 @@ import { projectDirectoryActions } from './directory-actions';
 import {fileFirst, navigationPriority, projectItems} from './navigation-policy';
 import {projectNavigationPreview} from './navigation-preview';
 import { ProjectSearchPanel } from './project-search-panel';
+import { NavigationFilters } from '../workbench/navigation-filters';
 import { createProjectDirectorySearch } from './project-directory-search';
 import { showRemoteSessionFamily } from './remote-session-family';
 import { nativeSessionMenu } from './remote-session-management';
@@ -147,6 +148,7 @@ export interface SessionWorkbenchOptions {
     /** Host-owned snapshot storage; omitted means the sidebar restores nothing. */
     uiPersistence?: UIPersistencePort;
     workbenchState?: WorkbenchStatePort;
+    windows?: import('../workbench/windows').WorkbenchWindowBinding;
     agents?: {resourceId(id: string): string | undefined; usage?: EditorOptions['executorUsage'];
         read(id: string): Promise<import('@itookit/kernel-adapters/contracts').AgentDefinition | null>; createEditor: EditorFactory};
 }
@@ -180,6 +182,7 @@ interface RetainedEditor {
 export class SessionWorkbench implements WorkspaceController {
     private remoteStatus!: RemoteSessionStatusView;
     private searchPanel?: ProjectSearchPanel;
+    private readonly navigationFilters = new NavigationFilters();
     private search?: import('@itookit/app-contracts/services').ProjectSearch;
     private readonly dialogs = new AbortController();
     private readonly tabs: WorkbenchTabs<RetainedEditor>;
@@ -300,7 +303,7 @@ export class SessionWorkbench implements WorkspaceController {
             activate: id => this.openResource(id), dispose: tab => this.disposeTab(tab),
             empty: () => { this.clearEditorFields(); this.showWelcome(); this.onSelect('', 'replace'); },
             error: error => this.report(error), changed: () => this.sidebarLayout?.save(this.tabs.snapshot()),
-        }, options.workbenchState?.load()?.tabs);
+        }, options.workbenchState?.load()?.tabs, options.windows);
         this.sidebarLayout = new WorkbenchSidebar(this.sidebar, this.tabs.opened, options.workbenchState);
         if (options.agents && this.projects) {
             this.agentDrawer = new AgentDrawer({backend: this.backend, resourceId: options.agents.resourceId,
@@ -339,14 +342,16 @@ export class SessionWorkbench implements WorkspaceController {
         ] });
         const tree = document.createElement('div'); tree.className = 'project-workbench__tree';
         if (this.projects) {
-            this.searchPanel = new ProjectSearchPanel(view.search!, (row, query) => this.openSearchMatch(row, query), folder => this.openResource(remoteSessionPath(folder)));
+            this.searchPanel = new ProjectSearchPanel(view.search!, (row, query) => this.openSearchMatch(row, query), folder => this.openResource(remoteSessionPath(folder)), {
+                changed: () => this.navigationFilters.update(this.searchPanel?.filterChips() ?? []),
+            });
+            this.navigationFilters.content.append(this.searchPanel.controls);
             this.sidebarLayout.navigation.append(this.searchPanel.element);
         }
         this.sidebarLayout.navigation.append(tree);
         this.agentFilterBar.className = 'workbench-agent-filter'; this.agentFilterBar.hidden = true;
         this.sidebarLayout.navigation.prepend(this.agentFilterBar);
         if (this.projects) this.installProjectNavigation();
-        if (this.searchPanel && this.projectNavigation) this.projectNavigation.header.after(this.searchPanel.element);
         this.sidebarUI = createVFSUI({ sessionListContainer: tree, title: this.projects ? t('project.workspace') : '会话', scopeId: SESSION_BROWSER_SCOPE,
             directoryPreview: node => projectNavigationPreview(node, path => this.openResource(path, {directory: true})),
             navigationChildren: node => (node.children ?? []).filter(child => child.metadata.custom.navigationTransparent === true).map(child => child.id),
@@ -361,6 +366,8 @@ export class SessionWorkbench implements WorkspaceController {
             },
             titleHeader: this.projectNavigation?.header, toolbarContainer: this.projectNavigation?.toolbarContainer,
             toolbarOptions: this.projectNavigation?.options.navigationToolbarOptions,
+            navigationHeader: {primaryAction: 'create-project', filter: this.searchPanel ? this.navigationFilters.trigger : undefined,
+                summary: this.navigationFilters.summary, results: this.searchPanel?.element, menu: this.projectNavigation?.overflow},
             rowCreation: { visible: node => !isFlowPath(node.id) && ['project-files', 'files'].includes(resolveBrowserTarget(node.id).kind),
                 run: (node, type) => this.createDirectoryEntry(node.id, type) },
             transferPolicy: {
@@ -1932,7 +1939,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
     async destroy(): Promise<void> {
         ++this.openIntent; this.cancelViewLoad(); this.closed = true; ++this.fileNavigationRevision;
-        this.projectNavigation?.destroy(); this.searchPanel?.destroy();
+        this.projectNavigation?.destroy(); this.searchPanel?.destroy(); this.navigationFilters.destroy();
         this.sidebarUI?.cancelPendingSelection?.(); this.dialogs.abort(); this.subscriptions.dispose();
         const steps: Array<() => void | Promise<unknown>> = [
             () => this.agentDrawer?.destroy(), () => this.agentCatalog.close(), () => this.remoteStatus?.destroy(),

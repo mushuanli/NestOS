@@ -13,6 +13,7 @@ export class WorkbenchSidebar {
     private readonly divider = document.createElement('div');
     private readonly resize = document.createElement('div');
     private readonly abort = new AbortController();
+    private readonly mobile = window.matchMedia?.('(max-width: 768px)');
     private snapshot: WorkbenchSnapshot;
     private maximized?: HTMLElement;
     constructor(private readonly sidebar: HTMLElement, opened: HTMLElement, private readonly persistence?: WorkbenchStatePort, navigationLabel?: string) {
@@ -26,11 +27,12 @@ export class WorkbenchSidebar {
         this.splitter(this.divider, 'horizontal', t('workbench.resizeSections'), delta => this.height((this.snapshot.navigationHeight ?? 70) + delta / Math.max(sidebar.clientHeight, 1) * 100));
         this.splitter(this.resize, 'vertical', t('workbench.resizeSidebar'), delta => this.width((this.snapshot.width ?? 300) + delta));
         this.apply();
+        this.mobile?.addEventListener('change', () => this.apply(), {signal: this.abort.signal});
     }
     private section(label: string, body: HTMLElement, kind: string, toggle?: (collapsed: boolean) => void): HTMLElement {
         const maximize = document.createElement('button'); maximize.type = 'button'; maximize.textContent = t('workbench.maximize');
         decorateButton(maximize, FILE_BROWSER_ICONS.maximize, t('workbench.maximize'), true);
-        const drawer = new Drawer({title: label, scrollMode: 'host', onToggle: collapsed => {
+        const drawer = new Drawer({title: label, scrollMode: 'host', mobileHeader: kind !== 'navigation', onToggle: collapsed => {
             if (kind === 'navigation') this.snapshot.navigationCollapsed = collapsed;
             else if (kind === 'opened') this.snapshot.openedCollapsed = collapsed;
             else (this.snapshot.drawerCollapsed ??= {})[kind] = collapsed;
@@ -78,7 +80,7 @@ export class WorkbenchSidebar {
                 ? this.snapshot.openedCollapsed : this.snapshot.drawerCollapsed?.[kind] ?? true;
             if (kind !== 'navigation' && kind !== 'opened') section.style.flex = this.maximized === section ? '1 1 0' : '0 1 240px';
             section.hidden = !!this.maximized && section !== this.maximized;
-            drawer.setCollapsed(!!collapsed && this.maximized !== section);
+            drawer.setCollapsed(!!collapsed && this.maximized !== section && !(kind === 'navigation' && this.mobile?.matches));
             const expanded = !section.hidden && (!collapsed || this.maximized === section);
             if (entry.expanded !== expanded) {entry.expanded = expanded; entry.toggle?.(!expanded);}
             decorateButton(maximize, this.maximized === section ? FILE_BROWSER_ICONS.restore : FILE_BROWSER_ICONS.maximize, t(this.maximized === section ? 'workbench.restore' : 'workbench.maximize'), true);

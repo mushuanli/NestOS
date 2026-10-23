@@ -27,6 +27,8 @@ interface Options {
     uiPreferences?: ToolboxPreferencesPort;
     executorUsage?: import('@itookit/ui-common').EditorOptions['executorUsage'];
     agentsInWorkbench?: boolean;
+    workbenchState?: import('../workbench/state').WorkbenchStatePort;
+    windows?: import('../workbench/windows').WorkbenchWindowBinding;
 }
 /** The toolbox owns its projection lifetime and editor wiring as one module. */
 export async function createToolboxModule(options: Options): Promise<WorkspaceModule> {

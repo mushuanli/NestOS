@@ -7,8 +7,10 @@ import {renderModelCapabilityBadges} from '../src/utils/modelBadges';
 import {ProviderSettingsEditor} from '../src/editors/ProviderSettingsEditor';
 
 const cleanups: Array<() => Promise<void>> = [];
-afterEach(async () => {for (const close of cleanups.splice(0)) await close(); document.body.replaceChildren();});
+afterEach(async () => {for (const close of cleanups.splice(0)) await close(); document.body.replaceChildren(); vi.restoreAllMocks();});
 async function editor() {
+    HTMLDialogElement.prototype.showModal ??= function () {this.open = true;};
+    HTMLDialogElement.prototype.close ??= function () {this.open = false; this.dispatchEvent(new Event('close'));};
     const provider = {id: 'p', name: 'P', implementation: 'openai-compatible', baseURL: 'https://example.invalid', models: [
         {id: 'main', name: 'Primary', category: 'chat', supportsVision: true, supportsTools: true, inputPricePerMillion: 0, outputPricePerMillion: 2},
         {id: 'other', name: 'Other', category: 'image', supportedOperations: ['image.generate']},
@@ -21,33 +23,45 @@ async function editor() {
     await view.init(root); cleanups.push(() => view.destroy()); return {view, root, save};
 }
 
-it('shows model abilities and token price in all routing choices without a repeated global default summary', async () => {
+it('shows names in collapsed selectors and details in the picker and below the selection', async () => {
     const f = await editor();
     expect(f.root.querySelector('.settings-connection-default')).toBeNull();
+    expect(f.root.querySelector('[data-model-search]')).toBeNull();
+    expect(f.root.querySelector<HTMLSelectElement>('#conn-provider')!.disabled).toBe(true);
+    const title = f.root.querySelector<HTMLInputElement>('.settings-page__title [name=name]')!;
+    expect(title.value).toBe('Connection'); expect(title.required).toBe(true);
+    expect(f.root.querySelector('label')?.textContent).not.toBe('连接名称 *');
     for (const select of f.root.querySelectorAll<HTMLSelectElement>('[data-tier]')) {
-        const label = select.querySelector('option[value=main]')!.textContent!;
-        expect(label).toContain(t('model.capability.vision')); expect(label).toContain(t('model.capability.tools'));
-        expect(label).toContain('$0'); expect(label).toContain('$2');
+        expect(select.querySelector('option[value=main]')!.textContent).toBe('Primary');
+        expect(select.nextElementSibling?.textContent).not.toContain('$');
     }
     expect(f.root.querySelector('[data-model-info=optimal] [data-capability=vision]')).not.toBeNull();
-    expect(f.root.querySelector('option[value=main]')!.textContent).toContain(MODEL_CAPABILITY_META.vision.icon);
+    f.root.querySelector<HTMLButtonElement>('#tier-optimal + button')!.click();
+    const choices = document.querySelector('[data-model-picker=tier-optimal]')!;
+    expect(choices.textContent).toContain(MODEL_CAPABILITY_META.vision.icon); expect(choices.textContent).toContain('$2');
     expect(modelChoiceLabel({id: 'u', name: 'Unknown'}, 'p')).toContain(t('connection.modelPriceUnknown'));
 });
 
-it('filters every tier by multiple case-insensitive terms without changing or saving selections', async () => {
-    const f = await editor(), search = f.root.querySelector<HTMLInputElement>('[data-model-search]')!;
+it('filters inside each picker without saving, and saves only a deliberate model or title change', async () => {
+    const f = await editor();
+    f.root.querySelector<HTMLButtonElement>('#tier-optimal + button')!.click();
+    const popup = document.querySelector('[data-model-picker=tier-optimal]')!, search = popup.querySelector<HTMLInputElement>('input')!;
     vi.useFakeTimers();
     try {
         search.value = 'OTHER, image'; search.dispatchEvent(new Event('input', {bubbles: true}));
         const primary = f.root.querySelector<HTMLSelectElement>('[data-tier=optimal]')!;
-        expect(primary.value).toBe('main');
-        expect(primary.querySelector('option[value=main]')!.textContent).toContain(t('connection.modelSelectedOutsideFilter', {model: ''}).trim());
-        expect([...f.root.querySelector<HTMLSelectElement>('[data-tier=standard]')!.options].map(option => option.value)).toEqual(['', 'other']);
+        expect(primary.value).toBe('main'); expect(popup.querySelectorAll('[role=option]')).toHaveLength(1);
         search.value = 'no such model'; search.dispatchEvent(new Event('input', {bubbles: true}));
-        expect(primary.value).toBe('main'); expect(primary.options).toHaveLength(2);
-        search.value = ''; search.dispatchEvent(new Event('input', {bubbles: true}));
-        expect(primary.options).toHaveLength(3); expect(primary.value).toBe('main');
+        expect(primary.value).toBe('main'); expect(popup.querySelectorAll('[role=option]')).toHaveLength(0);
         await vi.advanceTimersByTimeAsync(1200); expect(f.save).not.toHaveBeenCalled();
+        search.value = 'other'; search.dispatchEvent(new Event('input', {bubbles: true}));
+        search.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+        await vi.advanceTimersByTimeAsync(1200); expect(f.save).toHaveBeenCalledWith(expect.objectContaining({providerId: 'p', tiers: {optimal: 'other'}}));
+        expect(f.root.querySelector('#tier-optimal + button')!.textContent).toBe('Other');
+        const title = f.root.querySelector<HTMLInputElement>('[name=name]')!; title.value = 'Renamed';
+        title.dispatchEvent(new Event('input', {bubbles: true})); await vi.advanceTimersByTimeAsync(1200);
+        expect(f.save).toHaveBeenLastCalledWith(expect.objectContaining({name: 'Renamed', providerId: 'p'}));
+        expect(title.isConnected).toBe(true);
     } finally {vi.useRealTimers();}
 });
 
@@ -67,15 +81,15 @@ it('shows a shared audio icon only once in connection and provider model details
 it('restores an unsaved connection name in memory without automatically saving it', async () => {
     const old = await editor(), input = old.root.querySelector<HTMLInputElement>('[name=name]')!;
     input.value = 'Pending name';
-    const search = old.root.querySelector<HTMLInputElement>('[data-model-search]')!;
-    search.value = 'other image'; search.dispatchEvent(new Event('input', {bubbles: true}));
+    old.root.querySelector<HTMLSelectElement>('[data-tier=fast]')!.value = 'other';
     const state = old.view.captureRecovery(); old.view.suspendForRecovery(); await old.view.destroy();
     old.root.remove();
     const next = await editor(); next.view.restoreRecovery(state);
     expect(next.root.querySelector<HTMLInputElement>('[name=name]')!.value).toBe('Pending name');
-    expect(next.root.querySelector<HTMLInputElement>('[data-model-search]')!.value).toBe('other image');
+    expect(next.root.querySelector<HTMLSelectElement>('[data-tier=fast]')!.value).toBe('other');
+    expect(next.root.querySelector('#tier-fast + button')!.textContent).toBe('Other');
     expect(next.root.querySelector<HTMLSelectElement>('[data-tier=optimal]')!.value).toBe('main');
-    expect([...next.root.querySelector<HTMLSelectElement>('[data-tier=standard]')!.options].map(option => option.value)).toEqual(['', 'other']);
+    expect([...next.root.querySelector<HTMLSelectElement>('[data-tier=standard]')!.options].map(option => option.value)).toEqual(['', 'main', 'other']);
     expect(next.save).not.toHaveBeenCalled(); next.view.suspendForRecovery();
 });
 
@@ -95,4 +109,29 @@ it('preserves an unsaved provider credential and malformed model declaration wit
     expect(next.root.querySelector<HTMLInputElement>('[name=apiKey]')!.value).toBe('unsaved-secret');
     expect(next.root.querySelector<HTMLTextAreaElement>('[name=modelOperations]')!.value).toBe('{');
     expect(saveProvider).not.toHaveBeenCalled(); next.view.suspendForRecovery();
+});
+
+it('saves the edited connection when multiple retained forms are mounted', async () => {
+    const first = await editor(), second = await editor();
+    const title = second.root.querySelector<HTMLInputElement>('[name=name]')!;
+    title.value = 'Second connection';
+    const model = second.root.querySelector<HTMLSelectElement>('[data-tier=optimal]')!;
+    model.value = 'other'; model.dispatchEvent(new Event('change', {bubbles: true}));
+    await vi.waitFor(() => expect(second.save).toHaveBeenCalledWith(expect.objectContaining({name: 'Second connection', tiers: {optimal: 'other'}})));
+    expect(first.save).not.toHaveBeenCalled();
+    expect(first.root.querySelector<HTMLInputElement>('[name=name]')!.value).toBe('Connection');
+    expect(first.root.querySelector<HTMLSelectElement>('[data-tier=optimal]')!.value).toBe('main');
+});
+
+it('keeps enabled, name and provider action in one header with the protocol next to its provider', async () => {
+    const f = await editor();
+    const header = f.root.querySelector('.settings-page__header')!, enabled = header.querySelector<HTMLInputElement>('[name=enabled]')!;
+    expect(enabled.checked).toBe(true); expect(header.querySelector('[name=name]')).not.toBeNull();
+    expect(header.querySelector('.settings-page__actions > button')?.textContent).toBe(t('toolbox.configureProvider'));
+    expect(header.querySelector('.settings-page__menu button')).not.toBeNull();
+    const service = f.root.querySelector('.connection-form__service-row')!;
+    expect(service.querySelector('[name=providerId]')).not.toBeNull(); expect(service.querySelector('[name=protocol]')).not.toBeNull();
+    expect(service.querySelector('.settings-form__help')).toBeNull();
+    enabled.checked = false; enabled.dispatchEvent(new Event('change', {bubbles: true}));
+    await vi.waitFor(() => expect(f.save).toHaveBeenCalledWith(expect.objectContaining({enabled: false})));
 });

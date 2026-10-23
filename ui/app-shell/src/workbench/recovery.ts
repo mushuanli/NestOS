@@ -9,6 +9,7 @@ export interface RecoveryParticipant {
 }
 export interface AppRecoveryState {
     workspaces: Map<string, unknown>;
+    openedQuery?: string;
     presentation?: {workspaceId: string; mobileView?: string; navigationScope?: string};
 }
 export interface EditorRecoveryState { data?: unknown; scroll: Array<{path: number[]; top: number; left: number}>; }

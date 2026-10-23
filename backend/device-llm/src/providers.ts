@@ -396,7 +396,7 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
             // Seed-2.0 Code：对话 + 工具调用（代码增强）
             { id: 'doubao-seed-2-0-code-preview-260215', name: MODEL_NAME_DOUBAO_SEED_20_CODE, icon: '💻', category: 'chat', supportsTools: true },
             // DeepSeek-V4 系列：对话 + 深度思考 + 工具调用（纯文本推理）
-            { id: 'deepseek-v4-pro-260425', name: MODEL_NAME_DEEPSEEK_V4_PRO, icon: '🧠', category: 'chat', supportsThinking: true, supportsTools: true },
+            { id: 'deepseek-v4-pro-260425', name: MODEL_NAME_DEEPSEEK_V4_PRO, icon: '🔮', category: 'chat', supportsThinking: true, supportsTools: true },
             { id: 'deepseek-v4-flash-260425', name: MODEL_NAME_DEEPSEEK_V4_FLASH, icon: '🚀', category: 'chat', supportsThinking: true, supportsTools: true },
             // 文生图 (Seedream)：按张计费，走 images/generations 端点（非 chat/completions）
             { id: 'doubao-seedream-5-0-260128', name: MODEL_NAME_DOUBAO_SEEDREAM_50, icon: '🎨', category: 'image', capabilitiesKnown: true,

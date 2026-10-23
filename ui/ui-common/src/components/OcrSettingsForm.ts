@@ -36,9 +36,11 @@ export class OcrSettingsForm {
     private pending?: Promise<void>;
     private failure?: unknown;
     constructor(private readonly container: HTMLElement, private readonly controls: Pick<OcrControls, 'readSettings' | 'saveSettings' | 'openSettings' | 'subscribe'>,
-        private readonly compact = false) {
+        private readonly compact = false, private readonly selectionChanged?: (connectionId: string | undefined, host: HTMLElement) => void) {
         this.unsubscribe = controls.subscribe(() => { if (!this.saving && !this.dirty) void this.refresh(); });
-        container.addEventListener('change', () => { this.dirty = true; this.pending = this.save(); }, { signal: this.abort.signal });
+        container.addEventListener('change', () => {
+            this.dirty = true; this.syncSelection(); this.pending = this.save();
+        }, { signal: this.abort.signal });
         container.addEventListener('click', event => this.open(event), { signal: this.abort.signal });
     }
     async refresh(): Promise<void> {
@@ -51,6 +53,7 @@ export class OcrSettingsForm {
                 if (this.dirty || this.rendered !== markup) { this.container.innerHTML = markup; this.rendered = markup; }
                 this.dirty = false;
                 this.container.querySelector('[data-ocr-retry]')?.remove(); this.status('');
+                this.syncSelection();
             }
         } catch (error) {
             if (revision === this.revision && !this.abort.signal.aborted) {
@@ -58,6 +61,11 @@ export class OcrSettingsForm {
                 this.readFailure(error);
             }
         }
+    }
+    /** Update adjacent host actions after a native value is restored without saving. */
+    syncSelection(): void {
+        const select = this.container.querySelector<HTMLSelectElement>('[name="ocr-connection"]');
+        if (select?.parentElement) this.selectionChanged?.(select.value || undefined, select.parentElement);
     }
     private readFailure(error: unknown): void {
         const message = error instanceof Error ? error.message : String(error);

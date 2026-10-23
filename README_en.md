@@ -22,7 +22,7 @@ MindOS reimagines AI applications with an "operating system" philosophy: all con
 |---|---|---|
 | 🤖 | **Agents** | Create, configure, manage AI Agents with multi-turn tool calling |
 | 💬 | **AI Sessions** | Multi-session conversations; branching message history; persistent context |
-| 🧠 | **Minds** | Knowledge notes with Markdown + Frontmatter + rich rendering |
+| 🔮 | **Minds** | Knowledge notes with Markdown + Frontmatter + rich rendering |
 | ⚡ | **Skills** | Reusable AI skills (prompt / shell / http / MCP protocol) |
 | 🃏 | **Anki** | Spaced-repetition flashcards with Cloze syntax |
 | 📁 | **Projects** | Project document management |

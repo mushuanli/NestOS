@@ -96,6 +96,7 @@ export class Workbench {
             config.editorContainer,
             this.enhancedEditorFactory,
             {
+                windows: config.windows,
                 navigationLabel: config.uiOptions?.title ?? t('project.files'),
                 onBeforeNavigate: config.onBeforeNavigate,
                 fileTypes: config.fileTypes,

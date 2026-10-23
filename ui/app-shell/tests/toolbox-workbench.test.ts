@@ -230,6 +230,7 @@ it('groups providers by availability and keeps settings before their connections
     const group = () => f.sidebar.querySelector('[data-item-id="/model-groups/ready"]')!;
     expect([...group().querySelectorAll<HTMLElement>('[data-item-type="file"]')].map(node => node.dataset.itemId).slice(0, 2)).toEqual(['/providers/ready', '/connections/drawer-conn']);
     expect(group().querySelector('.vfs-directory-item__icon')?.textContent).toBe('R');
+    expect(group().querySelector('.vfs-directory-item__description')?.textContent).not.toContain(t('toolbox.providerConfigured'));
     expect(group().querySelector('[aria-label="服务商"]')).not.toBeNull();
     expect(group().querySelector(`[data-item-id="/connections/drawer-conn"] .vfs-node-item__semantic-icon[aria-label="${t('toolbox.capability.chat')}"]`)).not.toBeNull();
     expect(group().querySelector('[data-item-id="/connections/drawer-conn"] [aria-label="模型连接"]')).not.toBeNull();
@@ -243,6 +244,7 @@ it('groups providers by availability and keeps settings before their connections
     document.querySelector<HTMLInputElement>('.project-dialog [name="resourceName"]')!.value = 'New connection';
     document.querySelector<HTMLFormElement>('.project-dialog form')!.requestSubmit();
     await vi.waitFor(async () => expect((await runtime.agentService.getConnections()).find(c => c.name === 'New connection')?.providerId).toBe('ready'));
+    expect((await runtime.agentService.getConnections()).find(c => c.name === 'New connection')?.enabled).toBe(true);
     await vi.waitFor(() => expect(group().querySelector('.vfs-directory-item__description')?.textContent).toContain('3 个连接'));
 });
 it('keeps metadata title changes out of drawer relocation commands', async () => {
@@ -277,7 +279,26 @@ it('pins the default drawer and orders enabled ready connections ahead of incomp
     expect(order[0]).toBe('/providers/usage-ready');
     expect(order.indexOf('/connections/usage-ready-chat')).toBeLessThan(order.indexOf('/connections/usage-incomplete'));
     expect(order.indexOf('/connections/usage-incomplete')).toBeLessThan(order.indexOf('/connections/usage-disabled'));
-    expect(group.querySelector('[data-item-id="/connections/usage-disabled"]')?.textContent).toContain(t('connection.status.disabled'));
+    const disabled = group.querySelector('[data-item-id="/connections/usage-disabled"]')!;
+    expect(disabled.classList.contains('vfs-node-item--muted')).toBe(true);
+    expect(disabled.querySelector('.vfs-node-item__title')?.textContent).toBe('A Disabled chat');
+    expect(disabled.querySelector('.vfs-node-item__conn-label')?.textContent).toContain('Chat model');
+    expect(disabled.querySelector('.vfs-node-item__summary')).toBeNull();
+    disabled.querySelector<HTMLElement>('[data-action="select-and-open"]')!.click();
+    await vi.waitFor(() => expect(f.workbench.getActiveResourceId()).toBe('/connections/usage-disabled'));
+    const provider = await runtime.agentService.getFullProvider('usage-ready');
+    await runtime.agentService.saveProvider({...provider!, enabled: false});
+    await vi.waitFor(() => expect(f.inventory.providers.get('usage-ready')?.enabled).toBe(false));
+    await vi.waitFor(() => {
+        const disabledProvider = f.sidebar.querySelector('[data-item-id="/model-groups/usage-ready"]')!;
+        const order = [...disabledProvider.querySelectorAll<HTMLElement>('[data-item-type="file"]')].map(row => row.dataset.itemId!);
+        let reachedDisabled = false;
+        for (const path of order.filter(path => path.startsWith('/connections/'))) {
+            const connection = f.inventory.connections.get(decodeURIComponent(path.slice('/connections/'.length)))!;
+            if (!connection.enabled) reachedDisabled = true; else expect(reachedDisabled).toBe(false);
+        }
+        expect(reachedDisabled).toBe(true);
+    });
 });
 
 it('searches providers, connections and assistants by display name and reveals matching drawers after recency sorting', async () => {
@@ -613,6 +634,47 @@ it('deletes a provider with the selected default connection and clears the prefe
     expect(await runtime.agentService.getDefaultConnection()).toBeNull();
     expect(await runtime.agentService.getFullConnection('default')).toBeNull();
 });
+it('shows orphan connections separately and restores their original association when the preset is added again', async () => {
+    const f = await setup(), service = runtime.agentService;
+    await service.deleteProvider('volcengine');
+    f.workbench.setFilter('models');
+    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/invalid-model-connections"]')).not.toBeNull());
+    expect(f.sidebar.querySelector('[data-item-id="/model-groups/volcengine"]')).toBeNull();
+    await f.workbench.openResource('/connections/conn-volcengine-vision');
+    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/connections/conn-volcengine-vision"]')).not.toBeNull());
+    const path = await f.resources.create('providers', 'Volcengine (火山方舟)', undefined, 'volcengine');
+    expect(path).toBe('/providers/volcengine');
+    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-item-id="/invalid-model-connections"]')).toBeNull());
+    const group = f.sidebar.querySelector<HTMLElement>('[data-item-id="/model-groups/volcengine"]')!;
+    group.querySelector<HTMLButtonElement>('[data-action="item-menu"]')!.click();
+    expect(document.querySelector('[data-action="provider-settings"]')).not.toBeNull();
+    expect(document.querySelector('[data-action="delete-resource"]')).not.toBeNull();
+    expect((await service.getConnection('conn-volcengine-vision'))?.providerId).toBe('volcengine');
+});
+
+it('lets users cancel or confirm cleanup of orphan connections without restoring the deleted provider', async () => {
+    const f = await setup(), service = runtime.agentService;
+    await service.deleteProvider('volcengine');
+    f.workbench.setFilter('models');
+    const menu = () => f.sidebar.querySelector<HTMLButtonElement>('[data-item-id="/invalid-model-connections"] [data-action="item-menu"]');
+    await vi.waitFor(() => expect(menu()).not.toBeNull());
+    vi.stubGlobal('confirm', () => true);
+    const remove = async () => {
+        menu()!.click();
+        document.querySelector<HTMLButtonElement>('[data-action="delete-invalid-connections"]')!.click();
+        await vi.waitFor(() => expect(document.querySelector('.settings-modal')).not.toBeNull());
+    };
+    await remove();
+    document.querySelector<HTMLButtonElement>('.settings-modal-cancel')!.click();
+    expect(await service.getConnection('conn-volcengine-vision')).toBeDefined();
+    await remove();
+    document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
+    await vi.waitFor(() => expect(menu()).toBeNull());
+    expect(await service.getConnection('conn-volcengine-vision')).toBeUndefined();
+    expect(await service.getFullProvider('volcengine')).toBeUndefined();
+    expect(await service.getConnection('default')).toBeDefined();
+});
+
 it('deletes builtin providers and their connections while retaining independent agents', async () => {
     const f = await setup(), service = runtime.agentService;
     await service.saveConnection({ id: 'cascade-connection', name: 'Cascade connection', providerId: 'volcengine' });
@@ -666,7 +728,7 @@ it('exports shared prompts with their Agent and remaps references on import', as
 
 it('orders categories consistently and deletes prompts through the configuration menu', async () => {
     const f = await setup();
-    const order = [...f.sidebar.querySelectorAll<HTMLButtonElement>('[data-filter]')].map(button => button.dataset.filter);
+    const order = [...f.sidebar.querySelectorAll<HTMLOptionElement>('.vfs-scope-selector option')].map(option => option.value);
     expect(order).toEqual(['all', 'agents', 'flows', 'skills', 'prompts', 'tools', 'mcp', 'models']);
     const roots = [...f.sidebar.querySelectorAll<HTMLElement>('.vfs-directory-item')].map(item => item.dataset.itemId).filter(Boolean);
     expect(roots.indexOf('/drawers/ungrouped-agents')).toBeLessThan(roots.indexOf('/drawers/ungrouped-prompts'));
@@ -873,17 +935,19 @@ it('combines capability chips with search, keeps provider groups, and never labe
     for (const model of ['picture', 'speech', 'ordinary']) await runtime.agentService.saveConnection({id: 'media-' + model, name: 'Media ' + model, providerId: 'media-filter', tiers: {optimal: model}});
     await vi.waitFor(() => expect(f.inventory.connections.get('media-speech')?.capabilityTags).toContain('speech.synthesize'));
     f.workbench.setFilter('models');
-    const details = f.sidebar.querySelector<HTMLDetailsElement>('.toolbox-capabilities')!;
-    expect(details.hidden).toBe(false); expect(details.open).toBe(false); details.open = true;
-    f.sidebar.querySelector<HTMLButtonElement>('[data-capability="image.generate"]')!.click();
+    const trigger = f.sidebar.querySelector<HTMLButtonElement>('.workbench-filters__trigger')!;
+    expect(trigger.hidden).toBe(false); trigger.click();
+    const details = document.querySelector<HTMLElement>('.workbench-filters .toolbox-capabilities')!;
+    expect(details.hidden).toBe(false);
+    document.querySelector<HTMLButtonElement>('[data-capability="image.generate"]')!.click();
     expect(f.sidebar.querySelector('[data-item-id="/connections/media-picture"]')).not.toBeNull();
     expect(f.sidebar.querySelector('[data-item-id="/connections/media-speech"]')).toBeNull();
     const search = f.sidebar.querySelector<HTMLInputElement>('input[type=search]')!;
     search.value = 'Media ' + search.value; search.dispatchEvent(new Event('input', {bubbles: true}));
     await vi.waitFor(() => expect(search.value).toContain('Media'));
-    f.sidebar.querySelector<HTMLButtonElement>('.toolbox-capabilities > button')!.click();
+    document.querySelector<HTMLButtonElement>('.workbench-filters .toolbox-capabilities > button')!.click();
     expect(search.value).toBe('Media');
-    f.sidebar.querySelector<HTMLButtonElement>('[data-capability="speech.synthesize"]')!.click();
+    document.querySelector<HTMLButtonElement>('[data-capability="speech.synthesize"]')!.click();
     expect(search.value).toBe('Media tag:speech.synthesize');
     await new Promise(resolve => setTimeout(resolve, 350));
     expect(search.value).toBe('Media tag:speech.synthesize');
@@ -892,5 +956,25 @@ it('combines capability chips with search, keeps provider groups, and never labe
     expect(f.sidebar.querySelector('[data-item-id="/connections/media-picture"]')).toBeNull();
     f.workbench.setFilter('skills'); expect(details.hidden).toBe(true);
     f.workbench.setFilter('models'); expect(search.value).toBe('Media tag:speech.synthesize');
-    expect(f.sidebar.querySelector<HTMLButtonElement>('[data-capability="speech.synthesize"]')!.getAttribute('aria-pressed')).toBe('true');
+    expect(document.querySelector<HTMLButtonElement>('[data-capability="speech.synthesize"]')!.getAttribute('aria-pressed')).toBe('true');
+});
+
+it('shows only the primary model capabilities below the connection name and retains routing capabilities for search', async () => {
+    const f = await setup();
+    await runtime.agentService.saveProvider({id: 'primary-display', name: 'Provider', implementation: 'openai-compatible', baseURL: '', apiKey: 'secret', models: [
+        {id: 'main', name: 'Main model', supportsTools: true}, {id: 'vision', name: 'Vision routing', supportsVision: true},
+    ]});
+    await runtime.agentService.saveConnection({id: 'primary-display', name: 'Only connection name', providerId: 'primary-display', tiers: {optimal: 'main', standard: 'vision'}});
+    await vi.waitFor(() => expect(f.inventory.connections.get('primary-display')?.primaryModel).toBe('Main model'));
+    expect(f.inventory.connections.get('primary-display')?.capabilityTags).toContain('vision');
+    expect(f.inventory.connections.get('primary-display')?.primaryCapabilityTags).not.toContain('vision');
+    f.workbench.setFilter('models'); await f.workbench.openResource('/connections/primary-display');
+    const row = f.sidebar.querySelector('[data-item-id="/connections/primary-display"]')!;
+    expect(row.querySelector('.vfs-node-item__title')?.textContent).toBe('Only connection name');
+    expect(row.querySelector('.vfs-node-item__row-primary [role="img"]')).toBeNull();
+    const summary = row.querySelector('.vfs-node-item__conn-label')!;
+    expect(summary.textContent).toContain('Main model'); expect(summary.textContent).toContain('·');
+    expect(summary.querySelector('[aria-label="'+t('toolbox.capability.tools')+'"]')).not.toBeNull();
+    expect(summary.querySelector('[aria-label="'+t('toolbox.capability.vision')+'"]')).toBeNull();
+    expect(row.querySelector('.vfs-node-item__summary')).toBeNull();
 });

@@ -71,7 +71,8 @@ it('creates project Sessions from the selected project and edits its files in th
         }
         const header = navigation.querySelector('.workbench-project-navigation')!;
         expect([...header.querySelectorAll<HTMLButtonElement>('button')].filter(button => !button.closest('[hidden], details')).map(button => button.title))
-            .toEqual(['新会话', t('action.refresh')]);
+            .toEqual(['新会话']);
+        expect(header.querySelector('.vfs-toolbar-overflow [data-action="refresh"]')).not.toBeNull();
         expect([...header.querySelectorAll<HTMLElement>('[data-action]')].map(button => button.dataset.action))
             .toEqual(['create-project', 'refresh', 'import', 'export']);
         const createdProject = vi.spyOn(workbench as any, 'createProject').mockResolvedValue(undefined);

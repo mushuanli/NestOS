@@ -5,7 +5,7 @@ import type { LLMProvider } from '@itookit/driver-llm/contracts';
 
 afterEach(() => { document.body.innerHTML = ''; });
 
-it('filters connection protocols and resets to automatic when switching Providers', async () => {
+it('fixes the provider identity and keeps its protocol choices when saving', async () => {
     const providers: LLMProvider[] = [
         { id: 'chat', name: 'Chat', implementation: 'openai-compatible', baseURL: 'https://chat.example', models: [] },
         { id: 'gemini', name: 'Gemini', implementation: 'gemini', baseURL: 'https://gemini.example', models: [] },
@@ -21,12 +21,14 @@ it('filters connection protocols and resets to automatic when switching Provider
     const protocol = container.querySelector<HTMLSelectElement>('[name="protocol"]')!;
     expect([...protocol.options].map(option => option.value)).toEqual(['', 'openai-chat']);
     const provider = container.querySelector<HTMLSelectElement>('[name="providerId"]')!;
-    provider.value = 'gemini'; provider.dispatchEvent(new Event('change', { bubbles: true }));
-    expect([...protocol.options].map(option => option.value)).toEqual(['', 'gemini-generate']);
-    expect(protocol.value).toBe('');
-    expect(container.querySelector('.settings-page__actions .settings-btn--primary')).toBeNull();
+    expect(provider.disabled).toBe(true); expect([...provider.options].map(option => option.value)).toEqual(['chat']);
+    const identity = container.querySelector<HTMLInputElement>('input[name="providerId"]')!; identity.value = 'gemini';
+    const name = container.querySelector<HTMLInputElement>('[name=name]')!; name.value = 'Renamed';
+    name.dispatchEvent(new Event('change', {bubbles: true}));
+    expect([...protocol.options].map(option => option.value)).toEqual(['', 'openai-chat']);
     await vi.waitFor(() => expect(saveConnection).toHaveBeenCalledOnce());
-    expect(saveConnection.mock.calls[0][0]).toMatchObject({ providerId: 'gemini', protocol: undefined });
+    expect(saveConnection.mock.calls[0][0]).toMatchObject({providerId: 'chat', name: 'Renamed', protocol: 'openai-chat'});
+    await editor.destroy();
 });
 
 

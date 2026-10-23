@@ -29,17 +29,17 @@ import { ENTITY_ICONS, t } from '@itookit/common';
 
 // UI 定义：ID -> 元数据
 export const SETTINGS_PAGES: Record<string, { name: string, icon: string }> = {
-    'model-defaults': { get name() { return t('modelDefaults.title'); }, icon: ENTITY_ICONS.model },
     'appearance':  { name: '外观',           icon: '🎨' },
+    'model-defaults': { get name() { return t('modelDefaults.title'); }, icon: ENTITY_ICONS.model },
+    'cost':        { name: '费用统计',      icon: '💰' },
     'storage':     { name: '文件系统',     icon: '💾' },
+    'recovery':    { name: '系统恢复',      icon: '🚑' },
     'tags':        { name: 'Tags',          icon: '🏷️' },
     'contacts':    { name: 'Contacts',      icon: '📒' },
     'providers':   { name: 'LLM Providers', icon: '🏭' },
     'connections': { name: 'LLM 连接',      icon: '🔗' },
     'mcp-servers': { name: 'MCP Servers',   icon: '🔌' },
-    'cost':        { name: '费用统计',      icon: '💰' },
     'system-prompts': { name: 'System Prompts', icon: '📝' },
-    'recovery':    { name: '系统恢复',      icon: '🚑' },
     'log':         { name: '系统日志',      icon: '📋' },
     'about':       { name: 'About',         icon: 'ℹ️' },
     'fs-explorer': { name: 'FS Explorer',   icon: '🗂️' },

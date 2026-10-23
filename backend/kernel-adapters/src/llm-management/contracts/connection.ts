@@ -110,28 +110,12 @@ export function toProviderMeta(provider: LLMProvider): Omit<LLMProvider, 'apiKey
     return meta;
 }
 
-/** 解析指定 tier 对应的模型 ID */
-/** 层级 fallback 顺序：fast → standard → optimal → model */
-const TIER_FALLBACK: Record<ModelTier, ModelTier[]> = {
-    fast:     ['fast', 'standard', 'optimal'],
-    standard: ['standard', 'optimal'],
-    optimal:  ['optimal'],
-};
-
-/**
- * 解析指定 tier 对应的模型 ID，未配置时自动向上 fallback。
- *
- * 例：选择「快速」但连接未配置 fast/standard → fallback 到 optimal → model
- */
+/** Unspecified routing tiers use the primary model directly. */
 export function resolveModelForTier(
     conn: Pick<ConnectionMeta, 'model' | 'tiers'>,
     tier: ModelTier,
 ): string {
-    for (const t of TIER_FALLBACK[tier]) {
-        const modelId = conn.tiers?.[t];
-        if (modelId) return modelId;
-    }
-    return conn.model;
+    return conn.tiers?.[tier] || conn.tiers?.optimal || conn.model;
 }
 
 /** Resolve the actual tier fallback before checking chat capability and catalog membership. */

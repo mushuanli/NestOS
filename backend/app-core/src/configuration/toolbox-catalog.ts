@@ -1,15 +1,16 @@
 import { createFileSystemSource, MemoryBackend, type FileSystemSourceOwner } from '@itookit/vfs-core';
 import { configuredModels, modelCapabilities, runnableModel } from './model-capabilities';
-import { ENTITY_ICONS, t } from '@itookit/common';
+import { createModuleLogger, ENTITY_ICONS, randomUUID, t } from '@itookit/common';
 import { type SystemPromptDefinition } from '@itookit/llm-tasks/contracts';
 import { type MCPServer, type MCPConnectionState } from '@itookit/tools/mcp-contracts';
-import { operationModelNames, hasConnectionCredentials, resolveChatModelTiers, type IConnectionService } from '@itookit/kernel-adapters/contracts';
+import { operationModelNames, hasConnectionCredentials, resolveChatModelTiers, resolveModelForTier, type IConnectionService } from '@itookit/kernel-adapters/contracts';
 import { type ToolMeta } from '@itookit/tools/contracts';
 import { type ToolDefinition } from '@itookit/llm-context';
 
 export interface ToolboxTool { id: string; name: string; description: string; source: string; serverId?: string; enabled: boolean; parameters?: unknown }
 import type { RemoteHarnessAgent } from '../projects/remote-agent-catalog';
 interface Catalog { listTools(): ToolMeta[]; getToolDefinitions(): ToolDefinition[] }
+const log = createModuleLogger('toolbox-catalog');
 
 /** Read-only navigation metadata; configuration remains in its owning services. */
 export class ToolboxInventory {
@@ -19,7 +20,7 @@ export class ToolboxInventory {
     readonly remoteAgents = new Map<string, RemoteHarnessAgent>();
     get remoteAgentSource() { return this.owners.remoteAgents!.fs; }
     readonly providers = new Map<string, { id: string; name: string; icon?: string; enabled: boolean; configured: boolean; capabilityTags?: string[]; authentication?: 'chatgpt'; authorizationAvailable?: boolean }>();
-    readonly connections = new Map<string, { providerId: string; enabled: boolean; credentialsReady?: boolean; model?: string | null; configuredModel?: string | null; operationModels?: Partial<Record<import('@itookit/kernel-adapters/contracts').ModelOperation, string>>; capabilityTags?: string[] }>();
+    readonly connections = new Map<string, { providerId: string; enabled: boolean; credentialsReady?: boolean; model?: string | null; configuredModel?: string | null; primaryModel?: string | null; primaryCapabilityTags?: string[]; operationModels?: Partial<Record<import('@itookit/kernel-adapters/contracts').ModelOperation, string>>; capabilityTags?: string[] }>();
     defaultConnectionId?: string;
     modelDefaults: import('@itookit/kernel-adapters/contracts').ModelDefaults = {};
     readonly tools = new Map<string, ToolboxTool>();
@@ -57,6 +58,7 @@ export class ToolboxInventory {
         await this.replace('tools', [...this.tools.values()].map(tool => ({ ...tool, icon: ENTITY_ICONS.tool })));
     }
     private async refreshModels(): Promise<void> {
+        const started = performance.now(), operationId = randomUUID();
         const providers = this.models?.getProviders() ?? [];
         const defaults = this.models?.getProviderDefaults() ?? {};
         const connections = await this.models?.getConnections() ?? [];
@@ -75,11 +77,16 @@ export class ToolboxInventory {
             const provider = providers.find(provider => provider.id === item.providerId);
             const [model] = Object.values(resolveChatModelTiers(item, provider));
             const selected = configuredModels(item, provider), available = runnableModel(provider, selected);
+            const primary = provider?.models.find(model => model.id === resolveModelForTier(item, 'optimal'));
             this.connections.set(item.id, {providerId: item.providerId, enabled: item.enabled !== false,
+                primaryModel: primary ? primary.name || primary.id : null, primaryCapabilityTags: modelCapabilities(provider, primary ? [primary] : []),
                 operationModels: operationModelNames(item, provider),
                 capabilityTags: modelCapabilities(provider, selected), configuredModel: available ? available.name || available.id : null,
                 credentialsReady: hasConnectionCredentials(item), model: model ? model.name || model.id : null});
         }
+        log.debug('catalog.models.projected', {operation: 'catalog.models.project', operationId, stage: 'primary-models', result: 'success',
+            connections: this.connections.size, missingPrimary: [...this.connections.values()].filter(item => !item.primaryModel).length,
+            disabled: [...this.connections.values()].filter(item => !item.enabled).length, durationMs: Math.round(performance.now() - started)});
         await this.replace('providers', providers.map(item => ({ id: item.id, name: item.name,
             description: item.baseURL ?? '', source: item.implementation, icon: item.icon ?? ENTITY_ICONS.llm })));
         await this.replace('connections', connections.map(item => ({

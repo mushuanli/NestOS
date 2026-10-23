@@ -4,7 +4,7 @@ import { editorFilePath } from '../interfaces/IEditor';
 /// <reference lib="dom" />
 
 import { IEditor, CollapseExpandResult, EditorOptions, UnifiedSearchResult, Heading, EditorEvent, EditorEventCallback } from '../interfaces/IEditor';
-import { t, escapeAttr } from '@itookit/common';
+import { ENTITY_ICONS, t, escapeAttr } from '@itookit/common';
 import {captureForm, restoreForm} from '../utils/form-recovery';
 
 /**
@@ -31,7 +31,7 @@ const SYSTEM_ICONS = [
     '📝', '📄', '📋', '✅', '❌', '⚡', '🔥', '⭐', '💡', '🔧',
     '⚙️', '🔌', '🌐', '🖥️', '📱', '🤖', '🎯', '🚀', '💎', '🔑',
     '🏷️', '📌', '📊', '📈', '🛠️', '🧩', '🔍', '🎨', '🧪', '🔬',
-    '⚗️', '📡', '🗂️', '🔔', '🎵', '🏗️', '📦', '🧲', '🎪', '🧠',
+    '⚗️', '📡', '🗂️', '🔔', '🎵', '🏗️', '📦', '🧲', '🎪', ENTITY_ICONS.llm,
     '💬', '📢', '🔗', '🛡️', '🎮', '📐', '🧮', '🔋', '💊', '🐍',
 ];
 

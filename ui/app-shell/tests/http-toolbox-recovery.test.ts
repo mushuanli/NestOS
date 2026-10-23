@@ -49,13 +49,15 @@ it('exposes the reviewed vendor price catalog through the HTTP connection servic
     expect(f.pricing()?.reference_catalog?.providers.deepseek.models.length).toBeGreaterThan(0);
 });
 
-it('recovers model defaults settings and their eventless search draft after restarting the HTTPS host', async () => {
+it('recovers model defaults settings and their eventless selection after restarting the HTTPS host', async () => {
     const f = await fixture('settings/model-defaults'), app = await f.open();
-    await vi.waitFor(() => expect(document.querySelector('[data-default-search]')).not.toBeNull());
-    document.querySelector<HTMLInputElement>('[data-default-search]')!.value = 'Recovery model';
+    await vi.waitFor(() => expect(document.querySelector('[data-default-operation=chat]')).not.toBeNull());
+    document.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!.value = 'recovery-connection';
+    expect(document.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!.value).toBe('recovery-connection');
     const recovery = new ViewRecovery(app, state => f.open(state));
     await f.restart(); await expect(recovery.recover()).resolves.toBeUndefined();
-    expect(document.querySelector<HTMLInputElement>('[data-default-search]')!.value).toBe('Recovery model');
+    expect(document.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!.value).toBe('recovery-connection');
+    expect(document.querySelector('[data-default-selection=chat] [data-model-config]')?.getAttribute('data-model-config')).toBe('/connections/recovery-connection');
     await recovery.close();
 });
 

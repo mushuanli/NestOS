@@ -22,7 +22,7 @@ MindOS 以"操作系统"的理念重新定义 AI 应用：所有内容——对�
 |---|---|---|
 | 🤖 | **Agents** | 创建、配置、管理 AI Agent；支持多轮工具调用 |
 | 💬 | **AI Sessions** | 多会话对话；分支消息历史；持久化上下文 |
-| 🧠 | **Minds** | 知识笔记，Markdown + Frontmatter + 富文本渲染 |
+| 🔮 | **Minds** | 知识笔记，Markdown + Frontmatter + 富文本渲染 |
 | ⚡ | **Skills** | 可复用 AI 技能（prompt / shell / http / MCP 协议）|
 | 🃏 | **Anki** | 间隔重复记忆卡片，挖空（Cloze）语法 |
 | 📁 | **Projects** | 项目文档管理 |

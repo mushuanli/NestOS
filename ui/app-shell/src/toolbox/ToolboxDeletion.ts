@@ -5,11 +5,13 @@ import { createDeleteOperation, type DeleteBatch, type DeletePlan, type VFSNodeU
 import type { IFileSystem } from '@itookit/vfs-core';
 import type { ConfigurationDeletionDialog } from '../configuration/delete-dialog';
 import { modelDrawerProvider } from './model-drawers';
+import { invalidConnectionsId, invalidConnectionPaths } from './model-orphans';
 import { toolboxKind, toolboxSourcePath } from './routes';
 
 /** Expand from the catalog, independently of filtering, expansion and lazy rendering. */
 export function toolboxSelectionPaths(ids: string[], resources: ToolboxResources, inventory: ToolboxInventory): string[] {
     return ids.flatMap(path => {
+        if (path === invalidConnectionsId) return invalidConnectionPaths(inventory);
         const group = resources.drawers.get(path); if (group) return group.paths;
         const provider = modelDrawerProvider(path);
         if (provider === undefined) return [path];
@@ -36,6 +38,7 @@ export class ToolboxDeletion {
     });
     allows(items: VFSNodeUI[]): boolean {
         return items.length > 0 && items.every(item => {
+            if (item.id === invalidConnectionsId) return true;
             const group = this.options.resources.drawers.get(item.id);
             if (group) return group.kind !== 'tools';
             if (modelDrawerProvider(item.id) !== undefined) return true;

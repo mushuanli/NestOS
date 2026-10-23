@@ -12,16 +12,16 @@ export const capabilityLabels = (tags?: string[]): string[] => (tags ?? []).map(
 
 /** Compose existing tag queries instead of maintaining a second filtering state. */
 export class CapabilityFilters {
-    readonly root = document.createElement('details');
-    private readonly summary = document.createElement('summary');
+    readonly root = document.createElement('div');
     private readonly choices = document.createElement('div');
     private readonly clear = document.createElement('button');
-    constructor(private readonly query: () => string, private readonly change: (query: string) => void) {
+    constructor(private readonly query: () => string, private readonly change: (query: string) => void,
+        private readonly changed?: (tags: string[], visible: boolean) => void) {
         this.root.className = 'toolbox-capabilities'; this.choices.className = 'toolbox-capabilities__choices';
-        this.summary.title = t('toolbox.capability.hint');
+        this.root.setAttribute('aria-label', t('toolbox.capability.hint'));
         this.clear.type = 'button'; this.clear.textContent = t('toolbox.capability.clear');
         this.clear.onclick = () => this.change(this.tokens().filter(token => !this.selected(token)).join(' '));
-        this.root.append(this.summary, this.choices, this.clear);
+        this.root.append(this.choices, this.clear);
     }
     update(tags: string[], visible: boolean): void {
         this.root.hidden = !visible || !tags.length;
@@ -34,11 +34,12 @@ export class CapabilityFilters {
     }
     sync(): void {
         const tokens = this.tokens(), count = tokens.filter(token => this.selected(token)).length;
-        this.summary.textContent = t('toolbox.capability.filter') + (count ? ` (${count})` : '');
         this.clear.hidden = !count;
         for (const button of this.choices.querySelectorAll<HTMLButtonElement>('button'))
             button.setAttribute('aria-pressed', String(tokens.some(token => token.toLowerCase() === button.dataset.query!.toLowerCase())));
+        this.changed?.(tokens.filter(token => this.selected(token)).map(token => token.slice(4)), !this.root.hidden);
     }
+    remove(tag: string): void { this.change(this.tokens().filter(token => token.toLowerCase() !== 'tag:' + tag.toLowerCase()).join(' ')); }
     private button(tag: string): HTMLButtonElement {
         const button = document.createElement('button'); button.type = 'button'; button.dataset.capability = tag;
         button.textContent = capabilityLabel(tag); button.dataset.query = 'tag:' + tag;

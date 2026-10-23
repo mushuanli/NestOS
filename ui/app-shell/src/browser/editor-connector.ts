@@ -26,6 +26,7 @@ export interface ConnectOptions<Node extends VFSNodeUI = VFSNodeUI> {
     sidebarContainer?: HTMLElement;
     emptyMessage?: string;
     workbenchState?: WorkbenchStatePort;
+    windows?: import('../workbench/windows').WorkbenchWindowBinding;
     refreshFileMetadata?: boolean;
     canCreateEntries?: boolean;
     navigationLabel?: string;
@@ -38,7 +39,7 @@ const replacePrefix = (path: string, old: string, next: string) => path === old 
 /** Each open file owns its editor and save coordinator independently of navigation. */
 export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, container: HTMLElement,
     factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void>; openResource(path: string): Promise<void>; getActiveResourceId(): string | null; assertRecovery(): void; captureRecovery(): unknown; restoreRecovery(state: unknown): void; suspendForRecovery(): void } {
-    const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, emptyMessage, navigationLabel, onBeforeNavigate, saveDebounceMs: _debounce, ...extra } = options;
+    const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, windows, emptyMessage, navigationLabel, onBeforeNavigate, saveDebounceMs: _debounce, ...extra } = options;
     if (files.fs !== engine) throw new Error('Editor file context differs from its file tree');
     const revisions = new Map<string, string | undefined>();
     const loads = new LatestViewLoad(), pending = new Set<Promise<void>>();
@@ -53,7 +54,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
         activate: async id => { if (id === '/') await openDirectory(id); else await openResource(id); }, dispose: disposeTab,
         empty: () => { placeholder(); onEditorCreated?.(null); }, error: report,
         changed: () => sidebar?.save(tabs.snapshot()),
-    }, workbenchState?.load()?.tabs);
+    }, workbenchState?.load()?.tabs, windows);
     if (sidebarContainer) sidebar = new WorkbenchSidebar(sidebarContainer, tabs.opened, workbenchState, navigationLabel);
     async function flush(editor?: IEditor): Promise<void> {
         if (editor?.flushPendingSave) await editor.flushPendingSave();

@@ -102,6 +102,9 @@ export interface ToolboxInventory {
         model?: string | null;
         /** A configured model with a supported runtime operation, including image and speech models. */
         configuredModel?: string | null;
+        /** Exact primary model and its capabilities, independently of routing tiers. */
+        primaryModel?: string | null;
+        primaryCapabilityTags?: string[];
         operationModels?: Partial<Record<import('@itookit/kernel-adapters/contracts').ModelOperation, string>>;
         capabilityTags?: string[];
     }>;

@@ -36,6 +36,8 @@ export class ProjectNavigation {
     private readonly selector: ScopeSelector;
     private readonly retry = document.createElement('button');
     private readonly menu = document.createElement('details');
+    private readonly menuContent = document.createElement('div');
+    readonly overflow = {root: this.menu, content: this.menuContent};
     private readonly projectActions = document.createElement('button');
     private readonly menuEvents = new AbortController();
     private transferPending = false;
@@ -87,16 +89,18 @@ export class ProjectNavigation {
         this.header.className = 'workbench-project-navigation';
         this.button(this.create, t('project.createSession'), () => this.createSession());
         this.create.className = 'workbench-project-navigation__create';
-        decorateButton(this.create, FILE_BROWSER_ICONS.newSession, t('project.createSession'), true);
+        decorateButton(this.create, FILE_BROWSER_ICONS.newSession, t('project.createSession'));
         this.button(this.retry, '', () => this.actions.retryDeletions()); this.retry.hidden = true;
         this.buildMenu();
         this.selector.element.oncontextmenu = event => { if (this.project) { event.preventDefault(); this.showMenu(event); } };
         this.toolbarContainer.className = 'workbench-project-navigation__transfer';
-        this.header.append(this.selector.element, this.syncStatus.element, this.create, this.toolbarContainer, this.menu, this.retry);
+        this.toolbarContainer.append(this.menu);
+        this.menuContent.append(this.retry);
+        this.header.append(this.selector.element, this.syncStatus.element, this.create, this.toolbarContainer);
     }
     private buildMenu(): void {
         this.menu.className = 'workbench-project-navigation__menu';
-        const summary = document.createElement('summary'), panel = document.createElement('div');
+        const summary = document.createElement('summary'), panel = this.menuContent;
         summary.title = t('vfs.columns.more'); summary.setAttribute('aria-label', summary.title);
         summary.innerHTML = FILE_BROWSER_ICONS.more; panel.className = 'workbench-project-navigation__menu-items';
         for (const id of ['import', 'export'] as const) {
@@ -109,7 +113,6 @@ export class ProjectNavigation {
             this.showMenu(new MouseEvent('contextmenu', { clientX: rect.left, clientY: rect.bottom }));
         });
         panel.append(this.projectActions); this.menu.append(summary, panel);
-        this.menu.addEventListener('click', event => event.stopPropagation());
         this.menu.addEventListener('keydown', event => {
             if (event.key === 'Escape') { this.menu.open = false; summary.focus(); }
         });

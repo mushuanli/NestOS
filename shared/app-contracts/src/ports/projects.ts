@@ -318,7 +318,7 @@ export interface ProjectRemoteMountService {
         createDirectory?: boolean;
         projectName?: string;
     }): Promise<void>;
-    projectHarness(projectId: string, options?: OperationOptions): Promise<HarnessClient>;
+    projectHarness(projectId: string, options?: OperationOptions & {requireRegistered?: boolean}): Promise<HarnessClient>;
     projectModels(projectId: string, profileId: string, options?: OperationOptions): Promise<HarnessContracts.HarnessModelCatalog>;
     remountProject(projectId: string, access: 'ro' | 'rw', options?: OperationOptions): Promise<void>;
     searchFiles(projectId: string, query: HarnessContracts.FileSearchQuery, options?: OperationOptions): Promise<HarnessContracts.FileSearchResult>;

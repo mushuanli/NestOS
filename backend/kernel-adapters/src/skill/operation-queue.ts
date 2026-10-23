@@ -57,6 +57,7 @@ export function coordinateSkillEffect(effect: EffectAdapter, registry: SessionCa
         kind: effect.kind, version: effect.version, recoveryPolicy: effect.recoveryPolicy,
         cancel: effect.cancel?.bind(effect),
         shouldRetry: effect.shouldRetry?.bind(effect),
+        failureOutcome: effect.failureOutcome?.bind(effect),
         execute: (request, context) => coordinate(effect.kind, registry, request, context, () => effect.execute(request, context)),
         reconcile: effect.reconcile ? (request, context) => coordinate(effect.kind, registry, request, context, () => effect.reconcile!(request, context)) : undefined,
     };

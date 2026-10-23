@@ -6,6 +6,7 @@ export function inferFlowConnectionRequirements(flow: Pick<FlowRevision, 'nodes'
     const slots = structuredClone(flow.connections ?? []);
     for (const node of flow.nodes.filter(item => item.plugin === 'builtin.media' || item.plugin === 'builtin.agent')) {
         const config = record(node.config);
+        if (record(config.execution).kind === 'harness') continue;
         const slot = nodeSlot(node, slots);
         if (!slot) continue;
         slot.requirements = nodeRequirements(node.plugin === 'builtin.agent' ? 'chat' : String(config.operation), config, slot);

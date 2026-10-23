@@ -8,6 +8,8 @@ export interface FlowConnectionSelection {
     model: string;
     tiers?: ConnectionMeta['tiers'];
     protocol?: ConnectionMeta['protocol'];
+    /** Effective protocols for models actually admitted, separate from the explicit override. */
+    modelProtocols?: Record<string, NonNullable<ConnectionMeta['protocol']>>;
     baseURL: string;
     operationModels: Partial<Record<ModelOperation, string>>;
     mediaEndpoints: Partial<Record<ModelOperation, string>>;

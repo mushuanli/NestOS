@@ -1,4 +1,4 @@
-import { requireMediaCapabilities, type ConnectionMeta, type LLMProvider } from '@itookit/driver-llm/contracts';
+import { requireMediaCapabilities, resolveModelProtocol, type ConnectionMeta, type LLMProvider } from '@itookit/driver-llm/contracts';
 import { hasConnectionCredentials } from './connection';
 export interface ModelRequirements { operation: string; inputModalities?: string[]; outputModalities?: string[]; features?: string[] }
 export interface ModelConnectionSnapshot { providerId: string; modelId: string; protocol?: string; requirements?: ModelRequirements; mediaEndpoint?: string }
@@ -19,11 +19,11 @@ export function assertModelConnection(connection: ConnectionMeta | undefined, pr
         return;
     }
     if (requirements.operation !== 'chat') throw new Error(`Unsupported runtime operation: ${requirements.operation}`);
-    assertChatRequirements(connection, model, requirements);
+    assertChatRequirements(connection, provider, model, requirements);
 }
-function assertChatRequirements(connection: ConnectionMeta, model: LLMProvider['models'][number], requirements: ModelRequirements): void {
+function assertChatRequirements(connection: ConnectionMeta, provider: LLMProvider, model: LLMProvider['models'][number], requirements: ModelRequirements): void {
     if ((model.category ?? 'chat') !== 'chat') throw new Error('Selected model does not support chat');
-    if (!connection.protocol) throw new Error('Connection protocol capability is unknown');
+    if (!resolveModelProtocol(connection, provider, model.id)) throw new Error('Connection protocol capability is unknown');
     const modalities: Record<string, boolean | undefined> = { text: true, image: model.supportsVision, audio: model.supportsAudio, video: model.supportsVideo };
     for (const modality of requirements.inputModalities ?? []) if (modalities[modality] !== true) throw new Error(`Unknown input capability: ${modality}`);
     for (const modality of requirements.outputModalities ?? []) if (modality !== 'text') throw new Error(`Unsupported output capability: ${modality}`);

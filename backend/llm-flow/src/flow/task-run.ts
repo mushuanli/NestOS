@@ -1,6 +1,6 @@
 import type { JsonValue, SessionHandle, TaskRecord } from '@itookit/durable-kernel';
 import type { FlowWorkspacePolicy } from '../contracts';
-import type { SchedulerCheckpoint } from './scheduler-checkpoint';
+import { readFlowSchedulerCheckpoint } from './checkpoint-store';
 import { readFlowRunMembers } from './run-members';
 
 export interface FlowTaskWorkspace {
@@ -13,8 +13,7 @@ export interface FlowTaskWorkspace {
 export async function resolveFlowTaskWorkspace(session: SessionHandle, taskId: string): Promise<FlowTaskWorkspace | undefined> {
     const root = await resolveFlowRunForTask(session, taskId);
     if (!root) return undefined;
-    const saved = await session.getShared(`flow.run.${root.id}.scheduler`);
-    const checkpoint = saved?.value as unknown as SchedulerCheckpoint | undefined;
+    const checkpoint = await readFlowSchedulerCheckpoint(session, root.id);
     if (!checkpoint?.spec || !Array.isArray(checkpoint.spec.nodes)) throw new Error(`Flow checkpoint is unavailable: ${root.id}`);
     const policy = checkpoint.spec.runPolicy?.workspace;
     if (!policy || policy.mode === 'shared') return undefined;

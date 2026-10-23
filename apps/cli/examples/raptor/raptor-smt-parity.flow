@@ -1,0 +1,169 @@
+{
+  "id": "raptor-smt-parity",
+  "name": "RAPTOR SMT 文档条件片段：原生 Flow 对照",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "nodes": [
+    {
+      "id": "conditions",
+      "name": "内嵌文档条件的 SMT-LIB2：保留未知谓词说明",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Write",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "file_path": "/workspace/conditions.smt2",
+          "content": "; Source: RAPTOR test/data/smt_codeql_testbench documented guards.\n; This checks guard fragments, not target execution or CodeQL extraction.\n; LLM abstracts strlen(input) as a free 64-bit value, matching the upstream API.\n; PARTIAL checks size < 256 only; validate(ptr) remains explicitly unverified.\n(set-logic QF_BV)\n(set-option :timeout 5000)\n(echo \"ALLOC\")\n(push 1)\n(declare-fun count () (_ BitVec 32))\n(assert (bvult count (_ bv1073741824 32)))\n(assert (bvult (bvmul count (_ bv16 32)) (_ bv32768 32)))\n(check-sat)\n(pop 1)\n(echo \"SUM\")\n(push 1)\n(declare-fun offset () (_ BitVec 32))\n(declare-fun length () (_ BitVec 32))\n(declare-fun buffer_size () (_ BitVec 32))\n(assert (bvule (bvadd offset length) buffer_size))\n(assert (= buffer_size (_ bv64 32)))\n(assert (bvugt offset (_ bv0 32)))\n(assert (bvugt length (_ bv0 32)))\n(check-sat)\n(pop 1)\n(echo \"OBO\")\n(push 1)\n(declare-fun index () (_ BitVec 32))\n(assert (bvsge index (_ bv0 32)))\n(assert (bvsle index (_ bv128 32)))\n(check-sat)\n(pop 1)\n(echo \"MASK\")\n(push 1)\n(declare-fun flags () (_ BitVec 32))\n(declare-fun size () (_ BitVec 32))\n(declare-fun base () (_ BitVec 32))\n(assert (= (bvand flags (_ bv2147483648 32)) (_ bv0 32)))\n(assert (bvult size (_ bv4096 32)))\n(assert (bvule (bvadd base size) (_ bv8192 32)))\n(check-sat)\n(pop 1)\n(echo \"DEAD_RANGE\")\n(push 1)\n(declare-fun x () (_ BitVec 32))\n(assert (bvsgt x (_ bv100 32)))\n(assert (bvslt x (_ bv50 32)))\n(check-sat)\n(pop 1)\n(echo \"DEAD_NULL\")\n(push 1)\n(declare-fun ptr () (_ BitVec 64))\n(assert (not (= ptr (_ bv0 64))))\n(assert (= ptr (_ bv0 64)))\n(check-sat)\n(pop 1)\n(echo \"DEAD_MASK\")\n(push 1)\n(declare-fun flags () (_ BitVec 32))\n(assert (= (bvand flags (_ bv1 32)) (_ bv0 32)))\n(assert (= (bvand flags (_ bv1 32)) (_ bv1 32)))\n(check-sat)\n(pop 1)\n(echo \"LLM\")\n(push 1)\n(declare-fun strlen_result () (_ BitVec 64))\n(assert (bvult strlen_result (_ bv64 64)))\n(check-sat)\n(pop 1)\n(echo \"PARTIAL\")\n(push 1)\n(declare-fun size () (_ BitVec 32))\n(assert (bvult size (_ bv256 32)))\n(check-sat)\n(pop 1)\n"
+        }
+      },
+      "capabilities": [
+        "Write"
+      ]
+    },
+    {
+      "id": "solve",
+      "name": "Z3 真实检查九个条件片段",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "command": "set -e\nz3 -smt2 conditions.smt2 > solver.stdout.txt\njq -nce --rawfile raw solver.stdout.txt '($raw | split(\"\\n\") | map(select(length > 0))) as $lines |\nif ($lines | length) != 18 then error(\"expected exactly nine labeled solver results\") else . end |\n[range(0;18;2) as $i | {id:$lines[$i],status:$lines[$i+1]}] as $results |\nif all($results[]; .status == \"sat\" or .status == \"unsat\" or .status == \"unknown\") then {results:$results} else error(\"unexpected Z3 status\") end' > solver.json\ncat solver.json",
+          "timeout_ms": 30000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.sca.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "compare",
+      "name": "比较上游 API 参考并阻止不一致通过",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "command": "set -e\njq -nce --slurpfile actual solver.json --slurpfile reference reference.json '[{\"id\":\"ALLOC\",\"ignoredConditions\":[]},{\"id\":\"SUM\",\"ignoredConditions\":[]},{\"id\":\"OBO\",\"ignoredConditions\":[]},{\"id\":\"MASK\",\"ignoredConditions\":[]},{\"id\":\"DEAD_RANGE\",\"ignoredConditions\":[]},{\"id\":\"DEAD_NULL\",\"ignoredConditions\":[]},{\"id\":\"DEAD_MASK\",\"ignoredConditions\":[]},{\"id\":\"LLM\",\"ignoredConditions\":[]},{\"id\":\"PARTIAL\",\"ignoredConditions\":[\"validate(ptr)\"]}] as $metadata |\n[$reference[0].cases[] | {id,expected:(if .result.feasible == true then \"sat\" elif .result.feasible == false then \"unsat\" else \"unknown\" end),unknown:.result.unknown,readmeExpected:.expectedFromREADME,readmeMatched:.matchesREADME}] as $expected |\n[range(0;9) as $i | $actual[0].results[$i] as $got | $expected[$i] as $wanted | $metadata[$i] as $meta |\n {id:$got.id,actual:$got.status,reference:$wanted.expected,ignoredConditions:$meta.ignoredConditions,referenceUnknownConditions:$wanted.unknown,readmeExpected:$wanted.readmeExpected,readmeMatched:$wanted.readmeMatched,\n  passed:($got.id == $wanted.id and $got.id == $meta.id and $got.status == $wanted.expected and $meta.ignoredConditions == $wanted.unknown)}] as $cases |\n{summary:{workflow:\"raptor-smt-parity\",scope:\"Documented guards and upstream-parsed fragments only\",codeqlExtraction:false,targetExecuted:false,strlenAbstraction:\"free unsigned 64-bit value\",unverifiedConditions:[\"validate(ptr)\"],cases:$cases,passed:all($cases[];.passed),readmeExpectationsMatched:([$cases[]|select(.readmeMatched)]|length),readmeExpectationsMismatched:([$cases[]|select(.readmeMatched|not)]|length)}}' > comparison.json\ncat comparison.json\njq -e .summary.passed comparison.json > /dev/null",
+          "timeout_ms": 30000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.sca.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "report",
+      "name": "输出范围及文档漂移",
+      "plugin": "builtin.transform",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "operation": "pick",
+        "value": "${nodes.compare.outputs.result}",
+        "path": [
+          "stdout",
+          "summary"
+        ],
+        "type": "json"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "conditions-to-solve",
+      "from": "conditions",
+      "to": "solve",
+      "kind": "control"
+    },
+    {
+      "id": "solve-to-compare",
+      "from": "solve",
+      "to": "compare",
+      "kind": "control"
+    }
+  ],
+  "outputs": {
+    "report": {
+      "value": "${nodes.report.outputs.result}"
+    }
+  }
+}

@@ -1,4 +1,6 @@
 export type { KernelAdapterDiagnostics } from './ports/diagnostics';
+export { HarnessExecutionEffect } from './effects/harness-execution-effect';
+export { HarnessProgram, type HarnessProgramInput } from './programs/harness-program';
 export { createKernelAdaptersRuntime } from './runtime/create-kernel-adapters-runtime';
 export type { KernelAdaptersRuntime, KernelAdaptersRuntimeOptions } from './runtime/create-kernel-adapters-runtime';
 

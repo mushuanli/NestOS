@@ -13,9 +13,13 @@ const setShared = Kernel.prototype.setShared;
 Kernel.prototype.setShared = async function<T extends import('@itookit/durable-kernel').JsonValue>(sessionId: string,
     key: string, value: T, options?: import('@itookit/durable-kernel').SharedStateWriteOptions) {
     const target = process.env.MINDOS_TEST_COMPLETED_INSTANCE;
-    const completed = (value as { completed?: string[] } | null)?.completed;
+    const envelope = value as { version?: number; state?: { completed?: string[] }; frozenKey?: string; completed?: string[]; appliedPatches?: unknown[] } | null;
+    const completed = (envelope?.version === 2 ? envelope.state : envelope)?.completed;
+    const frozen = envelope?.version === 2 && envelope.frozenKey
+        ? (await this.getShared(sessionId, envelope.frozenKey))?.value as { value?: { appliedPatches?: unknown[] } } | undefined : undefined;
+    const appliedPatches = envelope?.version === 2 ? frozen?.value?.appliedPatches : envelope?.appliedPatches;
     if (process.env.MINDOS_TEST_SUBMIT_NODE === 'graph-patched' && key.endsWith('.scheduler')
-        && (value as { appliedPatches?: unknown[] } | null)?.appliedPatches?.length) process.kill(process.pid, 'SIGKILL');
+        && appliedPatches?.length) process.kill(process.pid, 'SIGKILL');
     if (target && key.endsWith('.scheduler') && completed?.includes(target)) process.kill(process.pid, 'SIGKILL');
     return setShared.call(this, sessionId, key, value, options) as Promise<import('@itookit/durable-kernel').SharedStateEntry<T>>;
 };

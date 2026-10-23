@@ -226,6 +226,9 @@ export interface DelegationConfig {
  * `agentId` shortcut that inherits one Agent's whole reference set at once.
  */
 export interface FlowAgentNodeConfig extends Partial<LlmNodeConfig> {
+    /** Bound execution identity; model connections remain independent. */
+    execution?: { kind: 'harness'; connectionId: string };
+    harnessConnection?: JsonValue;
     connectionSlot?: string;
     connectionRequirements?: NonNullable<FlowConnection['requirements']>;
     agentId?: string;

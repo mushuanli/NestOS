@@ -16,6 +16,7 @@ import { restoreFlowHandle } from './restore-handle';
 import { readFlowTaskTranscript, type FlowTranscriptQuery } from './transcript';
 import { DurableFlowExecutor, type FlowExecutionHandle } from './executor';
 import { prepareFlowRun } from './prepare-run';
+import { readFlowSchedulerCheckpoint } from './checkpoint-store';
 
 export interface DagCommandServiceOptions {
     prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>;
@@ -234,7 +235,7 @@ export class DagCommandService {
         const savedGoal = await session.getShared(`flow.run.${taskId}.goal`);
         if (savedGoal) handle.goal = savedGoal.value as unknown as FlowRunGoal;
         const savedWorkspace = await session.getShared(workspaceFinalizationKey(taskId));
-        const scheduler = (await session.getShared(`flow.run.${taskId}.scheduler`))?.value as unknown as import('./scheduler-checkpoint').SchedulerCheckpoint | undefined;
+        const scheduler = await readFlowSchedulerCheckpoint(session, taskId);
         return {
             variables: scheduler?.variables,
             workspaceFinalization: handle.workspaceFinalization ?? savedWorkspace?.value as unknown as WorkspaceFinalization | undefined,

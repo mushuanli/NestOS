@@ -21,6 +21,7 @@ import { createRuntimeContextResolver } from './context-service';
 import { createRuntimeContextGc, type RuntimeContextGc, type RuntimeContextGcOptions } from './context-gc';
 
 export interface CreateKernelRuntimeOptions {
+    harnessExecution?: KernelAdaptersRuntimeOptions['harnessExecution'];
     authorizeLlm?: KernelAdaptersRuntimeOptions['authorizeLlm'];
     authorizeMedia?: KernelAdaptersRuntimeOptions['authorizeMedia'];
     contextEngineOptions?: import('@itookit/llm-context').ContextEngineOptions;
@@ -71,6 +72,7 @@ export async function createKernelRuntime(
     const contextGc = options.contextService || options.contextGc === false ? undefined
         : createRuntimeContextGc(() => kernel, options.contextGc);
     const adapters = await createKernelAdaptersRuntime({
+        harnessExecution: options.harnessExecution,
         contextService: options.contextService ?? createRuntimeContextResolver(() => kernel, () => adapters.llmService, contextGc?.observe, options.contextEngineOptions),
         logger: createModuleLogger('kernel-adapters'),
         processUnavailableMessage: () => t('chatInput.command.unavailable'),

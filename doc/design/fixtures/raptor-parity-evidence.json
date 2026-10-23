@@ -1,0 +1,472 @@
+{
+  "schemaVersion": 1,
+  "acceptanceDate": "2026-10-23",
+  "status": "verified-with-explicit-coverage-limits",
+  "scope": "Native .flow orchestration compared with fixed RAPTOR reference cases; this is not a claim of complete RAPTOR CLI replacement.",
+  "upstreamCommit": "2ac96303d5e382c196aa34b2984a3c6a218132a9",
+  "artifactRoot": "release/raptor-parity/20261023",
+  "implementationConstraint": "Flow business logic stays in .flow definitions using native tools; reference runs may invoke upstream entry points separately.",
+  "inventory": {
+    "artifact": "inventory.json",
+    "ruleFiles": 58,
+    "rules": 166,
+    "semgrepFixtureFiles": 76,
+    "irisTrackedSourceFiles": 7,
+    "uniqueStaticTargets": 87,
+    "comparisonCases": 70,
+    "note": "Fixtures, source demonstrations, SCA cases and engine readiness checks are separate categories; their counts must not be summed as equivalent end-to-end workflows."
+  },
+  "semgrepLocalRules": {
+    "status": "passed-cli-and-published-flow-agent",
+    "definition": "apps/cli/examples/raptor/raptor-parity.flow",
+    "referenceArtifact": "workspace/baseline/summary.json",
+    "flowArtifact": "workspace/flow/summary.json",
+    "expectedCases": 70,
+    "completedCases": 70,
+    "referenceFindings": 190,
+    "flowFindings": 190,
+    "mismatchedCases": 0,
+    "scannerFailures": 0,
+    "sourceRuntimeRunId": "20261022202208-427f54eb",
+    "finalCliRuntime": {
+      "runId": "20261022204632-d38361cf",
+      "status": "succeeded",
+      "exitCode": 0,
+      "elapsedSeconds": 569.0246036606841,
+      "runtimeStage": 3,
+      "cases": 70,
+      "findings": 190,
+      "summaryArtifact": "performance-final-cli-rerun/workspace/flow/summary.json",
+      "definitionSha256": "5075676d635d945cbf349deece0a5e28dc31bbb8757f900254bb0dbdf84136b4",
+      "sqliteBytes": 1936535552,
+      "scope": "Successful complete CLI run after the first three optimizations; final wait optimization is verified independently by the stage4 published Flow Agent and final crash tests."
+    },
+    "finalAgentRuntime": {
+      "status": "succeeded",
+      "sessionId": "node-01M5JP4K8QD8FEGR1NXJ0D1T4V",
+      "rootTaskId": "task_5956da62-2abb-41f3-9ddb-e599fbda5f83",
+      "published": {
+        "id": "raptor-parity",
+        "revision": 1,
+        "digest": "9kbx1v"
+      },
+      "runtimeStage": 4,
+      "tasks": 418,
+      "succeededTasks": 418,
+      "cases": 70,
+      "findings": 190,
+      "reopened": true,
+      "networkRequests": 0,
+      "artifact": "performance-stage4-agent/agent-evidence.json",
+      "reopenedArtifact": "performance-stage4-agent/reopened-evidence.json"
+    },
+    "upstreamTests": {
+      "status": "passed",
+      "assertionsPassed": 98,
+      "failed": 0,
+      "skipped": 0,
+      "exitCode": 0,
+      "backend": "EIO_BACKEND=posix for the isolated upstream pytest process only",
+      "environment": "Proxy variables removed in child environment; upstream hermeticity guard left enabled; no source changes.",
+      "log": "logs/upstream-tests-posix.log",
+      "statusArtifact": "logs/upstream-tests-posix.status.json",
+      "xml": "workspace/baseline/upstream-tests-posix.xml",
+      "previousAttempts": [
+        {
+          "log": "logs/upstream-tests.log",
+          "assertionsPassed": 98,
+          "exitCode": 1,
+          "reason": "Inherited proxy environment rejected by the session-end hermeticity guard."
+        },
+        {
+          "log": "logs/upstream-tests-clean.log",
+          "assertionsPassed": 96,
+          "failed": 2,
+          "exitCode": 1,
+          "reason": "Default async backend caused two semgrep-core validation failures; truncated stderr does not establish exact errno."
+        }
+      ]
+    },
+    "baselineCliRuntime": {
+      "runId": "20261022202208-427f54eb",
+      "status": "succeeded",
+      "rootTaskId": "task_cb169033-37b5-4e58-a94e-3096006066f9",
+      "rootDurationMs": 1255442,
+      "summary": {
+        "workflow": "raptor-parity",
+        "upstreamCommit": "2ac96303d5e382c196aa34b2984a3c6a218132a9",
+        "ruleFiles": 58,
+        "ruleCount": 166,
+        "expectedCases": 70,
+        "completedCases": 70,
+        "missingCaseIds": [],
+        "failedCaseIds": [],
+        "parityMismatchCaseIds": [],
+        "expectationFailureCaseIds": [],
+        "scannerFailureCaseIds": [],
+        "baselineFindings": 190,
+        "flowFindings": 190,
+        "passed": true
+      },
+      "scope": "Original runtime before performance changes; current final Flow includes message/severity comparison.",
+      "stdoutArtifact": "logs/flow-cli.log",
+      "databaseBytes": 8548257792,
+      "databaseNote": "Includes an earlier interrupted position-only attempt; not a clean per-run storage benchmark."
+    },
+    "baselineAgentRuntime": {
+      "artifact": "agent-workspace/agent-evidence.json",
+      "status": "succeeded",
+      "cases": 70,
+      "tasks": 418,
+      "reopened": true,
+      "performanceArtifact": "agent-workspace/performance.json"
+    }
+  },
+  "semgrepRegistry": {
+    "status": "passed-with-scope-limits",
+    "definition": "apps/cli/examples/raptor/raptor-registry-parity.flow",
+    "definitionSha256": "d81ef53c65030b420b0db571fc50ad6df71b2932ecd126670f9c49ad3ef28bcb",
+    "artifact": "registry-flow/evidence.json",
+    "runId": "20261022202324-19f031d2",
+    "scanCount": 9,
+    "rawFindingsEach": 30,
+    "normalizedFindingsEach": 16,
+    "scope": "Observed python.generic default registry selection and local rules for the two official Python/JavaScript sample files.",
+    "registryRuleBytesPinned": false,
+    "fullClassifierCoverage": false
+  },
+  "sca": {
+    "referenceOnline": {
+      "status": "partial-default-online",
+      "artifact": "sca-flow/online/summary.json",
+      "cases": 15,
+      "casesPassed": 11,
+      "commands": 21,
+      "commandsPassed": 17,
+      "blockedCases": [
+        "event-stream",
+        "node-ipc",
+        "ua-parser-js",
+        "node-app"
+      ],
+      "blocker": "Default transitive npm resolution requires a network namespace unavailable on this host.",
+      "directDependencyRetries": {
+        "commands": 4,
+        "passed": 4,
+        "fullTransitiveCoverage": false
+      },
+      "modelRequests": false,
+      "sampleDependenciesInstalled": false
+    },
+    "nativeFlow": {
+      "status": "passed-two-subcases",
+      "definition": "apps/cli/examples/raptor/raptor-sca-parity.flow",
+      "definitionSha256": "ff3c7dc02508ab748f60180dafd6f4aa76dcc0d0740fb7412c7f744bf6e6adf4",
+      "artifact": "sca-flow/sca-evidence.json",
+      "cases": [
+        "synthetic-install-hook",
+        "diff-basic"
+      ],
+      "positiveRunId": "20261022202249-16b079e6",
+      "positiveExitCode": 0,
+      "negativeRunId": "20261022202249-333d7d51",
+      "negativeExitCode": 1,
+      "negativeMutation": "Reference lifecycle-hook severity changed from high to critical.",
+      "fullScaImplementation": false,
+      "agentExecutionVerified": false
+    }
+  },
+  "smt": {
+    "status": "passed-document-condition-replay",
+    "definition": "apps/cli/examples/raptor/raptor-smt-parity.flow",
+    "definitionSha256": "22203a4bb8986bd13c159abe03a0baf8b0d2298a0663d62a94044eb67872b372",
+    "artifact": "sca-flow/smt-evidence.json",
+    "referenceArtifact": "sca-flow/smt-reference.json",
+    "cases": 9,
+    "matchedCurrentUpstreamApi": 9,
+    "readmeExpectationsMatched": 7,
+    "readmeExpectationsDrifted": [
+      "LLM",
+      "PARTIAL"
+    ],
+    "positiveRunId": "20261022202317-73622977",
+    "positiveExitCode": 0,
+    "negativeRunId": "20261022202317-922a781b",
+    "negativeExitCode": 1,
+    "negativeMutation": "Reference ALLOC feasibility changed from true to false.",
+    "limits": [
+      "Conditions and constant expansions are supplied from source comments and documentation, not extracted automatically by CodeQL.",
+      "validate(ptr) remains an unverified condition in PARTIAL.",
+      "strlen(input) is an abstract free value without semantic summary axioms.",
+      "Satisfiable guard conditions alone do not prove exploitability."
+    ]
+  },
+  "fixedFuzzProbes": {
+    "status": "passed-fixed-probes",
+    "definition": "apps/cli/examples/raptor/raptor-probe-parity.flow",
+    "definitionSha256": "fca0f5bcbd75aae49a9c39ea3793cd7442c3aa8e7c46a4b3ff8e80bfb1e43d4e",
+    "artifact": "probe-flow/evidence.json",
+    "positiveRunId": "20261022202309-e6d81792",
+    "negativeRunId": "20261022202345-4896e79e",
+    "negativeExitCode": 1,
+    "observed": [
+      {
+        "probe": "A",
+        "exitCode": 1,
+        "outcome": "SANITIZER_REPORT",
+        "stackBufferOverflow": true
+      },
+      {
+        "probe": "B",
+        "exitCode": 139,
+        "outcome": "EXIT_SIGNAL"
+      },
+      {
+        "probe": "C",
+        "exitCode": 0,
+        "outcome": "NO_OBVIOUS_EFFECT",
+        "stdout": "ok\n"
+      }
+    ],
+    "automaticAflCampaign": false,
+    "modelGeneratedPoc": false,
+    "witnessPipeline": false
+  },
+  "codeql": {
+    "status": "passed-native-query-parity",
+    "definition": "apps/cli/examples/raptor/raptor-codeql-parity.flow",
+    "definitionSha256": "6a74aea967c03983eb6a8b0c713629ae8dc36b59513f28e8b47d066121060307",
+    "artifact": "codeql-parity/evidence.json",
+    "runId": "20261022203944-9df32a60",
+    "cliVersion": "2.27.3",
+    "languages": 5,
+    "independentDatabasesPerExecution": 6,
+    "fixtureSourceFiles": 8,
+    "verifiedSourceAndQueryFiles": 52,
+    "referenceFindings": 11,
+    "flowFindings": 11,
+    "matchedCodeFlowPaths": 11,
+    "scope": "Independent native CodeQL extraction and original query execution; SMT C and IRIS C use separate databases.",
+    "limits": [
+      "The upstream original queries and CLI flags are the reference; RAPTOR LLM analysis is not executed.",
+      "The Python allowlist fixture remains a conservative CodeQL finding without IRIS LLM filtering.",
+      "CodeQL-to-Z3 automatic condition extraction and LLM fallback are not established by this comparison.",
+      "The earlier combined C database attempt is excluded from acceptance."
+    ],
+    "negativeComparison": {
+      "artifact": "codeql-parity/failure-smoke/evidence.json",
+      "runId": "20261022204259-bf85c479",
+      "status": "expected-failure",
+      "exitCode": 1,
+      "failedCases": [
+        "java",
+        "python"
+      ],
+      "mutation": [
+        "Python finding message",
+        "Java codeFlow startColumn"
+      ],
+      "scope": "Original compare node only, operating on copied real SARIF; database build and query execution were not repeated."
+    }
+  },
+  "irisLlmPipeline": {
+    "status": "not-verified",
+    "note": "Semgrep and native CodeQL parity on tracked IRIS fixtures do not establish IRIS model eligibility filtering or model-assisted analysis parity."
+  },
+  "performanceAndRecovery": {
+    "storageFormatChanged": false,
+    "historicalSharedRevisionsDeleted": false,
+    "checkpointRegression": {
+      "status": "passed",
+      "file": "backend/llm-flow/__tests__/checkpoint-store.test.ts",
+      "tests": 17,
+      "verified": [
+        "bounded retained bytes across 32 hot updates",
+        "immutable dynamic graph history",
+        "legacy reads",
+        "new Kernel reads",
+        "recovery archive restore",
+        "CAS",
+        "lease takeover between component and pointer writes",
+        "missing and invalid references rejected"
+      ]
+    },
+    "crashRecovery": {
+      "status": "passed-scoped-matrices",
+      "summaryArtifact": "logs/crash-recovery-optimized-summary.json",
+      "parameterCalls": {
+        "passed": 1,
+        "log": "logs/flow-parameter-calls-crash-optimized.log"
+      },
+      "schedulerMatrix": {
+        "passed": 10,
+        "skippedByFilter": 13,
+        "log": "logs/scheduler-sigkill-optimized.log",
+        "sourceStage": "checkpoint and variable optimization, before aggregate-state projection"
+      },
+      "aggregateProjectionFollowup": {
+        "passed": 3,
+        "skippedByFilter": 20,
+        "log": "logs/scheduler-sigkill-aggregate-optimized.log",
+        "windows": [
+          "root-created",
+          "finish",
+          "completed loop iteration before checkpoint commit"
+        ]
+      }
+    },
+    "finalRealWorkloadComparison": {
+      "status": "passed",
+      "artifact": "agent-performance-comparison.json",
+      "before": {
+        "rootDurationMs": 813228,
+        "sqliteBytes": 7867727872
+      },
+      "after": {
+        "rootDurationMs": 320313,
+        "sqliteBytes": 1632645120
+      },
+      "rootDurationReductionPercent": 60.61215304932934,
+      "sqliteReductionPercent": 79.24883592110086,
+      "identicalDefinition": true,
+      "identicalCanonicalFindings": true,
+      "identicalSummarySha256": "cbc10189ae994949d818d5668d90ec9d2c35d4721ffd6bd0ee3aecbdc50e3743",
+      "ruleFilesByteIdentical": 58,
+      "scope": "Same Flow and workload, independent directories on a shared host with concurrent jobs; single-run observation, not a controlled statistical benchmark.",
+      "timingDefinition": "Persisted terminal root Task updatedAt minus createdAt for every successful run",
+      "runtimeSourceHashesMatchAtCompletion": true,
+      "runtimeSourceArtifact": "performance-stage4-agent/runtime-source-verification.json",
+      "identicalCanonicalFindingsSha256": "11a07b71d64888ac6815a86057a042452bccaf9d41d09516c048bb5f7a0ab483"
+    },
+    "reviewLimits": [
+      "Writer cache assumes one writer per execute call and lease epoch; current production call sites satisfy this lifecycle. Reuse across roots or sessions requires a cache scope guard.",
+      "Frozen graph JSON is still serialized for comparison on each save.",
+      "Immutable root Task input can still be repeated in Kernel Task history snapshots.",
+      "Components must remain available to retained historical checkpoints and recovery archives; no component garbage collection was added."
+    ],
+    "regressions": {
+      "flowSuite": {
+        "passed": 584,
+        "artifact": "logs/flow-tests-waits-optimized.log"
+      },
+      "aggregateAndDurableExecutor": {
+        "passed": 120,
+        "artifact": "logs/aggregate-state-optimized.log"
+      },
+      "tauriWorkspaces": {
+        "passed": 19,
+        "artifact": "logs/tauri-workspace-optimized.log"
+      },
+      "cliRaptor": {
+        "passed": 13,
+        "liveSkipped": 2,
+        "artifact": "logs/raptor-tests-final.log"
+      },
+      "sessionFlow": {
+        "passed": 34,
+        "artifact": "logs/session-flow-final.log"
+      },
+      "appCoreFlow": {
+        "passed": 25,
+        "artifact": "logs/app-core-flow-final.log"
+      },
+      "typechecks": [
+        "llm-flow",
+        "cli",
+        "tauri-app"
+      ],
+      "note": "Test totals overlap; they must not be summed as unique tests.",
+      "docsCheck": {
+        "passed": true,
+        "activeDocuments": 167,
+        "historicalDocuments": 4,
+        "artifact": "logs/docs-check-final.log"
+      },
+      "combinedKernelFlow": {
+        "passed": 121,
+        "artifact": "logs/flow-kernel-waits-final.log"
+      },
+      "kernelExisting": {
+        "passed": 213,
+        "artifact": "logs/kernel-hydration-existing-tests.log"
+      },
+      "kernelReceiptReadAndRecovery": {
+        "passed": 6,
+        "testFile": "libraries/durable-kernel/src/wait-hydration.test.ts"
+      },
+      "finalWaitCrashRecovery": {
+        "passed": 5,
+        "artifacts": [
+          "logs/scheduler-sigkill-final-waits.log",
+          "logs/scheduler-sigkill-final-waits-root-finish.log"
+        ],
+        "windows": [
+          "root-created",
+          "finish",
+          "finish:delegate:1:0",
+          "finish:delegate:1:1",
+          "completed-loop-before-checkpoint"
+        ]
+      },
+      "variableRetryRecovery": {
+        "passed": 20,
+        "scope": "Variable snapshot/whole array/retry/prune semantics and real Kernel recreation during an input-dependent assignment"
+      },
+      "kernelUnit": {
+        "passed": 356,
+        "testFiles": 15,
+        "artifact": "logs/kernel-hydration-full-unit.log"
+      }
+    },
+    "intermediateStage3": {
+      "status": "succeeded",
+      "artifact": "performance-final-agent/performance.json",
+      "comparisonArtifact": "agent-performance-comparison.json",
+      "rootDurationMs": 550171,
+      "sqliteBytes": 1944281088,
+      "sourceRuntimeStage": "Variable snapshots, compact checkpoints and projected aggregate state; before the final wait optimization."
+    },
+    "nonAcceptanceRuns": [
+      {
+        "directory": "position-only-attempt",
+        "status": "interrupted",
+        "reason": "Incomplete comparison fields; superseded by final Flow including message and severity."
+      },
+      {
+        "directory": "performance-after-cli",
+        "status": "interrupted",
+        "reason": "Intermediate two-change runtime stopped to reduce resource contention."
+      },
+      {
+        "directory": "performance-after-agent",
+        "status": "interrupted-after-scanner-errors",
+        "reason": "Semgrep io_uring initialization could not allocate memory on cases 043/046; preserved partial artifacts."
+      },
+      {
+        "directory": "performance-final-cli",
+        "status": "failed",
+        "exitCode": 1,
+        "reason": "Semgrep io_uring initialization could not allocate memory on case 013; all 70 comparisons collected and failure gate rejected the run.",
+        "artifact": "performance-final-cli/process.json"
+      }
+    ],
+    "reviewArtifact": "performance-review.json"
+  },
+  "notEstablished": [
+    "Complete RAPTOR CLI feature and syntax parity",
+    "Full SCA scanning and remediation implemented in Flow",
+    "Automatic fuzzing, generated exploits, and Witness verification parity",
+    "RAPTOR sandbox, Firecracker, network namespace, or credential-boundary parity from native Bash execution alone"
+  ],
+  "flowDefinitions": {
+    "raptor-codeql-parity.flow": "6a74aea967c03983eb6a8b0c713629ae8dc36b59513f28e8b47d066121060307",
+    "raptor-parity.flow": "5075676d635d945cbf349deece0a5e28dc31bbb8757f900254bb0dbdf84136b4",
+    "raptor-probe-parity.flow": "fca0f5bcbd75aae49a9c39ea3793cd7442c3aa8e7c46a4b3ff8e80bfb1e43d4e",
+    "raptor-registry-parity.flow": "d81ef53c65030b420b0db571fc50ad6df71b2932ecd126670f9c49ad3ef28bcb",
+    "raptor-review.flow": "db4fe31f0125f198bacd583ffe55edf5dcc586db765dfe1dcbe7678dfdb78e8f",
+    "raptor-sca-parity.flow": "ff3c7dc02508ab748f60180dafd6f4aa76dcc0d0740fb7412c7f744bf6e6adf4",
+    "raptor-smt-parity.flow": "22203a4bb8986bd13c159abe03a0baf8b0d2298a0663d62a94044eb67872b372"
+  },
+  "completeRaptorReplacement": false,
+  "recordedAt": "2026-10-22T20:57:54.940842+00:00"
+}

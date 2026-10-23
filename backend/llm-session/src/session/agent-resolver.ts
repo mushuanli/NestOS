@@ -9,6 +9,7 @@ import type { WebSearchMode } from '../contracts';
 import { IAgentConfigService } from '../services/agent-service';
 import { ConversationError, ConversationErrorCode } from '../core/errors';
 import { createSessionHost, type SessionHost } from '../utils/host-ports';
+import { admitHarnessConnection } from './harness-binding';
 
 export interface AgentInfo {
     id: string;
@@ -173,6 +174,9 @@ export class AgentResolver {
             ...(agentDef.modelDefaults ? { modelDefaults: structuredClone(agentDef.modelDefaults) } : {}),
             agentVersion: agentDef.version ?? await this.hashDefinition(agentDef),
             ...(agentDef.execution ? { execution: structuredClone(agentDef.execution) } : {}),
+            ...(agentDef.execution?.kind === 'harness' ? {
+                harnessConnection: await this.resolveHarnessConnection(agentDef.execution.connectionId),
+            } : {}),
             capabilityPolicy: structuredClone(agentDef.capabilityPolicy ?? (agentDef.config.mcpServers?.length
                 ? { mcpProfileIds: [...agentDef.config.mcpServers] } : undefined)),
             memoryPolicy: structuredClone(agentDef.memoryPolicy),
@@ -274,6 +278,23 @@ export class AgentResolver {
      * 当用户切换连接或模型层级时，需要重新查新连接的 tiers 映射来解析模型。
      */
     getConnection(id: string) { return this.agentService.getConnection(id); }
+    getHarnessConnection(id: string) { return this.agentService.getHarnessConnection?.(id) ?? Promise.resolve(undefined); }
+    async resolveHarnessConnection(id: string, saved?: ExecutorConfig['harnessConnection']) {
+        const started = Date.now();
+        try {
+            const snapshot = await admitHarnessConnection(this, id, saved);
+            this.host.logger.debug('Harness connection admitted', { operation: 'harness.connection', operationId: id,
+                stage: saved ? 'revalidation' : 'admission', result: 'success', elapsedMs: Date.now() - started });
+            return snapshot;
+        }
+        catch (error) {
+            this.host.logger.warn('Harness connection admission failed', { operation: 'harness.connection', operationId: id,
+                stage: saved ? 'revalidation' : 'admission', result: 'failure', elapsedMs: Date.now() - started,
+                errorCode: (error as { code?: string }).code ?? 'HARNESS_CONNECTION_FAILED' });
+            throw new ConversationError(ConversationErrorCode.AGENT_DISABLED,
+                error instanceof Error ? error.message : 'Harness connection admission failed');
+        }
+    }
     getProvider(id: string) { return this.agentService.getProvider(id); }
     async getModelDefaults(agent?: Pick<ExecutorConfig, 'modelDefaults'>) {
         return { ...await this.agentService.getModelDefaults?.() ?? {}, ...agent?.modelDefaults };
@@ -286,6 +307,8 @@ export class AgentResolver {
         useDefault?: boolean;
         frozenConnection?: ConnectionMeta;
     }): Promise<ExecutorConfig> {
+        if (config.execution?.kind === 'harness') return { ...config,
+            harnessConnection: await this.resolveHarnessConnection(config.execution.connectionId, config.harnessConnection) };
         const connId = overrides.connectionId ?? config.connectionId
             ?? (overrides.useDefault === false ? undefined : config.modelDefaults?.chat);
         const connMeta = connId ? overrides.frozenConnection ?? await this.agentService.getConnection(connId)

@@ -1,5 +1,7 @@
 /** Configuration contracts and pure policies; no adapter runtime initialization. */
 export * from './llm-management/contracts/agent';
+export type { HarnessExecutionConnection, HarnessExecutionConnectionRecord, HarnessExecutionConnectionTarget, HarnessConnectionSnapshot, HarnessExecutionRequest,
+    HarnessExecutionResult, HarnessExecutionProvider, HarnessInteractionNotification } from './llm-management/contracts/harness-execution';
 export * from './llm-management/contracts/image-processing';
 export * from './llm-management/contracts/connection';
 export * from './llm-management/contracts/model-defaults';

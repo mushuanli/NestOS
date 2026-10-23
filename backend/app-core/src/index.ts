@@ -92,6 +92,12 @@ export type { ToolboxTool } from './configuration/toolbox-catalog';
 export { OcrService, type OcrSettings, type OcrConnection } from './configuration/ocr-service';
 
 export { ProjectRemoteMountService } from './projects/remote-mounts';
+export { HarnessConnectionService } from './projects/harness-connections';
+export { createMindOSNodeMCPExtension } from './projects/mindos-node-mcp-extension';
+export type { HarnessConnectionAcquisition } from './projects/harness-connections';
+export type { HarnessConnectionRecord } from './projects/harness-connection-store';
+export { createHarnessExecutionProvider, harnessExecutionJournalKey } from './projects/harness-execution';
+export { createHarnessCleanupState } from './projects/harness-cleanup-state';
 export { RemoteConnectionUnavailableError, reportRemoteFailure } from './projects/remote-diagnostics';
 export type { MCPConnectionDiagnostic, MCPConnectionReason } from './projects/remote-diagnostics';
 export type { RemoteFileSystemConfig, RemoteFileSystemInput } from './projects/remote-connections';

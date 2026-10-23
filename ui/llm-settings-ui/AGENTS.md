@@ -64,3 +64,5 @@ Agent 执行方式通过 execution 绑定内部注册 Flow；第四个参数由�
 媒体验证示例通过 MediaProbeExamples 由宿主注入 ProviderSettingsEditor 与 ModelDefaultsEditor，设置组件不内置测试提示词，不从 i18n 获取测试正文。按操作选择示例，仅在初始化或切换操作时预填；同一操作刷新保留用户编辑和显式清空，预填不触发验证。
 
 Provider 高级页通过可选 getProviderReferences 快照展示只读接口资料；不按厂商 ID 分支，不将文档记录的未实现能力转换成可编辑请求参数。音色名称用于展示，提交和校验仍使用配置中允许的真实音色 ID。
+
+远程执行连接与模型连接分开：Agent execution.kind=harness 选择具名授权目标，设置面板通过可选管理端口按需读取已授权项目/profile并CAS新建或编辑，不能接受地址或凭据；候选失败可重试，保存失败保留草稿与稳定ID，迟到读取不得打开已销毁编辑器的弹窗。Composite允许远程成员，远程主持项禁用；最终准入仍由宿主校验。见[执行连接](../../doc/design/remote-harness-connections.md)。

@@ -1,3 +1,4 @@
+import type { HarnessExecutionConnection, HarnessExecutionConnectionRecord, HarnessExecutionConnectionTarget } from '@itookit/kernel-adapters/contracts';
 import type { FormParameter } from '@itookit/llm-ui/forms';
 
 export interface AgentFlowConnection {
@@ -12,7 +13,14 @@ export interface AgentFlowDefinition {
 }
 export interface AgentFlowChoice extends AgentFlowDefinition { id: string; name: string; }
 export interface AgentFlowRevision extends AgentFlowDefinition { revision: number; createdAt?: number; }
+export interface HarnessConnectionManagement {
+    get(id: string): Promise<HarnessExecutionConnectionRecord | undefined>;
+    targets(): Promise<HarnessExecutionConnectionTarget[]>;
+    save(connection: HarnessExecutionConnection, expectedRevision: number): Promise<HarnessExecutionConnectionRecord>;
+}
 export interface AgentExecutionOptions {
+    harnessConnections?: HarnessConnectionManagement;
+    listHarnessConnections?(): Promise<Array<{ id: string; name: string; enabled?: boolean }>>;
     openFlow?(id: string): Promise<void>;
     listFlows?(): Promise<AgentFlowChoice[]>;
     listFlowRevisions?(id: string): Promise<AgentFlowRevision[]>;

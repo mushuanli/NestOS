@@ -18,6 +18,7 @@ src/
     ├── executor.ts           DurableFlowExecutor（运行装配 / 所有权边界）
     ├── scheduler.ts          并发派发、等待、结算与租约失权退出
     ├── checkpoint-decoder.ts 恢复 envelope 校验
+    ├── checkpoint-store.ts   不可变图组件与运行状态持久化，兼容 v1/v2
     ├── graph-decoder.ts      图效果整批结构解码
     ├── scheduler-state.ts    checkpoint 集合恢复、序列化与 Task 重挂
     ├── graph-retry-controller.ts 图重试消费、下游失效与委派清理
@@ -82,7 +83,7 @@ DelegationController 消费单次运行的显式状态，执行已声明的 wait
 
 prepareNodeTask 只准备节点输入与变量快照；FlowTaskFactory 只构造 Kernel TaskSpec，保留嵌套 dispatch 的宿主绑定与 Context Program 版本。executor 按原顺序执行 task.started、submit、运行成员更新、能力绑定与 checkpoint。上述组件保持包内，不增加 npm 包或根导出。
 
-GraphRetryController 在同次消费中对每个 requestId 只执行一次内存图修改，CAS 冲突重读队列时合并新意图；图修改与 appliedGraphRetries 回执先提交同一 checkpoint，再 CAS 确认队列；恢复按回执跳过已应用请求，确认写入仍是独立事务。Scheduler collections 保持 version-1 存储格式。FlowRunAggregation 使用当前 fenced Session；根创建发生在调度租约建立前，最终投影写入发生在租约建立后，不能缓存初始未 fencing 的 Session。
+GraphRetryController 在同次消费中对每个 requestId 只执行一次内存图修改，CAS 冲突重读队列时合并新意图；图修改与 appliedGraphRetries 回执先提交同一 checkpoint，再 CAS 确认队列；恢复按回执跳过已应用请求，确认写入仍是独立事务。Scheduler collections 保持 version-1 内存结构；checkpoint-store 以 version-2 envelope 分开保存稳定图组件和运行状态，统一读取旧 v1 与新 v2。历史检查点引用不可变组件，继续保留租约 fencing 与先组件后指针的提交顺序。FlowRunAggregation 使用当前 fenced Session；根创建发生在调度租约建立前，最终投影写入发生在租约建立后，不能缓存初始未 fencing 的 Session。
 
 FlowRunLifecycle 接收宿主工作区 manager、已 fencing 的 Session 和租约；清理先确认任务停止及能力释放，detached drain 保持调度所有权。公共 workspace 类型与 workspaceLeaseKey 定义移入 run-lifecycle，其中 workspace 类型继续从原 executor/root 入口导出，lease key 继续仅从源码 executor 入口转发，内部组件不新增根 API。
 

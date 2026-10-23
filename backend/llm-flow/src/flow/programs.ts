@@ -53,7 +53,7 @@ export class FlowValueProgram implements DurableTaskProgram<FlowValueState, Flow
         collectDependency(next.dependencies, next.dependencyOutputs, next.resolvedDependencyIds, event, 'result');
         return dependenciesReady(next.dependencies, next.resolvedDependencyIds)
             ? completeValue(next, this.reducers)
-            : { state: next, next: dependencyWait(next.dependencies) };
+            : { state: next, next: dependencyWait(unresolved(next.dependencies, next.resolvedDependencyIds)) };
     }
 }
 
@@ -87,7 +87,7 @@ export class FlowHumanProgram implements DurableTaskProgram<FlowHumanState, Flow
         if (next.phase === 'dependencies') {
             collectDependency(next.dependencies, next.dependencyOutputs, next.resolvedDependencyIds, event, 'result');
             if (!dependenciesReady(next.dependencies, next.resolvedDependencyIds)) {
-                return { state: next, next: dependencyWait(next.dependencies) };
+                return { state: next, next: dependencyWait(unresolved(next.dependencies, next.resolvedDependencyIds)) };
             }
             next.phase = 'interaction';
             return requestHuman(next);
@@ -119,7 +119,7 @@ export class FlowAggregateProgram implements DurableTaskProgram<FlowAggregateSta
     readonly manifest = { kind: 'flow.aggregate', version: '1' };
 
     init(input: FlowAggregateInput): Decision<FlowAggregateState, JsonValue> {
-        const state = { ...clone(input), outputs: {}, failures: {}, resolved: [] };
+        const state = aggregateState(input);
         if (input.awaitingSchedule) return { state, next: { type: 'wait', on: { type: 'signal' } } };
         return input.dependencies.length
             ? { state, next: dependencyWait(input.dependencies) }
@@ -127,16 +127,7 @@ export class FlowAggregateProgram implements DurableTaskProgram<FlowAggregateSta
     }
 
     reduce(state: Readonly<FlowAggregateState>, event: TaskInputEvent): Decision<FlowAggregateState, JsonValue> {
-        // Older flow.aggregate@1 states predate `failures`/`resolved`; hydrate
-        // them so recovery from an existing Task record remains compatible.
-        const hydrated = clone(state) as Partial<FlowAggregateState>;
-        hydrated.outputs = hydrated.outputs ?? {};
-        hydrated.failures = hydrated.failures ?? {};
-        hydrated.dependencies = hydrated.dependencies ?? [];
-        hydrated.resolved = hydrated.resolved ?? hydrated.dependencies
-            .filter(item => item.nodeId in hydrated.outputs!)
-            .map(item => item.taskId);
-        const next = hydrated as FlowAggregateState;
+        const next = aggregateState(state);
         if (next.awaitingSchedule) {
             if (event.type === 'signal' && event.signal.type === 'flow.schedule.failed') {
                 return { state: next, next: { type: 'fail', error: { message: String(event.signal.payload) } } };
@@ -163,11 +154,29 @@ export class FlowAggregateProgram implements DurableTaskProgram<FlowAggregateSta
             }
         }
         const ready = next.dependencies.every(item => next.resolved.includes(item.taskId));
-        if (!ready) return { state: next, next: dependencyWait(next.dependencies) };
+        if (!ready) return { state: next, next: dependencyWait(unresolved(next.dependencies, next.resolved)) };
         const output: Record<string, JsonValue> = { nodes: next.outputs, ...(next.variables ? { variables: next.variables } : {}) };
         if (Object.keys(next.failures).length > 0) output.failures = next.failures;
         return { state: next, next: { type: 'complete', output } };
     }
+}
+
+function unresolved<T extends { taskId: string }>(dependencies: T[], resolved: string[]): T[] {
+    const receipts = new Set(resolved);
+    return dependencies.filter(item => !receipts.has(item.taskId));
+}
+
+function aggregateState(value: FlowAggregateInput & Partial<FlowAggregateState>): FlowAggregateState {
+    // Keep recovery metadata in immutable Task input, not in every reducer commit.
+    // Explicit projection also shrinks legacy states without changing their receipts.
+    const dependencies = value.dependencies ?? [];
+    const outputs = value.outputs ?? {};
+    return clone({
+        ...(value.variables !== undefined ? { variables: value.variables } : {}),
+        ...(value.awaitingSchedule !== undefined ? { awaitingSchedule: value.awaitingSchedule } : {}),
+        dependencies, outputs, failures: value.failures ?? {},
+        resolved: value.resolved ?? dependencies.filter(item => item.nodeId in outputs).map(item => item.taskId),
+    });
 }
 
 function completeValue(state: FlowValueState, reducers: FlowReducerRegistry): Decision<FlowValueState, DagNodeOutcome> {

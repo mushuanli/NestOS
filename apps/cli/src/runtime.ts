@@ -38,6 +38,10 @@ import {
     DirectoryMountService,
     ProjectService,
     ProjectRemoteMountService,
+    HarnessConnectionService,
+    createHarnessExecutionProvider,
+    createHarnessCleanupState,
+    createMindOSNodeMCPExtension,
     MCPRemoteConnections,
     ProjectExecutionService,
     createRemoteExecutionProvider,
@@ -45,8 +49,9 @@ import {
     SessionLeaseStore,
     syncSkillsToKernel,
     withWorkspaceScopeCleanup,
+    workspaceRoot,
 } from '@itookit/app-core';
-import { FlowRunProjection, SessionRepository, SessionDirectoryStorageResolver } from '@itookit/llm-session';
+import { AgentResolver, FlowRunProjection, SessionRepository, SessionDirectoryStorageResolver, VFSAgentService } from '@itookit/llm-session';
 import { createVFS, createFileSystemView, MemoryBackend, type IFileSystem, type VFSFactoryOptions } from '@itookit/vfs-core';
 import { createBashTool, type INativeShell } from '@itookit/tools';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
@@ -75,6 +80,7 @@ export interface CliRuntime {
     prepareConnections(flow: import('@itookit/llm-flow/contracts').FlowRevision, bindings?: Record<string, string>, runConnectionId?: string): Promise<import('@itookit/llm-flow/contracts').FlowRevision>;
     flowCapabilities: ReturnType<typeof createFlowCapabilities>;
     kernel: Kernel;
+    executionConnections: HarnessConnectionService;
     executor: DurableFlowExecutor;
     grants: WorkspaceGrantRegistry;
     /** Session workspace the file tools and shell see (the isolated copy in worktree mode). */
@@ -154,7 +160,7 @@ export async function createCliRuntime(
     let remoteConnections: ProjectRemoteMountService | undefined;
     const llmDriver = new LLMDeviceDriver(vfs, {
         presets: createMindosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
-        mcp: { clientInfo: { name:'mindos-cli',version:'1.0.0' },resolveCredential:ref => remoteProvider.resolveCredential(ref),
+        mcp: { clientInfo: { name:'mindos-cli',version:'1.0.0' }, extensions: [createMindOSNodeMCPExtension()], resolveCredential:ref => remoteProvider.resolveCredential(ref),
             beforeSave:(server,previous) => remoteConnections?.beforeMCPChange(server,previous),
             beforeDelete:id => remoteConnections?.beforeMCPDelete(id),configurationChanged:() => remoteConnections?.refreshMCPConnections() },
     });
@@ -194,6 +200,15 @@ export async function createCliRuntime(
         remoteProvider,
         async () => { throw new Error('Change project mounts from the workbench while the CLI is stopped'); }, async () => {}, new MCPRemoteConnections(llmDriver,remoteProvider));
     await remoteMounts.init(); remoteConnections = remoteMounts;
+    const executionConnections = new HarnessConnectionService(systemFS, remoteMounts);
+    const agentService = hostOptions.useProfileConfig ? new VFSAgentService(await vfs.openFileSystem(workspaceRoot('agents')), llmDriver) : undefined;
+    agentService?.configureHarnessConnections(id => executionConnections.freeze(id), async () =>
+        (await executionConnections.list()).flatMap(record => record.connection ? [record.connection] : []), {
+        get: id => executionConnections.get(id), save: (connection, revision) => executionConnections.save(connection, revision),
+        remove: (id, revision) => executionConnections.remove(id, revision),
+        targets: async () => executionConnections.targets(await projects.list()),
+    });
+    await agentService?.init();
     // Same wiring as createApplicationRuntime: ProjectService must compose remote mounts for every
     // consumer of openFiles(), not only for the Session workspace path below.
     projects.remoteMounts = remoteMounts;
@@ -290,7 +305,13 @@ export async function createCliRuntime(
         );
     };
     let digitalTwin: DigitalTwinService | undefined;
+    let harnessKernel: Kernel | undefined;
     const core = await createKernelRuntime({
+        harnessExecution: createHarnessExecutionProvider(executionConnections, {
+            stateForCleanup: createHarnessCleanupState(() => harnessKernel!, async id => {
+                if (id !== manifest.sessionId || !await leases.renew(lease)) throw new Error('Session execution lease is unavailable');
+            }),
+        }),
         authorizeLlm: (request, context) => digitalTwin?.authorizeLlm(request, context) ?? Promise.resolve(),
         authorizeMedia: (request, context) => digitalTwin?.authorizeMedia(request, context) ?? Promise.resolve(),
         systemFS,
@@ -303,6 +324,7 @@ export async function createCliRuntime(
         fileContextForScope: acquireFiles,
         additionalTools: [...additionalTools, ...(hasRemoteMounts ? [] : [createBashTool(shell)]), createWorkspaceAccessTool(grants)],
         beforeRecover: async runtime => {
+            harnessKernel = runtime.kernel;
             runtime.kernel.registerStorageResolver(new SessionDirectoryStorageResolver(systemFS));
             digitalTwin = createNativeDigitalTwin(systemFS, sessionRepository, runtime.kernel, llmDriver, 'cli', projects);
             await syncSkillsToKernel(llmDriver, runtime);
@@ -313,7 +335,9 @@ export async function createCliRuntime(
     const { kernel } = core;
     const workspaceManager = cliWorkspaceManager(workflow);
 
-    const flowCapabilities = createFlowCapabilities(core);
+    const basicCapabilities = createFlowCapabilities(core);
+    const identities = agentService ? new AgentResolver(agentService, basicCapabilities.resolveSkills, basicCapabilities.resolveMCPToolIds) : undefined;
+    const flowCapabilities = identities ? createFlowCapabilities(core, identities) : basicCapabilities;
     const executor = new DurableFlowExecutor({
         kernel,
         plugins: core.dagPlugins,
@@ -342,9 +366,11 @@ export async function createCliRuntime(
     return {
         stageInput: value => stageInputAssets(systemFS, value),
         kernel,
+        executionConnections,
         syncHistory,
         prepareConnections: (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, {
             getConnection: async id => llmDriver.getConnection(id), getProvider: id => llmDriver.getProvider(id),
+            getHarnessConnection: id => executionConnections.freeze(id),
             getModelDefaults: () => llmDriver.getModelDefaults(),
         }, undefined, runConnectionId),
         flowCapabilities,
@@ -365,6 +391,7 @@ export async function createCliRuntime(
             try { await syncHistory(); } catch (error) { projectionError = error; }
             if (mode === 'execute') await reportWorkspace(kernel, manifest);
             await core.dispose();
+            await agentService?.dispose();
             await llmDriver.dispose();
             await directoryMounts.dispose();
             await sessionFiles.dispose();

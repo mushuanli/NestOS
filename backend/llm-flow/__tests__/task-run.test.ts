@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { JsonValue, SessionHandle, TaskRecord } from '@itookit/durable-kernel';
+import { createSchedulerCollections, snapshotSchedulerCollections } from '../src/flow/scheduler-state';
+import type { DagRunSpec } from '../src/contracts';
 import { resolveFlowRunForTask, resolveFlowTaskWorkspace } from '../src/flow/task-run';
 
 function task(id: string, parentTaskId?: string): TaskRecord {
@@ -44,12 +46,18 @@ describe('Task to Flow identity', () => {
         const shared = new Map<string, JsonValue>();
         const source = session([task('node'), root('run', 'node')], shared);
         await expect(resolveFlowTaskWorkspace(source, 'node')).rejects.toThrow('checkpoint is unavailable');
-        shared.set('flow.run.run.scheduler', { spec: { nodes: [], runPolicy: { workspace: { mode: 'worktree', cleanup: 'keep' } } } });
+        shared.set('flow.run.run.scheduler', checkpoint({ mode: 'worktree', cleanup: 'keep' }));
         await expect(resolveFlowTaskWorkspace(source, 'node')).rejects.toThrow('lease is unavailable');
         shared.set('flow.run.run.workspace-lease', { version: 1, directory: '/isolated', branch: 'flow/test' });
         expect(await resolveFlowTaskWorkspace(source, 'node')).toEqual({ rootTaskId: 'run',
             policy: { mode: 'worktree', cleanup: 'keep' }, lease: { version: 1, directory: '/isolated', branch: 'flow/test' } });
-        shared.set('flow.run.run.scheduler', { spec: { nodes: [], runPolicy: { workspace: { mode: 'shared' } } } });
+        shared.set('flow.run.run.scheduler', checkpoint({ mode: 'shared' }));
         expect(await resolveFlowTaskWorkspace(source, 'node')).toBeUndefined();
     });
 });
+
+function checkpoint(workspace: NonNullable<DagRunSpec['runPolicy']>['workspace']): JsonValue {
+    const spec: DagRunSpec = { nodes: [], edges: [], runPolicy: { workspace } };
+    return JSON.parse(JSON.stringify(snapshotSchedulerCollections(createSchedulerCollections(spec, undefined, new Set()),
+        new Map(), new Set(), { spec, consumedTokens: 0, startedAt: 0, nodeDefaults: [], nodeConnections: [] })));
+}

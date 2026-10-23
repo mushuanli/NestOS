@@ -1,0 +1,12 @@
+{
+  "id": "raptor-parity-agent",
+  "name": "RAPTOR 全规则等价验收",
+  "type": "workflow",
+  "description": "用纯 Flow 写入原版规则，执行用例并与独立基线进行确定性对比。",
+  "config": {},
+  "execution": {
+    "kind": "flow",
+    "flowId": "raptor-parity",
+    "connectionBindings": {}
+  }
+}

@@ -1,6 +1,6 @@
 import { acquireWorkspaceProcessContext, type ApplicationPlatformServices, type HeadlessKernelRuntime } from '@itookit/app-core';
 import { randomUUID } from '@itookit/common';
-import { GitWorktreeFlowWorkspaceManager, type FlowWorkspaceLease, type FlowWorkspaceManager } from '@itookit/llm-flow';
+import { GitWorktreeFlowWorkspaceManager, readFlowSchedulerCheckpoint, type FlowWorkspaceLease, type FlowWorkspaceManager } from '@itookit/llm-flow';
 import { TauriFsOps } from '../fs/tauri-fs-ops';
 import { resolveTauriWorkspaceGrant, type TauriWorkspaceGrant } from './workspace-grant';
 import { TauriWorkspaceGitRunner } from './workspace-git';
@@ -29,8 +29,7 @@ export class TauriFlowWorkspaces implements FlowWorkspaceManager {
         const session = await this.kernel.kernel.inspectSession(sessionId);
         const record = await session.getShared(`flow.run.${rootTaskId}.workspace-lease`);
         const saved = await this.validate(sessionId, record?.value ?? null);
-        const checkpoint = await session.getShared(`flow.run.${rootTaskId}.scheduler`);
-        const frozen = checkpoint?.value as { spec?: { runPolicy?: { workspace?: { mode?: string } } } } | undefined;
+        const frozen = await readFlowSchedulerCheckpoint(session, rootTaskId);
         if (frozen?.spec?.runPolicy?.workspace?.mode !== (saved.mode ?? 'worktree')) {
             throw new Error('Workspace lease mode does not match the frozen policy');
         }

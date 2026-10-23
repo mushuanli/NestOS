@@ -15,6 +15,7 @@ export function captureFlowIdentities(live: FlowIdentityResolver, sessionId: str
     });
     return {
         resolver: { resolveExact: agents.read, getSystemPrompt: prompts.read,
+            ...(live.resolveHarnessConnection ? { resolveHarnessConnection: live.resolveHarnessConnection.bind(live) } : {}),
             getSkills: async (ids: string[]) => (await Promise.all(ids.map(id => skills.read(id)))).filter((skill): skill is LLMSkill => !!skill),
             getMCPToolIds: async (ids: string[]) => [...new Set((await Promise.all(ids.map(id => mcp.read(id)))).flat())] } satisfies FlowIdentityResolver,
         snapshot: (): FlowIdentitySnapshot => ({ agents: agents.snapshot(), skills: skills.snapshot(), prompts: prompts.snapshot(), mcp: mcp.snapshot() }),
@@ -40,6 +41,7 @@ export function frozenFlowIdentities(snapshot: FlowIdentitySnapshot, dynamic?: F
         return structuredClone(found[1]);
     };
     return { resolveExact: id => read(snapshot.agents, id, dynamic && (() => dynamic.resolveExact(id))),
+        ...(dynamic?.resolveHarnessConnection ? { resolveHarnessConnection: dynamic.resolveHarnessConnection.bind(dynamic) } : {}),
         getSystemPrompt: id => read(snapshot.prompts, id, dynamic && (() => dynamic.getSystemPrompt(id))),
         getSkills: async (ids, sessionId) => (await Promise.all(ids.map(id => read(snapshot.skills, id, dynamic &&
             (async () => (await dynamic.getSkills([id], sessionId)).find(skill => skill.id === id) ?? null))))).filter((skill): skill is LLMSkill => !!skill),

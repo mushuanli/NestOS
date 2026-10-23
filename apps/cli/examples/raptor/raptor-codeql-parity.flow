@@ -1,0 +1,968 @@
+{
+  "id": "raptor-codeql-parity",
+  "name": "RAPTOR CodeQL 原始查询的五语言独立数据库对照",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "nodes": [
+    {
+      "id": "directories",
+      "name": "准备独立 CodeQL 数据库和报告目录",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "mkdir -p flow",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "manifest",
+      "name": "记录官方样例与上游原始 CodeQL 查询哈希",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Write",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "file_path": "/workspace/input.sha256",
+          "content": "10cd2d60efbbd2d5a988df8aa145a6f961623f64891f9dd15e147b516971a2a9  target/iris-c/cmd_inj.c\n5fb6383fb73b5f9810a201d3124b876ee1a96113a3b3ebd3bfd80cc4912e8b8a  target/iris-go/cmd_inj.go\n3560bbc9ec3b871f35d2aa257ffb004a1309e8f05c85ec9dbf423f4b408c8240  target/iris-go/go.mod\n218f400726c2f3a4891033f43b8da8180de027e2ef3304a28ca17e0cde3454ea  target/iris-java/CmdInj.java\nfd4d2310bfb8a7b6bf0fd04a0d26d0c63e1aa98b8e8a6589ec50a10f5b963e78  target/iris-js/cmd_inj.js\n2b0a826c2a6074fa27dbfa0676684910823de166ab7a8717c1057bbdaea9aac1  target/iris-python/cli_command_injection.py\n4fbd4c1508546830d61f298e14bf346c2e6d1495ebcb2e0ae3aeae65032d47ad  target/iris-python/false_positive_command.py\nd8f72e142d68ed4c64ed4cdac0ff9f88699755608a89e050392b66fb9e7b621d  target/iris-python/real_command_injection.py\ne31dd8f6b6af9a51f64416e7c7d23c7fa8ad03c9ddc7dfac5f1dbd5c3b04d8d7  target/smt-c/smt_codeql_testbench.c\n34f52a9455ffd7233eebc7a25cb499d2cd7c9ab3c4ac23ab38b714812b1cf3f5  queries/go-queries/Raptor/LocalFlowSource.qll\n20ef849663b9dd40ce42cae0c45118141f57256040ce512fd869becfdd16ce47  queries/go-queries/Security/CWE-022/PathTraversalLocal.ql\n10c6f5f9180b98cb7126c53d56604bdc1148f3c3eee13c237af958523ebcca5b  queries/go-queries/Security/CWE-078/CommandInjectionLocal.ql\n0f598bb0ccf8e54c9957a323bf48cb07441154233e20c53daacbd718026c893d  queries/go-queries/Security/CWE-079/ReflectedXssLocal.ql\n938436d3d7b58d21634f433ee6e24f3c63555e2a6652c5c14e7413668fcc465b  queries/go-queries/Security/CWE-089/SqlInjectionLocal.ql\n32180b53d0eee3308159f5e3942d39994265573b8a98cadc6886b5a802562adc  queries/go-queries/Security/CWE-918/SsrfLocal.ql\n3e9c83fcbb3aa9dcc306b6e997b9a58f6dc79b7a6529dda4dc20cde1c8eaf054  queries/go-queries/codeql-pack.lock.yml\nee9ccc458bf9073f5791dd42667bfb81b927b4046c8321a842724c979efa89c2  queries/go-queries/qlpack.yml\n2ebd98b415534925990678afad48925180a354a1b9ced25155197ec9201d950b  queries/java-queries/Raptor/CallableInventory.ql\n02919cfcadb291e7c1c64075ec14a96c3a69607be00f171b3dd7b61d309abe5f  queries/java-queries/Raptor/LocalFlowSource.qll\nc0922f7137b530ae18dc619f5f94487886737ca75cea490d5eb70796d77c3948  queries/java-queries/Security/CWE-022/PathTraversalLocal.ql\n7d07b3536195c38e28c2b3482f5eb425b02e13346eb814d388af4c5acbd4792d  queries/java-queries/Security/CWE-078/CommandInjectionLocal.ql\n679a87923c18e4a6d4fea57dd11644a4474451469d07c66b7a4a6afc0044780a  queries/java-queries/Security/CWE-079/XssLocal.ql\na2c386d3615a049d568d728fb53bcc60c416d069a6f95b80a17cf07eddd1e115  queries/java-queries/Security/CWE-089/SqlInjectionLocal.ql\n1084ad7511e141ce3981d4cf1a6d703ee26552599069e167949118d6dc4ac05b  queries/java-queries/Security/CWE-094/GroovyInjectionLocal.ql\na519f6d84e1c7869c162a11be7c0c88e7f08b512cca653d0fe90e4c79222260a  queries/java-queries/Security/CWE-094/JexlInjectionLocal.ql\nfcff1314c7e5afd6ba4097c5f06b9fef5a96b9104b66a4bc464b6162e5f5896b  queries/java-queries/Security/CWE-502/UnsafeDeserializationLocal.ql\nd378f2aa101823c57b60053af23a3b2de4b4ef372c2423b26e3d1e35f69a02c8  queries/java-queries/Security/CWE-611/XxeLocal.ql\n57fe2ee7be1c4b8adbc6a17f8043a540c998b0ed73a1d731f2bb138eed4e4dbf  queries/java-queries/Security/CWE-918/SsrfLocal.ql\nbd22dac4ee42b54cfad81d691cf0d78a51c79290898978d11540c927f2e6c666  queries/java-queries/codeql-pack.lock.yml\ne9b5b4f85e8dba46c2d9baa598a5b5b8ec36b1491ad8a3c89c80410bfc649be2  queries/java-queries/qlpack.yml\n357460395fbf5e56d8d2bd5a30c6dee8efa1155c21aaf595a24866935db28056  queries/javascript-queries/Raptor/LocalFlowSource.qll\n88828ded1031badd4021af5ee699aba46d522a9a7ba5e0f617f455a5d45445a1  queries/javascript-queries/Security/CWE-022/PathTraversalLocal.ql\n2dab3fedff1ac49168f240f80c1fbd2207a4ebbd4b373c3b4fd729cb8c168b71  queries/javascript-queries/Security/CWE-078/CommandInjectionLocal.ql\n6e137e68f15ec8d58c08a557f059f8f788d5c4b039b8b74683618e6b5cf5a6be  queries/javascript-queries/Security/CWE-079/ReflectedXssLocal.ql\n8fdf8ab4b4fb41a49f9fa0f12c323f01b5c07ec99ef825c42c388fc4a5f157f0  queries/javascript-queries/Security/CWE-089/SqlInjectionLocal.ql\n7e35e6d7caa2f61bca7f8144b77741e9ca6804be698dfd7152eb5b2619b1adee  queries/javascript-queries/Security/CWE-094/CodeInjectionLocal.ql\n854b9c9eaba5c7262199ffe26f7c37f9e0f489c5b936f0eb9846fddcc8ee2801  queries/javascript-queries/Security/CWE-502/UnsafeDeserializationLocal.ql\n783b6b74ab609e741a118c8f7dacebbe9856867c89929aec96cad60985f148a8  queries/javascript-queries/Security/CWE-918/SsrfLocal.ql\ndcaa6b497f8b4c6c4989133e3f5cb8c99c6511196a5e5e3f31cea62208b68308  queries/javascript-queries/codeql-pack.lock.yml\n85dcd55aa60fd71534b27888a8b878c0c5a3fa1cf6acbd0f433169619dcf21be  queries/javascript-queries/qlpack.yml\n6d94d137979dfd6d894e05b114003a1b10c10e0fd980574b9c2bb06211f68049  queries/python-queries/Raptor/CallableInventory.ql\n8b4b77280bde2238774eada6e111c2c7e52b5f104d071e9bcb943544d843a9e0  queries/python-queries/Raptor/LocalFlowSource.qll\nb56479cc431d5d30314a140719f8ac6f96bee98fbc042ae03e3f31eb8ab83466  queries/python-queries/Security/CWE-022/PathTraversalLocal.ql\n0383ff1790270d89a18a40528419a37c6e79afc6c7f3cb5c7148d8e0177d5425  queries/python-queries/Security/CWE-078/CommandInjectionLocal.ql\n4a0816b8cc79ebe84a8fcf81fbcdcc5f4f871d1035ac505453874b0c4c6b7129  queries/python-queries/Security/CWE-079/ReflectedXssLocal.ql\n9c20ea217fe48236669be2308d8bf7541a690554db89089787a5ffbd47bad3e4  queries/python-queries/Security/CWE-089/SqlInjectionLocal.ql\n58a654267939d0cfa511f4d55f3399c2f95eac64a6b6cfe4626027e21686cf9f  queries/python-queries/Security/CWE-094/CodeInjectionLocal.ql\nfabb02252b61d4110415a51ad66c5aa1fcde050b7b6c21e03200c569bb009913  queries/python-queries/Security/CWE-502/UnsafeDeserializationLocal.ql\n7876cfe0ad15599c3c33017d88c2af25a1aa270cfd17daada7d04f465f91ce15  queries/python-queries/Security/CWE-611/XxeLocal.ql\n358503502c23c226fd7df41230fdfda03f78a0dc7007a36190e9df8f4d134ecd  queries/python-queries/Security/CWE-918/SsrfLocal.ql\n5ee9fc670c9e6051890983892a10890a3b1e10739f6f1983d4b7d58ee7386d86  queries/python-queries/codeql-pack.lock.yml\n776340f1a3e3aa0c081db8d09d88e060f95eac3f50e6bf3a71b604163fa25b3d  queries/python-queries/qlpack.yml\n"
+        }
+      },
+      "capabilities": [
+        "Write"
+      ]
+    },
+    {
+      "id": "verify",
+      "name": "验证样例、查询与依赖锁；记录 CodeQL 版本",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\nsha256sum -c input.sha256 > flow/input-check.log\ncodeql version --format=json > flow/codeql-version.json\njq -e ' .version == \"2.27.3\" ' flow/codeql-version.json\ncommand -v gcc\ncommand -v javac\ncommand -v go",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "cpp-smt-create",
+      "name": "独立构建 cpp-smt 数据库",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\nGOTOOLCHAIN=local codeql database create flow/cpp-smt-db --language=cpp --source-root=target/smt-c --threads=2 --ram=2048 --common-caches=cache --overwrite '--command=gcc -c smt_codeql_testbench.c' > flow/cpp-smt-create.log 2>&1\njq -nc --arg language cpp-smt '{language:$language,databaseCreated:true}'",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "cpp-smt-analyze",
+      "name": "执行 cpp-smt 上游查询并保存全部 SARIF",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\ncodeql database analyze flow/cpp-smt-db packs/codeql/cpp-queries/1.9.2/codeql-suites/cpp-security-and-quality.qls --format=sarif-latest --output=flow/cpp-smt.sarif --threads=2 --ram=2048 --common-caches=cache --max-paths=4 --threat-model=local > flow/cpp-smt-analyze.log 2>&1\njq -c '{findings:([.runs[].results[]?]|length),codeFlows:([.runs[].results[]?.codeFlows[]?]|length)}' flow/cpp-smt.sarif",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "cpp-iris-create",
+      "name": "独立构建 cpp-iris 数据库",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\nGOTOOLCHAIN=local codeql database create flow/cpp-iris-db --language=cpp --source-root=target/iris-c --threads=2 --ram=2048 --common-caches=cache --overwrite '--command=gcc -c cmd_inj.c' > flow/cpp-iris-create.log 2>&1\njq -nc --arg language cpp-iris '{language:$language,databaseCreated:true}'",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "cpp-iris-analyze",
+      "name": "执行 cpp-iris 上游查询并保存全部 SARIF",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\ncodeql database analyze flow/cpp-iris-db packs/codeql/cpp-queries/1.9.2/Security/CWE/CWE-078/ExecTainted.ql --format=sarif-latest --output=flow/cpp-iris.sarif --threads=2 --ram=2048 --common-caches=cache --max-paths=4 > flow/cpp-iris-analyze.log 2>&1\njq -c '{findings:([.runs[].results[]?]|length),codeFlows:([.runs[].results[]?.codeFlows[]?]|length)}' flow/cpp-iris.sarif",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "python-create",
+      "name": "独立构建 python 数据库",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\nGOTOOLCHAIN=local codeql database create flow/python-db --language=python --source-root=target/iris-python --threads=2 --ram=2048 --common-caches=cache --overwrite > flow/python-create.log 2>&1\njq -nc --arg language python '{language:$language,databaseCreated:true}'",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "python-analyze",
+      "name": "执行 python 上游查询并保存全部 SARIF",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\ncodeql database analyze flow/python-db queries/python-queries/Security/CWE-078/CommandInjectionLocal.ql --format=sarif-latest --output=flow/python.sarif --threads=2 --ram=2048 --common-caches=cache --max-paths=4 > flow/python-analyze.log 2>&1\njq -c '{findings:([.runs[].results[]?]|length),codeFlows:([.runs[].results[]?.codeFlows[]?]|length)}' flow/python.sarif",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "javascript-create",
+      "name": "独立构建 javascript 数据库",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\nGOTOOLCHAIN=local codeql database create flow/javascript-db --language=javascript --source-root=target/iris-js --threads=2 --ram=2048 --common-caches=cache --overwrite > flow/javascript-create.log 2>&1\njq -nc --arg language javascript '{language:$language,databaseCreated:true}'",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "javascript-analyze",
+      "name": "执行 javascript 上游查询并保存全部 SARIF",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\ncodeql database analyze flow/javascript-db queries/javascript-queries/Security/CWE-078/CommandInjectionLocal.ql --format=sarif-latest --output=flow/javascript.sarif --threads=2 --ram=2048 --common-caches=cache --max-paths=4 > flow/javascript-analyze.log 2>&1\njq -c '{findings:([.runs[].results[]?]|length),codeFlows:([.runs[].results[]?.codeFlows[]?]|length)}' flow/javascript.sarif",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "java-create",
+      "name": "独立构建 java 数据库",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\nGOTOOLCHAIN=local codeql database create flow/java-db --language=java --source-root=target/iris-java --threads=2 --ram=2048 --common-caches=cache --overwrite '--command=javac CmdInj.java' > flow/java-create.log 2>&1\njq -nc --arg language java '{language:$language,databaseCreated:true}'",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "java-analyze",
+      "name": "执行 java 上游查询并保存全部 SARIF",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\ncodeql database analyze flow/java-db queries/java-queries/Security/CWE-078/CommandInjectionLocal.ql --format=sarif-latest --output=flow/java.sarif --threads=2 --ram=2048 --common-caches=cache --max-paths=4 > flow/java-analyze.log 2>&1\njq -c '{findings:([.runs[].results[]?]|length),codeFlows:([.runs[].results[]?.codeFlows[]?]|length)}' flow/java.sarif",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "go-create",
+      "name": "独立构建 go 数据库",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\nGOTOOLCHAIN=local codeql database create flow/go-db --language=go --source-root=target/iris-go --threads=2 --ram=2048 --common-caches=cache --overwrite '--command=go build -o fixture-build .' > flow/go-create.log 2>&1\njq -nc --arg language go '{language:$language,databaseCreated:true}'",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "go-analyze",
+      "name": "执行 go 上游查询并保存全部 SARIF",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\ncodeql database analyze flow/go-db queries/go-queries/Security/CWE-078/CommandInjectionLocal.ql --format=sarif-latest --output=flow/go.sarif --threads=2 --ram=2048 --common-caches=cache --max-paths=4 > flow/go-analyze.log 2>&1\njq -c '{findings:([.runs[].results[]?]|length),codeFlows:([.runs[].results[]?.codeFlows[]?]|length)}' flow/go.sarif",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "compare",
+      "name": "比较全部发现、严重级别、消息、位置及数据流路径",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' baseline/cpp-smt-reference.sarif > flow/cpp-smt.baseline.normalized.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' flow/cpp-smt.sarif > flow/cpp-smt.flow.normalized.json\njq -n --arg language cpp-smt --slurpfile baseline flow/cpp-smt.baseline.normalized.json --slurpfile flow flow/cpp-smt.flow.normalized.json '($baseline[0]) as $expected | ($flow[0]) as $actual |\n{language:$language,baselineCount:($expected.findings|length),flowCount:($actual.findings|length),\n codeFlows:([$actual.findings[].codeFlows[]]|length),\n baselineErrors:$expected.errors,flowErrors:$actual.errors,\n missing:($expected.findings-$actual.findings),extra:($actual.findings-$expected.findings),\n passed:($expected==$actual and $actual.successful and ($actual.errors|length)==0)}' > flow/cpp-smt.comparison.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' baseline/cpp-iris-reference.sarif > flow/cpp-iris.baseline.normalized.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' flow/cpp-iris.sarif > flow/cpp-iris.flow.normalized.json\njq -n --arg language cpp-iris --slurpfile baseline flow/cpp-iris.baseline.normalized.json --slurpfile flow flow/cpp-iris.flow.normalized.json '($baseline[0]) as $expected | ($flow[0]) as $actual |\n{language:$language,baselineCount:($expected.findings|length),flowCount:($actual.findings|length),\n codeFlows:([$actual.findings[].codeFlows[]]|length),\n baselineErrors:$expected.errors,flowErrors:$actual.errors,\n missing:($expected.findings-$actual.findings),extra:($actual.findings-$expected.findings),\n passed:($expected==$actual and $actual.successful and ($actual.errors|length)==0)}' > flow/cpp-iris.comparison.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' baseline/python-reference.sarif > flow/python.baseline.normalized.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' flow/python.sarif > flow/python.flow.normalized.json\njq -n --arg language python --slurpfile baseline flow/python.baseline.normalized.json --slurpfile flow flow/python.flow.normalized.json '($baseline[0]) as $expected | ($flow[0]) as $actual |\n{language:$language,baselineCount:($expected.findings|length),flowCount:($actual.findings|length),\n codeFlows:([$actual.findings[].codeFlows[]]|length),\n baselineErrors:$expected.errors,flowErrors:$actual.errors,\n missing:($expected.findings-$actual.findings),extra:($actual.findings-$expected.findings),\n passed:($expected==$actual and $actual.successful and ($actual.errors|length)==0)}' > flow/python.comparison.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' baseline/javascript-reference.sarif > flow/javascript.baseline.normalized.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' flow/javascript.sarif > flow/javascript.flow.normalized.json\njq -n --arg language javascript --slurpfile baseline flow/javascript.baseline.normalized.json --slurpfile flow flow/javascript.flow.normalized.json '($baseline[0]) as $expected | ($flow[0]) as $actual |\n{language:$language,baselineCount:($expected.findings|length),flowCount:($actual.findings|length),\n codeFlows:([$actual.findings[].codeFlows[]]|length),\n baselineErrors:$expected.errors,flowErrors:$actual.errors,\n missing:($expected.findings-$actual.findings),extra:($actual.findings-$expected.findings),\n passed:($expected==$actual and $actual.successful and ($actual.errors|length)==0)}' > flow/javascript.comparison.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' baseline/java-reference.sarif > flow/java.baseline.normalized.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' flow/java.sarif > flow/java.flow.normalized.json\njq -n --arg language java --slurpfile baseline flow/java.baseline.normalized.json --slurpfile flow flow/java.flow.normalized.json '($baseline[0]) as $expected | ($flow[0]) as $actual |\n{language:$language,baselineCount:($expected.findings|length),flowCount:($actual.findings|length),\n codeFlows:([$actual.findings[].codeFlows[]]|length),\n baselineErrors:$expected.errors,flowErrors:$actual.errors,\n missing:($expected.findings-$actual.findings),extra:($actual.findings-$expected.findings),\n passed:($expected==$actual and $actual.successful and ($actual.errors|length)==0)}' > flow/java.comparison.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' baseline/go-reference.sarif > flow/go.baseline.normalized.json\njq 'def location:\n  .physicalLocation as $p | {path:($p.artifactLocation.uri // \"\"),\n  start:{line:($p.region.startLine // 0),col:($p.region.startColumn // 0)},\n  end:{line:($p.region.endLine // $p.region.startLine // 0),col:($p.region.endColumn // 0)},\n  message:(.message.text // .message.markdown // \"\")};\n{findings:([.runs[] as $run | $run.results[]? | . as $finding |\n {ruleId:.ruleId,message:(.message.text // .message.markdown // \"\"),\n severity:(.level // ([$run.tool.driver.rules[]? | select(.id==$finding.ruleId)][0].defaultConfiguration.level) // \"warning\"),\n locations:[.locations[]? | location],relatedLocations:([.relatedLocations[]? | location]|sort),\n codeFlows:([.codeFlows[]? | [.threadFlows[]? | [.locations[]? | .location | location]]]|sort)}] | sort),\n errors:([.runs[].invocations[]?.toolExecutionNotifications[]? | select(.level==\"error\") |\n {id:.descriptor.id,message:.message.text,locations:[.locations[]?|location]}]|sort),\n successful:all(.runs[].invocations[]?;.executionSuccessful==true)}' flow/go.sarif > flow/go.flow.normalized.json\njq -n --arg language go --slurpfile baseline flow/go.baseline.normalized.json --slurpfile flow flow/go.flow.normalized.json '($baseline[0]) as $expected | ($flow[0]) as $actual |\n{language:$language,baselineCount:($expected.findings|length),flowCount:($actual.findings|length),\n codeFlows:([$actual.findings[].codeFlows[]]|length),\n baselineErrors:$expected.errors,flowErrors:$actual.errors,\n missing:($expected.findings-$actual.findings),extra:($actual.findings-$expected.findings),\n passed:($expected==$actual and $actual.successful and ($actual.errors|length)==0)}' > flow/go.comparison.json\njq -s '{workflow:\"raptor-codeql-parity\",scope:\"Native CodeQL extraction and original queries only; excludes LLM eligibility and Z3 feasibility\",languages:5,databases:length,baselineCount:([.[].baselineCount]|add),flowCount:([.[].flowCount]|add),codeFlows:([.[].codeFlows]|add),passed:all(.[];.passed),results:.,knownCoverageGaps:[\"Python allowlist false-positive remains a conservative CodeQL flow; IRIS LLM filtering has not been run.\",\"SMT C nine-case SAT/UNSAT/indeterminate expectations require the separate Z3/LLM pipeline and are not asserted here.\"]}' flow/*.comparison.json > flow/summary.json\ncat flow/summary.json\njq -e '.passed' flow/summary.json > /dev/null",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "report",
+      "name": "返回 CodeQL 五语言对照与已知覆盖缺口",
+      "plugin": "builtin.transform",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "operation": "pick",
+        "value": "${nodes.compare.outputs.result}",
+        "path": [
+          "stdout"
+        ],
+        "type": "json"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "directories-to-manifest",
+      "from": "directories",
+      "to": "manifest",
+      "kind": "control"
+    },
+    {
+      "id": "manifest-to-verify",
+      "from": "manifest",
+      "to": "verify",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-cpp-smt-create",
+      "from": "verify",
+      "to": "cpp-smt-create",
+      "kind": "control"
+    },
+    {
+      "id": "cpp-smt-create-to-cpp-smt-analyze",
+      "from": "cpp-smt-create",
+      "to": "cpp-smt-analyze",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-cpp-iris-create",
+      "from": "verify",
+      "to": "cpp-iris-create",
+      "kind": "control"
+    },
+    {
+      "id": "cpp-iris-create-to-cpp-iris-analyze",
+      "from": "cpp-iris-create",
+      "to": "cpp-iris-analyze",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-python-create",
+      "from": "verify",
+      "to": "python-create",
+      "kind": "control"
+    },
+    {
+      "id": "python-create-to-python-analyze",
+      "from": "python-create",
+      "to": "python-analyze",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-javascript-create",
+      "from": "verify",
+      "to": "javascript-create",
+      "kind": "control"
+    },
+    {
+      "id": "javascript-create-to-javascript-analyze",
+      "from": "javascript-create",
+      "to": "javascript-analyze",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-java-create",
+      "from": "verify",
+      "to": "java-create",
+      "kind": "control"
+    },
+    {
+      "id": "java-create-to-java-analyze",
+      "from": "java-create",
+      "to": "java-analyze",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-go-create",
+      "from": "verify",
+      "to": "go-create",
+      "kind": "control"
+    },
+    {
+      "id": "go-create-to-go-analyze",
+      "from": "go-create",
+      "to": "go-analyze",
+      "kind": "control"
+    },
+    {
+      "id": "cpp-smt-analyze-to-compare",
+      "from": "cpp-smt-analyze",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "cpp-iris-analyze-to-compare",
+      "from": "cpp-iris-analyze",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "python-analyze-to-compare",
+      "from": "python-analyze",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "javascript-analyze-to-compare",
+      "from": "javascript-analyze",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "java-analyze-to-compare",
+      "from": "java-analyze",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "go-analyze-to-compare",
+      "from": "go-analyze",
+      "to": "compare",
+      "kind": "control"
+    }
+  ],
+  "runPolicy": {
+    "maxConcurrency": 2
+  },
+  "outputs": {
+    "report": {
+      "value": "${nodes.report.outputs.result}"
+    }
+  }
+}

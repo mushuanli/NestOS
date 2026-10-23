@@ -3,10 +3,11 @@ import { type ChatMessage, type ContextSnapshot } from '@itookit/llm-context';
 import { type LLMSkill } from '../contracts';
 import type { ExecutionTask, ExecutorConfig } from '../core/types';
 import { AgentResolver } from './agent-resolver';
-import { agentConnectionId, normalizeLegacyFields, preferredTaskConnection, withAdmittedConnections } from './flow-agent-connections';
+import { agentConnectionId, harnessAgentConfig, normalizeLegacyFields, preferredTaskConnection, withAdmittedConnections } from './flow-agent-connections';
 import type { TaskInput } from '../core/types';
 
-export type FlowIdentityResolver = Pick<AgentResolver, 'resolveExact' | 'getSkills' | 'getSystemPrompt'> & Partial<Pick<AgentResolver, 'getMCPToolIds'>>;
+export type FlowIdentityResolver = Pick<AgentResolver, 'resolveExact' | 'getSkills' | 'getSystemPrompt'>
+    & Partial<Pick<AgentResolver, 'getMCPToolIds' | 'resolveHarnessConnection'>>;
 
 interface BindingSetup {
     config: ExecutorConfig;
@@ -102,9 +103,13 @@ async function bindIsolatedInvocation(node: FlowNodeDefinition, defaults: FlowNo
 async function bindAgentSource(source: AgentSource, context: BindingContext, templateDepth = 0) {
     const identity = await resolveIdentity(source.config, context);
     const messages = await resolveMessages(source.config, identity, context);
-    const toolIds = await resolveCapabilities(source, identity, context);
+    const harness = identity.referencedAgent?.execution?.kind === 'harness' || record(source.config.execution).kind === 'harness';
+    if (harness && (record(source.config.delegation).enabled === true || source.config.subtasks && typeof source.config.subtasks === 'object'))
+        throw new Error('Harness Agents cannot host local delegation');
+    const toolIds = harness ? [] : await resolveCapabilities(source, identity, context);
     const config = resolveExecutionConfig(source.config, identity.referencedAgent, context);
-    if (templateDepth > 0) applySkillSubagentModel(config, source.config, identity);
+    if (harness) await bindHarnessSnapshot(config, context.agents);
+    if (!harness && templateDepth > 0) applySkillSubagentModel(config, source.config, identity);
     const delegation = await resolveDelegation(source, messages, context, templateDepth);
     return {
         config: {
@@ -117,6 +122,14 @@ async function bindAgentSource(source: AgentSource, context: BindingContext, tem
         } as never,
         capabilities: toolIds,
     };
+}
+
+/** Dynamic inline targets must acquire a frozen grant before the graph patch is persisted. */
+async function bindHarnessSnapshot(config: Record<string, unknown>, agents: FlowIdentityResolver): Promise<void> {
+    if (!agents.resolveHarnessConnection) return;
+    const id = record(config.execution).connectionId;
+    if (typeof id !== 'string' || !id.trim()) throw new Error('Harness connection identity is required');
+    config.harnessConnection = await agents.resolveHarnessConnection(id, config.harnessConnection as ExecutorConfig['harnessConnection']);
 }
 
 async function resolveIdentity(
@@ -242,6 +255,8 @@ function resolveExecutionConfig(
     delete result.prompt;
     // Memory authority comes only from this node's resolved Agent, never prompt/config inheritance.
     delete result.memoryPolicy;
+    if (agent?.execution?.kind === 'harness' || record(config.execution).kind === 'harness')
+        return harnessAgentConfig(result, agent ?? {});
     return {
         ...result,
         ...(agent?.memoryPolicy ? { memoryPolicy: structuredClone(agent.memoryPolicy) } : {}),

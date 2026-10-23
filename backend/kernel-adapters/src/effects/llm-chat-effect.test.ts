@@ -1,7 +1,68 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ILLMService } from '@itookit/driver-llm/contracts';
+import type { ApiProtocol, ConnectionMeta, ILLMService, LLMProvider } from '@itookit/driver-llm/contracts';
 import type { EffectExecutionContext } from '@itookit/durable-kernel';
-import { LlmChatEffectAdapter } from './llm-chat-effect';
+import { LlmChatEffectAdapter, type LlmChatEffectRequest } from './llm-chat-effect';
+
+describe('LlmChatEffectAdapter frozen connection', () => {
+    it.each([
+        ['provider default', undefined, undefined, 'openai-chat'],
+        ['selected model preference', undefined, 'openai-responses', 'openai-responses'],
+        ['explicit connection override', 'anthropic-messages', 'openai-responses', 'anthropic-messages'],
+    ] as const)('dispatches an unchanged %s protocol', async (_name, explicit, preferred, expected) => {
+        const fixture = frozenConnection(explicit, preferred, expected);
+        await new LlmChatEffectAdapter(fixture.service).execute(fixture.request, context(undefined));
+        expect(fixture.chat).toHaveBeenCalledOnce();
+        expect(fixture.chat).toHaveBeenCalledWith('conn', expect.objectContaining({ model: 'selected-model' }));
+    });
+
+    it.each(['provider default', 'selected model preference'] as const)(
+        'rejects a changed %s protocol before provider dispatch', async source => {
+            const preferred = source === 'selected model preference' ? 'openai-responses' : undefined;
+            const fixture = frozenConnection(undefined, preferred, preferred ?? 'openai-chat');
+            const emit = vi.fn(async () => {
+                if (source === 'provider default') fixture.provider.defaultProtocol = 'anthropic-messages';
+                else fixture.provider.models[1].preferredProtocol = 'anthropic-messages';
+            });
+            await expect(new LlmChatEffectAdapter(fixture.service).execute(fixture.request, context(emit)))
+                .rejects.toThrow('Model connection changed after admission');
+            expect(emit).toHaveBeenCalledOnce();
+            expect(fixture.chat).not.toHaveBeenCalled();
+            expect(fixture.service.chatStream).not.toHaveBeenCalled();
+        },
+    );
+
+    it('retains the explicit connection protocol when inherited preferences change', async () => {
+        const fixture = frozenConnection('openai-chat', 'openai-responses', 'openai-chat');
+        const emit = vi.fn(async () => {
+            fixture.provider.defaultProtocol = 'anthropic-messages';
+            fixture.provider.models[1].preferredProtocol = 'gemini-generate';
+        });
+        await new LlmChatEffectAdapter(fixture.service).execute(fixture.request, context(emit));
+        expect(fixture.chat).toHaveBeenCalledOnce();
+    });
+
+    it('keeps the model availability check before provider dispatch', async () => {
+        const fixture = frozenConnection(undefined, undefined, 'openai-chat');
+        fixture.provider.models = fixture.provider.models.slice(0, 1);
+        await expect(new LlmChatEffectAdapter(fixture.service).execute(fixture.request, context(undefined)))
+            .rejects.toThrow('Unknown model: selected-model');
+        expect(fixture.chat).not.toHaveBeenCalled();
+    });
+});
+
+function frozenConnection(explicit: ApiProtocol | undefined, preferred: ApiProtocol | undefined, frozen: ApiProtocol) {
+    const provider: LLMProvider = { id: 'provider', name: 'Provider', implementation: 'openai-compatible', baseURL: 'https://example.test',
+        defaultProtocol: 'openai-chat', models: [{ id: 'default-model', name: 'Default', preferredProtocol: 'gemini-generate' },
+            { id: 'selected-model', name: 'Selected', preferredProtocol: preferred }] };
+    const connection: ConnectionMeta = { id: 'conn', name: 'Connection', providerId: provider.id,
+        model: 'default-model', protocol: explicit, enabled: true, hasApiKey: true };
+    const chat = vi.fn(async () => ({ choices: [] }));
+    const service = { ...streamService(vi.fn()), chat, getConnection: async () => connection, getProvider: async () => provider };
+    const request: LlmChatEffectRequest = { resourceHandleId: 'llm-handle', connectionId: connection.id,
+        request: { model: 'selected-model', messages: [], stream: false },
+        connectionSnapshot: { providerId: provider.id, modelId: 'selected-model', protocol: frozen, requirements: { operation: 'chat' } } };
+    return { provider, connection, chat, service, request };
+}
 
 describe('LlmChatEffectAdapter streaming', () => {
     it('checks host policy before storing a request and again immediately before provider dispatch', async () => {

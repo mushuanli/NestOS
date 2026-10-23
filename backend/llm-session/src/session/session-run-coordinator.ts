@@ -34,6 +34,7 @@ import { prepareFlowAgentInput, frozenFlowResolver } from './flow-agent';
 import { captureFlowConnections, frozenFlowConnections } from './flow-connection-snapshot';
 import { frozenFlowIdentities } from './flow-identity-snapshot';
 import { bindPlannedFlowGraph, validatePlannedFlowConnections } from './flow-run-plan';
+import { isHarnessAgentSnapshot } from './harness-binding';
 
 export interface SessionRunCallbacks {
     /** Commit persisted rounds to the projection before exposing a terminal status. */
@@ -354,8 +355,17 @@ export class SessionRunCoordinator {
     }
 
     private async resolveConfig(input: TaskInput): Promise<ExecutorConfig> {
+        const accepted = input.instructionConnectionBinding?.harnessAgent;
+        if (accepted) {
+            if (!isHarnessAgentSnapshot(accepted) || accepted.id !== input.agentId)
+                throw new Error('Invalid admitted harness Agent identity');
+            return { ...structuredClone(accepted), harnessConnection: await this.agents.resolveHarnessConnection(
+                accepted.harnessConnection!.id, accepted.harnessConnection) };
+        }
         const settings = await this.engine.getSessionSettings(input.sessionId);
         const identity = input.instructionFlowBinding?.agent ?? await this.agents.resolve(input.agentId);
+        if (identity.execution?.kind === 'harness') return { ...identity,
+            harnessConnection: await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection) };
         const connectionId = input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
             : input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId;
         const snapshot = input.instructionConnectionBinding?.connections;
@@ -374,6 +384,7 @@ export class SessionRunCoordinator {
 
     private async prepareFlowInput(input: TaskInput, identity?: ExecutorConfig): Promise<TaskInput> {
         if (input.instructionFlowBinding) return input;
+        if (input.instructionConnectionBinding?.harnessAgent && input.sendIntent?.execution.kind !== 'flow') return input;
         identity ??= await this.agents.resolve(input.agentId);
         if (identity.execution?.kind !== 'flow' && input.sendIntent?.execution.kind !== 'flow') return input;
         if (!input.instructionConnectionBinding) {
@@ -388,6 +399,10 @@ export class SessionRunCoordinator {
     }
 
     private async freezeConnectionBinding(input: TaskInput, identity: ExecutorConfig) {
+        if (identity.execution?.kind === 'harness' && input.sendIntent?.execution.kind !== 'flow') {
+            const harnessConnection = await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection);
+            return { defaults: {}, harnessAgent: { ...structuredClone(identity), harnessConnection } };
+        }
         const started = Date.now(), operationId = input.instructionId ?? ulid();
         let stage = 'defaults';
         try {

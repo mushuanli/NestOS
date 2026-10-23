@@ -1,7 +1,7 @@
 import { bindCapabilities, type CapabilityBinding, type SessionHandle, type TaskHandle } from '@itookit/durable-kernel';
 
 export function flowTaskNeedsCapabilities(programKind: string): boolean {
-    return ['llm.agent', 'llm.chat', 'kernel-adapters.media', 'kernel-adapters.tool'].includes(programKind);
+    return ['llm.agent', 'llm.chat', 'kernel-adapters.media', 'kernel-adapters.tool', 'kernel-adapters.harness'].includes(programKind);
 }
 
 /** Reserved workers and retries use the same capability/start sequence. */
@@ -15,6 +15,10 @@ export async function bindFlowTaskCapabilities(session: SessionHandle, task: Tas
     toolIds: string[], budget?: Record<string, number>): Promise<void> {
     const direct = programKind === 'kernel-adapters.tool';
     if (!flowTaskNeedsCapabilities(programKind)) return;
+    if (programKind === 'kernel-adapters.harness') {
+        await bindCapabilities(task, [{ kind: 'harness', uri: 'harness://flow', rights: ['execute'], signalKey: 'harnessHandleId' }]);
+        return;
+    }
     await bindCapabilities(task, [
         ...(!direct ? [{ kind: 'llm', uri: 'llm://flow', rights: ['execute', 'admin'], signalKey: 'llmHandleId' } satisfies CapabilityBinding] : []),
         ...(programKind !== 'kernel-adapters.media' && toolIds.length ? [{ kind: 'tool', uri: 'tool://flow', rights: ['execute'], signalKey: 'toolHandleId' } satisfies CapabilityBinding] : []),

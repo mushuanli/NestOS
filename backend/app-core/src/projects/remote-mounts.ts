@@ -376,14 +376,21 @@ export class ProjectRemoteMountService {
             await this.changed(projectId);
         });
     }
-    async projectHarness(projectId: string, options?: OperationOptions): Promise<HarnessClient> {
+    async projectHarness(projectId: string, options?: OperationOptions & {requireRegistered?: boolean}): Promise<HarnessClient> {
         const mount=this.list(projectId).find(mount => mount.at==='/');
         if (!mount?.connectionId || !this.provider.projects) throw new FSError('ECAPABILITY','Project harness unavailable');
+        if (options?.requireRegistered && (!mount.serverProjectId || !Number.isSafeInteger(mount.serverProjectRevision) || mount.serverProjectRevision! < 1 || !mount.authorization))
+            throw new FSError('ECAPABILITY','Project harness requires an existing authorized registration');
         const client=this.provider.projects(await this.resolveConnection(mount.connectionId, options));
         try {
-            const project=mount.serverProjectId ? await client.read(mount.serverProjectId,options)
+            const project=options?.requireRegistered || mount.serverProjectId ? await client.read(mount.serverProjectId!,options)
                 : await client.register({name:projectId,alias:mount.alias,path:mount.root.replace(/^\//,''),access:mount.access},options);
             this.assertProjectGrant(projectId, mount, project);
+            if (options?.requireRegistered && (project.revision !== mount.serverProjectRevision
+                || project.authorization?.principalId !== mount.authorization?.principalId
+                || project.authorization?.anonymous !== mount.authorization?.anonymous
+                || project.authorization?.revision !== mount.authorization?.revision))
+                throw new FSError('ECONFLICT','Remote project revision or authorization changed; refresh its binding');
             const harness=client.harness(project,{readOnly:mount.access==='ro'}), close=harness.close.bind(harness);
             harness.close=async () => {try {await close();}finally{await client.close();}};
             return harness;

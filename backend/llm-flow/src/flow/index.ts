@@ -6,6 +6,8 @@ export { flowToDag } from './to-dag';
 export { prepareFlowRun } from './prepare-run';
 export type { FlowPreparationOptions } from './prepare-run';
 export { isDagRunSpec } from './checkpoint-decoder';
+export { readFlowSchedulerCheckpoint } from './checkpoint-store';
+export type { SchedulerCheckpoint } from './scheduler-checkpoint';
 export { externalFlowReferences, visitFlowCalls } from './definition-references';
 export type { FlowReference, FlowCallReference } from './definition-references';
 export { flowRevisionToDraft } from './definition-projection';

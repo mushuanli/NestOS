@@ -1,0 +1,810 @@
+{
+  "id": "raptor-registry-parity",
+  "name": "RAPTOR 默认策略：本地规则与八个 registry 包的原生 Flow 等价验收",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "nodes": [
+    {
+      "id": "directories",
+      "name": "准备完整扫描输出目录",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "mkdir -p output",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "manifest",
+      "name": "写入原始本地规则字节校验清单",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Write",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "file_path": "/workspace/rules.sha256",
+          "content": "c7f29d15e51d7c2e8d1fff02f23ac420c47f1e9ae21ea08d8c1da8e8ea995511  rules/auth/jwt-no-verify.yaml\n92e4d99e1e3ee111c1af113dadbc42ddfb440be3d5e47c33d1d9d50a96ca67e0  rules/auth/tls-skip-verify.yaml\nae93ee87d67de1d6e214dfd39744345d158f355a75646b3a3e6f7ee52cceebc8  rules/c/crlf-protocol-line.yaml\n6d6586f66375b6e353db9e3c9c3301aca08a499228a2f488bdbda676b5407cdf  rules/c/quoted-string-escape.yaml\nd187e7dd45dc694761a699d04589ddde69f8b3bfa2b12a0a1d91143298dd9080  rules/crypto/insecure-iv-or-nonce.yaml\n449a36d3411ed9b443d2bbacab46ce673439853ce19b1158740a50ba716dffc0  rules/crypto/insecure-password-hash.yaml\n2e9d2685596b7b4e3f7564225b515ec4a876450cccc84a4bf48e6d39c55bfa66  rules/crypto/pkcs1v15-padding.yaml\n30dcd12d5eab09a3319fb796f5bf52b9401edcce824e04438e619642f8e46a9a  rules/crypto/reused-nonce-heuristic.yaml\nb6fbd327e74f84c0e09ea3132f73d6b53665474a54dd9dd6613bad8cfe2f6179  rules/crypto/weak-asym-keysize.yaml\n8c72b598e9459c1df103f773f80a9b75adc7436c501cae563fe931d3ff3d224e  rules/crypto/weak-block-modes.yaml\n58b2f5b415fa46a97cf31f4fb390984444f807ddc9c679543e67fed7df82c9f1  rules/crypto/weak-hash-extended.yaml\n0c057e672ceaa122bbdc49387eb97765fe9c5d5849fd2231f1215eb3824b5e31  rules/crypto/weak-hash.yaml\n6cf3dea5598dc0a286741deded2a1f4b82f3331f1b06072b5ba4ee904fbc749f  rules/crypto/weak-kdf-iterations.yaml\n68b31c4cf53c0f50e04a9120401d77d1981a7f5d183fdc6d2b0124d45feb140f  rules/crypto/weak-kdf-keysize.yaml\n83d708be3a06d6c7a44efcc9e0079f091a60082832500354d20171f7cc19a59c  rules/crypto/weak-prng.yaml\n29898697de6b891173a9502edd4ec5fd472d8d28fba9c09154326c8cdd4b8d11  rules/crypto/weak-symmetric-cipher.yaml\n90205945a7d7fa34284dbe16f799210fb66cbad1c7b96ae43d5a9ae0bfe309fe  rules/deserialisation/unsafe-deserialize.yaml\nf57fde6267dde2e128d3e6d070f0fcd62eb4629a9082e80aace866a562fc2f45  rules/deserialisation/unsafe-java-deserialize.yaml\nf81cfbce4a8ede89979018ba43bf01fe30a39e4bc482e9f6c4d32cd6ef94c863  rules/deserialisation/unsafe-java-xml-yaml.yaml\ndff474a871d90baac0b20bd7f0a0c71f048d25ec1d469075235814529b4523f4  rules/deserialisation/unsafe-python-jsonpickle.yaml\n22a87be97f76e32e0429c60cdf8b68e4b904111f1501968916b86535378c2dd1  rules/filesystem/path-traversal.yaml\n3340ce96675316bf3f44dd5f5c6014a4ce8f9baf2e283b1121e45661ecac2b08  rules/flows/bad-mac-order.yaml\naf748684fa4078343400a66256b110ab1fc441866caa9228bf7c3abd532d988d  rules/go/go-security.yaml\n3b0ae7cce0b15aed48e7ea5a4ed5762894818f26a67e3cc6c3f5bf32547ae344  rules/injection/command-taint-multi.yaml\ne305b68c4f3dbb47995cce8b93b3a62fd15390753e65fcd2fcf80b6c14580e8b  rules/injection/command-taint.yaml\n1836d52cb12bf8763b19fbb89231ff3ebd1797121647fd6f3e6251fd056eaa16  rules/injection/eval-taint.yaml\n11543cbf05e1d1a2ccb6b22c21b9119602975692a385859fbba6292749d78016  rules/injection/header-injection.yaml\n8a17cd8f095ab00d8ea44df6c1665ded9e02fda3bc3d45b920e476d21db81b9d  rules/injection/ldap-taint.yaml\n0dfedddce07d518b64cdb9454eb0feb4f8ca15b8a12a5cbe8b45193ea219c5cc  rules/injection/log-injection.yaml\n6644b0a74eaf62cb97f8d9e6fa5ef3ab0e4c23a2f8ceb614aa9661a5598b5c12  rules/injection/nosql-taint.yaml\nd48e88160057b3f8412f6fcd0afb101554899932963e614552cd7d07345f9e80  rules/injection/regex-dos.yaml\na6e799131fd2a279740e52ff371006569d74741a956971cc13d86e38455b221b  rules/injection/sql-concat.yaml\n778d171573d2c959997c58e38f910f3453e46f1066953d0c05b2771066dfe8d2  rules/injection/sql-taint.yaml\n875e97ac5f9c084b995ce7db31510a130369a369d372656bfc733c79ccc17068  rules/injection/ssti-taint.yaml\n6efd82b31cd3145fe6264768fb499a308aee5e85f56b84de318c9ebf03b5f153  rules/injection/xpath-taint.yaml\n1da12ddd16803d3de75520b6d8b9256880016f0faefc7682b3ae9e703d056ee0  rules/injection/xss.yaml\nda6e8676a550874b94d10de25f2fb67f77b6ec664891d002bacadd7d35650a5a  rules/java/java-security.yaml\n89d0ecd98176cb76bcbb593e85dfc93a04de5812a2cb7050fa7d9eb76682ba5b  rules/java/trust-boundary.yaml\nb883584891d60c89d83698e2bae5cc59694608ca3b0705c68231d4263ca29e5f  rules/javascript/js-security.yaml\nb3fbcd775f9494f7c1780b201c8fb272b04aac2338185ea769b94093a921f1ed  rules/logging/logs-secrets.yaml\n81b2c97a36ae2ff191c7761a3230a76311db792884bccdc81a5f59f5df6502fe  rules/php/argument-injection.yaml\nbe2faf6e1bdaa928620a2e8a736de3f837a53a7da6397a6bf78fe0aa8295e781  rules/php/attr-encoding.yaml\n0cf41c1640bc0de3266ce7f9c4f3ca16272ddd771b59ee43eafac0620735f5b5  rules/php/attr-xss.yaml\n07148364a0bb21371cbe71453e390d7e6e61a8540607175e798b7f5916ca88ba  rules/php/crlf-injection.yaml\n2eada659ccd46d44f5312d3ecfa59ec076d4d23ba0a57801133a8dc15f80a719  rules/php/include-injection.yaml\n56764bcbeb446d8bf8854ea5978d8ff05a808253fc6f40946993c71df63f5557  rules/php/open-redirect.yaml\n36d46b99917175e531ec56c3718bce2c85a26ac9a9f06c99e321537956592900  rules/php/unsafe-reflection.yaml\n07ed3a0785f88fd59c0adf8923e8991afda4d103a40b0d34f72b9bfe7af3437b  rules/php/unserialize-taint.yaml\n5bd86fcf270362c457f329958d173922d8a5f9e5b8672b3f884a8d50075aa5c1  rules/php/weak-password-hash.yaml\nf78926c9c4bfb32d536688f3d20f8d26847c3fbc855d81988a85f60b08e8e1d6  rules/php/weak-prng-token.yaml\nfdf961cd83fdd21bbc769a5dab540e580229fa2bce10f36427c9811aba3356bc  rules/python/python-security.yaml\n45865ef096d1a536ee85b3a613e12d3dbfb15c2c94ac736e76a9e04eb13eb57a  rules/secrets/hardcoded-api-key.yaml\n299ed6ea4dafc27a9bf20fb69b89488b96c380e02cad226eeebed30091678a2d  rules/sinks/open-redirect.yaml\ncc187959894d8ace2e56012490c5d00b2da183bc7c1e251548a475852c03a8d1  rules/sinks/ssrf-wrappers.yaml\nef897ffc231edbcf559918191acda68f81e6e5ecdecd3d4000d3f1830899f241  rules/sinks/ssrf.yaml\n33491b9c04f9e0f04351e2a44412ba8c5371f9aca6c1ccc61158be5d68576cc0  rules/web/prototype-pollution-implementation.yaml\n6c1b9b85ab22683a29264e416a5fe846ffb61be8d29c90029b96b091fe7be0a6  rules/web/prototype-pollution.yaml\n7e0b4675d7497768d0310b70268d9fe4caa32ca6179a899bb85d825bddd54787  rules/xml/xxe.yaml\n"
+        }
+      },
+      "capabilities": [
+        "Write"
+      ]
+    },
+    {
+      "id": "verify",
+      "name": "核对已由本地 parity Flow 写出的 58 个规则文件",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "sha256sum -c rules.sha256",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "local",
+      "name": "原生 Semgrep 执行 rules",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/local.metadata.json\nsemgrep scan --config rules --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/local.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/local.sarif 2> output/local.stderr.log\nscan_status=$?\njq -nc --arg pack rules --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/local.status.json\ncat output/local.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "security-audit",
+      "name": "原生 Semgrep 执行 p/security-audit",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/security-audit.metadata.json\nsemgrep scan --config p/security-audit --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/security-audit.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/security-audit.sarif 2> output/security-audit.stderr.log\nscan_status=$?\njq -nc --arg pack p/security-audit --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/security-audit.status.json\ncat output/security-audit.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "owasp-top-ten",
+      "name": "原生 Semgrep 执行 p/owasp-top-ten",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/owasp-top-ten.metadata.json\nsemgrep scan --config p/owasp-top-ten --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/owasp-top-ten.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/owasp-top-ten.sarif 2> output/owasp-top-ten.stderr.log\nscan_status=$?\njq -nc --arg pack p/owasp-top-ten --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/owasp-top-ten.status.json\ncat output/owasp-top-ten.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "trailofbits",
+      "name": "原生 Semgrep 执行 p/trailofbits",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/trailofbits.metadata.json\nsemgrep scan --config p/trailofbits --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/trailofbits.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/trailofbits.sarif 2> output/trailofbits.stderr.log\nscan_status=$?\njq -nc --arg pack p/trailofbits --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/trailofbits.status.json\ncat output/trailofbits.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "secrets",
+      "name": "原生 Semgrep 执行 p/secrets",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/secrets.metadata.json\nsemgrep scan --config p/secrets --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/secrets.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/secrets.sarif 2> output/secrets.stderr.log\nscan_status=$?\njq -nc --arg pack p/secrets --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/secrets.status.json\ncat output/secrets.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "command-injection",
+      "name": "原生 Semgrep 执行 p/command-injection",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/command-injection.metadata.json\nsemgrep scan --config p/command-injection --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/command-injection.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/command-injection.sarif 2> output/command-injection.stderr.log\nscan_status=$?\njq -nc --arg pack p/command-injection --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/command-injection.status.json\ncat output/command-injection.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "jwt",
+      "name": "原生 Semgrep 执行 p/jwt",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/jwt.metadata.json\nsemgrep scan --config p/jwt --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/jwt.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/jwt.sarif 2> output/jwt.stderr.log\nscan_status=$?\njq -nc --arg pack p/jwt --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/jwt.status.json\ncat output/jwt.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "default",
+      "name": "原生 Semgrep 执行 p/default",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/default.metadata.json\nsemgrep scan --config p/default --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/default.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/default.sarif 2> output/default.stderr.log\nscan_status=$?\njq -nc --arg pack p/default --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/default.status.json\ncat output/default.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "xss",
+      "name": "原生 Semgrep 执行 p/xss",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": ": > output/xss.metadata.json\nsemgrep scan --config p/xss --verbose --metrics off --disable-version-check --error --sarif --disable-nosem --no-git-ignore --x-ignore-semgrepignore-files --timeout 120 --jobs 1 --json-output output/xss.metadata.json --exclude node_modules/ --exclude bower_components/ --exclude .yarn/ --exclude .npm/ --exclude vendor/ --exclude third_party/ --exclude site-packages/ --exclude .venv/ --exclude .tox/ --exclude build/ --exclude dist/ --exclude '*.min.js' --exclude '*.min.css' --exclude package-lock.json --exclude yarn.lock --exclude pnpm-lock.yaml --exclude poetry.lock --exclude Pipfile.lock --exclude Cargo.lock --exclude composer.lock --exclude Gemfile.lock --exclude go.sum target > output/xss.sarif 2> output/xss.stderr.log\nscan_status=$?\njq -nc --arg pack p/xss --argjson exitCode \"$scan_status\" '{pack:$pack,exitCode:$exitCode}' > output/xss.status.json\ncat output/xss.status.json",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "compare",
+      "name": "按 RAPTOR SARIF 去重身份合并并校验全部结果",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 300000,
+        "args": {
+          "command": "set -e\njq -s '.' output/*.status.json > output/statuses.json\njq -s '.' output/*.metadata.json > output/metadata.json\njq -s --slurpfile baseline baseline/combined.sarif --slurpfile metrics baseline/scan_metrics.json --slurpfile status output/statuses.json --slurpfile metadata output/metadata.json 'def relative_path: sub(\"^.*[/]official-scan-target/\"; \"\") | sub(\"^\\\\./\"; \"\") | sub(\"^target/\"; \"\");\ndef rule_id: sub(\"^.*\\\\.raptor\\\\.\"; \"raptor.\");\ndef fingerprint:\n  (.partialFingerprints // {}) as $fp |\n  if ($fp.primaryLocationLineHash | type) == \"string\" and ($fp.primaryLocationLineHash | length) > 0 then $fp.primaryLocationLineHash\n  elif ($fp | length) > 0 then ($fp | to_entries | sort_by(.key) | tojson) else \"\" end;\ndef findings:\n  [.runs[] as $run | $run.results[]? | . as $finding |\n   (.locations[0].physicalLocation) as $location |\n   {tool:$run.tool.driver.name,ruleId:(.ruleId|rule_id),path:($location.artifactLocation.uri|relative_path),\n    start:{line:($location.region.startLine // 0),col:($location.region.startColumn // 0)},\n    end:{line:($location.region.endLine // $location.region.startLine // 0),col:($location.region.endColumn // 0)},\n    fingerprint:fingerprint,message:(.message.text // .message.markdown // \"\"),\n    severity:(.level // ([$run.tool.driver.rules[]? | select(.id == $finding.ruleId)][0].defaultConfiguration.level) // \"warning\")}];\ndef identity: [.tool,.ruleId,.path,.start.line,.end.line,.start.col,.fingerprint];\ndef deduplicate: group_by(identity) | map(last) | sort_by(identity);\n($baseline[0] | findings | deduplicate) as $expected |\n([.[] | findings[]]) as $raw |\n($raw | deduplicate) as $actual |\n($status[0]) as $statuses |\n($metadata[0]) as $metas |\n{workflow:\"raptor-registry-parity\",upstreamCommit:\"2ac96303d5e382c196aa34b2984a3c6a218132a9\",\n scope:\"Official Python/JavaScript targets under python.generic and policy-groups all\",\n registryPinned:false,localRuleFilesVerified:58,scanCount:($statuses|length),\n expectedRawFindings:$metrics[0].total_findings,flowRawFindings:($raw|length),\n baselineCount:($expected|length),flowCount:($actual|length),\n failedPacks:[$statuses[]|select(.exitCode != 0 and .exitCode != 1)],\n errors:[$metas[]|.errors[]?],skipped:[$metas[]|.paths.skipped[]?],\n metadataCount:($metas|length),equal:($expected == $actual),\n missing:($expected-$actual),extra:($actual-$expected),baseline:$expected,actual:$actual,\n passed:(($expected == $actual) and ($statuses|length)==9 and ($metas|length)==9\n   and all($statuses[];.exitCode == 0 or .exitCode == 1) and all($metas[];(.errors|type)==\"array\" and (.errors|length)==0)\n   and ($raw|length)==$metrics[0].total_findings)}' output/*.sarif > output/comparison.json\njq '.baseline' output/comparison.json > output/baseline.normalized.json\njq '.actual' output/comparison.json > output/flow.normalized.json\njq '{summary:(del(.baseline,.actual,.errors,.skipped) + {errorCount:(.errors|length),skippedCount:(.skipped|length)})}' output/comparison.json > output/summary.json\ncat output/summary.json\njq -e '.passed' output/comparison.json > /dev/null",
+          "timeout_ms": 300000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.parity.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "report",
+      "name": "返回 registry 与本地规则完整对照报告",
+      "plugin": "builtin.transform",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "operation": "pick",
+        "value": "${nodes.compare.outputs.result}",
+        "path": [
+          "stdout",
+          "summary"
+        ],
+        "type": "json"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "directories-to-manifest",
+      "from": "directories",
+      "to": "manifest",
+      "kind": "control"
+    },
+    {
+      "id": "manifest-to-verify",
+      "from": "manifest",
+      "to": "verify",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-local",
+      "from": "verify",
+      "to": "local",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-security-audit",
+      "from": "verify",
+      "to": "security-audit",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-owasp-top-ten",
+      "from": "verify",
+      "to": "owasp-top-ten",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-trailofbits",
+      "from": "verify",
+      "to": "trailofbits",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-secrets",
+      "from": "verify",
+      "to": "secrets",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-command-injection",
+      "from": "verify",
+      "to": "command-injection",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-jwt",
+      "from": "verify",
+      "to": "jwt",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-default",
+      "from": "verify",
+      "to": "default",
+      "kind": "control"
+    },
+    {
+      "id": "verify-to-xss",
+      "from": "verify",
+      "to": "xss",
+      "kind": "control"
+    },
+    {
+      "id": "local-to-compare",
+      "from": "local",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "security-audit-to-compare",
+      "from": "security-audit",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "owasp-top-ten-to-compare",
+      "from": "owasp-top-ten",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "trailofbits-to-compare",
+      "from": "trailofbits",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "secrets-to-compare",
+      "from": "secrets",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "command-injection-to-compare",
+      "from": "command-injection",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "jwt-to-compare",
+      "from": "jwt",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "default-to-compare",
+      "from": "default",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "xss-to-compare",
+      "from": "xss",
+      "to": "compare",
+      "kind": "control"
+    }
+  ],
+  "runPolicy": {
+    "maxConcurrency": 2
+  },
+  "outputs": {
+    "report": {
+      "value": "${nodes.report.outputs.result}"
+    }
+  }
+}

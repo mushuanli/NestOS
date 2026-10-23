@@ -69,7 +69,8 @@ export async function prepareNodeTask(state: NodeTaskPreparationState, node: Dag
 
 async function createPluginTask(state: NodeTaskPreparationState, node: DagNodeDefinition, iteration: number,
     dependencies: DagTaskDependencyBinding[]): Promise<DagTaskDefinition> {
-    if (['builtin.agent', 'builtin.media'].includes(node.plugin) && record(node.config).connectionId === '') {
+    if (['builtin.agent', 'builtin.media'].includes(node.plugin) && record(node.config).connectionId === ''
+        && record(record(node.config).execution).kind !== 'harness') {
         throw new Error(`Missing connection binding for Flow node: ${node.id}`);
     }
     const runtime = await state.plugins.loadRuntime(node.plugin, node.pluginVersion);

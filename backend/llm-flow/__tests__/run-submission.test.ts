@@ -56,7 +56,7 @@ it('keeps plan approval inside the same task and completes without executing the
 it('exposes graph tasks created after submission and responds to the member interaction', async () => {
     const run = await submitRun({ kind: 'graph', sessionId: 'session', graph: { nodes: [{
         id: 'human', name: 'Human', plugin: 'builtin.human', pluginVersion: '1.0.0',
-        config: { requestId: 'review', prompt: 'Review' },
+        config: { requestId: 'review', prompt: 'Review' }, inputs: {},
     }], edges: [] } }, { kernel, flowExecutor: executor });
     await vi.waitFor(() => expect(run.tasks()).toHaveLength(1));
     const human = run.tasks()[0];

@@ -1,0 +1,12 @@
+{
+  "id": "raptor-probe-parity",
+  "name": "RAPTOR 固定探针对比",
+  "type": "workflow",
+  "description": "Run only the three documented disposable fixture probes through the native Flow.",
+  "config": {},
+  "execution": {
+    "kind": "flow",
+    "flowId": "raptor-probe-parity",
+    "connectionBindings": {}
+  }
+}

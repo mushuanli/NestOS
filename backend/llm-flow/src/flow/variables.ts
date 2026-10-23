@@ -44,9 +44,13 @@ export class FlowVariableStore {
     }
     retry(sourceTaskId: string, retryTaskId: string): void {
         this.state.commits = this.state.commits.filter(entry => entry.taskId !== sourceTaskId);
-        this.state.snapshots[retryTaskId] ??= structuredClone(this.state.snapshots[sourceTaskId] ?? {});
+        const source = this.state.snapshots[sourceTaskId];
+        if (source) this.state.snapshots[retryTaskId] ??= structuredClone(source);
     }
-    prune(active: Set<string>): void { this.state.commits = this.state.commits.filter(entry => active.has(entry.taskId)); }
+    prune(active: Set<string>): void {
+        this.state.commits = this.state.commits.filter(entry => active.has(entry.taskId));
+        for (const taskId of Object.keys(this.state.snapshots)) if (!active.has(taskId)) delete this.state.snapshots[taskId];
+    }
     snapshot(node: DagNodeDefinition, context: FlowTemplateContext): FlowTemplateContext {
         const definitions = variableDefinitions(this.spec, node.id), scope = variableScope(this.spec, node.id);
         const uses = nodeUsesVariables(node, definitions);
@@ -56,7 +60,11 @@ export class FlowVariableStore {
         for (const entry of this.state.commits) if (entry.scope === scope) Object.assign(vars, entry.updates);
         return { ...context, vars: structuredClone(vars) };
     }
-    remember(taskId: string, context: FlowTemplateContext): void { this.state.snapshots[taskId] = structuredClone(context); }
+    remember(taskId: string, node: DagNodeDefinition, context: FlowTemplateContext): void {
+        const snapshot = assignmentContext(node.assign, context);
+        if (Object.keys(snapshot).length) this.state.snapshots[taskId] = snapshot;
+        else delete this.state.snapshots[taskId];
+    }
     commit(node: DagNodeDefinition, taskId: string, output: unknown): void {
         if (this.state.commits.some(entry => entry.taskId === taskId)) return;
         const definitions = variableDefinitions(this.spec, node.id), context = this.state.snapshots[taskId] ?? {};
@@ -71,6 +79,32 @@ export class FlowVariableStore {
         }
         if (Object.keys(updates).length) this.state.commits.push({ nodeId: node.id, taskId, scope: variableScope(this.spec, node.id), updates });
     }
+}
+
+/** Only deferred assignments need invocation data after their Task has been submitted. */
+function assignmentContext(assign: DagNodeDefinition['assign'], context: FlowTemplateContext): FlowTemplateContext {
+    const snapshot: Record<string, unknown> = {};
+    for (const reference of flowTemplateReferences(assign)) {
+        if (reference.root === 'output') continue;
+        const source = context[reference.root as keyof FlowTemplateContext];
+        const joined = reference.path.join('.');
+        const path = reference.root === 'param' && source && typeof source === 'object' && Object.hasOwn(source, joined)
+            ? [joined] : reference.path;
+        const value = retainReference(snapshot[reference.root], source, path);
+        if (value !== undefined) snapshot[reference.root] = value;
+    }
+    return snapshot as FlowTemplateContext;
+}
+
+/** Intermediate arrays are keyed views; selecting a whole value still preserves its JSON type. */
+function retainReference(target: unknown, source: unknown, path: string[]): unknown {
+    if (!path.length) return structuredClone(source);
+    const [key, ...remaining] = path;
+    if (['__proto__', 'constructor', 'prototype'].includes(key)
+        || !source || typeof source !== 'object' || !Object.hasOwn(source, key)) return target;
+    const result = target && typeof target === 'object' ? target as Record<string, unknown> : {};
+    result[key] = retainReference(result[key], (source as Record<string, unknown>)[key], remaining);
+    return result;
 }
 
 /** Shared variables require explicit ordering; disjoint parallel writes remain legal. */

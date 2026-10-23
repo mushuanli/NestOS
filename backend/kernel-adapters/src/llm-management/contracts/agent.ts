@@ -12,7 +12,7 @@ export type { AgentComposition } from './agent-composition';
 
 export type AgentType = 'agent' | 'composite' | 'tool' | 'workflow';
 
-export type AgentExecution = { kind: 'agent' } | {
+export type AgentExecution = { kind: 'agent' } | { kind: 'harness'; connectionId: string } | {
     kind: 'flow';
     flowId: string;
     revision?: number;
@@ -143,6 +143,8 @@ import type { MCPServer, MCPDiscovery } from '@itookit/tools/mcp-contracts';
  * IConnectionService 和 IAgentConfigService 共同继承此接口，消除重复方法声明。
  */
 export interface IConnectionReader {
+    getHarnessConnection?(id: string): Promise<import('./harness-execution').HarnessConnectionSnapshot | undefined>;
+    getHarnessConnections?(): Promise<import('./harness-execution').HarnessExecutionConnection[]>;
     getModelDefaults(): Promise<import('./model-defaults').ModelDefaults>;
     /** 返回安全元数据列表（不含 apiKey） */
     getConnections(): Promise<ConnectionMeta[]>;
@@ -295,6 +297,10 @@ export interface IAgentConfigService extends IConnectionReader {
  * 并增加 Agent CRUD 和恢复/诊断能力。
  */
 export interface IAgentManagementService extends IAgentConfigService, ILLMManagementService {
+    getHarnessConnectionTargets?(): Promise<import('./harness-execution').HarnessExecutionConnectionTarget[]>;
+    getHarnessConnectionRecord?(id: string): Promise<import('./harness-execution').HarnessExecutionConnectionRecord | undefined>;
+    saveHarnessConnection?(connection: import('./harness-execution').HarnessExecutionConnection, expectedRevision: number): Promise<import('./harness-execution').HarnessExecutionConnectionRecord>;
+    removeHarnessConnection?(id: string, expectedRevision: number): Promise<import('./harness-execution').HarnessExecutionConnectionRecord>;
     // Agent CRUD
     saveAgent(agent: AgentDefinition, options?: { onDuplicate?: 'merge' | 'error' }): Promise<void>;
     deleteAgent(agentId: string): Promise<void>;

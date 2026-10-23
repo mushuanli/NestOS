@@ -7,6 +7,7 @@ import { buildLlmTaskInput, buildSkillContexts, type DurableAgentInput, type Ski
 import { CLIENT_WEB_SEARCH_TOOL, directExecutionMode, directToolIds } from './direct-execution-mode';
 
 export async function prepareDirectConversation(options: ConversationRunCoordinatorOptions, execution: ConversationExecution) {
+    if (execution.config.execution?.kind === 'harness') return { execution, skills: [], skillsPrompt: '' };
     if (directExecutionMode(execution.task.input) === 'agent' && execution.config.capabilityPolicy?.toolIds === undefined) {
         const toolIds = await options.resolveHarnessToolIds?.(execution.task.sessionId) ?? [];
         execution = { ...execution, config: { ...execution.config,
@@ -35,7 +36,15 @@ export function directTaskSpec(
     catalog: { definitions: ToolDefinition[]; externalIds: string[] },
     skills: LLMSkill[],
     policy: ResolvedDirectAgentPolicy,
-): TaskSpec<DurableAgentInput> {
+): TaskSpec<DurableAgentInput | { connection: NonNullable<ConversationExecution['config']['harnessConnection']>; messages: ContextSnapshot['canonicalMessages'] }> {
+    if (execution.config.execution?.kind === 'harness') {
+        if (!execution.config.harnessConnection) throw new Error('Harness connection snapshot is required');
+        if (execution.task.input.files.length || snapshot.canonicalMessages.some(message => typeof message.content !== 'string'))
+            throw new Error('Harness execution supports text messages only; attachments are unsupported');
+        return { program: { kind: 'kernel-adapters.harness', version: '1' },
+            input: { connection: structuredClone(execution.config.harnessConnection), messages: structuredClone(snapshot.canonicalMessages) },
+            labels: { roundId: execution.roundId, kind: 'agent' }, deferStart: true };
+    }
     const tools = directToolIds(execution.config, execution.task.input);
     const mode = directExecutionMode(execution.task.input);
     const { definitions, allowedToolIds, skillContexts } = directBindings(execution, catalog, skills, tools);

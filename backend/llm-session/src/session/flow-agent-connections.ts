@@ -35,6 +35,8 @@ export async function bindFlowAgentConnection(node: FlowNodeDefinition, defaults
     const agent = id ? await agents.resolveExact(id).catch(error => {
         throw new Error(`Flow agent reference cannot be resolved: ${id}`, { cause: error });
     }) : undefined;
+    if (agent?.execution?.kind === 'harness' || record(config.execution).kind === 'harness') return { config: harnessAgentConfig(
+        mergeAgentConfig(inherited, config as FlowNodeDefinition['config']), agent ?? {}) as FlowNodeDefinition['config'] };
     const connectionId = agentConnectionId(config, inherited, agent, preferred);
     return { config: mergeAgentConfig(inherited, { ...config, ...(connectionId ? { connectionId } : {}) } as FlowNodeDefinition['config']) as FlowNodeDefinition['config'] };
 }
@@ -42,7 +44,7 @@ export async function bindFlowAgentConnection(node: FlowNodeDefinition, defaults
 /** Keep model choices in the source recipe; dispatch may rebuild only its conversational context. */
 export function withAdmittedConnections(source: Record<string, unknown>, admitted: Record<string, unknown>): Record<string, unknown> {
     const result = { ...source };
-    for (const key of ['connectionId', 'modelName', 'connectionRequirements', 'frozenConnection']) {
+    for (const key of ['connectionId', 'modelName', 'connectionRequirements', 'frozenConnection', 'execution', 'harnessConnection']) {
         if (Object.hasOwn(admitted, key)) result[key] = structuredClone(admitted[key]);
     }
     const saved = record(admitted.delegation);
@@ -53,6 +55,16 @@ export function withAdmittedConnections(source: Record<string, unknown>, admitte
             .map(([id, value]) => [id, connectionTemplate(value)]));
         result.delegation = delegation;
     }
+    return result;
+}
+
+/** Remote execution targets never inherit a local model selection or tool authority. */
+export function harnessAgentConfig(config: Record<string, unknown>, agent: Pick<ExecutorConfig, 'execution' | 'harnessConnection'>): Record<string, unknown> {
+    const saved = record(config.execution).kind === 'harness';
+    const result = { ...config, execution: structuredClone(saved ? config.execution : agent.execution),
+        harnessConnection: structuredClone(config.harnessConnection ?? agent.harnessConnection) };
+    for (const key of ['connectionId', 'connectionSlot', 'modelName', 'model', 'connectionRequirements', 'frozenConnection', 'toolIds', 'mcpProfileIds'])
+        delete (result as Record<string, unknown>)[key];
     return result;
 }
 

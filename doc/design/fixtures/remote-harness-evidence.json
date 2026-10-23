@@ -1,0 +1,145 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-22T23:30:45.784464+00:00",
+  "status": "passed",
+  "scope": "Named project-authorized remote harness execution for ordinary Agent, Flow and Composite members",
+  "implementation": {
+    "binding": "Agent.execution.kind=harness",
+    "separateFromModelConnection": true,
+    "program": "kernel-adapters.harness@1",
+    "effect": "harness.execute@1",
+    "liveUnknownOutcome": "Kernel effect.indeterminate, no automatic retry; explicit same-Effect receipt verification",
+    "configuration": "CAS revisions and deletion tombstones, existing node credentials and project grant revalidation",
+    "ui": "Create/edit authorized execution connections and bind Agent; remote coordinator disabled",
+    "capacity": "At most 16 loaded Claude processes; reclaim unborrowed idle sessions after confirmed exit, retain history and receipts"
+  },
+  "environment": {
+    "transport": "Real mindos-node HTTP/MCP over loopback",
+    "nativeCLI": "Installed Claude Code",
+    "model": "Isolated local fixed Anthropic peer, no cloud model",
+    "projectRuntime": true,
+    "bubblewrap": true,
+    "coordinator": "Fixed local model response for Composite orchestration",
+    "crossMachine": false
+  },
+  "evidence": {
+    "application": "release/raptor-parity/20261023/harness-app-runtime-evidence.json",
+    "cliAndCapacity": "release/raptor-parity/20261023/harness-live/cli-capacity-evidence.json",
+    "broker": "release/raptor-parity/20261023/harness-live/broker-evidence.json",
+    "sessionAndFlow": "release/raptor-parity/20261023/harness-session-flow-checks.json",
+    "fixtureCleanup": "release/raptor-parity/20261023/harness-live/broker-final-2xo0tu6z/cleanup.json"
+  },
+  "validation": {
+    "workspaceTypecheck": {
+      "exitCode": 0,
+      "log": "release/raptor-parity/20261023/harness-live/logs/workspace-typecheck.log"
+    },
+    "kernelUnit": {
+      "passed": 358,
+      "exitCode": 0,
+      "log": "release/raptor-parity/20261023/harness-live/logs/kernel-unit-final.log"
+    },
+    "kernelRealProcessIntegration": {
+      "passed": 52,
+      "exitCode": 0,
+      "log": "release/raptor-parity/20261023/harness-live/logs/kernel-integration-final.log"
+    },
+    "kernelStandalonePackage": {
+      "exitCode": 0,
+      "esm": true,
+      "cjs": true,
+      "nodeNext": true,
+      "log": "release/raptor-parity/20261023/harness-live/logs/kernel-package-final.log"
+    },
+    "kernelAdapters": {
+      "passed": 318,
+      "exitCode": 0,
+      "log": "release/raptor-parity/20261023/harness-live/logs/kernel-adapters-full.log"
+    },
+    "settingsUI": {
+      "passed": 126,
+      "exitCode": 0,
+      "log": "release/raptor-parity/20261023/harness-live/logs/settings-ui-full.log"
+    },
+    "appCoreFull": {
+      "passed": 824,
+      "skipped": 7,
+      "exitCode": 0,
+      "maxWorkers": 4,
+      "log": "release/raptor-parity/20261023/harness-live/logs/app-core-full.log",
+      "note": "Full suite snapshot followed by scoped broker, Kernel and wrapper regressions for later changes; counts overlap."
+    },
+    "sessionFull": {
+      "passed": 344,
+      "exitCode": 0,
+      "log": "release/raptor-parity/20261023/logs/harness-llm-session-full.log"
+    },
+    "flowFull": {
+      "passed": 593,
+      "exitCode": 0,
+      "log": "release/raptor-parity/20261023/logs/harness-llm-flow-full.log"
+    },
+    "architectureDocsUUIDStyles": {
+      "exitCode": 0,
+      "logs": [
+        "release/raptor-parity/20261023/harness-live/logs/modules-check.log",
+        "release/raptor-parity/20261023/harness-live/logs/docs-check.log",
+        "release/raptor-parity/20261023/harness-live/logs/uuid-check.log",
+        "release/raptor-parity/20261023/harness-live/logs/styles-check.log"
+      ]
+    },
+    "brokerFinal": {
+      "passed": 51,
+      "nativeLiveCasesPassed": 4,
+      "exitCode": 0,
+      "evidence": "release/raptor-parity/20261023/harness-live/broker-evidence.json"
+    }
+  },
+  "preservedFailures": [
+    "Initial AppCore IndexedDB case exceeded 5s during concurrent suites; isolated 23-case recheck and full suite with maxWorkers=4 passed.",
+    "Earlier native empty-output attempt retained; an independently reproduced history merge precedence bug was fixed, but the original lost in-memory journal prevents claiming a unique cause.",
+    "Earlier CLI credential/extension, native session-capacity and fixture project EBUSY failures retained in CLI/capacity evidence.",
+    "Initial live Kernel recovery failed because the Skill Effect wrapper omitted failureOutcome; fixed and rerun successfully."
+  ],
+  "knownValidationFailure": {
+    "test": "apps/http-app/tests/view-ports.test.ts:162",
+    "reason": "Existing test assumes a seeded chatgpt provider; current MindOS presets do not seed it. Independently reproduced, unrelated to new harness methods, left unchanged."
+  },
+  "limits": [
+    "Text input only; native assistant text collection does not claim final-phase-only extraction or local token streaming.",
+    "Remote harness coordinator cannot host local delegation; local model coordinator with remote members is supported.",
+    "Actual cloud-model inference, cross-machine deployment, arbitrary native-node restart recovery and full remote RAPTOR migration are not claimed.",
+    "Kernel live reply-loss recovery is in-process; provider journal reopen uses an atomic-file CAS test port. Existing 52 Kernel process tests are separate evidence, not a remote-node SIGKILL matrix.",
+    "Firecracker, network egress hardening and new VM backends are not implemented in this change."
+  ],
+  "sourceSha256": {
+    "apps/cli/examples/remote-harness.flow": "96c8c07cd4f2755d4a3d24a9170c58e617d88d0d8b925e7fd0b99390fee414e0",
+    "apps/cli/src/runtime.ts": "7269634dfb70aad94c51be0a9f36ec46ed39dcca277e2a7289f1cd3cfb78d3c5",
+    "backend/app-core/src/projects/harness-cleanup-state.ts": "f8beaf8244907f2ceefc4ec5ed66cc8b7df5d100033084b3ade8ff4f7772e8cb",
+    "backend/app-core/src/projects/harness-connection-diagnostics.ts": "344fc5e7d21a4b18abf44f8c63f0cacdefb7ff4bf3ca5ae37930615398f47ae2",
+    "backend/app-core/src/projects/harness-connection-policy.ts": "d903776730f0e4a17ecf4467b40fefc0898f61fce0c459d0b0d980918633648e",
+    "backend/app-core/src/projects/harness-connection-store.ts": "89aaed720c3eefb434e91e0334baa756285cf06f921dee3ff04b578ff4f02c21",
+    "backend/app-core/src/projects/harness-connection-targets.ts": "1e988274a540e0c9b7bb804c39bce30ac83e7be4c03623dc6d38a5bd2017cd11",
+    "backend/app-core/src/projects/harness-connections.ts": "fc4878d1be04fef8b740dcb36cbe223703e850ce4002a7b799340e9c755b7350",
+    "backend/app-core/src/projects/harness-execution-cancel.ts": "e1ae542f0aa52bef19743a825bdcd70099dcfe2160d2ddfe2b0b808789dcde16",
+    "backend/app-core/src/projects/harness-execution-input.ts": "a0896f43b78b0b3fd07b8293f55eb738295b2e1ca3b611e50c9653950d6d91ae",
+    "backend/app-core/src/projects/harness-execution-interactions.ts": "acc38ce00173ebabde50ad75c74d28da5f34c482cf1699764463a044d5acb884",
+    "backend/app-core/src/projects/harness-execution-journal.ts": "a3f28cac6a6b40f121e8623d63fb1c6f4942ae0b8d57a5214d49c6d7e1628d01",
+    "backend/app-core/src/projects/harness-execution-observation.ts": "fd6746005bfa0f97504da14abecb159e142dd4353878ce7d5fbb2d397155a8e9",
+    "backend/app-core/src/projects/harness-execution-operations.ts": "48342d5e6f58c42d95afd138a011231b4abcd5f834e96f9e82dedc500d3ce4c6",
+    "backend/app-core/src/projects/harness-execution.ts": "0c4774645d23c78f84d1788d3b05ecc0e1e2185bc587b383ee92f2c891f240ea",
+    "backend/app-core/src/runtime/create-application-runtime.ts": "2622f825348d128311e3692a522453d6c2cac28c561b1d5ad6b696b22a7bbd0d",
+    "backend/kernel-adapters/src/effects/harness-execution-effect.ts": "78eea66131f9a6e467524978173f7fa461ad0b2fb7d8c2a1b84748f6ba753372",
+    "backend/kernel-adapters/src/llm-management/contracts/harness-execution.ts": "2ab4e116ec16a0a8d36db285b71ae457078c039dbc72865bb60426bf17ace098",
+    "backend/kernel-adapters/src/programs/harness-program.ts": "203bd3ef08626922654568cc66558d0f69acbc10569543638f2ae1600107ff90",
+    "backend/kernel-adapters/src/skill/operation-queue.ts": "0cef5b1520ffd79ad7d19092f58784412199a6ad69394abec6d22328379cb071",
+    "backend/llm-flow/src/flow/harness-agent.ts": "56dcb4601180d55623f1ecffc1df344e6a334f79212d8795922bd2ee739c9e3c",
+    "backend/llm-session/src/session/harness-binding.ts": "527181e7505d4aa09081f5f0a76b4b7f010e343e057bf7f7b66d323902de6de0",
+    "libraries/durable-kernel/src/application/kernel.ts": "fe22ae10b7045bb9f90b19ed40daaf4a5a46b41443259dc6099463f6ddab298b",
+    "libraries/durable-kernel/src/domain/types.ts": "ba8c13c939a721a1ac32244cda0880aa34262a62e73d22978774d3c95a52d1c9",
+    "tools/mindos-node/src/plugin/harness/drivers/claude/sessions.rs": "d7c2a5af2c0e991082bb725c5d9898cf5af4fcfde39780841ccf19bb71a6a3a6",
+    "ui/llm-settings-ui/src/editors/agent-execution.ts": "c6d67b479ad9e68069217c081cc51b525915f51c623e79631a0be04e3af89af2",
+    "ui/llm-settings-ui/src/editors/agent-harness-connections.ts": "031648508009aee8724df38e659e3aa4649ec67d34f960adab40caf8894f2d34"
+  },
+  "testFixtureStopped": true
+}

@@ -22,7 +22,7 @@ mindos.yml ──┐
 - CLI `run -f xxx.flow` 已支持 inline `.flow` 节点和 desktop profile LLM 配置；
   可用 `--params input.json` 传入运行参数；编译参数作用域与模板标记完整传到 DAG，运行快照支持补填、恢复和重跑。定义声明 `outputs` 时，CLI 从生成的返回节点提取所有具名输出保存为 `result.json`；未声明时继续选择最后一个作者节点的 result。真实模型验证与命令见 [作文 CLI 验证](./design/essay-review-cli-verification.md)。
 - `RunCatalog` 只读投影已提供；
-- `.flow` 的 `agentId` / `systemPromptId` / `skillIds` 引用解析已由 `backend/llm-session/src/session/flow-node-binder.ts`（`bindFlowNode` / `bindStandaloneFlowNode`）实现，并被 `backend/llm-session/src/session/session-run-coordinator.ts` 与 `DagCommandService` 使用；CLI `.flow` 入口（`apps/cli/src/commands.ts` 调用 `createRunDefinitionFromFlow()` 时未传 `bind`）与 Tauri Runs 视图仍待接线。
+- `.flow` 的 `agentId` / `systemPromptId` / `skillIds` 引用解析已由 `backend/llm-session/src/session/flow-node-binder.ts`（`bindFlowNode` / `bindStandaloneFlowNode`）实现，并被 `backend/llm-session/src/session/session-run-coordinator.ts` 与 `DagCommandService` 使用；CLI `.flow` 入口已传入 `runtime.flowCapabilities.bindNode()`，使用 profile 时复用已登记 Agent、系统提示词和 Skill；裸 YAML 工作流不隐式读取 profile Agent 资源。远程执行绑定同样由此入口冻结，见[远程 Harness 执行连接](design/remote-harness-connections.md)。Tauri Runs 视图仍须按其宿主入口单独核对。
 
 ## 会话与命令的统一提交
 

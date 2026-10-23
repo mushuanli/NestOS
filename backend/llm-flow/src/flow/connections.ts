@@ -5,6 +5,7 @@
 // workflow default slot).
 
 import type { FlowConnection, JsonValue } from '../contracts';
+import { isHarnessAgentConfig } from './harness-agent';
 
 /**
  * Resolve a raw `connectionId` value to a global connection id:
@@ -41,6 +42,10 @@ export function resolveNodeConnection(
     runConnectionId?: string,
 ): void {
     if (!isRecord(config)) return;
+    if (isHarnessAgentConfig(config)) {
+        for (const key of ['connectionId', 'connectionSlot', 'modelName', 'model', 'connectionRequirements', 'frozenConnection']) delete config[key];
+        return;
+    }
     const slotName = nodeConnectionSlot(config, connections, defaultConnection, runConnectionId);
     if (slotName) {
         const slot = connections?.find(item => item.name === slotName);
@@ -65,6 +70,7 @@ export function resolveNodeConnection(
 /** Preserve implicit slot identity for host admission before replacing it with a global id. */
 export function nodeConnectionSlot(config: JsonValue, connections: FlowConnection[] | undefined,
     defaultConnection: string | undefined, runConnectionId?: string): string | undefined {
+    if (isHarnessAgentConfig(config)) return;
     if (!isRecord(config)) return;
     if (typeof config.connectionSlot === 'string') return config.connectionSlot;
     if (typeof config.connectionId === 'string' && connections?.some(slot => slot.name === config.connectionId)) return config.connectionId;

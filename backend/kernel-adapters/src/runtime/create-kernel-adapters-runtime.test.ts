@@ -185,10 +185,10 @@ describe('createKernelAdaptersRuntime', () => {
         expect(runtime.toolCatalog.getToolMeta('load_skill')).toBeDefined();
         expect(runtime.toolCatalog.getToolMeta('human_input')).toBeUndefined();
         expect(effects.map(effect => effect.kind)).toEqual([
-            'llm.chat', 'tool.call', 'process.exec', 'skill.load', 'skill.unload',
+            'llm.chat', 'tool.call', 'process.exec', 'skill.load', 'skill.unload', 'harness.execute',
         ]);
         expect(programs.map(program => program.manifest.kind)).toEqual([
-            'kernel-adapters.approved-effect', 'kernel-adapters.exec', 'kernel-adapters.media', 'kernel-adapters.tool',
+            'kernel-adapters.approved-effect', 'kernel-adapters.exec', 'kernel-adapters.media', 'kernel-adapters.tool', 'kernel-adapters.harness',
         ]);
 
         await runtime.dispose();

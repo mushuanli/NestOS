@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Kernel } from '@itookit/durable-kernel';
 import { createVFS, MemoryBackend, type IVFSManager, type IFileSystem } from '@itookit/vfs-core';
 import type { DagNodeDefinition, DagRunSpec } from '../src/contracts';
-import { createBuiltinDagPluginRegistry, DurableFlowExecutor, registerDurablePrograms } from '../src/flow';
+import { createBuiltinDagPluginRegistry, DurableFlowExecutor, readFlowSchedulerCheckpoint, registerDurablePrograms } from '../src/flow';
 import { FlowVariableStore, validateVariableGraph } from '../src/flow/variables';
 
 const node = (id: string, value: unknown, assign?: DagNodeDefinition['assign']): DagNodeDefinition =>
@@ -45,7 +45,7 @@ it('restores committed variables and their source without applying a write twice
     expect((await resumed.root.wait({ timeoutMs: 6000 })).status).toBe('succeeded');
     expect((await resumed.nodes.get('read')!.status()).task.output).toMatchObject({ outputs: { result: { content: 'NEW' } } });
     const session = await kernel.inspectSession('s');
-    const checkpoint = (await session.getShared(`flow.run.${run.root.id}.scheduler`))!.value as any;
+    const checkpoint = (await readFlowSchedulerCheckpoint(session, run.root.id))!;
     expect(checkpoint.variables.commits).toHaveLength(1);
     expect(checkpoint.variables.commits[0]).toMatchObject({ nodeId: 'write', taskId: resumed.nodes.get('write')!.id, updates: { essay: 'NEW' } });
 });
@@ -63,7 +63,7 @@ it('validates all assignments atomically and prunes superseded retry writes', ()
     const spec = { variables, nodes: [], edges: [] }, store = new FlowVariableStore(spec);
     const writer = node('write', {}, { essay: '${output.essay}', flag: '${output.flag}' });
     const context = store.snapshot(writer, { param: { essay: 'OLD' } });
-    store.remember('task', context);
+    store.remember('task', writer, context);
     expect(() => store.commit(writer, 'task', { outputs: { result: { content: { essay: 'NEW', flag: 'invalid' } } } })).toThrow('Invalid');
     expect(store.state.commits).toHaveLength(0);
     const output = { outputs: { result: { content: { essay: '${param.secret}', flag: true } } } };
@@ -71,7 +71,7 @@ it('validates all assignments atomically and prunes superseded retry writes', ()
     expect(store.state.commits).toHaveLength(1);
     expect(store.snapshot(writer, context).vars?.essay).toBe('${param.secret}');
     store.retry('task', 'retry');
-    expect(store.state.snapshots.retry).toEqual(context);
+    expect(store.state.snapshots.retry).toBeUndefined();
     expect(store.snapshot(writer, context).vars?.essay).toBe('OLD');
     store.commit(writer, 'retry', output);
     store.prune(new Set());
@@ -106,11 +106,96 @@ it('keeps composite variable scopes separate from each other and the parent', as
 it('assigns plain text or validated JSON fields from ordinary agent output', () => {
     const store = new FlowVariableStore({ variables, nodes: [], edges: [] });
     const agent = { ...node('agent', {}, { essay: '${output}' }), plugin: 'builtin.agent' };
-    store.remember('a', store.snapshot(agent, { param: { essay: 'OLD' } }));
+    store.remember('a', agent, store.snapshot(agent, { param: { essay: 'OLD' } }));
     store.commit(agent, 'a', { message: { content: 'Plain text ${vars.secret}' } });
     expect(store.state.commits[0].updates.essay).toBe('Plain text ${vars.secret}');
     agent.assign = { essay: '${output.essay}' };
-    store.remember('b', store.snapshot(agent, { param: { essay: 'OLD' } }));
+    store.remember('b', agent, store.snapshot(agent, { param: { essay: 'OLD' } }));
     store.commit(agent, 'b', { message: { content: '{"essay":"JSON text"}' } });
     expect(store.state.commits[1].updates.essay).toBe('JSON text');
+});
+
+it('does not checkpoint unrelated invocation data for nodes without deferred context assignments', () => {
+    const store = new FlowVariableStore({ variables, nodes: [], edges: [] });
+    const reader = node('read', '${vars.essay}'), writer = node('write', {}, { essay: '${output.essay}' });
+    const context = { param: { essay: 'OLD', large: 'x'.repeat(100_000) }, nodes: { source: { outputs: { result: 'y'.repeat(100_000) } } } };
+    for (let index = 0; index < 100; index++) {
+        store.remember(`reader-${index}`, reader, store.snapshot(reader, context));
+        store.remember(`writer-${index}`, writer, store.snapshot(writer, context));
+    }
+    expect(store.state.snapshots).toEqual({});
+    expect(JSON.stringify(store.state).length).toBeLessThan(200);
+    store.retry('writer-0', 'retry');
+    expect(store.state.snapshots).toEqual({});
+    store.commit(writer, 'retry', { outputs: { result: { content: { essay: 'NEW' } } } });
+    expect(store.snapshot(reader, context).vars?.essay).toBe('NEW');
+});
+
+it('freezes only assignment references and keeps their original values across retry', () => {
+    const store = new FlowVariableStore({ variables, nodes: [], edges: [] });
+    const writer = node('write', {}, { essay: '${param.document.title}|${param.items.length}|${param.items.1.name}|${param.flat.key}|${input.prompt}|${nodes.source.outputs.result.label}|${vars.essay}|${iteration.round}', flag: '${param.allow}' });
+    const original = { param: { essay: 'SEED', allow: true, 'flat.key': 'FLAT', document: { title: 'TITLE', unused: 'x'.repeat(100_000) },
+        items: [{ name: 'FIRST' }, { name: 'SECOND', unused: 'x'.repeat(100_000) }] }, input: { prompt: 'REQUEST' }, iteration: { round: 2 },
+        nodes: { source: { outputs: { result: { label: 'SOURCE', unused: 'x'.repeat(100_000) } } }, unused: { output: 'x'.repeat(100_000) } } };
+    store.remember('original', writer, store.snapshot(writer, original));
+    expect(JSON.stringify(store.state.snapshots.original).length).toBeLessThan(500);
+    original.param.document.title = 'CHANGED'; original.param.items[1].name = 'CHANGED'; original.input.prompt = 'CHANGED';
+    store.commit(writer, 'original', null);
+    const updates = { essay: 'TITLE|2|SECOND|FLAT|REQUEST|SOURCE|SEED|2', flag: true };
+    expect(store.state.commits[0].updates).toEqual(updates);
+    store.retry('original', 'retry'); store.commit(writer, 'retry', null);
+    expect(store.state.commits).toHaveLength(1);
+    expect(store.state.commits[0].updates).toEqual(updates);
+    store.prune(new Set(['retry']));
+    expect(Object.keys(store.state.snapshots)).toEqual(['retry']);
+    expect(store.state.snapshots.retry).toEqual({ param: { document: { title: 'TITLE' }, items: { length: 2, 1: { name: 'SECOND' } }, 'flat.key': 'FLAT', allow: true },
+        input: { prompt: 'REQUEST' }, nodes: { source: { outputs: { result: { label: 'SOURCE' } } } }, vars: { essay: 'SEED' }, iteration: { round: 2 } });
+});
+
+it('reads legacy full-context snapshots and prunes only tasks removed from the scheduler', () => {
+    const context = { param: { essay: 'LEGACY', unrelated: 'x'.repeat(1000) }, input: { prompt: 'REQUEST' } };
+    const store = new FlowVariableStore({ variables, nodes: [], edges: [] }, {
+        initial: {}, commits: [], snapshots: { legacy: context, removed: context },
+    });
+    const writer = node('write', {}, { essay: '${param.essay}' });
+    store.commit(writer, 'legacy', null);
+    expect(store.state.commits[0].updates).toEqual({ essay: 'LEGACY' });
+    store.retry('legacy', 'retry'); store.prune(new Set(['legacy', 'retry']));
+    expect(store.state.snapshots.removed).toBeUndefined();
+    expect(store.state.snapshots.legacy).toEqual(context);
+    expect(store.state.snapshots.retry).toEqual(context);
+    store.commit(writer, 'retry', null);
+    expect(store.state.commits[0].updates).toEqual({ essay: 'LEGACY' });
+});
+
+it('preserves whole JSON values alongside overlapping assignment paths', () => {
+    const store = new FlowVariableStore({ variables: { bundle: { type: 'json', initial: null } }, nodes: [], edges: [] });
+    const items = [{ name: 'FIRST' }, { name: 'SECOND' }];
+    const writer = node('write', {}, { bundle: { second: '${param.items.1.name}', items: '${param.items}', length: '${param.items.length}' } });
+    store.remember('task', writer, { param: { items } });
+    items[1].name = 'CHANGED'; items.push({ name: 'THIRD' });
+    expect(Array.isArray(store.state.snapshots.task.param?.items)).toBe(true);
+    store.commit(writer, 'task', null);
+    expect(store.state.commits[0].updates.bundle).toEqual({ second: 'SECOND', items: [{ name: 'FIRST' }, { name: 'SECOND' }], length: 2 });
+});
+
+it('restores a minimal deferred assignment snapshot before the writer finishes', async () => {
+    const collect: DagNodeDefinition = { id: 'collect', name: 'collect', plugin: 'builtin.input', pluginVersion: '1.0.0',
+        inputs: {}, config: { fields: { proceed: { type: 'boolean', required: true } } },
+        assign: { essay: '${param.document.title}|${input.prompt}|${vars.essay}' } };
+    const run = await executor.submit('s', { input: { prompt: 'REQUEST' }, variables,
+        nodes: [collect, node('read', '${vars.essay}')], edges: [edge('collect', 'read')] },
+        { essay: 'OLD', document: { title: 'TITLE', unrelated: 'x'.repeat(100_000) } });
+    await vi.waitFor(async () => expect((await run.nodes.get('collect')?.status())?.task.interactions['input-1']).toBeDefined());
+    const checkpoint = (await readFlowSchedulerCheckpoint(await kernel.inspectSession('s'), run.root.id))!;
+    expect(checkpoint.variables?.snapshots[run.nodes.get('collect')!.id]).toEqual({
+        param: { document: { title: 'TITLE' } }, input: { prompt: 'REQUEST' }, vars: { essay: 'OLD' },
+    });
+    kernel.dispose(); await executor.waitIdle(); boot(); await kernel.initialize();
+    const resumed = await executor.resume('s', run.root.id);
+    await resumed.nodes.get('collect')!.respond({ interactionId: 'input-1', value: { proceed: true } });
+    expect((await resumed.root.wait({ timeoutMs: 6000 })).status).toBe('succeeded');
+    expect((await resumed.nodes.get('read')!.status()).task.output).toMatchObject({
+        outputs: { result: { content: 'TITLE|REQUEST|OLD' } },
+    });
 });

@@ -87,8 +87,65 @@ it('uses media purpose defaults instead of treating a queued chat fallback as an
 
 it('fails closed for malformed snapshots and unexpected fields', () => {
     for (const invalid of [null, {}, { connections: [null] }, { connections: [], apiKey: 'PRIVATE' },
-        { connections: [{ id: 'x', providerId: 'p', model: 'm', baseURL: '', operationModels: {}, mediaEndpoints: {}, apiKey: 'PRIVATE' }] }]) {
+        { connections: [{ id: 'x', providerId: 'p', model: 'm', baseURL: '', operationModels: {}, mediaEndpoints: {}, apiKey: 'PRIVATE' }] },
+        { connections: [{ id: 'x', providerId: 'p', model: 'm', baseURL: '', operationModels: {}, mediaEndpoints: {}, modelProtocols: { m: 'unknown' } }] }]) {
         expect(isFlowConnectionSnapshot(invalid)).toBe(false);
         expect(() => frozenFlowConnections(fixture().catalog, invalid as never)).toThrowError(expect.objectContaining({ code: 'FLOW_CONNECTION_INVALID_SNAPSHOT' }));
     }
+});
+
+it('admits inherited protocols without rewriting the connection and freezes each selected tier separately', async () => {
+    const { catalog, definition, connection, provider } = fixture();
+    delete connection.protocol;
+    provider.defaultProtocol = 'openai-chat';
+    provider.models.find(model => model.id === 'b')!.preferredProtocol = 'anthropic-messages';
+    connection.tiers = { optimal: 'a', fast: 'b' };
+    definition.connections!.push({ name: 'fast', connectionId: 'c', tier: 'fast' });
+    definition.nodes.push({ ...definition.nodes[0], id: 'fast' as never, config: { connectionSlot: 'fast' } });
+    const capture = captureFlowConnections(catalog);
+    const admitted = await prepareFlowConnections(definition, {}, capture.catalog);
+    expect(admitted.connections!.map(slot => slot.resolved)).toMatchObject([
+        { modelId: 'a', protocol: 'openai-chat' }, { modelId: 'b', protocol: 'anthropic-messages' },
+    ]);
+    expect(connection.protocol).toBeUndefined();
+    const snapshot = JSON.parse(JSON.stringify(capture.snapshot()));
+    expect(snapshot.connections[0].modelProtocols).toEqual({ a: 'openai-chat', b: 'anthropic-messages' });
+    expect(isFlowConnectionSnapshot(snapshot)).toBe(true);
+    await expect(prepareFlowConnections(admitted, {}, frozenFlowConnections(catalog, snapshot))).resolves.toMatchObject({ connections: admitted.connections });
+    provider.models.find(model => model.id === 'b')!.preferredProtocol = 'openai-responses';
+    await expect(prepareFlowConnections(admitted, {}, frozenFlowConnections(catalog, snapshot)))
+        .rejects.toMatchObject({ code: 'FLOW_CONNECTION_CHANGED' });
+});
+
+it('rejects inherited Provider protocol drift and unknown capabilities before dispatch', async () => {
+    const { catalog, definition, connection, provider } = fixture();
+    delete connection.protocol;
+    await expect(prepareFlowConnections(definition, {}, catalog)).rejects.toThrow('protocol capability is unknown');
+    provider.defaultProtocol = 'anthropic-messages';
+    const capture = captureFlowConnections(catalog), admitted = await prepareFlowConnections(definition, {}, capture.catalog);
+    expect(admitted.connections![0].resolved!.protocol).toBe('anthropic-messages');
+    const snapshot = capture.snapshot();
+    provider.defaultProtocol = 'openai-chat';
+    await expect(prepareFlowConnections(definition, {}, frozenFlowConnections(catalog, snapshot)))
+        .rejects.toMatchObject({ code: 'FLOW_CONNECTION_CHANGED' });
+});
+
+it('freezes inherited protocols for direct model overrides and keeps explicit protocol priority', async () => {
+    const { catalog, definition, connection, provider } = fixture();
+    delete connection.protocol;
+    provider.defaultProtocol = 'openai-chat';
+    provider.models.find(model => model.id === 'b')!.preferredProtocol = 'anthropic-messages';
+    definition.connections = [];
+    definition.nodes[0].config = { connectionId: 'c', modelName: 'b' };
+    const capture = captureFlowConnections(catalog), admitted = await prepareFlowConnections(definition, {}, capture.catalog);
+    expect(admitted.nodes[0].config).toMatchObject({ modelName: 'b', frozenConnection: { modelId: 'b', protocol: 'anthropic-messages' } });
+    const snapshot = capture.snapshot();
+    provider.models.find(model => model.id === 'b')!.preferredProtocol = 'openai-responses';
+    await expect(prepareFlowConnections(admitted, {}, frozenFlowConnections(catalog, snapshot))).rejects.toMatchObject({ code: 'FLOW_CONNECTION_CHANGED' });
+    connection.protocol = 'openai-chat';
+    const explicit = captureFlowConnections(catalog), explicitPlan = await prepareFlowConnections(definition, {}, explicit.catalog);
+    provider.defaultProtocol = 'gemini-generate';
+    provider.models.find(model => model.id === 'b')!.preferredProtocol = 'gemini-generate';
+    await expect(prepareFlowConnections(explicitPlan, {}, frozenFlowConnections(catalog, explicit.snapshot())))
+        .resolves.toMatchObject({ nodes: [{ config: { frozenConnection: { protocol: 'openai-chat' } } }] });
 });

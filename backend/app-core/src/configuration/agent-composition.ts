@@ -15,6 +15,7 @@ export function createAgentCompositionPreparation(store: FlowDefinitionStore, ag
         const operationId = randomUUID(), started = Date.now();
         let stage = 'validation';
         try {
+            if (source.execution?.kind === 'harness') throw new Error('A remote harness Agent cannot host a local composition');
             const composition = validateComposition(source.composition);
             stage = 'references';
             const candidates = await compositionAgents(source.id, composition, agents);
@@ -61,6 +62,8 @@ async function compositionAgents(id: string, composition: AgentComposition, agen
 
 export function compileAgentComposition(agent: AgentDefinition, flowId: string, candidates: AgentDefinition[]): FlowDraft {
     const composition = validateComposition(agent.composition!);
+    if (candidates.find(candidate => candidate.id === composition.coordinatorAgentId)?.execution?.kind === 'harness')
+        throw new Error('A remote harness coordinator cannot invoke local delegation tools');
     const maxTasks = composition.maxDelegations ?? DELEGATION_DEFAULTS.maxTasks;
     const maxConcurrency = Math.min(composition.maxConcurrency ?? DELEGATION_DEFAULTS.maxConcurrency, maxTasks);
     const common = { agentId: composition.coordinatorAgentId, historyPolicy: 'none', systemPromptPolicy: 'inherit', includeDependencyOutputs: true };

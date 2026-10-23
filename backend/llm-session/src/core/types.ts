@@ -51,6 +51,7 @@ export interface ExecutorConfig {
     /** Frozen AgentDefinition version used for reproducible AgentTasks. */
     agentVersion?: string;
     execution?: AgentDefinition['execution'];
+    harnessConnection?: import('@itookit/kernel-adapters/contracts').HarnessConnectionSnapshot;
     capabilityPolicy?: AgentDefinition['capabilityPolicy'];
     memoryPolicy?: AgentDefinition['memoryPolicy'];
     defaultContextPolicy?: AgentDefinition['defaultContextPolicy'];

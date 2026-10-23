@@ -1,3 +1,4 @@
+import { readFlowSchedulerCheckpoint } from '../src/flow/checkpoint-store';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Kernel } from '@itookit/durable-kernel';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
@@ -183,7 +184,7 @@ it('pins not-yet-expanded template manifests before its input dependency complet
         edges: [{ id: 'gate', from: 'gate', to: 'call', kind: 'control' }] as FlowRevision['edges'] };
     const run = await executor.submit('s', await flowToDag(parent, undefined, undefined, async () => fn));
     await waiting('gate');
-    const saved = (await (await kernel.openSession('s')).getShared(`flow.run.${run.root.id}.scheduler`))!.value as any;
+    const saved = (await readFlowSchedulerCheckpoint(await kernel.openSession('s'), run.root.id))!;
     expect(saved.catalog.manifests.some(([key]: [string]) => key === '["builtin.agent","1.0.0"]')).toBe(true);
     expect([...run.nodes.keys()].some(id => /^call\/\d/.test(id))).toBe(false);
     await run.root.cancel('Test complete');

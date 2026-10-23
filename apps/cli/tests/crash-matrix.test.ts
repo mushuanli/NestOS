@@ -1,3 +1,4 @@
+import { readFlowSchedulerCheckpoint } from '@itookit/llm-flow';
 // @file: apps/cli/tests/crash-matrix.test.ts
 // Program-level crashpoints: kill the real CLI process at a chosen point of the
 // flow lifecycle (effect in flight, reply delivered but uncommitted, mid-loop,
@@ -475,9 +476,8 @@ async function storedCheckpoint(stateDir: string, runId: string, rootId: string)
     const inspection = await openProfileInspectionFs(stateDir);
     try {
         const resolver = new CliStorageResolver(inspection.fs), binding = await resolver.resolve(cliStorage(runId));
-        const saved = await new SeqFileKernelStore(binding, reference => resolver.resolve(reference))
-            .getShared(binding, `flow.run.${rootId}.scheduler`);
-        return saved!.value as { instances: [string, string[]][]; completed: string[] };
+        const store = new SeqFileKernelStore(binding, reference => resolver.resolve(reference));
+        return (await readFlowSchedulerCheckpoint({ getShared: key => store.getShared(binding, key) }, rootId))!;
     } finally { await inspection.dispose(); }
 }
 

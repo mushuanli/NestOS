@@ -1,4 +1,6 @@
 import { ToolProgram } from '../programs/tool-program';
+import { HarnessProgram } from '../programs/harness-program';
+import { HarnessExecutionEffect } from '../effects/harness-execution-effect';
 import { LlmMediaEffectAdapter, type MediaResultStore } from '../effects/llm-media-effect';
 import { MediaProgram } from '../programs/media-program';
 import { MCPToolAdapter } from '../tool/mcp-tools';
@@ -40,6 +42,7 @@ import { ExecProgram } from '../programs/exec-program';
 import { ContextPrepareEffect, ContextLlmEffect, ContextToolEffect, type ContextServiceResolver } from '../context/effects';
 
 export interface KernelAdaptersRuntimeOptions extends KernelAdapterDiagnostics {
+    harnessExecution?: import('../llm-management/contracts/harness-execution').HarnessExecutionProvider;
     taskAssetStore?: import('@itookit/tools/contracts').TaskAssetStore;
     readTaskAsset?: import('@itookit/tools/contracts').TaskAssetReader;
     mediaResultStore?: MediaResultStore;
@@ -89,6 +92,7 @@ export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntime
     registerEffectTools(catalogTools, options.effectTools);
     await catalogTools.init();
     const effects = createEffects(llmService, registry, Boolean(options.fileContextForSession || options.fileContextForScope), options.effectTools, options);
+    effects.push(new HarnessExecutionEffect(options.harnessExecution, options.logger));
     if (options.mediaResultStore) {
         const authorize = options.authorizeMedia ?? (options.authorizeLlm ? async () => { throw new Error('Media runtime requires the host model authorization gate'); } : undefined);
         effects.push(new LlmMediaEffectAdapter(llmService, options.mediaResultStore, authorize));
@@ -114,7 +118,7 @@ export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntime
         sessions: registry,
         plugin: new KernelAdaptersPlugin({
             effects: effects.map(effect => coordinateSkillEffect(effect, registry)),
-            programs: [new ApprovedEffectProgram(), new ExecProgram(), new MediaProgram(), new ToolProgram()],
+            programs: [new ApprovedEffectProgram(), new ExecProgram(), new MediaProgram(), new ToolProgram(), new HarnessProgram()],
             onSessionClosed: sessionId => registry.disposeSession(sessionId),
         }),
         disposeSession: sessionId => registry.disposeSession(sessionId),

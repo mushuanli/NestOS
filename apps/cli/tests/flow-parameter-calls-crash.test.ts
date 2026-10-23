@@ -1,3 +1,4 @@
+import { readFlowSchedulerCheckpoint } from '@itookit/llm-flow';
 import { spawn, type ChildProcess } from 'node:child_process';
 import { copyFile, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -77,10 +78,8 @@ async function inspect(stateDir: string, run: RunManifest) {
     try {
         const resolver = new CliStorageResolver(inspection.fs), binding = await resolver.resolve(cliStorage(run.id));
         const store = new SeqFileKernelStore(binding, reference => resolver.resolve(reference));
-        const checkpoint = await store.getShared(binding, `flow.run.${run.rootTaskId}.scheduler`);
-        return { tasks: await store.listTasks(binding), checkpoint: checkpoint?.value as {
-            instances: [string, string[]][]; completed: string[];
-        } | undefined };
+        const checkpoint = await readFlowSchedulerCheckpoint({ getShared: key => store.getShared(binding, key) }, run.rootTaskId!);
+        return { tasks: await store.listTasks(binding), checkpoint };
     } finally { await inspection.dispose(); }
 }
 

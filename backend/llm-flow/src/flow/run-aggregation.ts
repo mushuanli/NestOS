@@ -3,6 +3,7 @@ import type { DagNodeDefinition, FlowRunGoal } from '../contracts';
 import type { FlowExecutionHandle } from './executor';
 import type { DelegationGroup } from './delegation-runtime';
 import type { SchedulerCheckpoint } from './scheduler-checkpoint';
+import { readFlowSchedulerCheckpoint } from './checkpoint-store';
 import { variableCurrent } from './variables';
 
 interface AggregationState {
@@ -48,7 +49,7 @@ export class FlowRunAggregation {
     private async aggregate(request: AggregationRequest): Promise<TaskHandle<JsonValue>> {
         const root = request.existing?.root;
         const checkpoint = root && !request.awaitingSchedule
-            ? (await this.session.getShared(`flow.run.${root.id}.scheduler`))?.value as unknown as SchedulerCheckpoint : undefined;
+            ? await readFlowSchedulerCheckpoint(this.session, root.id) : undefined;
         const dependencies = this.dependencies(request.toleratedFailures);
         const input = this.input(request, checkpoint, dependencies);
         if (root) {

@@ -53,3 +53,15 @@ it('uses the authoritative Agent service for composite preparation and reflects 
     change('executionKind', 'agent'); await editor.flushPendingSave();
     expect(service.saveAgent.mock.calls.at(-1)![0].composition).toBeUndefined();
 });
+
+it('allows remote members while rejecting a remote coordinator in the form', () => {
+    const root = document.createElement('div');
+    const remote = definition('remote', { execution: { kind: 'harness', connectionId: 'execution' } });
+    root.innerHTML = '<select name="executionKind"><option selected>composite</option></select>' + renderAgentComposition(definition('self', {
+        composition: { coordinatorAgentId: 'host', memberAgentIds: ['remote'] },
+    }), [...candidates, remote]);
+    const select = root.querySelector<HTMLSelectElement>('[name=compositionCoordinator]')!;
+    expect(select.querySelector<HTMLOptionElement>('[value=remote]')!.disabled).toBe(true);
+    expect(readAgentComposition(root)).toEqual({ coordinatorAgentId: 'host', memberAgentIds: ['remote'] });
+    select.value = 'remote'; expect(() => readAgentComposition(root)).toThrow();
+});

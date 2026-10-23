@@ -1,0 +1,12 @@
+{
+  "id": "raptor-security-review",
+  "name": "RAPTOR 规则审查",
+  "type": "workflow",
+  "description": "运行 Flow 内置的 RAPTOR Python 规则，再以独立初审、盲审和复核形成报告。",
+  "config": {},
+  "execution": {
+    "kind": "flow",
+    "flowId": "raptor-review",
+    "connectionBindings": {"analysis": "default", "consensus": "default", "judge": "default"}
+  }
+}

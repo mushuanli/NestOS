@@ -2,6 +2,7 @@ import type { JsonValue, Kernel } from '@itookit/durable-kernel';
 import type { SessionInstructionQueue } from '../contracts/instruction-queue';
 import { flowRevisionDigest } from '@itookit/llm-flow';
 import { isFlowConnectionSnapshot } from '../session/flow-connection-snapshot';
+import { isHarnessAgentSnapshot } from '../session/harness-binding';
 import { isFlowRunPlan } from '../session/flow-run-plan';
 import { isModelDefaults } from '@itookit/kernel-adapters/contracts';
 
@@ -52,6 +53,8 @@ function validateQueue(value: StoredInstructionQueue & {schemaVersion?: number},
             || !Array.isArray(item.files) || item.files.some(file => !file || typeof file.name !== 'string' || typeof file.type !== 'string')) invalid();
         if (item.flowBinding !== undefined && !validFlowBinding(item)) invalid();
         if (item.connectionBinding !== undefined && (!item.connectionBinding || !isModelDefaults(item.connectionBinding.defaults)
+            || item.connectionBinding.harnessAgent !== undefined && (!isHarnessAgentSnapshot(item.connectionBinding.harnessAgent)
+                || item.connectionBinding.harnessAgent.id !== item.agentId)
             || item.connectionBinding.connectionId !== undefined && typeof item.connectionBinding.connectionId !== 'string'
             || item.connectionBinding.connections !== undefined && !isFlowConnectionSnapshot(item.connectionBinding.connections))) invalid();
         ids.add(item.id);

@@ -361,7 +361,14 @@ export class AgentConfigEditor implements IEditor {
             const slot = this.container.querySelector<HTMLElement>('[data-agent-host-settings]')!;
             this.hostSettings = await this.options.mountSettings(slot);
         }
-        this.executionForm = bindAgentExecution(this.container, agent, flows, this.capabilities);
+        const service = this.service;
+        const harnessConnections = service.getHarnessConnectionRecord && service.getHarnessConnectionTargets && service.saveHarnessConnection ? {
+            get: service.getHarnessConnectionRecord.bind(service), targets: service.getHarnessConnectionTargets.bind(service),
+            save: service.saveHarnessConnection.bind(service),
+        } : undefined;
+        this.executionForm = bindAgentExecution(this.container, agent, flows, { ...this.capabilities,
+            harnessConnections: this.capabilities.harnessConnections ?? harnessConnections,
+            listHarnessConnections: this.capabilities.listHarnessConnections ?? (() => this.service.getHarnessConnections?.() ?? Promise.resolve([])) });
         await this.executionForm.ready();
         this.bindEvents();
         this.activatePage(this.activePage);

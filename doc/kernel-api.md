@@ -860,3 +860,7 @@ Task wait 默认等逻辑 exit，until: settled 等清理；waitStopped 等控�
 ## Session 活动摘要
 
 `Kernel.sessionActivity(sessionId)` / `Harness.sessionActivity(sessionId)` 同事务冷读生命周期、各 Task 阶段数量、pending approval/input/cleanup、最近终态和 asOfSequence。用途是轻量会话总览；控制是否确认仍使用 Session/Task stat，导出恢复使用 archives。活动投影与 Task 原子提交，正常查询不读 Task 正文或对话历史；旧存储缺少投影时批读缺少摘要的记录，包含需要核对清理责任的终态任务。详细契约见[独立库 API](../libraries/durable-kernel/docs/api.md#session-执行摘要)，验证见[Harness 场景](../libraries/durable-kernel/docs/harness-scenarios.md)。
+
+## 外部执行结果未知
+
+Effect适配器可通过可选 `failureOutcome(error)` 将实时调用无法确认的结果标为 `indeterminate`，Kernel保留Task等待并阻止自动Effect重试。该机制也用于远程Harness丢响应；默认适配器行为不变。现有 `resolveEffect()` 可提交核对结果或显式授权同一Effect继续尝试，稳定请求与外部回执仍由适配器保证。详见[独立库契约](../libraries/durable-kernel/docs/api.md#实时-effect-失败分类)与[远程执行连接](design/remote-harness-connections.md)。

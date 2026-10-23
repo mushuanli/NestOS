@@ -1,0 +1,250 @@
+{
+  "schemaVersion": 1,
+  "recordedAt": "2026-10-23",
+  "status": "passed",
+  "scope": "Actual model verification of project-authorized remote harness connections, Agent, Flow, Composite and CLI",
+  "environment": {
+    "actualModelGateway": true,
+    "fixedPeer": false,
+    "transport": "Real mindos-node HTTP/MCP over loopback",
+    "nativeCLI": "Installed Claude Code",
+    "configuredNativeAlias": "claude-sonnet-flash[1m]",
+    "nativeCurrentModel": "sonnet",
+    "observedNativeModelIds": [
+      "deepseek-v4-pro"
+    ],
+    "nativeRoute": "User-managed LAN Anthropic-compatible gateway",
+    "officialAnthropicModelIdentityClaimed": false,
+    "coordinator": {
+      "actualModel": true,
+      "modelId": "deepseek-v4-flash",
+      "endpointOrigin": "https://api.deepseek.com"
+    },
+    "connectionAndProjectAuthorizationMocked": false,
+    "projectRuntime": true,
+    "bubblewrap": true,
+    "crossMachineProjectNode": false
+  },
+  "applicationCases": [
+    {
+      "name": "ordinary-agent",
+      "status": "passed",
+      "durationMs": 7926,
+      "nativeExecutions": 1
+    },
+    {
+      "name": "parallel-flow",
+      "status": "passed",
+      "durationMs": 7574,
+      "nativeExecutions": 2
+    },
+    {
+      "name": "composite",
+      "status": "passed",
+      "durationMs": 12330,
+      "nativeExecutions": 2
+    },
+    {
+      "name": "kernel-reply-loss-recovery",
+      "status": "passed",
+      "durationMs": 9301,
+      "nativeExecutions": 1
+    }
+  ],
+  "cliCases": [
+    {
+      "name": "shipped-inline-example",
+      "runId": "20261023011042-5ad71aa4",
+      "rootTaskId": "task_12eb9d3c-b18c-4c71-9474-b40f703d0a92",
+      "nativeSessionId": "a379b780-aa44-404f-83e4-d1f211bf277d",
+      "nativeTurnId": "9c0676c8-b8d4-4c18-89ed-5f79ddbf3d74",
+      "readToolObserved": true,
+      "nonceMatches": true,
+      "result": 91,
+      "observedModelIds": [
+        "deepseek-v4-pro"
+      ],
+      "outputLength": 48,
+      "durationMs": 4644,
+      "interactions": {
+        "initialExitCode": 0,
+        "finalExitCode": 0,
+        "decisions": []
+      }
+    },
+    {
+      "name": "agent-reference",
+      "runId": "20261023011047-dc72a81d",
+      "rootTaskId": "task_1af276a6-e3bd-49a7-b443-5eeafbe80221",
+      "nativeSessionId": "a2cb256b-68b6-406b-8bb0-435d635a6e3b",
+      "nativeTurnId": "a4d8dad5-a14f-439f-a1b2-fe2b7790a181",
+      "readToolObserved": true,
+      "nonceMatches": true,
+      "result": 91,
+      "observedModelIds": [
+        "deepseek-v4-pro"
+      ],
+      "outputLength": 48,
+      "durationMs": 8198,
+      "interactions": {
+        "initialExitCode": 0,
+        "finalExitCode": 0,
+        "decisions": []
+      }
+    }
+  ],
+  "verification": {
+    "nativeReadObserved": true,
+    "challengeOnlyInProjectFile": true,
+    "challengeCopiedExactly": true,
+    "vulnerableSymbols": {
+      "lookup_record": "CWE-89",
+      "run_job": "CWE-78"
+    },
+    "safeFunctions": [
+      "lookup_bound",
+      "run_bound"
+    ],
+    "cweComparison": "Strict CWE syntax then numeric identity; retain raw model outputs including leading zeroes",
+    "nativeTurnTerminal": "completed",
+    "outputChecked": true,
+    "journalResultMatches": true,
+    "replyLossRecovery": {
+      "kernelStates": [
+        "indeterminate",
+        "succeeded"
+      ],
+      "explicitSameEffectRetry": true,
+      "nativeCreateCalls": 1,
+      "nativeTurnCalls": 1,
+      "receiptChecks": 1,
+      "sameNativeIdentity": true,
+      "processRestart": false
+    },
+    "finalLiveInteractions": [],
+    "booleanApprovalExercisedLive": false
+  },
+  "approvalCompatibility": {
+    "change": "Normalize explicit boolean approval responses while retaining advertised decision mapping; native input booleans remain invalid",
+    "unitTestsPassed": 57,
+    "unitTestsExitCode": 0,
+    "typecheckExitCode": 0,
+    "liveBooleanDecisionExercised": false
+  },
+  "earlierUnsuccessfulAttempts": [
+    {
+      "report": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/app-runtime-real-model-report-initial-cwe-padding.json",
+      "reason": "The test compared CWE-089 with CWE-89 as strings; changed to numeric identity without rewriting model output"
+    },
+    {
+      "report": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/app-runtime-real-model-report-initial-hitl-timeout.json",
+      "reason": "A native Bash approval request correctly waited at the gate; the initial test did not answer interactions and timed out, then was cancelled through Kernel",
+      "subsequentTestPolicy": "Only Read of the three fixture files can be approved; other tools are denied through Task.respond",
+      "finalRunNeededApproval": false
+    }
+  ],
+  "cleanup": {
+    "status": "passed-and-cleaned",
+    "dailyConfigurationModified": false,
+    "personalHistoryCopied": false,
+    "remainingLiveProcessIds": [],
+    "gatewayPortOpen": false,
+    "temporaryCredentialsRemoved": true,
+    "residualCredentialFiles": 0
+  },
+  "limits": [
+    "This record does not cover complete RAPTOR remote migration",
+    "The project node ran on loopback, not a separate machine",
+    "Reply-loss recovery did not restart the application process",
+    "Final successful runs did not exercise approval deny-and-continue or boolean responses",
+    "Configured model alias and provider protocol do not prove official Anthropic model identity"
+  ],
+  "evidence": {
+    "applicationReport": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/app-runtime-real-model-report.json",
+      "sha256": "e900aaf92c798da44dc61e6506b3b3fe8ad4c0f2a90bf7e1d6235191f6cfc390"
+    },
+    "applicationLog": {
+      "file": "release/raptor-parity/20261023/harness-real-model/app-runtime-real-model-live.log",
+      "sha256": "5f7ef4018bc7489e884369b66fd2a2984b0bded466eb8618d7602b8b47fc4c36"
+    },
+    "applicationTypecheck": {
+      "file": "release/raptor-parity/20261023/harness-real-model/app-runtime-typecheck.log",
+      "sha256": "25dfc06a9cd2a03cda073b5bcc639b98919d57fb07fbf53fa0be06e2ed0f725a"
+    },
+    "cliIndex": {
+      "file": "release/raptor-parity/20261023/harness-real-model/cli-evidence.json",
+      "sha256": "d1d942f6709f7f71f9b4469ffa79cc86b04483626ddfbf7117401b233145a86a"
+    },
+    "cliReport": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/cli-real-zhPSgY/cli-real-model-report.json",
+      "sha256": "45900c6a3a40240211f27558617d03e36625f7f9b06ff2a3a78c5a5475a717d9"
+    },
+    "cliLog": {
+      "file": "release/raptor-parity/20261023/harness-real-model/cli-real-model-live.log",
+      "sha256": "2c1e83958197f608bafbe6b700961c21de74f93d77ebd530536147c7ad9991c1"
+    },
+    "coordinatorProbe": {
+      "file": "release/raptor-parity/20261023/harness-real-model/model-readiness.json",
+      "sha256": "f77969c27ee7db258d0fe31e781d4fcf1da130e739a47b58ea9c4e527a97e31a"
+    },
+    "nativeSmoke": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/native-smoke.json",
+      "sha256": "7f2e52b9e55224f587eb1bca44fd291fb5453dfd75ef2ee2532e5c25b07e707e"
+    },
+    "environment": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/environment-evidence.json",
+      "sha256": "93e88b3e1edf8f53cd8879226fe6ab11de74483ba3ab96396768df5bdcc8c364"
+    },
+    "nativeSnapshot": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/native-snapshot.json",
+      "sha256": "1fe16db20054e1b6b61392ab83f9214e5a576ead121d29a09e35bac7aa363aa2"
+    },
+    "shutdown": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/shutdown.json",
+      "sha256": "39ec73fc4bc2287268f4764c0c5df85e98379d88e6ab96e0820122eef80576e3"
+    },
+    "credentialCleanup": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/credential-cleanup.json",
+      "sha256": "e321a5593bed51cfa5af239c81b04880b49ee80d0430e1175ec89dcc4bc2bb10"
+    },
+    "initialCweFailure": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/app-runtime-real-model-report-initial-cwe-padding.json",
+      "sha256": "bf5fd24b708d634927a9456ae1685fc7db1a1e4970b0a6384870901ed2a8a04f"
+    },
+    "initialApprovalTimeout": {
+      "file": "release/raptor-parity/20261023/harness-real-model/native-iairzrv_/app-runtime-real-model-report-initial-hitl-timeout.json",
+      "sha256": "33dbda368ecef1505173ae1e2b0149888597a87587feb9f082245f9850e95fff"
+    },
+    "approvalUnitLog": {
+      "file": "release/raptor-parity/20261023/logs/harness-boolean-approval-units.log",
+      "sha256": "dd349e30fe72f7785dd516b94629ec651bae920d83079df6ab2133e0329b965f"
+    },
+    "approvalTypecheckLog": {
+      "file": "release/raptor-parity/20261023/logs/harness-boolean-approval-typecheck.log",
+      "sha256": "25dfc06a9cd2a03cda073b5bcc639b98919d57fb07fbf53fa0be06e2ed0f725a"
+    },
+    "docsCheck": {
+      "file": "release/raptor-parity/20261023/harness-real-model/docs-check.log",
+      "sha256": "0d636a4d4887da99b1eb053a8384a1ef77fdcc908c723bdf95ebe7730a8f6377"
+    }
+  },
+  "sourceSha256": {
+    "backend/app-core/tests/harness-real-model-live.test.ts": "0e550d139349a9c03faf2d828a7bf338e705a38c5d0c3b14dd253553d6cd43b7",
+    "backend/app-core/tests/harness-real-model-fixture.ts": "66f2ee65b2a0e0249b1e339975f53c686ea80449e81dead6ee2f567263d67ed7",
+    "apps/cli/tests/harness-real-model-live.test.ts": "9c5f1801b519d05eb865b683b65254e6862dd99714e5945dfece5397045a1a1f",
+    "backend/app-core/src/projects/harness-execution-interactions.ts": "677994a771b61be68fa588fb17bf25f4ab79f99fdc6311d4cecd1375bb1b352c",
+    "backend/app-core/tests/harness-execution-recovery.test.ts": "8fc3ced5ebad05e7a49660dee5681a56ca86451069c82d4a2328635970d8b3ff",
+    "backend/app-core/tests/harness-execution-input.test.ts": "2f1dfd141f22f1de8d60c728299de2e7f5c64aaa089d8bf6cee1d20fc512f600",
+    "apps/cli/examples/remote-harness.flow": "96c8c07cd4f2755d4a3d24a9170c58e617d88d0d8b925e7fd0b99390fee414e0"
+  },
+  "validation": {
+    "applicationLiveTestsPassed": 4,
+    "cliLiveScenariosPassed": 2,
+    "approvalUnitTestsPassed": 57,
+    "appCoreTypecheckExitCode": 0,
+    "cliTypecheckExitCode": 0,
+    "docsCheckExitCode": 0,
+    "gitDiffCheckExitCode": 0
+  }
+}

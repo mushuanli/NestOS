@@ -1,0 +1,12 @@
+{
+  "id": "raptor-sca-parity-agent",
+  "name": "RAPTOR 离线 SCA 示例验收",
+  "type": "workflow",
+  "description": "仅验收危险生命周期模式与findings差集的两个官方样例，不代表完整SCA。",
+  "config": {},
+  "execution": {
+    "kind": "flow",
+    "flowId": "raptor-sca-parity",
+    "connectionBindings": {}
+  }
+}

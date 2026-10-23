@@ -1,4 +1,5 @@
 import { withFlowControl } from '../src/flow/control-session';
+import { readFlowSchedulerCheckpoint } from '../src/flow/checkpoint-store';
 import { acquireSchedulerLease, schedulerOwnerKey } from '../src/flow/scheduler-lease';
 import { resolveFlowRunForTask } from '../src/flow/task-run';
 import { prepareFlowTaskRetry, readFlowRunMembers } from '../src/flow/run-members';
@@ -422,8 +423,7 @@ describe('DurableFlowExecutor', () => {
         const original = await initialExecutor.submit('session-one', submission);
         await waitForNode(original, 'answer');
         // Read the persisted definition before the host restarts.
-        const persisted = (await (await kernel.openSession('session-one'))
-            .getShared(`flow.run.${original.root.id}.scheduler`))?.value as { spec: DagRunSpec };
+        const persisted = (await readFlowSchedulerCheckpoint(await kernel.openSession('session-one'), original.root.id))!;
         expect(persisted.spec.nodes.map(node => node.id)).toEqual(['answer', 'agent']);
         expect(JSON.stringify(persisted.spec.nodes)).toContain('DEFINITION-V1');
 
@@ -1215,7 +1215,7 @@ describe('DurableFlowExecutor', () => {
         const session = await kernel.openSession('session-one');
         const key = `flow.run.${execution.root.id}.scheduler`;
         const saved = await session.getShared(key);
-        const checkpoint = saved!.value as any;
+        const checkpoint = (await readFlowSchedulerCheckpoint(session, execution.root.id))!;
         await session.setShared(key, {
             ...checkpoint,
             detachedNodes: ['child'],
@@ -1308,7 +1308,7 @@ describe('DurableFlowExecutor', () => {
         // the committed schedule instead of re-creating nodes.
         const key = `flow.run.${execution.root.id}.scheduler`;
         const saved = await session.getShared(key);
-        const checkpoint = saved!.value as { instances: unknown[] };
+        const checkpoint = (await readFlowSchedulerCheckpoint(session, execution.root.id))!;
         expect(checkpoint.instances).toContainEqual(['human', [nodeTaskId]]);
 
         // Simulate a crash between session.submit and the checkpoint write: the durable

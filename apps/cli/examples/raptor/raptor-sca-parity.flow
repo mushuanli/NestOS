@@ -1,0 +1,202 @@
+{
+  "id": "raptor-sca-parity",
+  "name": "RAPTOR 两个离线 SCA 示例：原生 Flow 等价验收",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "nodes": [
+    {
+      "id": "hooks",
+      "name": "生命周期危险模式：只读 package.json",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "command": "set -e\nmkdir -p flow\njq -ce 'if type != \"object\" or (.scripts | type) != \"object\" then error(\"package.json requires an object scripts table\") else . end |\n. as $manifest |\n[.scripts | to_entries[] |\n select(.key as $key | [\"preinstall\",\"install\",\"postinstall\",\"prepare\",\"prepublish\"] | index($key)) |\n select(.value | type == \"string\") |\n . as $hook |\n [[{\"regex\":\"\\\\bcurl\\\\b[^|\\\\n]{0,1000}\\\\|\\\\s*(?:bash|sh|zsh)\\\\b\",\"reason\":\"curl piped to shell\"},{\"regex\":\"\\\\bwget\\\\b[^|\\\\n]{0,1000}\\\\|\\\\s*(?:bash|sh|zsh)\\\\b\",\"reason\":\"wget piped to shell\"},{\"regex\":\"\\\\bnc\\\\s+(?:-\\\\S{1,256}\\\\s+){0,32}[\\\\w.\\\\-]+\\\\s+\\\\d+\",\"reason\":\"netcat to remote host\"},{\"regex\":\"\\\\bbash\\\\s+-c\\\\s+[\\\\\\\"'\"'\"']?\\\\$\\\\(\",\"reason\":\"bash -c with command substitution\"},{\"regex\":\"\\\\beval\\\\s*\\\\(\",\"reason\":\"eval() call\"},{\"regex\":\"\\\\bnode\\\\s+-e\\\\b\",\"reason\":\"node -e (inline JS execution)\"},{\"regex\":\"\\\\bpython[0-9.]*\\\\s+-c\\\\b\",\"reason\":\"python -c (inline code execution)\"},{\"regex\":\"\\\\bruby\\\\s+-e\\\\b\",\"reason\":\"ruby -e (inline code execution)\"},{\"regex\":\"\\\\bphp\\\\s+-r\\\\b\",\"reason\":\"php -r (inline code execution)\"},{\"regex\":\"\\\\bperl\\\\s+-e\\\\b\",\"reason\":\"perl -e (inline code execution)\"},{\"regex\":\"\\\\bdeno\\\\s+eval\\\\b\",\"reason\":\"deno eval (inline code execution)\"},{\"regex\":\"base64\\\\s+(?:-d|--decode)\\\\s*\\\\|\",\"reason\":\"base64 piped to decoder\"},{\"regex\":\"echo\\\\s+[A-Za-z0-9+/=]{40,}\\\\s*\\\\|\\\\s*base64\",\"reason\":\"long base64 blob piped\"},{\"regex\":\"\\\\$\\\\{?NPM_TOKEN\\\\}?\",\"reason\":\"references NPM_TOKEN\"},{\"regex\":\"process\\\\.env\\\\.[A-Z_]*TOKEN\",\"reason\":\"references *TOKEN env var\"},{\"regex\":\"https?://[\\\\w.\\\\-]*(?:bit\\\\.ly|tinyurl|pastebin|raw\\\\.githubusercontent)\",\"reason\":\"URL to a paste/CDN host\"}][] | . as $pattern | select($hook.value | test($pattern.regex)) | .reason] as $reasons |\n select($reasons | length > 0) |\n {kind:\"install_hook_suspicious\",ecosystem:\"npm\",name:$manifest.name,version:($manifest.version // null),severity:\"high\",scriptKey:$hook.key,reasons:$reasons}]\n| {scope:\"npm-dangerous-lifecycle-patterns\",findings:sort_by(.name,.scriptKey)}' package.json > flow/hooks.json\ncat flow/hooks.json",
+          "timeout_ms": 30000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.sca.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "diff",
+      "name": "按咨询身份与抑制状态计算 findings 差集",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "command": "set -e\nmkdir -p flow\njq -cse 'def text: if type == \"string\" then . else \"\" end;\ndef truth: . != null and . != false and . != 0 and . != \"\" and . != [] and . != {};\ndef suppressed: .suppressed | truth;\ndef rank: (ascii_downcase) as $v | ({info:0,low:1,medium:2,high:3,critical:4}[$v] // 0);\ndef key:\n (.vuln_type | text) as $kind | (.sca // {}) as $sca |\n ($sca.ecosystem // \"\") as $eco | ($sca.name // \"\") as $name |\n if $kind == \"sca:vulnerable_dependency\" then\n  ($sca.advisory // {}) as $advisory |\n  ([($advisory.aliases // [])[] | select(type == \"string\") | select(ascii_upcase | startswith(\"CVE-\"))][0] // $advisory.id // \"\" | ascii_upcase) as $id |\n  if $id == \"\" then null else [\"vuln\",$eco,$name,$id] | tojson end\n elif $kind | startswith(\"sca:hygiene:\") then [\"hygiene\",$kind,$eco,$name] | tojson\n elif $kind | startswith(\"sca:supply_chain:\") then [\"supply\",$kind,$eco,$name] | tojson\n elif $kind | startswith(\"sca:license:\") then [\"license\",$kind,$eco,$name] | tojson\n elif $kind | startswith(\"sca:scan_health:\") then [\"scan_health\",$kind] | tojson\n else null end;\ndef indexed:\n reduce (.[] | select(type == \"object\")) as $row ({};\n  ($row | key) as $key |\n  if $key == null then .\n  elif (has($key) | not) or ((.[$key] | suppressed) and ($row | suppressed | not)) then .[$key]=$row\n  else . end);\ndef ordered: sort_by(-((.severity // \"info\") | rank), (if .sca.in_kev then 0 else 1 end), -(.sca.epss // 0), (.sca.name // \"\"));\nif length != 2 or (.[0] | type) != \"array\" or (.[1] | type) != \"array\" then error(\"diff inputs must each contain one findings array\") else . end |\n(.[0] | indexed) as $a | (.[1] | indexed) as $b |\n{new:([$b | to_entries[] |  . as $row | select($a | has($row.key) | not) | .value | select(suppressed | not)] | ordered),\n resolved:([$a | to_entries[] |  . as $row | select($b | has($row.key) | not) | .value | select(suppressed | not)] | ordered),\n suppression_added:([$b | to_entries[] | . as $row | select($a | has($row.key)) | select(($a[$row.key] | suppressed | not) and ($row.value | suppressed)) | .value] | ordered),\n suppression_lifted:([$b | to_entries[] | . as $row | select($a | has($row.key)) | select(($a[$row.key] | suppressed) and ($row.value | suppressed | not)) | .value] | ordered),\n persistent:([$b | to_entries[] | . as $row | select($a | has($row.key)) | select(($a[$row.key] | suppressed | not) and ($row.value | suppressed | not)) | .value] | ordered)} |\n.summary={new:(.new|length),resolved:(.resolved|length),suppression_added:(.suppression_added|length),suppression_lifted:(.suppression_lifted|length),persistent:(.persistent|length),persistent_by_severity:(reduce .persistent[] as $row ({}; ($row.severity // \"info\" | ascii_downcase) as $severity | .[$severity]=((.[$severity] // 0)+1)))} |\n{delta:.,gateExitCode:(if any(.new[]; ((.severity // \"info\" | rank) >= 3) or (.sca.in_kev | truth)) then 1 else 0 end)}' baseline.json current.json > flow/diff.json\ncat flow/diff.json",
+          "timeout_ms": 30000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.sca.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "compare",
+      "name": "逐字段比较独立上游参考和 Flow 结果",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "command": "set -e\njq -nce --slurpfile actualHooks flow/hooks.json --slurpfile actualDiff flow/diff.json --slurpfile referenceHooks reference/hooks.json --slurpfile referenceDiff reference/diff.json --slurpfile referenceStatus reference/diff-status.json '($referenceHooks[0] | [.[] | select(.sca.kind == \"install_hook_suspicious\") | select(.sca.evidence.reasons | length > 0) | {kind:.sca.kind,ecosystem:.sca.ecosystem,name:.sca.name,version:.sca.version,severity,scriptKey:.sca.evidence.script_key,reasons:.sca.evidence.reasons}] | sort_by(.name,.scriptKey)) as $expectedHooks |\n($actualHooks[0].findings == $expectedHooks) as $hookEqual |\n($actualDiff[0].delta == $referenceDiff[0] and $actualDiff[0].gateExitCode == $referenceStatus[0].exitCode) as $diffEqual |\n{summary:{workflow:\"raptor-sca-parity\",scope:[\"npm-dangerous-lifecycle-patterns\",\"SCA finding delta with default suppression and high threshold\"],\n cases:[{id:\"synthetic-install-hook\",passed:($hookEqual and any($actualHooks[0].findings[]; .severity == \"high\")),equal:$hookEqual,reference:$expectedHooks,actual:$actualHooks[0].findings},\n {id:\"diff-basic\",passed:($diffEqual and $actualDiff[0].delta.summary.new == 2 and $actualDiff[0].gateExitCode == 1),equal:$diffEqual,reference:$referenceDiff[0],actual:$actualDiff[0].delta,referenceGateExitCode:$referenceStatus[0].exitCode,actualGateExitCode:$actualDiff[0].gateExitCode}],\n passed:($hookEqual and $diffEqual and any($actualHooks[0].findings[]; .severity == \"high\") and $actualDiff[0].delta.summary.new == 2 and $actualDiff[0].gateExitCode == 1)}}' > flow/comparison.json\ncat flow/comparison.json\njq -e '.summary.passed' flow/comparison.json > /dev/null",
+          "timeout_ms": 30000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.sca.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "report",
+      "name": "输出限定范围的等价验收报告",
+      "plugin": "builtin.transform",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "operation": "pick",
+        "value": "${nodes.compare.outputs.result}",
+        "path": [
+          "stdout",
+          "summary"
+        ],
+        "type": "json"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "hooks-to-compare",
+      "from": "hooks",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "diff-to-compare",
+      "from": "diff",
+      "to": "compare",
+      "kind": "control"
+    }
+  ],
+  "outputs": {
+    "report": {
+      "value": "${nodes.report.outputs.result}"
+    }
+  }
+}

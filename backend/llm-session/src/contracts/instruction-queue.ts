@@ -17,6 +17,8 @@ export interface SessionInstruction extends SessionInstructionInput {
     /** Digest of the original request, before host-derived bindings or attachment paths. */
     submissionDigest?: string;
     connectionBinding?: {
+        /** Frozen remote Agent identity and execution target; credentials remain host-owned. */
+        harnessAgent?: import('../core/types').ExecutorConfig;
         connectionId?: string;
         source?: 'run' | 'session' | 'agent' | 'system';
         defaults: import('@itookit/kernel-adapters/contracts').ModelDefaults;

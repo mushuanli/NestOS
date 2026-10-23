@@ -1,4 +1,5 @@
 import { toolPlugin } from './tool-plugin';
+import { harnessAgentTask, isHarnessAgentConfig } from './harness-agent';
 import { mediaPlugin } from './media-plugin';
 import type { DagNodeContext, DagPlugin, DagPluginManifest, JsonValue } from '../contracts';
 import { DELEGATION_DEFAULTS } from '../contracts';
@@ -123,6 +124,7 @@ function agentTask(context: DagNodeContext) {
         : Array.isArray(config.messages) ? config.messages : [...system, { role: 'user', content: prompt }];
     const inherited = project.filter(item => !base.some(message => message.role === 'system' && message.content === item.content));
     const messages = [...inherited, ...base.filter(message => policy !== 'none' || message.role !== 'system')];
+    if (isHarnessAgentConfig(config)) return harnessAgentTask(context, messages);
     const delegation = record(config.delegation);
     const hasDelegation = isRecord(config.delegation);
     const subtasks = record(config.subtasks);

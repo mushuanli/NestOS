@@ -1,3 +1,4 @@
+import type { FlowWorkspacePolicy, SchedulerCheckpoint } from '@itookit/llm-flow';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionFilesService, type ApplicationPlatformServices, type HeadlessKernelRuntime } from '@itookit/app-core';
@@ -97,7 +98,7 @@ it('preserves a copy claimed by a persisted Run while preparing another run', as
     const oldDirectory = [...copies][0];
     listTasks.mockResolvedValue([{ id: 'published', program: { kind: 'flow.aggregate' }, labels: { kind: 'flow-root' } }]);
     getShared.mockImplementation(async (key: string) => ({ value: key.endsWith('.scheduler')
-        ? { spec: { runPolicy: { workspace: { mode: 'worktree' } } } } : lease.record }));
+        ? frozenCheckpoint({ mode: 'worktree' }) : lease.record }));
     const next = new TauriFlowWorkspaces('/data'); next.bind(kernel, services);
     await next.prepare('s', { mode: 'worktree' });
     expect(copies.has(oldDirectory)).toBe(true);
@@ -192,7 +193,7 @@ it('releases acquired process grants and the copy source when authorization chan
     const { workspaces, manager, files, getShared } = await setup();
     const lease = await workspaces.prepare('s', { mode: 'worktree' });
     getShared.mockImplementation(async (key: string) => ({ value: key.endsWith('.scheduler')
-        ? { spec: { runPolicy: { workspace: { mode: 'worktree' } } } } : lease.record }));
+        ? frozenCheckpoint({ mode: 'worktree' }) : lease.record }));
     vi.spyOn(TauriSessionDirectories.prototype, 'openDirectory').mockImplementation(async () => {
         const record = (await files.inspect('s'))!;
         await files.configure('s', { mounts: record.mounts, cwd: record.cwd }, record.revision);
@@ -210,7 +211,7 @@ it('uses the copy for both file tools and native mounts and releases it after pr
     const { workspaces, manager, files, getShared } = await setup();
     const lease = await workspaces.prepare('s', { mode: 'worktree' });
     getShared.mockImplementation(async (key: string) => ({ value: key.endsWith('.scheduler')
-        ? { spec: { runPolicy: { workspace: { mode: 'worktree' } } } } : lease.record }));
+        ? frozenCheckpoint({ mode: 'worktree' }) : lease.record }));
     const opened = vi.spyOn(TauriSessionDirectories.prototype, 'openDirectory').mockResolvedValue(await manager.openFileSystem('/copy'));
     const disposed = vi.spyOn(TauriSessionDirectories.prototype, 'dispose').mockImplementation(async () => {
         expect(invoke).toHaveBeenCalledWith('directory_close', { id: `grant:${[...copies][0]}` });
@@ -231,7 +232,7 @@ it('retains directory sources until a failed process-grant close succeeds on ret
     const { workspaces, manager, getShared } = await setup();
     const lease = await workspaces.prepare('s', { mode: 'worktree' });
     getShared.mockImplementation(async (key: string) => ({ value: key.endsWith('.scheduler')
-        ? { spec: { runPolicy: { workspace: { mode: 'worktree' } } } } : lease.record }));
+        ? frozenCheckpoint({ mode: 'worktree' }) : lease.record }));
     vi.spyOn(TauriSessionDirectories.prototype, 'openDirectory').mockResolvedValue(await manager.openFileSystem('/copy'));
     const disposed = vi.spyOn(TauriSessionDirectories.prototype, 'dispose').mockResolvedValue(undefined);
     const context = await workspaces.fileContext('s', 'root');
@@ -259,7 +260,7 @@ it('restores a read-only snapshot with read-only file and Bash grants', async ()
     const restored = await next.restore('s', policy, lease.record!);
     await expect(next.restore('s', { mode: 'worktree' }, lease.record!)).rejects.toThrow('frozen policy');
     getShared.mockImplementation(async (key: string) => ({ value: key.endsWith('.scheduler')
-        ? { spec: { runPolicy: { workspace: policy } } } : lease.record }));
+        ? frozenCheckpoint(policy) : lease.record }));
     vi.spyOn(TauriSessionDirectories.prototype, 'openDirectory').mockResolvedValue(await manager.openFileSystem('/copy'));
     vi.spyOn(TauriSessionDirectories.prototype, 'dispose').mockResolvedValue(undefined);
     const original = invoke.getMockImplementation()!;
@@ -316,3 +317,10 @@ it('returns retained native paths for the durable Run finalization report', asyn
     expect(intents.size).toBe(0);
     expect(copies.size).toBe(1);
 });
+
+function frozenCheckpoint(workspace: FlowWorkspacePolicy): SchedulerCheckpoint {
+    return { version: 1, spec: { nodes: [], edges: [], runPolicy: { workspace } }, nodes: [], edges: [],
+        instances: [], completed: [], edgeState: [], delegationDepth: [], delegationGroups: [], delegationGroupByChild: [],
+        skipped: [], detachedNodes: [], appliedPatches: [], nodeDefaults: [], nodeConnections: [],
+        consumedTokens: 0, startedAt: 0, completionOrder: [], dispatchOrder: [] };
+}

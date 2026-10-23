@@ -1,4 +1,4 @@
-import { decodeSchedulerCheckpoint } from './checkpoint-decoder';
+import { readFlowSchedulerCheckpoint } from './checkpoint-store';
 import type { JsonValue, SessionHandle, TaskHandle } from '@itookit/durable-kernel';
 import type { FlowWorkspacePolicy } from '../contracts';
 import type { SchedulerLease } from './scheduler-lease';
@@ -44,7 +44,7 @@ export class FlowRunLifecycle {
             WorkspaceFinalization | undefined;
         if (state?.status === 'succeeded') return;
         const initial = record((await root.status()).task.input).initialScheduler;
-        const checkpoint = decodeSchedulerCheckpoint((await session.getShared(`flow.run.${rootTaskId}.scheduler`))?.value ?? initial);
+        const checkpoint = await readFlowSchedulerCheckpoint(session, rootTaskId, initial);
         const policy = checkpoint?.spec.runPolicy?.workspace;
         if (!policy || policy.mode === 'shared') return;
         const workspace = await this.restoreWorkspace(session, rootTaskId, policy, { forFinalization: true });
@@ -69,8 +69,7 @@ export class FlowRunLifecycle {
 
     /** Keep local ownership until bounded detached work stops or the host shuts down. */
     async drainDetached(session: SessionHandle, rootTaskId: string, lease: SchedulerLease): Promise<void> {
-        const saved = await session.getShared(`flow.run.${rootTaskId}.scheduler`);
-        const checkpoint = decodeSchedulerCheckpoint(saved?.value);
+        const checkpoint = await readFlowSchedulerCheckpoint(session, rootTaskId);
         const instances = new Map(checkpoint?.instances);
         const pending = await Promise.all((checkpoint?.delegationGroups ?? [])
             .filter(([, group]) => group.detached)

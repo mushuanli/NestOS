@@ -33,7 +33,7 @@ Prompt 使用 `${vars.essay}` 读取当前稿件；`${param.essay}` 保留最初
 - 路由一次派发的所有子节点读取同一批快照，汇合时按配置顺序原子提交成功结果的赋值；同批双写同一变量在编译时拒绝。partial 策略只接受成功子节点的更新。
 - 评审 scope 内部被检查 prompt/输入引用的变量更新会推进 inputRevision，旧输入对应的评分标记为非当前，重新评审后才能用于达标判断。
 - 每个 Run 独立存储变量。组合 Flow 有独立的词法作用域；子流程不会写到父流程或兄弟流程的同名变量。
-- Scheduler checkpoint 保存 initial、按 Task 身份去重的 commits、启动 snapshots。恢复重放不会重复应用已提交写入；图级重试移除已被替代 Task 的写入后重算。路由子节点的变量、写入来源和轮次还保存在 flow.dispatch Task 的持久状态中。
+- Scheduler checkpoint 保存 initial、按 Task 身份去重的 commits、启动 snapshots。snapshots 只保留 assign 实际引用的非 output 路径；没有 assign 或仅引用 output 时不复制上下文。成功提交后的必要快照继续用于重试，仅清除已被替代 Task 的快照；旧完整上下文仍可读取。恢复重放不会重复应用已提交写入；图级重试移除已被替代 Task 的写入后重算。路由子节点的变量、写入来源和轮次还保存在 flow.dispatch Task 的持久状态中。
 - 作用域成功结束后把其写过的变量提交给外层 DAG。作用域运行中可观察内部状态，外部消费者通过作用域依赖等待提交。
 - 最终根输出包含 `variables.initial/current/changes`（按作用域分组，空字符串表示根作用域）；不包含完整 prompt 快照。Session History 和 CLI 结果使用该输出。RunGet 另提供持久检查点；llm-ui 展示初值、当前值和来源 Task。
 

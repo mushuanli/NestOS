@@ -66,3 +66,9 @@ it('rejects operations during close and does not let an old queue affect its rep
     closeSessionSkillOperations(registry);
     await expect(runSessionSkillOperation(registry, 'b', async () => 'closed')).rejects.toThrow('closed');
 });
+
+it('preserves a wrapped Effect live-failure classification and its receiver', () => {
+    const effect = { kind: 'external', version: '1', execute: vi.fn(), marker: 'indeterminate' as const,
+        failureOutcome() { return this.marker; } };
+    expect(coordinateSkillEffect(effect, {} as never).failureOutcome?.(new Error('reply lost'))).toBe('indeterminate');
+});

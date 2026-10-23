@@ -1,4 +1,4 @@
-import { validateMediaRequest, type MediaGenerationRequest } from '@itookit/driver-llm/contracts';
+import { resolveModelProtocol, validateMediaRequest, type MediaGenerationRequest } from '@itookit/driver-llm/contracts';
 import type { FlowRevision, FlowConnection, JsonValue } from '@itookit/llm-flow/contracts';
 import { assertModelConnection, isModelOperation, modelForOperation, mediaEndpointIdentity, type ModelRequirements, type ModelOperation } from '@itookit/kernel-adapters/contracts';
 import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts';
@@ -6,9 +6,10 @@ import type { IAgentConfigService } from '../contracts';
 import { inferFlowConnectionRequirements, nodeRequirements, nodeSlot } from '../contracts/flow-connection-policy';
 import { resolveNodeConnection as resolveFlowNodeConnection } from '@itookit/llm-flow';
 import { DELEGATION_LIMITS } from '@itookit/llm-flow/contracts';
-export type FlowConnectionCatalog = Pick<IAgentConfigService, 'getConnection' | 'getProvider'> & Partial<Pick<IAgentConfigService, 'getDefaultConnection' | 'getModelDefaults'>> & {
+import { admitHarnessConnection, type HarnessConnectionCatalog } from './harness-binding';
+export type FlowConnectionCatalog = Pick<IAgentConfigService, 'getConnection' | 'getProvider'> & Partial<Pick<IAgentConfigService, 'getDefaultConnection' | 'getModelDefaults'>> & HarnessConnectionCatalog & {
     operationModelId?(connectionId: string, operation: ModelOperation): string | undefined;
-    assertOperationIdentity?(connection: ConnectionMeta, provider: LLMProvider, operation: ModelOperation): void;
+    assertOperationIdentity?(connection: ConnectionMeta, provider: LLMProvider, operation: ModelOperation, modelId: string): void;
 };
 /** Resolve each named slot independently; snapshots never contain credentials. */
 export async function prepareFlowConnections(flow: FlowRevision, bindings: Record<string, string> = {}, agents: FlowConnectionCatalog,
@@ -17,8 +18,9 @@ export async function prepareFlowConnections(flow: FlowRevision, bindings: Recor
     const defaults = frozenDefaults ?? await agents.getModelDefaults?.() ?? {};
     const catalog = agents;
     agents = { getConnection: id => catalog.getConnection(id), getProvider: id => catalog.getProvider(id), getModelDefaults: async () => defaults,
+        ...(catalog.getHarnessConnection ? { getHarnessConnection: (id: string) => catalog.getHarnessConnection!(id) } : {}),
         ...(catalog.operationModelId ? { operationModelId: (id, operation) => catalog.operationModelId!(id, operation) } : {}),
-        ...(catalog.assertOperationIdentity ? { assertOperationIdentity: (connection, provider, operation) => catalog.assertOperationIdentity!(connection, provider, operation) } : {}) };
+        ...(catalog.assertOperationIdentity ? { assertOperationIdentity: (connection, provider, operation, modelId) => catalog.assertOperationIdentity!(connection, provider, operation, modelId) } : {}) };
     const slots = inferFlowConnectionRequirements(flow);
     for (const [name, id] of Object.entries(bindings)) {
         const nested = flow.nodes.some(node => node.plugin === 'builtin.flow' && name.startsWith(node.id + '/'));
@@ -32,6 +34,7 @@ export async function prepareFlowConnections(flow: FlowRevision, bindings: Recor
         if (node.plugin === 'builtin.media') return prepareMediaNode(node, config, connections, agents, runConnectionId);
         if (node.plugin !== 'builtin.agent') return node;
         config = await prepareDelegationConnections(config, connections, flow.defaultConnection, agents, runConnectionId);
+        if (record(config.execution).kind === 'harness') return { ...node, config: await prepareHarnessConnection(config, agents) };
         const requirements = nodeRequirements('chat', config, nodeSlot(node, slots));
         if (config.connectionSlot || typeof config.connectionId !== 'string' || slots.some(slot => slot.name === config.connectionId))
             return { ...node, config: { ...config, connectionRequirements: requirements } };
@@ -58,12 +61,20 @@ async function prepareDelegationConnections(config: Record<string, JsonValue>, c
 async function prepareDelegationTemplate(template: Record<string, JsonValue>, connections: FlowConnection[],
     defaultConnection: string | undefined, agents: FlowConnectionCatalog, runConnectionId: string | undefined, depth: number): Promise<Record<string, JsonValue>> {
     let config = structuredClone(record(template.config));
+    if (record(config.execution).kind === 'harness') return { ...template, config: await prepareHarnessConnection(config, agents) };
     const requirements = nodeRequirements('chat', config, nodeSlot({ config } as FlowRevision['nodes'][number], connections));
     resolveFlowNodeConnection(config, connections, defaultConnection, (await agents.getModelDefaults?.())?.chat, runConnectionId);
     config = await prepareDelegationConnections(config, connections, defaultConnection, agents, runConnectionId, depth);
     if (!config.connectionId) return { ...template, config: { ...config, connectionRequirements: requirements } };
     const resolved = await resolveNodeConnection({ ...config, connectionRequirements: requirements }, agents);
     return { ...template, config: { ...config, connectionRequirements: requirements, modelName: resolved.modelId, frozenConnection: resolved } };
+}
+async function prepareHarnessConnection(config: Record<string, JsonValue>, agents: FlowConnectionCatalog): Promise<Record<string, JsonValue>> {
+    const execution = record(config.execution);
+    if (typeof execution.connectionId !== 'string' || !execution.connectionId) throw new Error('Harness connection identity is required');
+    const snapshot = await admitHarnessConnection(agents, execution.connectionId,
+        config.harnessConnection as unknown as import('@itookit/kernel-adapters/contracts').HarnessConnectionSnapshot | undefined);
+    return { ...config, harnessConnection: JSON.parse(JSON.stringify(snapshot)) as JsonValue };
 }
 async function resolveSlot(slot: FlowConnection, connectionId: string | undefined, agents: FlowConnectionCatalog): Promise<FlowConnection> {
     const operation = slot.requirements?.operation ?? 'chat';
@@ -75,13 +86,14 @@ async function resolveSlot(slot: FlowConnection, connectionId: string | undefine
     const defaultModel = connection && !slot.tier && operation !== 'chat' && isModelOperation(operation) ? operationModelId(connection, provider, operation, agents) : undefined;
     const modelId = slot.resolved?.modelId ?? defaultModel ?? connection?.tiers?.[slot.tier ?? 'optimal'] ?? connection?.model ?? '';
     try { assertConnection(connection, provider, modelId, slot.requirements);
-        if (isModelOperation(operation)) agents.assertOperationIdentity?.(connection!, provider!, operation); }
+        if (isModelOperation(operation)) agents.assertOperationIdentity?.(connection!, provider!, operation, modelId); }
     catch (error) { throw Object.assign(new Error(`Connection slot ${slot.name}: ${error instanceof Error ? error.message : 'Connection validation failed'}`, {cause: error}),
         { code: connectionErrorCode(error) }); }
-    if (slot.resolved && (slot.resolved.providerId !== connection!.providerId || slot.resolved.protocol !== connection!.protocol)) throw new Error(`Connection changed after admission: ${slot.name}`);
+    const protocol = operation === 'chat' ? resolveModelProtocol(connection!, provider, modelId) : connection!.protocol;
+    if (slot.resolved && (slot.resolved.providerId !== connection!.providerId || slot.resolved.protocol !== protocol)) throw new Error(`Connection changed after admission: ${slot.name}`);
     const mediaEndpoint = mediaEndpointIdentity(provider!, connection!.baseURL, slot.requirements?.operation ?? 'chat');
     if (slot.resolved?.mediaEndpoint && slot.resolved.mediaEndpoint !== mediaEndpoint) throw new Error('Media endpoint changed after admission');
-    return { ...slot, connectionId, resolved: { providerId: connection!.providerId, modelId, ...(connection!.protocol ? { protocol: connection!.protocol } : {}), ...(mediaEndpoint ? { mediaEndpoint } : {}) } };
+    return { ...slot, connectionId, resolved: { providerId: connection!.providerId, modelId, ...(protocol ? { protocol } : {}), ...(mediaEndpoint ? { mediaEndpoint } : {}) } };
 }
 async function resolveNodeConnection(config: Record<string, JsonValue>, agents: FlowConnectionCatalog) {
     const connection = await agents.getConnection(String(config.connectionId)), provider = connection && agents.getProvider(connection.providerId);
@@ -90,10 +102,11 @@ async function resolveNodeConnection(config: Record<string, JsonValue>, agents: 
     const selected = connection && isModelOperation(operation) ? operationModelId(connection, provider, operation, agents) : undefined;
     const modelId = typeof config.modelName === 'string' ? config.modelName : selected ?? connection?.tiers?.optimal ?? connection?.model ?? '';
     assertConnection(connection, provider, modelId, requirements);
-    if (isModelOperation(operation)) agents.assertOperationIdentity?.(connection!, provider!, operation);
+    if (isModelOperation(operation)) agents.assertOperationIdentity?.(connection!, provider!, operation, modelId);
     const mediaEndpoint = mediaEndpointIdentity(provider!, connection!.baseURL, requirements?.operation ?? 'chat'), saved = config.frozenConnection;
-    if (saved && typeof saved === 'object' && !Array.isArray(saved) && (saved.providerId !== connection!.providerId || saved.protocol !== connection!.protocol || saved.modelId !== modelId || saved.mediaEndpoint !== mediaEndpoint)) throw new Error('Node connection changed after admission');
-    return { providerId: connection!.providerId, modelId, ...(mediaEndpoint ? { mediaEndpoint } : {}), ...(connection!.protocol ? { protocol: connection!.protocol } : {}),
+    const protocol = !operation || operation === 'chat' ? resolveModelProtocol(connection!, provider, modelId) : connection!.protocol;
+    if (saved && typeof saved === 'object' && !Array.isArray(saved) && (saved.providerId !== connection!.providerId || saved.protocol !== protocol || saved.modelId !== modelId || saved.mediaEndpoint !== mediaEndpoint)) throw new Error('Node connection changed after admission');
+    return { providerId: connection!.providerId, modelId, ...(mediaEndpoint ? { mediaEndpoint } : {}), ...(protocol ? { protocol } : {}),
         ...(requirements ? { requirements: JSON.parse(JSON.stringify(requirements)) as JsonValue } : {}) };
 }
 async function prepareMediaNode(node: FlowRevision['nodes'][number], config: Record<string, JsonValue>, slots: FlowConnection[], agents: FlowConnectionCatalog, runConnectionId?: string): Promise<FlowRevision['nodes'][number]> {

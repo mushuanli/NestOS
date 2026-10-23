@@ -1,0 +1,798 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-10-22T17:38:42.251Z",
+  "status": "succeeded",
+  "acceptance": "Published Flow-bound Agent directly runs original RAPTOR rules with Semgrep and native model review; no RAPTOR CLI or external business script.",
+  "itookit": {
+    "gitHead": "0661948e8a54120ac3a12a44b02313f8c3978960",
+    "workingTreeChangesIncluded": true,
+    "driverGitHead": "a4178cf01d988ec8af180693361d28400d6fa00b",
+    "sourceSha256": {
+      "apps/cli/examples/raptor/raptor-review.flow": "db4fe31f0125f198bacd583ffe55edf5dcc586db765dfe1dcbe7678dfdb78e8f",
+      "apps/cli/examples/raptor/raptor-review.agent": "6795f522d8c2843913d2f694b9769d1bd1a35b894dd50f85bcf1665f5869326c",
+      "apps/cli/tests/raptor-native-flow.test.ts": "321c5f615077e946f39880ff0f51e2d24575967253554eecbc6526cec69b9f03",
+      "libraries/driver-llm/src/providers/anthropic.ts": "4d1380792a7f73ae36cd2b2514f5dd453b1ca55296a55bf017bc9e72f77b7f33",
+      "libraries/driver-llm/src/providers/registry.ts": "052a27b4764fd17d36f47ec2ffc621601e83a007ffe70ce555186886fc7fb1f3",
+      "libraries/driver-llm/src/types/protocol.ts": "b0c6862c9f215210d3b5ad007e3a215cf5d4d172f1c5bac3574d03efefd61d33",
+      "backend/kernel-adapters/src/effects/llm-chat-effect.ts": "1515dd909a8614f377b0c8ec747456c54559c2d1d88c4b9fa3a932403653bf25",
+      "backend/kernel-adapters/src/llm-management/contracts/model-requirements.ts": "4194743b23f9ca59026f98107ae4fc73e4391395de7a0ed67f57db8e955f8532",
+      "backend/llm-session/src/session/flow-connection-snapshot.ts": "d37abf72a2670a9c938c0edbd273b22fe33e4490c2a98c97ea7320c5fc83493c",
+      "backend/llm-session/src/session/flow-connections.ts": "42dcfa386a05a9eb494e22b9646cb2688f6151a662c686f7be11c628604f08a2"
+    }
+  },
+  "raptor": {
+    "gitHead": "2ac96303d5e382c196aa34b2984a3c6a218132a9",
+    "rulesSource": "https://github.com/gadievron/raptor/blob/2ac96303d5e382c196aa34b2984a3c6a218132a9/engine/semgrep/rules/python/python-security.yaml",
+    "rulesSha256": "fdf961cd83fdd21bbc769a5dab540e580229fa2bce10f36427c9811aba3356bc",
+    "ruleCount": 6,
+    "license": "apps/cli/examples/raptor/RAPTOR-LICENSE"
+  },
+  "flow": {
+    "id": "raptor-review",
+    "revision": 1,
+    "digest": "wln6uk",
+    "source": "apps/cli/examples/raptor/raptor-review.flow",
+    "sourceSha256": "db4fe31f0125f198bacd583ffe55edf5dcc586db765dfe1dcbe7678dfdb78e8f"
+  },
+  "agent": {
+    "id": "raptor-security-review",
+    "execution": {
+      "kind": "flow",
+      "flowId": "raptor-review",
+      "connectionBindings": {
+        "analysis": "default",
+        "consensus": "default",
+        "judge": "default"
+      }
+    },
+    "entryPoint": "SessionCommand.Send",
+    "configuration": "isolated MemoryBackend; existing provider credentials loaded without rewriting the source profile"
+  },
+  "execution": {
+    "sessionId": "node-01M5JB1YN6GW45M8PRBA5FTDN4",
+    "rootTaskId": "task_323ec09e-0abc-4284-b548-1689a1347587",
+    "commands": [
+      "-c semgrep scan --config ./raptor-rules.yaml --json --metrics off --disable-version-check --no-git-ignore --no-rewrite-rule-ids --strict . 2>semgrep.stderr.log"
+    ],
+    "tasks": [
+      {
+        "id": "task_007c6c6f-e85f-48d5-8f13-1af80754d9e6",
+        "nodeId": "__flow_return",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_0112b8b0-5530-4c6a-8afc-8afc6552c019",
+        "nodeId": "revise",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_26d54ff5-54e2-47a7-9056-a16921c8564f",
+        "nodeId": "review/0/initial",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_323ec09e-0abc-4284-b548-1689a1347587",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_32f673b0-4369-4ce0-b536-5d82e1aeb495",
+        "nodeId": "rules",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_53b05887-6ed7-4c7d-afe1-4a11fbae889e",
+        "nodeId": "review/0/decision",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_5e1acc60-f68d-44c6-9aec-63433b6220f3",
+        "nodeId": "findings",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_7172fcc5-2fb6-49d7-9f87-ad645741f139",
+        "nodeId": "review/0/consensus",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_734bf869-4da0-4ba2-adce-46d654a94f5f",
+        "nodeId": "review/0/judge",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_7d45cae8-de4d-4b64-a84f-081c4dfdcb52",
+        "nodeId": "scan",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_857fc862-188e-4844-8436-fd94ce2d424b",
+        "nodeId": "summary",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_93c185ba-370a-42fb-ad00-8d51b5a4257e",
+        "nodeId": "review__input",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_ab75aae0-63e0-4087-864d-99f235b07739",
+        "nodeId": "batches",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_b90825a6-2a18-43dc-b611-2910b12a8c0f",
+        "nodeId": "review/__flow_return",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_f3c6013e-c1fc-4887-992f-fcac5127f579",
+        "nodeId": "scan-errors",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_f7d4f675-46b3-4159-828f-674e24f9a000",
+        "nodeId": "review/0/__flow_return",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_fca48860-35a6-4775-a8c3-47ec4d90d3ed",
+        "nodeId": "review/0/source",
+        "status": "succeeded"
+      }
+    ],
+    "raptorCliInvoked": false,
+    "externalBusinessScriptInvoked": false,
+    "targetCodeExecuted": false
+  },
+  "target": {
+    "kind": "disposable generated fixture",
+    "file": "demo.py",
+    "sha256": "48ccfff3fee7811f3440af8ad0490ec377d7f7430038bf22179746aedebdb375",
+    "source": "apps/cli/tests/raptor-native-flow.test.ts"
+  },
+  "scan": {
+    "engine": "Semgrep OSS",
+    "version": "1.182.1",
+    "exitCode": 0,
+    "truncated": false,
+    "errors": [],
+    "scannedPaths": [
+      "demo.py"
+    ],
+    "findingCount": 1,
+    "findings": [
+      {
+        "check_id": "raptor.python.insecure-tempfile",
+        "path": "demo.py",
+        "start": {
+          "line": 3,
+          "col": 12,
+          "offset": 53
+        },
+        "end": {
+          "line": 3,
+          "col": 29,
+          "offset": 70
+        },
+        "extra": {
+          "message": "tempfile.mktemp() is vulnerable to a TOCTOU race — another process can create the file between name generation and open. Use tempfile.mkstemp() or tempfile.NamedTemporaryFile() instead.",
+          "metadata": {
+            "cwe": [
+              "CWE-377"
+            ],
+            "tags": [
+              "security",
+              "python",
+              "tempfile"
+            ]
+          },
+          "severity": "HIGH",
+          "fingerprint": "requires login",
+          "lines": "requires login",
+          "validation_state": "NO_VALIDATOR",
+          "engine_kind": "OSS"
+        }
+      }
+    ],
+    "stdoutSha256": "1c165b1cfabf0294594a76fe3c559973b99b9077eb28703e2682ad0ad1be4381"
+  },
+  "models": {
+    "actualModels": [
+      "deepseek-v4-flash"
+    ],
+    "wireProtocol": "anthropic-messages",
+    "roles": [
+      "initial",
+      "independent-consensus",
+      "judge",
+      "revise"
+    ],
+    "sameModelRoles": true,
+    "crossFamilyConsensusVerified": false,
+    "requests": [
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "tool_use",
+          "usage": {
+            "input_tokens": 1780,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "output_tokens": 125,
+            "service_tier": "standard"
+          },
+          "textLength": 68,
+          "validJson": false,
+          "fenced": false,
+          "blockTypes": [
+            "text",
+            "tool_use",
+            "tool_use"
+          ]
+        }
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "tool_use",
+          "usage": {
+            "input_tokens": 1795,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "output_tokens": 38,
+            "service_tier": "standard"
+          },
+          "textLength": 0,
+          "validJson": false,
+          "fenced": false,
+          "blockTypes": [
+            "tool_use"
+          ]
+        }
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "blocks": [
+              {
+                "type": "tool_use",
+                "id": "call_00_ScjRGtodQjxBSzzo0bKw1881"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "tool_result",
+                "id": "call_00_ScjRGtodQjxBSzzo0bKw1881"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "end_turn",
+          "usage": {
+            "input_tokens": 228,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 1664,
+            "output_tokens": 457,
+            "service_tier": "standard"
+          },
+          "textLength": 1937,
+          "validJson": true,
+          "fenced": false,
+          "blockTypes": [
+            "text"
+          ]
+        }
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "blocks": [
+              {
+                "type": "text"
+              },
+              {
+                "type": "tool_use",
+                "id": "call_00_bT6hMpZZuwBikQdUm5zH4509"
+              },
+              {
+                "type": "tool_use",
+                "id": "call_01_otjYGFTD9O6HGasQuWWo1896"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "tool_result",
+                "id": "call_00_bT6hMpZZuwBikQdUm5zH4509"
+              },
+              {
+                "type": "tool_result",
+                "id": "call_01_otjYGFTD9O6HGasQuWWo1896"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "end_turn",
+          "usage": {
+            "input_tokens": 209,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 1792,
+            "output_tokens": 691,
+            "service_tier": "standard"
+          },
+          "textLength": 2979,
+          "validJson": true,
+          "fenced": false,
+          "blockTypes": [
+            "text"
+          ]
+        }
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "tool_use",
+          "usage": {
+            "input_tokens": 2642,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "output_tokens": 111,
+            "service_tier": "standard"
+          },
+          "textLength": 59,
+          "validJson": false,
+          "fenced": false,
+          "blockTypes": [
+            "text",
+            "tool_use",
+            "tool_use"
+          ]
+        }
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "blocks": [
+              {
+                "type": "text"
+              },
+              {
+                "type": "tool_use",
+                "id": "call_00_bcQmzz2JEYwvtJPtXIdm3844"
+              },
+              {
+                "type": "tool_use",
+                "id": "call_01_xJtqKI8GCQczQtivB6r83526"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "tool_result",
+                "id": "call_00_bcQmzz2JEYwvtJPtXIdm3844"
+              },
+              {
+                "type": "tool_result",
+                "id": "call_01_xJtqKI8GCQczQtivB6r83526"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "end_turn",
+          "usage": {
+            "input_tokens": 175,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 2688,
+            "output_tokens": 393,
+            "service_tier": "standard"
+          },
+          "textLength": 1846,
+          "validJson": true,
+          "fenced": false,
+          "blockTypes": [
+            "text"
+          ]
+        }
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "tool_use",
+          "usage": {
+            "input_tokens": 3520,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 0,
+            "output_tokens": 92,
+            "service_tier": "standard"
+          },
+          "textLength": 0,
+          "validJson": false,
+          "fenced": false,
+          "blockTypes": [
+            "tool_use",
+            "tool_use"
+          ]
+        }
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "blocks": [
+              {
+                "type": "tool_use",
+                "id": "call_00_ryyCfIlKFZa651Iqrb952813"
+              },
+              {
+                "type": "tool_use",
+                "id": "call_01_oQaiYA70FVkmldCRtLhg9988"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "tool_result",
+                "id": "call_00_ryyCfIlKFZa651Iqrb952813"
+              },
+              {
+                "type": "tool_result",
+                "id": "call_01_oQaiYA70FVkmldCRtLhg9988"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "end_turn",
+          "usage": {
+            "input_tokens": 138,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 3584,
+            "output_tokens": 642,
+            "service_tier": "standard"
+          },
+          "textLength": 2699,
+          "validJson": false,
+          "fenced": false,
+          "blockTypes": [
+            "text"
+          ]
+        }
+      },
+      {
+        "model": "deepseek-v4-flash",
+        "messages": [
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "blocks": [
+              {
+                "type": "tool_use",
+                "id": "call_00_ryyCfIlKFZa651Iqrb952813"
+              },
+              {
+                "type": "tool_use",
+                "id": "call_01_oQaiYA70FVkmldCRtLhg9988"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "tool_result",
+                "id": "call_00_ryyCfIlKFZa651Iqrb952813"
+              },
+              {
+                "type": "tool_result",
+                "id": "call_01_oQaiYA70FVkmldCRtLhg9988"
+              }
+            ]
+          },
+          {
+            "role": "assistant",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          },
+          {
+            "role": "user",
+            "blocks": [
+              {
+                "type": "text"
+              }
+            ]
+          }
+        ],
+        "response": {
+          "status": 200,
+          "stopReason": "end_turn",
+          "usage": {
+            "input_tokens": 350,
+            "cache_creation_input_tokens": 0,
+            "cache_read_input_tokens": 4352,
+            "output_tokens": 636,
+            "service_tier": "standard"
+          },
+          "textLength": 2694,
+          "validJson": true,
+          "fenced": false,
+          "blockTypes": [
+            "text"
+          ]
+        }
+      }
+    ]
+  },
+  "result": {
+    "report": "doc/design/fixtures/raptor-report.json",
+    "reportSha256": "af559e36464fad9e5122a291b54d9b9772bab344fb8dae0b2ef598a106781e47",
+    "unredactedReportCanonicalSha256": "aa15872c3b863dd7ae02f59c497ffdfcde8b0d47a75c28b73f843476735c356c",
+    "omittedFields": [
+      "requirements"
+    ],
+    "findingCount": 1,
+    "semanticRevisionCount": 1,
+    "verdict": "true_positive",
+    "exploitability": "uncertain",
+    "modelClaimsAreNotDynamicValidation": true,
+    "modelOutputRedactions": {
+      "generatedTestRequestMarkerOccurrences": 3
+    }
+  },
+  "observedFailure": {
+    "verifiedAt": "2026-10-22T17:36:41.095Z",
+    "status": "failed",
+    "definitionSha256": "e59c489ba648dbbd04e488b6b25ce10418f40feb19517e82a7b104e3c5440111",
+    "rootTaskId": "task_1441b55b-8965-4dee-9dc0-bc6aaf45bc2d",
+    "stage": "revise",
+    "category": "INVALID_OUTPUT",
+    "reason": "Invalid JSON remained after the declared two format repairs; no final report was produced.",
+    "httpStatuses": [
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200,
+      200
+    ],
+    "tasks": [
+      {
+        "id": "task_1441b55b-8965-4dee-9dc0-bc6aaf45bc2d",
+        "status": "failed"
+      },
+      {
+        "id": "task_2ad66d6a-003e-44cc-bb96-ebcf36aaa511",
+        "nodeId": "batches",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_4ef39cd4-04da-44d8-8c45-5c9ee53f944d",
+        "nodeId": "summary",
+        "status": "failed"
+      },
+      {
+        "id": "task_52023d01-373d-40ed-8a42-8aaa48995cc6",
+        "nodeId": "review/0/__flow_return",
+        "status": "failed"
+      },
+      {
+        "id": "task_617d9bea-0be9-44ee-b561-9ce3f8ad9f6d",
+        "nodeId": "review/0/initial",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_6488bf86-0549-4896-9e6b-4ac42870f7a1",
+        "nodeId": "revise",
+        "status": "failed"
+      },
+      {
+        "id": "task_7d5d5210-f24c-440c-8e3c-c1221069c30c",
+        "nodeId": "scan",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_85f4352f-a98f-4cfb-ae1e-61b29da7b7e4",
+        "nodeId": "review/0/decision",
+        "status": "failed"
+      },
+      {
+        "id": "task_8adf9894-997c-41b9-b2f2-873d327531ce",
+        "nodeId": "review/0/consensus",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_9b5dfce7-56f4-4168-8cc7-d9ba5ddc274b",
+        "nodeId": "review__input",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_a3ae059f-9fd4-4c6b-8cd9-a3bb87f446ef",
+        "nodeId": "review/0/judge",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_b1e142a2-1723-41e1-8f32-09294159c895",
+        "nodeId": "__flow_return",
+        "status": "failed"
+      },
+      {
+        "id": "task_b6d377fa-8b66-4cfb-8ee4-439bce45ccec",
+        "nodeId": "rules",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_cf7bee8e-059b-4a67-8f7a-a53dcb8bad30",
+        "nodeId": "review/0/source",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_dec1b8da-ae7f-40c9-981a-b212a4fe9c51",
+        "nodeId": "review/__flow_return",
+        "status": "failed"
+      },
+      {
+        "id": "task_e8803d64-1eeb-4e27-b5ca-e2c5f99aa90d",
+        "nodeId": "findings",
+        "status": "succeeded"
+      },
+      {
+        "id": "task_fd961102-6fc3-4a17-a7a3-8278d5114345",
+        "nodeId": "scan-errors",
+        "status": "succeeded"
+      }
+    ]
+  },
+  "scopeLimits": [
+    "Six original Python rules; one fixture finding.",
+    "Independent contexts use the same model family.",
+    "No CodeQL, fuzzing, exploit execution, automatic patching, remote-node execution or Firecracker validation.",
+    "Bash structured output remains limited to 50000 characters; partial results fail closed."
+  ],
+  "validation": {
+    "nativeFlowRegression": {
+      "passed": 12,
+      "liveSkippedByDefault": 1
+    },
+    "liveAgentAcceptance": {
+      "passed": 1,
+      "httpRequests": 9
+    },
+    "flowAgentAndConnectionRegressions": {
+      "passed": 25
+    },
+    "driverTests": {
+      "passed": 160
+    },
+    "sessionProtocolRegressions": {
+      "passed": 49
+    },
+    "kernelEffectAndProviderRegressions": {
+      "passed": 28
+    },
+    "contextToolResultRegressions": {
+      "passed": 3
+    },
+    "checks": [
+      "CLI, driver, kernel-adapters and llm-session typecheck",
+      "driver build and external tarball ESM/CJS/type consumption",
+      "architecture:check",
+      "docs:check",
+      "git diff --check"
+    ]
+  }
+}

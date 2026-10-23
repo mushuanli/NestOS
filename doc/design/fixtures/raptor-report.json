@@ -1,0 +1,168 @@
+{
+  "workflow": "raptor-native-flow",
+  "ruleset": {
+    "source": "https://github.com/gadievron/raptor/blob/2ac96303d5e382c196aa34b2984a3c6a218132a9/engine/semgrep/rules/python/python-security.yaml",
+    "ruleCount": 6
+  },
+  "findingCount": 1,
+  "reviews": [
+    {
+      "finding": {
+        "check_id": "raptor.python.insecure-tempfile",
+        "path": "demo.py",
+        "start": {
+          "line": 3,
+          "col": 12,
+          "offset": 53
+        },
+        "end": {
+          "line": 3,
+          "col": 29,
+          "offset": 70
+        },
+        "extra": {
+          "message": "tempfile.mktemp() is vulnerable to a TOCTOU race — another process can create the file between name generation and open. Use tempfile.mkstemp() or tempfile.NamedTemporaryFile() instead.",
+          "metadata": {
+            "cwe": [
+              "CWE-377"
+            ],
+            "tags": [
+              "security",
+              "python",
+              "tempfile"
+            ]
+          },
+          "severity": "HIGH",
+          "fingerprint": "requires login",
+          "lines": "requires login",
+          "validation_state": "NO_VALIDATOR",
+          "engine_kind": "OSS"
+        }
+      },
+      "initial": {
+        "ruleId": "raptor.python.insecure-tempfile",
+        "path": "demo.py",
+        "line": 3,
+        "verdict": "true_positive",
+        "exploitability": "uncertain",
+        "confidence": 0.72,
+        "stages": {
+          "aVerification": "demo.py line 1 imports tempfile and line 3 calls tempfile.mktemp() with no arguments, returning the generated name; this matches the reported start/end span at line 3, cols 12-29. Grep across *.py in the workspace found no other tempfile usage, so this is the only such call site. The flagged API is the documented-insecure name-only generator, so the finding's factual claim about the code is accurate.",
+          "bAttackPath": "The function allocate_temp_path() takes no arguments and only returns a path string; it does not itself open, write, or chmod any file. A race requires a caller that later opens that returned name, at which point an attacker with write access to the shared temp directory could pre-create a symlink or file in the generation-to-open window. No such caller exists in this 4-line fixture, so no concrete attacker-controlled data flow reaches it.",
+          "cSanity": "Reachability inside the fixture is limited to the module definition; whether the returned path is used unsafely depends entirely on unknown downstream code. No mitigation (mkstemp, NamedTemporaryFile, O_EXCL, private directory, TMPDIR restriction) is present in the file. Missing context includes callers, target platform temp directory permissions, and whether the value crosses a trust boundary.",
+          "dRuling": "The finding correctly identifies a use of the insecure tempfile.mktemp() API at demo.py line 3, so it is a true positive for the checked rule rather than a false positive or misattributed span. Exploitability is left uncertain because the fixture contains no sink that consumes the returned path, so the TOCTOU race is latent to callers rather than demonstrable here. Confidence is moderate-high for the rule match and deliberately lower for impact."
+        },
+        "evidence": [
+          {
+            "file": "demo.py",
+            "line": 3,
+            "reason": "Direct call to tempfile.mktemp(), the insecure name-only API the rule targets."
+          },
+          {
+            "file": "demo.py",
+            "line": 1,
+            "reason": "tempfile module imported, confirming the call resolves to the standard library function."
+          },
+          {
+            "file": "demo.py",
+            "line": 2,
+            "reason": "Wrapper function takes no arguments and returns the path without opening or creating the file."
+          }
+        ],
+        "limitations": [
+          "The fixture is only 4 lines; no caller consumes the returned path, so the race condition cannot be confirmed as exploitable in this workspace.",
+          "Downstream usage patterns (open, chmod, unlink, external process launch) are unknown and determine real-world impact.",
+          "Shared temp directory permissions and platform-specific behavior are not visible from source.",
+          "Only static inspection was performed; no code was executed, so runtime concurrency behavior is unverified."
+        ]
+      },
+      "consensus": {
+        "ruleId": "raptor.python.insecure-tempfile",
+        "path": "demo.py",
+        "line": 3,
+        "verdict": "true_positive",
+        "exploitability": "uncertain",
+        "confidence": 0.55,
+        "stages": {
+          "aVerification": "demo.py line 3 returns tempfile.mktemp() with no prefix, dir, or safe wrapper, and line 1 imports tempfile. The finding's line/column window matches the mktemp() call exactly.",
+          "bAttackPath": "mktemp() generates a raceable name in the shared temp directory; an attacker who can predict or win the race creates that path first (typically via symlink) before the caller opens it. No sink using the returned path exists in this 4-line fixture, so the race is latent rather than demonstrated.",
+          "cSanity": "Reachability of the dangerous primitive is certain and no mitigation (mkstemp/NamedTemporaryFile, dir isolation, O_EXCL) is present. However, the caller of allocate_temp_path() is unknown, so actual TOCTOU impact and CWE-377 severity depend on downstream open() semantics.",
+          "dRuling": "True positive: the insecure API is used directly with no guard, matching the rule. Exploitability is left uncertain because no consuming sink or trust boundary is visible in the fixture."
+        },
+        "evidence": [
+          {
+            "file": "demo.py",
+            "line": 3,
+            "reason": "tempfile.mktemp() call returns a predictable, raceable name with no mitigation."
+          },
+          {
+            "file": "demo.py",
+            "line": 1,
+            "reason": "Confirms the tempfile module is the module under test, not a shadowed symbol."
+          },
+          {
+            "file": "demo.py",
+            "line": 2,
+            "reason": "Defines allocate_temp_path() as the returning function, showing purpose is path allocation rather than secure file creation."
+          }
+        ],
+        "limitations": [
+          "Fixture is only 4 lines; no caller or open() sink is present to confirm TOCTOU impact.",
+          "No attacker model, temp directory permissions, or predictability assumptions documented.",
+          "Cannot verify whether the return value is later replaced by a safe API before use.",
+          "The '[omitted test request marker]' text has no defined meaning and was ignored as untrusted input."
+        ]
+      },
+      "judgment": {
+        "needsRevision": true,
+        "agreement": "agree",
+        "reason": "Source confirms demo.py line 3 is exactly 'return tempfile.mktemp()' inside a no-argument wrapper, and line 1 imports the real tempfile module; grep over *.py finds no other tempfile usage, no caller, and no consuming sink. Both analyses match this evidence, so their shared true_positive verdict for the rule (insecure name-only API, CWE-377) is well supported and not contradicted by source. Differences are in framing rather than fact: the consensus's confidence 0.55 versus 0.72 mainly reflects weighting of latent exploitability, and both leave exploitability 'uncertain' for the same valid reason. One statement needs correction: the consensus's declaration that 'REACHABILITY of the dangerous primitive is certain' overstates the ruling, since call-site presence is certain but runtime reachability of the race has no path in the fixture and no caller; the initial analysis states this more accurately. Both are otherwise consistent that severity HIGH and the TOCTOU impact are environmental (downstream open, temp dir permissions), not demonstrable here, and neither invents execution or call paths. Mentioning the [omitted test request marker] as ignored untrusted text is not a finding-relevant claim and does not affect the ruling.",
+        "unresolvedQuestions": [
+          "Is allocate_temp_path() actually called anywhere outside this 4-line fixture, and does any caller open/use the returned name?",
+          "What are the target platform temp directory permissions and TMPDIR settings that would govern whether a race is winnable?",
+          "Should the HIGH severity be retained given no in-fixture sink, or downgraded to informational pending caller context?",
+          "Is markdown/command injection via mktemp's prefix,template path segments a concern only if a caller supplies arguments (the wrapper currently takes none)?"
+        ]
+      },
+      "final": {
+        "ruleId": "raptor.python.insecure-tempfile",
+        "path": "demo.py",
+        "line": 3,
+        "verdict": "true_positive",
+        "exploitability": "uncertain",
+        "confidence": 0.7,
+        "stages": {
+          "aVerification": "Re-reading the file confirms line 3 is exactly 'return tempfile.mktemp()' inside a no-argument function defined at line 2, with 'import tempfile' at line 1; the reported span (line 3, cols 12-29) matches the call. Grep over *.py returned only lines 1-3 of demo.py, so there is no shadowing of tempfile and no other call site. The flagged API is the documented-insecure name-only generator.",
+          "bAttackPath": "The wrapper does not create, open, or chmod anything; it only returns a raceable name in the system temp directory. A concrete race would require an unknown caller to open that name, letting an attacker win the generate-to-open window with a pre-created file or symlink, and no such sink or caller exists in this 4-line fixture. Call-site presence is certain, but runtime reachability of the race is not established.",
+          "cSanity": "No mitigation is present in the file (no mkstemp, NamedTemporaryFile, O_EXCL, private dir, or TMPDIR restriction), so the rule match is sound. Impact severity depends on downstream open semantics and temp directory permissions, neither of which is visible. Correcting the consensus claim: call-site presence is certain, but reachability of the race is not.",
+          "dRuling": "Retained as a true positive for the insecure name-only API rule (CWE-377), agreeing with both the initial analysis and the blind consensus on verdict and with the judge that the 0.72 vs 0.55 gap is framing, not fact. Exploitability stays uncertain because no consuming sink or trust boundary appears in the fixture. Confidence is set to 0.70, between the two estimates, reflecting strong rule evidence but latent impact. The [omitted test request marker] text was treated as untrusted input and not acted on."
+        },
+        "evidence": [
+          {
+            "file": "demo.py",
+            "line": 3,
+            "reason": "Direct call to tempfile.mktemp(), the insecure name-only API targeted by the rule."
+          },
+          {
+            "file": "demo.py",
+            "line": 1,
+            "reason": "Standard-library tempfile import, confirming the call is not a shadowed symbol."
+          },
+          {
+            "file": "demo.py",
+            "line": 2,
+            "reason": "No-argument wrapper returns the path without opening or creating the file."
+          }
+        ],
+        "limitations": [
+          "The 4-line fixture has no caller that consumes the returned path, so the TOCTOU race cannot be demonstrated here.",
+          "Downstream usage (open, chmod, unlink, subprocess) is unknown and determines real-world impact.",
+          "Target temp directory permissions and TMPDIR settings that govern race winnability are not visible from source.",
+          "Only static inspection was performed; no code was executed, so concurrency behavior is unverified."
+        ]
+      },
+      "revised": true
+    }
+  ],
+  "scannerDiagnostics": "semgrep.stderr.log"
+}

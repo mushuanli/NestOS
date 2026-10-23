@@ -59,6 +59,26 @@ async function send(runtime: Runtime) {
     return id;
 }
 
+it('allows remote harness members with a local coordinator without contacting the remote runtime', async () => {
+    const { runtime, requests } = await setup();
+    await runtime.agentService.saveAgent({ id: 'remote', name: 'Remote', type: 'agent', config: {}, execution: { kind: 'harness', connectionId: 'execution' } });
+    await runtime.agentService.saveAgent({ ...team(), composition: { coordinatorAgentId: 'host', memberAgentIds: ['remote'] } });
+    const saved = (await runtime.agentService.getAgentConfig('team'))!;
+    expect(saved.execution?.kind).toBe('flow');
+    const flow = await runtime.commandBus.execute<FlowRevision>(FlowCommand.RevisionGet, { id: saved.execution!.kind === 'flow' ? saved.execution!.flowId : '' });
+    expect((flow.nodes.find(node => node.id === 'coordinator')!.config as any).delegation.agents).toEqual([{ agentId: 'remote', name: 'Remote' }]);
+    expect(requests).toEqual([]);
+});
+
+it('rejects a remote coordinator and an explicitly remote composition before publication', async () => {
+    const { runtime, requests } = await setup();
+    await runtime.agentService.saveAgent({ id: 'host', name: 'Remote host', type: 'agent', config: {}, execution: { kind: 'harness', connectionId: 'execution' } });
+    await expect(runtime.agentService.saveAgent(team())).rejects.toThrow('remote harness coordinator');
+    await expect(runtime.agentService.saveAgent({ ...team(), execution: { kind: 'harness', connectionId: 'execution' } })).rejects.toThrow('cannot host');
+    expect(await runtime.agentService.getAgentConfig('team')).toBeNull();
+    expect(requests).toEqual([]);
+});
+
 it('persists author configuration and a stable managed Flow binding, reusing unchanged revisions', async () => {
     const { runtime } = await setup(); await runtime.agentService.saveAgent(team());
     const first = (await runtime.agentService.getAgentConfig('team'))!;

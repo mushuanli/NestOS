@@ -1,6 +1,6 @@
 import { prepareFlowRuntimeInput } from './runtime-input';
 import { memberGroup } from './control/scheduling';
-import { decodeSchedulerCheckpoint } from './checkpoint-decoder';
+import { readFlowSchedulerCheckpoint, SchedulerCheckpointWriter } from './checkpoint-store';
 import { FlowScheduler } from './scheduler';
 import { FlowRunAggregation, runMembers } from './run-aggregation';
 import { FlowRunLifecycle, workspaceLeaseKey, cancelPendingFlowTasks } from './run-lifecycle';
@@ -106,8 +106,7 @@ export class DurableFlowExecutor {
         const session = await this.options.kernel.openSession(sessionId);
         const deadline = Date.now() + timeoutMs;
         while (Date.now() < deadline) {
-            const saved = await session.getShared(`flow.run.${rootTaskId}.scheduler`);
-            const checkpoint = decodeSchedulerCheckpoint(saved?.value);
+            const checkpoint = await readFlowSchedulerCheckpoint(session, rootTaskId);
             const ids = new Set<string>((checkpoint?.instances ?? []).flatMap(([, handles]) => handles));
             // Spawned tasks are persisted by Kernel, while the scheduler owns their ancestors.
             const tasks = await session.listTasks();
@@ -160,8 +159,7 @@ export class DurableFlowExecutor {
         }
         const root = (await handle.root.status()).task;
         if (!record(root.state ?? root.input).awaitingSchedule) return handle;
-        const saved = await session.getShared(`flow.run.${rootTaskId}.scheduler`);
-        const checkpoint = decodeSchedulerCheckpoint(saved?.value ?? record(root.input).initialScheduler);
+        const checkpoint = await readFlowSchedulerCheckpoint(session, rootTaskId, record(root.input).initialScheduler);
         if (!checkpoint) throw new Error('Flow scheduler checkpoint is missing');
         if (checkpoint.version !== 1) throw new Error('Unsupported Flow scheduler checkpoint');
         handle.attachedFromStorage = false;
@@ -249,9 +247,10 @@ export class DurableFlowExecutor {
                 contextProgramVersion, spec, parameters, sessionContext, catalog: plugins.snapshot(),
                 consumedTokens, startedAt, nodeDefaults: [...nodeDefaults], nodeConnections: [...nodeConnections],
             });
+            const checkpointWriter = new SchedulerCheckpointWriter();
             const saveCheckpoint = async (): Promise<void> => {
                 variableStore.prune(new Set([...instances.values()].flat().map(handle => handle.id)));
-                if (published) await session.setShared(`flow.run.${published.root.id}.scheduler`, jsonValue(checkpointSnapshot()));
+                if (published && lease) await checkpointWriter.save(session, published.root.id, lease.epoch, checkpointSnapshot());
             };
 
             const latestDone = (nodeId: string): boolean => {
@@ -305,7 +304,7 @@ export class DurableFlowExecutor {
                 if (memberGroup(nodes, node.id)) taskSpec.deferStart = true;
                 if (historyGroup) taskSpec.labels = { ...taskSpec.labels, flowHistoryGroup: historyGroup };
                 const handle = await session.submit(taskSpec);
-                variableStore.remember(handle.id, context);
+                variableStore.remember(handle.id, node, context);
                 if (!instances.has(node.id)) instances.set(node.id, []);
                 instances.get(node.id)!.push(handle);
                 if (published) {

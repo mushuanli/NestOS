@@ -1,4 +1,4 @@
-import { API_PROTOCOLS, type ConnectionMeta, type LLMProvider } from '@itookit/driver-llm/contracts';
+import { API_PROTOCOLS, resolveModelProtocol, type ConnectionMeta, type LLMProvider } from '@itookit/driver-llm/contracts';
 import { MODEL_OPERATIONS, hasConnectionCredentials, mediaEndpointIdentity, modelForOperation } from '@itookit/kernel-adapters/contracts';
 import type { FlowConnectionCatalog } from './flow-connections';
 import type { FlowConnectionSelection, FlowConnectionSnapshot } from '../contracts/flow-connection-snapshot';
@@ -17,7 +17,12 @@ export function captureFlowConnections(live: FlowConnectionCatalog) {
             pending.set(id, found);
         }
         return found;
-    }, operationModelId: (id, operation) => entries.get(id)?.operationModels[operation] };
+    }, operationModelId: (id, operation) => entries.get(id)?.operationModels[operation],
+    assertOperationIdentity(connection, provider, operation, modelId) {
+        live.assertOperationIdentity?.(connection, provider, operation, modelId);
+        const entry = entries.get(connection.id), protocol = resolveModelProtocol(connection, provider, modelId);
+        if (entry && operation === 'chat' && protocol) entry.modelProtocols = { ...entry.modelProtocols, [modelId]: protocol };
+    } };
     return { catalog, snapshot: (): FlowConnectionSnapshot => ({ connections: structuredClone([...entries.values()]) }) };
 }
 
@@ -38,15 +43,19 @@ export function frozenFlowConnections(live: FlowConnectionCatalog, snapshot: Flo
         if (saved.baseURL !== (current.baseURL ?? provider.baseURL)) throw connectionError('CHANGED', `Flow connection changed after admission: ${id}`);
         return { ...current, model: saved.model, tiers: structuredClone(saved.tiers) };
     }, operationModelId: (id, operation) => entries.get(id)?.operationModels[operation],
-    assertOperationIdentity(connection, provider, operation) {
+    assertOperationIdentity(connection, provider, operation, modelId) {
         const saved = entries.get(connection.id);
         if (!saved || saved.mediaEndpoints[operation] !== mediaEndpointIdentity(provider, connection.baseURL, operation))
             throw connectionError('CHANGED', `Flow connection endpoint changed after admission: ${connection.id}`);
+        if (operation === 'chat' && saved.modelProtocols
+            && saved.modelProtocols[modelId] !== resolveModelProtocol(connection, provider, modelId))
+            throw connectionError('CHANGED', `Flow model protocol changed after admission: ${connection.id}`);
     } };
 }
 
 function catalogPorts(live: FlowConnectionCatalog): FlowConnectionCatalog {
     return { getConnection: id => live.getConnection(id), getProvider: id => live.getProvider(id),
+        ...(live.getHarnessConnection ? { getHarnessConnection: (id: string) => live.getHarnessConnection!(id) } : {}),
         ...(live.getModelDefaults ? { getModelDefaults: () => live.getModelDefaults!() } : {}) };
 }
 
@@ -67,9 +76,10 @@ export function isFlowConnectionSnapshot(value: unknown): value is FlowConnectio
     if (!record(value) || !keys(value, ['connections']) || !Array.isArray(value.connections)) return false;
     const ids = new Set<string>();
     return value.connections.every(entry => {
-        if (!record(entry) || !keys(entry, ['id', 'providerId', 'model', 'tiers', 'protocol', 'baseURL', 'operationModels', 'mediaEndpoints'])
+        if (!record(entry) || !keys(entry, ['id', 'providerId', 'model', 'tiers', 'protocol', 'modelProtocols', 'baseURL', 'operationModels', 'mediaEndpoints'])
             || !text(entry.id) || ids.has(entry.id) || !text(entry.providerId) || typeof entry.model !== 'string'
             || typeof entry.baseURL !== 'string' || entry.protocol !== undefined && !API_PROTOCOLS.includes(entry.protocol as never)
+            || entry.modelProtocols !== undefined && !protocolMap(entry.modelProtocols)
             || !stringMap(entry.operationModels, MODEL_OPERATIONS) || !stringMap(entry.mediaEndpoints, MODEL_OPERATIONS)
             || entry.tiers !== undefined && !stringMap(entry.tiers, ['optimal', 'standard', 'fast'])) return false;
         ids.add(entry.id); return true;
@@ -79,4 +89,5 @@ function record(value: unknown): value is Record<string, unknown> { return !!val
 function keys(value: Record<string, unknown>, allowed: readonly string[]): boolean { return Object.keys(value).every(key => allowed.includes(key)); }
 function text(value: unknown): value is string { return typeof value === 'string' && value.length > 0; }
 function stringMap(value: unknown, allowed: readonly string[]): boolean { return record(value) && keys(value, allowed) && Object.values(value).every(text); }
+function protocolMap(value: unknown): boolean { return record(value) && Object.entries(value).every(([modelId, protocol]) => text(modelId) && API_PROTOCOLS.includes(protocol as never)); }
 function connectionError(code: string, message: string): Error { return Object.assign(new Error(message), { code: `FLOW_CONNECTION_${code}` }); }

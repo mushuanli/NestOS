@@ -10,6 +10,7 @@ import type { DagEdgeDefinition, DagNodeDefinition } from '../contracts';
 import type { JsonValue, SessionHandle } from '@itookit/durable-kernel';
 import { readFlowRunMembers } from './run-members';
 import { retryFlowTask } from './retry-task';
+import { readFlowSchedulerCheckpoint } from './checkpoint-store';
 
 export interface FlowGraphRetryIntent {
     version: 1;
@@ -45,8 +46,7 @@ export async function requestFlowGraphRetry(
     requestId: string,
 ): Promise<FlowGraphRetryRequest> {
     if (typeof requestId !== 'string' || !requestId.trim()) throw new Error('Flow graph retry requires requestId');
-    const checkpoint = (await session.getShared(`flow.run.${rootId}.scheduler`))?.value as
-        SchedulerGraph | undefined;
+    const checkpoint = await readFlowSchedulerCheckpoint(session, rootId);
     if (checkpoint?.version !== 1 || !Array.isArray(checkpoint.nodes) || !Array.isArray(checkpoint.edges)) {
         throw new Error('Flow scheduler checkpoint is missing; graph retry needs a resumable Run');
     }
@@ -109,12 +109,6 @@ async function appendIntent(session: SessionHandle, rootId: string, intent: Flow
             return;
         } catch (error) { if (attempt === 4) throw error; }
     }
-}
-
-interface SchedulerGraph {
-    version?: number;
-    nodes?: DagNodeDefinition[];
-    edges?: DagEdgeDefinition[];
 }
 
 /** CAS retries may re-read the queue, but must not repeat live graph mutations. */

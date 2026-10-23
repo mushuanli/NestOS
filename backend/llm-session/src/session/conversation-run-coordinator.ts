@@ -198,17 +198,18 @@ export class ConversationRunCoordinator {
         snapshot: ContextSnapshot,
         skills: LLMSkill[] = [],
     ): Promise<RunExecution> {
-        const tools = directToolIds(execution.config, execution.task.input);
-        const catalog = await this.options.resolveTools?.(execution.task.sessionId, tools)
+        const harness = execution.config.execution?.kind === 'harness';
+        const tools = harness ? [] : directToolIds(execution.config, execution.task.input);
+        const catalog = await (harness ? undefined : this.options.resolveTools?.(execution.task.sessionId, tools))
             ?? { definitions: [], externalIds: [] };
         const spec = directTaskSpec(execution, snapshot, catalog, skills, this.policy);
-        if (directExecutionMode(execution.task.input) === 'agent' && !spec.input.tools?.length) {
+        if (!harness && directExecutionMode(execution.task.input) === 'agent' && !('tools' in spec.input && spec.input.tools?.length)) {
             throw new Error(this.host.translate('chatInput.executionMode.noTools'));
         }
         if (this.options.kernel.programs.has(spec.program.kind, '2')) spec.program.version = '2';
         const run = await submitRun({
             kind: 'task', sessionId: execution.task.sessionId, task: spec,
-            capabilities: [
+            capabilities: harness ? [{ kind: 'harness', uri: 'harness://session', rights: ['execute'], signalKey: 'harnessHandleId' }] : [
                 { kind: 'llm', uri: 'llm://session', rights: ['execute', 'write'], signalKey: 'llmHandleId' },
                 ...(tools.length ? [{ kind: 'tool', uri: 'tool://session', rights: ['execute'], signalKey: 'toolHandleId' } satisfies CapabilityBinding] : []),
             ],

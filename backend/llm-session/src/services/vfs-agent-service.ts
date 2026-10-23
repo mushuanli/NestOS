@@ -6,7 +6,7 @@ import type { ProviderConnectionTestParams } from '@itookit/driver-llm/contracts
 
 import { FileBackedService } from '../utils/file-backed-service';
 import { AgentFlowAvailabilityProjection, agentSource, type AgentFlowAvailabilitySource } from './agent-flow-availability';
-import type { IFileSystem } from '@itookit/vfs-core';
+import { FSError, type IFileSystem } from '@itookit/vfs-core';
 import type { FSNode, FSSearchQuery } from '@itookit/vfs-core';
 import type { RestorableItem } from '../contracts';
 import type { ILLMManagementService, AgentDefinition, LLMSkill, InitialAgentDef, DefaultConnectionDef } from '../contracts';
@@ -40,6 +40,14 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     private readonly flowAvailability: AgentFlowAvailabilityProjection;
     private prepareAgent?: (agent: AgentDefinition) => Promise<AgentDefinition>;
     private readonly agentSaves = new Map<string, Promise<void>>();
+    private harnessConnectionReader?: (id: string) => Promise<import('@itookit/kernel-adapters/contracts').HarnessConnectionSnapshot | undefined>;
+    private harnessConnectionList?: () => Promise<import('@itookit/kernel-adapters/contracts').HarnessExecutionConnection[]>;
+    private harnessConnectionManagement?: {
+        get: NonNullable<IAgentManagementService['getHarnessConnectionRecord']>;
+        save: NonNullable<IAgentManagementService['saveHarnessConnection']>;
+        remove: NonNullable<IAgentManagementService['removeHarnessConnection']>;
+        targets?: NonNullable<IAgentManagementService['getHarnessConnectionTargets']>;
+    };
 
     constructor(
         fs: IFileSystem,
@@ -59,6 +67,39 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
 
     configureAgentPreparation(prepare: (agent: AgentDefinition) => Promise<AgentDefinition>): void {
         this.prepareAgent = prepare;
+    }
+
+    configureHarnessConnections(reader: NonNullable<VFSAgentService['harnessConnectionReader']>, list?: NonNullable<VFSAgentService['harnessConnectionList']>,
+        management?: VFSAgentService['harnessConnectionManagement']): void {
+        this.harnessConnectionReader = reader;
+        this.harnessConnectionList = list;
+        this.harnessConnectionManagement = management;
+    }
+
+    getHarnessConnection(id: string): Promise<import('@itookit/kernel-adapters/contracts').HarnessConnectionSnapshot | undefined> {
+        return this.harnessConnectionReader?.(id) ?? Promise.resolve(undefined);
+    }
+
+    getHarnessConnections(): Promise<import('@itookit/kernel-adapters/contracts').HarnessExecutionConnection[]> {
+        return this.harnessConnectionList?.() ?? Promise.resolve([]);
+    }
+
+    getHarnessConnectionRecord(id: string): Promise<import('@itookit/kernel-adapters/contracts').HarnessExecutionConnectionRecord | undefined> {
+        return this.harnessConnectionManagement?.get(id) ?? Promise.resolve(undefined);
+    }
+
+    getHarnessConnectionTargets(): Promise<import('@itookit/kernel-adapters/contracts').HarnessExecutionConnectionTarget[]> {
+        return this.harnessConnectionManagement?.targets?.() ?? Promise.resolve([]);
+    }
+
+    async saveHarnessConnection(connection: import('@itookit/kernel-adapters/contracts').HarnessExecutionConnection, expectedRevision: number) {
+        if (!this.harnessConnectionManagement) throw new FSError('ECAPABILITY', 'Harness connection management is unavailable');
+        const record = await this.harnessConnectionManagement.save(connection, expectedRevision); this.notify(); return record;
+    }
+
+    async removeHarnessConnection(id: string, expectedRevision: number) {
+        if (!this.harnessConnectionManagement) throw new FSError('ECAPABILITY', 'Harness connection management is unavailable');
+        const record = await this.harnessConnectionManagement.remove(id, expectedRevision); this.notify(); return record;
     }
 
     // ─── FileBackedService lifecycle ─────────────────────────────────────────

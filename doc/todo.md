@@ -8,6 +8,10 @@
 
 2026-10-21 Durable 增量：独立库、幂等输入、drain、持久定时、归档及活动汇总已实施；401 项库测试（含 52 项真实进程）通过。同 Session/跨 Session 多 Task Harness 组合与审批恢复已有证据，工作台侧栏数量、刷新和 SSE 已在隔离 httpd 验收；现有 2000 端口仍未部署。参见[接口审查](design/durable-kernel-interface-review.md)及[实施验收](design/flow-cli-capabilities-verification.md)。此增量不代表其余 P0/P2 或跨主机目标全部完成。
 
+2026-10-23 远程编排增量：已新增具名 HarnessExecutionConnection，复用已授权 mindos-node 项目与凭据，贯通普通 Agent、Flow 和 Composite 远程成员；入队冻结修订/授权，持久子操作回执、交互响应和确认停止已实施。设置页具备连接新建/编辑，App/CLI与RPC共用服务。真实网关使用安装的Claude Code及本地固定模型peer，不代表真实云模型或完整RAPTOR远程迁移；节点epoch变化无法核对时仍保留未知。使用与验证边界见[远程执行连接](design/remote-harness-connections.md)及[RAPTOR实施](design/raptor-harness-integration.md)。此增量不改变下列其余Durable任务状态。
+
+2026-10-23 真实模型复验：通用远程Agent、并行Flow、Composite、同一Kernel Effect丢回复核对及两个CLI入口已使用实际模型通过；原生usage回报deepseek-v4-pro，主持者为deepseek-v4-flash。代码审查、原生Read和未入prompt的文件挑战值相互核对。记录见[实际模型验收](design/fixtures/remote-harness-real-model-evidence.json)，不覆盖此前固定peer结果，完整RAPTOR远程迁移及跨机器节点仍独立验收。
+
 ## 1. 目标与完成标准
 
 原始目标：扫描 `doc/design`，保证设计与代码同步，并完成仍有效的未完成任务。明确被取代的方案不重新实施；最小系统优先不代表其他要求被移出范围。

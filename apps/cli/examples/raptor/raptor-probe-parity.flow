@@ -1,0 +1,436 @@
+{
+  "id": "raptor-probe-parity",
+  "name": "RAPTOR 官方 fuzz 样本三个固定探针对比",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "nodes": [
+    {
+      "id": "source",
+      "name": "写入上游固定探针目标源码",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Write",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "file_path": "/workspace/target.c",
+          "content": "/*\n * Trivially-fuzzable target for end-to-end testing of:\n *   - /fuzz crash collection\n *   - /fuzz --execute-exploits (PR E) Witness capture\n *   - exploit_verify.compile_and_execute with sanitizers\n *\n * Reads up to 64 bytes from stdin. The first byte is a tag:\n *\n *   'A'  → strcpy() the rest into an 8-byte stack buffer.\n *          With -fsanitize=address, AFL or a hand-written PoC of\n *          more than 8 bytes triggers a stack-buffer-overflow\n *          ASAN report. Without sanitizers, it usually crashes\n *          with SIGSEGV.\n *   'B'  → dereference NULL → SIGSEGV.\n *   'C'  → clean exit (control case — exercises NO_OBVIOUS_EFFECT).\n *   else → exit(0) silently.\n *\n * Deliberately compact + obvious: this is a TEST FIXTURE, not a\n * realistic vulnerability. Operators run RAPTOR against it to\n * verify the full pipeline (compile → fuzz → crash collect →\n * LLM analyse → execute exploit in sandbox → record Witness)\n * works end-to-end with sanitized binaries.\n *\n * Build:\n *   make -C test/data/trivially_fuzzable         # with sanitizers\n *   make -C test/data/trivially_fuzzable plain   # without\n *\n * Probe:\n *   echo -n 'AAAAAAAAAAAAAAAAAAAA' | ./target    # BOF\n *   echo -n 'B'                    | ./target    # NULL deref\n *   echo -n 'C'                    | ./target    # clean\n */\n\n#include <stdio.h>\n#include <string.h>\n#include <stdlib.h>\n#include <unistd.h>\n\nint main(void) {\n    char input[64];\n    ssize_t n = read(0, input, sizeof(input) - 1);\n    if (n <= 0) {\n        return 1;\n    }\n    input[n] = '\\0';\n\n    switch (input[0]) {\n    case 'A': {\n        char buf[8];\n        /* Deliberate strcpy of attacker-controlled bytes into\n         * an 8-byte buffer. ASAN reports stack-buffer-overflow\n         * on any input where strlen(input + 1) >= 8. */\n        strcpy(buf, input + 1);\n        puts(buf);\n        return 0;\n    }\n    case 'B': {\n        /* Deliberate NULL deref → SIGSEGV. */\n        int *p = NULL;\n        *p = 42;\n        return 0;\n    }\n    case 'C':\n        /* Control: clean exit, no observable bug signal. */\n        puts(\"ok\");\n        return 0;\n    default:\n        return 0;\n    }\n}\n"
+        }
+      },
+      "capabilities": [
+        "Write"
+      ]
+    },
+    {
+      "id": "compile",
+      "name": "核对源码并使用 AddressSanitizer 编译",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "command": "set -e\nmkdir -p flow\nprintf '%s  target.c\\n' '765a86169c798c4d75e98295fe1172086a37ccf5806c3170a55088056f506cf8' | sha256sum -c -\ncc -O0 -g -fno-omit-frame-pointer -fsanitize=address -Wall -o target target.c > flow/build.stdout.log 2> flow/build.stderr.log\nprintf '%s\\n' '{\"compiled\":true}'",
+          "timeout_ms": 30000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.probe.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "inputA",
+      "name": "固定输入 A",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Write",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "file_path": "/workspace/probes/A.txt",
+          "content": "AAAAAAAAAAAAAAAAAA"
+        }
+      },
+      "capabilities": [
+        "Write"
+      ]
+    },
+    {
+      "id": "probeA",
+      "name": "执行有时限的官方固定探针 A",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 15000,
+        "args": {
+          "command": "set -e\nulimit -c 0\nulimit -t 5\nset +e\nASAN_OPTIONS=detect_leaks=0:handle_segv=0 timeout --signal=KILL 5s ./target < probes/A.txt > flow/A.stdout.log 2> flow/A.stderr.log\nprobe_status=$?\nset -e\njq -nc --arg id A --argjson exitCode \"$probe_status\" --rawfile stdout flow/A.stdout.log --rawfile stderr flow/A.stderr.log '{id:$id,exitCode:$exitCode,outcome:(if $exitCode == 0 then \"NO_OBVIOUS_EFFECT\" elif ($stderr | contains(\"ERROR: AddressSanitizer:\")) then \"SANITIZER_REPORT\" elif $exitCode >= 128 then \"EXIT_SIGNAL\" else \"EXIT_NONZERO\" end),stackBufferOverflow:($stderr | contains(\"stack-buffer-overflow\")),stdout:$stdout}' > flow/A.json\ncat flow/A.json",
+          "timeout_ms": 10000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.probe.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "inputB",
+      "name": "固定输入 B",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Write",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "file_path": "/workspace/probes/B.txt",
+          "content": "B"
+        }
+      },
+      "capabilities": [
+        "Write"
+      ]
+    },
+    {
+      "id": "probeB",
+      "name": "执行有时限的官方固定探针 B",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 15000,
+        "args": {
+          "command": "set -e\nulimit -c 0\nulimit -t 5\nset +e\nASAN_OPTIONS=detect_leaks=0:handle_segv=0 timeout --signal=KILL 5s ./target < probes/B.txt > flow/B.stdout.log 2> flow/B.stderr.log\nprobe_status=$?\nset -e\njq -nc --arg id B --argjson exitCode \"$probe_status\" --rawfile stdout flow/B.stdout.log --rawfile stderr flow/B.stderr.log '{id:$id,exitCode:$exitCode,outcome:(if $exitCode == 0 then \"NO_OBVIOUS_EFFECT\" elif ($stderr | contains(\"ERROR: AddressSanitizer:\")) then \"SANITIZER_REPORT\" elif $exitCode >= 128 then \"EXIT_SIGNAL\" else \"EXIT_NONZERO\" end),stackBufferOverflow:($stderr | contains(\"stack-buffer-overflow\")),stdout:$stdout}' > flow/B.json\ncat flow/B.json",
+          "timeout_ms": 10000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.probe.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "inputC",
+      "name": "固定输入 C",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Write",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "file_path": "/workspace/probes/C.txt",
+          "content": "C"
+        }
+      },
+      "capabilities": [
+        "Write"
+      ]
+    },
+    {
+      "id": "probeC",
+      "name": "执行有时限的官方固定探针 C",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 15000,
+        "args": {
+          "command": "set -e\nulimit -c 0\nulimit -t 5\nset +e\nASAN_OPTIONS=detect_leaks=0:handle_segv=0 timeout --signal=KILL 5s ./target < probes/C.txt > flow/C.stdout.log 2> flow/C.stderr.log\nprobe_status=$?\nset -e\njq -nc --arg id C --argjson exitCode \"$probe_status\" --rawfile stdout flow/C.stdout.log --rawfile stderr flow/C.stderr.log '{id:$id,exitCode:$exitCode,outcome:(if $exitCode == 0 then \"NO_OBVIOUS_EFFECT\" elif ($stderr | contains(\"ERROR: AddressSanitizer:\")) then \"SANITIZER_REPORT\" elif $exitCode >= 128 then \"EXIT_SIGNAL\" else \"EXIT_NONZERO\" end),stackBufferOverflow:($stderr | contains(\"stack-buffer-overflow\")),stdout:$stdout}' > flow/C.json\ncat flow/C.json",
+          "timeout_ms": 10000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.probe.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "compare",
+      "name": "比较独立参考及三种预期结果",
+      "plugin": "builtin.tool",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "toolId": "Bash",
+        "toolVersion": "1",
+        "approval": "none",
+        "timeoutMs": 30000,
+        "args": {
+          "command": "set -e\njq -sc --slurpfile reference reference/outcomes.json '(sort_by(.id)) as $actual | ($reference[0]|sort_by(.id)) as $expected | {summary:{workflow:\"raptor-probe-parity\",scope:\"Three documented fixed inputs; no automatic fuzz campaign, model-generated PoC or RAPTOR Witness pipeline\",passed:($actual == $expected and ($actual|length) == 3 and $actual[0].outcome == \"SANITIZER_REPORT\" and $actual[1].outcome == \"EXIT_SIGNAL\" and $actual[2].outcome == \"NO_OBVIOUS_EFFECT\"),reference:$expected,actual:$actual}}' flow/A.json flow/B.json flow/C.json > flow/comparison.json\ncat flow/comparison.json\njq -e '.summary.passed' flow/comparison.json > /dev/null",
+          "timeout_ms": 30000
+        }
+      },
+      "capabilities": [
+        "Bash"
+      ],
+      "portSchemas": {
+        "outputs": {
+          "result": {
+            "id": "raptor.probe.shell-result",
+            "version": "1",
+            "definition": {
+              "type": "object",
+              "required": [
+                "stdout",
+                "exitCode",
+                "truncated"
+              ],
+              "properties": {
+                "stdout": {
+                  "type": "string"
+                },
+                "exitCode": {
+                  "type": "integer",
+                  "enum": [
+                    0
+                  ]
+                },
+                "truncated": {
+                  "type": "boolean",
+                  "enum": [
+                    false
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    {
+      "id": "report",
+      "name": "输出限定范围的等价验收报告",
+      "plugin": "builtin.transform",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "operation": "pick",
+        "value": "${nodes.compare.outputs.result}",
+        "path": [
+          "stdout",
+          "summary"
+        ],
+        "type": "json"
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "source-to-compile",
+      "from": "source",
+      "to": "compile",
+      "kind": "control"
+    },
+    {
+      "id": "compile-to-probeA",
+      "from": "compile",
+      "to": "probeA",
+      "kind": "control"
+    },
+    {
+      "id": "inputA-to-probeA",
+      "from": "inputA",
+      "to": "probeA",
+      "kind": "control"
+    },
+    {
+      "id": "probeA-to-compare",
+      "from": "probeA",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "compile-to-probeB",
+      "from": "compile",
+      "to": "probeB",
+      "kind": "control"
+    },
+    {
+      "id": "inputB-to-probeB",
+      "from": "inputB",
+      "to": "probeB",
+      "kind": "control"
+    },
+    {
+      "id": "probeB-to-compare",
+      "from": "probeB",
+      "to": "compare",
+      "kind": "control"
+    },
+    {
+      "id": "compile-to-probeC",
+      "from": "compile",
+      "to": "probeC",
+      "kind": "control"
+    },
+    {
+      "id": "inputC-to-probeC",
+      "from": "inputC",
+      "to": "probeC",
+      "kind": "control"
+    },
+    {
+      "id": "probeC-to-compare",
+      "from": "probeC",
+      "to": "compare",
+      "kind": "control"
+    }
+  ],
+  "outputs": {
+    "report": {
+      "value": "${nodes.report.outputs.result}"
+    }
+  }
+}

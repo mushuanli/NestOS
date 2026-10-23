@@ -19,6 +19,9 @@ import { ProjectExecutionService } from '../projects/execution/service';
 import type { ProjectExecutionProvider } from '../projects/execution/contracts';
 import { attachProjectDraftRecovery } from './project-draft-recovery';
 import { ProjectRemoteMountService, type RemoteFileSourceProvider } from '../projects/remote-mounts';
+import { HarnessConnectionService } from '../projects/harness-connections';
+import { createHarnessExecutionProvider } from '../projects/harness-execution';
+import { createHarnessCleanupState, renewHarnessCleanupLease } from '../projects/harness-cleanup-state';
 import { FSError } from '@itookit/vfs-core';
 import { ModelConfigurationCommands } from '../configuration/model-commands';
 import { resumeSessionDeletions } from './resume-session-deletions';
@@ -86,6 +89,7 @@ export interface ApplicationRuntime {
     sessionFiles: SessionFilesService;
     directoryMounts: DirectoryMountService;
     projects: ProjectService;
+    executionConnections: HarnessConnectionService;
     projectSync?: ProjectSyncService;
     kernel: HeadlessKernelRuntime;
     sessionManager: import('@itookit/llm-session').SessionManager;
@@ -243,9 +247,25 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 await traceBoot('projects.init', () => projects.ensureStartup(options.defaultSessionDirectory));
         });
         if (policy.projects === 'before-ready') await initializeProjects();
+        const executionConnections = new HarnessConnectionService(systemFS, options.remoteSourceProvider ? {
+            list: id => remoteConnections?.list(id) ?? [],
+            resolveConnection: async id => { await initializeProjects(); return remoteConnections!.resolveConnection(id); },
+            projectHarness: async (id, settings) => { await initializeProjects(); return remoteConnections!.projectHarness(id, settings); },
+        } : undefined);
+        agentService.configureHarnessConnections(id => executionConnections.freeze(id), async () =>
+            (await executionConnections.list()).flatMap(record => record.connection ? [record.connection] : []), {
+            get: id => executionConnections.get(id), save: (connection, revision) => executionConnections.save(connection, revision),
+            remove: (id, revision) => executionConnections.remove(id, revision),
+            targets: async () => { await initializeProjects(); return executionConnections.targets(await projects.list()); },
+        });
+        let harnessKernel: HeadlessKernelRuntime | undefined;
+        let ensureHarnessWrite = async (_id: string): Promise<void> => { throw new FSError('ECONFLICT', 'Session ownership is not ready'); };
         let mayCollectContext = (_id: string): boolean => false;
         let digitalTwin: DigitalTwinService | undefined;
         const kernel: HeadlessKernelRuntime = await traceBoot('createKernelRuntime', () => createKernelRuntime({
+            harnessExecution: createHarnessExecutionProvider(executionConnections, {
+                stateForCleanup: createHarnessCleanupState(() => harnessKernel!.kernel, id => ensureHarnessWrite(id)),
+            }),
             systemFS,
             contextEngineOptions: options.contextEngineOptions,
             contextGc: { canCollectSession: id => mayCollectContext(id) },
@@ -278,6 +298,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             skillSourceForSession: options.kernelPlatform?.skillSourceForSession,
             skillToolHandlerFactory: options.kernelPlatform?.skillToolHandlerFactory,
             beforeRecover: async runtime => {
+                harnessKernel = runtime;
                 await directoryReady;
                 mountChanged = id => runtime.disposeSession(id);
                 mountGuard = async id => {
@@ -335,6 +356,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             if (!await recovery.acquireMetadataLease(id)) throw new Error(`Session is owned by another host: ${id}`);
             await mountGuard(id);
         };
+        ensureHarnessWrite = id => renewHarnessCleanupLease(id, recovery.leases, lease => leaseStore.renew(lease));
         mayCollectContext = id => (recovery.leases.get(id)?.leaseUntil ?? 0) > Date.now();
         cleanupFns.push(() => kernel.dispose());
         cleanupFns.push(async () => {
@@ -439,7 +461,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         });
         const startBackground = () => startup.activate();
         if (policy.projects === 'before-ready') startBackground();
-        return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects,
+        return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections,
             kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
             projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id) };
     } catch (error) {

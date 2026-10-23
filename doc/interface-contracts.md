@@ -168,7 +168,7 @@ HTTP 外挂的条件写入、取消与项目授权见 [HTTP VFS 设计](design/v
 
 ## 外部 harness 端口
 
-`MindOSNodeDriver` 由宿主装配并注入远程来源服务，统一凭据，暴露文件/进程 provider、sync 与 harness。`HarnessClient`、`HarnessProfile`、`HarnessSession`、`HarnessEvents`、`HarnessReceipt` 位于 mindos-node-driver `/harness` 公共入口，app-core 只使用类型并转发给 app-shell。
+`MindOSNodeDriver` 由宿主装配并注入远程来源服务，统一凭据，暴露文件/进程 provider、sync 与 harness。`HarnessClient`、`HarnessProfile`、`HarnessSession`、`HarnessEvents`、`HarnessReceipt` 位于 mindos-node-driver `/harness` 公共入口，app-core 消费该端口，分别装配原生会话展示和持久远程执行；UI不持有底层凭据。
 
 创建仅使用服务端声明的 workspaceId；继续先核对 native cwd 授权并拒绝抢占活跃会话；发送、响应和中断必须属于本服务接管的会话。只读历史不触发 resume。修改必须使用当前 epoch/requestId，未知结果查询 operation 收据，禁止自动重放。事件有独立 epoch、递增 seq 与 cursor；gap 要求刷新历史，不能宣称完整输出。客户端关闭不代表原生 turn 停止。
 
@@ -182,6 +182,12 @@ mindos-node 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）�
 `MindOSNodeDriver.projects` 暴露 ProjectClient/RemoteProject/ProjectMount/RegisterProject；服务端目录项目与 sync 数据项目是不同身份。项目文件请求使用项目 ID、revision 与只读衰减 headers，project_exec/harness 从服务端同一份授权获取 mounts。ProjectLauncher 是进程/harness 共用启动端口，当前 bubblewrap，VMM 尚未实现。详见 [项目模型](design/mindos-node-project-model.md)。
 
 `ProjectRemoteMountService.remountProject` 修改客户端项目权限，必要时经可选 `ProjectClient.remount` 调用 `project_remount` 提升服务端项目根授权；所有写入均校验当前权限与版本，不修改项目身份。客户端降为只读只衰减本地绑定。`ApplicationBackend.unmountProject` 是本地卸载用例，允许远端离线，不通过远程文件删除或服务端 `project_forget` 执行。
+
+### 远程 Harness 执行连接
+
+`HarnessExecutionConnection` / `HarnessConnectionSnapshot` / `HarnessExecutionProvider` 从 `kernel-adapters/contracts` 导出。具名配置引用已有节点连接、项目与profile，快照冻结修订和授权；`HarnessConnectionService` 负责CAS配置、发现与准入，`createHarnessExecutionProvider` 负责原生操作journal和终态核对。Kernel adapter只依赖Provider端口，使用 `harness.execute@1`，不直接依赖远程驱动实现。
+
+`IAgentManagementService` 暴露安全连接目录、已授权目标目录及CAS保存/删除，应用RPC按显式方法表开放。Agent的 `execution.kind=harness` 经本地Session、Flow节点和Composite成员共同分派；模型连接保持独立。设置页只从已授权项目/profile候选配置，不接受新的端点或凭据。持久交互、确认停止和epoch未知的边界见[远程执行连接](design/remote-harness-connections.md)。
 
 ### 远程项目会话展示端口
 

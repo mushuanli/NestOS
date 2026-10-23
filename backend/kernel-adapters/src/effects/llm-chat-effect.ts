@@ -2,6 +2,7 @@ import {materializeAssetMessages} from './asset-messages';
 import { assertModelConnection, type ModelConnectionSnapshot } from '../llm-management/contracts/model-requirements';
 import { assertEffectGrant } from '@itookit/durable-kernel';
 import type { LLMLogSink } from '@itookit/driver-llm/contracts';
+import { resolveModelProtocol } from '@itookit/driver-llm/contracts';
 import { silentAdapterLog } from '../ports/diagnostics';
 import type { LlmCommunicationEvent } from '@itookit/driver-llm/contracts';
 import type { AssistantMessage, ChatCompletionChunk, ChatCompletionParams, ChatCompletionResponse, Citation, FinishReason, TokenUsage } from '@itookit/driver-llm/contracts';
@@ -104,9 +105,12 @@ export async function assertFrozenConnection(service: ILLMService, request: LlmC
     const saved = request.connectionSnapshot;
     if (!saved) return;
     const connection = await service.getConnection(request.connectionId);
-    if (!connection || connection.providerId !== saved.providerId || connection.protocol !== saved.protocol
+    if (!connection || connection.providerId !== saved.providerId
         || request.request.model !== saved.modelId) throw new Error('Model connection changed after admission');
-    assertModelConnection(connection, await service.getProvider(connection.providerId), saved.modelId, saved.requirements);
+    const provider = await service.getProvider(connection.providerId);
+    if (resolveModelProtocol(connection, provider, saved.modelId) !== saved.protocol)
+        throw new Error('Model connection changed after admission');
+    assertModelConnection(connection, provider, saved.modelId, saved.requirements);
 }
 
 // ─── Streaming helpers ─────────────────────────────────────────────────────────

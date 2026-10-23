@@ -1,0 +1,25 @@
+{
+  "id": "remote-harness",
+  "name": "Run an authorized remote harness",
+  "draftVersion": 1,
+  "updatedAt": 0,
+  "parameters": [
+    { "name": "request", "type": "string", "required": true }
+  ],
+  "nodes": [
+    {
+      "id": "remote",
+      "name": "Remote project Agent",
+      "plugin": "builtin.agent",
+      "pluginVersion": "1.0.0",
+      "inputs": {},
+      "config": {
+        "execution": { "kind": "harness", "connectionId": "remote-review" },
+        "historyPolicy": "none",
+        "instruction": "${param.request}"
+      }
+    }
+  ],
+  "edges": [],
+  "outputs": { "result": { "value": "${nodes.remote.outputs.result}" } }
+}

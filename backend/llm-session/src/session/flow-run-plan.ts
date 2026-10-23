@@ -38,7 +38,7 @@ export async function validatePlannedFlowConnections(source: DagRunSpec, flow: F
     const graph = structuredClone(source);
     const nodes = graph.nodes.filter(node => {
         const config = node.config as Record<string, unknown> | null;
-        return config && typeof config === 'object' && !!config.connectionId;
+        return config && typeof config === 'object' && (!!config.connectionId || record(config.execution) && config.execution.kind === 'harness');
     });
     const prepared = await prepareFlowConnections({ ...flow, connections: [], defaultConnection: undefined, nodes: nodes as FlowRevision['nodes'] }, {}, catalog, defaults);
     const admitted = new Map(prepared.nodes.map(node => [String(node.id), node.config]));

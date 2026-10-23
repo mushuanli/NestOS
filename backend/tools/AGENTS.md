@@ -58,6 +58,8 @@ src/
 
 ### Tool 接口可选成员
 
+ToolDeviceDriver.registerToolInstance 可接收宿主预计算的 meta/definition 副本，保留原 Tool 的权限、版本与副作用核对方法；getToolDefinition(id) 返回已登记的单项定义（包括停用项），供上层先准备完整批次再发布，不能通过重新调用 Tool 方法造成部分注册。
+
 | 成员 | 类型 | 用途 |
 |---|---|---|
 | `shouldDefer` | `boolean` | 为 true 时带 `defer_loading` 标记发送，需 ToolSearch 先调用 |

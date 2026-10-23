@@ -10,9 +10,10 @@ export function essayReviewDraft(): FlowDraft {
     return { ...structuredClone(preset), updatedAt: Date.now() } as unknown as FlowDraft;
 }
 
-export async function seedDefaultFlows(store: FlowDefinitionStore): Promise<void> {
+export async function seedDefaultFlows(store: FlowDefinitionStore, ensure?: (id: string) => Promise<unknown>): Promise<void> {
     for (const template of createMindosFlowLibrary()) {
         const draft = await store.installBuiltinDraft(template);
         if (draft) await store.createRevision(draft);
+        await ensure?.(template.id);
     }
 }

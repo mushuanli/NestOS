@@ -44,7 +44,7 @@ export class FlowRerunService {
         const context = await this.context();
         if (!context || context.sourceRoundId !== sourceRoundId) throw new Error('Session flow changed; reopen the rerun form');
         if (expectedDefinitionKey && expectedDefinitionKey !== context.definitionKey) throw new Error('Flow changed; reopen the rerun form');
-        const issues = validateFlowParameters(context.definition.parameters, parameters);
+        const issues = validateFlowParameters(context.definition.parameters, parameters, context.definition.inputGroups);
         if (hasValidationErrors(issues)) throw new Error(issues.map(issue => issue.message).join('; '));
         this.registry.ensureNotGenerating('rerun flow');
         const { sessionId, state, runtime } = this.registry.ensureBound();

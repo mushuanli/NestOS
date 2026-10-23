@@ -5,6 +5,7 @@ import { overlappingProjectRoots, projectFileLocation, type ProjectFileRoot } fr
 import { ProjectSessionMoves } from './session-moves';
 import { recoverProjectDirectories } from './project-directory-recovery';
 import { ProjectRepository, type StoredProject } from './project-repository';
+import { ProjectDefaults } from './project-defaults';
 import { ProjectFavorites, SeqProjectFavoriteStore } from './favorites';
 import { WORKSPACE_PATH } from '../vfs/workspace-namespace';
 import type { ProjectExecutionService } from './execution/service';
@@ -14,7 +15,7 @@ import {RemoteDraftRecovery} from './drafts/remote-submission';
 import type { ProjectRemoteMountService } from '@itookit/app-contracts/services';
 import { ProjectSessions } from './project-sessions';
 import { readProjectNavigation } from './navigation-view';
-import { randomUUID, t, translatedValues } from '@itookit/common';
+import { randomUUID, t } from '@itookit/common';
 import { FSError, createFileSystemView, normalizeVirtualPath, type IFileSystem, type OperationOptions } from '@itookit/vfs-core';
 import type { ISessionRepository, SessionFolder } from '@itookit/llm-session';
 import type { DirectoryMountService } from '@itookit/app-contracts/services';
@@ -25,8 +26,8 @@ export type ProjectFileSource = { kind: 'local'; directory: string } | { kind: '
 
 /** Project identity and file roots survive navigation-folder renames and moves. */
 export class ProjectService {
-    navigation(request: import('@itookit/app-contracts/services').ProjectNavigationRequest) {
-        return readProjectNavigation(this, this.repository, request);
+    async navigation(request: import('@itookit/app-contracts/services').ProjectNavigationRequest) {
+        return readProjectNavigation(this, this.repository, request, await this.defaultProjects.getId());
     }
     execution?: ProjectExecutionService;
     private remote?: ProjectRemoteMountService;
@@ -40,7 +41,7 @@ export class ProjectService {
         };
     }
     private startupId?: string;
-    private personalPending?: Promise<ProjectFolder>;
+    private readonly defaultProjects: ProjectDefaults;
     private remoteCreation: Promise<unknown> = Promise.resolve();
     private localCreation: Promise<unknown> = Promise.resolve();
     readonly sessions: ProjectSessions;
@@ -66,6 +67,8 @@ export class ProjectService {
             (id, record) => remoteDrafts.assertResettable(id, record));
         this.sessionMoves = new ProjectSessionMoves(root, repository, directories, files, this);
         this.projectRepository = new ProjectRepository(root, directories);
+        this.defaultProjects = new ProjectDefaults(root, () => this.list(), replacement => this.createUnique(t(replacement ? 'project.default.replacementName' : 'project.defaultName')),
+            project => this.fileSource(project).kind === 'local');
         repository.setStorageDirectoryResolver?.(async folder => {
             const project = folder === null ? await this.current() : await this.forFolder(folder);
             if (!project) return undefined;
@@ -194,8 +197,11 @@ export class ProjectService {
         }
     }
     async removeProjectSource(project: ProjectFolder): Promise<void> {
-        const stored = (await this.projectRepository.list()).find(item => item.id === project.project.id);
-        if (stored) await this.projectRepository.remove(stored);
+        const next = await this.defaultProjects.remove(project.project.id, async () => {
+            const stored = (await this.projectRepository.list()).find(item => item.id === project.project.id);
+            if (stored) await this.projectRepository.remove(stored);
+        });
+        if (next) this.startupId = next.project.id;
     }
     async storedProjectIds(): Promise<string[]> {
         return (await this.projectRepository.list()).map(project => project.id);
@@ -230,14 +236,14 @@ export class ProjectService {
             .sort((a, b) => b.path.length - a.path.length)[0];
     }
     async current(): Promise<ProjectFolder | undefined> {
-        if (this.navigationFromIndex && !this.startupId) {
-            try {
-                const raw = await this.root.driver.readContent('/etc/personal-project.json', { encoding: 'utf-8', representation: 'bytes' });
-                this.startupId = JSON.parse(String(raw)).id;
-            } catch (error) { if (!(error instanceof FSError) || error.code !== 'ENOENT') throw error; }
-        }
         const projects = this.navigationFromIndex ? this.listNavigation(await this.repository.listFolders()) : await this.list();
-        return projects.find(folder => folder.project.id === this.startupId) ?? projects[0];
+        return projects.find(folder => folder.project.id === this.startupId) ?? await this.getDefaultProject()
+            ?? projects.find(project => this.fileSource(project).kind === 'local') ?? projects[0];
+    }
+    getDefaultProject(): Promise<ProjectFolder | undefined> { return this.defaultProjects.get(); }
+    async setDefaultProject(id: string): Promise<void> {
+        await this.defaultProjects.set(id);
+        this.startupId = id;
     }
     create(name: string, parent: string | null = null, directory?: string): Promise<ProjectFolder> {
         const work = this.localCreation.catch(() => {}).then(() => this.createLocal(name, parent, directory));
@@ -353,34 +359,18 @@ export class ProjectService {
         for (let n = 2; folders.some(folder => folder.path === '/' + name); n++) name = `${base} (${n})`;
         return this.create(name, null, directory);
     }
-    /** Persist identity separately from the current project and its renameable folder. */
-    personal(): Promise<ProjectFolder> {
-        return this.personalPending ??= this.resolvePersonal().finally(() => { this.personalPending = undefined; });
-    }
-    private async resolvePersonal(): Promise<ProjectFolder> {
-        const path = '/etc/personal-project.json', driver = this.root.driver;
-        const exists = await driver.exists(path);
-        const identity: { id?: string } = exists
-            ? JSON.parse(await driver.readContent(path, { encoding: 'utf-8' })) : {};
-        const projects = await this.list();
-        const saved = projects.find(folder => folder.project.id === identity.id);
-        if (saved) return saved;
-        // Older profiles have no identity record; adopt only the named personal project.
-        const legacy = projects.find(folder => translatedValues('project.defaultName').includes(folder.path.split('/').pop()!)
-            && folder.project.directory.startsWith('/home/admin/projects/'));
-        const project = legacy ?? await this.createUnique(t('project.defaultName'));
-        const content = JSON.stringify({ id: project.project.id });
-        if (exists) await driver.writeContent(path, content);
-        else {
-            await driver.createDirectory({ parentPath: '/', name: 'etc', recursive: true });
-            await driver.createFile({ parentPath: '/etc', name: 'personal-project.json', content });
-        }
+    /** Compatibility entry point for callers that require a local default project. */
+    async personal(): Promise<ProjectFolder> {
+        const project = await this.defaultProjects.ensure();
+        if (!project) throw new FSError('ENOENT', 'No local project is available as the default');
         return project;
     }
     async ensureStartup(directory?: string): Promise<void> {
-        const existing = directory ? await this.ensureDirectory(directory) : await this.personal();
-        this.startupId = existing.project.id;
-        await this.sessionFolder(existing);
+        const explicit = directory ? await this.ensureDirectory(directory) : undefined;
+        const existing = explicit ?? await this.defaultProjects.ensure();
+        if (explicit) await this.defaultProjects.ensure();
+        this.startupId = existing?.project.id;
+        if (existing) await this.sessionFolder(existing);
     }
     async initializeSession(id: string): Promise<boolean> {
         const manifest = await this.repository.getManifest(id);

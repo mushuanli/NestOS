@@ -17,6 +17,7 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
     private closed = false;
     private generation = 0;
     private fingerprint?: string;
+    private readFailed = false;
     private ocrForm?: OcrSettingsForm;
     private pricing?: ModelPricingConfig;
     private recoveringDraft = false;
@@ -32,6 +33,7 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
         try {
             const [connections, defaults] = await Promise.all([this.service.getConnections(), this.service.getModelDefaults()]);
             if (this.closed || generation !== this.generation) return;
+            if (this.readFailed) { this.container.querySelector('[data-defaults-result]')?.replaceChildren(); this.readFailed = false; }
             this.connections = connections; this.defaults = defaults; this.providers = this.service.getProviders();
             this.pricing = this.service.getPricingConfig?.();
             const fingerprint = JSON.stringify([defaults, this.pricing, connections.map(({ id, name, providerId, enabled, credentialsReady, hasApiKey, model, tiers, protocol, baseURL }) => ({ id, name, providerId, enabled, credentialsReady, hasApiKey, model, tiers, protocol, baseURL })),
@@ -45,7 +47,10 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
                 <p role="status" data-defaults-result></p></section>`;
             this.bind();
             await this.mountOcr();
-        } catch (error) { if (!this.closed && generation === this.generation) { this.fingerprint = undefined; this.showError(error); } }
+        } catch (error) { if (!this.closed && generation === this.generation) {
+            if (!this.container.querySelector('[data-defaults-result]')) this.fingerprint = undefined;
+            this.readFailed = true; this.showError(error);
+        } }
     }
 
     private description(): string {
@@ -171,7 +176,7 @@ export class ModelDefaultsEditor extends BaseSettingsEditor<IConnectionService> 
         }
     }
     protected afterRestoreRecovery(): void {
-        this.recoveringDraft = true;
+        this.recoveringDraft = true; ++this.generation;
         for (const root of this.container.querySelectorAll<HTMLElement>('[data-default-model]')) {
             const operation = root.dataset.defaultModel as ModelOperation;
             const value = this.container.querySelector<HTMLSelectElement>(`[data-default-operation="${operation}"]`)!.value;

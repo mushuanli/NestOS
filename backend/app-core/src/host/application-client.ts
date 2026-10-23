@@ -81,7 +81,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         writeUiDocuments: documents => writeUiDocuments(vfs, documents),
         settings: sources => settingsService(services, sources, options, scope),
         ocr: async () => new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService),
-        initialFiles: async () => new MindosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/minds')),
+        initialFiles: async () => new MindosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/minds'), services.flowInstallations),
         projectSessions: async () => projects?.sessions ?? new ProjectSessions(repository),
         skillsFiles: () => scope.own(new SkillsEngine(agentService)),
         toolboxView: () => toolboxView(services, scope),
@@ -127,7 +127,7 @@ async function toolboxView(services: LocalApplicationServices, scope: ViewScope)
             { mountId: 'remote', at: '/@remote', fs: inventory.remoteAgentSource, access: 'ro' }] }));
         const skills = await resources.own(new SkillsEngine(agentService));
         const toolbox = new ToolboxResources({ ...inventory.sources, agents, skills, flows: services.flowEngine.engine },
-            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory, createMindosFlowDrawers(), createMindosProviderTemplates());
+            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory, createMindosFlowDrawers(), createMindosProviderTemplates(), {toolPackages: services.toolPackages, flowInstallations: services.flowInstallations});
         const files = await resources.own(createToolboxFiles(toolbox.sources));
         const initial = await toolbox.navigation(false);
         return scope.own({ inventory, resources: toolbox, files, initial, dispose: () => resources.close() });

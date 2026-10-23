@@ -1,6 +1,8 @@
 import type { DagNodeOutcome, JsonValue, SerializableExpression } from '../contracts';
 import { mergeResults } from './structured/results';
 import { scopeSpawn } from './spawn-scope';
+import { evaluateFlowExpression as evaluate } from '../contracts/flow-expressions';
+export { evaluateFlowExpression as evaluate, resolveFlowExpression as resolve } from '../contracts/flow-expressions';
 
 export function aggregateOutcome(_config: Record<string, unknown>, inputs: Record<string, unknown>): DagNodeOutcome {
     // Dependency bindings already extract artifact content; keys belong to the caller.
@@ -151,52 +153,9 @@ function selectEdges(
     return selected;
 }
 
-export function evaluate(
-    expression: SerializableExpression | undefined,
-    value: unknown,
-    parameters?: Record<string, JsonValue>,
-): boolean {
-    if (!expression) return false;
-    if (expression.kind === 'literal') return Boolean(expression.value);
-    if (expression.kind === 'exists') return resolve(expression.args?.[0], value, parameters) !== undefined;
-    if (expression.kind === 'not') return !evaluate(expression.args?.[0], value, parameters);
-    if (expression.kind === 'and') return (expression.args ?? []).every(item => evaluate(item, value, parameters));
-    if (expression.kind === 'or') return (expression.args ?? []).some(item => evaluate(item, value, parameters));
-    if (expression.kind === 'eq') return resolve(expression.args?.[0], value, parameters) === resolve(expression.args?.[1], value, parameters);
-    if (expression.kind === 'neq') return resolve(expression.args?.[0], value, parameters) !== resolve(expression.args?.[1], value, parameters);
-    if (expression.kind === 'gt') return compare(resolve(expression.args?.[0], value, parameters), resolve(expression.args?.[1], value, parameters)) > 0;
-    if (expression.kind === 'gte') return compare(resolve(expression.args?.[0], value, parameters), resolve(expression.args?.[1], value, parameters)) >= 0;
-    if (expression.kind === 'lt') return compare(resolve(expression.args?.[0], value, parameters), resolve(expression.args?.[1], value, parameters)) < 0;
-    if (expression.kind === 'lte') return compare(resolve(expression.args?.[0], value, parameters), resolve(expression.args?.[1], value, parameters)) <= 0;
-    if (expression.kind === 'in') {
-        return Array.isArray(expression.value)
-            && expression.value.includes(resolve(expression.args?.[0], value, parameters) as JsonValue);
-    }
-    return resolve(expression, value, parameters) !== undefined;
-}
-
-export function resolve(
-    expression: SerializableExpression | undefined,
-    value: unknown,
-    parameters?: Record<string, JsonValue>,
-): unknown {
-    if (!expression) return undefined;
-    if (expression.kind === 'literal') return expression.value;
-    if (expression.kind === 'param') return pickParam(parameters, expression.path ?? []);
-    return expression.kind === 'path' ? pick(value, expression.path ?? []) : evaluate(expression, value, parameters);
-}
-
-function compare(left: unknown, right: unknown): number {
-    if (typeof left === 'number' && typeof right === 'number') return left - right;
-    return String(left).localeCompare(String(right));
-}
-
-function pickParam(parameters: Record<string, JsonValue> | undefined, path: string[]): unknown {
-    return readOwnPath(parameters, path);
-}
-
 function firstInput(inputs: Record<string, unknown>): unknown {
-    return artifactContent(Object.values(inputs)[0]);
+    const value = Object.hasOwn(inputs, 'input') ? inputs.input : Object.values(inputs)[0];
+    return artifactContent(value);
 }
 
 function artifactContent(value: unknown): unknown {

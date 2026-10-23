@@ -66,6 +66,26 @@ it('runs an internal Flow Agent without a model and keeps prompt separate from r
     expect((await runtime.sessionRepository.getSessionSettings(id)).executionModeLocked).not.toBe(true);
 }, 15_000);
 
+it('passes upstream structured data through a transform when the Session binder also injects its prompt', async () => {
+    const value = {cards: [{name: 'apple', unit: 2}], groups: [[{name: 'apple', unit: 2}]]};
+    const definition = flow(); delete definition.variables;
+    definition.nodes = [
+        {id: 'prepare' as never, name: 'Prepared data', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value}},
+        {id: 'normalize' as never, name: 'Normalize', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {}},
+        {id: 'consume' as never, name: 'Read structured cards', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
+            config: {value: '${nodes.normalize.outputs.result.cards}'}},
+    ];
+    definition.edges = [{id: 'prepare-normalize' as never, from: 'prepare' as never, to: 'normalize' as never,
+        kind: 'data', input: 'input', output: 'result'}];
+    definition.outputs = {result: {value: '${nodes.consume.outputs.result}'}};
+    const {runtime, id} = await setup(definition);
+    await send(runtime, 'Global request separate from prepared cards');
+    expect(await results(runtime, id)).toEqual([value.cards]);
+    const task = (await runtime.kernel.kernel.listSessionTasks(id)).find(task => (task.input as any)?.nodeId === 'normalize')!;
+    expect(task.input).toMatchObject({inputs: {prompt: 'Global request separate from prepared cards'}});
+    expect(task.output).toMatchObject({outputs: {result: {content: value}}});
+});
+
 it('follows new published configuration on subsequent calls and supports a pinned version', async () => {
     const { runtime, id } = await setup();
     await send(runtime, 'first request'); expect((await results(runtime, id))[0].marker).toBe('first');

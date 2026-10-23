@@ -120,10 +120,10 @@ export function scopedParameters(spec: DagRunSpec, nodeId: string, root: Record<
             const supplied = callScopeValues(outputs[scope.source], scope.parameterSet);
             const allowed = new Set((scope.schema ?? []).map(field => field.name));
             for (const key of Object.keys(supplied)) if (!allowed.has(key)) throw new Error(`Unknown Flow parameter: ${key}`);
-            return prepareFlowParameters(scope.schema, { ...scope.defaults, ...supplied });
+            return prepareFlowParameters(scope.schema, supplied, scope.groups, scope.defaults);
         }
-        const values = { ...parent, ...scope.defaults, ...object(renderFlowTemplate(scope.values, { param: parent })) } as Record<string, JsonValue>;
-        return prepareFlowParameters(scope.schema, values);
+        const values = object(renderFlowTemplate(scope.values, { param: parent })) as Record<string, JsonValue>;
+        return prepareFlowParameters(scope.schema, values, scope.groups, {...parent, ...scope.defaults});
     };
     return key ? visit(key, new Set()) : root;
 }

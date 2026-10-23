@@ -127,6 +127,8 @@ export interface EditorOptions<TSubmission = unknown, TInitial = unknown> {
     };
     /** Open a separate conversation draft while retaining the current conversation. */
     onStartConversationDraft?(input: {text: string; files: File[]}): Promise<void>;
+    /** Open the host's conversation workspace for this resource without submitting a message. */
+    onStartConversation?(): Promise<void>;
     /** Editor-specific read model assembled by its application service. */
     initialData?: TInitial;
     onConversationSession?(sessionId: string): void;

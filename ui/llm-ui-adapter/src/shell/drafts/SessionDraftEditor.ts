@@ -108,7 +108,7 @@ export class SessionDraftEditor extends IEditor {
             } : undefined,
             onDraftChange: (config, files) => { if (!this.restoring && !this.sending) this.persist(config, files); },
             onRequestConnections: () => buildConnectionOptions(this.service), onStop: () => {},
-            prepareAgentFlow: this.flowControls?.commands ? (agent, signal) => prepareAgentFlow(this.flowControls!.commands!, agent, signal) : undefined,
+            prepareAgentFlow: this.flowControls?.commands ? (agent, signal, draft) => prepareAgentFlow(this.flowControls!.commands!, agent, signal, draft) : undefined,
             onSend: (text, files, agentId, overrides) => this.send({ text, files, agentId, overrides }),
             onNavigateSettings: ({resourceId, anchor}) => { void this.options.hostContext?.navigate?.({ target: 'settings', resourceId, ...(anchor ? {state: {anchor}} : {}) }); },
         });

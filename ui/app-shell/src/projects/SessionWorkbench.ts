@@ -40,6 +40,7 @@ import type { WorkbenchStatePort } from '../workbench/state';
 import { directoryFavoriteAction, projectFavoriteAction } from './project-favorites';
 import { directoryBreadcrumbs, directoryEntryName } from './directory-label';
 import {localSessionStatus} from './local-session-status';
+import {LocalSessionActivityView} from './local-session-activity';
 import { projectDirectoryNodes } from './project-directory';
 import { conversationResourcePath, projectConversationsPath } from '@itookit/app-contracts';
 import { WORKSPACE_PATH, projectRelativePath, reportRemoteFailure } from '@itookit/app-contracts';
@@ -54,7 +55,7 @@ import { SubscriptionScope } from '../lifecycle/subscription-scope';
 import { archiveTarget } from './archive-targets';
 import { chooseArchive, downloadArchive } from '../files/archive-transfer';
 import { SessionFamilyActions } from './SessionFamilyActions';
-import { buildRenamedFilename, formatDefaultFileTitle, t, traceBoot } from '@itookit/common';
+import { buildRenamedFilename, createModuleLogger, formatDefaultFileTitle, randomUUID, t, traceBoot } from '@itookit/common';
 import { type SessionSkillControls } from '@itookit/tools/contracts';
 import { ProjectNavigation, type ProjectFileView, type ProjectNavigationOptions } from './ProjectNavigation';
 import { remapProjectPath } from './project-paths';
@@ -80,6 +81,8 @@ function debugEnabled(): boolean {
 }
 
 const fileNames = new Intl.Collator('zh-CN', { numeric: true, sensitivity: 'base' });
+const agentLog = createModuleLogger('agent-workspace');
+const sidebarLog = createModuleLogger('workbench-sidebar');
 
 /** Stable identity of the sidebar's restored UI state; the host persists it per scope. */
 import {SESSION_BROWSER_SCOPE} from '../persistence/documents';
@@ -205,6 +208,7 @@ export class SessionWorkbench implements WorkspaceController {
     private sidebarStarting = true;
     private navigationVisible: boolean;
     private navigationReady = false;
+    private navigationDirty = false;
     private navigationTask?: Promise<void>;
     private startNavigation?: () => Promise<void>;
     private pendingNavigation?: {path: string; options: ProjectNavigationOptions; select: boolean};
@@ -219,6 +223,7 @@ export class SessionWorkbench implements WorkspaceController {
     private readonly subscriptions = new SubscriptionScope();
     private contentVersion = 0;
     private readonly taskView: SessionTaskView;
+    private readonly localActivity: LocalSessionActivityView;
     private navigationReadAt = 0;
     private kernelChanges: Record<string, number> = {};
     private refreshCount = 0;
@@ -284,6 +289,8 @@ export class SessionWorkbench implements WorkspaceController {
         this.onBeforeNavigate = options.onBeforeNavigate;
         this.hostContext = options.hostContext; this.digitalTwin = options.digitalTwin;
         this.kernel = options.kernel;
+        this.localActivity = new LocalSessionActivityView(this.kernel, () => this.sidebarUI,
+            () => !this.closed && this.visible && this.resourceNavigationVisible, id => this.sessionPath(id), () => this.scheduleRefresh('kernel:activity-retry', false));
         this.fileFactory = options.fileFactory;
         this.directoryMounts = options.directoryMounts;
         this.sessionSkills = options.sessionSkills;
@@ -304,7 +311,8 @@ export class SessionWorkbench implements WorkspaceController {
             empty: () => { this.clearEditorFields(); this.showWelcome(); this.onSelect('', 'replace'); },
             error: error => this.report(error), changed: () => this.sidebarLayout?.save(this.tabs.snapshot()),
         }, options.workbenchState?.load()?.tabs, options.windows);
-        this.sidebarLayout = new WorkbenchSidebar(this.sidebar, this.tabs.opened, options.workbenchState);
+        this.sidebarLayout = new WorkbenchSidebar(this.sidebar, this.tabs.opened, options.workbenchState, undefined,
+            container => this.tabs.mountWindowList(container));
         if (options.agents && this.projects) {
             this.agentDrawer = new AgentDrawer({backend: this.backend, resourceId: options.agents.resourceId,
                 usage: options.agents.usage, navigate: request => this.hostContext?.navigate(request) ?? Promise.resolve(),
@@ -313,7 +321,24 @@ export class SessionWorkbench implements WorkspaceController {
             this.agentDrawer.setVisible(this.navigationVisible);
             this.sidebarLayout.addDrawer('agents', t('toolbox.agents'), this.agentDrawer.element,
                 collapsed => this.agentDrawer?.setExpanded(!collapsed));
+            if (this.initialResource?.startsWith('@agent/')) this.sidebarLayout.selectView('agents');
         }
+        this.sidebarLayout.setViewChanged(kind => this.syncSidebarView(kind));
+    }
+    private syncSidebarView(kind: string): void {
+        const operationId = randomUUID(), started = performance.now();
+        const details = {operation: 'sidebar.view.select', operationId, stage: 'navigation.sync', view: kind};
+        sidebarLog.info('sidebar.view.started', details);
+        void this.syncNavigationVisibility().then(() => {
+            sidebarLog.info('sidebar.view.completed', {...details, outcome: 'success', durationMs: Math.round(performance.now() - started)});
+        }).catch(error => {
+            sidebarLog.error('sidebar.view.failed', {...details, outcome: 'failure', code: 'SIDEBAR_NAVIGATION_SYNC_FAILED',
+                errorType: error instanceof Error ? error.name : typeof error, durationMs: Math.round(performance.now() - started)});
+            this.report(error);
+        });
+    }
+    private get resourceNavigationVisible(): boolean {
+        return this.navigationVisible && this.sidebarLayout.activeView === 'navigation';
     }
     private isTransferFile(path: string): boolean {
         if (isFlowPath(path)) return false;
@@ -324,7 +349,7 @@ export class SessionWorkbench implements WorkspaceController {
     async start(): Promise<void> {
         this.sessions ??= await this.sessionsReady;
         const view = await this.backend.workbenchView({ displayedFilesPolicy: 'gitignore', chatControls: !!this.createFactory,
-            initialNavigation: this.navigationVisible, initialSessionId: initialSessionId(this.initialResource) });
+            initialNavigation: this.resourceNavigationVisible, initialSessionId: initialSessionId(this.initialResource) });
         this.initialSession = view.initialSession;
         this.initialData = view.initialData;
         this.chatConfiguration = view.chat?.configuration;
@@ -491,12 +516,13 @@ export class SessionWorkbench implements WorkspaceController {
         this.repository.subscribe(change => { if (change?.kind !== 'ui-state') this.scheduleRefresh('repository'); }),
         this.files.subscribe(() => this.scheduleRefresh('files')),
         ...(this.projects ? [this.projects.favorites.subscribe(() => this.scheduleRefresh('favorites'))] : []),
-        // Task content (stream deltas, logs, shared state) notifies many times per
-        // second while a run streams. The sidebar only lists Sessions and Tasks, so
-        // re-render on structural changes only — never per output chunk.
+        // Task commits also emit Session-scoped structural notifications without a
+        // taskId. Repository/file events own directory membership invalidation.
         this.kernel.onChanged(event => {
             this.noteKernelChange(event.reason);
-            if (event.reason !== 'content') this.scheduleRefresh('kernel:' + event.reason);
+            if (event.reason === 'content') return;
+            this.localActivity.invalidate(event.sessionId, event.taskId);
+            this.scheduleRefresh('kernel:activity', false);
         }));
         if (this.projects) this.subscriptions.add(this.projects.drafts.onPromoted(event => {
             void this.promoteDraftTab(event).catch(error => this.report(error));
@@ -515,25 +541,35 @@ export class SessionWorkbench implements WorkspaceController {
             if (this.projects) this.showWelcome();
             else this.message('选择一个会话，或新建会话');
         }
-        this.remoteStatus.setNavigationVisible(this.navigationVisible);
+        this.remoteStatus.setNavigationVisible(this.resourceNavigationVisible);
         if (this.navigationVisible) await this.setNavigationVisible(true);
         else this.sidebarUI.setVisible?.(false);
     }
     async setNavigationVisible(visible: boolean): Promise<void> {
-        this.agentDrawer?.setVisible(visible && this.visible);
         if (this.closed) return;
         this.navigationVisible = visible;
-        this.sidebarUI?.setVisible?.(visible && this.visible);
-        this.remoteStatus?.setNavigationVisible(visible && this.visible);
-        if (!visible || !this.visible || this.closed) { this.projectNavigation?.cancelPending(); return; }
+        this.agentDrawer?.setVisible(visible && this.visible);
+        await this.syncNavigationVisibility();
+    }
+    private async syncNavigationVisibility(): Promise<void> {
+        const visible = this.resourceNavigationVisible && this.visible;
+        this.sidebarUI?.setVisible?.(visible);
+        this.remoteStatus?.setNavigationVisible(visible);
+        if (!visible || this.closed) {
+            this.sidebarLayout.navigation.inert = false; this.projectNavigation?.cancelPending(); this.searchPanel?.cancel(); return;
+        }
         if (!this.navigationReady && this.startNavigation) {
             this.navigationTask ??= this.startNavigation().catch(error => { this.navigationTask = undefined; throw error; });
             await this.navigationTask;
         }
-        if (this.closed || !this.navigationVisible || !this.visible) return;
+        if (this.closed || !this.resourceNavigationVisible || !this.visible) return;
         const pending = this.pendingNavigation;
         if (pending) this.scheduleNavigation(pending.path, pending.options, pending.select);
-        else if (this.viewRefresh.dirty) this.refresh();
+        else {
+            if (performance.now() - this.navigationReadAt >= 15000) this.navigationDirty = true;
+            if (this.navigationDirty || this.viewRefresh.dirty) await this.refresh();
+        }
+        await this.localActivity.refresh();
     }
     /**
      * Stop a running Session and keep every record. Deletion is a separate action; this
@@ -659,8 +695,9 @@ export class SessionWorkbench implements WorkspaceController {
             await this.refresh();
         }, undefined, { initialName: project.name, confirmLabel: t('project.save') });
     }
-    private scheduleRefresh(source: string): void {
-        this.viewRefresh.mark(source, this.navigationVisible || !!this.active);
+    private scheduleRefresh(source: string, navigation = true): void {
+        if (navigation) this.navigationDirty = true;
+        this.viewRefresh.mark(source, this.resourceNavigationVisible || !!this.active);
     }
     private async refresh(): Promise<void> { await this.remoteStatus?.refresh(); await this.viewRefresh.flush(); }
     private async refreshView(sources: readonly string[]): Promise<void> {
@@ -671,22 +708,25 @@ export class SessionWorkbench implements WorkspaceController {
             this.lastRefreshAt = now;
         }
         this.kernelChanges = {};
-        if (this.navigationVisible && this.navigationReady) {
-            await this.browser?.invalidateNavigation({activity: sources.length === 0});
-            await this.sidebarUI?.refresh();
-            if (!this.visible || this.closed) { this.viewRefresh.mark('visibility-interrupted', false); return; }
-            await this.projectNavigation?.refresh(); this.updateRemoteAvailability();
-        }
+        if (this.navigationDirty || sources.length === 0 || sources.includes('visibility-interrupted')) await this.refreshResourceNavigation(sources);
         if (!this.visible || this.closed) { this.viewRefresh.mark('visibility-interrupted', false); return; }
+        await this.localActivity.refresh();
         await this.syncBranchRoute();
-        for (const id of this.waiting) this.sidebarUI?.setNodeAttention(await this.sessionPath(id), t('project.waitingInput'));
+        if (this.resourceNavigationVisible) for (const id of this.waiting) this.sidebarUI?.setNodeAttention(await this.sessionPath(id), t('project.waitingInput'));
         if (this.active?.startsWith('/')) {
             const target = resolveBrowserTarget(this.active);
             if (target.kind === 'task') await this.showTask(this.active);
             else if (target.kind === 'folder' || target.kind === 'favorites' || target.kind === 'project-conversations' || target.kind === 'remote' && !target.nativeSessionId && !target.draft
                 || target.kind === 'tasks') await this.showDirectory(this.active);
         }
-        this.navigationReadAt = performance.now();
+    }
+    private async refreshResourceNavigation(sources: readonly string[]): Promise<void> {
+        if (!this.resourceNavigationVisible || !this.navigationReady) return;
+        await this.browser?.invalidateNavigation({activity: sources.length === 0});
+        if (!this.resourceNavigationVisible || !this.visible || this.closed) { this.navigationDirty = true; return; }
+        await this.sidebarUI?.refresh();
+        if (!this.resourceNavigationVisible || !this.visible || this.closed) { this.navigationDirty = true; return; }
+        await this.projectNavigation?.refresh(); this.navigationDirty = false; this.navigationReadAt = performance.now(); this.updateRemoteAvailability();
     }
     private message(text: string): void {
         const node = document.createElement('div'); node.className = 'mm-placeholder'; node.textContent = text;
@@ -732,7 +772,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.agentDrawer?.setVisible(visible && this.navigationVisible);
         this.remoteStatus?.setVisible(visible);
         if (!visible) this.searchPanel?.cancel();
-        this.sidebarUI?.setVisible?.(visible && this.navigationVisible);
+        this.sidebarUI?.setVisible?.(visible && this.resourceNavigationVisible);
         if (!visible) {
             ++this.openIntent;
             this.cancelViewLoad();
@@ -741,10 +781,10 @@ export class SessionWorkbench implements WorkspaceController {
             try { await Promise.all(this.tabs.values().map(tab => tab.value?.editor?.flushPendingSave?.())); }
             catch (error) { this.report(error); throw error; }
         } else {
+            void this.syncNavigationVisibility().catch(error => this.report(error));
             const pending = this.pendingTarget;
             if (pending) await this.openResource(pending.id, pending.options);
             else await this.editor?.activate?.();
-            if (this.viewRefresh.dirty || performance.now() - this.navigationReadAt >= 15000) this.refresh();
         }
     }
     private finishReads(cleanup: Promise<void>): void {
@@ -1299,17 +1339,17 @@ export class SessionWorkbench implements WorkspaceController {
     }
     private scheduleNavigation(path: string, options: ProjectNavigationOptions, select = true): void {
         this.pendingNavigation = {path, options, select};
-        if (!this.navigationVisible || !this.navigationReady) return;
+        if (!this.resourceNavigationVisible || !this.navigationReady) return;
         const revision = ++this.fileNavigationRevision, active = this.active, selection = this.directorySelectionRevision;
-        const current = () => !this.closed && this.visible && this.navigationVisible && revision === this.fileNavigationRevision && this.active === active;
-        this.sidebar.inert = true;
+        const current = () => !this.closed && this.visible && this.resourceNavigationVisible && revision === this.fileNavigationRevision && this.active === active;
+        this.sidebarLayout.navigation.inert = true;
         this.fileNavigation = this.fileNavigation.then(async () => {
             if (!current()) return;
             await traceBoot('projectFile.navigation', async () => this.projectNavigation?.sync(path, options));
             if (current() && !this.editor && !this.previewCleanup && !this.tabs.current?.failed && !this.container.inert) await this.sidebarUI?.expandPath(path);
             if (current() && select && selection === this.directorySelectionRevision) await this.selectPath(path);
             if (current()) this.pendingNavigation = undefined;
-        }).catch(error => { if (current()) this.report(error); }).finally(() => { if (revision === this.fileNavigationRevision) this.sidebar.inert = false; });
+        }).catch(error => { if (current()) this.report(error); }).finally(() => { if (revision === this.fileNavigationRevision) this.sidebarLayout.navigation.inert = false; });
     }
     /**
      * Follow a favorite row to its live resource. Returns false when the route is not a
@@ -1327,7 +1367,7 @@ export class SessionWorkbench implements WorkspaceController {
         return true;
     }
     private async selectPath(path: string): Promise<void> {
-        if (!this.navigationVisible || !this.navigationReady) {
+        if (!this.resourceNavigationVisible || !this.navigationReady) {
             this.pendingNavigation = {path, options: {reveal: true, preserveProject: true}, select: true}; return;
         }
         const project = this.projectNavigation?.registeredProjects().filter(item => path.startsWith(folderBrowserPath(item.path) + '/'))
@@ -1371,7 +1411,7 @@ export class SessionWorkbench implements WorkspaceController {
     }
     async restoreNavigationScope(scope: string): Promise<void> {
         ++this.fileNavigationRevision; this.pendingNavigation = undefined;
-        this.sidebar.inert = false;
+        this.sidebar.inert = false; this.sidebarLayout.navigation.inert = false;
         this.projectNavigation?.cancelPending(); this.sidebarUI?.cancelPendingSelection?.();
         this.projectNavigation?.selectScope(scope); this.sidebarUI?.setSelection([]);
     }
@@ -1613,6 +1653,7 @@ export class SessionWorkbench implements WorkspaceController {
             await this.leaveEditor(); load.check();
             const id = '@agent/' + encodeURIComponent(agentId), tab = await this.tabs.open(id, t('toolbox.agents'), false);
             if (tab.value) {await this.restoreEditor(tab.value); this.onSelect(id); return;}
+            this.sidebarLayout.selectView('agents');
             const mount = document.createElement('div'); mount.className = 'session-detail agent-workspace-editor'; tab.panel.append(mount);
             const editor = await this.createAgentSettingsEditor(agentId, mount, load.signal);
             try {load.check();} catch (error) {await editor.destroy(); mount.remove(); throw error;}
@@ -1641,11 +1682,14 @@ export class SessionWorkbench implements WorkspaceController {
         if (!definition) throw new Error(t('toolbox.unavailable'));
         this.tabs.title('@agent/' + encodeURIComponent(agentId), definition.name);
         return this.agentOptions.createEditor(mount, {target: {kind: 'entity', entityType: 'agent', id: agentId}, signal,
-            initialContent: JSON.stringify(definition), title: definition.name, hostContext: this.hostContext, mountSettings});
+            initialContent: JSON.stringify(definition), title: definition.name, hostContext: this.hostContext, mountSettings,
+            mountCompactNavigation: container => this.tabs.mountCompactNavigation(container, t('toolbox.agents'), () => this.toggleSidebar()),
+            onStartConversation: () => this.startAgentDraft(agentId)});
     }
     private async showAgentSessions(agentId: string, projectId?: string): Promise<void> {
         const configured = projectId ?? await this.agentProjects.read(agentId);
         const project = configured ? await this.projects!.get(configured) : await this.projects!.personal();
+        this.sidebarLayout.selectView('navigation');
         await this.setAgentFilter(agentId);
         await this.openResource(folderBrowserPath(project.path), {reload: true});
     }
@@ -1667,16 +1711,43 @@ export class SessionWorkbench implements WorkspaceController {
         await this.sidebarUI?.refresh();
     }
     private async startAgentDraft(agentId: string): Promise<void> {
-        this.onBeforeNavigate?.();
+        const operationId = randomUUID(), started = performance.now(), operation = 'agent.chat.open';
+        const intent = ++this.openIntent, origin = this.tabs.current, scope = this.getNavigationScope();
+        const current = () => !this.closed && this.visible && intent === this.openIntent;
+        let stage = 'project.resolve';
+        agentLog.info('agent.chat.started', {operation, operationId, stage});
+        try {
+            this.onBeforeNavigate?.();
+            const project = await this.agentDraftProject(agentId);
+            if (!current()) return;
+            stage = 'project.validate';
+            if (this.isRemoteProject(project)) throw new Error(t('agentWorkspace.localAgentProject'));
+            stage = 'draft.open';
+            await this.startSessionDraft(folderBrowserPath(project.path), undefined, agentId, undefined, current);
+            if (!current() || !this.active?.startsWith('draft:')) return;
+            this.projectNavigation?.selectScope(folderBrowserPath(project.path));
+            const layout = this.container.closest<HTMLElement>('.mm-layout');
+            if (layout) layout.dataset.mobileView = 'detail';
+            agentLog.info('agent.chat.completed', {operation, operationId, stage, outcome: 'success', durationMs: Math.round(performance.now() - started)});
+        } catch (error) {
+            agentLog.error('agent.chat.failed', {operation, operationId, stage, outcome: 'failure',
+                code: stage === 'project.validate' ? 'AGENT_PROJECT_INCOMPATIBLE' : stage === 'draft.open' ? 'AGENT_DRAFT_OPEN_FAILED' : 'AGENT_PROJECT_UNAVAILABLE',
+                errorType: error instanceof Error ? error.name : typeof error, durationMs: Math.round(performance.now() - started)});
+            if (current()) await this.restoreAgentLaunch(origin, scope);
+            throw error;
+        }
+    }
+    private async agentDraftProject(agentId: string): Promise<ProjectFolder> {
         const configured = await this.agentProjects.read(agentId);
-        const project = this.projectNavigation?.currentProject() ?? (configured ? await this.projects!.get(configured) : await this.projects!.personal());
-        if (this.isRemoteProject(project)) throw new Error(t('agentWorkspace.localAgentProject'));
-        if (this.closed) return;
-        await this.startSessionDraft(folderBrowserPath(project.path), undefined, agentId);
-        if (this.closed || !this.active?.startsWith('draft:')) return;
-        this.projectNavigation?.selectScope(folderBrowserPath(project.path));
-        const layout = this.container.closest<HTMLElement>('.mm-layout');
-        if (layout) layout.dataset.mobileView = 'detail';
+        return this.projectNavigation?.currentProject() ?? (configured ? await this.projects!.get(configured) : await this.projects!.personal());
+    }
+    private async restoreAgentLaunch(origin: WorkbenchTab<RetainedEditor> | undefined, scope: string): Promise<void> {
+        if (!origin?.value || this.tabs.get(origin.id) !== origin) return;
+        const failed = this.tabs.current;
+        this.tabs.activate(origin.id); await this.restoreEditor(origin.value);
+        if (failed && failed !== origin && !failed.value) await this.tabs.close(failed.id, false);
+        await this.restoreNavigationScope(scope);
+        this.onSelect(origin.id, 'replace');
     }
     private draftPresentation(project: ProjectFolder): Pick<import('@itookit/ui-common').SessionDraftControls, 'scope' | 'executorScope'> {
         return {executorScope: this.isRemoteProject(project) ? 'remote' : 'local', scope: {
@@ -1784,8 +1855,9 @@ export class SessionWorkbench implements WorkspaceController {
         if (replaceActive) {this.tabs.activate(path); await this.restoreEditor(value); this.onSelect(this.getActiveResourceId()!, 'replace');}
     }
     async startSessionDraft(parent?: string, input?: {text: string; files: File[]}, agentId?: string,
-        preferences?: import('@itookit/ui-common').SessionDraftPreferences): Promise<void> {
+        preferences?: import('@itookit/ui-common').SessionDraftPreferences, navigationCurrent?: () => boolean): Promise<void> {
         const folder = await this.creationFolder(parent);
+        if (navigationCurrent && !navigationCurrent()) return;
         this.cancelViewLoad(); const load = this.viewLoads.begin();
         let receiver: IEditor | undefined;
         const work = this.tail.then(async () => {
@@ -1938,7 +2010,7 @@ export class SessionWorkbench implements WorkspaceController {
         this.activeBranch = undefined;
     }
     async destroy(): Promise<void> {
-        ++this.openIntent; this.cancelViewLoad(); this.closed = true; ++this.fileNavigationRevision;
+        ++this.openIntent; this.cancelViewLoad(); this.closed = true; this.localActivity.close(); ++this.fileNavigationRevision;
         this.projectNavigation?.destroy(); this.searchPanel?.destroy(); this.navigationFilters.destroy();
         this.sidebarUI?.cancelPendingSelection?.(); this.dialogs.abort(); this.subscriptions.dispose();
         const steps: Array<() => void | Promise<unknown>> = [

@@ -36,7 +36,7 @@ function validateRows(template: Template, input: Record<string, unknown>, curren
         const supplied = { ...object(input.parameters), ...row } as Record<string, JsonValue>;
         const unknown = Object.keys(supplied).find(key => !names.has(key));
         if (unknown) throw new Error(`Flow call parameterSets[${index}]: Unknown Flow parameter: ${unknown}`);
-        const issues = validateFlowParameters(template.child.parameterSchema, supplied);
+        const issues = validateFlowParameters(template.child.parameterSchema, supplied, template.child.inputGroups);
         if (issues.length) throw new Error(`Flow call parameterSets[${index}]: ${issues.map(issue => issue.message).join('; ')}`);
     }
     return rows;
@@ -73,7 +73,7 @@ function appendBarriers(template: Template, inputId: string, index: number, pref
 
 function appendScopes(child: DagRunSpec, inputId: string, index: number, prefix: string, callId: string, scopes: CompiledCallScopes): void {
     scopes.parameterScopes![prefix] = { source: inputId, parameterSet: index, parent: callId.slice(0, callId.lastIndexOf('/') + 1),
-        defaults: flowParameterValues(child.parameterSchema), values: {}, schema: structuredClone(child.parameterSchema) };
+        defaults: flowParameterValues(child.parameterSchema), values: {}, schema: structuredClone(child.parameterSchema), groups: structuredClone(child.inputGroups) };
     scopes.variableScopes![prefix] = structuredClone(child.variables ?? {});
     for (const [id, scope] of Object.entries(child.parameterScopes ?? {})) scopes.parameterScopes![prefix + id] = {
         ...structuredClone(scope), parent: prefix + scope.parent, ...(scope.source ? { source: prefix + scope.source } : {}) };

@@ -19,7 +19,8 @@ export class RecoverySettingsEditor extends BaseSettingsEditor<IAgentManagementS
         private readonly restoreFlows?: () => Promise<number>, initialFiles?: InitialFilesPort) {
         super(container, service, options);
         if (initialFiles) this.initialFiles = new InitialFilesSection(initialFiles, undefined,
-            { externalActions: true, selectionChanged: () => this.refreshUIState() });
+            {externalActions: true, selectionChanged: () => this.refreshUIState(),
+                manageDependencies: () => {void this.options.hostContext?.navigate?.({target: 'toolbox', resourceId: '/tools'});}});
     }
 
     async render(): Promise<void> {

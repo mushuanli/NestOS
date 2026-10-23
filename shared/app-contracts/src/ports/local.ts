@@ -13,6 +13,8 @@ import type { SessionFilesService, DirectoryMountService } from './files';
 import type { ProjectSyncService } from './sync';
 
 export interface LocalApplicationServices {
+    flowInstallations?: import('./flow-installation').FlowInstallations;
+    toolPackages?: import('./flow-installation').ToolPackages;
     digitalTwin?: DigitalTwinService;
     vfs: IVFSManager;
     llmDriver: IConnectionService & { init(): Promise<void> };

@@ -49,6 +49,32 @@ it('recovers pending model choices and inline OCR fields without saving', async 
     expect(next.service.testConnection).not.toHaveBeenCalled(); await next.editor.destroy();
 });
 
+it('discards a background read that finishes after an eventless model choice is restored', async () => {
+    const old = fixture(); old.defaults({}); await old.editor.init(old.root);
+    old.root.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!.value = 'chat';
+    const state = old.editor.captureRecovery(); old.editor.suspendForRecovery(); await old.editor.destroy(); old.root.remove();
+    const next = fixture(); next.defaults({}); await next.editor.init(next.root);
+    next.connections[0].name = 'Updated connection';
+    let finish!: (value: Record<string, string>) => void;
+    vi.spyOn(next.service, 'getModelDefaults').mockImplementationOnce(() => new Promise(resolve => {finish = resolve;}));
+    const refresh = next.editor.render(), select = next.root.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!;
+    next.editor.restoreRecovery(state); finish({}); await refresh;
+    expect(next.root.querySelector('[data-default-operation=chat]')).toBe(select); expect(select.value).toBe('chat');
+    expect(next.root.querySelector('[data-default-selection=chat] [data-model-config]')?.getAttribute('data-model-config')).toBe('/connections/chat');
+    expect(next.service.setModelDefault).not.toHaveBeenCalled(); await next.editor.destroy();
+});
+
+it('preserves an eventless choice when unchanged settings become readable again before recovery capture', async () => {
+    const f = fixture(); f.defaults({}); await f.editor.init(f.root);
+    const select = f.root.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!; select.value = 'chat';
+    vi.spyOn(f.service, 'getModelDefaults').mockRejectedValueOnce(new Error('Host disconnected'));
+    await f.editor.render(); expect(f.root.textContent).toContain('Host disconnected');
+    await f.editor.render();
+    expect(f.root.querySelector('[data-default-operation=chat]')).toBe(select); expect(select.value).toBe('chat');
+    expect(f.root.textContent).not.toContain('Host disconnected');
+    expect(f.service.setModelDefault).not.toHaveBeenCalled(); await f.editor.destroy();
+});
+
 it('waits for an in-flight default save before recovery and never repeats the write', async () => {
     const f = fixture(); let finish!: () => void; const gate = new Promise<void>(resolve => {finish = resolve;});
     const save = f.service.setModelDefault.getMockImplementation()!;

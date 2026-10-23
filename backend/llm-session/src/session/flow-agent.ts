@@ -69,7 +69,7 @@ function boundParameters(flow: FlowRevision, defaults: Record<string, unknown> |
     const values = { ...defaults, ...supplied } as Record<string, JsonValue>;
     const names = new Set(flow.parameters?.map(field => field.name));
     for (const name of Object.keys(values)) if (!names.has(name)) throw new Error(`Unknown Flow parameter: ${name}`);
-    return prepareFlowParameters(flow.parameters, values);
+    return prepareFlowParameters(flow.parameters, supplied, flow.inputGroups, defaults as Record<string, JsonValue> | undefined);
 }
 
 async function freezeDependencies(ports: FlowAgentPorts, flow: FlowRevision, input: TaskInput, bindings: Record<string, string>,

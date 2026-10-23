@@ -246,6 +246,8 @@ HTTP v14 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClie
 
 工作台 `SessionBrowserPort.setSessionFilter(agentId?)` 只改变该观察实例的会话投影；RPC 显式登记此方法。项目会话列表在分页前匹配不可变 `ConversationManifest.createdWithAgentId`，`ProjectSearchQuery.agentId` 对会话搜索执行同一条件，文件检索不受影响。宿主 `EditorOptions.mountSettings` 挂载默认项目偏好并参与保存/销毁；`SessionDraftControls.scope` 为草稿提供项目选择候选及切换回调。
 
+`EditorOptions.onStartConversation` 是配置页打开聊天草稿的可选宿主回调。配置编辑器先完成 `flushPendingSave`，随后请求宿主导航，不直接依赖聊天组件或执行服务；失败保留配置与可操作原因。`mountCompactNavigation` 在手机配置页挂载返回和窗口导航，销毁时释放；工作台复用现有项目草稿并选择智能体，保留文本、附件和稳定身份。
+
 项目草稿原地转正：`ProjectDraftComposer.id` 提供草稿 UUID，显式 clear 返回替代 UUID（RPC 字段为句柄创建时的快照，宿主使用返回值更新身份），`ProjectDraftPromotion.remote` 携带已确认的原生会话引用。`projectConversation` 可接收草稿 UUID，并通过 `ProjectConversationPort.conversationId` 返回稳定的宿主身份；RPC 显式传递此字段。首次原生提交 journal 与正式重开使用相同 UUID，只有已确认首 turn 才推进草稿；原生创建和 unknown 不能替代接纳证据。`SessionDraftControls.inPlace` / materialize 的 container 将同一挂载点交给正式控制器，接纳后宿主原地更新标签。详见[项目会话导航](design/project-session-navigation.md)。
 
 `SessionDraftControls.scope.select` 的可选 SessionDraftPreferences 在项目切换前捕获当前输入偏好，导航层仅转交；目标草稿编辑器按当前候选验证智能体与连接/模型后应用，不携带源文本或附件。待接纳控制器及隐藏/关闭视图不接收迟到偏好，执行锁和 Flow 引用不跨项目复制。
@@ -280,3 +282,5 @@ ConversationControls 的可选 commands/command 端口承接当前原生会话�
 `ProjectConversationPort` 的可选 `readComposerDraft/saveComposerDraft/putComposerAsset/readComposerAsset` 属于应用宿主存储，HTTP 能力登记在 HarnessConversationPort 展示端口；它们不是远程 harness RPC。草稿 data 不透明，写入携带 expectedRevision 和 operationId；保存回执未知先查询 acceptedOperationIds，不自动重放。资源按会话授权隔离，原图与选区不进入模型附件。详情见 [图片设计](design/chat-image-editing.md)。
 
 远程输入使用 composer 存储时不双写原生 saveDraft。send 的第四参数和 command 的第五参数可携带 submissionId，HarnessConversation 持久化同 ID 的 submission 回执；UI 只依据该回执接纳或拒绝冻结提交。可编辑草稿与待核对提交分开保存，详细状态及 C4 边界见 [图片与草稿流程](design/chat-image-editing.md#11-审查后的流程收敛)。
+
+Flow 连接准入错误通过 `code` 和 `field`（槽位名）定位；RPC 只传递经过格式校验的字段标识，不传整个异常。`SessionCommand.CheckFlowConnectionSlots` 独立检查槽位配置，完整图准入继续使用 `SessionCommand.CheckFlowConnections`，二者共用连接选择和能力规则。

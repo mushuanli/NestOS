@@ -102,6 +102,8 @@ export interface FlowDraft {
     layout: FlowLayout;
     /** Declared runtime parameters (editable in the designer, frozen into revisions). */
     parameters?: FlowParameter[];
+    inputGroups?: FlowInputGroup[];
+    toolDependencies?: FlowToolDependency[];
     variables?: FlowVariables;
     /** Named connection slots; nodes reference a slot by name (default = defaultConnection). */
     connections?: FlowConnection[];
@@ -122,7 +124,18 @@ export interface FlowDraft {
  * A runtime parameter a workflow declares in its "signature". Node config/inputs
  * reference it via the `${params.<name>}` template; each run supplies a value.
  */
+export interface FlowToolDependency {id: string; version?: string}
+
+export interface FlowInputGroup {
+    name: string;
+    label?: string;
+    mode: 'oneOf';
+    parameters: string[];
+}
+
 export interface FlowParameter {
+    /** Explicit composer binding; parameter names never imply an input source. */
+    inputSource?: 'composer.text' | 'composer.attachments';
     imageConstraints?: FlowImageConstraints;
     widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'images';
     label?: string;
@@ -148,10 +161,13 @@ export interface FlowParameter {
  */
 export interface FlowConnection {
     name: string;
+    label?: string;
+    /** When present, this condition determines whether a binding is required. */
+    requiredWhen?: SerializableExpression;
     connectionId?: string;
     required?: boolean;
     tier?: 'optimal' | 'standard' | 'fast';
-    requirements?: { operation: string; inputModalities?: string[]; outputModalities?: string[]; features?: string[] };
+    requirements?: { operation: string; inputModalities?: string[]; outputModalities?: string[]; features?: string[]; responseFormats?: Array<'text' | 'json_object' | 'json_schema'> };
     resolved?: { providerId: string; modelId: string; protocol?: string; mediaEndpoint?: string };
     description?: string;
 }
@@ -283,6 +299,8 @@ export interface FlowRevision {
     edges: FlowEdgeDefinition[];
     /** Declared runtime parameters (the workflow's variable inputs). */
     parameters?: FlowParameter[];
+    inputGroups?: FlowInputGroup[];
+    toolDependencies?: FlowToolDependency[];
     variables?: FlowVariables;
     /** Named connection slots (frozen into the revision). */
     connections?: FlowConnection[];

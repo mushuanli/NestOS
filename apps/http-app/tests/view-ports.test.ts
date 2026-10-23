@@ -159,6 +159,9 @@ it('uses private subscription credentials through public model and connection po
     });
     vi.stubGlobal('fetch', fetcher);
     const { root } = await setup(host), service = root.services.agentService;
+    const toolbox = await root.backend.toolboxView();
+    await toolbox.resources.create('providers', 'ChatGPT', undefined, 'chatgpt');
+    await toolbox.dispose();
     expect(await service.getProviderAuthorization('chatgpt')).toEqual(state);
     expect(await service.beginProviderAuthorization('chatgpt')).toEqual(state);
     const provider = await service.getFullProvider('chatgpt');

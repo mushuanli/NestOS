@@ -1,7 +1,7 @@
 import { assertInlineFunctionTree } from './inline-functions';
 import { createRunCatalog } from './run-catalog';
 import type { DagPluginCatalog, FlowRevision, FlowConnection, JsonValue, FlowEdgeDefinition, FlowNodeDefinition } from '../contracts';
-import { DELEGATION_LIMITS } from '../contracts';
+import { DELEGATION_LIMITS, flowInputDeclarationIssues, flowToolDependencyIssues, collectFlowToolDependencies } from '../contracts';
 import { simpleHash } from '@itookit/llm-context';
 import { findCycles } from './graph';
 import { validateDispatch } from './structured/validation';
@@ -30,6 +30,8 @@ export function flowRevisionDigest(flow: Omit<FlowRevision, 'digest'>): string {
         nodes: flow.nodes,
         edges: flow.edges,
         parameters: flow.parameters,
+        ...(flow.toolDependencies ? {toolDependencies: flow.toolDependencies} : {}),
+        ...(flow.inputGroups ? {inputGroups: flow.inputGroups} : {}),
         ...(flow.outputs ? { outputs: flow.outputs } : {}),
         ...(flow.functions ? { functions: flow.functions.map(fn => ({ id: fn.id, revision: fn.revision, digest: flowRevisionDigest(fn) })) } : {}),
         ...(flow.dependencyLocks ? { dependencyLocks: flow.dependencyLocks } : {}),
@@ -65,6 +67,9 @@ export function validateFlowRevision(
     validateCompensations(flow.nodes, nodes, issues);
     validateEdges(flow.edges, nodes, plugins, issues);
     validateAcyclic(flow.nodes, flow.edges, issues);
+    issues.push(...flowInputDeclarationIssues(flow), ...flowToolDependencyIssues(flow.toolDependencies));
+    try {collectFlowToolDependencies(flow);}
+    catch (error) {issues.push({code: 'invalid-tool-dependencies', message: error instanceof Error ? error.message : 'Invalid tool dependencies'});}
     validateConnections(flow.connections, flow.defaultConnection, issues);
     validateConnectionReferences(flow, issues);
     validateRunPolicy(flow, issues);

@@ -56,15 +56,16 @@ it('does not install a subscription or restore DOM after destruction races a cat
     expect(document.body.contains(f.drawer.element)).toBe(false);
 });
 
-it('persists an extra drawer independently and loads it when maximized from a collapsed state', () => {
-    let state = {version: 1 as const, drawerCollapsed: {agents: true}};
+it('opens the agent view only when selected and persists the selected view', () => {
+    let state = {version: 1 as const, drawerCollapsed: {agents: true}, sidebarView: 'navigation'};
     const host = document.createElement('div'); document.body.append(host);
     const sidebar = new WorkbenchSidebar(host, document.createElement('div'), {load: () => state, save: value => {state = value as typeof state;}});
     cleanup.push(() => sidebar.destroy());
     const toggle = vi.fn(); sidebar.addDrawer('agents', 'Agents', document.createElement('div'), toggle);
     expect(toggle).toHaveBeenLastCalledWith(true);
-    const buttons = host.querySelectorAll<HTMLButtonElement>('[data-section="agents"] button');
-    buttons[1].click(); expect(toggle).toHaveBeenLastCalledWith(false);
-    buttons[1].click(); expect(toggle).toHaveBeenLastCalledWith(true);
-    buttons[0].click(); expect(state.drawerCollapsed.agents).toBe(false);
+    host.querySelector<HTMLButtonElement>('[data-sidebar-view="agents"]')!.click();
+    expect(toggle).toHaveBeenLastCalledWith(false); expect(state.sidebarView).toBe('agents');
+    expect(host.querySelector<HTMLElement>('[data-section="navigation"]')!.hidden).toBe(true);
+    host.querySelector<HTMLButtonElement>('[data-sidebar-view="navigation"]')!.click();
+    expect(toggle).toHaveBeenLastCalledWith(true); expect(state.sidebarView).toBe('navigation');
 });

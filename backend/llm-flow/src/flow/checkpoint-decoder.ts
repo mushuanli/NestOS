@@ -1,4 +1,5 @@
 import { isFlowRuntimeInput } from './runtime-input';
+import { flowInputDeclarationIssues, type FlowInputGroup, type FlowParameter } from '../contracts';
 import type { SchedulerCheckpoint } from './scheduler-checkpoint';
 import { isRecord, isIdentity, strings, isGraphNode, isGraphEdge } from './graph-decoder';
 
@@ -9,6 +10,7 @@ const pairs = (value: unknown, check: (value: unknown) => boolean) => Array.isAr
 const optional = (value: unknown, check: (value: unknown) => boolean) => value === undefined || check(value);
 const graph = (value: unknown, depth = 0): boolean => depth <= 32 && isRecord(value) && Array.isArray(value.nodes) && value.nodes.every(isGraphNode)
     && Array.isArray(value.edges) && value.edges.every(isGraphEdge)
+    && validGroups(value.inputGroups, value.parameterSchema)
     && optional(value.input, isFlowRuntimeInput)
     && optional(value.functionCalls, calls => isFunctionCalls(calls, depth + 1))
     && optional(value.parameterScopes, isParameterScopes);
@@ -85,5 +87,10 @@ function isParameterScopes(value: unknown): boolean {
     return isRecord(value) && Object.values(value).every(scope => isRecord(scope)
         && typeof scope.parent === 'string' && optional(scope.source, isIdentity)
         && optional(scope.parameterSet, index => Number.isSafeInteger(index) && Number(index) >= 0)
-        && isRecord(scope.defaults) && isRecord(scope.values) && optional(scope.schema, Array.isArray));
+        && isRecord(scope.defaults) && isRecord(scope.values) && optional(scope.schema, Array.isArray) && validGroups(scope.groups, scope.schema));
+}
+
+function validGroups(groups: unknown, schema: unknown): boolean {
+    return groups === undefined || Array.isArray(groups) && Array.isArray(schema)
+        && flowInputDeclarationIssues({parameters: schema as FlowParameter[], inputGroups: groups as FlowInputGroup[]}).length === 0;
 }

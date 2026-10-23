@@ -49,6 +49,16 @@ describe('createVFSToolContext.stat', () => {
         const abort = new AbortController(); abort.abort();
         await expect(context.listFiles('.', { signal: abort.signal })).rejects.toThrow();
     });
+    it('excludes application records from default discovery while preserving explicit reads and ignore overrides', async () => {
+        const fs = await openFs();
+        await fs.driver.createFile({name: 'found.txt', parentPath: '/work', recursive: true, content: 'current evidence'});
+        await fs.driver.createFile({name: 'history.seq', parentPath: '/work/.mindos/sessions/s', recursive: true, content: 'previous evidence'});
+        const context = createVFSToolContext({fs, cwd: '/work'});
+        expect(await context.listFiles('.')).toEqual(['/work/found.txt']);
+        expect(await context.listFiles('.', {includeIgnored: true})).toContain('/work/.mindos/sessions/s/history.seq');
+        expect(await context.listFiles('.', {includeIgnored: true, excludeDirectories: ['.mindos']})).toEqual(['/work/found.txt']);
+        expect(await context.readFile('.mindos/sessions/s/history.seq')).toBe('previous evidence');
+    });
     it('reports the node type without walking the subtree', async () => {
         const fs = await openFs();
         await fs.driver.createFile({ name: 'notes.md', parentPath: '/', content: 'hello' });

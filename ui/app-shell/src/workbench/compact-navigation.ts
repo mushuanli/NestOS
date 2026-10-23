@@ -3,7 +3,7 @@ import {openedButton} from './opened-button';
 import {ACTION_ICONS, t} from '@itookit/common';
 
 /** The host keeps project context and document switching independent of editor internals. */
-export function compactNavigation(container: HTMLElement, context: string, back: () => void, open: () => void) {
+export function compactNavigation(container: HTMLElement, context: string, back: () => void, open: (origin: HTMLButtonElement) => void) {
     const root = document.createElement('div'); root.className = 'workbench-compact-navigation';
     const button = (icon: string, label: string, action: () => void) => {
         const element = document.createElement('button'); element.type = 'button'; element.innerHTML = icon;

@@ -1,8 +1,12 @@
 import { escapeHTML, t } from '@itookit/common';
-import { type FlowParameter, type JsonValue, validFlowImages } from '@itookit/llm-flow/contracts';
+import { type FlowInputGroup, type FlowParameter, type JsonValue, validFlowImages } from '@itookit/llm-flow/contracts';
 import { type ConnectionMeta } from '@itookit/driver-llm/contracts';
 import { renderParameterFields, readParameterFields, type ParameterFormOptions } from '@itookit/llm-ui/forms';
-import { bindFlowImageFields, imageParameterField } from './FlowImageFields';
+import { bindFlowImageFields, imageParameterField, type FlowInitialFiles } from './FlowImageFields';
+import {bindFlowParameterState, readSelectedFlowParameters, renderFlowInputGroups, showFlowFieldError} from './FlowParameterState';
+import {collectFlowConnections, flowConnectionFields, updateFlowConnectionRequirements, validateFlowConnectionForm} from './FlowConnectionFields';
+
+export {bindFlowParameterState, showFlowFieldError, validateFlowConnectionForm};
 
 export interface FlowConnectionSelection {
     assets?: import('./FlowImageFields').FlowImageAssetPort;
@@ -11,10 +15,12 @@ export interface FlowConnectionSelection {
     bindings?: Record<string, string>;
     selected?: string;
     onChange(id: string | undefined): void;
-    validate?(): Promise<void>;
+    validate?(values?: Record<string, JsonValue>): Promise<void>;
 }
 export interface FlowParameterExtension {
-    mount(dialog: HTMLElement): () => void;
+    initialFiles?: FlowInitialFiles;
+    inputGroups?: readonly FlowInputGroup[];
+    mount?(dialog: HTMLElement): () => void;
     validate?(): void;
     submitLabel?: Parameters<typeof t>[0];
     formatError?(error: unknown): string;
@@ -24,18 +30,14 @@ export interface FlowParameterExtension {
 /** Validate before closing so invalid input can be corrected repeatedly. */
 export function promptFlowParameters(parameters: FlowParameter[], title?: string, submit?: (values: Record<string, JsonValue>, signal?: AbortSignal) => Promise<void>, signal?: AbortSignal, connection?: FlowConnectionSelection, assets = connection?.assets, description?: string, extension?: FlowParameterExtension): Promise<Record<string, JsonValue> | null> {
     return new Promise(resolve => {
-        const dialog = document.createElement('dialog'), lifetime = new AbortController();
-        dialog.className = 'dag-dialog flow-parameter-dialog';
-        dialog.setAttribute('aria-labelledby', 'flow-parameter-dialog-title');
-        dialog.innerHTML = parameterDialogTemplate(parameters, title, Boolean(submit), connection, description);
-        const imagesReady = bindFlowImageFields(dialog, parameters, assets), unmount = extension?.mount(dialog);
-        if (extension?.submitLabel) dialog.querySelector('button[type="submit"]')!.textContent = t(extension.submitLabel);
+        const lifetime = new AbortController();
+        const {dialog, imagesReady, unmount} = mountParameterDialog(parameters, title, Boolean(submit), connection, assets, description, extension);
         const isCurrent = () => !lifetime.signal.aborted && !signal?.aborted;
         const collect = () => {
             if (!isCurrent()) throw new Error(t('flow.launch.cancel'));
             extension?.validate?.();
-            const values = readFlowParameterForm(dialog, parameters, connection), validation = connection?.validate?.();
-            return validation ? validation.then(() => values) : values;
+            const values = readFlowParameterForm(dialog, parameters, connection);
+            return connection?.validate ? validateFlowConnectionForm(dialog, connection, values).then(() => values) : values;
         };
         const read = () => { const pending = imagesReady(); return pending ? pending.then(collect) : collect(); };
         const result = bindParameterSubmission(dialog, read, submit, lifetime.signal, isCurrent, extension);
@@ -43,10 +45,23 @@ export function promptFlowParameters(parameters: FlowParameter[], title?: string
         const abort = () => dialog.close(); signal?.addEventListener('abort', abort, {once: true});
         dialog.addEventListener('close', () => {
             const values = signal?.aborted ? null : result();
-            lifetime.abort(); signal?.removeEventListener('abort', abort); unmount?.(); dialog.remove(); resolve(values);
+            lifetime.abort(); signal?.removeEventListener('abort', abort); unmount(); dialog.remove(); resolve(values);
         }, {once: true});
         document.body.append(dialog); dialog.showModal(); if (signal?.aborted) abort();
     });
+}
+
+function mountParameterDialog(parameters: FlowParameter[], title: string | undefined, submitting: boolean,
+    connection?: FlowConnectionSelection, assets?: FlowConnectionSelection['assets'], description?: string, extension?: FlowParameterExtension) {
+    const dialog = document.createElement('dialog'); dialog.className = 'dag-dialog flow-parameter-dialog';
+    dialog.setAttribute('aria-labelledby', 'flow-parameter-dialog-title');
+    dialog.innerHTML = parameterDialogTemplate(parameters, title, submitting, connection, description, extension?.inputGroups);
+    const unbind = bindFlowParameterState(dialog, parameters, extension?.inputGroups ?? [], values => {
+        if (connection) updateFlowConnectionRequirements(dialog, connection, values);
+    });
+    const imagesReady = bindFlowImageFields(dialog, parameters, assets, extension?.initialFiles), unmount = extension?.mount?.(dialog);
+    if (extension?.submitLabel) dialog.querySelector('button[type="submit"]')!.textContent = t(extension.submitLabel);
+    return {dialog, imagesReady, unmount: () => {unmount?.(); unbind();}};
 }
 
 function bindParameterSubmission(dialog: HTMLElement, read: () => Record<string, JsonValue> | Promise<Record<string, JsonValue>>,
@@ -64,8 +79,11 @@ function bindParameterSubmission(dialog: HTMLElement, read: () => Record<string,
             if (!isCurrent()) return;
             result = values; (dialog as HTMLDialogElement).close();
         } catch (error) {
-            if (isCurrent()) dialog.querySelector('[data-form-error]')!.textContent = extension?.formatError?.(error)
-                ?? (error instanceof Error ? error.message : t('flow.launch.invalidValue'));
+            if (isCurrent()) {
+                restore(); showFlowFieldError(dialog, error);
+                dialog.querySelector('[data-form-error]')!.textContent = extension?.formatError?.(error)
+                    ?? (error instanceof Error ? error.message : t('flow.launch.invalidValue'));
+            }
         } finally { submitting = false; restore(); }
     });
     return () => result;
@@ -78,80 +96,26 @@ function freezeParameterControls(dialog: HTMLElement): () => void {
     return () => controls.forEach(({control, disabled}) => {control.disabled = disabled;});
 }
 
-export function flowParameterFields(parameters: FlowParameter[], connection?: FlowConnectionSelection): string {
-    const inputs = parameters.length ? parameterSection('flow.parameters.title', renderParameterFields(parameters, parameterOptions(parameters))) : '';
-    return inputs + (connection ? parameterSection('flow.parameters.connections', slotFields(connection) + connectionField(connection)) : '');
+export function flowParameterFields(parameters: FlowParameter[], connection?: FlowConnectionSelection, groups: readonly FlowInputGroup[] = []): string {
+    const inputs = parameters.length ? parameterSection('flow.parameters.inputs', renderFlowInputGroups(parameters, groups)
+        + renderParameterFields(parameters, parameterOptions(parameters))) : '';
+    return inputs + (connection ? parameterSection('flow.parameters.connections', flowConnectionFields(connection)) : '');
 }
 
 export function readFlowParameterForm(root: HTMLElement, parameters: FlowParameter[], connection?: FlowConnectionSelection): Record<string, JsonValue> {
-    const values = readParameterFields(root, parameters, parameterOptions(parameters));
-    if (connection) {
-        collectConnections(root, connection);
-        const selected = root.querySelector<HTMLSelectElement>('[data-run-connection]')!.value;
-        validateConnection(connection, selected);
-        connection.onChange(selected || undefined);
-    }
+    const values = readSelectedFlowParameters(root, parameters, (field, parameter) => readParameterFields(field, [parameter], parameterOptions([parameter])));
+    if (connection) collectFlowConnections(root, connection, values);
     return values;
-}
-
-function connectionField(selection: FlowConnectionSelection): string {
-    const options = selection.connections.map(item => `<option value="${escapeHTML(item.id)}" ${item.id === selection.selected ? 'selected' : ''}
-        ${connectionUnavailable(item) ? 'disabled' : ''}>${escapeHTML(item.name)} · ${escapeHTML(item.providerId)}</option>`).join('');
-    const missing = selection.selected && !selection.connections.some(item => item.id === selection.selected)
-        ? `<option value="${escapeHTML(selection.selected)}" selected>${escapeHTML(t('connection.unavailable', { id: selection.selected }))}</option>` : '';
-    const field = `<label class="llm-parameter-field"><span class="llm-parameter-field__label">${escapeHTML(t('connection.flowLabel'))}</span>
-        <select data-run-connection><option value="">${escapeHTML(t('connection.flowInherit'))}</option>${missing}${options}</select>
-        <small class="llm-parameter-field__help">${escapeHTML(t('connection.flowHint'))}</small></label>`;
-    return selection.slots?.length ? `<details class="flow-parameter-connection-default" ${selection.selected ? 'open' : ''}><summary>${escapeHTML(t('connection.flowLabel'))}</summary>${field}</details>` : field;
-}
-
-function slotFields(selection: FlowConnectionSelection): string {
-    return (selection.slots ?? []).map((slot, index) => {
-        const selected = selection.bindings?.[slot.name] ?? slot.connectionId;
-        const missing = selected && !selection.connections.some(item => item.id === selected)
-            ? `<option value="${escapeHTML(selected)}" selected>${escapeHTML(t('connection.unavailable', { id: selected }))}</option>` : '';
-        const operation = slot.requirements?.operation as import('@itookit/kernel-adapters/contracts').ModelOperation | undefined;
-        const compatible = selection.connections.filter(item => !operation || !item.operationModels || item.operationModels[operation] || item.id === selected);
-        const options = compatible.map(item => {
-            const model = operation && item.operationModels ? item.operationModels[operation] : item.tiers?.[slot.tier ?? 'optimal'] ?? item.model;
-            const unsupported = operation && item.operationModels && !item.operationModels[operation];
-            return `<option value="${escapeHTML(item.id)}" ${item.id === selected ? 'selected' : ''} ${unsupported || connectionUnavailable(item) ? 'disabled' : ''}>${escapeHTML(item.name)} · ${escapeHTML(item.providerId)}${model ? ` · ${escapeHTML(model)}` : ''}${unsupported ? ` · ${escapeHTML(t('modelDefaults.incompatible'))}` : ''}</option>`;
-        }).join('');
-        return `<label class="llm-parameter-field"><span class="llm-parameter-field__label">${escapeHTML(slot.description?.trim() || slot.name)}
-            <small class="flow-parameter-section__requirement">${escapeHTML(t(slot.required === false ? 'flow.connections.optional' : 'flow.connections.required'))}</small></span>
-            <select data-slot-connection="${index}"><option value="">${escapeHTML(t('connection.slotUnbound'))}</option>${missing}${options}</select>
-            ${slot.requirements ? `<small class="llm-parameter-field__help">${escapeHTML(slot.requirements.operation)}</small>` : ''}</label>`;
-    }).join('');
-}
-function collectConnections(dialog: HTMLElement, selection: FlowConnectionSelection): void {
-    const bindings: Record<string, string> = Object.fromEntries(Object.entries(selection.bindings ?? {}).filter(([name]) => name.includes('/')));
-    (selection.slots ?? []).forEach((slot, index) => {
-        const id = dialog.querySelector<HTMLSelectElement>(`[data-slot-connection="${index}"]`)!.value;
-        if (!id && slot.required !== false) throw new Error(t('flow.launch.connectionRequired', { name: slot.description?.trim() || slot.name }));
-        validateConnection(selection, id);
-        if (id || slot.connectionId || Object.hasOwn(selection.bindings ?? {}, slot.name)) bindings[slot.name] = id;
-    });
-    selection.bindings = bindings;
-}
-
-function connectionUnavailable(connection: ConnectionMeta): boolean {
-    return connection.enabled === false || connection.credentialsReady === false
-        || connection.credentialsReady === undefined && connection.hasApiKey === false;
-}
-function validateConnection(selection: FlowConnectionSelection, id: string): void {
-    if (!id) return;
-    const connection = selection.connections.find(item => item.id === id);
-    if (!connection || connectionUnavailable(connection)) throw new Error(t('connection.unavailable', {id}));
 }
 
 function parameterDialogTemplate(
     parameters: FlowParameter[], title: string | undefined, submitting: boolean,
-    connection?: FlowConnectionSelection, description?: string,
+    connection?: FlowConnectionSelection, description?: string, groups?: readonly FlowInputGroup[],
 ): string {
     return `<form novalidate><header class="flow-parameter-dialog__header">
         <h2 id="flow-parameter-dialog-title" tabindex="-1" autofocus>${escapeHTML(title ?? t('flow.launch.title'))}</h2>
         ${description ? `<p>${escapeHTML(description)}</p>` : ''}</header>
-        <div class="flow-parameter-dialog__body">${flowParameterFields(parameters, connection)}</div>
+        <div class="flow-parameter-dialog__body">${flowParameterFields(parameters, connection, groups)}</div>
         <footer class="flow-parameter-dialog__footer"><p data-form-error class="dag-dialog__error" role="alert"></p>
             <menu><button type="button" data-cancel>${escapeHTML(t('flow.launch.cancel'))}</button>
                 <button type="submit">${escapeHTML(t(submitting ? 'flow.editor.submit' : 'flow.launch.confirm'))}</button></menu>
@@ -166,6 +130,7 @@ function parameterSection(title: Parameters<typeof t>[0], content: string): stri
 function parameterOptions(parameters: FlowParameter[]): ParameterFormOptions {
     return {
         mode: 'run',
+        labels: {required: ''},
         error: (kind, parameter) => {
             const name = parameter.label?.trim() || parameter.name;
             if (kind === 'required') return t(parameter.widget === 'images' || parameter.widget === 'select'
@@ -175,8 +140,11 @@ function parameterOptions(parameters: FlowParameter[]): ParameterFormOptions {
             if (kind === 'range') return t('flow.launch.numericRange', { name });
             return t('flow.launch.invalidValue');
         },
-        renderField: (_parameter, index, defaultRender) => parameters[index].widget === 'images'
-            ? renderImageParameter(parameters[index], index) : defaultRender(),
+        renderField: (_parameter, index, defaultRender) => {
+            const parameter = parameters[index], content = parameter.widget === 'images' ? renderImageParameter(parameter, index) : defaultRender();
+            const requirement = `<small class="flow-parameter-section__requirement" data-parameter-requirement>${escapeHTML(t(parameter.required ? 'flow.parameters.required' : 'flow.parameters.optional'))}</small>`;
+            return `<div class="flow-parameter-row${parameter.type === 'json' || parameter.type === 'string' && parameter.widget !== 'text' && !parameter.options?.length ? ' flow-parameter-row--wide' : ''}" data-parameter-row="${index}">${content.replace('</span>', requirement + '</span>')}</div>`;
+        },
         parseField: (_parameter, index, _field, defaultParse) => {
             const value = defaultParse(), parameter = parameters[index];
             if (parameter.widget === 'images' && !validFlowImages(value, parameter.imageConstraints)) throw new Error(t('flow.launch.imagesInvalid'));
@@ -188,6 +156,6 @@ function parameterOptions(parameters: FlowParameter[]): ParameterFormOptions {
 function renderImageParameter(parameter: FlowParameter, index: number): string {
     const name = escapeHTML(parameter.label?.trim() || parameter.name);
     const description = parameter.description ? `<small class="llm-parameter-field__help">${escapeHTML(parameter.description)}</small>` : '';
-    const label = `<span class="llm-parameter-field__label">${name}${parameter.required ? ' *' : ''}</span>${description}`;
+    const label = `<span class="llm-parameter-field__label">${name}</span>${description}`;
     return imageParameterField(parameter, index, label, `data-parameter="${index}" name="${escapeHTML(parameter.name)}"`);
 }

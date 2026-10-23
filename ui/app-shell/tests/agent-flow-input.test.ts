@@ -4,7 +4,7 @@ import { InputAssetCommand } from '@itookit/app-contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
-import { prepareAgentFlow } from '../../llm-ui-adapter/src/flows/agent-flow';
+import { prepareAgentFlow, type AgentFlowDraftInput } from '../../llm-ui-adapter/src/flows/agent-flow';
 import type { ExecutorOption } from '../../llm-ui-adapter/src/domain/types';
 
 const views: ChatInput[] = [];
@@ -29,14 +29,16 @@ function setup(initial = agent) {
     });
     const root = document.createElement('div'); document.body.append(root);
     const onSend = vi.fn(async () => {});
+    const commands = {execute};
+    const prepare = vi.fn((choice: ExecutorOption, signal: AbortSignal, draft: AgentFlowDraftInput) => prepareAgentFlow(commands as never, choice, signal, draft));
     const view = new ChatInput(root, { initialAgents: [initial], initialConfig: { agentId: initial.id },
         onSend, onStop() {}, onRequestConnections: async () => [],
-        prepareAgentFlow: (choice, signal) => prepareAgentFlow({ execute } as never, choice, signal) });
+        prepareAgentFlow: prepare });
     views.push(view);
     const input = root.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
     const send = root.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
     const type = (text: string) => { input.value = text; input.dispatchEvent(new Event('input')); };
-    return { root, view, onSend, execute, input, send, type, asset, changeFlow: (next: typeof flow) => { flow = next; } };
+    return { root, view, onSend, execute, commands, prepare, input, send, type, asset, changeFlow: (next: typeof flow) => { flow = next; } };
 }
 
 async function form(): Promise<HTMLDialogElement> {
@@ -45,11 +47,22 @@ async function form(): Promise<HTMLDialogElement> {
 }
 function submit(dialog: HTMLDialogElement): void { dialog.querySelector('form')!.dispatchEvent(new Event('submit', { cancelable: true })); }
 
+function sourceFlow(oneOf = false) {
+    return {...baseFlow(), parameters: [
+        {name: 'lesson', label: 'Lesson text', type: 'string', inputSource: 'composer.text'},
+        {name: 'images', label: 'Page images', type: 'json', widget: 'images', inputSource: 'composer.attachments', imageConstraints: {mimeTypes: ['image/png'], maxItems: 2, maxBytes: 20}},
+    ], ...(oneOf ? {inputGroups: [{name: 'source', label: 'Learning source', mode: 'oneOf', parameters: ['lesson', 'images']}]} : {})};
+}
+
+function chooseSource(dialog: HTMLElement, name: string): void {
+    dialog.querySelector<HTMLInputElement>(`[data-flow-source="${name}"]`)!.click();
+}
+
 it('submits Flow Agent parameters and durable images through the ordinary send button without a default model', async () => {
     const f = setup(); await f.view.refreshConnections(); f.type('Read these pages');
     expect(f.send.disabled).toBe(false); expect(f.root.querySelector<HTMLElement>('.llm-input__model-trigger')!.hidden).toBe(true);
     f.send.click(); const dialog = await form();
-    expect(dialog.textContent).toContain('${input.prompt}');
+    expect(dialog.textContent).toContain('确认输入内容');
     const lesson = dialog.querySelector<HTMLTextAreaElement>('[data-parameter="0"]')!;
     expect(lesson.value).toBe('agent-default'); lesson.value = 'this request';
     const picker = dialog.querySelector<HTMLInputElement>('[data-image-picker]')!;
@@ -137,4 +150,79 @@ it('prefills required Flow slots from this Agent purpose defaults before the sys
     await f.view.refreshConnections(); f.type('Use the assigned model'); f.send.click(); const dialog = await form();
     expect(dialog.querySelector<HTMLSelectElement>('[data-slot-connection="0"]')!.value).toBe('agent-chat');
     dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.click();
+});
+
+it('passes the clicked text and attachment snapshot to preparation and keeps newer composer edits after confirmation', async () => {
+    const f = setup(), file = new File(['context'], 'context.txt', {type: 'text/plain'});
+    f.view.restoreDraft('Frozen prompt', [file], 'reader'); f.send.click(); const dialog = await form();
+    expect(f.prepare.mock.calls[0][2]).toEqual({text: 'Frozen prompt', files: [file]});
+    f.type('Newer prompt'); submit(dialog);
+    await vi.waitFor(() => expect(f.send.disabled).toBe(false));
+    expect(f.onSend).not.toHaveBeenCalled(); expect(f.input.value).toBe('Newer prompt'); expect(f.view.getDraftFiles()).toEqual([file]);
+});
+
+it('prefills only declared text and attachment sources in the initial dialog and keeps both when no exclusive group is declared', async () => {
+    const f = setup(); f.changeFlow(sourceFlow() as never);
+    const controller = new AbortController(), file = new File(['picture'], 'page.png', {type: 'image/png'});
+    const prepared = prepareAgentFlow(f.commands as never, agent, controller.signal, {text: 'Composer lesson', files: [file]});
+    const dialog = await form();
+    expect(dialog.querySelector<HTMLTextAreaElement>('[data-parameter="0"]')!.value).toBe('Composer lesson');
+    expect(dialog.querySelector('[data-flow-input-group]')).toBeNull();
+    submit(dialog); const result = await prepared;
+    expect(result?.flowParameters).toEqual({lesson: 'Composer lesson', images: [{type: 'image', source: {type: 'asset', asset: f.asset}}]});
+    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.Import)).toHaveLength(1);
+});
+
+it('requires an explicit source choice for a declared exclusive group and submits only that source', async () => {
+    const f = setup(); f.changeFlow(sourceFlow(true) as never); f.type('Composer text'); f.send.click(); const dialog = await form();
+    expect(dialog.querySelector('[data-flow-input-group="source"] input:checked')).toBeNull();
+    submit(dialog); await vi.waitFor(() => expect(dialog.querySelector('[data-form-error]')!.textContent).not.toBe(''));
+    expect(f.onSend).not.toHaveBeenCalled(); chooseSource(dialog, 'lesson'); submit(dialog);
+    await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
+    expect(f.onSend.mock.calls[0][3]).toMatchObject({flowParameters: {lesson: 'Composer text'}});
+    expect((f.onSend.mock.calls[0][3] as {flowParameters: object}).flowParameters).not.toHaveProperty('images');
+});
+
+it('keeps the original composer input and attachments when a source form is cancelled', async () => {
+    const f = setup(); f.changeFlow(sourceFlow(true) as never);
+    const file = new File(['document'], 'draft.txt', {type: 'text/plain'});
+    f.view.restoreDraft('Keep source text', [file], 'reader'); f.send.click(); const dialog = await form();
+    chooseSource(dialog, 'lesson'); dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.click();
+    await vi.waitFor(() => expect(f.send.disabled).toBe(false));
+    expect(f.onSend).not.toHaveBeenCalled(); expect(f.input.value).toBe('Keep source text'); expect(f.view.getDraftFiles()).toEqual([file]);
+});
+
+it('shows the selected attachment format error without losing the composer and allows selecting its text instead', async () => {
+    const f = setup(); f.changeFlow(sourceFlow(true) as never);
+    const file = new File(['document'], 'draft.txt', {type: 'text/plain'});
+    f.view.restoreDraft('Use this text instead', [file], 'reader'); f.send.click(); const dialog = await form();
+    chooseSource(dialog, 'images'); submit(dialog);
+    await vi.waitFor(() => expect(dialog.querySelector('[data-form-error]')!.textContent).toContain('draft.txt'));
+    expect(f.onSend).not.toHaveBeenCalled(); expect(f.input.value).toBe('Use this text instead'); expect(f.view.getDraftFiles()).toEqual([file]);
+    chooseSource(dialog, 'lesson'); submit(dialog); await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
+    expect(f.onSend.mock.calls[0][3]).toMatchObject({flowParameters: {lesson: 'Use this text instead'}});
+    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.Import)).toHaveLength(0);
+});
+
+it('reuses an imported composer image when cancellation reopens the same draft', async () => {
+    const f = setup(); f.changeFlow(sourceFlow() as never);
+    const file = new File(['picture'], 'page.png', {type: 'image/png'}), draft = {text: 'Keep context', files: [file]};
+    const first = prepareAgentFlow(f.commands as never, agent, new AbortController().signal, draft), dialog = await form();
+    await vi.waitFor(() => expect(dialog.querySelector<HTMLTextAreaElement>('[data-parameter="1"]')!.value).toContain('11111111'));
+    dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.click(); expect(await first).toBeNull();
+    const second = prepareAgentFlow(f.commands as never, agent, new AbortController().signal, draft), reopened = await form();
+    submit(reopened); expect((await second)?.flowParameters.images).toEqual([{type: 'image', source: {type: 'asset', asset: f.asset}}]);
+    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.Import)).toHaveLength(1);
+});
+
+it('abandons a cancelled parameter form while a composer image import is still in flight', async () => {
+    const f = setup(); f.changeFlow(sourceFlow() as never);
+    let resolveImport!: (value: unknown) => void;
+    const importing = new Promise(resolve => {resolveImport = resolve;}), previous = f.execute.getMockImplementation()!;
+    f.execute.mockImplementation(async name => name === InputAssetCommand.Import ? importing : previous(name));
+    const controller = new AbortController(), file = new File(['picture'], 'page.png', {type: 'image/png'});
+    const prepared = prepareAgentFlow(f.commands as never, agent, controller.signal, {text: 'Keep context', files: [file]});
+    await form(); await vi.waitFor(() => expect(f.execute.mock.calls.some(call => call[0] === InputAssetCommand.Import)).toBe(true));
+    controller.abort(); expect(await prepared).toBeNull(); resolveImport(f.asset);
+    await Promise.resolve(); expect(document.querySelector('dialog')).toBeNull(); expect(f.onSend).not.toHaveBeenCalled();
 });

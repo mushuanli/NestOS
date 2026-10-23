@@ -170,3 +170,10 @@ MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMi
 - conversation-composer-store 保存宿主不透明输入与不可变资产，资产读取核对固定会话 owner，草稿写入使用版本 CAS 和有界 operationId 回执。原图与图片参数不进入 harness 协议；closed 绑定拒绝后续访问，已发起的保存继续完成。
 
 Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.restore 与设置初始文件恢复共用 restoreAndPublishFlow，显式串联恢复草稿和发布 revision；不把发布副作用加入核心 DraftRestore，也不发布已有用户草稿。
+
+连接能力筛选也接收模型目录的 supportedOperations 显式声明，但仍要求受支持的 Provider 媒体端点；这只表示发现能力。runnableModel 及运行准入继续要求完整 operations 约束，不能把任务类型声明误当作可执行请求参数。
+
+
+- `configuration/flow-installation.ts` 与 `flow-tool-packages.ts` 是 Flow 安装/导入/恢复共用的依赖准备边界：按已保存声明检查 schema、参数默认值、条件连接及工具版本，返回 ready/needsConfiguration/missingTools/failed 明细，不覆盖已有草稿/修订或写入猜测配置。`ApplicationRuntimeOptions.toolDependencies` 注入可信宿主目录的 ensure/list；Flow 只携带工具 ID/版本，不提供模块路径或安装命令。默认播种也检查依赖；工具箱 importWithReport 与系统恢复逐项返回报告，prepareDependencies 只重试。
+
+工作区工具的默认文件发现由 vfs/tool-context 排除应用拥有的 `.mindos` 目录，避免会话历史递归进入搜索结果；`includeIgnored` 与授权范围内的显式读取仍可使用。此产品策略不写入独立 VFS 或工具库的通用默认过滤器。

@@ -2,19 +2,17 @@
 // Workflow runtime parameters: template resolution (${params.name}) and
 // declared-schema validation. The "framework + variable inputs" split.
 
-import type { FlowParameter, JsonValue } from '../contracts';
+import type { FlowInputGroup, FlowParameter, JsonValue } from '../contracts';
 import type { ValidationIssue } from './validation';
 import { validFlowImages, validImageConstraints } from '../contracts/flow-images';
 import { flowSchemaIssue } from './schema-registry';
 
-export function flowParameterValues(schema: FlowParameter[] | undefined, values?: Record<string, JsonValue>): Record<string, JsonValue> {
-    const defaults = Object.fromEntries((schema ?? []).filter(param => param.default !== undefined).map(param => [param.name, param.default!]));
-    return structuredClone({ ...defaults, ...values });
-}
+import { flowParameterValues, flowInputPresent, validateFlowInputGroups } from '../contracts/flow-inputs';
+export { flowParameterValues } from '../contracts/flow-inputs';
 
-export function prepareFlowParameters(schema: FlowParameter[] | undefined, values?: Record<string, JsonValue>): Record<string, JsonValue> {
-    const resolved = flowParameterValues(schema, values);
-    const issues = validateFlowParameters(schema, resolved);
+export function prepareFlowParameters(schema: FlowParameter[] | undefined, values?: Record<string, JsonValue>, groups?: FlowInputGroup[], inherited?: Record<string, JsonValue>): Record<string, JsonValue> {
+    const resolved = flowParameterValues(schema, values, groups, inherited);
+    const issues = validateFlowParameters(schema, resolved, groups);
     if (issues.length) throw new Error(issues.map(issue => issue.message).join('; '));
     return resolved;
 }
@@ -66,10 +64,13 @@ function resolveParamPath(parameters: Record<string, JsonValue>, path: string): 
 export function validateFlowParameters(
     schema: FlowParameter[] | undefined,
     values: Record<string, JsonValue> | undefined,
+    groups?: FlowInputGroup[],
 ): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
-    const provided = flowParameterValues(schema, values);
+    const provided = flowParameterValues(schema, values, groups);
     for (const param of schema ?? []) {
+        const group = groups?.find(item => item.parameters.includes(param.name));
+        if (group && !flowInputPresent(provided[param.name]) && group.parameters.some(name => flowInputPresent(provided[name]))) continue;
         if (!validImageConstraints(param.imageConstraints)) issues.push({ code: 'invalid-parameter', message: `Invalid image constraints: ${param.name}` });
         const present = param.name in provided && provided[param.name] !== undefined;
         if (param.required && !present) {
@@ -91,6 +92,7 @@ export function validateFlowParameters(
         }
         if (param.onMissing !== 'interact') issues.push(...validateValueConstraints(param, value));
     }
+    issues.push(...validateFlowInputGroups(schema, groups, provided, {allowInteractiveMissing: true}));
     return issues;
 }
 

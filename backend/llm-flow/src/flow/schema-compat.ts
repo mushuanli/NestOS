@@ -8,7 +8,7 @@
 // (`validateDataEdgeValue`) remains authoritative; this is a pre-submit check so
 // an incompatible graph fails at publish/patch time instead of mid-run.
 
-import { assertFlowSchema } from './schema-registry';
+import { assertFlowSchema, flowSchemaIssue } from './schema-registry';
 import {equalJson} from './schema-values';
 import type { JsonValue } from '../contracts';
 
@@ -17,7 +17,7 @@ type TypeName = 'object' | 'array' | 'string' | 'number' | 'integer' | 'boolean'
 
 /**
  * Supported subset: boolean schemas, `type`, `properties`, `required`,
- * `items`, `additionalProperties` and `enum`. Anything else is rejected by
+ * `items`, `additionalProperties`, `enum`, numeric ranges and string constraints. Anything else is rejected by
  * `assertFlowSchema` before this check runs, so compatibility stays decidable.
  *
  * Returns a human-readable issue, or undefined when the source is a subtype.
@@ -30,14 +30,9 @@ export function schemaCompatibilityIssue(source: JsonValue, target: JsonValue, p
     if (source === true) return `${path}: source accepts any value`;
     if (source === false) return undefined;
 
-    const enumIssue = enumCompatibility(source, target, path);
-    if (enumIssue) return enumIssue;
-
-    const typeIssue = typeCompatibility(source.type, target.type, path);
-    if (typeIssue) return typeIssue;
-
-    const rangeIssue = numericCompatibility(source, target, path);
-    if (rangeIssue) return rangeIssue;
+    const scalarIssue = enumCompatibility(source, target, path) ?? typeCompatibility(source.type, target.type, path)
+        ?? numericCompatibility(source, target, path) ?? stringCompatibility(source, target, path);
+    if (scalarIssue) return scalarIssue;
     const sourceType = source.type as TypeName | undefined;
     const targetType = target.type as TypeName | undefined;
     if (targetType === 'object' || (!targetType && sourceType === 'object')) {
@@ -114,4 +109,13 @@ function numericCompatibility(source: Schema, target: Schema, path: string): str
     if (source.type && !['number', 'integer'].includes(String(source.type))) return;
     if (typeof target.minimum === 'number' && (typeof source.minimum !== 'number' || source.minimum < target.minimum)) return `${path}: source minimum is wider than target`;
     if (typeof target.maximum === 'number' && (typeof source.maximum !== 'number' || source.maximum > target.maximum)) return `${path}: source maximum is wider than target`;
+}
+
+function stringCompatibility(source: Schema, target: Schema, path: string): string | undefined {
+    if (source.type && source.type !== 'string') return;
+    if (Array.isArray(source.enum) && source.enum.every(value => !flowSchemaIssue(target, value))) return;
+    if (typeof target.minLength === 'number' && Number(source.minLength ?? 0) < target.minLength) return `${path}: source minLength is wider than target`;
+    if (typeof target.maxLength === 'number' && (typeof source.maxLength !== 'number' || source.maxLength > target.maxLength)) return `${path}: source maxLength is wider than target`;
+    // Arbitrary regular expression containment is not assumed; equal patterns or finite enums provide proof.
+    if (target.pattern !== undefined && source.pattern !== target.pattern) return `${path}: source pattern is not proven to satisfy target`;
 }

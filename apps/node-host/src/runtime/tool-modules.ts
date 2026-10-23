@@ -28,3 +28,18 @@ export async function loadNodeToolModules(value = process.env.MINDOS_TOOL_MODULE
 }
 
 export function createStandardNodeTools(): Tool[] {return createImageTools();}
+
+/** Legacy explicit modules keep their instances and enabled state when a package is restored. */
+export function mergeNodePackageTools(existing: Tool[], restored: Tool[], reserved: Tool[] = []): Tool[] {
+    const tools = [...existing], registered = new Map([...reserved, ...existing].map(tool => [tool.name, tool]));
+    for (const tool of restored) {
+        const previous = registered.get(tool.name);
+        if (previous) {
+            if ((previous.version ?? '1') !== (tool.version ?? '1'))
+                throw Object.assign(new Error(`Tool ${tool.name} has conflicting registered versions`), {code: 'TOOL_PACKAGE_TOOL_VERSION_CONFLICT'});
+            continue;
+        }
+        registered.set(tool.name, tool); tools.push(tool);
+    }
+    return tools;
+}

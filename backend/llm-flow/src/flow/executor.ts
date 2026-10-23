@@ -181,7 +181,7 @@ export class DurableFlowExecutor {
             : this.options.kernel.programs?.has('llm.agent', '2') && this.options.kernel.programs?.has('llm.chat', '2') ? '2' : '1';
         spec = saved || spec.templateVersion === 1 ? structuredClone(spec) : compileReferenceGraph(compileControlGraph(compileDispatchGraph(structuredClone(spec))));
         spec.input = prepareFlowRuntimeInput(spec.input);
-        parameters = prepareFlowParameters(spec.parameterSchema, parameters);
+        parameters = prepareFlowParameters(spec.parameterSchema, parameters, spec.inputGroups);
         validateDispatchCapacity(spec, parameters);
         validateVariableGraph(spec);
         const plugins = createRunCatalog(this.options.plugins, [...(saved?.nodes ?? []), ...functionTemplateNodes(spec)], saved?.catalog);

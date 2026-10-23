@@ -768,6 +768,32 @@ it('opens shared model defaults from one toolbar button without loading OCR', as
     expect(configure).not.toHaveBeenCalled(); expect(f.sidebar.querySelector('.toolbox-defaults')).toBeNull();
 });
 
+it('opens the trusted package manager from the tools category without registering on inspection', async () => {
+    const f = await setup(), list = vi.fn(async () => [{id: 'external-package', version: '1', status: 'available' as const, tools: [{id: 'document.inspect'}]}]), ensure = vi.fn();
+    Object.defineProperty(f.resources, 'toolPackages', {value: {list, ensure}, configurable: true});
+    await f.workbench.openResource('/tools');
+    const button = f.sidebar.querySelector<HTMLButtonElement>('.vfs-node-list__secondary-action')!;
+    expect(button.textContent).toBe(t('toolbox.packages.title')); button.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-package-id="external-package"]')).not.toBeNull());
+    expect(list).toHaveBeenCalledOnce(); expect(ensure).not.toHaveBeenCalled();
+    const dialog = document.querySelector<HTMLDialogElement>('.tool-packages-dialog')!;
+    dialog.close(); dialog.dispatchEvent(new Event('close')); expect(dialog.isConnected).toBe(false);
+});
+
+it('shows dependency issues returned by import instead of treating saved Flow resources as ready', async () => {
+    const f = await setup(), report = {flowId: 'imported-flow', name: 'Imported Flow', status: 'missingTools' as const,
+        tools: [{id: 'document.inspect', status: 'missing' as const, reason: 'Trusted package is not installed'}], parameters: [], connections: [], errors: []};
+    vi.spyOn(archiveTransfer, 'chooseArchive').mockResolvedValue({text: async () => '{}'} as File);
+    const imported = vi.spyOn(f.resources, 'importWithReport').mockResolvedValue({paths: [], installations: [report]});
+    const legacy = vi.spyOn(f.resources, 'import');
+    Object.defineProperty(f.resources, 'flowInstallations', {value: {list: async () => [report], check: vi.fn(), ensure: vi.fn()}, configurable: true});
+    f.sidebar.querySelector<HTMLButtonElement>('[data-action="import"]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-flow-id="imported-flow"]')?.textContent).toContain('Trusted package is not installed'));
+    expect(imported).toHaveBeenCalledWith('{}'); expect(legacy).not.toHaveBeenCalled();
+    const dialog = document.querySelector<HTMLDialogElement>('.tool-packages-dialog')!;
+    dialog.close(); dialog.dispatchEvent(new Event('close'));
+});
+
 async function selectDrawer(f: Awaited<ReturnType<typeof setup>>, id: string): Promise<void> {
     const kind = f.resources.drawers.get(id)!.kind;
     await f.resources.drawers.assign([], [{ kind, name: 'Second selected drawer' }]);

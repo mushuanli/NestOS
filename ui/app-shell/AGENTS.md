@@ -1,12 +1,14 @@
 # @itookit/app-shell
 
-工作台的智能体入口位于独立抽屉，复用 vfs-ui Drawer；每个抽屉的搜索只过滤自己的列表。智能体首次展开才加载现有配置服务，折叠或隐藏后只记录变化；支持名称/说明/来源过滤、创建、配置和本地智能体快捷新会话，远程项打开原有详情与项目入口。快捷启动保留项目已有草稿和附件，只显式切换智能体，不提前转正或发送。工具箱在存在工作台时隐藏智能体常驻分类和全部列表中的智能体分组，保留配置编辑及旧链接。
+工作台侧栏通过「资源／智能体」文字页签切换，各自列表独占可用高度，保留 DOM、搜索、滚动与项目上下文；切换不导航正文。智能体列表复用 vfs-ui Drawer，搜索只过滤自己的列表。智能体首次选中才加载现有配置服务，隐藏后只记录变化；支持名称/说明/来源过滤、创建、配置和本地智能体快捷新会话，远程项打开原有详情与项目入口。快捷启动保留项目已有草稿和附件，只显式切换智能体，不提前转正或发送。工具箱在存在工作台时隐藏智能体常驻分类和全部列表中的智能体分组，保留配置编辑及旧链接。
 
-工作台、工具箱及文件工作区通过应用作用域 WorkbenchWindows 汇总窗口元数据、搜索、固定和批量关闭；跨区域切换沿用原路由与编辑器，标签 ID 仍由各工作区持有。当前工作区的窗口列表使用一个 Drawer，在桌面侧栏和手机窗口弹层之间移动，关闭弹层保留查询；搜索不改变标签身份或编辑器生命周期。WorkbenchSidebar 的额外抽屉折叠状态通过 drawerCollapsed 保存，布局只消费 Drawer 公开接口，搜索和动作实现不进入通用布局。
+工作台、工具箱及文件工作区通过应用作用域 WorkbenchWindows 汇总窗口元数据、搜索、固定和批量关闭；跨区域切换沿用原路由与编辑器，标签 ID 仍由各工作区持有。当前工作区的窗口列表使用一个 Drawer，由侧栏标题和编辑器标题中的窗口按钮打开弹层；平时放在隐藏宿主内，不常驻占据侧栏高度，关闭后归还原宿主、保留查询并恢复发起按钮焦点；搜索不改变标签身份或编辑器生命周期。WorkbenchSidebar 通过 sidebarView 保存当前页签，兼容旧版上下分区状态但不再恢复折叠或分区高度；资源视图隐藏时暂停导航读取与观察，重新显示再同步变化。布局不读取 vfs-ui 内部 DOM，搜索和动作实现不进入通用布局。
 
 SessionWorkbench 统一项目草稿、智能体快捷入口和原生新会话入口。持久接纳后原地更新 WorkbenchTab 的路由、标题与图标，保留面板和编辑器；conversationId 独立保存 UUID，不随标题或 native ID 改变。宿主用同一 mount 构造正式控制器，绑定完成前不切标签；隐藏确认不抢当前视图，丢弃和外部替换同步新草稿身份。原生 UUID 映射及 journal 归 app-core，UI 不复制原生历史。
 
 应用启动引导 + UI 路由 + UI 装配。`initApp()` 是唯一顶层初始化函数。
+
+工具箱「工具」分类与工具详情通过 ToolPackagesDialog 展示宿主可信工具包和已安装 Flow 的依赖状态。检查只调用 list/check，注册只把 catalog 声明的工具身份交给 toolPackages.ensure，不接受路径、命令或任意安装来源；缺包显示待宿主安装。Flow 依赖分别展示 missingTools、needsConfiguration、failed 与 ready，保留后端提供的字段级原因；弹层关闭后忽略迟到响应。
 
 本地会话通过 `EditorOptions.mountMoreMenu` 将会话信息与归属动作挂入聊天标题栏共用的更多菜单；不再增加正文上方的会话工具栏。关联会话不继承聊天历史，创建动作只在菜单中显示。项目侧栏直接合并各来源最近 15 条会话及父关系，超过后由“更多会话”打开右侧每页 50 条的列表；不在侧栏展开更多，不保留 harness 分组层级。后端负责有界合并、分页及能力声明，UI 使用来源图标、标题栏来源标识和规范资源跳转；容器行别名不得改变 Session/native 会话身份。
 
@@ -93,7 +95,7 @@ const factory = factories[strategyType] ?? defaultEditorFactory;
 - 普通工作区将导航标题合并为「资源浏览 + 模块名」，通过 appearance.showTitle 隐藏内层重复标题；手机/触屏的导入导出由 vfs-ui 移入更多菜单并保留原动作状态，项目选择框保持自定义布局。
 - vfs-ui 内部 DOM/CSS 由库维护；宿主只使用 appearance、NodePresentation、toolbarOptions.variant 和公开 CSS 变量。移动端正文切换订阅 VFS_DOM_EVENTS.resourceActivated，不能依赖内部类名或模拟点击。
 - 项目进入文件复用单侧栏；`ProjectNavigation` 投影当前项目目录、收藏与会话，目录详情和编辑标签位于 `workbench/`。`ProjectFileView` 只保留收藏导航的选择兼容提示；收藏解析在 `openFavorite` 完成。
-- `WorkbenchTabs` 保留每个标签的编辑器 DOM；修改将预览转为保持打开，固定标签受批量关闭保护。`WorkbenchSidebar` 管理上下分区与可访问分隔线，布局/非预览标签通过宿主 workbenchPort 存到 etc:/ui。关闭先完成保存，失败保留编辑器及文件租约。
+- `WorkbenchTabs` 保留每个标签的编辑器 DOM；修改将预览转为保持打开，固定标签受批量关闭保护。`WorkbenchSidebar` 管理互斥导航视图、窗口入口与可访问宽度分隔线；普通单视图工作区只显示标题，布局/非预览标签通过宿主 workbenchPort 存到 etc:/ui。关闭先完成保存，失败保留编辑器及文件租约。
 - 项目与工具箱分别通过 `createProjectModule` / `createToolboxModule` 装配，返回统一 WorkspaceModule；bootstrap 只消费工作区能力，不用具体工作台类做 instanceof 判断。模块销毁同时释放目录投影和事件订阅，动态移除与应用退出共用一次释放。
 - `loadWorkspace()` 包含去重 — 并发加载同一工作区共享同一个 Promise (`pendingLoads`)
 - 正常 Web/HTTP/Tauri 入口启用 startPage，默认 #/start；显式深链和旧别名保留。onShellReady 在路由绑定后关闭全局提示，不等待工作区加载。工作区和资源加载分开，最新导航代次决定正文打开，隐藏模块不能改写 URL；失败局部重试，部分初始化资源由独立 cleanupGroup 释放。
@@ -192,3 +194,5 @@ HTTP 视图恢复通过 AppHandle.captureRecovery/suspendForRecovery 和工作�
 工作台与工具箱使用 vfs-ui navigationHeader 公开插槽统一两行导航：范围与主操作、搜索与筛选。手机基础高度 112px，隐藏重复的导航抽屉标题；能力与搜索选项使用 NavigationFilters，共用手机底部面板与 PC 弹层，已选条件以可移除条目展示。次要工具栏操作移动原按钮到同一个更多菜单，保留权限、待执行状态与委托事件；项目设置、导入导出、删除重试继续使用原用例。
 
 模型连接行只显示名称；实际主力模型与该模型的能力通过 inventory.primaryModel / primaryCapabilityTags 投影到副标题，使用 vfs-ui indicatorPlacement:subtitle 与 muted 展示，宿主不查询库内部 DOM。停用连接仍能编辑，排序在所属服务商末尾；标签筛选沿用全部已配置档位的能力。
+
+LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原有 ViewRefresh 调度按 1/2/4/8/15 秒退避重试；隐藏时暂停，销毁取消重试；已删除的身份结束刷新，单个 Task 缺失不阻止其他 Task 投影，暂时读取失败不得丢失最终完成事件。

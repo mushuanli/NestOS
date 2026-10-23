@@ -1,7 +1,8 @@
 import { remapFlowNodeReferences } from '../contracts';
-import type { DagRunSpec, FlowRevision, FlowNodeDefinition } from '../contracts';
+import type { DagRunSpec, FlowRevision, FlowNodeDefinition, JsonValue } from '../contracts';
 import { nodeConnectionSlot, resolveNodeConnection } from './connections';
 import { resolveFlowParameters, flowParameterValues } from './parameters';
+import { resolveConnectionConditions } from './connection-conditions';
 import { compileReferenceGraph } from './structured/references';
 import { compileDispatchGraph } from './structured/graph';
 import { compileControlGraph } from './control/graph';
@@ -21,6 +22,8 @@ export type FlowNodeBinder = (
 
 interface CompilationContext {
     bind?: FlowNodeBinder;
+    parameters?: Record<string, JsonValue>;
+    parameterSets?: unknown;
     inlineScope?: InlineFunctionScope;
     inlineIdentity?: string;
     fallbackConnectionId?: string;
@@ -44,14 +47,17 @@ export async function flowToDag(
     runConnectionId?: string,
     connectionBindings?: Record<string, string>,
     prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>,
+    parameters?: Record<string, JsonValue>,
 ): Promise<DagRunSpec> {
     return compileFlow(flow, { bind, fallbackConnectionId, resolveComposite, compositeStack, dependencyLocks,
-        isolated, runConnectionId, connectionBindings, prepareConnections });
+        isolated, runConnectionId, connectionBindings, prepareConnections, parameters });
 }
 
 async function compileFlow(flow: FlowRevision, context: CompilationContext): Promise<DagRunSpec> {
     assertInlineFunctionTree(flow);
-    context = { ...context, inlineScope: inlineFunctionScope(flow, context.inlineScope, context.inlineIdentity ?? `${flow.id}@${flow.revision}`) };
+    const parameters = flowParameterValues(flow.parameters, context.parameters, flow.inputGroups);
+    flow = {...flow, connections: resolveConnectionConditions(flow, context.parameters, context.parameterSets)};
+    context = { ...context, parameters, inlineScope: inlineFunctionScope(flow, context.inlineScope, context.inlineIdentity ?? `${flow.id}@${flow.revision}`) };
     const { fallbackConnectionId, compositeStack, runConnectionId, connectionBindings, prepareConnections } = context;
     if (compositeStack.length > 32) throw new Error('Flow nesting exceeds 32 calls');
     if (!prepareConnections && connectionBindings && Object.keys(connectionBindings).length) throw new Error('Connection binding requires a host resolver');
@@ -75,6 +81,7 @@ function createDagSpec(flow: FlowRevision, nodes: FlowNodeDefinition[], { fallba
         variables: structuredClone(flow.variables),
         templateVersion: 1,
         parameterSchema: structuredClone(flow.parameters),
+        ...(flow.inputGroups ? {inputGroups: structuredClone(flow.inputGroups)} : {}),
         nodes,
         nodeDefaults: Object.fromEntries(nodes.map(node => [node.id, cloneJson(flowAgentDefaults(flow))])),
         nodeConnections: Object.fromEntries(nodes.map(node => [node.id, cloneJson({
@@ -191,6 +198,8 @@ async function expandCompositeNodes(spec: DagRunSpec, context: CompilationContex
             dependencyLocks: lock?.children ?? flow.dependencyLocks,
             isolated: callable || context.isolated,
             connectionBindings: bindings,
+            parameters: childParameterValues(config.parameters, context.parameters),
+            parameterSets: config.parameterSets === undefined ? undefined : resolveFlowParameters(config.parameterSets, context.parameters ?? {}),
         });
         const entry = callable ? callEntry(composite) : undefined;
         if (entry && spec.nodes.some(node => node.id === entry.id || node.id.startsWith(`${composite.id}/`))) throw new Error(`Flow call namespace collision: ${composite.id}`);
@@ -222,7 +231,7 @@ async function expandCompositeNodes(spec: DagRunSpec, context: CompilationContex
         const entries = child.nodes.filter(node => !incoming.has(node.id)).map(node => `${prefix}${node.id}`);
         const exits = child.nodes.filter(node => !outgoing.has(node.id)).map(node => `${prefix}${node.id}`);
         const parameters = isRecord(config.parameters) ? config.parameters as Record<string, import('../contracts').JsonValue> : {};
-        parameterScopes[prefix] = { parent: composite.id.slice(0, composite.id.lastIndexOf('/') + 1), defaults: flowParameterValues(child.parameterSchema), values: parameters, schema: child.parameterSchema };
+        parameterScopes[prefix] = { parent: composite.id.slice(0, composite.id.lastIndexOf('/') + 1), defaults: flowParameterValues(child.parameterSchema), values: parameters, schema: child.parameterSchema, groups: child.inputGroups };
         if (entry) parameterScopes[prefix].source = entry.id;
         for (const [id, scope] of Object.entries(child.parameterScopes ?? {})) parameterScopes[`${prefix}${id}`] = { ...scope, parent: `${prefix}${scope.parent}`, ...(scope.source ? { source: `${prefix}${scope.source}` } : {}) };
         for (const node of child.nodes) {
@@ -260,6 +269,11 @@ async function expandCompositeNodes(spec: DagRunSpec, context: CompilationContex
     const aliases = Object.fromEntries([...replacement].filter(([, value]) => value.exits.length === 1).map(([id, value]) => [id, value.exits[0]]));
     const mappedNodes = expandedNodes.map(node => ({ ...node, assign: remapFlowNodeReferences(node.assign, aliases) as typeof node.assign, config: remapRouteEdges(node, remapFlowNodeReferences(node.config, aliases), edgeAliases), inputs: remapFlowNodeReferences(node.inputs, aliases) as typeof node.inputs }));
     return { ...spec, variableScopes, parameterScopes, functionCalls, nodeDefaults, nodeConnections, nodes: mappedNodes, edges: expandedEdges };
+}
+
+function childParameterValues(values: unknown, parent: Record<string, JsonValue> | undefined): Record<string, JsonValue> | undefined {
+    const resolved = resolveFlowParameters(values, parent ?? {});
+    return isRecord(resolved) ? resolved as Record<string, JsonValue> : undefined;
 }
 
 function childConnectionBindings(bindings: Record<string, string> | undefined, nodeId: string,

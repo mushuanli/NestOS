@@ -1,3 +1,5 @@
+import {FlowInstallationService} from '../configuration/flow-installation';
+import {FlowToolPackages} from '../configuration/flow-tool-packages';
 import { createUsageCostEstimator } from '../projects/usage-estimator';
 import {createSessionExecutionPreparer} from '../session/prepare-session-execution';
 import { applicationStartupPolicy, type ApplicationStartupMode } from './startup-policy';
@@ -79,6 +81,8 @@ export interface ApplicationKernelPlatform {
 }
 
 export interface ApplicationRuntime {
+    flowInstallations: import('@itookit/app-contracts/services').FlowInstallations;
+    toolPackages: import('@itookit/app-contracts/services').ToolPackages;
     digitalTwin?: DigitalTwinService;
     vfs: import('@itookit/vfs-core').IVFSManager;
     llmDriver: LLMDeviceDriver;
@@ -103,6 +107,8 @@ export interface ApplicationRuntime {
 }
 
 export interface ApplicationRuntimeOptions {
+    /** The host resolves only trusted, locally available tool packages. */
+    toolDependencies?: import('@itookit/app-contracts/services').ToolDependencyResolver;
     /** Interactive hosts activate background tasks after their first workspace is ready. */
     startupMode?: ApplicationStartupMode;
     sync?: { provider: ProjectSyncProvider; coordinator: Coordinator };
@@ -177,7 +183,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             if (!options.defaultSessionDirectory) return;
             if (directoryMounts.getHome()) await directoryMounts.mountHome(id);
             else await directoryMounts.setWorkspace(id, options.defaultSessionDirectory);
-        });
+        }, createModuleLogger('session-storage'));
         cleanupFns.push(() => sessionRepository.dispose());
         const repositoryReady = startup.task('sessionRepository.init (parallel)', () => sessionRepository.init())();
         const flowEngine     = new FlowEngine(flowFiles);
@@ -243,8 +249,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             await initializeRemoteConfiguration();
             await traceBoot('projects.remoteReferences', async () => remoteConnections?.reconcileMCPReferences());
             await traceBoot('projects.sources', () => projects.initializeSources());
-            if (options.ownerKind === 'web' || options.defaultSessionDirectory)
-                await traceBoot('projects.init', () => projects.ensureStartup(options.defaultSessionDirectory));
+            await traceBoot('projects.init', () => projects.ensureStartup(options.defaultSessionDirectory));
         });
         if (policy.projects === 'before-ready') await initializeProjects();
         const executionConnections = new HarnessConnectionService(systemFS, options.remoteSourceProvider ? {
@@ -394,7 +399,9 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const instructionQueueSessions = createInstructionQueueSessions(systemFS);
         const executionActivity = new SessionExecutionActivity();
         cleanupFns.push(() => executionActivity.dispose());
-        const conversationOptions = { executionActivity, instructionQueueSessions, vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
+        let flowInstallations: FlowInstallationService | undefined;
+        const conversationOptions = {
+                ensureFlowDependencies: async (id: string) => {await flowInstallations?.ensure(id);}, executionActivity, instructionQueueSessions, vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
                 digitalTwin,
                 scheduleAgentInitialization: run => startup.schedule(policy.agents, 'agents.initialize', run),
                 scheduleInvocationRecovery: run => startup.schedule(policy.invocations, 'invocations.recover', async () => { await initializeProjects(); await run(); }),
@@ -403,6 +410,9 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager } satisfies import('./conversation-system').ConversationSystemOptions;
         const { sessionManager, commandBus, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
             () => createConversationSystem(conversationOptions));
+        flowInstallations = new FlowInstallationService(commandBus, new FlowToolPackages(kernel.toolCatalog, options.toolDependencies));
+        const installations = flowInstallations;
+        cleanupFns.push(() => installations.close());
         const conversationViews = new ConversationViews();
         cleanupFns.push(() => conversationViews.close());
         const createConversationView = async () => {
@@ -430,7 +440,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         await startup.schedule(policy.drafts, 'projects.drafts.recover', async () => { await initializeProjects(); await projects.drafts.recover(); });
 
         // Seed the default essay-review workflow so users have a runnable example.
-        await traceBoot('seedDefaultFlows', () => seedDefaultFlows(new FlowDefinitionStore(flowEngine, kernel.dagPlugins)));
+        await traceBoot('seedDefaultFlows', () => seedDefaultFlows(new FlowDefinitionStore(flowEngine, kernel.dagPlugins), id => installations.ensure(id)));
 
         const runCatalog = new RunCatalog(sessionRepository, kernel.kernel);
         if (remoteConnections) {
@@ -462,7 +472,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const startBackground = () => startup.activate();
         if (policy.projects === 'before-ready') startBackground();
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections,
-            kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
+            flowInstallations: installations, toolPackages: installations.toolPackages, kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
             projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id) };
     } catch (error) {
         await startup.close();

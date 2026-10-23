@@ -26,6 +26,8 @@ export interface ToolboxNavigation {
 }
 
 export interface ToolboxResources {
+    readonly toolPackages?: import('./flow-installation').ToolPackages;
+    readonly flowInstallations?: import('./flow-installation').FlowInstallations;
     readonly providerTemplates: ReadonlyArray<{id: string; name: string}>;
     navigation(): Promise<ToolboxNavigation>;
     readonly sources: Record<ToolboxKind, IFileSystem>;
@@ -44,6 +46,7 @@ export interface ToolboxResources {
         name: string;
     }>): Promise<string>;
     import(content: string): Promise<string[]>;
+    importWithReport?(content: string): Promise<{paths: string[]; installations: import('./flow-installation').FlowInstallationReport[]}>;
 }
 
 export interface ToolGrantTarget {

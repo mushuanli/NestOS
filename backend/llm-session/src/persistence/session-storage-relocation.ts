@@ -1,22 +1,23 @@
 import { copySessionAttachments } from './session-attachment-copy';
 import { FSError, type IFileSystem, type ISeqFileTransaction } from '@itookit/vfs-core';
+import type { SessionStorageTrace } from './session-storage-trace';
 
 const INDEX = '/var/lib/sessions/folders.seq';
 const MOVES = '/var/lib/sessions/storage-moves.seq';
 const MARKER = 'storage-relocation-source';
 
 /** Only portable records move out of the shared runtime directory. */
-export async function relocateCentralSession(fs: IFileSystem, key: string, from: string, to: string): Promise<void> {
+export async function relocateCentralSession(fs: IFileSystem, key: string, from: string, to: string, trace: SessionStorageTrace): Promise<void> {
     const id = from.split('/').pop()!;
     const manifest = await fs.meta.seq!.getEntry(`${from}/session.seq`, 'session');
     if (manifest === null) throw new FSError('ENOENT', 'Session relocation source identity missing');
     if (JSON.parse(manifest).id !== id) throw new FSError('ECONFLICT', 'Session relocation source identity mismatch');
     if (to.split('/').pop() !== id) throw new FSError('EINVAL', 'Session relocation identity mismatch');
-    await prepareTarget(fs, from, to);
+    await trace.step('prepare-target', () => prepareTarget(fs, from, to));
     const pending = JSON.parse((await fs.meta.seq!.getEntry(MOVES, key))!);
-    await copySessionAttachments(fs, `${from}/attachments`, `${to}/attachments`);
+    await trace.step('copy-attachments', () => copySessionAttachments(fs, `${from}/attachments`, `${to}/attachments`));
     await fs.meta.seq!.setEntry(MOVES, key, JSON.stringify({ ...pending, attachmentsCopied: true }));
-    await fs.meta.seq!.transaction!(async tx => {
+    await trace.step('commit-records-and-index', () => fs.meta.seq!.transaction!(async tx => {
         for (const name of ['session', 'settings']) {
             const value = await tx.getEntry(`${from}/session.seq`, name);
             if (value !== null) await tx.setEntry(`${to}/session.seq`, name, value);
@@ -27,7 +28,7 @@ export async function relocateCentralSession(fs: IFileSystem, key: string, from:
         for (const name of ['session', 'settings']) await tx.deleteEntry(`${from}/session.seq`, name);
         await tx.deleteEntry(`${to}/session.seq`, MARKER);
         await tx.deleteEntry(MOVES, key);
-    });
+    }));
 }
 
 async function prepareTarget(fs: IFileSystem, from: string, to: string): Promise<void> {

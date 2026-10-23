@@ -1,6 +1,7 @@
 import type { EditorOptions } from '@itookit/ui-common';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import { toolConfiguration } from './tool-configuration';
+import {showToolPackages} from './ToolPackagesDialog';
 import { BaseSettingsEditor, editorResourceId } from '@itookit/ui-common';
 import { t } from '@itookit/common';
 import type { ToolboxInventory } from '@itookit/app-contracts/services';
@@ -16,6 +17,10 @@ export class ToolDetailsEditor extends BaseSettingsEditor<ToolboxInventory> {
         const status = document.createElement('p'); status.textContent = t(item?.enabled ? 'toolbox.available' : 'toolbox.unavailable');
         const hint = document.createElement('p'); hint.textContent = t('toolbox.toolsHint');
         panel.append(title, source, status, description, hint);
+        if (this.resources?.toolPackages || this.resources?.flowInstallations) {
+            const packages = document.createElement('button'); packages.type = 'button'; packages.textContent = t('toolbox.packages.title');
+            packages.onclick = () => {void showToolPackages(this.resources!, this.options.signal);}; panel.append(packages);
+        }
         if (item?.serverId) {
             const button = document.createElement('button'); button.type = 'button'; button.textContent = t('toolbox.manageSource');
             button.onclick = () => { void this.options.hostContext?.navigate({ target: 'toolbox', resourceId: '/mcp/' + encodeURIComponent(item.serverId!) }); };

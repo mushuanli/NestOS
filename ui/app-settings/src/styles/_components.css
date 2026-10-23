@@ -608,6 +608,14 @@
 .initial-files [role="alert"] { color: var(--llm-color-error, #c33); }
 .initial-files button { margin: .5rem .5rem .5rem 0; }
 .initial-files__select-all { float: right; display: inline-flex; align-items: center; gap: .4rem; font-weight: normal; }
+.initial-files__results { padding: 0; list-style: none; }
+.initial-files__results > li { margin-block: 12px; padding: 12px; border: 1px solid var(--llm-border-color, #e5e7eb); border-radius: 8px; overflow-wrap: anywhere; }
+.initial-files__dependencies { margin-top: 8px; }
+.initial-files__dependencies > p { margin-block: 6px; }
+.initial-files__dependencies[data-dependencies-status="ready"] > p:first-child { color: var(--llm-color-success, #15803d); }
+.initial-files__dependencies[data-dependencies-status="failed"] > p:first-child { color: var(--llm-color-error, #c33); }
+.initial-files__dependency-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.initial-files__dependency-actions button { min-height: 44px; margin: 0; }
 /* Keyboard-accessible configuration switch; the native input owns its state. */
 .settings-toggle { display: inline-flex; align-items: center; gap: .5rem; position: relative; cursor: pointer; font-size: .8125rem; }
 .settings-toggle input { position: absolute; width: 1px; height: 1px; opacity: 0; }

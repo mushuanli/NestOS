@@ -89,6 +89,7 @@ export interface ProjectNavigationSnapshot {
 
 /** A prepared navigation read model; paths are opaque loading targets for the UI. */
 export interface ProjectNavigationView {
+    defaultProjectId?: string;
     path: string;
     projects: ProjectFolder[];
     project?: ProjectFolder;
@@ -124,6 +125,8 @@ export interface ProjectService {
     get(id: string): Promise<ProjectFolder>;
     forFolder(path: string | null | undefined, folders?: readonly SessionFolder[]): Promise<ProjectFolder | undefined>;
     current(): Promise<ProjectFolder | undefined>;
+    getDefaultProject(): Promise<ProjectFolder | undefined>;
+    setDefaultProject(id: string): Promise<void>;
     create(name: string, parent?: string | null, directory?: string): Promise<ProjectFolder>;
     createRemote(name: string, parent: string | null, connectionId: string, path: string, access?: 'ro' | 'rw', options?: OperationOptions & {
         createDirectory?: boolean;

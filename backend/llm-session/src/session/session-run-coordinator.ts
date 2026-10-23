@@ -222,7 +222,7 @@ export class SessionRunCoordinator {
         const revision = task.input.instructionFlowBinding?.definition ?? await definitions.loadRevision(flow.flowId, flow.revision);
         if (!revision) throw new Error(`Flow revision not found: ${flow.flowId}`);
         flow.revision = revision.revision;
-        const parameterIssues = validateFlowParameters(revision.parameters, flow.parameters);
+        const parameterIssues = validateFlowParameters(revision.parameters, flow.parameters, revision.inputGroups);
         if (hasValidationErrors(parameterIssues)) {
             throw new Error(parameterIssues.map(issue => issue.message).join('; '));
         }
@@ -253,7 +253,7 @@ export class SessionRunCoordinator {
             frozenFlowResolver(task.input, (id, version) => definitions.loadRevision(id, version)), [], revision.dependencyLocks, false,
             task.input.overrides?.connectionId, execution?.kind === 'flow' ? execution.connectionBindings : undefined,
             (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, catalog,
-                task.input.instructionConnectionBinding?.defaults, runConnectionId));
+                task.input.instructionConnectionBinding?.defaults, runConnectionId), execution?.kind === 'flow' ? execution.parameters : undefined);
         return { ...graph, input: { prompt: task.input.text } };
     }
 
@@ -438,7 +438,7 @@ export class SessionRunCoordinator {
                 frozenFlowResolver(input, async () => null), [], binding.definition.dependencyLocks, false,
                 input.overrides?.connectionId, input.sendIntent?.execution.kind === 'flow' ? input.sendIntent.execution.connectionBindings : undefined,
                 (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, catalog,
-                    input.instructionConnectionBinding?.defaults, runConnectionId));
+                    input.instructionConnectionBinding?.defaults, runConnectionId), input.sendIntent?.execution.kind === 'flow' ? input.sendIntent.execution.parameters : undefined);
             this.host.logger.debug('Flow plan revalidated', { operation: 'flow.plan', stage: 'dispatch-admission', result: 'success',
                 operationId, planVersion: binding.plan?.version ?? 0, elapsedMs: Date.now() - started });
         } catch (error) {

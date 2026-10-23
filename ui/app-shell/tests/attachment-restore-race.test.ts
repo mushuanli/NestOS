@@ -34,6 +34,7 @@ function activationFixture() {
     let complete!: (loaded: unknown) => void;
     const editor = {
         initComplete: true, activationRevision: 0, viewActive: false, destroyPromise: undefined as Promise<void> | undefined,
+        invocationAbort: new AbortController(),
         options: {sessionId: 'session'}, currentTitle: 'Title', branchStore: {}, refreshAgentsTimer: null,
         sessionService: {loadSession: vi.fn(() => new Promise(resolve => {complete = resolve;}))},
         bindSessionEvents: vi.fn(), sessionManager: {onGlobalEvent: vi.fn()},

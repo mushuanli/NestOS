@@ -1,9 +1,10 @@
-import type { FlowConnection, FlowRevision, JsonValue } from '@itookit/llm-flow/contracts';
+import { flowConnectionRequired, flowParameterValues, type FlowConnection, type FlowRevision, type JsonValue } from '@itookit/llm-flow/contracts';
 import type { ModelRequirements } from '@itookit/kernel-adapters/contracts';
 
 /** Pure Flow requirements shared by admission and form projection. */
-export function inferFlowConnectionRequirements(flow: Pick<FlowRevision, 'nodes' | 'connections'>): FlowConnection[] {
-    const slots = structuredClone(flow.connections ?? []);
+export function inferFlowConnectionRequirements(flow: Pick<FlowRevision, 'nodes' | 'connections' | 'parameters' | 'inputGroups'>, parameters?: Record<string, JsonValue>): FlowConnection[] {
+    const values = flowParameterValues(flow.parameters, parameters, flow.inputGroups);
+    const slots = structuredClone(flow.connections ?? []).map(slot => ({...slot, required: flowConnectionRequired(slot, values)}));
     for (const node of flow.nodes.filter(item => item.plugin === 'builtin.media' || item.plugin === 'builtin.agent')) {
         const config = record(node.config);
         if (record(config.execution).kind === 'harness') continue;
@@ -23,9 +24,13 @@ export function nodeRequirements(operation: string, config: Record<string, JsonV
     if (declared && declared.operation !== operation) throw new Error('Node requirements conflict with operation');
     if (slot?.requirements && slot.requirements.operation !== operation) throw new Error('Node operation conflicts with connection slot');
     const output = operation === 'chat' ? 'text' : operation === 'image.generate' ? 'image' : 'audio';
+    const format = record(config.responseFormat).type;
+    const responseFormats = [...new Set([...declared?.responseFormats ?? [], ...slot?.requirements?.responseFormats ?? [],
+        ...typeof format === 'string' ? [format as NonNullable<ModelRequirements['responseFormats']>[number]] : []])];
     return { operation, inputModalities: [...new Set(['text', ...messageModalities(config.messageTemplates ?? config.messages), ...declared?.inputModalities ?? [], ...slot?.requirements?.inputModalities ?? []])],
         outputModalities: [...new Set([output, ...declared?.outputModalities ?? [], ...slot?.requirements?.outputModalities ?? []])],
-        features: [...new Set([...declared?.features ?? [], ...slot?.requirements?.features ?? []])] };
+        features: [...new Set([...declared?.features ?? [], ...slot?.requirements?.features ?? []])],
+        ...(responseFormats.length ? {responseFormats} : {}) };
 }
 function messageModalities(value: unknown): string[] {
     if (!Array.isArray(value)) return [];

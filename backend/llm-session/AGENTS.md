@@ -77,6 +77,8 @@ Flow 指令接纳通过 llm-flow 的 prepareFlowRun 生成图，在 flowBinding.
 
 flow-agent-connections 统一预检与上下文绑定的连接选择规则；完整准入的连接选择通过 freezePlannedFlowConnections 写回源图，递归覆盖委派模板和批量子调用，保持源指令与上下文策略。派发只重建消息并复验已冻结的连接，不根据新的默认值重选。VFSAgentService 按 Agent ID 串行执行准备及保存，接纳时复制输入，关闭时等待已接纳保存结束。
 
+flow-connection-policy 从节点 responseFormat 推导 responseFormats，合并节点及共享槽位声明，写入连接准入和 frozenConnection.requirements。协议/格式不兼容使用 FLOW_CONNECTION_OUTPUT_FORMAT_UNSUPPORTED，保留具体槽位、协议与格式原因；连接预检日志只记录 operationId、阶段、结果、错误分类和耗时，不请求模型或记录消息/参数。
+
 Agent、连接管理、恢复与定价的权威契约位于 kernel-adapters/contracts。本包为既有 Session API 保留具名转发，构建必须内联其 JavaScript 与声明，发布产物不得保留对适配器包的导入；它仅列为开发依赖。
 
 DirectAgentPolicy 控制显式 Agent 模式的附加提示与 maxExchanges。构造时验证预算、复制并冻结；附加提示必须在 Context 装配前加入并参与 token 计量，不得在 Task 构造时绕过预算追加消息。实际预算写入 Task，Chat/Flow 与旧模式不消费附加提示。
@@ -84,3 +86,5 @@ DirectAgentPolicy 控制显式 Agent 模式的附加提示与 maxExchanges。构
 ConversationContextBuilder 负责 Round/Branch 选择、宿主材料与 Context 装配；direct-conversation 负责直接运行工具/MCP/Skill 准备和 TaskSpec。协调器保留提交、Round 持久化与事件投影。初始 Round 写入失败时取消已提交 Run，防止脱离历史的任务继续执行；产品策略仍通过已有宿主端口和 DirectAgentPolicy 注入。
 
 会话创建可传 `creation.agentId`，首次身份事务保存不可变 `createdWithAgentId`，摘要与项目导航索引保留此字段。改变当前轮 settings.agentId、幂等 ensureSession 或普通 manifest patch 不改变创建来源；已有无来源会话不推断。项目草稿转正由宿主捕获，导入导出保留该来源。
+
+连接准入的缺失绑定和能力错误携带稳定 code 与 field（槽位名）；前端不解析错误消息。session.check-flow-connection-slots 独立返回槽位配置问题，复用完整图准入的 admitFlowConnectionSlot，不构造空节点的临时 Flow。必需槽位未覆盖时可继承用途默认连接，可选槽位的空字符串表示显式解绑。

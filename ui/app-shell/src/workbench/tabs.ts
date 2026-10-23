@@ -74,7 +74,7 @@ export class WorkbenchTabs<T> {
         this.standalone = compactNavigation(this.navigation, '', () => {
             const layout = container.closest<HTMLElement>('.mm-layout');
             if (layout) backToPreviousPage(() => { layout.dataset.mobileView = 'list'; });
-        }, () => this.showOpened());
+        }, origin => this.showOpened(origin));
         container.append(this.navigation, this.bar, this.body);
         for (const tab of restored ?? []) {
             const entry = this.create(tab.id, tab.title, false); entry.pinned = tab.pinned;
@@ -87,17 +87,18 @@ export class WorkbenchTabs<T> {
     }
     get current(): WorkbenchTab<T> | undefined { return this.currentId ? this.entries.get(this.currentId) : undefined; }
     mountCompactNavigation(container: HTMLElement, context: string, back: () => void): () => void {
-        const view = compactNavigation(container, context, back, () => this.showOpened());
+        const view = compactNavigation(container, context, back, origin => this.showOpened(origin));
         this.compactViews.add(view); view.update(this.current?.title ?? '', this.windowCount());
         return () => { this.compactViews.delete(view); view.destroy(); };
     }
     mountWindowList(container: HTMLElement): () => void {
-        const view = openedButton(() => this.showOpened()); container.append(view.button);
+        const view = openedButton(origin => this.showOpened(origin)); container.append(view.button);
         this.windowButtons.add(view); view.update(this.windowCount());
         return () => {this.windowButtons.delete(view); view.button.remove();};
     }
-    private showOpened(): void {
+    private showOpened(origin?: HTMLElement): void {
         if (this.openedDialog?.open) return;
+        origin ??= document.activeElement instanceof HTMLElement ? document.activeElement : undefined;
         const dialog = document.createElement('dialog'); dialog.className = 'workbench-opened-sheet';
         dialog.setAttribute('aria-label', t('workbench.opened'));
         const heading = document.createElement('strong'); heading.textContent = t('workbench.opened');
@@ -109,7 +110,8 @@ export class WorkbenchTabs<T> {
         dialog.addEventListener('click', event => { if (event.target === dialog) dialog.close(); });
         dialog.addEventListener('close', () => {
             placeholder.replaceWith(this.opened); dialog.remove(); this.openedDialog = undefined;
-            this.current?.panel.querySelector<HTMLButtonElement>('.workbench-window-list')?.focus();
+            const fallback = this.current?.panel.querySelector<HTMLButtonElement>('.workbench-window-list');
+            (origin?.isConnected && !origin.closest('[hidden]') ? origin : fallback)?.focus();
         }, {once: true});
         dialog.showModal();
         if (this.windows) this.windows.registry.describe(); else this.describeOpened();

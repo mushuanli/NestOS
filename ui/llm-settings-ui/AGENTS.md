@@ -53,6 +53,8 @@ CostEditor 默认展示本月费用账本摘要；趋势、Provider/会话明细
 
 AgentConfigEditor 可消费 EditorOptions.mountSettings 挂载宿主偏好，生命周期包含 isDirty、flush 与 destroy；偏好字段不写入 AgentDefinition，保存失败阻止离开并保留表单。
 
+AgentConfigEditor 通过可选 EditorOptions.onStartConversation 打开宿主聊天工作区，不发送消息；点击先 flush 宿主偏好及 Agent 自动保存，保存失败保留草稿并展示具体原因。开始聊天按钮在桌面固定身份栏右侧，手机与 mountCompactNavigation 的公开导航槽同行；手机将原身份表单移动到基本页，复用相同 DOM，四页签常驻且仅活动面板滚动。宿主导航存在时声明 data-editor-mobile-navigation="embedded"，销毁释放挂载与媒体查询监听；只读模式允许聊天导航，异步启动去重，隐藏或销毁取消尚未提交的启动。诊断日志仅记录 operationId、阶段、结果、固定错误分类和耗时，不记录表单或异常正文。
+
 Agent 表单的共享样式统一位于 `ui/app-settings/src/styles/_agents.css`，Web/Tauri 宿主不重复定义同名选择器。页头与四个配置页签常驻，活动 `.agent-editor-panel` 是唯一纵向滚动区域，宿主承载层不增加滚动或 padding。页签切换仅设置 hidden，保留各页 DOM 草稿与滚动位置；只读模式仍支持页签与折叠导航。旧版 type 分类在高级页只读展示，不控制行为、授权字段的显示和保存；执行行为由执行配置决定。隐藏页面的校验失败会切回对应页面并展开字段所在段。折叠标题和页签使用原生 button，并同步 aria-expanded/aria-selected。
 
 主执行入口分为 Agent、Composite 和 Workflow。Composite 编辑主持者、允许成员及分工/并发限制，保存后由应用服务发布受管 Flow 并返回规范绑定；无额外运行参数时不弹空表单。已登记 Agent 通过 saveAgent 保存，不能借 hostContext 原始写入绕过校验与编排准备；独立未登记的文件草稿仍交宿主保存。行为与模型页的「模型选择」按 chat/image.generate/speech.synthesize 配置 modelDefaults，未设置继承系统，候选复用模型能力声明过滤，不以音频输入推断 TTS。Workflow 的具名槽位另称「流程连接覆盖」，只作用于所绑定流程，不能另建一套 Agent 用途默认；输入图片处理明确表示发给模型的图片缩放。

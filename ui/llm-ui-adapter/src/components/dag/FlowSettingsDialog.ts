@@ -343,8 +343,10 @@ function readConnectionRow(row: HTMLElement): FlowConnection {
     const requirements = JSON.parse(readInput(row, '[data-conn-requirements]') || '{}');
     if (!requirements || typeof requirements !== 'object' || Array.isArray(requirements)
         || Object.keys(requirements).length && (typeof requirements.operation !== 'string' || !requirements.operation.trim())) throw new Error(t('flow.settings.connectionOperationRequired'));
-    for (const key of ['inputModalities', 'outputModalities', 'features']) if (requirements[key] !== undefined
+    for (const key of ['inputModalities', 'outputModalities', 'features', 'responseFormats']) if (requirements[key] !== undefined
         && (!Array.isArray(requirements[key]) || requirements[key].some((item: unknown) => typeof item !== 'string' || !item.trim()))) throw new Error(t('flow.settings.invalidRequirement', { key }));
+    if (requirements.responseFormats?.some((format: string) => !['text', 'json_object', 'json_schema'].includes(format)))
+        throw new Error(t('flow.settings.invalidRequirement', {key: 'responseFormats'}));
     const required = row.querySelector<HTMLInputElement>('[data-conn-required]')!.checked;
     const tier = readInput(row, '[data-conn-tier]') as FlowConnection['tier'];
     const changed = connectionId !== (original.connectionId ?? '') || required !== (original.required !== false)

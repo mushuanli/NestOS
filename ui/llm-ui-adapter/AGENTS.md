@@ -167,5 +167,9 @@ FlowParameterForm 的 images/json 字段通过 FlowImageFields 按 imageConstrai
 Flow 文件的更多菜单将「运行…」放在首项，随后才是分组、导出和编辑操作；宿主把完整资源菜单交给 Flow 菜单扩展排序，子流程分组内的文件共用同一入口。
 
 普通输入选择 execution.kind=flow 的 Agent 时，发送前按绑定读取当前发布或固定 Flow，复用 FlowParameterForm 收集额外参数及连接；默认顺序为 Flow → Agent → 本次输入，提示词由 input.prompt 提供。发送只透传 flowParameters/flowConnectionBindings，后端重新解析 Agent 绑定，不相信 UI 的 flowId。availability=disabled 保留原选择和草稿、禁选禁发并显示原因，配置通知更新可用性；隐藏、销毁及删除 Flow 时取消尚未提交的参数表单。Flow Agent 不要求全局聊天模型，图片经共享 input-assets 端口持久化。DOM 回归见 app-shell/tests/agent-flow-input.test.ts。
+
+Flow Agent 参数预填使用点击发送时的文字与附件快照，只消费 FlowParameter.inputSource 的 composer.text/composer.attachments 声明，不按字段名或工具业务猜测；文字覆盖声明字段的默认值，附件经 FlowParameterExtension.initialFiles 在初始弹窗内校验、预览并导入，取消或失败不清除聊天草稿。只有显式 inputGroups.mode=oneOf 的组要求用户选择一个来源；未声明互斥组保留多来源输入。flowImageAssets 按命令总线缓存公开资产端口，导入缓存不能跨运行时复用；条件连接验证将当前参数传给宿主重新核对。
 右侧 Flow 工具栏以「流程名称 → 运行记录」开头，不重复显示 Flow Design；「运行」移至参数面板顶部固定栏，与菜单共用 ACTION_ICONS.run 和主题绿色提示，禁用态恢复中性色。连接表单标注必选/可选，设置可编辑 required、tier 和 requirements；需求由 Flow 声明，不按业务名称推断。文案走中英文 i18n。
 运行表单的缺项提示区分填写参数、选择图片/选项和选择模型连接；参数优先显示 label，连接优先显示 description，缺省回退 name，与表单标签保持一致，不按业务或槽名映射文案。
+
+Flow 参数表单只收集连接覆盖；必需槽位留空表示继承声明或用途默认连接，是否可运行由后端准入决定。槽位错误消费结构化 field，经本地或 HTTP 同样定位，不匹配英文错误正文。

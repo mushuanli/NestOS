@@ -296,7 +296,7 @@ LLM 请求失败策略：`DurableProgramInput.llmRetry?: { retries?: number; bac
 生成持久 Effect retry，Agent / Chat / Plan 使用同一策略；可重试错误由适配器分类，总等待受 timeoutMs 限制。
 
 结构化输出的 `outputValidation.onInvalid: repair` 默认额外修复 3 次，显式 retries 优先；
-修复计入 maxExchanges。无效响应生成 `llm.output.invalid` 持久事件，包含解析错误、finishReason、
-响应长度与首尾片段、实际修复策略和预算，详见 [Flow 能力与输出](./design/flow-capabilities-and-output.md)。
+修复计入 maxExchanges。本地 schema 支持字符串 `minLength` / `maxLength`（Unicode 码点数）与 `pattern`，空字符串或空白字段违反声明时进入同一有界修复流程。
+无效响应生成 `llm.output.invalid` 持久事件，包含错误类别、校验路径、finishReason、响应长度、实际修复策略和预算，不记录模型正文，详见 [Flow 能力与输出](./design/flow-capabilities-and-output.md)。
 
 llmRetry.retries 表示附加尝试次数，默认 3，backoffMs 默认 1000；宿主可覆盖，机制只校验数值边界，禁止溢出总尝试次数。toolTimeoutMs 是正的安全整数，默认 300000。buildLlmTaskInput 验证并复制策略，工具 Effect 从持久 Agent 输入读取，恢复后不会重新读取宿主当前配置。

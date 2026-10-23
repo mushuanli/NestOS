@@ -2,6 +2,7 @@
 export interface WorkbenchSnapshot {
     version: 1;
     width?: number;
+    sidebarView?: string;
     navigationHeight?: number;
     navigationCollapsed?: boolean;
     openedCollapsed?: boolean;
@@ -20,7 +21,7 @@ export function readWorkbenchSnapshot(value: unknown): WorkbenchSnapshot | undef
         .map(({ id, title, pinned, conversationId, context, location }) => ({ id, title, pinned,
             ...(typeof conversationId === 'string' ? { conversationId } : {}), ...(typeof context === 'string' ? { context } : {}), ...(typeof location === 'string' ? { location } : {}) })) : [];
     const number = (value: unknown, min: number, max: number) => typeof value === 'number' && Number.isFinite(value) ? Math.min(max, Math.max(min, value)) : undefined;
-    return { version: 1, width: number(data.width, 220, 600), navigationHeight: number(data.navigationHeight, 20, 85),
+    return { version: 1, width: number(data.width, 220, 600), sidebarView: typeof data.sidebarView === 'string' ? data.sidebarView : undefined, navigationHeight: number(data.navigationHeight, 20, 85),
         navigationCollapsed: data.navigationCollapsed === true, openedCollapsed: data.openedCollapsed === true,
         drawerCollapsed: data.drawerCollapsed && typeof data.drawerCollapsed === 'object'
             ? Object.fromEntries(Object.entries(data.drawerCollapsed).filter(([, value]) => typeof value === 'boolean')) : undefined, tabs };

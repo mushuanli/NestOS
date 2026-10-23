@@ -104,6 +104,24 @@ it('rejects an occupied relocation target before fencing or changing the source'
     expect((await repository.getManifest(id)).title).toBe('Original');
 });
 
+it('logs duplicate discovery with both locations and one operation ID without leaking conversation data', async () => {
+    const id = await repository.createSession('PRIVATE_SESSION_TITLE'), copy = await copySession(id);
+    await repository.writeDocument(id, 'private.json', JSON.stringify('PRIVATE_DOCUMENT_BODY'));
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const observed = new SessionRepository(fs, undefined, logger);
+    try {
+        await observed.init();
+        await expect(observed.indexProjectSessions(directory)).rejects.toMatchObject({code: 'ECONFLICT'});
+        expect(logger.error).toHaveBeenCalledWith('session.storage', expect.objectContaining({operation: 'session.storage.index',
+            stage: 'validate-identities', outcome: 'failure', code: 'ECONFLICT', reason: 'SESSION_STORAGE_IDENTITY_CONFLICT',
+            sessionId: id, registered: `/var/lib/sessions/${id}`, candidate: copy, durationMs: expect.any(Number)}));
+        const failure = logger.error.mock.calls[0][1];
+        expect(logger.info.mock.calls.some(([, data]) => data.operationId === failure.operationId)).toBe(true);
+        const logs = JSON.stringify([...logger.info.mock.calls, ...logger.error.mock.calls]);
+        expect(logs).not.toContain('PRIVATE_SESSION_TITLE'); expect(logs).not.toContain('PRIVATE_DOCUMENT_BODY');
+    } finally { await observed.dispose(); }
+});
+
 it('ignores unrelated directories without a Session manifest during discovery', async () => {
     await fs.driver.createDirectory({ parentPath: directory, name: '.unrelated', recursive: true });
     await repository.validateProjectSessions(directory);
@@ -117,11 +135,12 @@ it('retains a stale move intent without replacing a completed relocation during 
     await repository.relocateProjectStorage(id);
     await fs.meta.seq!.setEntry('/var/lib/sessions/storage-moves.seq', encodeURIComponent(central),
         JSON.stringify({ from: central, to: `/home/admin/another/${id}` }));
-    const warning = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const reopened = new SessionRepository(fs);
+    const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
+    const reopened = new SessionRepository(fs, undefined, logger);
     try {
         await reopened.init();
-        expect(warning).toHaveBeenCalled();
+        expect(logger.error).toHaveBeenCalledWith('session.storage', expect.objectContaining({operation: 'session.storage.recover',
+            stage: 'validate-identity', outcome: 'failure', code: 'ECONFLICT', reason: 'SESSION_STORAGE_IDENTITY_CONFLICT'}));
         expect(await fs.meta.seq!.getEntry(index, `storage/${id}`)).toBe(`${directory}/${id}`);
         expect((await reopened.getManifest(id)).title).toBe('Original');
         expect(await fs.driver.exists(`/home/admin/another/${id}`)).toBe(false);

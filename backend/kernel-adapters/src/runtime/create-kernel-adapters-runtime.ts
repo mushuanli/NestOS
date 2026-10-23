@@ -40,6 +40,7 @@ import type {
 import { ApprovedEffectProgram } from '../programs/approved-effect-program';
 import { ExecProgram } from '../programs/exec-program';
 import { ContextPrepareEffect, ContextLlmEffect, ContextToolEffect, type ContextServiceResolver } from '../context/effects';
+import {LiveTools} from './live-tools';
 
 export interface KernelAdaptersRuntimeOptions extends KernelAdapterDiagnostics {
     harnessExecution?: import('../llm-management/contracts/harness-execution').HarnessExecutionProvider;
@@ -76,6 +77,7 @@ export interface KernelAdaptersRuntime {
     skillCatalog: Pick<ISkillService, 'getSkillNames' | 'saveSkill' | 'deleteSkill'>;
     sessions: SessionCapabilityRegistry;
     plugin: KernelAdaptersPlugin;
+    registerTools(tools: Tool[]): Promise<void>;
     disposeSession(sessionId: string): Promise<void>;
     disposeScope(sessionId: string, scopeId: string): Promise<void>;
     dispose(): Promise<void>;
@@ -84,13 +86,15 @@ export interface KernelAdaptersRuntime {
 export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntimeOptions): Promise<KernelAdaptersRuntime> {
     const llmService = new LLMServiceAdapter(options.llmDriver, options.runMode ?? 'kernel');
     const definitions = new Map<string, SkillDefinition>();
-    const registry = new KernelAdaptersSessionRegistry(options, definitions);
+    const liveTools = new LiveTools([...BUILTIN_TOOLS, ...(options.additionalTools ?? [])]);
+    const registry = new KernelAdaptersSessionRegistry(options, definitions, liveTools);
     // Metadata only: no executable tool/skill service escapes through the catalog.
     const catalogSkills = new SkillDeviceDriver({ registry: definitions });
-    const catalogTools = new ToolDeviceDriver([...BUILTIN_TOOLS, ...(options.additionalTools ?? [])]);
+    const catalogTools = new ToolDeviceDriver(liveTools.list());
     registerCoreTools(catalogTools, catalogSkills);
     registerEffectTools(catalogTools, options.effectTools);
     await catalogTools.init();
+    liveTools.attach(catalogTools);
     const effects = createEffects(llmService, registry, Boolean(options.fileContextForSession || options.fileContextForScope), options.effectTools, options);
     effects.push(new HarnessExecutionEffect(options.harnessExecution, options.logger));
     if (options.mediaResultStore) {
@@ -105,6 +109,7 @@ export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntime
         new ContextToolEffect(options.contextService, effects.find(effect => effect.kind === 'tool.call')! as ToolCallEffectAdapter));
     return {
         llmService,
+        registerTools: tools => liveTools.register(tools),
         toolCatalog: {
             listTools: () => catalogTools.listTools(),
             getToolDefinitions: () => catalogTools.getToolDefinitions(),
@@ -123,7 +128,7 @@ export async function createKernelAdaptersRuntime(options: KernelAdaptersRuntime
         }),
         disposeSession: sessionId => registry.disposeSession(sessionId),
         disposeScope: (sessionId, scopeId) => registry.disposeScope(sessionId, scopeId),
-        dispose: async () => { await registry.dispose(); await catalogTools.dispose(); await catalogSkills.dispose(); },
+        dispose: async () => { await liveTools.close(); await registry.dispose(); await catalogTools.dispose(); await catalogSkills.dispose(); },
     };
 }
 
@@ -147,7 +152,7 @@ class KernelAdaptersSessionRegistry implements SessionCapabilityRegistry {
     private readonly hydrating = new Map<string, Promise<KernelAdaptersScope>>();
 
     constructor(private readonly options: KernelAdaptersRuntimeOptions,
-        private readonly skillDefinitions: Map<string, SkillDefinition>) {}
+        private readonly skillDefinitions: Map<string, SkillDefinition>, private readonly liveTools: LiveTools) {}
 
     get(sessionId: string): Promise<KernelAdaptersScope> {
         if (this.closed) return Promise.reject(new Error('Session capability registry is closed'));
@@ -204,7 +209,7 @@ class KernelAdaptersSessionRegistry implements SessionCapabilityRegistry {
         if (!scope) {
             scope = new KernelAdaptersSessionRegistry({ ...this.options, scopeForEffect: undefined,
                 fileContextForScope: undefined,
-                fileContextForSession: id => this.options.fileContextForScope!(id, scopeId) }, this.skillDefinitions);
+                fileContextForSession: id => this.options.fileContextForScope!(id, scopeId) }, this.skillDefinitions, this.liveTools);
             scopes.set(scopeId, scope);
         }
         return scope;
@@ -215,7 +220,7 @@ class KernelAdaptersSessionRegistry implements SessionCapabilityRegistry {
         const scopes = this.runScopes.get(sessionId) ?? new Map<string, KernelAdaptersSessionRegistry>();
         this.runScopes.set(sessionId, scopes);
         let scope = scopes.get(scopeId);
-        if (!scope) { scope = new KernelAdaptersSessionRegistry(this.options, this.skillDefinitions); scopes.set(scopeId, scope); }
+        if (!scope) { scope = new KernelAdaptersSessionRegistry(this.options, this.skillDefinitions, this.liveTools); scopes.set(scopeId, scope); }
         await scope.dispose();
     }
 
@@ -304,10 +309,7 @@ class KernelAdaptersSessionRegistry implements SessionCapabilityRegistry {
     private async createScope(sessionId: string): Promise<KernelAdaptersScope> {
         const files = this.options.fileContextForSession
             ? await this.options.fileContextForSession(sessionId) : undefined;
-        const toolDriver = new ToolDeviceDriver([
-            ...BUILTIN_TOOLS,
-            ...(this.options.additionalTools ?? []),
-        ]);
+        const toolDriver = new ToolDeviceDriver(this.liveTools.list());
         if (this.options.taskAssetStore) toolDriver.setAssetStore(this.options.taskAssetStore);
         if (this.options.readTaskAsset) toolDriver.setAssetReader(this.options.readTaskAsset);
         if (files) toolDriver.setFileContext(files.vfs, files.cwd);
@@ -334,16 +336,17 @@ class KernelAdaptersSessionRegistry implements SessionCapabilityRegistry {
         skillDriver.setToolService(toolDriver.getService());
         const ttySessions = registerCoreTools(toolDriver, skillDriver.getService(), files?.ttyDriver);
         registerEffectTools(toolDriver, this.options.effectTools);
+        const detachTools = this.liveTools.attach(toolDriver);
         try {
             await toolDriver.init();
             if (files && this.options.skillSourceForSession) await skillDriver.getService().setCwd(files.cwd);
         }
-        catch (error) { return cleanupAfterFailure(error, [() => files?.release(), () => toolDriver.dispose(), () => skillDriver.dispose()]); }
+        catch (error) { detachTools(); return cleanupAfterFailure(error, [() => files?.release(), () => toolDriver.dispose(), () => skillDriver.dispose()]); }
         const scope = createScope(toolDriver, skillDriver, { cwd: files?.cwd, shellAttached: !!nativeShell }, ttySessions);
         scope.resolveMCPToolIds = profiles => mcp.resolveProfiles(profiles);
         scope.prepareTools = ids => mcp.prepare(scope.toolService, ids);
         const dispose = scope.dispose.bind(scope);
-        scope.dispose = retryCleanup([() => dispose(), () => files?.release()]);
+        scope.dispose = retryCleanup([async () => {detachTools(); await dispose();}, () => files?.release()]);
         try { await this.options.configureSession?.(sessionId, scope); }
         catch (error) { return cleanupAfterFailure(error, [() => scope.dispose()]); }
         return scope;

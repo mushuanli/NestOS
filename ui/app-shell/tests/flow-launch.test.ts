@@ -158,20 +158,24 @@ describe('Flow parameter form', () => {
         expect(connection.bindings).toEqual({ optional: '', 'child/voice': 'speech' });
     });
 
-    it('preserves missing slot ids and validates required slots before changing run selection', async () => {
-        const connection = { connections: [{id: 'available', name: 'Available', providerId: 'p'}], slots: [{ name: 'required', connectionId: 'missing' }], bindings: {}, onChange: vi.fn() };
+    it('preserves missing slot ids and delegates inherited bindings to backend admission', async () => {
+        const validate = vi.fn(async () => {
+            if (!connection.bindings.required) throw Object.assign(new Error('Inherited connection is unavailable'), {field: 'required'});
+        });
+        const connection = {connections: [{id: 'available', name: 'Available', providerId: 'p'}],
+            slots: [{name: 'required', connectionId: 'missing'}], bindings: {} as Record<string, string>, onChange: vi.fn(), validate};
         const result = promptFlowParameters([], undefined, undefined, undefined, connection);
         const slot = document.querySelector<HTMLSelectElement>('[data-slot-connection="0"]')!;
         expect(slot.value).toBe('missing'); expect(slot.textContent).toContain('missing');
         slot.value = ''; submit();
-        expect(document.querySelector('dialog')!.open).toBe(true);
-        expect(document.querySelector('[data-form-error]')!.textContent).toBe('请选择模型连接：required');
-        expect(connection.onChange).not.toHaveBeenCalled();
+        await vi.waitFor(() => expect(document.querySelector('[data-form-error]')!.textContent).toBe('Inherited connection is unavailable'));
+        expect(document.querySelector('dialog')!.open).toBe(true); expect(validate).toHaveBeenCalledOnce();
+        expect(connection.bindings).toEqual({});
         slot.value = 'missing'; submit();
         expect(document.querySelector('[data-form-error]')!.textContent).toContain('missing');
-        expect(connection.onChange).not.toHaveBeenCalled();
+        expect(validate).toHaveBeenCalledOnce();
         slot.value = 'available'; submit(); await result;
-        expect(connection.bindings).toEqual({ required: 'available' });
+        expect(connection.bindings).toEqual({required: 'available'}); expect(validate).toHaveBeenCalledTimes(2);
     });
 });
 

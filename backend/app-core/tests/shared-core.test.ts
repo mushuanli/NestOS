@@ -151,3 +151,15 @@ describe('RunCatalog', () => {
             status: 'succeeded', rootTaskId: 'root', createdAt: 1, updatedAt: 3 }]);
     });
 });
+
+it('preserves input groups and compiles conditional connections with actual CLI run parameters', async () => {
+    const groups = [{name: 'source', mode: 'oneOf' as const, parameters: ['body', 'pages']}];
+    let required: boolean | undefined;
+    const definition = await createRunDefinitionFromFlow({id: 'conditional', name: 'Conditional', revision: 1, digest: 'd', createdAt: 1,
+        parameters: [{name: 'body', type: 'string'}, {name: 'pages', type: 'json'}, {name: 'enabled', type: 'boolean', default: false}], inputGroups: groups,
+        connections: [{name: 'optional-media', requiredWhen: {kind: 'param', path: ['enabled']}}], nodes: [], edges: []} as never,
+        {parameters: {body: 'Selected', enabled: true}, prepareConnections: async flow => {
+            required = flow.connections![0].required; return {...flow, connections: []};
+        }});
+    expect(required).toBe(true); expect(toDagRunSpec(definition).inputGroups).toEqual(groups);
+});

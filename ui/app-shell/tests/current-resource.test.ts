@@ -56,6 +56,9 @@ it('reports navigation visibility only for visible surfaces and releases observe
     const layout = document.querySelector<HTMLElement>('.mm-layout')!, sidebar = document.querySelector<HTMLElement>('.mm-sidebar')!, changed = vi.fn();
     const close = observeNavigationVisibility(layout, sidebar, changed); expect(changed).toHaveBeenLastCalledWith(false);
     layout.dataset.mobileView = 'list'; await vi.waitFor(() => expect(changed).toHaveBeenLastCalledWith(true));
+    const resourcePane = document.createElement('section'); resourcePane.className = 'workbench-sidebar__section';
+    resourcePane.dataset.section = 'navigation'; sidebar.append(resourcePane); resourcePane.hidden = true;
+    await Promise.resolve(); expect(changed).toHaveBeenLastCalledWith(true);
     sidebar.classList.add('is-collapsed'); await vi.waitFor(() => expect(changed).toHaveBeenLastCalledWith(false));
     sidebar.classList.remove('is-collapsed'); narrow = false; layout.dataset.mobileView = 'detail';
     await vi.waitFor(() => expect(changed).toHaveBeenLastCalledWith(true));

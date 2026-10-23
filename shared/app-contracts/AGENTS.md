@@ -28,3 +28,6 @@
 
 FlowLibraryCommand 是应用层恢复入口的纯命令常量；恢复与发布策略由 app-core 实现，契约不加载执行器，也不改变核心 FlowCommand 的语义。
 ToolboxInventory 的 capabilityTags 是不含凭据的派生能力列表，configuredModel 表达受支持的已配置模型，model 继续只表达聊天模型；标签用于查找，运行授权仍由连接准入校验决定。
+
+
+- ports/flow-installation 定义工具依赖、可信工具包目录及 Flow 安装报告；FlowToolDependency 指具体工具身份，包版本和可执行位置由宿主管理。ToolboxResources 的 toolPackages/flowInstallations 为可选能力，InitialFiles 的 prepareDependencies 只重试现有定义依赖；导入与恢复报告不能把缺工具或待配置当作就绪。

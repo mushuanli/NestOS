@@ -234,12 +234,14 @@ export interface PrivilegedCommandService {
 export interface MindosInitialFiles {
     list(): Promise<InitialFileEntry[]>;
     restore(ids: string[]): Promise<InitialFileResult[]>;
+    prepareDependencies(ids: string[]): Promise<import('./flow-installation').FlowInstallationReport[]>;
 }
 
 export interface InitialFileResult {
     id: string;
     status: 'restored' | 'preserved' | 'failed';
     error?: string;
+    dependencies?: import('./flow-installation').FlowInstallationReport;
 }
 
 export interface InitialFileEntry {

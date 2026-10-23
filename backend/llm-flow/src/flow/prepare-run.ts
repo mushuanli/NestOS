@@ -18,8 +18,8 @@ export interface FlowPreparationOptions {
 /** Shared preparation boundary for standalone calls and durable conversation instructions. */
 export async function prepareFlowRun(flow: FlowRevision, options: FlowPreparationOptions) {
     const issues = [...checkFlowSyntax(flow, { plugins: options.plugins }).diagnostics,
-        ...validateFlowParameters(flow.parameters, options.parameters)];
+        ...validateFlowParameters(flow.parameters, options.parameters, flow.inputGroups)];
     if (hasValidationErrors(issues)) throw new Error(issues.map(issue => issue.message).join('; '));
     return flowToDag(flow, options.bindNode, options.fallbackConnectionId, options.resolveComposite,
-        [], flow.dependencyLocks, false, options.connectionId, options.connectionBindings, options.prepareConnections);
+        [], flow.dependencyLocks, false, options.connectionId, options.connectionBindings, options.prepareConnections, options.parameters);
 }

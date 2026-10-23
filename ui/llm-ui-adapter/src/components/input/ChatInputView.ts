@@ -26,7 +26,7 @@ import {NativeModelControl} from './NativeModelControl';
 import { ConnectionTierController } from './ConnectionTierController';
 import { ConnectionReadiness, type ConnectionLoadState } from './ConnectionReadiness';
 import { isDirectCommandInput } from '../../commands/direct-command';
-import { agentUnavailableReason, type AgentFlowSubmission } from '../../flows/agent-flow';
+import { agentUnavailableReason, type AgentFlowDraftInput, type AgentFlowSubmission } from '../../flows/agent-flow';
 import { ExecutionModeControl } from './ExecutionModeControl';
 import { InteractionPanel } from './InteractionPanel';
 import { delegate } from '../../utils/domEvents';
@@ -45,7 +45,7 @@ export interface ChatInputOptions {
     executorLocked?: boolean;
     maxAgentExchanges?: number;
     onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides) => Promise<void | false>;
-    prepareAgentFlow?(agent: ExecutorOption, signal: AbortSignal): Promise<AgentFlowSubmission | null>;
+    prepareAgentFlow?(agent: ExecutorOption, signal: AbortSignal, draft: AgentFlowDraftInput): Promise<AgentFlowSubmission | null>;
     onStop: () => void;
     onExecutorChange?: (executorId: string) => void;
     onConfigureExecutor?: () => void;
@@ -933,7 +933,7 @@ export class ChatInput implements IChatInputPresenter {
         const overrides = remote ? undefined : this.buildOverrides();
         this.submitting = true; this.applyAvailability();
         try {
-            if (!await this.prepareFlowSubmission(text, executor, submitted, revision, overrides)) return;
+            if (!await this.prepareFlowSubmission(text, files, executor, submitted, revision, overrides)) return;
             if (await this.options.onSend(text, files, executor, overrides) === false) return;
             if (!overrides?.flowId && (remote || !isDirectCommandInput(text))) this.recordExecutor(executor);
             if (this.connectionsDisposed) return;
@@ -946,11 +946,11 @@ export class ChatInput implements IChatInputPresenter {
         finally { this.submitting = false; if (!this.connectionsDisposed) this.applyAvailability(); }
     }
 
-    private async prepareFlowSubmission(text: string, executor: string, submitted: string, revision: number, overrides?: ChatOverrides): Promise<boolean> {
+    private async prepareFlowSubmission(text: string, files: File[], executor: string, submitted: string, revision: number, overrides?: ChatOverrides): Promise<boolean> {
         if (!this.agentFlow() || isDirectCommandInput(text)) return true;
         if (!this.options.prepareAgentFlow) throw new Error(t('agent.execution.unavailable'));
         const preparation = this.flowPreparation = new AbortController();
-        const values = await this.options.prepareAgentFlow(this.selectedExecutor()!, preparation.signal);
+        const values = await this.options.prepareAgentFlow(this.selectedExecutor()!, preparation.signal, {text, files});
         if (!values || preparation.signal.aborted || this.connectionsDisposed || executor !== this.config.agentId
             || revision !== this.getDraftRevision() || this.textarea.value !== submitted) return false;
         Object.assign(overrides!, values);

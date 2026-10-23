@@ -284,6 +284,24 @@
 .dag-run-parameters [data-image-preview] { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .flow-parameter-section { min-width: 0; }
+.flow-parameter-row { min-width: 0; }
+.flow-parameter-row--wide { grid-column: 1 / -1; }
+.flow-parameter-row[hidden] { display: none; }
+.flow-parameter-field__error { display: block; margin-top: 6px; color: var(--llm-color-error, #ef4444); font-size: .78rem; line-height: 1.5; overflow-wrap: anywhere; }
+.flow-parameter-section [aria-invalid="true"] { border-color: var(--llm-color-error, #ef4444); }
+.flow-input-group { grid-column: 1 / -1; min-width: 0; margin: 0 0 6px; padding: 14px; border: 1px solid var(--dag-border); border-radius: 10px; }
+.flow-input-group legend { padding-inline: 5px; font-size: .85rem; font-weight: 600; }
+.flow-input-group__choices { display: flex; flex-wrap: wrap; gap: 8px; }
+.flow-parameter-section .flow-input-group__choices label { display: flex; flex: 1 1 130px; align-items: center; gap: 8px; min-height: 44px; margin: 0; padding: 8px 12px; border: 1px solid var(--dag-border); border-radius: 7px; cursor: pointer; }
+.flow-input-group__choices label:has(input:checked) { border-color: var(--dag-focus); background: var(--dag-bg-tertiary); }
+.flow-input-group__choices input[type="radio"] { flex: 0 0 18px; width: 18px; height: 18px; min-height: 0; padding: 0; margin: 0; accent-color: var(--dag-focus); }
+.flow-input-group > small { display: block; margin-top: 10px; color: var(--dag-text-secondary); line-height: 1.5; }
+.flow-image-picker { position: relative; display: grid; align-items: center; justify-items: center; gap: 12px; min-height: 116px; padding: 18px; border: 1px dashed var(--dag-border); border-radius: 9px; background: var(--dag-bg-secondary); color: var(--dag-text-secondary); text-align: center; cursor: pointer; }
+.flow-image-picker[data-dragging="true"], .flow-image-picker:focus-within { border-color: var(--dag-focus); outline: 1px solid var(--dag-focus); }
+.flow-parameter-section .flow-image-picker input[type="file"] { position: absolute; width: 1px; height: 1px; min-height: 0; padding: 0; opacity: 0; clip-path: inset(50%); }
+.flow-image-picker__action { display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; min-height: 44px; padding: 8px 14px; border: 1px solid var(--dag-border); border-radius: 6px; background: var(--dag-bg-primary); color: var(--dag-text-primary); font-size: .85rem; }
+.flow-parameter-image [data-image-preview] { display: flex; flex-wrap: wrap; gap: 8px; color: var(--dag-text-secondary); font-size: .8rem; line-height: 1.5; }
+.flow-parameter-image .flow-image-clear { justify-self: start; min-height: 44px; }
 .flow-parameter-image { grid-column: 1 / -1; }
 .flow-parameter-section + .flow-parameter-section { margin-top: 24px; padding-top: 20px; border-top: 1px solid var(--dag-border); }
 .flow-parameter-section__title { margin: 0 0 16px; color: var(--dag-text-primary); font-size: .9rem; font-weight: 600; }
@@ -293,7 +311,7 @@
 .flow-parameter-section .llm-parameter-field__help { margin: 0; color: var(--dag-text-secondary); font-size: .76rem; line-height: 1.5; overflow-wrap: anywhere; }
 .flow-parameter-section .llm-parameter-field__help:empty { display: none; }
 .flow-parameter-section .llm-parameter-field__wide { grid-column: 1 / -1; }
-.flow-parameter-section .llm-parameter-field :is(input, select, textarea) { min-width: 0; min-height: 36px; padding: 8px 10px; font: inherit; }
+.flow-parameter-section .llm-parameter-field :is(input, select, textarea) { box-sizing: border-box; width: 100%; min-width: 0; min-height: 44px; padding: 8px 10px; font: inherit; }
 .flow-parameter-section .llm-parameter-field textarea { resize: vertical; line-height: 1.6; }
 .flow-parameter-section .llm-parameter-field:has(> input[type="checkbox"]) { grid-template-columns: minmax(0, 1fr) auto; align-items: center; }
 .flow-parameter-section .llm-parameter-field:has(> input[type="checkbox"]) > small { grid-column: 1 / -1; }
@@ -512,8 +530,8 @@
 
 .dag-dialog::backdrop { background: rgba(15, 23, 42, .32); }
 
-.flow-parameter-dialog { width: min(760px, calc(100vw - 40px)); max-height: min(880px, calc(100dvh - 48px)); padding: 0; overflow: hidden; border-radius: 14px; }
-.flow-parameter-dialog form { display: flex; flex-direction: column; max-height: min(880px, calc(100dvh - 48px)); min-height: 0; gap: 0; }
+.flow-parameter-dialog { width: min(760px, calc(100vw - 40px)); max-height: min(880px, calc(var(--app-visible-height, 100dvh) - 48px)); padding: 0; overflow: hidden; border-radius: 14px; }
+.flow-parameter-dialog form { display: flex; flex-direction: column; max-height: min(880px, calc(var(--app-visible-height, 100dvh) - 48px)); min-height: 0; gap: 0; }
 .flow-parameter-dialog__header { flex-shrink: 0; padding: 22px 26px 18px; border-bottom: 1px solid var(--dag-border); }
 .flow-parameter-dialog__header h2 { margin: 0; font-size: 1.15rem; line-height: 1.5; }
 .flow-parameter-dialog__header h2:focus { outline: none; }
@@ -525,16 +543,17 @@
 .flow-parameter-dialog__footer .dag-dialog__error { margin: 0 0 12px; font-size: .82rem; line-height: 1.5; }
 .flow-parameter-dialog__footer .dag-dialog__error:empty { display: none; }
 .flow-parameter-dialog__footer menu { margin: 0; padding: 0; }
-.flow-parameter-dialog__footer button { min-height: 36px; padding: 8px 16px; cursor: pointer; }
+.flow-parameter-dialog__footer button { min-height: 44px; padding: 8px 16px; cursor: pointer; }
 .flow-parameter-dialog__footer button[type="submit"] { color: #fff; border-color: var(--dag-focus); background: var(--dag-focus); font-weight: 600; }
 
 @media (max-width: 640px) {
     .flow-parameter-section__fields { grid-template-columns: minmax(0, 1fr); }
-    .flow-parameter-dialog { width: calc(100vw - 16px); max-height: calc(100dvh - 24px); border-radius: 10px; }
-    .flow-parameter-dialog form { max-height: calc(100dvh - 24px); }
+    .flow-parameter-dialog { inset: auto 0 0; width: 100%; max-width: 100%; max-height: calc(var(--app-visible-height, 100dvh) - 12px); margin: auto 0 0; border-radius: 16px 16px 0 0; border-bottom: 0; }
+    .flow-parameter-dialog form { max-height: calc(var(--app-visible-height, 100dvh) - 12px); }
     .flow-parameter-dialog__header { padding: 18px; }
     .flow-parameter-dialog__body { padding: 20px 18px; }
-    .flow-parameter-dialog__footer { padding: 12px 18px; }
+    .flow-parameter-dialog__footer { padding: 12px 18px calc(12px + env(safe-area-inset-bottom)); }
+    .flow-parameter-dialog__footer menu { display: grid; grid-template-columns: 1fr 2fr; }
 }
 
 

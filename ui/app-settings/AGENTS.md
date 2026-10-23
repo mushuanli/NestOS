@@ -39,3 +39,5 @@ mindos-node 连接统一由工具箱 MCP 管理，StorageSettingsEditor 只负�
 - createSettingsNavigation 只生成本地设置目录；编辑器消费已就绪的 SettingsPort，不调用服务 init。backend.settings 在后端完成联系人和标签定义加载；工作区来源仅传身份或已有文件视图，需要导出、标签统计或系统浏览时才打开。持久化与标签存储归 app-core/settings，数据库快照与存储估计归宿主适配。禁止将 IndexedDB、存储复制或 Runtime 创建重新放入 UI。
 
 设置导航固定按「外观 → 模型与服务 → 费用统计 → 文件系统 → 系统恢复」排列，其他入口顺序继续沿用 SETTINGS_PAGES。
+
+InitialFilesPort.restore 的资源结果可附带独立依赖报告；页面分别显示资源 restored/preserved 和依赖 ready/missingTools/needsConfiguration/failed，具体工具、参数与连接原因均来自宿主。prepareDependencies 只重试依赖准备，不再恢复或覆盖 Flow；未就绪的依赖不能被汇总成恢复全部成功。处理入口通过宿主导航到工具箱，设置 UI 不发现或执行 Node 工具包。

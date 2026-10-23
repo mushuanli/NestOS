@@ -154,7 +154,7 @@ export class FlowInvocationService {
         else {
             const flow = await this.definitions.loadRevision(input.flowId, input.revision);
             if (!flow) throw new Error(`Flow revision not found: ${input.flowId}@${input.revision}`);
-            const issues = validateFlowParameters(flow.parameters, input.parameters);
+            const issues = validateFlowParameters(flow.parameters, input.parameters, flow.inputGroups);
             for (const name of Object.keys(input.parameters)) if (!(flow.parameters ?? []).some(field => field.name === name)) throw new Error(`Unknown Flow parameter: ${name}`);
             if (issues.length) throw new Error(issues.map(issue => issue.message).join('; '));
             const inputTransfers = await this.bindInputs(input);

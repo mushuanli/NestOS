@@ -4,6 +4,8 @@ config.toml
 itookit-vfs-server
 fs-svr
 priv/
+y.tgz
+yimg/
 
 node_modules/
 # Library crate: the CLI Session Bash fixture builds it, but its lock file is not committed.

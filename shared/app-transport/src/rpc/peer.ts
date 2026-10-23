@@ -534,8 +534,9 @@ export class RpcPeer {
             result = this.ownedResult(call, handle, result);
             return await this.reply(call, handle, result, refresh);
         } catch (error) {
-            const cause = error as Error & { code?: string; remoteCode?: string; requestId?: string; outcome?: 'committed' | 'not-committed' | 'unknown' };
+            const cause = error as Error & { code?: string; field?: string; remoteCode?: string; requestId?: string; outcome?: 'committed' | 'not-committed' | 'unknown' };
             return { error: { name: cause.name ?? 'Error', message: cause.message ?? String(error), code: cause.code,
+                ...(typeof cause.field === 'string' && cause.field.trim().length > 0 && cause.field.length <= 256 && !/[\u0000-\u001f\u007f]/u.test(cause.field) ? {field: cause.field} : {}),
                 ...(['committed', 'not-committed', 'unknown'].includes(cause.outcome ?? '') ? {outcome: cause.outcome} : {}),
                 ...(typeof cause.requestId === 'string' && /^[a-zA-Z0-9_-]{1,128}$/.test(cause.requestId) ? {requestId: cause.requestId} : {}),
                 ...(typeof cause.remoteCode === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(cause.remoteCode) ? {remoteCode: cause.remoteCode} : {}) } };

@@ -355,7 +355,7 @@ backend/llm-flow/src/
 
 Run 控制会在信号注入和单任务取消前刷新持久成员清单，允许控制其他调用方刚登记的重试任务；按 nodeId 注入信号选择当前最大 iteration 对应的任务，按 targetTaskId 则校验 Run 成员身份。Goal 编辑窗口固定打开时的 Run，信号和取消回调也固定发起时的 Run，异步完成不会刷新切换后的其他 Run；失败通过错误提示呈现。Goal 状态对 Session suspend/resume 的影响及其与目标持久化非原子的边界保持不变。
 
-端口结构注册：`DagPluginRegistry.registerSchema(ref, schema)` / `getSchema(ref)`，或实现 `DagPluginCatalog.getSchema`。相同引用不得重复注册，返回值为副本。FlowSchemaRegistry / flowSchemaIssue / schemaCompatibilityIssue 从包出口导出。目标有 schema 的 data edge 必须解析到已注册定义；发布、直接执行和 patch 拒绝未知引用，下游创建前校验成功上游的实际消费值。id 不同一律拒绝；同一 id 版本不同时要求注册表能证明来源结构是目标结构的子类型（`llm-flow/src/flow/schema-compat.ts`：boolean schema、`integer ⊆ number`、enum 子集、object 的 required/properties/additionalProperties、array items 递归推导）。支持 boolean schema、type、properties、required、items、additionalProperties、enum、minimum/maximum 及 title/description 注释，未知关键字拒绝。发布前的边引用与图校验使 `submit` 失败；运行期校验无效数据使 Run 失败（见 `submit` 发布时机的说明）。所有声明 schema 的输出端口都会在节点成功结算时用其**自身**契约校验（`assertNodeOutputs`），包括有消费边、下游契约更宽松或未声明 schema 的情况，失败不派发下游；校验发生在聚合根发布之后，因此表现为失败的 Run。不自动解析 JSON 字符串，不提供端口 repair 策略。
+端口结构注册：`DagPluginRegistry.registerSchema(ref, schema)` / `getSchema(ref)`，或实现 `DagPluginCatalog.getSchema`。相同引用不得重复注册，返回值为副本。FlowSchemaRegistry / flowSchemaIssue / schemaCompatibilityIssue 从包出口导出。目标有 schema 的 data edge 必须解析到已注册定义；发布、直接执行和 patch 拒绝未知引用，下游创建前校验成功上游的实际消费值。id 不同一律拒绝；同一 id 版本不同时要求注册表能证明来源结构是目标结构的子类型（`llm-flow/src/flow/schema-compat.ts`：boolean schema、`integer ⊆ number`、enum 子集、object 的 required/properties/additionalProperties、array items 递归推导）。支持 boolean schema、type、properties、required、items、additionalProperties、enum、minimum/maximum、minLength/maxLength（Unicode 码点数）、pattern 及 title/description 注释，未知关键字和非法模式拒绝。字符串端口兼容性要求长度范围收窄，pattern 相同或有限 enum 可证明满足目标；不假设任意正则表达式之间的包含关系。发布前的边引用与图校验使 `submit` 失败；运行期校验无效数据使 Run 失败（见 `submit` 发布时机的说明）。所有声明 schema 的输出端口都会在节点成功结算时用其**自身**契约校验（`assertNodeOutputs`），包括有消费边、下游契约更宽松或未声明 schema 的情况，失败不派发下游；校验发生在聚合根发布之后，因此表现为失败的 Run。不自动解析 JSON 字符串，不提供端口 repair 策略。
 
 单次运行定义隔离：DurableFlowExecutor.submit 在首次异步操作前复制 DagRunSpec 和 parameters；初始节点的插件清单及其端口 schema 同时缓存，后续动态节点的定义在首次读取时缓存，包含未找到的引用。修改调用方原始对象或宿主之后返回的同名 schema 不影响已缓存定义。DagPluginRegistry 注册时复制清单并保留 runtime/UI 方法的调用接收者。定义持久冻结见上一条：调度检查点保存 `spec`/`parameters`/`sessionContext`/live 图与 `nodeDefaults`/`nodeConnections`，`resume` 只从检查点恢复，因此跨进程恢复不依赖宿主重新编译定义。仍未冻结的是宿主插件实现代码（同名 `plugin@version` 的新实现会在下一回合生效）。
 
@@ -425,6 +425,9 @@ DagWorkbench 在 Run 未终态时为终态成员提供「重试并重算下游�
 
 运行参数支持 `minimum` / `maximum` / `integer`。`flowToDag` 将参数声明保存为 `DagRunSpec.parameterSchema`；`prepareFlowParameters` 合并默认值并校验，执行器在创建 Task 前调用。route@2 的 maxRounds/maxConcurrency 可使用完整参数模板，运行时保持 number 类型。详见 [参数契约](design/essay-review-flow.md)。
 
+参数可显式声明 `inputSource: 'composer.text' | 'composer.attachments'`，聊天发送时只按此声明预填当前草稿快照，不按字段名猜测。附件源使用现有 `type: 'json', widget: 'images'` 图片契约。需要互斥输入的 Flow 可声明 `inputGroups: [{ name: 'source', mode: 'oneOf', parameters: ['body', 'pages'] }]`；表单展示来源选择，只提交被选字段，并在参数准备、子调用和持久运行中校验恰有一个非空值。没有互斥声明时允许同时提供多种输入；Anki 保留文本和图片合用及 combined/grouped 行为。`DagRunSpec.inputGroups` 与作用域 groups 一起冻结，未选成员的默认值不会重新加入提交。全组缺省只有在所有成员都声明 `onMissing: 'interact'` 时才交给既有显式输入节点补齐。
+
+
 `FlowCommand.DraftInstall` 校验内置模板后调用 `FlowDefinitionStore.installBuiltinDraft`。独立安装记录防止用户删除模板后重启被自动补装；已有草稿保持原样。
 
 统一调用默认值、param/命名输出引用、schema 判断条件、join/reducer 与可视字段表单见 [作文评审设计第 9 节](design/essay-review-flow.md)。
@@ -453,12 +456,12 @@ FlowDraft/FlowRevision.variables 声明类型和 initial；FlowNodeDefinition.as
 
 `builtin.media@1.0.0` 使用 `config.connectionId` 或 `config.connectionSlot` 指定连接，
 `config.operation` 为 `image.generate` 或 `speech.synthesize`，`config.request` 提供操作参数。
-Flow.connections 支持 `name/connectionId?/required?/tier?/requirements?`；调用参数的
+Flow.connections 支持 `name/label?/connectionId?/required?/requiredWhen?/tier?/requirements?`；调用参数的
 `connectionBindings: Record<string,string>` 独立于业务 parameters。显式节点绑定优先于
 运行/会话默认连接，不能把缺少的媒体连接替换为文本连接。可选槽未绑定时保留空绑定，
 若分支最终执行该媒体节点，仍须通过执行时完整校验。
 
-`required` 省略时视为必选，`required: false` 允许不绑定；参数的 `required/default/onMissing` 独立控制必填、默认值与运行时补齐。检查器校验槽位 required 的布尔类型、模型档位和 requirements 的结构，定位未知 connectionSlot 及节点/槽位操作冲突。离线检查不要求安装实际连接；配置可用性和模型能力由宿主的只读连接预检与正式准入核对，需求始终来自 Flow 定义。
+`requiredWhen` 使用既有 `SerializableExpression`（`param`、字面值、比较及布尔组合），只能引用已声明参数，不能读取尚未执行的节点输出；存在条件时由条件决定必选性，否则 `required` 省略时视为必选、`required: false` 允许不绑定。`flowConnectionRequired` 是表单和连接预检共用的纯函数，编译使用当前实际参数与默认值求值并冻结结果。批量函数调用逐行合并公共参数与行覆盖，任一行需要的连接都必须在模板准入时绑定；运行时才能产生的行或未解析的条件参数采用保守必选，不使用子参数默认值静默放过。Anki 文本连接始终必选，配图与语音分别在生成开关开启时必选，OCR 连接只在提供图片时必选。`session.check-flow-connections` 的 `parameters` 与正式准入共用此规则；参数的 `required/default/onMissing` 独立控制必填、默认值与运行时补齐。检查器校验槽位 required 的布尔类型、模型档位和 requirements 的结构，定位未知 connectionSlot 及节点/槽位操作冲突。离线检查不要求安装实际连接；配置可用性和模型能力由宿主的只读连接预检与正式准入核对，需求始终来自 Flow 定义。
 
 可选槽的运行绑定可以显式传空字符串以清除定义中的默认连接；必需槽拒绝空绑定，
 嵌套槽使用 `节点路径/槽名`。表单保留已有嵌套绑定，并将清空可选槽与沿用默认值区分。
@@ -538,3 +541,12 @@ CLI 使用 `node apps/cli/dist/cli.js run -f job.flow --profile <profile> --conn
 命令 `FlowCommand.SourceCheck`（`flow.source.check`）接收 `{source}`，返回 `{valid,diagnostics}`，使用运行时插件目录和持久子流程解析器。编辑器验证面板、草稿校验与发布共用检查器；`DraftSave` 保存不完整内容并返回校验错误，`DraftValidate` 只校验不写入。草稿安装/恢复只校验自身语法，允许随后安装依赖。发布解析并锁定依赖时再次检查调用参数，错误不写入新发布版本。运行时在动态值解析后再次检查类型、范围、非空和选项约束。
 
 CLI 用 `mindos validate -f example.flow --json` 检查源码和同目录子流程，成功退出 0，错误退出 1。已有 Workflow YAML 的 validate 入口继续使用对应 DSL 校验。检查结果不能证明外部工具已安装、连接凭据可用、图片可解码或业务规则满足；这些由运行准入和 Tool 验证。
+
+
+## Flow 安装与工具依赖
+
+`toolDependencies: [{ id: 'package.tool', version: '1' }]` 声明具体工具身份和可选工具版本，包版本、模块位置及可执行程序由宿主的可信本地目录管理。Flow 不得携带模块路径、下载地址或安装命令。旧定义兼容推断静态 `builtin.tool.config.toolId/toolVersion` 以及函数依赖；动态工具身份必须显式声明，核心不执行模板或按工具名补规则。Anki 源声明包含其确定性工具、动态打包工具和图片处理工具；业务实现继续由外部工具包提供。
+
+平台无关的 `FlowInstallationService` 统一执行定义检查、工具 ensure、默认参数与条件连接检查。`ready`、`needsConfiguration`、`missingTools`、`failed` 明确区分就绪、待填写配置、缺少工具和失败；报告保留 tools、parameters、connections、errors 明细。工具箱 `flowInstallations.check/ensure/list` 和 `toolPackages.list/ensure` 可查询或重试，`importWithReport` 返回导入路径和安装报告。宿主 `ApplicationRuntimeOptions.toolDependencies` 只能按工具 ID/版本发现并注册已安装或可信本机工具包，不下载未知依赖。
+
+默认 Flow 播种、导入和显式系统恢复复用此机制。资源已存在时保留当前草稿和已发布修订，并对当前保存的声明重新检查；不会用新版产品模板替换用户定义，也不会捏造或写回缺失参数、凭据或连接。系统恢复结果逐项返回 dependencies，`initialFiles.prepareDependencies(ids)` 只重试依赖，不重复恢复资源。

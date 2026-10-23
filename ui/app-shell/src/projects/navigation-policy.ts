@@ -13,6 +13,8 @@ export function navigationPriority(path: string): number {
     return 0;
 }
 export function fileFirst(a: VFSNodeUI, b: VFSNodeUI): number | undefined {
+    const defaultOrder = Number(b.metadata.custom.defaultProject === true) - Number(a.metadata.custom.defaultProject === true);
+    if (defaultOrder) return defaultOrder;
     const priority = navigationPriority(a.id) - navigationPriority(b.id);
     if (priority) return priority;
     const session = (item: VFSNodeUI) => { const target = resolveBrowserTarget(item.id); return target.kind === 'session' || target.kind === 'remote' && !!target.nativeSessionId; };

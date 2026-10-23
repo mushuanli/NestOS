@@ -3,9 +3,11 @@ import { assertInlineFunctionTree } from './inline-functions';
 
 /** Drafts and revisions share one authored body; keep new fields through every projection. */
 export function flowDefinitionBody(flow: FlowDraft | FlowRevision) {
-    const { id, name, nodes, edges, parameters, outputs, variables, connections, defaultConnection,
+    const { id, name, nodes, edges, parameters, inputGroups, toolDependencies, outputs, variables, connections, defaultConnection,
         systemPrompt, toolIds, defaults, runPolicy } = flow;
     return structuredClone({ id, name, nodes, edges, parameters: parameters ?? [], connections: connections ?? [],
+        ...(toolDependencies ? {toolDependencies} : {}),
+        ...(inputGroups ? {inputGroups} : {}),
         ...(defaultConnection !== undefined ? { defaultConnection } : {}),
         ...(outputs ? { outputs } : {}), ...(variables ? { variables } : {}),
         ...(systemPrompt ? { systemPrompt } : {}), ...(toolIds ? { toolIds } : {}),

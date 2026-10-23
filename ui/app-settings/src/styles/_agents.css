@@ -79,6 +79,23 @@
     background: var(--st-bg-secondary);
 }
 
+.agent-header__identity { display: flex; align-items: flex-start; flex: 1; min-width: 0; gap: 20px; }
+.agent-header__actions { flex: 0 0 auto; }
+.agent-mobile-header { display: none; }
+.agent-mobile-header__navigation { flex: 1; min-width: 0; }
+.agent-mobile-header__actions { display: flex; flex: 0 0 auto; }
+.agent-mobile-header__title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 15px; }
+.agent-basic-identity:empty { display: none; }
+.agent-chat-button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 8px 13px; border: 1px solid var(--st-color-primary); border-radius: 7px; background: var(--st-color-primary); color: #fff; font: inherit; font-size: .85rem; white-space: nowrap; cursor: pointer; }
+.agent-chat-button:hover { filter: brightness(.95); }
+.agent-chat-button:focus-visible { outline: 2px solid var(--st-color-primary); outline-offset: 3px; }
+.agent-chat-button:disabled { cursor: wait; opacity: .65; }
+.agent-chat-button__icon { display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; }
+.agent-chat-button__icon > svg { display: block; width: 18px; height: 18px; }
+.agent-chat-button__label { line-height: 1.4; }
+.agent-chat-status { flex: 0 0 auto; margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--st-color-danger); border-radius: 6px; color: var(--st-color-danger); font-size: .82rem; overflow-wrap: anywhere; }
+.agent-chat-status[hidden] { display: none; }
+
 .agent-header__icon-picker {
     display: flex;
     align-items: center;
@@ -279,6 +296,20 @@
     [data-agent-model-defaults] .agent-form-field { grid-template-columns: minmax(0, 1fr); gap: 6px; }
     [data-agent-model-defaults] .agent-form-field > .agent-form-label,
     [data-agent-model-defaults] .agent-form-field > select { grid-column: 1; grid-row: auto; }
+}
+
+@media (max-width: 768px) {
+    .agent-editor-container { padding: 0 12px; }
+    .agent-mobile-header { display: flex; align-items: center; flex: 0 0 auto; gap: 6px; min-height: 52px; padding-block: 3px; }
+    .agent-header { display: none; }
+    .agent-chat-button { min-height: 44px; padding: 8px 10px; }
+    .agent-basic-identity > .agent-header__identity { gap: 12px; padding: 12px; border: 1px solid var(--st-border-color); border-radius: 8px; background: var(--st-bg-secondary); }
+    .agent-header__icon-picker { flex-basis: 40px; width: 40px; height: 40px; border-radius: 8px; font-size: 23px; }
+    .agent-header__info .agent-header__name-input { font-size: 1.1rem; }
+    .agent-header__desc-input { font-size: .82rem; }
+    .agent-editor-tabs { gap: 2px; padding-bottom: 6px; }
+    .agent-editor-tab { min-height: 40px; padding: 8px 11px; }
+    .agent-editor-panel { padding-top: 12px; }
 }
 
 /* ── Agent Tier Selector ──────────────────────────────────────── */

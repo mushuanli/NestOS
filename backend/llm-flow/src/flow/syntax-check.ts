@@ -123,13 +123,16 @@ function connectionShape(slot: unknown, path: string, require: ShapeAssert): voi
     for (const key of ['inputModalities', 'outputModalities', 'features'])
         require(requirements[key] === undefined || Array.isArray(requirements[key]) && requirements[key].every(item => typeof item === 'string' && !!item.trim()),
             `${path}.requirements.${key}`, `Connection ${key} must be an array of nonempty strings`);
+    require(requirements.responseFormats === undefined || Array.isArray(requirements.responseFormats)
+        && requirements.responseFormats.every(item => ['text', 'json_object', 'json_schema'].includes(String(item))),
+        `${path}.requirements.responseFormats`, 'Connection response formats must declare supported format identities');
 }
 function rootShape(value: Record<string, unknown>, require: ShapeAssert): void {
     require(typeof value.id === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/.test(value.id) && !value.id.includes('..'), '$.id', 'Flow requires a safe id');
     require(typeof value.name === 'string' && !!value.name.trim(), '$.name', 'Flow requires a name');
     const version = value.draftVersion ?? value.revision;
     require(typeof version === 'number' && Number.isSafeInteger(version) && version > 0, value.draftVersion === undefined ? '$.revision' : '$.draftVersion', 'Flow requires a positive draftVersion or revision');
-    for (const key of ['nodes', 'edges', 'parameters', 'connections', 'functions']) require(value[key] === undefined && !['nodes', 'edges'].includes(key) || Array.isArray(value[key]), `$.${key}`, `${key} must be an array`);
+    for (const key of ['nodes', 'edges', 'parameters', 'inputGroups', 'toolDependencies', 'connections', 'functions']) require(value[key] === undefined && !['nodes', 'edges'].includes(key) || Array.isArray(value[key]), `$.${key}`, `${key} must be an array`);
 }
 function nodeShape(node: unknown, path: string, require: ShapeAssert): void {
     require(object(node), path, 'Node must be an object');

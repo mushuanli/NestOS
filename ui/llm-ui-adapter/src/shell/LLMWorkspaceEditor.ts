@@ -446,7 +446,7 @@ export class LLMWorkspaceEditor implements IEditor {
             onConfigChange: (config) => this.handleConfigChange(config),
             onExecutorChange: () => { this.skillRefreshBinding?.refresh(); },
             onRequestConnections: () => this.connectionOptions!.read(),
-            prepareAgentFlow: (agent, signal) => prepareAgentFlow(this.commandBus, agent, signal),
+            prepareAgentFlow: (agent, signal, draft) => prepareAgentFlow(this.commandBus, agent, signal, draft),
 
             // ── @mention file reference ───────────────────────────────────────
             onRequestFiles: async (query, options) => this.fileSearchService.search(query, options),

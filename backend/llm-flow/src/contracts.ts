@@ -14,3 +14,7 @@ export type { FlowCommandRegistrar } from './contracts/command-registrar';
 export { FlowCommand } from './flow/command-names';
 export type { DurableFlowSnapshot } from './flow/commands';
 export type { FlowTaskTranscript } from './flow/transcript';
+
+export { evaluateFlowExpression, resolveFlowExpression } from './contracts/flow-expressions';
+export { flowConnectionRequired, flowParameterValues, flowInputPresent, validateFlowInputGroups, flowInputDeclarationIssues, type FlowInputIssue } from './contracts/flow-inputs';
+export { collectFlowToolDependencies, flowToolDependencyIssues } from './contracts/flow-tool-dependencies';

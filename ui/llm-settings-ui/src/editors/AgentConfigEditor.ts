@@ -5,6 +5,7 @@ import { editorResourceId } from '@itookit/ui-common';
 import { renderAgentExecution, readAgentExecution, bindAgentExecution, type AgentExecutionController } from './agent-execution';
 import { renderAgentModelDefaults, readAgentModelDefaults, bindAgentModelDefaults } from './agent-model-defaults';
 import { readAgentComposition } from './agent-composition';
+import { mountAgentHeader, type AgentHeaderController } from './agent-header';
 // @file: llm-ui/editors/AgentConfigEditor.ts
 
 import {
@@ -42,6 +43,7 @@ export class AgentConfigEditor implements IEditor {
     private originalContent: string = '';
     private currentTitle: string = '';
     private hostSettings?: Awaited<ReturnType<NonNullable<EditorOptions['mountSettings']>>>;
+    private header?: AgentHeaderController;
 
     constructor(
         _container: HTMLElement,
@@ -157,6 +159,7 @@ export class AgentConfigEditor implements IEditor {
         this.validationObserver?.disconnect();
         this.navigationEvents?.abort();
         await this.hostSettings?.destroy(); this.hostSettings = undefined;
+        this.header?.destroy(); this.header = undefined;
         if (!this.content) return;
         const agent = this.content;
         const config = { ...agent.config, systemPrompt: agent.systemPrompt ?? agent.config.systemPrompt };
@@ -171,8 +174,13 @@ export class AgentConfigEditor implements IEditor {
 
         this.container.innerHTML = `
             <div class="agent-editor-container">
+                <div class="agent-mobile-header">
+                    <div class="agent-mobile-header__navigation" data-agent-compact-navigation></div>
+                    <div class="agent-mobile-header__actions" data-agent-compact-actions></div>
+                </div>
                 <!-- Header with Icon & Name -->
                 <div class="agent-header">
+                    <div class="agent-header__identity" data-agent-identity>
                     <button type="button" class="agent-header__icon-picker" id="icon-picker" title="${t('agent.layout.changeIcon')}" aria-label="${t('agent.layout.changeIcon')}">
                         ${this.escapeHtml(agent.icon || ENTITY_ICONS.agent)}
                     </button>
@@ -189,12 +197,16 @@ export class AgentConfigEditor implements IEditor {
                                   placeholder="${t('agent.layout.description')}"
                                   rows="2">${this.escapeHtml(agent.description || '')}</textarea>
                     </div>
+                    </div>
+                    <div class="agent-header__actions" data-agent-header-actions></div>
                 </div>
+                <p class="agent-chat-status" data-agent-chat-status role="status" aria-live="polite" hidden></p>
 
                 ${this.renderPageTabs()}
                 <div class="agent-editor-panels">
                 ${this.renderPageStart('general')}
                 <div class="agent-editor-page">
+                <div class="agent-basic-identity" data-agent-identity-slot></div>
                 <div data-agent-execution-slot></div>
                 <div class="agent-host-settings" data-agent-host-settings></div>
 
@@ -372,6 +384,7 @@ export class AgentConfigEditor implements IEditor {
         await this.executionForm.ready();
         this.bindEvents();
         this.activatePage(this.activePage);
+        this.header = mountAgentHeader(this.container, this.options, () => this.flushPendingSave());
     }
 
     private renderPageTabs(): string {
@@ -776,13 +789,18 @@ export class AgentConfigEditor implements IEditor {
         if (this.autoSave && !await this.autoSave.flush()) throw new Error(t('settings.autosave.leaveFailed'));
     }
 
+    cancelPendingRender(): void { this.header?.cancelPendingAction(); }
+
     async destroy() {
+        this.header?.cancelPendingAction();
         await this.flushHostSettings();
         if (this.autoSave && !await this.autoSave.dispose()) throw new Error(t('settings.autosave.leaveFailed'));
         this.executionForm?.destroy();
         this.validationObserver?.disconnect();
         this.navigationEvents?.abort();
         await this.hostSettings?.destroy(); this.hostSettings = undefined;
+        this.header?.destroy(); this.header = undefined;
+        delete this.container.dataset.editorMobileNavigation;
         this.container.innerHTML = '';
         this.editorEvents.clear();
     }

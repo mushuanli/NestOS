@@ -20,6 +20,7 @@ export function createSettingsAccess(backend: ApplicationBackend, workspaces: ()
         const ready = await service.get();
         editor ??= createSettingsFactory({ ...options, mediaProbeExamples: options.mediaProbeExamples ?? mediaProbeExamples, settingsService: ready, initialFiles: {
             list: async () => (await initial.get()).list(), restore: async ids => (await initial.get()).restore(ids),
+            prepareDependencies: async ids => (await initial.get()).prepareDependencies(ids),
         } });
         return editor(element, config);
     };

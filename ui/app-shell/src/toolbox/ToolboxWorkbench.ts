@@ -23,6 +23,7 @@ import { editorResourceId, type EditorFactory, type MenuItem, type ContextMenuCo
 import type { WorkspaceController } from '@itookit/app-contracts';
 import { showToolboxCreationDialog } from './create-resource-dialog';
 import { configureCreatedModel } from './creation-model-setup';
+import {showToolPackages} from './ToolPackagesDialog';
 import { chooseArchive, downloadArchive } from '../files/archive-transfer';
 import type { ToolboxResources } from '@itookit/app-contracts/services';
 import { TOOLBOX_KINDS, TOOLBOX_FILTERS, toolboxFilter, toolboxKind, toolboxSourcePath, type ToolboxKind, type ToolboxFilter } from './routes';
@@ -187,7 +188,9 @@ export class ToolboxWorkbench implements WorkspaceController {
     }
     private updateToolbar(): void {
         this.ui?.setToolbar({ fileLabel: t('toolbox.new'),
-            secondary: this.prefs.filter === 'models' ? { label: t('modelDefaults.button'), run: () => { void this.options.navigate({ target: 'settings', resourceId: 'model-defaults' }); } } : { label: t('toolbox.organize'), run: () => { const group = this.selectedDrawer();
+            secondary: this.prefs.filter === 'tools' && (this.options.resources.toolPackages || this.options.resources.flowInstallations)
+                ? {label: t('toolbox.packages.title'), run: () => {void showToolPackages(this.options.resources, this.abort.signal, () => this.refresh());}}
+                : this.prefs.filter === 'models' ? { label: t('modelDefaults.button'), run: () => { void this.options.navigate({ target: 'settings', resourceId: 'model-defaults' }); } } : { label: t('toolbox.organize'), run: () => { const group = this.selectedDrawer();
                 const kind = group?.kind ?? (drawerKind(this.prefs.filter as ToolboxKind) ? this.prefs.filter as import('@itookit/app-contracts').DrawerKind : this.options.agentsInWorkbench ? 'flows' : 'agents');
                 void this.drawerActions.move(kind, group?.paths).catch(error => alert(String(error))); } },
             hiddenActions: this.prefs.filter === 'tools' ? ['create-file', 'create-directory']
@@ -398,8 +401,12 @@ export class ToolboxWorkbench implements WorkspaceController {
     private async import(_context: VFSToolbarContext): Promise<void> {
         const file = await chooseArchive(this.abort.signal); if (!file || this.closed) return;
         const content = await file.text(); if (this.closed) return;
-        const paths = await this.options.resources.import(content);
+        const imported = this.options.resources.importWithReport
+            ? await this.options.resources.importWithReport(content) : {paths: await this.options.resources.import(content), installations: []};
+        const {paths, installations} = imported;
         await this.refresh(); if (!this.closed && paths[0]) await this.openResource(paths[0]);
+        if (!this.closed && installations.some(report => report.status !== 'ready'))
+            await showToolPackages(this.options.resources, this.abort.signal, () => this.refresh());
     }
     getActiveResourceId(): string | null { return this.ui?.getActiveSession()?.id ?? null; }
     async destroy(): Promise<void> {

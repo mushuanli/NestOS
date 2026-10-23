@@ -73,6 +73,7 @@ it('creates project Sessions from the selected project and edits its files in th
         expect([...header.querySelectorAll<HTMLButtonElement>('button')].filter(button => !button.closest('[hidden], details')).map(button => button.title))
             .toEqual(['新会话']);
         expect(header.querySelector('.vfs-toolbar-overflow [data-action="refresh"]')).not.toBeNull();
+        expect(header.querySelector('.vfs-toolbar-overflow [data-project-action="settings"]')).not.toBeNull();
         expect([...header.querySelectorAll<HTMLElement>('[data-action]')].map(button => button.dataset.action))
             .toEqual(['create-project', 'refresh', 'import', 'export']);
         const createdProject = vi.spyOn(workbench as any, 'createProject').mockResolvedValue(undefined);

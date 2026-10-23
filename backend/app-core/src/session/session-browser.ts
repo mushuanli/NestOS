@@ -85,10 +85,11 @@ class BrowserBackend implements IStorageBackend {
         this.lifecycle = deps.lifecycle ?? new SessionLifecycleService({ repository: deps.repository, kernel: deps.kernel });
     }
     async init() {
-        this.subscriptions.push(this.deps.repository.subscribe(() => this.invalidateNavigation()));
+        this.subscriptions.push(this.deps.repository.subscribe(change => { if (change?.kind !== 'ui-state') this.invalidateNavigation(); }));
         if (this.deps.projects) this.subscriptions.push(this.deps.projects.subscribeChanges(() => this.invalidateNavigation()));
         const unsubscribe = this.deps.kernel.onChanged?.(event => {
-            if (event.reason !== 'content') { this.activity.invalidate(event.sessionId); this.invalidateNavigation(); }
+            if (event.reason === 'content') return;
+            this.activity.invalidate(event.sessionId);
         });
         if (unsubscribe) this.subscriptions.push(unsubscribe);
     }

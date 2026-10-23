@@ -4,7 +4,9 @@ import { guardHostStorage } from '../storage/host-storage';
 import type { IStorageBackend } from '@itookit/vfs-core';
 import type { AuditPort } from '../logging/audit-log';
 import { openHostRuntime, closeHostResources } from './host-runtime';
-import { createStandardNodeTools, loadNodeToolModules } from './tool-modules';
+import { createStandardNodeTools, loadNodeToolModules, mergeNodePackageTools } from './tool-modules';
+import {NodeToolPackages} from './tool-packages';
+import {BUILTIN_TOOLS} from '@itookit/tools';
 
 export interface NodeApplicationOptions {
     root: string; sidecar: string; authDir: string; auditFile: string;
@@ -28,7 +30,17 @@ export async function createNodeRuntime(source: IStorageBackend, root?: string, 
         if (key === 'close') return async () => {};
         const value = Reflect.get(target, key, target); return typeof value === 'function' ? value.bind(target) : value;
     }});
-    const additionalTools = [...createStandardNodeTools(), ...await loadNodeToolModules(), ...options.kernelPlatform?.additionalTools ?? []];
-    return createApplicationRuntime({remoteSourceProvider: createMindOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
-        kernelPlatform: { ...options.kernelPlatform, additionalTools } });
+    const packages = new NodeToolPackages();
+    try {
+        await packages.initialize();
+        const additionalTools = mergeNodePackageTools([...createStandardNodeTools(), ...await loadNodeToolModules(),
+            ...options.kernelPlatform?.additionalTools ?? []], packages.initialTools(), BUILTIN_TOOLS);
+        const runtime = await createApplicationRuntime({remoteSourceProvider: createMindOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
+            toolDependencies: options.toolDependencies ?? packages,
+            kernelPlatform: { ...options.kernelPlatform, additionalTools, configure: async (kernel, services) => {
+                packages.bind(kernel); await options.kernelPlatform?.configure?.(kernel, services);
+            } } });
+        const dispose = runtime.dispose.bind(runtime); runtime.dispose = async () => {try {await dispose();} finally {await packages.close();}};
+        return runtime;
+    } catch (error) {await packages.close(); throw error;}
 }

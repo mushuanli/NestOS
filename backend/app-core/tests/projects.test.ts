@@ -261,11 +261,29 @@ it('restores the default project after reopening persistent storage', async () =
     expect(await readSession(second, id, 'remember.md')).toBe('persisted');
 });
 
-it('adopts the legacy personal project by label and retains its identity after a rename', async () => {
-    const r = await setup();
-    const personal = await r.projects.personal();
+it('switches to the next local project when the default is deleted through the browser', async () => {
+    const r = await setup(), original = (await r.projects.getDefaultProject())!;
+    const next = await r.projects.create('Next default');
+    await r.browser.fs.driver.delete([folderBrowserPath(original.path)], {recursive: true});
+    expect((await r.projects.getDefaultProject())?.project.id).toBe(next.project.id);
+    expect((await r.projects.current())?.project.id).toBe(next.project.id);
+    expect((await r.projects.navigation({path: '/'})).projects[0].project.id).toBe(next.project.id);
+});
+it('creates a Personal replacement when the last local default is deleted', async () => {
+    const r = await setup(), original = (await r.projects.getDefaultProject())!;
+    await r.browser.fs.driver.delete([folderBrowserPath(original.path)], {recursive: true});
+    const replacement = (await r.projects.getDefaultProject())!;
+    expect(replacement.project.id).not.toBe(original.project.id);
+    expect(replacement.name).toBe('个人'); expect(await r.projects.list()).toHaveLength(1);
     const root = await r.vfs.openFileSystem('/');
-    await root.driver.delete(['/etc/personal-project.json']);
+    expect(await root.driver.exists(original.project.directory)).toBe(false);
+});
+
+it('uses the explicitly selected local default and retains its identity after a rename', async () => {
+    const r = await setup();
+    const personal = await r.projects.create('Selected default');
+    const root = await r.vfs.openFileSystem('/');
+    await r.projects.setDefaultProject(personal.project.id);
     await r.projects.create('AAA unrelated');
     expect((await r.projects.personal()).project.id).toBe(personal.project.id);
     await r.projects.renameProject(personal.path, '/Renamed');

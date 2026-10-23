@@ -1,6 +1,6 @@
 import { prepareFlowConnections } from './session/flow-connections';
 import { operationModelNames } from '@itookit/kernel-adapters/contracts';
-import { checkFlowConnections, type FlowConnectionCheckInput } from './session/flow-connection-check';
+import { checkFlowConnectionSlots, checkFlowConnections, type FlowConnectionCheckInput } from './session/flow-connection-check';
 import { skillContextResolver } from './session/direct-conversation';
 import { createSessionHost, type SessionHostPorts } from './utils/host-ports';
 import { ContentTransferService } from './session/content-transfers';
@@ -233,7 +233,9 @@ function createDagCommands(
         options.flowStore,
         options.dagPlugins,
     );
-    commandBus.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as FlowConnectionCheckInput, options.agentService, flowStore, options.dagPlugins));
+    commandBus.register(SessionCommand.CheckFlowConnectionSlots, args => checkFlowConnectionSlots(args as FlowConnectionCheckInput, options.agentService));
+    commandBus.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as FlowConnectionCheckInput, options.agentService, flowStore,
+        options.dagPlugins, createSessionHost(options.hostPorts).logger));
     const dag = new DagCommandService({
         prepareConnections: (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, options.agentService, undefined, runConnectionId),
         prepareConnectionResolver: async () => {

@@ -27,6 +27,21 @@ async function setup(kernelOverrides: Record<string, unknown> = {}) {
     return { a, b, files, repository, browser, kernel, lifecycle };
 }
 describe('Session browser projection', () => {
+    it('refreshes Task activity without discarding the cached Session directory', async () => {
+        let changed!: (event: {sessionId: string; taskId?: string; reason: string}) => void;
+        const activity = vi.fn(async () => ({revision: 1}));
+        const f = await setup({sessionActivity: activity, onChanged: (listener: typeof changed) => {changed = listener; return () => {};}});
+        const list = vi.spyOn(f.repository, 'listSummariesInFolder');
+        await f.browser.fs.driver.getChildren('/'); expect(list).toHaveBeenCalledOnce();
+        activity.mockResolvedValue({revision: 2}); changed({sessionId: f.a, taskId: 't', reason: 'structure'});
+        const rows = await f.browser.fs.driver.getChildren('/');
+        expect(rows.find(node => node.path === '/' + f.a)?.metadata.sessionActivity).toEqual({revision: 2});
+        expect(list).toHaveBeenCalledOnce(); expect(activity).toHaveBeenCalledTimes(3);
+        changed({sessionId: f.a, reason: 'structure'});
+        await f.browser.fs.driver.getChildren('/'); expect(list).toHaveBeenCalledOnce();
+        await f.repository.createSession('New directory member');
+        await f.browser.fs.driver.getChildren('/'); expect(list).toHaveBeenCalledTimes(2);
+    });
     it('reads Session directory rows and their header with one file lease', async () => {
         const f = await setup(), acquire = vi.spyOn(f.files, 'acquireFiles');
         const directory = await f.browser.readFileDirectory(`/${f.a}/files`);

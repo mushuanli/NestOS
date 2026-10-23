@@ -4,7 +4,8 @@ import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { flowConnectionSelection } from '../../flows/connection-selection';
 import type { FlowRunInput } from '../../flows/run-flow';
 import { bindFlowImageFields } from '../FlowImageFields';
-import { flowParameterFields, readFlowParameterForm, type FlowConnectionSelection } from '../FlowParameterForm';
+import {bindFlowParameterState, flowParameterFields, readFlowParameterForm, showFlowFieldError, validateFlowConnectionForm, type FlowConnectionSelection} from '../FlowParameterForm';
+import {updateFlowConnectionRequirements} from '../FlowConnectionFields';
 
 /** Keep form DOM alive while the canvas and node inspector are redrawn. */
 export class FlowRunParameters {
@@ -14,6 +15,7 @@ export class FlowRunParameters {
     private readonly lifetime = new AbortController();
     private connection?: FlowConnectionSelection;
     private imagesReady?: () => Promise<void> | undefined;
+    private unbindFields?: () => void;
     private ready: Promise<void>;
 
     constructor(private readonly draft: FlowDraft, private readonly commands: ICommandBus) {
@@ -30,7 +32,7 @@ export class FlowRunParameters {
     }
 
     static keyFor(draft: FlowDraft): string {
-        return JSON.stringify([draft.id, draft.parameters ?? [], draft.connections ?? []]);
+        return JSON.stringify([draft.id, draft.parameters ?? [], draft.connections ?? [], draft.inputGroups ?? []]);
     }
 
     private async load(): Promise<void> {
@@ -43,8 +45,12 @@ export class FlowRunParameters {
             if (this.disposed) return;
             this.connection = connection;
             const fields = this.root.querySelector<HTMLFieldSetElement>('[data-run-fields]')!;
-            fields.innerHTML = flowParameterFields(this.draft.parameters ?? [], connection);
+            this.unbindFields?.();
+            fields.innerHTML = flowParameterFields(this.draft.parameters ?? [], connection, this.draft.inputGroups);
             fields.disabled = false;
+            this.unbindFields = bindFlowParameterState(this.root, this.draft.parameters ?? [], this.draft.inputGroups ?? [], values => {
+                updateFlowConnectionRequirements(this.root, connection, values);
+            });
             this.imagesReady = bindFlowImageFields(this.root, this.draft.parameters ?? [], connection.assets);
             this.showError('');
         } catch (error) {
@@ -63,13 +69,14 @@ export class FlowRunParameters {
             await this.imagesReady?.();
             if (this.disposed) return null;
             const parameters = readFlowParameterForm(this.root, this.draft.parameters ?? [], this.connection);
-            await this.connection.validate?.();
+            await validateFlowConnectionForm(this.root, this.connection, parameters);
             if (this.disposed) return null;
             this.showError('');
             return { parameters, connection: snapshotConnection(this.connection), signal: this.lifetime.signal };
         } catch (error) {
             this.showError(error);
             this.root.scrollTop = 0;
+            showFlowFieldError(this.root, error);
             return null;
         }
     }
@@ -81,6 +88,7 @@ export class FlowRunParameters {
     destroy(): void {
         this.disposed = true;
         this.lifetime.abort();
+        this.unbindFields?.();
         this.root.dispatchEvent(new Event('close'));
         this.root.remove();
     }

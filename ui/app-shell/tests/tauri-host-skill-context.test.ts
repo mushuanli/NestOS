@@ -31,21 +31,24 @@ const platform = () => ({ skillSourceForSession: (files: { vfs: never; cwd: stri
 
 type Runtime = Awaited<ReturnType<typeof createApplicationRuntime>>;
 
-/** The host mounts a project directory as the Session workspace; `_agent/` lives there. */
-async function mountProject(runtime: Runtime, sessionId: string) {
-    const home = await runtime.vfs.openFileSystem('/home/admin');
-    await home.driver.createFile({ name: 'AGENT.md', parentPath: '/project/_agent', recursive: true, content: 'Always cite the interface contract.' });
-    await home.driver.createFile({ name: 'SKILL.md', parentPath: '/project/_agent/skills/review', recursive: true, content: SKILL });
-    runtime.sessionFiles.registerSource('project', home);
-    await runtime.sessionFiles.configure(sessionId, {
-        mounts: [{ mountId: 'project', sourceId: 'project', at: '/workspace', root: '/project', access: 'rw' }],
-        cwd: '/workspace',
-    }, 0);
+/** Project creation owns workspace grants; write fixture instructions into that actual source. */
+async function mountProject(runtime: Runtime, sessionId: string, skill = SKILL) {
+    const manifest = await runtime.sessionRepository.getManifest(sessionId);
+    const project = await runtime.projects.forFolder(manifest.folder);
+    if (!project) throw new Error('Session project is unavailable');
+    const source = await runtime.projects.openFiles(project.path);
+    try {
+        await source.fs.driver.createFile({name: 'AGENT.md', parentPath: '/_agent', recursive: true, content: 'Always cite the interface contract.'});
+        await source.fs.driver.createFile({name: 'SKILL.md', parentPath: '/_agent/skills/review', recursive: true, content: skill});
+    } finally {await source.dispose();}
 }
 
 /** Returns the error a run raised (the model service is unavailable in tests), if any. */
 async function dispatch(runtime: Runtime, sessionId: string, text: string): Promise<unknown> {
-    await runtime.agentService.setDefaultConnection('default');
+    await runtime.agentService.saveProvider({id: 'skill-context', name: 'Skill fixture', implementation: 'openai-compatible',
+        baseURL: 'http://127.0.0.1:1', apiKey: 'test-fixture', models: [{id: 'fixture-chat', name: 'Fixture chat', category: 'chat'}]});
+    await runtime.agentService.saveConnection({id: 'skill-context', name: 'Skill fixture', providerId: 'skill-context', tiers: {optimal: 'fixture-chat'}});
+    await runtime.agentService.setDefaultConnection('skill-context');
     // The assembled input is committed before the model call, so a failing model is expected.
     return runtime.commandBus.execute(SessionCommand.Send, {
         text, files: [], agentId: 'default', sendIntent: createAgentSendIntent('default'),
@@ -63,10 +66,10 @@ it('assembles project rules and auto-loaded Skills into an app-host chat run', a
         const sessionId = await runtime.sessionRepository.createSession('Session');
         await mountProject(runtime, sessionId);
 
-        await send(runtime, sessionId, 'Please review the interface change');
+        const failure = await send(runtime, sessionId, 'Please review the interface change');
 
         const kernel = runtime.kernel.kernel;
-        await vi.waitFor(async () => expect(await kernel.listSessionTasks(sessionId)).toHaveLength(1), { timeout: 10_000 });
+        await vi.waitFor(async () => expect(await kernel.listSessionTasks(sessionId), `run raised: ${String(failure)}`).toHaveLength(1), { timeout: 10_000 });
         const body = JSON.stringify(await kernel.listSessionTasks(sessionId));
         expect(body).toContain('Please review the interface change');
         expect(body).toContain('Always cite the interface contract.');
@@ -102,8 +105,8 @@ it('restores the persisted Skill identity when a new host instance starts the ne
     try {
         sessionId = await first.sessionRepository.createSession('Session');
         await mountProject(first, sessionId);
-        await send(first, sessionId, 'Please review the interface change');
-        await vi.waitFor(async () => expect(await first.kernel.kernel.listSessionTasks(sessionId)).toHaveLength(1), { timeout: 20_000 });
+        const failure = await send(first, sessionId, 'Please review the interface change');
+        await vi.waitFor(async () => expect(await first.kernel.kernel.listSessionTasks(sessionId), `run raised: ${String(failure)}`).toHaveLength(1), { timeout: 20_000 });
         expect(parseLoadedSkillIds((await first.kernel.kernel.getShared(sessionId, 'kernel-adapters.skills.loaded'))?.value)).toEqual(['review']);
         // Let the failed run reach a terminal state before this host goes away, so the next host
         // starts from a settled round instead of racing a half-finished one.
@@ -127,7 +130,6 @@ it('restores the persisted Skill identity when a new host instance starts the ne
     const second = await createApplicationRuntime({ backend: await openBackend(), ownerKind: 'tauri', kernelPlatform: platform() });
     try {
         expect((await second.sessionRepository.list()).map(entry => entry.id)).toContain(sessionId);
-        second.sessionFiles.registerSource('project', await second.vfs.openFileSystem('/home/admin'));
         // The restored transcript must already end with the failed assistant placeholder; otherwise
         // the next send is refused as a consecutive user message.
         await second.commandBus.execute(SessionCommand.Bind, { sessionId });
@@ -168,14 +170,7 @@ it('distinguishes persisted identity restore from autoLoad and respects unload i
     const runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'tauri', kernelPlatform: platform() });
     try {
         const sessionId = await runtime.sessionRepository.createSession('Session');
-        const home = await runtime.vfs.openFileSystem('/home/admin');
-        await home.driver.createFile({ name: 'AGENT.md', parentPath: '/project/_agent', recursive: true, content: 'Always cite the interface contract.' });
-        await home.driver.createFile({ name: 'SKILL.md', parentPath: '/project/_agent/skills/review', recursive: true, content: MANUAL_SKILL });
-        runtime.sessionFiles.registerSource('project', home);
-        await runtime.sessionFiles.configure(sessionId, {
-            mounts: [{ mountId: 'project', sourceId: 'project', at: '/workspace', root: '/project', access: 'rw' }],
-            cwd: '/workspace',
-        }, 0);
+        await mountProject(runtime, sessionId, MANUAL_SKILL);
 
         const kernel = runtime.kernel.kernel;
         // Binding creates the durable Kernel session the Skill resolver opens.

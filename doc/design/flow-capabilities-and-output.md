@@ -132,6 +132,8 @@ Flow 窗口与节点均提供标题、复制和折叠按钮。窗口级复制汇
 
 结构化输出由 Agent 在结束 Task 前验证：除类型、必填字段与数值范围外，也校验 `additionalProperties`（false 或子 schema）以及布尔 schema。额外字段错误会进入节点的 outputValidation 修复策略，受 retries 和 maxExchanges 双重限制；修复耗尽后仍失败，不静默删除字段。Flow 层继续执行最终契约校验。路由提示明确要求返回匹配 schema 的结果实例，禁止把 schema 关键字当作结果字段；没有自定义 prompt 的节点也会附带 schema 说明。
 
+连接准入从节点 `responseFormat` 推导 `requirements.responseFormats`，合并到共享槽位、节点及冻结连接。有效格式由设备契约按实际协议与模型显式能力取交集：`anthropic-messages` 不支持 `json_object`；原生 JSON 模式不能依靠未知的 `supportsStructuredOutput` 声明通过预检。`FLOW_CONNECTION_OUTPUT_FORMAT_UNSUPPORTED` 会保留槽位、协议和格式原因，在创建会话或发出模型请求前失败，不自动切换协议或删除参数。跨协议提示词 JSON 可显式使用 `responseFormat: {type: 'text'}` 并保留 `outputValidation.schema`；这条路径仍严格解析和校验 JSON，并按原有限额修复，不把本地 schema 当成远端支持原生 `json_schema` 的证据。
+
 
 ### 汇总与判断的执行可见性
 
@@ -171,3 +173,28 @@ LLM crash outcome 默认仍为 indeterminate，不因实时重试开启自动重
 最多各 256 字符的首尾片段，以及实际策略、已修复次数和交互预算，用于区分截断、空输出和格式错误。
 片段是模型响应内容，会随 Kernel 事件持久保存。能力层 `llm-chat-effect` 的 debug 日志记录响应装配摘要，
 不记录正文；可与上述事件按 taskId/effectId 对照，检查流式装配与模型返回是否一致。
+
+## 安装、连接准入与执行边界
+
+Flow 的工具依赖只携带逻辑 ID 和版本。app-core/configuration 拥有安装检查用例；Node 宿主的 runtime/tool-packages/ 拥有可信清单解析、安装文件和注册元数据；kernel-adapters 负责已有与未来作用域的热注册。Flow 与 Session 不读取宿主执行文件位置。
+
+必需连接槽位没有显式覆盖时可使用声明绑定或用途默认连接；前端不能将其直接判为缺失。独立槽位检查与完整图准入共用同一规则，错误返回 code/field/message，前端通过 field 定位。可选槽位显式空绑定继续表示解绑。产品预设仍按既有设计集中在 app-core/presets 的声明资源目录，业务 Tool 规则在外部包，执行核心不按业务 ID 分支。
+
+```mermaid
+C4Component
+    Container_Boundary(platform, "itookit") {
+        Component(ui, "Flow 表单", "UI", "收集参数和连接覆盖")
+        Component(app, "FlowInstallationService", "应用用例", "安装报告与依赖准备")
+        Component(session, "llm-session", "准入机制", "槽位检查、完整图准入与冻结")
+        Component(flow, "llm-flow", "编译机制", "输入校验、条件计算与 DAG 编译")
+        Component(host, "node-host/tool-packages", "宿主适配", "可信包解析、安装与持久登记")
+        Component(kernel, "kernel-adapters", "执行机制", "作用域热注册与工具调用")
+    }
+    System_Ext(tools, "外部业务 Tool", "业务规则、模板和副作用核对")
+    Rel(ui, session, "校验当前参数及连接")
+    Rel(app, session, "检查槽位配置")
+    Rel(app, host, "解析工具 ID 和版本")
+    Rel(session, flow, "编译冻结执行图")
+    Rel(host, kernel, "注册工具")
+    Rel(kernel, tools, "调用与核对")
+```

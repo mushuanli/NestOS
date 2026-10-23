@@ -95,3 +95,14 @@ it('does not merge accepted calls with different frozen Agent execution settings
     expect(() => editInstructionQueue(queue, { action: 'merge', ids: ['first', 'second'], expectedRevision: 1 }))
         .toThrow('Merged instructions must use the same branch, agent and execution settings');
 });
+
+it('keeps only the selected input-group source when Agent defaults contain the other source', async () => {
+    const f = fixture();
+    f.definition.parameters = [{name: 'body', type: 'string'}, {name: 'pages', type: 'json'}];
+    f.definition.inputGroups = [{name: 'source', mode: 'oneOf', parameters: ['body', 'pages']}];
+    f.ports.resolveAgent = async () => ({id: 'a', name: 'A', type: 'agent', execution: {kind: 'flow', flowId: 'registered-flow', parameters: {pages: ['Old default source']}}});
+    f.input.overrides!.flowParameters = {body: 'Selected text'};
+    const prepared = await prepareFlowAgentInput(f.input, f.ports);
+    expect(prepared.sendIntent?.execution).toMatchObject({kind: 'flow', parameters: {body: 'Selected text'}});
+    expect((prepared.sendIntent!.execution as {parameters: object}).parameters).not.toHaveProperty('pages');
+});

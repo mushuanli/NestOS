@@ -20,6 +20,7 @@ const reads = new Set<string>([
     "session.get-settings",
     "session.get-connections",
     "session.check-flow-connections",
+    "session.check-flow-connection-slots",
     "session.get-agents",
     "session.get-models",
     "session.flow-branch-executions",

@@ -10,12 +10,15 @@ export async function restoreAndPublishFlow(commands: ICommandBus, template: Flo
     return draft;
 }
 
-export function registerFlowLibraryRecovery(commands: CommandBus): { dispose(): void } {
+export function registerFlowLibraryRecovery(commands: CommandBus, ensure?: (flowId: string) => Promise<void>): { dispose(): void } {
     return commands.register(FlowLibraryCommand.Restore, async args => {
         const templates = (args as { templates?: FlowDraft[] } | undefined)?.templates;
         if (!Array.isArray(templates)) throw new Error('Flow templates are required');
         let restored = 0;
-        for (const template of templates) if (await restoreAndPublishFlow(commands, template)) restored++;
+        for (const template of templates) {
+            if (await restoreAndPublishFlow(commands, template)) restored++;
+            await ensure?.(template.id);
+        }
         return restored;
     });
 }

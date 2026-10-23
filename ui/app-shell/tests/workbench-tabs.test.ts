@@ -259,16 +259,15 @@ it('shares the same search input and query between the sidebar and the window di
     dialog.close(); expect(sidebar.querySelector('input[type="search"]')).toBe(search); expect(search.value).toBe('First');
     release(); await f.tabs.destroy();
 });
-it('resizes sidebar width with the keyboard and restores independent collapsed sections', () => {
-    let state: WorkbenchSnapshot = { version: 1, width: 320, navigationHeight: 60 };
+it('restores sidebar width while ignoring obsolete collapsed sections', () => {
+    let state: WorkbenchSnapshot = {version: 1, width: 320, navigationHeight: 60, navigationCollapsed: true, openedCollapsed: false};
     const host = document.createElement('div'); document.body.append(host);
-    const port = { load: () => state, save: (value: WorkbenchSnapshot) => { state = value; } };
+    const port = {load: () => state, save: (value: WorkbenchSnapshot) => {state = value;}};
     const sidebar = new WorkbenchSidebar(host, document.createElement('div'), port);
-    host.querySelector('[aria-orientation="vertical"]')!.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
-    expect(state.width).toBe(336);
-    host.querySelector<HTMLButtonElement>('[data-section="opened"] button')!.click(); expect(state.openedCollapsed).toBe(true);
+    host.querySelector('[aria-orientation="vertical"]')!.dispatchEvent(new KeyboardEvent('keydown', {key: 'ArrowRight', bubbles: true}));
+    expect(state.width).toBe(336); expect(host.querySelector('[data-section="opened"]')).toBeNull();
+    expect(host.querySelector<HTMLElement>('[data-section="navigation"]')!.hidden).toBe(false);
     sidebar.destroy(); const restored = new WorkbenchSidebar(host, document.createElement('div'), port);
-    expect(host.querySelector('[data-section="opened"]')?.classList.contains('is-collapsed')).toBe(true);
     expect(host.style.getPropertyValue('--workbench-sidebar-width')).toBe('336px'); restored.destroy();
 });
 it('filters full filenames and preserves its query across a metadata refresh', async () => {

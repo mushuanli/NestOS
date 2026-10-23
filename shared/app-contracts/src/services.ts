@@ -14,3 +14,5 @@ export type * from './ports/navigation';
 export type * from './ports/open-view';
 
 export type { HostedApplicationClient } from './ports/hosted-application';
+
+export type * from './ports/flow-installation';

@@ -13,5 +13,6 @@ export function sessionExecutionRoot(sessionId: string): string {
 }
 
 export function storageIdentityConflict(id: string, registered: string, candidate: string): FSError {
-    return new FSError('ECONFLICT', `Duplicate Session storage identity ${id}: registered=${registered}; candidate=${candidate}`, 'session-storage', candidate);
+    return Object.assign(new FSError('ECONFLICT', `Duplicate Session storage identity ${id}: registered=${registered}; candidate=${candidate}`, 'session-storage', candidate),
+        { storageReason: 'SESSION_STORAGE_IDENTITY_CONFLICT', sessionId: id, registered, candidate });
 }

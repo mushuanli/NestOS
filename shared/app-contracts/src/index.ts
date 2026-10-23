@@ -30,3 +30,5 @@ export { isApplicationReadCommand } from './session/command-policy';
 export { FlowLibraryCommand } from './presets/flow-library';
 
 export {InputAssetCommand} from './presets/input-assets';
+
+export type * from './ports/flow-installation';

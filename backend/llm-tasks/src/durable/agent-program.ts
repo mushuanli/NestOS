@@ -365,6 +365,7 @@ function validateSchemaValue(value: unknown, schema: Record<string, unknown> | b
     if (typeof value === 'number' && (!Number.isFinite(value)
         || (typeof schema.minimum === 'number' && value < schema.minimum)
         || (typeof schema.maximum === 'number' && value > schema.maximum))) return `${path} is outside the numeric range`;
+    if (typeof value === 'string') return validateStringValue(value, schema, path);
     if (isRecord(value)) return validateObjectValue(value, schema, path);
     if (Array.isArray(value) && (isRecord(schema.items) || typeof schema.items === 'boolean')) {
         for (let index = 0; index < value.length; index++) {
@@ -373,6 +374,15 @@ function validateSchemaValue(value: unknown, schema: Record<string, unknown> | b
         }
     }
     return undefined;
+}
+
+function validateStringValue(value: string, schema: Record<string, unknown>, path: string): string | undefined {
+    const length = Array.from(value).length;
+    if (typeof schema.minLength === 'number' && length < schema.minLength) return `${path} is shorter than minLength`;
+    if (typeof schema.maxLength === 'number' && length > schema.maxLength) return `${path} is longer than maxLength`;
+    if (typeof schema.pattern !== 'string') return undefined;
+    try { return new RegExp(schema.pattern, 'u').test(value) ? undefined : `${path} does not match pattern`; }
+    catch { return `${path}: invalid schema pattern`; }
 }
 
 function validateObjectValue(value: Record<string, unknown>, schema: Record<string, unknown>, path: string): string | undefined {

@@ -2,7 +2,7 @@ import type { JsonSchemaRef, JsonValue } from '../contracts';
 import {equalJson, matchesSchemaType as matchesType} from './schema-values';
 
 type Schema = Record<string, JsonValue>;
-const keywords = new Set(['type', 'properties', 'required', 'items', 'additionalProperties', 'enum', 'title', 'description', 'minimum', 'maximum']);
+const keywords = new Set(['type', 'properties', 'required', 'items', 'additionalProperties', 'enum', 'title', 'description', 'minimum', 'maximum', 'minLength', 'maxLength', 'pattern']);
 const types = new Set(['object', 'array', 'string', 'number', 'integer', 'boolean', 'null']);
 
 /** An immutable registry for the supported JSON Schema subset; unsupported constraints fail closed. */
@@ -38,6 +38,7 @@ export function assertFlowSchema(value: JsonValue, path = '$'): asserts value is
     for (const key of ['title', 'description']) if (value[key] !== undefined && typeof value[key] !== 'string') throw new Error(`Invalid ${key} at ${path}`);
     for (const key of ['minimum', 'maximum']) if (value[key] !== undefined && (typeof value[key] !== 'number' || !Number.isFinite(value[key]))) throw new Error(`Invalid ${key} at ${path}`);
     if (typeof value.minimum === 'number' && typeof value.maximum === 'number' && value.minimum > value.maximum) throw new Error(`Invalid numeric range at ${path}`);
+    assertStringConstraints(value, path);
     if (value.enum !== undefined && (!Array.isArray(value.enum) || !value.enum.length)) throw new Error(`Invalid enum at ${path}`);
     if (value.required !== undefined && (!Array.isArray(value.required) || value.required.some(key => typeof key !== 'string'))) throw new Error(`Invalid required at ${path}`);
     if (value.properties !== undefined) {
@@ -55,6 +56,7 @@ export function flowSchemaIssue(schema: JsonValue, value: unknown, path = '$'): 
     if (schema.type && !matchesType(String(schema.type), value)) return `${path}: expected ${schema.type}`;
     if (Array.isArray(schema.enum) && !schema.enum.some(item => equalJson(item, value))) return `${path}: value is outside enum`;
     if (typeof value === 'number' && ((typeof schema.minimum === 'number' && value < schema.minimum) || (typeof schema.maximum === 'number' && value > schema.maximum))) return `${path}: number outside range`;
+    if (typeof value === 'string') return stringIssue(schema, value, path);
     if (isObject(value)) return objectIssue(schema, value, path);
     if (Array.isArray(value) && schema.items !== undefined) {
         for (let i = 0; i < value.length; i++) {
@@ -62,6 +64,24 @@ export function flowSchemaIssue(schema: JsonValue, value: unknown, path = '$'): 
             if (issue) return issue;
         }
     }
+}
+
+function assertStringConstraints(schema: Schema, path: string): void {
+    for (const key of ['minLength', 'maxLength']) {
+        const value = schema[key];
+        if (value !== undefined && (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0)) throw new Error(`Invalid ${key} at ${path}`);
+    }
+    if (typeof schema.minLength === 'number' && typeof schema.maxLength === 'number' && schema.minLength > schema.maxLength) throw new Error(`Invalid string length range at ${path}`);
+    if (schema.pattern === undefined) return;
+    if (typeof schema.pattern !== 'string') throw new Error(`Invalid pattern at ${path}`);
+    try { new RegExp(schema.pattern, 'u'); } catch { throw new Error(`Invalid pattern at ${path}`); }
+}
+
+function stringIssue(schema: Schema, value: string, path: string): string | undefined {
+    const length = Array.from(value).length;
+    if (typeof schema.minLength === 'number' && length < schema.minLength) return `${path}: string shorter than minLength`;
+    if (typeof schema.maxLength === 'number' && length > schema.maxLength) return `${path}: string longer than maxLength`;
+    if (typeof schema.pattern === 'string' && !new RegExp(schema.pattern, 'u').test(value)) return `${path}: string does not match pattern`;
 }
 
 function objectIssue(schema: Schema, value: Schema, path: string): string | undefined {

@@ -1,6 +1,8 @@
 import { FSError, transferFileSystemEntry, type IFileSystem, type ISeqFileTransaction } from '@itookit/vfs-core';
 import { relocateCentralSession } from './session-storage-relocation';
 import { sessionStorageRoot, storageIdentityConflict } from './session-storage-layout';
+import { SessionStorageTrace } from './session-storage-trace';
+import type { SessionLogger } from '../utils/host-ports';
 
 const INDEX = '/var/lib/sessions/folders.seq';
 const MOVES = '/var/lib/sessions/storage-moves.seq';
@@ -22,17 +24,21 @@ export async function resolveSessionStorageRoot(reader: Reader, id: string): Pro
 }
 
 /** Persist intent before a same-backend directory move; index publication is transactional. */
-export async function moveSessionDataDirectory(fs: IFileSystem, from: string, to: string): Promise<void> {
+export async function moveSessionDataDirectory(fs: IFileSystem, from: string, to: string, logger?: SessionLogger): Promise<void> {
     if (from === to) return;
-    validateMove(from, to);
-    const [sourceExists, targetExists] = await Promise.all([fs.driver.exists(from), fs.driver.exists(to)]);
+    await new SessionStorageTrace('session.storage.move', { from, to, moveKey: encodeURIComponent(from) }, logger)
+        .run(trace => executeMove(fs, from, to, trace));
+}
+async function executeMove(fs: IFileSystem, from: string, to: string, trace: SessionStorageTrace): Promise<void> {
+    await trace.step('validate-paths', async () => validateMove(from, to));
+    const [sourceExists, targetExists] = await trace.step('inspect-locations', () => Promise.all([fs.driver.exists(from), fs.driver.exists(to)]));
     if (!await fs.driver.exists(MOVES)) {
         try { await fs.driver.createFile({ parentPath: '/var/lib/sessions', name: 'storage-moves.seq', type: 'seqfile', recursive: true }); }
         catch (error) { if (!(error instanceof FSError) || error.code !== 'EEXIST') throw error; }
     }
     const key = encodeURIComponent(from);
-    await prepareMove(fs, key, from, to, sourceExists && targetExists);
-    await finishMove(fs, key, from, to);
+    await trace.step('persist-intent', () => prepareMove(fs, key, from, to, sourceExists && targetExists));
+    await finishMove(fs, key, from, to, trace);
 }
 async function prepareMove(fs: IFileSystem, key: string, from: string, to: string, occupied: boolean): Promise<void> {
     await fs.meta.seq!.transaction!(async tx => {
@@ -53,33 +59,53 @@ async function prepareMove(fs: IFileSystem, key: string, from: string, to: strin
         }, { keyPrefix: 'storage/' });
     });
 }
-export async function recoverSessionDataMoves(fs: IFileSystem): Promise<void> {
+export async function recoverSessionDataMoves(fs: IFileSystem, logger?: SessionLogger): Promise<void> {
     if (!await fs.driver.exists(MOVES)) return;
-    const pending: Array<{ key: string; from: string; to: string }> = [];
-    await fs.meta.seq!.walkEntries(MOVES, entry => { pending.push({ key: entry.key, ...JSON.parse(entry.value) }); return true; });
+    const pending = await new SessionStorageTrace('session.storage.recovery.scan', { index: MOVES }, logger).run(async trace => {
+        const rows: Array<{ key: string; value: string }> = [];
+        await trace.step('read-intents', () => fs.meta.seq!.walkEntries(MOVES, entry => { rows.push(entry); return true; }));
+        return trace.step('parse-intents', async () => rows.map(entry => parseMove(entry.key, entry.value)));
+    });
     for (const move of pending) {
-        try { await finishMove(fs, move.key, move.from, move.to); }
-        catch (error) {
+        try { await new SessionStorageTrace('session.storage.recover', { from: move.from, to: move.to, moveKey: move.key }, logger)
+            .run(trace => finishMove(fs, move.key, move.from, move.to, trace)); }
+        catch {
             // Preserve the intent and block only affected identities until explicit repair.
-            console.warn('[Session storage] Recovery deferred', { from: move.from, to: move.to, cause: error });
         }
     }
 }
-async function finishMove(fs: IFileSystem, key: string, from: string, to: string): Promise<void> {
-    validateMove(from, to);
-    if (isCentral(from)) {
-        await fs.meta.seq!.transaction!(tx => validateCentralMove(tx, from, to, true));
-        return relocateCentralSession(fs, key, from, to);
+function parseMove(key: string, value: string): { key: string; from: string; to: string } {
+    try {
+        const move = JSON.parse(value);
+        if (!move || typeof move.from !== 'string' || typeof move.to !== 'string')
+            throw Object.assign(new FSError('EINVAL', 'Invalid Session storage move record'), {storageReason: 'SESSION_STORAGE_MOVE_RECORD_INVALID'});
+        return { key, from: move.from, to: move.to };
+    } catch (error) {
+        if (error instanceof Error) Object.assign(error, {storageRecordKey: key});
+        throw error;
     }
-    await fs.meta.seq!.transaction!(tx => validateMoveSource(tx, from));
+}
+async function finishMove(fs: IFileSystem, key: string, from: string, to: string, trace: SessionStorageTrace): Promise<void> {
+    await trace.step('validate-paths', async () => validateMove(from, to));
+    if (isCentral(from)) {
+        await trace.step('validate-identity', () => fs.meta.seq!.transaction!(tx => validateCentralMove(tx, from, to, true)));
+        return relocateCentralSession(fs, key, from, to, trace);
+    }
+    await trace.step('validate-identity', () => fs.meta.seq!.transaction!(tx => validateMoveSource(tx, from)));
+    await trace.step('transfer-directory', () => transferDirectory(fs, from, to));
+    await trace.step('commit-index', () => commitMoveIndex(fs, key, from, to));
+}
+async function transferDirectory(fs: IFileSystem, from: string, to: string): Promise<void> {
     const [source, target] = await Promise.all([fs.driver.exists(from), fs.driver.exists(to)]);
-    if (source && target) throw new FSError('ECONFLICT', 'Both Session storage locations exist');
-    if (!source && !target) throw new FSError('ENOENT', 'Session storage relocation contents missing');
+    if (source && target) throw Object.assign(new FSError('ECONFLICT', 'Both Session storage locations exist'), { storageReason: 'SESSION_STORAGE_BOTH_LOCATIONS_EXIST' });
+    if (!source && !target) throw Object.assign(new FSError('ENOENT', 'Session storage relocation contents missing'), { storageReason: 'SESSION_STORAGE_LOCATIONS_MISSING' });
     if (source) {
         const parent = to.slice(0, to.lastIndexOf('/'));
         if (!await fs.driver.exists(parent)) await fs.driver.createDirectory({ parentPath: parent.slice(0, parent.lastIndexOf('/')), name: parent.split('/').pop()!, recursive: true });
         await transferFileSystemEntry(fs, from, fs, parent, { move: true, newName: to.split('/').pop() });
     }
+}
+async function commitMoveIndex(fs: IFileSystem, key: string, from: string, to: string): Promise<void> {
     await fs.meta.seq!.transaction!(async tx => {
         await tx.walkEntries(INDEX, async entry => {
             if (entry.value === from || entry.value.startsWith(from + '/')) {

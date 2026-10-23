@@ -4,7 +4,7 @@ import type { ConnectionMeta, LLMProvider } from '@itookit/driver-llm/contracts'
 import { flowToDag } from '@itookit/llm-flow';
 import { prepareFlowConnections } from '../src/session/flow-connections';
 import { bindStandaloneFlowNode } from '../src/session/flow-node-binder';
-import { checkFlowConnections } from '../src/session/flow-connection-check';
+import { checkFlowConnectionSlots, checkFlowConnections } from '../src/session/flow-connection-check';
 const provider: LLMProvider = { id: 'p', name: 'P', baseURL: 'https://example.test', implementation: 'openai-compatible',
     media: { 'image.generate': { adapter: 'openai-images' } }, models: [{ id: 'picture', name: 'Picture', operations: { 'image.generate': {
         inputModalities: ['text'], outputModalities: ['image'], formats: ['png'],
@@ -50,7 +50,7 @@ it('admits an explicit run connection before consulting a purpose default for an
 
 it('preflights required and optional slots without creating a Session or calling a model', async () => {
     const definition = flow();
-    await expect(checkFlowConnections({flow: definition}, preflightCatalog as never)).rejects.toMatchObject({code: 'FLOW_CONNECTION_INVALID'});
+    await expect(checkFlowConnections({flow: definition}, preflightCatalog as never)).rejects.toMatchObject({code: 'FLOW_CONNECTION_BINDING_MISSING', field: 'illustrations'});
     await expect(checkFlowConnections({flow: definition, connectionBindings: {illustrations: 'text'}}, preflightCatalog as never)).rejects.toThrow('illustrations');
     await expect(checkFlowConnections({flow: definition, connectionBindings: {illustrations: 'pictures'}}, preflightCatalog as never)).resolves.toEqual({valid: true});
     definition.connections![0].required = false;
@@ -134,6 +134,34 @@ it('merges all node requirements on a shared slot and freezes them for execution
         const admitted = await prepareFlowConnections(definition, { illustrations: 'text' }, catalog);
         expect(admitted.nodes[0].config).toMatchObject({ connectionRequirements: { operation: 'chat', features: ['structuredOutput'] } });
     } finally { delete provider.models[1].supportsStructuredOutput; }
+});
+
+it('rejects an incompatible JSON object format in the selected protocol before model admission', async () => {
+    const definition = agentFlow();
+    definition.connections = [{name: 'vision', connectionId: 'text'}];
+    definition.nodes[0].config = {connectionSlot: 'vision', responseFormat: {type: 'json_object'}};
+    const models = {...preflightCatalog, getProvider: () => ({...provider, models: [{id: 'text', name: 'Text', supportsStructuredOutput: true}]}),
+        getConnection: async (id: string) => ({...await catalog.getConnection(id), protocol: 'anthropic-messages' as const})};
+    await expect(checkFlowConnections({flow: definition}, models as never)).rejects.toThrow(/slot vision.*anthropic-messages.*json_object/);
+    await expect(checkFlowConnections({flow: definition}, models as never)).rejects.toMatchObject({code: 'FLOW_CONNECTION_OUTPUT_FORMAT_UNSUPPORTED'});
+});
+
+it('admits prompt JSON with local validation and freezes explicitly supported schema formats on slots and nodes', async () => {
+    const definition = agentFlow();
+    definition.connections = [{name: 'vision', connectionId: 'text'}];
+    const schema = {type: 'object', properties: {cards: {type: 'array'}}, required: ['cards']};
+    definition.nodes[0].config = {connectionSlot: 'vision', responseFormat: {type: 'text'}, outputValidation: {schema, onInvalid: 'repair', retries: 2}};
+    const models = {...preflightCatalog, getConnection: async (id: string) => ({...await catalog.getConnection(id), protocol: 'anthropic-messages' as const})};
+    await expect(checkFlowConnections({flow: definition}, models as never)).resolves.toEqual({valid: true});
+    definition.nodes[0].config.responseFormat = {type: 'json_schema', json_schema: {name: 'cards', schema}};
+    await expect(checkFlowConnections({flow: definition}, models as never)).rejects.toThrow(/anthropic-messages.*json_schema/);
+    const declared = {...models, getProvider: () => ({...provider, models: [{id: 'text', name: 'Text', supportsStructuredOutput: true}]})};
+    const admitted = await prepareFlowConnections(definition, {}, declared);
+    expect(admitted.connections![0].requirements).toMatchObject({responseFormats: ['json_schema']});
+    expect(admitted.nodes[0].config).toMatchObject({connectionRequirements: {responseFormats: ['json_schema']}});
+    const dag = await flowToDag(definition, undefined, undefined, undefined, [], undefined, false, undefined, {},
+        (value, bindings) => prepareFlowConnections(value, bindings, declared));
+    expect(dag.nodes[0].config).toMatchObject({frozenConnection: {requirements: {responseFormats: ['json_schema']}}});
 });
 
 function agentFlow(): FlowRevision {
@@ -289,4 +317,32 @@ it.each([false, true])('checks an unbound required child only when its branch ex
             expect((await kernel.listSessionTasks(sessionId)).some(task => task.program.kind === 'llm.agent')).toBe(false);
         }
     } finally { kernel.dispose(); await executor.waitIdle(); await manager.dispose(); }
+});
+
+it('requires a conditional slot from the submitted parameters and preserves the required failure classification', async () => {
+    const definition = flow();
+    definition.parameters = [{name: 'illustrate', type: 'boolean', default: false}];
+    definition.connections![0].requiredWhen = {kind: 'eq', args: [{kind: 'param', path: ['illustrate']}, {kind: 'literal', value: true}]};
+    await expect(checkFlowConnections({flow: definition, parameters: {illustrate: false}}, preflightCatalog as never)).resolves.toEqual({valid: true});
+    await expect(checkFlowConnections({flow: definition, parameters: {illustrate: true}}, preflightCatalog as never)).rejects.toThrow('illustrations');
+    await expect(checkFlowConnections({flow: definition, parameters: {illustrate: true}, connectionBindings: {illustrations: 'pictures'}}, preflightCatalog as never)).resolves.toEqual({valid: true});
+    const admitted = await prepareFlowConnections(definition, {}, catalog, undefined, undefined, {illustrate: false});
+    expect(admitted.connections![0].connectionId).toBeUndefined();
+    await expect(prepareFlowConnections(definition, {}, catalog, undefined, undefined, {illustrate: true})).rejects.toThrow('Missing connection');
+});
+
+it('reports slot identities independently without compiling unrelated graph configuration', async () => {
+    const issues = await checkFlowConnectionSlots({flow: {
+        ...flow(), nodes: [], edges: [], connections: [{name: 'vision', requirements: {operation: 'chat', inputModalities: ['image']}},
+            {name: 'optional', required: false}],
+    }}, preflightCatalog as never);
+    expect(issues).toMatchObject([{field: 'vision', code: 'FLOW_CONNECTION_BINDING_MISSING'}]);
+});
+
+it('uses the same purpose defaults and field diagnostics for slot checks and graph admission', async () => {
+    const agents = {...preflightCatalog, getModelDefaults: async () => ({chat: 'text'})};
+    const definition = {...flow(), nodes: [], connections: [{name: 'vision', requirements: {operation: 'chat', inputModalities: ['image']}}]};
+    const issues = await checkFlowConnectionSlots({flow: definition}, agents as never);
+    expect(issues).toMatchObject([{field: 'vision'}]);
+    await expect(checkFlowConnections({flow: definition}, agents as never)).rejects.toMatchObject({field: 'vision'});
 });

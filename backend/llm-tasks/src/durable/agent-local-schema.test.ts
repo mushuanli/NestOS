@@ -47,3 +47,27 @@ it.each(['malformed-json', 'unknown-property'])('records safe %s diagnostics wit
     const exhausted = program.reduce(JSON.parse(JSON.stringify(repair.state)), response(content, 2));
     expect(JSON.stringify(exhausted.next)).not.toContain(secret);
 });
+
+it.each([
+    { constraints: { minLength: 1 }, invalid: '', valid: 'value', category: 'minLength' },
+    { constraints: { pattern: '\\S' }, invalid: ' \n\t', valid: 'value', category: 'pattern' },
+    { constraints: { minLength: 2 }, invalid: '🌿', valid: '🌿A', category: 'minLength' },
+    { constraints: { maxLength: 1 }, invalid: 'AB', valid: '🌿', category: 'maxLength' },
+])('repairs string $category violations and validates Unicode code point lengths', ({ constraints, invalid, valid, category }) => {
+    const { program, step } = start({ type: 'object', properties: { label: { type: 'string', ...constraints } }, required: ['label'] });
+    const repair = program.reduce(step.state, response(JSON.stringify({ label: invalid })));
+    expect(repair.state.outputValidationAttempts).toBe(1);
+    expect(repair.state.messages.at(-1)?.content).toContain(category);
+    const resumed = new DurableAgentProgram().reduce(JSON.parse(JSON.stringify(repair.state)), response(JSON.stringify({ label: valid }), 2));
+    expect(resumed.next).toMatchObject({ type: 'complete', output: { outputs: { result: { content: { label: valid } } } } });
+    const exhausted = program.reduce(JSON.parse(JSON.stringify(repair.state)), response(JSON.stringify({ label: invalid }), 2));
+    expect(exhausted.next).toMatchObject({ type: 'fail', error: { code: 'INVALID_OUTPUT' } });
+});
+
+it('reports invalid schema patterns without throwing or exposing output values', () => {
+    const { program, step } = start({ type: 'object', properties: { label: { type: 'string', pattern: '[' } } });
+    const repair = program.reduce(step.state, response(JSON.stringify({ label: 'private-output-value' })));
+    expect(repair.state.messages.at(-1)?.content).toContain('invalid schema pattern');
+    const diagnostic = repair.actions?.find(action => action.type === 'emit' && action.eventType === 'llm.output.invalid');
+    expect(JSON.stringify(diagnostic)).not.toContain('private-output-value');
+});

@@ -44,3 +44,5 @@ ContextTaskProgram 为 Agent/Chat v2 bridge，负责把 context 写集转换为 
 Context 装配、消息适配和压缩的兼容转发已删除。消费者直接使用 llm-context，装配及协议组测试归实现所属包。
 
 `outputValidation.schema` 可声明独立于 Provider `responseFormat` 的本地 JSON Schema；采用既有结构化输出校验子集，并优先于 `json_schema.schema`。例如 `json_object` 连接可在本地校验必填字段并按持久化的 repair 次数修复，schema 不加入 Provider 的 responseFormat 请求。诊断只记录长度、校验路径/类别和重试计数，不记录模型正文、任意输出属性名或完整 schema；JSON 解析错误不透传包含正文的原始异常。
+
+字符串约束支持 `minLength` / `maxLength`（Unicode 码点数）和 `pattern`；Flow 注册、端口兼容检查与本地输出校验须保持一致。非法模式返回可定位原因，不透传正则表达式或模型正文。

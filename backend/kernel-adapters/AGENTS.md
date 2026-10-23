@@ -66,6 +66,7 @@ await runtime.dispose();
 - MCP 后端启动连接默认启用（autoConnect:false 显式关闭），空配置与宿主禁用的 stdio 跳过；连接和标准/扩展发现异步运行，不阻塞 LLM 就绪。initializeMCPServer 复用按 ID 串行队列，发布运行时目录后通过 configurationChanged 通知宿主，启动发现不重写持久配置。服务器可以调用 waitForMCPStartup 等待首轮尝试全部结束，不改变交互模式的 LLM readiness，远端失败以连接状态保留。已有配置 autoConnect 从 false 开启后，在保存完成后排队复用 initializeMCPServer；连接失败通过运行时状态发布，不把网络失败当成配置保存失败。关闭开关不主动断开。
 
 - 工具/Skill catalog 只暴露**元数据**（`getToolDefinitions`/`getSkillMeta`），可执行服务只经 Session 作用域取得。
+- KernelAdaptersRuntime.registerTools 接收宿主已验证的 Tool 实例，先准备全批描述及每个 driver 的元数据副本，再同步发布到 catalog、当前 Session/Run 作用域和未来作用域；不替换已有工具，不重建会话或重启运行时。批量准备失败不发布任何一项，作用域释放时解绑动态工具目录，运行时关闭后拒绝注册。
 - Context 的 `createTaskContextStorage` 使用 Task SeqFile 独立内容命名空间，发布和 GC 与 Kernel 提交共用后端事务。GC 只接受终态且 Effect 清理已确认的 Task，根包含保留的 Task/shared 历史；不得按文件年龄直接删除可达内容或解除固定目录保护。
 - Task SeqFile 路径只通过 durable-kernel 的公开 taskStoragePath(sessionRoot, taskId) 获取；媒体和 Context 不再自行编码 Task ID 或拼接任务布局。媒体协议、工具版本与业务副作用核对继续留在适配层，不进入内核。
 - 可选 `scopeForEffect`/`fileContextForScope` 由宿主选择并获取 Run 独立能力，注册表按 Session + scope 缓存；普通 Session API 保持默认作用域。选择或获取失败不回退；`disposeScope` 合并并发清理并禁止迟到 Effect 重建，Session/运行时关闭释放所有子作用域。
@@ -99,6 +100,8 @@ pnpm --filter @itookit/kernel-adapters typecheck
 `@itookit/kernel-adapters/llm/core` 提供 LLMDeviceDriver、LLM_IOCTL、配置、费用、Skill 与 MCP 管理；Provider 支持目录归独立的 `@itookit/device-llm`。源码在 `src/llm-management/`，回归在 `tests/llm-management/`；不是额外 npm 包。公开通信客户端与契约来自 driver-llm，禁止其反向依赖本包。MCP stdio 保留 browser/default 条件入口。详见 [模型集成](./doc/llm-management/README.md)。
 
 ## 配置契约入口
+
+ModelRequirements.responseFormats 声明所需 text/json_object/json_schema 模式；assertModelConnection 通过 device-llm/contracts 的纯能力 helper 校验实际协议与模型正向声明。格式不兼容必须在连接准入时失败，不自动切协议、换模型或丢弃 responseFormat。
 
 ModelDefaults / ModelOperation / modelForOperation 属于模型管理契约。ConnectionManager 串行读写对话、绘图、语音默认表；旧默认 API 仅表示对话，旧文档不推断媒体默认。配置保存不发起网络验证，配置和用途能力校验不替代执行准入。详见 [用途默认](../../doc/design/model-purpose-defaults.md)。
 

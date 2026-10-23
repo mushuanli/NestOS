@@ -52,7 +52,8 @@ export class OcrSettingsForm {
                 const markup = renderOcrSettings(state, this.id, this.compact);
                 if (this.dirty || this.rendered !== markup) { this.container.innerHTML = markup; this.rendered = markup; }
                 this.dirty = false;
-                this.container.querySelector('[data-ocr-retry]')?.remove(); this.status('');
+                const retry = this.container.querySelector('[data-ocr-retry]');
+                if (retry) { retry.remove(); this.status(''); }
                 this.syncSelection();
             }
         } catch (error) {

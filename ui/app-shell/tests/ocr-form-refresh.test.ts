@@ -16,5 +16,7 @@ it('preserves the input and save feedback for unchanged settings and recovers af
         readSettings.mockRejectedValueOnce(new Error('Offline')); await form.refresh();
         expect(host.textContent).toContain('Offline');
         await form.refresh(); expect(host.querySelector('select')?.value).toBe('ocr');
+        expect(host.querySelector('[data-ocr-status]')!.textContent).toBe('');
+        expect(host.querySelector('[data-ocr-retry]')).toBeNull();
     } finally {form.destroy();}
 });

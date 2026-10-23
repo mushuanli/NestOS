@@ -1,11 +1,10 @@
-/** Hidden navigation has no read or observation work; current content owns its own lifecycle. */
+/** Reports the sidebar surface; each workspace owns the visibility of its local views. */
 export function observeNavigationVisibility(layout: HTMLElement, sidebar: HTMLElement, changed: (visible: boolean) => void): () => void {
     const workspace = layout.closest('.workspace-view'), media = window.matchMedia?.('(max-width: 768px)');
     let previous: boolean | undefined;
     const sync = () => {
-        const section = sidebar.querySelector('.workbench-sidebar__section[data-section="navigation"]');
         const visible = !!workspace?.classList.contains('active') && !sidebar.classList.contains('is-collapsed')
-            && !(section?.hasAttribute('hidden') || section?.classList.contains('is-collapsed'))
+            && !sidebar.hidden
             && (!media?.matches || layout.dataset.mobileView === 'list');
         if (previous !== visible) { previous = visible; changed(visible); }
     };

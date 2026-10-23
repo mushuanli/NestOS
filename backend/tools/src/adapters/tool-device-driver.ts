@@ -130,10 +130,10 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
   }
 
   /** Register an additional tool at runtime (e.g. from Skill loading). */
-  registerToolInstance(tool: Tool): void {
-    const meta = toolMetaFromTool(tool);
-    const definition = toolDefinitionFromTool(tool);
-    this.registry.set(tool.name, { meta, definition, tool });
+  registerToolInstance(tool: Tool, prepared?: {meta: ToolMeta; definition: ToolDefinition}): void {
+    const meta = prepared?.meta ?? toolMetaFromTool(tool);
+    const definition = prepared?.definition ?? toolDefinitionFromTool(tool);
+    this.registry.set(meta.id, { meta, definition, tool });
   }
 
   async init(): Promise<void> {
@@ -171,6 +171,10 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
 
   getToolMeta(id: string): ToolMeta | undefined {
     return this.registry.get(id)?.meta;
+  }
+
+  getToolDefinition(id: string): ToolDefinition | undefined {
+    return this.registry.get(id)?.definition;
   }
 
   getToolDefinitions(): ToolDefinition[] {

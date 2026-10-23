@@ -277,7 +277,7 @@ async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, overri
         const definition = override && 'flow' in override
             ? await createRunDefinitionFromFlow(override.flow, {
                 workspaceRoot: loaded.workflow.workspaceRoot, result: loaded.workflow.config.result,
-                connectionBindings: override.connectionBindings, prepareConnections: runtime.prepareConnections,
+                parameters: override.parameters, connectionBindings: override.connectionBindings, prepareConnections: runtime.prepareConnections,
                 resolveComposite: override.resolveComposite,
                 bind: (node, defaults) => runtime!.flowCapabilities.bindNode(id, node, defaults),
             }) : override?.definition ?? compileRunDefinition(loaded.workflow, loaded.hash, runtime.workspaceRoot);

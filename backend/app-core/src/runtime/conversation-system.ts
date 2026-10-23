@@ -14,6 +14,7 @@ import { registerFlowLibraryRecovery } from '../presets/restore-flows';
 export interface OwnedConversationView { sessionManager: SessionManager; commandBus: CommandBus; dispose(): Promise<void> }
 
 export interface ConversationSystemOptions {
+    ensureFlowDependencies?(flowId: string): Promise<void>;
     executionActivity?: import('@itookit/llm-session').SessionExecutionActivity;
     instructionQueueSessions?: import('@itookit/llm-session').InstructionQueueSessions;
     scheduleAgentInitialization?: (initialize: () => Promise<void>) => void | Promise<void>;
@@ -78,6 +79,6 @@ export async function createConversationSystem(
         resolveMCPToolIds: capabilities.resolveMCPToolIds,
     });
     const inputs = registerInputAssets(system.commandBus, systemFS, reference => createTaskAssetReader(() => kernel.kernel, systemFS)(reference, {...reference, operationId: 'preview', effectId: 'preview'}));
-    const recovery = registerFlowLibraryRecovery(system.commandBus);
+    const recovery = registerFlowLibraryRecovery(system.commandBus, options.ensureFlowDependencies);
     return { ...system, async dispose() { inputs.dispose(); recovery.dispose(); await system.dispose(); } };
 }

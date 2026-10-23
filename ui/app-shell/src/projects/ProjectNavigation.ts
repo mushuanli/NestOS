@@ -1,7 +1,7 @@
 import { sessionCreationReason } from './session-creation-policy';
 import { fileFirst, projectItems } from './navigation-policy';
 import { remapProjectPath } from './project-paths';
-import { t, FILE_BROWSER_ICONS, VFS_TOOLBAR_ICONS, ENTITY_ICONS, FEEDBACK_ICONS } from '@itookit/common';
+import { t, FILE_BROWSER_ICONS, VFS_TOOLBAR_ICONS, ENTITY_ICONS, FEEDBACK_ICONS, ACTION_ICONS } from '@itookit/common';
 import { ProjectSyncStatusIndicator, projectSyncIcon } from './sync/indicator';
 import type { ProjectSyncIndicator } from './sync/presentation';
 import { browserTargetFolder, folderBrowserPath, resolveBrowserTarget } from '@itookit/app-contracts';
@@ -9,6 +9,7 @@ import type { ProjectFolder, ProjectNavigationView, ProjectService } from '@itoo
 import { ScopeSelector } from '@itookit/vfs-ui';
 import type { VFSActionDefinition, VFSActionContext, VFSToolbarContext, VFSColumnsOptions, VFSNodeUI, VFSUIShell } from '@itookit/vfs-ui';
 import { decorateButton } from '../workbench/controls';
+import { showProjectDefaultSettings } from './project-default-settings';
 
 interface Actions {
     refresh?(): Promise<void>;
@@ -39,6 +40,9 @@ export class ProjectNavigation {
     private readonly menuContent = document.createElement('div');
     readonly overflow = {root: this.menu, content: this.menuContent};
     private readonly projectActions = document.createElement('button');
+    private readonly settings = document.createElement('button');
+    private settingsPending = false;
+    private defaultProjectId?: string;
     private readonly menuEvents = new AbortController();
     private transferPending = false;
     private scopeRevision = 0;
@@ -95,8 +99,18 @@ export class ProjectNavigation {
         this.selector.element.oncontextmenu = event => { if (this.project) { event.preventDefault(); this.showMenu(event); } };
         this.toolbarContainer.className = 'workbench-project-navigation__transfer';
         this.toolbarContainer.append(this.menu);
-        this.menuContent.append(this.retry);
+        this.button(this.settings, t('project.default.settings'), () => this.configureDefaultProject());
+        this.settings.dataset.projectAction = 'settings';
+        decorateButton(this.settings, ACTION_ICONS.settings, t('project.default.settings'));
+        this.menuContent.append(this.settings, this.retry);
         this.header.append(this.selector.element, this.syncStatus.element, this.create, this.toolbarContainer);
+    }
+    private async configureDefaultProject(): Promise<void> {
+        if (this.settingsPending) return;
+        this.settingsPending = true; this.settings.disabled = true;
+        try { await showProjectDefaultSettings(this.projects, this.menuEvents.signal,
+            async () => { await this.refresh(); await this.actions.refresh?.(); }); }
+        finally { this.settingsPending = false; this.settings.disabled = false; }
     }
     private buildMenu(): void {
         this.menu.className = 'workbench-project-navigation__menu';
@@ -131,7 +145,7 @@ export class ProjectNavigation {
     }
     private updateTransferControls(): void {
         const offline = !!this.project && this.offlinePaths.has(folderBrowserPath(this.project.path));
-        for (const button of this.menu.querySelectorAll<HTMLButtonElement>('[data-project-action]'))
+        for (const button of this.menu.querySelectorAll<HTMLButtonElement>('[data-project-action="import"], [data-project-action="export"]'))
             button.disabled = this.transferPending || offline;
     }
     private async choose(path: string, signal: AbortSignal): Promise<void> {
@@ -178,6 +192,7 @@ export class ProjectNavigation {
         const { project, projects, path } = snapshot;
         if (revision !== this.revision) return;
         this.project = project; this.path = path;
+        this.defaultProjectId = snapshot.defaultProjectId;
         this.offlinePaths = new Set(projects.filter(item => snapshot.offlineProjectIds.includes(item.project.id)).map(item => folderBrowserPath(item.path)));
         this.updateHeader(projects, snapshot.pendingDeletions);
         this.actions.projectsChanged?.(projects);
@@ -193,12 +208,12 @@ export class ProjectNavigation {
     }
     private updateHeader(projects: ProjectFolder[], pending: number): void {
         this.pendingDeletions = pending;
-        this.projectChoices = projects;
+        this.projectChoices = [...projects].sort((a, b) => Number(b.project.id === this.defaultProjectId) - Number(a.project.id === this.defaultProjectId));
         const project = this.project;
         this.syncStatus.update(project && this.actions.syncIndicator?.(project.project.id));
         this.updateCreation();
         this.projectActions.hidden = !project || !this.actions.projectMenu;
-        this.menu.hidden = !project;
+        for (const button of this.menu.querySelectorAll<HTMLButtonElement>('[data-project-action="import"], [data-project-action="export"]')) button.hidden = !project;
         this.retry.hidden = !pending; this.retry.textContent = t('project.retryDeletion', { count: pending });
         this.updateSelector(); this.updateTransferControls();
     }
@@ -235,14 +250,18 @@ export class ProjectNavigation {
         this.ui()?.refreshList();
     }
     private projectLabel(project: ProjectFolder): string {
-        const indicator = this.actions.syncIndicator?.(project.project.id), name = project.displayName ?? project.name;
+        const indicator = this.actions.syncIndicator?.(project.project.id);
+        const name = (project.displayName ?? project.name) + (project.project.id === this.defaultProjectId ? ` · ${t('project.default.badge')}` : '');
         return indicator ? `${name} ${indicator.state === 'configured' ? ENTITY_ICONS.sync : FEEDBACK_ICONS.warning}` : name;
     }
     private syncItems(items: VFSNodeUI[]): VFSNodeUI[] {
         return items.map(item => {
             const id = item.metadata.custom.projectId;
+            const isDefault = typeof id === 'string' && id === this.defaultProjectId;
             const indicator = typeof id === 'string' ? this.actions.syncIndicator?.(id) : undefined;
             return {...item, ...(indicator ? {icon: projectSyncIcon(item.metadata.custom.remoteProject === true, indicator)} : {}),
+                metadata: {...item.metadata, title: item.metadata.title + (isDefault ? ` · ${t('project.default.badge')}` : ''),
+                    custom: {...item.metadata.custom, defaultProject: isDefault}},
                 children: item.children && this.syncItems(item.children)};
         });
     }

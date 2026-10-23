@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it } from 'vitest';
+import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend, type IFileSystem, type IVFSManager } from '@itookit/vfs-core';
 import { SessionRepository } from '../src/persistence/session-repository';
 import { moveSessionDataDirectory } from '../src/persistence/session-storage-locations';
@@ -30,6 +30,35 @@ it('relocates existing central conversation data while keeping runtime controls 
     const reopened = new SessionRepository(fs); await reopened.init();
     expect((await reopened.getManifest(id)).title).toBe('Existing');
     expect(await reopened.readDocument(id, 'round.json')).toBe(JSON.stringify('history'));
+});
+
+it('correlates successful migration phases without writing manifest or attachment content to logs', async () => {
+    const id = await repository.createSession('PRIVATE_TITLE'), from = `/var/lib/sessions/${id}`, to = `${directory}/${id}`;
+    await repository.writeAttachment(id, 'private.txt', new TextEncoder().encode('PRIVATE_ATTACHMENT').buffer);
+    const logger = {debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()};
+    await moveSessionDataDirectory(fs, from, to, logger);
+    const events = logger.info.mock.calls.map(([, data]) => data);
+    expect(new Set(events.map(event => event.operationId)).size).toBe(1);
+    expect(events.filter(event => event.outcome === 'success').map(event => event.stage))
+        .toEqual(expect.arrayContaining(['persist-intent', 'prepare-target', 'copy-attachments', 'commit-records-and-index']));
+    expect(logger.error).not.toHaveBeenCalled();
+    expect(JSON.stringify(events)).not.toMatch(/PRIVATE_TITLE|PRIVATE_ATTACHMENT|private\.txt/);
+    expect(await fs.meta.seq!.getEntry('/var/lib/sessions/folders.seq', `storage/${id}`)).toBe(to);
+});
+
+it('classifies corrupt recovery records without logging their raw contents', async () => {
+    const moves = '/var/lib/sessions/storage-moves.seq';
+    await fs.driver.createFile({parentPath: '/var/lib/sessions', name: 'storage-moves.seq', type: 'seqfile'});
+    await fs.meta.seq!.setEntry(moves, 'broken', 'PRIVATE_BROKEN_RECORD');
+    const logger = {debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn()};
+    const reopened = new SessionRepository(fs, undefined, logger);
+    try {
+        await expect(reopened.init()).rejects.toBeInstanceOf(SyntaxError);
+        expect(logger.error).toHaveBeenCalledWith('session.storage', expect.objectContaining({operation: 'session.storage.recovery.scan',
+            stage: 'parse-intents', outcome: 'failure', code: 'SESSION_STORAGE_PARSE_FAILED', recordKey: 'broken'}));
+        expect(JSON.stringify(logger.error.mock.calls)).not.toContain('PRIVATE_BROKEN_RECORD');
+        expect(await fs.meta.seq!.getEntry(moves, 'broken')).toBe('PRIVATE_BROKEN_RECORD');
+    } finally { await reopened.dispose(); }
 });
 
 it.each([false, true])('recovers a rejected central relocation at startup (indexed: %s)', async indexed => {

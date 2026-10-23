@@ -7,7 +7,7 @@ afterEach(() => vi.unstubAllGlobals());
 
 async function backend() {
     const backend = new MemoryBackend(); await backend.init();
-    for (const path of ['/etc', '/etc/llm', '/etc/llm/.providers', '/etc/llm/.connections']) await backend.mkdir(path);
+    for (const path of ['/etc', '/etc/llm', '/etc/llm/.providers', '/etc/llm/.connections', '/home', '/home/admin', '/home/admin/project']) await backend.mkdir(path);
     const encode = (value: unknown) => new TextEncoder().encode(JSON.stringify(value));
     await backend.write('/etc/llm/.providers/mock.json', encode({ id: 'mock', name: 'Mock', implementation: 'openai-compatible', apiKey: 'test',
         baseURL: 'http://localhost:18449', models: [{ id: 'mock-model', name: 'Mock' }] }));
@@ -36,7 +36,7 @@ it.each([
     let releaseSearch!: () => void;
     const searchGate = new Promise<void>(resolve => { releaseSearch = resolve; });
     const events: SessionEventEnvelope[] = [];
-    const runtime = await createApplicationRuntime({ backend: await backend(), ownerKind: 'tauri', digitalTwinAutoStart: false,
+    const runtime = await createApplicationRuntime({ backend: await backend(), ownerKind: 'tauri', digitalTwinAutoStart: false, defaultSessionDirectory: '/home/admin/project',
         kernelPlatform: { configureSession: (_id, { toolDriver }) => {
             const invoke = toolDriver.invoke.bind(toolDriver);
             vi.spyOn(toolDriver, 'invoke').mockImplementation(async request => {
@@ -52,7 +52,6 @@ it.each([
         await source.driver.createFile({ parentPath: '/project', name: 'found.txt', content: 'unique mdx evidence', recursive: true });
         await source.driver.createFile({ parentPath: '/outside', name: 'hidden.txt', content: 'hidden mdx evidence', recursive: true });
         const id = await runtime.sessionRepository.createSession('Harness tools');
-        await runtime.directoryMounts.setWorkspace(id, '~/project');
         await runtime.commandBus.execute(SessionCommand.Bind, { sessionId: id });
         unsubscribe = runtime.sessionManager.onEvent(event => events.push(event));
         await runtime.commandBus.execute(SessionCommand.Send, { text: 'current dir which file include mdx string?', files: [], agentId: 'default',

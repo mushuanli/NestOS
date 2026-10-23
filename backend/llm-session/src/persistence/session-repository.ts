@@ -7,6 +7,8 @@ import { DEFAULT_SESSION_SETTINGS, type ChatSessionSettings, type ConversationMa
 import { sessionStorageRoot } from './session-storage-layout';
 import { resolveSessionStorageRoot, recoverSessionDataMoves, moveSessionDataDirectory } from './session-storage-locations';
 import { reserveSessionStorage, assertSessionStorageLocation, validateProjectSessionStorage } from './session-storage-identity';
+import { SessionStorageTrace } from './session-storage-trace';
+import type { SessionLogger } from '../utils/host-ports';
 import { collectHistoryChain, readRoundDocument, type SessionHistoryChain } from './history-chain';
 import type { PersistedRound, RoundManifest } from './round-types';
 
@@ -24,7 +26,7 @@ export class SessionRepository implements ISessionRepository {
     setStructuralWriteGuard(guard: (ids: string[]) => Promise<void>): void { this.structuralWriteGuard = guard; }
     private get relations() { return new SessionRelations(this.fs, () => this.list(), this.structuralWriteGuard); }
     constructor(private readonly fs: IFileSystem,
-        private readonly initializeNewSession?: (sessionId: string) => Promise<void>) {}
+        private readonly initializeNewSession?: (sessionId: string) => Promise<void>, private readonly logger?: SessionLogger) {}
     setStorageDirectoryResolver(resolver: (folder: string | null) => Promise<string | undefined>): void { this.storageDirectory = resolver; }
     private storageDirectory?: (folder: string | null) => Promise<string | undefined>;
     private initialization?: Promise<void>;
@@ -34,7 +36,7 @@ export class SessionRepository implements ISessionRepository {
     }
     private async initialize(): Promise<void> {
         if (!this.fs.meta.seq?.transaction) throw new Error('Session storage requires record transactions');
-        await recoverSessionDataMoves(this.fs);
+        await recoverSessionDataMoves(this.fs, this.logger);
         await this.ensureFolderRecord();
         const navigationVersion = await this.fs.meta.seq!.getEntry(FOLDERS_PATH, NAVIGATION_VERSION);
         await this.ensureNavigationIndex(navigationVersion);
@@ -56,11 +58,15 @@ export class SessionRepository implements ISessionRepository {
         return this.initializeSession(`node-${ulid()}`, title, 'tauri', folder, parentSessionId, true, structuredClone(initialState), creation?.agentId, structuredClone(creation?.initialContext));
     }
     async indexProjectSessions(directory: string): Promise<void> {
+        await new SessionStorageTrace('session.storage.index', { directory }, this.logger)
+            .run(trace => this.indexProjectDirectory(directory, trace));
+    }
+    private async indexProjectDirectory(directory: string, trace: SessionStorageTrace): Promise<void> {
         if (!await this.fs.driver.exists(directory)) return;
-        const children = await this.fs.driver.getChildren(directory);
+        const children = await trace.step('scan-directory', () => this.fs.driver.getChildren(directory));
         await this.ensureFolderRecord();
         const directories = children.filter(child => child.type === 'directory');
-        await this.fs.meta.seq!.transaction!(async tx => {
+        await trace.step('index-transaction', () => this.fs.meta.seq!.transaction!(async tx => {
             const rows = await tx.getEntriesMany(directories.map(child => ({ fileIdOrPath: `${child.path}/session.seq`, key: 'session' })));
             const sessions = rows.map(raw => raw ? JSON.parse(raw) as SessionSummary : null);
             const keys = directories.flatMap((child, index) => {
@@ -68,7 +74,7 @@ export class SessionRepository implements ISessionRepository {
                 return [`storage/${child.name}`, `moving/${child.name}`, ...(session ? [navigationPrefix(session.folder ?? null) + session.id, `navigation-location/${session.id}`] : [])];
             });
             const stored = await tx.getEntries(FOLDERS_PATH, keys);
-            await validateProjectSessionStorage(tx, directories, sessions, stored);
+            await trace.step('validate-identities', () => validateProjectSessionStorage(tx, directories, sessions, stored));
             for (const [index, child] of directories.entries()) {
                 const raw = rows[index]; if (!raw) continue;
                 const previous = stored[`storage/${child.name}`];
@@ -78,9 +84,13 @@ export class SessionRepository implements ISessionRepository {
                 if (stored[key] !== serializeSessionSummary(session) || stored[`navigation-location/${session.id}`] !== key)
                     await indexSessionSummary(tx, session);
             }
-        });
+        }));
     }
     async validateProjectSessions(directory: string): Promise<void> {
+        await new SessionStorageTrace('session.storage.validate', { directory }, this.logger)
+            .run(trace => trace.step('scan-and-validate', () => this.validateProjectDirectory(directory)));
+    }
+    private async validateProjectDirectory(directory: string): Promise<void> {
         if (!await this.fs.driver.exists(directory)) return;
         const children = (await this.fs.driver.getChildren(directory)).filter(child => child.type === 'directory');
         await this.fs.meta.seq!.transaction!(async tx => {
@@ -98,7 +108,7 @@ export class SessionRepository implements ISessionRepository {
         const session = await this.getManifest(id), directory = await this.storageDirectory(session.folder ?? null);
         if (!directory) return;
         const from = await this.root(id), to = `${directory}/${id}`;
-        if (from !== to) await moveSessionDataDirectory(this.fs, from, to);
+        if (from !== to) await moveSessionDataDirectory(this.fs, from, to, this.logger);
     }
     /** Idempotently create a Session with a host-supplied durable identity. */
     async ensureSession(id: string, title: string, origin: SessionOrigin = 'tauri', folder: string | null = null, parentSessionId: string | null = null,

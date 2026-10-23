@@ -46,6 +46,7 @@ import { Modal, Toast, showConfirmDialog, ISessionUI, IEditor } from '@itookit/u
 - 事件与回调类型从接口导出，宿主与实现共享同一份类型，避免各自声明漂移。
 - `EditorOptions.mountMoreMenu` 是宿主更多菜单挂载端口，返回清理函数；编辑器控制菜单布局和关闭行为，宿主控制资源业务与元数据。
 - `EditorOptions.mountCompactNavigation` 挂载小屏宿主导航，返回清理函数。支持嵌入导航的编辑器公开 data-editor-mobile-navigation="embedded"；输入容器用 data-editor-composing 标识编辑状态。宿主只消费这些语义标记，不访问业务编辑器内部 DOM。
+- `EditorOptions.onStartConversation` 打开当前资源对应的宿主聊天工作区，不提交消息；编辑器先保存当前草稿，宿主拥有目标项目、执行者及草稿复用策略。该可选端口不引入聊天领域或后端依赖。
 - `EditorOptions.executorUsage` 是可选的最近使用展示端口；宿主拥有保存和订阅，编辑器只在提交获接受后记录，不在本包实现存储或改变 Agent 定义。
 - 新增组件时同步补样式类；`pnpm styles:check` 会把无规则类名列为失败或计入允许清单。
 - `setTimePresentation` 统一原生 time 元素的本地化显示、datetime 与 title；缺失、非正数和无效时间清理旧属性并使用调用方的缺失提示。本地与远程会话的创建时间、最后活动共用该工具，不使用页面读取时间填补。

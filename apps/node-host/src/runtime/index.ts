@@ -6,3 +6,5 @@ export type { NodeApplicationOptions } from './application';
 export type { NodeApplicationHost } from './application';
 export { createNodeRuntime } from './application';
 export { createStandardNodeTools, loadNodeToolModules } from './tool-modules';
+export {NodeToolPackages} from './tool-packages';
+export type {NodeToolPackageOptions} from './tool-packages';

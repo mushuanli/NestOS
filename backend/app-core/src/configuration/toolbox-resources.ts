@@ -20,13 +20,17 @@ import type { ToolboxInventory, ToolboxNavigation } from '@itookit/app-contracts
 
 /** Resource creation retains the owning services' identity and validation rules. */
 export class ToolboxResources {
+    readonly toolPackages?: import('@itookit/app-contracts/services').ToolPackages;
+    readonly flowInstallations?: import('@itookit/app-contracts/services').FlowInstallations;
     readonly drawers: ToolboxDrawers;
     private initialized?: Promise<void>;
     private readonly templates: ProviderTemplates;
     get providerTemplates(): Array<{id: string; name: string}> { return this.templates.list(); }
     constructor(readonly sources: Record<ToolboxKind, IFileSystem>, private readonly agents: ApplicationAgentPort, private readonly commands: ICommandBus, settings: IFileSystem,
         private readonly inventory?: ToolboxInventory & { refresh(): Promise<void> },
-        private readonly defaultDrawers: readonly Drawer[] = [], providerTemplates: readonly LLMProvider[] = []) {
+        private readonly defaultDrawers: readonly Drawer[] = [], providerTemplates: readonly LLMProvider[] = [],
+        installation: {toolPackages?: import('@itookit/app-contracts/services').ToolPackages; flowInstallations?: import('@itookit/app-contracts/services').FlowInstallations} = {}) {
+        this.toolPackages = installation.toolPackages; this.flowInstallations = installation.flowInstallations;
         this.drawers = new ToolboxDrawers(settings); this.templates = new ProviderTemplates(providerTemplates, () => this.agents.getProviders(), this.agents);
     }
     /** Prepare the whole navigation read model where the source services live. */
@@ -188,11 +192,13 @@ export class ToolboxResources {
         }
         return data;
     }
-    async import(content: string): Promise<string[]> {
-        const trace = new ToolboxImportTrace();
-        return trace.run(() => this.importArchive(content, trace));
+    async import(content: string): Promise<string[]> {return (await this.importWithReport(content)).paths;}
+    async importWithReport(content: string): Promise<{paths: string[]; installations: import('@itookit/app-contracts/services').FlowInstallationReport[]}> {
+        const trace = new ToolboxImportTrace(), installations: import('@itookit/app-contracts/services').FlowInstallationReport[] = [];
+        const paths = await trace.run(() => this.importArchive(content, trace, installations));
+        return {paths, installations};
     }
-    private async importArchive(content: string, trace: ToolboxImportTrace): Promise<string[]> {
+    private async importArchive(content: string, trace: ToolboxImportTrace, installations: import('@itookit/app-contracts/services').FlowInstallationReport[]): Promise<string[]> {
         const archive = JSON.parse(content);
         trace.step('validate');
         if (archive?.format !== 'itookit.toolbox' || archive.version !== 1 || !Array.isArray(archive.entries)) throw new Error(t('toolbox.importInvalid'));
@@ -211,6 +217,11 @@ export class ToolboxResources {
             const grouped = plan.flatMap(entry => entry.drawer === undefined ? [] : [{ path: written.get(entry.id)!, name: entry.drawer }]);
             trace.step('groups');
             if (grouped.length || drawers.length) await this.drawers.assign(grouped, drawers, { restoreNames: true });
+            for (const entry of plan) if (entry.kind === 'flows') {
+                trace.step('dependencies', entry.kind); const report = await this.flowInstallations?.ensure(entry.id);
+                if (report) installations.push(report);
+            }
+            trace.dependencies(installations);
             return plan.map(entry => written.get(entry.id)!);
         } catch (error) {
             return this.rollbackImport(created, error, trace);

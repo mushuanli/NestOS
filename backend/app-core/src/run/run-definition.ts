@@ -1,4 +1,4 @@
-import type { DagEdgeDefinition, DagNodeDefinition, FlowParameter, FlowRevision, FlowRunPolicy, JsonValue } from '@itookit/llm-flow/contracts';
+import type { DagEdgeDefinition, DagNodeDefinition, FlowInputGroup, FlowParameter, FlowRevision, FlowRunPolicy, JsonValue } from '@itookit/llm-flow/contracts';
 import { flowToDag, type FlowNodeBinder } from '@itookit/llm-flow';
 
 export type RunSourceFormat = 'yaml' | 'flow';
@@ -100,6 +100,7 @@ export interface RunDefinition {
         variableScopes?: import('@itookit/llm-flow/contracts').DagRunSpec['variableScopes'];
     };
     parameters?: FlowParameter[];
+    inputGroups?: FlowInputGroup[];
     environment: RunEnvironment;
     policy: RunPolicy;
     /** Source-specific metadata kept for display and diagnostics; never used for scheduling. */
@@ -129,12 +130,13 @@ export async function createRunDefinitionFromFlow(flow: FlowRevision, options: {
     result?: { task: string; output: string };
     fallbackConnectionId?: string;
     connectionBindings?: Record<string, string>;
+    parameters?: Record<string, JsonValue>;
     prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>) => Promise<FlowRevision>;
     bind?: FlowNodeBinder;
     resolveComposite?: (id: string, revision?: number) => Promise<FlowRevision | null>;
 } = {}): Promise<RunDefinition> {
     const dag = await flowToDag(flow, options.bind, options.fallbackConnectionId, options.resolveComposite,
-        [], flow.dependencyLocks, false, undefined, options.connectionBindings, options.prepareConnections);
+        [], flow.dependencyLocks, false, undefined, options.connectionBindings, options.prepareConnections, options.parameters);
     return {
         id: String(flow.id),
         name: flow.name,
@@ -155,6 +157,7 @@ export async function createRunDefinitionFromFlow(flow: FlowRevision, options: {
             ...(dag.maxNodes !== undefined ? { maxNodes: dag.maxNodes } : {}),
         },
         parameters: flow.parameters ? structuredClone(flow.parameters) : [],
+        ...(flow.inputGroups ? {inputGroups: structuredClone(flow.inputGroups)} : {}),
         environment: {
             connections: (flow.connections ?? []).map(connection => ({
                 id: connection.name,
@@ -193,6 +196,7 @@ export function toDagRunSpec(definition: RunDefinition): import('@itookit/llm-fl
         variables: structuredClone(definition.graph.variables),
         variableScopes: structuredClone(definition.graph.variableScopes),
         parameterSchema: structuredClone(definition.parameters),
+        ...(definition.inputGroups ? {inputGroups: structuredClone(definition.inputGroups)} : {}),
         ...(definition.graph.nodeDefaults ? { nodeDefaults: structuredClone(definition.graph.nodeDefaults) } : {}),
         ...(definition.graph.nodeConnections ? { nodeConnections: structuredClone(definition.graph.nodeConnections) } : {}),
         ...(definition.graph.maxNodes !== undefined ? { maxNodes: definition.graph.maxNodes } : {}),

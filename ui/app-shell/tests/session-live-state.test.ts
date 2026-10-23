@@ -35,9 +35,12 @@ it('does not turn a completed send back into loading on lease, control, or compa
 it('waits for remote navigation invalidation before refreshing the VFS list', async () => {
     let finish!: () => void; const gate = new Promise<void>(resolve => {finish = resolve;});
     const invalidateNavigation = vi.fn(async () => gate), refresh = vi.fn(async () => {});
-    const workbench = {closed: false, visible: true, refreshQueued: false, refreshTail: Promise.resolve(), navigationVisible: true, navigationReady: true,
-        refreshSources: new Set(), browser: {invalidateNavigation}, sidebarUI: {refresh}, projectNavigation: {refresh: async () => {}},
-        updateRemoteAvailability() {}, syncBranchRoute: async () => {}, waiting: [], report: vi.fn()};
+    const workbench = Object.assign(Object.create(SessionWorkbench.prototype), {
+        closed: false, visible: true, navigationVisible: true, navigationReady: true, sidebarLayout: {activeView: 'navigation'},
+        browser: {invalidateNavigation}, sidebarUI: {refresh}, projectNavigation: {refresh: async () => {}},
+        localActivity: {refresh: async () => {}},
+        updateRemoteAvailability() {}, syncBranchRoute: async () => {}, waiting: [], report: vi.fn(),
+    });
     const pending = (SessionWorkbench.prototype as any).refreshView.call(workbench, []);
     await vi.waitFor(() => expect(invalidateNavigation).toHaveBeenCalledOnce()); expect(refresh).not.toHaveBeenCalled();
     finish(); await pending; expect(refresh).toHaveBeenCalledOnce(); expect(workbench.report).not.toHaveBeenCalled();

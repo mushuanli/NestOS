@@ -93,6 +93,11 @@ Checkpoint 连接槽允许合法的未绑定 `connectionId`，是否必需由节
 
 图片字段通过 imageConstraints 声明可选数量、总字节和 MIME 限制，核心不固定上传策略。上传值使用 llm-context 的标准 image_url 内容块，Agent 的 messageTemplates 一次性渲染为 messages；已有 messages 保持字面快照，不重新解释历史数据。连接准入从消息内容及显式 requirements 校验模态。builtin.input.review 在初始值有效时也等待人工提交。子调用的 connectionBindings 显式映射父槽；动态 Tool 图通过 spawn.scope=local 使用当前子 Flow 命名空间，默认 run 保持旧图兼容。DraftRestore 只恢复草稿，是否发布由应用层显式协调。
 
+FlowConnection.requirements.responseFormats 可声明连接必须支持的输出模式；节点 responseFormat 的需求由 Session 宿主统一推导并合入槽位与冻结节点，语法检查拒绝未知模式。text 配合 outputValidation.schema 代表提示词 JSON 加本地严格校验，不等同于原生 json_schema 请求。
+
 源码检查与发布锁定通过 flow/call-parameters.ts 校验 builtin.flow@2 的实参名称、必填项和字面约束；动态整值引用留到运行时校验，不用父参数或示例值补齐子流程缺参。草稿允许保存未完成调用并返回校验错误，安装/恢复只检查自身语法。旧版组合 Flow 保持既有参数继承行为。
 
 prepareFlowRun 是跨入口共享的定义校验与编译边界，不持有 Session 历史或队列。definition-references 拥有词法调用遍历与按调用节点/children 解析的外部依赖，应用归档不能按 Flow ID 扁平化锁。definition-projection 统一存储与归档正文转换，接管、发布和发布转草稿均保留递归 functions。
+
+
+Flow 输入来源通过 parameter.inputSource 显式声明，inputGroups.mode=oneOf 才要求互斥；不能按参数名推断业务。contracts/flow-inputs 提供表单与后端共用的输入组/条件连接纯规则；requiredWhen 复用 contracts/flow-expressions 的可序列化表达式，只能读取声明参数。编译先按实际参数物化必选性再进入宿主连接准入；根/子参数组随 DagRunSpec 和作用域冻结。toolDependencies 只含具体工具 ID 与可选版本；静态 builtin.tool 和内联/引用函数提供兼容发现，动态工具须显式声明，不允许执行路径、下载 URL 或按业务工具名补规则。注册与依赖安装留给应用及宿主。

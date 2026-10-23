@@ -5,6 +5,7 @@ const labels: Record<string, LocaleKey> = {
     chat: 'toolbox.capability.chat', vision: 'toolbox.capability.vision',
     'image.generate': 'toolbox.capability.image', 'speech.synthesize': 'toolbox.capability.speech',
     audio: 'toolbox.capability.audio', tools: 'toolbox.capability.tools', thinking: 'toolbox.capability.thinking', embedding: 'toolbox.capability.embedding',
+    video: 'model.capability.video', structuredOutput: 'model.capability.structuredOutput',
 };
 export const capabilityLabel = (tag: string): string => labels[tag] ? t(labels[tag]) : tag;
 export const capabilityLabels = (tags?: string[]): string[] => (tags ?? []).map(capabilityLabel);

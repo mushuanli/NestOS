@@ -1856,6 +1856,12 @@ export class SessionWorkbench implements WorkspaceController {
         if (open) await this.sessionSkills?.unmountByGlob(open.sessionId, open.path).catch(error => this.report(error));
     }
 
+    private recoveringView = false;
+    assertRecovery(): void { this.tabs.assertRecovery(); }
+    captureRecovery(): unknown { return this.tabs.captureRecovery(); }
+    restoreRecovery(state: unknown): void { this.tabs.restoreRecovery(state); }
+    suspendForRecovery(): void { this.recoveringView = true; this.tabs.suspendForRecovery(); }
+
     private clearEditorFields(): void {
         this.editor = undefined; this.context = undefined; this.assets = undefined; this.editorLease = undefined;
         this.previewCleanup = undefined; this.fileRenameCleanup = undefined; this.active = null; this.activeBranch = undefined;
@@ -1896,7 +1902,7 @@ export class SessionWorkbench implements WorkspaceController {
             if (this.openEditorTarget && value.skills?.sessionId === this.openEditorTarget.sessionId && value.skills.path === this.openEditorTarget.path) await this.unmountEditorSkills();
             await Promise.all([value.assets?.dispose(), value.context?.release()]);
         });
-        await value.lease.dispose();
+        try {await value.lease.dispose();} catch (error) {if (!this.recoveringView) throw error;}
         this.remoteStatus?.detach(tab.id);
         if (this.tabs.current === tab) this.clearEditorFields();
     }
@@ -1920,23 +1926,22 @@ export class SessionWorkbench implements WorkspaceController {
         this.activeBranch = undefined;
     }
     async destroy(): Promise<void> {
-        ++this.openIntent;
-        this.cancelViewLoad();
-        this.closed = true; ++this.fileNavigationRevision; this.projectNavigation?.destroy();
-        await this.agentDrawer?.destroy();
-        await this.agentCatalog.close();
-        await this.remoteStatus?.destroy();
-        this.searchPanel?.destroy();
+        ++this.openIntent; this.cancelViewLoad(); this.closed = true; ++this.fileNavigationRevision;
+        this.projectNavigation?.destroy(); this.searchPanel?.destroy();
         this.sidebarUI?.cancelPendingSelection?.(); this.dialogs.abort(); this.subscriptions.dispose();
-        await Promise.all([this.tail, this.viewRefresh.close(), this.navigationTask?.catch(() => {})]); await this.fileNavigation; await Promise.all(this.readCleanup);
-        await this.initialSession?.dispose(); this.initialSession = undefined;
-        this.sidebarLayout.save(this.tabs.snapshot()); await this.tabs.destroy(); await this.closeEditor(); this.sidebarUI?.destroy(); this.sidebarLayout.destroy();
-        if (this.projects?.remoteMounts) {
-            this.container.inert = false;
-            this.container.classList.remove('project-workbench--offline');
-            this.container.removeAttribute('aria-disabled');
+        const steps: Array<() => void | Promise<unknown>> = [
+            () => this.agentDrawer?.destroy(), () => this.agentCatalog.close(), () => this.remoteStatus?.destroy(),
+            () => Promise.all([this.tail, this.viewRefresh.close(), this.navigationTask?.catch(() => {})]),
+            () => this.fileNavigation, () => Promise.all(this.readCleanup), () => this.initialSession?.dispose(),
+            () => {this.initialSession = undefined; this.sidebarLayout.save(this.tabs.snapshot());},
+            () => this.tabs.destroy(), () => this.closeEditor(), () => this.sidebarUI?.destroy(), () => this.sidebarLayout.destroy(),
+            () => this.navigationFiles?.dispose(), () => this.browser?.dispose(), () => this.chatConfiguration?.dispose(),
+        ];
+        for (const step of steps) {
+            try {await step();} catch (error) {if (!this.recoveringView) throw error;}
         }
-        await this.navigationFiles?.dispose(); await this.browser?.dispose(); await this.chatConfiguration?.dispose(); this.tabs.content.replaceChildren();
+        this.container.inert = false; this.container.classList.remove('project-workbench--offline');
+        this.container.removeAttribute('aria-disabled'); this.tabs.content.replaceChildren();
     }
 }
 

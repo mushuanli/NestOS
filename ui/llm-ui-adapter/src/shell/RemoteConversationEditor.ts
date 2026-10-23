@@ -438,7 +438,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         const message = error instanceof Error ? error.message : t('harness.failed');
         this.view.setStatus(t('harness.updateFailed', {message}));
     }
-    async destroy(preserveInput = false) { if (this.closed) return; this.cancelPendingRender(); await this.flushPendingSave(); this.closed = true; this.historyBranches?.destroy(); this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearConversationRequests(this.view.interactions); await this.service.close(); await this.tail; await this.renderTail; this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
+    async destroy(preserveInput = false) { if (this.closed) return; this.cancelPendingRender(); await this.flushPendingSave(); this.closed = true; this.historyBranches?.destroy(); this.releaseUpdates?.(); clearTimeout(this.updateTimer); clearConversationRequests(this.view.interactions); await this.service.close().catch(error => {if (!this.recoveringView) throw error;}); await this.tail.catch(() => {}); await this.renderTail.catch(() => {}); this.branches?.destroy(); await this.view?.destroy(preserveInput); if (!preserveInput) this.container.replaceChildren(); }
     cancelPendingRender(): void {
         ++this.branchRevision;
         this.historyBranches?.setActive(false);
@@ -456,6 +456,10 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
     }
     getText() { return remoteRounds(this.snapshot?.messages ?? []).map(group => group.content ?? group.executionRoot?.data.output ?? '').join('\n\n'); }
+    private recoveringView = false;
+    captureRecovery(): unknown { return this.view.input.captureRecovery(); }
+    restoreRecovery(state: unknown): void { this.view.input.restoreRecovery(state); this.draftFiles = this.view.input.getDraftFiles(); }
+    suspendForRecovery(): void { this.recoveringView = true; this.cancelPendingRender(); this.flushPendingSave = async () => {}; }
     async navigateTo(target: {elementId: string}): Promise<void> {
         if (!target.elementId.startsWith('native-item:')) return;
         const id = target.elementId.slice('native-item:'.length);

@@ -8,7 +8,7 @@ MindOS 默认仅装配 DeepSeek、火山引擎和豆包语音及对应连接。�
 
 工具箱新建弹窗先选类型，再填写对应参数，保留 MCP 等原有可创建类型；模型相关类型显示为「模型服务商」和「模型连接」。新服务商详情与连接引导仅在弹窗内装配，复用已有编辑器并在完成前提交待保存配置；创建后的加载失败重试已有资源，不重复创建。现有工具栏、菜单和详情页沿用原有布局。
 
-1. `backend/kernel-adapters/src/llm-management/constants/providers.ts` — 在 `LLM_PROVIDERS`（`Record<string, LLMProvider>`，key = provider.id）中追加 provider 定义
+1. `backend/device-llm/src/providers.ts` — 在 `LLM_PROVIDERS`（`Record<string, LLMProvider>`，key = provider.id）中追加 provider 定义
 2. `https://github.com/mushuanli/driver-llm/blob/main/src/providers/registry.ts` — 注册 provider 名→构造函数映射
 3. 如需新 Provider 类（非 OpenAI 兼容）：`https://github.com/mushuanli/driver-llm/blob/main/src/providers/` 新建类 → `extends BaseProvider`
 4. `https://github.com/mushuanli/driver-llm/blob/main/src/index.ts` — 导出
@@ -45,7 +45,7 @@ reasoning 声明属于模型，reasoningByProtocol 可针对具体路由协议�
 
 诊断关联 connection.test.started/completed、media.request.started/completed/failed，记录 requestId/operationId、阶段、结果、错误分类、上游业务码、状态码和耗时。HTTP 200 与 RPC 正常返回不能替代 success；日志不记录输入、产物、完整请求/响应或凭据。失败详情供前端展示，诊断日志只使用安全元数据。
 
-豆包语音的产品目录位于 `backend/kernel-adapters/src/llm-management/constants/catalogs/doubao-speech.json`，记录版本、核对日期、官方来源、HTTP 鉴权与参数、格式/采样率约束、公开音色快照及适配器支持状态。`createDoubaoSpeechProvider` 只将已实现的资源模型、格式与音色派生为可运行配置；请求体模型变体与未实现能力仅作为资料，不能自动启用。`getProviderReferences` 经既有模型管理服务和 RPC 快照公开只读资料，Provider 高级页展示来源和支持状态，音色选择显示名称与 ID。该资料不是用户凭据或账号权限清单，不写入用户 Provider JSON；旧配置中的地址、音色及能力限制保持用户值。官方 ListSpeakers 是独立目录 API，当前尚未接入，不能使用通用 /models 或假设 TTS Key 能直接鉴权。
+豆包语音的产品目录位于 `backend/device-llm/src/catalogs/doubao-speech.json`，记录版本、核对日期、官方来源、HTTP 鉴权与参数、格式/采样率约束、公开音色快照及适配器支持状态。`createDoubaoSpeechProvider` 只将已实现的资源模型、格式与音色派生为可运行配置；请求体模型变体与未实现能力仅作为资料，不能自动启用。`getProviderReferences` 经既有模型管理服务和 RPC 快照公开只读资料，Provider 高级页展示来源和支持状态，音色选择显示名称与 ID。该资料不是用户凭据或账号权限清单，不写入用户 Provider JSON；旧配置中的地址、音色及能力限制保持用户值。官方 ListSpeakers 是独立目录 API，当前尚未接入，不能使用通用 /models 或假设 TTS Key 能直接鉴权。
 
 豆包语音 JSON 行流与 SSE 响应的成功结束帧可携带 `code:20000000,data:null`，该帧不作为音频解码；无音频、非法 Base64 或后续业务错误仍拒绝返回产物。
 
@@ -57,7 +57,7 @@ reasoning 声明属于模型，reasoningByProtocol 可针对具体路由协议�
 
 ## 新增 Provider 内置联网搜索能力
 
-1. `backend/kernel-adapters/src/llm-management/constants/providers.ts` — provider 定义加 `capabilities.serverSideWebSearch: true`
+1. `backend/device-llm/src/providers.ts` — provider 定义加 `capabilities.serverSideWebSearch: true`
 2. `backend/kernel-adapters/src/llm-management/contracts/connection.ts` — `supportsServerSideSearch()` 确认协议支持
 3. provider 实现类注入内置工具并提取 `citations`（参考 `responses.ts` / `gemini.ts`）
 4. 详见 [web-search.md](./web-search.md)

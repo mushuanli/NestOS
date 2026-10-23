@@ -1,5 +1,5 @@
 import { isConnection } from './argument-validation';
-// @file: device-llm/device/connection-manager.ts
+// @file: kernel-adapters/llm-management/device/connection-manager.ts
 //
 // ConnectionManager — CRUD for LLMConnection with VFS persistence.
 

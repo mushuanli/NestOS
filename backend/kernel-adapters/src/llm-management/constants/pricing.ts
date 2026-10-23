@@ -1,11 +1,11 @@
-// @file: device-llm/constants/pricing.ts
+// @file: kernel-adapters/llm-management/constants/pricing.ts
 // pricing.json 加载工具 + 路径常量。
-// 类型来自 @itookit/common；此文件只负责 VFS IO 和模型字段覆盖。
+// Device-owned pricing contracts; this module only handles VFS I/O and model projection.
 
 import type { IFileSystem } from '@itookit/vfs-core';
 import type { LLMModel } from '@itookit/driver-llm/contracts';
-import type { ModelPricingConfig, ModelPricingEntry } from '@itookit/kernel-adapters/contracts';
-import { lookupPricingEntry, extractPrices } from '@itookit/kernel-adapters/contracts';
+import type { ModelPricingConfig, ModelPricingEntry } from '@itookit/device-llm/contracts';
+import { lookupPricingEntry, extractPrices } from '@itookit/device-llm/contracts';
 
 export const PRICING_FILE_PATH = '/llm/pricing.json';
 export const COST_SEQ_PATH     = '/llm/cost.seq';

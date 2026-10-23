@@ -231,7 +231,7 @@ it('groups providers by availability and keeps settings before their connections
     expect([...group().querySelectorAll<HTMLElement>('[data-item-type="file"]')].map(node => node.dataset.itemId).slice(0, 2)).toEqual(['/providers/ready', '/connections/drawer-conn']);
     expect(group().querySelector('.vfs-directory-item__icon')?.textContent).toBe('R');
     expect(group().querySelector('[aria-label="服务商"]')).not.toBeNull();
-    expect(group().querySelector('[data-item-id="/connections/drawer-conn"] .vfs-tag-pill')?.textContent).toBe(t('toolbox.capability.chat'));
+    expect(group().querySelector(`[data-item-id="/connections/drawer-conn"] .vfs-node-item__semantic-icon[aria-label="${t('toolbox.capability.chat')}"]`)).not.toBeNull();
     expect(group().querySelector('[data-item-id="/connections/drawer-conn"] [aria-label="模型连接"]')).not.toBeNull();
     expect(f.sidebar.textContent).not.toContain('secret');
     expect(groups()).toEqual(before);
@@ -374,7 +374,7 @@ it('creates every editable category in named drawers and persists their organiza
         expect(await f.resources.sources[kind].driver.exists(path.slice(kind.length + 1))).toBe(true);
         const again = f.workbench.createResource();
         document.querySelector<HTMLButtonElement>(`[data-create-kind="${kind}"]`)!.click();
-        expect(document.querySelector<HTMLInputElement>('.project-dialog [name="drawer"]')?.value).toBe('学习');
+        expect(document.querySelector<HTMLInputElement>('.project-dialog [name="drawer"]')?.value, kind).toBe('学习');
         expect([...document.querySelectorAll<HTMLOptionElement>('.project-dialog datalist option')].map(option => option.value)).toContain('学习');
         document.querySelector('.project-dialog')!.dispatchEvent(new Event('cancel', { cancelable: true })); await again;
     }

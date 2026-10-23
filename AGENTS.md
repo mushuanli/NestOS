@@ -8,7 +8,7 @@
 - **itookit**：pnpm monorepo，承载 **MindOS**（浏览器/桌面的个人知识 OS：虚拟文件系统 + Markdown 编辑器 + LLM 对话/Agent 执行）
 - 工具链：`pnpm@10.20.0`（`workspace:*`）、TypeScript 5.9 strict（`target: ES2022`、`moduleResolution: bundler`，见 `tsconfig.base.json`）
 - 无前端框架：原生 DOM + TypeScript
-- 18 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 12 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
+- 19 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 12 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
 
 ## 开发原则
 SOLID / DRY / KISS / YAGNI / CoC / LoD — 函数≤30行，圈复杂度≤10
@@ -26,7 +26,7 @@ pnpm cli <参数>                       # CLI 源码运行，例如 pnpm cli hel
 pnpm cli:build                        # 构建 CLI
 pnpm cli:built <参数>                 # 验证已有 CLI 编译产物
 pnpm lib:build [库名]                  # 增量准备 HTTP 库快照，不改源码开发依赖
-pnpm httpd:build                      # 隔离构建 HTTP release，使用已准备的库快照
+pnpm httpd:build                      # 自动增量 lib:build，再隔离构建 HTTP release
 pnpm libraries:snapshot               # 强制全量准备 HTTP 库快照
 pnpm libraries:use <ID>               # 可选：整个工作区切到制品验收模式
 pnpm libraries:source                  # 恢复源码联调
@@ -44,7 +44,7 @@ pnpm --filter @itookit/<pkg> typecheck
 
 - 日常开发保持源码模式：`pnpm dev` 和 `pnpm cli` 直接使用本地 libraries 源码；修改库后无需先执行 `lib:build`。CLI 再次执行加载最新修改，已运行的 CLI 进程需要重启。
 - `pnpm lib:build` 首次准备全部库，之后仅更新有修改的库及需要重建的依赖方；`pnpm lib:build driver-llm`（也接受完整包名）仅更新指定库及必要依赖方，未选中的库复用原制品。无变化时复用已有快照。
-- `lib:build` 仅准备不可变本地库制品，不修改开发依赖或切换开发模式。`pnpm httpd:build` 在隔离目录使用已准备的快照安装、编译，不受后续 libraries 源码修改影响；构建前需运行 `lib:build` 准备所需版本。
+- `lib:build` 仅准备不可变本地库制品，不修改开发依赖或切换开发模式。`pnpm httpd:build` 先自动运行增量 `lib:build`，成功后在隔离目录使用该快照安装、编译，不受后续 libraries 源码修改影响；库构建失败不会继续构建 HTTP release。
 - `pnpm libraries:use <ID>` 是显式切换整个工作区的制品验收模式，会影响 dev、CLI 等命令；验收后用 `pnpm libraries:source` 恢复源码联调。`pnpm libraries:status` 可检查开发模式和 HTTP 已准备快照。
 - 快照、模式选择与 prepared 指针位于忽略的 `release/local-libraries/`，不随 Git 提交；构建不会重启运行中的 httpd。设计与 Mermaid C4 见 [独立库消费模式](./doc/design/npm-library-consumption.md)。
 
@@ -65,7 +65,7 @@ pnpm --filter @itookit/<pkg> typecheck
 
 | 类型 | 工具 |
 |---|---|
-| 逻辑包 (`common`, `llm-context`, `vfs-core`, `driver-llm`, `device-tty`, `tools`, `kernel-adapters`, `durable-kernel`, `llm-tasks`, `llm-flow`, `llm-session`, `llm-settings-ui`, `ui-common`, vfsdrivers) | **tsup** (CJS+ESM+.d.ts) |
+| 逻辑包 (`common`, `llm-context`, `vfs-core`, `driver-llm`, `device-llm`, `device-tty`, `tools`, `kernel-adapters`, `durable-kernel`, `llm-tasks`, `llm-flow`, `llm-session`, `llm-settings-ui`, `ui-common`, vfsdrivers) | **tsup** (CJS+ESM+.d.ts) |
 | UI 包 (`llm-ui`, `vfs-ui`, `mdx`, `app-settings`) | **vite build** |
 | 无构建脚本 (`app-core`, `app-shell`) | 由宿主 app（web-app / tauri-app / cli）打包 |
 

@@ -22,8 +22,59 @@ function fixture(ocr?: OcrControls, examples: MediaProbeExamples = {'speech.synt
     const root = document.createElement('div'); document.body.append(root);
     const navigate = vi.fn(async () => {});
     const editor = new ModelDefaultsEditor(root, service as never, { hostContext: { navigate } } as never, ocr, examples);
-    return { editor, root, service, connections, navigate, defaults: (value: Record<string, string>) => { defaults = value; } };
+    return { editor, root, service, connections, provider, navigate, defaults: (value: Record<string, string>) => { defaults = value; } };
 }
+
+it('shows capability icons and the actual model price in both choices and selected connection details', async () => {
+    const f = fixture(); Object.assign(f.provider.models[0], {supportsVision: true, inputPricePerMillion: 0, outputPricePerMillion: 2});
+    await f.editor.init(f.root);
+    const option = f.root.querySelector('[data-default-operation=chat] option[value=chat]')!;
+    expect(option.textContent).toContain(t('model.capability.vision'));
+    expect(option.textContent).toContain('$0'); expect(option.textContent).toContain('$2');
+    const info = f.root.querySelector('[data-default-model=chat]')!;
+    expect(info.querySelector('[data-capability=vision]')).not.toBeNull(); expect(info.textContent).toContain('$2');
+    expect(f.root.querySelector('[data-default-model="image.generate"]')?.textContent).toContain(t('connection.modelPriceUnknown'));
+    expect(f.service.testConnection).not.toHaveBeenCalled(); await f.editor.destroy();
+});
+
+it('filters choices by all connection, provider and model terms without changing defaults or starting a probe', async () => {
+    const f = fixture(); f.connections.push({...f.connections[0], id: 'backup', name: 'Backup conversation'});
+    await f.editor.init(f.root);
+    const search = f.root.querySelector<HTMLInputElement>('[data-default-search]')!, select = f.root.querySelector<HTMLSelectElement>('[data-default-operation=chat]')!;
+    search.value = 'BACKUP, Provider, chat'; search.dispatchEvent(new Event('input', {bubbles: true}));
+    expect([...select.options].map(item => item.value)).toEqual(['', 'backup', 'chat']); expect(select.value).toBe('chat');
+    expect(select.selectedOptions[0].textContent).toContain(t('connection.modelSelectedOutsideFilter', {model: ''}).trim());
+    search.value = 'backup picture'; search.dispatchEvent(new Event('input', {bubbles: true}));
+    expect([...select.options].map(item => item.value)).toEqual(['', 'chat']); expect(select.value).toBe('chat');
+    search.value = ''; search.dispatchEvent(new Event('input', {bubbles: true})); expect(select.options).toHaveLength(3);
+    expect(f.service.setModelDefault).not.toHaveBeenCalled(); expect(f.service.testConnection).not.toHaveBeenCalled(); await f.editor.destroy();
+});
+
+it('recovers verification drafts, filters and inline OCR fields without saving or repeating paid requests', async () => {
+    const ocr = ocrFixture(), old = fixture(ocr.controls); await old.editor.init(old.root);
+    old.root.querySelector<HTMLTextAreaElement>('[data-purpose="speech.synthesize"] [data-probe-input]')!.value = 'Unsent speech test';
+    old.root.querySelector<HTMLDetailsElement>('[data-purpose="speech.synthesize"] details')!.open = true;
+    old.root.querySelector<HTMLInputElement>('[data-default-search]')!.value = 'speech';
+    old.root.querySelector<HTMLSelectElement>('[name=ocr-connection]')!.value = '';
+    const state = old.editor.captureRecovery(); old.editor.suspendForRecovery(); await old.editor.destroy(); old.root.remove();
+    const next = fixture(ocr.controls); await next.editor.init(next.root); next.editor.restoreRecovery(state);
+    expect(next.root.querySelector<HTMLTextAreaElement>('[data-purpose="speech.synthesize"] [data-probe-input]')!.value).toBe('Unsent speech test');
+    expect(next.root.querySelector<HTMLDetailsElement>('[data-purpose="speech.synthesize"] details')!.open).toBe(true);
+    expect(next.root.querySelector<HTMLInputElement>('[data-default-search]')!.value).toBe('speech');
+    expect(next.root.querySelector<HTMLSelectElement>('[name=ocr-connection]')!.value).toBe('');
+    expect(ocr.controls.saveSettings).not.toHaveBeenCalled(); expect(next.service.setModelDefault).not.toHaveBeenCalled();
+    expect(next.service.testConnection).not.toHaveBeenCalled(); await next.editor.destroy();
+});
+
+it('waits for in-flight verification before recovery and never repeats the request', async () => {
+    const f = fixture(); let finish!: (value: never) => void;
+    f.service.testConnection.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await f.editor.init(f.root); f.root.querySelector<HTMLButtonElement>('[data-chat-probe]')!.click();
+    expect(() => f.editor.captureRecovery()).toThrow(t('httpApp.recoveryBusy'));
+    finish({success: true, message: 'verified', model: 'chat'} as never);
+    await vi.waitFor(() => expect(() => f.editor.captureRecovery()).not.toThrow());
+    expect(f.service.testConnection).toHaveBeenCalledTimes(1); await f.editor.destroy();
+});
 
 it('separates compatible models by purpose and does not run a paid probe when saving', async () => {
     const f = fixture(); await f.editor.init(f.root);
@@ -164,4 +215,27 @@ it('retries OCR configuration reads in place without rewriting any defaults', as
     await vi.waitFor(() => expect(f.root.querySelector<HTMLSelectElement>('[name="ocr-connection"]')?.value).toBe('vision'));
     expect(ocr.controls.saveSettings).not.toHaveBeenCalled(); expect(f.service.setModelDefault).not.toHaveBeenCalled();
     await f.editor.destroy();
+});
+
+it('retains the mounted OCR field and eventless draft when a background read fails during disconnection', async () => {
+    const ocr = ocrFixture(), f = fixture(ocr.controls); await f.editor.init(f.root);
+    const select = f.root.querySelector<HTMLSelectElement>('[name=ocr-connection]')!; select.value = '';
+    ocr.controls.readSettings.mockRejectedValueOnce(new Error('Connection interrupted')); ocr.notify();
+    await vi.waitFor(() => expect(f.root.textContent).toContain('Connection interrupted'));
+    expect(f.root.querySelector('[name=ocr-connection]')).toBe(select); expect(select.value).toBe('');
+    expect(() => f.editor.captureRecovery()).not.toThrow();
+    f.root.querySelector<HTMLButtonElement>('[data-ocr-retry]')!.click();
+    await vi.waitFor(() => expect(f.root.querySelector('[data-ocr-retry]')).toBeNull());
+    expect(select.value).toBe(''); expect(ocr.controls.saveSettings).not.toHaveBeenCalled(); await f.editor.destroy();
+});
+
+it('recovers other settings when OCR initially failed to read and becomes available in the new view', async () => {
+    const ocr = ocrFixture(); ocr.controls.readSettings.mockRejectedValueOnce(new Error('OCR unavailable'));
+    const old = fixture(ocr.controls); await old.editor.init(old.root);
+    old.root.querySelector<HTMLInputElement>('[data-default-search]')!.value = 'Keep this search';
+    const state = old.editor.captureRecovery(); old.editor.suspendForRecovery(); await old.editor.destroy(); old.root.remove();
+    const next = fixture(ocr.controls); await next.editor.init(next.root); next.editor.restoreRecovery(state);
+    expect(next.root.querySelector<HTMLInputElement>('[data-default-search]')!.value).toBe('Keep this search');
+    expect(next.root.querySelector<HTMLSelectElement>('[name=ocr-connection]')!.value).toBe('vision');
+    expect(ocr.controls.saveSettings).not.toHaveBeenCalled(); expect(next.service.setModelDefault).not.toHaveBeenCalled(); await next.editor.destroy();
 });

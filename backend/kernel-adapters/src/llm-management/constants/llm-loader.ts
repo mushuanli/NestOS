@@ -1,4 +1,4 @@
-// @file: device-llm/constants/llm-loader.ts
+// @file: kernel-adapters/llm-management/constants/llm-loader.ts
 // .llm file loader — parses YAML-based LLM configuration files.
 //
 // .llm files are the canonical format for defining:
@@ -21,6 +21,7 @@ export interface LLMModelDef {
     preferredProtocol?: LLMModel['preferredProtocol'];
     category?: LLMModel['category'];
     operations?: LLMModel['operations'];
+    supportedOperations?: LLMModel['supportedOperations'];
     reasoning?: LLMModel['reasoning'];
     reasoningByProtocol?: LLMModel['reasoningByProtocol'];
     capabilitiesKnown?: boolean;
@@ -373,6 +374,7 @@ export function fromLLMProvider(p: LLMProvider): LLMProviderDef {
             preferredProtocol: m.preferredProtocol,
             category: m.category,
             operations: m.operations,
+            supportedOperations: m.supportedOperations,
             reasoning: m.reasoning,
             reasoningByProtocol: m.reasoningByProtocol,
             capabilitiesKnown: m.capabilitiesKnown,

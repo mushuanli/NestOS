@@ -136,6 +136,9 @@ export class MediaViewerEditor implements IEditor {
     getText(): string { return ''; }
     setText(_text: string): void { /* binary files are not editable */ }
     isDirty(): boolean { return false; }
+    captureRecovery(): unknown { return null; }
+    restoreRecovery(_state: unknown): void {}
+    suspendForRecovery(): void {}
     setDirty(_dirty: boolean): void {}
     setReadOnly(_readOnly: boolean): void {}
     focus(): void {}

@@ -6,6 +6,12 @@ import {backToPreviousPage} from '../navigation/page-history';
 import {openedButton} from './opened-button';
 import {compactNavigation} from './compact-navigation';
 import { Drawer } from '@itookit/vfs-ui';
+import {captureEditor, restoreEditor, type EditorRecoveryState} from './recovery';
+
+interface TabsRecovery {
+    tabs: NonNullable<WorkbenchSnapshot['tabs']>;
+    editors: Map<string, EditorRecoveryState>;
+}
 
 export interface WorkbenchTab<T> {
     conversationId?: string;
@@ -53,6 +59,10 @@ export class WorkbenchTabs<T> {
     private readonly windowButtons = new Set<ReturnType<typeof openedButton>>();
     private openedQuery = '';
     private describing?: Promise<void>;
+    private readonly editors = new Map<WorkbenchTab<T>, IEditor>();
+    private readonly recovery = new Map<string, EditorRecoveryState>();
+    private readonly recoveryFailures = new Map<string, unknown>();
+    private recovering = false;
     constructor(private readonly container: HTMLElement, private readonly actions: TabActions<T>, restored?: WorkbenchSnapshot['tabs']) {
         container.classList.add('workbench-tabs'); this.bar.className = 'workbench-tabs__bar';
         this.bar.setAttribute('role', 'tablist'); this.bar.setAttribute('aria-label', t('workbench.tabs'));
@@ -171,16 +181,52 @@ export class WorkbenchTabs<T> {
         this.metadataRevisions.set(tab, (this.metadataRevisions.get(tab) ?? 0) + 1);
         const entries = [...this.entries].map(([key, value]) => [key === id ? next : key, value] as const);
         tab.id = next; tab.title = title; this.entries.clear(); for (const [key, value] of entries) this.entries.set(key, value);
+        if (next !== id && this.recovery.has(id)) {this.recovery.set(next, this.recovery.get(id)!); this.recovery.delete(id);}
+        if (next !== id && this.recoveryFailures.has(id)) {this.recoveryFailures.set(next, this.recoveryFailures.get(id)); this.recoveryFailures.delete(id);}
         if (this.selected.delete(id)) this.selected.add(next);
         if (this.currentId === id) this.currentId = next;
         this.render();
     }
     bind(tab: WorkbenchTab<T>, editor?: IEditor): void {
+        if (editor) {
+            this.editors.set(tab, editor);
+            this.restoreEditorState(tab, editor);
+        }
         if (!editor?.on) return;
         tab.subscriptions.push(editor.on('interactiveChange', () => {
             tab.preview = false; tab.dirty = true; this.render();
         }), editor.on('saved', () => { tab.dirty = false; tab.failed = false; this.render(); }),
         editor.on('saveError', error => { tab.preview = false; tab.dirty = true; tab.failed = true; this.render(); this.actions.error(error); }));
+    }
+    private restoreEditorState(tab: WorkbenchTab<T>, editor: IEditor): void {
+        const state = this.recovery.get(tab.id);
+        if (!state) return;
+        try {
+            restoreEditor(editor, tab.panel, state); this.recovery.delete(tab.id); this.recoveryFailures.delete(tab.id);
+        } catch (error) {this.recoveryFailures.set(tab.id, error); throw error;}
+    }
+    captureRecovery(): TabsRecovery {
+        if (this.opening) throw Object.assign(new Error(t('httpApp.recoveryBusy')), {code: 'RECOVERY_BUSY'});
+        const editors = new Map(this.recovery);
+        for (const [tab, editor] of this.editors) if (!editors.has(tab.id)) editors.set(tab.id, captureEditor(editor, tab.panel));
+        return {tabs: this.values().map(({id, title, pinned, conversationId, context, location}) =>
+            ({id, title, pinned, conversationId, context, location})), editors};
+    }
+    restoreRecovery(snapshot: unknown): void {
+        const state = snapshot as TabsRecovery;
+        for (const item of state.tabs) {
+            const tab = this.get(item.id) ?? this.create(item.id, item.title, false);
+            Object.assign(tab, item);
+        }
+        for (const [id, editor] of state.editors) this.recovery.set(id, editor);
+        for (const [tab, editor] of this.editors) this.restoreEditorState(tab, editor);
+        this.render();
+    }
+    suspendForRecovery(): void { this.recovering = true; for (const editor of this.editors.values()) editor.suspendForRecovery?.(); }
+    assertRecovery(): void {
+        if (!this.current || !this.recovery.has(this.current.id)) return;
+        if (this.recoveryFailures.has(this.current.id)) throw this.recoveryFailures.get(this.current.id);
+        throw Object.assign(new Error(t('httpApp.recoveryRestorePending')), {code: 'RECOVERY_RESTORE_INCOMPLETE'});
     }
     close(id: string, record = true): Promise<void> {
         const pending = this.closing.get(id); if (pending) return pending;
@@ -190,8 +236,10 @@ export class WorkbenchTabs<T> {
     private async closeNow(id: string, record: boolean): Promise<void> {
         const tab = this.get(id); if (!tab) return;
         try { await this.actions.dispose(tab); }
-        catch (error) { tab.preview = false; tab.failed = true; this.render(); throw error; }
+        catch (error) { if (!this.recovering) {tab.preview = false; tab.failed = true; this.render(); throw error;} }
         tab.subscriptions.forEach(unsubscribe => unsubscribe()); tab.panel.remove(); this.entries.delete(tab.id);
+        this.editors.delete(tab); this.recovery.delete(tab.id);
+        this.recoveryFailures.delete(tab.id);
         this.selected.delete(tab.id);
         if (record && !tab.preview) this.closed.push({ id: tab.id, title: tab.title });
         if (this.currentId === tab.id) {

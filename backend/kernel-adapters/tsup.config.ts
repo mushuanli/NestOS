@@ -8,6 +8,7 @@ export default defineConfig({
     clean: true,
     sourcemap: true,
     external: [
+        '@itookit/device-llm',
         '@itookit/driver-llm',
         '@itookit/durable-kernel',
         '@itookit/vfs-core',

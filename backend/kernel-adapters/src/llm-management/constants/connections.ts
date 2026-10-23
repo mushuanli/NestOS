@@ -1,4 +1,4 @@
-// @file: device-llm/constants/connections.ts
+// @file: kernel-adapters/llm-management/constants/connections.ts
 // Layer 2 — Connection 默认定义。
 // 职责：引用 Provider（通过 providerId）+ 命名 + tier 映射（optimal/standard/fast）。
 // Connection 不持有 apiKey（在 Provider 层），也不持有模型目录（在 Provider 层）。
@@ -6,7 +6,6 @@
 // 同一 Provider 可有多个 Connection，每个 Connection 选取不同的模型族作为 tier 策略。
 
 import type { DefaultConnectionDef } from '@itookit/kernel-adapters/contracts';
-import { externalConnections } from './llm-configs';
 
 /** 系统默认连接 ID */
 export const LLM_DEFAULT_ID = 'default';
@@ -40,7 +39,6 @@ export const DEFAULT_CONNECTIONS: DefaultConnectionDef[] = [
         },
     },
     // External connections loaded from .llm configs
-    ...externalConnections,
 
     // ── Anthropic ─────────────────────────────────────────────────────────
     {

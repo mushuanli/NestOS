@@ -1,5 +1,11 @@
 /* @file: app-settings/styles/_connections.css */
 /* 连接模块样式 */
+.settings-tier-model { flex: 1; min-width: 0; }
+.settings-tier-model .settings-form__select { width: 100%; }
+.settings-tier-model__info { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin-top: 6px; color: var(--st-text-secondary); }
+@media (max-width: 600px) {
+    .settings-tier-config input[type="search"], .settings-tier-model .settings-form__select { min-height: 44px; }
+}
 
 .settings-connection-grid {
     display: grid;
@@ -28,9 +34,6 @@
     background: var(--st-bg-primary);
 }
 
-.settings-connection-default { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 12px; border-left: 3px solid var(--st-color-primary); padding: 10px 14px; margin: 0 0 20px; background: var(--st-bg-secondary); }
-.settings-connection-default strong { color: var(--st-color-primary); }
-.settings-connection-default small { width: 100%; color: var(--st-text-secondary); line-height: 1.5; }
 
 .settings-connection-card--incomplete {
     border-color: var(--st-color-warning, #f59e0b);

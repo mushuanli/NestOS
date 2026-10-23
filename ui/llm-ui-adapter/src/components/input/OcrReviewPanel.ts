@@ -27,6 +27,7 @@ export interface OcrReviewCallbacks {
 }
 
 export class OcrReviewPanel {
+    get visible(): boolean { return !!this.el && this.el.style.display !== 'none' && !this.el.hidden; }
     private el: HTMLElement | null = null;
     /** review 态下用户可编辑的结果框 */
     private textarea: HTMLTextAreaElement | null = null;

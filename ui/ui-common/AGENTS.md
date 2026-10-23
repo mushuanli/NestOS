@@ -1,5 +1,7 @@
 # @itookit/ui-common
 
+OcrSettingsForm 已挂载的字段在后台读取失败时保留 DOM 和程序赋值，仅更新错误状态与重试入口；不能以网络错误清空草稿或改变恢复表单结构。form-recovery 只记录字段数量和结构差异位置，不记录字段值或设置密钥。
+
 共享 **UI 契约与基础组件**：编辑器接口（`IEditor`/`IEditorFactory`）、Session 视图接口（`ISessionUI`）、可复用的原生 DOM 组件（`Modal`/`Toast`/确认框）、设置编辑器基类与剪贴板工具。供 `app-settings`、`app-shell` 等 UI 装配层复用。技术栈为原生 DOM + TypeScript，无前端框架。
 
 ## 定位与铁律
@@ -82,3 +84,5 @@ EditorOptions.mountSettings 让宿主挂载业务偏好，返回 isDirty/flush/d
 - SessionDraftControls.scope.select 可携带 SessionDraftPreferences；settings 对通用导航保持不透明，由目标输入编辑器验证和应用，不引入 LLM 领域依赖。
 
 - SessionDraftMaterialization.createEditor 是 UI 内部的显式控制器工厂；宿主准备 EditorOptions 后调用它，保持视图所有权，不经应用 RPC 传输 DOM 或工厂。
+
+IEditor 的 captureRecovery/restoreRecovery/suspendForRecovery 为显式本地视图恢复契约，不能提交操作。BaseSettingsEditor 的表单恢复需子类显式开启并交接额外模型状态；表单值（包括密钥）仅在内存中交接，不写浏览器存储、不记录日志，恢复不派发 input/change 事件或自动保存。不支持的可编辑表单保留旧页并说明原因。

@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { ensureProviderPricing, resolvePricingEntry, type ModelPricingConfig } from '../../src/llm-management/contracts/pricing';
+import { ensureProviderPricing, resolvePricingEntry, type ModelPricingConfig } from '@itookit/device-llm/contracts';
 import { estimateUsageCost, type MeteredUsage } from '../../src/llm-management/contracts/usage-pricing';
 const config: ModelPricingConfig = {model_pricing: [
     {id: 'global', fallbackFor: ['p'], price: [2, 4, 3, 0.5], providers: {}},

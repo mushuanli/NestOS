@@ -1,4 +1,6 @@
 .model-defaults { padding: 20px; max-width: 960px; margin: auto; color: var(--st-text-primary, var(--text-primary, #111827)); }
+.model-defaults__search { display: grid; gap: 8px; margin-top: 16px; font-weight: 600; }
+.model-defaults__model { grid-column: 2; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13px; overflow-wrap: anywhere; }
 .model-defaults__row { display: grid; grid-template-columns: minmax(120px, 1fr) minmax(0, 3fr); gap: 10px 16px; padding: 18px 0; border-bottom: 1px solid var(--st-border-color, var(--border-color, #e5e7eb)); }
 .model-defaults__row > label { align-self: center; font-weight: 600; }
 .model-defaults__row > select { min-width: 0; width: 100%; }
@@ -14,7 +16,7 @@
 @media (max-width: 600px) {
     .model-defaults { padding: 14px; }
     .model-defaults__row { grid-template-columns: minmax(0, 1fr); }
-    .model-defaults__row > p, .model-defaults__row > details, .model-defaults__row > button { grid-column: 1; }
-    .model-defaults__row > select, .model-defaults__actions > button { min-height: 44px; }
+    .model-defaults__row > p, .model-defaults__row > details, .model-defaults__row > button, .model-defaults__model { grid-column: 1; }
+    .model-defaults__row > select, .model-defaults__actions > button, .model-defaults__search > input { min-height: 44px; }
     .ocr-settings__selection > select { min-height: 44px; }
 }

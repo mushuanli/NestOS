@@ -87,6 +87,7 @@ export class ConversationWorkspaceView {
         const events = new EventBinder(this.container, {
             mountCompactNavigation: options.mountCompactNavigation,
             mountMoreMenu: options.mountMoreMenu,
+            mountConversationNavigation: options.mountConversationNavigation,
             onToggleSidebar: () => options.hostContext?.toggleSidebar(),
             onRefresh: actions.refresh,
             onCollapseAll: () => { updateCollapseAction(this.container.querySelectorAll<HTMLElement>('#llm-btn-collapse')[0], this.history.view.toggleAllFold()); },

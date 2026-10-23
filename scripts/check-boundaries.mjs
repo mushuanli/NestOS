@@ -17,6 +17,7 @@ const browserGlobals = new Set(['window', 'document', 'localStorage', 'sessionSt
 
 export function dependencyError(source, target) {
     if (source === target) return;
+    if (source === '@itookit/device-llm' && target !== '@itookit/driver-llm') return 'device-llm provider support may only depend on driver-llm contracts';
     if (source === '@itookit/device-tty' && target.startsWith('@itookit/')) return 'device-tty must use owned contracts and must not depend on application packages';
     if (source === '@itookit/image-parser' && target.startsWith('@itookit/') && target !== '@itookit/vfs-core') return 'image-parser only accepts optional VFS host adaptation';
     if (source === '@itookit/llm-ui' && target !== '@itookit/mdxeditor') return 'independent llm-ui may only depend on mdxeditor';

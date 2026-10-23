@@ -1,4 +1,4 @@
-// @file: device-llm/device/skill-manager.ts
+// @file: kernel-adapters/llm-management/device/skill-manager.ts
 //
 // SkillManager — SkillDefinition CRUD, HTTP/Shell/MCP invocation.
 

@@ -2,9 +2,10 @@ import { validateLLMIoctlArgument, isConnection, isStoredProvider, isMCPServer, 
 import { snapshotMCPConnectionOptions, type MCPConnectionOptions } from '../contracts/mcp-transport';
 import type { ProviderConnectionTestParams } from '@itookit/driver-llm/contracts';
 import { listProviderModels } from '@itookit/driver-llm';
+import {completeModelDeclaration} from '@itookit/device-llm/contracts';
 import { ProviderAuthorization } from './provider-authorization';
 import type { ProviderAuthorizationHost } from '../contracts/provider-authorization';
-// @file: device-llm/device/llm-device-driver.ts
+// @file: kernel-adapters/llm-management/device/llm-device-driver.ts
 //
 // LLMDeviceDriver — LLM 连接配置守护者 + LLM/MCP/Skill 通信设备。
 //
@@ -878,7 +879,7 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     getProviderDefaults(): Record<string, LLMProvider> {
         return structuredClone(this.presets.providers);
     }
-    getProviderReferences(): Record<string, import('../contracts/provider-reference').ProviderApiReference> {
+    getProviderReferences(): Record<string, import('@itookit/device-llm/contracts').ProviderApiReference> {
         return structuredClone(this.presets.providerReferences ?? {});
     }
 
@@ -919,8 +920,11 @@ export class LLMDeviceDriver implements IDeviceDriver, ILLMManagementService {
     }
 
     async listProviderModels(provider: LLMProvider) {
-        return listProviderModels({ ...provider, apiKey: provider.apiKey ?? this.savedProviderKey(provider) },
+        const models = await listProviderModels({ ...provider, apiKey: provider.apiKey ?? this.savedProviderKey(provider) },
             { chatgpt: this.authorization.credentials(provider), logger: this.logger });
+        const declared = this.presets.providers[provider.id];
+        const trusted = declared?.baseURL === provider.baseURL && declared?.implementation === provider.implementation;
+        return models.map(model => completeModelDeclaration(model, trusted ? declared.models.find(item => item.id === model.id) : undefined));
     }
 
     private savedProviderKey(provider: LLMProvider | undefined): string | undefined {

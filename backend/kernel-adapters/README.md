@@ -76,7 +76,7 @@ TaskProgram 由 Skill 插件注册；KernelAdapters 不执行或解释 Skill 私
 
 `/llm/config` 提供 `.llm` 解析、导出、转换与纯 `composeLlmPresets(base, configs, options)`，不加载驱动、VFS、MCP 或内置目录。合并 Provider、连接、Agent 与定价，冲突默认 reject，可选 keep/replace；输入保持不变，Agent 静态时间戳默认 0，可用 timestamp 注入。Skills/MCP 仍通过管理服务导入。宿主负责增加 base.version 以更新已安装的默认连接。
 
-例如：`new LLMDeviceDriver(vfs, { presets: composeLlmPresets({ version: 1 }, [parseLLMConfig(text)]) })`（驱动来自 `/llm/core`，配置函数来自 `/llm/config`）。旧 registerLLMConfig 仅用于兼容，需在旧驱动构造前调用。
+例如：`new LLMDeviceDriver(vfs, { presets: composeLlmPresets({ version: 1 }, [parseLLMConfig(text)]) })`（驱动来自 `/llm/core`，配置函数来自 `/llm/config`）。内置 Provider 支持目录从 `@itookit/device-llm` 的 `createLlmDeviceCatalog()` 获取，旧全局 registerLLMConfig 已移除。
 
 `/llm/mcp-host` 提供 createMCPStdioTransportFactory(bridge)，每次连接创建独立 transport。通过 `/llm/core` 驱动的 `mcp: { stdioTransport: factory }` 注入；`false` 显式禁止 stdio，省略时仅 Node 可用。工厂失败直接传播，不回退。设置 UI 通过管理服务 supportsMCPStdio() 查询实例能力，缺省不可用。全局 MCP 注册 API 已删除，所有宿主显式持有自己的工厂。
 

@@ -118,6 +118,7 @@ export interface BootWorkspaceParts {
 }
 
 export interface AppOptions {
+    recovery?: import('./workbench/recovery').AppRecoveryState;
     initialView?: import('@itookit/app-contracts/services').OpenedApplicationView;
     fileTypes?: import('./config/file-registry').AppFileTypeConfig[];
     /** Host UI for selecting a server/project and persisting a fresh binding. */
@@ -153,6 +154,8 @@ export interface AppOptions {
 }
 
 export interface AppHandle {
+    captureRecovery(): import('./workbench/recovery').AppRecoveryState;
+    suspendForRecovery(): void;
     navigate(slug: string, resourceId?: string): Promise<void>;
     /** Set the global UI theme and persist to etc:/ui/theme.json */
     setTheme(mode: ThemeMode): Promise<void>;

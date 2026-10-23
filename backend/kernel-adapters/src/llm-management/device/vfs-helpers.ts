@@ -1,4 +1,4 @@
-// @file: device-llm/device/vfs-helpers.ts
+// @file: kernel-adapters/llm-management/device/vfs-helpers.ts
 //
 // VFSHelpers — low-level VFS read/write utilities shared across manager classes.
 

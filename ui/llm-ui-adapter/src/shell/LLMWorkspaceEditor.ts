@@ -997,9 +997,19 @@ export class LLMWorkspaceEditor implements IEditor {
     }
 
     isDirty(): boolean { return false; }
+    captureRecovery(): unknown {
+        if (this.historyView.hasPendingEdits?.()) throw Object.assign(new Error(t('httpApp.recoveryBusy')), {code: 'RECOVERY_BUSY'});
+        return this.chatInput.captureRecovery();
+    }
+    restoreRecovery(state: unknown): void { this.chatInput.restoreRecovery(state); }
+    suspendForRecovery(): void {
+        this.stateManager.cleanup(); this.cancelPendingRender();
+        this.flushPendingSave = async () => {};
+    }
     setDirty(_dirty: boolean): void { }
     focus(): void { this.chatInput?.focus(); }
     cancelPendingRender(): void {
+        this.invocationAbort.abort();
         this.chatInput?.cancelPendingSend?.();
         this.chatInput?.hideNativeModelPicker?.();
         ++this.activationRevision;
@@ -1016,6 +1026,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const revision = ++this.activationRevision;
         const isCurrent = () => revision === this.activationRevision && this.viewActive && !this.destroyPromise;
         this.viewActive = true;
+        if (this.invocationAbort.signal.aborted) this.invocationAbort = new AbortController();
         this.historyView?.setActive?.(true);
         const loaded = await this.sessionService.loadSession(this.options.sessionId, this.currentTitle, this.branchStore.currentBranch?.name);
         if (!isCurrent()) return;

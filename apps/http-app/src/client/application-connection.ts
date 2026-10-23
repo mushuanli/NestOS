@@ -31,6 +31,8 @@ export function connectApplication() {
         error => status.publish(error instanceof ViewExpiredError ? 'expired' : 'reconnecting'),
         () => status.publish('view-error'), () => status.publish('connected'));
     for (const event of ['online', 'focus', 'mindos:http-retry']) window.addEventListener(event, () => client.retryConnection(), {signal: listeners.signal});
+    document.addEventListener('visibilitychange', () => {if (!document.hidden) client.retryConnection();}, {signal: listeners.signal});
+    window.addEventListener('pageshow', () => client.retryConnection(), {signal: listeners.signal});
     const snapshots = new SnapshotCache({read: () => sessionStorage.getItem('mindos.snapshot-cache.v14'),
         write: value => sessionStorage.setItem('mindos.snapshot-cache.v14', value)});
     const ready = client.start({initialView: route.request, snapshots}).then(root => {performance.mark('mindos:data-ready'); return root;});

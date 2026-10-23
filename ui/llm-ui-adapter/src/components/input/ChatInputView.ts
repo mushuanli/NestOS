@@ -185,6 +185,7 @@ export class ChatInput implements IChatInputPresenter {
     private loading = false;
     private availability = {canSend: true, canInterrupt: true};
     private files: File[] = [];
+    private restoringRecovery = false;
     private settingsExpanded = false;
     private currentAgentId: string = 'default';
     private switchingTarget = false;
@@ -593,7 +594,7 @@ export class ChatInput implements IChatInputPresenter {
             getLoading: () => this.loading,
             canAttach: () => this.canAttach(),
             getFiles: () => this.files,
-            setFiles: (f) => { this.files = f; this.options.onDraftChange?.(this.getConfig(), [...f]); },
+            setFiles: (f) => { this.files = f; if (!this.restoringRecovery) this.options.onDraftChange?.(this.getConfig(), [...f]); },
             notifyConfigChange: () => this.notifyConfigChange(),
             getImageResize: () => resolveResize(this.config.settings.imageResize, this.agents.find(agent => agent.id === this.config.agentId)?.imageProcessing?.resize),
             setImageResize: resize => {this.config.settings.imageResize = resize; this.notifyConfigChange();},
@@ -882,6 +883,26 @@ export class ChatInput implements IChatInputPresenter {
 
     restoreDraft(text: string, files: File[], agentId: string): void {
         this.restoreInput(text, agentId); this.attachmentMgr.addFiles(files);
+    }
+    getDraftFiles(): File[] { return [...this.files]; }
+
+    captureRecovery(): unknown {
+        if (!this.attachmentMgr.canRecover() || this.submitting || this.checkingConnection || this.container.querySelector('.llm-input__interaction'))
+            throw Object.assign(new Error(t('httpApp.recoveryBusy')), {code: 'RECOVERY_BUSY'});
+        return {config: structuredClone(this.getConfig()), files: [...this.files],
+            start: this.textarea.selectionStart, end: this.textarea.selectionEnd};
+    }
+    restoreRecovery(snapshot: unknown): void {
+        const state = snapshot as {config: IChatInputConfig; files: File[]; start: number; end: number};
+        // Keep server-owned execution constraints from the freshly opened conversation.
+        const {executionMode, executionModeLocked, flowId, flowRevision} = this.getConfig().settings;
+        this.restoringRecovery = true;
+        try {
+            this.files = [];
+            this.setConfig({...state.config, settings: {...state.config.settings, executionMode, executionModeLocked, flowId, flowRevision}});
+            this.restoreDraft(state.config.text, state.files, state.config.agentId);
+            this.textarea.setSelectionRange(state.start, state.end);
+        } finally {this.restoringRecovery = false;}
     }
 
     private async triggerSend(): Promise<void> {
@@ -1327,6 +1348,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private notifyConfigChange(): void {
+        if (this.restoringRecovery) return;
         this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
         const config = this.getConfig();
         this.options.onDraftChange?.(config, [...this.files]);

@@ -11,6 +11,11 @@ export async function createRecoverableFileEditor(factory: EditorFactory, panel:
     const editor = await factory(panel, options);
     if (typeof editor.on !== 'function' || typeof editor.getText !== 'function') return editor;
     const recovery = new FileRecoveryBinding(editor, panel, store, scope, original, !!options.readOnly, draft, unavailable);
+    if (!editor.captureRecovery) {
+        editor.captureRecovery = () => recovery.snapshot();
+        editor.restoreRecovery = state => recovery.restore(state);
+        editor.suspendForRecovery = () => {editor.flushPendingSave = async () => {}; recovery.release();};
+    }
     const rename = editor.updateNodeId?.bind(editor);
     if (rename) editor.updateNodeId = path => {rename(path); recovery.move(path);};
     const destroy = editor.destroy.bind(editor);
@@ -30,7 +35,7 @@ class FileRecoveryBinding {
         if (this.pending || this.failed) {event.preventDefault(); event.returnValue = '';}
     };
     constructor(private readonly editor: IEditor, private readonly panel: HTMLElement, private store: FileRecoveryStore,
-        private readonly scope: string, original: string, readOnly: boolean, private readonly draft?: FileRecovery, unavailable = false) {
+        private readonly scope: string, original: string, private readonly readOnly: boolean, private draft?: FileRecovery, unavailable = false) {
         this.base = sha256HexSync(original); this.failed = unavailable;
         this.stops = [editor.on('change', () => this.capture()), editor.on('saveError', () => this.capture()), editor.on('saved', () => this.saved())];
         window.addEventListener('beforeunload', this.guard);
@@ -71,10 +76,27 @@ class FileRecoveryBinding {
         const record = this.conflict && this.draft ? this.draft : {base: this.base, text: this.editor.getText()};
         this.enqueue(async () => {await next.write(record); await previous.clear();});
     }
+    snapshot(): unknown {
+        return {...(this.conflict && this.draft ? this.draft : {base: this.base, text: this.editor.getText()}), mode: this.editor.getMode()};
+    }
+    restore(snapshot: unknown): void {
+        const state = snapshot as {base: string; text: string; mode: 'edit' | 'render'};
+        if (this.editor.getText() === state.text) {
+            void this.editor.switchToMode(state.mode).catch(() => this.failure()); return;
+        }
+        if (state.base !== this.base || this.readOnly) {
+            this.draft = state; this.conflict = true; this.editor.setReadOnly(true);
+            showConflict(this.panel, state.text, async () => {await this.store.clear(); this.conflict = false; this.editor.setReadOnly(this.readOnly);});
+            return;
+        }
+        this.editor.setText(state.text); this.editor.setDirty(true); this.capture();
+        void this.editor.switchToMode(state.mode).catch(() => this.failure());
+    }
     release(): void {this.closed = true; this.stops.forEach(stop => stop()); window.removeEventListener('beforeunload', this.guard);}
 }
 
 function showConflict(panel: HTMLElement, text: string, discard: () => Promise<void>): void {
+    panel.querySelector('.file-recovery')?.remove();
     const details = document.createElement('details'); details.className = 'file-recovery'; details.open = true;
     const summary = document.createElement('summary'); summary.textContent = t('fileRecovery.conflict');
     const draft = document.createElement('textarea'); draft.value = text; draft.readOnly = true; draft.setAttribute('aria-label', t('fileRecovery.draft'));

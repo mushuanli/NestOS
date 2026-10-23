@@ -33,7 +33,7 @@ it('preserves existing models and pending edits while appending unique API IDs w
     expect(listProviderModels.mock.calls[0][0]).toMatchObject({ baseURL: 'https://example.com/v1', apiKey: 'current-key' });
     expect(state.editModels[0]).toBe(existing);
     expect(existing).toEqual({ id: 'existing', name: 'Pending edit', supportsVision: false,
-        thinkingMode: 'disabled', category: 'chat' });
+        thinkingMode: 'disabled', category: undefined });
     expect(state.editModels[1]).toEqual({ id: 'new', name: 'new', category: 'chat',
         supportsVision: true, supportsThinking: true, supportsTools: true });
     expect(state.editModels).toHaveLength(2);
@@ -121,4 +121,30 @@ it('merges explicit capability updates for existing models, keeps unknown values
     expect(identity.querySelector('[data-model-capabilities]')!.closest('details')).toBeNull();
     expect(state.editModels[1].supportsVision).toBeUndefined();
     expect(list.querySelectorAll('[data-model-capabilities]')[1].textContent).toBe('?');
+});
+
+it('keeps unknown categories on save and corrects stale chat classifications on refresh', async () => {
+    const {state, list, button, listProviderModels} = setup([
+        {id: 'old', name: 'Old', category: 'chat', capabilitiesKnown: false},
+        {id: 'unknown', name: 'Unknown', capabilitiesKnown: false},
+    ]);
+    expect(list.querySelectorAll<HTMLSelectElement>('.model-category-select')[1].value).toBe('');
+    listProviderModels.mockResolvedValue([{id: 'old', name: 'Remote', category: 'video', capabilitiesKnown: true}]);
+    await state.refreshModels(button, list);
+    expect(state.collectModels(state.providerForm)[0]).toMatchObject({category: 'video', capabilitiesKnown: true});
+    expect(state.collectModels(state.providerForm)[1].category).toBeUndefined();
+});
+
+it('updates bundled resource models without discovery or changing credentials and custom models', async () => {
+    const {state, list, button, listProviderModels} = setup([{id: 'custom', name: 'Custom', category: 'audio'}]);
+    state.editingProvider.modelsPath = false;
+    const preset: LLMModel = {id: 'resource', name: 'Resource', category: 'audio', capabilitiesKnown: true,
+        operations: {'speech.synthesize': {inputModalities: ['text'], outputModalities: ['audio'], formats: ['mp3'], voices: ['voice']}}};
+    (state as unknown as {service: {getProviderDefaults(): unknown}}).service.getProviderDefaults = () => ({custom: {models: [preset]}});
+    await state.refreshModels(button, list);
+    expect(listProviderModels).not.toHaveBeenCalled();
+    expect(state.editModels).toHaveLength(2);
+    expect(state.editModels[1]).toEqual(preset);
+    expect(state.editModels[1]).not.toBe(preset);
+    expect(state.providerForm.querySelector<HTMLInputElement>('[name="apiKey"]')!.value).toBe('current-key');
 });

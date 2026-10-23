@@ -1,4 +1,4 @@
-import { resolvePricingEntry, type ModelPricingConfig, type PricingBasis } from './pricing';
+import { resolvePricingEntry, type ModelPricingConfig, type PricingBasis } from '@itookit/device-llm/contracts';
 
 export interface MeteredTokens {
     inputTokens: number; outputTokens: number; cacheReadTokens: number; cacheWriteTokens: number; reasoningTokens: number;

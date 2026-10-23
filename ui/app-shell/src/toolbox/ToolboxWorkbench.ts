@@ -76,6 +76,8 @@ export class ToolboxWorkbench implements WorkspaceController {
     private readonly filters = document.createElement('div');
     private readonly capabilities = new CapabilityFilters(() => this.ui?.getQuery() ?? '', query => this.ui.setQuery(query));
     private descriptions = new Map<string, { name: string; description?: string }>();
+    private editorLifecycle?: ReturnType<typeof connectEditorLifecycle>;
+    private restoring = false;
     private cleanups: Array<() => void | Promise<void>> = [];
     private readonly loadedDirectories = TOOLBOX_KINDS.map(kind => '/' + kind);
     private closed = false;
@@ -118,7 +120,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.deletion = new ConfigurationDeletionDialog(this.options.configuration, () => this.refresh(), this.options.ocr?.deletionImpact, this.options.projects);
         this.selectionDeletion = new ToolboxDeletion({ resources, inventory: this.options.inventory, view: this.view, deletion: this.deletion,
             completed: async () => { if (!this.closed) { this.ui.setSelection([]); await this.refresh(); } } });
-        this.cleanups.push(connectEditorLifecycle(this.ui, this.view, editor, undefined, { emptyMessage: t('toolbox.empty'), files: { fs: this.view, cwd: '/' }, resolveEditor: node => this.factory(toolboxKind(node.id)!),
+        this.cleanups.push(this.editorLifecycle = connectEditorLifecycle(this.ui, this.view, editor, undefined, { emptyMessage: t('toolbox.empty'), files: { fs: this.view, cwd: '/' }, resolveEditor: node => this.factory(toolboxKind(node.id)!),
             hostContext: { navigate: this.options.navigate } }));
         this.cleanups.push(this.ui.on('sessionSelected', ({ item }) => this.selected(item?.id ?? null)));
         this.cleanups.push(this.ui.on('stateChanged', () => this.capabilities.sync()));
@@ -135,6 +137,11 @@ export class ToolboxWorkbench implements WorkspaceController {
         for (const source of Object.values(resources.sources)) this.cleanups.push(source.on('node:updated', () => this.scheduleRefresh()),
             source.on('node:created', () => this.scheduleRefresh()), source.on('node:deleted', () => this.scheduleRefresh()));
     }
+
+    assertRecovery(): void { this.editorLifecycle?.assertRecovery(); this.restoring = false; }
+    captureRecovery(): unknown { return this.editorLifecycle?.captureRecovery(); }
+    restoreRecovery(state: unknown): void { this.restoring = true; this.editorLifecycle?.restoreRecovery(state); }
+    suspendForRecovery(): void { this.editorLifecycle?.suspendForRecovery(); }
 
     private factory(kind: ToolboxKind): EditorFactory {
         return async (container, options) => {
@@ -313,6 +320,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.ui.setQuery('');
         this.revealDrawer(path);
         await this.ui.selectPath(path);
+        if (this.restoring) await this.editorLifecycle?.whenReady();
     }
     private revealDrawer(path: string): void {
         const id = decodeURIComponent(toolboxSourcePath(path).slice(1));

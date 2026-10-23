@@ -1,0 +1,153 @@
+{
+  "version": 1,
+  "providers": {
+    "deepseek": {
+      "sourceUrl": "https://api-docs.deepseek.com/quick_start/pricing/",
+      "reviewedAt": "2026-10-23",
+      "status": "published",
+      "models": [
+        {"modelIds": ["deepseek-flash", "deepseek-v4-flash", "deepseek-v4-flash-vision-exp"], "currency": "USD", "unit": "million-tokens", "rates": [
+          {"input": 0.15, "output": 0.6, "cacheRead": 0.003, "conditions": {"period": "off-peak"}},
+          {"input": 0.3, "output": 1.2, "cacheRead": 0.006, "conditions": {"period": "peak"}}
+        ]},
+        {"modelIds": ["deepseek-v4-pro"], "currency": "USD", "unit": "million-tokens", "rates": [
+          {"input": 0.66, "output": 1.98, "cacheRead": 0.022, "conditions": {"period": "off-peak"}},
+          {"input": 1.32, "output": 3.96, "cacheRead": 0.044, "conditions": {"period": "peak"}}
+        ]}
+      ]
+    },
+    "anthropic": {
+      "sourceUrl": "https://platform.claude.com/docs/en/about-claude/pricing",
+      "reviewedAt": "2026-10-23",
+      "status": "published",
+      "models": [
+        {"modelIds": ["claude-fable-5"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 10, "output": 50, "cacheWrite": 12.5, "cacheRead": 1}]},
+        {"modelIds": ["claude-opus-4-8", "claude-opus-4-7", "claude-opus-4-6", "claude-opus-4-5", "claude-opus-5"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 5, "output": 25, "cacheWrite": 6.25, "cacheRead": 0.5}]},
+        {"modelIds": ["claude-sonnet-5"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 2, "output": 10, "cacheWrite": 2.5, "cacheRead": 0.2}]},
+        {"modelIds": ["claude-sonnet-4-6", "claude-sonnet-4-5"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 3, "output": 15, "cacheWrite": 3.75, "cacheRead": 0.3}]},
+        {"modelIds": ["claude-haiku-4-5"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 1, "output": 5, "cacheWrite": 1.25, "cacheRead": 0.1}]}
+      ]
+    },
+    "openai": {
+      "sourceUrl": "https://developers.openai.com/api/docs/pricing",
+      "reviewedAt": "2026-10-23",
+      "status": "published",
+      "models": [
+        {"modelIds": ["gpt-5.5", "gpt-5.5-2026-04-23"], "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5.5", "currency": "USD", "unit": "million-tokens", "rates": [
+          {"input": 5, "output": 30, "cacheRead": 0.5, "conditions": {"maxInputTokens": 272000}},
+          {"input": 10, "output": 45, "cacheRead": 1, "conditions": {"minInputTokens": 272001}}
+        ]},
+        {"modelIds": ["gpt-5-pro"], "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-pro", "currency": "USD", "unit": "million-tokens", "rates": [{"input": 15, "output": 120}]},
+        {"modelIds": ["gpt-5-mini", "gpt-5-mini-2025-08-07"], "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-mini", "currency": "USD", "unit": "million-tokens", "rates": [{"input": 0.25, "output": 2, "cacheRead": 0.025}]},
+        {"modelIds": ["gpt-5-codex"], "sourceUrl": "https://developers.openai.com/api/docs/models/gpt-5-codex", "currency": "USD", "unit": "million-tokens", "rates": [{"input": 1.25, "output": 10, "cacheRead": 0.125}]}
+      ]
+    },
+    "gemini": {
+      "sourceUrl": "https://ai.google.dev/gemini-api/docs/pricing",
+      "reviewedAt": "2026-10-23",
+      "status": "published",
+      "models": [
+        {"modelIds": ["gemini-3.1-pro", "gemini-3.5-flash"], "currency": "USD", "unit": "million-tokens", "status": "unverified", "rates": []},
+        {"modelIds": ["gemini-3.1-pro-preview", "gemini-3.1-pro-preview-customtools"], "currency": "USD", "unit": "million-tokens", "rates": [
+          {"input": 2, "output": 12, "cacheRead": 0.2, "conditions": {"maxInputTokens": 200000}},
+          {"input": 4, "output": 18, "cacheRead": 0.4, "conditions": {"minInputTokens": 200001}}
+        ]},
+        {"modelIds": ["gemini-3.5-flash-lite"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 0.3, "output": 2.5, "cacheRead": 0.03}]},
+        {"modelIds": ["gemini-3.8-flash"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 0.75, "output": 3.75, "cacheRead": 0.075, "conditions": {"validUntil": "2026-12-31"}}]}
+      ]
+    },
+    "volcengine": {
+      "sourceUrl": "https://ark.volcengine.com/region:cn-beijing/docs/model-pricing",
+      "reviewedAt": "2026-10-23",
+      "status": "published",
+      "models": [
+        {"modelIds": ["doubao-seed-2-1-pro-260915"], "currency": "CNY", "unit": "million-tokens", "rates": [{"input": 6, "output": 30, "cacheRead": 1.2}]},
+        {"modelIds": ["doubao-seed-2-1-lite-260915"], "currency": "CNY", "unit": "million-tokens", "rates": [{"input": 0.8, "output": 2.7, "cacheRead": 0.16}]},
+        {"modelIds": ["doubao-seed-2-0-pro-260215", "doubao-seed-2-0-code-preview-260215"], "currency": "CNY", "unit": "million-tokens", "rates": [
+          {"input": 3.2, "output": 16, "cacheRead": 0.64, "conditions": {"maxInputTokens": 32000}},
+          {"input": 4.8, "output": 24, "cacheRead": 0.96, "conditions": {"minInputTokens": 32001, "maxInputTokens": 128000}},
+          {"input": 9.6, "output": 48, "cacheRead": 1.92, "conditions": {"minInputTokens": 128001, "maxInputTokens": 256000}}
+        ]},
+        {"modelIds": ["doubao-seed-2-0-lite-260428"], "currency": "CNY", "unit": "million-tokens", "rates": [
+          {"input": 0.6, "output": 3.6, "cacheRead": 0.12, "conditions": {"maxInputTokens": 32000}},
+          {"input": 0.9, "output": 5.4, "cacheRead": 0.18, "conditions": {"minInputTokens": 32001, "maxInputTokens": 128000}},
+          {"input": 1.8, "output": 10.8, "cacheRead": 0.36, "conditions": {"minInputTokens": 128001, "maxInputTokens": 256000}}
+        ]},
+        {"modelIds": ["doubao-seed-2-0-mini-260428"], "currency": "CNY", "unit": "million-tokens", "rates": [
+          {"input": 0.2, "output": 2, "cacheRead": 0.04, "conditions": {"maxInputTokens": 32000}},
+          {"input": 0.4, "output": 4, "cacheRead": 0.08, "conditions": {"minInputTokens": 32001, "maxInputTokens": 128000}},
+          {"input": 0.8, "output": 8, "cacheRead": 0.16, "conditions": {"minInputTokens": 128001, "maxInputTokens": 256000}}
+        ]},
+        {"modelIds": ["deepseek-v4-pro-260425", "deepseek-v4-pro-ga-260813"], "currency": "CNY", "unit": "million-tokens", "rates": [{"input": 9, "output": 27, "cacheRead": 0.3}]},
+        {"modelIds": ["deepseek-v4-flash-260425"], "currency": "CNY", "unit": "million-tokens", "status": "unverified", "rates": []},
+        {"modelIds": ["doubao-seedream-5-0-260128"], "currency": "CNY", "unit": "image", "status": "unverified", "rates": []},
+        {"modelIds": ["doubao-seedream-4-0-250828"], "currency": "CNY", "unit": "image", "rates": [{"input": 0, "output": 0.2}]},
+        {"modelIds": ["doubao-seedream-4-5-251128"], "currency": "CNY", "unit": "image", "rates": [{"input": 0, "output": 0.25}]},
+        {"modelIds": ["doubao-seedream-5-0-flash-260915"], "currency": "CNY", "unit": "image", "rates": [{"input": 0, "output": 0.12}]},
+        {"modelIds": ["doubao-seedream-5-0-pro-260628"], "currency": "CNY", "unit": "image", "rates": [
+          {"input": 0, "conditions": {"maxInputImages": 1}},
+          {"input": 0.02, "conditions": {"minInputImages": 2}},
+          {"output": 0.3, "conditions": {"operation": "image.generate", "maxImagePixels": 2610000}},
+          {"output": 0.6, "conditions": {"operation": "image.generate", "minImagePixels": 2610001}}
+        ]},
+        {"modelIds": ["doubao-seedance-2-0-260128"], "currency": "CNY", "unit": "million-tokens", "tokenModality": "video", "rates": [
+          {"output": 46, "conditions": {"videoHeight": 720, "includesVideo": false}},
+          {"output": 28, "conditions": {"videoHeight": 720, "includesVideo": true}},
+          {"output": 51, "conditions": {"videoHeight": 1080, "includesVideo": false}},
+          {"output": 31, "conditions": {"videoHeight": 1080, "includesVideo": true}},
+          {"output": 26, "conditions": {"videoHeight": 2160, "includesVideo": false}},
+          {"output": 16, "conditions": {"videoHeight": 2160, "includesVideo": true}}
+        ]}
+      ]
+    },
+    "doubao-speech": {
+      "sourceUrl": "https://docs.volcengine.com/docs/DoubaoVoice/Billinginstructions-21?lang=zh",
+      "reviewedAt": "2026-10-23",
+      "status": "published",
+      "models": [
+        {"modelIds": ["seed-tts-2.0", "seed-icl-2.0"], "currency": "CNY", "unit": "ten-thousand-characters", "rates": [{"input": 3}]}
+      ]
+    },
+    "openrouter": {
+      "sourceUrl": "https://openrouter.ai/api/v1/models",
+      "reviewedAt": "2026-10-23",
+      "status": "published",
+      "models": [
+        {"modelIds": ["openrouter/auto"], "currency": "USD", "unit": "million-tokens", "status": "variable", "rates": []},
+        {"modelIds": ["openai/gpt-5.5"], "currency": "USD", "unit": "million-tokens", "rates": [
+          {"input": 5, "output": 30, "cacheRead": 0.5, "conditions": {"maxInputTokens": 271999}},
+          {"input": 10, "output": 45, "cacheRead": 1, "conditions": {"minInputTokens": 272000}}
+        ]},
+        {"modelIds": ["openai/gpt-5-pro"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 15, "output": 120}]},
+        {"modelIds": ["anthropic/claude-sonnet-4.6"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 3, "output": 15, "cacheWrite": 3.75, "cacheRead": 0.3}]},
+        {"modelIds": ["google/gemini-3.5-flash"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 1.5, "output": 9, "cacheRead": 0.15}]},
+        {"modelIds": ["meta-llama/llama-4-maverick"], "currency": "USD", "unit": "million-tokens", "rates": [{"input": 0.1875, "output": 0.6525, "cacheRead": 0.05}]},
+        {"modelIds": ["google/gemini-3.1-pro", "mistralai/mistral-large-2411"], "currency": "USD", "unit": "million-tokens", "status": "unverified", "rates": []}
+      ]
+    },
+    "cloudapi": {
+      "sourceUrl": "https://chat.cloudapi.vip/",
+      "reviewedAt": "2026-10-23",
+      "status": "account",
+      "models": []
+    },
+    "chatgpt": {
+      "sourceUrl": "https://developers.openai.com/codex/pricing/",
+      "reviewedAt": "2026-10-23",
+      "status": "subscription",
+      "models": []
+    },
+    "codex": {
+      "sourceUrl": "https://developers.openai.com/codex/pricing/",
+      "reviewedAt": "2026-10-23",
+      "status": "subscription",
+      "models": []
+    },
+    "custom": {
+      "sourceUrl": "",
+      "reviewedAt": "2026-10-23",
+      "status": "unknown",
+      "models": []
+    }
+  }
+}

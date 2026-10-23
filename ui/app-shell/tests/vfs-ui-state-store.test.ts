@@ -95,3 +95,11 @@ it('batches staged startup reads once and does not reuse a preload after a newer
     readUiDocuments.mockResolvedValueOnce({theme: {mode: 'dark'}, layout: {width: 500}});
     expect(await store.read('layout')).toEqual({width: 500});
 });
+
+it('never retries failed presentation writes after suspending an expired view', async () => {
+    const writeUiDocuments = vi.fn(async () => {throw new Error('expired');});
+    const store = new VfsJsonStore({readUiDocuments: async () => ({}), writeUiDocuments});
+    store.write('layout', {selected: 'draft'}); await expect(store.flush()).rejects.toThrow('expired');
+    store.suspend(); store.write('layout', {selected: 'closing'}); await store.flush();
+    expect(writeUiDocuments).toHaveBeenCalledOnce();
+});

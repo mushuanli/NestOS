@@ -96,7 +96,7 @@ pnpm --filter @itookit/kernel-adapters typecheck
 
 ## 模型管理子入口
 
-`@itookit/kernel-adapters/llm/core` 承接旧 device-llm 的 LLMDeviceDriver、LLM_IOCTL、配置、费用、Skill 与 MCP 管理。源码在 `src/llm-management/`，回归在 `tests/llm-management/`；不是额外 npm 包。公开通信客户端与契约来自 driver-llm，禁止其反向依赖本包。MCP stdio 保留 browser/default 条件入口。详见 [模型集成](./doc/llm-management/README.md)。
+`@itookit/kernel-adapters/llm/core` 提供 LLMDeviceDriver、LLM_IOCTL、配置、费用、Skill 与 MCP 管理；Provider 支持目录归独立的 `@itookit/device-llm`。源码在 `src/llm-management/`，回归在 `tests/llm-management/`；不是额外 npm 包。公开通信客户端与契约来自 driver-llm，禁止其反向依赖本包。MCP stdio 保留 browser/default 条件入口。详见 [模型集成](./doc/llm-management/README.md)。
 
 ## 配置契约入口
 
@@ -122,4 +122,10 @@ ChatConfigurationView 是聊天选择器的只读聚合观察契约；Snapshot �
 
 AgentDefinition.execution 可声明普通 Agent 或 Flow 引用（flowId、可选 revision、默认参数与连接绑定）；契约只使用基础数据，不依赖 llm-flow。availability 是宿主派生的只读可用性，禁止写回 Agent 源文件；ChatConfigurationSnapshot 保留 execution/availability 供通用入口展示，Flow 执行、Schema 和版本冻结由上层负责。
 
-豆包语音产品目录与只读 API 资料在 llm-management/constants/catalogs/doubao-speech.json；运行目录仅派生已实现的资源模型/格式/音色。模型请求体变体与资源 ID 分开，文档支持不代表适配器实现或账号授权。getProviderReferences 返回预设资料副本，不混入用户 Provider 存储或覆盖已有配置；不得让机制入口反向加载产品目录。
+豆包语音产品目录与只读 API 资料在 ../device-llm/src/catalogs/doubao-speech.json；运行目录仅派生已实现的资源模型/格式/音色。模型请求体变体与资源 ID 分开，文档支持不代表适配器实现或账号授权。getProviderReferences 返回预设资料副本，不混入用户 Provider 存储或覆盖已有配置；不得让机制入口反向加载产品目录。
+
+模型 supportedOperations 表示目录明确声明的可发现操作，序列化与配置验证保留该字段；执行仍须完整 operations 约束。completeModelDeclaration 仅按精确模型 ID 补齐宿主目录声明，远程发现还须匹配预设地址和实现，禁止从名称猜测能力。Seedream 官方模型与约束在 ../device-llm/src/catalogs/volcengine-images.ts，不为未知版本杜撰能力。
+
+厂商参考价统一记录在 ../device-llm/src/catalogs/model-prices.json，覆盖全部内置 Provider，保留来源、reviewedAt、原币种/单位及价格条件；只经可选 presets 注入 reference_catalog。getPricingConfig 返回参考目录副本，与可编辑 model_pricing 账本费率独立；精确匹配 Provider/模型 ID，不换汇、不套用名称相似项或上游直供价。无可核实价格时记录 unverified/account/subscription/variable，不当作零价。新增 Provider 须补参考目录记录，厂商网页不进入 UI 或机制入口依赖。
+
+Provider 支持目录、模型/价格/接口资料的权威定义在 device-llm；kernel-adapters/contracts 复用 device-llm/contracts 的纯契约。禁止在本包重新建立同一厂家目录或全局注册器，MindOS 的 Agent、默认连接及宿主存储保持应用策略。

@@ -143,6 +143,10 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 - 不预热或恢复未打开工作区。显式文件/会话深链只准备当前正文能力；WorkspaceController.setNavigationVisible 由实际活动工作区、手机列表/正文模式与侧栏折叠状态驱动。隐藏目录不读取、不刷新状态；可见目录独立失败与重试，不阻塞或替换正文。
 
 - 工具箱启动消费 backend.toolboxView 的 initial 导航快照，刷新只调用 resources.navigation；外部业务 Flow 及其分组由用户导入或宿主显式注入，UI 不预设业务 Flow ID；技能文件系统、默认工具分类与分组扫描归后端 configuration。browser/directory-snapshot 是通用一次性读取适配，事件或版本变化后回到实时端口。目录面包屑由前端生成路由标签并复用 openResource 同步侧栏，缓存目录重新激活也须同步选择。
+
+- 工具箱恢复时 openResource 等待 editorLifecycle.whenReady 后才完成，恢复断言不能在表单挂载前运行。WorkbenchTabs 同时处理快照先到和编辑器先挂载两种顺序；只有 restoreRecovery 成功才消费快照。未完成挂载与具体恢复失败分别报告 RECOVERY_RESTORE_INCOMPLETE 和原错误，不误报为不支持恢复。真实 HTTPS 重启回归见 tests/http-toolbox-recovery.test.ts。
+
+- 普通 Workbench 的 WorkspaceController 适配必须透传 captureRecovery/restoreRecovery/suspendForRecovery/assertRecovery；不能只保留导航方法，否则设置和文件页会在工作区层误报不支持恢复。模型默认页与工具箱页都通过真实 HTTPS 重启回归。
 - 技能文件系统端口通过 lazyResource 共享请求并允许失败重试，后端拥有其释放职责。宿主文件类型的 contentFormat 独立于 editorType，未声明时按扩展名回退；项目目录标签和目标只由 directoryBreadcrumbs 解析。
 
 - 普通文件按路径直接打开，不经过目录 selectPath；恢复标签仅保留入口，后台补载目录不重新创建编辑器。隐藏本地/原生会话暂停视图订阅、任务附着和 Flow 面板轮询，重新激活读取当前快照；只分离观察，不取消后端任务。
@@ -180,3 +184,7 @@ Files 页 Memory 管理使用固定 Session controls；冲突保留草稿并支�
 输入区项目切换通过 SessionDraftPreferences 转交不透明设置，SessionWorkbench 不解释聊天配置字段；目标编辑器负责合法性过滤并持久化。目标项目已有正文、附件和 UUID 保留，不能用源草稿覆盖。
 
 媒体验证的产品示例统一保存在 src/config/media-probe-examples.json，工具箱 Provider 编辑器（含新建引导）与设置模型用途编辑器共用宿主注入；不将示例混入 Provider 连接配置或 i18n 文案。
+
+HTTP 视图恢复通过 AppHandle.captureRecovery/suspendForRecovery 和工作区恢复端口交接。WorkbenchTabs 按稳定标签 ID 保存全部编辑器与滚动快照，重命名跟随标签对象；后台标签恢复为延迟打开，未消费快照跨再次断线保留。恢复失败不得用空编辑器覆盖副本。文件基于原文摘要恢复，后端已变化时保留可复制的冲突副本；无法安全捕获的编辑器和编辑中弹窗阻止自动重建。恢复销毁不向失效端口保存或重放命令。
+
+模型侧栏通过 NodePresentation.indicators 展示连接实际配置模型的能力图标，独立于用户的标签/徽标显示偏好；按实际图标去重并合并能力说明，label/title 走 i18n，图标来自 common。连接行隐藏重复能力标签，保留筛选元数据。主力及路由模型候选同时显示能力和 USD/百万 token 价格，缺失价格不当作免费，Provider/全局估价不冒充模型价格。

@@ -6,7 +6,7 @@ import { workspacePackages, sourceExports } from './workspace-packages.mjs';
 
 const repository = fileURLToPath(new URL('..', import.meta.url));
 const frontend = ['app-shell', 'app-settings', 'llm-ui', 'llm-ui-adapter', 'llm-settings-ui', 'mdx-adapter', 'ui-common', 'vfs-ui', 'image-parser', 'mdxeditor'];
-const backend = ['app-core', 'llm-context', 'llm-session', 'llm-flow', 'llm-tasks', 'durable-kernel', 'kernel-adapters', 'tools', 'device-tty', 'sanbox', 'sync-adapters'];
+const backend = ['app-core', 'llm-context', 'llm-session', 'llm-flow', 'llm-tasks', 'durable-kernel', 'kernel-adapters', 'device-llm', 'tools', 'device-tty', 'sanbox', 'sync-adapters'];
 const shared = ['app-contracts', 'common', 'app-transport'];
 
 /** Inspect emitted imports, including lazy imports, without relying on tree shaking. */

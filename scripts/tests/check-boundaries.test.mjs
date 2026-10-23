@@ -9,6 +9,12 @@ const core = pkg('app-core'), shell = pkg('app-shell'), vfs = pkg('vfs-ui'), hos
 const packages = [core, shell, vfs, host, pkg('vfs-core'), pkg('vfs-sync')];
 const inspect = (source, text, file = source.dir + '/src/index.ts') => sourceErrors(source, file, text, packages);
 
+test('LLM device provider support depends only on communication contracts', () => {
+    assert.equal(dependencyError('@itookit/device-llm', '@itookit/driver-llm'), undefined);
+    for (const target of ['@itookit/kernel-adapters', '@itookit/app-core', '@itookit/common', '@itookit/llm-session', '@itookit/vfs-core'])
+        assert.match(dependencyError('@itookit/device-llm', target), /only depend on driver-llm/);
+});
+
 test('frontend shell cannot import runtime roots or host factories even as a type shortcut', () => {
     for (const expression of ["import type { Runtime } from '@itookit/app-core'", "import { createApplicationRuntime } from '@itookit/app-core'",
         "import('@itookit/app-core/host')"])

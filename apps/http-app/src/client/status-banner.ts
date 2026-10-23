@@ -3,7 +3,7 @@ import { ConnectionRecovery } from './connection-recovery';
 import type {ApplicationConnection, ConnectionState} from './application-connection';
 
 type Status = 'disconnected' | 'reconnecting' | 'expired' | 'update' | 'view-error';
-interface StatusOptions { fetcher?: typeof fetch; reload?: () => void; connection?: Pick<ApplicationConnection, 'subscribeStatus'>; }
+interface StatusOptions { fetcher?: typeof fetch; reload?: () => void; recover?: () => Promise<void>; connection?: Pick<ApplicationConnection, 'subscribeStatus'>; }
 
 /** Present transport recovery without discarding potentially unsaved input. */
 export function installHttpStatus(options: StatusOptions = {}): () => void {
@@ -19,18 +19,27 @@ class HttpStatusBanner {
     private readonly recovery: ConnectionRecovery;
     private readonly reload: () => void;
     private state?: Status;
+    private recovering?: Promise<void>;
+    private readonly recover?: () => Promise<void>;
+    private manualReload = false;
     constructor(options: StatusOptions) {
+        this.recover = options.recover;
         this.reload = options.reload ?? (() => location.reload());
         this.recovery = new ConnectionRecovery(signal => checkReadiness(options.fetcher ?? globalThis.fetch, signal), () => this.ready());
         this.banner.className = 'http-status'; this.banner.setAttribute('role', 'alert'); this.banner.hidden = true;
         this.action.type = 'button'; this.action.textContent = t('httpApp.reload');
-        this.action.onclick = () => { if (this.state === 'reconnecting') window.dispatchEvent(new Event('mindos:http-retry')); else this.reload(); };
+        this.action.onclick = () => {
+            if (this.state === 'reconnecting') window.dispatchEvent(new Event('mindos:http-retry'));
+            else if (this.state === 'expired' && this.recover && !this.manualReload) this.restore();
+            else this.reload();
+        };
         this.banner.append(this.text, this.action); document.body.append(this.banner);
         const signal = this.abort.signal;
         if (options.connection) signal.addEventListener('abort', options.connection.subscribeStatus(state => this.connectionChanged(state)), {once: true});
         else this.listenConnection(signal);
         window.addEventListener('vite:preloadError', event => { event.preventDefault(); this.show('update', t('httpApp.updated')); }, {signal});
         for (const event of ['online', 'focus']) window.addEventListener(event, () => this.recovery.retry(), {signal});
+        document.addEventListener('visibilitychange', () => {if (!document.hidden) this.recovery.retry();}, {signal});
     }
     private listenConnection(signal: AbortSignal): void {
         window.addEventListener('mindos:http-disconnected', event => this.disconnected(event), {signal});
@@ -50,8 +59,19 @@ class HttpStatusBanner {
     }
     private ready(): void {
         if (this.state === 'view-error' || this.state === 'reconnecting') return;
+        if (this.state === 'expired' && this.recover) {this.restore(); return;}
         this.text.textContent = t(this.state === 'expired' ? 'httpApp.viewExpiredReady' : 'httpApp.recovered');
         this.banner.hidden = false;
+    }
+    private restore(): void {
+        if (this.recovering || this.abort.signal.aborted) return;
+        this.banner.hidden = true; this.action.disabled = true;
+        this.recovering = Promise.resolve().then(() => this.recover!()).catch(error => {
+            if (this.abort.signal.aborted) return;
+            this.text.textContent = t('httpApp.autoRecoveryFailed', {reason: error instanceof Error ? error.message : t('httpApp.recoveryUnsupported')});
+            this.manualReload = ['RECOVERY_SETTINGS_FORM', 'RECOVERY_UNSUPPORTED_EDITOR', 'RECOVERY_UNSUPPORTED_WORKSPACE'].includes((error as {code?: string})?.code ?? '');
+            this.action.textContent = t(this.manualReload ? 'httpApp.reload' : 'httpApp.retry'); this.banner.hidden = false;
+        }).finally(() => {this.recovering = undefined; this.action.disabled = false;});
     }
     private show(state: Status, message: string, recover = true): void {
         this.state = state; this.banner.hidden = state === 'reconnecting' || state === 'expired'; this.text.textContent = message;

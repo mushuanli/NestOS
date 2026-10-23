@@ -1,4 +1,4 @@
-// @file: device-llm/device/system-prompt-store.ts
+// @file: kernel-adapters/llm-management/device/system-prompt-store.ts
 // /llm/systemprompt seqfile: key = agent id, value = SystemPromptDefinition
 // (system segments + quick-prompt presets). Seeded from DEFAULT_AGENTS on init.
 

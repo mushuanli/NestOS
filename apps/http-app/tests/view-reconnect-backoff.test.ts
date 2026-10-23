@@ -61,3 +61,12 @@ it('wakes backoff on explicit retry and stops all further subscriptions on close
     await current.client.close();
     await vi.advanceTimersByTimeAsync(60000); expect(current.subscriptions()).toBe(3);
 });
+
+it('replaces a stale stream immediately on foreground wake without replaying bootstrap', async () => {
+    const current = await connection('open');
+    current.client.retryConnection(); await vi.advanceTimersByTimeAsync(0); expect(current.subscriptions()).toBe(1);
+    vi.setSystemTime(Date.now() + 5 * 60000);
+    current.client.retryConnection(); await vi.advanceTimersByTimeAsync(0);
+    expect(current.subscriptions()).toBe(2); expect(current.commands).toEqual(['bootstrap']);
+    current.client.retryConnection(); await vi.advanceTimersByTimeAsync(0); expect(current.subscriptions()).toBe(2);
+});

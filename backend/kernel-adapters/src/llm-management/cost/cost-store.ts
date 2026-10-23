@@ -1,4 +1,4 @@
-// @file: device-llm/cost/cost-store.ts
+// @file: kernel-adapters/llm-management/cost/cost-store.ts
 // cost.seq 的读写封装。
 // key = `{sessionId}|{providerId}|{date}`，同 key 每次请求累加。
 // 一个 session 切换 provider 产生独立记录（不同 key）。

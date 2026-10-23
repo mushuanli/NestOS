@@ -12,7 +12,7 @@
 | 前端独立库 | libraries/vfs-ui、libraries/mdxeditor、libraries/llm-ui | 保留通用展示、编辑和注入端口 |
 | 后端应用 | backend/app-core/src/host、configuration、settings、projects、session、runtime 等 | 不加载 UI、CSS 或 DOM 组件 |
 | 独立持久执行内核 | libraries/durable-kernel | 仅依赖 vfs-core，运行与纯契约入口分开 |
-| 后端领域与能力 | backend/ 下的 llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、tools、sanbox、sync-adapters | 领域契约与实现入口分开 |
+| 后端领域与能力 | backend/ 下的 llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、device-llm、tools、sanbox、sync-adapters | 领域契约与实现入口分开 |
 | 后端独立库 | device-tty、driver-llm、mindos-node-driver、vfs-sync、vfsdriver-* 的实现 | 存储、网络和执行能力由宿主选择 |
 | 共享应用契约 | shared/app-contracts/src | 应用 DTO、事件、设置端口、身份与纯变换；无执行或存储实现 |
 | 所属领域契约 | 各包公开 contracts 入口及目录 | 类型、命令标识与纯校验；不转发执行类的运行时值 |

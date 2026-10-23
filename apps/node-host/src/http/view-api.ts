@@ -132,8 +132,13 @@ export class ViewApi {
     private async requireClient(identity: string, response: ServerResponse): Promise<Client> {
         const ready = this.clients.get(identity), client = ready && await ready;
         if (client?.initialized && !client.events.destroyed) return client;
+        return this.expire(response, !client ? 'VIEW_NOT_FOUND' : !client.initialized ? 'VIEW_NOT_INITIALIZED' : 'VIEW_STREAM_INVALIDATED', 'View expired; reconnect the page');
+    }
+    private expire(response: ServerResponse, code: string, message: string): never {
         response.setHeader('X-MindOS-View-Expired', '1');
-        throw new FSError('ECAPABILITY', 'View expired; reload the page');
+        this.audit?.write({event: 'view.expired', requestId: String(response.getHeader('X-Request-ID') ?? ''),
+            operation: 'view.resume', code, durationMs: 0});
+        throw new FSError('ECAPABILITY', message);
     }
     private async createClient(): Promise<Client> {
         const view = await createHostedView(await this.runtime);
@@ -157,14 +162,12 @@ export class ViewApi {
         if (request.method !== 'GET') throw new FSError('EINVAL', 'Expected event subscription');
         const identity = this.identity(request, url.searchParams.get('clientId')), resume = url.searchParams.has('after');
         if (resume && url.searchParams.get('version') !== String(RPC_VERSION)) {
-            response.setHeader('X-MindOS-View-Expired', '1');
-            throw new FSError('ECAPABILITY', 'Unsupported view protocol version');
+            this.expire(response, 'VIEW_PROTOCOL_MISMATCH', 'Unsupported view protocol version');
         }
         const client = await (resume ? this.requireClient(identity, response) : this.client(identity));
         const after = resume ? Number(url.searchParams.get('after')) : 0;
         if (!client.events.canResume(after)) {
-            response.setHeader('X-MindOS-View-Expired', '1');
-            throw new FSError('ECAPABILITY', 'View event history expired; reload the page');
+            this.expire(response, 'VIEW_HISTORY_EXPIRED', 'View event history expired; reconnect the page');
         }
         client.lastSeen = Date.now(); client.stream = response;
         response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-MindOS-View-Resume': '1' });

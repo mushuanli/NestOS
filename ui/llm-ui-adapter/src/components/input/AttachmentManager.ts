@@ -35,6 +35,7 @@ export interface AttachmentManagerOptions {
 }
 
 export class AttachmentManager {
+    canRecover(): boolean { return !this.activeOcr && !this.ocrPanel?.visible && !this.images.busy; }
     readonly images: ImageAttachments;
     private readonly previews = new AttachmentImagePreviews();
     private ocrPanel: OcrReviewPanel | null = null;

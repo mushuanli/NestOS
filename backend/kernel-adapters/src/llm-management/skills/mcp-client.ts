@@ -1,5 +1,5 @@
 import { mcpAuthenticatedFetch } from './mcp-auth';
-// @file: device-llm/skills/mcp-client.ts
+// @file: kernel-adapters/llm-management/skills/mcp-client.ts
 //
 // MCPClient — MCP (Model Context Protocol) client.
 // Manages connections to multiple MCP servers via stdio / Streamable HTTP transports.

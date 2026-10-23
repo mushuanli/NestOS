@@ -35,15 +35,15 @@ queries 合并同一微任务中独立的只读查询，bindings 合并订阅注
 
 `POST /api/application/files?clientId=<id>&version=14` 使用 application/octet-stream 传输文件字节，X-View-Call 携带编码后的文件能力参数。权限仍由已导出的文件视图检查，不提供宿主路径或存储驱动入口。二进制读写省去 JSON/base64 编码；读取响应头与写入回执携带文件 revision，前端在操作完成前更新 onRevision，条件写入参数保持原有含义。文件接口仍使用完整 ArrayBuffer，不是无限大小的流式存储接口。
 
-HTTP 客户端分别报告传输断开和视图更新失败。fetch/SSE 短暂断开恢复原视图且保留页面与输入，恢复成功收起提示；服务重启或视图过期返回 `X-MindOS-View-Expired: 1` 后，旧句柄的查询、命令和二进制文件请求在客户端立即拒绝，避免重复无效轮询。过期后保留页面及草稿，服务就绪才显示手动重载入口，提示先复制未保存内容；DOM 输入事件不能证明所有编辑已保存，健康检查成功也不代表视图已经恢复。快照应用、回调、事件解析和通知过载显示页面数据更新失败，提供手动重载入口，保留当前页面未发送内容，不单独触发健康探测或自动重载。解析失败和过载中止事件消费；写命令始终不自动重放。原生 harness 另行区分连接状态与 `refreshError`：目录监听失败不改变会话在线状态，各 profile 的状态读取错误独立显示阶段和安全错误码，events/list 的实际传输断开均标 offline，协议、权限错误与超时只标 stale，成功空轮询也可恢复传输状态。
+HTTP 客户端分别报告传输断开和视图更新失败。fetch/SSE 短暂断开恢复原视图且保留页面与输入，恢复成功收起提示；服务重启或视图过期返回 `X-MindOS-View-Expired: 1` 后，旧句柄的查询、命令和二进制文件请求在客户端立即拒绝，避免重复无效轮询。过期后保留页面及草稿，服务就绪后捕获编辑器快照并自动重建视图，不刷新文档；受阻或恢复失败时保留草稿，显示具体原因和重试/手动重载入口。DOM 输入事件不能证明所有编辑已保存，健康检查成功也不代表视图已经恢复。快照应用、回调、事件解析和通知过载显示页面数据更新失败，提供手动重载入口，保留当前页面未发送内容，不单独触发健康探测或自动重载。解析失败和过载中止事件消费；写命令始终不自动重放。原生 harness 另行区分连接状态与 `refreshError`：目录监听失败不改变会话在线状态，各 profile 的状态读取错误独立显示阶段和安全错误码，events/list 的实际传输断开均标 offline，协议、权限错误与超时只标 stale，成功空轮询也可恢复传输状态。
 
 ```mermaid
 C4Component
     title HTTP 视图恢复的职责与调用边界
-    Person(user, "用户", "保留未保存内容后手动重载")
+    Person(user, "用户", "继续编辑；恢复受阻时处理具体原因")
     Container_Boundary(browser, "HTTP 浏览器") {
         Component(shell, "工作台与编辑器", "app-shell / llm-ui", "保留当前页面与草稿")
-        Component(status, "恢复提示", "http-app", "等待就绪并提供手动重载")
+        Component(status, "恢复控制与提示", "http-app", "就绪后自动重建；失败保留快照")
         Component(transport, "HttpViewClient", "app-transport", "同视图续传、持续退避、过期停止")
     }
     Container_Boundary(host, "Node 宿主") {
@@ -54,7 +54,8 @@ C4Component
     Rel(transport, events, "短暂中断恢复原视图；不重放写入", "HTTPS / SSE")
     Rel(transport, status, "通知过期或更新失败")
     Rel(status, health, "过期后探测就绪", "HTTPS")
-    Rel(user, status, "点击重载以建立新视图")
+    Rel(status, shell, "捕获草稿并等待新编辑器完成恢复")
+    Rel(user, status, "受阻时重试或保留内容后手动重载")
 ```
 
 每个视图最多 4096 个活跃能力句柄、16 个在途业务请求和 128 个待回复回调，最多 128 个浏览器视图。dispose/release/close 撤销独占子图并传送句柄撤销，关闭资源时同步取消其订阅；共享子图按可达拥有者保留；压缩的撤销区间使迟到更新不能复活已释放句柄。回调中的事务能力仅借用到回调结束。没有事件连接和在途回调的视图在空闲 60 秒后回收。JSON 与独立二进制传输分别限制为 32 MiB；通知等待队列和流写缓冲也有上限。
@@ -249,12 +250,18 @@ C4Component
 ## 启动与认证
 
 ```bash
-pnpm httpd:build              # 构建并选择独立 release，不重启当前服务；隔离消费最近准备的库快照，开发工作区保持源码
+pnpm httpd:build --no-activate # 仅构建和验证，不改变下次启动选择
+pnpm httpd:build --no-cache    # 绕过构建缓存，重新安装和编译
+pnpm httpd:build              # 自动增量构建库，再构建并选择独立 release；不重启当前服务，开发工作区保持源码
 pnpm httpd                    # 直接运行已选 release，无构建步骤
 pnpm httpd:dev                # 开发工作树，默认端口 2001
 pnpm httpd:list
 pnpm httpd:activate <版本ID>   # 下次启动使用此版本
 ```
+
+`httpd:build` 自动先执行增量 `lib:build`，只重建变化的库及受影响依赖方，无变化时复用快照；库构建失败不会继续 HTTP release 构建或激活。无需再手动串联两条命令。
+
+构建缓存位于忽略目录 `release/httpd/.build-cache/`。源码、库快照、运行时及构建环境均未变化时，校验并复用完整 release；源码有变化时复用依赖安装环境，按 Vite/tsup 实际输入分别判断是否重新编译 UI 和服务端。新增文件、配置、锁文件、库快照、Node/ABI、pnpm 或原生模块变化会使对应缓存失效。输出损坏会重新编译，构建锁防止并发改写隔离环境；每步日志包含 operationId、缓存命中原因及耗时。变更构建仍重新 deploy 生产依赖，发布副本与缓存互相独立。清除 `.build-cache/` 后下次重建即可，不影响已有 release；清理时应确保没有构建进程。
 
 release 保存在 `release/httpd/<版本ID>/`，包括固定的服务端、UI 与运行依赖副本，启动校验服务端/UI 校验和及 Node 主版本。依赖打包在临时源码副本执行，不修改开发工作区的 node_modules；构建中源码发生变化则拒绝激活。保留旧版本可回滚，正在运行的进程继续使用原版本和对应静态资源。第一次从旧 tsx 启动方式迁移时，需要先结束原实例再启动 release；不能让两个宿主同时使用真实数据。后续版本切换在下次启动生效。
 
@@ -309,13 +316,14 @@ httpd 注入私有 `ProviderAuthorizationHost`，负责 PKCE、state、nonce、O
 
 身份字段校验使用独立错误分类区分 issuer、audience、authorized party、过期时间、签发时间、生效时间、subject 及 nonce 缺失/不匹配，不记录字段值。`aud` 可以是包含当前客户端的字符串或字符串数组；单元素数组不强制要求 `azp`，多个 audience 时要求 `azp`，提供的 `azp` 必须匹配当前客户端。身份校验始终在签名验证成功后执行，失败不保存凭据。
 
-授权面板通过后端订阅更新，窗口重新获得焦点或页面恢复可见时补查一次授权状态，同一轮触发合并；无状态变化保留回调输入，销毁后移除监听，不常驻轮询。HTTP 页面的短暂断线由 SSE 续传恢复；视图过期或模块加载失败后才探测 `/api/health`，探测失败按 1、2、4、8、15 秒退避，单次超时 5 秒；联网和窗口返回可提前重试，页面关闭时取消。仅事件订阅与 bootstrap 可创建视图，其他请求遇到不存在或未初始化的视图时返回 `ECAPABILITY` 及 `X-MindOS-View-Expired: 1`；JSON 与二进制客户端据此立即触发恢复，同一次连接丢失只通知一次。服务就绪后保留 DOM 和手动重载入口，不根据输入/选择事件猜测未保存状态；程序填入的草稿同样保留，用户复制未保存内容后可手动重载并建立新视图。不自动重放写命令，也不把 health 就绪当成旧视图已经恢复。
+授权面板通过后端订阅更新，窗口重新获得焦点或页面恢复可见时补查一次授权状态，同一轮触发合并；无状态变化保留回调输入，销毁后移除监听，不常驻轮询。HTTP 页面的短暂断线由 SSE 续传恢复；视图过期或模块加载失败后才探测 `/api/health`，探测失败按 1、2、4、8、15 秒退避，单次超时 5 秒；联网和窗口返回可提前重试，页面关闭时取消。仅事件订阅与 bootstrap 可创建视图，其他请求遇到不存在或未初始化的视图时返回 `ECAPABILITY` 及 `X-MindOS-View-Expired: 1`；JSON 与二进制客户端据此立即触发恢复，同一次连接丢失只通知一次。服务就绪后按编辑器显式恢复接口保存内存快照、重建视图并恢复表单，不根据输入/选择事件猜测未保存状态；程序填入的草稿同样保留。不能自动恢复时保留原页与具体原因，用户可重试或复制内容后手动重载。不自动重放写命令，也不把 health 就绪当成旧视图已经恢复。
 
 ## 验证
 
 - [完整 Shell 回归](../ui/app-shell/tests/http-full-shell.test.ts)：通过远端服务端口装配原 UI、切换工作区，检查导航未被隐藏。
 - [重连退避回归](../apps/http-app/tests/view-reconnect-backoff.test.ts)：响应头成功后 EOF、订阅失败、稳定连接重置、立即重试及关闭取消。
 - [恢复提示回归](../apps/http-app/tests/status-banner.test.ts)：程序填入草稿保留、手动重载、短暂重连及迟到事件隔离。
+- [工具箱重启恢复](../ui/app-shell/tests/http-toolbox-recovery.test.ts)：真实 HTTPS 宿主关闭并在同一端口重启，连接深链表单恢复无输入事件的未保存名称；等待编辑器挂载后才判定完成。
 - [服务端口回归](../apps/http-app/tests/view-ports.test.ts)：文件、配置、项目、设置、数字分身、二进制、订阅、异步迭代与所有权边界。
 - [真实 HTTPS 回归](../apps/http-app/tests/view-api.test.ts)：mTLS、独立会话绑定、共享持久化、旧存储入口拒绝、版本与跨来源检查。
 - [一致性与所有权回归](../apps/http-app/tests/view-consistency.test.ts)：bootstrap 竞态、收藏身份/缓存、750 次资源释放、共享句柄与子服务订阅清理、poll 后快照。
@@ -365,8 +373,10 @@ C4Component
 
 ## 当前视图恢复
 
-短暂断线复用已有编辑器和 SSE 视图；服务重启后重载只按当前 URL 打开一个资源，不构造未打开的工作区。文件深链不以导航目录为前提，工作台以 initialNavigation=false 跳过根目录与组织预读；目录可见后再独立读取，隐藏目录和非活动会话停止观察与轮询。正常启动和恢复静默进行，失败局部重试。
+短暂断线复用已有编辑器和 SSE 视图；页面重新可见或 pageshow 时立即检查流活动，超过 30 秒无活动则替换旧流，健康连接不额外请求。服务重启、闲置视图或事件历史过期时，健康检查就绪后自动捕获所有标签的本地快照并重建应用视图，不刷新文档；只按当前 URL 打开一个资源，其他标签延迟恢复，不构造未打开的工作区。文件深链不以导航目录为前提，工作台以 initialNavigation=false 跳过根目录与组织预读；目录可见后再独立读取，隐藏目录和非活动会话停止观察与轮询。正常启动和恢复静默进行，失败局部重试。
 
 手机页面的恢复目标由当前 URL 决定，工作区用 `data-workspace-opening` 保持正文呈现，不以编辑器 DOM 暂时为空退回列表。内嵌导航准备期间隐藏中间窗口栏；共享 HTML 的 `data-app-starting` 在首个有效导航完成或失败后释放，冷重载不先展示全局导航与历史窗口入口。该标记只控制首次显示，不参与后端会话状态或写命令恢复；SSE 重连保持既有正文、输入和阅读位置。回归见 [手机正文切换](../ui/app-shell/tests/mobile-workspace-view.test.ts)、[手机导航状态](../ui/app-shell/tests/mobile-shell-state.test.ts) 和 [初始资源恢复](../ui/app-shell/tests/bootstrap-project-routes.test.ts)。
 
 文件编辑通过 app-shell 的 browser/file-recovery 保存浏览器本地恢复副本；backend 文件正文与条件写 revision 仍为真相。当前标签页小文本保存在 sessionStorage，大文本进入 IndexedDB，资源间隔离；重载只读取当前文件的副本，先核对原文摘要和权限，冲突保留副本而不覆盖后端。写请求结果未知时不重发，若重新读取的后端正文已等于副本则按已持久化处理。
+
+HTTP 自动恢复保留聊天正文草稿、附件、连接选择、光标与标签滚动位置，以及 Provider/Connection 和模型用途默认表单的内存草稿；不重发消息、工具或结果未知的写入，不能恢复的编辑器、在途提交和弹窗明确阻止自动重建。设置密钥只在内存中交接，不写入 sessionStorage/IndexedDB 或日志。工具箱恢复时打开资源须等待编辑器装配完成；快照在编辑器前后到达均可恢复，未完成装配报告 RECOVERY_RESTORE_INCOMPLETE，恢复异常保留原错误分类。单连接表单的服务通知不替换已挂载草稿。重建失败保留快照供重试，文件原文摘要已变化时显示可复制的冲突副本，不覆盖后端。服务端审计 view.expired 用 requestId 关联 VIEW_NOT_FOUND、VIEW_NOT_INITIALIZED、VIEW_STREAM_INVALIDATED、VIEW_PROTOCOL_MISMATCH、VIEW_HISTORY_EXPIRED；浏览器 http.view.recovery 记录 operationId、阶段、结果和耗时。

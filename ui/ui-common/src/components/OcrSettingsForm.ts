@@ -50,15 +50,22 @@ export class OcrSettingsForm {
                 const markup = renderOcrSettings(state, this.id, this.compact);
                 if (this.dirty || this.rendered !== markup) { this.container.innerHTML = markup; this.rendered = markup; }
                 this.dirty = false;
+                this.container.querySelector('[data-ocr-retry]')?.remove(); this.status('');
             }
         } catch (error) {
             if (revision === this.revision && !this.abort.signal.aborted) {
                 console.error('ocr.settings.read', { operation: 'ocr.settings.read', operationId, stage: 'read', outcome: 'failure', code: 'OCR_SETTINGS_READ_FAILED', errorType: error instanceof Error ? error.name : 'unknown', durationMs: Math.round(performance.now() - started) });
-                this.rendered = undefined; this.container.textContent = error instanceof Error ? error.message : String(error);
-                const retry = document.createElement('button'); retry.type = 'button'; retry.dataset.ocrRetry = '';
-                retry.className = 'settings-btn settings-btn--secondary'; retry.textContent = t('settings.autosave.retry'); this.container.append(retry);
+                this.readFailure(error);
             }
         }
+    }
+    private readFailure(error: unknown): void {
+        const message = error instanceof Error ? error.message : String(error);
+        if (this.container.querySelector('[name=ocr-connection]')) this.status(message);
+        else { this.rendered = undefined; this.container.textContent = message; }
+        if (this.container.querySelector('[data-ocr-retry]')) return;
+        const retry = document.createElement('button'); retry.type = 'button'; retry.dataset.ocrRetry = '';
+        retry.className = 'settings-btn settings-btn--secondary'; retry.textContent = t('settings.autosave.retry'); this.container.append(retry);
     }
     private async save(): Promise<void> {
         if (this.saving || this.abort.signal.aborted) return;

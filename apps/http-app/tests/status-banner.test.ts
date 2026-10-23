@@ -75,3 +75,22 @@ it('does not hide a view update error on a late reconnect or health response', a
     expect(document.querySelector('.http-status')?.textContent).toContain(t('httpApp.viewError'));
     expect(reload).not.toHaveBeenCalled();
 });
+
+it('automatically rebuilds an expired view after readiness without reloading the document', async () => {
+    const reload = vi.fn(), recover = vi.fn(async () => {}), fetcher = vi.fn(async () => Response.json({ready: true}));
+    dispose = installHttpStatus({reload, recover, fetcher});
+    window.dispatchEvent(new CustomEvent('mindos:http-disconnected', {detail: {state: 'expired'}}));
+    await vi.waitFor(() => expect(recover).toHaveBeenCalledOnce());
+    expect(reload).not.toHaveBeenCalled(); expect(document.querySelector<HTMLElement>('.http-status')?.hidden).toBe(true);
+});
+
+it('retains the page on recovery failure and allows an explicit retry', async () => {
+    const recover = vi.fn().mockRejectedValueOnce(new Error('Draft conflict')).mockResolvedValueOnce(undefined), reload = vi.fn();
+    dispose = installHttpStatus({recover, reload, fetcher: async () => Response.json({ready: true})});
+    const input = document.createElement('textarea'); input.value = 'Keep me'; document.body.append(input);
+    window.dispatchEvent(new CustomEvent('mindos:http-disconnected', {detail: {state: 'expired'}}));
+    await vi.waitFor(() => expect(document.querySelector('.http-status')?.textContent).toContain('Draft conflict'));
+    expect(input.value).toBe('Keep me'); expect(reload).not.toHaveBeenCalled();
+    document.querySelector<HTMLButtonElement>('.http-status button')!.click();
+    await vi.waitFor(() => expect(recover).toHaveBeenCalledTimes(2));
+});

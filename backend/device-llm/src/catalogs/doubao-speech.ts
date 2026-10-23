@@ -1,6 +1,6 @@
 import source from './doubao-speech.json';
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
-import type { ProviderApiReference } from '../../contracts/provider-reference';
+import type { ProviderApiReference } from '../contracts/provider-reference';
 
 export const DOUBAO_SPEECH_REFERENCE = source.reference as ProviderApiReference;
 

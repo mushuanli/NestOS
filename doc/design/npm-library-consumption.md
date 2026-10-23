@@ -29,22 +29,22 @@ MindOS 日常开发默认使用源码，HTTP 发布构建单独消费固定本�
 | `pnpm lib:build` | 构建修改过的库及其依赖方，复用未修改制品 |
 | `pnpm lib:build driver-llm` | 指定库及其依赖方；也接受完整包名 |
 | `pnpm libraries:snapshot` | 强制全量生成所有库的快照 |
-| `pnpm httpd:build` | 在隔离目录安装最近准备的快照，构建前后端及独立 release |
+| `pnpm httpd:build` | 先增量 lib:build，成功后在隔离目录消费快照并构建独立 release |
 | `pnpm libraries:status` | 查看开发依赖模式与 HTTP 构建快照 |
 
 ```bash
 pnpm dev                            # 日常源码联调，不需要 lib:build
 pnpm cli help                     # CLI 源码验证
-pnpm lib:build                      # 准备 HTTP 所需的制品
+pnpm lib:build                      # 可单独准备或检查库制品
 pnpm lib:build driver-llm            # 只更新指定库及需要重建的依赖方
-pnpm httpd:build                     # 消费制品，不改开发工作区的 node_modules
+pnpm httpd:build                     # 自动增量准备库并构建 HTTP，不改开发依赖
 ```
 
 首次没有快照时构建全部库；之后以最近准备的快照为基线（没有准备记录时兼容使用已启用快照）。源文件摘要或共享构建配置变化触发重建，按依赖图向上重建所有受影响的库；首次迁移旧快照时，缺少摘要的库会重建一次。没有变化时不安装、不构建、不打包，继续使用同一快照。指定参数是库名而非快照 ID；指定库时，未选择的库即使存在未完成修改，也使用基线中的制品，必要的 API 更新应一并准备。缺少需要重建的源码时明确失败。
 
 构建只捕获选中的源码（含未提交修改），未选中的库在隔离工作区从基线 tarball 解包，避免源码依赖意外泄漏。安装后按拓扑顺序构建，复用 npm 发布的 manifest 规范化、exports 校验和 pack，不查询内部库的 npm 版本，也不发布。第三方依赖仍可能需要网络和 pnpm 缓存。不可变 tarball 与摘要清单位于 `release/local-libraries/snapshots/<ID>/`；源摘要、构建配置摘要、依赖关系与制品摘要共同区分同版本的不同快照。
 
-只有构建成功才原子更新 `release/local-libraries/prepared.json`。生成制品不修改开发依赖、根锁文件或正在运行的服务；失败保留原先可用快照。`httpd:build` 复制当前业务代码及选定制品，在隔离目录安装、编译 UI 与服务端，记录 release.json 的 librarySnapshot。构建不读取库源码，也不重启正在运行的 httpd。Node 宿主显式声明外部原生依赖，复制同版本已构建运行文件，并在激活前验证 SQLite 内存读写、PTY 加载与 Sharp 图像编码。
+只有构建成功才原子更新 `release/local-libraries/prepared.json`。生成制品不修改开发依赖、根锁文件或正在运行的服务；失败保留原先可用快照。`httpd:build` 复制当前业务代码及选定制品，在隔离目录安装、编译 UI 与服务端，记录 release.json 的 librarySnapshot。HTTP 隔离编译阶段不读取库源码；上游 lib:build 捕获修改后生成不可变快照，库构建失败立即停止 HTTP 构建。整个命令不重启正在运行的 httpd。Node 宿主显式声明外部原生依赖，复制同版本已构建运行文件，并在激活前验证 SQLite 内存读写、PTY 加载与 Sharp 图像编码。
 
 源码联调不需要每次运行 lib:build；验证制品或发布 HTTP 服务时才需要。CLI 修改后可直接用 pnpm cli 验证；验证打包结果时先执行 pnpm cli:build，再用 pnpm cli:built。
 
@@ -59,7 +59,7 @@ pnpm httpd:build                     # 消费制品，不改开发工作区的 n
 ```mermaid
 C4Component
     title 源码联调与 HTTP 制品构建
-    Person(dev, "开发者", "源码验证与显式准备制品")
+    Person(dev, "开发者", "源码验证与发布构建")
     Container_Boundary(workspace, "开发工作区 · 源码") {
         Component(source, "libraries 源码", "独立 Git 子模块", "持续修改")
         Component(business, "业务代码", "backend / ui / apps", "dev 与 cli 直接消费源码")
@@ -72,7 +72,7 @@ C4Component
     ComponentDb(artifacts, "不可变快照", "本地 tgz + SHA-256", "prepared.json 指定构建基线")
     Component(release, "HTTP release", "独立部署目录", "记录快照 ID")
     Rel(source, business, "源码公共入口")
-    Rel(dev, builder, "lib:build 或 lib:build 库名")
+    Rel(dev, builder, "lib:build 或 httpd:build 的自动前置步骤")
     Rel(source, builder, "只捕获需要重建的源码")
     Rel(artifacts, builder, "复用未修改制品")
     Rel(builder, artifacts, "验证后生成新快照")
@@ -301,3 +301,5 @@ llm-ui 与 device-tty 已提取各自的目录提交历史并推送独立 main�
 | [device-tty](https://github.com/mushuanli/device-tty) | 3343c56 | node-pty ^1.1.0、Node 内置模块 | 独立锁文件安装、8 项测试、真实 pipe/PTY 交互、类型检查与构建 |
 
 device-tty 拥有独立 /contracts 子入口，tools/contracts 兼容转发类型；它不再依赖 tools。Node 驱动入口和纯接口入口分开，原生模块仅在 PTY spawn 时加载；驱动不承诺跨宿主重启恢复。两份 tarball 在仓库外完成 ESM/CJS 导入、交互进程和 NodeNext 类型消费检查。主项目 tools、kernel-adapters 与 CLI 类型检查、kernel-adapters 的 273 项测试以及架构与文档检查通过。Git 推送、主仓库提交和 npm 发布是分别执行的动作，不能以远端代码存在推断 npm 已发布。
+
+HTTP 构建使用 `release/httpd/.build-cache/` 复用隔离安装环境及前后端编译产物；缓存键包含已准备的不可变库快照 ID，修改 libraries 源码后，`pnpm httpd:build` 会先增量准备新快照，再使用该快照编译 HTTP release；也可单独运行 `pnpm lib:build <库名>` 准备或检查上游制品。构建缓存不修改工作区消费模式，`--no-cache` 可绕过缓存，`--no-activate` 只生成验证后的 release、不改变下次启动选择。

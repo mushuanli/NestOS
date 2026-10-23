@@ -12,6 +12,7 @@ import type { ApiProtocol } from '@itookit/driver-llm/contracts';
 import { showConfigurationForm, addConfigurationAction, addConfigurationEnabled } from './configuration-form';
 import { t, escapeAttr, ACTION_ICONS, MODEL_CAPABILITY_META } from '@itookit/common';
 import { renderModelCapabilityBadges } from '../utils/modelBadges';
+import {matchesModelQuery} from '../utils/modelChoice';
 // @file: llm-ui/editors/ProviderSettingsEditor.ts
 //
 // Provider 配置编辑器（三层架构第一层）。
@@ -43,6 +44,25 @@ const MODEL_CAP_CHIPS: ReadonlyArray<[string, keyof LLMModel]> = [
 ];
 
 export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionService> {
+    protected supportsFormRecovery = true;
+    protected captureRecoveryModel(): unknown {
+        this.syncInputsToModelData();
+        return structuredClone({models: this.editModels, operations: this.editModels.map(model => this.modelOperationDrafts.get(model)),
+            reasoning: this.editModels.map(model => this.reasoningDrafts.get(model)), clearStoredKey: this.clearStoredKey, modelSearch: this.modelSearch});
+    }
+    protected restoreRecoveryModel(snapshot: unknown): void {
+        const state = structuredClone(snapshot) as {models: LLMModel[]; operations: Array<string | undefined>;
+            reasoning: Array<[string | undefined, string | undefined] | undefined>; clearStoredKey: boolean; modelSearch: string};
+        this.editModels = state.models; this.clearStoredKey = state.clearStoredKey; this.modelSearch = state.modelSearch;
+        this.editModels.forEach((model, index) => {
+            if (state.operations[index] !== undefined) this.modelOperationDrafts.set(model, state.operations[index]!);
+            if (state.reasoning[index]) this.reasoningDrafts.set(model, state.reasoning[index]!);
+        });
+        this.renderModelList();
+    }
+    protected afterRestoreRecovery(): void {
+        if (this.providerForm) {this.syncAuthorizationForm(this.providerForm); this.syncCatalogControls(this.providerForm);}
+    }
     constructor(container: HTMLElement, service: IConnectionService, options: import('@itookit/ui-common').EditorOptions,
         private readonly mediaProbeExamples: MediaProbeExamples = {}) { super(container, service, options); }
     private editModels: LLMModel[] = [];
@@ -447,7 +467,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 <section data-provider-panel="models">
                 <h4 class="settings-section-title" style="display:flex;justify-content:space-between;align-items:center">
                     模型列表
-                    <button type="button" id="btn-refresh-models" class="settings-btn settings-btn--xs settings-btn--secondary" ${this.editingProvider?.modelsPath === false ? 'disabled' : ''}>${t('provider.models.refresh')}</button>
+                    <button type="button" id="btn-refresh-models" class="settings-btn settings-btn--xs settings-btn--secondary" ${this.editingProvider?.modelsPath === false && !this.presetModels().length ? 'disabled' : ''}>${t(this.editingProvider?.modelsPath === false && this.presetModels().length ? 'provider.models.refreshPreset' : 'provider.models.refresh')}</button>
                     <button type="button" id="btn-add-model" class="settings-btn settings-btn--xs settings-btn--primary">+ 新增</button>
                 </h4>
                 <input type="search" id="provider-model-search" class="settings-form__input" placeholder="${t('provider.models.search')}">
@@ -455,7 +475,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                 <div class="settings-model-list-container" id="model-list-container">
                     ${this.renderModelListHTML()}
                 </div>
-                <small class="settings-form__help" data-model-catalog-help>${t(this.editingProvider?.modelsPath === false ? 'provider.models.unavailable' : 'provider.models.help')}</small>
+                <small class="settings-form__help" data-model-catalog-help>${t(this.editingProvider?.modelsPath === false ? (this.presetModels().length ? 'provider.models.presetHelp' : 'provider.models.unavailable') : 'provider.models.help')}</small>
                 </section>
                 <section data-provider-panel="connections"><div data-provider-connections></div></section>
                 <section data-provider-panel="advanced">${renderProviderAdvanced(this.editingProvider)}${renderProviderApiReference(this.service.getProviderReferences?.()[this.editingProvider.id])}</section>
@@ -588,31 +608,64 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
         void this.authorizationPanel.init().catch(error => Toast.error(String(error)));
     }
 
+    private presetModels(): LLMModel[] {
+        return this.service.getProviderDefaults?.()[this.editingProvider?.id ?? '']?.models ?? [];
+    }
+
+    private syncCatalogControls(form: HTMLFormElement): void {
+        const remote = readProviderForm(form, this.editingProvider!).modelsPath !== false;
+        const preset = !remote && this.presetModels().length > 0;
+        const button = form.querySelector<HTMLButtonElement>('#btn-refresh-models');
+        if (button) { button.disabled = !remote && !preset; button.textContent = t(preset ? 'provider.models.refreshPreset' : 'provider.models.refresh'); }
+        const help = form.querySelector('[data-model-catalog-help]');
+        if (help) help.textContent = t(remote ? 'provider.models.help' : preset ? 'provider.models.presetHelp' : 'provider.models.unavailable');
+    }
+
+    private async readModelCatalog(form: HTMLFormElement, remote: boolean) {
+        const snapshot = readProviderForm(form, this.editingProvider!);
+        const models = remote ? await this.service.listProviderModels(snapshot) : structuredClone(this.presetModels());
+        const current = readProviderForm(form, this.editingProvider!);
+        if (['implementation', 'baseURL', 'apiKey', 'modelsPath'].some(field =>
+            snapshot[field as keyof LLMProvider] !== current[field as keyof LLMProvider])) {
+            throw Object.assign(new Error(t('provider.models.configurationChanged')), {code: 'MODEL_CATALOG_CONFIGURATION_CHANGED'});
+        }
+        return {snapshot, models};
+    }
+
+    private mergeModelCatalog(form: HTMLFormElement, list: HTMLElement, snapshot: LLMProvider, models: LLMModel[]): number {
+        this.syncInputsToModelData();
+        const added = snapshot.implementation === 'chatgpt' ? models.filter(model => !this.editModels.some(old => old.id === model.id)).length : this.appendModels(models);
+        if (snapshot.implementation === 'chatgpt') this.editModels = models.map(model => ({ ...model }));
+        this.renderModelList(list);
+        requestSettingsSave(form);
+        return added;
+    }
+
     private async refreshModels(button: HTMLButtonElement, list: HTMLElement): Promise<void> {
         const form = button.closest('form')!;
-        if (readProviderForm(form, this.editingProvider!).modelsPath === false) return;
-        button.disabled = true;
-        button.textContent = t('provider.models.refreshing');
+        const remote = readProviderForm(form, this.editingProvider!).modelsPath !== false;
+        if (!remote && !this.presetModels().length) return;
+        const started = performance.now(), operationId = randomUUID(), source = remote ? 'remote' : 'preset';
+        console.info('provider.models.refresh.started', {operationId, source, stage: 'catalog', result: 'start'});
+        button.disabled = true; button.textContent = t('provider.models.refreshing');
+        let stage = 'catalog';
         try {
-            const snapshot = readProviderForm(form, this.editingProvider!);
-            const models = await this.service.listProviderModels(snapshot);
-            const current = readProviderForm(form, this.editingProvider!);
-            if (['implementation', 'baseURL', 'apiKey', 'modelsPath'].some(field =>
-                snapshot[field as keyof LLMProvider] !== current[field as keyof LLMProvider])) {
-                throw new Error(t('provider.models.configurationChanged'));
-            }
+            const {snapshot, models} = await this.readModelCatalog(form, remote);
             if (!button.isConnected) return;
-            this.syncInputsToModelData();
-            const added = snapshot.implementation === 'chatgpt' ? models.filter(model => !this.editModels.some(old => old.id === model.id)).length : this.appendModels(models);
-            if (snapshot.implementation === 'chatgpt') this.editModels = models.map(model => ({ ...model }));
-            this.renderModelList(list);
-            requestSettingsSave(form);
+            stage = 'merge';
+            const added = this.mergeModelCatalog(form, list, snapshot, models);
+            console.info('provider.models.refresh.completed', {operationId, source, stage, result: 'success',
+                count: models.length, added, durationMs: Math.round(performance.now() - started)});
             Toast.success(t('provider.models.refreshed', { count: added, total: models.length, existing: models.length - added }));
         } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            console.error('provider.models.refresh.failed', {operationId, source, stage, result: 'failure',
+                code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : `PROVIDER_MODEL_${stage.toUpperCase()}_FAILED`,
+                durationMs: Math.round(performance.now() - started)});
             Toast.error(t('provider.models.refreshFailed', { message: error instanceof Error ? error.message : String(error) }));
         } finally {
-            button.disabled = false;
-            button.textContent = t('provider.models.refresh');
+            button.disabled = false; button.textContent = t('provider.models.refresh');
+            this.syncCatalogControls(form);
         }
     }
 
@@ -625,7 +678,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
             if (!id) continue;
             if (ids.has(id)) {
                 const existing = this.editModels.find(model => model.id === id)!;
-                for (const field of ['category', 'supportsVision', 'supportsThinking', 'supportsTools', 'supportsAudio', 'supportsVideo', 'supportsStructuredOutput', 'contextWindow', 'maxOutput', 'operations', 'reasoning', 'reasoningByProtocol', 'capabilitiesKnown'] as const)
+                for (const field of ['category', 'supportsVision', 'supportsThinking', 'supportsTools', 'supportsAudio', 'supportsVideo', 'supportsStructuredOutput', 'contextWindow', 'maxOutput', 'operations', 'supportedOperations', 'reasoning', 'reasoningByProtocol', 'capabilitiesKnown'] as const)
                     if (entry[field] !== undefined && !(field === 'capabilitiesKnown' && entry[field] === false)
                         && !(field === 'reasoning' && existing.reasoning && existing.reasoning.source === 'user'))
                         (existing as unknown as Record<string, unknown>)[field] = field === 'reasoning' && existing.reasoning && entry.reasoning
@@ -660,8 +713,9 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
                     ${renderReasoningDeclaration(m, ...this.reasoningDrafts.get(m) ?? [])}
                     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
                         <select class="settings-input-sm model-category-select" data-idx="${i}" title="模型用途" style="max-width:110px">
+                            <option value="" ${!m.category ? 'selected' : ''}>${t('provider.models.categoryUnknown')}</option>
                             ${MODEL_CATEGORIES.map(cat => `
-                                <option value="${cat}" ${(m.category ?? 'chat') === cat ? 'selected' : ''}>${cat}</option>
+                                <option value="${cat}" ${m.category === cat ? 'selected' : ''}>${cat}</option>
                             `).join('')}
                         </select>
                         <label>${t('provider.models.preferredProtocol')}
@@ -780,9 +834,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
 
         const refreshBtn = this.formElement('btn-refresh-models') as HTMLButtonElement | null;
         if (refreshBtn) form.querySelector('[name="modelsPath"]')?.addEventListener('input', () => {
-            const enabled = readProviderForm(form, this.editingProvider!).modelsPath !== false;
-            refreshBtn.disabled = !enabled;
-            form.querySelector('[data-model-catalog-help]')!.textContent = t(enabled ? 'provider.models.help' : 'provider.models.unavailable');
+            this.syncCatalogControls(form);
         });
         refreshBtn?.addEventListener('click', () => {
             if (!refreshBtn.disabled && listContainer) void this.refreshModels(refreshBtn, listContainer);
@@ -862,7 +914,7 @@ export class ProviderSettingsEditor extends BaseSettingsEditor<IConnectionServic
     }
 
     private matchesModelSearch(model: LLMModel): boolean {
-        return `${model.id} ${model.name}`.toLowerCase().includes(this.modelSearch);
+        return matchesModelQuery(model, this.modelSearch);
     }
 
     private updateModelCount(): void {

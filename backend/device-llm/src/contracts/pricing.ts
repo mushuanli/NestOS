@@ -37,6 +37,8 @@ export interface ModelPricingEntry {
 /** pricing.json 根结构 */
 export interface ModelPricingConfig {
     model_pricing: ModelPricingEntry[];
+    /** Read-only vendor references supplied by the host, independent of editable ledger rates. */
+    reference_catalog?: import('./model-price-catalog').ModelPriceCatalog;
 }
 
 // ─── Cost Record ─────────────────────────────────────────────────────────────

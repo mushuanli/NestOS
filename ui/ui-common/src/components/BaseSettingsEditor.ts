@@ -5,6 +5,7 @@ import { editorFilePath } from '../interfaces/IEditor';
 
 import { IEditor, CollapseExpandResult, EditorOptions, UnifiedSearchResult, Heading, EditorEvent, EditorEventCallback } from '../interfaces/IEditor';
 import { t, escapeAttr } from '@itookit/common';
+import {captureForm, restoreForm} from '../utils/form-recovery';
 
 /**
  * 定义宿主能力接口 (与 MemoryManager 的 EditorHostContext 保持结构兼容)
@@ -42,6 +43,10 @@ export abstract class BaseSettingsEditor<TService> implements IEditor {
     protected listeners: Array<{ target: EventTarget, type: string, handler: EventListener }> = [];
     protected container!: HTMLElement;
     private readonly autoSaves = new Set<SettingsAutoSave>();
+    protected supportsFormRecovery = false;
+    protected captureRecoveryModel(): unknown { return null; }
+    protected restoreRecoveryModel(_state: unknown): void {}
+    protected afterRestoreRecovery(): void {}
 
     // [新增] 宿主能力引用
     protected hostContext?: IEditorHostContext;
@@ -171,6 +176,22 @@ export abstract class BaseSettingsEditor<TService> implements IEditor {
     setTitle(_title: string) { }
     setReadOnly(_readOnly: boolean) { }
     isDirty() { return [...this.autoSaves].some(save => save.isDirty); }
+    captureRecovery(): unknown {
+        if (!this.supportsFormRecovery && (this.isDirty() || this.container.querySelector('input:not([type="search"]):not([readonly]):not([disabled]), textarea:not([readonly]):not([disabled]), select:not([disabled])')))
+            throw Object.assign(new Error(t('httpApp.recoverySettings')), {code: 'RECOVERY_SETTINGS_FORM'});
+        if ([...this.autoSaves].some(save => save.busy)) throw Object.assign(new Error(t('httpApp.recoveryBusy')), {code: 'RECOVERY_BUSY'});
+        return {fields: captureForm(this.container), model: this.captureRecoveryModel(), dirty: this.isDirty()};
+    }
+    restoreRecovery(snapshot: unknown): void {
+        const state = snapshot as {fields: ReturnType<typeof captureForm>; model: unknown; dirty: boolean};
+        this.restoreRecoveryModel(state.model); restoreForm(this.container, state.fields);
+        this.afterRestoreRecovery();
+        if (state.dirty) for (const save of this.autoSaves) save.request(-1);
+    }
+    suspendForRecovery(): void {
+        this.flushPendingSave = async () => {};
+        void this.discardAutoSave();
+    }
     setDirty(_dirty: boolean) { }
 
     get commands() { return {}; }

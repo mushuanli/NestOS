@@ -1,14 +1,7 @@
-// @file: device-llm/constants/providers.ts
-// Layer 1 — Provider 目录（云提供商定义 + 模型 catalog）。
-// 职责：持有 apiKey + 模型目录，是认证与模型信息的唯一来源。
-
+/** LLM device support: provider protocols, models, capabilities and initial ledger rates. */
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
-import { externalProviders } from './llm-configs';
 import { createDoubaoSpeechProvider } from './catalogs/doubao-speech';
-
-// ─── VFS 存储路径 ──────────────────────────────────────────────────────────────
-/** VFS __config 模块中 Provider 数据的存储目录 */
-export const PROVIDERS_DIR = '/llm/.providers';
+import {volcengineImageModels} from './catalogs/volcengine-images';
 
 // ─── 定价常量（每百万 token，USD）───────────────────────────────────────────────
 
@@ -64,7 +57,7 @@ const P = {
 // 此常量同时作为 pricing.json 不存在时的编译期 fallback，
 // 以及首次启动时写入 /llm/pricing.json 的默认内容。
 
-import type { ModelPricingEntry } from '@itookit/kernel-adapters/contracts';
+import type { ModelPricingEntry } from './contracts';
 
 export const MODEL_PRICING: ModelPricingEntry[] = [
     {
@@ -231,11 +224,9 @@ export const MODEL_NAME_MISTRAL_LARGE_2411 = 'Mistral: Mistral Large 2411';
 /**
  * 内置 Provider 目录（模型 catalog 唯一权威来源）。
  * key = provider.id；Connection 通过 providerId 引用。
- * 用户自定义覆盖持久化在 VFS PROVIDERS_DIR 中。
+ * Hosts store custom overrides separately from the device support catalog.
  */
 export const LLM_PROVIDERS: Record<string, LLMProvider> = {
-    // External providers loaded from .llm configs
-    ...externalProviders,
     chatgpt: {
         id: 'chatgpt', isBuiltin: true, name: 'ChatGPT', implementation: 'chatgpt',
         baseURL: 'https://api.openai.com/v1', defaultProtocol: 'openai-responses',
@@ -410,6 +401,7 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
             // 文生图 (Seedream)：按张计费，走 images/generations 端点（非 chat/completions）
             { id: 'doubao-seedream-5-0-260128', name: MODEL_NAME_DOUBAO_SEEDREAM_50, icon: '🎨', category: 'image', capabilitiesKnown: true,
                 operations: { 'image.generate': { inputModalities: ['text'], outputModalities: ['image'], formats: ['png', 'jpeg'], sizes: ['2K', '3K', '4K'], maxOutputs: 1 } } },
+            ...volcengineImageModels,
             // 视频生成 (Seedance)：按时长计费，走异步任务端点（非 chat/completions）
             { id: 'doubao-seedance-2-0-260128', name: MODEL_NAME_DOUBAO_SEEDANCE_20, icon: '🎬', category: 'video' },
         ],
@@ -426,11 +418,3 @@ export const LLM_PROVIDERS: Record<string, LLMProvider> = {
         models: [],
     },
 };
-
-export function getProviderDefinition(provider: string): LLMProvider | undefined {
-    return LLM_PROVIDERS[provider];
-}
-
-export function getModelDefinition(provider: string, modelId: string) {
-    return LLM_PROVIDERS[provider]?.models.find(m => m.id === modelId);
-}

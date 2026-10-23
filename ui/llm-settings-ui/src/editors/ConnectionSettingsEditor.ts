@@ -18,8 +18,13 @@ import { Toast } from '@itookit/ui-common';
 import { fromConnectionDef, serializeLLMConfig } from '@itookit/kernel-adapters/llm/config';
 import { runLLMImport } from './llm-import';
 import { escapeAttr, escapeHTML } from '@itookit/common';
+import {matchesModelQuery, modelChoiceLabel, modelPriceLabel} from '../utils/modelChoice';
+import {renderModelCapabilityBadges} from '../utils/modelBadges';
+import type {ModelPricingConfig} from '@itookit/kernel-adapters/contracts';
+import {modelPriceSource} from '../utils/modelPrice';
 
 export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionService> {
+    protected supportsFormRecovery = true;
     private defaultConnectionId?: string;
     private connections: ConnectionMeta[] = [];
     private currentEditTiers: Partial<Record<ModelTier, string>> = {};
@@ -28,11 +33,32 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
     private providers: Record<string, LLMProvider> = {};
     private _checkedIds = new Set<string>();
     private _selectedProviderId: string | null = null;
+    private pricing?: ModelPricingConfig;
+    protected captureRecoveryModel(): unknown {
+        return structuredClone({tiers: this.currentEditTiers, budgets: this.currentEditModelBudgets, efforts: this.currentEditModelEfforts,
+            providerId: this.container.querySelector<HTMLSelectElement>('#conn-provider')?.value});
+    }
+    protected restoreRecoveryModel(snapshot: unknown): void {
+        const state = snapshot as {tiers: Partial<Record<ModelTier, string>>; budgets: Record<string, number>; efforts: Record<string, string>; providerId?: string};
+        this.currentEditTiers = state.tiers; this.currentEditModelBudgets = state.budgets; this.currentEditModelEfforts = state.efforts;
+        const section = this.container.querySelector('#tier-config-section'), provider = state.providerId && this.providers[state.providerId];
+        if (section && provider) section.innerHTML = this.renderTierForm(provider);
+        const protocol = this.container.querySelector('[name="protocol"]');
+        if (protocol && provider) protocol.innerHTML = renderProtocolOptions(provider);
+    }
+    protected afterRestoreRecovery(): void { this.applyModelSearch(); }
+
+    protected override onServiceChange(): void {
+        // The mounted form owns its draft, including edits assigned without DOM events.
+        if (this.formOnly && this.container.querySelector('#connection-form')) return;
+        super.onServiceChange();
+    }
 
     private get formOnly(): boolean { return this.options.target?.kind === 'entity' && this.options.target.entityType === 'connection'; }
 
     async render() {
         if (!await this.prepareRender()) return;
+        this.pricing = this.service.getPricingConfig?.();
         this.providers = Object.fromEntries(
             this.service.getProviders().map(p => [p.id, p])
         );
@@ -505,7 +531,6 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         }
 
         const modalContent = `
-            ${this.renderDefaultSummary()}
             <form id="connection-form" class="settings-form">
                 <!-- Provider selection (configure providers in "LLM Providers" settings) -->
                 <div class="settings-form__group">
@@ -657,19 +682,6 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
         return hasConnectionCredentials(connection) && resolveChatModelForTier(connection, provider, 'optimal') ? 0 : 1;
     }
 
-    private renderDefaultSummary(): string {
-        const current = this.connections.find(item => item.id === this.defaultConnectionId);
-        const rank = current ? this.connectionRank(current) : 1;
-        const label = t(rank === 2 ? 'connection.status.disabled' : rank ? 'connection.status.pending' : 'connection.status.ready');
-        return `<div class="settings-connection-default" role="status">
-            <strong>${t('connection.defaultOther')}</strong>
-            <span>${escapeHTML(current?.name ?? t('connection.unset'))}</span>
-            <span class="settings-badge settings-badge--${rank ? 'warning' : 'success'}">${label}</span>
-            <span>${escapeHTML(current ? resolveModelForTier(current, 'optimal') || '' : '')}</span>
-            <small>${t('connection.defaultHelp')}</small>
-        </div>`;
-    }
-
     private renderModelEffort(tier: ModelTier, provider: LLMProvider | undefined): string {
         const modelId = this.tierModelId(tier, provider);
         if (!modelId) return '';
@@ -689,26 +701,56 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
     private renderTierForm(provider: LLMProvider | undefined): string {
         // Operations are validated at admission; tiers may select any declared model.
         const models = provider?.models ?? [];
-        const noneOpt = '<option value="">— 未指定（使用 Provider 首个模型）—</option>';
         const modelOpts = models.map(m =>
-            `<option value="${escapeAttr(m.id)}">${escapeHTML(m.name)}</option>`
+            `<option value="${escapeAttr(m.id)}">${escapeHTML(modelChoiceLabel(m, provider?.id ?? '', this.pricing))}</option>`
         ).join('');
 
         const tierRow = (tier: ModelTier, label: string, badgeClass: string) => {
+            const noneOpt = `<option value="">${escapeHTML(t(tier === 'optimal' ? 'connection.primaryFallback' : 'connection.routingFallback'))}</option>`;
             return `
                 <div class="settings-tier-row">
                     <span class="settings-tier-badge ${badgeClass}">${label}</span>
-                    <select class="settings-form__select settings-form__select--sm" id="tier-${tier}" data-tier="${tier}" style="flex:1">${noneOpt}${modelOpts}</select>
+                    <div class="settings-tier-model"><select class="settings-form__select settings-form__select--sm" id="tier-${tier}" data-tier="${tier}" aria-label="${escapeAttr(label)}">${noneOpt}${modelOpts}</select>
+                    <small class="settings-tier-model__info" data-model-info="${tier}">${this.renderTierModelInfo(tier, provider)}</small></div>
                     <div id="tier-effort-${tier}">${this.renderModelEffort(tier, provider)}</div>
                 </div>`;
         };
 
         return `
+            <label class="settings-form__label" for="connection-model-search">${t('connection.modelSearch')}</label>
+            <input type="search" id="connection-model-search" class="settings-form__input" data-model-search data-autosave-ignore
+                placeholder="${t('connection.modelSearchPlaceholder')}" aria-describedby="connection-model-search-help connection-model-search-count">
+            <small class="settings-form__help" id="connection-model-search-help">${t('connection.modelSearchHelp')}</small>
+            <small class="settings-form__help" id="connection-model-search-count" role="status" aria-live="polite"></small>
             ${tierRow('optimal', t('connection.primaryModel'), 'settings-tier-badge--optimal')}
             <details><summary>${t('connection.advancedRouting')}</summary>
             ${tierRow('standard', '标准', 'settings-tier-badge--standard')}
             ${tierRow('fast', '快速', 'settings-tier-badge--fast')}</details>
         `;
+    }
+    private renderTierModelInfo(tier: ModelTier, provider?: LLMProvider): string {
+        const model = provider?.models.find(item => item.id === this.tierModelId(tier, provider));
+        if (!model) return escapeHTML(t('connection.unset'));
+        const source = modelPriceSource(provider!.id, this.pricing, model.id);
+        const link = source ? `<a href="${escapeAttr(source.url)}" target="_blank" rel="noopener noreferrer" data-model-price-source
+            title="${t('connection.modelPriceReferenceHelp')}">${escapeHTML(t('connection.modelPriceSource', {date: source.reviewedAt}))}</a>` : '';
+        return `${renderModelCapabilityBadges(model)} <span>${escapeHTML(modelPriceLabel(model, provider!.id, this.pricing))}</span>${link}`;
+    }
+
+    private applyModelSearch(): void {
+        const search = this.container.querySelector<HTMLInputElement>('[data-model-search]');
+        const providerId = this.container.querySelector<HTMLSelectElement>('#conn-provider')?.value ?? '';
+        const models = this.providers[providerId]?.models ?? [], filtered = models.filter(model => matchesModelQuery(model, search?.value ?? ''));
+        for (const select of this.container.querySelectorAll<HTMLSelectElement>('select[data-tier]')) {
+            const value = select.value, selected = models.find(model => model.id === value);
+            const options = filtered.map(model => new Option(modelChoiceLabel(model, providerId, this.pricing), model.id));
+            if (value && !filtered.some(model => model.id === value)) options.unshift(new Option(t('connection.modelSelectedOutsideFilter',
+                {model: selected ? modelChoiceLabel(selected, providerId, this.pricing) : value}), value));
+            select.replaceChildren(new Option(t(select.dataset.tier === 'optimal' ? 'connection.primaryFallback' : 'connection.routingFallback'), ''), ...options);
+            select.value = value;
+        }
+        const count = this.container.querySelector('#connection-model-search-count');
+        if (count) count.textContent = t('connection.modelSearchCount', {visible: filtered.length, total: models.length});
     }
 
     private bindModalEvents(connection: LLMConnection | null, initialPid: string) {
@@ -722,12 +764,16 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             for (const tier of ['optimal', 'standard', 'fast'] as ModelTier[]) {
                 const slot = this.container.querySelector(`#tier-effort-${tier}`);
                 if (slot) slot.innerHTML = this.renderModelEffort(tier, provider);
+                const info = this.container.querySelector(`[data-model-info="${tier}"]`);
+                if (info) info.innerHTML = this.renderTierModelInfo(tier, provider);
             }
         };
 
         const refreshTierSelects = (provider: LLMProvider | undefined, tiers: Partial<Record<ModelTier, string>>) => {
             if (!tierSection) return;
+            const query = tierSection.querySelector<HTMLInputElement>('[data-model-search]')?.value ?? '';
             tierSection.innerHTML = this.renderTierForm(provider);
+            tierSection.querySelector<HTMLInputElement>('[data-model-search]')!.value = query;
             const optSel  = document.getElementById('tier-optimal')  as HTMLSelectElement | null;
             const stdSel  = document.getElementById('tier-standard') as HTMLSelectElement | null;
             const fastSel = document.getElementById('tier-fast')     as HTMLSelectElement | null;
@@ -735,6 +781,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
             if (stdSel  && tiers.standard) stdSel.value  = tiers.standard;
             if (fastSel && tiers.fast)     fastSel.value = tiers.fast;
             refreshEffortSlots(provider);
+            this.applyModelSearch();
         };
 
         // Initialize tier selects with current connection tiers
@@ -743,6 +790,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
 
         tierSection?.addEventListener('input', event => {
             const field = event.target as HTMLInputElement;
+            if (field.matches('[data-model-search]')) {this.applyModelSearch(); return;}
             if (!field.matches('[data-budget-tier]')) return;
             const modelId = this.tierModelId(field.dataset.budgetTier as ModelTier, this.providers[providerSelect?.value || initialPid]);
             if (field.value) this.currentEditModelBudgets[modelId] = Number(field.value); else delete this.currentEditModelBudgets[modelId];
@@ -762,6 +810,7 @@ export class ConnectionSettingsEditor extends BaseSettingsEditor<IConnectionServ
                 if (saved && !(saved === 'off' && caps?.canDisable) && !caps?.efforts.some(option => option.id === saved)) delete this.currentEditModelEfforts[sel.value];
                 const pid = providerSelect?.value || initialPid;
                 refreshEffortSlots(this.providers[pid]);
+                this.applyModelSearch();
                 return;
             }
             const effort = target.closest('select[data-effort-tier]') as HTMLSelectElement | null;

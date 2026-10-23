@@ -1,5 +1,5 @@
 import { isProvider, isStoredProvider } from './argument-validation';
-// @file: device-llm/device/provider-manager.ts
+// @file: kernel-adapters/llm-management/device/provider-manager.ts
 //
 // ProviderManager — manages LLMProvider catalog (built-in + user custom).
 
@@ -8,8 +8,9 @@ import type { IFileSystem } from '@itookit/vfs-core';
 import { snapshotLlmPresets, type LlmManagementPresets } from '../contracts/presets';
 import { loadPricingConfig, writePricingConfig, applyPricingToModel } from '../constants/pricing';
 import type { ModelPricingConfig } from '../constants/pricing';
-import { ensureProviderPricing } from '../contracts/pricing';
+import { ensureProviderPricing } from '@itookit/device-llm/contracts';
 import { VFSHelpers } from './vfs-helpers';
+import {completeModelDeclaration} from '@itookit/device-llm/contracts';
 
 const PROVIDERS_DIR = '/llm/.providers';
 
@@ -83,8 +84,7 @@ export class ProviderManager {
                     connectionTestModel: p.connectionTestModel ?? def.connectionTestModel,
                     models: p.models.map(model => {
                         const preset = def.models.find(item => item.id === model.id);
-                        return { ...model, operations: model.operations ?? preset?.operations,
-                            reasoning: model.reasoning ?? preset?.reasoning, reasoningByProtocol: model.reasoningByProtocol ?? preset?.reasoningByProtocol };
+                        return completeModelDeclaration(model, preset);
                     }),
                 });
             } else {
@@ -144,7 +144,8 @@ export class ProviderManager {
 
     getPricingConfig(): import('@itookit/kernel-adapters/contracts').ModelPricingConfig {
         if (this._pricingConfig) this._pricingConfig = ensureProviderPricing(this._pricingConfig, this._providers.keys());
-        return this._pricingConfig ?? { model_pricing: [] };
+        const config = this._pricingConfig ?? { model_pricing: [] };
+        return this.presets.pricing.reference_catalog ? {...config, reference_catalog: structuredClone(this.presets.pricing.reference_catalog)} : config;
     }
 
     getPricingDefaults(): import('@itookit/kernel-adapters/contracts').ModelPricingConfig {

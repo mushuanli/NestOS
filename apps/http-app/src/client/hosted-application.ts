@@ -1,28 +1,50 @@
-import { initApp, installMobileNavigation } from '@itookit/app-shell';
-import { WORKSPACES, ROUTE_ALIASES } from 'mind-os/workspaces';
-import { createBrowserUI } from 'mind-os/ui';
-import { installHttpStatus } from './status-banner';
+import {initApp, installMobileNavigation, type AppHandle, type AppRecoveryState} from '@itookit/app-shell';
+import {WORKSPACES, ROUTE_ALIASES} from 'mind-os/workspaces';
+import {createBrowserUI} from 'mind-os/ui';
+import {installHttpStatus} from './status-banner';
 import {connectApplication, type ApplicationConnection} from './application-connection';
 import {stylesReady} from './styles-ready';
+import {ViewRecovery} from './view-recovery';
 
 export async function startApplicationClient(onProgress: (message: string) => void, onShellReady?: () => void,
-    connection: ApplicationConnection = connectApplication()) {
+    connection: ApplicationConnection = connectApplication()): Promise<AppHandle> {
     if (!performance.getEntriesByName('mindos:entry').length) performance.mark('mindos:entry');
     installMobileNavigation();
-    const releaseStatus = installHttpStatus({connection});
+    let activeConnection = connection, releaseStatus = () => {};
+    const open = async (recovery?: AppRecoveryState) => mount(activeConnection, onProgress, onShellReady, recovery);
+    const initial = await open();
+    const owner = new ViewRecovery<AppRecoveryState, AppHandle>(initial, async state => {
+        activeConnection = connectApplication();
+        const next = await open(state);
+        watch(); return next;
+    });
+    function watch(): void {
+        releaseStatus();
+        releaseStatus = installHttpStatus({connection: activeConnection, recover: () => owner.recover()});
+    }
+    watch();
+    return new Proxy(initial, {get: (_target, key) => {
+        if (key === 'destroy') return async () => {releaseStatus(); await owner.close();};
+        const value = Reflect.get(owner.current, key);
+        return typeof value === 'function' ? value.bind(owner.current) : value;
+    }});
+}
+
+async function mount(connection: ApplicationConnection, onProgress: (message: string) => void,
+    onShellReady?: () => void, recovery?: AppRecoveryState): Promise<AppHandle> {
     try {
         const [{services, backend, flowLibrary, fileTemplates, initialView}] = await Promise.all([connection.ready, stylesReady()]);
-        const app = await initApp({ services, backend, fileTemplates, workspaces: WORKSPACES,
-            initialView,
+        const app = await initApp({services, backend, fileTemplates, workspaces: WORKSPACES, initialView, recovery,
             ui: createBrowserUI(flowLibrary), defaultSlug: 'start', startPage: true, onProgress, onShellReady,
-            onEditorReady: () => {
-                performance.mark('mindos:editor-ready');
-                performance.measure('mindos:entry-to-editor', 'mindos:entry', 'mindos:editor-ready');
-                if (performance.getEntriesByName('mindos:document').length) performance.measure('mindos:document-to-editor', 'mindos:document', 'mindos:editor-ready');
-            },
-            routeAliases: ROUTE_ALIASES });
-        app.onDestroy(releaseStatus);
+            onEditorReady: markEditorReady, routeAliases: ROUTE_ALIASES});
         app.onDestroy(() => connection.close(), 'sources');
         return app;
-    } catch (error) { releaseStatus(); await connection.close().catch(() => {}); throw error; }
+    } catch (error) {await connection.close().catch(() => {}); throw error;}
+}
+
+function markEditorReady(): void {
+    performance.mark('mindos:editor-ready');
+    performance.measure('mindos:entry-to-editor', 'mindos:entry', 'mindos:editor-ready');
+    if (performance.getEntriesByName('mindos:document').length)
+        performance.measure('mindos:document-to-editor', 'mindos:document', 'mindos:editor-ready');
 }

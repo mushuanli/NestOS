@@ -40,6 +40,7 @@ export function isProvider(value: unknown): value is LLMProvider {
     return isRecord(value) && storageId(value.id) && text(value.name) && text(value.baseURL)
         && enumValue(value.implementation, ['openai-compatible', 'chatgpt', 'anthropic', 'gemini', 'custom'])
         && Array.isArray(value.models) && value.models.every(model => isRecord(model) && identifier(model.id) && isMediaCatalog(undefined, model.operations) && isReasoningCapabilities(model.reasoning)
+            && optional(model.supportedOperations, operations => Array.isArray(operations) && operations.every(operation => operation === 'image.generate' || operation === 'speech.synthesize'))
             && optional(model.reasoningByProtocol, value => isRecord(value) && Object.entries(value).every(([key, caps]) => protocol(key) && isReasoningCapabilities(caps))))
         && isMediaCatalog(value.media, undefined)
         && optional(value.credentialMode, mode => enumValue(mode, ['api-key', 'host']))

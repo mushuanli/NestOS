@@ -109,6 +109,11 @@ export class Workbench {
         this.bindEvents();
     }
 
+    assertRecovery(): void { this.lifecycleUnsubscribe.assertRecovery(); }
+    captureRecovery(): unknown { return this.lifecycleUnsubscribe.captureRecovery(); }
+    restoreRecovery(state: unknown): void { this.lifecycleUnsubscribe.restoreRecovery(state); }
+    suspendForRecovery(): void { this.lifecycleUnsubscribe.suspendForRecovery(); }
+
     private enhancedEditorFactory = async (
         container: HTMLElement,
         runtimeOptions: EditorOptions

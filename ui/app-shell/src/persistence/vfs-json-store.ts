@@ -11,6 +11,7 @@ export class VfsJsonStore {
     private readonly preloads = new Map<string, Promise<unknown>>();
     private reading = false;
     private writing?: Promise<void>;
+    private suspended = false;
     constructor(private readonly backend: DocumentPort) {}
 
     /** Batch the current route's known documents, consuming each prepared read once. */
@@ -53,6 +54,7 @@ export class VfsJsonStore {
         }
     }
     write(name: string, value: unknown): void {
+        if (this.suspended) return;
         const content = JSON.stringify(value);
         if (content === (this.pending.get(name) ?? this.saved.get(name))) return;
         this.prefetched.delete(name);
@@ -60,7 +62,7 @@ export class VfsJsonStore {
         this.pending.set(name, content);
         if (!this.writing) {
             this.writing = Promise.resolve().then(() => this.drain());
-            void this.writing.catch(error => console.error('[ui-state] failed to persist', error));
+            void this.writing.catch(error => {if (!this.suspended) console.error('[ui-state] failed to persist', error);});
         }
     }
     private async drain(): Promise<void> {
@@ -77,7 +79,10 @@ export class VfsJsonStore {
     }
     /** Retry failed writes, and report failures to the caller retaining the draft. */
     async flush(): Promise<void> {
+        if (this.suspended) {await this.writing?.catch(() => {}); return;}
         if (!this.writing && this.pending.size) this.writing = this.drain();
         await this.writing;
     }
+    /** A dead view must not retry presentation writes while its replacement is opening. */
+    suspend(): void { this.suspended = true; this.pending.clear(); }
 }

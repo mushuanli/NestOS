@@ -1,6 +1,8 @@
 import { expect, it, vi } from 'vitest';
 import { LLMMediaClient } from '@itookit/driver-llm';
-import { createDoubaoSpeechProvider, DOUBAO_SPEECH_REFERENCE } from '../../src/llm-management/constants/catalogs/doubao-speech';
+import {createLlmDeviceCatalog} from '@itookit/device-llm';
+const createDoubaoSpeechProvider = () => createLlmDeviceCatalog().providers['doubao-speech'];
+const DOUBAO_SPEECH_REFERENCE = createLlmDeviceCatalog().providerReferences['doubao-speech'];
 import { createMindosLlmPresets } from '../../src/llm-management/presets';
 import { ProviderManager } from '../../src/llm-management/device/provider-manager';
 import { LLMDeviceDriver } from '../../src/llm-management/device/llm-device-driver';

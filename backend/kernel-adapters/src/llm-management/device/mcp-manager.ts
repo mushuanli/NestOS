@@ -1,4 +1,4 @@
-// @file: device-llm/device/mcp-manager.ts
+// @file: kernel-adapters/llm-management/device/mcp-manager.ts
 //
 // MCPManager — MCP server config storage and active connection lifecycle.
 

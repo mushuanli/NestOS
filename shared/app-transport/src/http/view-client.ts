@@ -24,6 +24,8 @@ export class HttpViewClient {
     private lastEventId = 0;
     private resumable = false;
     private reconnectDelay = 0;
+    private lastStreamActivity = 0;
+    private streamConnected = false;
     private expired?: ViewExpiredError;
     private wake?: () => void;
     private callbacks: Promise<void> = Promise.resolve();
@@ -121,6 +123,7 @@ export class HttpViewClient {
             if (response.headers.get('X-MindOS-View-Expired') === '1') { await response.body?.cancel(); this.expire(); throw this.expired; }
             if (!response.ok || !response.body) { await response.body?.cancel(); throw new FSError('EIO', `View subscription failed (${response.status})`); }
             if (resume && response.headers.get('X-MindOS-View-Resume') !== '1') { await response.body.cancel(); this.expire(); throw this.expired; }
+            this.streamConnected = true; this.lastStreamActivity = Date.now();
             return response;
         } finally { clearTimeout(timer); }
     }
@@ -132,6 +135,7 @@ export class HttpViewClient {
                 this.showDisconnected(error);
             }
             if (!this.resumable || this.abort.signal.aborted || this.updateFailed || this.closing) return;
+            this.streamConnected = false;
             // Headers alone do not prove a healthy stream; reset only after a stable connection.
             if (Date.now() - connectedAt >= 15000) this.reconnectDelay = 0;
             await this.ready;
@@ -149,7 +153,11 @@ export class HttpViewClient {
             }
         }
     }
-    retryConnection(): void { this.wake?.(); }
+    retryConnection(): void {
+        if (this.abort.signal.aborted || this.closing || this.updateFailed) return;
+        if (this.wake) {this.wake(); return;}
+        if (this.streamConnected && Date.now() - this.lastStreamActivity >= 30000) this.streamAbort.abort();
+    }
     private pause(delay: number): Promise<void> {
         return new Promise(resolve => {
             const done = () => { clearTimeout(timer); this.abort.signal.removeEventListener('abort', done); this.wake = undefined; resolve(); };
@@ -167,6 +175,7 @@ export class HttpViewClient {
             while (!signal.aborted) {
                 idle = setTimeout(() => this.streamAbort.abort(), 45000);
                 const chunk = await reader.read(); if (chunk.done) throw new FSError('EIO', 'View stream disconnected');
+                this.lastStreamActivity = Date.now();
                 clearTimeout(idle);
                 buffer += decoder.decode(chunk.value, { stream: true });
                 if (buffer.length > 2 * 1024 * 1024) { this.showUpdateError(new FSError('EBUSY', 'View event is too large')); return; }

@@ -1,4 +1,4 @@
-// @file: device-llm/constants/agents.ts
+// @file: kernel-adapters/llm-management/constants/agents.ts
 // Layer 3 — Agent 默认定义（个性化功能定制）。
 // Agents define prompts and capabilities independently of model connections.
 

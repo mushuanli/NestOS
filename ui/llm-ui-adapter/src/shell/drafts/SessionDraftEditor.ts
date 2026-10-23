@@ -360,6 +360,22 @@ export class SessionDraftEditor extends IEditor {
     }
     setReadOnly(readOnly: boolean): void {if (this.delegate) this.delegate.setReadOnly(readOnly); else this.input?.setLoading(readOnly);}
     isDirty(): boolean { return !this.confirmed && this.saves.dirty || !!this.delegate?.isDirty(); }
+    captureRecovery(): unknown {
+        if (this.delegate) return this.delegate.captureRecovery?.();
+        if (this.sending || this.binding || !this.input) throw Object.assign(new Error(t('httpApp.recoveryBusy')), {code: 'RECOVERY_BUSY'});
+        return {draftId: this.options.sessionDraft?.id, input: this.input.captureRecovery()};
+    }
+    restoreRecovery(state: unknown): void {
+        if (this.delegate) {this.delegate.restoreRecovery?.(state); return;}
+        const snapshot = state as {draftId?: string; input: unknown};
+        if (snapshot.draftId !== this.options.sessionDraft?.id) throw Object.assign(new Error(t('httpApp.recoveryDraftChanged')), {code: 'RECOVERY_DRAFT_CHANGED'});
+        this.input?.restoreRecovery(snapshot.input);
+        this.config = this.input?.getConfig();
+    }
+    suspendForRecovery(): void {
+        this.cancelPendingRender(); this.confirmed = true;
+        this.delegate?.suspendForRecovery?.(); this.flushPendingSave = async () => {};
+    }
     setDirty(dirty: boolean): void {this.delegate?.setDirty(dirty);}
     async navigateTo(...args: Parameters<IEditor['navigateTo']>): Promise<void> {await this.delegate?.navigateTo(...args);}
     async search(query: string): ReturnType<IEditor['search']> {return this.delegate?.search(query) ?? [];}

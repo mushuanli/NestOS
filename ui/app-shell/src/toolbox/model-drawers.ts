@@ -3,6 +3,7 @@ import { isDefaultConnection } from './model-defaults';
 import { connectionReadiness } from './model-readiness';
 import { TOOLBOX_ICONS, t } from '@itookit/common';
 import { TOOLBOX_FILTERS } from './routes';
+import {modelIndicators} from './model-indicators';
 import type { VFSNodeUI } from '@itookit/vfs-ui';
 import type { ToolboxInventory } from '@itookit/app-contracts/services';
 
@@ -42,7 +43,7 @@ export function modelDrawers(items: VFSNodeUI[], inventory: ToolboxInventory): V
 function decorateConnection(item: VFSNodeUI, inventory: ToolboxInventory): VFSNodeUI {
     const id = decodeURIComponent(item.id.slice('/connections/'.length)), status = connectionReadiness(id, inventory);
     const isDefault = isDefaultConnection(inventory, id);
-    return {...item, presentation: {...item.presentation, subtitle: undefined},
+    return {...item, presentation: {...item.presentation, subtitle: undefined, showTags: false, indicators: modelIndicators(inventory.connections.get(id)?.capabilityTags)},
         content: {...item.content!, summary: [status.label, item.content?.summary].filter(Boolean).join(' · ')},
         metadata: {...item.metadata, title: item.metadata.title + (isDefault ? ` · ${t('modelDefaults.default')}` : ''),
             custom: {...item.metadata.custom, modelRank: status.rank, modelDefault: isDefault}}};

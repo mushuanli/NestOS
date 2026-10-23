@@ -67,6 +67,13 @@ export class TwinWorkbench {
         await this.navigation.sync('/' + this.page);
     }
     getActiveResourceId(): string { return '/' + this.page + (this.selectedSession ? '/' + encodeURIComponent(this.selectedSession) : ''); }
+    captureRecovery(): unknown {
+        if (this.busy || this.dirty || this.autosave.pending)
+            throw Object.assign(new Error(t('httpApp.recoverySettings')), {code: 'RECOVERY_SETTINGS_FORM'});
+        return null;
+    }
+    restoreRecovery(_snapshot: unknown): void {}
+    suspendForRecovery(): void { this.generation++; this.abort.abort(); }
     async destroy(): Promise<void> {
         await this.autosave.flush();
         if (this.autosave.pending) throw new Error(this.autosave.error || 'TWIN_SETTINGS_UNSAVED');

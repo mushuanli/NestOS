@@ -53,6 +53,7 @@ export interface HistoryViewOptions {
  * 内部细节（5 个子控制器）完全封装。
  */
 export class HistoryView implements IHistoryPresenter {
+    hasPendingEdits(): boolean { return [...this.renderer.editors.values()].some(editor => editor.isEditing()); }
     private container: HTMLElement;
 
     // 子控制器

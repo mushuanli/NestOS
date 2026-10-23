@@ -1,3 +1,4 @@
+import {t as translate} from '@itookit/common';
 import {rememberPagePresentation, writePageHistory, type PagePresentation} from './navigation/page-history';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
 import {withInitialDirectory} from './browser/initial-directory';
@@ -55,6 +56,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     let t = t0;
     const cleanupFns: Array<() => void | Promise<void>> = [];
     const sourceCleanupFns: Array<() => void | Promise<void>> = [];
+    const managerCache = new Map<string, WorkspaceHandle>();
+    let recoveringView = false;
     try {
     const logStep = (label: string) => {
         const now = performance.now();
@@ -82,6 +85,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     };
 
     workspaces.forEach(registerWorkspaceRoute);
+    for (const workspace of workspaces) {const root = document.getElementById(workspace.elementId); if (root) root.inert = false;}
     if (options.startPage) { routeMap[START_PAGE_SLUG] = START_PAGE_ID; reverseRouteMap[START_PAGE_ID] = START_PAGE_SLUG; }
     const toolboxId = workspaces.find(ws => ws.type === 'toolbox')?.elementId;
     if (toolboxId) for (const slug of TOOLBOX_KINDS) routeMap[slug] = toolboxId;
@@ -243,7 +247,6 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     // ── 6. Manager cache + workspace loader ────────────────────────────────────
 
-    const managerCache = new Map<string, WorkspaceHandle>();
     const navigationObservers = new Map<WorkspaceController, () => void>();
     let visibleWorkspaceId: string | undefined;
     let navigationRevision = 0, closed = false;
@@ -429,8 +432,10 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             },
         });
 
-        const controller: WorkspaceController & WorkspaceCreation = {
+        const controller: WorkspaceHandle & WorkspaceCreation = {
             start: () => manager.start(), destroy: () => manager.destroy(),
+            captureRecovery: () => manager.captureRecovery(), restoreRecovery: state => manager.restoreRecovery(state),
+            suspendForRecovery: () => manager.suspendForRecovery(), assertRecovery: () => manager.assertRecovery(),
             setVisible: visible => manager.setVisible?.(visible),
             ...(manager.setNavigationVisible ? {setNavigationVisible: (visible: boolean) => manager.setNavigationVisible(visible)} : {}),
             openResource: id => manager.openFile(id), createResource: options => manager.createAndOpenFile(options),
@@ -463,8 +468,12 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         if (managerCache.has(elementId)) return Promise.resolve(managerCache.get(elementId));
         const owned = cleanupGroup();
         const loading = doLoadWorkspace(wsConfig, owned.own, initialResource).then(manager => {
+            if (options.recovery?.workspaces.has(elementId)) {
+                managerCache.get(elementId)?.restoreRecovery?.(options.recovery.workspaces.get(elementId));
+            }
             cleanupFns.push(owned.close); return manager;
         }).catch(async error => {
+            if (options.recovery) managerCache.get(elementId)?.suspendForRecovery?.();
             managerCache.delete(elementId); await owned.close(); throw error;
         }).finally(() => pendingLoads.delete(elementId));
         pendingLoads.set(elementId, loading);
@@ -717,7 +726,14 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     const initialRevision = navigationRevision;
     options.onShellReady?.();
     await initialLoad;
+    if (options.recovery) managerCache.get(initWs)?.assertRecovery?.();
     if (initialRevision === navigationRevision) {
+        const presentation = options.recovery?.presentation;
+        if (presentation?.workspaceId === initWs) {
+            if (presentation.mobileView === 'list') await managerCache.get(initWs)?.restoreNavigationScope?.(presentation.navigationScope ?? '/');
+            const layout = document.getElementById(initWs)?.querySelector<HTMLElement>('.mm-layout');
+            if (layout && ['list', 'detail'].includes(presentation.mobileView ?? '')) layout.dataset.mobileView = presentation.mobileView;
+        }
         const initialResource = managerCache.get(initWs)?.getActiveResourceId() ?? null;
         updateHistory(initWs, initialResource, 'replace');
     }
@@ -729,6 +745,26 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         vfs,
         sessionFiles,
         services,
+        captureRecovery() {
+            if (pendingLoads.size || document.querySelector('dialog[open]'))
+                throw Object.assign(new Error(translate('httpApp.recoveryBusy')), {code: 'RECOVERY_BUSY'});
+            const workspaces = new Map(options.recovery?.workspaces);
+            for (const [id, manager] of managerCache) {
+                if (!manager.captureRecovery) throw Object.assign(new Error(translate('httpApp.recoveryUnsupported')), {code: 'RECOVERY_UNSUPPORTED_WORKSPACE'});
+                workspaces.set(id, manager.captureRecovery());
+            }
+            rememberCurrentPage();
+            const id = visibleWorkspaceId;
+            const layout = id && document.getElementById(id)?.querySelector<HTMLElement>('.mm-layout');
+            return {workspaces, presentation: id ? {workspaceId: id, mobileView: layout ? layout.dataset.mobileView : undefined,
+                navigationScope: managerCache.get(id)?.getNavigationScope?.()} : undefined};
+        },
+        suspendForRecovery() {
+            recoveringView = true; uiDocs.suspend();
+            navigationAbort.abort();
+            for (const id of managerCache.keys()) {const root = document.getElementById(id); if (root) root.inert = true;}
+            for (const manager of managerCache.values()) manager.suspendForRecovery?.();
+        },
 
         async navigate(slug: string, resourceId?: string): Promise<void> {
             const wsId = resolveTarget(slug, resourceId);
@@ -767,12 +803,15 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             closed = true; ++navigationRevision; navigationAbort.abort();
             await Promise.allSettled(pendingLoads.values());
             for (const fn of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
-                try { await fn(); } catch (error) { console.error('[App] Cleanup failed', error); }
+                try { await fn(); } catch (error) {
+                    if (!recoveringView) console.error('[App] Cleanup failed', error);
+                }
             }
             cleanupFns.length = 0; sourceCleanupFns.length = 0;
         },
     };
     } catch (error) {
+        if (options.recovery) for (const manager of managerCache.values()) manager.suspendForRecovery?.();
         delete document.body.dataset.appStarting;
         for (const close of [...cleanupFns].reverse().concat([...sourceCleanupFns].reverse())) {
             try { await close(); } catch (cleanupError) { console.error('[App] Startup cleanup failed', cleanupError); }

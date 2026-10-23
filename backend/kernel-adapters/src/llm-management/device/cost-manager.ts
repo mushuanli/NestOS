@@ -1,4 +1,4 @@
-// @file: device-llm/device/cost-manager.ts
+// @file: kernel-adapters/llm-management/device/cost-manager.ts
 //
 // CostManager — wrapper around CostStore exposing recordCost / queryCosts.
 

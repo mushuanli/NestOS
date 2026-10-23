@@ -37,7 +37,7 @@ const replacePrefix = (path: string, old: string, next: string) => path === old 
 
 /** Each open file owns its editor and save coordinator independently of navigation. */
 export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, container: HTMLElement,
-    factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void>; openResource(path: string): Promise<void>; getActiveResourceId(): string | null } {
+    factory?: EditorFactory, options: ConnectOptions = {}): (() => Promise<void>) & { whenReady(): Promise<void>; setVisible(visible: boolean): Promise<void>; openDirectory(path: string): Promise<void>; openResource(path: string): Promise<void>; getActiveResourceId(): string | null; assertRecovery(): void; captureRecovery(): unknown; restoreRecovery(state: unknown): void; suspendForRecovery(): void } {
     const { resolveEditor, onEditorCreated, files = { fs: engine, cwd: '/' }, sidebarContainer, workbenchState, emptyMessage, navigationLabel, onBeforeNavigate, saveDebounceMs: _debounce, ...extra } = options;
     if (files.fs !== engine) throw new Error('Editor file context differs from its file tree');
     const revisions = new Map<string, string | undefined>();
@@ -208,7 +208,7 @@ export function connectEditorLifecycle(vfs: VFSUIShell, engine: IFileSystem, con
                 custom: {...node.metadata, _extension: node.name.includes('.') ? '.' + node.name.split('.').pop() : ''}}};
         selectionWork = select({item}); await selectionWork;
     }
-    return Object.assign(dispose, { openDirectory, openResource, getActiveResourceId: () => tabs.current?.value?.node.id ?? null, async whenReady(): Promise<void> { await selectionWork; }, async setVisible(next: boolean): Promise<void> {
+    return Object.assign(dispose, { assertRecovery: () => tabs.assertRecovery(), captureRecovery: () => tabs.captureRecovery(), restoreRecovery: (state: unknown) => tabs.restoreRecovery(state), suspendForRecovery: () => tabs.suspendForRecovery(), openDirectory, openResource, getActiveResourceId: () => tabs.current?.value?.node.id ?? null, async whenReady(): Promise<void> { await selectionWork; }, async setVisible(next: boolean): Promise<void> {
         if (visible === next) return; visible = next;
         if (!next) { loads.cancel(); await Promise.all(tabs.values().map(tab => flush(tab.value?.editor))); }
         else if (pendingItem && (tabs.current?.id !== pendingItem.id || !tabs.current?.value)) await select({ item: pendingItem });

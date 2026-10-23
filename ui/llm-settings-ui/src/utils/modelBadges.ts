@@ -22,30 +22,44 @@ function badgeStyle(color: string): string {
         + `border:1px solid ${color}40;font-size:11px;line-height:1;padding:2px 5px;border-radius:4px;`;
 }
 
-/**
- * 渲染模型能力 badge 组（inline HTML）。
- * 只渲染值为 true 的 supportsXXX 字段；无任何能力时返回空字符串。
- */
-export function renderModelCapabilityBadges(model: LLMModel): string {
+/** Describe declared capabilities, with a category fallback when no details are available. */
+function capabilityBadges(model: LLMModel) {
     const badges = CAPABILITY_FIELDS
         .filter(([, field]) => model[field] === true)
         .map(([cap]) => {
             const meta = MODEL_CAPABILITY_META[cap];
             const label = t(`model.capability.${cap}` as Parameters<typeof t>[0]);
-            return `<span class="model-cap-badge" data-capability="${cap}" role="img" aria-label="${escapeAttr(label)}" style="${badgeStyle(meta.color)}" title="${escapeAttr(label)}">${meta.icon}</span>`;
-        })
-        .join('');
-    const operations = (['image.generate', 'speech.synthesize'] as const).filter(operation => model.operations?.[operation]);
-    const media = operations.map(operation => {
+            return {...meta, key: cap, label};
+        });
+    const operations = (['image.generate', 'speech.synthesize'] as const).filter(operation => model.operations?.[operation] || model.supportedOperations?.includes(operation));
+    badges.push(...operations.map(operation => {
         const meta = MODEL_CATEGORY_META[operation === 'image.generate' ? 'image' : 'audio'];
         const label = t(operation === 'image.generate' ? 'model.capability.imageGeneration' : 'model.capability.speechSynthesis');
-        return `<span class="model-cap-badge" data-capability="${operation}" role="img" aria-label="${escapeAttr(label)}" style="${badgeStyle(meta.color)}" title="${escapeAttr(label)}">${meta.icon}</span>`;
-    }).join('');
-    if (!badges && !media && model.category && MODEL_CATEGORY_META[model.category] && model.capabilitiesKnown !== false) {
+        return {...meta, key: operation, label};
+    }));
+    if (!badges.length && model.category && MODEL_CATEGORY_META[model.category] && model.capabilitiesKnown !== false) {
         const meta = MODEL_CATEGORY_META[model.category], label = t(`model.category.${model.category}` as Parameters<typeof t>[0]);
-        return `<span class="model-cap-badge" data-capability="category.${model.category}" role="img" aria-label="${escapeAttr(label)}" style="${badgeStyle(meta.color)}" title="${escapeAttr(label)}">${meta.icon}</span>`;
+        badges.push({...meta, key: `category.${model.category}`, label});
     }
-    return badges + media || (model.capabilitiesKnown === true ? '' : `<span class="model-cap-badge" role="img" aria-label="${escapeAttr(t('model.capability.unknown'))}" title="${escapeAttr(t('model.capability.unknown'))}">?</span>`);
+    return badges;
+}
+
+/** Share the same capability descriptions between native options and HTML badges. */
+export function modelCapabilityIndicators(model: LLMModel) {
+    const unique = new Map<string, {color: string; keys: Set<string>; labels: Set<string>}>();
+    for (const badge of capabilityBadges(model)) {
+        const entry = unique.get(badge.icon) ?? {color: badge.color, keys: new Set<string>(), labels: new Set<string>()};
+        entry.keys.add(badge.key); entry.labels.add(badge.label); unique.set(badge.icon, entry);
+    }
+    return [...unique].map(([icon, entry]) => ({icon, color: entry.color, keys: [...entry.keys], label: [...entry.labels].join(' / ')}));
+}
+
+/** One visual badge can describe several capabilities that share the same icon. */
+export function renderModelCapabilityBadges(model: LLMModel): string {
+    return modelCapabilityIndicators(model).map(({icon, color, keys, label: text}) => {
+        const label = escapeAttr(text);
+        return `<span class="model-cap-badge" data-capability="${escapeAttr(keys[0])}" data-capabilities="${escapeAttr(keys.join(' '))}" role="img" aria-label="${label}" style="${badgeStyle(color)}" title="${label}">${icon}</span>`;
+    }).join('') || (model.capabilitiesKnown === true ? '' : `<span class="model-cap-badge" role="img" aria-label="${escapeAttr(t('model.capability.unknown'))}" title="${escapeAttr(t('model.capability.unknown'))}">?</span>`);
 }
 
 /**

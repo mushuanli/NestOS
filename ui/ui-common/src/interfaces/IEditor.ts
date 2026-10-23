@@ -260,6 +260,13 @@ export abstract class IEditor {
     flushPendingSave?(): Promise<void>;
     cancelPendingRender?(): void;
 
+    /** Capture local UI state without saving or submitting a command. */
+    captureRecovery?(): unknown;
+    /** Restore a snapshot from the same editor type without submitting it. */
+    restoreRecovery?(snapshot: unknown): void;
+    /** Stop saving through an expired host before disposing the old view. */
+    suspendForRecovery?(): void;
+
     /**
      * 手动设置编辑器的脏状态。
      * @param {boolean} isDirty - 新的脏状态。

@@ -4,6 +4,8 @@
 
 RAPTOR 是机制与方法来源，不是此次交付链中的黑盒运行器。远程 harness 调用、Composite 和隔离后端围绕这条原生执行链讨论，不能替代 Agent → Flow → 规则真实执行的验收。
 
+本文只讨论用例迁入与边界。可移植到通用编排层的机制、当前实现位置、缺口与闭环方式另见[Harness 通用原语](harness-borrowables.md)。
+
 ## 基线与交付状态
 
 RAPTOR 分析基线固定为 [`2ac96303d5e382c196aa34b2984a3c6a218132a9`](https://github.com/gadievron/raptor/tree/2ac96303d5e382c196aa34b2984a3c6a218132a9)，避免将后续上游变化当成本次验证结果。本地临时 checkout 仅用于分析，不是应用运行依赖，也不能写进用户配置。

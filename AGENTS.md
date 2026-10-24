@@ -95,6 +95,7 @@ pnpm --filter @itookit/<pkg> typecheck
 | [TODO 与进度](./doc/todo.md) | 目标、已完成范围与待办（活文档） |
 | [设计文档](./doc/design/) | 当前设计规范（VFS / harness / flow / skill / session 浏览） |
 | [Durable 证据映射](./doc/design/durable-harness-evidence.md) | 五篇 Durable 设计的目标 → 实现 → 持久记录 → 故障证据 |
+| [Harness 通用原语](./doc/design/harness-borrowables.md) | 取自 RAPTOR 的可移植原语、当前实现位置、缺口与闭环方式 |
 | [文档导航](./doc/README.md) | 按架构、API、运行与设计主题查找当前文档 |
 | [协议历史背景](./doc/feat/README.md) | 当前协议仍引用的三份历史材料（不作为当前 API 依据） |
 

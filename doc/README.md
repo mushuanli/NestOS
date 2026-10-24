@@ -37,6 +37,7 @@
 | 非 ML 纸边检测验收 | [风险、68例回归与正式接入门槛](design/image-parser-detector-validation.md) |
 | 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/mindos-node-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/mindos-node-sync.md) |
 | RAPTOR 用例与远程编排 | [现有 Flow、Composite、Claude Code、执行连接与沙箱边界](design/raptor-harness-integration.md)、[可执行 Flow 示例](../apps/cli/examples/raptor/README.md)、[远程 Harness 执行连接](design/remote-harness-connections.md) |
+| Harness 通用原语 | [取自 RAPTOR 的可移植原语、现状实现位置、缺口与闭环方式](design/harness-borrowables.md) |
 | Anki 工作流 | [三连接 Flow、Rust 工具、YAML 清单与打包](design/anki-flow.md) |
 | 数字分身 | [当前规则驱动设计与支持边界](design/digital-twin.md) |
 | Durable 契约 | [主协议](design/durable-harness-protocol.md)、[目标与证据映射](design/durable-harness-evidence.md)、[接口与事件审查](design/durable-kernel-interface-review.md) |

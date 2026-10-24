@@ -4,7 +4,7 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { createBuiltinDagPluginRegistry, DurableFlowExecutor, registerDurablePrograms, flowToDag } from '../src/flow';
 import { decodeSchedulerCheckpoint } from '../src/flow/checkpoint-decoder';
 import { recordFlowSkip, restoreFlowSkips, serializeFlowSkips, clearFlowSkip } from '../src/flow/skip-state';
-import type { FlowRevision, FlowNodeDefinition } from '../src/contracts';
+import type { FlowRevision, FlowNodeDefinition, HarnessHookContext } from '../src/contracts';
 
 const value = (id: string): FlowNodeDefinition => ({ id: id as never, name: id,
     plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: { value: id } });
@@ -23,14 +23,18 @@ function branchFlow(): FlowRevision {
 }
 
 let manager: Awaited<ReturnType<typeof createVFS>>['manager'], kernel: Kernel, executor: DurableFlowExecutor;
+const hookEvents: HarnessHookContext[] = [];
 beforeEach(async () => {
+    hookEvents.length = 0;
     ({ manager } = await createVFS({ rootBackend: new MemoryBackend() }));
     const fs = await manager.openFileSystem('/data/test');
     kernel = new Kernel({ catalog: { fs }, pollMs: 5 });
     kernel.registerStorageResolver({ kind: 'test', async resolve() { return { fs, rootPath: '/s' }; } });
     registerDurablePrograms(kernel); await kernel.initialize();
     await kernel.createSession({ id: 's', storage: { kind: 'test', locator: null } });
-    executor = new DurableFlowExecutor({ kernel, plugins: createBuiltinDagPluginRegistry() });
+    executor = new DurableFlowExecutor({ kernel, plugins: createBuiltinDagPluginRegistry(),
+        hooks: { descriptor: { source: 'test-hooks', contentHash: 'test', trusted: true },
+            emit: async context => { hookEvents.push(context); } } });
 });
 afterEach(async () => { kernel.dispose(); await executor.waitIdle(); await manager.dispose(); });
 
@@ -47,6 +51,19 @@ it('records why each unselected node never ran and keeps the run successful', as
         cause: { nodeId: 'unused', edgeId: 'unused-tail' } });
     expect(skipped.map(item => item.nodeId)).not.toContain('selected');
     expect(skipped.map(item => item.nodeId)).not.toContain('merge');
+});
+
+it('reports each skip as a node.skipped hook event exactly once', async () => {
+    const flow = branchFlow();
+    flow.outputs = { result: { value: '${nodes.merge.outputs.result}' } };
+    const run = await executor.submit('s', await flowToDag(flow, undefined, undefined, async () => flow));
+    await run.root.wait({ timeoutMs: 3000 });
+    const skips = hookEvents.filter(event => event.event === 'node.skipped');
+    expect(skips.map(event => (event.payload as { nodeId: string }).nodeId).sort()).toEqual(['unused', 'unused-tail']);
+    const branchSkip = skips.find(event => (event.payload as { nodeId: string }).nodeId === 'unused')!;
+    expect(branchSkip.payload).toMatchObject({ reason: 'branch-not-selected', iteration: 1, causeNodeId: 'route',
+        causeEdgeId: 'unused', stage: 'skip', result: 'skipped' });
+    expect(skips.every(event => event.sessionId === 's')).toBe(true);
 });
 
 it('keeps skip reasons recoverable from the persisted checkpoint', async () => {

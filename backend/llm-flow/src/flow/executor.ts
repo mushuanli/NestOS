@@ -281,6 +281,19 @@ export class DurableFlowExecutor {
             const readyNodes = () => readyFlowNodes({ spec, nodes, edges, callInputs, instances, skipped, skipRecords,
                 detachedNodes, loopNodes, backEdges, routeEdgeIds, edgeState, dispatchOrder, maxIterations, doneAt, latestDone });
 
+            // Skips restored from a checkpoint were reported by the segment that decided them.
+            const reportedSkips = new Set<string>(saved ? skipRecords.keys() : []);
+            const reportSkips = async () => {
+                for (const [nodeId, record] of skipRecords) {
+                    if (reportedSkips.has(nodeId)) continue;
+                    reportedSkips.add(nodeId);
+                    await this.emitHook('node.skipped', sessionId, { nodeId, reason: record.reason, iteration: record.iteration,
+                        ...(record.cause?.nodeId ? { causeNodeId: record.cause.nodeId } : {}),
+                        ...(record.cause?.edgeId ? { causeEdgeId: record.cause.edgeId } : {}),
+                        ...(published ? { rootTaskId: published.root.id } : {}), stage: 'skip', result: 'skipped' });
+                }
+            };
+
             const taskFactory = new FlowTaskFactory({
                 sessionId, plugins: this.options.plugins, contextProgramVersion,
                 resolveTools: this.options.resolveTools ? (id, allowed) => this.options.resolveTools!(id, allowed) : undefined,
@@ -452,7 +465,7 @@ export class DurableFlowExecutor {
                 session, run: published, lease, nodes, instances, completed, detachedNodes,
                 nodeGenerations, completionOrder, delegationGroupByChild, maxConcurrency,
                 variableStore, plugins, delegation, enforceDeadlines, refreshCallInputs,
-                readyNodes, submitNode, compensateChain, applyEffects, saveCheckpoint, publish,
+                readyNodes, reportSkips, submitNode, compensateChain, applyEffects, saveCheckpoint, publish,
                 isDisposed: () => this.options.kernel.isDisposed,
                 emitHook: (event, payload) => this.emitHook(event, sessionId, payload),
                 accountTokens: async output => {

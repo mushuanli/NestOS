@@ -30,7 +30,7 @@
 | B-03 | 内容寻址证据块 + 环境不可验证第三态 | `backend/kernel-adapters/src/effects/llm-chat-effect.ts` 有 indeterminate | 无 `unverifiable` 分类；证据块无跨管道去重 | 一 |
 | B-04 | 源 span 五态 staleness | 只有定义/契约漂移（`backend/llm-flow/src/flow/run-catalog.ts`） | 恢复时不校验被处理内容是否变化 | 一 |
 | B-05 | 覆盖账本 + 残差查询 | 无 | 无法回答“看过什么、剩什么” | 二 |
-| B-06 | `skipped-with-reason` 阶段终态 | 原因已记录、持久化并进入 Run 结果 `skipped[]` | 缺事件投影、流程内引用与预算判据 | 一（部分完成） |
+| B-06 | `skipped-with-reason` 阶段终态 | 原因已记录、持久化、进入 Run 结果 `skipped[]` 并有 `node.skipped` 事件 | 缺流程内引用与预算判据 | 一（部分完成） |
 | B-07 | judge 绑定 primary 不可变快照 | `apps/cli/examples/raptor/raptor-review.flow` 当前成立 | 无校验规则保证未来不被回写污染 | 二 |
 | B-08 | (item × model) 成对幂等身份 + 每模型断路器 | `chargeBudget` 幂等，粒度是资源句柄 | 无 pair 身份；无 per-model 断路器 | 三 |
 | B-09 | 预算预检取最贵模型上界 + 分档 cutoff | 只有每请求输出上限 | 无累计预算与分档跳过判据 | 三 |
@@ -91,10 +91,10 @@
 
 - 机制：阶段可以“整段跳过并记录原因”，且必须与“跑了但全部失败”区分开——二者运维响应相反。
 - 上游：`packages/llm_analysis/orchestrator.py` 的 `should_skip_phase` 与 `_classify_absent_consensus`；分档 cutoff 为 consensus 0.70、judge 0.75、exploit 0.85、patch 0.85、aggregate 0.95。
-- 现状：已落地第一版。`backend/llm-flow/src/flow/skip-state.ts` 定义通用原因词表（`branch-not-selected`、`upstream-skipped`、`call-source-skipped`、`delegation-cancelled`）与记录结构；跳过写入点仍是 `backend/llm-flow/src/flow/scheduler-readiness.ts` 的单一 `skipNode`，首次判定优先，激活与图重试失效时清除。原因随 `backend/llm-flow/src/flow/scheduler-state.ts` 进入检查点（可选字段，旧检查点照常恢复），并由 `backend/llm-flow/src/flow/run-aggregation.ts` 投影到 Run 结果的 `skipped[]`。
-- 缺口：①`skipReason` 还没有出现在 `backend/llm-flow/src/contracts/harness-hook.ts` 的事件里，宿主只能从结果读；②`${nodes.X.skipped}` 这类**流程内引用**仍被 `backend/llm-flow/src/flow/structured/references.ts` 的“必须是 `nodes.id.outputs.port`”规则拒绝，路由无法据此分支；③预算判据（B-09）尚未接入，`budget` 原因值还不存在。
+- 现状：已落地第一版。`backend/llm-flow/src/flow/skip-state.ts` 定义通用原因词表（`branch-not-selected`、`upstream-skipped`、`call-source-skipped`、`delegation-cancelled`）与记录结构；跳过写入点仍是 `backend/llm-flow/src/flow/scheduler-readiness.ts` 的单一 `skipNode`，首次判定优先，激活与图重试失效时清除。原因随 `backend/llm-flow/src/flow/scheduler-state.ts` 进入检查点（可选字段，旧检查点照常恢复），由 `backend/llm-flow/src/flow/run-aggregation.ts` 投影到 Run 结果的 `skipped[]`，并以 `node.skipped` 事件经 `backend/llm-flow/src/flow/scheduler.ts` 的 `reportSkips` 发给宿主；恢复时只补报本段新增的跳过。
+- 缺口：①`${nodes.X.skipped}` 这类**流程内引用**仍被 `backend/llm-flow/src/flow/structured/references.ts` 的“必须是 `nodes.id.outputs.port`”规则拒绝，路由无法据此分支；②预算判据（B-09）尚未接入，`budget` 原因值还不存在。
 - 落地层：`backend/llm-flow` 插件与结果投影；不改检查点 v1 的必填结构、不改租约边界。
-- 验收：`backend/llm-flow/__tests__/flow-skip-reasons.test.ts` 4 项通过——未选分支记录 `branch-not-selected` 且根任务成功、下游记录 `upstream-skipped`、恢复后原因仍在、旧检查点无该字段可解码而非法原因值被拒。
+- 验收：`backend/llm-flow/__tests__/flow-skip-reasons.test.ts` 5 项通过——未选分支记录 `branch-not-selected` 且根任务成功、下游记录 `upstream-skipped`、`node.skipped` 事件恰好一次且带原因与边、恢复后原因仍在、旧检查点无该字段可解码而非法原因值被拒。
 
 ### B-07 judge 绑定 primary 不可变快照
 

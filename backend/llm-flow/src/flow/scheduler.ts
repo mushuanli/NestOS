@@ -31,6 +31,8 @@ interface SchedulerPorts {
     enforceDeadlines(): Promise<void>;
     refreshCallInputs(): Promise<void>;
     readyNodes(): DagNodeDefinition[];
+    /** Report skip decisions that became durable since the previous dispatch pass. */
+    reportSkips?(): Promise<void>;
     submitNode(node: DagNodeDefinition, historyGroup?: string): Promise<void>;
     accountTokens(output: unknown): Promise<void>;
     emitHook(event: HarnessHookEvent, payload: Record<string, unknown>): Promise<void>;
@@ -94,6 +96,7 @@ export class FlowScheduler {
         const capacity = Math.max(0, state.maxConcurrency - activeCount);
         await state.refreshCallInputs();
         const candidates = state.readyNodes();
+        await state.reportSkips?.();
         const reserved = candidates.filter(node => memberGroup(state.nodes, node.id) || node.plugin === 'builtin.join');
         const ready = [...reserved, ...candidates.filter(node => !reserved.includes(node)).slice(0, capacity)];
         const historyGroup = ready.length > 1 ? `${state.run.root.id}:${ready.map(node => `${node.id}#${state.instances.get(node.id)?.length ?? 0}@${state.nodeGenerations.get(node.id) ?? 0}`).join(',')}` : undefined;

@@ -23,6 +23,8 @@ export interface SchedulerCheckpoint {
     }][];
     delegationGroupByChild: [string, string][];
     skipped: string[];
+    /** Absent on legacy checkpoints; reason and cause for each skipped node. */
+    skipRecords?: [string, import('./skip-state').FlowSkipRecord][];
     detachedNodes: string[];
     appliedPatches: [string, string][];
     /** Retry receipts committed with graph state before acknowledging the intent queue. */

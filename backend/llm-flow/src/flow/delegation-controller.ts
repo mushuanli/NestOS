@@ -4,6 +4,7 @@ import { delegationPlan, materializeDelegation } from './delegation-runtime';
 import type { DelegationGroup, DelegationPlan, DelegationRuntimeState } from './delegation-runtime';
 import type { createRunCatalog } from './run-catalog';
 import { resolveNodeConnection } from './connections';
+import { recordFlowSkip, type FlowSkipRecords } from './skip-state';
 import { instanceKey, parseInstanceKey } from './node-instance';
 
 /** One run's delegation state; the scheduler owns persistence and task submission. */
@@ -15,6 +16,8 @@ export interface DelegationControllerState extends DelegationRuntimeState {
     instances: Map<string, TaskHandle[]>;
     completed: Set<string>;
     skipped: Set<string>;
+    /** Optional: only the scheduler owns the run-wide reason ledger. */
+    skipRecords?: FlowSkipRecords;
     detachedNodes: Set<string>;
     isolatedWorkspace: boolean;
     workspaceCleanup?: FlowWorkspacePolicy['cleanup'];
@@ -134,6 +137,10 @@ export class DelegationController {
         for (const childId of group.children) {
             if (!include(childId)) continue;
             state.skipped.add(childId);
+            if (state.skipRecords) {
+                recordFlowSkip(state.skipRecords, childId, { reason: 'delegation-cancelled', iteration: (state.instances.get(childId)?.length ?? 0) + 1,
+                    cause: { nodeId: state.groupByChild.get(childId) ?? childId } });
+            }
             for (const [index, handle] of (state.instances.get(childId) ?? []).entries()) {
                 if (!pendingOnly || !state.completed.has(instanceKey(childId, index + 1))) {
                     cancellations.push(handle.cancel(reason));

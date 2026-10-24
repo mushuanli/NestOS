@@ -4,6 +4,7 @@ import type { FlowExecutionHandle } from './executor';
 import type { DelegationGroup } from './delegation-runtime';
 import type { SchedulerCheckpoint } from './scheduler-checkpoint';
 import { readFlowSchedulerCheckpoint } from './checkpoint-store';
+import { serializeFlowSkips, type FlowSkipRecords } from './skip-state';
 import { variableCurrent } from './variables';
 
 interface AggregationState {
@@ -12,7 +13,10 @@ interface AggregationState {
     detachedNodes: Set<string>;
     groups: Map<string, DelegationGroup>;
     completionOrder: string[];
+    /** Optional: a Run without a skip ledger simply reports no skipped nodes. */
+    skipRecords?: FlowSkipRecords;
 }
+const NO_SKIPS: FlowSkipRecords = new Map();
 
 interface AggregationRequest {
     goal?: FlowRunGoal;
@@ -84,8 +88,16 @@ export class FlowRunAggregation {
             ...(variables && Object.keys(variables.initial).length ? { variables: jsonValue({ initial: variables.initial,
                 changes: variables.commits, current: variableCurrent(variables) }) } : {}),
             dependencies, awaitingSchedule: request.awaitingSchedule ?? false,
+            skipped: this.skipped(),
             run: jsonValue({ version: 1, goal: request.goal ?? null, usage: request.usage }),
             runTasks: runMembers(this.state.instances, this.state.nodes, this.state.detachedNodes) };
+    }
+
+    /** Skipped nodes never run, so the Run result is where their reason stays readable. */
+    private skipped() {
+        return serializeFlowSkips(this.state.skipRecords ?? NO_SKIPS).map(([nodeId, record]) => ({
+            nodeId, reason: record.reason, iteration: record.iteration, ...(record.cause ? { cause: record.cause } : {}),
+        }));
     }
 }
 

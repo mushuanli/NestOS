@@ -107,6 +107,8 @@ export interface FlowAggregateInput {
     variables?: JsonValue;
     awaitingSchedule?: boolean;
     dependencies: Array<{ taskId: string; nodeId: string; tolerated?: boolean; collectOutput?: boolean }>;
+    /** Nodes the scheduler skipped, with the reason the Run result must keep. */
+    skipped?: Array<{ nodeId: string; reason: string; iteration: number; cause?: { nodeId?: string; edgeId?: string } }>;
 }
 
 interface FlowAggregateState extends FlowAggregateInput {
@@ -123,7 +125,7 @@ export class FlowAggregateProgram implements DurableTaskProgram<FlowAggregateSta
         if (input.awaitingSchedule) return { state, next: { type: 'wait', on: { type: 'signal' } } };
         return input.dependencies.length
             ? { state, next: dependencyWait(input.dependencies) }
-            : { state, next: { type: 'complete', output: { nodes: {} } } };
+            : { state, next: { type: 'complete', output: aggregateOutput(state) } };
     }
 
     reduce(state: Readonly<FlowAggregateState>, event: TaskInputEvent): Decision<FlowAggregateState, JsonValue> {
@@ -137,6 +139,7 @@ export class FlowAggregateProgram implements DurableTaskProgram<FlowAggregateSta
             }
             next.dependencies = (event.signal.payload as unknown as FlowAggregateInput).dependencies;
             next.variables = (event.signal.payload as unknown as FlowAggregateInput).variables;
+            next.skipped = (event.signal.payload as unknown as FlowAggregateInput).skipped;
             next.awaitingSchedule = false;
         }
         if (event.type === 'task-exited') {
@@ -155,10 +158,16 @@ export class FlowAggregateProgram implements DurableTaskProgram<FlowAggregateSta
         }
         const ready = next.dependencies.every(item => next.resolved.includes(item.taskId));
         if (!ready) return { state: next, next: dependencyWait(unresolved(next.dependencies, next.resolved)) };
-        const output: Record<string, JsonValue> = { nodes: next.outputs, ...(next.variables ? { variables: next.variables } : {}) };
-        if (Object.keys(next.failures).length > 0) output.failures = next.failures;
-        return { state: next, next: { type: 'complete', output } };
+        return { state: next, next: { type: 'complete', output: aggregateOutput(next) } };
     }
+}
+
+/** Skipped nodes are part of the Run result: callers must read why work never ran. */
+function aggregateOutput(state: FlowAggregateState): Record<string, JsonValue> {
+    const output: Record<string, JsonValue> = { nodes: state.outputs, ...(state.variables ? { variables: state.variables } : {}) };
+    if (Object.keys(state.failures).length > 0) output.failures = state.failures;
+    if (state.skipped?.length) output.skipped = jsonValue(state.skipped);
+    return output;
 }
 
 function unresolved<T extends { taskId: string }>(dependencies: T[], resolved: string[]): T[] {
@@ -174,6 +183,7 @@ function aggregateState(value: FlowAggregateInput & Partial<FlowAggregateState>)
     return clone({
         ...(value.variables !== undefined ? { variables: value.variables } : {}),
         ...(value.awaitingSchedule !== undefined ? { awaitingSchedule: value.awaitingSchedule } : {}),
+        ...(value.skipped !== undefined ? { skipped: value.skipped } : {}),
         dependencies, outputs, failures: value.failures ?? {},
         resolved: value.resolved ?? dependencies.filter(item => item.nodeId in outputs).map(item => item.taskId),
     });

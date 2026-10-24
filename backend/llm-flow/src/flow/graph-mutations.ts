@@ -8,6 +8,7 @@ import { patchIdentityConfig } from './patch-identity';
 import { mergeAgentConfig } from './to-dag';
 import { resolveNodeConnection } from './connections';
 import { withDispatchWorkspace, validateDispatchCapacity } from './structured/limits';
+import { clearFlowSkip, type FlowSkipRecords } from './skip-state';
 import { validateVariableGraph } from './variables';
 import type { CompiledCallScopes } from './function-batch';
 
@@ -29,6 +30,8 @@ export interface GraphMutationState {
     edgeState: Map<string, EdgeState>;
     backEdges: Set<string>;
     skipped: Set<string>;
+    /** Optional: only the scheduler owns the run-wide reason ledger. */
+    skipRecords?: FlowSkipRecords;
     dispatchOrder: string[];
     instances: Map<string, TaskHandle[]>;
     workspaceDirectory?: string;
@@ -142,6 +145,7 @@ export class GraphMutationRuntime {
         const activated = state.edges.find(edge => edge.id === edgeId);
         if (!activated) return;
         state.skipped.delete(activated.to);
+        if (state.skipRecords) clearFlowSkip(state.skipRecords, String(activated.to));
         // Ordinary loop exits must not re-arm the loop head through dispatch order.
         if (state.edges.some(edge => state.backEdges.has(edge.id) && edge.from === activated.to)) {
             state.dispatchOrder.push(activated.to);

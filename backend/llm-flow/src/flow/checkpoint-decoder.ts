@@ -1,6 +1,7 @@
 import { isFlowRuntimeInput } from './runtime-input';
 import { flowInputDeclarationIssues, type FlowInputGroup, type FlowParameter } from '../contracts';
 import type { SchedulerCheckpoint } from './scheduler-checkpoint';
+import { isFlowSkipRecord } from './skip-state';
 import { isRecord, isIdentity, strings, isGraphNode, isGraphEdge } from './graph-decoder';
 
 const finite = (value: unknown) => typeof value === 'number' && Number.isFinite(value) && value >= 0;
@@ -33,6 +34,7 @@ const fields: Record<string, (value: unknown) => boolean> = {
     nodeConnections: value => pairs(value, isConnections),
     consumedTokens: finite, startedAt: finite,
     completed: strings, skipped: strings, detachedNodes: strings, completionOrder: strings, dispatchOrder: strings,
+    skipRecords: value => optional(value, value => pairs(value, isFlowSkipRecord)),
     nodeGenerations: value => optional(value, value => pairs(value, finite)),
     appliedGraphRetries: value => optional(value, strings),
     parameters: value => optional(value, isRecord),

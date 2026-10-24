@@ -226,7 +226,7 @@ export class DurableFlowExecutor {
             const routeEdgeIds = collectRouteEdgeIds(saved ?? spec);
             const { backEdges, loopNodes } = findCycles(saved?.nodes ?? spec.nodes, saved?.edges ?? spec.edges);
             const collections = createSchedulerCollections(spec, saved, routeEdgeIds, workspace?.directory);
-            const { nodes, edges, delegationDepth, delegationGroups, delegationGroupByChild, skipped,
+            const { nodes, edges, delegationDepth, delegationGroups, delegationGroupByChild, skipped, skipRecords,
                 detachedNodes, appliedPatches, appliedGraphRetries, completionOrder, dispatchOrder, variableStore, nodeGenerations, edgeState } = collections;
             let consumedTokens = saved?.consumedTokens ?? 0;
             const callInputs: Record<string, unknown> = {};
@@ -278,7 +278,7 @@ export class DurableFlowExecutor {
                 return loopNodes.has(node.id) ? loopMaxIterations() : 1;
             };
 
-            const readyNodes = () => readyFlowNodes({ spec, nodes, edges, callInputs, instances, skipped,
+            const readyNodes = () => readyFlowNodes({ spec, nodes, edges, callInputs, instances, skipped, skipRecords,
                 detachedNodes, loopNodes, backEdges, routeEdgeIds, edgeState, dispatchOrder, maxIterations, doneAt, latestDone });
 
             const taskFactory = new FlowTaskFactory({
@@ -319,7 +319,7 @@ export class DurableFlowExecutor {
 
             const graphMutations = new GraphMutationRuntime({
                 spec, parameters, callInputs, nodes, edges, plugins, maxNodes, appliedPatches, nodeDefaults, nodeConnections,
-                edgeState, backEdges, skipped, dispatchOrder, instances, workspaceDirectory: workspace?.directory,
+                edgeState, backEdges, skipped, skipRecords, dispatchOrder, instances, workspaceDirectory: workspace?.directory,
                 bindNode: this.options.bindPatchNode
                     ? (node, defaults) => this.options.bindPatchNode!(sessionId, node, defaults) : undefined,
             });
@@ -363,7 +363,7 @@ export class DurableFlowExecutor {
             const delegation = new DelegationController({
                 nodes, edges, edgeState, depths: delegationDepth, groups: delegationGroups,
                 groupByChild: delegationGroupByChild, maxNodes, plugins, nodeDefaults, nodeConnections,
-                instances, completed, skipped, detachedNodes, isolatedWorkspace: Boolean(workspace),
+                instances, completed, skipped, skipRecords, detachedNodes, isolatedWorkspace: Boolean(workspace),
                 workspaceCleanup: workspacePolicy?.cleanup,
                 spawned: event => this.emitHook('agent.spawned', sessionId, event),
             });
@@ -407,7 +407,7 @@ export class DurableFlowExecutor {
             };
 
             // Resolve the active fenced session lazily: root creation precedes lease acquisition.
-            const aggregateState = { instances, nodes, detachedNodes, groups: delegationGroups, completionOrder };
+            const aggregateState = { instances, nodes, detachedNodes, groups: delegationGroups, completionOrder, skipRecords };
             const aggregate = (request: Parameters<FlowRunAggregation['finish']>[0]) =>
                 new FlowRunAggregation(session, aggregateState).finish(request);
             // Persist the aggregate root before the first node is scheduled: it is the
@@ -438,7 +438,7 @@ export class DurableFlowExecutor {
             // Graph retries accepted while no scheduler owned the Run are applied before the
             // next scheduling turn: attach the retry instance and drop stale downstream work.
             const graphRetries = new GraphRetryController({
-                session, run: published, nodes, edges, instances, completed, skipped, detachedNodes,
+                session, run: published, nodes, edges, instances, completed, skipped, skipRecords, detachedNodes,
                 groups: delegationGroups, depths: delegationDepth, groupByChild: delegationGroupByChild,
                 nodeGenerations, appliedGraphRetries, nodeDefaults, nodeConnections, edgeState, routeEdgeIds, variables: variableStore,
                 refund: output => { consumedTokens = Math.max(0, consumedTokens - outputTokens(output)); },

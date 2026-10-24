@@ -3,6 +3,7 @@ import type { DagEdgeDefinition, DagNodeDefinition, DagRunSpec } from '../contra
 import type { DelegationGroup, EdgeState } from './delegation-runtime';
 import type { FlowVariableStore } from './variables';
 import { consumeGraphRetryIntents, type FlowGraphRetryIntent } from './graph-retry';
+import { clearFlowSkip, type FlowSkipRecords } from './skip-state';
 import { instanceKey } from './node-instance';
 
 export interface RetryRunView {
@@ -20,6 +21,8 @@ export interface GraphRetryState {
     instances: Map<string, TaskHandle[]>;
     completed: Set<string>;
     skipped: Set<string>;
+    /** Optional: only the scheduler owns the run-wide reason ledger. */
+    skipRecords?: FlowSkipRecords;
     detachedNodes: Set<string>;
     groups: Map<string, DelegationGroup>;
     depths: Map<string, number>;
@@ -122,6 +125,7 @@ export class GraphRetryController {
         this.state.run.nodes.delete(nodeId);
         this.state.run.iterations.delete(nodeId);
         this.state.skipped.delete(nodeId);
+        if (this.state.skipRecords) clearFlowSkip(this.state.skipRecords, nodeId);
     }
 
     private nextGeneration(nodeId: string): void {

@@ -3,6 +3,7 @@ import type { DagRunSpec } from '../contracts';
 import type { DelegationGroup, EdgeState } from './delegation-runtime';
 import type { SchedulerCheckpoint } from './scheduler-checkpoint';
 import { withDispatchWorkspace } from './structured/limits';
+import { restoreFlowSkips, serializeFlowSkips } from './skip-state';
 import { FlowVariableStore } from './variables';
 
 /** Reconstruct collections from durable data; never select new host policy on resume. */
@@ -16,6 +17,7 @@ export function createSchedulerCollections(spec: DagRunSpec, saved: SchedulerChe
         delegationGroups: restoreDelegationGroups(saved),
         delegationGroupByChild: new Map<string, string>(saved?.delegationGroupByChild),
         skipped: new Set<string>(saved?.skipped),
+        skipRecords: restoreFlowSkips(saved?.skipRecords),
         detachedNodes: new Set<string>(saved?.detachedNodes),
         appliedPatches: new Map<string, string>(saved?.appliedPatches),
         appliedGraphRetries: new Set<string>(saved?.appliedGraphRetries),
@@ -43,7 +45,8 @@ export function snapshotSchedulerCollections(state: SchedulerCollections, instan
         delegationDepth: [...state.delegationDepth], delegationGroupByChild: [...state.delegationGroupByChild],
         delegationGroups: [...state.delegationGroups].map(([id, group]) => [id, { ...group,
             children: [...group.children], completed: [...group.completed], succeeded: [...group.succeeded] }]),
-        skipped: [...state.skipped], detachedNodes: [...state.detachedNodes], appliedPatches: [...state.appliedPatches],
+        skipped: [...state.skipped], skipRecords: serializeFlowSkips(state.skipRecords),
+        detachedNodes: [...state.detachedNodes], appliedPatches: [...state.appliedPatches],
         completionOrder: state.completionOrder, dispatchOrder: state.dispatchOrder, nodeGenerations: [...state.nodeGenerations],
     };
 }

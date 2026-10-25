@@ -1,10 +1,12 @@
-import {createModuleLogger, randomUUID, sha256Hex} from '@itookit/common';
+import {createModuleLogger, sha256Hex} from '@itookit/common';
 import {InputAssetCommand, INPUT_ASSET_MAX_BYTES, type InputFileIdentity, type InputFileInspection} from '@itookit/app-contracts';
 import type {ICommandBus} from '@itookit/llm-session/contracts';
 import type {JsonValue} from '@itookit/llm-flow/contracts';
 import type {FlowImageAssetPort} from '../components/FlowImageFields';
 import type {FlowFileAssetPort} from '../components/FlowFileAssetPort';
 import {observePromise} from '../utils/observe-promise';
+import {fileBytes} from '../utils/file-bytes';
+import {draftFileId} from '../domain/draft-file-identity';
 
 type Port = FlowImageAssetPort & FlowFileAssetPort;
 interface Upload {id: string; identity?: InputFileIdentity; pending?: Promise<JsonValue>; stage: string}
@@ -22,7 +24,7 @@ export function flowInputAssets(commands: ICommandBus): Port {
 async function importFile(commands: ICommandBus, uploads: WeakMap<File, Upload>, file: File, signal?: AbortSignal): Promise<JsonValue> {
     signal?.throwIfAborted();
     let upload = uploads.get(file);
-    if (!upload) {upload = {id: randomUUID(), stage: 'validation'}; uploads.set(file, upload);}
+    if (!upload) {upload = {id: draftFileId(file), stage: 'validation'}; uploads.set(file, upload);}
     if (!upload.pending) {
         const pending = prepareFile(commands, file, upload); upload.pending = pending;
         const clear = () => {if (upload!.pending === pending) upload!.pending = undefined;};
@@ -68,15 +70,6 @@ function validateReference(value: unknown, identity: InputFileIdentity): JsonVal
     return {kind: 'input', id: identity.uploadId, mimeType: identity.mimeType, bytes: identity.bytes, sha256: identity.sha256};
 }
 
-export async function fileBytes(file: File): Promise<ArrayBuffer> {
-    try {
-        if (file.arrayBuffer) return await file.arrayBuffer();
-        return await new Promise<ArrayBuffer>((resolve, reject) => {
-            const reader = new FileReader(); reader.onload = () => reader.result instanceof ArrayBuffer ? resolve(reader.result) : reject(failure('INPUT_ASSET_CLIENT_READ_FAILED', 'Cannot read the selected file'));
-            reader.onerror = () => reject(failure('INPUT_ASSET_CLIENT_READ_FAILED', 'Cannot read the selected file')); reader.readAsArrayBuffer(file);
-        });
-    } catch {throw failure('INPUT_ASSET_CLIENT_READ_FAILED', 'Cannot read the selected file');}
-}
 function report(upload: Upload, started: number, error?: unknown): void {
     const code = (error as {code?: unknown})?.code;
     const metadata = {operation: 'flow.asset.prepare', operationId: upload.id, stage: upload.stage, result: error ? 'failure' : 'ready',

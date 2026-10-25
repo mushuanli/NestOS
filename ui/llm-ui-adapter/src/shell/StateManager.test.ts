@@ -123,7 +123,7 @@ it('does not consume ambient host creation data while restoring a Session', () =
         const manager = new StateManager({} as StateService, {} as SessionViewPort, 's', id => id);
         const input = { setConfig: vi.fn() } as unknown as IChatInputPresenter;
         manager.restoreInputState(input, { savedState: { input_text: 'saved', input_agent_id: 'saved-agent' } as never });
-        expect(input.setConfig).toHaveBeenLastCalledWith({text: 'saved', agentId: 'saved-agent', target: undefined, input: undefined, settings: undefined});
+        expect(input.setConfig).toHaveBeenLastCalledWith({ text: 'saved', agentId: 'saved-agent', settings: undefined });
     } finally { vi.unstubAllGlobals(); }
 });
 

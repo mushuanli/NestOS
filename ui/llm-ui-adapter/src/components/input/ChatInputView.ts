@@ -12,6 +12,9 @@ import { t, randomUUID, ENTITY_ICONS, CHAT_ICONS } from '@itookit/common';
 import {sameTargetRef, type TargetRef, type JsonValue} from '@itookit/llm-flow/contracts';
 import type {RootCallTarget, RootTargetCatalog} from '@itookit/llm-session/contracts';
 import {WorkspaceCallTargets} from './WorkspaceCallTargets';
+import {draftFileId, validDraftToken} from '../../domain/draft-file-identity';
+import {draftSettings} from '../../domain/submission-draft';
+import {canonicalJson} from '../../utils/canonical-json';
 import {sameInputDraft, type WorkspaceArgumentDraft} from '../../domain/input-draft';
 import { type ModelTier } from '@itookit/driver-llm/contracts';
 import { ChatInputTemplates } from '../templates/ChatInputTemplates';
@@ -21,6 +24,7 @@ import { TokenMeterPlugin } from './plugins/TokenMeterPlugin';
 import { PopupPanel } from './plugins/PopupPanel';
 import type { PopupItem } from './plugins/PopupPanel';
 import { AttachmentManager } from './AttachmentManager';
+import {knownImageFileState} from './image-file-state';
 import {ImageResizeSettings} from './ImageResizeSettings';
 import {resolveResize, type ImageResizePolicy} from '@itookit/image-parser';
 import { ToolOutputPanel } from './ToolOutputPanel';
@@ -130,6 +134,7 @@ export interface ChatInputOptions {
 interface ComposerSubmission {
     text: string; submitted: string; executor: string; files: File[]; target?: TargetRef; revision: number;
     draftScope?: string;
+    preparedToken?: string;
     remote: boolean; overrides?: ChatOverrides; arguments?: WorkspaceArgumentDraft;
 }
 
@@ -173,6 +178,8 @@ export class ChatInput implements IChatInputPresenter {
     private readonly nativeModels: NativeModelControl;
     hideNativeModelPicker(): void {this.nativeModels.hide(); for (const plugin of this.plugins) plugin.onBlur?.();}
     private textRevision = 0;
+    private draftToken = randomUUID();
+    private draftBasis?: string;
     private draftScope?: string;
     setDraftScope(id: string): void {
         if (this.draftScope === id) return;
@@ -309,6 +316,7 @@ export class ChatInput implements IChatInputPresenter {
         this.bindCallTargets();
         this.syncUIFromConfig();
 
+        this.restoreDraftToken(options.initialConfig?.draftToken);
         if (options.attachments === false) this.attachBtn.hidden = true;
         if (options.attachmentAccept) this.fileInput.accept = options.attachmentAccept;
         if (options.attachmentHint) this.attachBtn.title = options.attachmentHint;
@@ -460,6 +468,7 @@ export class ChatInput implements IChatInputPresenter {
             this.currentAgentId = config.agentId;
             this.updateAgentTrigger();
         }
+        if (config.draftToken !== undefined) this.restoreDraftToken(config.draftToken);
     }
 
     private prepareConfigChange(config: Partial<IChatInputConfig>): Partial<IChatInputConfig> {
@@ -472,12 +481,31 @@ export class ChatInput implements IChatInputPresenter {
     getConfig(): IChatInputConfig {
         this.syncConfigFromUI();
         return {
+            draftToken: this.currentDraftToken(),
             text: this.config.text,
             agentId: this.config.agentId,
             target: this.config.target ? {...this.config.target} : undefined,
             input: structuredClone(this.config.input),
             settings: { ...this.config.settings },
         };
+    }
+
+    private currentDraftToken(): string {
+        const basis = this.currentDraftBasis();
+        if (this.draftBasis !== undefined && basis !== this.draftBasis) this.draftToken = randomUUID();
+        this.draftBasis = basis; return this.draftToken;
+    }
+    private currentDraftBasis(): string {
+        const {revision: _revision, ...input} = this.config.input ?? {revision: undefined};
+        return canonicalJson({text: this.textarea.value, agentId: this.config.agentId, target: this.config.target,
+            input: this.config.input ? input : undefined, settings: draftSettings(this.config.settings),
+            files: this.files.map(file => ({id: draftFileId(file), name: file.name, type: file.type, size: file.size,
+                imageRevision: knownImageFileState(file)?.revision}))});
+    }
+    private restoreDraftToken(token?: string): void {
+        if (token === undefined) return;
+        if (!validDraftToken(token)) throw Object.assign(new Error(t('chatInput.attachments.draftInvalid')), {code: 'DRAFT_IDENTITY_INVALID'});
+        this.draftToken = token; this.draftBasis = this.currentDraftBasis();
     }
 
     restoreInput(text: string, agentId?: string): void {
@@ -931,10 +959,16 @@ export class ChatInput implements IChatInputPresenter {
     // 发送
     // ================================================================
 
-    restoreDraft(text: string, files: File[], agentId: string): void {
-        this.restoreInput(text, agentId); this.attachmentMgr.addFiles(files);
+    restoreDraft(text: string, files: File[], agentId: string, token?: string): void {
+        const restoring = this.restoringRecovery; this.restoringRecovery = true;
+        try {this.restoreInput(text, agentId); this.attachmentMgr.addFiles(files); this.restoreDraftToken(token);}
+        finally {this.restoringRecovery = restoring;}
+        if (!restoring) this.notifyConfigChange();
     }
     getDraftFiles(): File[] { return [...this.files]; }
+    restoreDraftFiles(files: readonly File[], token?: string): void {
+        this.files = [...files]; this.attachmentMgr.renderAttachments(); this.restoreDraftToken(token);
+    }
 
     captureRecovery(): unknown {
         if (!this.attachmentMgr.canRecover() || this.submitting || this.checkingConnection || this.container.querySelector('.llm-input__interaction'))
@@ -950,7 +984,7 @@ export class ChatInput implements IChatInputPresenter {
         try {
             this.files = [];
             this.setConfig({...state.config, settings: {...state.config.settings, executionMode, executionModeLocked, flowId, flowRevision}});
-            this.restoreDraft(state.config.text, state.files, state.config.agentId);
+            this.restoreDraft(state.config.text, state.files, state.config.agentId, state.config.draftToken);
             this.textarea.setSelectionRange(state.start, state.end);
         } finally {this.restoringRecovery = false;}
     }
@@ -999,10 +1033,12 @@ export class ChatInput implements IChatInputPresenter {
     private async prepareSubmission(send: ComposerSubmission): Promise<boolean> {
         if (!await this.prepareFlowSubmission(send.text, send.files, send.executor, send.submitted, send.revision, send.overrides)) return false;
         if (!isDirectCommandInput(send.text) && sameTargetRef(this.config.input?.target, send.target)) send.arguments = structuredClone(this.config.input);
-        return true;
+        send.preparedToken = this.currentDraftToken(); await this.options.flushDraft?.();
+        return !this.connectionsDisposed && send.preparedToken === this.currentDraftToken() && this.submissionDestinationMatches(send);
     }
 
     private async deliverSubmission(send: ComposerSubmission): Promise<boolean> {
+        if (send.preparedToken !== this.currentDraftToken()) return false;
         const {text, files, executor, overrides, target} = send;
         return (target ? await this.options.onSend(text, files, executor, overrides, target)
             : await this.options.onSend(text, files, executor, overrides)) !== false;

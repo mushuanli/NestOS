@@ -19,6 +19,7 @@ export type ChatInputSettings =
     & { modelId?: string; nativeModelSelection?: import('@itookit/ui-common').ConversationModelSelection & {executorId: string} };
 
 export interface IChatInputConfig {
+    draftToken?: string;
     text: string;
     agentId: string;
     target?: import('@itookit/llm-flow/contracts').TargetRef;
@@ -48,6 +49,7 @@ export interface IChatInputPresenter {
     setDraftScope?(id: string): void;
     getDraftRevision?(): number;
     getDraftFiles?(): File[];
+    restoreDraftFiles?(files: readonly File[], token?: string): void;
     acceptSubmittedDraft?(text: string, files: File[], revision?: number): void;
     captureRecovery(): unknown;
     restoreRecovery(snapshot: unknown): void;
@@ -56,6 +58,7 @@ export interface IChatInputPresenter {
     getNativeModelSelection?(): import('@itookit/ui-common').ConversationModelSelection | undefined;
     openConnectionPicker(): void;
     setLoading(loading: boolean): void;
+    setAvailability?(availability: {canSend: boolean; canInterrupt: boolean}): void;
     setConfig(config: Partial<IChatInputConfig>): void;
     getConfig(): IChatInputConfig;
     restoreInput(text: string, agentId?: string): void;

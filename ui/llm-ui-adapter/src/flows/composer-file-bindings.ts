@@ -1,5 +1,5 @@
 import {createModuleLogger, randomUUID, sha256Hex, t} from '@itookit/common';
-import {fileBytes} from './input-assets';
+import {fileBytes} from '../utils/file-bytes';
 
 interface Material {name?: string; asset: {bytes?: number; sha256?: string; mimeType?: string}}
 const log = createModuleLogger('flow-file-bindings');

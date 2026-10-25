@@ -3,6 +3,8 @@
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
 import {randomUUID, sha256Hex, t} from '@itookit/common';
 import type {ChatAttachment} from '@itookit/llm-session/contracts';
+import {fileBytes} from '../utils/file-bytes';
+import type {DraftFilePort} from './DraftFilesCodec';
 
 export interface PreparedAttachmentUpload {references: string[]; files: Omit<ChatAttachment, 'fileRef'>[];}
 
@@ -17,6 +19,17 @@ export function attachmentStorageName(submissionId: string, index: number, origi
  */
 export class AssetService {
     constructor(private readonly assets?: IFileSystem) { }
+
+    draftFiles(): DraftFilePort {
+        return {put: async data => {
+            const name = `draft-${await sha256Hex(data)}.bin`;
+            await this.createAsset(name, data); return name;
+        }, read: async id => {
+            if (!this.assets || !/^draft-[a-f0-9]{64}\.bin$/.test(id))
+                throw Object.assign(new Error(t('chatInput.attachments.draftInvalid')), {code: 'DRAFT_FILE_REFERENCE_INVALID'});
+            return this.assets.driver.readContent(`/${id}`, {encoding: 'binary'});
+        }};
+    }
 
     /**
      * 创建资源
@@ -55,7 +68,7 @@ export class AssetService {
     private async prepareFile(file: File, index: number, operationId: string, submissionId?: string) {
         const started = Date.now(); let stage = 'file-read';
         try {
-            const data = await file.arrayBuffer();
+            const data = await fileBytes(file);
             const name = submissionId ? attachmentStorageName(submissionId, index, file.name) : file.name;
             stage = 'file-upload'; await this.createAsset(name, data);
             const metadata = {name, type: file.type, size: data.byteLength,

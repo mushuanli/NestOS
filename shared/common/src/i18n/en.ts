@@ -2767,4 +2767,9 @@ export const en: LocaleStrings = {
     'callable.input.invalidDraft': 'Structured input draft is invalid; the original record has been preserved for repair',
     'callable.catalog.unavailable': 'Call catalog unavailable. Refresh to retry.',
     'callable.catalog.partial': '{count} targets are unavailable. Other targets can still be selected.',
+
+    'chatInput.attachments.draftInvalid': 'The attachment draft is invalid or damaged. Keep the original operation and check storage.',
+    'chatInput.attachments.draftMissing': 'A draft attachment is missing. Check storage or select it again; the original submission will not be resent.',
+    'chatInput.attachments.draftReadFailed': 'Cannot read the draft attachment. Check storage and try again.',
+    'callable.submission.previousAccepted': 'The original submission was accepted. Your changed draft was kept; confirm whether you need a new call.',
 };

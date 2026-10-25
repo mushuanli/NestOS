@@ -96,3 +96,37 @@ ApplicationRuntime 为所有 Session 视图注入同一个 `SessionExecutionActi
 ### 独立原生视图的队列编辑区
 
 createNativeChatView 经工具栏挂载同一 NativeInstructionQueuePanel，绑定 read/edit 最小端口；队列编辑携带显示修订，原发送悬挂不阻塞。工具栏保留宿主挂载、更新和销毁回调，视图隐藏后禁用队列操作，恢复时重新应用 canQueue，重复销毁共享同一 Promise。队列编辑不生成 Submission 或用户历史，迟到结果按原视图代次处理。
+
+## 本地工作台的附件草稿恢复
+
+输入编辑状态归 UI；Session 只保存不透明的分支草稿引用和 OperationLedger，不解释浏览器 File 或维护第二份执行状态。附件二进制复用已有 Session assets；项目首次草稿与原生兼容草稿复用宿主附件端口。DraftFilesCodec 统一处理这三条路径的引用、摘要校验及逻辑 File 身份，不增加存储服务。
+
+```mermaid
+C4Component
+    title 附件草稿持久化与原提交核对
+    Container_Boundary(ui, "llm-ui-adapter") {
+        Component(input, "ChatInput", "编辑状态", "正文、参数、附件与草稿 token")
+        Component(state, "StateManager", "保存协调", "捕获分支快照；发送前等待保存")
+        Component(codec, "DraftFilesCodec", "文件编解码", "稳定 File 身份及内容校验")
+        Component(send, "SendMessageCommand", "提交与核对", "冻结请求和匹配草稿证据")
+        Component(ledger, "OperationLedger", "既有 UI 台账", "提交前持久登记；接纳后消费")
+    }
+    Component(store, "Session UIState / assets", "已有持久化", "分支引用、操作台账与不可变文件")
+    Component(session, "Session 队列与回执", "执行准入", "按原冻结请求只读核对")
+    Rel(input, state, "提交编辑快照；派发前 flush")
+    Rel(state, codec, "编码或恢复文件")
+    Rel(codec, store, "保存或读取字节并核验摘要")
+    Rel(state, store, "保存所属分支及 token")
+    Rel(send, ledger, "冻结请求及草稿证据")
+    Rel(ledger, store, "复用既有 operationRecords")
+    Rel(send, session, "首次提交；未知时只读查询原操作")
+    Rel(send, input, "接纳且证据匹配时消费")
+```
+
+持久引用包含逻辑文件 ID、内容 SHA-256、大小、类型、名称和修改时间；图片额外保存原图及处理参数。重开后重新构造的 File 保留逻辑 ID，Flow 上传先查询原上传回执。文件缺失、字节损坏或元数据无效须报具体错误，不能恢复为空附件或静默换一份内容。新日志仅记录操作、阶段、身份、字节量、错误分类及耗时，不记录文件名、正文或原始异常内容。
+
+每份编辑意图具有持久 token；文字、目标、有效参数、可编辑设置或附件变化时更换。重新确认相同参数不算新意图；持久设置的更新时间与执行锁不算用户编辑。发送前等待当前分支草稿及文件保存成功，期间发生编辑则取消此次派发。失败保留输入，不能先执行后补存。
+
+台账保存原 Submission 与草稿证据：token、原编辑正文、可编辑设置和有序文件摘要。恢复查询使用原请求，不重新上传或 Submit。接纳只清除 Session、分支、目标、参数、token 和文件证据仍匹配的草稿；异步核验后再次检查当前视图和文件引用。旧接纳不得清除同名同大小的新文件或后来的编辑。已接纳但清空写入失败时，重开根据同一台账再次消费匹配草稿。旧格式没有充分证据时保留输入供用户核对。
+
+本机制保证发送前已确认保存的草稿恢复；普通输入仍沿用延迟保存，尚未确认写入的最后编辑不在此保证内。当前 UI 台账保存整组 operationRecords，多视图并发持久写入的合并仍需独立完善；不能把单工作台的恢复回归当作跨客户端一致性验收。资产长期回收、原生上下文续接、独立子 Session 路由与函数调用视图按各自计划推进。

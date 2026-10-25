@@ -13,13 +13,16 @@ import type {PreparedAttachmentUpload} from '../services/AssetService';
 
 import { createAgentSendIntent } from '@itookit/llm-flow/contracts';
 import type {SubmissionRequest} from '@itookit/llm-session/contracts';
-import {canonicalSubmission, reconcileSessionCall, submitSessionCall} from './submit-session-call';
+import {reconcileSessionCall, submitSessionCall} from './submit-session-call';
+import {canonicalJson as canonicalSubmission} from '../utils/canonical-json';
+import {captureSubmissionDraft, sameSubmissionDraft, type SubmissionDraft} from '../domain/submission-draft';
 import {sameTargetRef} from '@itookit/llm-flow/contracts';
 import {sameInputDraft} from '../domain/input-draft';
 import type {IChatInputConfig} from '../domain/ports/IChatInputPresenter';
 import {validateComposerFiles} from '../flows/composer-file-bindings';
 
 export interface SendMessageParams {
+    draftConfig?: IChatInputConfig;
     expectedBranch?: string;
     target?: import('@itookit/llm-flow/contracts').TargetRef;
     text: string;
@@ -35,10 +38,12 @@ interface PendingSend {
     sessionId: string; key: string; files: File[]; id: string;
     submission?: SubmissionRequest['submission']; finalText?: string;
     attachments?: PreparedAttachmentUpload['files'];
+    operation?: {request: SubmissionRequest; key: string};
 }
 interface ActiveSend {
     input: SendMessageParams & {overrides: ChatOverrides}; pending: PendingSend;
     feedback: ChatSubmission; restore(): void;
+    config?: IChatInputConfig; draft?: SubmissionDraft;
 }
 interface PreparedSend {text: string; submission: NonNullable<SubmissionRequest['submission']>; attachments: PreparedAttachmentUpload['files'];}
 
@@ -48,26 +53,32 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
 
     async reconcile(operationId: string, isCurrent: () => boolean = () => true): Promise<void> {
         const input = this.ctx.chatInput, config = structuredClone(input.getConfig()), revision = input.getDraftRevision?.();
-        const saved = structuredClone(this.ctx.operations?.getSnapshot().find(record => record.context.operationId === operationId)?.input) as {request?: SubmissionRequest};
+        const saved = structuredClone(this.ctx.operations?.getSnapshot().find(record => record.context.operationId === operationId)?.input) as {request?: SubmissionRequest; draft?: SubmissionDraft};
         const request = saved?.request;
         const receipt = await reconcileSessionCall(this.ctx, operationId);
-        if (isCurrent() && receipt.status === 'accepted' && request && revision !== undefined) this.consumeReconciledInput(request, config, revision);
+        if (isCurrent() && receipt.status === 'accepted' && request && revision !== undefined)
+            await this.consumeReconciledInput(request, config, revision, saved?.draft, isCurrent);
     }
 
-    private consumeReconciledInput(request: SubmissionRequest, config: IChatInputConfig, revision: number): void {
-        const input = this.ctx.chatInput, current = input.getConfig();
+    private async consumeReconciledInput(request: SubmissionRequest, config: IChatInputConfig, revision: number,
+        saved?: SubmissionDraft, isCurrent: () => boolean = () => true): Promise<void> {
+        const input = this.ctx.chatInput, files = input.getDraftFiles?.() ?? [];
+        if (saved && !sameSubmissionDraft(saved, await captureSubmissionDraft(config, files))) return;
+        const current = input.getConfig();
+        if (!isCurrent() || saved && (current.draftToken !== config.draftToken || files.some((file, index) => input.getDraftFiles?.()[index] !== file)
+            || input.getDraftFiles?.().length !== files.length)) return;
         if (!this.matchesReconciledDraft(request, config, current, revision)) return;
-        const text = request.source.kind === 'composer' ? request.source.text : request.presentation?.text ?? '';
+        if (!saved && (request.attachments?.length || files.length)) return;
+        const text = saved?.text ?? (request.source.kind === 'composer' ? request.source.text : request.presentation?.text ?? '');
         if (config.text.trim() !== text.trim() || current.text !== config.text) return;
         if (!this.consumeReconciledArguments(request, config, current)) return;
-        input.acceptSubmittedDraft?.(text, [], revision);
+        input.acceptSubmittedDraft?.(text, files, revision);
     }
 
     private matchesReconciledDraft(request: SubmissionRequest, config: IChatInputConfig, current: IChatInputConfig,
         revision: number): boolean {
         const input = this.ctx.chatInput;
         if (!input.acceptSubmittedDraft || !input.getDraftFiles || !this.reconciliationScope(request)) return false;
-        if (request.attachments?.length || input.getDraftFiles().length) return false;
         return sameTargetRef(request.expectedTarget, config.target) && sameTargetRef(current.target, config.target)
             && input.getDraftRevision?.() === revision;
     }
@@ -85,39 +96,60 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
     }
 
     protected async execute(params: SendMessageParams): Promise<boolean> {
+        const config = structuredClone(params.draftConfig ?? this.ctx.chatInput.getConfig?.());
         const input = {...params, expectedBranch: params.expectedBranch ?? this.ctx.getBranch?.(), files: [...params.files], target: params.target ? {...params.target} : undefined,
             submission: structuredClone(params.submission), overrides: normalizeOverrides(params.overrides, this.ctx)};
         const restore = this.rejectedInputRestorer(input.text, input.agentId);
         try {if (await dispatchDirectCommand(input.text, input.files, this.ctx.executeDirectCommand)) return true;}
         catch (error) {restore(); throw error;}
-        const pending = this.preparePending(input);
+        const pending = this.preparePending(input, config?.draftToken);
         const feedback: ChatSubmission = {id: pending.id, text: input.text.trim() || (input.target?.kind === 'flow'
             ? t('callable.target.flow') : t('harness.attachmentPrompt')), timestamp: Date.now(), state: 'submitting'};
-        return this.submit({input, pending, feedback, restore});
+        return this.submit({input, pending, feedback, restore, config});
     }
 
-    private preparePending(input: ActiveSend['input']): PendingSend {
+    private preparePending(input: ActiveSend['input'], token?: string): PendingSend {
         const sessionId = this.ctx.getSessionId();
         if (!sessionId) throw new Error('No session loaded');
-        const key = canonicalSubmission([input.text, input.target ?? input.agentId, input.overrides, input.origin, input.historyPolicy,
-            ...(input.target && input.expectedBranch ? [input.expectedBranch] : [])]);
+        const basis = [input.text, input.target ?? input.agentId, input.overrides, input.origin, input.historyPolicy,
+            ...(input.target && input.expectedBranch ? [input.expectedBranch] : [])];
+        const key = canonicalSubmission(token ? [...basis, {draftToken: token}] : basis);
         const previous = this.pending;
         if (previous?.sessionId === sessionId && previous.key === key && input.files.length === previous.files.length
             && input.files.every((file, index) => file === previous.files[index])) return previous;
-        const operation = !input.files.length && input.target ? this.ctx.operations?.getSnapshot().find(record => record.conversationId === sessionId
-            && record.kind === 'send' && (record.status === 'unknown' || record.status === 'submitting')
-            && (record.input as {key?: string})?.key === key) : undefined;
-        return this.pending = {sessionId, key, files: [...input.files], id: operation?.context.operationId ?? randomUUID()};
+        const operation = this.findPendingOperation(input, sessionId, key);
+        const saved = operation?.input as {request: SubmissionRequest; key: string} | undefined;
+        return this.pending = {sessionId, key, files: [...input.files], id: operation?.context.operationId ?? randomUUID(),
+            ...(saved?.request ? {operation: structuredClone(saved)} : {})};
+    }
+
+    private findPendingOperation(input: ActiveSend['input'], sessionId: string, key: string) {
+        if (!input.target) return;
+        return this.ctx.operations?.getSnapshot().find(record => {
+            if (record.conversationId !== sessionId || record.kind !== 'send' || record.status === 'rejected') return false;
+            const saved = record.input as {key?: string; draft?: unknown; request?: SubmissionRequest};
+            if (saved.key === key && (record.status !== 'accepted' || saved.draft !== undefined)) return true;
+            if (saved.draft || record.status === 'accepted' || !sameTargetRef(saved.request?.expectedTarget, input.target)
+                || saved.request?.expectedBranch !== input.expectedBranch) return false;
+            try {return typeof saved.key === 'string' && JSON.parse(saved.key)[0] === input.text;}
+            catch {return false;}
+        });
     }
 
     private async submit(active: ActiveSend): Promise<boolean> {
         this.present(active); this.ctx.chatInput.setLoading(true); this.ctx.historyView.scrollToBottom(true);
         try {
+            active.draft = active.config && await captureSubmissionDraft(active.config, active.input.files);
+            if (active.pending.operation) {
+                const saved = active.pending.operation;
+                await this.accepted(active, await submitSessionCall(this.ctx, saved.request, saved.key, active.draft));
+                return true;
+            }
             const prepared = await this.prepareSubmission(active);
             if (!prepared) return false;
             const {input, pending} = active;
             const id = input.target ? await submitSessionCall(this.ctx, typedRequest(input.target, prepared.text, prepared.attachments,
-                prepared.submission, input.overrides, input.origin, input.historyPolicy, input.expectedBranch), pending.key)
+                prepared.submission, input.overrides, input.origin, input.historyPolicy, input.expectedBranch), pending.key, active.draft)
                 : await this.ctx.commands.execute<string>(SessionCommand.Send, legacyRequest(input, prepared));
             await this.accepted(active, id); return true;
         } catch (error) {return this.failed(active, error);}
@@ -173,6 +205,7 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
 
     private failed(active: ActiveSend, error: unknown): false {
         const failure = (error instanceof Error ? error : new Error('Unknown submission failure')) as Error & {code?: string; outcome?: string};
+        if (failure.code === 'CALL_SUBMISSION_PREVIOUS_ACCEPTED' && failure.outcome === 'accepted-previous') return this.previouslyAccepted(active, failure.message);
         active.restore(); this.present(active, {state: failure.outcome === 'unknown' ? 'unknown' : 'failed', error: failure.message});
         const classified = ErrorHandler.classifyError(failure);
         Toast.error(classified.userMessage);
@@ -180,7 +213,12 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         return false;
     }
 
-
+    private previouslyAccepted(active: ActiveSend, message: string): false {
+        if (this.pending === active.pending) this.pending = undefined;
+        this.present(active, {state: 'accepted', error: undefined});
+        Toast.info(message);
+        return false;
+    }
 
     private present(active: ActiveSend, change: Partial<ChatSubmission> = {}): void {
         active.feedback = {...active.feedback, ...change};

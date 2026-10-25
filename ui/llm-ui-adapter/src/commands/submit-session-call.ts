@@ -2,25 +2,28 @@ import type {OperationLedger, OperationReceipt} from '@itookit/llm-ui';
 import {SessionCommand, type SessionInstructionQueue, type SubmissionRequest} from '@itookit/llm-session/contracts';
 import {createModuleLogger, t} from '@itookit/common';
 import type {CommandContext} from './CommandContext';
+import {sameSubmissionDraft, type SubmissionDraft} from '../domain/submission-draft';
+import {canonicalJson as canonicalSubmission} from '../utils/canonical-json';
 
 const log = createModuleLogger('workspace-submission');
 
 /** The existing operation ledger records input before dispatch; queue acceptance can beat a suspended RPC. */
-export async function submitSessionCall(ctx: CommandContext, request: SubmissionRequest, key: string): Promise<string> {
+export async function submitSessionCall(ctx: CommandContext, request: SubmissionRequest, key: string, draft?: SubmissionDraft): Promise<string> {
     const operationId = request.submission!.id, sessionId = ctx.getSessionId(), ledger = submissionLedger(ctx);
     request = structuredClone({...request, expectedSessionId: sessionId});
+    draft = structuredClone(draft);
     const previous = ledger.getSnapshot().find(record => record.context.operationId === operationId);
     if (previous) {
-        const saved = structuredClone(previous.input) as {request?: unknown};
+        const saved = structuredClone(previous.input) as {request?: unknown; draft?: unknown};
         if (canonicalSubmission(saved.request) !== canonicalSubmission(request)) throw failure('CALL_SUBMISSION_CONFLICT');
-        return reconcilePreviousCall(ctx, operationId);
+        return reconcilePreviousCall(ctx, operationId, sameSubmissionDraft(saved.draft, draft));
     }
     await ledger.register({context: {viewId: sessionId, operationId}, conversationId: sessionId, kind: 'send', status: 'submitting',
-        input: JSON.parse(JSON.stringify({key, request}))});
+        input: JSON.parse(JSON.stringify({key, request, ...(draft ? {draft} : {})}))});
     return dispatch(ctx, request, sessionId, ledger);
 }
 
-async function reconcilePreviousCall(ctx: CommandContext, operationId: string): Promise<string> {
+async function reconcilePreviousCall(ctx: CommandContext, operationId: string, sameDraft = true): Promise<string> {
     const started = Date.now();
     let receipt: OperationReceipt;
     try {receipt = await reconcileSessionCall(ctx, operationId);}
@@ -31,6 +34,7 @@ async function reconcilePreviousCall(ctx: CommandContext, operationId: string): 
     }
     if (receipt.status === 'rejected') throw failure('CALL_SUBMISSION_REJECTED', undefined, receipt.message);
     if (receipt.status !== 'accepted') throw failure('CALL_SUBMISSION_UNKNOWN', 'unknown');
+    if (!sameDraft) throw failure('CALL_SUBMISSION_PREVIOUS_ACCEPTED', 'accepted-previous');
     return operationId;
 }
 
@@ -125,16 +129,12 @@ function queueAccepted(queue: SessionInstructionQueue | undefined, request: Subm
         && item.sendIntent.submission.source.ownerId === expected.source.ownerId && item.sendIntent.submission.source.id === expected.source.id);
 }
 
-function failure(code: string, outcome?: 'unknown', message?: string): Error {
+function failure(code: string, outcome?: 'unknown' | 'accepted-previous', message?: string): Error {
     const labels: Partial<Record<string, Parameters<typeof t>[0]>> = {CALL_SUBMISSION_UNKNOWN: 'callable.submission.unknown', CALL_SUBMISSION_CONFLICT: 'callable.submission.conflict',
         CALL_SUBMISSION_PORT_UNAVAILABLE: 'callable.submission.unavailable', CALL_SUBMISSION_REJECTED: 'callable.submission.rejected',
-        CALL_SUBMISSION_RECEIPT_MISMATCH: 'callable.submission.receiptMismatch'};
+        CALL_SUBMISSION_RECEIPT_MISMATCH: 'callable.submission.receiptMismatch', CALL_SUBMISSION_PREVIOUS_ACCEPTED: 'callable.submission.previousAccepted'};
     const label = labels[code];
     return Object.assign(new Error(message ?? (label ? t(label) : code)), {code, outcome});
-}
-export function canonicalSubmission(value: unknown): string {
-    return JSON.stringify(value, (_key, entry) => entry && typeof entry === 'object' && !Array.isArray(entry)
-        ? Object.fromEntries(Object.keys(entry).sort().map(key => [key, entry[key]])) : entry);
 }
 function rejectionCode(error: unknown): string | undefined {
     const code = (error as {code?: unknown; outcome?: string})?.code;

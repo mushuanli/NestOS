@@ -52,6 +52,8 @@ export interface UIState {
     operations?: readonly import('@itookit/llm-ui').OperationRecord[];
     collapse_states: CollapseStateMap;
     input_text?: string;
+    input_token?: string;
+    input_files?: import('../services/DraftFilesCodec').DraftFileRecord[];
     input_agent_id?: string;
     input_target?: import('@itookit/llm-flow/contracts').TargetRef;
     input_arguments?: import('./input-draft').WorkspaceArgumentDraft;

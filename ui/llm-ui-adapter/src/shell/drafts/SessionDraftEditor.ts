@@ -87,7 +87,7 @@ export class SessionDraftEditor extends IEditor {
             });
         this.unsubscribeConnections?.();
         this.bindConfiguration();
-        if (saved.config) this.input.restoreDraft(saved.config.text, saved.files, saved.config.agentId);
+        if (saved.config) this.input.restoreDraft(saved.config.text, saved.files, saved.config.agentId, saved.config.draftToken);
         this.restoring = false;
         if ((saved.migrated || changedAgent) && saved.config) { this.persist(saved.config, saved.files); await this.saves.flush(); }
         window.addEventListener('beforeunload', this.beforeUnload);
@@ -178,6 +178,9 @@ export class SessionDraftEditor extends IEditor {
     private async send(message: SendMessageParams): Promise<void | false> {
         if (this.closed || this.sending || (!message.text.trim() && !message.files.length
             && message.target?.kind !== 'flow' && !message.overrides?.flowExpectedSignature && !message.overrides?.flowId)) return;
+        const captured = this.input?.getConfig();
+        if (!message.draftConfig && captured?.draftToken && captured.text.trim() === message.text.trim())
+            message = {...message, draftConfig: structuredClone(captured)};
         const nativeSelection = this.input?.getNativeModelSelection?.();
         if (this.confirmed) {
             this.sending = true;

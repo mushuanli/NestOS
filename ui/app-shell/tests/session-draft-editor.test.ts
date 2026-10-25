@@ -115,7 +115,7 @@ it('restores text, agent, options and binary attachments after reopening', async
         read: async (id: string) => bytes.get(id)! };
     const codec = new DraftDataCodec(attachments);
     const save = vi.fn(async (data: string) => { stored = data; });
-    const config = { text: 'unsent text', agentId: 'writer', settings: { connectionId: 'model-2', temperature: 0.2 } };
+    const config = {text: 'unsent text', agentId: 'writer', draftToken: '12345678-1234-4123-8123-123456789abc', settings: {connectionId: 'model-2', temperature: 0.2}};
     const file = new File([new Uint8Array([0, 255, 12])], 'sample.bin', { type: 'application/octet-stream', lastModified: 100 });
     const editor = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never, { sessionDraft: { materialize: vi.fn(), save, attachments } });
     await editor.init(document.createElement('div'));
@@ -132,7 +132,7 @@ it('restores text, agent, options and binary attachments after reopening', async
     const next = new SessionDraftEditor(document.createElement('div'), {onChange: () => () => {}} as never, { sessionDraft: { materialize: vi.fn(), initialData: stored, attachments } });
     await next.init(document.createElement('div'));
     expect(state.options.initialConfig).toEqual(config);
-    expect(state.restore).toHaveBeenLastCalledWith(config.text, expect.arrayContaining([expect.any(File)]), 'writer');
+    expect(state.restore).toHaveBeenLastCalledWith(config.text, expect.arrayContaining([expect.any(File)]), 'writer', config.draftToken);
     await next.destroy();
 });
 it.each([true, false, undefined])('does not replace a draft merely on volatile admission (result %s)', async accepted => {

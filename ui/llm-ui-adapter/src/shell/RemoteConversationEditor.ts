@@ -196,7 +196,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             if (restored?.config) {
                 const executor = this.view.input.getConfig().agentId;
                 this.view.input.setConfig({...restored.config, agentId: executor});
-                this.view.input.restoreDraft(restored.config.text, restored.files, executor);
+                this.view.input.restoreDraft(restored.config.text, restored.files, executor, restored.config.draftToken);
                 this.draftFiles = restored.files; this.savedDraft = restored.config.text;
             }
             this.savedFiles = [...this.draftFiles];
@@ -497,7 +497,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         const restored = await this.composer.restore(); if (this.closed || !restored.config) return;
         const input = this.view.input, executor = input.getConfig().agentId;
         input.acceptSubmittedDraft(input.getConfig().text, this.draftFiles, input.getDraftRevision());
-        input.setConfig({...restored.config, agentId: executor}); input.restoreDraft(restored.config.text, restored.files, executor);
+        input.setConfig({...restored.config, agentId: executor}); input.restoreDraft(restored.config.text, restored.files, executor, restored.config.draftToken);
         this.draftFiles = restored.files; this.savedFiles = [...restored.files]; this.savedDraft = restored.config.text;
         this.savedConfig = JSON.stringify(input.getConfig()); this.submittedDraft = undefined; this.submission = undefined;
         this.restoreSubmission(restored.submission);

@@ -2781,6 +2781,11 @@ export const zhCN = {
     'callable.input.invalidDraft': '结构化参数草稿格式无效，已保留原记录，请修复后重试',
     'callable.catalog.unavailable': '调用目录暂不可用，请刷新重试',
     'callable.catalog.partial': '有 {count} 个目标暂不可用，可继续选择其他目标',
+
+    'chatInput.attachments.draftInvalid': '附件草稿记录无效或内容已损坏，请保留原操作并核对存储',
+    'chatInput.attachments.draftMissing': '草稿附件丢失，请核对存储或重新选择文件；原提交不会重发',
+    'chatInput.attachments.draftReadFailed': '无法读取草稿附件，请核对存储后重试',
+    'callable.submission.previousAccepted': '原提交已接纳；当前草稿有变化，已保留，请确认是否需要新的调用',
 } as const;
 
 // LocaleStrings maps every key to string (not literal), so other locales can provide different values.

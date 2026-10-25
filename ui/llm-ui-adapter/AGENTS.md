@@ -188,4 +188,4 @@ Session 附件发送经 AssetService.prepareUpload 取得 Markdown 引用及同�
 
 Flow 通用 files 控件与 images 共用 input-assets 上传端口，稳定 uploadId 在取消重开和失败重试时保留；取消只结束当前观察，重新使用必须 Inspect 实际内容。文件选择捕获固定 signal/修订，不使用新选择的取消信号继续旧批次。多个 composer 附件字段不自动复制全批文件；逐文件核对冻结实参，未绑定保留并提示。确认的 Flow 文件不重复走 Session 聊天附件上传或追加引用文本；清除是显式 []。
 
-正式 Session 和本地项目草稿通过已发布 Agent/Flow 目录保持平级目标。默认工作台先在现有 OperationLedger 持久保存冻结请求再提交；独立 ChatView 在同一台账保存原 Session/分支的 sessionRequest。队列通知只触发完整摘要核对，恢复使用原请求的只读 inspect，不重新填表或重发。晚回复不消费新修订或其他分支草稿；自动核对消费当前只覆盖无附件且身份匹配的草稿，完整附件崩溃恢复和独立子会话路由继续按计划验收。
+正式 Session 和本地项目草稿通过已发布 Agent/Flow 目录保持平级目标。默认工作台先在现有 OperationLedger 持久保存冻结请求再提交；独立 ChatView 在同一台账保存原 Session/分支的 sessionRequest。队列通知只触发完整摘要核对，恢复使用原请求的只读 inspect，不重新填表或重发。晚回复不消费新修订或其他分支草稿；已保存附件草稿复用 DraftFilesCodec 和原上传身份，匹配 token 与内容后消费；多视图台账并发写入和独立子会话路由继续按计划验收。

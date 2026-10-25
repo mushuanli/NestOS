@@ -5,6 +5,8 @@ import type { ChatInputSettings } from '../domain/ports/IChatInputPresenter';
 import type { UIState } from '../domain/types';
 import { ErrorHandler } from '../utils/errorHandler';
 import {readInputDraft} from '../domain/input-draft';
+import {readDraftFiles} from './DraftFilesCodec';
+import {validDraftToken} from '../domain/draft-file-identity';
 
 /**
  * UI 状态持久化服务
@@ -44,7 +46,7 @@ export class StateService {
             const state = await this.engine.getUIState(sessionId);
             return state ? fromConversationState(state, branch) : null;
         } catch (e) {
-            if ((e as {code?: unknown})?.code === 'CALL_INPUT_DRAFT_INVALID') throw e;
+            if (/^(?:CALL_INPUT_DRAFT_|DRAFT_)/.test(String((e as {code?: unknown})?.code))) throw e;
             console.warn('[StateService] Failed to load UI state:', e);
             return null;
         }
@@ -56,6 +58,8 @@ function toConversationState(state: UIState, branch: string): ConversationUIStat
         collapseStates: state.collapse_states,
         historyVisibility: state.history_visibility,
         ...(state.input_text !== undefined ? {branchDrafts: {[branch]: {inputText: state.input_text, inputAgentId: state.input_agent_id,
+            ...(state.input_token !== undefined ? {inputToken: readToken(state.input_token)} : {}),
+            ...(state.input_files !== undefined ? {inputFiles: JSON.parse(JSON.stringify(readDraftFiles(state.input_files)))} : {}),
             inputTarget: state.input_target, ...(state.input_arguments ? {inputArguments: JSON.parse(JSON.stringify(state.input_arguments))} : {})}}} : {}),
     };
 }
@@ -65,9 +69,15 @@ export function fromConversationState(state: ConversationUIState, branch: string
         collapse_states: state.collapseStates ?? {},
         history_visibility: state.historyVisibility,
         input_text: state.branchDrafts?.[branch]?.inputText,
+        input_token: readToken(state.branchDrafts?.[branch]?.inputToken),
+        input_files: state.branchDrafts?.[branch]?.inputFiles === undefined ? undefined : readDraftFiles(state.branchDrafts[branch].inputFiles),
         input_agent_id: state.branchDrafts?.[branch]?.inputAgentId,
         input_target: state.branchDrafts?.[branch]?.inputTarget,
         input_arguments: readInputDraft(state.branchDrafts?.[branch]?.inputArguments),
         operations: state.operationRecords as unknown as UIState['operations'],
     };
+}
+function readToken(value: unknown): string | undefined {
+    if (value === undefined || validDraftToken(value)) return value;
+    throw Object.assign(new Error('Invalid persisted input identity'), {code: 'DRAFT_IDENTITY_INVALID'});
 }

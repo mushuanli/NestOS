@@ -1,6 +1,7 @@
 import {flowInputAssets} from '../flows/input-assets';
 import {prepareAgentFlow, prepareCallTarget} from '../flows/agent-flow';
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
+import {DraftFilesCodec} from '../services/DraftFilesCodec';
 import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { disposeEditorResources } from './editor-disposal';
 import { rememberTaskAttachment, restoreTaskAttachment } from './task-attachment-lifecycle';
@@ -280,6 +281,8 @@ export class LLMWorkspaceEditor implements IEditor {
             measurement.mark('branches');
 
             this.initComplete = true;
+            await this.recoverAcceptedDraft();
+            this.chatInput.setAvailability?.({canSend: !this.options.readOnly, canInterrupt: !this.options.readOnly});
             this.submissionRecovery?.observe(this.sessionManager.getSnapshot?.().instructionQueue);
             this.options.handoff = undefined;
             this.emit('ready', undefined);
@@ -338,7 +341,9 @@ export class LLMWorkspaceEditor implements IEditor {
         this.stateManager = new StateManager(
             this.stateService, this.sessionManager, this.options.sessionId!,
             (id) => validateAgentId(this.agentService, id),
-            this.options.target?.kind === 'session' ? this.options.target.branch : undefined
+            this.options.target?.kind === 'session' ? this.options.target.branch : undefined,
+            new DraftFilesCodec(this.assetService.draftFiles()),
+            () => this.emit('change', undefined),
         );
         this.branchStore = new BranchStore(this.commandBus, this.errorHandler);
         this.branchService = new BranchService(this.commandBus, this.branchStore);
@@ -456,6 +461,8 @@ export class LLMWorkspaceEditor implements IEditor {
                 settings: initialSettings,
             },
             onConfigChange: (config) => this.handleConfigChange(config),
+            onDraftChange: (config, files) => {if (this.initComplete) this.stateManager.stageInput(config, files);},
+            flushDraft: () => this.flushPendingSave(),
             onExecutorChange: () => { this.skillRefreshBinding?.refresh(); },
             onRequestConnections: () => this.connectionOptions!.read(),
             prepareAgentFlow: (agent, signal, draft) => prepareAgentFlow(this.commandBus, agent, signal, draft),
@@ -478,6 +485,7 @@ export class LLMWorkspaceEditor implements IEditor {
             },
         };
         this.chatInput = this.options.handoff ? bindWorkspaceInput(inputOptions, this.options.handoff) : new ChatInput(inputEl, inputOptions);
+        this.chatInput.setAvailability?.({canSend: false, canInterrupt: false});
 
         this.inputReceiver = mountSessionInputActions(inputEl, session.manifest, async () => {
             try { await this.startFlowInvocation(''); }
@@ -793,7 +801,7 @@ export class LLMWorkspaceEditor implements IEditor {
 
     private async handleConfigChange(config: IChatInputConfig): Promise<void> {
         this.skillRefreshBinding?.refresh();
-        if (!this.currentSessionId || this.isBeingDeleted) return;
+        if (!this.initComplete || !this.currentSessionId || this.isBeingDeleted) return;
         await this.errorHandler.wrap(
             () => this.stateManager.saveInputConfiguration(config),
             'Save input configuration', 'toast'
@@ -929,7 +937,7 @@ export class LLMWorkspaceEditor implements IEditor {
 
         const sessionSettings = initial ? initial.settings : settings;
 
-        if (!this.options.handoff) this.stateManager.restoreInputState(this.chatInput, {
+        if (!this.options.handoff) await this.stateManager.restoreInputState(this.chatInput, {
             initialInputState: effectiveInitialInputState,
             savedState: savedUIState,
             sessionSettings,
@@ -1055,7 +1063,7 @@ export class LLMWorkspaceEditor implements IEditor {
         await this.loadSession();
     }
 
-    isDirty(): boolean { return false; }
+    isDirty(): boolean {return this.stateManager?.hasPendingInput() ?? false;}
     captureRecovery(): unknown {
         if (this.historyView.hasPendingEdits?.()) throw Object.assign(new Error(t('httpApp.recoveryBusy')), {code: 'RECOVERY_BUSY'});
         return this.chatInput.captureRecovery();
@@ -1381,6 +1389,14 @@ export class LLMWorkspaceEditor implements IEditor {
         const isCurrent = () => revision === this.activationRevision && this.viewActive && !this.destroyPromise;
         await this.sendCommand.reconcile(id, isCurrent);
         if (isCurrent()) await this.stateManager.saveInputConfiguration(this.chatInput.getConfig());
+    }
+
+    private async recoverAcceptedDraft(): Promise<void> {
+        const token = this.chatInput.getConfig().draftToken;
+        if (!token) return;
+        const record = this.operations?.getSnapshot().find(item => item.conversationId === this.options.sessionId
+            && item.kind === 'send' && item.status === 'accepted' && (item.input as {draft?: {token?: string}})?.draft?.token === token);
+        if (record) await this.reconcileSubmission(record.context.operationId);
     }
 
     private clearDisposalBindings(): void {

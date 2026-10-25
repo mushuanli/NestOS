@@ -464,3 +464,25 @@ C4Component
 本批补齐调用卡片链路，但审查发现旧 DAG Goal 编辑器仍可用 status 字段触发执行控制，尚需收敛到同一控制入口。F17 保留该迁移与组合验收项；F16、F20—F24 仍按原计划推进，不将整个实施目标标为完成。
 
 验证：隔离候选适配层 187 项、UI 控制/调用/轮询/提交核对 57 项通过，适配层类型检查及 12 个 Mermaid 图、16 个本地链接检查通过。同批生产代码已通过构建和架构检查；新增回归覆盖接纳后本地回执保存失败、登记期间关闭视图，以及并发视图通过既有 CAS 保存同一操作。无部署、重启或生产控制操作。
+
+## 22. F17 Goal 文字编辑与执行控制分离
+
+旧 DAG Goal 对话框保存文字时总会发送 status（默认 active），后端将 active/paused 映射为执行控制。因此文字编辑可能意外恢复执行。编辑器改为仅发送 objective，并显式携带原 Session/根 Task；不将目标元数据解释为用户的暂停、恢复或完成意图。后端既有部分字段更新机制无需新增存储或调度器。
+
+```mermaid
+C4Component
+  title Goal 编辑与执行控制的职责边界
+  Component(goal, "DAG Goal 编辑", "UI", "只提交 objective；视图切换后旧弹窗失效")
+  Component(control, "Invocation 控制", "UI 适配", "持久意图、明确动作、原回执核对")
+  Component(api, "Flow 应用端口", "后端", "目标更新与执行控制按输入职责处理")
+  ContainerDb(metadata, "Session shared goal", "已有存储", "目标元数据")
+  Container(kernel, "Kernel", "执行机制", "控制版本、幂等回执和停止确认")
+  Rel(goal, api, "仅 objective")
+  Rel(control, api, "明确 status、requestId、expectedEpoch")
+  Rel(api, metadata, "合并目标字段")
+  Rel(api, kernel, "仅明确的执行控制动作")
+```
+
+关闭视图或切换运行后，不提交旧 Goal 弹窗；已经发出的保存仍可完成，但迟到回复不刷新或覆盖新视图。独立 DAG 运行页的暂停/恢复/撤回按钮与持久 operations 注入仍需接到统一控制链，本节不将移除隐式入口等同于完成该迁移，F17 保留未完成状态。
+
+验证：新增行为先在旧实现复现 3 项失败；隔离候选 DAG 与调用控制共 55 项通过，适配层类型检查、13 个 Mermaid 图及 16 个本地链接通过。覆盖保存失败的具体提示、切换/销毁后禁止提交、迟到保存不刷新旧运行。仅提交本节对应修改，其他未完成产物代码保留。

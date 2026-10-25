@@ -11,7 +11,7 @@ function snapshot(retrying = false, status = 'succeeded') {
         nodes: [{ nodeId: 'agent', snapshot: { task: retrying ? next : original } }], iterations: { agent: retrying ? 2 : 1 },
         taskTree: retrying ? [original, next] : [original], detachedNodes: [], usage: { tokens: 1, startedAt: 0, elapsedMs: 1 } };
 }
-afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+afterEach(() => { document.querySelectorAll('dialog').forEach(dialog => dialog.remove()); vi.restoreAllMocks(); vi.useRealTimers(); });
 
 it('keeps historical attempts readable without exposing retry, reply or cancellation outside current control membership', async () => {
     const current = {...snapshot(true, 'running'), controlTaskIds: ['root', 'retry']};
@@ -94,7 +94,7 @@ it('renders each waiting task and pins an open response dialog to its original r
     workbench.destroy();
 });
 
-it('keeps goal edits on the original run after switching views and reports save failures', async () => {
+it('edits goal text without submitting execution status and reports save failures', async () => {
     Object.defineProperty(HTMLDialogElement.prototype, 'showModal', { configurable: true, value: vi.fn() });
     const error = vi.spyOn(Toast, 'error').mockImplementation(() => {});
     const execute = vi.fn(async (name: string, args: any) => {
@@ -106,11 +106,11 @@ it('keeps goal edits on the original run after switching views and reports save 
     await workbench.openRun('root', 'session');
     root.querySelector<HTMLButtonElement>('[data-run-action="goal"]')!.click();
     const dialog = document.body.querySelector('dialog')!;
-    await workbench.openRun('other', 'session');
+    expect(dialog.querySelector('[name="status"]')).toBeNull();
     dialog.querySelector('textarea')!.value = 'original objective';
     dialog.returnValue = 'save'; dialog.dispatchEvent(new Event('close'));
-    expect(execute).toHaveBeenCalledWith('dag.run.goal.update', { taskId: 'root',
-        goal: { objective: 'original objective', status: 'active' } });
+    expect(execute).toHaveBeenCalledWith('dag.run.goal.update', { sessionId: 'session', taskId: 'root',
+        goal: { objective: 'original objective' } });
     await vi.waitFor(() => expect(error).toHaveBeenCalledWith('goal conflict'));
     workbench.destroy();
 });
@@ -216,4 +216,44 @@ it('opens persisted Runs from the visible history action and resumes the selecte
         root.querySelector<HTMLButtonElement>('[data-run-action="back"]')!.click();
         expect(root.querySelector('[data-mode="design"]')).not.toBeNull();
     } finally { workbench.destroy(); root.remove(); }
+});
+
+it.each(['switch', 'destroy'])('does not save a stale goal dialog after %s', async action => {
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {configurable: true, value: vi.fn()});
+    const execute = vi.fn(async (_name: string) => snapshot(false, 'waiting'));
+    const root = document.createElement('div');
+    const workbench = new DagWorkbench(root, {commands: {execute} as never});
+    try {
+        await workbench.openRun('root', 'session');
+        root.querySelector<HTMLButtonElement>('[data-run-action="goal"]')!.click();
+        const dialog = document.body.querySelector('dialog')!;
+        if (action === 'switch') await workbench.openRun('other', 'session');
+        else workbench.destroy();
+        dialog.returnValue = 'save'; dialog.dispatchEvent(new Event('close'));
+        expect(execute.mock.calls.some(([name]) => name === 'dag.run.goal.update')).toBe(false);
+        expect(dialog.isConnected).toBe(false);
+    } finally {workbench.destroy();}
+});
+
+it('does not refresh an old run when its goal save completes after navigation', async () => {
+    Object.defineProperty(HTMLDialogElement.prototype, 'showModal', {configurable: true, value: vi.fn()});
+    let finish!: () => void;
+    const execute = vi.fn(async (name: string, args: any) => {
+        if (name === 'dag.run.goal.update') return new Promise<void>(resolve => {finish = resolve;});
+        const run = snapshot(false, 'waiting');
+        return {...run, root: {task: {...run.root.task, id: args.taskId}}};
+    });
+    const root = document.createElement('div');
+    const workbench = new DagWorkbench(root, {commands: {execute} as never});
+    try {
+        await workbench.openRun('root', 'session');
+        root.querySelector<HTMLButtonElement>('[data-run-action="goal"]')!.click();
+        const dialog = document.body.querySelector('dialog')!;
+        dialog.returnValue = 'save'; dialog.dispatchEvent(new Event('close'));
+        await workbench.openRun('other', 'session');
+        execute.mockClear(); finish();
+        await new Promise(resolve => setTimeout(resolve, 0));
+        expect(execute).not.toHaveBeenCalled();
+        expect(root.querySelector('.dag-toolbar')?.textContent).toContain('other');
+    } finally {workbench.destroy();}
 });

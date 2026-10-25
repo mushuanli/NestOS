@@ -648,18 +648,18 @@ export class DagWorkbench {
 
     private openGoalDialog(): void {
         const run = this.run;
-        if (!run) return;
+        if (!run || this.options.readOnly) return;
+        const view = this.viewRequest;
         const dialog = document.createElement('dialog');
         dialog.className = 'dag-dialog';
-        dialog.innerHTML = `<form method="dialog"><h2>Run goal</h2><label>Objective<textarea name="objective" rows="3">${escapeHTML(run.goal?.objective ?? '')}</textarea></label><label>Status<select name="status">${['active', 'paused', 'completed', 'blocked'].map(status => `<option ${status === (run.goal?.status ?? 'active') ? 'selected' : ''}>${status}</option>`).join('')}</select></label><menu><button value="cancel">Cancel</button><button value="save">Save</button></menu></form>`;
+        dialog.innerHTML = `<form method="dialog"><h2>Run goal</h2><label>Objective<textarea name="objective" rows="3">${escapeHTML(run.goal?.objective ?? '')}</textarea></label><menu><button value="cancel">Cancel</button><button value="save">Save</button></menu></form>`;
         document.body.append(dialog); dialog.showModal();
         dialog.addEventListener('close', () => {
-            if (dialog.returnValue === 'save') {
+            if (dialog.returnValue === 'save' && view === this.viewRequest) {
                 const objective = dialog.querySelector<HTMLTextAreaElement>('[name="objective"]')!.value.trim();
-                const status = dialog.querySelector<HTMLSelectElement>('[name="status"]')!.value;
-                void this.options.commands.execute(FlowCommand.RunGoalUpdate, { taskId: run.root.task.id, goal: { objective, status } })
-                    .then(() => this.refreshRun(run.root.task.id))
-                    .catch(error => Toast.error(error instanceof Error ? error.message : t('flow.run.controlFailed')));
+                void this.options.commands.execute(FlowCommand.RunGoalUpdate, { sessionId: run.root.task.sessionId, taskId: run.root.task.id, goal: { objective } })
+                    .then(() => { if (view === this.viewRequest) return this.refreshRun(run.root.task.id); })
+                    .catch(error => { if (view === this.viewRequest) Toast.error(error instanceof Error ? error.message : t('flow.run.controlFailed')); });
             }
             dialog.remove();
         }, { once: true });

@@ -2801,4 +2801,14 @@ export const en: LocaleStrings = {
     'chatInput.draft.notLoaded': 'The branch draft has not been read successfully. Reload it before saving.',
     'chatInput.draft.invalid': 'The saved branch draft is invalid. Check storage and retry.',
     'chatInput.draft.busy': 'Other views are still changing the session. Retry shortly; your input is preserved.',
+
+    'flow.artifacts.loading': "Loading artifacts…",
+    'flow.artifacts.more': "Load more artifacts",
+    'flow.artifacts.open': "View artifacts",
+    'flow.artifacts.empty': "This execution has no committed artifacts",
+    'flow.artifacts.notImported': "This file has not been imported into host storage",
+    'flow.artifacts.download': "Download",
+    'flow.artifacts.preview': "Preview",
+    'flow.artifacts.truncated': "Preview truncated; download the complete content",
+    'flow.artifacts.failed': "Could not read artifact: {code}",
 };

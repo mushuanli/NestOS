@@ -1,3 +1,4 @@
+import {TaskArtifactBrowser} from '../components/dag/TaskArtifactBrowser';
 import {InvocationOperations} from './invocation-operations';
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import {ControlOperations} from './control-operations';
@@ -19,7 +20,8 @@ import { inputInteraction } from '../shell/input-interaction';
 import {invocationControl, invocationControlTasks, invocationStatus, type InvocationControl} from './invocation-control';
 
 const terminal = (status: string) => ['succeeded', 'failed', 'cancelled'].includes(status);
-interface Card { element: HTMLElement; interactions: Map<string, InteractionPanel | HTMLElement>; snapshot?: DurableFlowSnapshot; active: boolean; actionsKey?: string; loadError?: boolean; recoveryNotice?: string; unmount?: () => void }
+interface Card {
+    artifacts: TaskArtifactBrowser; element: HTMLElement; interactions: Map<string, InteractionPanel | HTMLElement>; snapshot?: DurableFlowSnapshot; active: boolean; actionsKey?: string; loadError?: boolean; recoveryNotice?: string; unmount?: () => void }
 
 /** Persistent call identities drive cards; Kernel snapshots drive their execution state. */
 export class InvocationPanel {
@@ -78,6 +80,7 @@ export class InvocationPanel {
 
     setVisible(visible: boolean): void {
         this.visible = visible; clearTimeout(this.timer);
+        for (const card of this.cards.values()) card.artifacts.setVisible(visible);
         if (!visible) this.viewAbort.abort();
         else if (this.viewAbort.signal.aborted) this.viewAbort = new AbortController();
         if (visible) {this.renderInvocationRecovery(); void this.refresh();}
@@ -94,7 +97,7 @@ export class InvocationPanel {
 
     destroy(): void {
         this.abort.abort(); this.viewAbort.abort(); clearTimeout(this.timer); this.releaseOperations();
-        for (const card of this.cards.values()) { card.unmount?.(); card.element.remove(); }
+        for (const card of this.cards.values()) { card.artifacts.dispose(); card.unmount?.(); card.element.remove(); }
         for (const card of this.cards.values()) for (const panel of card.interactions.values()) if (panel instanceof InteractionPanel) panel.clear();
         this.cards.clear(); this.element.remove();
     }
@@ -137,10 +140,10 @@ export class InvocationPanel {
         element.innerHTML = `<header><strong>${escapeHTML(call.flow.name)} · v${call.revision}</strong><span data-status role="status"></span></header>
             <p>${escapeHTML(t('flow.invoke.origin', {branch: call.branch ?? 'main'}))}</p>
             <details><summary>${escapeHTML(t('flow.invoke.inputs'))}</summary>${this.inputSources(call)}<pre>${escapeHTML(JSON.stringify(call.inputResolution?.parameters ?? call.parameters, null, 2))}</pre></details>
-            <p data-control-notice role="status"></p><div data-control-recovery></div><div data-child-session></div><div data-actions></div><details><summary>${escapeHTML(t('flow.invoke.result'))}</summary><pre data-result></pre></details><div data-interactions></div><p data-error role="alert"></p>`;
+            <p data-control-notice role="status"></p><div data-control-recovery></div><div data-child-session></div><div data-actions></div><details><summary>${escapeHTML(t('flow.invoke.result'))}</summary><pre data-result></pre></details><div data-artifacts></div><div data-interactions></div><p data-error role="alert"></p>`;
         const unmount = this.options.mountCard?.(element, call);
         if (!this.options.mountCard) this.element.append(element);
-        return { element, interactions: new Map(), active: !call.error, unmount };
+        return { element, artifacts: new TaskArtifactBrowser(element, this.commands), interactions: new Map(), active: !call.error, unmount };
     }
 
     private updateCard(card: Card, call: FlowInvocationRecord, snapshot: DurableFlowSnapshot): void {
@@ -152,6 +155,8 @@ export class InvocationPanel {
         const returned = (task.output as { nodes?: Record<string, unknown> } | undefined)?.nodes?.__flow_return;
         const result = formatFlowOutput(returned ?? task.output ?? task.exit?.error ?? task.lastError ?? '');
         card.element.querySelector('[data-result]')!.textContent = result;
+        card.element.querySelector('[data-artifacts]')!.innerHTML = terminal(task.status) && task.output !== undefined
+            ? card.artifacts.render({sessionId: task.sessionId, taskId: task.id}) : '';
         this.updateActions(card, call, snapshot);
         this.updateControlRecovery(card, call);
         this.updateInteractions(card, call, terminal(task.status) ? [] : invocationControlTasks(snapshot));

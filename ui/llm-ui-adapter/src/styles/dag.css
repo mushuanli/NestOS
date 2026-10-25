@@ -759,3 +759,27 @@
 .flow-file-fields__summary { white-space: pre-wrap; color: var(--dag-text-secondary); font-size: .8rem; }
 .flow-file-fields__actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .flow-file-fields__actions button { min-height: 44px; }
+
+.dag-artifacts {
+    display: grid;
+    gap: 8px;
+    margin-block: 8px;
+}
+
+.dag-artifacts__item {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    border: 1px solid var(--dag-border, var(--llm-border-color, #e5e7eb));
+    border-radius: 4px;
+}
+
+.dag-artifacts__item > pre,
+.dag-artifacts__item > img,
+.dag-artifacts__item > p {
+    flex-basis: 100%;
+    max-width: 100%;
+    overflow: auto;
+}

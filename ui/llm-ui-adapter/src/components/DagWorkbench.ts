@@ -3,7 +3,7 @@ import {ControlOperations} from '../flows/control-operations';
 import {FlowRunControl} from '../flows/run-control';
 import {invocationControl, invocationStatus} from '../flows/invocation-control';
 import { renderVariables } from './dag/VariableView';
-import {bindAssetPreviews} from './dag/AssetPreview';
+import {TaskArtifactBrowser} from './dag/TaskArtifactBrowser';
 import { renderFlowOutput } from './dag/FlowOutput';
 import { enhanceInputFieldsEditor } from './dag/InputFieldsEditor';
 import { enhanceInvocationEditor } from './dag/InvocationEditor';
@@ -58,11 +58,12 @@ export class DagWorkbench {
     private parameterPanel?: FlowRunParameters;
     private inspectorMode: 'parameters' | 'edit' = 'parameters';
     private preparingRun = false;
+    private readonly artifacts: TaskArtifactBrowser;
 
     constructor(
         private readonly root: HTMLElement,
         private readonly options: DagWorkbenchOptions,
-    ) {}
+    ) {this.artifacts = new TaskArtifactBrowser(root, options.commands);}
 
     async initialize(): Promise<void> {
         const request = this.viewRequest;
@@ -73,6 +74,7 @@ export class DagWorkbench {
     }
 
     setDraft(draft: FlowDraft, selectedNodeId?: FlowNodeId): void {
+        this.artifacts.clear();
         this.viewRequest++;
         this.parameterPanel?.destroy();
         this.parameterPanel = undefined;
@@ -118,6 +120,7 @@ export class DagWorkbench {
             }) : undefined;
         if (request !== this.viewRequest) return;
         this.controlOperations = operations ? new ControlOperations(operations, this.options.commands, run.root.task.sessionId) : undefined;
+        this.artifacts.clear();
         this.run = run;
         this.setMode('run');
         this.scheduleRunRefresh(taskId);
@@ -133,12 +136,13 @@ export class DagWorkbench {
     }
 
     setVisible(visible: boolean): void {
-        this.visible = visible;
+        this.visible = visible; this.artifacts.setVisible(visible);
         if (!visible) {this.viewRequest++; this.stopRunRefresh();}
         else if (this.mode === 'run' && this.run) void this.refreshRun(this.run.root.task.id);
     }
 
     destroy(): void {
+        this.artifacts.dispose();
         this.viewRequest++;
         this.parameterPanel?.destroy();
         this.stopRunRefresh();
@@ -611,7 +615,8 @@ export class DagWorkbench {
             <header class="dag-toolbar"><button data-run-action="back">${escapeHTML(this.options.backLabel ?? t('flow.runs.back'))}</button><strong>DAG Run</strong>${snapshot.attachedFromStorage && (!this.controlOperations || invocationControl(snapshot).canReattach) ? `<button data-run-action="resume">${escapeHTML(t(this.controlOperations ? 'flow.invoke.reattach' : 'flow.runs.resume'))}</button>` : ''}<span>${escapeHTML(String(run.id))}</span><span data-status="${escapeHTML(run.status)}">${escapeHTML(state)}</span><small>${snapshot.usage.tokens} tokens · ${(snapshot.usage.elapsedMs / 1000).toFixed(1)}s</small><button data-run-action="goal">Goal</button><button data-run-action="cancel">Cancel run</button></header>
             ${snapshot.workspaceFinalization ? `<section class="dag-run-workspace" data-workspace-status="${escapeHTML(snapshot.workspaceFinalization.status)}">${escapeHTML(t(`flow.workspace.${snapshot.workspaceFinalization.status}`))}${snapshot.workspaceFinalization.message ? `<span role="alert">${escapeHTML(snapshot.workspaceFinalization.message)}</span>` : ''}${snapshot.workspaceFinalization.persistenceError ? `<span role="alert">${escapeHTML(t('flow.workspace.persistenceFailed'))}: ${escapeHTML(snapshot.workspaceFinalization.persistenceError)}</span>` : ''}</section>` : ''}
             ${snapshot.goal ? `<section class="dag-run-goal"><strong>${escapeHTML(snapshot.goal.objective || 'Run goal')}</strong><span>${escapeHTML(snapshot.goal.status ?? 'active')}</span>${snapshot.goal.acceptanceCriteria?.length ? `<small>${snapshot.goal.acceptanceCriteria.map(escapeHTML).join(' · ')}</small>` : ''}</section>` : ''}
-            <section class="dag-output"><h3>${escapeHTML(t('flow.output.final'))}</h3>${renderFlowOutput(run.output, true)}</section>
+            <section class="dag-output"><h3>${escapeHTML(t('flow.output.final'))}</h3>${renderFlowOutput(run.output, true)}
+                ${run.output !== undefined ? this.artifacts.render({sessionId: run.sessionId, taskId: run.id}) : ''}</section>
             ${isTerminalRun(run.status) ? `<p>${escapeHTML(t('flow.retry.terminalHint'))}</p>` : ''}
             ${renderVariables(snapshot)}
             <div class="dag-run-nodes">${snapshot.taskTree.map(task => {
@@ -630,13 +635,12 @@ export class DagWorkbench {
                     ${controllable && task.id !== run.id && !isTerminalRun(task.status) ? `<menu><button data-run-signal="${escapeHTML(task.id)}">Inject</button><button data-run-cancel-task="${escapeHTML(task.id)}">Cancel</button></menu>` : ''}
                     ${controllable && task.id !== run.id && isTerminalRun(task.status) && !isTerminalRun(run.status) ? `<button data-run-retry="${escapeHTML(task.id)}" ${this.retryRequests.get(task.id)?.pending ? 'disabled' : ''}>${escapeHTML(t('flow.retry.title'))}</button><small>${escapeHTML(t('flow.retry.hint'))}</small>` : ''}
                     ${controllable && task.id !== run.id && isTerminalRun(task.status) && !isTerminalRun(run.status) ? `<button data-run-retry-downstream="${escapeHTML(task.id)}" ${this.retryRequests.get(retryKey(task.id, true))?.pending ? 'disabled' : ''}>${escapeHTML(t('flow.retry.downstreamTitle'))}</button><small>${escapeHTML(t('flow.retry.downstreamHint'))}</small>` : ''}
-                    ${task.output !== undefined && task.id !== run.id ? `<details class="dag-output" open><summary>${escapeHTML(t('flow.output.node'))}</summary>${renderFlowOutput(task.output)}</details>` : ''}
+                    ${task.output !== undefined && task.id !== run.id ? `<details class="dag-output" open><summary>${escapeHTML(t('flow.output.node'))}</summary>${renderFlowOutput(task.output)}${this.artifacts.render({sessionId: task.sessionId, taskId: task.id})}</details>` : ''}
                     <button data-run-transcript="${escapeHTML(task.id)}">${escapeHTML(t('flow.transcript.title'))}</button>
                     <details><summary>Runtime details</summary><pre>${escapeHTML(JSON.stringify({ wait: task.wait, output: task.output, effects: Object.keys(task.effects ?? {}) }, null, 2))}</pre></details>
                 </article>`;
             }).join('')}</div>
         </section>`;
-        bindAssetPreviews(this.root, this.options.commands);
         if (this.options.readOnly) this.root.querySelectorAll(
             '[data-run-action]:not([data-run-action="back"]), [data-run-retry], [data-run-retry-downstream], [data-run-signal], [data-run-cancel-task], [data-run-respond]',
         ).forEach(control => control.remove());
@@ -996,6 +1000,7 @@ export class DagWorkbench {
     }
 
     private setMode(mode: 'design' | 'run'): void {
+        if (mode === 'design') this.artifacts.clear();
         this.mode = mode;
         this.options.onModeChange?.(mode);
         this.render();

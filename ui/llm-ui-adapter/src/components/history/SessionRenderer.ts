@@ -11,8 +11,12 @@ import { TimerManager } from '../common';
 import { getPreviewText } from '../../utils/textUtils';
 import { IconResolver } from '../../utils/iconResolver';
 import type { MDxPlugin } from '@itookit/mdxeditor';
+import {TaskArtifactBrowser} from '../dag/TaskArtifactBrowser';
+import type {ExecutionArtifactScope} from '@itookit/app-contracts';
+import type {ICommandBus} from '@itookit/llm-session/contracts';
 
 export interface RendererContext {
+    artifacts?: {commands: ICommandBus; scope(group: SessionGroup): ExecutionArtifactScope | undefined;};
     readOnly?: boolean;
     markdownPlugins?: MDxPlugin[];
     htmlPolicy?: MDxControllerOptions['htmlPolicy'];
@@ -45,12 +49,15 @@ export class SessionRenderer {
     private lastExecutionRoot: HTMLElement | null = null;
     private timers = new TimerManager();
     private snapshotContent = new Map<string, string>();
+    private readonly artifacts?: TaskArtifactBrowser;
 
     constructor(
         private container: HTMLElement,
         private context: RendererContext,
         private onContentChange?: (id: string, content: string, type: 'user' | 'node') => void,
-    ) { }
+    ) {if (context.artifacts) this.artifacts = new TaskArtifactBrowser(container, context.artifacts.commands);}
+
+
 
     // ================================================================
     // 访问器（供其他 Controller 使用）
@@ -173,6 +180,7 @@ export class SessionRenderer {
             this.lastExecutionRoot = wrapper.querySelector('.llm-ui-execution-root');
         }
         this.restrictActions(wrapper);
+        this.syncArtifacts(group);
         this.placeInvocations();
     }
 
@@ -199,6 +207,7 @@ export class SessionRenderer {
     }
 
     private updateSnapshotContent(group: SessionGroup): void {
+        this.syncArtifacts(group);
         const content = group.executionRoot?.data.output ?? group.content ?? '';
         const id = group.executionRoot?.id ?? group.id;
         if (this.snapshotContent.get(group.id) !== content) {
@@ -212,6 +221,22 @@ export class SessionRenderer {
             const status = node.querySelector('.llm-ui-node__status');
             if (status) { status.textContent = NodeTemplates.statusLabel(group.executionRoot.status); status.className = `llm-ui-node__status llm-ui-node__status--${group.executionRoot.status}`; }
         }
+    }
+
+    setActive(active: boolean): void {this.artifacts?.setVisible(active);}
+
+    private syncArtifacts(group: SessionGroup): void {
+        if (!this.artifacts) return;
+        const wrapper = this.getSessionElement(group.id), scope = this.context.artifacts?.scope(group);
+        const target = wrapper?.querySelector<HTMLElement>('.llm-ui-execution-root');
+        let slot = target?.querySelector<HTMLElement>(':scope > [data-history-artifacts]');
+        if (!target || !scope) {if (slot) {slot.remove(); this.artifacts.prune();} return;}
+        const key = JSON.stringify([scope.sessionId, scope.taskId]);
+        if (slot?.dataset.historyArtifacts === key) return;
+        const replaced = !!slot;
+        if (!slot) {slot = document.createElement('div'); target.append(slot);}
+        slot.dataset.historyArtifacts = key; slot.innerHTML = this.artifacts.render(scope);
+        if (replaced) this.artifacts.prune();
     }
 
     private restrictActions(element: HTMLElement): void {
@@ -263,7 +288,7 @@ export class SessionRenderer {
         }
 
         this.nodeMap.set(node.id, element);
-        parentEl.appendChild(element);
+        parentEl.insertBefore(element, parentEl.querySelector(':scope > [data-history-artifacts]'));
         this.mountNodeEditor(element, node);
         this.restrictActions(element);
     }
@@ -413,6 +438,7 @@ export class SessionRenderer {
             removed.push(id);
         }
 
+        this.artifacts?.prune();
         const delay = animated ? 350 : 0;
         this.timers.setTimeout(() => this.checkEmpty(), delay);
 
@@ -474,6 +500,7 @@ export class SessionRenderer {
     // ================================================================
 
     clear(): void {
+        this.artifacts?.clear();
         this.editorMap.forEach(editor => this.releaseEditor(editor));
         this.editorMap.clear();
         this.editorMounts.clear();
@@ -492,13 +519,13 @@ export class SessionRenderer {
     }
 
     async destroy(): Promise<void> {
+        this.artifacts?.dispose();
         this.timers.destroy();
         this.timeline.clear();
         this.clear();
         await Promise.all(this.disposals);
         if (this.disposalFailures.length) throw new AggregateError(this.disposalFailures, 'History editor disposal failed');
     }
-
     updateCallInput(messageId: string, callInput: SessionGroup['callInput']): void {
         const wrapper = this.getSessionElement(messageId);
         const body = wrapper?.querySelector('.llm-ui-bubble__content');

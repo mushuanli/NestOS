@@ -1,3 +1,4 @@
+import {ArtifactCommand} from '@itookit/app-contracts';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {FlowsEditor} from '../../llm-ui-adapter/src/components/FlowsEditor';
@@ -248,6 +249,11 @@ it('controls, answers and opens routed child invocations from the parent card us
     action('child-second', 'flow.invoke.cancel').click();
     await vi.waitFor(async () => expect((await (await kernel.openTask(second.rootTaskId!)).status()).task.status).toBe('cancelled'));
     expect((await (await kernel.openTask(first.rootTaskId!)).status()).task.status).toBe('succeeded');
+    const listArtifacts = vi.fn(async input => ({...input, items: []}));
+    commands.register(ArtifactCommand.List, listArtifacts);
+    await panel.refresh();
+    document.querySelector<HTMLButtonElement>(`[data-invocation="${first.requestId}"] [data-artifacts-load]`)!.click();
+    await vi.waitFor(() => expect(listArtifacts).toHaveBeenCalledWith(expect.objectContaining({sessionId: first.executionSessionId, taskId: first.rootTaskId})));
     expect(await kernel.listSessionTasks('s')).toEqual([]);
     expect(execute.mock.calls.filter(([name]) => name === FlowCommand.RunGet).every(([, args]) => args.sessionId !== 's')).toBe(true);
 }, 15000);

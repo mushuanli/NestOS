@@ -193,3 +193,5 @@ Flow 通用 files 控件与 images 共用 input-assets 上传端口，稳定 upl
 OperationPersistence 只在 UI 适配层按 llm-ui 的纯规则合并 operationRecords，经 Session.compareAndSetUIState 对现有修订条件写入，并返回实际保存快照。未知写回执只读核对；条件冲突有界重读合并，不重发业务。缺少条件写能力不降级覆盖。台账合并不代表同分支正文可自动合并，草稿冲突继续独立处理。
 
 分支输入的持久数据仍归 SessionRepository。StateService/DraftPersistence 仅持有本编辑器的已读基线，复用现有 Session 修订条件写入；冲突保留 dirty 输入，经 WorkspaceDraftRecovery 显式加载或替换，期间新编辑、分支切换和隐藏使迟到恢复失效。台账与草稿共用 conditional-ui-state，不重放业务操作；读取失败不可当作空草稿。共享偏好在草稿检查后仅按实际修改保存。独立 llm-ui 继续只消费展示、输入控制和宿主持久化端口，不依赖文件系统。
+
+TaskArtifactBrowser 为运行页及正式 Session 的终态助手历史提供按需目录、预览和下载；scope 来自真实 Session/ExecutionRef，不解析气泡文本。它逐页校验引用、范围、总大小和摘要，完整下载再次核验内容；文字转义显示，图片使用宿主字节创建对象 URL。缓存和 URL 归单个视图，重绘不重发读取，目标切换/清空/销毁取消后续读取并回收 URL，旧 scope 的迟到回复不得污染新执行。产物读取走只读命令，不消费草稿或修改 OperationLedger 接纳状态。远程原生 URI 尚未导入时显示不可用，不能自行抓取。

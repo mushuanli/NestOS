@@ -2815,6 +2815,16 @@ export const zhCN = {
     'chatInput.draft.notLoaded': '尚未成功读取此分支草稿，请重新加载后再保存。',
     'chatInput.draft.invalid': '已保存的分支草稿格式无效，请检查存储后重试。',
     'chatInput.draft.busy': '其他视图仍在修改会话，请稍后重试；当前输入已保留。',
+
+    'flow.artifacts.loading': "正在读取产物…",
+    'flow.artifacts.more': "加载更多产物",
+    'flow.artifacts.open': "查看产物",
+    'flow.artifacts.empty': "此执行没有已提交的产物",
+    'flow.artifacts.notImported': "文件尚未导入宿主存储，暂时无法读取",
+    'flow.artifacts.download': "下载",
+    'flow.artifacts.preview': "预览",
+    'flow.artifacts.truncated': "预览已截断，可下载完整内容",
+    'flow.artifacts.failed': "产物读取失败：{code}",
 } as const;
 
 // LocaleStrings maps every key to string (not literal), so other locales can provide different values.

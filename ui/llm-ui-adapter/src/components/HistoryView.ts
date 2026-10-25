@@ -26,6 +26,7 @@ import type { ContentSearchView } from '@itookit/llm-ui';
 import { mountHistorySearch } from './history/content-search';
 
 export interface HistoryViewOptions {
+    artifacts?: RendererContext['artifacts'];
     /** Optional host-owned controls inside the history scroll pane. */
     header?: HTMLElement;
     readOnly?: boolean;
@@ -83,6 +84,7 @@ export class HistoryView implements IHistoryPresenter {
         this.onHistoryActivity = options.onHistoryActivity;
 
         const ctx: RendererContext = {
+            artifacts: options.artifacts,
 
 
             fs: options.fs,
@@ -609,7 +611,7 @@ export class HistoryView implements IHistoryPresenter {
         this.stream = new StreamController(this.container, this.renderer, this.scrollController);
     }
 
-    setActive(active: boolean): void { this.contentSearch?.setActive(active); }
+    setActive(active: boolean): void { this.contentSearch?.setActive(active); this.renderer.setActive(active); }
 
     async destroy(): Promise<void> {
         this.contentSearch?.destroy();

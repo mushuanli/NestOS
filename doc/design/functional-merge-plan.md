@@ -104,7 +104,7 @@ C4Component
 | F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 待合入；检查点归属与真实 head，错误边界不补发 turn |
 | F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 待合入；只读目录不取 writer，切目标/分支及迟到接纳保留当前草稿 |
 | F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 宿主读取链路见第 30 节；从终态输出派生，核对范围和摘要，不另建结果注册表；UI 随 F24 验收 |
-| F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；完整调用组、产物 UI 及复杂输出性能仍待验收 |
+| F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节；完整调用组及复杂输出性能仍待验收 |
 | F25 | Flow 调度所有权竞态修复 | llm-flow | 无 | 已合入 `0bcfa29e`；竞争失败者不终结胜者，接纳丢回执不误清理工作区 |
 
 F03 已独立合入原有记录的写入核对，且修复延迟 load 回退 CAS 游标；F04 再加入队列修订保护。查询结果校验仍随 F05 合入。公共能力表只随该功能加入所需方法，避免一次暴露尚未接通的全部端口。
@@ -667,3 +667,29 @@ C4Component
 本批交付宿主命令、Session/Context 接线及真实认证 HTTP ArrayBuffer 传输。分页只限制传输大小，现有资产 API 仍需每页完整读取/核验；不宣称大文件随机读取或远端文件导入已完成。F24 的按需 UI、产物显示性能，以及 F16 其余函数入口和 F20—F22 继续保留。原生产 Session 未操作，未部署。
 
 验证范围：真实 Kernel/VFS 的目录分页、中文/JSON 字节恢复、输出指纹与 Session/Task 归属、未终态读取不启动、二进制授权/损坏/权限失败、远端 URI 不抓取；真实 ApplicationRuntime 的命令与 Session 读取端口；认证 HTTP 的分页 ArrayBuffer 与跨 Session 拒绝。全量 Session 回归、类型、构建和架构检查一并执行。
+
+
+## 31. F24 调用卡片、运行页与历史的按需产物展示
+
+父级 Invocation 卡片、DAG 运行详情和正式 Session 的终态助手历史共用 TaskArtifactBrowser。父卡片以已验证的真实 executionSessionId/rootTaskId 读取；历史以宿主投影的执行引用定位，不解析气泡文字。默认只显示入口，点击才读取目录、预览或下载；同一执行重绘保留已读展示，不自动重读正文。移除旧的逐次渲染图片读取器，避免两个资产展示机制并存。
+
+```mermaid
+C4Component
+  title 产物展示与视图生命周期
+  Component(card, "Invocation / DAG / 历史", "宿主 UI", "真实执行锚点与显示生命周期")
+  Component(browser, "TaskArtifactBrowser", "UI 适配", "按需目录、预览、下载及单视图缓存")
+  Component(content, "artifact-content / verified-content", "读取校验", "引用、字节范围、总大小与完整摘要")
+  Container(host, "app.artifacts.list/read", "既有宿主协议", "授权和输出事实")
+  Component(lifetime, "视图隐藏、执行替换、销毁", "现有生命周期", "取消后续页、撤销旧观察和对象 URL")
+  Rel(card, browser, "Session/Task 归属")
+  Rel(browser, content, "用户请求的预览或下载")
+  Rel(browser, host, "只读目录")
+  Rel(content, host, "同引用的分页读取")
+  Rel(lifetime, browser, "终止观察并回收资源，不取消执行")
+```
+
+文字转义显示；图片只使用宿主返回字节创建的对象 URL。完整下载验证摘要，截断预览标明截断，不声称已验证整份文件。默认文字预览 64 KiB、完整下载上限 32 MiB，超过限制明确报告错误。目录先验证归属、条目元数据和连续分页位置，异常结果不部分展示。隐藏不继续读取下一页；显示后由用户重新加载，旧响应不污染新执行；同作用域的嵌套浏览器隔离事件。
+
+错误只出现在对应产物区，不修改执行终态、队列或提交台账，也不清除草稿。诊断记录操作身份、阶段、结果和安全错误码，不记录文件正文。目录与下载继续使用第 30 节宿主实现，未导入远端文件保持不可用。
+
+隔离验证包括中文/多页拼接、摘要损坏、大小限制、DOM 转义、迟到读取、隐藏停止分页、显示后重载、执行切换 URL 回收、嵌套事件隔离，以及真实子 Flow 的父卡片读取执行归属。完整调用组的信息层级、复杂输出性能和 F16 其余入口仍需验收；本节不将 F24 标为全部完成，未部署。

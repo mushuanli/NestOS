@@ -366,6 +366,9 @@ export class LLMWorkspaceEditor implements IEditor {
         const historyEl = this.domCache.byId('llm-ui-history')!;
         const inputEl = this.domCache.byId('llm-ui-input')!;
         const historyView = new HistoryView(historyEl, {
+            artifacts: {commands: this.commandBus, scope: group => group.role === 'assistant' && group.execution
+                && ['success', 'failed', 'aborted', 'cancelled'].includes(group.executionRoot?.status ?? '')
+                ? {sessionId: session.sessionId, taskId: group.execution.taskId} : undefined},
             header: sessionMaterialHeader(session.manifest),
             onContentChange: (id: string, content: string, type: 'user' | 'node') =>
                 this.handleContentChange(id, content, type),

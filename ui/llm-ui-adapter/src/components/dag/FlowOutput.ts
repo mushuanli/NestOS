@@ -1,4 +1,3 @@
-import {renderAssetPreviews} from './AssetPreview';
 import { escapeHTML, t } from '@itookit/common';
 import { flowOutputEntries, nodeOutputEntries, outputText } from '@itookit/llm-flow/contracts';
 
@@ -6,7 +5,7 @@ export function renderFlowOutput(output: unknown, root = false): string {
     const entries = root ? flowOutputEntries(output) : nodeOutputEntries(output);
     if (!entries.length) return `<p class="dag-output__empty">${escapeHTML(t('flow.output.pending'))}</p>`;
     return entries.map(entry => `<section class="dag-output__entry"><h4>${escapeHTML(entry.name)}</h4>
-        ${renderAssetPreviews(entry.value)}${renderReview(entry.value)}<pre class="dag-output__value">${escapeHTML(outputText(entry.value))}</pre></section>`).join('');
+        ${renderReview(entry.value)}<pre class="dag-output__value">${escapeHTML(outputText(entry.value))}</pre></section>`).join('');
 }
 
 function renderReview(value: unknown): string {

@@ -35,6 +35,7 @@ export interface ConversationSystemOptions {
      * lease is held by another host must stay read-only instead of racing its owner.
      */
     ensureWritable?(sessionId: string): Promise<boolean>;
+    prepareSessionExecution?(sessionId: string): Promise<void>;
     /** Host-provided isolated workspace manager for Flow runs (absent → non-shared modes fail closed). */
     flowWorkspaceManager?: import('@itookit/llm-flow').FlowWorkspaceManager;
 }
@@ -72,6 +73,7 @@ export async function createConversationSystem(
         memoryProvider: kernel.memory,
         workspaceManager: options.flowWorkspaceManager ? withWorkspaceScopeCleanup(options.flowWorkspaceManager, kernel) : undefined,
         canWriteSession: options.ensureWritable,
+        prepareSessionExecution: options.prepareSessionExecution,
         resolveSessionContext: (sessionId, userMessage) => resolveSessionSkillContext(kernel.kernel, kernel.sessions, sessionId, userMessage),
         resolveSessionSkills: (sessionId, ids) => resolveSessionSelectedSkills(kernel.kernel, kernel.sessions, sessionId, ids),
         resolveTools: capabilities.resolveTools,

@@ -398,10 +398,12 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         // Writes are only allowed while this host holds the Session's single-writer lease; the
         // gate acquires a lease on demand so a freshly created Session is writable immediately.
         const instructionQueueSessions = createInstructionQueueSessions(systemFS);
+        const prepareChildExecution = createSessionExecutionPreparer(kernel.kernel, id => recovery.acquireMetadataLease(id));
         const executionActivity = new SessionExecutionActivity();
         cleanupFns.push(() => executionActivity.dispose());
         let flowInstallations: FlowInstallationService | undefined;
         const conversationOptions = {
+                prepareSessionExecution: prepareChildExecution,
                 ensureFlowDependencies: async (id: string) => {await flowInstallations?.ensure(id);}, executionActivity, instructionQueueSessions, vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
                 digitalTwin,
                 scheduleAgentInitialization: run => startup.schedule(policy.agents, 'agents.initialize', run),

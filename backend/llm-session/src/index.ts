@@ -132,6 +132,7 @@ export interface ConversationSystemOptions {
      * starting a new run is refused so a Session owned by another host stays read-only.
      */
     canWriteSession?: (sessionId: string) => Promise<boolean>;
+    prepareSessionExecution?(sessionId: string): Promise<void>;
     /** Host-provided isolated workspace manager for Flow runs (absent → non-shared modes fail closed). */
     workspaceManager?: import('./session/conversation-run-coordinator').ConversationRunCoordinatorOptions['workspaceManager'];
     /**
@@ -182,7 +183,8 @@ function createManagedSession(options: ConversationSystemOptions, promptHistory:
 
 async function initializeInvocations(options: ConversationSystemOptions, system: ConversationSystem): Promise<void> {
     const transfers = new ContentTransferService({kernel: options.kernel, repository: options.sessionEngine, commands: system.commandBus,
-        hostPorts: options.hostPorts, canWrite: options.canWriteSession, summarize: options.summarizeContent});
+        hostPorts: options.hostPorts, canWrite: options.canWriteSession, prepareExecution: options.prepareSessionExecution,
+        summarize: options.summarizeContent});
     transfers.register();
     const invocations = new FlowInvocationService(options.kernel, new FlowDefinitionStore(options.flowStore, options.dagPlugins), system.commandBus, options.canWriteSession, async id => {
         const manifest = await new InvocationRoundLog(options.sessionEngine, id).loadManifest();

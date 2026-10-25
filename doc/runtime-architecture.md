@@ -757,3 +757,5 @@ HTTP 浏览器通过共享服务接口和显式能力传输调用 daemon，完�
 LLM 资源，执行前复核被冻结的 Connection/模型/媒体端点及能力。完整应用与 CLI 同时注入
 `authorizeMedia` 以保持分身权限核对；已有 `authorizeLlm` 而未提供媒体授权门时，媒体调用拒绝。
 恢复仅核验持久回执和资产，不自动重发付费请求。缺少回执保持不确定状态。
+
+内容转交创建的子 Session 先经 `prepareSessionExecution` 端口领取 metadata lease，并准备同一 Session ID 的 Kernel 存储，随后进入恢复写门。准备器复用在途调用；拒租时不访问 Kernel。子会话意图在准备前持久化，失败重试继续原身份，不产生第二个子会话。宿主在 app-core 接线，llm-session 只持有端口，不负责租约策略。

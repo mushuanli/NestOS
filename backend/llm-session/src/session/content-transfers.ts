@@ -11,6 +11,8 @@ import { captureContent, selectedMessages, transferText } from './content-captur
 export interface ContentTransferOptions {
     kernel: Kernel; repository: ISessionRepository; commands: ICommandBus; hostPorts?: SessionHostPorts;
     canWrite?(sessionId: string): Promise<boolean>;
+    /** Bootstrap execution storage under the host's metadata lease before its recovery gate. */
+    prepareExecution?(sessionId: string): Promise<void>;
     summarize?(sessionId: string, text: string): Promise<string>;
 }
 const captureKey = (id: string) => `content.capture.${id}`;
@@ -93,6 +95,7 @@ export class ContentTransferService {
     }
 
     private async prepareChildExecution(id: string): Promise<void> {
+        await this.options.prepareExecution?.(id);
         if (this.options.canWrite && !await this.options.canWrite(id)) throw new Error('CONTENT_SESSION_READ_ONLY');
         const storage = sessionDirectoryStorage(id);
         try { await this.options.kernel.openSession(id, storage); }

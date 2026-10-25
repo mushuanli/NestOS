@@ -2,6 +2,16 @@ import {expect, it, vi} from 'vitest';
 import {KernelError, KernelErrorCode} from '@itookit/durable-kernel';
 import {createSessionExecutionPreparer} from '../src/session/prepare-session-execution';
 
+it('prepares storage only after the metadata lease and refuses a denied owner before Kernel access', async () => {
+    const kernel = {openSession: vi.fn(async () => {}), createSession: vi.fn()};
+    const acquire = vi.fn(async () => false), prepare = createSessionExecutionPreparer(kernel as never, acquire);
+    await expect(prepare('denied')).rejects.toMatchObject({code: 'SESSION_EXECUTION_READ_ONLY'});
+    expect(kernel.openSession).not.toHaveBeenCalled(); expect(kernel.createSession).not.toHaveBeenCalled();
+    acquire.mockImplementation(async () => true);
+    await prepare('allowed');
+    expect(acquire.mock.invocationCallOrder.at(-1)).toBeLessThan(kernel.openSession.mock.invocationCallOrder[0]);
+});
+
 it('coalesces preparation of one identity and uses the same storage when creating it', async () => {
     let fail!: (reason: unknown) => void;
     const kernel = {openSession: vi.fn((_id: string, _storage: unknown) => new Promise((_, reject) => {fail = reject;})), createSession: vi.fn(async () => ({}))};

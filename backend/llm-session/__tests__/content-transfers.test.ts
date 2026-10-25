@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
-import { Kernel } from '@itookit/durable-kernel';
+import { Kernel, KernelErrorCode } from '@itookit/durable-kernel';
 import { DagCommandService, createBuiltinDagPluginRegistry, registerDurablePrograms, type FlowDefinitionStore, type FlowRevision } from '@itookit/llm-flow';
 import { CommandBus } from '../src/core/command-bus';
 import { SessionRepository } from '../src/persistence/session-repository';
@@ -132,3 +132,30 @@ it('freezes a named structured Flow output and preserves the concrete run and ou
     expect(transfer.output).toMatchObject({taskId: 'review-root', requestId: 'review-call', port: 'report'});
     await expect(service.resolve({sessionId, captureId: capture.id, selection: {kind: 'unknown'} as never})).rejects.toThrow('CONTENT_SELECTION_INVALID');
 });
+
+it('prepares child storage before the recovery gate and retries a refused lease with the same child identity', async () => {
+    const raw = new SessionRepository(await manager.openFileSystem('/')); await raw.init();
+    const stages: string[] = [], children: string[] = [];
+    const prepareExecution = vi.fn(async (id: string) => {
+        stages.push('prepare'); children.push(id);
+        if (children.length === 1) throw Object.assign(new Error('Lease refused'), {code: 'SESSION_EXECUTION_READ_ONLY'});
+        await kernel.createSession({id, storage: sessionDirectoryStorage(id)});
+    });
+    const canWrite = vi.fn(async (id: string) => {
+        if (id === sessionId) return true;
+        stages.push('recovery');
+        return (await kernel.sessionStat(id)).phase === 'open';
+    });
+    const transfer = new ContentTransferService({kernel, repository: raw, commands, prepareExecution, canWrite});
+    const input = {sessionId, requestId: 'lease-child', title: 'Prepared child'};
+    try {
+        await expect(transfer.createChild(input)).rejects.toMatchObject({code: 'SESSION_EXECUTION_READ_ONLY'});
+        expect(stages).toEqual(['prepare']);
+        await expect(kernel.openSession(children[0])).rejects.toMatchObject({code: KernelErrorCode.SESSION_NOT_FOUND});
+        const child = await transfer.createChild(input);
+        expect(children).toEqual([child.sessionId, child.sessionId]);
+        expect(stages).toEqual(['prepare', 'prepare', 'recovery']);
+        expect(await raw.list()).toHaveLength(2);
+    } finally {await raw.dispose();}
+});
+

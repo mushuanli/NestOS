@@ -1,3 +1,4 @@
+import {assertRootCallable} from '@itookit/llm-flow/contracts';
 import { recordRuntimeDiagnostic } from './diagnostics';
 import { acquireRunSchedulerLock } from './run-scheduler-lock';
 import { markRunDeleted } from './run-scheduler-lease';
@@ -137,6 +138,7 @@ export async function runCommand(options: CommandOptions): Promise<number> {
 
 async function runFlowCommand(file: string, options: CommandOptions): Promise<number> {
     const flow = await loadFlowDefinition(file);
+    assertRootCallable(flow);
     const connectionBindings = options.connectionBindingsFile
         ? await loadRunParameters(options.connectionBindingsFile, '--connection-bindings') as Record<string, string> : undefined;
     const parameters = options.paramsFile ? await loadRunParameters(options.paramsFile) : undefined;

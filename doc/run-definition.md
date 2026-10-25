@@ -147,3 +147,10 @@ tasks:
 同样可接入 builtin.route@2.0.0 的结构化派发循环和 builtin.aggregate@1.0.0。详细配置与 .flow 示例见 [作文评审实现](design/essay-review-flow.md)。
 
 CLI 运行组合 `.flow` 时，从入口文件所在目录加载 `<flowId>.flow`；ID 必须是安全文件名且与定义身份一致，显式 revision 必须匹配。展开后的图、连接快照和参数作用域保存进 RunDefinition，resume 使用已有快照，不重新读取最新子定义。
+
+
+## Flow 公开范围
+
+`.flow` 根运行要求 `exposure: global`；未声明 exposure 的旧定义沿用 global。`local` 仅可由 Flow 内部调用。CLI 在读取调用参数、创建 RunStore 或启动运行时前检查根范围；app-core 的 `createRunDefinitionFromFlow` 再验证这一应用入口契约，非 CLI 消费者不能绕过。
+
+`loadFlowDefinition` 和 `flowToDag` 保持通用加载/编译机制，不把 local 定义一律拒绝。公开父 Flow 仍可经 siblingFlowResolver 加载 local 子定义，并将编译结果冻结到 RunDefinition。此规则不是文件访问授权，也不改变旧运行快照的恢复语义。回归见 `apps/cli/tests/flow-exposure.test.ts` 与 `backend/app-core/tests/shared-core.test.ts`。

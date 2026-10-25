@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 import {
     createRunDefinitionFromFlow,
@@ -162,4 +162,14 @@ it('preserves input groups and compiles conditional connections with actual CLI 
             required = flow.connections![0].required; return {...flow, connections: []};
         }});
     expect(required).toBe(true); expect(toDagRunSpec(definition).inputGroups).toEqual(groups);
+});
+
+
+it.each(['local', 'invalid'])('rejects %s root exposure before binding or preparing connections', async exposure => {
+    const bind = vi.fn(), prepareConnections = vi.fn(), resolveComposite = vi.fn();
+    const flow = {id: 'private', revision: 1, digest: 'd', createdAt: 0, name: 'Private', exposure, edges: [],
+        nodes: [{id: 'out', name: 'Out', plugin: 'builtin.transform', pluginVersion: '1.0.0', config: {value: 'private'}, inputs: {}}]};
+    await expect(createRunDefinitionFromFlow(flow as never, {bind, prepareConnections, resolveComposite}))
+        .rejects.toMatchObject({code: exposure === 'local' ? 'CALLABLE_LOCAL_ONLY' : 'CALLABLE_EXPOSURE_INVALID'});
+    expect(bind).not.toHaveBeenCalled(); expect(prepareConnections).not.toHaveBeenCalled(); expect(resolveComposite).not.toHaveBeenCalled();
 });

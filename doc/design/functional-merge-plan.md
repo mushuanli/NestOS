@@ -971,3 +971,25 @@ C4Component
 控制入口审查结论：现有 FlowRunControl 还承担运行目标、调度租约及控制树协调，不能直接用于普通 Agent；Kernel pause/resume/withdraw 有持久请求回执，但 cancel(reason, options) 没有同样的 requestId 契约，interrupt 也不是 cancel。后续父卡片按钮必须保持这些语义，并复用真实执行所有者的租约与控制协调；本批不把状态投影伪装成可执行控制能力。
 
 验收覆盖真实模型 Effect 未结束时提交 pause，再只读查询主 Task：请求已保存但 stopped/settled 仍为 false；终态无副作用内容泄漏、UI 清理继续观察、确认停止和请求暂停区分、其他 Task 状态拒绝。父级直接控制与独立 ChatView 接入仍未完成。
+
+
+## 43. F11 离线 RunDefinition 根入口的公开范围
+
+审查剩余工作树发现 createRunDefinitionFromFlow 缺少根调用范围校验，离线 CLI 可以绕过 Session 根准入直接编译 local Flow。本批保留并验证该必要修改，同时把 CLI 拒绝提前到参数文件读取与运行存储创建之前。复用 assertRootCallable，不新增规则副本；已有 CLI traceRuntimeStage 保留具体校验错误的诊断。
+
+```mermaid
+C4Component
+  title 公开范围属于根调用入口，不属于通用加载器
+  Component(cli, "CLI runFlowCommand", "入口适配", "在运行副作用前校验根范围")
+  Component(root, "createRunDefinitionFromFlow", "应用根运行用例", "复验 global 或兼容旧定义")
+  Component(rule, "assertRootCallable", "Flow 契约", "唯一公开范围校验")
+  Component(compiler, "flowToDag", "通用编译机制", "允许内部 local 调用")
+  Component(loader, "siblingFlowResolver", "文件适配", "读取明确引用的子定义")
+  Rel(cli, rule, "提前校验")
+  Rel(cli, root, "生成运行定义")
+  Rel(root, rule, "应用入口校验")
+  Rel(root, compiler, "编译已准入根定义")
+  Rel(compiler, loader, "解析内部子 Flow")
+```
+
+验证直接调用应用入口时 local/非法 exposure 都在连接准备与节点绑定前拒绝；CLI local 根入口先于缺失参数文件报 CALLABLE_LOCAL_ONLY，且没有创建运行存储；显式 global 与旧定义均能真实执行 local 子 Flow 并读到最终输出。通用加载器仍可读取 local 定义。该批仅合入根准入缺口，不把目录隐藏当作执行约束，也不把公开范围规则扩散到 Kernel 或文件读取机制。

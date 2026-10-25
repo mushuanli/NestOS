@@ -1,5 +1,6 @@
 import type { DagEdgeDefinition, DagNodeDefinition, FlowInputGroup, FlowParameter, FlowRevision, FlowRunPolicy, JsonValue } from '@itookit/llm-flow/contracts';
 import { flowToDag, type FlowNodeBinder } from '@itookit/llm-flow';
+import { assertRootCallable } from '@itookit/llm-flow/contracts';
 
 export type RunSourceFormat = 'yaml' | 'flow';
 export type RunStatus = 'created' | 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
@@ -135,6 +136,7 @@ export async function createRunDefinitionFromFlow(flow: FlowRevision, options: {
     bind?: FlowNodeBinder;
     resolveComposite?: (id: string, revision?: number) => Promise<FlowRevision | null>;
 } = {}): Promise<RunDefinition> {
+    assertRootCallable(flow);
     const dag = await flowToDag(flow, options.bind, options.fallbackConnectionId, options.resolveComposite,
         [], flow.dependencyLocks, false, undefined, options.connectionBindings, options.prepareConnections, options.parameters);
     return {

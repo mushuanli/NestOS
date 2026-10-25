@@ -1,3 +1,4 @@
+import type {InteractionDraftStorage} from '../domain/interaction-draft';
 import {IndependentCallInteractions} from './IndependentCallInteractions';
 import {IndependentCallControl} from './IndependentCallControl';
 import {CallControlOperations, callCancellationProtocol, callStateControlProtocol, callResponseProtocol} from '../independent/call-control';
@@ -10,6 +11,7 @@ import {canonicalJson} from '../utils/canonical-json';
 const log = createModuleLogger('independent-calls');
 interface Card {element: HTMLElement; control: IndependentCallControl; answers: IndependentCallInteractions; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
 interface Options {
+    interactionDrafts?: InteractionDraftStorage;
     operations: OperationLedger;
     branch(): string;
     mountCard?(element: HTMLElement, call: IndependentCallView): () => void;
@@ -114,7 +116,7 @@ export class IndependentCallPanel {
             const element = document.createElement('article'); element.className = 'flow-invocations__card'; element.dataset.independentCall = id;
             element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><section data-call-interactions aria-live="polite"></section><div data-call-answers></div><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div><div data-call-control></div>';
             card = {element, control: new IndependentCallControl(element.querySelector('[data-call-control]')!, this.controls, () => {void this.refresh();}),
-                answers: new IndependentCallInteractions(element.querySelector('[data-call-answers]')!, this.commands, this.controls, () => {void this.refresh();}),
+                answers: new IndependentCallInteractions(element.querySelector('[data-call-answers]')!, this.commands, this.controls, () => {void this.refresh();}, this.options.interactionDrafts),
                 artifacts: new TaskArtifactBrowser(element, this.commands), release: this.options.mountCard?.(element, call)};
             if (!this.options.mountCard) this.element.append(element);
             this.cards.set(id, card);

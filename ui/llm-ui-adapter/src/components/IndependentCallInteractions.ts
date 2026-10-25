@@ -1,3 +1,5 @@
+import {InteractionDraftEditor} from '../services/InteractionDraftEditor';
+import type {InteractionDraftStorage, InteractionDraftRecord} from '../domain/interaction-draft';
 import {createInteractionCard, type InteractionCard, type InteractionResponse, type InputField, type OperationRecord} from '@itookit/llm-ui';
 import {createModuleLogger, getLocale, randomUUID, t} from '@itookit/common';
 import {IndependentCallCommand, type ICommandBus, type IndependentCallView, type IndependentCallResponseRequest,
@@ -6,7 +8,7 @@ import {CallControlOperations, callControlErrorCode} from '../independent/call-c
 import {agentQuestionFields, agentQuestionAnswer} from './input/agent-questions';
 
 interface Entry {element: HTMLElement; prompt: HTMLElement; button: HTMLButtonElement; status: HTMLElement; query: IndependentCallResponseQuery;
-    frozen?: HTMLElement; error?: string; editor?: InteractionCard; mode?: HTMLSelectElement; loading?: boolean; reading?: boolean; generation: number}
+    draft?: InteractionDraftEditor; submittedDraft?: InteractionDraftRecord; retry?: HTMLButtonElement; frozen?: HTMLElement; error?: string; editor?: InteractionCard; mode?: HTMLSelectElement; loading?: boolean; reading?: boolean; generation: number}
 const log = createModuleLogger('independent-call-interactions');
 const keyOf = (value: {targetTaskId: string; interactionId: string}) => JSON.stringify([value.targetTaskId, value.interactionId]);
 /** Stable interaction rows preserve edits during observation; answers use the original operation ledger. */
@@ -15,7 +17,7 @@ export class IndependentCallInteractions {
     private active = true;
     private closed = false;
     private call?: IndependentCallView;
-    constructor(private host: HTMLElement, private commands: ICommandBus, private controls: CallControlOperations, private refresh: () => void) {}
+    constructor(private host: HTMLElement, private commands: ICommandBus, private controls: CallControlOperations, private refresh: () => void, private drafts?: InteractionDraftStorage) {}
     update(call: IndependentCallView): void {
         this.call = call;
         const records = this.records(), keep = new Set<string>();
@@ -38,7 +40,7 @@ export class IndependentCallInteractions {
     setActive(active: boolean): void {
         this.active = active;
         for (const entry of this.entries.values()) {entry.generation++; entry.loading = false; entry.reading = false;
-            entry.button.disabled = !active; entry.editor?.setPending(!active || !!this.record(entry));}
+            if (entry.retry) entry.retry.disabled = !active; entry.button.disabled = !active; entry.editor?.setPending(!active || !!this.record(entry));}
     }
     destroy(): void {this.closed = true; for (const entry of this.entries.values()) this.dispose(entry); this.entries.clear();}
     private records(): OperationRecord[] {
@@ -90,6 +92,13 @@ export class IndependentCallInteractions {
             if (Object.entries(entry.query).some(([key, value]) => result?.[key as keyof IndependentCallResponseQuery] !== value)
                 || result.interaction?.id !== entry.query.interactionId) throw Object.assign(new Error('CALL_INTERACTION_DETAIL_MISMATCH'), {code: 'CALL_INTERACTION_DETAIL_MISMATCH'});
             if (result.interaction.status !== 'pending') {entry.status.textContent = t('callable.independent.answer.resolved'); return;}
+            if (this.drafts) {
+                const {requestId: _requestId, ...scope} = entry.query;
+                const draft = await InteractionDraftEditor.open(this.drafts, {...scope, requestedAt: result.interaction.requestedAt},
+                    error => this.draftStatus(entry, error));
+                if (!this.current(entry, generation)) return;
+                entry.draft = draft;
+            }
             this.mount(entry, result);
         } catch (error) {if (this.current(entry, generation)) this.fail(entry, error, started);}
         finally {log.debug('call.interaction', {operationId: entry.query.requestId, stage: 'detail', outcome: !this.current(entry, generation) ? 'ignored' : entry.error ? 'failure' : 'observed', durationMs: Date.now() - started});
@@ -101,6 +110,8 @@ export class IndependentCallInteractions {
         if (question.kind === 'input' && !fields.length) {
             const mode = document.createElement('select'); mode.setAttribute('aria-label', t('callable.independent.answer.format'));
             for (const value of ['text', 'json'] as const) {const option = document.createElement('option'); option.value = value; option.textContent = t(`callable.independent.answer.${value}`); mode.append(option);}
+            mode.value = entry.draft?.content?.format ?? 'text';
+            mode.onchange = () => this.saveDraft(entry);
             entry.mode = mode; entry.element.append(mode);
         }
         const common = {id: question.id, revision: question.requestedAt, state: 'pending' as const, title: question.prompt,
@@ -108,7 +119,8 @@ export class IndependentCallInteractions {
         entry.editor = createInteractionCard(question.kind === 'approval' ? {...common, kind: 'approval', note: true,
             decisions: [{id: 'approved', label: t('chatInput.interaction.approve')}, {id: 'rejected', label: t('chatInput.interaction.reject')}]}
             : {...common, kind: 'input', fields: fields.length ? fields : [{id: 'answer', label: t('chatInput.interaction.answer'), kind: 'text', multiline: true}]},
-            response => this.submit(entry, response, fields), {locale: getLocale()});
+            response => this.submit(entry, response, fields), {locale: getLocale(), draft: entry.draft?.content?.editor,
+                onDraftChange: () => this.saveDraft(entry)});
         entry.element.append(entry.editor.element); this.render(entry, this.record(entry));
     }
     private async submit(entry: Entry, response: InteractionResponse, fields: InputField[]): Promise<void> {
@@ -121,10 +133,14 @@ export class IndependentCallInteractions {
         else if (fields.length) value = agentQuestionAnswer(fields, response);
         else {const text = String(response.values.answer ?? '');
             try {value = entry.mode?.value === 'json' ? JSON.parse(text) : text;} catch {throw new Error(t('callable.independent.answer.invalidJson'));}}
+        this.saveDraft(entry);
+        entry.submittedDraft = await entry.draft?.flush();
+        if (!this.current(entry, generation)) return;
         if (entry.mode) entry.mode.disabled = true;
         try {
             const result = await this.controls.respond({...entry.query, requestId: randomUUID(), value}, () => this.current(entry, generation));
             if (result.status !== 'accepted') throw new Error(t('callable.independent.answer.unknown'));
+            await this.clearDraft(entry);
         } catch (error) {
             const code = callControlErrorCode(error);
             throw new Error(t(code === 'CALL_CONTROL_SAVE_FAILED' ? 'callable.independent.control.saveFailed' : 'callable.independent.answer.failed', {code}));
@@ -133,14 +149,37 @@ export class IndependentCallInteractions {
     private async read(entry: Entry, record: OperationRecord): Promise<void> {
         if (!this.active || this.closed || entry.reading) return;
         const generation = entry.generation, started = Date.now(); entry.reading = true; this.render(entry, record);
-        try {await this.controls.reconcile(record.context.operationId); if (this.current(entry, generation)) entry.error = '';}
+        try {await this.controls.reconcile(record.context.operationId);
+            if (this.record(entry)?.status === 'accepted') await this.clearDraft(entry);
+            if (this.current(entry, generation)) entry.error = '';}
         catch (error) {if (this.current(entry, generation)) this.fail(entry, error, started);}
         finally {if (this.current(entry, generation)) {entry.reading = false; this.render(entry, this.record(entry));}}
+    }
+    private saveDraft(entry: Entry): void {
+        if (!entry.editor || !this.active || this.closed) return;
+        entry.draft?.save({format: entry.mode?.value === 'json' ? 'json' : 'text', values: {}, editor: entry.editor.getDraft()});
+    }
+    private async clearDraft(entry: Entry): Promise<void> {
+        const expected = entry.submittedDraft; entry.submittedDraft = undefined;
+        try {await entry.draft?.clear(expected);}
+        catch (error) {this.draftStatus(entry, error);}
+    }
+    private draftStatus(entry: Entry, error?: unknown): void {
+        if (this.closed || !this.entries.has(keyOf(entry.query))) return;
+        const code = callControlErrorCode(error);
+        entry.error = error ? t(code === 'INTERACTION_DRAFT_CONFLICT' ? 'callable.independent.answer.draftConflict' : 'callable.independent.answer.draftFailed', {code}) : undefined;
+        entry.status.textContent = entry.error ?? '';
+        if (!entry.retry) {
+            entry.retry = document.createElement('button'); entry.retry.type = 'button'; entry.retry.textContent = t('application.retry');
+            entry.retry.dataset.interactionDraftRetry = ''; entry.element.append(entry.retry);
+            entry.retry.onclick = () => {void entry.draft?.retry().catch(error => this.draftStatus(entry, error));};
+        }
+        entry.retry.hidden = !error; entry.retry.disabled = !this.active;
     }
     private fail(entry: Entry, error: unknown, started: number): void {
         const code = callControlErrorCode(error); entry.error = t('callable.independent.answer.failed', {code}); entry.status.textContent = entry.error;
         log.warn('call.interaction', {operationId: entry.query.requestId, stage: 'observe', outcome: 'failure', code, durationMs: Date.now() - started});
     }
-    private dispose(entry: Entry): void {entry.generation++; entry.editor?.destroy(); entry.button.onclick = null; entry.element.remove();}
+    private dispose(entry: Entry): void {entry.generation++; entry.editor?.destroy(); entry.button.onclick = null; if (entry.retry) entry.retry.onclick = null; entry.element.remove();}
 }
 function pending(record: OperationRecord): boolean {return record.status === 'submitting' || record.status === 'unknown';}

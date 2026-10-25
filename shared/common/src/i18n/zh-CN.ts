@@ -2739,6 +2739,8 @@ export const zhCN = {
     'callable.independent.execution.interrupted': '主任务已确认中断；中断不等于取消。',
     'callable.independent.execution.interrupting': '主任务正在中断，等待执行端确认。',
     'callable.independent.execution.held': '主任务受会话或祖先调用控制限制。',
+    'callable.independent.answer.draftFailed': '草稿保存尚未确认（{code}），本页编辑仍保留。',
+    'callable.independent.answer.draftConflict': '草稿已被其他页面修改，本页编辑仍保留。请复制本页内容后重新打开核对。',
     'callable.independent.answer.hint': '可在此查看完整请求并回答，也可打开原子会话。',
     'callable.independent.answer.savedPreview': '已提交回答预览',
     'callable.independent.answer.open': '查看并回答',

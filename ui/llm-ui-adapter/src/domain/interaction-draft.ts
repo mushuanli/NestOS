@@ -1,3 +1,4 @@
+import type {InteractionEditorDraft} from '@itookit/llm-ui';
 /** Editing state only; an interaction draft is never an answer admission. */
 export interface InteractionDraftScope {
     sessionId: string; branchId: string; callId: string; executionSessionId: string;
@@ -7,6 +8,7 @@ export interface InteractionDraftContent {
     format: 'text' | 'json';
     values: Record<string, string | string[]>;
     note?: string;
+    editor?: InteractionEditorDraft;
 }
 export interface InteractionDraftRecord {
     revision: number;

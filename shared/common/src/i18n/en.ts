@@ -2725,6 +2725,8 @@ export const en: LocaleStrings = {
     'callable.independent.execution.interrupted': 'Primary task interruption confirmed. Interruption is not cancellation.',
     'callable.independent.execution.interrupting': 'Primary task interruption is awaiting execution confirmation.',
     'callable.independent.execution.held': 'The primary task is held by its Session or an ancestor call.',
+    'callable.independent.answer.draftFailed': 'Draft save is unconfirmed ({code}). Your edits remain in this view.',
+    'callable.independent.answer.draftConflict': 'Another view changed this draft. Copy your local edits before reopening to compare.',
     'callable.independent.answer.hint': 'Review the full request and answer here, or open the original child session.',
     'callable.independent.answer.savedPreview': 'Submitted answer preview',
     'callable.independent.answer.open': 'Review and answer',

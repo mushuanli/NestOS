@@ -97,3 +97,9 @@ it('refuses corrupt persisted records and unavailable conditional storage', asyn
     const store = new InteractionDraftPersistence({getManifest: f.repository.getManifest} as never);
     await expect(store.write({scope, expectedRevision: null, editId: 'next', content: null})).rejects.toMatchObject({code: 'INTERACTION_DRAFT_STORE_UNAVAILABLE'});
 });
+it('preserves unchecked custom-choice text and rejects malformed editor snapshots', async () => {
+    const f = fixture(), editor = {fields: {choice: {selected: ['a'], other: {selected: false, value: 'Local custom text'}}}, note: 'Note'};
+    await f.store().write({scope, expectedRevision: null, editId: 'editor', content: {format: 'text', values: {}, editor}});
+    expect((await f.store().read(scope))?.content).toMatchObject({editor});
+    await expect(f.store().write({scope, expectedRevision: 1, editId: 'bad', content: {format: 'text', values: {}, editor: {fields: {choice: {selected: new Array(1)}}}}})).rejects.toMatchObject({code: 'INTERACTION_DRAFT_INVALID'});
+});

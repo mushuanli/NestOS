@@ -59,8 +59,19 @@ function validContent(value: unknown): value is InteractionDraftContent | null {
     const content = value as InteractionDraftContent;
     return ['text', 'json'].includes(content.format) && !!content.values && typeof content.values === 'object' && !Array.isArray(content.values)
         && (Object.getPrototypeOf(content.values) === Object.prototype || Object.getPrototypeOf(content.values) === null)
-        && (content.note === undefined || typeof content.note === 'string') && Object.keys(content).every(key => ['format', 'values', 'note'].includes(key))
+        && (content.note === undefined || typeof content.note === 'string') && Object.keys(content).every(key => ['format', 'values', 'note', 'editor'].includes(key))
+        && (content.editor === undefined || validEditor(content.editor))
         && Object.values(content.values).every(item => typeof item === 'string' || Array.isArray(item) && Array.from(item).every(value => typeof value === 'string'));
+}
+function validEditor(value: NonNullable<InteractionDraftContent['editor']>): boolean {
+    if (!value || typeof value !== 'object' || Array.isArray(value) || !value.fields || typeof value.fields !== 'object' || Array.isArray(value.fields)
+        || Object.keys(value).some(key => !['fields', 'note'].includes(key)) || value.note !== undefined && typeof value.note !== 'string') return false;
+    return Object.values(value.fields).every(field => !!field && typeof field === 'object' && !Array.isArray(field)
+        && Object.keys(field).every(key => ['value', 'selected', 'other'].includes(key))
+        && (field.value === undefined || typeof field.value === 'string')
+        && (field.selected === undefined || Array.isArray(field.selected) && Array.from(field.selected).every(item => typeof item === 'string'))
+        && (field.other === undefined || !!field.other && typeof field.other.selected === 'boolean' && typeof field.other.value === 'string'
+            && Object.keys(field.other).every(key => ['selected', 'value'].includes(key))));
 }
 function failure(code: string): Error {return Object.assign(new Error(code), {code});}
 function errorCode(error: unknown): string {

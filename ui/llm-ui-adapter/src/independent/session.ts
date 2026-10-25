@@ -1,3 +1,4 @@
+import type {InteractionDraftStorage} from '../domain/interaction-draft';
 import {CallControlOperations} from './call-control';
 import {SessionCallPresentation, independentCallPart} from './session-calls';
 import {createModuleLogger, t} from '@itookit/common';
@@ -19,6 +20,7 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly interactionDrafts?: InteractionDraftStorage;
     readonly images?: ImageEditingHost;
     readonly session: SessionViewPort;
     readonly commands: ICommandBus;
@@ -280,7 +282,7 @@ class SessionChatBinding {
         if (this.presentation) throw new Error('The Session binding already owns a call presentation');
         clearTimeout(this.admissionTimer);
         this.presentation = new SessionCallPresentation(this.options.commands, this.sessionId, () => this.branch!, this.operations,
-            () => this.publish(), this.options.openChild);
+            () => this.publish(), this.options.openChild, this.options.interactionDrafts);
         if (!this.active || !this.current()) this.presentation.setActive(false);
         return this.presentation;
     }

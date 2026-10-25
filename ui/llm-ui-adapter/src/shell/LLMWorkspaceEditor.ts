@@ -1,3 +1,4 @@
+import {InteractionDraftPersistence} from '../services/InteractionDraftPersistence';
 import {IndependentCallPanel} from '../components/IndependentCallPanel';
 import {flowInputAssets} from '../flows/input-assets';
 import {prepareAgentFlow, prepareCallTarget} from '../flows/agent-flow';
@@ -399,6 +400,7 @@ export class LLMWorkspaceEditor implements IEditor {
             });
         this.independentCallPanel = new IndependentCallPanel(this.commandBus, this.options.sessionId, calls, {
             operations: this.operations, branch: () => this.stateManager.getDraftBranch(),
+            interactionDrafts: new InteractionDraftPersistence(this.options.sessionRepository),
             mountCard: (card, call) => historyView.mountInvocation(card, call.head),
             openChild: id => this.openInvocationChild(id),
         });

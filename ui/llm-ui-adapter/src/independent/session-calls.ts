@@ -1,3 +1,4 @@
+import type {InteractionDraftStorage} from '../domain/interaction-draft';
 import type {ChatMessage, ExtensionRenderer, MessagePart, OperationLedger} from '@itookit/llm-ui';
 import type {ICommandBus, IndependentCallView, SessionGroup} from '@itookit/llm-session/contracts';
 import {IndependentCallPanel} from '../components/IndependentCallPanel';
@@ -27,8 +28,8 @@ export class SessionCallPresentation {
         }};
     };
     constructor(commands: ICommandBus, sessionId: string, branch: () => string, operations: OperationLedger,
-        changed: () => void, openChild?: (id: string) => void | Promise<void>) {
-        this.panel = new IndependentCallPanel(commands, sessionId, this.notices, {operations, branch, openChild,
+        changed: () => void, openChild?: (id: string) => void | Promise<void>, interactionDrafts?: InteractionDraftStorage) {
+        this.panel = new IndependentCallPanel(commands, sessionId, this.notices, {operations, branch, openChild, interactionDrafts,
             mountCard: (element, call) => {
                 const id = call.receipt.operationId;
                 this.calls.set(id, {element, call}); changed();

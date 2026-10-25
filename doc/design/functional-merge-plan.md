@@ -1308,3 +1308,32 @@ C4Component
 本节只扩展第 55 节 C4 中的 InteractionCard → 宿主 UI 适配边界，不增加存储或业务授权。宿主须按交互身份与 requestedAt 校验恢复范围，再连接第 56 节条件存储；表单与存储之间的转换、串行保存、失败提示和接纳后清理仍待接入。原回答校验、审批决定及 OperationLedger 准入语义保持不变。
 
 验证：独立库 109 项测试、类型检查、构建及发布依赖扫描通过；新增 DOM 回归覆盖未完成 JSON 文本、未勾选自定义文字、秘密字段排除、快照复制、审批备注与生命周期。父应用还需验证宿主端到端恢复，不能以独立库测试代替。
+
+## 58. 交互草稿的宿主编辑器接线
+
+默认工作台向调用卡片注入 InteractionDraftPersistence；独立 SessionChatBinding 通过可选 interactionDrafts 端口接入同一能力，宿主可从独立入口导入既有仓储适配器。没有注入端口时保持原来的内存编辑行为，不能宣称持久恢复。独立 llm-ui 不访问 Session 仓储或 IndexedDB。
+
+```mermaid
+C4Component
+  title 交互编辑恢复与回答接纳共用既有宿主链路
+  Component(card, "InteractionCard", "独立 llm-ui", "编辑快照与输入通知")
+  Component(host, "IndependentCallInteractions", "宿主 UI", "完整请求、格式、生命周期和错误提示")
+  Component(editor, "InteractionDraftEditor", "单编辑器保存协调", "串行写入、明确重试、修订条件清理")
+  Component(store, "InteractionDraftPersistence", "原 Session UI 仓储适配", "条件合并与未知写只读核对")
+  Component(answers, "CallControlOperations", "原回答台账", "持久登记、发送及回执核对")
+  Rel(host, card, "完整请求和已恢复编辑快照")
+  Rel(card, host, "编辑通知；密码字段排除")
+  Rel(host, editor, "保存文字、JSON 模式、选择与备注")
+  Rel(editor, store, "原 editId 与 expectedRevision")
+  Rel(host, answers, "等待当前草稿保存后回答")
+  Rel(answers, host, "持久接纳证明")
+  Rel(host, editor, "仅清除提交前捕获的修订")
+```
+
+完整交互详情读取后，按原调用作用域和 requestedAt 载入草稿，再挂载表单；迟到读取不能恢复已关闭视图。编辑捕获立即复制，串行保存合并同一事件循环的连续编辑；关闭不取消已经捕获的保存。读写失败保留本页文字，显示草稿专用错误。未知写冻结原提议，后续编辑不会偷偷重试；用户显式重试时先核对原身份，再保存后续本地编辑。修订冲突不覆盖其他页面，提示先复制本页内容再重新打开核对。
+
+提交前保存并等待当前编辑，JSON 解析失败不发送；恢复文本本身不进行 JSON 解析。回答已持久接纳后按提交时草稿修订清理；其他页面的新修订导致清理拒绝。清理丢回执保留相同 editId 供显式核对，不恢复旧正文。草稿保存/清理结果不改变回答终态，不解除暂停，也不消费聊天输入。未知回答继续使用原 OperationLedger 核对。
+
+边界：跨页面重开的尚未提交编辑已接通；若页面在回答接纳后、草稿清理前退出，已解决交互的残留草稿仍留在 Session UI 文档中，不再作为新交互恢复。跨页面自动回收此类残留尚未实现，不能从 pending 列表消失推断接纳并清除。没有新增定时器、执行状态库或无条件保存回退。
+
+验收覆盖重开恢复未完成 JSON、格式保持、分支隔离、保存失败阻止回答、显式重试、提交后条件清理，以及保存协调器的丢回复同身份核对、并发编辑保护和诊断回调异常隔离。

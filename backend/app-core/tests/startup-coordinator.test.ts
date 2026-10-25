@@ -74,6 +74,23 @@ describe('startup coordination', () => {
         gate.release(); await required; await coordinator.close();
     });
 
+    it('drains accepted work that awaits its already initialized dependency after close begins', async () => {
+        const {coordinator, report} = harness(), gate = deferred(), initialize = vi.fn(async () => 'ready');
+        const dependency = coordinator.task('dependency', initialize), first = dependency(); await first;
+        const work = coordinator.task('accepted work', async () => {await gate.promise; return dependency();})();
+        const closing = coordinator.close(); gate.release();
+        expect(await work).toBe('ready'); await closing;
+        expect(dependency()).toBe(first); expect(initialize).toHaveBeenCalledOnce(); expect(report).not.toHaveBeenCalled();
+        await expect(coordinator.task('new work', async () => {})()).rejects.toThrow('closed');
+    });
+
+    it('retains the original initialization failure for a dependency read during shutdown', async () => {
+        const {coordinator} = harness(), failure = new Error('Original initialization failed');
+        const dependency = coordinator.task('dependency', async () => {throw failure;});
+        await expect(dependency()).rejects.toBe(failure); await coordinator.close();
+        await expect(dependency()).rejects.toBe(failure);
+    });
+
     it('selects host policy without performing initialization', () => {
         expect(applicationStartupPolicy('interactive')).toMatchObject({ projects: 'on-demand', agents: 'after-ready' });
         expect(applicationStartupPolicy()).toMatchObject({ projects: 'before-ready', invocations: 'before-ready' });

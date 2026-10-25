@@ -177,3 +177,5 @@ Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.
 - `configuration/flow-installation.ts` 与 `flow-tool-packages.ts` 是 Flow 安装/导入/恢复共用的依赖准备边界：按已保存声明检查 schema、参数默认值、条件连接及工具版本，返回 ready/needsConfiguration/missingTools/failed 明细，不覆盖已有草稿/修订或写入猜测配置。`ApplicationRuntimeOptions.toolDependencies` 注入可信宿主目录的 ensure/list；Flow 只携带工具 ID/版本，不提供模块路径或安装命令。默认播种也检查依赖；工具箱 importWithReport 与系统恢复逐项返回报告，prepareDependencies 只重试。
 
 工作区工具的默认文件发现由 vfs/tool-context 排除应用拥有的 `.mindos` 目录，避免会话历史递归进入搜索结果；`includeIgnored` 与授权范围内的显式读取仍可使用。此产品策略不写入独立 VFS 或工具库的通用默认过滤器。
+
+- StartupCoordinator.close 拒绝新初始化并排空已接纳工作；已创建的依赖 Promise 在关闭期间仍可读取，保留原结果或原错误，不重新初始化，也不能改写为 Startup is closed。快速 CLI 查询/准备退出的恢复回调继续使用同一已就绪依赖；回归见 startup-coordinator。

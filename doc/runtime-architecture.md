@@ -723,6 +723,8 @@ UI 无深链启动只读取主题并展示 #/start 功能入口，选择模块�
 
 启动调度由 `runtime/startup-policy.ts` 和 `runtime/startup-coordinator.ts` 分开承担：前者按 interactive/headless 选择启动前、后台或界面可交互后的任务；后者只负责共享 readiness、有界并发、错误报告与关闭排空。llm-session 接收初始化调度回调，不判断宿主是否有 UI。interactive 宿主外壳导航可用后调用 `startBackground()`；具体 Session 使用仍等待自身初始化与租约校验。
 
+关闭时拒绝新的初始化；已创建的 readiness Promise 继续保留原结果或原错误，供已接纳的在途工作排空。读取同一已初始化依赖不重新执行，也不能把原结果改写为 Startup is closed。启动策略仍归 startup-policy，关闭排空机制归 StartupCoordinator。
+
 基础设施分别配置 LLM 初始化、设备节点初始化及目录预热，三者互不绑定。按需设备初始化要求 vfs-core 提供 readiness，访问 `/dev/<handler>` 才等待并生成节点；缺少该能力时明确拒绝启动，不再退回启动前全量生成节点。独立库通过自身公开 exports 消费，不并入主仓库工作区。
 
 

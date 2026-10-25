@@ -25,12 +25,12 @@ export class StartupCoordinator {
     task<T>(label: string, action: () => Promise<T>): () => Promise<T> {
         let ready: Promise<T> | undefined;
         return () => {
+            // Draining work may still await an already accepted dependency during shutdown.
+            if (ready) return ready;
             if (this.closed) return Promise.reject(new Error('Startup is closed'));
-            if (!ready) {
-                ready = Promise.resolve().then(() => this.hooks.trace(label, action));
-                this.pending.add(ready);
-                void ready.finally(() => this.pending.delete(ready!)).catch(() => {});
-            }
+            ready = Promise.resolve().then(() => this.hooks.trace(label, action));
+            this.pending.add(ready);
+            void ready.finally(() => this.pending.delete(ready!)).catch(() => {});
             return ready;
         };
     }

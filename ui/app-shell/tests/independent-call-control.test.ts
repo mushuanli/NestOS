@@ -218,3 +218,22 @@ it('shows descendant settlement after the root has ended and waits for the whole
     view.executionTree.stopped = true;
     await panel.refresh(); expect(document.querySelector('[data-execution-state]')!.textContent).toBe(t('callable.independent.execution.paused'));
 });
+
+it('keeps descendant cancellation recovery separate from root and sibling controls in the shared ledger', async () => {
+    const {CallControlOperations} = await import('../../llm-ui-adapter/src/independent/call-control');
+    const operations = createOperationLedger(), request = {sessionId: 'parent', branchId: 'main', callId: 'call', executionSessionId: 'child', taskId: 'task', targetTaskId: 'leaf', requestId: 'cancel-leaf', expectedEpoch: 3};
+    const {expectedEpoch, ...query} = request;
+    const execute = vi.fn(async (name: string) => {
+        if (name === IndependentCallCommand.Cancel) throw new Error('Lost response');
+        return {...query, receipt: {requestId: request.requestId, taskId: 'leaf', expectedEpoch, controlEpoch: expectedEpoch, status: 'cancelled'}};
+    });
+    const controls = new CallControlOperations(operations, {execute} as never, 'parent');
+    await expect(controls.cancel(request, () => true)).rejects.toThrow('Lost response');
+    expect(controls.latest('main', 'call', 'task')).toBeUndefined();
+    expect(controls.latest('main', 'call', 'task', 'cancel', 'other')).toBeUndefined();
+    expect(controls.latest('main', 'call', 'task', 'cancel', 'leaf')?.status).toBe('unknown');
+    expect(await controls.reconcile(request.requestId)).toMatchObject({status: 'accepted'});
+    expect(execute.mock.calls.map(([name]) => name)).toEqual([IndependentCallCommand.Cancel, IndependentCallCommand.CancellationReceipt]);
+    expect(execute).toHaveBeenLastCalledWith(IndependentCallCommand.CancellationReceipt, query);
+    await expect(controls.cancel({...request, targetTaskId: 'other'}, () => true)).rejects.toMatchObject({code: 'CALL_CONTROL_IDENTITY_MISMATCH'});
+});

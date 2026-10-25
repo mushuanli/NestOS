@@ -1460,3 +1460,29 @@ C4Component
 边界保持：带 requestId 的请求若发现指定根已经成功/失败，仍返回其真实终态，不取消其后代。本批不开放终态根的“停止剩余后代”UI，也不改变跨 Session 所有权与物理清理确认。根清理与后代取消的既有顺序保持不变；大规模活动任务树的重复读取优化仍不在本批范围。
 
 回归先在原实现复现孙任务仍为 created，修复后验证取消可穿过成功节点、保留成功结果、隔离无关根与后代请求身份；另验证迟到取消成功根不会偷偷取消子任务。
+
+
+## 64. 显式后代取消与目标回执
+
+原调用控制协议增加可选 targetTaskId，仅用于取消与取消回执查询。taskId 始终是父级持久路由记录的 primary，不能替换成任意子任务。宿主先验证原路由，再按执行 Session、rootTaskId 和真实 parentTaskId 链验证目标；与回答交互共用成员校验机制，保留两种入口的具体错误分类。
+
+```mermaid
+C4Component
+  title 根调用身份与后代取消身份分离
+  Component(ledger, "CallControlOperations", "UI 适配台账", "冻结根、目标、requestId 和目标 epoch")
+  Component(session, "IndependentCallControls", "Session 归属与授权", "原调用路由、目标父链、父子写权限")
+  Component(flow, "原 Flow 控制端口", "编排机制", "后代 Flow 仍使用调度租约和 fence")
+  Component(kernel, "Kernel.cancel", "执行机制", "目标取消与原持久回执")
+  Rel(ledger, session, "取消或只读核对同一目标")
+  Rel(session, flow, "目标为 Flow 根时")
+  Rel(session, kernel, "目标为普通 Task 时")
+  Rel(flow, kernel, "既有取消路径")
+```
+
+expectedEpoch 属于目标，回执内部 taskId 也必须是目标；返回信封保留原根 taskId 和显式 targetTaskId。根已结束可以控制其仍有效后代，不改写根结果；若目标自身已成功/失败，仍返回真实终态。冷查询先校验同一作用域，不打开写会话、不重新发送；父或子 Session 只读仍允许核对原事实，但拒绝新的取消。
+
+同一 OperationLedger 保存完整目标。latest 查询按根/目标区分，未知后代操作不能锁住根或其他后代控制，丢响应继续只读核对。旧请求省略 targetTaskId 保持原根取消语义；状态暂停/恢复入口拒绝 targetTaskId，不因扩展取消而隐式扩大其他控制能力。
+
+验证包含真实宿主中根 Flow 已成功、后代独立暂停后的版本冲突与定向取消，原根结果及无关任务不变；父/子只读、目标不属于调用、后代 Flow 控制路由、错误回执身份、丢响应台账恢复与操作目标冲突均覆盖。
+
+本批完成后端与 UI 台账协议，不将现有根取消按钮改成整树停止。后续需要按需后代列表与对应控制入口；“停止全部剩余后代”还需要明确持久意图、动态子任务屏障和部分取消失败的核对协议，不能用前端循环取消冒充原子整树控制。跨执行 Session 的独立所有者仍不在该授权范围。

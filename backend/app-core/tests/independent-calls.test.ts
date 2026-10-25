@@ -308,6 +308,8 @@ it.each(['parent', 'child'] as const)('rejects independent cancellation when the
     const guard = vi.spyOn(f.runtime.sessionRepository, 'isSessionDeletionPending').mockImplementation(async id =>
         id === (denied === 'parent' ? query.sessionId : query.executionSessionId) || check(id));
     await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
+    await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, targetTaskId: member, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
+    expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, {...query, targetTaskId: member})).toEqual({...query, targetTaskId: member});
     await expect(f.runtime.commandBus.execute(IndependentCallCommand.Control, {...query, action: 'pause', expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
     expect(await f.runtime.commandBus.execute(IndependentCallCommand.ControlReceipt, {...query, action: 'pause'})).toEqual({...query, action: 'pause'});
     expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(query);
@@ -401,4 +403,28 @@ it('rejects mismatched state-control scopes and refuses withdrawal after pause a
     await expect(commands.execute(IndependentCallCommand.Control, {...query, requestId: 'withdraw-confirmed', action: 'withdraw', expectedEpoch: 1})).rejects.toMatchObject({code: 'CONFLICT'});
     expect(await kernel.readTaskControlReceipt(query.executionSessionId, query.taskId, 'withdraw-confirmed')).toBeUndefined();
     await commands.execute(IndependentCallCommand.Cancel, {...query, requestId: 'end-scope', expectedEpoch: 1});
+}, 15000);
+
+it('cancels an explicitly scoped descendant after its Flow root completes and preserves both root and sibling', async () => {
+    const f = await fixture(false, true, true), input = f.input('finished-parent', 'flow'); await f.submit(input);
+    const rootQuery = await controlQuery(f, input), commands = f.runtime.commandBus, kernel = f.runtime.kernel.kernel;
+    const session = await kernel.openSession(rootQuery.executionSessionId);
+    const spec = {program: {kind: 'deferred-child', version: '1'}, input: null, deferStart: true};
+    const child = await session.submit({...spec, parent: rootQuery.taskId}), sibling = await session.submit(spec);
+    await child.pause({requestId: 'child-pause'});
+    let member = '';
+    await vi.waitFor(async () => {member = (await session.listTasks()).find(task => task.interactions.approval?.status === 'pending')?.id ?? ''; expect(member).not.toBe('');});
+    await commands.execute(IndependentCallCommand.Respond, {...rootQuery, targetTaskId: member, interactionId: 'approval', requestId: 'finish-root', value: 'done'});
+    await (await session.attachTask(rootQuery.taskId)).wait({timeoutMs: 5000});
+    const before = await kernel.task(session.id, rootQuery.taskId), query = {...rootQuery, targetTaskId: child.id, requestId: 'cancel-child'};
+    await expect(commands.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).rejects.toMatchObject({code: 'CONFLICT'});
+    expect(await commands.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(query);
+    await expect(commands.execute(IndependentCallCommand.Cancel, {...query, targetTaskId: sibling.id, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_CONTROL_SCOPE_MISMATCH'});
+    const result = await commands.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 1});
+    expect(result).toMatchObject({...query, receipt: {taskId: child.id, status: 'cancelled', expectedEpoch: 1}});
+    expect(await kernel.task(session.id, rootQuery.taskId)).toEqual(before);
+    expect((await sibling.status()).task.status).toBe('created');
+    const open = vi.spyOn(kernel, 'openSession');
+    expect(await commands.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(result); expect(open).not.toHaveBeenCalled();
+    expect(await kernel.readTaskCancellationReceipt(session.id, rootQuery.taskId, query.requestId)).toBeUndefined();
 }, 15000);

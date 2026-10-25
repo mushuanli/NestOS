@@ -1,3 +1,4 @@
+import {FlowCommand} from '@itookit/llm-flow/contracts';
 import {expect, it, vi} from 'vitest';
 import type {Kernel, TaskRecord} from '@itookit/durable-kernel';
 import type {ICommandBus} from '../src/contracts/command-bus';
@@ -8,12 +9,12 @@ const query = {sessionId: 'parent', branchId: 'main', callId: 'call', executionS
 function fixture() {
     const handlers = new Map<string, (args: any) => Promise<any>>();
     const cancel = vi.fn(async () => {}), read = vi.fn(async () => ({taskId: 'task', requestId: 'cancel', expectedEpoch: 0, controlEpoch: 0, status: 'cancelled' as const}));
-    const controlTask = vi.fn(), withdrawTaskPause = vi.fn(), readTaskControlReceipt = vi.fn();
+    const controlTask = vi.fn(), withdrawTaskPause = vi.fn(), readTaskControlReceipt = vi.fn(), inspectSession = vi.fn(), execute = vi.fn();
     const logger = {info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn()};
     const resolve = vi.fn(async () => ({program: {kind: 'agent.loop'}} as TaskRecord));
-    const commands = {register: (name: string, handler: (args: any) => Promise<any>) => handlers.set(name, handler)} as unknown as ICommandBus;
-    new IndependentCallControls({commands, logger, resolve, kernel: {cancel, readTaskCancellationReceipt: read, controlTask, withdrawTaskPause, readTaskControlReceipt} as unknown as Kernel}).register();
-    return {handlers, cancel, read, logger, resolve, controlTask, withdrawTaskPause, readTaskControlReceipt};
+    const commands = {execute, register: (name: string, handler: (args: any) => Promise<any>) => handlers.set(name, handler)} as unknown as ICommandBus;
+    new IndependentCallControls({commands, logger, resolve, kernel: {cancel, readTaskCancellationReceipt: read, controlTask, withdrawTaskPause, readTaskControlReceipt, inspectSession} as unknown as Kernel}).register();
+    return {handlers, cancel, read, logger, resolve, controlTask, withdrawTaskPause, readTaskControlReceipt, inspectSession, execute};
 }
 it('rejects invalid input before resolving ownership and logs only safe metadata', async () => {
     const f = fixture();
@@ -58,4 +59,32 @@ it('rejects unknown state actions and mismatched control receipts without forwar
     f.readTaskControlReceipt.mockResolvedValue({requestId: 'cancel', action: 'run', accepted: {requestId: 'cancel', mode: 'run'}});
     await expect(f.handlers.get(IndependentCallCommand.ControlReceipt)!({...query, action: 'pause'})).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
     expect(f.controlTask).not.toHaveBeenCalled();
+});
+
+
+it('rejects malformed cancellation targets and does not broaden state controls to descendants', async () => {
+    const f = fixture();
+    for (const targetTaskId of ['', ' ', null, 4, {}])
+        await expect(f.handlers.get(IndependentCallCommand.Cancel)!({...query, targetTaskId, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_CONTROL_INVALID'});
+    await expect(f.handlers.get(IndependentCallCommand.Control)!({...query, targetTaskId: 'worker', action: 'pause', expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_CONTROL_INVALID'});
+    expect(f.resolve).not.toHaveBeenCalled(); expect(f.cancel).not.toHaveBeenCalled();
+});
+
+
+it('routes a descendant Flow through its scheduler control port and verifies the target receipt', async () => {
+    const f = fixture(), root = {id: 'task', sessionId: 'child', rootTaskId: 'task', program: {kind: 'agent.loop'}} as TaskRecord;
+    const target = {...root, id: 'nested-flow', parentTaskId: root.id, program: {kind: 'flow.aggregate'}};
+    f.resolve.mockResolvedValue(root);
+    f.inspectSession.mockResolvedValue({attachTask: async (id: string) => ({status: async () => ({task: id === target.id ? target : root})})});
+    const receipt = {requestId: 'cancel', taskId: target.id, expectedEpoch: 3, controlEpoch: 3, status: 'cancelled'};
+    f.execute.mockResolvedValue(receipt);
+    const scope = {...query, targetTaskId: target.id};
+    expect(await f.handlers.get(IndependentCallCommand.Cancel)!({...scope, expectedEpoch: 3})).toEqual({...scope, receipt});
+    expect(f.execute.mock.calls).toEqual([
+        [FlowCommand.RunCancel, {sessionId: 'child', taskId: target.id, requestId: 'cancel', expectedEpoch: 3}],
+        [FlowCommand.RunCancellationReceipt, {sessionId: 'child', taskId: target.id, requestId: 'cancel'}],
+    ]);
+    expect(f.cancel).not.toHaveBeenCalled();
+    f.execute.mockResolvedValue({...receipt, taskId: root.id});
+    await expect(f.handlers.get(IndependentCallCommand.CancellationReceipt)!(scope)).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
 });

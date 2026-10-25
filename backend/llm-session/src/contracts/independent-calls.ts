@@ -46,8 +46,10 @@ export interface IndependentCallView {
 export interface IndependentCallControlQuery {
     sessionId: string; branchId: string; callId: string; executionSessionId: string; taskId: string; requestId: string;
 }
-export interface IndependentCallCancelRequest extends IndependentCallControlQuery {expectedEpoch: number}
-export interface IndependentCallCancellationReceipt extends IndependentCallControlQuery {
+/** The primary taskId always identifies the call; an explicit descendant has its own control epoch. */
+export interface IndependentCallCancellationQuery extends IndependentCallControlQuery {targetTaskId?: string}
+export interface IndependentCallCancelRequest extends IndependentCallCancellationQuery {expectedEpoch: number}
+export interface IndependentCallCancellationReceipt extends IndependentCallCancellationQuery {
     /** Admission evidence only; absence means unknown, never permission to resubmit. */
     receipt?: import('@itookit/durable-kernel/contracts').TaskCancellationReceipt;
 }

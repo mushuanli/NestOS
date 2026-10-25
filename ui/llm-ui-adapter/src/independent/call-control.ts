@@ -16,11 +16,12 @@ const log = createModuleLogger('independent-call-control');
 export class CallControlOperations {
     constructor(private ledger: OperationLedger, private commands: ICommandBus, private sessionId: string) {}
     has(id: string): boolean {return this.ledger.getSnapshot().some(record => record.context.operationId === id && this.owns(record));}
-    latest(branchId: string, callId: string, taskId: string, channel: 'cancel' | 'state' = 'cancel'): OperationRecord | undefined {
+    latest(branchId: string, callId: string, taskId: string, channel: 'cancel' | 'state' = 'cancel', targetTaskId?: string): OperationRecord | undefined {
         const matches = [...this.ledger.getSnapshot()].reverse().filter(record => this.owns(record)
             && (record.input as unknown as Frozen).protocol === (channel === 'cancel' ? callCancellationProtocol : callStateControlProtocol)
             && (record.input as unknown as Frozen).request.branchId === branchId
-            && (record.input as unknown as Frozen).request.callId === callId && (record.input as unknown as Frozen).request.taskId === taskId);
+            && (record.input as unknown as Frozen).request.callId === callId && (record.input as unknown as Frozen).request.taskId === taskId
+            && ((record.input as unknown as Frozen).request as IndependentCallCancelRequest).targetTaskId === targetTaskId);
         return matches.find(record => ['submitting', 'unknown'].includes(record.status)) ?? matches[0];
     }
     async cancel(input: IndependentCallCancelRequest, current: () => boolean): Promise<OperationReceipt> {
@@ -111,6 +112,6 @@ function assertResult(request: Request, result: Result,
     const valid = 'action' in request
         ? 'action' in receipt && receipt.action === (request.action === 'resume' ? 'run' : request.action === 'withdraw' ? 'withdraw-pause' : 'pause')
             && receipt.accepted.requestId === request.requestId
-        : 'status' in receipt && receipt.taskId === request.taskId && ['succeeded', 'failed', 'cancelled'].includes(receipt.status);
+        : 'status' in receipt && receipt.taskId === (request.targetTaskId ?? request.taskId) && ['succeeded', 'failed', 'cancelled'].includes(receipt.status);
     if (!valid || receipt.requestId !== request.requestId || !('expectedEpoch' in receipt) || receipt.expectedEpoch !== request.expectedEpoch) throw failure('CALL_CONTROL_RECEIPT_MISMATCH');
 }

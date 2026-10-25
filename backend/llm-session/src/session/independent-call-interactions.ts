@@ -1,3 +1,4 @@
+import {belongsToCall, readCallMember} from './independent-call-membership';
 import type {Kernel, TaskRecord} from '@itookit/durable-kernel';
 import type {IndependentCallInteractions} from '../contracts/independent-calls';
 
@@ -10,7 +11,7 @@ export async function readIndependentCallInteractions(kernel: Kernel, root: Task
         const task = (await (await session.attachTask(id)).status()).task; known.set(id, task); return task;
     };
     const selected: TaskRecord[] = [];
-    for (const task of tasks) if (await belongsTo(root, task, read)) selected.push(task);
+    for (const task of tasks) if (await belongsToCall(root, task, read, 'CALL_INTERACTION_TREE_INVALID')) selected.push(task);
     return summarizeIndependentCallInteractions(selected);
 }
 export function summarizeIndependentCallInteractions(tasks: TaskRecord[]): IndependentCallInteractions {
@@ -23,21 +24,7 @@ export function summarizeIndependentCallInteractions(tasks: TaskRecord[]): Indep
     }
     return {items, total};
 }
-async function belongsTo(root: TaskRecord, candidate: TaskRecord, read: (id: string) => Promise<TaskRecord>): Promise<boolean> {
-    const seen = new Set<string>(); let task = candidate;
-    while (task.sessionId === root.sessionId && task.rootTaskId === root.rootTaskId) {
-        if (task.id === root.id) return true;
-        if (!task.parentTaskId) return false;
-        if (seen.has(task.id)) throw Object.assign(new Error('CALL_INTERACTION_TREE_INVALID'), {code: 'CALL_INTERACTION_TREE_INVALID'});
-        seen.add(task.id); task = await read(task.parentTaskId);
-    }
-    return false;
-}
 
 export async function readIndependentCallInteractionTask(kernel: Kernel, root: TaskRecord, taskId: string): Promise<TaskRecord> {
-    const session = await kernel.inspectSession(root.sessionId);
-    const read = async (id: string) => (await (await session.attachTask(id)).status()).task;
-    const target = await read(taskId);
-    if (!await belongsTo(root, target, read)) throw Object.assign(new Error('CALL_INTERACTION_SCOPE_MISMATCH'), {code: 'CALL_INTERACTION_SCOPE_MISMATCH'});
-    return target;
+    return readCallMember(kernel, root, taskId, {tree: 'CALL_INTERACTION_TREE_INVALID', scope: 'CALL_INTERACTION_SCOPE_MISMATCH'});
 }

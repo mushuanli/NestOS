@@ -1,3 +1,4 @@
+import {ConversationRegistry} from './conversation-registry';
 import {ConversationComposerStore, withConversationComposer} from './conversation-composer-store';
 import type { ProjectConversationPort } from '@itookit/app-contracts/services';
 import { observeConversation } from './conversation-view';
@@ -61,6 +62,7 @@ export type RemoteConnectionStatus = 'unknown' | 'checking' | 'online' | 'offlin
 
 /** Project-owned grants; credentials stay in the injected host provider. */
 export class ProjectRemoteMountService {
+    private readonly conversations = new ConversationRegistry();
     estimateUsage?: (usage: import('@itookit/mindos-node-driver').HarnessUsage) => import('@itookit/kernel-adapters/contracts').UsageCostEstimate;
     readonly sessionStatus = new RemoteSessionStatus(id => {
         const grants = this.list(id), root = grants.find(m => m.at === '/');
@@ -464,6 +466,11 @@ export class ProjectRemoteMountService {
         } finally {await client.close();}
     }
     async projectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string): Promise<ProjectConversationPort> {
+        if (!sessionId) return this.createProjectConversation(projectId, profileId, sessionId, options, readOnly, draftId);
+        const key = JSON.stringify([projectId, profileId, sessionId, readOnly, this.list(projectId)]);
+        return this.conversations.acquire(key, () => this.createProjectConversation(projectId, profileId, sessionId, options, readOnly, draftId));
+    }
+    private async createProjectConversation(projectId: string, profileId: string, sessionId?: string, options?: OperationOptions, readOnly = false, draftId?: string): Promise<ProjectConversationPort> {
         if (draftId !== undefined && !/^[a-zA-Z0-9_-]+$/.test(draftId)) throw new FSError('EINVAL', 'Invalid draft identity');
         if (!this.provider.conversation) throw new FSError('ECAPABILITY', 'Conversation adapter unavailable');
         const client = await this.projectHarness(projectId, options);
@@ -480,13 +487,14 @@ export class ProjectRemoteMountService {
                 ...(root.authorization ? {principalId: root.authorization.principalId} : {}), profileId: conversationId ? profile.id : profileId};
             if (draftId) await prepareRemoteDraft(this.store, projectId, draftId, target);
             const guarded = this.guardHarness(client, projectId, fingerprint, root.connectionId!);
+            const checkAccess = () => {
+                if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
+            };
             const recovery = new RemoteConversationStore(this.store, remoteConversationKey(projectId, target, conversationId ?? sessionId ?? '@new'));
             const conversation = await this.provider.conversation(sessionId ? guarded : draftHarness(guarded, recovery), profile, profile.workspaces[0].id, sessionId, (profile.projectCapabilities?.sessionControl ?? root.access === 'rw') && !readOnly,
-                remoteConversationJournal(recovery, descriptor.epoch, !sessionId && !draftId));
+                remoteConversationJournal(recovery, descriptor.epoch, !sessionId && !draftId, checkAccess));
             const composer = new ConversationComposerStore(this.store, projectId,
-                remoteConversationKey(projectId, target, conversationId ?? sessionId ?? '@new'), !readOnly, () => {
-                    if (this.closed || fingerprint !== JSON.stringify(this.list(projectId))) throw new FSError('ECONFLICT', 'Project authorization changed');
-                });
+                remoteConversationKey(projectId, target, conversationId ?? sessionId ?? '@new'), !readOnly, checkAccess);
             const observed = observeConversation(sessionId ? conversation : draftConversation(conversation, recovery), this.estimateUsage, conversationId,
                 () => { void this.sessionStatus.refresh(projectId); });
             return withConversationComposer(observed, composer);
@@ -631,6 +639,7 @@ export class ProjectRemoteMountService {
         } catch (error) { await base?.dispose(); throw error; }
     }
     async dispose(): Promise<void> {
+        await this.conversations.dispose();
         await this.sessionStatus.dispose();
         this.closed = true; await this.tail.catch(() => {});
         await Promise.allSettled(this.probes.values());

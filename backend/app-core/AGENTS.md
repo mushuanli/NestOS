@@ -183,3 +183,5 @@ Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.
 - 租约恢复关闭后，已在途的准备回调返回时不得再开始 Kernel 恢复；Runtime 先排空恢复及租约释放，再停止 Kernel，分别保留释放与停止错误，不能靠吞掉 DISPOSED 异常掩盖关闭顺序。
 
 RemoteConversationStore 的 load/save/submitted 在同实例串行，避免延迟读取回退 CAS 游标；保存先冻结调用方记录，读取返回副本。未知写入只核对写前/写后值；第三值锁定实例为冲突，load 不能解除。原生执行与控制不共用此存储串行边界。
+
+原生队列的 enqueue/editInstructionQueue 经显式 RPC 暴露，与原发送 tail 独立；ConversationView 在队首派发回执悬挂时继续观察，持久化由 RemoteConversationStore 校验队列修订。ConversationRegistry 由项目宿主持有，跨视图复用同一控制器并在存在可派发队列或未确认回执时保留观察；宿主关闭才统一释放。

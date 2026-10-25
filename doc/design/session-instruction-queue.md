@@ -80,3 +80,7 @@ ApplicationRuntime 为所有 Session 视图注入同一个 `SessionExecutionActi
 关键日志包含 `operation=session.instructions`、阶段、结果、错误分类、Session/指令身份、队列版本、数量和耗时，不记录正文、完整参数、附件内容或凭据。前端保留错误原因，发生版本冲突后读取最新队列，不自动重放编辑命令。
 
 验证覆盖 `llm-session/__tests__/instruction-queue.test.ts`、`app-core/tests/instruction-queue.test.ts`、`app-shell/tests/instruction-queue-panel.test.ts` 与输入就绪测试：持久 CAS、跨视图串行、关闭页面后续发、前一轮历史、删除/排序/合并、去重、失败及未知结果、界面转义和迟到响应。
+
+### 原生队列宿主入口
+
+原生 Harness 队列由 mindos-node-driver 持有，宿主通过 enqueue/editInstructionQueue 及修订 CAS 接入，不转换成已执行聊天消息。项目宿主复用同一 ConversationRegistry 控制器，视图关闭后保留可派发工作和未知控制/查询回执，暂停队列可按持久记录重新打开。@new 转正不得清除后续草稿、队列、回答或未完成控制。RPC 显式开放队列方法；原发送响应悬挂时仍可接纳与编辑，队首派发期间仍消费原生观察。UI 草稿消费依赖持久接纳，由独立台账适配功能接入。

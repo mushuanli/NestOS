@@ -63,3 +63,18 @@ it('serializes polling and mutations on the same native cursor', async () => {
     const poll = view.refresh(); await Promise.resolve(); const send = view.send('request');
     expect(source.send).not.toHaveBeenCalled(); resume(); await Promise.all([poll, send]); expect(source.send).toHaveBeenCalledOnce();
 });
+
+it('observes a claimed queue and accepts queue controls while its dispatch reply is pending', async () => {
+    vi.useFakeTimers(); const {source, view, state, emit} = setup(); let finish!: () => void;
+    Object.assign(state, {instructionQueue: {revision: 1, paused: false, acceptedIds: [], items: [{id: 'first', state: 'dispatching', text: 'First', files: [], createdAt: 0}]}});
+    const enqueue = vi.fn(async () => state), editInstructionQueue = vi.fn(async () => state);
+    Object.assign(source, {enqueue, editInstructionQueue});
+    source.refresh.mockImplementationOnce(async () => {await new Promise<void>(resolve => {finish = resolve;}); return state;});
+    view.subscribe(vi.fn()); emit(); await vi.advanceTimersByTimeAsync(20);
+    expect(source.refresh).toHaveBeenCalledOnce();
+    await view.enqueue!('Second'); await view.editInstructionQueue!({action: 'pause', expectedRevision: 1});
+    expect(enqueue).toHaveBeenCalledOnce(); expect(editInstructionQueue).toHaveBeenCalledOnce();
+    state.canInterrupt = true; state.messages[1].text = 'Native progress'; emit(); await vi.advanceTimersByTimeAsync(20);
+    try {expect(source.refresh).toHaveBeenCalledTimes(2); expect(view.snapshot()).toMatchObject({canInterrupt: true});}
+    finally {finish(); await vi.advanceTimersByTimeAsync(0);}
+});

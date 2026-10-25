@@ -15,6 +15,7 @@ class ConversationView {
     private closing?: Promise<void>;
     private closed = false;
     private pumping = false;
+    private observingDispatch = false;
     private stopSource?: () => void;
     private eventTimer?: ReturnType<typeof setTimeout>;
     private refreshRequested = false;
@@ -64,7 +65,7 @@ class ConversationView {
         if (this.closed || !this.listeners.size || this.eventTimer) return;
         this.eventTimer = setTimeout(() => {
             this.eventTimer = undefined;
-            if (this.pumping) this.refreshRequested = true; else this.pump();
+            if (this.pumping) this.observeDispatch(); else this.pump();
         },20);
     }
     private pump(): void {
@@ -74,6 +75,17 @@ class ConversationView {
             this.pumping = false;
             if (this.refreshRequested) { this.refreshRequested = false; this.invalidate(); }
             this.schedule();
+        });
+    }
+    private dispatching(): boolean {
+        return this.source.snapshot().instructionQueue?.items[0]?.state === 'dispatching';
+    }
+    private observeDispatch(): void {
+        if (!this.dispatching() || this.observingDispatch) {this.refreshRequested = true; return;}
+        this.observingDispatch = true;
+        void this.invoke(this.source.refresh, [], 'observe-dispatch').catch(() => {}).finally(() => {
+            this.observingDispatch = false;
+            if (this.refreshRequested) {this.refreshRequested = false; this.invalidate();}
         });
     }
     private schedule(): void {
@@ -91,16 +103,16 @@ class ConversationView {
             try { result = await Reflect.apply(method, this.source, args); succeeded = true; }
             finally {
                 if (starting) --this.starting;
-                if (key === 'refresh' || key === 'read') {
+                if (key === 'refresh' || key === 'read' || key === 'observe-dispatch') {
                     const state = this.source.snapshot();
                     this.failures = !succeeded || state.disconnected || state.observation?.refreshError ? this.failures + 1 : 0;
                 }
-                if (!this.closed) {this.update(); this.schedule();}
+                if (!this.closed) {this.update(); this.schedule(); if (key === 'enqueue' || key === 'editInstructionQueue') this.invalidate();}
             }
             return result && typeof result === 'object' && 'messages' in result ? this.current : result;
         };
-        if (key === 'respond' || key === 'interrupt') return execute();
-        if (key === 'refresh' && this.starting) {
+        if (['respond', 'interrupt', 'enqueue', 'editInstructionQueue', 'saveDraft', 'read'].includes(key)) return execute();
+        if (key === 'observe-dispatch' || key === 'refresh' && this.starting) {
             const work = this.polling.then(execute); this.polling = work.catch(() => {}); return work;
         }
         const work = this.tail.then(execute);

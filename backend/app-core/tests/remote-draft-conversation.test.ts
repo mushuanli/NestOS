@@ -3,10 +3,12 @@ import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {HarnessConversation, type HarnessClient, type HarnessProfile} from '@itookit/mindos-node-driver';
 import {RemoteConversationStore} from '../src/projects/remote-conversation-store';
 import {draftConversation, draftHarness, remoteConversationJournal} from '../src/projects/remote-draft-conversation';
+import {interceptConversationTransactions} from './remote-conversation-faults';
 
 async function fixture() {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()});
-    const fs = await manager.openFileSystem('/'), recovery = new RemoteConversationStore(fs, 'draft');
+    const fault = interceptConversationTransactions(await manager.openFileSystem('/'));
+    const {fs} = fault, recovery = new RemoteConversationStore(fs, 'draft');
     const session = {id: 'native', title: 'Native preview', cwd: '/', status: 'idle', updatedAt: 1, resumable: true, owned: true};
     const profile: HarnessProfile = {id: 'p', kind: 'native', workspaces: [{id: 'w'}],
         capabilities: {create: true, history: true, resume: true, interrupt: true, interactions: true, rename: true, slashCommands: true}};
@@ -17,7 +19,7 @@ async function fixture() {
         eventSnapshot: vi.fn(async () => ({epoch: 'events', cursor: 0, gap: false, events: [], requests: []}))} as unknown as HarnessClient;
     const open = () => draftConversation(new HarnessConversation(draftHarness(client, recovery), profile, 'w', undefined, true,
         remoteConversationJournal(recovery, 'epoch', true)), recovery);
-    return {manager, recovery, client, open, fs};
+    return {manager, recovery, client, open, fs, fault};
 }
 
 it('retains the provisional native identity and input across a rejected turn and reopening', async () => {
@@ -37,6 +39,50 @@ it('retains the provisional native identity and input across a rejected turn and
         await view.close(); view = f.open();
         expect(await view.read()).toMatchObject({sessionId: undefined, submittedTurnId: undefined, draft: '', pending: false});
         expect(f.client.create).toHaveBeenCalledOnce();
+    } finally {await view.close(); await f.manager.dispose();}
+});
+
+it('recovers a committed control receipt after a lost CAS acknowledgement without reopening or repeating cancellation', async () => {
+    const f = await fixture(), view = f.open();
+    try {
+        await f.recovery.save({sessionId: 'native', draft: 'Next input'});
+        vi.mocked(f.client.read).mockResolvedValue({session: {id: 'native', title: 'Native', cwd: '/', status: 'active', activeTurnId: 'running', updatedAt: 1, resumable: true, owned: true}, turns: []});
+        f.client.interrupt = vi.fn(async () => {});
+        await view.read();
+        f.fault.transaction.mockImplementationOnce(f.fault.commit).mockImplementationOnce(async (...args) => {
+            await f.fault.commit(...args); throw new Error('Lost control write acknowledgement');
+        });
+        await expect(view.interrupt({sessionId: 'native', turnId: 'running', operationId: 'lost-control-write'})).rejects.toThrow('Lost control write acknowledgement');
+        expect(view.snapshot().controls).toMatchObject([{receipt: 'unknown'}]);
+        expect(await view.reconcileControl!('lost-control-write')).toMatchObject({draft: 'Next input', controls: [{receipt: 'accepted', effect: 'unconfirmed'}]});
+        expect(f.client.interrupt).toHaveBeenCalledOnce();
+        expect((await f.recovery.load())?.controls).toMatchObject([{requestId: 'lost-control-write', receipt: 'accepted'}]);
+    } finally {vi.restoreAllMocks(); await view.close(); await f.manager.dispose();}
+});
+
+it.each(['control', 'queue', 'draft'] as const)('does not clear promoted draft recovery that still owns %s work', async work => {
+    const f = await fixture();
+    try {
+        const queue = {revision: 1, paused: true, receipts: [], items: [{id: 'next', text: 'Later', attachments: [], createdAt: 1, state: 'pending' as const}]};
+        const extra = work === 'control' ? {controls: [{requestId: 'stop', epoch: 'e', sessionId: 'native', turnId: 't', receipt: 'pending' as const}]}
+            : work === 'queue' ? {instructionQueue: queue} : {draft: 'Later draft'};
+        await f.recovery.save({sessionId: 'native', submittedTurnId: 't', ...extra});
+        expect(await remoteConversationJournal(f.recovery, 'e', true).load()).toMatchObject({sessionId: 'native', submittedTurnId: 't', ...extra});
+    } finally {await f.manager.dispose();}
+});
+
+it('retains an admitted queue entry when cancellation follows its lost storage acknowledgement', async () => {
+    const f = await fixture(), view = f.open();
+    try {
+        await f.recovery.save({sessionId: 'native'});
+        vi.mocked(f.client.read).mockResolvedValue({session: {id: 'native', title: 'Native', cwd: '/', status: 'active', activeTurnId: 'running', updatedAt: 1, resumable: true, owned: true}, turns: []});
+        f.client.interrupt = vi.fn(async () => {}); await view.read();
+        f.fault.transaction.mockImplementationOnce(async (...args) => {await f.fault.commit(...args); throw new Error('Lost queue acknowledgement');});
+        await expect(view.enqueue!('Later input', [], undefined, 'retained-queue')).rejects.toThrow('Lost queue acknowledgement');
+        const state = await view.interrupt({sessionId: 'native', turnId: 'running', operationId: 'stop-with-retained-queue'});
+        expect(state.instructionQueue).toMatchObject({paused: false, items: [{id: 'retained-queue', text: 'Later input'}]});
+        expect((await f.recovery.load())?.instructionQueue?.items).toMatchObject([{id: 'retained-queue'}]);
+        expect(f.client.interrupt).toHaveBeenCalledOnce(); expect(f.client.turn).not.toHaveBeenCalled();
     } finally {await view.close(); await f.manager.dispose();}
 });
 

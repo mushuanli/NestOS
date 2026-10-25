@@ -47,6 +47,7 @@ export class RemoteConversationStore {
     }
     private async write(record: RemoteConversationRecovery): Promise<void> {
         await this.reconcileWrite();
+        this.checkQueueRevision(record);
         validateSubmissions(record);
         if (record.deletedSessionIds !== undefined && (!Array.isArray(record.deletedSessionIds) || record.deletedSessionIds.length > 16401
             || record.deletedSessionIds.some(id => typeof id !== 'string' || !id))) throw new FSError('EINVAL', 'Invalid native deletion recovery');
@@ -68,6 +69,16 @@ export class RemoteConversationStore {
         this.raw = value;
         this.record = record;
     }
+    private checkQueueRevision(record: RemoteConversationRecovery): void {
+        const before = this.record.instructionQueue, after = record.instructionQueue;
+        if (!before) return;
+        const stale = !after ? before.items.length > 0 : after.revision < before.revision
+            || after.revision === before.revision && JSON.stringify(after) !== JSON.stringify(before);
+        if (stale) {
+            const error = new FSError('ECONFLICT', 'Persisted instruction queue changed; refresh before saving');
+            this.log('queue-revision', Date.now(), record, error); throw error;
+        }
+    }
     private async reconcileWrite(): Promise<void> {
         if (this.conflicted) throw new FSError('ECONFLICT', 'Remote conversation recovery conflicts with another writer');
         if (!this.uncertainWrite) return;
@@ -87,7 +98,7 @@ export class RemoteConversationStore {
         const raw = (error as {code?: unknown})?.code;
         const code = typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'JOURNAL_WRITE_UNCONFIRMED';
         const fields = {operation: 'harness.journal', stage, result: error ? 'unconfirmed' : 'confirmed',
-            operationId: record.pending?.requestId ?? record.submission?.id,
+            operationId: record.pending?.requestId ?? record.controls?.at(-1)?.requestId ?? record.submission?.id,
             durationMs: Date.now() - started, code: error ? code : undefined};
         if (error) console.warn('[Harness] Recovery write', fields); else console.info('[Harness] Recovery write', fields);
     }

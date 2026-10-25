@@ -3,12 +3,18 @@ import type { RemoteConversationStore } from './remote-conversation-store';
 import {formatDefaultFileTitle, t} from '@itookit/common';
 import {reportRemoteFailure} from './remote-diagnostics';
 
-export function remoteConversationJournal(recovery: RemoteConversationStore, epoch: string, draft: boolean): HarnessConversationJournal {
+export function remoteConversationJournal(recovery: RemoteConversationStore, epoch: string, draft: boolean, checkAccess = () => {}): HarnessConversationJournal {
     return {epoch, load: async () => {
+        checkAccess();
         const record = await recovery.load();
-        if (draft && record?.submittedTurnId && !record.pending) { await recovery.save({}); return undefined; }
+        if (draft && record?.submittedTurnId && !hasRecoveryWork(record)) { await recovery.save({}); return undefined; }
         return record;
-    }, save: record => recovery.save({...record, submittedTurnId: record.submittedTurnId ?? recovery.submittedTurnId})};
+    }, save: record => {checkAccess(); return recovery.save({...record, submittedTurnId: record.submittedTurnId ?? recovery.submittedTurnId});}};
+}
+
+function hasRecoveryWork(record: import('@itookit/mindos-node-driver').HarnessRecovery): boolean {
+    return !!(record.pending || record.responses?.length || record.draft || record.draftAttachments?.length
+        || record.instructionQueue?.items.length || record.controls?.some(row => row.receipt === 'pending' || row.receipt === 'accepted' && !row.terminal));
 }
 
 /** A native create is provisional until the first turn has a committed receipt. */

@@ -30,4 +30,21 @@
 
 实际原生端点为 http://127.0.0.1:8787，监听进程使用 tools/svr。此文件不由 httpd 的 release 更新。修复产物位于 tools/mindos-node/target/release/mindos-node，版本 0.4.1，SHA-256 为 6c2092fbf51efb341e2e283992609985630cca136cd24b0c84b64e8e8876bc1b。
 
-尚未替换或重启 tools/svr。后续更新需保留原配置与凭据，核对其他原生工作和未确认控制；正常关闭原进程后切换已验证二进制，再验证两个新 turn 顺序完成、队列排空、发送能力恢复、独立查询和精确取消，以及旧待核对验收项的恢复。更新 httpd、清空 UI 状态或删除 journal 均不能替代这一验收。
+首次验收时尚未替换或重启 tools/svr；更新后的结果见下一节。更新需保留原配置与凭据，核对其他原生工作和未确认控制；正常关闭原进程后切换已验证二进制，再验证两个新 turn 顺序完成、队列排空、发送能力恢复、独立查询和精确取消，以及旧待核对验收项的恢复。更新 httpd、清空 UI 状态或删除 journal 均不能替代这一验收。
+
+
+## 更新到 0.4.1 后的真实复验
+
+用户更新服务后，已核对 httpd 为 20261025T232317-cada401f-dirty，原生端口 8787 使用新进程，tools/svr --version 返回 mindos-node 0.4.1。原故障 Session 再次观察为 idle、pending=false、canSend=true、canQueue=true，三项只读命令目录及原查询回执可读；Chromium 原页面输入框可编辑，没有未确认提交提示或页面脚本错误。
+
+新建验收 Session pi-8999a0f366c57ce2dd01b8edf28fb79f01cbabd3ed47069abcedc3bb08886623 后，再次验证暂停、接纳、编辑、旧 revision 拒绝、排序、合并、删除、重开和空队列恢复。随后两个真实原生 turn 顺序完成：verify-turn-a-4e5de8fd-3197-4825-b108-cd964869465b 与 verify-turn-b-2028e12d-c794-47ee-9797-f5f4394bbf41。每个测试输入只出现一次，两项接纳身份保留，两个预期助手标记均出现；没有工具消息，最终 active=false、pending=false、queueCount=0、canSend=true。
+
+另以第三个测试 turn 验证精确取消，turnId 为 verify-interrupt-turn-4b22665b-dbc8-499a-90f0-dd46f7c7cd3a，控制 operationId 为 verify-interrupt-87353b6e-39bf-4028-a940-014e8c93c43b。实际观察先为 receipt=accepted/effect=unconfirmed，之后才为 effect=cancelled；最终无活动执行、无未知提交、队列为空，后续派发保持暂停。这验证了接纳与实际停止的分离，不以取消请求成功代替物理确认。
+
+因此，0.4.1 的新 DSH 提交、顺序续发及取消链路已通过本次真实验收。该结论不扩大为 Codex/Claude 真实运行验收，也不代表所有历史故障记录已修复。
+
+## 当前仍有的恢复边界
+
+升级前创建的旧验收 Session 仍保存一条 dispatching 队列项；node 重启后其原生观察已回到 idle，但旧业务 turnId 与原生历史编号尚无可核对关联，因此没有自动把该项标为完成。队列已暂停，未发送的第二项已删除，未重复发送第一项。该记录属于验收 Session，原故障 Session 当前没有这条队列阻塞。
+
+后续需实现按原 requestId、冻结输入身份和原生持久 turn 边界恢复旧调用的明确证据，并提供可核对的结算/处置入口。不能仅凭助手回复文本或 idle 清空旧项。跨 epoch/重启历史恢复仍是独立待办，新增请求正常不等于旧未知请求自动恢复。

@@ -96,7 +96,7 @@ C4Component
 | F13 | 不可变输入附件与内容身份 | Session + app-core | B02 | 已合入 `937fe32b` / `a2989fc4`；Session 冻结、宿主上传核对和 UI 不可变写闭环；远程编码及长期回收另列 |
 | F14 | 通用文件参数与就绪预检 | app-core + Flow + UI | F11 / F13 | 已合入 `a2989fc4`；文件表单、默认/空文件、真实上传、接纳/编辑/派发前核验；原回执查询不重读损坏输入 |
 | F15 | Harness 资产编码与能力准入 | app-core + adapter + driver | F13 / F14 | 本批合入；普通 Session 与 Flow 声明附件贯通，能力/摘要错误在 create/turn 前拒绝，原操作核对不重读输入；见第 13 节 |
-| F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；宿主子 Session 路由见第 26 节；UI 默认独立入口和函数调用展示仍未完成 |
+| F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；宿主子 Session 路由见第 26 节；父级 Flow 卡片跨 Session 观察/控制/导航见第 27 节；默认独立提交台账与其余函数视图仍未完成 |
 | F17 | Flow 控制树与调度屏障 | Flow + Kernel + UI/CLI | F02 / F16 | Flow 控制屏障由 `dc20beb2` 合入；UI 卡片/详情接线见第 18 节，CLI 显式入口见第 19 节；历史回执与卡片跨视图恢复见第 20—21 节；独立 DAG 页共用控制与持久台账见第 23 节；代码及隔离组合验收完成，证据见第 24 节，生产远端单列验收 |
 | F18 | 长活 Effect 审批准入 | Kernel + Harness adapter | F02 / F06 | 本批合入；新审批转发与暂停同事务校验，held 不转成 unknown，见第 17 节 |
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
@@ -202,10 +202,10 @@ F13/F14 一批合入 51 个文件。上传身份与内容存储归 app-core，Se
 
 | 检查项 | 归属与前置 | 状态 | 交付及验收条件 |
 | --- | --- | --- | --- |
-| 会话与调用关联 | F16；Session/app-core | 已有 parentSessionId 和幂等创建基础；完整调用关联待实施 | 持久保存原调用者、执行所属 Session、Invocation 及真实根 Task；组织关系不授予控制 |
+| 会话与调用关联 | F16；Session/app-core | Flow 宿主关联见第 26 节；独立 Agent/Task 关联仍待实施 | 持久保存原调用者、执行所属 Session、Invocation 及真实根 Task；组织关系不授予控制 |
 | 独立调用入口 | F16；F12 平级目标和台账基础已合入 | 子 Session 路由待统一接入；普通发送继续在当前 Session | 同 Flow 两次独立运行获得不同子 Session；同请求丢回复/重启返回同一子 Session；父子不重复入队 |
 | 最小函数调用组 | F24 基础；依赖 F16/F23 | 待实施与验收，本阶段范围 | 默认输入、状态、最终 value/artifacts；原 Invocation 稳定定位；审批、补参、失败及清理状态可见 |
-| 打开真实子会话 | F24 基础；依赖明确的 Session 关联 | 待接线，本阶段范围 | 打开既有 Session UI，不重跑、不复制历史；关闭观察不取消后台执行；不支持时不伪造入口 |
+| 打开真实子会话 | F24 基础；依赖明确的 Session 关联 | Flow 调用卡片已接线（第 27 节）；其他调用待接线 | 打开既有 Session UI，不重跑、不复制历史；关闭观察不取消后台执行；不支持时不伪造入口 |
 | 高级会话详情 | F24 增强；在基础入口后扩展 | 后续增强；不阻塞最小函数视图交付 | 内嵌会话、完整节点/循环/尝试树、搜索与大历史分页，展开才加载 renderer |
 | 组合回归 | F09d/F12/F16/F17/F24 | 待完成 | 分支切换后核对原提交不消费新草稿；父取消只覆盖受管理调用；详情读取失败不改执行终态 |
 
@@ -580,3 +580,28 @@ C4Component
 本批交付宿主协议及运行时接线，尚不把 F16 标为完成。默认工作台与独立视图还需把分两步的 create-child/invoke 改为本入口，并将所属 Session 固定到 OperationLedger；父级函数卡片、打开真实子会话、不同执行 Session 的控制与审批投影也仍需接线。F20—F24 及生产验收继续保留。
 
 验证：隔离 Session 448 项、宿主 Flow 23 项通过（包含真实 ApplicationRuntime 的子会话存储与写授权准备），Session/app-core 类型检查、Session ESM/CJS/声明构建及 16 个 Mermaid 图、16 个本地链接通过。新增回归覆盖同请求幂等、两次独立运行、创建丢回执、父级根引用写回失败、原重跑来源、父级读取子输出、子级写权拒绝和伪造路由字段。子级已记录的启动失败只向父级投影，恢复不会自动重试，用户显式重试保留原身份。未部署或重启。
+
+## 27. F16 父级 Flow 卡片的执行归属、控制回执和导航
+
+父级卡片沿宿主持久返回的 executionSessionId 读取实际根 Task，详情、取消、重挂、暂停/恢复/撤回和审批补参使用同一执行归属。读取到其他 Session 的快照不能展示为可操作的调用。父级仍以原 Invocation/请求锚点展示输入与结果，不复制子会话消息或创建另一执行。已有子会话在根 Task 尚未关联时也可打开；没有宿主导航端口则不生成入口，打开或关闭详情不启动或取消调用。
+
+```mermaid
+C4Component
+  title 父级展示与子级执行的控制关联
+  Component(card, "父 Session InvocationPanel", "宿主 UI", "调用投影、审批、真实子会话导航")
+  Component(control, "FlowRunControl / ControlOperations", "UI 适配", "冻结执行归属、原回执核对、状态校验")
+  ContainerDb(ledger, "父 Session OperationLedger", "既有持久台账", "保存发起视图的操作与 executionSessionId")
+  Container(kernel, "子 Session Kernel / Flow", "执行权威", "实际 Task、控制与交互")
+  Component(child, "真实子 Session UI", "现有编辑器", "打开同一状态容器")
+  Rel(card, control, "原根 Task 与执行 Session")
+  Rel(control, ledger, "先保存冻结目标")
+  Rel(control, kernel, "控制或只读查询原回执")
+  Rel(kernel, card, "真实状态和结构化结果")
+  Rel(card, child, "宿主导航，不重新运行")
+```
+
+控制台账继续属于发起操作的视图 Session；跨 Session 请求在 input 中保存 executionSessionId。请求身份由实际执行 Session、根 Task、动作及 epoch 确定，因此父/子视图明确提交同一控制时使用相同 Kernel 身份。普通同 Session 控制省略该字段，保持旧台账冻结格式；重开时只读原字段，不从当前页面推导执行位置。查询记录缺失仍保持 unknown，空的执行 Session 被拒绝，不能静默回退到父会话。
+
+验证：真实 Kernel/VFS/SessionRepository 的 UI 回归覆盖两个子调用、父级暂停丢回复、重开父台账只读核对、暂停中保存回答后恢复、独立取消另一个调用、打开子会话和关闭详情不重跑。另验证错误归属拒绝、无导航端口不伪造入口、尚无根 Task 的准备中子会话可打开，以及父/子视图同控制身份与旧格式兼容。隔离适配层 189 项、相关 UI 79 项，双包类型、适配层构建和架构边界检查通过。
+
+本批不切换提交默认值。独立调用表单仍需将旧 create-child/invoke 两步接到第 26 节宿主入口，并持久保存冻结提交与接纳恢复；普通聊天仍在当前 Session，重跑入口的目的地策略随该批统一。F16 及 F20—F24、生产验收继续保留。

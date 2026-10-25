@@ -316,3 +316,25 @@ it('does not dispatch a control after its view closes while registration is stil
     // Release the subsequent local unknown receipt write without restarting the view.
     await new Promise(resolve => setTimeout(resolve, 0)); release();
 });
+
+it('refuses a child card snapshot from another execution Session without exposing executable interactions', async () => {
+    const execute = vi.fn(async (command: string) => command === FlowInvocationCommand.List
+        ? [{requestId: 'call', rootTaskId: 'root', executionSessionId: 'child', flow: {name: 'Flow'}, revision: 1}]
+        : snapshot(task('root', {sessionId: 'wrong', interactions: {answer: {id: 'answer', status: 'pending', prompt: 'Wrong scope'}} as any})));
+    panel = new InvocationPanel({execute} as never, 'session', document.body, vi.fn()); await panel.refresh();
+    expect(document.querySelector('[data-error]')?.textContent).toContain('does not belong to the saved child Session');
+    expect(document.querySelector('[data-interaction-action="reply"]')).toBeNull();
+    expect(button('flow.invoke.pause')).toBeUndefined();
+    expect(document.querySelector('[data-child-session] button')).toBeNull();
+    expect(execute.mock.calls.every(([name]) => [FlowInvocationCommand.List, FlowCommand.RunGet].includes(name as never))).toBe(true);
+});
+
+it('opens a prepared child Session even when its root has not yet been attached, without invoking it again', async () => {
+    const openChild = vi.fn(), execute = vi.fn(async (_command: string) =>
+        [{requestId: 'call', executionSessionId: 'child', flow: {name: 'Flow'}, revision: 1}]);
+    panel = new InvocationPanel({execute} as never, 'session', document.body, vi.fn(), {openChild}); await panel.refresh();
+    document.querySelector<HTMLButtonElement>('[data-child-session] button')!.click();
+    await vi.waitFor(() => expect(openChild).toHaveBeenCalledExactlyOnceWith('child'));
+    expect(execute.mock.calls.every(([name]) => name === FlowInvocationCommand.List)).toBe(true);
+    expect(button('flow.invoke.cancel')).toBeUndefined();
+});

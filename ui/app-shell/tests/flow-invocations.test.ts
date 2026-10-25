@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import {FlowsEditor} from '../../llm-ui-adapter/src/components/FlowsEditor';
-import {SessionRepository} from '@itookit/llm-session';
+import {SessionRepository, ContentTransferService, SessionDirectoryStorageResolver} from '@itookit/llm-session';
+import {createOperationLedger, type OperationRecord} from '@itookit/llm-ui';
+import {StateService} from '../../llm-ui-adapter/src/services/StateService';
 import {Toast} from '@itookit/ui-common';
 import type {DurableFlowSnapshot} from '@itookit/llm-flow/contracts';
 import { Kernel } from '@itookit/durable-kernel';
@@ -14,6 +16,7 @@ import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputVi
 import { t } from '@itookit/common';
 import {FlowInvocationCommand, type FlowInvocationRecord} from '@itookit/llm-session/contracts';
 
+let repository: SessionRepository;
 let manager: Awaited<ReturnType<typeof createVFS>>['manager'], kernel: Kernel, commands: CommandBus, panel: InvocationPanel;
 beforeEach(async () => {
     HTMLDialogElement.prototype.showModal = function () { this.open = true; };
@@ -34,11 +37,15 @@ beforeEach(async () => {
     commands.register(SessionCommand.GetConnections, async () => ({ connections: [] }));
     commands.register(SessionCommand.CheckFlowConnections, async () => ({valid: true}));
     new DagCommandService({ kernel, plugins, flowStore: store }).register(commands);
-    new FlowInvocationService(kernel, store, commands).register();
+    const sessionFiles = await manager.openFileSystem('/session-data');
+    repository = new SessionRepository(sessionFiles); await repository.init(); await repository.ensureSession('s', 'Parent');
+    kernel.registerStorageResolver(new SessionDirectoryStorageResolver(sessionFiles));
+    const transfers = new ContentTransferService({kernel, repository, commands});
+    new FlowInvocationService(kernel, store, commands, undefined, undefined, undefined, undefined, undefined, transfers).register();
 });
 afterEach(async () => {
     panel?.destroy(); await kernel.closeSession('s', true); kernel.dispose(); await kernel.waitIdle();
-    await manager.dispose(); document.body.innerHTML = ''; vi.restoreAllMocks();
+    await repository.dispose(); await manager.dispose(); document.body.innerHTML = ''; vi.restoreAllMocks();
 });
 const submit = () => document.querySelector('dialog form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
 
@@ -192,4 +199,55 @@ it.each(['resume', 'cancel'] as const)('recovers a persisted lost pause receipt 
         const receipt = await commands.execute<any>(FlowCommand.RunControlReceipt, {sessionId: 's', taskId: first.rootTaskId, requestId: operationId});
         expect(receipt).toMatchObject({requestId: operationId, action: 'pause', accepted: {requestId: operationId}});
     } finally {await editor.destroy(); await repository.dispose(); root.remove();}
+}, 15000);
+
+it('controls, answers and opens routed child invocations from the parent card using frozen execution identities', async () => {
+    const draft = await commands.execute<any>(FlowCommand.DraftLoad, {id: 'review'});
+    const {revision} = await commands.execute<any>(FlowCommand.RevisionCreate, {draftId: 'review', expectedDraftVersion: draft.draftVersion});
+    const invoke = (requestId: string) => commands.execute<FlowInvocationRecord>(FlowInvocationCommand.Invoke,
+        {sessionId: 's', requestId, execution: 'child', flowId: revision.id, revision: revision.revision, parameters: {text: requestId}});
+    const first = await invoke('child-first'), second = await invoke('child-second'), openChild = vi.fn();
+    const state = new StateService(repository), ledger = async () => createOperationLedger({
+        initial: (await state.loadUIState('s'))?.operations, save: records => state.saveOperations('s', records)});
+    let lost = false;
+    const execute = vi.fn(async (name: string, args?: any) => {
+        const result = await commands.execute(name, args);
+        if (name === FlowCommand.RunGoalUpdate && !lost) {lost = true; throw new Error('Lost child pause reply');}
+        return result;
+    });
+    const card = (id: string) => document.querySelector<HTMLElement>(`[data-invocation="${id}"]`)!;
+    const action = (id: string, key: Parameters<typeof t>[0]) => [...card(id).querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent === t(key))!;
+    panel = new InvocationPanel({execute} as never, 's', document.body, vi.fn(), {operations: await ledger(), openChild});
+    await vi.waitFor(async () => {await panel.refresh(); expect(card('child-first').querySelector('textarea')).not.toBeNull();});
+    action('child-first', 'flow.invoke.openSession').click();
+    await vi.waitFor(() => expect(openChild).toHaveBeenCalledWith(first.executionSessionId));
+    expect(await commands.execute(FlowInvocationCommand.List, {sessionId: 's'})).toHaveLength(2);
+    action('child-first', 'flow.invoke.pause').click();
+    await vi.waitFor(async () => expect((await state.loadUIState('s'))?.operations?.[0]?.status).toBe('unknown'));
+    const [record] = (await state.loadUIState('s'))!.operations as OperationRecord[];
+    expect(record.input).toMatchObject({executionSessionId: first.executionSessionId});
+    panel.destroy(); panel = new InvocationPanel({execute} as never, 's', document.body, vi.fn(), {operations: await ledger(), openChild});
+    await vi.waitFor(async () => {await panel.refresh(); expect(card('child-first').querySelector('[data-control-reconcile]')).not.toBeNull();});
+    card('child-first').querySelector<HTMLButtonElement>('[data-control-reconcile]')!.click();
+    await vi.waitFor(async () => expect((await state.loadUIState('s'))?.operations?.[0]?.status).toBe('accepted'));
+    expect(execute).toHaveBeenCalledWith(FlowCommand.RunControlReceipt,
+        {sessionId: first.executionSessionId, taskId: first.rootTaskId, requestId: record.context.operationId});
+    expect(execute.mock.calls.filter(([name]) => name === FlowCommand.RunGoalUpdate)).toHaveLength(1);
+    card('child-first').querySelector<HTMLTextAreaElement>('textarea')!.value = 'Saved in child';
+    card('child-first').querySelector<HTMLButtonElement>('[data-interaction-action="reply"]')!.click();
+    await vi.waitFor(async () => {
+        const snapshot = await commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId: first.executionSessionId, taskId: first.rootTaskId});
+        expect(snapshot.taskTree.some(task => task.interactions.same?.status === 'resolved')).toBe(true);
+    });
+    expect((await (await kernel.openTask(first.rootTaskId!)).stat()).stopped).toBe(true);
+    action('child-first', 'flow.invoke.continue').click();
+    await vi.waitFor(async () => {await panel.refresh(); expect(card('child-first').querySelector('[data-status]')?.textContent).toBe(t('flow.invoke.succeeded'));});
+    action('child-first', 'flow.invoke.details').click();
+    await vi.waitFor(() => expect(document.querySelector('dialog .dag-workbench')).not.toBeNull());
+    document.querySelector<HTMLDialogElement>('dialog')!.close();
+    action('child-second', 'flow.invoke.cancel').click();
+    await vi.waitFor(async () => expect((await (await kernel.openTask(second.rootTaskId!)).status()).task.status).toBe('cancelled'));
+    expect((await (await kernel.openTask(first.rootTaskId!)).status()).task.status).toBe('succeeded');
+    expect(await kernel.listSessionTasks('s')).toEqual([]);
+    expect(execute.mock.calls.filter(([name]) => name === FlowCommand.RunGet).every(([, args]) => args.sessionId !== 's')).toBe(true);
 }, 15000);

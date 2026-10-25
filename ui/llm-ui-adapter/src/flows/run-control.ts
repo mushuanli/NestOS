@@ -14,7 +14,7 @@ export class FlowRunControl {
         current: () => boolean): Promise<PauseResult | undefined> {
         const started = Date.now();
         let result: PauseResult | undefined;
-        await this.operations.run({protocol: 'flow-control-v1', taskId, action, expectedEpoch}, async requestId => {
+        await this.operations.run({protocol: 'flow-control-v1', taskId, action, expectedEpoch, executionSessionId: this.sessionId}, async requestId => {
             if (!current()) return false;
             try {
                 const snapshot = await this.prepare(taskId, action, expectedEpoch, current);
@@ -44,6 +44,8 @@ export class FlowRunControl {
         return snapshot;
     }
     private assertAction(snapshot: DurableFlowSnapshot, action: ControlInput['action'], epoch: number): void {
+        if (snapshot.root.task.sessionId && snapshot.root.task.sessionId !== this.sessionId)
+            throw Object.assign(new Error('Flow control execution Session mismatch'), {code: 'FLOW_INVOCATION_EXECUTION_SCOPE'});
         const control = invocationControl(snapshot);
         if (control.terminal) throw new Error(t('flow.rerun.unavailable'));
         assertControlEpoch(snapshot, epoch);

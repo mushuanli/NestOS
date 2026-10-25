@@ -1462,6 +1462,7 @@ export const en: LocaleStrings = {
     'flow.source.error.CONTENT_SUMMARY_EMPTY': 'The model returned no summary. Retry or choose another source.',
     'flow.source.error.CONTENT_SESSION_READ_ONLY': 'This host cannot write this conversation. Use its owning host.',
     'flow.source.error.CONTENT_SESSION_CLOSED': 'This conversation is closed and cannot prepare a new run.',
+    'flow.invoke.openSession': 'Open child session',
     'flow.invoke.reconcileControl': 'Check original control result',
     'flow.invoke.pause': 'Pause this call',
     'flow.invoke.continue': 'Continue this call',

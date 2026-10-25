@@ -96,6 +96,7 @@ export class InvocationPanel {
         for (const call of calls) {
             let card = this.cards.get(call.requestId);
             if (!card) { card = this.createCard(call); this.cards.set(call.requestId, card); }
+            this.updateNavigation(card, call);
             if (!call.rootTaskId) { card.active = !call.error; card.element.querySelector('[data-status]')!.textContent = call.error ?? t('flow.output.pending'); continue; }
             try {await this.readCard(card, call);}
             catch (error) { failed = true; failure = error; card.loadError = true; card.element.querySelector('[data-error]')!.textContent = t('flow.invoke.refreshFailed', {reason: String(error)}); }
@@ -105,9 +106,10 @@ export class InvocationPanel {
     }
 
     private async readCard(card: Card, call: FlowInvocationRecord): Promise<void> {
-        const snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId: this.sessionId, taskId: call.rootTaskId});
+        const snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId: call.executionSessionId ?? this.sessionId, taskId: call.rootTaskId});
         if (this.abort.signal.aborted || !this.visible || olderSnapshot(snapshot, card.snapshot)) return;
         if (card.loadError) {card.element.querySelector('[data-error]')!.textContent = ''; card.loadError = false;}
+        assertCallScope(call, snapshot);
         card.snapshot = snapshot; this.updateCard(card, call, snapshot);
     }
 
@@ -124,7 +126,7 @@ export class InvocationPanel {
         element.innerHTML = `<header><strong>${escapeHTML(call.flow.name)} · v${call.revision}</strong><span data-status role="status"></span></header>
             <p>${escapeHTML(t('flow.invoke.origin', {branch: call.branch ?? 'main'}))}</p>
             <details><summary>${escapeHTML(t('flow.invoke.inputs'))}</summary>${this.inputSources(call)}<pre>${escapeHTML(JSON.stringify(call.inputResolution?.parameters ?? call.parameters, null, 2))}</pre></details>
-            <p data-control-notice role="status"></p><div data-control-recovery></div><div data-actions></div><details><summary>${escapeHTML(t('flow.invoke.result'))}</summary><pre data-result></pre></details><div data-interactions></div><p data-error role="alert"></p>`;
+            <p data-control-notice role="status"></p><div data-control-recovery></div><div data-child-session></div><div data-actions></div><details><summary>${escapeHTML(t('flow.invoke.result'))}</summary><pre data-result></pre></details><div data-interactions></div><p data-error role="alert"></p>`;
         const unmount = this.options.mountCard?.(element, call);
         if (!this.options.mountCard) this.element.append(element);
         return { element, interactions: new Map(), active: !call.error, unmount };
@@ -150,12 +152,19 @@ export class InvocationPanel {
         }))}</p>`).join('');
     }
 
+    private updateNavigation(card: Card, call: FlowInvocationRecord): void {
+        const host = card.element.querySelector<HTMLElement>('[data-child-session]')!, id = call.executionSessionId;
+        if (host.dataset.sessionId === id) return;
+        host.replaceChildren(); host.dataset.sessionId = id ?? '';
+        if (id && this.options.openChild) this.button(host, 'flow.invoke.openSession', async () => {await this.options.openChild!(id);});
+    }
+
     private updateActions(card: Card, call: FlowInvocationRecord, snapshot: DurableFlowSnapshot): void {
-        const task = snapshot.root.task, control = invocationControl(snapshot), key = control.actionsKey;
+        const task = snapshot.root.task, control = invocationControl(snapshot), key = JSON.stringify([call.executionSessionId, control.actionsKey]);
         if (card.actionsKey === key) return;
         card.actionsKey = key;
         const actions = card.element.querySelector<HTMLElement>('[data-actions]')!; actions.replaceChildren();
-        this.button(actions, 'flow.invoke.details', () => this.details(call.rootTaskId!));
+        this.button(actions, 'flow.invoke.details', () => this.details(call));
         if (terminal(task.status)) this.button(actions, 'flow.invoke.repeat', () => this.repeat(call));
         else {
             this.button(actions, 'flow.invoke.cancel', () => this.control(call, FlowCommand.RunCancel));
@@ -177,7 +186,7 @@ export class InvocationPanel {
 
     private runControl(call: FlowInvocationRecord, action: 'pause' | 'resume' | 'withdraw', epoch: number): Promise<PauseResult | undefined> {
         const signal = this.viewAbort.signal;
-        return new FlowRunControl(this.commands, this.sessionId, this.controlOperations).execute(call.rootTaskId!, action, epoch,
+        return new FlowRunControl(this.commands, call.executionSessionId ?? this.sessionId, this.controlOperations).execute(call.rootTaskId!, action, epoch,
             () => !this.abort.signal.aborted && !signal.aborted && this.visible);
     }
 
@@ -195,7 +204,7 @@ export class InvocationPanel {
     private updateControlRecovery(card: Card, call: FlowInvocationRecord): void {
         const host = card.element.querySelector<HTMLElement>('[data-control-recovery]')!;
         host.replaceChildren();
-        for (const record of this.controlOperations.pending(call.rootTaskId!)) {
+        for (const record of this.controlOperations.pending(call.rootTaskId!, call.executionSessionId ?? this.sessionId)) {
             const row = document.createElement('div'); host.append(row);
             const action = (record.input as {action: string}).action;
             row.append(t(action === 'pause' ? 'flow.invoke.pause' : action === 'resume' ? 'flow.invoke.continue' : 'flow.invoke.withdrawPause') + ' · ');
@@ -213,8 +222,9 @@ export class InvocationPanel {
             const respond = async (value: JsonValue) => {
                 const signal = this.viewAbort.signal;
                 if (this.abort.signal.aborted || signal.aborted || !this.visible) throw new Error('Invocation view closed');
-                const fresh = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, { sessionId: this.sessionId, taskId: call.rootTaskId });
+                const fresh = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, { sessionId: call.executionSessionId ?? this.sessionId, taskId: call.rootTaskId });
                 if (this.abort.signal.aborted || signal.aborted || !this.visible) throw new Error('Invocation view closed');
+                assertCallScope(call, fresh);
                 const target = invocationControlTasks(fresh).find(item => item.id === task.id);
                 if (terminal(fresh.root.task.status) || !target || terminal(target.status) || target.interactions[request.id]?.status !== 'pending') throw new Error('Interaction is no longer pending');
                 await this.commands.execute(FlowCommand.RunRespond, { taskId: call.rootTaskId, targetTaskId: task.id, requestId: request.id, value });
@@ -256,9 +266,10 @@ export class InvocationPanel {
 
     private async control(call: FlowInvocationRecord, command: string): Promise<void> {
         const signal = this.viewAbort.signal;
-        await this.commands.execute(FlowCommand.RunGet, { taskId: call.rootTaskId, sessionId: this.sessionId });
+        const snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, { taskId: call.rootTaskId, sessionId: call.executionSessionId ?? this.sessionId });
+        assertCallScope(call, snapshot);
         if (this.abort.signal.aborted || signal.aborted || !this.visible) return;
-        await this.commands.execute(command, { taskId: call.rootTaskId, sessionId: this.sessionId });
+        await this.commands.execute(command, { taskId: call.rootTaskId, sessionId: call.executionSessionId ?? this.sessionId });
     }
 
     private async repeat(call: FlowInvocationRecord): Promise<void> {
@@ -270,7 +281,7 @@ export class InvocationPanel {
             signal: this.viewAbort.signal, revision: async () => call.flow, openChild: this.options.openChild});
     }
 
-    private async details(taskId: string): Promise<void> {
+    private async details(call: FlowInvocationRecord): Promise<void> {
         const signal = this.viewAbort.signal;
         const dialog = document.createElement('dialog'); dialog.className = 'dag-dialog dag-output-dialog';
         const close = document.createElement('button'); close.textContent = t('flow.launch.cancel'); close.onclick = () => dialog.close();
@@ -278,7 +289,7 @@ export class InvocationPanel {
         const workbench = new DagWorkbench(body, { commands: this.commands, readOnly: true });
         const abort = () => dialog.close(); signal.addEventListener('abort', abort, { once: true });
         dialog.addEventListener('close', () => { workbench.destroy(); dialog.remove(); signal.removeEventListener('abort', abort); }, { once: true });
-        document.body.append(dialog); dialog.showModal(); await workbench.openRun(taskId, this.sessionId);
+        document.body.append(dialog); dialog.showModal(); await workbench.openRun(call.rootTaskId!, call.executionSessionId ?? this.sessionId);
     }
 }
 
@@ -311,4 +322,9 @@ function releaseLabel(control: InvocationControl): Parameters<typeof t>[0] {
 
 function canRequestPause(control: InvocationControl): boolean {
     return control.supportsPause && ['active', 'constrained'].includes(control.state);
+}
+
+function assertCallScope(call: FlowInvocationRecord, snapshot: DurableFlowSnapshot): void {
+    if (call.executionSessionId && (snapshot.root.task.sessionId !== call.executionSessionId || snapshot.root.task.id !== call.rootTaskId))
+        throw Object.assign(new Error('Flow execution does not belong to the saved child Session'), {code: 'FLOW_INVOCATION_EXECUTION_SCOPE'});
 }

@@ -61,3 +61,26 @@ it('recovers accepted remote control when the local result write fails', async (
     await new ControlOperations(restored, {execute} as never, 'session').reconcile(id);
     expect(restored.getSnapshot()[0].status).toBe('accepted'); expect(send).toHaveBeenCalledOnce();
 });
+
+it('freezes a child execution Session in the parent ledger and queries that Session after reopening', async () => {
+    const f = fixture(), first = f.open(), child = {...input, executionSessionId: 'child'};
+    await expect(first.controls.run(child, async () => {throw new Error('Lost child reply');})).rejects.toThrow();
+    const record = f.saved()[0];
+    expect(record).toMatchObject({conversationId: 'session', input: child});
+    const reopened = f.open();
+    expect(reopened.controls.pending('root')).toEqual([]);
+    expect(reopened.controls.pending('root', 'child')).toHaveLength(1);
+    await reopened.controls.reconcile(record.context.operationId);
+    expect(f.execute).toHaveBeenCalledWith(FlowCommand.RunControlReceipt,
+        {sessionId: 'child', taskId: 'root', requestId: record.context.operationId});
+    const fromChild = createOperationLedger(), local = new ControlOperations(fromChild, {} as never, 'child');
+    const send = vi.fn(async () => {}); await local.run({...input, executionSessionId: 'child'}, send);
+    expect(send).toHaveBeenCalledWith(record.context.operationId);
+    expect(fromChild.getSnapshot()[0].input).toEqual(input);
+});
+
+it('rejects an empty execution Session without silently retargeting a control to the parent', async () => {
+    const f = fixture(), send = vi.fn();
+    await expect(f.open().controls.run({...input, executionSessionId: ''}, send)).rejects.toThrow('execution Session is invalid');
+    expect(send).not.toHaveBeenCalled(); expect(f.saved()).toEqual([]);
+});

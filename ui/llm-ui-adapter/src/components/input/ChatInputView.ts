@@ -361,6 +361,7 @@ export class ChatInput implements IChatInputPresenter {
             textarea: this.textarea,
             container: this.container,
             getText: () => this.textarea.value,
+            getDraftRevision: () => this.getDraftRevision(),
             setText: (text) => {
                 this.textarea.value = text;
                 this.config.text = text;

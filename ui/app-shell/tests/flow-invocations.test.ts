@@ -267,3 +267,22 @@ it('shows an unresolved submission after reopening and only queries its original
     expect(execute.mock.calls.every(([name]) => name === FlowInvocationCommand.List)).toBe(true);
     await vi.waitFor(() => expect(document.querySelector<HTMLButtonElement>('[data-invocation-reconcile="lost-submission"]')?.disabled).toBe(false));
 });
+
+
+it.each(['same text edited again', 'another branch', 'unchanged'] as const)('consumes only the original slash draft after %s while admission is pending', async change => {
+    const container = document.createElement('div'); document.body.append(container);
+    let finish!: (accepted: boolean) => void;
+    const onFlow = vi.fn(() => new Promise<boolean>(resolve => {finish = resolve;}));
+    const input = new ChatInput(container, {onSend: vi.fn(), onStop: vi.fn()});
+    input.registerPlugin(new SlashCommandPlugin({onFlow} as never));
+    try {
+        input.setDraftScope('a'); input.setConfig({text: '/flow review'});
+        const textarea = container.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        textarea.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+        await vi.waitFor(() => expect(onFlow).toHaveBeenCalledTimes(1));
+        if (change === 'another branch') input.setDraftScope('b');
+        else if (change === 'same text edited again') {input.setConfig({text: 'edited'}); input.setConfig({text: '/flow review'});}
+        finish(true); await Promise.resolve(); await Promise.resolve();
+        expect(input.getConfig().text).toBe(change === 'unchanged' ? '' : '/flow review');
+    } finally {input.destroy();}
+});

@@ -24,8 +24,8 @@ function flowCommand(cb: SlashCommandCallbacks): SlashCommandDef {
     return { name: 'flow', label: '/flow', description: t('flow.invoke.description'), icon: SLASH_ICONS.new,
         group: 'chat' as const, hasArgs: true, argsPlaceholder: '[id] [JSON]', preserveInput: true,
         execute: async (args: string, context: InputPluginContext) => {
-            const submitted = context.getText();
-            if (await cb.onFlow!(args) && context.getText() === submitted)
+            const submitted = context.getText(), revision = context.getDraftRevision?.();
+            if (await cb.onFlow!(args) && context.getText() === submitted && context.getDraftRevision?.() === revision)
                 context.setText('');
         } };
 }

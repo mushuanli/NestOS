@@ -19,6 +19,8 @@ export interface InputPluginContext {
     container: HTMLElement;
     /** 读取当前输入 */
     getText: () => string;
+    /** Monotonic text/scope revision for asynchronous draft consumption. */
+    getDraftRevision?: () => number;
     /** 设置输入内容 */
     setText: (text: string) => void;
     /** 在光标位置插入 */

@@ -995,7 +995,11 @@ export class LLMWorkspaceEditor implements IEditor {
                     this.instructionQueuePanel?.update(event.payload);
                     if (this.initComplete) this.submissionRecovery?.observe(event.payload);
                 }
-                if (event.type === 'branch:switched') void this.stateManager.switchDraftBranch(event.payload.branchName).catch(error => console.error('Branch draft switch failed', error));
+                if (event.type === 'branch:switched') {
+                    this.invocationAbort.abort();
+                    if (this.viewActive) this.invocationAbort = new AbortController();
+                    void this.stateManager.switchDraftBranch(event.payload.branchName).catch(error => console.error('Branch draft switch failed', error));
+                }
                 this.sessionEventHandler.handleSessionEvent(event);
             }
         );
@@ -1188,9 +1192,10 @@ export class LLMWorkspaceEditor implements IEditor {
 
     private async startFlowInvocation(args: string): Promise<boolean> {
         if (this.invocationPending || !this.viewActive || this.invocationAbort.signal.aborted) return false;
-        const operation = invokeFlowText(this.commandBus, this.options.sessionId, args, this.invocationAbort.signal, id => this.openInvocationChild(id), this.operations);
+        const signal = this.invocationAbort.signal;
+        const operation = invokeFlowText(this.commandBus, this.options.sessionId, args, signal, id => this.openInvocationChild(id), this.operations);
         this.invocationPending = operation;
-        try { return await operation; }
+        try { return await operation && !signal.aborted; }
         finally { if (this.invocationPending === operation) this.invocationPending = undefined; void this.invocationPanel?.refresh(); }
     }
 

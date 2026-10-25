@@ -330,6 +330,8 @@ it('pauses an independent Flow at its boundary, saves an answer without resuming
         member = (await kernel.listSessionTasks(query.executionSessionId)).find(task => task.interactions.approval?.status === 'pending')?.id ?? '';
         expect(member).not.toBe('');
     });
+    const views = await commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent});
+    expect(views[0].interactions).toMatchObject({total: 1, items: [{taskId: member, interactionId: 'approval', kind: 'input'}]});
     const paused = await commands.execute<import('@itookit/llm-session/contracts').IndependentCallStateControlReceipt>(IndependentCallCommand.Control,
         {...query, action: 'pause', expectedEpoch: 0});
     expect(paused).toMatchObject({action: 'pause', receipt: {action: 'pause', accepted: {mode: 'pause', epoch: 1}}});
@@ -338,6 +340,7 @@ it('pauses an independent Flow at its boundary, saves an answer without resuming
     await (await child.attachTask(member)).respond({interactionId: 'approval', value: 'Continue later'});
     expect((await kernel.task(query.executionSessionId, query.taskId)).control?.mode).toBe('pause');
     expect((await kernel.task(query.executionSessionId, member)).interactions.approval.status).toBe('resolved');
+    expect((await commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent}))[0].interactions).toEqual({total: 0, items: []});
     const resumed = await commands.execute(IndependentCallCommand.Control, {...query, action: 'resume', requestId: 'resume-flow', expectedEpoch: 1});
     expect(resumed).toMatchObject({action: 'resume', receipt: {action: 'run', accepted: {mode: 'run', epoch: 2}}});
     const exit = await (await child.attachTask(query.taskId)).wait({timeoutMs: 5000});

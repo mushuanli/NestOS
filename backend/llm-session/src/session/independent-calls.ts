@@ -1,3 +1,4 @@
+import {readIndependentCallInteractions} from './independent-call-interactions';
 import {hasFlowControlTree} from '@itookit/llm-flow/contracts';
 import {IndependentCallControls} from './independent-call-controls';
 import {taskStat, KernelError, KernelErrorCode, type Kernel, type JsonValue} from '@itookit/durable-kernel';
@@ -127,13 +128,13 @@ export class IndependentCallService {
             throw failure('CALL_EXECUTION_CONFLICT');
         return task;
     }
-    private async executionProjection(receipt: IndependentCallReceipt): Promise<Pick<IndependentCallView, 'executionState' | 'controlCapabilities'>> {
+    private async executionProjection(receipt: IndependentCallReceipt): Promise<Pick<IndependentCallView, 'executionState' | 'controlCapabilities' | 'interactions'>> {
         const task = await this.executionTask(receipt); if (!task) return {};
         const {id, revision, phase, control, blockedBy, activeOperations, settled, stopped} = taskStat(task);
         const executionState: IndependentCallExecutionState = {id, revision, phase, control, blockedBy, activeOperations, settled, stopped, controlEpoch: task.control?.epoch ?? 0};
         const flow = task.program.kind === 'flow.aggregate' || task.labels?.kind === 'flow-root';
         const supported = !flow || hasFlowControlTree(task);
-        return {executionState, controlCapabilities: {cancel: supported, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
+        return {executionState, interactions: await readIndependentCallInteractions(this.options.kernel, task), controlCapabilities: {cancel: supported, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
     }
     private async round(route: CallRoute): Promise<Round | undefined> {
         if (!route.executionSessionId) return;

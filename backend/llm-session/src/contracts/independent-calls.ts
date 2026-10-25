@@ -26,6 +26,8 @@ export interface IndependentCallView {
     head: string | null;
     status?: import('./conversation').Round['status'];
     executionState?: IndependentCallExecutionState;
+    /** Bounded pending interaction summaries belonging to this execution tree. */
+    interactions?: IndependentCallInteractions;
     /** Protocol support only; current write permission is revalidated on control. */
     controlCapabilities?: {cancel: boolean; pause?: 'boundary' | 'none'; resume?: boolean; withdrawPause?: boolean};
     /** Bounded display text only; execution consumers read the actual child output. */
@@ -50,4 +52,9 @@ export interface IndependentCallStateControlRequest extends IndependentCallState
 export interface IndependentCallStateControlReceipt extends IndependentCallStateControlQuery {
     /** Original admission, distinct from the latest acknowledgement or active control. */
     receipt?: import('@itookit/durable-kernel/contracts').TaskControlReceipt;
+}
+
+export interface IndependentCallInteractions {
+    total: number;
+    items: Array<{taskId: string; interactionId: string; kind: 'input' | 'approval'; prompt: string; promptTruncated: boolean; requestedAt: number}>;
 }

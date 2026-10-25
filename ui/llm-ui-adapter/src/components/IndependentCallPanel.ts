@@ -111,7 +111,7 @@ export class IndependentCallPanel {
         let card = this.cards.get(id);
         if (!card) {
             const element = document.createElement('article'); element.className = 'flow-invocations__card'; element.dataset.independentCall = id;
-            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div><div data-call-control></div>';
+            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><section data-call-interactions aria-live="polite"></section><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div><div data-call-control></div>';
             card = {element, control: new IndependentCallControl(element.querySelector('[data-call-control]')!, this.controls, () => {void this.refresh();}),
                 artifacts: new TaskArtifactBrowser(element, this.commands), release: this.options.mountCard?.(element, call)};
             if (!this.options.mountCard) this.element.append(element);
@@ -127,7 +127,25 @@ export class IndependentCallPanel {
         element.querySelector('[data-output]')!.textContent = call.summary ?? '';
         const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId || !this.options.openChild;
         button.onclick = () => {void this.open(call.receipt.executionSessionId!);};
+        this.renderInteractions(card, call);
         this.renderArtifacts(card, call); card.control.update(call);
+    }
+    private renderInteractions(card: Card, call: IndependentCallView): void {
+        const host = card.element.querySelector<HTMLElement>('[data-call-interactions]')!, pending = call.interactions;
+        host.replaceChildren(); host.hidden = !pending?.total;
+        if (!pending?.total) return;
+        const heading = document.createElement('strong'); heading.textContent = t('callable.independent.interactions.pending', {count: pending.total}); host.append(heading);
+        for (const item of pending.items) {
+            const prompt = document.createElement('p'); prompt.dataset.interactionId = item.interactionId; prompt.dataset.taskId = item.taskId;
+            prompt.textContent = t(item.kind === 'approval' ? 'callable.independent.interactions.approval' : 'callable.independent.interactions.input')
+                + ': ' + item.prompt + (item.promptTruncated ? '…' : ''); host.append(prompt);
+        }
+        const hint = document.createElement('p'); hint.textContent = t('callable.independent.interactions.open'); host.append(hint);
+        if (this.options.openChild && call.receipt.executionSessionId) {
+            const button = document.createElement('button'); button.type = 'button'; button.dataset.openInteractions = '';
+            button.textContent = t('callable.independent.interactions.action');
+            button.onclick = () => {void this.open(call.receipt.executionSessionId!);}; host.append(button);
+        }
     }
     private renderArtifacts(card: Card, call: IndependentCallView): void {
         const {executionSessionId, execution, status} = call.receipt;

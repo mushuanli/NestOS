@@ -330,6 +330,7 @@ it.each(['local', 'rpc'])('controls a real ChatView over %s with hanging replies
     const mode = host.querySelector<HTMLSelectElement>('[data-selector-id="callMode"]')!; mode.value = 'independent'; mode.dispatchEvent(new Event('change', {bubbles: true}));
     view.setText('First task'); view.setArguments('{"count":0}'); await view.submit();
     await vi.waitFor(() => expect(host.querySelector<HTMLButtonElement>('[data-call-cancel]')?.hidden).toBe(false));
+    await vi.waitFor(() => expect(host.querySelector('[data-call-interactions]')?.textContent).toContain('Wait'));
     view.setText('Next task');
     const state = () => host.querySelector<HTMLButtonElement>('[data-call-state-control]')!;
     await vi.waitFor(() => expect(state()?.hidden).toBe(false)); state().click();

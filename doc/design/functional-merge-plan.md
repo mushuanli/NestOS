@@ -1188,3 +1188,23 @@ C4Component
 按原 requestId/action/expectedEpoch 核对接纳；accepted 不代表暂停已生效。UI 继续读取宿主确认状态，旧 epoch 快照不能再次发起控制。原 RPC 悬挂时，查询确认且宿主 epoch 更新即可发起下一动作；迟到错误或较早查询的 missing 结果均不能让 accepted 回退。每次新动作分配新 requestId，恢复查询不重发。暂停确认前只提供撤销，确认后提供恢复；不将取消显示为可恢复。
 
 验证包括持久记录重开、错误动作/epoch/回执身份、迟到 missing、缺失能力、隐藏恢复、未知暂停期间独立取消，以及真实本地/RPC ChatView 的暂停响应悬挂→核对→恢复→取消→继续提交。所有控制记录不携带 draft。整树资源收尾、原生会话控制和更完整的交互卡片仍是未完成范围。
+
+## 52. F24 独立调用的待答交互摘要
+
+父级调用组现在直接展示所属执行树的待审批/补参摘要，不藏在详情折叠区；点击打开既有子 Session，不创建新调用、不复制历史，也不自动发送回答。没有导航能力时不伪造按钮。直接在父卡片填写/回答仍未完成，需独立的回答操作身份、持久核对与权限契约；现有子会话交互入口继续工作。
+
+```mermaid
+C4Component
+  title 交互事实由原 Kernel 持有，调用卡片只展示有界摘要
+  ContainerDb(store, "原 Kernel 交互记录", "Task interactions", "pending / resolved / cancelled")
+  Component(read, "readIndependentCallInteractions", "Session 只读投影", "pending 索引加任务父链归属校验")
+  Component(card, "IndependentCallPanel", "宿主 UI", "突出待答数量与摘要，不解释业务 payload")
+  Component(child, "原子会话 UI", "已有交互入口", "查看完整请求并按原协议回答")
+  Rel(read, store, "inspectSession；只读 pending 索引")
+  Rel(card, read, "复用 session.calls.list")
+  Rel(card, child, "打开既有 executionSessionId")
+```
+
+投影同时验证 sessionId、rootTaskId 与真实 parentTaskId 链；同 Session 的另一根或同根的兄弟调用不能冒充当前调用成员。损坏父链循环明确报 CALL_INTERACTION_TREE_INVALID，由原查询日志记录阶段、分类和耗时；不记录提示正文。输出最多 50 项、每项提示最多 1024 字符并标记截断，total 保留全部匹配 pending 数量；交互 payload、回答及执行内部输入不进入摘要 DTO。
+
+UI 使用文本节点显示提示，响应后重新读取原事实，不维护第二份交互状态。暂停时回答被原 Kernel 保存，pending 摘要消失不代表恢复；控制状态继续由原控制通道投影。验证覆盖跨调用隔离、嵌套成员、损坏父链、有界输出、提示注入防护、只导航不派发，以及真实 Flow 暂停回答后的摘要变化和本地/RPC 卡片展示。

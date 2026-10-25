@@ -115,3 +115,16 @@ it('offers withdrawal only before acknowledgement and preserves controls through
     expect(execute.mock.calls.filter(([name]) => name === IndependentCallCommand.Control)).toHaveLength(1);
     expect(operations.getSnapshot()[0].input).toMatchObject({request: {action: 'withdraw', expectedEpoch: 2}});
 });
+it('shows pending interactions outside collapsed details and opens the existing child without submitting an answer', async () => {
+    const view = call(); view.interactions = {total: 2, items: [{taskId: 'worker', interactionId: 'ask', kind: 'approval',
+        prompt: '<script>not executable</script>', promptTruncated: true, requestedAt: 1}]};
+    const execute = vi.fn(async (name: string) => {if (name === IndependentCallCommand.List) return [view]; throw new Error('No mutation');});
+    const openChild = vi.fn(); panel = new IndependentCallPanel({execute} as never, 'parent', document.body,
+        {operations: createOperationLedger(), branch: () => 'main', openChild});
+    await panel.refresh(); const pending = document.querySelector<HTMLElement>('[data-call-interactions]')!;
+    expect(pending.hidden).toBe(false); expect(pending.closest('details')).toBeNull(); expect(pending.querySelector('script')).toBeNull();
+    expect(pending.textContent).toContain('<script>not executable</script>');
+    pending.querySelector<HTMLButtonElement>('[data-open-interactions]')!.click(); await vi.waitFor(() => expect(openChild).toHaveBeenCalledWith('child'));
+    expect(execute.mock.calls.every(([name]) => name === IndependentCallCommand.List)).toBe(true);
+    view.interactions = {total: 0, items: []}; await panel.refresh(); expect(pending.hidden).toBe(true);
+});

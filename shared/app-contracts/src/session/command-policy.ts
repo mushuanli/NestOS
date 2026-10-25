@@ -12,6 +12,7 @@ const reads = new Set<string>([
     "session.submission.receipt",
     "session.submission.inspect",
     "session.call.inspect",
+    "session.call.cancellation.receipt",
     "session.calls.list",
     "session.instructions.get",
     "session.get-sessions",

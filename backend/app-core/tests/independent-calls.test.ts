@@ -7,7 +7,7 @@ import {createApplicationRuntime} from '../src/runtime/create-application-runtim
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close(); vi.restoreAllMocks(); vi.unstubAllGlobals();});
-async function fixture(model = false, bind = true) {
+async function fixture(model = false, bind = true, wait = false) {
     const backend = new MemoryBackend(), prompts: string[] = [];
     if (model) {
         await backend.init();
@@ -27,7 +27,8 @@ async function fixture(model = false, bind = true) {
     cleanup.push(() => runtime.dispose());
     await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [{id: 'independent', name: 'Independent', exposure: 'global',
         draftVersion: 1, updatedAt: 0, layout: {}, parameters: [{name: 'request', type: 'string', inputSource: 'composer.text'}],
-        nodes: [{id: 'return', name: 'Return', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: 'done'}}],
+        nodes: [{id: 'return', name: 'Return', plugin: wait ? 'builtin.human' : 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
+            config: wait ? {requestId: 'approval', prompt: 'Wait'} : {value: 'done'}}],
         edges: [], outputs: {result: {value: '${nodes.return.outputs.result}'}}}]});
     await runtime.agentService.saveAgent(model ? {id: 'worker', name: 'Worker', type: 'agent', config: {}}
         : {id: 'worker', name: 'Worker', type: 'workflow', config: {}, execution: {kind: 'flow', flowId: 'independent'}});
@@ -241,4 +242,79 @@ it('projects a real pause request without treating the running model Effect as s
         expect(calls[0].executionState!.activeOperations).toBeGreaterThan(0);
         expect(open).not.toHaveBeenCalled(); open.mockRestore();
     } finally {await (await (await kernel.openSession(receipt.executionSessionId!)).attachTask(taskId)).cancel();}
+}, 15000);
+
+
+async function controlQuery(f: Awaited<ReturnType<typeof fixture>>, input: IndependentCallInput, requestId = 'cancel-call') {
+    let receipt: IndependentCallReceipt | undefined;
+    await vi.waitFor(async () => {receipt = await f.inspect(input); expect(receipt.execution?.taskId).toBeTruthy();});
+    return {sessionId: f.parent, branchId: 'main', callId: input.request.submission!.id,
+        executionSessionId: receipt!.executionSessionId!, taskId: receipt!.execution!.taskId, requestId};
+}
+
+it.each(['agent', 'flow'] as const)('cancels only the routed independent %s and cold-reads its original admission', async kind => {
+    const f = await fixture(kind === 'agent', true, true);
+    if (kind === 'agent') vi.stubGlobal('fetch', vi.fn((_url: unknown, options: {signal: AbortSignal}) => new Promise<Response>((_resolve, reject) => {
+        const abort = () => reject(new DOMException('Aborted', 'AbortError'));
+        if (options.signal.aborted) abort(); else options.signal.addEventListener('abort', abort, {once: true});
+    })));
+    const input = f.input('controlled-call', kind); await f.submit(input); const query = await controlQuery(f, input);
+    const commands = f.runtime.commandBus, kernel = f.runtime.kernel.kernel;
+    const result = await commands.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0});
+    expect(result).toMatchObject({...query, receipt: {requestId: query.requestId, taskId: query.taskId, status: 'cancelled', expectedEpoch: 0}});
+    expect(await commands.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
+    expect((await f.runtime.sessionRepository.readHistoryChain(f.parent)).rounds).toEqual([]);
+    const open = vi.spyOn(kernel, 'openSession');
+    expect(await commands.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(result);
+    expect(open).not.toHaveBeenCalled(); open.mockRestore();
+    expect(await commands.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).toEqual(result);
+    await expect(commands.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 1})).rejects.toMatchObject({code: 'CONFLICT'});
+}, 15000);
+
+it('rejects forged child, branch, root and call identities before dispatching any cancellation', async () => {
+    const f = await fixture(false, true, true), input = f.input('scope-call', 'flow'); await f.submit(input);
+    const query = await controlQuery(f, input), kernel = f.runtime.kernel.kernel;
+    const cancel = vi.spyOn(kernel, 'cancel');
+    for (const patch of [{executionSessionId: f.parent}, {branchId: 'other'}, {taskId: 'other-task'}, {callId: 'missing-call'}]) {
+        await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, ...patch, expectedEpoch: 0})).rejects.toBeDefined();
+        await expect(f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, {...query, ...patch})).rejects.toBeDefined();
+    }
+    expect(cancel).not.toHaveBeenCalled();
+    expect(await kernel.readTaskCancellationReceipt(query.executionSessionId, query.taskId, query.requestId)).toBeUndefined();
+    await f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0});
+}, 15000);
+
+it('keeps an already completed independent call successful when the user requests cancellation', async () => {
+    const f = await fixture(), input = f.input('completed-cancel', 'flow'); await f.submit(input); const query = await controlQuery(f, input);
+    const task = await (await f.runtime.kernel.kernel.openSession(query.executionSessionId)).attachTask(query.taskId);
+    await task.wait({timeoutMs: 5000});
+    const result = await f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0});
+    expect(result).toMatchObject({receipt: {status: 'succeeded'}});
+    expect((await task.status()).task.status).toBe('succeeded');
+}, 15000);
+
+it.each(['parent', 'child'] as const)('rejects independent cancellation when the %s Session becomes read-only', async denied => {
+    const f = await fixture(false, true, true), input = f.input('readonly-call', 'flow'); await f.submit(input);
+    const query = await controlQuery(f, input);
+    const check = f.runtime.sessionRepository.isSessionDeletionPending.bind(f.runtime.sessionRepository);
+    const guard = vi.spyOn(f.runtime.sessionRepository, 'isSessionDeletionPending').mockImplementation(async id =>
+        id === (denied === 'parent' ? query.sessionId : query.executionSessionId) || check(id));
+    await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
+    expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(query);
+    guard.mockRestore(); await f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0});
+}, 15000);
+
+it('recovers cancellation after its response is lost without dispatching cancellation again', async () => {
+    const f = await fixture(false, true, true), input = f.input('lost-cancel', 'flow'); await f.submit(input);
+    const query = await controlQuery(f, input), execute = f.runtime.commandBus.execute.bind(f.runtime.commandBus);
+    const spy = vi.spyOn(f.runtime.commandBus, 'execute').mockImplementation(async (name, args) => {
+        const result = await execute(name, args);
+        if (name === IndependentCallCommand.Cancel) throw new Error('Cancellation reply lost');
+        return result;
+    });
+    await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).rejects.toThrow('reply lost');
+    const open = vi.spyOn(f.runtime.kernel.kernel, 'openSession');
+    expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, query)).toMatchObject({receipt: {status: 'cancelled', expectedEpoch: 0}});
+    expect(open).not.toHaveBeenCalled();
+    expect(spy.mock.calls.filter(([name]) => name === IndependentCallCommand.Cancel)).toHaveLength(1);
 }, 15000);

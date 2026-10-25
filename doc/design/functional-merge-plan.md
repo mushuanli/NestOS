@@ -1090,3 +1090,30 @@ C4Component
 
 
 全量回归发现根终态后调度器释放租约与子任务取消并发，原借用控制可能遭遇 STALE_SHARED_LEASE。withFlowControl 现在在本机租约上登记在途借用；调度器请求退休后不再接受新借用，原控制成功或失败都会释放借用，最后才执行原 lease.release。心跳与事务 fencing 继续使用原租约；没有延长外部接管权限或忽略真实失权。确定性测试验证退休期间仍可持有租约写入，控制结束后立即释放，随后新控制可以按原规则重新获取租约。
+
+## 48. F16 独立调用控制的归属与授权入口
+
+IndependentCallControls 在 llm-session 承担调用归属与授权适配；路由仍由 IndependentCallService 唯一读取，不新建控制状态库。session.call.cancel 明确 parent session/branch/call、child session、primary task、独立 requestId/expectedEpoch。后端依次核对原路由、原子调用接纳、Round primary 与 Kernel 身份；不接受 UI 提供的任意任务，也不把父子关系当作可控制所有子任务的授权。
+
+```mermaid
+C4Component
+  title 独立调用取消的端到端归属边界
+  Component(ui, "调用方 / RPC", "控制入口", "冻结原调用及独立控制身份")
+  Component(control, "IndependentCallControls", "Session 用例", "校验归属、父子写权限、协议路由")
+  ContainerDb(route, "原调用路由和子 Round", "原持久记录", "caller / child / primary 唯一关联")
+  Component(flow, "Flow RunCancel", "Flow 控制机制", "原调度租约与控制树")
+  Component(kernel, "Kernel.cancel", "通用机制", "取消接纳事务与清理")
+  Component(read, "CancellationReceipt", "只读核对", "相同归属检查，冷读原结果")
+  Rel(ui, control, "session.call.cancel")
+  Rel(control, route, "验证冻结路由与主执行")
+  Rel(control, flow, "Flow 主执行")
+  Rel(flow, kernel, "持有原调度权限")
+  Rel(control, kernel, "普通 Agent / Task 主执行")
+  Rel(ui, read, "查询原请求，不重发")
+  Rel(read, route, "同一归属检查")
+  Rel(read, kernel, "读取原取消回执")
+```
+
+查询不调用写权限获取，也不打开执行 Session；父绑定和草稿不受影响。父/子任一会话只读则取消拒绝；回执仍可读取。没有主执行身份的待派发调用明确不可按 Task 取消，队列操作保留自身入口。Flow 取消依然服从第 47 节控制树与租约规则。
+
+真实 Agent/Flow 验证覆盖取消与完成竞态、原接纳重放、错误 caller branch/child/task/call、父子写权限、丢回复后只读恢复；真实 ChatView 的本地/RPC 链增加控制与回执传输验证。失败诊断脱敏、错误回执身份拒绝与日志回调失败不替换结果由独立用例覆盖。UI 操作台账和控制按钮、暂停/恢复入口仍未完成，下一批继续接线。

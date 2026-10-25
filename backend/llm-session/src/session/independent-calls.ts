@@ -1,6 +1,7 @@
+import {IndependentCallControls} from './independent-call-controls';
 import {taskStat, KernelError, KernelErrorCode, type Kernel, type JsonValue} from '@itookit/durable-kernel';
 import {sha256Hex} from '@itookit/llm-context';
-import {IndependentCallCommand, type IndependentCallInput, type IndependentCallView, type IndependentCallExecutionState, type IndependentCallListQuery, type IndependentCallReceipt, type IndependentCallSubmitter} from '../contracts/independent-calls';
+import {IndependentCallCommand, type IndependentCallControlQuery, type IndependentCallInput, type IndependentCallView, type IndependentCallExecutionState, type IndependentCallListQuery, type IndependentCallReceipt, type IndependentCallSubmitter} from '../contracts/independent-calls';
 import type {ICommandBus} from '../contracts/command-bus';
 import type {SubmissionRequest} from '../contracts/submission';
 import type {Round} from '../contracts/conversation';
@@ -27,6 +28,8 @@ export class IndependentCallService {
         commands.register(IndependentCallCommand.Submit, value => this.submit(value as IndependentCallInput));
         commands.register(IndependentCallCommand.Inspect, value => this.inspect(value as IndependentCallInput));
         commands.register(IndependentCallCommand.List, value => this.list(value as IndependentCallListQuery));
+        new IndependentCallControls({kernel: this.options.kernel, commands, logger: this.host.logger,
+            canWrite: this.options.canWrite, resolve: query => this.controlTarget(query)}).register();
     }
     async submit(supplied: IndependentCallInput): Promise<IndependentCallReceipt> {
         const input = structuredClone(supplied), started = Date.now(); let stage = 'validate', outcome = 'failure', code: string | undefined;
@@ -102,13 +105,29 @@ export class IndependentCallService {
         }
         return views.sort((a, b) => a.createdAt - b.createdAt || a.receipt.operationId.localeCompare(b.receipt.operationId));
     }
-    private async executionState(receipt: IndependentCallReceipt): Promise<IndependentCallExecutionState | undefined> {
+    private async controlTarget(query: IndependentCallControlQuery) {
+        const saved = await this.readRoute(query.sessionId, query.callId);
+        if (!saved) throw failure('CALL_ROUTE_NOT_FOUND');
+        const route = saved.value as unknown as CallRoute, request = route.input.request;
+        if (request.expectedSessionId !== query.sessionId || request.expectedBranch !== query.branchId
+            || request.submission?.id !== query.callId || route.executionSessionId !== query.executionSessionId
+            || query.executionSessionId === query.sessionId) throw failure('CALL_CONTROL_SCOPE_MISMATCH');
+        const {receipt} = await this.observe(route);
+        if (receipt.status !== 'accepted' || !receipt.execution) throw failure('CALL_EXECUTION_UNAVAILABLE');
+        if (receipt.execution.role !== 'primary' || receipt.execution.taskId !== query.taskId) throw failure('CALL_CONTROL_SCOPE_MISMATCH');
+        return (await this.executionTask(receipt))!;
+    }
+    private async executionTask(receipt: IndependentCallReceipt) {
         const execution = receipt.execution;
         if (!execution || !receipt.executionSessionId) return;
         const task = await this.options.kernel.task(receipt.executionSessionId, execution.taskId);
         if (task.id !== execution.taskId || task.sessionId !== receipt.executionSessionId
             || execution.invocation && task.labels?.invocationId && execution.invocation.invocationId !== task.labels.invocationId)
             throw failure('CALL_EXECUTION_CONFLICT');
+        return task;
+    }
+    private async executionState(receipt: IndependentCallReceipt): Promise<IndependentCallExecutionState | undefined> {
+        const task = await this.executionTask(receipt); if (!task) return;
         const {id, revision, phase, control, blockedBy, activeOperations, settled, stopped} = taskStat(task);
         return {id, revision, phase, control, blockedBy, activeOperations, settled, stopped, controlEpoch: task.control?.epoch ?? 0};
     }

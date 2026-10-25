@@ -294,4 +294,11 @@ it.each(['local', 'rpc'])('submits an independent child from ChatView over %s an
     currentMode.value = 'current'; currentMode.dispatchEvent(new Event('change', {bubbles: true}));
     view.setText('Parent request'); view.setArguments('{"count":0}'); await view.submit();
     await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(f.sessionId)).rounds).toHaveLength(1));
+    const child = (await commands.execute<import('@itookit/llm-session/contracts').IndependentCallView[]>('session.calls.list', {sessionId: f.sessionId}))[0];
+    const query = {sessionId: f.sessionId, branchId: 'main', callId: child.receipt.operationId,
+        executionSessionId: child.receipt.executionSessionId!, taskId: child.receipt.execution!.taskId, requestId: `cancel-${transport}`};
+    const cancelled = await commands.execute('session.call.cancel', {...query, expectedEpoch: child.executionState!.controlEpoch});
+    expect(cancelled).toMatchObject({...query, receipt: {taskId: query.taskId, requestId: query.requestId}});
+    expect(await commands.execute('session.call.cancellation.receipt', query)).toEqual(cancelled);
+    expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.sessionId);
 });

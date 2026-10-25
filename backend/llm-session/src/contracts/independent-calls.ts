@@ -3,7 +3,8 @@ import type {SubmissionRequest, SubmissionReceipt} from './submission';
 import type {TransferReference} from './content-transfer';
 import type {ExecutionRef} from './conversation';
 
-export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect', List: 'session.calls.list'} as const;
+export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect', List: 'session.calls.list',
+    Cancel: 'session.call.cancel', CancellationReceipt: 'session.call.cancellation.receipt'} as const;
 /** Caller identity and selected materials; ancestry alone never imports conversation history. */
 export interface IndependentCallInput {request: SubmissionRequest; title: string; transfer?: TransferReference}
 export interface IndependentCallReceipt extends SubmissionReceipt {
@@ -26,4 +27,15 @@ export interface IndependentCallView {
     executionState?: IndependentCallExecutionState;
     /** Bounded display text only; execution consumers read the actual child output. */
     summary?: string;
+}
+
+
+/** All identities are verified against the persisted call route and its primary execution. */
+export interface IndependentCallControlQuery {
+    sessionId: string; branchId: string; callId: string; executionSessionId: string; taskId: string; requestId: string;
+}
+export interface IndependentCallCancelRequest extends IndependentCallControlQuery {expectedEpoch: number}
+export interface IndependentCallCancellationReceipt extends IndependentCallControlQuery {
+    /** Admission evidence only; absence means unknown, never permission to resubmit. */
+    receipt?: import('@itookit/durable-kernel/contracts').TaskCancellationReceipt;
 }

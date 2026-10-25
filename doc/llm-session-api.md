@@ -680,3 +680,12 @@ C4Dynamic
 `IndependentCallCommand.Submit`（session.call.submit）接收 `IndependentCallInput`：`request` 是带 expectedSessionId、expectedBranch、expectedTarget 与 submission 的原冻结请求，另有 title 和可选 transfer。宿主通过 `submitIndependentCall` 提供独立执行上下文，将子请求送入原 Session 队列，不改变调用方 UI 绑定。
 
 `IndependentCallCommand.Inspect`（session.call.inspect）携带同一输入，只读核对原路由与子队列/历史；返回 IndependentCallReceipt 的 callerSessionId、可用时的 executionSessionId 与实际 ExecutionRef。unknown 不证明未创建或未提交；accepted 只证明子队列持久接纳。路由不复制 Task 状态，关闭观察不取消执行。父子默认不继承历史，材料经 transfer 显式传入；附件通过原存储冻结与校验。参见[合入计划第 37 节](design/functional-merge-plan.md#37-f16-统一独立调用的宿主路由与接纳查询)。
+
+
+### 独立调用取消与原回执核对
+
+`session.call.cancel` 接受 `{sessionId, branchId, callId, executionSessionId, taskId, requestId, expectedEpoch}`。前三项定位父会话原持久调用路由，子 Session 与主任务必须与原接纳和 Round.executions 的 primary 完全匹配；仅有父子会话关系或任意 taskId 不构成控制依据。尚未产生主执行身份时拒绝，不能猜测将取消映射为队列删除。Session 当前绑定不参与寻址，不切换父视图。
+
+控制前分别复验父、子会话写权限。Flow 主执行复用 `dag.run.cancel` 的显式身份与调度租约；普通 Agent/Task 主执行委托 Kernel.cancel，不创建第二份执行状态。返回原查询身份及 `receipt`；其 status 表示真实终态，完成先发生时保持 succeeded。资源清理及整树停止仍须另外观察。
+
+`session.call.cancellation.receipt` 接受相同身份但不含 expectedEpoch；先核对原路由与 primary，再冷读持久取消回执。无回执返回不带 receipt 的身份信封，不表示可重新发送。读取不调用写权限获取、不打开执行 Session、不重发取消，进入共享只读命令策略。日志包含请求/调用/任务关联、阶段、结果、错误分类和耗时，不包含消息、参数、取消原因或远端异常正文；诊断回调失败不能替换持久结果。

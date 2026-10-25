@@ -1,7 +1,7 @@
 import {ConversationContexts} from '../src/runtime/conversation-contexts';
 import {afterEach, expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
-import {FlowLibraryCommand} from '@itookit/app-contracts';
+import {ArtifactCommand, type ExecutionArtifactPage, type ExecutionArtifactChunk, FlowLibraryCommand} from '@itookit/app-contracts';
 import {IndependentCallCommand, SessionCommand, type IndependentCallView, type IndependentCallInput, type IndependentCallReceipt, type RootTargetCatalog} from '@itookit/llm-session/contracts';
 import {createApplicationRuntime} from '../src/runtime/create-application-runtime';
 
@@ -202,4 +202,19 @@ it('bounds terminal previews and rejects a child Round attributed to another cal
     round.submission.source.ownerId = 'foreign-caller';
     await repository.writeDocument(child, name, JSON.stringify(round));
     await expect(list()).rejects.toMatchObject({code: 'CALL_EXECUTION_CONFLICT'});
+}, 15000);
+
+
+it.each(['flow', 'agent'] as const)('reads independent %s output through its actual child task while keeping the parent bound', async kind => {
+    const f = await fixture(kind === 'agent'), input = f.input('child-artifact', kind), accepted = await f.submit(input);
+    await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(accepted.executionSessionId!)).rounds[0]?.status).toBe('completed'));
+    const calls = await f.runtime.commandBus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent});
+    const scope = {sessionId: calls[0].receipt.executionSessionId!, taskId: calls[0].receipt.execution!.taskId};
+    const open = vi.spyOn(f.runtime.kernel.kernel, 'openSession');
+    const page = await f.runtime.commandBus.execute<ExecutionArtifactPage>(ArtifactCommand.List, scope);
+    expect(page.items.length).toBeGreaterThan(0);
+    const chunks = await Promise.all(page.items.map(item => f.runtime.commandBus.execute<ExecutionArtifactChunk>(ArtifactCommand.Read, {reference: item.reference})));
+    expect(chunks.map(chunk => new TextDecoder().decode(chunk.data)).join(' ')).toContain(kind === 'agent' ? 'Done' : 'done');
+    expect(open).not.toHaveBeenCalled();
+    expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
 }, 15000);

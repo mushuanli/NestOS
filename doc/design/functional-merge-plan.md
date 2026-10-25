@@ -104,7 +104,7 @@ C4Component
 | F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 精确检查点与 fork 执行见第 32 节；选择入口及真实节点验收继续随 F22 推进 |
 | F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 宿主目录、Session 冻结与派发见第 33 节；默认工作台选择及草稿证据见第 34 节；独立 ChatView 控件及真实远端验收保留 |
 | F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 宿主读取链路见第 30 节；从终态输出派生，核对范围和摘要，不另建结果注册表；UI 随 F24 验收 |
-| F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节，独立 Agent/Flow 父级摘要见第 40 节；完整调用组及复杂输出性能仍待验收 |
+| F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节，独立 Agent/Flow 父级摘要与按需产物见第 40—41 节；完整调用组及复杂输出性能仍待验收 |
 | F25 | Flow 调度所有权竞态修复 | llm-flow | 无 | 已合入 `0bcfa29e`；竞争失败者不终结胜者，接纳丢回执不误清理工作区 |
 
 F03 已独立合入原有记录的写入核对，且修复延迟 load 回退 CAS 游标；F04 再加入队列修订保护。查询结果校验仍随 F05 合入。公共能力表只随该功能加入所需方法，避免一次暴露尚未接通的全部端口。
@@ -925,3 +925,24 @@ C4Component
 轮询由视图持有，活跃/未核对时每秒、空闲每 30 秒，焦点恢复刷新。隐藏不继续派发查询，销毁释放订阅/卡片，分支切换清理旧卡片，迟到响应不得重挂载。列表失败保留诊断分类，不记录输入或原异常正文。
 
 验收覆盖原 submit RPC 悬挂时从持久列表接纳、完整请求/标题/归属不符不消费、HTML 作为文字展示、子会话导航、纯参数提交复用表单、等待期间新草稿保留、普通发送行为不变及轮询生命周期。父卡片直接暂停/取消、产物专用展示、独立 ChatView 对等接入、分页/大型历史、真实远端部署验收仍未完成；不据此宣称 F16 或整体实施完成。
+
+
+## 41. F24 独立调用父卡片的按需产物
+
+IndependentCallPanel 按宿主投影的 executionSessionId 和主 ExecutionRef 复用 TaskArtifactBrowser。只有已接纳且 Round 已终结的调用提供产物入口；不从卡片正文、父 Session 或数组位置猜测输出归属。目录、预览和下载仍使用原只读 ArtifactCommand 链；轮询不自动读取目录，也不重建同一执行的预览 DOM。
+
+```mermaid
+C4Component
+  title 独立调用产物展示复用现有读取链
+  Component(card, "IndependentCallPanel", "UI 适配", "选择真实子 Session 主执行")
+  Component(browser, "TaskArtifactBrowser", "共享展示机制", "按需目录、分页核验、预览与下载")
+  Component(host, "TaskArtifacts", "宿主读取机制", "范围校验及持久输出解析")
+  ContainerDb(output, "Kernel Task 输出与资产", "已有存储", "不可变结果与文件内容")
+  Rel(card, browser, "传入实际执行 scope，管理视图生命周期")
+  Rel(browser, host, "ArtifactCommand.List / Read")
+  Rel(host, output, "只读范围及内容核验")
+```
+
+隐藏视图取消正在读取的目录/内容并回收对象 URL；卡片移除、分支切换和销毁释放对应 browser。主执行改变时清理旧 scope；同一主执行轮询保留已读结果。读取错误只在产物区显示，不更改调用终态或接纳台账。未导入远端原生 URI 继续显示不可用，不在浏览器自行抓取。
+
+验收覆盖按需读取真实子 scope、预览转义与轮询保留、隐藏/销毁/重置时丢弃迟到目录、主执行改变、运行中不读取终态输出及错误归属拒绝。真实 Runtime 用例从独立 Flow 的列表取主 Task，再经产物命令读取结果，确认调用方绑定不变且不取得 writer。此批不新增产物存储或注册表；大型调用列表分页、复杂报告编辑、父级直接控制、独立 ChatView 对等入口和真实远端部署验收继续开放。

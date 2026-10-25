@@ -1,10 +1,11 @@
+import {TaskArtifactBrowser} from './dag/TaskArtifactBrowser';
 import {createModuleLogger, t} from '@itookit/common';
 import type {OperationLedger} from '@itookit/llm-ui';
 import {IndependentCallCommand, type IndependentCallView, type ICommandBus} from '@itookit/llm-session/contracts';
 import {canonicalJson} from '../utils/canonical-json';
 
 const log = createModuleLogger('independent-calls');
-interface Card {element: HTMLElement; release?: () => void}
+interface Card {element: HTMLElement; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
 interface Options {
     operations: OperationLedger;
     branch(): string;
@@ -57,6 +58,7 @@ export class IndependentCallPanel {
     reset(): void {++this.generation; this.refreshing = undefined; this.clearCards(); void this.refresh();}
     setVisible(value: boolean): void {
         this.visible = value; ++this.generation; this.refreshing = undefined; clearTimeout(this.timer);
+        for (const card of this.cards.values()) card.artifacts.setVisible(value);
         if (value) void this.refresh();
     }
     destroy(): void {
@@ -78,13 +80,14 @@ export class IndependentCallPanel {
             this.active ||= !call.status || !['completed', 'failed', 'cancelled'].includes(call.status);
         }
         const ids = new Set(calls.map(call => call.receipt.operationId));
-        for (const [id, card] of this.cards) if (!ids.has(id)) {card.release?.(); card.element.remove(); this.cards.delete(id);}
+        for (const [id, card] of this.cards) if (!ids.has(id)) {this.disposeCard(card); this.cards.delete(id);}
     }
     private assertScope(call: IndependentCallView, branch: string): void {
         const {request} = call.input, receipt = call.receipt;
         if (request.expectedSessionId !== this.sessionId || request.expectedBranch !== branch || receipt.callerSessionId !== this.sessionId
             || receipt.operationId !== request.submission?.id || !['accepted', 'unknown'].includes(receipt.status)
-            || receipt.executionSessionId === this.sessionId || receipt.status === 'accepted' && !receipt.executionSessionId)
+            || receipt.executionSessionId === this.sessionId || receipt.status === 'accepted' && !receipt.executionSessionId
+            || receipt.execution && (receipt.execution.role !== 'primary' || typeof receipt.execution.taskId !== 'string' || !receipt.execution.taskId))
             throw Object.assign(new Error('CALL_VIEW_SCOPE_MISMATCH'), {code: 'CALL_VIEW_SCOPE_MISMATCH'});
     }
     private async reconcile(call: IndependentCallView): Promise<void> {
@@ -101,8 +104,8 @@ export class IndependentCallPanel {
         let card = this.cards.get(id);
         if (!card) {
             const element = document.createElement('article'); element.className = 'flow-invocations__card'; element.dataset.independentCall = id;
-            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-preview-label></p><pre data-output></pre><button type="button"></button>';
-            card = {element, release: this.options.mountCard?.(element, call)};
+            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div>';
+            card = {element, artifacts: new TaskArtifactBrowser(element, this.commands), release: this.options.mountCard?.(element, call)};
             if (!this.options.mountCard) this.element.append(element);
             this.cards.set(id, card);
         }
@@ -113,15 +116,26 @@ export class IndependentCallPanel {
         element.querySelector('[role=status]')!.textContent = statusText(call);
         element.querySelector('[data-preview-label]')!.textContent = t('callable.independent.preview');
         element.querySelector('[data-output]')!.textContent = call.summary ?? '';
-        const button = element.querySelector('button')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId;
+        const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId;
         button.onclick = () => {void this.open(call.receipt.executionSessionId!);};
+        this.renderArtifacts(card, call);
     }
+    private renderArtifacts(card: Card, call: IndependentCallView): void {
+        const {executionSessionId, execution, status} = call.receipt;
+        const scope = status === 'accepted' && executionSessionId && execution && call.status
+            && ['completed', 'failed', 'cancelled'].includes(call.status) ? {sessionId: executionSessionId, taskId: execution.taskId} : undefined;
+        const key = scope && JSON.stringify(scope);
+        if (key === card.artifactScope) return;
+        card.artifacts.clear(); card.artifactScope = key;
+        card.element.querySelector('[data-artifacts]')!.innerHTML = scope ? card.artifacts.render(scope) : '';
+    }
+    private disposeCard(card: Card): void {card.artifacts.dispose(); card.release?.(); card.element.remove();}
     private async open(id: string): Promise<void> {
         if (!this.visible || this.abort.signal.aborted) return;
         try {await this.options.openChild(id);}
         catch {if (!this.abort.signal.aborted) {this.element.hidden = false; this.error.textContent = t('callable.independent.openFailed');}}
     }
-    private clearCards(): void {for (const card of this.cards.values()) {card.release?.(); card.element.remove();} this.cards.clear();}
+    private clearCards(): void {for (const card of this.cards.values()) this.disposeCard(card); this.cards.clear();}
 }
 function statusText(call: IndependentCallView): string {
     const state = call.status ?? (call.receipt.status === 'accepted' ? 'pending' : 'unknown');

@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
 import { FlowLibraryCommand } from '@itookit/app-contracts';
 import { FlowCommand, type FlowDraft, type JsonValue } from '@itookit/llm-flow/contracts';
-import { SessionCommand, type SessionInstructionQueue } from '@itookit/llm-session/contracts';
+import { ContentTransferCommand, FlowInvocationCommand, SessionCommand, type FlowInvocationRecord, type SessionInstructionQueue } from '@itookit/llm-session/contracts';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 
 type Runtime = Awaited<ReturnType<typeof createApplicationRuntime>>;
@@ -65,6 +65,69 @@ it('runs an internal Flow Agent without a model and keeps prompt separate from r
     expect(round.flow).toMatchObject({ flowId: 'content-worker', revision: 1, input: { prompt: 'Keep ${param.secret} as literal data' }, parameters: { language: 'zh-CN', count: 3 } });
     expect((await runtime.sessionRepository.getSessionSettings(id)).executionModeLocked).not.toBe(true);
 }, 15_000);
+
+it('executes a parameter-only Flow through the real Session queue and preserves its frozen input in history', async () => {
+    const fetch = vi.fn(() => {throw new Error('Parameter-only deterministic Flow must not call a model');}); vi.stubGlobal('fetch', fetch);
+    const {runtime, id} = await setup();
+    await send(runtime, '', {count: 2});
+    expect(await results(runtime, id)).toEqual([{prompt: '', directPrompt: '', language: 'zh-CN', count: 2, marker: 'first'}]);
+    const round = (await runtime.sessionRepository.readHistoryChain(id)).rounds[0];
+    expect(round.flow).toMatchObject({input: {prompt: ''}, parameters: {language: 'zh-CN', count: 2}});
+    expect((await runtime.commandBus.execute<SessionInstructionQueue>(SessionCommand.GetInstructionQueue)).items).toEqual([]);
+    expect(fetch).not.toHaveBeenCalled();
+    const root = (await runtime.kernel.kernel.listSessionTasks(id)).find(task => task.labels?.kind === 'flow-root')!;
+    expect(round.executions[0].invocation?.invocationId).toBeTruthy();
+    expect(root.labels?.invocationId).toBe(round.executions[0].invocation?.invocationId);
+    expect(root.input).toMatchObject({initialScheduler: {spec: {invocation: {invocationId: root.labels!.invocationId}}}});
+});
+
+it('preserves the claimed Flow Invocation across completion and creates linked identities on regeneration', async () => {
+    const {runtime, id} = await setup();
+    const claims: string[] = [];
+    const release = runtime.sessionManager.onEvent(event => {
+        if (event.type === 'instructions:changed') for (const item of event.payload.items)
+            if (item.state === 'dispatching' && item.invocation && !claims.includes(item.invocation.invocationId)) claims.push(item.invocation.invocationId);
+    });
+    try {
+        await send(runtime, 'Original Flow input'); await results(runtime, id);
+        const original = (await runtime.sessionRepository.readHistoryChain(id)).rounds[0], reference = original.executions[0];
+        expect(claims).toHaveLength(1); expect(reference.invocation?.invocationId).toBe(claims[0]);
+        await vi.waitFor(() => expect(runtime.sessionManager.isGenerating()).toBe(false));
+        const oldTask = (await (await runtime.kernel.kernel.openTask(reference.taskId)).status()).task;
+        await runtime.sessionManager.regenerateFromUser(`round-${original.id}-user`);
+        await vi.waitFor(async () => {
+            const chain = (await runtime.sessionRepository.readHistoryChain(id)).rounds;
+            expect(chain.at(-1)?.status).toBe('completed'); expect(chain.at(-1)?.id).not.toBe(original.id);
+        });
+        const next = (await runtime.sessionRepository.readHistoryChain(id)).rounds.at(-1)!;
+        expect(next.executions[0].invocation).toMatchObject({retryOfInvocationId: reference.invocation!.invocationId, retryOfSessionId: id});
+        expect(next.executions[0].invocation!.invocationId).not.toBe(reference.invocation!.invocationId);
+        expect((await (await runtime.kernel.kernel.openTask(reference.taskId)).status()).task).toEqual(oldTask);
+        const groups = runtime.sessionManager.getSessions().filter(group => group.persistedNodeId === next.id);
+        expect(groups.length).toBeGreaterThan(0);
+        expect(groups.every(group => group.invocation?.invocationId === next.executions[0].invocation!.invocationId)).toBe(true);
+    } finally {release();}
+});
+
+it('creates a linked child-Session invocation through the real host parent relationship', async () => {
+    const definition = flow(); delete definition.variables;
+    definition.nodes[0].config = {value: {language: '${param.language}', count: '${param.count}'}};
+    const {runtime, id} = await setup(definition);
+    const original = await runtime.commandBus.execute<FlowInvocationRecord>(FlowInvocationCommand.Invoke, {
+        sessionId: id, requestId: 'parent-call', flowId: definition.id, revision: 1, parameters: {count: 2}});
+    expect((await (await runtime.kernel.kernel.openTask(original.rootTaskId!)).wait({timeoutMs: 3000})).status).toBe('succeeded');
+    const child = await runtime.commandBus.execute<{sessionId: string}>(ContentTransferCommand.CreateChild,
+        {sessionId: id, requestId: 'new-child', title: 'Independent child call'});
+    const next = await runtime.commandBus.execute<FlowInvocationRecord>(FlowInvocationCommand.Invoke, {
+        sessionId: child.sessionId, requestId: 'child-call', flowId: definition.id, revision: 1, parameters: {count: 3},
+        retryOfInvocationId: original.invocationId, retryOfSessionId: id});
+    expect(next.invocationId).not.toBe(original.invocationId);
+    expect(next).toMatchObject({retryOfInvocationId: original.invocationId, retryOfSessionId: id});
+    expect(next.rootTaskId).not.toBe(original.rootTaskId);
+    expect((await runtime.sessionRepository.getManifest(child.sessionId)).parentSessionId).toBe(id);
+    expect((await (await runtime.kernel.kernel.openTask(next.rootTaskId!)).wait({timeoutMs: 3000})).status).toBe('succeeded');
+    expect((await (await runtime.kernel.kernel.openTask(original.rootTaskId!)).status()).task.status).toBe('succeeded');
+});
 
 it('passes upstream structured data through a transform when the Session binder also injects its prompt', async () => {
     const value = {cards: [{name: 'apple', unit: 2}], groups: [[{name: 'apple', unit: 2}]]};

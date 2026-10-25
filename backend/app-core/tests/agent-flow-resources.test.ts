@@ -26,6 +26,21 @@ async function publish(runtime: Awaited<ReturnType<typeof setup>>['runtime'], de
     await runtime.commandBus.execute(FlowLibraryCommand.Restore, { templates: [definition] });
 }
 
+it('persists local Agent scope for internal consumers, rejects malformed saves and disables local Flow wrappers', async () => {
+    const {runtime} = await setup();
+    await runtime.agentService.saveAgent({...agent({kind: 'agent'}), exposure: 'local'});
+    expect(await runtime.agentService.getAgentConfig('flow-agent')).toMatchObject({exposure: 'local'});
+    const view = await createChatConfigurationView(runtime.agentService); cleanup.push(() => view.dispose());
+    expect(view.getConfigurationSnapshot().agents.some(item => item.id === 'flow-agent')).toBe(false);
+    expect(runtime.agentService.listAgents().some(item => item.id === 'flow-agent')).toBe(true);
+    await expect(runtime.agentService.saveAgent({...agent({kind: 'agent'}), id: 'invalid', exposure: 'private'} as never))
+        .rejects.toMatchObject({code: 'CALLABLE_EXPOSURE_INVALID'});
+    expect(runtime.agentService.findAgent('invalid')).toBeUndefined();
+    await publish(runtime, {...externalFlow('generic-flow'), exposure: 'local'});
+    await runtime.agentService.saveAgent(agent());
+    expect(await runtime.agentService.getAgentConfig('flow-agent')).toMatchObject({availability: {status: 'disabled', reason: 'flow-invalid'}});
+});
+
 it('disables a deleted Flow binding without changing its Agent source and re-enables it after restoration', async () => {
     const { runtime, resources } = await setup(); await publish(runtime);
     await runtime.agentService.saveAgent(agent({ kind: 'flow', flowId: 'generic-flow', parameters: { format: 'plain' } }));

@@ -1387,3 +1387,28 @@ C4Component
 真实 HTTP 用例在临时文件系统和 SQLite 宿主上创建源 Session 与当前 Session，暂停当前队列并入队一条私有文本，然后查询另一个 Session 的上下文目录及非法分支。断言当前绑定、暂停状态和队列内容均不变，并检查审计日志不含消息正文；这里没有使用 IndexedDB。
 
 原生命令输出用例连接真实应用 RpcPeer 与 observeConversation，使用受控 Harness 端口挂起发送。挂起期间验证完整二进制读取、分页读取、大小/偏移参数透传，以及权限拒绝和输出过期错误传递；原发送仍未完成，草稿、命令终态和结果引用不变，不调用 refresh 或重复 send。此用例不覆盖 HTTPS/mTLS、真实 Harness 网络传输或节点文件存储，不作为生产远端验收证明。
+
+## 61. Flow 调用身份与 local 暴露范围的组合验收
+
+本批合入此前未提交的五项用例，并强化非空观察断言，复用真实 Flow 编译器、Kernel、Session 队列和应用宿主，不增加运行机制。
+
+```mermaid
+C4Component
+  title 调用身份跨队列、历史与子 Session 保持可追溯
+  Component(queue, "Session 队列", "宿主入口", "纯参数输入、认领 Invocation")
+  Component(flow, "Flow 编译与执行", "既有机制", "确定性节点和 internal local 调用")
+  ContainerDb(history, "Session 历史与 Kernel Task", "原权威记录", "原调用终态与新调用身份")
+  Component(child, "宿主子 Session", "既有父子关系", "新 Invocation 指向原调用")
+  Rel(queue, flow, "空正文及结构化参数；冻结 Invocation")
+  Rel(flow, history, "同一 Invocation 贯穿 Task 和历史")
+  Rel(queue, history, "重新生成创建新身份，保留原终态")
+  Rel(child, flow, "新调用与 retryOfInvocationId / retryOfSessionId")
+```
+
+纯参数 Flow 经真实 Session.Send 和队列执行，历史保存空正文与有效参数，确定性执行不调用模型；队列认领身份与根 Task、冻结输入、历史执行引用一致。重新生成创建新 Invocation 并关联原调用，原 Task 保持原终态；测试要求已捕获认领事件且历史投影非空，不能让空数组 every 或两个 undefined 相等误报通过。
+
+跨 Session 重跑先通过既有 ContentTransferCommand.CreateChild 创建实际子 Session，再调用原 FlowInvocation 端口；验证持久 parentSessionId、新根任务、新 Invocation 与跨 Session 重试关联，原成功任务不被改写。本批不等同于裸 Task 的独立调用入口已完成。
+
+local 范围分别在两层验证：Flow 编译器允许 local 发布定义被内部 Flow 调用，但拒绝直接作为根；应用宿主持久保留 local Agent 供内部查找，从聊天配置目录移除，并拒绝非法 exposure。当前规则继续禁止 Agent 直接包装 local Flow，不能仅靠隐藏 UI 放行。范围策略由原宿主与编译入口执行，未新增授权例外。
+
+这些用例属于内存宿主组合验收；不据此声明文件系统崩溃恢复、真实原生执行器或生产 HTTP 部署已验证。

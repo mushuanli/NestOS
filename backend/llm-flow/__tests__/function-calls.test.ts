@@ -4,6 +4,7 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { checkFlowSource, createBuiltinDagPluginRegistry, DurableFlowExecutor, registerDurablePrograms, flowToDag } from '../src/flow';
 import { lockFlowDependencies } from '../src/flow/dependency-locks';
 import { scopeSpawn } from '../src/flow/spawn-scope';
+import {prepareFlowRun} from '../src/flow/prepare-run';
 import type { FlowRevision, FlowNodeDefinition } from '../src/contracts';
 
 const value = (id: string, content: unknown): FlowNodeDefinition => ({ id: id as never, name: id, plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: { value: content } as never });
@@ -24,6 +25,16 @@ beforeEach(async () => {
     executor = new DurableFlowExecutor({ kernel, plugins: createBuiltinDagPluginRegistry() });
 });
 afterEach(async () => { kernel.dispose(); await executor.waitIdle(); await manager.dispose(); });
+
+it('executes a local published Flow as an internal call while refusing the same definition as a root', async () => {
+    const local = {...child(), exposure: 'local' as const};
+    const parent = definition('parent', [call('invoke', 'From parent')]);
+    const graph = await prepareFlowRun(parent, {resolveComposite: async () => local});
+    const run = await executor.submit('s', graph);
+    expect((await run.root.wait({timeoutMs: 4000})).status).toBe('succeeded');
+    expect((await run.nodes.get('invoke/echo')!.status()).task.output).toMatchObject({outputs: {result: {content: 'From parent'}}});
+    await expect(prepareFlowRun(local, {})).rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
+});
 
 it('passes upstream results to concurrent calls and joins named returns without interpreting user data twice', async () => {
     const parent = definition('parent', [value('source', '${param.secret}'), call('a', '${nodes.source.outputs.result}'), call('b', 'B'),

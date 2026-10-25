@@ -1,3 +1,4 @@
+import {IndependentCallPanel} from '../components/IndependentCallPanel';
 import {flowInputAssets} from '../flows/input-assets';
 import {prepareAgentFlow, prepareCallTarget} from '../flows/agent-flow';
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
@@ -169,6 +170,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private rerunPending = false;
     private flowOutputAbort?: AbortController;
     private invocationPanel?: InvocationPanel;
+    private independentCallPanel?: IndependentCallPanel;
     private instructionQueuePanel?: InstructionQueuePanel;
     private invocationAbort = new AbortController();
     private invocationPending?: Promise<boolean>;
@@ -395,6 +397,11 @@ export class LLMWorkspaceEditor implements IEditor {
                 mountCard: (card, call) => historyView.mountInvocation(card, call.head ?? null),
                 openChild: id => this.openInvocationChild(id),
             });
+        this.independentCallPanel = new IndependentCallPanel(this.commandBus, this.options.sessionId, calls, {
+            operations: this.operations, branch: () => this.stateManager.getDraftBranch(),
+            mountCard: (card, call) => historyView.mountInvocation(card, call.head),
+            openChild: id => this.openInvocationChild(id),
+        });
         const queue = document.createElement('section'); inputEl.before(queue);
         this.instructionQueuePanel = new InstructionQueuePanel(queue, this.commandBus, this.options.sessionId);
         this.instructionQueuePanel.setReadOnly(!!this.options.readOnly);
@@ -453,6 +460,7 @@ export class LLMWorkspaceEditor implements IEditor {
                 onLoadSkill: (id: string) => this.options.sessionSkills!.load(this.options.sessionId, id),
                 onUnloadSkill: (id: string) => this.options.sessionSkills!.unload(this.options.sessionId, id),
             } : {}),
+            onIndependentSend: (text, files, agentId, overrides, target) => this.routeMessage({text, files, agentId, overrides, target, independentTitle: target?.id}),
             onSend: (text, files, agentId, overrides, target) =>
                 this.routeMessage({text, files, agentId, overrides, target})
                     // Direct commands reject on purpose (no fallback to chat): report the reason the
@@ -1006,7 +1014,7 @@ export class LLMWorkspaceEditor implements IEditor {
                 if (event.type === 'branch:switched') {
                     this.invocationAbort.abort();
                     if (this.viewActive) this.invocationAbort = new AbortController();
-                    void this.stateManager.switchDraftBranch(event.payload.branchName).catch(error => console.error('Branch draft switch failed', error));
+                    void this.stateManager.switchDraftBranch(event.payload.branchName).then(() => this.independentCallPanel?.reset()).catch(error => console.error('Branch draft switch failed', error));
                 }
                 this.sessionEventHandler.handleSessionEvent(event);
             }
@@ -1101,7 +1109,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.chatInput?.cancelPendingSend?.();
         this.chatInput?.hideNativeModelPicker?.();
         ++this.activationRevision;
-        this.viewActive = false; this.invocationPanel?.setVisible(false);
+        this.viewActive = false; this.invocationPanel?.setVisible(false); this.independentCallPanel?.setVisible(false);
         this.submissionRecovery?.setActive(false);
         this.historyView?.setActive?.(false);
         if (this.refreshAgentsTimer) clearTimeout(this.refreshAgentsTimer);
@@ -1127,7 +1135,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.historyView.renderFull(loaded.snapshot.sessions);
         this.navigation.updatePrompts(loaded.snapshot.sessions);
         this.statusIndicator.updateFromSnapshot(loaded.snapshot);
-        this.invocationPanel?.setVisible(true);
+        this.invocationPanel?.setVisible(true); this.independentCallPanel?.setVisible(true);
         await this.chatInput.refreshConnections();
         if (!isCurrent()) return;
         await this.restorePrivilegedTaskAttachment();
@@ -1399,7 +1407,7 @@ export class LLMWorkspaceEditor implements IEditor {
             () => this.eventBinder?.cleanup(), () => this.directoryMenu?.destroy(),
             () => this.commandRegistry?.destroy(), () => this.navigation?.destroy(),
             () => this.timers.destroy(), () => this.historyPlugin?.deactivate(),
-            () => this.slashPlugin?.deactivate(), () => this.invocationPanel?.destroy(),
+            () => this.slashPlugin?.deactivate(), () => this.invocationPanel?.destroy(), () => this.independentCallPanel?.destroy(),
             () => this.instructionQueuePanel?.destroy(),
             () => this.submissionRecovery?.dispose(), () => this.draftRecovery?.dispose(),
             () => this.branchIndicator?.destroy(), () => this.statusIndicator?.destroy(),

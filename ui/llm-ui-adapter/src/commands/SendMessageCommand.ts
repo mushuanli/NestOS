@@ -1,3 +1,4 @@
+import {isDirectCommandInput} from './direct-command';
 // @file: llm-ui/commands/SendMessageCommand.ts
 
 
@@ -23,6 +24,7 @@ import {validateComposerFiles} from '../flows/composer-file-bindings';
 import {canConsumeContextDraft, prepareInputContextDraft, type InputContextDraft} from '../domain/context-draft';
 
 export interface SendMessageParams {
+    independentTitle?: string;
     draftConfig?: IChatInputConfig;
     context?: InputContextDraft;
     expectedBranch?: string;
@@ -100,6 +102,8 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
     protected async execute(params: SendMessageParams): Promise<boolean> {
         const config = structuredClone(params.draftConfig ?? this.ctx.chatInput.getConfig?.());
         const context = structuredClone(params.context ?? config?.context);
+        if (params.independentTitle && (!params.target || context || params.text.trim().startsWith('/') || isDirectCommandInput(params.text)))
+            throw new Error(t('callable.independent.unsupported'));
         const input = {...params, context, expectedBranch: params.expectedBranch ?? this.ctx.getBranch?.(), files: [...params.files], target: params.target ? {...params.target} : undefined,
             submission: structuredClone(params.submission), overrides: normalizeOverrides(params.overrides, this.ctx)};
         const restore = this.rejectedInputRestorer(input.text, input.agentId);
@@ -117,6 +121,7 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         const sessionId = this.ctx.getSessionId();
         if (!sessionId) throw new Error('No session loaded');
         const basis = [input.text, input.target ?? input.agentId, input.overrides, input.origin, input.historyPolicy,
+            ...(input.independentTitle ? [{independentTitle: input.independentTitle}] : []),
             ...(input.target && input.expectedBranch ? [input.expectedBranch] : [])];
         const key = canonicalSubmission(token ? [...basis, {draftToken: token}] : basis);
         const previous = this.pending;
@@ -132,7 +137,8 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
         if (!input.target) return;
         return this.ctx.operations?.getSnapshot().find(record => {
             if (record.conversationId !== sessionId || record.kind !== 'send' || record.status === 'rejected') return false;
-            const saved = record.input as {key?: string; draft?: unknown; request?: SubmissionRequest};
+            const saved = record.input as {key?: string; draft?: unknown; request?: SubmissionRequest; independentTitle?: string};
+            if (saved.independentTitle !== input.independentTitle) return false;
             if (saved.key === key && (record.status !== 'accepted' || saved.draft !== undefined)) return true;
             if (saved.draft || record.status === 'accepted' || !sameTargetRef(saved.request?.expectedTarget, input.target)
                 || saved.request?.expectedBranch !== input.expectedBranch) return false;
@@ -147,14 +153,14 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
             active.draft = active.config && await captureSubmissionDraft(active.config, active.input.files);
             if (active.pending.operation) {
                 const saved = active.pending.operation;
-                await this.accepted(active, await submitSessionCall(this.ctx, saved.request, saved.key, active.input.context, active.draft));
+                await this.accepted(active, await submitSessionCall(this.ctx, saved.request, saved.key, active.input.context, active.draft, active.input.independentTitle));
                 return true;
             }
             const prepared = await this.prepareSubmission(active);
             if (!prepared) return false;
             const {input, pending} = active;
             const id = input.target ? await submitSessionCall(this.ctx, typedRequest(input.target, prepared.text, prepared.attachments,
-                prepared.submission, input.overrides, input.origin, input.historyPolicy, input.expectedBranch), pending.key, input.context, active.draft)
+                prepared.submission, input.overrides, input.origin, input.historyPolicy, input.expectedBranch), pending.key, input.context, active.draft, input.independentTitle)
                 : await this.ctx.commands.execute<string>(SessionCommand.Send, legacyRequest(input, prepared));
             await this.accepted(active, id); return true;
         } catch (error) {return this.failed(active, error);}
@@ -199,12 +205,12 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
     }
 
     private async accepted(active: ActiveSend, acceptedId: string): Promise<void> {
-        const queue = await this.ctx.commands.execute<import('@itookit/llm-session/contracts').SessionInstructionQueue>(SessionCommand.GetInstructionQueue).catch(() => undefined);
-        if (queue?.items?.some(item => item.id === acceptedId && item.state !== 'dispatching')) this.ctx.historyView.setSubmission?.();
+        const queue = active.input.independentTitle ? undefined : await this.ctx.commands.execute<import('@itookit/llm-session/contracts').SessionInstructionQueue>(SessionCommand.GetInstructionQueue).catch(() => undefined);
+        if (active.input.independentTitle || queue?.items?.some(item => item.id === acceptedId && item.state !== 'dispatching')) this.ctx.historyView.setSubmission?.();
         else this.present(active, {state: 'accepted'});
         if (this.pending === active.pending) this.pending = undefined;
         const {input} = active;
-        if (input.target?.kind !== 'flow' && !input.overrides.flowId && this.ctx.getSessionId() === active.pending.sessionId)
+        if (!input.independentTitle && input.target?.kind !== 'flow' && !input.overrides.flowId && this.ctx.getSessionId() === active.pending.sessionId)
             this.ctx.chatInput.setConfig?.({settings: {executionMode: input.overrides.executionMode, executionModeLocked: true}});
     }
 
@@ -221,6 +227,7 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
     private previouslyAccepted(active: ActiveSend, message: string): false {
         if (this.pending === active.pending) this.pending = undefined;
         this.present(active, {state: 'accepted', error: undefined});
+        if (active.input.independentTitle && this.ctx.getSessionId() === active.pending.sessionId) this.ctx.historyView.setSubmission?.();
         Toast.info(message);
         return false;
     }

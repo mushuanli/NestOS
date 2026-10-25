@@ -293,6 +293,7 @@ export const ChatInputTemplates = {
                 <span class="llm-input__execution-source" title="${t('chatInput.nativeModelsHint')}" hidden>${t('chatInput.nativeModels')}</span>
                 <button type="button" class="llm-input__flow-configure" title="${t('chatInput.flowModelsHint')}" hidden>${t('chatInput.flowModels')}</button>
                 ${this.renderOptionsMenu()}
+                <button type="button" class="llm-input__btn" data-independent-call hidden>${t('callable.independent.run')}</button>
                 <button type="button" class="llm-input__btn llm-input__btn--send" title="${t('chatInput.send')} (Enter)" aria-label="${t('chatInput.send')}">${this.sendIcon()}</button>
                 <button type="button" class="llm-input__btn llm-input__btn--stop" title="${t('chatInput.stop')}" aria-label="${t('chatInput.stop')}" style="display:none;">${this.stopIcon()}</button>
             </div>

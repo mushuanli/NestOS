@@ -54,6 +54,7 @@ export interface ChatInputOptions {
     attachmentHint?: string;
     executorLocked?: boolean;
     maxAgentExchanges?: number;
+    onIndependentSend?: ChatInputOptions['onSend'];
     onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides, target?: TargetRef) => Promise<void | false>;
     requestCallTargets?(): Promise<RootTargetCatalog>;
     contextOptions?: ContextOptionsPort;
@@ -140,6 +141,7 @@ function sameContextScope(expected: ContextScope, current?: ContextScope): boole
 }
 
 interface ComposerSubmission {
+    independent?: boolean;
     text: string; submitted: string; executor: string; files: File[]; target?: TargetRef; revision: number;
     draftScope?: string;
     preparedToken?: string;
@@ -435,6 +437,8 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private applyAvailability(): void {
+        const independent = this.container.querySelector<HTMLButtonElement>('[data-independent-call]');
+        if (independent) {independent.hidden = !this.options.onIndependentSend; independent.disabled = !this.inputAvailable() || this.submitting > 0 || this.checkingConnection;}
         const command = isDirectCommandInput(this.textarea.value) || this.textarea.value.trimStart().startsWith('/');
         this.sendBtn.style.display = this.loading && !this.canQueue() && !this.canQuery() && !this.independentQueryAvailable() ? 'none' : 'flex';
         this.sendBtn.disabled = !this.inputAvailable() || this.submitting > 0 && !this.independentQueryAvailable() || this.checkingConnection || !!this.attachmentMgr?.images.busy || (!!this.connectionReadiness?.blocked && !command)
@@ -726,6 +730,9 @@ export class ChatInput implements IChatInputPresenter {
         this.streamToggle = q('.llm-input__stream-toggle');
         this.settingsPanel = q('.llm-input__settings-panel');
         this.flowIdInput = q('.llm-input__flow-id');
+        const independent = q<HTMLButtonElement>('[data-independent-call]');
+        independent.hidden = !this.options.onIndependentSend;
+        independent.addEventListener('click', () => {void this.triggerSend(true);});
         this.branchModeSelect = q('.llm-input__branch-mode');
         this.retentionModeSelect = q('.llm-input__retention-mode');
         this.fileInput = q('.llm-input__file-input');
@@ -1006,7 +1013,9 @@ export class ChatInput implements IChatInputPresenter {
         } finally {this.restoringRecovery = false;}
     }
 
-    private async triggerSend(): Promise<void> {
+    private async triggerSend(independent = false): Promise<void> {
+        if (independent && (!this.options.onIndependentSend || !this.config.target || this.config.context || this.config.agentId.startsWith('remote:')
+            || isCommandInput(this.textarea.value.trim()) || isDirectCommandInput(this.textarea.value.trim()))) {Toast.error(t('callable.independent.unsupported')); return;}
         if (!this.inputAvailable() || this.checkingConnection || this.submitting > 0 && !this.independentQueryAvailable()) return;
         const text = this.textarea.value.trim();
         const unavailable = this.targetIssue();
@@ -1014,7 +1023,7 @@ export class ChatInput implements IChatInputPresenter {
         if (!text && this.files.length === 0 && !this.agentFlow() && !this.config.settings.flowId) return;
         if (this.loading && !this.canQueue() && !this.canQuery() && !this.independentQueryAvailable() && !/^\/(flow|cancel|approve|resume)(?:\s|$)/.test(text)) return;
 
-        if (this.config.agentId.startsWith('remote:')) { await this.submitDraft(text); return; }
+        if (this.config.agentId.startsWith('remote:')) { await this.submitDraft(text, independent); return; }
 
         // ✨ before 钩子
         for (const plugin of this.plugins) {
@@ -1024,12 +1033,12 @@ export class ChatInput implements IChatInputPresenter {
 
         if (this.requiresConnection() && !isDirectCommandInput(text) && !await this.checkConnectionBeforeSend(text)) return;
 
-        await this.submitDraft(text);
+        await this.submitDraft(text, independent);
     }
 
-    private async submitDraft(text: string): Promise<void> {
+    private async submitDraft(text: string, independent = false): Promise<void> {
         if (this.attachmentMgr.images.busy) return;
-        const send = this.captureSubmission(text);
+        const send = {...this.captureSubmission(text), independent};
         ++this.submitting; this.applyAvailability();
         try {
             if (!await this.prepareSubmission(send)) return;
@@ -1058,8 +1067,10 @@ export class ChatInput implements IChatInputPresenter {
     private async deliverSubmission(send: ComposerSubmission): Promise<boolean> {
         if (send.preparedToken !== this.currentDraftToken()) return false;
         const {text, files, executor, overrides, target} = send;
-        return (target ? await this.options.onSend(text, files, executor, overrides, target)
-            : await this.options.onSend(text, files, executor, overrides)) !== false;
+        const deliver = send.independent ? this.options.onIndependentSend : this.options.onSend;
+        if (!deliver) return false;
+        return (target ? await deliver(text, files, executor, overrides, target)
+            : await deliver(text, files, executor, overrides)) !== false;
     }
 
     private completeSubmission(send: ComposerSubmission): void {

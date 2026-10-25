@@ -1,5 +1,5 @@
 import type {OperationLedger, OperationReceipt} from '@itookit/llm-ui';
-import {SessionCommand, type SessionInstructionQueue, type SubmissionRequest} from '@itookit/llm-session/contracts';
+import {IndependentCallCommand, type IndependentCallReceipt, SessionCommand, type SessionInstructionQueue, type SubmissionRequest} from '@itookit/llm-session/contracts';
 import {createModuleLogger, t} from '@itookit/common';
 import type {CommandContext} from './CommandContext';
 import {sameContextDraftEvidence, type InputContextDraft} from '../domain/context-draft';
@@ -9,21 +9,22 @@ import {canonicalJson as canonicalSubmission} from '../utils/canonical-json';
 const log = createModuleLogger('workspace-submission');
 
 /** The existing operation ledger records input before dispatch; queue acceptance can beat a suspended RPC. */
-export async function submitSessionCall(ctx: CommandContext, request: SubmissionRequest, key: string, contextDraft?: InputContextDraft, draft?: SubmissionDraft): Promise<string> {
+export async function submitSessionCall(ctx: CommandContext, request: SubmissionRequest, key: string, contextDraft?: InputContextDraft, draft?: SubmissionDraft, independentTitle?: string): Promise<string> {
     const operationId = request.submission!.id, sessionId = ctx.getSessionId(), ledger = submissionLedger(ctx);
     request = structuredClone({...request, expectedSessionId: sessionId});
     contextDraft = structuredClone(contextDraft);
     draft = structuredClone(draft);
     const previous = ledger.getSnapshot().find(record => record.context.operationId === operationId);
     if (previous) {
-        const saved = structuredClone(previous.input) as {request?: unknown; contextDraft?: unknown; draft?: unknown};
+        const saved = structuredClone(previous.input) as {request?: unknown; contextDraft?: unknown; draft?: unknown; independentTitle?: string};
+        if (saved.independentTitle !== independentTitle) throw failure('CALL_SUBMISSION_CONFLICT');
         if (canonicalSubmission(saved.request) !== canonicalSubmission(request)) throw failure('CALL_SUBMISSION_CONFLICT');
         return reconcilePreviousCall(ctx, operationId, saved.contextDraft, contextDraft,
             sameSubmissionDraft(saved.draft, draft));
     }
     await ledger.register({context: {viewId: sessionId, operationId}, conversationId: sessionId, kind: 'send', status: 'submitting',
-        input: JSON.parse(JSON.stringify({key, request, ...(draft ? {draft} : {}), ...(contextDraft ? {contextDraft: structuredClone(contextDraft)} : {})}))});
-    return dispatch(ctx, request, sessionId, ledger);
+        input: JSON.parse(JSON.stringify({key, request, ...(independentTitle ? {independentTitle} : {}), ...(draft ? {draft} : {}), ...(contextDraft ? {contextDraft: structuredClone(contextDraft)} : {})}))});
+    return dispatch(ctx, request, sessionId, ledger, independentTitle);
 }
 
 async function reconcilePreviousCall(ctx: CommandContext, operationId: string, evidence: unknown, current?: InputContextDraft, sameDraft = true): Promise<string> {
@@ -47,7 +48,7 @@ function submissionLedger(ctx: CommandContext): OperationLedger {
     return ledger;
 }
 
-async function dispatch(ctx: CommandContext, request: SubmissionRequest, sessionId: string, ledger: OperationLedger): Promise<string> {
+async function dispatch(ctx: CommandContext, request: SubmissionRequest, sessionId: string, ledger: OperationLedger, independentTitle?: string): Promise<string> {
     const operationId = request.submission!.id, started = Date.now();
     return new Promise<string>((resolve, reject) => {
         let release = () => {}, finished = false;
@@ -61,30 +62,31 @@ async function dispatch(ctx: CommandContext, request: SubmissionRequest, session
             else reject(failure(receipt.status === 'rejected' ? receipt.code ?? 'CALL_SUBMISSION_REJECTED' : 'CALL_SUBMISSION_UNKNOWN', actual.status === 'unknown' ? 'unknown' : undefined, actual.message));
         };
         const settle = async (receipt: OperationReceipt) => {await ledger.settle(receipt); complete(receipt);};
-        release = observeAdmission(ctx, request, sessionId, ledger, () => complete({status: 'accepted', operationId}));
+        release = observeAdmission(ctx, request, sessionId, ledger, () => complete({status: 'accepted', operationId}), independentTitle);
         const saved = ledger.getSnapshot().find(record => record.context.operationId === operationId)!;
         if (saved.status === 'accepted') complete({status: 'accepted', operationId});
         else if (saved.status === 'rejected') complete({status: 'rejected', operationId, code: 'CALL_SUBMISSION_REJECTED', message: saved.message ?? t('callable.submission.rejected')});
         else if (saved.status === 'unknown') complete({status: 'unknown', operationId, message: t('callable.submission.unknown')});
-        else void deliver(ctx, request, settle).catch(fail);
+        else void deliver(ctx, request, settle, independentTitle).catch(fail);
     });
 }
 
-async function deliver(ctx: CommandContext, request: SubmissionRequest, settle: (receipt: OperationReceipt) => Promise<void>): Promise<void> {
+async function deliver(ctx: CommandContext, request: SubmissionRequest, settle: (receipt: OperationReceipt) => Promise<void>, independentTitle?: string): Promise<void> {
     const operationId = request.submission!.id;
     try {
-        const id = await ctx.commands.execute<string>(SessionCommand.Submit, request);
+        const id = independentTitle ? acceptedIndependentId(request, await ctx.commands.execute<IndependentCallReceipt>(IndependentCallCommand.Submit, {request, title: independentTitle}))
+            : await ctx.commands.execute<string>(SessionCommand.Submit, request);
         if (id !== operationId) throw failure('CALL_SUBMISSION_RECEIPT_MISMATCH', 'unknown');
         await settle({status: 'accepted', operationId});
     } catch (error) {
-        if (await accepted(ctx, request).catch(() => false)) return settle({status: 'accepted', operationId});
+        if (await accepted(ctx, request, independentTitle).catch(() => false)) return settle({status: 'accepted', operationId});
         const code = rejectionCode(error);
         await settle(code ? {status: 'rejected', operationId, code, message: (error as Error).message}
             : {status: 'unknown', operationId, message: t('callable.submission.unknown')});
     }
 }
 
-function observeAdmission(ctx: CommandContext, request: SubmissionRequest, sessionId: string, ledger: OperationLedger, onAccepted: () => void): () => void {
+function observeAdmission(ctx: CommandContext, request: SubmissionRequest, sessionId: string, ledger: OperationLedger, onAccepted: () => void, independentTitle?: string): () => void {
     const operationId = request.submission!.id;
     let closed = false, checking = false, requested = false;
     const stopLedger = ledger.subscribe(() => {
@@ -99,14 +101,15 @@ function observeAdmission(ctx: CommandContext, request: SubmissionRequest, sessi
             code: rejectionCode(error) ?? 'SUBMISSION_RECEIPT_READ_FAILED', durationMs: Date.now() - started}))
             .finally(() => {checking = false; if (requested) check();});
     };
-    const stopQueue = ctx.observeInstructions!(queue => {
+    const stopQueue = independentTitle ? () => {} : ctx.observeInstructions!(queue => {
         if (closed || !queueAccepted(queue, request, sessionId)) return;
         requested = true; check();
     });
     return () => {closed = true; stopLedger(); stopQueue();};
 }
 
-async function accepted(ctx: CommandContext, request: SubmissionRequest): Promise<boolean> {
+async function accepted(ctx: CommandContext, request: SubmissionRequest, independentTitle?: string): Promise<boolean> {
+    if (independentTitle) return independentReceipt(request, await ctx.commands.execute<IndependentCallReceipt>(IndependentCallCommand.Inspect, {request, title: independentTitle})).status === 'accepted';
     if (!ctx.reconcileSubmission) throw failure('CALL_SUBMISSION_PORT_UNAVAILABLE');
     const receipt = await ctx.reconcileSubmission(request);
     if (!receipt || receipt.operationId !== request.submission?.id || !['accepted', 'unknown'].includes(receipt.status))
@@ -116,10 +119,11 @@ async function accepted(ctx: CommandContext, request: SubmissionRequest): Promis
 
 export async function reconcileSessionCall(ctx: CommandContext, operationId: string): Promise<OperationReceipt> {
     const record = ctx.operations?.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send');
-    const request = structuredClone((record?.input as {request?: SubmissionRequest} | undefined)?.request);
+    const frozen = record?.input as {request?: SubmissionRequest; independentTitle?: string} | undefined;
+    const request = structuredClone(frozen?.request);
     if (!record || !request || record.conversationId !== ctx.getSessionId()) throw failure('CALL_SUBMISSION_PORT_UNAVAILABLE');
     if (record.status === 'rejected') return {operationId, status: 'rejected', code: 'CALL_SUBMISSION_REJECTED', message: record.message ?? t('callable.submission.rejected')};
-    const receipt: OperationReceipt = record.status === 'accepted' || await accepted(ctx, request)
+    const receipt: OperationReceipt = record.status === 'accepted' || await accepted(ctx, request, frozen?.independentTitle)
         ? {operationId, status: 'accepted'} : {operationId, status: 'unknown', message: t('callable.submission.unknown')};
     await ctx.operations!.settle(receipt);
     const actual = ctx.operations!.getSnapshot().find(item => item.context.operationId === operationId)!;
@@ -147,4 +151,17 @@ function rejectionCode(error: unknown): string | undefined {
         'CONTEXT_DRAFT_INVALID', 'CONTEXT_DRAFT_SCOPE_CHANGED', 'CONTEXT_DRAFT_SELECTION_CHANGED'];
     return typeof code === 'string' && (contextRejections.includes(code)
         || /^(CALL_TARGET_|CALLABLE_|SUBMISSION_|FLOW_INPUT_|QUEUE_(CONFLICT|READ_ONLY|INVALID|BRANCH_CHANGED))/.test(code)) ? code : undefined;
+}
+
+function independentReceipt(request: SubmissionRequest, receipt: IndependentCallReceipt): IndependentCallReceipt {
+    if (!receipt || receipt.operationId !== request.submission!.id || receipt.callerSessionId !== request.expectedSessionId
+        || !['unknown', 'accepted'].includes(receipt.status) || receipt.status === 'accepted'
+            && (!receipt.executionSessionId || receipt.executionSessionId === receipt.callerSessionId))
+        throw failure('CALL_SUBMISSION_RECEIPT_MISMATCH', 'unknown');
+    return receipt;
+}
+
+function acceptedIndependentId(request: SubmissionRequest, receipt: IndependentCallReceipt): string {
+    if (independentReceipt(request, receipt).status !== 'accepted') throw failure('CALL_SUBMISSION_UNKNOWN', 'unknown');
+    return receipt.operationId;
 }

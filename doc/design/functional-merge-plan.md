@@ -96,7 +96,7 @@ C4Component
 | F13 | 不可变输入附件与内容身份 | Session + app-core | B02 | 已合入 `937fe32b` / `a2989fc4`；Session 冻结、宿主上传核对和 UI 不可变写闭环；远程编码及长期回收另列 |
 | F14 | 通用文件参数与就绪预检 | app-core + Flow + UI | F11 / F13 | 已合入 `a2989fc4`；文件表单、默认/空文件、真实上传、接纳/编辑/派发前核验；原回执查询不重读损坏输入 |
 | F15 | Harness 资产编码与能力准入 | app-core + adapter + driver | F13 / F14 | 本批合入；普通 Session 与 Flow 声明附件贯通，能力/摘要错误在 create/turn 前拒绝，原操作核对不重读输入；见第 13 节 |
-| F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；宿主子 Session 路由见第 26 节；父级 Flow 卡片跨 Session 观察/控制/导航见第 27 节；独立 Flow 提交台账见第 28 节；其余函数入口与视图仍未完成 |
+| F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；宿主子 Session 路由见第 26 节；父级 Flow 卡片跨 Session 观察/控制/导航见第 27 节；独立 Flow 提交台账见第 28 节；统一 Agent/Flow 路由与 CLI 见第 37—38 节，父级查询与默认工作台入口见第 39—40 节；裸 Task、独立 ChatView 及父级通用控制仍未完成 |
 | F17 | Flow 控制树与调度屏障 | Flow + Kernel + UI/CLI | F02 / F16 | Flow 控制屏障由 `dc20beb2` 合入；UI 卡片/详情接线见第 18 节，CLI 显式入口见第 19 节；历史回执与卡片跨视图恢复见第 20—21 节；独立 DAG 页共用控制与持久台账见第 23 节；代码及隔离组合验收完成，证据见第 24 节，生产远端单列验收 |
 | F18 | 长活 Effect 审批准入 | Kernel + Harness adapter | F02 / F06 | 本批合入；新审批转发与暂停同事务校验，held 不转成 unknown，见第 17 节 |
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
@@ -104,7 +104,7 @@ C4Component
 | F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 精确检查点与 fork 执行见第 32 节；选择入口及真实节点验收继续随 F22 推进 |
 | F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 宿主目录、Session 冻结与派发见第 33 节；默认工作台选择及草稿证据见第 34 节；独立 ChatView 控件及真实远端验收保留 |
 | F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 宿主读取链路见第 30 节；从终态输出派生，核对范围和摘要，不另建结果注册表；UI 随 F24 验收 |
-| F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节；完整调用组及复杂输出性能仍待验收 |
+| F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节，独立 Agent/Flow 父级摘要见第 40 节；完整调用组及复杂输出性能仍待验收 |
 | F25 | Flow 调度所有权竞态修复 | llm-flow | 无 | 已合入 `0bcfa29e`；竞争失败者不终结胜者，接纳丢回执不误清理工作区 |
 
 F03 已独立合入原有记录的写入核对，且修复延迟 load 回退 CAS 游标；F04 再加入队列修订保护。查询结果校验仍随 F05 合入。公共能力表只随该功能加入所需方法，避免一次暴露尚未接通的全部端口。
@@ -896,3 +896,32 @@ C4Component
 查询不另存执行状态；路由存在不代表子调用已接纳。Round 的会话、提交、来源和调用方必须全部匹配，错误归属明确拒绝。主执行按 role 选取，不能假设 executions 第一项就是主任务。摘要仅用于显示，不作为 Flow 输出端口或后续上下文。查询失败记录阶段、分类与耗时，不记录输入、输出或原异常正文。
 
 验收覆盖普通模型 Agent 的实际终态与输出、只读查询、未初始化调用方、错误分支/未知字段、调用方隔离、返回对象隔离、摘要上限及伪造 Round 归属拒绝。本接口是展示基础，尚未接通父卡片与独立运行按钮；父级控制、分页及大历史性能验收仍待实施，不将 F16 标记为完成。
+
+
+## 40. F16 默认工作台独立调用入口与父级卡片
+
+默认工作台提供显式「独立运行」，普通发送/Enter 继续在当前 Session 提交。两者复用 ChatInput 参数确认、附件准备、草稿保存和 SendMessageCommand；独立模式写入同一 OperationLedger 的冻结输入，再调用 session.call.submit，不另建发送台账或执行状态库。只接收已发布 Agent/Flow；直接命令和显式原生上下文选择要求使用普通入口或先清除选择，不静默改变含义。
+
+```mermaid
+C4Component
+  title UI 独立调用接纳与展示
+  Component(input, "ChatInput", "输入表示", "同一草稿与参数确认，显式独立运行")
+  Component(send, "SendMessageCommand", "应用适配", "冻结调用模式及请求")
+  ContainerDb(ledger, "OperationLedger", "既有宿主持久 UI 记录", "原操作、草稿证据、接纳回执")
+  Component(host, "IndependentCallService", "宿主 Session 语义", "持久路由与子队列接纳")
+  Component(panel, "IndependentCallPanel", "通用展示组件", "只读事实、原输入、终态摘要、子会话导航")
+  Component(child, "子会话视图", "既有 UI", "完整历史、审批和执行控制")
+  Rel(input, send, "共享输入准备后提交")
+  Rel(send, ledger, "先登记冻结输入")
+  Rel(send, host, "submit / inspect")
+  Rel(panel, host, "按调用方分支 list")
+  Rel(panel, ledger, "完整请求与标题匹配后确认接纳")
+  Rel(ledger, send, "释放仍悬挂的提交 RPC 等待")
+  Rel(panel, child, "打开实际 executionSessionId")
+```
+
+父队列通知不证明独立子调用接纳。父卡片只根据原 request/title 与真实接纳核对同一台账，不为清空草稿伪造父历史；不等待父队列查询。迟到回执只消费匹配的草稿证据，保留后来编辑的输入。卡片按原发起锚点挂载，结果明确为摘要；等待交互提示打开真实子会话。Agent/Flow 共用展示，组件放在 components 层；不能将普通 Agent 的 Task 交给 Flow 专属运行控制器。
+
+轮询由视图持有，活跃/未核对时每秒、空闲每 30 秒，焦点恢复刷新。隐藏不继续派发查询，销毁释放订阅/卡片，分支切换清理旧卡片，迟到响应不得重挂载。列表失败保留诊断分类，不记录输入或原异常正文。
+
+验收覆盖原 submit RPC 悬挂时从持久列表接纳、完整请求/标题/归属不符不消费、HTML 作为文字展示、子会话导航、纯参数提交复用表单、等待期间新草稿保留、普通发送行为不变及轮询生命周期。父卡片直接暂停/取消、产物专用展示、独立 ChatView 对等接入、分页/大型历史、真实远端部署验收仍未完成；不据此宣称 F16 或整体实施完成。

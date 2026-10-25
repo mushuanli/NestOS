@@ -177,3 +177,5 @@ Flow 参数表单只收集连接覆盖；必需槽位留空表示继承声明或
 默认原生工作台的 NativeInstructionQueuePanel 直接适配 ConversationControls 与独立 InstructionQueueView，不伪造 SessionCommandBus。awaitNativeAdmission 只缩短当前 UI 的接纳等待：订阅原 operationId 的持久事实后再派发，接纳可先于 RPC 返回，迟到结果不参与后续草稿消费；销毁只终止视图等待，不取消或重发原生操作。
 
 独立 native binding 的 send/串行命令使用当前快照 canQueue 决定 enqueue，不能仅检查方法存在；原生首轮仍可走 send。OperationContext.operationId 贯穿原生接纳与队列回执，同一 OperationLedger 接收持久接纳；队列记录不伪造成历史消息。历史只按实际 turn 关联同 conversation 的发送或 prompt 命令，action 命令不能归属用户轮次。
+
+独立原生视图通过 nativeQueueToolbar 挂载同一 NativeInstructionQueuePanel；仅暴露队列 read/edit 端口，不把 native controls 注入独立聊天库。队列结果按绑定代次投影，隐藏时只读，恢复后重新依据 canQueue；编辑采用已展示修订，控制与队列编辑不写提交台账。组合工具栏保留宿主生命周期，destroy 复用同一 Promise。

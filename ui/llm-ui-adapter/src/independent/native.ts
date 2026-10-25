@@ -1,3 +1,4 @@
+import {createNativeQueuePort, nativeQueueToolbar} from './native-queue';
 import type {OperationRecord} from '@itookit/llm-ui';
 import {createModuleLogger} from '@itookit/common';
 import {createImageChatView, type ImageChatOptions} from './image-chat-view';
@@ -152,11 +153,24 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         } : undefined,
     };
     return { images: options.images, source: Object.assign(source, { refresh }), actions, operations: options.operations,
+        instructionQueue: createNativeQueuePort(options.controls, () => native, async action => {
+            if (closed) throw Object.assign(new Error('Native queue binding closed'), {code: 'QUEUE_VIEW_CLOSED'});
+            const captured = generation, state = await action();
+            if (closed) throw Object.assign(new Error('Native queue binding closed'), {code: 'QUEUE_VIEW_CLOSED'});
+            publishResponse(state, captured); return state;
+        }),
         dispose() { if (closed) return; closed = true; lifetime.abort(); ++generation; capabilities.dispose(); releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]); } };
 }
-export function createNativeChatView(container: HTMLElement, binding: Awaited<ReturnType<typeof createNativeChatBinding>>,
+export async function createNativeChatView(container: HTMLElement, binding: Awaited<ReturnType<typeof createNativeChatBinding>>,
     options: ImageChatOptions = {}) {
-    return createImageChatView(container, {...options, source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
+    const queue = nativeQueueToolbar(binding.instructionQueue, options);
+    const view = await createImageChatView(container, {...options, source: binding.source, actions: binding.actions,
+        operations: binding.operations, mountToolbar: queue.mount}, options.images ?? binding.images);
+    const active = view.setActive.bind(view), destroy = view.destroy.bind(view);
+    let closing: Promise<void> | undefined;
+    view.setActive = value => {if (closing) return; queue.setActive(value); active(value);};
+    view.destroy = () => closing ??= (async () => {queue.setActive(false); await destroy();})();
+    return view;
 }
 function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger, state: NativeSnapshot, conversationId: string): ChatMessage {
     const submission = state.instructionQueue?.submissions?.find(item => item.turnId && item.turnId === message.turnId);

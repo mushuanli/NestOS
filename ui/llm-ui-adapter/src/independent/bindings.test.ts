@@ -245,8 +245,8 @@ it('rejects a native attachment read finishing after binding disposal', async ()
 
 it('assembles image preprocessing and metadata persistence when creating a native ChatView', async () => {
     const {createChatView} = await import('@itookit/llm-ui'), {createNativeChatView} = await import('./native');
-    const host = fixture(), close = vi.fn(async () => {}), dispose = vi.fn(async () => {});
-    vi.mocked(createChatView).mockResolvedValueOnce({destroy: close} as never);
+    const host = fixture(), close = vi.fn(async () => {}), dispose = vi.fn(async () => {}), setActive = vi.fn();
+    vi.mocked(createChatView).mockResolvedValueOnce({destroy: close, setActive} as never);
     let uploadId = 0;
     const upload = vi.fn(async (file: File) => ({id: file.name + ++uploadId, name: file.name, mimeType: file.type}));
     const saveMetadata = vi.fn(async () => {});
@@ -258,7 +258,9 @@ it('assembles image preprocessing and metadata persistence when creating a nativ
     const original = new File(['original'], 'image.png', {type: 'image/png'}), prepared = await options.imageEditing!.prepare!(original, {signal});
     const ref = await options.upload!(prepared, {signal}); await options.imageEditing!.uploaded!(prepared, ref, {signal});
     expect(upload).toHaveBeenCalledTimes(2); expect(saveMetadata).toHaveBeenCalledWith(ref, expect.objectContaining({original: expect.objectContaining({id: 'image.png2'})}));
-    await view.destroy(); await view.destroy(); expect(close).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled(); binding.dispose();
+    view.setActive(false); expect(setActive).toHaveBeenCalledWith(false);
+    const closing = view.destroy(); view.setActive(true); expect(setActive).toHaveBeenCalledTimes(1);
+    expect(view.destroy()).toBe(closing); await closing; expect(close).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled(); binding.dispose();
 });
 
 it('does not associate another conversation or an action command with the current user turn', async () => {

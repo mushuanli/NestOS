@@ -92,3 +92,7 @@ ApplicationRuntime 为所有 Session 视图注入同一个 `SessionExecutionActi
 ### 独立 ChatView 的原生台账
 
 原生适配器把队列 acceptedIds/submissions 和原提交回执投影到同一 OperationLedger，持久接纳可释放尚未返回的旧发送。UI 仅在 canQueue 为真时调用 enqueue，首轮和未声明排队的端点继续 send；两者都传递稳定 operationId。队列本身不生成历史气泡，真实 turn 到达后按同 conversation、提交身份及 turn 关联，action 命令不占用用户提问。新草稿与旧传输结果分别处理，迟到成功或失败均不消费下一条输入。
+
+### 独立原生视图的队列编辑区
+
+createNativeChatView 经工具栏挂载同一 NativeInstructionQueuePanel，绑定 read/edit 最小端口；队列编辑携带显示修订，原发送悬挂不阻塞。工具栏保留宿主挂载、更新和销毁回调，视图隐藏后禁用队列操作，恢复时重新应用 canQueue，重复销毁共享同一 Promise。队列编辑不生成 Submission 或用户历史，迟到结果按原视图代次处理。

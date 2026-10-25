@@ -7,7 +7,8 @@ import {instructionQueueLabels} from './instruction-queue-labels';
 export class NativeInstructionQueuePanel {
     private readonly view: InstructionQueueView;
     private readOnly = false;
-    constructor(element: HTMLElement, controls: ConversationControls, show: (snapshot: ConversationSnapshot) => Promise<void>) {
+    constructor(element: HTMLElement, controls: Pick<ConversationControls, 'read' | 'editInstructionQueue'>,
+        show: (snapshot: ConversationSnapshot) => Promise<void>) {
         const apply = async (snapshot: ConversationSnapshot): Promise<InstructionQueueSnapshot> => {
             await show(snapshot);
             const queue = this.project(snapshot);

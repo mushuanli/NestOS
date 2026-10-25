@@ -2,10 +2,13 @@ import {expect, it} from 'vitest';
 import {sha256HexSync} from '@itookit/llm-context';
 import {prepareHarnessInput, harnessInputDigest} from '../llm-management/contracts/harness-input';
 import type {HarnessConnectionSnapshot} from '../llm-management/contracts/harness-execution';
+import type {HarnessContextRequest} from '../llm-management/contracts/context-binding';
 import {HarnessProgram} from './harness-program';
 
 const connection: HarnessConnectionSnapshot = {id: 'native', name: 'Native', kind: 'harness', nodeConnectionId: 'node',
     projectId: 'project', profileId: 'profile', version: 1, revision: 1, project: {}};
+const basis = {invocationId: 'call', branchId: 'main', targetRef: 'agent@1', scopeRef: 'conversation', policyRef: 'policy',
+    workspaceRef: 'workspace', memoryPolicyRef: 'native-inherited'};
 const file = {kind: 'text' as const, name: 'notes.txt', content: 'original', mimeType: 'text/plain'};
 
 it('keeps file boundaries, supplies attachment-only input and preserves legacy plain-text identity', () => {
@@ -14,6 +17,27 @@ it('keeps file boundaries, supplies attachment-only input and preserves legacy p
     expect(harnessInputDigest({prompt: 'legacy'})).toBe(sha256HexSync('legacy'));
     expect(() => prepareHarnessInput({prompt: 'Review', attachments: [file, {...file, content: 'changed'}]}))
         .toThrow('HARNESS_ATTACHMENT_NAME_CONFLICT');
+});
+
+it('checks actual canonical input against the host snapshot digest before starting an Effect', () => {
+    const messages = [{role: 'user', content: 'Review', attachments: [{type: 'text', name: file.name, source: file.content}]}];
+    const digest = sha256HexSync(JSON.stringify(messages));
+    const context: HarnessContextRequest = {...basis, conversation: {mode: 'new'}, input: {mode: 'host-assembled', snapshotRef: 'snapshot', digest}};
+    const input = {connection, context, messages, contextSnapshot: {id: 'snapshot', digest} as never};
+    expect(new HarnessProgram().init(input).next.type).toBe('wait');
+    expect(() => new HarnessProgram().init({...input, messages: [{...messages[0], attachments: [{...messages[0].attachments[0], source: 'changed'}]}]}))
+        .toThrow('HARNESS_CONTEXT_DIGEST_MISMATCH');
+    expect(() => new HarnessProgram().init({...input, dependencies: [{taskId: 'worker', input: 'result'}]}))
+        .toThrow('HARNESS_CONTEXT_DEPENDENCIES_UNSNAPSHOTTED');
+});
+
+it('pins native incremental file data and rejects a changed file under the same context reference', () => {
+    const prepared = prepareHarnessInput({prompt: 'Review', attachments: [file]});
+    const context: HarnessContextRequest = {...basis, input: {mode: 'native-continuation', inputRef: 'input', digest: harnessInputDigest(prepared)},
+        conversation: {mode: 'fork', sourceBindingId: 'binding', expectedBindingRevision: 1, expectedGeneration: 1, checkpointRef: 'turn'}};
+    expect(new HarnessProgram().init({connection, context, ...prepared}).next.type).toBe('wait');
+    expect(() => new HarnessProgram().init({connection, context, ...prepared, attachments: [{...file, content: 'changed'}]}))
+        .toThrow('HARNESS_INPUT_DIGEST_MISMATCH');
 });
 
 it('retains selected immutable asset references and rejects conflicting or malformed sources', () => {

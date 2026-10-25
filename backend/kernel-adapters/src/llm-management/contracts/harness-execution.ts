@@ -42,6 +42,7 @@ export interface HarnessExecutionRequest {
     attachments?: HarnessInputAttachment[];
     resourceHandleId: string;
     notificationKey: string;
+    context?: import('./context-binding').HarnessContextRequest;
 }
 
 /** Target adapters resolve authorized immutable assets before applying native inline limits. */
@@ -54,6 +55,7 @@ export interface HarnessExecutionResult {
     sessionId: string;
     turnId: string;
     usage?: JsonValue;
+    contextBinding?: import('./context-binding').ContextBindingRef;
 }
 
 /** Persisted notification/response channels keep interactions inside the active cancellable Effect. */
@@ -61,7 +63,6 @@ export interface HarnessInteractionNotification {
     id: string;
     kind: 'approval' | 'input';
     prompt: string;
-    attachments?: HarnessInputAttachment[];
     payload?: JsonValue;
 }
 

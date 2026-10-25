@@ -1,3 +1,4 @@
+import {createHarnessContextCleanup} from '../projects/harness-context-cleanup';
 import {createAgentPublicationDependencies} from '../configuration/agent-publications';
 import {FlowInstallationService} from '../configuration/flow-installation';
 import {FlowToolPackages} from '../configuration/flow-tool-packages';
@@ -273,6 +274,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             harnessExecution: createHarnessExecutionProvider(executionConnections, {
                 readTaskAsset: createTaskAssetReader(() => harnessKernel!.kernel, systemFS),
                 stateForCleanup: createHarnessCleanupState(() => harnessKernel!.kernel, id => ensureHarnessWrite(id)),
+                settleContextForCleanup: createHarnessContextCleanup(() => harnessKernel!.kernel, id => ensureHarnessWrite(id)),
             }),
             systemFS,
             contextEngineOptions: options.contextEngineOptions,

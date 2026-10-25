@@ -132,3 +132,5 @@ AgentDefinition.execution 可声明普通 Agent 或 Flow 引用（flowId、可�
 厂商参考价统一记录在 ../device-llm/src/catalogs/model-prices.json，覆盖全部内置 Provider，保留来源、reviewedAt、原币种/单位及价格条件；只经可选 presets 注入 reference_catalog。getPricingConfig 返回参考目录副本，与可编辑 model_pricing 账本费率独立；精确匹配 Provider/模型 ID，不换汇、不套用名称相似项或上游直供价。无可核实价格时记录 unverified/account/subscription/variable，不当作零价。新增 Provider 须补参考目录记录，厂商网页不进入 UI 或机制入口依赖。
 
 Provider 支持目录、模型/价格/接口资料的权威定义在 device-llm；kernel-adapters/contracts 复用 device-llm/contracts 的纯契约。禁止在本包重新建立同一厂家目录或全局注册器，MindOS 的 Agent、默认连接及宿主存储保持应用策略。
+
+- Harness 上下文契约在 contracts/context-binding：Invocation、绑定、原生 thread 和操作身份分开。HarnessProgram 的 host-assembled 输入必须持久保存同 ID/摘要的 contextSnapshot 依据，并核对实际 canonical messages 的 SHA-256；native-continuation 只允许增量 prompt 与附件，不能再注入完整 messages。有附件的增量摘要覆盖规范化 prompt 和实际附件字节；无附件保持旧 prompt 摘要。上下文已冻结时禁止自动追加未计入快照的依赖输出，须在装配前显式纳入。绑定持久状态及原生能力协商由宿主实现，不把本地 CAS 或 resume/fork 布尔能力当作原生 head 条件写保证。

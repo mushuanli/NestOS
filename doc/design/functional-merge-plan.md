@@ -100,8 +100,8 @@ C4Component
 | F17 | Flow 控制树与调度屏障 | Flow + Kernel + UI/CLI | F02 / F16 | Flow 控制屏障由 `dc20beb2` 合入；UI 卡片/详情接线见第 18 节，CLI 显式入口见第 19 节；历史回执与卡片跨视图恢复见第 20—21 节；独立 DAG 页共用控制与持久台账见第 23 节；代码及隔离组合验收完成，证据见第 24 节，生产远端单列验收 |
 | F18 | 长活 Effect 审批准入 | Kernel + Harness adapter | F02 / F06 | 本批合入；新审批转发与暂停同事务校验，held 不转成 unknown，见第 17 节 |
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
-| F20 | 独立上下文 binding 与清理 | app-core + adapter | F16 / F19 | 待合入；集合 CAS，journal 与原生身份关联，旧结果不释放新所有者 |
-| F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 待合入；检查点归属与真实 head，错误边界不补发 turn |
+| F20 | 独立上下文 binding 与清理 | app-core + adapter | F16 / F19 | 执行与清理内核见第 32 节；集合 CAS、journal 与原生身份关联已接线；Session 入口与目录随 F22 继续 |
+| F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 精确检查点与 fork 执行见第 32 节；选择入口及真实节点验收继续随 F22 推进 |
 | F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 待合入；只读目录不取 writer，切目标/分支及迟到接纳保留当前草稿 |
 | F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 宿主读取链路见第 30 节；从终态输出派生，核对范围和摘要，不另建结果注册表；UI 随 F24 验收 |
 | F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节；完整调用组及复杂输出性能仍待验收 |
@@ -693,3 +693,33 @@ C4Component
 错误只出现在对应产物区，不修改执行终态、队列或提交台账，也不清除草稿。诊断记录操作身份、阶段、结果和安全错误码，不记录文件正文。目录与下载继续使用第 30 节宿主实现，未导入远端文件保持不可用。
 
 隔离验证包括中文/多页拼接、摘要损坏、大小限制、DOM 转义、迟到读取、隐藏停止分页、显示后重载、执行切换 URL 回收、嵌套事件隔离，以及真实子 Flow 的父卡片读取执行归属。完整调用组的信息层级、复杂输出性能和 F16 其余入口仍需验收；本节不将 F24 标为全部完成，未部署。
+
+
+## 32. F20/F21 原生 binding、确认检查点与清理执行契约
+
+Harness 上下文身份独立于 Invocation、Task 与单次远端操作。binding 集合保存在既有 Session shared state，以条件版本更新；同连接可有多个独立 binding，同一原生 thread 不能被别名绑定绕过写入归属。输入记录区分宿主装配快照与原生增量，HarnessProgram 校验快照身份/摘要和真实消息，拒绝续接输入重复携带完整历史或未冻结依赖输出。
+
+```mermaid
+C4Component
+  title 原生上下文执行与清理
+  Component(program, "HarnessProgram", "执行适配", "验证实际输入与上下文构造依据")
+  Component(provider, "HarnessExecutionProvider", "宿主", "先持久操作，再调用原生端点")
+  ContainerDb(binding, "Context bindings", "既有 Session shared state", "占用、原生身份、确认检查点与 CAS")
+  ContainerDb(journal, "原 Effect journal", "既有持久记录", "操作回执与准备释放证明")
+  Container(native, "Harness", "远端执行端点", "create / checkpoint fork / turn / interrupt")
+  Component(cleanup, "宿主清理端口", "固定权限范围", "复验租约、原 journal 和 binding 所有者")
+  Rel(program, provider, "冻结调用")
+  Rel(provider, binding, "领取原操作归属")
+  Rel(provider, journal, "先写后执行、恢复核对")
+  Rel(provider, native, "幂等原生操作")
+  Rel(cleanup, journal, "重读权威终态和准备释放证明")
+  Rel(cleanup, binding, "有条件释放原所有者")
+```
+
+终态先准备 binding 结算，再把预期释放版本写回原 journal，最后释放占用并发布确认检查点。写回失败保留原占用；丢失释放回执时核对原版本，旧操作不能释放新所有者。清理端口只允许固定 binding 的读取/准备/释放，不能领取其他 binding；每次存储访问复验宿主写权。Kernel Effect.cancel 仍只有物理停止和清理确认后才能正常返回。
+
+检查点保留真实生产操作与因果前驱。fork 可以选择较早的已确认检查点，必须复验源 binding 版本/代次、目标策略、连接、workspace 与记忆策略，再要求原生返回独立 session 及对应检查点确认。fork 回执丢失只核对原操作；不确认的分叉保留追溯记录，不发送增量 turn，也不再次 fork。上下文 fork 不恢复工作区文件。
+
+当前原生协议缺少条件写入保障，严格 continue 明确返回 CONTEXT_NATIVE_WRITE_UNSUPPORTED；宿主 CAS 不能替代远端条件写。此批交付 Program、Provider、journal、真实宿主清理接线与检查点执行，不假装普通 resume 已满足安全跨轮续接。普通 Session 的上下文选择与 UI 目录仍按 F22 接线，真实节点/生产验收未完成。
+
+隔离验证：Harness 执行/恢复/清理 144 项、Kernel 适配层 366 项通过；补充真实 Kernel 的正常完成与取消 2 项，核对 Effect 状态端口、宿主清理写权、检查点落盘及占用释放。App-core/适配层类型检查、适配层 ESM/CJS/声明构建及架构检查通过。故障覆盖 CAS 冲突、持久写回丢失、旧所有者、终态未知、检查点归属错误、输入摘要错误与不支持能力。未访问生产 Session，未部署。

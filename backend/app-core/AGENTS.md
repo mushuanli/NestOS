@@ -189,3 +189,7 @@ RemoteConversationStore 的 load/save/submitted 在同实例串行，避免延�
 configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、公开范围和默认实参；不创建 Task、不获取 Connection、不持有队列。runtime 只接线；发布事务与原操作回执由 Session 配置服务管理。
 
 TaskArtifacts 从 Kernel 终态 Task.output 派生分页目录和稳定 task-output/v1 引用，不新建注册表、调度器或状态库。读取按显式 Session/Task、输出选择和内容摘要核对，再复用 TaskAssetReader 的同 Flow/重试祖先边界；不使用调用方 owner 或 URI 直接读取文件。文本/JSON 可下载及显式加入 Context；二进制按字节分段读取，未导入的远端 file 输出明确不可用。runtime/task-artifact-services 只负责命令及 ArtifactLoader 接线。读取不得 open/recover Session 或推进 Task，错误日志区分 scope、integrity、missing 和 storage 失败，保留安全 storageCode，不记录路径、正文或原始存储异常。
+
+- 生产取消的 stateForCleanup 仍只授权原 journal；settleContextForCleanup 由宿主提供固定 binding 的 get/prepare/release 方法，不向 Effect 开放集合读写或 claim/attach。先核对原租约再打开 Kernel，每次记录读写复验；释放前从实际 journal 重读凭据，检查原所有者、原生身份、代次、终态类型和 head。旧操作不得释放新所有者，日志不得包含输入、原生正文或存储异常详情。
+
+HarnessContextBindings 在原 settlement journal 持久后才发布终态检查点，保留因果前驱和真实 Invocation；后续拒绝不会覆盖前一 head 的所有者。旧 knownHeadRef 只投影为 legacy-head，不从 lastOperation 猜生产者。显式 fork 可以选择已确认的旧检查点，仍复验当前 binding 修订、策略与原生边界。Context binding 目录复用同一 Session shared state，只读、分页并绑定快照与查询范围，不激活 Session、获取 writer 或读取原生历史；原生严格续接能力仍独立校验。

@@ -5,6 +5,7 @@ import { canonical } from './harness-connection-policy';
 import { executionError, type ExecutionJournalData, type NativeText } from './harness-execution-journal';
 import { nativeOptions, type NativeExecution } from './harness-execution-operations';
 import { driveNativeInteractions } from './harness-execution-interactions';
+import {settleExecutionContext} from './harness-execution-context';
 
 type Terminal = ExecutionJournalData['terminal'];
 type Message = HarnessEvents['events'][number]['message'];
@@ -130,9 +131,11 @@ export async function observeNativeTurn(run: NativeExecution, context: EffectExe
 export async function finishNativeTurn(run: Pick<NativeExecution, 'journal'>): Promise<HarnessExecutionResult> {
     const data = run.journal.data;
     if (data.result) return data.result;
+    if (data.terminal === 'completed' && !data.outputChecked) throw executionError('NATIVE_OUTPUT_UNCHECKED');
+    const contextBinding = data.terminal ? await settleExecutionContext(run.journal) : undefined;
     if (data.terminal !== 'completed') throw executionError(data.terminal === 'cancelled' ? 'NATIVE_TURN_CANCELLED' : 'NATIVE_TURN_FAILED');
-    if (!data.outputChecked) throw executionError('NATIVE_OUTPUT_UNCHECKED');
-    const result = { sessionId: data.sessionId!, turnId: data.turnId!, text: data.texts.map(item => item.text).join('\n') };
+    const result = { sessionId: data.sessionId!, turnId: data.turnId!, text: data.texts.map(item => item.text).join('\n'),
+        ...(contextBinding ? {contextBinding} : {}) };
     await run.journal.save({ result });
     return result;
 }

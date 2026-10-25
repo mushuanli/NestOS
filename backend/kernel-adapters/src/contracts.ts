@@ -25,3 +25,6 @@ export {prepareHarnessInput, harnessInputDigest} from './llm-management/contract
 
 export type {ConnectionCancelResult, ConnectionCleanupEvidence, ConnectionReconcileResult} from './llm-management/contracts/connection-control';
 export {assertConnectionCleanupConfirmed} from './llm-management/contracts/connection-control';
+
+export type {ConversationSelection, HarnessContextRequest, NativeContextRef, ContextBinding, ContextBindingOperation, ContextBindingRef, ContextCheckpoint} from './llm-management/contracts/context-binding';
+export {assertHarnessContextRequest, assertConversationSelection} from './llm-management/contracts/context-binding';

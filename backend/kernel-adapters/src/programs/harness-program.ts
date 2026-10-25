@@ -1,5 +1,8 @@
-import {prepareHarnessInput, type HarnessInputMessage} from '../llm-management/contracts/harness-input';
 import type { Decision, DurableTaskProgram, JsonValue, TaskInputEvent, WaitSpec } from '@itookit/durable-kernel';
+import type {ContextSnapshot} from '@itookit/llm-context';
+import {assertHarnessContextRequest} from '../llm-management/contracts/context-binding';
+import {harnessInputDigest, prepareHarnessInput, type HarnessInputMessage} from '../llm-management/contracts/harness-input';
+import {sha256HexSync} from '@itookit/llm-context';
 import type { HarnessConnectionSnapshot, HarnessExecutionRequest, HarnessExecutionResult,
     HarnessInteractionNotification } from '../llm-management/contracts/harness-execution';
 
@@ -11,6 +14,9 @@ export interface HarnessProgramInput {
     dependencies?: Array<{ taskId: string; input: string; output?: string; injectOutput?: boolean }>;
     includeDependencyOutputs?: boolean;
     timeoutMs?: number;
+    context?: import('../llm-management/contracts/context-binding').HarnessContextRequest;
+    /** Canonical messages live in messages; the remaining assembly facts share its immutable Task input. */
+    contextSnapshot?: Omit<ContextSnapshot, 'canonicalMessages'>;
 }
 interface State {
     input: HarnessProgramInput;
@@ -57,7 +63,8 @@ function ready(state: State): Result {
     state.running = true;
     state.notificationKey = `harness.execution.${state.handleId}`;
     const request: HarnessExecutionRequest = { connection: state.input.connection, ...nativeInput(state),
-        resourceHandleId: state.handleId, notificationKey: state.notificationKey };
+        resourceHandleId: state.handleId, notificationKey: state.notificationKey,
+        ...(state.input.context ? {context: state.input.context} : {}) };
     return { ...waiting(state), actions: [{ type: 'effect', effect: { id: 'harness', kind: 'harness.execute', version: '1',
         request, idempotencyKey: 'harness', timeoutMs: state.input.timeoutMs ?? 1_800_000,
         grants: [{ handleId: state.handleId, right: 'execute' }] } }] };
@@ -112,6 +119,24 @@ function validateInput(input: HarnessProgramInput): void {
     prepareHarnessInput(input);
     if (!validConnection(input.connection)) throw inputError('HARNESS_CONNECTION_INVALID');
     if (input.timeoutMs !== undefined && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1)) throw inputError('HARNESS_TIMEOUT_INVALID');
+    if (input.context) assertHarnessContextRequest(input.context);
+    if (input.context && input.includeDependencyOutputs !== false && input.dependencies?.some(item => item.injectOutput !== false))
+        throw inputError('HARNESS_CONTEXT_DEPENDENCIES_UNSNAPSHOTTED');
+    validateNativeInput(input); validateAssemblySnapshot(input);
+}
+
+function validateNativeInput(input: HarnessProgramInput): void {
+    if (input.context?.input.mode !== 'native-continuation') return;
+    if (input.messages?.length || input.contextSnapshot || !input.prompt?.trim() && !input.attachments?.length)
+        throw inputError('HARNESS_INCREMENTAL_INPUT_REQUIRED');
+    if (input.context.input.digest !== harnessInputDigest(prepareHarnessInput(input))) throw inputError('HARNESS_INPUT_DIGEST_MISMATCH');
+}
+function validateAssemblySnapshot(input: HarnessProgramInput): void {
+    if (input.context?.input.mode !== 'host-assembled') return;
+    if (!input.contextSnapshot || !input.messages || input.prompt !== undefined
+        || input.context.input.snapshotRef !== input.contextSnapshot.id || input.context.input.digest !== input.contextSnapshot.digest)
+        throw inputError('HARNESS_CONTEXT_SNAPSHOT_REQUIRED');
+    if (input.context.input.digest !== sha256HexSync(JSON.stringify(input.messages))) throw inputError('HARNESS_CONTEXT_DIGEST_MISMATCH');
 }
 
 function validConnection(value: HarnessConnectionSnapshot): boolean {

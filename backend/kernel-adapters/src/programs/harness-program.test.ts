@@ -4,12 +4,30 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import type { HarnessConnectionSnapshot, HarnessExecutionProvider, HarnessExecutionRequest } from '../llm-management/contracts/harness-execution';
 import { HarnessProgram } from './harness-program';
 import { HarnessExecutionEffect } from '../effects/harness-execution-effect';
+import type {HarnessContextRequest} from '../llm-management/contracts/context-binding';
 import type {ConnectionCancelResult} from '../llm-management/contracts/connection-control';
 
 const connection: HarnessConnectionSnapshot = { id: 'remote', name: 'Remote', kind: 'harness', version: 1, revision: 1,
     nodeConnectionId: 'node', projectId: 'project', profileId: 'claude', project: { id: 'project', revision: 1 } };
 const closures: Array<() => Promise<void>> = [];
+const context: HarnessContextRequest = {invocationId: 'call', branchId: 'main', targetRef: 'agent@1', scopeRef: 'conversation', policyRef: 'policy',
+    workspaceRef: 'workspace', memoryPolicyRef: 'native-inherited', conversation: {mode: 'new'},
+    input: {mode: 'host-assembled', snapshotRef: 'snapshot', digest: 'digest'}};
 afterEach(async () => { for (const close of closures.splice(0).reverse()) await close(); });
+
+it('rejects an assembly reference with no persisted matching snapshot basis', () => {
+    const program = new HarnessProgram(), input = {connection, context, messages: [{role: 'user', content: 'Review'}]};
+    expect(() => program.init(input)).toThrow('HARNESS_CONTEXT_SNAPSHOT_REQUIRED');
+    expect(() => program.init({...input, contextSnapshot: {id: 'snapshot', digest: 'another-digest'} as never}))
+        .toThrow('HARNESS_CONTEXT_SNAPSHOT_REQUIRED');
+});
+
+it('rejects full local history in native continuation instead of injecting it as another user prompt', () => {
+    const continuation: HarnessContextRequest = {...context, input: {mode: 'native-continuation', inputRef: 'increment', digest: 'digest'},
+        conversation: {mode: 'continue', bindingId: 'binding', expectedBindingRevision: 1, expectedGeneration: 1}};
+    expect(() => new HarnessProgram().init({connection, context: continuation, messages: [{role: 'user', content: 'Entire local history'}]}))
+        .toThrow('HARNESS_INCREMENTAL_INPUT_REQUIRED');
+});
 
 async function fixture(provider: HarnessExecutionProvider) {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });

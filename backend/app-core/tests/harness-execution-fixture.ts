@@ -3,6 +3,7 @@ import type { EffectExecutionContext, EffectSessionState, JsonValue, SharedState
 import type { HarnessClient, HarnessEvent, HarnessHistory, HarnessMutationOptions, HarnessProfile, HarnessReceipt } from '@itookit/mindos-node-driver';
 import type { HarnessExecutionRequest } from '@itookit/kernel-adapters/contracts';
 import { createHarnessExecutionProvider } from '../src/projects/harness-execution';
+import {settleExecutionContext} from '../src/projects/harness-execution-context';
 
 export const request: HarnessExecutionRequest = {
     connection: { id: 'native', name: 'Native', kind: 'harness', nodeConnectionId: 'node', projectId: 'project', profileId: 'claude',
@@ -21,7 +22,7 @@ export function durableState() {
             records.set(key, entry); writes.push(key); return structuredClone(entry);
         },
     };
-    // Isolated state has no control holds; runtime tests cover atomic admission.
+    // This isolated state has no control holds; runtime tests exercise the Kernel admission transaction.
     state.setIfRunning = state.set;
     return { state, records, writes };
 }
@@ -42,7 +43,8 @@ export function fixture() {
     const client = nativeClient(data, profile, events, listeners, receipts, committed);
     const release = vi.fn(async () => {}), connections = { validate: vi.fn(async () => {}), acquire: vi.fn(async () => ({ client, profile,
         workspaceId: 'workspace', epoch: data.epoch, release })) };
-    const make = () => createHarnessExecutionProvider(connections, { pollMs: 5, cancelTimeoutMs: 100, stateForCleanup: async () => storage.state });
+    const make = () => createHarnessExecutionProvider(connections, { pollMs: 5, cancelTimeoutMs: 100, stateForCleanup: async () => storage.state,
+        settleContextForCleanup: (journal, unstarted) => settleExecutionContext(journal, unstarted) });
     const push = (method: string, params: Record<string, unknown>) => {
         events.push({ seq: events.length + 1, message: { method, params } }); for (const notify of listeners) notify();
     };

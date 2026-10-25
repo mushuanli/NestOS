@@ -2,6 +2,7 @@ import type { SessionDraftControls } from '@itookit/ui-common';
 import type { IChatInputConfig } from '../../domain/ports/IChatInputPresenter';
 import {readInputDraft} from '../../domain/input-draft';
 import {isTargetRef} from '@itookit/llm-flow/contracts';
+import {readInputContextDraft} from '../../domain/context-draft';
 import {DraftFilesCodec, type DraftFileRecord} from '../../services/DraftFilesCodec';
 import {validDraftToken} from '../../domain/draft-file-identity';
 
@@ -17,6 +18,7 @@ export class DraftDataCodec {
         const snapshot = structuredClone(config);
         if (snapshot.draftToken !== undefined && !validDraftToken(snapshot.draftToken))
             throw Object.assign(new Error('Invalid draft identity'), {code: 'DRAFT_IDENTITY_INVALID'});
+        if (snapshot.context !== undefined) snapshot.context = readInputContextDraft(snapshot.context);
         return JSON.stringify({version: 2, config: snapshot, files: await this.files.encode(files)} satisfies StoredDraft);
     }
     async decode(data?: string): Promise<{ config?: IChatInputConfig; files: File[]; migrated?: boolean }> {
@@ -27,6 +29,7 @@ export class DraftDataCodec {
         if (draft.config.draftToken !== undefined && !validDraftToken(draft.config.draftToken))
             throw Object.assign(new Error('Invalid draft identity'), {code: 'DRAFT_IDENTITY_INVALID'});
         if (draft.config.input !== undefined) draft.config.input = readInputDraft(draft.config.input);
+        if (draft.config.context !== undefined) draft.config.context = readInputContextDraft(draft.config.context);
         if (draft.version === 1) return { config: draft.config, migrated: true, files: draft.files.map(file => new File([
             Uint8Array.from(atob(file.content), char => char.charCodeAt(0)),
         ], file.name, { type: file.type, lastModified: file.lastModified })) };

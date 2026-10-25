@@ -24,6 +24,7 @@ export interface IChatInputConfig {
     agentId: string;
     target?: import('@itookit/llm-flow/contracts').TargetRef;
     input?: import('../input-draft').WorkspaceArgumentDraft;
+    context?: import('../context-draft').InputContextDraft;
     settings: ChatInputSettings;
 }
 
@@ -50,7 +51,7 @@ export interface IChatInputPresenter {
     getDraftRevision?(): number;
     getDraftFiles?(): File[];
     restoreDraftFiles?(files: readonly File[], token?: string): void;
-    acceptSubmittedDraft?(text: string, files: File[], revision?: number): void;
+    acceptSubmittedDraft?(text: string, files: File[], revision?: number, context?: import('../context-draft').InputContextDraft): void;
     captureRecovery(): unknown;
     restoreRecovery(snapshot: unknown): void;
     cancelPendingSend?(): void;

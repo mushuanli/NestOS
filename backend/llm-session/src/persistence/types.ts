@@ -7,7 +7,7 @@ export { DEFAULT_SESSION_SETTINGS } from '../contracts';
 export interface ConversationUIState {
     /** Opaque UI operation journal; execution and queue facts retain their existing authorities. */
     operationRecords?: JsonValue[];
-    branchDrafts?: Record<string, {inputText?: string; inputAgentId?: string; inputTarget?: import('@itookit/llm-flow/contracts').TargetRef; inputArguments?: JsonValue; inputFiles?: JsonValue[]; inputToken?: string}>;
+    branchDrafts?: Record<string, {inputText?: string; inputAgentId?: string; inputTarget?: import('@itookit/llm-flow/contracts').TargetRef; inputArguments?: JsonValue; inputContext?: unknown; inputFiles?: JsonValue[]; inputToken?: string}>;
     collapseStates?: Record<string, boolean>;
     scrollPosition?: number;
     historyVisibility?: 'visible' | 'hidden';

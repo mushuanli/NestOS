@@ -1,0 +1,12 @@
+.workspace-context { margin: 4px 0; font-size: 12px; }
+.workspace-context[hidden] { display: none; }
+.workspace-context > button { margin-inline-end: 6px; }
+.workspace-context button { min-height: 32px; max-width: 100%; border: 1px solid var(--llm-border-color); border-radius: 4px; color: var(--llm-text-primary); background: var(--llm-bg-primary); font: inherit; overflow-wrap: anywhere; cursor: pointer; }
+.workspace-context button:disabled { opacity: .6; cursor: default; }
+.workspace-context p { margin: 4px 0; color: var(--llm-text-secondary); overflow-wrap: anywhere; }
+.workspace-context [role="alert"] { color: var(--llm-color-error); }
+.workspace-context__panel { border: 1px solid var(--llm-border-color); border-radius: 6px; padding: 8px; }
+.workspace-context__panel > button { margin: 2px 6px 4px 0; }
+.workspace-context__rows { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow: auto; }
+.workspace-context__rows button { text-align: start; overflow-wrap: anywhere; padding: 6px; }
+@media (max-width: 768px) { .workspace-context button { min-height: 44px; } }

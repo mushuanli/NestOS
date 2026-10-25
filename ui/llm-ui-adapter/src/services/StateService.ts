@@ -7,6 +7,7 @@ import {createModuleLogger, randomUUID} from '@itookit/common';
 import {DraftPersistence, readBranchDraft} from './DraftPersistence';
 import {persistOperations} from './OperationPersistence';
 import {readInputDraft} from '../domain/input-draft';
+import {readInputContextDraft} from '../domain/context-draft';
 import {readDraftFiles} from './DraftFilesCodec';
 import {validDraftToken} from '../domain/draft-file-identity';
 
@@ -65,7 +66,8 @@ function toConversationState(state: UIState, branch: string): ConversationUIStat
         ...(state.input_text !== undefined ? {branchDrafts: {[branch]: {inputText: state.input_text, inputAgentId: state.input_agent_id,
             ...(state.input_token !== undefined ? {inputToken: readToken(state.input_token)} : {}),
             ...(state.input_files !== undefined ? {inputFiles: JSON.parse(JSON.stringify(readDraftFiles(state.input_files)))} : {}),
-            inputTarget: state.input_target, ...(state.input_arguments ? {inputArguments: JSON.parse(JSON.stringify(state.input_arguments))} : {})}}} : {}),
+            inputTarget: state.input_target, ...(state.input_arguments ? {inputArguments: JSON.parse(JSON.stringify(state.input_arguments))} : {}),
+            ...(state.input_context ? {inputContext: readInputContextDraft(state.input_context)} : {})}}} : {}),
     };
 }
 
@@ -79,6 +81,7 @@ export function fromConversationState(state: ConversationUIState, branch: string
         input_agent_id: state.branchDrafts?.[branch]?.inputAgentId,
         input_target: state.branchDrafts?.[branch]?.inputTarget,
         input_arguments: readInputDraft(state.branchDrafts?.[branch]?.inputArguments),
+        input_context: readInputContextDraft(state.branchDrafts?.[branch]?.inputContext),
         operations: state.operationRecords as unknown as UIState['operations'],
     };
 }

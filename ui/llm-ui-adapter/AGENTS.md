@@ -195,3 +195,6 @@ OperationPersistence 只在 UI 适配层按 llm-ui 的纯规则合并 operationR
 分支输入的持久数据仍归 SessionRepository。StateService/DraftPersistence 仅持有本编辑器的已读基线，复用现有 Session 修订条件写入；冲突保留 dirty 输入，经 WorkspaceDraftRecovery 显式加载或替换，期间新编辑、分支切换和隐藏使迟到恢复失效。台账与草稿共用 conditional-ui-state，不重放业务操作；读取失败不可当作空草稿。共享偏好在草稿检查后仅按实际修改保存。独立 llm-ui 继续只消费展示、输入控制和宿主持久化端口，不依赖文件系统。
 
 TaskArtifactBrowser 为运行页及正式 Session 的终态助手历史提供按需目录、预览和下载；scope 来自真实 Session/ExecutionRef，不解析气泡文本。它逐页校验引用、范围、总大小和摘要，完整下载再次核验内容；文字转义显示，图片使用宿主字节创建对象 URL。缓存和 URL 归单个视图，重绘不重发读取，目标切换/清空/销毁取消后续读取并回收 URL，旧 scope 的迟到回复不得污染新执行。产物读取走只读命令，不消费草稿或修改 OperationLedger 接纳状态。远程原生 URI 尚未导入时显示不可用，不能自行抓取。
+
+
+工作台上下文选择由 WorkspaceContextPicker 消费可选 ContextOptionsPort，按显式 Session/分支/目标查询，只保存用户确认的 InputContextDraft。选择通过既有分支与项目草稿恢复，OperationLedger 分别保存执行请求和 UI 消费证据；捕获的 draftConfig 优先于当前输入框。旧接纳不得消费新修订、其他分支或目标的草稿；清除后重选同点也产生新修订。目录静态兼容不替代宿主派发复验，无端口的普通聊天保持可用。流程和限制见 [功能合入计划第 34 节](../../doc/design/functional-merge-plan.md#34-f22-工作台上下文选择草稿与提交证据)。

@@ -2825,6 +2825,26 @@ export const zhCN = {
     'flow.artifacts.preview': "预览",
     'flow.artifacts.truncated': "预览已截断，可下载完整内容",
     'flow.artifacts.failed': "产物读取失败：{code}",
+
+    'callable.context.invalidDraft': '上下文选择草稿格式无效，已保留原记录，请修复后重试。',
+    'callable.context.scopeChanged': '上下文选择的会话、分支或目标已改变，请重新校验或清除选择。',
+    'callable.context.selectionChanged': '上下文选择已改变，请核对当前选择后重新提交。',
+    'callable.context.previousAccepted': '原提交已接纳，当前草稿已保留；再次发送将创建新调用。',
+    'callable.context.title': '上下文',
+    'callable.context.new': '宿主装配，新建上下文',
+    'callable.context.clear': '清除选择',
+    'callable.context.verify': '重新校验',
+    'callable.context.selected': '从检查点 {checkpoint} 分叉',
+    'callable.context.loading': '正在读取上下文选项',
+    'callable.context.revalidate': '已保留上下文选择，请重新校验；来源变化时须重新选择并确认。',
+    'callable.context.dynamicPolicy': '来源符合静态条件；派发时再次校验最终策略。',
+    'callable.context.failed': '上下文校验失败（{code}）。已保留选择，可重新选择或清除。',
+    'callable.context.refresh': '刷新绑定目录',
+    'callable.context.bindings': '返回绑定目录',
+    'callable.context.more': '加载更多',
+    'callable.context.confirm': '确认此检查点',
+    'callable.context.continueUnsupported': '原生续接尚不支持，需要原生条件写入保障。',
+    'callable.context.forkBoundary': '分叉仅复制原生对话到所选已确认回合，不恢复文件或工作区，也不隔离项目记忆。',
 } as const;
 
 // LocaleStrings maps every key to string (not literal), so other locales can provide different values.

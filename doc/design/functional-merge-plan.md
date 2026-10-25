@@ -102,7 +102,7 @@ C4Component
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
 | F20 | 独立上下文 binding 与清理 | app-core + adapter | F16 / F19 | 执行与清理内核见第 32 节；集合 CAS、journal 与原生身份关联已接线；Session 入口与目录随 F22 继续 |
 | F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 精确检查点与 fork 执行见第 32 节；选择入口及真实节点验收继续随 F22 推进 |
-| F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 宿主目录、Session 冻结与派发见第 33 节；工作台选择及草稿组合验收待合入 |
+| F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 宿主目录、Session 冻结与派发见第 33 节；默认工作台选择及草稿证据见第 34 节；独立 ChatView 控件及真实远端验收保留 |
 | F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 宿主读取链路见第 30 节；从终态输出派生，核对范围和摘要，不另建结果注册表；UI 随 F24 验收 |
 | F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节；完整调用组及复杂输出性能仍待验收 |
 | F25 | Flow 调度所有权竞态修复 | llm-flow | 无 | 已合入 `0bcfa29e`；竞争失败者不终结胜者，接纳丢回执不误清理工作区 |
@@ -753,3 +753,32 @@ C4Component
 隔离验证：宿主目录/真实 ApplicationRuntime 的 Harness 执行、附件、取消与队列组合，Session 全量回归，以及认证 HTTP 下原发送响应悬挂时的只读目录查询。补充暂停队列后修改调用方选择、源 binding 修订漂移再恢复派发的组合，要求保留原选择且拒绝 stale source，不额外创建原生会话。类型、Session 构建与架构边界检查通过。
 
 本批不包含工作台选择控件与分支草稿持久化，继续作为 F22 未完成项；F16/F24 剩余入口/显示验收与真实远端生产验收保留。未操作生产 Session，未部署。
+
+
+## 34. F22 工作台上下文选择、草稿与提交证据
+
+默认工作台通过可选 ContextOptionsPort 查询目的 Session/分支/发布目标的只读目录，用户显式选择并确认已确认检查点。选择器属于 MindOS 的 UI adapter：宿主负责兼容性与执行授权，独立 llm-ui 不导入 binding 存储或原生协议。选择和查询观察分开，旧响应、分页 basis 变化及视图销毁不能覆盖新选择。
+
+```mermaid
+C4Component
+  title 工作台选择沿既有草稿与接纳通道流转
+  Component(picker, "WorkspaceContextPicker", "UI adapter", "目录观察、显式选择与提交前核对")
+  Component(composer, "ChatInput / StateManager", "UI adapter", "分支草稿与修订")
+  ContainerDb(draft, "Session UI / 项目草稿", "既有宿主存储", "inputContext 与文字、附件分支恢复")
+  Component(command, "SendMessageCommand", "应用适配", "捕获输入、独立核对原操作")
+  ContainerDb(ledger, "OperationLedger", "既有提交台账", "冻结请求、草稿与上下文修订证据")
+  Component(host, "Session 命令与队列", "宿主", "只读目录、持久接纳、派发复验")
+  Rel(picker, host, "只读 ContextOptions")
+  Rel(picker, composer, "确认选择或显式清除")
+  Rel(composer, draft, "复用分支及项目草稿持久化")
+  Rel(composer, command, "捕获本次输入")
+  Rel(command, ledger, "先持久冻结证据")
+  Rel(command, host, "提交或查询原 operationId")
+  Rel(host, ledger, "持久接纳更新同一台账")
+```
+
+InputContextDraft 保存选择修订及 Session/分支/目标作用域；执行请求只携带冻结选择，不携带目录观察元数据。已有 draftConfig 必须优先于当前输入框，避免异步提交混入稍后的检查点。文字、附件、上下文与目标匹配时才消费草稿；清除后重新选择同一点仍增加修订，重开从台账恢复修订下界。显式查询旧提交保留新草稿，再次发送新草稿创建新操作，不能按文字或检查点相同合并身份。
+
+选择变得不兼容时保留原草稿并报告原因，用户可以核对或清除；无目录端口的普通聊天不被锁住，直接命令不解释原生选择。收到持久接纳即可继续选择和入队，不等待原 RPC 返回。静态目录核对不替代宿主派发复验；严格 continue 仍不开放，fork 不宣称恢复文件系统。
+
+隔离验收覆盖目录漂移、分页与迟到响应、分支/目标/Session 变化、草稿重开、同点重选、旧回执、冻结配置和原 RPC 悬挂时继续入队。项目草稿与正式 Session 复用既有宿主存储，不增加 IndexedDB、调度器或上下文状态库。独立 ChatView 的选择控件、F16 其他函数入口、F24 完整调用组与复杂输出性能、真实远端验收仍保留；未部署。

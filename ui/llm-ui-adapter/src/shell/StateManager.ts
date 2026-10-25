@@ -89,7 +89,7 @@ export class StateManager {
                 this.branch = branch; this.collapseStatesCache = state?.collapse_states ?? {};
                 input?.setDraftScope?.(branch);
                 input?.restoreInput(state?.input_text ?? '', state?.input_agent_id);
-                input?.setConfig({text: state?.input_text ?? '', target: state?.input_target, input: state?.input_arguments});
+                input?.setConfig({text: state?.input_text ?? '', target: state?.input_target, input: state?.input_arguments, context: state?.input_context});
                 input?.restoreDraftFiles?.(files, state?.input_token);
                 this.draftChanged();
             } finally {this.restoringInput = false;}
@@ -195,7 +195,7 @@ export class StateManager {
     private inputState(config?: IChatInputConfig): UIState {
         return structuredClone({ collapse_states: this.collapseStatesCache, input_text: config?.text,
             input_token: config?.draftToken,
-            input_agent_id: config?.agentId, input_target: config?.target, input_arguments: config?.input, history_visibility: 'visible'});
+            input_agent_id: config?.agentId, input_target: config?.target, input_arguments: config?.input, input_context: config?.context, history_visibility: 'visible'});
     }
 
     async resolveDraftConflict(action: 'load' | 'replace'): Promise<void> {
@@ -276,6 +276,7 @@ export class StateManager {
                 agentId: validate(options.initialInputState.agentId || 'default'),
                 target: undefined,
                 input: undefined,
+                context: undefined,
             });
             return;
         }
@@ -287,6 +288,7 @@ export class StateManager {
                 agentId: validate(options.savedState.input_agent_id || 'default'),
                 target: options.savedState.input_target,
                 input: options.savedState.input_arguments,
+                context: options.savedState.input_context,
                 settings: options.sessionSettings,
             });
             return;

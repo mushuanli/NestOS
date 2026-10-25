@@ -57,6 +57,7 @@ export interface UIState {
     input_agent_id?: string;
     input_target?: import('@itookit/llm-flow/contracts').TargetRef;
     input_arguments?: import('./input-draft').WorkspaceArgumentDraft;
+    input_context?: import('./context-draft').InputContextDraft;
     /** Pure workspace preference; never changes the model context. */
     history_visibility?: 'visible' | 'hidden';
 }
@@ -156,6 +157,7 @@ export const DEFAULT_SESSION_SETTINGS: ChatSessionSettings = {
 };
 
 export interface ChatOverrides {
+    harnessConversation?: import('@itookit/kernel-adapters/contracts').ConversationSelection;
     executionMode?: ChatExecutionMode;
     /** Explicit Session connection; absent means follow the global default. */
     connectionId?: string;

@@ -16,6 +16,8 @@ import {draftFileId, validDraftToken} from '../../domain/draft-file-identity';
 import {draftSettings} from '../../domain/submission-draft';
 import {canonicalJson} from '../../utils/canonical-json';
 import {sameInputDraft, type WorkspaceArgumentDraft} from '../../domain/input-draft';
+import {sameInputContextDraft, type InputContextDraft} from '../../domain/context-draft';
+import {WorkspaceContextPicker, type ContextOptionsPort, type ContextScope} from './WorkspaceContextPicker';
 import { type ModelTier } from '@itookit/driver-llm/contracts';
 import { ChatInputTemplates } from '../templates/ChatInputTemplates';
 import type { InputPlugin, InputPluginContext } from './plugins/InputPlugin';
@@ -54,6 +56,9 @@ export interface ChatInputOptions {
     maxAgentExchanges?: number;
     onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides, target?: TargetRef) => Promise<void | false>;
     requestCallTargets?(): Promise<RootTargetCatalog>;
+    contextOptions?: ContextOptionsPort;
+    contextScope?(): ContextScope | undefined;
+    contextRevisionFloor?(): number;
     prepareCallTarget?(target: RootCallTarget, signal: AbortSignal, draft: AgentFlowDraftInput): Promise<AgentFlowSubmission | null>;
     prepareAgentFlow?(agent: ExecutorOption, signal: AbortSignal, draft: AgentFlowDraftInput): Promise<AgentFlowSubmission | null>;
     onStop: () => void;
@@ -130,12 +135,15 @@ export interface ChatInputOptions {
     onNavigateSettings?: (target: { resourceId: string; anchor?: string }) => void;
 }
 
+function sameContextScope(expected: ContextScope, current?: ContextScope): boolean {
+    return !!current && expected.sessionId === current.sessionId && expected.branchId === current.branchId;
+}
 
 interface ComposerSubmission {
     text: string; submitted: string; executor: string; files: File[]; target?: TargetRef; revision: number;
     draftScope?: string;
     preparedToken?: string;
-    remote: boolean; overrides?: ChatOverrides; arguments?: WorkspaceArgumentDraft;
+    context?: InputContextDraft; scope?: ContextScope; remote: boolean; overrides?: ChatOverrides; arguments?: WorkspaceArgumentDraft;
 }
 
 /**
@@ -145,6 +153,7 @@ interface ComposerSubmission {
  * 内部 DOM 操作完全封装。
  */
 export class ChatInput implements IChatInputPresenter {
+    private contextPicker?: WorkspaceContextPicker;
     private callTargets?: WorkspaceCallTargets;
     private targetPickerGeneration = 0;
     private flowPreparation?: AbortController;
@@ -183,7 +192,7 @@ export class ChatInput implements IChatInputPresenter {
     private draftScope?: string;
     setDraftScope(id: string): void {
         if (this.draftScope === id) return;
-        this.draftScope = id; ++this.textRevision; this.cancelPendingSend();
+        this.draftScope = id; ++this.textRevision; this.cancelPendingSend(); this.syncContext();
     }
     private observedText = '';
     getDraftRevision(): number {
@@ -314,8 +323,11 @@ export class ChatInput implements IChatInputPresenter {
         }, options.maxAgentExchanges, options.executionModeInfo);
         this.initExecutors();
         this.bindCallTargets();
+        this.contextPicker = new WorkspaceContextPicker(this.inputWrapper.parentElement!, () => this.options.contextOptions,
+            context => {this.setConfig({context}); this.notifyConfigChange();}, () => this.options.contextRevisionFloor?.() ?? 0);
+        this.inputWrapper.before(this.contextPicker.element);
         this.syncUIFromConfig();
-
+        this.syncContext();
         this.restoreDraftToken(options.initialConfig?.draftToken);
         if (options.attachments === false) this.attachBtn.hidden = true;
         if (options.attachmentAccept) this.fileInput.accept = options.attachmentAccept;
@@ -450,7 +462,7 @@ export class ChatInput implements IChatInputPresenter {
         return this.callTargets && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId
             ? this.callTargets.issue(this.config.target) : agentUnavailableReason(this.selectedExecutor());
     }
-    cancelPendingSend(): void {this.flowPreparation?.abort(); ++this.targetPickerGeneration; this.agentPopup?.hide();}
+    cancelPendingSend(): void {this.flowPreparation?.abort(); ++this.targetPickerGeneration; this.agentPopup?.hide(); this.contextPicker?.invalidate();}
 
     private refreshConnectionStatus(): void {
         this.connectionReadiness?.update(this.requiresConnection(), this.connectionLoadState, this.connectionTier.getIssue(), this.sendBtn);
@@ -462,7 +474,7 @@ export class ChatInput implements IChatInputPresenter {
         this.config = this.mergeConfig(this.config, config);
         if (!this.config.target && !this.config.settings.flowId) this.config.target = this.callTargets?.initial(this.config.agentId);
         this.syncUIFromConfig();
-
+        this.syncContext();
         this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
 
         if (config.agentId && config.agentId !== this.currentAgentId) {
@@ -475,6 +487,7 @@ export class ChatInput implements IChatInputPresenter {
     private prepareConfigChange(config: Partial<IChatInputConfig>): Partial<IChatInputConfig> {
         const executorChanged = !!config.agentId && config.agentId !== this.config.agentId;
         const targetChanged = Object.hasOwn(config, 'target') && !sameTargetRef(config.target, this.config.target);
+        if (Object.hasOwn(config, 'context') && !sameInputContextDraft(config.context, this.config.context)) ++this.textRevision;
         if (executorChanged || targetChanged) this.flowPreparation?.abort();
         return executorChanged && !Object.hasOwn(config, 'target') ? {...config, target: undefined} : config;
     }
@@ -487,6 +500,7 @@ export class ChatInput implements IChatInputPresenter {
             agentId: this.config.agentId,
             target: this.config.target ? {...this.config.target} : undefined,
             input: structuredClone(this.config.input),
+            context: structuredClone(this.config.context),
             settings: { ...this.config.settings },
         };
     }
@@ -499,7 +513,7 @@ export class ChatInput implements IChatInputPresenter {
     private currentDraftBasis(): string {
         const {revision: _revision, ...input} = this.config.input ?? {revision: undefined};
         return canonicalJson({text: this.textarea.value, agentId: this.config.agentId, target: this.config.target,
-            input: this.config.input ? input : undefined, settings: draftSettings(this.config.settings),
+            input: this.config.input ? input : undefined, context: this.config.context, settings: draftSettings(this.config.settings),
             files: this.files.map(file => ({id: draftFileId(file), name: file.name, type: file.type, size: file.size,
                 imageRevision: knownImageFileState(file)?.revision}))});
     }
@@ -604,11 +618,12 @@ export class ChatInput implements IChatInputPresenter {
         this.attachBtn.hidden = options.attachments === false;
         this.fileInput.accept = options.attachmentAccept ?? '';
         if (options.attachmentHint) this.attachBtn.title = options.attachmentHint;
-        this.syncUIFromConfig(); this.applyAvailability(); void this.refreshConnections();
+        this.syncUIFromConfig(); this.syncContext(); this.applyAvailability(); void this.refreshConnections();
     }
 
     destroy(): void {
         ++this.textRevision;
+        this.contextPicker?.destroy();
         this.callTargets?.dispose();
         this.flowPreparation?.abort();
         this.nativeModels.destroy();
@@ -652,6 +667,7 @@ export class ChatInput implements IChatInputPresenter {
             agentId: partial.agentId ?? base.agentId,
             target: Object.hasOwn(partial, 'target') ? structuredClone(partial.target) : base.target,
             input: Object.hasOwn(partial, 'input') ? structuredClone(partial.input) : base.input,
+            context: Object.hasOwn(partial, 'context') ? structuredClone(partial.context) : base.context,
             settings: { ...base.settings, ...(partial.settings || {}) },
         };
     }
@@ -1027,12 +1043,13 @@ export class ChatInput implements IChatInputPresenter {
         const executor = this.config.agentId, remote = executor.startsWith('remote:');
         return {text, submitted: this.textarea.value, executor, remote, files: [...this.files], target: structuredClone(this.config.target),
             draftScope: this.draftScope,
-            revision: this.getDraftRevision(),
+            revision: this.getDraftRevision(), context: structuredClone(this.config.context), scope: structuredClone(this.options.contextScope?.()),
             overrides: remote ? undefined : this.buildOverrides()};
     }
 
     private async prepareSubmission(send: ComposerSubmission): Promise<boolean> {
         if (!await this.prepareFlowSubmission(send.text, send.files, send.executor, send.submitted, send.revision, send.overrides)) return false;
+        if (!await this.prepareContextSubmission(send.text, send.context, send.target, send.revision)) return false;
         if (!isDirectCommandInput(send.text) && sameTargetRef(this.config.input?.target, send.target)) send.arguments = structuredClone(this.config.input);
         send.preparedToken = this.currentDraftToken(); await this.options.flushDraft?.();
         return !this.connectionsDisposed && send.preparedToken === this.currentDraftToken() && this.submissionDestinationMatches(send);
@@ -1055,19 +1072,32 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private consumeSubmission(send: ComposerSubmission): void {
-        if (!this.submissionDestinationMatches(send)) return;
+        if (!sameInputContextDraft(send.context, this.config.context) || !this.submissionDestinationMatches(send)) return;
         if (send.arguments && sameInputDraft(send.arguments, this.config.input)) this.config.input = undefined;
         const unchanged = this.getDraftRevision() === send.revision && this.textarea.value === send.submitted && sameTargetRef(send.target, this.config.target);
         this.clearSubmittedInput(send.files, unchanged);
+        if (!isDirectCommandInput(send.text)) this.config.context = undefined;
     }
 
     private submissionDestinationMatches(send: ComposerSubmission): boolean {
-        return send.draftScope === this.draftScope && sameTargetRef(send.target, this.config.target);
+        if (send.draftScope !== this.draftScope) return false;
+        if (send.context) return this.contextDestinationMatches(send.context);
+        if (!send.scope) return sameTargetRef(send.target, this.config.target);
+        return sameContextScope(send.scope, this.options.contextScope?.()) && sameTargetRef(send.target, this.config.target);
     }
 
+    private contextDestinationMatches(context?: InputContextDraft): boolean {
+        if (!context) return true;
+        return !!this.options.contextOptions && sameContextScope(context, this.options.contextScope?.())
+            && sameTargetRef(context.target, this.config.target);
+    }
 
-
-
+    private async prepareContextSubmission(text: string, captured: InputContextDraft | undefined, target: TargetRef | undefined, revision: number): Promise<boolean> {
+        if (isDirectCommandInput(text)) return true;
+        if (captured && !await this.contextPicker?.prepare()) return false;
+        return !this.connectionsDisposed && sameInputContextDraft(captured, this.config.context)
+            && sameTargetRef(target, this.config.target) && revision === this.getDraftRevision();
+    }
 
     private async prepareFlowSubmission(text: string, files: File[], executor: string, submitted: string, revision: number, overrides?: ChatOverrides): Promise<boolean> {
         if (!this.agentFlow() || isDirectCommandInput(text)) return true;
@@ -1115,9 +1145,10 @@ export class ChatInput implements IChatInputPresenter {
     openConnectionPicker(): void { this.connectionTier.openConnPicker(); }
 
     private submitting = 0;
-    acceptSubmittedDraft(text: string, files: File[], revision?: number): void {
-        if (this.connectionsDisposed) return;
+    acceptSubmittedDraft(text: string, files: File[], revision?: number, context?: InputContextDraft): void {
+        if (this.connectionsDisposed || !sameInputContextDraft(context, this.config.context) || !this.contextDestinationMatches(context)) return;
         this.clearSubmittedInput(files, (revision === undefined || this.getDraftRevision() === revision) && this.textarea.value.trim() === text.trim());
+        this.config.context = undefined; this.syncContext();
     }
     private clearSubmittedInput(files: File[], clearText: boolean): void {
         if (clearText) { this.textarea.value = ''; this.config.text = ''; this.getDraftRevision(); }
@@ -1127,6 +1158,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private buildOverrides(): ChatOverrides {
         const overrides: ChatOverrides = { executionMode: this.config.settings.executionMode ?? 'chat' };
+        if (this.config.context) overrides.harnessConversation = structuredClone(this.config.context.selection);
         if (this.config.settings.connectionId) overrides.connectionId = this.config.settings.connectionId;
         // 'auto' means no override — only pass an explicit tier
         const tier = this.config.settings.modelTier;
@@ -1494,15 +1526,18 @@ export class ChatInput implements IChatInputPresenter {
         if (this.restoringRecovery) return;
         this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
         const config = this.getConfig();
-
+        this.syncContext();
         this.options.onDraftChange?.(config, [...this.files]);
-        const settingsJson = JSON.stringify({agentId: config.agentId, target: config.target, input: config.input, settings: config.settings});
+        const settingsJson = JSON.stringify({agentId: config.agentId, target: config.target, input: config.input, context: config.context, settings: config.settings});
         if (settingsJson === this.lastNotifiedSettings) return;
         this.lastNotifiedSettings = settingsJson;
         this.options.onConfigChange?.(config);
     }
 
-
+    private syncContext(): void {
+        this.contextPicker?.update({scope: this.options.contextScope?.(), target: this.config.target, draft: this.config.context,
+            overrides: {executionMode: this.config.settings.executionMode ?? 'chat', systemPromptAppend: this.config.settings.systemPromptAppend}});
+    }
 
     // ================================================================
     // 执行器/模型 UI
@@ -1531,7 +1566,7 @@ export class ChatInput implements IChatInputPresenter {
                 if (initial) this.config.target = {...initial};
             }
             this.updateAgentTrigger();
-
+            this.syncContext();
         });
         void this.callTargets.refresh();
     }

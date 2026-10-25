@@ -3,6 +3,7 @@ import {prepareAgentFlow, prepareCallTarget} from '../flows/agent-flow';
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import {WorkspaceDraftRecovery} from './WorkspaceDraftRecovery';
 import {DraftFilesCodec} from '../services/DraftFilesCodec';
+import {readInputContextDraft} from '../domain/context-draft';
 import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { disposeEditorResources } from './editor-disposal';
 import { rememberTaskAttachment, restoreTaskAttachment } from './task-attachment-lifecycle';
@@ -464,6 +465,7 @@ export class LLMWorkspaceEditor implements IEditor {
                 agentId: validAgentId,
                 target: savedUIState?.input_target,
                 input: savedUIState?.input_arguments,
+                context: savedUIState?.input_context,
                 settings: initialSettings,
             },
             onConfigChange: (config) => this.handleConfigChange(config),
@@ -473,6 +475,9 @@ export class LLMWorkspaceEditor implements IEditor {
             onRequestConnections: () => this.connectionOptions!.read(),
             prepareAgentFlow: (agent, signal, draft) => prepareAgentFlow(this.commandBus, agent, signal, draft),
             requestCallTargets: () => this.commandBus.execute(SessionCommand.ListTargets),
+            contextOptions: query => this.commandBus.execute(SessionCommand.ContextOptions, query),
+            contextScope: () => ({sessionId: this.options.sessionId, branchId: this.stateManager.getDraftBranch()}),
+            contextRevisionFloor: () => this.contextRevisionFloor(),
             prepareCallTarget: (target, signal, draft) => prepareCallTarget(this.commandBus, target, signal, draft),
 
             // ── @mention file reference ───────────────────────────────────────
@@ -1335,7 +1340,15 @@ export class LLMWorkspaceEditor implements IEditor {
         Toast.info('Task approved');
     }
 
-
+    private contextRevisionFloor(): number {
+        let revision = 0;
+        for (const record of this.operations?.getSnapshot() ?? []) {
+            if (record.conversationId !== this.options.sessionId) continue;
+            try {revision = Math.max(revision, readInputContextDraft((record.input as {contextDraft?: unknown})?.contextDraft)?.revision ?? 0);}
+            catch { /* Invalid recovery evidence cannot become a new context selection. */ }
+        }
+        return revision;
+    }
 
     private requireSessionId(): string {
         if (!this.currentSessionId) throw new Error('Session is not ready');

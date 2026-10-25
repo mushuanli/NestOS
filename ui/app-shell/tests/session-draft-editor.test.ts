@@ -12,6 +12,13 @@ it('roundtrips a precise context draft and keeps the saved checkpoint independen
     expect((await codec.decode(encoded)).config?.context).toMatchObject({revision: 1, selection: {checkpointRef: 'checkpoint-A'}});
 });
 
+it('refuses malformed context before reading project draft attachments', async () => {
+    const {DraftDataCodec} = await import('../../llm-ui-adapter/src/shell/drafts/session-draft-data');
+    const read = vi.fn(), codec = new DraftDataCodec({read, put: vi.fn()} as never);
+    const saved = JSON.stringify({version: 2, config: {text: 'Keep', agentId: 'worker', settings: {}, context: {revision: -1}},
+        files: [{id: 'file', name: 'keep.txt', type: 'text/plain', lastModified: 1}]});
+    await expect(codec.decode(saved)).rejects.toMatchObject({code: 'CONTEXT_DRAFT_INVALID'}); expect(read).not.toHaveBeenCalled();
+});
 vi.mock('../../llm-ui-adapter/src/shell/AgentProvider', () => ({ buildExecutorOptions: async () => [], buildConnectionOptions: async () => [] }));
 vi.mock('../../llm-ui-adapter/src/components/input/ChatInputView', () => ({ ChatInput: class {
     private config = {text: '', agentId: 'default', settings: {}};

@@ -2,28 +2,31 @@ import type {OperationLedger, OperationReceipt} from '@itookit/llm-ui';
 import {SessionCommand, type SessionInstructionQueue, type SubmissionRequest} from '@itookit/llm-session/contracts';
 import {createModuleLogger, t} from '@itookit/common';
 import type {CommandContext} from './CommandContext';
+import {sameContextDraftEvidence, type InputContextDraft} from '../domain/context-draft';
 import {sameSubmissionDraft, type SubmissionDraft} from '../domain/submission-draft';
 import {canonicalJson as canonicalSubmission} from '../utils/canonical-json';
 
 const log = createModuleLogger('workspace-submission');
 
 /** The existing operation ledger records input before dispatch; queue acceptance can beat a suspended RPC. */
-export async function submitSessionCall(ctx: CommandContext, request: SubmissionRequest, key: string, draft?: SubmissionDraft): Promise<string> {
+export async function submitSessionCall(ctx: CommandContext, request: SubmissionRequest, key: string, contextDraft?: InputContextDraft, draft?: SubmissionDraft): Promise<string> {
     const operationId = request.submission!.id, sessionId = ctx.getSessionId(), ledger = submissionLedger(ctx);
     request = structuredClone({...request, expectedSessionId: sessionId});
+    contextDraft = structuredClone(contextDraft);
     draft = structuredClone(draft);
     const previous = ledger.getSnapshot().find(record => record.context.operationId === operationId);
     if (previous) {
-        const saved = structuredClone(previous.input) as {request?: unknown; draft?: unknown};
+        const saved = structuredClone(previous.input) as {request?: unknown; contextDraft?: unknown; draft?: unknown};
         if (canonicalSubmission(saved.request) !== canonicalSubmission(request)) throw failure('CALL_SUBMISSION_CONFLICT');
-        return reconcilePreviousCall(ctx, operationId, sameSubmissionDraft(saved.draft, draft));
+        return reconcilePreviousCall(ctx, operationId, saved.contextDraft, contextDraft,
+            sameSubmissionDraft(saved.draft, draft));
     }
     await ledger.register({context: {viewId: sessionId, operationId}, conversationId: sessionId, kind: 'send', status: 'submitting',
-        input: JSON.parse(JSON.stringify({key, request, ...(draft ? {draft} : {})}))});
+        input: JSON.parse(JSON.stringify({key, request, ...(draft ? {draft} : {}), ...(contextDraft ? {contextDraft: structuredClone(contextDraft)} : {})}))});
     return dispatch(ctx, request, sessionId, ledger);
 }
 
-async function reconcilePreviousCall(ctx: CommandContext, operationId: string, sameDraft = true): Promise<string> {
+async function reconcilePreviousCall(ctx: CommandContext, operationId: string, evidence: unknown, current?: InputContextDraft, sameDraft = true): Promise<string> {
     const started = Date.now();
     let receipt: OperationReceipt;
     try {receipt = await reconcileSessionCall(ctx, operationId);}
@@ -34,7 +37,7 @@ async function reconcilePreviousCall(ctx: CommandContext, operationId: string, s
     }
     if (receipt.status === 'rejected') throw failure('CALL_SUBMISSION_REJECTED', undefined, receipt.message);
     if (receipt.status !== 'accepted') throw failure('CALL_SUBMISSION_UNKNOWN', 'unknown');
-    if (!sameDraft) throw failure('CALL_SUBMISSION_PREVIOUS_ACCEPTED', 'accepted-previous');
+    if (!sameDraft || !sameContextDraftEvidence(evidence, current)) throw failure('CALL_SUBMISSION_PREVIOUS_ACCEPTED', 'accepted-previous');
     return operationId;
 }
 

@@ -20,9 +20,11 @@ import {sameTargetRef} from '@itookit/llm-flow/contracts';
 import {sameInputDraft} from '../domain/input-draft';
 import type {IChatInputConfig} from '../domain/ports/IChatInputPresenter';
 import {validateComposerFiles} from '../flows/composer-file-bindings';
+import {canConsumeContextDraft, prepareInputContextDraft, type InputContextDraft} from '../domain/context-draft';
 
 export interface SendMessageParams {
     draftConfig?: IChatInputConfig;
+    context?: InputContextDraft;
     expectedBranch?: string;
     target?: import('@itookit/llm-flow/contracts').TargetRef;
     text: string;
@@ -53,34 +55,34 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
 
     async reconcile(operationId: string, isCurrent: () => boolean = () => true): Promise<void> {
         const input = this.ctx.chatInput, config = structuredClone(input.getConfig()), revision = input.getDraftRevision?.();
-        const saved = structuredClone(this.ctx.operations?.getSnapshot().find(record => record.context.operationId === operationId)?.input) as {request?: SubmissionRequest; draft?: SubmissionDraft};
+        const saved = structuredClone(this.ctx.operations?.getSnapshot().find(record => record.context.operationId === operationId)?.input) as {request?: SubmissionRequest; contextDraft?: unknown; draft?: SubmissionDraft};
         const request = saved?.request;
         const receipt = await reconcileSessionCall(this.ctx, operationId);
         if (isCurrent() && receipt.status === 'accepted' && request && revision !== undefined)
-            await this.consumeReconciledInput(request, config, revision, saved?.draft, isCurrent);
+            await this.consumeReconciledInput(request, config, revision, saved?.contextDraft, saved?.draft, isCurrent);
     }
 
-    private async consumeReconciledInput(request: SubmissionRequest, config: IChatInputConfig, revision: number,
+    private async consumeReconciledInput(request: SubmissionRequest, config: IChatInputConfig, revision: number, contextDraft: unknown,
         saved?: SubmissionDraft, isCurrent: () => boolean = () => true): Promise<void> {
         const input = this.ctx.chatInput, files = input.getDraftFiles?.() ?? [];
         if (saved && !sameSubmissionDraft(saved, await captureSubmissionDraft(config, files))) return;
         const current = input.getConfig();
         if (!isCurrent() || saved && (current.draftToken !== config.draftToken || files.some((file, index) => input.getDraftFiles?.()[index] !== file)
             || input.getDraftFiles?.().length !== files.length)) return;
-        if (!this.matchesReconciledDraft(request, config, current, revision)) return;
+        if (!this.matchesReconciledDraft(request, config, current, revision, contextDraft)) return;
         if (!saved && (request.attachments?.length || files.length)) return;
         const text = saved?.text ?? (request.source.kind === 'composer' ? request.source.text : request.presentation?.text ?? '');
         if (config.text.trim() !== text.trim() || current.text !== config.text) return;
         if (!this.consumeReconciledArguments(request, config, current)) return;
-        input.acceptSubmittedDraft?.(text, files, revision);
+        input.acceptSubmittedDraft?.(text, files, revision, config.context);
     }
 
     private matchesReconciledDraft(request: SubmissionRequest, config: IChatInputConfig, current: IChatInputConfig,
-        revision: number): boolean {
+        revision: number, contextDraft: unknown): boolean {
         const input = this.ctx.chatInput;
         if (!input.acceptSubmittedDraft || !input.getDraftFiles || !this.reconciliationScope(request)) return false;
         return sameTargetRef(request.expectedTarget, config.target) && sameTargetRef(current.target, config.target)
-            && input.getDraftRevision?.() === revision;
+            && input.getDraftRevision?.() === revision && canConsumeContextDraft(contextDraft, config.context, current.context, request);
     }
 
     private reconciliationScope(request: SubmissionRequest): boolean {
@@ -97,11 +99,14 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
 
     protected async execute(params: SendMessageParams): Promise<boolean> {
         const config = structuredClone(params.draftConfig ?? this.ctx.chatInput.getConfig?.());
-        const input = {...params, expectedBranch: params.expectedBranch ?? this.ctx.getBranch?.(), files: [...params.files], target: params.target ? {...params.target} : undefined,
+        const context = structuredClone(params.context ?? config?.context);
+        const input = {...params, context, expectedBranch: params.expectedBranch ?? this.ctx.getBranch?.(), files: [...params.files], target: params.target ? {...params.target} : undefined,
             submission: structuredClone(params.submission), overrides: normalizeOverrides(params.overrides, this.ctx)};
         const restore = this.rejectedInputRestorer(input.text, input.agentId);
         try {if (await dispatchDirectCommand(input.text, input.files, this.ctx.executeDirectCommand)) return true;}
         catch (error) {restore(); throw error;}
+        input.context = prepareInputContextDraft(context, {sessionId: this.ctx.getSessionId() ?? '', branchId: input.expectedBranch, target: input.target}, input.overrides.harnessConversation);
+        if (input.context) input.overrides.harnessConversation = structuredClone(input.context.selection);
         const pending = this.preparePending(input, config?.draftToken);
         const feedback: ChatSubmission = {id: pending.id, text: input.text.trim() || (input.target?.kind === 'flow'
             ? t('callable.target.flow') : t('harness.attachmentPrompt')), timestamp: Date.now(), state: 'submitting'};
@@ -142,14 +147,14 @@ export class SendMessageCommand extends Command<SendMessageParams, boolean> {
             active.draft = active.config && await captureSubmissionDraft(active.config, active.input.files);
             if (active.pending.operation) {
                 const saved = active.pending.operation;
-                await this.accepted(active, await submitSessionCall(this.ctx, saved.request, saved.key, active.draft));
+                await this.accepted(active, await submitSessionCall(this.ctx, saved.request, saved.key, active.input.context, active.draft));
                 return true;
             }
             const prepared = await this.prepareSubmission(active);
             if (!prepared) return false;
             const {input, pending} = active;
             const id = input.target ? await submitSessionCall(this.ctx, typedRequest(input.target, prepared.text, prepared.attachments,
-                prepared.submission, input.overrides, input.origin, input.historyPolicy, input.expectedBranch), pending.key, active.draft)
+                prepared.submission, input.overrides, input.origin, input.historyPolicy, input.expectedBranch), pending.key, input.context, active.draft)
                 : await this.ctx.commands.execute<string>(SessionCommand.Send, legacyRequest(input, prepared));
             await this.accepted(active, id); return true;
         } catch (error) {return this.failed(active, error);}

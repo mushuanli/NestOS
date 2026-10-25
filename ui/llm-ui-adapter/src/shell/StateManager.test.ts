@@ -3,7 +3,33 @@ import { StateManager } from './StateManager';
 import type { IChatInputPresenter } from '../domain/ports/IChatInputPresenter';
 import type { StateService } from '../services/StateService';
 import type { SessionViewPort } from '@itookit/llm-session/contracts';
+import type {IChatInputConfig} from '../domain/ports/IChatInputPresenter';
+it('snapshots context before queued persistence and restores it without following another branch', async () => {
+    const target = {kind: 'agent' as const, id: 'worker', version: '1', digest: 'published'};
+    const context = {revision: 1, sessionId: 's', branchId: 'main', target, selection: {
+        mode: 'fork' as const, sourceBindingId: 'binding', expectedBindingRevision: 2, expectedGeneration: 1, checkpointRef: 'checkpoint-A'}};
+    const saveUIState = vi.fn(async () => {}), saveSessionSettings = vi.fn(async () => {});
+    const manager = new StateManager({saveUIState, saveSessionSettings} as unknown as StateService, {isGenerating: () => false} as SessionViewPort, 's', id => id);
+    const config = {text: 'Keep', agentId: 'worker', target, settings: {}, context};
+    const saving = manager.saveInputConfiguration(config); context.selection.checkpointRef = 'checkpoint-B'; await saving;
+    expect(saveUIState).toHaveBeenCalledWith('s', expect.objectContaining({input_context: expect.objectContaining({selection: expect.objectContaining({checkpointRef: 'checkpoint-A'})})}), 'main');
+    const setConfig = vi.fn(), input = {setConfig, setDraftScope() {}} as unknown as IChatInputPresenter;
+    manager.restoreInputState(input, {savedState: {collapse_states: {}, input_text: 'Keep', input_context: context}});
+    expect(setConfig).toHaveBeenLastCalledWith(expect.objectContaining({context}));
+    manager.restoreInputState(input, {initialInputState: {text: 'External'}});
+    expect(setConfig).toHaveBeenLastCalledWith(expect.objectContaining({context: undefined})); manager.cleanup();
+});
 
+it('explicitly replaces the prior context when switching branch drafts', async () => {
+    const selected = {revision: 1, sessionId: 's', branchId: 'review', target: {kind: 'agent' as const, id: 'worker', version: '1', digest: 'published'},
+        selection: {mode: 'new' as const}};
+    let config: IChatInputConfig = {text: 'Main', agentId: 'worker', settings: {}, context: {...selected, branchId: 'main'}};
+    const service = {saveUIState: vi.fn(async () => {}), loadUIState: vi.fn(async (_id, branch) => ({input_text: branch, input_context: branch === 'review' ? selected : undefined}))};
+    const manager = new StateManager(service as unknown as StateService, {isGenerating: () => false} as SessionViewPort, 's', id => id);
+    const input = {getConfig: () => config, setLoading() {}, setDraftScope() {}, restoreInput() {}, setConfig: (patch: Partial<IChatInputConfig>) => {config = {...config, ...patch};}} as unknown as IChatInputPresenter;
+    manager.setChatInputGetter(() => input); await manager.switchDraftBranch('review'); expect(config.context).toEqual(selected);
+    await manager.switchDraftBranch('empty'); expect(config.context).toBeUndefined(); manager.cleanup();
+});
 
 it('saves visible history after reading legacy hidden preferences without changing the draft or collapse states', async () => {
     const service = {loadUIState: vi.fn(async () => ({history_visibility: 'hidden', input_text: 'Keep draft', collapse_states: {u: true}})), saveUIState: vi.fn(async () => {})};

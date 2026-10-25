@@ -1,11 +1,11 @@
 import { expect, it, vi } from 'vitest';
 import type { ConversationControls, ConversationSnapshot } from '@itookit/ui-common';
-import type { OperationLedger } from '@itookit/llm-ui';
+import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import { createNativeChatBinding } from './native';
 import { ChatProjection } from './projection';
 import {NativeComposerCapabilities} from './native-composer';
 
-vi.mock('@itookit/llm-ui', async () => ({ createChatView: vi.fn(), composeCommandCatalogs: (await vi.importActual<typeof import('@itookit/llm-ui')>('@itookit/llm-ui')).composeCommandCatalogs }));
+vi.mock('@itookit/llm-ui', async () => ({ ...(await vi.importActual<typeof import('@itookit/llm-ui')>('@itookit/llm-ui')), createChatView: vi.fn() }));
 function deferred<T>() {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve };
@@ -44,7 +44,7 @@ it('projects model capabilities and forwards validated selections without using 
     expect(selectors[1].variants!.values.native.choices).toContainEqual({id: 'high', label: 'High'});
     const context = {operationId: 'send', viewId: binding.source.getSnapshot().viewId};
     expect(await binding.actions.send!({text: 'Prompt', attachments: [], selection: {modelId: 'native', reasoningEffort: 'high'}}, context)).toMatchObject({status: 'accepted'});
-    expect(host.controls.send).toHaveBeenCalledWith('Prompt', [], {modelId: 'native', reasoningEffort: 'high'});
+    expect(host.controls.send).toHaveBeenCalledWith('Prompt', [], {modelId: 'native', reasoningEffort: 'high'}, context.operationId);
     const invalid = await binding.actions.send!({text: 'Prompt', attachments: [], selection: {modelId: 'native', reasoningEffort: 'invalid'}}, context);
     expect(invalid).toMatchObject({status: 'rejected', code: 'INVALID_SELECTION'}); expect(host.controls.send).toHaveBeenCalledOnce(); binding.dispose();
 });
@@ -75,7 +75,7 @@ it('revalidates native commands without rereading history or unrelated model met
     const context = {operationId: 'compact', viewId: binding.source.getSnapshot().viewId};
     expect(await binding.actions.command!(input, context)).toMatchObject({status: 'accepted'});
     expect(host.read).not.toHaveBeenCalled(); expect(host.controls.models).not.toHaveBeenCalled();
-    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact ');
+    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact ', context.operationId);
     vi.mocked(host.controls.commands!).mockRejectedValueOnce(new Error('Directory unavailable'));
     expect(await binding.actions.command!(input, context)).toMatchObject({status: 'rejected', code: 'DIRECTORY_UNAVAILABLE'});
     expect(host.controls.command).toHaveBeenCalledOnce(); binding.dispose();
@@ -119,7 +119,7 @@ it('aggregates host and harness commands with distinct routes and keeps UI comma
     const run = (command: typeof catalog[number]) => binding.actions.command!({target: {id: command.id, expectedRevision: command.revision}, kind: command.kind,
         text: '/compact', arguments: ''}, context);
     await run(catalog.find(command => command.source.id === 'harness')!);
-    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact');
+    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact', context.operationId);
     host.emit({canSend: false, disconnected: true}); host.read.mockRejectedValue(new Error('offline'));
     expect(await run(catalog.find(command => command.source.id === 'ui')!)).toMatchObject({status: 'accepted'});
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({target: {id: 'compact', expectedRevision: 0}}), context);
@@ -227,7 +227,7 @@ it('maps immutable native attachments through the host and enforces negotiated k
     const binding = await createNativeChatBinding({...host.options, images});
     const context = {operationId: 'with-file', viewId: binding.source.getSnapshot().viewId};
     expect(await binding.actions.send!({text: 'Read', attachments: [{id: 'asset', name: 'notes.txt', mimeType: 'text/plain'}]}, context)).toMatchObject({status: 'accepted'});
-    expect(host.controls.send).toHaveBeenCalledWith('Read', [{kind: 'text', name: 'notes.txt', content: 'Notes'}]);
+    expect(host.controls.send).toHaveBeenCalledWith('Read', [{kind: 'text', name: 'notes.txt', content: 'Notes'}], undefined, context.operationId);
     host.emit({attachments: []});
     expect(await binding.actions.send!({text: 'Read', attachments: [{id: 'asset', name: 'notes.txt', mimeType: 'text/plain'}]}, context)).toMatchObject({status: 'rejected', code: 'INVALID_ATTACHMENT'});
     expect(host.controls.send).toHaveBeenCalledTimes(1); binding.dispose();
@@ -259,4 +259,70 @@ it('assembles image preprocessing and metadata persistence when creating a nativ
     const ref = await options.upload!(prepared, {signal}); await options.imageEditing!.uploaded!(prepared, ref, {signal});
     expect(upload).toHaveBeenCalledTimes(2); expect(saveMetadata).toHaveBeenCalledWith(ref, expect.objectContaining({original: expect.objectContaining({id: 'image.png2'})}));
     await view.destroy(); await view.destroy(); expect(close).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled(); binding.dispose();
+});
+
+it('does not associate another conversation or an action command with the current user turn', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    for (const [operationId, conversationId, kind, input] of [
+        ['other', 'another-conversation', 'send', {}], ['compact', 'native', 'command', {kind: 'action'}],
+    ] as const) {
+        await operations.register({context: {operationId, viewId: 'old'}, conversationId, kind, input, status: 'submitting'});
+        await operations.settle({status: 'accepted', operationId, submissionRef: 'same-turn'});
+    }
+    host.emit({messages: [{id: 'user', role: 'user', text: 'Original input', turnId: 'same-turn'}]});
+    const binding = await createNativeChatBinding({...host.options, operations});
+    expect(binding.source.getSnapshot().messages[0].submissionId).toBeUndefined(); binding.dispose();
+});
+
+it('accepts native queued input during an active turn and preserves its history association after draining', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    host.emit({canQueue: true, canSend: false, active: true});
+    host.controls.enqueue = vi.fn(async (_text, _files, _selection, id) => {
+        host.emit({instructionQueue: {revision: 1, paused: false, acceptedIds: [id!], submissions: [{id: id!}], items: []}});
+        return {...host.state(), submission: {id: id!, status: 'accepted' as const}};
+    });
+    const binding = await createNativeChatBinding({...host.options, operations});
+    const context = {operationId: 'queued-input', viewId: binding.source.getSnapshot().viewId};
+    await operations.register({context, conversationId: 'native', kind: 'send', input: {}, status: 'submitting'});
+    expect(binding.source.getSnapshot().allowed).toContain('send');
+    const result = await binding.actions.send!({text: 'Next', attachments: []}, context);
+    expect(result).toMatchObject({status: 'accepted', operationId: 'queued-input'});
+    expect(host.controls.enqueue).toHaveBeenCalledWith('Next', [], undefined, 'queued-input');
+    expect(binding.source.getSnapshot().messages).toEqual([]);
+    expect(binding.source.getSnapshot().operationReceipts).toContainEqual(expect.objectContaining({status: 'accepted', operationId: 'queued-input'}));
+    await operations.settle(result);
+    host.emit({instructionQueue: {revision: 4, paused: false, acceptedIds: ['queued-input'],
+        submissions: [{id: 'queued-input', turnId: 'native-turn'}], items: []},
+        messages: [{id: 'native-user', role: 'user', text: 'Next', turnId: 'native-turn'}]});
+    expect(binding.source.getSnapshot().messages[0]).toMatchObject({id: 'native-user', submissionId: 'queued-input'});
+    expect(binding.source.getSnapshot().operationReceipts).toContainEqual(expect.objectContaining({observedUserMessageId: 'native-user'}));
+    binding.dispose();
+});
+
+
+it('rejects structured arguments when the native target has no declared mapping', async () => {
+    const host = fixture(); host.controls.enqueue = vi.fn();
+    const binding = await createNativeChatBinding(host.options);
+    expect(await binding.actions.send!({text: 'Original', attachments: [], input: {targetId: 'native',
+        signature: {id: 'flow', revision: 1, digest: 'one'}, values: {count: 0}}},
+        {operationId: 'unsupported', viewId: binding.source.getSnapshot().viewId}))
+        .toMatchObject({status: 'rejected', code: 'UNSUPPORTED_INPUT'});
+    expect(host.controls.enqueue).not.toHaveBeenCalled(); binding.dispose();
+});
+
+it('uses direct native admission for the first turn until queuing is explicitly available', async () => {
+    const host = fixture();
+    host.controls.send = vi.fn(async () => ({...host.state(), submittedTurnId: 'first-turn'}));
+    host.controls.enqueue = vi.fn(async (_text, _files, _selection, id) => ({...host.state(), submission: {id: id!, status: 'accepted' as const}}));
+    const binding = await createNativeChatBinding(host.options);
+    try {
+        const context = {operationId: 'first', viewId: binding.source.getSnapshot().viewId};
+        expect(await binding.actions.send!({text: 'First', attachments: []}, context)).toMatchObject({status: 'accepted'});
+        expect(host.controls.send).toHaveBeenCalledWith('First', [], undefined, 'first');
+        expect(host.controls.enqueue).not.toHaveBeenCalled();
+        host.emit({canQueue: true, canSend: false});
+        expect(await binding.actions.send!({text: 'Second', attachments: []}, {...context, operationId: 'second'})).toMatchObject({status: 'accepted'});
+        expect(host.controls.enqueue).toHaveBeenCalledWith('Second', [], undefined, 'second');
+        expect(host.controls.send).toHaveBeenCalledOnce();
+    } finally {binding.dispose();}
 });

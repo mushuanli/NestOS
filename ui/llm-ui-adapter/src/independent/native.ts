@@ -1,3 +1,5 @@
+import type {OperationRecord} from '@itookit/llm-ui';
+import {createModuleLogger} from '@itookit/common';
 import {createImageChatView, type ImageChatOptions} from './image-chat-view';
 import type {ImageEditingHost} from './image-editing';
 import {prepareRemoteAttachments} from '../shell/remote-attachments';
@@ -8,6 +10,8 @@ import {NativeComposerCapabilities, type NativeCommandProvider} from './native-c
 import {submitNativeCommand} from './native-command';
 import { ChatProjection } from './projection';
 import {nativeInteraction, nativeResponse} from '../native-interactions';
+
+const log = createModuleLogger('native-submission');
 
 export interface NativeChatBindingOptions {
     readonly images?: ImageEditingHost;
@@ -33,15 +37,16 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         native = state;
         const catalog = commands(state);
         source.publish({ title: state.title, selectors: capabilities.selectors(),
-            commands: state.supportsSlashCommands || options.commandProviders?.length ? catalog : undefined, messages: state.messages.map(message => nativeMessage(message, options.operations)),
+            commands: state.supportsSlashCommands || options.commandProviders?.length ? catalog : undefined, operationReceipts: nativeReceipts(state, options.operations, options.conversationId),
+            messages: state.messages.map(message => nativeMessage(message, options.operations, state, options.conversationId)),
             interactions: state.requests.map(request => interaction(request, requests)),
             loading: false, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
             connection: state.disconnected ? 'offline' : 'online', hasEarlier: state.hasEarlier ?? false,
-            allowed: [...(state.canSend && !state.pending ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
+            allowed: [...(nativeCanSubmit(state, options.controls) ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
                 ...(catalog.some(command => !command.disabled) ? ['command' as const] : [])] });
     };
     const loadCapabilities = async (state: NativeSnapshot, force = false) => {
-        if (await capabilities.load(state, force) && !closed && native) publish(native);
+        if (await capabilities.load(state, force) && !closed && native) publish(options.controls.snapshot?.() ?? native);
     };
     const refresh = async () => {
         const captured = ++generation, state = await options.controls.read();
@@ -77,13 +82,16 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         catch (error) {return reject(context, 'INVALID_SELECTION', String(error));}
         const captured = generation;
         return submitNativeOperation(context, async () => {
-            const state = await submitNativeCommand(options.controls, {name: command.commandId, kind: command.kind}, input.arguments, input.text, selection);
+            const state = native?.canQueue && options.controls.enqueue
+                ? await options.controls.enqueue(input.text, [], selection, context.operationId)
+                : await submitNativeCommand(options.controls, {name: command.commandId, kind: command.kind}, input.arguments, input.text, selection, context.operationId);
             publishResponse(state, captured); return state;
         }, false);
     };
     const actions: ConversationActions = {
         async send(input, context) {
             if (!valid(context.viewId)) return { status: 'rejected', operationId: context.operationId, code: 'STALE_VIEW', message: 'Observation binding expired' };
+            if (input.input) return reject(context, 'UNSUPPORTED_INPUT', 'Native message input has no declared structured argument binding');
             let attachments: NonNullable<Parameters<ConversationControls['send']>[1]> = [];
             if (input.attachments.length) {
                 if (!options.images) return reject(context, 'ATTACHMENT_MAPPING_REQUIRED', 'Native attachments require host conversion');
@@ -99,8 +107,9 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             catch (error) {return {status: 'rejected', operationId: context.operationId, code: 'INVALID_SELECTION', message: String(error)};}
             const captured = generation;
             return submitNativeOperation(context, async () => {
-                const state = selection ? await options.controls.send(input.text, attachments, selection)
-                    : attachments.length ? await options.controls.send(input.text, attachments) : await options.controls.send(input.text);
+                const state = native?.canQueue && options.controls.enqueue
+                    ? await options.controls.enqueue(input.text, attachments, selection, context.operationId)
+                    : await options.controls.send(input.text, attachments, selection, context.operationId);
                 publishResponse(state, captured); return state;
             }, true);
         },
@@ -149,14 +158,21 @@ export function createNativeChatView(container: HTMLElement, binding: Awaited<Re
     options: ImageChatOptions = {}) {
     return createImageChatView(container, {...options, source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
 }
-function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger): ChatMessage {
-    const record = operations.getSnapshot().find(item => (item.kind === 'send' || item.kind === 'command') && item.submissionRef && item.submissionRef === message.turnId);
+function nativeMessage(message: NativeSnapshot['messages'][number], operations: OperationLedger, state: NativeSnapshot, conversationId: string): ChatMessage {
+    const submission = state.instructionQueue?.submissions?.find(item => item.turnId && item.turnId === message.turnId);
+    const record = operations.getSnapshot().find(item => {
+        if (item.conversationId !== conversationId || !nativeUserOperation(item)) return false;
+        return item.context.operationId === submission?.id || !!item.submissionRef && item.submissionRef === message.turnId
+            || item.observedUserMessageId === message.id;
+    });
+    const parts: ChatMessage['parts'][number][] = message.role === 'tool' ? [{ id: message.id, kind: 'tool', name: message.name ?? '',
+        summary: message.commandPreview ?? message.operation ?? '', state: 'succeeded' }]
+        : (message.contentParts ?? [message.text]).map((text, index) => ({ id: `${message.id}-${index}`, kind: 'markdown', text }));
     return { id: message.id, revision: 0, role: message.role, state: message.status === 'streaming' ? 'streaming' : 'complete',
         submissionId: record?.context.operationId, acceptance: message.id.startsWith('submitted:') ? 'optimistic' : 'confirmed',
-        parts: message.role === 'tool' ? [{ id: message.id, kind: 'tool', name: message.name ?? '',
-            summary: message.commandPreview ?? message.operation ?? '', state: 'succeeded' }]
-            : (message.contentParts ?? [message.text]).map((text, index) => ({ id: `${message.id}-${index}`, kind: 'markdown', text })) };
+        parts };
 }
+
 function interaction(request: NativeSnapshot['requests'][number], versions: Map<string, { encoded: string; revision: number }>): InteractionView {
     const id = nativeInteraction(request).id, encoded = JSON.stringify(request), previous = versions.get(id);
     const revision = previous?.encoded === encoded ? previous.revision : (previous?.revision ?? -1) + 1;
@@ -169,12 +185,11 @@ function reject(context: OperationContext, code: string, message: string) {
 }
 
 async function submitNativeOperation(context: OperationContext, action: () => Promise<NativeSnapshot>, expectsTurn: boolean): Promise<OperationReceipt> {
-    let state: NativeSnapshot;
+    let state: NativeSnapshot; const started = Date.now();
     try {state = await action();}
-    catch (error) {
-        if ((error as {outcome?: string})?.outcome !== 'not-committed') throw error;
-        return reject(context, 'NATIVE_REJECTED', String(error));
-    }
+    catch (error) {return nativeSubmissionFailure(context, error, started);}
+    const receipt = nativeAdmissionReceipt(state, context);
+    if (receipt) return receipt;
     return state.pending || expectsTurn && !state.submittedTurnId
         ? {status: 'unknown', operationId: context.operationId, message: 'Awaiting native receipt'}
         : {status: 'accepted', operationId: context.operationId, ...(state.submittedTurnId ? {submissionRef: state.submittedTurnId} : {})};
@@ -185,3 +200,45 @@ function releaseBinding(stops: readonly (() => void)[]): void {
     for (const stop of stops) {try {stop();} catch (error) {errors.push(error);}}
     if (errors.length) throw new AggregateError(errors, 'Native binding cleanup failed');
 }
+
+function nativeSubmissionFailure(context: OperationContext, error: unknown, started: number): OperationReceipt {
+    const failure = error as {outcome?: string; remoteCode?: string}, code = failure?.remoteCode;
+    const safeCode = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'NATIVE_REJECTED';
+    try {log.warn('native.submit', {operationId: context.operationId, stage: 'dispatch', result: 'failure',
+        code: safeCode, outcome: failure?.outcome === 'not-committed' ? 'not-committed' : 'unknown', durationMs: Date.now() - started});}
+    catch { /* Preserve the native receipt classification when diagnostics fail. */ }
+    if (failure?.outcome !== 'not-committed') throw error;
+    return reject(context, safeCode, String(error));
+}
+
+function nativeAdmissionReceipt(state: NativeSnapshot, context: OperationContext): OperationReceipt | undefined {
+    const receipt = state.submission;
+    if (receipt?.id === context.operationId) {
+        if (receipt.status === 'accepted') return {status: 'accepted', operationId: context.operationId, submissionRef: receipt.turnId ?? receipt.id};
+        if (receipt.status === 'rejected') return reject(context, receipt.code ?? 'NATIVE_REJECTED', 'Native submission rejected');
+    }
+    if (state.instructionQueue?.acceptedIds.includes(context.operationId)) return {status: 'accepted', operationId: context.operationId, submissionRef: context.operationId};
+}
+
+function nativeCanSubmit(state: NativeSnapshot, controls: ConversationControls): boolean {
+    return !!(state.canQueue && controls.enqueue || state.canSend && !state.pending);
+}
+
+function nativeUserOperation(record: OperationRecord): boolean {
+    return record.kind === 'send' || record.kind === 'command' && !!record.input && typeof record.input === 'object'
+        && 'kind' in record.input && record.input.kind === 'prompt';
+}
+
+function nativeReceipts(state: NativeSnapshot, operations: OperationLedger, conversationId: string): OperationReceipt[] {
+    const admitted = new Map<string, {id: string; turnId?: string; commandId?: string}>(
+        (state.instructionQueue?.submissions ?? state.instructionQueue?.acceptedIds.map(id => ({id})) ?? []).map(row => [row.id, row]));
+    if (state.submission?.status === 'accepted') admitted.set(state.submission.id, {id: state.submission.id, turnId: state.submission.turnId});
+    return operations.getSnapshot().filter(record => record.conversationId === conversationId).flatMap(record => {
+        if (!['send', 'command'].includes(record.kind) || !admitted.has(record.context.operationId)) return [];
+        const submission = admitted.get(record.context.operationId)!;
+        const user = submission.turnId && state.messages.find(message => message.role === 'user' && message.turnId === submission.turnId);
+        return [{status: 'accepted' as const, operationId: record.context.operationId, submissionRef: submission.id,
+            ...(user ? {observedUserMessageId: user.id} : {})}];
+    });
+}
+

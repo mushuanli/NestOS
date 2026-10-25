@@ -175,3 +175,5 @@ Flow Agent 参数预填使用点击发送时的文字与附件快照，只消费
 Flow 参数表单只收集连接覆盖；必需槽位留空表示继承声明或用途默认连接，是否可运行由后端准入决定。槽位错误消费结构化 field，经本地或 HTTP 同样定位，不匹配英文错误正文。
 
 默认原生工作台的 NativeInstructionQueuePanel 直接适配 ConversationControls 与独立 InstructionQueueView，不伪造 SessionCommandBus。awaitNativeAdmission 只缩短当前 UI 的接纳等待：订阅原 operationId 的持久事实后再派发，接纳可先于 RPC 返回，迟到结果不参与后续草稿消费；销毁只终止视图等待，不取消或重发原生操作。
+
+独立 native binding 的 send/串行命令使用当前快照 canQueue 决定 enqueue，不能仅检查方法存在；原生首轮仍可走 send。OperationContext.operationId 贯穿原生接纳与队列回执，同一 OperationLedger 接收持久接纳；队列记录不伪造成历史消息。历史只按实际 turn 关联同 conversation 的发送或 prompt 命令，action 命令不能归属用户轮次。

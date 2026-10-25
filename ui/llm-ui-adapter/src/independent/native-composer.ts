@@ -68,7 +68,7 @@ export class NativeComposerCapabilities {
     catalog(state: ConversationSnapshot): CommandCatalog {
         return {source: {id: 'harness', label: t('harness.remoteAgents')}, commands: this.commands.map(command => ({
             id: command.name, revision: this.commandRevision, name: command.name, description: command.description,
-            argumentHint: command.argumentHint, kind: command.kind, disabled: !!command.disabled || !this.controls.command || !state.canSend || state.pending}))};
+            argumentHint: command.argumentHint, kind: command.kind, disabled: !!command.disabled || !this.controls.command || !(state.canQueue && this.controls.enqueue || state.canSend && !state.pending)}))};
     }
     compose(state: ConversationSnapshot, contributions: readonly CommandCatalog[] = []): readonly ComposerCommand[] {
         return composeCommandCatalogs([...contributions, this.catalog(state)]);

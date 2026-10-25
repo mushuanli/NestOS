@@ -88,3 +88,7 @@ ApplicationRuntime 为所有 Session 视图注入同一个 `SessionExecutionActi
 ### 默认远程工作台的接纳等待
 
 默认工作台直接用 ConversationControls 适配独立 InstructionQueueView，队列编辑不经过伪造的本地命令总线。持久队列接纳通知可以先于 enqueue RPC 回复结束当前输入等待，原 RPC 的迟到成功/失败只结束原调用。文字与附件仍按冻结修订消费，不覆盖等待期间的新草稿；视图销毁解除订阅和等待，不自动取消原生操作。独立 ChatView 通过 OperationLedger 接入属于后续单独迁移。
+
+### 独立 ChatView 的原生台账
+
+原生适配器把队列 acceptedIds/submissions 和原提交回执投影到同一 OperationLedger，持久接纳可释放尚未返回的旧发送。UI 仅在 canQueue 为真时调用 enqueue，首轮和未声明排队的端点继续 send；两者都传递稳定 operationId。队列本身不生成历史气泡，真实 turn 到达后按同 conversation、提交身份及 turn 关联，action 命令不占用用户提问。新草稿与旧传输结果分别处理，迟到成功或失败均不消费下一条输入。

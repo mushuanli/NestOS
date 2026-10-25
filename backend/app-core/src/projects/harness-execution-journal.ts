@@ -55,4 +55,13 @@ export class ExecutionJournal {
     async operation(step: string, value: NativeOperation): Promise<void> {
         await this.save({ operations: { ...this.data.operations, [step]: value } });
     }
+    /** Admission and pause share one Kernel transaction; previously admitted work may settle. */
+    async operationIfRunning(step: string, value: NativeOperation): Promise<boolean> {
+        if (!this.state.setIfRunning) throw executionError('NATIVE_CONTINUATION_GUARD_UNAVAILABLE');
+        const next = { ...this.data, operations: { ...this.data.operations, [step]: value } };
+        const saved = await this.state.setIfRunning(this.key, jsonValue(next), this.revision);
+        if (!saved) return false;
+        this.data = next; this.revision = saved.version;
+        return true;
+    }
 }

@@ -21,6 +21,8 @@ export function durableState() {
             records.set(key, entry); writes.push(key); return structuredClone(entry);
         },
     };
+    // Isolated state has no control holds; runtime tests cover atomic admission.
+    state.setIfRunning = state.set;
     return { state, records, writes };
 }
 export function fixture() {

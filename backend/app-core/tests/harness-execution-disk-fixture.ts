@@ -23,5 +23,7 @@ export async function diskState(path: string): Promise<{ state: EffectSessionSta
             return structuredClone(entry);
         },
     };
+    // This single-writer test port has no task or Session control holds.
+    state.setIfRunning = state.set;
     return { state, close: () => { closed = true; } };
 }

@@ -7,16 +7,19 @@ export interface NativeExecution {
     attachments?: HarnessInlineAttachment[];
     acquired: HarnessConnectionAcquisition; journal: ExecutionJournal; request: HarnessExecutionRequest; signal: AbortSignal;
 }
+export const NATIVE_MUTATION_HELD = Symbol('native-mutation-held');
 type Mutation = (options: HarnessMutationOptions) => Promise<unknown>;
 export function nativeOptions(run: NativeExecution, requestId?: string): HarnessMutationOptions {
     return { signal: run.signal, epoch: run.journal.data.epoch, ...(requestId ? { requestId } : {}) };
 }
-export async function nativeMutation(run: NativeExecution, step: string, call: Mutation): Promise<unknown> {
+export async function nativeMutation(run: NativeExecution, step: string, call: Mutation, requireRunning = false): Promise<unknown> {
     run.signal.throwIfAborted();
     const saved = run.journal.data.operations[step];
     if (saved) return settledOperation(run, step, saved);
     const operation: NativeOperation = { requestId: nativeOperationId(run.journal.context, step), outcome: 'pending' };
-    await run.journal.operation(step, operation);
+    if (requireRunning) {
+        if (!await run.journal.operationIfRunning(step, operation)) return NATIVE_MUTATION_HELD;
+    } else await run.journal.operation(step, operation);
     run.signal.throwIfAborted();
     let result: unknown;
     try { result = await call(nativeOptions(run, operation.requestId)); }

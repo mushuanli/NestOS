@@ -1463,6 +1463,7 @@ export const zhCN = {
     'flow.source.error.CONTENT_SUMMARY_EMPTY': '模型未返回摘要，请重试或改用其他来源。',
     'flow.source.error.CONTENT_SESSION_READ_ONLY': '当前宿主没有会话写入权，请在持有该会话的宿主操作。',
     'flow.source.error.CONTENT_SESSION_CLOSED': '会话已关闭，无法准备新的运行。',
+    'flow.invoke.reconcileControl': '核对原控制结果',
     'flow.invoke.pause': '暂停此调用',
     'flow.invoke.continue': '继续此调用',
     'flow.invoke.paused': '已暂停',

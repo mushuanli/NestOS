@@ -1,3 +1,4 @@
+import {ControlOperations} from '../flows/control-operations';
 import {expect, it, vi} from 'vitest';
 import {createOperationLedger, type OperationRecord} from '@itookit/llm-ui';
 import {StateService} from './StateService';
@@ -82,4 +83,16 @@ it('emits safe diagnostics without payloads and does not let a throwing sink ack
     expect(JSON.stringify(diagnostic)).not.toContain('PRIVATE_');
     diagnostics.debug.mockImplementationOnce(() => {throw new Error('Sink unavailable');});
     expect(await f.service().saveOperations('session', [operation('a')])).toEqual([operation('a')]);
+});
+
+
+it('merges the same frozen Flow control from concurrent views into one persistent identity', async () => {
+    const f = fixture(), a = f.ledger(), b = f.ledger();
+    const send = vi.fn(async (_requestId: string) => true);
+    const input = {protocol: 'flow-control-v1' as const, taskId: 'root', action: 'pause' as const, expectedEpoch: 3};
+    await Promise.all([new ControlOperations(a, {} as never, 'session').run(input, send),
+        new ControlOperations(b, {} as never, 'session').run(input, send)]);
+    expect(f.records()).toHaveLength(1); expect(f.records()[0].status).toBe('accepted');
+    expect(new Set(send.mock.calls.map(([id]) => id)).size).toBe(1);
+    expect(f.records()[0].input).toEqual(input);
 });

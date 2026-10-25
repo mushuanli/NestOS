@@ -1,3 +1,4 @@
+import {createOperationLedger, type OperationLedger, type OperationRecord} from '@itookit/llm-ui';
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
 import {taskStat} from '@itookit/durable-kernel';
@@ -27,14 +28,14 @@ function leased(): TaskRecord['effects'] {return {native: {status: 'leased'}} as
 function button(key: Parameters<typeof t>[0]): HTMLButtonElement | undefined {
     return [...document.querySelectorAll<HTMLButtonElement>('[data-actions] button')].find(button => button.textContent === t(key));
 }
-async function fixture(initial: DurableFlowSnapshot) {
+async function fixture(initial: DurableFlowSnapshot, operations?: OperationLedger) {
     let current = initial;
     const execute = vi.fn(async (command: string, _input?: unknown): Promise<unknown> => {
         if (command === FlowInvocationCommand.List) return [{requestId: 'call', rootTaskId: 'root', flow: {name: 'Flow'}, revision: 1}];
         if (command === FlowCommand.RunGet) return structuredClone(current);
         return {};
     });
-    panel = new InvocationPanel({execute} as unknown as ICommandBus, 'session', document.body, vi.fn()); await panel.refresh();
+    panel = new InvocationPanel({execute} as unknown as ICommandBus, 'session', document.body, vi.fn(), {operations}); await panel.refresh();
     return {execute, state: () => current, set: (value: DurableFlowSnapshot) => {current = value;}, refresh: () => panel!.refresh()};
 }
 
@@ -283,4 +284,35 @@ it('does not infer confirmed stoppage when the host omits Kernel control statist
     expect(button('flow.invoke.continue')).toBeUndefined();
     expect(document.querySelector('[data-status]')!.textContent).toBe(t('flow.invoke.pausing'));
     expect(button('flow.invoke.cancel')).toBeDefined();
+});
+
+
+it('restores a pending control after reopening and queries its original receipt without dispatch', async () => {
+    let saved: readonly OperationRecord[] = [];
+    const ledger = () => createOperationLedger({initial: saved, save: async records => {saved = structuredClone(records);}});
+    const first = await fixture(snapshot(), ledger()), base = first.execute.getMockImplementation()!;
+    first.execute.mockImplementation(async (command, args) => {
+        if (command === FlowCommand.RunGoalUpdate) throw new Error('Reply lost');
+        return base(command, args);
+    });
+    button('flow.invoke.pause')!.click(); await vi.waitFor(() => expect(saved[0]?.status).toBe('unknown'));
+    const id = saved[0].context.operationId; panel!.destroy();
+    const second = await fixture(snapshot(), ledger()), read = second.execute.getMockImplementation()!;
+    second.execute.mockImplementation(async (command, args) => command === FlowCommand.RunControlReceipt
+        ? {requestId: id, action: 'pause', expectedEpoch: 0, accepted: {requestId: id}} : read(command, args));
+    document.querySelector<HTMLButtonElement>('[data-control-reconcile]')!.click();
+    await vi.waitFor(() => expect(saved[0].status).toBe('accepted'));
+    expect(second.execute.mock.calls.some(([name]) => name === FlowCommand.RunGoalUpdate)).toBe(false);
+});
+
+it('does not dispatch a control after its view closes while registration is still being saved', async () => {
+    let release!: () => void;
+    const operations = createOperationLedger({save: () => new Promise<void>(resolve => {release = resolve;})});
+    const f = await fixture(snapshot(), operations);
+    button('flow.invoke.pause')!.click(); await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    panel!.setVisible(false); release();
+    await vi.waitFor(() => expect(operations.getSnapshot()).toHaveLength(1));
+    expect(f.execute.mock.calls.some(([name]) => name === FlowCommand.RunGoalUpdate)).toBe(false);
+    // Release the subsequent local unknown receipt write without restarting the view.
+    await new Promise(resolve => setTimeout(resolve, 0)); release();
 });

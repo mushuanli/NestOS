@@ -1,3 +1,4 @@
+import {ControlOperations} from '../flows/control-operations';
 import {createImageChatView, type ImageChatOptions} from './image-chat-view';
 import type {ImageEditingHost} from './image-editing';
 import { type ConversationActions, type MessagePart,
@@ -184,6 +185,8 @@ class SessionChatBinding {
             : Promise.resolve(rejected(context, 'STALE_COMMAND', 'Command changed or is unavailable'));
     }
     private async reconcile(operationId: string): Promise<OperationReceipt> {
+        const controls = new ControlOperations(this.operations, this.options.commands, this.sessionId);
+        if (controls.has(operationId)) return controls.reconcile(operationId);
         if (this.operations.getSnapshot().some(record => record.context.operationId === operationId && record.kind === 'command') && this.options.composerCommands)
             return this.options.composerCommands.reconcile(operationId);
         const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send');

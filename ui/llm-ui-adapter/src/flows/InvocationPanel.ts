@@ -1,7 +1,9 @@
+import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
+import {ControlOperations} from './control-operations';
 import {flowInputAssets} from './input-assets';
 import { promptInvocation } from './prompt-invocation';
 import { flowConnectionSelection } from './connection-selection';
-import { createModuleLogger, escapeHTML, randomUUID, t } from '@itookit/common';
+import { createModuleLogger, escapeHTML, t } from '@itookit/common';
 import { type ICommandBus } from '@itookit/llm-session/contracts';
 import { type FlowParameter, type JsonValue } from '@itookit/llm-flow/contracts';
 import { formatFlowOutput } from '@itookit/llm-flow/contracts';
@@ -29,13 +31,15 @@ export class InvocationPanel {
     private refreshFailed = false;
     private visible = true;
     private actions = new Set<string>();
-    private controlRequests = new Map<string, string>();
+    private controlOperations: ControlOperations;
     private element = document.createElement('section');
     private summary = document.createElement('p');
     private error = document.createElement('p');
     constructor(private commands: ICommandBus, private sessionId: string, parent: HTMLElement, private useResult: (text: string) => void, private options: {
+        operations?: OperationLedger;
         mountCard?(card: HTMLElement, call: FlowInvocationRecord): () => void; openChild?(id: string): void | Promise<void>;
     } = {}) {
+        this.controlOperations = new ControlOperations(this.options.operations ?? createOperationLedger(), this.commands, this.sessionId);
         this.element.className = 'flow-invocations'; this.element.hidden = true;
         this.element.setAttribute('aria-label', t('flow.invoke.calls')); parent.append(this.element);
         this.summary.className = 'flow-invocations__summary'; this.summary.setAttribute('role', 'status');
@@ -82,7 +86,7 @@ export class InvocationPanel {
         this.abort.abort(); this.viewAbort.abort(); clearTimeout(this.timer);
         for (const card of this.cards.values()) { card.unmount?.(); card.element.remove(); }
         for (const card of this.cards.values()) for (const panel of card.interactions.values()) if (panel instanceof InteractionPanel) panel.clear();
-        this.cards.clear(); this.controlRequests.clear(); this.element.remove();
+        this.cards.clear(); this.element.remove();
     }
 
     private async load(): Promise<void> {
@@ -121,7 +125,7 @@ export class InvocationPanel {
         element.innerHTML = `<header><strong>${escapeHTML(call.flow.name)} · v${call.revision}</strong><span data-status role="status"></span></header>
             <p>${escapeHTML(t('flow.invoke.origin', {branch: call.branch ?? 'main'}))}</p>
             <details><summary>${escapeHTML(t('flow.invoke.inputs'))}</summary>${this.inputSources(call)}<pre>${escapeHTML(JSON.stringify(call.inputResolution?.parameters ?? call.parameters, null, 2))}</pre></details>
-            <p data-control-notice role="status"></p><div data-actions></div><details><summary>${escapeHTML(t('flow.invoke.result'))}</summary><pre data-result></pre></details><div data-interactions></div><p data-error role="alert"></p>`;
+            <p data-control-notice role="status"></p><div data-control-recovery></div><div data-actions></div><details><summary>${escapeHTML(t('flow.invoke.result'))}</summary><pre data-result></pre></details><div data-interactions></div><p data-error role="alert"></p>`;
         const unmount = this.options.mountCard?.(element, call);
         if (!this.options.mountCard) this.element.append(element);
         return { element, interactions: new Map(), active: !call.error, unmount };
@@ -137,6 +141,7 @@ export class InvocationPanel {
         const result = formatFlowOutput(returned ?? task.output ?? task.exit?.error ?? task.lastError ?? '');
         card.element.querySelector('[data-result]')!.textContent = result;
         this.updateActions(card, call, snapshot);
+        this.updateControlRecovery(card, call);
         this.updateInteractions(card, call, terminal(task.status) ? [] : invocationControlTasks(snapshot));
     }
 
@@ -167,9 +172,13 @@ export class InvocationPanel {
     }
 
     private async setPaused(call: FlowInvocationRecord, paused: boolean, expectedEpoch: number): Promise<void> {
-        const requestId = this.controlRequest(`${call.rootTaskId}:${paused ? 'pause' : 'resume'}:${expectedEpoch}`), started = Date.now();
-        try {if (await this.changePause(call, paused, expectedEpoch, requestId)) controlDiagnostic(paused ? 'pause' : 'resume', requestId, started);}
-        catch (error) {controlDiagnostic(paused ? 'pause' : 'resume', requestId, started, error); throw error;}
+        const action = paused ? 'pause' : 'resume', started = Date.now(), signal = this.viewAbort.signal;
+        await this.controlOperations.run({protocol: 'flow-control-v1', taskId: call.rootTaskId!, action, expectedEpoch}, async requestId => {
+            if (signal.aborted || this.abort.signal.aborted || !this.visible) return false;
+            try {const sent = await this.changePause(call, paused, expectedEpoch, requestId);
+                if (sent) controlDiagnostic(action, requestId, started); return sent;}
+            catch (error) {controlDiagnostic(action, requestId, started, error); throw error;}
+        });
     }
 
     private async changePause(call: FlowInvocationRecord, paused: boolean, expectedEpoch: number, requestId: string): Promise<boolean> {
@@ -208,21 +217,30 @@ export class InvocationPanel {
     }
 
     private async withdrawPause(call: FlowInvocationRecord, expectedEpoch: number): Promise<void> {
-        const signal = this.viewAbort.signal;
-        const requestId = this.controlRequest(`${call.rootTaskId}:withdraw:${expectedEpoch}`), started = Date.now();
-        try {
-            let snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {taskId: call.rootTaskId, sessionId: this.sessionId});
-            if (this.abort.signal.aborted || signal.aborted || !this.visible) return;
-            assertWithdraw(snapshot, expectedEpoch); snapshot = await this.reattachPaused(call, snapshot);
-            if (this.abort.signal.aborted || signal.aborted || !this.visible) return;
-            assertWithdraw(snapshot, expectedEpoch);
-            await this.commands.execute(FlowCommand.RunPauseWithdraw, {taskId: call.rootTaskId, requestId, expectedEpoch});
-            controlDiagnostic('withdraw', requestId, started);
-        } catch (error) {controlDiagnostic('withdraw', requestId, started, error); throw error;}
+        const signal = this.viewAbort.signal, started = Date.now();
+        await this.controlOperations.run({protocol: 'flow-control-v1', taskId: call.rootTaskId!, action: 'withdraw', expectedEpoch}, async requestId => {
+            try {
+                let snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {taskId: call.rootTaskId, sessionId: this.sessionId});
+                if (this.abort.signal.aborted || signal.aborted || !this.visible) return false;
+                assertWithdraw(snapshot, expectedEpoch); snapshot = await this.reattachPaused(call, snapshot);
+                if (this.abort.signal.aborted || signal.aborted || !this.visible) return false;
+                assertWithdraw(snapshot, expectedEpoch);
+                await this.commands.execute(FlowCommand.RunPauseWithdraw, {taskId: call.rootTaskId, requestId, expectedEpoch});
+                controlDiagnostic('withdraw', requestId, started); return true;
+            } catch (error) {controlDiagnostic('withdraw', requestId, started, error); throw error;}
+        });
     }
 
-    private controlRequest(key: string): string {
-        const requestId = this.controlRequests.get(key) ?? randomUUID(); this.controlRequests.set(key, requestId); return requestId;
+    private updateControlRecovery(card: Card, call: FlowInvocationRecord): void {
+        const host = card.element.querySelector<HTMLElement>('[data-control-recovery]')!;
+        host.replaceChildren();
+        for (const record of this.controlOperations.pending(call.rootTaskId!)) {
+            const row = document.createElement('div'); host.append(row);
+            const action = (record.input as {action: string}).action;
+            row.append(t(action === 'pause' ? 'flow.invoke.pause' : action === 'resume' ? 'flow.invoke.continue' : 'flow.invoke.withdrawPause') + ' · ');
+            const button = this.button(row, 'flow.invoke.reconcileControl', async () => {await this.controlOperations.reconcile(record.context.operationId);});
+            button.dataset.controlReconcile = record.context.operationId;
+        }
     }
 
     private updateInteractions(card: Card, call: FlowInvocationRecord, tasks: TaskRecord[]): void {

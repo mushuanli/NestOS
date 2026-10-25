@@ -387,6 +387,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const calls = document.createElement('div'); inputEl.before(calls);
         this.invocationPanel = new InvocationPanel(this.commandBus, this.options.sessionId, calls,
             text => this.chatInput.restoreInput([this.chatInput.getConfig().text, text].filter(Boolean).join('\n\n')), {
+                operations: this.operations,
                 mountCard: (card, call) => historyView.mountInvocation(card, call.head ?? null),
                 openChild: id => this.openInvocationChild(id),
             });

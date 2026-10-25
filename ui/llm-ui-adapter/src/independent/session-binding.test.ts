@@ -1,3 +1,4 @@
+import {FlowCommand} from '@itookit/llm-flow/contracts';
 import { expect, it, vi } from 'vitest';
 import {createOperationLedger, type OperationLedger, type OperationRecord} from '@itookit/llm-ui';
 import {SessionCommand} from '@itookit/llm-session/contracts';
@@ -135,4 +136,19 @@ it('does not publish a late backend confirmation after disposal', async () => {
     const snapshot = binding.source.getSnapshot(); binding.dispose(); finish(true);
     await Promise.resolve(); await Promise.resolve();
     expect(binding.source.getSnapshot()).toBe(snapshot);
+});
+
+
+it('routes recovered Flow controls to Kernel receipts rather than composer commands or message admission', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    await operations.register({context: {operationId: 'control', viewId: 'flow-control'}, conversationId: 'session', kind: 'command',
+        input: {protocol: 'flow-control-v1', taskId: 'root', action: 'resume', expectedEpoch: 3}, status: 'unknown'});
+    const execute = vi.fn(async () => ({requestId: 'control', action: 'run', expectedEpoch: 3, accepted: {requestId: 'control'}}));
+    const reconcile = vi.fn(), binding = createSessionChatBinding({...host.options, operations, commands: {execute} as unknown as ICommandBus,
+        composerCommands: {getSnapshot: () => [], execute: vi.fn(), reconcile}});
+    try {
+        expect(await binding.actions.reconcile!('control')).toMatchObject({status: 'accepted'});
+        expect(execute).toHaveBeenCalledWith(FlowCommand.RunControlReceipt, {sessionId: 'session', taskId: 'root', requestId: 'control'});
+        expect(reconcile).not.toHaveBeenCalled(); expect(host.hasCommittedSubmission).not.toHaveBeenCalled();
+    } finally {binding.dispose();}
 });

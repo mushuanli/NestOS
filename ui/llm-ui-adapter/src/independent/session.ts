@@ -1,3 +1,7 @@
+import {verifyInputContext} from '../services/verify-input-context';
+import {SessionContextPicker} from './session-context';
+import {prepareInputContextDraft} from '../domain/context-draft';
+import type {ContextOptionsQuery, ContextOptionsPage} from '@itookit/llm-session/contracts';
 import type {InteractionDraftStorage} from '../domain/interaction-draft';
 import {CallControlOperations} from './call-control';
 import {SessionCallPresentation, independentCallPart} from './session-calls';
@@ -20,6 +24,7 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly contextSelection?: boolean;
     readonly interactionDrafts?: InteractionDraftStorage;
     readonly images?: ImageEditingHost;
     readonly session: SessionViewPort;
@@ -93,10 +98,15 @@ class SessionChatBinding {
             const independent = input?.selection?.callMode === 'independent';
             if (independent && (!this.options.independentCalls || !input.target)) throw new Error('Independent calls require an enabled published target');
             if (independent && !this.branch) throw Object.assign(new Error('Independent calls require an observed branch'), {code: 'CALL_BRANCH_REQUIRED'});
+            if (input.context !== undefined && (!this.options.contextSelection || !input.target))
+                throw Object.assign(new Error('Context selection requires a published target and host support'), {code: 'CONTEXT_SELECTION_UNAVAILABLE'});
             if (!input?.target) return ledger.register(record);
             const frozen = {...input, sessionRequest: this.targetRequest(input, record.context.operationId),
                 ...(independent ? {independentTitle: input.target.id} : {})};
-            return ledger.register({...record, input: JSON.parse(JSON.stringify(frozen))});
+            const captured = JSON.parse(JSON.stringify(frozen));
+            if (!ledger.getSnapshot().some(item => item.context.operationId === record.context.operationId))
+                await verifyInputContext(captured.context, query => this.readContextOptions(query), record.context.operationId);
+            return ledger.register({...record, input: captured});
         }};
     }
     private currentBranch(): string | undefined {return this.options.branch?.() ?? this.options.session.getSnapshot?.().view?.manifest.currentBranch;}
@@ -238,12 +248,14 @@ class SessionChatBinding {
     private targetRequest(input: ChatSubmission, operationId: string): import('@itookit/llm-session/contracts').SubmissionRequest {
         const target = input.target!;
         if (!isTargetRef(target)) throw Object.assign(new Error('Invalid frozen call target'), {code: 'SUBMISSION_TARGET_INVALID'});
+        const context = prepareInputContextDraft(input.context, {sessionId: this.sessionId, branchId: this.branch, target});
         const source = {kind: 'composer', text: input.text, attachments: input.attachments.map(file => ({...file})),
             values: structuredClone(input.input?.values ?? {})} as FlowCallSource;
         return {expectedSessionId: this.sessionId, expectedBranch: this.branch, target: {kind: target.kind, id: target.id, version: target.version}, expectedTarget: {...target}, source,
             attachments: input.attachments.map(file => ({name: file.name, type: file.mimeType ?? '', path: file.id})),
-            ...(input.input ? {overrides: {flowExpectedSignature: {...input.input.signature,
-                id: input.input.signature.id as import('@itookit/llm-flow/contracts').FlowId}}} : {}), submission: this.submission(operationId)};
+            ...(input.input || context ? {overrides: {...(context ? {harnessConversation: context.selection} : {}),
+                ...(input.input ? {flowExpectedSignature: {...input.input.signature,
+                    id: input.input.signature.id as import('@itookit/llm-flow/contracts').FlowId}} : {})}} : {}), submission: this.submission(operationId)};
     }
     private command(input: CommandSubmission, context: OperationContext): Promise<OperationReceipt> {
         if (!this.current() || context.viewId !== this.source.getSnapshot().viewId)
@@ -277,6 +289,9 @@ class SessionChatBinding {
         this.targets?.dispose();
     }
     async refreshTargets(): Promise<void> {await this.targets?.refreshCurrent(); await this.presentation?.refresh();}
+    get contextSelection(): boolean {return !!this.options.contextSelection;}
+    contextScope() {return this.current() && this.branch ? {sessionId: this.sessionId, branchId: this.branch} : undefined;}
+    readContextOptions(query: ContextOptionsQuery): Promise<ContextOptionsPage> {return this.options.commands.execute(SessionCommand.ContextOptions, query);}
     mountCalls(): SessionCallPresentation | undefined {
         if (!this.options.independentCalls || !this.branch || this.closed) return;
         if (this.presentation) throw new Error('The Session binding already owns a call presentation');
@@ -304,19 +319,22 @@ function validInputContract(input: ChatSubmission, contract?: ComposerInputContr
 export async function createSessionChatView(container: HTMLElement, binding: ReturnType<typeof createSessionChatBinding>,
     options: ImageChatOptions = {}) {
     if (options.renderers?.[independentCallPart]) throw new Error('The independent call renderer is reserved by the Session adapter');
-    const calls = binding.mountCalls();
+    const calls = binding.mountCalls(); let contextPicker: SessionContextPicker | undefined;
     try {
-        const mountToolbar: ImageChatOptions['mountToolbar'] = calls ? (host, context) => {
+        const mountToolbar: ImageChatOptions['mountToolbar'] = calls || binding.contextSelection ? (host, context) => {
             const custom = document.createElement('div'); host.append(custom);
             const mounted = options.mountToolbar?.(custom, context);
             if (calls) host.append(calls.notices);
-            return {update: next => mounted?.update?.(next), destroy: async () => {await mounted?.destroy(); custom.remove(); calls.notices.remove();}};
+            if (binding.contextSelection) contextPicker = new SessionContextPicker(host, context, () => binding.contextScope(), query => binding.readContextOptions(query));
+            return {update: next => {mounted?.update?.(next); contextPicker?.update(next);},
+                destroy: async () => {contextPicker?.destroy(); contextPicker = undefined; await mounted?.destroy(); custom.remove(); calls?.notices.remove();}};
         } : options.mountToolbar;
-        const view = await createImageChatView(container, {...options, mountToolbar, renderers: {...options.renderers,
+        const view = await createImageChatView(container, {...options, mountToolbar,
+            onDraftChange: draft => {contextPicker?.updateDraft(draft); options.onDraftChange?.(draft);}, renderers: {...options.renderers,
             ...(calls ? {[independentCallPart]: calls.renderer} : {})},
             source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
         const setActive = view.setActive.bind(view), destroy = view.destroy.bind(view);
-        view.setActive = active => {binding.setActive(active); setActive(active);};
+        view.setActive = active => {binding.setActive(active); contextPicker?.setActive(active); setActive(active);};
         view.destroy = async () => {binding.setActive(false); try {await destroy();} finally {binding.releaseCalls(calls);}};
         return view;
     } catch (error) {binding.releaseCalls(calls); throw error;}

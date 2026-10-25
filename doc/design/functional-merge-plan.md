@@ -102,7 +102,7 @@ C4Component
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
 | F20 | 独立上下文 binding 与清理 | app-core + adapter | F16 / F19 | 执行与清理内核见第 32 节；集合 CAS、journal 与原生身份关联已接线；Session 入口与目录随 F22 继续 |
 | F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 精确检查点与 fork 执行见第 32 节；选择入口及真实节点验收继续随 F22 推进 |
-| F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 宿主目录、Session 冻结与派发见第 33 节；默认工作台选择及草稿证据见第 34 节；独立 ChatView 控件及真实远端验收保留 |
+| F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 宿主目录、Session 冻结与派发见第 33 节；默认工作台选择及草稿证据见第 34 节；独立 ChatView 控件与冻结草稿见第 59 节；真实远端部署验收保留 |
 | F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 宿主读取链路见第 30 节；从终态输出派生，核对范围和摘要，不另建结果注册表；UI 随 F24 验收 |
 | F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节，独立 Agent/Flow 父级摘要与按需产物见第 40—41 节；完整调用组及复杂输出性能仍待验收 |
 | F25 | Flow 调度所有权竞态修复 | llm-flow | 无 | 已合入 `0bcfa29e`；竞争失败者不终结胜者，接纳丢回执不误清理工作区 |
@@ -1339,3 +1339,30 @@ C4Component
 验收覆盖重开恢复未完成 JSON、格式保持、分支隔离、保存失败阻止回答、显式重试、提交后条件清理，以及保存协调器的丢回复同身份核对、并发编辑保护和诊断回调异常隔离。
 
 第 58 节并发补充：清理和保存进入同一编辑器串行队列；清理启动前出现新本地编辑时跳过清理，清理已开始时后续保存等待清理回执并使用新修订。清理失败仍保留原身份供显式核对，不能让后续编辑以旧修订并发写入。新增两项确定性并发回归覆盖这两个时序。
+
+## 59. F22 独立 ChatView 上下文选择与冻结草稿
+
+宿主启用 `SessionChatBindingOptions.contextSelection`（并提供已发布目标目录）后，独立 ChatView 通过 SessionContextPicker 复用 WorkspaceContextPicker。目录仍由 session.context.options 读取，不把 binding、检查点或授权知识引入独立 llm-ui；未启用的宿主拒绝携带上下文选择的新提交。
+
+```mermaid
+C4Component
+  title 独立上下文控件沿原草稿和操作台账提交
+  Component(picker, "WorkspaceContextPicker", "宿主 UI", "目录观察、显式检查点确认和核对")
+  Component(bridge, "SessionContextPicker", "独立视图适配", "范围、显示与生命周期")
+  Component(composer, "ChatView / ComposerDraft.context", "独立 llm-ui", "不透明 JSON 值与独立修订")
+  ContainerDb(ledger, "原 OperationLedger", "宿主持久台账", "冻结输入及 sessionRequest")
+  Component(session, "Session 原提交入口", "宿主", "接纳校验、队列与派发复验")
+  Rel(bridge, picker, "复用目录和检查点控件")
+  Rel(picker, composer, "setContext；显式选择或清除")
+  Rel(composer, ledger, "原输入、上下文值及草稿修订")
+  Rel(ledger, session, "冻结 harnessConversation；原身份提交或查询")
+  Rel(session, composer, "持久接纳后仅消费匹配修订")
+```
+
+通用 ComposerDraft.context 包含 revision/value，ChatSubmission.context 只携带捕获的 JSON 值。setContext 在修改时复制数据；null 为清除且保留修订下界。ChatView 的 initialDraft/saveDraft 负责宿主恢复和保存；选择不会被塞进文字、业务参数或隐藏 selector。命令不消费上下文草稿，发送只在原操作持久接纳后消费完全匹配的上下文修订。
+
+Session 适配在台账登记前调用原 prepareInputContextDraft 验证父 Session、分支和发布目标，生成 request.overrides.harnessConversation；表单签名仍保留在同一 overrides 中。发送与核对从台账读取原请求，不在延迟 RPC 返回或恢复时重新读取当前选择。目录的显式“核对”与发送前检查复用提取到 domain/context-options 的同一组纯校验；新操作在持久登记前查询并核对冻结选择，过期检查点不登记为未知发送。原操作核对不重新解释目录。静态资格不替代宿主接纳与派发校验。宿主未提供草稿保存时只能内存保留，不能声明跨页持久恢复。
+
+选择器保留错误草稿并提供显式清除，隐藏或销毁使迟到目录读取失效。切换目标不自动抹掉原选择；再次提交须通过作用域检查。仅支持已实现的 new/fork，严格 continue、工作区恢复和真实远端部署验收仍不在本批完成范围。
+
+验证覆盖共享控件实际选择检查点、独立草稿保存与重开、隐藏/恢复、发送悬挂期间清除并重新选择、旧回执保留新修订、命令不消费、原冻结请求派发、分支/目标/宿主能力不匹配时拒绝登记。独立库 112 项测试和构建通过；宿主隔离验证记录在本次提交验收清单。

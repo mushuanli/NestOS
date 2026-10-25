@@ -1,3 +1,5 @@
+import {createModuleLogger, t} from '@itookit/common';
+import {IndependentCallCommand, type IndependentCallReceipt} from '@itookit/llm-session/contracts';
 import {InvocationOperations} from '../flows/invocation-operations';
 import {ControlOperations} from '../flows/control-operations';
 import {createImageChatView, type ImageChatOptions} from './image-chat-view';
@@ -12,6 +14,8 @@ import { SessionCommand, type ExecutionNode, type ICommandBus, type SubmissionRe
     type SessionGroup, type SessionViewPort } from '@itookit/llm-session/contracts';
 import { ChatProjection } from './projection';
 
+const independentLog = createModuleLogger('independent-chat-admission');
+
 export interface SessionChatBindingOptions {
     readonly images?: ImageEditingHost;
     readonly session: SessionViewPort;
@@ -25,6 +29,10 @@ export interface SessionChatBindingOptions {
     readonly inputContract?: () => ComposerInputContract | undefined;
     /** Enable the published Agent/Flow selector through the existing Session command port. */
     readonly targetSelection?: boolean;
+    /** Offer independent calls for published targets; the host keeps all execution state. */
+    readonly independentCalls?: boolean;
+    /** Current host-observed branch when the Session snapshot omits its loaded view. */
+    readonly branch?: () => string | undefined;
     readonly subscribeInput?: (listener: () => void) => () => void;
     readonly composerCommands?: {
         getSnapshot(): readonly ComposerCommand[];
@@ -51,10 +59,12 @@ class SessionChatBinding {
     private readonly checking = new Map<string, Promise<boolean>>();
     private readonly admissionChecks = new Map<string, Promise<boolean>>();
     private closed = false;
+    private active = true;
+    private admissionTimer?: ReturnType<typeof setTimeout>;
     private readonly targets?: SessionCallTargets;
     constructor(private readonly options: SessionChatBindingOptions) {
         this.sessionId = options.session.id;
-        this.branch = options.session.getSnapshot?.().view?.manifest.currentBranch;
+        this.branch = this.currentBranch();
         this.operations = this.createLedger(options.operations);
         if (options.targetSelection) this.targets = new SessionCallTargets(options.commands, () => this.publish());
         this.source = new ChatProjection(this.sessionId, options.onError, this.targets ? () => this.refreshTargets() : undefined);
@@ -63,30 +73,37 @@ class SessionChatBinding {
         this.releases = [options.session.onEvent(event => {
             if (this.current() && event?.type === 'instructions:changed') this.observeQueue(event.payload);
             this.publish();
-        }), options.operations.subscribe(() => this.publish())];
+        }), options.operations.subscribe(() => {this.publish(); this.scheduleIndependentAdmission();})];
         if (options.composerCommands?.subscribe) this.releases.push(options.composerCommands.subscribe(() => this.publish()));
         if (options.subscribeInput) this.releases.push(options.subscribeInput(() => this.publish()));
         this.publish();
         if (this.targets) void this.targets.refresh();
+        this.scheduleIndependentAdmission();
     }
     private createLedger(ledger: OperationLedger): OperationLedger {
-        return {...ledger, register: record => {
+        return {...ledger, register: async record => {
             const input = record.input as unknown as ChatSubmission;
-            if (record.kind !== 'send' || !input?.target) return ledger.register(record);
-            const frozen = {...input, sessionRequest: this.targetRequest(input, record.context.operationId)};
+            if (record.kind !== 'send') return ledger.register(record);
+            const independent = input?.selection?.callMode === 'independent';
+            if (independent && (!this.options.independentCalls || !input.target)) throw new Error('Independent calls require an enabled published target');
+            if (independent && !this.branch) throw Object.assign(new Error('Independent calls require an observed branch'), {code: 'CALL_BRANCH_REQUIRED'});
+            if (!input?.target) return ledger.register(record);
+            const frozen = {...input, sessionRequest: this.targetRequest(input, record.context.operationId),
+                ...(independent ? {independentTitle: input.target.id} : {})};
             return ledger.register({...record, input: JSON.parse(JSON.stringify(frozen))});
         }};
     }
+    private currentBranch(): string | undefined {return this.options.branch?.() ?? this.options.session.getSnapshot?.().view?.manifest.currentBranch;}
     private current(): boolean {
         return !this.closed && this.options.session.id === this.sessionId
-            && this.options.session.getSnapshot?.().view?.manifest.currentBranch === this.branch;
+            && this.currentBranch() === this.branch;
     }
     private publish(): void {
         if (!this.current()) return;
         this.observeQueue(this.options.session.getSnapshot?.().instructionQueue);
         const messages = this.options.session.getSessions().map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId));
         this.source.publish({ title: this.options.title ?? this.options.session.getSnapshot?.().view?.manifest.title ?? '',
-            messages, interactions: [], selectors: this.options.selectors?.(), commands: this.options.composerCommands?.getSnapshot(),
+            messages, interactions: [], selectors: this.selectors(), commands: this.options.composerCommands?.getSnapshot(),
             inputContract: this.options.inputContract?.(), loading: false,
             ...(this.targets ? {callTargets: this.targets.getSnapshot()} : {}),
             operationReceipts: this.operations.getSnapshot().filter(record => record.conversationId === this.sessionId && record.kind === 'send'
@@ -101,6 +118,7 @@ class SessionChatBinding {
         if (queue?.sessionId !== this.sessionId) return;
         for (const item of queue.items) {
             const submission = item.sendIntent?.submission, expected = this.submission(item.id);
+            if (this.independentTitle(item.id)) continue;
             if (this.queued.has(item.id) || submission?.id !== item.id || submission.source.kind !== expected.source.kind
                 || submission.source.ownerId !== expected.source.ownerId || submission.source.id !== expected.source.id) continue;
             void this.checkAdmission(item.id).then(accepted => {if (accepted) this.publish();})
@@ -116,13 +134,17 @@ class SessionChatBinding {
         const input = record?.input as unknown as ChatSubmission | undefined;
         if (!input?.target) return Promise.resolve(false);
         const request = this.frozenRequest(operationId);
-        const pending = this.options.commands.execute<import('@itookit/llm-session/contracts').SubmissionReceipt>(SessionCommand.InspectSubmissionReceipt,
-            request).then(receipt => {
+        const title = this.independentTitle(operationId), started = Date.now();
+        const pending = this.options.commands.execute<import('@itookit/llm-session/contracts').SubmissionReceipt>(
+            title ? IndependentCallCommand.Inspect : SessionCommand.InspectSubmissionReceipt,
+            title ? {request, title} : request).then(receipt => {
+                if (title) assertIndependentReceipt(receipt as IndependentCallReceipt, this.sessionId);
                 if (!receipt || receipt.operationId !== operationId || !['accepted', 'unknown'].includes(receipt.status))
                     throw new Error('Submission receipt differs from the frozen request');
                 if (receipt.status === 'accepted') this.queued.add(operationId);
                 return receipt.status === 'accepted';
-            }).finally(() => this.admissionChecks.delete(operationId));
+            }).catch(error => {if (title) logIndependentRead(error, operationId, started); throw error;})
+            .finally(() => {if (this.admissionChecks.get(operationId) === pending) this.admissionChecks.delete(operationId);});
         this.admissionChecks.set(operationId, pending); return pending;
     }
     private submission(operationId: string): SessionSubmission {
@@ -156,9 +178,47 @@ class SessionChatBinding {
     private async submitTarget(input: ChatSubmission, context: OperationContext): Promise<OperationReceipt> {
         const target = input.target;
         if (!this.targets || !isTargetRef(target)) return rejected(context, 'INVALID_CALL_TARGET', 'Unsupported call target');
-        await this.options.commands.execute(SessionCommand.Submit, this.frozenRequest(context.operationId));
+        const request = this.frozenRequest(context.operationId), title = this.independentTitle(context.operationId);
+        if (title) {
+            const receipt = await this.options.commands.execute<IndependentCallReceipt>(IndependentCallCommand.Submit, {request, title});
+            assertIndependentReceipt(receipt, this.sessionId);
+            if (receipt.operationId !== context.operationId) throw new Error('Independent call operation identity mismatch');
+            if (receipt.status === 'accepted') {this.queued.add(context.operationId); this.publish(); return {status: 'accepted', operationId: context.operationId};}
+        } else await this.options.commands.execute(SessionCommand.Submit, request);
         return this.reconcile(context.operationId);
     }
+    private selectors(): readonly SelectorView[] | undefined {
+        const selectors = this.options.selectors?.() ?? [];
+        if (!this.options.independentCalls || !this.targets) return selectors;
+        return [...selectors, {id: 'callMode', label: t('callable.independent.mode'), value: 'current', choices: [
+            {id: 'current', label: t('callable.independent.current')}, {id: 'independent', label: t('callable.independent.run')}]}];
+    }
+    private independentTitle(operationId: string): string | undefined {
+        const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId
+            && item.kind === 'send' && item.conversationId === this.sessionId);
+        return (record?.input as {independentTitle?: string} | undefined)?.independentTitle;
+    }
+    private pendingIndependent() {
+        return this.operations.getSnapshot().filter(record => record.conversationId === this.sessionId && record.kind === 'send'
+            && ['submitting', 'unknown'].includes(record.status) && !this.queued.has(record.context.operationId)
+            && this.independentTitle(record.context.operationId)
+            && (record.input as {sessionRequest?: SubmissionRequest}).sessionRequest?.expectedBranch === this.branch);
+    }
+    private scheduleIndependentAdmission(): void {
+        clearTimeout(this.admissionTimer);
+        if (!this.pendingIndependent().length) return;
+        if (!this.closed && this.active) this.admissionTimer = setTimeout(() => {void this.observeIndependentAdmission();}, 1000);
+    }
+    private async observeIndependentAdmission(): Promise<void> {
+        if (!this.current() || !this.active) return;
+        const pending = this.pendingIndependent();
+        try {
+            await Promise.all(pending.map(record => this.checkAdmission(record.context.operationId)
+                .catch(error => {this.options.onError?.(error); return false;})));
+            if (this.current() && this.active) this.publish();
+        } finally {this.scheduleIndependentAdmission();}
+    }
+    setActive(active: boolean): void {this.active = active; this.admissionChecks.clear(); this.scheduleIndependentAdmission();}
     private frozenRequest(operationId: string): SubmissionRequest {
         const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
             && item.conversationId === this.sessionId);
@@ -203,7 +263,7 @@ class SessionChatBinding {
     }
     dispose(): void {
         if (this.closed) return;
-        this.closed = true; this.releases.forEach(release => release());
+        this.closed = true; clearTimeout(this.admissionTimer); this.releases.forEach(release => release());
         this.targets?.dispose();
     }
     refreshTargets(): Promise<void> {return this.targets?.refreshCurrent() ?? Promise.resolve();}
@@ -220,7 +280,11 @@ function validInputContract(input: ChatSubmission, contract?: ComposerInputContr
 }
 export async function createSessionChatView(container: HTMLElement, binding: ReturnType<typeof createSessionChatBinding>,
     options: ImageChatOptions = {}) {
-    return createImageChatView(container, {...options, source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
+    const view = await createImageChatView(container, {...options, source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
+    const setActive = view.setActive.bind(view), destroy = view.destroy.bind(view);
+    view.setActive = active => {binding.setActive(active); setActive(active);};
+    view.destroy = async () => {binding.setActive(false); await destroy();};
+    return view;
 }
 function rejected(context: OperationContext, code: string, message: string): OperationReceipt {
     return { status: 'rejected', operationId: context.operationId, code, message };
@@ -250,4 +314,17 @@ function projectNode(node?: ExecutionNode): MessagePart[] {
         if (node.data.output) parts.push({ id: node.id, kind: 'markdown', text: node.data.output });
     }
     return [...parts, ...(node.children ?? []).flatMap(projectNode)];
+}
+
+function assertIndependentReceipt(receipt: IndependentCallReceipt, caller: string): void {
+    if (!receipt || receipt.callerSessionId !== caller || !['accepted', 'unknown'].includes(receipt.status)
+        || receipt.status === 'accepted' && (!receipt.executionSessionId || receipt.executionSessionId === caller))
+        throw Object.assign(new Error('Independent call receipt scope mismatch'), {code: 'CALL_SUBMISSION_RECEIPT_MISMATCH'});
+}
+
+function logIndependentRead(error: unknown, operationId: string, started: number): void {
+    const supplied = (error as {code?: unknown})?.code;
+    independentLog.warn('call.receipt', {operationId: /^[\w:-]{1,256}$/.test(operationId) ? operationId : undefined,
+        stage: 'independent-admission-read', result: 'failure', durationMs: Date.now() - started,
+        code: typeof supplied === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(supplied) ? supplied : 'CALL_RECEIPT_READ_FAILED'});
 }

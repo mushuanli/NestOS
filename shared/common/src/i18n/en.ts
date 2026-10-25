@@ -2725,6 +2725,8 @@ export const en: LocaleStrings = {
     'callable.independent.execution.interrupted': 'Primary task interruption confirmed. Interruption is not cancellation.',
     'callable.independent.execution.interrupting': 'Primary task interruption is awaiting execution confirmation.',
     'callable.independent.execution.held': 'The primary task is held by its Session or an ancestor call.',
+    'callable.independent.mode': 'Call mode',
+    'callable.independent.current': 'Current conversation',
     'callable.independent.run': 'Run independently',
     'callable.independent.unsupported': 'Select a published Agent or Flow and clear the native context selection first. Use normal send for commands.',
     'callable.exposure.label': 'Call scope',

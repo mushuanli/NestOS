@@ -248,3 +248,43 @@ it('carries the default workspace target, confirmed arguments and committed hist
     await expect(remote.execute(SessionCommand.Submit, {...call, expectedSessionId: 'stale-view'})).rejects.toMatchObject({code: 'SUBMISSION_BINDING_CHANGED'});
     expect((await f.runtime.sessionRepository.readHistoryChain(f.sessionId)).rounds).toHaveLength(1);
 });
+
+it.each(['local', 'rpc'])('submits an independent child from ChatView over %s and recovers a suspended admission reply', async transport => {
+    const f = await workspace(); await f.runtime.commandBus.execute(SessionCommand.Bind, {sessionId: f.sessionId});
+    const execute = async (name: string, args?: unknown) => {
+        const result = await f.runtime.commandBus.execute(name, args);
+        if (name === 'session.call.submit') return new Promise(() => {});
+        return result;
+    };
+    let commands = {execute} as ICommandBus;
+    if (transport === 'rpc') {
+        let server!: RpcPeer;
+        const client = new RpcPeer('client', call => server.handle(call)); server = new RpcPeer('server', call => client.handle(call));
+        cleanup.push(async () => {await client.close(); await server.close();});
+        commands = client.decode(await server.expose({execute})) as ICommandBus;
+    }
+    const operations = createOperationLedger(), binding = createSessionChatBinding({session: f.runtime.sessionManager, commands,
+        targetSelection: true, independentCalls: true, operations, branch: () => 'main',
+        hasCommittedSubmission: submission => hasCommittedSubmission(f.runtime.sessionRepository, f.sessionId, submission)});
+    cleanup.push(() => binding.dispose());
+    const host = document.createElement('section'); document.body.append(host);
+    const view = await createSessionChatView(host, binding); cleanup.push(() => view.destroy()); await binding.refreshTargets();
+    const choice = binding.source.getSnapshot().callTargets!.entries.find(entry => entry.target.kind === 'flow')!;
+    const target = host.querySelector<HTMLSelectElement>('[data-call-target]')!;
+    target.value = choice.id; target.dispatchEvent(new Event('change', {bubbles: true}));
+    const mode = host.querySelector<HTMLSelectElement>('[data-selector-id="callMode"]')!;
+    mode.value = 'independent'; mode.dispatchEvent(new Event('change', {bubbles: true}));
+    view.setText('Child request'); view.setArguments('{"count":0}');
+    const sending = view.submit(); void sending.catch(() => {});
+    await vi.waitFor(() => expect(operations.getSnapshot()[0]?.status).toBe('accepted'), {timeout: 10000});
+    expect(view.getDraft().text).toBe('');
+    expect(operations.getSnapshot()[0].input).toMatchObject({selection: {callMode: 'independent'}, independentTitle: 'worker'});
+    const calls = await f.runtime.commandBus.execute<import('@itookit/llm-session/contracts').IndependentCallView[]>('session.calls.list', {sessionId: f.sessionId});
+    expect(calls).toHaveLength(1); expect(calls[0].receipt.executionSessionId).not.toBe(f.sessionId);
+    expect((await f.runtime.sessionRepository.readHistoryChain(f.sessionId)).rounds).toEqual([]);
+    expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.sessionId);
+    const currentMode = host.querySelector<HTMLSelectElement>('[data-selector-id="callMode"]')!;
+    currentMode.value = 'current'; currentMode.dispatchEvent(new Event('change', {bubbles: true}));
+    view.setText('Parent request'); view.setArguments('{"count":0}'); await view.submit();
+    await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(f.sessionId)).rounds).toHaveLength(1));
+});

@@ -993,3 +993,27 @@ C4Component
 ```
 
 验证直接调用应用入口时 local/非法 exposure 都在连接准备与节点绑定前拒绝；CLI local 根入口先于缺失参数文件报 CALLABLE_LOCAL_ONLY，且没有创建运行存储；显式 global 与旧定义均能真实执行 local 子 Flow 并读到最终输出。通用加载器仍可读取 local 定义。该批仅合入根准入缺口，不把目录隐藏当作执行约束，也不把公开范围规则扩散到 Kernel 或文件读取机制。
+
+
+## 44. F16 独立 ChatView 的调用模式与原回执恢复
+
+SessionChatBindingOptions.independentCalls 显式开启已发布目标的「当前会话 / 独立调用」选择器，要求 targetSelection。通用 llm-ui 只保存选择与原输入，适配层在原 OperationLedger 登记阶段冻结 sessionRequest 和 independentTitle，再走 session.call.submit。默认标题来自稳定 target.id，不受界面语言改变影响。未开启时保持原发送行为；旧独立操作的核对仍使用冻结记录。
+
+```mermaid
+C4Component
+  title 独立 ChatView 的模式与接纳协议
+  Component(view, "独立 ChatView", "通用 llm-ui", "选择器、输入编辑、接纳后消费草稿")
+  Component(binding, "SessionChatBinding", "业务适配", "冻结调用模式和明确分支")
+  ContainerDb(ledger, "宿主 OperationLedger", "原台账", "原请求、模式及恢复证据")
+  Component(host, "IndependentCallService", "宿主", "真实子会话路由与接纳")
+  Rel(view, binding, "send + selection.callMode")
+  Rel(binding, ledger, "先持久登记冻结输入")
+  Rel(binding, host, "submit / inspect 原请求")
+  Rel(binding, view, "投影 operationReceipts，不伪造父历史")
+```
+
+普通 Session 快照可能没有 loaded view；宿主应通过 branch 回调提供当前观察分支，或使用已有 view.manifest。独立模式缺少明确分支时在台账登记前返回 CALL_BRANCH_REQUIRED，不默认猜测 main。切分支后旧绑定不得派发新输入，原操作仍可用冻结分支核对。
+
+仅在当前分支存在未确认独立操作时每秒核对原接纳，不重新发送；其他分支原操作仍可显式查询。父队列通知不确认子调用。隐藏/销毁停止后续观察；重开清除旧在途查询占位，悬挂旧请求不挡住新核对。createSessionChatView 将视图 active/destroy 生命周期传给绑定，宿主继续拥有 binding.dispose。读取失败诊断仅记录操作身份、阶段、分类与耗时。
+
+真实 ChatView 的本地/RPC 组合验收覆盖原 submit 回复悬挂时持久接纳释放输入、随后切回当前会话发送、子会话身份独立且父绑定不变；绑定验收覆盖模式冻结、unknown 路由不冒充接纳、错误调用方拒绝、隐藏重开查询及缺少分支准入拒绝。独立 ChatView 的父卡片、产物和直接控制仍需复用默认工作台展示接线；本节只完成输入和回执协议，不将整体视图对等接入标记完成。

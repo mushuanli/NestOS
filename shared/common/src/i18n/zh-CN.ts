@@ -2739,6 +2739,8 @@ export const zhCN = {
     'callable.independent.execution.interrupted': '主任务已确认中断；中断不等于取消。',
     'callable.independent.execution.interrupting': '主任务正在中断，等待执行端确认。',
     'callable.independent.execution.held': '主任务受会话或祖先调用控制限制。',
+    'callable.independent.mode': '调用方式',
+    'callable.independent.current': '当前会话',
     'callable.independent.run': '独立运行',
     'callable.independent.unsupported': '请先选择已发布的 Agent 或 Flow，并清除原生上下文选择；命令请使用普通发送。',
     'callable.exposure.label': '调用范围',

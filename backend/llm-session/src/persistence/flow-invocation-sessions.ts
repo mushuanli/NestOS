@@ -42,8 +42,15 @@ export function createFlowInvocationSessions(fs: IFileSystem): FlowInvocationSes
     };
     const persist = async (sessions: Set<string>): Promise<void> => {
         const content = JSON.stringify({ version: MARKER_VERSION, sessions: [...sessions] });
-        if (await fs.driver.exists(MARKER_PATH)) await fs.driver.writeContent(MARKER_PATH, content);
-        else await fs.driver.createFile({ name: 'flow-invocations.json', parentPath: '/var/lib/kernel', content, recursive: true });
+        try {
+            if (await fs.driver.exists(MARKER_PATH)) await fs.driver.writeContent(MARKER_PATH, content);
+            else await fs.driver.createFile({ name: 'flow-invocations.json', parentPath: '/var/lib/kernel', content, recursive: true });
+            known = sessions;
+        } catch (error) {
+            // A failed reply may follow a committed write; re-read before trusting any cached set.
+            known = undefined;
+            throw error;
+        }
     };
     const serialize = (work: () => Promise<void>): Promise<void> => {
         const next = tail.catch(() => {}).then(work);
@@ -53,15 +60,13 @@ export function createFlowInvocationSessions(fs: IFileSystem): FlowInvocationSes
     return {
         sessions: load,
         mark: sessionId => serialize(async () => {
-            const sessions = known ?? await load() ?? new Set<string>();
+            const sessions = new Set(known ?? await load());
             if (sessions.has(sessionId)) return;
             sessions.add(sessionId);
-            known = sessions;
             await persist(sessions);
         }),
         establish: sessionIds => serialize(async () => {
             const sessions = new Set(sessionIds);
-            known = sessions;
             await persist(sessions);
         }),
     };

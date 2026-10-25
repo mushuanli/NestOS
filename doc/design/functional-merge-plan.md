@@ -530,3 +530,25 @@ C4Component
 | HTTP 队列、审批和控制分离 | 认证 view-api 24 项，包含陈旧 epoch 拒绝、原控制回执查询和敏感内容不进审计 |
 
 本批 UI 真实执行与独立 DAG 控制共 17 项、Flow 屏障 22 项、认证 HTTP 24 项及 app-shell 类型检查通过。主实现与 C4 沿用第 23 节，无新增机制模块。F17 的代码交付和本地/认证 RPC 隔离组合门槛完成；生产原 Session、实际远端工具循环和部署后端到端验收仍单列，不能用此结果替代。后续实现重点为 F16 子 Session 路由与 F20—F24，共六个能力组；其涉及上下文、产物和历史的最终组合验证仍保留。
+
+## 25. F16 路由实施前的调用恢复索引修复
+
+审查子 Session 链路发现既有 `flow-invocations.json` 索引先更新内存 Set、后写文件。写入失败后，同进程重试会因 Set 已含 Session 而跳过写入；旧索引仍缺少该 Session，重启恢复可能跳过真实调用。这是 Session 持久化缓存发布顺序的问题，不属于 UI 路由或 Flow 调度策略。
+
+```mermaid
+C4Component
+  title 调用恢复索引的持久确认边界
+  Component(admission, "FlowInvocationService", "调用接纳", "索引登记成功后才能保存调用意图")
+  Component(marker, "FlowInvocationSessions", "持久化适配", "串行写入，确认后发布缓存，未知结果重新读")
+  ContainerDb(file, "flow-invocations.json", "既有 VFS 索引", "启动恢复候选 Session")
+  Container(kernel, "Kernel shared records", "执行事实", "真实调用意图及根 Task")
+  Rel(admission, marker, "先 mark Session")
+  Rel(marker, file, "写入成功后更新缓存")
+  Rel(admission, kernel, "随后持久接纳调用")
+```
+
+修复按副本构造候选集合，写入成功后才发布缓存；失败保留原错误并使缓存失效，后续重读确认文件。已写入但回复丢失的情况也通过重读核对，不盲目重复写入。仍使用现有串行写队列和索引文件，不把优化索引变成新的执行状态库。调用接纳失败沿用既有 traceAdmission 的 requestId/Session、阶段、错误码和耗时日志。
+
+本批只修复这一已复现的恢复缺口；F16 的统一独立子 Session 路由、持久调用者关联和函数视图仍未交付。现有 UI 的 create-child 再 invoke 两步流程不能作为完整统一接纳协议，下一步仍须收敛到宿主调用入口，不能仅修改默认下拉框。
+
+验证：首次创建、已有索引追加、扫描结果写入三个故障先在旧实现失败；修复后新增四项回归（含已写入丢回复）通过。隔离 Session 全套 440 项、类型检查、ESM/CJS/声明构建、15 个 Mermaid 图和 16 个本地链接检查通过。未部署或重启。

@@ -129,4 +129,34 @@ C4Component
 
 台账保存原 Submission 与草稿证据：token、原编辑正文、可编辑设置和有序文件摘要。恢复查询使用原请求，不重新上传或 Submit。接纳只清除 Session、分支、目标、参数、token 和文件证据仍匹配的草稿；异步核验后再次检查当前视图和文件引用。旧接纳不得清除同名同大小的新文件或后来的编辑。已接纳但清空写入失败时，重开根据同一台账再次消费匹配草稿。旧格式没有充分证据时保留输入供用户核对。
 
-本机制保证发送前已确认保存的草稿恢复；普通输入仍沿用延迟保存，尚未确认写入的最后编辑不在此保证内。当前 UI 台账保存整组 operationRecords，多视图并发持久写入的合并仍需独立完善；不能把单工作台的恢复回归当作跨客户端一致性验收。资产长期回收、原生上下文续接、独立子 Session 路由与函数调用视图按各自计划推进。
+本机制保证发送前已确认保存的草稿恢复；普通输入仍沿用延迟保存，尚未确认写入的最后编辑不在此保证内。UI 台账现通过已有 Session 修订条件合并保存，多视图同分支草稿的写入冲突仍需处理，不能把操作记录并集合并视为正文编辑合并。资产长期回收、原生上下文续接、独立子 Session 路由与函数调用视图按各自计划推进。
+
+## 多视图操作台账的条件合并
+
+多个视图不能各自覆盖整组 operationRecords。独立 llm-ui 的 `mergeOperationRecords` 提供纯合并规则：不同操作保留并集；相同操作的冻结 context、来源会话、输入及草稿必须一致；终态不可被 submitting/unknown 覆盖；矛盾终态或已确认消息身份冲突须报错。register/settle 在进入异步保存队列前复制实参。宿主持久化 save 可以返回实际保存的合并快照；库核对提议操作确实存在后发布，不再发布旧的本地提议。注册时发现已接纳、拒绝或未知的原操作，不再次派发 Chat/Flow 动作。
+
+```mermaid
+C4Component
+    title 多视图台账的 UI 合并与 Session 原子条件写入
+    Container_Boundary(ui, "展示与输入层") {
+        Component(viewA, "工作台 A", "OperationLedger", "保存提议操作与回执")
+        Component(viewB, "工作台 B", "OperationLedger", "独立视图与局部快照")
+        Component(merge, "mergeOperationRecords", "llm-ui 纯机制", "校验冻结身份并保留终态")
+        Component(persist, "OperationPersistence", "宿主 UI 适配", "读当前修订、合并、条件写入和丢回执核对")
+    }
+    Component(port, "SessionRepository / RPC", "既有 Session 端口", "compareAndSetUIState 独立方法")
+    Component(store, "Session SeqFile transaction", "既有持久存储", "核对原修订与更新不透明 UIState 原子提交")
+    Rel(viewA, persist, "保存本视图提议")
+    Rel(viewB, persist, "保存另一个视图提议")
+    Rel(persist, merge, "合并当前持久记录与冻结提议")
+    Rel(persist, port, "先读取；携带 expectedRevision 条件写入")
+    Rel(port, store, "同一事务检查并写入")
+    Rel(persist, viewA, "返回实际已保存快照")
+    Rel(persist, viewB, "返回实际已保存快照")
+```
+
+条件使用 Session 已有的存储 revision，不增加执行版本或状态库。后端仅检查修订，不识别 OperationRecord 的状态和业务字段；UI 也不因此取得 Kernel 执行权威。条件写入使用独立方法，旧宿主缺少该能力时明确拒绝，不能把额外条件参数交给旧 updateUIState 后假定它已生效。普通布局写入仍使用既有 patch；每个写入与修订检查在同一事务完成，冲突不写入也不发布成功通知。
+
+修订冲突后只重读并重新计算 UI 台账合并，最多八次；不重新发送业务指令。写入回复丢失时，只读核对持久记录是否包含原冻结提议；确认成功可以返回实际快照，无法确认则保留错误及本地输入。日志只含操作身份、阶段、尝试次数、耗时和稳定错误分类。类型、真实两个工作台、认证 HTTP 条件写入及回执悬挂回归分别验收。
+
+台账合并与同分支正文编辑是两个问题：多个视图编辑同一分支时，草稿写入及旧接纳触发的清空仍需核对持久草稿基线，冲突时保留本地输入，不能用台账并集拼接正文。该项继续列为 F09d 待完成；子 Session 路由与调用组也保持原安排。

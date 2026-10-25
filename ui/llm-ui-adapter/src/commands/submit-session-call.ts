@@ -59,8 +59,10 @@ async function dispatch(ctx: CommandContext, request: SubmissionRequest, session
         };
         const settle = async (receipt: OperationReceipt) => {await ledger.settle(receipt); complete(receipt);};
         release = observeAdmission(ctx, request, sessionId, ledger, () => complete({status: 'accepted', operationId}));
-        if (ledger.getSnapshot().find(record => record.context.operationId === operationId)?.status === 'accepted')
-            complete({status: 'accepted', operationId});
+        const saved = ledger.getSnapshot().find(record => record.context.operationId === operationId)!;
+        if (saved.status === 'accepted') complete({status: 'accepted', operationId});
+        else if (saved.status === 'rejected') complete({status: 'rejected', operationId, code: 'CALL_SUBMISSION_REJECTED', message: saved.message ?? t('callable.submission.rejected')});
+        else if (saved.status === 'unknown') complete({status: 'unknown', operationId, message: t('callable.submission.unknown')});
         else void deliver(ctx, request, settle).catch(fail);
     });
 }

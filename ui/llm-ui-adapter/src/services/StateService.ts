@@ -4,6 +4,7 @@ import type { ConversationUIState, ISessionRepository } from '@itookit/llm-sessi
 import type { ChatInputSettings } from '../domain/ports/IChatInputPresenter';
 import type { UIState } from '../domain/types';
 import { ErrorHandler } from '../utils/errorHandler';
+import {persistOperations} from './OperationPersistence';
 import {readInputDraft} from '../domain/input-draft';
 import {readDraftFiles} from './DraftFilesCodec';
 import {validDraftToken} from '../domain/draft-file-identity';
@@ -15,8 +16,8 @@ import {validDraftToken} from '../domain/draft-file-identity';
 export class StateService {
     constructor(private engine: ISessionRepository) { }
 
-    async saveOperations(sessionId: string, records: readonly import('@itookit/llm-ui').OperationRecord[]): Promise<void> {
-        await this.engine.updateUIState(sessionId, {operationRecords: JSON.parse(JSON.stringify(records))});
+    saveOperations(sessionId: string, records: readonly import('@itookit/llm-ui').OperationRecord[]): Promise<readonly import('@itookit/llm-ui').OperationRecord[]> {
+        return persistOperations(this.engine, sessionId, records);
     }
 
     /**

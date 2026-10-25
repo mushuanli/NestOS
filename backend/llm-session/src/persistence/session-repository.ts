@@ -503,15 +503,20 @@ export class SessionRepository implements ISessionRepository {
             const { folder: _folder, parentSessionId: _parent, ...rest } = patch;
             patch = rest; this.notify();
         }
-        const changed = await this.fs.meta.seq!.transaction!(async tx => this.writeManifestTx(tx, await this.paths(id, tx), patch));
+        await this.commitManifest(id, patch);
+    }
+    private async commitManifest(id: string, patch: Partial<ConversationManifest>, expectedRevision?: number): Promise<void> {
+        const changed = await this.fs.meta.seq!.transaction!(async tx => this.writeManifestTx(tx, await this.paths(id, tx), patch, expectedRevision));
         if (changed) this.notify({ sessionId: id, kind: Object.keys(patch).every(key => key === 'uiState') ? 'ui-state' : 'session' });
     }
-    private async writeManifestTx(tx: ISeqFileTransaction, p: SessionPaths, patch: Partial<ConversationManifest>): Promise<boolean> {
+    private async writeManifestTx(tx: ISeqFileTransaction, p: SessionPaths, patch: Partial<ConversationManifest>, expectedRevision?: number): Promise<boolean> {
         const raw = await tx.getEntry(p.session, 'session');
         if (!raw) throw new FSError('ENOENT', 'Session not found');
         const current = JSON.parse(raw);
         if (current.storageVersion !== 1) throw new Error('Session storage version incompatible');
-        const { id: _id, title, summary, origin, folder, parentSessionId: _parent, uiState, flow, initialContext, createdWithAgentId, createdAt: _created, updatedAt: _updated, ...historyPatch } = patch;
+        if (expectedRevision !== undefined && current.revision !== expectedRevision)
+            throw Object.assign(new Error('Session UI state changed; reload before saving'), {code: 'SESSION_UI_STATE_CONFLICT'});
+        const { id: _id, revision: _revision, title, summary, origin, folder, parentSessionId: _parent, uiState, flow, initialContext, createdWithAgentId, createdAt: _created, updatedAt: _updated, ...historyPatch } = patch;
         if ('initialContext' in patch && JSON.stringify(initialContext) !== JSON.stringify(current.initialContext))
             throw new FSError('EINVAL', 'Session initial context is immutable');
         if ('createdWithAgentId' in patch && createdWithAgentId !== current.createdWithAgentId)
@@ -542,7 +547,25 @@ export class SessionRepository implements ISessionRepository {
         return true;
     }
     async getUIState(id: string): Promise<ConversationUIState | null> { return (await this.getManifest(id)).uiState ?? null; }
-    async updateUIState(id: string, updates: Partial<ConversationUIState>): Promise<void> { await this.updateManifest(id, { uiState: updates }); }
+    async updateUIState(id: string, updates: Partial<ConversationUIState>): Promise<void> {await this.commitManifest(id, {uiState: structuredClone(updates)});}
+    async compareAndSetUIState(id: string, expectedRevision: number, updates: Partial<ConversationUIState>): Promise<void> {
+        const patch = structuredClone(updates);
+        const started = performance.now(), operationId = ulid();
+        try {
+            if (!Number.isSafeInteger(expectedRevision) || expectedRevision < 0)
+                throw Object.assign(new Error('Invalid Session UI state revision'), {code: 'SESSION_UI_STATE_VERSION_INVALID'});
+            await this.commitManifest(id, {uiState: patch}, expectedRevision);
+            this.traceUIStateWrite(id, operationId, started);
+        } catch (error) {this.traceUIStateWrite(id, operationId, started, error); throw error;}
+    }
+    private traceUIStateWrite(sessionId: string, operationId: string, started: number, error?: unknown): void {
+        const code = (error as {code?: unknown})?.code;
+        const metadata = {operation: 'session.ui-state.update', operationId, sessionId, stage: 'conditional-write',
+            result: error ? 'failure' : 'success', code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : error ? 'UI_STATE_WRITE_FAILED' : undefined,
+            durationMs: Math.round(performance.now() - started)};
+        try {if (error) this.logger?.warn('session.ui-state', metadata); else this.logger?.debug('session.ui-state', metadata);}
+        catch { /* A diagnostic failure must not alter a persisted write or the original rejection. */ }
+    }
     async getSessionSettings(id: string): Promise<ChatSessionSettings> {
         return (await this.getLoadState(id)).settings;
     }

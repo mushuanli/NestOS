@@ -209,10 +209,10 @@ it('reopens an unknown submission from the saved ledger and reconciles it withou
 
 it('preserves the draft and never dispatches when saving the operation ledger fails', async () => {
     const f = await workspace(), view = await f.open(); await selectFlow(view.host);
-    const update = f.runtime.sessionRepository.updateUIState.bind(f.runtime.sessionRepository);
-    vi.spyOn(f.runtime.sessionRepository, 'updateUIState').mockImplementation(async (sessionId, state) => {
+    const update = f.runtime.sessionRepository.compareAndSetUIState!.bind(f.runtime.sessionRepository);
+    vi.spyOn(f.runtime.sessionRepository, 'compareAndSetUIState').mockImplementation(async (sessionId, revision, state) => {
         if (state.operationRecords) throw Object.assign(new Error('Operation journal write failed'), {code: 'STORAGE_WRITE_FAILED'});
-        return update(sessionId, state);
+        return update(sessionId, revision, state);
     });
     const execute = vi.spyOn(f.runtime.commandBus, 'execute');
     const area = view.host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;

@@ -2772,4 +2772,8 @@ export const en: LocaleStrings = {
     'chatInput.attachments.draftMissing': 'A draft attachment is missing. Check storage or select it again; the original submission will not be resent.',
     'chatInput.attachments.draftReadFailed': 'Cannot read the draft attachment. Check storage and try again.',
     'callable.submission.previousAccepted': 'The original submission was accepted. Your changed draft was kept; confirm whether you need a new call.',
+
+    'callable.submission.storeUnavailable': 'The host cannot safely save the operation journal. Update the host and retry.',
+    'callable.submission.storeConflict': 'Another view is changing the operation journal. Refresh and retry; your input is preserved.',
+    'callable.submission.invalidLedger': 'The saved operation journal is invalid. Check storage and retry.',
 };

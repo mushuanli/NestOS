@@ -145,3 +145,21 @@ it('retains input and does not dispatch when its durable attachment draft cannot
     fail = false; await view.editor.flushPendingSave(); await view.close();
     const restored = await f.open(); expect(restored.input.getDraftFiles().map(file => file.name)).toEqual(['pending.txt']);
 });
+
+it('keeps both real workspaces frozen operations when they save and reconcile the same Session', async () => {
+    const f = await setup(), a = await f.open(), b = await f.open();
+    await select(f, a, new File(['A'], 'a.txt', {type: 'text/plain'}));
+    await select(f, b, new File(['B'], 'b.txt', {type: 'text/plain'}));
+    await send(a); await send(b);
+    const records = (await f.runtime.sessionRepository.getUIState(f.sessionId))!.operationRecords! as unknown as Array<{context: {operationId: string}; input: {request: SubmissionRequest}}>;
+    expect(records).toHaveLength(2); expect(new Set(records.map(record => record.context.operationId)).size).toBe(2);
+    for (const record of records) await acceptAndRemove(f, record.input.request);
+    for (const view of [a, b]) {
+        for (const button of view.host.querySelectorAll<HTMLButtonElement>('[data-call-reconcile]')) button.click();
+        await vi.waitFor(() => expect(view.input.getDraftFiles()).toEqual([]));
+    }
+    const confirmed = (await f.runtime.sessionRepository.getUIState(f.sessionId))!.operationRecords! as unknown as Array<{status: string}>;
+    expect(confirmed.map(record => record.status)).toEqual(['accepted', 'accepted']);
+    expect(f.counts()).toEqual({submitCalls: 2, fileUploads: 2});
+    expect(await f.runtime.kernel.kernel.listSessionTasks(f.sessionId)).toEqual([]);
+});

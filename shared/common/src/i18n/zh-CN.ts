@@ -2786,6 +2786,10 @@ export const zhCN = {
     'chatInput.attachments.draftMissing': '草稿附件丢失，请核对存储或重新选择文件；原提交不会重发',
     'chatInput.attachments.draftReadFailed': '无法读取草稿附件，请核对存储后重试',
     'callable.submission.previousAccepted': '原提交已接纳；当前草稿有变化，已保留，请确认是否需要新的调用',
+
+    'callable.submission.storeUnavailable': '当前宿主不支持安全保存操作台账，请更新宿主后重试。',
+    'callable.submission.storeConflict': '其他视图正在修改操作台账，请刷新后重试；当前输入已保留。',
+    'callable.submission.invalidLedger': '已保存的操作台账格式无效，请检查存储后重试。',
 } as const;
 
 // LocaleStrings maps every key to string (not literal), so other locales can provide different values.

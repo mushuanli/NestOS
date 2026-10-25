@@ -164,6 +164,7 @@ class SessionRepository implements ISessionRepository {
     updateManifest(sessionId: string, patch: Partial<ConversationManifest>): Promise<void>;
     getUIState(sessionId: string): Promise<ConversationUIState | null>;
     updateUIState(sessionId: string, patch: Partial<ConversationUIState>): Promise<void>;
+    compareAndSetUIState?(sessionId: string, expectedRevision: number, patch: Partial<ConversationUIState>): Promise<void>;
     getSessionSettings(sessionId: string): Promise<ChatSessionSettings>;
     saveSessionSettings(sessionId: string, patch: Partial<ChatSessionSettings>): Promise<void>;
 
@@ -633,3 +634,13 @@ C4Dynamic
 调用参数在用户历史中以独立 JSON 详情显示；已确认实参使用参数表单重跑，形成新 Invocation 并保留旧结果。JSON 渲染写入转义内容，历史节点从现有 DOM 归属引用定位，避免重新扫描整个历史。正常发送只移除本次捕获的附件；自动回执消费当前覆盖无附件且目标、分支、参数和修订匹配的草稿。完整附件崩溃恢复仍需单独验收，不能由无附件用例推导为完成。
 
 这里的普通聊天/目标发送继续使用当前 Session。独立任务的子 Session 路由、最小函数调用组与打开真实子会话入口按[子会话设计](design/session-invocation-ui.md)及[任务第 7 节](design/functional-merge-plan.md#7-子会话与函数视图的交付安排)推进，不因根目标选择已接通而标为完成。
+
+## UI 台账的条件持久化
+
+`ConversationManifest.revision` 暴露现有 Session 存储修订；它是 UI 条件写入的观察值，不是 Task/Effect 控制版本。`ISessionRepository.compareAndSetUIState(sessionId, expectedRevision, patch)` 在同一 SeqFile 事务核对修订并合并不透明 UIState；陈旧值返回 `SESSION_UI_STATE_CONFLICT`，无效修订返回 `SESSION_UI_STATE_VERSION_INVALID`。条件冲突不落盘、不发布成功通知。传入 patch 在第一个 await 前复制，公开 manifest patch 不能写入 revision。
+
+该方法通过 SessionRepository 的应用 RPC 能力表以独立 async 方法开放。旧 `updateUIState` 继续用于普通 UI patch；缺少条件方法的宿主不能安全保存多视图台账，客户端须报不支持，不能忽略条件后覆盖。后端不合并 OperationRecord，也不将 UI 接纳状态转为 Kernel 执行事实。
+
+宿主 UI 的 OperationPersistence 读取当前记录，调用独立 llm-ui 的纯合并函数，再携带已读修订条件保存；修订冲突最多重读合并八次。写入回复丢失只读核对原提议是否已持久保存。save 返回实际保存快照，OperationLedger 核对后才发布；原操作已接纳、拒绝或未知时不再次派发。回归分别覆盖 SessionRepository 原子并发、真实两个工作台、认证 HTTP 条件冲突及安全诊断。
+
+同一分支正文草稿的并发冲突须另外核对持久草稿基线，当前仍属 F09d：不同分支独立保存；同分支有新编辑时，旧视图不得覆盖或清空该草稿，失败保留本地输入。台账记录的并集不能用来合并用户正文。

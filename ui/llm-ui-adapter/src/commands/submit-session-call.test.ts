@@ -119,3 +119,12 @@ it('confirms a matching persisted attachment draft without another Submit', asyn
     expect(await submitSessionCall(f.ctx, f.request, 'frozen', structuredClone(draft))).toBe('call');
     expect(f.execute).not.toHaveBeenCalled(); expect(f.operations.getSnapshot()[0].status).toBe('accepted');
 });
+
+// Concurrent persistence regressions.
+it.each(['accepted', 'rejected', 'unknown'] as const)('does not Submit when registration persistence already knows the operation is %s', async status => {
+    const f = setup(); f.ctx.operations = createOperationLedger({save: async records => records.map(record => ({...record, status}))});
+    const sending = submitSessionCall(f.ctx, f.request, 'frozen');
+    if (status === 'accepted') expect(await sending).toBe('call');
+    else await expect(sending).rejects.toMatchObject({code: status === 'rejected' ? 'CALL_SUBMISSION_REJECTED' : 'CALL_SUBMISSION_UNKNOWN'});
+    expect(f.execute).not.toHaveBeenCalled();
+});

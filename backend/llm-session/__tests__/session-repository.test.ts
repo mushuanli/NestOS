@@ -317,3 +317,40 @@ it('notifies settings changes and restores input preferences from a fresh reposi
     expect((await fresh.getUIState(id))?.branchDrafts?.main).toEqual({ inputText: 'draft', inputAgentId: 'new-agent' });
     unsubscribe();
 });
+
+it('conditionally updates opaque UI state in the existing Session transaction and rejects a stale writer', async () => {
+    const id = await repository.createSession('Conditional UI'), first = await repository.getManifest(id);
+    const other = new SessionRepository(fs); const changed = vi.fn(); repository.subscribe(changed);
+    try {
+        const writes = await Promise.allSettled([
+            repository.compareAndSetUIState(id, first.revision!, {operationRecords: [{id: 'one'}]}),
+            other.compareAndSetUIState(id, first.revision!, {operationRecords: [{id: 'two'}]}),
+        ]);
+        expect(writes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+        expect(writes.find(result => result.status === 'rejected')).toMatchObject({reason: {code: 'SESSION_UI_STATE_CONFLICT'}});
+        const current = await repository.getManifest(id); expect(current.revision).toBe(first.revision! + 1);
+        expect(current.uiState?.operationRecords).toHaveLength(1);
+        expect(changed).toHaveBeenCalledTimes(writes[0].status === 'fulfilled' ? 1 : 0);
+    } finally {await other.dispose();}
+});
+it('copies conditional UI input before storage awaits and never persists a caller-supplied revision', async () => {
+    const id = await repository.createSession('Copied UI'), first = await repository.getManifest(id), patch = {scrollPosition: 12};
+    const pending = repository.compareAndSetUIState(id, first.revision!, patch); patch.scrollPosition = 99; await pending;
+    expect((await repository.getUIState(id))?.scrollPosition).toBe(12);
+    await repository.updateManifest(id, {revision: 123456});
+    expect((await repository.getManifest(id)).revision).toBe(first.revision! + 1);
+    await expect(repository.compareAndSetUIState(id, -1, {scrollPosition: 0})).rejects.toMatchObject({code: 'SESSION_UI_STATE_VERSION_INVALID'});
+    expect((await repository.getUIState(id))?.scrollPosition).toBe(12);
+});
+it('logs conditional UI outcomes without opaque data and preserves results when diagnostics fail', async () => {
+    const id = await repository.createSession('Diagnostics'), before = await repository.getManifest(id);
+    const debug = vi.fn((_message: string, _data?: unknown) => {throw new Error('Sink failed');}), warn = vi.fn((_message: string, _data?: unknown) => {throw new Error('Sink failed');});
+    const reader = new SessionRepository(fs, undefined, {debug, warn, info() {}, error() {}});
+    try {
+        await reader.compareAndSetUIState(id, before.revision!, {operationRecords: [{input: 'PRIVATE_PAYLOAD'}]});
+        await expect(reader.compareAndSetUIState(id, before.revision!, {})).rejects.toMatchObject({code: 'SESSION_UI_STATE_CONFLICT'});
+        expect(debug.mock.calls[0][1]).toMatchObject({operation: 'session.ui-state.update', stage: 'conditional-write', result: 'success'});
+        expect(warn.mock.calls[0][1]).toMatchObject({code: 'SESSION_UI_STATE_CONFLICT', result: 'failure'});
+        expect(JSON.stringify([...debug.mock.calls, ...warn.mock.calls])).not.toContain('PRIVATE_PAYLOAD');
+    } finally {await reader.dispose();}
+});

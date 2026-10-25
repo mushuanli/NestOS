@@ -377,3 +377,18 @@ it('stages generic binary files through authenticated RPC and inspects the immut
         .rejects.toMatchObject({code: 'INPUT_ASSET_CONFLICT'});
     expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_FILE_BODY'); expect(JSON.stringify(auditEvents)).not.toContain(identity.name);
 });
+
+it('atomically rejects an old Session UI revision across authenticated views without losing opaque records', async () => {
+    const a = await client('ui-cas-a'), b = await client('ui-cas-b');
+    const id = await a.services.projects.sessions.create('UI CAS', null), before = await a.services.sessionRepository.getManifest(id);
+    const writes = await Promise.allSettled([
+        a.services.sessionRepository.compareAndSetUIState!(id, before.revision!, {operationRecords: [{id: 'a', input: 'PRIVATE_UI_RECORD'}]}),
+        b.services.sessionRepository.compareAndSetUIState!(id, before.revision!, {operationRecords: [{id: 'b', input: 'PRIVATE_UI_RECORD'}]}),
+    ]);
+    expect(writes.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(writes.find(result => result.status === 'rejected')).toMatchObject({reason: {code: 'SESSION_UI_STATE_CONFLICT'}});
+    const current = await b.services.sessionRepository.getManifest(id);
+    expect(current.revision).toBe(before.revision! + 1); expect(current.uiState?.operationRecords).toHaveLength(1);
+    await expect(b.services.sessionRepository.compareAndSetUIState!(id, -1, {})).rejects.toMatchObject({code: 'SESSION_UI_STATE_VERSION_INVALID'});
+    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_UI_RECORD');
+});

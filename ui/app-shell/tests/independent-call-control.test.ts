@@ -66,6 +66,52 @@ it('hides cancellation without declared host support or when the task is termina
     const view = call(); delete view.controlCapabilities;
     const execute = vi.fn(async () => [view]);
     panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations: createOperationLedger(), branch: () => 'main'});
-    await panel.refresh(); expect(button().hidden).toBe(true);
-    view.controlCapabilities = {cancel: true}; view.executionState!.phase = 'done'; await panel.refresh(); expect(button().hidden).toBe(true);
+    await panel.refresh(); expect(button().hidden).toBe(true); expect(stateButton().hidden).toBe(true);
+    view.controlCapabilities = {cancel: true}; view.executionState!.phase = 'done'; await panel.refresh(); expect(button().hidden).toBe(true); expect(stateButton().hidden).toBe(true);
+});
+
+const stateButton = () => document.querySelector<HTMLButtonElement>('[data-call-state-control]')!;
+it('keeps cancellation independent of unknown pause and permits resume after receipt even while dispatch hangs', async () => {
+    const view = call(); view.controlCapabilities = {cancel: true, pause: 'boundary', resume: true, withdrawPause: true};
+    const operations = createOperationLedger(); let request: any, available = false;
+    const execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.Control) {request = args; return new Promise(() => {});}
+        if (name === IndependentCallCommand.ControlReceipt) {
+            if (!available) return args;
+            return {...args, receipt: {requestId: args.requestId, expectedEpoch: request.expectedEpoch, action: request.action === 'resume' ? 'run' : request.action,
+                accepted: {requestId: args.requestId, mode: 'pause', epoch: 1}}};
+        }
+        if (name === IndependentCallCommand.Cancel) return receipt(args);
+        throw new Error(name);
+    });
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'});
+    await panel.refresh(); stateButton().click();
+    await vi.waitFor(() => expect(request?.action).toBe('pause'));
+    await vi.waitFor(() => expect(operations.getSnapshot()[0]?.status).toBe('unknown'));
+    expect(button().disabled).toBe(false); expect(button().hidden).toBe(false);
+    available = true; await panel.refresh();
+    await vi.waitFor(() => expect(operations.getSnapshot()[0]?.status).toBe('accepted'));
+    await panel.refresh(); expect(stateButton().disabled).toBe(true);
+    view.executionState!.controlEpoch = 1; view.executionState!.control = {requested: 'pause', acknowledged: true};
+    await panel.refresh(); expect(stateButton().disabled).toBe(false); stateButton().click();
+    await vi.waitFor(() => expect(request.action).toBe('resume'));
+    expect(request.expectedEpoch).toBe(1); expect(operations.getSnapshot().every(record => !record.draft)).toBe(true);
+    button().click(); await vi.waitFor(() => expect(execute.mock.calls.filter(([name]) => name === IndependentCallCommand.Cancel)).toHaveLength(1));
+});
+it('offers withdrawal only before acknowledgement and preserves controls through hidden view recovery', async () => {
+    const view = call(); view.controlCapabilities = {cancel: true, pause: 'boundary', resume: true, withdrawPause: true};
+    view.executionState!.control = {requested: 'pause', acknowledged: false}; view.executionState!.controlEpoch = 2;
+    const operations = createOperationLedger(); let request: any;
+    const execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.Control) {request = args; return new Promise(() => {});}
+        if (name === IndependentCallCommand.ControlReceipt) return args;
+        throw new Error(name);
+    });
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'});
+    await panel.refresh(); stateButton().click(); await vi.waitFor(() => expect(request?.action).toBe('withdraw'));
+    panel.setVisible(false); expect(stateButton().disabled).toBe(true); panel.setVisible(true); await panel.refresh();
+    expect(execute.mock.calls.filter(([name]) => name === IndependentCallCommand.Control)).toHaveLength(1);
+    expect(operations.getSnapshot()[0].input).toMatchObject({request: {action: 'withdraw', expectedEpoch: 2}});
 });

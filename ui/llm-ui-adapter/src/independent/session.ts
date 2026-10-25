@@ -1,4 +1,4 @@
-import {CallCancellationOperations} from './call-cancellation';
+import {CallControlOperations} from './call-control';
 import {SessionCallPresentation, independentCallPart} from './session-calls';
 import {createModuleLogger, t} from '@itookit/common';
 import {IndependentCallCommand, type IndependentCallReceipt} from '@itookit/llm-session/contracts';
@@ -252,8 +252,8 @@ class SessionChatBinding {
             : Promise.resolve(rejected(context, 'STALE_COMMAND', 'Command changed or is unavailable'));
     }
     private async reconcile(operationId: string): Promise<OperationReceipt> {
-        const cancellations = new CallCancellationOperations(this.operations, this.options.commands, this.sessionId);
-        if (cancellations.has(operationId)) return cancellations.reconcile(operationId);
+        const callControls = new CallControlOperations(this.operations, this.options.commands, this.sessionId);
+        if (callControls.has(operationId)) return callControls.reconcile(operationId);
         const invocations = new InvocationOperations(this.operations, this.options.commands, this.sessionId);
         if (invocations.has(operationId)) return invocations.reconcile(operationId);
         const controls = new ControlOperations(this.operations, this.options.commands, this.sessionId);

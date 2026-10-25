@@ -1126,7 +1126,7 @@ IndependentCallPanel 在默认工作台与独立 ChatView 共用 IndependentCall
 C4Component
   title 卡片取消与输入入队使用独立操作身份
   Component(card, "IndependentCallControl", "共享宿主 UI", "按能力显示取消或查询，不拥有执行状态")
-  Component(ops, "CallCancellationOperations", "台账适配", "冻结调用身份与控制 epoch，先保存再发送")
+  Component(ops, "CallControlOperations", "台账适配", "冻结调用身份与控制 epoch，先保存再发送")
   ContainerDb(ledger, "原 OperationLedger", "宿主持久化", "command 操作，不携带草稿")
   Component(host, "独立调用控制端口", "Session 用例", "真实归属、授权与 Kernel 回执")
   Component(composer, "输入栏", "llm-ui / 工作台", "新输入继续进入原队列")
@@ -1166,3 +1166,25 @@ pause 只声明 boundary 能力；不能据此宣称远端工具循环已停止�
 验收覆盖真实 Flow 暂停后保存回答、恢复并完成；原暂停回执保留旧 epoch；长模型 Effect 暂停待确认时拒绝恢复、允许撤销且不重复请求；错误归属、父子只读、无效动作、脱敏失败日志及错误回执拒绝。历史查询验证在 Round 持久完成后进行，避免把执行收尾的写入误算为查询副作用。
 
 本批只完成宿主协议。UI 暂停/恢复/撤销按钮与持久台账接线、原生会话控制、整树资源收尾投影仍未完成，F16 不标记整体完成。
+
+## 51. F16 独立调用卡片的状态控制与取消通道隔离
+
+卡片按宿主 `controlCapabilities` 与真实 `executionState.control` 显示暂停、恢复或撤销待确认暂停。未声明能力或根任务终态时不开放新状态控制；旧未知操作继续可查询。暂停与取消使用独立的 pending 通道，暂停响应悬挂不阻塞取消，也不阻塞下一条输入入队。
+
+```mermaid
+C4Component
+  title UI 状态控制与取消共用持久机制，分别核对操作
+  Component(card, "调用卡片", "宿主 UI", "按能力、请求状态与确认状态提供按钮")
+  Component(ops, "CallControlOperations", "台账机制", "冻结身份与 epoch；保存后派发；只读恢复")
+  ContainerDb(ledger, "原 OperationLedger", "Session UI 存储", "取消协议保持兼容；状态控制使用独立协议")
+  Component(host, "Session 控制端口", "宿主用例", "归属授权后进入 Flow / Kernel")
+  Rel(card, ops, "取消与状态控制分开选择 pending")
+  Rel(ops, ledger, "command 接纳，不附带或消费输入草稿")
+  Rel(ops, host, "control / cancel；各自查询原回执")
+```
+
+原 CallCancellationOperations 扩展为 CallControlOperations，保留已存 `independent-call-cancel-v1` 记录兼容性；新状态操作使用 `independent-call-state-v1`。两个协议复用登记、错误分类、持久核对和诊断代码，不增加状态库或轮询器。通用 ChatView reconcile 与原卡片观察节奏均识别新协议。
+
+按原 requestId/action/expectedEpoch 核对接纳；accepted 不代表暂停已生效。UI 继续读取宿主确认状态，旧 epoch 快照不能再次发起控制。原 RPC 悬挂时，查询确认且宿主 epoch 更新即可发起下一动作；迟到错误或较早查询的 missing 结果均不能让 accepted 回退。每次新动作分配新 requestId，恢复查询不重发。暂停确认前只提供撤销，确认后提供恢复；不将取消显示为可恢复。
+
+验证包括持久记录重开、错误动作/epoch/回执身份、迟到 missing、缺失能力、隐藏恢复、未知暂停期间独立取消，以及真实本地/RPC ChatView 的暂停响应悬挂→核对→恢复→取消→继续提交。所有控制记录不携带 draft。整树资源收尾、原生会话控制和更完整的交互卡片仍是未完成范围。

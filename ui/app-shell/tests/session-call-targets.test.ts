@@ -305,12 +305,13 @@ it.each(['local', 'rpc'])('submits an independent child from ChatView over %s an
 });
 
 
-it.each(['local', 'rpc'])('cancels from a real ChatView over %s while the reply hangs and still accepts the next input', async transport => {
+it.each(['local', 'rpc'])('controls a real ChatView over %s with hanging replies and still accepts the next input', async transport => {
     const f = await workspace(true); await f.runtime.commandBus.execute(SessionCommand.Bind, {sessionId: f.sessionId});
-    let cancels = 0;
+    let cancels = 0; const actions: string[] = [];
     const execute = async (name: string, args?: unknown) => {
         const result = await f.runtime.commandBus.execute(name, args);
         if (name === 'session.call.cancel') {cancels++; return new Promise(() => {});}
+        if (name === 'session.call.control') {actions.push((args as {action: string}).action); return new Promise(() => {});}
         return result;
     };
     let commands = {execute} as ICommandBus;
@@ -329,8 +330,15 @@ it.each(['local', 'rpc'])('cancels from a real ChatView over %s while the reply 
     const mode = host.querySelector<HTMLSelectElement>('[data-selector-id="callMode"]')!; mode.value = 'independent'; mode.dispatchEvent(new Event('change', {bubbles: true}));
     view.setText('First task'); view.setArguments('{"count":0}'); await view.submit();
     await vi.waitFor(() => expect(host.querySelector<HTMLButtonElement>('[data-call-cancel]')?.hidden).toBe(false));
-    view.setText('Next task'); host.querySelector<HTMLButtonElement>('[data-call-cancel]')!.click();
-    await vi.waitFor(() => expect(operations.getSnapshot().find(record => record.kind === 'command')?.status).toBe('accepted'));
+    view.setText('Next task');
+    const state = () => host.querySelector<HTMLButtonElement>('[data-call-state-control]')!;
+    await vi.waitFor(() => expect(state()?.hidden).toBe(false)); state().click();
+    await vi.waitFor(() => expect(actions).toEqual(['pause']));
+    await vi.waitFor(() => expect(operations.getSnapshot().find(record => (record.input as any)?.request?.action === 'pause')?.status).toBe('accepted'));
+    await vi.waitFor(() => expect(state().disabled).toBe(false)); state().click();
+    await vi.waitFor(() => expect(actions).toEqual(['pause', 'resume']));
+    host.querySelector<HTMLButtonElement>('[data-call-cancel]')!.click();
+    await vi.waitFor(() => expect(operations.getSnapshot().find(record => (record.input as any)?.protocol === 'independent-call-cancel-v1')?.status).toBe('accepted'));
     expect(view.getDraft().text).toBe('Next task'); expect(cancels).toBe(1);
     view.setArguments('{"count":0}'); await view.submit();
     await vi.waitFor(async () => expect(await f.runtime.commandBus.execute('session.calls.list', {sessionId: f.sessionId})).toHaveLength(2));

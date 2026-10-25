@@ -1,5 +1,5 @@
 import {IndependentCallControl} from './IndependentCallControl';
-import {CallCancellationOperations, callCancellationProtocol} from '../independent/call-cancellation';
+import {CallControlOperations, callCancellationProtocol, callStateControlProtocol} from '../independent/call-control';
 import {TaskArtifactBrowser} from './dag/TaskArtifactBrowser';
 import {createModuleLogger, t} from '@itookit/common';
 import type {OperationLedger} from '@itookit/llm-ui';
@@ -27,9 +27,9 @@ export class IndependentCallPanel {
     private refreshing?: Promise<void>;
     private active = false;
     private releaseLedger: () => void;
-    private readonly controls: CallCancellationOperations;
+    private readonly controls: CallControlOperations;
     constructor(private commands: ICommandBus, private sessionId: string, parent: HTMLElement, private options: Options) {
-        this.controls = new CallCancellationOperations(options.operations, commands, sessionId);
+        this.controls = new CallControlOperations(options.operations, commands, sessionId);
         this.element.className = 'flow-invocations'; this.element.hidden = true;
         this.error.setAttribute('role', 'alert'); this.element.append(this.error); parent.append(this.element);
         this.releaseLedger = options.operations.subscribe(() => {void this.refresh();});
@@ -71,7 +71,7 @@ export class IndependentCallPanel {
     private pending(): boolean {
         return this.options.operations.getSnapshot().some(record => record.conversationId === this.sessionId && ['submitting', 'unknown'].includes(record.status)
             && (record.kind === 'send' && !!(record.input as {independentTitle?: string}).independentTitle
-                || record.kind === 'command' && (record.input as {protocol?: string})?.protocol === callCancellationProtocol));
+                || record.kind === 'command' && [callCancellationProtocol, callStateControlProtocol].includes((record.input as {protocol?: string})?.protocol ?? '')));
     }
     private async load(branch: string, current: () => boolean): Promise<void> {
         const calls = await this.commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: this.sessionId, branchId: branch});

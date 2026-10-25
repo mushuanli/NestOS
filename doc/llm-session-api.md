@@ -693,6 +693,9 @@ C4Dynamic
 
 取消与取消回执查询支持可选 `targetTaskId`。省略时仍控制原 primary；提供时 `taskId` 继续标识原调用根，宿主沿真实父链确认目标属于该调用，再使用目标自己的 `expectedEpoch` 和取消回执。根已终态不阻止显式取消仍有效后代；目标自身已经成功/失败时仍保留其真实终态。后代 Flow 走原 Flow 取消端口，普通后代走 Kernel。状态控制不接受此扩展；不代表跨 Session 控制权或“一键取消所有剩余任务”。
 
+
+`session.calls.list` 的可选 `descendants` 与根状态共享一次 Kernel 快照：`{total, items}` 最多包含 50 个未收尾后代，每项提供 `taskId/parentTaskId/executionState/cancel`。`executionState.controlEpoch` 属于该目标，不能使用根 epoch 替代；`cancel` 仅声明协议支持，写入时仍复验权限。清理中的终态任务也保留展示，但没有新取消按钮。未确认取消即使目标已从列表移除，也由 UI 原 OperationLedger 保留只读核对入口；列表并非完整分页树。
+
 ### 独立调用状态控制
 
 `IndependentCallCommand.Control`（`session.call.control`）接受 `IndependentCallStateControlRequest`，在原调用归属与父子写权限验证后处理 `pause | resume | withdraw`。请求固定 `sessionId/branchId/callId/executionSessionId/taskId/requestId/expectedEpoch`；撤销仅适用于未确认暂停，恢复不能替代审批回答或新调用。

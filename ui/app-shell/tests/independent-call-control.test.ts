@@ -237,3 +237,39 @@ it('keeps descendant cancellation recovery separate from root and sibling contro
     expect(execute).toHaveBeenLastCalledWith(IndependentCallCommand.CancellationReceipt, query);
     await expect(controls.cancel({...request, targetTaskId: 'other'}, () => true)).rejects.toMatchObject({code: 'CALL_CONTROL_IDENTITY_MISMATCH'});
 });
+
+it('cancels a descendant of a completed call and retains its unknown receipt after it leaves the activity list', async () => {
+    const view = call(); view.status = 'completed'; view.executionState!.phase = 'done'; view.executionState!.settled = true;
+    view.descendants = {total: 1, items: [{taskId: 'leaf', parentTaskId: 'task', cancel: true,
+        executionState: {...view.executionState!, id: 'leaf', phase: 'waiting', settled: false, controlEpoch: 7}}]};
+    const operations = createOperationLedger(); let sent: IndependentCallCancelRequest | undefined, available = false;
+    const execute = vi.fn(async (name: string, args?: unknown) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.Cancel) {sent = args as IndependentCallCancelRequest; return new Promise(() => {});}
+        if (name === IndependentCallCommand.CancellationReceipt) return available ? {...args as object, receipt: {
+            requestId: sent!.requestId, taskId: 'leaf', expectedEpoch: 7, controlEpoch: 7, status: 'cancelled',
+        }} : args;
+        throw new Error(name);
+    });
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'}); await panel.refresh();
+    expect(button().hidden).toBe(true);
+    document.querySelector<HTMLButtonElement>('[data-call-cancel-target="leaf"]')!.click();
+    await vi.waitFor(() => expect(sent).toMatchObject({taskId: 'task', targetTaskId: 'leaf', expectedEpoch: 7}));
+    await vi.waitFor(() => expect(operations.getSnapshot()[0]?.status).toBe('unknown'));
+    view.descendants = {total: 0, items: []}; panel.destroy();
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'}); await panel.refresh();
+    expect(document.querySelector('[data-call-descendant="leaf"]')).not.toBeNull();
+    available = true; await panel.refresh();
+    await vi.waitFor(() => expect(operations.getSnapshot()[0]?.status).toBe('accepted')); await panel.refresh();
+    expect(document.querySelector('[data-call-descendant="leaf"]')).toBeNull();
+    expect(execute.mock.calls.filter(([name]) => name === IndependentCallCommand.Cancel)).toHaveLength(1);
+    expect(view.executionState!.phase).toBe('done');
+});
+
+it('rejects descendant display identities that could bind controls to the wrong task', async () => {
+    const view = call(); view.descendants = {total: 1, items: [{taskId: 'leaf', parentTaskId: 'task', cancel: true, executionState: view.executionState!}]};
+    const execute = vi.fn(async () => [view]);
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations: createOperationLedger(), branch: () => 'main'}); await panel.refresh();
+    expect(document.body.textContent).toContain('CALL_VIEW_SCOPE_MISMATCH');
+    expect(document.querySelector('[data-call-cancel-target]')).toBeNull();
+});

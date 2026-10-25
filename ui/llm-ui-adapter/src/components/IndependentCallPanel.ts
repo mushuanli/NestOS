@@ -1,3 +1,4 @@
+import {IndependentCallDescendants} from './IndependentCallDescendants';
 import type {InteractionDraftStorage} from '../domain/interaction-draft';
 import {IndependentCallInteractions} from './IndependentCallInteractions';
 import {IndependentCallControl} from './IndependentCallControl';
@@ -9,7 +10,7 @@ import {IndependentCallCommand, type IndependentCallView, type ICommandBus} from
 import {canonicalJson} from '../utils/canonical-json';
 
 const log = createModuleLogger('independent-calls');
-interface Card {element: HTMLElement; control: IndependentCallControl; answers: IndependentCallInteractions; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
+interface Card {descendants: IndependentCallDescendants; element: HTMLElement; control: IndependentCallControl; answers: IndependentCallInteractions; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
 interface Options {
     interactionDrafts?: InteractionDraftStorage;
     operations: OperationLedger;
@@ -65,7 +66,7 @@ export class IndependentCallPanel {
     reset(): void {++this.generation; this.refreshing = undefined; this.clearCards(); void this.refresh();}
     setVisible(value: boolean): void {
         this.visible = value; ++this.generation; this.refreshing = undefined; clearTimeout(this.timer);
-        for (const card of this.cards.values()) {card.artifacts.setVisible(value); card.control.setActive(value); card.answers.setActive(value);}
+        for (const card of this.cards.values()) {card.artifacts.setVisible(value); card.control.setActive(value); card.descendants.setActive(value); card.answers.setActive(value);}
         if (value) void this.refresh();
     }
     destroy(): void {
@@ -100,6 +101,7 @@ export class IndependentCallPanel {
             || call.executionTree && call.executionTree.taskId !== receipt.execution?.taskId
             || receipt.execution && (receipt.execution.role !== 'primary' || typeof receipt.execution.taskId !== 'string' || !receipt.execution.taskId))
             throw Object.assign(new Error('CALL_VIEW_SCOPE_MISMATCH'), {code: 'CALL_VIEW_SCOPE_MISMATCH'});
+        assertDescendants(call);
     }
     private async reconcile(call: IndependentCallView): Promise<void> {
         if (call.receipt.status !== 'accepted' || call.input.transfer) return;
@@ -115,8 +117,8 @@ export class IndependentCallPanel {
         let card = this.cards.get(id);
         if (!card) {
             const element = document.createElement('article'); element.className = 'flow-invocations__card'; element.dataset.independentCall = id;
-            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><section data-call-interactions aria-live="polite"></section><div data-call-answers></div><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div><div data-call-control></div>';
-            card = {element, control: new IndependentCallControl(element.querySelector('[data-call-control]')!, this.controls, () => {void this.refresh();}),
+            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><section data-call-interactions aria-live="polite"></section><div data-call-answers></div><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div><div data-call-control></div><details data-call-descendants></details>';
+            card = {element, descendants: new IndependentCallDescendants(element.querySelector('[data-call-descendants]')!, this.controls, () => {void this.refresh();}), control: new IndependentCallControl(element.querySelector('[data-call-control]')!, this.controls, () => {void this.refresh();}),
                 answers: new IndependentCallInteractions(element.querySelector('[data-call-answers]')!, this.commands, this.controls, () => {void this.refresh();}, this.options.interactionDrafts),
                 artifacts: new TaskArtifactBrowser(element, this.commands), release: this.options.mountCard?.(element, call)};
             if (!this.options.mountCard) this.element.append(element);
@@ -133,7 +135,7 @@ export class IndependentCallPanel {
         const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId || !this.options.openChild;
         button.onclick = () => {void this.open(call.receipt.executionSessionId!);};
         this.renderInteractions(card, call); card.answers.update(call);
-        this.renderArtifacts(card, call); card.control.update(call);
+        this.renderArtifacts(card, call); card.control.update(call); card.descendants.update(call);
     }
     private renderInteractions(card: Card, call: IndependentCallView): void {
         const host = card.element.querySelector<HTMLElement>('[data-call-interactions]')!, pending = call.interactions;
@@ -161,7 +163,7 @@ export class IndependentCallPanel {
         card.artifacts.clear(); card.artifactScope = key;
         card.element.querySelector('[data-artifacts]')!.innerHTML = scope ? card.artifacts.render(scope) : '';
     }
-    private disposeCard(card: Card): void {card.control.destroy(); card.answers.destroy(); card.artifacts.dispose(); card.release?.(); card.element.remove();}
+    private disposeCard(card: Card): void {card.control.destroy(); card.descendants.destroy(); card.answers.destroy(); card.artifacts.dispose(); card.release?.(); card.element.remove();}
     private async open(id: string): Promise<void> {
         if (!this.visible || this.abort.signal.aborted) return;
         try {await this.options.openChild?.(id);}
@@ -185,3 +187,16 @@ function executionStateText(call: IndependentCallView): string {
     if (state.blockedBy === 'session-control' || state.blockedBy === 'ancestor-control') return t('callable.independent.execution.held');
     return '';
 }
+
+function assertDescendants(call: IndependentCallView): void {
+    const page = call.descendants; if (!page) return;
+    const ids = new Set<string>();
+    if (!Number.isSafeInteger(page.total) || page.total < page.items.length || page.items.length > 50) throw invalidDescendants();
+    for (const item of page.items) {
+        if (!item.taskId || !item.parentTaskId || item.taskId === call.receipt.execution?.taskId || ids.has(item.taskId)
+            || item.executionState.id !== item.taskId || !Number.isSafeInteger(item.executionState.controlEpoch) || item.executionState.controlEpoch < 0)
+            throw invalidDescendants();
+        ids.add(item.taskId);
+    }
+}
+function invalidDescendants(): Error {return Object.assign(new Error('CALL_VIEW_SCOPE_MISMATCH'), {code: 'CALL_VIEW_SCOPE_MISMATCH'});}

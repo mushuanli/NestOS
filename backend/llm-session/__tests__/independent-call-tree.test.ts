@@ -48,3 +48,19 @@ it('does not revive pending requests left on terminal tasks when reusing the tre
     child.exit = undefined; child.status = 'blocked';
     expect((await readIndependentCallTree(fixture([root, child]).kernel, root)).interactions.total).toBe(1);
 });
+
+it('bounds unsettled descendant controls from the same snapshot without exposing Task payloads', async () => {
+    const root = task('root');
+    const children = Array.from({length: 55}, (_, index) => {
+        const child = task(`worker-${String(index).padStart(2, '0')}`, 'root');
+        child.exit = undefined; child.status = 'created'; child.control = {mode: 'pause', epoch: index + 1, requestId: `pause-${index}`, acknowledged: true}; return child;
+    });
+    const result = await readIndependentCallTree(fixture([root, ...children, task('settled', 'root')]).kernel, root);
+    expect(result.descendants.total).toBe(55); expect(result.descendants.items).toHaveLength(50);
+    expect(result.descendants.items[0]).toMatchObject({taskId: 'worker-00', parentTaskId: 'root', cancel: true,
+        executionState: {id: 'worker-00', phase: 'waiting', controlEpoch: 1}});
+    expect(result.descendants.items[49].taskId).toBe('worker-49');
+    expect(JSON.stringify(result.descendants)).not.toContain('PRIVATE');
+    const unsupported = task('old-flow', 'root'); unsupported.program.kind = 'flow.aggregate'; unsupported.exit = undefined;
+    expect((await readIndependentCallTree(fixture([root, unsupported]).kernel, root)).descendants.items[0].cancel).toBe(false);
+});

@@ -18,12 +18,15 @@ export interface IndependentCallReceipt extends SubmissionReceipt {
 export type IndependentCallSubmitter = (request: SubmissionRequest) => Promise<string>;
 
 export interface IndependentCallListQuery {sessionId: string; branchId?: string}
-/** Primary Task facts only; not an aggregate stop/settlement acknowledgement for its children. */
+/** Single Task facts only; not an aggregate stop/settlement acknowledgement for its children. */
 export type IndependentCallExecutionState = Pick<TaskStat, 'id' | 'revision' | 'phase' | 'control' | 'blockedBy' | 'activeOperations' | 'settled' | 'stopped'> & {controlEpoch: number};
 /** Atomic Kernel observation of this Task and same-Session descendants, not external rollback. */
 export interface IndependentCallExecutionTreeState {
     taskId: string; asOfSequence: number; tasks: number; unsettledTasks: number;
     activeOperations: number; stopped: boolean; settled: boolean;
+}
+export interface IndependentCallDescendant {
+    taskId: string; parentTaskId: string; executionState: IndependentCallExecutionState; cancel: boolean;
 }
 export interface IndependentCallView {
     input: IndependentCallInput;
@@ -33,6 +36,8 @@ export interface IndependentCallView {
     status?: import('./conversation').Round['status'];
     executionState?: IndependentCallExecutionState;
     executionTree?: IndependentCallExecutionTreeState;
+    /** Bounded unsettled descendants from the same execution snapshot. */
+    descendants?: {total: number; items: IndependentCallDescendant[]};
     /** Bounded pending interaction summaries belonging to this execution tree. */
     interactions?: IndependentCallInteractions;
     /** Protocol support only; current write permission is revalidated on control. */

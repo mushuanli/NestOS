@@ -1,9 +1,10 @@
+import {independentCallTaskState, supportsCallCancellation} from './independent-call-task-state';
 import {summarizeIndependentCallInteractions} from './independent-call-interactions';
 import {taskStat, type Kernel, type TaskRecord} from '@itookit/durable-kernel';
-import type {IndependentCallExecutionTreeState, IndependentCallInteractions} from '../contracts/independent-calls';
+import type {IndependentCallExecutionTreeState, IndependentCallInteractions, IndependentCallDescendant} from '../contracts/independent-calls';
 
 /** One existing Kernel transaction supplies both root and descendant execution facts. */
-export async function readIndependentCallTree(kernel: Kernel, expected: TaskRecord): Promise<{task: TaskRecord; tree: IndependentCallExecutionTreeState; interactions: IndependentCallInteractions}> {
+export async function readIndependentCallTree(kernel: Kernel, expected: TaskRecord): Promise<{task: TaskRecord; tree: IndependentCallExecutionTreeState; interactions: IndependentCallInteractions; descendants: {total: number; items: IndependentCallDescendant[]}}> {
     const snapshot = await (await kernel.inspectSession(expected.sessionId)).snapshot();
     const known = new Map(snapshot.tasks.map(task => [task.id, task]));
     const root = known.get(expected.id);
@@ -22,7 +23,7 @@ export async function readIndependentCallTree(kernel: Kernel, expected: TaskReco
         if (!stat.settled) tree.unsettledTasks++;
         tree.stopped &&= stat.stopped; tree.settled &&= stat.settled;
     }
-    return {task: root, tree, interactions: summarizeIndependentCallInteractions(selected)};
+    return {task: root, tree, interactions: summarizeIndependentCallInteractions(selected), descendants: descendants(selected, root.id)};
 }
 function validateRoot(root: TaskRecord, known: Map<string, TaskRecord>): void {
     const seen = new Set<string>(); let task = root;
@@ -53,3 +54,9 @@ function belongs(task: TaskRecord, root: TaskRecord, known: Map<string, TaskReco
     return included;
 }
 function invalid(): Error {return Object.assign(new Error('CALL_EXECUTION_TREE_INVALID'), {code: 'CALL_EXECUTION_TREE_INVALID'});}
+
+function descendants(tasks: TaskRecord[], rootId: string): {total: number; items: IndependentCallDescendant[]} {
+    const pending = tasks.filter(task => task.id !== rootId && !taskStat(task).settled).sort((a, b) => a.id.localeCompare(b.id));
+    return {total: pending.length, items: pending.slice(0, 50).map(task => ({taskId: task.id, parentTaskId: task.parentTaskId!,
+        executionState: independentCallTaskState(task), cancel: supportsCallCancellation(task)}))};
+}

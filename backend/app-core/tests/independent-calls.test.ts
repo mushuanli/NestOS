@@ -417,6 +417,8 @@ it('cancels an explicitly scoped descendant after its Flow root completes and pr
     await commands.execute(IndependentCallCommand.Respond, {...rootQuery, targetTaskId: member, interactionId: 'approval', requestId: 'finish-root', value: 'done'});
     await (await session.attachTask(rootQuery.taskId)).wait({timeoutMs: 5000});
     const before = await kernel.task(session.id, rootQuery.taskId), query = {...rootQuery, targetTaskId: child.id, requestId: 'cancel-child'};
+    const views = await commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent});
+    expect(views[0].descendants).toMatchObject({total: 1, items: [{taskId: child.id, parentTaskId: rootQuery.taskId, cancel: true, executionState: {controlEpoch: 1}}]});
     await expect(commands.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).rejects.toMatchObject({code: 'CONFLICT'});
     expect(await commands.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(query);
     await expect(commands.execute(IndependentCallCommand.Cancel, {...query, targetTaskId: sibling.id, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_CONTROL_SCOPE_MISMATCH'});

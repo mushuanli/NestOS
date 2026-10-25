@@ -24,6 +24,14 @@ export class CallControlOperations {
             && ((record.input as unknown as Frozen).request as IndependentCallCancelRequest).targetTaskId === targetTaskId);
         return matches.find(record => ['submitting', 'unknown'].includes(record.status)) ?? matches[0];
     }
+    pendingCancellationTargets(branchId: string, callId: string, taskId: string): string[] {
+        const targets = this.ledger.getSnapshot().flatMap(record => {
+            const frozen = record.input as unknown as Frozen, request = frozen?.request as IndependentCallCancelRequest;
+            return this.owns(record) && frozen.protocol === callCancellationProtocol && ['submitting', 'unknown'].includes(record.status)
+                && request.branchId === branchId && request.callId === callId && request.taskId === taskId && request.targetTaskId ? [request.targetTaskId] : [];
+        });
+        return [...new Set(targets)];
+    }
     async cancel(input: IndependentCallCancelRequest, current: () => boolean): Promise<OperationReceipt> {
         return this.submit(input, current);
     }

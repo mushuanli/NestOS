@@ -1,10 +1,10 @@
+import {independentCallTaskState, supportsCallCancellation} from './independent-call-task-state';
 import {readIndependentCallTree} from './independent-call-tree';
 import {IndependentCallResponses} from './independent-call-responses';
-import {hasFlowControlTree} from '@itookit/llm-flow/contracts';
 import {IndependentCallControls} from './independent-call-controls';
-import {taskStat, KernelError, KernelErrorCode, type Kernel, type JsonValue} from '@itookit/durable-kernel';
+import {KernelError, KernelErrorCode, type Kernel, type JsonValue} from '@itookit/durable-kernel';
 import {sha256Hex} from '@itookit/llm-context';
-import {IndependentCallCommand, type IndependentCallControlQuery, type IndependentCallInput, type IndependentCallView, type IndependentCallExecutionState, type IndependentCallListQuery, type IndependentCallReceipt, type IndependentCallSubmitter} from '../contracts/independent-calls';
+import {IndependentCallCommand, type IndependentCallControlQuery, type IndependentCallInput, type IndependentCallView, type IndependentCallListQuery, type IndependentCallReceipt, type IndependentCallSubmitter} from '../contracts/independent-calls';
 import type {ICommandBus} from '../contracts/command-bus';
 import type {SubmissionRequest} from '../contracts/submission';
 import type {Round} from '../contracts/conversation';
@@ -131,14 +131,11 @@ export class IndependentCallService {
             throw failure('CALL_EXECUTION_CONFLICT');
         return task;
     }
-    private async executionProjection(receipt: IndependentCallReceipt): Promise<Pick<IndependentCallView, 'executionState' | 'executionTree' | 'controlCapabilities' | 'interactions'>> {
+    private async executionProjection(receipt: IndependentCallReceipt): Promise<Pick<IndependentCallView, 'executionState' | 'executionTree' | 'controlCapabilities' | 'interactions' | 'descendants'>> {
         const expected = await this.executionTask(receipt); if (!expected) return {};
-        const {task, tree: executionTree, interactions} = await this.readExecutionTree(receipt, expected);
-        const {id, revision, phase, control, blockedBy, activeOperations, settled, stopped} = taskStat(task);
-        const executionState: IndependentCallExecutionState = {id, revision, phase, control, blockedBy, activeOperations, settled, stopped, controlEpoch: task.control?.epoch ?? 0};
-        const flow = task.program.kind === 'flow.aggregate' || task.labels?.kind === 'flow-root';
-        const supported = !flow || hasFlowControlTree(task);
-        return {executionState, executionTree, interactions, controlCapabilities: {cancel: supported, respond: true, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
+        const {task, tree: executionTree, interactions, descendants} = await this.readExecutionTree(receipt, expected);
+        const executionState = independentCallTaskState(task), supported = supportsCallCancellation(task);
+        return {executionState, executionTree, interactions, descendants, controlCapabilities: {cancel: supported, respond: true, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
     }
     private async readExecutionTree(receipt: IndependentCallReceipt, expected: import('@itookit/durable-kernel').TaskRecord) {
         const started = Date.now(); let outcome = 'failure', code: string | undefined, tasks: number | undefined;

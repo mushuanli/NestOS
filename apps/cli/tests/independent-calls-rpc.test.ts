@@ -40,6 +40,12 @@ it('queries durable child acceptance over RPC while the original submit response
         const receipt = await bus.execute<IndependentCallReceipt>(IndependentCallCommand.Inspect, input);
         expect(receipt.status).toBe('accepted'); expect(receipt.executionSessionId).toBeTruthy();
         expect(observed).toContainEqual({name: IndependentCallCommand.Inspect, query: true});
+        let execution = receipt.execution;
+        await vi.waitFor(async () => {execution = (await bus.execute<IndependentCallReceipt>(IndependentCallCommand.Inspect, input)).execution; expect(execution).toBeTruthy();});
+        const page = await bus.execute<{asOfSequence: number}>(IndependentCallCommand.Descendants, {sessionId: receipt.callerSessionId,
+            branchId: 'main', callId: receipt.operationId, executionSessionId: receipt.executionSessionId, taskId: execution!.taskId});
+        expect(page.asOfSequence).toBeGreaterThan(0); expect(observed).toContainEqual({name: IndependentCallCommand.Descendants, query: true});
+
         release(); expect((await pending).executionSessionId).toBe(receipt.executionSessionId);
     } finally {release(); await pending; await client.close(); await server.close();}
 }, 15000);

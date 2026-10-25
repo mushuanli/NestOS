@@ -696,6 +696,9 @@ C4Dynamic
 
 `session.calls.list` 的可选 `descendants` 与根状态共享一次 Kernel 快照：`{total, items}` 最多包含 50 个未收尾后代，每项提供 `taskId/parentTaskId/executionState/cancel`。`executionState.controlEpoch` 属于该目标，不能使用根 epoch 替代；`cancel` 仅声明协议支持，写入时仍复验权限。清理中的终态任务也保留展示，但没有新取消按钮。未确认取消即使目标已从列表移除，也由 UI 原 OperationLedger 保留只读核对入口；列表并非完整分页树。
 
+
+`IndependentCallCommand.Descendants`（`session.call.descendants`）接收 `{sessionId, branchId, callId, executionSessionId, taskId, afterTaskId?}`，核对原调用及 primary 后冷读当前页；返回相同作用域、`asOfSequence` 与 `descendants: {total, items, nextAfterTaskId?}`。每页最多 50 项，按任务 ID 固定字符顺序推进。游标任务结束不使查询失败，新插入且排序靠前的任务需返回首页查看。每页使用当次快照，不保证多页是同一个历史水位；当前实现仍扫描执行 Session 任务集合。命令属于共享只读策略，不打开写会话或等待在途提交回执。
+
 ### 独立调用状态控制
 
 `IndependentCallCommand.Control`（`session.call.control`）接受 `IndependentCallStateControlRequest`，在原调用归属与父子写权限验证后处理 `pause | resume | withdraw`。请求固定 `sessionId/branchId/callId/executionSessionId/taskId/requestId/expectedEpoch`；撤销仅适用于未确认暂停，恢复不能替代审批回答或新调用。

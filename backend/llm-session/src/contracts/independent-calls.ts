@@ -6,7 +6,7 @@ import type {ExecutionRef} from './conversation';
 export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect', List: 'session.calls.list',
     Cancel: 'session.call.cancel', CancellationReceipt: 'session.call.cancellation.receipt',
     Control: 'session.call.control', ControlReceipt: 'session.call.control.receipt',
-    Respond: 'session.call.respond', ResponseReceipt: 'session.call.response.receipt', Interaction: 'session.call.interaction'} as const;
+    Respond: 'session.call.respond', ResponseReceipt: 'session.call.response.receipt', Interaction: 'session.call.interaction', Descendants: 'session.call.descendants'} as const;
 /** Caller identity and selected materials; ancestry alone never imports conversation history. */
 export interface IndependentCallInput {request: SubmissionRequest; title: string; transfer?: TransferReference}
 export interface IndependentCallReceipt extends SubmissionReceipt {
@@ -37,7 +37,7 @@ export interface IndependentCallView {
     executionState?: IndependentCallExecutionState;
     executionTree?: IndependentCallExecutionTreeState;
     /** Bounded unsettled descendants from the same execution snapshot. */
-    descendants?: {total: number; items: IndependentCallDescendant[]};
+    descendants?: IndependentCallDescendantPage;
     /** Bounded pending interaction summaries belonging to this execution tree. */
     interactions?: IndependentCallInteractions;
     /** Protocol support only; current write permission is revalidated on control. */
@@ -48,8 +48,15 @@ export interface IndependentCallView {
 
 
 /** All identities are verified against the persisted call route and its primary execution. */
-export interface IndependentCallControlQuery {
-    sessionId: string; branchId: string; callId: string; executionSessionId: string; taskId: string; requestId: string;
+export interface IndependentCallExecutionQuery {
+    sessionId: string; branchId: string; callId: string; executionSessionId: string; taskId: string;
+}
+export interface IndependentCallControlQuery extends IndependentCallExecutionQuery {requestId: string}
+export interface IndependentCallDescendantPage {total: number; items: IndependentCallDescendant[]; nextAfterTaskId?: string}
+/** A live keyset page, not a retained historical snapshot. */
+export interface IndependentCallDescendantsQuery extends IndependentCallExecutionQuery {afterTaskId?: string}
+export interface IndependentCallDescendantsResult extends IndependentCallDescendantsQuery {
+    asOfSequence: number; descendants: IndependentCallDescendantPage;
 }
 /** The primary taskId always identifies the call; an explicit descendant has its own control epoch. */
 export interface IndependentCallCancellationQuery extends IndependentCallControlQuery {targetTaskId?: string}

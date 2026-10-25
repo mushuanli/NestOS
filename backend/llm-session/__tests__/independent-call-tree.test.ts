@@ -64,3 +64,16 @@ it('bounds unsettled descendant controls from the same snapshot without exposing
     const unsupported = task('old-flow', 'root'); unsupported.program.kind = 'flow.aggregate'; unsupported.exit = undefined;
     expect((await readIndependentCallTree(fixture([root, unsupported]).kernel, root)).descendants.items[0].cancel).toBe(false);
 });
+
+it('advances a live keyset page even when the prior cursor task has settled', async () => {
+    const root = task('root'), children = Array.from({length: 53}, (_, i) => {
+        const child = task(`worker-${String(i).padStart(2, '0')}`, 'root'); child.exit = undefined; child.status = 'created'; return child;
+    });
+    const f = fixture([root, ...children]), first = await readIndependentCallTree(f.kernel, root);
+    expect(first.descendants.nextAfterTaskId).toBe('worker-49');
+    children[49].exit = root.exit;
+    const next = await readIndependentCallTree(f.kernel, root, first.descendants.nextAfterTaskId);
+    expect(next.descendants.total).toBe(52); expect(next.descendants.items.map(item => item.taskId)).toEqual(['worker-50', 'worker-51', 'worker-52']);
+    expect(next.descendants.nextAfterTaskId).toBeUndefined();
+    expect((await readIndependentCallTree(f.kernel, root, 'worker-99')).descendants.items).toEqual([]);
+});

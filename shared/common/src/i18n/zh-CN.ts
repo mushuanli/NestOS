@@ -2769,6 +2769,8 @@ export const zhCN = {
     'callable.independent.control.failed': '控制操作未确认：{code}。请查询原请求结果。',
     'callable.independent.cancel.saveFailed': '取消操作记录保存失败，指令尚未发送。请重试。',
     'callable.independent.descendants.pending': ' · {count} 项取消待核对',
+    'callable.independent.descendants.first': '返回首页',
+    'callable.independent.descendants.next': '下一页',
     'callable.independent.descendants.heading': '未收尾后代任务：显示 {shown} / {total}',
     'callable.independent.descendants.task': '任务 {id}',
     'callable.independent.descendants.state': '{phase} · {count} 个操作待收尾',

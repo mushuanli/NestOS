@@ -430,3 +430,19 @@ it('cancels an explicitly scoped descendant after its Flow root completes and pr
     expect(await commands.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(result); expect(open).not.toHaveBeenCalled();
     expect(await kernel.readTaskCancellationReceipt(session.id, rootQuery.taskId, query.requestId)).toBeUndefined();
 }, 15000);
+
+it('cold-pages all call descendants beyond the embedded limit without changing the bound Session', async () => {
+    const f = await fixture(false, true, true), input = f.input('paged-workers', 'flow'); await f.submit(input);
+    const {requestId: _request, ...query} = await controlQuery(f, input), kernel = f.runtime.kernel.kernel, commands = f.runtime.commandBus;
+    const session = await kernel.openSession(query.executionSessionId), children: string[] = [];
+    for (let i = 0; i < 55; i++) children.push((await session.submit({program: {kind: 'deferred-worker', version: '1'}, parent: query.taskId, input: null, deferStart: true})).id);
+    const unrelated = await session.submit({program: {kind: 'deferred-worker', version: '1'}, input: null, deferStart: true});
+    const open = vi.spyOn(kernel, 'openSession');
+    const read = (afterTaskId?: string) => commands.execute<import('@itookit/llm-session/contracts').IndependentCallDescendantsResult>(IndependentCallCommand.Descendants, {...query, ...(afterTaskId ? {afterTaskId} : {})});
+    const first = await read(); expect(first.descendants.items).toHaveLength(50); expect(first.descendants.nextAfterTaskId).toBeTruthy();
+    const second = await read(first.descendants.nextAfterTaskId), ids = [...first.descendants.items, ...second.descendants.items].map(item => item.taskId);
+    expect(second.descendants.nextAfterTaskId).toBeUndefined(); expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).toEqual(expect.arrayContaining(children)); expect(ids).not.toContain(unrelated.id);
+    await expect(commands.execute(IndependentCallCommand.Descendants, {...query, branchId: 'wrong'})).rejects.toMatchObject({code: 'CALL_CONTROL_SCOPE_MISMATCH'});
+    expect(open).not.toHaveBeenCalled(); expect(await commands.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
+}, 20000);

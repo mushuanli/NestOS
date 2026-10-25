@@ -273,3 +273,62 @@ it('rejects descendant display identities that could bind controls to the wrong 
     expect(document.body.textContent).toContain('CALL_VIEW_SCOPE_MISMATCH');
     expect(document.querySelector('[data-call-cancel-target]')).toBeNull();
 });
+
+function pagedCall() {
+    const view = call(); view.status = 'completed'; view.executionState!.phase = 'done';
+    const item = (taskId: string) => ({taskId, parentTaskId: 'task', cancel: true,
+        executionState: {...view.executionState!, id: taskId, phase: 'waiting' as const, controlEpoch: 9}});
+    view.descendants = {total: 2, items: [item('leaf-00')], nextAfterTaskId: 'leaf-00'};
+    return {view, second: {total: 2, items: [item('leaf-01')]}};
+}
+it('pages descendants beyond the embedded list and cancels the selected task with its own epoch', async () => {
+    const {view, second} = pagedCall(); const sent: IndependentCallCancelRequest[] = [];
+    const execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.Descendants) return {...args, asOfSequence: 5, descendants: second};
+        if (name === IndependentCallCommand.Cancel) {sent.push(args); const {expectedEpoch, ...query} = args; return {...query, receipt: {taskId: args.targetTaskId, requestId: args.requestId, expectedEpoch, controlEpoch: expectedEpoch, status: 'cancelled'}};}
+        throw new Error(name);
+    });
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations: createOperationLedger(), branch: () => 'main'}); await panel.refresh();
+    document.querySelector<HTMLDetailsElement>('[data-call-descendants]')!.open = true;
+    document.querySelector<HTMLButtonElement>('[data-call-descendants-next]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-call-descendant="leaf-01"]')).not.toBeNull());
+    await panel.refresh(); expect(document.querySelector('[data-call-descendant="leaf-00"]')).toBeNull();
+    const details = document.querySelector<HTMLDetailsElement>('[data-call-descendants]')!; details.open = false;
+    const reads = execute.mock.calls.filter(([name]) => name === IndependentCallCommand.Descendants).length;
+    await panel.refresh(); expect(execute.mock.calls.filter(([name]) => name === IndependentCallCommand.Descendants)).toHaveLength(reads);
+    details.open = true;
+    document.querySelector<HTMLButtonElement>('[data-call-cancel-target="leaf-01"]')!.click();
+    await vi.waitFor(() => expect(sent).toHaveLength(1)); expect(sent[0]).toMatchObject({taskId: 'task', targetTaskId: 'leaf-01', expectedEpoch: 9});
+    document.querySelector<HTMLButtonElement>('[data-call-descendants-first]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-call-descendant="leaf-00"]')).not.toBeNull());
+});
+it.each(['first', 'hide'] as const)('ignores a late page after %s navigation and keeps reads separate from mutations', async mode => {
+    const {view, second} = pagedCall(); let release!: (value: unknown) => void, firstQuery: any, reads = 0;
+    const execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.Descendants) {reads++; if (reads === 1) {firstQuery = args; return new Promise(resolve => {release = resolve;});} return {...args, asOfSequence: 7, descendants: second};}
+        throw new Error('Unexpected mutation');
+    });
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations: createOperationLedger(), branch: () => 'main'}); await panel.refresh();
+    document.querySelector<HTMLDetailsElement>('[data-call-descendants]')!.open = true;
+    document.querySelector<HTMLButtonElement>('[data-call-descendants-next]')!.click(); await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    if (mode === 'first') document.querySelector<HTMLButtonElement>('[data-call-descendants-first]')!.click();
+    else {panel.setVisible(false); panel.setVisible(true); await panel.refresh();}
+    release({...firstQuery, taskId: 'wrong-root', asOfSequence: 6, descendants: second});
+    await vi.waitFor(() => expect(document.querySelector(`[data-call-descendant="${mode === 'first' ? 'leaf-00' : 'leaf-01'}"]`)).not.toBeNull());
+    expect(document.body.textContent).not.toContain('CALL_VIEW_SCOPE_MISMATCH');
+    expect(execute.mock.calls.every(([name]) => name === IndependentCallCommand.List || name === IndependentCallCommand.Descendants)).toBe(true);
+});
+it('rejects a non-advancing descendant cursor and recovers on a later read', async () => {
+    const {view, second} = pagedCall(); let invalid = true;
+    const execute = vi.fn(async (name: string, args?: any) => name === IndependentCallCommand.List ? [view]
+        : {...args, asOfSequence: 8, descendants: invalid ? {...second, nextAfterTaskId: 'leaf-00'} : second});
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations: createOperationLedger(), branch: () => 'main'}); await panel.refresh();
+    document.querySelector<HTMLDetailsElement>('[data-call-descendants]')!.open = true;
+    document.querySelector<HTMLButtonElement>('[data-call-descendants-next]')!.click();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('CALL_VIEW_SCOPE_MISMATCH'));
+    expect(document.querySelector('[data-call-cancel-target="leaf-01"]')).toBeNull();
+    invalid = false; await panel.refresh();
+    await vi.waitFor(() => expect(document.querySelector('[data-call-cancel-target="leaf-01"]')).not.toBeNull());
+});

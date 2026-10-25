@@ -2755,6 +2755,8 @@ export const en: LocaleStrings = {
     'callable.independent.control.failed': 'Control is unconfirmed: {code}. Check the original request.',
     'callable.independent.cancel.saveFailed': 'Cancellation record could not be saved. Nothing was sent; please retry.',
     'callable.independent.descendants.pending': ' · {count} cancellations to verify',
+    'callable.independent.descendants.first': 'First page',
+    'callable.independent.descendants.next': 'Next page',
     'callable.independent.descendants.heading': 'Unsettled descendants: showing {shown} / {total}',
     'callable.independent.descendants.task': 'Task {id}',
     'callable.independent.descendants.state': '{phase} · {count} operations unsettled',

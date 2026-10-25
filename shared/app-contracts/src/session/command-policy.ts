@@ -17,6 +17,7 @@ const reads = new Set<string>([
     "session.call.response.receipt",
     "session.call.interaction",
     "session.calls.list",
+    "session.call.descendants",
     "session.instructions.get",
     "session.get-sessions",
     "session.get-current-id",

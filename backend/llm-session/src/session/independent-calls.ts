@@ -1,10 +1,11 @@
+import {IndependentCallDescendants} from './independent-call-descendants';
 import {independentCallTaskState, supportsCallCancellation} from './independent-call-task-state';
 import {readIndependentCallTree} from './independent-call-tree';
 import {IndependentCallResponses} from './independent-call-responses';
 import {IndependentCallControls} from './independent-call-controls';
 import {KernelError, KernelErrorCode, type Kernel, type JsonValue} from '@itookit/durable-kernel';
 import {sha256Hex} from '@itookit/llm-context';
-import {IndependentCallCommand, type IndependentCallControlQuery, type IndependentCallInput, type IndependentCallView, type IndependentCallListQuery, type IndependentCallReceipt, type IndependentCallSubmitter} from '../contracts/independent-calls';
+import {IndependentCallCommand, type IndependentCallExecutionQuery, type IndependentCallInput, type IndependentCallView, type IndependentCallListQuery, type IndependentCallReceipt, type IndependentCallSubmitter} from '../contracts/independent-calls';
 import type {ICommandBus} from '../contracts/command-bus';
 import type {SubmissionRequest} from '../contracts/submission';
 import type {Round} from '../contracts/conversation';
@@ -31,6 +32,7 @@ export class IndependentCallService {
         commands.register(IndependentCallCommand.Submit, value => this.submit(value as IndependentCallInput));
         commands.register(IndependentCallCommand.Inspect, value => this.inspect(value as IndependentCallInput));
         commands.register(IndependentCallCommand.List, value => this.list(value as IndependentCallListQuery));
+        new IndependentCallDescendants(this.options.kernel, this.host.logger, query => this.controlTarget(query)).register(commands);
         new IndependentCallControls({kernel: this.options.kernel, commands, logger: this.host.logger,
             canWrite: this.options.canWrite, resolve: query => this.controlTarget(query)}).register();
         new IndependentCallResponses({kernel: this.options.kernel, commands, logger: this.host.logger,
@@ -110,7 +112,7 @@ export class IndependentCallService {
         }
         return views.sort((a, b) => a.createdAt - b.createdAt || a.receipt.operationId.localeCompare(b.receipt.operationId));
     }
-    private async controlTarget(query: IndependentCallControlQuery) {
+    private async controlTarget(query: IndependentCallExecutionQuery) {
         const saved = await this.readRoute(query.sessionId, query.callId);
         if (!saved) throw failure('CALL_ROUTE_NOT_FOUND');
         const route = saved.value as unknown as CallRoute, request = route.input.request;

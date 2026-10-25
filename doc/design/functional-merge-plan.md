@@ -59,8 +59,10 @@ C4Component
 | F09a | 默认远程工作台队列与接纳等待 | `4df2896d` | 队列库 92 项、适配层 128 项、接纳 6 项、远程 DOM 86 项及消费包类型 |
 | F09b | 独立 ChatView 原生接纳台账 | `ceb71d43` | 适配层 133 项、原生及远程 DOM 88 项及消费包类型 |
 | F09c | 独立原生视图队列编辑区 | `dd4c04bd` | 适配层 133 项、队列编辑/隐藏及远程 DOM 88 项及消费包类型 |
+| F05/F06/F07 | 原生查询、取消核对与结果读取 | `09c122fc` | 适配层 141 项、真实 UI/RPC 118 项、HTTP RPC 5 项及消费包类型；Node 复用同源码已审查证据 |
+| F11 | 统一 Flow 实参与公开范围准入 | `fc007454` | 完整 Flow 668 项、构建及四个消费包类型；未知来源字段两项回归从失败到通过 |
 
-独立仓已有四个提交：Kernel `0c5e7cb`、llm-ui `7910531`、mindos-node-driver `6e32348`、mindos-node `edcaefb`。Kernel 已由 F02 锁定，driver 已由 F04 锁定，llm-ui 已由 F09a 锁定；mindos-node 的 gitlink 待原生查询等功能集成。保留这些已有提交；根仓锁定版本时必须同时验证受影响消费者，不用未锁定的本地源码冒充集成完成。
+独立仓已有四个提交：Kernel `0c5e7cb`、llm-ui `7910531`、mindos-node-driver `6e32348`、mindos-node `edcaefb`。Kernel 已由 F02 锁定，driver 已由 F04 锁定，llm-ui 已由 F09a 锁定；mindos-node 已由原生查询/控制/输出批次锁定；四个 gitlink 均已接入已验证消费者。保留这些已有提交；根仓锁定版本时必须同时验证受影响消费者，不用未锁定的本地源码冒充集成完成。
 
 ## 4. 继续细分的功能单元
 
@@ -72,16 +74,16 @@ C4Component
 | F02 | Kernel 控制版本与准入 API 集成 | Kernel + Flow fence + RPC | B05 | 已合入 `d2ad3268`；锁定子仓、撤销未确认暂停不绕过租约、错误原样传输 |
 | F03 | 远程恢复记录 CAS | app-core 存储适配 | 无 | 已合入 `3edebe15`；丢写回执核对写前/写后值，真实冲突不可因 load 解除 |
 | F04 | 原生可编辑队列 | driver + ConversationView + RPC | F03 | 已合入 `6d1f090b`；宿主/RPC 队列闭环，UI 台账接入仍属 F09 |
-| F05 | 原生只读命令目录与查询 | node + driver + RPC + UI | 子仓版本 | 待合入；查询不经过写命令 tail，不推进原生 turn |
-| F06 | 原生取消与控制回执 | driver + registry + RPC + UI | F03 | 待合入；独立 operationId，未知时继续观察原操作 |
-| F07 | 原生命令结果分段读取 | node + driver + RPC + UI | F05 | 待合入；执行终态与结果可读性分离，按需读取且可停止后续分页 |
+| F05 | 原生只读命令目录与查询 | node + driver + RPC + UI | 子仓版本 | 已合入 `09c122fc`；查询不经过写命令 tail，不推进原生 turn |
+| F06 | 原生取消与控制回执 | driver + registry + RPC + UI | F03 | 已合入 `09c122fc`；独立 operationId，未知时继续观察原操作；Kernel 事实桥仍属 F19 |
+| F07 | 原生命令结果分段读取 | node + driver + RPC + UI | F05 | 已合入 `09c122fc`；执行终态与结果可读性分离，按需读取且可停止后续分页 |
 | F08 | 本地 Session 可编辑队列 | llm-session | B03 | 待合入；冻结输入、版本 CAS、持久接纳及队列历史关联 |
 | F09 | 提交台账与草稿消费 | llm-ui + UI adapter | F04 / F08 | 原生部分 F09a/b/c 已合入；本地 F09d 待 F08；迟到结果不消费新修订草稿 |
 | F10 | Agent 不可变发布 | Session 仓储 + app-core + 设置 UI/RPC | B02 | 待合入；发布回执独立读取，锁定实现依赖，草稿不冒充发布 |
-| F11 | 结构化实参、默认值与补参 | llm-flow + Session 准入 | B02 | 待合入；接纳/消费两阶段校验，显式空值不被默认值覆盖 |
+| F11 | 结构化实参、默认值与补参 | llm-flow + Session 准入 | B02 | 已合入 `fc007454`；接纳/消费两阶段校验，显式空值不被默认值覆盖 |
 | F12 | Agent/Flow 平级目标入口 | app-core 目录 + Session + UI/CLI | F08 / F10 / F11 | 待合入；同名目标不混淆，纯参数和零参数可提交，锁定发布修订 |
 | F13 | 不可变输入附件与内容身份 | Session + app-core | B02 | 待合入；正文摘要、所有者、上传身份和重试复用 |
-| F14 | 通用文件参数与就绪预检 | app-core + Flow + UI | F11 / F13 | 待合入；已声明绑定确定性映射，不丢弃未绑定附件 |
+| F14 | 通用文件参数与就绪预检 | app-core + Flow + UI | F11 / F13 | 声明校验已随 F11 合入；宿主就绪及 UI 传输待合入，不丢弃未绑定附件 |
 | F15 | Harness 资产编码与能力准入 | app-core + adapter + driver | F13 / F14 | 待合入；能力或摘要错误发生在 create/turn 前，旧操作核对不重读输入 |
 | F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 待合入；核对沿用身份，用户重跑新建身份并保留关联，终态不回退 |
 | F17 | Flow 控制树与调度屏障 | Flow + Kernel + UI/CLI | F02 / F16 | 待合入；暂停不冒充原生停止，祖先 hold 保留，控制与队列分开 |
@@ -154,3 +156,5 @@ C4Dynamic
 本轮补充证据：F04 的隔离 driver 套件 293 通过、2 跳过，宿主套件 893 通过、13 跳过。完整宿主测试后只修正 RPC 测试替身的 subscribe/refresh；候选差异确认生产代码一致，再通过 4 项 RPC 回归与类型检查，未将完整工作树中其他未合入测试计入这些数字。
 
 F09 证据补充：只等待 RPC 的反向候选使两项默认工作台输入回归失败；修复后通过。独立视图真实 DOM 同时覆盖旧回复迟到成功/失败、队列正文编辑的原修订、隐藏/恢复控制与原生历史不伪造。已合入 UI 候选的历史切换单项为 8.56 秒通过，不能据此声称完整工作树的性能退化已经修复。
+
+原生批次以一个连续契约合入 38 个文件，输入批次合入 25 个文件；两者复用既有执行路径，保留各自失败边界。通用字节拼接/摘要核验已移到 utils/verified-content，原生读取不依赖 DAG 产物模块。ProjectConversationPort 从原端口推导命令、取消及分叉参数，只扩展返回投影，降低新增参数在宿主层丢失的风险。Node 源码版本锁定及回归通过仍不代表运行中的 httpd/native 已更新。

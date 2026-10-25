@@ -5,6 +5,7 @@ import type { TaskSpec } from '@itookit/durable-kernel';
 import { resolve } from '../operations';
 import type { DispatchState, PreparedBranch } from './types';
 import { json, object } from './value';
+import { isConversationProgram } from './conversation-input';
 
 export function invocationKey(state: DispatchState, key: string): string { return `${state.round}:${key}`; }
 
@@ -29,7 +30,7 @@ export function createInvocation(state: DispatchState, branch: PreparedBranch): 
     const task = structuredClone(branch.task);
     task.labels = { ...task.labels, dispatchKey: branch.key, dispatchRound: String(state.round),
         flowHistory: (branch.publishToHistory ?? state.publishToHistory) ? 'publish' : 'omit' };
-    if (task.program.kind === 'llm.agent' || task.program.kind === 'llm.chat') {
+    if (isConversationProgram(task.program.kind)) {
         const context = branch.context ?? state.invocationDefaults?.context ?? state.context;
         const prompt = invocationPrompt(state, branch, values);
         const messages = [...branch.instructions.map(content => ({ role: 'system', content })),

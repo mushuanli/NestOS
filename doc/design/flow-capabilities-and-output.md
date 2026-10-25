@@ -198,3 +198,28 @@ C4Component
     Rel(host, kernel, "注册工具")
     Rel(kernel, tools, "调用与核对")
 ```
+
+## 结构化 Harness worker 的输入边界
+
+`structured/prepare` 与 `structured/invocation` 共同识别消费消息的 Program：`llm.agent`、`llm.chat`、`kernel-adapters.harness`。它们复用同一消息装配路径：冻结的身份指令、本轮指令、显式声明的历史、本轮实参或提示词，以及输出 schema 要求。业务实参不能展开覆盖连接快照、消息或执行选项；模板只在声明的位置渲染，插入的数据不再解释为模板。
+
+此机制位于 llm-flow，因为它需要理解派发轮次、worker 输入和修订调用；UI 不装配执行消息，Harness 宿主不解释 Flow 模板。普通 worker 和 revision worker 共用该路径。准备阶段移除继承的本地记忆/会话配置并关闭隐式依赖输出注入；只有声明的材料进入消息。连接、能力和副作用执行仍沿既有 Task/Effect 路径，不增加调度器或状态库。
+
+```mermaid
+C4Component
+    Container_Boundary(flow, "llm-flow") {
+        Component(prepare, "结构化调用准备", "prepareDispatch", "冻结目标与指令，隔离继承上下文")
+        Component(invoke, "本轮调用构造", "createInvocation", "组装消息，保留连接配置")
+    }
+    Container_Boundary(execution, "执行层") {
+        Component(kernel, "Kernel", "持久 Task / Effect", "执行、核对与控制事实")
+        Component(program, "Agent 或 Harness Program", "消息消费者", "本地推理或远程执行请求")
+        Component(host, "Harness 宿主适配", "连接与资产端口", "原生能力检查与授权内容传输")
+    }
+    Rel(prepare, invoke, "提供冻结目标及声明材料")
+    Rel(invoke, kernel, "提交本轮 TaskSpec")
+    Rel(kernel, program, "运行已授权任务")
+    Rel(program, host, "通过 Kernel Effect 请求远程执行")
+```
+
+本切片验证文本消息装配、显式历史、参数隔离和修订 worker；不代表远程资产编码或原生上下文续接已完成。结构化 route 的显式历史目前仍仅支持文本；原生 binding 和多模态材料协议须按各自契约实施，不能将资产引用序列化进提示词便宣称文件已传输。

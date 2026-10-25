@@ -4,6 +4,7 @@ import { validateSchema } from '../validation';
 import type { DispatchInput, PreparedBranch } from './types';
 import { json, object } from './value';
 import { validateDispatch } from './validation';
+import { isConversationProgram, isolatedConversationInput } from './conversation-input';
 
 export interface DispatchPreparation {
     plugins: DagPluginCatalog;
@@ -49,7 +50,7 @@ async function prepareBranch(branch: DispatchBranch, context: DispatchPreparatio
     target.config = isolated;
     const task = await context.task(target);
     task.deferStart = true;
-    if (task.program.kind === 'llm.agent' || task.program.kind === 'llm.chat') task.input = sanitizeInput(task.input);
+    if (isConversationProgram(task.program.kind)) task.input = isolatedConversationInput(task.input);
     return { ...branch, target: json(target) as DispatchBranch['target'], task: json(task),
         instructions: instructions.filter((v: unknown): v is string => typeof v === 'string') };
 }
@@ -70,12 +71,4 @@ async function bindInvocation(branch: DispatchBranch, context: DispatchPreparati
         } : {}),
     };
     return context.bind(target);
-}
-
-function sanitizeInput(input: unknown): JsonValue {
-    const value = { ...object(input) };
-    for (const key of ['messages', 'memoryPolicy', 'sessionContext']) delete value[key];
-    value.dependencyBindings = [];
-    value.includeDependencyOutputs = false;
-    return json(value) as JsonValue;
 }

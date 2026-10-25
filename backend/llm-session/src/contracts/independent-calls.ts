@@ -4,6 +4,7 @@ import type {TransferReference} from './content-transfer';
 import type {ExecutionRef} from './conversation';
 
 export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect', List: 'session.calls.list',
+    CancelRemaining: 'session.call.cancel-remaining', TreeCancellationReceipt: 'session.call.tree-cancellation.receipt',
     Cancel: 'session.call.cancel', CancellationReceipt: 'session.call.cancellation.receipt',
     Control: 'session.call.control', ControlReceipt: 'session.call.control.receipt',
     Respond: 'session.call.respond', ResponseReceipt: 'session.call.response.receipt', Interaction: 'session.call.interaction', Descendants: 'session.call.descendants'} as const;
@@ -41,7 +42,7 @@ export interface IndependentCallView {
     /** Bounded pending interaction summaries belonging to this execution tree. */
     interactions?: IndependentCallInteractions;
     /** Protocol support only; current write permission is revalidated on control. */
-    controlCapabilities?: {cancel: boolean; respond?: boolean; pause?: 'boundary' | 'none'; resume?: boolean; withdrawPause?: boolean};
+    controlCapabilities?: {cancel: boolean; cancelRemaining?: boolean; respond?: boolean; pause?: 'boundary' | 'none'; resume?: boolean; withdrawPause?: boolean};
     /** Bounded display text only; execution consumers read the actual child output. */
     summary?: string;
 }
@@ -66,6 +67,12 @@ export interface IndependentCallCancellationReceipt extends IndependentCallCance
     receipt?: import('@itookit/durable-kernel/contracts').TaskCancellationReceipt;
 }
 
+
+/** Remaining-tree control always targets the primary execution, never a caller-supplied descendant. */
+export interface IndependentCallCancelRemainingRequest extends IndependentCallControlQuery {expectedEpoch: number}
+export interface IndependentCallTreeCancellationReceipt extends IndependentCallControlQuery {
+    receipt?: import('@itookit/durable-kernel/contracts').TaskTreeCancellationReceipt;
+}
 
 export type IndependentCallControlAction = 'pause' | 'resume' | 'withdraw';
 export interface IndependentCallStateControlQuery extends IndependentCallControlQuery {action: IndependentCallControlAction}

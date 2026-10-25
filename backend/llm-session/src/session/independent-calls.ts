@@ -137,7 +137,7 @@ export class IndependentCallService {
         const expected = await this.executionTask(receipt); if (!expected) return {};
         const {task, tree: executionTree, interactions, descendants} = await this.readExecutionTree(receipt, expected);
         const executionState = independentCallTaskState(task), supported = supportsCallCancellation(task);
-        return {executionState, executionTree, interactions, descendants, controlCapabilities: {cancel: supported, respond: true, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
+        return {executionState, executionTree, interactions, descendants, controlCapabilities: {cancel: supported, cancelRemaining: supported, respond: true, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
     }
     private async readExecutionTree(receipt: IndependentCallReceipt, expected: import('@itookit/durable-kernel').TaskRecord) {
         const started = Date.now(); let outcome = 'failure', code: string | undefined, tasks: number | undefined;

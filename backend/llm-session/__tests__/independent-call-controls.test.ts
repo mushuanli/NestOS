@@ -9,12 +9,13 @@ const query = {sessionId: 'parent', branchId: 'main', callId: 'call', executionS
 function fixture() {
     const handlers = new Map<string, (args: any) => Promise<any>>();
     const cancel = vi.fn(async () => {}), read = vi.fn(async () => ({taskId: 'task', requestId: 'cancel', expectedEpoch: 0, controlEpoch: 0, status: 'cancelled' as const}));
+    const cancelRemainingTaskTree = vi.fn(), readTaskTreeCancellationReceipt = vi.fn();
     const controlTask = vi.fn(), withdrawTaskPause = vi.fn(), readTaskControlReceipt = vi.fn(), inspectSession = vi.fn(), execute = vi.fn();
     const logger = {info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn()};
     const resolve = vi.fn(async () => ({program: {kind: 'agent.loop'}} as TaskRecord));
     const commands = {execute, register: (name: string, handler: (args: any) => Promise<any>) => handlers.set(name, handler)} as unknown as ICommandBus;
-    new IndependentCallControls({commands, logger, resolve, kernel: {cancel, readTaskCancellationReceipt: read, controlTask, withdrawTaskPause, readTaskControlReceipt, inspectSession} as unknown as Kernel}).register();
-    return {handlers, cancel, read, logger, resolve, controlTask, withdrawTaskPause, readTaskControlReceipt, inspectSession, execute};
+    new IndependentCallControls({commands, logger, resolve, kernel: {cancel, cancelRemainingTaskTree, readTaskTreeCancellationReceipt, readTaskCancellationReceipt: read, controlTask, withdrawTaskPause, readTaskControlReceipt, inspectSession} as unknown as Kernel}).register();
+    return {handlers, cancelRemainingTaskTree, readTaskTreeCancellationReceipt, cancel, read, logger, resolve, controlTask, withdrawTaskPause, readTaskControlReceipt, inspectSession, execute};
 }
 it('rejects invalid input before resolving ownership and logs only safe metadata', async () => {
     const f = fixture();
@@ -87,4 +88,41 @@ it('routes a descendant Flow through its scheduler control port and verifies the
     expect(f.cancel).not.toHaveBeenCalled();
     f.execute.mockResolvedValue({...receipt, taskId: root.id});
     await expect(f.handlers.get(IndependentCallCommand.CancellationReceipt)!(scope)).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
+});
+
+
+const treeReceipt = {taskId: query.taskId, requestId: query.requestId, expectedEpoch: 0, controlEpoch: 0,
+    rootStatus: 'succeeded' as const, taskCount: 3, acceptedAt: 1};
+it.each(['agent.loop', 'flow.aggregate'])('routes remaining-tree control for %s through its owning execution protocol', async kind => {
+    const f = fixture(); f.resolve.mockResolvedValue({program: {kind}} as TaskRecord);
+    f.readTaskTreeCancellationReceipt.mockResolvedValue(treeReceipt); f.execute.mockResolvedValue(treeReceipt);
+    expect(await f.handlers.get(IndependentCallCommand.CancelRemaining)!({...query, expectedEpoch: 0})).toEqual({...query, receipt: treeReceipt});
+    expect(await f.handlers.get(IndependentCallCommand.TreeCancellationReceipt)!(query)).toEqual({...query, receipt: treeReceipt});
+    if (kind === 'flow.aggregate') {
+        expect(f.execute).toHaveBeenCalledWith(FlowCommand.RunCancelRemaining, {sessionId: 'child', taskId: 'task', requestId: 'cancel', expectedEpoch: 0});
+        expect(f.cancelRemainingTaskTree).not.toHaveBeenCalled();
+    } else {expect(f.cancelRemainingTaskTree).toHaveBeenCalledTimes(1); expect(f.cancelRemainingTaskTree).toHaveBeenCalledWith('child', 'task', {requestId: 'cancel', expectedEpoch: 0});}
+    expect(f.cancel).not.toHaveBeenCalled(); expect(f.read).not.toHaveBeenCalled();
+});
+it('does not accept descendant targeting or execution policy overrides for remaining-tree control', async () => {
+    const f = fixture();
+    for (const patch of [{targetTaskId: 'child'}, {lease: {}}, {reason: 'PRIVATE'}, {action: 'pause'}])
+        await expect(f.handlers.get(IndependentCallCommand.CancelRemaining)!({...query, expectedEpoch: 0, ...patch})).rejects.toMatchObject({code: 'CALL_CONTROL_INVALID'});
+    expect(f.resolve).not.toHaveBeenCalled(); expect(f.cancelRemainingTaskTree).not.toHaveBeenCalled();
+    expect(JSON.stringify(f.logger.warn.mock.calls)).not.toContain('PRIVATE');
+});
+it('distinguishes absent read receipts from missing write receipts and validates tree admission identity', async () => {
+    const f = fixture();
+    expect(await f.handlers.get(IndependentCallCommand.TreeCancellationReceipt)!(query)).toEqual(query);
+    await expect(f.handlers.get(IndependentCallCommand.CancelRemaining)!({...query, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISSING'});
+    for (const patch of [{taskId: 'other'}, {requestId: 'other'}, {taskCount: 0}, {expectedEpoch: -1}, {controlEpoch: 0.5}, {acceptedAt: NaN}]) {
+        f.readTaskTreeCancellationReceipt.mockResolvedValue({...treeReceipt, ...patch});
+        await expect(f.handlers.get(IndependentCallCommand.TreeCancellationReceipt)!(query)).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
+    }
+});
+it('retains remaining-tree diagnostics without exposing adapter failure text', async () => {
+    const f = fixture(); f.cancelRemainingTaskTree.mockRejectedValue(new Error('PRIVATE ADAPTER DETAIL'));
+    await expect(f.handlers.get(IndependentCallCommand.CancelRemaining)!({...query, expectedEpoch: 0})).rejects.toThrow('PRIVATE ADAPTER DETAIL');
+    expect(f.logger.warn).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({operation: 'call.cancel-remaining', operationId: query.requestId, stage: 'cancel-remaining', outcome: 'failure'}));
+    expect(JSON.stringify(f.logger.warn.mock.calls)).not.toContain('PRIVATE');
 });

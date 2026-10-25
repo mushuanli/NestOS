@@ -1,7 +1,7 @@
 import {readCallMember} from './independent-call-membership';
-import type {Kernel, TaskRecord, TaskCancellationReceipt, TaskControlReceipt} from '@itookit/durable-kernel';
+import type {Kernel, TaskRecord, TaskCancellationReceipt, TaskControlReceipt, TaskTreeCancellationReceipt} from '@itookit/durable-kernel';
 import {FlowCommand} from '@itookit/llm-flow/contracts';
-import {IndependentCallCommand, type IndependentCallCancelRequest, type IndependentCallCancellationQuery, type IndependentCallControlQuery, type IndependentCallCancellationReceipt, type IndependentCallStateControlQuery, type IndependentCallStateControlRequest, type IndependentCallStateControlReceipt} from '../contracts/independent-calls';
+import {IndependentCallCommand, type IndependentCallTreeCancellationReceipt, type IndependentCallCancelRequest, type IndependentCallCancellationQuery, type IndependentCallControlQuery, type IndependentCallCancellationReceipt, type IndependentCallStateControlQuery, type IndependentCallStateControlRequest, type IndependentCallStateControlReceipt} from '../contracts/independent-calls';
 import type {ICommandBus} from '../contracts/command-bus';
 import type {SessionLogger} from '../utils/host-ports';
 
@@ -11,38 +11,64 @@ interface Options {
     canWrite?(sessionId: string): Promise<boolean>;
 }
 
+const CONTROL_OPERATIONS = {cancel: 'cancel', state: 'control', remaining: 'cancel-remaining'} as const;
+type ControlKind = keyof typeof CONTROL_OPERATIONS;
+type ControlResult = IndependentCallCancellationReceipt | IndependentCallStateControlReceipt | IndependentCallTreeCancellationReceipt;
+
 /** Session owns call membership; Flow and Kernel keep execution and cancellation authority. */
 export class IndependentCallControls {
     constructor(private readonly options: Options) {}
     register(): void {
         this.options.commands.register(IndependentCallCommand.Cancel, value => this.perform(value as IndependentCallCancelRequest, true));
         this.options.commands.register(IndependentCallCommand.CancellationReceipt, value => this.perform(value as IndependentCallCancellationQuery, false));
-        this.options.commands.register(IndependentCallCommand.Control, value => this.perform(value as IndependentCallStateControlRequest, true, true));
-        this.options.commands.register(IndependentCallCommand.ControlReceipt, value => this.perform(value as IndependentCallStateControlQuery, false, true));
+        this.options.commands.register(IndependentCallCommand.Control, value => this.perform(value as IndependentCallStateControlRequest, true, 'state'));
+        this.options.commands.register(IndependentCallCommand.ControlReceipt, value => this.perform(value as IndependentCallStateControlQuery, false, 'state'));
+        this.options.commands.register(IndependentCallCommand.CancelRemaining, value => this.perform(value as IndependentCallControlQuery, true, 'remaining'));
+        this.options.commands.register(IndependentCallCommand.TreeCancellationReceipt, value => this.perform(value as IndependentCallControlQuery, false, 'remaining'));
     }
-    private async perform(supplied: IndependentCallCancellationQuery, write: boolean, state = false): Promise<IndependentCallCancellationReceipt | IndependentCallStateControlReceipt> {
-        const started = Date.now(); let stage = 'validate', outcome = 'failure', code: string | undefined;
+    private async perform(supplied: IndependentCallCancellationQuery, write: boolean, kind: ControlKind = 'cancel'): Promise<ControlResult> {
+        const started = Date.now(), operation = CONTROL_OPERATIONS[kind]; let stage = 'validate', outcome = 'failure', code: string | undefined;
         let input: IndependentCallCancellationQuery | undefined;
         try {
-            input = structuredClone(supplied); validate(input, write, state); stage = 'ownership';
+            input = structuredClone(supplied); validate(input, write, kind); stage = 'ownership';
             const task = await this.resolveTarget(input);
             if (write) {stage = 'authorization'; await this.writable(input.sessionId); await this.writable(input.executionSessionId);}
-            stage = write ? state ? 'control' : 'cancel' : 'receipt';
-            if (state) {
-                const request = input as IndependentCallStateControlQuery, receipt = await this.executeState(request, task, write);
-                assertStateReceipt(request, receipt, write); outcome = receipt ? 'observed' : 'missing';
-                return {...scope(input), action: request.action, ...(receipt ? {receipt} : {})};
-            }
-            const receipt = await this.execute(input, task, write); assertReceipt(input, receipt, write); outcome = receipt?.status ?? 'missing';
-            return {...scope(input), ...(receipt ? {receipt} : {})};
+            stage = write ? operation : 'receipt';
+            const result = await this.dispatch(input, task, write, kind), receipt = result.receipt;
+            outcome = receipt ? 'status' in receipt ? receipt.status : 'observed' : 'missing';
+            return result;
         } catch (error) {code = safeCode(error); throw error;}
         finally {
-            const metadata = {operation: state ? write ? 'call.control' : 'call.control.receipt' : write ? 'call.cancel' : 'call.cancel.receipt',
-                action: state ? safeAction((input as IndependentCallStateControlQuery)?.action) : 'cancel', operationId: safeId(input?.requestId),
+            const metadata = {operation: `call.${operation}${write ? '' : '.receipt'}`,
+                action: kind === 'state' ? safeAction((input as IndependentCallStateControlQuery)?.action) : operation, operationId: safeId(input?.requestId),
                 callId: safeId(input?.callId), sessionId: safeId(input?.sessionId), taskId: safeId(input?.taskId), targetTaskId: safeId(input?.targetTaskId),
                 stage, outcome, code, durationMs: Date.now() - started};
             this.log(metadata, outcome === 'failure');
         }
+    }
+    private async dispatch(input: IndependentCallCancellationQuery, task: TaskRecord, write: boolean, kind: ControlKind): Promise<ControlResult> {
+        if (kind === 'state') {
+            const request = input as IndependentCallStateControlQuery, receipt = await this.executeState(request, task, write);
+            assertStateReceipt(request, receipt, write);
+            return {...scope(input), action: request.action, ...(receipt ? {receipt} : {})};
+        }
+        if (kind === 'remaining') {
+            const receipt = await this.executeRemaining(input, task, write);
+            assertTreeReceipt(input, receipt, write);
+            return {...scope(input), ...(receipt ? {receipt} : {})};
+        }
+        const receipt = await this.execute(input, task, write); assertReceipt(input, receipt, write);
+        return {...scope(input), ...(receipt ? {receipt} : {})};
+    }
+    private async executeRemaining(input: IndependentCallControlQuery, task: TaskRecord, write: boolean): Promise<TaskTreeCancellationReceipt | undefined> {
+        const query = {sessionId: input.executionSessionId, taskId: input.taskId, requestId: input.requestId};
+        if (task.program.kind === 'flow.aggregate' || task.labels?.kind === 'flow-root') {
+            if (write) await this.options.commands.execute(FlowCommand.RunCancelRemaining, {...query, expectedEpoch: (input as IndependentCallCancelRequest).expectedEpoch});
+            return this.options.commands.execute(FlowCommand.RunTreeCancellationReceipt, query);
+        }
+        if (write) await this.options.kernel.cancelRemainingTaskTree(query.sessionId, query.taskId,
+            {requestId: query.requestId, expectedEpoch: (input as IndependentCallCancelRequest).expectedEpoch});
+        return this.options.kernel.readTaskTreeCancellationReceipt(query.sessionId, query.taskId, query.requestId);
     }
     private async resolveTarget(input: IndependentCallCancellationQuery): Promise<TaskRecord> {
         const root = await this.options.resolve(input);
@@ -91,9 +117,10 @@ function scope(input: IndependentCallCancellationQuery): IndependentCallCancella
     const {sessionId, branchId, callId, executionSessionId, taskId, requestId} = input;
     return {sessionId, branchId, callId, executionSessionId, taskId, requestId, ...(input.targetTaskId ? {targetTaskId: input.targetTaskId} : {})};
 }
-function validate(input: IndependentCallCancellationQuery, write: boolean, state: boolean): void {
+function validate(input: IndependentCallCancellationQuery, write: boolean, kind: ControlKind): void {
+    const state = kind === 'state';
     const keys = ['sessionId', 'branchId', 'callId', 'executionSessionId', 'taskId', 'requestId', ...(state ? ['action'] : [])];
-    if (!state && input && Object.hasOwn(input, 'targetTaskId')) keys.push('targetTaskId');
+    if (kind === 'cancel' && input && Object.hasOwn(input, 'targetTaskId')) keys.push('targetTaskId');
     if (!validIdentity(input, keys, write)) throw failure('CALL_CONTROL_INVALID');
     if (state && !safeAction((input as IndependentCallStateControlQuery).action)) throw failure('CALL_CONTROL_INVALID');
     const epoch = (input as IndependentCallCancelRequest).expectedEpoch;
@@ -127,5 +154,15 @@ function assertStateReceipt(input: IndependentCallStateControlQuery, receipt: Ta
     const action = input.action === 'resume' ? 'run' : input.action === 'withdraw' ? 'withdraw-pause' : 'pause';
     if (receipt && (receipt.requestId !== input.requestId || receipt.accepted.requestId !== input.requestId || receipt.action !== action
         || write && receipt.expectedEpoch !== (input as IndependentCallStateControlRequest).expectedEpoch))
+        throw failure('CALL_CONTROL_RECEIPT_MISMATCH');
+}
+
+function assertTreeReceipt(input: IndependentCallControlQuery, receipt: TaskTreeCancellationReceipt | undefined, write: boolean): void {
+    if (write && !receipt) throw failure('CALL_CONTROL_RECEIPT_MISSING');
+    if (receipt && (receipt.requestId !== input.requestId || receipt.taskId !== input.taskId
+        || !['succeeded', 'failed', 'cancelled'].includes(receipt.rootStatus)
+        || [receipt.controlEpoch, receipt.expectedEpoch, receipt.taskCount - 1].some(value => !Number.isSafeInteger(value) || value < 0)
+        || !Number.isFinite(receipt.acceptedAt)
+        || write && receipt.expectedEpoch !== (input as IndependentCallCancelRequest).expectedEpoch))
         throw failure('CALL_CONTROL_RECEIPT_MISMATCH');
 }

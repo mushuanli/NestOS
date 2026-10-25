@@ -179,7 +179,7 @@ it('lists actual child results in the caller branch without acquiring a writer',
     expect(views[0].executionState).toMatchObject({id: views[0].receipt.execution!.taskId, phase: 'done', settled: true, stopped: true, activeOperations: 0, controlEpoch: 0});
     expect(views[0].executionTree).toMatchObject({taskId: views[0].receipt.execution!.taskId, unsettledTasks: 0, settled: true, stopped: true, activeOperations: 0});
     expect(views[0].executionTree!.tasks).toBeGreaterThan(0); expect(views[0].executionTree!.asOfSequence).toBeGreaterThan(0);
-    expect(views[0].controlCapabilities).toEqual({cancel: true, respond: true, pause: 'boundary', resume: true, withdrawPause: true});
+    expect(views[0].controlCapabilities).toEqual({cancel: true, cancelRemaining: true, respond: true, pause: 'boundary', resume: true, withdrawPause: true});
     expect(views[0].executionState).not.toHaveProperty('exit');
     expect(views[0].executionState).not.toHaveProperty('output');
     expect(views[0].createdAt).toBeGreaterThan(0);
@@ -280,11 +280,14 @@ it('rejects forged child, branch, root and call identities before dispatching an
     const f = await fixture(false, true, true), input = f.input('scope-call', 'flow'); await f.submit(input);
     const query = await controlQuery(f, input), kernel = f.runtime.kernel.kernel;
     const cancel = vi.spyOn(kernel, 'cancel');
+    const cancelRemaining = vi.spyOn(kernel, 'cancelRemainingTaskTree');
     for (const patch of [{executionSessionId: f.parent}, {branchId: 'other'}, {taskId: 'other-task'}, {callId: 'missing-call'}]) {
         await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, ...patch, expectedEpoch: 0})).rejects.toBeDefined();
         await expect(f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, {...query, ...patch})).rejects.toBeDefined();
+        await expect(f.runtime.commandBus.execute(IndependentCallCommand.CancelRemaining, {...query, ...patch, expectedEpoch: 0})).rejects.toBeDefined();
+        await expect(f.runtime.commandBus.execute(IndependentCallCommand.TreeCancellationReceipt, {...query, ...patch})).rejects.toBeDefined();
     }
-    expect(cancel).not.toHaveBeenCalled();
+    expect(cancel).not.toHaveBeenCalled(); expect(cancelRemaining).not.toHaveBeenCalled();
     expect(await kernel.readTaskCancellationReceipt(query.executionSessionId, query.taskId, query.requestId)).toBeUndefined();
     await f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0});
 }, 15000);
@@ -308,6 +311,8 @@ it.each(['parent', 'child'] as const)('rejects independent cancellation when the
     const guard = vi.spyOn(f.runtime.sessionRepository, 'isSessionDeletionPending').mockImplementation(async id =>
         id === (denied === 'parent' ? query.sessionId : query.executionSessionId) || check(id));
     await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
+    await expect(f.runtime.commandBus.execute(IndependentCallCommand.CancelRemaining, {...query, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
+    expect(await f.runtime.commandBus.execute(IndependentCallCommand.TreeCancellationReceipt, query)).toEqual(query);
     await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, targetTaskId: member, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
     expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, {...query, targetTaskId: member})).toEqual({...query, targetTaskId: member});
     await expect(f.runtime.commandBus.execute(IndependentCallCommand.Control, {...query, action: 'pause', expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
@@ -446,3 +451,46 @@ it('cold-pages all call descendants beyond the embedded limit without changing t
     await expect(commands.execute(IndependentCallCommand.Descendants, {...query, branchId: 'wrong'})).rejects.toMatchObject({code: 'CALL_CONTROL_SCOPE_MISMATCH'});
     expect(open).not.toHaveBeenCalled(); expect(await commands.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
 }, 20000);
+
+
+async function remainingCallFixture(kind: 'agent' | 'flow') {
+    const f = await fixture(false, true, true), input = f.input('remaining-call', kind); await f.submit(input);
+    const query = await controlQuery(f, input), commands = f.runtime.commandBus, kernel = f.runtime.kernel.kernel;
+    const session = await kernel.openSession(query.executionSessionId);
+    const spec = {program: {kind: 'deferred-child', version: '1'}, input: null, deferStart: true};
+    const child = await session.submit({...spec, parent: query.taskId}), sibling = await session.submit({...spec, parent: query.taskId});
+    const unrelated = await session.submit(spec); await child.pause({requestId: 'child-pause'});
+    let member = '';
+    await vi.waitFor(async () => {member = (await session.listTasks()).find(task => task.interactions.approval?.status === 'pending')?.id ?? ''; expect(member).not.toBe('');});
+    await commands.execute(IndependentCallCommand.Respond, {...query, targetTaskId: member, interactionId: 'approval', requestId: 'finish-root', value: 'done'});
+    await (await session.attachTask(query.taskId)).wait({timeoutMs: 5000});
+    return {...f, query, commands, kernel, session, child, sibling, unrelated};
+}
+
+it.each(['agent', 'flow'] as const)('stops the remaining tree of a routed %s without changing the completed root or unrelated work', async kind => {
+    const f = await remainingCallFixture(kind), before = await f.kernel.task(f.session.id, f.query.taskId);
+    const views = await f.commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent});
+    expect(views[0].controlCapabilities?.cancelRemaining).toBe(true);
+    const result = await f.commands.execute(IndependentCallCommand.CancelRemaining, {...f.query, expectedEpoch: 0});
+    expect(result).toMatchObject({...f.query, receipt: {rootStatus: 'succeeded', taskId: f.query.taskId, requestId: f.query.requestId, expectedEpoch: 0}});
+    expect(await f.kernel.task(f.session.id, f.query.taskId)).toEqual(before);
+    for (const task of [f.child, f.sibling]) expect((await task.status()).task.status).toBe('cancelled');
+    expect((await f.unrelated.status()).task.status).toBe('created');
+    expect(await f.commands.execute(IndependentCallCommand.CancelRemaining, {...f.query, expectedEpoch: 0})).toEqual(result);
+    const open = vi.spyOn(f.kernel, 'openSession');
+    expect(await f.commands.execute(IndependentCallCommand.TreeCancellationReceipt, f.query)).toEqual(result); expect(open).not.toHaveBeenCalled();
+    expect(await f.commands.execute(IndependentCallCommand.CancellationReceipt, f.query)).toEqual(f.query);
+    expect(await f.commands.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
+}, 15000);
+
+it('recovers remaining-tree admission after a lost response without repeating the execution control', async () => {
+    const f = await remainingCallFixture('flow'), original = f.kernel.cancelRemainingTaskTree.bind(f.kernel);
+    const stop = vi.spyOn(f.kernel, 'cancelRemainingTaskTree').mockImplementationOnce(async (...args) => {
+        await original(...args); throw new Error('Reply lost after admission');
+    });
+    await expect(f.commands.execute(IndependentCallCommand.CancelRemaining, {...f.query, expectedEpoch: 0})).rejects.toThrow('Reply lost after admission');
+    const open = vi.spyOn(f.kernel, 'openSession');
+    expect(await f.commands.execute(IndependentCallCommand.TreeCancellationReceipt, f.query)).toMatchObject({receipt: {rootStatus: 'succeeded'}});
+    expect(open).not.toHaveBeenCalled(); expect(stop).toHaveBeenCalledTimes(1);
+    expect((await f.child.status()).task.status).toBe('cancelled');
+}, 15000);

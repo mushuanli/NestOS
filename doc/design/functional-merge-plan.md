@@ -1654,3 +1654,33 @@ withFlowControl 将已取得的调度租约条件作为第二个内部回调参�
 验收覆盖已完成根下的运行 Effect、原结果保留、同请求重放、未缓存 Run、错误目标/epoch/字段、旧控制树拒绝、只读宿主、租约在进入 Kernel 前被接管、清理挂起期间冷查询，以及重启后不打开执行 Session 的原回执读取。RPC 回归使用真实 RpcPeer 和应用能力表验证原写响应未返回时查询完成。诊断沿用 flow.run 控制通道，新增 cancel-remaining 分类。
 
 本批完成 Flow 协议和只读传输分类，Session 调用归属/授权、OperationLedger 与 llm-ui 按钮仍待下一批；不能把底层命令可调用等同于产品入口已完成。文档同步更新 llm-flow API，未改生产运行版本。
+
+## 71. 独立调用剩余任务停止：Session 归属与权限
+
+新增 session.call.cancel-remaining 和 session.call.tree-cancellation.receipt，控制输入冻结 caller Session、分支、callId、execution Session、主 Task、requestId 与 expectedEpoch。新操作只以调用主执行为树根，不接受 targetTaskId；已有后代单任务取消保持原契约。
+
+```mermaid
+C4Component
+  title 独立调用控制复用原归属与授权链
+  Component(command, "IndependentCallControls", "Session 命令", "取消、状态控制、剩余任务停止共用准入")
+  Component(route, "原 controlTarget", "调用归属", "持久 route、分支、调用与主执行身份")
+  Component(auth, "原 canWrite", "宿主授权", "父与执行 Session 分别验证")
+  Component(flow, "Flow 剩余任务停止", "调度控制", "原控制租约与能力标记")
+  Component(kernel, "Kernel 剩余树停止", "持久机制", "终态保留、原子围栏、清理责任")
+  Component(read, "独立回执查询", "冷读取", "原身份核对；不激活执行")
+  Rel(command, route, "校验身份后复用原解析")
+  Rel(route, auth, "写请求检查两侧权限")
+  Rel(auth, flow, "Flow 根沿调度控制")
+  Rel(auth, kernel, "其他根沿 Kernel 原机制")
+  Rel(flow, kernel, "携带原调度租约条件")
+  Rel(read, route, "查询也核对完整归属")
+  Rel(read, kernel, "读原接纳回执")
+```
+
+原 IndependentCallControls 用明确的控制类型区分三条协议；dispatch 只选择执行端口和对应回执校验，结构化复制、身份解析、权限复验与诊断仍共用原路径。不增加并行权限实现、持久路由、状态库或调度器。普通取消和状态控制行为保留；新写请求若没有接纳回执明确报错，读请求缺失仍表示未知。
+
+调用投影增加可选 cancelRemaining 协议能力标记；实际按钮还需根终态与剩余树事实，不能仅凭能力开放。回执读取在共享传输契约中标为 query；RPC 测试同时检查命令读写分类和原写响应挂起时独立查询。Session 查询不取得写租约，不触发 Flow RunGet 或核对重发。
+
+验证覆盖 Flow/其他执行端口路由、拒绝 targetTaskId 与策略注入、回执身份和结构、日志脱敏、真实 Agent/Flow 独立调用、父/子只读、伪造分支/调用/执行身份、树内后代与树外任务隔离、保留根结果、丢写回执后只读恢复与当前视图不切换。原用户暂存和无关工作树修改继续保留。
+
+本批完成 Session 后端协议及能力投影，UI OperationLedger 新操作类型与“停止剩余任务”按钮仍待下一批；真实远端验收、跨 Session 子调用控制、工作区补偿不在本批完成声明内。

@@ -714,3 +714,24 @@ C4Dynamic
 ### 独立调用完整交互详情
 
 `IndependentCallCommand.Interaction`（`session.call.interaction`）接受 `IndependentCallResponseQuery`，返回同作用域及 `IndependentCallInteractionDetail.interaction`。只有请求详情和状态，不含已保存回答。查询沿原路由与任务父链验证成员，且不获取写权限。详情超过 1 MiB 时报告 CALL_INTERACTION_DETAIL_TOO_LARGE，不能返回截断后仍允许批准的请求。`controlCapabilities.respond` 表示支持回答端口，当前授权仍在写入时复验。
+
+### 独立调用的剩余任务停止
+
+`IndependentCallCommand.CancelRemaining`（`session.call.cancel-remaining`）使用
+`{sessionId, branchId, callId, executionSessionId, taskId, requestId, expectedEpoch}`：前五项须与
+原持久调用路由及主执行完全一致，不能指定另一个 targetTaskId，也不能注入 lease 或 reason。
+它针对已终结根下的剩余工作，独立于普通取消、暂停/恢复和后代单任务取消。
+
+Session 先复用原调用归属解析，再检查调用者与执行 Session 的当前写权限。Flow 根进入
+RunCancelRemaining，由 Flow 持有并围栏原调度租约；其他执行根进入 Kernel 同名机制。
+任务终态、动态子任务屏障和清理责任仍由 Kernel 维护，Session 不另存执行状态。
+
+`IndependentCallCommand.TreeCancellationReceipt`（`session.call.tree-cancellation.receipt`）
+使用相同身份但不带 expectedEpoch。它是只读命令，返回原调用身份和可选 receipt，不打开
+执行 Session、不恢复 Run、不重复取消。没有回执表示未知，不是允许重发。写路径缺少回执
+明确报 CALL_CONTROL_RECEIPT_MISSING；错误身份、epoch、任务数或根终态报
+CALL_CONTROL_RECEIPT_MISMATCH。接纳不代表物理清理完成，显示仍以 executionTree 为准。
+
+`controlCapabilities.cancelRemaining` 是协议支持标记，UI 仍须结合根终态和剩余工作决定按钮。
+旧宿主省略此字段时不能推断支持。日志沿用 call 控制通道，并区分 validate、ownership、
+authorization、cancel-remaining 和 receipt；不记录参数、取消原因或底层错误正文。

@@ -1208,3 +1208,24 @@ C4Component
 投影同时验证 sessionId、rootTaskId 与真实 parentTaskId 链；同 Session 的另一根或同根的兄弟调用不能冒充当前调用成员。损坏父链循环明确报 CALL_INTERACTION_TREE_INVALID，由原查询日志记录阶段、分类和耗时；不记录提示正文。输出最多 50 项、每项提示最多 1024 字符并标记截断，total 保留全部匹配 pending 数量；交互 payload、回答及执行内部输入不进入摘要 DTO。
 
 UI 使用文本节点显示提示，响应后重新读取原事实，不维护第二份交互状态。暂停时回答被原 Kernel 保存，pending 摘要消失不代表恢复；控制状态继续由原控制通道投影。验证覆盖跨调用隔离、嵌套成员、损坏父链、有界输出、提示注入防护、只导航不派发，以及真实 Flow 暂停回答后的摘要变化和本地/RPC 卡片展示。
+
+## 53. Kernel 回答身份与原子回执
+
+Kernel `a4b4ea4` 在原 InteractionRecord 上增加可选 responseRequestId，与回答、待消费事件及索引在同一事务保存。Task/Session.respond 和 Kernel.respondInteraction 接受 InteractionResponseOptions，原 Promise<void> 与无 requestId 的同值重放兼容。没有新增回答存储或 Session journal。
+
+```mermaid
+C4Component
+  title 回答操作身份随原回答原子持久化
+  Component(caller, "回答调用方", "Session / UI 适配", "冻结 task、interaction、requestId 与回答")
+  Component(kernel, "Kernel.respondInteraction", "通用机制", "租约、取消屏障及请求身份冲突校验")
+  ContainerDb(record, "原 Task.interactions", "事务存储", "回答正文与 responseRequestId 同时提交")
+  Component(query, "readTaskInteractionResponseReceipt", "只读核对", "不打开写会话、不重发、不返回正文")
+  Rel(caller, kernel, "respond(response, options)")
+  Rel(kernel, record, "原子保存回答与单次输入事件")
+  Rel(caller, query, "核对原 requestId")
+  Rel(query, record, "返回 taskId / interactionId / resolvedAt")
+```
+
+requestId 在目标 Task 内唯一。同键异回答、同键改交互、新键冒认其他客户端或旧无身份回答均返回 CONFLICT；缺失回执保持未知。原键同值可在任务完成后重放，不产生第二个交互事件。取消先完成时拒绝新回答且不产生回执；暂停期间允许保存回答，但不解除暂停。回执随 Task 记录保留，不是执行完成或清理确认。
+
+验证：379 项 Kernel 单元测试、52 项 LocalFS/SQLite 多进程集成测试、类型检查、构建、独立 ESM/CommonJS 和 NodeNext 声明消费通过。新用例覆盖冷重启核对、竞争回答只接纳一个身份、跨 Task/Session 范围、旧调用兼容、取消竞态与脱敏失败诊断。Session 的回答归属授权端口和父卡片直接回答仍待接入，不能将本节作为端到端完成证明。

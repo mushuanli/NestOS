@@ -1,6 +1,6 @@
 import {KernelError, KernelErrorCode, type Kernel, type JsonValue} from '@itookit/durable-kernel';
 import {sha256Hex} from '@itookit/llm-context';
-import {IndependentCallCommand, type IndependentCallInput, type IndependentCallReceipt, type IndependentCallSubmitter} from '../contracts/independent-calls';
+import {IndependentCallCommand, type IndependentCallInput, type IndependentCallView, type IndependentCallListQuery, type IndependentCallReceipt, type IndependentCallSubmitter} from '../contracts/independent-calls';
 import type {ICommandBus} from '../contracts/command-bus';
 import type {SubmissionRequest} from '../contracts/submission';
 import type {Round} from '../contracts/conversation';
@@ -13,7 +13,7 @@ import {AttachmentProcessor} from './attachment-processor';
 import {freezeAttachments, readVerifiedAttachment} from './attachment-integrity';
 import {createSessionHost, type SessionHostPorts} from '../utils/host-ports';
 
-interface CallRoute {digest: string; input: IndependentCallInput; childRequest: SubmissionRequest; executionSessionId?: string}
+interface CallRoute {createdAt?: number; head?: string | null; digest: string; input: IndependentCallInput; childRequest: SubmissionRequest; executionSessionId?: string}
 interface Options {
     kernel: Kernel; repository: ISessionRepository; transfers: Pick<ContentTransferService, 'createChild'>;
     submit: IndependentCallSubmitter; prepareExecution?(sessionId: string): Promise<void>; canWrite?(sessionId: string): Promise<boolean>; hostPorts?: SessionHostPorts;
@@ -26,6 +26,7 @@ export class IndependentCallService {
     register(commands: ICommandBus): void {
         commands.register(IndependentCallCommand.Submit, value => this.submit(value as IndependentCallInput));
         commands.register(IndependentCallCommand.Inspect, value => this.inspect(value as IndependentCallInput));
+        commands.register(IndependentCallCommand.List, value => this.list(value as IndependentCallListQuery));
     }
     async submit(supplied: IndependentCallInput): Promise<IndependentCallReceipt> {
         const input = structuredClone(supplied), started = Date.now(); let stage = 'validate', outcome = 'failure', code: string | undefined;
@@ -70,6 +71,46 @@ export class IndependentCallService {
         if (!stored) return {operationId: identity.id, callerSessionId: identity.sessionId, status: 'unknown'};
         return this.receipt(this.match(stored.value, identity.digest));
     }
+    async list(query: IndependentCallListQuery): Promise<IndependentCallView[]> {
+        const started = Date.now();
+        try {return await this.readViews(query);}
+        catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            this.host.logger.warn('Independent call query failed', {operation: 'call.list', stage: 'read', outcome: 'failure',
+                code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CALL_QUERY_FAILED', durationMs: Date.now() - started});
+            throw error;
+        }
+    }
+    private async readViews(query: IndependentCallListQuery): Promise<IndependentCallView[]> {
+        if (!query || typeof query.sessionId !== 'string' || query.branchId !== undefined && typeof query.branchId !== 'string'
+            || Object.keys(query).some(key => !['sessionId', 'branchId'].includes(key))) throw failure('CALL_QUERY_INVALID');
+        query = structuredClone(query);
+        const manifest = await this.options.repository.getManifest(query.sessionId);
+        if (query.branchId !== undefined && !Object.hasOwn(manifest.branches, query.branchId)) throw failure('CALL_BRANCH_CHANGED');
+        const entries = await this.options.kernel.listShared(query.sessionId, prefix).catch(error => {
+            if (error instanceof KernelError && error.code === KernelErrorCode.SESSION_NOT_FOUND) return []; throw error;
+        });
+        const views: IndependentCallView[] = [];
+        for (const entry of entries) {
+            const route = entry.value as unknown as CallRoute;
+            if (route.input.request.expectedSessionId !== query.sessionId) throw failure('CALL_ROUTE_CONFLICT');
+            if (query.branchId !== undefined && route.input.request.expectedBranch !== query.branchId) continue;
+            const {receipt, round} = await this.observe(route);
+            views.push({input: structuredClone(route.input), receipt, createdAt: route.createdAt ?? 0, head: route.head ?? null,
+                ...(round ? {status: round.status, summary: outputSummary(round)} : {})});
+        }
+        return views.sort((a, b) => a.createdAt - b.createdAt || a.receipt.operationId.localeCompare(b.receipt.operationId));
+    }
+    private async round(route: CallRoute): Promise<Round | undefined> {
+        if (!route.executionSessionId) return;
+        const raw = await this.options.repository.readDocument(route.executionSessionId, `round-${route.input.request.submission!.id}.json`);
+        if (!raw) return;
+        const round = JSON.parse(raw) as Round, submission = round.submission;
+        if (round.sessionId !== route.executionSessionId || round.id !== route.input.request.submission!.id
+            || submission?.source.kind !== 'independent-call' || submission.source.ownerId !== route.input.request.expectedSessionId
+            || submission.id !== round.id || submission.source.id !== round.id) throw failure('CALL_EXECUTION_CONFLICT');
+        return round;
+    }
     private async readRoute(sessionId: string, id: string) {
         await this.options.repository.getManifest(sessionId);
         try {return await (await this.options.kernel.inspectSession(sessionId)).getShared(prefix + id);}
@@ -96,7 +137,7 @@ export class IndependentCallService {
         const manifest = await this.options.repository.getManifest(request.expectedSessionId!);
         if (manifest.currentBranch !== request.expectedBranch) throw failure('CALL_BRANCH_CHANGED');
         const childRequest = await this.freezeRequest(request);
-        const route: CallRoute = {input, digest, childRequest};
+        const route: CallRoute = {input, digest, childRequest, createdAt: Date.now(), head: manifest.currentHead};
         await this.writable(request.expectedSessionId!);
         try {await session.setShared(key, json(route), {expectedVersion: null}); return route;}
         catch (error) {const observed = await session.getShared(key); if (!observed) throw error; return this.match(observed.value, digest);}
@@ -138,14 +179,13 @@ export class IndependentCallService {
         }
         await freezeAttachments(this.options.repository, route.executionSessionId!, route.childRequest.submission!.id, files, this.host.logger);
     }
-    private async receipt(route: CallRoute): Promise<IndependentCallReceipt> {
+    private async receipt(route: CallRoute): Promise<IndependentCallReceipt> {return (await this.observe(route)).receipt;}
+    private async observe(route: CallRoute): Promise<{receipt: IndependentCallReceipt; round?: Round}> {
         const request = route.input.request, base = {operationId: request.submission!.id, callerSessionId: request.expectedSessionId!, executionSessionId: route.executionSessionId};
-        if (!route.executionSessionId) return {...base, status: 'unknown'};
+        if (!route.executionSessionId) return {receipt: {...base, status: 'unknown'}};
         const receipt = await readSubmissionReceipt(this.options.kernel, this.options.repository, route.executionSessionId, submissionInstruction(route.childRequest));
-        const raw = receipt.status === 'accepted' && await this.options.repository.readDocument(route.executionSessionId, `round-${base.operationId}.json`);
-        const round = raw ? JSON.parse(raw) as Round : undefined;
-        return {...base, ...receipt, ...(round?.sessionId === route.executionSessionId && round.submission?.source.ownerId === base.callerSessionId
-            ? {execution: round.executions[0]} : {})};
+        const round = receipt.status === 'accepted' ? await this.round(route) : undefined;
+        return {receipt: {...base, ...receipt, ...(round ? {execution: round.executions.find(execution => execution.role === 'primary')} : {})}, round};
     }
     private match(value: JsonValue, digest: string): CallRoute {
         const route = value as unknown as CallRoute;
@@ -156,3 +196,9 @@ export class IndependentCallService {
 }
 function json(value: unknown): JsonValue {return JSON.parse(JSON.stringify(value));}
 function failure(code: string): Error {return Object.assign(new Error(code), {code});}
+
+function outputSummary(round: Round): string {
+    if (!['completed', 'failed', 'cancelled'].includes(round.status)) return '';
+    return round.output.map(message => typeof message.content === 'string' ? message.content
+        : message.content.filter(part => part.type === 'text').map(part => 'text' in part ? part.text : '').join('\n')).join('\n\n').slice(0, 2000);
+}

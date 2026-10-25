@@ -2,7 +2,7 @@ import {ConversationContexts} from '../src/runtime/conversation-contexts';
 import {afterEach, expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
-import {IndependentCallCommand, SessionCommand, type IndependentCallInput, type IndependentCallReceipt, type RootTargetCatalog} from '@itookit/llm-session/contracts';
+import {IndependentCallCommand, SessionCommand, type IndependentCallView, type IndependentCallInput, type IndependentCallReceipt, type RootTargetCatalog} from '@itookit/llm-session/contracts';
 import {createApplicationRuntime} from '../src/runtime/create-application-runtime';
 
 const cleanup: Array<() => Promise<unknown>> = [];
@@ -160,4 +160,46 @@ it('recovers the same route and actual execution identity after host restart wit
         expect(await restored.commandBus.execute(IndependentCallCommand.Submit, input)).toEqual(original);
         expect((await restored.sessionRepository.readHistoryChain(original.executionSessionId!)).rounds).toHaveLength(1);
     } finally {keep.mockRestore();}
+}, 15000);
+
+
+it('lists actual child results in the caller branch without acquiring a writer', async () => {
+    const f = await fixture(true), input = f.input('listed-child');
+    const accepted = await f.submit(input);
+    await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(accepted.executionSessionId!)).rounds[0]?.status).toBe('completed'));
+    const open = vi.spyOn(f.runtime.kernel.kernel, 'openSession');
+    const list = () => f.runtime.commandBus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent, branchId: 'main'});
+    const views = await list();
+    expect(open).not.toHaveBeenCalled();
+    expect(views).toHaveLength(1);
+    expect(views[0]).toMatchObject({input, head: null, status: 'completed', summary: 'Done',
+        receipt: {status: 'accepted', executionSessionId: accepted.executionSessionId}});
+    expect(views[0].receipt.execution?.taskId).toBeTruthy();
+    expect(views[0].createdAt).toBeGreaterThan(0);
+    views[0].input.title = 'Mutated view';
+    expect((await list())[0].input.title).toBe(input.title);
+    await expect(f.runtime.commandBus.execute(IndependentCallCommand.List, {sessionId: f.parent, branchId: 'missing'})).rejects.toMatchObject({code: 'CALL_BRANCH_CHANGED'});
+    await expect(f.runtime.commandBus.execute(IndependentCallCommand.List, {sessionId: f.parent, extra: true})).rejects.toMatchObject({code: 'CALL_QUERY_INVALID'});
+    expect(await f.runtime.commandBus.execute(IndependentCallCommand.List, {sessionId: accepted.executionSessionId})).toEqual([]);
+}, 15000);
+
+it('lists an uninitialized caller without creating Kernel storage', async () => {
+    const f = await fixture(false, false), open = vi.spyOn(f.runtime.kernel.kernel, 'openSession');
+    expect(await f.runtime.commandBus.execute(IndependentCallCommand.List, {sessionId: f.parent})).toEqual([]);
+    expect(open).not.toHaveBeenCalled();
+});
+
+
+it('bounds terminal previews and rejects a child Round attributed to another caller', async () => {
+    const f = await fixture(true), input = f.input('verified-output'), accepted = await f.submit(input);
+    await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(accepted.executionSessionId!)).rounds[0]?.status).toBe('completed'));
+    const repository = f.runtime.sessionRepository, child = accepted.executionSessionId!, name = 'round-verified-output.json';
+    const round = JSON.parse((await repository.readDocument(child, name))!);
+    round.output = [{role: 'assistant', content: 'x'.repeat(3000)}];
+    await repository.writeDocument(child, name, JSON.stringify(round));
+    const list = () => f.runtime.commandBus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent});
+    expect((await list())[0].summary).toHaveLength(2000);
+    round.submission.source.ownerId = 'foreign-caller';
+    await repository.writeDocument(child, name, JSON.stringify(round));
+    await expect(list()).rejects.toMatchObject({code: 'CALL_EXECUTION_CONFLICT'});
 }, 15000);

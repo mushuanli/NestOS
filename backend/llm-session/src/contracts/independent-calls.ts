@@ -2,7 +2,7 @@ import type {SubmissionRequest, SubmissionReceipt} from './submission';
 import type {TransferReference} from './content-transfer';
 import type {ExecutionRef} from './conversation';
 
-export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect'} as const;
+export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect', List: 'session.calls.list'} as const;
 /** Caller identity and selected materials; ancestry alone never imports conversation history. */
 export interface IndependentCallInput {request: SubmissionRequest; title: string; transfer?: TransferReference}
 export interface IndependentCallReceipt extends SubmissionReceipt {
@@ -12,3 +12,14 @@ export interface IndependentCallReceipt extends SubmissionReceipt {
 }
 /** The host leases a separate execution context without rebinding the caller's view. */
 export type IndependentCallSubmitter = (request: SubmissionRequest) => Promise<string>;
+
+export interface IndependentCallListQuery {sessionId: string; branchId?: string}
+export interface IndependentCallView {
+    input: IndependentCallInput;
+    receipt: IndependentCallReceipt;
+    createdAt: number;
+    head: string | null;
+    status?: import('./conversation').Round['status'];
+    /** Bounded display text only; execution consumers read the actual child output. */
+    summary?: string;
+}

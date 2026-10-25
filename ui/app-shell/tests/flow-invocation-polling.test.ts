@@ -61,7 +61,8 @@ it('distinguishes pause, continue and reattachment, and keeps action buttons sta
     let paused = false, stored = false;
     const execute = vi.fn(async (command: string, input?: any) => {
         if (command === FlowInvocationCommand.List) return [{requestId: 'call', rootTaskId: 'root', flow: {name: 'Flow'}, revision: 1}];
-        if (command === FlowCommand.RunGet) return {root: {task: {status: 'running', control: {mode: paused ? 'pause' : 'run'}}}, taskTree: [], attachedFromStorage: stored};
+        if (command === FlowCommand.RunGet) return {root: {task: {id: 'root', status: 'running', effects: {}, input: {initialScheduler: {controlTreeVersion: 1}}, control:
+            {mode: paused ? 'pause' : 'run', epoch: 1, acknowledged: true}}}, taskTree: [], controlTaskIds: ['root'], controlStats: {root: {stopped: paused}}, attachedFromStorage: stored};
         if (command === FlowCommand.RunGoalUpdate) {paused = input.goal.status === 'paused'; return {};}
         throw new Error(command);
     });
@@ -69,10 +70,10 @@ it('distinguishes pause, continue and reattachment, and keeps action buttons sta
     await panel.refresh();
     const button = (key: Parameters<typeof t>[0]) => [...document.querySelectorAll<HTMLButtonElement>('[data-actions] button')].find(button => button.textContent === t(key));
     const pause = button('flow.invoke.pause')!;
-    expect(button('flow.invoke.resume')).toBeUndefined();
+    expect(button('flow.invoke.reattach')).toBeUndefined();
     await panel.refresh(); expect(button('flow.invoke.pause')).toBe(pause);
     pause.click(); await vi.waitFor(async () => {await panel!.refresh(); expect(button('flow.invoke.continue')).toBeDefined();});
     expect(document.querySelector('[data-status]')!.textContent).toBe(t('flow.invoke.paused'));
     button('flow.invoke.continue')!.click(); await vi.waitFor(async () => {await panel!.refresh(); expect(button('flow.invoke.pause')).toBeDefined();});
-    stored = true; await panel.refresh(); expect(button('flow.invoke.resume')).toBeDefined();
+    stored = true; await vi.waitFor(async () => {await panel!.refresh(); expect(button('flow.invoke.reattach')).toBeDefined();});
 });

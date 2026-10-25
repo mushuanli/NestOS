@@ -8,6 +8,7 @@ import { InvocationPanel } from '../../llm-ui-adapter/src/flows/InvocationPanel'
 import { SlashCommandPlugin } from '../../llm-ui-adapter/src/components/input/plugins/SlashCommandPlugin';
 import { ChatInput } from '../../llm-ui-adapter/src/components/input/ChatInputView';
 import { t } from '@itookit/common';
+import {FlowInvocationCommand, type FlowInvocationRecord} from '@itookit/llm-session/contracts';
 
 let manager: Awaited<ReturnType<typeof createVFS>>['manager'], kernel: Kernel, commands: CommandBus, panel: InvocationPanel;
 beforeEach(async () => {
@@ -22,7 +23,7 @@ beforeEach(async () => {
     const engine = new FlowEngine(await manager.openFileSystem('/flows')); await engine.init();
     const plugins = createBuiltinDagPluginRegistry(), store = new FlowDefinitionStore(engine, plugins);
     const draft = await store.createDraft({ id: 'review', name: 'Review' });
-    await store.saveDraft({ ...draft, parameters: [{ name: 'text', type: 'string', required: true }], nodes: [
+    await store.saveDraft({ ...draft, parameters: [{ name: 'text', type: 'string', required: true, inputSource: 'composer.text' }], nodes: [
         { id: 'ask' as never, name: 'Ask', plugin: 'builtin.human', pluginVersion: '1.0.0', inputs: {}, config: { requestId: 'same', prompt: '${param.text}' } },
     ] }, draft.draftVersion);
     commands = new CommandBus();
@@ -36,6 +37,32 @@ afterEach(async () => {
     await manager.dispose(); document.body.innerHTML = ''; vi.restoreAllMocks();
 });
 const submit = () => document.querySelector('dialog form')!.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+
+it('shows resolved arguments and starts a separate linked Invocation when the user runs them again', async () => {
+    const draft = await commands.execute<any>(FlowCommand.DraftLoad, {id: 'review'});
+    const {revision} = await commands.execute<any>(FlowCommand.RevisionCreate, {draftId: 'review', expectedDraftVersion: draft.draftVersion});
+    const call = await commands.execute<FlowInvocationRecord>(FlowInvocationCommand.Invoke, {sessionId: 's', requestId: 'composer',
+        flowId: revision.id, revision: revision.revision, parameters: {}, source: {kind: 'composer', text: 'Resolved request', attachments: [], values: {}}});
+    expect(call.parameters).toEqual({});
+    panel = new InvocationPanel(commands, 's', document.body, vi.fn());
+    await vi.waitFor(async () => {await panel.refresh(); expect(document.querySelector('[data-invocation="composer"] details pre')?.textContent).toContain('Resolved request');});
+    await vi.waitFor(async () => {await panel.refresh(); expect(document.querySelector('[data-invocation="composer"] [data-interaction-action="reply"]')).not.toBeNull();});
+    document.querySelector<HTMLTextAreaElement>('[data-invocation="composer"] textarea')!.value = 'Done';
+    document.querySelector<HTMLButtonElement>('[data-invocation="composer"] [data-interaction-action="reply"]')!.click();
+    await vi.waitFor(async () => {await panel.refresh(); expect(document.querySelector('[data-invocation="composer"] [data-status]')?.textContent).toBe(t('flow.invoke.succeeded'));});
+    const repeat = [...document.querySelectorAll<HTMLButtonElement>('[data-invocation="composer"] [data-actions] button')]
+        .find(button => button.textContent === t('flow.invoke.repeat'))!;
+    repeat.click();
+    await vi.waitFor(() => expect(document.querySelector<HTMLTextAreaElement>('dialog [data-parameter="0"]')?.value).toBe('Resolved request'));
+    submit();
+    let calls: FlowInvocationRecord[] = [];
+    await vi.waitFor(async () => {calls = await commands.execute(FlowInvocationCommand.List, {sessionId: 's'}); expect(calls).toHaveLength(2);});
+    const next = calls.find(record => record.requestId !== call.requestId)!;
+    expect(next.invocationId).not.toBe(call.invocationId); expect(next.rootTaskId).not.toBe(call.rootTaskId);
+    expect(next.retryOfInvocationId).toBe(call.invocationId); expect(next.retryOfSessionId).toBe('s');
+    expect((await (await kernel.openTask(call.rootTaskId!)).status()).task.status).toBe('succeeded');
+    await panel.refresh(); expect(document.querySelector(`[data-invocation-id="${next.invocationId}"]`)).not.toBeNull();
+});
 
 it('calls a Flow twice through the input form, restores both cards, and routes replies independently', async () => {
     for (const text of ['First', 'Second']) {
@@ -53,6 +80,28 @@ it('calls a Flow twice through the input form, restores both cards, and routes r
     expect(cards[1].querySelector('.llm-input__interaction')).not.toBeNull();
     panel.destroy(); panel = new InvocationPanel(commands, 's', document.body, vi.fn());
     await vi.waitFor(async () => { await panel.refresh(); expect(document.querySelectorAll('[data-invocation]')).toHaveLength(2); expect(document.querySelectorAll('.llm-input__interaction')).toHaveLength(1); });
+});
+
+it('confirms Kernel tree stoppage before showing resume and preserves an answer submitted during pause', async () => {
+    const pending = invokeFlowText(commands, 's', 'review {"text":"Pause interaction"}');
+    await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull()); submit(); await pending;
+    const [call] = await commands.execute<FlowInvocationRecord[]>(FlowInvocationCommand.List, {sessionId: 's'});
+    panel = new InvocationPanel(commands, 's', document.body, vi.fn());
+    const button = (key: Parameters<typeof t>[0]) => [...document.querySelectorAll<HTMLButtonElement>('[data-actions] button')].find(button => button.textContent === t(key));
+    await vi.waitFor(async () => {await panel.refresh(); expect(document.querySelector('[data-interaction-action="reply"]')).not.toBeNull();});
+    button('flow.invoke.pause')!.click();
+    await vi.waitFor(async () => {await panel.refresh(); expect(button('flow.invoke.continue')).toBeDefined();});
+    const stat = await (await kernel.openTask(call.rootTaskId!)).stat();
+    expect(stat.control).toMatchObject({requested: 'pause', acknowledged: true}); expect(stat.stopped).toBe(true); expect(stat.settled).toBe(false);
+    document.querySelector<HTMLTextAreaElement>('textarea')!.value = 'Saved while paused';
+    document.querySelector<HTMLButtonElement>('[data-interaction-action="reply"]')!.click();
+    await vi.waitFor(async () => {
+        const state = await commands.execute<any>(FlowCommand.RunGet, {sessionId: 's', taskId: call.rootTaskId});
+        expect(state.taskTree.some((task: any) => Object.values(task.interactions).some((request: any) => request.status === 'resolved'))).toBe(true);
+    });
+    expect((await (await kernel.openTask(call.rootTaskId!)).stat()).stopped).toBe(true);
+    button('flow.invoke.continue')!.click();
+    await vi.waitFor(async () => {await panel.refresh(); expect(document.querySelector('[data-status]')!.textContent).toBe(t('flow.invoke.succeeded'));});
 });
 
 it('does not launch on cancellation and preserves slash text on a rejected call', async () => {

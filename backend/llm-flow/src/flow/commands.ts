@@ -1,3 +1,4 @@
+import {taskStat} from '@itookit/durable-kernel';
 import {readFlowRunMembers} from './run-members';
 import {checkFlowSource, checkFlowSyntax} from './syntax-check';
 import { hasLocalScheduler, withFlowControl } from './control-session';
@@ -59,6 +60,7 @@ export interface FlowRunPreparation {
 export interface FlowRunSummary { taskId: string; sessionId: string; name: string; status: string; createdAt: number; invocation?: import('../contracts').InvocationIdentity; }
 
 export interface DurableFlowSnapshot {
+    controlStats?: Record<string, import('@itookit/durable-kernel/contracts').TaskStat>;
     invocationIdentityVersion?: 1;
     controlTaskIds?: string[];
     invocation?: import('../contracts').InvocationIdentity;
@@ -292,6 +294,7 @@ export class DagCommandService {
             })),
             iterations: Object.fromEntries([...latest].map(([nodeId, member]) => [nodeId, member.iteration])),
             taskTree: history,
+            controlStats: Object.fromEntries(history.map(task => [task.id, taskStat(task)])),
             detachedNodes: [...new Set(members.filter(member => member.detached).map(member => member.nodeId))],
         };
     }

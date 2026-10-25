@@ -590,11 +590,13 @@ export class DagWorkbench {
             ${snapshot.workspaceFinalization ? `<section class="dag-run-workspace" data-workspace-status="${escapeHTML(snapshot.workspaceFinalization.status)}">${escapeHTML(t(`flow.workspace.${snapshot.workspaceFinalization.status}`))}${snapshot.workspaceFinalization.message ? `<span role="alert">${escapeHTML(snapshot.workspaceFinalization.message)}</span>` : ''}${snapshot.workspaceFinalization.persistenceError ? `<span role="alert">${escapeHTML(t('flow.workspace.persistenceFailed'))}: ${escapeHTML(snapshot.workspaceFinalization.persistenceError)}</span>` : ''}</section>` : ''}
             ${snapshot.goal ? `<section class="dag-run-goal"><strong>${escapeHTML(snapshot.goal.objective || 'Run goal')}</strong><span>${escapeHTML(snapshot.goal.status ?? 'active')}</span>${snapshot.goal.acceptanceCriteria?.length ? `<small>${snapshot.goal.acceptanceCriteria.map(escapeHTML).join(' · ')}</small>` : ''}</section>` : ''}
             <section class="dag-output"><h3>${escapeHTML(t('flow.output.final'))}</h3>${renderFlowOutput(run.output, true)}</section>
+            ${isTerminalRun(run.status) ? `<p>${escapeHTML(t('flow.retry.terminalHint'))}</p>` : ''}
             ${renderVariables(snapshot)}
             <div class="dag-run-nodes">${snapshot.taskTree.map(task => {
                 const nodeId = task.labels?.dispatchKey ?? task.labels?.flowNodeId ?? (task.id === run.id ? 'Result' : task.program.kind);
                 const iterations = snapshot.iterations[nodeId] ?? 1;
-                const waiting = pendingInteraction({ task });
+                const controllable = !snapshot.controlTaskIds || snapshot.controlTaskIds.includes(task.id);
+                const waiting = controllable && !isTerminalRun(task.status) ? pendingInteraction({ task }) : undefined;
                 const detached = snapshot.detachedNodes.includes(nodeId);
                 return `<article data-task-id="${escapeHTML(task.id)}">
                     <header><strong>${escapeHTML(nodeId)}</strong><small>${escapeHTML(task.status)}${iterations > 1 ? ` · ×${iterations}` : ''}${detached ? ' · detached' : ''}</small></header>
@@ -603,9 +605,9 @@ export class DagWorkbench {
                     ${task.parentTaskId ? `<small>parent: ${escapeHTML(task.parentTaskId)}</small>` : ''}
                     ${task.lastError?.message ? `<div class="dag-run-error">${escapeHTML(task.lastError.message)}</div>` : ''}
                     ${waiting ? `<div class="dag-run-wait">${escapeHTML(waiting.prompt)}</div><button data-run-respond="${escapeHTML(task.id)}" data-request-id="${escapeHTML(waiting.id)}">Respond</button>` : ''}
-                    ${task.id !== run.id && !isTerminalRun(task.status) ? `<menu><button data-run-signal="${escapeHTML(task.id)}">Inject</button><button data-run-cancel-task="${escapeHTML(task.id)}">Cancel</button></menu>` : ''}
-                    ${task.id !== run.id && isTerminalRun(task.status) ? `<button data-run-retry="${escapeHTML(task.id)}" ${this.retryRequests.get(task.id)?.pending ? 'disabled' : ''}>${escapeHTML(t('flow.retry.title'))}</button><small>${escapeHTML(t('flow.retry.hint'))}</small>` : ''}
-                    ${task.id !== run.id && isTerminalRun(task.status) && !isTerminalRun(run.status) ? `<button data-run-retry-downstream="${escapeHTML(task.id)}" ${this.retryRequests.get(retryKey(task.id, true))?.pending ? 'disabled' : ''}>${escapeHTML(t('flow.retry.downstreamTitle'))}</button><small>${escapeHTML(t('flow.retry.downstreamHint'))}</small>` : ''}
+                    ${controllable && task.id !== run.id && !isTerminalRun(task.status) ? `<menu><button data-run-signal="${escapeHTML(task.id)}">Inject</button><button data-run-cancel-task="${escapeHTML(task.id)}">Cancel</button></menu>` : ''}
+                    ${controllable && task.id !== run.id && isTerminalRun(task.status) && !isTerminalRun(run.status) ? `<button data-run-retry="${escapeHTML(task.id)}" ${this.retryRequests.get(task.id)?.pending ? 'disabled' : ''}>${escapeHTML(t('flow.retry.title'))}</button><small>${escapeHTML(t('flow.retry.hint'))}</small>` : ''}
+                    ${controllable && task.id !== run.id && isTerminalRun(task.status) && !isTerminalRun(run.status) ? `<button data-run-retry-downstream="${escapeHTML(task.id)}" ${this.retryRequests.get(retryKey(task.id, true))?.pending ? 'disabled' : ''}>${escapeHTML(t('flow.retry.downstreamTitle'))}</button><small>${escapeHTML(t('flow.retry.downstreamHint'))}</small>` : ''}
                     ${task.output !== undefined && task.id !== run.id ? `<details class="dag-output" open><summary>${escapeHTML(t('flow.output.node'))}</summary>${renderFlowOutput(task.output)}</details>` : ''}
                     <button data-run-transcript="${escapeHTML(task.id)}">${escapeHTML(t('flow.transcript.title'))}</button>
                     <details><summary>Runtime details</summary><pre>${escapeHTML(JSON.stringify({ wait: task.wait, output: task.output, effects: Object.keys(task.effects ?? {}) }, null, 2))}</pre></details>
@@ -716,7 +718,7 @@ export class DagWorkbench {
     private async retryRunTask(targetTaskId: string, downstream = false): Promise<void> {
         const run = this.run?.root.task;
         const key = retryKey(targetTaskId, downstream);
-        if (!run || this.retryRequests.get(key)?.pending) return;
+        if (!run || isTerminalRun(run.status) || this.retryRequests.get(key)?.pending) return;
         const request = this.retryRequests.get(key) ?? { id: randomUUID(), pending: false };
         request.pending = true;
         this.retryRequests.set(key, request);
@@ -730,7 +732,8 @@ export class DagWorkbench {
             this.retryRequests.delete(key);
             if (view === this.viewRequest) await this.refreshRun(run.id);
         } catch (error) {
-            if (view === this.viewRequest) Toast.error(error instanceof Error ? error.message : t('flow.retry.failed'));
+            if (view === this.viewRequest) Toast.error((error as {code?: string})?.code === 'FLOW_RUN_TERMINAL'
+                ? t('flow.retry.terminalHint') : error instanceof Error ? error.message : t('flow.retry.failed'));
         } finally {
             request.pending = false;
             if (view === this.viewRequest) this.render();
@@ -869,7 +872,8 @@ export class DagWorkbench {
             this.options.listTools?.() ?? Promise.resolve([]),
             this.options.listSkills?.() ?? Promise.resolve([]),
         ]);
-        const result = await openFlowSettings({exposure: draft.exposure,
+        const result = await openFlowSettings({
+            exposure: draft.exposure,
             outputs: draft.outputs,
             connections: draft.connections ?? [],
             defaultConnection: draft.defaultConnection,

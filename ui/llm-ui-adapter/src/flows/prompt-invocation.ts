@@ -9,6 +9,7 @@ export interface InvocationPromptOptions {
     commands: ICommandBus; sessionId: string; name: string; fields: FlowParameter[];
     connection: FlowConnectionSelection; signal?: AbortSignal; revision(): Promise<FlowRevision>;
     openChild?(id: string): void | Promise<void>;
+    retryOf?: {invocationId: string; sessionId: string};
 }
 
 /** Slash and repeat share typed inputs, explicit sources and one durable admission protocol. */
@@ -46,8 +47,9 @@ class InvocationLaunch {
         options.signal?.throwIfAborted(); signal?.throwIfAborted();
         // Freeze every choice before the first asynchronous admission step.
         const inputSources = this.sources.bindings(parameters), child = this.child;
+        const retryOf = options.retryOf && {...options.retryOf};
         const connection = structuredClone({selected: options.connection.selected, bindings: options.connection.bindings});
-        const key = JSON.stringify([parameters, inputSources, child, connection]);
+        const key = JSON.stringify([parameters, inputSources, child, connection, retryOf]);
         const requestId = this.requests.get(key) ?? randomUUID(); this.requests.set(key, requestId);
         const revision = await options.revision();
         options.signal?.throwIfAborted(); signal?.throwIfAborted();
@@ -56,6 +58,7 @@ class InvocationLaunch {
             { sessionId, requestId, title: options.name })).sessionId;
         options.signal?.throwIfAborted(); signal?.throwIfAborted();
         await options.commands.execute(FlowInvocationCommand.Invoke, { sessionId, requestId, flowId: revision.id, revision: revision.revision,
+            ...(retryOf ? {retryOfInvocationId: retryOf.invocationId, retryOfSessionId: retryOf.sessionId} : {}),
             expectedSignature: {id: revision.id, revision: revision.revision, digest: revision.digest},
             parameters, ...(Object.keys(inputSources).length ? { inputSources } : {}), connectionId: connection.selected,
             ...(Object.keys(connection.bindings ?? {}).length ? { connectionBindings: connection.bindings } : {}) });

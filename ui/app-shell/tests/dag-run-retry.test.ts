@@ -3,17 +3,33 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { Toast } from '@itookit/ui-common';
 import { DagWorkbench } from '../../llm-ui-adapter/src/components/DagWorkbench';
 
-function snapshot(retrying = false) {
+function snapshot(retrying = false, status = 'succeeded') {
     const original = { id: 'original', sessionId: 'session', status: 'failed', program: { kind: 'llm.agent' },
         labels: { flowNodeId: 'agent' }, attemptCount: 1, effects: {} };
     const next = { ...original, id: 'retry', retryOfTaskId: 'original', status: 'running' };
-    return { root: { task: { id: 'root', sessionId: 'session', status: 'succeeded' } },
+    return { root: { task: { id: 'root', sessionId: 'session', status } },
         nodes: [{ nodeId: 'agent', snapshot: { task: retrying ? next : original } }], iterations: { agent: retrying ? 2 : 1 },
         taskTree: retrying ? [original, next] : [original], detachedNodes: [], usage: { tokens: 1, startedAt: 0, elapsedMs: 1 } };
 }
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
-it('reuses a failed request identity and keeps polling the retry after the root finished', async () => {
+it('keeps historical attempts readable without exposing retry, reply or cancellation outside current control membership', async () => {
+    const current = {...snapshot(true, 'running'), controlTaskIds: ['root', 'retry']};
+    current.taskTree.push({...current.taskTree[0], id: 'historic-wait', status: 'waiting',
+        interactions: {answer: {id: 'answer', status: 'pending', prompt: 'Obsolete'}}} as any);
+    const root = document.createElement('div'), execute = vi.fn(async () => current);
+    const workbench = new DagWorkbench(root, {commands: {execute} as never});
+    try {
+        await workbench.openRun('root', 'session');
+        expect(root.querySelector('[data-run-transcript="original"]')).not.toBeNull();
+        expect(root.querySelector('[data-run-retry="original"]')).toBeNull();
+        expect(root.querySelector('[data-run-respond="historic-wait"]')).toBeNull();
+        expect(root.querySelector('[data-run-cancel-task="historic-wait"]')).toBeNull();
+        expect(root.querySelector('[data-run-signal="retry"]')).not.toBeNull();
+    } finally {workbench.destroy();}
+});
+
+it('reuses a failed retry request identity while its owning Run remains unfinished', async () => {
     vi.useFakeTimers();
     vi.spyOn(Toast, 'error').mockImplementation(() => {});
     let retried = false;
@@ -22,7 +38,7 @@ it('reuses a failed request identity and keeps polling the retry after the root 
             if (!retried) { retried = true; throw new Error('response lost'); }
             return { targetTaskId: 'retry' };
         }
-        return snapshot(retried);
+        return snapshot(retried, 'waiting');
     });
     const root = document.createElement('div');
     const workbench = new DagWorkbench(root, { commands: { execute } as never });
@@ -44,7 +60,7 @@ it('reuses a failed request identity and keeps polling the retry after the root 
 it('disables duplicate requests while a retry response is pending', async () => {
     let resolve!: (value: unknown) => void;
     const execute = vi.fn((name: string) => name === 'dag.run.task.retry'
-        ? new Promise(done => { resolve = done; }) : Promise.resolve(snapshot()));
+        ? new Promise(done => { resolve = done; }) : Promise.resolve(snapshot(false, 'waiting')));
     const root = document.createElement('div');
     const workbench = new DagWorkbench(root, { commands: { execute } as never });
     await workbench.openRun('root');
@@ -154,13 +170,16 @@ it('recomputes downstream only while the Run can still be resumed', async () => 
     workbench.destroy();
 });
 
-it('hides the downstream recompute once the Run is terminal', async () => {
+it('prevents both node retry forms after the Run has reached a terminal state', async () => {
     const execute = vi.fn(async () => snapshot());
     const root = document.createElement('div');
     const workbench = new DagWorkbench(root, { commands: { execute } as never });
     await workbench.openRun('root', 'session');
     expect(root.querySelector('[data-run-retry-downstream="original"]')).toBeNull();
-    expect(root.querySelector('[data-run-retry="original"]')).not.toBeNull();
+    expect(root.querySelector('[data-run-retry="original"]')).toBeNull();
+    expect(root.textContent).toContain('此流程已终结');
+    await (workbench as any).retryRunTask('original');
+    expect(execute.mock.calls.some(([name]) => name === 'dag.run.task.retry')).toBe(false);
     workbench.destroy();
 });
 

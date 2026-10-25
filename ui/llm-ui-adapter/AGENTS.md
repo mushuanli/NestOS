@@ -179,3 +179,5 @@ Flow 参数表单只收集连接覆盖；必需槽位留空表示继承声明或
 独立 native binding 的 send/串行命令使用当前快照 canQueue 决定 enqueue，不能仅检查方法存在；原生首轮仍可走 send。OperationContext.operationId 贯穿原生接纳与队列回执，同一 OperationLedger 接收持久接纳；队列记录不伪造成历史消息。历史只按实际 turn 关联同 conversation 的发送或 prompt 命令，action 命令不能归属用户轮次。
 
 独立原生视图通过 nativeQueueToolbar 挂载同一 NativeInstructionQueuePanel；仅暴露队列 read/edit 端口，不把 native controls 注入独立聊天库。队列结果按绑定代次投影，隐藏时只读，恢复后重新依据 canQueue；编辑采用已展示修订，控制与队列编辑不写提交台账。组合工具栏保留宿主生命周期，destroy 复用同一 Promise。
+
+原生命令查询不占普通输入提交槽；暂停中的发送计数仍保留，只有明确 query 可以独立提交。取消携带实际 sessionId/turnId 并核对独立 operationId。NativeCommandOutput 在原锚点按需分页读取，失败留在结果卡片，隐藏/销毁停止后续页；通用字节拼接与摘要核验在 utils/verified-content，DAG 和原生各自校验协议，不相互导入业务模块。

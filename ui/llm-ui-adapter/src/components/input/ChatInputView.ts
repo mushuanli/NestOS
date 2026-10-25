@@ -1,3 +1,4 @@
+import {isCommandInput} from '@itookit/llm-ui';
 import { OcrSettingsForm, Modal, Toast } from '@itookit/ui-common';
 // @file: llm-ui/components/input/ChatInputView.ts
 
@@ -183,7 +184,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
     private loading = false;
-    private availability = {canSend: true, canInterrupt: true};
+    private availability: {canSend: boolean; canInterrupt: boolean; canCommand?: boolean; canQueryCommand?: (text: string) => boolean} = {canSend: true, canInterrupt: true};
     private files: File[] = [];
     private restoringRecovery = false;
     private settingsExpanded = false;
@@ -387,13 +388,14 @@ export class ChatInput implements IChatInputPresenter {
         this.applyAvailability();
     }
 
-    setAvailability(value: {canSend: boolean; canInterrupt: boolean}): void {
+    setAvailability(value: {canSend: boolean; canInterrupt: boolean; canCommand?: boolean; canQueryCommand?: (text: string) => boolean}): void {
         this.availability = value; this.applyAvailability();
     }
 
     private applyAvailability(): void {
         const command = isDirectCommandInput(this.textarea.value) || this.textarea.value.trimStart().startsWith('/');
-        this.sendBtn.disabled = !this.availability.canSend || this.submitting || this.checkingConnection || !!this.attachmentMgr?.images.busy || (!!this.connectionReadiness?.blocked && !command)
+        this.sendBtn.style.display = this.loading && !this.canQueue() && !this.canQuery() && !this.independentQueryAvailable() ? 'none' : 'flex';
+        this.sendBtn.disabled = !this.inputAvailable() || this.submitting > 0 && !this.independentQueryAvailable() || this.checkingConnection || !!this.attachmentMgr?.images.busy || (!!this.connectionReadiness?.blocked && !command)
             || (!!agentUnavailableReason(this.selectedExecutor()) && !command);
         this.stopBtn.disabled = !this.availability.canInterrupt;
         this.agentPickerBtn.disabled = (this.loading && !this.canQueue()) || !!this.options.executorLocked;
@@ -906,12 +908,12 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private async triggerSend(): Promise<void> {
-        if (!this.availability.canSend || this.checkingConnection || this.submitting) return;
+        if (!this.inputAvailable() || this.checkingConnection || this.submitting > 0 && !this.independentQueryAvailable()) return;
         const text = this.textarea.value.trim();
         const unavailable = agentUnavailableReason(this.selectedExecutor());
-        if (unavailable && !isDirectCommandInput(text)) { Toast.error(unavailable); return; }
+        if (unavailable && !isDirectCommandInput(text) && !text.startsWith('/')) { Toast.error(unavailable); return; }
         if (!text && this.files.length === 0) return;
-        if (this.loading && !this.canQueue() && !/^\/(flow|cancel|approve|resume)(?:\s|$)/.test(text)) return;
+        if (this.loading && !this.canQueue() && !this.canQuery() && !this.independentQueryAvailable() && !/^\/(flow|cancel|approve|resume)(?:\s|$)/.test(text)) return;
 
         if (this.config.agentId.startsWith('remote:')) { await this.submitDraft(text); return; }
 
@@ -931,7 +933,7 @@ export class ChatInput implements IChatInputPresenter {
         const revision = this.getDraftRevision();
         const remote = executor.startsWith('remote:');
         const overrides = remote ? undefined : this.buildOverrides();
-        this.submitting = true; this.applyAvailability();
+        ++this.submitting; this.applyAvailability();
         try {
             if (!await this.prepareFlowSubmission(text, files, executor, submitted, revision, overrides)) return;
             if (await this.options.onSend(text, files, executor, overrides) === false) return;
@@ -943,7 +945,7 @@ export class ChatInput implements IChatInputPresenter {
                 for (const plugin of this.plugins) plugin.onAfterSend?.(text, executor);
             }
         } catch (error) { if (this.agentFlow()) Toast.error(error instanceof Error ? error.message : t('agent.execution.unavailable')); }
-        finally { this.submitting = false; if (!this.connectionsDisposed) this.applyAvailability(); }
+        finally { --this.submitting; if (!this.connectionsDisposed) this.applyAvailability(); }
     }
 
     private async prepareFlowSubmission(text: string, files: File[], executor: string, submitted: string, revision: number, overrides?: ChatOverrides): Promise<boolean> {
@@ -978,7 +980,7 @@ export class ChatInput implements IChatInputPresenter {
 
     openConnectionPicker(): void { this.connectionTier.openConnPicker(); }
 
-    private submitting = false;
+    private submitting = 0;
     acceptSubmittedDraft(text: string, files: File[], revision?: number): void {
         this.clearSubmittedInput(files, (revision === undefined || this.getDraftRevision() === revision) && this.textarea.value.trim() === text.trim());
     }
@@ -1527,4 +1529,10 @@ export class ChatInput implements IChatInputPresenter {
         this.textarea.focus();
     }
 
+
+private inputAvailable(): boolean {
+        return this.availability.canSend || this.canQuery() || this.independentQueryAvailable();
+    }
+private independentQueryAvailable(): boolean {return !!this.availability.canQueryCommand?.(this.textarea.value);}
+private canQuery(): boolean {return !!this.availability.canCommand && isCommandInput(this.textarea.value);}
 }

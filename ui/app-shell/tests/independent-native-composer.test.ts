@@ -28,7 +28,7 @@ it('routes an actual independent composer selection through the binding and repl
         const command = binding.source.getSnapshot().commands!.find(command => command.source.id === 'harness')!;
         [...host.querySelectorAll<HTMLButtonElement>('[data-command-id]')].find(row => row.dataset.commandId === command.id)!.click();
         expect(controls.command).not.toHaveBeenCalled(); await view.submit();
-        expect(controls.command).toHaveBeenCalledWith('verify', '', {modelId: 'native', reasoningEffort: 'high'}, '/verify ');
+        expect(controls.command).toHaveBeenCalledWith('verify', '', {modelId: 'native', reasoningEffort: 'high'}, '/verify ', expect.any(String));
         expect(controls.send).not.toHaveBeenCalled(); expect(local).not.toHaveBeenCalled(); expect(view.getDraft().text).toBe('');
         state = {...state, messages: [{id: 'native-user', role: 'user', text: '/verify', turnId: 'turn'}]}; listeners.forEach(listener => listener());
         await vi.waitFor(() => expect(host.querySelector('[data-message-id="native-user"]')).not.toBeNull());

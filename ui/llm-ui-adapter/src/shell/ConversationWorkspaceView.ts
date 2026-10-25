@@ -16,6 +16,7 @@ import { mountConversationSource } from './conversation-source';
 import {bindWorkspaceInput, type WorkspaceHandoff} from './drafts/workspace-handoff';
 
 interface Actions {
+    commandOutputs?: Pick<import('@itookit/ui-common').ConversationControls, 'readCommandOutput' | 'loadCommandOutput'>;
     instructionQueue?: boolean;
     flushDraft?(): Promise<void>;
     persistImageFiles?(files: File[], resize: import('@itookit/image-parser').ImageResizePolicy): Promise<void>;
@@ -65,7 +66,7 @@ export class ConversationWorkspaceView {
         this.progress.setAttribute('aria-live', 'polite');
         this.history = new RemoteHistory(history, container, this.progress, {
             refresh: actions.openPrompts, earlier: actions.earlier,
-        });
+        }, actions.commandOutputs);
         this.reconcile = this.button(t('harness.reconcile'), actions.reconcile, toolbar); this.reconcile.disabled = true;
         this.input = this.createInput(options, actions, handoff);
         if (actions.commands) this.input.registerPlugin(new NativeSlashCommandPlugin(actions.commands));

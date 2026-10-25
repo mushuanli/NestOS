@@ -29,3 +29,5 @@ HarnessClient 的能力表显式注册 subscribe/eventSnapshot 与目录订阅/�
 IConnectionService 的 getPricingConfig 与管理服务一样以 snapshot 暴露，保留 reference_catalog 厂商价格来源、日期、币种及单位；模型选择 UI 不通过传输外的厂商目录补齐。真实 HTTPS 回归覆盖该只读快照。
 
 TaskHandle.withdrawPause 在应用能力表显式注册为 async，保留原 requestId、expectedEpoch 与错误码。公开内核 API 的新增方法必须同时检查远程能力表；通用 RPC 编码器不通过反射自动开放所有方法。
+
+原生 HarnessClient 的 queryCommand/commandCatalog/readCommandOutput 是只读查询；HarnessConversationPort 的 queryCommand/reconcileQuery 需要保存报告，属于独立 async 操作，不等待发送 tail。reconcileControl 与原输入回执分开，输出读取不改变执行接纳或草稿。能力表与真实 RPC 回归一同维护。

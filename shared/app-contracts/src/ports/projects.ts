@@ -25,12 +25,14 @@ export interface ProjectConversationPort extends HarnessConversationPort {
     read(): Promise<ProjectConversationSnapshot>;
     refresh(): Promise<ProjectConversationSnapshot>;
     send(text: string, attachments?: HarnessContracts.HarnessAttachment[], selection?: HarnessContracts.HarnessModelSelection, submissionId?: string): Promise<ProjectConversationSnapshot>;
-    command?(name: string, args?: string, selection?: HarnessContracts.HarnessModelSelection, inputText?: string, submissionId?: string): Promise<ProjectConversationSnapshot>;
+    command?(...args: Parameters<NonNullable<HarnessConversationPort['command']>>): Promise<ProjectConversationSnapshot>;
     loadEarlier(): Promise<ProjectConversationSnapshot>;
-    interrupt(): Promise<ProjectConversationSnapshot>;
+    interrupt(...args: Parameters<HarnessConversationPort['interrupt']>): Promise<ProjectConversationSnapshot>;
+    reconcileControl?(...args: Parameters<NonNullable<HarnessConversationPort['reconcileControl']>>): Promise<ProjectConversationSnapshot>;
     reconcile(submissionId?: string): Promise<ProjectConversationSnapshot>;
     respond(id: string | number, response: Record<string, unknown>): Promise<ProjectConversationSnapshot>;
     fork(name?: string): Promise<ProjectConversationSnapshot>;
+    forkAt?(...args: Parameters<NonNullable<HarnessConversationPort['forkAt']>>): Promise<ProjectConversationSnapshot>;
     rename?(name: string): Promise<ProjectConversationSnapshot>;
     archive?(archived: boolean): Promise<ProjectConversationSnapshot>;
     delete?(): Promise<ProjectConversationSnapshot>;

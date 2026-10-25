@@ -118,6 +118,12 @@ function validateSubmissions(record: RemoteConversationRecovery): void {
         if (!result || typeof result.commandId !== 'string' || !result.commandId || result.commandId.length > 1024
             || typeof result.output !== 'string' || result.output.length > 128 * 1024
             || result.failed !== undefined && typeof result.failed !== 'boolean') throw new FSError('EINVAL', 'Invalid command receipt');
+        const query = result.query;
+        if (query !== undefined && (!query || typeof query.id !== 'string' || !/^[a-zA-Z0-9_-]{1,128}$/.test(query.id)
+            || typeof query.name !== 'string' || !/^[\p{L}\p{N}_:.-]{1,128}$/u.test(query.name)
+            || typeof query.sessionId !== 'string' || !query.sessionId || query.sessionId.length > 1024
+            || [query.definitionId, query.revision].some(value => value !== undefined && (typeof value !== 'string' || !value || value.length > 256))
+            || result.commandId !== query.id || result.turnId || result.status !== 'completed')) throw new FSError('EINVAL', 'Invalid query report');
     }
 }
 

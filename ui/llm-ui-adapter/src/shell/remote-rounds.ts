@@ -27,6 +27,11 @@ export function remotePrompts(messages: ConversationMessage[]): Array<{id: strin
     });
 }
 
+export function remoteCommandOutputs(messages: ConversationMessage[]) {
+    return collectRounds(messages).flatMap(round => round.responses.flatMap(message => message.commandOutput
+        ? [{id: message.id, groupId: roundId(round) + '-response', output: message.commandOutput}] : []));
+}
+
 function collectRounds(messages: ConversationMessage[]): Round[] {
     const rounds = new Map<string, Round>(); let current: Round | undefined;
     for (const message of messages) {
@@ -81,6 +86,7 @@ function userMarkdown(message: ConversationMessage, omitContext: boolean, encode
 }
 
 function responseStatus(messages: ConversationMessage[]): ExecutionNode['status'] {
+    if (messages.some(message => message.status === 'result-invalid')) return 'pending';
     if (messages.some(message => ['running', 'queued', 'inProgress', 'in_progress'].includes(message.status ?? ''))) return 'running';
     if (messages.some(message => message.status === 'failed')) return 'failed';
     if (messages.some(message => ['aborted', 'cancelled'].includes(message.status ?? ''))) return 'aborted';

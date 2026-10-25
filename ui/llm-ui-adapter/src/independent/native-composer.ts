@@ -24,8 +24,8 @@ export class NativeComposerCapabilities {
     private commands: ConversationSlashCommand[] = [];
     constructor(private readonly controls: ConversationControls, private readonly report?: (error: unknown) => void) {}
     load(state: ConversationSnapshot, force = false): Promise<boolean> {
-        const scope = JSON.stringify([state.sessionId, state.supportsModels, state.supportsSlashCommands]);
-        const key = JSON.stringify([scope, state.slashCommands]);
+        const scope = JSON.stringify([state.sessionId, state.supportsModels, state.supportsSlashCommands, state.observation?.scope]);
+        const key = JSON.stringify([scope, state.slashCommands, state.commandCatalogObservation]);
         if (!force && key === this.key && (this.pending || Date.now() < this.retryAt || !this.failures)) return this.pending ?? Promise.resolve(false);
         if (scope !== this.scope) {this.models = {models: []}; this.commands = []; this.failures = 0; this.retryAt = 0; ++this.commandRevision;}
         this.scope = scope; this.key = key; const generation = ++this.generation;
@@ -68,7 +68,17 @@ export class NativeComposerCapabilities {
     catalog(state: ConversationSnapshot): CommandCatalog {
         return {source: {id: 'harness', label: t('harness.remoteAgents')}, commands: this.commands.map(command => ({
             id: command.name, revision: this.commandRevision, name: command.name, description: command.description,
-            argumentHint: command.argumentHint, kind: command.kind, disabled: !!command.disabled || !this.controls.command || !(state.canQueue && this.controls.enqueue || state.canSend && !state.pending)}))};
+            argumentHint: command.argumentHint, kind: command.kind,
+            execution: command.execution,
+            disabled: !!command.disabled || !(command.execution === 'query' && state.canQueryCommand ? this.controls.queryCommand : this.controls.command) || !this.available(command, state)}))};
+    }
+    resolve(name: string): ConversationSlashCommand | undefined {
+        const command = this.commands.find(command => command.name === name);
+        return command ? {...command} : undefined;
+    }
+    private available(command: ConversationSlashCommand, state: ConversationSnapshot): boolean {
+        if (command.execution === 'query') return !!(state.canQueryCommand && this.controls.queryCommand) || (state.canCommand ?? state.canSend) && !state.pending;
+        return !!(state.canQueue && this.controls.enqueue) || state.canSend && !state.pending;
     }
     compose(state: ConversationSnapshot, contributions: readonly CommandCatalog[] = []): readonly ComposerCommand[] {
         return composeCommandCatalogs([...contributions, this.catalog(state)]);

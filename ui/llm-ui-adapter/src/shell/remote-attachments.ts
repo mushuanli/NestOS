@@ -16,7 +16,7 @@ export async function prepareRemoteAttachments(files: File[], allowed: Array<'te
         if (kind === 'image') content = image(bytes, file.type);
         else {
             if (bytes.byteLength > 64 * 1024) throw new Error(t('harness.attachmentCapacity'));
-            try { content = new TextDecoder('utf-8', {fatal: true}).decode(bytes); } catch { throw new Error(t('harness.attachmentType')); }
+            try { content = new TextDecoder('utf-8', {fatal: true, ignoreBOM: true}).decode(bytes); } catch { throw new Error(t('harness.attachmentType')); }
             if (/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/.test(content) || file.type && !file.type.startsWith('text/') && !['application/json', 'application/xml'].includes(file.type)) throw new Error(t('harness.attachmentType'));
         }
         total += new TextEncoder().encode(content).byteLength;

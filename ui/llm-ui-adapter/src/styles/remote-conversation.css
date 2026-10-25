@@ -32,3 +32,13 @@
 .remote-conversation__branch-create button:disabled { opacity: .5; cursor: default; }
 
 .llm-ui-search-hit { outline: 2px solid var(--llm-primary-color, #6366f1); outline-offset: 2px; }
+
+.native-command-output { display: grid; gap: 8px; margin-block: 8px; padding: 10px; border: 1px solid var(--llm-border-color, #e5e7eb); border-radius: 6px; }
+.native-command-output p { margin: 0; font-size: .85rem; overflow-wrap: anywhere; }
+.native-command-output__actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.native-command-output__actions button { min-height: 36px; padding: 6px 10px; border: 1px solid var(--llm-border-color, #e5e7eb); border-radius: 4px; color: var(--llm-text-primary); background: var(--llm-bg-primary); font: inherit; cursor: pointer; }
+.native-command-output__actions button:disabled { opacity: .6; cursor: default; }
+.native-command-output__body { min-width: 0; }
+.native-command-output__body pre { max-height: 60vh; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; margin-block: 0 8px; }
+.native-result-repair { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.native-result-repair[hidden] { display: none; }

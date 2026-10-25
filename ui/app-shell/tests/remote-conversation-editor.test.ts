@@ -19,6 +19,72 @@ function setup(options: EditorOptions = {}) {
     const host=document.createElement('div');document.body.append(host);
     const editor=new RemoteConversationEditor(host,peer,{title:'Server · Project · Codex', ...options});return {editor,peer,host};
 }
+it.each([false, true])('passes attachment-only input unchanged to the native port (queued=%s)', async queued => {
+    const {editor, peer, host} = setup();
+    const capable = {...state, attachments: ['text' as const], ...(queued ? {canQueue: true} : {})};
+    vi.mocked(peer.read).mockResolvedValue(capable);
+    peer.send = vi.fn(async () => ({...capable, submittedTurnId: 'file-turn'}));
+    if (queued) peer.enqueue = vi.fn(async (_text, _files, _selection, id) => ({...capable, instructionQueue: {
+        revision: 1, paused: false, acceptedIds: [id!], items: [{id: id!, text: '', files: [{name: 'notes.txt'}], createdAt: 1, state: 'pending'}],
+    }}));
+    await editor.init(host);
+    try {
+        const file = new File(['\ufeffNotes'], 'notes.txt', {type: 'text/plain'});
+        Object.defineProperty(file, 'arrayBuffer', {value: async () => new TextEncoder().encode('\ufeffNotes').buffer});
+        await editor.sendText('', [file]);
+        const files = [{kind: 'text', name: 'notes.txt', content: '\ufeffNotes'}];
+        if (queued) {expect(peer.enqueue).toHaveBeenCalledWith('', files, undefined, expect.any(String)); expect(peer.send).not.toHaveBeenCalled();}
+        else expect(peer.send).toHaveBeenCalledWith('', files);
+    } finally {await editor.destroy();}
+});
+
+it('reconciles a query report without querying or settling the unrelated pending input', async () => {
+    const {editor, peer, host} = setup();
+    let current: ConversationSnapshot = {...state, canSend: false, pending: true, pendingQueryReports: ['query'],
+        submission: {id: 'original-input', status: 'pending'}};
+    peer.snapshot = () => current; vi.mocked(peer.read).mockImplementation(async () => current);
+    peer.reconcileQuery = vi.fn(async () => {
+        current = {...current, pendingQueryReports: [], queryReceipts: [{id: 'query', status: 'accepted'}]}; return current;
+    });
+    await editor.init(host);
+    try {
+        expect(host.textContent).toContain(t('harness.queryReportPending'));
+        const button = [...host.querySelectorAll<HTMLButtonElement>('button')].find(button => button.textContent?.includes(t('harness.reconcile')))!;
+        expect(button.disabled).toBe(false); button.click();
+        await vi.waitFor(() => expect(peer.reconcileQuery).toHaveBeenCalledWith('query'));
+        expect(peer.reconcile).not.toHaveBeenCalled(); expect(current.submission).toEqual({id: 'original-input', status: 'pending'});
+    } finally {await editor.destroy();}
+});
+it('runs a read-only command while a send reply hangs without replacing the pending submission or newer input', async () => {
+    const {editor, peer, host} = setup(); let changed!: () => void, finish!: (value: ConversationSnapshot) => void;
+    const command = {name: 'session:status', description: 'State', kind: 'action' as const, execution: 'query' as const, revision: 'v1'};
+    let current: ConversationSnapshot = {...state, supportsSlashCommands: true, slashCommands: [command], canQueryCommand: true};
+    peer.snapshot = () => current; peer.subscribe = listener => {changed = listener; return () => {};};
+    peer.commands = vi.fn(async () => [command]); vi.mocked(peer.read).mockImplementation(async () => current);
+    vi.mocked(peer.send).mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+    peer.queryCommand = vi.fn(async (_name, _args, operationId) => {
+        current = {...current, queryReceipts: [{id: operationId!, status: 'accepted'}],
+            messages: [...current.messages, {id: `command:${operationId}`, role: 'system', text: 'Observed status'}]}; return current;
+    });
+    await editor.init(host); const send = vi.spyOn(editor, 'sendText');
+    const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+    const button = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
+    input.value = 'Original'; input.dispatchEvent(new Event('input')); button.click();
+    await vi.waitFor(() => expect(peer.send).toHaveBeenCalledOnce());
+    const sending = send.mock.results[0].value;
+    let newerInput = false;
+    try {
+        await vi.waitFor(() => expect(peer.send).toHaveBeenCalledOnce());
+        current = {...current, canSend: false, pending: true}; changed();
+        input.value = '/session:status'; input.dispatchEvent(new Event('input'));
+        await vi.waitFor(() => expect(button.disabled).toBe(false)); button.click();
+        await vi.waitFor(() => expect(peer.queryCommand).toHaveBeenCalledOnce());
+        await send.mock.results[1].value;
+        expect(peer.queryCommand).toHaveBeenCalledOnce(); expect(peer.send).toHaveBeenCalledOnce();
+        expect(host.textContent).toContain('Observed status'); expect(input.value).toBe('');
+        input.value = 'Keep newer input'; input.dispatchEvent(new Event('input')); newerInput = true;
+    } finally {finish(current); await sending.catch(() => {}); if (newerInput) expect(host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!.value).toBe('Keep newer input'); await editor.destroy();}
+});
 it('exposes a branch button under native prompts and preserves the draft when branching from the latest turn', async () => {
     const navigate = vi.fn(), {editor, peer, host} = setup({onConversationSession: navigate});
     const current = {...branchState(), draft: 'Unsent follow-up'};
@@ -46,6 +112,20 @@ it('requires explicit confirmation before substituting the latest turn for an ol
         expect(peer.fork).not.toHaveBeenCalled();
         button.click(); document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
         await vi.waitFor(() => expect(peer.fork).toHaveBeenCalledOnce());
+    } finally {await editor.destroy();}
+});
+
+it('keeps a failed checkpoint branch visible after reopening while preserving the original conversation and draft', async () => {
+    const navigate = vi.fn(), {editor, peer, host} = setup({onConversationSession: navigate});
+    const code = 'HARNESS_CHECKPOINT_BOUNDARY_MISMATCH';
+    vi.mocked(peer.read).mockResolvedValue({...branchState(), forkSupport: 'turn', draft: 'Keep my next input', forkFailure: {
+        requestId: 'fork-request', sourceSessionId: 's', sessionId: 'unverified-branch', turnId: 'turn-one', verified: false, code,
+    }});
+    await editor.init(host);
+    try {
+        expect(host.textContent).toContain(t('branch.checkpointFailed', {code, id: 'unverified-branch'}));
+        expect(host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')?.value).toBe('Keep my next input');
+        expect(navigate.mock.calls).toEqual([['s']]); expect(peer.send).not.toHaveBeenCalled();
     } finally {await editor.destroy();}
 });
 it('reports unsupported native branching and retains input without dispatching a prompt', async () => {
@@ -1112,6 +1192,101 @@ function composerStorage(peer: ConversationControls) {
     peer.readComposerAsset = async id => assets.get(id)!;
     return () => stored;
 }
+it('keeps acceptance when a subscription clears the composer before the send reply arrives', async () => {
+    const {editor, peer, host} = setup(); const stored = composerStorage(peer);
+    let notify = () => {}; let current = state;
+    peer.subscribe = listener => {notify = listener; return () => {};}; peer.snapshot = () => current;
+    peer.send = vi.fn(async (_text, _files, _selection, id) => {
+        current = {...state, submission: {id: id!, status: 'accepted', turnId: 'confirmed'}, submittedTurnId: 'confirmed'};
+        notify();
+        await vi.waitFor(() => expect(JSON.parse(stored().data).remoteSubmission).toBeUndefined());
+        return current;
+    });
+    await editor.init(host);
+    try {
+        await expect(editor.sendText('Accepted before reply')).resolves.toBeUndefined();
+        expect(peer.send).toHaveBeenCalledOnce();
+        expect(host.textContent).not.toContain(t('chat.submission.unknown'));
+        expect(host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(false);
+    } finally {await editor.destroy();}
+});
+it('queues native follow-ups while running and edits them through the shared queue view', async () => {
+    const {editor, peer, host} = setup(); composerStorage(peer);
+    const running: ConversationSnapshot = {...state, canSend: false, canQueue: true, canInterrupt: true, active: true,
+        instructionQueue: {revision: 1, paused: false, acceptedIds: [], items: []}};
+    vi.mocked(peer.read).mockResolvedValue(running);
+    peer.enqueue = vi.fn(async (text, _files, _selection, id) => ({...running, instructionQueue: {revision: 2, paused: false,
+        acceptedIds: [id!], items: [{id: id!, text, files: [], createdAt: 1, state: 'pending'}]}}));
+    peer.editInstructionQueue = vi.fn(async edit => ({...running, instructionQueue: {revision: 3, paused: false, acceptedIds: [],
+        items: [{id: 'updated', text: edit.action === 'update' ? edit.text : '', files: [], createdAt: 1, state: 'pending'}]}}));
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        input.value = 'Follow-up'; input.dispatchEvent(new Event('input', {bubbles: true}));
+        const send = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
+        expect(send.style.display).toBe('flex'); expect(send.disabled).toBe(false); send.click();
+        await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(input.value).toBe(''));
+        expect(peer.send).not.toHaveBeenCalled(); expect(host.textContent).not.toContain(t('chat.submission.unknown'));
+        host.querySelector<HTMLButtonElement>('[data-action="edit"]')!.click();
+        const edit = host.querySelector<HTMLTextAreaElement>('.llm-instruction-queue__editor')!;
+        edit.value = 'Revised follow-up'; edit.dispatchEvent(new Event('input', {bubbles: true}));
+        host.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+        await vi.waitFor(() => expect(peer.editInstructionQueue).toHaveBeenCalledWith(expect.objectContaining({action: 'update', text: 'Revised follow-up', expectedRevision: 2})));
+    } finally {await editor.destroy();}
+});
+
+it.each([false, true])('releases the input after native admission while its RPC reply stays pending (composer=%s)', async persistent => {
+    const {editor, peer, host} = setup(); if (persistent) composerStorage(peer);
+    let current: ConversationSnapshot = {...state, canSend: false, canQueue: true,
+        instructionQueue: {revision: 0, paused: false, acceptedIds: [], items: []}};
+    const listeners = new Set<() => void>(); let finish!: (state: ConversationSnapshot) => void;
+    let original: ConversationSnapshot | undefined, replied = false;
+    peer.snapshot = () => current; vi.mocked(peer.read).mockImplementation(async () => current);
+    peer.subscribe = listener => {listeners.add(listener); return () => {listeners.delete(listener);};};
+    peer.enqueue = vi.fn(async (text, _files, _selection, id) => {
+        current = {...current, instructionQueue: {...current.instructionQueue!, revision: current.instructionQueue!.revision + 1,
+            acceptedIds: [...current.instructionQueue!.acceptedIds, id!], items: [...current.instructionQueue!.items,
+                {id: id!, text, files: [], createdAt: 1, state: 'pending'}]}};
+        for (const listener of [...listeners]) listener();
+        if (!original) {original = current; const late = await new Promise<ConversationSnapshot>(resolve => {finish = resolve;}); replied = true; return late;}
+        return current;
+    });
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        const send = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
+        const type = (text: string) => {input.value = text; input.dispatchEvent(new Event('input', {bubbles: true}));};
+        type('First'); send.click(); await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(input.value).toBe(''));
+        expect(replied).toBe(false); expect(send.disabled).toBe(false);
+        type('Second'); send.click(); await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(input.value).toBe(''));
+        type('Third draft'); finish(original!); await new Promise(resolve => setTimeout(resolve, 0));
+        expect(input.value).toBe('Third draft'); expect(send.disabled).toBe(false);
+        expect(peer.send).not.toHaveBeenCalled();
+    } finally {finish?.(current); await editor.destroy();}
+});
+it('sends declared state queries immediately while serial commands join the native queue', async () => {
+    const {editor,peer,host} = setup(); composerStorage(peer);
+    const catalog = [{name:'session:status',description:'State',kind:'action' as const,execution:'query' as const,id:'state',revision:'one'},
+        {name:'compact',description:'Compact',kind:'action' as const,execution:'serial' as const,revision:'two'}];
+    const running: ConversationSnapshot = {...state,canSend:false,canCommand:true,canQueue:true,active:true,canInterrupt:true,
+        supportsSlashCommands:true,instructionQueue:{revision:0,paused:false,acceptedIds:[],items:[]}};
+    vi.mocked(peer.read).mockResolvedValue(running); peer.commands = vi.fn(async () => catalog);
+    peer.command = vi.fn(async (_name,_args,_selection,_text,id) => ({...running,submission:{id:id!,status:'accepted'}}));
+    peer.enqueue = vi.fn(async (text,_files,_selection,id) => ({...running,instructionQueue:{revision:1,paused:false,acceptedIds:[id!],
+        items:[{id:id!,text,files:[],createdAt:1,state:'pending'}]}}));
+    peer.editInstructionQueue = vi.fn(async () => running);
+    await editor.init(host);
+    try {
+        await editor.sendText('/session:status');
+        expect(peer.command).toHaveBeenCalledWith('session:status','',undefined,'/session:status',expect.any(String),
+            {id:'state',revision:'one',kind:'action',execution:'query'});
+        expect(peer.enqueue).not.toHaveBeenCalled();
+        await editor.sendText('/compact'); expect(peer.enqueue).toHaveBeenCalledOnce(); expect(peer.send).not.toHaveBeenCalled();
+    } finally {await editor.destroy();}
+});
 it.each(['accepted', 'rejected', 'unavailable'] as const)('queries the exact submission after Load failed and the receipt is %s', async outcome => {
     const {editor, peer, host} = setup(), stored = composerStorage(peer);
     vi.mocked(peer.send).mockRejectedValue(new TypeError('Load failed'));
@@ -1221,60 +1396,26 @@ it('offers an explicit draft reload after a CAS conflict and permits saving agai
     } finally {await editor.destroy();}
 });
 
-it('queues native follow-ups while running and edits them through the shared queue view', async () => {
-    const {editor, peer, host} = setup(); composerStorage(peer);
-    const running: ConversationSnapshot = {...state, canSend: false, canQueue: true, canInterrupt: true, active: true,
-        instructionQueue: {revision: 1, paused: false, acceptedIds: [], items: []}};
-    vi.mocked(peer.read).mockResolvedValue(running);
-    peer.enqueue = vi.fn(async (text, _files, _selection, id) => ({...running, instructionQueue: {revision: 2, paused: false,
-        acceptedIds: [id!], items: [{id: id!, text, files: [], createdAt: 1, state: 'pending'}]}}));
-    peer.editInstructionQueue = vi.fn(async edit => ({...running, instructionQueue: {revision: 3, paused: false, acceptedIds: [],
-        items: [{id: 'updated', text: edit.action === 'update' ? edit.text : '', files: [], createdAt: 1, state: 'pending'}]}}));
-    await editor.init(host);
-    try {
-        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
-        input.value = 'Follow-up'; input.dispatchEvent(new Event('input', {bubbles: true}));
-        const send = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
-        expect(send.style.display).toBe('flex'); expect(send.disabled).toBe(false); send.click();
-        await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledOnce());
-        await vi.waitFor(() => expect(input.value).toBe(''));
-        expect(peer.send).not.toHaveBeenCalled(); expect(host.textContent).not.toContain(t('chat.submission.unknown'));
-        host.querySelector<HTMLButtonElement>('[data-action="edit"]')!.click();
-        const edit = host.querySelector<HTMLTextAreaElement>('.llm-instruction-queue__editor')!;
-        edit.value = 'Revised follow-up'; edit.dispatchEvent(new Event('input', {bubbles: true}));
-        host.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
-        await vi.waitFor(() => expect(peer.editInstructionQueue).toHaveBeenCalledWith(expect.objectContaining({action: 'update', text: 'Revised follow-up', expectedRevision: 2})));
-    } finally {await editor.destroy();}
-});
-
-it.each([false, true])('releases the input after native admission while its RPC reply stays pending (composer=%s)', async persistent => {
-    const {editor, peer, host} = setup(); if (persistent) composerStorage(peer);
-    let current: ConversationSnapshot = {...state, canSend: false, canQueue: true,
-        instructionQueue: {revision: 0, paused: false, acceptedIds: [], items: []}};
-    const listeners = new Set<() => void>(); let finish!: (state: ConversationSnapshot) => void;
-    let original: ConversationSnapshot | undefined, replied = false;
-    peer.snapshot = () => current; vi.mocked(peer.read).mockImplementation(async () => current);
-    peer.subscribe = listener => {listeners.add(listener); return () => {listeners.delete(listener);};};
-    peer.enqueue = vi.fn(async (text, _files, _selection, id) => {
-        current = {...current, instructionQueue: {...current.instructionQueue!, revision: current.instructionQueue!.revision + 1,
-            acceptedIds: [...current.instructionQueue!.acceptedIds, id!], items: [...current.instructionQueue!.items,
-                {id: id!, text, files: [], createdAt: 1, state: 'pending'}]}};
-        for (const listener of [...listeners]) listener();
-        if (!original) {original = current; const late = await new Promise<ConversationSnapshot>(resolve => {finish = resolve;}); replied = true; return late;}
-        return current;
+it('keeps stop and control reconciliation usable while the original send reply is suspended', async () => {
+    const {editor, peer, host} = setup(); let changed!: () => void, finish!: (value: ConversationSnapshot) => void;
+    let current = state;
+    peer.snapshot = () => current; peer.subscribe = listener => {changed = listener; return () => {};};
+    vi.mocked(peer.read).mockImplementation(async () => current);
+    vi.mocked(peer.send).mockImplementation(() => new Promise(resolve => {finish = resolve;}));
+    peer.reconcileControl = vi.fn(async () => current);
+    vi.mocked(peer.interrupt).mockImplementation(async () => {
+        current = {...current, canInterrupt: false, controls: [{operationId: 'stop', sessionId: 's', turnId: 't', receipt: 'unknown', effect: 'unconfirmed'}]}; return current;
     });
-    await editor.init(host);
+    await editor.init(host); const sending = editor.commands.sendMessage({text: 'Original'});
     try {
-        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
-        const send = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
-        const type = (text: string) => {input.value = text; input.dispatchEvent(new Event('input', {bubbles: true}));};
-        type('First'); send.click(); await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledOnce());
-        await vi.waitFor(() => expect(input.value).toBe(''));
-        expect(replied).toBe(false); expect(send.disabled).toBe(false);
-        type('Second'); send.click(); await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledTimes(2));
-        await vi.waitFor(() => expect(input.value).toBe(''));
-        type('Third draft'); finish(original!); await new Promise(resolve => setTimeout(resolve, 0));
-        expect(input.value).toBe('Third draft'); expect(send.disabled).toBe(false);
-        expect(peer.send).not.toHaveBeenCalled();
-    } finally {finish?.(current); await editor.destroy();}
+        await vi.waitFor(() => expect(peer.send).toHaveBeenCalledOnce());
+        current = {...current, canSend: false, canInterrupt: true, active: true, pending: true}; changed();
+        const stop = host.querySelector<HTMLButtonElement>('.llm-input__btn--stop')!;
+        await vi.waitFor(() => expect(stop.disabled).toBe(false)); stop.click();
+        await vi.waitFor(() => expect(peer.interrupt).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(host.textContent).toContain(t('harness.controlUnknown')));
+        const reconcile = Array.from(host.querySelectorAll<HTMLButtonElement>('button')).find(button => button.textContent?.includes(t('harness.reconcile')));
+        expect(reconcile).toBeDefined(); expect(reconcile!.disabled).toBe(false); reconcile!.click();
+        await vi.waitFor(() => expect(peer.reconcileControl).toHaveBeenCalledOnce());
+    } finally {finish(current); await sending.catch(() => {}); await editor.destroy();}
 });

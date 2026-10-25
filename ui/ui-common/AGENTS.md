@@ -89,3 +89,5 @@ EditorOptions.mountSettings 让宿主挂载业务偏好，返回 isDirty/flush/d
 - SessionDraftMaterialization.createEditor 是 UI 内部的显式控制器工厂；宿主准备 EditorOptions 后调用它，保持视图所有权，不经应用 RPC 传输 DOM 或工厂。
 
 IEditor 的 captureRecovery/restoreRecovery/suspendForRecovery 为显式本地视图恢复契约，不能提交操作。BaseSettingsEditor 的表单恢复需子类显式开启并交接额外模型状态；表单值（包括密钥）仅在内存中交接，不写浏览器存储、不记录日志，恢复不派发 input/change 事件或自动保存。不支持的可编辑表单保留旧页并说明原因。
+
+ConversationControls 仅描述宿主能力与投影，不拥有原生 SDK。查询目录、独立控制回执和输出引用分别表达；结果可读性、控制已接纳和实际停止不可互相替代。

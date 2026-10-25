@@ -6,10 +6,130 @@ import { ChatProjection } from './projection';
 import {NativeComposerCapabilities} from './native-composer';
 
 vi.mock('@itookit/llm-ui', async () => ({ ...(await vi.importActual<typeof import('@itookit/llm-ui')>('@itookit/llm-ui')), createChatView: vi.fn() }));
+it('reconciles query reports through the read-only owner without consulting native mutation receipts', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    await operations.register({context: {operationId: 'query', viewId: 'old'}, conversationId: 'native', kind: 'command',
+        input: {execution: 'query', kind: 'action'}, status: 'unknown'});
+    host.controls.reconcileQuery = vi.fn(async () => host.state());
+    const binding = await createNativeChatBinding({...host.options, operations});
+    expect(await binding.actions.reconcile!('query')).toMatchObject({status: 'unknown', operationId: 'query'});
+    host.emit({queryReceipts: [{id: 'query', status: 'accepted'}]});
+    expect(await binding.actions.reconcile!('query')).toMatchObject({status: 'accepted', operationId: 'query'});
+    expect(host.reconcile).not.toHaveBeenCalled(); expect(host.controls.reconcileQuery).toHaveBeenCalledTimes(2); binding.dispose();
+});
+it('queries a pending native submission through the independent port and projects only its durable query receipt', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    const descriptor = {name: 'session:status', description: 'State', kind: 'action' as const, execution: 'query' as const, revision: 'native-v1'};
+    host.controls.commands = vi.fn(async () => [descriptor]); host.controls.command = vi.fn();
+    host.emit({supportsSlashCommands: true, slashCommands: [descriptor], canSend: false, canCommand: false, canQueryCommand: true,
+        pending: true, submission: {id: 'original', status: 'pending'}});
+    host.controls.queryCommand = vi.fn(async (_name, _args, operationId) => {
+        host.emit({queryReceipts: [{id: operationId!, status: 'accepted'}], messages: [{id: `command:${operationId}`, role: 'system', text: 'Observed state'}]});
+        return host.state();
+    });
+    const binding = await createNativeChatBinding({...host.options, operations});
+    const command = binding.source.getSnapshot().commands![0];
+    vi.mocked(host.controls.commands!).mockRejectedValue(new Error('Native directory is blocked'));
+    expect(command.disabled).toBe(false);
+    const context = {operationId: 'read-state', viewId: binding.source.getSnapshot().viewId};
+    const input = {target: {id: command.id, expectedRevision: command.revision}, kind: 'action' as const, text: '/session:status', arguments: ''};
+    await operations.register({context, conversationId: 'native', kind: 'command', input, status: 'submitting'});
+    expect(await binding.actions.command!(input, context)).toMatchObject({status: 'accepted', operationId: 'read-state'});
+    expect(host.controls.queryCommand).toHaveBeenCalledWith(descriptor.name, '', 'read-state', descriptor);
+    expect(host.controls.command).not.toHaveBeenCalled(); expect(host.state().submission).toEqual({id: 'original', status: 'pending'});
+    expect(binding.source.getSnapshot().operationReceipts).toContainEqual(expect.objectContaining({status: 'accepted', operationId: 'read-state'}));
+    expect(binding.source.getSnapshot().messages[0].role).toBe('system'); binding.dispose();
+});
+it('keeps input available while showing that only read-only native commands were discovered', async () => {
+    const host = fixture(); host.emit({commandCatalogObservation: {complete: false, code: 'DSH_SESSION_NOT_ATTACHED'}});
+    const binding = await createNativeChatBinding(host.options);
+    expect(binding.source.getSnapshot().allowed).toContain('send');
+    expect(binding.source.getSnapshot().error).toMatchObject({code: 'DSH_SESSION_NOT_ATTACHED'});
+    host.emit({commandCatalogObservation: {complete: true}});
+    expect(binding.source.getSnapshot().error).toBeUndefined(); binding.dispose();
+});
+
+it('refreshes the native command directory after explicit ownership changes', async () => {
+    const observation: NonNullable<ConversationSnapshot['observation']> = {execution: 'idle', scope: 'external', source: 'history',
+        observedAt: Date.now(), connection: 'online', stale: false, receiptUnknown: false};
+    const host = fixture(); host.emit({supportsSlashCommands: true, observation});
+    host.controls.commands = vi.fn(async () => [{name: 'session:status', description: 'State', kind: 'action' as const}]);
+    const capabilities = new NativeComposerCapabilities(host.controls);
+    await capabilities.load(host.state()); await capabilities.load(host.state());
+    expect(host.controls.commands).toHaveBeenCalledOnce();
+    host.emit({observation: {...observation, scope: 'controlled'}});
+    await capabilities.load(host.state()); expect(host.controls.commands).toHaveBeenCalledTimes(2); capabilities.dispose();
+});
 function deferred<T>() {
     let resolve!: (value: T) => void;
     const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve };
 }
+it('rejects structured arguments when the native target has no declared mapping', async () => {
+    const host = fixture(); host.controls.enqueue = vi.fn();
+    const binding = await createNativeChatBinding(host.options);
+    expect(await binding.actions.send!({text: 'Original', attachments: [], input: {targetId: 'native',
+        signature: {id: 'flow', revision: 1, digest: 'one'}, values: {count: 0}}},
+        {operationId: 'unsupported', viewId: binding.source.getSnapshot().viewId}))
+        .toMatchObject({status: 'rejected', code: 'UNSUPPORTED_INPUT'});
+    expect(host.controls.enqueue).not.toHaveBeenCalled(); binding.dispose();
+});
+it('does not associate another conversation or an action command with the current user turn', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    for (const [operationId, conversationId, kind, input] of [
+        ['other', 'another-conversation', 'send', {}], ['compact', 'native', 'command', {kind: 'action'}],
+    ] as const) {
+        await operations.register({context: {operationId, viewId: 'old'}, conversationId, kind, input, status: 'submitting'});
+        await operations.settle({status: 'accepted', operationId, submissionRef: 'same-turn'});
+    }
+    host.emit({messages: [{id: 'user', role: 'user', text: 'Original input', turnId: 'same-turn'}]});
+    const binding = await createNativeChatBinding({...host.options, operations});
+    expect(binding.source.getSnapshot().messages[0].submissionId).toBeUndefined(); binding.dispose();
+});
+it('accepts native queued input during an active turn and preserves its history association after draining', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    host.emit({canQueue: true, canSend: false, active: true});
+    host.controls.enqueue = vi.fn(async (_text, _files, _selection, id) => {
+        host.emit({instructionQueue: {revision: 1, paused: false, acceptedIds: [id!], submissions: [{id: id!}], items: []}});
+        return {...host.state(), submission: {id: id!, status: 'accepted' as const}};
+    });
+    const binding = await createNativeChatBinding({...host.options, operations});
+    const context = {operationId: 'queued-input', viewId: binding.source.getSnapshot().viewId};
+    await operations.register({context, conversationId: 'native', kind: 'send', input: {}, status: 'submitting'});
+    expect(binding.source.getSnapshot().allowed).toContain('send');
+    const result = await binding.actions.send!({text: 'Next', attachments: []}, context);
+    expect(result).toMatchObject({status: 'accepted', operationId: 'queued-input'});
+    expect(host.controls.enqueue).toHaveBeenCalledWith('Next', [], undefined, 'queued-input');
+    expect(binding.source.getSnapshot().messages).toEqual([]);
+    expect(binding.source.getSnapshot().operationReceipts).toContainEqual(expect.objectContaining({status: 'accepted', operationId: 'queued-input'}));
+    await operations.settle(result);
+    host.emit({instructionQueue: {revision: 4, paused: false, acceptedIds: ['queued-input'],
+        submissions: [{id: 'queued-input', turnId: 'native-turn'}], items: []},
+        messages: [{id: 'native-user', role: 'user', text: 'Next', turnId: 'native-turn'}]});
+    expect(binding.source.getSnapshot().messages[0]).toMatchObject({id: 'native-user', submissionId: 'queued-input'});
+    expect(binding.source.getSnapshot().operationReceipts).toContainEqual(expect.objectContaining({observedUserMessageId: 'native-user'}));
+    binding.dispose();
+});
+
+it('routes declared state queries immediately and serial commands into the native queue', async () => {
+    const host = fixture(); host.emit({supportsSlashCommands: true, canQueue: true, canCommand: true, canSend: false});
+    host.controls.commands = vi.fn(async () => [
+        {name: 'compact', description: 'Compact', kind: 'action' as const, execution: 'serial' as const, id: 'compact-definition', revision: 'one'},
+        {name: 'session:status', description: 'State', kind: 'action' as const, execution: 'query' as const, id: 'status-definition', revision: 'one'},
+    ]);
+    host.controls.enqueue = vi.fn(async (_text, _files, _selection, id) => ({...host.state(), submission: {id: id!, status: 'accepted' as const}}));
+    host.controls.command = vi.fn(async () => ({...host.state(), submission: {id: 'query', status: 'accepted' as const}}));
+    const binding = await createNativeChatBinding(host.options);
+    for (const [name, operationId] of [['compact', 'serial'], ['session:status', 'query']]) {
+        const target = binding.source.getSnapshot().commands!.find(command => command.commandId === name)!;
+        expect(target.disabled).toBe(false);
+        expect(await binding.actions.command!({target: {id: target.id, expectedRevision: target.revision},
+            kind: 'action', text: `/${name}`, arguments: ''}, {operationId, viewId: binding.source.getSnapshot().viewId})).toMatchObject({status: 'accepted'});
+    }
+    expect(host.controls.enqueue).toHaveBeenCalledOnce(); expect(host.controls.enqueue).toHaveBeenCalledWith('/compact', [], undefined, 'serial');
+    expect(host.controls.command).toHaveBeenCalledWith('session:status', '', undefined, '/session:status', 'query',
+        {id: 'status-definition', revision: 'one', kind: 'action', execution: 'query'});
+    binding.dispose();
+});
 function fixture() {
     let state: ConversationSnapshot = { title: 'Native', messages: [], requests: [], canSend: true,
         canInterrupt: false, canRespond: true, pending: false, disconnected: false, gap: false };
@@ -44,7 +164,7 @@ it('projects model capabilities and forwards validated selections without using 
     expect(selectors[1].variants!.values.native.choices).toContainEqual({id: 'high', label: 'High'});
     const context = {operationId: 'send', viewId: binding.source.getSnapshot().viewId};
     expect(await binding.actions.send!({text: 'Prompt', attachments: [], selection: {modelId: 'native', reasoningEffort: 'high'}}, context)).toMatchObject({status: 'accepted'});
-    expect(host.controls.send).toHaveBeenCalledWith('Prompt', [], {modelId: 'native', reasoningEffort: 'high'}, context.operationId);
+    expect(host.controls.send).toHaveBeenCalledWith('Prompt', [], {modelId: 'native', reasoningEffort: 'high'}, 'send');
     const invalid = await binding.actions.send!({text: 'Prompt', attachments: [], selection: {modelId: 'native', reasoningEffort: 'invalid'}}, context);
     expect(invalid).toMatchObject({status: 'rejected', code: 'INVALID_SELECTION'}); expect(host.controls.send).toHaveBeenCalledOnce(); binding.dispose();
 });
@@ -75,7 +195,7 @@ it('revalidates native commands without rereading history or unrelated model met
     const context = {operationId: 'compact', viewId: binding.source.getSnapshot().viewId};
     expect(await binding.actions.command!(input, context)).toMatchObject({status: 'accepted'});
     expect(host.read).not.toHaveBeenCalled(); expect(host.controls.models).not.toHaveBeenCalled();
-    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact ', context.operationId);
+    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact ', 'compact');
     vi.mocked(host.controls.commands!).mockRejectedValueOnce(new Error('Directory unavailable'));
     expect(await binding.actions.command!(input, context)).toMatchObject({status: 'rejected', code: 'DIRECTORY_UNAVAILABLE'});
     expect(host.controls.command).toHaveBeenCalledOnce(); binding.dispose();
@@ -119,7 +239,7 @@ it('aggregates host and harness commands with distinct routes and keeps UI comma
     const run = (command: typeof catalog[number]) => binding.actions.command!({target: {id: command.id, expectedRevision: command.revision}, kind: command.kind,
         text: '/compact', arguments: ''}, context);
     await run(catalog.find(command => command.source.id === 'harness')!);
-    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact', context.operationId);
+    expect(host.controls.command).toHaveBeenCalledWith('compact', '', undefined, '/compact', 'command');
     host.emit({canSend: false, disconnected: true}); host.read.mockRejectedValue(new Error('offline'));
     expect(await run(catalog.find(command => command.source.id === 'ui')!)).toMatchObject({status: 'accepted'});
     expect(execute).toHaveBeenCalledWith(expect.objectContaining({target: {id: 'compact', expectedRevision: 0}}), context);
@@ -226,11 +346,25 @@ it('maps immutable native attachments through the host and enforces negotiated k
     const images = {read: vi.fn(async () => new Blob(['Notes'], {type: 'text/plain'}))} as never;
     const binding = await createNativeChatBinding({...host.options, images});
     const context = {operationId: 'with-file', viewId: binding.source.getSnapshot().viewId};
-    expect(await binding.actions.send!({text: 'Read', attachments: [{id: 'asset', name: 'notes.txt', mimeType: 'text/plain'}]}, context)).toMatchObject({status: 'accepted'});
-    expect(host.controls.send).toHaveBeenCalledWith('Read', [{kind: 'text', name: 'notes.txt', content: 'Notes'}], undefined, context.operationId);
+    expect(await binding.actions.send!({text: '', attachments: [{id: 'asset', name: 'notes.txt', mimeType: 'text/plain'}]}, context)).toMatchObject({status: 'accepted'});
+    expect(host.controls.send).toHaveBeenCalledWith('', [{kind: 'text', name: 'notes.txt', content: 'Notes'}], undefined, 'with-file');
     host.emit({attachments: []});
     expect(await binding.actions.send!({text: 'Read', attachments: [{id: 'asset', name: 'notes.txt', mimeType: 'text/plain'}]}, context)).toMatchObject({status: 'rejected', code: 'INVALID_ATTACHMENT'});
     expect(host.controls.send).toHaveBeenCalledTimes(1); binding.dispose();
+});
+
+it('projects a known native input rejection without turning it into an unknown submission', async () => {
+    const host = fixture();
+    host.emit({canQueue: true});
+    host.controls.enqueue = vi.fn(async () => {throw Object.assign(new Error('Native prompt exceeds 128 KiB'), {
+        code: 'EINVAL', remoteCode: 'HARNESS_PROMPT_LIMIT', outcome: 'not-committed',
+    });});
+    const binding = await createNativeChatBinding(host.options);
+    try {
+        expect(await binding.actions.send!({text: 'Large input', attachments: []}, {
+            operationId: 'oversize-input', viewId: binding.source.getSnapshot().viewId,
+        })).toMatchObject({status: 'rejected', operationId: 'oversize-input', code: 'HARNESS_PROMPT_LIMIT', message: expect.stringContaining('128 KiB')});
+    } finally {binding.dispose();}
 });
 
 it('rejects a native attachment read finishing after binding disposal', async () => {
@@ -260,56 +394,39 @@ it('assembles image preprocessing and metadata persistence when creating a nativ
     expect(upload).toHaveBeenCalledTimes(2); expect(saveMetadata).toHaveBeenCalledWith(ref, expect.objectContaining({original: expect.objectContaining({id: 'image.png2'})}));
     view.setActive(false); expect(setActive).toHaveBeenCalledWith(false);
     const closing = view.destroy(); view.setActive(true); expect(setActive).toHaveBeenCalledTimes(1);
-    expect(view.destroy()).toBe(closing); await closing; expect(close).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled(); binding.dispose();
+    expect(view.destroy()).toBe(closing); await closing;
+    expect(close).toHaveBeenCalledOnce(); expect(dispose).not.toHaveBeenCalled(); binding.dispose();
 });
 
-it('does not associate another conversation or an action command with the current user turn', async () => {
+it('routes cancellation through its own frozen native operation while input acceptance is unknown', async () => {
     const host = fixture(), operations = createOperationLedger();
-    for (const [operationId, conversationId, kind, input] of [
-        ['other', 'another-conversation', 'send', {}], ['compact', 'native', 'command', {kind: 'action'}],
-    ] as const) {
-        await operations.register({context: {operationId, viewId: 'old'}, conversationId, kind, input, status: 'submitting'});
-        await operations.settle({status: 'accepted', operationId, submissionRef: 'same-turn'});
-    }
-    host.emit({messages: [{id: 'user', role: 'user', text: 'Original input', turnId: 'same-turn'}]});
+    const observation = {execution: 'running' as const, activeTurnId: 'turn', source: 'events' as const, observedAt: Date.now(), connection: 'online' as const, stale: false, receiptUnknown: true};
+    host.emit({sessionId: 's', canInterrupt: true, pending: true, observation});
+    host.controls.reconcileControl = vi.fn(async () => host.state());
+    host.controls.interrupt = vi.fn(async request => ({...host.state(), controls: [{operationId: request!.operationId!, sessionId: 's', turnId: 'turn', receipt: 'accepted' as const, effect: 'unconfirmed' as const}]}));
     const binding = await createNativeChatBinding({...host.options, operations});
-    expect(binding.source.getSnapshot().messages[0].submissionId).toBeUndefined(); binding.dispose();
+    const context = {viewId: binding.source.getSnapshot().viewId, operationId: 'independent-stop'};
+    await operations.register({context, conversationId: 'native', kind: 'cancel', input: 'turn', status: 'submitting'});
+    expect(binding.source.getSnapshot()).toMatchObject({executionRef: 'turn', allowed: expect.arrayContaining(['cancel'])});
+    expect(await binding.actions.cancel!('turn', context)).toMatchObject({status: 'accepted', operationId: 'independent-stop'});
+    expect(host.controls.interrupt).toHaveBeenCalledWith({sessionId: 's', turnId: 'turn', operationId: 'independent-stop'});
+    expect(binding.source.getSnapshot().operationReceipts).toContainEqual({status: 'accepted', operationId: 'independent-stop', submissionRef: 'turn'});
+    expect(binding.source.getSnapshot().messages).toEqual([]); binding.dispose();
 });
-
-it('accepts native queued input during an active turn and preserves its history association after draining', async () => {
+it('rejects a changed cancel target and reconciles only the dedicated control channel', async () => {
     const host = fixture(), operations = createOperationLedger();
-    host.emit({canQueue: true, canSend: false, active: true});
-    host.controls.enqueue = vi.fn(async (_text, _files, _selection, id) => {
-        host.emit({instructionQueue: {revision: 1, paused: false, acceptedIds: [id!], submissions: [{id: id!}], items: []}});
-        return {...host.state(), submission: {id: id!, status: 'accepted' as const}};
-    });
+    const observation = {execution: 'running' as const, activeTurnId: 'old', source: 'events' as const, observedAt: Date.now(), connection: 'online' as const, stale: false, receiptUnknown: true};
+    host.emit({sessionId: 's', pending: true, canInterrupt: true, observation});
+    host.controls.interrupt = vi.fn();
+    host.controls.reconcileControl = vi.fn(async id => ({...host.state(), controls: [{operationId: id!, sessionId: 's', turnId: 'old', receipt: 'accepted' as const, effect: 'completed' as const}]}));
     const binding = await createNativeChatBinding({...host.options, operations});
-    const context = {operationId: 'queued-input', viewId: binding.source.getSnapshot().viewId};
-    await operations.register({context, conversationId: 'native', kind: 'send', input: {}, status: 'submitting'});
-    expect(binding.source.getSnapshot().allowed).toContain('send');
-    const result = await binding.actions.send!({text: 'Next', attachments: []}, context);
-    expect(result).toMatchObject({status: 'accepted', operationId: 'queued-input'});
-    expect(host.controls.enqueue).toHaveBeenCalledWith('Next', [], undefined, 'queued-input');
-    expect(binding.source.getSnapshot().messages).toEqual([]);
-    expect(binding.source.getSnapshot().operationReceipts).toContainEqual(expect.objectContaining({status: 'accepted', operationId: 'queued-input'}));
-    await operations.settle(result);
-    host.emit({instructionQueue: {revision: 4, paused: false, acceptedIds: ['queued-input'],
-        submissions: [{id: 'queued-input', turnId: 'native-turn'}], items: []},
-        messages: [{id: 'native-user', role: 'user', text: 'Next', turnId: 'native-turn'}]});
-    expect(binding.source.getSnapshot().messages[0]).toMatchObject({id: 'native-user', submissionId: 'queued-input'});
-    expect(binding.source.getSnapshot().operationReceipts).toContainEqual(expect.objectContaining({observedUserMessageId: 'native-user'}));
-    binding.dispose();
-});
-
-
-it('rejects structured arguments when the native target has no declared mapping', async () => {
-    const host = fixture(); host.controls.enqueue = vi.fn();
-    const binding = await createNativeChatBinding(host.options);
-    expect(await binding.actions.send!({text: 'Original', attachments: [], input: {targetId: 'native',
-        signature: {id: 'flow', revision: 1, digest: 'one'}, values: {count: 0}}},
-        {operationId: 'unsupported', viewId: binding.source.getSnapshot().viewId}))
-        .toMatchObject({status: 'rejected', code: 'UNSUPPORTED_INPUT'});
-    expect(host.controls.enqueue).not.toHaveBeenCalled(); binding.dispose();
+    const context = {viewId: binding.source.getSnapshot().viewId, operationId: 'recover-stop'};
+    await operations.register({context, conversationId: 'native', kind: 'cancel', input: 'old', status: 'unknown'});
+    host.emit({observation: {...observation, activeTurnId: 'new'}});
+    expect(await binding.actions.cancel!('old', context)).toMatchObject({status: 'rejected', code: 'STALE_EXECUTION'});
+    expect(host.controls.interrupt).not.toHaveBeenCalled();
+    expect(await binding.actions.reconcile!('recover-stop')).toMatchObject({status: 'accepted', operationId: 'recover-stop'});
+    expect(host.controls.reconcileControl).toHaveBeenCalledWith('recover-stop'); expect(host.reconcile).not.toHaveBeenCalled(); binding.dispose();
 });
 
 it('uses direct native admission for the first turn until queuing is explicitly available', async () => {

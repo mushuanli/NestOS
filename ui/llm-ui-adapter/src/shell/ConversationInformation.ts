@@ -48,6 +48,7 @@ export class ConversationInformation {
         }
         dialog.querySelector('[data-session-info-status]')!.textContent = this.status;
         dialog.querySelector('[data-session-info-observation]')!.textContent = [
+            this.snapshot?.observation?.scope ? t(`harness.scope.${this.snapshot.observation.scope}`) : '',
             this.snapshot?.observation?.rawStatus === 'notLoaded' ? t('harness.unloadedHelp') : '', this.tooltip,
         ].filter(Boolean).join('\n');
         const usage = this.snapshot ? conversationUsage(this.snapshot) : '';

@@ -17,18 +17,6 @@ it('persists inline native draft attachments with CAS and rejects malformed or e
     } finally {await manager.dispose();}
 });
 
-it('bounds and validates persisted command results and draft revisions', async () => {
-    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
-    try {
-        const fs = await manager.openFileSystem('/'), store = new RemoteConversationStore(fs, 'receipts');
-        const record = {draft: '/compact ', draftRevision: 3, commandResults: [{commandId: 'command', output: 'Done', failed: true}]};
-        await store.save(record); expect(await new RemoteConversationStore(fs, 'receipts').load()).toEqual(record);
-        await expect(store.save({...record, draftRevision: -1})).rejects.toMatchObject({code: 'EINVAL'});
-        await expect(store.save({...record, commandResults: Array(65).fill(record.commandResults[0])})).rejects.toMatchObject({code: 'EINVAL'});
-        await expect(store.save({...record, commandResults: [{commandId: '', output: 'Invalid'}]})).rejects.toMatchObject({code: 'EINVAL'});
-    } finally {await manager.dispose();}
-});
-
 it.each([false, true])('recovers the original CAS after an uncertain storage commit (committed: %s)', async committed => {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()});
     try {
@@ -64,6 +52,30 @@ it('refuses to overwrite another writer after a lost storage acknowledgement, in
     } finally {vi.restoreAllMocks(); await manager.dispose();}
 });
 
+it('preserves reconciled control facts when the draft adapter later records native admission', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    try {
+        const fault = interceptConversationTransactions(await manager.openFileSystem('/'));
+        const store = new RemoteConversationStore(fault.fs, 'merge-admission'); await store.save({draft: 'Before'});
+        const controls = [{requestId: 'stop', epoch: 'e', sessionId: 's', turnId: 't', receipt: 'accepted' as const}];
+        fault.transaction.mockImplementationOnce(async (...args) => {await fault.commit(...args); throw new Error('Lost acknowledgement');});
+        await expect(store.save({draft: 'New draft', controls})).rejects.toThrow();
+        await store.submitted('accepted-turn');
+        expect(await new RemoteConversationStore(fault.fs, 'merge-admission').load()).toEqual({draft: 'New draft', controls, submittedTurnId: 'accepted-turn'});
+    } finally {await manager.dispose();}
+});
+
+it('bounds and validates persisted command results and draft revisions', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    try {
+        const fs = await manager.openFileSystem('/'), store = new RemoteConversationStore(fs, 'receipts');
+        const record = {draft: '/compact ', draftRevision: 3, commandResults: [{commandId: 'command', output: 'Done', failed: true}]};
+        await store.save(record); expect(await new RemoteConversationStore(fs, 'receipts').load()).toEqual(record);
+        await expect(store.save({...record, draftRevision: -1})).rejects.toMatchObject({code: 'EINVAL'});
+        await expect(store.save({...record, commandResults: Array(65).fill(record.commandResults[0])})).rejects.toMatchObject({code: 'EINVAL'});
+        await expect(store.save({...record, commandResults: [{commandId: '', output: 'Invalid'}]})).rejects.toMatchObject({code: 'EINVAL'});
+    } finally {await manager.dispose();}
+});
 
 it('preserves reconciled draft metadata when recording native admission', async () => {
     const {manager} = await createVFS({rootBackend: new MemoryBackend()});

@@ -2,6 +2,21 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { observeConversation } from '../src/projects/conversation-view';
 
 const closes: Array<() => Promise<void>> = [];
+it('reads command and model catalogs while the original native send is unresolved', async () => {
+    const {view, source, state} = setup();
+    let finish!: () => void;
+    source.send.mockImplementationOnce(async () => {await new Promise<void>(resolve => {finish = resolve;}); return state;});
+    const commands = vi.fn(async () => [{name: 'session:status'}]), models = vi.fn(async () => ({models: []}));
+    const queryCommand = vi.fn(async () => Object.assign(state, {queryReceipts: [{id: 'query', status: 'accepted'}]}));
+    Object.assign(source, {commands, models, queryCommand});
+    const sending = view.send('Pending input');
+    await vi.waitFor(() => expect(source.send).toHaveBeenCalledOnce());
+    expect(await view.commands!()).toEqual([{name: 'session:status'}]);
+    expect(await view.models!()).toEqual({models: []});
+    expect((await view.queryCommand!('session:status', '', 'query')).queryReceipts).toEqual([{id: 'query', status: 'accepted'}]);
+    expect(queryCommand).toHaveBeenCalledOnce();
+    finish(); await sending;
+});
 afterEach(async () => { await Promise.all(closes.splice(0).map(close => close())); vi.useRealTimers(); });
 function setup() {
     const state = { messages: [{ id: 'first', text: 'stable' }, { id: 'last', text: 'before' }], requests: [], pending: false,
@@ -67,13 +82,13 @@ it('serializes polling and mutations on the same native cursor', async () => {
 it('observes a claimed queue and accepts queue controls while its dispatch reply is pending', async () => {
     vi.useFakeTimers(); const {source, view, state, emit} = setup(); let finish!: () => void;
     Object.assign(state, {instructionQueue: {revision: 1, paused: false, acceptedIds: [], items: [{id: 'first', state: 'dispatching', text: 'First', files: [], createdAt: 0}]}});
-    const enqueue = vi.fn(async () => state), editInstructionQueue = vi.fn(async () => state);
-    Object.assign(source, {enqueue, editInstructionQueue});
+    const enqueue = vi.fn(async () => state), editInstructionQueue = vi.fn(async () => state), reconcileControl = vi.fn(async () => state);
+    Object.assign(source, {enqueue, editInstructionQueue, reconcileControl});
     source.refresh.mockImplementationOnce(async () => {await new Promise<void>(resolve => {finish = resolve;}); return state;});
     view.subscribe(vi.fn()); emit(); await vi.advanceTimersByTimeAsync(20);
     expect(source.refresh).toHaveBeenCalledOnce();
-    await view.enqueue!('Second'); await view.editInstructionQueue!({action: 'pause', expectedRevision: 1});
-    expect(enqueue).toHaveBeenCalledOnce(); expect(editInstructionQueue).toHaveBeenCalledOnce();
+    await view.enqueue!('Second'); await view.editInstructionQueue!({action: 'pause', expectedRevision: 1}); await view.reconcileControl!('cancel');
+    expect(enqueue).toHaveBeenCalledOnce(); expect(editInstructionQueue).toHaveBeenCalledOnce(); expect(reconcileControl).toHaveBeenCalledOnce();
     state.canInterrupt = true; state.messages[1].text = 'Native progress'; emit(); await vi.advanceTimersByTimeAsync(20);
     try {expect(source.refresh).toHaveBeenCalledTimes(2); expect(view.snapshot()).toMatchObject({canInterrupt: true});}
     finally {finish(); await vi.advanceTimersByTimeAsync(0);}

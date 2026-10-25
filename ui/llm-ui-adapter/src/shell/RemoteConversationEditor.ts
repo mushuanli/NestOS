@@ -1,5 +1,6 @@
-import {NativeInstructionQueuePanel} from '../components/NativeInstructionQueuePanel';
+import {nativeCatalogNotice} from '../independent/native-catalog';
 import {awaitNativeAdmission} from '../independent/native-admission';
+import {NativeInstructionQueuePanel} from '../components/NativeInstructionQueuePanel';
 import {ConversationComposer} from './drafts/conversation-composer';
 import type {IChatInputConfig} from '../domain/ports/IChatInputPresenter';
 interface SubmittedInput {text: string; files: File[]; revision: number; config: IChatInputConfig}
@@ -20,6 +21,7 @@ import {nativeBranchCommand, withNativeBranchCommands} from '../commands/native-
 /** Native histories remain remote; this editor only owns a view and input draft. */
 export class RemoteConversationEditor extends BaseSettingsEditor<ConversationControls> {
     private view!: ConversationWorkspaceView;
+    private instructionQueuePanel?: NativeInstructionQueuePanel;
     private branches?: RemoteBranches;
     private historyBranches?: RemoteHistoryBranches;
     private snapshot?: ConversationSnapshot;
@@ -29,6 +31,8 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private releaseUpdates?: () => void;
     private updateTimer?: ReturnType<typeof setTimeout>;
     private working = false;
+    private readonly admissions = new AbortController();
+    private readonly querying = new Set<string>();
     private loadingHistory = false;
     private historyError = '';
     private findingPrompts = false;
@@ -71,6 +75,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             onStartConversationDraft: this.options.onStartConversationDraft ? async input => {
                 await this.flushPendingSave(); await this.options.onStartConversationDraft!(input);
             } : undefined}, {
+            commandOutputs: {readCommandOutput: this.service.readCommandOutput?.bind(this.service), loadCommandOutput: this.service.loadCommandOutput?.bind(this.service)},
             instructionQueue: !!this.service.enqueue,
             send: (text, files) => this.sendText(text, files),
             flushDraft: () => this.flushPendingSave(),
@@ -80,7 +85,17 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             attachments: this.options.readOnly ? undefined : this.service.snapshot?.().attachments,
             stop: () => { void this.runControl(() => this.service.interrupt()).catch(() => {}); },
             refresh: () => { void this.run(() => this.service.read()).catch(() => {}); },
-            reconcile: () => { void this.run(async () => {
+            reconcile: () => {
+                const result = this.snapshot?.resultError;
+                if (result) {void this.run(() => this.service.reconcile(result.operationId)).catch(() => {}); return;}
+                if (this.snapshot?.controls?.some(row => row.receipt === 'unknown') && this.service.reconcileControl) {
+                    void this.runControl(() => this.service.reconcileControl!()).catch(() => {}); return;
+                }
+                const query = this.snapshot?.pendingQueryReports?.[0];
+                if (query && this.service.reconcileQuery) {
+                    void this.runControl(() => this.service.reconcileQuery!(query)).catch(() => {}); return;
+                }
+                void this.run(async () => {
                 const snapshot = this.composer?.submissionId ? await this.service.reconcile(this.composer.submissionId) : await this.service.reconcile();
                 if (!this.composer && this.submission?.state === 'unknown' && !snapshot.pending && !snapshot.submittedTurnId)
                     this.submission = {...this.submission, state: 'failed', error: t('chat.submission.unconfirmed')};
@@ -101,6 +116,13 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.historyBranches = new RemoteHistoryBranches(this.container, this.service, this.options, fork, error => {
             if (!this.closed && this.active) {this.showError(error); Toast.error(escapeHTML(error instanceof Error ? error.message : String(error)));}
         });
+    }
+    private mountInstructionQueue(): void {
+        const element = document.createElement('section'); this.view.status.before(element);
+        this.instructionQueuePanel = new NativeInstructionQueuePanel(element, this.service, snapshot => this.show(snapshot));
+    }
+    private canSubmit(text = this.view.input.getConfig().text): boolean {
+        return !!(this.service.enqueue && this.snapshot?.canQueue || this.snapshot?.canSend || this.snapshot?.canCommand && isCommandInput(text));
     }
     private persistImages(files: File[], resize: import('@itookit/image-parser').ImageResizePolicy): Promise<void> {
         const config = this.view.input.getConfig();
@@ -144,15 +166,22 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             : snapshot.requests.some(r => r.kind === 'input') ? 'waiting-input' : snapshot.active || snapshot.canInterrupt ? 'running' : 'unknown',
             updatedAt: snapshot.updatedAt, connection: snapshot.disconnected ? 'offline' : 'online', stale: snapshot.gap, receiptUnknown: snapshot.pending, source: 'history', observedAt: 0};
         const status = conversationStatus(observation, Date.now(), {inferActivity: false});
+        const forkWarning = snapshot.forkFailure ? t('branch.checkpointFailed', {code: snapshot.forkFailure.code ?? 'UNKNOWN', id: snapshot.forkFailure.sessionId}) : undefined;
+        const control = snapshot.controls?.find(row => row.receipt === 'unknown' || row.receipt === 'accepted' && row.effect === 'unconfirmed');
+        const controlWarning = control ? t(control.receipt === 'unknown' ? 'harness.controlUnknown' : 'harness.controlStopping') : undefined;
+        const queryWarning = snapshot.pendingQueryReports?.length ? t('harness.queryReportPending') : undefined;
+        const resultWarning = snapshot.resultError ? t('harness.resultPending', {code: snapshot.resultError.code}) : undefined;
+        const catalogWarning = nativeCatalogNotice(snapshot)?.message;
         const submission = this.submission;
         if (this.composer?.hasSubmission && !submission && !snapshot.pending) {
             this.view.setStatus(t('harness.unknown'), 'queued'); return;
         }
         const attention = [submission && submission.state !== 'accepted', observation.nativeError, observation.refreshError,
             observation.connection === 'offline', observation.stale, observation.receiptUnknown,
-            snapshot.pending, snapshot.disconnected, snapshot.gap].some(Boolean);
-        this.view.setStatus(submission && submission.state !== 'accepted'
-            ? [t(`chat.submission.${submission.state}`), submission.error].filter(Boolean).join(' ') : status.text,
+            snapshot.pending, snapshot.disconnected, snapshot.gap, forkWarning, controlWarning, queryWarning, catalogWarning, resultWarning].some(Boolean);
+        const text = submission && submission.state !== 'accepted'
+            ? [t(`chat.submission.${submission.state}`), submission.error].filter(Boolean).join(' ') : [status.text, forkWarning].filter(Boolean).join(' · ');
+        this.view.setStatus([text, controlWarning, queryWarning, catalogWarning, resultWarning].filter(Boolean).join(' · '),
             submission?.state === 'failed' ? 'failed' : submission && submission.state !== 'accepted' ? 'queued' : status.indicator,
             {inline: attention, indicator: attention || status.indicator !== 'idle', tooltip: status.tooltip});
     }
@@ -193,6 +222,12 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         }
         this.submittedDraft = undefined;
     }
+    private async reconcileUnpersistedQueue(snapshot: ConversationSnapshot): Promise<void> {
+        if (this.composer || !this.submission || !snapshot.instructionQueue?.acceptedIds.includes(this.submission.id)) return;
+        const draft = this.submittedDraft;
+        if (draft) await this.acceptSubmission(draft.text, draft.files, draft.revision);
+        this.submittedDraft = undefined; this.submission = undefined;
+    }
     private updateControls() {
         this.instructionQueuePanel?.setReadOnly(!!this.options.readOnly);
         this.container.querySelectorAll<HTMLButtonElement>('#llm-btn-refresh')[0]!.disabled = this.working || this.loadingHistory;
@@ -202,15 +237,27 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.view.earlier.hidden = !this.snapshot?.hasEarlier || !this.service.loadEarlier;
         this.view.earlier.disabled = this.working || this.loadingHistory;
         this.view.setHistoryProgress(this.snapshot?.messages.length ?? 0, !!this.snapshot?.hasEarlier, this.loadingHistory, this.historyError);
-        this.view.input.setLoading(!!this.snapshot?.canInterrupt);
+        this.view.input.setLoading(!!this.snapshot?.active || !!this.snapshot?.canInterrupt);
         this.view.input.setAvailability({
             canSend: this.restoredDraft && !this.composer?.hasSubmission && !this.working && this.submission?.state !== 'unknown' && !this.options.readOnly && this.canSubmit(),
-            canInterrupt: !this.working && !this.options.readOnly && !!this.snapshot?.canInterrupt,
+            canQueryCommand: text => !!this.independentQuery(text),
+            canCommand: !this.working && !this.options.readOnly && !!this.snapshot?.canCommand,
+            canInterrupt: !this.options.readOnly && !!this.snapshot?.canInterrupt,
         });
         this.view.input.setNativeModelsAvailable(!!this.snapshot?.supportsModels && !this.options.readOnly);
         this.showComposerConflict();
-        this.view.reconcile.disabled = this.working || !this.snapshot?.pending && this.submission?.state !== 'unknown' && !this.composer?.hasSubmission;
+        this.view.reconcile.disabled = !this.canReconcile();
         if (this.snapshot) renderConversationRequests(this.view.interactions, this.snapshot.requests, async (id, response) => {await this.runControl(() => this.service.respond(id, response));}, !this.options.readOnly && !!this.snapshot.canRespond);
+    }
+    private canReconcile(): boolean {
+        if (this.snapshot?.resultError) return true;
+        if (this.snapshot?.pendingQueryReports?.length && this.service.reconcileQuery) return true;
+        if (this.snapshot?.controls?.some(row => row.receipt === 'unknown') && this.service.reconcileControl) return true;
+        return !this.working && this.hasPendingSubmission();
+    }
+    private hasPendingSubmission(): boolean {
+        return !!(this.snapshot?.instructionQueue?.items.some(item => item.state === 'uncertain') || this.snapshot?.pending
+            || this.submission?.state === 'unknown' || this.composer?.hasSubmission);
     }
     private async loadHistory(): Promise<void> {
         if (this.closed || this.working || this.loadingHistory || !this.snapshot?.hasEarlier || !this.service.loadEarlier) return;
@@ -240,17 +287,19 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     }
     async sendText(text: string, files: File[] = [], nativeSelection?: import('@itookit/ui-common').ConversationModelSelection): Promise<void | false> {
         if (!text.trim() && !files.length) return;
+        const query = this.independentQuery(text);
+        if (query) return this.sendReadOnlyQuery(text, files, query);
         const command = nativeBranchCommand(text);
         if (command) {
             await this.sendBranchCommand(command, text, files); return;
         }
-        if (this.closed || this.working || this.submission?.state === 'unknown' || this.composer?.hasSubmission || this.options.readOnly || !this.canSubmit()) throw new Error(t('harness.remoteBusy'));
+        if (this.closed || this.working || this.submission?.state === 'unknown' || this.composer?.hasSubmission || this.options.readOnly || !this.canSubmit(text)) throw new Error(t('harness.remoteBusy'));
         const selection = nativeSelection ? {...nativeSelection} : this.view.input.getNativeModelSelection();
         const revision = this.view.input.getDraftRevision(), currentText = this.view.input.getConfig().text;
         if (isCommandInput(text) && this.snapshot?.supportsSlashCommands && this.service.command && this.service.commands) {
             const resolved = resolveNativeCommand(text, await this.service.commands());
             if (!resolved) throw new Error(t('harness.commandUnavailable'));
-            if (!(this.service.enqueue && this.snapshot.canQueue)) {
+            if (resolved.command.execution === 'query' || !(this.service.enqueue && this.snapshot.canQueue)) {
                 await this.sendCommand(currentText.trim() === text.trim() ? currentText : text, files, selection, revision, resolved); return;
             }
         }
@@ -336,6 +385,29 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private submittedMessageId(turnId?: string): string | undefined {
         return turnId ? remoteRounds([{id: 'ack', role: 'user', text: '', turnId}])[0]?.id : undefined;
     }
+    private independentQuery(text: string) {
+        if (this.closed || !this.snapshot?.canQueryCommand || !this.service.queryCommand) return;
+        const resolved = resolveNativeCommand(text, this.snapshot.slashCommands ?? []);
+        return resolved?.command.execution === 'query' && !this.querying.has(resolved.command.name) ? resolved : undefined;
+    }
+    private async sendReadOnlyQuery(text: string, files: File[], query: NonNullable<ReturnType<typeof resolveNativeCommand>>): Promise<false> {
+        if (files.length) throw new Error(t('harness.commandUnavailable'));
+        const id = randomUUID(), revision = this.view.input.getDraftRevision(), name = query.command.name;
+        this.querying.add(name); this.updateControls();
+        try {
+            const state = await this.service.queryCommand!(name, query.arguments, id, query.command);
+            await this.show(state);
+            if (!state.queryReceipts?.some(row => row.id === id)) throw new Error(t('harness.unknown'));
+            this.view.input.acceptSubmittedDraft(text, [], revision);
+            await this.flushPendingSave(true);
+        } catch (error) {
+            const observed = this.service.snapshot?.(); if (observed) await this.show(observed);
+            const failure = error as {remoteCode?: unknown; code?: unknown}, code = failure?.remoteCode ?? failure?.code;
+            Toast.error(t('harness.queryFailed', {code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'QUERY_REPORT_UNAVAILABLE'}));
+            throw error;
+        } finally {this.querying.delete(name); if (!this.closed) this.updateControls();}
+        return false;
+    }
     private async sendCommand(text: string, files: File[], selection: import('@itookit/ui-common').ConversationModelSelection | undefined, revision: number, captured?: NonNullable<ReturnType<typeof resolveNativeCommand>>): Promise<void> {
         if (files.length) throw new Error(t('harness.commandUnavailable'));
         const frozen = this.composer?.submit({...this.view.input.getConfig(), text}, [], randomUUID(), 'command'); void frozen?.catch(() => {});
@@ -344,7 +416,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
             const id = await frozen; ready = !!this.composer;
             const resolved = captured ?? resolveNativeCommand(text, await this.service.commands!());
             if (!resolved) throw new Error(t('harness.commandUnavailable'));
-            if (this.closed || this.working || this.options.readOnly || !this.snapshot?.canSend) throw new Error(t('harness.remoteBusy'));
+            if (this.closed || this.working || this.options.readOnly || !(resolved.command.execution === 'query' ? this.snapshot?.canCommand ?? this.snapshot?.canSend : this.snapshot?.canSend)) throw new Error(t('harness.remoteBusy'));
             this.submittedDraft = {text, files: [], revision};
             await this.run(async () => {
                 invoked = true;
@@ -392,7 +464,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private async releaseRejectedSubmission(error: unknown): Promise<void> {
         const failure = error as {code?: string; remoteCode?: string; outcome?: string};
         const definite = failure?.outcome === 'not-committed' || failure?.outcome !== 'unknown'
-            && ['EINVAL', 'ECAPABILITY', 'EACCES', 'EBUSY', 'ECONFLICT'].includes(failure?.code ?? failure?.remoteCode ?? '');
+            && ['EINVAL', 'ECAPABILITY', 'EACCES', 'EBUSY', 'ECONFLICT', 'EFBIG'].includes(failure?.code ?? failure?.remoteCode ?? '');
         if (!definite || !this.composer?.hasSubmission) return;
         this.composer.accepted(); this.submittedDraft = undefined;
         await this.composer.save(this.view.input.getConfig(), this.draftFiles).catch(saveError => this.emit('saveError', saveError));
@@ -449,7 +521,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     private async runControl(action: () => Promise<ConversationSnapshot>): Promise<void> {
         if (this.closed || this.options.readOnly) return;
         try {await this.show(await action());}
-        catch (error) {if (!this.closed) this.showError(error); throw error;}
+        catch (error) {if (!this.closed) this.view.setStatus(t('harness.controlError', {message: error instanceof Error ? error.message : t('harness.failed')}), 'failed'); throw error;}
     }
     private showUpdateError(error: unknown): void {
         if (this.closed || !this.active) return;
@@ -463,6 +535,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         this.historyBranches?.setActive(false);
         this.view?.input.hideNativeModelPicker();
         this.view?.history.view.setActive(false);
+        this.view?.history.setActive(false);
         this.active = false; this.releaseUpdates?.(); this.releaseUpdates = undefined;
         clearTimeout(this.updateTimer); this.updateTimer = undefined;
     }
@@ -470,6 +543,7 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
         if (this.closed || this.active) return;
         this.historyBranches?.setActive(true);
         this.view?.history.view.setActive(true);
+        this.view?.history.setActive(true);
         this.active = true; await this.tail; await this.show(await this.service.read());
         if (!this.active || this.closed) return;
         if (this.service.subscribe) this.releaseUpdates = this.service.subscribe(() => this.queueUpdate());
@@ -517,20 +591,4 @@ export class RemoteConversationEditor extends BaseSettingsEditor<ConversationCon
     get commands() { return {sendMessage: (message: {text: string; files?: File[]; nativeSelection?: import('@itookit/ui-common').ConversationModelSelection}) => {
         return this.sendText(message.text, message.files, message.nativeSelection);
     }}; }
-
-private instructionQueuePanel?: NativeInstructionQueuePanel;
-private readonly admissions = new AbortController();
-private mountInstructionQueue(): void {
-        const element = document.createElement('section'); this.view.status.before(element);
-        this.instructionQueuePanel = new NativeInstructionQueuePanel(element, this.service, snapshot => this.show(snapshot));
-    }
-private canSubmit(): boolean {
-        return !!(this.service.enqueue && this.snapshot?.canQueue || this.snapshot?.canSend);
-    }
-private async reconcileUnpersistedQueue(snapshot: ConversationSnapshot): Promise<void> {
-        if (this.composer || !this.submission || !snapshot.instructionQueue?.acceptedIds.includes(this.submission.id)) return;
-        const draft = this.submittedDraft;
-        if (draft) await this.acceptSubmission(draft.text, draft.files, draft.revision);
-        this.submittedDraft = undefined; this.submission = undefined;
-    }
 }

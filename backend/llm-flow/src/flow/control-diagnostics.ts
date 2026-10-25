@@ -4,8 +4,8 @@ export interface FlowRetryControlDiagnostic {
     durationMs: number; code?: string;
 }
 export interface FlowRunControlDiagnostic {
-    operation: 'flow.run.pause' | 'flow.run.resume' | 'flow.run.withdraw'; stage: 'control' | 'legacy-recovery';
-    outcome: 'accepted' | 'error'; mode: 'pause' | 'resume' | 'withdraw';
+    operation: 'flow.run.pause' | 'flow.run.resume' | 'flow.run.withdraw' | 'flow.run.cancel'; stage: 'control' | 'legacy-recovery';
+    outcome: 'accepted' | 'error'; mode: 'pause' | 'resume' | 'withdraw' | 'cancel';
     operationId?: string; sessionId?: string; rootTaskId?: string;
     durationMs: number; code?: string; retainedCount?: number;
 }
@@ -41,7 +41,7 @@ export async function traceFlowRetry<T>(input: {requestId: string; sessionId: st
     }
 }
 
-export async function traceFlowRunControl<T>(input: {requestId: string; sessionId: string; rootTaskId: string; mode: 'pause' | 'resume' | 'withdraw'},
+export async function traceFlowRunControl<T>(input: {requestId: string; sessionId: string; rootTaskId: string; mode: 'pause' | 'resume' | 'withdraw' | 'cancel'},
     report: ((event: FlowControlDiagnostic) => void) | undefined, operation: () => Promise<T>): Promise<T> {
     const started = Date.now(), metadata = {operation: `flow.run.${input.mode}` as FlowRunControlDiagnostic['operation'], stage: 'control' as const,
         mode: input.mode, operationId: safeId(input.requestId), sessionId: safeId(input.sessionId), rootTaskId: safeId(input.rootTaskId)};

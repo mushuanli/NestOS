@@ -1066,3 +1066,27 @@ C4Component
 同键异原因/控制版本冲突；过期控制版本不产生回执；lease 在事务内检查。取消与完成竞态保留真实 succeeded/failed，不为按钮反馈改写终态。重启后可冷读原回执；重放不重复终态或提升 Task 版本。父请求 ID 和 expectedEpoch 不传给具有独立控制版本的子任务。
 
 取消回执可以在适配器清理挂起或失败时先被查询，它不代表资源已释放，也不代表整树 settled；清理仍复用 journal、Effect cleanup 和 taskStat/taskStats。日志区分 admission/cleanup/terminal-observed，记录请求与耗时，不记录取消原因或远端错误正文。库公开 API、事件说明与 Kernel API 文档同步更新。该批是宿主控制协议的前置机制；子调用命令授权、UI 控制台账与按钮接线仍待完成，不将 F16 整体标为完成。
+
+## 47. F16 控制前置：Flow 取消遵守调度所有权
+
+Flow 取消的显式请求扩展既有 RunCancel，不增加调度器或状态库。Session、根任务、独立 requestId 与 expectedEpoch 明确传入；先冷核对根和冻结控制树，再由 withFlowControl 复用本机租约或按原规则获取租约，禁止借用其他宿主的调度权。新路径无需缓存 Run handle。持久控制树覆盖动态与 detached 成员；只有旧 `{taskId}` 入口保留原成员集合取消语义。
+
+```mermaid
+C4Component
+  title Flow 控制入口复用已有调度与 Kernel 机制
+  Component(caller, "宿主调用方", "控制适配待接线", "明确 Session 和根执行身份")
+  Component(command, "RunCancel", "Flow 端口", "冷验证归属与控制树")
+  Component(lease, "withFlowControl", "已有调度所有权", "本机租约、串行化、写权限")
+  Component(kernel, "Task.cancel", "Kernel", "原子回执与真实终态、物理清理")
+  Component(query, "RunCancellationReceipt", "只读端口", "核对根后读取原回执")
+  Rel(caller, command, "requestId / expectedEpoch")
+  Rel(command, lease, "复用已有控制屏障")
+  Rel(lease, kernel, "携带租约取消整个控制树")
+  Rel(caller, query, "原请求身份核对")
+  Rel(query, kernel, "冷读取，不重发取消")
+```
+
+取消与完成竞态返回真实 status，只有 status=cancelled 时返回 cancelled=true；此字段仅说明逻辑终态。清理挂起时原回执仍可读，根 Task 自身 settled 不代表子任务收尾，stats() 也只是计数。验证覆盖无缓存句柄、清理挂起、重启冷读、重复请求、错误控制版本、无写权限、错误根和旧控制树拒绝；旧 RunCancel 当前成员取消回归保留。新的只读命令进入共享 query 策略；应用宿主/父调用归属校验和 UI 操作台账仍需接线，不能据此标记 F16 全部完成。
+
+
+全量回归发现根终态后调度器释放租约与子任务取消并发，原借用控制可能遭遇 STALE_SHARED_LEASE。withFlowControl 现在在本机租约上登记在途借用；调度器请求退休后不再接受新借用，原控制成功或失败都会释放借用，最后才执行原 lease.release。心跳与事务 fencing 继续使用原租约；没有延长外部接管权限或忽略真实失权。确定性测试验证退休期间仍可持有租约写入，控制结束后立即释放，随后新控制可以按原规则重新获取租约。

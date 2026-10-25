@@ -1,3 +1,4 @@
+import {cancelFlowRun, readFlowCancellationReceipt} from './run-cancellation';
 import {taskStat} from '@itookit/durable-kernel';
 import {readFlowRunMembers} from './run-members';
 import {checkFlowSource, checkFlowSyntax} from './syntax-check';
@@ -110,7 +111,13 @@ export class DagCommandService {
             const input = args as { sessionId: string; taskId: string; targetTaskId: string; query?: FlowTranscriptQuery };
             return readFlowTaskTranscript(this.options.kernel, input.sessionId, input.taskId, input.targetTaskId, input.query);
         });
-        bus.register(FlowCommand.RunCancel, async args => this.cancel(String((args as { taskId: string }).taskId)));
+        bus.register(FlowCommand.RunCancel, async args => {
+            const input = args as import('../contracts/flow-control').FlowCancellationRequest;
+            return input && ['requestId', 'expectedEpoch', 'sessionId'].some(key => Object.hasOwn(input, key))
+                ? cancelFlowRun(this.options, input) : this.cancel(String(input?.taskId));
+        });
+        bus.register(FlowCommand.RunCancellationReceipt, args =>
+            readFlowCancellationReceipt(this.options.kernel, args as import('../contracts/flow-control').FlowCancellationQuery));
         bus.register(FlowCommand.RunPauseWithdraw, args => this.withdrawPause(args as {taskId: string; requestId: string; expectedEpoch: number}));
         bus.register(FlowCommand.RunRespond, async args => {
             const input = args as { taskId: string; requestId: string; value: unknown; targetTaskId?: string };

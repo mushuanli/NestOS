@@ -48,6 +48,7 @@ const reads = new Set<string>([
     "dag.run.list",
     "dag.run.get",
     "dag.run.control.receipt",
+    "dag.run.cancellation.receipt",
     "dag.run.transcript",
 ]);
 export function isApplicationReadCommand(name: unknown): boolean { return typeof name === 'string' && reads.has(name); }

@@ -15,3 +15,7 @@ export function hasFlowControlTree(root: {input?: unknown}): boolean {
     return !!initial && typeof initial === 'object' && !Array.isArray(initial)
         && (initial as {controlTreeVersion?: unknown}).controlTreeVersion === 1;
 }
+
+/** A control request identifies a specific execution, independently of its display revision. */
+export interface FlowCancellationQuery {sessionId: string; taskId: string; requestId: string}
+export interface FlowCancellationRequest extends FlowCancellationQuery {expectedEpoch: number}

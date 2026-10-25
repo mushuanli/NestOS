@@ -22,4 +22,4 @@ export { evaluateFlowExpression, resolveFlowExpression } from './contracts/flow-
 export { flowConnectionRequired, flowParameterValues, flowInputPresent, validateFlowInputGroups, flowInputDeclarationIssues, type FlowInputIssue } from './contracts/flow-inputs';
 export {assertFlowCallSource, assertFlowCallSignature, flowCallValues, FlowCallInputError, type FlowCallSource, type FlowInputOrigin, type FlowResolvedInput} from './contracts/flow-call-input';
 export { collectFlowToolDependencies, flowToolDependencyIssues } from './contracts/flow-tool-dependencies';
-export {hasFlowControlTree, type FlowGoalUpdate} from './contracts/flow-control';
+export {hasFlowControlTree, type FlowGoalUpdate, type FlowCancellationQuery, type FlowCancellationRequest} from './contracts/flow-control';

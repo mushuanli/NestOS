@@ -21,6 +21,7 @@ export const FlowCommand = {
     RunStart: 'dag.run.start',
     RunGet: 'dag.run.get',
     RunControlReceipt: 'dag.run.control.receipt',
+    RunCancellationReceipt: 'dag.run.cancellation.receipt',
     RunTranscript: 'dag.run.transcript',
     RunCancel: 'dag.run.cancel',
     RunRespond: 'dag.run.respond',

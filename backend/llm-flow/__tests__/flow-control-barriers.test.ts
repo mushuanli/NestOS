@@ -1,3 +1,5 @@
+import {rememberSchedulerLease, withFlowControl} from '../src/flow/control-session';
+import {acquireSchedulerLease, schedulerOwnerKey} from '../src/flow/scheduler-lease';
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {Kernel, type SessionHandle, type TaskHandle} from '@itookit/durable-kernel';
 import {createVFS, MemoryBackend, type IFileSystem, type IVFSManager} from '@itookit/vfs-core';
@@ -49,14 +51,14 @@ async function goal(run: {root: TaskHandle}, status: 'active' | 'paused', reques
 function latch() {
     let release!: () => void; const promise = new Promise<void>(resolve => {release = resolve;}); return {promise, release};
 }
-async function externalChild(root: TaskHandle) {
+async function externalChild(root: TaskHandle, cleanup = Promise.resolve()) {
     const blocked = latch(), entered = latch(), execute = vi.fn(async () => {entered.release(); await blocked.promise; return 'done';});
     const manifest = {kind: 'test.external', version: '1'};
     kernel.registerProgram({manifest, init: () => ({state: null, actions: [{type: 'effect', effect: {
         id: 'work', kind: 'test.external', version: '1', idempotencyKey: 'work', request: null}}], next: {type: 'wait', on: {type: 'effect', id: 'work'}}}),
     reduce: () => ({state: null, next: {type: 'complete', output: 'done'}})});
     kernel.registerEffect({kind: 'test.external', version: '1', execute,
-        async cancel() {blocked.release(); await Promise.all(execute.mock.results.map(result => result.value));}});
+        async cancel() {blocked.release(); await Promise.all(execute.mock.results.map(result => result.value)); await cleanup;}});
     const child = await session.submit({program: manifest, input: null, parent: root.id}); await entered.promise;
     return {child, blocked, execute};
 }
@@ -365,4 +367,100 @@ it('cancels the root and authoritative members without targeting a replaced hist
     expect(attached).toContain(replacement.id);
     expect(attached).not.toContain(old.id);
     expect((await old.wait({timeoutMs: 2000})).status).toBe('cancelled');
+});
+
+
+it('admits cancellation with explicit scope without requiring a cached Run handle', async () => {
+    const run = await start(), fresh = new Map<string, (args: any) => Promise<any>>();
+    new DagCommandService({kernel, plugins, flowStore: {} as never}).register({register: (name, handler) => fresh.set(name, handler)});
+    const input = {sessionId: session.id, taskId: run.root.id, requestId: 'cancel-once', expectedEpoch: 0};
+    const result = await fresh.get(FlowCommand.RunCancel)!(input);
+    expect(result).toMatchObject({cancelled: true, receipt: {requestId: input.requestId, status: 'cancelled', expectedEpoch: 0}});
+    const before = await run.root.status(), history = await run.root.history();
+    expect(await fresh.get(FlowCommand.RunCancel)!(input)).toEqual(result);
+    expect((await run.root.status()).task).toEqual(before.task); expect(await run.root.history()).toEqual(history);
+    expect((await run.nodes.get('gate')!.wait({timeoutMs: 2000})).status).toBe('cancelled');
+    await expect(fresh.get(FlowCommand.RunCancel)!({...input, expectedEpoch: 1})).rejects.toMatchObject({code: 'CONFLICT'});
+});
+
+it('reads cancellation admission while cleanup hangs without acquiring another scheduler lease', async () => {
+    const run = await start(), cleanup = latch(), external = await externalChild(run.root, cleanup.promise);
+    const input = {sessionId: session.id, taskId: run.root.id, requestId: 'cancel-cleanup', expectedEpoch: 0};
+    let finished = false;
+    const cancelling = handlers.get(FlowCommand.RunCancel)!(input).then(result => {finished = true; return result;});
+    try {
+        await vi.waitFor(async () => expect((await external.child.status()).task.effects.work.cleanupPending).toBe(true));
+        const open = vi.spyOn(kernel, 'openSession'), {expectedEpoch: _epoch, ...query} = input;
+        const receipt = await handlers.get(FlowCommand.RunCancellationReceipt)!(query);
+        expect(receipt).toMatchObject({requestId: input.requestId, status: 'cancelled'});
+        expect(finished).toBe(false); expect(open).not.toHaveBeenCalled(); open.mockRestore();
+        expect((await external.child.stat()).settled).toBe(false);
+        expect((await run.root.stat()).settled).toBe(true);
+    } finally {cleanup.release(); external.blocked.release(); await cancelling;}
+});
+
+it('reports the real successful outcome when completion wins the Flow cancellation race', async () => {
+    const run = await runner().submit('s', {nodes: [value('done')], edges: []});
+    await run.root.wait({timeoutMs: 2000}); const before = (await run.root.status()).task;
+    const result = await handlers.get(FlowCommand.RunCancel)!({sessionId: session.id, taskId: run.root.id, requestId: 'late', expectedEpoch: 0});
+    expect(result).toMatchObject({cancelled: false, receipt: {status: 'succeeded'}});
+    expect((await run.root.status()).task).toEqual(before);
+});
+
+it('rejects stale, malformed and non-root cancellation targets without creating a receipt', async () => {
+    const run = await start(), input = {sessionId: session.id, taskId: run.root.id, requestId: 'cancel-invalid', expectedEpoch: 0};
+    await goal(run, 'paused', 'pause', 0);
+    await expect(handlers.get(FlowCommand.RunCancel)!(input)).rejects.toMatchObject({code: 'CONFLICT'});
+    const {expectedEpoch: _epoch, ...query} = input;
+    expect(await handlers.get(FlowCommand.RunCancellationReceipt)!(query)).toBeUndefined();
+    for (const patch of [{requestId: ''}, {sessionId: ''}, {expectedEpoch: undefined}, {unexpected: true}])
+        await expect(handlers.get(FlowCommand.RunCancel)!({...input, ...patch})).rejects.toMatchObject({code: 'FLOW_CONTROL_REQUEST_INVALID'});
+    const open = vi.spyOn(kernel, 'openSession');
+    await expect(handlers.get(FlowCommand.RunCancel)!({...input, taskId: run.nodes.get('gate')!.id})).rejects.toMatchObject({code: 'FLOW_CONTROL_ROOT_INVALID'});
+    expect(open).not.toHaveBeenCalled();
+    expect((await run.root.status()).task.status).not.toBe('cancelled');
+});
+
+it('does not issue cancellation when the host is read-only or the Run has no durable control tree', async () => {
+    const run = await start(), readonly = new Map<string, (args: any) => Promise<any>>();
+    new DagCommandService({kernel, plugins, flowStore: {} as never, canWriteSession: async () => false})
+        .register({register: (name, handler) => readonly.set(name, handler)});
+    await expect(readonly.get(FlowCommand.RunCancel)!({sessionId: session.id, taskId: run.root.id, requestId: 'denied', expectedEpoch: 0})).rejects.toThrow('read-only');
+    expect(await kernel.readTaskCancellationReceipt(session.id, run.root.id, 'denied')).toBeUndefined();
+    const legacy = await legacyRun();
+    await expect(handlers.get(FlowCommand.RunCancel)!({sessionId: session.id, taskId: legacy.root.id, requestId: 'legacy', expectedEpoch: 0}))
+        .rejects.toMatchObject({code: 'FLOW_CONTROL_TREE_UNAVAILABLE'});
+    expect(await kernel.readTaskCancellationReceipt(session.id, legacy.root.id, 'legacy')).toBeUndefined();
+});
+
+it('reads the original cancellation after restart without recovering a Run or opening an execution Session', async () => {
+    const run = await start(), input = {sessionId: session.id, taskId: run.root.id, requestId: 'restart-cancel', expectedEpoch: 0};
+    const result = await handlers.get(FlowCommand.RunCancel)!(input);
+    kernel.dispose(); await Promise.all(runners.map(executor => executor.waitIdle())); await kernel.waitIdle();
+    await boot(); const open = vi.spyOn(kernel, 'openSession');
+    const {expectedEpoch: _epoch, ...query} = input;
+    expect(await handlers.get(FlowCommand.RunCancellationReceipt)!(query)).toEqual(result.receipt);
+    expect(open).not.toHaveBeenCalled();
+});
+
+
+it.each([false, true])('pins the scheduler lease until an in-flight control ends (failure=%s)', async fail => {
+    const lease = rememberSchedulerLease(kernel, 'manual-root', await acquireSchedulerLease(session, 'manual-root'));
+    const entered = latch(), blocked = latch();
+    const controlling = withFlowControl(kernel, session.id, 'manual-root', undefined, async fenced => {
+        entered.release(); await blocked.promise;
+        await fenced.setShared('control-finished', {ok: true});
+        if (fail) throw new Error('Control failed after its fenced write');
+    });
+    const observed = controlling.then(() => 'success', () => 'failure');
+    await entered.promise; let released = false;
+    const releasing = lease.release().then(() => {released = true;});
+    try {
+        await tick(); expect(released).toBe(false); await lease.assertOwned();
+        blocked.release(); expect(await observed).toBe(fail ? 'failure' : 'success'); await releasing;
+        expect((await session.getShared('control-finished'))?.value).toEqual({ok: true});
+        expect((await session.getShared(schedulerOwnerKey('manual-root')))?.value).toMatchObject({expiresAt: 0});
+        await withFlowControl(kernel, session.id, 'manual-root', undefined, async next => {await next.setShared('next-controller', true);});
+        expect((await session.getShared('next-controller'))?.value).toBe(true);
+    } finally {blocked.release(); await observed; await releasing;}
 });

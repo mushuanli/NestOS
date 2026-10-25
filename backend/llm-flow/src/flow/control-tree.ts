@@ -12,7 +12,7 @@ export function flowControlError(code: string, message: string): Error & {code: 
 
 export function assertFlowControlTree(root: TaskRecord): void {
     if (!hasFlowControlTree(root)) throw flowControlError('FLOW_CONTROL_TREE_UNAVAILABLE',
-        'This legacy Run has no task control tree; pause its Session instead');
+        'This legacy Run has no task control tree; use its legacy control entry');
 }
 
 /** Only the specific parent admission conflict is safe to retry with an unchanged request. */

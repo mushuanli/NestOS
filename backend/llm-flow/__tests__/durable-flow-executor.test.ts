@@ -224,7 +224,8 @@ describe('DurableFlowExecutor', () => {
             requestId: 'answer', value: 'yes', signal: { type: 'hello' }, goal: { status: 'paused' }, flow: {} };
         for (const name of [FlowCommand.RunResume, FlowCommand.RunStart, FlowCommand.RunCancel, FlowCommand.RunRespond, FlowCommand.RunSignal,
             FlowCommand.RunTaskRetry, FlowCommand.RunTaskCancel, FlowCommand.RunGoalUpdate]) {
-            await expect(handlers.get(name)!(args)).rejects.toThrow('read-only');
+            const input = name === FlowCommand.RunCancel ? {sessionId: 'session-one', taskId: run.root.id, requestId: 'cancel', expectedEpoch: 0} : args;
+            await expect(handlers.get(name)!(input)).rejects.toThrow('read-only');
         }
         expect((await run.root.status()).task.control).toBeUndefined();
     });

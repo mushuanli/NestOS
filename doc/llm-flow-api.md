@@ -558,3 +558,14 @@ CLI 用 `mindos validate -f example.flow --json` 检查源码和同目录子流�
 ### 统一调用实参与公开范围
 
 prepareFlowRun 经 prepareFlowCallInput 解析 composer/arguments，严格校验来源信封与输入签名，再调用原 flowToDag。正文不按 JSON 自动解析，显式来源绑定无对应字段或冲突即拒绝；文件仅保留标准不可变引用。默认值依次为 Flow 发布值、Agent 默认实参、本次显式值，false/0/空串/null/空数组不视为缺少，结果保存有效值及来源。接纳允许 onMissing=interact 暂缺或待补全，消费前仍验证。exposure 省略保持 global 和旧摘要；local 的直接根调用拒绝，父 Flow 可以编译明确依赖的 local 定义。资产的授权、准备和传输由宿主另行接线，此处不读取文件或原生会话。
+
+
+### Flow 取消请求与冷回执查询
+
+`dag.run.cancel` 在显式协议下接收 `{sessionId, taskId, requestId, expectedEpoch}`，要求根有冻结的 `controlTreeVersion=1`。先冷验证归属与控制树，再经原 `withFlowControl` 获取/复用本机调度租约，在租约保护下复验根并取消。无需先读取 RunGet 或建立进程内句柄；不修改 Flow goal、不把原调用重启。只传 `{taskId}` 的旧入口仍按原当前持久成员集合取消；旧 Run 不冒充具备新控制树保证。
+
+显式请求返回 `{taskId, cancelled, receipt}`；`cancelled` 由 Kernel 回执真实 status 决定，完成先发生时为 false。重复请求保持同一取消接纳事实，版本冲突不自动重试。`dag.run.cancellation.receipt({sessionId, taskId, requestId})` 验证真实 Flow 根后冷读原回执，不取调度租约、不激活执行、不重新发送控制；缺失返回 undefined。此查询允许在原取消 Promise 等待物理清理时进行，并归入共享只读命令策略。
+
+根 Task 的 `stat().settled` 仅描述根自己的操作，`stats()` 是计数信息；两者都不能代替整树资源释放证明。调用 UI 须继续观察当前子任务及其 cleanupPending，不能把回执、根终态或请求返回中的 cancelled 当成整树停止确认。独立调用父卡片的归属/授权适配与控制按钮接入仍单独实施。
+
+取消根后的调度退出不得提前释放仍被控制请求借用的本机租约。withFlowControl 为在途操作保留借用，退出请求阻止新借用并等待已有操作收尾；成功和失败路径均释放借用。原心跳、权限复验和事务 lease fencing 不变，真实租约失效仍拒绝写入。

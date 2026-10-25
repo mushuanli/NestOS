@@ -1,9 +1,10 @@
 import type { HarnessMutationOptions } from '@itookit/mindos-node-driver';
-import type { HarnessExecutionRequest } from '@itookit/kernel-adapters/contracts';
+import type { HarnessExecutionRequest, HarnessInlineAttachment } from '@itookit/kernel-adapters/contracts';
 import type { HarnessConnectionAcquisition } from './harness-connections';
 import { ExecutionJournal, executionError, jsonValue, nativeOperationId, type NativeOperation } from './harness-execution-journal';
 
 export interface NativeExecution {
+    attachments?: HarnessInlineAttachment[];
     acquired: HarnessConnectionAcquisition; journal: ExecutionJournal; request: HarnessExecutionRequest; signal: AbortSignal;
 }
 type Mutation = (options: HarnessMutationOptions) => Promise<unknown>;
@@ -45,6 +46,7 @@ function rejectionCode(value: unknown): string {
     return typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(value) ? value : 'NATIVE_REJECTED';
 }
 export async function prepareNativeTurn(run: NativeExecution): Promise<void> {
+    assertPreparedAttachments(run);
     const { client, profile, workspaceId } = run.acquired;
     if (!run.journal.data.sessionId) {
         const result = await nativeMutation(run, 'create', options => client.create(profile.id, workspaceId, options));
@@ -54,9 +56,15 @@ export async function prepareNativeTurn(run: NativeExecution): Promise<void> {
     }
     if (!run.journal.data.turnId) {
         const result = await nativeMutation(run, 'turn', options => client.turn(profile.id, run.journal.data.sessionId!,
-            run.request.prompt, { ...options, selection: run.request.connection.selection }));
+            run.request.prompt, { ...options, selection: run.request.connection.selection,
+                ...(run.attachments?.length ? {attachments: run.attachments} : {}) }));
         const id = (result as { turnId?: unknown })?.turnId;
         if (typeof id !== 'string' || !id) throw executionError('NATIVE_TURN_INVALID');
         await run.journal.save({ turnId: id });
     }
+}
+
+function assertPreparedAttachments(run: NativeExecution): void {
+    if (!run.request.attachments?.length || run.journal.data.turnId || run.journal.data.operations.turn) return;
+    if (!run.attachments?.length) throw executionError('HARNESS_ATTACHMENTS_NOT_PREPARED');
 }

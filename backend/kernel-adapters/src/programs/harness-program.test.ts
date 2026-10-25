@@ -70,9 +70,13 @@ describe('HarnessProgram durable interaction bridge', () => {
     });
 });
 
-it('rejects image input rather than silently dropping it', () => {
-    expect(() => new HarnessProgram().init({ connection, messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,AA==' } }] }] }))
-        .toThrow('HARNESS_TEXT_MESSAGES_REQUIRED');
+it('keeps image input in the effect request and refuses remote URLs instead of dropping them', () => {
+    const program = new HarnessProgram(), url = 'data:image/png;base64,iVBORw0KGgo=';
+    const initial = program.init({connection, messages: [{role: 'user', content: [{type: 'image_url', image_url: {url}}]}]});
+    const next = program.reduce(initial.state, {type: 'signal', signal: {type: 'capabilities', payload: {harnessHandleId: 'handle'}}});
+    expect(next.actions).toMatchObject([{type: 'effect', effect: {request: {attachments: [{kind: 'image', content: url, mimeType: 'image/png'}]}}}]);
+    expect(() => program.init({connection, messages: [{role: 'user', content: [{type: 'image_url', image_url: {url: 'https://private.invalid/image'}}]}]}))
+        .toThrow('HARNESS_ATTACHMENT_INLINE_REQUIRED');
 });
 
 it('requires a separately granted harness capability and propagates uncertain cancellation', async () => {

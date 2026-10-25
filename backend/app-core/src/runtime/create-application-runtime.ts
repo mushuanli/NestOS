@@ -24,6 +24,7 @@ import { attachProjectDraftRecovery } from './project-draft-recovery';
 import { ProjectRemoteMountService, type RemoteFileSourceProvider } from '../projects/remote-mounts';
 import { HarnessConnectionService } from '../projects/harness-connections';
 import { createHarnessExecutionProvider } from '../projects/harness-execution';
+import {createTaskAssetReader} from './task-assets';
 import { createHarnessCleanupState, renewHarnessCleanupLease } from '../projects/harness-cleanup-state';
 import { FSError } from '@itookit/vfs-core';
 import { ModelConfigurationCommands } from '../configuration/model-commands';
@@ -270,6 +271,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         let digitalTwin: DigitalTwinService | undefined;
         const kernel: HeadlessKernelRuntime = await traceBoot('createKernelRuntime', () => createKernelRuntime({
             harnessExecution: createHarnessExecutionProvider(executionConnections, {
+                readTaskAsset: createTaskAssetReader(() => harnessKernel!.kernel, systemFS),
                 stateForCleanup: createHarnessCleanupState(() => harnessKernel!.kernel, id => ensureHarnessWrite(id)),
             }),
             systemFS,

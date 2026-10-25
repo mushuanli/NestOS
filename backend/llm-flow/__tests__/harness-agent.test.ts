@@ -62,7 +62,7 @@ it('keeps a harness node independent from Flow model defaults', async () => {
 });
 
 it.each([
-    [{ messages: [{ role: 'user', content: [{ type: 'image_url', image_url: { url: 'data:image/png;base64,a' } }] }] }, 'text messages only'],
+    [{ messages: [{ role: 'user', content: null }] }, 'text or structured content'],
     [{ harnessConnection: { ...connection, id: 'other' } }, 'does not match'],
     [{ harnessConnection: undefined }, 'snapshot is required'],
     [{ delegation: { enabled: true } }, 'cannot host local delegation'],
@@ -71,4 +71,15 @@ it.each([
     const runtime = await createBuiltinDagPluginRegistry().loadRuntime('builtin.agent');
     expect(() => runtime.createTask({ config: { ...config(), ...patch }, inputs: {}, dependencies: [],
         sessionId: 's', nodeRunId: 'node' } as never)).toThrow(message);
+});
+
+it('preserves multimodal asset references without resolving content in the Flow compiler', async () => {
+    const runtime = await createBuiltinDagPluginRegistry().loadRuntime('builtin.agent');
+    const messages = [{role: 'user', content: [{type: 'image', source: {type: 'asset', asset: {
+        kind: 'input', id: '12345678-1234-1234-1234-123456789012', mimeType: 'image/png', bytes: 8, sha256: 'a'.repeat(64),
+    }}}]}];
+    const task = runtime.createTask({config: {...config(), messages}, inputs: {}, dependencies: [], sessionId: 's', nodeRunId: 'node'} as never);
+    expect(task.input).toMatchObject({messages});
+    messages[0].content[0].source.asset.sha256 = 'b'.repeat(64);
+    expect((task.input as {messages: unknown[]}).messages).not.toEqual(messages);
 });

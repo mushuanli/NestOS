@@ -9,28 +9,30 @@ import { resolveFlowRunForTask } from '@itookit/llm-flow';
 export function createTaskAssetReader(getKernel: () => Kernel, inputFS?: IFileSystem): TaskAssetReader {
     return async (reference, identity) => {
         if ('kind' in reference && reference.kind === 'input') {
-            if (!inputFS) throw new Error('Input asset storage is unavailable');
+            if (!inputFS) throw assetError('ASSET_STORAGE_UNAVAILABLE', 'Input asset storage is unavailable');
             const session = await assetInspection(getKernel(), identity.sessionId);
             const task = (await session.listTasks()).find(task => task.id === identity.taskId);
             const root = await resolveFlowRunForTask(session, identity.taskId);
             const needle = reference.id;
-            if (!containsInput(task?.input, needle) && !containsInput(root?.input, needle)) throw new Error('Input asset was not selected for this Task');
+            if (!containsInput(task?.input, needle) && !containsInput(root?.input, needle)) throw assetError('ASSET_INPUT_NOT_SELECTED', 'Input asset was not selected for this Task');
             return readInputAsset(inputFS, reference);
         }
-        if ('kind' in reference) throw new Error('Invalid asset kind');
-        if (reference.sessionId !== identity.sessionId) throw new Error('Asset belongs to another Session');
+        if ('kind' in reference) throw assetError('ASSET_KIND_INVALID', 'Invalid asset kind');
+        if (reference.sessionId !== identity.sessionId) throw assetError('ASSET_SESSION_MISMATCH', 'Asset belongs to another Session');
         const kernel = getKernel(), session = await assetInspection(kernel, identity.sessionId);
         if (reference.taskId !== identity.taskId && !isRetryAncestor(await session.listTasks(), reference.taskId, identity.taskId)) {
             const [source, consumer] = await Promise.all([
                 resolveFlowRunForTask(session, reference.taskId), resolveFlowRunForTask(session, identity.taskId),
             ]);
-            if (!source || !consumer || source.id !== consumer.id) throw new Error('Asset belongs to another Flow run');
+            if (!source || !consumer || source.id !== consumer.id) throw assetError('ASSET_FLOW_MISMATCH', 'Asset belongs to another Flow run');
         }
         const { storage } = session;
         const { fs, rootPath } = await kernel.storageResolvers.resolve(storage.kind).resolve(storage);
         return readMediaAsset(fs, rootPath, reference, { sessionId: identity.sessionId, taskId: reference.taskId });
     };
 }
+
+function assetError(code: string, message: string): Error {return Object.assign(new Error(message), {code});}
 
 /** Reuse one cold Task snapshot within this read; never cache authorization across reads. */
 async function assetInspection(kernel: Kernel, sessionId: string) {

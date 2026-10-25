@@ -1,6 +1,7 @@
+import {prepareExecutionAttachments} from './harness-execution-assets';
 import type { EffectExecutionContext, EffectReconcileResult, EffectSessionState } from '@itookit/durable-kernel';
 import type { HarnessExecutionProvider, HarnessExecutionRequest, HarnessExecutionResult } from '@itookit/kernel-adapters/contracts';
-import type { HarnessConnectionService } from './harness-connections';
+import type { HarnessConnectionService, HarnessConnectionAcquisition } from './harness-connections';
 import { ExecutionJournal, executionError, harnessExecutionJournalKey, type ExecutionJournalData } from './harness-execution-journal';
 import { prepareNativeTurn, type NativeExecution } from './harness-execution-operations';
 import { finishNativeTurn, observeNativeTurn } from './harness-execution-observation';
@@ -8,6 +9,7 @@ import { cancelNativeExecution } from './harness-execution-cancel';
 
 export { harnessExecutionJournalKey } from './harness-execution-journal';
 export interface HarnessExecutionOptions {
+    readTaskAsset?: import('@itookit/tools/contracts').TaskAssetReader;
     stateForCleanup?: (context: EffectExecutionContext) => Promise<EffectSessionState>;
     pollMs?: number;
     cancelTimeoutMs?: number;
@@ -57,7 +59,9 @@ class NativeHarnessExecutionProvider implements HarnessExecutionProvider {
         try {
             if (!exists) await journal.initialize(acquired.epoch);
             if (journal.data.epoch !== acquired.epoch) throw executionError('NATIVE_EPOCH_CHANGED');
-            const run: NativeExecution = { acquired, journal, request, signal: context.abortSignal };
+            const attachments = journal.data.turnId || journal.data.operations.turn ? undefined
+                : await this.prepareInput(request, context, acquired, startedAt);
+            const run: NativeExecution = { acquired, journal, request, attachments, signal: context.abortSignal };
             await prepareNativeTurn(run);
             await diagnose(context, 'observe', 'accepted', startedAt);
             const result = await observeNativeTurn(run, context, this.options.pollMs ?? 1000);
@@ -68,6 +72,16 @@ class NativeHarnessExecutionProvider implements HarnessExecutionProvider {
             await diagnose(context, 'execute', 'failure', startedAt, safeCode(failure)); throw failure;
         }
         finally { await acquired.release(); }
+    }
+    private async prepareInput(request: HarnessExecutionRequest, context: EffectExecutionContext,
+        acquired: HarnessConnectionAcquisition, startedAt: number): Promise<import('@itookit/kernel-adapters/contracts').HarnessInlineAttachment[] | undefined> {
+        try {
+            const attachments = await prepareExecutionAttachments(request, context, acquired.profile, this.options.readTaskAsset);
+            if (attachments?.length) await diagnose(context, 'input-preparation', 'prepared', startedAt, undefined,
+                {attachmentCount: attachments.length, assetCount: request.attachments?.filter(file => file.kind === 'asset').length ?? 0,
+                    attachmentBytes: attachments.reduce((total, file) => total + new TextEncoder().encode(file.content).byteLength, 0)});
+            return attachments;
+        } catch (error) {await diagnose(context, 'input-preparation', 'failure', startedAt, safeCode(error)); throw error;}
     }
     private journal(request: HarnessExecutionRequest, context: EffectExecutionContext): ExecutionJournal {
         if (!context.sessionState) throw executionError('DURABLE_STATE_UNAVAILABLE');
@@ -87,16 +101,18 @@ function replayableTerminal(data: ExecutionJournalData): boolean {
 function classifyExecutionFailure(error: unknown, journal: ExecutionJournal): unknown {
     const data = journal.data;
     const notStarted = data?.operations.create?.outcome === 'not-committed'
-        || data?.operations.turn?.outcome === 'not-committed' && !data.turnId;
+        || data?.operations.turn?.outcome === 'not-committed' && !data.turnId
+        || data && !data.operations.create && !data.operations.turn && !data.sessionId;
     return notStarted ? Object.assign(error instanceof Error ? error : executionError(safeCode(error)), { executionOutcome: 'not-started' }) : error;
 }
 export function safeCode(error: unknown): string {
     const code = (error as { code?: unknown })?.code;
     return typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'NATIVE_OUTCOME_UNKNOWN';
 }
-async function diagnose(context: EffectExecutionContext, stage: string, outcome: string, startedAt: number, code?: string): Promise<void> {
+async function diagnose(context: EffectExecutionContext, stage: string, outcome: string, startedAt: number, code?: string,
+    metadata?: {attachmentCount?: number; attachmentBytes?: number; assetCount?: number}): Promise<void> {
     const payload = { operation: 'harness.execution', operationId: harnessExecutionJournalKey(context), stage, outcome,
-        sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId, durationMs: Date.now() - startedAt, ...(code ? { code } : {}) };
+        sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId, durationMs: Date.now() - startedAt, ...metadata, ...(code ? { code } : {}) };
     try { await context.emit?.({ type: 'harness:execution', payload }); }
     catch { /* Diagnostics cannot change native execution or cleanup evidence. */ }
 }

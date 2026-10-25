@@ -1,10 +1,12 @@
+import {prepareHarnessInput, type HarnessInputMessage} from '../llm-management/contracts/harness-input';
 import type { Decision, DurableTaskProgram, JsonValue, TaskInputEvent, WaitSpec } from '@itookit/durable-kernel';
 import type { HarnessConnectionSnapshot, HarnessExecutionRequest, HarnessExecutionResult,
     HarnessInteractionNotification } from '../llm-management/contracts/harness-execution';
 
 export interface HarnessProgramInput {
     connection: HarnessConnectionSnapshot;
-    messages?: Array<{ role: string; content: unknown }>;
+    messages?: HarnessInputMessage[];
+    attachments?: import('../llm-management/contracts/harness-execution').HarnessInputAttachment[];
     prompt?: string;
     dependencies?: Array<{ taskId: string; input: string; output?: string; injectOutput?: boolean }>;
     includeDependencyOutputs?: boolean;
@@ -54,7 +56,7 @@ function ready(state: State): Result {
     if (!state.handleId) return { state, next: { type: 'wait', on: { type: 'signal', id: 'capabilities' } } };
     state.running = true;
     state.notificationKey = `harness.execution.${state.handleId}`;
-    const request: HarnessExecutionRequest = { connection: state.input.connection, prompt: prompt(state),
+    const request: HarnessExecutionRequest = { connection: state.input.connection, ...nativeInput(state),
         resourceHandleId: state.handleId, notificationKey: state.notificationKey };
     return { ...waiting(state), actions: [{ type: 'effect', effect: { id: 'harness', kind: 'harness.execute', version: '1',
         request, idempotencyKey: 'harness', timeoutMs: state.input.timeoutMs ?? 1_800_000,
@@ -98,29 +100,18 @@ function collectDependency(state: State, event: Extract<TaskInputEvent, { type: 
     state.dependencyOutputs[binding.input] = JSON.parse(JSON.stringify(value)) as JsonValue;
 }
 
-function prompt(state: State): string {
-    const messages = state.input.messages?.map(item => ({ role: item.role, content: text(item.content) }))
+function nativeInput(state: State) {
+    const messages = structuredClone(state.input.messages)
         ?? [{ role: 'user', content: state.input.prompt ?? '' }];
     const dependencies = state.input.includeDependencyOutputs === false ? {} : state.dependencyOutputs;
     if (Object.keys(dependencies).length) messages.push({ role: 'user', content: JSON.stringify({ dependencies }) });
-    return messages.length === 1 && messages[0].role === 'user' ? messages[0].content : JSON.stringify({ messages });
-}
-
-function text(value: unknown): string {
-    if (typeof value === 'string') return value;
-    if (Array.isArray(value) && value.every(item => record(item).type === 'text' && typeof record(item).text === 'string')) {
-        return value.map(item => record(item).text).join('\n');
-    }
-    throw new Error('HARNESS_TEXT_MESSAGES_REQUIRED');
+    return prepareHarnessInput({messages, attachments: state.input.attachments});
 }
 
 function validateInput(input: HarnessProgramInput): void {
-    if (!validConnection(input.connection)) throw new Error('HARNESS_CONNECTION_INVALID');
-    if (input.timeoutMs !== undefined && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1)) throw new Error('HARNESS_TIMEOUT_INVALID');
-    for (const message of input.messages ?? []) {
-        if (!['system', 'user', 'assistant', 'tool'].includes(message.role)) throw new Error('HARNESS_MESSAGE_ROLE_INVALID');
-        text(message.content);
-    }
+    prepareHarnessInput(input);
+    if (!validConnection(input.connection)) throw inputError('HARNESS_CONNECTION_INVALID');
+    if (input.timeoutMs !== undefined && (!Number.isSafeInteger(input.timeoutMs) || input.timeoutMs < 1)) throw inputError('HARNESS_TIMEOUT_INVALID');
 }
 
 function validConnection(value: HarnessConnectionSnapshot): boolean {
@@ -141,3 +132,5 @@ function completed(state: State, result: unknown): Result {
 }
 function failed(state: State, code: string): Result { return { state, next: { type: 'fail', error: { message: code, code } } }; }
 function record(value: unknown): Record<string, unknown> { return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {}; }
+
+function inputError(code: string): Error {return Object.assign(new Error(code), {code});}

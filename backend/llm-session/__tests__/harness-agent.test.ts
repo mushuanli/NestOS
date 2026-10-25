@@ -105,7 +105,7 @@ it('revalidates remote delegation candidates independently from a local parent',
     await expect(prepareFlowConnections(admitted, {}, service)).rejects.toThrow('unavailable or unauthorized');
 });
 
-it('prepares direct remote execution without acquiring local tools and rejects attachments', async () => {
+it('prepares direct remote execution without acquiring local tools and requires host-prepared attachments', async () => {
     const { resolver } = fixture(), config = await resolver.resolveExact('reviewer');
     const execution = { config, roundId: 'round', task: { sessionId: 'session', input: { text: 'Review', files: [] } } };
     const options = { resolveHarnessToolIds: vi.fn(), resolveMCPToolIds: vi.fn(), resolveSkills: vi.fn() };
@@ -117,5 +117,5 @@ it('prepares direct remote execution without acquiring local tools and rejects a
     const build = (value: unknown) => directTaskSpec(value as never, snapshot as never, { definitions: [], externalIds: [] }, [], {} as never);
     expect(build(execution)).toMatchObject({ program: { kind: 'kernel-adapters.harness', version: '1' },
         input: { connection: config.harnessConnection, messages: snapshot.canonicalMessages }, deferStart: true });
-    expect(() => build({ ...execution, task: { ...execution.task, input: { files: [{ name: 'image' }] } } })).toThrow('attachments are unsupported');
+    expect(() => build({ ...execution, task: { ...execution.task, input: { files: [{ name: 'image' }] } } })).toThrow('HARNESS_CURRENT_INPUT_REQUIRED');
 });

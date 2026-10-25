@@ -1,3 +1,4 @@
+import {prepareHarnessInput} from '@itookit/kernel-adapters/contracts';
 import type { ConversationExecution, ConversationRunCoordinatorOptions } from './conversation-run-coordinator';
 import type { ContextSnapshot, ToolDefinition } from '@itookit/llm-context';
 import type { TaskSpec } from '@itookit/durable-kernel';
@@ -39,8 +40,8 @@ export function directTaskSpec(
 ): TaskSpec<DurableAgentInput | { connection: NonNullable<ConversationExecution['config']['harnessConnection']>; messages: ContextSnapshot['canonicalMessages'] }> {
     if (execution.config.execution?.kind === 'harness') {
         if (!execution.config.harnessConnection) throw new Error('Harness connection snapshot is required');
-        if (execution.task.input.files.length || snapshot.canonicalMessages.some(message => typeof message.content !== 'string'))
-            throw new Error('Harness execution supports text messages only; attachments are unsupported');
+        const prepared = prepareHarnessInput({messages: snapshot.canonicalMessages});
+        if (execution.task.input.files.length && !prepared.attachments?.length) throw new Error('HARNESS_CURRENT_INPUT_REQUIRED');
         return { program: { kind: 'kernel-adapters.harness', version: '1' },
             input: { connection: structuredClone(execution.config.harnessConnection), messages: structuredClone(snapshot.canonicalMessages) },
             labels: { roundId: execution.roundId, kind: 'agent' }, deferStart: true };

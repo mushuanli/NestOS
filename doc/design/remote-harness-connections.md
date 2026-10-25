@@ -101,7 +101,7 @@ pnpm --filter @itookit/cli exec vitest run tests/harness-real-model-live.test.ts
 
 ## 当前边界
 
-- 首版输入为文本与文本消息块；图片和其他非文本附件明确拒绝。Agent的system/user历史作为文本调用上下文传入，远端实际系统权限仍由原生profile控制。
+- 输入支持文本消息、已物化的文本/图片附件，以及标准 image/file 资产引用；原生 profile 必须声明相应能力。PDF 等其他格式须先显式转换，远程 URL 不由适配器自动下载。Agent 的 system/user 历史作为调用上下文传入，远端实际系统权限仍由原生 profile 控制。
 - 当前返回核对后的终态文本，尚未将原生token流逐条投影为本地聊天增量。Harness Effect默认超时30分钟，Flow节点可显式设置合法的 `config.timeoutMs`，超时仍须确认远程停止。
 - 本地模型、Bash、MCP 和 Skill 能力不自动转授原生会话；远端执行由已授权项目、profile 与原生审批控制。
 - 本地模型 token 统计不代表原生会话成本；远端提供的 usage 保留在 harness 结果中，缺失不等于免费。
@@ -117,3 +117,38 @@ RemoteConversationStore 只保存原生身份、草稿及操作回执，不保�
 ### 原生查询、控制及输出的独立通道
 
 发布 Node 原生协议与宿主 RPC、两种 UI 消费者一同接通：目录及状态查询不等待原发送 tail；查询报告保存到原 journal，以 query receipt 更新同一台账，不生成新 turn 或消费原 pending input。取消携带具体 session/turn 与独立 operationId，接纳与实际停止分别展示和核对。结果读取以不可变输出引用分页核验，仅影响结果卡片可读性；结果 envelope 无效时查询原操作，不重发输入。默认工作台用提交计数保留仍在途的写入，只为声明为 query 的命令放行。Node 源码锁定不等于部署更新，原 Session 验收另行核对运行版本与能力。
+
+## 不可变附件的执行传输
+
+普通 Session 将已装配的消息交给 HarnessProgram；Flow 保存声明的 image/file 引用。kernel-adapters 的 `prepareHarnessInput` 只规范化消息及资产身份，不读取存储。app-core 在原生 create/turn 前通过注入的 TaskAssetReader，以实际 Effect 的 sessionId/taskId 授权读取，核验字节数和摘要，再转换为原生文本或图片。Task 文件只允许同一权威 Flow 或合法重试来源，其他调用须显式转交。
+
+| 所有者 | 负责 | 不负责 |
+|---|---|---|
+| llm-ui / UI adapter | 编辑、提交与状态显示 | 文件读取权限和原生编码 |
+| Session / Flow | 冻结消息、实参和声明的材料 | 原生传输协议、隐式格式转换 |
+| kernel-adapters | 消息规范化、资产引用契约、持久 Effect 请求 | 访问宿主文件系统 |
+| app-core | 当前消费身份授权、内容核验、传输装配 | Flow 模板和业务文件处理 |
+| node driver / 原生端 | 原生附件格式和大小约束 | 根据路径或临时 URL 推断授权 |
+
+```mermaid
+C4Component
+    Container_Boundary(app, "MindOS") {
+        Component(caller, "Session / Flow", "冻结输入", "消息和声明的资产引用")
+        Component(program, "HarnessProgram", "持久执行", "规范化消息及附件，保留输入身份")
+        Component(host, "Harness 执行宿主", "app-core", "先读 journal，决定核对或准备新输入")
+        Component(reader, "TaskAssetReader", "授权读取", "消费 Task 与 Flow 归属，字节数及摘要")
+        Component(journal, "ExecutionJournal", "Kernel shared state", "原操作身份与持久结果")
+    }
+    System_Ext(native, "远程 Harness", "原生 create / turn / operation")
+    Rel(caller, program, "提交冻结输入")
+    Rel(program, host, "通过 Effect 执行或核对")
+    Rel(host, journal, "读取原操作；先持久意图再调用")
+    Rel(host, reader, "仅未提交 turn 时读取并准备资产")
+    Rel(host, native, "新输入校验后派发；已有 turn 只核对原操作")
+```
+
+原生内联协议目前最多 5 个附件，单个文本 64 KiB、图片解码后 256 KiB，编码后总附件 512 KiB；支持的图片为 PNG/JPEG/WebP，最终约束复用 driver 校验。宿主在读取大文件前先检查元数据，读后再核验真实内容。日志只记录操作身份、阶段、错误码、数量和大小，不记录正文或存储路径。
+
+恢复沿原 journal 处理：已有 turn ID 或 turn 操作意图时不重读附件，也不重复上传、create 或 turn。结果丢失与文件后来删除不能变成再次发送。取消沿原清理链等待正在读取/派发的操作结束及连接释放；本切片不改变 Effect 的取消确认契约。
+
+此范围不包括原生上下文续接、任意格式解析、OCR、产物目录或长期资产回收。Flow 结构化 route 将普通实参渲染为消息数据，不自动把参数里的任意引用变成附件；附件须通过已声明的消息材料协议消费。

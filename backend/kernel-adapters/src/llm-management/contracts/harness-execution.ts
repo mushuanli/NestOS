@@ -39,9 +39,15 @@ export interface HarnessConnectionSnapshot extends HarnessExecutionConnection {
 export interface HarnessExecutionRequest {
     connection: HarnessConnectionSnapshot;
     prompt: string;
+    attachments?: HarnessInputAttachment[];
     resourceHandleId: string;
     notificationKey: string;
 }
+
+/** Target adapters resolve authorized immutable assets before applying native inline limits. */
+export type HarnessInputAttachment = HarnessInlineAttachment | HarnessAssetAttachment;
+export interface HarnessInlineAttachment {kind: 'text' | 'image'; name: string; content: string; mimeType?: string;}
+export interface HarnessAssetAttachment {kind: 'asset'; name: string; asset: import('@itookit/tools/contracts').BinaryAssetReference;}
 
 export interface HarnessExecutionResult {
     text: string;
@@ -55,6 +61,7 @@ export interface HarnessInteractionNotification {
     id: string;
     kind: 'approval' | 'input';
     prompt: string;
+    attachments?: HarnessInputAttachment[];
     payload?: JsonValue;
 }
 

@@ -3,6 +3,7 @@ import {dirname, resolve} from 'node:path';
 import {randomUUID} from '@itookit/common';
 import type {ApplicationClient} from '@itookit/app-contracts/services';
 import {SessionCommand, type RootCallTarget, type RootTargetCatalog, type SubmissionRequest, type SubmissionReceipt} from '@itookit/llm-session/contracts';
+import {assertConversationSelection, type ConversationSelection} from '@itookit/kernel-adapters/contracts';
 import {assertFlowCallSource, assertTargetSelection, type FlowId, type JsonValue} from '@itookit/llm-flow/contracts';
 import type {CommandOptions} from './commands';
 import {recordRuntimeDiagnostic} from './diagnostics';
@@ -26,7 +27,7 @@ async function buildSessionSubmission(client: ApplicationClient, sessionId: stri
     const {kind, id, selected} = await selectTarget(client, options);
     const source = await callSource(text, options);
     const target = selected?.target;
-    const overrides = await callOverrides(selected, options);
+    const overrides = await callOverrides(kind, selected, options);
     const request: SubmissionRequest = {expectedSessionId: sessionId, expectedBranch: branch, target: {kind, id, ...(target ? {version: target.version} : {})},
         ...(target ? {expectedTarget: {...target}} : {}), source, submission: {id: operationId, source: {kind: 'conversation', ownerId: sessionId, id: operationId}},
         ...(overrides ? {overrides} : {})};
@@ -52,18 +53,24 @@ async function callSource(text: string | undefined, options: CommandOptions) {
     return source;
 }
 
-async function callOverrides(selected: RootCallTarget | undefined, options: CommandOptions): Promise<SubmissionRequest['overrides']> {
+async function callOverrides(kind: 'agent' | 'flow', selected: RootCallTarget | undefined, options: CommandOptions): Promise<SubmissionRequest['overrides']> {
     const overrides: NonNullable<SubmissionRequest['overrides']> = {};
     if (options.connectionBindingsFile) {
         if (!selected?.input) throw failure('CLI_CALL_BINDINGS_INVALID', 'The selected target does not declare Flow connection bindings');
         overrides.flowConnectionBindings = await readBindings(options.connectionBindingsFile);
     }
     if (selected?.input) overrides.flowExpectedSignature = {id: selected.input.flowId as FlowId, revision: selected.input.revision, digest: selected.input.digest};
-
+    if (options.contextFile) {
+        if (kind !== 'agent' || selected?.input) throw failure('CONTEXT_TARGET_UNSUPPORTED', 'Context selection requires a direct Harness Agent');
+        overrides.harnessConversation = await readConversation(options.contextFile);
+    }
     return Object.keys(overrides).length ? overrides : undefined;
 }
 
-
+async function readConversation(file: string): Promise<ConversationSelection> {
+    const selection = await readJson(file) as ConversationSelection;
+    assertConversationSelection(selection); return structuredClone(selection);
+}
 
 export async function readSubmissionFile(file: string, sessionId: string): Promise<SubmissionRequest> {
     const request = await readJson(file) as unknown as SubmissionRequest;
@@ -105,7 +112,7 @@ export async function inspectSessionSubmission(client: ApplicationClient, reques
 }
 
 export function assertFrozenCallOptions(options: CommandOptions): void {
-    if (options.agent || options.flow || options.paramsFile || options.connectionBindingsFile || options.branch || options.submissionFile)
+    if (options.agent || options.flow || options.paramsFile || options.connectionBindingsFile || options.branch || options.submissionFile || options.contextFile)
         throw failure('CLI_CALL_OPTIONS_CONFLICT', 'A frozen submission cannot be overridden; edit input before preparing a new call');
 }
 

@@ -7,6 +7,8 @@ import {createApplicationRuntime} from '@itookit/app-core';
 import {bindLocalApplicationServices, createApplicationClient} from '@itookit/app-core/host';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
 import {SessionCommand, type SubmissionRequest} from '@itookit/llm-session/contracts';
+import type {ApplicationClient} from '@itookit/app-contracts/services';
+import {prepareSessionSubmission, readSubmissionFile, assertFrozenCallOptions} from '../src/application-submission';
 import {FlowCommand, type FlowDraft, type DurableFlowSnapshot} from '@itookit/llm-flow/contracts';
 import {RpcPeer} from '@itookit/app-transport/application';
 import {executeApplicationCommand} from '../src/application-command';
@@ -39,6 +41,37 @@ async function setup(rpc = false) {
     const call = (action: string, value?: string, options = {}) => executeApplicationCommand(client, 'session', [action, sessionId, ...(value !== undefined ? [value] : [])], options);
     return {runtime, client, sessionId, directory, call, queries};
 }
+
+it.each([false, true])('reads Session context bindings without activating a Session or starting queued work (RPC %s)', async rpc => {
+    const f = await setup(rpc), open = vi.spyOn(f.client.backend, 'openSessionView'), nativeOpen = vi.spyOn(f.runtime.kernel.kernel, 'openSession');
+    const activatingRead = vi.spyOn(f.runtime.kernel.kernel, 'getShared');
+    const snapshot = await f.call('contexts');
+    expect(snapshot).toEqual({revision: null, bindings: []});
+    expect(open).not.toHaveBeenCalled(); expect(nativeOpen).not.toHaveBeenCalled(); expect(activatingRead).not.toHaveBeenCalled();
+    if (rpc) expect(f.queries).toContainEqual({command: SessionCommand.ContextBindings, query: true});
+    await expect(f.call('contexts', undefined, {branch: 'missing'})).rejects.toMatchObject({code: 'CONTEXT_QUERY_BRANCH_INVALID'});
+    const count = f.queries.length;
+    await expect(f.call('contexts', undefined, {cursor: 'PRIVATE_INVALID_CURSOR'})).rejects.toMatchObject({code: 'CONTEXT_CURSOR_INVALID', message: 'Invalid context pagination cursor JSON'});
+    expect(f.queries).toHaveLength(count);
+    expect(open).not.toHaveBeenCalled();
+});
+
+it('freezes explicit native context selection in the same submission file and never re-reads it during recovery', async () => {
+    const f = await setup(), contextFile = path.join(f.directory, 'context.json'), submissionFile = path.join(f.directory, 'context-call.json');
+    const selection = {mode: 'fork', sourceBindingId: 'binding', expectedBindingRevision: 4, expectedGeneration: 1, checkpointRef: 'head-1'};
+    await writeFile(contextFile, JSON.stringify(selection));
+    const execute = vi.fn(async (_name: string) => ({entries: [{name: 'Remote', target: {kind: 'agent', id: 'remote', version: 'v1', digest: 'digest'}}], issues: []}));
+    const client = {services: {commandBus: {execute}}} as unknown as ApplicationClient;
+    const request = await prepareSessionSubmission(client, f.sessionId, 'Increment only', 'main', {agent: 'remote', contextFile, submissionFile});
+    expect(request.overrides?.harnessConversation).toEqual(selection);
+    await writeFile(contextFile, JSON.stringify({mode: 'new'}));
+    expect((await readSubmissionFile(submissionFile, f.sessionId)).overrides?.harnessConversation).toEqual(selection);
+    expect(() => assertFrozenCallOptions({contextFile})).toThrow('A frozen submission cannot be overridden');
+    await writeFile(contextFile, JSON.stringify({...selection, nativeSessionId: 'injected'}));
+    await expect(prepareSessionSubmission(client, f.sessionId, 'Increment only', 'main', {agent: 'remote', contextFile}))
+        .rejects.toMatchObject({code: 'CONTEXT_REQUEST_INVALID'});
+    expect(execute.mock.calls.map(([name]) => name)).toEqual([SessionCommand.ListTargets, SessionCommand.ListTargets]);
+});
 
 it.each([false, true])('prepares, submits and inspects the same frozen Flow call without an Agent (RPC %s)', async rpc => {
     const f = await setup(rpc), submissionFile = path.join(f.directory, 'call.json'), paramsFile = path.join(f.directory, 'params.json');
@@ -170,4 +203,26 @@ it('rejects a Flow connection override for a plain Agent before creating a reque
     const open = vi.spyOn(f.client.backend, 'openSessionView');
     await expect(f.call('prepare', 'Task', {agent: 'plain', connectionBindingsFile: bindings, submissionFile})).rejects.toMatchObject({code: 'CLI_CALL_BINDINGS_INVALID'});
     expect(open).not.toHaveBeenCalled(); await expect(stat(submissionFile)).rejects.toMatchObject({code: 'ENOENT'});
+});
+
+
+it('diagnoses context validation and host failures without logging cursor contents or remote error text', async () => {
+    const f = await setup(); vi.stubEnv('MINDOS_DIAGNOSTICS_DIR', f.directory);
+    const diagnostics = installRuntimeDiagnostics(); cleanup.push(() => diagnostics.dispose());
+    await f.call('contexts');
+    await expect(f.call('contexts', undefined, {cursor: 'PRIVATE_CURSOR_TEXT'})).rejects.toMatchObject({code: 'CONTEXT_CURSOR_INVALID'});
+    vi.spyOn(f.client.services.commandBus, 'execute').mockRejectedValueOnce(Object.assign(new Error('PRIVATE_REMOTE_TEXT'), {code: 'CONTEXT_CATALOG_CHANGED'}));
+    await expect(f.call('contexts')).rejects.toMatchObject({code: 'CONTEXT_CATALOG_CHANGED'});
+    const log = await readFile(diagnostics.file, 'utf8');
+    expect(log).toContain('CONTEXT_CURSOR_INVALID'); expect(log).toContain('CONTEXT_CATALOG_CHANGED');
+    expect(log).toContain('validate'); expect(log).toContain('query'); expect(log).toContain('observed'); expect(log).toContain('operationId');
+    expect(log).not.toContain('PRIVATE_CURSOR_TEXT'); expect(log).not.toContain('PRIVATE_REMOTE_TEXT');
+});
+
+
+it('rejects native selection for a Flow before reading the selection file or writing a submission', async () => {
+    const f = await setup(), submissionFile = path.join(f.directory, 'rejected-call.json');
+    await expect(f.call('prepare', 'input', {flow: 'worker', contextFile: 'missing-private-file', submissionFile}))
+        .rejects.toMatchObject({code: 'CONTEXT_TARGET_UNSUPPORTED'});
+    await expect(stat(submissionFile)).rejects.toMatchObject({code: 'ENOENT'});
 });

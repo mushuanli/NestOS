@@ -108,6 +108,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
         else if (arg === '--flow') options.flow = required(rest[++index], 'published Flow id');
         else if (arg === '--submission-file') options.submissionFile = required(rest[++index], 'frozen submission JSON file');
         else if (arg === '--branch') options.branch = required(rest[++index], 'branch name');
+        else if (arg === '--context') options.contextFile = required(rest[++index], 'context selection JSON file');
+        else if (arg === '--cursor') options.cursor = required(rest[++index], 'pagination cursor JSON');
         else if (arg === '--model') options.model = required(rest[++index], 'model');
         else if (arg === '--api-key-env') options.apiKeyEnv = required(rest[++index], 'api-key-env');
         else if (arg === '--credential-env') options.credentialEnv = required(rest[++index], 'credential environment variable');
@@ -158,7 +160,8 @@ function help(): string {
         `  mindos flow-run pause|resume|withdraw-pause <session-id> <root-task-id> <request-id> <observed-epoch>\n` +
         `  mindos flow-run receipt <session-id> <root-task-id> <request-id>\n` +
         `  mindos session targets\n` +
-        `  mindos session prepare|send <session-id> [text] --agent id [--submission-file call.json]\n` +
+        `  mindos session contexts <session-id> [binding-id] [--cursor json] [--branch name]\n` +
+        `  mindos session prepare|send <session-id> [text] --agent id [--context selection.json] [--submission-file call.json]\n` +
         `  mindos session send <session-id> [text] --agent <id> | --flow <id> [--params file]\n` +
         `  mindos session prepare <session-id> [text] --flow <id> --submission-file file\n` +
         `  mindos session submit|receipt <session-id> <submission.json>\n` +

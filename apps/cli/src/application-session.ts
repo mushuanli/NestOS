@@ -1,5 +1,7 @@
+import {randomUUID} from '@itookit/common';
+import {recordRuntimeDiagnostic} from './diagnostics';
 import type {ApplicationClient} from '@itookit/app-contracts/services';
-import {SessionCommand, type SubmissionRequest, type SessionSnapshot} from '@itookit/llm-session/contracts';
+import {SessionCommand, assertContextBindingQuery, type ContextBindingQuery, type SubmissionRequest, type SessionSnapshot} from '@itookit/llm-session/contracts';
 import type {CommandOptions} from './commands';
 import {assertFrozenCallOptions, dispatchSessionSubmission, inspectSessionSubmission, prepareSessionSubmission, readSubmissionFile} from './application-submission';
 import {watchSubmissionExecution} from './submission-execution';
@@ -17,6 +19,7 @@ export async function sessionCommand(client: ApplicationClient, args: string[], 
         return (await client.backend.projectSessions()).create(required(value, 'session title'), project.path);
     }
     const sessionId = required(id, 'session id');
+    if (action === 'contexts') return contextBindings(client, sessionId, value, options);
     if (action === 'receipt') {assertFrozenCallOptions(options); return inspectSessionSubmission(client, await readSubmissionFile(required(value, 'submission file'), sessionId));}
     if (action === 'prepare') return prepareOnly(client, sessionId, value, options);
     const frozen = action === 'submit' ? await frozenInput(value, sessionId, options) : undefined;
@@ -37,7 +40,26 @@ async function sessionViewCommand(client: ApplicationClient, action: string, ses
     } finally {await opened.dispose();}
 }
 
-
+async function contextBindings(client: ApplicationClient, sessionId: string, bindingId: string | undefined, options: CommandOptions) {
+    const operationId = randomUUID(), started = Date.now();
+    let stage = 'validate';
+    try {
+        const query: ContextBindingQuery = {sessionId, ...(options.branch ? {branchId: options.branch} : {}), ...(bindingId ? {bindingId} : {})};
+        if (options.cursor) {
+            try {query.cursor = JSON.parse(options.cursor);}
+            catch {throw Object.assign(new Error('Invalid context pagination cursor JSON'), {code: 'CONTEXT_CURSOR_INVALID'});}
+        }
+        assertContextBindingQuery(query); stage = 'query';
+        const result = await client.services.commandBus.execute(SessionCommand.ContextBindings, query);
+        recordRuntimeDiagnostic('context.query', {operation: 'session.contexts', operationId, stage, outcome: 'observed', durationMs: Date.now() - started});
+        return result;
+    } catch (error) {
+        const value = (error as {code?: unknown})?.code;
+        const code = typeof value === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(value) ? value : 'CONTEXT_QUERY_FAILED';
+        recordRuntimeDiagnostic('context.query', {operation: 'session.contexts', operationId, stage, outcome: 'failure', code, durationMs: Date.now() - started});
+        throw error;
+    }
+}
 
 async function branchCommand(client: ApplicationClient, action: string, value: string | undefined, head: string | null) {
     const bus = client.services.commandBus;

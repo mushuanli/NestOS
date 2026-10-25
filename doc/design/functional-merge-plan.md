@@ -782,3 +782,22 @@ InputContextDraft 保存选择修订及 Session/分支/目标作用域；执行�
 选择变得不兼容时保留原草稿并报告原因，用户可以核对或清除；无目录端口的普通聊天不被锁住，直接命令不解释原生选择。收到持久接纳即可继续选择和入队，不等待原 RPC 返回。静态目录核对不替代宿主派发复验；严格 continue 仍不开放，fork 不宣称恢复文件系统。
 
 隔离验收覆盖目录漂移、分页与迟到响应、分支/目标/Session 变化、草稿重开、同点重选、旧回执、冻结配置和原 RPC 悬挂时继续入队。项目草稿与正式 Session 复用既有宿主存储，不增加 IndexedDB、调度器或上下文状态库。独立 ChatView 的选择控件、F16 其他函数入口、F24 完整调用组与复杂输出性能、真实远端验收仍保留；未部署。
+
+
+## 35. F22 CLI 目录观察与上下文选择文件
+
+CLI contexts 接既有 Session.ContextBindings，只读目录先于 openSessionView；分页对象及显式分支交给宿主校验。prepare/send 的 --context 使用公共 ConversationSelection 校验器，冻结到原 Submission 文件，submit/receipt 禁止覆盖；Flow 在读文件前拒绝该选项。UI 和 CLI 使用同一 binding 身份与派发复验，不新增执行或存储机制。
+
+```mermaid
+C4Component
+  title CLI 上下文接入沿用宿主协议
+  Component(cli, "CLI session", "应用表示层", "解析参数、输出与安全诊断")
+  Component(query, "ContextBindings", "宿主只读端口", "安全摘要与检查点分页")
+  ContainerDb(file, "call.json", "既有提交文件", "冻结选择、目标与 operationId")
+  Component(submit, "Session submit / receipt", "宿主", "持久接纳或只读核对")
+  Rel(cli, query, "contexts，不打开 Session view")
+  Rel(cli, file, "prepare；独占保存后再发送")
+  Rel(file, submit, "原冻结请求和身份")
+```
+
+隔离验收覆盖本地和 RPC 查询不激活 Session、非法游标不出客户端、选择文件修改后恢复仍使用原冻结选择、注入原生身份拒绝、Flow 覆盖拒绝，以及诊断不泄露游标和远端错误正文。此入口不是原生条件写能力，也不等同真实远端验收；F16/F24 及独立 ChatView 剩余项保持开放。

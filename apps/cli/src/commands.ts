@@ -37,6 +37,8 @@ export interface CommandOptions {
     branch?: string;
     file?: string;
     paramsFile?: string;
+    contextFile?: string;
+    cursor?: string;
     stateDir?: string;
     headless?: boolean;
     json?: boolean;

@@ -13,4 +13,7 @@ CLI 是应用表示层和 Node 入口；本地/远程传输选择属于宿主。
 
 离线 `.flow` 的组合定义通过 siblingFlowResolver 从入口同目录读取 `<flowId>.flow`，校验安全 ID、实际身份与显式 revision。编译图保存到 RunDefinition，恢复不重新解析最新子定义；不静态依赖任何业务 Flow。
 
-Session 根调用使用 session.targets.list、session.submit 与 session.submission.inspect；--agent/--flow 互斥，prepare/submit/receipt 沿用原冻结文件与身份。文件以 wx/0600 写入并同步后才派发；核对不打开会话视图、不自动重放。等待以本次 Submission 的 Round/Task 和持久成员为准，队列暂停或结果未知明确返回，不借全局完成/审批事件判断本次结束。conversation query/reconcile-query 使用独立查询端口，不先加载原生历史。原生 context 选择仍未在本批 CLI 开放。
+Session 根调用使用 session.targets.list、session.submit 与 session.submission.inspect；--agent/--flow 互斥，prepare/submit/receipt 沿用原冻结文件与身份。文件以 wx/0600 写入并同步后才派发；核对不打开会话视图、不自动重放。等待以本次 Submission 的 Round/Task 和持久成员为准，队列暂停或结果未知明确返回，不借全局完成/审批事件判断本次结束。conversation query/reconcile-query 使用独立查询端口，不先加载原生历史。原生 context 选择见下文，严格 continue 仍未开放。
+
+
+CLI 上下文入口已接宿主：session contexts 在打开 Session view 前只读查询安全 binding/检查点摘要，--cursor 原样传递目录游标，--branch 仅过滤。--context 文件经公共 ConversationSelection 校验，随 prepare/send 的 Submission 冻结；submit/receipt 不接受该覆盖，也不重读选择文件。目录只证明观察事实，真正派发仍复验能力和 binding 修订；严格 continue 未开放。查询诊断区分本地校验与宿主读取，不记录游标、文件内容或远端错误正文。

@@ -101,3 +101,20 @@ pnpm cli flow-run reattach <session-id> <root-task-id>
 先用 show 读取根 `control.epoch`，未设置控制时为 0。调用方须在发送前保存 request-id 和该 epoch；同一次操作核对或显式重试保留二者，新意图使用新身份。CLI 不生成隐含新控制 ID，不在网络异常后自动重试。`resume` 解除本调用已确认的暂停；`withdraw-pause` 撤回尚未确认的暂停；`reattach` 只恢复宿主调度，不能替代解除暂停。
 
 receipt 按 requestId 查询 Kernel 保留的原接纳记录：存在返回 `observed`，`receipt.accepted` 是当时控制，`receipt.current` 是当前控制，`action` 区分恢复与撤回暂停。原记录在后续控制覆盖、Task 终结后仍可查询；历史 acknowledged 不代表当前子树已停止，当前执行状态用 show 核对。无保留记录返回 `unknown`，不能据此自动重发。查询不改变执行、队列或 Session 绑定；本地宿主正常启动恢复仍独立存在。
+
+
+## CLI 原生上下文目录与冻结选择
+
+```bash
+pnpm cli session contexts <session-id> [binding-id] --branch main
+pnpm cli session contexts <session-id> [binding-id] --cursor '<nextCursor JSON>'
+pnpm cli session prepare <session-id> '本轮增量输入' --agent <agent-id> --context selection.json --submission-file call.json
+pnpm cli session submit <session-id> call.json
+pnpm cli session receipt <session-id> call.json
+```
+
+可附加现有 --connect 与认证参数。contexts 不打开 Session view、不领取 writer，返回安全绑定摘要；指定 binding-id 时读取检查点，nextCursor 保留查询范围与修订。目录变化导致游标无效时重新查询，不能改写游标继续拼接旧观察。CLI 本地启动的正常宿主恢复独立存在。
+
+selection.json 使用公共 ConversationSelection，例如 `{"mode":"fork","sourceBindingId":"binding-id","expectedBindingRevision":4,"expectedGeneration":1,"checkpointRef":"checkpoint-ref"}`；字段值必须来自实际目录。prepare 只冻结请求，不表示接纳或执行资格已确认。Flow 不接受此覆盖，模型 Agent 和不支持的能力由宿主拒绝；严格 continue 仍不开放，fork 不恢复工作区文件系统。
+
+原选择文件之后的编辑不改变 call.json；submit/receipt 禁止 --context 覆盖。提交丢回复应使用 receipt 查询原身份，不自动换 ID 或重发。查询和准备诊断只保留阶段、结果、关联 ID、耗时及安全错误码，不记录游标或用户输入。

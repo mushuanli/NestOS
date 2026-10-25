@@ -37,6 +37,16 @@ describe('parseArgs', () => {
         expect(parseArgs(['run', '--connection-bindings', 'bindings.json']).options).toMatchObject({ connectionBindingsFile: 'bindings.json' });
     });
 
+    it('parses explicit context files and opaque catalog cursors', () => {
+        expect(parseArgs(['session', 'prepare', 'session-id', 'input', '--context', 'selection.json']).options)
+            .toMatchObject({contextFile: 'selection.json'});
+        const cursor = JSON.stringify({revision: 2, after: 'point', scope: 'a'.repeat(64)});
+        expect(parseArgs(['session', 'contexts', 'session-id', 'binding-id', '--cursor', cursor, '--branch', 'main']).options)
+            .toMatchObject({cursor, branch: 'main'});
+        expect(() => parseArgs(['session', 'contexts', 'session-id', '--cursor'])).toThrow();
+        expect(() => parseArgs(['session', 'prepare', 'session-id', '--context'])).toThrow();
+    });
+
     it('parses --profile, --set-home and repeated --add-dir', () => {
         expect(parseArgs(['run', '--profile', '/tmp/mindos-data']).options).toMatchObject({ profile: '/tmp/mindos-data' });
         expect(parseArgs(['run', '--set-home', '/project']).options).toMatchObject({ setHome: '/project' });

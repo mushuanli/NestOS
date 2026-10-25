@@ -25,6 +25,8 @@ export interface IndependentCallView {
     head: string | null;
     status?: import('./conversation').Round['status'];
     executionState?: IndependentCallExecutionState;
+    /** Protocol support only; current write permission is revalidated on control. */
+    controlCapabilities?: {cancel: boolean};
     /** Bounded display text only; execution consumers read the actual child output. */
     summary?: string;
 }

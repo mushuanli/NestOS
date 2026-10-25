@@ -1,3 +1,4 @@
+import {hasFlowControlTree} from '@itookit/llm-flow/contracts';
 import {IndependentCallControls} from './independent-call-controls';
 import {taskStat, KernelError, KernelErrorCode, type Kernel, type JsonValue} from '@itookit/durable-kernel';
 import {sha256Hex} from '@itookit/llm-context';
@@ -99,8 +100,8 @@ export class IndependentCallService {
             if (route.input.request.expectedSessionId !== query.sessionId) throw failure('CALL_ROUTE_CONFLICT');
             if (query.branchId !== undefined && route.input.request.expectedBranch !== query.branchId) continue;
             const {receipt, round} = await this.observe(route);
-            const executionState = await this.executionState(receipt);
-            views.push({input: structuredClone(route.input), receipt, createdAt: route.createdAt ?? 0, head: route.head ?? null, ...(executionState ? {executionState} : {}),
+            const executionView = await this.executionProjection(receipt);
+            views.push({input: structuredClone(route.input), receipt, createdAt: route.createdAt ?? 0, head: route.head ?? null, ...executionView,
                 ...(round ? {status: round.status, summary: outputSummary(round)} : {})});
         }
         return views.sort((a, b) => a.createdAt - b.createdAt || a.receipt.operationId.localeCompare(b.receipt.operationId));
@@ -126,10 +127,12 @@ export class IndependentCallService {
             throw failure('CALL_EXECUTION_CONFLICT');
         return task;
     }
-    private async executionState(receipt: IndependentCallReceipt): Promise<IndependentCallExecutionState | undefined> {
-        const task = await this.executionTask(receipt); if (!task) return;
+    private async executionProjection(receipt: IndependentCallReceipt): Promise<Pick<IndependentCallView, 'executionState' | 'controlCapabilities'>> {
+        const task = await this.executionTask(receipt); if (!task) return {};
         const {id, revision, phase, control, blockedBy, activeOperations, settled, stopped} = taskStat(task);
-        return {id, revision, phase, control, blockedBy, activeOperations, settled, stopped, controlEpoch: task.control?.epoch ?? 0};
+        const executionState: IndependentCallExecutionState = {id, revision, phase, control, blockedBy, activeOperations, settled, stopped, controlEpoch: task.control?.epoch ?? 0};
+        const flow = task.program.kind === 'flow.aggregate' || task.labels?.kind === 'flow-root';
+        return {executionState, controlCapabilities: {cancel: !flow || hasFlowControlTree(task)}};
     }
     private async round(route: CallRoute): Promise<Round | undefined> {
         if (!route.executionSessionId) return;

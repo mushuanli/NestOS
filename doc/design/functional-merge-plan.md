@@ -1117,3 +1117,27 @@ C4Component
 查询不调用写权限获取，也不打开执行 Session；父绑定和草稿不受影响。父/子任一会话只读则取消拒绝；回执仍可读取。没有主执行身份的待派发调用明确不可按 Task 取消，队列操作保留自身入口。Flow 取消依然服从第 47 节控制树与租约规则。
 
 真实 Agent/Flow 验证覆盖取消与完成竞态、原接纳重放、错误 caller branch/child/task/call、父子写权限、丢回复后只读恢复；真实 ChatView 的本地/RPC 链增加控制与回执传输验证。失败诊断脱敏、错误回执身份拒绝与日志回调失败不替换结果由独立用例覆盖。UI 操作台账和控制按钮、暂停/恢复入口仍未完成，下一批继续接线。
+
+## 49. F16 调用卡片取消与持久操作台账
+
+IndependentCallPanel 在默认工作台与独立 ChatView 共用 IndependentCallControl；宿主投影 controlCapabilities.cancel 明确协议支持，缺省不开放按钮。能力不代表当前写权限，派发时仍由第 48 节复验。UI 不按目标类型猜测支持，也不把显示版本当作控制版本；已终态主任务隐藏新取消，已有未知请求仍保留核对入口。
+
+```mermaid
+C4Component
+  title 卡片取消与输入入队使用独立操作身份
+  Component(card, "IndependentCallControl", "共享宿主 UI", "按能力显示取消或查询，不拥有执行状态")
+  Component(ops, "CallCancellationOperations", "台账适配", "冻结调用身份与控制 epoch，先保存再发送")
+  ContainerDb(ledger, "原 OperationLedger", "宿主持久化", "command 操作，不携带草稿")
+  Component(host, "独立调用控制端口", "Session 用例", "真实归属、授权与 Kernel 回执")
+  Component(composer, "输入栏", "llm-ui / 工作台", "新输入继续进入原队列")
+  Rel(card, ops, "取消 / 查询原请求")
+  Rel(ops, ledger, "先登记；有持久证据再 accepted")
+  Rel(ops, host, "session.call.cancel / cancellation.receipt")
+  Rel(composer, ledger, "独立 send 操作与草稿修订")
+```
+
+每次明确新取消分配 requestId 并冻结 caller/branch/call/child/task/expectedEpoch；同 ID 再次调用只能读原回执，不能重新派发。收到原取消回执、但 RPC Promise 仍悬挂时，查询可独立结算同一台账。迟到失败不让 accepted 回退；accepted 只表示原控制结果已核对，不宣称整树停止或资源已释放。取消记录不携带 composer draft，不消费下一条文字或参数。
+
+卡片复用已有 list 观察节奏核对 pending command，不增加独立轮询器；重复 missing 回执不反复写相同 unknown 台账，防止刷新自激循环。隐藏/销毁停止新查询；重开可发起新查询，不等待悬挂旧查询。登记期间视图关闭则明确记录未派发的 rejected，保存失败保留可重试提示并且不发送命令。独立 ChatView 的通用 reconcile 同样识别这类控制记录。
+
+验收包含台账持久化失败、同键异目标、错误回执身份/epoch、隐藏重开、能力缺失与终态、原响应悬挂、迟到失败，以及真实本地/RPC ChatView 取消后保留新草稿并继续第二次独立提交。暂停/恢复、原生会话控制与整树资源收尾展示仍是后续范围，不将 F16 整体标记完成。

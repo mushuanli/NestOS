@@ -55,7 +55,7 @@ it('selects an independent published Flow, submits through the real Session queu
     expect(view.getDraft().text).toBe(''); expect(view.getDraft().target).toEqual(selected.target);
 });
 
-async function workspace() {
+async function workspace(wait = false) {
     vi.stubGlobal('ResizeObserver', class {observe() {} disconnect() {}});
     vi.stubGlobal('matchMedia', () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
     HTMLElement.prototype.scrollTo = vi.fn();
@@ -65,7 +65,8 @@ async function workspace() {
     cleanup.push(() => runtime.dispose());
     const flow: FlowDraft = {id: 'worker' as never, name: 'Independent worker', exposure: 'global', draftVersion: 1, updatedAt: 0, layout: {},
         parameters: [{name: 'request', type: 'string', inputSource: 'composer.text'}, {name: 'count', type: 'number', default: 0}],
-        nodes: [{id: 'return' as never, name: 'Return', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: '${param.request}'}}],
+        nodes: [{id: 'return' as never, name: 'Return', plugin: wait ? 'builtin.human' : 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
+            config: wait ? {requestId: 'approval', prompt: 'Wait'} : {value: '${param.request}'}}],
         edges: [], outputs: {result: {value: '${nodes.return.outputs.result}'}}};
     await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow]});
     await runtime.agentService.saveAgent({id: 'worker', name: 'Same ID Agent', type: 'agent', config: {}});
@@ -302,3 +303,38 @@ it.each(['local', 'rpc'])('submits an independent child from ChatView over %s an
     expect(await commands.execute('session.call.cancellation.receipt', query)).toEqual(cancelled);
     expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.sessionId);
 });
+
+
+it.each(['local', 'rpc'])('cancels from a real ChatView over %s while the reply hangs and still accepts the next input', async transport => {
+    const f = await workspace(true); await f.runtime.commandBus.execute(SessionCommand.Bind, {sessionId: f.sessionId});
+    let cancels = 0;
+    const execute = async (name: string, args?: unknown) => {
+        const result = await f.runtime.commandBus.execute(name, args);
+        if (name === 'session.call.cancel') {cancels++; return new Promise(() => {});}
+        return result;
+    };
+    let commands = {execute} as ICommandBus;
+    if (transport === 'rpc') {
+        let server!: RpcPeer;
+        const client = new RpcPeer('client', call => server.handle(call)); server = new RpcPeer('server', call => client.handle(call));
+        cleanup.push(async () => {await client.close(); await server.close();}); commands = client.decode(await server.expose({execute})) as ICommandBus;
+    }
+    const operations = createOperationLedger(), binding = createSessionChatBinding({session: f.runtime.sessionManager, commands, operations,
+        targetSelection: true, independentCalls: true, branch: () => 'main',
+        hasCommittedSubmission: submission => hasCommittedSubmission(f.runtime.sessionRepository, f.sessionId, submission)});
+    cleanup.push(() => binding.dispose()); const host = document.createElement('section'); document.body.append(host);
+    const view = await createSessionChatView(host, binding); cleanup.push(() => view.destroy()); await binding.refreshTargets();
+    const choice = binding.source.getSnapshot().callTargets!.entries.find(entry => entry.target.kind === 'flow')!;
+    const target = host.querySelector<HTMLSelectElement>('[data-call-target]')!; target.value = choice.id; target.dispatchEvent(new Event('change', {bubbles: true}));
+    const mode = host.querySelector<HTMLSelectElement>('[data-selector-id="callMode"]')!; mode.value = 'independent'; mode.dispatchEvent(new Event('change', {bubbles: true}));
+    view.setText('First task'); view.setArguments('{"count":0}'); await view.submit();
+    await vi.waitFor(() => expect(host.querySelector<HTMLButtonElement>('[data-call-cancel]')?.hidden).toBe(false));
+    view.setText('Next task'); host.querySelector<HTMLButtonElement>('[data-call-cancel]')!.click();
+    await vi.waitFor(() => expect(operations.getSnapshot().find(record => record.kind === 'command')?.status).toBe('accepted'));
+    expect(view.getDraft().text).toBe('Next task'); expect(cancels).toBe(1);
+    view.setArguments('{"count":0}'); await view.submit();
+    await vi.waitFor(async () => expect(await f.runtime.commandBus.execute('session.calls.list', {sessionId: f.sessionId})).toHaveLength(2));
+    expect(operations.getSnapshot().filter(record => record.kind === 'send')).toHaveLength(2);
+    expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.sessionId);
+    expect((await f.runtime.sessionRepository.readHistoryChain(f.sessionId)).rounds).toEqual([]);
+}, 15000);

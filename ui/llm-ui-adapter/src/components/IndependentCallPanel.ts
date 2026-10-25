@@ -1,3 +1,5 @@
+import {IndependentCallControl} from './IndependentCallControl';
+import {CallCancellationOperations, callCancellationProtocol} from '../independent/call-cancellation';
 import {TaskArtifactBrowser} from './dag/TaskArtifactBrowser';
 import {createModuleLogger, t} from '@itookit/common';
 import type {OperationLedger} from '@itookit/llm-ui';
@@ -5,7 +7,7 @@ import {IndependentCallCommand, type IndependentCallView, type ICommandBus} from
 import {canonicalJson} from '../utils/canonical-json';
 
 const log = createModuleLogger('independent-calls');
-interface Card {element: HTMLElement; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
+interface Card {element: HTMLElement; control: IndependentCallControl; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
 interface Options {
     operations: OperationLedger;
     branch(): string;
@@ -25,7 +27,9 @@ export class IndependentCallPanel {
     private refreshing?: Promise<void>;
     private active = false;
     private releaseLedger: () => void;
+    private readonly controls: CallCancellationOperations;
     constructor(private commands: ICommandBus, private sessionId: string, parent: HTMLElement, private options: Options) {
+        this.controls = new CallCancellationOperations(options.operations, commands, sessionId);
         this.element.className = 'flow-invocations'; this.element.hidden = true;
         this.error.setAttribute('role', 'alert'); this.element.append(this.error); parent.append(this.element);
         this.releaseLedger = options.operations.subscribe(() => {void this.refresh();});
@@ -58,15 +62,16 @@ export class IndependentCallPanel {
     reset(): void {++this.generation; this.refreshing = undefined; this.clearCards(); void this.refresh();}
     setVisible(value: boolean): void {
         this.visible = value; ++this.generation; this.refreshing = undefined; clearTimeout(this.timer);
-        for (const card of this.cards.values()) card.artifacts.setVisible(value);
+        for (const card of this.cards.values()) {card.artifacts.setVisible(value); card.control.setActive(value);}
         if (value) void this.refresh();
     }
     destroy(): void {
         this.abort.abort(); ++this.generation; clearTimeout(this.timer); this.releaseLedger(); this.clearCards(); this.element.remove();
     }
     private pending(): boolean {
-        return this.options.operations.getSnapshot().some(record => record.conversationId === this.sessionId && record.kind === 'send'
-            && ['submitting', 'unknown'].includes(record.status) && !!(record.input as {independentTitle?: string}).independentTitle);
+        return this.options.operations.getSnapshot().some(record => record.conversationId === this.sessionId && ['submitting', 'unknown'].includes(record.status)
+            && (record.kind === 'send' && !!(record.input as {independentTitle?: string}).independentTitle
+                || record.kind === 'command' && (record.input as {protocol?: string})?.protocol === callCancellationProtocol));
     }
     private async load(branch: string, current: () => boolean): Promise<void> {
         const calls = await this.commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: this.sessionId, branchId: branch});
@@ -106,8 +111,9 @@ export class IndependentCallPanel {
         let card = this.cards.get(id);
         if (!card) {
             const element = document.createElement('article'); element.className = 'flow-invocations__card'; element.dataset.independentCall = id;
-            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div>';
-            card = {element, artifacts: new TaskArtifactBrowser(element, this.commands), release: this.options.mountCard?.(element, call)};
+            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div><div data-call-control></div>';
+            card = {element, control: new IndependentCallControl(element.querySelector('[data-call-control]')!, this.controls, () => {void this.refresh();}),
+                artifacts: new TaskArtifactBrowser(element, this.commands), release: this.options.mountCard?.(element, call)};
             if (!this.options.mountCard) this.element.append(element);
             this.cards.set(id, card);
         }
@@ -121,7 +127,7 @@ export class IndependentCallPanel {
         element.querySelector('[data-output]')!.textContent = call.summary ?? '';
         const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId || !this.options.openChild;
         button.onclick = () => {void this.open(call.receipt.executionSessionId!);};
-        this.renderArtifacts(card, call);
+        this.renderArtifacts(card, call); card.control.update(call);
     }
     private renderArtifacts(card: Card, call: IndependentCallView): void {
         const {executionSessionId, execution, status} = call.receipt;
@@ -132,7 +138,7 @@ export class IndependentCallPanel {
         card.artifacts.clear(); card.artifactScope = key;
         card.element.querySelector('[data-artifacts]')!.innerHTML = scope ? card.artifacts.render(scope) : '';
     }
-    private disposeCard(card: Card): void {card.artifacts.dispose(); card.release?.(); card.element.remove();}
+    private disposeCard(card: Card): void {card.control.destroy(); card.artifacts.dispose(); card.release?.(); card.element.remove();}
     private async open(id: string): Promise<void> {
         if (!this.visible || this.abort.signal.aborted) return;
         try {await this.options.openChild?.(id);}

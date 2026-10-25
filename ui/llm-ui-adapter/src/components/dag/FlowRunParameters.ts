@@ -4,6 +4,7 @@ import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { flowConnectionSelection } from '../../flows/connection-selection';
 import type { FlowRunInput } from '../../flows/run-flow';
 import { bindFlowImageFields } from '../FlowImageFields';
+import {bindFlowFileFields} from '../FlowFileFields';
 import {bindFlowParameterState, flowParameterFields, readFlowParameterForm, showFlowFieldError, validateFlowConnectionForm, type FlowConnectionSelection} from '../FlowParameterForm';
 import {updateFlowConnectionRequirements} from '../FlowConnectionFields';
 
@@ -51,7 +52,12 @@ export class FlowRunParameters {
             this.unbindFields = bindFlowParameterState(this.root, this.draft.parameters ?? [], this.draft.inputGroups ?? [], values => {
                 updateFlowConnectionRequirements(this.root, connection, values);
             });
-            this.imagesReady = bindFlowImageFields(this.root, this.draft.parameters ?? [], connection.assets);
+            const images = bindFlowImageFields(this.root, this.draft.parameters ?? [], connection.assets);
+            const files = bindFlowFileFields(this.root, this.draft.parameters ?? [], connection.assets);
+            this.imagesReady = () => {
+                const pending = [images(), files()].filter((task): task is Promise<void> => task !== undefined);
+                return pending.length ? Promise.all(pending).then(() => {}) : undefined;
+            };
             this.showError('');
         } catch (error) {
             if (this.disposed) return;

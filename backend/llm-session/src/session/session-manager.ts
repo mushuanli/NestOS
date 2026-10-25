@@ -97,6 +97,7 @@ export class SessionManager implements ISession, SessionQuery {
         agentService: IAgentConfigService,
         options: {
             executionActivity?: SessionExecutionActivity;
+            validateCallAssets?: import('../contracts/submission').CallAssetValidator;
             instructionQueueSessions?: import('../persistence/instruction-queue-sessions').InstructionQueueSessions;
             directAgentPolicy?: import('../contracts/direct-agent-policy').DirectAgentPolicy;
             agentResolution?: import('./agent-resolver').AgentResolutionPolicy;
@@ -141,6 +142,7 @@ export class SessionManager implements ISession, SessionQuery {
             this.agentResolver,
             attachments,
             {
+                validateCallAssets: options.validateCallAssets,
                 refreshSession: async sid => {
                     const state = this.registry.getSessionState(sid);
                     if (state) await this.registry.reloadSessionData(sid, state);

@@ -869,7 +869,7 @@ export class DagWorkbench {
             this.options.listTools?.() ?? Promise.resolve([]),
             this.options.listSkills?.() ?? Promise.resolve([]),
         ]);
-        const result = await openFlowSettings({
+        const result = await openFlowSettings({exposure: draft.exposure,
             outputs: draft.outputs,
             connections: draft.connections ?? [],
             defaultConnection: draft.defaultConnection,

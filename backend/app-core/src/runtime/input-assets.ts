@@ -4,7 +4,9 @@ import type {InputAssetReference} from '@itookit/tools/contracts';
 import type {IFileSystem} from '@itookit/vfs-core';
 import type {CommandBus} from '@itookit/llm-session';
 import {InputAssetCommand} from '@itookit/app-contracts';
-const owner = '/var/lib/inputs.seq';
+import {readInputAsset, inputAssetError, INPUT_ASSET_OWNER as owner} from './input-asset-store';
+import {importInputFile, inspectInputFile} from './input-file-assets';
+export {readInputAsset} from './input-asset-store';
 const maxBytes = 20 * 1024 * 1024;
 
 export async function importInputAsset(fs: IFileSystem, url: string): Promise<InputAssetReference> {
@@ -30,26 +32,10 @@ async function persistInputAsset(fs: IFileSystem, bytes: Uint8Array, mimeType: s
         await readInputAsset(fs, ref); return ref;
     } catch (error) { throw inputAssetError('INPUT_ASSET_PERSISTENCE', 'Could not persist the uploaded image', error); }
 }
-export async function readInputAsset(fs: IFileSystem, ref: InputAssetReference): Promise<Uint8Array> {
-    if (ref?.kind !== 'input' || !/^[a-f0-9-]{36}$/.test(ref.id)) throw inputAssetError('INPUT_ASSET_IDENTITY', 'Invalid input asset identity');
-    const metadata = await fs.meta.seq!.getEntry(owner, ref.id);
-    if (!metadata) throw inputAssetError('INPUT_ASSET_MISSING', 'Input asset is missing');
-    const saved = JSON.parse(metadata) as InputAssetReference;
-    if (saved.sha256 !== ref.sha256 || saved.bytes !== ref.bytes || saved.mimeType !== ref.mimeType) throw inputAssetError('INPUT_ASSET_INTEGRITY', 'Input asset metadata mismatch');
-    const body = await fs.meta.assets.getAsset(owner, `${ref.id}.bin`);
-    if (!(body instanceof ArrayBuffer)) throw inputAssetError('INPUT_ASSET_MISSING', 'Input asset is missing');
-    const data = new Uint8Array(body);
-    if (data.length !== ref.bytes || await sha256Hex(data) !== ref.sha256) throw inputAssetError('INPUT_ASSET_INTEGRITY', 'Input asset integrity mismatch');
-    return data;
-}
-
-function inputAssetError(code: string, message: string, cause?: unknown): Error {
-    const remoteCode = (cause as {code?: unknown})?.code;
-    return Object.assign(new Error(message, {cause}), {code,
-        ...(typeof remoteCode === 'string' && /^[A-Z][A-Z0-9_]{0,63}$/.test(remoteCode) ? {remoteCode} : {})});
-}
 export function registerInputAssets(commands: CommandBus, fs: IFileSystem, readTask?: (ref: import('@itookit/tools/contracts').TaskAssetReference) => Promise<Uint8Array>): {dispose(): void} {
     const upload = commands.register(InputAssetCommand.Import, args => importInputAsset(fs, (args as {url: string}).url));
+    const files = commands.register(InputAssetCommand.ImportFile, args => importInputFile(fs, args as import('@itookit/app-contracts').InputFileUpload));
+    const inspect = commands.register(InputAssetCommand.Inspect, args => inspectInputFile(fs, args as import('@itookit/app-contracts').InputFileIdentity));
     const read = commands.register(InputAssetCommand.Read, async args => {
         const ref = (args as {reference: InputAssetReference | import('@itookit/tools/contracts').TaskAssetReference}).reference;
         if (!ref || !/^image\/(png|jpeg|webp)$/.test(ref.mimeType)) throw new Error('Invalid preview asset');
@@ -57,7 +43,7 @@ export function registerInputAssets(commands: CommandBus, fs: IFileSystem, readT
         if (!bytes) throw new Error('Asset preview is unavailable');
         return `data:${ref.mimeType};base64,${toBase64(bytes)}`;
     });
-    return {dispose() {upload.dispose(); read.dispose();}};
+    return {dispose() {upload.dispose(); files.dispose(); inspect.dispose(); read.dispose();}};
 }
 function toBase64(bytes: Uint8Array): string {
     let binary = '';

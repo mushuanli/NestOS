@@ -1,6 +1,7 @@
 /** Read-only application commands; unknown commands retain write semantics. */
 const reads = new Set<string>([
     "app.assets.read",
+    "app.assets.inspect",
     "flow.source.check",
     "session.get-snapshot",
     "session.targets.list",

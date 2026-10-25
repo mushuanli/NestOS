@@ -110,6 +110,7 @@ export class DagDraftController {
     }
 
     updateFlowSettings(settings: {
+        exposure?: FlowDraft['exposure'];
         outputs?: FlowDraft['outputs'];
         connections?: FlowConnection[];
         defaultConnection?: string;
@@ -119,6 +120,7 @@ export class DagDraftController {
         runPolicy?: import('@itookit/llm-flow/contracts').FlowRunPolicy;
     }): void {
         this.change(draft => {
+            if ('exposure' in settings) draft.exposure = settings.exposure;
             if (settings.outputs) { if (Object.keys(settings.outputs).length) draft.outputs = clone(settings.outputs); else delete draft.outputs; }
             if (settings.connections) draft.connections = clone(settings.connections);
             if ('defaultConnection' in settings) draft.defaultConnection = settings.defaultConnection;

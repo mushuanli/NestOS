@@ -1,8 +1,10 @@
 import { escapeHTML, formatFileSize, t } from '@itookit/common';
 import { validFlowImages, type FlowImageConstraints, type FlowParameter } from '@itookit/llm-flow/contracts';
 import { FlowImageError, imageSelectionTrace } from './FlowImageDiagnostics';
+import {observePromise} from '../utils/observe-promise';
+import type {FlowFileAssetPort} from './FlowFileAssetPort';
 
-export interface FlowImageAssetPort {import(url: string): Promise<import('@itookit/llm-flow/contracts').JsonValue>; read(reference: unknown): Promise<string>}
+export interface FlowImageAssetPort extends Partial<FlowFileAssetPort> {import(url: string): Promise<import('@itookit/llm-flow/contracts').JsonValue>; read(reference: unknown): Promise<string>}
 export type FlowInitialFiles = Readonly<Record<string, readonly File[]>>;
 const importedFiles = new WeakMap<FlowImageAssetPort, WeakMap<File, Promise<import('@itookit/llm-flow/contracts').JsonValue>>>();
 interface ImageField {
@@ -76,10 +78,10 @@ async function readImages(files: File[], constraints: FlowImageConstraints, asse
     for (const [index, file] of files.entries()) {
         signal.throwIfAborted();
         trace.step('file-read', index);
-        const url = await readFileImage(file, signal);
+        const url = assets?.importFile ? '' : await readFileImage(file, signal);
         signal.throwIfAborted();
         trace.step('upload', index);
-        parts.push(await stageImage(file, url, assets));
+        parts.push(await observePromise(stageImage(file, url, assets), signal));
     }
     signal.throwIfAborted();
     if (parts.length && !validFlowImages(parts, constraints)) throw new FlowImageError('upload-validation', 'INVALID_RECEIPT', t('flow.launch.imagesReceiptInvalid'));
@@ -99,6 +101,7 @@ function validateImageFiles(files: File[], constraints: FlowImageConstraints): v
 
 async function stageImage(file: File, url: string, assets?: FlowImageAssetPort) {
     if (!assets) return {type: 'image_url', image_url: {url}};
+    if (assets.importFile) return stageFileImage(file, assets);
     let cache = importedFiles.get(assets); if (!cache) {cache = new WeakMap(); importedFiles.set(assets, cache);}
     let receipt = cache.get(file);
     if (!receipt) {
@@ -109,12 +112,26 @@ async function stageImage(file: File, url: string, assets?: FlowImageAssetPort) 
         });
         cache.set(file, receipt); void receipt.catch(() => cache!.delete(file));
     }
-    try { return {type: 'image', source: {type: 'asset', asset: await receipt}}; }
+    try { return {type: 'image', name: file.name, source: {type: 'asset', asset: await receipt}}; }
     catch (error) {
         if (error instanceof FlowImageError) throw error;
         const {code, requestId} = (error as {code?: unknown; requestId?: unknown}) ?? {};
         throw new FlowImageError('upload', typeof code === 'string' && /^[A-Z_]{1,64}$/.test(code) ? code : 'UPLOAD_FAILED',
             t('flow.launch.imagesUploadFailed', {name: file.name, reason: imageErrorMessage(error)}), typeof requestId === 'string' ? requestId : undefined);
+    }
+}
+
+async function stageFileImage(file: File, assets: FlowImageAssetPort) {
+    try {
+        const asset = await assets.importFile!(file);
+        if (!validFlowImages([{type: 'image', source: {type: 'asset', asset}}]))
+            throw new FlowImageError('upload-validation', 'INVALID_RECEIPT', t('flow.launch.imagesReceiptInvalid'));
+        return {type: 'image', name: file.name, source: {type: 'asset', asset}};
+    } catch (error) {
+        if (error instanceof FlowImageError) throw error;
+        const code = (error as {code?: unknown})?.code;
+        const category = typeof code === 'string' && /^[A-Z_]{1,64}$/.test(code) ? code : 'UPLOAD_FAILED';
+        throw new FlowImageError('upload', category, t('flow.launch.filesUploadFailed', {code: category}));
     }
 }
 

@@ -1,5 +1,5 @@
 import { isModelOperation } from '@itookit/kernel-adapters/contracts';
-import {flowImageAssets} from './image-assets';
+import {flowInputAssets} from './input-assets';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
 import { SessionCommand, inferFlowConnectionRequirements } from '@itookit/llm-session/contracts';
 import type { FlowConnectionSelection } from '../components/FlowParameterForm';
@@ -22,7 +22,7 @@ export async function flowConnectionSelection(commands: ICommandBus, selected?: 
             && !(candidate.credentialsReady === undefined && candidate.hasApiKey === false)
             && (!candidate.operationModels || candidate.operationModels[operation])) defaults[slot.name] = candidate.id;
     }
-    const selection: FlowConnectionSelection = { assets: flowImageAssets(commands), connections, selected, slots, bindings: defaults, onChange: id => { selection.selected = id; } };
+    const selection: FlowConnectionSelection = { assets: flowInputAssets(commands), connections, selected, slots, bindings: defaults, onChange: id => { selection.selected = id; } };
     if (flow) selection.validate = async parameters => {
         await commands.execute(SessionCommand.CheckFlowConnections, {flow, parameters, connectionId: selection.selected, connectionBindings: selection.bindings, ...(agent ? {agentId: agent.id} : {})});
     };

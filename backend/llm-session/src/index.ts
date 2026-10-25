@@ -103,6 +103,7 @@ import { DagCommandService } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
+    validateCallAssets?: import('./contracts/submission').CallAssetValidator;
     summarizeContent?: (sessionId: string, text: string) => Promise<string>;
     executionActivity?: import('./session/session-execution-activity').SessionExecutionActivity;
     instructionQueueSessions?: import('./persistence/instruction-queue-sessions').InstructionQueueSessions;
@@ -179,6 +180,7 @@ function createManagedSession(options: ConversationSystemOptions, promptHistory:
         resolveSessionSkills: options.resolveSessionSkills, retrieveMemory: options.retrieveMemory,
         memoryProvider: options.memoryProvider, canWriteSession: options.canWriteSession,
         workspaceManager: options.workspaceManager,
+        validateCallAssets: options.validateCallAssets,
     });
 }
 
@@ -241,6 +243,7 @@ function createDagCommands(
     commandBus.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as FlowConnectionCheckInput, options.agentService, flowStore,
         options.dagPlugins, createSessionHost(options.hostPorts).logger));
     const dag = new DagCommandService({
+        validateInputAssets: options.validateCallAssets,
         prepareConnections: (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, options.agentService, undefined, runConnectionId),
         prepareConnectionResolver: async () => {
             const defaults = await options.agentService.getModelDefaults?.() ?? {};

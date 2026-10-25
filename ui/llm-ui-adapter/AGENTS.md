@@ -183,3 +183,7 @@ Flow 参数表单只收集连接覆盖；必需槽位留空表示继承声明或
 原生命令查询不占普通输入提交槽；暂停中的发送计数仍保留，只有明确 query 可以独立提交。取消携带实际 sessionId/turnId 并核对独立 operationId。NativeCommandOutput 在原锚点按需分页读取，失败留在结果卡片，隐藏/销毁停止后续页；通用字节拼接与摘要核验在 utils/verified-content，DAG 和原生各自校验协议，不相互导入业务模块。
 
 SessionRenderer 使用消息 Map 同时维护身份与包装 DOM，已知消息查找不扫描整段历史。historyId/Flow 窗口别名仅从当前视图持有的引用解析；删除先撤销引用再动画，重复内容中的同名属性不抢占归属，clear/destroy 释放引用。产物与其他可选展示不能通过逐消息全树扫描放大恢复耗时。
+
+Session 附件发送经 AssetService.prepareUpload 取得 Markdown 引用及同批内容摘要元数据，再由同一冻结 Submission 发送。上传采用不可变命名，同身份同内容可读取核对，内容变化必须新提交；不得覆盖已排队文件。日志只记录身份、阶段、结果、索引、大小、错误码及耗时，不记录文件名、正文和原始存储错误。原 uploadFiles 仅保留引用返回兼容入口。
+
+Flow 通用 files 控件与 images 共用 input-assets 上传端口，稳定 uploadId 在取消重开和失败重试时保留；取消只结束当前观察，重新使用必须 Inspect 实际内容。文件选择捕获固定 signal/修订，不使用新选择的取消信号继续旧批次。多个 composer 附件字段不自动复制全批文件；逐文件核对冻结实参，未绑定保留并提示。确认的 Flow 文件不重复走 Session 聊天附件上传或追加引用文本；清除是显式 []。

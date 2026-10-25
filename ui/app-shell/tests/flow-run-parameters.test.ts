@@ -156,9 +156,13 @@ it('allows retrying connection loading and discards late results after a differe
 it('waits for image staging in the inline panel and returns durable image references', async () => {
     const asset = { kind: 'input', id: '11111111-1111-4111-8111-111111111111', mimeType: 'image/png', bytes: 7, sha256: 'a'.repeat(64) };
     let imported!: (value: unknown) => void;
-    const execute = vi.fn(async (name: string): Promise<any> => {
+    const execute = vi.fn(async (name: string, args?: any): Promise<any> => {
         if (name === SessionCommand.GetConnections) return { connections };
-        if (name === InputAssetCommand.Import) return new Promise(resolve => { imported = resolve; });
+        if (name === InputAssetCommand.Inspect) return {state: 'missing'};
+        if (name === InputAssetCommand.ImportFile) {
+            Object.assign(asset, {id: args.uploadId, bytes: args.bytes, sha256: args.sha256});
+            return new Promise(resolve => { imported = resolve; });
+        }
         if (name === InputAssetCommand.Read) return 'data:image/png;base64,cGljdHVyZQ==';
     });
     const panel = new FlowRunParameters({ ...draft, connections: [], parameters: [
@@ -173,7 +177,7 @@ it('waits for image staging in the inline panel and returns durable image refere
     await vi.waitFor(() => expect(imported).toBeDefined()); expect(settled).not.toHaveBeenCalled();
     imported(asset);
     const input = await result;
-    expect(input?.parameters).toEqual({ images: [{ type: 'image', source: { type: 'asset', asset } }] });
+    expect(input?.parameters).toEqual({ images: [{ type: 'image', name: 'page.png', source: { type: 'asset', asset } }] });
     await vi.waitFor(() => expect(panel.root.querySelectorAll('[data-image-preview] img')).toHaveLength(1));
     panel.destroy(); expect(input?.signal?.aborted).toBe(true);
 });

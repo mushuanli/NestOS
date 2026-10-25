@@ -1,3 +1,4 @@
+import {createHash} from 'node:crypto';
 import { RPC_VERSION } from '@itookit/app-transport/rpc';
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -360,4 +361,19 @@ it('queries a committed publication receipt while the original authenticated wri
         expect(receipt?.target.digest).toBe(state.draftDigest); expect(finished).not.toHaveBeenCalled();
         release(); expect(await pending).toEqual(receipt);
     } finally {release(); await pending.catch(() => {});}
+});
+
+it('stages generic binary files through authenticated RPC and inspects the immutable original upload', async () => {
+    const root = await client('generic-files'), data = new TextEncoder().encode('PRIVATE_FILE_BODY').buffer;
+    const identity = {uploadId: '12345678-1234-4123-8123-123456789abc', name: 'private-input.pdf', mimeType: 'application/pdf',
+        bytes: data.byteLength, sha256: createHash('sha256').update(new Uint8Array(data)).digest('hex')};
+    expect(await root.services.commandBus.execute(InputAssetCommand.Inspect, identity)).toEqual({state: 'missing'});
+    const reference = await root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, data});
+    expect(reference).toEqual({kind: 'input', id: identity.uploadId, mimeType: identity.mimeType, bytes: data.byteLength, sha256: identity.sha256});
+    expect(await root.services.commandBus.execute(InputAssetCommand.Inspect, identity)).toEqual({state: 'ready', reference});
+    expect(await root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, data})).toEqual(reference);
+    expect(auditEvents).toContainEqual(expect.objectContaining({rpcCommands: [InputAssetCommand.ImportFile], uploads: [{mimeType: identity.mimeType, bytes: identity.bytes}]}));
+    await expect(root.services.commandBus.execute(InputAssetCommand.ImportFile, {...identity, name: 'different.pdf', data}))
+        .rejects.toMatchObject({code: 'INPUT_ASSET_CONFLICT'});
+    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_FILE_BODY'); expect(JSON.stringify(auditEvents)).not.toContain(identity.name);
 });

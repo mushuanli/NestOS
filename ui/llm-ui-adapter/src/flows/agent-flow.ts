@@ -5,6 +5,7 @@ import type { ExecutorOption } from '../domain/types';
 import { promptFlowParameters } from '../components/FlowParameterForm';
 import { flowConnectionSelection } from './connection-selection';
 import {agentFlowInput} from './agent-flow-input';
+import {validateComposerFiles} from './composer-file-bindings';
 
 const log = createModuleLogger('agent-flow');
 
@@ -38,9 +39,9 @@ export async function prepareAgentFlow(commands: ICommandBus, agent: ExecutorOpt
         if (signal.aborted) {recordPreparation(trace, 'cancelled'); return null;}
         trace.stage = 'parameters';
         const composite = !!agent.composition && !parameters.length && !flow.connections?.length;
-        if (composite) await connection.validate?.();
+        if (composite) {await connection.validate?.(); await validateComposerFiles(draft?.files ?? [], {}, signal);}
         const values = composite ? {} : await promptFlowParameters(parameters, `${agent.name} · ${t('agent.execution.runParameters')}`,
-            undefined, signal, connection, undefined, t('flow.launch.reviewInputs'), {initialFiles, inputGroups: flow.inputGroups, submitLabel: 'flow.launch.start'});
+            values => validateComposerFiles(draft?.files ?? [], values, signal), signal, connection, undefined, t('flow.launch.reviewInputs'), {initialFiles, inputGroups: flow.inputGroups, submitLabel: 'flow.launch.start'});
         const result = values === null || signal.aborted ? null : { flowParameters: values, flowConnectionBindings: connection.bindings, connectionId: connection.selected };
         recordPreparation(trace, result === null ? 'cancelled' : 'ready');
         return result;

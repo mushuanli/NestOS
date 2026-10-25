@@ -21,6 +21,7 @@ import { prepareFlowRun } from './prepare-run';
 import { readFlowSchedulerCheckpoint } from './checkpoint-store';
 
 export interface DagCommandServiceOptions {
+    validateInputAssets?(sessionId: string, parameters: Record<string, JsonValue>): Promise<void>;
     prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>;
     /** Capture host-owned defaults once for this preparation, including nested calls. */
     prepareConnectionResolver?(sessionId: string): Promise<NonNullable<DagCommandServiceOptions['prepareConnections']>>;
@@ -211,6 +212,7 @@ export class DagCommandService {
             : await this.options.resolveConnection?.(sessionId, connectionId);
         const prepareConnections = await this.options.prepareConnectionResolver?.(sessionId) ?? this.options.prepareConnections;
         return prepareFlowRun(flow, { plugins: this.options.plugins, parameters, fallbackConnectionId: resolved, connectionId, connectionBindings,
+            validateInputAssets: values => this.options.validateInputAssets?.(sessionId, values) ?? Promise.resolve(),
             bindNode: this.options.bindNode ? (node, defaults, context) => this.options.bindNode!(sessionId, node, defaults, context) : undefined,
             resolveComposite: (id, revision) => this.options.flowStore.loadRevision(id, revision), prepareConnections });
     }

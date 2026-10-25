@@ -1,8 +1,9 @@
 import { escapeHTML, t } from '@itookit/common';
-import { type FlowInputGroup, type FlowParameter, type JsonValue, validFlowImages } from '@itookit/llm-flow/contracts';
+import { type FlowInputGroup, type FlowParameter, type JsonValue, validFlowImages, validFlowFiles } from '@itookit/llm-flow/contracts';
 import { type ConnectionMeta } from '@itookit/driver-llm/contracts';
 import { renderParameterFields, readParameterFields, type ParameterFormOptions } from '@itookit/llm-ui/forms';
 import { bindFlowImageFields, imageParameterField, type FlowInitialFiles } from './FlowImageFields';
+import {bindFlowFileFields, fileParameterField} from './FlowFileFields';
 import {bindFlowParameterState, readSelectedFlowParameters, renderFlowInputGroups, showFlowFieldError} from './FlowParameterState';
 import {collectFlowConnections, flowConnectionFields, updateFlowConnectionRequirements, validateFlowConnectionForm} from './FlowConnectionFields';
 
@@ -59,7 +60,12 @@ function mountParameterDialog(parameters: FlowParameter[], title: string | undef
     const unbind = bindFlowParameterState(dialog, parameters, extension?.inputGroups ?? [], values => {
         if (connection) updateFlowConnectionRequirements(dialog, connection, values);
     });
-    const imagesReady = bindFlowImageFields(dialog, parameters, assets, extension?.initialFiles), unmount = extension?.mount?.(dialog);
+    const images = bindFlowImageFields(dialog, parameters, assets, extension?.initialFiles);
+    const files = bindFlowFileFields(dialog, parameters, assets, extension?.initialFiles), unmount = extension?.mount?.(dialog);
+    const imagesReady = () => {
+        const pending = [images(), files()].filter((task): task is Promise<void> => task !== undefined);
+        return pending.length ? Promise.all(pending).then(() => {}) : undefined;
+    };
     if (extension?.submitLabel) dialog.querySelector('button[type="submit"]')!.textContent = t(extension.submitLabel);
     return {dialog, imagesReady, unmount: () => {unmount?.(); unbind();}};
 }
@@ -133,7 +139,7 @@ function parameterOptions(parameters: FlowParameter[]): ParameterFormOptions {
         labels: {required: ''},
         error: (kind, parameter) => {
             const name = parameter.label?.trim() || parameter.name;
-            if (kind === 'required') return t(parameter.widget === 'images' || parameter.widget === 'select'
+            if (kind === 'required') return t(['images', 'files', 'select'].includes(parameter.widget ?? '')
                 ? 'flow.launch.selectionRequired' : 'flow.launch.required', { name });
             if (kind === 'number') return t('flow.launch.numberRequired');
             if (kind === 'json') return t('flow.launch.jsonRequired');
@@ -141,21 +147,23 @@ function parameterOptions(parameters: FlowParameter[]): ParameterFormOptions {
             return t('flow.launch.invalidValue');
         },
         renderField: (_parameter, index, defaultRender) => {
-            const parameter = parameters[index], content = parameter.widget === 'images' ? renderImageParameter(parameter, index) : defaultRender();
+            const parameter = parameters[index], content = ['images', 'files'].includes(parameter.widget ?? '') ? renderMaterialParameter(parameter, index) : defaultRender();
             const requirement = `<small class="flow-parameter-section__requirement" data-parameter-requirement>${escapeHTML(t(parameter.required ? 'flow.parameters.required' : 'flow.parameters.optional'))}</small>`;
             return `<div class="flow-parameter-row${parameter.type === 'json' || parameter.type === 'string' && parameter.widget !== 'text' && !parameter.options?.length ? ' flow-parameter-row--wide' : ''}" data-parameter-row="${index}">${content.replace('</span>', requirement + '</span>')}</div>`;
         },
         parseField: (_parameter, index, _field, defaultParse) => {
             const value = defaultParse(), parameter = parameters[index];
             if (parameter.widget === 'images' && !validFlowImages(value, parameter.imageConstraints)) throw new Error(t('flow.launch.imagesInvalid'));
+            if (parameter.widget === 'files' && !validFlowFiles(value, parameter.fileConstraints)) throw new Error(t('flow.launch.filesInvalid'));
             return value;
         },
     };
 }
 
-function renderImageParameter(parameter: FlowParameter, index: number): string {
+function renderMaterialParameter(parameter: FlowParameter, index: number): string {
     const name = escapeHTML(parameter.label?.trim() || parameter.name);
     const description = parameter.description ? `<small class="llm-parameter-field__help">${escapeHTML(parameter.description)}</small>` : '';
     const label = `<span class="llm-parameter-field__label">${name}</span>${description}`;
-    return imageParameterField(parameter, index, label, `data-parameter="${index}" name="${escapeHTML(parameter.name)}"`);
+    const render = parameter.widget === 'files' ? fileParameterField : imageParameterField;
+    return render(parameter, index, label, `data-parameter="${index}" name="${escapeHTML(parameter.name)}"`);
 }

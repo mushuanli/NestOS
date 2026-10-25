@@ -14,7 +14,7 @@ export class FlowInputSources implements FlowParameterExtension {
         const events = new AbortController();
         this.fields.forEach((field, index) => {
             if (this.names && !this.names.includes(field.name)) return;
-            if (field.widget === 'images') return;
+            if (field.widget === 'images' || field.widget === 'files') return;
             const input = root.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[data-parameter="${index}"]`);
             if (!input) return;
             const parent = input.closest<HTMLElement>('.llm-parameter-field')!, wrapper = document.createElement('div');

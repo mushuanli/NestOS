@@ -1,6 +1,7 @@
 import {createTaskAssetReader} from './task-assets';
 import { createTransferSummarizer } from './transfer-summary';
 import {registerInputAssets} from './input-assets';
+import {validateCallAssets} from './call-asset-preflight';
 import { createMindosDirectAgentPolicy } from '../presets/direct-agent-policy';
 import { createFlowCapabilities } from './flow-capabilities';
 import { createFlowInvocationSessions, initializeConversationSystem, type CommandBus, type FlowEngine, type SessionManager, type SessionRepository, type VFSAgentService } from '@itookit/llm-session';
@@ -58,6 +59,7 @@ export async function createConversationSystem(
         directAgentPolicy: options.directAgentPolicy ?? createMindosDirectAgentPolicy(),
         agentResolution: options.agentResolution,
         hostPorts: { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot },
+        validateCallAssets: (_sessionId, value) => validateCallAssets(systemFS, value),
         agentService,
         summarizeContent: createTransferSummarizer(sessionRepository, agentService, kernel.llmService),
         sessionEngine: sessionRepository,

@@ -2,6 +2,9 @@ import type {FlowCallSource, SessionSubmission, TargetSelection} from '@itookit/
 import type {ChatAttachment} from './chat';
 import type {ExecutionOverrides, HistoryPolicy, SessionOrigin} from '../core/types';
 
+/** Host validates immutable content readiness without rewriting the caller's submission identity. */
+export type CallAssetValidator = (sessionId: string, value: unknown) => Promise<void>;
+
 /** One caller-owned request; definition snapshots, plans and execution identities are host-owned. */
 export interface SubmissionRequest {
     expectedSessionId?: string;

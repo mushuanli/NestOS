@@ -109,7 +109,7 @@ export function showFlowFieldError(root: HTMLElement, error: unknown): void {
     if (!field || !root.contains(field)) return;
     const row = field.closest<HTMLElement>('[data-parameter-row], [data-flow-input-group], [data-slot-row]') ?? field.parentElement!;
     const details = field.closest('details'); if (details) details.open = true;
-    if (field.hidden) field = row.querySelector<HTMLElement>('[data-image-picker]') ?? field;
+    if (field.hidden) field = row.querySelector<HTMLElement>('[data-image-picker], [data-file-picker]') ?? field;
     field.setAttribute('aria-invalid', 'true');
     let notice = row.querySelector<HTMLElement>('.flow-parameter-field__error');
     if (!notice) {notice = document.createElement('small'); notice.className = 'flow-parameter-field__error'; notice.id = 'flow-field-error-' + randomUUID(); row.append(notice);}

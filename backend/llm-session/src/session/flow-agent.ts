@@ -12,6 +12,7 @@ import { bindPlannedFlowGraph, createFlowRunPlan, freezePlannedFlowConnections, 
 import {flowTargetIdentity, flowTargetRef} from './flow-target';
 
 export interface FlowAgentPorts {
+    validateCallAssets?: import('../contracts/submission').CallAssetValidator;
     definitions: Pick<FlowDefinitionStore, 'loadRevision'>;
     resolveAgent(id: string): Promise<ExecutorConfig>;
     prepareConnections(flow: FlowRevision, bindings?: Record<string, string>, connectionId?: string): Promise<FlowRevision>;
@@ -62,6 +63,7 @@ async function prepareSelectedFlow(input: TaskInput, ports: FlowAgentPorts, sele
     if (target) assertSelectedTarget(target, flowTargetRef(definition));
     trace.stage = 'parameters';
     const inputResolution = boundParameters(definition, binding.parameters, input.overrides, input.source);
+    trace.stage = 'assets'; await ports.validateCallAssets?.(input.sessionId, inputResolution.parameters);
     const parameters = inputResolution.parameters, connectionBindings = {...binding.connectionBindings, ...input.overrides?.flowConnectionBindings};
     trace.stage = 'dependencies';
     const frozen = await freezeDependencies(ports, definition, input, connectionBindings, parameters, agent ?? flowTargetIdentity(definition));

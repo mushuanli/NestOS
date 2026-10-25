@@ -384,3 +384,17 @@ it('honors workflow-specific image limits and preserves them in the settings edi
     dialog.returnValue = 'save'; dialog.close();
     expect((await settings)!.parameters[0]).toMatchObject({ widget: 'images', label: 'Pages', imageConstraints: { ...limits, maxItems: 8 } });
 });
+
+it('edits and saves Flow call scope without losing settings, and rejects malformed scope', async () => {
+    const {openFlowSettings} = await import('../../llm-ui-adapter/src/components/dag/FlowSettingsDialog');
+    const pending = openFlowSettings({exposure: 'local', connections: [], availableConnections: [], parameters: []});
+    const dialog = document.querySelector('dialog')!, field = dialog.querySelector<HTMLSelectElement>('[data-exposure]')!;
+    expect(field.value).toBe('local'); field.value = 'global';
+    dialog.returnValue = 'save'; dialog.close();
+    expect(await pending).toMatchObject({exposure: 'global', parameters: [], connections: []});
+    const invalid = openFlowSettings({exposure: 'invalid' as never, connections: [], availableConnections: [], parameters: []});
+    const second = document.querySelector('dialog')!; second.returnValue = 'save'; second.close();
+    expect(second.open).toBe(true); expect(second.querySelector('[data-dialog-error]')?.textContent).toContain('global');
+    second.querySelector<HTMLSelectElement>('[data-exposure]')!.value = 'local'; second.returnValue = 'save'; second.close();
+    expect(await invalid).toMatchObject({exposure: 'local'});
+});

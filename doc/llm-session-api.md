@@ -573,3 +573,34 @@ C4Dynamic
 ```
 
 本批不改变 Kernel Effect.cancel 的确认契约，不开放原生续接，也不把本地队列展示等同默认工作台 OperationLedger 已迁移。默认工作台目标选择、持久台账与草稿修订消费仍需独立完成接线和迟到响应验收。
+
+## 通用输入资产的接纳与派发
+
+通用文件由宿主 `app.assets.import-file` 上传，`app.assets.inspect` 只读核对同一上传身份；`uploadId/name/mimeType/bytes/sha256` 固定，正文在进入异步持久化前复制。宿主复用 profile 的 `inputs.seq` 与不可变内容块，核对依据是实际字节及摘要，不另存一份 ready 状态。单文件上传上限 20 MiB；它不代表远程 Harness 支持该格式或大小。原图片导入继续兼容。
+
+UI 文件及图片字段共享上传端口，浏览器 File 不进入 Flow 实参。选择、重试和丢回复核对保留同一 uploadId；关闭弹窗只取消当前观察，不改写远端上传结果。多个附件参数由用户明确分类，未绑定文件阻止确认；清除使用显式 `[]`。Session 聊天附件也采用不可变写，同名不同内容不能覆盖已入队文件。
+
+```mermaid
+C4Dynamic
+    title 通用文件从选择到执行的校验边界
+    Component(ui, "输入表单", "UI adapter")
+    Component(host, "输入资产端口", "app-core")
+    Component(store, "既有资产存储", "profile VFS")
+    Component(session, "调用与队列", "llm-session")
+    Component(flow, "Flow 准备", "llm-flow")
+    Component(kernel, "持久执行", "durable-kernel")
+    RelIndex(1, ui, host, "冻结上传身份，Inspect 后上传或核对")
+    RelIndex(2, host, store, "保留上传回执与不可变内容；读取核验摘要")
+    RelIndex(3, ui, session, "提交 JSON 实参与资产引用")
+    RelIndex(4, session, host, "有效参数接纳及实际编辑时验证材料")
+    RelIndex(5, session, session, "保存原提交摘要与持久接纳事实")
+    RelIndex(6, session, host, "新派发前复验，失败不创建 Task")
+    RelIndex(7, session, flow, "使用已冻结定义、实参和身份")
+    RelIndex(8, flow, kernel, "创建执行任务；消费时仍按 Task 授权读取")
+```
+
+`ConversationSystemOptions.validateCallAssets` 是宿主校验端口，贯通 Session 根调用、队列实参编辑及 DagCommandService；独立 FlowInvocation 经过同一 Flow 准备边界。只验证标准 file/image 的 asset 内容块，不把任意业务 JSON 当作文件授权。现有 Task 输出引用必须显式导入，不能冒充新输入资产。
+
+原提交核对不重跑输入解析或材料校验；已接纳文件后来丢失时，原回执仍可查询，真正的新派发则拒绝。接纳不是执行完成。该机制不提供 Harness 文件传输、完整子调用上下文、资产回收或导出保证；这些能力分别在连接适配与生命周期中完成。
+
+上传接口见 [输入契约](../shared/app-contracts/src/presets/input-assets.ts)，存储与核验见 [资产存储](../backend/app-core/src/runtime/input-asset-store.ts)；回归覆盖丢回复、冲突、空文件、上传中原始字节变化、排队期间损坏，以及不泄露正文的失败日志。

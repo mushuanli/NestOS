@@ -3,10 +3,11 @@
 // connections + one default) and declared runtime parameters with defaults.
 
 import type { FlowConnection, FlowVariables, FlowDefaults, FlowParameter, FlowRunPolicy, JsonValue } from '@itookit/llm-flow/contracts';
-import { validImageConstraints } from '@itookit/llm-flow/contracts';
+import { validImageConstraints, validFileConstraints } from '@itookit/llm-flow/contracts';
 import { escapeHTML, t } from '@itookit/common';
 
 export interface FlowSettingsOptions {
+    exposure?: import('@itookit/llm-flow/contracts').CallableExposure;
     outputs?: import('@itookit/llm-flow/contracts').FlowDraft['outputs'];
     connections: FlowConnection[];
     defaultConnection?: string;
@@ -25,6 +26,7 @@ export interface FlowSettingsOptions {
 export interface EntityOption { id: string; name: string; description?: string }
 
 export interface FlowSettingsResult {
+    exposure?: import('@itookit/llm-flow/contracts').CallableExposure;
     outputs?: import('@itookit/llm-flow/contracts').FlowDraft['outputs'];
     connections: FlowConnection[];
     defaultConnection?: string;
@@ -67,6 +69,7 @@ function settingsTemplate(options: FlowSettingsOptions): string {
         <header class="dag-settings__header"><h2 id="dag-settings-title" tabindex="-1" autofocus>${text('flow.settings.title')}</h2>
             <p>${text('flow.settings.description')}</p></header>
         <div class="dag-settings__body">
+            ${exposureSection(options.exposure)}
             ${connectionsSection(options)}${parametersSection(options.parameters)}${defaultsSection(options)}
             ${runPolicySection(options.runPolicy)}${variablesSection(options)}
         </div>
@@ -75,6 +78,15 @@ function settingsTemplate(options: FlowSettingsOptions): string {
                 <button value="save" class="dag-settings__save">${text('flow.settings.save')}</button></menu>
         </footer>
     </form>`;
+}
+
+function exposureSection(exposure: FlowSettingsOptions['exposure']): string {
+    return `<fieldset><legend>${text('callable.exposure.label')}</legend>
+        <select data-exposure aria-label="${text('callable.exposure.label')}">
+            ${exposure !== undefined && !['global', 'local'].includes(exposure) ? `<option value="" selected>${text('callable.exposure.invalid')}</option>` : ''}
+            <option value="global" ${exposure === undefined || exposure === 'global' ? 'selected' : ''}>${text('callable.exposure.global')}</option>
+            <option value="local" ${exposure === 'local' ? 'selected' : ''}>${text('callable.exposure.local')}</option>
+        </select><p class="dag-settings__hint">${text('callable.exposure.hint')}</p></fieldset>`;
 }
 
 function connectionsSection(options: FlowSettingsOptions): string {
@@ -269,7 +281,17 @@ function parameterRow(parameter?: FlowParameter): string {
             ${field('flow.settings.parameterDefault', `<input data-param-default placeholder="${text('flow.settings.noDefault')}" value="${escapeHTML(value)}">`)}
             ${field('flow.settings.parameterDescription', `<input data-param-desc value="${escapeHTML(param.description ?? '')}">`)}
         </div>
+        ${parameterPresentation(param)}
         ${disclosure('flow.settings.parameterValidation', parameterConstraints(param))}
+    </div>`;
+}
+
+function parameterPresentation(param: FlowParameter): string {
+    const widgets = ['', 'text', 'textarea', 'number', 'select', 'checkbox', 'images', 'files'] as const;
+    const sources = ['', 'composer.text', 'composer.attachments'] as const;
+    return `<div class="dag-settings__grid">
+        ${field('flow.editor.widget', `<select data-param-widget>${widgets.map(widget => `<option value="${widget}" ${widget === (param.widget ?? '') ? 'selected' : ''}>${text(`flow.parameters.widget.${widget || 'auto'}`)}</option>`).join('')}</select>`)}
+        ${field('flow.source.label', `<select data-param-source>${sources.map(source => `<option value="${source}" ${source === (param.inputSource ?? '') ? 'selected' : ''}>${text(source === 'composer.text' ? 'flow.parameters.source.text' : source === 'composer.attachments' ? 'flow.parameters.source.attachments' : 'flow.source.custom')}</option>`).join('')}</select>`)}
     </div>`;
 }
 
@@ -283,35 +305,46 @@ function parameterConstraints(param: FlowParameter): string {
             <option value="error">${text('flow.parameters.reject')}</option>
             <option value="interact" ${param.onMissing === 'interact' ? 'selected' : ''}>${text('flow.parameters.interact')}</option>
         </select>`)}
-        ${param.widget === 'images' ? field('flow.parameters.imageConstraints', `<input class="dag-settings__code" data-param-images value="${escapeHTML(JSON.stringify(param.imageConstraints ?? {}))}">`) : ''}`;
+        <div data-param-image-fields ${param.widget !== 'images' ? 'hidden' : ''}>${field('flow.parameters.imageConstraints', `<input class="dag-settings__code" data-param-images value="${escapeHTML(JSON.stringify(param.imageConstraints ?? {}))}">`)}</div>
+        <div data-param-file-fields ${param.widget !== 'files' ? 'hidden' : ''}>${field('flow.parameters.fileConstraints', `<input class="dag-settings__code" data-param-files value="${escapeHTML(JSON.stringify(param.fileConstraints ?? {}))}">`)}</div>`;
 }
 
 function readParameterConstraints(row: HTMLElement, type: FlowParameter['type']): Partial<FlowParameter> {
+    const result = readMaterialConstraints(row, type);
+    if (readInput(row, '[data-param-missing]') === 'interact') result.onMissing = 'interact';
+    return type === 'number' ? {...result, ...readNumberConstraints(row)} : result;
+}
+function readMaterialConstraints(row: HTMLElement, type: FlowParameter['type']): Partial<FlowParameter> {
     const result: Partial<FlowParameter> = {};
-    const image = row.querySelector<HTMLInputElement>('[data-param-images]');
-    if (image && type === 'json') {
-        result.imageConstraints = JSON.parse(image.value || '{}');
+    if (type !== 'json') return result;
+    const widget = readInput(row, '[data-param-widget]');
+    if (widget === 'images') {
+        result.imageConstraints = JSON.parse(readInput(row, '[data-param-images]') || '{}');
         if (!validImageConstraints(result.imageConstraints)) throw new Error(t('flow.launch.invalidValue'));
     }
-    if (readInput(row, '[data-param-missing]') === 'interact') result.onMissing = 'interact';
-    if (type !== 'number') return result;
+    if (widget === 'files') {
+        result.fileConstraints = JSON.parse(readInput(row, '[data-param-files]') || '{}');
+        if (!validFileConstraints(result.fileConstraints)) throw new Error(t('flow.launch.invalidValue'));
+    }
+    return result;
+}
+function readNumberConstraints(row: HTMLElement): Partial<FlowParameter> {
+    const result: Partial<FlowParameter> = {};
     for (const [key, selector] of [['minimum', '[data-param-min]'], ['maximum', '[data-param-max]']] as const) {
         const raw = readInput(row, selector).trim();
         if (raw) result[key] = Number(raw);
     }
     if (row.querySelector<HTMLInputElement>('[data-param-integer]')?.checked) result.integer = true;
-    if ((result.minimum !== undefined && !Number.isFinite(result.minimum)) || (result.maximum !== undefined && !Number.isFinite(result.maximum))
-        || (result.minimum !== undefined && result.maximum !== undefined && result.minimum > result.maximum)) throw new Error(t('flow.launch.invalidValue'));
+    if (!validNumericBounds(result)) throw new Error(t('flow.launch.invalidValue'));
     return result;
+}
+function validNumericBounds({minimum, maximum}: Partial<FlowParameter>): boolean {
+    return [minimum, maximum].every(value => value === undefined || Number.isFinite(value))
+        && !(minimum !== undefined && maximum !== undefined && minimum > maximum);
 }
 
 function bindRowControls(dialog: HTMLDialogElement, options: FlowSettingsOptions): void {
-    dialog.addEventListener('change', event => {
-        const target = event.target as HTMLSelectElement;
-        if (!target.matches('[data-param-type]')) return;
-        const fields = target.closest('[data-param-row]')?.querySelector<HTMLElement>('[data-param-number-fields]');
-        if (fields) fields.hidden = target.value !== 'number';
-    });
+    dialog.addEventListener('change', updateParameterControls);
     dialog.querySelector('[data-add-connection]')?.addEventListener('click', () => {
         const container = dialog.querySelector<HTMLElement>('[data-connections]')!;
         container.insertAdjacentHTML('beforeend', connectionRow(
@@ -332,6 +365,17 @@ function bindRowControls(dialog: HTMLDialogElement, options: FlowSettingsOptions
             target.closest('[data-param-row]')?.remove();
         }
     });
+}
+
+function updateParameterControls(event: Event): void {
+    const target = event.target as HTMLSelectElement;
+    if (!target.matches('[data-param-type], [data-param-widget]')) return;
+    const row = target.closest<HTMLElement>('[data-param-row]');
+    if (!row) return;
+    const widget = readInput(row, '[data-param-widget]');
+    row.querySelector<HTMLElement>('[data-param-image-fields]')!.hidden = widget !== 'images';
+    row.querySelector<HTMLElement>('[data-param-file-fields]')!.hidden = widget !== 'files';
+    row.querySelector<HTMLElement>('[data-param-number-fields]')!.hidden = readInput(row, '[data-param-type]') !== 'number';
 }
 
 function readConnectionRow(row: HTMLElement): FlowConnection {
@@ -367,33 +411,50 @@ function readSettings(dialog: HTMLDialogElement): FlowSettingsResult {
         ? readInput(defaultRow, '[data-conn-name]').trim()
         : connections[0]?.name;
 
-    const parameters = [...dialog.querySelectorAll<HTMLElement>('[data-param-row]')].map(row => {
-        const name = readInput(row, '[data-param-name]').trim();
-        const type = readInput(row, '[data-param-type]') as FlowParameter['type'];
-        const required = row.querySelector<HTMLInputElement>('[data-param-required]')?.checked ?? false;
-        const description = readInput(row, '[data-param-desc]').trim();
-        if (!name) throw new Error(t('flow.settings.parameterNameRequired'));
-        const raw = readInput(row, '[data-param-default]');
-        const original = JSON.parse(row.dataset.paramOriginal ?? '{}') as FlowParameter;
-        const { name: _name, type: _type, required: _required, description: _description, default: _default,
-            minimum: _min, maximum: _max, integer: _integer, onMissing: _missing, imageConstraints: _images, ...presentation } = original;
-        const result: FlowParameter = { ...presentation, name, type, ...readParameterConstraints(row, type), ...(description ? { description } : {}) };
-        if (type !== 'json' && result.widget === 'images') delete result.widget;
-        if (type !== 'string') delete result.nonBlank;
-        if (required) result.required = true;
-        if (raw !== '') result.default = parseDefault(raw, type);
-        return result;
-    });
+    const parameters = [...dialog.querySelectorAll<HTMLElement>('[data-param-row]')].map(readParameterRow);
     if (new Set(parameters.map(item => item.name)).size !== parameters.length) {
         throw new Error(t('flow.settings.parameterNamesUnique'));
     }
     const defaults = readDefaults(dialog);
     const runPolicy = readRunPolicy(dialog);
-    const variables = JSON.parse(dialog.querySelector<HTMLTextAreaElement>('[data-variables]')!.value);
-    if (!variables || Array.isArray(variables) || typeof variables !== 'object') throw new Error(t('flow.variables.invalid'));
-    const outputs = JSON.parse(dialog.querySelector<HTMLTextAreaElement>('[data-outputs]')!.value);
-    if (!outputs || Array.isArray(outputs) || typeof outputs !== 'object') throw new Error(t('flow.launch.invalidValue'));
-    return { connections, defaultConnection, parameters, variables, defaults, runPolicy, outputs };
+    const variables = readObject<FlowVariables>(dialog, '[data-variables]', 'flow.variables.invalid');
+    const outputs = readObject<NonNullable<FlowSettingsResult['outputs']>>(dialog, '[data-outputs]', 'flow.launch.invalidValue');
+    const exposure = readInput(dialog, '[data-exposure]');
+    if (exposure !== 'global' && exposure !== 'local') throw new Error(t('callable.exposure.invalid'));
+    return { exposure, connections, defaultConnection, parameters, variables, defaults, runPolicy, outputs };
+}
+
+function readObject<T extends object>(root: HTMLElement, selector: string, errorKey: Parameters<typeof t>[0]): T {
+    const value = JSON.parse(root.querySelector<HTMLTextAreaElement>(selector)!.value);
+    if (!value || Array.isArray(value) || typeof value !== 'object') throw new Error(t(errorKey));
+    return value as T;
+}
+
+function readParameterRow(row: HTMLElement): FlowParameter {
+    const name = readInput(row, '[data-param-name]').trim();
+    const type = readInput(row, '[data-param-type]') as FlowParameter['type'];
+    const required = row.querySelector<HTMLInputElement>('[data-param-required]')?.checked ?? false;
+    const description = readInput(row, '[data-param-desc]').trim();
+    if (!name) throw new Error(t('flow.settings.parameterNameRequired'));
+    const raw = readInput(row, '[data-param-default]');
+    const original = JSON.parse(row.dataset.paramOriginal ?? '{}') as FlowParameter;
+    const result: FlowParameter = {...parameterPresentationValues(row, original, type), name, type,
+        ...readParameterConstraints(row, type), ...(description ? {description} : {})};
+    if (required) result.required = true;
+    if (raw !== '') result.default = parseDefault(raw, type);
+    return result;
+}
+function parameterPresentationValues(row: HTMLElement, original: FlowParameter, type: FlowParameter['type']): Partial<FlowParameter> {
+    const { name: _name, type: _type, required: _required, description: _description, default: _default,
+        minimum: _min, maximum: _max, integer: _integer, onMissing: _missing, imageConstraints: _images, fileConstraints: _files, ...presentation } = original;
+    const result: Partial<FlowParameter> = {...presentation};
+    const widget = readInput(row, '[data-param-widget]'), inputSource = readInput(row, '[data-param-source]');
+    delete result.widget; delete result.inputSource;
+    if (widget) result.widget = widget as FlowParameter['widget'];
+    if (inputSource) result.inputSource = inputSource as FlowParameter['inputSource'];
+    if (type !== 'json' && ['images', 'files'].includes(result.widget ?? '')) delete result.widget;
+    if (type !== 'string') delete result.nonBlank;
+    return result;
 }
 
 function readRunPolicy(dialog: HTMLDialogElement): FlowRunPolicy {

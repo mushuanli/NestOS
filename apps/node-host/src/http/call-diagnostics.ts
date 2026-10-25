@@ -6,7 +6,9 @@ export function callDiagnostics(calls: Call[], operations: string[], commands: R
     const rpcCommands = calls.flatMap((call, index) => operations[index] === 'ICommandBus.execute'
         && typeof call.args[0] === 'string' && commands.has(call.args[0]) ? [call.args[0]] : []);
     const uploads = calls.flatMap((call, index) => {
-        if (operations[index] !== 'ICommandBus.execute' || call.args[0] !== InputAssetCommand.Import) return [];
+        if (operations[index] !== 'ICommandBus.execute') return [];
+        if (call.args[0] === InputAssetCommand.ImportFile) return [fileMetadata(call.args[1])];
+        if (call.args[0] !== InputAssetCommand.Import) return [];
         const argument = call.args[1] as {$object?: {url?: unknown}; url?: unknown} | undefined;
         const url = (argument?.$object ?? argument)?.url;
         const prefix = typeof url === 'string' && /^data:(image\/[a-z0-9.+-]{1,32});base64,/i.exec(url.slice(0, 128));
@@ -15,6 +17,14 @@ export function callDiagnostics(calls: Call[], operations: string[], commands: R
         return [{mimeType: prefix[1].toLowerCase(), bytes: Math.max(0, Math.floor(encoded * 3 / 4) - (url.endsWith('==') ? 2 : url.endsWith('=') ? 1 : 0))}];
     });
     return {...(rpcCommands.length ? {rpcCommands} : {}), ...(uploads.length ? {uploads} : {})};
+}
+
+function fileMetadata(value: unknown): {mimeType: string; bytes?: number} {
+    const argument = value as {$object?: {mimeType?: unknown; bytes?: unknown}; mimeType?: unknown; bytes?: unknown} | undefined;
+    const input = argument?.$object ?? argument;
+    const mimeType = typeof input?.mimeType === 'string' && /^[a-z0-9.+-]{1,64}\/[a-z0-9.+-]{1,64}$/i.test(input.mimeType) ? input.mimeType.toLowerCase() : 'unknown';
+    const bytes = typeof input?.bytes === 'number' && Number.isSafeInteger(input.bytes) && input.bytes >= 0 ? input.bytes : undefined;
+    return {mimeType, ...(bytes !== undefined ? {bytes} : {})};
 }
 
 export function replyDiagnostics(replies: Reply[]) {

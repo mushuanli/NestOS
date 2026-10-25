@@ -21,10 +21,15 @@ const baseFlow = () => ({ id: 'registered', revision: 2, name: 'Registered flow'
 function setup(initial = agent) {
     let flow = baseFlow();
     const asset = { kind: 'input', id: '11111111-1111-4111-8111-111111111111', mimeType: 'image/png', bytes: 7, sha256: 'a'.repeat(64) };
-    const execute = vi.fn(async (name: string): Promise<unknown> => {
+    const uploaded = new Map<string, typeof asset>();
+    const execute = vi.fn(async (name: string, args?: any): Promise<unknown> => {
         if (name === FlowCommand.RevisionGet) return flow;
         if (name === SessionCommand.GetConnections) return { connections: [] };
-        if (name === InputAssetCommand.Import) return asset;
+        if (name === InputAssetCommand.Inspect) return uploaded.has(args.uploadId) ? {state: 'ready', reference: uploaded.get(args.uploadId)} : {state: 'missing'};
+        if (name === InputAssetCommand.ImportFile) {
+            Object.assign(asset, {id: args.uploadId, mimeType: args.mimeType, bytes: args.bytes, sha256: args.sha256});
+            uploaded.set(args.uploadId, {...asset}); return {...asset};
+        }
         if (name === InputAssetCommand.Read) return 'data:image/png;base64,cGljdHVyZQ==';
     });
     const root = document.createElement('div'); document.body.append(root);
@@ -70,10 +75,10 @@ it('submits Flow Agent parameters and durable images through the ordinary send b
     picker.dispatchEvent(new Event('change')); submit(dialog);
     await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
     expect(f.onSend.mock.calls[0]).toEqual(['Read these pages', [], 'reader', expect.objectContaining({
-        flowParameters: { lesson: 'this request', images: [{ type: 'image', source: { type: 'asset', asset: f.asset } }] }, flowConnectionBindings: {},
+        flowParameters: { lesson: 'this request', images: [{ type: 'image', name: 'page.png', source: { type: 'asset', asset: f.asset } }] }, flowConnectionBindings: {},
     })]);
     expect(f.onSend.mock.calls[0][3]).not.toHaveProperty('flowId');
-    expect(f.execute).toHaveBeenCalledWith(InputAssetCommand.Import, expect.objectContaining({ url: expect.stringMatching(/^data:image\/png/) }));
+    expect(f.execute).toHaveBeenCalledWith(InputAssetCommand.ImportFile, expect.objectContaining({data: expect.any(ArrayBuffer), name: 'page.png'}));
     await vi.waitFor(() => expect(f.input.value).toBe(''));
 });
 
@@ -154,6 +159,8 @@ it('prefills required Flow slots from this Agent purpose defaults before the sys
 
 it('passes the clicked text and attachment snapshot to preparation and keeps newer composer edits after confirmation', async () => {
     const f = setup(), file = new File(['context'], 'context.txt', {type: 'text/plain'});
+    f.changeFlow({...baseFlow(), parameters: [{name: 'request', type: 'string', inputSource: 'composer.text'},
+        {name: 'files', type: 'json', widget: 'files', inputSource: 'composer.attachments'}]} as never);
     f.view.restoreDraft('Frozen prompt', [file], 'reader'); f.send.click(); const dialog = await form();
     expect(f.prepare.mock.calls[0][2]).toEqual({text: 'Frozen prompt', files: [file]});
     f.type('Newer prompt'); submit(dialog);
@@ -169,8 +176,8 @@ it('prefills only declared text and attachment sources in the initial dialog and
     expect(dialog.querySelector<HTMLTextAreaElement>('[data-parameter="0"]')!.value).toBe('Composer lesson');
     expect(dialog.querySelector('[data-flow-input-group]')).toBeNull();
     submit(dialog); const result = await prepared;
-    expect(result?.flowParameters).toEqual({lesson: 'Composer lesson', images: [{type: 'image', source: {type: 'asset', asset: f.asset}}]});
-    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.Import)).toHaveLength(1);
+    expect(result?.flowParameters).toEqual({lesson: 'Composer lesson', images: [{type: 'image', name: 'page.png', source: {type: 'asset', asset: f.asset}}]});
+    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.ImportFile)).toHaveLength(1);
 });
 
 it('requires an explicit source choice for a declared exclusive group and submits only that source', async () => {
@@ -192,37 +199,45 @@ it('keeps the original composer input and attachments when a source form is canc
     expect(f.onSend).not.toHaveBeenCalled(); expect(f.input.value).toBe('Keep source text'); expect(f.view.getDraftFiles()).toEqual([file]);
 });
 
-it('shows the selected attachment format error without losing the composer and allows selecting its text instead', async () => {
+it('keeps invalid composer attachments and requires resolving their binding before switching to a text-only input', async () => {
     const f = setup(); f.changeFlow(sourceFlow(true) as never);
     const file = new File(['document'], 'draft.txt', {type: 'text/plain'});
     f.view.restoreDraft('Use this text instead', [file], 'reader'); f.send.click(); const dialog = await form();
     chooseSource(dialog, 'images'); submit(dialog);
     await vi.waitFor(() => expect(dialog.querySelector('[data-form-error]')!.textContent).toContain('draft.txt'));
     expect(f.onSend).not.toHaveBeenCalled(); expect(f.input.value).toBe('Use this text instead'); expect(f.view.getDraftFiles()).toEqual([file]);
-    chooseSource(dialog, 'lesson'); submit(dialog); await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
+    chooseSource(dialog, 'lesson'); submit(dialog);
+    await vi.waitFor(() => expect(dialog.querySelector('[data-form-error]')!.textContent).toContain('附件'));
+    expect(f.onSend).not.toHaveBeenCalled(); expect(f.view.getDraftFiles()).toEqual([file]);
+    dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.click();
+    await vi.waitFor(() => expect(f.send.disabled).toBe(false));
+    f.view.acceptSubmittedDraft('unmatched-text', [file]);
+    f.send.click();
+    const reopened = await form(); chooseSource(reopened, 'lesson'); submit(reopened);
+    await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
     expect(f.onSend.mock.calls[0][3]).toMatchObject({flowParameters: {lesson: 'Use this text instead'}});
-    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.Import)).toHaveLength(0);
+    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.ImportFile)).toHaveLength(0);
 });
 
 it('reuses an imported composer image when cancellation reopens the same draft', async () => {
     const f = setup(); f.changeFlow(sourceFlow() as never);
     const file = new File(['picture'], 'page.png', {type: 'image/png'}), draft = {text: 'Keep context', files: [file]};
     const first = prepareAgentFlow(f.commands as never, agent, new AbortController().signal, draft), dialog = await form();
-    await vi.waitFor(() => expect(dialog.querySelector<HTMLTextAreaElement>('[data-parameter="1"]')!.value).toContain('11111111'));
+    await vi.waitFor(() => expect(dialog.querySelector<HTMLTextAreaElement>('[data-parameter="1"]')!.value).toContain(f.asset.id));
     dialog.querySelector<HTMLButtonElement>('[data-cancel]')!.click(); expect(await first).toBeNull();
     const second = prepareAgentFlow(f.commands as never, agent, new AbortController().signal, draft), reopened = await form();
-    submit(reopened); expect((await second)?.flowParameters.images).toEqual([{type: 'image', source: {type: 'asset', asset: f.asset}}]);
-    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.Import)).toHaveLength(1);
+    submit(reopened); expect((await second)?.flowParameters.images).toEqual([{type: 'image', name: 'page.png', source: {type: 'asset', asset: f.asset}}]);
+    expect(f.execute.mock.calls.filter(call => call[0] === InputAssetCommand.ImportFile)).toHaveLength(1);
 });
 
 it('abandons a cancelled parameter form while a composer image import is still in flight', async () => {
     const f = setup(); f.changeFlow(sourceFlow() as never);
     let resolveImport!: (value: unknown) => void;
     const importing = new Promise(resolve => {resolveImport = resolve;}), previous = f.execute.getMockImplementation()!;
-    f.execute.mockImplementation(async name => name === InputAssetCommand.Import ? importing : previous(name));
+    f.execute.mockImplementation(async (name, args) => name === InputAssetCommand.ImportFile ? importing : previous(name, args));
     const controller = new AbortController(), file = new File(['picture'], 'page.png', {type: 'image/png'});
     const prepared = prepareAgentFlow(f.commands as never, agent, controller.signal, {text: 'Keep context', files: [file]});
-    await form(); await vi.waitFor(() => expect(f.execute.mock.calls.some(call => call[0] === InputAssetCommand.Import)).toBe(true));
+    await form(); await vi.waitFor(() => expect(f.execute.mock.calls.some(call => call[0] === InputAssetCommand.ImportFile)).toBe(true));
     controller.abort(); expect(await prepared).toBeNull(); resolveImport(f.asset);
     await Promise.resolve(); expect(document.querySelector('dialog')).toBeNull(); expect(f.onSend).not.toHaveBeenCalled();
 });

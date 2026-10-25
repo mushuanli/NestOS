@@ -10,7 +10,7 @@ import {prepareFlowConnections, type FlowConnectionCatalog} from './flow-connect
 
 /** Recompile edited arguments from the accepted recipe, without re-reading definitions or Agent policies. */
 export async function reviseQueuedInput(sessionId: string, item: SessionInstruction, live: FlowConnectionCatalog & FlowIdentityResolver,
-    plugins: DagPluginCatalog | undefined, host: SessionHost): Promise<SessionInstruction> {
+    plugins: DagPluginCatalog | undefined, host: SessionHost, validateCallAssets?: import('../contracts/submission').CallAssetValidator): Promise<SessionInstruction> {
     const binding = item.flowBinding;
     if (!binding) {
         if (item.source?.kind !== 'composer' || Object.keys(item.source.values).length)
@@ -21,6 +21,7 @@ export async function reviseQueuedInput(sessionId: string, item: SessionInstruct
     const catalog = frozenFlowConnections(live, binding.connections), identity = boundFlowIdentity(binding)!;
     const definitions = [binding.definition, ...binding.dependencies];
     const input = await prepareFlowAgentInput({...item, sessionId, instructionConnectionBinding: item.connectionBinding}, {
+        validateCallAssets,
         definitions: {loadRevision: async (id, revision) => structuredClone(definitions.find(flow => flow.id === id
             && (revision === undefined || flow.revision === revision)) ?? null)},
         resolveAgent: async () => structuredClone(identity), identityResolver: frozenFlowIdentities(binding.plan.identities),

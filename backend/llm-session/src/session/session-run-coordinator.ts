@@ -43,6 +43,7 @@ import { isHarnessAgentSnapshot } from './harness-binding';
 import {conversationFlowInvocation, newRerunInvocation} from './invocation-identity';
 
 export interface SessionRunCallbacks {
+    validateCallAssets?: import('../contracts/submission').CallAssetValidator;
     /** Commit persisted rounds to the projection before exposing a terminal status. */
     refreshSession?(sessionId: string): Promise<void>;
     onStatusChange(sessionId: string, status: SessionStatus): void;
@@ -127,7 +128,7 @@ export class SessionRunCoordinator {
     }
 
     reviseQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
-        return reviseQueuedInput(sessionId, item, this.agents, this.dagPlugins, this.host);
+        return reviseQueuedInput(sessionId, item, this.agents, this.dagPlugins, this.host, this.callbacks.validateCallAssets);
     }
 
     publishedAgentTarget(target?: import('@itookit/llm-flow/contracts').TargetRef) {return this.agents.publishedTarget(target);}
@@ -454,6 +455,7 @@ export class SessionRunCoordinator {
         const definitions = new FlowDefinitionStore(this.flowStore);
         const frozenIdentity = identity;
         return prepareFlowAgentInput(input, { definitions, resolveAgent: async () => frozenIdentity, host: this.host,
+            validateCallAssets: this.callbacks.validateCallAssets,
             connectionCatalog: this.agents, identityResolver: this.agents, plugins: this.dagPlugins,
             prepareConnections: (definition, bindings, connectionId) => prepareFlowConnections(definition, bindings, this.agents,
                 input.instructionConnectionBinding?.defaults, connectionId) });
@@ -496,7 +498,12 @@ export class SessionRunCoordinator {
         const binding = input.instructionFlowBinding;
         if (!binding) return;
         const started = Date.now(), operationId = input.instructionId ?? input.sendIntent?.submission?.id ?? input.sessionId;
+        let phase = 'materials';
         try {
+            const parameters = binding.inputResolution?.parameters
+                ?? (input.sendIntent?.execution.kind === 'flow' ? input.sendIntent.execution.parameters : {});
+            await this.callbacks.validateCallAssets?.(input.sessionId, parameters);
+            phase = 'connections';
             const catalog = frozenFlowConnections(this.agents, binding.connections);
             if (binding.plan) await validatePlannedFlowConnections(binding.plan.graph, binding.definition, catalog, input.instructionConnectionBinding?.defaults);
             else await flowToDag(binding.definition, undefined, input.instructionConnectionBinding?.connectionId,
@@ -505,11 +512,11 @@ export class SessionRunCoordinator {
                 (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, catalog,
                     input.instructionConnectionBinding?.defaults, runConnectionId), input.sendIntent?.execution.kind === 'flow' ? input.sendIntent.execution.parameters : undefined);
             this.host.logger.debug('Flow plan revalidated', { operation: 'flow.plan', stage: 'dispatch-admission', result: 'success',
-                operationId, planVersion: binding.plan?.version ?? 0, elapsedMs: Date.now() - started });
+                operationId, phase, planVersion: binding.plan?.version ?? 0, elapsedMs: Date.now() - started });
         } catch (error) {
             const code = (error as { code?: unknown })?.code;
             this.host.logger.warn('Flow plan revalidation failed', { operation: 'flow.plan', stage: 'dispatch-admission', result: 'failure',
-                operationId, errorCode: typeof code === 'string' && /^FLOW_CONNECTION_[A-Z_]+$/.test(code) ? code : 'FLOW_PLAN_INVALID',
+                operationId, phase, errorCode: typeof code === 'string' && /^(?:FLOW_CONNECTION_|INPUT_ASSET_|ASSET_)[A-Z_]+$/.test(code) ? code : 'FLOW_PLAN_INVALID',
                 elapsedMs: Date.now() - started });
             throw error;
         }

@@ -752,3 +752,10 @@
 .dag-output-dialog > header { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .dag-output-dialog > header select { max-width: 45%; }
 .dag-output-dialog__body { height: 70vh; overflow: auto; }
+
+.flow-parameter-files { grid-column: 1 / -1; }
+.flow-file-picker { display: grid; gap: 8px; padding: 12px; border: 1px dashed var(--dag-text-secondary); border-radius: 8px; }
+.flow-file-picker__action { font-weight: 500; }
+.flow-file-fields__summary { white-space: pre-wrap; color: var(--dag-text-secondary); font-size: .8rem; }
+.flow-file-fields__actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.flow-file-fields__actions button { min-height: 44px; }

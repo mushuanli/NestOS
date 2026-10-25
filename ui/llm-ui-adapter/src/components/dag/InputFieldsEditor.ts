@@ -35,11 +35,12 @@ function fieldRow([name, field]: [string, Record<string, unknown>]): string {
         <label>${escapeHTML(t('flow.editor.fieldName'))}<input data-field="name" value="${escapeHTML(name)}"></label>
         <label>${escapeHTML(t('flow.editor.fieldLabel'))}<input data-field="label" value="${escapeHTML(String(field.label ?? ''))}"></label>
         <label>${escapeHTML(t('flow.editor.fieldType'))}${select('type', ['string', 'number', 'boolean', 'json'])}</label>
-        <label>${escapeHTML(t('flow.editor.widget'))}${select('widget', ['text', 'textarea', 'number', 'select', 'checkbox', 'images'])}</label>
+        <label>${escapeHTML(t('flow.editor.widget'))}${select('widget', ['text', 'textarea', 'number', 'select', 'checkbox', 'images', 'files'])}</label>
         <label>${escapeHTML(t('flow.editor.required'))}<input type="checkbox" data-field="required" ${field.required !== false ? 'checked' : ''}></label>
         <label>${escapeHTML(t('flow.editor.defaultValue'))}<input data-field="default" value="${escapeHTML(field.default === undefined ? '' : JSON.stringify(field.default))}"></label>
         <label>${escapeHTML(t('flow.editor.choices'))}<input data-field="options" value="${escapeHTML(field.options === undefined ? '' : JSON.stringify(field.options))}"></label>
         <label>${escapeHTML(t('flow.parameters.imageConstraints'))}<input data-field="imageConstraints" value="${escapeHTML(field.imageConstraints === undefined ? '' : JSON.stringify(field.imageConstraints))}"></label>
+        <label>${escapeHTML(t('flow.parameters.fileConstraints'))}<input data-field="fileConstraints" value="${escapeHTML(field.fileConstraints === undefined ? '' : JSON.stringify(field.fileConstraints))}"></label>
         <button type="button" data-remove-field="${escapeHTML(name)}">${escapeHTML(t('flow.editor.removeField'))}</button></fieldset>`;
 }
 function readFields(editor: HTMLElement, previous: Fields): Fields {
@@ -50,7 +51,7 @@ function readFields(editor: HTMLElement, previous: Fields): Fields {
         if (!/^[A-Za-z][\w-]*$/.test(name) || ['constructor', 'prototype'].includes(name) || Object.hasOwn(result, name)) throw new Error('Invalid field name');
         const field = { ...previous[row.dataset.fieldName!], type: read('type'), widget: read('widget'), label: read('label'),
             required: row.querySelector<HTMLInputElement>('[data-field="required"]')!.checked };
-        for (const key of ['default', 'options', 'imageConstraints']) {
+        for (const key of ['default', 'options', 'imageConstraints', 'fileConstraints']) {
             delete (field as Record<string, unknown>)[key];
             if (read(key).trim()) (field as Record<string, unknown>)[key] = JSON.parse(read(key));
         }

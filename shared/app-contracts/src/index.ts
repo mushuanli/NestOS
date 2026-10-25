@@ -29,6 +29,7 @@ export { APPLICATION_WORKSPACES } from './presets/workspaces';
 export { isApplicationReadCommand } from './session/command-policy';
 export { FlowLibraryCommand } from './presets/flow-library';
 
-export {InputAssetCommand} from './presets/input-assets';
+export {InputAssetCommand, INPUT_ASSET_MAX_BYTES} from './presets/input-assets';
+export type {InputFileIdentity, InputFileUpload, InputFileInspection} from './presets/input-assets';
 
 export type * from './ports/flow-installation';

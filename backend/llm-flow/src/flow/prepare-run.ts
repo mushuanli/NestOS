@@ -6,6 +6,7 @@ import { flowToDag, type FlowNodeBinder } from './to-dag';
 import { assertRootCallable } from '../contracts/callable-exposure';
 
 export interface FlowPreparationOptions {
+    validateInputAssets?(parameters: Record<string, JsonValue>): Promise<void>;
     parameters?: Record<string, JsonValue>;
     inputSource?: FlowCallSource;
     inputOptions?: FlowCallInputOptions;
@@ -26,6 +27,7 @@ export async function prepareFlowRun(flow: FlowRevision, options: FlowPreparatio
     if (options.inputSource && options.parameters !== undefined) throw new Error('Flow parameters and inputSource cannot both be supplied');
     const input = prepareFlowCallInput(flow, options.inputSource ?? {kind: 'arguments', value: options.parameters ?? {}},
         {allowUndeclared: flow.parameters === undefined && !options.inputSource, ...options.inputOptions});
+    await options.validateInputAssets?.(input.parameters);
     return flowToDag(flow, options.bindNode, options.fallbackConnectionId, options.resolveComposite,
         [], flow.dependencyLocks, false, options.connectionId, options.connectionBindings, options.prepareConnections, input.parameters);
 }

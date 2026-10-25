@@ -7,9 +7,10 @@ export function agentFlowInput(parameters: FlowParameter[], draft?: AgentFlowDra
     initialFiles: Readonly<Record<string, readonly File[]>>;
 } {
     const initialFiles: Record<string, readonly File[]> = {};
+    const attachmentFields = parameters.filter(field => field.inputSource === 'composer.attachments');
     const fields = parameters.map(parameter => {
         const field = {...parameter, ...(Object.hasOwn(defaults ?? {}, parameter.name) ? {default: defaults![parameter.name] as JsonValue} : {})};
-        if (draft?.files.length && field.inputSource === 'composer.attachments') initialFiles[field.name] = [...draft.files];
+        if (draft?.files.length && attachmentFields.length === 1 && field.inputSource === 'composer.attachments') initialFiles[field.name] = [...draft.files];
         return draft?.text && field.inputSource === 'composer.text' ? {...field, default: draft.text} : field;
     });
     return {parameters: fields, initialFiles};

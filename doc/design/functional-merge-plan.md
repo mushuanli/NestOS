@@ -203,7 +203,7 @@ F13/F14 一批合入 51 个文件。上传身份与内容存储归 app-core，Se
 | 检查项 | 归属与前置 | 状态 | 交付及验收条件 |
 | --- | --- | --- | --- |
 | 会话与调用关联 | F16；Session/app-core | Flow 宿主关联见第 26 节；统一 Agent/Flow 宿主路由见第 37 节；裸 Task 入口仍待实施 | 持久保存原调用者、执行所属 Session、Invocation 及真实根 Task；组织关系不授予控制 |
-| 独立调用入口 | F16；F12 平级目标和台账基础已合入 | 独立 Flow 表单已接宿主子 Session 路由及台账（第 28 节）；Agent/Flow 宿主调用端口见第 37 节；UI/CLI 消费与裸 Task 入口待统一；普通发送继续在当前 Session | 同 Flow 两次独立运行获得不同子 Session；同请求丢回复/重启返回同一子 Session；父子不重复入队 |
+| 独立调用入口 | F16；F12 平级目标和台账基础已合入 | 独立 Flow 表单已接宿主子 Session 路由及台账（第 28 节）；Agent/Flow 宿主调用端口见第 37 节；CLI 消费见第 38 节；UI 与裸 Task 入口待统一；普通发送继续在当前 Session | 同 Flow 两次独立运行获得不同子 Session；同请求丢回复/重启返回同一子 Session；父子不重复入队 |
 | 最小函数调用组 | F24 基础；依赖 F16/F23 | 待实施与验收，本阶段范围 | 默认输入、状态、最终 value/artifacts；原 Invocation 稳定定位；审批、补参、失败及清理状态可见 |
 | 打开真实子会话 | F24 基础；依赖明确的 Session 关联 | Flow 调用卡片已接线（第 27 节）；其他调用待接线 | 打开既有 Session UI，不重跑、不复制历史；关闭观察不取消后台执行；不支持时不伪造入口 |
 | 高级会话详情 | F24 增强；在基础入口后扩展 | 后续增强；不阻塞最小函数视图交付 | 内嵌会话、完整节点/循环/尝试树、搜索与大历史分页，展开才加载 renderer |
@@ -853,3 +853,25 @@ C4Component
 附件先在调用方冻结，再按内容身份复制到子会话，已接纳后的查询/同请求重试不依赖原附件再次可读。显式 initialContext 继续经既有 ContentTransferService 校验；不自动继承父聊天历史。默认参数和 Agent/Flow 执行配置仍在真正的子队列接纳时冻结。
 
 真实 Runtime 验收覆盖普通模型 Agent、Flow Agent、已发布 Flow、两个不同请求创建不同子会话、同请求并发与冲突、丢失接纳回复、附件以及原 RPC 回复悬挂时只读查询。关闭调用方观察不取消执行。独立调用 UI/CLI 操作入口、父级调用组投影和跨会话控制消费尚未接线；裸 Kernel Task 入口及真实远端验收继续开放。本节不将 F16/F24 标为完成。
+
+
+## 38. F16 独立调用 CLI 入口与观察
+
+CLI call-prepare/call-submit/call-receipt 接入第 37 节统一宿主端口，Agent/Flow 共用目标和输入解析。文件持久化复用普通提交的大小限制、wx/0600、文件及父目录同步，不另建请求台账；独立文件冻结 request/title/transfer。查询只读原身份，丢回执不自动重发，也不重读参数和材料来源文件。
+
+```mermaid
+C4Component
+  title CLI 独立调用与子执行观察
+  Component(cli, "CLI call commands", "表示层", "准备输入、明确提交、查询原请求")
+  ContainerDb(file, "call.json", "既有冻结文件机制", "原调用身份、标题与显式材料")
+  Component(host, "IndependentCallService", "宿主", "子 Session 路由和持久接纳")
+  Component(observe, "watchSubmissionExecution", "已有 CLI 观察", "读取子调用的 Round 与执行身份")
+  Rel(cli, file, "独占同步保存或读取")
+  Rel(cli, host, "submit / inspect")
+  Rel(cli, observe, "本地默认等待，远程显式 follow")
+  Rel(observe, host, "使用真实子 Session 身份，不重发")
+```
+
+本地 CLI 不能收到接纳就关闭执行宿主，因此默认等待子调用；远程默认只返回接纳，--follow 才继续观察。等待人工交互以子调用持久成员为准，复用已有等待输入/失败退出语义。仅 CLI 的观察作用域导航到子会话，不切换其他客户端视图；call-receipt 不激活任何视图。诊断区分准备、接纳与观察失败，不记录标题、参数或远端错误正文。
+
+验收覆盖本地/RPC 纯参数 Flow、Agent 冻结输入、文件禁止覆盖、跨调用方文件拒绝、原回执查询、丢回复不重发、远程 follow 和子调用补参。UI 独立操作入口、父级函数卡片与控制、裸 Task 入口和生产验收继续开放。

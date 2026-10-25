@@ -46,7 +46,7 @@ async function selectTarget(client: ApplicationClient, options: CommandOptions) 
 }
 
 async function callSource(text: string | undefined, options: CommandOptions) {
-    const value = options.paramsFile ? await readJson(options.paramsFile) : {};
+    const value = options.paramsFile ? await readCallJson(options.paramsFile) : {};
     const source = text === undefined ? {kind: 'arguments' as const, value: value as JsonValue}
         : {kind: 'composer' as const, text, values: value as Record<string, JsonValue>, attachments: []};
     assertFlowCallSource(source);
@@ -68,12 +68,16 @@ async function callOverrides(kind: 'agent' | 'flow', selected: RootCallTarget | 
 }
 
 async function readConversation(file: string): Promise<ConversationSelection> {
-    const selection = await readJson(file) as ConversationSelection;
+    const selection = await readCallJson(file) as ConversationSelection;
     assertConversationSelection(selection); return structuredClone(selection);
 }
 
 export async function readSubmissionFile(file: string, sessionId: string): Promise<SubmissionRequest> {
-    const request = await readJson(file) as unknown as SubmissionRequest;
+    return validateSubmissionFile(await readCallJson(file), sessionId);
+}
+
+export function validateSubmissionFile(value: unknown, sessionId: string): SubmissionRequest {
+    const request = value as SubmissionRequest;
     if (!request || typeof request !== 'object' || Array.isArray(request)) throw failure('SUBMISSION_INVALID', 'A submission object is required');
     assertTargetSelection(request.target); assertFlowCallSource(request.source);
     if (request.expectedSessionId !== sessionId) throw failure('SUBMISSION_BINDING_CHANGED', 'The submission file belongs to another Session');
@@ -116,7 +120,7 @@ export function assertFrozenCallOptions(options: CommandOptions): void {
         throw failure('CLI_CALL_OPTIONS_CONFLICT', 'A frozen submission cannot be overridden; edit input before preparing a new call');
 }
 
-async function readJson(file: string): Promise<unknown> {
+export async function readCallJson(file: string): Promise<unknown> {
     const started = Date.now(); let stage = 'file-read';
     try {
         const handle = await open(file, 'r');
@@ -138,22 +142,26 @@ async function readJson(file: string): Promise<unknown> {
 }
 
 async function readBindings(file: string): Promise<Record<string, string>> {
-    const value = await readJson(file);
+    const value = await readCallJson(file);
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.values(value).some(binding => typeof binding !== 'string'))
         throw failure('CLI_CALL_BINDINGS_INVALID', 'Connection bindings must be a JSON object of connection IDs');
     return value as Record<string, string>;
 }
 
 async function saveSubmission(file: string, request: SubmissionRequest): Promise<void> {
-    const started = Date.now(), bytes = JSON.stringify(request, null, 2) + '\n';
+    return writeCallJson(file, request, request.submission!.id);
+}
+
+export async function writeCallJson(file: string, value: unknown, operationId: string): Promise<void> {
+    const started = Date.now(), bytes = JSON.stringify(value, null, 2) + '\n';
     if (Buffer.byteLength(bytes) > MAX_CALL_BYTES) throw failure('CLI_CALL_FILE_LIMIT', 'Frozen submission exceeds 1 MiB');
     try {
         const handle = await open(file, 'wx', 0o600);
         try {await handle.writeFile(bytes, 'utf8'); await handle.sync(); await syncParent(file);} finally {await handle.close();}
     } catch (error) {
-        recordFailure('session.prepare', request.submission!.id, 'file-write', error, started);
+        recordFailure('session.prepare', operationId, 'file-write', error, started);
         throw failure('CLI_CALL_FILE_WRITE_FAILED', safeCode(error) === 'EEXIST'
-            ? 'Submission file already exists; use session receipt or submit with that frozen file'
+            ? 'Submission file already exists; use the matching receipt or submit command with that frozen file'
             : 'Cannot save frozen submission before dispatch: ' + safeCode(error));
     }
 }

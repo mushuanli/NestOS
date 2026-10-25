@@ -17,3 +17,6 @@ Session 根调用使用 session.targets.list、session.submit 与 session.submis
 
 
 CLI 上下文入口已接宿主：session contexts 在打开 Session view 前只读查询安全 binding/检查点摘要，--cursor 原样传递目录游标，--branch 仅过滤。--context 文件经公共 ConversationSelection 校验，随 prepare/send 的 Submission 冻结；submit/receipt 不接受该覆盖，也不重读选择文件。目录只证明观察事实，真正派发仍复验能力和 binding 修订；严格 continue 未开放。查询诊断区分本地校验与宿主读取，不记录游标、文件内容或远端错误正文。
+
+
+独立调用使用 session call-prepare/call-submit/call-receipt，共用已发布目标解析、大小限制与独占同步写文件。冻结文件同时保存原 request、title 和可选 transfer；恢复禁止覆盖，不重读参数或材料引用文件。call-receipt 只调用 session.call.inspect，不打开视图。call-submit 在本地默认观察子执行，--connect 默认只返回接纳，--follow 才在 CLI 自身作用域打开子 Session 继续观察；子交互和退出状态复用 watchSubmissionExecution，不按父会话状态判断。CLI 本地进程退出不承诺后台执行，后台工作使用持久远程宿主。

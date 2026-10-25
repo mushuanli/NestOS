@@ -118,3 +118,19 @@ pnpm cli session receipt <session-id> call.json
 selection.json 使用公共 ConversationSelection，例如 `{"mode":"fork","sourceBindingId":"binding-id","expectedBindingRevision":4,"expectedGeneration":1,"checkpointRef":"checkpoint-ref"}`；字段值必须来自实际目录。prepare 只冻结请求，不表示接纳或执行资格已确认。Flow 不接受此覆盖，模型 Agent 和不支持的能力由宿主拒绝；严格 continue 仍不开放，fork 不恢复工作区文件系统。
 
 原选择文件之后的编辑不改变 call.json；submit/receipt 禁止 --context 覆盖。提交丢回复应使用 receipt 查询原身份，不自动换 ID 或重发。查询和准备诊断只保留阶段、结果、关联 ID、耗时及安全错误码，不记录游标或用户输入。
+
+
+## CLI 独立 Agent / Flow 调用
+
+```bash
+pnpm cli session call-prepare <caller-session-id> --flow <flow-id> --params input.json --call-title '独立检查' --submission-file call.json
+pnpm cli session call-prepare <caller-session-id> '本次任务' --agent <agent-id> --call-title '独立任务' --submission-file agent-call.json
+pnpm cli session call-submit <caller-session-id> call.json
+pnpm cli session call-receipt <caller-session-id> call.json
+```
+
+call-prepare 不执行调用，call.json 保存完整 IndependentCallInput（request/title/可选 transfer），不能与普通 session prepare 的文件混用。可选 --transfer reference.json 指定显式材料引用 `{sessionId,id}`；参数、标题及材料引用在准备时冻结，后续编辑来源文件不影响原请求。文件按 0600 独占创建并同步，不能覆盖；默认参数和执行策略仍由宿主在接纳时冻结。
+
+call-submit 明确提交原文件身份，由宿主创建独立子 Session。调用方会话不重复入队、不自动继承其历史。丢回复后用 call-receipt 查询；unknown 不代表没有发送，accepted 只代表持久接纳。submit/receipt 不接受重新指定标题、材料、目标或分支。
+
+本地提交默认等待该子调用完成或进入人工交互/待派发/待核对状态；失败/取消沿用 CLI 退出码 2，等待输入为 3。远程 --connect 默认返回接纳及 executionSessionId；添加 --follow 在 CLI 自身观察作用域打开该子 Session，等待其真实执行，不以父级状态判断。回执查询不打开视图，--follow 仅适用于 call-submit。CLI 本地进程退出不承诺继续后台调度，需要后台执行时使用持续运行的远程宿主。

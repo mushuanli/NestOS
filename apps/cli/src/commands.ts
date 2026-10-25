@@ -38,6 +38,8 @@ export interface CommandOptions {
     file?: string;
     paramsFile?: string;
     contextFile?: string;
+    callTitle?: string;
+    transferFile?: string;
     cursor?: string;
     stateDir?: string;
     headless?: boolean;

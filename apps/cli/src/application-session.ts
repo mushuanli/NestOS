@@ -1,3 +1,4 @@
+import {independentSessionCall} from './independent-session-call';
 import {randomUUID} from '@itookit/common';
 import {recordRuntimeDiagnostic} from './diagnostics';
 import type {ApplicationClient} from '@itookit/app-contracts/services';
@@ -19,6 +20,9 @@ export async function sessionCommand(client: ApplicationClient, args: string[], 
         return (await client.backend.projectSessions()).create(required(value, 'session title'), project.path);
     }
     const sessionId = required(id, 'session id');
+    if (['call-prepare', 'call-submit', 'call-receipt'].includes(action)) return independentSessionCall(client, action, sessionId, value, options);
+    if (options.callTitle !== undefined || options.transferFile !== undefined)
+        throw Object.assign(new Error('Independent title and materials require session call-prepare'), {code: 'CLI_CALL_OPTIONS_CONFLICT'});
     if (action === 'contexts') return contextBindings(client, sessionId, value, options);
     if (action === 'receipt') {assertFrozenCallOptions(options); return inspectSessionSubmission(client, await readSubmissionFile(required(value, 'submission file'), sessionId));}
     if (action === 'prepare') return prepareOnly(client, sessionId, value, options);
@@ -66,7 +70,7 @@ async function branchCommand(client: ApplicationClient, action: string, value: s
     if (action === 'branches') return bus.execute('vcs.branch.list');
     if (action === 'branch') return bus.execute('vcs.branch.create', {branchNodeId: required(head ?? undefined, 'branch point'), options: {name: required(value, 'branch name'), copyContent: true}});
     if (action === 'delete-branch') return bus.execute('vcs.branch.delete', {branchName: required(value, 'branch name')});
-    throw new Error('session requires list/targets/create/show/send/prepare/submit/receipt/branches/branch/delete-branch');
+    throw new Error('session requires list/targets/create/show/send/prepare/submit/receipt/call-prepare/call-submit/call-receipt/contexts/branches/branch/delete-branch');
 }
 
 async function prepareOnly(client: ApplicationClient, id: string, text: string | undefined, options: CommandOptions) {

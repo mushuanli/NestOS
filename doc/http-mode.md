@@ -100,4 +100,4 @@ pnpm cli flow-run reattach <session-id> <root-task-id>
 
 先用 show 读取根 `control.epoch`，未设置控制时为 0。调用方须在发送前保存 request-id 和该 epoch；同一次操作核对或显式重试保留二者，新意图使用新身份。CLI 不生成隐含新控制 ID，不在网络异常后自动重试。`resume` 解除本调用已确认的暂停；`withdraw-pause` 撤回尚未确认的暂停；`reattach` 只恢复宿主调度，不能替代解除暂停。
 
-receipt 只查询当前持久控制：requestId 匹配返回 `observed`，另带 acknowledged 和 Kernel stat；这不表示已停止或已完成。身份不匹配返回 `unknown`，可能尚未接纳，也可能已被更新控制覆盖，不能据此重发。该命令不是完整历史回执查询。查询端口本身不派发控制；本地宿主正常启动恢复仍独立存在。
+receipt 按 requestId 查询 Kernel 保留的原接纳记录：存在返回 `observed`，`receipt.accepted` 是当时控制，`receipt.current` 是当前控制，`action` 区分恢复与撤回暂停。原记录在后续控制覆盖、Task 终结后仍可查询；历史 acknowledged 不代表当前子树已停止，当前执行状态用 show 核对。无保留记录返回 `unknown`，不能据此自动重发。查询不改变执行、队列或 Session 绑定；本地宿主正常启动恢复仍独立存在。

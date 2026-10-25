@@ -43,12 +43,13 @@ it('keeps scheduler reattachment separate and propagates uncertainty without ret
     expect(execute.mock.calls.map(([command]) => command)).toEqual([FlowCommand.RunGet, FlowCommand.RunResume]);
 });
 
-it('only reports an observed receipt when the persisted current identity matches', async () => {
-    const execute = vi.fn(async () => ({root: {task: {control: {requestId: 'newer', mode: 'pause', epoch: 8, acknowledged: false}}},
-        controlStats: {root: {stopped: false}}}));
-    expect(await flowControlCommand(client(execute), ['receipt', 's', 'root', 'older'])).toMatchObject({outcome: 'unknown'});
-    expect(await flowControlCommand(client(execute), ['receipt', 's', 'root', 'newer'])).toMatchObject({outcome: 'observed', control: {acknowledged: false}, stat: {stopped: false}});
-    expect(execute.mock.calls).toHaveLength(2);
+it('queries historical admission without opening a Run or replaying control', async () => {
+    const receipt = {requestId: 'older', action: 'pause', accepted: {requestId: 'older'}, current: {requestId: 'newer'}};
+    const execute = vi.fn(async () => receipt);
+    expect(await flowControlCommand(client(execute), ['receipt', 's', 'root', 'older'])).toMatchObject({outcome: 'observed', receipt});
+    expect(execute).toHaveBeenCalledExactlyOnceWith(FlowCommand.RunControlReceipt, {sessionId: 's', taskId: 'root', requestId: 'older'});
+    execute.mockResolvedValueOnce(undefined as never);
+    expect(await flowControlCommand(client(execute), ['receipt', 's', 'root', 'missing'])).toMatchObject({outcome: 'unknown'});
 });
 
 it('controls a real Flow, preserves its receipt across callers, and rejects a stale new request', async () => {
@@ -65,11 +66,12 @@ it('controls a real Flow, preserves its receipt across callers, and rejects a st
         config: {requestId: 'answer', prompt: 'Fixture'}, inputs: {}}], edges: []});
     await vi.waitFor(() => expect(run.nodes.has('wait')).toBe(true));
     await executeApplicationCommand(port(), 'flow-run', ['pause', 's', run.root.id, 'pause-one', '0'], {});
-    expect(await flowControlCommand(port(), ['receipt', 's', run.root.id, 'pause-one'])).toMatchObject({outcome: 'observed', control: {mode: 'pause'}});
+    expect(await flowControlCommand(port(), ['receipt', 's', run.root.id, 'pause-one'])).toMatchObject({outcome: 'observed', receipt: {action: 'pause', accepted: {mode: 'pause'}}});
     await flowControlCommand(port(), ['pause', 's', run.root.id, 'pause-one', '0']);
     await expect(flowControlCommand(port(), ['resume', 's', run.root.id, 'stale-resume', '0'])).rejects.toMatchObject({code: 'CONFLICT'});
     await flowControlCommand(port(), ['cancel', 's', run.root.id]);
     expect((await run.root.wait({timeoutMs: 2000})).status).toBe('cancelled');
+    expect(await flowControlCommand(port(), ['receipt', 's', run.root.id, 'pause-one'])).toMatchObject({outcome: 'observed', receipt: {action: 'pause'}});
 });
 
 

@@ -8,11 +8,12 @@ const actions = ['show', 'receipt', 'pause', 'resume', 'withdraw-pause', 'cancel
 export async function flowControlCommand(client: ApplicationClient, args: string[]): Promise<unknown> {
     const input = parseControl(args), started = Date.now(), bus = client.services.commandBus;
     try {
+        if (input.action === 'receipt') {
+            const receipt = await bus.execute(FlowCommand.RunControlReceipt, {sessionId: input.sessionId, taskId: input.taskId, requestId: input.requestId});
+            return {requestId: input.requestId, outcome: receipt ? 'observed' : 'unknown', receipt};
+        }
         const snapshot = await bus.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId: input.sessionId, taskId: input.taskId});
         if (input.action === 'show') return snapshot;
-        if (input.action === 'receipt') return {requestId: input.requestId,
-            outcome: snapshot.root.task.control?.requestId === input.requestId ? 'observed' : 'unknown',
-            control: snapshot.root.task.control, stat: snapshot.controlStats?.[input.taskId]};
         const result = await dispatchControl(bus, input);
         diagnose(input, started);
         return result;

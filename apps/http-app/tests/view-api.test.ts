@@ -10,8 +10,8 @@ import { createCertificates } from '@itookit/node-host/http';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { HttpViewClient, SnapshotCache, ViewExpiredError } from '@itookit/app-transport/http';
 import { authenticatedFetch, close, secureServers } from './tls-fixture';
-import { InputAssetCommand } from '@itookit/app-contracts';
-import { validFlowImages } from '@itookit/llm-flow/contracts';
+import { InputAssetCommand, FlowLibraryCommand } from '@itookit/app-contracts';
+import { FlowCommand, type FlowDraft, type FlowRevision, type DurableFlowSnapshot, validFlowImages } from '@itookit/llm-flow/contracts';
 type SessionInstructionQueue = NonNullable<import('@itookit/app-contracts/services').SessionEditorInitialData['snapshot']['instructionQueue']>;
 
 let certificateRoot: string, certificates: string, directory: string, backend: LocalFSBackend;
@@ -392,3 +392,39 @@ it('atomically rejects an old Session UI revision across authenticated views wit
     await expect(b.services.sessionRepository.compareAndSetUIState!(id, -1, {})).rejects.toMatchObject({code: 'SESSION_UI_STATE_VERSION_INVALID'});
     expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_UI_RECORD');
 });
+
+it('keeps Flow pause, approval and queue control independent through authenticated RPC', async () => {
+    const root = await client('flow-pause'), commands = root.services.commandBus;
+    const sessionId = await root.services.projects.sessions.create('Pause RPC', null);
+    await commands.execute('session.bind', {sessionId});
+    await commands.execute('session.instructions.edit', {action: 'pause', expectedRevision: 0});
+    await commands.execute('session.send', {text: 'PRIVATE_QUEUED_INPUT', files: [], agentId: 'default'});
+    const queue = await commands.execute<SessionInstructionQueue>('session.instructions.get');
+    const draft: FlowDraft = {id: 'pause-rpc' as never, name: 'Pause RPC', draftVersion: 1, updatedAt: 0, layout: {},
+        nodes: [{id: 'gate' as never, name: 'Gate', plugin: 'builtin.human', pluginVersion: '1.0.0', inputs: {},
+            config: {requestId: 'answer', prompt: 'PRIVATE_APPROVAL_PROMPT'}}], edges: []};
+    await commands.execute(FlowLibraryCommand.Restore, {templates: [draft]});
+    const flow = await commands.execute<FlowRevision>(FlowCommand.RevisionGet, {id: draft.id, revision: 1});
+    const {taskId} = await commands.execute<{taskId: string}>(FlowCommand.RunStart, {sessionId, flow});
+    let snapshot!: DurableFlowSnapshot;
+    await vi.waitFor(async () => {snapshot = await commands.execute(FlowCommand.RunGet, {sessionId, taskId});
+        expect(snapshot.nodes[0]?.snapshot.task.interactions.answer?.status).toBe('pending');}, {timeout: 5000});
+    await commands.execute(FlowCommand.RunGoalUpdate, {taskId, requestId: 'rpc-pause', expectedEpoch: 0, goal: {status: 'paused'}});
+    snapshot = await commands.execute(FlowCommand.RunGet, {sessionId, taskId});
+    const epoch = snapshot.root.task.control!.epoch;
+    expect(snapshot.root.task.control).toMatchObject({mode: 'pause', acknowledged: true});
+    await expect(commands.execute(FlowCommand.RunPauseWithdraw, {taskId, requestId: 'rpc-withdraw', expectedEpoch: epoch})).rejects.toMatchObject({code: 'CONFLICT'});
+    await commands.execute(FlowCommand.RunRespond, {taskId, targetTaskId: snapshot.nodes[0].snapshot.task.id, requestId: 'answer', value: 'PRIVATE_APPROVAL_ANSWER'});
+    expect((await commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId, taskId})).root.task.exit).toBeUndefined();
+    await expect(commands.execute(FlowCommand.RunGoalUpdate, {taskId, requestId: 'stale-resume', expectedEpoch: epoch - 1, goal: {status: 'active'}})).rejects.toMatchObject({code: 'CONFLICT'});
+    await commands.execute(FlowCommand.RunGoalUpdate, {taskId, requestId: 'rpc-resume', expectedEpoch: epoch, goal: {status: 'active'}});
+    await vi.waitFor(async () => expect((await commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId, taskId})).root.task.status).toBe('succeeded'), {timeout: 5000});
+    const beforeReceipt = await commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId, taskId});
+    const receipt = await commands.execute<any>(FlowCommand.RunControlReceipt, {sessionId, taskId, requestId: 'rpc-pause'});
+    expect(receipt).toMatchObject({action: 'pause', expectedEpoch: 0, accepted: {requestId: 'rpc-pause'}, current: {requestId: 'rpc-resume'}});
+    expect(await commands.execute(FlowCommand.RunControlReceipt, {sessionId, taskId, requestId: 'missing'})).toBeUndefined();
+    await expect(commands.execute(FlowCommand.RunControlReceipt, {sessionId: 'other', taskId, requestId: 'rpc-pause'})).rejects.toThrow();
+    expect((await commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId, taskId})).root.task.version).toBe(beforeReceipt.root.task.version);
+    expect(await commands.execute('session.instructions.get')).toEqual(queue);
+    for (const privateText of ['PRIVATE_QUEUED_INPUT', 'PRIVATE_APPROVAL_PROMPT', 'PRIVATE_APPROVAL_ANSWER']) expect(JSON.stringify(auditEvents)).not.toContain(privateText);
+}, 20000);

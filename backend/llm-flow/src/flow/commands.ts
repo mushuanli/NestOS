@@ -95,6 +95,13 @@ export class DagCommandService {
             const input = args as { connectionBindings?: Record<string, string>; connectionId?: string; fallbackConnectionId?: string | null; sessionId: string; flow: FlowRevision; parameters?: Record<string, JsonValue>; goal?: FlowRunGoal; invocation?: import('../contracts').DagRunSpec['invocation'] };
             return this.start(input.sessionId, input.flow, input.parameters, input.goal, input.invocation, input.connectionId, input.fallbackConnectionId, input.connectionBindings);
         });
+        bus.register(FlowCommand.RunControlReceipt, async args => {
+            const input = args as {sessionId: string; taskId: string; requestId: string};
+            const session = await this.options.kernel.inspectSession(input.sessionId);
+            const root = (await (await session.attachTask(input.taskId)).status()).task;
+            assertFlowRoot(root, input.taskId);
+            return this.options.kernel.readTaskControlReceipt(input.sessionId, input.taskId, input.requestId);
+        });
         bus.register(FlowCommand.RunGet, async args => {
             const input = args as { taskId: string; sessionId?: string };
             return this.snapshot(String(input.taskId), input.sessionId);

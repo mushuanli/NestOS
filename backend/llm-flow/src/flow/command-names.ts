@@ -20,6 +20,7 @@ export const FlowCommand = {
     RunResume: 'dag.run.resume',
     RunStart: 'dag.run.start',
     RunGet: 'dag.run.get',
+    RunControlReceipt: 'dag.run.control.receipt',
     RunTranscript: 'dag.run.transcript',
     RunCancel: 'dag.run.cancel',
     RunRespond: 'dag.run.respond',

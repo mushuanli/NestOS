@@ -7,7 +7,7 @@ import { SessionInstructionQueues, type InstructionQueuePorts } from './instruct
 import { queueError } from './instruction-queue-rules';
 
 export interface SessionInstructionContext extends Pick<InstructionQueuePorts,
-    'assertWritable' | 'branch' | 'ready' | 'submit' | 'recover' | 'prepare' | 'capture' | 'previouslyAccepted' | 'changed'> {
+    'assertWritable' | 'branch' | 'ready' | 'submit' | 'recover' | 'prepare' | 'revise' | 'capture' | 'previouslyAccepted' | 'changed'> {
     hasSession(sessionId: string): boolean;
     idle(sessionId: string): void;
 }
@@ -29,6 +29,7 @@ export class SessionInstructionRuntime {
             submit: (id, item) => this.context(id).submit(id, item),
             recover: (id, item) => this.context(id).recover(id, item),
             prepare: (id, item, immediate) => this.context(id).prepare?.(id, item, immediate) ?? Promise.resolve(item),
+            revise: (id, item) => this.context(id).revise?.(id, item) ?? Promise.reject(queueError('QUEUE_INPUT_EDIT_UNAVAILABLE', 'Input revision requires the owning execution host')),
             capture: (id, item, source) => this.context(id).capture?.(id, item, source) ?? Promise.resolve(item),
             previouslyAccepted: (id, item, digest) => this.context(id).previouslyAccepted?.(id, item, digest) ?? Promise.resolve(false),
             mark: id => sessions?.mark(id) ?? Promise.resolve(), unmark: id => sessions?.unmark(id) ?? Promise.resolve(),

@@ -1,4 +1,5 @@
 // @file: llm-conversation/session/round-operations.ts
+import {roundCallTarget} from './round-call-target';
 
 import {
     SessionGroup,
@@ -142,6 +143,7 @@ export class RoundOperations {
             sourceId: assistantId,
             trigger: 'from_assistant',
             overrides: options?.overrides,
+            changeAgent: !!options?.agentId,
         });
     }
 
@@ -172,6 +174,7 @@ export class RoundOperations {
             sourceId: userMessageId,
             trigger: 'from_user',
             overrides: options?.overrides,
+            changeAgent: !!options?.agentId,
         });
     }
 
@@ -186,6 +189,7 @@ export class RoundOperations {
             sourceId: string;
             trigger: RegenerateTrigger;
             overrides?: ExecutionOverrides;
+            changeAgent?: boolean;
         }
     ): Promise<RegenerateResult> {
         const { sessionId, state, runtime } = this.registry.ensureBound();
@@ -206,6 +210,10 @@ export class RoundOperations {
         const roundLog = new RoundLog(this.registry.engine, sessionId);
         const userRound = await roundLog.readRound(userRoundId);
         if (!userRound) throw new ConversationError(ConversationErrorCode.SESSION_INVALID, 'User Round not found');
+        const callTarget = roundCallTarget(userRound, context.overrides, context.changeAgent);
+        const actualAgentId = 'agentId' in callTarget ? callTarget.agentId : agentId;
+        const target = 'target' in callTarget ? userRound.target : undefined;
+        const invocation = await this.runs.rerunInvocation(sessionId, userRound);
 
         // The in-memory projection is updated immediately when the user
         // deletes an assistant. Prefer it over a possibly stale Round file;
@@ -220,7 +228,7 @@ export class RoundOperations {
             targetRoundId: userRoundId,
         };
         let branchCreated = false;
-        if (hasAssistant) {
+        if (hasAssistant || (userRound.executions?.length ?? 0) > 0) {
             // forkUserRound persists a fresh user Round on a new branch and points
             // currentHead at it. The head chain then resolves from the new user
             // Round back through the shared history, so the whole branch renders —
@@ -262,13 +270,13 @@ export class RoundOperations {
                 sourceId: context.sourceId,
                 newUserNodeId: targetRoundId,
                 branchName,
-                agentId,
+                agentId: actualAgentId,
+                ...(target ? {target} : {}),
                 trigger: context.trigger,
             },
         });
 
-        // Empty/missing assistant: fill the existing Round. Effective assistant:
-        // commit a replacement Round on the newly-created branch.
+        // Fill only a never-executed draft; reruns keep the previous Round intact.
         await this.runs.submit(
             {
                 sessionId,
@@ -276,9 +284,11 @@ export class RoundOperations {
                 files: userMessage.files || [],
                 agentId,
                 overrides: context.overrides,
+                ...callTarget,
                 skipUserMessage: true,
                 parentUserNodeId: targetRoundId,
                 roundTarget,
+                invocation,
                 branchInfo,
                 regenerateContext: {
                     sourceId: context.sourceId,
@@ -289,7 +299,7 @@ export class RoundOperations {
             runtime
         );
 
-        return { branchName, userNodeId: targetRoundId, agentId, branchCreated };
+        return { branchName, userNodeId: targetRoundId, agentId: actualAgentId, branchCreated, ...(target ? {target} : {}) };
     }
 
     // ================================================================
@@ -464,6 +474,11 @@ export class RoundOperations {
         const resolvedAgentId = autoRerun
             ? this.resolveAgentId(undefined, undefined)
             : 'default';
+        const sourceRound = autoRerun && session.persistedNodeId
+            ? await new RoundLog(this.registry.engine, sessionId).readRound(session.persistedNodeId) : undefined;
+        if (sourceRound?.flow && sourceRound.callInput?.source.kind === 'arguments')
+            throw Object.assign(new Error('Edit the confirmed call arguments before rerunning this Flow'), {code: 'CALL_INPUT_EDITOR_REQUIRED'});
+        const invocation = autoRerun ? await this.runs.rerunInvocation(sessionId, sourceRound ?? undefined) : undefined;
 
         // Update in-memory state (draft)
         state.updateMessageContent(messageId, newContent);
@@ -529,6 +544,8 @@ export class RoundOperations {
                     text: newContent,
                     files: session.files || [],
                     agentId: resolvedAgentId,
+                    invocation,
+                    ...roundCallTarget(sourceRound, undefined),
                     roundTarget: {
                         mode: 'append-new',
                         parentRoundId: editParentRoundId,

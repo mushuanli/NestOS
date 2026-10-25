@@ -11,9 +11,15 @@ export type RoundId = string;
 export interface ExecutionRef {
     taskId: string;
     role: 'primary' | 'background';
+    /** Missing only for execution references written before unified invocation tracing. */
+    invocation?: import('@itookit/llm-flow/contracts').InvocationIdentity;
 }
+export type ExecutionAdmission = Pick<Round, 'target' | 'callInput' | 'flow' | 'agentId'>;
 
 export interface ConversationRound {
+    target?: import('@itookit/llm-flow/contracts').TargetRef;
+    callInput?: {source: import('@itookit/llm-flow/contracts').FlowCallSource;
+        admitted?: import('@itookit/llm-flow/contracts').FlowResolvedInput};
     id: RoundId;
     sessionId: string;
     historyParentIds: string[];

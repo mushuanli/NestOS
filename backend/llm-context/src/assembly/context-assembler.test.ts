@@ -149,6 +149,26 @@ describe('ContextAssembler', () => {
     });
 });
 
+it('resolves only policy-selected message materials and budgets the resolved content', async () => {
+    const missing = {role: 'user' as const, content: 'missing material'};
+    const assembler = new ContextAssembler({
+        profileStore: {getProfile: async () => ({id: 'p1', revision: 1, createdAt: 1, rules: {r1: {mode: 'exclude'}}})},
+        readRound: async id => id === 'r1' ? {input: [missing], output: [], historyParentIds: []} : null,
+        resolveMessage: async message => {
+            if (message === missing) throw new Error('required asset is missing');
+            return {...message, content: 'verified-material-'.repeat(20)};
+        },
+    });
+    const plan: ContextPlan = {branchRef: 'main', branchHead: 'r1', profile: {id: 'p1', revision: 1},
+        pendingUserMessage: {role: 'user', content: 'current'}, explicitInputs: [], tokenBudget: 1000};
+    const result = await assembler.assemble(plan, 'run', {id: 'agent', version: '1'}, [], undefined, {persist: false});
+    expect(result.messages).toEqual([{role: 'user', content: 'verified-material-'.repeat(20)}]);
+    expect(result.snapshot.tokenCount).toBe(Math.ceil('verified-material-'.repeat(20).length / 4));
+    expect(result.snapshot.digest).toBe(await hash(JSON.stringify(result.messages)));
+    await expect(assembler.assemble({...plan, profile: {id: '', revision: 0}}, 'other', {id: 'agent', version: '1'}, [], undefined, {persist: false}))
+        .rejects.toThrow('required asset is missing');
+});
+
 it('does not discard a pending attachment change just because the text and owning Round match', async () => {
     const original = {role: 'user' as const, content: 'Review', attachments: [{type: 'file' as const, source: 'original.txt'}]};
     const assembler = new ContextAssembler({profileStore: {getProfile: async () => null},

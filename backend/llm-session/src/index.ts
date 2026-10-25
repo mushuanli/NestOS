@@ -9,6 +9,7 @@ import { FlowInvocationService } from './session/flow-invocations';
 import type { FlowInvocationSessions } from './persistence/flow-invocation-sessions';
 import { RoundLog as InvocationRoundLog } from './persistence/round-log';
 export { FlowInvocationService, FlowInvocationCommand, type FlowInvocationRecord, type FlowInvocationInput } from './session/flow-invocations';
+export {flowInvocationId} from './contracts/flow-invocations';
 export { createFlowInvocationSessions, type FlowInvocationSessions } from './persistence/flow-invocation-sessions';
 import { bindStandaloneFlowNode } from './session/flow-node-binder';
 import { AgentResolver } from './session/agent-resolver';
@@ -188,7 +189,8 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
     transfers.register();
     const invocations = new FlowInvocationService(options.kernel, new FlowDefinitionStore(options.flowStore, options.dagPlugins), system.commandBus, options.canWriteSession, async id => {
         const manifest = await new InvocationRoundLog(options.sessionEngine, id).loadManifest();
-        return { branch: manifest.currentBranch, head: manifest.currentHead };
+        const identity = await options.sessionEngine.getManifest(id);
+        return { branch: manifest.currentBranch, head: manifest.currentHead, parentSessionId: identity.parentSessionId ?? undefined };
     }, (id, selected) => resolveSessionConnection(options, id, selected), options.flowInvocationSessions, system.dag, transfers, options.hostPorts);
     invocations.register();
     const recover = () => createSessionHost(options.hostPorts).traceBoot('flowInvocations.recover', () => invocations.recover());

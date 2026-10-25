@@ -99,7 +99,8 @@ export class SessionState {
             if (!children.includes(roundId)) children.push(roundId);
         }
 
-        if (hadTransient) return [];
+        if (hadTransient) return this.roundProjectionToSessionGroups(projection).map(group => ({type: 'message:updated',
+            payload: {messageId: group.id, execution: group.execution, target: group.target, callInput: group.callInput}}));
 
         const sessionGroups = this.roundProjectionToSessionGroups(projection);
         const isExecutionRoot = projection.kind === 'chat' && !!projection.assistantMessage;
@@ -124,6 +125,24 @@ export class SessionState {
     }
 
     private applyUpdated(event: RoundLogEvent & { type: 'round:updated' }): SessionEvent[] {
+        const events: SessionEvent[] = [];
+        const round = this.roundById.get(event.roundId), execution = event.changes.execution;
+        if (round && event.changes.admission) {
+            const admission = event.changes.admission;
+            round.target = structuredClone(admission.target); round.callInput = structuredClone(admission.callInput); round.agentId = admission.agentId;
+        }
+        if (round && execution) {
+            round.execution = execution;
+            const transient = this.transientGroups.filter(group => group.persistedNodeId === event.roundId);
+            for (const group of transient) { group.execution = execution; group.invocation = execution.invocation; }
+            for (const group of [...this.roundProjectionToSessionGroups(round), ...transient]) events.push({
+                type: 'message:updated', payload: {messageId: group.id, execution, target: group.target, callInput: group.callInput},
+            });
+        }
+        return [...events, ...this.applyContentUpdated(event)];
+    }
+
+    private applyContentUpdated(event: RoundLogEvent & { type: 'round:updated' }): SessionEvent[] {
         const round = this.roundById.get(event.roundId);
         if (!round) return [];
 
@@ -560,10 +579,14 @@ export class SessionState {
         if (p.userMessage) {
             groups.push({
                 id: `round-${p.roundId}-user`,
+                invocation: p.execution?.invocation,
+                execution: p.execution,
                 persistedNodeId: p.userMessage.persistedNodeId,
                 role: 'user',
                 content: p.userMessage.content,
                 files: p.userMessage.files,
+                ...(p.callInput ? {callInput: structuredClone(p.callInput)} : {}),
+                ...(p.target ? {target: structuredClone(p.target)} : {}),
                 timestamp: p.createdAt,
                 origin: p.origin as SessionOrigin,
                 historyPolicy: (p.defaultContextMode === 'exclude' ? 'exclude' : 'include') as HistoryPolicy,
@@ -574,8 +597,11 @@ export class SessionState {
         if (p.assistantMessage) {
             groups.push({
                 id: `round-${p.roundId}-assistant`,
+                invocation: p.execution?.invocation,
+                execution: p.execution,
                 persistedNodeId: p.assistantMessage.persistedNodeId,
                 role: 'assistant',
+                ...(p.target ? {target: structuredClone(p.target)} : {}),
                 content: p.assistantMessage.content,
                 timestamp: p.createdAt,
                 origin: p.origin as SessionOrigin,
@@ -584,8 +610,8 @@ export class SessionState {
                 executionRoot: {
                     id: `round-${p.roundId}-assistant`,
                     name: 'Assistant',
-                    executorType: 'agent',
-                    executorId: p.agentId ?? '',
+                    executorType: p.target?.kind === 'flow' ? 'flow' : 'agent',
+                    executorId: p.target?.id ?? p.agentId ?? '',
                     status: p.assistantMessage.status,
                     startTime: p.createdAt,
                     parentId: undefined,
@@ -593,7 +619,7 @@ export class SessionState {
                         output: p.assistantMessage.content,
                         thought: p.assistantMessage.thinking ?? '',
                         error: p.assistantMessage.error,
-                        metaInfo: p.agentId ? { agentId: p.agentId } : undefined,
+                        metaInfo: p.target?.kind === 'flow' ? {target: structuredClone(p.target)} : p.agentId ? {agentId: p.agentId} : undefined,
                     },
                     children: [...buildToolChildren(p), ...buildFlowChildren(p)],
                 },

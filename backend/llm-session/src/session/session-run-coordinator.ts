@@ -1,5 +1,5 @@
-import {freezeQueuedAgent, readQueuedAgent} from './queued-agent';
 import { prepareFlowConnections } from './flow-connections';
+import {callInputProjection} from './call-input-projection';
 import { type Signal } from '../contracts';
 import { type ToolDefinition, type ContextSnapshot } from '@itookit/llm-context';
 import type { Kernel } from '@itookit/durable-kernel';
@@ -7,8 +7,8 @@ import { ulid } from '../persistence/ulid';
 import type {
     ChatAttachment,
     ExecutionNode,
-    ExecutionOverrides,
     ExecutionTask,
+    ExecutionOverrides,
     ExecutorConfig,
     SessionGroup,
     SessionRuntime,
@@ -23,6 +23,10 @@ import { flowToDag, hasValidationErrors, validateFlowParameters } from '@itookit
 import { formatErrorMessage } from '../utils/error-formatter';
 import { createSessionHost, type SessionHost } from '../utils/host-ports';
 import { AgentResolver } from './agent-resolver';
+import {freezeQueuedAgent, readQueuedAgent} from './queued-agent';
+import {boundFlowIdentity, flowTargetIdentity} from './flow-target';
+import {reviseQueuedInput} from './revise-queued-input';
+import {assertSelectedTarget, assertRootCallable, sameTargetRef, flowTargetRevision, type FlowRevision} from '@itookit/llm-flow/contracts';
 import { AttachmentProcessor } from './attachment-processor';
 import { ConversationRunCoordinator, type ConversationExecution } from './conversation-run-coordinator';
 import { SessionEventBus } from './session-event-bus';
@@ -36,6 +40,7 @@ import { captureFlowConnections, frozenFlowConnections } from './flow-connection
 import { frozenFlowIdentities } from './flow-identity-snapshot';
 import { bindPlannedFlowGraph, validatePlannedFlowConnections } from './flow-run-plan';
 import { isHarnessAgentSnapshot } from './harness-binding';
+import {conversationFlowInvocation, newRerunInvocation} from './invocation-identity';
 
 export interface SessionRunCallbacks {
     /** Commit persisted rounds to the projection before exposing a terminal status. */
@@ -114,11 +119,44 @@ export class SessionRunCoordinator {
     }
 
     async bindQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
-        const identity = await this.agents.resolve(item.agentId);
-        await this.assertPublishedImplementation(item, identity);
-        const connectionBinding = await this.freezeConnectionBinding({ ...item, sessionId, instructionId: item.id }, identity);
-        const bound = await this.prepareFlowInput({ ...item, sessionId, instructionConnectionBinding: connectionBinding }, identity);
-        return { ...item, sendIntent: bound.sendIntent, flowBinding: bound.instructionFlowBinding, connectionBinding };
+        const identity = await this.resolveSelectedIdentity(item);
+        const selected = pinQueuedTarget(item, identity);
+        const connectionBinding = await this.freezeConnectionBinding({ ...selected, sessionId, instructionId: item.id }, identity);
+        const bound = await this.prepareFlowInput({ ...selected, sessionId, instructionConnectionBinding: connectionBinding }, identity);
+        return { ...selected, sendIntent: bound.sendIntent, flowBinding: bound.instructionFlowBinding, connectionBinding };
+    }
+
+    reviseQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
+        return reviseQueuedInput(sessionId, item, this.agents, this.dagPlugins, this.host);
+    }
+
+    publishedAgentTarget(target?: import('@itookit/llm-flow/contracts').TargetRef) {return this.agents.publishedTarget(target);}
+
+    private async resolveSelectedIdentity(input: Pick<TaskInput, 'agentId' | 'target' | 'expectedTarget' | 'source' | 'sendIntent'>): Promise<ExecutorConfig> {
+        const target = input.target;
+        let identity: ExecutorConfig;
+        if (target?.kind === 'flow') {
+            const flow = await new FlowDefinitionStore(this.flowStore).loadRevision(target.id, flowTargetRevision(target));
+            if (!flow) throw Object.assign(new Error('Published Flow target is unavailable'), {code: 'CALL_TARGET_UNAVAILABLE'});
+            assertRootCallable(flow); identity = flowTargetIdentity(flow);
+        } else identity = target?.kind === 'agent' && target.version
+            ? await this.agents.resolveExact(input.agentId, target.version) : await this.agents.resolve(input.agentId);
+        assertRootCallable(identity);
+        await this.assertPublishedImplementation(input, identity);
+        if (target && identity.target) assertSelectedTarget(target, identity.target);
+        if (input.expectedTarget && !sameTargetRef(input.expectedTarget, identity.target))
+            throw Object.assign(new Error('Call target changed before admission'), {code: 'CALL_TARGET_CHANGED'});
+        if (input.source && identity.execution?.kind !== 'flow'
+            && (input.source.kind !== 'composer' || Object.keys(input.source.values ?? {}).length))
+            throw Object.assign(new Error('This Agent does not accept structured arguments'), {code: 'CALL_INPUT_UNBOUND'});
+        return identity;
+    }
+    private async assertPublishedImplementation(input: Pick<TaskInput, 'sendIntent'>, identity: ExecutorConfig): Promise<void> {
+        const execution = input.sendIntent?.execution;
+        if (execution?.kind !== 'flow') return;
+        const publication = await this.agents.publishedTarget(identity.target);
+        if (publication && (!publication.flow || publication.flow.id !== execution.flowId || publication.flow.revision !== execution.revision))
+            throw Object.assign(new Error('Select the published Agent implementation or invoke the Flow directly'), {code: 'AGENT_IMPLEMENTATION_OVERRIDE'});
     }
 
     async validateSubmission(input: TaskInput): Promise<void> {
@@ -126,8 +164,25 @@ export class SessionRunCoordinator {
         this.assertAgentVersion(config, input.agentId);
     }
 
+    async rerunInvocation(sessionId: string, round?: import('../contracts/conversation').Round) {
+        const started = Date.now(), operationId = ulid();
+        try {
+            const identity = await newRerunInvocation(this.kernel, sessionId, round);
+            this.host.logger.info('Invocation rerun admitted', {operation: 'session.invocation.rerun', stage: 'source-validation',
+                result: 'success', sessionId, operationId, invocationId: identity.invocationId,
+                retryOfInvocationId: identity.retryOfInvocationId, elapsedMs: Date.now() - started});
+            return identity;
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            this.host.logger.warn('Invocation rerun rejected', {operation: 'session.invocation.rerun', stage: 'source-validation',
+                result: 'failure', sessionId, operationId, elapsedMs: Date.now() - started,
+                errorCode: code === 'INVOCATION_EXECUTION_CONFLICT' || code === 'INVOCATION_NOT_TERMINAL' ? code : 'INVOCATION_SOURCE_UNAVAILABLE'});
+            throw error;
+        }
+    }
+
     async submit(input: TaskInput, runtime: SessionRuntime): Promise<string> {
-        input = snapshotTaskInput(input);
+        input = snapshotTaskInput({...input, invocation: input.invocation ?? {invocationId: ulid()}});
         if (this.isActive(input.sessionId)) {
             throw new ConversationError(ConversationErrorCode.SESSION_BUSY, 'Session already has an active run');
         }
@@ -248,7 +303,7 @@ export class SessionRunCoordinator {
         if (binding?.plan) {
             const graph = await bindPlannedFlowGraph(binding.plan.graph, bind);
             const admitted = await validatePlannedFlowConnections(graph, revision, catalog, task.input.instructionConnectionBinding?.defaults);
-            return { ...admitted, input: { prompt: task.input.text } };
+            return { ...admitted, input: { prompt: task.input.text }, invocation: conversationFlowInvocation(task, revision) };
         }
         const definitions = new FlowDefinitionStore(this.flowStore), execution = task.input.sendIntent?.execution;
         const graph = await flowToDag(revision, bind, setup.config.connectionId,
@@ -256,7 +311,7 @@ export class SessionRunCoordinator {
             task.input.overrides?.connectionId, execution?.kind === 'flow' ? execution.connectionBindings : undefined,
             (definition, bindings, runConnectionId) => prepareFlowConnections(definition, bindings, catalog,
                 task.input.instructionConnectionBinding?.defaults, runConnectionId), execution?.kind === 'flow' ? execution.parameters : undefined);
-        return { ...graph, input: { prompt: task.input.text } };
+        return { ...graph, input: { prompt: task.input.text }, invocation: conversationFlowInvocation(task, revision) };
     }
 
     private async createTask(input: TaskInput): Promise<ExecutionTask> {
@@ -324,6 +379,9 @@ export class SessionRunCoordinator {
             task.input.origin,
             task.input.historyPolicy,
         );
+        group.invocation = task.input.invocation;
+        group.target = structuredClone(task.frozen?.config?.target);
+        group.callInput = callInputProjection(task.input);
         if (this.callbacks.getBoundSessionId?.() === task.sessionId) {
             this.eventBus.emitSession(task.sessionId, {
                 type: 'message:appended',
@@ -356,28 +414,19 @@ export class SessionRunCoordinator {
         return root;
     }
 
-    private async assertPublishedImplementation(input: Pick<TaskInput, 'sendIntent'>, identity: ExecutorConfig): Promise<void> {
-        const execution = input.sendIntent?.execution;
-        if (execution?.kind !== 'flow') return;
-        const publication = await this.agents.publishedTarget(identity.target);
-        if (publication && (!publication.flow || publication.flow.id !== execution.flowId || publication.flow.revision !== execution.revision))
-            throw Object.assign(new Error('Select the published Agent implementation or invoke the Flow directly'), {code: 'AGENT_IMPLEMENTATION_OVERRIDE'});
-    }
-
     private async resolveConfig(input: TaskInput): Promise<ExecutorConfig> {
         const accepted = input.instructionConnectionBinding?.harnessAgent;
         if (accepted) {
             if (!isHarnessAgentSnapshot(accepted) || accepted.id !== input.agentId)
                 throw new Error('Invalid admitted harness Agent identity');
-            return { ...admittedIdentity(input, structuredClone(accepted)), harnessConnection: await this.agents.resolveHarnessConnection(
-                accepted.harnessConnection!.id, accepted.harnessConnection) };
+            return {...admittedIdentity(input, structuredClone(accepted)), harnessConnection: await this.agents.resolveHarnessConnection(
+                accepted.harnessConnection!.id, accepted.harnessConnection)};
         }
         const settings = await this.engine.getSessionSettings(input.sessionId);
-        const identity = admittedIdentity(input, input.instructionFlowBinding?.agent
-            ?? readQueuedAgent(input.instructionConnectionBinding?.agent, input.agentId) ?? await this.agents.resolve(input.agentId));
-        await this.assertPublishedImplementation(input, identity);
-        if (identity.execution?.kind === 'harness') return { ...identity,
-            harnessConnection: await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection) };
+        const identity = admittedIdentity(input, boundFlowIdentity(input.instructionFlowBinding)
+            ?? readQueuedAgent(input.instructionConnectionBinding?.agent, input.agentId) ?? await this.resolveSelectedIdentity(input));
+        if (identity.execution?.kind === 'harness') return {...identity,
+            harnessConnection: await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection)};
         const connectionId = input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
             : input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId;
         const snapshot = input.instructionConnectionBinding?.connections;
@@ -397,7 +446,7 @@ export class SessionRunCoordinator {
     private async prepareFlowInput(input: TaskInput, identity?: ExecutorConfig): Promise<TaskInput> {
         if (input.instructionFlowBinding) return input;
         if (input.instructionConnectionBinding?.harnessAgent && input.sendIntent?.execution.kind !== 'flow') return input;
-        identity ??= readQueuedAgent(input.instructionConnectionBinding?.agent, input.agentId) ?? await this.agents.resolve(input.agentId);
+        identity ??= readQueuedAgent(input.instructionConnectionBinding?.agent, input.agentId) ?? await this.resolveSelectedIdentity(input);
         if (identity.execution?.kind !== 'flow' && input.sendIntent?.execution.kind !== 'flow') return input;
         if (!input.instructionConnectionBinding) {
             input = { ...input, instructionConnectionBinding: await this.freezeConnectionBinding(input, identity) };
@@ -413,7 +462,7 @@ export class SessionRunCoordinator {
     private async freezeConnectionBinding(input: TaskInput, identity: ExecutorConfig) {
         if (identity.execution?.kind === 'harness' && input.sendIntent?.execution.kind !== 'flow') {
             const harnessConnection = await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection);
-            return { identityVersion: 1 as const, defaults: {}, harnessAgent: { ...structuredClone(identity), harnessConnection } };
+            return {identityVersion: 1 as const, defaults: {}, harnessAgent: {...structuredClone(identity), harnessConnection}};
         }
         const started = Date.now(), operationId = input.instructionId ?? ulid();
         let stage = 'defaults';
@@ -430,13 +479,15 @@ export class SessionRunCoordinator {
             stage = 'agent-identity';
             const agent = !flow ? freezeQueuedAgent(identity) : undefined;
             this.host.logger.info('Model defaults admitted', { operation: 'session.model-defaults', operationId, stage: 'admission', result: 'success',
-                sessionId: input.sessionId, agentId: identity.id, purposeCount: Object.keys(defaults).length,
+                sessionId: input.sessionId, ...(identity.type === 'flow' ? {targetKind: 'flow', targetId: identity.id} : {agentId: identity.id}), purposeCount: Object.keys(defaults).length,
                 source,
                 elapsedMs: Date.now() - started });
             return {identityVersion: 1 as const, connectionId, source, defaults, connections: capture.snapshot(), ...(agent ? {agent} : {})};
         } catch (error) {
+            const code = (error as {code?: unknown})?.code;
             this.host.logger.warn('Model default binding failed', { operation: 'session.model-defaults', operationId, stage, result: 'failure',
-                sessionId: input.sessionId, agentId: identity.id, errorCode: 'MODEL_DEFAULT_BINDING_READ_FAILED', elapsedMs: Date.now() - started });
+                sessionId: input.sessionId, ...(identity.type === 'flow' ? {targetKind: 'flow', targetId: identity.id} : {agentId: identity.id}), errorCode: typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(code)
+                    ? code : 'MODEL_DEFAULT_BINDING_READ_FAILED', elapsedMs: Date.now() - started });
             throw error;
         }
     }
@@ -464,18 +515,24 @@ export class SessionRunCoordinator {
         }
     }
 
-    private assertAgentVersion(agent: ExecutorConfig, agentId: string): asserts agent is ExecutorConfig & { agentVersion: string } {
+    private assertAgentVersion(agent: ExecutorConfig, agentId: string): void {
+        if (agent.type === 'flow' && agent.target?.kind === 'flow' && agent.execution?.kind === 'flow') return;
         if (!agent.agentVersion) throw new Error(`Agent version is required: ${agent.id} — requested agentId='${agentId}' `
             + 'resolved to the fallback config (unknown/empty agent id, or resolution failed). '
             + 'See the [AgentResolver] warning in the console.');
     }
 
     private async getLog(task: ExecutionTask): Promise<RoundLog> {
-        const cached = this.logs.get(task.sessionId);
-        if (cached) return cached;
-        const created = new RoundLog(this.engine, task.sessionId);
-        this.logs.set(task.sessionId, created);
-        return created;
+        const log = this.logs.get(task.sessionId) ?? new RoundLog(this.engine, task.sessionId);
+        this.logs.set(task.sessionId, log);
+        log.setEventListener(event => {
+            // Transcript finalization uses refreshSession. Associations must also
+            // reach a user-only rerun Round before any assistant result exists.
+            if (event.type !== 'round:updated' || !event.changes.execution) return;
+            const state = this.callbacks.getSessionContext(task.sessionId)?.state;
+            if (state) for (const update of state.apply(event)) this.eventBus.emitSession(task.sessionId, update);
+        });
+        return log;
     }
 
     private handleError(
@@ -516,6 +573,24 @@ function runFailureCode(error: unknown): string {
     return 'RUN_EXECUTION_FAILED';
 }
 
+function admittedIdentity(input: TaskInput, identity: ExecutorConfig): ExecutorConfig {
+    if (!input.instructionId || input.target || input.instructionConnectionBinding?.identityVersion === 1) return identity;
+    const {target: _unrecordedTarget, ...legacy} = identity;
+    return legacy;
+}
+
+function pinQueuedTarget(item: import('../contracts/instruction-queue').SessionInstruction, identity: ExecutorConfig): import('../contracts/instruction-queue').SessionInstruction {
+    if (!item.target) return item;
+    if (!identity.target) throw Object.assign(new Error('Call target has no admitted definition identity'), {code: 'CALL_TARGET_UNAVAILABLE'});
+    assertSelectedTarget(item.target, identity.target);
+    const target = {kind: identity.target.kind, id: identity.target.id, version: identity.target.version};
+    const overrides = target.kind === 'flow' ? {...item.overrides, flowExpectedSignature: item.overrides?.flowExpectedSignature
+        ?? {id: target.id as FlowRevision['id'], revision: Number(target.version), digest: identity.target.digest}} : item.overrides;
+    return {...item, target, overrides};
+}
+
+
+
 function executionNode(id: string, config: ExecutorConfig): ExecutionNode {
     return {
         id: `round-${id}-assistant`,
@@ -527,7 +602,7 @@ function executionNode(id: string, config: ExecutorConfig): ExecutionNode {
         data: {
             output: '',
             thought: '',
-            metaInfo: { agentId: config.id, agentIcon: config.icon },
+            metaInfo: config.type === 'flow' ? {target: structuredClone(config.target)} : {agentId: config.id, agentIcon: config.icon},
         },
         children: [],
     };
@@ -539,6 +614,7 @@ function assistantGroup(
     roundId: string,
 ): SessionGroup {
     return {
+        invocation: task.input.invocation,
         id: root.id,
         persistedNodeId: roundId,
         role: 'assistant',
@@ -563,27 +639,6 @@ function resolveRoundId(input: TaskInput): string {
         : input.roundTarget?.roundId ?? input.sendIntent?.submission?.id ?? ulid();
 }
 
-function applyOverrides(
-    config: ExecutorConfig,
-    overrides: ExecutionOverrides,
-): ExecutorConfig {
-    const updated = { ...config };
-    if (overrides.connectionId) updated.connectionId = overrides.connectionId;
-    if (overrides.temperature !== undefined) updated.temperature = overrides.temperature;
-    if (overrides.streamMode !== undefined) updated.stream = overrides.streamMode;
-    if (overrides.reasoningEffort) updated.reasoningEffort = overrides.reasoningEffort;
-    if (overrides.thinkingEnabled !== undefined) updated.enableThinking = overrides.thinkingEnabled;
-    // 联网搜索总开关：false → 'disabled'（同时关闭内置 search 与客户端 WebSearchTool）；
-    // true 保持 resolver 自动分流（'builtin' 优先，否则 'client-tool'），无需覆盖。
-    if (overrides.webSearchEnabled === false) {
-        updated.webSearchMode = 'disabled';
-    }
-    if (overrides.systemPromptAppend) {
-        updated.systemPrompt = [...(updated.systemPrompt ?? []), overrides.systemPromptAppend];
-    }
-    return updated;
-}
-
 function projectError(
     eventBus: SessionEventBus,
     sessionId: string,
@@ -606,9 +661,23 @@ function projectError(
     });
 }
 
-/** Legacy accepted identities keep their original task-submission shape. */
-function admittedIdentity(input: TaskInput, identity: ExecutorConfig): ExecutorConfig {
-    if (!input.instructionId || input.instructionConnectionBinding?.identityVersion === 1) return identity;
-    const {target: _unrecordedTarget, ...legacy} = identity;
-    return legacy;
+function applyOverrides(
+    config: ExecutorConfig,
+    overrides: ExecutionOverrides,
+): ExecutorConfig {
+    const updated = { ...config };
+    if (overrides.connectionId) updated.connectionId = overrides.connectionId;
+    if (overrides.temperature !== undefined) updated.temperature = overrides.temperature;
+    if (overrides.streamMode !== undefined) updated.stream = overrides.streamMode;
+    if (overrides.reasoningEffort) updated.reasoningEffort = overrides.reasoningEffort;
+    if (overrides.thinkingEnabled !== undefined) updated.enableThinking = overrides.thinkingEnabled;
+    // 联网搜索总开关：false → 'disabled'（同时关闭内置 search 与客户端 WebSearchTool）；
+    // true 保持 resolver 自动分流（'builtin' 优先，否则 'client-tool'），无需覆盖。
+    if (overrides.webSearchEnabled === false) {
+        updated.webSearchMode = 'disabled';
+    }
+    if (overrides.systemPromptAppend) {
+        updated.systemPrompt = [...(updated.systemPrompt ?? []), overrides.systemPromptAppend];
+    }
+    return updated;
 }

@@ -1,5 +1,5 @@
-import { prepareFlowRun, prepareFlowParameters, type FlowDefinitionStore } from '@itookit/llm-flow';
-import type { DagPluginCatalog, FlowRevision, JsonValue } from '@itookit/llm-flow/contracts';
+import { prepareFlowRun, prepareFlowCallInput, type FlowDefinitionStore } from '@itookit/llm-flow';
+import { assertRootCallable, assertSelectedTarget, flowTargetRevision, type DagPluginCatalog, type FlowRevision, type JsonValue, type FlowCallSource } from '@itookit/llm-flow/contracts';
 import type { ExecutorConfig, TaskInput } from '../core/types';
 import { ConversationError, ConversationErrorCode } from '../core/errors';
 import type { SessionHost } from '../utils/host-ports';
@@ -9,6 +9,7 @@ import { bindFlowNode, type FlowIdentityResolver } from './flow-node-binder';
 import { bindFlowAgentConnection, preferredTaskConnection } from './flow-agent-connections';
 import { captureFlowIdentities } from './flow-identity-snapshot';
 import { bindPlannedFlowGraph, createFlowRunPlan, freezePlannedFlowConnections, validatePlannedFlowConnections } from './flow-run-plan';
+import {flowTargetIdentity, flowTargetRef} from './flow-target';
 
 export interface FlowAgentPorts {
     definitions: Pick<FlowDefinitionStore, 'loadRevision'>;
@@ -20,38 +21,65 @@ export interface FlowAgentPorts {
     host: Pick<SessionHost, 'logger'>;
 }
 
-/** Bind the selected Agent once, before a durable instruction is accepted. */
+type FlowExecution = Extract<NonNullable<ExecutorConfig['execution']>, {kind: 'flow'}>;
+interface FlowSelection {agent?: ExecutorConfig; target?: TaskInput['target']; explicit?: FlowExecution}
+interface AdmissionTrace {operationId: string; started: number; stage: string}
+
+/** Bind Agent implementations and independent Flow targets before durable queue acceptance. */
 export async function prepareFlowAgentInput(input: TaskInput, ports: FlowAgentPorts): Promise<TaskInput> {
     if (input.instructionFlowBinding) return input;
     const explicit = input.sendIntent?.execution.kind === 'flow' ? input.sendIntent.execution : undefined;
-    const agent = await ports.resolveAgent(input.agentId);
-    if (!explicit && agent.execution?.kind !== 'flow') return input;
-    const started = Date.now(), operationId = input.sendIntent?.submission?.id ?? `${input.sessionId}:${input.agentId}`;
-    let stage = 'definition';
+    const target = input.target?.kind === 'flow' ? input.target : undefined;
+    const agent = target ? undefined : await ports.resolveAgent(input.agentId);
+    if (!target && !explicit && agent?.execution?.kind !== 'flow') return input;
+    return admitFlowInput(input, ports, {target, agent, explicit});
+}
+
+async function admitFlowInput(input: TaskInput, ports: FlowAgentPorts, selected: FlowSelection): Promise<TaskInput> {
+    const trace: AdmissionTrace = {started: Date.now(), stage: 'definition',
+        operationId: input.sendIntent?.submission?.id ?? input.invocation?.invocationId ?? `${input.sessionId}:${input.agentId}`};
     try {
-        const binding = explicit ?? agent.execution as Extract<NonNullable<ExecutorConfig['execution']>, { kind: 'flow' }>;
-        const definition = await requiredRevision(ports, binding.flowId, binding.revision);
-        stage = 'parameters';
-        const parameters = boundParameters(definition, binding.parameters, input.overrides?.flowParameters);
-        const connectionBindings = { ...binding.connectionBindings, ...input.overrides?.flowConnectionBindings };
-        stage = 'dependencies';
-        const frozen = await freezeDependencies(ports, definition, input, connectionBindings, parameters, agent);
-        const sendIntent = { ...input.sendIntent, branch: input.sendIntent?.branch ?? { mode: 'continue' as const },
-            retention: input.sendIntent?.retention ?? { mode: 'persistent' as const },
-            execution: { kind: 'flow' as const, flowId: definition.id, revision: definition.revision, parameters, connectionBindings } };
-        ports.host.logger.info('Flow Agent admitted', { operation: 'agent.flow', stage: 'admission', result: 'success',
-            operationId, agentId: agent.id, flowId: definition.id, revision: definition.revision,
-            parameterCount: Object.keys(parameters).length, dependencyCount: frozen.dependencies.length,
-            connectionCount: frozen.connections.connections.length, nodeCount: frozen.plan.graph.nodes.length,
-            planVersion: frozen.plan.version, elapsedMs: Date.now() - started });
-        return { ...input, sendIntent, instructionFlowBinding: structuredClone({ definition, ...frozen, agent,
-            ...(explicit ? { source: 'explicit' as const } : {}) }) };
+        const admitted = await prepareSelectedFlow(input, ports, selected, trace);
+        reportAdmitted(admitted, ports, selected, trace);
+        return admitted;
     } catch (error) {
-        ports.host.logger.warn('Flow Agent admission failed', { operation: 'agent.flow', stage, result: 'failure',
-            operationId, agentId: agent.id, errorCategory: stage === 'definition' ? 'flow-unavailable' : `invalid-${stage}`,
-            errorCode: admissionErrorCode(error, stage), elapsedMs: Date.now() - started });
+        const {target, agent} = selected;
+        ports.host.logger.warn(target ? 'Flow target admission failed' : 'Flow Agent admission failed', {
+            operation: target ? 'flow.submit' : 'agent.flow', stage: trace.stage, result: 'failure', operationId: trace.operationId,
+            ...(agent ? {agentId: agent.id} : {targetKind: 'flow', targetId: target?.id}),
+            errorCategory: trace.stage === 'definition' ? 'flow-unavailable' : `invalid-${trace.stage}`,
+            errorCode: admissionErrorCode(error, trace.stage), elapsedMs: Date.now() - trace.started});
         throw error;
     }
+}
+
+async function prepareSelectedFlow(input: TaskInput, ports: FlowAgentPorts, selected: FlowSelection, trace: AdmissionTrace): Promise<TaskInput> {
+    const {target, agent, explicit} = selected;
+    const binding: {flowId: string; revision?: number; parameters?: Record<string, unknown>; connectionBindings?: Record<string, string>}
+        = target ? {flowId: target.id, revision: flowTargetRevision(target)} : explicit ?? agent!.execution as FlowExecution;
+    const definition = await requiredRevision(ports, binding.flowId, binding.revision);
+    assertRootCallable(definition);
+    if (target) assertSelectedTarget(target, flowTargetRef(definition));
+    trace.stage = 'parameters';
+    const inputResolution = boundParameters(definition, binding.parameters, input.overrides, input.source);
+    const parameters = inputResolution.parameters, connectionBindings = {...binding.connectionBindings, ...input.overrides?.flowConnectionBindings};
+    trace.stage = 'dependencies';
+    const frozen = await freezeDependencies(ports, definition, input, connectionBindings, parameters, agent ?? flowTargetIdentity(definition));
+    const sendIntent = {...input.sendIntent, branch: input.sendIntent?.branch ?? {mode: 'continue' as const},
+        retention: input.sendIntent?.retention ?? {mode: 'persistent' as const},
+        execution: {kind: 'flow' as const, flowId: definition.id, revision: definition.revision, parameters, connectionBindings}};
+    return {...input, sendIntent, instructionFlowBinding: structuredClone({definition, ...frozen, inputResolution,
+        ...(target ? {source: 'target' as const, target: flowTargetRef(definition)} : {agent: agent!, ...(explicit ? {source: 'explicit' as const} : {})})})};
+}
+
+function reportAdmitted(input: TaskInput, ports: FlowAgentPorts, selected: FlowSelection, trace: AdmissionTrace): void {
+    const {target, agent} = selected, binding = input.instructionFlowBinding!, plan = binding.plan!;
+    ports.host.logger.info(target ? 'Flow target admitted' : 'Flow Agent admitted', {operation: target ? 'flow.submit' : 'agent.flow',
+        stage: 'admission', result: 'success', operationId: trace.operationId,
+        ...(agent ? {agentId: agent.id} : {targetKind: 'flow'}), flowId: binding.definition.id, revision: binding.definition.revision,
+        parameterCount: Object.keys(binding.inputResolution!.parameters).length, dependencyCount: binding.dependencies.length,
+        connectionCount: binding.connections.connections.length, nodeCount: plan.graph.nodes.length,
+        planVersion: plan.version, elapsedMs: Date.now() - trace.started});
 }
 
 async function requiredRevision(ports: FlowAgentPorts, id: string, revision?: number): Promise<FlowRevision> {
@@ -63,13 +91,12 @@ async function requiredRevision(ports: FlowAgentPorts, id: string, revision?: nu
     return flow;
 }
 
-function boundParameters(flow: FlowRevision, defaults: Record<string, unknown> | undefined,
-    supplied: Record<string, JsonValue> | undefined): Record<string, JsonValue> {
+function boundParameters(flow: FlowRevision, defaults: Record<string, unknown> | undefined, overrides: TaskInput['overrides'], source?: FlowCallSource) {
+    const supplied = overrides?.flowParameters;
     if (defaults !== undefined && !record(defaults) || supplied !== undefined && !record(supplied)) throw new Error('Flow Agent parameters must be an object');
-    const values = { ...defaults, ...supplied } as Record<string, JsonValue>;
-    const names = new Set(flow.parameters?.map(field => field.name));
-    for (const name of Object.keys(values)) if (!names.has(name)) throw new Error(`Unknown Flow parameter: ${name}`);
-    return prepareFlowParameters(flow.parameters, supplied, flow.inputGroups, defaults as Record<string, JsonValue> | undefined);
+    if (source && supplied !== undefined) throw Object.assign(new Error('Flow parameters and source cannot both be supplied'), {code: 'FLOW_INPUT_CONFLICT'});
+    return prepareFlowCallInput(flow, source ?? {kind: 'arguments', value: supplied ?? {}}, {
+        defaults: defaults as Record<string, JsonValue> | undefined, expected: overrides?.flowExpectedSignature});
 }
 
 async function freezeDependencies(ports: FlowAgentPorts, flow: FlowRevision, input: TaskInput, bindings: Record<string, string>,
@@ -109,6 +136,8 @@ export function frozenFlowResolver(input: TaskInput, fallback: FlowAgentPorts['d
 function record(value: unknown): value is Record<string, unknown> { return !!value && typeof value === 'object' && !Array.isArray(value); }
 
 function admissionErrorCode(error: unknown, stage: string): string {
+    const code = (error as {code?: unknown} | undefined)?.code;
+    if (code === 'FLOW_INPUT_SIGNATURE_CHANGED' || code === 'CALLABLE_LOCAL_ONLY' || code === 'CALLABLE_EXPOSURE_INVALID') return code;
     const message = error instanceof Error ? error.message : '';
     if (/changed after admission/i.test(message)) return 'connection-changed';
     if (/agent reference cannot be resolved/i.test(message)) return 'agent-reference-unavailable';

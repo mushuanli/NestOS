@@ -4,6 +4,10 @@ import type { SendIntent } from '@itookit/llm-flow/contracts';
 
 /** A durable user request; execution history is resolved only when it is dispatched. */
 export interface SessionInstructionInput {
+    expectedBranch?: string;
+    target?: import('@itookit/llm-flow/contracts').TargetSelection;
+    expectedTarget?: import('@itookit/llm-flow/contracts').TargetRef;
+    source?: import('@itookit/llm-flow/contracts').FlowCallSource;
     text: string;
     files: ChatAttachment[];
     agentId: string;
@@ -14,12 +18,14 @@ export interface SessionInstructionInput {
 }
 
 export interface SessionInstruction extends SessionInstructionInput {
+    /** Assigned and persisted in the dispatch claim, before any execution starts. */
+    invocation?: import('@itookit/llm-flow/contracts').InvocationIdentity;
     /** Digest of the original request, before host-derived bindings or attachment paths. */
     submissionDigest?: string;
     connectionBinding?: {
-        /** New identity metadata must not alter legacy admitted fingerprints. */
+        /** New target metadata must not change old admitted task submission fingerprints. */
         identityVersion?: 1;
-        /** Frozen ordinary Agent policy; credentials remain host-owned. */
+        /** Frozen ordinary Agent identity; connection credentials remain in the live catalog. */
         agent?: {version: 1; config: import('../core/types').ExecutorConfig; digest: string};
         /** Frozen remote Agent identity and execution target; credentials remain host-owned. */
         harnessAgent?: import('../core/types').ExecutorConfig;
@@ -31,10 +37,12 @@ export interface SessionInstruction extends SessionInstructionInput {
     };
     /** Host-resolved source definitions; accepted instructions do not follow later edits. */
     flowBinding?: {
-        source?: 'explicit';
+        source?: 'explicit' | 'target';
+        target?: import('@itookit/llm-flow/contracts').TargetRef;
+        inputResolution?: import('@itookit/llm-flow/contracts').FlowResolvedInput;
         definition: import('@itookit/llm-flow/contracts').FlowRevision;
         dependencies: import('@itookit/llm-flow/contracts').FlowRevision[];
-        agent: import('../core/types').ExecutorConfig;
+        agent?: import('../core/types').ExecutorConfig;
         connections: import('./flow-connection-snapshot').FlowConnectionSnapshot;
         /** Absent only for legacy accepted instructions. */
         plan?: import('./flow-run-plan').FlowRunPlan;
@@ -56,6 +64,8 @@ export interface SessionInstructionQueue {
 
 /** Every edit is conditional on the projection the caller actually saw. */
 export type InstructionQueueEdit = { expectedRevision: number } & (
+    | { action: 'update'; id: string; text: string }
+    | { action: 'update-input'; id: string; source: import('@itookit/llm-flow/contracts').FlowCallSource }
     | { action: 'remove'; id: string }
     | { action: 'reorder'; ids: string[] }
     | { action: 'merge'; ids: string[] }

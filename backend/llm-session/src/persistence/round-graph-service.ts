@@ -412,13 +412,21 @@ export class RoundGraphService {
     }
 
     /** Associate a new execution without changing conversation lineage. */
-    async attachExecution(roundId: RoundId, execution: ExecutionRef): Promise<void> {
+    async attachExecution(roundId: RoundId, execution: ExecutionRef, admission?: import('../contracts').ExecutionAdmission): Promise<void> {
         const round = await this.readRound(roundId);
         if (!round) throw new RoundGraphError(`Round not found: ${roundId}`, 'NOT_FOUND');
-        const executions = [...round.executions];
-        if (!executions.some(item => item.taskId === execution.taskId)) executions.push(execution);
-        await this.writeRoundUpdate(roundId, { ...round, executions, status: 'running' });
-        this.onEvent?.({ type: 'round:updated', roundId, changes: {} });
+        const executions = [...(round.executions ?? [])];
+        const previous = executions.find(item => item.taskId === execution.taskId);
+        if (previous && (previous.role !== execution.role || !sameInvocation(previous.invocation, execution.invocation)))
+            throw new RoundGraphError('Task already belongs to another execution association', 'EXECUTION_IDENTITY_CONFLICT');
+        if (previous && admission && !sameAdmission(round, admission))
+            throw new RoundGraphError('Execution already has different admission facts', 'EXECUTION_ADMISSION_CONFLICT');
+        if (!previous) {
+            executions.push(execution);
+            await this.writeRoundUpdate(roundId, { ...round, ...structuredClone(admission ?? {}), executions, status: 'running' });
+        }
+        const primary = [...executions].reverse().find(item => item.role === 'primary');
+        this.onEvent?.({ type: 'round:updated', roundId, changes: { execution: primary, ...(admission ? {admission: structuredClone(admission)} : {}) } });
     }
 
     /** Remove assistant payload — used by delete-assistant and resend. */
@@ -571,6 +579,21 @@ export class RoundGraphService {
                 return (ra?.createdAt ?? 0) - (rb?.createdAt ?? 0) || a.localeCompare(b);
             });
     }
+}
+
+function sameInvocation(left: ExecutionRef['invocation'], right: ExecutionRef['invocation']): boolean {
+    return left?.invocationId === right?.invocationId && left?.parentInvocationId === right?.parentInvocationId
+        && left?.retryOfInvocationId === right?.retryOfInvocationId && left?.retryOfSessionId === right?.retryOfSessionId;
+}
+
+function sameAdmission(round: PersistedRound, admission: import('../contracts').ExecutionAdmission): boolean {
+    return Object.entries(admission).every(([key, value]) => canonicalAdmission(value) === canonicalAdmission(round[key as keyof PersistedRound]));
+}
+function canonicalAdmission(value: unknown): string {
+    if (Array.isArray(value)) return `[${value.map(canonicalAdmission).join(',')}]`;
+    if (value && typeof value === 'object') return `{${Object.entries(value).filter(([, item]) => item !== undefined)
+        .sort(([a], [b]) => a.localeCompare(b)).map(([key, item]) => `${JSON.stringify(key)}:${canonicalAdmission(item)}`).join(',')}}`;
+    return JSON.stringify(value) ?? 'undefined';
 }
 
 /** Only live descendant heads can share this logical Round's payload. */

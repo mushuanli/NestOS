@@ -16,7 +16,7 @@ it('always plans the pending user message with its owning Round', async () => {
         const execution = {
             task: { id: 'run', sessionId: 'session', input: { text: 'current question' } },
             config: { id: 'agent' },
-            roundId: 'r1',
+            roundId: 'r1', contextFiles: [],
             log: {
                 loadManifest: async () => ({ currentBranch: 'main', branches: { main: 'r1' }, branchMeta: {} }),
                 readRound: async () => ({ input: [], output: [], historyParentIds: [] }),

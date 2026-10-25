@@ -20,8 +20,8 @@ export type NodeStatus =
     | 'paused'
     | 'waiting_input';
 
-/** 执行器类型（S6: 收缩为 'agent'） */
-export type ExecutorType = 'agent';
+/** Published Agent and Flow targets share the execution path without sharing definition identity. */
+export type ExecutorType = 'agent' | 'flow';
 
 /**
  * 执行器配置。
@@ -29,7 +29,7 @@ export type ExecutorType = 'agent';
  */
 export interface ExecutorConfig {
     id: string;
-    /** Admitted definition identity, independent of live connection credentials. */
+    /** Admitted definition identity; Flow execution does not imply an Agent definition. */
     target?: import('@itookit/llm-flow/contracts').TargetRef;
     exposure?: AgentDefinition['exposure'];
     name: string;
@@ -146,6 +146,7 @@ export interface ExecutionOverrides {
     flowId?: string;
     flowRevision?: number;
     flowParameters?: Record<string, import('@itookit/llm-flow/contracts').JsonValue>;
+    flowExpectedSignature?: Pick<import('@itookit/llm-flow/contracts').FlowRevision, 'id' | 'revision' | 'digest'>;
     flowConnectionBindings?: Record<string, string>;
     branchMode?: 'continue' | 'fork';
     baseRoundId?: string;
@@ -168,7 +169,7 @@ export interface ExecutionNode {
     executorId: string;
 
     /** 执行器类型 */
-    executorType: 'agent' | 'tool' | 'http' | 'script' | 'composite';
+    executorType: 'agent' | 'flow' | 'tool' | 'http' | 'script' | 'composite';
 
     /** 显示名称 */
     name: string;
@@ -233,6 +234,10 @@ export interface BranchMetadata {
  * 会话组（一轮对话）
  */
 export interface SessionGroup {
+    target?: import('@itookit/llm-flow/contracts').TargetRef;
+    callInput?: import('../contracts/conversation').Round['callInput'];
+    invocation?: import('@itookit/llm-flow/contracts').InvocationIdentity;
+    execution?: import('../contracts/conversation').ExecutionRef;
     /** 会话组 ID */
     id: string;
 
@@ -286,6 +291,7 @@ export interface RegenerateOptions {
  * 重新生成结果
  */
 export interface RegenerateResult {
+    target?: import('@itookit/llm-flow/contracts').TargetRef;
     /** 新分支名称 */
     branchName: string;
     /** 新分支中的 user node ID */
@@ -359,7 +365,13 @@ export interface SessionRuntime {
  * 任务输入
  */
 export interface TaskInput {
+    expectedBranch?: string;
     sessionId: string;
+    target?: import('@itookit/llm-flow/contracts').TargetSelection;
+    expectedTarget?: import('@itookit/llm-flow/contracts').TargetRef;
+    source?: import('@itookit/llm-flow/contracts').FlowCallSource;
+    /** Host-owned call identity from a durable queue claim or explicit new execution. */
+    invocation?: import('@itookit/llm-flow/contracts').InvocationIdentity;
     /** Internal queue identity; absent for directly submitted requests. */
     instructionId?: string;
     submissionDigest?: string;
@@ -417,7 +429,7 @@ export interface ExecutionTask {
         branchRef: string;
         branchHead: string | null;
         contextProfile?: { id: string; revision: number };
-        agentVersion: string;
+        agentVersion?: string;
     };
 }
 
@@ -478,6 +490,10 @@ export type MessageProjectionEvent =
         type: 'message:updated';
         payload: {
             messageId: string;
+            /** Persisted execution association; independent of streamed content. */
+            execution?: import('../contracts/conversation').ExecutionRef;
+            target?: import('@itookit/llm-flow/contracts').TargetRef;
+            callInput?: import('../contracts/conversation').Round['callInput'];
             /** Streaming chunk — text delta appended to field. */
             delta?: string;
             /** Replace the displayed field after a final structured result. */
@@ -530,6 +546,7 @@ export type SessionStructuralEvent =
         displayPosition: 'top' | 'branch-root' | 'bottom';
     }}
     | { type: 'regenerate_started'; payload: {
+        target?: import('@itookit/llm-flow/contracts').TargetRef;
         sourceId: string;
         newUserNodeId: string;
         branchName: string;
@@ -579,7 +596,9 @@ export type RegistryEvent =
     | { type: 'background_task_completed'; payload: { sessionId: string } }
     | {
         type: 'execution_task_projected';
-        payload: { sessionId: string; taskId: string; roundId: string; submission?: import('@itookit/llm-flow/contracts').SendIntent['submission'] };
+        payload: { sessionId: string; taskId: string; roundId: string;
+            invocation?: import('@itookit/llm-flow/contracts').InvocationIdentity;
+            submission?: import('@itookit/llm-flow/contracts').SendIntent['submission'] };
     }
     /**
      * 后台会话打开了 TTY 交互进程。

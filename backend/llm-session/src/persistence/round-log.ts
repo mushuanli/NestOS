@@ -1,3 +1,4 @@
+import {historyAttachment} from '../contracts/chat';
 import { foldContextHistory } from '@itookit/llm-context';
 // @file: llm-conversation/src/persistence/round-log.ts
 // RoundLog — native Round DAG ILog implementation.
@@ -227,8 +228,9 @@ export class RoundLog implements ILog {
     async attachExecution(
         roundId: RoundId,
         execution: import('../contracts').ExecutionRef,
+        admission?: import('../contracts').ExecutionAdmission,
     ): Promise<void> {
-        await this.graph.attachExecution(roundId, execution);
+        await this.graph.attachExecution(roundId, execution, admission);
         this._cache.invalidateAll();
     }
 
@@ -375,17 +377,14 @@ export function roundToProjection(round: PersistedRound, roundId: RoundId): Roun
     const assistantMsgs = round.output.filter(m => m.role === 'assistant');
     const assistantMsg = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : undefined;
     const attachments = (userMsg && 'attachments' in userMsg && Array.isArray(userMsg.attachments))
-        ? userMsg.attachments.map(a => ({
-            name: a.name ?? a.filename ?? '',
-            type: a.type ?? 'file',
-            size: a.size,
-        }))
+        ? userMsg.attachments.map(attachment => historyAttachment(attachment))
         : undefined;
     const kind = detectRoundKind(round);
 
     return {
         roundId,
         historyParentIds: round.historyParentIds,
+        execution: [...(round.executions ?? [])].reverse().find(execution => execution.role === 'primary'),
         kind,
         userMessage: userMsg ? {
             content: typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content),
@@ -396,6 +395,8 @@ export function roundToProjection(round: PersistedRound, roundId: RoundId): Roun
         createdAt: round.createdAt,
         origin: round.origin,
         agentId: round.agentId,
+        ...(round.target ? {target: structuredClone(round.target)} : {}),
+        ...(round.callInput ? {callInput: structuredClone(round.callInput)} : {}),
         stale: round.stale,
         defaultContextMode: round.defaultContextMode,
     };

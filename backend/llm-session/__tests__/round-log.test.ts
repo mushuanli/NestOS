@@ -154,6 +154,19 @@ describe('RoundLog', () => {
     // ── Basic CRUD ────────────────────────────────────────────────────────
 
     describe('terminal status projection', () => {
+        it('reconciles the same execution without reopening a terminal Round and rejects identity replacement', async () => {
+            const execution = {taskId: 'task-1', role: 'primary' as const, invocation: {invocationId: 'original'}};
+            const roundId = await log.append('main', makeRound({executions: [execution]}));
+            await log.setConversationStatus(roundId, 'completed');
+            const before = await log.readRound(roundId);
+            await log.attachExecution(roundId, structuredClone(execution));
+            expect(await log.readRound(roundId)).toEqual(before);
+            expect(events.at(-1)).toMatchObject({type: 'round:updated', changes: {execution}});
+            await expect(log.attachExecution(roundId, {...execution, invocation: {invocationId: 'replacement'}}))
+                .rejects.toMatchObject({code: 'EXECUTION_IDENTITY_CONFLICT'});
+            expect(await log.readRound(roundId)).toEqual(before);
+        });
+
         it('persists the cancellation reason and emits it, so reloaded history keeps the cause', async () => {
             const roundId = await log.append('main', makeRound({ id: 'r-cancel', messages: makeUserPayload('go') }));
 
@@ -821,7 +834,8 @@ describe('Flow rerun branches', () => {
         });
         const load = vi.spyOn(FlowDefinitionStore.prototype, 'loadRevision').mockResolvedValue({ ...flow, id: 'review', name: 'Review', parameters: [] } as never);
         try {
-            const service = new FlowRerunService(registry as never, { submit, assertCanSubmit: async () => {} } as never, {} as never);
+            const service = new FlowRerunService(registry as never, { submit, assertCanSubmit: async () => {},
+                rerunInvocation: async () => ({invocationId: 'new-invocation'}) } as never, {} as never);
             const context = await service.context();
             expect(context?.flow.parameters).toEqual({ essay: priorRun ? 'last' : 'initial' });
             expect(context?.sourceRoundId).toBe(priorRun ? 'old' : null);
@@ -873,7 +887,8 @@ describe('Flow rerun branches', () => {
         const publish = vi.spyOn(FlowDefinitionStore.prototype, 'createRevision').mockImplementation(async draft => ({ ...draft, revision: 4, createdAt: 1 }) as never);
         try {
             const assertCanSubmit = vi.fn(async () => {});
-            const service = new FlowRerunService(registry as never, { submit, assertCanSubmit } as never, {} as never);
+            const service = new FlowRerunService(registry as never, { submit, assertCanSubmit,
+                rerunInvocation: async () => ({invocationId: 'new-invocation'}) } as never, {} as never);
             const before = await log.loadManifest();
             assertCanSubmit.mockRejectedValueOnce(new Error('Session is closed'));
             await expect(service.run({ essay: 'new' }, 'original')).rejects.toThrow('Session is closed');

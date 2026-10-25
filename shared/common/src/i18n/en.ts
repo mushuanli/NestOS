@@ -2714,4 +2714,6 @@ export const en: LocaleStrings = {
     'agent.publication.current': 'The draft and dependencies match the published revision.',
     'agent.publication.failed': 'Publication not confirmed: {code}',
     'agent.publication.pendingLeave': 'The publication result is unconfirmed. Check the original request before closing to retain its identity.',
+
+    'callable.input.unavailable': 'This instruction has no editable structured input',
 };

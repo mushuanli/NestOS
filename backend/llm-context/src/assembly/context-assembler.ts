@@ -41,6 +41,8 @@ export interface ContextAssemblerDeps {
         _deleted?: boolean;
     } | null>;
     loadArtifact?: (artifactId: string) => Promise<Artifact | null>;
+    /** Resolve selected message materials before budgeting and provider validation. */
+    resolveMessage?: (message: ChatMessage) => Promise<ChatMessage>;
     retrieveMemory?: (
         plan: ContextPlan,
         agent: { id: string; version: string },
@@ -190,7 +192,7 @@ export class ContextAssembler implements IContextAssembler {
                 });
             }
         }
-        return messages;
+        return this.deps.resolveMessage ? Promise.all(messages.map(message => this.deps.resolveMessage!(message))) : messages;
     }
 
     private async fitTokenBudget(blocks: ContextBlock[], tokenBudget?: number, keep?: ContextBlock | null): Promise<ContextBlock[]> {

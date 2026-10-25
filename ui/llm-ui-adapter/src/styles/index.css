@@ -3,7 +3,6 @@
 @import 'variables.css';
 @import 'base.css';
 @import 'llm-input.css';
-@import 'instruction-queue.css';
 @import 'input-interaction.css';
 @import 'llm-workspace.css';
 @import 'workspace-titlebar.css';

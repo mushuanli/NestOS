@@ -12,6 +12,7 @@ import { createSessionPlugin, SessionCommand } from '../src/plugins/session-plug
 import { prepareFlowConnections } from '../src/session/flow-connections';
 import { bindStandaloneFlowNode } from '../src/session/flow-node-binder';
 import { checkFlowConnections } from '../src/session/flow-connection-check';
+import {flowInvocationId, type FlowInvocationRecord} from '../src/contracts/flow-invocations';
 
 let manager: Awaited<ReturnType<typeof createVFS>>['manager'], kernel: Kernel, service: FlowInvocationService, commands: CommandBus;
 const flow: FlowRevision = { id: 'wait' as never, name: 'Wait', revision: 1, digest: 'wait-v1', createdAt: 0,
@@ -20,6 +21,17 @@ const flow: FlowRevision = { id: 'wait' as never, name: 'Wait', revision: 1, dig
     ], edges: [] };
 const definitions = { loadRevision: async () => flow } as unknown as FlowDefinitionStore;
 const input = (requestId: string, text = requestId) => ({ sessionId: 's', requestId, flowId: 'wait', revision: 1, parameters: { text } });
+
+async function finishInvocation(call: FlowInvocationRecord, value = 'Done') {
+    let targetId: string | undefined;
+    await vi.waitFor(async () => {
+        const snapshot = await commands.execute<any>(FlowCommand.RunGet, {sessionId: call.sessionId, taskId: call.rootTaskId});
+        targetId = snapshot.taskTree.find((task: any) => task.interactions.same?.status === 'pending')?.id;
+        expect(targetId).toBeTruthy();
+    });
+    await commands.execute(FlowCommand.RunRespond, {taskId: call.rootTaskId, targetTaskId: targetId, requestId: 'same', value});
+    expect((await (await kernel.openTask(call.rootTaskId!)).wait({timeoutMs: 3000})).status).toBe('succeeded');
+}
 beforeEach(async () => {
     ({ manager } = await createVFS({ rootBackend: new MemoryBackend() }));
     const fs = await manager.openFileSystem('/test');
@@ -32,6 +44,169 @@ beforeEach(async () => {
     service = new FlowInvocationService(kernel, definitions, commands);
 });
 afterEach(async () => { await kernel.closeSession('s', true); kernel.dispose(); await kernel.waitIdle(); await manager.dispose(); });
+
+it('rejects new local root calls through both invocation and raw run commands, without creating tasks or intents', async () => {
+    const local = {...flow, exposure: 'local' as const};
+    const privateService = new FlowInvocationService(kernel, {loadRevision: async () => local} as never, commands);
+    await expect(privateService.invoke({...input('local'), caller: 'flow'} as never)).rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
+    await expect(commands.execute(FlowCommand.RunStart, {sessionId: 's', flow: local, parameters: {text: 'test'}, caller: 'flow'}))
+        .rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
+    expect(await kernel.listSessionTasks('s')).toEqual([]);
+    expect(await privateService.list('s')).toEqual([]);
+});
+
+it('resolves public run commands against published scope instead of trusting a forged snapshot', async () => {
+    const local = {...flow, exposure: 'local' as const}, bus = new CommandBus();
+    const store = {loadRevision: async (_id: string, revision?: number) => revision === undefined || revision === 1 ? local : null};
+    new DagCommandService({kernel, flowStore: store as never, plugins: createBuiltinDagPluginRegistry()}).register(bus);
+    await expect(bus.execute(FlowCommand.RunStart, {sessionId: 's', flow: {...flow, exposure: 'global'}, parameters: {text: 'test'}}))
+        .rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
+    await expect(bus.execute(FlowCommand.RunStart, {sessionId: 's', flow: {...flow, revision: 999}, parameters: {text: 'test'}}))
+        .rejects.toMatchObject({code: 'FLOW_REVISION_NOT_FOUND'});
+    expect(await kernel.listSessionTasks('s')).toEqual([]);
+});
+
+it('reconciles an accepted frozen call without re-reading a newly local library definition', async () => {
+    const original = await service.invoke(input('accepted-global'));
+    const loadRevision = vi.fn(async () => ({...flow, exposure: 'local' as const}));
+    const reopened = new FlowInvocationService(kernel, {loadRevision} as never, commands);
+    expect((await reopened.invoke(input('accepted-global'))).rootTaskId).toBe(original.rootTaskId);
+    expect(loadRevision).not.toHaveBeenCalled();
+    await expect(reopened.invoke(input('new-local'))).rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
+    await finishInvocation(original);
+});
+
+it('keeps the admitted Invocation on reconciliation and creates a separate linked Invocation for a user rerun', async () => {
+    const first = await service.invoke(input('original'));
+    expect(first.invocationId).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+    await finishInvocation(first);
+    const before = (await (await kernel.openTask(first.rootTaskId!)).status()).task;
+    const recovered = new FlowInvocationService(kernel, definitions, commands);
+    expect((await recovered.invoke(input('original'))).invocationId).toBe(first.invocationId);
+    const request = {...input('rerun'), retryOfInvocationId: flowInvocationId(first)};
+    const next = await service.invoke(request);
+    expect(next.invocationId).not.toBe(first.invocationId); expect(next.rootTaskId).not.toBe(first.rootTaskId);
+    expect(next.retryOfInvocationId).toBe(first.invocationId);
+    expect((await (await kernel.openTask(next.rootTaskId!)).status()).task.input).toMatchObject({initialScheduler: {spec: {invocation: {
+        invocationId: next.invocationId, retryOfInvocationId: first.invocationId, retryOfSessionId: 's'}}}});
+    const after = (await (await kernel.openTask(first.rootTaskId!)).status()).task;
+    expect({status: after.status, output: after.output, version: after.version}).toEqual({status: before.status, output: before.output, version: before.version});
+    expect((await recovered.invoke(request)).rootTaskId).toBe(next.rootTaskId);
+    await expect(service.invoke({...request, retryOfInvocationId: 'different-source'})).rejects.toThrow('different arguments');
+});
+
+it('requires an identified terminal source and never turns an active or missing source into a rerun', async () => {
+    const first = await service.invoke(input('active-source'));
+    await expect(service.invoke({...input('premature'), retryOfInvocationId: flowInvocationId(first)}))
+        .rejects.toMatchObject({code: 'FLOW_INVOCATION_NOT_TERMINAL'});
+    await expect(service.invoke({...input('missing'), retryOfInvocationId: 'missing'}))
+        .rejects.toMatchObject({code: 'FLOW_INVOCATION_NOT_FOUND'});
+    await expect(service.invoke({...input('foreign'), retryOfInvocationId: first.invocationId, retryOfSessionId: 'outside'}))
+        .rejects.toMatchObject({code: 'FLOW_INVOCATION_OUTSIDE_SESSION'});
+    expect(await service.list('s')).toHaveLength(1);
+});
+
+it('does not accept caller-provided execution identities, plans or source definitions', async () => {
+    const call = await service.invoke({...input('trusted-admission'), invocationId: 'forged', rootTaskId: 'foreign-task',
+        flow: {...flow, digest: 'forged-definition'}, preparedGraph: {nodes: [], edges: []}, inputResolution: {parameters: {text: 'forged'}}} as never);
+    expect(call.invocationId).not.toBe('forged'); expect(call.rootTaskId).not.toBe('foreign-task'); expect(call.flow.digest).toBe(flow.digest);
+    expect(call.inputResolution?.parameters).toEqual({text: 'trusted-admission'});
+    const root = (await (await kernel.openTask(call.rootTaskId!)).status()).task;
+    expect(root.input).toMatchObject({initialScheduler: {spec: {invocation: {invocationId: call.invocationId}}}});
+});
+
+it('retains a deterministic legacy Invocation identity without upgrading it during a read or retry', async () => {
+    const session = await kernel.openSession('s');
+    await session.setShared('flow.invocation.legacy', {...input('legacy'), flow, createdAt: 1} as never);
+    const before = await session.getShared('flow.invocation.legacy');
+    const [listed] = await service.list('s'); expect(flowInvocationId(listed)).toBe('legacy:s:legacy');
+    expect((await session.getShared('flow.invocation.legacy'))?.version).toBe(before?.version);
+    const call = await service.invoke(input('legacy')); expect(call.invocationId).toBeUndefined();
+    await finishInvocation(call);
+    const next = await service.invoke({...input('legacy-rerun'), retryOfInvocationId: flowInvocationId(call)});
+    expect(next.retryOfInvocationId).toBe('legacy:s:legacy'); expect(next.invocationId).toBeTruthy();
+});
+
+it('uses the winning durable Invocation identity when two service instances race to admit the same request', async () => {
+    const other = new FlowInvocationService(kernel, definitions, commands);
+    const [first, second] = await Promise.all([service.invoke(input('raced')), other.invoke(input('raced'))]);
+    expect(first.invocationId).toBe(second.invocationId); expect(first.rootTaskId).toBe(second.rootTaskId);
+    expect((await kernel.listSessionTasks('s')).filter(task => task.labels?.kind === 'flow-root')).toHaveLength(1);
+    await vi.waitFor(async () => expect((await kernel.listSessionTasks('s')).filter(task => task.interactions.same?.status === 'pending')).toHaveLength(1));
+});
+
+it('links a child-Session rerun only through the host-verified parent relationship', async () => {
+    kernel.registerStorageResolver({kind: 'child', resolve: async () => ({fs: await manager.openFileSystem('/test'), rootPath: '/child'})});
+    await kernel.createSession({id: 'child', storage: {kind: 'child', locator: null}});
+    try {
+        const first = await service.invoke(input('parent-call')); await finishInvocation(first);
+        const request = {...input('child-rerun'), sessionId: 'child', retryOfInvocationId: first.invocationId, retryOfSessionId: 's'};
+        await expect(service.invoke(request)).rejects.toMatchObject({code: 'FLOW_INVOCATION_OUTSIDE_SESSION'});
+        const linked = new FlowInvocationService(kernel, definitions, commands, undefined,
+            async id => ({branch: 'main', head: null, parentSessionId: id === 'child' ? 's' : undefined}));
+        const next = await linked.invoke(request);
+        expect(next.retryOfInvocationId).toBe(first.invocationId); expect(next.invocationId).not.toBe(first.invocationId);
+        expect((await linked.list('child'))[0].rootTaskId).toBe(next.rootTaskId);
+    } finally {await kernel.closeSession('child', true);}
+});
+
+it('refuses to rebind a persisted Invocation to a root carrying another invocation identity', async () => {
+    const first = await service.invoke(input('identity-conflict'));
+    const session = await kernel.openSession('s'), entry = await session.getShared('flow.invocation.identity-conflict');
+    await session.setShared('flow.invocation.identity-conflict', {...entry!.value as object, invocationId: 'another-invocation'} as never);
+    const execute = vi.spyOn(commands, 'execute');
+    await expect(service.invoke(input('identity-conflict'))).rejects.toMatchObject({code: 'FLOW_INVOCATION_EXECUTION_CONFLICT'});
+    expect(execute).not.toHaveBeenCalled();
+    expect((await kernel.listSessionTasks('s')).filter(task => task.labels?.kind === 'flow-root').map(task => task.id)).toEqual([first.rootTaskId]);
+});
+
+it('admits a composer source through the shared resolver and retains the original submission separately', async () => {
+    const definition = {...flow, parameters: [{...flow.parameters![0], inputSource: 'composer.text' as const}]};
+    const ownDefinitions = {loadRevision: async () => definition} as unknown as FlowDefinitionStore;
+    service = new FlowInvocationService(kernel, ownDefinitions, commands);
+    const request = {...input('composer-source'), parameters: {},
+        source: {kind: 'composer' as const, text: 'Bound input', attachments: [], values: {}},
+        expectedSignature: {id: flow.id, revision: flow.revision, digest: flow.digest}};
+    const admitted = await service.invoke(request);
+    expect(admitted.parameters).toEqual({});
+    expect(admitted.inputResolution).toMatchObject({version: 1, parameters: {text: 'Bound input'}, origins: {text: ['composer.text']}});
+    request.source.text = 'Changed later';
+    expect(admitted.source).toMatchObject({text: 'Bound input'});
+    await expect(service.invoke(request)).rejects.toThrow('different arguments');
+});
+
+it('rejects a stale input signature before creating any root execution', async () => {
+    const execute = vi.spyOn(commands, 'execute');
+    await expect(service.invoke({...input('stale-signature'), expectedSignature: {...flow, digest: 'stale'}}))
+        .rejects.toMatchObject({code: 'FLOW_INPUT_SIGNATURE_CHANGED'});
+    expect(execute).not.toHaveBeenCalled();
+});
+
+it('freezes resolved default values across a failed start without rewriting the original arguments', async () => {
+    const definition = {...flow, parameters: [{...flow.parameters![0], default: 'Original default'}]};
+    const ownDefinitions = {loadRevision: async () => definition} as unknown as FlowDefinitionStore;
+    service = new FlowInvocationService(kernel, ownDefinitions, commands);
+    const execute = vi.spyOn(commands, 'execute').mockRejectedValueOnce(new Error('Start unavailable'));
+    const request = {...input('default-recovery'), parameters: {}};
+    await expect(service.invoke(request)).rejects.toThrow('Start unavailable');
+    definition.parameters[0].default = 'Changed default';
+    const admitted = await service.invoke(request);
+    expect(admitted.parameters).toEqual({});
+    expect(admitted.inputResolution?.parameters).toEqual({text: 'Original default'});
+    expect(execute).toHaveBeenLastCalledWith(FlowCommand.RunStart, expect.objectContaining({parameters: {text: 'Original default'}}));
+});
+
+it('rejects a corrupted resolved input instead of starting it as a new invocation', async () => {
+    const execute = vi.spyOn(commands, 'execute').mockRejectedValueOnce(new Error('Start unavailable'));
+    const request = input('corrupted-input');
+    await expect(service.invoke(request)).rejects.toThrow('Start unavailable');
+    const session = await kernel.openSession('s');
+    const saved = (await session.getShared('flow.invocation.corrupted-input'))!.value as any;
+    saved.inputResolution.parameters.text = 'Corrupted';
+    await session.setShared('flow.invocation.corrupted-input', saved);
+    await expect(service.invoke(request)).rejects.toMatchObject({code: 'FLOW_INPUT_RESOLUTION_CONFLICT'});
+    expect(execute).toHaveBeenCalledOnce();
+});
 
 it('does not acquire a write lease or inspect tasks when no invocation exists', async () => {
     const canWrite = vi.fn(async () => false);
@@ -182,8 +357,15 @@ it('starts the launcher call before any view binds the new Session and leaves it
     service.register();
     commands.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as never, {getDefaultConnection: async () => null} as never, definitions));
     await createSessionPlugin(sessionManager).activate({ commands } as never);
+    const create = vi.spyOn(sessionManager, 'createSessionFromFlow');
+    const signature = await definitions.loadRevision('wait', 1);
+    await expect(commands.execute(SessionCommand.CreateFromFlow, {invocation: true, flowId: 'wait', revision: 1,
+        parameters: {text: 'stale form'}, expectedSignature: {id: 'wait', revision: 1, digest: 'stale'}}))
+        .rejects.toMatchObject({code: 'FLOW_INPUT_SIGNATURE_CHANGED'});
+    expect(create).not.toHaveBeenCalled();
     const created = await commands.execute<{ sessionId: string }>(SessionCommand.CreateFromFlow, {
         invocation: true, flowId: 'wait', revision: 1, parameters: { text: 'launch before navigation' },
+        expectedSignature: {id: 'wait', revision: 1, digest: signature!.digest},
     });
     try {
         const calls = await service.list(created.sessionId);

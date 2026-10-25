@@ -1,11 +1,13 @@
+import {conversationUserMessage as createUserMessage} from './conversation-attachments';
 import { ConversationContextBuilder, type ConversationLocation } from './conversation-context';
+import {callInputProjection} from './call-input-projection';
 import { prepareDirectConversation, directTaskSpec, skillContextResolver } from './direct-conversation';
 import { createSessionHost, type SessionHost, type SessionHostPorts } from '../utils/host-ports';
 import { type RetrievedMemoryEntry } from '@itookit/llm-context';
 import { FlowHistory } from './flow-history';
 import { directExecutionMode, directToolIds } from './direct-execution-mode';
 import { snapshotDirectAgentPolicy, type DirectAgentPolicy, type ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
-import { formatFlowOutput } from '@itookit/llm-flow/contracts';
+import { formatFlowOutput, invocationLabels, targetLabels } from '@itookit/llm-flow/contracts';
 import type { AgentEvent, ToolCallInfo } from '@itookit/llm-tasks/contracts';
 import type { Artifact, DagPluginCatalog, DagRunSpec, DagNodeDefinition } from '@itookit/llm-flow/contracts';
 import type { ChatMessage, ContextSnapshot, ContextPlan, ToolDefinition } from '@itookit/llm-context';
@@ -42,6 +44,8 @@ export interface ConversationExecution {
     rootNodeId: string;
     roundId: string;
     contextFiles: ChatAttachment[];
+    /** Host-resolved current input, distinct from selected history for native incremental calls. */
+    currentInput?: ChatMessage;
     finalize(): Promise<void>;
 }
 
@@ -60,7 +64,7 @@ export interface ConversationRunCoordinatorOptions {
     }>;
     resolveMCPToolIds?(sessionId: string, ids: string[]): Promise<string[]>;
     resolveHarnessToolIds?(sessionId: string): Promise<string[]>;
-    loadArtifact(id: string): Promise<Artifact | null>;
+    loadArtifact(sessionId: string, id: string): Promise<Artifact | null>;
     retrieveMemory?: (
         plan: ContextPlan,
         agent: { id: string; version: string },
@@ -203,6 +207,8 @@ export class ConversationRunCoordinator {
         const catalog = await (harness ? undefined : this.options.resolveTools?.(execution.task.sessionId, tools))
             ?? { definitions: [], externalIds: [] };
         const spec = directTaskSpec(execution, snapshot, catalog, skills, this.policy);
+        spec.labels = {...spec.labels, ...invocationLabels(execution.task.input.invocation), ...targetLabels(execution.config.target)};
+        if (execution.task.input.invocation) spec.requestId = `invocation:${execution.task.input.invocation.invocationId}`;
         if (!harness && directExecutionMode(execution.task.input) === 'agent' && !('tools' in spec.input && spec.input.tools?.length)) {
             throw new Error(this.host.translate('chatInput.executionMode.noTools'));
         }
@@ -225,7 +231,9 @@ export class ConversationRunCoordinator {
     ): Promise<void> {
         const existing = await execution.log.readRound(execution.roundId);
         if (existing) {
-            await execution.log.attachExecution(execution.roundId, { taskId, role: 'primary' });
+            const actual = conversationRound(execution, location, createUserMessage(execution.task.input.text, execution.contextFiles), taskId);
+            await execution.log.attachExecution(execution.roundId, {taskId, role: 'primary', invocation: execution.task.input.invocation},
+                {target: actual.target, callInput: actual.callInput, flow: actual.flow, agentId: actual.agentId});
             return;
         }
         const userMessage = createUserMessage(execution.task.input.text, execution.contextFiles);
@@ -243,6 +251,7 @@ export class ConversationRunCoordinator {
                 sessionId: execution.task.sessionId,
                 taskId,
                 roundId: execution.roundId,
+                ...(execution.task.input.invocation ? {invocation: execution.task.input.invocation} : {}),
                 ...(execution.task.input.sendIntent?.submission ? { submission: execution.task.input.sendIntent.submission } : {}),
             },
         });
@@ -404,7 +413,7 @@ export class ConversationRunCoordinator {
     ): Promise<void> {
         await execution.log.setAssistantInRound(execution.roundId, {
             assistantMessages: [output.message],
-            agentId: execution.config.id,
+            ...(execution.config.type === 'flow' ? {} : {agentId: execution.config.id}),
             result: { ...roundResult(output, toolCalls), ...(streamedOutput.history ? { flowInteractions: streamedOutput.history.interactions } : {}) },
         });
         projectOutput(this.options.eventBus, execution, output, streamedOutput.output);
@@ -451,11 +460,13 @@ function conversationRound(
         exposure: temporary ? 'internal' : 'public',
         input: [userMessage],
         output: [],
-        executions: [{ taskId, role: 'primary' }],
+        executions: [{ taskId, role: 'primary', invocation: execution.task.input.invocation }],
         status: 'running',
         createdAt: Date.now(),
         origin: 'user',
-        agentId: execution.config?.id ?? execution.task.input.agentId,
+        ...(execution.config.type === 'flow' ? {} : {agentId: execution.config?.id ?? execution.task.input.agentId}),
+        ...(execution.config.target ? {target: structuredClone(execution.config.target)} : {}),
+        ...(execution.task.input.source ? {callInput: callInputProjection(execution.task.input)} : {}),
         ...(execution.task.input.sendIntent?.execution.kind === 'flow' ? { flow: {
             input: { prompt: execution.task.input.text },
             flowId: execution.task.input.sendIntent.execution.flowId,
@@ -467,19 +478,6 @@ function conversationRound(
         defaultContextMode: temporary ? 'exclude' : 'include',
         defaultContextScope: 'subtree',
     };
-}
-
-function createUserMessage(text: string, files: ChatAttachment[]): ChatMessage {
-    const message: ChatMessage = { role: 'user', content: text };
-    if (files.length) {
-        message.attachments = files.map(file => ({
-            name: file.name,
-            type: file.type as import('@itookit/llm-context').AttachmentType,
-            source: file.path ?? file.name,
-            size: file.size,
-        }));
-    }
-    return message;
 }
 
 interface CapturedToolCall {

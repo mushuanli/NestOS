@@ -12,3 +12,5 @@ CLI 是应用表示层和 Node 入口；本地/远程传输选择属于宿主。
 - CLI 全套回归按 scripts/test-all.mjs 串行，crash-matrix 单独隔离。
 
 离线 `.flow` 的组合定义通过 siblingFlowResolver 从入口同目录读取 `<flowId>.flow`，校验安全 ID、实际身份与显式 revision。编译图保存到 RunDefinition，恢复不重新解析最新子定义；不静态依赖任何业务 Flow。
+
+Session 根调用使用 session.targets.list、session.submit 与 session.submission.inspect；--agent/--flow 互斥，prepare/submit/receipt 沿用原冻结文件与身份。文件以 wx/0600 写入并同步后才派发；核对不打开会话视图、不自动重放。等待以本次 Submission 的 Round/Task 和持久成员为准，队列暂停或结果未知明确返回，不借全局完成/审批事件判断本次结束。conversation query/reconcile-query 使用独立查询端口，不先加载原生历史。原生 context 选择仍未在本批 CLI 开放。

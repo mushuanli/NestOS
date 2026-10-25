@@ -2728,6 +2728,8 @@ export const zhCN = {
     'agent.publication.current': '草稿与依赖和当前发布版本一致。',
     'agent.publication.failed': '发布操作未确认：{code}',
     'agent.publication.pendingLeave': '发布结果尚未确认，请先核对原发布，保留当前操作身份。',
+
+    'callable.input.unavailable': '该指令没有可编辑的结构化输入',
 } as const;
 
 // LocaleStrings maps every key to string (not literal), so other locales can provide different values.

@@ -1,5 +1,6 @@
 import type { ChatExecutionMode } from '@itookit/llm-tasks/contracts';
 import type { ExecutorConfig, TaskInput } from '../core/types';
+import {isInvocationIdentity} from '@itookit/llm-flow/contracts';
 
 export const CLIENT_WEB_SEARCH_TOOL = 'WebSearch';
 
@@ -21,7 +22,13 @@ export function directToolIds(config: ExecutorConfig, input: Pick<TaskInput, 'se
 /** Detach mutable settings before asynchronous admission or configuration resolution. */
 export function snapshotTaskInput(input: TaskInput): TaskInput {
     directExecutionMode(input);
+    if (input.invocation !== undefined && !isInvocationIdentity(input.invocation))
+        throw Object.assign(new Error('Invalid invocation identity'), {code: 'INVOCATION_IDENTITY_INVALID'});
     const copy = { ...input,
+        target: input.target ? structuredClone(input.target) : undefined,
+        expectedTarget: input.expectedTarget ? structuredClone(input.expectedTarget) : undefined,
+        source: input.source ? structuredClone(input.source) : undefined,
+        invocation: input.invocation ? structuredClone(input.invocation) : undefined,
         overrides: input.overrides ? structuredClone(input.overrides) : undefined,
         sendIntent: input.sendIntent ? structuredClone(input.sendIntent) : undefined,
         instructionFlowBinding: input.instructionFlowBinding ? structuredClone(input.instructionFlowBinding) : undefined,

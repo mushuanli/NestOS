@@ -1,13 +1,14 @@
 import { checkFlowSyntax, flowToDag, mergeAgentConfig, type FlowNodeBinder } from '@itookit/llm-flow';
 import type { FlowDefinitionStore } from '@itookit/llm-flow';
 import type { IAgentConfigService } from '../contracts';
-import { flowParameterValues, validateFlowInputGroups, type DagPluginCatalog, type FlowDraft, type FlowRevision, type JsonValue } from '@itookit/llm-flow/contracts';
+import { assertFlowCallSignature, flowParameterValues, validateFlowInputGroups, type DagPluginCatalog, type FlowDraft, type FlowRevision, type JsonValue } from '@itookit/llm-flow/contracts';
 import { admitFlowConnectionSlot, prepareFlowConnections } from './flow-connections';
 import { bindFlowAgentConnection } from './flow-agent-connections';
 import { AgentResolver } from './agent-resolver';
 import {inferFlowConnectionRequirements} from '../contracts/flow-connection-policy';
 import {ulid} from '../persistence/ulid';
 import {createSessionHost, type SessionLogger} from '../utils/host-ports';
+import {assertRootCallable} from '@itookit/llm-flow/contracts';
 
 export interface FlowConnectionCheckInput {
     flow?: FlowDraft | FlowRevision;
@@ -17,6 +18,7 @@ export interface FlowConnectionCheckInput {
     connectionBindings?: Record<string, string>;
     agentId?: string;
     parameters?: Record<string, JsonValue>;
+    expectedSignature?: Pick<FlowRevision, 'id' | 'revision' | 'digest'>;
 }
 
 /** Compile connection admission without creating a Session, executing nodes or probing models. */
@@ -36,6 +38,8 @@ export async function checkFlowConnections(input: FlowConnectionCheckInput, agen
 async function performFlowConnectionCheck(input: FlowConnectionCheckInput, agents: IAgentConfigService, definitions?: Pick<FlowDefinitionStore, 'loadRevision'>, plugins?: DagPluginCatalog): Promise<{valid: true}> {
     const source = input.flow ?? (input.flowId && input.revision !== undefined ? await definitions?.loadRevision(input.flowId, input.revision) : undefined);
     if (!source) throw connectionError('Flow definition is unavailable');
+    assertRootCallable(source);
+    assertFlowCallSignature(source, input.expectedSignature);
     const checked = checkFlowSyntax(source, {plugins});
     if (!checked.valid || !checked.flow) throw connectionError(checked.diagnostics.map(issue => issue.message).join('; '));
     const values = flowParameterValues(checked.flow.parameters, input.parameters, checked.flow.inputGroups);
@@ -43,6 +47,7 @@ async function performFlowConnectionCheck(input: FlowConnectionCheckInput, agent
     if (inputIssues.length) throw connectionError(inputIssues.map(issue => issue.message).join('; '));
     const agent = input.agentId ? await agents.getAgentConfig(input.agentId) : undefined;
     if (input.agentId && !agent) throw connectionError('Agent definition is unavailable');
+    if (agent) assertRootCallable(agent);
     const defaults = { ...await agents.getModelDefaults?.() ?? {}, ...agent?.modelDefaults };
     const fallback = defaults.chat ?? (await agents.getDefaultConnection())?.id;
     const resolver = new AgentResolver(agents);
@@ -77,7 +82,7 @@ const bindCheckedConnections: (node: Parameters<FlowNodeBinder>[0], defaults: Pa
 
 function checkErrorCode(error: unknown): string {
     const code = (error as {code?: unknown} | undefined)?.code;
-    return typeof code === 'string' && /^FLOW_CONNECTION_[A-Z_]{1,64}$/.test(code) ? code : 'FLOW_CONNECTION_INVALID';
+    return typeof code === 'string' && /^(?:FLOW_(?:CONNECTION|INPUT)_[A-Z_]{1,64}|CALLABLE_(?:LOCAL_ONLY|EXPOSURE_INVALID))$/.test(code) ? code : 'FLOW_CONNECTION_INVALID';
 }
 function connectionError(message: string, code = 'FLOW_CONNECTION_INVALID'): Error { return Object.assign(new Error(message), {code}); }
 

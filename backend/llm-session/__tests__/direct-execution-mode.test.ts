@@ -123,7 +123,7 @@ it('persists explicit project-draft provenance before emitting the projected not
     const coordinator = new ConversationRunCoordinator({ eventBus: { emitGlobal: (event: unknown) => {
         expect(writes).toHaveLength(1); events.push(event);
     } } } as never);
-    const execution = { roundId: source.id, contextFiles: [],
+    const execution = { roundId: source.id, contextFiles: [], config: {id: 'default', type: 'agent', agentVersion: 'test'},
         task: { sessionId: 's', input: { text: 'hello', sendIntent: { submission: source, retention: { mode: 'persistent' }, execution: { kind: 'agent', agentId: 'default' } } } },
         log: { readRound: async () => null, appendExpected: async (_ref: string, round: unknown) => { writes.push(round); } },
     };

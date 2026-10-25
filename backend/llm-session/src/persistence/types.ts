@@ -5,7 +5,7 @@ export type { ChatSessionSettings } from '../contracts';
 export { DEFAULT_SESSION_SETTINGS } from '../contracts';
 
 export interface ConversationUIState {
-    branchDrafts?: Record<string, { inputText?: string; inputAgentId?: string }>;
+    branchDrafts?: Record<string, {inputText?: string; inputAgentId?: string; inputTarget?: import('@itookit/llm-flow/contracts').TargetRef; inputArguments?: JsonValue}>;
     collapseStates?: Record<string, boolean>;
     scrollPosition?: number;
     historyVisibility?: 'visible' | 'hidden';

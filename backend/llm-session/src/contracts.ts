@@ -10,6 +10,7 @@ export * from './contracts/chat';
 export * from './contracts/restore';
 export * from './contracts/commands';
 export type * from './contracts/instruction-queue';
+export type * from './contracts/submission';
 export * from './contracts/flow-invocations';
 export * from './contracts/content-transfer';
 export type * from './contracts/prompt-history';

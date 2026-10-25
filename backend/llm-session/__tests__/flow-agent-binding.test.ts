@@ -33,6 +33,16 @@ it('records structural admission metadata without exposing prompt or parameter c
     expect(input.sendIntent).toBeUndefined();
 });
 
+it('rejects an Agent wrapper around a local Flow but retains accepted immutable bindings', async () => {
+    const f = fixture(), prepared = await prepareFlowAgentInput(f.input, f.ports);
+    f.definition.exposure = 'local';
+    await expect(prepareFlowAgentInput(f.input, f.ports)).rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
+    expect(f.warn).toHaveBeenCalledWith('Flow Agent admission failed', expect.objectContaining({
+        stage: 'definition', errorCode: 'CALLABLE_LOCAL_ONLY'}));
+    expect(await prepareFlowAgentInput(prepared, f.ports)).toBe(prepared);
+    expect(prepared.instructionFlowBinding!.definition.exposure).toBeUndefined();
+});
+
 it('classifies invalid arguments without exposing supplied values in diagnostics', async () => {
     const { ports, input, info, warn } = fixture();
     input.overrides!.flowParameters = { secret: 123 };
@@ -48,6 +58,16 @@ it('rejects missing Flow files before execution and classifies the actual admiss
     ports.definitions.loadRevision = async () => null;
     await expect(prepareFlowAgentInput(input, ports)).rejects.toMatchObject({ code: 'AGENT_DISABLED' });
     expect(warn).toHaveBeenCalledWith('Flow Agent admission failed', expect.objectContaining({ stage: 'definition', errorCategory: 'flow-unavailable', errorCode: 'flow-unavailable' }));
+});
+
+it('rejects a stale parameter form signature before freezing or dispatching the Flow', async () => {
+    const f = fixture();
+    f.input.overrides!.flowExpectedSignature = {id: f.definition.id, revision: f.definition.revision, digest: 'stale-form'};
+    await expect(prepareFlowAgentInput(f.input, f.ports)).rejects.toMatchObject({code: 'FLOW_INPUT_SIGNATURE_CHANGED'});
+    expect(f.info).not.toHaveBeenCalled();
+    expect(f.warn).toHaveBeenCalledWith('Flow Agent admission failed', expect.objectContaining({
+        stage: 'parameters', errorCode: 'FLOW_INPUT_SIGNATURE_CHANGED'}));
+    expect(JSON.stringify(f.warn.mock.calls)).not.toContain('PRIVATE-');
 });
 
 it('does not rebind accepted definitions or consult the source library during frozen resolution', async () => {

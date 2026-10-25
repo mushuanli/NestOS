@@ -1,93 +1,43 @@
-import { CHAT_ICONS, escapeHTML, t } from '@itookit/common';
-import { SessionCommand, type ICommandBus, type InstructionQueueEdit, type SessionInstructionQueue } from '@itookit/llm-session/contracts';
+import {instructionQueueLabels} from './instruction-queue-labels';
+import {CHAT_ICONS, t} from '@itookit/common';
+import {InstructionQueueView, type InstructionQueueSnapshot, type InstructionQueueEdit as ViewEdit} from '@itookit/llm-ui';
+import {SessionCommand, type ICommandBus, type SessionInstructionQueue} from '@itookit/llm-session/contracts';
 
-/** A projection and command editor; dispatch belongs exclusively to the Session backend. */
+type Projection = Omit<SessionInstructionQueue, 'items'> & {items: Array<InstructionQueueSnapshot['items'][number]
+    & Partial<Pick<SessionInstructionQueue['items'][number], 'source' | 'target' | 'flowBinding'>>>};
+/** Bind the shared queue view to the host's Session command port. */
 export class InstructionQueuePanel {
-    private queue?: SessionInstructionQueue;
-    private readonly selected = new Set<string>();
-    private busy = false;
-    private closed = false;
-    private error = '';
-    private readonly events = new AbortController();
-    constructor(private readonly element: HTMLElement, private readonly commands: ICommandBus, private readonly sessionId: string) {
-        element.className = 'llm-instruction-queue'; element.hidden = true;
-        element.addEventListener('click', event => this.click(event), { signal: this.events.signal });
-        element.addEventListener('change', event => {
-            const input = (event.target as HTMLElement).closest<HTMLInputElement>('input[data-select]');
-            if (!input) return;
-            if (input.checked) this.selected.add(input.dataset.select!); else this.selected.delete(input.dataset.select!);
-            this.render();
-        }, { signal: this.events.signal });
+    private readonly view: InstructionQueueView;
+    private queue?: Projection;
+    constructor(element: HTMLElement, commands: ICommandBus, private readonly sessionId: string) {
+        const project = (queue: Projection): InstructionQueueSnapshot => this.project(queue);
+        this.view = new InstructionQueueView(element, {
+            ownerId: sessionId, removeIcon: CHAT_ICONS.delete,
+            edit: async edit => project(await commands.execute<Projection>(SessionCommand.EditInstructionQueue, this.edit(edit))),
+            read: async () => project(await commands.execute<Projection>(SessionCommand.GetInstructionQueue)),
+            labels: instructionQueueLabels(),
+        });
     }
-
-    update(queue?: SessionInstructionQueue): void {
-        if (this.closed || !queue || queue.sessionId !== this.sessionId || (this.queue && queue.revision < this.queue.revision)) return;
-        this.queue = queue;
-        for (const id of this.selected) if (!queue.items.some(item => item.id === id && item.state === 'pending')) this.selected.delete(id);
-        this.render();
+    update(queue?: Projection): void {
+        if (queue?.sessionId === this.sessionId) this.view.update(this.project(queue));
     }
-
-    private render(): void {
-        const queue = this.queue;
-        if (!queue) return;
-        this.element.hidden = !this.error && (!queue.items.length || queue.items.length === 1 && queue.items[0].state === 'dispatching' && !queue.paused);
-        this.element.setAttribute('aria-label', t('session.instructions.title'));
-        this.element.innerHTML = `<header><strong>${escapeHTML(t('session.instructions.title'))} · ${queue.items.length}</strong>
-            ${this.button(queue.paused ? 'resume' : 'pause', queue.paused ? t('session.instructions.resume') : t('session.instructions.pause'))}
-            ${this.button('merge', t('session.instructions.merge'), this.selected.size < 2)}</header>
-            <p class="llm-instruction-queue__hint">${escapeHTML(queue.paused ? t('session.instructions.paused') : t('session.instructions.hint'))}</p>
-            ${queue.reason ? `<p class="llm-instruction-queue__reason">${escapeHTML(t(`session.instructions.reason.${queue.reason}`))}</p>` : ''}
-            <ol>${queue.items.map((item, index) => this.row(item, index)).join('')}</ol>
-            <p class="llm-instruction-queue__error" role="alert">${escapeHTML(this.error)}</p>`;
+    private project(queue: Projection): InstructionQueueSnapshot {
+        if (queue.sessionId === this.sessionId && (!this.queue || queue.revision >= this.queue.revision)) this.queue = queue;
+        return {ownerId: queue.sessionId, revision: queue.revision, paused: queue.paused, reason: queue.reason,
+            items: queue.items.map(item => ({id: item.id, text: item.text, state: item.state, agentId: item.agentId,
+            error: item.error, files: item.files.map(file => ({name: file.name})),
+            ...(item.target ? {targetLabel: `${item.target.kind === 'flow' ? 'Flow' : 'Agent'} · ${item.flowBinding?.agent?.name ?? item.flowBinding?.definition.name ?? item.target.id}`} : {}),
+            ...(item.source && item.flowBinding ? {input: item.source.kind === 'arguments' ? item.source.value : item.source.values,
+                textEditable: item.source.kind === 'composer'} : {})}))};
     }
-
-    private row(item: SessionInstructionQueue['items'][number], index: number): string {
-        const pending = item.state === 'pending', waiting = this.queue!.items.filter(entry => entry.state === 'pending');
-        const position = waiting.findIndex(entry => entry.id === item.id);
-        return `<li data-instruction="${escapeHTML(item.id)}"><label><input type="checkbox" data-select="${escapeHTML(item.id)}"
-            ${this.selected.has(item.id) ? 'checked' : ''} ${!pending || this.busy ? 'disabled' : ''}>
-            <span class="llm-instruction-queue__text">${escapeHTML(item.text)}</span></label>
-            <span class="llm-instruction-queue__meta">${index + 1} · ${escapeHTML(t(`session.instructions.${item.state}`))} · ${escapeHTML(item.agentId)}${item.files.length ? ` · ${item.files.length} ${escapeHTML(t('session.instructions.attachments'))}` : ''}</span>
-            <div class="llm-instruction-queue__actions">${this.button('up', t('session.instructions.up'), !pending || position === 0)}
-            ${this.button('down', t('session.instructions.down'), !pending || position === waiting.length - 1)}
-            ${item.state === 'failed' ? this.button('retry', t('session.instructions.retry')) : ''}
-            ${this.button('remove', t('action.delete'), item.state === 'dispatching', CHAT_ICONS.delete)}</div>
-            ${item.error ? `<p class="llm-instruction-queue__error">${escapeHTML(item.error)}</p>` : ''}</li>`;
+    private edit(edit: ViewEdit): unknown {
+        if (edit.action !== 'update-input') return edit;
+        const source = this.queue?.items.find(item => item.id === edit.id)?.source;
+        if (!source) throw new Error(t('callable.input.unavailable'));
+        return {action: 'update-input', id: edit.id, expectedRevision: edit.expectedRevision,
+            source: source.kind === 'arguments' ? {kind: 'arguments', value: edit.value}
+                : {...source, text: edit.text, values: edit.value}};
     }
-
-    private button(action: string, label: string, disabled = false, icon?: string): string {
-        return `<button type="button" data-action="${action}" title="${escapeHTML(label)}" aria-label="${escapeHTML(label)}" ${disabled || this.busy ? 'disabled' : ''}>${icon ?? escapeHTML(label)}</button>`;
-    }
-
-    private click(event: Event): void {
-        const button = (event.target as HTMLElement).closest<HTMLButtonElement>('button[data-action]');
-        if (!button || button.disabled || !this.queue) return;
-        const action = button.dataset.action!, id = button.closest<HTMLElement>('[data-instruction]')?.dataset.instruction;
-        if (action === 'up' || action === 'down') {
-            const ids = this.queue.items.filter(item => item.state === 'pending').map(item => item.id);
-            const from = ids.indexOf(id!), to = from + (action === 'up' ? -1 : 1);
-            [ids[from], ids[to]] = [ids[to], ids[from]];
-            void this.edit({ action: 'reorder', ids });
-        } else if (action === 'merge') void this.edit({ action, ids: [...this.selected] });
-        else if (action === 'pause' || action === 'resume') void this.edit({ action });
-        else if (action === 'remove' || action === 'retry') void this.edit({ action, id: id! });
-    }
-
-    private async edit(edit: Omit<Extract<InstructionQueueEdit, {action: 'remove' | 'retry'}>, 'expectedRevision'>
-        | Omit<Extract<InstructionQueueEdit, {action: 'merge' | 'reorder'}>, 'expectedRevision'>
-        | { action: 'pause' | 'resume' }): Promise<void> {
-        if (this.busy || !this.queue) return;
-        const expectedRevision = this.queue.revision;
-        this.busy = true; this.error = ''; this.render();
-        try {
-            const queue = await this.commands.execute<SessionInstructionQueue>(SessionCommand.EditInstructionQueue, { ...edit, expectedRevision });
-            this.update(queue);
-        } catch (error) {
-            this.error = error instanceof Error ? error.message : t('session.instructions.editFailed');
-            try { this.update(await this.commands.execute<SessionInstructionQueue>(SessionCommand.GetInstructionQueue)); }
-            catch { /* Preserve the last confirmed projection and the actionable error. */ }
-        } finally { this.busy = false; if (!this.closed) this.render(); }
-    }
-
-    destroy(): void { this.closed = true; this.events.abort(); this.element.remove(); }
+    setReadOnly(value: boolean): void {this.view.setReadOnly(value);}
+    destroy(): void {this.view.destroy();}
 }

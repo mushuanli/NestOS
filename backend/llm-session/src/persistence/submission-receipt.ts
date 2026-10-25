@@ -3,6 +3,15 @@ import type { Round } from '../contracts';
 import type { ISessionRepository } from './types';
 
 type SubmissionReader = Pick<ISessionRepository, 'readDocument' | 'getManifest'>;
+/** Match original input as well as the durable history identity; never reinterpret current defaults. */
+export async function hasMatchingCommittedSubmission(reader: SubmissionReader, sessionId: string, submission: SessionSubmission, digest: string): Promise<boolean> {
+    if (!await hasCommittedSubmission(reader, sessionId, submission)) return false;
+    const round = JSON.parse((await reader.readDocument(sessionId, `round-${submission.id}.json`))!) as Round;
+    if (!round.submissionDigest) throw Object.assign(new Error('Historical request has no content receipt; inspect history before using a new identity'), {code: 'QUEUE_IDENTITY_UNVERIFIABLE'});
+    if (round.submissionDigest !== digest) throw Object.assign(new Error('Submission identity already belongs to another request'), {code: 'QUEUE_CONFLICT'});
+    return true;
+}
+
 /** A round body alone is insufficient: its history index must also be committed. */
 export async function hasCommittedSubmission(reader: SubmissionReader, sessionId: string, submission: SessionSubmission): Promise<boolean> {
     const raw = await reader.readDocument(sessionId, `round-${submission.id}.json`);

@@ -47,6 +47,11 @@ describe('parseArgs', () => {
     it('rejects unknown options', () => {
         expect(() => parseArgs(['run', '--bogus'])).toThrow('Unknown option');
     });
+
+    it('parses published Flow selection and a durable submission file for Session calls', () => {
+        expect(parseArgs(['session', 'send', 'session-id', '--flow', 'worker', '--params', 'params.json', '--submission-file', 'call.json']))
+            .toMatchObject({command: 'session', positional: ['send', 'session-id'], options: {flow: 'worker', paramsFile: 'params.json', submissionFile: 'call.json'}});
+    });
 });
 
 describe('resolveRespondValue', () => {

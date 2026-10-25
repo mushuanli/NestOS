@@ -82,7 +82,7 @@ it('includes the child material in context planning without adding a fake Round'
     const assemble = vi.spyOn(ContextAssembler.prototype, 'assemble').mockResolvedValue({snapshot: {} as never, messages: []});
     const builder = new ConversationContextBuilder({engine: repository, loadArtifact: async () => null}, snapshotDirectAgentPolicy());
     await builder.assemble({task: {id: 'task', sessionId: child.sessionId, input: {text: 'Follow up'}}, config: {id: 'agent'},
-        roundId: 'child-round', log: new RoundLog(repository, child.sessionId)} as never, {branchRef: 'main', branchHead: null});
+        roundId: 'child-round', contextFiles: [], log: new RoundLog(repository, child.sessionId)} as never, {branchRef: 'main', branchHead: null});
     const plan = assemble.mock.calls[0][0] as ContextPlan;
     expect(plan.explicitInputs).toEqual([expect.objectContaining({kind: 'text', content: 'A frozen summary'})]);
     expect(await repository.listHistory(child.sessionId)).toEqual([]);

@@ -1,11 +1,15 @@
-import {isQueuedAgent} from '../session/queued-agent';
+import {isAttachmentContentIdentity} from '../contracts/chat';
 import type { JsonValue, Kernel } from '@itookit/durable-kernel';
 import type { SessionInstructionQueue } from '../contracts/instruction-queue';
 import { flowRevisionDigest } from '@itookit/llm-flow';
 import { isFlowConnectionSnapshot } from '../session/flow-connection-snapshot';
 import { isHarnessAgentSnapshot } from '../session/harness-binding';
+import {isQueuedAgent} from '../session/queued-agent';
 import { isFlowRunPlan } from '../session/flow-run-plan';
 import { isModelDefaults } from '@itookit/kernel-adapters/contracts';
+import {isInvocationIdentity} from '@itookit/llm-flow/contracts';
+import {isTargetSelection, isTargetRef, assertSelectedTarget} from '@itookit/llm-flow/contracts';
+import {boundFlowIdentity} from '../session/flow-target';
 
 export const INSTRUCTION_QUEUE_KEY = 'conversation/instructions';
 export interface StoredInstructionQueue extends SessionInstructionQueue {
@@ -53,7 +57,12 @@ function validateQueue(value: StoredInstructionQueue & {schemaVersion?: number},
             || !['pending', 'dispatching', 'failed', 'uncertain'].includes(item.state) || typeof item.text !== 'string'
             || typeof item.branch !== 'string' || typeof item.agentId !== 'string' || !Number.isFinite(item.createdAt)
             || item.submissionDigest !== undefined && !/^[a-f0-9]{64}$/.test(item.submissionDigest)
-            || !Array.isArray(item.files) || item.files.some(file => !file || typeof file.name !== 'string' || typeof file.type !== 'string')) invalid();
+            || !Array.isArray(item.files) || item.files.some(file => !file || typeof file.name !== 'string' || typeof file.type !== 'string'
+                || file.content !== undefined && !isAttachmentContentIdentity(file.content))) invalid();
+        if (item.invocation !== undefined && !isInvocationIdentity(item.invocation)) invalid();
+        if (item.target !== undefined && !isTargetSelection(item.target)) invalid();
+        if (item.expectedBranch !== undefined && (typeof item.expectedBranch !== 'string' || item.expectedBranch !== item.branch)) invalid();
+        if (item.expectedTarget !== undefined && !isTargetRef(item.expectedTarget)) invalid();
         if (item.flowBinding !== undefined && !validFlowBinding(item)) invalid();
         if (item.connectionBinding !== undefined && (!item.connectionBinding || !isModelDefaults(item.connectionBinding.defaults)
             || item.connectionBinding.identityVersion !== undefined && item.connectionBinding.identityVersion !== 1
@@ -71,14 +80,18 @@ function validateQueue(value: StoredInstructionQueue & {schemaVersion?: number},
 function validFlowBinding(item: SessionInstructionQueue['items'][number]): boolean {
     try {
         const binding = item.flowBinding, execution = item.sendIntent?.execution;
-        if (!binding || !binding.definition || !Array.isArray(binding.dependencies) || !binding.agent
-            || binding.agent.id !== item.agentId || typeof binding.agent.agentVersion !== 'string'
-            || execution?.kind !== 'flow' || binding.source !== undefined && binding.source !== 'explicit') return false;
+        if (!binding || !binding.definition || !Array.isArray(binding.dependencies)
+            || execution?.kind !== 'flow' || binding.source !== undefined && !['explicit', 'target'].includes(binding.source)) return false;
+        if (binding.source === 'target') {
+            const identity = boundFlowIdentity(binding);
+            if (item.agentId || item.target?.kind !== 'flow' || !identity?.target) return false;
+            assertSelectedTarget(item.target, identity.target);
+        } else if (!binding.agent || binding.agent.id !== item.agentId || typeof binding.agent.agentVersion !== 'string') return false;
         if (!isFlowConnectionSnapshot(binding.connections)) return false;
         if (binding.plan !== undefined && !isFlowRunPlan(binding.plan)) return false;
-        const flow = binding.definition, agent = binding.agent.execution;
+        const flow = binding.definition, agent = binding.agent?.execution;
         if (execution.flowId !== flow.id || execution.revision !== flow.revision) return false;
-        if (binding.source !== 'explicit' && (agent?.kind !== 'flow' || agent.flowId !== flow.id
+        if (binding.source === undefined && (agent?.kind !== 'flow' || agent.flowId !== flow.id
             || agent.revision !== undefined && agent.revision !== flow.revision)) return false;
         return [flow, ...binding.dependencies].every(definition => !!definition && typeof definition.id === 'string'
             && Number.isSafeInteger(definition.revision) && definition.revision > 0 && Array.isArray(definition.nodes)

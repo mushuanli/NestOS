@@ -90,3 +90,5 @@ ConversationContextBuilder 负责 Round/Branch 选择、宿主材料与 Context 
 连接准入的缺失绑定和能力错误携带稳定 code 与 field（槽位名）；前端不解析错误消息。session.check-flow-connection-slots 独立返回槽位配置问题，复用完整图准入的 admitFlowConnectionSlot，不构造空节点的临时 Flow。必需槽位未覆盖时可继承用途默认连接，可选槽位的空字符串表示显式解绑。
 
 Agent 发布修订与回执位于既有 VFS 定义平面。显式发布冻结共享提示词与实现依赖，AgentResolver 读取发布身份；普通 Agent 队列接纳保存策略摘要，连接凭据和实际上下文不进入该快照。诊断异常不能覆盖已持久结果或原拒绝；新身份元数据不得改变旧接纳 Task 指纹。
+
+session.submit 将 Agent/Flow 根调用送入既有队列，外部字段不授予内部计划或 Invocation。编辑从冻结定义重编译，claim 先持久分配根调用身份；用户重跑新建身份并保留原终态。submission.inspect 只读显式 Session 的接纳事实，不激活视图或执行。附件接纳冻结不可变字节，派发核验后通过 Context.resolveMessage 装配；完整子调用身份、默认工作台台账和通用文件传输继续分批验收。

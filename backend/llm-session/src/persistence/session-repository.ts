@@ -582,7 +582,16 @@ export class SessionRepository implements ISessionRepository {
     }
     async writeAttachment(id: string, name: string, content: ArrayBuffer): Promise<void> {
         await this.getManifest(id);
-        await this.fs.driver.createFile({ name: this.name(name), parentPath: `${await this.root(id)}/attachments`, content, overwrite: true });
+        const parentPath = `${await this.root(id)}/attachments`, fileName = this.name(name);
+        try { await this.fs.driver.createFile({name: fileName, parentPath, content, overwrite: false}); }
+        catch (error) {
+            let stored: ArrayBuffer;
+            try { stored = await this.fs.driver.readContent(`${parentPath}/${fileName}`, {encoding: 'binary'}); }
+            catch { throw error; }
+            const expected = new Uint8Array(content);
+            if (stored.byteLength !== content.byteLength || !new Uint8Array(stored).every((byte, index) => byte === expected[index]))
+                throw new FSError('EEXIST', 'Attachment identity already belongs to different content');
+        }
     }
     async openAttachments(id: string) {
         await this.getManifest(id);

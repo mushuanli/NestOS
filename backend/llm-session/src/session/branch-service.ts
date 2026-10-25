@@ -381,6 +381,8 @@ export function projectionGroups(projection: RoundProjection): SessionGroup[] {
 
 function userGroup(projection: RoundProjection): SessionGroup {
     return {
+        invocation: projection.execution?.invocation,
+        execution: projection.execution,
         id: `round-${projection.roundId}-user`,
         persistedNodeId: projection.roundId,
         role: 'user',
@@ -394,6 +396,8 @@ function userGroup(projection: RoundProjection): SessionGroup {
 function assistantGroup(projection: RoundProjection): SessionGroup {
     const message = projection.assistantMessage!;
     return {
+        invocation: projection.execution?.invocation,
+        execution: projection.execution,
         id: `round-${projection.roundId}-assistant`,
         persistedNodeId: projection.roundId,
         role: 'assistant',

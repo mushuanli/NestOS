@@ -67,7 +67,9 @@ export interface DagRunSpec {
     parameterScopes?: Record<string, { parent: string; source?: string; parameterSet?: number; defaults: Record<string, JsonValue>; values: Record<string, JsonValue>; schema?: import('./flow-definition').FlowParameter[]; groups?: import('./flow-definition').FlowInputGroup[] }>;
     /** Frozen callable templates; expanded only after their input task succeeds. */
     functionCalls?: Record<string, { child: DagRunSpec; collector: string; maxConcurrency: number }>;
-    invocation?: { requestId: string; flowId: string; revision: number; digest: string; name: string; createdAt: number; branch?: string; head?: string | null };
+    invocation?: Partial<import('./flow').InvocationIdentity> & {
+        target?: import('./call-target').TargetRef;
+        requestId: string; flowId: string; revision: number; digest: string; name: string; createdAt: number; branch?: string; head?: string | null };
     parameterSchema?: import('./flow-definition').FlowParameter[];
     inputGroups?: import('./flow-definition').FlowInputGroup[];
     /** Compiler-owned identity defaults by node; dynamic descendants inherit their parent's scope. */

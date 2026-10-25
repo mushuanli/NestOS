@@ -87,7 +87,10 @@ export interface ToolCallProjection {
 }
 
 export interface RoundProjection {
+    callInput?: import('../contracts/conversation').Round['callInput'];
+    target?: import('@itookit/llm-flow/contracts').TargetRef;
     roundId: RoundId;
+    execution?: import('../contracts').ExecutionRef;
     historyParentIds: RoundId[];
 
     /** Structural kind of this round. */

@@ -11,7 +11,7 @@ export class FlowRerunService {
     private pending = false;
     constructor(private registry: SessionRegistry, private runs: SessionRunCoordinator, private store: FlowStore, private plugins?: DagPluginCatalog) {}
 
-    async context() {
+    async context(sourceRoundId?: string | null) {
         const { sessionId } = this.registry.ensureBound();
         const log = new RoundLog(this.registry.engine, sessionId);
         const manifest = await log.loadManifest();
@@ -21,27 +21,32 @@ export class FlowRerunService {
         const rounds = (await Promise.all([...ids].map(id => log.readRound(id))))
             .filter((round): round is NonNullable<typeof round> => !!round && !round._deleted && !!round.flow)
             .sort((a, b) => b.createdAt - a.createdAt || b.id.localeCompare(a.id));
-        const source = rounds.find(round => !sessionFlow || round.flow?.flowId === sessionFlow.flowId);
+        const source = sourceRoundId ? rounds.find(round => round.id === sourceRoundId)
+            : rounds.find(round => !sessionFlow || round.flow?.flowId === sessionFlow.flowId);
+        if (sourceRoundId && !source) throw new Error('Flow source Round is unavailable');
         const flow = source?.flow ?? sessionFlow;
         if (!flow) return null;
         const definitions = new FlowDefinitionStore(this.store, this.plugins);
-        const draft = await definitions.loadDraft(flow.flowId);
-        const definition = draft ?? await definitions.loadRevision(flow.flowId);
+        const immutableTarget = source?.target?.kind === 'flow' || source?.target?.kind === 'agent' && !!await this.runs.publishedAgentTarget(source.target);
+        const draft = immutableTarget ? undefined : await definitions.loadDraft(flow.flowId);
+        const definition = draft ?? await definitions.loadRevision(flow.flowId, immutableTarget ? flow.revision : undefined);
         if (!definition) throw new Error(`Flow definition not found: ${flow.flowId}`);
-        return { sessionId, sourceRoundId: source?.id ?? null, flow, definition, draft,
-            definitionKey: definitionKey(definition), agentId: source?.agentId ?? 'default' };
+        return { sessionId, sourceRoundId: source?.id ?? null, flow, definition, draft, immutableTarget,
+            ...(sourceRoundId ? {sourceSelection: 'selected' as const} : {}),
+            definitionKey: definitionKey(definition), agentId: source?.target?.kind === 'flow' ? '' : source?.agentId ?? 'default', target: source?.target };
     }
 
-    async run(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedDefinitionKey?: string, connectionId?: string, connectionBindings?: Record<string, string>) {
+    async run(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedDefinitionKey?: string, connectionId?: string, connectionBindings?: Record<string, string>, sourceSelection?: 'selected') {
+        if (sourceSelection !== undefined && (sourceSelection !== 'selected' || !sourceRoundId)) throw new Error('Invalid Flow source selection');
         if (this.pending) throw new Error('Flow rerun is already being submitted');
         this.pending = true;
-        try { return await this.submit(parameters, sourceRoundId, expectedDefinitionKey, connectionId, connectionBindings); }
+        try { return await this.submit(parameters, sourceRoundId, expectedDefinitionKey, connectionId, connectionBindings, sourceSelection); }
         finally { this.pending = false; }
     }
 
-    private async submit(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedDefinitionKey?: string, connectionId?: string, connectionBindings?: Record<string, string>) {
+    private async submit(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedDefinitionKey?: string, connectionId?: string, connectionBindings?: Record<string, string>, sourceSelection?: 'selected') {
         this.registry.ensureNotGenerating('rerun flow');
-        const context = await this.context();
+        const context = await this.context(sourceSelection === 'selected' ? sourceRoundId : undefined);
         if (!context || context.sourceRoundId !== sourceRoundId) throw new Error('Session flow changed; reopen the rerun form');
         if (expectedDefinitionKey && expectedDefinitionKey !== context.definitionKey) throw new Error('Flow changed; reopen the rerun form');
         const issues = validateFlowParameters(context.definition.parameters, parameters, context.definition.inputGroups);
@@ -53,7 +58,7 @@ export class FlowRerunService {
         if (this.registry.ensureBound().sessionId !== sessionId) throw new Error('Session changed; reopen the rerun form');
         this.registry.ensureNotGenerating('rerun flow');
         const definitions = new FlowDefinitionStore(this.store, this.plugins);
-        const latest = await definitions.loadRevision(context.flow.flowId);
+        const latest = await definitions.loadRevision(context.flow.flowId, context.immutableTarget ? context.flow.revision : undefined);
         const definition = context.draft && (!latest || definitionKey(latest) !== context.definitionKey)
             ? await definitions.createRevision(context.draft) : latest ?? context.definition as FlowRevision;
         if (this.registry.ensureBound().sessionId !== sessionId) throw new Error('Session changed; reopen the rerun form');
@@ -65,6 +70,8 @@ export class FlowRerunService {
         parameters: Record<string, JsonValue>, bound: ReturnType<SessionRegistry['ensureBound']>, connectionId?: string, connectionBindings?: Record<string, string>) {
         const { sessionId, state, runtime } = bound;
         const log = new RoundLog(this.registry.engine, sessionId), roundId = ulid();
+        const source = context.sourceRoundId ? await log.readRound(context.sourceRoundId) : undefined;
+        const invocation = await this.runs.rerunInvocation(sessionId, source ?? undefined);
         const previous = await log.loadManifest();
         const branch = await log.createBranchForReplacement(null, roundId, { createdFrom: 'regenerate' });
         const flow: NonNullable<Round['flow']> = { flowId: context.definition.id, revision: context.definition.revision, parameters, ...(connectionBindings ? { connectionBindings } : {}) };
@@ -73,7 +80,14 @@ export class FlowRerunService {
             await this.registry.reloadSessionData(sessionId, state);
             this.switched(sessionId, branch.branchName, branch.commonHeadId ?? '', roundId);
             const taskId = await this.runs.submit({ sessionId, text: originalInput?.prompt ?? `${context.definition.name} · ${context.definition.id}@v${context.definition.revision}\n\n${JSON.stringify(parameters, null, 2)}`,
-                files: [], agentId: context.agentId, overrides: connectionId ? { connectionId } : undefined, roundTarget: { mode: 'append-new', roundId },
+                files: [], agentId: context.target?.kind === 'flow' ? '' : context.agentId, invocation,
+                ...(context.target?.kind === 'flow' ? {target: {kind: 'flow' as const, id: context.definition.id, version: String(context.definition.revision)},
+                    source: {kind: 'arguments' as const, value: structuredClone(parameters)}} : context.immutableTarget && context.target ? {
+                    target: {kind: 'agent' as const, id: context.target.id, version: context.target.version}, expectedTarget: context.target,
+                    source: {kind: 'arguments' as const, value: structuredClone(parameters)}} : {}),
+                overrides: context.immutableTarget ? {...(connectionId ? {connectionId} : {}),
+                    flowExpectedSignature: {id: context.definition.id, revision: context.definition.revision, digest: context.definition.digest}}
+                    : connectionId ? {connectionId} : undefined, roundTarget: {mode: 'append-new', roundId},
                 sendIntent: { branch: { mode: 'continue' }, retention: { mode: 'persistent' }, execution: { kind: 'flow', ...flow } },
             }, runtime);
             return { taskId, branchName: branch.branchName };

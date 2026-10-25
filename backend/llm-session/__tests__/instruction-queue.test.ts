@@ -6,6 +6,8 @@ import { InstructionQueueStore } from '../src/persistence/instruction-queue-stor
 import { createInstructionQueueSessions } from '../src/persistence/instruction-queue-sessions';
 import { SessionInstructionQueues, type InstructionQueuePorts } from '../src/session/instruction-queue';
 import { createSessionHost } from '../src/utils/host-ports';
+import {createFlowRevision} from '@itookit/llm-flow';
+import {prepareFlowAgentInput} from '../src/session/flow-agent';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -15,6 +17,76 @@ function input(id: string, text = id): SessionInstructionInput {
         sendIntent: { execution: { kind: 'agent', agentId: 'agent', mode: 'chat' }, branch: { mode: 'continue' },
             retention: { mode: 'persistent' }, submission: { id, source: { kind: 'conversation', ownerId: 's', id } } } };
 }
+
+it('assigns Invocation identity in the durable claim and preserves it during recovery without resubmission', async () => {
+    const f = await fixture(); await f.queues.enqueue('s', input('claimed'));
+    expect((await f.queues.view('s')).items[0].invocation).toBeUndefined();
+    f.ports.submit = vi.fn(async (_id, item) => {
+        expect(item.invocation?.invocationId).toMatch(/^[0-9A-HJKMNP-TV-Z]{26}$/);
+        expect((await f.store.read('s')).items[0]).toMatchObject({state: 'dispatching', invocation: item.invocation});
+        return 'run';
+    });
+    f.setReady(true); f.queues.wake('s'); await vi.waitFor(() => expect(f.ports.submit).toHaveBeenCalledOnce());
+    await f.queues.whenIdle(); f.queues.dispose();
+    const identity = (await f.store.read('s')).items[0].invocation;
+    f.ports.recover = vi.fn(async (_id, item) => {expect(item.invocation).toEqual(identity); return 'running';});
+    const restored = new SessionInstructionQueues(f.ports); cleanup.push(async () => restored.dispose());
+    await restored.restore('s'); await restored.whenIdle();
+    expect((await restored.view('s')).items[0].invocation).toEqual(identity);
+    expect(f.ports.submit).toHaveBeenCalledOnce();
+});
+
+it('ignores caller-supplied Invocation and execution bindings before host admission', async () => {
+    const f = await fixture();
+    await f.queues.enqueue('s', {...input('owned'), invocation: {invocationId: 'forged'},
+        flowBinding: {definition: 'forged'}, connectionBinding: {connectionId: 'forged'}} as never);
+    const [item] = (await f.queues.view('s')).items;
+    expect(item.invocation).toBeUndefined(); expect(item.flowBinding).toBeUndefined(); expect(item.connectionBinding).toBeUndefined();
+});
+
+it('persists a zero-text Flow call only after the backend has validated and frozen its binding', async () => {
+    const f = await fixture();
+    const definition = createFlowRevision({id: 'flow', name: 'Flow', nodes: [], edges: [],
+        parameters: [{name: 'limit', type: 'number', default: 3}], draftVersion: 1, updatedAt: 0}, 1);
+    f.ports.capture = async (_id, item) => {
+        const prepared = await prepareFlowAgentInput({...item, sessionId: 's'}, {
+            definitions: {loadRevision: async () => definition}, prepareConnections: async flow => flow,
+            resolveAgent: async () => ({id: 'agent', name: 'Agent', type: 'agent', agentVersion: 'v1',
+                execution: {kind: 'flow', flowId: 'flow'}}),
+            identityResolver: {resolveExact: async () => {throw new Error('No nested agents');},
+                getSkills: async () => [], getSystemPrompt: async () => null}, host: f.ports.host,
+        });
+        return {...item, sendIntent: prepared.sendIntent, flowBinding: prepared.instructionFlowBinding};
+    };
+    const request = {...input('zero', ''), overrides: {flowParameters: {},
+        flowExpectedSignature: {id: definition.id, revision: definition.revision, digest: definition.digest}}};
+    expect(await f.queues.enqueue('s', request)).toBe('zero');
+    expect((await f.store.read('s')).items[0]).toMatchObject({text: '',
+        flowBinding: {inputResolution: {parameters: {limit: 3}}}});
+    f.setReady(true); f.queues.wake('s');
+    await vi.waitFor(() => expect(f.submit).toHaveBeenCalledOnce());
+    expect(f.submit.mock.calls[0][1]).toMatchObject({sendIntent: {execution: {kind: 'flow', parameters: {limit: 3}}}});
+});
+
+it('rejects a blank non-Flow submission even if it supplies an empty parameter override', async () => {
+    const f = await fixture();
+    await expect(f.queues.enqueue('s', {...input('blank', ''), overrides: {flowParameters: {}}}))
+        .rejects.toMatchObject({code: 'QUEUE_INVALID'});
+    expect((await f.queues.view('s')).items).toEqual([]); expect(f.submit).not.toHaveBeenCalled();
+});
+it('edits pending text with CAS and keeps the original acceptance identity for retry', async () => {
+    const f = await fixture(); await f.queues.enqueue('s', input('editable'));
+    const queue = await f.queues.get('s');
+    const edited = await f.queues.edit('s', {action: 'update', id: 'editable', text: 'Revised instruction', expectedRevision: queue.revision});
+    expect(edited.items[0]).toMatchObject({id: 'editable', text: 'Revised instruction'});
+    await expect(f.queues.edit('s', {action: 'update', id: 'editable', text: 'Stale overwrite', expectedRevision: queue.revision}))
+        .rejects.toMatchObject({code: 'QUEUE_CONFLICT'});
+    await f.queues.enqueue('s', input('editable'));
+    expect((await f.queues.get('s')).items).toHaveLength(1);
+    f.setReady(true); f.queues.wake('s');
+    await vi.waitFor(() => expect(f.submit).toHaveBeenCalledOnce());
+    expect(f.submit.mock.calls[0][1]).toMatchObject({id: 'editable', text: 'Revised instruction'});
+});
 
 async function fixture() {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
@@ -154,6 +226,16 @@ it('rejects corrupt queue storage instead of treating it as an empty queue', asy
     expect(f.submit).not.toHaveBeenCalled();
 });
 
+it('rejects a stored branch precondition that no longer agrees with the accepted branch', async () => {
+    const f = await fixture(); await f.queues.enqueue('s', {...input('branch-bound'), expectedBranch: 'main'});
+    const session = await f.kernel.openSession('s'), stored = await session.getShared('conversation/instructions');
+    const value = structuredClone(stored!.value) as unknown as {items: Array<{expectedBranch: string}>};
+    value.items[0].expectedBranch = 'other';
+    await session.setShared('conversation/instructions', value as never, {expectedVersion: stored!.version});
+    await expect(f.queues.view('s')).rejects.toMatchObject({code: 'QUEUE_STORAGE_INVALID'});
+    expect(f.submit).not.toHaveBeenCalled();
+});
+
 it('does not carry an empty failed queue pause into a later explicit send after recovery', async () => {
     const f = await fixture(); f.setReady(true);
     await f.queues.enqueue('s', input('first')); expect(f.submit).toHaveBeenCalledOnce(); f.queues.dispose();
@@ -169,4 +251,14 @@ it('enforces the instruction limit after host materialization without persisting
     await expect(f.queues.enqueue('s', input('large'))).rejects.toMatchObject({ code: 'QUEUE_LIMIT' });
     expect((await f.queues.get('s')).items).toEqual([]); expect(f.submit).not.toHaveBeenCalled();
     expect(JSON.stringify(f.logger.warn.mock.calls)).not.toContain('xxxx');
+});
+
+it('deduplicates runtime attachments by content rather than name and size alone', async () => {
+    const f = await fixture();
+    const request = {...input('blob-request'), files: [{name: 'same.txt', type: 'text/plain', size: 5, fileRef: new Blob(['first'])}]};
+    await f.queues.enqueue('s', request);
+    expect(await f.queues.enqueue('s', request)).toBe('blob-request');
+    await expect(f.queues.enqueue('s', {...request, files: [{...request.files[0], fileRef: new Blob(['other'])}]}))
+        .rejects.toMatchObject({code: 'QUEUE_CONFLICT'});
+    expect((await f.queues.view('s')).items).toHaveLength(1);
 });

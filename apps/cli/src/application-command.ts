@@ -1,8 +1,8 @@
-import { getLogger, LogLevel } from '@itookit/common';
+import { getLogger, LogLevel, randomUUID } from '@itookit/common';
 import { recordRuntimeDiagnostic } from './diagnostics';
-import type { ApplicationClient } from '@itookit/app-contracts/services';
-import { SessionCommand, type SessionSnapshot } from '@itookit/llm-session/contracts';
-import { createAgentSendIntent } from '@itookit/llm-flow/contracts';
+import type { ApplicationClient, ProjectConversationPort } from '@itookit/app-contracts/services';
+import type { SessionSnapshot } from '@itookit/llm-session/contracts';
+import {sessionCommand} from './application-session';
 import type { CommandOptions } from './commands';
 import { openCliApplication } from './application-host';
 
@@ -15,8 +15,8 @@ export async function applicationCommand(command: string, args: string[], option
         application = await openCliApplication(options);
         const result = await executeApplicationCommand(application.client, command, args, options);
         process.stdout.write(JSON.stringify(result ?? {success: true}, (_key, value) => value instanceof Map ? Object.fromEntries(value) : value, 2) + '\n');
-        const state = result as {snapshot?: SessionSnapshot; waitingForInput?: boolean} | undefined;
-        return state?.waitingForInput ? 3 : ['failed', 'aborted'].includes(state?.snapshot?.status ?? '') ? 2 : 0;
+        const state = result as {snapshot?: SessionSnapshot; execution?: {status: string}; waitingForInput?: boolean} | undefined;
+        return state?.waitingForInput ? 3 : ['failed', 'cancelled', 'aborted'].includes(state?.execution?.status ?? state?.snapshot?.status ?? '') ? 2 : 0;
     } catch (error) {
         const detail = error as {code?: string; remoteCode?: string; outcome?: string; requestId?: string};
         const metadata = {code: detail?.code, remoteCode: detail?.remoteCode, outcome: detail?.outcome, requestId: detail?.requestId};
@@ -63,52 +63,6 @@ export async function executeApplicationCommand(client: ApplicationClient, comma
     throw new Error('Unknown application command');
 }
 
-async function sessionCommand(client: ApplicationClient, args: string[], options: CommandOptions): Promise<unknown> {
-    const [action, id, value] = args;
-    if (action === 'list') {
-        const repository = client.services.sessionRepository;
-        if (!repository.listSummaries) throw new Error('Session summaries unsupported');
-        return repository.listSummaries();
-    }
-    if (action === 'create') {
-        const project = await client.services.projects.get(required(id, 'project id'));
-        return (await client.backend.projectSessions()).create(required(value, 'session title'), project.path);
-    }
-    const opened = await client.backend.openSessionView(required(id, 'session id'));
-    try {
-        const initial = await opened.activate(options.branch);
-        if (action === 'show') return initial.snapshot;
-        const bus = client.services.commandBus;
-        if (action === 'branches') return await bus.execute('vcs.branch.list');
-        if (action === 'branch') return await bus.execute('vcs.branch.create', {branchNodeId: required(initial.manifest.currentHead ?? undefined, 'branch point'), options: {name: required(value, 'branch name'), copyContent: true}});
-        if (action === 'delete-branch') return await bus.execute('vcs.branch.delete', {branchName: required(value, 'branch name')});
-        if (action === 'send') return await sendSession(client, id!, required(value, 'message'), options);
-        throw new Error('session requires list/create/show/send/branches/branch/delete-branch');
-    } finally { await opened.dispose(); }
-}
-
-async function sendSession(client: ApplicationClient, id: string, text: string, options: CommandOptions): Promise<unknown> {
-    let done!: () => void;
-    const completed = new Promise<void>(resolve => { done = resolve; });
-    const release = client.services.sessionManager.onGlobalEvent(event => {
-        if (event.type === 'session_status_changed' && event.payload.sessionId === id
-            && ['completed', 'failed', 'aborted'].includes(event.payload.status)) done();
-    });
-    let waitingForInput = false;
-    const events = client.services.sessionManager.onEvent(event => {
-        if (options.follow) process.stdout.write(JSON.stringify(event) + '\n');
-        if (event.type === 'await_signal') { waitingForInput = true; done(); }
-    });
-    try {
-        const agentId = options.agent ?? 'default', intent = createAgentSendIntent(agentId);
-        intent.submission = {id: crypto.randomUUID(), source: {kind: 'conversation', ownerId: id, id: crypto.randomUUID()}};
-        const accepted = await client.services.commandBus.execute(SessionCommand.Send, {text, agentId, sendIntent: intent});
-        if (!options.connect || options.follow) await completed;
-        const snapshot = await client.services.commandBus.execute<SessionSnapshot>(SessionCommand.GetSnapshot);
-        return {accepted, snapshot, waitingForInput};
-    } finally { events(); release(); }
-}
-
 async function nativeConversation(client: ApplicationClient, args: string[]): Promise<unknown> {
     const [action, projectId, profileId, sessionId, value] = args;
     const remote = client.services.projects.remoteMounts;
@@ -127,14 +81,32 @@ async function nativeConversation(client: ApplicationClient, args: string[]): Pr
     }
     const conversation = await remote.projectConversation(required(projectId, 'project id'), required(profileId, 'profile id'), required(sessionId, 'session id'));
     try {
+        if (action === 'query' || action === 'reconcile-query') return await nativeQuery(conversation, action, required(value, 'query command or report id'), args[5]);
         await conversation.read();
         if (action === 'show') return conversation.snapshot();
         if (action === 'branches') return await conversation.branches();
         if (action === 'send') return await conversation.send(required(value, 'message'));
         if (action === 'fork') return await conversation.fork(required(value, 'branch name'));
-        if (action === 'reconcile') return await conversation.reconcile();
+        if (action === 'reconcile') return await conversation.reconcile(value);
         if (action === 'interrupt') return await conversation.interrupt();
-        throw new Error('conversation requires show/send/branches/fork/reconcile/interrupt');
+        throw new Error('conversation requires show/send/query/reconcile-query/branches/fork/reconcile/interrupt');
     } finally { await conversation.close(); }
+}
+async function nativeQuery(conversation: ProjectConversationPort, action: 'query' | 'reconcile-query', value: string, requestId?: string): Promise<unknown> {
+    const operationId = action === 'query' ? requestId ?? randomUUID() : value, started = Date.now();
+    const correlation = /^[a-zA-Z0-9_-]{1,128}$/.test(operationId) ? operationId : randomUUID();
+    try {
+        if (!conversation.queryCommand || !conversation.reconcileQuery) throw Object.assign(new Error('Independent queries require a newer node'), {code: 'ECAPABILITY'});
+        const result = action === 'query' ? await conversation.queryCommand(value.replace(/^\//u, ''), '', operationId)
+            : await conversation.reconcileQuery(operationId);
+        recordRuntimeDiagnostic('native.query.result', {operation: 'conversation.query', operationId: correlation, stage: action,
+            outcome: result.queryReceipts?.some(row => row.id === operationId) ? 'accepted' : 'unknown', durationMs: Date.now() - started});
+        return result;
+    } catch (error) {
+        const raw = (error as {remoteCode?: string; code?: string})?.remoteCode ?? (error as {code?: string})?.code;
+        recordRuntimeDiagnostic('native.query.result', {operation: 'conversation.query', operationId: correlation, stage: action,
+            outcome: 'failed', code: raw && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'QUERY_FAILED', durationMs: Date.now() - started});
+        throw error;
+    }
 }
 function required(value: string | undefined, name: string): string { if (!value?.trim()) throw new Error(`Missing ${name}`); return value; }

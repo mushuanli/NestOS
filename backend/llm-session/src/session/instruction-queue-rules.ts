@@ -1,23 +1,43 @@
+import {attachmentMetadata} from '../contracts/chat';
 import type { InstructionQueueEdit, SessionInstruction, SessionInstructionInput, SessionInstructionQueue } from '../contracts/instruction-queue';
 import { ulid } from '../persistence/ulid';
 import { sha256Hex } from '@itookit/llm-context';
+import {assertTargetSelection, assertFlowCallSource} from '@itookit/llm-flow/contracts';
 
 export function queueError(code: string, message: string): Error & { code: string } {
     return Object.assign(new Error(message), { code });
 }
 
 export function prepareInstruction(input: SessionInstructionInput, sessionId: string, branch: string): SessionInstruction {
+    if (input.expectedBranch !== undefined && (typeof input.expectedBranch !== 'string' || !input.expectedBranch.trim() || input.expectedBranch.length > 1024))
+        throw queueError('QUEUE_INVALID', 'Invalid expected instruction branch');
+    if (input.target) assertTargetSelection(input.target);
+    if (input.target?.kind === 'flow' && input.agentId || input.target?.kind === 'agent' && input.target.id !== input.agentId)
+        throw queueError('CALL_TARGET_CONFLICT', 'Call target conflicts with the legacy Agent selection');
     if (!Array.isArray(input.files) || typeof input.agentId !== 'string') throw queueError('QUEUE_INVALID', 'Invalid instruction input');
-    if (typeof input.text !== 'string' || (!input.text.trim() && !input.files.length)) throw queueError('QUEUE_INVALID', 'Instruction text or attachments are required');
+    if (typeof input.text !== 'string' || (!input.text.trim() && !input.files.length && !flowInput(input)))
+        throw queueError('QUEUE_INVALID', 'Instruction text, attachments or a Flow call are required');
     const id = input.sendIntent?.submission?.id ?? ulid();
     if (!/^[\w-]{1,128}$/.test(id)) throw queueError('QUEUE_INVALID', 'Invalid instruction identity');
-    const files = input.files.map(file => ({ name: file.name, type: file.type, path: file.path, size: file.size }));
+    const files = input.files.map(attachmentMetadata);
     const intent = input.sendIntent ?? { execution: { kind: 'agent', agentId: input.agentId }, branch: { mode: 'continue' }, retention: { mode: 'persistent' } };
-    const value = { ...input, files, sendIntent: { ...intent, submission: intent.submission ?? {
+    const value = { text: input.text, agentId: input.agentId, overrides: input.overrides, origin: input.origin,
+        ...(input.expectedBranch !== undefined ? {expectedBranch: input.expectedBranch} : {}),
+        ...(input.target ? {target: input.target} : {}), ...(input.expectedTarget ? {expectedTarget: input.expectedTarget} : {}), ...(input.source ? {source: input.source} : {}),
+        historyPolicy: input.historyPolicy, files, sendIntent: { ...intent, submission: intent.submission ?? {
         id, source: { kind: 'conversation', ownerId: sessionId, id },
     } }, id, branch, createdAt: Date.now(), state: 'pending' };
     assertInstructionSize(value);
     return JSON.parse(JSON.stringify(value)) as SessionInstruction;
+}
+
+function flowInput(input: SessionInstructionInput): boolean {
+    return input.target?.kind === 'flow' || input.source?.kind === 'arguments' || input.sendIntent?.execution.kind === 'flow' || input.overrides?.flowParameters !== undefined;
+}
+
+export function assertPreparedInstruction(item: SessionInstruction): void {
+    if (!item.text.trim() && !item.files.length && !item.flowBinding)
+        throw queueError('QUEUE_INVALID', 'Empty instructions require a validated Flow binding');
 }
 
 export function assertInstructionSize(value: unknown): void {
@@ -28,6 +48,8 @@ export function editInstructionQueue(queue: SessionInstructionQueue, edit: Instr
     assertRevision(queue, edit);
     const next = structuredClone(queue);
     switch (edit.action) {
+        case 'update': return updateText(next, edit.id, edit.text);
+        case 'update-input': return updateInput(next, edit.id, edit.source);
         case 'remove': editable(next, [edit.id], true); next.items = next.items.filter(item => item.id !== edit.id); break;
         case 'reorder': return reorder(next, edit.ids);
         case 'merge': return merge(next, edit.ids);
@@ -82,6 +104,8 @@ function merge(queue: SessionInstructionQueue, ids: string[]): SessionInstructio
     if (!Array.isArray(ids) || ids.length < 2) throw queueError('QUEUE_INVALID', 'Select at least two instructions to merge');
     editable(queue, ids);
     const selected = queue.items.filter(item => ids.includes(item.id));
+    if (selected.some(item => item.source?.kind === 'arguments'))
+        throw queueError('QUEUE_INCOMPATIBLE', 'Structured calls must be edited explicitly; no argument merge policy is declared');
     const [target] = selected;
     if (selected.some(item => signature(item) !== signature(target))) {
         throw queueError('QUEUE_INCOMPATIBLE', 'Merged instructions must use the same branch, agent and execution settings');
@@ -89,6 +113,7 @@ function merge(queue: SessionInstructionQueue, ids: string[]): SessionInstructio
     const indices = selected.map(item => queue.items.indexOf(item));
     if (indices.some((index, offset) => index !== indices[0] + offset)) throw queueError('QUEUE_INVALID', 'Only adjacent instructions can be merged');
     target.text = selected.map(item => item.text).join('\n\n');
+    if (target.source?.kind === 'composer') target.source.text = target.text;
     target.files = selected.flatMap(item => item.files).filter((file, index, files) =>
         files.findIndex(other => JSON.stringify(other) === JSON.stringify(file)) === index);
     assertInstructionSize(target);
@@ -101,6 +126,10 @@ function signature(item: SessionInstruction, includeBinding = true): string {
     const source = item.sendIntent?.submission?.source;
     const owner = source?.kind === 'project-draft' ? source : source ? { kind: source.kind, ownerId: source.ownerId } : null;
     const values = [item.branch, item.agentId, item.overrides ?? null, item.origin ?? 'user', item.historyPolicy ?? 'include', intent, owner];
+    if (item.expectedBranch !== undefined) values.push(['expectedBranch', item.expectedBranch]);
+    if (item.target) values.push(['target', item.target]);
+    if (item.expectedTarget) values.push(['expectedTarget', item.expectedTarget]);
+    if (item.source) values.push(['source', includeBinding && item.source.kind === 'composer' ? {...item.source, text: ''} : item.source]);
     if (includeBinding && item.connectionBinding) values.push(item.connectionBinding);
     if (includeBinding && item.flowBinding) values.push(item.flowBinding);
     return canonical(values);
@@ -115,4 +144,27 @@ function canonical(value: unknown): string {
     if (value && typeof value === 'object') return `{${Object.entries(value).filter(([, child]) => child !== undefined)
         .sort(([a], [b]) => a.localeCompare(b)).map(([key, child]) => `${JSON.stringify(key)}:${canonical(child)}`).join(',')}}`;
     return JSON.stringify(value);
+}
+
+function updateText(queue: SessionInstructionQueue, id: string, text: string): SessionInstructionQueue {
+    const [item] = editable(queue, [id]);
+    if (item.source?.kind === 'arguments') throw queueError('QUEUE_INPUT_EDITOR_REQUIRED', 'Edit the structured arguments for this instruction');
+    if (typeof text !== 'string' || (!text.trim() && !item.files.length && !item.flowBinding)) throw queueError('QUEUE_INVALID', 'Instruction text, attachments or a validated Flow call are required');
+    item.text = text;
+    if (item.source?.kind === 'composer') item.source.text = text;
+    assertInstructionSize(item);
+    if (new TextEncoder().encode(JSON.stringify(queue)).byteLength > 4 * 1024 * 1024) throw queueError('QUEUE_LIMIT', 'Instruction queue exceeds 4 MiB');
+    return queue;
+}
+
+function updateInput(queue: SessionInstructionQueue, id: string, source: SessionInstructionInput['source']): SessionInstructionQueue {
+    const [item] = editable(queue, [id]);
+    assertFlowCallSource(source);
+    if (!item.flowBinding && source.kind !== 'composer') throw queueError('QUEUE_INVALID', 'Structured arguments require a Flow binding');
+    if (source.kind === 'composer' && canonical(source.attachments) !== canonical(item.source?.kind === 'composer' ? item.source.attachments : []))
+        throw queueError('QUEUE_ATTACHMENT_EDIT_UNSUPPORTED', 'Prepare attachments before editing the instruction input');
+    item.source = structuredClone(source); item.text = source.kind === 'composer' ? source.text : '';
+    if (item.flowBinding && item.overrides) delete item.overrides.flowParameters;
+    assertInstructionSize(item);
+    return queue;
 }

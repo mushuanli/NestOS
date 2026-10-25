@@ -22,6 +22,17 @@ function round(id: string, status: PersistedRound['status'], error?: string, exe
 }
 
 describe('terminal round without assistant output', () => {
+    it('publishes an execution association before a rerun has assistant output', () => {
+        const state = new SessionState('test-session-id');
+        state.loadFromProjection(roundToProjection(round('r1', 'pending'), 'r1'));
+        const execution = {taskId: 'task-2', role: 'primary' as const, invocation: {invocationId: 'new', retryOfInvocationId: 'old'}};
+        const events = state.apply({type: 'round:updated', roundId: 'r1', changes: {execution}});
+        expect(state.getSessions()).toHaveLength(1);
+        expect(state.getSessions()[0]).toMatchObject({role: 'user', execution, invocation: execution.invocation});
+        expect(events).toEqual([{type: 'message:updated', payload: {messageId: 'round-r1-user', execution}}]);
+        state.apply({type: 'round:updated', roundId: 'r1', changes: {status: 'failed', error: 'Fixture failure'}});
+        expect(state.getSessions().map(group => group.invocation)).toEqual([execution.invocation, execution.invocation]);
+    });
     it('projects a failed assistant placeholder so the transcript does not end on the user message', () => {
         const projection = roundToProjection(round('r1', 'failed', 'Load failed'), 'r1');
 

@@ -15,6 +15,7 @@ interface AnalysisContext {
 
 interface ReferenceExtractionResult {
     references: string[];
+    requiredReferences: string[];
     metadata?: Record<string, unknown>;
 }
 
@@ -57,6 +58,7 @@ export class MarkdownAnalyzer {
 
         // 策略 1: 匹配 @asset/filename 语法
         this.extractAssetProtocolRefs(text, refs);
+        const requiredReferences = [...refs];
 
         // 策略 2: 匹配相对伴生目录
         this.extractSidecarRefs(text, context.filePath, refs);
@@ -64,7 +66,7 @@ export class MarkdownAnalyzer {
         // 策略 3: 匹配通用相对路径
         this.extractRelativePathRefs(text, refs);
 
-        return { references: Array.from(refs) };
+        return { references: Array.from(refs), requiredReferences };
     }
 
     /**

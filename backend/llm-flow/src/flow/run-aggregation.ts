@@ -1,5 +1,7 @@
 import type { JsonValue, SessionHandle, TaskHandle, TaskSpec } from '@itookit/durable-kernel';
 import type { DagNodeDefinition, FlowRunGoal } from '../contracts';
+import {invocationLabels} from '../contracts/flow';
+import {targetLabels} from '../contracts/call-target';
 import type { FlowExecutionHandle } from './executor';
 import type { DelegationGroup } from './delegation-runtime';
 import type { SchedulerCheckpoint } from './scheduler-checkpoint';
@@ -74,7 +76,8 @@ export class FlowRunAggregation {
             ...(initialCheckpoint?.spec.invocation ? { requestId: `flow-invocation:${initialCheckpoint.spec.invocation.requestId}` } : {}),
             // Terminal dependencies still decide success, including suppressed outputs.
             dependsOn: request.awaitingSchedule ? [] : dependencies.map(item => ({ task: item.taskId, condition: 'terminal' })),
-            labels: { kind: 'flow-root' },
+            labels: { kind: 'flow-root', ...targetLabels(initialCheckpoint?.spec.invocation?.target), ...invocationLabels(initialCheckpoint?.spec.invocation?.invocationId
+                ? initialCheckpoint.spec.invocation as import('../contracts').InvocationIdentity : undefined) },
         };
         this.beforeRootSubmit?.();
         return this.session.submit(spec);

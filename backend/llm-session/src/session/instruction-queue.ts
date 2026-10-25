@@ -1,9 +1,11 @@
+import {attachmentMetadata} from '../contracts/chat';
+import {identifyRuntimeAttachments} from './attachment-integrity';
 import type { InstructionQueueEdit, SessionInstruction, SessionInstructionInput, SessionInstructionQueue } from '../contracts/instruction-queue';
 import type { SessionStatus } from '../core/types';
 import type { InstructionQueueStore, StoredInstructionQueue } from '../persistence/instruction-queue-store';
 import { instructionQueueProjection } from '../persistence/instruction-queue-store';
 import type { SessionHost } from '../utils/host-ports';
-import { assertInstructionSize, editInstructionQueue, prepareInstruction, instructionDigest, queueError } from './instruction-queue-rules';
+import { assertInstructionSize, assertPreparedInstruction, editInstructionQueue, prepareInstruction, instructionDigest, queueError } from './instruction-queue-rules';
 import { ulid } from '../persistence/ulid';
 
 export interface InstructionQueuePorts {
@@ -17,6 +19,7 @@ export interface InstructionQueuePorts {
     mark?(sessionId: string): Promise<void>;
     unmark?(sessionId: string): Promise<void>;
     prepare?(sessionId: string, item: SessionInstruction, immediate: boolean): Promise<SessionInstruction>;
+    revise?(sessionId: string, item: SessionInstruction): Promise<SessionInstruction>;
     capture?(sessionId: string, item: SessionInstruction, source: SessionInstructionInput): Promise<SessionInstruction>;
     previouslyAccepted?(sessionId: string, item: SessionInstruction, digest: string): Promise<boolean>;
     changed(queue: SessionInstructionQueue): void;
@@ -38,9 +41,10 @@ export class SessionInstructionQueues {
 
     enqueue(sessionId: string, input: SessionInstructionInput): Promise<string> {
         const snapshot = structuredClone({ ...input, files: input.files.map(file => ({
-            name: file.name, type: file.type, path: file.path, size: file.size, fileRef: file.fileRef,
+            ...attachmentMetadata(file), fileRef: file.fileRef,
         })) });
-        return this.serialize(sessionId, () => this.accept(sessionId, snapshot), 'enqueue', input.sendIntent?.submission?.id);
+        return this.serialize(sessionId, async () => this.accept(sessionId, {...snapshot,
+            files: await identifyRuntimeAttachments(snapshot.files)}), 'enqueue', input.sendIntent?.submission?.id);
     }
 
     private async accept(sessionId: string, snapshot: SessionInstructionInput): Promise<string> {
@@ -54,11 +58,14 @@ export class SessionInstructionQueues {
             return item.id;
         }
         if (await this.ports.previouslyAccepted?.(sessionId, item, digest)) return item.id;
+        if (snapshot.expectedBranch !== undefined && snapshot.expectedBranch !== item.branch)
+            throw queueError('QUEUE_BRANCH_CHANGED', 'Branch changed before instruction admission');
         if (queue.items.length >= 100) throw queueError('QUEUE_LIMIT', 'Instruction queue is full (100 instructions)');
         const immediate = !queue.paused && !queue.items.length && await this.ports.ready(sessionId);
         item = await this.ports.prepare?.(sessionId, item, immediate) ?? item;
         await this.ports.mark?.(sessionId);
         item = await this.ports.capture?.(sessionId, item, snapshot) ?? item;
+        assertPreparedInstruction(item);
         item = { ...item, submissionDigest: digest }; assertInstructionSize(item);
         queue.items.push(item);
         queue.accepted = [...(queue.accepted ?? []), { id: item.id, digest }].slice(-256);
@@ -74,8 +81,26 @@ export class SessionInstructionQueues {
         edit = structuredClone(edit);
         return this.serialize(sessionId, async () => {
             await this.ports.assertWritable(sessionId);
-            return this.save(editInstructionQueue(await this.get(sessionId), edit), edit.action);
+            const previous = await this.get(sessionId), next = editInstructionQueue(previous, edit);
+            await this.reviseEdit(sessionId, previous, next);
+            return this.save(next, edit.action);
         }, `edit.${edit.action}`).then(queue => { this.wake(sessionId); return instructionQueueProjection(queue); });
+    }
+
+    private async reviseEdit(sessionId: string, previous: SessionInstructionQueue, next: SessionInstructionQueue): Promise<void> {
+        for (let index = 0; index < next.items.length; index++) {
+            const item = next.items[index], old = previous.items.find(entry => entry.id === item.id);
+            const sourceChanged = item.source && JSON.stringify(item.source) !== JSON.stringify(old?.source);
+            if (!sourceChanged && item.text === old?.text) continue;
+            if (sourceChanged) {
+                if (!this.ports.revise) throw queueError('QUEUE_INPUT_EDIT_UNAVAILABLE', 'Input revision requires the owning execution host');
+                next.items[index] = await this.ports.revise(sessionId, item);
+            }
+            next.items[index] = await this.ports.capture?.(sessionId, next.items[index], next.items[index]) ?? next.items[index];
+            assertPreparedInstruction(next.items[index]); assertInstructionSize(next.items[index]);
+        }
+        if (new TextEncoder().encode(JSON.stringify(next)).byteLength > 4 * 1024 * 1024)
+            throw queueError('QUEUE_LIMIT', 'Instruction queue exceeds 4 MiB');
     }
 
     pause(sessionId: string): Promise<void> {
@@ -135,6 +160,7 @@ export class SessionInstructionQueues {
             await this.save(queue, 'branch-check', item.id); return;
         }
         item.state = 'dispatching';
+        item.invocation ??= {invocationId: ulid()};
         queue = await this.save(queue, 'claim', item.id);
         this.active.set(sessionId, item.id);
         try { await this.ports.submit(sessionId, item); }

@@ -128,7 +128,7 @@ describe('DurableFlowExecutor', () => {
         const flow = { nodes: [{ ...valueNode('gate', null), plugin: 'builtin.human', config: { requestId: 'answer', prompt: 'Wait' } }], edges: [] };
         const run = await executor(kernel).submit('session-one', flow); await waitForNode(run, 'gate');
         const handlers = new Map<string, (args: any) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never,
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never,
             canWriteSession: async () => false }).register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         await handlers.get(FlowCommand.RunGet)!({ taskId: run.root.id, sessionId: 'session-one' });
         const args = { taskId: run.root.id, sessionId: 'session-one', targetTaskId: run.nodes.get('gate')!.id,
@@ -180,7 +180,7 @@ describe('DurableFlowExecutor', () => {
         const first = await executor(kernel).submit('session-one', flow), second = await executor(kernel).submit('session-one', flow);
         await waitForNode(first, 'gate'); await waitForNode(second, 'gate');
         const handlers = new Map<string, (args: any) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         await handlers.get(FlowCommand.RunGet)!({ taskId: first.root.id, sessionId: 'session-one' });
         await handlers.get(FlowCommand.RunGoalUpdate)!({ taskId: first.root.id, goal: { status: 'paused' } });
@@ -205,7 +205,7 @@ describe('DurableFlowExecutor', () => {
         kernel.registerStorageResolver({ kind: 'test', async resolve() { return { fs, rootPath: '/sessions/one/.kernel' }; } });
         registerPrograms(kernel); await kernel.initialize();
         const handlers = new Map<string, (args: any) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         const open = vi.spyOn(kernel, 'openSession');
         expect(await handlers.get(FlowCommand.RunList)!({})).toContainEqual(expect.objectContaining({ taskId: run.root.id, sessionId: 'session-one' }));
@@ -219,7 +219,7 @@ describe('DurableFlowExecutor', () => {
             expect(tasks.some(task => task.labels?.flowNodeId === 'gate' && task.id !== oldGate && task.interactions?.answer?.status === 'pending')).toBe(true);
         });
         const observer = new Map<string, (args: any) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => observer.set(name, handler) } as never);
         await observer.get(FlowCommand.RunGet)!({ taskId: run.root.id, sessionId: 'session-one' });
         await handlers.get(FlowCommand.RunRespond)!({ taskId: run.root.id, requestId: 'answer', value: 'done' });
@@ -639,7 +639,7 @@ describe('DurableFlowExecutor', () => {
         }).submit('session-one', { ...valueFlow(), runPolicy: { workspace: { mode: 'worktree' } } } as DagRunSpec);
         await execution.root.wait({ timeoutMs: 2000 });
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         const args = { taskId: execution.root.id, sessionId: 'session-one' };
         expect(await handlers.get(FlowCommand.RunGet)!(args)).toMatchObject({ workspaceFinalization: { status: 'pending' } });
@@ -738,7 +738,7 @@ describe('DurableFlowExecutor', () => {
     it.each(['inherit', 'replace', 'none'])('snapshots Session context for standalone runs with %s prompt policy', async policy => {
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
         const resolveSessionContext = vi.fn(async () => ({ projectInstructions: 'project rules', skillInstructions: 'loaded rules', skillIndex: 'available metadata' }));
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never, resolveSessionContext })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never, resolveSessionContext })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         const flow = { ...agentFlow(), id: 'flow', name: 'Flow', revision: 1, createdAt: 1, digest: '', systemPrompt: ['flow rules'] };
         flow.nodes[0].config = { instruction: 'review', systemPrompt: ['node rules'], systemPromptPolicy: policy, approval: 'none' };
@@ -882,7 +882,7 @@ describe('DurableFlowExecutor', () => {
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
         const bindNode = vi.fn(async (_sessionId, node, defaults) => ({ config: { ...defaults, ...node.config,
             messages: [{ role: 'system', content: 'resolved identity' }, { role: 'user', content: 'task' }], modelName: 'bound-model' } }));
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never, bindNode })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never, bindNode })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         const flow = { ...agentFlow(), id: 'flow', name: 'Flow', revision: 1, createdAt: 1, digest: '', systemPrompt: ['flow rules'] };
         await handlers.get(FlowCommand.RunStart)!({ sessionId: 'session-one', flow });
@@ -1113,7 +1113,7 @@ describe('DurableFlowExecutor', () => {
         kernel.registerStorageResolver({ kind: 'test', async resolve() { return { fs, rootPath: '/sessions/one/.kernel' }; } });
         await kernel.initialize();
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         const transcript = await handlers.get(FlowCommand.RunTranscript)!({ sessionId: 'session-one', taskId: execution.root.id,
             targetTaskId: execution.nodes.get('agent')!.id });
@@ -1144,7 +1144,7 @@ describe('DurableFlowExecutor', () => {
         const rootBefore = (await execution.root.status()).task.output;
         const source = execution.nodes.get('agent')!.id;
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         const budget = vi.spyOn(kernel, 'setBudget');
         const args = { sessionId: 'session-one', taskId: execution.root.id, targetTaskId: source, requestId: 'retry-one' };
@@ -1178,7 +1178,7 @@ describe('DurableFlowExecutor', () => {
         const execution = await submission;
         await execution.root.wait({ timeoutMs: 2000 });
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         await handlers.get(FlowCommand.RunGet)!({ taskId: execution.root.id, sessionId: 'session-one' });
         const retries = await Promise.all(['one', 'two'].map(request => prepareFlowTaskRetry(session, execution.root.id, source, request)));
@@ -1676,7 +1676,7 @@ describe('DurableFlowExecutor', () => {
         const execution = await executor(kernel).submit('session-one', valueFlow());
         await execution.root.wait({ timeoutMs: 2000 });
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         await handlers.get(FlowCommand.RunGet)!({ taskId: execution.root.id, sessionId: 'session-one' });
         const session = await kernel.openSession('session-one');
@@ -1700,7 +1700,7 @@ describe('DurableFlowExecutor', () => {
         const execution = await executor(kernel).submit('session-one', valueFlow());
         await execution.root.wait({ timeoutMs: 2000 });
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         await handlers.get(FlowCommand.RunGet)!({ taskId: execution.root.id, sessionId: 'session-one' });
         const session = await kernel.openSession('session-one');
@@ -1733,7 +1733,7 @@ describe('DurableFlowExecutor', () => {
 
     it('reattaches persisted Run nodes, iterations, usage and updated goals in a new service', async () => {
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
-        const register = () => new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        const register = () => new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         register();
         const flow = { ...loopFlow(3), id: 'flow', name: 'Flow', revision: 1, createdAt: 1, digest: '' };
@@ -1769,7 +1769,7 @@ describe('DurableFlowExecutor', () => {
 
     it('rejects signals addressed to a task outside the selected Run', async () => {
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
-        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never })
+        new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
         const flow = { ...valueFlow(), id: 'flow', name: 'Flow', revision: 1, createdAt: 1, digest: '' };
         const run = await handlers.get(FlowCommand.RunStart)!({ sessionId: 'session-one', flow });

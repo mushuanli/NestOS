@@ -539,3 +539,37 @@ C4Dynamic
 ```
 
 发布结果未知时，设置界面保留原请求并允许独立只读核对；精确回执能够释放原写响应仍悬挂的操作限制。迟到响应不能覆盖后续操作，重试沿用原 operationId，核对不会创建执行。注入日志失败不改变持久发布结果或原始拒绝原因。实现证据见 agent-revisions、agent-publications、agent-publication 和认证 view-api 测试；新目标入口、完整队列编辑及 Invocation 历史仍按各自功能合入。
+
+### 统一根调用、队列编辑与调用身份
+
+session.targets.list 提供 Agent/Flow 平级发布目录，session.submit 将 composer/arguments 规范化为既有 SessionInstructionInput。Flow 不借用包装 Agent 身份；宿主校验目标摘要、输入签名与当前 Session/分支，再冻结定义、依赖、默认实参和连接选择。参数为空、只采用默认值或零参数的 Flow 可以接纳；普通空聊天仍拒绝。外部请求只接收公开字段，不能指定内部计划或 Invocation。
+
+队列保留原提交摘要，编辑使用 expectedRevision CAS。编辑 composer 正文或参数时，从已接纳定义与身份重新编译，不能跟随后来发布的定义；非法编辑不更新持久队列。arguments 来源不做隐式合并。Session 队列在派发 claim 中先保存 Invocation，再提交 Task；核对沿用同一身份，用户重新执行创建新 Invocation，保存 retryOfInvocationId，保留原 Kernel 终态和 Round。Round.executions、Task labels 与结构化调用输入保持关联；本批完成根调用身份，Flow 内部循环/动态子调用的完整身份树仍待后续合入。
+
+session.submission.receipt 核对当前绑定，session.submission.inspect 要求显式 expectedSessionId，直接只读既有队列回执或已提交历史。查询不激活视图、不创建 Kernel Session、不重新解释目标或派发输入；不存在证据返回 unknown，内容冲突明确拒绝。移除队列项后仍可在既有有界回执窗口核对；窗口外仅在真实历史仍可证明时确认，长期回执保留仍属生命周期补项。CLI 的 prepare/submit/receipt 共用这些端口；冻结请求文件在派发前独占写入并同步，未知结果不自动重放。CLI 等待本次 Submission 的实际执行或交互，不用 Session 总状态推断完成。
+
+Session 附件随接纳复制到按操作和内容标识的不可变存储，实际模型消息在 Context 装配、预算和提供方校验前读取并核验字节。ContextAssembler 只提供 resolveMessage 机制端口，不认识 Session、附件路径或业务文件类型；Session 实现来源选择及材料转换。存储复用 SessionRepository 的附件目录，重复相同字节允许，冲突写拒绝；缺失必选附件、内容变化与存储故障分别报告。显示层的共享 InstructionQueueView 仅接收正文、参数及状态等展示数据，不接收编译图；迟到编辑响应不能回退用于后续编辑的来源信封。通用文件参数的宿主授权/传输及原生 Harness 文件编码另行验收。
+
+```mermaid
+C4Dynamic
+    title 统一根调用沿用既有 Session 与 Kernel 路径
+    Component(entry, "CLI / 应用命令入口", "公开目标与结构化来源")
+    Component(admission, "SessionManager / 输入准入", "核对绑定、签名与发布身份")
+    Component(queue, "SessionInstructionQueues", "原提交摘要、CAS 编辑、持久接纳与 claim")
+    Component(files, "Session 附件机制", "冻结内容并核验，复用原存储")
+    Component(view, "InstructionQueuePanel", "共享编辑器，保留最新来源版本")
+    Component(context, "ConversationContextBuilder", "派发时装配实际输入与上下文")
+    Component(kernel, "Kernel / Flow", "既有 Task 执行事实")
+    Component(history, "Round / Session 投影", "根 Invocation 与 Task 关联")
+    RelIndex(1, entry, admission, "提交原请求与目标签名")
+    RelIndex(2, admission, queue, "冻结目标与有效实参")
+    RelIndex(3, queue, files, "接纳前冻结附件")
+    RelIndex(4, queue, view, "持久接纳后的版本投影")
+    RelIndex(5, view, queue, "按原版本编辑正文或参数")
+    RelIndex(6, queue, context, "claim 持久分配根 Invocation 后派发")
+    RelIndex(7, context, files, "读取并核验实际材料")
+    RelIndex(8, context, kernel, "统一执行，保存根调用关联")
+    RelIndex(9, kernel, history, "按实际结果更新原 Round")
+```
+
+本批不改变 Kernel Effect.cancel 的确认契约，不开放原生续接，也不把本地队列展示等同默认工作台 OperationLedger 已迁移。默认工作台目标选择、持久台账与草稿修订消费仍需独立完成接线和迟到响应验收。

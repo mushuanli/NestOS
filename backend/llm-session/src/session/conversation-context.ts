@@ -4,6 +4,7 @@ import type { ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy
 import { ContextProfileStore } from '../persistence/context-profile-store';
 import { directExecutionMode } from './direct-execution-mode';
 import type {RoundManifest} from '../persistence/round-types';
+import {conversationUserMessage, materializeAttachmentMessage, materializeHarnessMessage} from './conversation-attachments';
 
 export interface ConversationLocation { branchRef: string; branchHead: string | null; }
 type ContextOptions = Pick<ConversationRunCoordinatorOptions, 'engine' | 'loadArtifact' | 'retrieveMemory' | 'resolveSessionContext'>;
@@ -34,12 +35,13 @@ export class ConversationContextBuilder {
         const manifest = await execution.log.loadManifest();
         const profile = manifest.branchMeta[location.branchRef]?.contextProfile
             ?? { id: '', revision: 0 };
-        const assembler = this.contextAssembler(execution, location.branchRef, manifest, includeMemory);
-        const version = execution.task.frozen?.agentVersion
+        const version = execution.config.target?.version ?? execution.task.frozen?.agentVersion
             ?? execution.config.agentVersion
             ?? 'unversioned';
         const sessionContext = await this.options.resolveSessionContext?.(execution.task.sessionId, execution.task.input.text);
-        const plan = contextPlan(execution, location, profile);
+        const pending = await this.currentMessage(execution);
+        const assembler = this.contextAssembler(execution, location.branchRef, manifest, includeMemory, pending);
+        const plan = contextPlan(execution, location, profile, pending);
         const seed = (await this.options.engine.getManifest(execution.task.sessionId)).initialContext;
         if (seed) plan.explicitInputs.push({ kind: 'text', content: typeof seed.value === 'string' ? seed.value : JSON.stringify(seed.value), label: 'Initial conversation material', order: 0 });
         const result = await assembler.assemble(plan, execution.task.id, {
@@ -55,17 +57,32 @@ export class ConversationContextBuilder {
         return directExecutionMode(execution.task.input) === 'agent' ? [...this.policy.systemPrompt, ...prompts] : prompts;
     }
 
+    private async currentMessage(execution: ConversationExecution) {
+        const pending = conversationUserMessage(execution.task.input.text, execution.contextFiles);
+        if (execution.config.execution?.kind === 'harness')
+            execution.currentInput = await materializeHarnessMessage(this.options.engine, execution.task.sessionId, pending);
+        return pending;
+    }
+
     private contextAssembler(
         execution: ConversationExecution,
         branchRef: string,
         manifest: RoundManifest,
         includeMemory = true,
+        pending?: import('@itookit/llm-context').ChatMessage,
     ): IContextAssembler {
+        const resolved = new Map<import('@itookit/llm-context').ChatMessage, Promise<import('@itookit/llm-context').ChatMessage>>();
+        if (pending && execution.currentInput) resolved.set(pending, Promise.resolve(execution.currentInput));
+        const materialize = execution.config.execution?.kind === 'harness' ? materializeHarnessMessage : materializeAttachmentMessage;
         return createContextAssembler({
             log: execution.log,
             profileStore: new ContextProfileStore(this.options.engine, execution.task.sessionId),
             readRound: roundId => execution.log.readRound(roundId, branchRef, manifest),
-            loadArtifact: id => this.options.loadArtifact(id),
+            resolveMessage: message => {
+                if (!resolved.has(message)) resolved.set(message, materialize(this.options.engine, execution.task.sessionId, message));
+                return resolved.get(message)!;
+            },
+            loadArtifact: id => this.options.loadArtifact(execution.task.sessionId, id),
             retrieveMemory: includeMemory && this.options.retrieveMemory ? (plan, agent) => this.options.retrieveMemory!(plan, agent, {
                 sessionId: execution.task.sessionId, policy: structuredClone(execution.config.memoryPolicy),
             }) : undefined,
@@ -78,6 +95,7 @@ function contextPlan(
     execution: ConversationExecution,
     location: ConversationLocation,
     profile: { id: string; revision: number },
+    pendingUserMessage: import('@itookit/llm-context').ChatMessage,
 ) {
     return {
         branchRef: location.branchRef,
@@ -85,7 +103,7 @@ function contextPlan(
         profile,
         // The assembler de-duplicates this against the Round that owns it, so a
         // Round excluded by context policy can never drop the prompt entirely.
-        pendingUserMessage: { role: 'user' as const, content: execution.task.input.text },
+        pendingUserMessage,
         pendingRoundId: execution.roundId,
         explicitInputs: [] as import('@itookit/llm-context').InputBinding[],
         tokenBudget: execution.config.defaultContextPolicy?.tokenBudget,

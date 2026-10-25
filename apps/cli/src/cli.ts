@@ -105,6 +105,8 @@ export function parseArgs(argv: string[]): ParsedArgs {
         else if (arg === '--static') options.staticDir = required(rest[++index], 'static UI directory');
         else if (arg === '--audit-file') options.auditFile = required(rest[++index], 'audit file');
         else if (arg === '--agent') options.agent = required(rest[++index], 'agent id');
+        else if (arg === '--flow') options.flow = required(rest[++index], 'published Flow id');
+        else if (arg === '--submission-file') options.submissionFile = required(rest[++index], 'frozen submission JSON file');
         else if (arg === '--branch') options.branch = required(rest[++index], 'branch name');
         else if (arg === '--model') options.model = required(rest[++index], 'model');
         else if (arg === '--api-key-env') options.apiKeyEnv = required(rest[++index], 'api-key-env');
@@ -152,8 +154,15 @@ function help(): string {
         `  mindos project list|create [name] [--profile data-root] [--json]\n` +
         `  mindos session list | create <project-id> <title> | show <session-id>\n` +
         `  mindos session send|branches|branch|delete-branch <session-id> [text/name] [--agent id] [--branch name]\n` +
+        `  mindos session targets\n` +
+        `  mindos session prepare|send <session-id> [text] --agent id [--submission-file call.json]\n` +
+        `  mindos session send <session-id> [text] --agent <id> | --flow <id> [--params file]\n` +
+        `  mindos session prepare <session-id> [text] --flow <id> --submission-file file\n` +
+        `  mindos session submit|receipt <session-id> <submission.json>\n` +
         `  mindos conversation profiles <project-id> | list <project-id> <profile-id> [cursor]\n` +
         `  mindos conversation create <project-id> <profile-id> <workspace-id>\n` +
+        `  mindos conversation query <project-id> <profile-id> <session-id> <command> [query-id]\n` +
+        `  mindos conversation reconcile-query <project-id> <profile-id> <session-id> <query-id>\n` +
         `  mindos conversation show|send|branches|fork|reconcile|interrupt <project-id> <profile-id> <session-id> [text/name]\n` +
         `  mindos connection list | mcp list | task show|events|cancel <session-id> <task-id>\n` +
         `  --connect https://host:2000 --client-cert file --client-key file --ca-cert file\n` +
@@ -188,7 +197,9 @@ function help(): string {
         `  --grant-memory <id> 显式授权本次 Session 使用该共享记忆的配置范围；可重复\n` +
         `  --headless          无交互模式，事件作为 JSONL 写到 stdout（适合 CI）\n` +
         `  --connection-bindings <file>  .flow connection slot bindings (JSON)\n` +
-        `  --params <file>     .flow 运行参数（JSON 对象，覆盖参数默认值）\n` +
+        `  --params <file>     .flow 或 Session 调用实参（JSON 对象）\n` +
+        `  --flow <id>         Session 调用已发布 Flow，与 --agent 互斥\n` +
+        `  --submission-file <file>  派发前独占保存冻结请求，供 submit/receipt 复用\n` +
         `  --json              JSON 输出；离线 run 隐含 --headless，应用命令默认输出 JSON\n` +
         `  --offline           校验/查看时不要求 API key 环境变量已存在\n`;
 }

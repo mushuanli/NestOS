@@ -2,7 +2,7 @@ import {afterEach, expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
 import {FlowCommand, type FlowDraft} from '@itookit/llm-flow/contracts';
-import {SessionCommand, type SessionInstructionQueue} from '@itookit/llm-session/contracts';
+import {SessionCommand, type RootTargetCatalog, type SessionInstructionQueue} from '@itookit/llm-session/contracts';
 import type {AgentDefinition, AgentPublishRequest} from '@itookit/kernel-adapters/contracts';
 import {AgentResolver} from '@itookit/llm-session';
 import {createApplicationRuntime} from '../src/runtime/create-application-runtime';
@@ -83,13 +83,32 @@ it('locks a published Flow implementation and defaults across later Flow/Agent e
     const saved = await runtime.commandBus.execute<{draft: FlowDraft}>(FlowCommand.DraftSave, {draft, expectedDraftVersion: draft.draftVersion});
     await runtime.commandBus.execute(FlowCommand.RevisionCreate, {draftId: 'implementation', expectedDraftVersion: saved.draft.draftVersion});
     const sessionId = await runtime.sessionRepository.createSession('Published Flow Agent'); await runtime.commandBus.execute(SessionCommand.Bind, {sessionId});
-    await runtime.commandBus.execute(SessionCommand.Send, {agentId: 'published', text: 'Selected input', files: [], overrides: {flowParameters: {request: 'Selected input'}}});
+    await runtime.commandBus.execute(SessionCommand.Submit, {target: {kind: 'agent', id: 'published', version: first.target.version},
+        source: {kind: 'arguments', value: {request: 'Selected input'}}});
     await vi.waitFor(async () => expect((await runtime.sessionRepository.readHistoryChain(sessionId)).rounds[0]?.status).toBe('completed'));
     const root = (await runtime.kernel.kernel.listSessionTasks(sessionId)).find(task => task.labels?.kind === 'flow-root')!;
     expect(JSON.stringify(root.output)).toContain('FLOW_1'); expect(JSON.stringify(root.output)).toContain('agent-default');
     const next = await runtime.agentService.publishAgent(await request(runtime, 'new-flow')); expect(next.flow?.revision).toBe(2);
     expect((await new AgentResolver(runtime.agentService).resolveExact('published', first.target.version)).execution).toMatchObject({kind: 'flow', revision: 1});
-
+    const catalog = await runtime.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets);
+    expect(catalog.entries.find(entry => entry.target.id === 'published')?.target).toEqual(next.target);
+    const original = (await runtime.sessionRepository.readHistoryChain(sessionId)).rounds[0];
+    await vi.waitFor(() => expect(runtime.sessionManager.isGenerating()).toBe(false));
+    await runtime.commandBus.execute(SessionCommand.Regenerate, {assistantId: `round-${original.id}-assistant`,
+        options: {overrides: {flowParameters: {request: 'Regenerated task', mode: 'regenerated'}}}});
+    await vi.waitFor(async () => {const [rerun] = (await runtime.sessionRepository.readHistoryChain(sessionId)).rounds;
+        expect(rerun.id).not.toBe(original.id); expect(rerun.status).toBe('completed'); expect(rerun.target).toEqual(first.target);
+        expect(rerun.flow?.parameters).toEqual({request: 'Regenerated task', mode: 'regenerated'});});
+    await vi.waitFor(() => expect(runtime.sessionManager.isGenerating()).toBe(false));
+    const context = await runtime.commandBus.execute<any>(SessionCommand.FlowRerunContext, {sourceRoundId: original.id});
+    expect(context.definition.revision).toBe(1); expect(context.draft).toBeUndefined();
+    await runtime.commandBus.execute(SessionCommand.FlowRerun, {sessionId, sourceRoundId: original.id, sourceSelection: 'selected',
+        definitionKey: context.definitionKey, parameters: {request: 'Edited arguments', mode: 'chosen'}});
+    await vi.waitFor(async () => {const [rerun] = (await runtime.sessionRepository.readHistoryChain(sessionId)).rounds;
+        expect(rerun.status).toBe('completed'); expect(rerun.target).toEqual(first.target); expect(rerun.flow?.parameters?.request).toBe('Edited arguments');});
+    const roots = (await runtime.kernel.kernel.listSessionTasks(sessionId)).filter(task => task.labels?.kind === 'flow-root');
+    expect(roots).toHaveLength(3); expect(roots.every(task => JSON.stringify(task.output).includes('FLOW_1'))).toBe(true);
+    expect((await runtime.kernel.kernel.openTask(root.id).then(task => task.status())).task.status).toBe('succeeded');
 });
 
 it('rejects a legacy Flow implementation override under a published Agent identity before admitting execution', async () => {
@@ -109,9 +128,10 @@ it('keeps local scope and chat metadata tied to the published revision until ano
     try {expect(view.getConfigurationSnapshot().agents.find(agent => agent.id === 'published')?.name).toBe(first.definition.name);}
     finally {await view.dispose();}
     await runtime.agentService.publishAgent(await request(runtime, 'private-publication'));
-    expect((await new AgentResolver(runtime.agentService).getAvailableAgents()).some(agent => agent.id === 'published')).toBe(false);
+    const catalog = await runtime.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets);
+    expect(catalog.entries.some(entry => entry.target.id === 'published')).toBe(false);
     const sessionId = await runtime.sessionRepository.createSession('Local scope'); await runtime.commandBus.execute(SessionCommand.Bind, {sessionId});
-    await expect(runtime.commandBus.execute(SessionCommand.Send, {agentId: 'published', text: 'Rejected', files: []}))
+    await expect(runtime.commandBus.execute(SessionCommand.Submit, {target: {kind: 'agent', id: 'published'}, source: {kind: 'composer', text: 'Rejected', values: {}, attachments: []}}))
         .rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
     expect((await runtime.commandBus.execute<SessionInstructionQueue>(SessionCommand.GetInstructionQueue)).items).toEqual([]);
 });
@@ -136,6 +156,40 @@ it('does not recreate a deleted published default Agent through the legacy synth
     expect((await new AgentResolver(runtime.agentService).getAvailableAgents()).some(agent => agent.id === 'default')).toBe(false);
     const view = await createChatConfigurationView(runtime.agentService);
     try {expect(view.getConfigurationSnapshot().fallbackAgentAllowed).toBe(false);} finally {await view.dispose();}
+});
+
+it.each([true, false])('dispatches accepted versions across runtime restart and first-publication migration (initiallyPublished=%s)', async initiallyPublished => {
+    const setupResult = await setup(), {backend, definition} = setupResult; let runtime = setupResult.runtime;
+    vi.spyOn(backend, 'close').mockResolvedValue(undefined); retainedBackends.push(backend);
+    await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow()]});
+    const source = {...definition, type: 'workflow' as const, execution: {kind: 'flow' as const, flowId: 'implementation', parameters: {mode: 'FIRST_DEFAULT'}}};
+    await runtime.agentService.saveAgent(source);
+    const catalog = await runtime.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets);
+    const first = initiallyPublished ? await runtime.agentService.publishAgent(await request(runtime))
+        : {target: catalog.entries.find(entry => entry.target.id === 'published')!.target};
+    const sessionId = await runtime.sessionRepository.createSession('Published queue'); await runtime.commandBus.execute(SessionCommand.Bind, {sessionId});
+    const initial = await runtime.commandBus.execute<SessionInstructionQueue>(SessionCommand.GetInstructionQueue);
+    await runtime.commandBus.execute(SessionCommand.EditInstructionQueue, {action: 'pause', expectedRevision: initial.revision});
+    const firstCall = {target: {kind: 'agent', id: 'published', version: first.target.version}, expectedTarget: first.target,
+        source: {kind: 'arguments', value: {request: 'Queued first'}}, submission: {id: 'first-call', source: {kind: 'conversation', ownerId: sessionId, id: 'first-call'}}};
+    await runtime.commandBus.execute(SessionCommand.Submit, firstCall);
+    await runtime.agentService.saveAgent({...source, execution: {...source.execution, parameters: {mode: 'SECOND_DEFAULT'}}});
+    const next = await runtime.agentService.publishAgent(await request(runtime, 'next-published'));
+    await runtime.agentService.saveAgent({...source, execution: {...source.execution, parameters: {mode: 'UNPUBLISHED_DEFAULT'}}});
+    cleanup.splice(cleanup.indexOf(runtime), 1); await runtime.dispose();
+    runtime = await createApplicationRuntime({backend, ownerKind: 'cli', digitalTwinAutoStart: false}); cleanup.push(runtime);
+    await runtime.commandBus.execute(SessionCommand.Bind, {sessionId});
+    expect(await runtime.commandBus.execute(SessionCommand.Submit, firstCall)).toBe('first-call');
+    await runtime.commandBus.execute(SessionCommand.Submit, {target: {kind: 'agent', id: 'published'},
+        source: {kind: 'arguments', value: {request: 'Queued second'}}, submission: {id: 'second-call', source: {kind: 'conversation', ownerId: sessionId, id: 'second-call'}}});
+    const queue = await runtime.commandBus.execute<SessionInstructionQueue>(SessionCommand.GetInstructionQueue);
+    expect(queue.items).toHaveLength(2); expect(queue.items.map(item => item.target?.version)).toEqual([first.target.version, next.target.version]);
+    await runtime.commandBus.execute(SessionCommand.EditInstructionQueue, {action: 'resume', expectedRevision: queue.revision});
+    await vi.waitFor(async () => {const history = await runtime.sessionRepository.readHistoryChain(sessionId);
+        expect(history.rounds).toHaveLength(2); expect(history.rounds.every(round => round.status === 'completed')).toBe(true);}, {timeout: 10000});
+    const roots = (await runtime.kernel.kernel.listSessionTasks(sessionId)).filter(task => task.labels?.kind === 'flow-root').sort((a, b) => a.createdAt - b.createdAt);
+    expect(JSON.stringify(roots[0].output)).toContain('FIRST_DEFAULT'); expect(JSON.stringify(roots[1].output)).toContain('SECOND_DEFAULT');
+    expect(JSON.stringify(roots.map(task => task.output))).not.toContain('UNPUBLISHED_DEFAULT');
 });
 
 it.each([true, false])('freezes ordinary Agent policy across restart and first publication (initiallyPublished=%s)', async initiallyPublished => {

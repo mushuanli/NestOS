@@ -1,3 +1,5 @@
+import {assertRootCallable} from '../contracts/callable-exposure';
+import {sameTargetRef} from '../contracts/call-target';
 import {checkFlowSource, checkFlowSyntax} from './syntax-check';
 import { hasLocalScheduler, withFlowControl } from './control-session';
 import { workspaceFinalizationKey, type WorkspaceFinalization } from './workspace-finalization';
@@ -49,6 +51,8 @@ export interface FlowRunPreparation {
 export interface FlowRunSummary { taskId: string; sessionId: string; name: string; status: string; createdAt: number; }
 
 export interface DurableFlowSnapshot {
+    /** Existing durable membership, independent of the optional parent control-tree migration. */
+    controlTaskIds?: string[];
     variables?: import('./variables').VariableCheckpoint;
     workspaceFinalization?: WorkspaceFinalization;
     attachedFromStorage?: boolean;
@@ -181,12 +185,25 @@ export class DagCommandService {
         fallbackConnectionId?: string | null,
         connectionBindings?: Record<string, string>,
     ) {
+        flow = await this.rootDefinition(flow);
+        if (invocation?.target && !sameTargetRef(invocation.target, {kind: 'flow', id: flow.id, version: String(flow.revision), digest: flow.digest}))
+            throw Object.assign(new Error('Invocation target does not match the published Flow'), {code: 'CALL_TARGET_CHANGED'});
         const compiled = await this.prepareRun({ sessionId, flow, parameters, connectionId, fallbackConnectionId, connectionBindings });
         return this.submitPrepared({ kind: 'graph', sessionId,
             graph: { ...compiled, ...(goal ? { goal } : {}), ...(invocation ? { invocation } : {}) }, parameters });
     }
 
     /** Compile without spawning tasks so the host can persist admission before execution. */
+    private async rootDefinition(flow: FlowRevision): Promise<FlowRevision> {
+        assertRootCallable(flow);
+        const selected = await this.options.flowStore.loadRevision(String(flow.id), flow.revision);
+        if (selected) { assertRootCallable(selected); return selected; }
+        if (await this.options.flowStore.loadRevision(String(flow.id))) {
+            throw Object.assign(new Error('Published Flow revision is unavailable'), {code: 'FLOW_REVISION_NOT_FOUND'});
+        }
+        return flow;
+    }
+
     async prepareRun({ sessionId, flow, parameters, connectionId, fallbackConnectionId, connectionBindings }: FlowRunPreparation) {
         if (!sessionId) throw new Error('DAG run requires sessionId');
         if (this.options.canWriteSession && !await this.options.canWriteSession(sessionId)) throw new Error('Session is read-only on this host');
@@ -239,6 +256,7 @@ export class DagCommandService {
         return {
             variables: scheduler?.variables,
             workspaceFinalization: handle.workspaceFinalization ?? savedWorkspace?.value as unknown as WorkspaceFinalization | undefined,
+            controlTaskIds: [...new Set([taskId, ...handle.taskIds])],
             attachedFromStorage: handle.attachedFromStorage,
             root: await handle.root.status(),
             nodes: await Promise.all([...handle.nodes].map(async ([nodeId, task]) => ({

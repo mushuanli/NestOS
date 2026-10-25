@@ -32,6 +32,8 @@ export interface CommandOptions {
     staticDir?: string;
     auditFile?: string;
     agent?: string;
+    flow?: string;
+    submissionFile?: string;
     branch?: string;
     file?: string;
     paramsFile?: string;

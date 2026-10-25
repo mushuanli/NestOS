@@ -1,4 +1,7 @@
 import type { Kernel } from '@itookit/durable-kernel';
+import {attachmentMetadata} from '../contracts/chat';
+import {freezeAttachments} from './attachment-integrity';
+import {AttachmentProcessor} from './attachment-processor';
 import type { InstructionQueueEdit, SessionInstruction, SessionInstructionInput, SessionInstructionQueue } from '../contracts/instruction-queue';
 import type { TaskInput } from '../core/types';
 import type { InstructionQueueSessions } from '../persistence/instruction-queue-sessions';
@@ -7,7 +10,7 @@ import { resolveSessionExecutionMode } from './session-execution-mode';
 import type { SessionInstructionQueues } from './instruction-queue';
 import type { SessionInstructionRuntime } from './session-instruction-runtime';
 import { queueError } from './instruction-queue-rules';
-import { hasCommittedSubmission } from '../persistence/submission-receipt';
+import { hasCommittedSubmission, hasMatchingCommittedSubmission } from '../persistence/submission-receipt';
 import type { SessionRegistry } from './session-registry';
 import type { SessionRunCoordinator } from './session-run-coordinator';
 import type { RoundOperations } from './round-operations';
@@ -31,6 +34,7 @@ export class SessionInstructions {
             assertWritable: id => this.assertWritable(id), branch: async id => (await registry.engine.getManifest(id)).currentBranch,
             ready: id => this.ready(id), submit: (id, item) => this.submit(id, item),
             recover: (id, item) => this.recover(id, item), prepare: (id, item, immediate) => this.prepare(id, item, immediate),
+            revise: (id, item) => this.runs.reviseQueuedInstruction(id, item),
             capture: (id, item, source) => this.persistAttachments(id, item, source),
             previouslyAccepted: (id, item, digest) => this.previouslyAccepted(id, item, digest), changed: queue => this.changed(queue),
             idle: id => this.notify(id),
@@ -39,7 +43,7 @@ export class SessionInstructions {
 
     send(input: TaskInput): Promise<string> {
         if (this.closed) return Promise.reject(queueError('QUEUE_CLOSED', 'Session execution context is closed'));
-        const source = { ...input, files: input.files.map(file => ({ name: file.name, type: file.type, path: file.path, size: file.size,
+        const source = { ...input, files: input.files.map(file => ({ ...attachmentMetadata(file),
             fileRef: typeof Blob !== 'undefined' && file instanceof Blob ? file : file.fileRef })) };
         const operation = this.queues.enqueue(input.sessionId, source);
         this.pending.add(operation);
@@ -48,6 +52,9 @@ export class SessionInstructions {
     }
 
     snapshot(id: string): SessionInstructionQueue | undefined { return this.runtime.snapshot(id); }
+    committed(id: string, submission: import('@itookit/llm-flow/contracts').SessionSubmission): Promise<boolean> {
+        return hasCommittedSubmission(this.registry.engine, id, submission);
+    }
     hasPending(): boolean { return this.pending.size > 0 || this.runtime.hasPending(id => !!this.registry.getSessionRuntime(id)); }
     edit(id: string, edit: InstructionQueueEdit) { return this.queues.edit(id, edit); }
     pause(id: string) { return this.queues.pause(id); }
@@ -81,12 +88,7 @@ export class SessionInstructions {
 
     private async previouslyAccepted(id: string, item: SessionInstruction, digest: string): Promise<boolean> {
         const submission = item.sendIntent?.submission;
-        if (!submission || !await hasCommittedSubmission(this.registry.engine, id, submission)) return false;
-        const raw = await this.registry.engine.readDocument(id, `round-${item.id}.json`);
-        const round = JSON.parse(raw!) as PersistedRound;
-        if (!round.submissionDigest) throw queueError('QUEUE_IDENTITY_UNVERIFIABLE', 'This historical request has no content receipt; inspect history before submitting with a new identity');
-        if (round.submissionDigest !== digest) throw queueError('QUEUE_CONFLICT', 'Submission identity already belongs to another request');
-        return true;
+        return !!submission && hasMatchingCommittedSubmission(this.registry.engine, id, submission, digest);
     }
 
     private async assertWritable(id: string): Promise<void> {
@@ -105,6 +107,7 @@ export class SessionInstructions {
         const state = this.registry.getSessionState(id), runtime = this.registry.getSessionRuntime(id);
         if (!state || !runtime) throw queueError('QUEUE_SESSION_MISSING', 'Session execution context is unavailable');
         await this.assertHistoryReady(id);
+        await new AttachmentProcessor(this.registry.engine, this.registry.host.logger).resolveAttachments(id, item.text, item.files);
         await this.registry.reloadSessionData(id, state);
         return this.rounds.sendInSession({ ...item, sessionId: id, instructionId: item.id, instructionBranch: item.branch,
             instructionConnectionBinding: item.connectionBinding, instructionFlowBinding: item.flowBinding }, state, runtime);
@@ -121,29 +124,13 @@ export class SessionInstructions {
     }
 
     private async persistAttachments(sessionId: string, queued: SessionInstruction, input: SessionInstructionInput): Promise<SessionInstruction> {
-        for (const [index, file] of input.files.entries()) {
-            if (!file.fileRef) continue;
-            const name = `${queued.id}-${index}${file.name.match(/\.[a-zA-Z0-9]{1,16}$/)?.[0] ?? ''}`;
-            await this.persistFile(sessionId, name, file.fileRef, queued.id);
-            queued.text = queued.text.replaceAll(`@asset/${file.name}`, `@asset/${name}`);
-            queued.files[index] = { ...queued.files[index], name };
-        }
+        const processor = new AttachmentProcessor(this.registry.engine, this.registry.host.logger);
+        const files = await processor.resolveAttachments(sessionId, queued.text, input.files);
+        queued.files = await freezeAttachments(this.registry.engine, sessionId, queued.id, files, this.registry.host.logger);
+        const replacements = new Map(files.map((file, index) => [file.name, queued.files[index].name]));
+        queued.text = queued.text.replace(/@asset\/([^\s)"']+)/g, (reference, name: string) =>
+            replacements.has(name) ? `@asset/${replacements.get(name)}` : reference);
         return queued;
-    }
-
-    private async persistFile(sessionId: string, name: string, file: Blob, operationId: string): Promise<void> {
-        const started = Date.now(); let stage = 'attachment-read';
-        try {
-            const bytes = await file.arrayBuffer(); stage = 'attachment-write';
-            await this.registry.engine.writeAttachment(sessionId, name, bytes);
-            this.registry.host.logger.debug('Queued attachment persisted', { operation: 'session.instructions', stage,
-                outcome: 'success', sessionId, operationId, bytes: bytes.byteLength, durationMs: Date.now() - started });
-        } catch (error) {
-            const code = stage === 'attachment-read' ? 'QUEUE_ATTACHMENT_READ' : 'QUEUE_ATTACHMENT_WRITE';
-            this.registry.host.logger.warn('Queued attachment persistence failed', { operation: 'session.instructions', stage,
-                outcome: 'failure', sessionId, operationId, code, durationMs: Date.now() - started });
-            throw queueError(code, `${stage}: ${error instanceof Error ? error.message : 'Attachment operation failed'}`);
-        }
     }
 
     private async recover(id: string, item: SessionInstruction): Promise<'running' | 'completed' | 'failed' | 'uncertain'> {

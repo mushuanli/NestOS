@@ -1,5 +1,8 @@
 import { snapshotDirectAgentPolicy, type ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
 import { restoreFlowHistory } from '../persistence/restore-flow-history';
+import {assertSubmissionBinding, submissionInstruction} from './submission-input';
+import {readSubmissionReceipt} from './submission-receipt';
+import {ulid} from '../persistence/ulid';
 import { KernelError, KernelErrorCode } from '@itookit/durable-kernel';
 import { flowBranchExecutions } from './flow-branches';
 import { FlowRerunService } from './flow-rerun';
@@ -26,6 +29,8 @@ import {
 import type { DagPluginCatalog, JsonValue, SendIntent } from '@itookit/llm-flow/contracts';
 import type { ToolDefinition } from '@itookit/llm-context';
 import type { FlowStore } from '@itookit/llm-flow';
+import {FlowDefinitionStore} from '@itookit/llm-flow';
+import {RootTargetDirectory} from './root-target-catalog';
 import { ConversationError, ConversationErrorCode } from '../core/errors';
 import { CONVERSATION_DEFAULTS } from '../core/constants';
 import { ISessionRepository, BranchTreeNode } from '../persistence/types';
@@ -83,6 +88,7 @@ export class SessionManager implements ISession, SessionQuery {
     private projectionSyncQueued = false;
 
     private readonly directAgentPolicy: ResolvedDirectAgentPolicy;
+    private readonly callTargets: RootTargetDirectory;
 
     getDirectAgentPolicy(): ResolvedDirectAgentPolicy { return this.directAgentPolicy; }
 
@@ -119,7 +125,8 @@ export class SessionManager implements ISession, SessionQuery {
         this.canWriteSession = options.canWriteSession;
         this.registry = new SessionRegistry(engine, round => restoreFlowHistory(options.kernel, round, this.host), this.host);
         this.agentResolver = new AgentResolver(agentService, options.resolveSessionSkills, options.resolveMCPToolIds, this.host, options.agentResolution);
-        const attachments = new AttachmentProcessor(engine);
+        this.callTargets = new RootTargetDirectory(agentService, this.agentResolver, new FlowDefinitionStore(options.flowStore, options.dagPlugins), this.host, options.dagPlugins);
+        const attachments = new AttachmentProcessor(engine, this.host.logger);
 
         if (!options?.kernel) throw new Error('SessionManager requires Kernel');
         this.kernel = options.kernel;
@@ -278,9 +285,9 @@ export class SessionManager implements ISession, SessionQuery {
         return flowBranchExecutions(this.registry.engine, sessionId);
     }
 
-    getFlowRerunContext() { return this.flowRerun.context(); }
+    getFlowRerunContext(sourceRoundId?: string) { return this.flowRerun.context(sourceRoundId); }
 
-    async rerunFlow(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedSessionId?: string, expectedDefinitionKey?: string, connectionId?: string, connectionBindings?: Record<string, string>) {
+    async rerunFlow(parameters: Record<string, JsonValue>, sourceRoundId: string | null, expectedSessionId?: string, expectedDefinitionKey?: string, connectionId?: string, connectionBindings?: Record<string, string>, sourceSelection?: 'selected') {
         const sessionId = this.registry.ensureBound().sessionId;
         if (this.canWriteSession && !await this.canWriteSession(sessionId)) {
             throw new ConversationError(ConversationErrorCode.SESSION_INVALID,
@@ -288,7 +295,7 @@ export class SessionManager implements ISession, SessionQuery {
         }
         if (this.registry.ensureBound().sessionId !== sessionId) throw new Error('Session changed; reopen the rerun form');
         if (expectedSessionId && expectedSessionId !== sessionId) throw new Error('Session changed; reopen the rerun form');
-        return this.flowRerun.run(parameters, sourceRoundId, expectedDefinitionKey, connectionId, connectionBindings);
+        return this.flowRerun.run(parameters, sourceRoundId, expectedDefinitionKey, connectionId, connectionBindings, sourceSelection);
     }
 
     /** Create a fresh session instance bound to a workflow run (records flow + parameters). */
@@ -426,6 +433,78 @@ export class SessionManager implements ISession, SessionQuery {
         return this.instructions.send({ sessionId, text, files: files ?? [], agentId, overrides, origin, historyPolicy, sendIntent });
     }
 
+    async submit(request: import('../contracts/submission').SubmissionRequest): Promise<string> {
+        const supplied = request?.submission?.id, started = Date.now();
+        const operationId = typeof supplied === 'string' && /^[\w-]{1,128}$/.test(supplied) ? supplied : ulid();
+        let stage = 'input';
+        this.host.logger.debug('Call submission started', {operation: 'call.submit', operationId, stage, result: 'start'});
+        try {
+            const input = submissionInstruction(request);
+            stage = 'binding';
+            const sessionId = this.registry.ensureBound().sessionId;
+            assertSubmissionBinding(request, sessionId);
+            input.sendIntent!.submission ??= {id: operationId, source: {kind: 'conversation', ownerId: sessionId, id: operationId}};
+            stage = 'admission';
+            const id = await this.instructions.send({...input, sessionId});
+            this.host.logger.info('Call submission accepted', {operation: 'call.submit', operationId, sessionId, stage,
+                result: 'accepted', targetKind: input.target?.kind, targetId: input.target?.id,
+                inputSource: input.source?.kind, attachmentCount: input.files.length, durationMs: Date.now() - started});
+            return id;
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            this.host.logger.warn('Call submission rejected', {operation: 'call.submit', operationId, stage, result: 'failure',
+                code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(code) ? code : 'SUBMISSION_FAILED',
+                errorClass: error instanceof Error ? error.name : typeof error, durationMs: Date.now() - started});
+            throw error;
+        }
+    }
+
+    listCallTargets(): Promise<import('../contracts/submission').RootTargetCatalog> {return this.callTargets.list();}
+
+
+
+
+
+    getSubmissionReceipt(request: import('../contracts/submission').SubmissionRequest): Promise<import('../contracts/submission').SubmissionReceipt> {
+        return this.observeSubmissionReceipt(request, () => this.registry.ensureBound().sessionId);
+    }
+
+    inspectSubmissionReceipt(request: import('../contracts/submission').SubmissionRequest): Promise<import('../contracts/submission').SubmissionReceipt> {
+        return this.observeSubmissionReceipt(request, () => {
+            if (!request.expectedSessionId) throw Object.assign(new Error('Read-only inspection requires an expected Session identity'), {code: 'SUBMISSION_INVALID'});
+            return request.expectedSessionId;
+        });
+    }
+
+    private async observeSubmissionReceipt(request: import('../contracts/submission').SubmissionRequest, resolveSession: () => string): Promise<import('../contracts/submission').SubmissionReceipt> {
+        const started = Date.now(), supplied = request?.submission?.id;
+        const operationId = typeof supplied === 'string' && /^[\w-]{1,128}$/.test(supplied) ? supplied : ulid();
+        let stage = 'input', sessionId: string | undefined;
+        try {
+            const input = submissionInstruction(request);
+            if (!input.sendIntent?.submission) throw Object.assign(new Error('Submission observation requires an existing identity'), {code: 'SUBMISSION_INVALID'});
+            stage = 'binding'; sessionId = resolveSession();
+            assertSubmissionBinding(request, sessionId);
+            stage = 'lookup';
+            const receipt = await readSubmissionReceipt(this.kernel, this.registry.engine, sessionId, input);
+            this.host.logger.info('Call admission reconciled', {operation: 'call.receipt', operationId, sessionId, stage,
+                result: receipt.status, evidence: receipt.evidence, durationMs: Date.now() - started});
+            return receipt;
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            this.host.logger.warn('Call admission lookup failed', {operation: 'call.receipt', operationId,
+                sessionId, stage, result: 'failure', code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{1,63}$/.test(code) ? code : 'SUBMISSION_RECEIPT_READ_FAILED',
+                durationMs: Date.now() - started}); throw error;
+        }
+    }
+
+    async hasCommittedSubmission(input: {sessionId: string; submission: import('@itookit/llm-flow/contracts').SessionSubmission}): Promise<boolean> {
+        if (input?.sessionId !== this.registry.ensureBound().sessionId || !input.submission
+            || !/^[\w-]{1,128}$/.test(input.submission.id) || !input.submission.source)
+            throw Object.assign(new Error('Invalid submission observation binding'), {code: 'SUBMISSION_INVALID'});
+        return this.instructions.committed(input.sessionId, input.submission);
+    }
+
     abort(): void {
         const id = this.registry.getCurrentSessionId();
         if (!id) return;
@@ -451,6 +530,8 @@ export class SessionManager implements ISession, SessionQuery {
     async getArtifact(_artifactId: string) {
         return null;
     }
+
+
 
     async previewContext(agentId: string, pendingText = '') {
         const { sessionId } = this.registry.ensureBound();

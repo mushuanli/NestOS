@@ -25,6 +25,17 @@ export class SchedulerOwnershipLostError extends Error {
     }
 }
 
+export class SchedulerBusyError extends Error {
+    readonly code = 'FLOW_SCHEDULER_BUSY';
+    constructor(current: SchedulerLeaseRecord, skewMs: number) {
+        const until = new Date(current.expiresAt + skewMs).toISOString();
+        super(`Run is scheduled by ${current.ownerId} until ${until};`
+            + (skewMs > 0 ? ` takeover waits for the configured ${skewMs}ms clock skew budget;` : '')
+            + ' wait for the lease to expire or stop the other host');
+        this.name = 'SchedulerBusyError';
+    }
+}
+
 export function isSchedulerOwnershipLost(error: unknown): error is SchedulerOwnershipLostError {
     return error instanceof SchedulerOwnershipLostError
         || (error instanceof Error && 'code' in error && error.code === KernelErrorCode.STALE_SHARED_LEASE);
@@ -74,10 +85,7 @@ export async function acquireSchedulerLease(
         if (saved && !current) throw new Error('Invalid scheduler lease record');
         if (current?.deleted) throw new Error('Run has been deleted');
         if (current && current.ownerId !== ownerId && current.expiresAt > 0 && current.expiresAt + skewMs > now()) {
-            const until = new Date(current.expiresAt + skewMs).toISOString();
-            throw new Error(`Run is scheduled by ${current.ownerId} until ${until};`
-                + (skewMs > 0 ? ` takeover waits for the configured ${skewMs}ms clock skew budget;` : '')
-                + ' wait for the lease to expire or stop the other host');
+            throw new SchedulerBusyError(current, skewMs);
         }
         const record: SchedulerLeaseRecord = {
             version: 1, ownerId, epoch: (current?.epoch ?? 0) + 1, expiresAt: now() + ttlMs,

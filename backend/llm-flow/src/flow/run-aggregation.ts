@@ -1,4 +1,4 @@
-import type { JsonValue, SessionHandle, TaskHandle } from '@itookit/durable-kernel';
+import type { JsonValue, SessionHandle, TaskHandle, TaskSpec } from '@itookit/durable-kernel';
 import type { DagNodeDefinition, FlowRunGoal } from '../contracts';
 import type { FlowExecutionHandle } from './executor';
 import type { DelegationGroup } from './delegation-runtime';
@@ -29,7 +29,8 @@ interface AggregationRequest {
 
 /** Persist the Run's root projection without driving node scheduling. */
 export class FlowRunAggregation {
-    constructor(private readonly session: SessionHandle, private readonly state: AggregationState) {}
+    constructor(private readonly session: SessionHandle, private readonly state: AggregationState,
+        private readonly beforeRootSubmit?: () => void) {}
 
     async finish(request: AggregationRequest): Promise<FlowExecutionHandle> {
         const root = await this.aggregate(request);
@@ -62,14 +63,21 @@ export class FlowRunAggregation {
             await this.session.signal(root.id, { type: 'flow.schedule.completed', payload: jsonValue(input) });
             return root;
         }
+        return this.submitRoot(input, request, dependencies);
+    }
+
+    private submitRoot(input: ReturnType<FlowRunAggregation['input']>, request: AggregationRequest,
+        dependencies: ReturnType<FlowRunAggregation['dependencies']>): Promise<TaskHandle<JsonValue>> {
         const initialCheckpoint = request.initial?.initialScheduler as unknown as SchedulerCheckpoint | undefined;
-        return this.session.submit({
+        const spec: TaskSpec<typeof input> = {
             program: { kind: 'flow.aggregate', version: '1' }, input,
             ...(initialCheckpoint?.spec.invocation ? { requestId: `flow-invocation:${initialCheckpoint.spec.invocation.requestId}` } : {}),
             // Terminal dependencies still decide success, including suppressed outputs.
             dependsOn: request.awaitingSchedule ? [] : dependencies.map(item => ({ task: item.taskId, condition: 'terminal' })),
             labels: { kind: 'flow-root' },
-        });
+        };
+        this.beforeRootSubmit?.();
+        return this.session.submit(spec);
     }
 
     private dependencies(toleratedFailures: Set<string>) {

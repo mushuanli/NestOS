@@ -2,6 +2,7 @@ import { prepareFlowRuntimeInput } from './runtime-input';
 import { memberGroup } from './control/scheduling';
 import { readFlowSchedulerCheckpoint, SchedulerCheckpointWriter } from './checkpoint-store';
 import { FlowScheduler } from './scheduler';
+import {reportSchedulerAdmission, type FlowControlDiagnostic} from './control-diagnostics';
 import { FlowRunAggregation, runMembers } from './run-aggregation';
 import { FlowRunLifecycle, workspaceLeaseKey, cancelPendingFlowTasks } from './run-lifecycle';
 import type { FlowWorkspaceLease, FlowWorkspaceManager } from './run-lifecycle';
@@ -63,6 +64,7 @@ export interface FlowExecutionHandle {
 }
 
 export interface DurableFlowExecutorOptions {
+    onControlDiagnostic?(event: FlowControlDiagnostic): void;
     kernel: Kernel;
     plugins: DagPluginCatalog;
     /** Trusted run snapshot applied to every Agent instance, including dynamically added nodes. */
@@ -211,6 +213,8 @@ export class DurableFlowExecutor {
         let workspace: FlowWorkspaceLease | undefined;
         const instances = new Map<string, TaskHandle[]>();
         let published = restored?.handle;
+        let rootAdmissionStarted = false;
+        let schedulerAdmissionStarted = Date.now();
         const completed = new Set<string>(saved?.completed);
         try {
             workspace = workspacePolicy && workspacePolicy.mode !== 'shared'
@@ -422,17 +426,21 @@ export class DurableFlowExecutor {
             // Resolve the active fenced session lazily: root creation precedes lease acquisition.
             const aggregateState = { instances, nodes, detachedNodes, groups: delegationGroups, completionOrder, skipRecords };
             const aggregate = (request: Parameters<FlowRunAggregation['finish']>[0]) =>
-                new FlowRunAggregation(session, aggregateState).finish(request);
+                new FlowRunAggregation(session, aggregateState, () => {
+                    rootAdmissionStarted = true; schedulerAdmissionStarted = Date.now();
+                }).finish(request);
             // Persist the aggregate root before the first node is scheduled: it is the
             // Run's durable anchor, and the scheduler checkpoint is keyed by its id, so
             // creating it up front lets a crash at any later point resume from committed
             // state instead of restarting the whole graph.
             if (!published) {
-                published = await aggregate({ goal: spec.goal,
+                const request = { goal: spec.goal,
                     usage: { tokens: consumedTokens, startedAt, elapsedMs: Date.now() - startedAt },
                     awaitingSchedule: true, toleratedFailures: toleratedFailureNodes(),
-                    initial: { initialScheduler: jsonValue(checkpointSnapshot()), ...(workspace?.record !== undefined ? { initialWorkspace: workspace.record } : {}) },
-                });
+                    initial: { initialScheduler: jsonValue(checkpointSnapshot()), ...(workspace?.record !== undefined ? { initialWorkspace: jsonValue(workspace.record) } : {}) },
+                };
+                published = await aggregate(request);
+                schedulerAdmissionStarted = Date.now();
                 lease = await this.acquireLease(session, published.root.id);
                 session = fenceSchedulerSession(session, lease.condition);
                 await saveCheckpoint();
@@ -489,6 +497,13 @@ export class DurableFlowExecutor {
             await this.lifecycle.drainDetached(session, result.root.id, lease!);
             return result;
         } catch (error) {
+            // Root admission can commit before its reply. No lease means no cleanup authority.
+            if (!lease && (published || rootAdmissionStarted)) {
+                reportSchedulerAdmission({sessionId, rootTaskId: published?.root.id, operationId: spec.invocation?.requestId,
+                    stage: published ? 'lease' : 'root-admission',
+                    durationMs: Date.now() - schedulerAdmissionStarted}, error, this.options.onControlDiagnostic);
+                throw error;
+            }
             if (published && isSchedulerOwnershipLost(error)) return published;
             if (published && lease) {
                 try { await lease.assertOwned(); }

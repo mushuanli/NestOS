@@ -550,3 +550,7 @@ CLI 用 `mindos validate -f example.flow --json` 检查源码和同目录子流�
 平台无关的 `FlowInstallationService` 统一执行定义检查、工具 ensure、默认参数与条件连接检查。`ready`、`needsConfiguration`、`missingTools`、`failed` 明确区分就绪、待填写配置、缺少工具和失败；报告保留 tools、parameters、connections、errors 明细。工具箱 `flowInstallations.check/ensure/list` 和 `toolPackages.list/ensure` 可查询或重试，`importWithReport` 返回导入路径和安装报告。宿主 `ApplicationRuntimeOptions.toolDependencies` 只能按工具 ID/版本发现并注册已安装或可信本机工具包，不下载未知依赖。
 
 默认 Flow 播种、导入和显式系统恢复复用此机制。资源已存在时保留当前草稿和已发布修订，并对当前保存的声明重新检查；不会用新版产品模板替换用户定义，也不会捏造或写回缺失参数、凭据或连接。系统恢复结果逐项返回 dependencies，`initialFiles.prepareDependencies(ids)` 只重试依赖，不重复恢复资源。
+
+### 调度准入与清理权限
+
+根 Task 是持久调用锚点。提交开始后，回执丢失不能证明未接纳；未取得 scheduler lease 的宿主保留原根任务和已引用工作区，抛出原错误供核对与恢复。竞争中的活动所有者返回 FLOW_SCHEDULER_BUSY；失败者不终结胜者。根提交前序列化失败可清理私有工作区，取得租约后的节点执行失败仍按原机制失败化与收尾。准入诊断经 onControlDiagnostic 注入，只有安全身份、阶段、分类和耗时，诊断失败不改变执行结果。

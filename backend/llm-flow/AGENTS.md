@@ -101,3 +101,5 @@ prepareFlowRun 是跨入口共享的定义校验与编译边界，不持有 Sess
 
 
 Flow 输入来源通过 parameter.inputSource 显式声明，inputGroups.mode=oneOf 才要求互斥；不能按参数名推断业务。contracts/flow-inputs 提供表单与后端共用的输入组/条件连接纯规则；requiredWhen 复用 contracts/flow-expressions 的可序列化表达式，只能读取声明参数。编译先按实际参数物化必选性再进入宿主连接准入；根/子参数组随 DagRunSpec 和作用域冻结。toolDependencies 只含具体工具 ID 与可选版本；静态 builtin.tool 和内联/引用函数提供兼容发现，动态工具须显式声明，不允许执行路径、下载 URL 或按业务工具名补规则。注册与依赖安装留给应用及宿主。
+
+Flow 根任务提交可能先持久化再丢回执；发起根提交后且未取得 scheduler lease 的宿主，不得失败化根任务或清理已引用工作区。准入前序列化失败仍清理私有工作区，取得租约后的真实执行失败仍正常收尾。FLOW_SCHEDULER_BUSY 区分租约竞争；诊断异常不改变原结果。

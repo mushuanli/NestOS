@@ -95,6 +95,10 @@
 .agent-chat-button__label { line-height: 1.4; }
 .agent-chat-status { flex: 0 0 auto; margin: 0 0 12px; padding: 8px 10px; border: 1px solid var(--st-color-danger); border-radius: 6px; color: var(--st-color-danger); font-size: .82rem; overflow-wrap: anywhere; }
 .agent-chat-status[hidden] { display: none; }
+.agent-publication { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+.agent-publication[hidden] { display: none; }
+.agent-publication__status { flex: 1 1 220px; font-size: .82rem; overflow-wrap: anywhere; }
+.agent-publication button { min-height: 44px; }
 
 .agent-header__icon-picker {
     display: flex;

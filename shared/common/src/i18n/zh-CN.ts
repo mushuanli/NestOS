@@ -2709,6 +2709,25 @@ export const zhCN = {
     'twin.previousPage': '上一页',
     'twin.nextPage': '下一页',
     'twin.targetsEmpty': '尚无已接入的扫描目标。启用规则并扫描后，匹配的文件与会话会显示在这里。',
+
+    'callable.exposure.label': '调用范围',
+    'callable.exposure.global': 'Global：允许直接调用',
+    'callable.exposure.local': 'Local：仅限 Flow 内部调用',
+    'callable.exposure.hint': 'Local 不出现在对话选择器中，也不能由 Agent 直接封装为入口。调用范围不代替权限校验。',
+    'callable.exposure.invalid': '调用范围必须是 global 或 local',
+    'callable.exposure.rootDenied': '该定义仅限 Flow 内部调用，不能直接选择执行',
+    'agent.publication.reviewRequired': '配置来源已有更新，请重新打开编辑器核对后再发布。',
+    'agent.publication.publish': '发布当前草稿',
+    'agent.publication.retry': '重试原发布',
+    'agent.publication.reconcile': '核对发布结果',
+    'agent.publication.refresh': '刷新发布状态',
+    'agent.publication.published': '本次已发布版本 {version}',
+    'agent.publication.unknown': '尚未查到原发布回执，请继续核对或以原身份重试。',
+    'agent.publication.legacy': '尚无独立发布版本；当前仍沿用兼容配置。首次发布后，调用使用发布版本。',
+    'agent.publication.changed': '草稿或依赖已有变化，调用继续使用原发布版本。',
+    'agent.publication.current': '草稿与依赖和当前发布版本一致。',
+    'agent.publication.failed': '发布操作未确认：{code}',
+    'agent.publication.pendingLeave': '发布结果尚未确认，请先核对原发布，保留当前操作身份。',
 } as const;
 
 // LocaleStrings maps every key to string (not literal), so other locales can provide different values.

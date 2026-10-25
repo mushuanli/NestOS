@@ -88,3 +88,5 @@ ConversationContextBuilder 负责 Round/Branch 选择、宿主材料与 Context 
 会话创建可传 `creation.agentId`，首次身份事务保存不可变 `createdWithAgentId`，摘要与项目导航索引保留此字段。改变当前轮 settings.agentId、幂等 ensureSession 或普通 manifest patch 不改变创建来源；已有无来源会话不推断。项目草稿转正由宿主捕获，导入导出保留该来源。
 
 连接准入的缺失绑定和能力错误携带稳定 code 与 field（槽位名）；前端不解析错误消息。session.check-flow-connection-slots 独立返回槽位配置问题，复用完整图准入的 admitFlowConnectionSlot，不构造空节点的临时 Flow。必需槽位未覆盖时可继承用途默认连接，可选槽位的空字符串表示显式解绑。
+
+Agent 发布修订与回执位于既有 VFS 定义平面。显式发布冻结共享提示词与实现依赖，AgentResolver 读取发布身份；普通 Agent 队列接纳保存策略摘要，连接凭据和实际上下文不进入该快照。诊断异常不能覆盖已持久结果或原拒绝；新身份元数据不得改变旧接纳 Task 指纹。

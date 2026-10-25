@@ -11,6 +11,7 @@ type Defaults = { parameters?: Record<string, unknown>; connectionBindings?: Rec
 type Catalog = { revisions: AgentFlowRevision[]; latest?: AgentFlowRevision | null };
 
 export function renderAgentExecution(agent: AgentDefinition, flows: AgentFlowChoice[], agents: AgentDefinition[] = []): string {
+    flows = flows.filter(flow => flow.exposure === undefined || flow.exposure === 'global');
     const execution = agent.execution?.kind === 'flow' ? agent.execution : undefined;
     const composite = !!agent.composition;
     const harness = agent.execution?.kind === 'harness' ? agent.execution : undefined;
@@ -263,6 +264,7 @@ export class AgentExecutionController {
         const revision = selected === undefined ? latest : data.revisions.find(item => item.revision === selected);
         if (selected !== undefined && !revision) throw new Error(t('agent.execution.missingRevision', { revision: selected }));
         const definition: AgentFlowDefinition = revision ?? this.flows.find(flow => flow.id === flowId)!;
+        if (definition && definition.exposure !== undefined && definition.exposure !== 'global') throw new Error(t('callable.exposure.rootDenied'));
         const key = JSON.stringify([flowId, selected ?? 'latest']);
         let view = this.views.get(key);
         if (!view) {

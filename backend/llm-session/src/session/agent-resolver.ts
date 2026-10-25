@@ -3,13 +3,16 @@
 import { ExecutorConfig } from '../core/types';
 import { resolveModelForTier, resolveWebSearchStrategy } from '../contracts';
 import { modelReasoning, getProviderDefaultProtocol, type ModelTier } from '@itookit/driver-llm/contracts';
-import { sha256Hex } from '@itookit/llm-context';
+import {agentDefinitionDigest, publishedAgentDefinition} from '../services/agent-definition-digest';
+import type {AgentPublishedRevision} from '@itookit/kernel-adapters/contracts';
 import type { ConnectionMeta } from '@itookit/driver-llm/contracts';
 import type { WebSearchMode } from '../contracts';
 import { IAgentConfigService } from '../services/agent-service';
 import { ConversationError, ConversationErrorCode } from '../core/errors';
 import { createSessionHost, type SessionHost } from '../utils/host-ports';
 import { admitHarnessConnection } from './harness-binding';
+import { assertRootCallable, callableExposure, isRootCallable, CallableExposureError, sameTargetRef, type TargetRef } from '@itookit/llm-flow/contracts';
+import { ulid } from '../persistence/ulid';
 
 export interface AgentInfo {
     id: string;
@@ -77,29 +80,36 @@ export class AgentResolver {
      * the module logger is an in-memory ring buffer and is invisible in the app console.
      */
     async resolveForChat(agentId: string): Promise<ExecutorConfig> {
-        let config: ExecutorConfig | null = null;
-        let failure: AgentResolutionFailure | null = null;
-
+        const operationId = ulid(), started = Date.now();
         try {
-            const agentDef = await this.agentService.getAgentConfig(agentId);
-
-            if (agentDef) {
-                config = await this.buildConfig(agentDef);
-            } else {
-                failure = { reason: 'not-found' };
+            let {config, failure} = await this.readChatIdentity(agentId);
+            if (!config) {
+                this.reportFallback(agentId, failure);
+                config = await this.resolveMissingAgent(agentId, failure);
             }
-        } catch (e) {
-            if (e instanceof ConversationError) throw e;
-            failure = { reason: 'error', detail: describeError(e) };
-            this.host.logger.error('Failed to resolve agent', { agentId, error: e });
+            assertRootCallable(config);
+            return config;
+        } catch (error) {
+            if (error instanceof CallableExposureError) this.host.logger.warn('Agent root admission rejected', {
+                operation: 'agent.resolve', operationId, agentId, stage: 'exposure', result: 'failure',
+                code: error.code, durationMs: Date.now() - started,
+            });
+            throw error;
         }
+    }
 
-        if (!config) {
-            this.reportFallback(agentId, failure);
-            config = await this.resolveMissingAgent(agentId, failure);
+    private async readChatIdentity(agentId: string): Promise<{config: ExecutorConfig | null; failure: AgentResolutionFailure | null}> {
+        try {
+            const selected = await this.readDefinition(agentId);
+            if (!selected) return {config: null, failure: {reason: 'not-found'}};
+            assertRootCallable(selected.definition);
+            return {config: await this.buildConfig(selected.definition, selected.revision), failure: null};
+        } catch (error) {
+            if (error instanceof ConversationError || error instanceof CallableExposureError
+                || /^AGENT_(REVISION|PUBLICATION)_/.test(String((error as {code?: unknown})?.code))) throw error;
+            this.host.logger.error('Failed to resolve agent', {agentId, error});
+            return {config: null, failure: {reason: 'error', detail: describeError(error)}};
         }
-
-        return config;
     }
 
     private async resolveMissingAgent(agentId: string, failure: AgentResolutionFailure | null): Promise<ExecutorConfig> {
@@ -118,23 +128,50 @@ export class AgentResolver {
      * silent fallback would mask configuration errors.
      */
     async resolveExact(agentId: string, version?: string): Promise<ExecutorConfig> {
-        const agentDef = await this.agentService.getAgentConfig(agentId);
-
-        if (!agentDef) {
+        const selected = await this.readDefinition(agentId, version);
+        if (!selected) {
             throw new ConversationError(
                 ConversationErrorCode.AGENT_NOT_FOUND,
                 `Agent not found: ${agentId}. Kernel requires exact agent resolution.`,
             );
         }
 
-        if (version && (!agentDef.version || agentDef.version !== version)) {
+        const config = await this.buildConfig(selected.definition, selected.revision);
+        if (version && config.agentVersion !== version) {
             throw new ConversationError(
                 ConversationErrorCode.AGENT_NOT_FOUND,
-                `Agent version mismatch: requested ${version ?? '(missing)'}, found ${agentDef.version ?? '(unversioned)'}`,
+                `Agent version mismatch: requested ${version}, found ${config.agentVersion}`,
             );
         }
 
-        return this.buildConfig(agentDef);
+        return config;
+    }
+
+    private async readDefinition(agentId: string, version?: string): Promise<{definition: import('../contracts').AgentDefinition; revision?: AgentPublishedRevision} | null> {
+        const definition = await this.agentService.getAgentConfig(agentId);
+        if (!definition) {
+            if (await this.agentService.getAgentRevision?.(agentId, version))
+                throw new ConversationError(ConversationErrorCode.AGENT_NOT_FOUND, 'Published Agent resource was removed');
+            return null;
+        }
+        const revision = await this.agentService.getAgentRevision?.(agentId, version);
+        if (revision) return {definition: publishedAgentDefinition(revision), revision};
+        if (version && await this.agentService.getAgentRevision?.(agentId))
+            throw new ConversationError(ConversationErrorCode.AGENT_NOT_FOUND, 'Legacy Agent version cannot select an unpublished draft');
+        return {definition};
+    }
+
+    async publishedTarget(target?: TargetRef): Promise<AgentPublishedRevision | null> {
+        if (target?.kind !== 'agent') return null;
+        const revision = await this.agentService.getAgentRevision?.(target.id, target.version);
+        return revision && sameTargetRef(revision.target, target) ? revision : null;
+    }
+
+    /** Definition metadata does not require credentials, native attachment or prompt-library reads. */
+    async describeTarget(agent: import('../contracts').AgentDefinition): Promise<import('@itookit/llm-flow/contracts').TargetRef> {
+        callableExposure(agent.exposure);
+        const digest = agentDefinitionDigest(agent);
+        return {kind: 'agent', id: agent.id, version: agent.version ?? digest, digest};
     }
 
     /** Resolve a System Prompt library entry by id. */
@@ -151,28 +188,32 @@ export class AgentResolver {
     }
 
     /** Build ExecutorConfig from an AgentDefinition. */
-    private async buildConfig(agentDef: import('../contracts').AgentDefinition): Promise<ExecutorConfig> {
+    private async buildConfig(agentDef: import('../contracts').AgentDefinition, publication?: AgentPublishedRevision): Promise<ExecutorConfig> {
+        callableExposure(agentDef.exposure);
         if (agentDef.availability?.status === 'disabled') throw new ConversationError(ConversationErrorCode.AGENT_DISABLED,
             `Agent unavailable: ${agentDef.name} (${agentDef.availability.reason ?? 'disabled'})`);
         const systemPromptSegments: string[] = [];
         if (agentDef.config.systemPromptId) {
-            const prompt = await this.agentService.getSystemPrompt(agentDef.config.systemPromptId);
+            const prompt = publication ? publication.systemPrompt : await this.agentService.getSystemPrompt(agentDef.config.systemPromptId);
             if (!prompt) throw new ConversationError(ConversationErrorCode.AGENT_NOT_FOUND,
                 `System prompt not found: ${agentDef.config.systemPromptId}`);
             systemPromptSegments.push(...prompt.content);
         }
         const additional = agentDef.systemPrompt ?? agentDef.config.systemPrompt;
         if (additional) systemPromptSegments.push(additional);
+        const target = publication?.target ?? await this.describeTarget(agentDef), version = target.version;
 
         return {
             id: agentDef.id,
+            target,
+            ...(agentDef.exposure !== undefined ? { exposure: agentDef.exposure } : {}),
             name: agentDef.name,
             type: 'agent',
             systemPrompt: systemPromptSegments,
             icon: agentDef.icon,
             temperature: agentDef.config.temperature,
             ...(agentDef.modelDefaults ? { modelDefaults: structuredClone(agentDef.modelDefaults) } : {}),
-            agentVersion: agentDef.version ?? await this.hashDefinition(agentDef),
+            agentVersion: version,
             ...(agentDef.execution ? { execution: structuredClone(agentDef.execution) } : {}),
             ...(agentDef.execution?.kind === 'harness' ? {
                 harnessConnection: await this.resolveHarnessConnection(agentDef.execution.connectionId),
@@ -184,35 +225,15 @@ export class AgentResolver {
         } as ExecutorConfig;
     }
 
-    private async hashDefinition(agentDef: import('../contracts').AgentDefinition): Promise<string> {
-        const canonical = this.canonicalize({
-            ...agentDef,
-            version: undefined,
-            modifiedAt: undefined,
-            availability: undefined,
-        });
-        // sha256Hex falls back to pure JS where crypto.subtle is missing (WebKitGTK/Tauri).
-        return sha256Hex(canonical);
-    }
-
-    private canonicalize(value: unknown): string {
-        if (Array.isArray(value)) return `[${value.map(item => this.canonicalize(item)).join(',')}]`;
-        if (value && typeof value === 'object') {
-            const record = value as Record<string, unknown>;
-            return `{${Object.keys(record).filter(key => record[key] !== undefined).sort()
-                .map(key => `${JSON.stringify(key)}:${this.canonicalize(record[key])}`).join(',')}}`;
-        }
-        return JSON.stringify(value);
-    }
-
     async getAvailableAgents(): Promise<AgentInfo[]> {
         try {
-            const agents = await this.agentService.getAgents();
-            const list: AgentInfo[] = [{
+            const agents = await this.publishedMetadata();
+            const hasDefault = agents.some(agent => agent.id === 'default') || !!await this.agentService.getAgentRevision?.('default');
+            const list: AgentInfo[] = hasDefault ? [] : [{
                 id: 'default', name: 'Default Assistant', icon: '🤖',
                 category: 'System', description: 'Built-in default assistant',
             }];
-            for (const agent of agents) {
+            for (const agent of agents.filter(isRootCallable)) {
                 list.push({
                     id: agent.id, name: agent.name, icon: agent.icon,
                     category: agent.type === 'agent' ? 'Agents' : 'Workflows',
@@ -224,6 +245,12 @@ export class AgentResolver {
             this.host.logger.error('Failed to get available agents', { error: e });
             return [{ id: 'default', name: 'Default Assistant', icon: '🤖', category: 'System' }];
         }
+    }
+    private async publishedMetadata(): Promise<import('../contracts').AgentDefinition[]> {
+        return Promise.all((await this.agentService.getAgents()).map(async source => {
+            const revision = await this.agentService.getAgentRevision?.(source.id);
+            return revision ? publishedAgentDefinition(revision) : source;
+        }));
     }
 
     async getModelsForAgent(agentId: string): Promise<ModelInfo[]> {

@@ -2,6 +2,7 @@ import { checkFlowSource, type FlowDefinitionStore } from '@itookit/llm-flow';
 import type { AgentAvailability, AgentExecution } from '@itookit/kernel-adapters/contracts';
 import type { FlowEngine } from '@itookit/llm-session';
 import type { DagPluginCatalog } from '@itookit/llm-flow/contracts';
+import { isRootCallable } from '@itookit/llm-flow/contracts';
 
 /** Flow resource existence and publication are independent from Agent persistence. */
 export function createAgentFlowAvailability(engine: FlowEngine, definitions: FlowDefinitionStore, plugins?: DagPluginCatalog) {
@@ -28,6 +29,7 @@ async function inspect(execution: Extract<AgentExecution, { kind: 'flow' }>, eng
         if (!draft) return disabled('flow-invalid');
         const published = await definitions.loadRevision(flowId, revision);
         if (!published) return disabled(revision === undefined ? 'flow-unpublished' : 'flow-revision-missing');
+        if (!isRootCallable(published)) return disabled('flow-invalid');
         const checked = await checkFlowSource(published, { plugins, resolveComposite: (id, version) => definitions.loadRevision(id, version) });
         return checked.valid ? { status: 'ready', flowId } : disabled('flow-invalid');
     } catch { return disabled('flow-invalid'); }

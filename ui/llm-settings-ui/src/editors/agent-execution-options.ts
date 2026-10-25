@@ -8,6 +8,7 @@ export interface AgentFlowConnection {
     required?: boolean;
 }
 export interface AgentFlowDefinition {
+    exposure?: 'global' | 'local';
     parameters?: FormParameter[];
     connections?: AgentFlowConnection[];
 }

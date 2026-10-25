@@ -19,6 +19,9 @@ import { createSessionHost, type SessionHost } from '../utils/host-ports';
 import { isModelDefaults } from '@itookit/kernel-adapters/contracts';
 import { validateAgentModelDefaults } from './agent-model-defaults';
 import { ulid } from '../persistence/ulid';
+import { callableExposure } from '@itookit/llm-flow/contracts';
+import {AgentPublications, type AgentPublicationDependencies} from './agent-publications';
+import {publicationError} from '../persistence/agent-revisions';
 
 // Agent 默认存储目录（VFS module-relative path）
 const AGENT_DEFAULT_DIR = '/default';
@@ -38,6 +41,7 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     private _systemPromptCache = new Map<string, SystemPromptDefinition>();
     private _systemPromptListLoaded = false;
     private readonly flowAvailability: AgentFlowAvailabilityProjection;
+    private readonly publications: AgentPublications;
     private prepareAgent?: (agent: AgentDefinition) => Promise<AgentDefinition>;
     private readonly agentSaves = new Map<string, Promise<void>>();
     private harnessConnectionReader?: (id: string) => Promise<import('@itookit/kernel-adapters/contracts').HarnessConnectionSnapshot | undefined>;
@@ -56,6 +60,40 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     ) {
         super(fs, host.logger);
         this.flowAvailability = new AgentFlowAvailabilityProjection(host.logger);
+        this.publications = new AgentPublications(fs, id => this.readPublicationSource(id), id => this.readPublicationPrompt(id), host.logger);
+    }
+
+    configurePublicationDependencies(dependencies: AgentPublicationDependencies): void {this.publications.dependencies = dependencies;}
+    async getAgentRevision(id: string, version?: string) {
+        await this.waitForLoad();
+        if (version !== undefined && !/^ap1_[a-f0-9]{64}$/.test(version)) return null;
+        return this.publications.store.get(id, version);
+    }
+    async getAgentPublicationStatus(id: string) {await this.waitForLoad(); return this.publications.status(id);}
+    async getAgentPublicationReceipt(request: import('@itookit/kernel-adapters/contracts').AgentPublishRequest) {
+        await this.waitForLoad(); return this.publications.store.receipt(request);
+    }
+    async publishAgent(request: import('@itookit/kernel-adapters/contracts').AgentPublishRequest) {
+        await this.waitForLoad(); const result = await this.publications.publish(request); this.notify(); return result;
+    }
+    private async readPublicationSource(id: string): Promise<AgentDefinition> {
+        const path = this._agentNodeIds.get(id);
+        if (!path || !await this.engine.driver.exists(path)) throw publicationError('AGENT_SOURCE_MISSING');
+        const raw = await this.engine.driver.readContent(path, {representation: 'bytes'});
+        let source: AgentDefinition;
+        try {source = agentSource(JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw as ArrayBuffer)));}
+        catch {throw publicationError('AGENT_PUBLICATION_DEFINITION_INVALID');}
+        if (source.id !== id) throw publicationError('AGENT_SOURCE_CHANGED');
+        return source;
+    }
+    private async readPublicationPrompt(id: string): Promise<SystemPromptDefinition | null> {
+        assertPromptId(id); const path = `/system-prompts/${id}.sp`;
+        if (!await this.engine.driver.exists(path)) return null;
+        const raw = await this.engine.driver.readContent(path, {representation: 'bytes'});
+        try {
+            const prompt = JSON.parse(typeof raw === 'string' ? raw : new TextDecoder().decode(raw as ArrayBuffer));
+            return prompt?.__deleted ? null : prompt;
+        } catch {throw publicationError('AGENT_PUBLICATION_PROMPT_INVALID');}
     }
 
     configureFlowAvailability(source: AgentFlowAvailabilitySource): void {
@@ -298,7 +336,10 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
     async getAgentConfig(agentId: string): Promise<AgentDefinition | null> {
         await this.waitForLoad();
         let found = this._agents.find(a => a.id === agentId);
+        const path = this._agentNodeIds.get(agentId);
+        if (found && path && !await this.engine.driver.exists(path)) return null;
         if (!found && agentId === 'default') {
+            if (await this.publications.store.head(agentId)) return null;
             found = {
                 id: 'default', name: 'Default Assistant', type: 'agent',
                 icon: '🤖', description: 'Built-in default assistant',
@@ -341,11 +382,13 @@ export class VFSAgentService extends FileBackedService implements IAgentManageme
             await this.waitForLoad();
             agent = agentSource(agent);
             stage = 'validation';
+            callableExposure(agent.exposure);
             await validateAgentModelDefaults(agent.modelDefaults, this);
             if (this.prepareAgent) {
                 stage = 'preparation';
                 agent = agentSource(await this.prepareAgent(agent));
                 stage = 'validation';
+                callableExposure(agent.exposure);
                 await validateAgentModelDefaults(agent.modelDefaults, this);
             }
             stage = 'persistence';

@@ -1,3 +1,4 @@
+import {createAgentPublicationDependencies} from '../configuration/agent-publications';
 import {FlowInstallationService} from '../configuration/flow-installation';
 import {FlowToolPackages} from '../configuration/flow-tool-packages';
 import { createUsageCostEstimator } from '../projects/usage-estimator';
@@ -320,6 +321,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             recover: false,
         }));
         const kernelCore = kernel.kernel;
+        agentService.configurePublicationDependencies(createAgentPublicationDependencies(new FlowDefinitionStore(flowEngine, kernel.dagPlugins), kernel.dagPlugins));
         agentService.configureFlowAvailability(createAgentFlowAvailability(flowEngine, new FlowDefinitionStore(flowEngine, kernel.dagPlugins), kernel.dagPlugins));
         agentService.configureAgentPreparation(createAgentCompositionPreparation(new FlowDefinitionStore(flowEngine, kernel.dagPlugins), agentService, flowEngine));
         const skillsReady = traceBoot(policy.skills === 'before-ready' ? 'syncSkillsToKernel' : 'syncSkillsToKernel (background)', () => syncSkillsToKernel(llmDriver, kernel));

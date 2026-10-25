@@ -5,7 +5,7 @@ import { AgentConfigEditor } from '../src/editors/AgentConfigEditor';
 const editors: AgentConfigEditor[] = [];
 afterEach(async () => { await Promise.all(editors.splice(0).map(editor => editor.destroy())); document.body.replaceChildren(); vi.restoreAllMocks(); });
 
-async function setup() {
+async function setup(exposure?: unknown) {
     vi.spyOn(console, 'info').mockImplementation(() => {});
     const root = document.createElement('div'); document.body.append(root);
     const saveContent = vi.fn(async () => {});
@@ -18,7 +18,7 @@ async function setup() {
         service as never, { listFlows: async () => [definition], listFlowRevisions: async () => [{ ...definition, revision: 3 }],
             getFlowRevision: async () => ({ ...definition, revision: 3 }), listConnections: async () => [{ id: 'camera', name: 'Camera model' }] });
     editors.push(editor);
-    await editor.init(root, JSON.stringify({ id: 'a', name: 'Reader', type: 'agent', config: { systemPrompt: 'preserved' }, capabilityPolicy: { toolIds: ['Read'] } }));
+    await editor.init(root, JSON.stringify({ id: 'a', name: 'Reader', type: 'agent', ...(exposure !== undefined ? {exposure} : {}), config: { systemPrompt: 'preserved' }, capabilityPolicy: { toolIds: ['Read'] } }));
     const change = (name: string, value: string) => {
         const input = root.querySelector<HTMLInputElement>(`[name="${name}"]`)!;
         input.value = value; input.dispatchEvent(new Event('change', { bubbles: true }));
@@ -60,4 +60,23 @@ it('keeps Flow fields separate from identically named Agent settings', async () 
     const saved = JSON.parse(f.saveContent.mock.calls.at(-1)![1]);
     expect(saved.execution.parameters).toMatchObject({ systemPrompt: 'Flow-only instructions', temperature: 1.5 });
     expect(saved.config.systemPrompt).toBe('preserved'); expect(saved.config.temperature).toBeUndefined();
+});
+
+it('persists explicit Agent call scope through autosave and later edits', async () => {
+    const f = await setup();
+    f.change('exposure', 'local'); await f.editor.flushPendingSave();
+    expect(JSON.parse(f.saveContent.mock.calls.at(-1)![1]).exposure).toBe('local');
+    f.change('name', 'Renamed private Agent'); await f.editor.flushPendingSave();
+    expect(JSON.parse(f.saveContent.mock.calls.at(-1)![1])).toMatchObject({name: 'Renamed private Agent', exposure: 'local'});
+    f.change('exposure', 'global'); await f.editor.flushPendingSave();
+    expect(JSON.parse(f.saveContent.mock.calls.at(-1)![1]).exposure).toBe('global');
+});
+
+it('retains malformed scope as an invalid draft until the user explicitly corrects it', async () => {
+    const f = await setup('unrecognized');
+    expect(f.root.querySelector<HTMLSelectElement>('[name="exposure"]')!.value).toBe('');
+    f.change('name', 'Still invalid'); await expect(f.editor.flushPendingSave()).rejects.toThrow();
+    expect(f.saveContent).not.toHaveBeenCalled();
+    f.change('exposure', 'local'); await f.editor.flushPendingSave();
+    expect(JSON.parse(f.saveContent.mock.calls.at(-1)![1])).toMatchObject({name: 'Still invalid', exposure: 'local'});
 });

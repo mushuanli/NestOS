@@ -29,6 +29,9 @@ export type ExecutorType = 'agent';
  */
 export interface ExecutorConfig {
     id: string;
+    /** Admitted definition identity, independent of live connection credentials. */
+    target?: import('@itookit/llm-flow/contracts').TargetRef;
+    exposure?: AgentDefinition['exposure'];
     name: string;
     type: ExecutorType;
     icon?: string;

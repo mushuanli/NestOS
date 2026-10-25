@@ -1,3 +1,4 @@
+import {isQueuedAgent} from '../session/queued-agent';
 import type { JsonValue, Kernel } from '@itookit/durable-kernel';
 import type { SessionInstructionQueue } from '../contracts/instruction-queue';
 import { flowRevisionDigest } from '@itookit/llm-flow';
@@ -12,7 +13,9 @@ export interface StoredInstructionQueue extends SessionInstructionQueue {
 }
 
 export function instructionQueueProjection(queue: SessionInstructionQueue): SessionInstructionQueue {
-    return structuredClone({ sessionId: queue.sessionId, revision: queue.revision, paused: queue.paused, reason: queue.reason, items: queue.items });
+    const result = structuredClone({ sessionId: queue.sessionId, revision: queue.revision, paused: queue.paused, reason: queue.reason, items: queue.items });
+    for (const item of result.items) if (item.connectionBinding) delete item.connectionBinding.agent;
+    return result;
 }
 
 export async function readSessionInstructionQueue(kernel: Kernel, sessionId: string): Promise<SessionInstructionQueue> {
@@ -53,6 +56,8 @@ function validateQueue(value: StoredInstructionQueue & {schemaVersion?: number},
             || !Array.isArray(item.files) || item.files.some(file => !file || typeof file.name !== 'string' || typeof file.type !== 'string')) invalid();
         if (item.flowBinding !== undefined && !validFlowBinding(item)) invalid();
         if (item.connectionBinding !== undefined && (!item.connectionBinding || !isModelDefaults(item.connectionBinding.defaults)
+            || item.connectionBinding.identityVersion !== undefined && item.connectionBinding.identityVersion !== 1
+            || item.connectionBinding.agent !== undefined && !isQueuedAgent(item.connectionBinding.agent, item.agentId)
             || item.connectionBinding.harnessAgent !== undefined && (!isHarnessAgentSnapshot(item.connectionBinding.harnessAgent)
                 || item.connectionBinding.harnessAgent.id !== item.agentId)
             || item.connectionBinding.connectionId !== undefined && typeof item.connectionBinding.connectionId !== 'string'

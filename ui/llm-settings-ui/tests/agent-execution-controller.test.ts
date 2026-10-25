@@ -43,6 +43,16 @@ it('uses published schemas for latest and pinned revisions instead of the mutabl
     expect(f.read()).toMatchObject({ kind: 'flow', flowId: 'a', revision: 1 });
 });
 
+it('rejects a published local Flow as an Agent implementation even when its mutable draft is global', async () => {
+    const f = mount([{id: 'a', name: 'Public draft'}], {
+        getFlowRevision: async () => ({revision: 1, exposure: 'local'}),
+        listFlowRevisions: async () => [{revision: 1, exposure: 'local'}],
+    });
+    await f.controller.ready();
+    expect(f.root.querySelector('[data-agent-execution]')?.getAttribute('data-state')).toBe('error');
+    expect(() => f.read()).toThrow();
+});
+
 it('restores each Flow pinned revision when their revision option sets differ', async () => {
     const revisions = (id: string): AgentFlowRevision[] => id === 'a'
         ? [{ revision: 1, parameters: [{ name: 'a1', type: 'string' }] }, { revision: 3, parameters: [{ name: 'a3', type: 'string' }] }]

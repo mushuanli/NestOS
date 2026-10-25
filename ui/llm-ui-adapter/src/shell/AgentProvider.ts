@@ -6,13 +6,15 @@ import { resolveChatModelForTier, resolveChatModelTiers, type IAgentConfigServic
 import type { ExecutorOption, ConnectionOption } from '../domain/types';
 import { ENTITY_ICONS, formatDefaultFileTitle, t } from '@itookit/common';
 import { modelReasoning, type ConnectionMeta, type LLMProvider } from '@itookit/driver-llm/contracts';
+import { isRootCallable } from '@itookit/llm-flow/contracts';
 
 export async function buildExecutorOptions(
     agentService: IAgentConfigService,
     remote?: import('@itookit/ui-common').RemoteAgentControls,
     configuration?: ChatConfigurationSnapshot,
 ): Promise<ExecutorOption[]> {
-    const agents = configuration?.agents ?? agentService.listAgents();
+    const allAgents = configuration?.agents ?? agentService.listAgents();
+    const agents = allAgents.filter(isRootCallable);
     const promptIds = [...new Set(agents.map(agent => agent.config.systemPromptId).filter((id): id is string => !!id))];
     const prompts = new Map(await Promise.all(promptIds.map(async id => [id, configuration
         ? {presets: configuration.promptPresets[id] ?? []} : await agentService.getSystemPrompt(id)] as const)));
@@ -21,7 +23,7 @@ export async function buildExecutorOptions(
     const options: ExecutorOption[] = [];
 
     // Ensure 'default' exists — inject fallback when absent in VFS
-    if (!agents.some(a => a.id === 'default')) {
+    if (configuration?.fallbackAgentAllowed !== false && !allAgents.some(a => a.id === 'default')) {
         options.push({ id: 'default', name: t('chatInput.defaultAssistant'), icon: ENTITY_ICONS.agent, category: t('chatInput.assistants') });
         seen.add('default');
     }

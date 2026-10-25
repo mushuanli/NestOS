@@ -33,6 +33,7 @@ export function mountAgentHeader(root: HTMLElement, options: EditorOptions, flus
 }
 
 class AgentChatAction {
+    private readonly scopeChanged = () => this.update();
     private readonly button = document.createElement('button');
     private readonly label = document.createElement('span');
     private readonly status: HTMLElement;
@@ -48,6 +49,7 @@ class AgentChatAction {
         const icon = document.createElement('span'); icon.className = 'agent-chat-button__icon';
         icon.innerHTML = ACTION_ICONS.chat; icon.setAttribute('aria-hidden', 'true'); this.button.append(icon, this.label);
         this.button.onclick = () => {void this.open();};
+        root.addEventListener('change', this.scopeChanged);
     }
 
     move(mobile: boolean): void {
@@ -58,15 +60,15 @@ class AgentChatAction {
     }
 
     private update(): void {
-        this.button.disabled = this.busy;
+        this.button.disabled = this.busy || !this.rootAllowed();
         this.button.setAttribute('aria-busy', String(this.busy));
-        this.button.title = t(this.busy ? 'agent.layout.openingChat' : 'agent.layout.startChat');
+        this.button.title = t(!this.rootAllowed() ? 'callable.exposure.rootDenied' : this.busy ? 'agent.layout.openingChat' : 'agent.layout.startChat');
         this.button.setAttribute('aria-label', this.button.title);
         this.label.textContent = t(this.mobile ? 'agent.layout.chat' : this.busy ? 'agent.layout.openingChat' : 'agent.layout.startChat');
     }
 
     private async open(): Promise<void> {
-        if (this.busy || this.disposed || this.options.signal?.aborted || !this.options.onStartConversation) return;
+        if (this.busy || this.disposed || !this.rootAllowed() || this.options.signal?.aborted || !this.options.onStartConversation) return;
         this.busy = true; this.status.hidden = true; this.update();
         const revision = this.revision, operationId = randomUUID(), started = performance.now();
         let stage = 'save';
@@ -76,6 +78,7 @@ class AgentChatAction {
             if (this.disposed || revision !== this.revision || this.options.signal?.aborted) {
                 this.log(operationId, stage, 'cancelled', started); return;
             }
+            if (!this.rootAllowed()) {stage = 'exposure'; throw Object.assign(new Error(t('callable.exposure.rootDenied')), {code: 'CALLABLE_LOCAL_ONLY'});}
             this.log(operationId, stage, 'success', started); stage = 'open';
             await this.options.onStartConversation();
             this.log(operationId, stage, 'success', started);
@@ -86,9 +89,14 @@ class AgentChatAction {
         }
     }
 
+    private rootAllowed(): boolean {
+        const field = this.root.querySelector<HTMLSelectElement>('[name="exposure"]');
+        return !field || field.value === 'global';
+    }
+
     private failed(error: unknown, operationId: string, stage: string, started: number): void {
         const saveStatus = this.root.querySelector<HTMLElement>('[data-autosave-status][data-state="failed"], [data-autosave-status][data-state="invalid"]');
-        const code = stage === 'open' ? 'AGENT_CHAT_OPEN_FAILED' : saveStatus?.dataset.state === 'invalid'
+        const code = stage === 'exposure' ? 'CALLABLE_LOCAL_ONLY' : stage === 'open' ? 'AGENT_CHAT_OPEN_FAILED' : saveStatus?.dataset.state === 'invalid'
             ? 'AGENT_CHAT_VALIDATION_FAILED' : 'AGENT_CHAT_SAVE_FAILED';
         this.log(operationId, stage, 'failure', started, code);
         if (this.disposed) return;
@@ -105,5 +113,5 @@ class AgentChatAction {
     }
 
     cancel(): void {this.revision++;}
-    destroy(): void {this.disposed = true; this.cancel(); this.button.onclick = null; this.button.remove();}
+    destroy(): void {this.disposed = true; this.cancel(); this.root.removeEventListener('change', this.scopeChanged); this.button.onclick = null; this.button.remove();}
 }

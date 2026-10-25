@@ -50,7 +50,9 @@ export type { PromptPreset } from '@itookit/tools/contracts';
 
 /** Safe presentation metadata; credential values and system prompt bodies stay in the host. */
 export interface ChatConfigurationSnapshot {
-    agents: Array<Pick<AgentDefinition, 'id' | 'name' | 'icon' | 'description' | 'defaultPrompts' | 'execution' | 'availability' | 'modelDefaults' | 'composition'> & {
+    /** Prevent a synthetic default choice from reintroducing a local or malformed default Agent. */
+    fallbackAgentAllowed?: boolean;
+    agents: Array<Pick<AgentDefinition, 'id' | 'name' | 'exposure' | 'icon' | 'description' | 'defaultPrompts' | 'execution' | 'availability' | 'modelDefaults' | 'composition'> & {
         config: Pick<AgentConfig, 'systemPromptId' | 'imageProcessing'>;
     }>;
     promptPresets: Record<string, PromptPreset[]>;
@@ -67,7 +69,9 @@ export interface ChatConfigurationView {
 
 export interface AgentDefinition {
     id: string;
-    /** Version identifier. Phase 3: derived from SHA-256 of canonical JSON. */
+    /** Local agents are callable only within a Flow; omitted legacy values mean global. */
+    exposure?: 'global' | 'local';
+    /** Legacy source label. Published execution identities are immutable AgentPublishedRevision targets. */
     version?: string;
     name: string;
     type: AgentType;
@@ -270,6 +274,9 @@ export interface ILLMManagementService extends IConnectionService {
  * 自身只添加 Agent 特有的读取方法。
  */
 export interface IAgentConfigService extends IConnectionReader {
+    getAgentRevision?(agentId: string, version?: string): Promise<import('./agent-publication').AgentPublishedRevision | null>;
+    getAgentPublicationStatus?(agentId: string): Promise<import('./agent-publication').AgentPublicationStatus>;
+    getAgentPublicationReceipt?(request: import('./agent-publication').AgentPublishRequest): Promise<import('./agent-publication').AgentPublishedRevision | null>;
     init(): Promise<void>;
     getAgentConfig(agentId: string): Promise<AgentDefinition | null>;
     /** Host navigation target for the persisted Agent definition. */
@@ -299,6 +306,7 @@ export interface IAgentConfigService extends IConnectionReader {
  * 并增加 Agent CRUD 和恢复/诊断能力。
  */
 export interface IAgentManagementService extends IAgentConfigService, ILLMManagementService {
+    publishAgent?(request: import('./agent-publication').AgentPublishRequest): Promise<import('./agent-publication').AgentPublishedRevision>;
     getHarnessConnectionTargets?(): Promise<import('./harness-execution').HarnessExecutionConnectionTarget[]>;
     getHarnessConnectionRecord?(id: string): Promise<import('./harness-execution').HarnessExecutionConnectionRecord | undefined>;
     saveHarnessConnection?(connection: import('./harness-execution').HarnessExecutionConnection, expectedRevision: number): Promise<import('./harness-execution').HarnessExecutionConnectionRecord>;

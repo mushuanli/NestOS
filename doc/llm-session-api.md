@@ -512,3 +512,30 @@ TTY 首次结束信息保持不变，后续结束通知与输出不覆盖；已�
 会话目录迁移恢复对已复制附件逐项校验并补齐缺项，不覆盖不同内容。冲突保持 moving 标记与原始数据，记录 `[Session storage] Recovery deferred`；受影响会话不参与普通枚举和自动运行恢复，直接访问返回 EBUSY，其他项目仍可启动。未知的非空项目归属不回退到当前项目。
 
 `ConversationManifest.createdWithAgentId` 记录创建时智能体，由 createSession/ensureSession 的 creation 参数在首次身份事务写入；SessionSummary 和导航索引包含该字段。之后切换轮次智能体不改变它，普通 manifest 更新不能覆盖；旧记录保持缺省。项目草稿由宿主捕获来源，Session bundle 导入导出保留来源。
+
+### Agent 不可变发布与队列身份
+
+Agent 的文件保存只改变草稿。VFSAgentService 的 getAgentPublicationStatus 读取持久源定义、共享提示词和宿主解析的 Flow 修订；publishAgent 以 operationId、源摘要、依赖快照摘要和期望发布版本提交。AgentRevisionStore 在既有 VFS 定义平面的 /.agent-publications.seq 内原子保存不可变修订、当前指针和操作回执，不保存 Task 或控制状态。
+
+AgentResolver 使用发布修订中的提示词和实现锁，精确版本查询不回退到新草稿；未发布定义保留兼容读取。已删除资源保留旧修订以供追溯，但拒绝新调用。global/local 在根准入校验，Flow 内部精确解析可以使用 local；Agent 不能直接封装 local Flow 作为根入口。配置目录仅投影可调用的发布元数据，不把策略正文或凭据发送给选择器。
+
+普通 Agent 在 SessionRunCoordinator 的队列接纳阶段冻结执行身份和策略，并校验摘要。模型连接、授权与实际历史上下文仍按各自边界处理；连接凭据不进入身份快照，公开队列投影移除普通 Agent 策略正文。Flow 与 Harness 继续复用各自已有冻结绑定。新身份元数据带 identityVersion，旧接纳记录保持原 Task 提交形状；这不声称能够还原旧记录从未保存过的策略。
+
+```mermaid
+C4Dynamic
+    title Agent 发布与执行准入的职责
+    Component(ui, "设置 UI", "保存草稿、显式发布、查询回执")
+    Component(publication, "AgentPublications", "准备并核对源与依赖")
+    Component(dependencies, "app-core 发布依赖端口", "解析公开 Flow 的不可变修订")
+    Component(store, "AgentRevisionStore", "VFS 定义事务与操作回执")
+    Component(queue, "SessionRunCoordinator", "接纳时冻结身份，派发时绑定上下文")
+    Component(kernel, "Kernel", "既有持久执行与控制")
+    RelIndex(1, ui, publication, "发布冻结请求")
+    RelIndex(2, publication, dependencies, "解析实现修订，检查默认实参")
+    RelIndex(3, publication, store, "原子写修订、发布指针及回执")
+    RelIndex(4, ui, store, "通过服务端口独立查询原操作回执")
+    RelIndex(5, queue, store, "接纳时解析发布身份并保存队列快照")
+    RelIndex(6, queue, kernel, "派发原接纳身份，复验当前连接与授权")
+```
+
+发布结果未知时，设置界面保留原请求并允许独立只读核对；精确回执能够释放原写响应仍悬挂的操作限制。迟到响应不能覆盖后续操作，重试沿用原 operationId，核对不会创建执行。注入日志失败不改变持久发布结果或原始拒绝原因。实现证据见 agent-revisions、agent-publications、agent-publication 和认证 view-api 测试；新目标入口、完整队列编辑及 Invocation 历史仍按各自功能合入。

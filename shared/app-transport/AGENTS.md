@@ -31,3 +31,5 @@ IConnectionService 的 getPricingConfig 与管理服务一样以 snapshot 暴露
 TaskHandle.withdrawPause 在应用能力表显式注册为 async，保留原 requestId、expectedEpoch 与错误码。公开内核 API 的新增方法必须同时检查远程能力表；通用 RPC 编码器不通过反射自动开放所有方法。
 
 原生 HarnessClient 的 queryCommand/commandCatalog/readCommandOutput 是只读查询；HarnessConversationPort 的 queryCommand/reconcileQuery 需要保存报告，属于独立 async 操作，不等待发送 tail。reconcileControl 与原输入回执分开，输出读取不改变执行接纳或草稿。能力表与真实 RPC 回归一同维护。
+
+Agent 发布的 getAgentRevision/getAgentPublicationStatus/getAgentPublicationReceipt 为只读 query，publishAgent 为独立 async 写入。回执查询不能被原发布响应悬挂阻塞；返回既有精确操作事实，不自动重放发布或创建执行。认证 HTTP 回归见 view-api 的 suspended publication 场景。

@@ -1,3 +1,4 @@
+import {freezeQueuedAgent, readQueuedAgent} from './queued-agent';
 import { prepareFlowConnections } from './flow-connections';
 import { type Signal } from '../contracts';
 import { type ToolDefinition, type ContextSnapshot } from '@itookit/llm-context';
@@ -114,6 +115,7 @@ export class SessionRunCoordinator {
 
     async bindQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
         const identity = await this.agents.resolve(item.agentId);
+        await this.assertPublishedImplementation(item, identity);
         const connectionBinding = await this.freezeConnectionBinding({ ...item, sessionId, instructionId: item.id }, identity);
         const bound = await this.prepareFlowInput({ ...item, sessionId, instructionConnectionBinding: connectionBinding }, identity);
         return { ...item, sendIntent: bound.sendIntent, flowBinding: bound.instructionFlowBinding, connectionBinding };
@@ -354,16 +356,26 @@ export class SessionRunCoordinator {
         return root;
     }
 
+    private async assertPublishedImplementation(input: Pick<TaskInput, 'sendIntent'>, identity: ExecutorConfig): Promise<void> {
+        const execution = input.sendIntent?.execution;
+        if (execution?.kind !== 'flow') return;
+        const publication = await this.agents.publishedTarget(identity.target);
+        if (publication && (!publication.flow || publication.flow.id !== execution.flowId || publication.flow.revision !== execution.revision))
+            throw Object.assign(new Error('Select the published Agent implementation or invoke the Flow directly'), {code: 'AGENT_IMPLEMENTATION_OVERRIDE'});
+    }
+
     private async resolveConfig(input: TaskInput): Promise<ExecutorConfig> {
         const accepted = input.instructionConnectionBinding?.harnessAgent;
         if (accepted) {
             if (!isHarnessAgentSnapshot(accepted) || accepted.id !== input.agentId)
                 throw new Error('Invalid admitted harness Agent identity');
-            return { ...structuredClone(accepted), harnessConnection: await this.agents.resolveHarnessConnection(
+            return { ...admittedIdentity(input, structuredClone(accepted)), harnessConnection: await this.agents.resolveHarnessConnection(
                 accepted.harnessConnection!.id, accepted.harnessConnection) };
         }
         const settings = await this.engine.getSessionSettings(input.sessionId);
-        const identity = input.instructionFlowBinding?.agent ?? await this.agents.resolve(input.agentId);
+        const identity = admittedIdentity(input, input.instructionFlowBinding?.agent
+            ?? readQueuedAgent(input.instructionConnectionBinding?.agent, input.agentId) ?? await this.agents.resolve(input.agentId));
+        await this.assertPublishedImplementation(input, identity);
         if (identity.execution?.kind === 'harness') return { ...identity,
             harnessConnection: await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection) };
         const connectionId = input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
@@ -385,7 +397,7 @@ export class SessionRunCoordinator {
     private async prepareFlowInput(input: TaskInput, identity?: ExecutorConfig): Promise<TaskInput> {
         if (input.instructionFlowBinding) return input;
         if (input.instructionConnectionBinding?.harnessAgent && input.sendIntent?.execution.kind !== 'flow') return input;
-        identity ??= await this.agents.resolve(input.agentId);
+        identity ??= readQueuedAgent(input.instructionConnectionBinding?.agent, input.agentId) ?? await this.agents.resolve(input.agentId);
         if (identity.execution?.kind !== 'flow' && input.sendIntent?.execution.kind !== 'flow') return input;
         if (!input.instructionConnectionBinding) {
             input = { ...input, instructionConnectionBinding: await this.freezeConnectionBinding(input, identity) };
@@ -401,7 +413,7 @@ export class SessionRunCoordinator {
     private async freezeConnectionBinding(input: TaskInput, identity: ExecutorConfig) {
         if (identity.execution?.kind === 'harness' && input.sendIntent?.execution.kind !== 'flow') {
             const harnessConnection = await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection);
-            return { defaults: {}, harnessAgent: { ...structuredClone(identity), harnessConnection } };
+            return { identityVersion: 1 as const, defaults: {}, harnessAgent: { ...structuredClone(identity), harnessConnection } };
         }
         const started = Date.now(), operationId = input.instructionId ?? ulid();
         let stage = 'defaults';
@@ -415,11 +427,13 @@ export class SessionRunCoordinator {
             const capture = captureFlowConnections(this.agents);
             const flow = identity.execution?.kind === 'flow' || input.sendIntent?.execution.kind === 'flow';
             if (connectionId && !flow) await capture.catalog.getConnection(connectionId);
+            stage = 'agent-identity';
+            const agent = !flow ? freezeQueuedAgent(identity) : undefined;
             this.host.logger.info('Model defaults admitted', { operation: 'session.model-defaults', operationId, stage: 'admission', result: 'success',
                 sessionId: input.sessionId, agentId: identity.id, purposeCount: Object.keys(defaults).length,
                 source,
                 elapsedMs: Date.now() - started });
-            return { connectionId, source, defaults, connections: capture.snapshot() };
+            return {identityVersion: 1 as const, connectionId, source, defaults, connections: capture.snapshot(), ...(agent ? {agent} : {})};
         } catch (error) {
             this.host.logger.warn('Model default binding failed', { operation: 'session.model-defaults', operationId, stage, result: 'failure',
                 sessionId: input.sessionId, agentId: identity.id, errorCode: 'MODEL_DEFAULT_BINDING_READ_FAILED', elapsedMs: Date.now() - started });
@@ -590,4 +604,11 @@ function projectError(
         type: 'error',
         error: { message, ...(status === 'aborted' ? { code: 'ABORTED' } : {}) },
     });
+}
+
+/** Legacy accepted identities keep their original task-submission shape. */
+function admittedIdentity(input: TaskInput, identity: ExecutorConfig): ExecutorConfig {
+    if (!input.instructionId || input.instructionConnectionBinding?.identityVersion === 1) return identity;
+    const {target: _unrecordedTarget, ...legacy} = identity;
+    return legacy;
 }

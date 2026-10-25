@@ -185,3 +185,5 @@ Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.
 RemoteConversationStore 的 load/save/submitted 在同实例串行，避免延迟读取回退 CAS 游标；保存先冻结调用方记录，读取返回副本。未知写入只核对写前/写后值；第三值锁定实例为冲突，load 不能解除。原生执行与控制不共用此存储串行边界。
 
 原生队列的 enqueue/editInstructionQueue 经显式 RPC 暴露，与原发送 tail 独立；ConversationView 在队首派发回执悬挂时继续观察，持久化由 RemoteConversationStore 校验队列修订。ConversationRegistry 由项目宿主持有，跨视图复用同一控制器并在存在可派发队列或未确认回执时保留观察；宿主关闭才统一释放。
+
+configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、公开范围和默认实参；不创建 Task、不获取 Connection、不持有队列。runtime 只接线；发布事务与原操作回执由 Session 配置服务管理。

@@ -32,10 +32,23 @@ it('publishes safe aggregate metadata and follows host changes without sharing m
     expect(f.listeners.size).toBe(0);
 });
 
+it('keeps local and malformed Agents out of root selectors and forbids a synthetic private default', async () => {
+    const f = fixture(), agents = f.service.listAgents();
+    f.service.listAgents = () => [...agents, ...['local', 'invalid'].map((exposure, index) => ({
+        ...agents[0], id: index === 0 ? 'default' : 'invalid', exposure}))];
+    const view = await createChatConfigurationView(f.service as never);
+    try {
+        expect(view.getConfigurationSnapshot().agents.map(agent => agent.id)).toEqual(['agent']);
+        expect(view.getConfigurationSnapshot().fallbackAgentAllowed).toBe(false);
+        expect(f.service.listAgents()).toHaveLength(3);
+    } finally {await view.dispose();}
+});
+
 it('does not publish a read invalidated while it was in flight and releases a failed initialization', async () => {
     const f = fixture(); let resolve!: (value: typeof f.connection[]) => void;
     f.service.getConnections.mockImplementationOnce(() => new Promise(done => {resolve = done;}));
     const opening = createChatConfigurationView(f.service as never);
+    await vi.waitFor(() => expect(resolve).toBeTypeOf('function'));
     f.changed(); resolve([]);
     const view = await opening;
     expect(view.getConfigurationSnapshot().connections).toHaveLength(1);

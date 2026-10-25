@@ -22,3 +22,5 @@ export { collectFlowToolDependencies, flowToolDependencyIssues } from './contrac
 
 export {validFlowFiles, validFileConstraints, type FlowFilePart, type FlowFileConstraints} from './contracts/flow-files';
 export {assertFlowCallSource, assertFlowCallSignature, flowCallValues, FlowCallInputError, type FlowCallSource, type FlowInputOrigin, type FlowResolvedInput} from './contracts/flow-call-input';
+
+export * from './contracts/call-target';

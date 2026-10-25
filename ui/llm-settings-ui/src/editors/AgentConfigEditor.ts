@@ -6,6 +6,7 @@ import { renderAgentExecution, readAgentExecution, bindAgentExecution, type Agen
 import { renderAgentModelDefaults, readAgentModelDefaults, bindAgentModelDefaults } from './agent-model-defaults';
 import { readAgentComposition } from './agent-composition';
 import { mountAgentHeader, type AgentHeaderController } from './agent-header';
+import {AgentPublicationController} from './agent-publication';
 // @file: llm-ui/editors/AgentConfigEditor.ts
 
 import {
@@ -44,6 +45,7 @@ export class AgentConfigEditor implements IEditor {
     private currentTitle: string = '';
     private hostSettings?: Awaited<ReturnType<NonNullable<EditorOptions['mountSettings']>>>;
     private header?: AgentHeaderController;
+    private publication?: AgentPublicationController;
 
     constructor(
         _container: HTMLElement,
@@ -72,6 +74,7 @@ export class AgentConfigEditor implements IEditor {
     }
 
     setText(text: string) {
+        if (this.publication?.hasPendingWrite) {this.publication.requireSourceReview(); return;}
         if (this.autoSave?.protectsInput) return;
         try {
             const parsed = JSON.parse(text);
@@ -153,6 +156,7 @@ export class AgentConfigEditor implements IEditor {
     // --- Rendering ---
 
     async render() {
+        this.publication?.assertCanClose(); this.publication?.destroy(); this.publication = undefined;
         await this.hostSettings?.flush();
         if (this.autoSave && !await this.autoSave.dispose()) return;
         this.executionForm?.destroy();
@@ -201,12 +205,22 @@ export class AgentConfigEditor implements IEditor {
                     <div class="agent-header__actions" data-agent-header-actions></div>
                 </div>
                 <p class="agent-chat-status" data-agent-chat-status role="status" aria-live="polite" hidden></p>
+                <div class="agent-publication" data-agent-publication></div>
 
                 ${this.renderPageTabs()}
                 <div class="agent-editor-panels">
                 ${this.renderPageStart('general')}
                 <div class="agent-editor-page">
                 <div class="agent-basic-identity" data-agent-identity-slot></div>
+                <div class="agent-form-row">
+                    <label class="agent-form-label" for="agent-exposure">${t('callable.exposure.label')}</label>
+                    <select class="agent-form-input" id="agent-exposure" name="exposure">
+                        ${agent.exposure !== undefined && !['global', 'local'].includes(agent.exposure) ? `<option value="" selected>${t('callable.exposure.invalid')}</option>` : ''}
+                        <option value="global" ${agent.exposure === undefined || agent.exposure === 'global' ? 'selected' : ''}>${t('callable.exposure.global')}</option>
+                        <option value="local" ${agent.exposure === 'local' ? 'selected' : ''}>${t('callable.exposure.local')}</option>
+                    </select>
+                    <p class="agent-form-help">${t('callable.exposure.hint')}</p>
+                </div>
                 <div data-agent-execution-slot></div>
                 <div class="agent-host-settings" data-agent-host-settings></div>
 
@@ -385,6 +399,8 @@ export class AgentConfigEditor implements IEditor {
         this.bindEvents();
         this.activatePage(this.activePage);
         this.header = mountAgentHeader(this.container, this.options, () => this.flushPendingSave());
+        this.publication = new AgentPublicationController(this.container.querySelector('[data-agent-publication]')!, this.service, agent.id,
+            () => this.flushPendingSave(), !!this.options.readOnly);
     }
 
     private renderPageTabs(): string {
@@ -727,6 +743,9 @@ export class AgentConfigEditor implements IEditor {
         this.content.name = getVal('name');
         this.content.icon = getVal('icon');
         this.content.description = getVal('description');
+        const exposure = getVal('exposure');
+        if (exposure !== 'global' && exposure !== 'local') throw new SettingsValidationError(t('callable.exposure.invalid'));
+        this.content.exposure = exposure;
         this.content.execution = this.readDraftField('[name=executionKind]', () => readAgentExecution(this.container));
         this.content.composition = this.readDraftField('[name=compositionCoordinator]', () => readAgentComposition(this.container));
         if (this.content.composition) this.content.type = 'composite';
@@ -792,6 +811,7 @@ export class AgentConfigEditor implements IEditor {
     cancelPendingRender(): void { this.header?.cancelPendingAction(); }
 
     async destroy() {
+        this.publication?.assertCanClose(); this.publication?.destroy(); this.publication = undefined;
         this.header?.cancelPendingAction();
         await this.flushHostSettings();
         if (this.autoSave && !await this.autoSave.dispose()) throw new Error(t('settings.autosave.leaveFailed'));

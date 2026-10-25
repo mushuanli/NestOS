@@ -1,6 +1,8 @@
 /** Configuration contracts and pure policies; no adapter runtime initialization. */
 export * from '@itookit/device-llm/contracts';
 export * from './llm-management/contracts/agent';
+export type {AgentRevisionContent, AgentPublishedRevision, AgentPublishRequest, AgentPublicationStatus} from './llm-management/contracts/agent-publication';
+export {publishedAgentDefinition} from './llm-management/contracts/agent-publication';
 export type { HarnessExecutionConnection, HarnessExecutionConnectionRecord, HarnessExecutionConnectionTarget, HarnessConnectionSnapshot, HarnessExecutionRequest,
     HarnessExecutionResult, HarnessExecutionProvider, HarnessInteractionNotification } from './llm-management/contracts/harness-execution';
 export * from './llm-management/contracts/image-processing';

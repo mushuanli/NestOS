@@ -17,6 +17,10 @@ export interface SessionInstruction extends SessionInstructionInput {
     /** Digest of the original request, before host-derived bindings or attachment paths. */
     submissionDigest?: string;
     connectionBinding?: {
+        /** New identity metadata must not alter legacy admitted fingerprints. */
+        identityVersion?: 1;
+        /** Frozen ordinary Agent policy; credentials remain host-owned. */
+        agent?: {version: 1; config: import('../core/types').ExecutorConfig; digest: string};
         /** Frozen remote Agent identity and execution target; credentials remain host-owned. */
         harnessAgent?: import('../core/types').ExecutorConfig;
         connectionId?: string;

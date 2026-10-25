@@ -322,3 +322,42 @@ it('does not replay a command whose response was lost even after reconnecting su
     const {sessions} = await root.services.projects.sessions.navigation();
     expect(sessions.filter(session => session.title === 'Create only once')).toHaveLength(1);
 });
+
+it('publishes immutable Agent revisions and reconciles their exact receipt through authenticated RPC', async () => {
+    const root = await client('agent-publication'), agents = root.services.agentService;
+    await agents.saveAgent({id: 'http-published', name: 'HTTP published', type: 'agent', config: {systemPrompt: 'PRIVATE_HTTP_POLICY'}});
+    const state = await agents.getAgentPublicationStatus!('http-published');
+    const request = {agentId: 'http-published', operationId: 'publish-http', expectedSourceDigest: state.sourceDigest,
+        expectedRevisionDigest: state.draftDigest, expectedPublishedVersion: null};
+    expect(await agents.getAgentPublicationReceipt!(request)).toBeNull();
+    const first = await agents.publishAgent!(request); expect(first.target.version).toMatch(/^ap1_[a-f0-9]{64}$/);
+    await agents.saveAgent({...first.definition, name: 'Unpublished HTTP name', config: {systemPrompt: 'NEW_HTTP_POLICY'}});
+    expect(await agents.getAgentPublicationReceipt!(request)).toEqual(first); expect(await agents.publishAgent!(request)).toEqual(first);
+    expect(await agents.getAgentRevision!('http-published', first.target.version)).toEqual(first);
+    expect((await agents.getAgentPublicationStatus!('http-published')).hasDraftChanges).toBe(true);
+    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_HTTP_POLICY'); expect(JSON.stringify(auditEvents)).not.toContain('NEW_HTTP_POLICY');
+});
+
+it('queries a committed publication receipt while the original authenticated write response is still suspended', async () => {
+    let release!: () => void, held = false;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    const fetcher: typeof fetch = async (url, init) => {
+        const request = init?.method === 'POST' ? JSON.parse(String(init.body)) : undefined;
+        const response = await auth.fetcher(url, init);
+        if (request?.kind === 'call' && request.call?.method === 'publishAgent') {held = true; await gate;}
+        return response;
+    };
+    const peer = new HttpViewClient('held-publication', server.origin + '/api/application', fetcher); clients.push(peer);
+    const root = await peer.start(), agents = root.services.agentService;
+    await agents.saveAgent({id: 'held-agent', name: 'Held Agent', type: 'agent', config: {}});
+    const state = await agents.getAgentPublicationStatus!('held-agent');
+    const request = {agentId: 'held-agent', operationId: 'held-publication', expectedSourceDigest: state.sourceDigest,
+        expectedRevisionDigest: state.draftDigest, expectedPublishedVersion: null};
+    const pending = agents.publishAgent!(request); const finished = vi.fn(); void pending.then(finished);
+    try {
+        await vi.waitFor(() => expect(held).toBe(true)); expect(finished).not.toHaveBeenCalled();
+        const receipt = await agents.getAgentPublicationReceipt!(request);
+        expect(receipt?.target.digest).toBe(state.draftDigest); expect(finished).not.toHaveBeenCalled();
+        release(); expect(await pending).toEqual(receipt);
+    } finally {release(); await pending.catch(() => {});}
+});

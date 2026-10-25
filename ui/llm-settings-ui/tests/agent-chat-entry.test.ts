@@ -38,6 +38,20 @@ it('flushes host preferences and the edited configuration before opening chat wi
     expect(f.root.querySelector('[name="systemPrompt"]')).toBe(prompt); expect(f.editor.isDirty()).toBe(false);
 });
 
+it('disables root chat for local Agents and rechecks scope after an in-flight save', async () => {
+    const f = await setup(), scope = f.root.querySelector<HTMLSelectElement>('[name="exposure"]')!;
+    scope.value = 'local'; scope.dispatchEvent(new Event('change', {bubbles: true}));
+    expect(f.button.disabled).toBe(true); f.button.click(); expect(f.start).not.toHaveBeenCalled();
+    scope.value = 'global'; scope.dispatchEvent(new Event('change', {bubbles: true}));
+    await f.editor.flushPendingSave(); expect(f.button.disabled).toBe(false);
+    let release!: () => void;
+    const flush = vi.spyOn(f.editor, 'flushPendingSave').mockImplementationOnce(() => new Promise<void>(done => {release = done;}));
+    f.button.click(); scope.value = 'local'; scope.dispatchEvent(new Event('change', {bubbles: true})); release();
+    await vi.waitFor(() => expect(f.root.querySelector('[data-agent-chat-status]')?.textContent).toContain('Flow'));
+    expect(f.start).not.toHaveBeenCalled(); expect(f.button.disabled).toBe(true); flush.mockRestore();
+    scope.value = 'global'; scope.dispatchEvent(new Event('change', {bubbles: true})); await f.editor.flushPendingSave();
+});
+
 it('keeps a failed save and its concrete reason visible, logs safe metadata, and permits retry', async () => {
     const f = await setup();
     const prompt = editPrompt(f.root, 'Private prompt body'); f.save.mockRejectedValueOnce(new Error('Storage is read-only'));

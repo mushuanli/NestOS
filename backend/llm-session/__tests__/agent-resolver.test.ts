@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { AgentResolver } from '../src/session/agent-resolver';
 
 const connection = {
@@ -25,6 +25,24 @@ function service(overrides: Record<string, unknown> = {}): never {
 }
 
 describe('AgentResolver agentVersion', () => {
+    it('allows local identities in Flow resolution while rejecting root selection without falling back', async () => {
+        const fallback = vi.fn();
+        const definition = {id: 'private', name: 'Private', type: 'agent', exposure: 'local', config: {}};
+        const resolver = new AgentResolver(service({getAgentConfig: async () => definition}), undefined, undefined, undefined,
+            {missingAgent: fallback});
+        await expect(resolver.resolve('private')).rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
+        expect(fallback).not.toHaveBeenCalled();
+        expect(await resolver.resolveExact('private')).toMatchObject({id: 'private', exposure: 'local'});
+        definition.exposure = 'unrecognized';
+        await expect(resolver.resolveExact('private')).rejects.toMatchObject({code: 'CALLABLE_EXPOSURE_INVALID'});
+    });
+
+    it('checks host fallback exposure and never invents a default entry over a local default', async () => {
+        const resolver = new AgentResolver(service({getAgents: async () => [{id: 'default', exposure: 'local'}]}),
+            undefined, undefined, undefined, {missingAgent: async () => ({id: 'private', name: 'Private', type: 'agent', exposure: 'local'})});
+        await expect(resolver.resolve('missing')).rejects.toMatchObject({code: 'CALLABLE_LOCAL_ONLY'});
+        expect(await resolver.getAvailableAgents()).toEqual([]);
+    });
     afterEach(() => {
         // `subtle` lives on Crypto.prototype; drop the shadowing own property.
         delete (globalThis.crypto as { subtle?: unknown }).subtle;

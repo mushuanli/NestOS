@@ -17,8 +17,8 @@ export function validateFlowCallParameters(schema: FlowParameter[] = [], values:
         const supplied = Object.hasOwn(values, field.name), value = values[field.name];
         if (supplied && wholeReference(value)) continue;
         const dynamic = supplied && flowTemplateReferences(value).length > 0;
-        const checked = dynamic ? { ...field, options: undefined, imageConstraints: undefined,
-            widget: field.widget === 'images' ? undefined : field.widget } : field;
+        const checked = dynamic ? { ...field, options: undefined, imageConstraints: undefined, fileConstraints: undefined,
+            widget: ['images', 'files'].includes(field.widget ?? '') ? undefined : field.widget } : field;
         for (const issue of validateFlowParameters([checked], supplied ? { [field.name]: value } : {})) {
             issues.push({ ...issue, parameter: field.name,
                 code: issue.code === 'missing-parameter' ? 'missing-call-parameter' : 'invalid-call-parameter' });

@@ -554,3 +554,7 @@ CLI 用 `mindos validate -f example.flow --json` 检查源码和同目录子流�
 ### 调度准入与清理权限
 
 根 Task 是持久调用锚点。提交开始后，回执丢失不能证明未接纳；未取得 scheduler lease 的宿主保留原根任务和已引用工作区，抛出原错误供核对与恢复。竞争中的活动所有者返回 FLOW_SCHEDULER_BUSY；失败者不终结胜者。根提交前序列化失败可清理私有工作区，取得租约后的节点执行失败仍按原机制失败化与收尾。准入诊断经 onControlDiagnostic 注入，只有安全身份、阶段、分类和耗时，诊断失败不改变执行结果。
+
+### 统一调用实参与公开范围
+
+prepareFlowRun 经 prepareFlowCallInput 解析 composer/arguments，严格校验来源信封与输入签名，再调用原 flowToDag。正文不按 JSON 自动解析，显式来源绑定无对应字段或冲突即拒绝；文件仅保留标准不可变引用。默认值依次为 Flow 发布值、Agent 默认实参、本次显式值，false/0/空串/null/空数组不视为缺少，结果保存有效值及来源。接纳允许 onMissing=interact 暂缺或待补全，消费前仍验证。exposure 省略保持 global 和旧摘要；local 的直接根调用拒绝，父 Flow 可以编译明确依赖的 local 定义。资产的授权、准备和传输由宿主另行接线，此处不读取文件或原生会话。

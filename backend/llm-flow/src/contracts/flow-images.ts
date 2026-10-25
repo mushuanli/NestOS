@@ -13,7 +13,7 @@ export function validImageConstraints(value: FlowImageConstraints = {}): boolean
             && value.mimeTypes.every(type => typeof type === 'string' && /^image\/[a-z0-9.+-]+$/i.test(type)));
 }
 
-export type FlowImagePart = {type: 'image_url'; image_url: {url: string}} | {type: 'image'; source: {type: 'asset'; asset: {mimeType: string; bytes: number; sha256: string; [key: string]: unknown}}};
+export type FlowImagePart = {type: 'image_url'; image_url: {url: string}} | {type: 'image'; name?: string; source: {type: 'asset'; asset: {mimeType: string; bytes: number; sha256: string; [key: string]: unknown}}};
 
 /** Upload values use the existing multimodal message content contract. */
 export function validFlowImages(value: unknown, constraints: FlowImageConstraints = {}): value is FlowImagePart[] {
@@ -21,14 +21,20 @@ export function validFlowImages(value: unknown, constraints: FlowImageConstraint
         || constraints.maxItems !== undefined && value.length > constraints.maxItems) return false;
     let bytes = 0;
     for (const part of value) {
-        if (!part) return false;
-        const size = part.type === 'image' && part.source?.type === 'asset' ? assetImageBytes(part.source.asset, constraints)
-            : part.type === 'image_url' && typeof part.image_url?.url === 'string' ? inlineImageBytes(part.image_url.url, constraints) : undefined;
+        const size = partImageBytes(part, constraints);
         if (size === undefined) return false;
         bytes += size;
         if (constraints.maxBytes !== undefined && bytes > constraints.maxBytes) return false;
     }
     return true;
+}
+
+function partImageBytes(value: unknown, constraints: FlowImageConstraints): number | undefined {
+    if (!value || typeof value !== 'object') return;
+    const part = value as {type?: unknown; name?: unknown; source?: {type?: unknown; asset: Record<string, unknown>}; image_url?: {url?: unknown}};
+    if (part.name !== undefined && typeof part.name !== 'string') return;
+    if (part.type === 'image' && part.source?.type === 'asset') return assetImageBytes(part.source.asset, constraints);
+    if (part.type === 'image_url' && typeof part.image_url?.url === 'string') return inlineImageBytes(part.image_url.url, constraints);
 }
 
 function inlineImageBytes(url: string, constraints: FlowImageConstraints): number | undefined {

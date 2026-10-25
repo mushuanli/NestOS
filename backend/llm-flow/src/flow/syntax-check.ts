@@ -177,7 +177,7 @@ function validateParameterBounds(parameter: FlowParameter): void {
     if (parameter.minimum !== undefined && parameter.maximum !== undefined && parameter.minimum > parameter.maximum) throw new Error('Invalid numeric bounds');
 }
 function invalidDefault(parameter: FlowParameter): boolean {
-    if (parameter.default === null && parameter.type === 'json' && parameter.widget !== 'images') return !!parameter.options && !parameter.options.includes(null);
+    if (parameter.default === null && parameter.type === 'json' && !['images', 'files'].includes(parameter.widget ?? '')) return !!parameter.options && !parameter.options.includes(null);
     const invalid = invalidFields({field: {...parameter, required: true}}, {field: parameter.default!});
     return invalid.length > 0 || parameter.integer === true && typeof parameter.default === 'number' && !Number.isInteger(parameter.default);
 }

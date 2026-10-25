@@ -1,6 +1,7 @@
 import type { FlowNodeId } from './flow';
 import type { LlmNodeConfig } from '@itookit/llm-tasks/contracts';
 import type { FlowImageConstraints } from './flow-images';
+import type {FlowFileConstraints} from './flow-files';
 
 export type Brand<T, Name extends string> = T & { readonly __brand: Name };
 export type FlowId = Brand<string, 'FlowId'>;
@@ -90,6 +91,8 @@ export interface FlowLayout {
 }
 
 export interface FlowDraft {
+    /** Omitted legacy values mean global; local is callable only from another Flow. */
+    exposure?: import('./callable-exposure').CallableExposure;
     /** Lexically scoped callable Flow definitions stored in the same file. */
     functions?: FlowDraft[];
     outputs?: Record<string, { value: JsonValue; schema?: JsonValue }>;
@@ -137,7 +140,8 @@ export interface FlowParameter {
     /** Explicit composer binding; parameter names never imply an input source. */
     inputSource?: 'composer.text' | 'composer.attachments';
     imageConstraints?: FlowImageConstraints;
-    widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'images';
+    fileConstraints?: FlowFileConstraints;
+    widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'images' | 'files';
     label?: string;
     nonBlank?: boolean;
     options?: JsonValue[];
@@ -288,6 +292,7 @@ export interface FlowRunGoal {
 }
 
 export interface FlowRevision {
+    exposure?: FlowDraft['exposure'];
     /** Immutable inline definitions, recursively frozen with the owning revision. */
     functions?: FlowRevision[];
     dependencyLocks?: Record<string, FlowDependencyLock>;

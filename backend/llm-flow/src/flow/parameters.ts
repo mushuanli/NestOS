@@ -5,6 +5,7 @@
 import type { FlowInputGroup, FlowParameter, JsonValue } from '../contracts';
 import type { ValidationIssue } from './validation';
 import { validFlowImages, validImageConstraints } from '../contracts/flow-images';
+import {validFlowFiles, validFileConstraints} from '../contracts/flow-files';
 import { flowSchemaIssue } from './schema-registry';
 
 import { flowParameterValues, flowInputPresent, validateFlowInputGroups } from '../contracts/flow-inputs';
@@ -50,11 +51,11 @@ export function resolveFlowParameters(
 /** Resolve a dotted parameter path (e.g. `profile.pass_score`) against the flat/nested map. */
 function resolveParamPath(parameters: Record<string, JsonValue>, path: string): JsonValue | undefined {
     // Fast path: a top-level key literally named with dots.
-    if (path in parameters) return parameters[path];
+    if (Object.hasOwn(parameters, path)) return parameters[path];
     const parts = path.split('.');
     let current: JsonValue = parameters;
     for (const part of parts) {
-        if (!isRecord(current) || !(part in current)) return undefined;
+        if (!isRecord(current) || !Object.hasOwn(current, part)) return undefined;
         current = current[part];
     }
     return current;
@@ -70,9 +71,11 @@ export function validateFlowParameters(
     const provided = flowParameterValues(schema, values, groups);
     for (const param of schema ?? []) {
         const group = groups?.find(item => item.parameters.includes(param.name));
-        if (group && !flowInputPresent(provided[param.name]) && group.parameters.some(name => flowInputPresent(provided[name]))) continue;
+        if (group && (!Object.hasOwn(provided, param.name) || !flowInputPresent(provided[param.name]))
+            && group.parameters.some(name => Object.hasOwn(provided, name) && flowInputPresent(provided[name]))) continue;
         if (!validImageConstraints(param.imageConstraints)) issues.push({ code: 'invalid-parameter', message: `Invalid image constraints: ${param.name}` });
-        const present = param.name in provided && provided[param.name] !== undefined;
+        if (!validFileConstraints(param.fileConstraints)) issues.push({code: 'invalid-parameter', message: `Invalid file constraints: ${param.name}`});
+        const present = Object.hasOwn(provided, param.name) && provided[param.name] !== undefined;
         if (param.required && !present) {
             if (param.onMissing !== 'interact') issues.push({ code: 'missing-parameter', message: `Missing required parameter: ${param.name}` });
             continue;
@@ -85,6 +88,8 @@ export function validateFlowParameters(
         if (param.widget === 'images' && param.onMissing !== 'interact' && !validFlowImages(value, param.imageConstraints)) {
             issues.push({ code: 'invalid-parameter', message: `Parameter ${param.name} requires supported images within the size limit` });
         }
+        if (param.widget === 'files' && param.onMissing !== 'interact' && !validFlowFiles(value, param.fileConstraints))
+            issues.push({code: 'invalid-parameter', message: `Parameter ${param.name} requires immutable file references within its declared limits`});
         if (param.onMissing !== 'interact' && typeof value === 'number' && (
             (param.integer && !Number.isInteger(value)) || (param.minimum !== undefined && value < param.minimum)
             || (param.maximum !== undefined && value > param.maximum))) {

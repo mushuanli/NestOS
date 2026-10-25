@@ -10,6 +10,7 @@ import { withFlowReturns, RETURN_NODE } from './function-outputs';
 import { flowRevisionDigest } from './validation';
 import { assertInlineFunctionTree, inlineFunctionScope, resolveInlineFunction, type InlineFunctionScope } from './inline-functions';
 import { callEntry, assertCallable } from './function-call';
+import { callableExposure } from '../contracts/callable-exposure';
 import { namespaceCallConfig, remapRouteEdges } from './function-namespace';
 
 export type FlowNodeBinder = (
@@ -54,6 +55,7 @@ export async function flowToDag(
 }
 
 async function compileFlow(flow: FlowRevision, context: CompilationContext): Promise<DagRunSpec> {
+    callableExposure(flow.exposure);
     assertInlineFunctionTree(flow);
     const parameters = flowParameterValues(flow.parameters, context.parameters, flow.inputGroups);
     flow = {...flow, connections: resolveConnectionConditions(flow, context.parameters, context.parameterSets)};

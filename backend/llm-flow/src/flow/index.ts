@@ -29,6 +29,7 @@ export type { ValidationIssue } from './validation';
 export { checkFlowSyntax, checkFlowSource } from './syntax-check';
 export type { FlowDiagnostic, FlowCheckResult, FlowCheckOptions } from './syntax-check';
 export { resolveFlowParameters, validateFlowParameters, flowParameterValues, prepareFlowParameters } from './parameters';
+export {prepareFlowCallInput, type FlowCallInputOptions} from './call-input';
 export { compileDispatchGraph } from './structured/graph';
 export { expandDispatchDraft } from './structured/expand';
 export { compileControlGraph } from './control/graph';

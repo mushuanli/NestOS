@@ -1,6 +1,7 @@
 import type { FlowRuntimeInput } from './flow-templates';
 import type { FlowNodeDefinition, JsonValue, SerializableExpression } from './flow-definition';
 import type { FlowImageConstraints } from './flow-images';
+import type { FlowFileConstraints } from './flow-files';
 
 /** Invocation context is explicit; no ambient Session or parent history is imported. */
 export interface DispatchContextPolicy {
@@ -91,7 +92,8 @@ export interface DispatchConfig {
 
 export interface FlowInputField {
     imageConstraints?: FlowImageConstraints;
-    widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'images';
+    fileConstraints?: FlowFileConstraints;
+    widget?: 'text' | 'textarea' | 'number' | 'select' | 'checkbox' | 'images' | 'files';
     options?: JsonValue[];
     minimum?: number;
     maximum?: number;

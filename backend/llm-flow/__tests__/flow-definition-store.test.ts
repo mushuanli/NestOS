@@ -63,6 +63,18 @@ function revision(number: number, name: string): FlowRevision {
 }
 
 describe('FlowDefinitionStore', () => {
+    it('preserves call scope through draft save, immutable publication and archive projection', async () => {
+        const store = new FlowDefinitionStore(memoryStore());
+        const draft = await store.createDraft({id: 'private', name: 'Private'});
+        const saved = await store.saveDraft({...draft, exposure: 'local'}, draft.draftVersion);
+        const published = await store.createRevision(saved);
+        expect(await store.loadDraft('private')).toMatchObject({exposure: 'local'});
+        expect(await store.loadRevision('private', published.revision)).toMatchObject({exposure: 'local', digest: published.digest});
+        expect(flowRevisionToDraft(published).exposure).toBe('local');
+        await store.saveDraft({...saved, exposure: 'global'}, saved.draftVersion);
+        expect((await store.loadRevision('private', published.revision))?.exposure).toBe('local');
+        await expect(store.saveRevision({...published, revision: 2, exposure: 'unknown'} as never)).rejects.toThrow('Exposure must be global or local');
+    });
     it('keeps nested authored definitions through adoption, publication and archive projection', async () => {
         const storage = memoryStore(), store = new FlowDefinitionStore(storage);
         const child: FlowDraft = { id: 'helper' as never, name: 'Helper', nodes: [], edges: [], layout: {},

@@ -4,6 +4,7 @@ import { collectDependency, dependenciesReady, dependencyWait } from '@itookit/l
 import type { FlowDependencyBinding } from '../programs';
 import { assertKey, object, outcome } from './value';
 import { validFlowImages, validImageConstraints } from '../../contracts/flow-images';
+import { validFlowFiles, validFileConstraints } from '../../contracts/flow-files';
 
 export interface InputProgramInput extends FlowInputConfig {
     fields: Record<string, FlowInputField>;
@@ -23,13 +24,20 @@ export function validateFields(fields: Record<string, FlowInputField> | undefine
     if (!fields || !Object.keys(fields).length) throw new Error('Input fields are required');
     for (const [key, field] of Object.entries(fields)) {
         assertKey(key);
-        if (!['string', 'number', 'boolean', 'json'].includes(field.type)) throw new Error(`Invalid input type: ${key}`);
-        if (field.widget && !['text', 'textarea', 'number', 'select', 'checkbox', 'images'].includes(field.widget)) throw new Error(`Invalid input widget: ${key}`);
-        if (field.widget === 'images' && field.type !== 'json') throw new Error(`Images require json: ${key}`);
-        if (!validImageConstraints(field.imageConstraints)) throw new Error(`Invalid image constraints: ${key}`);
-        if (field.widget === 'select' && !field.options?.length) throw new Error(`Select requires options: ${key}`);
-        if (field.nonBlank && field.type !== 'string') throw new Error(`nonBlank requires string: ${key}`);
+        validateField(key, field); validateMaterialField(key, field);
     }
+}
+
+function validateField(key: string, field: FlowInputField): void {
+    if (!['string', 'number', 'boolean', 'json'].includes(field.type)) throw new Error(`Invalid input type: ${key}`);
+    if (field.widget && !['text', 'textarea', 'number', 'select', 'checkbox', 'images', 'files'].includes(field.widget)) throw new Error(`Invalid input widget: ${key}`);
+    if (field.widget === 'select' && !field.options?.length) throw new Error(`Select requires options: ${key}`);
+    if (field.nonBlank && field.type !== 'string') throw new Error(`nonBlank requires string: ${key}`);
+}
+function validateMaterialField(key: string, field: FlowInputField): void {
+    if (['images', 'files'].includes(field.widget ?? '') && field.type !== 'json') throw new Error(`Materials require json: ${key}`);
+    if (!validImageConstraints(field.imageConstraints)) throw new Error(`Invalid image constraints: ${key}`);
+    if (!validFileConstraints(field.fileConstraints)) throw new Error(`Invalid file constraints: ${key}`);
 }
 
 export function invalidFields(fields: Record<string, FlowInputField>, values: Record<string, JsonValue>): string[] {
@@ -37,6 +45,7 @@ export function invalidFields(fields: Record<string, FlowInputField>, values: Re
         const value = values[key];
         if (value === undefined || value === null) return field.required !== false;
         if (field.widget === 'images' && !validFlowImages(value, field.imageConstraints)) return true;
+        if (field.widget === 'files' && !validFlowFiles(value, field.fileConstraints)) return true;
         if (field.type !== 'json' && typeof value !== field.type) return true;
         if (field.type === 'number' && (!Number.isFinite(value) || (field.minimum !== undefined && Number(value) < field.minimum) || (field.maximum !== undefined && Number(value) > field.maximum))) return true;
         if (field.options && !field.options.some(option => JSON.stringify(option) === JSON.stringify(value))) return true;

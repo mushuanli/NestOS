@@ -6,6 +6,7 @@ export function flowDefinitionBody(flow: FlowDraft | FlowRevision) {
     const { id, name, nodes, edges, parameters, inputGroups, toolDependencies, outputs, variables, connections, defaultConnection,
         systemPrompt, toolIds, defaults, runPolicy } = flow;
     return structuredClone({ id, name, nodes, edges, parameters: parameters ?? [], connections: connections ?? [],
+        ...(flow.exposure !== undefined ? { exposure: flow.exposure } : {}),
         ...(toolDependencies ? {toolDependencies} : {}),
         ...(inputGroups ? {inputGroups} : {}),
         ...(defaultConnection !== undefined ? { defaultConnection } : {}),

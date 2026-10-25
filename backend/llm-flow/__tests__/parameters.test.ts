@@ -20,6 +20,9 @@ describe('resolveFlowParameters', () => {
 
     it('leaves unknown references intact', () => {
         expect(resolveFlowParameters('${params.missing}', {})).toBe('${params.missing}');
+        expect(resolveFlowParameters('${params.constructor}', {})).toBe('${params.constructor}');
+        expect(resolveFlowParameters('${params.profile.constructor}', {profile: {}})).toBe('${params.profile.constructor}');
+        expect(resolveFlowParameters('${params.constructor}', {constructor: 'explicit'})).toBe('explicit');
     });
 
     it('resolves nested dotted parameter paths', () => {
@@ -78,6 +81,8 @@ it('applies image policy from each field without imposing a global upload limit'
     const png = image('data:image/png;base64,aGVsbG8=');
     const gif = image('data:image/gif;base64,aGVsbG8=');
     expect(validFlowImages(Array(5).fill(png))).toBe(true);
+    expect(validFlowImages([{...png, name: 'page.png'}])).toBe(true);
+    expect(validFlowImages([{...png, name: {unexpected: 'value'}}])).toBe(false);
     expect(validFlowImages([gif], { mimeTypes: ['image/gif'], maxBytes: 5 })).toBe(true);
     expect(validFlowImages([png, png], { maxItems: 1 })).toBe(false);
     expect(validFlowImages([png], { maxBytes: 4 })).toBe(false);

@@ -3,6 +3,7 @@ import { createRunCatalog } from './run-catalog';
 import type { DagPluginCatalog, FlowRevision, FlowConnection, JsonValue, FlowEdgeDefinition, FlowNodeDefinition } from '../contracts';
 import { DELEGATION_LIMITS, flowInputDeclarationIssues, flowToolDependencyIssues, collectFlowToolDependencies } from '../contracts';
 import { simpleHash } from '@itookit/llm-context';
+import { callableExposure } from '../contracts/callable-exposure';
 import { findCycles } from './graph';
 import { validateDispatch } from './structured/validation';
 import { compileReferenceGraph } from './structured/references';
@@ -27,6 +28,7 @@ export function flowRevisionDigest(flow: Omit<FlowRevision, 'digest'>): string {
         id: flow.id,
         revision: flow.revision,
         name: flow.name,
+        ...(flow.exposure !== undefined ? { exposure: flow.exposure } : {}),
         nodes: flow.nodes,
         edges: flow.edges,
         parameters: flow.parameters,
@@ -50,6 +52,8 @@ export function validateFlowRevision(
     plugins?: DagPluginCatalog,
 ): ValidationIssue[] {
     const issues: ValidationIssue[] = [];
+    try { callableExposure(flow.exposure); }
+    catch { issues.push({ code: 'invalid-exposure', message: 'Exposure must be global or local' }); }
     try { assertInlineFunctionTree(flow); }
     catch (error) { return [{ code: 'invalid-inline-functions', message: String(error) }]; }
     for (const fn of flow.functions ?? []) {

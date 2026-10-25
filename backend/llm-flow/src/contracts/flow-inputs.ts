@@ -9,12 +9,17 @@ export function flowConnectionRequired(slot: FlowConnection, values: Record<stri
 }
 
 export function flowParameterValues(schema: FlowParameter[] | undefined, values?: Record<string, JsonValue>, groups?: FlowInputGroup[], inherited?: Record<string, JsonValue>): Record<string, JsonValue> {
-    const defaults = {...Object.fromEntries((schema ?? []).filter(param => param.default !== undefined).map(param => [param.name, param.default!])), ...inherited};
+    const defaults = Object.fromEntries((schema ?? []).filter(param => param.default !== undefined).map(param => [param.name, param.default!]));
+    return structuredClone(mergeParameterLayer(mergeParameterLayer(defaults, inherited, groups), values, groups));
+}
+
+function mergeParameterLayer(base: Record<string, JsonValue>, values: Record<string, JsonValue> = {}, groups: FlowInputGroup[] = []): Record<string, JsonValue> {
+    const defaults = {...base};
     for (const group of groups ?? []) {
         if (!group.parameters.some(name => Object.hasOwn(values ?? {}, name) && flowInputPresent(values?.[name]))) continue;
         for (const name of group.parameters) if (!Object.hasOwn(values ?? {}, name)) delete defaults[name];
     }
-    return structuredClone({...defaults, ...values});
+    return {...defaults, ...values};
 }
 
 /** Run preparation may defer an entirely missing group to its explicit input collectors. */
@@ -22,7 +27,7 @@ export function validateFlowInputGroups(schema: FlowParameter[] | undefined, gro
     values: Record<string, JsonValue> = {}, options: {allowInteractiveMissing?: boolean} = {}): FlowInputIssue[] {
     const issues: FlowInputIssue[] = [];
     for (const group of groups ?? []) {
-        const count = group.parameters.filter(name => flowInputPresent(values[name])).length;
+        const count = group.parameters.filter(name => Object.hasOwn(values, name) && flowInputPresent(values[name])).length;
         const interactive = options.allowInteractiveMissing && group.parameters.every(name => schema?.find(field => field.name === name)?.onMissing === 'interact');
         if (count === 1 || count === 0 && interactive) continue;
         issues.push({code: count ? 'conflicting-input-group' : 'missing-input-group', message: `Input group ${group.name} requires exactly one value`});
@@ -35,7 +40,7 @@ export function flowInputDeclarationIssues(flow: {parameters?: FlowParameter[]; 
     for (const parameter of flow.parameters ?? []) {
         if (parameter.inputSource !== undefined && (parameter.inputSource !== 'composer.text' && parameter.inputSource !== 'composer.attachments'
             || parameter.inputSource === 'composer.text' && parameter.type !== 'string'
-            || parameter.inputSource === 'composer.attachments' && (parameter.type !== 'json' || parameter.widget !== 'images'))) {
+            || parameter.inputSource === 'composer.attachments' && (parameter.type !== 'json' || !['images', 'files'].includes(parameter.widget ?? '')))) {
             issues.push({code: 'invalid-input-source', message: `Invalid input source declaration: ${parameter.name}`});
         }
     }

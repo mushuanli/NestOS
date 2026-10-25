@@ -1436,3 +1436,27 @@ executionTree 包含 taskId、asOfSequence、tasks、unsettledTasks、activeOper
 范围与成本：该事实证明 Kernel 已确认的同 Session 任务/Effect 收尾，不证明工作区回滚或所有外部业务副作用撤销；独立持久所有者、其他执行 Session 的资源及终态根下仍运行子任务的控制入口继续单独实施。现有快照读取会扫描执行 Session 的任务集合，投影为线性归属遍历；超大任务树的成本优化仍需独立验收，不能将浏览器 DTO 很小等同于存储读取很小。
 
 验证覆盖根已 settled 而后代 cleanupPending、子树/兄弟隔离、原根与快照根版本变化、父链异常及输出隐私；真实应用宿主验证冷读取不打开写会话、终态树收尾和运行模型 Effect 暂停未停止。DOM 验证后代收尾提示消失条件，以及根暂停但后代未停止时仍显示暂停中。
+
+
+## 63. 取消传播跨越终态中间任务
+
+复现：根任务仍有效，中间任务已成功，孙任务仍待启动；原 Kernel.cancel 仅选择非终态直接子任务，导致取消返回后孙任务仍为 created。恢复扫描存在祖先取消补救，但不能代替当前取消调用的后代遍历。
+
+```mermaid
+C4Component
+  title 取消传播修复位于 Kernel 通用机制
+  Component(control, "原调用控制入口", "Session / Flow", "固定根身份、requestId 与控制版本")
+  Component(cancel, "Kernel.cancel", "执行机制", "持久接纳、原清理路径与诊断")
+  Component(frontier, "cancellationFrontier", "纯任务树遍历", "跨过 settled 中间节点，选择未收尾后代")
+  ContainerDb(store, "原 Task 存储", "Session 事务与回执", "原终态、父链及清理事实")
+  Rel(control, cancel, "既有取消命令")
+  Rel(cancel, store, "保存接纳；保留真实终态")
+  Rel(cancel, frontier, "复用既有任务集合读取")
+  Rel(frontier, cancel, "后代沿原取消/清理路径处理")
+```
+
+遍历只在现有取消调用中执行，不新增调度器、状态库或轮询扫描；使用一次父子索引跨过已 settled 的中间任务，避免对每个已结束节点重复调用取消和读取整个 Session。未收尾节点仍交给原取消方法，其后代由原递归机制处理。后代不继承根的 requestId 或控制 epoch，保持自己的控制身份；中间任务的成功输出与无关任务保持不变。
+
+边界保持：带 requestId 的请求若发现指定根已经成功/失败，仍返回其真实终态，不取消其后代。本批不开放终态根的“停止剩余后代”UI，也不改变跨 Session 所有权与物理清理确认。根清理与后代取消的既有顺序保持不变；大规模活动任务树的重复读取优化仍不在本批范围。
+
+回归先在原实现复现孙任务仍为 created，修复后验证取消可穿过成功节点、保留成功结果、隔离无关根与后代请求身份；另验证迟到取消成功根不会偷偷取消子任务。

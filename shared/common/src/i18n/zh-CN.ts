@@ -2780,6 +2780,8 @@ export const zhCN = {
     'callable.independent.descendants.phase.running': '运行中',
     'callable.independent.descendants.phase.waiting': '等待中',
     'callable.independent.descendants.phase.done': '已结束，正在收尾',
+    'callable.independent.cancelRemaining.action': '停止剩余任务',
+    'callable.independent.cancelRemaining.accepted': '剩余任务停止请求已核对；资源是否释放以调用状态为准。',
     'callable.independent.cancel.action': '取消此调用',
     'callable.independent.cancel.query': '查询取消结果',
     'callable.independent.cancel.unknown': '取消结果待核对；不会自动重复发送。',

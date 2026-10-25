@@ -3,7 +3,7 @@ import {IndependentCallDescendants} from './IndependentCallDescendants';
 import type {InteractionDraftStorage} from '../domain/interaction-draft';
 import {IndependentCallInteractions} from './IndependentCallInteractions';
 import {IndependentCallControl} from './IndependentCallControl';
-import {CallControlOperations, callCancellationProtocol, callStateControlProtocol, callResponseProtocol} from '../independent/call-control';
+import {CallControlOperations, callCancellationProtocol, callTreeCancellationProtocol, callStateControlProtocol, callResponseProtocol} from '../independent/call-control';
 import {TaskArtifactBrowser} from './dag/TaskArtifactBrowser';
 import {createModuleLogger, t} from '@itookit/common';
 import type {OperationLedger} from '@itookit/llm-ui';
@@ -76,7 +76,7 @@ export class IndependentCallPanel {
     private pending(): boolean {
         return this.options.operations.getSnapshot().some(record => record.conversationId === this.sessionId && ['submitting', 'unknown'].includes(record.status)
             && (record.kind === 'send' && !!(record.input as {independentTitle?: string}).independentTitle
-                || record.kind === 'command' && [callCancellationProtocol, callStateControlProtocol, callResponseProtocol].includes((record.input as {protocol?: string})?.protocol ?? '')));
+                || record.kind === 'command' && [callCancellationProtocol, callTreeCancellationProtocol, callStateControlProtocol, callResponseProtocol].includes((record.input as {protocol?: string})?.protocol ?? '')));
     }
     private async load(branch: string, current: () => boolean): Promise<void> {
         const calls = await this.commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: this.sessionId, branchId: branch});

@@ -416,3 +416,23 @@ C4Component
 
 
 独立调用卡片的取消控制复用宿主 OperationLedger：command 记录冻结 parent/branch/call/child/task/control epoch，派发前持久保存；查询原回执可以独立于悬挂的发送响应完成，迟到失败不回退 accepted。controlCapabilities.cancel 由宿主投影协议支持，UI 缺省关闭，权限仍在写入时复验。卡片控制不携带输入草稿、不阻塞新输入入队。隐藏/销毁停止后续查询，重开仍使用原 requestId；记录保存失败时明确不发送。取消回执不证明整树物理停止。
+
+## 独立调用的“停止剩余任务”入口
+
+IndependentCallControl 复用既有取消按钮的视图生命周期，以独立 remaining 模式展示“停止剩余任务”。
+只有宿主声明 controlCapabilities.cancelRemaining、主执行 phase=done、executionTree.settled=false
+且原调用已接纳时，才开放新操作。普通取消与暂停/恢复维持独立状态；未知的旧普通取消不能
+被重新解释为剩余树停止，旧宿主缺少能力或树投影时不猜测支持。
+
+CallControlOperations 在原 OperationLedger 保存 independent-call-tree-cancel-v1 与完整请求；
+该标记是 UI 恢复协议，不是 Kernel 状态。登记成功后才发送，保存失败或登记期间视图关闭则
+不发送；同 operationId 必须同时匹配协议和冻结请求，不能跨控制类型复用。新命令与核对命令
+由固定协议表映射；重开、隐藏恢复和未知结果只查询原回执，不自动再次派发。
+
+接受回执仍校验调用范围、根 Task、requestId、epoch 和树回执结构。迟到响应不覆盖已确认
+接纳；按钮明确提示接纳与物理清理的区别，清理完成仍来自 executionTree。独立操作不携带
+composer draft，不消费文字、参数或附件，也不以循环取消后代模拟后端原子操作。
+
+业务命令、身份与台账适配位于 llm-ui-adapter；独立 llm-ui 继续提供通用展示和 OperationLedger，
+不导入 Session 或 Kernel 执行实现。真实本地/RPC ChatView 回归覆盖挂起写响应后核对、原结果
+保留、树外任务隔离与下一条草稿保留；此处不表示真实远端 Harness 生产验收或跨 Session 控制完成。

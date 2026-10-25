@@ -2766,6 +2766,8 @@ export const en: LocaleStrings = {
     'callable.independent.descendants.phase.running': 'Running',
     'callable.independent.descendants.phase.waiting': 'Waiting',
     'callable.independent.descendants.phase.done': 'Finished, settling',
+    'callable.independent.cancelRemaining.action': 'Stop remaining tasks',
+    'callable.independent.cancelRemaining.accepted': 'Remaining-task stop request verified; check the call status for cleanup confirmation.',
     'callable.independent.cancel.action': 'Cancel this call',
     'callable.independent.cancel.query': 'Check cancellation',
     'callable.independent.cancel.unknown': 'Cancellation outcome is unknown; it will not be sent again automatically.',

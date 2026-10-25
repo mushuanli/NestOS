@@ -97,3 +97,49 @@ it('does not accept a receipt for another interaction as the original answer', a
     await expect(first.controls.respond({...query(), targetTaskId: 'worker', interactionId: 'ask', value: 'Answer'}, () => true)).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
     expect(first.ledger.getSnapshot()[0].status).toBe('unknown');
 });
+
+const treeResult = () => ({...query(), receipt: {taskId: 'task', requestId: 'cancel', expectedEpoch: 3, controlEpoch: 3, rootStatus: 'succeeded', taskCount: 2, acceptedAt: 1}});
+it('freezes remaining-tree intent separately and recovers the original request after reopening', async () => {
+    const f = fixture(), first = f.open();
+    f.execute.mockImplementationOnce(async () => new Promise(() => {}));
+    void first.controls.cancelRemaining(request, () => true);
+    await vi.waitFor(() => expect(f.execute).toHaveBeenCalledWith(IndependentCallCommand.CancelRemaining, request));
+    expect(f.saved()[0].input).toMatchObject({protocol: 'independent-call-tree-cancel-v1', request});
+    expect(first.controls.latest('main', 'call', 'task', 'cancel')).toBeUndefined();
+    expect(first.controls.latest('main', 'call', 'task', 'remaining')?.status).toBe('submitting');
+    const second = f.open(); f.execute.mockResolvedValue(treeResult()); await second.controls.cancelRemaining(request, () => true);
+    expect(f.execute).toHaveBeenLastCalledWith(IndependentCallCommand.TreeCancellationReceipt, query());
+    expect(f.execute).toHaveBeenCalledTimes(2); expect(f.saved()[0].status).toBe('accepted'); expect(f.saved()[0].draft).toBeUndefined();
+});
+it('rejects reuse of an ordinary cancel identity for remaining-tree control', async () => {
+    const f = fixture(), view = f.open(); await view.controls.cancel(request, () => true);
+    await expect(view.controls.cancelRemaining(request, () => true)).rejects.toMatchObject({code: 'CALL_CONTROL_IDENTITY_MISMATCH'});
+    expect(f.execute).toHaveBeenCalledTimes(1);
+});
+it('never dispatches remaining-tree control if its durable intent cannot be saved', async () => {
+    const execute = vi.fn(), ledger = createOperationLedger({save: async () => {throw new Error('Disk failed');}});
+    await expect(new CallControlOperations(ledger, {execute} as never, 'parent').cancelRemaining(request, () => true))
+        .rejects.toMatchObject({code: 'CALL_CONTROL_SAVE_FAILED'});
+    expect(execute).not.toHaveBeenCalled();
+});
+it('does not accept a single-task receipt or a mismatched tree epoch as remaining-tree admission', async () => {
+    const f = fixture(), view = f.open();
+    await expect(view.controls.cancelRemaining(request, () => true)).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
+    expect(f.saved()[0].status).toBe('unknown');
+    f.execute.mockResolvedValue({...treeResult(), receipt: {...treeResult().receipt, expectedEpoch: 4}});
+    await expect(view.controls.reconcile(request.requestId)).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
+    expect(f.saved()[0].status).toBe('unknown');
+    f.execute.mockResolvedValue(treeResult()); await view.controls.reconcile(request.requestId);
+    expect(f.saved()[0].status).toBe('accepted');
+    expect(f.execute.mock.calls.filter(([name]) => name === IndependentCallCommand.CancelRemaining)).toHaveLength(1);
+});
+it('does not regress verified remaining-tree admission when the original response fails late', async () => {
+    const f = fixture(), view = f.open(); let reject!: (error: Error) => void;
+    f.execute.mockImplementationOnce(async () => new Promise((_resolve, fail) => {reject = fail;}));
+    const sending = view.controls.cancelRemaining(request, () => true);
+    await vi.waitFor(() => expect(reject).toBeTypeOf('function'));
+    f.execute.mockResolvedValue(treeResult()); await view.controls.reconcile(request.requestId);
+    reject(new Error('Delayed transport failure'));
+    expect(await sending).toEqual({operationId: request.requestId, status: 'accepted'});
+    expect(view.ledger.getSnapshot()[0].status).toBe('accepted');
+});

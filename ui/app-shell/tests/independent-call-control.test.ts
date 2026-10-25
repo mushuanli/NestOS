@@ -332,3 +332,57 @@ it('rejects a non-advancing descendant cursor and recovers on a later read', asy
     invalid = false; await panel.refresh();
     await vi.waitFor(() => expect(document.querySelector('[data-call-cancel-target="leaf-01"]')).not.toBeNull());
 });
+
+const remainingButton = () => document.querySelector<HTMLButtonElement>('[data-call-cancel-remaining]')!;
+function completedCallWithRemaining(): IndependentCallView {
+    const view = call(); view.controlCapabilities!.cancelRemaining = true; view.executionState!.phase = 'done';
+    view.executionTree = {taskId: 'task', asOfSequence: 1, tasks: 3, unsettledTasks: 2, activeOperations: 1, stopped: false, settled: false};
+    return view;
+}
+function treeReceipt(request: IndependentCallCancelRequest) {
+    const {expectedEpoch, ...query} = request;
+    return {...query, receipt: {requestId: request.requestId, taskId: request.taskId, expectedEpoch, controlEpoch: expectedEpoch,
+        rootStatus: 'succeeded', acceptedAt: 1, taskCount: 3}};
+}
+it('offers remaining-task stop only for a supported completed root with an unsettled tree', async () => {
+    const view = completedCallWithRemaining();
+    const execute = vi.fn(async () => [view]);
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations: createOperationLedger(), branch: () => 'main'});
+    await panel.refresh(); expect(button().hidden).toBe(true); expect(remainingButton().hidden).toBe(false);
+    expect(remainingButton().closest('[hidden]')).toBeNull(); expect(remainingButton().textContent).toBe(t('callable.independent.cancelRemaining.action'));
+    view.executionTree!.settled = true; await panel.refresh(); expect(remainingButton().hidden).toBe(true);
+    view.executionTree!.settled = false; view.executionState!.phase = 'running'; await panel.refresh(); expect(remainingButton().hidden).toBe(true);
+    view.executionState!.phase = 'done'; delete view.controlCapabilities!.cancelRemaining; await panel.refresh(); expect(remainingButton().hidden).toBe(true);
+    expect(execute.mock.calls.every(([name]) => name === IndependentCallCommand.List)).toBe(true);
+});
+it('recovers a hanging remaining-task stop through its own persistent channel after reopening', async () => {
+    let saved: readonly OperationRecord[] = [], request!: IndependentCallCancelRequest;
+    const view = completedCallWithRemaining(), execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.CancelRemaining) {request = args; return new Promise(() => {});}
+        if (name === IndependentCallCommand.TreeCancellationReceipt) return treeReceipt(request);
+        throw new Error(name);
+    });
+    const open = () => {
+        const operations = createOperationLedger({initial: saved, save: async records => {saved = structuredClone(records);}});
+        panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'});
+    };
+    open(); await panel!.refresh(); remainingButton().click();
+    await vi.waitFor(() => expect(request?.requestId).toBeTruthy());
+    await vi.waitFor(() => expect(saved[0]?.status).toBe('accepted'));
+    expect(remainingButton().hidden).toBe(true); expect(view.executionTree!.settled).toBe(false);
+    expect(document.body.textContent).toContain(t('callable.independent.cancelRemaining.accepted'));
+    panel!.destroy(); document.body.replaceChildren(); open(); await panel!.refresh();
+    expect(remainingButton().hidden).toBe(true);
+    expect(execute.mock.calls.filter(([name]) => name === IndependentCallCommand.CancelRemaining)).toHaveLength(1);
+});
+it('does not send remaining-task stop after the panel closes during intent persistence', async () => {
+    let finish!: () => void;
+    const operations = createOperationLedger({save: () => new Promise<void>(resolve => {finish = resolve;})});
+    const execute = vi.fn(async (name: string) => {if (name === IndependentCallCommand.List) return [completedCallWithRemaining()]; throw new Error('Unexpected write');});
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'}); await panel.refresh();
+    remainingButton().click(); await vi.waitFor(() => expect(finish).toBeTypeOf('function')); panel.setVisible(false); finish();
+    await vi.waitFor(() => expect(operations.getSnapshot()[0]?.status).toBe('submitting')); finish();
+    await vi.waitFor(() => expect(operations.getSnapshot()[0]?.status).toBe('rejected'));
+    expect(execute.mock.calls.some(([name]) => name === IndependentCallCommand.CancelRemaining)).toBe(false);
+});

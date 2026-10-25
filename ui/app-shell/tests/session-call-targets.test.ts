@@ -390,3 +390,46 @@ it.each(['local', 'rpc'])('recovers a persisted independent answer over %s after
     expect((await f.runtime.kernel.kernel.task(scope.executionSessionId, scope.taskId)).control?.mode).toBe('pause');
     await commands.execute('session.call.cancel', {...scope, requestId: 'stop-answer', expectedEpoch: 1});
 }, 15000);
+
+it.each(['local', 'rpc'])('stops remaining tasks from the real ChatView over %s while preserving the next draft', async transport => {
+    const f = await workspace(true); await f.runtime.commandBus.execute(SessionCommand.Bind, {sessionId: f.sessionId});
+    let stops = 0;
+    const execute = async (name: string, args?: unknown) => {
+        const result = await f.runtime.commandBus.execute(name, args);
+        if (name === 'session.call.cancel-remaining') {stops++; return new Promise(() => {});}
+        return result;
+    };
+    let commands = {execute} as ICommandBus;
+    if (transport === 'rpc') {
+        let server!: RpcPeer;
+        const client = new RpcPeer('client', call => server.handle(call)); server = new RpcPeer('server', call => client.handle(call));
+        cleanup.push(async () => {await client.close(); await server.close();}); commands = client.decode(await server.expose({execute})) as ICommandBus;
+    }
+    const operations = createOperationLedger(), binding = createSessionChatBinding({session: f.runtime.sessionManager, commands, operations,
+        targetSelection: true, independentCalls: true, branch: () => 'main',
+        hasCommittedSubmission: submission => hasCommittedSubmission(f.runtime.sessionRepository, f.sessionId, submission)});
+    cleanup.push(() => binding.dispose()); const host = document.createElement('section'); document.body.append(host);
+    const view = await createSessionChatView(host, binding); cleanup.push(() => view.destroy()); await binding.refreshTargets();
+    const choice = binding.source.getSnapshot().callTargets!.entries.find(entry => entry.target.kind === 'flow')!;
+    const target = host.querySelector<HTMLSelectElement>('[data-call-target]')!; target.value = choice.id; target.dispatchEvent(new Event('change', {bubbles: true}));
+    const mode = host.querySelector<HTMLSelectElement>('[data-selector-id="callMode"]')!; mode.value = 'independent'; mode.dispatchEvent(new Event('change', {bubbles: true}));
+    view.setText('Parent work'); await view.submit(); view.setText('Next draft');
+    let call!: import('@itookit/llm-session/contracts').IndependentCallView;
+    await vi.waitFor(async () => {call = (await commands.execute<import('@itookit/llm-session/contracts').IndependentCallView[]>('session.calls.list', {sessionId: f.sessionId}))[0]; expect(call?.receipt.execution?.taskId).toBeTruthy();});
+    const kernel = f.runtime.kernel.kernel, execution = await kernel.openSession(call.receipt.executionSessionId!);
+    const spec = {program: {kind: 'test.remaining', version: '1'}, input: null, deferStart: true};
+    const child = await execution.submit({...spec, parent: call.receipt.execution!.taskId}), unrelated = await execution.submit(spec);
+    let pending = '';
+    await vi.waitFor(async () => {pending = (await execution.listTasks()).find(task => task.interactions.approval?.status === 'pending')?.id ?? ''; expect(pending).toBeTruthy();});
+    await (await execution.attachTask(pending)).respond({interactionId: 'approval', value: 'done'});
+    const root = await execution.attachTask(call.receipt.execution!.taskId); await root.wait({timeoutMs: 5000}); const before = (await root.status()).task.exit;
+    await vi.waitFor(() => expect(host.querySelector<HTMLButtonElement>('[data-call-cancel-remaining]')?.hidden).toBe(false), {timeout: 5000});
+    host.querySelector<HTMLButtonElement>('[data-call-cancel-remaining]')!.click();
+    await vi.waitFor(() => expect(operations.getSnapshot().find(record => (record.input as any)?.protocol === 'independent-call-tree-cancel-v1')?.status).toBe('accepted'), {timeout: 5000});
+    expect(stops).toBe(1); expect((await child.status()).task.status).toBe('cancelled'); expect((await unrelated.status()).task.status).toBe('created');
+    expect((await root.status()).task.exit).toEqual(before); expect(view.getDraft().text).toBe('Next draft');
+    await view.submit();
+    await vi.waitFor(async () => expect(await commands.execute('session.calls.list', {sessionId: f.sessionId})).toHaveLength(2));
+    expect(stops).toBe(1); expect(view.getDraft().text).toBe('');
+    expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.sessionId);
+}, 15000);

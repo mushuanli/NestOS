@@ -1684,3 +1684,28 @@ C4Component
 验证覆盖 Flow/其他执行端口路由、拒绝 targetTaskId 与策略注入、回执身份和结构、日志脱敏、真实 Agent/Flow 独立调用、父/子只读、伪造分支/调用/执行身份、树内后代与树外任务隔离、保留根结果、丢写回执后只读恢复与当前视图不切换。原用户暂存和无关工作树修改继续保留。
 
 本批完成 Session 后端协议及能力投影，UI OperationLedger 新操作类型与“停止剩余任务”按钮仍待下一批；真实远端验收、跨 Session 子调用控制、工作区补偿不在本批完成声明内。
+
+## 72. “停止剩余任务”UI 与原操作台账闭环
+
+第 69—71 节后端协议现在接入默认/独立视图共用的 IndependentCallControl。根已终结、调用已接纳、树未收尾且宿主明确声明 cancelRemaining 时显示“停止剩余任务”；旧宿主没有能力或树事实时不推断支持。普通取消、后代单任务取消、暂停/恢复仍是独立操作。
+
+```mermaid
+C4Component
+  title 剩余任务停止的展示、持久意图与执行事实
+  Component(view, "IndependentCallControl", "llm-ui-adapter", "只按能力和原任务事实展示；隔离隐藏/销毁代次")
+  Component(ledger, "原 OperationLedger", "通用 UI 机制", "独立协议标记；冻结请求后才发送")
+  Component(adapter, "CallControlOperations", "应用适配", "固定协议表选择提交/核对；验证原回执")
+  Component(session, "Session 控制命令", "后端", "原调用归属、权限、Flow 租约与 Kernel 原子取消")
+  Component(projection, "executionTree", "原 Kernel 事实投影", "实际执行与清理状态")
+  Rel(view, ledger, "保存独立控制意图；不携带输入草稿")
+  Rel(ledger, adapter, "成功登记后派发；重开只核对")
+  Rel(adapter, session, "cancel-remaining / tree-cancellation.receipt")
+  Rel(session, ledger, "经适配器确认接纳；迟到结果不回退")
+  Rel(projection, view, "事实决定收尾展示，不由接纳推断")
+```
+
+台账新增 independent-call-tree-cancel-v1 标记，复用原记录保存与恢复链，不建立另一套存储。协议标记和冻结请求共同参与同 operationId 冲突判断，避免普通取消与剩余树停止实参相同而被错误混同。命令映射由小型固定协议表统一，原取消、状态控制和交互回答保持原协议。Panel 将新协议纳入既有待核对刷新。
+
+按钮复用原取消控件的生命周期实现，以独立模式实例管理新通道；状态控制区域与剩余任务按钮使用各自容器，已完成根隐藏暂停按钮时不会连带隐藏剩余任务操作。接纳后提示核对真实清理状态，既不显示假“已停止”，也不改下一条 composer 草稿。
+
+验证包含台账保存失败零发送、同 ID 跨协议冲突、普通回执不可冒充树回执、错误 epoch、重开查询、迟到失败不回退、能力/终态/树事实门槛、保存期间关闭视图，以及真实本地和 RPC ChatView：停止剩余后代、保留原根结果及树外任务、原响应悬挂时查询接纳、下一条文字草稿保留。该切片贯通本地/RPC UI 到原 Kernel 机制，未部署生产，也不宣称真实远端 Harness 验收、跨 Session 子调用所有权或工作区补偿已完成。

@@ -1,7 +1,7 @@
 import {FlowCommand} from '@itookit/llm-flow/contracts';
 import { expect, it, vi } from 'vitest';
 import {createOperationLedger, type OperationLedger, type OperationRecord} from '@itookit/llm-ui';
-import {SessionCommand} from '@itookit/llm-session/contracts';
+import {FlowInvocationCommand, SessionCommand} from '@itookit/llm-session/contracts';
 import type { ICommandBus, SessionGroup, SessionViewPort } from '@itookit/llm-session/contracts';
 import type {SessionInstructionQueue} from '@itookit/llm-session/contracts';
 import { createSessionChatBinding } from './session';
@@ -149,6 +149,22 @@ it('routes recovered Flow controls to Kernel receipts rather than composer comma
     try {
         expect(await binding.actions.reconcile!('control')).toMatchObject({status: 'accepted'});
         expect(execute).toHaveBeenCalledWith(FlowCommand.RunControlReceipt, {sessionId: 'session', taskId: 'root', requestId: 'control'});
+        expect(reconcile).not.toHaveBeenCalled(); expect(host.hasCommittedSubmission).not.toHaveBeenCalled();
+    } finally {binding.dispose();}
+});
+
+
+it('reconciles frozen child submissions through original host admission without executing a composer command', async () => {
+    const host = fixture(), operations = createOperationLedger();
+    const request = {sessionId: 'session', requestId: 'invocation', execution: 'child', flowId: 'f', revision: 1, parameters: {}};
+    await operations.register({context: {operationId: 'invocation', viewId: 'expired'}, conversationId: 'session', kind: 'command',
+        input: {protocol: 'flow-invocation-v1', request}, status: 'unknown'});
+    const execute = vi.fn(async () => [{...request, rootTaskId: 'root', executionSessionId: 'child'}]);
+    const reconcile = vi.fn(), binding = createSessionChatBinding({...host.options, operations, commands: {execute} as unknown as ICommandBus,
+        composerCommands: {getSnapshot: () => [], execute: vi.fn(), reconcile}});
+    try {
+        expect(await binding.actions.reconcile!('invocation')).toMatchObject({status: 'accepted'});
+        expect(execute).toHaveBeenCalledTimes(1); expect(execute).toHaveBeenCalledWith(FlowInvocationCommand.List, {sessionId: 'session'});
         expect(reconcile).not.toHaveBeenCalled(); expect(host.hasCommittedSubmission).not.toHaveBeenCalled();
     } finally {binding.dispose();}
 });

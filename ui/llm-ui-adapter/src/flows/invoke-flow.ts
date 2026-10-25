@@ -1,3 +1,4 @@
+import type {OperationLedger} from '@itookit/llm-ui';
 import { flowConnectionSelection } from './connection-selection';
 import { escapeHTML, t } from '@itookit/common';
 import { type FlowDraft, type FlowRevision, type JsonValue } from '@itookit/llm-flow/contracts';
@@ -6,7 +7,7 @@ import { FlowCommand } from '@itookit/llm-flow/contracts';
 import { promptInvocation } from './prompt-invocation';
 
 /** Slash calls leave the Session's ordinary chat execution mode untouched. */
-export async function invokeFlowText(commands: ICommandBus, sessionId: string, text: string, signal?: AbortSignal, openChild?: (id: string) => void | Promise<void>): Promise<boolean> {
+export async function invokeFlowText(commands: ICommandBus, sessionId: string, text: string, signal?: AbortSignal, openChild?: (id: string) => void | Promise<void>, operations?: OperationLedger): Promise<boolean> {
     const match = text.trim().match(/^(\S+)(?:\s+([\s\S]*))?$/);
     const drafts = await commands.execute<FlowDraft[]>(FlowCommand.DraftList);
     const id = match?.[1] ?? await pickFlow(drafts, signal);
@@ -17,7 +18,7 @@ export async function invokeFlowText(commands: ICommandBus, sessionId: string, t
     for (const name of Object.keys(provided)) if (!fields.some(field => field.name === name)) throw new Error(t('flow.invoke.unknownParameter', { name }));
     const connection = await flowConnectionSelection(commands, undefined, draft.connections, undefined, draft);
     let revision: FlowRevision | undefined;
-    return promptInvocation({ commands, sessionId, name: draft.name, connection, signal, openChild,
+    return promptInvocation({ commands, sessionId, name: draft.name, connection, signal, openChild, operations,
         fields: fields.map(field => ({ ...field, ...(Object.hasOwn(provided, field.name) ? { default: provided[field.name] } : {}) })),
         revision: async () => revision ??= (await commands.execute<{ revision: FlowRevision }>(FlowCommand.RevisionCreate,
             { draftId: id, expectedDraftVersion: draft.draftVersion })).revision });

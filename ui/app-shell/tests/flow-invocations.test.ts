@@ -107,7 +107,7 @@ it('confirms Kernel tree stoppage before showing resume and preserves an answer 
     document.querySelector<HTMLTextAreaElement>('textarea')!.value = 'Saved while paused';
     document.querySelector<HTMLButtonElement>('[data-interaction-action="reply"]')!.click();
     await vi.waitFor(async () => {
-        const state = await commands.execute<any>(FlowCommand.RunGet, {sessionId: 's', taskId: call.rootTaskId});
+        const state = await commands.execute<any>(FlowCommand.RunGet, {sessionId: call.executionSessionId ?? 's', taskId: call.rootTaskId});
         expect(state.taskTree.some((task: any) => Object.values(task.interactions).some((request: any) => request.status === 'resolved'))).toBe(true);
     });
     expect((await (await kernel.openTask(call.rootTaskId!)).stat()).stopped).toBe(true);
@@ -158,7 +158,7 @@ it.each(['resume', 'cancel'] as const)('recovers a persisted lost pause receipt 
     const invoke = (requestId: string) => commands.execute<FlowInvocationRecord>(FlowInvocationCommand.Invoke,
         {sessionId: 's', requestId, flowId: revision.id, revision: revision.revision, parameters: {text: requestId}});
     const first = await invoke('controlled'), other = await invoke('independent');
-    const read = (call: FlowInvocationRecord) => commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId: 's', taskId: call.rootTaskId});
+    const read = (call: FlowInvocationRecord) => commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId: call.executionSessionId ?? 's', taskId: call.rootTaskId});
     await vi.waitFor(async () => expect((await read(first)).nodes[0]?.snapshot.task.interactions.same?.status).toBe('pending'));
     let losePauseReply = true;
     const execute = vi.fn(async (name: string, args?: unknown) => {
@@ -251,3 +251,19 @@ it('controls, answers and opens routed child invocations from the parent card us
     expect(await kernel.listSessionTasks('s')).toEqual([]);
     expect(execute.mock.calls.filter(([name]) => name === FlowCommand.RunGet).every(([, args]) => args.sessionId !== 's')).toBe(true);
 }, 15000);
+
+
+it('shows an unresolved submission after reopening and only queries its original admission', async () => {
+    const request = {sessionId: 's', requestId: 'lost-submission', execution: 'child', flowId: 'f', revision: 1, parameters: {}};
+    const operations = createOperationLedger();
+    await operations.register({context: {operationId: request.requestId, viewId: 'expired'}, conversationId: 's', kind: 'command',
+        input: {protocol: 'flow-invocation-v1', request}, status: 'unknown'});
+    const execute = vi.spyOn(commands, 'execute');
+    panel = new InvocationPanel(commands, 's', document.body, vi.fn(), {operations});
+    await panel.refresh();
+    const button = document.querySelector<HTMLButtonElement>('[data-invocation-reconcile="lost-submission"]');
+    expect(button).not.toBeNull(); button!.click();
+    await vi.waitFor(() => expect(operations.getSnapshot()[0].message).toContain('no command was sent'));
+    expect(execute.mock.calls.every(([name]) => name === FlowInvocationCommand.List)).toBe(true);
+    await vi.waitFor(() => expect(document.querySelector<HTMLButtonElement>('[data-invocation-reconcile="lost-submission"]')?.disabled).toBe(false));
+});

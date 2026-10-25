@@ -1188,7 +1188,7 @@ export class LLMWorkspaceEditor implements IEditor {
 
     private async startFlowInvocation(args: string): Promise<boolean> {
         if (this.invocationPending || !this.viewActive || this.invocationAbort.signal.aborted) return false;
-        const operation = invokeFlowText(this.commandBus, this.options.sessionId, args, this.invocationAbort.signal, id => this.openInvocationChild(id));
+        const operation = invokeFlowText(this.commandBus, this.options.sessionId, args, this.invocationAbort.signal, id => this.openInvocationChild(id), this.operations);
         this.invocationPending = operation;
         try { return await operation; }
         finally { if (this.invocationPending === operation) this.invocationPending = undefined; void this.invocationPanel?.refresh(); }

@@ -1,3 +1,4 @@
+import {InvocationOperations} from './invocation-operations';
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import {ControlOperations} from './control-operations';
 import {FlowRunControl, type PauseResult} from './run-control';
@@ -30,6 +31,11 @@ export class InvocationPanel {
     private refreshFailed = false;
     private visible = true;
     private actions = new Set<string>();
+    private operations: OperationLedger;
+    private invocationOperations: InvocationOperations;
+    private releaseOperations: () => void;
+    private readonly invocationRecovery = document.createElement('div');
+    private readonly recoveryError = document.createElement('p');
     private controlOperations: ControlOperations;
     private element = document.createElement('section');
     private summary = document.createElement('p');
@@ -38,11 +44,16 @@ export class InvocationPanel {
         operations?: OperationLedger;
         mountCard?(card: HTMLElement, call: FlowInvocationRecord): () => void; openChild?(id: string): void | Promise<void>;
     } = {}) {
-        this.controlOperations = new ControlOperations(this.options.operations ?? createOperationLedger(), this.commands, this.sessionId);
+        this.operations = this.options.operations ?? createOperationLedger();
+        this.controlOperations = new ControlOperations(this.operations, this.commands, this.sessionId);
+        this.invocationOperations = new InvocationOperations(this.operations, this.commands, this.sessionId);
         this.element.className = 'flow-invocations'; this.element.hidden = true;
         this.element.setAttribute('aria-label', t('flow.invoke.calls')); parent.append(this.element);
         this.summary.className = 'flow-invocations__summary'; this.summary.setAttribute('role', 'status');
-        this.error.setAttribute('role', 'alert'); this.element.append(this.summary, this.error);
+        this.error.setAttribute('role', 'alert'); this.element.append(this.summary, this.error, this.invocationRecovery, this.recoveryError);
+        this.recoveryError.setAttribute('role', 'alert');
+        this.releaseOperations = this.operations.subscribe(() => this.renderInvocationRecovery());
+        this.renderInvocationRecovery();
         const receiver = document.createElement('small'); receiver.textContent = t('flow.invoke.receiver'); this.element.append(receiver);
         const refreshVisible = () => { if (!document.hidden) void this.refresh(); };
         window.addEventListener('focus', refreshVisible, { signal: this.abort.signal });
@@ -69,7 +80,7 @@ export class InvocationPanel {
         this.visible = visible; clearTimeout(this.timer);
         if (!visible) this.viewAbort.abort();
         else if (this.viewAbort.signal.aborted) this.viewAbort = new AbortController();
-        if (visible) void this.refresh();
+        if (visible) {this.renderInvocationRecovery(); void this.refresh();}
     }
     async hasActive(): Promise<boolean> {
         await this.refresh();
@@ -82,7 +93,7 @@ export class InvocationPanel {
     }
 
     destroy(): void {
-        this.abort.abort(); this.viewAbort.abort(); clearTimeout(this.timer);
+        this.abort.abort(); this.viewAbort.abort(); clearTimeout(this.timer); this.releaseOperations();
         for (const card of this.cards.values()) { card.unmount?.(); card.element.remove(); }
         for (const card of this.cards.values()) for (const panel of card.interactions.values()) if (panel instanceof InteractionPanel) panel.clear();
         this.cards.clear(); this.element.remove();
@@ -91,7 +102,7 @@ export class InvocationPanel {
     private async load(): Promise<void> {
         const calls = await this.commands.execute<FlowInvocationRecord[]>(FlowInvocationCommand.List, { sessionId: this.sessionId });
         if (this.abort.signal.aborted || !this.visible) return;
-        this.element.hidden = !calls.length; this.error.textContent = '';
+        this.element.hidden = !calls.length && !this.invocationOperations.pending().length; this.error.textContent = '';
         let failed = false, failure: unknown;
         for (const call of calls) {
             let card = this.cards.get(call.requestId);
@@ -150,6 +161,23 @@ export class InvocationPanel {
         return Object.entries(call.inputTransfers ?? {}).map(([name, transfer]) => `<p>${escapeHTML(t('flow.invoke.source', {
             name, kind: [t(`flow.source.${transfer.selection.kind}` as Parameters<typeof t>[0]), transfer.output?.label].filter(Boolean).join(' · '), count: transfer.messageIds.length,
         }))}</p>`).join('');
+    }
+
+    private renderInvocationRecovery(): void {
+        if (this.abort.signal.aborted || !this.visible) return;
+        const records = this.invocationOperations.pending(); this.invocationRecovery.replaceChildren();
+        this.element.hidden = !this.cards.size && !records.length;
+        for (const record of records) {
+            const row = document.createElement('div'); this.invocationRecovery.append(row);
+            const request = (record.input as {request?: {flowId?: string}}).request;
+            row.append((request?.flowId ?? '') + ' · ');
+            const button = this.button(row, 'callable.submission.reconcile', async () => {
+                this.recoveryError.textContent = '';
+                try {await this.invocationOperations.reconcile(record.context.operationId);}
+                catch (error) {if (!this.abort.signal.aborted && this.visible) this.recoveryError.textContent = String(error);}
+            });
+            button.dataset.invocationReconcile = record.context.operationId;
+        }
     }
 
     private updateNavigation(card: Card, call: FlowInvocationRecord): void {
@@ -260,7 +288,7 @@ export class InvocationPanel {
             this.actions.add(actionId); button.disabled = true; void action().catch(error => {
             if (this.abort.signal.aborted || !this.visible) return;
             const area = parent.closest('article')?.querySelector('[data-error]'); if (area) area.textContent = String(error);
-        }).finally(() => { this.actions.delete(actionId); if (this.abort.signal.aborted || !this.visible) return; button.disabled = false; void this.refresh(); }); });
+        }).finally(() => { this.actions.delete(actionId); if (this.abort.signal.aborted || !this.visible) return; button.disabled = false; this.renderInvocationRecovery(); void this.refresh(); }); });
         parent.append(button); return button;
     }
 
@@ -278,7 +306,7 @@ export class InvocationPanel {
         const fields = (call.flow.parameters ?? []).map(field => ({ ...field, ...(Object.hasOwn(parameters, field.name) ? { default: parameters[field.name] } : {}) }));
         await promptInvocation({commands: this.commands, sessionId: this.sessionId, name: call.flow.name, fields, connection,
             retryOf: {invocationId: flowInvocationId(call), sessionId: call.sessionId},
-            signal: this.viewAbort.signal, revision: async () => call.flow, openChild: this.options.openChild});
+            signal: this.viewAbort.signal, revision: async () => call.flow, openChild: this.options.openChild, operations: this.operations});
     }
 
     private async details(call: FlowInvocationRecord): Promise<void> {

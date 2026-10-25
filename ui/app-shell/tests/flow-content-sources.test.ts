@@ -1,3 +1,4 @@
+import {Toast} from '@itookit/ui-common';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { ContentTransferCommand, FlowInvocationCommand, type ContentCapture, type ContentTransfer, type ICommandBus } from '@itookit/llm-session/contracts';
@@ -24,7 +25,8 @@ beforeEach(() => {
         if (command === ContentTransferCommand.Capture) return structuredClone(source);
         if (command === ContentTransferCommand.Resolve) return {...transfer, selection: input.selection};
         if (command === ContentTransferCommand.CreateChild) return {sessionId: 'child'};
-        if (command === FlowInvocationCommand.Invoke) return {};
+        if (command === FlowInvocationCommand.List) return [];
+        if (command === FlowInvocationCommand.Invoke) return {...input, rootTaskId: 'root', executionSessionId: input.execution === 'child' ? 'child' : undefined};
         throw new Error(command);
     });
     commands = {execute} as unknown as ICommandBus;
@@ -97,7 +99,8 @@ it('retries a child Flow admission with the same child intent and invocation ide
     submit(); await vi.waitFor(() => expect(document.querySelector('[data-form-error]')!.textContent).toBe('receipt lost'));
     submit(); expect(await pending).toBe(true);
     const calls = execute.mock.calls.filter(([command]) => command === FlowInvocationCommand.Invoke).map(([, input]) => input);
-    expect(calls).toHaveLength(2); expect(calls[0]).toEqual(calls[1]); expect(calls[0].sessionId).toBe('child');
+    expect(calls).toHaveLength(2); expect(calls[0]).toEqual(calls[1]); expect(calls[0]).toMatchObject({sessionId: 's', execution: 'child'});
+    expect(execute.mock.calls.some(([command]) => command === ContentTransferCommand.CreateChild)).toBe(false);
     expect(open).toHaveBeenCalledExactlyOnceWith('child');
 });
 
@@ -121,4 +124,23 @@ it('does not launch after cancellation while the flow revision is being prepared
     document.querySelector<HTMLButtonElement>('[data-cancel]')!.click(); expect(await pending).toBe(false);
     finish({revision: {id: 'f', revision: 1}}); await Promise.resolve(); await Promise.resolve();
     expect(execute.mock.calls.some(([command]) => command === FlowInvocationCommand.Invoke || command === ContentTransferCommand.CreateChild)).toBe(false);
+});
+
+it('defaults to a host-routed child call but lets the user explicitly keep the current Session', async () => {
+    const pending = invokeFlowText(commands, 's', 'f {"text":"current"}');
+    await vi.waitFor(() => expect(document.querySelector('.flow-launch-location select')).not.toBeNull());
+    const location = document.querySelector<HTMLSelectElement>('.flow-launch-location select')!;
+    expect(location.value).toBe('child'); select(location, 'current'); submit(); expect(await pending).toBe(true);
+    const call = execute.mock.calls.find(([command]) => command === FlowInvocationCommand.Invoke)![1];
+    expect(call.sessionId).toBe('s'); expect(call.execution).toBeUndefined();
+    expect(execute.mock.calls.some(([command]) => command === ContentTransferCommand.CreateChild)).toBe(false);
+});
+
+it('keeps a confirmed submission accepted when opening its child Session fails', async () => {
+    const error = vi.spyOn(Toast, 'error').mockImplementation(() => {});
+    const open = vi.fn(async () => {throw new Error('Navigation unavailable');});
+    const pending = invokeFlowText(commands, 's', 'f {"text":"accepted"}', undefined, open);
+    await vi.waitFor(() => expect(document.querySelector('dialog')).not.toBeNull()); submit();
+    expect(await pending).toBe(true); expect(error).toHaveBeenCalledWith('Navigation unavailable');
+    expect(execute.mock.calls.filter(([name]) => name === FlowInvocationCommand.Invoke)).toHaveLength(1);
 });

@@ -605,3 +605,29 @@ C4Component
 验证：真实 Kernel/VFS/SessionRepository 的 UI 回归覆盖两个子调用、父级暂停丢回复、重开父台账只读核对、暂停中保存回答后恢复、独立取消另一个调用、打开子会话和关闭详情不重跑。另验证错误归属拒绝、无导航端口不伪造入口、尚无根 Task 的准备中子会话可打开，以及父/子视图同控制身份与旧格式兼容。隔离适配层 189 项、相关 UI 79 项，双包类型、适配层构建和架构边界检查通过。
 
 本批不切换提交默认值。独立调用表单仍需将旧 create-child/invoke 两步接到第 26 节宿主入口，并持久保存冻结提交与接纳恢复；普通聊天仍在当前 Session，重跑入口的目的地策略随该批统一。F16 及 F20—F24、生产验收继续保留。
+
+
+## 28. F16 独立 Flow 表单的子会话接纳与提交核对
+
+斜杠调用与重新运行共用表单，默认使用独立子会话，也可显式选择当前 Session。UI 不再先创建子会话再调用 Flow；一次冻结请求交给第 26 节宿主路由。所属 Session、目的地、版本签名、参数、材料引用与连接选择先保存在既有 OperationLedger，持久登记成功后才派发。宿主负责准入、子会话与真实根 Task，UI 不复制执行状态。
+
+```mermaid
+C4Component
+  title 独立 Flow 提交与恢复
+  Component(form, "调用表单", "宿主 UI", "冻结参数与目的地")
+  Component(intent, "InvocationOperations", "UI 适配", "登记、提交、只读核对")
+  ContainerDb(ledger, "OperationLedger", "宿主持久端口", "原请求身份与接纳事实")
+  Component(host, "FlowInvocationService", "宿主机制", "幂等准入及子会话路由")
+  Container(execution, "子 Session / Kernel", "执行权威", "实际根 Task")
+  Rel(form, intent, "明确发起调用")
+  Rel(intent, ledger, "派发前保存冻结请求")
+  Rel(intent, host, "Invoke 或 List 原请求")
+  Rel(host, execution, "准入并关联根 Task")
+  Rel(host, intent, "真实接纳记录")
+```
+
+父级卡片显示待核对提交，重开后按原 Session/requestId 查询；独立 ChatView 同样识别该协议，不将它当作斜杠命令或普通消息核对。仅有子会话路由、没有根 Task 时保持 unknown。核对不重新发布、创建子会话或调用 Invoke；显式重试沿用同一请求身份，已保存 accepted 不重发。导航失败只报告打开失败，不将已接纳调用改成提交失败。
+
+工作台注入现有持久台账；直接嵌入表单的调用方须提供 operations 才有跨视图恢复，缺省内存台账仅保证当前视图身份。未知提交稍后核对成功尚不自动消费旧斜杠草稿；普通聊天队列的草稿协议独立保留。本批不宣称 F16 全部完成，Agent/Task 入口统一、分支切换组合验收及 F20—F24 继续保留。未部署或重启生产服务。
+
+验证：隔离候选适配层 196 项、相关 UI 63 项通过，两包类型检查、适配层构建、架构边界检查及 18 个 Mermaid 图、16 个本地链接通过。回归包括持久登记失败不发送、登记期间取消、提交丢回复后重开核对、无根路由保持未知、冻结实参不匹配拒绝、显式重试身份复用、导航失败不改变接纳，以及未知核对后按钮仍可再次使用。

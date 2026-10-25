@@ -43,11 +43,11 @@ async function main(argv: string[]): Promise<number> {
     }
     // -p / --prompt：直接运行一段 prompt（优先于 command 分发）
     if (parsed.options.prompt) return promptCommand(parsed.options);
-    if (['project', 'session', 'conversation', 'connection', 'mcp', 'task'].includes(parsed.command ?? '')) {
+    if (['project', 'session', 'conversation', 'connection', 'mcp', 'task', 'flow-run'].includes(parsed.command ?? '')) {
         const {applicationCommand} = await import('./application-command');
         return applicationCommand(parsed.command!, parsed.positional, parsed.options);
     }
-    if (parsed.options.connect) throw new Error('--connect is supported by project/session/conversation/connection/mcp/task commands');
+    if (parsed.options.connect) throw new Error('--connect is supported by project/session/conversation/connection/mcp/task/flow-run commands');
     switch (parsed.command) {
         case 'fs': return remoteFilesCommand(parsed.positional, parsed.options);
         case 'twin': return digitalTwinCommand(parsed.positional, parsed.options);
@@ -154,6 +154,9 @@ function help(): string {
         `  mindos project list|create [name] [--profile data-root] [--json]\n` +
         `  mindos session list | create <project-id> <title> | show <session-id>\n` +
         `  mindos session send|branches|branch|delete-branch <session-id> [text/name] [--agent id] [--branch name]\n` +
+        `  mindos flow-run show|cancel|reattach <session-id> <root-task-id>\n` +
+        `  mindos flow-run pause|resume|withdraw-pause <session-id> <root-task-id> <request-id> <observed-epoch>\n` +
+        `  mindos flow-run receipt <session-id> <root-task-id> <request-id>\n` +
         `  mindos session targets\n` +
         `  mindos session prepare|send <session-id> [text] --agent id [--submission-file call.json]\n` +
         `  mindos session send <session-id> [text] --agent <id> | --flow <id> [--params file]\n` +

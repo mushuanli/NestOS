@@ -83,3 +83,21 @@ mindos-node 0.1.5+ 的 Codex/Claude profile 声明 `capabilities.usage`，提供
 `<config>` 遵循 XDG_CONFIG_HOME。httpd 的 `MINDOS_HTTPD_LOG_DIR` 覆盖运行与审计日志目录；系统默认目录需先授权给运行用户，准备命令和运行版本查询见 [HTTP 宿主](http-app.md#启动与认证)。CLI 的 `MINDOS_DIAGNOSTICS_DIR` 只覆盖诊断目录，`--audit-file` 只覆盖当前宿主审计路径。新应用诊断记录操作阶段、错误码、提交结果和请求 ID，不写 prompt、消息正文或凭据。旧日志不删除。
 
 已有 `run/resume/respond` 等 YAML/RunDefinition 离线执行命令继续使用 `createKernelRuntime` 和自己的 RunStore 工件；它们不是应用 Session 命令，不支持 `--connect`，不能将旧 run-id 当作应用 session-id。`twin` 使用本地共享应用 Runtime；旧 memory/fs 辅助入口按原作用域执行。
+
+## Flow 调用控制 CLI
+
+应用 Flow 使用 `flow-run`，身份为 Session ID 与根 Task ID，不能与离线 YAML 的 run-id 混用。使用 `--connect` 操作现有 HTTP 宿主；未指定时沿用 CLI 本地宿主启动/关闭和 profile 互斥行为，不承诺 CLI 退出后继续后台调度。
+
+```bash
+pnpm cli flow-run show <session-id> <root-task-id>
+pnpm cli flow-run pause <session-id> <root-task-id> <request-id> <observed-epoch>
+pnpm cli flow-run resume <session-id> <root-task-id> <request-id> <observed-epoch>
+pnpm cli flow-run withdraw-pause <session-id> <root-task-id> <request-id> <observed-epoch>
+pnpm cli flow-run receipt <session-id> <root-task-id> <request-id>
+pnpm cli flow-run cancel <session-id> <root-task-id>
+pnpm cli flow-run reattach <session-id> <root-task-id>
+```
+
+先用 show 读取根 `control.epoch`，未设置控制时为 0。调用方须在发送前保存 request-id 和该 epoch；同一次操作核对或显式重试保留二者，新意图使用新身份。CLI 不生成隐含新控制 ID，不在网络异常后自动重试。`resume` 解除本调用已确认的暂停；`withdraw-pause` 撤回尚未确认的暂停；`reattach` 只恢复宿主调度，不能替代解除暂停。
+
+receipt 只查询当前持久控制：requestId 匹配返回 `observed`，另带 acknowledged 和 Kernel stat；这不表示已停止或已完成。身份不匹配返回 `unknown`，可能尚未接纳，也可能已被更新控制覆盖，不能据此重发。该命令不是完整历史回执查询。查询端口本身不派发控制；本地宿主正常启动恢复仍独立存在。

@@ -1,3 +1,4 @@
+import {flowControlCommand} from './application-flow-control';
 import { getLogger, LogLevel, randomUUID } from '@itookit/common';
 import { recordRuntimeDiagnostic } from './diagnostics';
 import type { ApplicationClient, ProjectConversationPort } from '@itookit/app-contracts/services';
@@ -59,6 +60,7 @@ export async function executeApplicationCommand(client: ApplicationClient, comma
         }
     }
     if (command === 'conversation') return nativeConversation(client, args);
+    if (command === 'flow-run') return flowControlCommand(client, args);
     if (command === 'session') return sessionCommand(client, args, options);
     throw new Error('Unknown application command');
 }

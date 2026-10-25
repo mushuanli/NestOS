@@ -41,7 +41,7 @@ export class SessionRenderer {
     private nodeMap = new Map<string, HTMLElement>();
     private editorMap = new Map<string, MDxController>();
     private editorMounts = new Map<string, HTMLElement>();
-    private renderedSessionIds = new Set<string>();
+    private readonly renderedSessions = new Map<string, HTMLElement>();
     private lastExecutionRoot: HTMLElement | null = null;
     private timers = new TimerManager();
     private snapshotContent = new Map<string, string>();
@@ -108,13 +108,14 @@ export class SessionRenderer {
     }
 
     getSessionElement(sessionId: string): HTMLElement | null {
-        return this.container.querySelector(
-            `[data-session-id="${sessionId}"], [data-history-id="${sessionId}"]`
-        ) as HTMLElement | null;
+        return this.renderedSessions.get(sessionId)
+            ?? [...this.renderedSessions.values(), ...this.flowWindows.values(), ...this.nodeMap.values()]
+                .find(element => element.dataset.historyId === sessionId && this.container.contains(element))
+            ?? null;
     }
 
     isRendered(sessionId: string): boolean {
-        return this.renderedSessionIds.has(sessionId);
+        return this.renderedSessions.has(sessionId);
     }
 
     // ================================================================
@@ -122,16 +123,16 @@ export class SessionRenderer {
     // ================================================================
 
     appendSession(group: SessionGroup, isCollapsed: boolean): void {
-        if (this.renderedSessionIds.has(group.id)) {
+        if (this.renderedSessions.has(group.id)) {
             console.warn(`[SessionRenderer] Duplicate session: ${group.id}`);
             return;
         }
-        this.renderedSessionIds.add(group.id);
         this.container.querySelector('.llm-ui-welcome')?.remove();
 
         const wrapper = document.createElement('div');
         wrapper.className = `llm-ui-session llm-ui-session--${group.role}`;
         wrapper.dataset.sessionId = group.id;
+        this.renderedSessions.set(group.id, wrapper);
         if (this.context.readOnly) {
             wrapper.dataset.role = group.executionRoot?.data.metaInfo?.nativeRole ?? group.role;
             wrapper.dataset.historyId = group.executionRoot?.id ?? group.id;
@@ -176,9 +177,9 @@ export class SessionRenderer {
     }
 
     async reconcileSessions(groups: SessionGroup[]): Promise<void> {
-        if (!this.renderedSessionIds.size && groups.length) this.container.replaceChildren();
+        if (!this.renderedSessions.size && groups.length) this.container.replaceChildren();
         const retained = new Set(groups.map(group => group.id));
-        for (const id of this.renderedSessionIds) if (!retained.has(id)) {
+        for (const id of this.renderedSessions.keys()) if (!retained.has(id)) {
             this.removeMessages([...this.getEditorIdsForSession(id), id], false);
             this.snapshotContent.delete(id);
         }
@@ -389,12 +390,12 @@ export class SessionRenderer {
         const removed: string[] = [];
 
         for (const id of ids) {
-            const sessionEl = this.container.querySelector(`[data-session-id="${id}"]`);
+            const sessionEl = this.renderedSessions.get(id);
             const nodeEl = this.nodeMap.get(id);
 
             if (!sessionEl && !nodeEl) continue;
 
-            this.renderedSessionIds.delete(id);
+            this.renderedSessions.delete(id);
 
             if (sessionEl) this.removeElement(sessionEl as HTMLElement, animated);
             if (nodeEl) {
@@ -479,7 +480,7 @@ export class SessionRenderer {
         this.nodeMap.clear();
         this.flowWindows.clear();
         this.snapshotContent.clear();
-        this.renderedSessionIds.clear();
+        this.renderedSessions.clear();
         this.lastExecutionRoot = null;
         this.container.innerHTML = '';
     }

@@ -181,3 +181,5 @@ Flow 参数表单只收集连接覆盖；必需槽位留空表示继承声明或
 独立原生视图通过 nativeQueueToolbar 挂载同一 NativeInstructionQueuePanel；仅暴露队列 read/edit 端口，不把 native controls 注入独立聊天库。队列结果按绑定代次投影，隐藏时只读，恢复后重新依据 canQueue；编辑采用已展示修订，控制与队列编辑不写提交台账。组合工具栏保留宿主生命周期，destroy 复用同一 Promise。
 
 原生命令查询不占普通输入提交槽；暂停中的发送计数仍保留，只有明确 query 可以独立提交。取消携带实际 sessionId/turnId 并核对独立 operationId。NativeCommandOutput 在原锚点按需分页读取，失败留在结果卡片，隐藏/销毁停止后续页；通用字节拼接与摘要核验在 utils/verified-content，DAG 和原生各自校验协议，不相互导入业务模块。
+
+SessionRenderer 使用消息 Map 同时维护身份与包装 DOM，已知消息查找不扫描整段历史。historyId/Flow 窗口别名仅从当前视图持有的引用解析；删除先撤销引用再动画，重复内容中的同名属性不抢占归属，clear/destroy 释放引用。产物与其他可选展示不能通过逐消息全树扫描放大恢复耗时。

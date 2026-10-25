@@ -362,3 +362,23 @@ C4Component
     Rel(driver, native, "稳定子操作 ID 与回执查询")
     Rel(native, executor, "权威校验后执行")
 ```
+
+
+### 历史 DOM 的身份与查找
+
+SessionRenderer 统一拥有消息包装 DOM、节点和 Flow 窗口的引用。消息表以 Map 同时表示已渲染身份及包装节点，替代仅记录 ID 的 Set；按已知消息 ID 查找不扫描历史内容树。原生 historyId 与 Flow 窗口别名从既有 DOM 引用表中解析，并排除已经脱离本视图的元素，保留复制、折叠及导航语义。移除消息先撤销引用，再播放 DOM 删除动画；相同 ID 的新包装节点不会被旧动画元素遮蔽，clear/destroy 清空所有拥有的引用。
+
+该变更只管理展示对象，不创建执行状态缓存。新产物同步扩大了原有全树查找的调用次数：完整工作树的两次恢复中，约 25.2 秒落在该查找上；换用引用表后，同一 A → B → A 测试从约 31 秒超时降到约 8.64 秒通过，仍使用 30 秒预算。该证据只覆盖当前夹具；大报告的按需渲染、完整调用组和产物 UI 仍按各自边界验收。
+
+```mermaid
+C4Component
+    title 历史渲染器拥有 DOM 身份
+    Container_Boundary(view, "历史视图") {
+        Component(history, "HistoryView", "会话投影", "提交已有消息和更新事件")
+        Component(renderer, "SessionRenderer", "DOM 生命周期", "消息引用表、nodeMap 与 flowWindows")
+        Component(content, "MDx 与详情", "内容展示", "正文和展开内容")
+    }
+    Rel(history, renderer, "按稳定身份创建、更新、移除")
+    Rel(renderer, content, "拥有挂载与释放")
+    Rel(history, renderer, "身份查找返回已有引用；别名仍受视图归属约束")
+```

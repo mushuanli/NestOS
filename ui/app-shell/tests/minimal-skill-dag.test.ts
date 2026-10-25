@@ -102,8 +102,13 @@ it.each([false, true])('continues downstream DAG nodes after Run responses (repe
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
         new DagCommandService({ kernel: system.kernel, plugins, flowStore: {} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
-        await handlers.get(FlowCommand.RunGet)!({ taskId: run.root.id, sessionId: 'minimal' });
-        await handlers.get(FlowCommand.RunRespond)!({ taskId: run.root.id, targetTaskId: run.nodes.get('answer')!.id,
+        let answerTaskId = '';
+        await vi.waitFor(async () => {
+            const current = await handlers.get(FlowCommand.RunGet)!({taskId: run.root.id, sessionId: 'minimal'});
+            const answer = current.nodes.find((node: any) => node.nodeId === 'answer')?.snapshot.task;
+            expect(answer?.interactions.answer.status).toBe('pending'); answerTaskId = answer.id;
+        });
+        await handlers.get(FlowCommand.RunRespond)!({ taskId: run.root.id, targetTaskId: answerTaskId,
             requestId: 'answer', value: 'approved' });
         if (repeated) {
             let targetTaskId = '';

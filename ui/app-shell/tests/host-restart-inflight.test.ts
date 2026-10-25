@@ -1,12 +1,8 @@
 /**
- * P0-02：宿主在运行途中消失（进程被强杀/崩溃）后重开时，会话不能卡死。
- *
- * 此前只有「终态且无输出的 round」会投影出助手占位；一个已记录 execution 但仍为
- * `running` 的 round（拥有它的宿主已不在）不会投影任何助手消息，于是重开后转写以用户
- * 消息结尾，下一次发送被 `Cannot send consecutive user messages` 拒绝。
- *
- * 用真实本地存储根跑两个宿主实例；模型服务是一个**永不回包**的本地 HTTP 服务，
- * 以保证第一个宿主退出时运行确实仍在途中。
+ * Reopening must preserve the assistant position after a host stops during a model call.
+ * Graceful shutdown may persist a real terminal failure before reopening; otherwise the
+ * unfinished Round must remain identifiable. Neither outcome permits inventing a terminal
+ * result merely to release input. Real SIGKILL recovery is covered by the CLI crash matrix.
  */
 import { expect, it, vi } from 'vitest';
 import { createServer } from 'node:http';
@@ -40,7 +36,7 @@ async function dispatch(runtime: Awaited<ReturnType<typeof createApplicationRunt
     }).then(() => undefined, error => error);
 }
 
-it('keeps the Session sendable when a host dies while its run is still in flight', async () => {
+it('keeps the Session sendable after disposing and reopening a host during an in-flight run', async () => {
     const root = await mkdtemp(join(tmpdir(), 'mindos-restart-inflight-'));
     const requests: string[] = [];
     const model = createServer(request => { requests.push(request.url ?? ''); });
@@ -56,7 +52,7 @@ it('keeps the Session sendable when a host dies while its run is still in flight
         sessionId = await first.sessionRepository.createSession('Session');
         await first.commandBus.execute(SessionCommand.Bind, { sessionId });
         void dispatch(first, sessionId, 'a question that never finishes');
-        // The model call is in flight — this host is now killed without settling the run.
+        // The model call is in flight; graceful disposal may persist its real failure.
         await vi.waitFor(() => expect(requests.length).toBeGreaterThan(0), { timeout: 20_000 });
     } finally { await first.dispose(); }
     model.closeAllConnections?.();
@@ -69,8 +65,13 @@ it('keeps the Session sendable when a host dies while its run is still in flight
         const tail = snapshot.sessions.at(-1);
         // The transcript must not end on the user message, otherwise the next send is refused.
         expect(tail?.role, JSON.stringify(snapshot.sessions.map(entry => [entry.role, entry.executionRoot?.status]))).toBe('assistant');
-        // The interrupted run is offered again (regenerate) rather than silently forgotten.
-        expect(snapshot.interruptedAssistantId).toBeTruthy();
+        // Compare against persisted history, rather than inventing an unfinished outcome.
+        const {rounds} = await second.sessionRepository.readHistoryChain(sessionId);
+        expect(rounds).toHaveLength(1);
+        const projected = {running: 'running', failed: 'failed', cancelled: 'aborted'};
+        expect(Object.keys(projected)).toContain(rounds[0].status);
+        expect(tail?.executionRoot?.status).toBe(projected[rounds[0].status as keyof typeof projected]);
+        expect(snapshot.interruptedAssistantId).toBe(rounds[0].status === 'running' ? tail?.id : undefined);
 
         const failure = await dispatch(second, sessionId, 'the next question');
         expect(String(failure ?? '')).not.toContain('consecutive');

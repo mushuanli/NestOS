@@ -52,7 +52,7 @@ it('freezes the send mode before an attachment upload and keeps Flow routing aut
     const context = { getSessionId: () => 's', commands: { execute },
         chatInput: { setConfig: vi.fn(), setLoading: vi.fn(), restoreInput: vi.fn(), getConfig: () => ({ settings: { executionMode: 'agent' } }) },
         historyView: { scrollToBottom: vi.fn() }, errorHandler: { wrap: (run: () => Promise<unknown>) => run() },
-        assetService: { uploadFiles: () => new Promise<string[]>(resolve => { uploaded = resolve; }) },
+        assetService: { prepareUpload: () => new Promise<{references: string[]; files: []}>(resolve => { uploaded = references => resolve({references, files: []}); }) },
     };
     const command = new SendMessageCommand(context as never);
     const overrides: ChatOverrides = { executionMode: 'chat' };

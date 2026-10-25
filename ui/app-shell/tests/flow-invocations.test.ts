@@ -1,5 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import {FlowsEditor} from '../../llm-ui-adapter/src/components/FlowsEditor';
+import {SessionRepository} from '@itookit/llm-session';
+import {Toast} from '@itookit/ui-common';
+import type {DurableFlowSnapshot} from '@itookit/llm-flow/contracts';
 import { Kernel } from '@itookit/durable-kernel';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { CommandBus, FlowEngine, FlowDefinitionStore, DagCommandService, FlowInvocationService, FlowCommand, SessionCommand, createBuiltinDagPluginRegistry, registerDurablePrograms } from '@itookit/llm-session';
@@ -137,3 +141,55 @@ it('accepts a slash Flow during chat generation without submitting a second ordi
         expect(input.getConfig().text).toBe('new draft while starting'); expect(onSend).not.toHaveBeenCalled();
     } finally { input.destroy(); }
 });
+
+it.each(['resume', 'cancel'] as const)('recovers a persisted lost pause receipt and %s without affecting another invocation', async action => {
+    vi.spyOn(Toast, 'error').mockImplementation(() => {});
+    const fs = await manager.openFileSystem('/session-data');
+    let repository = new SessionRepository(fs); await repository.init(); await repository.ensureSession('s', 'Controls');
+    const draft = await commands.execute<any>(FlowCommand.DraftLoad, {id: 'review'});
+    const {revision} = await commands.execute<any>(FlowCommand.RevisionCreate, {draftId: 'review', expectedDraftVersion: draft.draftVersion});
+    const invoke = (requestId: string) => commands.execute<FlowInvocationRecord>(FlowInvocationCommand.Invoke,
+        {sessionId: 's', requestId, flowId: revision.id, revision: revision.revision, parameters: {text: requestId}});
+    const first = await invoke('controlled'), other = await invoke('independent');
+    const read = (call: FlowInvocationRecord) => commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId: 's', taskId: call.rootTaskId});
+    await vi.waitFor(async () => expect((await read(first)).nodes[0]?.snapshot.task.interactions.same?.status).toBe('pending'));
+    let losePauseReply = true;
+    const execute = vi.fn(async (name: string, args?: unknown) => {
+        const result = await commands.execute(name, args);
+        if (name === FlowCommand.RunGoalUpdate && losePauseReply) {losePauseReply = false; throw new Error('Lost pause response');}
+        return result;
+    });
+    const root = document.createElement('div'); document.body.append(root);
+    let editor = new FlowsEditor({commands: {execute} as never, sessionRepository: repository});
+    try {
+        await editor.init(root); await (editor as any).workbench.openRun(first.rootTaskId, 's');
+        root.querySelector<HTMLButtonElement>('[data-run-control="pause"]')!.click();
+        await vi.waitFor(async () => expect((await repository.getUIState('s'))?.operationRecords?.[0]?.status).toBe('unknown'));
+        const saved = (await repository.getUIState('s'))!.operationRecords![0];
+        const operationId = (saved.context as {operationId: string}).operationId;
+        await editor.destroy(); await repository.dispose();
+        repository = new SessionRepository(fs); await repository.init();
+        editor = new FlowsEditor({commands: {execute} as never, sessionRepository: repository});
+        await editor.init(root); await (editor as any).workbench.openRun(first.rootTaskId, 's');
+        root.querySelector<HTMLButtonElement>(`[data-run-control="receipt:${operationId}"]`)!.click();
+        await vi.waitFor(async () => expect((await repository.getUIState('s'))?.operationRecords?.[0]?.status).toBe('accepted'));
+        expect(execute.mock.calls.filter(([name]) => name === FlowCommand.RunGoalUpdate)).toHaveLength(1);
+        const respond = async (call: FlowInvocationRecord) => {
+            const state = await read(call);
+            await commands.execute(FlowCommand.RunRespond, {taskId: call.rootTaskId,
+                targetTaskId: state.nodes[0].snapshot.task.id, requestId: 'same', value: 'Saved answer'});
+        };
+        await respond(other);
+        await vi.waitFor(async () => expect((await read(other)).root.task.status).toBe('succeeded'));
+        await respond(first);
+        await vi.waitFor(async () => expect((await (await kernel.openTask(first.rootTaskId!)).stat()).stopped).toBe(true));
+        expect((await read(first)).root.task.exit).toBeUndefined();
+        await (editor as any).workbench.openRun(first.rootTaskId, 's');
+        root.querySelector<HTMLButtonElement>(action === 'resume' ? '[data-run-control="resume"]' : '[data-run-action="cancel"]')!.click();
+        await vi.waitFor(async () => expect((await read(first)).root.task.status).toBe(action === 'resume' ? 'succeeded' : 'cancelled'));
+        expect((await read(other)).root.task.status).toBe('succeeded');
+        expect(await commands.execute(FlowInvocationCommand.List, {sessionId: 's'})).toHaveLength(2);
+        const receipt = await commands.execute<any>(FlowCommand.RunControlReceipt, {sessionId: 's', taskId: first.rootTaskId, requestId: operationId});
+        expect(receipt).toMatchObject({requestId: operationId, action: 'pause', accepted: {requestId: operationId}});
+    } finally {await editor.destroy(); await repository.dispose(); root.remove();}
+}, 15000);

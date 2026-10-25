@@ -174,3 +174,36 @@ it('rejects an artifact response from another execution without changing call ad
     expect(f.operations.getSnapshot()).toEqual([]);
     expect(document.querySelector('[data-independent-call] [role=status]')?.textContent).toBe('已完成');
 });
+
+
+it('keeps observing cleanup after the Round completes instead of declaring all resources released', async () => {
+    vi.useFakeTimers();
+    const call = view(); call.receipt.execution = {taskId: 'primary', role: 'primary'};
+    call.executionState = {id: 'primary', revision: 8, phase: 'done', control: {requested: 'pause', acknowledged: false},
+        activeOperations: 1, settled: false, stopped: false, controlEpoch: 2};
+    const execute = vi.fn(async () => [call]);
+    panel = new IndependentCallPanel({execute} as unknown as ICommandBus, 'parent', document.body,
+        {operations: createOperationLedger(), branch: () => 'main', openChild() {}});
+    await panel.refresh();
+    expect(document.querySelector('[data-execution-state]')!.textContent).toContain('1');
+    expect(document.querySelector('[data-independent-call] header [role=status]')!.textContent).toBe('已完成');
+    await vi.advanceTimersByTimeAsync(1000); expect(execute).toHaveBeenCalledTimes(2);
+    call.executionState.settled = true; call.executionState.stopped = true; call.executionState.activeOperations = 0;
+    await panel.refresh();
+    expect(document.querySelector('[data-execution-state]')!.textContent).toBe('');
+    const count = execute.mock.calls.length;
+    await vi.advanceTimersByTimeAsync(29_000); expect(execute).toHaveBeenCalledTimes(count);
+});
+
+it('distinguishes requested pause from confirmed stopping and rejects another task state', async () => {
+    const call = view(); call.receipt.execution = {taskId: 'primary', role: 'primary'}; call.status = 'waiting';
+    call.executionState = {id: 'primary', revision: 1, phase: 'waiting', control: {requested: 'pause', acknowledged: false},
+        activeOperations: 1, settled: false, stopped: false, controlEpoch: 1};
+    panel = new IndependentCallPanel({execute: vi.fn(async () => [call])} as unknown as ICommandBus, 'parent', document.body,
+        {operations: createOperationLedger(), branch: () => 'main', openChild() {}});
+    await panel.refresh(); expect(document.querySelector('[data-execution-state]')!.textContent).toContain('尚未完成');
+    call.executionState.control.acknowledged = true; call.executionState.stopped = true;
+    await panel.refresh(); expect(document.querySelector('[data-execution-state]')!.textContent).toContain('已确认暂停');
+    call.executionState.id = 'unrelated'; await panel.refresh();
+    expect(document.querySelector('[role=alert]')!.textContent).toContain('CALL_VIEW_SCOPE_MISMATCH');
+});

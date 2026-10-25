@@ -175,6 +175,9 @@ it('lists actual child results in the caller branch without acquiring a writer',
     expect(views[0]).toMatchObject({input, head: null, status: 'completed', summary: 'Done',
         receipt: {status: 'accepted', executionSessionId: accepted.executionSessionId}});
     expect(views[0].receipt.execution?.taskId).toBeTruthy();
+    expect(views[0].executionState).toMatchObject({id: views[0].receipt.execution!.taskId, phase: 'done', settled: true, stopped: true, activeOperations: 0, controlEpoch: 0});
+    expect(views[0].executionState).not.toHaveProperty('exit');
+    expect(views[0].executionState).not.toHaveProperty('output');
     expect(views[0].createdAt).toBeGreaterThan(0);
     views[0].input.title = 'Mutated view';
     expect((await list())[0].input.title).toBe(input.title);
@@ -217,4 +220,25 @@ it.each(['flow', 'agent'] as const)('reads independent %s output through its act
     expect(chunks.map(chunk => new TextDecoder().decode(chunk.data)).join(' ')).toContain(kind === 'agent' ? 'Done' : 'done');
     expect(open).not.toHaveBeenCalled();
     expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
+}, 15000);
+
+it('projects a real pause request without treating the running model Effect as stopped', async () => {
+    const f = await fixture(true), input = f.input('paused-child');
+    const fetch = vi.fn((_url: unknown, options: {signal: AbortSignal}) => new Promise<Response>((_resolve, reject) => {
+        const abort = () => reject(new DOMException('Aborted', 'AbortError'));
+        if (options.signal.aborted) abort(); else options.signal.addEventListener('abort', abort, {once: true});
+    }));
+    vi.stubGlobal('fetch', fetch);
+    const receipt = await f.submit(input);
+    let taskId = '';
+    await vi.waitFor(async () => {taskId = (await f.inspect(input)).execution?.taskId ?? ''; expect(taskId).not.toBe(''); expect(fetch).toHaveBeenCalled();});
+    const kernel = f.runtime.kernel.kernel;
+    try {
+        await kernel.controlTask(receipt.executionSessionId!, taskId, 'pause', {requestId: 'pause-observation', expectedEpoch: 0});
+        const open = vi.spyOn(kernel, 'openSession');
+        const calls = await f.runtime.commandBus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent});
+        expect(calls[0].executionState).toMatchObject({id: taskId, controlEpoch: 1, control: {requested: 'pause'}, stopped: false, settled: false});
+        expect(calls[0].executionState!.activeOperations).toBeGreaterThan(0);
+        expect(open).not.toHaveBeenCalled(); open.mockRestore();
+    } finally {await (await (await kernel.openSession(receipt.executionSessionId!)).attachTask(taskId)).cancel();}
 }, 15000);

@@ -77,7 +77,8 @@ export class IndependentCallPanel {
             await this.reconcile(call);
             if (!current()) return;
             this.render(call);
-            this.active ||= !call.status || !['completed', 'failed', 'cancelled'].includes(call.status);
+            this.active ||= !call.status || !['completed', 'failed', 'cancelled'].includes(call.status)
+                || !!call.executionState && !call.executionState.settled;
         }
         const ids = new Set(calls.map(call => call.receipt.operationId));
         for (const [id, card] of this.cards) if (!ids.has(id)) {this.disposeCard(card); this.cards.delete(id);}
@@ -87,6 +88,7 @@ export class IndependentCallPanel {
         if (request.expectedSessionId !== this.sessionId || request.expectedBranch !== branch || receipt.callerSessionId !== this.sessionId
             || receipt.operationId !== request.submission?.id || !['accepted', 'unknown'].includes(receipt.status)
             || receipt.executionSessionId === this.sessionId || receipt.status === 'accepted' && !receipt.executionSessionId
+            || call.executionState && call.executionState.id !== receipt.execution?.taskId
             || receipt.execution && (receipt.execution.role !== 'primary' || typeof receipt.execution.taskId !== 'string' || !receipt.execution.taskId))
             throw Object.assign(new Error('CALL_VIEW_SCOPE_MISMATCH'), {code: 'CALL_VIEW_SCOPE_MISMATCH'});
     }
@@ -104,7 +106,7 @@ export class IndependentCallPanel {
         let card = this.cards.get(id);
         if (!card) {
             const element = document.createElement('article'); element.className = 'flow-invocations__card'; element.dataset.independentCall = id;
-            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div>';
+            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div>';
             card = {element, artifacts: new TaskArtifactBrowser(element, this.commands), release: this.options.mountCard?.(element, call)};
             if (!this.options.mountCard) this.element.append(element);
             this.cards.set(id, card);
@@ -114,6 +116,7 @@ export class IndependentCallPanel {
         element.querySelector('summary')!.textContent = t('flow.invoke.inputs');
         element.querySelector('[data-input]')!.textContent = JSON.stringify(call.input.request.source, null, 2);
         element.querySelector('[role=status]')!.textContent = statusText(call);
+        element.querySelector('[data-execution-state]')!.textContent = executionStateText(call);
         element.querySelector('[data-preview-label]')!.textContent = t('callable.independent.preview');
         element.querySelector('[data-output]')!.textContent = call.summary ?? '';
         const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId;
@@ -140,4 +143,14 @@ export class IndependentCallPanel {
 function statusText(call: IndependentCallView): string {
     const state = call.status ?? (call.receipt.status === 'accepted' ? 'pending' : 'unknown');
     return t(`callable.independent.status.${state}`);
+}
+
+function executionStateText(call: IndependentCallView): string {
+    const state = call.executionState;
+    if (!state) return '';
+    if (state.phase === 'done') return state.settled ? '' : t('callable.independent.execution.cleaning', {count: state.activeOperations});
+    if (state.control.requested === 'pause') return t(state.stopped ? 'callable.independent.execution.paused' : 'callable.independent.execution.pausing');
+    if (state.control.requested === 'interrupt') return t(state.stopped ? 'callable.independent.execution.interrupted' : 'callable.independent.execution.interrupting');
+    if (state.blockedBy === 'session-control' || state.blockedBy === 'ancestor-control') return t('callable.independent.execution.held');
+    return '';
 }

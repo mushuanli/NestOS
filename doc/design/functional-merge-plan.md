@@ -946,3 +946,28 @@ C4Component
 隐藏视图取消正在读取的目录/内容并回收对象 URL；卡片移除、分支切换和销毁释放对应 browser。主执行改变时清理旧 scope；同一主执行轮询保留已读结果。读取错误只在产物区显示，不更改调用终态或接纳台账。未导入远端原生 URI 继续显示不可用，不在浏览器自行抓取。
 
 验收覆盖按需读取真实子 scope、预览转义与轮询保留、隐藏/销毁/重置时丢弃迟到目录、主执行改变、运行中不读取终态输出及错误归属拒绝。真实 Runtime 用例从独立 Flow 的列表取主 Task，再经产物命令读取结果，确认调用方绑定不变且不取得 writer。此批不新增产物存储或注册表；大型调用列表分页、复杂报告编辑、父级直接控制、独立 ChatView 对等入口和真实远端部署验收继续开放。
+
+
+## 42. F16 父卡片的主执行控制事实与清理状态
+
+session.calls.list 在真实子 Session 的主 ExecutionRef 上读取 Kernel Task，并复用 taskStat 派生 executionState：控制代次、请求/确认、运行阶段、阻塞来源、活跃操作数量及 stopped/settled。只读查询不获取 writer，不持久保存第二份状态，不向 UI 复制 Task 输入、Effect 参数或 exit 输出。Round 状态仍属于历史层，不被控制投影改写。
+
+```mermaid
+C4Component
+  title 调用历史与执行事实分别投影
+  Component(panel, "IndependentCallPanel", "UI", "历史状态与主执行控制提示并列")
+  Component(query, "IndependentCallService", "Session 语义", "核对路由和主执行身份")
+  ContainerDb(round, "子 Session Round", "历史", "业务调用状态与真实执行关联")
+  Component(stat, "Kernel taskStat", "机制", "请求、确认、stopped、settled")
+  ContainerDb(task, "Kernel Task", "执行事实", "控制版本及 Effect 收尾")
+  Rel(panel, query, "只读 list")
+  Rel(query, round, "原调用及执行身份")
+  Rel(query, task, "读取主执行记录，不获取 writer")
+  Rel(query, stat, "派生公开安全状态")
+```
+
+主 Task 的 stopped/settled 不代表整棵子调用树已停止。卡片明确标注主任务；暂停请求尚未达到停止条件时继续提示等待安全边界或操作收尾。Round 已终结但主 Task 未 settled 时继续快速观察，收尾后恢复空闲轮询。产物展示和历史终态均不因等待清理而回退。
+
+控制入口审查结论：现有 FlowRunControl 还承担运行目标、调度租约及控制树协调，不能直接用于普通 Agent；Kernel pause/resume/withdraw 有持久请求回执，但 cancel(reason, options) 没有同样的 requestId 契约，interrupt 也不是 cancel。后续父卡片按钮必须保持这些语义，并复用真实执行所有者的租约与控制协调；本批不把状态投影伪装成可执行控制能力。
+
+验收覆盖真实模型 Effect 未结束时提交 pause，再只读查询主 Task：请求已保存但 stopped/settled 仍为 false；终态无副作用内容泄漏、UI 清理继续观察、确认停止和请求暂停区分、其他 Task 状态拒绝。父级直接控制与独立 ChatView 接入仍未完成。

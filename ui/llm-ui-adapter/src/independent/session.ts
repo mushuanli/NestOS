@@ -1,3 +1,4 @@
+import {SessionCallPresentation, independentCallPart} from './session-calls';
 import {createModuleLogger, t} from '@itookit/common';
 import {IndependentCallCommand, type IndependentCallReceipt} from '@itookit/llm-session/contracts';
 import {InvocationOperations} from '../flows/invocation-operations';
@@ -31,6 +32,7 @@ export interface SessionChatBindingOptions {
     readonly targetSelection?: boolean;
     /** Offer independent calls for published targets; the host keeps all execution state. */
     readonly independentCalls?: boolean;
+    readonly openChild?: (sessionId: string) => void | Promise<void>;
     /** Current host-observed branch when the Session snapshot omits its loaded view. */
     readonly branch?: () => string | undefined;
     readonly subscribeInput?: (listener: () => void) => () => void;
@@ -60,6 +62,7 @@ class SessionChatBinding {
     private readonly admissionChecks = new Map<string, Promise<boolean>>();
     private closed = false;
     private active = true;
+    private presentation?: SessionCallPresentation;
     private admissionTimer?: ReturnType<typeof setTimeout>;
     private readonly targets?: SessionCallTargets;
     constructor(private readonly options: SessionChatBindingOptions) {
@@ -99,9 +102,11 @@ class SessionChatBinding {
             && this.currentBranch() === this.branch;
     }
     private publish(): void {
-        if (!this.current()) return;
+        if (!this.current()) {this.presentation?.setActive(false); return;}
         this.observeQueue(this.options.session.getSnapshot?.().instructionQueue);
-        const messages = this.options.session.getSessions().map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId));
+        const groups = this.options.session.getSessions();
+        const projected = groups.map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId));
+        const messages = this.presentation?.merge(projected, groups) ?? projected;
         this.source.publish({ title: this.options.title ?? this.options.session.getSnapshot?.().view?.manifest.title ?? '',
             messages, interactions: [], selectors: this.selectors(), commands: this.options.composerCommands?.getSnapshot(),
             inputContract: this.options.inputContract?.(), loading: false,
@@ -206,7 +211,7 @@ class SessionChatBinding {
     }
     private scheduleIndependentAdmission(): void {
         clearTimeout(this.admissionTimer);
-        if (!this.pendingIndependent().length) return;
+        if (this.presentation || !this.pendingIndependent().length) return;
         if (!this.closed && this.active) this.admissionTimer = setTimeout(() => {void this.observeIndependentAdmission();}, 1000);
     }
     private async observeIndependentAdmission(): Promise<void> {
@@ -218,7 +223,7 @@ class SessionChatBinding {
             if (this.current() && this.active) this.publish();
         } finally {this.scheduleIndependentAdmission();}
     }
-    setActive(active: boolean): void {this.active = active; this.admissionChecks.clear(); this.scheduleIndependentAdmission();}
+    setActive(active: boolean): void {this.active = active; this.admissionChecks.clear(); this.presentation?.setActive(active && this.current()); this.scheduleIndependentAdmission();}
     private frozenRequest(operationId: string): SubmissionRequest {
         const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
             && item.conversationId === this.sessionId);
@@ -263,10 +268,23 @@ class SessionChatBinding {
     }
     dispose(): void {
         if (this.closed) return;
-        this.closed = true; clearTimeout(this.admissionTimer); this.releases.forEach(release => release());
+        this.closed = true; this.presentation?.destroy(); clearTimeout(this.admissionTimer); this.releases.forEach(release => release());
         this.targets?.dispose();
     }
-    refreshTargets(): Promise<void> {return this.targets?.refreshCurrent() ?? Promise.resolve();}
+    async refreshTargets(): Promise<void> {await this.targets?.refreshCurrent(); await this.presentation?.refresh();}
+    mountCalls(): SessionCallPresentation | undefined {
+        if (!this.options.independentCalls || !this.branch || this.closed) return;
+        if (this.presentation) throw new Error('The Session binding already owns a call presentation');
+        clearTimeout(this.admissionTimer);
+        this.presentation = new SessionCallPresentation(this.options.commands, this.sessionId, () => this.branch!, this.operations,
+            () => this.publish(), this.options.openChild);
+        if (!this.active || !this.current()) this.presentation.setActive(false);
+        return this.presentation;
+    }
+    releaseCalls(presentation?: SessionCallPresentation): void {
+        if (!presentation || this.presentation !== presentation) return;
+        presentation.destroy(); this.presentation = undefined; this.publish(); this.scheduleIndependentAdmission();
+    }
 }
 function validInputContract(input: ChatSubmission, contract?: ComposerInputContract): boolean {
     if (!input.input) return !contract;
@@ -280,12 +298,25 @@ function validInputContract(input: ChatSubmission, contract?: ComposerInputContr
 }
 export async function createSessionChatView(container: HTMLElement, binding: ReturnType<typeof createSessionChatBinding>,
     options: ImageChatOptions = {}) {
-    const view = await createImageChatView(container, {...options, source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
-    const setActive = view.setActive.bind(view), destroy = view.destroy.bind(view);
-    view.setActive = active => {binding.setActive(active); setActive(active);};
-    view.destroy = async () => {binding.setActive(false); await destroy();};
-    return view;
+    if (options.renderers?.[independentCallPart]) throw new Error('The independent call renderer is reserved by the Session adapter');
+    const calls = binding.mountCalls();
+    try {
+        const mountToolbar: ImageChatOptions['mountToolbar'] = calls ? (host, context) => {
+            const custom = document.createElement('div'); host.append(custom);
+            const mounted = options.mountToolbar?.(custom, context);
+            if (calls) host.append(calls.notices);
+            return {update: next => mounted?.update?.(next), destroy: async () => {await mounted?.destroy(); custom.remove(); calls.notices.remove();}};
+        } : options.mountToolbar;
+        const view = await createImageChatView(container, {...options, mountToolbar, renderers: {...options.renderers,
+            ...(calls ? {[independentCallPart]: calls.renderer} : {})},
+            source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
+        const setActive = view.setActive.bind(view), destroy = view.destroy.bind(view);
+        view.setActive = active => {binding.setActive(active); setActive(active);};
+        view.destroy = async () => {binding.setActive(false); try {await destroy();} finally {binding.releaseCalls(calls);}};
+        return view;
+    } catch (error) {binding.releaseCalls(calls); throw error;}
 }
+
 function rejected(context: OperationContext, code: string, message: string): OperationReceipt {
     return { status: 'rejected', operationId: context.operationId, code, message };
 }

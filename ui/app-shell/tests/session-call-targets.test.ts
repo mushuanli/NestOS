@@ -263,8 +263,9 @@ it.each(['local', 'rpc'])('submits an independent child from ChatView over %s an
         cleanup.push(async () => {await client.close(); await server.close();});
         commands = client.decode(await server.expose({execute})) as ICommandBus;
     }
+    const openChild = vi.fn();
     const operations = createOperationLedger(), binding = createSessionChatBinding({session: f.runtime.sessionManager, commands,
-        targetSelection: true, independentCalls: true, operations, branch: () => 'main',
+        targetSelection: true, independentCalls: true, operations, openChild, branch: () => 'main',
         hasCommittedSubmission: submission => hasCommittedSubmission(f.runtime.sessionRepository, f.sessionId, submission)});
     cleanup.push(() => binding.dispose());
     const host = document.createElement('section'); document.body.append(host);
@@ -281,6 +282,12 @@ it.each(['local', 'rpc'])('submits an independent child from ChatView over %s an
     expect(operations.getSnapshot()[0].input).toMatchObject({selection: {callMode: 'independent'}, independentTitle: 'worker'});
     const calls = await f.runtime.commandBus.execute<import('@itookit/llm-session/contracts').IndependentCallView[]>('session.calls.list', {sessionId: f.sessionId});
     expect(calls).toHaveLength(1); expect(calls[0].receipt.executionSessionId).not.toBe(f.sessionId);
+    const card = host.querySelector<HTMLElement>('[data-independent-call]')!;
+    expect(card).not.toBeNull(); expect(card.querySelector('[data-input]')!.textContent).toContain('Child request');
+    card.querySelector<HTMLButtonElement>('[data-open-child]')!.click();
+    expect(openChild).toHaveBeenCalledWith(calls[0].receipt.executionSessionId);
+    await binding.refreshTargets(); expect(host.querySelector('[data-independent-call]')).toBe(card);
+    expect(binding.source.getSnapshot().messages.find(message => message.id.startsWith('independent-call:'))?.submissionId).toBeUndefined();
     expect((await f.runtime.sessionRepository.readHistoryChain(f.sessionId)).rounds).toEqual([]);
     expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.sessionId);
     const currentMode = host.querySelector<HTMLSelectElement>('[data-selector-id="callMode"]')!;

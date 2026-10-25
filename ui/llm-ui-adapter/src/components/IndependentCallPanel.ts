@@ -10,7 +10,7 @@ interface Options {
     operations: OperationLedger;
     branch(): string;
     mountCard?(element: HTMLElement, call: IndependentCallView): () => void;
-    openChild(id: string): void | Promise<void>;
+    openChild?(id: string): void | Promise<void>;
 }
 
 /** Reads host-owned call facts; never owns execution state or dispatches input. */
@@ -97,8 +97,8 @@ export class IndependentCallPanel {
         const record = this.options.operations.getSnapshot().find(record => record.context.operationId === call.receipt.operationId
             && record.conversationId === this.sessionId && record.kind === 'send' && ['submitting', 'unknown'].includes(record.status));
         if (!record) return;
-        const frozen = record.input as {request?: unknown; independentTitle?: string};
-        if (frozen.independentTitle !== call.input.title || canonicalJson(frozen.request) !== canonicalJson(call.input.request)) return;
+        const frozen = record.input as {request?: unknown; sessionRequest?: unknown; independentTitle?: string};
+        if (frozen.independentTitle !== call.input.title || canonicalJson(frozen.request ?? frozen.sessionRequest) !== canonicalJson(call.input.request)) return;
         await this.options.operations.settle({operationId: call.receipt.operationId, status: 'accepted'});
     }
     private render(call: IndependentCallView): void {
@@ -119,7 +119,7 @@ export class IndependentCallPanel {
         element.querySelector('[data-execution-state]')!.textContent = executionStateText(call);
         element.querySelector('[data-preview-label]')!.textContent = t('callable.independent.preview');
         element.querySelector('[data-output]')!.textContent = call.summary ?? '';
-        const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId;
+        const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId || !this.options.openChild;
         button.onclick = () => {void this.open(call.receipt.executionSessionId!);};
         this.renderArtifacts(card, call);
     }
@@ -135,7 +135,7 @@ export class IndependentCallPanel {
     private disposeCard(card: Card): void {card.artifacts.dispose(); card.release?.(); card.element.remove();}
     private async open(id: string): Promise<void> {
         if (!this.visible || this.abort.signal.aborted) return;
-        try {await this.options.openChild(id);}
+        try {await this.options.openChild?.(id);}
         catch {if (!this.abort.signal.aborted) {this.element.hidden = false; this.error.textContent = t('callable.independent.openFailed');}}
     }
     private clearCards(): void {for (const card of this.cards.values()) this.disposeCard(card); this.cards.clear();}

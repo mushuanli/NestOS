@@ -1017,3 +1017,28 @@ C4Component
 仅在当前分支存在未确认独立操作时每秒核对原接纳，不重新发送；其他分支原操作仍可显式查询。父队列通知不确认子调用。隐藏/销毁停止后续观察；重开清除旧在途查询占位，悬挂旧请求不挡住新核对。createSessionChatView 将视图 active/destroy 生命周期传给绑定，宿主继续拥有 binding.dispose。读取失败诊断仅记录操作身份、阶段、分类与耗时。
 
 真实 ChatView 的本地/RPC 组合验收覆盖原 submit 回复悬挂时持久接纳释放输入、随后切回当前会话发送、子会话身份独立且父绑定不变；绑定验收覆盖模式冻结、unknown 路由不冒充接纳、错误调用方拒绝、隐藏重开查询及缺少分支准入拒绝。独立 ChatView 的父卡片、产物和直接控制仍需复用默认工作台展示接线；本节只完成输入和回执协议，不将整体视图对等接入标记完成。
+
+## 45. F16 独立 ChatView 的调用卡片、产物和子会话导航
+
+独立 ChatView 复用 IndependentCallPanel 与 TaskArtifactBrowser：SessionCallPresentation 把同一张宿主卡片挂入既有 extension part，按原 head 放在对应轮次之后，同锚点按 createdAt/operationId 稳定排序；空 head 在历史之前，未加载锚点暂放末尾。一次建立历史锚点索引，避免逐调用扫描历史。卡片只在视图快照中存在，不写入父 Session 历史，不进入模型上下文，也不携带 submissionId/acceptance 充当接纳证据。扩展消息的 complete 仅表示渲染块完整，执行状态仍由卡片投影真实子调用。
+
+```mermaid
+C4Component
+  title 独立调用展示复用宿主协议
+  Component(view, "ChatView", "独立 llm-ui", "历史位置与 extension 生命周期")
+  Component(presentation, "SessionCallPresentation", "宿主 UI 适配", "锚点投影与既有 DOM 挂载")
+  Component(panel, "IndependentCallPanel", "共享宿主组件", "状态、输入输出、原回执核对")
+  Component(artifacts, "TaskArtifactBrowser", "共享宿主组件", "按需读取真实子任务产物")
+  Component(host, "宿主命令端口", "Session / Kernel", "只读调用投影与产物")
+  ContainerDb(ledger, "OperationLedger", "同一台账", "持久接纳与草稿消费")
+  Rel(view, presentation, "挂载或释放扩展")
+  Rel(presentation, panel, "复用状态观察与卡片")
+  Rel(panel, host, "session.calls.list")
+  Rel(panel, ledger, "核对冻结请求后 settle")
+  Rel(panel, artifacts, "实际子 session/task 身份")
+  Rel(artifacts, host, "按需读取")
+```
+
+绑定在挂载卡片后停用独立的 inspect 轮询，使用共享面板的 list 观察核对同一台账；无视图的 binding 保留原 inspect 恢复路径。面板兼容默认工作台的 request 与独立 ChatView 的 sessionRequest 冻结记录。openChild 由宿主提供真实子会话导航；未提供时隐藏入口，不生成无效按钮。隐藏/销毁停止观察，销毁后迟到响应不能重建卡片；更新结果保留 details、产物浏览器和卡片 DOM，旧 renderer 的清理不能移除已迁往新容器的卡片。
+
+本批覆盖本地与真实 RPC 的悬挂接纳、子会话导航、卡片复用、父历史不被污染，以及锚点排序、迟到结果和具体读取错误提示。产物继续使用第 41 节已经验证的共享组件与实际子任务作用域。直接取消/暂停控制、上下文选择、裸 Task 入口和大历史分页仍未完成；不将整体 F16 标记完成。

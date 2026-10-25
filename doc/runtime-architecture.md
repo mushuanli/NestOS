@@ -725,6 +725,8 @@ UI 无深链启动只读取主题并展示 #/start 功能入口，选择模块�
 
 关闭时拒绝新的初始化；已创建的 readiness Promise 继续保留原结果或原错误，供已接纳的在途工作排空。读取同一已初始化依赖不重新执行，也不能把原结果改写为 Startup is closed。启动策略仍归 startup-policy，关闭排空机制归 StartupCoordinator。
 
+租约恢复在准备回调返回后再次检查关闭状态，已关闭则不再调用 Kernel 恢复；Runtime 先排空恢复并释放租约，再停止 Kernel 和等待空闲，分别保留清理失败。这样快速 CLI 查询退出不会把已就绪依赖改写为 Startup is closed，也不会在 Kernel 停止后开始恢复。[启动协调回归](../backend/app-core/tests/startup-coordinator.test.ts)和[恢复回归](../backend/app-core/tests/session-recovery.test.ts)覆盖这些边界。
+
 基础设施分别配置 LLM 初始化、设备节点初始化及目录预热，三者互不绑定。按需设备初始化要求 vfs-core 提供 readiness，访问 `/dev/<handler>` 才等待并生成节点；缺少该能力时明确拒绝启动，不再退回启动前全量生成节点。独立库通过自身公开 exports 消费，不并入主仓库工作区。
 
 

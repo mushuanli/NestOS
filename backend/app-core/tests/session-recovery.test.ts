@@ -5,6 +5,24 @@ import { recoverSessionsWithLeases } from '../src/runtime/session-recovery';
 import { Kernel, SeqFileKernelStore } from '@itookit/durable-kernel';
 
 describe('Session recovery with leases', () => {
+    it('does not begin Kernel recovery after close while an accepted preparation callback is draining', async () => {
+        const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+        const fs = await manager.openFileSystem('/'), store = new SessionLeaseStore(fs);
+        let release!: () => void;
+        const gate = new Promise<void>(resolve => {release = resolve;});
+        const beforeRecover = vi.fn(async () => {await gate;});
+        const kernel = {async *listSessions() {}, recoverSessions: vi.fn(), recoverSession: vi.fn(async () => {})};
+        const recovery = await recoverSessionsWithLeases(kernel as never, store, {id: 'host', kind: 'cli'}, 10_000, beforeRecover, new Set(), 'deferred');
+        try {
+            const preparing = recovery.acquireLater('session');
+            await vi.waitFor(() => expect(beforeRecover).toHaveBeenCalledOnce());
+            const closing = recovery.release(); release();
+            expect(await preparing).toBe(false); await closing;
+            expect(kernel.recoverSession).not.toHaveBeenCalled();
+            expect(await store.acquire('session', {id: 'next', kind: 'cli'})).not.toBeNull();
+        } finally {release(); await recovery.release(); await manager.dispose();}
+    });
+
     it('reconciles ten Sessions concurrently and starts the sweep only after all finish', async () => {
         const { manager } = await createVFS({ rootBackend: new MemoryBackend() });
         const fs = await manager.openFileSystem('/'), store = new SessionLeaseStore(fs);

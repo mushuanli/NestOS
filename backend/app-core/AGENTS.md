@@ -179,3 +179,5 @@ Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.
 工作区工具的默认文件发现由 vfs/tool-context 排除应用拥有的 `.mindos` 目录，避免会话历史递归进入搜索结果；`includeIgnored` 与授权范围内的显式读取仍可使用。此产品策略不写入独立 VFS 或工具库的通用默认过滤器。
 
 - StartupCoordinator.close 拒绝新初始化并排空已接纳工作；已创建的依赖 Promise 在关闭期间仍可读取，保留原结果或原错误，不重新初始化，也不能改写为 Startup is closed。快速 CLI 查询/准备退出的恢复回调继续使用同一已就绪依赖；回归见 startup-coordinator。
+
+- 租约恢复关闭后，已在途的准备回调返回时不得再开始 Kernel 恢复；Runtime 先排空恢复及租约释放，再停止 Kernel，分别保留释放与停止错误，不能靠吞掉 DISPOSED 异常掩盖关闭顺序。

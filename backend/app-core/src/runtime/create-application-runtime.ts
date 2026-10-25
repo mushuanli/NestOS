@@ -365,10 +365,11 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         mayCollectContext = id => (recovery.leases.get(id)?.leaseUntil ?? 0) > Date.now();
         cleanupFns.push(() => kernel.dispose());
         cleanupFns.push(async () => {
-            const released = recovery.release();
+            const errors: unknown[] = [];
+            try {await recovery.release();} catch (error) {errors.push(error);}
             kernelCore.dispose();
-            await released;
-            await kernelCore.waitIdle();
+            try {await kernelCore.waitIdle();} catch (error) {errors.push(error);}
+            if (errors.length) throw new AggregateError(errors, 'Session recovery and Kernel shutdown failed');
         });
         cleanupFns.push(() => skillsReady.catch(() => {}));
         cleanupFns.push(() => digitalTwin!.dispose());

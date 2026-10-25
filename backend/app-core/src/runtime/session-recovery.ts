@@ -144,6 +144,7 @@ class LeasedRecovery implements SessionRecovery {
         if (!await this.renew(id) && !await this.acquire(id)) return false;
         try {
             await this.beforeRecover?.(id, ids => this.ensureReconciliationLeases(ids));
+            if (this.released) return false;
             // Online recovery respects existing Task/Effect leases; it never fences work in other Sessions.
             await this.kernel.recoverSession(id);
             if (this.released || !await this.renew(id)) return false;

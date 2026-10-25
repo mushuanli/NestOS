@@ -1,9 +1,10 @@
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import {ControlOperations} from './control-operations';
+import {FlowRunControl, type PauseResult} from './run-control';
 import {flowInputAssets} from './input-assets';
 import { promptInvocation } from './prompt-invocation';
 import { flowConnectionSelection } from './connection-selection';
-import { createModuleLogger, escapeHTML, t } from '@itookit/common';
+import { escapeHTML, t } from '@itookit/common';
 import { type ICommandBus } from '@itookit/llm-session/contracts';
 import { type FlowParameter, type JsonValue } from '@itookit/llm-flow/contracts';
 import { formatFlowOutput } from '@itookit/llm-flow/contracts';
@@ -17,9 +18,7 @@ import { inputInteraction } from '../shell/input-interaction';
 import {invocationControl, invocationControlTasks, invocationStatus, type InvocationControl} from './invocation-control';
 
 const terminal = (status: string) => ['succeeded', 'failed', 'cancelled'].includes(status);
-const log = createModuleLogger('invocation-control');
 interface Card { element: HTMLElement; interactions: Map<string, InteractionPanel | HTMLElement>; snapshot?: DurableFlowSnapshot; active: boolean; actionsKey?: string; loadError?: boolean; recoveryNotice?: string; unmount?: () => void }
-interface PauseResult {limitedRecovery?: true; retainedTaskIds?: string[]}
 
 /** Persistent call identities drive cards; Kernel snapshots drive their execution state. */
 export class InvocationPanel {
@@ -172,28 +171,14 @@ export class InvocationPanel {
     }
 
     private async setPaused(call: FlowInvocationRecord, paused: boolean, expectedEpoch: number): Promise<void> {
-        const action = paused ? 'pause' : 'resume', started = Date.now(), signal = this.viewAbort.signal;
-        await this.controlOperations.run({protocol: 'flow-control-v1', taskId: call.rootTaskId!, action, expectedEpoch}, async requestId => {
-            if (signal.aborted || this.abort.signal.aborted || !this.visible) return false;
-            try {const sent = await this.changePause(call, paused, expectedEpoch, requestId);
-                if (sent) controlDiagnostic(action, requestId, started); return sent;}
-            catch (error) {controlDiagnostic(action, requestId, started, error); throw error;}
-        });
+        const result = await this.runControl(call, paused ? 'pause' : 'resume', expectedEpoch);
+        this.recordRecovery(call, result);
     }
 
-    private async changePause(call: FlowInvocationRecord, paused: boolean, expectedEpoch: number, requestId: string): Promise<boolean> {
+    private runControl(call: FlowInvocationRecord, action: 'pause' | 'resume' | 'withdraw', epoch: number): Promise<PauseResult | undefined> {
         const signal = this.viewAbort.signal;
-        let snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {taskId: call.rootTaskId, sessionId: this.sessionId});
-        if (terminal(snapshot.root.task.status)) throw new Error(t('flow.rerun.unavailable'));
-        if (this.abort.signal.aborted || signal.aborted || !this.visible) return false;
-        assertControlEpoch(snapshot, expectedEpoch);
-        if (paused && !invocationControl(snapshot).supportsPause) throw new Error(t('flow.invoke.legacyPause'));
-        if (!paused) snapshot = await this.prepareRelease(call, snapshot);
-        if (this.abort.signal.aborted || signal.aborted || !this.visible) return false;
-        assertControlEpoch(snapshot, expectedEpoch);
-        const result = await this.commands.execute<PauseResult>(FlowCommand.RunGoalUpdate, {taskId: call.rootTaskId, requestId, expectedEpoch, goal: {status: paused ? 'paused' : 'active'}});
-        this.recordRecovery(call, result);
-        return true;
+        return new FlowRunControl(this.commands, this.sessionId, this.controlOperations).execute(call.rootTaskId!, action, epoch,
+            () => !this.abort.signal.aborted && !signal.aborted && this.visible);
     }
 
     private recordRecovery(call: FlowInvocationRecord, result?: PauseResult): void {
@@ -203,32 +188,8 @@ export class InvocationPanel {
             ? t('flow.invoke.legacyRetained', {count: result.retainedTaskIds.length}) : undefined;
     }
 
-    private async prepareRelease(call: FlowInvocationRecord, snapshot: DurableFlowSnapshot): Promise<DurableFlowSnapshot> {
-        if (!invocationControl(snapshot).canRelease) throw new Error(t('flow.invoke.pauseUnconfirmed'));
-        const fresh = await this.reattachPaused(call, snapshot);
-        if (!invocationControl(fresh).canRelease) throw new Error(t('flow.invoke.pauseUnconfirmed'));
-        return fresh;
-    }
-
-    private async reattachPaused(call: FlowInvocationRecord, snapshot: DurableFlowSnapshot): Promise<DurableFlowSnapshot> {
-        if (!snapshot.attachedFromStorage || invocationControl(snapshot).externalHold) return snapshot;
-        await this.commands.execute(FlowCommand.RunResume, {taskId: call.rootTaskId, sessionId: this.sessionId});
-        return this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {taskId: call.rootTaskId, sessionId: this.sessionId});
-    }
-
     private async withdrawPause(call: FlowInvocationRecord, expectedEpoch: number): Promise<void> {
-        const signal = this.viewAbort.signal, started = Date.now();
-        await this.controlOperations.run({protocol: 'flow-control-v1', taskId: call.rootTaskId!, action: 'withdraw', expectedEpoch}, async requestId => {
-            try {
-                let snapshot = await this.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {taskId: call.rootTaskId, sessionId: this.sessionId});
-                if (this.abort.signal.aborted || signal.aborted || !this.visible) return false;
-                assertWithdraw(snapshot, expectedEpoch); snapshot = await this.reattachPaused(call, snapshot);
-                if (this.abort.signal.aborted || signal.aborted || !this.visible) return false;
-                assertWithdraw(snapshot, expectedEpoch);
-                await this.commands.execute(FlowCommand.RunPauseWithdraw, {taskId: call.rootTaskId, requestId, expectedEpoch});
-                controlDiagnostic('withdraw', requestId, started); return true;
-            } catch (error) {controlDiagnostic('withdraw', requestId, started, error); throw error;}
-        });
+        await this.runControl(call, 'withdraw', expectedEpoch);
     }
 
     private updateControlRecovery(card: Card, call: FlowInvocationRecord): void {
@@ -350,23 +311,4 @@ function releaseLabel(control: InvocationControl): Parameters<typeof t>[0] {
 
 function canRequestPause(control: InvocationControl): boolean {
     return control.supportsPause && ['active', 'constrained'].includes(control.state);
-}
-
-function assertWithdraw(snapshot: DurableFlowSnapshot, expectedEpoch: number): void {
-    if (!invocationControl(snapshot).canWithdraw || snapshot.root.task.control?.epoch !== expectedEpoch)
-        throw Object.assign(new Error(t('flow.invoke.pauseChanged')), {code: 'FLOW_PAUSE_CHANGED'});
-}
-
-function assertControlEpoch(snapshot: DurableFlowSnapshot, expectedEpoch: number): void {
-    if ((snapshot.root.task.control?.epoch ?? 0) !== expectedEpoch)
-        throw Object.assign(new Error(t('flow.invoke.pauseChanged')), {code: 'FLOW_PAUSE_CHANGED'});
-}
-
-function controlDiagnostic(action: string, identity: string, started: number, error?: unknown): void {
-    const code = (error as {code?: unknown})?.code;
-    const data = {operation: `flow.control.${action}`, operationId: /^[\w:-]{1,256}$/.test(identity) ? identity : undefined,
-        stage: 'control', result: error ? 'failure' : 'accepted', durationMs: Date.now() - started,
-        ...(error ? {code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'FLOW_CONTROL_FAILED'} : {})};
-    try {if (error) log.warn('Flow invocation control', data); else log.info('Flow invocation control', data);}
-    catch { /* Diagnostics must not change a control result. */ }
 }

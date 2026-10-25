@@ -159,6 +159,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
 
     // Workflows workspace: standalone design surface over the flows VFS module.
     const flowsFactory = options.ui.createFlowEditor({
+        sessionRepository,
         commands: commandBus,
         listConnections: async () => {
             const available = await agentService.getConnections();

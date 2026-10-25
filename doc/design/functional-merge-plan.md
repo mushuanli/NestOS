@@ -97,7 +97,7 @@ C4Component
 | F14 | 通用文件参数与就绪预检 | app-core + Flow + UI | F11 / F13 | 已合入 `a2989fc4`；文件表单、默认/空文件、真实上传、接纳/编辑/派发前核验；原回执查询不重读损坏输入 |
 | F15 | Harness 资产编码与能力准入 | app-core + adapter + driver | F13 / F14 | 本批合入；普通 Session 与 Flow 声明附件贯通，能力/摘要错误在 create/turn 前拒绝，原操作核对不重读输入；见第 13 节 |
 | F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；独立子 Session 路由和函数调用展示仍未完成 |
-| F17 | Flow 控制树与调度屏障 | Flow + Kernel + UI/CLI | F02 / F16 | Flow 控制屏障由 `dc20beb2` 合入；UI 卡片/详情接线见第 18 节，CLI 显式入口见第 19 节；历史回执与卡片跨视图恢复见第 20—21 节；旧 DAG Goal 控制入口迁移及组合验收待完成 |
+| F17 | Flow 控制树与调度屏障 | Flow + Kernel + UI/CLI | F02 / F16 | Flow 控制屏障由 `dc20beb2` 合入；UI 卡片/详情接线见第 18 节，CLI 显式入口见第 19 节；历史回执与卡片跨视图恢复见第 20—21 节；独立 DAG 页共用控制与持久台账见第 23 节；跨边界组合验收待完成 |
 | F18 | 长活 Effect 审批准入 | Kernel + Harness adapter | F02 / F06 | 本批合入；新审批转发与暂停同事务校验，held 不转成 unknown，见第 17 节 |
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
 | F20 | 独立上下文 binding 与清理 | app-core + adapter | F16 / F19 | 待合入；集合 CAS，journal 与原生身份关联，旧结果不释放新所有者 |
@@ -486,3 +486,32 @@ C4Component
 关闭视图或切换运行后，不提交旧 Goal 弹窗；已经发出的保存仍可完成，但迟到回复不刷新或覆盖新视图。独立 DAG 运行页的暂停/恢复/撤回按钮与持久 operations 注入仍需接到统一控制链，本节不将移除隐式入口等同于完成该迁移，F17 保留未完成状态。
 
 验证：新增行为先在旧实现复现 3 项失败；隔离候选 DAG 与调用控制共 55 项通过，适配层类型检查、13 个 Mermaid 图及 16 个本地链接通过。覆盖保存失败的具体提示、切换/销毁后禁止提交、迟到保存不刷新旧运行。仅提交本节对应修改，其他未完成产物代码保留。
+
+## 23. F17 独立 DAG 页共用持久控制协议
+
+调用卡片与独立 DAG 运行页共用 `FlowRunControl`：注册冻结意图后读取最新执行事实，核对 epoch/能力/停止确认；需要重挂时先重挂并再次核对，最后提交明确控制。生命周期检查贯穿登记、查询和重挂，旧视图不能继续派发。共同的诊断日志保留 operationId、阶段、结果分类和耗时，不记录目标文字或参数。
+
+```mermaid
+C4Component
+  title 独立 DAG 页与调用卡片的共用控制链
+  Component(card, "InvocationPanel", "UI", "调用卡片与待核对操作")
+  Component(dag, "DagWorkbench", "UI", "运行展示、明确控制、原回执核对")
+  Component(control, "FlowRunControl", "宿主 UI 适配", "新鲜状态与版本校验，重挂及控制提交")
+  Component(ledger, "ControlOperations", "UI 操作协议", "稳定请求身份，登记与只读核对")
+  Component(store, "OperationPersistence", "UI 持久适配", "沿用既有 CAS 合并规则")
+  ContainerDb(session, "SessionRepository", "宿主持久化", "现有 Session UI 操作记录")
+  Container(kernel, "Flow / Kernel", "执行机制", "控制树、原接纳与当前状态")
+  Rel(card, control, "指定根调用与明确动作")
+  Rel(dag, control, "同一协议")
+  Rel(control, ledger, "先登记后发送")
+  Rel(ledger, store, "保存原意图与接纳")
+  Rel(store, session, "条件合并")
+  Rel(control, kernel, "查询、重挂与显式控制")
+  Rel(ledger, kernel, "只读原回执查询")
+```
+
+宿主 bootstrap 将已有 SessionRepository 注入 FlowsEditor；打开某个 Run 时读取该 Session 台账，重开继续核对原记录，恢复过程不重发控制。缺少持久端口的直接嵌入者不启用新增暂停/恢复操作；只读详情不读写台账。台账读取失败保留具体原因，同时仍显示运行和独立取消入口，不能把读取失败当成空台账继续发送。隐藏、切换或关闭使在途视图操作失效；已发送操作保留真实持久结果。
+
+本节完成独立 DAG 页的控制接线，不增加调度器、状态库或 package。F17 仍保留跨边界组合验收；F16 子 Session 路由与 F20—F24、真实远端和原生产 Session 验收继续按主表推进。
+
+验证：隔离候选 UI 控制、DAG 重试/视图竞态、调用与参数入口共 92 项，适配层 187 项通过；适配层与 app-shell 类型检查通过。同批构建和架构边界检查通过，最终补充的重挂/恢复显示区别另经回归与类型验证；14 个 Mermaid 图及 16 个本地链接通过。真实 Kernel 调用回归沿用原控制屏障，新增独立页回归覆盖持久端口接线、未知回执、陈旧 epoch、登记时隐藏/销毁、台账读失败仍可取消及只读详情不访问台账。未部署或操作生产 Session。

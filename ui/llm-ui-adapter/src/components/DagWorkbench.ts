@@ -1,3 +1,7 @@
+import type {OperationLedger} from '@itookit/llm-ui';
+import {ControlOperations} from '../flows/control-operations';
+import {FlowRunControl} from '../flows/run-control';
+import {invocationControl, invocationStatus} from '../flows/invocation-control';
 import { renderVariables } from './dag/VariableView';
 import {bindAssetPreviews} from './dag/AssetPreview';
 import { renderFlowOutput } from './dag/FlowOutput';
@@ -22,6 +26,7 @@ import type { FlowRunInput } from '../flows/run-flow';
 
 export interface DagWorkbenchOptions {
     readOnly?: boolean;
+    operations?: (sessionId: string) => Promise<OperationLedger>;
     backLabel?: string;
     commands: ICommandBus;
     onModeChange?: (mode: 'design' | 'run') => void;
@@ -35,6 +40,9 @@ export interface DagWorkbenchOptions {
 }
 
 export class DagWorkbench {
+    private visible = true;
+    private controlOperations?: ControlOperations;
+    private readonly controlActions = new Set<string>();
     private mode: 'design' | 'run' = 'design';
     private controller: DagDraftController | null = null;
     private run: DurableFlowSnapshot | null = null;
@@ -103,6 +111,13 @@ export class DagWorkbench {
         const run = await this.options.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, { taskId, sessionId })
             .catch(error => { if (request === this.viewRequest) throw error; return undefined; });
         if (request !== this.viewRequest || !run) return;
+        const operations = !this.options.readOnly && this.options.operations
+            ? await this.options.operations(run.root.task.sessionId).catch(error => {
+                if (request === this.viewRequest) Toast.error(error instanceof Error ? error.message : t('flow.run.controlFailed'));
+                return undefined;
+            }) : undefined;
+        if (request !== this.viewRequest) return;
+        this.controlOperations = operations ? new ControlOperations(operations, this.options.commands, run.root.task.sessionId) : undefined;
         this.run = run;
         this.setMode('run');
         this.scheduleRunRefresh(taskId);
@@ -115,6 +130,12 @@ export class DagWorkbench {
     async cancel(): Promise<void> {
         if (!this.run) return;
         await this.options.commands.execute(FlowCommand.RunCancel, { taskId: this.run.root.task.id });
+    }
+
+    setVisible(visible: boolean): void {
+        this.visible = visible;
+        if (!visible) {this.viewRequest++; this.stopRunRefresh();}
+        else if (this.mode === 'run' && this.run) void this.refreshRun(this.run.root.task.id);
     }
 
     destroy(): void {
@@ -585,8 +606,9 @@ export class DagWorkbench {
         const snapshot = this.run;
         if (!snapshot) return this.renderDesign();
         const run = snapshot.root.task;
+        const state = this.controlOperations ? t(`flow.invoke.${invocationStatus(snapshot)}` as Parameters<typeof t>[0]) : run.status;
         this.root.innerHTML = `<section class="dag-workbench" data-mode="run">
-            <header class="dag-toolbar"><button data-run-action="back">${escapeHTML(this.options.backLabel ?? t('flow.runs.back'))}</button><strong>DAG Run</strong>${snapshot.attachedFromStorage ? `<button data-run-action="resume">${escapeHTML(t('flow.runs.resume'))}</button>` : ''}<span>${escapeHTML(String(run.id))}</span><span data-status="${escapeHTML(run.status)}">${escapeHTML(run.status)}</span><small>${snapshot.usage.tokens} tokens · ${(snapshot.usage.elapsedMs / 1000).toFixed(1)}s</small><button data-run-action="goal">Goal</button><button data-run-action="cancel">Cancel run</button></header>
+            <header class="dag-toolbar"><button data-run-action="back">${escapeHTML(this.options.backLabel ?? t('flow.runs.back'))}</button><strong>DAG Run</strong>${snapshot.attachedFromStorage && (!this.controlOperations || invocationControl(snapshot).canReattach) ? `<button data-run-action="resume">${escapeHTML(t(this.controlOperations ? 'flow.invoke.reattach' : 'flow.runs.resume'))}</button>` : ''}<span>${escapeHTML(String(run.id))}</span><span data-status="${escapeHTML(run.status)}">${escapeHTML(state)}</span><small>${snapshot.usage.tokens} tokens · ${(snapshot.usage.elapsedMs / 1000).toFixed(1)}s</small><button data-run-action="goal">Goal</button><button data-run-action="cancel">Cancel run</button></header>
             ${snapshot.workspaceFinalization ? `<section class="dag-run-workspace" data-workspace-status="${escapeHTML(snapshot.workspaceFinalization.status)}">${escapeHTML(t(`flow.workspace.${snapshot.workspaceFinalization.status}`))}${snapshot.workspaceFinalization.message ? `<span role="alert">${escapeHTML(snapshot.workspaceFinalization.message)}</span>` : ''}${snapshot.workspaceFinalization.persistenceError ? `<span role="alert">${escapeHTML(t('flow.workspace.persistenceFailed'))}: ${escapeHTML(snapshot.workspaceFinalization.persistenceError)}</span>` : ''}</section>` : ''}
             ${snapshot.goal ? `<section class="dag-run-goal"><strong>${escapeHTML(snapshot.goal.objective || 'Run goal')}</strong><span>${escapeHTML(snapshot.goal.status ?? 'active')}</span>${snapshot.goal.acceptanceCriteria?.length ? `<small>${snapshot.goal.acceptanceCriteria.map(escapeHTML).join(' · ')}</small>` : ''}</section>` : ''}
             <section class="dag-output"><h3>${escapeHTML(t('flow.output.final'))}</h3>${renderFlowOutput(run.output, true)}</section>
@@ -618,6 +640,7 @@ export class DagWorkbench {
         if (this.options.readOnly) this.root.querySelectorAll(
             '[data-run-action]:not([data-run-action="back"]), [data-run-retry], [data-run-retry-downstream], [data-run-signal], [data-run-cancel-task], [data-run-respond]',
         ).forEach(control => control.remove());
+        this.renderRunControls(snapshot);
         this.root.querySelector('[data-run-action="resume"]')?.addEventListener('click', event => {
             const button = event.currentTarget as HTMLButtonElement; button.disabled = true;
             const view = this.viewRequest;
@@ -644,6 +667,43 @@ export class DagWorkbench {
                 this.openRespondDialog(targetTaskId, requestId, pendingInteraction({ task })?.prompt ?? 'Please respond.');
             });
         });
+    }
+
+    private renderRunControls(snapshot: DurableFlowSnapshot): void {
+        const operations = this.controlOperations;
+        if (!operations || this.options.readOnly) return;
+        const toolbar = this.root.querySelector<HTMLElement>('.dag-toolbar')!, task = snapshot.root.task;
+        const control = invocationControl(snapshot), view = this.viewRequest;
+        const current = () => this.visible && view === this.viewRequest && this.mode === 'run';
+        const execute = (action: 'pause' | 'resume' | 'withdraw') => async () => {
+            const result = await new FlowRunControl(this.options.commands, task.sessionId, operations)
+                .execute(task.id, action, task.control?.epoch ?? 0, current);
+            if (current() && result?.limitedRecovery && result.retainedTaskIds?.length)
+                Toast.info(t('flow.invoke.legacyRetained', {count: result.retainedTaskIds.length}));
+        };
+        const add = (key: string, label: Parameters<typeof t>[0], action: () => Promise<unknown>) => {
+            const button = document.createElement('button'); button.dataset.runControl = key; button.textContent = t(label);
+            button.disabled = this.controlActions.has(`${task.id}/${key}`); toolbar.append(button);
+            button.onclick = () => {void this.performRunControl(task.id, key, button, current, action);};
+        };
+        if (control.canRelease) add('resume', control.externalHold ? 'flow.invoke.releasePause' : 'flow.invoke.continue', execute('resume'));
+        else if (control.canWithdraw) add('withdraw', 'flow.invoke.withdrawPause', execute('withdraw'));
+        else if (!control.terminal && control.supportsPause && ['active', 'constrained'].includes(control.state)) add('pause', 'flow.invoke.pause', execute('pause'));
+        for (const record of operations.pending(task.id)) add(`receipt:${record.context.operationId}`, 'flow.invoke.reconcileControl',
+            () => operations.reconcile(record.context.operationId));
+    }
+
+    private async performRunControl(taskId: string, key: string, button: HTMLButtonElement, current: () => boolean,
+        action: () => Promise<unknown>): Promise<void> {
+        const lock = `${taskId}/${key}`;
+        if (!current() || this.controlActions.has(lock)) return;
+        this.controlActions.add(lock); button.disabled = true;
+        try {await action();}
+        catch (error) {if (current()) Toast.error(error instanceof Error ? error.message : t('flow.run.controlFailed'));}
+        finally {
+            this.controlActions.delete(lock);
+            if (current()) {button.disabled = false; await this.refreshRun(taskId);}
+        }
     }
 
     private openGoalDialog(): void {
@@ -749,7 +809,7 @@ export class DagWorkbench {
     }
 
     private async refreshRun(taskId: string): Promise<void> {
-        if (this.mode !== 'run' || this.run?.root.task.id !== taskId) return;
+        if (!this.visible || this.mode !== 'run' || this.run?.root.task.id !== taskId) return;
         const request = this.viewRequest, refresh = ++this.refreshRequest;
         try {
             const run = await this.options.commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {

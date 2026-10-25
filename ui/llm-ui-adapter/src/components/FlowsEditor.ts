@@ -1,3 +1,6 @@
+import {createOperationLedger} from '@itookit/llm-ui';
+import {persistOperations} from '../services/OperationPersistence';
+import type {ISessionRepository} from '@itookit/llm-session/contracts';
 import { editorResourceId } from '@itookit/ui-common';
 // @file: llm-ui/components/FlowsEditor.ts
 // Standalone workflow workspace editor: a thin IEditor shell around DagWorkbench.
@@ -13,6 +16,7 @@ import { DagWorkbench } from './DagWorkbench';
 import { FlowLauncher, flowIdFromNodeId, type FlowRunInput } from '../flows/run-flow';
 
 export interface FlowsEditorDeps {
+    sessionRepository?: Pick<ISessionRepository, 'getManifest' | 'compareAndSetUIState'>;
     commands: ICommandBus;
     /** Optional override for the run action (defaults to create-session + navigate). */
     onRunFlow?: (flowId: string, revision: number, input?: FlowRunInput) => void | Promise<void>;
@@ -46,6 +50,11 @@ export class FlowsEditor extends IEditor {
         container.innerHTML = '';
         this.workbench = new DagWorkbench(container, {
             commands: this.deps.commands,
+            operations: this.deps.sessionRepository ? async sessionId => {
+                const repository = this.deps.sessionRepository!;
+                const initial = await persistOperations(repository, sessionId, []);
+                return createOperationLedger({initial, save: records => persistOperations(repository, sessionId, records)});
+            } : undefined,
             onSelectFlow: (flowId, revision, input) => this.handleRunFlow(flowId, revision, input),
             listConnections: this.deps.listConnections,
             listAgents: this.deps.listAgents,
@@ -86,6 +95,9 @@ export class FlowsEditor extends IEditor {
         }
         await this.launcher.run(flowId, revision, input);
     }
+
+    cancelPendingRender(): void {this.workbench?.setVisible(false);}
+    async activate(): Promise<void> {this.workbench?.setVisible(true);}
 
     async destroy(): Promise<void> {
         this.workbench?.destroy();

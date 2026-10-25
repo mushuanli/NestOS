@@ -66,6 +66,7 @@ export interface ChatEditorDeps {
 }
 
 export interface FlowEditorDeps {
+    sessionRepository?: Pick<ISessionRepository, 'getManifest' | 'compareAndSetUIState'>;
     commands: ICommandBus;
     /** Optional override for the run action (defaults to create-session + navigate). */
     onRunFlow?: (flowId: string, revision: number) => void;

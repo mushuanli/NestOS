@@ -1,6 +1,6 @@
 # @itookit/llm-context
 
-独立的上下文领域包。类型、Profile、历史选择、窗口预算、Notes、压缩和检索的实现归本包，外部只引用根入口接口与工厂。
+独立的上下文领域包。类型、Profile、历史选择、窗口预算、Notes、压缩和检索的实现归本包，外部通过根入口使用上下文接口与工厂；纯 SHA-256 使用 /digest 公共入口。
 
 - 不依赖任何其他 workspace 包、VFS、Kernel、Provider SDK 或 UI；I/O 通过端口注入。
 - `IContextService.prepare` 先发布不可变内容，返回待提交 writes；不能自行推进共享 head。
@@ -15,3 +15,5 @@
 接口与存储说明见 [Context API](../../doc/context-api.md)，设计依据见 [模块设计](../../doc/design/context-module.md)。
 
 - `ContextEngineOptions` 注入窗口默认值与完整请求计量；服务后续预算校验经 `IContextEngine.measure`，不得绕回固定估算器。摘要请求在宿主使用同一计量。
+
+/digest 只加载 contracts/digest 的纯算法，不经过 Context 运行时根入口；契约层及前端需要摘要时使用此入口。content/digest 仅保留包内兼容转发，不复制算法。新增入口同时维护源码与发布 exports、ESM/CJS 和声明构建。

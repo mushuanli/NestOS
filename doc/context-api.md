@@ -2,6 +2,8 @@
 
 `@itookit/llm-context` 拥有上下文领域实现，零运行时依赖。其他模块通过包根接口与工厂调用；`durable-kernel` 不引入 Context 依赖。
 
+纯内容摘要通过 `@itookit/llm-context/digest` 的 `sha256Bytes`、`sha256Hex` 和 `sha256HexSync` 调用，源码与发布产物均提供独立 ESM/CJS 及声明入口。契约层需要摘要时使用该入口，避免通过包根加载 Context 运行时；既有根导出与包内 `content/digest` 转发保留兼容。
+
 ## 接口与实现位置
 
 | 接口 | 用途 | 实现 |

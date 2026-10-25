@@ -10,6 +10,11 @@
       "types": "./src/index.ts",
       "import": "./src/index.ts",
       "default": "./src/index.ts"
+    },
+    "./digest": {
+      "types": "./src/contracts/digest.ts",
+      "import": "./src/contracts/digest.ts",
+      "default": "./src/contracts/digest.ts"
     }
   },
   "scripts": {
@@ -42,6 +47,16 @@
         "require": {
           "types": "./dist/index.d.cts",
           "default": "./dist/index.cjs"
+        }
+      },
+      "./digest": {
+        "import": {
+          "types": "./dist/digest.d.ts",
+          "default": "./dist/digest.js"
+        },
+        "require": {
+          "types": "./dist/digest.d.cts",
+          "default": "./dist/digest.cjs"
         }
       }
     }

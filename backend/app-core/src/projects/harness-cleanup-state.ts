@@ -1,6 +1,6 @@
 import { FSError } from '@itookit/vfs-core';
 import type { EffectExecutionContext, EffectSessionState, Kernel } from '@itookit/durable-kernel';
-import { harnessExecutionJournalKey } from './harness-execution';
+import { harnessExecutionJournalKey } from './harness-execution-journal';
 import type { SessionLeaseRecord } from '../kernel/session-lease';
 
 /** Cleanup must neither reenter recovery nor acquire ownership that its Effect no longer holds. */
@@ -20,6 +20,7 @@ export function createHarnessCleanupState(kernel: () => Pick<Kernel, 'openSessio
     return async context => {
         const allowed = harnessExecutionJournalKey(context);
         const assertKey = (key: string) => { if (key !== allowed) throw new FSError('EACCES', 'Harness cleanup may only access its own operation journal'); };
+        await ensureWritable(context.sessionId);
         const session = await kernel().openSession(context.sessionId);
         return {
             get: async key => { assertKey(key); await ensureWritable(context.sessionId); return session.getShared(key); },

@@ -61,7 +61,7 @@ export class HarnessConnectionService {
         await this.validate(snapshot);
         const remote = this.requireRemote(), client = await remote.projectHarness(snapshot.projectId, { requireRegistered: true });
         let released: Promise<void> | undefined;
-        const release = () => released ??= client.close();
+        const release = () => released ??= client.close().catch(error => {released = undefined; throw error;});
         try {
             const descriptor = await client.profiles();
             const profile = descriptor.profiles.find(item => item.id === snapshot.profileId && item.projectRuntime);

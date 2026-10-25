@@ -1,3 +1,4 @@
+import {harnessExecutionJournalKey} from '../src/projects/harness-execution-journal';
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
 import type { HarnessClient } from '@itookit/mindos-node-driver';
@@ -219,3 +220,34 @@ it('accepts and edits the next file instruction while the original native turn a
         expect(f.attachments[1]).toMatchObject([{kind: 'text', content: 'QUEUED_FILE_BODY'}]); expect(f.fetch).not.toHaveBeenCalled();
     } finally {release(); await queued?.catch(() => {});}
 }, 20000);
+
+function cancellationPeer(terminalStatus = 'interrupted') {
+    let finished = false;
+    const turn = vi.fn(async () => ({turnId: 'owned-turn'}));
+    const interrupt = vi.fn(async () => {finished = true;});
+    const client = {create: async () => ({session: {id: 'owned-native'}}), turn, interrupt,
+        read: async () => ({session: {id: 'owned-native'}, turns: [{id: 'owned-turn', status: finished ? terminalStatus : 'inProgress', items: []}]}),
+        subscribe: () => () => {}, close: async () => {},
+        eventSnapshot: async () => ({epoch: 'events', cursor: finished ? 1 : 0, gap: false, requests: [], events: finished
+            ? [{seq: 1, message: {method: 'turn/completed', params: {threadId: 'owned-native', turn: {id: 'owned-turn', status: terminalStatus}}}}] : []}),
+    } as unknown as HarnessClient;
+    return {client, turn, interrupt};
+}
+
+it.each(['interrupted', 'completed'])('confirms runtime cleanup and preserves the observed native %s outcome', async terminal => {
+    const f = await setup(), peer = cancellationPeer(terminal), release = vi.fn(async () => {});
+    const acquire = vi.mocked(f.runtime.executionConnections.acquire).getMockImplementation()!;
+    vi.mocked(f.runtime.executionConnections.acquire).mockImplementation(async snapshot => ({...await acquire(snapshot), client: peer.client, release}));
+    const sessionId = await f.runtime.sessionRepository.createSession('Owned cleanup');
+    await f.runtime.commandBus.execute(SessionCommand.Bind, {sessionId});
+    await f.runtime.commandBus.execute(SessionCommand.Send, {text: 'Cleanup fixture', files: [], agentId: 'remote-agent'});
+    await vi.waitFor(() => expect(peer.turn).toHaveBeenCalledOnce());
+    const root = (await f.runtime.kernel.kernel.listSessionTasks(sessionId)).find(task => task.program.kind === 'kernel-adapters.harness')!;
+    const task = await f.runtime.kernel.kernel.openTask(root.id);
+    await task.cancel('Stop owned execution');
+    expect(await task.waitStopped({timeoutMs: 3000})).toMatchObject({stopped: true, settled: true, control: {acknowledged: true}});
+    const journal = await (await f.runtime.kernel.kernel.inspectSession(sessionId)).getShared(harnessExecutionJournalKey({sessionId, taskId: root.id, effectId: 'harness'}));
+    expect(journal?.value).toMatchObject({sessionId: 'owned-native', turnId: 'owned-turn', terminal: terminal === 'completed' ? 'completed' : 'cancelled'});
+    expect(peer.interrupt).toHaveBeenCalledOnce(); expect(peer.turn).toHaveBeenCalledOnce();
+    expect(release).toHaveBeenCalledTimes(vi.mocked(f.runtime.executionConnections.acquire).mock.calls.length);
+}, 10000);

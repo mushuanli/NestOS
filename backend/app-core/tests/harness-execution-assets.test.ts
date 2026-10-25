@@ -53,7 +53,7 @@ it.each(['reconcile', 'cancel'] as const)('can %s the original uncertain turn af
     await expect(f.provider.execute(f.input, f.context)).rejects.toMatchObject({code: 'NATIVE_OUTCOME_UNKNOWN'});
     f.read.mockRejectedValue(new Error('Selected asset was removed')); complete(f);
     if (operation === 'reconcile') expect(await f.provider.reconcile(f.input, f.context)).toMatchObject({status: 'completed'});
-    else await f.provider.cancel(f.input, f.context);
+    else expect(await f.provider.cancel(f.input, f.context)).toMatchObject({status: 'stopped', cleanup: 'confirmed'});
     expect(f.read).toHaveBeenCalledOnce(); expect(f.client.create).toHaveBeenCalledOnce(); expect(f.client.turn).toHaveBeenCalledOnce();
 });
 
@@ -66,7 +66,7 @@ it('waits for in-flight asset reading and connection release before confirming c
     await new Promise(resolve => setTimeout(resolve, 5));
     expect(confirmed).toBe(false); expect(f.release).not.toHaveBeenCalled();
     finish(f.bytes); await running;
-    await cancellation; expect(confirmed).toBe(true);
+    expect(await cancellation).toMatchObject({status: 'stopped', cleanup: 'confirmed', evidence: {kind: 'not-started'}});
     expect(f.release).toHaveBeenCalledTimes(f.connections.acquire.mock.calls.length); expect(f.client.create).not.toHaveBeenCalled(); expect(f.client.turn).not.toHaveBeenCalled();
 });
 
@@ -90,7 +90,7 @@ it('rejects changed attachment identity when reconciling an existing execution',
     const f = await setup(); complete(f); await f.provider.execute(f.input, f.context);
     const changed = structuredClone(f.input);
     (changed.attachments![0] as HarnessAssetAttachment).asset.sha256 = '0'.repeat(64);
-    expect(await f.provider.reconcile(changed, f.context)).toMatchObject({status: 'indeterminate', error: {code: 'JOURNAL_CONFLICT'}});
+    expect(await f.provider.reconcile(changed, f.context)).toMatchObject({status: 'unknown', code: 'JOURNAL_CONFLICT'});
     expect(f.read).toHaveBeenCalledOnce(); expect(f.client.create).toHaveBeenCalledOnce(); expect(f.client.turn).toHaveBeenCalledOnce();
 });
 

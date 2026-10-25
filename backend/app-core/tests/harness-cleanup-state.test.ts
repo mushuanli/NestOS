@@ -13,9 +13,11 @@ it('limits cancellation recovery to one journal and preserves shared-state CAS v
     await state.get(key); await state.set(key, { phase: 'cancelled' }, 1);
     expect(openSession).toHaveBeenCalledWith('session');
     expect(setShared).toHaveBeenCalledWith(key, { phase: 'cancelled' }, { expectedVersion: 1 });
-    expect(ensureWritable).toHaveBeenCalledTimes(2);
+    expect(ensureWritable).toHaveBeenCalledTimes(3);
     await expect(state.get('another-journal')).rejects.toMatchObject({ code: 'EACCES' });
     await expect(state.set('another-journal', {})).rejects.toMatchObject({ code: 'EACCES' });
+    await expect(state.get('harness.context.bindings')).rejects.toMatchObject({code: 'EACCES'});
+    await expect(state.set('harness.context.bindings', {})).rejects.toMatchObject({code: 'EACCES'});
     expect(getShared).toHaveBeenCalledOnce(); expect(setShared).toHaveBeenCalledOnce();
 });
 
@@ -43,7 +45,18 @@ it('keeps cleanup pending when lease renewal or its concurrent fencing identity 
 it('refuses cleanup reads and writes after the application loses Session ownership', async () => {
     const context = { sessionId: 'session', taskId: 'task', effectId: 'effect' } as EffectExecutionContext;
     const getShared = vi.fn(), setShared = vi.fn(), openSession = vi.fn(async () => ({ getShared, setShared }));
-    const state = await createHarnessCleanupState(() => ({ openSession } as unknown as Kernel), async () => { throw new Error('lease lost'); })(context);
+    const factory = createHarnessCleanupState(() => ({ openSession } as unknown as Kernel), async () => { throw new Error('lease lost'); });
+    await expect(factory(context)).rejects.toThrow('lease lost');
+    expect(openSession).not.toHaveBeenCalled();
+    expect(getShared).not.toHaveBeenCalled(); expect(setShared).not.toHaveBeenCalled();
+});
+
+it('rechecks ownership on every journal access after creating a cleanup scope', async () => {
+    const context = {sessionId: 'session', taskId: 'task', effectId: 'effect'} as EffectExecutionContext;
+    const getShared = vi.fn(), setShared = vi.fn(), ensureWritable = vi.fn(async () => {});
+    const openSession = vi.fn(async () => ({getShared, setShared}));
+    const state = await createHarnessCleanupState(() => ({openSession} as unknown as Kernel), ensureWritable)(context);
+    ensureWritable.mockRejectedValue(new Error('lease lost'));
     await expect(state.get(harnessExecutionJournalKey(context))).rejects.toThrow('lease lost');
     await expect(state.set(harnessExecutionJournalKey(context), {})).rejects.toThrow('lease lost');
     expect(getShared).not.toHaveBeenCalled(); expect(setShared).not.toHaveBeenCalled();

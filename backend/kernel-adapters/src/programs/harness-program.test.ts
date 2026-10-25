@@ -4,6 +4,7 @@ import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import type { HarnessConnectionSnapshot, HarnessExecutionProvider, HarnessExecutionRequest } from '../llm-management/contracts/harness-execution';
 import { HarnessProgram } from './harness-program';
 import { HarnessExecutionEffect } from '../effects/harness-execution-effect';
+import type {ConnectionCancelResult} from '../llm-management/contracts/connection-control';
 
 const connection: HarnessConnectionSnapshot = { id: 'remote', name: 'Remote', kind: 'harness', version: 1, revision: 1,
     nodeConnectionId: 'node', projectId: 'project', profileId: 'claude', project: { id: 'project', revision: 1 } };
@@ -24,8 +25,78 @@ async function fixture(provider: HarnessExecutionProvider) {
     return { kernel, task, session };
 }
 
-function provider(execute: HarnessExecutionProvider['execute'], cancel = vi.fn(async () => {})): HarnessExecutionProvider {
+function provider(execute: HarnessExecutionProvider['execute'], cancel: HarnessExecutionProvider['cancel'] = vi.fn(async (_request, ctx) => confirmedStop(ctx))): HarnessExecutionProvider {
     return { execute, cancel, reconcile: async (request, context) => ({ status: 'completed', result: await execute(request, context) }) };
+}
+
+it.each([
+    [{status: 'unknown', code: 'NATIVE_RESULT_PENDING'}, 'CONNECTION_STOP_UNKNOWN'],
+    [{status: 'pending', phase: 'execution'}, 'CONNECTION_STOP_PENDING'],
+    [{status: 'pending', phase: 'cleanup'}, 'CONNECTION_CLEANUP_PENDING'],
+    [{status: 'stopped', cleanup: 'pending'}, 'CONNECTION_CLEANUP_PENDING'],
+    [undefined, 'CONNECTION_CANCEL_RESULT_INVALID'],
+    [false, 'CONNECTION_CANCEL_RESULT_INVALID'],
+    [1, 'CONNECTION_CANCEL_RESULT_INVALID'],
+    ['legacy-success', 'CONNECTION_CANCEL_RESULT_INVALID'],
+    [[], 'CONNECTION_CANCEL_RESULT_INVALID'],
+    [{status: 'stopped'}, 'CONNECTION_CANCEL_RESULT_INVALID'],
+] as const)('refuses to confirm Effect cleanup for %j', async (result, code) => {
+    const remote = provider(vi.fn(), vi.fn(async () => result as ConnectionCancelResult));
+    const info = vi.fn(), adapter = new HarnessExecutionEffect(remote, {info} as never);
+    const request = {connection, prompt: 'private prompt', resourceHandleId: 'h', notificationKey: 'notice'};
+    const ctx = {sessionId: 's', taskId: 't', effectId: 'e', grants: [], abortSignal: AbortSignal.abort()};
+    await expect(adapter.cancel(request, ctx)).rejects.toMatchObject({code});
+    expect(info).toHaveBeenCalledWith('Harness execution', expect.objectContaining({operation: 'harness.cancel', result: 'unconfirmed', errorCategory: code}));
+    expect(JSON.stringify(info.mock.calls)).not.toContain('private prompt');
+});
+
+it.each<ConnectionCancelResult>([{status: 'unknown'}, {status: 'pending', phase: 'cleanup'}])(
+    'keeps Kernel cleanup pending across an unconfirmed connection result %j', async initial => {
+        let result = initial;
+        const execute = vi.fn(async (_request, ctx: EffectExecutionContext) => {
+            await new Promise<void>(resolve => ctx.abortSignal.addEventListener('abort', () => resolve(), {once: true}));
+            ctx.abortSignal.throwIfAborted();
+            return {text: '', sessionId: 'native', turnId: 'turn'};
+        });
+        const cancel = vi.fn(async () => result), {task, session} = await fixture(provider(execute, cancel));
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+        await expect(task.cancel('Stop')).rejects.toThrow();
+        expect((await task.status()).task).toMatchObject({status: 'cancelled', effects: {harness: {cleanupPending: true}}});
+        expect(await task.stat()).toMatchObject({settled: false, stopped: false, control: {acknowledged: false}});
+        result = confirmedStop(execute.mock.calls[0][1]);
+        await session.recover();
+        await task.waitStopped({timeoutMs: 3000});
+        expect((await task.status()).task.effects.harness.cleanupPending).toBe(false);
+        expect(execute).toHaveBeenCalledOnce();
+    });
+
+it.each(['sessionId', 'taskId', 'effectId', 'ref', 'kind'] as const)('rejects stopped evidence with mismatched %s', async field => {
+    const ctx = {sessionId: 's', taskId: 't', effectId: 'e', grants: [], abortSignal: AbortSignal.abort()};
+    const result = confirmedStop(ctx) as Extract<ConnectionCancelResult, {status: 'stopped'}>;
+    Object.assign(result.evidence, {[field]: field === 'ref' ? '' : 'different'});
+    const remote = provider(vi.fn(), vi.fn(async () => result)), adapter = new HarnessExecutionEffect(remote);
+    await expect(adapter.cancel({connection, prompt: 'Private', resourceHandleId: 'h', notificationKey: 'notice'}, ctx))
+        .rejects.toMatchObject({code: 'CONNECTION_STOP_EVIDENCE_INVALID'});
+});
+
+it('retains the local in-flight barrier after native stopping and cleanup have been confirmed', async () => {
+    let finish!: (value: {text: string; sessionId: string; turnId: string}) => void;
+    const execute = vi.fn(() => new Promise<{text: string; sessionId: string; turnId: string}>(resolve => {finish = resolve;}));
+    const cancel = vi.fn(async (_request, ctx) => confirmedStop(ctx));
+    const {task} = await fixture(provider(execute, cancel));
+    await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+    let confirmed = false;
+    const cancellation = task.cancel('Stop').then(() => {confirmed = true;});
+    try {
+        await vi.waitFor(() => expect(cancel).toHaveBeenCalled());
+        expect(confirmed).toBe(false);
+        expect((await task.status()).task.effects.harness.cleanupPending).toBe(true);
+    } finally {finish({text: 'Late completion', sessionId: 'native', turnId: 'turn'}); await cancellation;}
+    expect(await task.waitStopped({timeoutMs: 3000})).toMatchObject({settled: true, stopped: true});
+    expect((await task.status()).task.status).toBe('cancelled');
+});
+function confirmedStop(ctx: EffectExecutionContext): ConnectionCancelResult {
+    return {status: 'stopped', cleanup: 'confirmed', evidence: {sessionId: ctx.sessionId, taskId: ctx.taskId, effectId: ctx.effectId, kind: 'terminal', ref: 'test-journal'}};
 }
 async function notify(request: HarnessExecutionRequest, context: EffectExecutionContext) {
     await context.sessionState!.set(request.notificationKey, { id: 'native/approval:1', kind: 'approval', prompt: 'Allow workspace read?',
@@ -54,7 +125,7 @@ describe('HarnessProgram durable interaction bridge', () => {
     });
 
     it('keeps the native Effect cancellable while waiting for an Interaction', async () => {
-        const cancel = vi.fn(async () => {});
+        const cancel: HarnessExecutionProvider['cancel'] = vi.fn(async (_request, ctx) => confirmedStop(ctx));
         const execute = async (request: HarnessExecutionRequest, context: EffectExecutionContext) => {
             await notify(request, context);
             await new Promise<void>(resolve => context.abortSignal.addEventListener('abort', () => resolve(), { once: true }));
@@ -95,13 +166,47 @@ it('reports reconciliation uncertainty and safe failure codes without prompt or 
     const context: EffectExecutionContext = { sessionId: 's', taskId: 't', effectId: 'e',
         grants: [{ handleId: 'h', right: 'execute', resource: { id: 'r', sessionId: 's', kind: 'harness', uri: 'harness://test', generation: 1, createdAt: 1 } }],
         sessionState: { get: vi.fn(), set: vi.fn() }, abortSignal: new AbortController().signal };
-    remote.reconcile = vi.fn(async () => ({ status: 'indeterminate', error: { code: 'NATIVE_EPOCH_CHANGED', message: 'private remote data' } }));
+    remote.reconcile = vi.fn(async () => ({status: 'unknown', code: 'NATIVE_EPOCH_CHANGED'}));
     expect((await adapter.reconcile(request, context)).status).toBe('indeterminate');
-    expect(info.mock.calls.at(-1)?.[1]).toMatchObject({ stage: 'reconcile', result: 'indeterminate', errorCategory: 'native-state-unknown' });
+    expect(info.mock.calls.at(-1)?.[1]).toMatchObject({ stage: 'reconcile', result: 'indeterminate', errorCategory: 'NATIVE_EPOCH_CHANGED' });
     vi.mocked(remote.execute).mockRejectedValue(Object.assign(new Error('private remote data'), { code: 'NATIVE_DISCONNECTED' }));
     await expect(adapter.execute(request, context)).rejects.toThrow();
     expect(info.mock.calls.at(-1)?.[1]).toMatchObject({ stage: 'execute', result: 'indeterminate', errorCategory: 'NATIVE_DISCONNECTED' });
     expect(JSON.stringify(info.mock.calls)).not.toContain('private');
+});
+
+function recoveryContext(): EffectExecutionContext {
+    return {sessionId: 's', taskId: 't', effectId: 'e', abortSignal: new AbortController().signal,
+        grants: [{handleId: 'h', right: 'execute', resource: {id: 'r', sessionId: 's', kind: 'harness', uri: 'harness://test', generation: 1, createdAt: 1}}],
+        sessionState: {get: vi.fn(), set: vi.fn()}};
+}
+
+it.each([
+    [{status: 'running', handleRef: 'original-handle'}, 'CONNECTION_STILL_RUNNING'],
+    [{status: 'unknown', code: 'NATIVE_EPOCH_CHANGED'}, 'NATIVE_EPOCH_CHANGED'],
+    [{status: 'unknown', code: 'private remote data'}, 'CONNECTION_STATE_UNKNOWN'],
+    [{status: 'retry'}, 'CONNECTION_RECONCILE_RESULT_INVALID'],
+] as const)('never converts an unresolved connection result into execution retry: %j', async (result, code) => {
+    const remote = provider(vi.fn()), info = vi.fn(), adapter = new HarnessExecutionEffect(remote, {info} as never), ctx = recoveryContext();
+    remote.reconcile = vi.fn(async () => result as never);
+    const value = await adapter.reconcile({connection, prompt: 'Private input', resourceHandleId: 'h', notificationKey: 'notice'}, ctx);
+    expect(value).toMatchObject({status: 'indeterminate', error: {code}});
+    expect(JSON.stringify(value)).not.toContain('private remote data');
+    expect(info.mock.calls.at(-1)?.[1]).toMatchObject({stage: 'reconcile', result: 'indeterminate', errorCategory: code});
+    expect(remote.execute).not.toHaveBeenCalled(); expect(remote.reconcile).toHaveBeenCalledOnce();
+});
+
+it('allows retry only from not-started evidence for this exact fenced execution', async () => {
+    const remote = provider(vi.fn()), adapter = new HarnessExecutionEffect(remote), ctx = recoveryContext();
+    const evidence = {...(confirmedStop(ctx) as Extract<ConnectionCancelResult, {status: 'stopped'}>).evidence, kind: 'not-started' as const};
+    const request = {connection, prompt: 'Private input', resourceHandleId: 'h', notificationKey: 'notice'};
+    remote.reconcile = vi.fn(async () => ({status: 'not-started', evidence}));
+    expect(await adapter.reconcile(request, ctx)).toEqual({status: 'retry'});
+    for (const invalid of [{...evidence, taskId: 'another'}, {...evidence, kind: 'terminal'}, undefined]) {
+        vi.mocked(remote.reconcile).mockResolvedValueOnce({status: 'not-started', evidence: invalid} as never);
+        await expect(adapter.reconcile(request, ctx)).rejects.toMatchObject({code: 'CONNECTION_NOT_STARTED_EVIDENCE_INVALID', effectOutcome: 'indeterminate'});
+    }
+    expect(remote.execute).not.toHaveBeenCalled();
 });
 
 it('keeps a live unknown outcome pending and resumes the same Effect only after explicit resolution', async () => {

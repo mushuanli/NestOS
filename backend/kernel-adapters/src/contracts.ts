@@ -22,3 +22,6 @@ export { assertModelConnection, mediaEndpointIdentity } from './llm-management/c
 export type { ModelRequirements, ModelConnectionSnapshot } from './llm-management/contracts/model-requirements';
 
 export {prepareHarnessInput, harnessInputDigest} from './llm-management/contracts/harness-input';
+
+export type {ConnectionCancelResult, ConnectionCleanupEvidence, ConnectionReconcileResult} from './llm-management/contracts/connection-control';
+export {assertConnectionCleanupConfirmed} from './llm-management/contracts/connection-control';

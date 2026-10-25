@@ -19,7 +19,12 @@ async function fixture() {
         expect(context.grants.map(grant => grant.resource.kind)).toEqual(['harness']);
         return { text: 'Remote review complete', sessionId: 'native-session', turnId: 'native-turn' };
     });
-    kernel.registerEffect(new HarnessExecutionEffect({ execute, cancel: async () => {}, reconcile: async () => ({ status: 'retry' }) }));
+    kernel.registerEffect(new HarnessExecutionEffect({execute,
+        cancel: async (_request, context) => ({status: 'stopped', cleanup: 'confirmed', evidence: {
+            sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId, ref: 'fixture', kind: 'terminal'}}),
+        reconcile: async (_request, context) => ({status: 'not-started', evidence: {
+            sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId, ref: 'fixture', kind: 'not-started'}}),
+    }));
     await kernel.initialize(); await kernel.createSession({ id: 's', storage: { kind: 'test', locator: null } });
     return { kernel, execute, close: async () => { kernel.dispose(); await kernel.waitIdle(); await manager.dispose(); } };
 }

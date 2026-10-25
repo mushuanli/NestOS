@@ -3,6 +3,8 @@ import type { LLMLogSink } from '@itookit/driver-llm/contracts';
 import type { HarnessExecutionProvider, HarnessExecutionRequest, HarnessExecutionResult } from '../llm-management/contracts/harness-execution';
 import { InFlightEffects } from './in-flight';
 import { silentAdapterLog } from '../ports/diagnostics';
+import {assertConnectionCleanupConfirmed} from '../llm-management/contracts/connection-control';
+import {reconcileConnectionEffect} from './connection-reconcile';
 
 /** The host owns transport, project authorization and operation reconciliation. */
 export class HarnessExecutionEffect implements EffectAdapter<HarnessExecutionRequest, HarnessExecutionResult> {
@@ -21,10 +23,14 @@ export class HarnessExecutionEffect implements EffectAdapter<HarnessExecutionReq
         return this.inFlight.track(context, this.invoke(request, context, true));
     }
     async cancel(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<void> {
-        if (!this.provider) throw new Error('HARNESS_EXECUTION_UNAVAILABLE');
-        // Cancellation has no execution grants. The provider verifies its persisted owned invocation.
-        await this.provider.cancel(request, context);
-        await this.inFlight.confirmStopped(context);
+        const started = Date.now();
+        try {
+            if (!this.provider) throw new Error('HARNESS_EXECUTION_UNAVAILABLE');
+            // Cancellation has no execution grants. The provider verifies its persisted owned invocation.
+            assertConnectionCleanupConfirmed(await this.provider.cancel(request, context), context);
+            await this.inFlight.confirmStopped(context);
+            this.diagnostic(request, context, 'cancel', started, 'confirmed');
+        } catch (error) {this.diagnostic(request, context, 'cancel', started, 'unconfirmed', failureCode(error)); throw error;}
     }
     private async invoke<T extends boolean>(request: HarnessExecutionRequest, context: EffectExecutionContext, recovery: T):
         Promise<T extends true ? EffectReconcileResult<HarnessExecutionResult> : HarnessExecutionResult> {
@@ -36,10 +42,11 @@ export class HarnessExecutionEffect implements EffectAdapter<HarnessExecutionReq
             if (!context.sessionState) throw new Error('HARNESS_PERSISTENT_STATE_REQUIRED');
             if (!this.provider) throw new Error('HARNESS_EXECUTION_UNAVAILABLE');
             executing = true;
-            const result = recovery ? await this.provider.reconcile(request, context) : await this.provider.execute(request, context);
-            const status = recovery ? (result as EffectReconcileResult<HarnessExecutionResult>).status : 'completed';
+            const result = recovery ? reconcileConnectionEffect(await this.provider.reconcile(request, context), context) : await this.provider.execute(request, context);
+            const reconciled = recovery ? result as EffectReconcileResult<HarnessExecutionResult> : undefined;
+            const status = reconciled?.status ?? 'completed';
             this.diagnostic(request, context, stage, started, status === 'completed' ? 'success' : status,
-                status === 'indeterminate' ? 'native-state-unknown' : undefined);
+                reconciled?.status === 'indeterminate' ? failureCode(reconciled.error) : undefined);
             return result as T extends true ? EffectReconcileResult<HarnessExecutionResult> : HarnessExecutionResult;
         } catch (error) {
             const failure = classifyExecutionFailure(error, executing, context.abortSignal.aborted);
@@ -50,10 +57,12 @@ export class HarnessExecutionEffect implements EffectAdapter<HarnessExecutionReq
     }
     private diagnostic(request: HarnessExecutionRequest, context: EffectExecutionContext, stage: string, started: number,
         result: string, errorCategory?: string): void {
-        this.log.info('Harness execution', { operation: 'harness.execute', stage, result,
-            sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId,
-            connectionId: request.connection.id, projectId: request.connection.projectId,
-            elapsedMs: Date.now() - started, ...(errorCategory ? { errorCategory } : {}) });
+        try {
+            this.log.info('Harness execution', { operation: stage === 'cancel' ? 'harness.cancel' : 'harness.execute', stage, result,
+                sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId,
+                connectionId: request.connection.id, projectId: request.connection.projectId,
+                elapsedMs: Date.now() - started, ...(errorCategory ? { errorCategory } : {}) });
+        } catch { /* A diagnostic sink must not rewrite execution or physical cleanup facts. */ }
     }
 }
 

@@ -141,3 +141,15 @@ it('limits profile discovery to four concurrent projects and rejects grant drift
     f.profiles.mockImplementationOnce(async () => { f.mounts[0].serverProjectRevision = 3; return { epoch: 'epoch', profiles: [f.profile] }; });
     expect(await f.service.targets([project()])).toMatchObject([{ available: false, profiles: [], errorCode: 'ECONFLICT' }]);
 });
+
+it('retries a rejected close while coalescing concurrent release and retaining successful closure', async () => {
+    const f = await fixture(); await f.service.save(definition, 0);
+    const snapshot = (await f.service.freeze('execution'))!, acquired = await f.service.acquire(snapshot);
+    const close = f.clients.at(-1)!.close;
+    close.mockRejectedValueOnce(new Error('Transport close unavailable'));
+    const first = acquired.release(), concurrent = acquired.release();
+    expect(concurrent).toBe(first);
+    await expect(first).rejects.toThrow('Transport close unavailable');
+    await acquired.release(); await acquired.release();
+    expect(close).toHaveBeenCalledTimes(2);
+});

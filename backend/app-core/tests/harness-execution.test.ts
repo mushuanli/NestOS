@@ -4,6 +4,29 @@ import { ExecutionJournal, nativeOperationId } from '../src/projects/harness-exe
 import { complete, fixture, interaction, request } from './harness-execution-fixture';
 
 describe('durable native Harness execution', () => {
+    it('reports scoped not-started evidence without acquiring a connection when no original journal exists', async () => {
+        const f = fixture();
+        expect(await f.make().reconcile(request, f.context)).toEqual({status: 'not-started', evidence: {
+            sessionId: f.context.sessionId, taskId: f.context.taskId, effectId: f.context.effectId,
+            kind: 'not-started', ref: harnessExecutionJournalKey(f.context),
+        }});
+        expect(f.connections.acquire).not.toHaveBeenCalled(); expect(f.client.turn).not.toHaveBeenCalled();
+    });
+
+    it('observes the original running turn within the recovery budget without creating another turn', async () => {
+        const f = fixture(); interaction(f);
+        const running = f.make().execute(request, f.context).catch(error => error);
+        await vi.waitFor(() => expect(f.client.turn).toHaveBeenCalledOnce());
+        f.controller.abort(); await running;
+        const recoveryAbort = new AbortController(), eventCount = vi.mocked(f.client.eventSnapshot).mock.calls.length;
+        const recovery = f.make().reconcile(request, {...f.context, abortSignal: recoveryAbort.signal});
+        try {
+            await vi.waitFor(() => expect(vi.mocked(f.client.eventSnapshot).mock.calls.length).toBeGreaterThan(eventCount));
+            expect(f.client.turn).toHaveBeenCalledOnce();
+        } finally {recoveryAbort.abort();}
+        expect(await recovery).toMatchObject({status: 'unknown'});
+        expect(f.client.turn).toHaveBeenCalledOnce();
+    });
     it('persists each mutation intent before dispatch and saves only matching completed assistant items before returning', async () => {
         const f = fixture();
         vi.mocked(f.client.turn).mockImplementation(async (_profile, _session, _prompt, options) => {
@@ -49,9 +72,9 @@ describe('durable native Harness execution', () => {
         vi.mocked(f.client.turn).mockImplementationOnce(async () => { throw new Error('lost'); });
         vi.mocked(f.client.operation).mockImplementation(async (_profile, id) => ({ requestId: id, outcome: 'unknown' }));
         await expect(f.make().execute(request, f.context)).rejects.toMatchObject({ code: 'NATIVE_OUTCOME_UNKNOWN' });
-        expect(await f.make().reconcile(request, f.context)).toMatchObject({ status: 'indeterminate' });
+        expect(await f.make().reconcile(request, f.context)).toMatchObject({ status: 'unknown' });
         f.data.epoch = 'replacement';
-        expect(await f.make().reconcile(request, f.context)).toMatchObject({ status: 'indeterminate', error: { code: 'NATIVE_EPOCH_CHANGED' } });
+        expect(await f.make().reconcile(request, f.context)).toMatchObject({ status: 'unknown', code: 'NATIVE_EPOCH_CHANGED' });
         expect(f.client.turn).toHaveBeenCalledOnce();
     });
 
@@ -65,9 +88,9 @@ describe('durable native Harness execution', () => {
 
     it('rejects a changed prompt or target on the same durable Effect identity', async () => {
         const f = fixture(); complete(f); await f.make().execute(request, f.context);
-        expect(await f.make().reconcile({ ...request, prompt: 'different' }, f.context)).toMatchObject({ status: 'indeterminate', error: { code: 'JOURNAL_CONFLICT' } });
+        expect(await f.make().reconcile({ ...request, prompt: 'different' }, f.context)).toMatchObject({ status: 'unknown', code: 'JOURNAL_CONFLICT' });
         expect(await f.make().reconcile({ ...request, connection: { ...request.connection, profileId: 'codex' } }, f.context))
-            .toMatchObject({ status: 'indeterminate', error: { code: 'JOURNAL_CONFLICT' } });
+            .toMatchObject({ status: 'unknown', code: 'JOURNAL_CONFLICT' });
         expect(f.client.turn).toHaveBeenCalledOnce();
     });
 
@@ -166,7 +189,7 @@ describe('durable native Harness execution', () => {
         await expect(f.make().cancel(request, { ...f.context, sessionState: undefined })).rejects.toBeInstanceOf(Error);
         expect((f.records.get(harnessExecutionJournalKey(f.context))!.value as any).terminal).toBeUndefined();
         complete(f, 'interrupted');
-        await expect(f.make().cancel(request, { ...f.context, sessionState: undefined })).resolves.toBeUndefined();
+        await expect(f.make().cancel(request, { ...f.context, sessionState: undefined })).resolves.toMatchObject({status: 'stopped', cleanup: 'confirmed', evidence: {sessionId: f.context.sessionId, taskId: f.context.taskId, effectId: f.context.effectId}});
         expect(f.client.interrupt).toHaveBeenCalledOnce();
     });
 
@@ -186,4 +209,72 @@ describe('durable native Harness execution', () => {
         await expect(stale.save({ sessionId: 'different' })).rejects.toMatchObject({ code: 'CONFLICT' });
         expect((f.records.get(harnessExecutionJournalKey(f.context))!.value as any).sessionId).toBe('native-session');
     });
+});
+
+it.each([
+    [{kind: 'text', name: 'file.txt', content: 'private body'}, [], 'HARNESS_ATTACHMENT_KIND_UNSUPPORTED'],
+    [{kind: 'image', name: 'image.png', mimeType: 'image/png', content: 'data:image/png;base64,AQID'}, ['image'], 'HARNESS_ATTACHMENT_MIME_MISMATCH'],
+    [{kind: 'text', name: 'file.txt', content: 'x'.repeat(65537)}, ['text'], 'HARNESS_ATTACHMENT_TEXT_LIMIT'],
+] as const)('rejects unprepared native attachments before creating a session (%s)', async (attachment, kinds, code) => {
+    const f = fixture(); f.profile.capabilities.attachments = [...kinds];
+    await expect(f.make().execute({...request, attachments: [attachment]}, f.context)).rejects.toMatchObject({code, executionOutcome: 'not-started'});
+    expect(f.client.create).not.toHaveBeenCalled(); expect(f.client.turn).not.toHaveBeenCalled();
+    expect(JSON.stringify((f.context.emit as ReturnType<typeof vi.fn>).mock.calls)).not.toContain('private body');
+});
+
+it('binds attachment bytes to the original native operation and rejects changed-content replay', async () => {
+    const f = fixture(); f.profile.capabilities.attachments = ['text'];
+    vi.mocked(f.client.turn).mockImplementation(async (_profile, _session, _prompt, options) => {
+        complete(f); return f.committed(options, {turnId: 'native-turn'}) as {turnId: string};
+    });
+    const original = {...request, attachments: [{kind: 'text' as const, name: 'file.txt', content: 'original'}]};
+    await f.make().execute(original, f.context);
+    await expect(f.make().execute({...original, attachments: [{...original.attachments[0], content: 'changed'}]}, f.context))
+        .rejects.toMatchObject({code: 'JOURNAL_CONFLICT'});
+    expect(f.client.turn).toHaveBeenCalledOnce(); expect(f.client.create).toHaveBeenCalledOnce();
+});
+
+it('rejects an oversized UTF-8 prompt before native create or turn and records the preparation stage', async () => {
+    const f = fixture();
+    await expect(f.make().execute({...request, prompt: '中'.repeat(50000)}, f.context))
+        .rejects.toMatchObject({code: 'HARNESS_PROMPT_LIMIT', executionOutcome: 'not-started'});
+    expect(f.client.create).not.toHaveBeenCalled(); expect(f.client.turn).not.toHaveBeenCalled();
+    expect(f.context.emit).toHaveBeenCalledWith(expect.objectContaining({type: 'harness:execution',
+        payload: expect.objectContaining({stage: 'input-preparation', code: 'HARNESS_PROMPT_LIMIT'})}));
+});
+
+it('retries a failed connection release before confirming terminal cleanup', async () => {
+    const f = fixture(), provider = f.make(); complete(f);
+    f.release.mockRejectedValueOnce(new Error('Private transport cleanup failure'));
+    await expect(provider.execute(request, f.context)).rejects.toThrow();
+    expect(f.release).toHaveBeenCalledOnce();
+    expect(await provider.cancel(request, f.context)).toMatchObject({status: 'stopped', cleanup: 'confirmed'});
+    expect(f.release).toHaveBeenCalledTimes(2);
+    expect(f.connections.acquire).toHaveBeenCalledOnce(); expect(f.client.turn).toHaveBeenCalledOnce();
+});
+
+it('keeps terminal cleanup unconfirmed while its original connection still cannot close', async () => {
+    const f = fixture(), provider = f.make(); complete(f);
+    f.release.mockRejectedValue(new Error('Private transport cleanup failure'));
+    await expect(provider.execute(request, f.context)).rejects.toThrow();
+    await expect(provider.cancel(request, f.context)).rejects.toMatchObject({code: 'CLEANUP_CONNECTION_PENDING'});
+    expect(f.client.turn).toHaveBeenCalledOnce();
+});
+
+it('reconciles a saved result only after retrying the original local connection cleanup', async () => {
+    const f = fixture(), provider = f.make(); complete(f);
+    f.release.mockRejectedValueOnce(new Error('Transport close unavailable'));
+    await expect(provider.execute(request, f.context)).rejects.toMatchObject({code: 'CLEANUP_CONNECTION_PENDING'});
+    expect(await provider.reconcile(request, f.context)).toMatchObject({status: 'completed'});
+    expect(f.release).toHaveBeenCalledTimes(2); expect(f.client.turn).toHaveBeenCalledOnce();
+});
+
+it('does not release another Effect connection when cancelling an unrelated owned journal', async () => {
+    const f = fixture(), provider = f.make(); complete(f);
+    f.release.mockRejectedValueOnce(new Error('Transport close unavailable'));
+    await expect(provider.execute(request, f.context)).rejects.toMatchObject({code: 'CLEANUP_CONNECTION_PENDING'});
+    const other = {...f.context, taskId: 'other-task'};
+    expect(await provider.cancel(request, other)).toMatchObject({status: 'stopped', evidence: {taskId: 'other-task', kind: 'not-started'}});
+    expect(f.release).toHaveBeenCalledOnce();
+    await provider.cancel(request, f.context); expect(f.release).toHaveBeenCalledTimes(2);
 });

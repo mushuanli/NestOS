@@ -152,3 +152,43 @@ C4Component
 恢复沿原 journal 处理：已有 turn ID 或 turn 操作意图时不重读附件，也不重复上传、create 或 turn。结果丢失与文件后来删除不能变成再次发送。取消沿原清理链等待正在读取/派发的操作结束及连接释放；本切片不改变 Effect 的取消确认契约。
 
 此范围不包括原生上下文续接、任意格式解析、OCR、产物目录或长期资产回收。Flow 结构化 route 将普通实参渲染为消息数据，不自动把参数里的任意引用变成附件；附件须通过已声明的消息材料协议消费。
+
+## Connection 取消和核对事实桥
+
+Connection Provider 报告原生执行事实；Effect 适配器将其转换为现有 Kernel 契约，不修改 `EffectAdapter.cancel(): Promise<void>` 的含义。只有原执行停止、清理确认、证据归属匹配并且本地在途操作退出，取消才允许正常返回。
+
+| Provider 事实 | Effect / Kernel 行为 |
+|---|---|
+| stopped + cleanup confirmed，且 sessionId/taskId/effectId 与证据匹配 | 等待本地在途操作退出后正常返回，Kernel 再确认清理 |
+| stopped + cleanup pending，或 pending | 抛出具体待清理/待停止错误；保留 cleanupPending |
+| unknown、缺少结果或错误归属证据 | 不确认释放；保留原 journal 和执行身份 |
+| reconcile completed | 返回原结果 |
+| reconcile not-started，且证据属于本次 fenced 执行 | 允许 Kernel 按原 Effect 身份 retry |
+| reconcile running / unknown | 保持 indeterminate，不创建新的远端操作 |
+
+真实 Harness Provider 在恢复预算内观察原 turn；观察中断或原生 epoch 变化时报告 unknown。操作回执与 journal 都由宿主核对，不能将 UI 的“已请求停止”作为证据。故障日志保留安全错误码和归属，不包含 prompt、远端错误正文或密钥；日志通道异常不改变执行、核对和取消结果。
+
+```mermaid
+C4Component
+    Container_Boundary(kernel_layer, "Kernel 与能力适配") {
+        Component(kernel, "Kernel", "执行事实", "控制请求、cleanupPending、stopped / settled")
+        Component(effect, "HarnessExecutionEffect", "事实桥", "校验归属；保持本地在途屏障")
+    }
+    Container_Boundary(host, "宿主") {
+        Component(provider, "HarnessExecutionProvider", "操作核对", "核对原 turn；等待原操作和释放结果")
+        Component(journal, "ExecutionJournal", "持久操作记录", "归属、意图、原生身份和终态")
+        Component(cleanup, "HarnessConnectionCleanup", "本地资源所有权", "只保留关闭失败的连接，按 Effect 重试")
+    }
+    System_Ext(native, "原生 Harness", "原 operation / turn / interrupt")
+    Rel(kernel, effect, "请求取消或核对")
+    Rel(effect, provider, "按原执行身份调用")
+    Rel(provider, journal, "经 Session 归属与 CAS 核对")
+    Rel(provider, native, "查询或取消原操作")
+    Rel(provider, cleanup, "等待已取得连接释放")
+    Rel(provider, effect, "返回原生事实及归属证据")
+    Rel(effect, kernel, "仅确认充分时解除清理等待")
+```
+
+未释放的本地连接句柄属于宿主资源生命周期机制，不能放入 UI、业务策略或 Kernel 的通用执行状态。关闭失败后保留原句柄；后续取消或恢复先重试该句柄，关闭成功后移除。连接的并发 release 共用同一 Promise，失败后允许重试，成功后保持幂等。该内存集合不是第二份持久执行状态库，宿主重启后的原生核对仍以 journal 和远端事实为准。
+
+清理状态端口只允许访问原 journal，并在打开 Session 前及每次读写前复验写入归属；失去 lease 时不能借清理取得新所有权。上下文 binding 的清理及暂停期间审批准入仍分别属于 F20、F18，本批不提前加入这些契约。

@@ -123,7 +123,7 @@ describe('native Harness history and interruption recovery', () => {
         f.receipts.set(nativeOperationId(f.context, 'interrupt'), { requestId: nativeOperationId(f.context, 'interrupt'), outcome: 'unknown' });
         await expect(f.make().cancel(request, f.context)).rejects.toMatchObject({ code: 'NATIVE_OUTCOME_UNKNOWN' });
         expect(f.client.interrupt).toHaveBeenCalledOnce(); complete(f, 'cancelled');
-        await expect(f.make().cancel(request, f.context)).resolves.toBeUndefined();
+        await expect(f.make().cancel(request, f.context)).resolves.toMatchObject({status: 'stopped', cleanup: 'confirmed', evidence: {sessionId: f.context.sessionId, taskId: f.context.taskId, effectId: f.context.effectId}});
     });
 
     it('confirms a pre-dispatch abort only after the native receipt fences the missing turn', async () => {
@@ -134,7 +134,7 @@ describe('native Harness history and interruption recovery', () => {
             return result;
         });
         await expect(f.make().execute(request, f.context)).rejects.toBeInstanceOf(Error);
-        await expect(f.make().cancel(request, { ...f.context, sessionState: undefined })).resolves.toBeUndefined();
+        await expect(f.make().cancel(request, { ...f.context, sessionState: undefined })).resolves.toMatchObject({status: 'stopped', cleanup: 'confirmed', evidence: {sessionId: f.context.sessionId, taskId: f.context.taskId, effectId: f.context.effectId}});
         expect(f.client.turn).not.toHaveBeenCalled(); expect(f.client.interrupt).not.toHaveBeenCalled();
         expect(f.client.operation).toHaveBeenCalledWith('claude', nativeOperationId(f.context, 'turn'), expect.objectContaining({ epoch: 'service-epoch' }));
         expect((f.records.get(harnessExecutionJournalKey(f.context))!.value as any).operations.turn.outcome).toBe('not-committed');

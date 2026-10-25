@@ -1,4 +1,4 @@
-import type { EffectExecutionContext, EffectReconcileResult, JsonValue } from '@itookit/durable-kernel';
+import type { EffectExecutionContext, JsonValue } from '@itookit/durable-kernel';
 
 /** A named execution target references existing host-owned node credentials and project grants. */
 export interface HarnessExecutionConnection {
@@ -72,6 +72,6 @@ export interface HarnessInteractionNotification {
  */
 export interface HarnessExecutionProvider {
     execute(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<HarnessExecutionResult>;
-    reconcile(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<EffectReconcileResult<HarnessExecutionResult>>;
-    cancel(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<void>;
+    reconcile(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<import('./connection-control').ConnectionReconcileResult<HarnessExecutionResult>>;
+    cancel(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<import('./connection-control').ConnectionCancelResult>;
 }

@@ -1,6 +1,7 @@
+import {HarnessConnectionCleanup} from './harness-connection-cleanup';
 import {prepareExecutionAttachments} from './harness-execution-assets';
-import type { EffectExecutionContext, EffectReconcileResult, EffectSessionState } from '@itookit/durable-kernel';
-import type { HarnessExecutionProvider, HarnessExecutionRequest, HarnessExecutionResult } from '@itookit/kernel-adapters/contracts';
+import type { EffectExecutionContext, EffectSessionState } from '@itookit/durable-kernel';
+import type { ConnectionCancelResult, ConnectionReconcileResult, HarnessExecutionProvider, HarnessExecutionRequest, HarnessExecutionResult } from '@itookit/kernel-adapters/contracts';
 import type { HarnessConnectionService, HarnessConnectionAcquisition } from './harness-connections';
 import { ExecutionJournal, executionError, harnessExecutionJournalKey, type ExecutionJournalData } from './harness-execution-journal';
 import { prepareNativeTurn, type NativeExecution } from './harness-execution-operations';
@@ -19,43 +20,53 @@ export function createHarnessExecutionProvider(connections: Connections, options
     return new NativeHarnessExecutionProvider(connections, options);
 }
 class NativeHarnessExecutionProvider implements HarnessExecutionProvider {
+    private readonly connectionCleanup = new HarnessConnectionCleanup();
     private readonly active = new Map<string, Promise<unknown>>();
     constructor(private readonly connections: Connections, private readonly options: HarnessExecutionOptions) {}
     execute(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<HarnessExecutionResult> {
         return this.track(context, this.run(request, context));
     }
-    async reconcile(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<EffectReconcileResult<HarnessExecutionResult>> {
+    async reconcile(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<ConnectionReconcileResult<HarnessExecutionResult>> {
         const startedAt = Date.now();
         try {
+            await this.connectionCleanup.retry(context);
             const journal = this.journal(request, context);
-            if (!await journal.load()) return { status: 'retry' };
+            if (!await journal.load()) return {status: 'not-started', evidence: {kind: 'not-started', ref: harnessExecutionJournalKey(context),
+                sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId}};
             if (journal.data.result) return { status: 'completed', result: journal.data.result };
             return { status: 'completed', result: await this.track(context, this.run(request, context)) };
         } catch (error) {
             const code = safeCode(error);
             if ((error as { executionOutcome?: string })?.executionOutcome === 'not-started'
                 || code === 'NATIVE_TURN_FAILED' || code === 'NATIVE_TURN_CANCELLED') throw error;
-            await diagnose(context, 'reconcile', 'indeterminate', startedAt, code);
-            return { status: 'indeterminate', error: { code, message: `Harness reconciliation: ${code}` } };
+            await diagnose(context, 'reconcile', 'unknown', startedAt, code);
+            return {status: 'unknown', code};
         }
     }
-    async cancel(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<void> {
+    async cancel(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<ConnectionCancelResult> {
         const startedAt = Date.now();
         try {
             if (!this.options.stateForCleanup) throw executionError('CLEANUP_STATE_UNAVAILABLE');
-            await cancelNativeExecution(this.connections, request, context, this.options,
+            const kind = await cancelNativeExecution({acquire: () => this.acquire(request, context)}, request, context, this.options,
                 this.active.get(harnessExecutionJournalKey(context)));
+            await this.connectionCleanup.retry(context);
             await diagnose(context, 'cancel', 'confirmed', startedAt);
+            return {status: 'stopped', cleanup: 'confirmed', evidence: {kind, ref: harnessExecutionJournalKey(context),
+                sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId}};
         } catch (error) { await diagnose(context, 'cancel', 'pending', startedAt, safeCode(error)); throw error; }
+    }
+    private async acquire(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<HarnessConnectionAcquisition> {
+        return this.connectionCleanup.own(context, await this.connections.acquire(request.connection));
     }
     private async run(request: HarnessExecutionRequest, context: EffectExecutionContext): Promise<HarnessExecutionResult> {
         const startedAt = Date.now();
+        await this.connectionCleanup.retry(context);
         const journal = this.journal(request, context);
         const exists = await journal.load();
         if (exists && journal.data.result) return journal.data.result;
         if (exists && replayableTerminal(journal.data)) return finishNativeTurn({ journal });
         context.abortSignal.throwIfAborted();
-        const acquired = await this.connections.acquire(request.connection);
+        const acquired = await this.acquire(request, context);
         try {
             if (!exists) await journal.initialize(acquired.epoch);
             if (journal.data.epoch !== acquired.epoch) throw executionError('NATIVE_EPOCH_CHANGED');

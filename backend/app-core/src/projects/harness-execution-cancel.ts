@@ -7,20 +7,23 @@ import { nativeMutation, settledOperation, type NativeExecution } from './harnes
 import { observeNativePage, waitForNativeChange } from './harness-execution-observation';
 
 export async function cancelNativeExecution(connections: Pick<HarnessConnectionService, 'acquire'>,
-    request: HarnessExecutionRequest, context: EffectExecutionContext, options: HarnessExecutionOptions, active?: Promise<unknown>): Promise<void> {
+    request: HarnessExecutionRequest, context: EffectExecutionContext, options: HarnessExecutionOptions, active?: Promise<unknown>): Promise<'not-started' | 'terminal'> {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), options.cancelTimeoutMs ?? 10_000);
     try {
         await settleObserver(active, controller.signal);
         const state = await options.stateForCleanup!(context);
         const journal = new ExecutionJournal(state, context, request);
-        if (!await journal.load() || journal.data.terminal) return;
+        if (!await journal.load()) return 'not-started';
+        if (journal.data.terminal) return 'terminal';
+        if (!Object.keys(journal.data.operations).length) return 'not-started';
         const acquired = await connections.acquire(request.connection);
         try {
             if (acquired.epoch !== journal.data.epoch) throw executionError('NATIVE_EPOCH_CHANGED');
             const run: NativeExecution = { acquired, journal, request, signal: controller.signal };
-            if (!await recoverReferences(run)) return;
+            if (!await recoverReferences(run)) return 'not-started';
             await stopNativeTurn(run, options.pollMs ?? 1000);
+            return 'terminal';
         } finally { await acquired.release(); }
     } finally { clearTimeout(timeout); }
 }

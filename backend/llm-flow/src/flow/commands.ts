@@ -120,8 +120,8 @@ export class DagCommandService {
             readFlowCancellationReceipt(this.options.kernel, args as import('../contracts/flow-control').FlowCancellationQuery));
         bus.register(FlowCommand.RunPauseWithdraw, args => this.withdrawPause(args as {taskId: string; requestId: string; expectedEpoch: number}));
         bus.register(FlowCommand.RunRespond, async args => {
-            const input = args as { taskId: string; requestId: string; value: unknown; targetTaskId?: string };
-            return this.respond(String(input.taskId), String(input.requestId), input.value, input.targetTaskId);
+            const input = args as { taskId: string; requestId: string; value: unknown; targetTaskId?: string; responseRequestId?: string };
+            return this.respond(String(input.taskId), String(input.requestId), input.value, input.targetTaskId, input.responseRequestId);
         });
         bus.register(FlowCommand.RunSignal, async args => {
             const input = args as { taskId: string; nodeId?: string; targetTaskId?: string; signal: { type: string; payload?: unknown } };
@@ -343,7 +343,7 @@ export class DagCommandService {
         });
     }
 
-    private async respond(taskId: string, requestId: string, value: unknown, targetTaskId?: string) {
+    private async respond(taskId: string, requestId: string, value: unknown, targetTaskId?: string, responseRequestId?: string) {
         const snapshot = await this.snapshot(taskId);
         const handle = this.requireHandle(taskId);
         if (targetTaskId && !snapshot.controlTaskIds?.includes(targetTaskId)) throw new Error(`Task is outside this run: ${targetTaskId}`);
@@ -356,7 +356,7 @@ export class DagCommandService {
             }
             if (matches.length > 1) throw new Error(`Ambiguous interaction ${requestId}; targetTaskId is required`);
             if (!matches.length) throw new Error(`No pending interaction ${requestId} for DAG task ${taskId}`);
-            await matches[0].respond({ interactionId: requestId, value: jsonValue(value) });
+            await matches[0].respond({ interactionId: requestId, value: jsonValue(value) }, {requestId: responseRequestId});
             return { taskId, targetTaskId: matches[0].id, responded: true };
         });
     }

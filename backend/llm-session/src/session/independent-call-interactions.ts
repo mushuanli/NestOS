@@ -31,3 +31,11 @@ async function belongsTo(root: TaskRecord, candidate: TaskRecord, read: (id: str
     }
     return false;
 }
+
+export async function readIndependentCallInteractionTask(kernel: Kernel, root: TaskRecord, taskId: string): Promise<TaskRecord> {
+    const session = await kernel.inspectSession(root.sessionId);
+    const read = async (id: string) => (await (await session.attachTask(id)).status()).task;
+    const target = await read(taskId);
+    if (!await belongsTo(root, target, read)) throw Object.assign(new Error('CALL_INTERACTION_SCOPE_MISMATCH'), {code: 'CALL_INTERACTION_SCOPE_MISMATCH'});
+    return target;
+}

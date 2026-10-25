@@ -695,3 +695,9 @@ C4Dynamic
 `IndependentCallCommand.Control`（`session.call.control`）接受 `IndependentCallStateControlRequest`，在原调用归属与父子写权限验证后处理 `pause | resume | withdraw`。请求固定 `sessionId/branchId/callId/executionSessionId/taskId/requestId/expectedEpoch`；撤销仅适用于未确认暂停，恢复不能替代审批回答或新调用。
 
 `IndependentCallCommand.ControlReceipt`（`session.call.control.receipt`）接受不含 epoch 的查询与原动作，返回同作用域及可选 `TaskControlReceipt`。缺失表示尚无证据；`accepted` 是原接纳事实，`current` 是当前控制状态，二者不可混用。查询不重新派发，也不打开写会话。Flow 控制复用既有句柄、租约和控制树，普通 Task 使用 Kernel 控制；不新增调度器或状态库。`controlCapabilities.pause = 'boundary'` 不承诺原生 Harness 内部暂停。
+
+### 独立调用回答
+
+`IndependentCallCommand.Respond`（`session.call.respond`）接收 `IndependentCallResponseRequest`：原调用控制作用域，加 `targetTaskId/interactionId/value`，`requestId` 为回答操作身份。宿主核对成员父链并复验父子写权限，Flow 回答保持原调度租约。value 必须是深度不超过 64 的 JSON 值；缺失或非 JSON 值不会自动转换。
+
+`IndependentCallCommand.ResponseReceipt`（`session.call.response.receipt`）接收同作用域但不含 value 的查询，返回可选 `InteractionResponseReceipt`。查询只读，不获取写权限或重新回答；缺失表示未知。回执不含正文，且不代表恢复执行或整树完成。Flow 的 RunRespond 新增可选 responseRequestId，原 requestId 仍为交互 ID。

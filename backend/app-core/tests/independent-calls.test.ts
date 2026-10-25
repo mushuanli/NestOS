@@ -297,6 +297,9 @@ it('keeps an already completed independent call successful when the user request
 it.each(['parent', 'child'] as const)('rejects independent cancellation when the %s Session becomes read-only', async denied => {
     const f = await fixture(false, true, true), input = f.input('readonly-call', 'flow'); await f.submit(input);
     const query = await controlQuery(f, input);
+    let member = '';
+    await vi.waitFor(async () => {member = (await f.runtime.kernel.kernel.listSessionPendingInteractionTasks(query.executionSessionId))[0]?.id ?? ''; expect(member).not.toBe('');});
+    const answer = {...query, targetTaskId: member, interactionId: 'approval'};
     const check = f.runtime.sessionRepository.isSessionDeletionPending.bind(f.runtime.sessionRepository);
     const guard = vi.spyOn(f.runtime.sessionRepository, 'isSessionDeletionPending').mockImplementation(async id =>
         id === (denied === 'parent' ? query.sessionId : query.executionSessionId) || check(id));
@@ -304,6 +307,8 @@ it.each(['parent', 'child'] as const)('rejects independent cancellation when the
     await expect(f.runtime.commandBus.execute(IndependentCallCommand.Control, {...query, action: 'pause', expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
     expect(await f.runtime.commandBus.execute(IndependentCallCommand.ControlReceipt, {...query, action: 'pause'})).toEqual({...query, action: 'pause'});
     expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(query);
+    await expect(f.runtime.commandBus.execute(IndependentCallCommand.Respond, {...answer, value: 'saved'})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
+    expect(await f.runtime.commandBus.execute(IndependentCallCommand.ResponseReceipt, answer)).toEqual(answer);
     guard.mockRestore(); await f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0});
 }, 15000);
 
@@ -337,7 +342,10 @@ it('pauses an independent Flow at its boundary, saves an answer without resuming
     expect(paused).toMatchObject({action: 'pause', receipt: {action: 'pause', accepted: {mode: 'pause', epoch: 1}}});
     await vi.waitFor(async () => expect((await kernel.task(query.executionSessionId, query.taskId)).control?.acknowledged).toBe(true));
     const child = await kernel.openSession(query.executionSessionId);
-    await (await child.attachTask(member)).respond({interactionId: 'approval', value: 'Continue later'});
+    const answer = {...query, targetTaskId: member, interactionId: 'approval', requestId: 'answer-flow'};
+    expect(await commands.execute(IndependentCallCommand.Respond, {...answer, value: 'Continue later'}))
+        .toMatchObject({...answer, receipt: {requestId: 'answer-flow', taskId: member, interactionId: 'approval'}});
+    await expect(commands.execute(IndependentCallCommand.Respond, {...answer, value: 'Changed'})).rejects.toMatchObject({code: 'CONFLICT'});
     expect((await kernel.task(query.executionSessionId, query.taskId)).control?.mode).toBe('pause');
     expect((await kernel.task(query.executionSessionId, member)).interactions.approval.status).toBe('resolved');
     expect((await commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent}))[0].interactions).toEqual({total: 0, items: []});
@@ -349,6 +357,7 @@ it('pauses an independent Flow at its boundary, saves an answer without resuming
     const open = vi.spyOn(kernel, 'openSession');
     expect(await commands.execute(IndependentCallCommand.ControlReceipt, {...query, action: 'pause'}))
         .toMatchObject({receipt: {action: 'pause', expectedEpoch: 0, accepted: {requestId: 'pause-flow', epoch: 1}, current: {mode: 'run', epoch: 2}}});
+    expect(await commands.execute(IndependentCallCommand.ResponseReceipt, answer)).toMatchObject({receipt: {requestId: 'answer-flow'}});
     expect(open).not.toHaveBeenCalled();
     expect(await commands.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
 }, 15000);

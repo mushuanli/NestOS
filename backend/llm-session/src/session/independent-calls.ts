@@ -1,3 +1,4 @@
+import {IndependentCallResponses} from './independent-call-responses';
 import {readIndependentCallInteractions} from './independent-call-interactions';
 import {hasFlowControlTree} from '@itookit/llm-flow/contracts';
 import {IndependentCallControls} from './independent-call-controls';
@@ -31,6 +32,8 @@ export class IndependentCallService {
         commands.register(IndependentCallCommand.Inspect, value => this.inspect(value as IndependentCallInput));
         commands.register(IndependentCallCommand.List, value => this.list(value as IndependentCallListQuery));
         new IndependentCallControls({kernel: this.options.kernel, commands, logger: this.host.logger,
+            canWrite: this.options.canWrite, resolve: query => this.controlTarget(query)}).register();
+        new IndependentCallResponses({kernel: this.options.kernel, commands, logger: this.host.logger,
             canWrite: this.options.canWrite, resolve: query => this.controlTarget(query)}).register();
     }
     async submit(supplied: IndependentCallInput): Promise<IndependentCallReceipt> {

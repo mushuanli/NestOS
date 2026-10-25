@@ -5,7 +5,8 @@ import type {ExecutionRef} from './conversation';
 
 export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect', List: 'session.calls.list',
     Cancel: 'session.call.cancel', CancellationReceipt: 'session.call.cancellation.receipt',
-    Control: 'session.call.control', ControlReceipt: 'session.call.control.receipt'} as const;
+    Control: 'session.call.control', ControlReceipt: 'session.call.control.receipt',
+    Respond: 'session.call.respond', ResponseReceipt: 'session.call.response.receipt'} as const;
 /** Caller identity and selected materials; ancestry alone never imports conversation history. */
 export interface IndependentCallInput {request: SubmissionRequest; title: string; transfer?: TransferReference}
 export interface IndependentCallReceipt extends SubmissionReceipt {
@@ -57,4 +58,10 @@ export interface IndependentCallStateControlReceipt extends IndependentCallState
 export interface IndependentCallInteractions {
     total: number;
     items: Array<{taskId: string; interactionId: string; kind: 'input' | 'approval'; prompt: string; promptTruncated: boolean; requestedAt: number}>;
+}
+
+export interface IndependentCallResponseQuery extends IndependentCallControlQuery {targetTaskId: string; interactionId: string}
+export interface IndependentCallResponseRequest extends IndependentCallResponseQuery {value: import('@itookit/durable-kernel/contracts').JsonValue}
+export interface IndependentCallResponseReceipt extends IndependentCallResponseQuery {
+    receipt?: import('@itookit/durable-kernel/contracts').InteractionResponseReceipt;
 }

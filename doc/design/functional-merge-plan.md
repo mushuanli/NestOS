@@ -1229,3 +1229,26 @@ C4Component
 requestId 在目标 Task 内唯一。同键异回答、同键改交互、新键冒认其他客户端或旧无身份回答均返回 CONFLICT；缺失回执保持未知。原键同值可在任务完成后重放，不产生第二个交互事件。取消先完成时拒绝新回答且不产生回执；暂停期间允许保存回答，但不解除暂停。回执随 Task 记录保留，不是执行完成或清理确认。
 
 验证：379 项 Kernel 单元测试、52 项 LocalFS/SQLite 多进程集成测试、类型检查、构建、独立 ESM/CommonJS 和 NodeNext 声明消费通过。新用例覆盖冷重启核对、竞争回答只接纳一个身份、跨 Task/Session 范围、旧调用兼容、取消竞态与脱敏失败诊断。Session 的回答归属授权端口和父卡片直接回答仍待接入，不能将本节作为端到端完成证明。
+
+## 54. Session 独立调用回答归属与只读核对
+
+`session.call.respond` 固定 caller/branch/call/child/root task、实际 targetTaskId、interactionId 和回答 requestId；会话层从原持久路由核对根，再沿真实 parentTaskId 链验证交互成员。不能只凭共享子 Session 或调用方提供的 taskId 转发回答。写入复验父子两侧权限，控制/分支切换不会改写原请求作用域。
+
+```mermaid
+C4Component
+  title 回答授权与执行机制分层
+  Component(port, "IndependentCallResponses", "Session 用例", "输入、原路由、成员与父子权限验证")
+  Component(flow, "RunRespond", "Flow 机制", "保留调度租约与成员范围检查")
+  Component(kernel, "Kernel.respondInteraction", "通用机制", "回答与 requestId 原子保存")
+  Component(query, "session.call.response.receipt", "只读用例", "原归属校验与原回答回执")
+  Rel(port, flow, "Flow 根：interaction ID 与 responseRequestId 分开")
+  Rel(flow, kernel, "透传 requestId 与原租约")
+  Rel(port, kernel, "普通 Task 回答")
+  Rel(query, kernel, "只读 readTaskInteractionResponseReceipt")
+```
+
+Flow 的旧 RunRespond.requestId 仍表示交互 ID；新增可选 responseRequestId 作为回答操作身份，避免改变旧调用语义。新 Session 入口只接收 JSON 值（深度最多 64），拒绝 undefined、非有限数、循环、稀疏数组及非 JSON 对象，错误为 CALL_RESPONSE_VALUE_INVALID；不通过 JSON.stringify 悄悄把回答改成 null 或删掉字段。输入字段非法与身份缺失另报 CALL_RESPONSE_INVALID。
+
+回答回执读取归入共享只读命令表，不获取写权限、恢复 Flow 句柄或重发回答。返回原作用域与可选 Kernel 回执；核对 requestId、实际 targetTaskId 和 interactionId，缺失保持未知。回执不携带回答正文；写入及失败诊断只记录安全身份、阶段、分类和耗时。父子任一只读时写入拒绝，查询仍可用。
+
+验证覆盖实际 Flow 暂停时回答、原回答变更冲突、完成后只读核对、父子权限拒绝、其他执行树拒绝、无交互拒绝、输入与回执错误，以及本地/RPC 回答已保存但回复丢失后的查询恢复。恢复不再次派发，也不解除暂停。父卡片的完整交互读取与回答 UI/台账仍待接线。

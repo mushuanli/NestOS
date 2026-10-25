@@ -347,3 +347,34 @@ it.each(['local', 'rpc'])('controls a real ChatView over %s with hanging replies
     expect(await f.runtime.commandBus.execute(SessionCommand.GetCurrentId)).toBe(f.sessionId);
     expect((await f.runtime.sessionRepository.readHistoryChain(f.sessionId)).rounds).toEqual([]);
 }, 15000);
+
+it.each(['local', 'rpc'])('recovers a persisted independent answer over %s after its response is lost without resuming the call', async transport => {
+    const f = await workspace(true); let responses = 0;
+    const execute = async (name: string, args?: unknown) => {
+        const result = await f.runtime.commandBus.execute(name, args);
+        if (name === 'session.call.respond') {responses++; throw new Error('Answer reply lost');}
+        return result;
+    };
+    let commands = {execute} as ICommandBus;
+    if (transport === 'rpc') {
+        let server!: RpcPeer;
+        const client = new RpcPeer('client', call => server.handle(call)); server = new RpcPeer('server', call => client.handle(call));
+        cleanup.push(async () => {await client.close(); await server.close();}); commands = client.decode(await server.expose({execute})) as ICommandBus;
+    }
+    const catalog = await commands.execute<import('@itookit/llm-session/contracts').RootTargetCatalog>(SessionCommand.ListTargets);
+    const target = catalog.entries.find(entry => entry.target.kind === 'flow')!.target;
+    await commands.execute('session.call.submit', {title: 'Answer test', request: {expectedSessionId: f.sessionId, expectedBranch: 'main',
+        target: {kind: target.kind, id: target.id, version: target.version}, expectedTarget: target, source: {kind: 'arguments', value: {request: 'Work', count: 0}},
+        submission: {id: 'answer-call', source: {kind: 'conversation', ownerId: f.sessionId, id: 'answer-call'}}}});
+    let call!: import('@itookit/llm-session/contracts').IndependentCallView;
+    await vi.waitFor(async () => {call = (await commands.execute<import('@itookit/llm-session/contracts').IndependentCallView[]>('session.calls.list', {sessionId: f.sessionId}))[0]; expect(call.interactions?.total).toBe(1);});
+    const scope = {sessionId: f.sessionId, branchId: 'main', callId: call.receipt.operationId, executionSessionId: call.receipt.executionSessionId!, taskId: call.receipt.execution!.taskId};
+    await commands.execute('session.call.control', {...scope, requestId: 'pause-answer', action: 'pause', expectedEpoch: call.executionState!.controlEpoch});
+    const query = {...scope, targetTaskId: call.interactions!.items[0].taskId, interactionId: 'approval', requestId: 'answer-once'};
+    await expect(commands.execute('session.call.respond', {...query, value: 'PRIVATE ANSWER'})).rejects.toThrow('Answer reply lost');
+    const result = await commands.execute('session.call.response.receipt', query);
+    expect(result).toMatchObject({...query, receipt: {requestId: 'answer-once', taskId: query.targetTaskId, interactionId: 'approval'}});
+    expect(JSON.stringify(result)).not.toContain('PRIVATE ANSWER'); expect(responses).toBe(1);
+    expect((await f.runtime.kernel.kernel.task(scope.executionSessionId, scope.taskId)).control?.mode).toBe('pause');
+    await commands.execute('session.call.cancel', {...scope, requestId: 'stop-answer', expectedEpoch: 1});
+}, 15000);

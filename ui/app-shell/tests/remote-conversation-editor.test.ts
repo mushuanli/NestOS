@@ -1220,3 +1220,61 @@ it('offers an explicit draft reload after a CAS conflict and permits saving agai
         expect(JSON.parse(stored().data).config.text).toBe('After explicit reload');
     } finally {await editor.destroy();}
 });
+
+it('queues native follow-ups while running and edits them through the shared queue view', async () => {
+    const {editor, peer, host} = setup(); composerStorage(peer);
+    const running: ConversationSnapshot = {...state, canSend: false, canQueue: true, canInterrupt: true, active: true,
+        instructionQueue: {revision: 1, paused: false, acceptedIds: [], items: []}};
+    vi.mocked(peer.read).mockResolvedValue(running);
+    peer.enqueue = vi.fn(async (text, _files, _selection, id) => ({...running, instructionQueue: {revision: 2, paused: false,
+        acceptedIds: [id!], items: [{id: id!, text, files: [], createdAt: 1, state: 'pending'}]}}));
+    peer.editInstructionQueue = vi.fn(async edit => ({...running, instructionQueue: {revision: 3, paused: false, acceptedIds: [],
+        items: [{id: 'updated', text: edit.action === 'update' ? edit.text : '', files: [], createdAt: 1, state: 'pending'}]}}));
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        input.value = 'Follow-up'; input.dispatchEvent(new Event('input', {bubbles: true}));
+        const send = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
+        expect(send.style.display).toBe('flex'); expect(send.disabled).toBe(false); send.click();
+        await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(input.value).toBe(''));
+        expect(peer.send).not.toHaveBeenCalled(); expect(host.textContent).not.toContain(t('chat.submission.unknown'));
+        host.querySelector<HTMLButtonElement>('[data-action="edit"]')!.click();
+        const edit = host.querySelector<HTMLTextAreaElement>('.llm-instruction-queue__editor')!;
+        edit.value = 'Revised follow-up'; edit.dispatchEvent(new Event('input', {bubbles: true}));
+        host.querySelector<HTMLButtonElement>('[data-action="save"]')!.click();
+        await vi.waitFor(() => expect(peer.editInstructionQueue).toHaveBeenCalledWith(expect.objectContaining({action: 'update', text: 'Revised follow-up', expectedRevision: 2})));
+    } finally {await editor.destroy();}
+});
+
+it.each([false, true])('releases the input after native admission while its RPC reply stays pending (composer=%s)', async persistent => {
+    const {editor, peer, host} = setup(); if (persistent) composerStorage(peer);
+    let current: ConversationSnapshot = {...state, canSend: false, canQueue: true,
+        instructionQueue: {revision: 0, paused: false, acceptedIds: [], items: []}};
+    const listeners = new Set<() => void>(); let finish!: (state: ConversationSnapshot) => void;
+    let original: ConversationSnapshot | undefined, replied = false;
+    peer.snapshot = () => current; vi.mocked(peer.read).mockImplementation(async () => current);
+    peer.subscribe = listener => {listeners.add(listener); return () => {listeners.delete(listener);};};
+    peer.enqueue = vi.fn(async (text, _files, _selection, id) => {
+        current = {...current, instructionQueue: {...current.instructionQueue!, revision: current.instructionQueue!.revision + 1,
+            acceptedIds: [...current.instructionQueue!.acceptedIds, id!], items: [...current.instructionQueue!.items,
+                {id: id!, text, files: [], createdAt: 1, state: 'pending'}]}};
+        for (const listener of [...listeners]) listener();
+        if (!original) {original = current; const late = await new Promise<ConversationSnapshot>(resolve => {finish = resolve;}); replied = true; return late;}
+        return current;
+    });
+    await editor.init(host);
+    try {
+        const input = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
+        const send = host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!;
+        const type = (text: string) => {input.value = text; input.dispatchEvent(new Event('input', {bubbles: true}));};
+        type('First'); send.click(); await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledOnce());
+        await vi.waitFor(() => expect(input.value).toBe(''));
+        expect(replied).toBe(false); expect(send.disabled).toBe(false);
+        type('Second'); send.click(); await vi.waitFor(() => expect(peer.enqueue).toHaveBeenCalledTimes(2));
+        await vi.waitFor(() => expect(input.value).toBe(''));
+        type('Third draft'); finish(original!); await new Promise(resolve => setTimeout(resolve, 0));
+        expect(input.value).toBe('Third draft'); expect(send.disabled).toBe(false);
+        expect(peer.send).not.toHaveBeenCalled();
+    } finally {finish?.(current); await editor.destroy();}
+});

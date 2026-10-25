@@ -21,7 +21,16 @@ export interface ConversationModelCatalog {
     models: Array<{id: string; label: string; reasoningEfforts: Array<{id: string; label: string}>; defaultReasoningEffort?: string}>;
     current?: ConversationModelSelection; default?: ConversationModelSelection;
 }
+export interface ConversationInstructionQueue {
+    revision: number; paused: boolean; acceptedIds: string[];
+    submissions?: Array<{id: string; turnId?: string; commandId?: string}>;
+    items: Array<{id: string; text: string; files: Array<{name: string}>; createdAt: number; state: 'pending' | 'dispatching' | 'failed' | 'uncertain'; error?: string}>;
+}
+export type ConversationQueueEdit = {expectedRevision: number} & (
+    {action: 'pause' | 'resume'} | {action: 'remove' | 'retry'; id: string} | {action: 'update'; id: string; text: string} | {action: 'reorder' | 'merge'; ids: string[]});
 export interface ConversationSnapshot {
+    canQueue?: boolean;
+    instructionQueue?: ConversationInstructionQueue;
     supportsModels?: boolean;
     supportsSlashCommands?: boolean;
     slashCommands?: ConversationSlashCommand[];
@@ -54,6 +63,8 @@ export interface ConversationSnapshot {
 }
 export interface ConversationComposerDraft {revision: string; data: string; acceptedOperationIds: readonly string[]}
 export interface ConversationControls {
+    enqueue?(text: string, attachments?: ConversationAttachment[], selection?: ConversationModelSelection, submissionId?: string): Promise<ConversationSnapshot>;
+    editInstructionQueue?(edit: ConversationQueueEdit): Promise<ConversationSnapshot>;
     readComposerDraft?(): Promise<ConversationComposerDraft>;
     saveComposerDraft?(data: string, expectedRevision: string, operationId: string): Promise<ConversationComposerDraft>;
     putComposerAsset?(content: ArrayBuffer): Promise<string>;

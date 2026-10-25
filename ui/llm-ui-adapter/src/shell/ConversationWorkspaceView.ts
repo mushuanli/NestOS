@@ -16,13 +16,14 @@ import { mountConversationSource } from './conversation-source';
 import {bindWorkspaceInput, type WorkspaceHandoff} from './drafts/workspace-handoff';
 
 interface Actions {
+    instructionQueue?: boolean;
     flushDraft?(): Promise<void>;
     persistImageFiles?(files: File[], resize: import('@itookit/image-parser').ImageResizePolicy): Promise<void>;
     models?(): Promise<import('@itookit/ui-common').ConversationModelCatalog>;
     commands?(): Promise<import('@itookit/ui-common').ConversationSlashCommand[]>;
     attachments?: Array<'text' | 'image'>;
     rename?(title: string): void;
-    send(text: string, files?: File[]): Promise<void>;
+    send(text: string, files?: File[]): Promise<void | false>;
     stop(): void;
     refresh(): void;
     reconcile(): void;
@@ -113,6 +114,7 @@ export class ConversationWorkspaceView {
     private createInput(options: EditorOptions, actions: Actions, handoff?: WorkspaceHandoff): ChatInput {
         const executorId = options.initialInputState?.agentId?.startsWith('remote:') ? options.initialInputState.agentId : 'remote:native';
         const inputOptions: import('../components/input/ChatInputView').ChatInputOptions = {
+            instructionQueue: actions.instructionQueue,
             executorUsage: options.executorUsage, flushDraft: actions.flushDraft, persistImageFiles: actions.persistImageFiles,
             nativeModels: actions.models,
             attachments: !!actions.attachments?.length, executorLocked: true,

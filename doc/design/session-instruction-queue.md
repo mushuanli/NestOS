@@ -84,3 +84,7 @@ ApplicationRuntime 为所有 Session 视图注入同一个 `SessionExecutionActi
 ### 原生队列宿主入口
 
 原生 Harness 队列由 mindos-node-driver 持有，宿主通过 enqueue/editInstructionQueue 及修订 CAS 接入，不转换成已执行聊天消息。项目宿主复用同一 ConversationRegistry 控制器，视图关闭后保留可派发工作和未知控制/查询回执，暂停队列可按持久记录重新打开。@new 转正不得清除后续草稿、队列、回答或未完成控制。RPC 显式开放队列方法；原发送响应悬挂时仍可接纳与编辑，队首派发期间仍消费原生观察。UI 草稿消费依赖持久接纳，由独立台账适配功能接入。
+
+### 默认远程工作台的接纳等待
+
+默认工作台直接用 ConversationControls 适配独立 InstructionQueueView，队列编辑不经过伪造的本地命令总线。持久队列接纳通知可以先于 enqueue RPC 回复结束当前输入等待，原 RPC 的迟到成功/失败只结束原调用。文字与附件仍按冻结修订消费，不覆盖等待期间的新草稿；视图销毁解除订阅和等待，不自动取消原生操作。独立 ChatView 通过 OperationLedger 接入属于后续单独迁移。

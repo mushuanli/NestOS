@@ -400,7 +400,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private canQueue(): boolean {
-        return !!this.options.instructionQueue && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId;
+        return !!this.options.instructionQueue && !this.config.settings.flowId;
     }
 
     private requiresConnection(): boolean {

@@ -6,6 +6,11 @@ Agent 可声明 `execution: {kind: 'flow', flowId, revision?, parameters?, conne
 
 `FlowInvocationService` 提供 `session.flow.invoke` / `session.flow.invocations`：以 `sessionId + requestId` 幂等启动固定 revision 的独立 Flow Run，同一 Session 可并行调用，调用意图和根 Task 引用持久化，结果不会推进普通对话的 branch head。`SessionCommand.CreateFromFlow` 的 `invocation: true` 直接创建调用；未指定时保留旧 Flow Session 路径。恢复与 UI 交互边界见 [Flow 调用与组合](design/flow-invocation-composition.md)。启动恢复先用上述标记筛出候选 Session：标记存在且不含该 Session 时完全不做 `listShared` 探测；先按标记写入、后写调用记录的顺序保证标记故障只会多扫一次，不会漏恢复。
 
+
+`session.flow.invoke` 可显式传入 `execution: 'child'`：输入 `sessionId` 表示调用来源，宿主幂等创建并准备子 Session，在子 Session 中接纳一次 Invocation。父级记录返回 `executionSessionId` 指向执行所属 Session；子级记录保存 `callerSessionId`，父级引用与子级执行共用同一个 `invocationId` 和真实 `rootTaskId`。查询根 Task 必须使用 `executionSessionId ?? sessionId`。这些关联是宿主字段，调用者不能通过请求注入。目的地属于请求身份的一部分，同一 requestId 不能从当前 Session 改为子 Session 或反向切换。
+
+父级先固定根发布修订、来源材料和解析实参，保存的是路由意图；子级在实际接纳前固定编译计划。调用接口只有在原根 Task 得到确认后才成功返回，创建子会话的成功不等于执行已接纳。重启与丢回复沿原父意图、子会话创建身份及子调用核对，不新建另一个调用。组织关系不传播控制、队列或完整聊天上下文。普通调用不传 execution 时继续原 Session；工作台默认独立调用及函数卡片尚需迁移，见合入计划 F16。
+
 `ContentTransferService` 提供显式材料传递：`session.content.capture({sessionId})` 固定当前分支的可见文本和已完成 Flow 输出；`session.content.resolve({sessionId,captureId,selection})` 准备消息选择或摘要；`session.content.create-child({sessionId,requestId,title,transfer?})` 幂等创建独立子会话并准备执行存储。`FlowInvocationInput.inputSources` 按参数名引用 `{sessionId,id}`，准入核对实际参数后保存完整 `inputTransfers`。`SessionCreation.initialContext` 与身份同事务创建且不可变；Context 装配将它作为显式材料，父子关系本身不继承聊天历史。摘要由可选 `ConversationSystemOptions.summarizeContent` 宿主端口注入。来源、预算及界面边界见 [显式内容来源与独立子会话](design/flow-invocation-composition.md#显式内容来源与独立子会话)。
 
 > 用户可见的会话语义 + 持久化：Session 生命周期、Round/Branch、SessionRepository（会话目录持久化）、RoundLog、SessionEventBus、UI projections、Durable Conversation。同时是上层装配入口：`initializeConversationSystem()` 统一注册 `llm.chat/agent/plan` 与 `flow.*` Programs 并装配 CommandBus/DAG。公共 API 从 `@itookit/llm-session` 根导出；少数内部工具（`RUNTIME_KEY`、`ulid`/`extractTimestamp`、`log`、`ContextProfileStore`、`VFSEntityStore`、`SessionFolder` 类型）仅按源码路径可用。

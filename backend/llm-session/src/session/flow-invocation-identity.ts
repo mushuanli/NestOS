@@ -4,7 +4,7 @@ import {flowInvocationId, type FlowInvocationInput, type FlowInvocationRecord} f
 
 export const FLOW_INVOCATION_PREFIX = 'flow.invocation.';
 const keys: Array<keyof FlowInvocationInput> = ['sessionId', 'requestId', 'flowId', 'revision', 'parameters', 'source',
-    'expectedSignature', 'inputSources', 'connectionBindings', 'connectionId', 'retryOfInvocationId', 'retryOfSessionId'];
+    'execution', 'expectedSignature', 'inputSources', 'connectionBindings', 'connectionId', 'retryOfInvocationId', 'retryOfSessionId'];
 
 /** Only request fields may cross ingress; persisted plans and execution identities are host-owned. */
 export function flowInvocationRequest(input: FlowInvocationInput): FlowInvocationInput {
@@ -13,6 +13,7 @@ export function flowInvocationRequest(input: FlowInvocationInput): FlowInvocatio
         throw invocationError('FLOW_INVOCATION_INVALID', 'Invalid Flow revision identity');
     if (!input.parameters || typeof input.parameters !== 'object' || Array.isArray(input.parameters))
         throw invocationError('FLOW_INPUT_OBJECT_REQUIRED', 'Flow parameters must be an object');
+    if (input.execution !== undefined && input.execution !== 'child') throw invocationError('FLOW_INVOCATION_INVALID', 'Invalid execution destination');
     assertRerunIdentity(input);
     return structuredClone(Object.fromEntries(keys.filter(key => Object.hasOwn(input, key)).map(key => [key, input[key]]))) as unknown as FlowInvocationInput;
 }
@@ -37,7 +38,7 @@ export async function assertFlowRerun(kernel: Kernel, input: FlowInvocationInput
     const source = records.map(entry => entry.value as unknown as FlowInvocationRecord)
         .find(record => record.sessionId === sourceId && flowInvocationId(record) === input.retryOfInvocationId);
     if (!source) throw invocationError('FLOW_INVOCATION_NOT_FOUND', 'Rerun source invocation was not found');
-    const session = await kernel.inspectSession(sourceId), root = findFlowInvocationRoot(await session.listTasks(), source);
+    const session = await kernel.inspectSession(source.executionSessionId ?? sourceId), root = findFlowInvocationRoot(await session.listTasks(), source);
     if (!root || !['succeeded', 'failed', 'cancelled'].includes(root.status))
         throw invocationError('FLOW_INVOCATION_NOT_TERMINAL', 'Reconcile or finish the original invocation before rerunning');
 }

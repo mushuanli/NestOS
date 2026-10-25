@@ -35,7 +35,7 @@ async function outputItems(commands: ICommandBus, sessionId: string): Promise<Tr
     const result: TransferOutput[] = [];
     for (const call of calls) {
         if (!call.rootTaskId) continue;
-        const snapshot = await commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, { sessionId, taskId: call.rootTaskId });
+        const snapshot = await commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, { sessionId: call.executionSessionId ?? sessionId, taskId: call.rootTaskId });
         if (snapshot.root.task.status !== 'succeeded') continue;
         const raw = snapshot.root.task.output as { nodes?: Record<string, JsonValue> } | undefined;
         const returned = raw?.nodes?.__flow_return;

@@ -2,6 +2,8 @@ import type { DagRunSpec, FlowRevision, JsonValue, FlowCallSource, FlowResolvedI
 
 export const FlowInvocationCommand = { Invoke: 'session.flow.invoke', List: 'session.flow.invocations' } as const;
 export interface FlowInvocationInput {
+    /** Explicit independent call; ordinary submissions remain in the current Session. */
+    execution?: 'child';
     connectionBindings?: Record<string, string>; connectionId?: string; sessionId: string; requestId: string;
     flowId: string; revision: number; parameters: Record<string, JsonValue>;
     source?: FlowCallSource;
@@ -12,6 +14,9 @@ export interface FlowInvocationInput {
     retryOfSessionId?: string;
 }
 export interface FlowInvocationRecord extends FlowInvocationInput {
+    /** Host-owned route; parent records are references, not another execution. */
+    executionSessionId?: string;
+    callerSessionId?: string;
     target?: import('@itookit/llm-flow/contracts').TargetRef;
     /** Missing only in legacy records; use flowInvocationId for their stable read identity. */
     invocationId?: string;

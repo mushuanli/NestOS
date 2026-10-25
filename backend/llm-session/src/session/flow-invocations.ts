@@ -26,7 +26,7 @@ export class FlowInvocationService {
         private resolveConnection?: (sessionId: string, connectionId?: string) => Promise<string | undefined>,
         private invocationSessions?: FlowInvocationSessions,
         private runs?: Pick<DagCommandService, 'prepareRun' | 'submitPrepared'>,
-        private transfers?: Pick<ContentTransferService, 'read'>, private hostPorts?: SessionHostPorts) {}
+        private transfers?: Pick<ContentTransferService, 'read'> & Partial<Pick<ContentTransferService, 'createChild'>>, private hostPorts?: SessionHostPorts) {}
 
     register(): void {
         this.commands.register(FlowInvocationCommand.Invoke, args => this.invoke(args as FlowInvocationInput));
@@ -48,12 +48,16 @@ export class FlowInvocationService {
         if (entries.length === 0) return [];
         const session = await this.kernel.inspectSession(sessionId);
         const tasks = await session.listTasks();
-        return entries.map(entry => {
+        return (await Promise.all(entries.map(async entry => {
             const record = entry.value as unknown as FlowInvocationRecord;
             this.assertIdentity(record, sessionId);
-            const root = findFlowInvocationRoot(tasks, record);
-            return { ...record, ...(root ? { rootTaskId: root.id, error: undefined } : {}) };
-        }).sort((a, b) => a.createdAt - b.createdAt);
+            const executionTasks = record.executionSessionId
+                ? await (await this.kernel.inspectSession(record.executionSessionId)).listTasks() : tasks;
+            const root = findFlowInvocationRoot(executionTasks, record);
+            const childError = !root && record.executionSessionId
+                ? await this.childAdmissionError(record) : undefined;
+            return { ...record, ...(root ? { rootTaskId: root.id, error: undefined } : childError ? {error: childError} : {}) };
+        }))).sort((a, b) => a.createdAt - b.createdAt);
     }
 
     async recover(): Promise<void> {
@@ -81,13 +85,19 @@ export class FlowInvocationService {
             if (this.canWrite && !await this.canWrite(session.id)) continue;
             for (const record of await this.list(session.id, stored)) {
                 try {
+                    if (record.execution === 'child' && !record.error) {
+                        const routed = await this.invoke(record);
+                        if (routed.rootTaskId) await this.commands.execute(FlowCommand.RunResume,
+                            {sessionId: routed.executionSessionId, taskId: routed.rootTaskId});
+                        continue;
+                    }
                     if (!record.rootTaskId && !record.error) await this.invoke(record);
                     else if (record.rootTaskId) {
                         if (record.preparedGraph) {
                             await this.assertWritable(session.id);
                             await this.saveRoot(await this.kernel.openSession(session.id), record, record.rootTaskId);
                         }
-                        await this.commands.execute(FlowCommand.RunResume, { sessionId: session.id, taskId: record.rootTaskId });
+                        await this.commands.execute(FlowCommand.RunResume, { sessionId: record.executionSessionId ?? session.id, taskId: record.rootTaskId });
                     }
                 } catch (error) { console.error('Flow invocation recovery failed', session.id, record.requestId, error); }
             }
@@ -99,11 +109,13 @@ export class FlowInvocationService {
 
     private async submit(input: FlowInvocationInput): Promise<FlowInvocationRecord> {
         await this.assertWritable(input.sessionId);
+        if (input.execution === 'child' && !this.transfers?.createChild) throw new Error('Independent Flow calls are unavailable');
         // Mark the Session before its first invocation record is written, so a later boot knows
         // which Sessions to scan. A mark failure surfaces here instead of hiding a lost resume.
         await this.invocationSessions?.mark(input.sessionId);
         const session = await this.kernel.openSession(input.sessionId), key = PREFIX + input.requestId;
         let record = await this.admit(input, session);
+        if (record.execution === 'child') return this.submitChild(session, record);
         const existing = findFlowInvocationRoot(await session.listTasks(), record);
         if (existing) return this.saveRoot(session, record, existing.id);
         // Upgrade older intents only when no durable root already owns their graph.
@@ -121,6 +133,50 @@ export class FlowInvocationService {
             await session.setShared(key, json({ ...record, error: String(error) }));
             throw error;
         }
+    }
+
+    private async childAdmissionError(parent: FlowInvocationRecord): Promise<string | undefined> {
+        const child = await this.kernel.inspectSession(parent.executionSessionId!);
+        const stored = await child.getShared(PREFIX + parent.requestId);
+        if (!stored) return;
+        const record = stored.value as unknown as FlowInvocationRecord;
+        this.assertIdentity(record, parent.executionSessionId!);
+        if (record.invocationId !== parent.invocationId || record.callerSessionId !== parent.sessionId)
+            throw new Error('Independent Flow invocation identity conflict');
+        return record.error;
+    }
+
+    private async submitChild(parent: SessionHandle, record: FlowInvocationRecord): Promise<FlowInvocationRecord> {
+        if (record.executionSessionId) await this.assertWritable(record.executionSessionId);
+        const {sessionId} = await this.transfers!.createChild!({sessionId: parent.id, requestId: record.requestId, title: record.flow.name});
+        if (record.executionSessionId && record.executionSessionId !== sessionId) throw new Error('Independent Flow Session identity conflict');
+        if (!record.executionSessionId) {
+            record = {...record, executionSessionId: sessionId};
+            await parent.setShared(PREFIX + record.requestId, json(record));
+        }
+        await this.assertWritable(sessionId);
+        await this.invocationSessions?.mark(sessionId);
+        const child = await this.kernel.openSession(sessionId);
+        const input = {...record, sessionId, execution: undefined, executionSessionId: undefined,
+            callerSessionId: parent.id, rootTaskId: undefined, preparedGraph: undefined,
+            retryOfSessionId: record.retryOfInvocationId ? record.retryOfSessionId ?? parent.id : undefined};
+        await this.saveChildIntent(child, input);
+        const result = await this.submit(flowInvocationRequest(input));
+        return this.saveRoot(parent, record, result.rootTaskId!);
+    }
+
+    private async saveChildIntent(child: SessionHandle, input: FlowInvocationRecord): Promise<void> {
+        const key = PREFIX + input.requestId;
+        let stored = await child.getShared(key);
+        if (!stored) {
+            const prepared = await this.prepare(input);
+            try {await child.setShared(key, json(prepared), {expectedVersion: null}); return;}
+            catch (error) {stored = await child.getShared(key); if (!stored) throw error;}
+        }
+        const record = stored.value as unknown as FlowInvocationRecord;
+        this.assertSame(record, input);
+        if (record.invocationId !== input.invocationId || record.callerSessionId !== input.callerSessionId)
+            throw new Error('Independent Flow invocation identity conflict');
     }
 
     private async start(record: FlowInvocationRecord): Promise<{ taskId: string }> {
@@ -149,7 +205,7 @@ export class FlowInvocationService {
     }
 
     private async prepare(record: FlowInvocationRecord): Promise<FlowInvocationRecord> {
-        if (!this.runs) return record;
+        if (!this.runs || record.execution === 'child') return record;
         const preparedGraph = await this.runs.prepareRun({ sessionId: record.sessionId, flow: record.flow,
             parameters: invocationParameters(record), connectionId: record.connectionId, connectionBindings: record.connectionBindings,
             fallbackConnectionId: record.resolvedConnectionId ?? null });
@@ -209,7 +265,7 @@ export class FlowInvocationService {
         try {
             const record = await this.submit(input);
             logger.info('Flow invocation admitted', {...metadata, outcome: 'success', taskId: record.rootTaskId,
-                invocationId: flowInvocationId(record), retryOfInvocationId: record.retryOfInvocationId,
+                invocationId: flowInvocationId(record), retryOfInvocationId: record.retryOfInvocationId, executionSessionId: record.executionSessionId,
                 resolvedParameterCount: Object.keys(invocationParameters(record)).length, inputSource: input.source?.kind ?? 'arguments', durationMs: Date.now() - started});
             return record;
         } catch (error) {
@@ -225,7 +281,7 @@ export class FlowInvocationService {
     private assertSame(record: FlowInvocationRecord, input: FlowInvocationInput): void {
         this.assertIdentity(record, input.sessionId);
         invocationParameters(record);
-        if (record.requestId !== input.requestId || record.retryOfInvocationId !== input.retryOfInvocationId || record.retryOfSessionId !== input.retryOfSessionId
+        if (record.execution !== input.execution || record.requestId !== input.requestId || record.retryOfInvocationId !== input.retryOfInvocationId || record.retryOfSessionId !== input.retryOfSessionId
             || canonical(record.source ?? null) !== canonical(input.source ?? null) || canonical(record.expectedSignature ?? null) !== canonical(input.expectedSignature ?? null)
             || canonical(record.inputSources ?? {}) !== canonical(input.inputSources ?? {}) || canonical(record.connectionBindings ?? {}) !== canonical(input.connectionBindings ?? {}) || record.connectionId !== input.connectionId || record.flowId !== input.flowId || record.revision !== input.revision || canonical(record.parameters) !== canonical(input.parameters)) {
             throw new Error('Flow invocation request id was already used with different arguments');

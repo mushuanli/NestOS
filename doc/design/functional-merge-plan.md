@@ -96,7 +96,7 @@ C4Component
 | F13 | 不可变输入附件与内容身份 | Session + app-core | B02 | 已合入 `937fe32b` / `a2989fc4`；Session 冻结、宿主上传核对和 UI 不可变写闭环；远程编码及长期回收另列 |
 | F14 | 通用文件参数与就绪预检 | app-core + Flow + UI | F11 / F13 | 已合入 `a2989fc4`；文件表单、默认/空文件、真实上传、接纳/编辑/派发前核验；原回执查询不重读损坏输入 |
 | F15 | Harness 资产编码与能力准入 | app-core + adapter + driver | F13 / F14 | 本批合入；普通 Session 与 Flow 声明附件贯通，能力/摘要错误在 create/turn 前拒绝，原操作核对不重读输入；见第 13 节 |
-| F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；独立子 Session 路由和函数调用展示仍未完成 |
+| F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；宿主子 Session 路由见第 26 节；UI 默认独立入口和函数调用展示仍未完成 |
 | F17 | Flow 控制树与调度屏障 | Flow + Kernel + UI/CLI | F02 / F16 | Flow 控制屏障由 `dc20beb2` 合入；UI 卡片/详情接线见第 18 节，CLI 显式入口见第 19 节；历史回执与卡片跨视图恢复见第 20—21 节；独立 DAG 页共用控制与持久台账见第 23 节；代码及隔离组合验收完成，证据见第 24 节，生产远端单列验收 |
 | F18 | 长活 Effect 审批准入 | Kernel + Harness adapter | F02 / F06 | 本批合入；新审批转发与暂停同事务校验，held 不转成 unknown，见第 17 节 |
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
@@ -552,3 +552,31 @@ C4Component
 本批只修复这一已复现的恢复缺口；F16 的统一独立子 Session 路由、持久调用者关联和函数视图仍未交付。现有 UI 的 create-child 再 invoke 两步流程不能作为完整统一接纳协议，下一步仍须收敛到宿主调用入口，不能仅修改默认下拉框。
 
 验证：首次创建、已有索引追加、扫描结果写入三个故障先在旧实现失败；修复后新增四项回归（含已写入丢回复）通过。隔离 Session 全套 440 项、类型检查、ESM/CJS/声明构建、15 个 Mermaid 图和 16 个本地链接检查通过。未部署或重启。
+
+## 26. F16 宿主持久子 Session 路由
+
+FlowInvocationService 的既有 invoke 入口增加显式 `execution: 'child'`。父 Session 持久保存冻结路由意图；复用 ContentTransferService 的幂等创建、存储准备和授权，再在子 Session 保存调用及编译计划。父级只保留执行引用，不入队、不创建根 Task，也不复制执行终态。父子引用共用同一个 Invocation 身份，重跑另建 Invocation 并保留原来源 Session。
+
+```mermaid
+C4Component
+  title 独立 Flow 调用的宿主持久归属
+  Component(caller, "调用入口", "CLI / UI / 宿主", "稳定 requestId，明确选择 child")
+  Component(admission, "FlowInvocationService", "Session 用例", "冻结来源与实参，恢复原路由，接纳一次执行")
+  Component(child, "ContentTransferService", "既有子会话用例", "幂等创建、准备执行存储、写权限")
+  ContainerDb(parent, "父 Session shared records", "Kernel 既有存储", "路由意图与 executionSessionId / rootTaskId 引用")
+  ContainerDb(execution, "子 Session shared records / Tasks", "Kernel 既有存储", "真实 Invocation、编译计划和执行事实")
+  Rel(caller, admission, "session.flow.invoke")
+  Rel(admission, parent, "先固定路由意图")
+  Rel(admission, child, "同一父 Session / requestId")
+  Rel(child, execution, "准备存储和授权")
+  Rel(admission, execution, "先保存编译计划，再提交根 Task")
+  Rel(admission, parent, "保存实际执行引用；丢回复只修复原关联")
+```
+
+父级路由意图不等于执行已接纳：根发布修订、来源与实参先冻结，实际子 Session 的连接绑定、依赖及编译计划在子级调用接纳前固定。接口成功返回原根 Task 后，才证明该次执行已接纳。父意图写回失败时可从子级持久记录定位原根并修复；恢复先处理原路由，不把子级调用再次路由到孙 Session。已记录的子 Session 不可写或已失效时拒绝，不静默改到另一个执行位置。
+
+读取结果和校验重跑来源同样沿 executionSessionId 定位真实根；父记录只投影子级事实。调用者不能注入 executionSessionId/callerSessionId 或冻结计划；组织关系不授予控制、不继承完整上下文。接口不默认改变普通调用目的地。
+
+本批交付宿主协议及运行时接线，尚不把 F16 标为完成。默认工作台与独立视图还需把分两步的 create-child/invoke 改为本入口，并将所属 Session 固定到 OperationLedger；父级函数卡片、打开真实子会话、不同执行 Session 的控制与审批投影也仍需接线。F20—F24 及生产验收继续保留。
+
+验证：隔离 Session 448 项、宿主 Flow 23 项通过（包含真实 ApplicationRuntime 的子会话存储与写授权准备），Session/app-core 类型检查、Session ESM/CJS/声明构建及 16 个 Mermaid 图、16 个本地链接通过。新增回归覆盖同请求幂等、两次独立运行、创建丢回执、父级根引用写回失败、原重跑来源、父级读取子输出、子级写权拒绝和伪造路由字段。子级已记录的启动失败只向父级投影，恢复不会自动重试，用户显式重试保留原身份。未部署或重启。

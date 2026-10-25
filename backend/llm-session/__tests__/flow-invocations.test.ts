@@ -1,3 +1,4 @@
+import {ContentTransferService} from '../src/session/content-transfers';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { Kernel } from '@itookit/durable-kernel';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
@@ -530,4 +531,149 @@ it('removes an admission graph left behind after the durable root was created', 
     expect(saved.rootTaskId).toBe(call.rootTaskId); expect(saved).not.toHaveProperty('preparedGraph');
     expect(fixture.catalog.getConnection).toHaveBeenCalledTimes(lookups);
     expect((await session.listTasks()).filter(task => task.labels?.kind === 'flow-root')).toHaveLength(1);
+});
+
+async function childCallFixture() {
+    const fs = await manager.openFileSystem('/child-sessions'), repository = new SessionRepository(fs);
+    await repository.init(); await repository.ensureSession('s', 'Parent');
+    kernel.registerStorageResolver(new SessionDirectoryStorageResolver(fs));
+    const transfers = new ContentTransferService({kernel, repository, commands});
+    const create = (canWrite?: (id: string) => Promise<boolean>) => new FlowInvocationService(kernel, definitions, commands, canWrite, undefined, undefined,
+        undefined, undefined, transfers);
+    return {repository, transfers, create};
+}
+
+it('routes independent calls to distinct child Sessions and keeps one execution for a repeated request', async () => {
+    const f = await childCallFixture();
+    try {
+        const routed = f.create(), request = {...input('independent'), execution: 'child' as const};
+        const first = await routed.invoke(request), repeated = await routed.invoke(request);
+        const next = await routed.invoke({...request, requestId: 'independent-again'});
+        expect(repeated).toEqual(first);
+        expect(first.executionSessionId).toBeTruthy(); expect(next.executionSessionId).not.toBe(first.executionSessionId);
+        expect(next.invocationId).not.toBe(first.invocationId);
+        expect((await f.repository.getManifest(first.executionSessionId!)).parentSessionId).toBe('s');
+        expect(await kernel.listSessionTasks('s')).toEqual([]);
+        const [child] = await routed.list(first.executionSessionId!);
+        expect(child).toMatchObject({callerSessionId: 's', invocationId: first.invocationId, rootTaskId: first.rootTaskId});
+        expect(child.execution).toBeUndefined();
+        expect((await kernel.listSessionTasks(first.executionSessionId!)).filter(task => task.labels?.kind === 'flow-root')).toHaveLength(1);
+        await expect(routed.invoke({...request, execution: undefined})).rejects.toThrow('different arguments');
+        expect(await routed.list('s')).toHaveLength(2);
+    } finally {await f.repository.dispose();}
+});
+
+it('recovers the same frozen child call after child creation loses its reply', async () => {
+    const f = await childCallFixture();
+    const create = f.transfers.createChild.bind(f.transfers); let originalChild: string | undefined;
+    vi.spyOn(f.transfers, 'createChild').mockImplementationOnce(async args => {
+        const result = await create(args); originalChild = result.sessionId; throw new Error('Lost child reply');
+    });
+    try {
+        const request = {...input('lost-child'), execution: 'child' as const};
+        await expect(f.create().invoke(request)).rejects.toThrow('Lost child reply');
+        const [intent] = await f.create().list('s');
+        expect(intent.parameters).toEqual(request.parameters); expect(intent.rootTaskId).toBeUndefined();
+        await f.create().recover();
+        const [recovered] = await f.create().list('s');
+        expect(recovered).toMatchObject({executionSessionId: originalChild, invocationId: intent.invocationId});
+        expect(recovered.rootTaskId).toBeTruthy();
+        expect(await f.repository.list()).toHaveLength(2);
+        expect(await kernel.listSessionTasks('s')).toEqual([]);
+        expect((await f.create().invoke(request)).rootTaskId).toBe(recovered.rootTaskId);
+    } finally {await f.repository.dispose();}
+});
+
+it('rejects an invalid child call before creating a child or persisting a route', async () => {
+    const f = await childCallFixture();
+    try {
+        await expect(f.create().invoke({...input('invalid-child'), parameters: {}, execution: 'child'})).rejects.toThrow();
+        expect(await f.repository.list()).toHaveLength(1);
+        expect(await f.create().list('s')).toEqual([]);
+    } finally {await f.repository.dispose();}
+});
+
+it('repairs a lost parent execution link using the original child root without running it twice', async () => {
+    const f = await childCallFixture(), original = kernel.openSession.bind(kernel); let failed = false;
+    vi.spyOn(kernel, 'openSession').mockImplementation(async (...args) => {
+        const opened = await original(...args);
+        if (opened.id !== 's') return opened;
+        return Object.assign(Object.create(opened), {setShared: async (...write: Parameters<typeof opened.setShared>) => {
+            const record = write[1] as unknown as FlowInvocationRecord;
+            if (write[0] === 'flow.invocation.lost-link' && record.rootTaskId && !failed) {failed = true; throw new Error('Lost parent link');}
+            return opened.setShared(...write);
+        }});
+    });
+    try {
+        const request = {...input('lost-link'), execution: 'child' as const};
+        await expect(f.create().invoke(request)).rejects.toThrow('Lost parent link');
+        const [before] = await f.create().list('s'); expect(before.rootTaskId).toBeTruthy();
+        const parent = await original('s');
+        expect((await parent.getShared('flow.invocation.lost-link'))?.value).not.toHaveProperty('rootTaskId');
+        await f.create().recover();
+        expect((await parent.getShared('flow.invocation.lost-link'))?.value).toMatchObject({rootTaskId: before.rootTaskId});
+        expect((await f.create().invoke(request)).rootTaskId).toBe(before.rootTaskId);
+        expect((await kernel.listSessionTasks(before.executionSessionId!)).filter(task => task.labels?.kind === 'flow-root')).toHaveLength(1);
+    } finally {await f.repository.dispose();}
+});
+
+it('keeps the original rerun source Session when a new invocation executes in a child', async () => {
+    const f = await childCallFixture();
+    try {
+        const routed = f.create(), source = await routed.invoke(input('rerun-source'));
+        await finishInvocation(source);
+        const result = await routed.invoke({...input('child-rerun'), execution: 'child', retryOfInvocationId: source.invocationId});
+        const [child] = await routed.list(result.executionSessionId!);
+        expect(child).toMatchObject({retryOfInvocationId: source.invocationId, retryOfSessionId: 's'});
+        expect((await routed.list('s')).find(call => call.requestId === 'child-rerun')?.rootTaskId).toBe(result.rootTaskId);
+        expect((await (await kernel.openTask(source.rootTaskId!)).status()).task.status).toBe('succeeded');
+    } finally {await f.repository.dispose();}
+});
+
+it('reads child results and reruns a completed child call from its original parent reference', async () => {
+    const f = await childCallFixture();
+    try {
+        const routed = f.create(); routed.register();
+        const first = await routed.invoke({...input('first-child'), execution: 'child'});
+        await finishInvocation((await routed.list(first.executionSessionId!))[0]);
+        const capture = await f.transfers.capture('s');
+        expect(capture.outputs.some(output => output.taskId === first.rootTaskId)).toBe(true);
+        const next = await routed.invoke({...input('next-child'), execution: 'child', retryOfInvocationId: first.invocationId});
+        expect(next.executionSessionId).not.toBe(first.executionSessionId);
+        expect(next.invocationId).not.toBe(first.invocationId);
+        expect((await routed.list(next.executionSessionId!))[0]).toMatchObject({retryOfInvocationId: first.invocationId, retryOfSessionId: 's'});
+    } finally {await f.repository.dispose();}
+});
+
+it('checks child write ownership before execution and ignores a forged execution destination', async () => {
+    const f = await childCallFixture();
+    try {
+        const request = {...input('owned-child'), execution: 'child' as const, executionSessionId: 'foreign', callerSessionId: 'foreign'};
+        await expect(f.create(async id => id === 's').invoke(request)).rejects.toThrow('owned by another host');
+        const [intent] = await f.create().list('s');
+        expect(intent.executionSessionId).toBeTruthy(); expect(intent.executionSessionId).not.toBe('foreign');
+        expect(intent.callerSessionId).toBeUndefined();
+        expect(await kernel.listSessionTasks(intent.executionSessionId!)).toEqual([]);
+        const recovered = await f.create().invoke(request);
+        expect(recovered.executionSessionId).toBe(intent.executionSessionId);
+        expect((await f.create().list(recovered.executionSessionId!))[0].callerSessionId).toBe('s');
+    } finally {await f.repository.dispose();}
+});
+
+it('does not automatically retry a recorded child admission failure during recovery', async () => {
+    const f = await childCallFixture(), execute = commands.execute.bind(commands);
+    const calls = vi.spyOn(commands, 'execute').mockImplementation(async (name, args) => {
+        if (name === FlowCommand.RunStart) throw new Error('Recorded start failure');
+        return execute(name, args);
+    });
+    try {
+        const request = {...input('failed-child'), execution: 'child' as const};
+        await expect(f.create().invoke(request)).rejects.toThrow('Recorded start failure');
+        expect((await f.create().list('s'))[0].error).toContain('Recorded start failure');
+        const before = calls.mock.calls.filter(([name]) => name === FlowCommand.RunStart).length;
+        await f.create().recover();
+        expect(calls.mock.calls.filter(([name]) => name === FlowCommand.RunStart)).toHaveLength(before);
+        calls.mockRestore();
+        expect((await f.create().invoke(request)).rootTaskId).toBeTruthy();
+    } finally {calls.mockRestore(); await f.repository.dispose();}
 });

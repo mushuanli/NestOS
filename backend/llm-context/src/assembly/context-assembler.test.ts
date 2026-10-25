@@ -148,3 +148,40 @@ describe('ContextAssembler', () => {
         expect(result.messages.some(message => message.content === 'newer question')).toBe(true);
     });
 });
+
+it('does not discard a pending attachment change just because the text and owning Round match', async () => {
+    const original = {role: 'user' as const, content: 'Review', attachments: [{type: 'file' as const, source: 'original.txt'}]};
+    const assembler = new ContextAssembler({profileStore: {getProfile: async () => null},
+        readRound: async () => ({input: [original], output: [], historyParentIds: []})});
+    const plan: ContextPlan = {branchRef: 'main', branchHead: 'r1', pendingRoundId: 'r1', profile: {id: '', revision: 0},
+        explicitInputs: [], pendingUserMessage: {...original, attachments: [{type: 'file', source: 'changed.txt'}]}};
+    const changed = await assembler.assemble(plan, 'changed', {id: 'agent', version: '1'}, [], undefined, {persist: false});
+    expect(changed.messages).toHaveLength(2);
+    expect(changed.messages.at(-1)?.attachments?.[0].source).toBe('changed.txt');
+    const same = await assembler.assemble({...plan, pendingUserMessage: original}, 'same', {id: 'agent', version: '1'}, [], undefined, {persist: false});
+    expect(same.messages).toHaveLength(1);
+});
+
+it('keeps content and attachments separate when deduplicating a pending input', async () => {
+    const attachments = [{type: 'file' as const, source: 'evidence.txt'}];
+    const original = {role: 'user' as const, content: `Review\n${JSON.stringify(attachments)}`};
+    const assembler = new ContextAssembler({profileStore: {getProfile: async () => null},
+        readRound: async () => ({input: [original], output: [], historyParentIds: []})});
+    const pending = {role: 'user' as const, content: 'Review', attachments};
+    const plan: ContextPlan = {branchRef: 'main', branchHead: 'r1', pendingRoundId: 'r1', profile: {id: '', revision: 0},
+        explicitInputs: [], pendingUserMessage: pending};
+    const result = await assembler.assemble(plan, 'separate-materials', {id: 'agent', version: '1'}, [], undefined, {persist: false});
+    expect(result.messages).toEqual([original, pending]);
+});
+
+it('keeps literal JSON text distinct from structured message content', async () => {
+    const content = [{type: 'text' as const, text: 'Review'}];
+    const original = {role: 'user' as const, content: JSON.stringify(content)};
+    const pending = {role: 'user' as const, content};
+    const assembler = new ContextAssembler({profileStore: {getProfile: async () => null},
+        readRound: async () => ({input: [original], output: [], historyParentIds: []})});
+    const plan: ContextPlan = {branchRef: 'main', branchHead: 'r1', pendingRoundId: 'r1', profile: {id: '', revision: 0},
+        explicitInputs: [], pendingUserMessage: pending};
+    const result = await assembler.assemble(plan, 'literal-and-structured', {id: 'agent', version: '1'}, [], undefined, {persist: false});
+    expect(result.messages).toEqual([original, pending]);
+});

@@ -20,6 +20,8 @@
 
 `ChatMessage`、`ToolDefinition`、`ContextPlan`、`ContextSnapshot`、`ContextCompactionPolicy` 等类型以 Context 为唯一来源。llm-tasks 入口保留相关类型转发，原 llm-common 与 common 的 LLM 转发均已删除；Session 的 Profile 文件存储仍由 adapter 负责。
 
+当前输入仅在所属 Round 的实际消息已被选入且正文结构、附件身份均相同时去重。正文与附件分别比较，字面 JSON 文本不等同于结构化消息；附件参与预算估算，附件变更不能被相同正文吞掉。
+
 ## 持久执行
 
 ```text

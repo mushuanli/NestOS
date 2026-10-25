@@ -244,9 +244,11 @@ export class ContextAssembler implements IContextAssembler {
 }
 
 function messageText(message: ChatMessage): string {
-    return typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+    const content = typeof message.content === 'string' ? message.content : JSON.stringify(message.content);
+    return message.attachments?.length ? `${content}\n${JSON.stringify(message.attachments)}` : content;
 }
 
 function sameUserMessage(candidate: ChatMessage, pending: ChatMessage): boolean {
-    return candidate.role === 'user' && messageText(candidate) === messageText(pending);
+    return candidate.role === 'user' && JSON.stringify([candidate.content, candidate.attachments ?? []])
+        === JSON.stringify([pending.content, pending.attachments ?? []]);
 }

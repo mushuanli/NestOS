@@ -128,3 +128,77 @@ it('shows pending interactions outside collapsed details and opens the existing 
     expect(execute.mock.calls.every(([name]) => name === IndependentCallCommand.List)).toBe(true);
     view.interactions = {total: 0, items: []}; await panel.refresh(); expect(pending.hidden).toBe(true);
 });
+it('preserves an answer editor during refresh and reconciles it after the pending interaction disappears', async () => {
+    const view = call(); view.controlCapabilities!.respond = true;
+    view.interactions = {total: 1, items: [{taskId: 'worker', interactionId: 'ask', kind: 'input', prompt: 'Short', promptTruncated: true, requestedAt: 1}]};
+    let saved: readonly OperationRecord[] = [], answer: any, detailReads = 0;
+    const execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.Interaction) {detailReads++; return {...args, interaction: {id: 'ask', kind: 'input', prompt: '<full prompt>', payload: {instructions: 'Full material'}, requestedAt: 1, status: 'pending'}};}
+        if (name === IndependentCallCommand.Respond) {answer = args; view.interactions = {total: 0, items: []}; return new Promise(() => {});}
+        if (name === IndependentCallCommand.ResponseReceipt) return {...args, receipt: {requestId: args.requestId, taskId: args.targetTaskId, interactionId: args.interactionId, resolvedAt: 2}};
+        throw new Error(name);
+    });
+    const operations = createOperationLedger({save: async records => {saved = structuredClone(records);}});
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'}); await panel.refresh();
+    document.querySelector<HTMLButtonElement>('[data-call-answer-action]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-call-answer] textarea')).not.toBeNull());
+    const editor = document.querySelector<HTMLTextAreaElement>('[data-call-answer] textarea')!; editor.value = '{"literal":"text"}';
+    await panel.refresh(); expect(document.querySelector('[data-call-answer] textarea')).toBe(editor); expect(editor.value).toContain('literal'); expect(detailReads).toBe(1);
+    editor.closest('form')!.dispatchEvent(new Event('submit', {cancelable: true}));
+    await vi.waitFor(() => expect(answer?.value).toBe('{"literal":"text"}'));
+    await panel.refresh(); await vi.waitFor(() => expect(saved[0]?.status).toBe('accepted'));
+    expect(saved[0].draft).toBeUndefined(); expect(saved[0].input).toMatchObject({protocol: 'independent-call-response-v1', request: {value: '{"literal":"text"}'}});
+    expect(execute.mock.calls.filter(([name]) => name === IndependentCallCommand.Respond)).toHaveLength(1);
+});
+it('requires full details before approving and keeps JSON parse errors editable without dispatch', async () => {
+    const view = call(); view.controlCapabilities!.respond = true;
+    view.interactions = {total: 1, items: [{taskId: 'worker', interactionId: 'ask', kind: 'input', prompt: 'Input', promptTruncated: false, requestedAt: 1}]};
+    const execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.Interaction) return {...args, interaction: {id: 'ask', kind: 'input', prompt: 'Input', requestedAt: 1, status: 'pending'}};
+        throw new Error('No answer expected');
+    });
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations: createOperationLedger(), branch: () => 'main'}); await panel.refresh();
+    expect(document.querySelector('[data-call-answer] form')).toBeNull(); document.querySelector<HTMLButtonElement>('[data-call-answer-action]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-call-answer] textarea')).not.toBeNull());
+    const row = document.querySelector<HTMLElement>('[data-call-answer]')!; row.querySelector('select')!.value = 'json'; row.querySelector('textarea')!.value = '{invalid';
+    row.querySelector('form')!.dispatchEvent(new Event('submit', {cancelable: true}));
+    await vi.waitFor(() => expect(row.textContent).toContain('JSON')); expect(row.querySelector('textarea')!.disabled).toBe(false);
+    expect(execute.mock.calls.some(([name]) => name === IndependentCallCommand.Respond)).toBe(false);
+});
+it('shows complete approval material and persists the explicit rejection without affecting cancellation', async () => {
+    const view = call(); view.controlCapabilities!.respond = true;
+    view.interactions = {total: 1, items: [{taskId: 'worker', interactionId: 'approve', kind: 'approval', prompt: 'Preview', promptTruncated: true, requestedAt: 1}]};
+    const operations = createOperationLedger(); let sent: any;
+    const execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.Interaction) return {...args, interaction: {id: 'approve', kind: 'approval', prompt: 'Approve full change', payload: {command: '<untrusted command>'}, requestedAt: 1, status: 'pending'}};
+        if (name === IndependentCallCommand.Respond) {sent = args; return {...args, receipt: {requestId: args.requestId, taskId: 'worker', interactionId: 'approve', resolvedAt: 2}};}
+        throw new Error(name);
+    });
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'}); await panel.refresh();
+    document.querySelector<HTMLButtonElement>('[data-call-answer-action]')!.click();
+    await vi.waitFor(() => expect(document.querySelector('[data-call-answer] form')).not.toBeNull());
+    const row = document.querySelector('[data-call-answer]')!; expect(row.textContent).toContain('<untrusted command>');
+    expect(row.querySelector('untrusted')).toBeNull(); row.querySelector<HTMLTextAreaElement>('textarea')!.value = 'Do not proceed';
+    row.querySelectorAll<HTMLButtonElement>('form button')[1].click();
+    await vi.waitFor(() => expect(sent?.value).toEqual({approved: false, note: 'Do not proceed'}));
+    expect(button().disabled).toBe(false); expect(operations.getSnapshot()[0].draft).toBeUndefined();
+});
+it('restores an unknown answer after its interaction leaves the pending list without creating another editor or response', async () => {
+    const view = call(); view.interactions = {total: 0, items: []}; view.controlCapabilities!.respond = true;
+    const request = {sessionId: 'parent', branchId: 'main', callId: 'call', executionSessionId: 'child', taskId: 'task', targetTaskId: 'worker', interactionId: 'ask', requestId: 'answer-saved', value: 'Saved answer'};
+    const operations = createOperationLedger({initial: [{context: {operationId: 'answer-saved', viewId: 'test'}, conversationId: 'parent', kind: 'command', status: 'unknown', input: {protocol: 'independent-call-response-v1', request}}]});
+    const execute = vi.fn(async (name: string, args?: any) => {
+        if (name === IndependentCallCommand.List) return [view];
+        if (name === IndependentCallCommand.ResponseReceipt) return args;
+        throw new Error('No new mutation or detail read');
+    });
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations, branch: () => 'main'}); await panel.refresh();
+    await vi.waitFor(() => expect(execute.mock.calls.some(([name]) => name === IndependentCallCommand.ResponseReceipt)).toBe(true));
+    expect(document.querySelector('[data-saved-answer]')!.textContent).toContain('Saved answer');
+    expect(document.querySelector('[data-call-answer] form')).toBeNull();
+    panel.setVisible(false); panel.setVisible(true); await panel.refresh();
+    expect(execute.mock.calls.some(([name]) => name === IndependentCallCommand.Respond)).toBe(false);
+});

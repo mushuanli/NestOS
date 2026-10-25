@@ -6,7 +6,7 @@ import type {ExecutionRef} from './conversation';
 export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect', List: 'session.calls.list',
     Cancel: 'session.call.cancel', CancellationReceipt: 'session.call.cancellation.receipt',
     Control: 'session.call.control', ControlReceipt: 'session.call.control.receipt',
-    Respond: 'session.call.respond', ResponseReceipt: 'session.call.response.receipt'} as const;
+    Respond: 'session.call.respond', ResponseReceipt: 'session.call.response.receipt', Interaction: 'session.call.interaction'} as const;
 /** Caller identity and selected materials; ancestry alone never imports conversation history. */
 export interface IndependentCallInput {request: SubmissionRequest; title: string; transfer?: TransferReference}
 export interface IndependentCallReceipt extends SubmissionReceipt {
@@ -30,7 +30,7 @@ export interface IndependentCallView {
     /** Bounded pending interaction summaries belonging to this execution tree. */
     interactions?: IndependentCallInteractions;
     /** Protocol support only; current write permission is revalidated on control. */
-    controlCapabilities?: {cancel: boolean; pause?: 'boundary' | 'none'; resume?: boolean; withdrawPause?: boolean};
+    controlCapabilities?: {cancel: boolean; respond?: boolean; pause?: 'boundary' | 'none'; resume?: boolean; withdrawPause?: boolean};
     /** Bounded display text only; execution consumers read the actual child output. */
     summary?: string;
 }
@@ -64,4 +64,9 @@ export interface IndependentCallResponseQuery extends IndependentCallControlQuer
 export interface IndependentCallResponseRequest extends IndependentCallResponseQuery {value: import('@itookit/durable-kernel/contracts').JsonValue}
 export interface IndependentCallResponseReceipt extends IndependentCallResponseQuery {
     receipt?: import('@itookit/durable-kernel/contracts').InteractionResponseReceipt;
+}
+
+export interface IndependentCallInteractionDetail extends IndependentCallResponseQuery {
+    interaction: Pick<import('@itookit/durable-kernel/contracts').InteractionRecord<import('@itookit/durable-kernel/contracts').JsonValue>,
+        'id' | 'kind' | 'prompt' | 'payload' | 'requestedAt' | 'status'>;
 }

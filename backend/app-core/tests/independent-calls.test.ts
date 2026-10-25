@@ -177,7 +177,7 @@ it('lists actual child results in the caller branch without acquiring a writer',
         receipt: {status: 'accepted', executionSessionId: accepted.executionSessionId}});
     expect(views[0].receipt.execution?.taskId).toBeTruthy();
     expect(views[0].executionState).toMatchObject({id: views[0].receipt.execution!.taskId, phase: 'done', settled: true, stopped: true, activeOperations: 0, controlEpoch: 0});
-    expect(views[0].controlCapabilities).toEqual({cancel: true, pause: 'boundary', resume: true, withdrawPause: true});
+    expect(views[0].controlCapabilities).toEqual({cancel: true, respond: true, pause: 'boundary', resume: true, withdrawPause: true});
     expect(views[0].executionState).not.toHaveProperty('exit');
     expect(views[0].executionState).not.toHaveProperty('output');
     expect(views[0].createdAt).toBeGreaterThan(0);

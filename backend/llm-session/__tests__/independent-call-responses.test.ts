@@ -45,3 +45,13 @@ it('keeps missing evidence unknown and rejects payloads on the read-only query',
     expect(f.respondInteraction).not.toHaveBeenCalled(); expect(f.canWrite).not.toHaveBeenCalled();
     expect(JSON.stringify(f.logger.warn.mock.calls)).not.toContain('PRIVATE');
 });
+it('reads complete interaction details without answers, writing permission, or another dispatch', async () => {
+    const f = fixture(); f.target.interactions.ask = {id: 'ask', kind: 'approval', prompt: 'Full prompt', payload: {command: 'Review me'},
+        requestedAt: 1, status: 'resolved', response: 'PRIVATE ANSWER', responseRequestId: 'answer', resolvedAt: 2};
+    const result = await f.handlers.get(IndependentCallCommand.Interaction)!(query);
+    expect(result).toEqual({...query, interaction: {id: 'ask', kind: 'approval', prompt: 'Full prompt', payload: {command: 'Review me'}, requestedAt: 1, status: 'resolved'}});
+    expect(f.canWrite).not.toHaveBeenCalled(); expect(f.respondInteraction).not.toHaveBeenCalled();
+    expect(JSON.stringify(result)).not.toContain('PRIVATE ANSWER');
+    f.target.interactions.ask.prompt = 'x'.repeat(1024 * 1024);
+    await expect(f.handlers.get(IndependentCallCommand.Interaction)!(query)).rejects.toMatchObject({code: 'CALL_INTERACTION_DETAIL_TOO_LARGE'});
+});

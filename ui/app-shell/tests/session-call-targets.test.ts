@@ -330,7 +330,7 @@ it.each(['local', 'rpc'])('controls a real ChatView over %s with hanging replies
     const mode = host.querySelector<HTMLSelectElement>('[data-selector-id="callMode"]')!; mode.value = 'independent'; mode.dispatchEvent(new Event('change', {bubbles: true}));
     view.setText('First task'); view.setArguments('{"count":0}'); await view.submit();
     await vi.waitFor(() => expect(host.querySelector<HTMLButtonElement>('[data-call-cancel]')?.hidden).toBe(false));
-    await vi.waitFor(() => expect(host.querySelector('[data-call-interactions]')?.textContent).toContain('Wait'));
+    await vi.waitFor(() => expect(host.querySelector('[data-call-answers]')?.textContent).toContain('Wait'));
     view.setText('Next task');
     const state = () => host.querySelector<HTMLButtonElement>('[data-call-state-control]')!;
     await vi.waitFor(() => expect(state()?.hidden).toBe(false)); state().click();
@@ -370,10 +370,22 @@ it.each(['local', 'rpc'])('recovers a persisted independent answer over %s after
     await vi.waitFor(async () => {call = (await commands.execute<import('@itookit/llm-session/contracts').IndependentCallView[]>('session.calls.list', {sessionId: f.sessionId}))[0]; expect(call.interactions?.total).toBe(1);});
     const scope = {sessionId: f.sessionId, branchId: 'main', callId: call.receipt.operationId, executionSessionId: call.receipt.executionSessionId!, taskId: call.receipt.execution!.taskId};
     await commands.execute('session.call.control', {...scope, requestId: 'pause-answer', action: 'pause', expectedEpoch: call.executionState!.controlEpoch});
-    const query = {...scope, targetTaskId: call.interactions!.items[0].taskId, interactionId: 'approval', requestId: 'answer-once'};
-    await expect(commands.execute('session.call.respond', {...query, value: 'PRIVATE ANSWER'})).rejects.toThrow('Answer reply lost');
+    await f.runtime.commandBus.execute(SessionCommand.Bind, {sessionId: f.sessionId});
+    const operations = createOperationLedger(), binding = createSessionChatBinding({session: f.runtime.sessionManager, commands, operations,
+        independentCalls: true, branch: () => 'main', hasCommittedSubmission: submission => hasCommittedSubmission(f.runtime.sessionRepository, f.sessionId, submission)});
+    cleanup.push(() => binding.dispose()); const host = document.createElement('section'); document.body.append(host);
+    const view = await createSessionChatView(host, binding); cleanup.push(() => view.destroy()); view.setText('Unrelated draft');
+    await vi.waitFor(() => expect(host.querySelector('[data-call-answer-action]')).not.toBeNull());
+    host.querySelector<HTMLButtonElement>('[data-call-answer-action]')!.click();
+    await vi.waitFor(() => expect(host.querySelector('[data-call-answer] textarea')).not.toBeNull());
+    host.querySelector<HTMLTextAreaElement>('[data-call-answer] textarea')!.value = 'PRIVATE ANSWER';
+    host.querySelector('[data-call-answer] form')!.dispatchEvent(new Event('submit', {cancelable: true}));
+    await vi.waitFor(() => expect(operations.getSnapshot().find(record => (record.input as any)?.protocol === 'independent-call-response-v1')?.status).toBe('accepted'));
+    const record = operations.getSnapshot().find(record => (record.input as any)?.protocol === 'independent-call-response-v1')!;
+    const {value: _value, ...query} = (record.input as any).request;
+    expect(record.draft).toBeUndefined(); expect(view.getDraft().text).toBe('Unrelated draft');
     const result = await commands.execute('session.call.response.receipt', query);
-    expect(result).toMatchObject({...query, receipt: {requestId: 'answer-once', taskId: query.targetTaskId, interactionId: 'approval'}});
+    expect(result).toMatchObject({...query, receipt: {requestId: query.requestId, taskId: query.targetTaskId, interactionId: 'approval'}});
     expect(JSON.stringify(result)).not.toContain('PRIVATE ANSWER'); expect(responses).toBe(1);
     expect((await f.runtime.kernel.kernel.task(scope.executionSessionId, scope.taskId)).control?.mode).toBe('pause');
     await commands.execute('session.call.cancel', {...scope, requestId: 'stop-answer', expectedEpoch: 1});

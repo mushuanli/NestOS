@@ -701,3 +701,7 @@ C4Dynamic
 `IndependentCallCommand.Respond`（`session.call.respond`）接收 `IndependentCallResponseRequest`：原调用控制作用域，加 `targetTaskId/interactionId/value`，`requestId` 为回答操作身份。宿主核对成员父链并复验父子写权限，Flow 回答保持原调度租约。value 必须是深度不超过 64 的 JSON 值；缺失或非 JSON 值不会自动转换。
 
 `IndependentCallCommand.ResponseReceipt`（`session.call.response.receipt`）接收同作用域但不含 value 的查询，返回可选 `InteractionResponseReceipt`。查询只读，不获取写权限或重新回答；缺失表示未知。回执不含正文，且不代表恢复执行或整树完成。Flow 的 RunRespond 新增可选 responseRequestId，原 requestId 仍为交互 ID。
+
+### 独立调用完整交互详情
+
+`IndependentCallCommand.Interaction`（`session.call.interaction`）接受 `IndependentCallResponseQuery`，返回同作用域及 `IndependentCallInteractionDetail.interaction`。只有请求详情和状态，不含已保存回答。查询沿原路由与任务父链验证成员，且不获取写权限。详情超过 1 MiB 时报告 CALL_INTERACTION_DETAIL_TOO_LARGE，不能返回截断后仍允许批准的请求。`controlCapabilities.respond` 表示支持回答端口，当前授权仍在写入时复验。

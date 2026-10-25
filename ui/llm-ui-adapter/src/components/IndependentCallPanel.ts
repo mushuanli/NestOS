@@ -1,5 +1,6 @@
+import {IndependentCallInteractions} from './IndependentCallInteractions';
 import {IndependentCallControl} from './IndependentCallControl';
-import {CallControlOperations, callCancellationProtocol, callStateControlProtocol} from '../independent/call-control';
+import {CallControlOperations, callCancellationProtocol, callStateControlProtocol, callResponseProtocol} from '../independent/call-control';
 import {TaskArtifactBrowser} from './dag/TaskArtifactBrowser';
 import {createModuleLogger, t} from '@itookit/common';
 import type {OperationLedger} from '@itookit/llm-ui';
@@ -7,7 +8,7 @@ import {IndependentCallCommand, type IndependentCallView, type ICommandBus} from
 import {canonicalJson} from '../utils/canonical-json';
 
 const log = createModuleLogger('independent-calls');
-interface Card {element: HTMLElement; control: IndependentCallControl; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
+interface Card {element: HTMLElement; control: IndependentCallControl; answers: IndependentCallInteractions; artifacts: TaskArtifactBrowser; artifactScope?: string; release?: () => void}
 interface Options {
     operations: OperationLedger;
     branch(): string;
@@ -62,7 +63,7 @@ export class IndependentCallPanel {
     reset(): void {++this.generation; this.refreshing = undefined; this.clearCards(); void this.refresh();}
     setVisible(value: boolean): void {
         this.visible = value; ++this.generation; this.refreshing = undefined; clearTimeout(this.timer);
-        for (const card of this.cards.values()) {card.artifacts.setVisible(value); card.control.setActive(value);}
+        for (const card of this.cards.values()) {card.artifacts.setVisible(value); card.control.setActive(value); card.answers.setActive(value);}
         if (value) void this.refresh();
     }
     destroy(): void {
@@ -71,7 +72,7 @@ export class IndependentCallPanel {
     private pending(): boolean {
         return this.options.operations.getSnapshot().some(record => record.conversationId === this.sessionId && ['submitting', 'unknown'].includes(record.status)
             && (record.kind === 'send' && !!(record.input as {independentTitle?: string}).independentTitle
-                || record.kind === 'command' && [callCancellationProtocol, callStateControlProtocol].includes((record.input as {protocol?: string})?.protocol ?? '')));
+                || record.kind === 'command' && [callCancellationProtocol, callStateControlProtocol, callResponseProtocol].includes((record.input as {protocol?: string})?.protocol ?? '')));
     }
     private async load(branch: string, current: () => boolean): Promise<void> {
         const calls = await this.commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: this.sessionId, branchId: branch});
@@ -111,8 +112,9 @@ export class IndependentCallPanel {
         let card = this.cards.get(id);
         if (!card) {
             const element = document.createElement('article'); element.className = 'flow-invocations__card'; element.dataset.independentCall = id;
-            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><section data-call-interactions aria-live="polite"></section><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div><div data-call-control></div>';
+            element.innerHTML = '<header><strong></strong><span role="status"></span></header><details><summary></summary><pre data-input></pre></details><p data-execution-state role="status"></p><section data-call-interactions aria-live="polite"></section><div data-call-answers></div><p data-preview-label></p><pre data-output></pre><button type="button" data-open-child></button><div data-artifacts></div><div data-call-control></div>';
             card = {element, control: new IndependentCallControl(element.querySelector('[data-call-control]')!, this.controls, () => {void this.refresh();}),
+                answers: new IndependentCallInteractions(element.querySelector('[data-call-answers]')!, this.commands, this.controls, () => {void this.refresh();}),
                 artifacts: new TaskArtifactBrowser(element, this.commands), release: this.options.mountCard?.(element, call)};
             if (!this.options.mountCard) this.element.append(element);
             this.cards.set(id, card);
@@ -127,7 +129,7 @@ export class IndependentCallPanel {
         element.querySelector('[data-output]')!.textContent = call.summary ?? '';
         const button = element.querySelector<HTMLButtonElement>('[data-open-child]')!; button.textContent = t('flow.invoke.openSession'); button.hidden = !call.receipt.executionSessionId || !this.options.openChild;
         button.onclick = () => {void this.open(call.receipt.executionSessionId!);};
-        this.renderInteractions(card, call);
+        this.renderInteractions(card, call); card.answers.update(call);
         this.renderArtifacts(card, call); card.control.update(call);
     }
     private renderInteractions(card: Card, call: IndependentCallView): void {
@@ -135,12 +137,12 @@ export class IndependentCallPanel {
         host.replaceChildren(); host.hidden = !pending?.total;
         if (!pending?.total) return;
         const heading = document.createElement('strong'); heading.textContent = t('callable.independent.interactions.pending', {count: pending.total}); host.append(heading);
-        for (const item of pending.items) {
+        for (const item of call.controlCapabilities?.respond ? [] : pending.items) {
             const prompt = document.createElement('p'); prompt.dataset.interactionId = item.interactionId; prompt.dataset.taskId = item.taskId;
             prompt.textContent = t(item.kind === 'approval' ? 'callable.independent.interactions.approval' : 'callable.independent.interactions.input')
                 + ': ' + item.prompt + (item.promptTruncated ? '…' : ''); host.append(prompt);
         }
-        const hint = document.createElement('p'); hint.textContent = t('callable.independent.interactions.open'); host.append(hint);
+        const hint = document.createElement('p'); hint.textContent = t(call.controlCapabilities?.respond ? 'callable.independent.answer.hint' : 'callable.independent.interactions.open'); host.append(hint);
         if (this.options.openChild && call.receipt.executionSessionId) {
             const button = document.createElement('button'); button.type = 'button'; button.dataset.openInteractions = '';
             button.textContent = t('callable.independent.interactions.action');
@@ -156,7 +158,7 @@ export class IndependentCallPanel {
         card.artifacts.clear(); card.artifactScope = key;
         card.element.querySelector('[data-artifacts]')!.innerHTML = scope ? card.artifacts.render(scope) : '';
     }
-    private disposeCard(card: Card): void {card.control.destroy(); card.artifacts.dispose(); card.release?.(); card.element.remove();}
+    private disposeCard(card: Card): void {card.control.destroy(); card.answers.destroy(); card.artifacts.dispose(); card.release?.(); card.element.remove();}
     private async open(id: string): Promise<void> {
         if (!this.visible || this.abort.signal.aborted) return;
         try {await this.options.openChild?.(id);}

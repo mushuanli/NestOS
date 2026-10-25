@@ -204,7 +204,7 @@ F13/F14 一批合入 51 个文件。上传身份与内容存储归 app-core，Se
 | --- | --- | --- | --- |
 | 会话与调用关联 | F16；Session/app-core | Flow 宿主关联见第 26 节；统一 Agent/Flow 宿主路由见第 37 节；裸 Task 入口仍待实施 | 持久保存原调用者、执行所属 Session、Invocation 及真实根 Task；组织关系不授予控制 |
 | 独立调用入口 | F16；F12 平级目标和台账基础已合入 | 独立 Flow 表单已接宿主子 Session 路由及台账（第 28 节）；Agent/Flow 宿主调用端口见第 37 节；CLI 消费见第 38 节；默认工作台和独立 ChatView 已接线（第 40、45 节），裸 Task 入口待统一；普通发送继续在当前 Session | 同 Flow 两次独立运行获得不同子 Session；同请求丢回复/重启返回同一子 Session；父子不重复入队 |
-| 最小函数调用组 | F24 基础；依赖 F16/F23 | 输入、摘要、按需产物及控制已接线（第 40—45、49—51 节）；审批/补参卡片与整树清理投影仍待完成 | 默认输入、状态、最终 value/artifacts；原 Invocation 稳定定位；审批、补参、失败及清理状态可见 |
+| 最小函数调用组 | F24 基础；依赖 F16/F23 | 输入、摘要、按需产物及控制已接线（第 40—45、49—51 节）；审批/补参卡片已接线（第 55 节）；整树清理与未提交交互草稿的重开恢复仍待完成 | 默认输入、状态、最终 value/artifacts；原 Invocation 稳定定位；审批、补参、失败及清理状态可见 |
 | 打开真实子会话 | F24 基础；依赖明确的 Session 关联 | Flow 调用卡片与统一 Agent/Flow 调用组均已接线（第 27、40、45 节）；裸 Task 入口仍待实施 | 打开既有 Session UI，不重跑、不复制历史；关闭观察不取消后台执行；不支持时不伪造入口 |
 | 高级会话详情 | F24 增强；在基础入口后扩展 | 后续增强；不阻塞最小函数视图交付 | 内嵌会话、完整节点/循环/尝试树、搜索与大历史分页，展开才加载 renderer |
 | 组合回归 | F09d/F12/F16/F17/F24 | 待完成 | 分支切换后核对原提交不消费新草稿；父取消只覆盖受管理调用；详情读取失败不改执行终态 |
@@ -1252,3 +1252,29 @@ Flow 的旧 RunRespond.requestId 仍表示交互 ID；新增可选 responseReque
 回答回执读取归入共享只读命令表，不获取写权限、恢复 Flow 句柄或重发回答。返回原作用域与可选 Kernel 回执；核对 requestId、实际 targetTaskId 和 interactionId，缺失保持未知。回执不携带回答正文；写入及失败诊断只记录安全身份、阶段、分类和耗时。父子任一只读时写入拒绝，查询仍可用。
 
 验证覆盖实际 Flow 暂停时回答、原回答变更冲突、完成后只读核对、父子权限拒绝、其他执行树拒绝、无交互拒绝、输入与回执错误，以及本地/RPC 回答已保存但回复丢失后的查询恢复。恢复不再次派发，也不解除暂停。父卡片的完整交互读取与回答 UI/台账仍待接线。
+
+## 55. 父调用卡片的完整交互与持久回答
+
+`session.call.interaction` 复用第 54 节的原调用/成员归属校验，冷读取完整请求的 prompt、payload、kind、requestedAt 和 status，不返回已保存回答或其他内部字段。它属于只读命令，不获取写权限或打开 Flow 写句柄。单项完整详情上限 1 MiB，超过时明确报 CALL_INTERACTION_DETAIL_TOO_LARGE，不能用截断预览进行批准；原子会话导航继续可用。
+
+```mermaid
+C4Component
+  title 父卡片回答复用独立 UI 与原操作台账
+  Component(rows, "IndependentCallInteractions", "宿主 UI 适配", "稳定行、按需详情、生命周期与核对")
+  Component(card, "InteractionCard", "独立 llm-ui", "输入字段与批准/拒绝按钮")
+  Component(ops, "CallControlOperations", "通用操作适配", "独立回答协议，保存后派发")
+  ContainerDb(ledger, "原 OperationLedger", "Session UI 持久化", "冻结目标与回答，不携带 composer draft")
+  Component(host, "Session 回答端口", "宿主", "真实归属与 Kernel 原子回执")
+  Rel(rows, card, "完整详情载入后挂载，普通刷新不重建")
+  Rel(rows, ops, "respond / reconcile")
+  Rel(ops, ledger, "independent-call-response-v1")
+  Rel(ops, host, "回答或只读查询原回执")
+```
+
+宿主 capability.respond 声明端口支持，不代表当前写权限。缺少能力时保持原子会话导航。已有多问题交互复用 agentQuestionFields/agentQuestionAnswer；普通输入使用文字模式，显式 JSON 模式才解析参数；批准/拒绝按既有 approved 对象提交。完整 payload 以文本展示，不作为 HTML 或代码执行，也不把任意 payload 猜成 schema。领域校验仍由原交互消费机制负责。
+
+回答协议与取消、暂停独立，但共用登记、持久核对和脱敏诊断；通用 ChatView reconcile 自动识别该协议。未知或已接纳回答不能重新分配 ID 再发送；同 ID 异输入拒绝。读取回执不携带回答正文。当前 pending 摘要已消失但回答回执未知时，行由原台账保留并继续核对；重开可显示已冻结回答的有界预览，不创建新回答。完成回执不会消费下一条聊天草稿，也不解除暂停。
+
+普通观察刷新保留现有编辑器、格式选择和未提交文字；隐藏/销毁隔离迟到详情和核对结果。这里没有宣称页面重开后恢复尚未提交的交互草稿：该持久编辑能力仍待后续实施。JSON schema 专用表单、超大详情分页/Artifact、整树清理和原生外部交互控制也仍未完成。
+
+验收包括完整详情去除回答正文、超限拒绝、JSON 解析失败不派发、字面 JSON 仍作为文字、完整审批材料及显式拒绝、普通刷新不丢编辑器、交互消失后的原台账核对、重开未知回答预览，以及真实本地/RPC ChatView 回答丢回复后持久结算并保留下一条草稿。没有新增轮询器或执行状态库。

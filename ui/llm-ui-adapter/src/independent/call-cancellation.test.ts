@@ -79,3 +79,21 @@ it.each(['action', 'epoch', 'accepted-id'])('rejects a mismatched state-control 
     await expect(view.controls.control(input, () => true)).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
     expect(view.ledger.getSnapshot()[0].status).toBe('unknown');
 });
+it('freezes an answer, restores by receipt without its body, and keeps its channel separate from controls', async () => {
+    const f = fixture(), first = f.open(), input = {...query(), targetTaskId: 'worker', interactionId: 'ask', value: {approved: true}};
+    f.execute.mockRejectedValueOnce(new Error('Lost answer reply'));
+    await expect(first.controls.respond(input, () => true)).rejects.toThrow('Lost answer reply');
+    f.execute.mockResolvedValue({...query(), targetTaskId: 'worker', interactionId: 'ask', receipt: {requestId: 'cancel', taskId: 'worker', interactionId: 'ask', resolvedAt: 1}});
+    const restored = f.open(); expect(await restored.controls.respond(input, () => true)).toMatchObject({status: 'accepted'});
+    expect(f.execute).toHaveBeenLastCalledWith(IndependentCallCommand.ResponseReceipt, {...query(), targetTaskId: 'worker', interactionId: 'ask'});
+    expect(restored.controls.latest('main', 'call', 'task')).toBeUndefined();
+    expect(restored.controls.answers('main', 'call', 'task')).toHaveLength(1);
+    await expect(restored.controls.respond({...input, value: false}, () => true)).rejects.toMatchObject({code: 'CALL_CONTROL_IDENTITY_MISMATCH'});
+    expect(f.execute.mock.calls.filter(([name]) => name === IndependentCallCommand.Respond)).toHaveLength(1);
+});
+it('does not accept a receipt for another interaction as the original answer', async () => {
+    const f = fixture(), first = f.open();
+    f.execute.mockResolvedValue({...query(), targetTaskId: 'worker', interactionId: 'ask', receipt: {requestId: 'cancel', taskId: 'worker', interactionId: 'other', resolvedAt: 1}});
+    await expect(first.controls.respond({...query(), targetTaskId: 'worker', interactionId: 'ask', value: 'Answer'}, () => true)).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
+    expect(first.ledger.getSnapshot()[0].status).toBe('unknown');
+});

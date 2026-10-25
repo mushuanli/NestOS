@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
+import {t} from '@itookit/common';
 import {createOperationLedger, type OperationRecord} from '@itookit/llm-ui';
 import {IndependentCallCommand, type IndependentCallView, type IndependentCallCancelRequest} from '@itookit/llm-session/contracts';
 import {IndependentCallPanel} from '../../llm-ui-adapter/src/components/IndependentCallPanel';
@@ -201,4 +202,19 @@ it('restores an unknown answer after its interaction leaves the pending list wit
     expect(document.querySelector('[data-call-answer] form')).toBeNull();
     panel.setVisible(false); panel.setVisible(true); await panel.refresh();
     expect(execute.mock.calls.some(([name]) => name === IndependentCallCommand.Respond)).toBe(false);
+});
+it('shows descendant settlement after the root has ended and waits for the whole tree to stop', async () => {
+    const view = call(); view.status = 'completed'; view.executionState!.phase = 'done'; view.executionState!.settled = true;
+    view.executionTree = {taskId: 'task', asOfSequence: 10, tasks: 3, unsettledTasks: 1, activeOperations: 2, stopped: false, settled: false};
+    const execute = vi.fn(async () => [view]);
+    panel = new IndependentCallPanel({execute} as never, 'parent', document.body, {operations: createOperationLedger(), branch: () => 'main'});
+    await panel.refresh(); expect(document.querySelector('[data-execution-state]')!.textContent).toBe(t('callable.independent.execution.treeCleaning', {tasks: 1, count: 2}));
+    view.executionTree = {...view.executionTree, asOfSequence: 11, unsettledTasks: 0, activeOperations: 0, stopped: true, settled: true};
+    await panel.refresh(); expect(document.querySelector('[data-execution-state]')!.textContent).toBe('');
+    view.status = 'running'; view.executionState!.phase = 'waiting'; view.executionState!.settled = false;
+    view.executionState!.stopped = true; view.executionState!.control = {requested: 'pause', acknowledged: true};
+    view.executionTree = {...view.executionTree, settled: false, stopped: false};
+    await panel.refresh(); expect(document.querySelector('[data-execution-state]')!.textContent).toBe(t('callable.independent.execution.pausing'));
+    view.executionTree.stopped = true;
+    await panel.refresh(); expect(document.querySelector('[data-execution-state]')!.textContent).toBe(t('callable.independent.execution.paused'));
 });

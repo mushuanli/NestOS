@@ -2733,6 +2733,7 @@ export const zhCN = {
     'callable.independent.status.failed': '失败',
     'callable.independent.status.cancelled': '已取消',
     'callable.independent.preview': '结果摘要；完整输出、交互和控制请打开子会话。',
+    'callable.independent.execution.treeCleaning': '主任务已结束，任务树仍有 {tasks} 个任务未收尾、{count} 个操作待确认。',
     'callable.independent.execution.cleaning': '主任务已结束，仍有 {count} 个操作待收尾。',
     'callable.independent.execution.paused': '主任务已确认暂停；子调用状态请打开子会话查看。',
     'callable.independent.execution.pausing': '主任务暂停尚未完成，正在等待安全边界或当前操作收尾。',

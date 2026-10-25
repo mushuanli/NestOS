@@ -2719,6 +2719,7 @@ export const en: LocaleStrings = {
     'callable.independent.status.failed': 'Failed',
     'callable.independent.status.cancelled': 'Cancelled',
     'callable.independent.preview': 'Result preview. Open the child conversation for full output, interactions and controls.',
+    'callable.independent.execution.treeCleaning': 'The primary task has ended; its task tree still has {tasks} unsettled tasks and {count} outstanding operations.',
     'callable.independent.execution.cleaning': 'The primary task has ended; {count} operations still need settlement.',
     'callable.independent.execution.paused': 'Primary task pause confirmed. Open the child conversation to inspect child calls.',
     'callable.independent.execution.pausing': 'Primary task pause is pending a safe boundary or operation cleanup.',

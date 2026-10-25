@@ -96,7 +96,7 @@ C4Component
 | F13 | 不可变输入附件与内容身份 | Session + app-core | B02 | 已合入 `937fe32b` / `a2989fc4`；Session 冻结、宿主上传核对和 UI 不可变写闭环；远程编码及长期回收另列 |
 | F14 | 通用文件参数与就绪预检 | app-core + Flow + UI | F11 / F13 | 已合入 `a2989fc4`；文件表单、默认/空文件、真实上传、接纳/编辑/派发前核验；原回执查询不重读损坏输入 |
 | F15 | Harness 资产编码与能力准入 | app-core + adapter + driver | F13 / F14 | 本批合入；普通 Session 与 Flow 声明附件贯通，能力/摘要错误在 create/turn 前拒绝，原操作核对不重读输入；见第 13 节 |
-| F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；宿主子 Session 路由见第 26 节；父级 Flow 卡片跨 Session 观察/控制/导航见第 27 节；独立 Flow 提交台账见第 28 节；统一 Agent/Flow 路由与 CLI 见第 37—38 节，父级查询与默认工作台入口见第 39—40 节；独立 ChatView 见第 45 节，父级取消与状态控制已由 `0e7546e3` / `be650ab8` / `5dd6c74c` 合入（第 49—51 节）；完整交互、原子回答回执及父卡片回答见第 52—55 节，跨页面交互草稿见第 56—58 节；裸 Task 入口、原生控制及整树资源收尾仍未完成 |
+| F16 | Invocation、重跑及输出身份 | Session + Flow | F08 / F11 | 根身份随 `937fe32b` 合入，节点/循环/worker 身份及历史投影由 `1b9734a3` 合入；宿主子 Session 路由见第 26 节；父级 Flow 卡片跨 Session 观察/控制/导航见第 27 节；独立 Flow 提交台账见第 28 节；统一 Agent/Flow 路由与 CLI 见第 37—38 节，父级查询与默认工作台入口见第 39—40 节；独立 ChatView 见第 45 节，父级取消与状态控制已由 `0e7546e3` / `be650ab8` / `5dd6c74c` 合入（第 49—51 节）；完整交互、原子回答回执及父卡片回答见第 52—55 节，跨页面交互草稿见第 56—58 节；同 Session 任务树收尾观察见第 62 节；裸 Task 入口、原生控制、跨 Session 资源收尾及终态根的后代控制仍未完成 |
 | F17 | Flow 控制树与调度屏障 | Flow + Kernel + UI/CLI | F02 / F16 | Flow 控制屏障由 `dc20beb2` 合入；UI 卡片/详情接线见第 18 节，CLI 显式入口见第 19 节；历史回执与卡片跨视图恢复见第 20—21 节；独立 DAG 页共用控制与持久台账见第 23 节；代码及隔离组合验收完成，证据见第 24 节，生产远端单列验收 |
 | F18 | 长活 Effect 审批准入 | Kernel + Harness adapter | F02 / F06 | 本批合入；新审批转发与暂停同事务校验，held 不转成 unknown，见第 17 节 |
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
@@ -1412,3 +1412,27 @@ C4Component
 local 范围分别在两层验证：Flow 编译器允许 local 发布定义被内部 Flow 调用，但拒绝直接作为根；应用宿主持久保留 local Agent 供内部查找，从聊天配置目录移除，并拒绝非法 exposure。当前规则继续禁止 Agent 直接包装 local Flow，不能仅靠隐藏 UI 放行。范围策略由原宿主与编译入口执行，未新增授权例外。
 
 这些用例属于内存宿主组合验收；不据此声明文件系统崩溃恢复、真实原生执行器或生产 HTTP 部署已验证。
+
+## 62. 同 Session 任务树的收尾观察
+
+调用卡片增加只读 executionTree 投影。Session 复用 Kernel.inspectSession().snapshot() 的既有事务快照，在同一水位取得根 Task 与后代事实，再按真实 parentTaskId 链和 rootTaskId 归属统计。根 executionState、任务树汇总及待答摘要从同一快照派生，不增加状态库、索引、调度器或一次额外的交互扫描。
+
+```mermaid
+C4Component
+  title 根终态与后代收尾分开展示
+  ContainerDb(kernel, "原 Kernel 事务存储", "Session tasks / events", "Task、Effect、父链与事件水位")
+  Component(snapshot, "inspectSession.snapshot", "既有只读机制", "同一事务取得任务集合与 asOfSequence")
+  Component(project, "readIndependentCallTree", "Session 投影", "归属校验、taskStat 汇总和有界待答摘要")
+  Component(card, "IndependentCallPanel", "UI 适配", "根结束后继续展示后代待收尾，复用原刷新器")
+  Rel(snapshot, kernel, "冷读取，不获取执行写权")
+  Rel(project, snapshot, "一次读取，原根与后代共用水位")
+  Rel(card, project, "session.calls.list 的 executionTree")
+```
+
+executionTree 包含 taskId、asOfSequence、tasks、unsettledTasks、activeOperations、stopped、settled。统计覆盖指定根本身及同一执行 Session 内的实际后代，排除兄弟调用和其他根。每个 Task 的 stopped/settled 沿用 Kernel.taskStat；根任务终态不覆盖子任务事实。父链缺失、循环、跨根边或调用身份不一致明确报 CALL_EXECUTION_TREE_INVALID，不能返回虚假的 settled=true。投影只返回计数和有界交互摘要，不返回 Task 输入、输出或 Effect 参数。
+
+根任务完成但后代仍有未终结任务或清理操作时，卡片继续显示未收尾数量并维持原活动刷新频率；暂停/中断展示使用任务树 stopped，不能只凭根停止宣称后代已停。旧宿主缺少 executionTree 时仍沿用明确标识为根任务的状态。控制操作继续使用原执行身份和控制版本，本批不扩大终态根的控制权限。
+
+范围与成本：该事实证明 Kernel 已确认的同 Session 任务/Effect 收尾，不证明工作区回滚或所有外部业务副作用撤销；独立持久所有者、其他执行 Session 的资源及终态根下仍运行子任务的控制入口继续单独实施。现有快照读取会扫描执行 Session 的任务集合，投影为线性归属遍历；超大任务树的成本优化仍需独立验收，不能将浏览器 DTO 很小等同于存储读取很小。
+
+验证覆盖根已 settled 而后代 cleanupPending、子树/兄弟隔离、原根与快照根版本变化、父链异常及输出隐私；真实应用宿主验证冷读取不打开写会话、终态树收尾和运行模型 Effect 暂停未停止。DOM 验证后代收尾提示消失条件，以及根暂停但后代未停止时仍显示暂停中。

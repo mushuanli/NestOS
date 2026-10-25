@@ -177,6 +177,8 @@ it('lists actual child results in the caller branch without acquiring a writer',
         receipt: {status: 'accepted', executionSessionId: accepted.executionSessionId}});
     expect(views[0].receipt.execution?.taskId).toBeTruthy();
     expect(views[0].executionState).toMatchObject({id: views[0].receipt.execution!.taskId, phase: 'done', settled: true, stopped: true, activeOperations: 0, controlEpoch: 0});
+    expect(views[0].executionTree).toMatchObject({taskId: views[0].receipt.execution!.taskId, unsettledTasks: 0, settled: true, stopped: true, activeOperations: 0});
+    expect(views[0].executionTree!.tasks).toBeGreaterThan(0); expect(views[0].executionTree!.asOfSequence).toBeGreaterThan(0);
     expect(views[0].controlCapabilities).toEqual({cancel: true, respond: true, pause: 'boundary', resume: true, withdrawPause: true});
     expect(views[0].executionState).not.toHaveProperty('exit');
     expect(views[0].executionState).not.toHaveProperty('output');
@@ -241,6 +243,8 @@ it('projects a real pause request without treating the running model Effect as s
         const calls = await f.runtime.commandBus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: f.parent});
         expect(calls[0].executionState).toMatchObject({id: taskId, controlEpoch: 1, control: {requested: 'pause'}, stopped: false, settled: false});
         expect(calls[0].executionState!.activeOperations).toBeGreaterThan(0);
+        expect(calls[0].executionTree).toMatchObject({taskId, stopped: false, settled: false});
+        expect(calls[0].executionTree!.activeOperations).toBeGreaterThan(0);
         expect(open).not.toHaveBeenCalled(); open.mockRestore();
     } finally {await (await (await kernel.openSession(receipt.executionSessionId!)).attachTask(taskId)).cancel();}
 }, 15000);

@@ -86,7 +86,7 @@ export class IndependentCallPanel {
             if (!current()) return;
             this.render(call);
             this.active ||= !call.status || !['completed', 'failed', 'cancelled'].includes(call.status)
-                || !!call.executionState && !call.executionState.settled;
+                || !!call.executionState && !call.executionState.settled || !!call.executionTree && !call.executionTree.settled;
         }
         const ids = new Set(calls.map(call => call.receipt.operationId));
         for (const [id, card] of this.cards) if (!ids.has(id)) {this.disposeCard(card); this.cards.delete(id);}
@@ -97,6 +97,7 @@ export class IndependentCallPanel {
             || receipt.operationId !== request.submission?.id || !['accepted', 'unknown'].includes(receipt.status)
             || receipt.executionSessionId === this.sessionId || receipt.status === 'accepted' && !receipt.executionSessionId
             || call.executionState && call.executionState.id !== receipt.execution?.taskId
+            || call.executionTree && call.executionTree.taskId !== receipt.execution?.taskId
             || receipt.execution && (receipt.execution.role !== 'primary' || typeof receipt.execution.taskId !== 'string' || !receipt.execution.taskId))
             throw Object.assign(new Error('CALL_VIEW_SCOPE_MISMATCH'), {code: 'CALL_VIEW_SCOPE_MISMATCH'});
     }
@@ -176,9 +177,11 @@ function statusText(call: IndependentCallView): string {
 function executionStateText(call: IndependentCallView): string {
     const state = call.executionState;
     if (!state) return '';
+    if (state.phase === 'done' && call.executionTree && !call.executionTree.settled)
+        return t('callable.independent.execution.treeCleaning', {tasks: call.executionTree.unsettledTasks, count: call.executionTree.activeOperations});
     if (state.phase === 'done') return state.settled ? '' : t('callable.independent.execution.cleaning', {count: state.activeOperations});
-    if (state.control.requested === 'pause') return t(state.stopped ? 'callable.independent.execution.paused' : 'callable.independent.execution.pausing');
-    if (state.control.requested === 'interrupt') return t(state.stopped ? 'callable.independent.execution.interrupted' : 'callable.independent.execution.interrupting');
+    if (state.control.requested === 'pause') return t((call.executionTree?.stopped ?? state.stopped) ? 'callable.independent.execution.paused' : 'callable.independent.execution.pausing');
+    if (state.control.requested === 'interrupt') return t((call.executionTree?.stopped ?? state.stopped) ? 'callable.independent.execution.interrupted' : 'callable.independent.execution.interrupting');
     if (state.blockedBy === 'session-control' || state.blockedBy === 'ancestor-control') return t('callable.independent.execution.held');
     return '';
 }

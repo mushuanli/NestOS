@@ -1,5 +1,5 @@
+import {readIndependentCallTree} from './independent-call-tree';
 import {IndependentCallResponses} from './independent-call-responses';
-import {readIndependentCallInteractions} from './independent-call-interactions';
 import {hasFlowControlTree} from '@itookit/llm-flow/contracts';
 import {IndependentCallControls} from './independent-call-controls';
 import {taskStat, KernelError, KernelErrorCode, type Kernel, type JsonValue} from '@itookit/durable-kernel';
@@ -131,13 +131,26 @@ export class IndependentCallService {
             throw failure('CALL_EXECUTION_CONFLICT');
         return task;
     }
-    private async executionProjection(receipt: IndependentCallReceipt): Promise<Pick<IndependentCallView, 'executionState' | 'controlCapabilities' | 'interactions'>> {
-        const task = await this.executionTask(receipt); if (!task) return {};
+    private async executionProjection(receipt: IndependentCallReceipt): Promise<Pick<IndependentCallView, 'executionState' | 'executionTree' | 'controlCapabilities' | 'interactions'>> {
+        const expected = await this.executionTask(receipt); if (!expected) return {};
+        const {task, tree: executionTree, interactions} = await this.readExecutionTree(receipt, expected);
         const {id, revision, phase, control, blockedBy, activeOperations, settled, stopped} = taskStat(task);
         const executionState: IndependentCallExecutionState = {id, revision, phase, control, blockedBy, activeOperations, settled, stopped, controlEpoch: task.control?.epoch ?? 0};
         const flow = task.program.kind === 'flow.aggregate' || task.labels?.kind === 'flow-root';
         const supported = !flow || hasFlowControlTree(task);
-        return {executionState, interactions: await readIndependentCallInteractions(this.options.kernel, task), controlCapabilities: {cancel: supported, respond: true, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
+        return {executionState, executionTree, interactions, controlCapabilities: {cancel: supported, respond: true, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
+    }
+    private async readExecutionTree(receipt: IndependentCallReceipt, expected: import('@itookit/durable-kernel').TaskRecord) {
+        const started = Date.now(); let outcome = 'failure', code: string | undefined, tasks: number | undefined;
+        try {const result = await readIndependentCallTree(this.options.kernel, expected); outcome = 'observed'; tasks = result.tree.tasks; return result;}
+        catch (error) {const supplied = (error as {code?: unknown})?.code;
+            code = typeof supplied === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(supplied) ? supplied : 'CALL_EXECUTION_TREE_READ_FAILED'; throw error;}
+        finally {
+            const safe = (value: string) => /^[\w:-]{1,256}$/.test(value) ? value : undefined;
+            const detail = {operation: 'call.list', operationId: safe(receipt.operationId), taskId: safe(expected.id), stage: 'execution-tree', outcome, code, tasks, durationMs: Date.now() - started};
+            try {if (code) this.host.logger.warn('Independent execution tree', detail); else this.host.logger.debug('Independent execution tree', detail);}
+            catch { /* Observation diagnostics never alter execution facts. */ }
+        }
     }
     private async round(route: CallRoute): Promise<Round | undefined> {
         if (!route.executionSessionId) return;

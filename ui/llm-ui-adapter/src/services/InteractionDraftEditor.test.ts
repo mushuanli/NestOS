@@ -54,3 +54,24 @@ it('does not turn a diagnostic callback failure into an uncertain write', async 
     const f = fixture(), editor = await InteractionDraftEditor.open(f.storage, scope, () => {throw new Error('Observer');});
     editor.save(content('Saved')); await expect(editor.flush()).resolves.toMatchObject({content: content('Saved')});
 });
+it('serializes edits behind an in-flight clear instead of writing against its obsolete revision', async () => {
+    const f = fixture(), editor = await InteractionDraftEditor.open(f.storage, scope, vi.fn()); editor.save(content('Submitted'));
+    const submitted = await editor.flush(), original = f.storage.write;
+    let release!: () => void;
+    f.storage.write = vi.fn(async change => {
+        if (change.content === null) await new Promise<void>(resolve => {release = resolve;});
+        return original(change);
+    });
+    const clearing = editor.clear(submitted); await vi.waitFor(() => expect(release).toBeTypeOf('function'));
+    editor.save(content('New while clearing')); await Promise.resolve();
+    expect(f.storage.write).toHaveBeenCalledTimes(1);
+    release(); await clearing; await editor.flush();
+    expect(f.get()).toMatchObject({revision: 3, content: content('New while clearing')});
+});
+it('does not consume an edit queued before the clear can start', async () => {
+    const f = fixture(), editor = await InteractionDraftEditor.open(f.storage, scope, vi.fn()); editor.save(content('Submitted'));
+    const submitted = await editor.flush(), clearing = editor.clear(submitted);
+    editor.save(content('New queued')); await clearing; await editor.flush();
+    expect(f.get()).toMatchObject({revision: 2, content: content('New queued')});
+    expect(vi.mocked(f.storage.write).mock.calls.every(([change]) => change.content !== null)).toBe(true);
+});

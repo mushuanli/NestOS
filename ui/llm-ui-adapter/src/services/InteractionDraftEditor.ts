@@ -6,15 +6,17 @@ import {canonicalJson} from '../utils/canonical-json';
 export class InteractionDraftEditor {
     private tail: Promise<void> = Promise.resolve();
     private failed?: {change: InteractionDraftWrite; error: unknown};
+    private editRevision = 0;
     private desired: InteractionDraftContent | null;
     private constructor(private storage: InteractionDraftStorage, private scope: InteractionDraftScope,
         private record: InteractionDraftRecord | undefined, private observer: (error?: unknown) => void) {this.desired = record?.content ?? null;}
     static async open(storage: InteractionDraftStorage, scope: InteractionDraftScope, report: (error?: unknown) => void): Promise<InteractionDraftEditor> {
-        return new InteractionDraftEditor(storage, structuredClone(scope), await storage.read(scope), report);
+        const frozen = structuredClone(scope), record = await storage.read(frozen);
+        return new InteractionDraftEditor(storage, frozen, structuredClone(record), report);
     }
     get content(): InteractionDraftContent | null {return structuredClone(this.record?.content ?? null);}
     save(content: InteractionDraftContent): void {
-        this.desired = structuredClone(content);
+        this.desired = structuredClone(content); this.editRevision++;
         this.tail = this.tail.then(() => this.persist());
     }
     async flush(): Promise<InteractionDraftRecord | undefined> {
@@ -33,9 +35,15 @@ export class InteractionDraftEditor {
     }
     async clear(expected: InteractionDraftRecord | undefined): Promise<void> {
         if (!expected) return;
-        await this.tail;
-        // A completed answer cannot consume edits created after its frozen draft.
-        if (this.failed || this.record?.revision !== expected.revision || this.record.editId !== expected.editId) return;
+        const frozen = structuredClone(expected), revision = this.editRevision;
+        const clearing = this.tail.then(() => this.clearSaved(frozen, revision));
+        // Keep later edits ordered even when the caller observes a rejected clear.
+        this.tail = clearing.catch(() => {});
+        await clearing;
+    }
+    private async clearSaved(expected: InteractionDraftRecord, revision: number): Promise<void> {
+        // Both a newer local edit and a newer stored revision prevent consumption.
+        if (this.failed || this.editRevision !== revision || this.record?.revision !== expected.revision || this.record.editId !== expected.editId) return;
         const change = {scope: this.scope, expectedRevision: expected.revision, editId: randomUUID(), content: null};
         this.desired = null;
         try {this.record = await this.storage.write(change);}

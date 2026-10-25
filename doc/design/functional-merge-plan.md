@@ -1042,3 +1042,27 @@ C4Component
 绑定在挂载卡片后停用独立的 inspect 轮询，使用共享面板的 list 观察核对同一台账；无视图的 binding 保留原 inspect 恢复路径。面板兼容默认工作台的 request 与独立 ChatView 的 sessionRequest 冻结记录。openChild 由宿主提供真实子会话导航；未提供时隐藏入口，不生成无效按钮。隐藏/销毁停止观察，销毁后迟到响应不能重建卡片；更新结果保留 details、产物浏览器和卡片 DOM，旧 renderer 的清理不能移除已迁往新容器的卡片。
 
 本批覆盖本地与真实 RPC 的悬挂接纳、子会话导航、卡片复用、父历史不被污染，以及锚点排序、迟到结果和具体读取错误提示。产物继续使用第 41 节已经验证的共享组件与实际子任务作用域。直接取消/暂停控制、上下文选择、裸 Task 入口和大历史分页仍未完成；不将整体 F16 标记完成。
+
+## 46. F16 控制前置：Kernel 取消的持久接纳回执
+
+审查直接调用控制时确认 pause/resume/withdraw 已有持久控制回执，但 cancel 尚无对应冷查询。本批在机制层补齐取消请求身份：Task.cancel 可携带 requestId/expectedEpoch，Kernel 将回执与原终态写入同一事务；上层不能先写「已取消」再请求 Kernel，也不能使用 UI 台账代替执行接纳事实。
+
+```mermaid
+C4Component
+  title 取消接纳与清理确认分离
+  Component(host, "宿主控制用例", "待接线", "冻结目标与独立控制请求身份")
+  Component(kernel, "Kernel.cancel", "通用执行机制", "持久终态、fence、清理与后代取消")
+  ContainerDb(store, "原 Task 存储", "Session 事务", "终态与 cancellation 回执原子提交")
+  Component(adapter, "EffectAdapter.cancel", "执行适配", "物理停止确认")
+  Component(query, "readTaskCancellationReceipt", "冷查询", "原接纳事实与真实终态")
+  Rel(host, kernel, "requestId / expectedEpoch / lease")
+  Rel(kernel, store, "同键核对与事务提交")
+  Rel(kernel, adapter, "请求物理清理")
+  Rel(adapter, kernel, "物理停止确认")
+  Rel(kernel, store, "记录 cleanup.confirmed")
+  Rel(query, store, "只读回执，不激活执行")
+```
+
+同键异原因/控制版本冲突；过期控制版本不产生回执；lease 在事务内检查。取消与完成竞态保留真实 succeeded/failed，不为按钮反馈改写终态。重启后可冷读原回执；重放不重复终态或提升 Task 版本。父请求 ID 和 expectedEpoch 不传给具有独立控制版本的子任务。
+
+取消回执可以在适配器清理挂起或失败时先被查询，它不代表资源已释放，也不代表整树 settled；清理仍复用 journal、Effect cleanup 和 taskStat/taskStats。日志区分 admission/cleanup/terminal-observed，记录请求与耗时，不记录取消原因或远端错误正文。库公开 API、事件说明与 Kernel API 文档同步更新。该批是宿主控制协议的前置机制；子调用命令授权、UI 控制台账与按钮接线仍待完成，不将 F16 整体标为完成。

@@ -86,7 +86,8 @@ class Kernel implements KernelRegistration {
         options: TaskControlOptions & { signal?: TaskSignal }): Promise<TaskControl>;
     startTask(sessionId: string, taskId: string, options?: TaskStartOptions): Promise<void>;
     respondInteraction<T>(sessionId: string, taskId: string, response: InteractionResponse<T>): Promise<void>;
-    cancel(sessionId: string, taskId: string, reason?: string): Promise<void>;
+    cancel(sessionId: string, taskId: string, reason?: string, options?: TaskCancellationOptions): Promise<void>;
+    readTaskCancellationReceipt(sessionId: string, taskId: string, requestId: string): Promise<TaskCancellationReceipt | undefined>;
     resolveEffect(sessionId: string, taskId: string, request: EffectResolution): Promise<void>;
     sendTaskMessage(sessionId: string, taskId: string, request: TaskMessageRequest): Promise<CrossSessionMessage>;
 
@@ -287,7 +288,7 @@ interface TaskHandle<O = unknown> {
     withdrawPause(options: TaskPauseWithdrawalOptions): Promise<TaskControl>;
     respond<T>(response: InteractionResponse<T>): Promise<void>;
     createResource(spec: TaskResourceSpec): Promise<ResourceGrant>;
-    cancel(reason?: string): Promise<void>;
+    cancel(reason?: string, options?: TaskCancellationOptions): Promise<void>;
     events(options?: WatchOptions): AsyncIterable<EventEnvelope>;
     history(options?: { afterVersion?: number }): Promise<TaskRecord[]>;
     attempts(): Promise<TaskAttempt[]>;
@@ -867,3 +868,10 @@ Task wait 默认等逻辑 exit，until: settled 等清理；waitStopped 等控�
 ## 外部执行结果未知
 
 Effect适配器可通过可选 `failureOutcome(error)` 将实时调用无法确认的结果标为 `indeterminate`，Kernel保留Task等待并阻止自动Effect重试。该机制也用于远程Harness丢响应；默认适配器行为不变。现有 `resolveEffect()` 可提交核对结果或显式授权同一Effect继续尝试，稳定请求与外部回执仍由适配器保证。详见[独立库契约](../libraries/durable-kernel/docs/api.md#实时-effect-失败分类)与[远程执行连接](design/remote-harness-connections.md)。
+
+
+### 取消接纳与物理清理的独立证据
+
+`TaskCancellationOptions` 在已有 lease 外允许 `requestId` 和 `expectedEpoch`；提供控制版本时必须提供稳定请求 ID。取消回执与终态在同一 Session 事务提交，`Kernel.readTaskCancellationReceipt` 冷读取 `{requestId, taskId, expectedEpoch?, controlEpoch, status}`，不激活 worker，不重发取消，不返回原因和正文。同一请求不同原因或版本冲突；重复请求不重复终态事件。若完成或失败先发生，回执保留真实终态。父取消的 ID/版本不传递给子任务。
+
+回执仅证明取消请求已处理，不证明资源释放或整树停止；清理挂起/失败后回执仍可查询，继续使用 `taskStat/taskStats` 的 stopped/settled 观察收尾。无 requestId 的旧接口继续可用，但不产生可核对的取消接纳证据。详细契约及回归见独立 Kernel 的 `docs/api.md` 与 `src/interface-contracts.test.ts`。

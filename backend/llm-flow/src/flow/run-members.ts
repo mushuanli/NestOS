@@ -1,7 +1,10 @@
+import {isInvocationIdentity, type InvocationIdentity} from '../contracts/flow';
+import {invocationFromLabels} from './invocation-identity';
 import { taskStat } from '@itookit/durable-kernel';
 import type { SessionHandle, TaskRecord, TaskHandle } from '@itookit/durable-kernel';
 
 export interface FlowRunMember {
+    invocation?: InvocationIdentity;
     taskId: string;
     nodeId: string;
     iteration: number;
@@ -15,8 +18,15 @@ export async function readFlowRunMembers(session: Pick<SessionHandle, 'getShared
     const scheduled = await session.getShared(`flow.run.${root.id}.members`);
     const base = members(scheduled?.value ?? (root.input as { runTasks?: unknown } | undefined)?.runTasks);
     const saved = await session.getShared(`flow.run.${root.id}.retries`);
-    const result = [...base, ...members(saved?.value ?? [])];
-    if (session.listTasks) appendDescendants(result, await session.listTasks());
+    const result = [...base, ...members(saved?.value ?? [])].map(member => ({...member}));
+    if (session.listTasks) {
+        const tasks = await session.listTasks(), labels = new Map(tasks.map(task => [task.id, task.labels]));
+        appendDescendants(result, tasks);
+        for (const member of result) {
+            const invocation = invocationFromLabels(labels.get(member.taskId));
+            if (invocation) member.invocation = invocation;
+        }
+    }
     return result;
 }
 
@@ -84,7 +94,8 @@ export async function prepareFlowTaskRetry(session: SessionHandle, rootId: strin
 
 function members(value: unknown): FlowRunMember[] {
     if (!Array.isArray(value) || value.some(entry => !entry || typeof entry.taskId !== 'string' || !entry.taskId
-        || typeof entry.nodeId !== 'string' || !entry.nodeId || !Number.isSafeInteger(entry.iteration) || entry.iteration < 1)) {
+        || typeof entry.nodeId !== 'string' || !entry.nodeId || !Number.isSafeInteger(entry.iteration) || entry.iteration < 1
+        || entry.invocation !== undefined && !isInvocationIdentity(entry.invocation))) {
         throw new Error('Invalid Flow membership record');
     }
     return value;

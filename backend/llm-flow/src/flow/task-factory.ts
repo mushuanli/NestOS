@@ -1,7 +1,8 @@
 import type { TaskSpec } from '@itookit/durable-kernel';
 import type { SkillContext } from '@itookit/llm-tasks';
 import type { ToolDefinition } from '@itookit/llm-context';
-import type { DagNodeDefinition, DagPluginCatalog, DagTaskDefinition, DagTaskDependencyBinding, JsonValue } from '../contracts';
+import type { DagNodeDefinition, DagPluginCatalog, DagTaskDefinition, DagTaskDependencyBinding, JsonValue, InvocationIdentity } from '../contracts';
+import {invocationLabels} from '../contracts/flow';
 import type { DispatchInput } from './structured/types';
 import { prepareDispatch } from './structured/prepare';
 import { subtaskToolDef, subtaskToolDescription, subtaskToolName } from './delegation-runtime';
@@ -22,8 +23,9 @@ export class FlowTaskFactory {
     constructor(private readonly options: FlowTaskFactoryOptions) {}
 
     async create(node: DagNodeDefinition, task: DagTaskDefinition, dependencies: DagTaskDependencyBinding[],
-        parameters?: Record<string, JsonValue>, requestId?: string): Promise<TaskSpec<unknown>> {
-        const input = await this.prepareInput(node, task, parameters, requestId);
+        parameters?: Record<string, JsonValue>, requestId?: string, invocation?: InvocationIdentity): Promise<TaskSpec<unknown>> {
+        const prepared = await this.prepareInput(node, task, parameters, requestId);
+        const input = task.programKind === 'flow.dispatch' && invocation ? {...record(prepared), invocation} : prepared;
         return {
             ...(requestId ? { requestId } : {}),
             program: { kind: task.programKind, version: task.programVersion === '1' && ['llm.agent', 'llm.chat'].includes(task.programKind)
@@ -34,7 +36,7 @@ export class FlowTaskFactory {
             })),
             retry: node.retry,
             priority: node.priority ?? task.priority,
-            labels: nodeLabels(node),
+            labels: {...nodeLabels(node), ...invocationLabels(invocation)},
             deferStart: flowTaskNeedsCapabilities(task.programKind),
         };
     }
@@ -53,7 +55,11 @@ export class FlowTaskFactory {
                 if (!catalog.definitions.some(tool => (tool.function?.name ?? tool.name) === input.toolId)) throw new Error('Flow tool is unavailable');
                 return { ...input, allowedToolIds: allowed };
             }
-            case 'flow.dispatch': return this.prepareDispatch({ ...task.input as DispatchInput, invocationNamespace: requestId! });
+            case 'flow.dispatch': {
+                const input = {...task.input as DispatchInput, invocationNamespace: requestId!};
+                delete input.invocation;
+                return this.prepareDispatch(input);
+            }
             case 'flow.input': return { ...record(task.input), values: { ...parameters, ...record(record(task.input).values) } };
             case 'llm.agent': return this.agentInput(node, task, allowed, catalog);
             case 'flow.value': return { ...record(task.input), parameters, iteration: Number(/#(\d+)(?:@|$)/.exec(requestId ?? '')?.[1] ?? 1) };

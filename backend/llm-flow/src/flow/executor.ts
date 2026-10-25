@@ -1,3 +1,4 @@
+import {flowNodeInvocation, assertInvocationCheckpoint} from './invocation-identity';
 import { prepareFlowRuntimeInput } from './runtime-input';
 import { memberGroup } from './control/scheduling';
 import { readFlowSchedulerCheckpoint, SchedulerCheckpointWriter } from './checkpoint-store';
@@ -164,6 +165,7 @@ export class DurableFlowExecutor {
         const checkpoint = await readFlowSchedulerCheckpoint(session, rootTaskId, record(root.input).initialScheduler);
         if (!checkpoint) throw new Error('Flow scheduler checkpoint is missing');
         if (checkpoint.version !== 1) throw new Error('Unsupported Flow scheduler checkpoint');
+        assertInvocationCheckpoint(root, checkpoint.invocationIdentityVersion);
         handle.attachedFromStorage = false;
         return new Promise((resolve, reject) => {
             void this.track(this.execute(sessionId, checkpoint.spec, checkpoint.parameters, resolve,
@@ -179,6 +181,7 @@ export class DurableFlowExecutor {
         restored?: { checkpoint: SchedulerCheckpoint; handle: FlowExecutionHandle },
     ): Promise<FlowExecutionHandle> {
         const saved = restored?.checkpoint;
+        const invocationIdentityVersion = saved ? saved.invocationIdentityVersion : 1 as const;
         const contextProgramVersion = saved ? saved.contextProgramVersion ?? '1'
             : this.options.kernel.programs?.has('llm.agent', '2') && this.options.kernel.programs?.has('llm.chat', '2') ? '2' : '1';
         spec = saved || spec.templateVersion === 1 ? structuredClone(spec) : compileReferenceGraph(compileControlGraph(compileDispatchGraph(structuredClone(spec))));
@@ -248,7 +251,7 @@ export class DurableFlowExecutor {
                 for (const [id, value] of saved.nodeConnections) nodeConnections.set(id, value);
             }
             const checkpointSnapshot = () => snapshotSchedulerCollections(collections, instances, completed, {
-                contextProgramVersion, spec, parameters, sessionContext, catalog: plugins.snapshot(),
+                invocationIdentityVersion, contextProgramVersion, spec, parameters, sessionContext, catalog: plugins.snapshot(),
                 consumedTokens, startedAt, nodeDefaults: [...nodeDefaults], nodeConnections: [...nodeConnections],
             });
             const checkpointWriter = new SchedulerCheckpointWriter();
@@ -311,13 +314,14 @@ export class DurableFlowExecutor {
                 toleratedFailureNodes: () => toleratedFailureNodes() };
             const submitNode = async (source: DagNodeDefinition, historyGroup?: string): Promise<void> => {
                 const { node, iteration, task, dependencies, parameters: localParameters, context } = await prepareNodeTask(preparation, source);
-                await this.emitHook('task.started', sessionId, { nodeId: node.id, iteration });
+                const invocation = flowNodeInvocation(invocationIdentityVersion, spec.invocation, node.id, iteration);
+                await this.emitHook('task.started', sessionId, { nodeId: node.id, iteration, ...invocation });
                 // The generation keeps re-submissions after a graph retry distinct, while a
                 // crash-recovery re-submission (same generation) still deduplicates.
                 const requestId = published
                     ? `flow:${published.root.id}:${node.id}#${iteration}@${nodeGenerations.get(node.id) ?? 0}`
                     : undefined;
-                const taskSpec = await taskFactory.create(node, task, dependencies, localParameters, requestId);
+                const taskSpec = await taskFactory.create(node, task, dependencies, localParameters, requestId, invocation);
                 if (memberGroup(nodes, node.id)) taskSpec.deferStart = true;
                 if (historyGroup) taskSpec.labels = { ...taskSpec.labels, flowHistoryGroup: historyGroup };
                 const handle = await session.submit(taskSpec);

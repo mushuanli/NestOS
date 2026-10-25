@@ -6,6 +6,8 @@ import { resolve } from '../operations';
 import type { DispatchState, PreparedBranch } from './types';
 import { json, object } from './value';
 import { isConversationProgram } from './conversation-input';
+import {childInvocationIdentity} from '../invocation-identity';
+import {invocationLabels} from '../../contracts/flow';
 
 export function invocationKey(state: DispatchState, key: string): string { return `${state.round}:${key}`; }
 
@@ -28,7 +30,9 @@ export function createInvocation(state: DispatchState, branch: PreparedBranch): 
         return [key, value];
     })) };
     const task = structuredClone(branch.task);
+    const invocation = childInvocationIdentity(state.invocation, 'dispatch', branch.key, state.round);
     task.labels = { ...task.labels, dispatchKey: branch.key, dispatchRound: String(state.round),
+        ...invocationLabels(invocation),
         flowHistory: (branch.publishToHistory ?? state.publishToHistory) ? 'publish' : 'omit' };
     if (isConversationProgram(task.program.kind)) {
         const context = branch.context ?? state.invocationDefaults?.context ?? state.context;

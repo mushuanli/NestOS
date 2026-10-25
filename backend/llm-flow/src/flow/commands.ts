@@ -1,3 +1,5 @@
+import {invocationFromLabels} from './invocation-identity';
+import {readInvocationFrame} from './invocation-projection';
 import {assertRootCallable} from '../contracts/callable-exposure';
 import {sameTargetRef} from '../contracts/call-target';
 import {checkFlowSource, checkFlowSyntax} from './syntax-check';
@@ -49,16 +51,17 @@ export interface FlowRunPreparation {
     connectionBindings?: Record<string, string>;
 }
 
-export interface FlowRunSummary { taskId: string; sessionId: string; name: string; status: string; createdAt: number; }
+export interface FlowRunSummary { taskId: string; sessionId: string; name: string; status: string; createdAt: number; invocation?: import('../contracts').InvocationIdentity; }
 
 export interface DurableFlowSnapshot {
-    /** Existing durable membership, independent of the optional parent control-tree migration. */
+    invocationIdentityVersion?: 1;
     controlTaskIds?: string[];
+    invocation?: import('../contracts').InvocationIdentity;
     variables?: import('./variables').VariableCheckpoint;
     workspaceFinalization?: WorkspaceFinalization;
     attachedFromStorage?: boolean;
     root: TaskSnapshot;
-    nodes: Array<{ nodeId: string; snapshot: TaskSnapshot }>;
+    nodes: Array<{ nodeId: string; snapshot: TaskSnapshot; invocation?: import('../contracts').InvocationIdentity }>;
     /** Per-node execution instance count (loop nodes exceed 1). */
     iterations: Record<string, number>;
     taskTree: TaskRecord[];
@@ -123,9 +126,9 @@ export class DagCommandService {
         });
         bus.register(FlowCommand.RunTaskCancel, async args => {
             const input = args as { taskId: string; targetTaskId: string; reason?: string };
-            await this.snapshot(String(input.taskId));
+            const snapshot = await this.snapshot(String(input.taskId));
             const handle = this.requireHandle(String(input.taskId));
-            if (!handle.taskIds.has(input.targetTaskId)) throw new Error(`Task is outside this run: ${input.targetTaskId}`);
+            if (!snapshot.controlTaskIds?.includes(input.targetTaskId)) throw new Error(`Task is outside this run: ${input.targetTaskId}`);
             return withFlowControl(this.options.kernel, handle.sessionId, input.taskId, this.options.canWriteSession, async session => {
                 await (await session.attachTask(input.targetTaskId)).cancel(input.reason ?? 'Cancelled from DAG run console');
                 return { taskId: input.taskId, targetTaskId: input.targetTaskId, cancelled: true };
@@ -170,7 +173,8 @@ export class DagCommandService {
                 if (task.program.kind !== 'flow.aggregate' || task.labels?.kind !== 'flow-root') continue;
                 const input = task.input as { run?: { goal?: { objective?: string } }; initialScheduler?: { nodes?: { name?: string }[] } };
                 const name = input?.run?.goal?.objective || input?.initialScheduler?.nodes?.map(node => node.name).filter(Boolean).join(' → ') || 'Flow';
-                runs.push({ taskId: task.id, sessionId: session.id, name, status: task.status, createdAt: task.createdAt });
+                const invocation = invocationFromLabels(task.labels);
+                runs.push({taskId: task.id, sessionId: session.id, name, status: task.status, createdAt: task.createdAt, ...(invocation ? {invocation} : {})});
             }
         }
         return runs.sort((a, b) => b.createdAt - a.createdAt).slice(0, 100);
@@ -241,35 +245,34 @@ export class DagCommandService {
         const handle = this.requireHandle(taskId);
         if (sessionId && sessionId !== handle.sessionId) throw new Error('Run Session mismatch');
         const session = await this.options.kernel.inspectSession(handle.sessionId);
-        for (const entry of await readFlowRunMembers(session, (await handle.root.status()).task)) {
-            handle.taskIds.add(entry.taskId);
-            if (entry.detached) handle.detachedNodes.add(entry.nodeId);
-            if (entry.iteration <= (handle.iterations.get(entry.nodeId) ?? 0)) continue;
-            handle.iterations.set(entry.nodeId, entry.iteration);
-            handle.nodes.set(entry.nodeId, await session.attachTask(entry.taskId));
-        }
-        const metadata = (await session.getShared(`flow.run.${taskId}.metadata`))?.value as unknown as
-            { version: number; usage: FlowExecutionHandle['usage'] } | undefined;
-        if (metadata?.version === 1) handle.usage = metadata.usage;
-        const savedGoal = await session.getShared(`flow.run.${taskId}.goal`);
-        if (savedGoal) handle.goal = savedGoal.value as unknown as FlowRunGoal;
-        const savedWorkspace = await session.getShared(workspaceFinalizationKey(taskId));
-        const scheduler = await readFlowSchedulerCheckpoint(session, taskId);
+        const root = await handle.root.status(), invocation = invocationFromLabels(root.task.labels);
+        const {members, latest, history} = await readInvocationFrame(session, root.task, handle.taskIds);
+        for (const entry of members) handle.taskIds.add(entry.taskId);
         return {
-            variables: scheduler?.variables,
-            workspaceFinalization: handle.workspaceFinalization ?? savedWorkspace?.value as unknown as WorkspaceFinalization | undefined,
-            controlTaskIds: [...new Set([taskId, ...handle.taskIds])],
+            ...await this.projectionMetadata(session, handle, taskId), ...(invocation ? {invocation} : {}),
             attachedFromStorage: handle.attachedFromStorage,
-            root: await handle.root.status(),
-            nodes: await Promise.all([...handle.nodes].map(async ([nodeId, task]) => ({
-                nodeId, snapshot: await task.status(),
-            }))),
-            iterations: Object.fromEntries(handle.iterations),
-            taskTree: await Promise.all([...handle.taskIds].map(async id => (await (await session.attachTask(id)).status()).task)),
-            detachedNodes: [...handle.detachedNodes],
-            goal: handle.goal,
-            usage: handle.usage,
+            controlTaskIds: [taskId, ...new Set(members.map(member => member.taskId))],
+            root,
+            nodes: await Promise.all([...latest].map(async ([nodeId, member]) => {
+                const snapshot = await (await session.attachTask(member.taskId)).status(), invocation = invocationFromLabels(snapshot.task.labels);
+                return {nodeId, snapshot, ...(invocation ? {invocation} : {})};
+            })),
+            iterations: Object.fromEntries([...latest].map(([nodeId, member]) => [nodeId, member.iteration])),
+            taskTree: history,
+            detachedNodes: [...new Set(members.filter(member => member.detached).map(member => member.nodeId))],
         };
+    }
+
+    private async projectionMetadata(session: Pick<SessionHandle, 'getShared'>, handle: FlowExecutionHandle, taskId: string) {
+        const [saved, goal, workspace, scheduler] = await Promise.all([
+            session.getShared(`flow.run.${taskId}.metadata`), session.getShared(`flow.run.${taskId}.goal`),
+            session.getShared(workspaceFinalizationKey(taskId)), readFlowSchedulerCheckpoint(session, taskId),
+        ]);
+        const metadata = saved?.value as unknown as {version: number; usage: FlowExecutionHandle['usage']} | undefined;
+        if (metadata?.version === 1) handle.usage = metadata.usage;
+        if (goal) handle.goal = goal.value as unknown as FlowRunGoal;
+        return {invocationIdentityVersion: scheduler?.invocationIdentityVersion, variables: scheduler?.variables, goal: handle.goal, usage: handle.usage,
+            workspaceFinalization: handle.workspaceFinalization ?? workspace?.value as unknown as WorkspaceFinalization | undefined};
     }
 
     private async signal(input: {
@@ -278,11 +281,11 @@ export class DagCommandService {
         targetTaskId?: string;
         signal: { type: string; payload?: unknown };
     }) {
-        await this.snapshot(String(input.taskId));
+        const snapshot = await this.snapshot(String(input.taskId));
         const handle = this.requireHandle(String(input.taskId));
-        if (input.targetTaskId && !handle.taskIds.has(input.targetTaskId)) throw new Error(`Task is outside this run: ${input.targetTaskId}`);
+        if (input.targetTaskId && !snapshot.controlTaskIds?.includes(input.targetTaskId)) throw new Error(`Task is outside this run: ${input.targetTaskId}`);
         return withFlowControl(this.options.kernel, handle.sessionId, input.taskId, this.options.canWriteSession, async session => {
-            const id = input.targetTaskId ?? (input.nodeId ? handle.nodes.get(input.nodeId)?.id : undefined);
+            const id = input.targetTaskId ?? (input.nodeId ? snapshot.nodes.find(node => node.nodeId === input.nodeId)?.snapshot.task.id : undefined);
             const target = id ? await session.attachTask(id) : undefined;
             if (!target) throw new Error('A valid nodeId or targetTaskId is required');
             await target.signal(input.signal);
@@ -291,12 +294,12 @@ export class DagCommandService {
     }
 
     private async respond(taskId: string, requestId: string, value: unknown, targetTaskId?: string) {
-        await this.snapshot(taskId);
+        const snapshot = await this.snapshot(taskId);
         const handle = this.requireHandle(taskId);
-        if (targetTaskId && !handle.taskIds.has(targetTaskId)) throw new Error(`Task is outside this run: ${targetTaskId}`);
+        if (targetTaskId && !snapshot.controlTaskIds?.includes(targetTaskId)) throw new Error(`Task is outside this run: ${targetTaskId}`);
         return withFlowControl(this.options.kernel, handle.sessionId, taskId, this.options.canWriteSession, async session => {
             const matches = [];
-            for (const id of targetTaskId ? [targetTaskId] : handle.taskIds) {
+            for (const id of targetTaskId ? [targetTaskId] : snapshot.controlTaskIds ?? []) {
                 const task = await session.attachTask(id);
                 const interaction = (await task.status()).task.interactions?.[requestId];
                 if (interaction?.status === 'pending' || (targetTaskId && interaction?.status === 'resolved')) matches.push(task);
@@ -312,7 +315,8 @@ export class DagCommandService {
         await this.snapshot(taskId);
         const handle = this.requireHandle(taskId);
         return withFlowControl(this.options.kernel, handle.sessionId, taskId, this.options.canWriteSession, async session => {
-            const results = await Promise.allSettled([...handle.taskIds].map(async id => (await session.attachTask(id)).cancel()));
+            const ids = await currentControlTaskIds(session, handle);
+            const results = await Promise.allSettled(ids.map(async id => (await session.attachTask(id)).cancel()));
             const failures = results.filter((result): result is PromiseRejectedResult => result.status === 'rejected');
             if (failures.length) throw new AggregateError(failures.map(result => result.reason), 'Run cancellation failed');
             return { taskId, cancelled: true };
@@ -421,11 +425,17 @@ function jsonValue(value: unknown): import('@itookit/durable-kernel').JsonValue 
 
 /** Pause the root first to stop dispatch; resume it only after its members are ready. */
 async function controlRunTasks(session: SessionHandle, handle: FlowExecutionHandle, status: 'paused' | 'active', requestId: string): Promise<void> {
-    const ids = [handle.root.id, ...[...handle.taskIds].filter(id => id !== handle.root.id)];
+    const ids = await currentControlTaskIds(session, handle);
     for (const id of status === 'paused' ? ids : ids.reverse()) {
         const task = await session.attachTask(id);
         if (await task.poll()) continue;
         if (status === 'paused') await task.pause({ requestId });
         else await task.resume({ requestId });
     }
+}
+
+/** Display caches never expand the set of Tasks eligible for control. */
+async function currentControlTaskIds(session: SessionHandle, handle: FlowExecutionHandle): Promise<string[]> {
+    const root = (await (await session.attachTask(handle.root.id)).status()).task;
+    return [...new Set([root.id, ...(await readFlowRunMembers(session, root)).map(member => member.taskId)])];
 }

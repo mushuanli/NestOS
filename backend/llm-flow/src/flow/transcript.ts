@@ -1,4 +1,5 @@
-import { readFlowRunMembers } from './run-members';
+import {readInvocationFrame} from './invocation-projection';
+import {invocationFromLabels} from './invocation-identity';
 import type { Kernel, TaskRecord } from '@itookit/durable-kernel';
 
 export interface FlowTranscriptQuery {
@@ -10,6 +11,7 @@ export interface FlowTranscriptQuery {
 }
 
 export interface FlowTaskTranscript {
+    invocation?: import('../contracts').InvocationIdentity;
     totalEffects: number;
     nextOffset?: number;
     sessionId: string;
@@ -102,8 +104,8 @@ export async function readFlowTaskTranscript(
     }
     const session = await kernel.inspectSession(sessionId);
     const root = (await (await session.attachTask(runTaskId)).status()).task;
-    const entries = await readFlowRunMembers(session, root);
-    if (taskId !== runTaskId && !entries.some(item => item.taskId === taskId)) {
+    const frame = await readInvocationFrame(session, root, new Set([runTaskId]));
+    if (taskId !== runTaskId && !frame.history.some(item => item.id === taskId)) {
         throw new Error(`Task is outside this run: ${taskId}`);
     }
     const task = query.version === undefined
@@ -115,6 +117,7 @@ export async function readFlowTaskTranscript(
     const effects = Object.entries(task.effects).sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0);
     if (offset > effects.length) throw new Error('Invalid transcript offset');
     const page: FlowTaskTranscript = {
+        ...(invocationFromLabels(task.labels) ? {invocation: invocationFromLabels(task.labels)} : {}),
         totalEffects: effects.length,
         ...(offset + limit < effects.length ? { nextOffset: offset + limit } : {}),
         sessionId, runTaskId, taskId, nodeId: task.labels?.flowNodeId,

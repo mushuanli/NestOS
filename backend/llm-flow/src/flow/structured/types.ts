@@ -8,6 +8,7 @@ export interface PreparedBranch extends DispatchBranch {
 }
 
 export interface DispatchInput extends Omit<DispatchConfig, 'branches' | 'revision'> {
+    invocation?: import('../../contracts').InvocationIdentity;
     revision?: Omit<NonNullable<DispatchConfig['revision']>, 'invocation'> & { invocation?: PreparedBranch };
     invocationNamespace: string;
     branches: PreparedBranch[];

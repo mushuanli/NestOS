@@ -275,3 +275,32 @@ F15 以冻结消息/资产引用 → HarnessProgram → 授权 TaskAssetReader �
 下一批优先 F16 的调用身份与只读投影；其独立子 Session 路由尚未完成。随后 F17/F18 控制屏障、F20—F22 上下文、F23/F24 产物展示。当前剩余 F16—F18、F20—F24 共八个能力组；第 13 节候选顺序中的 F19 已由本节交付。
 
 隔离候选验证：宿主全套 987 项通过、13 项显式 live 跳过（两个 worker，原超时不变）；Kernel adapters 362 项、Session 436 项通过。三包类型、adapter 构建和架构检查通过；5 个 Mermaid 图及 15 个本地链接检查通过。未部署、未重启服务，也未用本地夹具替代原生产 Session 验收。
+
+## 15. F16 调用身份与只读投影切片
+
+本批在 llm-flow 内补齐节点、循环实例和结构化 worker 的 Invocation 关联。子身份由父调用、节点或派发键、业务轮次确定；Kernel Task ID、内部尝试和图恢复代次不参与身份计算。用户重新运行使用新的根 Invocation；内部 Task 重试保留原调用关联。旧 Run 不补写新身份协议，恢复时检查 checkpoint 与根输入中冻结的协议版本一致，避免已接纳 Task 的请求指纹变化。
+
+```mermaid
+C4Component
+  title Flow 调用身份与投影职责
+  Container_Boundary(flow, "llm-flow") {
+    Component(executor, "Executor / TaskFactory", "执行装配", "冻结身份协议并提交带调用关联的 Task")
+    Component(identity, "Invocation identity", "纯规则", "按父调用和业务实例派生身份")
+    Component(projection, "Invocation projection", "只读投影", "区分当前成员与历史尝试")
+    Component(commands, "Command / Transcript", "端口", "展示历史，控制按持久成员定位")
+  }
+  ContainerDb(kernel, "Kernel", "既有 Task / shared 存储", "执行事实、成员及 checkpoint")
+  Container(ui, "宿主 / llm-ui", "消费方", "读取投影并提交明确控制请求")
+  Rel(executor, identity, "派生节点与 worker 身份")
+  Rel(executor, kernel, "提交及持久恢复")
+  Rel(projection, kernel, "读取事实与成员")
+  Rel(commands, projection, "读取当前实例和历史")
+  Rel(commands, kernel, "按当前成员提交控制")
+  Rel(ui, commands, "查询、读取详情、控制")
+```
+
+身份规则属于 Flow 调用装配，不应放在暂停屏障或 UI。投影只组合既有 Task、成员和标签，不增加状态库或 Session 存储。相同轮次的替代成员以持久成员记录为准，不能被进程内旧 handle 覆盖；历史可包含已替换尝试，但显示缓存不扩大控制范围。取消、信号、回答及原有暂停/恢复路径均不得仅凭历史缓存选择目标。
+
+这里的“当前成员”是既有持久成员及重试成员契约，不表示已完成终态重试准入、控制树或原子暂停屏障迁移。跨操作竞态和动态子调用控制仍由 F17/F18 补齐；只读快照不成为控制事务。独立子 Session 的创建/路由、函数调用视图仍未完成，因此 F16 只合入本切片，剩余能力组仍为八项。
+
+隔离源码候选验证：Flow 682 项、Session 436 项通过；Flow、Session、app-core 类型检查通过。专项回归覆盖旧指纹恢复、冻结身份协议不匹配拒绝、同轮替代成员投影、旧成员控制拒绝及历史详情仍可读。未部署、未重启，未宣称完成原生产 Session 验收。

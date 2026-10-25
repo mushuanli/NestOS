@@ -12,6 +12,7 @@ import { FlowReducerRegistry, orderedUpdates, projectSummary } from './join';
 import { mergeResults } from './results';
 import { validateDispatch } from './validation';
 import { object, outcome } from './value';
+import {isInvocationIdentity} from '../../contracts/flow';
 
 type Step = Decision<DispatchState, unknown>;
 
@@ -21,6 +22,7 @@ export class FlowDispatchProgram implements DurableTaskProgram<DispatchState, Di
 
     init(input: DispatchInput): Step {
         validateDispatch(input);
+        if (input.invocation !== undefined && !isInvocationIdentity(input.invocation)) throw new Error('Invalid dispatch invocation identity');
         if (input.join && !this.reducers.has(input.join.reducer)) throw new Error(`Unknown reducer: ${input.join.reducer}`);
         const state: DispatchState = { ...structuredClone(input), phase: 'dependencies', round: 0,
             dependencyOutputs: {}, resolvedDependencyIds: [], results: {}, selected: [], spawned: [], received: {}, failures: {},

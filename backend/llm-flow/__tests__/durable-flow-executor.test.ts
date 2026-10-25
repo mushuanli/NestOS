@@ -1,3 +1,5 @@
+import {decodeSchedulerCheckpoint} from '../src/flow/checkpoint-decoder';
+import {FlowTaskFactory} from '../src/flow/task-factory';
 import { withFlowControl } from '../src/flow/control-session';
 import { readFlowSchedulerCheckpoint } from '../src/flow/checkpoint-store';
 import { acquireSchedulerLease, schedulerOwnerKey } from '../src/flow/scheduler-lease';
@@ -62,6 +64,93 @@ describe('DurableFlowExecutor', () => {
     /** For Runs that park on an interaction and can never exit: wait for a dispatched node. */
     const waitForNode = (handle: { nodes: ReadonlyMap<string, unknown> }, nodeId: string): Promise<void> =>
         vi.waitFor(() => expect(handle.nodes.has(nodeId)).toBe(true));
+
+    it('assigns distinct calls to loop instances and a new invocation tree to a user rerun', async () => {
+        const run = executor(kernel), session = await kernel.openSession('session-one');
+        const identified = (id: string): DagRunSpec => ({...loopFlow(2), invocation: {invocationId: id, requestId: id,
+            flowId: 'published', revision: 1, digest: 'frozen', name: 'Loop', createdAt: 1}});
+        const first = await run.submit('session-one', identified('original-call')); await runToEnd(first); await run.waitIdle();
+        const root = (await first.root.status()).task;
+        expect(root.labels?.invocationId).toBe('original-call');
+        const members = await readFlowRunMembers(session, root), calls = members.map(member => member.invocation!.invocationId);
+        expect(members.filter(member => member.nodeId === 'body')).toHaveLength(2);
+        expect(new Set(calls).size).toBe(members.length);
+        expect(members.every(member => member.invocation?.parentInvocationId === 'original-call')).toBe(true);
+        const handlers = new Map<string, (args: any) => Promise<any>>();
+        new DagCommandService({kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never})
+            .register({register: (name, handler) => handlers.set(name, handler)} as never);
+        const view = await handlers.get(FlowCommand.RunGet)!({taskId: first.root.id, sessionId: 'session-one'});
+        expect(view.invocation).toEqual({invocationId: 'original-call'});
+        expect(view.nodes.every((node: {invocation?: {parentInvocationId?: string}}) => node.invocation?.parentInvocationId === 'original-call')).toBe(true);
+        const listed = await handlers.get(FlowCommand.RunList)!({sessionId: 'session-one'});
+        expect(listed[0].invocation).toEqual({invocationId: 'original-call'});
+        const next = identified('rerun-call'); next.invocation!.retryOfInvocationId = 'original-call';
+        const rerun = await run.submit('session-one', next); await runToEnd(rerun); await run.waitIdle();
+        const replacements = await readFlowRunMembers(session, (await rerun.root.status()).task);
+        expect(replacements.every(member => !calls.includes(member.invocation!.invocationId))).toBe(true);
+        expect((await first.root.status()).task.status).toBe('succeeded');
+    });
+
+    it('resumes a legacy accepted member without changing its submission fingerprint or inventing a child identity', async () => {
+        const run = executor(kernel), seed = await run.submit('session-one', {nodes: [valueNode('left', 'value')], edges: []}); await runToEnd(seed); await run.waitIdle();
+        const initial = structuredClone((await seed.root.status()).task.input) as any;
+        expect(initial.initialScheduler.invocationIdentityVersion).toBe(1);
+        expect(() => decodeSchedulerCheckpoint({...initial.initialScheduler, invocationIdentityVersion: 2})).toThrow('invocationIdentityVersion');
+        delete initial.initialScheduler.invocationIdentityVersion;
+        delete initial.initialScheduler.controlTreeVersion;
+        initial.initialScheduler.spec.invocation = {invocationId: 'legacy-call', requestId: 'legacy-call', flowId: 'flow', revision: 1, digest: 'frozen', name: 'Legacy', createdAt: 1};
+        const session = await kernel.openSession('session-one');
+        const root = await session.submit({program: {kind: 'flow.aggregate', version: '1'}, input: initial, labels: {kind: 'flow-root', invocationId: 'legacy-call'}});
+        const node = initial.initialScheduler.nodes.find((node: any) => node.id === 'left');
+        const plugins = createBuiltinDagPluginRegistry(), runtime = await plugins.loadRuntime(node.plugin, node.pluginVersion);
+        const definition = runtime.createTask({sessionId: 'session-one', nodeRunId: node.id, config: node.config, inputs: node.inputs, dependencies: []});
+        const factory = new FlowTaskFactory({sessionId: 'session-one', plugins, contextProgramVersion: '1'});
+        const accepted = await session.submit(await factory.create(node, definition, [], {}, `flow:${root.id}:left#1@0`));
+        expect((await accepted.wait({timeoutMs: 5000})).status).toBe('succeeded');
+        const resumed = await run.resume('session-one', root.id); const exit = await runToEnd(resumed);
+        expect(exit.status, JSON.stringify(exit.error)).toBe('succeeded'); await run.waitIdle();
+        expect(resumed.nodes.get('left')!.id).toBe(accepted.id);
+        expect((await resumed.nodes.get('left')!.status()).task.labels?.invocationId).toBeUndefined();
+        expect((await readFlowSchedulerCheckpoint(session, root.id))?.invocationIdentityVersion).toBeUndefined();
+    });
+
+    it('refuses a checkpoint that changes the frozen identity protocol before dispatching Tasks', async () => {
+        const run = executor(kernel), seed = await run.submit('session-one', valueFlow()); await runToEnd(seed); await run.waitIdle();
+        const initial = structuredClone((await seed.root.status()).task.input) as any;
+        const session = await kernel.openSession('session-one');
+        const root = await session.submit({program: {kind: 'flow.aggregate', version: '1'}, input: initial, labels: {kind: 'flow-root'}});
+        const checkpoint = structuredClone(initial.initialScheduler); delete checkpoint.invocationIdentityVersion;
+        await session.setShared(`flow.run.${root.id}.scheduler`, checkpoint);
+        const before = (await session.listTasks()).length;
+        await expect(run.resume('session-one', root.id)).rejects.toMatchObject({code: 'FLOW_INVOCATION_CHECKPOINT_MISMATCH'});
+        expect((await session.listTasks()).length).toBe(before);
+    });
+
+    it('projects a same-iteration replacement while restricting controls to authoritative members', async () => {
+        const run = executor(kernel), session = await kernel.openSession('session-one');
+        const execution = await run.submit('session-one', {...valueFlow(), invocation: {invocationId: 'projected-call', requestId: 'projection',
+            flowId: 'flow', revision: 1, digest: 'frozen', name: 'Projection', createdAt: 1}});
+        await runToEnd(execution); await run.waitIdle();
+        const handlers = new Map<string, (args: any) => Promise<any>>();
+        new DagCommandService({kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {} as never})
+            .register({register: (name, handler) => handlers.set(name, handler)} as never);
+        const query = {taskId: execution.root.id, sessionId: 'session-one'}, view = () => handlers.get(FlowCommand.RunGet)!(query);
+        const before = await view(), sourceId = before.nodes.find((node: any) => node.nodeId === 'left').snapshot.task.id;
+        const source = await session.attachTask(sourceId), replacement = await source.retry({requestId: 'internal-attempt'});
+        await replacement.start(); await replacement.wait({timeoutMs: 3000});
+        expect((await replacement.status()).task.labels).toEqual((await source.status()).task.labels);
+        const key = `flow.run.${execution.root.id}.members`, saved = await session.getShared(key);
+        const members = (saved!.value as any[]).map(member => member.taskId === sourceId ? {...member, taskId: replacement.id} : member);
+        await session.setShared(key, members, {expectedVersion: saved!.version});
+        const after = await view();
+        expect(after.nodes.find((node: any) => node.nodeId === 'left').snapshot.task.id).toBe(replacement.id);
+        expect(after.taskTree.map((task: any) => task.id)).toEqual(expect.arrayContaining([sourceId, replacement.id]));
+        expect(after.controlTaskIds).not.toContain(sourceId);
+        await expect(handlers.get(FlowCommand.RunTaskCancel)!({taskId: execution.root.id, targetTaskId: sourceId})).rejects.toThrow('outside this run');
+        await expect(handlers.get(FlowCommand.RunSignal)!({taskId: execution.root.id, targetTaskId: sourceId, signal: {type: 'unused'}})).rejects.toThrow('outside this run');
+        expect((await readFlowTaskTranscript(kernel, 'session-one', execution.root.id, sourceId)).invocation?.invocationId)
+            .toBe((await source.status()).task.labels!.invocationId);
+    });
 
     it('freezes context program versions per Run and keeps legacy checkpoints on v1', async () => {
         const first = executor(kernel);

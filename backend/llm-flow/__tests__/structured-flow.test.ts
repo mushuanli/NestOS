@@ -55,7 +55,9 @@ describe('structured route / spawn / aggregate DAG', () => {
         kernel = new Kernel({ catalog: { fs }, pollMs: 5 });
         kernel.registerStorageResolver({ kind: 'test', async resolve() { return { fs, rootPath: '/s' }; } });
         registerDurablePrograms(kernel);
-        kernel.registerEffect({ kind: 'llm.chat', version: '1', shouldRetry: () => true, async execute(request: Record<string, any>) {
+        kernel.registerEffect({ kind: 'llm.chat', version: '1', shouldRetry: () => true,
+            async cancel() { while (active) await new Promise(resolve => setTimeout(resolve, 5)); },
+            async execute(request: Record<string, any>) {
             requests.push(request);
             if (llmFailures-- > 0) throw new Error('temporary network failure');
             active++; peak = Math.max(peak, active);
@@ -77,6 +79,33 @@ describe('structured route / spawn / aggregate DAG', () => {
         await kernel.createSession({ id: 's', storage: { kind: 'test', locator: null } });
     });
     afterEach(async () => { kernel.dispose(); await executor.waitIdle(); await manager.dispose(); });
+
+    it('isolates worker identities and execution namespaces across parallel dispatch controllers', async () => {
+        const worker = {id: 'worker', name: 'Worker', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: 'done'}};
+        const settings: DispatchConfig = {mode: 'exclusive', maxRounds: 1, until: literal(false), context: {history: 'none'}, branches: [
+            {key: 'worker', target: worker, input: {}, output: path('output', 'outputs', 'result', 'content'), outputFormat: 'value'},
+        ]};
+        const run = await executor.submit('s', {nodes: ['left', 'right'].map(id => ({id, name: id, plugin: 'builtin.route', pluginVersion: '2.0.0', inputs: {}, config: settings})), edges: [],
+            invocation: {invocationId: 'parallel-root', requestId: 'parallel-root', flowId: 'flow', revision: 1, digest: 'frozen', name: 'Parallel', createdAt: 1}});
+        expect((await run.root.wait({timeoutMs: 6000})).status).toBe('succeeded');
+        const session = await kernel.openSession('s'), tasks = await session.listTasks();
+        const parents = tasks.filter(task => ['left', 'right'].some(id => task.id === run.nodes.get(id)!.id));
+        expect(parents).toHaveLength(2);
+        const namespaces = parents.map(task => (task.input as {invocationNamespace: string}).invocationNamespace);
+        expect(new Set(namespaces).size).toBe(2); expect(namespaces.every(value => !value.includes('undefined'))).toBe(true);
+        const children = tasks.filter(task => parents.some(parent => parent.id === task.parentTaskId));
+        expect(children).toHaveLength(2); expect(new Set(children.map(task => task.labels?.invocationId)).size).toBe(2);
+        for (const child of children) expect(child.labels?.parentInvocationId).toBe(parents.find(parent => parent.id === child.parentTaskId)!.labels!.invocationId);
+        expect(requests).toEqual([]);
+    });
+
+    it('does not accept business invocation metadata injected through a legacy dispatch config', async () => {
+        const settings = {...config(1), invocation: {invocationId: 'forged-call'}};
+        const run = await executor.submit('s', graph(settings), {requirements: 'REQ', essay: 'ESSAY'});
+        expect((await run.root.wait({timeoutMs: 6000})).status).toBe('succeeded');
+        const children = (await kernel.listSessionTasks('s')).filter(task => task.labels?.dispatchKey);
+        expect(children.length).toBeGreaterThan(0); expect(children.every(task => !task.labels?.invocationId)).toBe(true);
+    });
 
     it('runs a reference-only DAG after input completion without explicit bindings or edges', async () => {
         const run = await executor.submit('s', { nodes: [
@@ -341,7 +370,8 @@ describe('structured route / spawn / aggregate DAG', () => {
             inputs: {}, config: { requestId: 'score', prompt: 'Score' } };
         settings.branches[0].output = path('output', 'outputs', 'response', 'content');
         settings.branches[0].outputFormat = 'value';
-        const run = await executor.submit('s', graph(settings), { requirements: 'REQ', essay: 'ESSAY' });
+        const spec = {...graph(settings), invocation: {invocationId: 'dispatch-root', requestId: 'dispatch-root', flowId: 'flow', revision: 1, digest: 'frozen', name: 'Dispatch', createdAt: 1}};
+        const run = await executor.submit('s', spec, { requirements: 'REQ', essay: 'ESSAY' });
         const session = await kernel.openSession('s');
         const childAt = async (round: string) => (await session.listTasks()).find(task => task.labels?.dispatchRound === round);
         await vi.waitFor(async () => expect((await childAt('1'))?.interactions.score).toBeDefined());
@@ -355,6 +385,12 @@ describe('structured route / spawn / aggregate DAG', () => {
         expect((await resumed.root.wait({ timeoutMs: 6000 })).status).toBe('succeeded');
         const children = (await restoredSession.listTasks()).filter(task => task.labels?.dispatchRound);
         expect(children).toHaveLength(2);
+        const parent = (await resumed.nodes.get('route')!.status()).task.labels!.invocationId;
+        expect(parent).toBeTruthy(); expect(parent).not.toBe('dispatch-root');
+        expect(children.every(task => task.labels?.parentInvocationId === parent)).toBe(true);
+        expect(new Set(children.map(task => task.labels?.invocationId)).size).toBe(2);
+        const members = await readFlowRunMembers(restoredSession, (await resumed.root.status()).task);
+        expect(members.filter(member => children.some(task => task.id === member.taskId)).every(member => member.invocation?.parentInvocationId === parent)).toBe(true);
         const output = (await resumed.nodes.get('route')!.status()).task.output as any;
         expect(output.outputs.result.content.results.content).toMatchObject({ taskId: secondId, round: 2, value: { score: 9 } });
     });

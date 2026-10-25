@@ -1730,3 +1730,26 @@ C4Component
 minimal-skill-dag 的原测试在本轮通过，但检查 Task 已创建不保证交互已持久登记。测试改为通过 RunGet 等待实际 pending interaction 并取得目标 Task 身份后提交回答，保留一次/重复问答、下游成功、输出与恢复检查。准备阶段与实际可回答阶段沿现有异步机制区分，不用延时睡眠猜测。
 
 三个修正后的测试共 11 项通过；候选提交另在隔离检出验证。所有改动留在原应用组合测试层，不向 Kernel 或编排层加入测试专用行为。原工作树中的纯重排、其他文档和用户暂存项仍保留，不能按文件数量推断剩余功能数量。
+
+## 75. 生产验证发现 DSH 原生事件关联缺口
+
+用户启动服务后，已核对原地址运行 httpd 为 20261025T224517-fe9ff3c7-dirty。原故障 Session 的状态、目录、独立查询回执和真实 Chromium 页面读取正常；新建验收 Session 的可编辑队列持久操作通过。但两条真实消息的顺序执行未通过：第一条已有最终回复、原生 idle，宿主仍持有未关联的活动 turn，后续队列没有派发。完整证据与未完成边界见 [DSH 运行验收](./dsh-remote-acceptance-20261026.md)。
+
+```mermaid
+C4Dynamic
+  title 按真实 DSH 事件关联操作与原生 turn
+  Component(queue, "宿主命令队列", "原提交身份")
+  Component(native, "DSH 原生服务", "连续持久事件")
+  Component(adapter, "mindos-node DSH 适配器", "原生身份映射")
+  Component(runtime, "原 Harness Runtime", "执行事实与资源租约")
+  RelIndex(1, queue, adapter, "冻结 requestId 与输入后提交")
+  RelIndex(2, native, adapter, "turn/start 建立当前原生 turn 上下文")
+  RelIndex(3, native, adapter, "user/message 核对来源 requestId 与冻结内容，不要求消息携带 turn")
+  RelIndex(4, native, adapter, "对应 turn/end 确认终态")
+  RelIndex(5, adapter, runtime, "原操作 turn/completed；释放原清理责任")
+  RelIndex(6, runtime, queue, "原完成事实允许后续派发")
+```
+
+根因属于原生协议适配，修复放在 tools/mindos-node 的 DSH 驱动：连续事件上下文关联、精确消息证据与旧 turn 清除，不在 UI 或队列加入 idle 解锁策略。测试替身改用真实 UserMessage 形状。新回归先在旧实现失败，修复后 node 格式/全量测试（386 通过、2 忽略）/release 构建通过，版本更新为 0.4.1。
+
+生产验收仍未完成：当前 tools/svr 进程尚未更新，验收队列已暂停且未发送的第二项已移除；第一项保留原核对身份。主仓锁定修复与本地产物就绪不等于运行 node 已修复。下一步需更新运行二进制并重验真实顺序发送、取消和旧项恢复；不能把原页面当前可编辑当作完整故障已解决。

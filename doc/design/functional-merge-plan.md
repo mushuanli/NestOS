@@ -801,3 +801,26 @@ C4Component
 ```
 
 隔离验收覆盖本地和 RPC 查询不激活 Session、非法游标不出客户端、选择文件修改后恢复仍使用原冻结选择、注入原生身份拒绝、Flow 覆盖拒绝，以及诊断不泄露游标和远端错误正文。此入口不是原生条件写能力，也不等同真实远端验收；F16/F24 及独立 ChatView 剩余项保持开放。
+
+
+## 36. F16 子 Session 创建的并发与丢回执恢复
+
+独立 Flow 与后续 Agent/Task 路由共用 ContentTransferService.createChild。本批补齐其身份前提：调用时冻结输入；同一 requestId 的意图写入冲突或丢回执后，只读核对原持久输入与子 Session ID。字段顺序不改变身份，标题或材料来源不同则拒绝，未知身份字段也拒绝。没有持久证据时保留写入失败，不新建子会话冒充成功。
+
+```mermaid
+C4Component
+  title 子会话身份与文件初始化分层
+  Component(entry, "独立调用入口", "Flow 与后续 Agent/Task", "稳定请求身份")
+  Component(child, "ContentTransferService", "Session 语义", "冻结请求、核对原创建意图")
+  ContainerDb(intent, "content.child 原记录", "Kernel shared state", "CAS 决定唯一子 Session ID")
+  Component(repository, "SessionRepository", "持久化机制", "同一实例按 Session ID 串行初始化文件与元数据")
+  Component(execution, "宿主执行准备", "既有 lease 与 Kernel", "准备执行存储后才返回")
+  Rel(entry, child, "createChild")
+  Rel(child, intent, "条件写入；冲突或丢回复只读核对")
+  Rel(child, repository, "ensureSession 原身份")
+  Rel(child, execution, "原子会话准备")
+```
+
+回归先复现了等待期间输入变化、写入成功但回复丢失、JSON 字段顺序差异三个失败；并发测试继续发现同一仓库初始化文件竞态，修复下沉到 SessionRepository。不同 Session 不共享初始化锁，进程内串行不能替代跨宿主 lease 与持久 CAS。覆盖同输入并发、冲突输入、无落盘证据的写入失败和真实子会话归属。
+
+这只完成 F16 的共用创建前提，Agent/Task 独立调用的路由、父级投影和控制仍未完成，不能以子会话创建成功宣称完整函数调用交付。

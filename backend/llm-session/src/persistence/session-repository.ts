@@ -21,6 +21,7 @@ interface SessionPaths { root: string; session: string; history: string }
 export class SessionRepository implements ISessionRepository {
     private readonly listeners = new Set<(change?: SessionRepositoryChange) => void>();
     private closed = false;
+    private readonly sessionInitializations = new Map<string, Promise<string>>();
     private structuralWriteGuard?: (ids: string[]) => Promise<void>;
     async assertStructuralWritable(ids: string[]): Promise<void> { await this.structuralWriteGuard?.(ids); }
     setStructuralWriteGuard(guard: (ids: string[]) => Promise<void>): void { this.structuralWriteGuard = guard; }
@@ -115,7 +116,17 @@ export class SessionRepository implements ISessionRepository {
         creation?: import('./types').SessionCreation): Promise<string> {
         return this.initializeSession(id, title, origin, folder, parentSessionId, false, undefined, creation?.agentId, structuredClone(creation?.initialContext));
     }
-    private async initializeSession(id: string, title: string, origin: SessionOrigin, folder: string | null,
+    private initializeSession(...args: Parameters<SessionRepository['initializeSessionData']>): Promise<string> {
+        const id = args[0], previous = this.sessionInitializations.get(id);
+        const operation = (previous ?? Promise.resolve()).catch(() => undefined).then(() => this.initializeSessionData(...args));
+        this.sessionInitializations.set(id, operation);
+        void operation.finally(() => {
+            if (this.sessionInitializations.get(id) === operation) this.sessionInitializations.delete(id);
+        }).catch(() => {});
+        return operation;
+    }
+
+    private async initializeSessionData(id: string, title: string, origin: SessionOrigin, folder: string | null,
         parentSessionId: string | null, createOnly: boolean, initialState?: ConversationUIState, createdWithAgentId?: string, initialContext?: import('../contracts/content-transfer').ContentTransfer): Promise<string> {
         if (!/^[a-zA-Z0-9_-]+$/.test(id)) throw new FSError('EINVAL', 'Invalid Session identity');
         await this.structuralWriteGuard?.([id, ...(parentSessionId ? [parentSessionId] : [])]);

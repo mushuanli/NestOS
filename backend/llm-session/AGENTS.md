@@ -101,3 +101,6 @@ ArtifactLoader 由宿主注入，接收实际调用的 sessionId 与不可变 ar
 
 
 原生上下文选择由 ExecutionOverrides.harnessConversation 进入冻结指令；模型/Flow 目标不得静默忽略，严格 continue 缺少原生条件写保障时明确拒绝。普通 Harness Task 保存宿主快照依据和实际消息，显式 fork 只发送本轮增量及已核验附件。session.context.bindings/options 查询显式 Session/分支，不切换当前绑定；静态兼容不是授权，实际派发仍核对策略和 binding 修订。
+
+
+ContentTransferService.createChild 在入口冻结请求，以原 content.child 记录核对并发或丢回执，不能仅凭写入异常新建身份。请求字段顺序不影响身份，不同标题/材料来源明确冲突。SessionRepository 在同一实例内按 Session ID 串行初始化文件和元数据，避免两个独立调用同时 ensure 相同子会话时的文件竞态；持久 CAS 和宿主 lease 仍是跨实例权威。该机制不自动提供 Agent/Task 调用路由或父子控制所有权。

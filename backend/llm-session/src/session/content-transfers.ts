@@ -1,4 +1,4 @@
-import type { Kernel, JsonValue } from '@itookit/durable-kernel';
+import type { Kernel, JsonValue, SessionHandle } from '@itookit/durable-kernel';
 import { KernelError, KernelErrorCode } from '@itookit/durable-kernel';
 import type { ICommandBus } from '../contracts';
 import { ContentTransferCommand, isTransferSelection, type ContentCapture, type ContentTransfer, type CreateChildInput, type ResolveTransferInput, type TransferReference } from '../contracts/content-transfer';
@@ -15,6 +15,8 @@ export interface ContentTransferOptions {
     prepareExecution?(sessionId: string): Promise<void>;
     summarize?(sessionId: string, text: string): Promise<string>;
 }
+interface ChildIntent { input: CreateChildInput; sessionId: string; initialContext?: ContentTransfer }
+
 const captureKey = (id: string) => `content.capture.${id}`;
 const transferKey = (id: string) => `content.transfer.${id}`;
 
@@ -70,8 +72,10 @@ export class ContentTransferService {
     }
 
     createChild(input: CreateChildInput): Promise<{ sessionId: string }> {
+        input = structuredClone(input);
         const key = `${input.sessionId}/${input.requestId}`;
-        if (this.children.has(key)) return this.children.get(key)!.then(() => this.admitChild(input));
+        const pending = this.children.get(key);
+        if (pending) return this.trace('create-child', input.sessionId, () => pending.then(() => this.admitChild(input)));
         const operation = this.trace('create-child', input.sessionId, () => this.admitChild(input));
         this.children.set(key, operation);
         return operation.finally(() => this.children.delete(key));
@@ -79,19 +83,37 @@ export class ContentTransferService {
 
     private async admitChild(input: CreateChildInput): Promise<{ sessionId: string }> {
         input = structuredClone(input);
-        if (!/^[\w-]{1,128}$/.test(input.requestId) || !input.title?.trim()) throw new Error('CONTENT_CHILD_ARGUMENTS_INVALID');
+        if (!validChildInput(input)) throw new Error('CONTENT_CHILD_ARGUMENTS_INVALID');
         await this.writable(input.sessionId);
         const parent = await this.options.repository.getManifest(input.sessionId);
         const session = await this.options.kernel.openSession(input.sessionId), key = `content.child.${input.requestId}`;
-        const existing = (await session.getShared(key))?.value as unknown as { input: CreateChildInput; sessionId: string; initialContext?: ContentTransfer } | undefined;
-        if (existing && JSON.stringify(existing.input) !== JSON.stringify(input)) throw new Error('CONTENT_CHILD_REQUEST_CONFLICT');
-        const intent = existing ?? { input: structuredClone(input), sessionId: `node-${ulid()}`,
-            ...(input.transfer ? { initialContext: await this.read(input.transfer, input.sessionId) } : {}) };
-        if (!existing) await session.setShared(key, json(intent), { expectedVersion: null });
+        const intent = await this.childIntent(session, key, input);
         await this.options.repository.ensureSession(intent.sessionId, input.title.trim(), parent.origin, parent.folder, parent.id,
             { initialContext: intent.initialContext });
         await this.prepareChildExecution(intent.sessionId);
         return { sessionId: intent.sessionId };
+    }
+
+    private async childIntent(session: SessionHandle, key: string, input: CreateChildInput): Promise<ChildIntent> {
+        const stored = (await session.getShared(key))?.value as unknown as ChildIntent | undefined;
+        if (stored) return this.matchChildIntent(stored, input);
+        const intent: ChildIntent = {input, sessionId: `node-${ulid()}`,
+            ...(input.transfer ? {initialContext: await this.read(input.transfer, input.sessionId)} : {})};
+        try {await session.setShared(key, json(intent), {expectedVersion: null}); return intent;}
+        catch (error) {
+            // A concurrent owner or a lost reply may already have persisted this request.
+            const observed = (await session.getShared(key))?.value as unknown as ChildIntent | undefined;
+            if (!observed) throw error;
+            return this.matchChildIntent(observed, input);
+        }
+    }
+
+    private matchChildIntent(intent: ChildIntent, input: CreateChildInput): ChildIntent {
+        const saved = intent.input;
+        if (saved.sessionId !== input.sessionId || saved.requestId !== input.requestId || saved.title !== input.title
+            || saved.transfer?.sessionId !== input.transfer?.sessionId || saved.transfer?.id !== input.transfer?.id)
+            throw new Error('CONTENT_CHILD_REQUEST_CONFLICT');
+        return intent;
     }
 
     private async prepareChildExecution(id: string): Promise<void> {
@@ -145,3 +167,11 @@ export class ContentTransferService {
     }
 }
 function json(value: unknown): JsonValue { return JSON.parse(JSON.stringify(value)); }
+
+function validChildInput(input: CreateChildInput): boolean {
+    const reference = (value: unknown) => typeof value === 'string' && !!value.trim() && value.length <= 4096;
+    return !!input && typeof input === 'object' && Object.keys(input).every(key => ['sessionId', 'requestId', 'title', 'transfer'].includes(key))
+        && reference(input.sessionId) && typeof input.requestId === 'string' && /^[\w-]{1,128}$/.test(input.requestId) && reference(input.title)
+        && (input.transfer === undefined || !!input.transfer && typeof input.transfer === 'object'
+            && Object.keys(input.transfer).every(key => ['sessionId', 'id'].includes(key)) && reference(input.transfer.sessionId) && reference(input.transfer.id));
+}

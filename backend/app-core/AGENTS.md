@@ -181,3 +181,5 @@ Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.
 - StartupCoordinator.close 拒绝新初始化并排空已接纳工作；已创建的依赖 Promise 在关闭期间仍可读取，保留原结果或原错误，不重新初始化，也不能改写为 Startup is closed。快速 CLI 查询/准备退出的恢复回调继续使用同一已就绪依赖；回归见 startup-coordinator。
 
 - 租约恢复关闭后，已在途的准备回调返回时不得再开始 Kernel 恢复；Runtime 先排空恢复及租约释放，再停止 Kernel，分别保留释放与停止错误，不能靠吞掉 DISPOSED 异常掩盖关闭顺序。
+
+RemoteConversationStore 的 load/save/submitted 在同实例串行，避免延迟读取回退 CAS 游标；保存先冻结调用方记录，读取返回副本。未知写入只核对写前/写后值；第三值锁定实例为冲突，load 不能解除。原生执行与控制不共用此存储串行边界。

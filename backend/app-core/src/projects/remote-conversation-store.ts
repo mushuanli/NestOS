@@ -5,9 +5,15 @@ export interface RemoteConversationRecovery extends HarnessRecovery { submittedT
 export class RemoteConversationStore {
     private raw: string | null = null;
     private record: RemoteConversationRecovery = {};
+    private uncertainWrite?: {before: string | null; after: string};
+    private conflicted = false;
+    private writes: Promise<void> = Promise.resolve();
     constructor(private readonly fs: IFileSystem, private readonly key: string) {}
     private readonly path = '/etc/fs/harness-conversations.seq';
-    async load(): Promise<RemoteConversationRecovery | undefined> {
+    load(): Promise<RemoteConversationRecovery | undefined> {
+        return this.serialize(() => this.read());
+    }
+    private async read(): Promise<RemoteConversationRecovery | undefined> {
         if (!await this.fs.driver.exists(this.path)) { this.record = {}; this.raw = null; return; }
         this.raw = await this.fs.meta.seq!.getEntry(this.path, this.key);
         if (!this.raw) { this.record = {}; return; }
@@ -23,11 +29,24 @@ export class RemoteConversationStore {
         if (record.deletedSessionIds !== undefined && (!Array.isArray(record.deletedSessionIds) || record.deletedSessionIds.length > 16401
             || record.deletedSessionIds.some(id => typeof id !== 'string' || !id))) throw new FSError('EINVAL', 'Invalid native deletion recovery');
         validateAttachments(record.draftAttachments);
-        this.record = record; return record;
+        this.record = record; return structuredClone(record);
     }
     get submittedTurnId(): string | undefined { return this.record.submittedTurnId; }
-    async submitted(turnId: string): Promise<void> { await this.save({...this.record, submittedTurnId: turnId}); }
-    async save(record: RemoteConversationRecovery): Promise<void> {
+    submitted(turnId: string): Promise<void> {
+        return this.serialize(async () => {
+            await this.reconcileWrite();
+            await this.write({...this.record, submittedTurnId: turnId});
+        });
+    }
+    save(record: RemoteConversationRecovery): Promise<void> {
+        const frozen = structuredClone(record);
+        return this.serialize(() => this.write(frozen));
+    }
+    private serialize<T>(operation: () => Promise<T>): Promise<T> {
+        const work = this.writes.then(operation); this.writes = work.then(() => {}, () => {}); return work;
+    }
+    private async write(record: RemoteConversationRecovery): Promise<void> {
+        await this.reconcileWrite();
         validateSubmissions(record);
         if (record.deletedSessionIds !== undefined && (!Array.isArray(record.deletedSessionIds) || record.deletedSessionIds.length > 16401
             || record.deletedSessionIds.some(id => typeof id !== 'string' || !id))) throw new FSError('EINVAL', 'Invalid native deletion recovery');
@@ -37,11 +56,40 @@ export class RemoteConversationStore {
             catch (error) { if ((error as {code?: string}).code !== 'EEXIST') throw error; }
         }
         const value = JSON.stringify(record);
-        await this.fs.meta.seq!.transaction!(async tx => {
-            if (!await tx.compareAndSet(this.path, this.key, {expected: this.raw, value})) throw new FSError('ECONFLICT', 'Remote conversation is controlled by another view');
-        });
+        const before = this.raw, started = Date.now();
+        try {
+            await this.fs.meta.seq!.transaction!(async tx => {
+                if (!await tx.compareAndSet(this.path, this.key, {expected: before, value})) throw new FSError('ECONFLICT', 'Remote conversation is controlled by another view');
+            });
+        } catch (error) {
+            this.uncertainWrite = {before, after: value};
+            this.log('persist', started, record, error); throw error;
+        }
         this.raw = value;
         this.record = record;
+    }
+    private async reconcileWrite(): Promise<void> {
+        if (this.conflicted) throw new FSError('ECONFLICT', 'Remote conversation recovery conflicts with another writer');
+        if (!this.uncertainWrite) return;
+        const started = Date.now(), {before, after} = this.uncertainWrite;
+        const actual = await this.fs.meta.seq!.getEntry(this.path, this.key);
+        if (actual !== before && actual !== after) {
+            this.conflicted = true;
+            const error = new FSError('ECONFLICT', 'Remote conversation recovery conflicts with another writer');
+            this.log('reconcile-write', started, this.record, error); throw error;
+        }
+        this.raw = actual;
+        this.record = actual ? JSON.parse(actual) : {};
+        this.uncertainWrite = undefined;
+        this.log('reconcile-write', started, this.record);
+    }
+    private log(stage: string, started: number, record: RemoteConversationRecovery, error?: unknown): void {
+        const raw = (error as {code?: unknown})?.code;
+        const code = typeof raw === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(raw) ? raw : 'JOURNAL_WRITE_UNCONFIRMED';
+        const fields = {operation: 'harness.journal', stage, result: error ? 'unconfirmed' : 'confirmed',
+            operationId: record.pending?.requestId ?? record.submission?.id,
+            durationMs: Date.now() - started, code: error ? code : undefined};
+        if (error) console.warn('[Harness] Recovery write', fields); else console.info('[Harness] Recovery write', fields);
     }
 }
 

@@ -109,3 +109,7 @@ pnpm --filter @itookit/cli exec vitest run tests/harness-real-model-live.test.ts
 - 通用远程执行与完整RAPTOR远程扫描分别验收；首轮固定peer协议记录与后续实际模型记录独立。跨机器项目节点部署、任意节点崩溃矩阵及完整RAPTOR远程业务迁移仍未验证。
 
 源码入口：[连接与授权](../../backend/app-core/src/projects/harness-connections.ts)、[调用与核对](../../backend/app-core/src/projects/harness-execution.ts)、[Program](../../backend/kernel-adapters/src/programs/harness-program.ts)、[Effect](../../backend/kernel-adapters/src/effects/harness-execution-effect.ts)、[Session 绑定](../../backend/llm-session/src/session/harness-binding.ts)、[Flow 节点](../../backend/llm-flow/src/flow/harness-agent.ts)。验证记录见[机器记录](fixtures/remote-harness-evidence.json)与 [RAPTOR 与远程编排](raptor-harness-integration.md)。
+
+### 远程恢复记录的本地存储一致性
+
+RemoteConversationStore 只保存原生身份、草稿及操作回执，不保存另一份原生对话历史。同实例 load/save/submitted 串行，保存时冻结输入，读取返回副本；该边界不等待原生 turn。事务回执丢失时，下一次写先读取原键，只有写前或写后值能继续；出现第三值保持冲突，刷新不能重新授权旧实例覆盖。追加 submittedTurnId 先核对原写，再合并持久事实，不能用旧缓存覆盖已提交草稿修订。

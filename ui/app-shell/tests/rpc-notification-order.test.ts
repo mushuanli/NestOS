@@ -2,6 +2,25 @@ import { expect, it, vi } from 'vitest';
 import { RpcPeer, type CapabilityRegistry } from '@itookit/app-transport/rpc';
 import { CAPABILITIES } from '@itookit/app-transport/application';
 
+it('transports exact Task pause withdrawal identity and preserves a rejected control epoch', async () => {
+    let server!: RpcPeer;
+    const errors = vi.fn(), request = {requestId: 'withdraw-original', expectedEpoch: 7};
+    const withdrawPause = vi.fn(async (_request: typeof request) => ({epoch: 8, mode: 'run', requestId: request.requestId, acknowledged: false}));
+    const client = new RpcPeer('client', call => server.handle(call), errors, undefined, undefined, CAPABILITIES);
+    server = new RpcPeer('server', call => client.handle(call), errors, undefined, undefined, CAPABILITIES);
+    try {
+        const initial = await server.bootstrap({id: 'task', respond: async () => {}, wait: async () => {}, withdrawPause});
+        client.applyUpdates(initial.updates); const task = client.decode(initial.value!);
+        expect(task.withdrawPause).toBeTypeOf('function');
+        expect(await task.withdrawPause(request)).toMatchObject({requestId: request.requestId, epoch: 8, acknowledged: false});
+        expect(withdrawPause).toHaveBeenCalledOnce(); expect(withdrawPause).toHaveBeenCalledWith(request);
+        withdrawPause.mockRejectedValueOnce(Object.assign(new Error('Control epoch conflict'), {code: 'CONFLICT'}));
+        await expect(task.withdrawPause({...request, requestId: 'withdraw-stale'})).rejects.toMatchObject({code: 'CONFLICT'});
+        expect(withdrawPause).toHaveBeenCalledTimes(2);
+        expect(errors).not.toHaveBeenCalled();
+    } finally {await client.close(); await server.close();}
+});
+
 it('transports the current HarnessClient observation API and releases subscriptions', async () => {
     let server!: RpcPeer, notify!: () => void;
     const release = vi.fn(), errors = vi.fn();

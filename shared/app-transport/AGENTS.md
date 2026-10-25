@@ -27,3 +27,5 @@ RPC 身份与能力租约使用包内 randomUUID 兼容工具，不直接调用�
 HarnessClient 的能力表显式注册 subscribe/eventSnapshot 与目录订阅/快照，禁止保留已移除的轮询 RPC。变更客户端接口时同时验证真实 RpcPeer 往返和取消订阅释放，不能只用直接对象替身验证 UI。
 
 IConnectionService 的 getPricingConfig 与管理服务一样以 snapshot 暴露，保留 reference_catalog 厂商价格来源、日期、币种及单位；模型选择 UI 不通过传输外的厂商目录补齐。真实 HTTPS 回归覆盖该只读快照。
+
+TaskHandle.withdrawPause 在应用能力表显式注册为 async，保留原 requestId、expectedEpoch 与错误码。公开内核 API 的新增方法必须同时检查远程能力表；通用 RPC 编码器不通过反射自动开放所有方法。

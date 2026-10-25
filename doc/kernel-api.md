@@ -284,6 +284,7 @@ interface TaskHandle<O = unknown> {
     pause(options: TaskControlOptions): Promise<TaskControl>;
     interrupt(options: TaskControlOptions): Promise<TaskControl>;
     resume(options: TaskControlOptions & { signal?: TaskSignal }): Promise<TaskControl>;
+    withdrawPause(options: TaskPauseWithdrawalOptions): Promise<TaskControl>;
     respond<T>(response: InteractionResponse<T>): Promise<void>;
     createResource(spec: TaskResourceSpec): Promise<ResourceGrant>;
     cancel(reason?: string): Promise<void>;
@@ -849,6 +850,8 @@ Session.send 使用源 Session 内稳定幂等键，同键异内容冲突；Task
 新信封 schemaVersion 2，Session manifest 的 events schema 在首次新写时同事务提升；新宿主兼容读取 v1 / v2，旧 writer 须退出后再升级。Effect 生命周期携带 effectId 和已有 attemptId；正常 Decision 与直接取消的 Task 终态都携带 ExitRecord。KernelEventMap / KernelEvent 提供内建判别联合，parseEventEnvelope / parseKernelEvent 验证信封及已收录 v2 payload。旧 v1 与未收录事件保留为原始事实，自定义 emit 不得冒用内核保留名字。
 
 interrupt 保存 pending + cleanupPending 以及 lost attempt，再 abort / cancel；旧结果和进度不能提交。树内清理确认后 task.control.acknowledged 才为真；resume 先 reconcile，不能盲目重放未知副作用。context 的 attemptId / attemptNumber 可供外部系统 fence 迟到执行者，cancel 必须确认指定 attempt 不能再次启动。
+
+`withdrawPause({requestId, expectedEpoch})` 仅撤销指定版本的未确认 pause，不放宽 resume。它拒绝 interrupt、终态、已确认暂停及树内 cleanupPending，保留 Session、祖先和子节点自身 hold，不取消、核对或重派发原 Effect。长活 Effect 的 `sessionState.setIfRunning(key,value,expectedVersion?)` 与控制在同一事务校验 claim 及暂停屏障；受阻时返回 undefined 且不写，普通 set 仍可保存观察和结算。撤销记录使用 `task.control.withdraw-pause` 事件及独立请求身份。
 
 Task wait 默认等逻辑 exit，until: settled 等清理；waitStopped 等控制停止确认。Task watch 默认 settled，Session watch 在 closed / archived 后结束；dispose 结束流并拒绝未完成的等待，恢复后重新附加句柄。readEvents 使用有界 sequence 页；snapshot 与 asOfSequence 提供原子重同步边界。核心签名和错误分类以随包提供的[接口参考](../libraries/durable-kernel/docs/api.md)为准。
 

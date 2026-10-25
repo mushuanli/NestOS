@@ -20,6 +20,7 @@ function fenceTask<O>(task: TaskHandle<O>, lease: SharedLeaseCondition): TaskHan
     fenced.respond = (response, options) => task.respond(response, { ...options, lease });
     fenced.cancel = (reason, options) => task.cancel(reason, { ...options, lease });
     fenced.pause = options => task.pause({ ...options, lease });
+    fenced.withdrawPause = options => task.withdrawPause({ ...options, lease });
     fenced.interrupt = options => task.interrupt({ ...options, lease });
     fenced.resume = options => task.resume({ ...options, lease });
     fenced.start = options => task.start({ ...options, lease });

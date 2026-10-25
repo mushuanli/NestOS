@@ -80,6 +80,6 @@ C4Component
 
 现有 [Session 持久契约](../../backend/llm-session/src/persistence/types.ts) 已保存 parentSessionId；[ContentTransferService](../../backend/llm-session/src/session/content-transfers.ts) 已提供按父 Session/requestId 保存创建意图、幂等确保子会话及准备执行存储的路径。[FlowInvocationService](../../backend/llm-session/src/session/flow-invocations.ts) 已支持显式目标 Session 的调用与恢复。这些基础不证明所有独立 Agent/Task/Flow 入口已统一到子会话。
 
-任务安排见[功能合入计划第 7 节](functional-merge-plan.md#7-子会话与函数视图的交付安排)：先冻结关联及所属 Session，再打通独立调用和最小函数视图；高级内嵌会话详情后续增强。当前本地目标/台账候选仍在审查，不能将未提交代码列为已合入。
+任务安排见[功能合入计划第 7 节](functional-merge-plan.md#7-子会话与函数视图的交付安排)：先冻结关联及所属 Session，再打通独立调用和最小函数视图；高级内嵌会话详情后续增强。`630455b4` 已合入当前 Session 的平级目标入口与台账基础；它不代表独立子 Session 路由和函数调用组已经完成。
 
 验收至少覆盖：同 Flow 两次独立运行得到不同子 Session/Invocation；同一创建/提交丢回复或重启仍复用原身份；重开另一分支后查询原回执不重解释上下文；父级只保留一次调用投影；打开子会话不重跑；父取消只覆盖受管理调用；审批不能被折叠；详情失败不改变已完成结果。

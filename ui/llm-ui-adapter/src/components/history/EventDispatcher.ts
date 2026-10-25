@@ -77,6 +77,7 @@ export class EventDispatcher {
 
 
         m.set('resend', (ctx) => this.fireNodeAction('regenerate', ctx.sessionId));
+        m.set('edit-arguments', (ctx) => this.fireNodeAction('edit-arguments', ctx.sessionId));
         m.set('regenerate', (ctx) => this.fireNodeAction('regenerate', ctx.sessionId));
         m.set('retry', (ctx) => this.fireNodeAction('regenerate', ctx.sessionId));
 

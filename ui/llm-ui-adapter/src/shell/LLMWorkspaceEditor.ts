@@ -1,5 +1,6 @@
-import {flowImageAssets} from '../flows/image-assets';
-import { prepareAgentFlow } from '../flows/agent-flow';
+import {flowInputAssets} from '../flows/input-assets';
+import {prepareAgentFlow, prepareCallTarget} from '../flows/agent-flow';
+import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
 import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { disposeEditorResources } from './editor-disposal';
 import { rememberTaskAttachment, restoreTaskAttachment } from './task-attachment-lifecycle';
@@ -13,9 +14,11 @@ import { mountConversationSource } from './conversation-source';
 import { openSessionFlowOutputs } from '../flows/session-output';
 import { InvocationPanel } from '../flows/InvocationPanel';
 import { InstructionQueuePanel } from '../components/InstructionQueuePanel';
+import {WorkspaceSubmissionRecovery} from './WorkspaceSubmissionRecovery';
 import { sessionMaterialHeader, mountSessionInputActions } from './session-material';
 import { promptChildConversation } from '../flows/create-child';
 import { invokeFlowText } from '../flows/invoke-flow';
+import {rerunSessionFlow} from '../flows/rerun-flow';
 import { promptFlowParameters } from '../components/FlowParameterForm';
 // @file: llm-ui/shell/LLMWorkspaceEditor.ts
 
@@ -180,6 +183,8 @@ export class LLMWorkspaceEditor implements IEditor {
 
     // === 命令实例 ===
     private sendCommand!: SendMessageCommand;
+    private operations?: OperationLedger;
+    private submissionRecovery?: WorkspaceSubmissionRecovery;
     private switchBranchByOffsetCommand!: SwitchBranchByOffsetCommand;
     private nodeCommands = new Map<string, Command<any, any>>();
 
@@ -275,6 +280,7 @@ export class LLMWorkspaceEditor implements IEditor {
             measurement.mark('branches');
 
             this.initComplete = true;
+            this.submissionRecovery?.observe(this.sessionManager.getSnapshot?.().instructionQueue);
             this.options.handoff = undefined;
             this.emit('ready', undefined);
             this.initResolve?.();
@@ -346,6 +352,8 @@ export class LLMWorkspaceEditor implements IEditor {
             buildExecutorOptions(this.agentService, this.options.remoteAgents, this.options.configuration?.getConfigurationSnapshot()),
             this.stateManager.loadUIState(session.manifest),
         ]);
+        this.operations = createOperationLedger({initial: savedUIState?.operations,
+            save: records => this.stateService.saveOperations(session.sessionId, records)});
         // Retire draft renderers before the new history owns children of the shared mount.
         this.options.handoff?.release();
         const historyEl = this.domCache.byId('llm-ui-history')!;
@@ -377,6 +385,7 @@ export class LLMWorkspaceEditor implements IEditor {
             });
         const queue = document.createElement('section'); inputEl.before(queue);
         this.instructionQueuePanel = new InstructionQueuePanel(queue, this.commandBus, this.options.sessionId);
+        this.instructionQueuePanel.setReadOnly(!!this.options.readOnly);
         this.instructionQueuePanel.update(session.snapshot.instructionQueue);
 
         // Create NavigationHelper now that historyView is available
@@ -415,15 +424,16 @@ export class LLMWorkspaceEditor implements IEditor {
             } : undefined,
             onConfigureExecutor: this.hostContext?.navigate ? () => {
                 const config = this.chatInput.getConfig();
-                void this.hostContext?.navigate?.(config.settings.flowId
-                    ? {target: 'flows', resourceId: config.settings.flowId}
+                const flowId = config.target?.kind === 'flow' ? config.target.id : config.settings.flowId;
+                void this.hostContext?.navigate?.(flowId
+                    ? {target: 'flows', resourceId: flowId}
                     : {target: 'agents', resourceId: this.agentService.getAgentResourceId?.(config.agentId)});
             } : undefined,
             maxAgentExchanges: this.sessionManager.getDirectAgentPolicy?.().maxExchanges,
             ...(this.options.sessionSkills ? {
                 onRequestSkills: async () => this.decorateSkillCapabilities(await this.options.sessionSkills!.list(this.options.sessionId)),
                 onConfigureCapabilities: () => {
-                    const flowId = this.chatInput.getConfig().settings.flowId;
+                    const config = this.chatInput.getConfig(), flowId = config.target?.kind === 'flow' ? config.target.id : config.settings.flowId;
                     if (flowId) { void this.hostContext?.navigate?.({ target: 'flows', resourceId: flowId }); return; }
                     const id = this.chatInput.getConfig().agentId || 'default';
                     void this.hostContext?.navigate?.({ target: 'agents', resourceId: this.agentService.getAgentResourceId?.(id) });
@@ -431,8 +441,8 @@ export class LLMWorkspaceEditor implements IEditor {
                 onLoadSkill: (id: string) => this.options.sessionSkills!.load(this.options.sessionId, id),
                 onUnloadSkill: (id: string) => this.options.sessionSkills!.unload(this.options.sessionId, id),
             } : {}),
-            onSend: (text, files, agentId, overrides) =>
-                this.routeMessage({ text, files, agentId, overrides })
+            onSend: (text, files, agentId, overrides, target) =>
+                this.routeMessage({text, files, agentId, overrides, target})
                     // Direct commands reject on purpose (no fallback to chat): report the reason the
                     // command could not start instead of leaving an unhandled rejection.
                     .catch(error => { this.errorHandler.handle(error, 'Send message'); if (agentId.startsWith('remote:')) throw error; return false as const; }),
@@ -441,12 +451,16 @@ export class LLMWorkspaceEditor implements IEditor {
             initialConfig: {
                 text: savedUIState?.input_text || '',
                 agentId: validAgentId,
+                target: savedUIState?.input_target,
+                input: savedUIState?.input_arguments,
                 settings: initialSettings,
             },
             onConfigChange: (config) => this.handleConfigChange(config),
             onExecutorChange: () => { this.skillRefreshBinding?.refresh(); },
             onRequestConnections: () => this.connectionOptions!.read(),
             prepareAgentFlow: (agent, signal, draft) => prepareAgentFlow(this.commandBus, agent, signal, draft),
+            requestCallTargets: () => this.commandBus.execute(SessionCommand.ListTargets),
+            prepareCallTarget: (target, signal, draft) => prepareCallTarget(this.commandBus, target, signal, draft),
 
             // ── @mention file reference ───────────────────────────────────────
             onRequestFiles: async (query, options) => this.fileSearchService.search(query, options),
@@ -494,6 +508,9 @@ export class LLMWorkspaceEditor implements IEditor {
         this.commandRegistry.initialize();
 
         this.sendCommand = new SendMessageCommand(ctx);
+        this.submissionRecovery = new WorkspaceSubmissionRecovery(this.domCache.byId('llm-ui-input')!, this.operations!, this.options.sessionId,
+            id => this.reconcileSubmission(id),
+            error => this.errorHandler.handle(error, 'Reconcile submission'));
         this.switchBranchByOffsetCommand = new SwitchBranchByOffsetCommand(ctx);
 
         this.nodeCommands = new Map<string, Command<any, any>>([
@@ -617,7 +634,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.inputDialogAbort?.abort();
         this.inputDialogAbort = new AbortController();
         this.inputDialogKey = key;
-        void promptFlowParameters(parameters, request.prompt, result => attachment.respondInput(request.id, result, revision), this.inputDialogAbort.signal, undefined, flowImageAssets(this.commandBus))
+        void promptFlowParameters(parameters, request.prompt, result => attachment.respondInput(request.id, result, revision), this.inputDialogAbort.signal, undefined, flowInputAssets(this.commandBus))
             .finally(() => { if (this.inputDialogKey === key) this.inputDialogKey = undefined; });
         return true;
     }
@@ -636,9 +653,20 @@ export class LLMWorkspaceEditor implements IEditor {
             bus: this.bus,
             errorHandler: this.errorHandler,
             getSessionId: () => this.options.sessionId,
+            getBranch: () => this.stateManager.getDraftBranch(),
             isGenerating: () => this.sessionManager.isGenerating(),
             executeDirectCommand: this.options.privilegedCommands ? command => this.startExec(command) : undefined,
             resolveSubmission: this.options.resolveSubmission,
+            operations: this.operations,
+            observeInstructions: listener => {
+                const stop = this.sessionManager.onEvent(event => {
+                    if (event.type === 'instructions:changed') listener(event.payload);
+                });
+                const queue = this.sessionManager.getSnapshot?.().instructionQueue;
+                if (queue) listener(queue);
+                return stop;
+            },
+            reconcileSubmission: request => this.commandBus.execute(SessionCommand.InspectSubmissionReceipt, request),
         };
     }
 
@@ -716,6 +744,10 @@ export class LLMWorkspaceEditor implements IEditor {
     // ================================================================
 
     private handleNodeAction(action: string, nodeId: string): void {
+        if (action === 'edit-arguments') {
+            void this.rerunArguments(nodeId).catch(error => this.errorHandler.handle(error, 'Edit call arguments'));
+            return;
+        }
         if (action === 'prev-sibling' || action === 'next-sibling') {
             new SiblingSwitchCommand(this.buildCommandContext())
                 .run({ nodeId, direction: action === 'prev-sibling' ? 'prev' : 'next' });
@@ -728,6 +760,15 @@ export class LLMWorkspaceEditor implements IEditor {
         } else {
             console.warn(`[Shell] Unknown node action: ${action}`);
         }
+    }
+
+    private async rerunArguments(nodeId: string): Promise<void> {
+        const group = this.sessionManager.getSessions().find(item => item.id === nodeId);
+        if (!group?.roundId || !group.callInput?.admitted) throw new Error(t('flow.rerun.unavailable'));
+        this.rerunAbort?.abort(); const abort = this.rerunAbort = new AbortController();
+        const context = await this.commandBus.execute<import('../flows/rerun-flow').FlowRerunContext>(SessionCommand.FlowRerunContext, {sourceRoundId: group.roundId});
+        if (!this.viewActive || abort.signal.aborted || abort !== this.rerunAbort) return;
+        await rerunSessionFlow(this.commandBus, abort.signal, context);
     }
 
     private handleContentChange(id: string, content: string, _type: 'user' | 'node'): void {
@@ -743,7 +784,7 @@ export class LLMWorkspaceEditor implements IEditor {
     }
 
     private decorateSkillCapabilities(skills: SkillInfo[]): SkillInfo[] {
-        if (this.chatInput?.getConfig().settings.flowId) return skills.map(skill => ({ ...skill, capabilitiesManagedByFlow: true }));
+        if (this.chatInput?.getConfig().settings.flowId || this.chatInput?.getConfig().target?.kind === 'flow') return skills.map(skill => ({ ...skill, capabilitiesManagedByFlow: true }));
         const agentId = this.chatInput?.getConfig().agentId || 'default';
         const policy = this.agentService.findAgent(agentId)?.capabilityPolicy;
         const grants = new Set(policy?.toolIds ?? this.options.defaultHarnessToolIds ?? []);
@@ -904,7 +945,7 @@ export class LLMWorkspaceEditor implements IEditor {
         let autoRunFlow: NonNullable<ConversationManifest['flow']> | undefined;
         try {
             const flow = manifest?.flow;
-            if (flow) {
+            if (flow && !this.chatInput.getConfig().target) {
                 this.chatInput?.selectFlow(flow.flowId, flow.revision, flow.parameters);
                 if (emptySession) autoRunFlow = flow;
             }
@@ -934,7 +975,10 @@ export class LLMWorkspaceEditor implements IEditor {
         this.sessionEventUnsub?.();
         this.sessionEventUnsub = this.sessionManager.onEvent(
             (event) => {
-                if (event.type === 'instructions:changed') this.instructionQueuePanel?.update(event.payload);
+                if (event.type === 'instructions:changed') {
+                    this.instructionQueuePanel?.update(event.payload);
+                    if (this.initComplete) this.submissionRecovery?.observe(event.payload);
+                }
                 if (event.type === 'branch:switched') void this.stateManager.switchDraftBranch(event.payload.branchName).catch(error => console.error('Branch draft switch failed', error));
                 this.sessionEventHandler.handleSessionEvent(event);
             }
@@ -946,7 +990,7 @@ export class LLMWorkspaceEditor implements IEditor {
     // ================================================================
 
     private async routeMessage(message: import('../commands/SendMessageCommand').SendMessageParams): Promise<void | false> {
-        if (!message.agentId?.startsWith('remote:')) return await this.sendCommand.run(message) ? undefined : false;
+        if (message.target || !message.agentId?.startsWith('remote:')) return await this.sendCommand.run(message) ? undefined : false;
         if (message.files.length) throw new Error(t('harness.remoteAttachments'));
         if (!this.options.remoteAgents) throw new Error(t('toolbox.unavailable'));
         try { await this.options.remoteAgents.send(message.agentId, message.text, this.chatInput.getNativeModelSelection?.()); }
@@ -960,6 +1004,7 @@ export class LLMWorkspaceEditor implements IEditor {
             (id) => agents.some(a => a.id === id) ? id : 'default'
         );
         await this.chatInput.refreshConnections();
+        await this.chatInput.refreshCallTargets?.();
         if (changed) {
             this.bus.emit('state:inputChanged', {});
         }
@@ -1028,6 +1073,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.chatInput?.hideNativeModelPicker?.();
         ++this.activationRevision;
         this.viewActive = false; this.invocationPanel?.setVisible(false);
+        this.submissionRecovery?.setActive(false);
         this.historyView?.setActive?.(false);
         if (this.refreshAgentsTimer) clearTimeout(this.refreshAgentsTimer);
         this.refreshAgentsTimer = null;
@@ -1044,6 +1090,8 @@ export class LLMWorkspaceEditor implements IEditor {
         this.historyView?.setActive?.(true);
         const loaded = await this.sessionService.loadSession(this.options.sessionId, this.currentTitle, this.branchStore.currentBranch?.name);
         if (!isCurrent()) return;
+        this.submissionRecovery?.setActive(true);
+        this.submissionRecovery?.observe(loaded.snapshot.instructionQueue);
         this.bindSessionEvents();
         this.globalEventUnsub?.();
         this.globalEventUnsub = this.sessionManager.onGlobalEvent(event => this.sessionEventHandler.handleGlobalEvent(event));
@@ -1262,6 +1310,8 @@ export class LLMWorkspaceEditor implements IEditor {
         Toast.info('Task approved');
     }
 
+
+
     private requireSessionId(): string {
         if (!this.currentSessionId) throw new Error('Session is not ready');
         return this.currentSessionId;
@@ -1285,6 +1335,7 @@ export class LLMWorkspaceEditor implements IEditor {
     destroy(): Promise<void> {
         if (this.destroyPromise) return this.destroyPromise;
         ++this.activationRevision; this.viewActive = false;
+        this.submissionRecovery?.setActive(false);
         this.attachmentClosed = true;
         this.rerunAbort?.abort();
         this.flowOutputAbort?.abort();
@@ -1311,6 +1362,7 @@ export class LLMWorkspaceEditor implements IEditor {
             () => this.timers.destroy(), () => this.historyPlugin?.deactivate(),
             () => this.slashPlugin?.deactivate(), () => this.invocationPanel?.destroy(),
             () => this.instructionQueuePanel?.destroy(),
+            () => this.submissionRecovery?.dispose(),
             () => this.branchIndicator?.destroy(), () => this.statusIndicator?.destroy(),
             () => this.historyView?.destroy(), () => {if (!preserve) this.chatInput?.destroy();},
             () => this.sessionService?.dispose(), () => this.branchStore?.destroy(),
@@ -1322,6 +1374,13 @@ export class LLMWorkspaceEditor implements IEditor {
             () => { if (this.container && !preserve) this.container.innerHTML = ''; },
             () => this.editorEvents.clear(), () => this.nodeCommands.clear(),
         ];
+    }
+
+    private async reconcileSubmission(id: string): Promise<void> {
+        const revision = this.activationRevision;
+        const isCurrent = () => revision === this.activationRevision && this.viewActive && !this.destroyPromise;
+        await this.sendCommand.reconcile(id, isCurrent);
+        if (isCurrent()) await this.stateManager.saveInputConfiguration(this.chatInput.getConfig());
     }
 
     private clearDisposalBindings(): void {

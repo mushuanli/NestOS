@@ -94,3 +94,5 @@ Agent 发布修订与回执位于既有 VFS 定义平面。显式发布冻结共
 session.submit 将 Agent/Flow 根调用送入既有队列，外部字段不授予内部计划或 Invocation。编辑从冻结定义重编译，claim 先持久分配根调用身份；用户重跑新建身份并保留原终态。submission.inspect 只读显式 Session 的接纳事实，不激活视图或执行。附件接纳冻结不可变字节，派发核验后通过 Context.resolveMessage 装配；完整子调用身份、默认工作台台账和通用文件传输继续分批验收。
 
 validateCallAssets 由宿主注入，贯通 Flow/Flow Agent 根接纳、实际队列实参编辑及 DagCommandService 准备；独立 FlowInvocation 使用同一准备边界。新派发在创建 Task 前再次核验，消费时仍按 Task 授权读取。原提交与无变更编辑先核对持久事实，不能因文件后来丢失抹掉接纳或自动重发。
+
+ConversationUIState.operationRecords 仅保存宿主 UI 的不透明操作台账；Kernel、队列、Round 的事实权威保持原位置。默认工作台与独立视图查询原冻结 Submission 的完整摘要，不能只凭队列 ID 判定接纳，也不能在恢复时使用当前分支或最新目标改写请求。

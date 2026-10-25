@@ -6,7 +6,7 @@ export class ChatProjection implements ConversationSource {
     private readonly listeners = new Set<() => void>();
     private readonly messages = new Map<string, { encoded: string; message: ChatMessage }>();
     private snapshot: ConversationSnapshot;
-    constructor(readonly conversationId: string, private readonly report: (error: unknown) => void = () => {}) {
+    constructor(readonly conversationId: string, private readonly report: (error: unknown) => void = () => {}, readonly refresh?: () => Promise<void>) {
         this.snapshot = { conversationId, viewId: randomUUID(), revision: 0, title: '', messages: [], interactions: [],
             loading: true, execution: 'unknown', connection: 'online', hasEarlier: false, allowed: [] };
     }

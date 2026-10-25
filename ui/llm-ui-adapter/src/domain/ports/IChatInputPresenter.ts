@@ -21,6 +21,8 @@ export type ChatInputSettings =
 export interface IChatInputConfig {
     text: string;
     agentId: string;
+    target?: import('@itookit/llm-flow/contracts').TargetRef;
+    input?: import('../input-draft').WorkspaceArgumentDraft;
     settings: ChatInputSettings;
 }
 
@@ -43,6 +45,10 @@ export type InteractionReply = { approved: boolean; note?: string } | string;
  * Command 层只依赖此接口，不知道 ChatInput 的 DOM 实现。
  */
 export interface IChatInputPresenter {
+    setDraftScope?(id: string): void;
+    getDraftRevision?(): number;
+    getDraftFiles?(): File[];
+    acceptSubmittedDraft?(text: string, files: File[], revision?: number): void;
     captureRecovery(): unknown;
     restoreRecovery(snapshot: unknown): void;
     cancelPendingSend?(): void;
@@ -55,6 +61,7 @@ export interface IChatInputPresenter {
     restoreInput(text: string, agentId?: string): void;
     focus(): void;
     refreshAgents(agents: ExecutorOption[], validateAgentId: (id: string) => string): boolean;
+    refreshCallTargets?(): Promise<void>;
     /** Select the immutable Flow revision (and runtime parameters) used by the next send. */
     selectFlow(flowId: string, revision: number, parameters?: Record<string, JsonValue>): void;
 

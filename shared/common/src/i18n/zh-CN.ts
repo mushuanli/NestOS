@@ -2762,6 +2762,25 @@ export const zhCN = {
     'flow.launch.filesUnavailable': '当前宿主不支持持久文件上传，请更新宿主后重试。',
     'flow.launch.filesUploadFailed': '文件准备失败（{code}）；请核对或重试原上传，草稿已保留。',
     'flow.launch.filesUnbound': '输入栏中的附件尚未绑定到 Flow 参数；请在文件字段中选择它们，或移除未使用的附件。',
+
+    'callable.catalog.invalid': '调用目录格式无效，请刷新或更新宿主',
+    'callable.catalog.loading': '正在读取调用目标',
+    'callable.catalog.changed': '调用目标已变化或不可用，请重新选择',
+    'callable.target.flow': 'Flow',
+    'callable.target.agent': 'Agent',
+    'callable.submission.unknown': '提交结果尚待核对，已保留输入',
+    'callable.submission.reconcile': '查询原提交结果',
+    'callable.submission.checking': '正在查询',
+    'callable.submission.conflict': '该操作身份对应另一份已冻结输入，请核对原操作',
+    'callable.submission.unavailable': '调用提交端口尚未就绪，请刷新重试',
+    'callable.submission.rejected': '调用未接纳，请检查输入或目标配置',
+    'callable.submission.receiptMismatch': '提交回执身份不匹配，已保留输入待核对',
+    'callable.submission.attachmentUnknown': '附件提交结果尚待核对，请先核对原操作，避免重复上传',
+    'callable.input.unboundText': '该 Flow 未声明输入框文字的用途，请先移除文字或选择支持文字输入的 Flow',
+    'callable.input.unboundFiles': '该 Flow 未声明附件的用途，请先移除附件或选择支持附件的 Flow',
+    'callable.input.invalidDraft': '结构化参数草稿格式无效，已保留原记录，请修复后重试',
+    'callable.catalog.unavailable': '调用目录暂不可用，请刷新重试',
+    'callable.catalog.partial': '有 {count} 个目标暂不可用，可继续选择其他目标',
 } as const;
 
 // LocaleStrings maps every key to string (not literal), so other locales can provide different values.

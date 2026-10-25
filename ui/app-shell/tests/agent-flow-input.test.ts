@@ -14,7 +14,7 @@ beforeEach(() => {
 });
 afterEach(() => { views.splice(0).forEach(view => view.destroy()); document.body.replaceChildren(); vi.restoreAllMocks(); });
 const agent: ExecutorOption = { id: 'reader', name: 'Reader', execution: { kind: 'flow', flowId: 'registered', parameters: { lesson: 'agent-default' } }, availability: { status: 'ready' } };
-const baseFlow = () => ({ id: 'registered', revision: 2, name: 'Registered flow', nodes: [], connections: [], parameters: [
+const baseFlow = () => ({ id: 'registered', revision: 2, digest: 'published-signature', name: 'Registered flow', nodes: [], connections: [], parameters: [
     { name: 'lesson', type: 'string', default: 'flow-default' }, { name: 'images', type: 'json', widget: 'images' },
 ] });
 
@@ -62,6 +62,21 @@ function sourceFlow(oneOf = false) {
 function chooseSource(dialog: HTMLElement, name: string): void {
     dialog.querySelector<HTMLInputElement>(`[data-flow-source="${name}"]`)!.click();
 }
+
+it('opens structured parameters with no message text and sends the exact form signature', async () => {
+    const f = setup(); f.send.click(); const dialog = await form();
+    submit(dialog);
+    await vi.waitFor(() => expect(f.onSend).toHaveBeenCalledOnce());
+    expect(f.onSend.mock.calls[0]).toEqual(['', [], 'reader', expect.objectContaining({
+        flowParameters: {lesson: 'agent-default'},
+        flowExpectedSignature: {id: 'registered', revision: 2, digest: 'published-signature'},
+    })]);
+});
+
+it('does not turn an empty ordinary chat into an execution', async () => {
+    const f = setup({id: 'chat', name: 'Chat'}); f.send.click();
+    await Promise.resolve(); expect(f.onSend).not.toHaveBeenCalled(); expect(f.prepare).not.toHaveBeenCalled();
+});
 
 it('submits Flow Agent parameters and durable images through the ordinary send button without a default model', async () => {
     const f = setup(); await f.view.refreshConnections(); f.type('Read these pages');

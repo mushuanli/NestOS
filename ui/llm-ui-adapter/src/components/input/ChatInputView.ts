@@ -9,7 +9,10 @@ import type {
     ChatOverrides, SkillInfo, FileSuggestion,
 } from '../../domain/types';
 import { t, randomUUID, ENTITY_ICONS, CHAT_ICONS } from '@itookit/common';
-import { type JsonValue } from '@itookit/llm-flow/contracts';
+import {sameTargetRef, type TargetRef, type JsonValue} from '@itookit/llm-flow/contracts';
+import type {RootCallTarget, RootTargetCatalog} from '@itookit/llm-session/contracts';
+import {WorkspaceCallTargets} from './WorkspaceCallTargets';
+import {sameInputDraft, type WorkspaceArgumentDraft} from '../../domain/input-draft';
 import { type ModelTier } from '@itookit/driver-llm/contracts';
 import { ChatInputTemplates } from '../templates/ChatInputTemplates';
 import type { InputPlugin, InputPluginContext } from './plugins/InputPlugin';
@@ -45,7 +48,9 @@ export interface ChatInputOptions {
     attachmentHint?: string;
     executorLocked?: boolean;
     maxAgentExchanges?: number;
-    onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides) => Promise<void | false>;
+    onSend: (text: string, files: File[], executorId: string, overrides?: ChatOverrides, target?: TargetRef) => Promise<void | false>;
+    requestCallTargets?(): Promise<RootTargetCatalog>;
+    prepareCallTarget?(target: RootCallTarget, signal: AbortSignal, draft: AgentFlowDraftInput): Promise<AgentFlowSubmission | null>;
     prepareAgentFlow?(agent: ExecutorOption, signal: AbortSignal, draft: AgentFlowDraftInput): Promise<AgentFlowSubmission | null>;
     onStop: () => void;
     onExecutorChange?: (executorId: string) => void;
@@ -121,6 +126,13 @@ export interface ChatInputOptions {
     onNavigateSettings?: (target: { resourceId: string; anchor?: string }) => void;
 }
 
+
+interface ComposerSubmission {
+    text: string; submitted: string; executor: string; files: File[]; target?: TargetRef; revision: number;
+    draftScope?: string;
+    remote: boolean; overrides?: ChatOverrides; arguments?: WorkspaceArgumentDraft;
+}
+
 /**
  * ChatInput — 实现 IChatInputPresenter
  *
@@ -128,6 +140,8 @@ export interface ChatInputOptions {
  * 内部 DOM 操作完全封装。
  */
 export class ChatInput implements IChatInputPresenter {
+    private callTargets?: WorkspaceCallTargets;
+    private targetPickerGeneration = 0;
     private flowPreparation?: AbortController;
     private agentNotice?: HTMLElement;
     private connectionLoadRevision = 0;
@@ -159,6 +173,11 @@ export class ChatInput implements IChatInputPresenter {
     private readonly nativeModels: NativeModelControl;
     hideNativeModelPicker(): void {this.nativeModels.hide(); for (const plugin of this.plugins) plugin.onBlur?.();}
     private textRevision = 0;
+    private draftScope?: string;
+    setDraftScope(id: string): void {
+        if (this.draftScope === id) return;
+        this.draftScope = id; ++this.textRevision; this.cancelPendingSend();
+    }
     private observedText = '';
     getDraftRevision(): number {
         if (this.observedText !== this.textarea.value) {this.observedText = this.textarea.value; ++this.textRevision;}
@@ -287,7 +306,9 @@ export class ChatInput implements IChatInputPresenter {
             this.notifyConfigChange();
         }, options.maxAgentExchanges, options.executionModeInfo);
         this.initExecutors();
+        this.bindCallTargets();
         this.syncUIFromConfig();
+
         if (options.attachments === false) this.attachBtn.hidden = true;
         if (options.attachmentAccept) this.fileInput.accept = options.attachmentAccept;
         if (options.attachmentHint) this.attachBtn.title = options.attachmentHint;
@@ -396,22 +417,31 @@ export class ChatInput implements IChatInputPresenter {
         const command = isDirectCommandInput(this.textarea.value) || this.textarea.value.trimStart().startsWith('/');
         this.sendBtn.style.display = this.loading && !this.canQueue() && !this.canQuery() && !this.independentQueryAvailable() ? 'none' : 'flex';
         this.sendBtn.disabled = !this.inputAvailable() || this.submitting > 0 && !this.independentQueryAvailable() || this.checkingConnection || !!this.attachmentMgr?.images.busy || (!!this.connectionReadiness?.blocked && !command)
-            || (!!agentUnavailableReason(this.selectedExecutor()) && !command);
+            || (!!this.targetIssue() && !command);
         this.stopBtn.disabled = !this.availability.canInterrupt;
         this.agentPickerBtn.disabled = (this.loading && !this.canQueue()) || !!this.options.executorLocked;
     }
 
+    private inputAvailable(): boolean {
+        return this.availability.canSend || this.canQuery() || this.independentQueryAvailable();
+    }
+    private independentQueryAvailable(): boolean {return !!this.availability.canQueryCommand?.(this.textarea.value);}
+    private canQuery(): boolean {return !!this.availability.canCommand && isCommandInput(this.textarea.value);}
     private canQueue(): boolean {
-        return !!this.options.instructionQueue && !this.config.settings.flowId;
+        return !!this.options.instructionQueue && (!this.config.settings.flowId || !!this.callTargets);
     }
 
     private requiresConnection(): boolean {
         return !!this.options.onRequestConnections && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId && !this.agentFlow();
     }
 
-    private selectedExecutor(): ExecutorOption | undefined { return this.agents.find(agent => agent.id === this.config.agentId); }
-    private agentFlow(): boolean { return this.selectedExecutor()?.execution?.kind === 'flow'; }
-    cancelPendingSend(): void { this.flowPreparation?.abort(); }
+    private selectedExecutor(): ExecutorOption | undefined { return this.config.target?.kind === 'flow' ? undefined : this.agents.find(agent => agent.id === this.config.agentId); }
+    private agentFlow(): boolean { return this.config.target?.kind === 'flow' || this.selectedExecutor()?.execution?.kind === 'flow'; }
+    private targetIssue(): string | undefined {
+        return this.callTargets && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId
+            ? this.callTargets.issue(this.config.target) : agentUnavailableReason(this.selectedExecutor());
+    }
+    cancelPendingSend(): void {this.flowPreparation?.abort(); ++this.targetPickerGeneration; this.agentPopup?.hide();}
 
     private refreshConnectionStatus(): void {
         this.connectionReadiness?.update(this.requiresConnection(), this.connectionLoadState, this.connectionTier.getIssue(), this.sendBtn);
@@ -419,9 +449,11 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     setConfig(config: Partial<IChatInputConfig>): void {
-        if (config.agentId && config.agentId !== this.config.agentId) this.flowPreparation?.abort();
+        config = this.prepareConfigChange(config);
         this.config = this.mergeConfig(this.config, config);
+        if (!this.config.target && !this.config.settings.flowId) this.config.target = this.callTargets?.initial(this.config.agentId);
         this.syncUIFromConfig();
+
         this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
 
         if (config.agentId && config.agentId !== this.currentAgentId) {
@@ -430,11 +462,20 @@ export class ChatInput implements IChatInputPresenter {
         }
     }
 
+    private prepareConfigChange(config: Partial<IChatInputConfig>): Partial<IChatInputConfig> {
+        const executorChanged = !!config.agentId && config.agentId !== this.config.agentId;
+        const targetChanged = Object.hasOwn(config, 'target') && !sameTargetRef(config.target, this.config.target);
+        if (executorChanged || targetChanged) this.flowPreparation?.abort();
+        return executorChanged && !Object.hasOwn(config, 'target') ? {...config, target: undefined} : config;
+    }
+
     getConfig(): IChatInputConfig {
         this.syncConfigFromUI();
         return {
             text: this.config.text,
             agentId: this.config.agentId,
+            target: this.config.target ? {...this.config.target} : undefined,
+            input: structuredClone(this.config.input),
             settings: { ...this.config.settings },
         };
     }
@@ -463,7 +504,7 @@ export class ChatInput implements IChatInputPresenter {
         const currentAgentId = this.config.agentId;
         this.updateExecutors(agents);
 
-        const validatedId = validateAgentId(currentAgentId);
+        const validatedId = this.config.target ? currentAgentId : validateAgentId(currentAgentId);
         const changed = validatedId !== currentAgentId;
 
         if (changed) {
@@ -522,6 +563,7 @@ export class ChatInput implements IChatInputPresenter {
     adopt(options: ChatInputOptions): void {
         const hadFiles = !!this.options.onRequestFiles;
         this.options = options;
+        this.bindCallTargets();
         if (options.onRequestFiles && !hadFiles) this.registerPlugin(new MentionPlugin({onRequestFiles: options.onRequestFiles}));
         this.executionMode.configure(options.executionModeInfo, options.maxAgentExchanges);
         if (options.initialAgents) {
@@ -537,6 +579,8 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     destroy(): void {
+        ++this.textRevision;
+        this.callTargets?.dispose();
         this.flowPreparation?.abort();
         this.nativeModels.destroy();
         for (const plugin of this.plugins.splice(0)) {
@@ -554,17 +598,19 @@ export class ChatInput implements IChatInputPresenter {
             document.removeEventListener('click', this.outsideClickHandler);
             this.outsideClickHandler = null;
         }
-        this.agentPopup?.destroy();
-        this.agentPopup = null;
+        this.destroyPopups();
         this.connectionTier.destroy();
         this.connectionReadiness.destroy();
         this.executionMode.destroy();
-        this.promptPopup?.destroy();
-        this.promptPopup = null;
         this.attachmentMgr?.destroy();
         this.helpPanel.destroy();
         this.container.innerHTML = '';
         this.files = [];
+    }
+
+    private destroyPopups(): void {
+        this.agentPopup?.destroy(); this.agentPopup = null;
+        this.promptPopup?.destroy(); this.promptPopup = null;
     }
 
     // ================================================================
@@ -575,6 +621,8 @@ export class ChatInput implements IChatInputPresenter {
         return {
             text: partial.text ?? base.text,
             agentId: partial.agentId ?? base.agentId,
+            target: Object.hasOwn(partial, 'target') ? structuredClone(partial.target) : base.target,
+            input: Object.hasOwn(partial, 'input') ? structuredClone(partial.input) : base.input,
             settings: { ...base.settings, ...(partial.settings || {}) },
         };
     }
@@ -910,9 +958,9 @@ export class ChatInput implements IChatInputPresenter {
     private async triggerSend(): Promise<void> {
         if (!this.inputAvailable() || this.checkingConnection || this.submitting > 0 && !this.independentQueryAvailable()) return;
         const text = this.textarea.value.trim();
-        const unavailable = agentUnavailableReason(this.selectedExecutor());
+        const unavailable = this.targetIssue();
         if (unavailable && !isDirectCommandInput(text) && !text.startsWith('/')) { Toast.error(unavailable); return; }
-        if (!text && this.files.length === 0) return;
+        if (!text && this.files.length === 0 && !this.agentFlow() && !this.config.settings.flowId) return;
         if (this.loading && !this.canQueue() && !this.canQuery() && !this.independentQueryAvailable() && !/^\/(flow|cancel|approve|resume)(?:\s|$)/.test(text)) return;
 
         if (this.config.agentId.startsWith('remote:')) { await this.submitDraft(text); return; }
@@ -921,6 +969,7 @@ export class ChatInput implements IChatInputPresenter {
         for (const plugin of this.plugins) {
             if (plugin.onBeforeSend?.(text) === false) return;
         }
+        if (unavailable && !isDirectCommandInput(text)) {Toast.error(unavailable); return;}
 
         if (this.requiresConnection() && !isDirectCommandInput(text) && !await this.checkConnectionBeforeSend(text)) return;
 
@@ -929,35 +978,83 @@ export class ChatInput implements IChatInputPresenter {
 
     private async submitDraft(text: string): Promise<void> {
         if (this.attachmentMgr.images.busy) return;
-        const submitted = this.textarea.value, executor = this.config.agentId, files = [...this.files];
-        const revision = this.getDraftRevision();
-        const remote = executor.startsWith('remote:');
-        const overrides = remote ? undefined : this.buildOverrides();
+        const send = this.captureSubmission(text);
         ++this.submitting; this.applyAvailability();
         try {
-            if (!await this.prepareFlowSubmission(text, files, executor, submitted, revision, overrides)) return;
-            if (await this.options.onSend(text, files, executor, overrides) === false) return;
-            if (!overrides?.flowId && (remote || !isDirectCommandInput(text))) this.recordExecutor(executor);
-            if (this.connectionsDisposed) return;
-            this.clearSubmittedInput(files, this.getDraftRevision() === revision && this.textarea.value === submitted);
-            if (!remote) {
-                this.notifyConfigChange(); this.clearToolOutput();
-                for (const plugin of this.plugins) plugin.onAfterSend?.(text, executor);
-            }
+            if (!await this.prepareSubmission(send)) return;
+            if (!await this.deliverSubmission(send)) return;
+            this.completeSubmission(send);
         } catch (error) { if (this.agentFlow()) Toast.error(error instanceof Error ? error.message : t('agent.execution.unavailable')); }
         finally { --this.submitting; if (!this.connectionsDisposed) this.applyAvailability(); }
     }
 
+    private captureSubmission(text: string): ComposerSubmission {
+        const executor = this.config.agentId, remote = executor.startsWith('remote:');
+        return {text, submitted: this.textarea.value, executor, remote, files: [...this.files], target: structuredClone(this.config.target),
+            draftScope: this.draftScope,
+            revision: this.getDraftRevision(),
+            overrides: remote ? undefined : this.buildOverrides()};
+    }
+
+    private async prepareSubmission(send: ComposerSubmission): Promise<boolean> {
+        if (!await this.prepareFlowSubmission(send.text, send.files, send.executor, send.submitted, send.revision, send.overrides)) return false;
+        if (!isDirectCommandInput(send.text) && sameTargetRef(this.config.input?.target, send.target)) send.arguments = structuredClone(this.config.input);
+        return true;
+    }
+
+    private async deliverSubmission(send: ComposerSubmission): Promise<boolean> {
+        const {text, files, executor, overrides, target} = send;
+        return (target ? await this.options.onSend(text, files, executor, overrides, target)
+            : await this.options.onSend(text, files, executor, overrides)) !== false;
+    }
+
+    private completeSubmission(send: ComposerSubmission): void {
+        if (send.target?.kind !== 'flow' && !send.overrides?.flowId && (send.remote || !isDirectCommandInput(send.text))) this.recordExecutor(send.executor);
+        if (this.connectionsDisposed) return;
+        this.consumeSubmission(send);
+        if (send.remote) return;
+        this.notifyConfigChange(); this.clearToolOutput();
+        for (const plugin of this.plugins) plugin.onAfterSend?.(send.text, send.executor);
+    }
+
+    private consumeSubmission(send: ComposerSubmission): void {
+        if (!this.submissionDestinationMatches(send)) return;
+        if (send.arguments && sameInputDraft(send.arguments, this.config.input)) this.config.input = undefined;
+        const unchanged = this.getDraftRevision() === send.revision && this.textarea.value === send.submitted && sameTargetRef(send.target, this.config.target);
+        this.clearSubmittedInput(send.files, unchanged);
+    }
+
+    private submissionDestinationMatches(send: ComposerSubmission): boolean {
+        return send.draftScope === this.draftScope && sameTargetRef(send.target, this.config.target);
+    }
+
+
+
+
+
     private async prepareFlowSubmission(text: string, files: File[], executor: string, submitted: string, revision: number, overrides?: ChatOverrides): Promise<boolean> {
         if (!this.agentFlow() || isDirectCommandInput(text)) return true;
-        if (!this.options.prepareAgentFlow) throw new Error(t('agent.execution.unavailable'));
+        if (!this.options.prepareAgentFlow && !this.options.prepareCallTarget) throw new Error(t('agent.execution.unavailable'));
         const preparation = this.flowPreparation = new AbortController();
-        const values = await this.options.prepareAgentFlow(this.selectedExecutor()!, preparation.signal, {text, files});
+        const target = this.config.target, choice = this.callTargets?.find(target);
+        const stored = this.config.input, published = choice?.input;
+        const compatible = !published || stored?.signature.id === published.flowId && stored.signature.revision === published.revision && stored.signature.digest === published.digest;
+        const draft = {text, files, ...(target && compatible && sameTargetRef(stored?.target, target) ? {input: structuredClone(stored)} : {})};
+        const values = target?.kind === 'flow' && choice
+            ? await this.options.prepareCallTarget!(choice, preparation.signal, draft)
+            : await this.options.prepareAgentFlow!(this.selectedExecutor()!, preparation.signal, draft);
         if (!values || preparation.signal.aborted || this.connectionsDisposed || executor !== this.config.agentId
-            || revision !== this.getDraftRevision() || this.textarea.value !== submitted) return false;
+            || revision !== this.getDraftRevision() || this.textarea.value !== submitted || !sameTargetRef(target, this.config.target)) return false;
         Object.assign(overrides!, values);
+        if (target) this.rememberArguments(values, target, text);
         delete overrides!.flowId; delete overrides!.flowRevision;
         return true;
+    }
+
+    private rememberArguments(values: AgentFlowSubmission, target: TargetRef, text: string): void {
+        this.config.input = {revision: (this.config.input?.revision ?? 0) + 1, target: {...target}, targetId: target.id,
+            signature: {...values.flowExpectedSignature}, json: JSON.stringify(values.flowParameters), composerText: text};
+        this.notifyConfigChange();
     }
 
     private recordExecutor(id: string): void {
@@ -982,6 +1079,7 @@ export class ChatInput implements IChatInputPresenter {
 
     private submitting = 0;
     acceptSubmittedDraft(text: string, files: File[], revision?: number): void {
+        if (this.connectionsDisposed) return;
         this.clearSubmittedInput(files, (revision === undefined || this.getDraftRevision() === revision) && this.textarea.value.trim() === text.trim());
     }
     private clearSubmittedInput(files: File[], clearText: boolean): void {
@@ -999,8 +1097,11 @@ export class ChatInput implements IChatInputPresenter {
         if (this.config.settings.historyLength !== -1) overrides.historyLength = this.config.settings.historyLength;
         if (this.config.settings.temperature !== undefined) overrides.temperature = this.config.settings.temperature;
         if (!this.config.settings.streamMode) overrides.streamMode = false;
+        this.buildModelOverrides(overrides); this.buildFlowOverrides(overrides);
+        return overrides;
+    }
 
-        // Reasoning effort override
+    private buildModelOverrides(overrides: ChatOverrides): void {
         const effort = this.config.settings.reasoningEffort;
         if (effort && effort !== 'auto') {
             overrides.reasoningEffort = effort;
@@ -1017,6 +1118,9 @@ export class ChatInput implements IChatInputPresenter {
         if (this.config.settings.systemPromptAppend) {
             overrides.systemPromptAppend = this.config.settings.systemPromptAppend;
         }
+    }
+
+    private buildFlowOverrides(overrides: ChatOverrides): void {
         if (this.config.settings.flowId) overrides.flowId = this.config.settings.flowId;
         if (this.config.settings.flowRevision !== undefined) {
             overrides.flowRevision = this.config.settings.flowRevision;
@@ -1027,7 +1131,6 @@ export class ChatInput implements IChatInputPresenter {
         if (this.config.settings.branchMode === 'fork') overrides.branchMode = 'fork';
         if (this.config.settings.retentionMode === 'temporary') overrides.retentionMode = 'temporary';
 
-        return overrides;
     }
 
     // ================================================================
@@ -1039,6 +1142,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     selectFlow(flowId: string, revision: number, parameters?: Record<string, JsonValue>): void {
+        this.config.target = undefined;
         this.config.settings.flowId = flowId;
         this.config.settings.flowRevision = revision;
         this.config.settings.flowParameters = parameters;
@@ -1083,7 +1187,7 @@ export class ChatInput implements IChatInputPresenter {
         for (const selector of ['.llm-input__model-trigger', '.llm-input__btn--websearch', '.llm-input__active-settings']) {
             for (const element of this.container.querySelectorAll<HTMLElement>(selector)) element.hidden = remote || flow;
         }
-        this.container.querySelector<HTMLElement>('.llm-input__agent-picker')!.hidden = !!this.config.settings.flowId;
+        this.container.querySelector<HTMLElement>('.llm-input__agent-picker')!.hidden = !!this.config.settings.flowId && !this.callTargets;
         const supportsModels = remote && !!this.options.nativeModels && !!this.agents.find(agent => agent.id === this.config.agentId)?.supportsModels;
         const selected = this.config.settings.nativeModelSelection;
         this.nativeModels?.setBinding(this.config.agentId, supportsModels, selected?.executorId === this.config.agentId ? selected : undefined);
@@ -1353,12 +1457,15 @@ export class ChatInput implements IChatInputPresenter {
         if (this.restoringRecovery) return;
         this.imageSettings?.refresh(); this.attachmentMgr?.images.refresh();
         const config = this.getConfig();
+
         this.options.onDraftChange?.(config, [...this.files]);
-        const settingsJson = JSON.stringify({ agentId: config.agentId, settings: config.settings });
+        const settingsJson = JSON.stringify({agentId: config.agentId, target: config.target, input: config.input, settings: config.settings});
         if (settingsJson === this.lastNotifiedSettings) return;
         this.lastNotifiedSettings = settingsJson;
         this.options.onConfigChange?.(config);
     }
+
+
 
     // ================================================================
     // 执行器/模型 UI
@@ -1378,6 +1485,40 @@ export class ChatInput implements IChatInputPresenter {
 
     // ── Agent Picker methods ──────────────────────────────────────────────────
 
+    private bindCallTargets(): void {
+        this.callTargets?.dispose(); this.callTargets = undefined;
+        if (!this.options.requestCallTargets) {this.config.target = undefined; return;}
+        this.callTargets = new WorkspaceCallTargets(() => this.options.requestCallTargets!(), () => {
+            if (!this.config.target && !this.config.agentId.startsWith('remote:') && !this.config.settings.flowId) {
+                const initial = this.callTargets?.initial(this.config.agentId);
+                if (initial) this.config.target = {...initial};
+            }
+            this.updateAgentTrigger();
+
+        });
+        void this.callTargets.refresh();
+    }
+
+    refreshCallTargets(): Promise<void> {return this.callTargets?.refresh() ?? Promise.resolve();}
+
+    private async openCallTargetPicker(): Promise<void> {
+        this.connectionTier.hidePopups();
+        const catalog = this.callTargets, generation = ++this.targetPickerGeneration;
+        await catalog?.refreshCurrent();
+        if (this.connectionsDisposed || this.callTargets !== catalog || generation !== this.targetPickerGeneration) return;
+        const remote = this.buildAgentItems().filter(item => item.id.startsWith('remote:'));
+        this.getOrCreateAgentPopup().show([...(catalog?.items() ?? []), ...remote], {onSelect: item => {
+            const selected = catalog?.select(item.id);
+            if (!selected) {this.selectAgent(item.id); return;}
+            this.flowPreparation?.abort();
+            this.config.settings.flowId = undefined; this.config.settings.flowRevision = undefined; this.config.settings.flowParameters = undefined;
+            this.config.target = {...selected.target};
+            this.config.agentId = selected.target.kind === 'agent' ? selected.target.id : '';
+            this.currentAgentId = this.config.agentId;
+            this.updateAgentTrigger(); this.options.onExecutorChange?.(this.config.agentId); this.notifyConfigChange();
+        }});
+    }
+
     private getOrCreateAgentPopup(): PopupPanel {
         if (!this.agentPopup) {
             this.agentPopup = new PopupPanel(this.agentPickerBtn, {
@@ -1391,6 +1532,7 @@ export class ChatInput implements IChatInputPresenter {
     }
 
     private openAgentPicker(): void {
+        if (this.callTargets) { void this.openCallTargetPicker(); return; }
         this.connectionTier.hidePopups();
         const popup = this.getOrCreateAgentPopup();
         popup.show(this.buildAgentItems(), {
@@ -1426,6 +1568,7 @@ export class ChatInput implements IChatInputPresenter {
     private selectAgent(id: string): void {
         if (agentUnavailableReason(this.agents.find(agent => agent.id === id))) return;
         this.flowPreparation?.abort();
+        this.config.target = this.callTargets?.initial(id);
         this.config.agentId = id;
         this.currentAgentId = id;
         this.updateAgentTrigger();
@@ -1435,12 +1578,12 @@ export class ChatInput implements IChatInputPresenter {
 
     /** Update trigger button text/icon/meta from current agentId. */
     private updateAgentTrigger(): void {
-        const agent = this.agents.find(a => a.id === this.config.agentId);
+        const agent = this.callTargets?.find(this.config.target) ?? this.agents.find(a => a.id === this.config.agentId);
         if (!this.agentNameEl) return;
         if (agent) {
             this.agentIconEl.textContent = agent.icon ?? ENTITY_ICONS.agent;
             this.agentNameEl.textContent = agent.name;
-            const meta = agent.category ?? '';
+            const meta = 'target' in agent ? (agent.target.kind === 'flow' ? t('callable.target.flow') : t('callable.target.agent')) : agent.category ?? '';
             this.agentMetaEl.textContent = meta;
             this.agentMetaEl.style.display = meta ? '' : 'none';
         } else {
@@ -1458,8 +1601,9 @@ export class ChatInput implements IChatInputPresenter {
             this.agentNotice.className = 'llm-input__connection-notice'; this.agentNotice.setAttribute('role', 'status');
             this.container.querySelector('.llm-input__connection-notice')?.after(this.agentNotice);
         }
-        const reason = agentUnavailableReason(this.selectedExecutor());
-        this.agentNotice.textContent = reason ?? ''; this.agentNotice.hidden = !reason;
+        const reason = this.targetIssue();
+        const notice = reason ?? this.callTargets?.notice();
+        this.agentNotice.textContent = notice ?? ''; this.agentNotice.hidden = !notice;
         if (reason) this.flowPreparation?.abort();
         this.applyAvailability();
     }
@@ -1529,10 +1673,4 @@ export class ChatInput implements IChatInputPresenter {
         this.textarea.focus();
     }
 
-
-private inputAvailable(): boolean {
-        return this.availability.canSend || this.canQuery() || this.independentQueryAvailable();
-    }
-private independentQueryAvailable(): boolean {return !!this.availability.canQueryCommand?.(this.textarea.value);}
-private canQuery(): boolean {return !!this.availability.canCommand && isCommandInput(this.textarea.value);}
 }

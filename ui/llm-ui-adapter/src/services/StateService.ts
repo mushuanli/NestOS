@@ -4,6 +4,7 @@ import type { ConversationUIState, ISessionRepository } from '@itookit/llm-sessi
 import type { ChatInputSettings } from '../domain/ports/IChatInputPresenter';
 import type { UIState } from '../domain/types';
 import { ErrorHandler } from '../utils/errorHandler';
+import {readInputDraft} from '../domain/input-draft';
 
 /**
  * UI 状态持久化服务
@@ -11,6 +12,10 @@ import { ErrorHandler } from '../utils/errorHandler';
  */
 export class StateService {
     constructor(private engine: ISessionRepository) { }
+
+    async saveOperations(sessionId: string, records: readonly import('@itookit/llm-ui').OperationRecord[]): Promise<void> {
+        await this.engine.updateUIState(sessionId, {operationRecords: JSON.parse(JSON.stringify(records))});
+    }
 
     /**
      * 保存 UI 状态
@@ -39,6 +44,7 @@ export class StateService {
             const state = await this.engine.getUIState(sessionId);
             return state ? fromConversationState(state, branch) : null;
         } catch (e) {
+            if ((e as {code?: unknown})?.code === 'CALL_INPUT_DRAFT_INVALID') throw e;
             console.warn('[StateService] Failed to load UI state:', e);
             return null;
         }
@@ -49,7 +55,8 @@ function toConversationState(state: UIState, branch: string): ConversationUIStat
     return {
         collapseStates: state.collapse_states,
         historyVisibility: state.history_visibility,
-        ...(state.input_text !== undefined ? { branchDrafts: { [branch]: { inputText: state.input_text, inputAgentId: state.input_agent_id } } } : {}),
+        ...(state.input_text !== undefined ? {branchDrafts: {[branch]: {inputText: state.input_text, inputAgentId: state.input_agent_id,
+            inputTarget: state.input_target, ...(state.input_arguments ? {inputArguments: JSON.parse(JSON.stringify(state.input_arguments))} : {})}}} : {}),
     };
 }
 
@@ -59,5 +66,8 @@ export function fromConversationState(state: ConversationUIState, branch: string
         history_visibility: state.historyVisibility,
         input_text: state.branchDrafts?.[branch]?.inputText,
         input_agent_id: state.branchDrafts?.[branch]?.inputAgentId,
+        input_target: state.branchDrafts?.[branch]?.inputTarget,
+        input_arguments: readInputDraft(state.branchDrafts?.[branch]?.inputArguments),
+        operations: state.operationRecords as unknown as UIState['operations'],
     };
 }

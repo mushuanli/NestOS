@@ -91,6 +91,38 @@ it('switches execution targets while a turn runs without submitting, interruptin
     finish(); await Promise.resolve();
 });
 
+it('preserves an identical text draft and changed arguments in another branch when the earlier send completes', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    const target = {kind: 'flow' as const, id: 'worker', version: '1', digest: 'definition'};
+    const signature = {id: 'worker', revision: 1, digest: 'definition'};
+    let finish!: () => void;
+    const onSend = vi.fn(() => new Promise<void>(resolve => {finish = resolve;}));
+    const input = new ChatInput(host, {instructionQueue: true, initialConfig: {agentId: '', target, text: 'Same text'}, onSend, onStop() {},
+        requestCallTargets: async () => ({entries: [{target, name: 'Worker'}], issues: []}),
+        prepareCallTarget: async () => ({flowParameters: {count: 1}, flowExpectedSignature: signature})});
+    releases.push(() => input.destroy()); await input.refreshCallTargets(); input.setDraftScope('main');
+    host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.click();
+    await vi.waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    input.setDraftScope('review');
+    const next = {target, targetId: 'worker', signature, revision: 2, json: '{"count":2}'};
+    input.setConfig({text: 'Same text', input: next}); finish();
+    await vi.waitFor(() => expect(host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.disabled).toBe(false));
+    expect(input.getConfig()).toMatchObject({text: 'Same text', input: next});
+});
+
+it('does not consume structured parameter drafts when executing a direct command', async () => {
+    const host = document.createElement('div'); document.body.append(host);
+    const target = {kind: 'flow' as const, id: 'worker', version: '1', digest: 'definition'};
+    const draft = {target, targetId: 'worker', signature: {id: 'worker', revision: 1, digest: 'definition'}, revision: 1, json: '{"count":0}'};
+    const onSend = vi.fn(async () => {}), prepare = vi.fn();
+    const input = new ChatInput(host, {initialConfig: {agentId: '', target, text: '!pwd', input: draft}, onSend, onStop() {},
+        requestCallTargets: async () => ({entries: [{target, name: 'Worker'}], issues: []}), prepareCallTarget: prepare});
+    releases.push(() => input.destroy()); await input.refreshCallTargets();
+    host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.click();
+    await vi.waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect(prepare).not.toHaveBeenCalled(); expect(input.getConfig().input).toEqual(draft);
+});
+
 it('appends incoming input without replacing an existing draft or its attachments', () => {
     const {view, changed} = setup(), first = new File(['first'], 'first.txt'), next = new File(['next'], 'next.txt');
     view.restoreDraft('Existing input', [first], 'reviewer'); view.appendDraft({text: 'Incoming input', files: [next]});
@@ -174,4 +206,13 @@ it('projects Agent purpose defaults from both service metadata and configuration
     const snapshot = {agents: [{...agent, modelDefaults: {chat: 'snapshot'}}], promptPresets: {}, connections: [], providers: []};
     const projected = await buildExecutorOptions(service as never, undefined, snapshot as never);
     expect(projected.find(option => option.id === agent.id)?.modelDefaults).toEqual({chat: 'snapshot'});
+});
+
+it('filters local and invalid root identities and never reintroduces a private default', async () => {
+    const agent = {id: 'global', name: 'Global', exposure: 'global', config: {}};
+    const service = {listAgents: () => [agent, {...agent, id: 'default', exposure: 'local'}, {...agent, id: 'invalid', exposure: 'unknown'}]};
+    expect((await buildExecutorOptions(service as never)).map(item => item.id)).toEqual(['global']);
+    const snapshot = {agents: [agent], promptPresets: {}, fallbackAgentAllowed: false};
+    expect((await buildExecutorOptions(service as never, undefined, snapshot as never)).map(item => item.id)).toEqual(['global']);
+    expect(service.listAgents()).toHaveLength(3);
 });

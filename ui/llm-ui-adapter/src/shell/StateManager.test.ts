@@ -3,6 +3,8 @@ import { StateManager } from './StateManager';
 import type { IChatInputPresenter } from '../domain/ports/IChatInputPresenter';
 import type { StateService } from '../services/StateService';
 import type { SessionViewPort } from '@itookit/llm-session/contracts';
+
+
 it('saves visible history after reading legacy hidden preferences without changing the draft or collapse states', async () => {
     const service = {loadUIState: vi.fn(async () => ({history_visibility: 'hidden', input_text: 'Keep draft', collapse_states: {u: true}})), saveUIState: vi.fn(async () => {})};
     const manager = new StateManager(service as unknown as StateService, {isGenerating: () => false} as SessionViewPort, 's', id => id);
@@ -23,7 +25,7 @@ it('restores Session mode even when navigation overrides the input text', () => 
 it('serializes rapid branch switches and preserves independent drafts before disposal', async () => {
     const drafts = new Map<string, string>([['experiment', 'experiment draft']]);
     let text = 'main draft';
-    const input = { getConfig: () => ({ text, agentId: 'default', settings: {} }), setLoading: vi.fn(),
+    const input = { getConfig: () => ({ text, agentId: 'default', settings: {} }), setLoading: vi.fn(), setConfig: vi.fn(),
         restoreInput: vi.fn((value: string) => { text = value; }) };
     const service = { saveUIState: async (_id: string, state: { input_text?: string }, branch: string) => { if (state.input_text !== undefined) drafts.set(branch, state.input_text); },
         loadUIState: async (_id: string, branch: string) => ({ input_text: drafts.get(branch) }) };
@@ -46,7 +48,7 @@ it('keeps a restored branch draft separate from main when a mount reloads the ed
     };
     const manager = new StateManager(service as unknown as StateService, { isGenerating: () => false } as SessionViewPort, 's', id => id, 'experiment');
     manager.setChatInputGetter(() => ({ getConfig: () => ({ text, agentId: 'default', settings: {} }),
-        setLoading: vi.fn(), restoreInput: (value: string) => { text = value; } }) as unknown as IChatInputPresenter);
+        setLoading: vi.fn(), setConfig: vi.fn(), restoreInput: (value: string) => { text = value; } }) as unknown as IChatInputPresenter);
     text = 'updated experiment';
     await manager.switchDraftBranch('main');
     expect(text).toBe('main draft');
@@ -56,12 +58,37 @@ it('keeps a restored branch draft separate from main when a mount reloads the ed
 
 it('keeps Stop available when generation starts during branch draft restoration', async () => {
     let generating = false;
-    const input = { getConfig: () => ({}), restoreInput: vi.fn(), setLoading: vi.fn() };
+    const input = { getConfig: () => ({}), restoreInput: vi.fn(), setLoading: vi.fn(), setConfig: vi.fn() };
     const service = { saveUIState: async () => {}, loadUIState: async () => { generating = true; return {}; } };
     const manager = new StateManager(service as unknown as StateService, { isGenerating: () => generating } as SessionViewPort, 's', id => id);
     manager.setChatInputGetter(() => input as unknown as IChatInputPresenter);
     await manager.switchDraftBranch('experiment');
     expect(input.setLoading).toHaveBeenLastCalledWith(true);
+    manager.cleanup();
+});
+
+it('restores the selected branch target without replacing the draft text or execution settings', async () => {
+    const target = {kind: 'flow' as const, id: 'review', version: '2', digest: 'published'};
+    const argumentsDraft = {revision: 3, target, targetId: 'review', json: '{"count":0}', signature: {id: 'review', revision: 2, digest: 'published'}};
+    const input = {getConfig: () => ({text: 'Main draft', agentId: 'default', settings: {}}), setLoading: vi.fn(), restoreInput: vi.fn(), setConfig: vi.fn()};
+    const service = {saveUIState: vi.fn(async () => {}), loadUIState: vi.fn(async () => ({input_text: 'Branch draft', input_target: target, input_arguments: argumentsDraft}))};
+    const manager = new StateManager(service as unknown as StateService, {isGenerating: () => false} as SessionViewPort, 's', id => id);
+    manager.setChatInputGetter(() => input as unknown as IChatInputPresenter);
+    await manager.switchDraftBranch('review');
+    expect(input.restoreInput).toHaveBeenCalledWith('Branch draft', undefined);
+    expect(input.setConfig).toHaveBeenCalledWith({text: 'Branch draft', target, input: argumentsDraft});
+    expect(service.saveUIState).toHaveBeenCalledWith('s', expect.objectContaining({input_text: 'Main draft'}), 'main');
+    manager.cleanup();
+});
+
+it('preserves the old draft scope and refuses to replace a corrupt branch input with defaults', async () => {
+    const input = {getConfig: () => ({text: 'Keep main input', agentId: 'default', settings: {}}), setLoading: vi.fn(), restoreInput: vi.fn(), setConfig: vi.fn()};
+    const invalid = Object.assign(new Error('Invalid input draft'), {code: 'CALL_INPUT_DRAFT_INVALID'});
+    const service = {saveUIState: vi.fn(async () => {}), loadUIState: vi.fn(async () => {throw invalid;})};
+    const manager = new StateManager(service as unknown as StateService, {isGenerating: () => false} as SessionViewPort, 's', id => id);
+    manager.setChatInputGetter(() => input as unknown as IChatInputPresenter);
+    await expect(manager.switchDraftBranch('review')).rejects.toBe(invalid);
+    expect(manager.getDraftBranch()).toBe('main'); expect(input.restoreInput).not.toHaveBeenCalled(); expect(input.setConfig).not.toHaveBeenCalled();
     manager.cleanup();
 });
 
@@ -96,7 +123,7 @@ it('does not consume ambient host creation data while restoring a Session', () =
         const manager = new StateManager({} as StateService, {} as SessionViewPort, 's', id => id);
         const input = { setConfig: vi.fn() } as unknown as IChatInputPresenter;
         manager.restoreInputState(input, { savedState: { input_text: 'saved', input_agent_id: 'saved-agent' } as never });
-        expect(input.setConfig).toHaveBeenLastCalledWith({ text: 'saved', agentId: 'saved-agent', settings: undefined });
+        expect(input.setConfig).toHaveBeenLastCalledWith({text: 'saved', agentId: 'saved-agent', target: undefined, input: undefined, settings: undefined});
     } finally { vi.unstubAllGlobals(); }
 });
 

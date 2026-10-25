@@ -342,6 +342,9 @@ export class HistoryView implements IHistoryPresenter {
     }
 
     processEvent(event: SessionEventEnvelope): void {
+        if (event.type === 'message:updated' && event.payload.callInput) {
+            this.eventProcessor.flush(); this.renderer.updateCallInput(event.payload.messageId, event.payload.callInput);
+        }
         if (event.type === 'finished' || event.type === 'message:appended') {
             this.onHistoryActivity?.('update');
         } else if (event.type === 'error') {
@@ -494,6 +497,7 @@ export class HistoryView implements IHistoryPresenter {
 
             case 'message:updated': {
                 if (event.payload.content !== undefined) this.stream.replaceContent(event.payload.messageId, event.payload.content, event.payload.field ?? 'output');
+                if (event.payload.callInput) this.renderer.updateCallInput(event.payload.messageId, event.payload.callInput);
                 break;
             }
 

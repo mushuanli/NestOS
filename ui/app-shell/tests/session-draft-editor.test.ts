@@ -2,10 +2,20 @@
 import { it, expect, vi } from 'vitest';
 import { SessionDraftEditor } from '../../llm-ui-adapter/src/shell/drafts/SessionDraftEditor';
 const state = vi.hoisted(() => ({selection: undefined as {modelId: string; reasoningEffort?: string} | undefined, options: undefined as any, restore: vi.fn(), destroy: vi.fn(), refreshAgents: vi.fn() }));
+
+it('roundtrips a precise context draft and keeps the saved checkpoint independent from later caller edits', async () => {
+    const {DraftDataCodec} = await import('../../llm-ui-adapter/src/shell/drafts/session-draft-data');
+    const context = {revision: 1, sessionId: 'session', branchId: 'main', target: {kind: 'agent' as const, id: 'worker', version: '1', digest: 'published'},
+        selection: {mode: 'fork' as const, sourceBindingId: 'binding', expectedBindingRevision: 2, expectedGeneration: 1, checkpointRef: 'checkpoint-A'}};
+    const codec = new DraftDataCodec(), encoded = await codec.encode({text: 'Keep', agentId: 'worker', settings: {}, context}, []);
+    context.selection.checkpointRef = 'checkpoint-B';
+    expect((await codec.decode(encoded)).config?.context).toMatchObject({revision: 1, selection: {checkpointRef: 'checkpoint-A'}});
+});
+
 vi.mock('../../llm-ui-adapter/src/shell/AgentProvider', () => ({ buildExecutorOptions: async () => [], buildConnectionOptions: async () => [] }));
 vi.mock('../../llm-ui-adapter/src/components/input/ChatInputView', () => ({ ChatInput: class {
     private config = {text: '', agentId: 'default', settings: {}};
-    constructor(_container: HTMLElement, options: unknown) { state.options = options; }
+    constructor(_container: HTMLElement, options: any) { state.options = options; Object.assign(this.config, options.initialConfig); }
     getConfig() {return this.config;} setConfig(value: object) {Object.assign(this.config, value);}
     getNativeModelSelection() {return state.selection ? {...state.selection} : undefined;}
     focus() {} setLoading() {} refreshConnections() {} cancelPendingSend() {} refreshAgents = state.refreshAgents; restoreDraft = state.restore; destroy = state.destroy;
@@ -41,6 +51,21 @@ it('does not materialize while opening or on empty send; the first submitted pay
     expect(mount.querySelector('.llm-ui-header-preview')?.textContent).toBe('hello');
     finish({ editor: { commands: { sendMessage } }, resumeOnly: false }); await sending;
     expect(sendMessage).toHaveBeenCalledExactlyOnceWith({ text: 'hello', files: [], agentId: 'writer', overrides: { connectionId: 'model-1' } });
+    await editor.destroy();
+});
+
+it.each([undefined, ''])('keeps the selected Flow on a programmatic first send with Agent identity %s', async agentId => {
+    const target = {kind: 'flow', id: 'worker', version: '1', digest: 'published'};
+    const config = {text: '', agentId: '', target, settings: {}};
+    const initialData = JSON.stringify({version: 2, config, files: []});
+    const sendMessage = vi.fn(async () => true), materialize = vi.fn(async () => ({editor: {commands: {sendMessage}}, resumeOnly: false}));
+    const mount = document.createElement('div');
+    const editor = new SessionDraftEditor(mount, {onChange: () => () => {}} as never,
+        {sessionDraft: {initialData, materialize}} as never);
+    await editor.init(mount);
+    await editor.commands.sendMessage({text: '', files: [], agentId});
+    expect(materialize).toHaveBeenCalledOnce();
+    expect(sendMessage).toHaveBeenCalledExactlyOnceWith({text: '', files: [], agentId: '', target});
     await editor.destroy();
 });
 

@@ -10,11 +10,15 @@ import {SessionCommand} from '@itookit/llm-session/contracts';
 import {LLMWorkspaceEditor} from '../../llm-ui-adapter/src/shell/LLMWorkspaceEditor';
 import {createLLMFactory} from '../../llm-ui-adapter/src/chat';
 import {SessionWorkbench} from '../src/projects/SessionWorkbench';
+import {FlowLibraryCommand} from '@itookit/app-contracts';
+import type {FlowDraft} from '@itookit/llm-flow/contracts';
 
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => {for (const close of cleanup.splice(0).reverse()) await close(); document.body.replaceChildren(); vi.restoreAllMocks(); vi.unstubAllGlobals();
     Reflect.deleteProperty(Range.prototype, 'getClientRects'); Reflect.deleteProperty(Range.prototype, 'getBoundingClientRect');});
 async function setup(observed = false) {
+    HTMLDialogElement.prototype.showModal = function () {this.open = true;};
+    HTMLDialogElement.prototype.close = function () {this.open = false; this.dispatchEvent(new Event('close'));};
     vi.stubGlobal('matchMedia', () => ({matches: false, addEventListener() {}, removeEventListener() {}}));
     Object.defineProperties(Range.prototype, {getClientRects: {configurable: true, value: () => []}, getBoundingClientRect: {configurable: true, value: () => new DOMRect()}});
     vi.stubGlobal('ResizeObserver', class {observe() {} disconnect() {} unobserve() {}});
@@ -59,7 +63,7 @@ it('promotes a local UUID in place and leaves later typing, focus and sibling ta
     const delayed = new Promise<void>(resolve => {finish = resolve;});
     acceptSubmission(f, delayed);
     const sending = wrapper.commands.sendMessage({text: 'First message', files: [], agentId: 'default'});
-    await vi.waitFor(() => expect(f.runtime.commandBus.execute).toHaveBeenCalledWith(SessionCommand.Send, expect.anything()));
+    await vi.waitFor(() => expect(f.runtime.commandBus.execute).toHaveBeenCalledWith(SessionCommand.Send, expect.anything()), {timeout: 5000});
     wrapper.setText('Next message');
     textarea.focus(); textarea.setSelectionRange(3, 3); finish(); await sending;
     await vi.waitFor(() => expect(f.workbench.getActiveResourceId()).toContain(composer.id));
@@ -192,6 +196,41 @@ it('tracks the replacement draft UUID after discard and promotes the replacement
     await editor.commands.sendMessage({text: 'Send the replacement', files: [], agentId: 'default'});
     await vi.waitFor(() => expect(f.workbench.getActiveResourceId()).toContain(uuid));
     expect(shell.tabs.current).toBe(tab); expect(shell.editor).toBe(editor);
+});
+
+it.each([{observed: false, zero: false}, {observed: true, zero: false}, {observed: true, zero: true}])(
+    'runs the first published Flow directly from a project draft without an Agent (RPC: $observed, zero parameters: $zero)', async ({observed, zero}) => {
+    const f = await setup(observed), shell = f.workbench as any, tab = shell.tabs.current, wrapper = shell.editor;
+    const uuid = tab.conversationId, textarea = tab.panel.querySelector('.llm-input__textarea'), mount = tab.panel.querySelector('.session-editor-mount');
+    const flow: FlowDraft = {id: 'first-flow' as never, name: 'First Flow', exposure: 'global', draftVersion: 1, updatedAt: 0, layout: {},
+        parameters: zero ? [] : [{name: 'request', type: 'string', inputSource: 'composer.text'}, {name: 'count', type: 'number', default: 0}],
+        nodes: [{id: 'result' as never, name: 'Result', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
+            config: {value: zero ? 'No parameter result' : '${param.request}'}}], edges: [], outputs: {result: {value: '${nodes.result.outputs.result}'}}};
+    await f.runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: [flow]});
+    expect((wrapper as any).input.options.requestCallTargets).toBeTypeOf('function');
+    tab.panel.querySelector('.llm-input__agent-trigger').click();
+    await vi.waitFor(() => expect([...document.querySelectorAll('.llm-popup__item-label')].some(item => item.textContent === 'First Flow')).toBe(true));
+    [...document.querySelectorAll<HTMLElement>('.llm-popup__item')].find(item => item.querySelector('.llm-popup__item-label')?.textContent === 'First Flow')!.click();
+    expect(await f.runtime.sessionRepository.list()).toEqual([]);
+    wrapper.setText(zero ? '' : 'First Flow request'); await wrapper.flushPendingSave();
+    const draft = await f.runtime.projects.drafts.open(f.project.project.id, await f.runtime.projects.sessionFolder(f.project));
+    expect(JSON.parse(draft.initialData!).config.target).toMatchObject({kind: 'flow', id: 'first-flow'});
+    const resolve = vi.spyOn(f.runtime.agentService, 'getAgentConfig').mockRejectedValue(new Error('No Agent definition should be required'));
+    tab.panel.querySelector('.llm-input__btn--send').click();
+    await vi.waitFor(() => expect(document.querySelector('dialog form')).not.toBeNull());
+    if (!zero) document.querySelector<HTMLInputElement>('dialog [data-parameter="1"]')!.value = '7';
+    document.querySelector('dialog form')!.dispatchEvent(new Event('submit', {cancelable: true}));
+    await vi.waitFor(async () => {
+        const [round] = (await f.runtime.sessionRepository.readHistoryChain(uuid)).rounds;
+        expect(round?.status).toBe('completed'); expect(round.target).toMatchObject({kind: 'flow', id: 'first-flow', version: '1'});
+        expect(round.agentId).toBeUndefined(); expect(round.flow?.parameters).toEqual(zero ? {} : {request: 'First Flow request', count: 7});
+        expect(round.submission?.source).toMatchObject({kind: 'project-draft', ownerId: f.project.project.id, id: uuid});
+    }, {timeout: 10000});
+    expect(resolve).not.toHaveBeenCalled(); expect((await f.runtime.sessionRepository.getManifest(uuid)).createdWithAgentId).toBeUndefined();
+    expect(shell.editor).toBe(wrapper); expect(tab.panel.querySelector('.session-editor-mount')).toBe(mount);
+    expect(tab.panel.querySelector('.llm-input__textarea')).toBe(textarea);
+    await vi.waitFor(() => expect(tab.panel.querySelector('.llm-draft-scope')).toBeNull());
+    expect(f.workbench.getActiveResourceId()).toContain(uuid);
 });
 
 it('adopts a draft accepted by another view without submitting it again or replacing the current input', async () => {

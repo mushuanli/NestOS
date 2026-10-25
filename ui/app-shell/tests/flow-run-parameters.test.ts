@@ -66,6 +66,7 @@ it('runs from the right panel with validated parameters and connections without 
     await vi.waitFor(() => expect(navigate).toHaveBeenCalledOnce());
     expect(f.execute).toHaveBeenCalledWith(SessionCommand.CreateFromFlow, {
         flowId: 'sample', revision: 3, title: 'Sample', invocation: true, connectionId: undefined,
+        expectedSignature: {id: 'sample', revision: 3, digest: undefined},
         parameters: { essay: 'My essay', enabled: false, limit: 0 }, connectionBindings: { analysis: 'model' },
     });
     expect(f.execute.mock.calls.filter(([name]) => name === SessionCommand.CreateFromFlow)).toHaveLength(1);

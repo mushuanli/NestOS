@@ -604,3 +604,32 @@ C4Dynamic
 原提交核对不重跑输入解析或材料校验；已接纳文件后来丢失时，原回执仍可查询，真正的新派发则拒绝。接纳不是执行完成。该机制不提供 Harness 文件传输、完整子调用上下文、资产回收或导出保证；这些能力分别在连接适配与生命周期中完成。
 
 上传接口见 [输入契约](../shared/app-contracts/src/presets/input-assets.ts)，存储与核验见 [资产存储](../backend/app-core/src/runtime/input-asset-store.ts)；回归覆盖丢回复、冲突、空文件、上传中原始字节变化、排队期间损坏，以及不泄露正文的失败日志。
+
+## UI 的提交台账与目标恢复
+
+默认工作台和独立 ChatView 通过 `session.targets.list` 选择已发布 Agent/Flow，按 kind、id、version、digest 保持身份。Flow 不创建包装 Agent，空正文的参数/默认值调用也能提交。参数表单保存确认后的 JSON 草稿及签名，展示文字单独进入 presentation，不改变执行实参；按分支恢复目标和参数，损坏草稿明确报错。
+
+默认工作台复用原 OperationLedger，在现有 Session UI state 的 operationRecords 保存冻结请求后才派发。独立 ChatView 的宿主包装同一台账的 register，额外冻结 sessionRequest，保存原 Session/分支及输入；不是新的状态库。新的调用入口以相同 submissionId 对应接纳 Instruction，Kernel Task/Invocation 继续由宿主分配。
+
+```mermaid
+C4Dynamic
+    title 调用入口从草稿到持久回执
+    Component(ui, "工作台或独立 ChatView", "输入与显示")
+    Component(binding, "宿主 UI 适配", "目标选择与冻结请求")
+    Component(ledger, "原 OperationLedger", "现有 UI state 持久化")
+    Component(session, "Session 命令与队列", "既有准入和接纳事实")
+    Component(kernel, "Kernel / Flow", "执行事实与结果")
+    RelIndex(1, ui, binding, "捕获本次目标、参数及草稿修订")
+    RelIndex(2, binding, ledger, "先保存冻结输入及原 Session/分支")
+    RelIndex(3, binding, session, "提交原请求一次")
+    RelIndex(4, session, binding, "队列通知触发完整摘要回执查询")
+    RelIndex(5, binding, ledger, "持久保存接纳事实，可先于发送 RPC 回复")
+    RelIndex(6, ledger, ui, "释放提交等待并只消费匹配草稿")
+    RelIndex(7, session, kernel, "按原队列及资源约束执行")
+```
+
+队列中的相同 ID 只触发核对，不能直接证明实参一致。接纳使用原冻结请求的完整摘要，由显式 Session 的只读 `session.submission.inspect` 核对；恢复不重新填表、读取最新定义或发送原输入。核对进行期间的新通知合并为后续一次读取，防止丢掉接纳变化。发送 RPC 迟到的成功或失败只影响原操作，不能覆盖已持久终态，也不能消费其他分支或较新的文字/参数/文件。
+
+调用参数在用户历史中以独立 JSON 详情显示；已确认实参使用参数表单重跑，形成新 Invocation 并保留旧结果。JSON 渲染写入转义内容，历史节点从现有 DOM 归属引用定位，避免重新扫描整个历史。正常发送只移除本次捕获的附件；自动回执消费当前覆盖无附件且目标、分支、参数和修订匹配的草稿。完整附件崩溃恢复仍需单独验收，不能由无附件用例推导为完成。
+
+这里的普通聊天/目标发送继续使用当前 Session。独立任务的子 Session 路由、最小函数调用组与打开真实子会话入口按[子会话设计](design/session-invocation-ui.md)及[任务第 7 节](design/functional-merge-plan.md#7-子会话与函数视图的交付安排)推进，不因根目标选择已接通而标为完成。

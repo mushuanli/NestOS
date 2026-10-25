@@ -8,7 +8,8 @@ import { randomUUID, t } from '@itookit/common';
 import { ChatInput } from '../../components/input/ChatInputView';
 import { EventBinder } from '../EventBinder';
 import { buildExecutorOptions, buildConnectionOptions } from '../AgentProvider';
-import { prepareAgentFlow } from '../../flows/agent-flow';
+import {prepareAgentFlow, prepareCallTarget} from '../../flows/agent-flow';
+import {SessionCommand} from '@itookit/llm-session/contracts';
 import type { SendMessageParams } from '../../commands/SendMessageCommand';
 import {SubmissionFeedback} from '../../components/history/SubmissionFeedback';
 import { mountDraftProjectScope } from './draft-project-scope';
@@ -69,7 +70,7 @@ export class SessionDraftEditor extends IEditor {
         const saved = await this.codec.decode(this.initialData);
         this.config = saved.config;
         const agents = await this.executors();
-        const changedAgent = !!this.options.sessionDraft?.executorScope && !!saved.config && !agents.some(agent => agent.id === saved.config!.agentId);
+        const changedAgent = !!this.options.sessionDraft?.executorScope && !!saved.config && !saved.config.target && !agents.some(agent => agent.id === saved.config!.agentId);
         if (changedAgent) saved.config!.agentId = agents[0]?.id ?? 'remote:unavailable';
         this.options.signal?.throwIfAborted(); if (this.closed) return;
         this.initLayout();
@@ -103,13 +104,19 @@ export class SessionDraftEditor extends IEditor {
             nativeModels: this.options.remoteAgents?.models, initialAgents: agents, ocr: this.ocr,
             initialConfig: config ?? (this.options.sessionDraft?.executorScope === 'remote' ? {agentId: agents[0]?.id ?? 'remote:unavailable'} : undefined), executorUsage: this.options.executorUsage,
             onConfigureExecutor: this.options.hostContext?.navigate ? () => {
-                const id = this.input!.getConfig().agentId;
-                void this.options.hostContext!.navigate({target: 'agents', resourceId: this.service.getAgentResourceId?.(id)});
+                const config = this.input!.getConfig();
+                void this.options.hostContext!.navigate(config.target?.kind === 'flow' ? {target: 'flows', resourceId: config.target.id}
+                    : {target: 'agents', resourceId: this.service.getAgentResourceId?.(config.agentId)});
             } : undefined,
             onDraftChange: (config, files) => { if (!this.restoring && !this.sending) this.persist(config, files); },
             onRequestConnections: () => buildConnectionOptions(this.service), onStop: () => {},
             prepareAgentFlow: this.flowControls?.commands ? (agent, signal, draft) => prepareAgentFlow(this.flowControls!.commands!, agent, signal, draft) : undefined,
-            onSend: (text, files, agentId, overrides) => this.send({ text, files, agentId, overrides }),
+            ...(this.flowControls?.commands && this.options.sessionDraft?.executorScope !== 'remote' ? {
+                requestCallTargets: () => this.flowControls!.commands!.execute<import('@itookit/llm-session/contracts').RootTargetCatalog>(SessionCommand.ListTargets),
+                prepareCallTarget: (target: import('@itookit/llm-session/contracts').RootCallTarget, signal: AbortSignal,
+                    draft: import('../../flows/agent-flow').AgentFlowDraftInput) => prepareCallTarget(this.flowControls!.commands!, target, signal, draft),
+            } : {}),
+            onSend: (text, files, agentId, overrides, target) => this.send({text, files, agentId, overrides, ...(target ? {target} : {})}),
             onNavigateSettings: ({resourceId, anchor}) => { void this.options.hostContext?.navigate?.({ target: 'settings', resourceId, ...(anchor ? {state: {anchor}} : {}) }); },
         });
     }
@@ -169,7 +176,8 @@ export class SessionDraftEditor extends IEditor {
         if (!this.closed) await this.options.hostContext?.navigate({target: 'flows'});
     }
     private async send(message: SendMessageParams): Promise<void | false> {
-        if (this.closed || this.sending || (!message.text.trim() && !message.files.length)) return;
+        if (this.closed || this.sending || (!message.text.trim() && !message.files.length
+            && message.target?.kind !== 'flow' && !message.overrides?.flowExpectedSignature && !message.overrides?.flowId)) return;
         const nativeSelection = this.input?.getNativeModelSelection?.();
         if (this.confirmed) {
             this.sending = true;
@@ -179,9 +187,10 @@ export class SessionDraftEditor extends IEditor {
             catch (error) {Toast.error(error instanceof Error ? error.message : String(error)); return false;}
             finally {this.sending = false;}
         }
-        if (this.config) this.persist({ ...this.config, text: message.text, agentId: message.agentId ?? 'default' }, message.files);
+        const config = this.input?.getConfig();
+        if (config) this.persist({...config, text: message.text, agentId: message.agentId ?? 'default', target: message.target}, message.files);
         this.sending = true; this.input!.setLoading(true); this.projectScope?.setDisabled(true);
-        const feedback = {id: randomUUID(), text: message.text || t('harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting' as const};
+        const feedback = {id: randomUUID(), text: message.text || t(message.target?.kind === 'flow' ? 'callable.target.flow' : 'harness.attachmentPrompt'), timestamp: Date.now(), state: 'submitting' as const};
         this.container.querySelector('.llm-ui-welcome')?.remove(); this.submission?.show(feedback);
         try {
             if (this.options.sessionDraft?.executorScope && (message.agentId?.startsWith('remote:') ?? false) !== (this.options.sessionDraft.executorScope === 'remote'))
@@ -300,7 +309,7 @@ export class SessionDraftEditor extends IEditor {
     }
     get commands() {return {...this.delegate?.commands,
         sendMessage: (message: SendMessageParams) => this.confirmed && this.delegate ? this.delegate.commands.sendMessage?.(message)
-            : this.send({...message, agentId: message.agentId ?? this.input?.getConfig().agentId, files: message.files ?? []}),
+            : this.send(this.currentMessage(message)),
         confirmDraft: async (resume?: (createEditor?: EditorFactory) => Promise<IEditor>) => {
             this.resume ??= resume; this.confirmDraft();
             if (!this.delegate) await this.bindConversation();
@@ -315,6 +324,11 @@ export class SessionDraftEditor extends IEditor {
         if (this.closed || this.sending) throw new Error(t('chatInput.switchUnavailable'));
         this.input?.appendDraft(input); await this.saves.flush();
     }}};
+    private currentMessage(message: SendMessageParams): SendMessageParams {
+        const config = this.input?.getConfig();
+        const target = message.target ?? (message.agentId === undefined || message.agentId === '' ? config?.target : undefined);
+        return {...message, ...(target ? {target} : {}), agentId: target?.kind === 'flow' ? '' : message.agentId ?? config?.agentId, files: message.files ?? []};
+    }
     getText(): string { return this.delegate?.getText() ?? this.input?.getConfig().text ?? this.config?.text ?? ''; }
     private async inheritPreferences(preferences: SessionDraftPreferences): Promise<void> {
         if (this.closed || this.confirmed || this.delegate || this.sending || !this.input) return;
@@ -341,6 +355,7 @@ export class SessionDraftEditor extends IEditor {
         if (this.closed || this.confirmed || !this.active || input !== this.input || revision !== this.configurationRevision) return;
         input.refreshAgents(agents, id => agents.some(agent => agent.id === id) ? id : 'default');
         await input.refreshConnections();
+        await input.refreshCallTargets?.();
     }
     private executors(): Promise<Awaited<ReturnType<typeof buildExecutorOptions>>> {
         const scope = this.options.sessionDraft?.executorScope;

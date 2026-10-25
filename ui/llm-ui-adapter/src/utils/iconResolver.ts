@@ -19,6 +19,7 @@ export class IconResolver {
      * 3. 默认 📄
      */
     static getIcon(node: ExecutionNode): string {
+        if (node.executorType === 'flow') return ENTITY_ICONS.flow;
         if (node.data.metaInfo?.agentIcon) {
             return node.data.metaInfo.agentIcon;
         }

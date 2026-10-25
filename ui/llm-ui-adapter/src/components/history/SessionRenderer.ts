@@ -498,4 +498,15 @@ export class SessionRenderer {
         await Promise.all(this.disposals);
         if (this.disposalFailures.length) throw new AggregateError(this.disposalFailures, 'History editor disposal failed');
     }
+
+    updateCallInput(messageId: string, callInput: SessionGroup['callInput']): void {
+        const wrapper = this.getSessionElement(messageId);
+        const body = wrapper?.querySelector('.llm-ui-bubble__content');
+        if (!body || !callInput?.admitted) return;
+        const existing = body.querySelector('[data-call-arguments]');
+        if (existing) existing.querySelector('pre')!.textContent = JSON.stringify(callInput.admitted.parameters, null, 2);
+        else body.insertAdjacentHTML('beforeend', NodeTemplates.renderCallArguments(callInput.admitted.parameters));
+        const edit = wrapper?.querySelector<HTMLButtonElement>('[data-action="edit"]');
+        if (edit && callInput.source.kind === 'arguments') {edit.dataset.action = 'edit-arguments'; edit.title = t('callable.input.arguments'); edit.setAttribute('aria-label', edit.title);}
+    }
 }

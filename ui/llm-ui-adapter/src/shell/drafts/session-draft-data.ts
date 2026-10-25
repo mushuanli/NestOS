@@ -2,6 +2,8 @@ import {knownImageFileState, setImageFileState} from '../../components/input/ima
 import type {ImageSpec} from '@itookit/image-parser';
 import type { SessionDraftControls } from '@itookit/ui-common';
 import type { IChatInputConfig } from '../../domain/ports/IChatInputPresenter';
+import {readInputDraft} from '../../domain/input-draft';
+import {isTargetRef} from '@itookit/llm-flow/contracts';
 
 type AttachmentPort = NonNullable<SessionDraftControls['attachments']>;
 interface StoredFileBase { name: string; type: string; lastModified: number; id: string }
@@ -21,6 +23,8 @@ export class DraftDataCodec {
         if (!data) return { files: [] };
         const draft = JSON.parse(data) as StoredDraft | LegacyDraft;
         if (![1, 2].includes(draft.version) || typeof draft.config?.text !== 'string' || !Array.isArray(draft.files)) throw new Error('Invalid project draft');
+        if (draft.config.target !== undefined && !isTargetRef(draft.config.target)) throw new Error('Invalid project draft target');
+        if (draft.config.input !== undefined) draft.config.input = readInputDraft(draft.config.input);
         if (draft.version === 1) return { config: draft.config, migrated: true, files: draft.files.map(file => new File([
             Uint8Array.from(atob(file.content), char => char.charCodeAt(0)),
         ], file.name, { type: file.type, lastModified: file.lastModified })) };

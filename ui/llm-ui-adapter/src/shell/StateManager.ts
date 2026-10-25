@@ -56,6 +56,7 @@ export class StateManager {
     setChatInputGetter(getter: () => IChatInputPresenter | undefined): void {
         this.chatInputGetter = getter;
     }
+    getDraftBranch(): string {return this.branch;}
 
 
     switchDraftBranch(branch: string): Promise<void> {
@@ -65,9 +66,10 @@ export class StateManager {
             if (branch === this.branch) return;
             const input = this.chatInputGetter?.();
             await this.saveUIState(input?.getConfig());
-            this.branch = branch;
-            const state = await this.loadUIState();
+            const state = await this.loadUIState(undefined, branch);
+            input?.setDraftScope?.(branch);
             input?.restoreInput(state?.input_text ?? '', state?.input_agent_id);
+            input?.setConfig({text: state?.input_text ?? '', target: state?.input_target, input: state?.input_arguments});
         });
         this.draftTail = operation.catch(() => {});
         return operation.finally(() => { if (generation === this.draftGeneration) this.chatInputGetter?.()?.setLoading(this.sessionManager.isGenerating()); });
@@ -126,7 +128,7 @@ export class StateManager {
 
     private inputState(config?: IChatInputConfig): UIState {
         return structuredClone({ collapse_states: this.collapseStatesCache, input_text: config?.text,
-            input_agent_id: config?.agentId, history_visibility: 'visible' });
+            input_agent_id: config?.agentId, input_target: config?.target, input_arguments: config?.input, history_visibility: 'visible'});
     }
 
     private enqueueSave(save: () => Promise<void>): Promise<void> {
@@ -135,14 +137,10 @@ export class StateManager {
         return operation;
     }
 
-    async loadUIState(initial?: ConversationManifest): Promise<UIState | null> {
-        if (initial) this.branch = initial.currentBranch;
-        const result = initial ? (initial.uiState ? fromConversationState(initial.uiState, this.branch) : null)
-            : await this.errorHandler.wrapWithFallback(
-            () => this.stateService.loadUIState(this.sessionId, this.branch),
-            null, 'Load UI state', 'silent'
-        );
-
+    async loadUIState(initial?: ConversationManifest, branch = initial?.currentBranch ?? this.branch): Promise<UIState | null> {
+        const result = initial ? (initial.uiState ? fromConversationState(initial.uiState, branch) : null)
+            : await this.stateService.loadUIState(this.sessionId, branch);
+        this.branch = branch;
         this.collapseStatesCache = result?.collapse_states ?? {};
         return result;
     }
@@ -159,6 +157,7 @@ export class StateManager {
             sessionSettings?: ChatInputSettings;
         }
     ): void {
+        chatInput.setDraftScope?.(this.branch);
         const validate = (id: string) => this.validateAgentFn(id);
         // Navigation text overrides must not carry another Session's execution policy.
         chatInput.setConfig({ settings: { flowId: undefined, flowRevision: undefined, flowParameters: undefined,
@@ -169,6 +168,8 @@ export class StateManager {
             chatInput.setConfig({
                 text: options.initialInputState.text || '',
                 agentId: validate(options.initialInputState.agentId || 'default'),
+                target: undefined,
+                input: undefined,
             });
             return;
         }
@@ -178,6 +179,8 @@ export class StateManager {
             chatInput.setConfig({
                 text: options.savedState.input_text || '',
                 agentId: validate(options.savedState.input_agent_id || 'default'),
+                target: options.savedState.input_target,
+                input: options.savedState.input_arguments,
                 settings: options.sessionSettings,
             });
             return;

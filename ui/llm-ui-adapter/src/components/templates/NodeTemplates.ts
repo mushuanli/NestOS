@@ -100,12 +100,12 @@ export class NodeTemplates {
         return `<div class="llm-ui-actions">${this.action('copy', t('action.copy'), CHAT_ICONS.copy)}${this.collapseButton(collapsed)}</div>`;
     }
 
-    private static renderActions(user: boolean, branch: string, collapsed: boolean): string {
+    private static renderActions(user: boolean, branch: string, collapsed: boolean, argumentsInput = false): string {
         return `<div class="llm-ui-actions">
             ${this.action('copy', t('action.copy'), CHAT_ICONS.copy)}
             ${this.action(user ? 'resend' : 'regenerate', t(user ? 'chatMessage.resend' : 'chatMessage.retry'), ACTION_ICONS.rerun)}
             ${this.collapseButton(collapsed)}
-            ${user ? this.action('edit', t('branch.edit'), CHAT_ICONS.edit) + this.action('create-branch', t('branch.continue'), ACTION_ICONS.branch) : ''}
+            ${user ? this.action(argumentsInput ? 'edit-arguments' : 'edit', t(argumentsInput ? 'callable.input.arguments' : 'branch.edit'), CHAT_ICONS.edit) + this.action('create-branch', t('branch.continue'), ACTION_ICONS.branch) : ''}
             <details class="llm-ui-message-more">
                 <summary title="${t('chat.toolbar.more')}" aria-label="${t('chat.toolbar.more')}">${CHAT_ICONS.more}</summary>
                 <div class="llm-ui-message-more__items">${branch}
@@ -118,20 +118,26 @@ export class NodeTemplates {
 
     static renderUserBubble(group: SessionGroup, preview: string, isCollapsed = false): string {
         const branch = this.renderBranchNav(group.siblingIndex ?? 0, group.siblingCount ?? 1, group.branchInfo?.name);
+        const parameters = group.callInput?.admitted?.parameters;
         return `<div class="llm-ui-bubble llm-ui-bubble--user ${isCollapsed ? 'is-collapsed' : ''}"
             data-round-id="${escapeHTML(group.roundId ?? '')}" data-round-role="user"
             data-context-mode="${escapeHTML(group.historyPolicy ?? 'include')}" data-context-source="default">
             <div class="llm-ui-bubble__header"><div class="llm-ui-header-preview">${escapeHTML(preview)}</div></div>
             <div class="llm-ui-bubble__content">
                 <div class="llm-ui-mount-point" id="user-mount-${group.id}"></div>
+                ${this.renderCallArguments(parameters)}
                 <div class="llm-ui-edit-actions" style="display:none;">
                     <button class="llm-btn llm-btn--primary" data-action="confirm-edit">${t('branch.editAndRun')}</button>
                     <button class="llm-btn" data-action="cancel-edit">${t('action.cancel')}</button>
                 </div>
             </div>
             <div class="llm-ui-message-footer"><span class="llm-ui-time">${this.formatTime(group.timestamp)}</span>
-                ${this.renderActions(true, branch, isCollapsed)}</div>
+                ${this.renderActions(true, branch, isCollapsed, !!group.target && group.callInput?.source.kind === 'arguments')}</div>
         </div>`;
+    }
+
+    static renderCallArguments(parameters?: Record<string, import('@itookit/llm-flow/contracts').JsonValue>): string {
+        return parameters ? `<details class="llm-ui-node__input" data-call-arguments><summary>${escapeHTML(t('callable.input.arguments'))}</summary><pre>${escapeHTML(JSON.stringify(parameters, null, 2))}</pre></details>` : '';
     }
 
     static renderAgentHeader(node: ExecutionNode, preview: string, _icon: string, _isCollapsed = false): string {

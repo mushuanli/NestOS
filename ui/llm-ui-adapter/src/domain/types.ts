@@ -17,6 +17,7 @@ export type NodeAction =
     | 'delete'
     | 'edit'
     | 'edit-and-retry'
+    | 'edit-arguments'
     | 'edit-agent'
     | 'prev-sibling'
     | 'next-sibling';
@@ -48,9 +49,12 @@ export type BranchAction = 'create' | 'rename' | 'delete' | 'select';
 // ============================================================
 
 export interface UIState {
+    operations?: readonly import('@itookit/llm-ui').OperationRecord[];
     collapse_states: CollapseStateMap;
     input_text?: string;
     input_agent_id?: string;
+    input_target?: import('@itookit/llm-flow/contracts').TargetRef;
+    input_arguments?: import('./input-draft').WorkspaceArgumentDraft;
     /** Pure workspace preference; never changes the model context. */
     history_visibility?: 'visible' | 'hidden';
 }
@@ -170,6 +174,7 @@ export interface ChatOverrides {
     flowRevision?: number;
     /** Workflow runtime parameters (matched against FlowRevision.parameters). */
     flowParameters?: Record<string, JsonValue>;
+    flowExpectedSignature?: Pick<import('@itookit/llm-flow/contracts').FlowRevision, 'id' | 'revision' | 'digest'>;
     flowConnectionBindings?: Record<string, string>;
     branchMode?: 'continue' | 'fork';
     baseRoundId?: string;

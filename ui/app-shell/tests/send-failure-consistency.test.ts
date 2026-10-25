@@ -11,6 +11,7 @@ import { Toast } from '@itookit/ui-common';
 import { SessionCommand } from '@itookit/llm-session';
 import { SendMessageCommand } from '../../llm-ui-adapter/src/commands/SendMessageCommand';
 import type { CommandContext } from '../../llm-ui-adapter/src/commands/CommandContext';
+import {sha256Hex} from '@itookit/llm-context/digest';
 
 interface HarnessOptions {
     sendError?: Error;
@@ -51,11 +52,34 @@ function harness(options: HarnessOptions = {}) {
         commands: { execute },
         isGenerating: () => false,
         chatInput, historyView,
-        assetService: { uploadFiles },
+        assetService: { prepareUpload: async () => ({references: await uploadFiles(), files: []}) },
         errorHandler: { wrap: (fn: () => Promise<unknown>) => fn() },
     } as unknown as CommandContext;
     return { ctx, execute, chatInput, historyView, uploadFiles, sessions };
 }
+
+it('sends prepared Flow files only through structured arguments instead of uploading chat attachments again', async () => {
+    const f = harness(), data = new TextEncoder().encode('Selected file'), file = new File([data], 'notes.txt', {type: 'text/plain'});
+    f.execute.mockImplementation(async name => name === SessionCommand.Send ? 'accepted' : {items: []});
+    const parameters = {documents: [{type: 'file', name: file.name, source: {type: 'asset', asset: {kind: 'input',
+        id: '12345678-1234-4123-8123-123456789abc', mimeType: file.type, bytes: file.size, sha256: await sha256Hex(data)}}}]};
+    expect(await new SendMessageCommand(f.ctx).run({text: '', files: [file], overrides: {flowParameters: parameters,
+        flowExpectedSignature: {id: 'flow' as never, revision: 1, digest: 'published'}}})).toBe(true);
+    expect(f.uploadFiles).not.toHaveBeenCalled();
+    expect(f.execute).toHaveBeenCalledWith(SessionCommand.Send, expect.objectContaining({text: '', files: [], overrides: expect.objectContaining({flowParameters: parameters})}));
+});
+
+it('preserves an unbound Flow attachment and refuses submission before any chat upload or send', async () => {
+    const toast = vi.spyOn(Toast, 'error').mockImplementation(() => {});
+    try {
+        const f = harness(), file = new File(['Selected file'], 'notes.txt', {type: 'text/plain'});
+        expect(await new SendMessageCommand(f.ctx).run({text: 'Keep draft', files: [file], overrides: {flowParameters: {},
+            flowExpectedSignature: {id: 'flow' as never, revision: 1, digest: 'published'}}})).toBe(false);
+        expect(f.execute).not.toHaveBeenCalled(); expect(f.uploadFiles).not.toHaveBeenCalled();
+        expect(f.chatInput.restoreInput).toHaveBeenCalledWith('Keep draft', undefined);
+        expect(toast).toHaveBeenCalledWith(expect.stringContaining('附件'));
+    } finally {toast.mockRestore();}
+});
 
 it('preserves accepted rounds when the send response is lost', async () => {
     const toast = vi.spyOn(Toast, 'error').mockImplementation(() => {});

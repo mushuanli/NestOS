@@ -83,6 +83,11 @@ function submissionOf(projectId: string, record: ProjectDraftRecord): SessionSub
     return record.submissionId ? { id: record.submissionId, source: { kind: 'project-draft', ownerId: projectId, id: record.id } } : undefined;
 }
 function draftAgent(data: string): string | undefined {
-    try { const id: unknown = JSON.parse(data).config?.agentId; return typeof id === 'string' && !id.startsWith('remote:') ? id : undefined; }
+    try {
+        const config = JSON.parse(data).config;
+        if (config?.target?.kind === 'flow') return;
+        const id: unknown = config?.agentId;
+        return typeof id === 'string' && !!id.trim() && !id.startsWith('remote:') ? id : undefined;
+    }
     catch { return undefined; }
 }

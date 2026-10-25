@@ -25,6 +25,10 @@ import type { BranchService } from '../services/BranchService';
  * Command 完全不知道 UI 实现细节。
  */
 export interface CommandContext {
+    reconcileSubmission?(request: import('@itookit/llm-session/contracts').SubmissionRequest): Promise<import('@itookit/llm-session/contracts').SubmissionReceipt>;
+    getBranch?(): string;
+    operations?: import('@itookit/llm-ui').OperationLedger;
+    observeInstructions?(listener: (queue: import('@itookit/llm-session/contracts').SessionInstructionQueue) => void): () => void;
     // 数据层
     /** 获取当前会话的所有消息投影 */
     getSessions: () => SessionGroup[];

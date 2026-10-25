@@ -1,4 +1,5 @@
 import { parseDirectoryCommand } from './directory-command';
+import { isRootCallable } from '@itookit/llm-flow/contracts';
 // @file: llm-ui/shell/SlashCommandRouter.ts
 // Slash command callbacks — extracted from LLMWorkspaceEditor.
 // Builds the SlashCommandCallbacks object used by SlashCommandPlugin.
@@ -387,6 +388,8 @@ function branchSlashCallbacks(deps: SlashCommandRouterDeps): Pick<SlashCommandCa
 function settingsSlashCallbacks(deps: SlashCommandRouterDeps): Pick<SlashCommandCallbacks, "onSwitchAgent" | "onConnection" | "onModel"> {
     return {
         onSwitchAgent: (agentId: string) => {
+            const selected = deps.agentService.findAgent(agentId);
+            if (selected && !isRootCallable(selected)) { Toast.error(t('callable.exposure.rootDenied')); return; }
             // /agent takes a raw id, so a typo or a display name silently poisons the
             // next send (resolveForChat falls back to a config without agentVersion).
             if (!deps.agentService.findAgent(agentId)) {

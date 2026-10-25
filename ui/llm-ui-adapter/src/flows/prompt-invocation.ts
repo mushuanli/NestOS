@@ -56,6 +56,7 @@ class InvocationLaunch {
             { sessionId, requestId, title: options.name })).sessionId;
         options.signal?.throwIfAborted(); signal?.throwIfAborted();
         await options.commands.execute(FlowInvocationCommand.Invoke, { sessionId, requestId, flowId: revision.id, revision: revision.revision,
+            expectedSignature: {id: revision.id, revision: revision.revision, digest: revision.digest},
             parameters, ...(Object.keys(inputSources).length ? { inputSources } : {}), connectionId: connection.selected,
             ...(Object.keys(connection.bindings ?? {}).length ? { connectionBindings: connection.bindings } : {}) });
         if (child) this.openedChild = sessionId;

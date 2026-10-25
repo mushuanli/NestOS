@@ -4,7 +4,17 @@ import { type FlowDraft, type FlowRevision, type JsonValue } from '@itookit/llm-
 import { type ICommandBus } from '@itookit/llm-session/contracts';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
+import { assertRootCallable, CallableExposureError } from '@itookit/llm-flow/contracts';
 import { promptFlowParameters, type FlowConnectionSelection } from '../components/FlowParameterForm';
+
+function assertLaunchScope(flow: FlowDraft | FlowRevision): void {
+    try {assertRootCallable(flow);}
+    catch (error) {
+        if (!(error instanceof CallableExposureError)) throw error;
+        throw Object.assign(new Error(t(error.code === 'CALLABLE_LOCAL_ONLY'
+            ? 'callable.exposure.rootDenied' : 'callable.exposure.invalid')), {code: error.code});
+    }
+}
 
 export interface FlowRunInput {
     parameters: Record<string, JsonValue>;
@@ -38,6 +48,7 @@ export class FlowLauncher {
             { id: flowId, ...(revision === undefined ? {} : { revision }) });
         if (input?.signal?.aborted) return;
         if (!flow?.id) throw new Error(t('flow.launch.invalid'));
+        assertLaunchScope(flow);
         const connection = input?.connection ?? await flowConnectionSelection(commands, undefined, flow.connections, undefined, flow);
         const values = input?.parameters ?? await (this.options.prompt ?? promptFlowParameters)(flow.parameters ?? [], undefined, undefined, undefined, connection);
         if (values === null) return;
@@ -52,6 +63,7 @@ export class FlowLauncher {
     private async createSession(flow: FlowRevision, parameters: Record<string, JsonValue>, connectionId?: string, connectionBindings?: Record<string, string>, signal?: AbortSignal): Promise<void> {
         const created = await this.options.commands.execute<{ sessionId: string }>(SessionCommand.CreateFromFlow, {
             flowId: flow.id, revision: flow.revision, parameters, title: flow.name,
+            expectedSignature: {id: flow.id, revision: flow.revision, digest: flow.digest},
             invocation: true, connectionId, ...(Object.keys(connectionBindings ?? {}).length ? { connectionBindings } : {}),
         });
         if (!signal?.aborted) await this.options.navigate(created.sessionId);

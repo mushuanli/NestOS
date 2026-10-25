@@ -193,3 +193,6 @@ TaskArtifacts 从 Kernel 终态 Task.output 派生分页目录和稳定 task-out
 - 生产取消的 stateForCleanup 仍只授权原 journal；settleContextForCleanup 由宿主提供固定 binding 的 get/prepare/release 方法，不向 Effect 开放集合读写或 claim/attach。先核对原租约再打开 Kernel，每次记录读写复验；释放前从实际 journal 重读凭据，检查原所有者、原生身份、代次、终态类型和 head。旧操作不得释放新所有者，日志不得包含输入、原生正文或存储异常详情。
 
 HarnessContextBindings 在原 settlement journal 持久后才发布终态检查点，保留因果前驱和真实 Invocation；后续拒绝不会覆盖前一 head 的所有者。旧 knownHeadRef 只投影为 legacy-head，不从 lastOperation 猜生产者。显式 fork 可以选择已确认的旧检查点，仍复验当前 binding 修订、策略与原生边界。Context binding 目录复用同一 Session shared state，只读、分页并绑定快照与查询范围，不激活 Session、获取 writer 或读取原生历史；原生严格续接能力仍独立校验。
+
+
+ContextOptionsReader 使用显式 Session/分支、发布目标及 HarnessConnectionService.inspect 投影能力与静态兼容性；只读 inspectSession，不领取 writer 或执行原生 turn。观察 basis 固定目标、连接授权、epoch、目的地及目录版本，旧分页游标不能跨范围复用。static-compatible 不宣称完整策略兼容，派发必须按实际装配结果重新核对；输出不包含原生控制身份、策略正文或操作指纹。

@@ -151,6 +151,8 @@ export interface ExecutionOverrides {
     branchMode?: 'continue' | 'fork';
     baseRoundId?: string;
     newBranchName?: string;
+    /** Explicit native context selection; model and Flow targets must reject this override. */
+    harnessConversation?: import('@itookit/kernel-adapters/contracts').ConversationSelection;
     retentionMode?: 'persistent' | 'temporary';
 }
 

@@ -1,4 +1,3 @@
-import {prepareHarnessInput} from '@itookit/kernel-adapters/contracts';
 import type { ConversationExecution, ConversationRunCoordinatorOptions } from './conversation-run-coordinator';
 import type { ContextSnapshot, ToolDefinition } from '@itookit/llm-context';
 import type { TaskSpec } from '@itookit/durable-kernel';
@@ -6,46 +5,64 @@ import type { LLMSkill } from '../contracts';
 import type { ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
 import { buildLlmTaskInput, buildSkillContexts, type DurableAgentInput, type SkillContext } from '@itookit/llm-tasks';
 import { CLIENT_WEB_SEARCH_TOOL, directExecutionMode, directToolIds } from './direct-execution-mode';
+import {sha256HexSync} from '@itookit/llm-context';
+import {harnessInputDigest, prepareHarnessInput, type HarnessContextRequest} from '@itookit/kernel-adapters/contracts';
+import type {HarnessProgramInput} from '@itookit/kernel-adapters';
+import {directHarnessContextIdentity} from '../contracts/context-options';
+
+interface DirectToolCatalog {definitions: ToolDefinition[]; externalIds: string[];}
 
 export async function prepareDirectConversation(options: ConversationRunCoordinatorOptions, execution: ConversationExecution) {
     if (execution.config.execution?.kind === 'harness') return { execution, skills: [], skillsPrompt: '' };
-    if (directExecutionMode(execution.task.input) === 'agent' && execution.config.capabilityPolicy?.toolIds === undefined) {
-        const toolIds = await options.resolveHarnessToolIds?.(execution.task.sessionId) ?? [];
-        execution = { ...execution, config: { ...execution.config,
-            capabilityPolicy: { mcpProfileIds: [], ...execution.config.capabilityPolicy, toolIds } } };
-    }
-    const profiles = execution.config.capabilityPolicy?.mcpProfileIds ?? [];
-    if (profiles.length && directExecutionMode(execution.task.input) !== 'chat') {
-        if (!options.resolveMCPToolIds) throw new Error('MCP profile resolution is unavailable');
-        const mcpIds = await options.resolveMCPToolIds(execution.task.sessionId, profiles);
-        const policy = execution.config.capabilityPolicy!;
-        execution = { ...execution, config: { ...execution.config,
-            capabilityPolicy: { ...policy, toolIds: [...new Set([...(policy.toolIds ?? []), ...mcpIds])] } } };
-    }
+    execution = await prepareDefaultTools(options, execution);
+    execution = await prepareMcpTools(options, execution);
     const ids = execution.config.capabilityPolicy?.skillIds ?? [];
     const skills = ids.length ? await options.resolveSkills?.(ids, execution.task.sessionId) ?? [] : [];
-    const skillsPrompt = skills.filter(skill => ids.includes(skill.id) && skill.enabled && !skill.disableModelInvocation && skill.triggerStrategy !== 'action')
-        .flatMap(skill => [skill.instructions,
-            skill.compact?.rawContent ? `Skill ${skill.id} — critical rules:\n${skill.compact.rawContent}` : '',
-        ]).filter(Boolean).join('\n\n');
-    return { execution, skills, skillsPrompt };
+    return {execution, skills, skillsPrompt: directSkillsPrompt(ids, skills)};
+}
+
+async function prepareDefaultTools(options: ConversationRunCoordinatorOptions, execution: ConversationExecution) {
+    if (directExecutionMode(execution.task.input) !== 'agent' || execution.config.capabilityPolicy?.toolIds !== undefined) return execution;
+    const toolIds = await options.resolveHarnessToolIds?.(execution.task.sessionId) ?? [];
+    return {...execution, config: {...execution.config, capabilityPolicy: {mcpProfileIds: [], ...execution.config.capabilityPolicy, toolIds}}};
+}
+
+async function prepareMcpTools(options: ConversationRunCoordinatorOptions, execution: ConversationExecution) {
+    const profiles = execution.config.capabilityPolicy?.mcpProfileIds ?? [];
+    if (!profiles.length || directExecutionMode(execution.task.input) === 'chat') return execution;
+    if (!options.resolveMCPToolIds) throw new Error('MCP profile resolution is unavailable');
+    const mcpIds = await options.resolveMCPToolIds(execution.task.sessionId, profiles), policy = execution.config.capabilityPolicy!;
+    return {...execution, config: {...execution.config,
+        capabilityPolicy: {...policy, toolIds: [...new Set([...(policy.toolIds ?? []), ...mcpIds])]}}};
+}
+
+function directSkillsPrompt(ids: string[], skills: LLMSkill[]): string {
+    return skills.filter(skill => ids.includes(skill.id) && skill.enabled && !skill.disableModelInvocation && skill.triggerStrategy !== 'action')
+        .flatMap(skill => [skill.instructions, skill.compact?.rawContent ? `Skill ${skill.id} — critical rules:\n${skill.compact.rawContent}` : ''])
+        .filter(Boolean).join('\n\n');
 }
 
 export function directTaskSpec(
     execution: ConversationExecution,
     snapshot: ContextSnapshot,
-    catalog: { definitions: ToolDefinition[]; externalIds: string[] },
+    catalog: DirectToolCatalog,
     skills: LLMSkill[],
     policy: ResolvedDirectAgentPolicy,
-): TaskSpec<DurableAgentInput | { connection: NonNullable<ConversationExecution['config']['harnessConnection']>; messages: ContextSnapshot['canonicalMessages'] }> {
-    if (execution.config.execution?.kind === 'harness') {
-        if (!execution.config.harnessConnection) throw new Error('Harness connection snapshot is required');
-        const prepared = prepareHarnessInput({messages: snapshot.canonicalMessages});
-        if (execution.task.input.files.length && !prepared.attachments?.length) throw new Error('HARNESS_CURRENT_INPUT_REQUIRED');
-        return { program: { kind: 'kernel-adapters.harness', version: '1' },
-            input: { connection: structuredClone(execution.config.harnessConnection), messages: structuredClone(snapshot.canonicalMessages) },
-            labels: { roundId: execution.roundId, kind: 'agent' }, deferStart: true };
-    }
+): TaskSpec<DurableAgentInput | HarnessProgramInput> {
+    return execution.config.execution?.kind === 'harness' ? nativeTaskSpec(execution, snapshot)
+        : modelTaskSpec(execution, snapshot, catalog, skills, policy);
+}
+
+function nativeTaskSpec(execution: ConversationExecution, snapshot: ContextSnapshot): TaskSpec<HarnessProgramInput> {
+    if (!execution.config.harnessConnection) throw new Error('Harness connection snapshot is required');
+    if (execution.task.input.files.length && !execution.currentInput?.attachments?.length) throw new Error('HARNESS_CURRENT_INPUT_REQUIRED');
+    const input = harnessInput(execution, snapshot); prepareHarnessInput(input);
+    return {program: {kind: 'kernel-adapters.harness', version: '1'}, input,
+        labels: {roundId: execution.roundId, kind: 'agent'}, deferStart: true};
+}
+
+function modelTaskSpec(execution: ConversationExecution, snapshot: ContextSnapshot,
+    catalog: DirectToolCatalog, skills: LLMSkill[], policy: ResolvedDirectAgentPolicy): TaskSpec<DurableAgentInput> {
     const tools = directToolIds(execution.config, execution.task.input);
     const mode = directExecutionMode(execution.task.input);
     const { definitions, allowedToolIds, skillContexts } = directBindings(execution, catalog, skills, tools);
@@ -63,6 +80,38 @@ export function directTaskSpec(
             ...(mode ? { executionMode: mode } : {}) },
         deferStart: true,
     };
+}
+
+function harnessInput(execution: ConversationExecution, snapshot: ContextSnapshot): HarnessProgramInput {
+    const {canonicalMessages, ...contextSnapshot} = structuredClone(snapshot), context = harnessContext(execution, snapshot);
+    if (context && context.conversation.mode !== 'new') return {connection: structuredClone(execution.config.harnessConnection!),
+        ...harnessIncrementalInput(execution), context};
+    return {connection: structuredClone(execution.config.harnessConnection!), messages: canonicalMessages,
+        ...(context ? {context, contextSnapshot} : {})};
+}
+
+function harnessContext(execution: ConversationExecution, snapshot: ContextSnapshot): HarnessContextRequest | undefined {
+    const invocation = execution.task.input.invocation;
+    if (!invocation) {
+        if (execution.task.input.overrides?.harnessConversation) throw new Error('CONTEXT_INVOCATION_REQUIRED');
+        return;
+    }
+    const connection = execution.config.harnessConnection!;
+    const conversation = structuredClone(execution.task.input.overrides?.harnessConversation ?? {mode: 'new' as const});
+    return {invocationId: invocation.invocationId, branchId: snapshot.branchRef,
+        ...directHarnessContextIdentity(snapshot.agent, connection.project), scopeRef: `conversation:${execution.config.id}`,
+        policyRef: sha256HexSync(JSON.stringify(snapshot.blocks.filter(block => block.kind === 'system'))),
+        conversation, input: conversation.mode === 'new' ? {mode: 'host-assembled', snapshotRef: snapshot.id, digest: snapshot.digest}
+            : {mode: 'native-continuation', inputRef: `invocation:${invocation.invocationId}:input`, digest: incrementalDigest(execution)}};
+}
+
+function harnessIncrementalInput(execution: ConversationExecution) {
+    if (!execution.currentInput && execution.contextFiles?.length) throw new Error('HARNESS_CURRENT_INPUT_REQUIRED');
+    return prepareHarnessInput({messages: [execution.currentInput ?? {role: 'user', content: execution.task.input.text}]});
+}
+function incrementalDigest(execution: ConversationExecution): string {
+    const input = harnessIncrementalInput(execution);
+    return harnessInputDigest(input);
 }
 
 /**
@@ -84,7 +133,7 @@ function toolNameOf(tool: ToolDefinition): string {
     return tool.function?.name ?? tool.name ?? '';
 }
 
-function directBindings(execution: ConversationExecution, catalog: { definitions: ToolDefinition[]; externalIds: string[] }, skills: LLMSkill[], tools: string[]) {
+function directBindings(execution: ConversationExecution, catalog: DirectToolCatalog, skills: LLMSkill[], tools: string[]) {
     // The host search decision selects one search mechanism.
     const definitions = catalog.definitions.filter(tool => tools.includes(toolNameOf(tool))
         && (execution.config.webSearchMode === 'client-tool' || toolNameOf(tool) !== CLIENT_WEB_SEARCH_TOOL));

@@ -70,3 +70,6 @@ export { inferFlowConnectionRequirements } from './contracts/flow-connection-pol
 export type { FlowConnectionSelection, FlowConnectionSnapshot } from './contracts/flow-connection-snapshot';
 
 export type * from './contracts/artifacts';
+
+export * from './contracts/context-bindings';
+export * from './contracts/context-options';

@@ -409,6 +409,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         cleanupFns.push(() => executionActivity.dispose());
         let flowInstallations: FlowInstallationService | undefined;
         const conversationOptions = {
+                executionConnections,
                 prepareSessionExecution: prepareChildExecution,
                 ensureFlowDependencies: async (id: string) => {await flowInstallations?.ensure(id);}, executionActivity, instructionQueueSessions, vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
                 digitalTwin,

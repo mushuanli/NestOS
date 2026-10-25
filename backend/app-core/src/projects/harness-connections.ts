@@ -12,6 +12,9 @@ type Remote = Pick<ProjectRemoteMountService, 'list' | 'resolveConnection' | 'pr
 export interface HarnessConnectionAcquisition {
     client: HarnessClient; profile: HarnessProfile; workspaceId: string; epoch: string; release(): Promise<void>;
 }
+export interface HarnessConnectionInspection {
+    snapshot: HarnessConnectionSnapshot; profile: HarnessProfile; workspaceId: string; epoch: string; checkpointFork: boolean;
+}
 
 /** Persistent target choices are separate from node credentials and per-Task native sessions. */
 export class HarnessConnectionService {
@@ -37,6 +40,27 @@ export class HarnessConnectionService {
     }
     freeze(id: string): Promise<HarnessConnectionSnapshot | undefined> {
         return traceHarnessConnection('harness.connection.freeze', id, () => this.freezeConnection(id));
+    }
+    inspect(id: string): Promise<HarnessConnectionInspection | undefined> {
+        return traceHarnessConnection('harness.connection.inspect', id, () => this.inspectConnection(id));
+    }
+    private async inspectConnection(id: string): Promise<HarnessConnectionInspection | undefined> {
+        const record = await this.get(id);
+        if (!record?.connection || record.connection.enabled === false) return;
+        const snapshot: HarnessConnectionSnapshot = {...record.connection, version: 1, revision: record.revision,
+            project: await this.project(record.connection)};
+        const client = await this.requireRemote().projectHarness(snapshot.projectId, {requireRegistered: true});
+        let failure: unknown;
+        try {
+            const descriptor = await client.profiles(), selected = inspectProfile(snapshot, descriptor);
+            await this.validate(snapshot);
+            return {snapshot, ...selected, epoch: descriptor.epoch, checkpointFork: typeof client.fork === 'function'
+                && selected.profile.capabilities.fork === true && selected.profile.capabilities.checkpointFork === true};
+        } catch (error) {failure = error; throw error;}
+        finally {
+            try {await client.close();}
+            catch (cleanup) {if (failure) throw new AggregateError([failure, cleanup], 'Harness inspection and cleanup failed'); throw cleanup;}
+        }
     }
     private async freezeConnection(id: string): Promise<HarnessConnectionSnapshot | undefined> {
         const record = await this.get(id);
@@ -85,6 +109,15 @@ export class HarnessConnectionService {
         if (!this.remote) throw new FSError('ECAPABILITY', 'Remote harness provider is unavailable');
         return this.remote;
     }
+}
+function inspectProfile(snapshot: HarnessConnectionSnapshot, descriptor: Awaited<ReturnType<HarnessClient['profiles']>>) {
+    const profile = descriptor.profiles.find(item => item.id === snapshot.profileId && item.projectRuntime);
+    const workspaceId = (snapshot.project as {serverProjectId?: string}).serverProjectId;
+    if (typeof descriptor.epoch !== 'string' || !descriptor.epoch || !profile || !workspaceId
+        || !profile.workspaces.some(item => item.id === workspaceId) || !profile.capabilities.create
+        || !profile.capabilities.history || !profile.capabilities.interrupt)
+        throw new FSError('ECAPABILITY', 'Project-scoped harness inspection profile is unavailable');
+    return {profile: structuredClone(profile), workspaceId};
 }
 async function validateSelection(client: HarnessClient, profile: HarnessProfile, selection: NonNullable<HarnessExecutionConnection['selection']>) {
     if (!profile.capabilities.models || !client.models) throw new FSError('ECAPABILITY', 'Harness model selection is unavailable');

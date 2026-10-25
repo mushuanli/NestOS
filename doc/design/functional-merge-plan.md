@@ -102,7 +102,7 @@ C4Component
 | F19 | Connection 取消/核对事实桥 | kernel-adapters + 宿主 journal | F06 | 本批合入；归属证据、原操作核对、失败连接释放重试及日志隔离，见第 14 节 |
 | F20 | 独立上下文 binding 与清理 | app-core + adapter | F16 / F19 | 执行与清理内核见第 32 节；集合 CAS、journal 与原生身份关联已接线；Session 入口与目录随 F22 继续 |
 | F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 精确检查点与 fork 执行见第 32 节；选择入口及真实节点验收继续随 F22 推进 |
-| F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 待合入；只读目录不取 writer，切目标/分支及迟到接纳保留当前草稿 |
+| F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 宿主目录、Session 冻结与派发见第 33 节；工作台选择及草稿组合验收待合入 |
 | F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 宿主读取链路见第 30 节；从终态输出派生，核对范围和摘要，不另建结果注册表；UI 随 F24 验收 |
 | F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；按需产物 UI 见第 31 节；完整调用组及复杂输出性能仍待验收 |
 | F25 | Flow 调度所有权竞态修复 | llm-flow | 无 | 已合入 `0bcfa29e`；竞争失败者不终结胜者，接纳丢回执不误清理工作区 |
@@ -723,3 +723,33 @@ C4Component
 当前原生协议缺少条件写入保障，严格 continue 明确返回 CONTEXT_NATIVE_WRITE_UNSUPPORTED；宿主 CAS 不能替代远端条件写。此批交付 Program、Provider、journal、真实宿主清理接线与检查点执行，不假装普通 resume 已满足安全跨轮续接。普通 Session 的上下文选择与 UI 目录仍按 F22 接线，真实节点/生产验收未完成。
 
 隔离验证：Harness 执行/恢复/清理 144 项、Kernel 适配层 366 项通过；补充真实 Kernel 的正常完成与取消 2 项，核对 Effect 状态端口、宿主清理写权、检查点落盘及占用释放。App-core/适配层类型检查、适配层 ESM/CJS/声明构建及架构检查通过。故障覆盖 CAS 冲突、持久写回丢失、旧所有者、终态未知、检查点归属错误、输入摘要错误与不支持能力。未访问生产 Session，未部署。
+
+
+## 33. F22 Session 上下文选择、宿主目录与派发复验
+
+普通 Harness Agent 的调用输入保存 HarnessContextRequest，并保持真实 Invocation、分支、目标、工作区和策略依据。默认新调用以宿主装配快照为权威输入，Task 保存对应快照和 canonical messages；显式 checkpoint fork 只发送本轮物化后的增量文字/附件，历史引用继续用于展示和追溯，不重复注入完整本地历史。
+
+```mermaid
+C4Component
+  title 上下文查询与冻结调用分别进入现有通道
+  Component(entry, "UI / CLI / Session 命令", "应用入口", "显式目的 Session、分支与发布目标")
+  Component(options, "Context options / catalog", "宿主只读投影", "分页目录、能力与静态兼容性")
+  ContainerDb(state, "Session / Kernel shared state", "既有存储", "上下文绑定、检查点和分支事实")
+  Component(queue, "Session 指令队列", "持久接纳", "冻结选择与执行配置")
+  Component(prepare, "ConversationContext / HarnessProgram", "执行准备", "快照或增量、摘要及实际策略")
+  Component(native, "Harness Provider", "既有执行链", "binding 版本与原生能力复验")
+  Rel(entry, options, "只读查询；不受原发送回执阻塞")
+  Rel(options, state, "inspectSession，不激活 writer")
+  Rel(entry, queue, "提交明确的上下文选择")
+  Rel(queue, prepare, "原冻结调用")
+  Rel(prepare, native, "实际执行输入")
+  Rel(native, state, "原 binding 修订、代次及归属")
+```
+
+目录查询绑定显式 Session/分支、目标与观察 basis，分页范围或观察依据变化时拒绝旧游标；不读取原生消息正文，不暴露原生控制身份、策略正文或操作指纹。连接 inspect 只读取必要的 profile/capabilities 并释放连接，不领取原生执行。查询上的 static-compatible 仅表示静态条件满足，dynamicPolicy 始终是 dispatch-validation-required。
+
+队列冻结用户选择和提示词追加值；调用方随后改写对象不改变已入队实参。真正派发时重新核对 binding 修订、检查点、实际系统策略与连接授权，不兼容则明确失败，不能静默新建并声称续接。原生上下文选择不能用于模型或 Flow 目标；严格 continue 仍拒绝，不以宿主 CAS 假冒原生条件写。普通后续轮次默认新 binding，明确保留 host-assembled 语义。
+
+隔离验证：宿主目录/真实 ApplicationRuntime 的 Harness 执行、附件、取消与队列组合，Session 全量回归，以及认证 HTTP 下原发送响应悬挂时的只读目录查询。补充暂停队列后修改调用方选择、源 binding 修订漂移再恢复派发的组合，要求保留原选择且拒绝 stale source，不额外创建原生会话。类型、Session 构建与架构边界检查通过。
+
+本批不包含工作台选择控件与分支草稿持久化，继续作为 F22 未完成项；F16/F24 剩余入口/显示验收与真实远端生产验收保留。未操作生产 Session，未部署。

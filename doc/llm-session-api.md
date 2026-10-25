@@ -666,3 +666,10 @@ C4Dynamic
 `ConversationSystemOptions.loadArtifact?: ArtifactLoader` 接收实际调用的 `(sessionId, artifactId)`，返回文字/JSON 的 Artifact 语义值。`SessionManager.getArtifact` / `session.artifact.get` 使用开始读取时绑定的 Session；Context 执行装配使用实际 ExecutionTask 的 Session，预览固定其开始时的归属。未注入读取器时明确报告 `ARTIFACT_READER_UNAVAILABLE`，不把不可读材料当作空上下文。
 
 宿主从终态 Task 输出派生不可变引用，校验输出选择与摘要。应用协议 `app.artifacts.list/read` 负责目录和二进制下载；Session 包不直接访问应用资产存储，二进制及尚未导入的远端文件不隐式充当文字上下文。
+
+
+### 原生上下文选择与只读目录
+
+`ExecutionOverrides.harnessConversation` 使用显式 new/fork 选择，进入既有 Submission/Instruction 冻结和派发链。普通 Harness Agent 的 Task 保存 ContextSnapshot 依据及实际消息；checkpoint fork 只发送本轮增量，不重复注入历史。模型/Flow 目标不能携带原生选择，严格 continue 在原生条件写能力缺失时明确拒绝。
+
+`session.context.bindings` / `session.context.options` 接收显式 Session、分支及查询范围；前者列出绑定和确认检查点，后者结合发布目标、profile 能力和目的地给出静态条件。两者由宿主注入只读 reader，经 Kernel.inspectSession 读取，不能绑定当前视图或取得 writer。游标包含观察版本/范围，变化后要求重新查询；静态兼容不代替派发时的策略、版本及授权复验。

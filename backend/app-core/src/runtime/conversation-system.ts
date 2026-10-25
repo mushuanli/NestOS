@@ -1,5 +1,8 @@
-import {createTaskArtifactServices} from './task-artifact-services';
 import {createTaskAssetReader} from './task-assets';
+import {createTaskArtifactServices} from './task-artifact-services';
+import {createContextBindingReader} from '../projects/harness-context-catalog';
+import {createContextOptionsReader} from '../projects/harness-context-options';
+import type {HarnessConnectionService} from '../projects/harness-connections';
 import { createTransferSummarizer } from './transfer-summary';
 import {registerInputAssets} from './input-assets';
 import {validateCallAssets} from './call-asset-preflight';
@@ -32,6 +35,7 @@ export interface ConversationSystemOptions {
     sessionRepository: SessionRepository;
     flowEngine: FlowEngine;
     kernel: HeadlessKernelRuntime;
+    executionConnections?: Pick<HarnessConnectionService, 'inspect'>;
     /**
      * Host-owned single-writer gate: true when this host may write the Session. A Session whose
      * lease is held by another host must stay read-only instead of racing its owner.
@@ -54,7 +58,6 @@ export async function createConversationSystem(
     const capabilities = createFlowCapabilities(kernel);
     const artifacts = createTaskArtifactServices(kernel.kernel, systemFS);
     const system = await initializeConversationSystem({
-        loadArtifact: artifacts.loadArtifact,
         executionActivity: options.executionActivity,
         instructionQueueSessions: options.instructionQueueSessions,
         scheduleAgentInitialization: options.scheduleAgentInitialization,
@@ -62,6 +65,10 @@ export async function createConversationSystem(
         directAgentPolicy: options.directAgentPolicy ?? createMindosDirectAgentPolicy(),
         agentResolution: options.agentResolution,
         hostPorts: { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot },
+        loadArtifact: artifacts.loadArtifact,
+        readContextBindings: createContextBindingReader(kernel.kernel),
+        readContextOptions: createContextOptionsReader({kernel: kernel.kernel, agents: agentService,
+            sessions: sessionRepository, connections: options.executionConnections}),
         validateCallAssets: (_sessionId, value) => validateCallAssets(systemFS, value),
         agentService,
         summarizeContent: createTransferSummarizer(sessionRepository, agentService, kernel.llmService),

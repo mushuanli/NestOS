@@ -29,6 +29,8 @@ export const SessionCommand = {
     ContextSet: 'session.context.set',
     ContextGet: 'session.context.get',
     ContextSnapshotGet: 'session.context.snapshot.get',
+    ContextBindings: 'session.context.bindings',
+    ContextOptions: 'session.context.options',
     ArtifactGet: 'session.artifact.get',
     ContextPreview: 'session.context.preview',
     Regenerate: 'session.regenerate',

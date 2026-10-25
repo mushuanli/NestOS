@@ -2,6 +2,8 @@ import { snapshotDirectAgentPolicy, type ResolvedDirectAgentPolicy } from '../co
 import { restoreFlowHistory } from '../persistence/restore-flow-history';
 import {assertSubmissionBinding, submissionInstruction} from './submission-input';
 import {readSubmissionReceipt} from './submission-receipt';
+import {assertContextBindingQuery, type ContextBindingReader, type ContextBindingQuery} from '../contracts/context-bindings';
+import {assertContextOptionsQuery} from '../contracts/context-options';
 import {ulid} from '../persistence/ulid';
 import { KernelError, KernelErrorCode } from '@itookit/durable-kernel';
 import { flowBranchExecutions } from './flow-branches';
@@ -80,6 +82,8 @@ export class SessionManager implements ISession, SessionQuery {
     private agentResolver: AgentResolver;
     private readonly kernel: Kernel;
     private readonly artifactLoader?: import('../contracts/artifacts').ArtifactLoader;
+    private readonly contextBindingReader?: ContextBindingReader;
+    private readonly contextOptionsReader?: import('../contracts/context-options').ContextOptionsReader;
     private readonly canWriteSession?: (sessionId: string) => Promise<boolean>;
     private readonly flowRerun: FlowRerunService;
     private readonly durableProjection: DurableConversationProjection;
@@ -99,6 +103,8 @@ export class SessionManager implements ISession, SessionQuery {
         options: {
             executionActivity?: SessionExecutionActivity;
             loadArtifact?: import('../contracts/artifacts').ArtifactLoader;
+            readContextBindings?: ContextBindingReader;
+            readContextOptions?: import('../contracts/context-options').ContextOptionsReader;
             validateCallAssets?: import('../contracts/submission').CallAssetValidator;
             instructionQueueSessions?: import('../persistence/instruction-queue-sessions').InstructionQueueSessions;
             directAgentPolicy?: import('../contracts/direct-agent-policy').DirectAgentPolicy;
@@ -134,6 +140,8 @@ export class SessionManager implements ISession, SessionQuery {
         if (!options?.kernel) throw new Error('SessionManager requires Kernel');
         this.kernel = options.kernel;
         this.artifactLoader = options.loadArtifact;
+        this.contextBindingReader = options.readContextBindings;
+        this.contextOptionsReader = options.readContextOptions;
         this.memory = new SessionMemoryControls(options.memoryProvider ?? new SessionMemoryProvider(this.kernel), agentService,
             () => this.registry.ensureBound().sessionId, options.canWriteSession);
         this.durableProjection = new DurableConversationProjection(engine);
@@ -467,9 +475,32 @@ export class SessionManager implements ISession, SessionQuery {
 
     listCallTargets(): Promise<import('../contracts/submission').RootTargetCatalog> {return this.callTargets.list();}
 
+    async getContextBindings(supplied: ContextBindingQuery): Promise<import('../contracts/context-bindings').ContextBindingPage> {
+        assertContextBindingQuery(supplied); const query = structuredClone(supplied);
+        const manifest = await this.registry.engine.getManifest(query.sessionId);
+        if (query.branchId !== undefined && !Object.hasOwn(manifest.branches, query.branchId))
+            throw Object.assign(new Error('Context query branch does not exist'), {code: 'CONTEXT_QUERY_BRANCH_INVALID'});
+        if (!this.contextBindingReader) throw Object.assign(new Error('Context binding queries are unavailable'), {code: 'CONTEXT_QUERY_UNSUPPORTED'});
+        return this.contextBindingReader(query);
+    }
 
-
-
+    async getContextOptions(supplied: import('../contracts/context-options').ContextOptionsQuery): Promise<import('../contracts/context-options').ContextOptionsPage> {
+        const started = Date.now(), operationId = ulid(); let stage = 'input';
+        try {
+            assertContextOptionsQuery(supplied); const query = structuredClone(supplied);
+            stage = 'destination'; const manifest = await this.registry.engine.getManifest(query.sessionId);
+            if (!Object.hasOwn(manifest.branches, query.branchId))
+                throw Object.assign(new Error('Context destination branch does not exist'), {code: 'CONTEXT_QUERY_BRANCH_INVALID'});
+            if (!this.contextOptionsReader) throw Object.assign(new Error('Context option queries are unavailable'), {code: 'CONTEXT_OPTIONS_UNSUPPORTED'});
+            stage = 'lookup'; return await this.contextOptionsReader(query);
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            this.host.logger.warn('Context options query rejected', {operation: 'session.context.options', operationId, stage,
+                result: 'failure', code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CONTEXT_OPTIONS_FAILED',
+                durationMs: Date.now() - started});
+            throw error;
+        }
+    }
 
     getSubmissionReceipt(request: import('../contracts/submission').SubmissionRequest): Promise<import('../contracts/submission').SubmissionReceipt> {
         return this.observeSubmissionReceipt(request, () => this.registry.ensureBound().sessionId);
@@ -541,8 +572,6 @@ export class SessionManager implements ISession, SessionQuery {
         if (!this.artifactLoader) throw Object.assign(new Error('Artifact reader is unavailable'), {code: 'ARTIFACT_READER_UNAVAILABLE'});
         return this.artifactLoader(sessionId, artifactId);
     }
-
-
 
     async previewContext(agentId: string, pendingText = '') {
         const { sessionId } = this.registry.ensureBound();

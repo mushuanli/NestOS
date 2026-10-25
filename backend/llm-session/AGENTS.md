@@ -98,3 +98,6 @@ validateCallAssets 由宿主注入，贯通 Flow/Flow Agent 根接纳、实际�
 ConversationUIState.operationRecords 仅保存宿主 UI 的不透明操作台账；Kernel、队列、Round 的事实权威保持原位置。默认工作台与独立视图查询原冻结 Submission 的完整摘要，不能只凭队列 ID 判定接纳，也不能在恢复时使用当前分支或最新目标改写请求。
 
 ArtifactLoader 由宿主注入，接收实际调用的 sessionId 与不可变 artifactId；ConversationContextBuilder 按 ExecutionTask 的 Session 调用，不能使用当前编辑器绑定。SessionManager.getArtifact 和 ContextPreview 已接真实读取器；预览先捕获 Session 身份，后续异步解析不跟随切换后的绑定。二进制文件须显式转换后才能作为文字 Context，不能把路径或元数据当作文件正文。独立库未注入读取端口时明确报不可用。
+
+
+原生上下文选择由 ExecutionOverrides.harnessConversation 进入冻结指令；模型/Flow 目标不得静默忽略，严格 continue 缺少原生条件写保障时明确拒绝。普通 Harness Task 保存宿主快照依据和实际消息，显式 fork 只发送本轮增量及已核验附件。session.context.bindings/options 查询显式 Session/分支，不切换当前绑定；静态兼容不是授权，实际派发仍核对策略和 binding 修订。

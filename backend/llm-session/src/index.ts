@@ -103,6 +103,8 @@ import { DagCommandService } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
+    readContextBindings?: import('./contracts/context-bindings').ContextBindingReader;
+    readContextOptions?: import('./contracts/context-options').ContextOptionsReader;
     loadArtifact?: import('./contracts/artifacts').ArtifactLoader;
     validateCallAssets?: import('./contracts/submission').CallAssetValidator;
     summarizeContent?: (sessionId: string, text: string) => Promise<string>;
@@ -181,6 +183,7 @@ function createManagedSession(options: ConversationSystemOptions, promptHistory:
         resolveSessionSkills: options.resolveSessionSkills, retrieveMemory: options.retrieveMemory,
         memoryProvider: options.memoryProvider, canWriteSession: options.canWriteSession,
         workspaceManager: options.workspaceManager, loadArtifact: options.loadArtifact,
+        readContextBindings: options.readContextBindings, readContextOptions: options.readContextOptions,
         validateCallAssets: options.validateCallAssets,
     });
 }

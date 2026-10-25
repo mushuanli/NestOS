@@ -1,3 +1,4 @@
+import {applyHarnessOverrides, applyOverrides, assertContextSelection} from './execution-overrides';
 import { prepareFlowConnections } from './flow-connections';
 import {callInputProjection} from './call-input-projection';
 import { type Signal } from '../contracts';
@@ -8,7 +9,6 @@ import type {
     ChatAttachment,
     ExecutionNode,
     ExecutionTask,
-    ExecutionOverrides,
     ExecutorConfig,
     SessionGroup,
     SessionRuntime,
@@ -41,6 +41,7 @@ import { frozenFlowIdentities } from './flow-identity-snapshot';
 import { bindPlannedFlowGraph, validatePlannedFlowConnections } from './flow-run-plan';
 import { isHarnessAgentSnapshot } from './harness-binding';
 import {conversationFlowInvocation, newRerunInvocation} from './invocation-identity';
+import {assertConversationSelection} from '@itookit/kernel-adapters/contracts';
 
 export interface SessionRunCallbacks {
     validateCallAssets?: import('../contracts/submission').CallAssetValidator;
@@ -125,6 +126,7 @@ export class SessionRunCoordinator {
 
     async bindQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
         const identity = await this.resolveSelectedIdentity(item);
+        assertContextSelection(item, identity);
         const selected = pinQueuedTarget(item, identity);
         const connectionBinding = await this.freezeConnectionBinding({ ...selected, sessionId, instructionId: item.id }, identity);
         const bound = await this.prepareFlowInput({ ...selected, sessionId, instructionConnectionBinding: connectionBinding }, identity);
@@ -166,6 +168,7 @@ export class SessionRunCoordinator {
 
     async validateSubmission(input: TaskInput): Promise<void> {
         const config = await this.resolveConfig(input);
+        assertConversationTarget(input, config);
         this.assertAgentVersion(config, input.agentId);
     }
 
@@ -331,6 +334,7 @@ export class SessionRunCoordinator {
             throw new ConversationError(ConversationErrorCode.SESSION_BUSY, 'Queued instruction branch changed during admission');
         }
         const agent = await this.resolveConfig(input);
+        assertConversationTarget(input, agent);
         this.assertAgentVersion(agent, input.agentId);
         const mode = input.overrides?.flowId ? undefined : directExecutionMode(input);
         if (mode) await this.engine.saveSessionSettings(input.sessionId, { executionMode: mode, executionModeLocked: true });
@@ -424,14 +428,14 @@ export class SessionRunCoordinator {
         if (accepted) {
             if (!isHarnessAgentSnapshot(accepted) || accepted.id !== input.agentId)
                 throw new Error('Invalid admitted harness Agent identity');
-            return {...admittedIdentity(input, structuredClone(accepted)), harnessConnection: await this.agents.resolveHarnessConnection(
-                accepted.harnessConnection!.id, accepted.harnessConnection)};
+            return applyHarnessOverrides({ ...admittedIdentity(input, structuredClone(accepted)), harnessConnection: await this.agents.resolveHarnessConnection(
+                accepted.harnessConnection!.id, accepted.harnessConnection) }, input);
         }
         const settings = await this.engine.getSessionSettings(input.sessionId);
         const identity = admittedIdentity(input, boundFlowIdentity(input.instructionFlowBinding)
             ?? readQueuedAgent(input.instructionConnectionBinding?.agent, input.agentId) ?? await this.resolveSelectedIdentity(input));
-        if (identity.execution?.kind === 'harness') return {...identity,
-            harnessConnection: await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection)};
+        if (identity.execution?.kind === 'harness') return applyHarnessOverrides({ ...identity,
+            harnessConnection: await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection) }, input);
         const connectionId = input.instructionConnectionBinding ? input.instructionConnectionBinding.connectionId
             : input.overrides && 'connectionId' in input.overrides ? input.overrides.connectionId : settings.connectionId;
         const snapshot = input.instructionConnectionBinding?.connections;
@@ -466,6 +470,7 @@ export class SessionRunCoordinator {
     }
 
     private async freezeConnectionBinding(input: TaskInput, identity: ExecutorConfig) {
+        assertConversationTarget(input, identity);
         if (identity.execution?.kind === 'harness' && input.sendIntent?.execution.kind !== 'flow') {
             const harnessConnection = await this.agents.resolveHarnessConnection(identity.execution.connectionId, identity.harnessConnection);
             return {identityVersion: 1 as const, defaults: {}, harnessAgent: {...structuredClone(identity), harnessConnection}};
@@ -600,7 +605,13 @@ function pinQueuedTarget(item: import('../contracts/instruction-queue').SessionI
     return {...item, target, overrides};
 }
 
-
+function assertConversationTarget(input: TaskInput, identity: ExecutorConfig): void {
+    const selection = input.overrides?.harnessConversation;
+    if (selection === undefined) return;
+    if (identity.execution?.kind !== 'harness' || input.overrides?.flowId || input.sendIntent?.execution.kind === 'flow')
+        throw Object.assign(new Error('Native context selection requires a direct Harness target'), {code: 'CONTEXT_TARGET_UNSUPPORTED'});
+    assertConversationSelection(selection);
+}
 
 function executionNode(id: string, config: ExecutorConfig): ExecutionNode {
     return {
@@ -670,25 +681,4 @@ function projectError(
         type: 'error',
         error: { message, ...(status === 'aborted' ? { code: 'ABORTED' } : {}) },
     });
-}
-
-function applyOverrides(
-    config: ExecutorConfig,
-    overrides: ExecutionOverrides,
-): ExecutorConfig {
-    const updated = { ...config };
-    if (overrides.connectionId) updated.connectionId = overrides.connectionId;
-    if (overrides.temperature !== undefined) updated.temperature = overrides.temperature;
-    if (overrides.streamMode !== undefined) updated.stream = overrides.streamMode;
-    if (overrides.reasoningEffort) updated.reasoningEffort = overrides.reasoningEffort;
-    if (overrides.thinkingEnabled !== undefined) updated.enableThinking = overrides.thinkingEnabled;
-    // 联网搜索总开关：false → 'disabled'（同时关闭内置 search 与客户端 WebSearchTool）；
-    // true 保持 resolver 自动分流（'builtin' 优先，否则 'client-tool'），无需覆盖。
-    if (overrides.webSearchEnabled === false) {
-        updated.webSearchMode = 'disabled';
-    }
-    if (overrides.systemPromptAppend) {
-        updated.systemPrompt = [...(updated.systemPrompt ?? []), overrides.systemPromptAppend];
-    }
-    return updated;
 }

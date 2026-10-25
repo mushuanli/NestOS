@@ -456,3 +456,33 @@ it('reads committed Flow artifacts and byte pages through the authenticated appl
     expect(auditEvents).toContainEqual(expect.objectContaining({event: 'application.complete', rpcCommands: [ArtifactCommand.Read]}));
     await expect(commands.execute(ArtifactCommand.Read, {reference: {...page.items[0].reference, sessionId: 'other'}})).rejects.toThrow();
 }, 20000);
+
+it('reads explicit context options while the original authenticated queue admission reply is suspended', async () => {
+    let release!: () => void, held = false;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    const fetcher: typeof fetch = async (url, init) => {
+        const request = init?.method === 'POST' ? JSON.parse(String(init.body)) : undefined, response = await auth.fetcher(url, init);
+        if (request?.kind === 'call' && request.call?.method === 'execute' && request.call?.args?.[0] === 'session.send') {held = true; await gate;}
+        return response;
+    };
+    const peer = new HttpViewClient('context-options-held', server.origin + '/api/application', fetcher); clients.push(peer);
+    const root = await peer.start(), commands = root.services.commandBus, agents = root.services.agentService;
+    await agents.saveAgent({id: 'context-options-model', name: 'Model', type: 'agent', config: {}});
+    const publication = await agents.getAgentPublicationStatus!('context-options-model');
+    const revision = await agents.publishAgent!({agentId: 'context-options-model', operationId: 'publish-options', expectedSourceDigest: publication.sourceDigest,
+        expectedRevisionDigest: publication.draftDigest, expectedPublishedVersion: null});
+    const source = await root.services.projects.sessions.create('Options source', null), active = await root.services.projects.sessions.create('Active queue', null);
+    await commands.execute('session.bind', {sessionId: active}); await commands.execute('session.instructions.edit', {action: 'pause', expectedRevision: 0});
+    const pending = commands.execute('session.send', {text: 'PRIVATE_CONTEXT_OPTIONS_INPUT', files: [], agentId: 'default'});
+    try {
+        await vi.waitFor(() => expect(held).toBe(true));
+        const options = await commands.execute('session.context.options', {sessionId: source, branchId: 'main', target: revision.target,
+            overrides: {systemPromptAppend: 'PRIVATE_CONTEXT_OPTIONS_POLICY'}});
+        expect(options).toMatchObject({kind: 'other', sessionId: source, target: revision.target, dynamicPolicy: 'dispatch-validation-required'});
+        expect(await commands.execute('session.get-current-id')).toBe(active);
+        expect(await commands.execute<SessionInstructionQueue>('session.instructions.get')).toMatchObject({paused: true, items: [expect.anything()]});
+        expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_CONTEXT_OPTIONS_INPUT');
+        expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_CONTEXT_OPTIONS_POLICY');
+        expect(JSON.stringify(options)).not.toContain('PRIVATE_CONTEXT_OPTIONS_POLICY');
+    } finally {release(); await pending;}
+}, 20000);

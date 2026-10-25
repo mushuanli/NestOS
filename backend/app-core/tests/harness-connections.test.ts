@@ -142,6 +142,48 @@ it('limits profile discovery to four concurrent projects and rejects grant drift
     expect(await f.service.targets([project()])).toMatchObject([{ available: false, profiles: [], errorCode: 'ECONFLICT' }]);
 });
 
+it('inspects one registered profile without model discovery, acquisition or native attachment', async () => {
+    const f = await fixture(); await f.service.save({...definition, selection: {modelId: 'not-yet-validated'}}, 0);
+    const acquire = vi.spyOn(f.service, 'acquire'), freeze = vi.spyOn(f.service, 'freeze');
+    const inspected = await f.service.inspect(definition.id);
+    expect(inspected).toMatchObject({epoch: 'mutation-epoch', workspaceId: 'server-project', snapshot: {revision: 1}});
+    expect(f.profiles).toHaveBeenCalledOnce(); expect(f.models).not.toHaveBeenCalled();
+    expect(acquire).not.toHaveBeenCalled(); expect(freeze).not.toHaveBeenCalled();
+    expect(f.remote.projectHarness).toHaveBeenCalledWith('local-project', {requireRegistered: true});
+    expect(f.clients[0].close).toHaveBeenCalledOnce();
+    expect(JSON.stringify(inspected)).not.toMatch(/private-credential|https:/);
+});
+
+it('rechecks local grant and connection revisions after passive profiles and closes failures', async () => {
+    const f = await fixture(); await f.service.save(definition, 0);
+    f.profiles.mockImplementationOnce(async () => {f.mounts[0].serverProjectRevision++; return {epoch: 'epoch', profiles: [f.profile]};});
+    await expect(f.service.inspect(definition.id)).rejects.toMatchObject({code: 'ECONFLICT'});
+    expect(f.clients[0].close).toHaveBeenCalledOnce();
+    f.profiles.mockImplementationOnce(async () => {await f.service.save({...definition, name: 'Changed'}, 1); return {epoch: 'epoch', profiles: [f.profile]};});
+    await expect(f.service.inspect(definition.id)).rejects.toMatchObject({code: 'ECONFLICT'});
+    expect(f.clients[1].close).toHaveBeenCalledOnce();
+    expect(f.profiles).toHaveBeenCalledTimes(2); expect(f.models).not.toHaveBeenCalled();
+});
+
+it('does not inspect disabled or absent connections and closes a failed profile read', async () => {
+    const f = await fixture(); await f.service.save({...definition, enabled: false}, 0);
+    expect(await f.service.inspect(definition.id)).toBeUndefined(); expect(await f.service.inspect('absent')).toBeUndefined();
+    expect(f.remote.projectHarness).not.toHaveBeenCalled();
+    await f.service.save(definition, 1); f.profiles.mockRejectedValueOnce(Object.assign(new Error('private-body'), {code: 'EIO'}));
+    await expect(f.service.inspect(definition.id)).rejects.toMatchObject({code: 'EIO'});
+    expect(f.clients[0].close).toHaveBeenCalledOnce();
+});
+
+it('requires both positive checkpoint capability and a client fork bridge during inspection', async () => {
+    const f = await fixture(); await f.service.save(definition, 0);
+    f.profile.capabilities.fork = true; f.profile.capabilities.checkpointFork = true;
+    expect((await f.service.inspect(definition.id))!.checkpointFork).toBe(false);
+    const fork = vi.fn(), close = vi.fn(async () => {});
+    f.remote.projectHarness.mockResolvedValueOnce({profiles: f.profiles, models: f.models, fork, close} as never);
+    expect((await f.service.inspect(definition.id))!.checkpointFork).toBe(true);
+    expect(fork).not.toHaveBeenCalled(); expect(f.models).not.toHaveBeenCalled(); expect(close).toHaveBeenCalledOnce();
+});
+
 it('retries a rejected close while coalescing concurrent release and retaining successful closure', async () => {
     const f = await fixture(); await f.service.save(definition, 0);
     const snapshot = (await f.service.freeze('execution'))!, acquired = await f.service.acquire(snapshot);

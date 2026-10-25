@@ -23,6 +23,8 @@ const reads = new Set<string>([
     "session.can-edit",
     "session.context.get",
     "session.context.snapshot.get",
+    "session.context.bindings",
+    "session.context.options",
     "session.context.preview",
     "session.get-siblings",
     "session.get-settings",

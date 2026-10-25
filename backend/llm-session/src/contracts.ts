@@ -1,3 +1,4 @@
+export * from './contracts/independent-calls';
 /** Conversation and configuration contracts; no runtime, VFS or YAML initialization. */
 export * from './contracts/conversation';
 export * from './contracts/session';

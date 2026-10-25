@@ -673,3 +673,10 @@ C4Dynamic
 `ExecutionOverrides.harnessConversation` 使用显式 new/fork 选择，进入既有 Submission/Instruction 冻结和派发链。普通 Harness Agent 的 Task 保存 ContextSnapshot 依据及实际消息；checkpoint fork 只发送本轮增量，不重复注入历史。模型/Flow 目标不能携带原生选择，严格 continue 在原生条件写能力缺失时明确拒绝。
 
 `session.context.bindings` / `session.context.options` 接收显式 Session、分支及查询范围；前者列出绑定和确认检查点，后者结合发布目标、profile 能力和目的地给出静态条件。两者由宿主注入只读 reader，经 Kernel.inspectSession 读取，不能绑定当前视图或取得 writer。游标包含观察版本/范围，变化后要求重新查询；静态兼容不代替派发时的策略、版本及授权复验。
+
+
+### 独立根调用路由
+
+`IndependentCallCommand.Submit`（session.call.submit）接收 `IndependentCallInput`：`request` 是带 expectedSessionId、expectedBranch、expectedTarget 与 submission 的原冻结请求，另有 title 和可选 transfer。宿主通过 `submitIndependentCall` 提供独立执行上下文，将子请求送入原 Session 队列，不改变调用方 UI 绑定。
+
+`IndependentCallCommand.Inspect`（session.call.inspect）携带同一输入，只读核对原路由与子队列/历史；返回 IndependentCallReceipt 的 callerSessionId、可用时的 executionSessionId 与实际 ExecutionRef。unknown 不证明未创建或未提交；accepted 只证明子队列持久接纳。路由不复制 Task 状态，关闭观察不取消执行。父子默认不继承历史，材料经 transfer 显式传入；附件通过原存储冻结与校验。参见[合入计划第 37 节](design/functional-merge-plan.md#37-f16-统一独立调用的宿主路由与接纳查询)。

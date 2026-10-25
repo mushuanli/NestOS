@@ -1,3 +1,4 @@
+import {IndependentCallService} from './session/independent-calls';
 import { prepareFlowConnections } from './session/flow-connections';
 import { operationModelNames } from '@itookit/kernel-adapters/contracts';
 import { checkFlowConnectionSlots, checkFlowConnections, type FlowConnectionCheckInput } from './session/flow-connection-check';
@@ -103,6 +104,7 @@ import { DagCommandService } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
+    submitIndependentCall?: import('./contracts/independent-calls').IndependentCallSubmitter;
     readContextBindings?: import('./contracts/context-bindings').ContextBindingReader;
     readContextOptions?: import('./contracts/context-options').ContextOptionsReader;
     loadArtifact?: import('./contracts/artifacts').ArtifactLoader;
@@ -193,6 +195,8 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
         hostPorts: options.hostPorts, canWrite: options.canWriteSession, prepareExecution: options.prepareSessionExecution,
         summarize: options.summarizeContent});
     transfers.register();
+    if (options.submitIndependentCall) new IndependentCallService({kernel: options.kernel, repository: options.sessionEngine,
+        transfers, submit: options.submitIndependentCall, prepareExecution: options.prepareSessionExecution, canWrite: options.canWriteSession, hostPorts: options.hostPorts}).register(system.commandBus);
     const invocations = new FlowInvocationService(options.kernel, new FlowDefinitionStore(options.flowStore, options.dagPlugins), system.commandBus, options.canWriteSession, async id => {
         const manifest = await new InvocationRoundLog(options.sessionEngine, id).loadManifest();
         const identity = await options.sessionEngine.getManifest(id);

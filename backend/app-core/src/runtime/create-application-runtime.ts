@@ -408,7 +408,14 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const executionActivity = new SessionExecutionActivity();
         cleanupFns.push(() => executionActivity.dispose());
         let flowInstallations: FlowInstallationService | undefined;
+        let independentContexts: ConversationContexts | undefined;
         const conversationOptions = {
+                submitIndependentCall: async request => {
+                    if (!independentContexts || !request.expectedSessionId) throw new Error('Independent call host is not ready');
+                    const context = await independentContexts.open(request.expectedSessionId);
+                    try {return await context.commandBus.execute<string>('session.submit', request);}
+                    finally {await context.dispose();}
+                },
                 executionConnections,
                 prepareSessionExecution: prepareChildExecution,
                 ensureFlowDependencies: async (id: string) => {await flowInstallations?.ensure(id);}, executionActivity, instructionQueueSessions, vfs, systemFS, promptHistoryFiles, directAgentPolicy: options.directAgentPolicy, agentResolution: options.agentResolution, agentService, sessionRepository, flowEngine, kernel,
@@ -433,6 +440,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         };
         const conversationContexts = new ConversationContexts(() => startup.task('host.conversation', createConversationView)(),
             id => recovery.acquireMetadataLease(id), { canRelease: id => conversationIdle(kernel.kernel, id) });
+        independentContexts = conversationContexts;
         cleanupFns.push(disposeConversations);
         cleanupFns.push(() => conversationContexts.close());
         await startup.schedule(policy.invocations, 'instructions.recover', async () => {

@@ -19,6 +19,7 @@ import { registerFlowLibraryRecovery } from '../presets/restore-flows';
 export interface OwnedConversationView { sessionManager: SessionManager; commandBus: CommandBus; dispose(): Promise<void> }
 
 export interface ConversationSystemOptions {
+    submitIndependentCall?: import('@itookit/llm-session/contracts').IndependentCallSubmitter;
     ensureFlowDependencies?(flowId: string): Promise<void>;
     executionActivity?: import('@itookit/llm-session').SessionExecutionActivity;
     instructionQueueSessions?: import('@itookit/llm-session').InstructionQueueSessions;
@@ -59,6 +60,7 @@ export async function createConversationSystem(
     const artifacts = createTaskArtifactServices(kernel.kernel, systemFS);
     const system = await initializeConversationSystem({
         executionActivity: options.executionActivity,
+        submitIndependentCall: options.submitIndependentCall,
         instructionQueueSessions: options.instructionQueueSessions,
         scheduleAgentInitialization: options.scheduleAgentInitialization,
         scheduleInvocationRecovery: options.scheduleInvocationRecovery,

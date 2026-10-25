@@ -202,8 +202,8 @@ F13/F14 一批合入 51 个文件。上传身份与内容存储归 app-core，Se
 
 | 检查项 | 归属与前置 | 状态 | 交付及验收条件 |
 | --- | --- | --- | --- |
-| 会话与调用关联 | F16；Session/app-core | Flow 宿主关联见第 26 节；独立 Agent/Task 关联仍待实施 | 持久保存原调用者、执行所属 Session、Invocation 及真实根 Task；组织关系不授予控制 |
-| 独立调用入口 | F16；F12 平级目标和台账基础已合入 | 独立 Flow 表单已接宿主子 Session 路由及台账（第 28 节）；Agent/Task 入口待统一；普通发送继续在当前 Session | 同 Flow 两次独立运行获得不同子 Session；同请求丢回复/重启返回同一子 Session；父子不重复入队 |
+| 会话与调用关联 | F16；Session/app-core | Flow 宿主关联见第 26 节；统一 Agent/Flow 宿主路由见第 37 节；裸 Task 入口仍待实施 | 持久保存原调用者、执行所属 Session、Invocation 及真实根 Task；组织关系不授予控制 |
+| 独立调用入口 | F16；F12 平级目标和台账基础已合入 | 独立 Flow 表单已接宿主子 Session 路由及台账（第 28 节）；Agent/Flow 宿主调用端口见第 37 节；UI/CLI 消费与裸 Task 入口待统一；普通发送继续在当前 Session | 同 Flow 两次独立运行获得不同子 Session；同请求丢回复/重启返回同一子 Session；父子不重复入队 |
 | 最小函数调用组 | F24 基础；依赖 F16/F23 | 待实施与验收，本阶段范围 | 默认输入、状态、最终 value/artifacts；原 Invocation 稳定定位；审批、补参、失败及清理状态可见 |
 | 打开真实子会话 | F24 基础；依赖明确的 Session 关联 | Flow 调用卡片已接线（第 27 节）；其他调用待接线 | 打开既有 Session UI，不重跑、不复制历史；关闭观察不取消后台执行；不支持时不伪造入口 |
 | 高级会话详情 | F24 增强；在基础入口后扩展 | 后续增强；不阻塞最小函数视图交付 | 内嵌会话、完整节点/循环/尝试树、搜索与大历史分页，展开才加载 renderer |
@@ -824,3 +824,32 @@ C4Component
 回归先复现了等待期间输入变化、写入成功但回复丢失、JSON 字段顺序差异三个失败；并发测试继续发现同一仓库初始化文件竞态，修复下沉到 SessionRepository。不同 Session 不共享初始化锁，进程内串行不能替代跨宿主 lease 与持久 CAS。覆盖同输入并发、冲突输入、无落盘证据的写入失败和真实子会话归属。
 
 这只完成 F16 的共用创建前提，Agent/Task 独立调用的路由、父级投影和控制仍未完成，不能以子会话创建成功宣称完整函数调用交付。
+
+
+## 37. F16 统一独立调用的宿主路由与接纳查询
+
+session.call.submit 接收原 SubmissionRequest、标题及可选显式材料；Agent 与已发布 Flow 进入同一路由，普通 session.submit 仍在当前 Session 执行。父 Session 仅持久保存冻结输入和子 Session 路由，真实接纳来自子会话的原指令队列，真实 Invocation/Task 来自子历史，不另外维护执行状态或在父级重复入队。
+
+```mermaid
+C4Component
+  title 独立调用经宿主专用上下文接入原队列
+  Component(caller, "调用方", "UI / CLI / 上层程序", "原请求身份与明确材料")
+  Component(route, "IndependentCallService", "Session 语义", "冻结请求、幂等子会话关联")
+  ContainerDb(record, "父 Session shared state", "原持久记录", "输入与路由，不存执行状态")
+  Component(host, "ConversationContexts", "app-core 宿主", "独立 lease，不切换调用方 UI 绑定")
+  Component(queue, "子 Session queue", "既有机制", "校验、接纳、执行与恢复")
+  ContainerDb(history, "子 Session history / Kernel", "既有事实", "真实 Invocation 与执行引用")
+  Rel(caller, route, "submit 或 inspect 原请求")
+  Rel(route, record, "CAS 冻结并核对原身份")
+  Rel(route, host, "提交冻结的子请求")
+  Rel(host, queue, "SessionManager.submit")
+  Rel(queue, history, "原执行链")
+  Rel(route, queue, "只读接纳核对")
+  Rel(route, history, "只读实际执行引用")
+```
+
+路由保存并不等于接纳；绑定创建后、队列接纳前的失败仍为 unknown，同请求可按原身份核对或明确重试，不能另建子会话。创建与提交回复丢失分别核对原持久意图和原接纳事实。新 requestId 表示另一次独立调用。父分支只用于准入范围；子会话从 main 开始，不将父 baseRoundId/新分支覆盖解释为子分支。组织关系不授予父级取消子调用的权力。
+
+附件先在调用方冻结，再按内容身份复制到子会话，已接纳后的查询/同请求重试不依赖原附件再次可读。显式 initialContext 继续经既有 ContentTransferService 校验；不自动继承父聊天历史。默认参数和 Agent/Flow 执行配置仍在真正的子队列接纳时冻结。
+
+真实 Runtime 验收覆盖普通模型 Agent、Flow Agent、已发布 Flow、两个不同请求创建不同子会话、同请求并发与冲突、丢失接纳回复、附件以及原 RPC 回复悬挂时只读查询。关闭调用方观察不取消执行。独立调用 UI/CLI 操作入口、父级调用组投影和跨会话控制消费尚未接线；裸 Kernel Task 入口及真实远端验收继续开放。本节不将 F16/F24 标为完成。

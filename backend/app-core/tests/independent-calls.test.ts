@@ -29,7 +29,7 @@ async function fixture(model = false, bind = true, wait = false) {
         draftVersion: 1, updatedAt: 0, layout: {}, parameters: [{name: 'request', type: 'string', inputSource: 'composer.text'}],
         nodes: [{id: 'return', name: 'Return', plugin: wait ? 'builtin.human' : 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
             config: wait ? {requestId: 'approval', prompt: 'Wait'} : {value: 'done'}}],
-        edges: [], outputs: {result: {value: '${nodes.return.outputs.result}'}}}]});
+        edges: [], outputs: {result: {value: wait ? '${nodes.return.outputs.response}' : '${nodes.return.outputs.result}'}}}]});
     await runtime.agentService.saveAgent(model ? {id: 'worker', name: 'Worker', type: 'agent', config: {}}
         : {id: 'worker', name: 'Worker', type: 'workflow', config: {}, execution: {kind: 'flow', flowId: 'independent'}});
     const parent = await runtime.sessionRepository.createSession('Caller');
@@ -177,7 +177,7 @@ it('lists actual child results in the caller branch without acquiring a writer',
         receipt: {status: 'accepted', executionSessionId: accepted.executionSessionId}});
     expect(views[0].receipt.execution?.taskId).toBeTruthy();
     expect(views[0].executionState).toMatchObject({id: views[0].receipt.execution!.taskId, phase: 'done', settled: true, stopped: true, activeOperations: 0, controlEpoch: 0});
-    expect(views[0].controlCapabilities).toEqual({cancel: true});
+    expect(views[0].controlCapabilities).toEqual({cancel: true, pause: 'boundary', resume: true, withdrawPause: true});
     expect(views[0].executionState).not.toHaveProperty('exit');
     expect(views[0].executionState).not.toHaveProperty('output');
     expect(views[0].createdAt).toBeGreaterThan(0);
@@ -301,6 +301,8 @@ it.each(['parent', 'child'] as const)('rejects independent cancellation when the
     const guard = vi.spyOn(f.runtime.sessionRepository, 'isSessionDeletionPending').mockImplementation(async id =>
         id === (denied === 'parent' ? query.sessionId : query.executionSessionId) || check(id));
     await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
+    await expect(f.runtime.commandBus.execute(IndependentCallCommand.Control, {...query, action: 'pause', expectedEpoch: 0})).rejects.toMatchObject({code: 'CALL_READ_ONLY'});
+    expect(await f.runtime.commandBus.execute(IndependentCallCommand.ControlReceipt, {...query, action: 'pause'})).toEqual({...query, action: 'pause'});
     expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(query);
     guard.mockRestore(); await f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0});
 }, 15000);
@@ -318,4 +320,69 @@ it('recovers cancellation after its response is lost without dispatching cancell
     expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, query)).toMatchObject({receipt: {status: 'cancelled', expectedEpoch: 0}});
     expect(open).not.toHaveBeenCalled();
     expect(spy.mock.calls.filter(([name]) => name === IndependentCallCommand.Cancel)).toHaveLength(1);
+}, 15000);
+
+it('pauses an independent Flow at its boundary, saves an answer without resuming, and preserves original control receipts', async () => {
+    const f = await fixture(false, true, true), input = f.input('pause-flow', 'flow'); await f.submit(input);
+    const query = await controlQuery(f, input, 'pause-flow'), commands = f.runtime.commandBus, kernel = f.runtime.kernel.kernel;
+    let member = '';
+    await vi.waitFor(async () => {
+        member = (await kernel.listSessionTasks(query.executionSessionId)).find(task => task.interactions.approval?.status === 'pending')?.id ?? '';
+        expect(member).not.toBe('');
+    });
+    const paused = await commands.execute<import('@itookit/llm-session/contracts').IndependentCallStateControlReceipt>(IndependentCallCommand.Control,
+        {...query, action: 'pause', expectedEpoch: 0});
+    expect(paused).toMatchObject({action: 'pause', receipt: {action: 'pause', accepted: {mode: 'pause', epoch: 1}}});
+    await vi.waitFor(async () => expect((await kernel.task(query.executionSessionId, query.taskId)).control?.acknowledged).toBe(true));
+    const child = await kernel.openSession(query.executionSessionId);
+    await (await child.attachTask(member)).respond({interactionId: 'approval', value: 'Continue later'});
+    expect((await kernel.task(query.executionSessionId, query.taskId)).control?.mode).toBe('pause');
+    expect((await kernel.task(query.executionSessionId, member)).interactions.approval.status).toBe('resolved');
+    const resumed = await commands.execute(IndependentCallCommand.Control, {...query, action: 'resume', requestId: 'resume-flow', expectedEpoch: 1});
+    expect(resumed).toMatchObject({action: 'resume', receipt: {action: 'run', accepted: {mode: 'run', epoch: 2}}});
+    const exit = await (await child.attachTask(query.taskId)).wait({timeoutMs: 5000});
+    expect(exit.status).toBe('succeeded'); expect(JSON.stringify(exit.output)).toContain('Continue later');
+    await vi.waitFor(async () => expect((await f.runtime.sessionRepository.readHistoryChain(query.executionSessionId)).rounds[0]?.status).toBe('completed'));
+    const open = vi.spyOn(kernel, 'openSession');
+    expect(await commands.execute(IndependentCallCommand.ControlReceipt, {...query, action: 'pause'}))
+        .toMatchObject({receipt: {action: 'pause', expectedEpoch: 0, accepted: {requestId: 'pause-flow', epoch: 1}, current: {mode: 'run', epoch: 2}}});
+    expect(open).not.toHaveBeenCalled();
+    expect(await commands.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
+}, 15000);
+
+it('withdraws only an unconfirmed independent Agent pause without aborting or restarting its model operation', async () => {
+    const f = await fixture(true), input = f.input('pause-agent');
+    const fetch = vi.fn((_url: unknown, options: {signal: AbortSignal}) => new Promise<Response>((_resolve, reject) => {
+        const abort = () => reject(new DOMException('Aborted', 'AbortError'));
+        if (options.signal.aborted) abort(); else options.signal.addEventListener('abort', abort, {once: true});
+    }));
+    vi.stubGlobal('fetch', fetch); await f.submit(input); const query = await controlQuery(f, input, 'pause-agent');
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    const commands = f.runtime.commandBus, kernel = f.runtime.kernel.kernel;
+    const before = await kernel.task(query.executionSessionId, query.taskId);
+    try {
+        expect(await commands.execute(IndependentCallCommand.Control, {...query, action: 'pause', expectedEpoch: 0}))
+            .toMatchObject({receipt: {accepted: {mode: 'pause', acknowledged: false, epoch: 1}}});
+        await expect(commands.execute(IndependentCallCommand.Control, {...query, action: 'resume', requestId: 'early-resume', expectedEpoch: 1}))
+            .rejects.toMatchObject({code: 'CONTROL_NOT_SETTLED'});
+        expect(await commands.execute(IndependentCallCommand.Control, {...query, action: 'withdraw', requestId: 'withdraw-agent', expectedEpoch: 1}))
+            .toMatchObject({receipt: {action: 'withdraw-pause', accepted: {mode: 'run', epoch: 2}}});
+        const after = await kernel.task(query.executionSessionId, query.taskId);
+        expect(Object.values(after.effects).map(effect => effect.attemptCount)).toEqual(Object.values(before.effects).map(effect => effect.attemptCount));
+        expect(fetch).toHaveBeenCalledTimes(1);
+        expect((fetch.mock.calls[0][1] as {signal: AbortSignal}).signal.aborted).toBe(false);
+    } finally {await commands.execute(IndependentCallCommand.Cancel, {...query, requestId: 'end-agent', expectedEpoch: (await kernel.task(query.executionSessionId, query.taskId)).control?.epoch ?? 0});}
+}, 15000);
+
+it('rejects mismatched state-control scopes and refuses withdrawal after pause acknowledgement', async () => {
+    const f = await fixture(false, true, true), input = f.input('state-scope', 'flow'); await f.submit(input);
+    const query = await controlQuery(f, input, 'pause-once'), commands = f.runtime.commandBus, kernel = f.runtime.kernel.kernel;
+    for (const change of [{taskId: 'other-task'}, {branchId: 'other'}, {executionSessionId: f.parent}, {action: 'inject'}])
+        await expect(commands.execute(IndependentCallCommand.Control, {...query, action: 'pause', expectedEpoch: 0, ...change})).rejects.toBeDefined();
+    expect(await commands.execute(IndependentCallCommand.ControlReceipt, {...query, action: 'pause'})).toEqual({...query, action: 'pause'});
+    await commands.execute(IndependentCallCommand.Control, {...query, action: 'pause', expectedEpoch: 0});
+    await expect(commands.execute(IndependentCallCommand.ControlReceipt, {...query, action: 'resume'})).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
+    await expect(commands.execute(IndependentCallCommand.Control, {...query, requestId: 'withdraw-confirmed', action: 'withdraw', expectedEpoch: 1})).rejects.toMatchObject({code: 'CONFLICT'});
+    expect(await kernel.readTaskControlReceipt(query.executionSessionId, query.taskId, 'withdraw-confirmed')).toBeUndefined();
+    await commands.execute(IndependentCallCommand.Cancel, {...query, requestId: 'end-scope', expectedEpoch: 1});
 }, 15000);

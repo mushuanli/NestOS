@@ -689,3 +689,9 @@ C4Dynamic
 控制前分别复验父、子会话写权限。Flow 主执行复用 `dag.run.cancel` 的显式身份与调度租约；普通 Agent/Task 主执行委托 Kernel.cancel，不创建第二份执行状态。返回原查询身份及 `receipt`；其 status 表示真实终态，完成先发生时保持 succeeded。资源清理及整树停止仍须另外观察。
 
 `session.call.cancellation.receipt` 接受相同身份但不含 expectedEpoch；先核对原路由与 primary，再冷读持久取消回执。无回执返回不带 receipt 的身份信封，不表示可重新发送。读取不调用写权限获取、不打开执行 Session、不重发取消，进入共享只读命令策略。日志包含请求/调用/任务关联、阶段、结果、错误分类和耗时，不包含消息、参数、取消原因或远端异常正文；诊断回调失败不能替换持久结果。
+
+### 独立调用状态控制
+
+`IndependentCallCommand.Control`（`session.call.control`）接受 `IndependentCallStateControlRequest`，在原调用归属与父子写权限验证后处理 `pause | resume | withdraw`。请求固定 `sessionId/branchId/callId/executionSessionId/taskId/requestId/expectedEpoch`；撤销仅适用于未确认暂停，恢复不能替代审批回答或新调用。
+
+`IndependentCallCommand.ControlReceipt`（`session.call.control.receipt`）接受不含 epoch 的查询与原动作，返回同作用域及可选 `TaskControlReceipt`。缺失表示尚无证据；`accepted` 是原接纳事实，`current` 是当前控制状态，二者不可混用。查询不重新派发，也不打开写会话。Flow 控制复用既有句柄、租约和控制树，普通 Task 使用 Kernel 控制；不新增调度器或状态库。`controlCapabilities.pause = 'boundary'` 不承诺原生 Harness 内部暂停。

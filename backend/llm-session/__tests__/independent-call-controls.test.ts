@@ -8,11 +8,12 @@ const query = {sessionId: 'parent', branchId: 'main', callId: 'call', executionS
 function fixture() {
     const handlers = new Map<string, (args: any) => Promise<any>>();
     const cancel = vi.fn(async () => {}), read = vi.fn(async () => ({taskId: 'task', requestId: 'cancel', expectedEpoch: 0, controlEpoch: 0, status: 'cancelled' as const}));
+    const controlTask = vi.fn(), withdrawTaskPause = vi.fn(), readTaskControlReceipt = vi.fn();
     const logger = {info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn()};
     const resolve = vi.fn(async () => ({program: {kind: 'agent.loop'}} as TaskRecord));
     const commands = {register: (name: string, handler: (args: any) => Promise<any>) => handlers.set(name, handler)} as unknown as ICommandBus;
-    new IndependentCallControls({commands, logger, resolve, kernel: {cancel, readTaskCancellationReceipt: read} as unknown as Kernel}).register();
-    return {handlers, cancel, read, logger, resolve};
+    new IndependentCallControls({commands, logger, resolve, kernel: {cancel, readTaskCancellationReceipt: read, controlTask, withdrawTaskPause, readTaskControlReceipt} as unknown as Kernel}).register();
+    return {handlers, cancel, read, logger, resolve, controlTask, withdrawTaskPause, readTaskControlReceipt};
 }
 it('rejects invalid input before resolving ownership and logs only safe metadata', async () => {
     const f = fixture();
@@ -35,4 +36,26 @@ it('keeps the durable outcome when the diagnostic observer throws', async () => 
     const f = fixture(); f.logger.info.mockImplementation(() => {throw new Error('Logger failed');});
     expect(await f.handlers.get(IndependentCallCommand.Cancel)!({...query, expectedEpoch: 0})).toMatchObject({...query, receipt: {status: 'cancelled'}});
     expect(f.cancel).toHaveBeenCalledWith('child', 'task', 'Cancelled from independent call', {requestId: 'cancel', expectedEpoch: 0});
+});
+
+
+it.each(['pause', 'resume', 'withdraw'] as const)('routes %s with a frozen epoch and reads its original control admission', async action => {
+    const f = fixture(), mode = action === 'pause' ? 'pause' : 'run', kind = action === 'withdraw' ? 'withdraw-pause' : mode;
+    const receipt = {requestId: 'cancel', action: kind, expectedEpoch: 4, accepted: {mode, epoch: 5, requestId: 'cancel', acknowledged: false}};
+    f.readTaskControlReceipt.mockResolvedValue(receipt);
+    expect(await f.handlers.get(IndependentCallCommand.Control)!({...query, action, expectedEpoch: 4})).toEqual({...query, action, receipt});
+    if (action === 'withdraw') expect(f.withdrawTaskPause).toHaveBeenCalledWith('child', 'task', {requestId: 'cancel', expectedEpoch: 4});
+    else expect(f.controlTask).toHaveBeenCalledWith('child', 'task', mode, {requestId: 'cancel', expectedEpoch: 4});
+    expect(await f.handlers.get(IndependentCallCommand.ControlReceipt)!({...query, action})).toEqual({...query, action, receipt});
+    expect(f.controlTask.mock.calls.length + f.withdrawTaskPause.mock.calls.length).toBe(1); expect(f.cancel).not.toHaveBeenCalled();
+});
+it('rejects unknown state actions and mismatched control receipts without forwarding signal or goal fields', async () => {
+    const f = fixture();
+    for (const extra of [{action: 'PRIVATE INVALID ACTION'}, {action: 'pause', signal: {type: 'inject'}}, {action: 'pause', goal: {status: 'complete'}}])
+        await expect(f.handlers.get(IndependentCallCommand.Control)!({...query, expectedEpoch: 0, ...extra})).rejects.toMatchObject({code: 'CALL_CONTROL_INVALID'});
+    expect(f.resolve).not.toHaveBeenCalled();
+    expect(JSON.stringify(f.logger.warn.mock.calls)).not.toContain('PRIVATE INVALID ACTION');
+    f.readTaskControlReceipt.mockResolvedValue({requestId: 'cancel', action: 'run', accepted: {requestId: 'cancel', mode: 'run'}});
+    await expect(f.handlers.get(IndependentCallCommand.ControlReceipt)!({...query, action: 'pause'})).rejects.toMatchObject({code: 'CALL_CONTROL_RECEIPT_MISMATCH'});
+    expect(f.controlTask).not.toHaveBeenCalled();
 });

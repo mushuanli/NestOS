@@ -4,7 +4,8 @@ import type {TransferReference} from './content-transfer';
 import type {ExecutionRef} from './conversation';
 
 export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: 'session.call.inspect', List: 'session.calls.list',
-    Cancel: 'session.call.cancel', CancellationReceipt: 'session.call.cancellation.receipt'} as const;
+    Cancel: 'session.call.cancel', CancellationReceipt: 'session.call.cancellation.receipt',
+    Control: 'session.call.control', ControlReceipt: 'session.call.control.receipt'} as const;
 /** Caller identity and selected materials; ancestry alone never imports conversation history. */
 export interface IndependentCallInput {request: SubmissionRequest; title: string; transfer?: TransferReference}
 export interface IndependentCallReceipt extends SubmissionReceipt {
@@ -26,7 +27,7 @@ export interface IndependentCallView {
     status?: import('./conversation').Round['status'];
     executionState?: IndependentCallExecutionState;
     /** Protocol support only; current write permission is revalidated on control. */
-    controlCapabilities?: {cancel: boolean};
+    controlCapabilities?: {cancel: boolean; pause?: 'boundary' | 'none'; resume?: boolean; withdrawPause?: boolean};
     /** Bounded display text only; execution consumers read the actual child output. */
     summary?: string;
 }
@@ -40,4 +41,13 @@ export interface IndependentCallCancelRequest extends IndependentCallControlQuer
 export interface IndependentCallCancellationReceipt extends IndependentCallControlQuery {
     /** Admission evidence only; absence means unknown, never permission to resubmit. */
     receipt?: import('@itookit/durable-kernel/contracts').TaskCancellationReceipt;
+}
+
+
+export type IndependentCallControlAction = 'pause' | 'resume' | 'withdraw';
+export interface IndependentCallStateControlQuery extends IndependentCallControlQuery {action: IndependentCallControlAction}
+export interface IndependentCallStateControlRequest extends IndependentCallStateControlQuery {expectedEpoch: number}
+export interface IndependentCallStateControlReceipt extends IndependentCallStateControlQuery {
+    /** Original admission, distinct from the latest acknowledgement or active control. */
+    receipt?: import('@itookit/durable-kernel/contracts').TaskControlReceipt;
 }

@@ -1141,3 +1141,28 @@ C4Component
 卡片复用已有 list 观察节奏核对 pending command，不增加独立轮询器；重复 missing 回执不反复写相同 unknown 台账，防止刷新自激循环。隐藏/销毁停止新查询；重开可发起新查询，不等待悬挂旧查询。登记期间视图关闭则明确记录未派发的 rejected，保存失败保留可重试提示并且不发送命令。独立 ChatView 的通用 reconcile 同样识别这类控制记录。
 
 验收包含台账持久化失败、同键异目标、错误回执身份/epoch、隐藏重开、能力缺失与终态、原响应悬挂、迟到失败，以及真实本地/RPC ChatView 取消后保留新草稿并继续第二次独立提交。暂停/恢复、原生会话控制与整树资源收尾展示仍是后续范围，不将 F16 整体标记完成。
+
+## 50. F16 独立调用的暂停、恢复与撤销暂停端口
+
+`session.call.control` 接受原 caller/branch/call/child/task 身份、独立 requestId、expectedEpoch，以及 pause/resume/withdraw。Session 复用取消入口的持久归属验证与父子写权限检查；不接受任意 signal、goal 或执行参数。`session.call.control.receipt` 按原身份和动作只读核对，分类为共享 RPC 只读命令，不获取写会话或重新派发控制。
+
+```mermaid
+C4Component
+  title 独立调用控制复用现有执行权威
+  Component(port, "IndependentCallControls", "Session 用例", "校验原路由、父子授权与回执身份")
+  Component(flow, "Flow 控制命令", "编排机制", "恢复已有句柄，控制树屏障与租约")
+  Component(kernel, "Kernel 控制", "持久机制", "epoch、接纳回执与实际确认")
+  ContainerDb(store, "原执行存储", "Task / Flow shared", "不增加控制状态库")
+  Rel(port, flow, "Flow 根：pause / resume / withdraw")
+  Rel(port, kernel, "普通 Task：controlTask / withdrawTaskPause")
+  Rel(flow, kernel, "现有控制树协议")
+  Rel(kernel, store, "原子持久控制事实")
+```
+
+pause 只声明 boundary 能力；不能据此宣称远端工具循环已停止或停止计费。resume 对应同一次 Task 的 run，必须满足原暂停确认条件；withdraw 只撤销尚未确认的暂停，不中止或重跑正在执行的 Effect。cancel 继续使用独立端口。controlCapabilities 表达协议支持，授权仍在每次写入时复验。
+
+回执保留不可变 accepted 与当前 current，后续恢复不会改写原暂停接纳；查询核对 requestId/action，写返回另核对 expectedEpoch。控制回执不是历史写入完成或整树资源释放证明。Flow 先用现有 RunGet 恢复冷句柄，再调用既有目标控制；回执查询不恢复写执行。暂停期间的交互回答照常持久化，不能绕过暂停屏障。
+
+验收覆盖真实 Flow 暂停后保存回答、恢复并完成；原暂停回执保留旧 epoch；长模型 Effect 暂停待确认时拒绝恢复、允许撤销且不重复请求；错误归属、父子只读、无效动作、脱敏失败日志及错误回执拒绝。历史查询验证在 Round 持久完成后进行，避免把执行收尾的写入误算为查询副作用。
+
+本批只完成宿主协议。UI 暂停/恢复/撤销按钮与持久台账接线、原生会话控制、整树资源收尾投影仍未完成，F16 不标记整体完成。

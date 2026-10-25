@@ -132,7 +132,8 @@ export class IndependentCallService {
         const {id, revision, phase, control, blockedBy, activeOperations, settled, stopped} = taskStat(task);
         const executionState: IndependentCallExecutionState = {id, revision, phase, control, blockedBy, activeOperations, settled, stopped, controlEpoch: task.control?.epoch ?? 0};
         const flow = task.program.kind === 'flow.aggregate' || task.labels?.kind === 'flow-root';
-        return {executionState, controlCapabilities: {cancel: !flow || hasFlowControlTree(task)}};
+        const supported = !flow || hasFlowControlTree(task);
+        return {executionState, controlCapabilities: {cancel: supported, pause: supported ? 'boundary' : 'none', resume: supported, withdrawPause: supported}};
     }
     private async round(route: CallRoute): Promise<Round | undefined> {
         if (!route.executionSessionId) return;

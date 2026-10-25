@@ -486,3 +486,20 @@ it('reads explicit context options while the original authenticated queue admiss
         expect(JSON.stringify(options)).not.toContain('PRIVATE_CONTEXT_OPTIONS_POLICY');
     } finally {release(); await pending;}
 }, 20000);
+
+it('queries an explicit Session context catalog through authenticated RPC while preserving another bound queue', async () => {
+    const root = await client('context-catalog'), commands = root.services.commandBus;
+    const source = await root.services.projects.sessions.create('Context source', null);
+    const active = await root.services.projects.sessions.create('Current queue', null);
+    await commands.execute('session.bind', {sessionId: active});
+    await commands.execute('session.instructions.edit', {action: 'pause', expectedRevision: 0});
+    await commands.execute('session.send', {text: 'PRIVATE_CONTEXT_READ_MESSAGE', files: [], agentId: 'default'});
+    const before = await commands.execute<SessionInstructionQueue>('session.instructions.get');
+    expect(before.paused).toBe(true); expect(before.items).toHaveLength(1);
+    expect(await commands.execute('session.context.bindings', {sessionId: source})).toEqual({revision: null, bindings: []});
+    await expect(commands.execute('session.context.bindings', {sessionId: source, branchId: 'missing'}))
+        .rejects.toMatchObject({code: 'CONTEXT_QUERY_BRANCH_INVALID'});
+    expect(await commands.execute('session.get-current-id')).toBe(active);
+    expect(await commands.execute('session.instructions.get')).toEqual(before);
+    expect(JSON.stringify(auditEvents)).not.toContain('PRIVATE_CONTEXT_READ_MESSAGE');
+});

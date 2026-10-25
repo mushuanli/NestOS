@@ -1366,3 +1366,24 @@ Session 适配在台账登记前调用原 prepareInputContextDraft 验证父 Ses
 选择器保留错误草稿并提供显式清除，隐藏或销毁使迟到目录读取失效。切换目标不自动抹掉原选择；再次提交须通过作用域检查。仅支持已实现的 new/fork，严格 continue、工作区恢复和真实远端部署验收仍不在本批完成范围。
 
 验证覆盖共享控件实际选择检查点、独立草稿保存与重开、隐藏/恢复、发送悬挂期间清除并重新选择、旧回执保留新修订、命令不消费、原冻结请求派发、分支/目标/宿主能力不匹配时拒绝登记。独立库 112 项测试和构建通过；宿主隔离验证记录在本次提交验收清单。
+
+## 60. 远程观察边界的补充验收
+
+本批收敛两项此前未提交的集成验证，不修改执行或存储机制。HTTP 测试文件的既有测试调序和 import 调序不随本批提交。
+
+```mermaid
+C4Component
+  title 两种远程边界分别提供证据
+  Component(client, "HttpViewClient", "真实 mTLS 回环连接", "显式源 Session 的只读上下文查询")
+  Component(http, "HTTP 宿主与 ApplicationRuntime", "临时 LocalFS / SQLite", "保持另一个已绑定 Session 的暂停队列")
+  Component(rpc, "应用 RpcPeer 双端", "进程内协议集成", "二进制/分页结果与错误传输")
+  Component(view, "observeConversation", "宿主观察层", "输出读取独立于发送串行队列")
+  Component(source, "HarnessConversationPort 夹具", "受控挂起与失败", "发送未返回，输出仍可读")
+  Rel(client, http, "认证后的 context.bindings；核对绑定和队列不变")
+  Rel(rpc, view, "readCommandOutput / loadCommandOutput")
+  Rel(view, source, "原发送仍挂起时读取；失败不重发")
+```
+
+真实 HTTP 用例在临时文件系统和 SQLite 宿主上创建源 Session 与当前 Session，暂停当前队列并入队一条私有文本，然后查询另一个 Session 的上下文目录及非法分支。断言当前绑定、暂停状态和队列内容均不变，并检查审计日志不含消息正文；这里没有使用 IndexedDB。
+
+原生命令输出用例连接真实应用 RpcPeer 与 observeConversation，使用受控 Harness 端口挂起发送。挂起期间验证完整二进制读取、分页读取、大小/偏移参数透传，以及权限拒绝和输出过期错误传递；原发送仍未完成，草稿、命令终态和结果引用不变，不调用 refresh 或重复 send。此用例不覆盖 HTTPS/mTLS、真实 Harness 网络传输或节点文件存储，不作为生产远端验收证明。

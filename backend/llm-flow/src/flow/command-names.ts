@@ -24,6 +24,8 @@ export const FlowCommand = {
     RunCancellationReceipt: 'dag.run.cancellation.receipt',
     RunTranscript: 'dag.run.transcript',
     RunCancel: 'dag.run.cancel',
+    RunCancelRemaining: 'dag.run.cancel-remaining',
+    RunTreeCancellationReceipt: 'dag.run.tree-cancellation.receipt',
     RunRespond: 'dag.run.respond',
     RunSignal: 'dag.run.signal',
     RunTaskCancel: 'dag.run.task.cancel',

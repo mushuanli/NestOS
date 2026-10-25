@@ -464,3 +464,94 @@ it.each([false, true])('pins the scheduler lease until an in-flight control ends
         expect((await session.getShared('next-controller'))?.value).toBe(true);
     } finally {blocked.release(); await observed; await releasing;}
 });
+
+async function completedRootWithRemainingWork(cleanup = Promise.resolve()) {
+    const run = await start(), external = await externalChild(run.root, cleanup);
+    await run.nodes.get('gate')!.respond({interactionId: 'answer', value: 'done'});
+    await run.root.wait({timeoutMs: 2000});
+    return {run, external, input: {sessionId: session.id, taskId: run.root.id, requestId: 'remaining', expectedEpoch: 0}};
+}
+
+it('explicitly stops remaining Flow work while keeping the completed root and replaying the original receipt', async () => {
+    const {run, external, input} = await completedRootWithRemainingWork();
+    try {
+        const before = (await run.root.status()).task;
+        const fresh = new Map<string, (args: any) => Promise<any>>();
+        new DagCommandService({kernel, plugins, flowStore: {} as never}).register({register: (name, handler) => fresh.set(name, handler)});
+        const result = await fresh.get(FlowCommand.RunCancelRemaining)!(input);
+        expect(result).toMatchObject({taskId: run.root.id, receipt: {requestId: input.requestId, rootStatus: 'succeeded', expectedEpoch: 0}});
+        expect((await run.root.status()).task).toEqual(before);
+        expect((await external.child.wait({timeoutMs: 2000})).status).toBe('cancelled');
+        expect(await fresh.get(FlowCommand.RunCancelRemaining)!(input)).toEqual(result);
+        const {expectedEpoch: _epoch, ...query} = input;
+        expect(await fresh.get(FlowCommand.RunTreeCancellationReceipt)!(query)).toEqual(result.receipt);
+        expect(await kernel.readTaskCancellationReceipt(session.id, run.root.id, input.requestId)).toBeUndefined();
+    } finally {external.blocked.release();}
+});
+
+it('queries remaining-tree admission without taking a lease while the original cleanup response hangs', async () => {
+    const cleanup = latch(), {run, external, input} = await completedRootWithRemainingWork(cleanup.promise);
+    let finished = false;
+    const pending = handlers.get(FlowCommand.RunCancelRemaining)!(input).then(result => {finished = true; return result;});
+    try {
+        await vi.waitFor(async () => expect(await kernel.readTaskTreeCancellationReceipt(session.id, run.root.id, input.requestId)).toBeDefined());
+        const open = vi.spyOn(kernel, 'openSession'), {expectedEpoch: _epoch, ...query} = input;
+        expect(await handlers.get(FlowCommand.RunTreeCancellationReceipt)!(query)).toMatchObject({rootStatus: 'succeeded'});
+        expect(open).not.toHaveBeenCalled(); expect(finished).toBe(false);
+        cleanup.release(); await pending;
+    } finally {cleanup.release(); external.blocked.release(); await pending;}
+});
+
+it('rejects stale scheduler ownership inside the remaining-tree admission transaction', async () => {
+    const {run, external, input} = await completedRootWithRemainingWork();
+    const original = kernel.cancelRemainingTaskTree.bind(kernel);
+    const intercept = vi.spyOn(kernel, 'cancelRemainingTaskTree').mockImplementationOnce(async (sessionId, taskId, options) => {
+        expect(options.lease).toMatchObject({key: schedulerOwnerKey(run.root.id)});
+        const key = schedulerOwnerKey(run.root.id), saved = (await session.getShared(key))!;
+        await session.setShared(key, {...saved.value as object, ownerId: 'new-owner', epoch: options.lease!.epoch + 1, expiresAt: Date.now() + 30000}, {expectedVersion: saved.version});
+        return original(sessionId, taskId, options);
+    });
+    try {
+        await expect(handlers.get(FlowCommand.RunCancelRemaining)!(input)).rejects.toMatchObject({code: 'STALE_SHARED_LEASE'});
+        expect(await kernel.readTaskTreeCancellationReceipt(session.id, run.root.id, input.requestId)).toBeUndefined();
+        expect((await external.child.status()).task.status).not.toBe('cancelled');
+    } finally {intercept.mockRestore(); external.blocked.release();}
+});
+
+it('rejects active roots, invalid scope and caller-supplied lease overrides for remaining-tree control', async () => {
+    const run = await start(), input = {sessionId: session.id, taskId: run.root.id, requestId: 'remaining-invalid', expectedEpoch: 0};
+    await expect(handlers.get(FlowCommand.RunCancelRemaining)!(input)).rejects.toMatchObject({code: 'CONFLICT'});
+    for (const patch of [{lease: {}}, {reason: 'PRIVATE'}, {requestId: ''}, {expectedEpoch: -1}, {sessionId: ''}])
+        await expect(handlers.get(FlowCommand.RunCancelRemaining)!({...input, ...patch})).rejects.toMatchObject({code: 'FLOW_CONTROL_REQUEST_INVALID'});
+    await expect(handlers.get(FlowCommand.RunCancelRemaining)!({...input, taskId: run.nodes.get('gate')!.id}))
+        .rejects.toMatchObject({code: 'FLOW_CONTROL_ROOT_INVALID'});
+    expect(await kernel.readTaskTreeCancellationReceipt(session.id, run.root.id, input.requestId)).toBeUndefined();
+    expect((await run.nodes.get('gate')!.status()).task.interactions.answer.status).toBe('pending');
+});
+
+it('denies remaining-tree writes on read-only hosts and on legacy roots lacking a control tree', async () => {
+    const {run, external, input} = await completedRootWithRemainingWork(), readonly = new Map<string, (args: any) => Promise<any>>();
+    const diagnostics: unknown[] = [];
+    new DagCommandService({kernel, plugins, flowStore: {} as never, canWriteSession: async () => false, onControlDiagnostic: event => diagnostics.push(event)})
+        .register({register: (name, handler) => readonly.set(name, handler)});
+    try {
+        await expect(readonly.get(FlowCommand.RunCancelRemaining)!(input)).rejects.toThrow('read-only');
+        expect(diagnostics).toContainEqual(expect.objectContaining({operation: 'flow.run.cancel-remaining', operationId: input.requestId, outcome: 'error'}));
+        expect(await kernel.readTaskTreeCancellationReceipt(session.id, run.root.id, input.requestId)).toBeUndefined();
+        expect((await external.child.status()).task.status).not.toBe('cancelled');
+        const legacy = await legacyRun();
+        await expect(handlers.get(FlowCommand.RunCancelRemaining)!({...input, taskId: legacy.root.id}))
+            .rejects.toMatchObject({code: 'FLOW_CONTROL_TREE_UNAVAILABLE'});
+    } finally {external.blocked.release();}
+});
+
+it('reads a remaining-tree receipt after restart without resuming execution or reconstructing a Run', async () => {
+    const {external, input} = await completedRootWithRemainingWork();
+    try {
+        const result = await handlers.get(FlowCommand.RunCancelRemaining)!(input);
+        kernel.dispose(); await Promise.all(runners.map(executor => executor.waitIdle())); await kernel.waitIdle(); await boot();
+        const open = vi.spyOn(kernel, 'openSession'), {expectedEpoch: _epoch, ...query} = input;
+        expect(await handlers.get(FlowCommand.RunTreeCancellationReceipt)!(query)).toEqual(result.receipt);
+        expect(open).not.toHaveBeenCalled();
+    } finally {external.blocked.release();}
+});

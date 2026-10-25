@@ -1,4 +1,4 @@
-import type { Kernel, SessionHandle } from '@itookit/durable-kernel';
+import type { Kernel, SessionHandle, SharedLeaseCondition } from '@itookit/durable-kernel';
 import { acquireSchedulerLease, isSchedulerOwnershipLost, type SchedulerLease } from './scheduler-lease';
 import { fenceSchedulerSession } from './fenced-session';
 
@@ -24,7 +24,7 @@ export function rememberSchedulerLease(kernel: Kernel, rootId: string, lease: Sc
 
 async function performControl<T>(kernel: Kernel, sessionId: string, rootId: string,
     canWrite: ((sessionId: string) => Promise<boolean>) | undefined,
-    operation: (session: SessionHandle) => Promise<T>): Promise<T> {
+    operation: (session: SessionHandle, lease: SharedLeaseCondition) => Promise<T>): Promise<T> {
     if (canWrite && !await canWrite(sessionId)) throw new Error('Session is read-only on this host');
     const session = await kernel.openSession(sessionId);
     const borrowed = await borrowSchedulerLease(kernel, rootId);
@@ -32,7 +32,7 @@ async function performControl<T>(kernel: Kernel, sessionId: string, rootId: stri
     try {
         await lease.assertOwned();
         if (canWrite && !await canWrite(sessionId)) throw new Error('Session is read-only on this host');
-        return await operation(fenceSchedulerSession(session, lease.condition));
+        return await operation(fenceSchedulerSession(session, lease.condition), Object.freeze({...lease.condition}));
     } finally {if (borrowed) borrowed.release(); else await lease.release();}
 }
 
@@ -57,7 +57,7 @@ const controls = new WeakMap<Kernel, Map<string, Promise<unknown>>>();
 /** Serialize local control requests so duplicate retries can share durable receipts. */
 export function withFlowControl<T>(kernel: Kernel, sessionId: string, rootId: string,
     canWrite: ((sessionId: string) => Promise<boolean>) | undefined,
-    operation: (session: SessionHandle) => Promise<T>): Promise<T> {
+    operation: (session: SessionHandle, lease: SharedLeaseCondition) => Promise<T>): Promise<T> {
     let pending = controls.get(kernel);
     if (!pending) { pending = new Map(); controls.set(kernel, pending); }
     const work = (pending.get(rootId) ?? Promise.resolve()).catch(() => undefined)

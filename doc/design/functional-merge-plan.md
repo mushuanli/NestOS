@@ -1628,3 +1628,29 @@ C4Component
 验证覆盖完成中间节点、同树/树外隔离、旧 Effect 和 reducer claim 拒绝、并发边界子任务、终态节点剩余 Effect、错误 epoch/租约/身份零写入、重启恢复、回执重放与冲突、事件关联、独立清理及失败后续清理、日志脱敏。Kernel 全套检查与根仓隔离消费验证随本批提交记录。
 
 **交付边界**：本批为可独立验证的 Kernel 机制前置项，不表示用户入口已完成。下一批接入 llm-flow 原调度租约、Session 精确调用归属与权限、独立 OperationLedger 控制通道，再开放 llm-ui“停止剩余任务”。跨 Session 所有权、外部副作用补偿、受管资源回收仍按独立协议处理；不将 F16 整体标记完成。
+
+## 70. Flow 剩余任务停止与调度所有权接线
+
+第 69 节 Kernel 机制现在经 Flow 命令服务接入：RunCancelRemaining 对应 dag.run.cancel-remaining，明确区别于普通 RunCancel；RunTreeCancellationReceipt 对应独立冷查询。输入复用显式 Session、根 Task、稳定 requestId 与 expectedEpoch，禁止调用者传 lease、reason 等覆盖字段，不依赖已缓存的 Run 句柄。
+
+```mermaid
+C4Component
+  title Flow 剩余任务停止的原调度租约与独立回执查询
+  Component(command, "DagCommandService", "Flow 命令入口", "校验精确根身份与控制树版本")
+  Component(control, "withFlowControl", "既有控制协调", "宿主写权限、原调度租约、控制串行化")
+  Component(kernel, "Kernel.cancelRemainingTaskTree", "原子控制机制", "同事务验证租约与 epoch；保留根结果")
+  Component(read, "RunTreeCancellationReceipt", "冷查询", "不恢复 Run、不打开执行、不获取调度租约")
+  Component(transport, "共享命令分类", "RPC / HTTP", "回执读独立于挂起写请求")
+  ContainerDb(state, "原持久任务记录", "SeqFile", "任务事实、清理责任与接纳回执")
+  Rel(command, control, "确认控制能力后请求操作")
+  Rel(control, kernel, "传入不可变的当前租约条件")
+  Rel(kernel, state, "原子接纳；继续清理")
+  Rel(transport, read, "query，不等待原清理响应")
+  Rel(read, state, "核对原请求接纳事实")
+```
+
+withFlowControl 将已取得的调度租约条件作为第二个内部回调参数提供，并冻结该条件；既有消费者仍使用原 fenced Session。新命令通过 Kernel 原子事务再次核验租约，不以事务外 assertOwned 代替持久写围栏，也不新增租约获取路径。控制期间仍保持原借用租约心跳；返回接纳 receipt，不以 cancelled 布尔值暗示资源已释放。
+
+验收覆盖已完成根下的运行 Effect、原结果保留、同请求重放、未缓存 Run、错误目标/epoch/字段、旧控制树拒绝、只读宿主、租约在进入 Kernel 前被接管、清理挂起期间冷查询，以及重启后不打开执行 Session 的原回执读取。RPC 回归使用真实 RpcPeer 和应用能力表验证原写响应未返回时查询完成。诊断沿用 flow.run 控制通道，新增 cancel-remaining 分类。
+
+本批完成 Flow 协议和只读传输分类，Session 调用归属/授权、OperationLedger 与 llm-ui 按钮仍待下一批；不能把底层命令可调用等同于产品入口已完成。文档同步更新 llm-flow API，未改生产运行版本。

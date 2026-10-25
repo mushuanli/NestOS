@@ -25,6 +25,32 @@ export function cancelFlowRun(options: Options, supplied: FlowCancellationReques
         });
 }
 
+/** A separate intent: preserve a completed root and stop only its remaining work. */
+export function cancelRemainingFlowRun(options: Options, supplied: FlowCancellationRequest) {
+    const input = structuredClone(supplied);
+    return traceFlowRunControl({requestId: input?.requestId, sessionId: input?.sessionId, rootTaskId: input?.taskId, mode: 'cancel-remaining'},
+        options.onControlDiagnostic, async () => {
+            validateQuery(input, true);
+            assertFlowControlTree(await inspectRoot(options.kernel, input));
+            return withFlowControl(options.kernel, input.sessionId, input.taskId, options.canWriteSession, async (_session, lease) => {
+                assertFlowControlTree(await inspectRoot(options.kernel, input));
+                await options.kernel.cancelRemainingTaskTree(input.sessionId, input.taskId, {
+                    requestId: input.requestId, expectedEpoch: input.expectedEpoch, lease,
+                });
+                const receipt = await options.kernel.readTaskTreeCancellationReceipt(input.sessionId, input.taskId, input.requestId);
+                if (!receipt) throw flowControlError('FLOW_TREE_CANCEL_RECEIPT_MISSING', 'Remaining-tree cancellation admission is unavailable');
+                return {taskId: input.taskId, receipt};
+            });
+        });
+}
+
+/** Reads admission even while the original command is waiting for adapter cleanup. */
+export async function readFlowTreeCancellationReceipt(kernel: Kernel, supplied: FlowCancellationQuery) {
+    const input = structuredClone(supplied); validateQuery(input, false);
+    await inspectRoot(kernel, input);
+    return kernel.readTaskTreeCancellationReceipt(input.sessionId, input.taskId, input.requestId);
+}
+
 /** Inspection does not take a scheduler lease or reconstruct a running handle. */
 export async function readFlowCancellationReceipt(kernel: Kernel, supplied: FlowCancellationQuery) {
     const input = structuredClone(supplied); validateQuery(input, false);

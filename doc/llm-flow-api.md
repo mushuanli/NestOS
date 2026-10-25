@@ -569,3 +569,22 @@ prepareFlowRun 经 prepareFlowCallInput 解析 composer/arguments，严格校验
 根 Task 的 `stat().settled` 仅描述根自己的操作，`stats()` 是计数信息；两者都不能代替整树资源释放证明。调用 UI 须继续观察当前子任务及其 cleanupPending，不能把回执、根终态或请求返回中的 cancelled 当成整树停止确认。独立调用父卡片的归属/授权适配与控制按钮接入仍单独实施。
 
 取消根后的调度退出不得提前释放仍被控制请求借用的本机租约。withFlowControl 为在途操作保留借用，退出请求阻止新借用并等待已有操作收尾；成功和失败路径均释放借用。原心跳、权限复验和事务 lease fencing 不变，真实租约失效仍拒绝写入。
+
+### 已终结根的剩余工作停止
+
+`FlowCommand.RunCancelRemaining`（`dag.run.cancel-remaining`）接收与显式取消相同的
+`{sessionId, taskId, requestId, expectedEpoch}`，但语义独立：只允许已终结的 Flow 根，保留原始
+输出与终态，并停止同 Session 父子树中的剩余任务和 Effect。旧 Run 未声明
+`controlTreeVersion=1` 时拒绝，不从成员标签推测控制权限；普通 `RunCancel` 的完成竞态语义不变。
+
+命令经过现有 `withFlowControl` 的宿主写权限、调度租约与控制串行化；当前租约条件传入
+Kernel 的原子取消事务，在事务内再次校验所有权。返回 `{taskId, receipt}`，不返回一个可能
+被误读为“资源已释放”的布尔值。接纳回执可独立通过
+`FlowCommand.RunTreeCancellationReceipt`（`dag.run.tree-cancellation.receipt`）查询，参数为
+`{sessionId, taskId, requestId}`。查询不打开执行 Session、不恢复 Run、不获取调度租约；
+宿主传输将其分类为只读，原写请求等待清理时仍可核对。
+
+同请求重放复用 Kernel 原回执和清理责任；错误 epoch、调用者注入的 lease/reason、非根目标
+均拒绝。物理清理失败仍保留持久接纳证据，不能按写响应失败重新分配请求身份。
+`flow.run.cancel-remaining` 诊断沿用现有控制日志，包含请求、根任务、阶段、分类和耗时。
+Session 调用归属、UI 台账与按钮仍由上层接入；此 Flow 协议不授予跨 Session 控制权。

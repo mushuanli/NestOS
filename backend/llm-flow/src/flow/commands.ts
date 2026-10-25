@@ -1,4 +1,4 @@
-import {cancelFlowRun, readFlowCancellationReceipt} from './run-cancellation';
+import {cancelFlowRun, readFlowCancellationReceipt, cancelRemainingFlowRun, readFlowTreeCancellationReceipt} from './run-cancellation';
 import {taskStat} from '@itookit/durable-kernel';
 import {readFlowRunMembers} from './run-members';
 import {checkFlowSource, checkFlowSyntax} from './syntax-check';
@@ -118,6 +118,10 @@ export class DagCommandService {
         });
         bus.register(FlowCommand.RunCancellationReceipt, args =>
             readFlowCancellationReceipt(this.options.kernel, args as import('../contracts/flow-control').FlowCancellationQuery));
+        bus.register(FlowCommand.RunCancelRemaining, args =>
+            cancelRemainingFlowRun(this.options, args as import('../contracts/flow-control').FlowCancellationRequest));
+        bus.register(FlowCommand.RunTreeCancellationReceipt, args =>
+            readFlowTreeCancellationReceipt(this.options.kernel, args as import('../contracts/flow-control').FlowCancellationQuery));
         bus.register(FlowCommand.RunPauseWithdraw, args => this.withdrawPause(args as {taskId: string; requestId: string; expectedEpoch: number}));
         bus.register(FlowCommand.RunRespond, async args => {
             const input = args as { taskId: string; requestId: string; value: unknown; targetTaskId?: string; responseRequestId?: string };

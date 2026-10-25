@@ -62,3 +62,30 @@ it('preserves observer event order when an earlier payload takes longer to encod
         expect(errors).not.toHaveBeenCalled(); stop();
     } finally { finish(); await client.close(); await server.close(); }
 });
+
+it('reads remaining-tree cancellation admission over RPC while the original write is awaiting cleanup', async () => {
+    let server!: RpcPeer, release!: () => void;
+    const held = new Promise<void>(resolve => {release = resolve;}), errors = vi.fn();
+    const receipt = {requestId: 'stop', taskId: 'root', expectedEpoch: 0, controlEpoch: 0, rootStatus: 'succeeded', acceptedAt: 1, taskCount: 3};
+    const execute = vi.fn(async (name: string) => {
+        if (name === 'dag.run.cancel-remaining') {await held; return {taskId: 'root', receipt};}
+        return receipt;
+    });
+    const classifications: Array<[unknown, boolean]> = [];
+    const client = new RpcPeer('client', call => {classifications.push([call.args[0], server.query(call)]); return server.handle(call);}, errors, undefined, undefined, CAPABILITIES);
+    server = new RpcPeer('server', call => client.handle(call), errors, undefined, undefined, CAPABILITIES);
+    let pending: Promise<unknown> | undefined, observed: unknown, finished = false;
+    try {
+        const initial = await server.bootstrap({execute, list: () => []});
+        client.applyUpdates(initial.updates); const commands = client.decode(initial.value!);
+        pending = commands.execute('dag.run.cancel-remaining', {sessionId: 'session', taskId: 'root', requestId: 'stop', expectedEpoch: 0})
+            .then((value: unknown) => {finished = true; return value;});
+        await vi.waitFor(() => expect(execute).toHaveBeenCalledOnce());
+        const query = commands.execute('dag.run.tree-cancellation.receipt', {sessionId: 'session', taskId: 'root', requestId: 'stop'})
+            .then((value: unknown) => {observed = value;});
+        await vi.waitFor(() => expect(observed).toEqual(receipt)); expect(finished).toBe(false);
+        expect(classifications).toContainEqual(['dag.run.cancel-remaining', false]);
+        expect(classifications).toContainEqual(['dag.run.tree-cancellation.receipt', true]);
+        expect(errors).not.toHaveBeenCalled(); await query;
+    } finally {release(); await pending; await client.close(); await server.close();}
+});

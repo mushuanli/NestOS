@@ -2790,6 +2790,18 @@ export const zhCN = {
     'callable.submission.storeUnavailable': '当前宿主不支持安全保存操作台账，请更新宿主后重试。',
     'callable.submission.storeConflict': '其他视图正在修改操作台账，请刷新后重试；当前输入已保留。',
     'callable.submission.invalidLedger': '已保存的操作台账格式无效，请检查存储后重试。',
+
+    'chatInput.draft.conflict': '另一视图修改了此分支草稿。当前输入已保留，请选择如何处理。',
+    'chatInput.draft.changed': '处理期间输入或已保存草稿又有变化，请重新选择。',
+    'chatInput.draft.unavailable': '当前宿主不支持草稿条件保存，请更新宿主后重试。',
+    'chatInput.draft.saveFailed': '草稿尚未安全保存，请保留当前页面并重试。',
+    'chatInput.draft.load': '加载已保存草稿',
+    'chatInput.draft.replace': '用当前草稿替换',
+    'chatInput.draft.saved': '已保存草稿：',
+    'chatInput.draft.working': '正在处理草稿…',
+    'chatInput.draft.notLoaded': '尚未成功读取此分支草稿，请重新加载后再保存。',
+    'chatInput.draft.invalid': '已保存的分支草稿格式无效，请检查存储后重试。',
+    'chatInput.draft.busy': '其他视图仍在修改会话，请稍后重试；当前输入已保留。',
 } as const;
 
 // LocaleStrings maps every key to string (not literal), so other locales can provide different values.

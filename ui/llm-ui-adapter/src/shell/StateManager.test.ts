@@ -102,7 +102,8 @@ it('immediately serializes configuration snapshots against their original Sessio
     const manager = new StateManager(service as unknown as StateService, { isGenerating: () => true } as SessionViewPort, 'original', id => id);
     const config = { text: 'draft', agentId: 'agent-a', settings: { connectionId: 'a' } };
     const first = manager.saveInputConfiguration(config);
-    await Promise.resolve(); expect(saveSessionSettings).toHaveBeenCalledWith('original', { connectionId: 'a' });
+    await vi.waitFor(() => expect(saveSessionSettings).toHaveBeenCalledWith('original', { connectionId: 'a' }));
+    expect(service.saveUIState).toHaveBeenCalledTimes(1);
     config.agentId = 'agent-b'; config.settings.connectionId = 'b';
     const second = manager.saveInputConfiguration(config);
     manager.cleanup(); expect(saveSessionSettings).toHaveBeenCalledOnce();
@@ -136,4 +137,12 @@ it('does not overwrite external draft updates when disposing an unchanged loaded
     expect(service.saveUIState).not.toHaveBeenCalled();
     await manager.saveInputConfiguration({ ...config, text: 'edited' });
     expect(service.saveUIState).toHaveBeenCalledWith('s', expect.objectContaining({ input_text: 'edited' }), 'main');
+});
+
+it('does not write shared preferences or release dirty input when its draft condition fails', async () => {
+    const conflict = Object.assign(new Error('Draft changed'), {code: 'SESSION_DRAFT_CONFLICT'});
+    const service = {saveUIState: vi.fn().mockRejectedValue(conflict), saveSessionSettings: vi.fn()};
+    const manager = new StateManager(service as unknown as StateService, {isGenerating: () => false} as SessionViewPort, 'session', id => id);
+    await expect(manager.saveInputConfiguration({text: 'Keep', agentId: 'default', settings: {connectionId: 'new'}})).rejects.toBe(conflict);
+    expect(service.saveSessionSettings).not.toHaveBeenCalled(); expect(manager.hasPendingInput()).toBe(true); manager.cleanup();
 });

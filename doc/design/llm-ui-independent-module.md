@@ -382,3 +382,34 @@ C4Component
     Rel(renderer, content, "拥有挂载与释放")
     Rel(history, renderer, "身份查找返回已有引用；别名仍受视图归属约束")
 ```
+
+## 展示、输入控制与持久数据边界
+
+独立 llm-ui 负责显示、输入编辑及控制请求。组件保留当前编辑值、选择、展开状态、渲染缓存和在途请求等临时状态；持久历史、指令队列、发布定义、执行事实、文件内容及原生上下文由宿主提供。宿主通过 source 投影数据、actions 接收带身份的操作、operations 保存请求与回执。组件不直接读写 Session 目录，也不拥有执行线程、自动调度或后台资源释放。
+
+MindOS 宿主将会话、草稿、资产及关联记录存入既有 VFS/SessionRepository；Kernel 保有 Task/Effect 与执行 journal 的事实。VFS 的文件、SeqFile 事务元数据及其底层存储由宿主管理，独立 llm-ui 不限定具体文件系统或数据库。原生 Harness 的真实历史和上下文仍由原生端持有，宿主保存 binding、操作 journal 与观察结果，UI 读取投影。
+
+```mermaid
+C4Component
+    title llm-ui 的展示控制端口与宿主持久数据
+    Container_Boundary(browser, "界面") {
+        Component(view, "llm-ui", "原生 DOM", "显示、输入编辑、控制请求及临时视图状态")
+        Component(adapter, "llm-ui-adapter", "MindOS 适配", "投影转换、文件编解码、编辑基线与恢复交互")
+    }
+    Container_Boundary(host, "应用宿主") {
+        Component(session, "Session 应用端口", "准入与查询", "授权、队列、历史及不透明 UI 状态持久化")
+        Component(kernel, "Kernel / Flow", "执行机制", "Task、Effect、编排和资源清理事实")
+        Component(data, "VFS / SessionRepository", "持久数据", "会话文件、草稿、资产与事务记录")
+        Component(native, "Harness Connection", "本地或远程端点", "原生操作、历史和上下文绑定")
+    }
+    Rel(view, adapter, "source / actions / operations")
+    Rel(adapter, session, "读取投影；提交、保存及控制请求")
+    Rel(session, data, "持久保存和读取")
+    Rel(session, kernel, "按执行身份运行与控制")
+    Rel(kernel, native, "执行、核对与取消")
+    Rel(session, native, "读取经授权的原生投影")
+```
+
+输入区的参数检查只提供即时反馈；目标、实参、权限与资产的最终准入归宿主。UI 操作台账记录请求接纳与核对，不替代 Kernel 终态。草稿基线和冲突提示属于适配层的编辑协调：通过 Session 的原子条件写入持久保存，不创建浏览器权威状态库，不自动重发业务操作。
+
+同分支草稿保存须匹配已观察的持久基线。另一视图改变正文、参数、目标或附件时保留当前输入，并提供加载已保存草稿或用当前草稿替换的明确动作；替换仍核对用户看到的冲突快照，加载期间有新编辑或视图切换则丢弃迟到恢复。读取失败不能被当成空草稿。普通关闭不覆盖另一个视图的新草稿，发送前须完成当前输入的保存与核对。两种恢复动作都不创建 Invocation，也不控制已有执行。

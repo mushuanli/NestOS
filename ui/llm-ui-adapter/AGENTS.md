@@ -191,3 +191,5 @@ Flow 通用 files 控件与 images 共用 input-assets 上传端口，稳定 upl
 正式 Session 和本地项目草稿通过已发布 Agent/Flow 目录保持平级目标。默认工作台先在现有 OperationLedger 持久保存冻结请求再提交；独立 ChatView 在同一台账保存原 Session/分支的 sessionRequest。队列通知只触发完整摘要核对，恢复使用原请求的只读 inspect，不重新填表或重发。晚回复不消费新修订或其他分支草稿；已保存附件草稿复用 DraftFilesCodec 和原上传身份，匹配 token 与内容后消费；同分支多视图草稿并发写入和独立子会话路由继续按计划验收。
 
 OperationPersistence 只在 UI 适配层按 llm-ui 的纯规则合并 operationRecords，经 Session.compareAndSetUIState 对现有修订条件写入，并返回实际保存快照。未知写回执只读核对；条件冲突有界重读合并，不重发业务。缺少条件写能力不降级覆盖。台账合并不代表同分支正文可自动合并，草稿冲突继续独立处理。
+
+分支输入的持久数据仍归 SessionRepository。StateService/DraftPersistence 仅持有本编辑器的已读基线，复用现有 Session 修订条件写入；冲突保留 dirty 输入，经 WorkspaceDraftRecovery 显式加载或替换，期间新编辑、分支切换和隐藏使迟到恢复失效。台账与草稿共用 conditional-ui-state，不重放业务操作；读取失败不可当作空草稿。共享偏好在草稿检查后仅按实际修改保存。独立 llm-ui 继续只消费展示、输入控制和宿主持久化端口，不依赖文件系统。

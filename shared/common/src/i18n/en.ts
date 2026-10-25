@@ -2776,4 +2776,16 @@ export const en: LocaleStrings = {
     'callable.submission.storeUnavailable': 'The host cannot safely save the operation journal. Update the host and retry.',
     'callable.submission.storeConflict': 'Another view is changing the operation journal. Refresh and retry; your input is preserved.',
     'callable.submission.invalidLedger': 'The saved operation journal is invalid. Check storage and retry.',
+
+    'chatInput.draft.conflict': 'Another view changed this branch draft. Your input is preserved; choose how to proceed.',
+    'chatInput.draft.changed': 'The input or saved draft changed during recovery. Review and choose again.',
+    'chatInput.draft.unavailable': 'The host does not support conditional draft saves. Update the host and retry.',
+    'chatInput.draft.saveFailed': 'The draft has not been safely saved. Keep this page and retry.',
+    'chatInput.draft.load': 'Load saved draft',
+    'chatInput.draft.replace': 'Replace with current draft',
+    'chatInput.draft.saved': 'Saved draft: ',
+    'chatInput.draft.working': 'Updating draft…',
+    'chatInput.draft.notLoaded': 'The branch draft has not been read successfully. Reload it before saving.',
+    'chatInput.draft.invalid': 'The saved branch draft is invalid. Check storage and retry.',
+    'chatInput.draft.busy': 'Other views are still changing the session. Retry shortly; your input is preserved.',
 };

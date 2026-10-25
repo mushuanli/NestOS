@@ -7,9 +7,12 @@ import { fromConversationState, type StateService } from '../services/StateServi
 import type { ConversationManifest } from '@itookit/llm-session/contracts';
 import { createDebouncedSave, DebouncedFn } from '../utils/debounce';
 import { ErrorHandler } from '../utils/errorHandler';
+import {draftSettings} from '../domain/submission-draft';
+import {canonicalJson} from '../utils/canonical-json';
+import {draftFailure} from '../services/DraftPersistence';
 import {DraftFilesCodec} from '../services/DraftFilesCodec';
 
-interface PendingInput {config: IChatInputConfig; files?: File[]; branch: string}
+interface PendingInput {config: IChatInputConfig; files?: File[]; branch: string; verify?: boolean; replaceId?: string; resolution?: number}
 interface InputRestoreOptions {
     initialInputState?: {text?: string; agentId?: string}; savedState?: UIState | null; sessionSettings?: ChatInputSettings;
 }
@@ -30,9 +33,12 @@ export class StateManager {
     private draftGeneration = 0;
     private saveTail: Promise<void> = Promise.resolve();
     private savedConfiguration?: string;
+    private savedSettings?: string;
     private readonly pendingInputs = new Map<string, PendingInput>();
     private restoredFiles?: UIState['input_files'];
     private restoringInput = false;
+    private resolutionGeneration = 0;
+    cancelDraftResolution(): void {++this.resolutionGeneration;}
 
     constructor(
         private stateService: StateService,
@@ -70,7 +76,7 @@ export class StateManager {
 
 
     switchDraftBranch(branch: string): Promise<void> {
-        const generation = ++this.draftGeneration;
+        const generation = ++this.draftGeneration; this.cancelDraftResolution();
         this.chatInputGetter?.()?.setLoading(true);
         const operation = this.draftTail.then(async () => {
             if (branch === this.branch) return;
@@ -85,6 +91,7 @@ export class StateManager {
                 input?.restoreInput(state?.input_text ?? '', state?.input_agent_id);
                 input?.setConfig({text: state?.input_text ?? '', target: state?.input_target, input: state?.input_arguments});
                 input?.restoreDraftFiles?.(files, state?.input_token);
+                this.draftChanged();
             } finally {this.restoringInput = false;}
         });
         this.draftTail = operation.catch(() => {});
@@ -138,25 +145,31 @@ export class StateManager {
     }
 
     /** Capture identity, branch and settings before any asynchronous work. */
-    saveInputConfiguration(config: IChatInputConfig, files?: readonly File[]): Promise<void> {
+    saveInputConfiguration(config: IChatInputConfig, files?: readonly File[], verify = false): Promise<void> {
         if (this.restoringInput) return Promise.resolve();
         this.debouncedInputStateSave.cancel();
-        const snapshot = this.captureInput(config, files ?? this.chatInputGetter?.()?.getDraftFiles?.());
+        const snapshot = {...this.captureInput(config, files ?? this.chatInputGetter?.()?.getDraftFiles?.()), verify};
         this.pendingInputs.set(snapshot.branch, snapshot); return this.persistInput(snapshot, true);
     }
     private captureInput(config: IChatInputConfig, files?: readonly File[]): PendingInput {
         return {config: structuredClone(config), files: files && [...files], branch: this.branch};
     }
     private persistInput(snapshot: PendingInput, saveSettings: boolean): Promise<void> {
-        const {config, files, branch} = snapshot, payload = this.inputState(config), settings = structuredClone(config.settings);
+        const {config, files, branch} = snapshot, payload = this.inputState(config), settings = structuredClone(config.settings ?? {});
         const prepared = this.prepareFiles(files);
         return this.enqueueSave(async () => {
             if (prepared) payload.input_files = await prepared;
+            if (snapshot.resolution !== undefined && (snapshot.resolution !== this.resolutionGeneration || branch !== this.branch))
+                throw draftFailure('DRAFT_RESOLUTION_CHANGED');
             const fingerprint = JSON.stringify({payload, settings, branch});
-            if (!saveSettings || fingerprint !== this.savedConfiguration) {
-                if (saveSettings) await this.stateService.saveSessionSettings(this.sessionId, settings);
-                await this.stateService.saveUIState(this.sessionId, payload, branch);
-                this.savedConfiguration = saveSettings ? fingerprint : undefined;
+            if (snapshot.verify || snapshot.replaceId || fingerprint !== this.savedConfiguration) {
+                if (snapshot.replaceId) await this.stateService.saveUIState(this.sessionId, payload, branch, snapshot.replaceId);
+                else await this.stateService.saveUIState(this.sessionId, payload, branch);
+                this.savedConfiguration = fingerprint;
+            }
+            const settingsKey = canonicalJson(draftSettings(settings));
+            if (saveSettings && settingsKey !== this.savedSettings) {
+                await this.stateService.saveSessionSettings(this.sessionId, settings); this.savedSettings = settingsKey;
             }
             if (this.pendingInputs.get(branch) === snapshot) {this.pendingInputs.delete(branch); this.draftChanged();}
         });
@@ -176,12 +189,45 @@ export class StateManager {
         const payload = this.inputState(config);
         if (this.fileDrafts) payload.input_files = this.restoredFiles ?? [];
         this.savedConfiguration = JSON.stringify({payload, settings: config.settings, branch: this.branch});
+        this.savedSettings = canonicalJson(draftSettings(config.settings ?? {}));
     }
 
     private inputState(config?: IChatInputConfig): UIState {
         return structuredClone({ collapse_states: this.collapseStatesCache, input_text: config?.text,
             input_token: config?.draftToken,
             input_agent_id: config?.agentId, input_target: config?.target, input_arguments: config?.input, history_visibility: 'visible'});
+    }
+
+    async resolveDraftConflict(action: 'load' | 'replace'): Promise<void> {
+        const branch = this.branch, conflict = this.stateService.getDraftConflict(this.sessionId, branch), input = this.chatInputGetter?.();
+        if (!conflict || !input) return;
+        const config = input.getConfig(), files = input.getDraftFiles?.(), token = config.draftToken, resolution = ++this.resolutionGeneration;
+        this.debouncedInputStateSave.cancel(); await this.saveTail;
+        if (resolution !== this.resolutionGeneration || this.branch !== branch || input.getConfig().draftToken !== token) throw draftFailure('DRAFT_RESOLUTION_CHANGED');
+        if (action === 'replace') {
+            const snapshot = {...this.captureInput(config, files), replaceId: conflict.id, resolution};
+            this.pendingInputs.set(branch, snapshot);
+            try {await this.persistInput(snapshot, true);}
+            catch (error) {
+                if (this.pendingInputs.get(branch) === snapshot) this.pendingInputs.set(branch, {config, files, branch});
+                throw error;
+            }
+            return;
+        }
+        await this.loadConflictingDraft(input, config, branch, token, resolution);
+    }
+    private async loadConflictingDraft(input: IChatInputPresenter, config: IChatInputConfig, branch: string,
+        token: string | undefined, resolution: number): Promise<void> {
+        const candidate = await this.stateService.readDraftCandidate(this.sessionId, branch), restored = await this.decodeFiles(candidate.state);
+        if (resolution !== this.resolutionGeneration || this.branch !== branch || input.getConfig().draftToken !== token) throw draftFailure('DRAFT_RESOLUTION_CHANGED');
+        this.restoringInput = true;
+        try {
+            this.applyInputState(input, {savedState: candidate.state ?? {collapse_states: {}, input_text: ''}, sessionSettings: config.settings});
+            input.restoreDraftFiles?.(restored, candidate.state?.input_token);
+        } finally {this.restoringInput = false;}
+        this.pendingInputs.delete(branch); this.restoredFiles = candidate.state?.input_files;
+        this.stateService.observeDraft(this.sessionId, branch, candidate.raw);
+        this.rememberRestoredConfiguration(input.getConfig()); this.draftChanged();
     }
 
     private enqueueSave(save: () => Promise<void>): Promise<void> {
@@ -193,6 +239,7 @@ export class StateManager {
     async loadUIState(initial?: ConversationManifest, branch = initial?.currentBranch ?? this.branch): Promise<UIState | null> {
         const result = initial ? (initial.uiState ? fromConversationState(initial.uiState, branch) : null)
             : await this.stateService.loadUIState(this.sessionId, branch);
+        if (initial) this.stateService.observeDraft?.(this.sessionId, branch, initial.uiState);
         this.branch = branch;
         this.restoredFiles = result?.input_files;
         this.collapseStatesCache = result?.collapse_states ?? {};
@@ -257,6 +304,7 @@ export class StateManager {
     }
 
     cleanup(): void {
+        this.cancelDraftResolution();
         this.debouncedUIStateSave.cancel();
         this.debouncedInputStateSave.cancel();
     }

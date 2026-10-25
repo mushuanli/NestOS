@@ -113,11 +113,11 @@ it('preserves newer text and same-name same-size replacement bytes when the orig
 it('consumes a ghost attachment draft after acceptance was persisted but the cleared draft write was lost', async () => {
     const f = await setup(); f.allow();
     const view = await f.open(); await (await f.runtime.kernel.kernel.openSession(f.sessionId)).suspend(); await select(f, view, new File(['Accepted file'], 'accepted.txt', {type: 'text/plain'}));
-    const write = f.runtime.sessionRepository.updateUIState.bind(f.runtime.sessionRepository); let failClear = true;
-    vi.spyOn(f.runtime.sessionRepository, 'updateUIState').mockImplementation(async (id, state) => {
+    const write = f.runtime.sessionRepository.compareAndSetUIState!.bind(f.runtime.sessionRepository); let failClear = true;
+    vi.spyOn(f.runtime.sessionRepository, 'compareAndSetUIState').mockImplementation(async (id, revision, state) => {
         if (failClear && state.branchDrafts?.main?.inputText === '' && state.branchDrafts.main.inputFiles?.length === 0)
             throw Object.assign(new Error('Lost draft-clear write'), {code: 'STORAGE_WRITE_FAILED'});
-        return write(id, state);
+        return write(id, revision, state);
     });
     await send(view);
     await vi.waitFor(async () => expect((await f.runtime.sessionRepository.getUIState(f.sessionId))?.operationRecords?.[0]).toMatchObject({status: 'accepted'}));
@@ -147,10 +147,10 @@ it('retains input and does not dispatch when its durable attachment draft cannot
 });
 
 it('keeps both real workspaces frozen operations when they save and reconcile the same Session', async () => {
-    const f = await setup(), a = await f.open(), b = await f.open();
+    const f = await setup(), a = await f.open();
     await select(f, a, new File(['A'], 'a.txt', {type: 'text/plain'}));
-    await select(f, b, new File(['B'], 'b.txt', {type: 'text/plain'}));
-    await send(a); await send(b);
+    await send(a); const b = await f.open(); b.input.restoreDraftFiles([]);
+    await select(f, b, new File(['B'], 'b.txt', {type: 'text/plain'})); await send(b);
     const records = (await f.runtime.sessionRepository.getUIState(f.sessionId))!.operationRecords! as unknown as Array<{context: {operationId: string}; input: {request: SubmissionRequest}}>;
     expect(records).toHaveLength(2); expect(new Set(records.map(record => record.context.operationId)).size).toBe(2);
     for (const record of records) await acceptAndRemove(f, record.input.request);
@@ -161,5 +161,70 @@ it('keeps both real workspaces frozen operations when they save and reconcile th
     const confirmed = (await f.runtime.sessionRepository.getUIState(f.sessionId))!.operationRecords! as unknown as Array<{status: string}>;
     expect(confirmed.map(record => record.status)).toEqual(['accepted', 'accepted']);
     expect(f.counts()).toEqual({submitCalls: 2, fileUploads: 2});
+    a.host.querySelector<HTMLButtonElement>('[data-draft-resolve=load]')?.click();
+    await vi.waitFor(() => expect(a.host.querySelector<HTMLElement>('[data-draft-recovery]')!.hidden).toBe(true));
     expect(await f.runtime.kernel.kernel.listSessionTasks(f.sessionId)).toEqual([]);
+});
+
+it('does not let an old accepted operation clear another workspace newer persistent draft', async () => {
+    const f = await setup(), a = await f.open();
+    await select(f, a, new File(['OLD'], 'same.txt', {type: 'text/plain'})); const record = await uncertain(f, a);
+    const b = await f.open(); b.input.restoreDraftFiles([new File(['NEW'], 'same.txt', {type: 'text/plain'})]);
+    b.input.setConfig({text: 'Keep the other workspace draft'}); await b.editor.flushPendingSave();
+    const expected = structuredClone((await f.runtime.sessionRepository.getUIState(f.sessionId))!.branchDrafts!.main);
+    await acceptAndRemove(f, record.input.request);
+    a.host.querySelector<HTMLButtonElement>('[data-call-reconcile]')?.click();
+    await vi.waitFor(async () => expect((await f.runtime.sessionRepository.getUIState(f.sessionId))!.operationRecords![0]).toMatchObject({status: 'accepted'}));
+    await vi.waitFor(() => expect(a.input.getDraftFiles()).toEqual([]));
+    await a.editor.flushPendingSave().catch(() => {});
+    expect((await f.runtime.sessionRepository.getUIState(f.sessionId))!.branchDrafts!.main).toEqual(expected);
+    expect(b.input.getConfig().text).toBe('Keep the other workspace draft'); expect(f.counts()).toEqual({submitCalls: 1, fileUploads: 1});
+    expect(a.host.querySelector<HTMLElement>('[data-draft-recovery]')!.hidden).toBe(false);
+    a.host.querySelector<HTMLButtonElement>('[data-draft-resolve=load]')!.click();
+    await vi.waitFor(() => expect(a.input.getConfig().text).toBe('Keep the other workspace draft'));
+    expect(new TextDecoder().decode(await fileBytes(a.input.getDraftFiles()[0]))).toBe('NEW');
+    expect(f.counts()).toEqual({submitCalls: 1, fileUploads: 1});
+    await a.close();
+});
+
+
+it('keeps conflicting local input and requires another explicit replacement if the saved draft advances again', async () => {
+    const f = await setup(), a = await f.open(), b = await f.open();
+    a.input.setConfig({text: 'Saved A'}); await a.editor.flushPendingSave();
+    b.input.setConfig({text: 'Local B'}); await expect(b.editor.flushPendingSave()).rejects.toMatchObject({code: 'SESSION_DRAFT_CONFLICT'});
+    expect(b.input.getConfig().text).toBe('Local B');
+    expect((await f.runtime.sessionRepository.getUIState(f.sessionId))!.branchDrafts!.main.inputText).toBe('Saved A');
+    a.input.setConfig({text: 'Saved A advanced'}); await a.editor.flushPendingSave();
+    b.host.querySelector<HTMLButtonElement>('[data-draft-resolve=replace]')!.click();
+    await vi.waitFor(() => expect(b.host.querySelector('[data-draft-recovery]')!.textContent).toContain('Saved A advanced'));
+    expect((await f.runtime.sessionRepository.getUIState(f.sessionId))!.branchDrafts!.main.inputText).toBe('Saved A advanced');
+    b.host.querySelector<HTMLButtonElement>('[data-draft-resolve=replace]')!.click();
+    await vi.waitFor(() => expect(b.host.querySelector<HTMLElement>('[data-draft-recovery]')!.hidden).toBe(true));
+    expect((await f.runtime.sessionRepository.getUIState(f.sessionId))!.branchDrafts!.main.inputText).toBe('Local B');
+    expect(f.counts()).toEqual({submitCalls: 0, fileUploads: 0});
+});
+
+it.each(['edit', 'hide'] as const)('preserves local input when %s happens while loading conflict attachments', async mode => {
+    const f = await setup(), a = await f.open(), b = await f.open();
+    await select(f, a, new File(['Saved bytes'], 'saved.txt', {type: 'text/plain'})); await a.editor.flushPendingSave();
+    b.input.setConfig({text: 'Keep local'}); await expect(b.editor.flushPendingSave()).rejects.toHaveProperty('code', 'SESSION_DRAFT_CONFLICT');
+    let release!: () => void, entered = false; const pending = new Promise<void>(resolve => {release = resolve;});
+    const read = f.assets.driver.readContent.bind(f.assets.driver); let block = true;
+    vi.spyOn(f.assets.driver, 'readContent').mockImplementation(async (...args) => {
+        if (block && String(args[0]).startsWith('/draft-')) {entered = true; await pending;}
+        return read(...args);
+    });
+    b.host.querySelector<HTMLButtonElement>('[data-draft-resolve=load]')!.click();
+    await vi.waitFor(() => expect(entered).toBe(true));
+    const text = mode === 'edit' ? 'New edit during file read' : 'Keep local';
+    if (mode === 'edit') b.input.setConfig({text}); else b.editor.cancelPendingRender();
+    block = false; release();
+    await vi.waitFor(() => expect(b.host.querySelector<HTMLButtonElement>('[data-draft-resolve=replace]')!.disabled).toBe(false));
+    expect(b.input.getConfig().text).toBe(text); expect(b.input.getDraftFiles()).toEqual([]);
+    expect((await f.runtime.sessionRepository.getUIState(f.sessionId))!.branchDrafts!.main.inputText).toBe('Inspect these files');
+    if (mode === 'hide') await b.editor.activate();
+    b.host.querySelector<HTMLButtonElement>('[data-draft-resolve=replace]')!.click();
+    await vi.waitFor(() => expect(b.host.querySelector<HTMLElement>('[data-draft-recovery]')!.hidden).toBe(true));
+    expect((await f.runtime.sessionRepository.getUIState(f.sessionId))!.branchDrafts!.main.inputText).toBe(text);
+    expect(f.counts()).toEqual({submitCalls: 0, fileUploads: 0});
 });

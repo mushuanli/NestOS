@@ -1,6 +1,7 @@
 import {flowInputAssets} from '../flows/input-assets';
 import {prepareAgentFlow, prepareCallTarget} from '../flows/agent-flow';
 import {createOperationLedger, type OperationLedger} from '@itookit/llm-ui';
+import {WorkspaceDraftRecovery} from './WorkspaceDraftRecovery';
 import {DraftFilesCodec} from '../services/DraftFilesCodec';
 import { updateCollapseAction } from '../components/history/HistoryToolbar';
 import { disposeEditorResources } from './editor-disposal';
@@ -186,6 +187,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private sendCommand!: SendMessageCommand;
     private operations?: OperationLedger;
     private submissionRecovery?: WorkspaceSubmissionRecovery;
+    private draftRecovery?: WorkspaceDraftRecovery;
     private switchBranchByOffsetCommand!: SwitchBranchByOffsetCommand;
     private nodeCommands = new Map<string, Command<any, any>>();
 
@@ -343,7 +345,7 @@ export class LLMWorkspaceEditor implements IEditor {
             (id) => validateAgentId(this.agentService, id),
             this.options.target?.kind === 'session' ? this.options.target.branch : undefined,
             new DraftFilesCodec(this.assetService.draftFiles()),
-            () => this.emit('change', undefined),
+            () => {this.draftRecovery?.refresh(); this.emit('change', undefined);},
         );
         this.branchStore = new BranchStore(this.commandBus, this.errorHandler);
         this.branchService = new BranchService(this.commandBus, this.branchStore);
@@ -462,7 +464,7 @@ export class LLMWorkspaceEditor implements IEditor {
             },
             onConfigChange: (config) => this.handleConfigChange(config),
             onDraftChange: (config, files) => {if (this.initComplete) this.stateManager.stageInput(config, files);},
-            flushDraft: () => this.flushPendingSave(),
+            flushDraft: () => this.flushPendingSave(true),
             onExecutorChange: () => { this.skillRefreshBinding?.refresh(); },
             onRequestConnections: () => this.connectionOptions!.read(),
             prepareAgentFlow: (agent, signal, draft) => prepareAgentFlow(this.commandBus, agent, signal, draft),
@@ -516,6 +518,11 @@ export class LLMWorkspaceEditor implements IEditor {
         this.commandRegistry.initialize();
 
         this.sendCommand = new SendMessageCommand(ctx);
+        this.draftRecovery = new WorkspaceDraftRecovery(this.domCache.byId('llm-ui-input')!, {
+            read: () => this.stateService.getDraftConflict(this.options.sessionId!, this.stateManager.getDraftBranch()),
+            subscribe: listener => this.stateService.subscribeDraftConflicts(listener),
+            resolve: action => this.stateManager.resolveDraftConflict(action),
+        });
         this.submissionRecovery = new WorkspaceSubmissionRecovery(this.domCache.byId('llm-ui-input')!, this.operations!, this.options.sessionId,
             id => this.reconcileSubmission(id),
             error => this.errorHandler.handle(error, 'Reconcile submission'));
@@ -1076,6 +1083,7 @@ export class LLMWorkspaceEditor implements IEditor {
     setDirty(_dirty: boolean): void { }
     focus(): void { this.chatInput?.focus(); }
     cancelPendingRender(): void {
+        this.stateManager?.cancelDraftResolution();
         this.invocationAbort.abort();
         this.chatInput?.cancelPendingSend?.();
         this.chatInput?.hideNativeModelPicker?.();
@@ -1334,15 +1342,16 @@ export class LLMWorkspaceEditor implements IEditor {
     // 销毁 — 逆序清理
     // ================================================================
 
-    async flushPendingSave(): Promise<void> {
+    async flushPendingSave(verifyDraft = false): Promise<void> {
         if (!this.initComplete || this.isBeingDeleted) return;
         await this.stateManager.waitForDrafts();
-        await this.stateManager.saveInputConfiguration(this.chatInput.getConfig());
+        await this.stateManager.saveInputConfiguration(this.chatInput.getConfig(), undefined, verifyDraft);
     }
 
     destroy(): Promise<void> {
         if (this.destroyPromise) return this.destroyPromise;
         ++this.activationRevision; this.viewActive = false;
+        this.stateManager?.cancelDraftResolution();
         this.submissionRecovery?.setActive(false);
         this.attachmentClosed = true;
         this.rerunAbort?.abort();
@@ -1370,7 +1379,7 @@ export class LLMWorkspaceEditor implements IEditor {
             () => this.timers.destroy(), () => this.historyPlugin?.deactivate(),
             () => this.slashPlugin?.deactivate(), () => this.invocationPanel?.destroy(),
             () => this.instructionQueuePanel?.destroy(),
-            () => this.submissionRecovery?.dispose(),
+            () => this.submissionRecovery?.dispose(), () => this.draftRecovery?.dispose(),
             () => this.branchIndicator?.destroy(), () => this.statusIndicator?.destroy(),
             () => this.historyView?.destroy(), () => {if (!preserve) this.chatInput?.destroy();},
             () => this.sessionService?.dispose(), () => this.branchStore?.destroy(),

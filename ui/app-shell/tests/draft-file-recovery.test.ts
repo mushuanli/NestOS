@@ -83,11 +83,14 @@ it('does not rotate editing intent when an unchanged parameter form is confirmed
 });
 
 function stateHarness() {
-    const store = storage(); let state: ConversationUIState = {};
-    const engine = {getUIState: async () => state, saveSessionSettings: vi.fn(async () => {}), updateUIState: async (_id: string, patch: ConversationUIState) => {
+    const store = storage(); let state: ConversationUIState = {}; let revision = 0;
+    const engine = {getManifest: async () => ({revision, uiState: structuredClone(state)}), compareAndSetUIState: async (_id: string, expected: number, patch: ConversationUIState) => {
+        if (expected !== revision) throw Object.assign(new Error('Changed'), {code: 'SESSION_UI_STATE_CONFLICT'});
+        state = {...state, ...structuredClone(patch), branchDrafts: {...state.branchDrafts, ...structuredClone(patch.branchDrafts)}}; revision++;
+    }, getUIState: async () => state, saveSessionSettings: vi.fn(async () => {}), updateUIState: async (_id: string, patch: ConversationUIState) => {
         state = {...state, ...structuredClone(patch), branchDrafts: {...state.branchDrafts, ...structuredClone(patch.branchDrafts)}};
     }};
-    const service = new StateService(engine as never);
+    const service = new StateService(engine as never); service.observeDraft('session', 'main', {}); service.observeDraft('session', 'review', {});
     const manager = () => {const value = new StateManager(service, {isGenerating: () => true}, 'session', id => id, 'main', new DraftFilesCodec(store.port)); cleanup.push(() => value.cleanup()); return value;};
     return {store, engine, service, manager, state: () => state};
 }

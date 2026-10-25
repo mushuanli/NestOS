@@ -8,6 +8,7 @@ import { execFile, execFileSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { promisify } from 'node:util';
 import { hostArguments, hostEnvironment, runtimePaths, releaseDirectory, verifyRelease, runtimeLog, freezeWorkspaceDependencies, sourceFingerprint, copySource, copyNativeRuntimes } from '../httpd-runtime.mjs';
+import {captureSourceGuard} from '../httpd-build.mjs';
 
 test('deployment retains native runtime files and rejects incompatible package builds', t => {
     const root = mkdtempSync(path.join(tmpdir(), 'httpd-native-'));
@@ -67,10 +68,18 @@ test('captures source bytes independently and detects edits during a release bui
         execFileSync('git', ['init', '--quiet'], { cwd: source });
         writeFileSync(path.join(source, 'main.ts'), 'first'); writeFileSync(path.join(source, '.gitignore'), 'generated/\n');
         const fingerprint = sourceFingerprint(source); copySource(source, snapshot);
+        const guard = captureSourceGuard(source);
         mkdirSync(path.join(source, 'generated')); writeFileSync(path.join(source, 'generated/output.js'), 'ignored');
         assert.equal(sourceFingerprint(source), fingerprint);
+        guard.check();
         writeFileSync(path.join(source, 'main.ts'), 'second');
         assert.notEqual(sourceFingerprint(source), fingerprint); assert.equal(readFileSync(path.join(snapshot, 'main.ts'), 'utf8'), 'first');
+        assert.throws(() => guard.check(), error => error.code === 'HTTP_BUILD_SOURCE_CHANGED'
+            && error.changedFiles.includes('main.ts') && !error.message.includes('second'));
+        writeFileSync(path.join(source, 'main.ts'), 'first'); guard.check();
+        writeFileSync(path.join(source, 'new.ts'), 'private source text');
+        assert.throws(() => guard.check(), error => error.code === 'HTTP_BUILD_SOURCE_CHANGED'
+            && error.changedFiles.includes('new.ts') && !error.message.includes('private source text'));
     } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 

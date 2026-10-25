@@ -9,6 +9,21 @@ import { preparedSnapshot } from './local-library-plan.mjs';
 
 const run = (command, args, cwd, env = process.env) => execFileSync(command, args, {cwd, env, stdio: 'inherit'});
 const inputsAt = root => sourceFiles(root).filter(file => !file.startsWith('libraries/'));
+/** Keep the existing release fence and report paths, never source contents. */
+export function captureSourceGuard(root, inputs = inputsAt(root)) {
+    const fingerprint = sourceFingerprint(root, inputs);
+    const revisions = new Map(inputs.map(file => [file, sourceFingerprint(root, [file])]));
+    return {fingerprint, check() {
+        const files = inputsAt(root);
+        if (fingerprint === sourceFingerprint(root, files)) return;
+        const current = new Map(files.map(file => [file, sourceFingerprint(root, [file])]));
+        const changedFiles = [...new Set([...revisions.keys(), ...current.keys()])]
+            .filter(file => revisions.get(file) !== current.get(file)).sort();
+        const details = changedFiles.slice(0, 8).join(', ') || 'inputs changed during initial capture';
+        throw Object.assign(new Error(`Business source changed during the build: ${details}. Retry after saving your changes.`),
+            {code: 'HTTP_BUILD_SOURCE_CHANGED', changedFiles});
+    }};
+}
 function reporter(operationId) {
     return (stage, work) => {
         const started = Date.now(); console.log(`[HTTPBuild] operationId=${operationId} stage=${stage} result=start`);
@@ -127,7 +142,7 @@ function buildRelease(context, activate) {
     const reused = cache && reuseRelease(releases, key);
     if (reused) {
         stage('validate-reuse', () => run(process.execPath, [path.join(releases, reused, 'server/main.js'), '--help'], path.join(releases, reused)));
-        if (fingerprint !== sourceFingerprint(root, inputsAt(root))) throw new Error('Business source changed during the build');
+        context.sourceGuard.check();
         if (activate) activate(reused);
         console.log(`[HTTPBuild] operationId=${operationId} stage=release cache=hit id=${reused}`); return reused;
     }
@@ -140,7 +155,7 @@ function buildRelease(context, activate) {
         stage('validate', () => {
             assertDependencies(path.join(staging, 'node_modules'), staging);
             run(process.execPath, [path.join(staging, 'server/main.js'), '--help'], staging);
-            if (fingerprint !== sourceFingerprint(root, inputsAt(root))) throw new Error('Business source changed during the build. Retry after saving your changes.');
+            context.sourceGuard.check();
         });
         const files = ['server', 'dist'].flatMap(folder => treeRecords(staging, folder));
         writeFileSync(path.join(staging, 'release.json'), JSON.stringify({id, commit, dirty, builtAt: new Date().toISOString(),
@@ -157,7 +172,7 @@ export function buildHttpRelease(root, {cache = true, activate} = {}) {
         const snapshot = preparedSnapshot(root);
         if (!snapshot) throw new Error('LOCAL_LIBRARIES_SNAPSHOT_REQUIRED: run pnpm lib:build first');
         console.log(`HTTP build libraries: ${snapshot.id}`);
-        const inputs = inputsAt(root), fingerprint = sourceFingerprint(root, inputs), environment = buildEnvironment();
+        const inputs = inputsAt(root), sourceGuard = captureSourceGuard(root, inputs), fingerprint = sourceGuard.fingerprint, environment = buildEnvironment();
         const commit = execFileSync('git', ['rev-parse', 'HEAD'], {cwd: root, encoding: 'utf8'}).trim();
         const dirty = !!execFileSync('git', ['status', '--porcelain'], {cwd: root, encoding: 'utf8'}).trim();
         const pnpm = execFileSync('pnpm', ['--version'], {cwd: root, encoding: 'utf8'}).trim();
@@ -166,6 +181,6 @@ export function buildHttpRelease(root, {cache = true, activate} = {}) {
             inputs: sourceFingerprint(root, dependencyInputs(inputs))}));
         const key = digest(JSON.stringify({fingerprint, dependencyKey, environment, commit, dirty}));
         return buildRelease({root, releases, cacheDirectory, snapshot, inputs, fingerprint, environment, dependencyKey, key,
-            cache, stage, operationId, commit, dirty, env: {...process.env, MINDOS_LIBRARY_DEPLOYMENT: '1'}}, activate);
+            cache, stage, sourceGuard, operationId, commit, dirty, env: {...process.env, MINDOS_LIBRARY_DEPLOYMENT: '1'}}, activate);
     }); } finally { unlock(); }
 }

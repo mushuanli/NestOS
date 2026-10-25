@@ -1565,3 +1565,34 @@ C4Component
 回归覆盖根清理挂起、先处理子任务清理挂起、根清理失败时等待其他停止确认、失败责任保留与原请求重放、取消事务前并发接纳 Effect、日志不泄露原因或适配器错误正文。两个挂起用例与并发接纳用例均先在旧逻辑失败，再验证修复。
 
 范围：修复现有非终态根取消的传播和清理路径，不等同于增加“已完成根的剩余任务整树停止”命令；后者仍需明确持久意图及动态任务屏障。现有恢复 sweep 的逐任务清理顺序、跨 Session 所有者、超大树读取成本仍需继续审查；本批不承诺外部副作用回滚，也不将取消 Promise 或接纳回执当作整树 settled 证明。
+
+## 68. 恢复与 Session 关闭共用清理分支隔离
+
+第 67 节完成主动任务取消后，进一步验证发现恢复扫描和 Session.close(cancelRunning=true) 仍逐任务等待清理。重启恢复测试先在原实现复现：排在首位的适配器等待确认时，第二个独立任务的清理尚未发起；直接关闭 Session 也存在同类取消传播阻塞。
+
+```mermaid
+C4Component
+  title 主动取消、恢复扫描和关闭使用同一清理机制
+  Component(close, "Session.close", "既有关闭入口", "先持久 closing，再取消最外层任务子树")
+  Component(poll, "Kernel 恢复扫描", "既有 poll 生命周期", "整理持久责任与关闭取消事务")
+  Component(cancel, "Task.cancel", "既有任务控制", "任务取消与后代传播")
+  Component(cleanup, "EffectCleanupRunner", "既有清理机制", "按 Effect 去重、超时、适配器确认")
+  Component(join, "settleCancellations", "结果汇合", "各分支有结果后汇合，不短路其他分支")
+  ContainerDb(state, "原 Task / Session 记录", "持久事实", "closing、取消终态、cleanupPending")
+  Rel(close, cancel, "按父链选择互不重叠的最外层任务")
+  Rel(poll, state, "原事务维护；关闭取消取返回记录")
+  Rel(cancel, cleanup, "原 Effect 清理")
+  Rel(poll, cleanup, "独立发起待清理任务")
+  Rel(cleanup, join, "确认或失败")
+  Rel(join, state, "失败保留责任；原关闭判定继续核对")
+```
+
+Kernel.poll 复用原任务读取，将维护步骤归入 maintainPolledTasks：先处理原程序可用性与关闭取消，再收集实际 cleanupPending。关闭取消直接使用 store.cancelTask 返回的事务记录，避免本轮仍按旧快照漏掉新清理责任。收集结束后统一附加结果处理并发起清理，不在循环中启动一个可能拒绝、却尚未有接收者的 Promise。
+
+Session 关闭复用 cancellationFrontier 选择互不重叠的最外层未收尾任务；穿过已 settled 的终态祖先，保留终态但有清理责任的任务。避免对父、子同时发起完整子树遍历，不新增任务索引。
+
+清理继续调用原 cancelTaskEffects、EffectCleanupRunner 和 effect.cleanup 诊断；复用第 67 节 settleCancellations，不新增调度器、重试表、并发控制状态或存储。扫描仍等待本轮各分支的结果并保留现有超时边界；失败责任留在原记录，后续扫描重试。既有快照缓存失效、后续派发和关闭判定保持原位置。
+
+验证覆盖已持久取消的任务重启恢复、只持久关闭意图后重启、首个适配器挂起时其他任务先确认、适配器失败时其他任务仍确认、后续只重试未完成责任、执行器不重新执行，以及显式 Session 关闭时取消请求独立发起。日志验证仍保留阶段/任务关联，不包含适配器错误正文。
+
+本批修复恢复和关闭的清理阻塞，不新增已完成根的整树停止语义。跨 Session 所有权、受管资源回收与业务补偿仍沿各自协议；Session 关闭结果继续以原持久状态核对，不能把清理请求已发出或单个任务已确认当作整体完成。

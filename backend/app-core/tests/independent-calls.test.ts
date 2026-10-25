@@ -1,3 +1,4 @@
+import {getLogger} from '@itookit/common';
 import {ConversationContexts} from '../src/runtime/conversation-contexts';
 import {afterEach, expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
@@ -493,4 +494,28 @@ it('recovers remaining-tree admission after a lost response without repeating th
     expect(await f.commands.execute(IndependentCallCommand.TreeCancellationReceipt, f.query)).toMatchObject({receipt: {rootStatus: 'succeeded'}});
     expect(open).not.toHaveBeenCalled(); expect(stop).toHaveBeenCalledTimes(1);
     expect((await f.child.status()).task.status).toBe('cancelled');
+}, 15000);
+
+
+it('routes Flow control diagnostics to the host with the real operation and safe failure classification', async () => {
+    const f = await remainingCallFixture('flow'), logger = getLogger();
+    const warn = vi.spyOn(logger, 'warn'), info = vi.spyOn(logger, 'info');
+    await expect(f.commands.execute(IndependentCallCommand.CancelRemaining, {...f.query, expectedEpoch: 99})).rejects.toMatchObject({code: 'CONFLICT'});
+    expect(warn).toHaveBeenCalledWith('llm-conversation', 'flow.run.cancel-remaining', expect.objectContaining({
+        operation: 'flow.run.cancel-remaining', operationId: f.query.requestId, sessionId: f.session.id,
+        rootTaskId: f.query.taskId, stage: 'control', outcome: 'error', code: 'CONFLICT', durationMs: expect.any(Number),
+    }));
+    vi.spyOn(f.kernel, 'cancelRemainingTaskTree').mockRejectedValueOnce(new Error('PRIVATE ADAPTER DETAIL'));
+    await expect(f.commands.execute(IndependentCallCommand.CancelRemaining, {...f.query, expectedEpoch: 0})).rejects.toThrow('PRIVATE ADAPTER DETAIL');
+    expect(warn).toHaveBeenCalledWith('llm-conversation', 'flow.run.cancel-remaining', expect.objectContaining({code: 'FLOW_CONTROL_FAILED'}));
+    expect(JSON.stringify(warn.mock.calls)).not.toContain('PRIVATE ADAPTER DETAIL');
+    await f.commands.execute(IndependentCallCommand.CancelRemaining, {...f.query, expectedEpoch: 0});
+    expect(info).toHaveBeenCalledWith('llm-conversation', 'flow.run.cancel-remaining', expect.objectContaining({outcome: 'accepted', operationId: f.query.requestId}));
+    const call = warn.mock.calls.find(args => args[1] === 'flow.run.cancel-remaining')!;
+    expect((call[2] as Record<string, unknown>)).not.toHaveProperty('reason');
+    expect((call[2] as Record<string, unknown>)).not.toHaveProperty('error');
+    warn.mockImplementation(() => {throw new Error('PRIVATE LOGGER FAILURE');});
+    await expect(f.commands.execute(IndependentCallCommand.CancelRemaining, {...f.query, expectedEpoch: 99})).rejects.toMatchObject({code: 'CONFLICT'});
+    info.mockImplementation(() => {throw new Error('PRIVATE LOGGER FAILURE');});
+    expect(await f.commands.execute(IndependentCallCommand.CancelRemaining, {...f.query, expectedEpoch: 0})).toMatchObject({receipt: {rootStatus: 'succeeded'}});
 }, 15000);

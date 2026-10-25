@@ -250,8 +250,13 @@ function createDagCommands(
     commandBus.register(SessionCommand.CheckFlowConnectionSlots, args => checkFlowConnectionSlots(args as FlowConnectionCheckInput, options.agentService));
     commandBus.register(SessionCommand.CheckFlowConnections, args => checkFlowConnections(args as FlowConnectionCheckInput, options.agentService, flowStore,
         options.dagPlugins, createSessionHost(options.hostPorts).logger));
+    const logger = createSessionHost(options.hostPorts).logger;
     const dag = new DagCommandService({
         validateInputAssets: options.validateCallAssets,
+        onControlDiagnostic: event => {
+            if (event.outcome === 'error') logger.warn(event.operation, {...event});
+            else logger.info(event.operation, {...event});
+        },
         prepareConnections: (flow, bindings, runConnectionId) => prepareFlowConnections(flow, bindings, options.agentService, undefined, runConnectionId),
         prepareConnectionResolver: async () => {
             const defaults = await options.agentService.getModelDefaults?.() ?? {};

@@ -1596,3 +1596,35 @@ Session 关闭复用 cancellationFrontier 选择互不重叠的最外层未收�
 验证覆盖已持久取消的任务重启恢复、只持久关闭意图后重启、首个适配器挂起时其他任务先确认、适配器失败时其他任务仍确认、后续只重试未完成责任、执行器不重新执行，以及显式 Session 关闭时取消请求独立发起。日志验证仍保留阶段/任务关联，不包含适配器错误正文。
 
 本批修复恢复和关闭的清理阻塞，不新增已完成根的整树停止语义。跨 Session 所有权、受管资源回收与业务补偿仍沿各自协议；Session 关闭结果继续以原持久状态核对，不能把清理请求已发出或单个任务已确认当作整体完成。
+
+## 69. 已终结根的剩余任务停止：Kernel 原子机制
+
+普通 cancel 在根调用已经完成时必须保留实际完成结果，不能把迟到取消隐式扩大为剩余后代停止。本批增加显式 cancelRemainingTaskTree 和冷读取 readTaskTreeCancellationReceipt，仅接纳已终结根，要求 requestId 与 expectedEpoch，并在同一事务校验可选的调度共享租约。
+
+```mermaid
+C4Component
+  title 已终结根的剩余工作停止，不新增树状态机
+  Component(entry, "Kernel.cancelRemainingTaskTree", "显式控制入口", "终态根、稳定请求身份、控制 epoch、可选调度租约")
+  Component(tx, "Session 原事务", "SeqFile", "按真实父链选树；保留终态；原子取消未终结成员")
+  Component(finish, "共享任务终结机制", "task-terminalization", "失效 claim、撤销等待、取消交互、清理缓存、推进依赖")
+  Component(cleanup, "原 EffectCleanupRunner", "清理机制", "各分支独立确认；失败保留责任")
+  Component(recovery, "原恢复扫描", "Kernel poll", "恢复同一 cleanupPending，不重新执行")
+  ContainerDb(records, "原 Task 与事件记录", "SeqFile", "既有终态、Effect cleanupPending、稳定接纳回执")
+  Rel(entry, tx, "校验请求并原子接纳")
+  Rel(tx, finish, "复用普通取消的终结步骤")
+  Rel(finish, records, "保留旧结果；取消活跃后代")
+  Rel(tx, records, "围栏终态成员的剩余 Effect；记录一次接纳事件")
+  Rel(tx, cleanup, "返回最终事务记录后开始清理")
+  Rel(recovery, cleanup, "继续持久清理责任")
+  Rel(cleanup, records, "仅适配器确认后清除责任")
+```
+
+动态任务屏障由原事务中的实际状态构成：根在准入前已终结，所有现存后代在同一事务内终结。先提交的子任务进入本次选树，后提交的子任务被原父任务终态检查拒绝；在途 reducer 与 Effect claim 同时失效。无须新增屏障字段、树状态库或调度器，旧执行者也不能凭旧 claim 继续提交。终态根和中间节点保留原 output/exit；仍活跃的 Effect 改为 cancelled 并保留 cleanupPending。
+
+任务终结步骤抽到 SeqFile 的通用事务辅助模块，由普通取消与整树停止共用；树读取与已有暂停控制共用原索引扫描。依赖推进可能在事务内部改变另一成员，因此每个成员取消前重读，最终再读取事务结果供清理使用，避免旧快照覆盖依赖传播结果。树选择仍扫描同 Session 任务集合，本批不声称已优化大树读取。
+
+接纳回执与 task.tree-cancellation.requested 事件同事务提交，记录根原终态、任务数和控制身份；同键异内容冲突，重放仅继续已有清理。查询不登记 worker。回执不是 stopped/settled 证明；适配器挂起或失败时其他分支继续，失败责任留在原记录。restore 保留原回执，fork 采用新 Task、不复制旧回执。诊断区分 admission/cleanup，不记录原因正文或适配器错误正文。
+
+验证覆盖完成中间节点、同树/树外隔离、旧 Effect 和 reducer claim 拒绝、并发边界子任务、终态节点剩余 Effect、错误 epoch/租约/身份零写入、重启恢复、回执重放与冲突、事件关联、独立清理及失败后续清理、日志脱敏。Kernel 全套检查与根仓隔离消费验证随本批提交记录。
+
+**交付边界**：本批为可独立验证的 Kernel 机制前置项，不表示用户入口已完成。下一批接入 llm-flow 原调度租约、Session 精确调用归属与权限、独立 OperationLedger 控制通道，再开放 llm-ui“停止剩余任务”。跨 Session 所有权、外部副作用补偿、受管资源回收仍按独立协议处理；不将 F16 整体标记完成。

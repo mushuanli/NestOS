@@ -659,3 +659,10 @@ C4Dynamic
 保存先完成草稿条件检查，再保存确实有修改的共享偏好；陈旧草稿不能顺带覆盖会话设置。普通关闭跳过未修改的配置，发送前额外核对已保存输入。台账与草稿共用 conditional-ui-state 的有界条件写入和未知写回执核对；各自的记录合并、草稿基线及恢复规则仍由适配层调用方提供。存储权威在 SessionRepository，展示组件不读写底层文件目录。
 
 验证覆盖真实两个工作台的旧接纳清空、新正文与同名附件、显式替换及再次冲突、加载中的编辑与隐藏；服务回归覆盖不同分支并发、丢写回执、失败读取、无基线、损坏记录及安全日志。子 Session 路由、调用树、控制/上下文和产物能力按各自交付单元继续实施。
+
+
+### 宿主产物读取端口
+
+`ConversationSystemOptions.loadArtifact?: ArtifactLoader` 接收实际调用的 `(sessionId, artifactId)`，返回文字/JSON 的 Artifact 语义值。`SessionManager.getArtifact` / `session.artifact.get` 使用开始读取时绑定的 Session；Context 执行装配使用实际 ExecutionTask 的 Session，预览固定其开始时的归属。未注入读取器时明确报告 `ARTIFACT_READER_UNAVAILABLE`，不把不可读材料当作空上下文。
+
+宿主从终态 Task 输出派生不可变引用，校验输出选择与摘要。应用协议 `app.artifacts.list/read` 负责目录和二进制下载；Session 包不直接访问应用资产存储，二进制及尚未导入的远端文件不隐式充当文字上下文。

@@ -121,6 +121,7 @@ export function createSessionPlugin(sessionManager: SessionManager): ILLMPlugin 
                 const { snapshotId } = args as { snapshotId: string };
                 return sm.getContextSnapshot(snapshotId);
             });
+            ctx.commands.register(SessionCommand.ArtifactGet, args => sm.getArtifact((args as {artifactId: string}).artifactId));
             ctx.commands.register(SessionCommand.ContextPreview, async (args) => {
                 const { agentId, pendingText } = args as { agentId: string; pendingText?: string };
                 return sm.previewContext(agentId, pendingText);

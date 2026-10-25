@@ -88,6 +88,7 @@ export class SessionRunCoordinator {
         private readonly host: SessionHost = createSessionHost(),
         directAgentPolicy?: import('../contracts/direct-agent-policy').DirectAgentPolicy,
         private readonly activity?: SessionExecutionActivity,
+        loadArtifact?: import('../contracts/artifacts').ArtifactLoader,
     ) {
         this.runs = new ConversationRunCoordinator({
             hostPorts: host,
@@ -103,7 +104,10 @@ export class SessionRunCoordinator {
             retrieveMemory,
             resolveSessionContext,
             workspaceManager,
-            loadArtifact: async () => null,
+            loadArtifact: async (sessionId, id) => {
+                if (!loadArtifact) throw Object.assign(new Error('Artifact reader is unavailable'), {code: 'ARTIFACT_READER_UNAVAILABLE'});
+                return loadArtifact(sessionId, id);
+            },
         });
     }
 

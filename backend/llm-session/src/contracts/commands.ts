@@ -29,6 +29,7 @@ export const SessionCommand = {
     ContextSet: 'session.context.set',
     ContextGet: 'session.context.get',
     ContextSnapshotGet: 'session.context.snapshot.get',
+    ArtifactGet: 'session.artifact.get',
     ContextPreview: 'session.context.preview',
     Regenerate: 'session.regenerate',
     RegenerateFromUser: 'session.regenerate-from-user',

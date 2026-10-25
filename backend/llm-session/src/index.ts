@@ -103,6 +103,7 @@ import { DagCommandService } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
+    loadArtifact?: import('./contracts/artifacts').ArtifactLoader;
     validateCallAssets?: import('./contracts/submission').CallAssetValidator;
     summarizeContent?: (sessionId: string, text: string) => Promise<string>;
     executionActivity?: import('./session/session-execution-activity').SessionExecutionActivity;
@@ -179,7 +180,7 @@ function createManagedSession(options: ConversationSystemOptions, promptHistory:
         resolveMCPToolIds: options.resolveMCPToolIds, resolveSessionContext: options.resolveSessionContext,
         resolveSessionSkills: options.resolveSessionSkills, retrieveMemory: options.retrieveMemory,
         memoryProvider: options.memoryProvider, canWriteSession: options.canWriteSession,
-        workspaceManager: options.workspaceManager,
+        workspaceManager: options.workspaceManager, loadArtifact: options.loadArtifact,
         validateCallAssets: options.validateCallAssets,
     });
 }

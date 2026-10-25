@@ -1,3 +1,4 @@
+import {createTaskArtifactServices} from './task-artifact-services';
 import {createTaskAssetReader} from './task-assets';
 import { createTransferSummarizer } from './transfer-summary';
 import {registerInputAssets} from './input-assets';
@@ -51,7 +52,9 @@ export async function createConversationSystem(
 ): Promise<{ sessionManager: SessionManager; commandBus: CommandBus; dispose(): Promise<void> }> {
     const { vfs, agentService, sessionRepository, flowEngine, kernel, systemFS } = options;
     const capabilities = createFlowCapabilities(kernel);
+    const artifacts = createTaskArtifactServices(kernel.kernel, systemFS);
     const system = await initializeConversationSystem({
+        loadArtifact: artifacts.loadArtifact,
         executionActivity: options.executionActivity,
         instructionQueueSessions: options.instructionQueueSessions,
         scheduleAgentInitialization: options.scheduleAgentInitialization,
@@ -83,6 +86,7 @@ export async function createConversationSystem(
         resolveMCPToolIds: capabilities.resolveMCPToolIds,
     });
     const inputs = registerInputAssets(system.commandBus, systemFS, reference => createTaskAssetReader(() => kernel.kernel, systemFS)(reference, {...reference, operationId: 'preview', effectId: 'preview'}));
+    const artifactCommands = artifacts.register(system.commandBus);
     const recovery = registerFlowLibraryRecovery(system.commandBus, options.ensureFlowDependencies);
-    return { ...system, async dispose() { inputs.dispose(); recovery.dispose(); await system.dispose(); } };
+    return { ...system, async dispose() { inputs.dispose(); artifactCommands.dispose(); recovery.dispose(); await system.dispose(); } };
 }

@@ -33,3 +33,5 @@ ToolboxInventory 的 capabilityTags 是不含凭据的派生能力列表，confi
 - ports/flow-installation 定义工具依赖、可信工具包目录及 Flow 安装报告；FlowToolDependency 指具体工具身份，包版本和可执行位置由宿主管理。ToolboxResources 的 toolPackages/flowInstallations 为可选能力，InitialFiles 的 prepareDependencies 只重试现有定义依赖；导入与恢复报告不能把缺工具或待配置当作就绪。
 
 InputAssetCommand.ImportFile/Inspect 为通用文件上传及只读核对端口，InputFileIdentity 固定 uploadId/name/MIME/bytes/SHA-256；Inspect 不携带正文且归只读传输分类。20 MiB 是宿主上传上限，不能宣称为 Harness 原生附件能力。
+
+session/artifacts 提供已提交执行产物的纯 DTO 和 ArtifactCommand；引用固定 Session/Task、输出选择和摘要。app.artifacts.list/read 与 session.artifact.get 必须分类为只读，不能因在途提交的写屏障而阻塞。契约不导出资产读取器、Kernel 服务或 DOM。

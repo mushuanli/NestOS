@@ -68,3 +68,5 @@ export type * from './contracts/memory';
 
 export { inferFlowConnectionRequirements } from './contracts/flow-connection-policy';
 export type { FlowConnectionSelection, FlowConnectionSnapshot } from './contracts/flow-connection-snapshot';
+
+export type * from './contracts/artifacts';

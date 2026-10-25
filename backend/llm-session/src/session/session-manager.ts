@@ -79,6 +79,7 @@ export class SessionManager implements ISession, SessionQuery {
     private readonly ownedExecutionActivity?: SessionExecutionActivity;
     private agentResolver: AgentResolver;
     private readonly kernel: Kernel;
+    private readonly artifactLoader?: import('../contracts/artifacts').ArtifactLoader;
     private readonly canWriteSession?: (sessionId: string) => Promise<boolean>;
     private readonly flowRerun: FlowRerunService;
     private readonly durableProjection: DurableConversationProjection;
@@ -97,6 +98,7 @@ export class SessionManager implements ISession, SessionQuery {
         agentService: IAgentConfigService,
         options: {
             executionActivity?: SessionExecutionActivity;
+            loadArtifact?: import('../contracts/artifacts').ArtifactLoader;
             validateCallAssets?: import('../contracts/submission').CallAssetValidator;
             instructionQueueSessions?: import('../persistence/instruction-queue-sessions').InstructionQueueSessions;
             directAgentPolicy?: import('../contracts/direct-agent-policy').DirectAgentPolicy;
@@ -131,6 +133,7 @@ export class SessionManager implements ISession, SessionQuery {
 
         if (!options?.kernel) throw new Error('SessionManager requires Kernel');
         this.kernel = options.kernel;
+        this.artifactLoader = options.loadArtifact;
         this.memory = new SessionMemoryControls(options.memoryProvider ?? new SessionMemoryProvider(this.kernel), agentService,
             () => this.registry.ensureBound().sessionId, options.canWriteSession);
         this.durableProjection = new DurableConversationProjection(engine);
@@ -174,6 +177,7 @@ export class SessionManager implements ISession, SessionQuery {
             this.host,
             this.directAgentPolicy,
             executionActivity,
+            options.loadArtifact,
         );
 
         this.roundOps = new RoundOperations(this.registry, this.runs, this.promptHistory);
@@ -529,8 +533,13 @@ export class SessionManager implements ISession, SessionQuery {
         return null;
     }
 
-    async getArtifact(_artifactId: string) {
-        return null;
+    async getArtifact(artifactId: string) {
+        return this.readSessionArtifact(this.registry.ensureBound().sessionId, artifactId);
+    }
+
+    private readSessionArtifact(sessionId: string, artifactId: string) {
+        if (!this.artifactLoader) throw Object.assign(new Error('Artifact reader is unavailable'), {code: 'ARTIFACT_READER_UNAVAILABLE'});
+        return this.artifactLoader(sessionId, artifactId);
     }
 
 
@@ -547,7 +556,7 @@ export class SessionManager implements ISession, SessionQuery {
             log,
             profileStore: new ContextProfileStore(this.registry.engine, sessionId),
             readRound: roundId => log.readRound(roundId, branchRef, manifest),
-            loadArtifact: async () => null,
+            loadArtifact: id => this.readSessionArtifact(sessionId, id),
         });
         return (await assembler.assemble({
             branchRef,

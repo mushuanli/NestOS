@@ -96,3 +96,5 @@ session.submit 将 Agent/Flow 根调用送入既有队列，外部字段不授�
 validateCallAssets 由宿主注入，贯通 Flow/Flow Agent 根接纳、实际队列实参编辑及 DagCommandService 准备；独立 FlowInvocation 使用同一准备边界。新派发在创建 Task 前再次核验，消费时仍按 Task 授权读取。原提交与无变更编辑先核对持久事实，不能因文件后来丢失抹掉接纳或自动重发。
 
 ConversationUIState.operationRecords 仅保存宿主 UI 的不透明操作台账；Kernel、队列、Round 的事实权威保持原位置。默认工作台与独立视图查询原冻结 Submission 的完整摘要，不能只凭队列 ID 判定接纳，也不能在恢复时使用当前分支或最新目标改写请求。
+
+ArtifactLoader 由宿主注入，接收实际调用的 sessionId 与不可变 artifactId；ConversationContextBuilder 按 ExecutionTask 的 Session 调用，不能使用当前编辑器绑定。SessionManager.getArtifact 和 ContextPreview 已接真实读取器；预览先捕获 Session 身份，后续异步解析不跟随切换后的绑定。二进制文件须显式转换后才能作为文字 Context，不能把路径或元数据当作文件正文。独立库未注入读取端口时明确报不可用。

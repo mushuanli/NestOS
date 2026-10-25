@@ -103,7 +103,7 @@ C4Component
 | F20 | 独立上下文 binding 与清理 | app-core + adapter | F16 / F19 | 待合入；集合 CAS，journal 与原生身份关联，旧结果不释放新所有者 |
 | F21 | 已确认检查点与精确 fork | app-core + driver + node | F20 | 待合入；检查点归属与真实 head，错误边界不补发 turn |
 | F22 | Context 目录与工作台选择 | app-core + Session + RPC + UI | F12 / F21 | 待合入；只读目录不取 writer，切目标/分支及迟到接纳保留当前草稿 |
-| F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 待合入；从终态输出派生，核对范围和摘要，不另建结果注册表 |
+| F23 | Task 产物目录与读取 | app-core + Session 端口 | F13 / F16 | 宿主读取链路见第 30 节；从终态输出派生，核对范围和摘要，不另建结果注册表；UI 随 F24 验收 |
 | F24 | 调用组与产物详情展示 | llm-ui + UI adapter + RPC | F07 / F16 / F23 | DOM 引用机制已由 `642cb67f` 合入并修复匹配夹具退化；完整调用组、产物 UI 及复杂输出性能仍待验收 |
 | F25 | Flow 调度所有权竞态修复 | llm-flow | 无 | 已合入 `0bcfa29e`；竞争失败者不终结胜者，接纳丢回执不误清理工作区 |
 
@@ -640,3 +640,30 @@ C4Component
 斜杠命令复用 ChatInput 现有单调草稿修订号，消费时同时核对原文字与修订。文字改写后改回、或新分支拥有相同文字，都不允许被旧回执清除；没有改动的原输入仍可正常消费。插件接口只增加可选修订读取端口，不引入存储、调度或业务分支策略。未知接纳后重开核对的旧斜杠草稿自动消费仍待统一，不据此标记 F16 全部完成。
 
 验证范围：真实 ChatInput 覆盖文字改写后还原、切到同文字分支及原草稿未改动三种接纳路径；编辑器事件接线覆盖可见/隐藏状态下先中止旧观察、再恢复分支、迟到接纳不消费当前草稿。表单取消与真实 Kernel 子会话执行回归一并验证。
+
+
+## 30. F23 已提交 Task 产物的宿主读取链路
+
+产物不是新的执行状态或注册表：TaskArtifacts 从 Kernel 终态 output 的已知封装派生目录，引用固定实际 Session、Task、输出位置与内容摘要。分页读取重新核对原输出，资产正文交给现有 TaskAssetReader 授权与完整性检查。该职责属于 app-core 宿主；纯 DTO/只读命令分类属于 app-contracts，Session 仅接受 ArtifactLoader，通用 RPC 不理解产物业务。
+
+```mermaid
+C4Component
+  title 已提交输出的只读产物协议
+  Component(client, "调用视图 / RPC 客户端", "应用端口", "明确执行身份与输出引用")
+  Component(service, "TaskArtifacts", "app-core", "派生目录、身份与摘要校验")
+  ContainerDb(kernel, "Kernel Task.output", "既有执行存储", "终态输出权威")
+  Component(reader, "TaskAssetReader", "宿主机制", "同执行、Flow 或重试祖先授权")
+  ContainerDb(assets, "既有资产存储", "VFS", "不可变资产正文")
+  Component(context, "Session Context", "注入端口", "实际调用 Session 的文字与 JSON")
+  Rel(client, service, "只读 List / Read，不激活会话")
+  Rel(service, kernel, "核对归属与终态输出")
+  Rel(service, reader, "授权正文读取")
+  Rel(reader, assets, "读取并验证摘要")
+  Rel(context, service, "ArtifactLoader(sessionId, artifactId)")
+```
+
+未导入远端 file 只报告不可用，不获取其 URI；二进制不能把路径/元数据当作文字 Context。终态尚未提交、范围或引用伪造、内容损坏、跨执行归属、存储权限失败分别报告明确错误。日志不输出正文、路径或未筛选的存储错误信息；宽二进制数组也消耗目录遍历预算。
+
+本批交付宿主命令、Session/Context 接线及真实认证 HTTP ArrayBuffer 传输。分页只限制传输大小，现有资产 API 仍需每页完整读取/核验；不宣称大文件随机读取或远端文件导入已完成。F24 的按需 UI、产物显示性能，以及 F16 其余函数入口和 F20—F22 继续保留。原生产 Session 未操作，未部署。
+
+验证范围：真实 Kernel/VFS 的目录分页、中文/JSON 字节恢复、输出指纹与 Session/Task 归属、未终态读取不启动、二进制授权/损坏/权限失败、远端 URI 不抓取；真实 ApplicationRuntime 的命令与 Session 读取端口；认证 HTTP 的分页 ArrayBuffer 与跨 Session 拒绝。全量 Session 回归、类型、构建和架构检查一并执行。

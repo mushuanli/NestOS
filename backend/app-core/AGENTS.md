@@ -187,3 +187,5 @@ RemoteConversationStore 的 load/save/submitted 在同实例串行，避免延�
 原生队列的 enqueue/editInstructionQueue 经显式 RPC 暴露，与原发送 tail 独立；ConversationView 在队首派发回执悬挂时继续观察，持久化由 RemoteConversationStore 校验队列修订。ConversationRegistry 由项目宿主持有，跨视图复用同一控制器并在存在可派发队列或未确认回执时保留观察；宿主关闭才统一释放。
 
 configuration/agent-publications 只解析 Agent 发布所需的 Flow 修订、公开范围和默认实参；不创建 Task、不获取 Connection、不持有队列。runtime 只接线；发布事务与原操作回执由 Session 配置服务管理。
+
+TaskArtifacts 从 Kernel 终态 Task.output 派生分页目录和稳定 task-output/v1 引用，不新建注册表、调度器或状态库。读取按显式 Session/Task、输出选择和内容摘要核对，再复用 TaskAssetReader 的同 Flow/重试祖先边界；不使用调用方 owner 或 URI 直接读取文件。文本/JSON 可下载及显式加入 Context；二进制按字节分段读取，未导入的远端 file 输出明确不可用。runtime/task-artifact-services 只负责命令及 ArtifactLoader 接线。读取不得 open/recover Session 或推进 Task，错误日志区分 scope、integrity、missing 和 storage 失败，保留安全 storageCode，不记录路径、正文或原始存储异常。

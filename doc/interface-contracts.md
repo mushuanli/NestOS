@@ -284,3 +284,12 @@ ConversationControls 的可选 commands/command 端口承接当前原生会话�
 远程输入使用 composer 存储时不双写原生 saveDraft。send 的第四参数和 command 的第五参数可携带 submissionId，HarnessConversation 持久化同 ID 的 submission 回执；UI 只依据该回执接纳或拒绝冻结提交。可编辑草稿与待核对提交分开保存，详细状态及 C4 边界见 [图片与草稿流程](design/chat-image-editing.md#11-审查后的流程收敛)。
 
 Flow 连接准入错误通过 `code` 和 `field`（槽位名）定位；RPC 只传递经过格式校验的字段标识，不传整个异常。`SessionCommand.CheckFlowConnectionSlots` 独立检查槽位配置，完整图准入继续使用 `SessionCommand.CheckFlowConnections`，二者共用连接选择和能力规则。
+
+
+### 已提交执行产物读取
+
+[ArtifactCommand / ExecutionArtifactReference](../shared/app-contracts/src/session/artifacts.ts) 固定 Session、Task、输出选择与摘要。app.artifacts.list 读取终态输出目录，offset/limit 分页；app.artifacts.read 返回 ArrayBuffer、字节范围、总大小、SHA-256 与 nextOffset，单次传输最多 1 MiB。命令按只读分类，经本地与认证 RPC 使用同一宿主实现，不激活 Session 或推进 Task。
+
+[TaskArtifacts](../backend/app-core/src/session/task-artifacts.ts) 从 Kernel.output 派生目录，复用 TaskAssetReader 检查实际执行的资产归属，不接受任意 owner/URI 文件读取。文字与 JSON 通过 [ArtifactLoader](../backend/llm-session/src/contracts/artifacts.ts) 进入已有 Context 装配；二进制须先显式转换。远端文件未导入时明确不可用。
+
+分页限制传输量，不是存储随机读取能力：当前资产接口每页读取完整资产并核验摘要。目录扫描有深度/数量上限，超限明确报错；大文件范围读取与产物 UI 的 F24 验收仍独立推进。

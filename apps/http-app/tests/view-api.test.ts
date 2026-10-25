@@ -10,7 +10,7 @@ import { createCertificates } from '@itookit/node-host/http';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { HttpViewClient, SnapshotCache, ViewExpiredError } from '@itookit/app-transport/http';
 import { authenticatedFetch, close, secureServers } from './tls-fixture';
-import { InputAssetCommand, FlowLibraryCommand } from '@itookit/app-contracts';
+import {ArtifactCommand, type ExecutionArtifactPage, type ExecutionArtifactChunk, FlowLibraryCommand, InputAssetCommand} from '@itookit/app-contracts';
 import { FlowCommand, type FlowDraft, type FlowRevision, type DurableFlowSnapshot, validFlowImages } from '@itookit/llm-flow/contracts';
 type SessionInstructionQueue = NonNullable<import('@itookit/app-contracts/services').SessionEditorInitialData['snapshot']['instructionQueue']>;
 
@@ -427,4 +427,32 @@ it('keeps Flow pause, approval and queue control independent through authenticat
     expect((await commands.execute<DurableFlowSnapshot>(FlowCommand.RunGet, {sessionId, taskId})).root.task.version).toBe(beforeReceipt.root.task.version);
     expect(await commands.execute('session.instructions.get')).toEqual(queue);
     for (const privateText of ['PRIVATE_QUEUED_INPUT', 'PRIVATE_APPROVAL_PROMPT', 'PRIVATE_APPROVAL_ANSWER']) expect(JSON.stringify(auditEvents)).not.toContain(privateText);
+}, 20000);
+
+it('reads committed Flow artifacts and byte pages through the authenticated application RPC', async () => {
+    const root = await client('execution-artifacts'), commands = root.services.commandBus;
+    const sessionId = await root.services.projects.sessions.create('Artifact RPC', null);
+    await commands.execute('session.bind', {sessionId});
+    const flow: FlowDraft = {id: 'artifact-rpc' as never, name: 'Artifact RPC', draftVersion: 1, updatedAt: 0, layout: {},
+        nodes: [{id: 'value' as never, name: 'Value', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {},
+            config: {value: 'RPC 产物'}}], edges: []};
+    await commands.execute(FlowLibraryCommand.Restore, {templates: [flow]});
+    const revision = await commands.execute<FlowRevision>(FlowCommand.RevisionGet, {id: flow.id, revision: 1});
+    const run = await commands.execute<{taskId: string}>(FlowCommand.RunStart, {sessionId, flow: revision});
+    let snapshot!: DurableFlowSnapshot;
+    await vi.waitFor(async () => {snapshot = await commands.execute(FlowCommand.RunGet, {sessionId, taskId: run.taskId});
+        expect(snapshot.root.task.status).toBe('succeeded');}, {timeout: 5000});
+    const taskId = snapshot.nodes[0].snapshot.task.id;
+    const page = await commands.execute<ExecutionArtifactPage>(ArtifactCommand.List, {sessionId, taskId});
+    expect(page.items).toHaveLength(1);
+    const bytes: number[] = []; let offset = 0;
+    do {
+        const chunk = await commands.execute<ExecutionArtifactChunk>(ArtifactCommand.Read, {reference: page.items[0].reference, offset, limit: 3});
+        expect(chunk.data).toBeInstanceOf(ArrayBuffer); expect(chunk.offset).toBe(offset);
+        bytes.push(...new Uint8Array(chunk.data)); if (chunk.nextOffset === undefined) break; offset = chunk.nextOffset;
+    } while (true);
+    const text = new TextDecoder().decode(new Uint8Array(bytes));
+    expect(page.items[0].kind === 'json' ? JSON.parse(text) : text).toBe('RPC 产物');
+    expect(auditEvents).toContainEqual(expect.objectContaining({event: 'application.complete', rpcCommands: [ArtifactCommand.Read]}));
+    await expect(commands.execute(ArtifactCommand.Read, {reference: {...page.items[0].reference, sessionId: 'other'}})).rejects.toThrow();
 }, 20000);

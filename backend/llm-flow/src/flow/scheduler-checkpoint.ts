@@ -3,6 +3,8 @@ import type { DelegationGroup, EdgeState } from './delegation-runtime';
 
 /** Scheduler state saved at an explicit human-interaction boundary. */
 export interface SchedulerCheckpoint {
+    /** Missing on legacy Runs: accepted Task fingerprints must remain unchanged. */
+    controlTreeVersion?: 1;
     /** Missing on legacy Runs: retain their original task submission fingerprints. */
     invocationIdentityVersion?: 1;
     /** Frozen at Run creation; missing on legacy Runs means v1. */

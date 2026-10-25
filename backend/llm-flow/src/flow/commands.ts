@@ -1,7 +1,4 @@
-import {invocationFromLabels} from './invocation-identity';
-import {readInvocationFrame} from './invocation-projection';
-import {assertRootCallable} from '../contracts/callable-exposure';
-import {sameTargetRef} from '../contracts/call-target';
+import {readFlowRunMembers} from './run-members';
 import {checkFlowSource, checkFlowSyntax} from './syntax-check';
 import { hasLocalScheduler, withFlowControl } from './control-session';
 import { workspaceFinalizationKey, type WorkspaceFinalization } from './workspace-finalization';
@@ -15,15 +12,23 @@ import { type FlowNodeBinder } from './to-dag';
 import { FlowCommand } from './command-names';
 import { retryFlowTask } from './retry-task';
 import { requestFlowGraphRetry } from './graph-retry';
-import { readFlowRunMembers } from './run-members';
 import { restoreFlowHandle } from './restore-handle';
 import { readFlowTaskTranscript, type FlowTranscriptQuery } from './transcript';
 import { DurableFlowExecutor, type FlowExecutionHandle } from './executor';
 import { prepareFlowRun } from './prepare-run';
 import { readFlowSchedulerCheckpoint } from './checkpoint-store';
+import {traceFlowRetry, traceFlowRunControl, type FlowControlDiagnostic} from './control-diagnostics';
+import type {FlowGoalUpdate} from '../contracts/flow-control';
+import {invocationFromLabels} from './invocation-identity';
+import {readInvocationFrame} from './invocation-projection';
+import {assertRootCallable} from '../contracts/callable-exposure';
+import {sameTargetRef} from '../contracts/call-target';
+import {controlFlowRun, assertCurrentFlowControl, assertFlowRoot, assertPauseWithdrawal} from './run-control';
+import {assertFlowControlTree} from './control-tree';
 
 export interface DagCommandServiceOptions {
     validateInputAssets?(sessionId: string, parameters: Record<string, JsonValue>): Promise<void>;
+    onControlDiagnostic?(event: FlowControlDiagnostic): void;
     prepareConnections?: (flow: FlowRevision, bindings?: Record<string, string>, runConnectionId?: string) => Promise<FlowRevision>;
     /** Capture host-owned defaults once for this preparation, including nested calls. */
     prepareConnectionResolver?(sessionId: string): Promise<NonNullable<DagCommandServiceOptions['prepareConnections']>>;
@@ -97,6 +102,7 @@ export class DagCommandService {
             return readFlowTaskTranscript(this.options.kernel, input.sessionId, input.taskId, input.targetTaskId, input.query);
         });
         bus.register(FlowCommand.RunCancel, async args => this.cancel(String((args as { taskId: string }).taskId)));
+        bus.register(FlowCommand.RunPauseWithdraw, args => this.withdrawPause(args as {taskId: string; requestId: string; expectedEpoch: number}));
         bus.register(FlowCommand.RunRespond, async args => {
             const input = args as { taskId: string; requestId: string; value: unknown; targetTaskId?: string };
             return this.respond(String(input.taskId), String(input.requestId), input.value, input.targetTaskId);
@@ -108,21 +114,24 @@ export class DagCommandService {
         bus.register(FlowCommand.RunTaskRetry, async args => {
             const input = args as { sessionId: string; taskId: string; targetTaskId: string; requestId: string;
                 downstream?: boolean };
-            const result = await withFlowControl(this.options.kernel, input.sessionId, input.taskId, this.options.canWriteSession, async session => {
-                if (input.downstream) {
-                    // Graph retry: the retry plus a durable intent to recompute its downstream
-                    // closure, applied by the next scheduling turn.
-                    const request = await requestFlowGraphRetry(session, input.taskId, input.targetTaskId, input.requestId);
+            return traceFlowRetry(input, this.options.onControlDiagnostic, async () => {
+                const result = await withFlowControl(this.options.kernel, input.sessionId, input.taskId, this.options.canWriteSession, async session => {
+                    if (input.downstream) {
+                        const request = await requestFlowGraphRetry(session, input.taskId, input.targetTaskId, input.requestId);
+                        await this.snapshot(input.taskId, input.sessionId);
+                        return { taskId: input.taskId, targetTaskId: request.retryTaskId, retryOfTaskId: input.targetTaskId,
+                            downstream: request.downstream };
+                    }
+                    const task = await retryFlowTask(session, input.taskId, input.targetTaskId, input.requestId);
                     await this.snapshot(input.taskId, input.sessionId);
-                    return { taskId: input.taskId, targetTaskId: request.retryTaskId, retryOfTaskId: input.targetTaskId,
-                        downstream: request.downstream };
+                    return { taskId: input.taskId, targetTaskId: task.id, retryOfTaskId: input.targetTaskId };
+                });
+                if (input.downstream) {
+                    const root = await this.options.kernel.task(input.sessionId, input.taskId);
+                    if (!['succeeded', 'failed', 'cancelled'].includes(root.status)) await this.resumeRun(input.sessionId, input.taskId);
                 }
-                const task = await retryFlowTask(session, input.taskId, input.targetTaskId, input.requestId);
-                await this.snapshot(input.taskId, input.sessionId);
-                return { taskId: input.taskId, targetTaskId: task.id, retryOfTaskId: input.targetTaskId };
+                return result;
             });
-            if (input.downstream) await this.resumeRun(input.sessionId, input.taskId);
-            return result;
         });
         bus.register(FlowCommand.RunTaskCancel, async args => {
             const input = args as { taskId: string; targetTaskId: string; reason?: string };
@@ -134,21 +143,43 @@ export class DagCommandService {
                 return { taskId: input.taskId, targetTaskId: input.targetTaskId, cancelled: true };
             });
         });
-        bus.register(FlowCommand.RunGoalUpdate, async args => {
-            const input = args as { taskId: string; goal: Partial<FlowRunGoal> };
-            const handle = this.requireHandle(String(input.taskId));
-            return withFlowControl(this.options.kernel, handle.sessionId, input.taskId, this.options.canWriteSession, async session => {
-                const key = `flow.run.${input.taskId}.goal`;
-                const saved = await session.getShared(key);
-                const goal = { ...((saved?.value as unknown as FlowRunGoal) ?? handle.goal ?? { objective: '' }), ...input.goal };
-                await session.setShared(key, jsonValue(goal), { expectedVersion: saved?.version ?? null });
+        bus.register(FlowCommand.RunGoalUpdate, args => this.updateGoal(args as FlowGoalUpdate));
+    }
+
+    private async updateGoal(input: FlowGoalUpdate) {
+        const handle = this.requireHandle(String(input.taskId));
+        return withFlowControl(this.options.kernel, handle.sessionId, input.taskId, this.options.canWriteSession, async session => {
+            const key = `flow.run.${input.taskId}.goal`, saved = await session.getShared(key);
+            const requestId = input.requestId ?? `goal:${input.taskId}:${(saved?.version ?? 0) + 1}`;
+            const commit = async () => {
+                const goal = {...((saved?.value as unknown as FlowRunGoal) ?? handle.goal ?? {objective: ''}), ...input.goal};
+                const recovery = input.goal.status === 'paused' || input.goal.status === 'active'
+                    ? await controlFlowRun(session, handle.root.id, input.goal.status, requestId, input.expectedEpoch) : {};
+                await session.setShared(key, jsonValue(goal), {expectedVersion: saved?.version ?? null});
                 handle.goal = goal;
-                if (handle.goal.status === 'paused' || handle.goal.status === 'active') {
-                    await controlRunTasks(session, handle, handle.goal.status, `goal:${input.taskId}:${(saved?.version ?? 0) + 1}`);
-                }
-                return { taskId: input.taskId, goal: handle.goal };
-            });
+                return {taskId: input.taskId, goal, ...recovery};
+            };
+            if (input.goal.status !== 'paused' && input.goal.status !== 'active') return commit();
+            return traceFlowRunControl({requestId, sessionId: session.id, rootTaskId: handle.root.id,
+                mode: input.goal.status === 'paused' ? 'pause' : 'resume'}, this.options.onControlDiagnostic, commit);
         });
+    }
+
+    private async withdrawPause(input: {taskId: string; requestId: string; expectedEpoch: number}) {
+        assertPauseWithdrawal(input);
+        const handle = this.requireHandle(input.taskId);
+        return traceFlowRunControl({requestId: input.requestId, sessionId: handle.sessionId, rootTaskId: input.taskId, mode: 'withdraw'},
+            this.options.onControlDiagnostic, () => withFlowControl(this.options.kernel, handle.sessionId, input.taskId, this.options.canWriteSession, async session => {
+            const task = await session.attachTask(input.taskId), root = (await task.status()).task;
+            assertFlowRoot(root, handle.root.id); assertFlowControlTree(root);
+            const control = await task.withdrawPause({requestId: input.requestId, expectedEpoch: input.expectedEpoch});
+            assertCurrentFlowControl((await task.status()).task, control);
+            const key = `flow.run.${input.taskId}.goal`, saved = await session.getShared(key);
+            const goal = {...((saved?.value as unknown as FlowRunGoal) ?? handle.goal ?? {objective: ''}), status: 'active' as const};
+            await session.setShared(key, jsonValue(goal), {expectedVersion: saved?.version ?? null});
+            handle.goal = goal;
+            return {taskId: input.taskId, goal, control};
+        }));
     }
 
     private async resumeRun(sessionId: string, taskId: string): Promise<{ taskId: string }> {
@@ -174,7 +205,8 @@ export class DagCommandService {
                 const input = task.input as { run?: { goal?: { objective?: string } }; initialScheduler?: { nodes?: { name?: string }[] } };
                 const name = input?.run?.goal?.objective || input?.initialScheduler?.nodes?.map(node => node.name).filter(Boolean).join(' → ') || 'Flow';
                 const invocation = invocationFromLabels(task.labels);
-                runs.push({taskId: task.id, sessionId: session.id, name, status: task.status, createdAt: task.createdAt, ...(invocation ? {invocation} : {})});
+                runs.push({ taskId: task.id, sessionId: session.id, name, status: task.status, createdAt: task.createdAt,
+                    ...(invocation ? {invocation} : {}) });
             }
         }
         return runs.sort((a, b) => b.createdAt - a.createdAt).slice(0, 100);
@@ -198,7 +230,7 @@ export class DagCommandService {
             graph: { ...compiled, ...(goal ? { goal } : {}), ...(invocation ? { invocation } : {}) }, parameters });
     }
 
-    /** Compile without spawning tasks so the host can persist admission before execution. */
+    /** Public command snapshots cannot override an existing published definition's call scope. */
     private async rootDefinition(flow: FlowRevision): Promise<FlowRevision> {
         assertRootCallable(flow);
         const selected = await this.options.flowStore.loadRevision(String(flow.id), flow.revision);
@@ -209,6 +241,7 @@ export class DagCommandService {
         return flow;
     }
 
+    /** Compile without spawning tasks so the host can persist admission before execution. */
     async prepareRun({ sessionId, flow, parameters, connectionId, fallbackConnectionId, connectionBindings }: FlowRunPreparation) {
         if (!sessionId) throw new Error('DAG run requires sessionId');
         if (this.options.canWriteSession && !await this.options.canWriteSession(sessionId)) throw new Error('Session is read-only on this host');
@@ -421,17 +454,6 @@ async function createRevision(
 
 function jsonValue(value: unknown): import('@itookit/durable-kernel').JsonValue {
     return JSON.parse(JSON.stringify(value ?? null));
-}
-
-/** Pause the root first to stop dispatch; resume it only after its members are ready. */
-async function controlRunTasks(session: SessionHandle, handle: FlowExecutionHandle, status: 'paused' | 'active', requestId: string): Promise<void> {
-    const ids = await currentControlTaskIds(session, handle);
-    for (const id of status === 'paused' ? ids : ids.reverse()) {
-        const task = await session.attachTask(id);
-        if (await task.poll()) continue;
-        if (status === 'paused') await task.pause({ requestId });
-        else await task.resume({ requestId });
-    }
 }
 
 /** Display caches never expand the set of Tasks eligible for control. */

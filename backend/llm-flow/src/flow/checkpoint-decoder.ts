@@ -20,6 +20,7 @@ const graph = (value: unknown, depth = 0): boolean => depth <= 32 && isRecord(va
 export function isDagRunSpec(value: unknown): value is import('../contracts').DagRunSpec { return graph(value); }
 
 const fields: Record<string, (value: unknown) => boolean> = {
+    controlTreeVersion: value => optional(value, value => value === 1),
     invocationIdentityVersion: value => optional(value, value => value === 1),
     version: value => value === 1,
     nodes: value => Array.isArray(value) && value.every(isGraphNode),

@@ -304,3 +304,35 @@ C4Component
 这里的“当前成员”是既有持久成员及重试成员契约，不表示已完成终态重试准入、控制树或原子暂停屏障迁移。跨操作竞态和动态子调用控制仍由 F17/F18 补齐；只读快照不成为控制事务。独立子 Session 的创建/路由、函数调用视图仍未完成，因此 F16 只合入本切片，剩余能力组仍为八项。
 
 隔离源码候选验证：Flow 682 项、Session 436 项通过；Flow、Session、app-core 类型检查通过。专项回归覆盖旧指纹恢复、冻结身份协议不匹配拒绝、同轮替代成员投影、旧成员控制拒绝及历史详情仍可读。未部署、未重启，未宣称完成原生产 Session 验收。
+
+## 16. F17 Flow 根控制屏障切片
+
+新 Run 冻结 `controlTreeVersion=1`，节点以根 Task 为控制父级，结构化 worker 延续既有 Kernel 父子链。暂停/恢复操作只改变根控制，成员自己的暂停和 Session 暂停仍独立有效。调度前等待用于减少无效提交；真正阻止暂停后新增子任务的是 Kernel 提交事务。Flow 不另建控制状态库，也不通过遍历 UI 缓存模拟树级暂停。
+
+```mermaid
+C4Component
+  title Flow 根控制与派发屏障
+  Container_Boundary(flow, "llm-flow") {
+    Component(command, "Run control", "命令端口", "稳定请求身份、控制版本与回执核对")
+    Component(gate, "Dispatch gate", "调度适配", "观察暂停事实，保留同一提交身份")
+    Component(legacy, "Legacy recovery", "兼容边界", "仅恢复有历史证据的旧批量暂停")
+  }
+  Container(kernel, "Kernel", "控制及提交事务", "祖先屏障、独立暂停、子任务原子准入")
+  ContainerDb(store, "既有持久存储", "Task / checkpoint / shared", "控制事实、协议标记与重试成员")
+  Rel(command, kernel, "暂停、恢复、撤回待确认暂停")
+  Rel(command, legacy, "识别旧 Run")
+  Rel(legacy, kernel, "核对旧控制及历史")
+  Rel(gate, kernel, "查询控制并提交带父级的 Task")
+  Rel(kernel, store, "原子持久控制与准入")
+  Rel(command, store, "控制接纳后写 goal 展示元数据")
+```
+
+控制接纳和实际暂停确认是不同事实；goal 只是兼容展示元数据，不能替代 Task 控制事实。goal 写入失败后使用原 requestId 核对；已被新控制覆盖的旧回执不能再次改写 goal。撤回尚未确认的暂停要求已观察的控制 epoch，不等于恢复被取消的调用。旧 Run 不补写新父级或改变提交指纹；拒绝新建 Run 级暂停，仅允许有前态证据的有限恢复，不能证明的成员继续保持暂停。
+
+内部重试归属原根，已接纳的请求可核对；新重试拒绝终态根，用户重新运行须创建新 Invocation。重试模式和来源参与冲突检查。根在延迟启动前终结时取消尚未执行的尝试。join-detached 仅表示不等待结果，不自动脱离控制所有权。
+
+审查发现待合入代码恢复了按历史缓存取消的旧路径；新增真实 Kernel 回归先复现失败，再恢复按持久成员定位。根取消仍由 Kernel 传播到已有控制子树，历史缓存不额外授权目标。派发等待的日志失败不得中断执行，诊断不记录输入正文。
+
+本批仅交付 Flow 层及其与已锁定 Kernel 的接线。F17 的 UI 控制回执/按钮接线、F18 Harness 审批转发与暂停能力尚未交付，不能据此宣称远端原生 Agent 已暂停。F16 子 Session 路由及 F20—F24 保留原安排，剩余能力组仍为八项。
+
+隔离验证：Flow 710 项、Session 436 项及 Flow/Session/app-core 类型检查通过；7 个 Mermaid 图、15 个本地链接通过校验。取消历史缓存回归先失败后通过；原生远端与 UI 端到端验收不包含在本批内。未部署、未重启。

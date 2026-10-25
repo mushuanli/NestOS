@@ -16,7 +16,7 @@ function workspace() {
 }
 function spec(): DagRunSpec {
     return {nodes: [{id: 'ask', name: 'Ask', plugin: 'builtin.human', pluginVersion: '1.0.0', inputs: {}, config: {requestId: 'answer', prompt: 'Wait'}}], edges: [],
-        invocation: {requestId: 'same-request', flowId: 'wait' as never, revision: 1, digest: 'published', name: 'Wait', createdAt: 1},
+        invocation: {invocationId: 'same-invocation', requestId: 'same-request', flowId: 'wait' as never, revision: 1, digest: 'published', name: 'Wait', createdAt: 1},
         runPolicy: {workspace: {mode: 'worktree'}}};
 }
 function runner(options: Partial<ConstructorParameters<typeof DurableFlowExecutor>[0]> = {}) {

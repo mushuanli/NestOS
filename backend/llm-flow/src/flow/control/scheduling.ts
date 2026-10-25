@@ -2,6 +2,7 @@ import type { DagNodeDefinition } from '../../contracts';
 import type { SessionHandle, TaskHandle, TaskRecord } from '@itookit/durable-kernel';
 import { startFlowTask } from '../task-capabilities';
 import { object } from '../structured/value';
+import {flowTaskHeld} from '../control-tree';
 
 interface Scheduling {
     session: SessionHandle;
@@ -45,7 +46,7 @@ async function startMember(state: Scheduling, node: DagNodeDefinition, group: Da
     for (const handle of pending) {
         if (state.active >= state.maxConcurrency || groupActive >= limit) break;
         const task = state.tasks.get(handle.id)!;
-        if (task.control && task.control.mode !== 'run') continue;
+        if (flowTaskHeld(task)) continue;
         await startFlowTask(state.session, handle, task.program.kind, node.capabilities ?? [], node.budget);
         state.active++; groupActive++;
         state.started.set(group.id, (state.started.get(group.id) ?? 0) + 1);

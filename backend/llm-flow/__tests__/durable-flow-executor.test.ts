@@ -1,7 +1,7 @@
-import {decodeSchedulerCheckpoint} from '../src/flow/checkpoint-decoder';
-import {FlowTaskFactory} from '../src/flow/task-factory';
 import { withFlowControl } from '../src/flow/control-session';
 import { readFlowSchedulerCheckpoint } from '../src/flow/checkpoint-store';
+import {decodeSchedulerCheckpoint} from '../src/flow/checkpoint-decoder';
+import {FlowTaskFactory} from '../src/flow/task-factory';
 import { acquireSchedulerLease, schedulerOwnerKey } from '../src/flow/scheduler-lease';
 import { resolveFlowRunForTask } from '../src/flow/task-run';
 import { prepareFlowTaskRetry, readFlowRunMembers } from '../src/flow/run-members';
@@ -317,18 +317,23 @@ describe('DurableFlowExecutor', () => {
         const metadata = (await (await kernel.inspectSession('session-one')).getShared(`flow.run.${run.root.id}.metadata`))!.value as any;
         expect(snapshot.usage).toEqual(metadata.usage);
         expect(snapshot.usage.elapsedMs).toBeGreaterThan(0);
+        const before = (await (await kernel.openTask(run.root.id)).status()).task;
+        await expect(handlers.get(FlowCommand.RunTaskRetry)!({taskId: run.root.id, sessionId: 'session-one',
+            targetTaskId: sourceId, requestId: 'ui-recompute', downstream: true})).resolves.toMatchObject({retryOfTaskId: sourceId});
+        expect((await (await kernel.openTask(run.root.id)).status()).task.version).toBe(before.version);
     });
 
     it('resolves independent Run nodes, descendants and persisted retry membership', async () => {
         const flow: DagRunSpec = { nodes: [{ ...valueNode('gate', null), plugin: 'builtin.human',
             config: { requestId: 'continue', prompt: 'Continue' } }], edges: [] };
-        const first = await executor(kernel).submit('session-one', flow);
+        const first = await executor(kernel).submit('session-one', withRetryBarrier(flow));
         const second = await executor(kernel).submit('session-one', flow);
         await waitForNode(first, 'gate'); await waitForNode(second, 'gate');
         const session = await kernel.openSession('session-one');
         const firstNode = first.nodes.get('gate')!;
         const task = (await firstNode.status()).task;
-        expect(task.rootTaskId).toBe(firstNode.id);
+        expect(task.rootTaskId).toBe(first.root.id);
+        expect(task.parentTaskId).toBe(first.root.id);
         expect((await resolveFlowRunForTask(session, firstNode.id))?.id).toBe(first.root.id);
         expect((await resolveFlowRunForTask(session, second.nodes.get('gate')!.id))?.id).toBe(second.root.id);
         const child = await session.submit({ program: { kind: 'flow.value', version: '1' },
@@ -357,11 +362,16 @@ describe('DurableFlowExecutor', () => {
         registerPrograms(kernel);
         let release!: () => void;
         const blocked = new Promise<void>(resolve => { release = resolve; });
+        let stopped!: () => void;
+        const executionStopped = new Promise<void>(resolve => { stopped = resolve; });
         const execute = vi.fn(async (...args: Parameters<typeof model.execute>) => {
-            await blocked;
-            return model.execute(...args);
+            try {
+                await blocked;
+                if (args[1].abortSignal.aborted) throw new Error('Mock model execution stopped');
+                return await model.execute(...args);
+            } finally { stopped(); }
         });
-        kernel.registerEffect({ ...model, execute });
+        kernel.registerEffect({ ...model, execute, async cancel() { release(); await executionStopped; } });
         await kernel.initialize();
         await kernel.recover({ takeover: true });
         const session = await kernel.openSession('session-one');
@@ -1226,10 +1236,10 @@ describe('DurableFlowExecutor', () => {
             .rejects.toThrow('Invalid transcript page');
     });
 
-    it('executes a command retry with fresh capabilities, preserved budgets and persistent membership', async () => {
-        const flow = agentFlow(); flow.nodes[0].budget = { tokens: 3 };
+    it('executes an internal retry with fresh capabilities, preserved budgets and persistent membership', async () => {
+        const flow = withRetryBarrier(agentFlow()); flow.nodes[0].budget = { tokens: 3 };
         const execution = await executor(kernel).submit('session-one', flow);
-        await execution.root.wait({ timeoutMs: 2000 });
+        await waitForNode(execution, 'agent'); await execution.nodes.get('agent')!.wait({timeoutMs: 2000});
         const rootBefore = (await execution.root.status()).task.output;
         const source = execution.nodes.get('agent')!.id;
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
@@ -1252,12 +1262,37 @@ describe('DurableFlowExecutor', () => {
         expect((await execution.root.status()).task.output).toEqual(rootBefore);
         expect((await readFlowTaskTranscript(kernel, 'session-one', execution.root.id, task.id)).effects).not.toHaveLength(0);
         expect((await handlers.get(FlowCommand.RunTaskRetry)!(args)).targetTaskId).toBe(task.id);
+        await expect(handlers.get(FlowCommand.RunTaskRetry)!({...args, downstream: true}))
+            .rejects.toMatchObject({code: 'FLOW_RETRY_IDENTITY_CONFLICT'});
+        await waitForNode(execution, 'retry-hold');
+        await execution.nodes.get('retry-hold')!.respond({interactionId: 'retry-hold', value: 'Done'});
+        await execution.root.wait({timeoutMs: 2000});
+        expect((await handlers.get(FlowCommand.RunTaskRetry)!(args)).targetTaskId).toBe(task.id);
+        expect((await kernel.taskEventPage('session-one', task.id)).items.filter(event => event.type === 'task.started')).toHaveLength(1);
+    });
+
+    it('rejects new task attempts under a terminal Run without executing or changing its result', async () => {
+        const requests = vi.spyOn(model, 'execute');
+        const execution = await executor(kernel).submit('session-one', agentFlow());
+        await execution.root.wait({timeoutMs: 2000});
+        const before = (await execution.root.status()).task;
+        const calls = requests.mock.calls.length;
+        const handlers = new Map<string, (args: unknown) => Promise<any>>();
+        new DagCommandService({kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never})
+            .register({register: (name: string, handler: any) => handlers.set(name, handler)} as never);
+        for (const downstream of [false, true]) await expect(handlers.get(FlowCommand.RunTaskRetry)!({sessionId: 'session-one',
+            taskId: execution.root.id, targetTaskId: execution.nodes.get('agent')!.id, requestId: `terminal-${downstream}`, downstream}))
+            .rejects.toMatchObject({code: 'FLOW_RUN_TERMINAL'});
+        const after = (await execution.root.status()).task;
+        expect({version: after.version, output: after.output, status: after.status}).toEqual({version: before.version, output: before.output, status: before.status});
+        expect(requests.mock.calls).toHaveLength(calls);
+        expect((await kernel.listSessionTasks('session-one')).some(task => !!task.retryOfTaskId)).toBe(false);
     });
 
     it('targets pending interactions across concurrent retries without selecting an ambiguous request', async () => {
         const session = await kernel.openSession('session-one');
-        const submission = executor(kernel).submit('session-one', { nodes: [{ ...valueNode('human', null),
-            plugin: 'builtin.human', config: { requestId: 'answer', prompt: 'Choose' } }], edges: [] });
+        const submission = executor(kernel).submit('session-one', withRetryBarrier({ nodes: [{ ...valueNode('human', null),
+            plugin: 'builtin.human', config: { requestId: 'answer', prompt: 'Choose' } }], edges: [] }));
         let source = '';
         await vi.waitFor(async () => {
             const task = (await kernel.listSessionTasks('session-one')).find(task => task.interactions?.answer?.status === 'pending');
@@ -1265,7 +1300,7 @@ describe('DurableFlowExecutor', () => {
         });
         await (await session.attachTask(source)).respond({ interactionId: 'answer', value: 'initial' });
         const execution = await submission;
-        await execution.root.wait({ timeoutMs: 2000 });
+        await (await session.attachTask(source)).wait({timeoutMs: 2000});
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
         new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
@@ -1425,6 +1460,7 @@ describe('DurableFlowExecutor', () => {
 
     it('recomputes downstream nodes after a graph retry of an upstream node', async () => {
         const flow: DagRunSpec = {
+            invocation: {invocationId: 'retry-root', requestId: 'retry-root', flowId: 'flow', revision: 1, digest: 'frozen', name: 'Retry', createdAt: 1},
             nodes: [
                 { ...valueNode('human', null), plugin: 'builtin.human', config: { requestId: 'answer', prompt: 'First' } },
                 valueNode('after', null),
@@ -1458,7 +1494,10 @@ describe('DurableFlowExecutor', () => {
             staleHuman2 = tasks.find(task => task.interactions?.answer2?.status === 'pending')!.id;
         });
 
+        const before = (await (await session.attachTask(staleAfter)).status()).task;
+        const sourceInvocation = (await (await session.attachTask(humanTaskId)).status()).task.labels?.invocationId;
         const request = await requestFlowGraphRetry(session, execution.root.id, humanTaskId, 'retry-1');
+        expect((await (await session.attachTask(request.retryTaskId)).status()).task.labels?.invocationId).toBe(sourceInvocation);
         expect(request).toMatchObject({ sourceNodeId: 'human', downstream: ['after', 'human2', 'last'] });
 
         kernel.dispose();
@@ -1468,6 +1507,11 @@ describe('DurableFlowExecutor', () => {
         registerPrograms(kernel);
         await kernel.initialize();
 
+        const observer = new Map<string, (args: any) => Promise<any>>();
+        new DagCommandService({kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never})
+            .register({register: (name, handler) => observer.set(name, handler)} as never);
+        const read = () => observer.get(FlowCommand.RunGet)!({taskId: execution.root.id, sessionId: 'session-one'});
+        expect((await read()).nodes.find((node: any) => node.nodeId === 'after').snapshot.task.id).toBe(staleAfter);
         const resumed = await executor(kernel).resume('session-one', execution.root.id);
         await (await kernel.openSession('session-one')).attachTask(request.retryTaskId)
             .then(task => task.respond({ interactionId: 'answer', value: 'RETRY-VALUE' }));
@@ -1487,6 +1531,28 @@ describe('DurableFlowExecutor', () => {
         expect(nodes.last.outputs.result.content).toBe('RETRY-VALUE');
         // The stale downstream instance was replaced, not kept alongside the new one.
         expect(resumed.nodes.get('after')!.id).not.toBe(staleAfter);
+        const after = (await resumed.nodes.get('after')!.status()).task;
+        expect(after.parentTaskId).toBe(execution.root.id);
+        expect((await (await (await kernel.openSession('session-one')).attachTask(request.retryTaskId)).status()).task)
+            .toMatchObject({parentTaskId: execution.root.id, retryOfTaskId: humanTaskId});
+        expect(before.labels?.invocationId).toBeTruthy();
+        expect(after.labels).toMatchObject({invocationId: before.labels!.invocationId, parentInvocationId: 'retry-root'});
+        expect(before.status).toBe('succeeded');
+        const projected = await read();
+        expect(projected.nodes.find((node: any) => node.nodeId === 'after').snapshot.task.id).toBe(after.id);
+        const freshObserver = new Map<string, (args: any) => Promise<any>>();
+        new DagCommandService({kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never})
+            .register({register: (name, handler) => freshObserver.set(name, handler)} as never);
+        const reopened = await freshObserver.get(FlowCommand.RunGet)!({taskId: execution.root.id, sessionId: 'session-one'});
+        expect(reopened.taskTree.map((task: any) => task.id)).toEqual(expect.arrayContaining([staleAfter, after.id]));
+        const attempts = reopened.taskTree.filter((task: any) => task.labels?.invocationId === after.labels!.invocationId);
+        expect(attempts).toHaveLength(2);
+        const transcript = await readFlowTaskTranscript(kernel, 'session-one', execution.root.id, staleAfter);
+        expect(transcript).toMatchObject({taskId: staleAfter, status: 'succeeded', invocation: {invocationId: after.labels!.invocationId}});
+        expect(reopened.controlTaskIds).not.toContain(staleAfter);
+        await expect(freshObserver.get(FlowCommand.RunSignal)!({taskId: execution.root.id, targetTaskId: staleAfter,
+            signal: {type: 'ignored'}})).rejects.toThrow('outside this run');
+
     });
 
     it('refunds discarded downstream tokens so a graph retry is not double-charged', async () => {
@@ -1762,8 +1828,8 @@ describe('DurableFlowExecutor', () => {
     });
 
     it.each(['target', 'node', 'cancel'])('refreshes persisted retry membership before %s control', async operation => {
-        const execution = await executor(kernel).submit('session-one', valueFlow());
-        await execution.root.wait({ timeoutMs: 2000 });
+        const execution = await executor(kernel).submit('session-one', withRetryBarrier(valueFlow()));
+        await waitForNode(execution, 'left'); await execution.nodes.get('left')!.wait({timeoutMs: 2000});
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
         new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
@@ -1786,8 +1852,8 @@ describe('DurableFlowExecutor', () => {
     });
 
     it('cancels all concurrent retry members even when the cached latest node is older', async () => {
-        const execution = await executor(kernel).submit('session-one', valueFlow());
-        await execution.root.wait({ timeoutMs: 2000 });
+        const execution = await executor(kernel).submit('session-one', withRetryBarrier(valueFlow()));
+        await waitForNode(execution, 'left'); await execution.nodes.get('left')!.wait({timeoutMs: 2000});
         const handlers = new Map<string, (args: unknown) => Promise<any>>();
         new DagCommandService({ kernel, plugins: createBuiltinDagPluginRegistry(), flowStore: {loadRevision: async () => null} as never })
             .register({ register: (name: string, handler: any) => handlers.set(name, handler) } as never);
@@ -1800,9 +1866,9 @@ describe('DurableFlowExecutor', () => {
     });
 
     it('persists concurrent manual retry membership before execution and preserves node budgets', async () => {
-        const flow = valueFlow(); flow.nodes[0].budget = { tokens: 7 };
+        const flow = withRetryBarrier(valueFlow()); flow.nodes[0].budget = { tokens: 7 };
         const execution = await executor(kernel).submit('session-one', flow);
-        await execution.root.wait({ timeoutMs: 2000 });
+        await waitForNode(execution, 'left'); await execution.nodes.get('left')!.wait({timeoutMs: 2000});
         const session = await kernel.openSession('session-one'), source = execution.nodes.get('left')!.id;
         const [first, duplicate, second] = await Promise.all(['one', 'one', 'two'].map(request =>
             prepareFlowTaskRetry(session, execution.root.id, source, request)));
@@ -2196,6 +2262,11 @@ function supervisorFlow(): DagRunSpec {
             { id: 'b-lead', from: 'worker-b', to: 'lead', output: 'result', input: 'input' },
         ],
     };
+}
+
+function withRetryBarrier(flow: DagRunSpec): DagRunSpec {
+    return {...flow, nodes: [...flow.nodes, {...valueNode('retry-hold', null), plugin: 'builtin.human',
+        config: {requestId: 'retry-hold', prompt: 'Keep the owning Run open'}}]};
 }
 
 function valueFlow(): DagRunSpec {

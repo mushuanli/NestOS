@@ -2,6 +2,7 @@
 export * from './contracts/flow';
 export * from './contracts/flow-definition';
 export * from './contracts/callable-exposure';
+export * from './contracts/call-target';
 export { mapFlowAgentReferences } from './contracts/flow-agent-references';
 export * from './contracts/dag-plugin';
 export * from './contracts/delegation-defaults';
@@ -10,6 +11,7 @@ export * from './contracts/dispatch';
 export * from './contracts/flow-templates';
 export * from './contracts/flow-output';
 export { validFlowImages, validImageConstraints, type FlowImageConstraints } from './contracts/flow-images';
+export {validFlowFiles, validFileConstraints, type FlowFilePart, type FlowFileConstraints} from './contracts/flow-files';
 export * from './contracts/control-flow';
 export type { FlowCommandRegistrar } from './contracts/command-registrar';
 export { FlowCommand } from './flow/command-names';
@@ -18,9 +20,6 @@ export type { FlowTaskTranscript } from './flow/transcript';
 
 export { evaluateFlowExpression, resolveFlowExpression } from './contracts/flow-expressions';
 export { flowConnectionRequired, flowParameterValues, flowInputPresent, validateFlowInputGroups, flowInputDeclarationIssues, type FlowInputIssue } from './contracts/flow-inputs';
-export { collectFlowToolDependencies, flowToolDependencyIssues } from './contracts/flow-tool-dependencies';
-
-export {validFlowFiles, validFileConstraints, type FlowFilePart, type FlowFileConstraints} from './contracts/flow-files';
 export {assertFlowCallSource, assertFlowCallSignature, flowCallValues, FlowCallInputError, type FlowCallSource, type FlowInputOrigin, type FlowResolvedInput} from './contracts/flow-call-input';
-
-export * from './contracts/call-target';
+export { collectFlowToolDependencies, flowToolDependencyIssues } from './contracts/flow-tool-dependencies';
+export {hasFlowControlTree, type FlowGoalUpdate} from './contracts/flow-control';

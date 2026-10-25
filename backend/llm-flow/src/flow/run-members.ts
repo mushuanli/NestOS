@@ -1,7 +1,8 @@
-import {isInvocationIdentity, type InvocationIdentity} from '../contracts/flow';
-import {invocationFromLabels} from './invocation-identity';
 import { taskStat } from '@itookit/durable-kernel';
 import type { SessionHandle, TaskRecord, TaskHandle } from '@itookit/durable-kernel';
+import {isInvocationIdentity, type InvocationIdentity} from '../contracts/flow';
+import {invocationFromLabels} from './invocation-identity';
+import {submitFlowRetry} from './retry-submission';
 
 export interface FlowRunMember {
     invocation?: InvocationIdentity;
@@ -11,6 +12,8 @@ export interface FlowRunMember {
     detached: boolean;
     budget?: Record<string, number>;
     retryOfTaskId?: string;
+    retryRequestId?: string;
+    retryMode?: 'task' | 'graph';
 }
 
 export async function readFlowRunMembers(session: Pick<SessionHandle, 'getShared'> & Partial<Pick<SessionHandle, 'listTasks'>>, root: TaskRecord): Promise<FlowRunMember[]> {
@@ -70,20 +73,34 @@ export async function waitForFlowRunTasks(session: SessionHandle, rootId: string
 }
 
 /** Prepare a deferred retry and publish membership before any authorization or execution. */
-export async function prepareFlowTaskRetry(session: SessionHandle, rootId: string, sourceId: string, requestId: string): Promise<TaskHandle> {
+export async function prepareFlowTaskRetry(session: SessionHandle, rootId: string, sourceId: string, requestId: string,
+    mode: 'task' | 'graph' = 'task'): Promise<TaskHandle> {
     if (typeof requestId !== 'string' || !requestId.trim()) throw new Error('Flow retry requires requestId');
     const root = (await (await session.attachTask(rootId)).status()).task;
     const entries = await readFlowRunMembers(session, root);
+    const accepted = entries.find(entry => entry.retryRequestId === requestId);
+    if (accepted) {
+        if (accepted.retryOfTaskId !== sourceId || (accepted.retryMode ?? 'task') !== mode)
+            throw Object.assign(new Error('Flow retry identity belongs to another request'), {code: 'FLOW_RETRY_IDENTITY_CONFLICT'});
+        return session.attachTask(accepted.taskId);
+    }
+    if (['succeeded', 'failed', 'cancelled'].includes(root.status))
+        throw Object.assign(new Error('Run is terminal; create a new invocation to run it again'), {code: 'FLOW_RUN_TERMINAL'});
     const source = entries.find(entry => entry.taskId === sourceId);
     if (!source) throw new Error(`Task is outside this run: ${sourceId}`);
-    const retry = await (await session.attachTask(sourceId)).retry({ requestId: `${rootId}:${requestId}` });
+    const retry = await submitFlowRetry(session, root, sourceId, requestId);
+    return publishFlowRetry(session, rootId, source, entries, retry, sourceId, requestId, mode);
+}
+
+async function publishFlowRetry(session: SessionHandle, rootId: string, source: FlowRunMember, entries: FlowRunMember[],
+    retry: TaskHandle, sourceId: string, requestId: string, mode: 'task' | 'graph'): Promise<TaskHandle> {
     const key = `flow.run.${rootId}.retries`;
     for (let attempt = 0; attempt < 3; attempt++) {
         const saved = await session.getShared(key), current = members(saved?.value ?? []);
         if (current.some(entry => entry.taskId === retry.id)) return retry;
         const iteration = Math.max(...entries.concat(current).filter(entry => entry.nodeId === source.nodeId).map(entry => entry.iteration)) + 1;
         if (!Number.isSafeInteger(iteration)) throw new Error('Flow iteration overflow');
-        const entry = { ...source, taskId: retry.id, iteration, retryOfTaskId: sourceId };
+        const entry = { ...source, taskId: retry.id, iteration, retryOfTaskId: sourceId, retryRequestId: requestId, retryMode: mode };
         try {
             await session.setShared(key, JSON.parse(JSON.stringify([...current, entry])), { expectedVersion: saved?.version ?? null });
             return retry;
@@ -95,7 +112,9 @@ export async function prepareFlowTaskRetry(session: SessionHandle, rootId: strin
 function members(value: unknown): FlowRunMember[] {
     if (!Array.isArray(value) || value.some(entry => !entry || typeof entry.taskId !== 'string' || !entry.taskId
         || typeof entry.nodeId !== 'string' || !entry.nodeId || !Number.isSafeInteger(entry.iteration) || entry.iteration < 1
-        || entry.invocation !== undefined && !isInvocationIdentity(entry.invocation))) {
+        || entry.invocation !== undefined && !isInvocationIdentity(entry.invocation)
+        || entry.retryRequestId !== undefined && (typeof entry.retryRequestId !== 'string' || !entry.retryRequestId.trim())
+        || entry.retryMode !== undefined && !['task', 'graph'].includes(entry.retryMode))) {
         throw new Error('Invalid Flow membership record');
     }
     return value;

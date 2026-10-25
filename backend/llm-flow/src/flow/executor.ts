@@ -3,7 +3,9 @@ import { prepareFlowRuntimeInput } from './runtime-input';
 import { memberGroup } from './control/scheduling';
 import { readFlowSchedulerCheckpoint, SchedulerCheckpointWriter } from './checkpoint-store';
 import { FlowScheduler } from './scheduler';
+import { FlowDispatchGate, flowNodeRequestId } from './dispatch-gate';
 import {reportSchedulerAdmission, type FlowControlDiagnostic} from './control-diagnostics';
+import {assertFlowControlCheckpoint} from './control-tree';
 import { FlowRunAggregation, runMembers } from './run-aggregation';
 import { FlowRunLifecycle, workspaceLeaseKey, cancelPendingFlowTasks } from './run-lifecycle';
 import type { FlowWorkspaceLease, FlowWorkspaceManager } from './run-lifecycle';
@@ -165,6 +167,7 @@ export class DurableFlowExecutor {
         const checkpoint = await readFlowSchedulerCheckpoint(session, rootTaskId, record(root.input).initialScheduler);
         if (!checkpoint) throw new Error('Flow scheduler checkpoint is missing');
         if (checkpoint.version !== 1) throw new Error('Unsupported Flow scheduler checkpoint');
+        assertFlowControlCheckpoint(root, checkpoint.controlTreeVersion);
         assertInvocationCheckpoint(root, checkpoint.invocationIdentityVersion);
         handle.attachedFromStorage = false;
         return new Promise((resolve, reject) => {
@@ -181,6 +184,7 @@ export class DurableFlowExecutor {
         restored?: { checkpoint: SchedulerCheckpoint; handle: FlowExecutionHandle },
     ): Promise<FlowExecutionHandle> {
         const saved = restored?.checkpoint;
+        const controlTreeVersion = saved ? saved.controlTreeVersion : 1 as const;
         const invocationIdentityVersion = saved ? saved.invocationIdentityVersion : 1 as const;
         const contextProgramVersion = saved ? saved.contextProgramVersion ?? '1'
             : this.options.kernel.programs?.has('llm.agent', '2') && this.options.kernel.programs?.has('llm.chat', '2') ? '2' : '1';
@@ -218,6 +222,7 @@ export class DurableFlowExecutor {
         let published = restored?.handle;
         let rootAdmissionStarted = false;
         let schedulerAdmissionStarted = Date.now();
+        let dispatchGate: FlowDispatchGate;
         const completed = new Set<string>(saved?.completed);
         try {
             workspace = workspacePolicy && workspacePolicy.mode !== 'shared'
@@ -251,7 +256,7 @@ export class DurableFlowExecutor {
                 for (const [id, value] of saved.nodeConnections) nodeConnections.set(id, value);
             }
             const checkpointSnapshot = () => snapshotSchedulerCollections(collections, instances, completed, {
-                invocationIdentityVersion, contextProgramVersion, spec, parameters, sessionContext, catalog: plugins.snapshot(),
+                controlTreeVersion, invocationIdentityVersion, contextProgramVersion, spec, parameters, sessionContext, catalog: plugins.snapshot(),
                 consumedTokens, startedAt, nodeDefaults: [...nodeDefaults], nodeConnections: [...nodeConnections],
             });
             const checkpointWriter = new SchedulerCheckpointWriter();
@@ -313,29 +318,29 @@ export class DurableFlowExecutor {
                 edgeState, plugins, parameters, callInputs, variableStore, nodeConnections, sessionContext, maxConcurrency, latestDone,
                 toleratedFailureNodes: () => toleratedFailureNodes() };
             const submitNode = async (source: DagNodeDefinition, historyGroup?: string): Promise<void> => {
+                if (!await dispatchGate.wait()) return;
+                const run = published!;
                 const { node, iteration, task, dependencies, parameters: localParameters, context } = await prepareNodeTask(preparation, source);
                 const invocation = flowNodeInvocation(invocationIdentityVersion, spec.invocation, node.id, iteration);
                 await this.emitHook('task.started', sessionId, { nodeId: node.id, iteration, ...invocation });
                 // The generation keeps re-submissions after a graph retry distinct, while a
                 // crash-recovery re-submission (same generation) still deduplicates.
-                const requestId = published
-                    ? `flow:${published.root.id}:${node.id}#${iteration}@${nodeGenerations.get(node.id) ?? 0}`
-                    : undefined;
+                const requestId = flowNodeRequestId(run.root.id, node.id, iteration, nodeGenerations.get(node.id));
                 const taskSpec = await taskFactory.create(node, task, dependencies, localParameters, requestId, invocation);
+                if (controlTreeVersion === 1) taskSpec.parent = run.root.id;
                 if (memberGroup(nodes, node.id)) taskSpec.deferStart = true;
                 if (historyGroup) taskSpec.labels = { ...taskSpec.labels, flowHistoryGroup: historyGroup };
-                const handle = await session.submit(taskSpec);
+                const handle = await dispatchGate.submit(taskSpec);
+                if (!handle) return;
                 variableStore.remember(handle.id, node, context);
                 if (!instances.has(node.id)) instances.set(node.id, []);
                 instances.get(node.id)!.push(handle);
-                if (published) {
-                    published.nodes.set(node.id, handle);
-                    published.iterations.set(node.id, iteration);
-                    published.taskIds.add(handle.id);
-                    await session.setShared(`flow.run.${published.root.id}.members`, jsonValue(runMembers(instances, nodes, detachedNodes)));
-                }
+                run.nodes.set(node.id, handle);
+                run.iterations.set(node.id, iteration);
+                run.taskIds.add(handle.id);
+                await session.setShared(`flow.run.${run.root.id}.members`, jsonValue(runMembers(instances, nodes, detachedNodes)));
                 if (!memberGroup(nodes, node.id)) await bindFlowTaskCapabilities(session, handle, task.programKind, node.capabilities ?? [], node.budget);
-                if (published) await saveCheckpoint();
+                await saveCheckpoint();
             };
 
             const graphMutations = new GraphMutationRuntime({
@@ -460,6 +465,8 @@ export class DurableFlowExecutor {
             // at all. The handle stays live: node/task maps are filled as the scheduler
             // dispatches, so consumers read final state from `root.wait()`.
             publish(published);
+            dispatchGate = new FlowDispatchGate({ session, root: published.root,
+                isDisposed: () => this.options.kernel.isDisposed, assertOwned: () => lease!.assertOwned() });
             // Graph retries accepted while no scheduler owned the Run are applied before the
             // next scheduling turn: attach the retry instance and drop stale downstream work.
             const graphRetries = new GraphRetryController({

@@ -1,6 +1,7 @@
 import type { SessionHandle, TaskHandle } from '@itookit/durable-kernel';
 import { startFlowTask } from '../task-capabilities';
 import type { DispatchInput } from './types';
+import {flowTaskHeld} from '../control-tree';
 
 /** Reconcile only children of known dispatch owners; Kernel owns their spawn identity. */
 export async function reconcileDispatchChildren(session: SessionHandle, owners: TaskHandle[], visit: (task: TaskHandle) => void, maxConcurrency: number): Promise<number | undefined> {
@@ -20,7 +21,7 @@ export async function reconcileDispatchChildren(session: SessionHandle, owners: 
             visit(handle);
             if (parent.status === 'cancelled' || parent.status === 'failed') continue;
             if (child.status !== 'created') continue;
-            if (active >= maxConcurrency || (parent.control && parent.control.mode !== 'run')) continue;
+            if (active >= maxConcurrency || flowTaskHeld(parent) || flowTaskHeld(child)) continue;
             const branch = [...input.branches, ...(input.revision?.invocation ? [input.revision.invocation] : [])]
                 .find(branch => branch.key === child.labels?.dispatchKey);
             if (!branch) throw new Error('Dispatch child has no declared branch');

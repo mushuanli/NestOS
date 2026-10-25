@@ -7,7 +7,7 @@ import { isIdentity, isRecord, strings } from './graph-decoder';
 // 这样控制服务与调度进程可以分离，且崩溃不会丢掉已受理的重算请求。
 
 import type { DagEdgeDefinition, DagNodeDefinition } from '../contracts';
-import type { JsonValue, SessionHandle } from '@itookit/durable-kernel';
+import type { JsonValue, SessionHandle, TaskRecord } from '@itookit/durable-kernel';
 import { readFlowRunMembers } from './run-members';
 import { retryFlowTask } from './retry-task';
 import { readFlowSchedulerCheckpoint } from './checkpoint-store';
@@ -46,13 +46,25 @@ export async function requestFlowGraphRetry(
     requestId: string,
 ): Promise<FlowGraphRetryRequest> {
     if (typeof requestId !== 'string' || !requestId.trim()) throw new Error('Flow graph retry requires requestId');
-    const checkpoint = await readFlowSchedulerCheckpoint(session, rootId);
-    if (checkpoint?.version !== 1 || !Array.isArray(checkpoint.nodes) || !Array.isArray(checkpoint.edges)) {
-        throw new Error('Flow scheduler checkpoint is missing; graph retry needs a resumable Run');
+    const accepted = decodeGraphRetryIntents((await session.getShared(graphRetryKey(rootId)))?.value)
+        .find(intent => intent.requestId === requestId);
+    if (accepted) {
+        if (accepted.sourceTaskId !== sourceTaskId)
+            throw Object.assign(new Error('Flow graph retry identity belongs to another source task'), {code: 'FLOW_RETRY_IDENTITY_CONFLICT'});
+        return {retryTaskId: accepted.retryTaskId, sourceNodeId: accepted.sourceNodeId, downstream: accepted.downstream};
     }
     const root = (await (await session.attachTask(rootId)).status()).task;
     if (root.status === 'succeeded' || root.status === 'failed' || root.status === 'cancelled') {
-        throw new Error(`Run is terminal: ${root.status}`);
+        throw Object.assign(new Error('Run is terminal; create a new invocation to run it again'), {code: 'FLOW_RUN_TERMINAL'});
+    }
+    return prepareGraphRetry(session, root, sourceTaskId, requestId);
+}
+
+async function prepareGraphRetry(session: SessionHandle, root: TaskRecord, sourceTaskId: string, requestId: string): Promise<FlowGraphRetryRequest> {
+    const rootId = root.id;
+    const checkpoint = await readFlowSchedulerCheckpoint(session, rootId);
+    if (checkpoint?.version !== 1 || !Array.isArray(checkpoint.nodes) || !Array.isArray(checkpoint.edges)) {
+        throw new Error('Flow scheduler checkpoint is missing; graph retry needs a resumable Run');
     }
     const source = (await readFlowRunMembers(session, root)).find(entry => entry.taskId === sourceTaskId);
     if (!source) throw new Error(`Task is outside this run: ${sourceTaskId}`);
@@ -65,7 +77,7 @@ export async function requestFlowGraphRetry(
     }
     const downstream = downstreamNodes(source.nodeId, checkpoint.nodes, checkpoint.edges)
         .filter(nodeId => !nodeId.includes(':delegate:'));
-    const retry = await retryFlowTask(session, rootId, sourceTaskId, requestId);
+    const retry = await retryFlowTask(session, rootId, sourceTaskId, requestId, 'graph');
     const intent: FlowGraphRetryIntent = {
         version: 1, requestId, sourceTaskId, retryTaskId: retry.id, sourceNodeId: source.nodeId, downstream,
     };

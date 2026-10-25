@@ -3,7 +3,7 @@ import type { SchedulerCheckpoint } from './scheduler-checkpoint';
 import { decodeSchedulerCheckpoint } from './checkpoint-decoder';
 import { isRecord } from './graph-decoder';
 
-const frozenFields = new Set(['invocationIdentityVersion', 'spec', 'nodes', 'edges', 'appliedPatches', 'nodeDefaults', 'nodeConnections',
+const frozenFields = new Set(['controlTreeVersion', 'invocationIdentityVersion', 'spec', 'nodes', 'edges', 'appliedPatches', 'nodeDefaults', 'nodeConnections',
     'catalog', 'parameters', 'sessionContext']);
 const checkpointKey = (rootTaskId: string) => `flow.run.${rootTaskId}.scheduler`;
 type Reader = Pick<SessionHandle, 'getShared'>;

@@ -9,6 +9,7 @@ import { instanceKey, parseInstanceKey } from './node-instance';
 import { memberGroup, startReservedWorkers } from './control/scheduling';
 import { reconcileDispatchChildren } from './structured/reconcile';
 import { assertNodeOutputs } from './port-contract';
+import {flowTaskHeld} from './control-tree';
 
 type Pending = { key: string; handle: TaskHandle };
 type Exit = Awaited<ReturnType<TaskHandle['wait']>>;
@@ -76,7 +77,7 @@ export class FlowScheduler {
         if (this.state.isDisposed()) return 'detached';
         const root = (await this.state.run.root.status()).task;
         if (root.status === 'cancelled') throw new Error('Flow run cancelled');
-        if (root.control && root.control.mode !== 'run') {
+        if (flowTaskHeld(root)) {
             await new Promise(resolve => setTimeout(resolve, 25));
             return 'paused';
         }

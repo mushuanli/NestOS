@@ -27,4 +27,5 @@ export const FlowCommand = {
     RunTaskCancel: 'dag.run.task.cancel',
     RunTaskRetry: 'dag.run.task.retry',
     RunGoalUpdate: 'dag.run.goal.update',
+    RunPauseWithdraw: 'dag.run.pause.withdraw',
 } as const;

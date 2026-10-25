@@ -31,7 +31,7 @@ export function createSchedulerCollections(spec: DagRunSpec, saved: SchedulerChe
 }
 
 export type SchedulerCollections = ReturnType<typeof createSchedulerCollections>;
-type SnapshotHeader = Pick<SchedulerCheckpoint, 'invocationIdentityVersion' | 'contextProgramVersion' | 'spec' | 'parameters' | 'sessionContext'
+type SnapshotHeader = Pick<SchedulerCheckpoint, 'controlTreeVersion' | 'invocationIdentityVersion' | 'contextProgramVersion' | 'spec' | 'parameters' | 'sessionContext'
     | 'catalog' | 'consumedTokens' | 'startedAt' | 'nodeDefaults' | 'nodeConnections'>;
 
 /** Preserve the existing version-1 wire format; transient handles serialize as ids. */

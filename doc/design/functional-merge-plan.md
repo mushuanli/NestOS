@@ -1278,3 +1278,25 @@ C4Component
 普通观察刷新保留现有编辑器、格式选择和未提交文字；隐藏/销毁隔离迟到详情和核对结果。这里没有宣称页面重开后恢复尚未提交的交互草稿：该持久编辑能力仍待后续实施。JSON schema 专用表单、超大详情分页/Artifact、整树清理和原生外部交互控制也仍未完成。
 
 验收包括完整详情去除回答正文、超限拒绝、JSON 解析失败不派发、字面 JSON 仍作为文字、完整审批材料及显式拒绝、普通刷新不丢编辑器、交互消失后的原台账核对、重开未知回答预览，以及真实本地/RPC ChatView 回答丢回复后持久结算并保留下一条草稿。没有新增轮询器或执行状态库。
+
+## 56. 未提交交互草稿的宿主持久化基础
+
+本批仅交付 `InteractionDraftStorage` 与 `InteractionDraftPersistence`，界面的编辑捕获、恢复及回答接纳后的清理尚待接入，不能据此宣称跨页面编辑已经完成。该端口保存文字/JSON 编辑模式、字段值和审批备注；无效 JSON 也可作为编辑文本保存，不触发回答准入。
+
+```mermaid
+C4Component
+  title 交互编辑草稿复用 Session UI 条件存储
+  Component(editor, "交互编辑器", "UI 调用方，待接入", "读取基线，提交编辑身份与期望修订")
+  Component(policy, "InteractionDraftPersistence", "宿主 UI 适配", "作用域、并发冲突、清理修订及未知写核对")
+  Component(cas, "writeUIStateConditionally", "已有条件写机制", "只重试明确的版本冲突；未知写只读核对")
+  ContainerDb(store, "原 Session UI 文档", "宿主仓储", "interactionDrafts 不透明字段")
+  Rel(editor, policy, "InteractionDraftStorage")
+  Rel(policy, cas, "读取最新文档并合并本条草稿")
+  Rel(cas, store, "getManifest / compareAndSetUIState")
+```
+
+草稿键覆盖父 Session、分支、调用、执行 Session、根任务、目标任务、交互 ID 及 requestedAt；不与聊天输入或已提交回答台账共用身份。每次编辑带 editId 与 expectedRevision。其他草稿的并发修改可以合并，同一草稿的过期编辑或清理明确拒绝；清理保存 content=null 的新修订，旧页面不能以空基线复活已清除内容。该清理记录随原 Session UI 文档保留，不擅自回收并破坏并发基线。
+
+失去写入回执后仅在重新读取到完全一致的编辑身份、修订和内容时确认成功；若已被后续编辑替换则保留未知，不重新应用旧编辑。条件写最多重试八次明确的文档版本冲突，不降级为无条件写。诊断保留阶段、耗时、安全身份和错误分类，不输出回答正文、备注或原异常文本。
+
+验证覆盖不同分支并发合并、旧修订编辑/清理拒绝、清除后防复活、丢失回执核对、未知写后被新编辑替换、存储失败不误确认、异步前冻结输入、作用域隔离、重试上限、非法编辑及损坏记录拒绝。下一批需验证实际编辑器重开恢复、并发冲突提示和接纳后仅清除匹配修订，继续复用原 OperationLedger 回答通道。

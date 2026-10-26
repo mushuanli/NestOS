@@ -470,10 +470,11 @@ export class SessionManager implements ISession, SessionQuery {
     }
 
     async prepareBranchSubmission(request: import('../contracts/submission').SubmissionRequest): Promise<import('../contracts/submission').SubmissionRequest> {
-        const {sessionId} = this.registry.ensureBound(), started = Date.now();
+        const {sessionId, state} = this.registry.ensureBound(), started = Date.now();
         assertSubmissionBinding(request, sessionId); await this.assertPreparationWritable(sessionId);
         this.registry.ensureNotGenerating('prepare anchored branch');
         try {const prepared = await prepareBranchSubmission(this.registry.engine, request);
+            await this.registry.reloadSessionData(sessionId, state);
             this.host.logger.info('Anchored branch prepared', {operationId: request.submission?.id, sessionId, stage: 'branch-prepare', result: 'success',
                 role: request.branchFrom?.role, userMessageCount: prepared.overrides?.userMessagePrefix?.length ?? 0, durationMs: Date.now() - started});
             return prepared;

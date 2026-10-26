@@ -1,3 +1,4 @@
+import {sessionRoute} from '@itookit/app-contracts';
 import {createModuleLogger, type NavigationRequest} from '@itookit/common';
 import {SessionCommand, type RootCallTarget, type RootTargetCatalog, type SubmissionRequest, type SubmissionReceipt} from '@itookit/llm-session/contracts';
 import type {AiChatHost, AiChatSubmitRequest} from '@itookit/mdxeditor';
@@ -7,7 +8,8 @@ import type {AppUI} from '../types';
 
 const log = createModuleLogger('document-chat');
 type Association = {sessionId?: string; projectFolder?: string};
-interface Pending {documentPath: string; sessionId: string; branchName: string; request?: SubmissionRequest}
+interface Pending {documentPath: string; sessionId: string; branchName: string; branchFrom?: SubmissionRequest['branchFrom']; request?: SubmissionRequest}
+interface MessageAnchor {documentPath: string; branch?: string; roundId?: string; role: string; userIndex?: number}
 /** Enable the opt-in Markdown input using the same published call preparation as chat. */
 export function createDocumentChatFactory(factory: EditorFactory, services: ApplicationServices, backend: ApplicationBackend,
     prepare: AppUI['prepareChatSubmission'], navigate: (request: NavigationRequest) => Promise<void>): EditorFactory {
@@ -19,7 +21,7 @@ export function createDocumentChatFactory(factory: EditorFactory, services: Appl
         const supplied = options.defaultPluginOptions?.['interaction:ai-chat'] as {association?: Association; host?: AiChatHost} | undefined;
         if (supplied?.host) return factory(container, options);
         const association = supplied?.association ?? ('sessionId' in target && target.sessionId ? {sessionId: target.sessionId} : undefined);
-        const pending = new Map<string, Pending>();
+        const pending = new Map<string, Pending>(), messageAnchors = new Map<string, MessageAnchor>();
         const host: AiChatHost = {
             listTargets: async ({signal}) => {
                 const catalog = await services.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets); signal.throwIfAborted();
@@ -33,20 +35,28 @@ export function createDocumentChatFactory(factory: EditorFactory, services: Appl
                     if (!/^[\w-]{1,128}$/.test(input.operationId)) throw failure('INVALID_OPERATION_ID', 'Invalid chat submission identity');
                     let operation = pending.get(input.operationId);
                     if (operation && operation.documentPath !== input.source.documentPath) throw failure('DOCUMENT_CHANGED', 'Submission belongs to another document');
-                    if (!operation) {operation = {documentPath: input.source.documentPath!, sessionId: input.operationId, branchName: 'chat-' + input.operationId}; pending.set(input.operationId, operation);}
+                    if (!operation) {
+                        const anchor = messageAnchors.get(input.source.documentPath!);
+                        if (isSession && (!anchor?.roundId || !anchor.branch || !['user', 'assistant'].includes(anchor.role)))
+                            throw failure('MESSAGE_ANCHOR_UNAVAILABLE', 'This message has no persisted branch anchor');
+                        operation = {documentPath: input.source.documentPath!, sessionId: target.kind === 'session' ? target.sessionId : input.operationId,
+                            branchName: 'chat-' + input.operationId, ...(anchor ? {branchFrom: {branch: anchor.branch!, roundId: anchor.roundId!,
+                                role: anchor.role as 'user' | 'assistant', ...(anchor.userIndex === undefined ? {} : {userIndex: anchor.userIndex})}} : {})};
+                        pending.set(input.operationId, operation);
+                    }
                     if (!operation.request) {
                         stage = 'save-document'; await editor?.flushPendingSave?.(); input.signal.throwIfAborted();
-                        stage = 'prepare'; operation.request = await prepareRequest(input, operation, association, options, services, backend, prepare);
+                        stage = 'prepare'; operation.request = await prepareRequest(input, operation, association, options, services, backend, prepare, isSession ? undefined : editor?.getText());
                     }
                     stage = 'admission'; await admit(operation.request, services, backend);
                     trace(input.operationId, stage, started);
-                    if (!input.signal.aborted) {stage = 'navigate'; await navigate({target: 'chat', resourceId: operation.sessionId});}
+                    if (!input.signal.aborted) {stage = 'navigate'; await navigate({target: 'chat', resourceId: sessionRoute(operation.sessionId, operation.branchName)});}
                     trace(input.operationId, stage, started); return {branchId: operation.branchName};
                 } catch (error) {trace(input.operationId, stage, started, error); throw error;}
             },
         };
         editor = await factory(container, isSession ? {...options, defaultPluginOptions: {...options.defaultPluginOptions,
-            'interaction:ai-chat': {createHost: () => host}}}
+            'interaction:ai-chat': {createHost: (source: MessageAnchor) => {messageAnchors.set(source.documentPath, {...source}); return host;}}}}
             : {...options, plugins: [...(options.plugins ?? []), ['interaction:ai-chat', {host}]]});
         const rename = editor.updateNodeId?.bind(editor);
         if (rename) editor.updateNodeId = path => {documentPath = path; rename(path);};
@@ -55,22 +65,30 @@ export function createDocumentChatFactory(factory: EditorFactory, services: Appl
 }
 async function prepareRequest(input: AiChatSubmitRequest, operation: Pending, association: Association | undefined,
     options: Parameters<EditorFactory>[1], services: ApplicationServices, backend: ApplicationBackend,
-    prepare: NonNullable<AppUI['prepareChatSubmission']>): Promise<SubmissionRequest> {
+    prepare: NonNullable<AppUI['prepareChatSubmission']>, documentText?: string): Promise<SubmissionRequest> {
     const catalog = await services.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets);
     const choice = catalog.entries.find(choice => JSON.stringify(choice.target) === input.target.id && choice.target.kind === input.target.kind);
     if (!choice) throw failure('CALL_TARGET_CHANGED', 'Selected Agent or Flow changed; select it again');
     const files = await attachments(input, options); input.signal.throwIfAborted();
-    await backend.createSessionDraft({sessionId: operation.sessionId, branchName: operation.branchName,
+    if (documentText !== undefined) {
+        const file = new File([documentText], operation.documentPath.split('/').pop() ?? 'document.md', {type: 'text/markdown'});
+        if (file.size > 256 * 1024) throw failure('DOCUMENT_CONTEXT_TOO_LARGE', '完整文件超过当前直接引用上限（256 KiB）；请选择需要的片段。大文件按需读取尚未接入，不会自动切换 Harness 或静默截断。');
+        files.unshift(file);
+    }
+    if (!operation.branchFrom) await backend.createSessionDraft({sessionId: operation.sessionId, branchName: operation.branchName,
         title: options.title ?? operation.documentPath.split('/').pop() ?? 'Chat', inputText: '', inputTarget: choice.target, source: association});
     input.signal.throwIfAborted();
     const assets = await services.sessionRepository.openAttachments(operation.sessionId);
-    try {return await prepare({commands: services.commandBus, agents: services.agentService, choice,
-        request: requestOf(input, operation, choice), files, assets, signal: input.signal});}
+    try {
+        const prepared = await prepare({commands: services.commandBus, agents: services.agentService, choice,
+            request: requestOf(input, operation, choice), files, assets, signal: input.signal});
+        return operation.branchFrom ? await backend.prepareSessionBranch(prepared) : prepared;
+    }
     finally {await assets.dispose();}
 }
 function requestOf(input: AiChatSubmitRequest, operation: Pending, choice: RootCallTarget): SubmissionRequest {
     const id = input.operationId;
-    return {expectedSessionId: operation.sessionId, expectedBranch: operation.branchName,
+    return {expectedSessionId: operation.sessionId, expectedBranch: operation.branchName, ...(operation.branchFrom ? {branchFrom: {...operation.branchFrom}} : {}),
         target: {kind: choice.target.kind, id: choice.target.id, version: choice.target.version}, expectedTarget: {...choice.target},
         source: {kind: 'composer', text: input.prompt, attachments: [], values: {}},
         submission: {id, source: {kind: 'conversation', ownerId: operation.sessionId, id}}};

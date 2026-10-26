@@ -1,6 +1,6 @@
 import {createOperationLedger, type AttachmentRef, type ComposerDraft, type OperationLedger} from '@itookit/llm-ui';
 import type {ConversationUIState, ISessionRepository} from '@itookit/llm-session/contracts';
-import {randomUUID} from '@itookit/common';
+import {createModuleLogger, randomUUID} from '@itookit/common';
 import {AssetService} from '../services/AssetService';
 import {DraftPersistence, readBranchDraft, type BranchDraft} from '../services/DraftPersistence';
 import {persistOperations} from '../services/OperationPersistence';
@@ -51,8 +51,12 @@ export class SessionChatStore {
     dirty(draft: ComposerDraft): boolean {return JSON.stringify(draft) !== JSON.stringify(this.saved);}
     suspend(): void {this.suspended = true;}
     async upload(file: File, {signal}: {signal: AbortSignal}): Promise<AttachmentRef> {
-        signal.throwIfAborted(); const bytes = await file.arrayBuffer(); signal.throwIfAborted();
-        const id = await this.assets.draftFiles().put(bytes); signal.throwIfAborted(); return {id, name: file.name, mimeType: file.type};
+        const operationId = randomUUID(), started = Date.now(); let stage = 'file-read';
+        try {
+            signal.throwIfAborted(); const bytes = await file.arrayBuffer(); signal.throwIfAborted(); stage = 'asset-write';
+            const id = await this.assets.draftFiles().put(bytes); signal.throwIfAborted();
+            reportUpload(operationId, stage, started, file.size); return {id, name: file.name, mimeType: file.type};
+        } catch (error) {reportUpload(operationId, stage, started, file.size, error); throw error;}
     }
     async files(refs: readonly AttachmentRef[], signal?: AbortSignal): Promise<File[]> {
         const files: File[] = [];
@@ -72,4 +76,12 @@ function restore(stored?: StoredBranch): ComposerDraft {
     return {revision: 0, textRevision: 0, text: stored?.inputText ?? '', target: stored?.inputTarget,
         input: readInputDraft(stored?.inputArguments),
         attachments: files.map(file => ({id: file.fileId ?? randomUUID(), revision: 0, file: {id: file.id, name: file.name, mimeType: file.type}}))};
+}
+
+function reportUpload(operationId: string, stage: string, started: number, bytes: number, error?: unknown): void {
+    const code = (error as {code?: string})?.code;
+    try {const data = {operationId, stage, bytes, result: error ? 'failure' : 'success', durationMs: Date.now() - started,
+        ...(error ? {code: code && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'ATTACHMENT_PREPARATION_FAILED'} : {})};
+        const log = createModuleLogger('session-chat-assets'); if (error) log.warn('chat.attachment', data); else log.info('chat.attachment', data);
+    } catch { /* Asset results do not depend on diagnostics. */ }
 }

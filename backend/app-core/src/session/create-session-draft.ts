@@ -29,7 +29,7 @@ async function ensureDraft(repository: ISessionRepository, request: SessionDraft
     if (manifest.rootRoundId !== null) throw new FSError('ECONFLICT', 'Draft already contains history');
     await repository.updateManifest(id, {branches: {...manifest.branches, [branch]: null}, currentBranch: branch, currentHead: null,
         branchMeta: {...manifest.branchMeta, [branch]: {createdAt: Date.now(), createdFrom: 'manual', forkedFromBranch: manifest.currentBranch, branchRootRoundId: ''}},
-        uiState: {...manifest.uiState, branchDrafts: {...manifest.uiState?.branchDrafts, [branch]: {inputText: request.inputText}}}});
+        uiState: {...manifest.uiState, branchDrafts: {...manifest.uiState?.branchDrafts, [branch]: {inputText: request.inputText, ...(request.inputTarget ? {inputTarget: request.inputTarget} : {})}}}});
     createModuleLogger('session-draft').info('draft.branch', {operationId: id, sessionId: id, stage: 'branch-create', result: 'success', durationMs: Date.now() - started});
     return id;
 }

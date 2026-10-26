@@ -58,7 +58,7 @@ async function prepareRequest(input: AiChatSubmitRequest, operation: Pending, as
     if (!choice) throw failure('CALL_TARGET_CHANGED', 'Selected Agent or Flow changed; select it again');
     const files = await attachments(input, options); input.signal.throwIfAborted();
     await backend.createSessionDraft({sessionId: operation.sessionId, branchName: operation.branchName,
-        title: operation.documentPath.split('/').pop() ?? 'Chat', inputText: '', source: association});
+        title: operation.documentPath.split('/').pop() ?? 'Chat', inputText: '', inputTarget: choice.target, source: association});
     input.signal.throwIfAborted();
     const assets = await services.sessionRepository.openAttachments(operation.sessionId);
     try {return await prepare({commands: services.commandBus, agents: services.agentService, choice,

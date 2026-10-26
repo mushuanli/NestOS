@@ -72,6 +72,7 @@ export interface ApplicationBackend {
 export interface SessionDraftRequest {
     sessionId?: string;
     branchName?: string;
+    inputTarget?: import('@itookit/llm-flow/contracts').TargetRef;
     title: string;
     inputText: string;
     source?: { projectFolder?: string; sessionId?: string };

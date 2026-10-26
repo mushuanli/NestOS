@@ -1,3 +1,4 @@
+import {IndependentSessionEditor} from './shell/IndependentSessionEditor';
 import {createConversationEditor} from './conversation';
 import { SessionDraftEditor } from './shell/drafts/SessionDraftEditor';
 import type {WorkspaceHandoff} from './shell/drafts/workspace-handoff';
@@ -114,9 +115,9 @@ export const createLLMFactory = (
 
         // 将创建过程包装为 Promise，注册到 pendingCreations
         const createPromise = (async () => {
-            let editor: LLMWorkspaceEditor | undefined;
+            let editor: IEditor | undefined;
             try {
-                editor = new LLMWorkspaceEditor(container, editorOptions);
+                editor = !handoff && deps.commandBus ? new IndependentSessionEditor(container, editorOptions) : new LLMWorkspaceEditor(container, editorOptions);
                 await editor.init(container, options.initialContent);
                 return editor;
             } catch (e) {

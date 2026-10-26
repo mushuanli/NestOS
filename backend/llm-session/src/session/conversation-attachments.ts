@@ -14,6 +14,13 @@ export function conversationUserMessage(text: string, files: ChatAttachment[]): 
     }))} : {})};
 }
 
+
+/** Preserve authored message and attachment boundaries within one admitted user turn. */
+export function conversationUserMessages(text: string, files: ChatAttachment[], prefix: readonly ChatMessage[] = []): ChatMessage[] {
+    if (prefix.some(message => message.role !== 'user')) throw new Error('USER_MESSAGE_PREFIX_INVALID');
+    return [...structuredClone(prefix), conversationUserMessage(text, files)];
+}
+
 export async function materializeAttachmentMessage(engine: ISessionRepository, sessionId: string, message: ChatMessage): Promise<ChatMessage> {
     if (!message.attachments?.length) return message;
     const attachments: Attachment[] = [];

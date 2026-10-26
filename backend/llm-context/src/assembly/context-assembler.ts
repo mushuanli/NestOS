@@ -81,8 +81,8 @@ export class ContextAssembler implements IContextAssembler {
         blocks.push(...await this.historyBlocks(plan));
         for (const memory of await this.deps.retrieveMemory?.(plan, agent) ?? []) blocks.push({ kind: 'memory', ...memory });
         blocks.push(...await this.inputBlocks(plan));
-        const pending: ContextBlock | null = plan.pendingUserMessage
-            ? { kind: 'round', roundId: '', messages: [plan.pendingUserMessage] } : null;
+        const prompts = plan.pendingUserMessages ?? (plan.pendingUserMessage ? [plan.pendingUserMessage] : []);
+        const pending: ContextBlock | null = prompts.length ? {kind: 'round', roundId: '', messages: prompts} : null;
         if (pending) blocks.push(pending);
         let selected = await this.fitTokenBudget(blocks, plan.tokenBudget, pending);
         if (pending) selected = this.dropDuplicatedPending(selected, plan, pending);
@@ -166,11 +166,11 @@ export class ContextAssembler implements IContextAssembler {
      * summarized or trimmed-away Round must keep the copy.
      */
     private dropDuplicatedPending(blocks: ContextBlock[], plan: ContextPlan, pending: ContextBlock): ContextBlock[] {
-        const prompt = plan.pendingUserMessage;
-        if (!prompt || !plan.pendingRoundId) return blocks;
+        const prompts = plan.pendingUserMessages ?? (plan.pendingUserMessage ? [plan.pendingUserMessage] : []);
+        if (!prompts.length || !plan.pendingRoundId) return blocks;
         const carried = blocks.some(block => block !== pending && block.kind === 'round'
             && block.roundId === plan.pendingRoundId
-            && block.messages.some(message => sameUserMessage(message, prompt)));
+            && prompts.every((prompt, index) => !!block.messages[index] && sameUserMessage(block.messages[index], prompt)));
         return carried ? blocks.filter(block => block !== pending) : blocks;
     }
 

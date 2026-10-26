@@ -10,7 +10,7 @@ import type { ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy
 import { ContextProfileStore } from '../persistence/context-profile-store';
 import { directExecutionMode } from './direct-execution-mode';
 import type {RoundManifest} from '../persistence/round-types';
-import {conversationUserMessage, materializeAttachmentMessage, materializeHarnessMessage} from './conversation-attachments';
+import {conversationUserMessages, materializeAttachmentMessage, materializeHarnessMessage} from './conversation-attachments';
 
 export interface ConversationLocation { branchRef: string; branchHead: string | null; }
 export interface ConversationContextInput extends DirectConversationInput {
@@ -54,7 +54,7 @@ export class ConversationContextBuilder {
             ?? execution.config.agentVersion
             ?? 'unversioned';
         const sessionContext = await this.options.resolveSessionContext?.(execution.task.sessionId, execution.task.input.text);
-        const pending = await this.currentMessage(execution);
+        const pending = await this.currentMessages(execution);
         const assembler = this.contextAssembler(execution, location.branchRef, manifest, includeMemory, pending);
         const plan = contextPlan(execution, location, profile, pending);
         const seed = (await this.options.engine.getManifest(execution.task.sessionId)).initialContext;
@@ -72,10 +72,12 @@ export class ConversationContextBuilder {
         return directExecutionMode(execution.task.input) === 'agent' ? [...this.policy.systemPrompt, ...prompts] : prompts;
     }
 
-    private async currentMessage(execution: ConversationContextInput) {
-        const pending = conversationUserMessage(execution.task.input.text, execution.contextFiles);
-        if (execution.config.execution?.kind === 'harness')
-            execution.currentInput = await materializeHarnessMessage(this.options.engine, execution.task.sessionId, pending);
+    private async currentMessages(execution: ConversationContextInput) {
+        const pending = conversationUserMessages(execution.task.input.text, execution.contextFiles, execution.task.input.overrides?.userMessagePrefix);
+        if (execution.config.execution?.kind === 'harness') {
+            execution.currentInputs = await Promise.all(pending.map(message => materializeHarnessMessage(this.options.engine, execution.task.sessionId, message)));
+            execution.currentInput = execution.currentInputs[execution.currentInputs.length - 1];
+        }
         return pending;
     }
 
@@ -84,10 +86,10 @@ export class ConversationContextBuilder {
         branchRef: string,
         manifest: RoundManifest,
         includeMemory = true,
-        pending?: import('@itookit/llm-context').ChatMessage,
+        pending?: import('@itookit/llm-context').ChatMessage[],
     ): IContextAssembler {
         const resolved = new Map<import('@itookit/llm-context').ChatMessage, Promise<import('@itookit/llm-context').ChatMessage>>();
-        if (pending && execution.currentInput) resolved.set(pending, Promise.resolve(execution.currentInput));
+        pending?.forEach((message, index) => {if (execution.currentInputs?.[index]) resolved.set(message, Promise.resolve(execution.currentInputs[index]));});
         const materialize = execution.config.execution?.kind === 'harness' ? materializeHarnessMessage : materializeAttachmentMessage;
         return createContextAssembler({
             log: execution.log,
@@ -110,7 +112,7 @@ function contextPlan(
     execution: ConversationContextInput,
     location: ConversationLocation,
     profile: { id: string; revision: number },
-    pendingUserMessage: import('@itookit/llm-context').ChatMessage,
+    pendingUserMessages: import('@itookit/llm-context').ChatMessage[],
 ) {
     return {
         branchRef: location.branchRef,
@@ -118,7 +120,7 @@ function contextPlan(
         profile,
         // The assembler de-duplicates this against the Round that owns it, so a
         // Round excluded by context policy can never drop the prompt entirely.
-        pendingUserMessage,
+        pendingUserMessages,
         pendingRoundId: execution.roundId,
         explicitInputs: [] as import('@itookit/llm-context').InputBinding[],
         tokenBudget: execution.config.defaultContextPolicy?.tokenBudget,

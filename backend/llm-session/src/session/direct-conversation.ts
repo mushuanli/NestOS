@@ -19,6 +19,7 @@ export interface DirectConversationInput {
     roundId: string;
     contextFiles?: ChatAttachment[];
     currentInput?: ChatMessage;
+    currentInputs?: ChatMessage[];
 }
 
 export interface DirectConversationPorts {
@@ -123,7 +124,7 @@ function harnessContext(execution: DirectConversationInput, snapshot: ContextSna
 
 function harnessIncrementalInput(execution: DirectConversationInput) {
     if (!execution.currentInput && execution.contextFiles?.length) throw new Error('HARNESS_CURRENT_INPUT_REQUIRED');
-    return prepareHarnessInput({messages: [execution.currentInput ?? {role: 'user', content: execution.task.input.text}]});
+    return prepareHarnessInput({messages: execution.currentInputs ?? [execution.currentInput ?? {role: 'user', content: execution.task.input.text}]});
 }
 function incrementalDigest(execution: DirectConversationInput): string {
     const input = harnessIncrementalInput(execution);

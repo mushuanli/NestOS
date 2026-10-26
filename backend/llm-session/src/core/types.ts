@@ -111,6 +111,8 @@ export interface SessionTokenUsage {
  * ✅ 新增：查询覆盖参数
  */
 export interface ExecutionOverrides {
+    /** Explicit earlier user messages in this same request, kept as separate messages. */
+    userMessagePrefix?: import('@itookit/llm-context').ChatMessage[];
     executionMode?: import('@itookit/llm-tasks/contracts').ChatExecutionMode;
     /**
      * 覆盖使用的 LLM 连接 ID（替代 modelId）。

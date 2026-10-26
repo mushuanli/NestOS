@@ -39,6 +39,8 @@ export interface ContextPlan {
      * that Round is excluded or summarized by the branch context policy.
      */
     pendingUserMessage?: ChatMessage;
+    /** Ordered current user inputs; takes precedence over the single-message compatibility field. */
+    pendingUserMessages?: ChatMessage[];
     /** Round owning `pendingUserMessage`; its inclusion decides the de-duplication. */
     pendingRoundId?: RoundId;
     explicitInputs: InputBinding[];

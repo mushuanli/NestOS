@@ -6,6 +6,7 @@ import type {SessionInstructionInput} from '../contracts/instruction-queue';
 /** Adapt a typed target to the existing queue without assigning a Flow an Agent identity. */
 export function submissionInstruction(request: SubmissionRequest): SessionInstructionInput {
     assertRequestScope(request);
+    assertUserPrefix(request.overrides?.userMessagePrefix);
     assertTargetSelection(request.target);
     assertFlowCallSource(request.source);
     assertPresentation(request);
@@ -71,3 +72,10 @@ function validPreparedAttachment(file: NonNullable<SubmissionRequest['attachment
 function validPreparedSize(value: number | undefined): boolean {return value === undefined || Number.isFinite(value) && value >= 0;}
 
 function invalid(message: string): Error {return Object.assign(new Error(message), {code: 'SUBMISSION_INVALID'});}
+
+function assertUserPrefix(value: unknown): void {
+    if (value === undefined) return;
+    if (!Array.isArray(value) || value.length > 128 || value.some(message => !message || message.role !== 'user'
+        || typeof message.content !== 'string' && !Array.isArray(message.content)
+        || message.tool_calls || message.tool_call_id)) throw invalid('Additional input must contain only user messages');
+}

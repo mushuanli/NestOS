@@ -431,7 +431,7 @@ function conversationRound(
         sessionId: execution.task.sessionId,
         historyParentIds: parents,
         exposure: temporary ? 'internal' : 'public',
-        input: [userMessage],
+        input: [...structuredClone(execution.task.input.overrides?.userMessagePrefix ?? []), userMessage],
         output: [],
         executions: [{ taskId, role: 'primary', invocation: execution.task.input.invocation }],
         status: 'running',

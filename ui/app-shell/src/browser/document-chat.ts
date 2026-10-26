@@ -1,5 +1,5 @@
 import {sessionRoute} from '@itookit/app-contracts';
-import {createModuleLogger, type NavigationRequest} from '@itookit/common';
+import {createModuleLogger, t, type NavigationRequest} from '@itookit/common';
 import {SessionCommand, type RootCallTarget, type RootTargetCatalog, type SubmissionRequest, type SubmissionReceipt} from '@itookit/llm-session/contracts';
 import type {AiChatHost, AiChatSubmitRequest} from '@itookit/mdxeditor';
 import type {ApplicationBackend, ApplicationServices} from '@itookit/app-contracts/services';
@@ -72,7 +72,7 @@ async function prepareRequest(input: AiChatSubmitRequest, operation: Pending, as
     const files = await attachments(input, options); input.signal.throwIfAborted();
     if (documentText !== undefined) {
         const file = new File([documentText], operation.documentPath.split('/').pop() ?? 'document.md', {type: 'text/markdown'});
-        if (file.size > 256 * 1024) throw failure('DOCUMENT_CONTEXT_TOO_LARGE', '完整文件超过当前直接引用上限（256 KiB）；请选择需要的片段。大文件按需读取尚未接入，不会自动切换 Harness 或静默截断。');
+        if (file.size > 256 * 1024) throw failure('DOCUMENT_CONTEXT_TOO_LARGE', t('editor.ai.documentTooLarge', {limit: '256 KiB'}));
         files.unshift(file);
     }
     if (!operation.branchFrom) await backend.createSessionDraft({sessionId: operation.sessionId, branchName: operation.branchName,

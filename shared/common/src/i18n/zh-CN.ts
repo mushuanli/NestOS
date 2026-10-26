@@ -1288,6 +1288,7 @@ export const zhCN = {
     'editor.copyContent': '复制文件内容',
     'editor.copySuccess': '已复制到剪贴板',
     'editor.copyFailed': '复制失败，请检查剪贴板权限',
+    'editor.ai.documentTooLarge': '完整文件超过当前直接引用上限（{limit}），请选取需要的片段。大文件按需读取尚未接入，不会自动切换 Harness 或静默截断。',
     'editor.ai.title': '引用到新 AI 会话',
     'editor.ai.selection': '引用选中内容',
     'editor.ai.file': '引用整个文件',

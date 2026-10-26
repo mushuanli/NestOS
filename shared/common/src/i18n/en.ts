@@ -1287,6 +1287,7 @@ export const en: LocaleStrings = {
     'editor.copyContent': 'Copy file contents',
     'editor.copySuccess': 'Copied to clipboard',
     'editor.copyFailed': 'Copy failed. Check clipboard permissions.',
+    'editor.ai.documentTooLarge': 'The complete file exceeds the direct context limit ({limit}). Select the required excerpt. On-demand large-file reading is not connected yet; the session will not switch to Harness or silently truncate the file.',
     'editor.ai.title': 'Quote in a new AI chat',
     'editor.ai.selection': 'Selected content',
     'editor.ai.file': 'Entire file',

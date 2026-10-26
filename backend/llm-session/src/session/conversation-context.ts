@@ -121,6 +121,7 @@ function contextPlan(
         // The assembler de-duplicates this against the Round that owns it, so a
         // Round excluded by context policy can never drop the prompt entirely.
         pendingUserMessages,
+        pendingUserMessage: pendingUserMessages[pendingUserMessages.length - 1],
         pendingRoundId: execution.roundId,
         explicitInputs: [] as import('@itookit/llm-context').InputBinding[],
         tokenBudget: execution.config.defaultContextPolicy?.tokenBudget,

@@ -10,7 +10,7 @@
 
 | 优先级 / 工作线 | 已具备基础 | 仍需完成的结果 |
 |---|---|---|
-| P1a 独立调用业务提交 | Agent/Flow 的正式入口、双侧写权、持久计划、原 caller/target 核对及前后台范围已接线；本地正常提交/重放已确认 | 真实 HTTPS 服务的 Flow/Agent/Flow Agent、回答/批准、控制、前后台及子会话续发已确认；浏览器独立发送/打开/续发/重开、批准及暂停/恢复/停止已确认；新补丁切换后生效确认、原生远端组合保留 |
+| P1a 独立调用业务提交 | Agent/Flow 的正式入口、双侧写权、持久计划、原 caller/target 核对及前后台范围已接线；本地正常提交/重放已确认 | 真实 HTTPS 服务的 Flow/Agent/Flow Agent、回答/批准、控制、前后台及子会话续发已确认；浏览器独立发送/打开/续发/重开、批准及暂停/恢复/停止已确认；新补丁已切换并确认目标恢复生效；原生远端组合保留 |
 | P1b 历史关联与恢复 | 新 Kernel TaskRef/Invocation/Round 关联、幂等历史补交、恢复目录与连续输入屏障已接线；正常历史提交已确认 | 最新路径的真实重启/跨进程恢复与历史写入中断验收；准备数据压缩保留到有完整依据后 |
 | P1c Flow 工作区责任 | 可恢复工作区已绑定原根 Task 的 Kernel claim；替身 manager 的 finish 次数及 claim 释放已确认 | 真实工作区、能力/进程关闭及跨进程恢复确认；旧宿主能力边界仍须保留 |
 | P1d 跨调用预算 | Kernel 工作额度、共享资源、深度与幂等用量机制 | token/费用预算跨父子调用预留、分配、继承及实际结算；缺少远端 usage 时不能视为零用量 |
@@ -30,7 +30,7 @@ P1a/P1b 已接通 Agent/Flow 的新独立调用入口与终态历史恢复；已
 | 统一正式提交入口 | P1a | UI/CLI/RPC 同一请求只有一条派发责任链；未知接纳核对原请求，后台调用不阻塞独立前台输入 | 主线代码已接线，本地提交/重放及真实 HTTPS 服务 Flow/Agent 提交通过；真实界面/原生远端组合待确认 |
 | 持久结果与重启恢复 | P1b | 真实 caller/target TaskRef、Round 与结果贯通；历史失败可恢复，不重复已发生的副作用 | 结果保存和子会话接线已实现，正常提交通过；最新恢复路径尚未做真实重启验收 |
 | Flow 资源责任闭环 | P1c | 工作区和能力的所有权、跨进程恢复及物理收尾由 Kernel 核对，确认后释放冲突资源 | Kernel claim 与原 manager 已接线，替身收尾和释放通过；真实文件/进程及重启待确认 |
-| 最小 UI 和运行验收 | F16/F24 的基础展示/控制与实际部署 | 展示输入、结果与调用控制；本地/远程/DSH 按能力共用入口，运行服务覆盖顺序发送和必要控制 | UI 接线类型通过；HTTPS Flow/Agent/Flow Agent、模型、回答/批准、停止、暂停/恢复及续发通过；浏览器基本发送/打开/续发和审批/控制通过；新补丁待切换运行 |
+| 最小 UI 和运行验收 | F16/F24 的基础展示/控制与实际部署 | 展示输入、结果与调用控制；本地/远程/DSH 按能力共用入口，运行服务覆盖顺序发送和必要控制 | UI 接线类型通过；HTTPS Flow/Agent/Flow Agent、模型、回答/批准、停止、暂停/恢复及续发通过；浏览器基本发送/打开/续发和审批/控制通过；近期补丁已发布并确认目标恢复 |
 
 跨调用 token/费用预算、严格原生续接的进阶组合、大历史/复杂报告性能和长期生命周期仍在原目标内，排在上述主链之后；基础输入、结果、审批和停止能力不能因此延后。它们不是本轮继续新增框架或阻塞现有可用性修复的理由。
 
@@ -2366,7 +2366,11 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 
 浏览器审批与控制现已补齐：同一诊断源 Session 的 Flow Agent 实际出现 approval，点击卡片打开详情并「批准并继续」后 completed；另一条人工输入 Flow 依次点击暂停、恢复和停止，按钮状态按实际控制切换，最后显示已取消。无 pageerror。只读收尾核对两条调用的 caller/任务树均 settled、historyPending=false，子会话各保存一轮；原 OperationLedger 四个命令（暂停、恢复、取消、回答）全部 accepted，没有遗留运行任务。证据为 /tmp/x1-http-ui-controls-browser.json 与 /tmp/x1-http-ui-controls-settlement.json；操作批次 aa86a561-b20c-4d3c-bbd9-9a01ec87cf04。健康接口确认本次仍运行 20261026T110715-600146cc-dirty、ready=true。
 
-主线代码和主要操作链已贯通，当前剩余发布收尾为：切换运行到包含后续日志/卡片刷新/子会话目标恢复的制品，并仅确认新修复实际生效。已执行一次 pnpm httpd:build --no-activate 成功生成 20261026T115203-0a6a57fa-dirty，HTTP 构建总阶段约 19.75s，证据为 /tmp/x1-mainline-final-release.log；当前工作树构建保留 dirty 标识。没有修改启动选择（仍为 20261026T110715-600146cc-dirty）或重启服务，不将候选制品视为运行版本。切换须安排现有连接/在途任务的重启时机，不追加全量验证。
+主线代码和主要操作链已贯通，本次发布准备时的剩余收尾为：切换运行到包含后续日志/卡片刷新/子会话目标恢复的制品，并仅确认新修复实际生效。已执行一次 pnpm httpd:build --no-activate 成功生成 20261026T115203-0a6a57fa-dirty，HTTP 构建总阶段约 19.75s，证据为 /tmp/x1-mainline-final-release.log；当前工作树构建保留 dirty 标识。该构建阶段没有修改启动选择（当时仍为 20261026T110715-600146cc-dirty）或重启服务，不将候选制品视为运行版本。
+
+用户随后明确要求「先完成收尾，然后完成 llm-ui」。已切换并正常停止原 HTTP wrapper/server，沿用原启动参数和环境启动新进程；现运行于后台，wrapper PID 4149960，运行日志仍为 /var/log/mindos/httpd.runtime.log，启动输出另存 /tmp/x1-mainline-release-start.log。mTLS 健康接口确认 ready=true、mode=release、version=20261026T115203-0a6a57fa-dirty；证据为 /tmp/x1-mainline-new-release-health.json。
+
+仅针对最新修复创建一个无工具的诊断 Agent 调用，子会话在打开前不存在已保存目标选择；浏览器直接打开后自动显示原诊断 Agent、输入可用、无 pageerror，确认 bc889b6d 已在实际运行版本生效。证据为 /tmp/x1-http-target-restore-prepare.json 与 /tmp/x1-http-target-restore-browser.json。未追加全量矩阵或重复已有审批/控制验收。正常主线本次发布收尾完成，随后按用户新要求推进 llm-ui 产品迁移；不能把此结论扩张为整个功能计划或 llm-ui 已全部完成。
 
 ### 保留范围
 

@@ -11,12 +11,18 @@ Markdown 文件使用独立行 `::@`，在预览模式显示 Agent/Flow 选择�
 ## 当前主流程
 
 1. 选择已发布的 Agent 或 Flow，输入提示词并按需添加附件。
-2. 提交时先保存文档。宿主使用本次操作的稳定 ID 创建独立 Session 及 `chat-<operationId>` branch；来源项目由文件宿主明确绑定。
+2. 普通文件提交时先保存文档，以完整文件附件引用加本次提示词创建新 Session 和 `chat-<operationId>` branch。文件属于项目时沿用其项目；无归属文件进入默认个人项目。Session 消息中的输入框则在原 Session 内分支，沿用原项目。
 3. 普通 Agent 附件复用 Session 附件上传；Flow/Flow Agent 复用已有发布版本、参数表单和连接槽位准备。
 4. 宿主通过既有 Session 持久队列接纳请求；确认接纳后导航到新 branch。
 5. 新 branch 使用普通 user/LLM 排版，可继续聊天、添加附件、处理审批和停止执行。
 
-当前回复显示在普通会话页面。`::>` 折叠结果以及回复内嵌文档暂缓。新 branch 不自动继承其他已打开会话的历史；原 Markdown 文件保留输入标记。
+当前回复显示在普通会话页面。`::>` 折叠结果以及回复内嵌文档暂缓。普通文件不继承其他会话历史，原文件保留输入标记。Session 内的输入框使用持久消息锚点：LLM 锚点保留至该回复；user 锚点保留此前历史，并将截至该条的原 user 输入及内嵌输入作为多条 user 消息提交。锚点后续 history 不进入新 branch。多条 user 输入在历史与模型上下文中保留独立边界。
+
+完整文件直接引用目前采用 256 KiB 上限；超出时明确提示选段，不静默截断、不自动切换 Harness。按能力读取大文件的引用模式尚未接入。文档标题栏原有“引用到新 AI 会话”可用于发送选中片段。
+
+Session 的 user/LLM 正文继续由 mdxeditor 渲染；可信宿主按消息和正文片段挂载 AiChatPlugin，返回或重开时从原 Markdown 标记恢复输入入口。输入框尚未发送的临时草稿仍只在插件实例中保存。
+
+“查看产物”仅出现在对应 Flow 回复后，点击后才读取执行详情。普通聊天隐藏它。调用 Flow 的选择器默认“不调用”，只展示公开已发布 Flow 名称，内部 ID 不拼入标签；选择不会隐式发布草稿。
 
 ## 提交与诊断
 
@@ -29,6 +35,8 @@ Markdown 文件使用独立行 `::@`，在预览模式显示 Agent/Flow 选择�
 ## 实现入口
 
 - `ui/app-shell/src/browser/document-chat.ts`：文档插件启用、来源绑定、附件读取、原请求核对和导航。
+- `backend/llm-session/src/session/branch-submission.ts`：消息锚点校验、历史截断及原 user 输入保留。
+- `ui/llm-ui-adapter/src/independent/message-markdown.ts`：会话消息 MDx 插件接线。
 - `backend/app-core/src/session/create-session-draft.ts`：稳定草稿身份和 branch 初始化。
 - `backend/app-core/src/session/submit-session.ts`：使用宿主会话上下文提交，不重绑其他编辑器。
 - `ui/llm-ui-adapter/src/independent/session-submission.ts`：复用已发布 Flow 表单与 Session 附件准备。

@@ -37,7 +37,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     async init(container: HTMLElement): Promise<void> {this.container = container; await this.render();}
     async render(): Promise<void> {
         const loaded = await this.sessions.loadSession(this.config.sessionId, this.config.title ?? '', this.config.target?.kind === 'session' ? this.config.target.branch : undefined, this.config.initialData);
-        this.config.initialData = undefined; this.settings = loaded.settings;
+        this.config.initialData = undefined; this.settings = loaded.settings; this.config.title = loaded.title;
         this.connections = await buildConnectionOptions(this.config.agentService);
         await this.mount(loaded.manifest.currentBranch);
         if (this.config.initialInputState?.text) this.view!.setText(this.config.initialInputState.text);
@@ -48,7 +48,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         this.store = await SessionChatStore.open(this.service, this.config.sessionId, branch, new AssetService(this.config.assets));
         const owner = this;
         this.binding = createSessionChatBinding({session: this.config.sessionManager, commands: this.config.commandBus!, kernel: this.config.kernel,
-            operations: this.store.ledger(), targetSelection: true, independentCalls: !this.config.readOnly, instructionQueue: true, contextSelection: true,
+            title: this.config.title, operations: this.store.ledger(), targetSelection: true, independentCalls: !this.config.readOnly, instructionQueue: true, contextSelection: true,
             get readOnly() {return !!owner.config.readOnly;}, branch: () => this.config.sessionManager.getSnapshot?.().view?.manifest.currentBranch ?? this.branch,
             selectors: () => this.selectors(), executionOverrides: input => this.overrides(input),
             prepareRequest: (request, input) => this.prepare(request, input),
@@ -100,15 +100,16 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         const auto = {id: '', label: t('chatSettings.followDefault')};
         return [{id: 'connectionId', label: t('chatInput.model'), value: this.settings.connectionId ?? '', choices: [auto,
             ...this.connections.filter(connection => connection.enabled && connection.credentialsReady !== false && connection.hasTiers).map(connection => ({id: connection.id, label: connection.name}))]},
-            {id: 'modelTier', label: t('chatInput.model'), value: this.settings.modelTier ?? 'auto', choices: [{id: 'auto', label: auto.label},
+            {id: 'modelTier', label: t('chatSettings.tier'), value: this.settings.modelTier ?? 'auto', choices: [{id: 'auto', label: auto.label},
                 ...(['optimal', 'standard', 'fast'] as const).map(id => ({id, label: id}))]},
             {id: 'executionMode', label: t('chatInput.executionMode.agent'), value: this.settings.executionMode ?? 'chat', disabled: this.settings.executionModeLocked,
                 choices: [{id: 'chat', label: t('chatInput.executionMode.chat')}, {id: 'agent', label: t('chatInput.executionMode.agent')}]}];
     }
     private toolbar(root: HTMLElement) {
         const releases: (() => void)[] = [];
-        for (const mount of [this.config.mountCompactNavigation, this.config.mountWindowList, this.config.mountConversationNavigation]) {
-            if (!mount) continue; const slot = document.createElement('div'); root.append(slot); releases.push(mount(slot), () => slot.remove());
+        for (const [mount, className] of [[this.config.mountCompactNavigation, 'llm-chat__compact-navigation'], [this.config.mountWindowList, ''], [this.config.mountConversationNavigation, '']] as const) {
+            if (!mount) continue; const slot = document.createElement('div'); slot.className = className;
+            if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); releases.push(mount(slot), () => slot.remove());
         }
         if (this.config.hostContext?.toggleSidebar) {const button = document.createElement('button'); button.type = 'button'; button.textContent = t('chat.toolbar.sidebar');
             button.onclick = () => this.config.hostContext!.toggleSidebar(); root.append(button);}
@@ -118,7 +119,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         void refresh().catch(error => this.fail(error));
         branches.onchange = () => {void this.switchBranch(branches.value).catch(error => {branches.value = this.branch; this.fail(error);});};
         const menu = document.createElement('details'), label = document.createElement('summary'), body = document.createElement('div');
-        label.textContent = t('chat.toolbar.more'); menu.append(label, body); root.append(menu);
+        menu.className = 'llm-chat__host-menu'; label.textContent = t('chat.toolbar.more'); menu.append(label, body); root.append(menu);
         if (this.config.mountMoreMenu) releases.push(this.config.mountMoreMenu(body));
         return {destroy: () => releases.forEach(release => release())};
     }

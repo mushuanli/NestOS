@@ -379,7 +379,7 @@ export async function createSessionChatView(container: HTMLElement, binding: Ret
     const calls = binding.mountCalls(); let contextPicker: SessionContextPicker | undefined;
     try {
         const mountToolbar: ImageChatOptions['mountToolbar'] = calls || binding.contextSelection ? (host, context) => {
-            const custom = document.createElement('div'); host.append(custom);
+            const custom = document.createElement('div'); custom.className = 'llm-chat__host-toolbar'; host.append(custom);
             const mounted = options.mountToolbar?.(custom, context);
             if (calls) host.append(calls.notices);
             if (binding.contextSelection) contextPicker = new SessionContextPicker(host, context, () => binding.contextScope(), query => binding.readContextOptions(query));

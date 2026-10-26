@@ -43,13 +43,13 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
     }
     private toolbar(root: HTMLElement) {
         const cleanups: (() => void)[] = [];
-        for (const mount of [this.options.mountCompactNavigation, this.options.mountWindowList, this.options.mountConversationNavigation]) {
+        for (const [mount, className] of [[this.options.mountCompactNavigation, 'llm-chat__compact-navigation'], [this.options.mountWindowList, ''], [this.options.mountConversationNavigation, '']] as const) {
             if (!mount) continue;
-            const slot = document.createElement('div'); root.append(slot); cleanups.push(mount(slot), () => slot.remove());
+            const slot = document.createElement('div'); slot.className = className; if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); cleanups.push(mount(slot), () => slot.remove());
         }
         if (this.options.mountMoreMenu) {
             const menu = document.createElement('details'), summary = document.createElement('summary'), body = document.createElement('div');
-            summary.textContent = t('chat.toolbar.more'); menu.append(summary, body); root.append(menu);
+            menu.className = 'llm-chat__host-menu'; summary.textContent = t('chat.toolbar.more'); menu.append(summary, body); root.append(menu);
             cleanups.push(this.options.mountMoreMenu(body), () => menu.remove());
         }
         this.branches = new RemoteBranches(this.service, this.options, async action => {

@@ -2314,10 +2314,14 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 | `396a5c7d` | 独立直接调用启动前锁定原执行模式 |
 | `004ec8a2` | 正常 Kernel 观察等待降为 debug，真实失败保留 warn |
 | `23511931` | 独立调用按事务恢复索引定位 Session |
+| `67111d40` | 审批回答与停止日志区分，回执校验/本地保存分别定位 |
+| `f95c747c` | 回答日志关联根任务、实际任务、交互和子会话，细分定位阶段 |
 
 ### 日志与风险定位
 
 沿用 call.submit / call.submit.prepared / call.target.resume / call.history.recover / call.history.reconcile，区分准备、接纳、绑定、调度恢复、等待、结果和历史提交。session.flow.prepare 区分 context/graph/root；flow.workspace.resource 区分权限、成员停止、能力关闭、租约恢复、物理收尾和回执保存。call.input.ready 记录首轮历史是否就绪，call.execution-mode.lock 记录设置读取、权限和保存阶段。
+
+审批回答前端日志使用 respond 动作，避免误记为 cancel；分别记录派发/回执读取、回执校验及本地保存阶段。后端回答日志关联根任务、实际交互任务、交互 ID、源/子会话，区分归属核对、交互目标读取、授权、回答及回执校验，不记录回答值。这两项日志调整按用户要求未另跑测试、类型检查或构建，也未更新运行服务。
 
 恢复摘要记录实际探测/跳过/含调用 Session 数量及是否完整；单 Session 失败不误写完整标记。无错误码的 effect.observe/yield 使用 debug，其他 blocked 和 failure 继续 warn。日志不记录正文、完整参数、目录、凭据或原始存储异常。
 

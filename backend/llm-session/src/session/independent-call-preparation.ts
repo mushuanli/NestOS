@@ -1,5 +1,5 @@
 import {prepareTaskCall} from '@itookit/llm-flow';
-import {snapshotTaskCallPlan, type TaskCallPlan} from '@itookit/durable-kernel';
+import {snapshotTaskCallPlan, type TaskSubmissionReceipt, type TaskCallPlan} from '@itookit/durable-kernel';
 import {isInvocationIdentity, targetLabels, type InvocationIdentity, type TargetRef} from '@itookit/llm-flow/contracts';
 import {sha256HexSync} from '@itookit/llm-context';
 import type {SubmissionRequest} from '../contracts/submission';
@@ -14,6 +14,13 @@ export interface IndependentTaskCallPreparation extends IndependentTaskCallPolic
 export interface PreparedIndependentTaskCall {
     operationId: string; caller: {sessionId: string; requestId: string}; executionSessionId: string;
     invocation: InvocationIdentity; plan: TaskCallPlan; context: PreparedConversationContext;
+}
+/** Real Kernel admission; target execution and history completion are separate observations. */
+export interface IndependentTaskCallAdmission {
+    operationId: string;
+    invocation: InvocationIdentity;
+    executionSessionId: string;
+    submission: TaskSubmissionReceipt;
 }
 interface PreparedData {plan: TaskCallPlan; context: PreparedConversationContext; digest: string}
 export interface IndependentKernelPreparation {version: 1; callerRequestId: string; invocation: InvocationIdentity; policy: IndependentTaskCallPolicy; prepared?: PreparedData}

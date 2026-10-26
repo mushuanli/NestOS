@@ -4,11 +4,11 @@
 
 ## 0. 当前剩余工作（2026-10-26）
 
-整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—89 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
+整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—90 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
 
 | 优先级 / 工作线 | 已具备基础 | 仍需完成的结果 |
 |---|---|---|
-| P1a 独立调用业务提交 | Kernel 受管调用、双侧写权、期限、共用准备；原路由持久计划见第 89 节 | 正式业务入口从持久准备进入 Kernel，固定 caller/target 引用；队列接纳、提交未知与原请求核对全链路统一，不能由两处派发 |
+| P1a 独立调用业务提交 | Kernel 受管调用、双侧写权、期限、共用准备；原路由持久计划与可信提交/冷核对见第 89—90 节 | 正式业务入口从持久准备进入 Kernel，固定 caller/target 引用；队列接纳、提交未知与原请求核对全链路统一，不能由两处派发 |
 | P1b 历史关联与恢复 | 旧队列/Round 恢复、Invocation 与子 Session、Kernel 原调用核对 | 新 Kernel 路径的真实 TaskRef、Round、接纳/结果回执与重启恢复投影贯通；有证据后再压缩准备数据 |
 | P1c Flow 工作区责任 | 既有隔离工作区 manager、scheduler lease 与收尾记录 | 将完整 Flow 的工作区/能力占用接到 Kernel 可核对的资源责任，确认物理收尾后再完成函数调用 |
 | P1d 跨调用预算 | Kernel 工作额度、共享资源、深度与幂等用量机制 | token/费用预算跨父子调用预留、分配、继承及实际结算；缺少远端 usage 时不能视为零用量 |
@@ -2188,3 +2188,37 @@ C4Dynamic
 原 session.call.submit 仍沿原队列和历史执行，本批不自动切换 UI；prepareTaskCall 返回准备计划，不返回假的 accepted 或输出。完整入口后续需将真实 caller/target TaskRef 与原路由、Round 及回执关联，再接恢复投影；计划在 Kernel 持有后才可按有证据的引用压缩。当前暂保留完整计划，不增加另一套运行状态或提前删除恢复依据。新增路由要求退出旧应用 writer 后使用，不承诺旧应用回滚能理解 Kernel 准备方式；旧队列记录保持兼容。
 
 P1 的业务提交/历史映射、Flow 工作区归属、跨调用 token 预算以及 UI 投影继续保留，F16/P1 不标记整体完成。本批未部署或操作生产 Session。
+
+
+## 90. 以原 Kernel 事实提交和核对已准备调用
+
+Kernel 新增 readTaskSubmissionReceipt，直接读取原普通提交的 submission/<requestId> 与真实 Task，返回最小 TaskSubmissionReceipt；同键异内容仍冲突，不以扫描标签猜测原任务。源 Session、存储及 Task 归属在事务中核对。没有增加状态库、接纳指针、存储格式或业务调度器。公开提交的原 JSON 指纹保持兼容；内部 owned 目标仍由原 task.call 的所有者协议核对。
+
+```mermaid
+C4Dynamic
+  title 已冻结调用的唯一接纳事实与冷核对
+  Component(host, "可信业务宿主", "保留原 Submission 与 Invocation")
+  Component(route, "原 IndependentCall 路由", "读取原冻结计划与 caller.requestId")
+  Component(sdk, "原 Task 调用 SDK", "同一 caller TaskSpec；提交与查询共用构造")
+  Component(kernel, "Durable Kernel", "原接纳事务、能力与持久调度")
+  Component(receipt, "原 Session 存储", "submission 键和关联真实 Task")
+  Component(history, "Session 历史投影", "待接：真实 TaskRef、Round 与结果")
+  RelIndex(1, host, route, "读取持久准备；提交复验源与目标写权")
+  RelIndex(2, route, sdk, "原计划及身份；不重装配当前定义")
+  RelIndex(3, sdk, kernel, "提交原 deferred caller；绑定确切能力")
+  RelIndex(4, kernel, receipt, "原事务持久接纳；已有请求返回同一 Task")
+  RelIndex(5, host, sdk, "丢提交或绑定回复后，只读核对原请求")
+  RelIndex(6, sdk, receipt, "Kernel 冷读取；不启动 worker 或扫描 Tasks")
+  RelIndex(7, receipt, host, "仅原接纳 TaskRef；不冒充结果或历史完成")
+  RelIndex(8, kernel, history, "后续将真实执行与结果关联，避免双重派发")
+```
+
+llm-flow 的 submitPreparedTaskCall 与 readTaskCallSubmission 共用原 callerSpec；已冻结限额只从 plan 获取。Session 的同名提交与 inspectTaskCallSubmission 只消费第 89 节已持久路由，不调用旧队列、不重新准备、不持久维护第二份执行状态。丢提交回执可查到仍为 created 的原 caller，绑定后丢回复也保留原接纳；重试继续使用原 Task，终态不重新绑定或执行。查询不取得 writer 或恢复 Session，缺少证据不代表可换身份重发，错误分类保留。
+
+原接纳证据与真实目标输出分离；输入和指纹不出现在查询结果或诊断中。契约覆盖原计划表示、请求冲突、损坏记录、错误存储归属、失权、异步输入修改、终态及 Kernel 重建，并以两种真实 LocalFS/SQLite 挂载下 SIGKILL 后的独立进程冷查询验证不派发目标。独立安装 ESM/CommonJS/core 和 NodeNext 声明消费另行验证。
+
+本批只接通可信宿主的提交与接纳核对，没有新增 RPC；正式 session.call.submit 仍走旧队列，不能据此宣称 P1a/P1b 完成。下一步必须明确源 Session 前台/后台调度范围，再将真实 caller/target TaskRef 与原路由、Round、结果及恢复投影贯通；不能让一个后台代理任务意外阻塞普通输入。Flow 工作区、跨调用预算和 UI 仍按第 0 节保留。本批未部署或操作生产 Session。
+
+本节 Kernel 提交 `98cc2d60`：469 项单元/契约及 62 项真实多进程测试通过；独立安装 ESM/CommonJS/core、NodeNext 声明消费通过。源树严格类型检查包含新回执测试。应用消费者以锁定该 gitlink 的隔离候选树验证，结果随本批记录。
+
+应用隔离候选树验证：Flow 747、Session 593、app-core 1161 项通过（另 13 项既有跳过）；Flow/Session 测试严格类型及 Flow/Session/app-core/CLI/app-shell 类型、Flow/Session 构建、架构边界通过，75 个 Mermaid 图和 22 个相对链接解析通过。全量 docs:check 仍报告 mindos-node README 的 tools/config.toml 示例路径；回到原根提交与原 Kernel gitlink 后复验，错误完全相同，本批未新增。隔离树补齐原 anki-cli gitlink 后，该目录的链接不再误报。此检查限制不解释为全量文档绿色，后续单独处理原示例路径。

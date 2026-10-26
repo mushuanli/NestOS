@@ -270,3 +270,64 @@ it('recovers a lost deferred caller submission reply after restart using the sam
     expect((await caller.wait({until: 'settled', timeoutMs: 3000})).status).toBe('succeeded'); expect(model).toHaveBeenCalledOnce();
     expect(await kernel.listSessionTasks(current!.executionSessionId)).toHaveLength(1);
 });
+it('requires a committed plan before trusted dispatch and keeps missing admission read-only', async () => {
+    expect(await service.inspectTaskCallSubmission(input())).toBeUndefined();
+    await expect(service.submitPreparedTaskCall(input())).rejects.toHaveProperty('code', 'CALL_PREPARATION_REQUIRED');
+    expect(await kernel.listSessionTasks(parent)).toEqual([]); expect(submit).not.toHaveBeenCalled();
+});
+it.each(['chat', 'agent', 'harness'] as const)('submits a persisted %s route through the host API and observes the original caller', async kind => {
+    const ready = await service.prepareTaskCall(input(), options(kind)), admitted = await service.submitPreparedTaskCall(input());
+    expect(admitted).toMatchObject({operationId: 'call', invocation: ready.invocation, executionSessionId: ready.executionSessionId,
+        submission: {requestId: ready.caller.requestId, task: {sessionId: parent}, acceptedAt: expect.any(Number)}});
+    const caller = await kernel.attachTask(parent, admitted.submission.task.taskId);
+    expect(await caller.wait({until: 'settled', timeoutMs: 3000})).toMatchObject({status: 'succeeded', output: {task: {sessionId: ready.executionSessionId}}});
+    expect(await service.inspectTaskCallSubmission(input())).toEqual(admitted);
+    expect(await service.submitPreparedTaskCall(input())).toEqual(admitted);
+    expect(await kernel.listSessionTasks(parent)).toHaveLength(1); expect(await kernel.listSessionTasks(ready.executionSessionId)).toHaveLength(1);
+    expect(submit).not.toHaveBeenCalled();
+});
+it('observes actual admission after a lost caller response and resumes that deferred caller without queue fallback', async () => {
+    const ready = await service.prepareTaskCall(input(), options()), original = kernel.submit.bind(kernel); let lost = false;
+    vi.spyOn(kernel, 'submit').mockImplementation(async (...args) => {const task = await original(...args);
+        if (!lost) {lost = true; throw Object.assign(Error('PRIVATE LOST REPLY'), {code: 'ETIMEDOUT'});} return task;});
+    await expect(service.submitPreparedTaskCall(input())).rejects.toHaveProperty('code', 'ETIMEDOUT');
+    const observed = await service.inspectTaskCallSubmission(input()); expect(observed).toBeDefined();
+    expect(await kernel.listSessionTasks(ready.executionSessionId)).toEqual([]);
+    const resumed = await service.submitPreparedTaskCall(input()); expect(resumed).toEqual(observed);
+    const caller = await kernel.attachTask(parent, resumed.submission.task.taskId); await caller.wait({until: 'settled', timeoutMs: 3000});
+    expect(model).toHaveBeenCalledOnce(); expect(submit).not.toHaveBeenCalled();
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('PRIVATE LOST REPLY');
+});
+it('reconciles a lost binding response without granting or executing again', async () => {
+    await service.prepareTaskCall(input(), options()); const original = kernel.bindTaskCall.bind(kernel);
+    const bind = vi.spyOn(kernel, 'bindTaskCall').mockImplementation(async (...args) => {await original(...args); throw Error('Binding reply lost');});
+    await expect(service.submitPreparedTaskCall(input())).rejects.toThrow('Binding reply lost');
+    const receipt = await service.inspectTaskCallSubmission(input()), caller = await kernel.attachTask(parent, receipt!.submission.task.taskId);
+    await caller.wait({until: 'settled', timeoutMs: 3000});
+    expect(await service.submitPreparedTaskCall(input())).toEqual(receipt); expect(bind).toHaveBeenCalledOnce(); expect(model).toHaveBeenCalledOnce();
+});
+it('cold-reads submitted calls after completion and does not obtain a write lease or create a task', async () => {
+    await service.prepareTaskCall(input(), options()); const first = await service.submitPreparedTaskCall(input());
+    await (await kernel.attachTask(parent, first.submission.task.taskId)).wait({until: 'settled', timeoutMs: 3000});
+    const open = vi.spyOn(kernel, 'openSession'), recover = vi.spyOn(kernel, 'recoverSession'), writable = vi.fn(async () => false);
+    expect(await createService(writable).inspectTaskCallSubmission(input())).toEqual(first);
+    expect(open).not.toHaveBeenCalled(); expect(recover).not.toHaveBeenCalled(); expect(writable).not.toHaveBeenCalled();
+});
+it('observes the same completed submission after Kernel reconstruction without preparation or re-execution', async () => {
+    await service.prepareTaskCall(input(), options()); const first = await service.submitPreparedTaskCall(input());
+    await (await kernel.attachTask(parent, first.submission.task.taskId)).wait({until: 'settled', timeoutMs: 3000});
+    kernel.dispose(); await kernel.waitIdle(); kernel = await createKernel(); transfers = new ContentTransferService({kernel, repository, commands: new CommandBus()});
+    const restored = createService(); expect(await restored.inspectTaskCallSubmission(input())).toEqual(first);
+    expect(await restored.submitPreparedTaskCall(input())).toEqual(first); expect(model).toHaveBeenCalledOnce();
+});
+it.each(['source', 'target'] as const)('refuses trusted dispatch when the %s writer is unavailable', async scope => {
+    const ready = await service.prepareTaskCall(input(), options());
+    const denied = createService(async id => id !== (scope === 'source' ? parent : ready.executionSessionId));
+    await expect(denied.submitPreparedTaskCall(input())).rejects.toHaveProperty('code', 'CALL_READ_ONLY');
+    expect(await kernel.listSessionTasks(parent)).toEqual([]); expect(model).not.toHaveBeenCalled();
+});
+it('does not expose prepared dispatch through the legacy RPC registry', async () => {
+    await service.prepareTaskCall(input(), options()); const bus = new CommandBus(); service.register(bus);
+    await expect(bus.execute('session.call.submit-prepared', input())).rejects.toThrow();
+    expect(await kernel.listSessionTasks(parent)).toEqual([]);
+});

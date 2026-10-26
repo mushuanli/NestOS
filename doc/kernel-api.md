@@ -895,3 +895,12 @@ Effect适配器可通过可选 `failureOutcome(error)` 将实时调用无法确�
 `TaskCancellationOptions` 在已有 lease 外允许 `requestId` 和 `expectedEpoch`；提供控制版本时必须提供稳定请求 ID。取消回执与终态在同一 Session 事务提交，`Kernel.readTaskCancellationReceipt` 冷读取 `{requestId, taskId, expectedEpoch?, controlEpoch, status}`，不激活 worker，不重发取消，不返回原因和正文。同一请求不同原因或版本冲突；重复请求不重复终态事件。若完成或失败先发生，回执保留真实终态。父取消的 ID/版本不传递给子任务。
 
 回执仅证明取消请求已处理，不证明资源释放或整树停止；清理挂起/失败后回执仍可查询，继续使用 `taskStat/taskStats` 的 stopped/settled 观察收尾。无 requestId 的旧接口继续可用，但不产生可核对的取消接纳证据。详细契约及回归见独立 Kernel 的 `docs/api.md` 与 `src/interface-contracts.test.ts`。
+
+
+## 原提交接纳的冷读取
+
+根 Kernel 和 `/core` Harness 提供 `readTaskSubmissionReceipt(sessionId, originalSpec)`，返回 `TaskSubmissionReceipt {requestId, task: {sessionId, taskId}, acceptedAt}` 或 undefined。originalSpec 必须含原 requestId，并保持普通 submit 使用的完整序列化表示；字段顺序、deferStart 和 labels 也属于原指纹。同键异内容抛 CONFLICT，缺少 Session 仍报 SESSION_NOT_FOUND。此入口用于普通公开提交；内部 owned 目标的所有者指纹由原 task.call 机制核对，不能伪装为公开提交查询。
+
+接口只在原 Session 事务读取原 submission/<requestId> 和关联 Task，验证存储归属，不创建回执、不扫描 Task、不注册 worker 或启动恢复。损坏回执或归属不符报 TASK_SUBMISSION_RECEIPT_INVALID；错误不暴露原指纹正文。诊断 task.submission.inspect 包含安全操作身份、阶段、结果、错误码和耗时。无需增加 schema 或迁移既有记录。
+
+接纳只证明原 Task 已持久创建，不证明能力绑定、执行、目标结果或物理清理。终态不抹掉原接纳；证据随原 Session 存储保留，Session 删除或重建后不能用“查不到”推断历史从未执行。回复丢失后保留原请求核对，不能生成新身份重复副作用。公开契约也见[独立包 API](../libraries/durable-kernel/docs/api.md#task-submission-admission-receipts)。

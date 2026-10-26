@@ -1,4 +1,5 @@
-import {snapshotIndependentTaskCallPolicy, newIndependentKernelPreparation, assertIndependentPreparationMode, freezeIndependentTaskCall, readIndependentTaskCall, independentPreparationError, type IndependentKernelPreparation, type IndependentTaskCallPolicy, type IndependentTaskCallPreparation, type PreparedIndependentTaskCall, type PreparationScope} from './independent-call-preparation';
+import {submitPreparedTaskCall, readTaskCallSubmission} from '@itookit/llm-flow';
+import {snapshotIndependentTaskCallPolicy, newIndependentKernelPreparation, assertIndependentPreparationMode, freezeIndependentTaskCall, readIndependentTaskCall, independentPreparationError, type IndependentKernelPreparation, type IndependentTaskCallPolicy, type IndependentTaskCallPreparation, type PreparedIndependentTaskCall, type IndependentTaskCallAdmission, type PreparationScope} from './independent-call-preparation';
 import {IndependentCallDescendants} from './independent-call-descendants';
 import {independentCallTaskState, supportsCallCancellation} from './independent-call-task-state';
 import {readIndependentCallTree} from './independent-call-tree';
@@ -119,6 +120,37 @@ export class IndependentCallService {
             const ready = route && this.preparedCall(route);
             progress.executionSessionId = ready?.executionSessionId; return ready;
         });
+    }
+    /** Trusted host dispatch of an already frozen route; never uses the legacy queue submitter. */
+    async submitPreparedTaskCall(supplied: IndependentCallInput): Promise<IndependentTaskCallAdmission> {
+        const input = structuredClone(supplied);
+        return this.tracePreparation(input, 'call.submit.prepared', async progress => {
+            const ready = await this.requirePreparedTaskCall(input); progress.executionSessionId = ready.executionSessionId;
+            await this.writable(ready.caller.sessionId); await this.writable(ready.executionSessionId);
+            progress.stage = 'caller';
+            const run = await submitPreparedTaskCall(ready.plan, {kernel: this.options.kernel, caller: ready.caller,
+                onDiagnostic: event => this.host.logger.debug('Prepared Kernel call', event)});
+            progress.stage = 'receipt'; const observed = await this.taskCallAdmission(ready);
+            if (!observed || observed.submission.task.taskId !== run.root.id) throw independentPreparationError('CALL_EXECUTION_CONFLICT');
+            return observed;
+        });
+    }
+    async inspectTaskCallSubmission(supplied: IndependentCallInput): Promise<IndependentTaskCallAdmission | undefined> {
+        const input = structuredClone(supplied);
+        return this.tracePreparation(input, 'call.submit.inspect', async progress => {
+            const ready = await this.inspectPreparedTaskCall(input); if (!ready) return;
+            progress.executionSessionId = ready.executionSessionId; progress.stage = 'receipt'; return this.taskCallAdmission(ready);
+        });
+    }
+    private async requirePreparedTaskCall(input: IndependentCallInput): Promise<PreparedIndependentTaskCall> {
+        const ready = await this.inspectPreparedTaskCall(input);
+        if (!ready) throw independentPreparationError('CALL_PREPARATION_REQUIRED'); return ready;
+    }
+    private async taskCallAdmission(ready: PreparedIndependentTaskCall): Promise<IndependentTaskCallAdmission | undefined> {
+        const submission = await readTaskCallSubmission(ready.plan, {kernel: this.options.kernel, caller: ready.caller,
+            onDiagnostic: event => this.host.logger.debug('Prepared Kernel call receipt', event)});
+        return submission && {operationId: ready.operationId, invocation: structuredClone(ready.invocation),
+            executionSessionId: ready.executionSessionId, submission};
     }
     private async tracePreparation<T>(input: IndependentCallInput, operation: string, work: (progress: PreparationProgress) => Promise<T>): Promise<T> {
         const started = Date.now(), progress: PreparationProgress = {stage: 'validate'}, supplied = input?.request?.submission?.id;

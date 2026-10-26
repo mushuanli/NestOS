@@ -1,13 +1,18 @@
 import {snapshotTaskCallPlan, type Kernel, type KernelDiagnostic, type TaskCallPlan, type TaskCallResult, type TaskHandle, type TaskSpec} from '@itookit/durable-kernel';
 import type {RunExecution, TaskRunDefinition} from './run-submission';
 
-export interface TaskCallRunOptions {
+export interface TaskCallSubmitOptions {
     kernel: Pick<Kernel, 'openSession' | 'bindTaskCall'>;
     caller: {sessionId: string; requestId: string; parent?: string; spawnKey?: string; labels?: Record<string, string>};
+    onDiagnostic?(event: KernelDiagnostic): void;
+}
+export interface TaskCallRunOptions extends TaskCallSubmitOptions {
     maxDepth: number;
     /** null explicitly allows durable human/child waiting without a total call deadline. */
     timeoutMs?: number | null;
-    onDiagnostic?(event: KernelDiagnostic): void;
+}
+export interface TaskCallReadOptions extends Pick<TaskCallSubmitOptions, 'caller' | 'onDiagnostic'> {
+    kernel: Pick<Kernel, 'readTaskSubmissionReceipt'>;
 }
 export interface TaskCallRunExecution extends RunExecution {root: TaskHandle<TaskCallResult>}
 
@@ -24,15 +29,35 @@ export function prepareTaskCall(definition: TaskRunDefinition, policy: Pick<Task
 
 /** Admission replays the same caller and callee; it never reinterprets a frozen definition. */
 export async function submitTaskCall(definition: TaskRunDefinition, options: TaskCallRunOptions): Promise<TaskCallRunExecution> {
-    return trace(options, async progress => {
-        const kernel = options.kernel, plan = prepareTaskCall(definition, options), spec = callerSpec(options.caller, plan);
-        progress.stage = 'caller';
-        const session = await kernel.openSession(options.caller.sessionId);
-        const root = await session.submit<TaskCallPlan, TaskCallResult>(spec);
-        progress.taskId = root.id; progress.stage = 'binding';
-        if ((await root.status()).task.status === 'created') await kernel.bindTaskCall({sessionId: session.id, taskId: root.id}, plan);
-        return {root, tasks: () => [root]};
+    return trace(options, progress => submitPlan(prepareTaskCall(definition, options), options, progress));
+}
+/** Dispatch exactly the stored plan; current policy defaults cannot override its frozen limits. */
+export async function submitPreparedTaskCall(plan: TaskCallPlan, options: TaskCallSubmitOptions): Promise<TaskCallRunExecution> {
+    return trace(options, progress => {
+        assertFrozenLimits(options);
+        return submitPlan(snapshotTaskCallPlan(plan), options, progress);
     });
+}
+/** A cold exact-spec lookup, including after the submit reply or caller handle was lost. */
+export async function readTaskCallSubmission(plan: TaskCallPlan, options: TaskCallReadOptions) {
+    return trace(options, async progress => {
+        assertFrozenLimits(options);
+        const frozen = snapshotTaskCallPlan(plan), spec = callerSpec(options.caller, frozen);
+        progress.stage = 'receipt';
+        const receipt = await options.kernel.readTaskSubmissionReceipt(options.caller.sessionId, spec);
+        progress.taskId = receipt?.task.taskId; return receipt;
+    });
+}
+function assertFrozenLimits(options: TaskCallSubmitOptions | TaskCallReadOptions): void {
+    if ('maxDepth' in options || 'timeoutMs' in options) throw invalid('Prepared call limits belong to the stored plan');
+}
+async function submitPlan(plan: TaskCallPlan, options: TaskCallSubmitOptions, progress: {stage: string; taskId?: string}): Promise<TaskCallRunExecution> {
+    const spec = callerSpec(options.caller, plan); progress.stage = 'caller';
+    const session = await options.kernel.openSession(options.caller.sessionId);
+    const root = await session.submit<TaskCallPlan, TaskCallResult>(spec);
+    progress.taskId = root.id; progress.stage = 'binding';
+    if ((await root.status()).task.status === 'created') await options.kernel.bindTaskCall({sessionId: session.id, taskId: root.id}, plan);
+    return {root, tasks: () => [root]};
 }
 
 function callerSpec(caller: TaskCallRunOptions['caller'], plan: TaskCallPlan): TaskSpec<TaskCallPlan> {
@@ -52,7 +77,7 @@ function validLabels(value: unknown): boolean {
     return value === undefined || record(value) && Object.values(value).every(item => typeof item === 'string');
 }
 
-async function trace<T>(options: TaskCallRunOptions, operation: (progress: {stage: string; taskId?: string}) => Promise<T>): Promise<T> {
+async function trace<T>(options: Pick<TaskCallSubmitOptions, 'caller' | 'onDiagnostic'>, operation: (progress: {stage: string; taskId?: string}) => Promise<T>): Promise<T> {
     const started = Date.now(), progress = {stage: 'plan'} as {stage: string; taskId?: string};
     const metadata = {sessionId: safeId(options.caller?.sessionId), operationId: safeId(options.caller?.requestId) ?? 'unidentified-task-call'};
     let outcome: KernelDiagnostic['outcome'] = 'failure', errorCode: string | undefined;

@@ -792,3 +792,12 @@ inspectPreparedTaskCall 是冷读取，不获取 writer、不创建子会话、�
 队列路由与 Kernel 准备路由按首次声明固定，同一身份不能互相解释。旧无 kernelPreparation 的记录沿用队列语义；新增 Kernel 路由要求所有应用 writer 升级后使用，不支持旧应用宿主回滚读取新路由。Session 写租约继续防止并发失权写，格式声明不替代授权。新写在异步准备结束后复验两侧写权限，损坏摘要、未知版本与身份不符明确拒绝，不静默重建。
 
 诊断 call.prepare/call.prepare.inspect 区分 validate、route、attachments、prepare、persist、lookup、plan，带安全源/目标 Session、operationId、分类与耗时，不记录计划、正文、文件或原始错误。独立业务提交的自动接线、Kernel 执行引用与 Round/Invocation 的关联和计划压缩仍待实施；当前保留原计划，不声称已完成 F16 或无人值守恢复投影。详见[功能合入计划第 89 节](design/functional-merge-plan.md#89-独立调用在原路由中持久冻结-task-计划)。
+
+
+## 已准备独立 Task 调用的可信宿主提交
+
+`IndependentCallService.submitPreparedTaskCall(input)` 只消费原路由中已经保存的准备计划；缺少计划报 CALL_PREPARATION_REQUIRED，不在此阶段重新装配目标。它复验源与目标 Session 写权，使用已冻结 caller/plan 进入原 Kernel 调用 SDK，再核对真实的源 Task 接纳记录。返回 `IndependentTaskCallAdmission {operationId, invocation, executionSessionId, submission: TaskSubmissionReceipt}`，不新增路由执行状态或 callerTaskId 指针，也不返回伪造的队列或历史完成回执。
+
+`inspectTaskCallSubmission(input)` 冷读取原计划并按同一完整 TaskSpec 查询 Kernel；没有准备或没有保留的接纳返回 undefined，内容冲突、存储损坏和其他读取失败仍抛错。它不取得 writer、不恢复 Session、不调用旧队列。提交或能力绑定发生异常时可能已经接纳，异常不能改写成“未发送”；重试必须保留原身份。源 Task 的接纳、目标实际 TaskRef、调用结果与 Round 历史完成属于不同事实，接纳回执不确认后三者。
+
+这两个方法仅用于可信宿主，没有注册成新的 RPC 或替换现有 session.call.submit。诊断 call.submit.prepared / call.submit.inspect 沿用安全操作身份、源/目标 Session、阶段、分类和耗时，内层 SDK 记录实际 caller Task ID；不输出准备计划或输入。正式目标准备接线、前台/后台调度范围及 TaskRef/Round/恢复投影仍待完成，不能让新 Kernel 与旧队列同时派发同一调用。见[功能合入计划第 90 节](design/functional-merge-plan.md#90-以原-kernel-事实提交和核对已准备调用)。

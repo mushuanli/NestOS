@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {Kernel, type KernelDiagnostic} from '@itookit/durable-kernel';
 import {createVFS, MemoryBackend, type IVFSManager} from '@itookit/vfs-core';
-import {prepareTaskCall, submitTaskCall, registerDurablePrograms, type TaskRunDefinition, type TaskCallRunOptions} from '../src';
+import {prepareTaskCall, submitTaskCall, submitPreparedTaskCall, readTaskCallSubmission, registerDurablePrograms, type TaskRunDefinition, type TaskCallRunOptions} from '../src';
 
 let kernel: Kernel, manager: IVFSManager, diagnostics: KernelDiagnostic[];
 const model = vi.fn(async () => ({choices: [{message: {role: 'assistant', content: 'Done'}, finish_reason: 'stop'}]}));
@@ -128,4 +128,37 @@ it.each([undefined, 60_000, null])('freezes deadline policy %s without changing 
     expect(model).toHaveBeenCalledOnce();
     const alternate = {...configured, timeoutMs: timeoutMs === null ? 60_000 : null};
     await expect(submitTaskCall(definition(), alternate)).rejects.toHaveProperty('code', 'CONFLICT');
+});
+
+it('submits and cold-observes a stored plan without opening another writer or rebuilding its policy', async () => {
+    const plan = prepareTaskCall(definition(), {maxDepth: 3, timeoutMs: null}), configured = options();
+    const parameters = {kernel, caller: configured.caller, onDiagnostic: configured.onDiagnostic};
+    expect(await readTaskCallSubmission(plan, parameters)).toBeUndefined();
+    const run = await submitPreparedTaskCall(plan, parameters); await run.root.wait({until: 'settled', timeoutMs: 3000});
+    const open = vi.spyOn(kernel, 'openSession'), recover = vi.spyOn(kernel, 'recoverSession');
+    expect(await readTaskCallSubmission(plan, parameters)).toMatchObject({requestId: 'call', task: {sessionId: 'source', taskId: run.root.id}});
+    expect(open).not.toHaveBeenCalled(); expect(recover).not.toHaveBeenCalled();
+    expect((await submitPreparedTaskCall(plan, parameters)).root.id).toBe(run.root.id); expect(model).toHaveBeenCalledOnce();
+});
+it('reconciles a lost prepared submission response before retrying the same caller', async () => {
+    const plan = prepareTaskCall(definition(), {maxDepth: 3}), configured = {kernel, caller: options().caller};
+    const submit = kernel.submit.bind(kernel); let lose = true;
+    vi.spyOn(kernel, 'submit').mockImplementation(async (...args) => {const task = await submit(...args);
+        if (lose) {lose = false; throw Error('Reply lost');} return task;});
+    await expect(submitPreparedTaskCall(plan, configured)).rejects.toThrow('Reply lost');
+    const receipt = await readTaskCallSubmission(plan, configured); expect(receipt).toBeDefined(); expect(await kernel.listSessionTasks('target')).toEqual([]);
+    const replay = await submitPreparedTaskCall(plan, configured); expect(replay.root.id).toBe(receipt!.task.taskId);
+    expect((await replay.root.wait({timeoutMs: 3000})).status).toBe('succeeded'); expect(model).toHaveBeenCalledOnce();
+});
+it.each(['maxDepth', 'timeoutMs'] as const)('rejects a new %s override on a frozen plan before source admission', async key => {
+    const plan = prepareTaskCall(definition(), {maxDepth: 3}), configured = {kernel, caller: options().caller, [key]: 9};
+    await expect(submitPreparedTaskCall(plan, configured)).rejects.toHaveProperty('code', 'INVALID_SPEC');
+    await expect(readTaskCallSubmission(plan, configured)).rejects.toHaveProperty('code', 'INVALID_SPEC');
+    expect(await kernel.listSessionTasks('source')).toEqual([]);
+});
+it('keeps an exact-spec conflict distinct from a missing submission', async () => {
+    const plan = prepareTaskCall(definition(), {maxDepth: 3}), configured = {kernel, caller: options().caller};
+    const run = await submitPreparedTaskCall(plan, configured); await run.root.wait({timeoutMs: 3000});
+    const changed = structuredClone(plan); changed.task.input = 'PRIVATE CONTENT';
+    await expect(readTaskCallSubmission(changed, configured)).rejects.toHaveProperty('code', 'CONFLICT'); expect(model).toHaveBeenCalledOnce();
 });

@@ -610,3 +610,12 @@ const exit = await run.root.wait({until: 'settled'});
 这是受信宿主 SDK，不是模型/RPC 准入端口；实际目标、上下文、授权和已准备输入由宿主提供。调用恢复须读取已冻结定义，不能从最新 Agent/模型设置重新构造；改变序列化表示或内容后复用 caller.requestId 会冲突。图定义使用原 prepareFlowRun / DurableFlowExecutor，其外层工作区收尾尚未全部进入 Kernel 资源责任，不能把 flow.aggregate 包装成这里的独立函数入口。Durable Program 内部可直接发出已授权的 task.call Effect；SDK 不自动接管某个外层 Effect 的生命周期。
 
 可选 onDiagnostic 接收 run.task.call 的 plan/caller/binding 阶段、原请求/任务身份、安全错误码和耗时；不包含输入或原异常正文，诊断失败不影响实际结果。裸 Task 的发布目录及 UI 入口仍待接入。
+
+
+## 已准备 Task 调用的提交与只读接纳核对
+
+`submitPreparedTaskCall(plan, {kernel, caller, onDiagnostic?})` 接收已经持久冻结的 TaskCallPlan，复用原 caller.requestId 和 kernel.call 版本，不再解析定义或应用当前期限/深度默认值。返回原 TaskCallRunExecution；重复提交核对原代理 Task。不得在 options 再提供 maxDepth/timeoutMs；这些策略属于原 plan。已有 submitTaskCall 继续执行 prepareTaskCall 后进入同一提交函数，原 TaskSpec 的字段顺序、版本和幂等指纹保持兼容。
+
+`readTaskCallSubmission(plan, {kernel, caller, onDiagnostic?})` 使用完全相同的源 TaskSpec，调用 Kernel.readTaskSubmissionReceipt，不 open/recover Session、不绑定能力或派发目标。返回 TaskSubmissionReceipt 或 undefined；不同内容抛 CONFLICT。提交或绑定回复丢失时，先用原 plan/caller 核对，后续重试仍使用它们。接纳不代表绑定完成、目标已经启动或调用完成；查询缺少证据也不授权更换请求身份重发。SDK 不为结果、资源清理或历史建立第二套状态。
+
+诊断沿用 run.task.call，新增 receipt 阶段，带原安全请求身份和实际 caller Task ID；不记录计划或消息正文。该可信宿主端口仍不等于正式 session.call.submit、UI 或 Round 恢复接线，见[功能合入计划第 90 节](design/functional-merge-plan.md#90-以原-kernel-事实提交和核对已准备调用)。

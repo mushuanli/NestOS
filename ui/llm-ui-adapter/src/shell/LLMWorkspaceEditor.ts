@@ -966,6 +966,7 @@ export class LLMWorkspaceEditor implements IEditor {
         if (!this.options.handoff) await this.stateManager.restoreInputState(this.chatInput, {
             initialInputState: effectiveInitialInputState,
             savedState: savedUIState,
+            historyTarget: manifest.parentSessionId ? [...snapshot.sessions].reverse().find(group => group.target)?.target : undefined,
             sessionSettings,
         });
         else if (sessionSettings && (sessionSettings.executionModeLocked || sessionSettings.flowId)) {

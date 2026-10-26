@@ -1,3 +1,4 @@
+import {createModuleLogger, randomUUID} from '@itookit/common';
 import type { SessionViewPort } from '@itookit/llm-session/contracts';
 // @file: llm-ui/shell/StateManager.ts
 
@@ -15,6 +16,7 @@ import {DraftFilesCodec} from '../services/DraftFilesCodec';
 interface PendingInput {config: IChatInputConfig; files?: File[]; branch: string; verify?: boolean; replaceId?: string; resolution?: number}
 interface InputRestoreOptions {
     initialInputState?: {text?: string; agentId?: string}; savedState?: UIState | null; sessionSettings?: ChatInputSettings;
+    historyTarget?: import('@itookit/llm-flow/contracts').TargetRef;
 }
 /**
  * 状态管理器
@@ -254,11 +256,18 @@ export class StateManager {
         chatInput: IChatInputPresenter,
         options: InputRestoreOptions,
     ): Promise<void> {
+        const started = Date.now(), target = options.historyTarget;
+        const restoreTarget = !options.initialInputState && target && !options.savedState?.input_target && options.savedState?.input_agent_id === undefined;
+        if (restoreTarget) options = {...options, savedState: {collapse_states: {}, ...options.savedState,
+            input_agent_id: target.kind === 'agent' ? target.id : '', input_target: structuredClone(target)}};
         const files = !options.initialInputState && options.savedState?.input_files?.length ? await this.decodeFiles(options.savedState) : [];
         this.restoringInput = true;
         try {
             this.applyInputState(chatInput, options);
             chatInput.restoreDraftFiles?.(files, options.initialInputState ? undefined : options.savedState?.input_token);
+            if (restoreTarget) {try {createModuleLogger('session-input').info('call.input.restore', {operationId: randomUUID(),
+                sessionId: this.sessionId, branchId: this.branch, stage: 'history-target', outcome: 'success',
+                targetKind: target.kind, durationMs: Date.now() - started});} catch { /* Diagnostics cannot change the restored draft. */ }}
         } finally {this.restoringInput = false;}
     }
 

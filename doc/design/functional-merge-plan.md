@@ -2316,6 +2316,7 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 | `23511931` | 独立调用按事务恢复索引定位 Session |
 | `67111d40` | 审批回答与停止日志区分，回执校验/本地保存分别定位 |
 | `f95c747c` | 回答日志关联根任务、实际任务、交互和子会话，细分定位阶段 |
+| `e4b1729e` | caller 收尾和历史待保存时保持活动刷新 |
 
 ### 日志与风险定位
 
@@ -2357,7 +2358,7 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 
 审批验收先遇到诊断配置及脚本问题：ToolSearch 未启用；文件脚本误用 IFileSystem API；纠正接口后，未挂载可写目录的诊断 Session 写文件被 EROFS 拒绝。这些尝试不计为通过，后两次沿原身份取消；最终使用已启用的会话内只读 TaskList 完成批准与工具执行，没有修改工具全局配置或放宽目录权限。原失败/取消记录和 /tmp/x1-http-flow-agent-approval-{unavailable-tool,script-error,no-workspace}.json 保留供定位。最终只读确认这三次调用的任务树与 caller 均 settled、historyPending=false，没有遗留运行任务，证据为 /tmp/x1-http-acceptance-cleanup-state.json。
 
-上述证据证明真实 HTTPS 应用端口的主要流程；没有操作浏览器 DOM，不能代替按钮、草稿和视觉交互验收。当前运行版本仍为 600146cc 来源，后续日志及父卡片刷新修改尚未部署。未执行全量测试、原生远端、真实隔离工作区/进程关闭、在途任务跨进程恢复或历史写入中断验收。临时本地正常脚本早于恢复索引和最后的日志调整，不扩张其证明范围。
+随后使用本机已有 Playwright 和 Chrome、客户端证书访问同一 HTTPS 服务，实际 DOM 确认父调用卡片可见、打开按钮可点击并跳转正确子会话、输入框可见可用，无 pageerror；证据为 /tmp/x1-http-mainline-browser.json。发现新子会话缺少分支输入偏好时显示默认 Agent，尚未继承首轮调用目标。源码已补齐：仅对子会话且没有已保存目标/Agent 选择时，从已加载历史投影恢复最后一个真实 TargetRef；显式草稿选择与导航初始状态优先，不复制旧实参、正文或 Context。沿原草稿恢复通道记录 call.input.restore 的阶段、目标种类、稳定操作身份和耗时。未新增目标权威或 RPC；该修复尚未部署，实际点击发送及审批控件的 DOM 验收仍待补齐。当前运行版本仍为 600146cc 来源，后续日志及父卡片刷新修改尚未部署。未执行全量测试、原生远端、真实隔离工作区/进程关闭、在途任务跨进程恢复或历史写入中断验收。临时本地正常脚本早于恢复索引和最后的日志调整，不扩张其证明范围。
 
 ### 保留范围
 

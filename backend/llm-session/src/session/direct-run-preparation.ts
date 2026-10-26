@@ -21,7 +21,7 @@ export interface DirectRunPreparation {
 /** Compile ready messages and policy into the existing serializable run definition, without admission. */
 export function prepareDirectRun(input: DirectRunPreparation): TaskRunDefinition {
     const {execution, snapshot, catalog, skills = []} = input;
-    assertDirect(execution);
+    assertDirectRunInput(execution);
     const harness = execution.config.execution?.kind === 'harness', tools = harness ? [] : directToolIds(execution.config, execution.task.input);
     const spec = directTaskSpec(execution, snapshot, catalog, skills, snapshotDirectAgentPolicy(input.policy));
     spec.labels = {...spec.labels, ...invocationLabels(execution.task.input.invocation), ...targetLabels(execution.config.target)};
@@ -30,7 +30,7 @@ export function prepareDirectRun(input: DirectRunPreparation): TaskRunDefinition
     if (input.hasProgram(spec.program.kind, '2')) spec.program.version = '2';
     return structuredClone({kind: 'task', sessionId: execution.task.sessionId, task: spec, capabilities: capabilities(harness, tools)});
 }
-function assertDirect(execution: DirectConversationInput): void {
+export function assertDirectRunInput(execution: DirectConversationInput): void {
     if (execution.config.execution?.kind === 'flow' || execution.config.type === 'flow' || execution.task.input.sendIntent?.execution.kind === 'flow')
         throw Object.assign(new Error('A Flow requires graph preparation and workspace settlement'), {code: 'CALL_GRAPH_PREPARATION_REQUIRED'});
 }

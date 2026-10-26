@@ -2110,3 +2110,33 @@ C4Dynamic
 验收覆盖审批等待超过 30 秒后继续、旧默认期限、观察超时和 drain、未确认物理清理、恢复期限与迟到旧 worker、原子格式升级回滚、归档恢复与伪降级，以及两种 LocalFS/SQLite 挂载下真实 SIGKILL 恢复/跨进程取消。新增通用机制不表示已发布 Agent/Flow 的业务路由接入完毕；下一步仍是持久准备与 Round/Invocation 历史映射、Flow 工作区资源归属和跨调用 token 预留结算，随后接 UI 投影。本批未部署到运行服务。
 
 本节 Kernel 提交 e55822a：455 项单元/契约与 60 项真实进程测试通过，独立安装的 ESM/CommonJS、core 与 NodeNext 消费通过。宿主 SDK 还验证三种期限策略的请求重放与改策略冲突；整体功能状态仍按上述未完成项保留。
+
+
+## 88. 宿主上下文与直接调用准备共用同一入口
+
+第 86 节的 prepareDirectRun 只编译已装配数据，真正接入业务调用前仍需要工具、Skill 和 Session 历史准备。本批以 prepareDirectConversationRun 复用原工具/MCP/Skill 与 ConversationContextBuilder，输出同一 TaskRunDefinition 及精简上下文依据；普通对话也调用它，再进入原提交、Round 与事件观察。准备接口不需要 UI 状态、活动 Task 或取消控制器，不引入新的定义解析器、执行器或计划状态库。
+
+```mermaid
+C4Dynamic
+  title 宿主准备输入与 Kernel 执行分工
+  Component(host, "可信宿主", "解析发布身份、授权与实际 Session")
+  Component(prepare, "prepareDirectConversationRun", "复制输入；解析默认工具、MCP 与 Skill")
+  Component(context, "原 Context 装配", "冻结历史位置、材料、Profile 与预算")
+  Component(compile, "原 prepareDirectRun", "TaskRunDefinition 与上下文依据")
+  Component(kernel, "Kernel 提交或受管调用", "Task、能力、并发及清理责任")
+  Component(history, "Session 历史与投影", "实际 TaskRef 关联 Round / Invocation")
+  RelIndex(1, host, prepare, "已解析配置；实际目标 Session 的历史与材料端口")
+  RelIndex(2, prepare, context, "隔离后的策略、Skill 与本轮输入")
+  RelIndex(3, context, compile, "本次实际装配的消息与上下文依据")
+  RelIndex(4, compile, host, "可序列化准备结果；尚未执行")
+  RelIndex(5, host, kernel, "按原接纳边界提交已冻结定义")
+  RelIndex(6, kernel, history, "真实执行身份与结果；历史不拥有执行")
+```
+
+顺着准备链发现并修复两项已有错误：冻结 branchHead 为 null 时，空值合并会换成准备时的最新 head；已冻结的 contextProfile 也会被最新分支设置覆盖。三个反例先在旧实现失败；修复后使用原空历史及原 Profile revision（包括明确没有 Profile）。未冻结旧输入保留当前选择。此规则与 Kernel deadline 无关，属于 Session 历史选择语义，未下移到 Kernel。
+
+宿主输入、配置及 DirectAgentPolicy 在首次异步读取前复制；Skill 和默认工具列表在返回后立即隔离，避免等待上下文时被外部编辑改变。同一准备结果经过 JSON 恢复后可执行 Chat、Agent 或 Harness 的 Kernel 受管调用，不重新读取最新目录。Harness 的标准文件按真实目标 Session 读取及校验，准备失败不发原生请求；旧普通提交的提示词、预算、工具与历史投影继续验收。
+
+诊断区分 input/tools-and-skills/context/tool-catalog/compile，包含安全身份、具体错误分类、耗时与 tokenCount；不输出正文或原始错误，诊断失败不影响结果。验收使用真实 Memory VFS、SessionRepository、RoundLog、Context Profile、附件和 Kernel，覆盖选定历史、空头、旧 Profile、显式子会话材料、摘要产物、异步修改隔离及三类受管执行。提供者使用受控测试端口，不代表云模型或运行服务验收。
+
+该接口输出准备数据，尚未为独立业务路由保存持久接纳事实；context 的 ID 也不冒充已落盘快照。P1 后续依次落实：已有子会话路由按原 Invocation 持久准备并恢复同一计划；真实目标 TaskRef 与 Round/接纳回执关联；Flow 工作区归属及跨调用预算；最后统一 UI 投影。不能在恢复时重新准备旧调用，也不能把现有立即发送函数包装成 Kernel 调用后仍让两处持有执行责任。本批不标记 F16/P1 整体完成，未部署。

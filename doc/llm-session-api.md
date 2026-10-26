@@ -762,3 +762,18 @@ Session 内部的 `IndependentCallService.submitManaged(input, guard)` 复用独
 普通 ConversationRunCoordinator 通过同一准备函数再走 submitRun。受信编排宿主可以将返回的 JSON 定义交给 llm-flow 的 prepareTaskCall / submitTaskCall，继续使用 Kernel 的调用归属、目标身份、工作额度和清理确认。准备结果复制消息、工具和策略数据，后续修改源配置不改变已准备请求；程序版本选择、Invocation labels、普通 requestId 和旧直接提交的序列化顺序保持。已持久接纳的普通 Task 因而可以按原 requestId 核对。
 
 Flow、显式无工具 Agent、非法宿主预算分别保留明确拒绝。Flow 继续使用图准备和工作区生命周期，不能当作普通 Agent 编译后绕过收尾。对已发布 Agent 的完整业务准备、独立子 Session 的接纳/历史映射和 UI 仍按合入计划继续；这个编译函数不直接开放为新的用户命令。接口与边界见[功能合入计划第 86 节](design/functional-merge-plan.md#86-复用直接运行定义接入-kernel-受管调用)。
+
+
+## 宿主直接调用准备
+
+`prepareDirectConversationRun(input, ports)` 将默认工具、MCP、Skill、历史/材料装配与直接 Task 编译串成同一宿主准备路径，普通 ConversationRunCoordinator 也复用它。input 仅需准备请求身份、真实 Session/TaskInput、已解析 ExecutorConfig、Round ID、该 Session 的 RoundLog 和附件；不需要 SessionState、AbortController、活动 Kernel Task、事件总线或 DAG 插件。历史和资产端口由可信宿主绑定到实际目标 Session；该函数不是可由 RPC/模型自行授予目标或权限的新命令，发布身份与授权仍在已有准入完成。
+
+返回 `{definition: TaskRunDefinition, context: PreparedConversationContext}`。context 仅保存实际装配的 id/digest、准备请求身份、时间、branch/head、profile、agent 与 tokenCount，不再复制消息或内容块，也不声称该 ID 已对应持久存储。definition 中包含本次实际输入与能力，可在序列化后交给原 submitRun 或 submitTaskCall；准备不提交 Task、不申请执行能力、不追加 Round，也不请求模型。低层 prepareDirectRun 仍接受已装配快照，供不需要 Session 历史的宿主使用。
+
+输入和 DirectAgentPolicy 在首次异步读取前复制；默认工具列表与 Skill 返回后立即隔离，避免等待宿主上下文期间被外部修改。显式 Agent 的主提示、默认工具、MCP、Skill 策略保持原规则，系统提示先经 Context 预算，再进入 Task，不在编译后重复追加。Harness 继续跳过本地工具/Skill 装配，本轮资产按实际 Session 校验并物化，fork/续接的增量输入由原编译契约决定。
+
+已有 frozen.branchHead 的 null 是明确的空历史，不能用最新 head 替代。frozen.contextProfile 的缺省表示当时没有 Profile，已选择的 revision 沿用不可变记录；不能在准备时换成最新分支设置。未冻结的旧调用继续读取当前分支选择。普通协调器只在准备后执行原提交与 Round/事件投影，Flow 保留原图准备、调度及工作区收尾。
+
+诊断 `session.direct.prepare` 区分 input、tools-and-skills、context、tool-catalog、compile，记录安全请求/Session 身份、结果、错误分类、耗时及 token 数量；不记录消息、提示词、文件内容、原始错误正文或完整参数。日志回调异常不改变准备结果与原错误。
+
+本接口提供准备结果，不代替持久调用接纳。独立业务路由仍须先持久冻结原准备结果，再由 Kernel 持有执行责任，并将真实目标 TaskRef 映射回 Round/Invocation；恢复不能重新调用本接口装配“同一次”调用。完整进度见[功能合入计划第 88 节](design/functional-merge-plan.md#88-宿主上下文与直接调用准备共用同一入口)。

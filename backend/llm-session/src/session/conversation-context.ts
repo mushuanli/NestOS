@@ -1,5 +1,11 @@
 import { createContextAssembler, type IContextAssembler, type ContextSnapshot } from '@itookit/llm-context';
-import type { ConversationExecution, ConversationRunCoordinatorOptions } from './conversation-run-coordinator';
+import type {DirectConversationInput} from './direct-conversation';
+import type {ExecutionTask, ChatAttachment} from '../core/types';
+import type {RoundLog} from '../persistence/round-log';
+import type {ISessionRepository} from '../persistence/types';
+import type {Artifact} from '@itookit/llm-flow/contracts';
+import type {ContextPlan, RetrievedMemoryEntry} from '@itookit/llm-context';
+import type {MemoryPolicy} from '@itookit/llm-tasks/contracts';
 import type { ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
 import { ContextProfileStore } from '../persistence/context-profile-store';
 import { directExecutionMode } from './direct-execution-mode';
@@ -7,33 +13,42 @@ import type {RoundManifest} from '../persistence/round-types';
 import {conversationUserMessage, materializeAttachmentMessage, materializeHarnessMessage} from './conversation-attachments';
 
 export interface ConversationLocation { branchRef: string; branchHead: string | null; }
-type ContextOptions = Pick<ConversationRunCoordinatorOptions, 'engine' | 'loadArtifact' | 'retrieveMemory' | 'resolveSessionContext'>;
+export interface ConversationContextInput extends DirectConversationInput {
+    task: Pick<ExecutionTask, 'id' | 'sessionId' | 'input' | 'frozen'>;
+    log: RoundLog;
+    contextFiles: ChatAttachment[];
+}
+export interface ConversationContextOptions {
+    engine: ISessionRepository;
+    loadArtifact(sessionId: string, id: string): Promise<Artifact | null>;
+    resolveSessionContext?(sessionId: string, userMessage: string): Promise<{projectInstructions: string; skillInstructions: string; skillIndex: string}>;
+    retrieveMemory?(plan: ContextPlan, agent: {id: string; version: string},
+        context: {sessionId: string; policy?: MemoryPolicy}): Promise<RetrievedMemoryEntry[]>;
+}
 
 /** Session history selection and host materials are assembled before task construction. */
 export class ConversationContextBuilder {
-    constructor(private readonly options: ContextOptions, private readonly policy: ResolvedDirectAgentPolicy) {}
+    constructor(private readonly options: ConversationContextOptions, private readonly policy: ResolvedDirectAgentPolicy) {}
 
     async resolveLocation(
-        execution: ConversationExecution,
+        execution: ConversationContextInput,
     ): Promise<ConversationLocation> {
         const manifest = await execution.log.loadManifest();
         const branchRef = execution.task.frozen?.branchRef
             ?? manifest.currentBranch
             ?? 'main';
-        const branchHead = execution.task.frozen?.branchHead
-            ?? manifest.branches[branchRef]
-            ?? null;
+        const branchHead = execution.task.frozen ? execution.task.frozen.branchHead : manifest.branches[branchRef] ?? null;
         return { branchRef, branchHead };
     }
 
     async assemble(
-        execution: ConversationExecution,
+        execution: ConversationContextInput,
         location: ConversationLocation,
         skillsPrompt?: string,
         includeMemory = true,
     ): Promise<ContextSnapshot> {
         const manifest = await execution.log.loadManifest();
-        const profile = manifest.branchMeta[location.branchRef]?.contextProfile
+        const profile = (execution.task.frozen ? execution.task.frozen.contextProfile : manifest.branchMeta[location.branchRef]?.contextProfile)
             ?? { id: '', revision: 0 };
         const version = execution.config.target?.version ?? execution.task.frozen?.agentVersion
             ?? execution.config.agentVersion
@@ -51,13 +66,13 @@ export class ConversationContextBuilder {
         return result.snapshot;
     }
 
-    private systemPrompt(execution: ConversationExecution): string[] {
+    private systemPrompt(execution: ConversationContextInput): string[] {
         const base = execution.config.systemPrompt ?? [];
         const prompts = typeof base === 'string' ? [base] : base;
         return directExecutionMode(execution.task.input) === 'agent' ? [...this.policy.systemPrompt, ...prompts] : prompts;
     }
 
-    private async currentMessage(execution: ConversationExecution) {
+    private async currentMessage(execution: ConversationContextInput) {
         const pending = conversationUserMessage(execution.task.input.text, execution.contextFiles);
         if (execution.config.execution?.kind === 'harness')
             execution.currentInput = await materializeHarnessMessage(this.options.engine, execution.task.sessionId, pending);
@@ -65,7 +80,7 @@ export class ConversationContextBuilder {
     }
 
     private contextAssembler(
-        execution: ConversationExecution,
+        execution: ConversationContextInput,
         branchRef: string,
         manifest: RoundManifest,
         includeMemory = true,
@@ -92,7 +107,7 @@ export class ConversationContextBuilder {
 }
 
 function contextPlan(
-    execution: ConversationExecution,
+    execution: ConversationContextInput,
     location: ConversationLocation,
     profile: { id: string; revision: number },
     pendingUserMessage: import('@itookit/llm-context').ChatMessage,

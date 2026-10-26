@@ -1,3 +1,4 @@
+export {prepareDirectConversationRun, type DirectConversationPreparationInput, type DirectConversationPreparationOptions, type PreparedDirectConversationRun, type PreparedConversationContext} from './session/conversation-preparation';
 export {prepareDirectRun, type DirectRunPreparation} from './session/direct-run-preparation';
 export type {DirectConversationInput} from './session/direct-conversation';
 import {IndependentCallService} from './session/independent-calls';

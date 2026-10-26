@@ -1,4 +1,3 @@
-import type { ConversationExecution, ConversationRunCoordinatorOptions } from './conversation-run-coordinator';
 import type { ChatMessage, ContextSnapshot, ToolDefinition } from '@itookit/llm-context';
 import type { TaskSpec } from '@itookit/durable-kernel';
 import type { LLMSkill } from '../contracts';
@@ -22,22 +21,29 @@ export interface DirectConversationInput {
     currentInput?: ChatMessage;
 }
 
-export async function prepareDirectConversation(options: ConversationRunCoordinatorOptions, execution: ConversationExecution) {
+export interface DirectConversationPorts {
+    resolveHarnessToolIds?(sessionId: string): Promise<string[]>;
+    resolveMCPToolIds?(sessionId: string, ids: string[]): Promise<string[]>;
+    resolveSkills?(ids: string[], sessionId?: string): Promise<LLMSkill[]>;
+    resolveTools?(sessionId: string, allowedIds: string[]): Promise<DirectToolCatalog>;
+}
+
+export async function prepareDirectConversation<T extends DirectConversationInput>(options: DirectConversationPorts, execution: T) {
     if (execution.config.execution?.kind === 'harness') return { execution, skills: [], skillsPrompt: '' };
     execution = await prepareDefaultTools(options, execution);
     execution = await prepareMcpTools(options, execution);
     const ids = execution.config.capabilityPolicy?.skillIds ?? [];
-    const skills = ids.length ? await options.resolveSkills?.(ids, execution.task.sessionId) ?? [] : [];
+    const skills = structuredClone(ids.length ? await options.resolveSkills?.(ids, execution.task.sessionId) ?? [] : []);
     return {execution, skills, skillsPrompt: directSkillsPrompt(ids, skills)};
 }
 
-async function prepareDefaultTools(options: ConversationRunCoordinatorOptions, execution: ConversationExecution) {
+async function prepareDefaultTools<T extends DirectConversationInput>(options: DirectConversationPorts, execution: T) {
     if (directExecutionMode(execution.task.input) !== 'agent' || execution.config.capabilityPolicy?.toolIds !== undefined) return execution;
-    const toolIds = await options.resolveHarnessToolIds?.(execution.task.sessionId) ?? [];
+    const toolIds = [...await options.resolveHarnessToolIds?.(execution.task.sessionId) ?? []];
     return {...execution, config: {...execution.config, capabilityPolicy: {mcpProfileIds: [], ...execution.config.capabilityPolicy, toolIds}}};
 }
 
-async function prepareMcpTools(options: ConversationRunCoordinatorOptions, execution: ConversationExecution) {
+async function prepareMcpTools<T extends DirectConversationInput>(options: DirectConversationPorts, execution: T) {
     const profiles = execution.config.capabilityPolicy?.mcpProfileIds ?? [];
     if (!profiles.length || directExecutionMode(execution.task.input) === 'chat') return execution;
     if (!options.resolveMCPToolIds) throw new Error('MCP profile resolution is unavailable');
@@ -128,7 +134,7 @@ function incrementalDigest(execution: DirectConversationInput): string {
  * Host-side Skill activation port for Flow Agent nodes: resolves the selected Skills and
  * binds their tools against the same catalog the node itself is allowed to use.
  */
-export function skillContextResolver(options: Pick<ConversationRunCoordinatorOptions, 'resolveSkills' | 'resolveTools'>) {
+export function skillContextResolver(options: Pick<DirectConversationPorts, 'resolveSkills' | 'resolveTools'>) {
     return async (sessionId: string, skillIds: string[], allowedToolIds: string[]): Promise<SkillContext[]> => {
         if (!options.resolveSkills) return [];
         const skills = await options.resolveSkills(skillIds, sessionId);

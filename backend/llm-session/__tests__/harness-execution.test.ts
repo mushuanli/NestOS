@@ -3,8 +3,8 @@ import { Kernel, type EffectExecutionContext } from '@itookit/durable-kernel';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { HarnessProgram, HarnessExecutionEffect } from '@itookit/kernel-adapters';
 import type { HarnessExecutionRequest } from '@itookit/kernel-adapters/contracts';
-import { createBuiltinDagPluginRegistry, DurableFlowExecutor, registerDurablePrograms } from '@itookit/llm-flow';
-import { ConversationRunCoordinator } from '../src/session/conversation-run-coordinator';
+import { createBuiltinDagPluginRegistry, DurableFlowExecutor, registerDurablePrograms, submitRun } from '@itookit/llm-flow';
+import {prepareDirectConversationRun} from '../src';
 
 const connection = { version: 1 as const, revision: 1, id: 'remote', name: 'Remote', kind: 'harness' as const,
     nodeConnectionId: 'node', projectId: 'project', profileId: 'claude', project: { root: '/workspace' } };
@@ -29,17 +29,18 @@ async function fixture() {
     return { kernel, execute, close: async () => { kernel.dispose(); await kernel.waitIdle(); await manager.dispose(); } };
 }
 
-it('submits an ordinary remote Agent through the Session coordinator with only a harness grant', async () => {
+it('prepares a remote Agent without a UI or controller and submits only a harness grant', async () => {
     const { kernel, execute, close } = await fixture();
     try {
         const resolveTools = vi.fn(), resolveHarnessToolIds = vi.fn();
-        const coordinator = new ConversationRunCoordinator({ kernel, resolveTools, resolveHarnessToolIds,
-            engine: {}, eventBus: {}, dagPlugins: createBuiltinDagPluginRegistry() } as never);
-        const run = await (coordinator as any).directTask({ roundId: 'round',
-            task: { sessionId: 's', input: { text: 'Review', files: [], sendIntent: { execution: { kind: 'agent', mode: 'agent' } } },
-                abortController: new AbortController() },
-            config: { id: 'reviewer', execution: { kind: 'harness', connectionId: 'remote' }, harnessConnection: connection,
-                capabilityPolicy: { toolIds: ['Bash'] } } }, { canonicalMessages: [{ role: 'user', content: 'Review' }] });
+        const prepared = await prepareDirectConversationRun({roundId: 'round', contextFiles: [],
+            task: {id: 'preparation', sessionId: 's', input: {text: 'Review', files: [], sendIntent: {execution: {kind: 'agent', mode: 'agent'}}}},
+            log: {loadManifest: async () => ({currentBranch: 'main', branches: {main: null}, branchMeta: {}})},
+            config: {id: 'reviewer', execution: {kind: 'harness', connectionId: 'remote'}, harnessConnection: connection,
+                capabilityPolicy: {toolIds: ['Bash']}}} as never,
+        {engine: {getManifest: async () => ({})}, loadArtifact: async () => null, resolveTools, resolveHarnessToolIds,
+            hasProgram: (kind: string, version: string) => kernel.programs.has(kind, version)} as never);
+        const run = await submitRun(prepared.definition, {kernel});
         const exit = await run.root.wait({ timeoutMs: 3000 });
         expect(exit).toMatchObject({ status: 'succeeded', output: { message: { role: 'assistant', content: 'Remote review complete' } } });
         expect(execute).toHaveBeenCalledOnce();

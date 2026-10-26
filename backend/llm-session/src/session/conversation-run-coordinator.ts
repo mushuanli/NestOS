@@ -1,18 +1,16 @@
-import {prepareDirectRun} from './direct-run-preparation';
+import {prepareDirectConversationRun} from './conversation-preparation';
 import {conversationUserMessage as createUserMessage} from './conversation-attachments';
-import { ConversationContextBuilder, type ConversationLocation } from './conversation-context';
+import { ConversationContextBuilder, type ConversationLocation, type ConversationContextInput, type ConversationContextOptions } from './conversation-context';
 import {callInputProjection} from './call-input-projection';
-import { prepareDirectConversation, skillContextResolver } from './direct-conversation';
+import { skillContextResolver, type DirectConversationPorts } from './direct-conversation';
 import { createSessionHost, type SessionHost, type SessionHostPorts } from '../utils/host-ports';
-import { type RetrievedMemoryEntry } from '@itookit/llm-context';
 import { FlowHistory } from './flow-history';
-import { directToolIds } from './direct-execution-mode';
 import { snapshotDirectAgentPolicy, type DirectAgentPolicy, type ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
 import { formatFlowOutput } from '@itookit/llm-flow/contracts';
 import type { AgentEvent, ToolCallInfo } from '@itookit/llm-tasks/contracts';
-import type { Artifact, DagPluginCatalog, DagRunSpec, DagNodeDefinition } from '@itookit/llm-flow/contracts';
-import type { ChatMessage, ContextSnapshot, ContextPlan, ToolDefinition } from '@itookit/llm-context';
-import type { RoundResult, Signal, LLMSkill } from '../contracts';
+import type { DagPluginCatalog, DagRunSpec, DagNodeDefinition } from '@itookit/llm-flow/contracts';
+import type { ChatMessage, ContextSnapshot } from '@itookit/llm-context';
+import type { RoundResult, Signal } from '../contracts';
 import {
     type EventEnvelope,
     type Kernel,
@@ -20,56 +18,31 @@ import {
     type TaskHandle,
 } from '@itookit/durable-kernel';
 import type {
-    ChatAttachment,
     ExecutionNode,
     ExecutionTask,
-    ExecutorConfig,
     NodeStatus,
 } from '../core/types';
 import {
     type DurableChatOutput as ChatProgramOutput,
 } from '@itookit/llm-tasks';
-import type { ISessionRepository } from '../persistence/types';
-import { RoundLog } from '../persistence/round-log';
 import { formatErrorMessage } from '../utils/error-formatter';
 import { SessionEventBus } from './session-event-bus';
 import { SessionState } from './session-state';
 import { DurableFlowExecutor, submitRun, type RunExecution } from '@itookit/llm-flow';
 
-export interface ConversationExecution {
+export interface ConversationExecution extends ConversationContextInput {
     task: ExecutionTask;
     state: SessionState;
-    config: ExecutorConfig;
-    log: RoundLog;
     rootNodeId: string;
-    roundId: string;
-    contextFiles: ChatAttachment[];
-    /** Host-resolved current input, distinct from selected history for native incremental calls. */
-    currentInput?: ChatMessage;
     finalize(): Promise<void>;
 }
 
-export interface ConversationRunCoordinatorOptions {
+export interface ConversationRunCoordinatorOptions extends ConversationContextOptions, DirectConversationPorts {
     hostPorts?: SessionHostPorts;
     directAgentPolicy?: DirectAgentPolicy;
-    engine: ISessionRepository;
     eventBus: SessionEventBus;
     kernel: Kernel;
     dagPlugins: DagPluginCatalog;
-    resolveSessionContext?(sessionId: string, userMessage: string): Promise<{ projectInstructions: string; skillInstructions: string; skillIndex: string }>;
-    resolveSkills?(ids: string[], sessionId?: string): Promise<LLMSkill[]>;
-    resolveTools?(sessionId: string, allowedIds: string[]): Promise<{
-        definitions: ToolDefinition[];
-        externalIds: string[];
-    }>;
-    resolveMCPToolIds?(sessionId: string, ids: string[]): Promise<string[]>;
-    resolveHarnessToolIds?(sessionId: string): Promise<string[]>;
-    loadArtifact(sessionId: string, id: string): Promise<Artifact | null>;
-    retrieveMemory?: (
-        plan: ContextPlan,
-        agent: { id: string; version: string },
-        context: { sessionId: string; policy?: import('@itookit/llm-tasks/contracts').MemoryPolicy },
-    ) => Promise<RetrievedMemoryEntry[]>;
     /**
      * Host-provided isolated workspace manager for chat-embedded Flow runs.
      *
@@ -96,13 +69,11 @@ export class ConversationRunCoordinator {
     }
 
     async executeDirect(execution: ConversationExecution): Promise<void> {
-        const prepared = await prepareDirectConversation(this.options, execution);
-        execution = prepared.execution;
-        const { skills, skillsPrompt } = prepared;
-        await this.execute(execution, async snapshot => {
-            const run = await this.directTask(execution, snapshot, skills);
-            return { ...run, parse: parseOutput };
-        }, { skillsPrompt });
+        const prepared = await prepareDirectConversationRun(execution, {...this.options, directAgentPolicy: this.policy,
+            hasProgram: (kind, version) => this.options.kernel.programs.has(kind, version)});
+        const run = await submitRun(prepared.definition, {kernel: this.options.kernel});
+        if (execution.task.abortController.signal.aborted) await run.root.cancel();
+        await this.observe(execution, prepared.context, {...run, parse: parseOutput});
     }
 
     async executeDag(
@@ -140,6 +111,11 @@ export class ConversationRunCoordinator {
         const location = await this.contextBuilder.resolveLocation(execution);
         const snapshot = await this.contextBuilder.assemble(execution, location, options.skillsPrompt, options.includeMemory ?? true);
         const submission = await createTask(snapshot);
+        await this.observe(execution, location, submission);
+    }
+
+    private async observe(execution: ConversationExecution, location: ConversationLocation,
+        submission: RunExecution & {parse: (value: unknown) => ChatProgramOutput}): Promise<void> {
         const handle = submission.root;
         this.active.set(execution.task.sessionId, { root: handle, tasks: submission.tasks });
         let roundStarted = false;
@@ -195,22 +171,6 @@ export class ConversationRunCoordinator {
         await run.root.cancel().catch(() => {});
         const members = run.tasks().filter(task => task.id !== run.root.id);
         await Promise.allSettled(members.map(task => task.cancel().catch(() => {})));
-    }
-
-    private async directTask(
-        execution: ConversationExecution,
-        snapshot: ContextSnapshot,
-        skills: LLMSkill[] = [],
-    ): Promise<RunExecution> {
-        const harness = execution.config.execution?.kind === 'harness';
-        const tools = harness ? [] : directToolIds(execution.config, execution.task.input);
-        const catalog = await (harness ? undefined : this.options.resolveTools?.(execution.task.sessionId, tools))
-            ?? { definitions: [], externalIds: [] };
-        const definition = prepareDirectRun({execution, snapshot, catalog, skills, policy: this.policy,
-            hasProgram: (kind, version) => this.options.kernel.programs.has(kind, version), translate: this.host.translate});
-        const run = await submitRun(definition, {kernel: this.options.kernel});
-        if (execution.task.abortController.signal.aborted) await run.root.cancel();
-        return run;
     }
 
     private async startRound(

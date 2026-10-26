@@ -4,11 +4,11 @@
 
 ## 0. 当前剩余工作（2026-10-26）
 
-整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—90 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
+整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—91 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
 
 | 优先级 / 工作线 | 已具备基础 | 仍需完成的结果 |
 |---|---|---|
-| P1a 独立调用业务提交 | Kernel 受管调用、双侧写权、期限、共用准备；原路由持久计划与可信提交/冷核对见第 89—90 节 | 正式业务入口从持久准备进入 Kernel，固定 caller/target 引用；队列接纳、提交未知与原请求核对全链路统一，不能由两处派发 |
+| P1a 独立调用业务提交 | Kernel 受管调用、双侧写权、期限、共用准备；持久计划、可信提交/核对及发布目标准备见第 89—91 节 | 正式业务入口从持久准备进入 Kernel，固定 caller/target 引用；队列接纳、提交未知与原请求核对全链路统一，不能由两处派发 |
 | P1b 历史关联与恢复 | 旧队列/Round 恢复、Invocation 与子 Session、Kernel 原调用核对 | 新 Kernel 路径的真实 TaskRef、Round、接纳/结果回执与重启恢复投影贯通；有证据后再压缩准备数据 |
 | P1c Flow 工作区责任 | 既有隔离工作区 manager、scheduler lease 与收尾记录 | 将完整 Flow 的工作区/能力占用接到 Kernel 可核对的资源责任，确认物理收尾后再完成函数调用 |
 | P1d 跨调用预算 | Kernel 工作额度、共享资源、深度与幂等用量机制 | token/费用预算跨父子调用预留、分配、继承及实际结算；缺少远端 usage 时不能视为零用量 |
@@ -2222,3 +2222,34 @@ llm-flow 的 submitPreparedTaskCall 与 readTaskCallSubmission 共用原 callerS
 本节 Kernel 提交 `98cc2d60`：469 项单元/契约及 62 项真实多进程测试通过；独立安装 ESM/CommonJS/core、NodeNext 声明消费通过。源树严格类型检查包含新回执测试。应用消费者以锁定该 gitlink 的隔离候选树验证，结果随本批记录。
 
 应用隔离候选树验证：Flow 747、Session 593、app-core 1161 项通过（另 13 项既有跳过）；Flow/Session 测试严格类型及 Flow/Session/app-core/CLI/app-shell 类型、Flow/Session 构建、架构边界通过，75 个 Mermaid 图和 22 个相对链接解析通过。全量 docs:check 仍报告 mindos-node README 的 tools/config.toml 示例路径；回到原根提交与原 Kernel gitlink 后复验，错误完全相同，本批未新增。隔离树补齐原 anki-cli gitlink 后，该目录的链接不再误报。此检查限制不解释为全量文档绿色，后续单独处理原示例路径。
+
+
+## 91. 已发布目标复用普通对话准备进入可信宿主调用
+
+应用运行时保留初始化时创建的 IndependentCallService；该服务在没有显式 prepare 回调时调用装配的 SessionManager.prepareIndependentTaskCall。调用者只提供原结构化 Submission 和明确深度/期限策略，不必自己模拟 Agent、连接或上下文。原可信回调仍可用于宿主自有编译器；不是用户可提交的参数。没有增加 RPC、新 package 或发布目录，也没有复制普通运行的解析逻辑。
+
+```mermaid
+C4Dynamic
+  title 已发布目标到原持久计划的宿主准备链
+  Component(host, "应用宿主", "independentCalls 与原请求、明确策略")
+  Component(route, "原独立调用路由", "父子归属、Invocation、附件与原计划 CAS")
+  Component(manager, "Session 准备入口", "真实子 Session；前后复验写权；不绑定视图")
+  Component(resolve, "原 AgentResolver 与连接冻结", "确切发布版本、公开范围和能力")
+  Component(context, "原直接对话准备", "工具、Skill、MCP、材料与 Context")
+  Component(kernel, "原 Kernel 调用", "显式提交后唯一执行；不由准备器调度")
+  RelIndex(1, host, route, "prepareTaskCall；无需自造 TaskSpec 或快照")
+  RelIndex(2, route, manager, "持久分配的子请求及 Invocation")
+  RelIndex(3, manager, resolve, "核对空分支与父归属；读取确切发布目标")
+  RelIndex(4, resolve, context, "普通队列共用的连接与输入冻结规则")
+  RelIndex(5, context, route, "只读准备；原 CAS 保存实际计划与上下文依据")
+  RelIndex(6, route, host, "重放返回原计划，不重新读取当前草稿")
+  RelIndex(7, host, kernel, "随后显式提交已冻结计划；原接纳可只读核对")
+```
+
+SessionRunCoordinator 将输入与配置准备从普通提交的模式偏好写入中分离；普通队列仍在原提交阶段锁定执行模式，独立准备不写运行偏好、Round 或 Kernel Task，也不创建运行控制器或登记长期日志缓存。Chat、Agent loop 和 Harness 复用同一直接准备函数，选择实际已注册 Program 版本。附件在实际子 Session 读取；切换当前编辑器不会改写目标。未发布、local、参数不匹配、父归属/分支不符及异步失权保留具体拒绝；Flow 实现明确拒绝本路径，不能把 Flow aggregate 直接当作已完成资源收尾的函数。
+
+验收使用真实应用初始化、VFS 发布仓库、AgentResolver、连接、子会话/附件和 Kernel，模型端使用测试 HTTP 响应；Harness 只验证实际连接解析与准备，没有创建远端 turn。覆盖无视图准备且无执行/偏好副作用、显式 Agent loop、确切旧版与新请求新版本、标准附件物化、子归属/分支变化、未发布/local/结构化参数拒绝，以及异步失权。显式提交后实际经过原 Kernel 的 caller/target，重放只有一次模型请求；不等于生产云模型验收。
+
+正式 session.call.submit 仍走旧队列。本批让可信宿主具备“发布目标 → 持久准备 → 显式 Kernel 提交”的真实调用链，尚未把其 TaskRef/Round/结果恢复及前台/后台范围接入默认入口。八条剩余工作线保持，不标记 P1a/P1b 或 Flow 资源闭环完成，未部署到运行服务。
+
+本批隔离验收：Session 595 项、app-core 1175 项通过（另 13 项既有跳过）；新宿主测试 14 项和准备服务新增 2 项包含在上述总数内。新测试严格类型、Session/app-core/CLI/app-shell 类型、Session 构建与架构边界通过；76 个 Mermaid 图、22 个相对链接解析通过。全量 docs:check 仍为第 90 节已核对的 mindos-node 配置示例路径问题，本批无新增。普通发送的模式锁定、Flow 与 Harness 原路径随完整回归验证。

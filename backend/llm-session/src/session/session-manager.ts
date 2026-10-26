@@ -475,6 +475,34 @@ export class SessionManager implements ISession, SessionQuery {
 
     listCallTargets(): Promise<import('../contracts/submission').RootTargetCatalog> {return this.callTargets.list();}
 
+    /** Trusted host preparation only; explicit child identity never rebinds this manager's view. */
+    async prepareIndependentTaskCall(supplied: import('../contracts/submission').SubmissionRequest,
+        suppliedInvocation: import('@itookit/llm-flow/contracts').InvocationIdentity) {
+        const safe = (value: unknown) => typeof value === 'string' && /^[\w:-]{1,256}$/.test(value) ? value : undefined;
+        const identity = {operationId: safe(supplied?.submission?.id), sessionId: safe(supplied?.expectedSessionId)};
+        const started = Date.now(); let stage = 'input', errorCode: string | undefined;
+        try {
+            const request = structuredClone(supplied), invocation = structuredClone(suppliedInvocation), sessionId = request?.expectedSessionId;
+            if (!sessionId) throw Object.assign(new Error('Independent preparation requires a child Session'), {code: 'CALL_PREPARATION_SCOPE_MISMATCH'});
+            stage = 'permission'; await this.assertPreparationWritable(sessionId);
+            stage = 'published-target'; const prepared = await this.runs.prepareIndependentTaskCall(request, invocation);
+            stage = 'permission'; await this.assertPreparationWritable(sessionId); return prepared;
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            errorCode = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CALL_PREPARATION_FAILED'; throw error;
+        } finally {
+            const detail = {operation: 'session.call.prepare', stage, outcome: errorCode ? 'failure' : 'success', errorCode,
+                ...identity, durationMs: Date.now() - started};
+            try {if (errorCode) this.host.logger.warn('Published call preparation', detail); else this.host.logger.info('Published call preparation', detail);}
+            catch { /* Diagnostic failures cannot replace prepared data or the original rejection. */ }
+        }
+    }
+
+    private async assertPreparationWritable(sessionId: string): Promise<void> {
+        if (this.canWriteSession && !await this.canWriteSession(sessionId))
+            throw Object.assign(new Error('Independent preparation requires the child writer'), {code: 'CALL_READ_ONLY'});
+    }
+
     async getContextBindings(supplied: ContextBindingQuery): Promise<import('../contracts/context-bindings').ContextBindingPage> {
         assertContextBindingQuery(supplied); const query = structuredClone(supplied);
         const manifest = await this.registry.engine.getManifest(query.sessionId);

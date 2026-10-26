@@ -155,6 +155,8 @@ export interface ConversationSystemOptions {
 }
 
 export interface ConversationSystem {
+    /** Trusted host API; prepared plans are never accepted as command arguments. */
+    independentCalls?: IndependentCallService;
     sessionManager: SessionManager;
     commandBus: CommandBus;
     dag: DagCommandService;
@@ -200,8 +202,12 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
         hostPorts: options.hostPorts, canWrite: options.canWriteSession, prepareExecution: options.prepareSessionExecution,
         summarize: options.summarizeContent});
     transfers.register();
-    if (options.submitIndependentCall) new IndependentCallService({kernel: options.kernel, repository: options.sessionEngine,
-        transfers, submit: options.submitIndependentCall, prepareExecution: options.prepareSessionExecution, canWrite: options.canWriteSession, hostPorts: options.hostPorts}).register(system.commandBus);
+    if (options.submitIndependentCall) {
+        system.independentCalls = new IndependentCallService({kernel: options.kernel, repository: options.sessionEngine,
+            transfers, submit: options.submitIndependentCall, prepareTaskCall: (request, invocation) => system.sessionManager.prepareIndependentTaskCall(request, invocation),
+            prepareExecution: options.prepareSessionExecution, canWrite: options.canWriteSession, hostPorts: options.hostPorts});
+        system.independentCalls.register(system.commandBus);
+    }
     const invocations = new FlowInvocationService(options.kernel, new FlowDefinitionStore(options.flowStore, options.dagPlugins), system.commandBus, options.canWriteSession, async id => {
         const manifest = await new InvocationRoundLog(options.sessionEngine, id).loadManifest();
         const identity = await options.sessionEngine.getManifest(id);

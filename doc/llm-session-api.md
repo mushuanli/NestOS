@@ -801,3 +801,14 @@ inspectPreparedTaskCall 是冷读取，不获取 writer、不创建子会话、�
 `inspectTaskCallSubmission(input)` 冷读取原计划并按同一完整 TaskSpec 查询 Kernel；没有准备或没有保留的接纳返回 undefined，内容冲突、存储损坏和其他读取失败仍抛错。它不取得 writer、不恢复 Session、不调用旧队列。提交或能力绑定发生异常时可能已经接纳，异常不能改写成“未发送”；重试必须保留原身份。源 Task 的接纳、目标实际 TaskRef、调用结果与 Round 历史完成属于不同事实，接纳回执不确认后三者。
 
 这两个方法仅用于可信宿主，没有注册成新的 RPC 或替换现有 session.call.submit。诊断 call.submit.prepared / call.submit.inspect 沿用安全操作身份、源/目标 Session、阶段、分类和耗时，内层 SDK 记录实际 caller Task ID；不输出准备计划或输入。正式目标准备接线、前台/后台调度范围及 TaskRef/Round/恢复投影仍待完成，不能让新 Kernel 与旧队列同时派发同一调用。见[功能合入计划第 90 节](design/functional-merge-plan.md#90-以原-kernel-事实提交和核对已准备调用)。
+
+
+## 已发布独立调用的宿主准备入口
+
+initializeConversationSystem 在已配置独立调用宿主时返回 independentCalls；应用运行时也保留同一可信服务。`independentCalls.prepareTaskCall(input, {maxDepth, timeoutMs?})` 可直接使用装配时注入的发布目标准备器，无需调用方构造 ExecutorConfig、TaskSpec 或上下文快照。显式提供 prepare 回调的旧可信调用方式保持兼容；显式无效回调不能静默替换成默认实现。该服务属性不属于 RPC 或 UI 契约，没有开放客户端提交计划的命令。
+
+准备器经 SessionManager.prepareIndependentTaskCall 和原 SessionRunCoordinator 读取真实子 Session，核对 independent-call 来源、父归属、空分支和原 Invocation；复验写权后，使用原 AgentResolver 解析确切发布身份，复用队列的目标与连接冻结规则、工具/MCP/Skill 和 Context 装配。只接受已发布的直接 Chat/Agent/Harness 实现，未发布旧定义和 local 根调用拒绝；普通 Agent 不静默丢弃结构化参数。Flow Agent 仍报 CALL_GRAPH_PREPARATION_REQUIRED，不能借裸 Task 调用绕过工作区收尾。
+
+准备与普通运行共用只读输入准备函数；只有原普通提交路径写入 executionModeLocked。准备不会绑定视图、入队、创建 Kernel Task 或 Round，也不锁定子 Session 的运行偏好。已持久计划的重放直接返回原计划，不重读新草稿或发布目录。源与目标权限在原服务持久保存前复验，管理器在异步准备后再次检查目标写权。
+
+诊断 session.call.prepare 区分 input/permission/published-target，携带入口捕获的安全 Session/operationId、分类、结果与耗时，不记录用户输入、附件、策略正文或原异常。真正模型执行仍须显式调用 submitPreparedTaskCall；接纳、输出与历史完成分别核对。正式 session.call.submit、历史恢复与前台/后台范围仍按[功能合入计划第 91 节](design/functional-merge-plan.md#91-已发布目标复用普通对话准备进入可信宿主调用)继续。

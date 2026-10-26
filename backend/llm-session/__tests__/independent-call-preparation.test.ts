@@ -331,3 +331,15 @@ it('does not expose prepared dispatch through the legacy RPC registry', async ()
     await expect(bus.execute('session.call.submit-prepared', input())).rejects.toThrow();
     expect(await kernel.listSessionTasks(parent)).toEqual([]);
 });
+it('uses the injected host preparer when the caller supplies only frozen policy', async () => {
+    const configured = options(), compile = vi.fn(configured.prepare);
+    const host = new IndependentCallService({kernel, repository, transfers, submit, hostPorts: {logger}, prepareTaskCall: compile});
+    const ready = await host.prepareTaskCall(input(), {maxDepth: 3, timeoutMs: null});
+    expect(await host.prepareTaskCall(input(), {maxDepth: 3, timeoutMs: null})).toEqual(ready); expect(compile).toHaveBeenCalledOnce();
+    expect(submit).not.toHaveBeenCalled(); expect(model).not.toHaveBeenCalled();
+});
+it('does not silently replace an explicitly invalid preparer with the injected host callback', async () => {
+    const compile = vi.fn(options().prepare), host = new IndependentCallService({kernel, repository, transfers, submit, prepareTaskCall: compile});
+    await expect(host.prepareTaskCall(input(), {maxDepth: 3, prepare: undefined} as never)).rejects.toHaveProperty('code', 'CALL_PREPARATION_UNAVAILABLE');
+    expect(compile).not.toHaveBeenCalled(); expect(await kernel.listSessionTasks(parent)).toEqual([]);
+});

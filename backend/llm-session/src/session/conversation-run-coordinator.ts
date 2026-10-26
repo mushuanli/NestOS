@@ -68,9 +68,13 @@ export class ConversationRunCoordinator {
         this.contextBuilder = new ConversationContextBuilder(options, this.policy);
     }
 
-    async executeDirect(execution: ConversationExecution): Promise<void> {
-        const prepared = await prepareDirectConversationRun(execution, {...this.options, directAgentPolicy: this.policy,
+    prepareDirect(execution: import('./conversation-context').ConversationContextInput) {
+        return prepareDirectConversationRun(execution, {...this.options, directAgentPolicy: this.policy,
             hasProgram: (kind, version) => this.options.kernel.programs.has(kind, version)});
+    }
+
+    async executeDirect(execution: ConversationExecution): Promise<void> {
+        const prepared = await this.prepareDirect(execution);
         const run = await submitRun(prepared.definition, {kernel: this.options.kernel});
         if (execution.task.abortController.signal.aborted) await run.root.cancel();
         await this.observe(execution, prepared.context, {...run, parse: parseOutput});

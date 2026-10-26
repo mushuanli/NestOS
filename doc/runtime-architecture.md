@@ -759,3 +759,10 @@ LLM 资源，执行前复核被冻结的 Connection/模型/媒体端点及能力
 恢复仅核验持久回执和资产，不自动重发付费请求。缺少回执保持不确定状态。
 
 内容转交创建的子 Session 先经 `prepareSessionExecution` 端口领取 metadata lease，并准备同一 Session ID 的 Kernel 存储，随后进入恢复写门。准备器复用在途调用；拒租时不访问 Kernel。子会话意图在准备前持久化，失败重试继续原身份，不产生第二个子会话。宿主在 app-core 接线，llm-session 只持有端口，不负责租约策略。
+
+
+## 独立调用的可信宿主准备
+
+createApplicationRuntime 返回初始化时创建的 independentCalls 服务；它不是应用 RPC/浏览器能力表的一部分。宿主可调用 prepareTaskCall(input, {maxDepth, timeoutMs?})，由原 SessionManager 和 AgentResolver 解析真实子会话与确切发布目标，再由原路由持久保存准备结果。无需借 UI 绑定或通过 session.submit 试运行来获取 TaskSpec。准备不派发；submitPreparedTaskCall 显式进入 Kernel，接纳丢回执由原查询核对。
+
+准备器复用普通对话的目标、连接与 Context 机制，持久服务仍归 llm-session，Kernel 持有实际执行和资源事实；app-core 只接线，不增加目标编译器或调度器。Flow 实现尚未具备完整 Kernel 工作区收尾，当前明确拒绝裸 Task 准备。旧 session.call.submit 路径和正式入口迁移、历史恢复的剩余范围见[功能合入计划第 91 节](design/functional-merge-plan.md#91-已发布目标复用普通对话准备进入可信宿主调用)。

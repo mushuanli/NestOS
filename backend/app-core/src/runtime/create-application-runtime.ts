@@ -86,6 +86,8 @@ export interface ApplicationKernelPlatform {
 }
 
 export interface ApplicationRuntime {
+    /** Trusted host preparation and dispatch; this service is not an RPC contract. */
+    independentCalls?: import('@itookit/llm-session').IndependentCallService;
     flowInstallations: import('@itookit/app-contracts/services').FlowInstallations;
     toolPackages: import('@itookit/app-contracts/services').ToolPackages;
     digitalTwin?: DigitalTwinService;
@@ -432,7 +434,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
                 ensureWritable: async sessionId => !await sessionRepository.isSessionDeletionPending(sessionId)
                     && await recovery.acquireLater(sessionId) && await projects.sessionMoves.ready(sessionId),
                 flowWorkspaceManager: options.kernelPlatform?.flowWorkspaceManager } satisfies import('./conversation-system').ConversationSystemOptions;
-        const { sessionManager, commandBus, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
+        const { sessionManager, commandBus, independentCalls, dispose: disposeConversations } = await traceBoot('initializeConversationSystem',
             () => createConversationSystem(conversationOptions));
         flowInstallations = new FlowInstallationService(commandBus, new FlowToolPackages(kernel.toolCatalog, options.toolDependencies));
         const installations = flowInstallations;
@@ -497,7 +499,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         const startBackground = () => startup.activate();
         if (policy.projects === 'before-ready') startBackground();
         return { vfs, llmDriver, agentService, configuration, sessionRepository, flowEngine, sessionFiles, directoryMounts, projects, executionConnections,
-            flowInstallations: installations, toolPackages: installations.toolPackages, kernel, sessionManager, commandBus, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
+            flowInstallations: installations, toolPackages: installations.toolPackages, kernel, sessionManager, commandBus, independentCalls, runCatalog, dispose, startBackground, prepareSession: async id => { await initializeProjects(); return recovery.acquireLater(id); },
             projectSync, digitalTwin, createView: createConversationView, openConversation: id => conversationContexts.open(id) };
     } catch (error) {
         await startup.close();

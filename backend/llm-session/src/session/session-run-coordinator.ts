@@ -1,4 +1,5 @@
 import {applyHarnessOverrides, applyOverrides, assertContextSelection} from './execution-overrides';
+import {independentPreparationInstruction, independentPreparationError} from './independent-call-preparation';
 import { prepareFlowConnections } from './flow-connections';
 import {callInputProjection} from './call-input-projection';
 import { type Signal } from '../contracts';
@@ -62,6 +63,7 @@ interface ExecutionSetup {
     roundId: string;
     contextFiles: ChatAttachment[];
 }
+type PreparedExecutionTask = Pick<ExecutionTask, 'id' | 'sessionId' | 'input' | 'createdAt' | 'frozen'>;
 
 export class SessionRunCoordinator {
     private readonly active = new Map<string, ExecutionTask>();
@@ -126,11 +128,35 @@ export class SessionRunCoordinator {
 
     async bindQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
         const identity = await this.resolveSelectedIdentity(item);
+        return this.bindSelectedInstruction(sessionId, item, identity);
+    }
+
+    private async bindSelectedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction, identity: ExecutorConfig) {
         assertContextSelection(item, identity);
         const selected = pinQueuedTarget(item, identity);
         const connectionBinding = await this.freezeConnectionBinding({ ...selected, sessionId, instructionId: item.id }, identity);
         const bound = await this.prepareFlowInput({ ...selected, sessionId, instructionConnectionBinding: connectionBinding }, identity);
         return { ...selected, sendIntent: bound.sendIntent, flowBinding: bound.instructionFlowBinding, connectionBinding };
+    }
+
+    /** Resolve the actual published target and child context without a view, queue or running Task. */
+    async prepareIndependentTaskCall(supplied: import('../contracts/submission').SubmissionRequest,
+        suppliedInvocation: import('@itookit/llm-flow/contracts').InvocationIdentity) {
+        const request = structuredClone(supplied), invocation = structuredClone(suppliedInvocation);
+        const item = independentPreparationInstruction(request, invocation), sessionId = request.expectedSessionId!;
+        const manifest = await this.engine.getManifest(sessionId);
+        if (manifest.parentSessionId !== request.submission!.source.ownerId || manifest.currentBranch !== item.branch
+            || manifest.branches[item.branch] !== null) throw independentPreparationError('CALL_PREPARATION_SCOPE_MISMATCH');
+        await this.assertCanSubmit(sessionId);
+        const identity = await this.resolveSelectedIdentity(item);
+        if (identity.execution?.kind === 'flow') throw independentPreparationError('CALL_GRAPH_PREPARATION_REQUIRED');
+        if (!await this.agents.publishedTarget(identity.target)) throw independentPreparationError('CALL_PUBLISHED_TARGET_REQUIRED');
+        const bound = await this.bindSelectedInstruction(sessionId, item, identity);
+        const task = await this.prepareTask({...bound, sessionId, invocation, instructionId: bound.id, instructionBranch: bound.branch,
+            instructionConnectionBinding: bound.connectionBinding, instructionFlowBinding: bound.flowBinding});
+        const contextFiles = await this.attachments.resolveAttachments(sessionId, task.input.text, task.input.files);
+        return this.runs.prepareDirect({task, config: task.frozen!.config!, roundId: bound.id,
+            log: new RoundLog(this.engine, sessionId), contextFiles});
     }
 
     reviseQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
@@ -323,12 +349,17 @@ export class SessionRunCoordinator {
     }
 
     private async createTask(input: TaskInput): Promise<ExecutionTask> {
+        const task = await this.prepareTask(input);
+        const mode = task.input.overrides?.flowId ? undefined : directExecutionMode(task.input);
+        if (mode) await this.engine.saveSessionSettings(input.sessionId, { executionMode: mode, executionModeLocked: true });
+        return {...task, priority: 0, abortController: new AbortController()};
+    }
+
+    private async prepareTask(input: TaskInput): Promise<PreparedExecutionTask> {
         input = await this.prepareFlowInput(input);
         await this.validateFrozenFlow(input);
         input = await resolveSessionExecutionMode(this.engine, input, this.host.translate);
-        const roundLog = this.logs.get(input.sessionId)
-            ?? new RoundLog(this.engine, input.sessionId);
-        this.logs.set(input.sessionId, roundLog);
+        const roundLog = this.logs.get(input.sessionId) ?? new RoundLog(this.engine, input.sessionId);
         const manifest = await roundLog.loadManifest();
         if (input.instructionBranch && input.instructionBranch !== manifest.currentBranch) {
             throw new ConversationError(ConversationErrorCode.SESSION_BUSY, 'Queued instruction branch changed during admission');
@@ -336,16 +367,12 @@ export class SessionRunCoordinator {
         const agent = await this.resolveConfig(input);
         assertConversationTarget(input, agent);
         this.assertAgentVersion(agent, input.agentId);
-        const mode = input.overrides?.flowId ? undefined : directExecutionMode(input);
-        if (mode) await this.engine.saveSessionSettings(input.sessionId, { executionMode: mode, executionModeLocked: true });
         const branchRef = manifest.currentBranch || 'main';
         return {
             id: `run-request-${ulid()}`,
             sessionId: input.sessionId,
             input,
-            priority: 0,
             createdAt: Date.now(),
-            abortController: new AbortController(),
             frozen: {
                 branchRef,
                 branchHead: manifest.branches[branchRef] ?? null,

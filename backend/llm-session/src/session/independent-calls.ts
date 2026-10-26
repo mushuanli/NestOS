@@ -24,6 +24,7 @@ interface CallRoute {createdAt?: number; head?: string | null; digest: string; i
 interface Options {
     kernel: Kernel; repository: ISessionRepository; transfers: Pick<ContentTransferService, 'createChild'>;
     submit: IndependentCallSubmitter; prepareExecution?(sessionId: string): Promise<void>; canWrite?(sessionId: string): Promise<boolean>; hostPorts?: SessionHostPorts;
+    prepareTaskCall?: IndependentTaskCallPreparation['prepare'];
 }
 const prefix = 'conversation/call/';
 interface PreparationProgress {stage: string; executionSessionId?: string}
@@ -79,8 +80,8 @@ export class IndependentCallService {
             } catch { /* Diagnostics cannot replace admission or the original failure. */ }
         }
     }
-    async prepareTaskCall(supplied: IndependentCallInput, options: IndependentTaskCallPreparation): Promise<PreparedIndependentTaskCall> {
-        const input = structuredClone(supplied), prepare = options?.prepare;
+    async prepareTaskCall(supplied: IndependentCallInput, options: IndependentTaskCallPreparation | IndependentTaskCallPolicy): Promise<PreparedIndependentTaskCall> {
+        const input = structuredClone(supplied), prepare = options && typeof options === 'object' && 'prepare' in options ? options.prepare : this.options.prepareTaskCall;
         return this.tracePreparation(input, 'call.prepare', async progress => {
             const policy = snapshotIndependentTaskCallPolicy(options);
             if (typeof prepare !== 'function') throw independentPreparationError('CALL_PREPARATION_UNAVAILABLE');

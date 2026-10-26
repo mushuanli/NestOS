@@ -5,6 +5,8 @@ import {sha256HexSync} from '@itookit/llm-context';
 import type {SubmissionRequest} from '../contracts/submission';
 import type {PreparedDirectConversationRun, PreparedConversationContext} from './conversation-preparation';
 import {ulid} from '../persistence/ulid';
+import {assertSubmissionBinding, submissionInstruction} from './submission-input';
+import {prepareInstruction} from './instruction-queue-rules';
 
 export interface IndependentTaskCallPolicy {maxDepth: number; timeoutMs?: number | null}
 export interface IndependentTaskCallPreparation extends IndependentTaskCallPolicy {
@@ -25,6 +27,22 @@ export interface IndependentTaskCallAdmission {
 interface PreparedData {plan: TaskCallPlan; context: PreparedConversationContext; digest: string}
 export interface IndependentKernelPreparation {version: 1; callerRequestId: string; invocation: InvocationIdentity; policy: IndependentTaskCallPolicy; prepared?: PreparedData}
 export interface PreparationScope {operationId: string; sessionId: string; roundId: string; target: TargetRef; branch: string}
+
+/** Normalize a trusted child request without admitting it to the instruction queue. */
+export function independentPreparationInstruction(request: SubmissionRequest, invocation: InvocationIdentity) {
+    const {sessionId, branch} = childPreparationScope(request, invocation);
+    assertSubmissionBinding(request, sessionId);
+    if (request.overrides?.baseRoundId || request.overrides?.newBranchName
+        || request.overrides?.branchMode && request.overrides.branchMode !== 'continue') throw invalid('CALL_CHILD_BRANCH_INVALID');
+    return prepareInstruction(submissionInstruction(request), sessionId, branch);
+}
+function childPreparationScope(request: SubmissionRequest, invocation: InvocationIdentity) {
+    const sessionId = request?.expectedSessionId, submission = request?.submission;
+    if (!sessionId || !request.expectedBranch || !submission || submission.source?.kind !== 'independent-call'
+        || !isInvocationIdentity(invocation) || request.expectedTarget?.kind !== 'agent' || !request.expectedTarget.version)
+        throw invalid('CALL_PREPARATION_SCOPE_MISMATCH');
+    return {sessionId, branch: request.expectedBranch};
+}
 
 /** Freeze host limits before asynchronous route discovery. */
 export function snapshotIndependentTaskCallPolicy(policy: IndependentTaskCallPolicy): IndependentTaskCallPolicy {

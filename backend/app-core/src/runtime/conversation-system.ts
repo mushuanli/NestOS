@@ -54,7 +54,7 @@ export interface ConversationSystemOptions {
  */
 export async function createConversationSystem(
     options: ConversationSystemOptions,
-): Promise<{ sessionManager: SessionManager; commandBus: CommandBus; dispose(): Promise<void> }> {
+): Promise<{ sessionManager: SessionManager; commandBus: CommandBus; independentCalls?: import('@itookit/llm-session').IndependentCallService; dispose(): Promise<void> }> {
     const { vfs, agentService, sessionRepository, flowEngine, kernel, systemFS } = options;
     const capabilities = createFlowCapabilities(kernel);
     const artifacts = createTaskArtifactServices(kernel.kernel, systemFS);

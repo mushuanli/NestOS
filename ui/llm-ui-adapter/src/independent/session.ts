@@ -1,3 +1,4 @@
+import {SessionExecution} from './session-execution';
 import {sessionQueueToolbar} from './session-queue';
 import {messageState, toolState} from './message-state';
 import {verifyInputContext} from '../services/verify-input-context';
@@ -26,6 +27,7 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly kernel?: import('@itookit/durable-kernel/contracts').EditorTaskControlPlane;
     readonly readOnly?: boolean;
     readonly instructionQueue?: boolean;
     readonly contextSelection?: boolean;
@@ -75,6 +77,7 @@ class SessionChatBinding {
     private closed = false;
     private active = true;
     private presentation?: SessionCallPresentation;
+    private execution?: SessionExecution;
     private admissionTimer?: ReturnType<typeof setTimeout>;
     private readonly targets?: SessionCallTargets;
     constructor(private readonly options: SessionChatBindingOptions) {
@@ -84,15 +87,23 @@ class SessionChatBinding {
         if (options.targetSelection) this.targets = new SessionCallTargets(options.commands, () => this.publish());
         this.source = new ChatProjection(this.sessionId, options.onError, this.targets ? () => this.refreshTargets() : undefined);
         this.actions = { send: (input, context) => this.send(input, context), reconcile: id => this.reconcile(id) };
+        if (options.kernel) {
+            this.execution = new SessionExecution(options.kernel, this.sessionId, () => options.session.getSessions(),
+                () => this.current(), () => this.publish(), error => options.onError?.(error));
+            const allowed = (context: OperationContext) => !options.readOnly && this.active && this.current() && context.viewId === this.source.getSnapshot().viewId;
+            this.actions.cancel = (ref, context) => allowed(context) ? this.execution!.cancel(ref, context) : Promise.resolve(rejected(context, 'STALE_VIEW', 'Execution control unavailable'));
+            this.actions.respond = (input, context) => allowed(context) ? this.execution!.respond(input, context) : Promise.resolve(rejected(context, 'STALE_VIEW', 'Interaction control unavailable'));
+        }
         if (options.composerCommands) this.actions.command = (input, context) => this.command(input, context);
         this.releases = [options.session.onEvent(event => {
             if (this.current() && event?.type === 'instructions:changed') this.observeQueue(event.payload);
-            this.publish();
+            this.publish(); void this.execution?.refresh();
         }), options.operations.subscribe(() => {this.publish(); this.scheduleIndependentAdmission();})];
         if (options.composerCommands?.subscribe) this.releases.push(options.composerCommands.subscribe(() => this.publish()));
         if (options.subscribeInput) this.releases.push(options.subscribeInput(() => this.publish()));
         this.publish();
         if (this.targets) void this.targets.refresh();
+        void this.execution?.refresh();
         this.scheduleIndependentAdmission();
     }
     private createLedger(ledger: OperationLedger): OperationLedger {
@@ -131,13 +142,15 @@ class SessionChatBinding {
         const projected = groups.map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId));
         const messages = this.presentation?.merge(projected, groups) ?? projected;
         this.source.publish({ title: this.options.title ?? this.options.session.getSnapshot?.().view?.manifest.title ?? '',
-            messages, interactions: [], selectors: this.selectors(), commands: this.options.composerCommands?.getSnapshot(),
+            messages, interactions: this.execution?.interactions ?? [], selectors: this.selectors(), commands: this.options.composerCommands?.getSnapshot(),
             inputContract: this.options.inputContract?.(), loading: false,
             ...(this.targets ? {callTargets: this.targets.getSnapshot()} : {}),
             operationReceipts: this.operations.getSnapshot().filter(record => record.conversationId === this.sessionId && record.kind === 'send'
                 && this.queued.has(record.context.operationId)).map(record => ({status: 'accepted', operationId: record.context.operationId})),
-            execution: this.options.session.isGenerating() ? 'running' : 'idle', connection: 'online', hasEarlier: false,
-            allowed: this.options.readOnly ? [] : ['send', ...(this.options.composerCommands ? ['command' as const] : [])] });
+            executionRef: this.execution?.executionRef,
+            execution: this.execution?.interactions.length ? 'waiting-input' : this.options.session.isGenerating() ? 'running' : 'idle', connection: 'online', hasEarlier: false,
+            allowed: this.options.readOnly ? [] : ['send', ...(this.execution?.executionRef ? ['cancel' as const] : []),
+                ...(this.execution?.interactions.some(item => item.kind !== 'unsupported') ? ['respond' as const] : []), ...(this.options.composerCommands ? ['command' as const] : [])] });
         for (const message of messages) if (message.submissionId && !this.confirmed.has(message.submissionId)) {
             void this.check(message.submissionId).then(accepted => { if (accepted) this.publish(); }).catch(error => this.options.onError?.(error));
         }
@@ -247,7 +260,7 @@ class SessionChatBinding {
             if (this.current() && this.active) this.publish();
         } finally {this.scheduleIndependentAdmission();}
     }
-    setActive(active: boolean): void {this.active = active; this.admissionChecks.clear(); this.presentation?.setActive(active && this.current()); this.scheduleIndependentAdmission();}
+    setActive(active: boolean): void {this.active = active; this.execution?.setActive(active); this.admissionChecks.clear(); this.presentation?.setActive(active && this.current()); this.scheduleIndependentAdmission();}
     private frozenRequest(operationId: string): SubmissionRequest {
         const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
             && item.conversationId === this.sessionId);
@@ -278,6 +291,8 @@ class SessionChatBinding {
             : Promise.resolve(rejected(context, 'STALE_COMMAND', 'Command changed or is unavailable'));
     }
     private async reconcile(operationId: string): Promise<OperationReceipt> {
+        const action = this.operations.getSnapshot().find(record => record.conversationId === this.sessionId && record.context.operationId === operationId);
+        if (this.execution && (action?.kind === 'cancel' || action?.kind === 'respond')) return this.execution.reconcile(operationId, this.operations);
         const callControls = new CallControlOperations(this.operations, this.options.commands, this.sessionId);
         if (callControls.has(operationId)) return callControls.reconcile(operationId);
         const invocations = new InvocationOperations(this.operations, this.options.commands, this.sessionId);
@@ -297,7 +312,7 @@ class SessionChatBinding {
     }
     dispose(): void {
         if (this.closed) return;
-        this.closed = true; this.presentation?.destroy(); clearTimeout(this.admissionTimer); this.releases.forEach(release => release());
+        this.closed = true; this.execution?.dispose(); this.presentation?.destroy(); clearTimeout(this.admissionTimer); this.releases.forEach(release => release());
         this.targets?.dispose();
     }
     async refreshTargets(): Promise<void> {await this.targets?.refreshCurrent(); await this.presentation?.refresh();}

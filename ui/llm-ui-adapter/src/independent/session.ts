@@ -1,3 +1,4 @@
+import {sessionQueueToolbar} from './session-queue';
 import {messageState, toolState} from './message-state';
 import {verifyInputContext} from '../services/verify-input-context';
 import {SessionContextPicker} from './session-context';
@@ -25,6 +26,7 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly instructionQueue?: boolean;
     readonly contextSelection?: boolean;
     readonly interactionDrafts?: InteractionDraftStorage;
     readonly images?: ImageEditingHost;
@@ -290,6 +292,12 @@ class SessionChatBinding {
         this.targets?.dispose();
     }
     async refreshTargets(): Promise<void> {await this.targets?.refreshCurrent(); await this.presentation?.refresh();}
+    get instructionQueue() {
+        if (!this.options.instructionQueue) return undefined;
+        return {commands: this.options.commands, sessionId: this.sessionId,
+            current: () => this.active && this.current(),
+            snapshot: () => this.current() ? this.options.session.getSnapshot?.().instructionQueue : undefined};
+    }
     get contextSelection(): boolean {return !!this.options.contextSelection;}
     contextScope() {return this.current() && this.branch ? {sessionId: this.sessionId, branchId: this.branch} : undefined;}
     readContextOptions(query: ContextOptionsQuery): Promise<ContextOptionsPage> {return this.options.commands.execute(SessionCommand.ContextOptions, query);}
@@ -320,6 +328,8 @@ function validInputContract(input: ChatSubmission, contract?: ComposerInputContr
 export async function createSessionChatView(container: HTMLElement, binding: ReturnType<typeof createSessionChatBinding>,
     options: ImageChatOptions = {}) {
     if (options.renderers?.[independentCallPart]) throw new Error('The independent call renderer is reserved by the Session adapter');
+    const queue = sessionQueueToolbar(binding.instructionQueue, options);
+    options = {...options, mountToolbar: queue.mount};
     const calls = binding.mountCalls(); let contextPicker: SessionContextPicker | undefined;
     try {
         const mountToolbar: ImageChatOptions['mountToolbar'] = calls || binding.contextSelection ? (host, context) => {
@@ -335,8 +345,8 @@ export async function createSessionChatView(container: HTMLElement, binding: Ret
             ...(calls ? {[independentCallPart]: calls.renderer} : {})},
             source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
         const setActive = view.setActive.bind(view), destroy = view.destroy.bind(view);
-        view.setActive = active => {binding.setActive(active); contextPicker?.setActive(active); setActive(active);};
-        view.destroy = async () => {binding.setActive(false); try {await destroy();} finally {binding.releaseCalls(calls);}};
+        view.setActive = active => {binding.setActive(active); queue.setActive(active); contextPicker?.setActive(active); setActive(active);};
+        view.destroy = async () => {binding.setActive(false); queue.setActive(false); try {await destroy();} finally {binding.releaseCalls(calls);}};
         return view;
     } catch (error) {binding.releaseCalls(calls); throw error;}
 }

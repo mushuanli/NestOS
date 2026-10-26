@@ -1,7 +1,9 @@
 import {instructionQueueLabels} from './instruction-queue-labels';
-import {CHAT_ICONS, t} from '@itookit/common';
+import {createModuleLogger, CHAT_ICONS, t} from '@itookit/common';
 import {InstructionQueueView, type InstructionQueueSnapshot, type InstructionQueueEdit as ViewEdit} from '@itookit/llm-ui';
 import {SessionCommand, type ICommandBus, type SessionInstructionQueue} from '@itookit/llm-session/contracts';
+
+const log = createModuleLogger('session-instruction-queue');
 
 type Projection = Omit<SessionInstructionQueue, 'items'> & {items: Array<InstructionQueueSnapshot['items'][number]
     & Partial<Pick<SessionInstructionQueue['items'][number], 'source' | 'target' | 'flowBinding'>>>};
@@ -9,14 +11,31 @@ type Projection = Omit<SessionInstructionQueue, 'items'> & {items: Array<Instruc
 export class InstructionQueuePanel {
     private readonly view: InstructionQueueView;
     private queue?: Projection;
-    constructor(element: HTMLElement, commands: ICommandBus, private readonly sessionId: string) {
+    constructor(element: HTMLElement, commands: ICommandBus, private readonly sessionId: string,
+        private readonly isCurrent: () => boolean = () => true) {
         const project = (queue: Projection): InstructionQueueSnapshot => this.project(queue);
         this.view = new InstructionQueueView(element, {
             ownerId: sessionId, removeIcon: CHAT_ICONS.delete,
-            edit: async edit => project(await commands.execute<Projection>(SessionCommand.EditInstructionQueue, this.edit(edit))),
-            read: async () => project(await commands.execute<Projection>(SessionCommand.GetInstructionQueue)),
+            edit: edit => this.execute('edit', () => commands.execute<Projection>(SessionCommand.EditInstructionQueue, this.edit(edit)), project),
+            read: () => this.execute('read', () => commands.execute<Projection>(SessionCommand.GetInstructionQueue), project),
             labels: instructionQueueLabels(),
         });
+    }
+    private async execute(stage: string, action: () => Promise<Projection>, project: (queue: Projection) => InstructionQueueSnapshot): Promise<InstructionQueueSnapshot> {
+        const started = Date.now();
+        try {
+            if (!this.isCurrent()) throw Object.assign(new Error('Queue observation binding expired'), {code: 'STALE_VIEW'});
+            const queue = await action();
+            if (!this.isCurrent() || queue.sessionId !== this.sessionId)
+                throw Object.assign(new Error('Queue observation binding changed'), {code: 'STALE_VIEW'});
+            log.info('queue.operation', {sessionId: this.sessionId, stage, result: 'success', revision: queue.revision, durationMs: Date.now() - started});
+            return project(queue);
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            log.warn('queue.operation', {sessionId: this.sessionId, stage, result: 'failure', durationMs: Date.now() - started,
+                code: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'QUEUE_OPERATION_FAILED'});
+            throw error;
+        }
     }
     update(queue?: Projection): void {
         if (queue?.sessionId === this.sessionId) this.view.update(this.project(queue));

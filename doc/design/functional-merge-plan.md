@@ -10,7 +10,7 @@
 
 | 优先级 / 工作线 | 已具备基础 | 仍需完成的结果 |
 |---|---|---|
-| P1a 独立调用业务提交 | Agent/Flow 的正式入口、双侧写权、持久计划、原 caller/target 核对及前后台范围已接线；本地正常提交/重放已确认 | 真实 HTTPS 服务的 Flow/Agent 正常提交与历史保存已确认；实际 UI 及原生远端组合继续保留 |
+| P1a 独立调用业务提交 | Agent/Flow 的正式入口、双侧写权、持久计划、原 caller/target 核对及前后台范围已接线；本地正常提交/重放已确认 | 真实 HTTPS 服务的 Flow/Agent/Flow Agent、回答/批准、控制、前后台及子会话续发已确认；实际 UI 及原生远端组合继续保留 |
 | P1b 历史关联与恢复 | 新 Kernel TaskRef/Invocation/Round 关联、幂等历史补交、恢复目录与连续输入屏障已接线；正常历史提交已确认 | 最新路径的真实重启/跨进程恢复与历史写入中断验收；准备数据压缩保留到有完整依据后 |
 | P1c Flow 工作区责任 | 可恢复工作区已绑定原根 Task 的 Kernel claim；替身 manager 的 finish 次数及 claim 释放已确认 | 真实工作区、能力/进程关闭及跨进程恢复确认；旧宿主能力边界仍须保留 |
 | P1d 跨调用预算 | Kernel 工作额度、共享资源、深度与幂等用量机制 | token/费用预算跨父子调用预留、分配、继承及实际结算；缺少远端 usage 时不能视为零用量 |
@@ -30,7 +30,7 @@ P1a/P1b 已接通 Agent/Flow 的新独立调用入口与终态历史恢复；已
 | 统一正式提交入口 | P1a | UI/CLI/RPC 同一请求只有一条派发责任链；未知接纳核对原请求，后台调用不阻塞独立前台输入 | 主线代码已接线，本地提交/重放及真实 HTTPS 服务 Flow/Agent 提交通过；真实界面/原生远端组合待确认 |
 | 持久结果与重启恢复 | P1b | 真实 caller/target TaskRef、Round 与结果贯通；历史失败可恢复，不重复已发生的副作用 | 结果保存和子会话接线已实现，正常提交通过；最新恢复路径尚未做真实重启验收 |
 | Flow 资源责任闭环 | P1c | 工作区和能力的所有权、跨进程恢复及物理收尾由 Kernel 核对，确认后释放冲突资源 | Kernel claim 与原 manager 已接线，替身收尾和释放通过；真实文件/进程及重启待确认 |
-| 最小 UI 和运行验收 | F16/F24 的基础展示/控制与实际部署 | 展示输入、结果与调用控制；本地/远程/DSH 按能力共用入口，运行服务覆盖顺序发送和必要控制 | UI 接线类型通过；新运行版本的 HTTPS Flow/Agent 和实际模型连接通过；实际界面及控制组合保留 |
+| 最小 UI 和运行验收 | F16/F24 的基础展示/控制与实际部署 | 展示输入、结果与调用控制；本地/远程/DSH 按能力共用入口，运行服务覆盖顺序发送和必要控制 | UI 接线类型通过；新运行版本的 HTTPS Flow/Agent/Flow Agent、实际模型、回答/批准、停止、暂停/恢复及续发通过；实际界面保留 |
 
 跨调用 token/费用预算、严格原生续接的进阶组合、大历史/复杂报告性能和长期生命周期仍在原目标内，排在上述主链之后；基础输入、结果、审批和停止能力不能因此延后。它们不是本轮继续新增框架或阻塞现有可用性修复的理由。
 
@@ -2338,14 +2338,26 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 
 已生成 HTTP 制品 20261026T102344-4cbdd261-dirty，pnpm httpd:build 成功；构建后恢复原启动指针，没有自行重启服务。用户随后确认已重启。携客户端证书请求 /api/health，确认当前实际运行版本为 20261026T110715-600146cc-dirty、ready=true、mode=release；启动日志 Version 与健康接口一致。当前运行版本来自工作树，保留 dirty 标识。
 
-2026-10-26 用户重启后，仅补一轮真实 HTTPS 主线调用：
+2026-10-26 用户重启后，先完成真实 HTTPS 正常提交：
 
 - Flow：新建无外部副作用的单节点转换 Flow，经 /api/application 的 session.call.submit 取得 Kernel 接纳；caller/target 均 succeeded，historyPending=false，子会话保存一轮 completed，源会话历史未推进，原 caller 可核对。操作 ID 为 26ebd5db-bd25-4f06-bf4c-9c9870efc669。
 - Agent：新建禁用工具、Skill、MCP 且不读取记忆的最小发布 Agent，使用已配置的真实模型连接请求一次；Kernel 接纳，caller/target 均 succeeded，子会话保存一轮结果，回答符合预期，显式 chat 模式已锁定，原 caller 可核对。操作 ID 为 a08d5790-dfb3-4a45-af93-327420d2c03f。
 
-本机证据为 /tmp/x1-http-mainline-acceptance.json 和 /tmp/x1-http-agent-acceptance.json；诊断 Flow、Agent 及会话保留供定位。日志不保存模型正文或凭据。该结果确认重启后新请求的正常执行与持久结果，不代表在途任务跨进程恢复。按用户要求不继续扩大验证范围。
+本机证据为 /tmp/x1-http-mainline-acceptance.json 和 /tmp/x1-http-agent-acceptance.json；诊断 Flow、Agent 及会话保留供定位。日志不保存模型正文或凭据。该结果确认重启后新请求的正常执行与持久结果，不代表在途任务跨进程恢复。随后用户要求继续后面的主要流程、先确认整个流程跑通，补充下述同服务主线确认。
 
-未执行全量测试、实际 UI、原生远端、真实隔离工作区/进程关闭、在途任务跨进程恢复或历史写入中断验收。临时本地正常脚本早于恢复索引和最后的日志调整，真实 HTTPS 验收覆盖的是上述当前运行版本的两个正常请求。
+同一运行版本继续完成主要流程，未运行全量测试或重复类型/构建检查：
+
+| 主流程 | 真实服务结果 | 本机证据 |
+|---|---|---|
+| 人工输入与停止 | 输入详情可读，回答后 completed，原回答回执可查；另一次等待调用取消后 cancelled，任务树与 caller 均收尾，原取消回执可查，子会话各保存一轮历史 | /tmp/x1-http-controls-acceptance.json |
+| 打开子会话继续发送 | openSessionView/activate 读到首轮历史，普通 session.submit 第二轮 completed，历史共两轮且父链指向原首轮 | 同上 |
+| Flow Agent 批准与工具执行 | 发布的 Flow Agent 经 Kernel 调度真实模型，发起 approval；批准后执行仅限本诊断 Session 的只读 TaskList，caller/target 均 succeeded，任务树 settled，历史保存一轮，原回答回执保留 | /tmp/x1-http-flow-agent-approval.json |
+| 前台与后台独立 | 后台 Flow 等待人工输入时，源 Session 的普通模型发送完成，后台仍保持原等待；前台和子会话历史各保存一轮，没有串写 | /tmp/x1-http-background-acceptance.json |
+| 暂停、恢复后继续 | 同一后台调用确认整树 stopped，恢复为 run 后回答原交互并 completed；原暂停回执继续可查，caller/target 和历史完成收尾 | 同上 |
+
+审批验收先遇到诊断配置及脚本问题：ToolSearch 未启用；文件脚本误用 IFileSystem API；纠正接口后，未挂载可写目录的诊断 Session 写文件被 EROFS 拒绝。这些尝试不计为通过，后两次沿原身份取消；最终使用已启用的会话内只读 TaskList 完成批准与工具执行，没有修改工具全局配置或放宽目录权限。原失败/取消记录和 /tmp/x1-http-flow-agent-approval-{unavailable-tool,script-error,no-workspace}.json 保留供定位。最终只读确认这三次调用的任务树与 caller 均 settled、historyPending=false，没有遗留运行任务，证据为 /tmp/x1-http-acceptance-cleanup-state.json。
+
+上述证据证明真实 HTTPS 应用端口的主要流程；没有操作浏览器 DOM，不能代替按钮、草稿和视觉交互验收。当前运行版本仍为 600146cc 来源，后续日志及父卡片刷新修改尚未部署。未执行全量测试、原生远端、真实隔离工作区/进程关闭、在途任务跨进程恢复或历史写入中断验收。临时本地正常脚本早于恢复索引和最后的日志调整，不扩张其证明范围。
 
 ### 保留范围
 

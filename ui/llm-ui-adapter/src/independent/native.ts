@@ -22,6 +22,7 @@ import type {ExtensionRenderer, JsonValue} from '@itookit/llm-ui';
 const log = createModuleLogger('native-submission');
 
 export interface NativeChatBindingOptions {
+    readonly readAttachment?: ImageEditingHost['read'];
     readonly readOnly?: boolean;
     readonly images?: ImageEditingHost;
     readonly conversationId: string;
@@ -110,10 +111,10 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             if (input.input) return reject(context, 'UNSUPPORTED_INPUT', 'Native message input has no declared structured argument binding');
             let attachments: NonNullable<Parameters<ConversationControls['send']>[1]> = [];
             if (input.attachments.length) {
-                if (!options.images) return reject(context, 'ATTACHMENT_MAPPING_REQUIRED', 'Native attachments require host conversion');
+                if (!options.images && !options.readAttachment) return reject(context, 'ATTACHMENT_MAPPING_REQUIRED', 'Native attachments require host conversion');
                 try {
                     const files: File[] = [];
-                    for (const ref of input.attachments) files.push(new File([await options.images.read(ref, {signal: lifetime.signal})], ref.name, {type: ref.mimeType}));
+                    for (const ref of input.attachments) files.push(new File([await (options.readAttachment ?? options.images!.read.bind(options.images!))(ref, {signal: lifetime.signal})], ref.name, {type: ref.mimeType}));
                     attachments = await prepareRemoteAttachments(files, native?.attachments ?? []);
                 } catch (error) {return reject(context, 'INVALID_ATTACHMENT', String(error));}
                 if (!valid(context.viewId)) return reject(context, 'STALE_VIEW', 'Observation binding expired');

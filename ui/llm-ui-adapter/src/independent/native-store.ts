@@ -22,13 +22,15 @@ export class NativeChatStore {
         const state = await controls.readComposerDraft!(), store = new NativeChatStore(controls, state);
         store.document = state.data ? JSON.parse(state.data) : {};
         // Retain the existing recovery UI until its older submission is settled.
-        if (store.document.remoteSubmission) return undefined;
+        if (store.document.remoteSubmission || controls.snapshot?.()?.pending && !store.document.independentChat) return undefined;
         await store.restore(); return store;
     }
     get draft(): ComposerDraft {return structuredClone(this.value.draft);}
     ledger() {
         return createOperationLedger({initial: this.value.operations, save: records => this.enqueue(async () => {
-            await this.write({...this.value, operations: structuredClone(records)});
+            const added = records.find(record => !this.value.operations.some(previous => previous.context.operationId === record.context.operationId));
+            const draft = added?.draft && added.draft.revision >= this.value.draft.revision ? added.draft : this.value.draft;
+            await this.write({...this.value, draft: structuredClone(draft), operations: structuredClone(records)});
         })});
     }
     saveDraft(draft: ComposerDraft): Promise<void> {

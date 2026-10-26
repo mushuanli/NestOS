@@ -1,4 +1,4 @@
-import { RemoteConversationEditor } from './shell/RemoteConversationEditor';
+import {createConversationEditor} from './conversation';
 import { SessionDraftEditor } from './shell/drafts/SessionDraftEditor';
 import type {WorkspaceHandoff} from './shell/drafts/workspace-handoff';
 import { normalizeEditorOptions } from '@itookit/ui-common';
@@ -69,8 +69,7 @@ export const createLLMFactory = (
     const createEditor = async (container: HTMLElement, options: EditorOptions, handoff?: WorkspaceHandoff): Promise<IEditor> => {
         const chatOptions = normalizeEditorOptions(options as EditorOptions<import('@itookit/llm-flow/contracts').SessionSubmission, import('./services/SessionService').SessionLoadResult>);
         if (options.conversation) {
-            const editor = new RemoteConversationEditor(container, options.conversation, options, handoff);
-            try { await editor.init(container); return editor; } catch (error) { await editor.destroy(!!handoff); throw error; }
+            return createConversationEditor(container, options.conversation, options, handoff);
         }
         if (options.sessionDraft) {
             const draft = new SessionDraftEditor(container, agentService, chatOptions, deps.ocr, createEditor,

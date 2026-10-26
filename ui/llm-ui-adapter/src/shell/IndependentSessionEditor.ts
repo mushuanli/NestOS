@@ -71,7 +71,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             assets: createAssetProvider(undefined, undefined, this.config.assets), upload: this.config.assets ? this.store.upload.bind(this.store) : undefined,
             saveDraft: draft => this.save(draft), onDraftChange: () => this.emit('interactiveChange', undefined),
             onError: error => this.fail(error), onDiagnostic: event => log.info('chat.operation', {...event, sessionId: this.config.sessionId, branch}),
-            mountToolbar: root => this.toolbar(root)});
+            mountHeader: root => this.toolbar(root)});
         if (!this.active) this.view.setActive(false);
     }
     private messageAnchor(messageId: string) {
@@ -117,20 +117,22 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     }
     private toolbar(root: HTMLElement) {
         const releases: (() => void)[] = [];
-        for (const [mount, className] of [[this.config.mountCompactNavigation, 'llm-chat__compact-navigation'], [this.config.mountWindowList, ''], [this.config.mountConversationNavigation, '']] as const) {
+        for (const [mount, className] of [[this.config.mountCompactNavigation, 'llm-chat__compact-navigation']] as const) {
             if (!mount) continue; const slot = document.createElement('div'); slot.className = className;
             if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); releases.push(mount(slot), () => slot.remove());
         }
         if (this.config.hostContext?.toggleSidebar) {const button = document.createElement('button'); button.type = 'button'; presentHostControl(button, t('chat.toolbar.sidebar'), ACTION_ICONS.sidebar);
-            button.onclick = () => this.config.hostContext!.toggleSidebar(); root.append(button);}
-        const branches = document.createElement('select'); branches.setAttribute('aria-label', t('flow.output.branch')); root.append(branches);
+            button.classList.add('llm-chat__sidebar'); button.onclick = () => this.config.hostContext!.toggleSidebar(); root.append(button);}
+        const branches = document.createElement('select'); branches.className = 'llm-chat__branch'; branches.setAttribute('aria-label', t('flow.output.branch')); root.append(branches);
         const refresh = async () => {const manifest = await this.service.getManifest(this.config.sessionId); if (this.closed || !branches.isConnected) return;
             branches.replaceChildren(...Object.keys(manifest.branches).map(name => {const option = document.createElement('option'); option.value = name; option.textContent = name; return option;})); branches.value = this.branch;};
         void refresh().catch(error => this.fail(error));
         branches.onchange = () => {void this.switchBranch(branches.value).catch(error => {branches.value = this.branch; this.fail(error);});};
         const menu = document.createElement('details'), label = document.createElement('summary'), body = document.createElement('div');
         menu.className = 'llm-chat__host-menu'; presentHostControl(label, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(label, body); root.append(menu);
-        if (this.config.mountMoreMenu) releases.push(this.config.mountMoreMenu(body));
+        for (const mount of [this.config.mountWindowList, this.config.mountConversationNavigation, this.config.mountMoreMenu]) {
+            if (mount) releases.push(mount(body));
+        }
         return {destroy: () => releases.forEach(release => release())};
     }
     private async switchBranch(branch: string): Promise<void> {

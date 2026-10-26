@@ -38,20 +38,23 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
             saveDraft: draft => this.suspended ? Promise.resolve() : this.store.saveDraft(draft),
             onDraftChange: () => this.emit('interactiveChange', undefined), onError: error => this.fail(error),
             onDiagnostic: event => log.info('chat.operation', {...event, sessionId}),
-            mountToolbar: root => this.toolbar(root)});
+            mountHeader: root => this.toolbar(root)});
         if (this.options.initialInputState?.text) this.view.setText(this.options.initialInputState.text);
         this.options.signal?.throwIfAborted(); this.schedule(); this.emit('ready', undefined);
     }
     private toolbar(root: HTMLElement) {
         const cleanups: (() => void)[] = [];
-        for (const [mount, className] of [[this.options.mountCompactNavigation, 'llm-chat__compact-navigation'], [this.options.mountWindowList, ''], [this.options.mountConversationNavigation, '']] as const) {
+        for (const [mount, className] of [[this.options.mountCompactNavigation, 'llm-chat__compact-navigation']] as const) {
             if (!mount) continue;
             const slot = document.createElement('div'); slot.className = className; if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); cleanups.push(mount(slot), () => slot.remove());
         }
-        if (this.options.mountMoreMenu) {
+        {
             const menu = document.createElement('details'), summary = document.createElement('summary'), body = document.createElement('div');
             menu.className = 'llm-chat__host-menu'; presentHostControl(summary, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(summary, body); root.append(menu);
-            cleanups.push(this.options.mountMoreMenu(body), () => menu.remove());
+            for (const mount of [this.options.mountWindowList, this.options.mountConversationNavigation, this.options.mountMoreMenu]) {
+                if (mount) cleanups.push(mount(body));
+            }
+            cleanups.push(() => menu.remove());
         }
         this.branches = new RemoteBranches(this.service, this.options, async action => {
             if (!this.active || this.closed || this.options.readOnly) throw new Error('Conversation view is unavailable');
@@ -60,7 +63,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
             const state = await action();
             if (state.sessionId && !this.closed) this.options.onConversationSession?.(state.sessionId);
         }, error => this.fail(error));
-        root.append(this.branches.element);
+        this.branches.element.classList.add('llm-chat__branch'); root.append(this.branches.element);
         const update = () => {const state = this.service.snapshot?.(); if (state) this.branches?.update(state, !this.active);};
         update();
         return {update, destroy: () => {this.branches?.destroy(); cleanups.forEach(cleanup => cleanup());}};

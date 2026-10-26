@@ -4,17 +4,17 @@
 
 ## 0. 当前剩余工作（2026-10-26）
 
-本轮快速交付更新：普通已发布 Agent（Chat / Agent / Harness）以及 Flow/Flow Agent 的新独立调用已接到原 `session.call.submit` → 持久准备 → Kernel 提交，旧请求按已保存的路由继续核对。终态历史、恢复观察与卡片见第 92 节；可恢复工作区的 Kernel 责任见第 93 节；Flow 正式入口接线见第 94 节。最新正常主线已有一次小范围运行确认（第 98 节）；未执行全量测试、构建或部署验收，不能等同于下表全部工作完成。
+本轮正常主线已接通：已发布 Agent（Chat / Agent / Harness）及 Flow/Flow Agent 经原 session.call.submit 进入持久准备和 Kernel 执行，结果写回原历史。普通 Agent、隔离 Flow 和 Flow Agent 已通过一次本地正常运行确认，后端装配及 UI 接线类型检查通过；真实云模型、原生远端、界面交互和部署验收仍待确认。实现、提交及验证范围合并记录在第 92 节，不再按内部步骤追加阶段。
 
 整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—91 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
 
 | 优先级 / 工作线 | 已具备基础 | 仍需完成的结果 |
 |---|---|---|
-| P1a 独立调用业务提交 | Kernel 受管调用、双侧写权、期限、共用准备；持久计划、可信提交/核对及发布目标准备见第 89—91 节 | 正式业务入口从持久准备进入 Kernel，固定 caller/target 引用；队列接纳、提交未知与原请求核对全链路统一，不能由两处派发 |
-| P1b 历史关联与恢复 | 旧队列/Round 恢复、Invocation 与子 Session、Kernel 原调用核对 | 新 Kernel 路径的真实 TaskRef、Round、接纳/结果回执与重启恢复投影贯通；有证据后再压缩准备数据 |
-| P1c Flow 工作区责任 | 既有隔离工作区 manager、scheduler lease 与收尾记录 | 将完整 Flow 的工作区/能力占用接到 Kernel 可核对的资源责任，确认物理收尾后再完成函数调用 |
+| P1a 独立调用业务提交 | Agent/Flow 的正式入口、双侧写权、持久计划、原 caller/target 核对及前后台范围已接线；本地正常提交/重放已确认 | 实际 UI/CLI/RPC 及原生远端组合验收；真实服务运行证据仍待补齐 |
+| P1b 历史关联与恢复 | 新 Kernel TaskRef/Invocation/Round 关联、幂等历史补交、恢复目录与连续输入屏障已接线；正常历史提交已确认 | 最新路径的真实重启/跨进程恢复与历史写入中断验收；准备数据压缩保留到有完整依据后 |
+| P1c Flow 工作区责任 | 可恢复工作区已绑定原根 Task 的 Kernel claim；替身 manager 的 finish 次数及 claim 释放已确认 | 真实工作区、能力/进程关闭及跨进程恢复确认；旧宿主能力边界仍须保留 |
 | P1d 跨调用预算 | Kernel 工作额度、共享资源、深度与幂等用量机制 | token/费用预算跨父子调用预留、分配、继承及实际结算；缺少远端 usage 时不能视为零用量 |
-| F16/F24 新调用 UI 与性能 | 旧调用卡片、交互回答、产物按需读取及同 Session 树控制 | 新跨 Session Kernel 调用的统一展示/控制/恢复，以及完整调用组、大报告与大历史性能验收 |
+| F16/F24 新调用 UI 与性能 | 原卡片已接真实 Kernel 状态、交互/控制/产物，补充收尾提示与已打开子会话正文刷新；类型检查通过 | 最新路径的真实界面审批/停止/重开验收，以及完整调用组、大报告和大历史性能验收 |
 | F15/F20—22 原生上下文与材料 | binding、检查点/fork、选择器及受支持材料传输 | 严格 continue 的远端条件写或独占保障；并行/循环/重试绑定及材料实例的组合验收，不将宿主 CAS 当成原生围栏 |
 | 运行策略与长期生命周期 | 当前输入/审批、资源恢复及资产引用 | 无人值守交互/失联策略，环境与记忆隔离、初始化作用域，以及历史/资产导出恢复、保留和回收边界 |
 | 真实部署与历史故障验收 | DSH 新请求、顺序发送及取消已验收；Codex 对应真实链路已验收 | Claude 真实云模型顺序执行、旧未知项/DSH 历史结算修复的运行端复验，以及最新统一调用方案的服务验收；协议替身和本地 peer 不替代这些结论 |
@@ -23,14 +23,14 @@ P1a/P1b 已接通 Agent/Flow 的新独立调用入口与终态历史恢复；已
 
 ## 0.1 当前交付收敛与复杂度约束（2026-10-26）
 
-第 0 节仍有八条未闭环工作线；不能把它们换算为八个提交，也不能用准备/读取 API 或测试数量作为完成率。当前交付先收敛为下列四个验收包，保留完整目标，不再按内部方法扩展阶段清单。
+第 0 节仍保留完整目标；主线接线、运行证据与后续能力不能混成一个完成比例。当前按下列四个交付包记录实际状态，不再按内部方法扩展阶段清单。用户要求非主线先跳过，未覆盖项明确保留。
 
-| 当前验收包 | 对应工作线 | 完成条件 |
-|---|---|---|
-| 统一正式提交入口 | P1a | UI/CLI/RPC 的同一请求只有一条派发责任链；接纳未知核对原请求，后台调用不阻塞独立前台输入 |
-| 持久结果与重启恢复 | P1b | 真实 caller/target TaskRef、Round 与结果贯通；历史写入失败可恢复，不能重新执行已发生的副作用 |
-| Flow 资源责任闭环 | P1c | 工作区和能力的所有权、跨进程恢复及物理收尾由 Kernel 可核对，完成后才释放冲突资源 |
-| 最小 UI 和运行验收 | F16/F24 的基础展示/控制与实际部署 | 展示输入、结果与具体调用控制；本地/远程/DSH 按能力使用同一入口，断线、取消、顺序发送及历史故障在运行服务验收 |
+| 当前交付包 | 对应工作线 | 完成条件 | 当前证据与边界 |
+|---|---|---|---|
+| 统一正式提交入口 | P1a | UI/CLI/RPC 同一请求只有一条派发责任链；未知接纳核对原请求，后台调用不阻塞独立前台输入 | 主线代码已接线，本地正常提交与原请求重放通过；真实界面/远端组合待确认 |
+| 持久结果与重启恢复 | P1b | 真实 caller/target TaskRef、Round 与结果贯通；历史失败可恢复，不重复已发生的副作用 | 结果保存和子会话接线已实现，正常提交通过；最新恢复路径尚未做真实重启验收 |
+| Flow 资源责任闭环 | P1c | 工作区和能力的所有权、跨进程恢复及物理收尾由 Kernel 核对，确认后释放冲突资源 | Kernel claim 与原 manager 已接线，替身收尾和释放通过；真实文件/进程及重启待确认 |
+| 最小 UI 和运行验收 | F16/F24 的基础展示/控制与实际部署 | 展示输入、结果与调用控制；本地/远程/DSH 按能力共用入口，运行服务覆盖顺序发送和必要控制 | UI 接线类型通过；实际界面、真实模型和部署未验收 |
 
 跨调用 token/费用预算、严格原生续接的进阶组合、大历史/复杂报告性能和长期生命周期仍在原目标内，排在上述主链之后；基础输入、结果、审批和停止能力不能因此延后。它们不是本轮继续新增框架或阻塞现有可用性修复的理由。
 
@@ -2287,88 +2287,53 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 应用补充验收：隔离 Flow 750、Session 607 项通过，宿主全量 1177 项在 maxWorkers=2/minWorkers=1 下通过（另 13 项既有跳过）；严格测试类型、Session/app-core/CLI/app-shell/UI adapter/app-contracts 类型、Flow/Session 构建与架构检查通过，76 个 Mermaid 图和 22 个链接解析通过。首次默认并发宿主运行有一项既有 IndexedDB 异步等待断言失败（默认等待内仍为零条），原版和候选版分别单独运行该文件均 13 项通过；最终只限制 worker 并发，未增加超时、跳过测试或更改业务逻辑来规避此项，不能把它记成修复 IndexedDB。全量 docs:check 仍为原 mindos-node 示例路径问题，没有新增。
 
 
-## 92. 普通已发布 Agent 的最小正式入口与终态历史恢复
+## 92. 当前最小可用版本交付记录
 
-按本轮“快速完成可用版本、风险处增加日志、不频繁验证”的要求，直接接通现有入口和消费者，不增加 RPC、调度器、执行状态库或 package。实现范围：
+按用户后续要求，本轮只补正常流程阻断，关键处记录操作/阶段/结果/具体错误分类/耗时和稳定身份，小功能完成后立即提交。复用原 Kernel、队列、Round、Flow 调度与工作区 manager，没有新增执行器、RPC 或执行状态权威。非主线能力先保留，不将延期等同于完成。
 
-- app-core 对普通已发布 Agent（Chat / Agent / Harness）选择 Kernel 路径，宿主策略为 maxDepth=8、timeoutMs=null；准备、调用及恢复沿用原请求与 Invocation。Flow/Flow Agent 保留原队列路径，已有路由不随新默认策略改变执行方式。
-- 原 session.call.submit 串联持久准备与原 Kernel 提交；丢回复时读取原 caller 接纳，不退回队列。后台等待不登记源 Session 的前台输入队列活动。
-- 宿主和视图共用同一 IndependentCallService。关闭视图不关闭后台观察；宿主退出 abort 等待并排空已有观察。启动扫描原路由，只恢复已有接纳的 caller，未提交计划不自动执行。
-- 目标确认 settled 后，按原输入、真实 TaskRef、Invocation 和 Kernel 终态生成 Round。结果、usage（仅有真实数据时）和失败原因进入历史，附件保留原引用；不重读当前目录或再次执行工具。只读 inspect/list 保持只读。
-- RoundLog.commitExpected 复用原写串行边界：完全一致的正文允许补交历史索引，已提交记录幂等返回；内容不一致或分支头变化明确报错。既有已提交历史通过原身份核对后保留，不覆盖用户历史。
-- 默认工作台和独立视图复用原调用卡片、交互及控制。卡片直接使用 Kernel 的运行/终态事实，不再将已运行但尚无 Round 的调用一律显示成待执行；历史未提交单独显示提示，沿用现有刷新周期。
+### 已接通的正常主线
 
-诊断沿用 call.submit、call.submit.prepared、call.history.recover、call.history.reconcile，区分 policy、prepare、kernel-submit、reconcile-admission、scan、resume-admitted、wait、target-unavailable、target-unsettled 和 history。记录安全请求/Session 身份、分类、结果及耗时，不记录正文、完整参数或原始存储异常。单 Session 扫描失败不阻断其他 Session；补交失败保留原执行事实，下次启动或同请求重试恢复，不引入无限重试器。
+- 已发布 Agent（Chat / Agent / Harness）及 Flow/Flow Agent 的新独立调用共用 session.call.submit → 持久准备 → 原 Kernel caller/target。Flow 冻结图进入原 flow.aggregate 根，再由原 RunResume 调度；已有队列请求保持原身份和路线。直接调用在接纳后、目标启动前固定显式执行模式。
+- 原 TaskRef/Invocation 与子会话 Round 关联；终态结果按原请求写回，重复请求不重新执行。已有相同正文可补交历史索引；子会话下一条输入等待原完整历史提交。取消与调度恢复交错时继续保存原终态，关闭视图不取消执行。
+- 可恢复隔离工作区在首节点前绑定原根的 Kernel pool/claim；物理 adapter 等待原成员停止、关闭能力并调用原 manager.restore/finish，保存回执后释放占用。没有可恢复租约的旧宿主继续原边界。新根在 scheduler lease 内准备工作区，恢复读取原租约记录。
+- 原父卡片复用 Kernel 状态、交互/控制及按需产物；明确区分目标结束、调用收尾和历史待保存。结果保存后刷新已打开子会话。源 Session 输入只排除经原请求核对的后台 caller，其余活动任务和 cleanup 继续阻止冲突派发。
+- 启动恢复使用事务成员索引定位独立调用所在 Session；路由写前标记，完整兼容扫描后才确认目录完整。索引失败回退扫描，不以索引代替 Kernel 接纳事实。
 
-本轮按用户要求未运行测试、类型检查、构建和真实部署验收，以上为代码实现状态。没有生产频率数据，不能将历史索引中断问题描述为高频故障。完整 Flow 的 Kernel 工作区责任、跨调用预算、严格原生 continue、复杂历史性能及真实服务验收仍未完成；第 0 节整体目标不标记完成。子会话历史本版在目标收尾后写入，实时过程和交互通过父调用卡片观察。
+### 小功能提交
 
-主链提交 `133e0b0c`。随后补齐“执行中提前打开子会话”的正常展示：历史保存后通知已有视图，由 SessionManager 复用 reloadSessionData 更新正文；视图销毁解除自身订阅。刷新失败以 call.history.display 记录 Session、阶段、错误分类和耗时，已提交历史保留。按当前交付要求不执行验证。
+| 提交 | 交付内容 |
+|---|---|
+| `133e0b0c` | 普通已发布 Agent 的正式 Kernel 入口与终态历史 |
+| `851d8b7d` | 已打开子会话的结果刷新 |
+| `0f0761e5`、`7e3c2f03` | 后台 caller 与前台输入范围、非后台任务忙闲判断 |
+| `742c203b` | 可恢复工作区的 Kernel 资源责任 |
+| `49a87e45` | Flow/Flow Agent 的同一 Kernel 入口、原图调度与结果投影 |
+| `f28a5f4d` | 调用收尾尚未确认时的卡片提示 |
+| `049b20ea` | 子会话连续输入等待首轮历史提交 |
+| `5cd70295` | 工作区尚未准备时的取消历史与恢复交错处理 |
+| `396a5c7d` | 独立直接调用启动前锁定原执行模式 |
+| `004ec8a2` | 正常 Kernel 观察等待降为 debug，真实失败保留 warn |
+| `23511931` | 独立调用按事务恢复索引定位 Session |
 
-展示刷新提交 `851d8b7d`。下一主线修正源 Session 前台准入：原先 sessionActivity 的全会话忙闲统计会将独立 Kernel caller 计入，导致后台调用仍挡住普通输入。SessionInstructions 在正常忙碌判断后，经 IndependentCallService 按持久路由及原 caller 规格核对后台 Task，只排除这些确切 caller；其他活动任务、Session 控制及 cleanup 仍按原准入规则处理。诊断 session.input.ready 记录 background-call-scope、后台 caller 数量、剩余前台 Task 数量、结果及耗时。未运行验证。
+### 日志与风险定位
 
-前台准入提交 `0f0761e5`；后续直接按 taskStat.settled 判断非后台任务，避免将 sessionActivity 的 queued 与 taskStat 的 ready 等不同阶段名混用而漏算正常就绪任务。继续沿用同一定位日志，未运行验证。
+沿用 call.submit / call.submit.prepared / call.target.resume / call.history.recover / call.history.reconcile，区分准备、接纳、绑定、调度恢复、等待、结果和历史提交。session.flow.prepare 区分 context/graph/root；flow.workspace.resource 区分权限、成员停止、能力关闭、租约恢复、物理收尾和回执保存。call.input.ready 记录首轮历史是否就绪，call.execution-mode.lock 记录设置读取、权限和保存阶段。
 
+恢复摘要记录实际探测/跳过/含调用 Session 数量及是否完整；单 Session 失败不误写完整标记。无错误码的 effect.observe/yield 使用 debug，其他 blocked 和 failure 继续 warn。日志不记录正文、完整参数、目录、凭据或原始存储异常。
 
-## 93. 可恢复隔离工作区登记原 Kernel 资源责任
+### 已有验证证据
 
-FlowWorkspaceLease 增加 attach(rootTaskId)，在原调度者取得 lease、根 Task 与工作区记录已持久保存后，首个节点派发前调用。app-core 对同时支持 record/restore 的宿主工作区 manager 复用 Kernel pool/open/acquire，把单份工作区占用绑定原 Flow 根。能力、请求与 claim 使用固定根身份；原 manager 仍负责授权、保留/合并策略及实际文件收尾，没有新增工作区调度器或执行状态库。
+集中执行过一份临时正常主线脚本，使用真实 createApplicationRuntime、Memory VFS、发布目录、Session 仓库、Kernel 和 Flow 调度，模型 HTTP 与物理工作区 manager 使用受控替身。普通已发布 Agent、隔离 Flow、已发布 Flow Agent 三个正常请求均取得 Kernel 接纳、caller 成功收尾、子会话各保存一轮 completed 历史；原请求重放返回同一回执。模型只请求一次，两个隔离调用各执行一次 workspace.finish，Kernel claims 确认释放。脚本主体约 975ms，含加载总计 4.50s；该数字仅描述此脚本，不作为产品性能指标。
 
-Kernel 的物理资源 adapter 按原 Session/Task 及根输入中的冻结策略和租约重建清理。先复验 Session 写权，等待原成员停止，再关闭 Run 能力作用域，恢复同一工作区并执行原 finish，持久保存清理回执后才返回 stopped。物理失败继续由 Kernel 保留 claim 和清理责任，跨 Session task.call 的既有资源结算检查可以观察这份占用。关闭等待使用原 AbortSignal；工作区保留提示沿原 finalization 投影返回。
+首次脚本误将只读 inspectSession 用作 resources 查询句柄，改用 Kernel.resources.query 后通过；没有据此修改业务执行逻辑。临时文件已移出仓库，本机保留 /tmp/x1-current-mainline-smoke.test.ts 与 /tmp/x1-mainline-smoke.log。之后没有追加运行矩阵。
 
-新根保存 initialWorkspaceResource=1，恢复按此标记重放资源接纳；历史根不自动改写身份。普通 shared 工作区不创建额外占用。没有可恢复租约的旧宿主仍沿原收尾方式；完整 Flow/Flow Agent 进入统一 Kernel 调用仍需后续接线，不能仅凭资源登记宣布 P1a/P1c 全部完成。
+当前工作树集中运行以下发布前类型检查，均通过：
 
-诊断 flow.workspace.resource 记录原操作/Session/根 Task、attach/permission/receipt/members/capabilities/restore/physical-finish/persist 阶段、结果、具体错误码及耗时，不记录目录、完整策略或原异常。按用户要求，本批未运行测试、类型检查、构建或部署验收。
+- pnpm --filter @itookit/app-core typecheck
+- pnpm --filter @itookit/llm-ui-adapter typecheck
 
+类型通过不代替运行验收。临时正常脚本早于恢复索引和最后的日志调整，不把前一次运行结果扩张为后续改动的运行证明。未执行全量测试、构建、实际 UI、云模型、原生远端、真实工作区/进程、最新路径的跨进程重启或生产部署验收。
 
-## 94. Flow 与 Flow Agent 从同一正式入口进入 Kernel
+### 保留范围
 
-新独立 Flow/Flow Agent 复用普通 Session 的参数、连接、材料及上下文准备，经过原 flowSpecification 生成已冻结图。llm-flow 的 prepareFlowCallTask 复用编译器、运行目录和 checkpoint 序列化，返回原 flow.aggregate 的独立 Task 定义；准备不创建 Kernel Task 或工作区，不新增包装执行 Task、调度器或运行状态库。上下文来源、Round、目标修订及 Invocation 继续由原持久准备校验。
-
-原 session.call.submit 按持久路由选择唯一路径。Kernel 创建受管目标后，宿主按已验证的真实目标引用调用既有 RunResume，原 DurableFlowExecutor 在同一 aggregate 根恢复调度，不再调用旧 Session 队列。源 Session 的普通输入继续排除经回执核对的后台 caller。根的初始 checkpoint 在首个执行阶段开始计时；冻结的插件目录、节点/连接和消息继续随恢复复用。
-
-隔离工作区在取得原 scheduler lease 后准备，租约按原 shared key 保存再交给节点；恢复先读取原记录。新根标明初始工作区待准备，资源 adapter 也从同一记录恢复物理收尾。工作区管理器自身的创建意图核对继续保留，准备到租约保存之间的罕见故障暂以原机制及日志定位，不增加另一套工作区事务。调度失败先记录根失败，再等待托管工作区物理清理，避免清理反向等待仍未退出的根。
-
-Flow 的终态输出按原 formatFlowOutput 投影，Round 保留真实 Flow 修订、参数、输入与主 Task 引用；父卡片继续使用原产物/交互/控制。失败且无正文时显示原具体错误原因。诊断新增 session.flow.prepare 的 context/graph/root，目标恢复归原 call.history.recover 的 target 阶段；不记录正文、完整参数和凭据。
-
-本批只记录实现及接线事实，按用户要求未运行测试、类型检查、构建或实际部署验收。跨调用预算、严格原生 continue、长期生命周期及复杂历史性能仍未整体完成；不能将本节视为整份计划清零。
-
-Flow 正式入口提交 `49a87e45`。父卡片补充原 caller 的收尾观察：目标 Task 已结束但 Kernel caller 尚未 settled 时，显示“调用仍在等待收尾确认”，不将物理资源收尾等同于历史写入。继续由同一列表观察及资源阶段日志定位，不新增状态字段或重复轮询器；本增量未运行验证。
-
-
-## 95. 子会话连续输入等待原调用历史提交
-
-新受管独立调用的 Kernel 终态事件可能先唤醒子会话队列，历史随后才补交。为避免下一轮抢占原空分支，SessionInstructions 在派发前经原 parentSessionId 和 conversation/call 路由核对实际 Kernel 接纳及首轮历史；只有原完整 Round 已提交，或 caller 已确认收尾且没有目标时，才允许该子会话开始下一次执行。尚未提交的准备不冒充执行占用，源 Session 的后台 caller 排除规则继续保留。
-
-历史提交通知显式唤醒原队列，已排队输入继续原身份派发。新增 call.input.ready 的 admission/target-pending/history-pending/history-committed 定位日志，不记录正文或参数，不新增队列或持久状态。按本轮要求未运行验证。
-
-
-## 96. 刚提交即停止仍保存原终态结果
-
-Flow 根已确认终态、标明初始工作区待准备且原工作区记录不存在时，收尾不再按缺失租约报错；该根尚未给节点发布工作区或登记对应占用。诊断 flow.workspace.finalization/not-prepared 保留原根身份，宿主已有的私有目录创建意图核对仍负责中断准备后的残留。
-
-目标恢复和用户停止交错时，call.target.resume 先记录 scheduler 阶段具体失败；若随后读取确认同一真实目标已终态，继续观察原 caller 的资源收尾并保存原历史，不把取消结果丢在后台恢复异常中。非终态目标仍保留原错误，不创建新请求或重新执行。按本轮要求未运行验证。
-
-
-## 97. 独立直接调用在启动前固定原执行模式
-
-Task 调用 SDK 增加可信 beforeBind：原 caller 已持久接纳、仍为 deferred 时，宿主可完成启动前准入；失败保持同一 caller，不绑定或执行新目标。Session 用此阶段将冻结 Task 标签中的显式 Chat/Agent 模式写入原子会话设置并锁定，避免 Agent 首轮写入历史后被旧数据兼容规则按默认 Chat 模式锁定。纯准备仍不修改设置，Flow 和没有显式模式的旧请求继续原规则。
-
-重放相同已锁模式不改写设置；已有不同锁定模式保留 CALL_EXECUTION_MODE_CONFLICT。诊断 call.execution-mode.lock 区分 settings/permission/persist，Kernel SDK 记录 host-admission/binding，失败不记录正文或完整配置。按本轮要求未运行验证。
-
-
-## 98. 正常主线的小范围运行确认与等待日志降噪
-
-在连续提交后集中执行一份临时主线脚本，使用真实 createApplicationRuntime、Memory VFS、Session 仓库、发布目录、Kernel 以及 Flow 调度，模型 HTTP 和物理工作区 manager 使用受控替身。三个正常请求依次经过正式 session.call.submit：已发布 Agent、带可恢复隔离工作区的 Flow、已发布 Flow Agent。三者取得 Kernel 接纳、原 caller 成功收尾、子会话各保存一轮 completed 历史；原请求重放返回同一回执。模型只请求一次，两个隔离调用各执行一次 workspace.finish，读取 Kernel claims 确认释放。
-
-脚本最终通过，测试主体约 975ms，含加载总计 4.50s。首次脚本把只读 inspectSession 当作可查询 resources 的运行句柄，导致脚本断言阶段失败；改用 Kernel.resources.query 后完成全部三条主线，没有据此修改业务执行逻辑。临时文件已移出仓库，输出留在本机 /tmp/x1-mainline-smoke.log。没有扩大全量矩阵、运行云模型或操作生产 Session，也不能据此声称重启、审批/停止竞态、UI、大历史或真实部署全部通过。
-
-正常受管调用会主动 yield 执行额度等待目标，原 Kernel 缺省把 effect.observe/yield 的 blocked 打印成“需要处理”。应用宿主接入现有模块日志：无错误码的该阶段使用 debug，真正 failure 和其他 blocked 仍使用 warn，保留操作/阶段/身份/结果/耗时及错误码，不输出正文、参数或凭据。本日志调整不再追加验证。
-
-
-## 99. 正常启动按调用所在 Session 恢复
-
-独立调用复用 createFlowInvocationSessions 的恢复目录端口，增加 independent 作用域；Flow 原目录和旧数据格式保持兼容。独立目录保存在现有 Kernel 目录下的事务 SeqFile，只包含 Session 成员与“兼容扫描完成”标记，不保存调用/Task 执行状态。先登记来源 Session，再写原 conversation/call 路由；登记失败拒绝该次写入，不能静默漏掉恢复。
-
-新作用域的 mark 不表示已完成旧数据扫描。只有完整探测成功才写 complete；期间并发新调用按逐 Session 条目合入，不用整文件覆盖或进程内缓存丢失其他宿主的标记。索引缺失、不完整或读取失败时保留全量兼容扫描；之后启动只探测已标记 Session。准备但未接纳的原记录仍不自动执行。
-
-call.history.recover 的 index-read/index-write/scan/complete 记录具体分类、耗时、实际探测/跳过/含调用 Session 数量和扫描是否完整。单 Session 失败不误写完整标记，不阻断其他调用恢复。本次未扩展运行验证。
+完整计划仍未清零。跨调用 token/费用预算、严格原生 continue、并行/循环/重试的 binding 与资产组合、无人值守/失联策略、环境与记忆隔离、长期导出/保留/回收、大历史和复杂报告性能继续保留，按用户要求排在正常主线之后。真实服务验收须以确定的目标环境、实际运行版本和真实操作结果为依据，不以本地替身或代码接线代替。

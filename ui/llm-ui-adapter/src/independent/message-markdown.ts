@@ -23,3 +23,24 @@ export function messageMarkdown(options: EditorOptions, anchor?: (messageId: str
         return {documentPath, plugins: [new AiChatPlugin({host})]};
     };
 }
+
+/** Keep the original MDx editors and bind embedded inputs to their persisted message. */
+export function workspaceMessagePlugins(options: EditorOptions, branch: () => string | undefined) {
+    const configured = options.defaultPluginOptions?.['interaction:ai-chat'] as {
+        createHost?(source: MessageSource): AiChatHost;
+    } | undefined;
+    const target = options.target;
+    if (!configured?.createHost || target?.kind !== 'session') return;
+    return (source: {messageId: string; role: string; roundId?: string}) => {
+        const documentPath = `session:${target.sessionId}/messages/${encodeURIComponent(source.messageId)}`;
+        const host = configured.createHost!({...source, documentPath, branch: branch()});
+        const bound: AiChatHost = {
+            listTargets: context => host.listTargets({...context, source: {...context.source, documentPath}}),
+            onSubmit: request => host.onSubmit({...request, source: {...request.source, documentPath}}),
+        };
+        if (host.pickAttachments) bound.pickAttachments = context => host.pickAttachments!({...context, source: {...context.source, documentPath}});
+        log.debug('message.markdown', {sessionId: target.sessionId, messageId: source.messageId,
+            stage: 'workspace-plugin-install', result: 'success', plugin: 'interaction:ai-chat'});
+        return [new AiChatPlugin({host: bound})];
+    };
+}

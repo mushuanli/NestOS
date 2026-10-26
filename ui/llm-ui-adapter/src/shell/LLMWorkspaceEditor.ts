@@ -1,3 +1,4 @@
+import {workspaceMessagePlugins} from '../independent/message-markdown';
 import {InteractionDraftPersistence} from '../services/InteractionDraftPersistence';
 import {IndependentCallPanel} from '../components/IndependentCallPanel';
 import {flowInputAssets} from '../flows/input-assets';
@@ -370,6 +371,7 @@ export class LLMWorkspaceEditor implements IEditor {
         const historyEl = this.domCache.byId('llm-ui-history')!;
         const inputEl = this.domCache.byId('llm-ui-input')!;
         const historyView = new HistoryView(historyEl, {
+            messagePlugins: workspaceMessagePlugins(this.options, () => this.stateManager.getDraftBranch()),
             artifacts: {commands: this.commandBus, scope: group => group.role === 'assistant' && group.execution
                 && ['success', 'failed', 'aborted', 'cancelled'].includes(group.executionRoot?.status ?? '')
                 ? {sessionId: session.sessionId, taskId: group.execution.taskId} : undefined},

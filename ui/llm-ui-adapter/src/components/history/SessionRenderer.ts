@@ -19,6 +19,7 @@ export interface RendererContext {
     artifacts?: {commands: ICommandBus; scope(group: SessionGroup): ExecutionArtifactScope | undefined;};
     readOnly?: boolean;
     markdownPlugins?: MDxPlugin[];
+    messagePlugins?: (source: {messageId: string; role: string; roundId?: string}) => MDxPlugin[];
     htmlPolicy?: MDxControllerOptions['htmlPolicy'];
     codeBlockControls?: MDxControllerOptions['codeBlockControls'];
     fs?: IFileSystem;
@@ -139,6 +140,7 @@ export class SessionRenderer {
         const wrapper = document.createElement('div');
         wrapper.className = `llm-ui-session llm-ui-session--${group.role}`;
         wrapper.dataset.sessionId = group.id;
+        if (group.roundId) wrapper.dataset.roundId = group.roundId;
         this.renderedSessions.set(group.id, wrapper);
         if (this.context.readOnly) {
             wrapper.dataset.role = group.executionRoot?.data.metaInfo?.nativeRole ?? group.role;
@@ -353,7 +355,7 @@ export class SessionRenderer {
         const controller = new MDxController(mountPoint, group.content || '', {
             readOnly: true,
             editable: this.context.readOnly ? false : undefined,
-            plugins: this.context.markdownPlugins,
+            plugins: [...(this.context.markdownPlugins ?? []), ...(this.context.messagePlugins?.({messageId: group.id, role: group.role, roundId: group.roundId}) ?? [])],
             htmlPolicy: this.context.htmlPolicy,
             codeBlockControls: this.context.codeBlockControls,
             deferred: !!mountPoint.closest('.is-collapsed'),
@@ -383,7 +385,8 @@ export class SessionRenderer {
         const controller = new MDxController(mountPoint, node.data.output || '', {
             readOnly: true,
             editable: this.context.readOnly ? false : undefined,
-            plugins: this.context.markdownPlugins,
+            plugins: [...(this.context.markdownPlugins ?? []), ...(this.context.messagePlugins?.({messageId: effectiveId, role: 'assistant',
+                roundId: (sessionEl as HTMLElement | null)?.dataset.roundId}) ?? [])],
             htmlPolicy: this.context.htmlPolicy,
             codeBlockControls: this.context.codeBlockControls,
             deferred: !!mountPoint.closest('.is-collapsed'),

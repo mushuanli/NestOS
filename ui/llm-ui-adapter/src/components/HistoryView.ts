@@ -27,6 +27,7 @@ import { mountHistorySearch } from './history/content-search';
 
 export interface HistoryViewOptions {
     artifacts?: RendererContext['artifacts'];
+    messagePlugins?: RendererContext['messagePlugins'];
     /** Optional host-owned controls inside the history scroll pane. */
     header?: HTMLElement;
     readOnly?: boolean;
@@ -91,6 +92,7 @@ export class HistoryView implements IHistoryPresenter {
             assets: options.assets,
             readOnly: options.readOnly,
             markdownPlugins: options.markdownPlugins,
+            messagePlugins: options.messagePlugins,
             htmlPolicy: options.htmlPolicy,
             codeBlockControls: options.codeBlockControls,
             collapsedState: (id, fallback) => this.collapse?.getStates()[id] ?? fallback,

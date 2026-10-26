@@ -1,3 +1,4 @@
+import {coldQuery} from './helpers/cold-query';
 import {getLogger} from '@itookit/common';
 import {ConversationContexts} from '../src/runtime/conversation-contexts';
 import {afterEach, expect, it, vi} from 'vitest';
@@ -270,9 +271,7 @@ it.each(['agent', 'flow'] as const)('cancels only the routed independent %s and 
     expect(result).toMatchObject({...query, receipt: {requestId: query.requestId, taskId: query.taskId, status: 'cancelled', expectedEpoch: 0}});
     expect(await commands.execute(SessionCommand.GetCurrentId)).toBe(f.parent);
     expect((await f.runtime.sessionRepository.readHistoryChain(f.parent)).rounds).toEqual([]);
-    const open = vi.spyOn(kernel, 'openSession');
-    expect(await commands.execute(IndependentCallCommand.CancellationReceipt, query)).toEqual(result);
-    expect(open).not.toHaveBeenCalled(); open.mockRestore();
+    expect(await coldQuery(kernel, () => commands.execute(IndependentCallCommand.CancellationReceipt, query))).toEqual(result);
     expect(await commands.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).toEqual(result);
     await expect(commands.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 1})).rejects.toMatchObject({code: 'CONFLICT'});
 }, 15000);
@@ -333,9 +332,8 @@ it('recovers cancellation after its response is lost without dispatching cancell
         return result;
     });
     await expect(f.runtime.commandBus.execute(IndependentCallCommand.Cancel, {...query, expectedEpoch: 0})).rejects.toThrow('reply lost');
-    const open = vi.spyOn(f.runtime.kernel.kernel, 'openSession');
-    expect(await f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, query)).toMatchObject({receipt: {status: 'cancelled', expectedEpoch: 0}});
-    expect(open).not.toHaveBeenCalled();
+    expect(await coldQuery(f.runtime.kernel.kernel, () => f.runtime.commandBus.execute(IndependentCallCommand.CancellationReceipt, query)))
+        .toMatchObject({receipt: {status: 'cancelled', expectedEpoch: 0}});
     expect(spy.mock.calls.filter(([name]) => name === IndependentCallCommand.Cancel)).toHaveLength(1);
 }, 15000);
 

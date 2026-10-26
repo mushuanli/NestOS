@@ -1,12 +1,11 @@
-import type { Kernel, JsonValue, SessionHandle } from '@itookit/durable-kernel';
-import { KernelError, KernelErrorCode } from '@itookit/durable-kernel';
+import type { Kernel, JsonValue } from '@itookit/durable-kernel';
 import type { ICommandBus } from '../contracts';
-import { ContentTransferCommand, isTransferSelection, type ContentCapture, type ContentTransfer, type CreateChildInput, type ResolveTransferInput, type TransferReference } from '../contracts/content-transfer';
+import { ContentTransferCommand, isTransferSelection, type ContentCapture, type ContentTransfer, type CreateChildInput, type ChildCreationReceipt, type ResolveTransferInput, type TransferReference } from '../contracts/content-transfer';
 import type { ISessionRepository } from '../persistence/types';
 import { ulid } from '../persistence/ulid';
-import { sessionDirectoryStorage } from '../persistence/session-directory-storage';
 import { createSessionHost, type SessionHostPorts } from '../utils/host-ports';
 import { captureContent, selectedMessages, transferText } from './content-capture';
+import {ChildSessionCreation} from './child-session-creation';
 
 export interface ContentTransferOptions {
     kernel: Kernel; repository: ISessionRepository; commands: ICommandBus; hostPorts?: SessionHostPorts;
@@ -15,7 +14,6 @@ export interface ContentTransferOptions {
     prepareExecution?(sessionId: string): Promise<void>;
     summarize?(sessionId: string, text: string): Promise<string>;
 }
-interface ChildIntent { input: CreateChildInput; sessionId: string; initialContext?: ContentTransfer }
 
 const captureKey = (id: string) => `content.capture.${id}`;
 const transferKey = (id: string) => `content.transfer.${id}`;
@@ -23,13 +21,17 @@ const transferKey = (id: string) => `content.transfer.${id}`;
 /** Immutable source snapshots and explicit transfers, independent of conversation ancestry. */
 export class ContentTransferService {
     private readonly host;
-    private children = new Map<string, Promise<{ sessionId: string }>>();
-    constructor(private readonly options: ContentTransferOptions) { this.host = createSessionHost(options.hostPorts); }
+    private readonly children: ChildSessionCreation;
+    constructor(private readonly options: ContentTransferOptions) {
+        this.host = createSessionHost(options.hostPorts);
+        this.children = new ChildSessionCreation({...options, writable: id => this.writable(id), readTransfer: (ref, id) => this.read(ref, id)});
+    }
     register(): void {
         const commands = this.options.commands;
         commands.register(ContentTransferCommand.Capture, args => this.trace('capture', String((args as { sessionId: string }).sessionId), () => this.capture(String((args as { sessionId: string }).sessionId))));
         commands.register(ContentTransferCommand.Resolve, args => this.trace('resolve', (args as ResolveTransferInput).sessionId, () => this.resolve(args as ResolveTransferInput)));
         commands.register(ContentTransferCommand.CreateChild, args => this.createChild(args as CreateChildInput));
+        commands.register(ContentTransferCommand.ChildReceipt, args => this.inspectChild(args as CreateChildInput));
     }
 
     async capture(sessionId: string): Promise<ContentCapture> {
@@ -71,61 +73,8 @@ export class ContentTransferService {
         return structuredClone(transfer);
     }
 
-    createChild(input: CreateChildInput): Promise<{ sessionId: string }> {
-        input = structuredClone(input);
-        const key = `${input.sessionId}/${input.requestId}`;
-        const pending = this.children.get(key);
-        if (pending) return this.trace('create-child', input.sessionId, () => pending.then(() => this.admitChild(input)));
-        const operation = this.trace('create-child', input.sessionId, () => this.admitChild(input));
-        this.children.set(key, operation);
-        return operation.finally(() => this.children.delete(key));
-    }
-
-    private async admitChild(input: CreateChildInput): Promise<{ sessionId: string }> {
-        input = structuredClone(input);
-        if (!validChildInput(input)) throw new Error('CONTENT_CHILD_ARGUMENTS_INVALID');
-        await this.writable(input.sessionId);
-        const parent = await this.options.repository.getManifest(input.sessionId);
-        const session = await this.options.kernel.openSession(input.sessionId), key = `content.child.${input.requestId}`;
-        const intent = await this.childIntent(session, key, input);
-        await this.options.repository.ensureSession(intent.sessionId, input.title.trim(), parent.origin, parent.folder, parent.id,
-            { initialContext: intent.initialContext });
-        await this.prepareChildExecution(intent.sessionId);
-        return { sessionId: intent.sessionId };
-    }
-
-    private async childIntent(session: SessionHandle, key: string, input: CreateChildInput): Promise<ChildIntent> {
-        const stored = (await session.getShared(key))?.value as unknown as ChildIntent | undefined;
-        if (stored) return this.matchChildIntent(stored, input);
-        const intent: ChildIntent = {input, sessionId: `node-${ulid()}`,
-            ...(input.transfer ? {initialContext: await this.read(input.transfer, input.sessionId)} : {})};
-        try {await session.setShared(key, json(intent), {expectedVersion: null}); return intent;}
-        catch (error) {
-            // A concurrent owner or a lost reply may already have persisted this request.
-            const observed = (await session.getShared(key))?.value as unknown as ChildIntent | undefined;
-            if (!observed) throw error;
-            return this.matchChildIntent(observed, input);
-        }
-    }
-
-    private matchChildIntent(intent: ChildIntent, input: CreateChildInput): ChildIntent {
-        const saved = intent.input;
-        if (saved.sessionId !== input.sessionId || saved.requestId !== input.requestId || saved.title !== input.title
-            || saved.transfer?.sessionId !== input.transfer?.sessionId || saved.transfer?.id !== input.transfer?.id)
-            throw new Error('CONTENT_CHILD_REQUEST_CONFLICT');
-        return intent;
-    }
-
-    private async prepareChildExecution(id: string): Promise<void> {
-        await this.options.prepareExecution?.(id);
-        if (this.options.canWrite && !await this.options.canWrite(id)) throw new Error('CONTENT_SESSION_READ_ONLY');
-        const storage = sessionDirectoryStorage(id);
-        try { await this.options.kernel.openSession(id, storage); }
-        catch (error) {
-            if (!(error instanceof KernelError) || error.code !== KernelErrorCode.SESSION_NOT_FOUND) throw error;
-            await this.options.kernel.createSession({ id, storage });
-        }
-    }
+    createChild(input: CreateChildInput): Promise<{sessionId: string}> {return this.children.create(input);}
+    inspectChild(input: CreateChildInput): Promise<ChildCreationReceipt> {return this.children.inspect(input);}
 
     private async value(capture: ContentCapture, input: ResolveTransferInput, text: string): Promise<JsonValue> {
         if (input.selection.kind === 'text') {
@@ -167,11 +116,3 @@ export class ContentTransferService {
     }
 }
 function json(value: unknown): JsonValue { return JSON.parse(JSON.stringify(value)); }
-
-function validChildInput(input: CreateChildInput): boolean {
-    const reference = (value: unknown) => typeof value === 'string' && !!value.trim() && value.length <= 4096;
-    return !!input && typeof input === 'object' && Object.keys(input).every(key => ['sessionId', 'requestId', 'title', 'transfer'].includes(key))
-        && reference(input.sessionId) && typeof input.requestId === 'string' && /^[\w-]{1,128}$/.test(input.requestId) && reference(input.title)
-        && (input.transfer === undefined || !!input.transfer && typeof input.transfer === 'object'
-            && Object.keys(input.transfer).every(key => ['sessionId', 'id'].includes(key)) && reference(input.transfer.sessionId) && reference(input.transfer.id));
-}

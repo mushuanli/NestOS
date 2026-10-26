@@ -1765,7 +1765,7 @@ C4Dynamic
 |---|---|---|
 | P1 | 升级前遗留调用的历史核对与结算 | 第 77 节已实现已接纳纯文本队首的有据结算；运行端仍待更新并验证旧项，其他恢复范围继续待办 |
 | P1 | 严格原生 continue | 当前 validateExecutionContext 明确拒绝并返回 CONTEXT_NATIVE_WRITE_UNSUPPORTED；binding CAS 不足以防远端外部写入 |
-| P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 已实现的聚合/整树停止针对同一执行 Session，独立持久所有者仍需单独协议 |
+| P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 第 80 节补齐原子会话创建完成事实和只读核对；受管 Effect 的所有者、取消及物理收尾仍需接通，同 Session 聚合不冒充跨 Session 停止 |
 | P1 | 裸 Task 的独立子 Session 调用入口 | 已有根选择为 Agent/Flow，尚无等价 Task 调用准入与路由闭环 |
 | P2 | Codex/Claude 真实运行及恢复验收 | 第 78 节 Codex 顺序发送、查询和取消已通过；Claude 查询/实际取消可用，真实提交仍有未知回执，源码修复待部署复验；重启恢复另列 |
 | P2 | 无人值守、工作区/记忆隔离、历史与资产长期生命周期 | 继续按第 5 节完成明确策略和故障组合验收 |
@@ -1840,3 +1840,39 @@ C4Dynamic
 原实现的 12 项矩阵有 7 项失败；修复后覆盖普通消息、prompt slash、action slash、空/不同/相同正文、后续附件、未知回执重开以及非法恢复标记。原纯附件队列测试补上宿主在队列接纳后显式消费原编辑器的步骤，不能再依赖原生回执顺带清草稿。直接发送原有回归继续保留。driver 完整测试 325 通过/1 个既有忽略，类型及 ESM/CJS 构建通过，版本 0.4.2、子仓提交 4d443dd。宿主恢复存储与真实队列初步回归 11 项通过，最终隔离候选继续验证。
 
 本轮未部署；旧版本已经回填的历史草稿不自动删除，已有未知原生操作仍只核对。该切片不以队列接纳伪造原生完成，也不修改第 78 节保留的 Claude 失败记录。
+
+
+## 80. 子 Session 创建完成事实与只读回执
+
+跨 Session 控制不能把重新执行创建当作核对。在原 content.child.<requestId> 意图中增加 created=true，只在会话元数据与执行存储准备完成后条件保存。最初分配的子 Session ID、输入及冻结材料保持不变；完成标记是创建接纳事实，不是 Task 执行状态。新 session.content.child-receipt 读取同一记录并严格核对原 parent Session、requestId、title 和 transfer，返回 unknown/reserved/created。查询不创建、激活、恢复 Session，不调用写租约或执行准备端口，也不读取最新材料正文。
+
+| 状态 | 可以证明什么 | 不代表什么 |
+|---|---|---|
+| unknown | 当前没有可读取的原创建意图 | 不能证明在途创建已停止，也不能据此释放资源 |
+| reserved | 原输入与子 Session 身份已持久保留 | 不证明元数据、执行存储或调用已就绪 |
+| created | 原创建及执行存储准备已完成，原完成事实已持久保存 | 不授予当前写权限，不证明子调用完成或实际停止 |
+
+完成回执在子 Session 后来删除后仍保留；同一已完成 requestId 返回原身份，不再 ensureSession，也不复活已删除会话。新建须用新请求身份。旧没有完成标记的记录只读呈现 reserved，查询不根据文件存在补造完成；显式原创建重试仍可在现有权限下修复同一身份。完成写回执丢失可从原记录核对；真正未持久的失败保持 reserved，后续显式修复不能另分配 Session。
+
+```mermaid
+C4Dynamic
+  title 创建、观察和未来受管取消共享原创建事实
+  Component(ui, "子会话入口", "输入、显示与导航")
+  Component(facade, "ContentTransferService", "内容选择与公开契约")
+  Component(creation, "ChildSessionCreation", "Session 内部机制")
+  Component(intent, "既有 Kernel shared 意图", "原 requestId 与子 Session 身份")
+  Component(storage, "宿主会话与执行存储", "原租约和准备端口")
+  RelIndex(1, ui, facade, "提交冻结创建请求")
+  RelIndex(2, facade, creation, "委托身份、准备和回执机制")
+  RelIndex(3, creation, intent, "先保存原意图与固定子身份")
+  RelIndex(4, creation, storage, "元数据及执行存储按既有顺序准备")
+  RelIndex(5, creation, intent, "完成后条件保存 created 事实")
+  RelIndex(6, ui, creation, "丢回复仅查询原创建回执")
+  RelIndex(7, creation, ui, "返回原事实，查询不创建或修复会话")
+```
+
+机制从原内容服务中提取到 Session 私有模块，未新增 package、调度器或状态库。材料选择、摘要与显式继承仍归 ContentTransferService；子身份、创建幂等和完成事实归 ChildSessionCreation；租约、目录及存储实现由宿主注入；UI 只提交与核对。新查询加入应用只读命令分类，复用 RPC 的查询通道。子会话表单创建失败后只查询一次同一冻结请求；只有 created 才恢复成功导航，reserved/unknown/查询失败保留原错误，不自动重发，关闭后的迟到结果不导航。
+
+原基线 8 项回归失败，其中包含已完成子会话被删除后同请求重新创建的真实反例。修复后 Session 全套 510 项、UI 适配层全套 312 项及真实 RPC 2 项通过，Session/UI/CLI 类型检查通过；隔离候选另验证宿主独立调用消费者。新增测试覆盖只读重开、无 Kernel 的合法父会话、准备失败、并发完成、丢写回执、旧身份不复活、跨父作用域/输入冲突、坏记录、错误与日志隔离、材料/标题脱敏以及原创建响应悬挂。API 见 [llm-session](../llm-session-api.md#子-session-创建回执)。
+
+下一步跨 Session 受管调用仍需以原 Kernel Effect 持有创建、提交与收尾责任，由宿主适配器执行本地 Agent/Flow 子调用；取消通过原 Effect.cancel 核对原创建及原提交，确认实际子执行与资源均收尾后才返回。unknown 查询本身不是未执行证明，必须同时排除旧所有者在核对后继续创建的可能。UI 关闭和 parentSessionId 关系不能取得这项所有权；不能把同一 Session 下所有独立调用隐式绑定到任意父 Task。该受管 Effect 尚未实现，本节不标记跨 Session 控制完成。

@@ -735,3 +735,12 @@ CALL_CONTROL_RECEIPT_MISMATCH。接纳不代表物理清理完成，显示仍以
 `controlCapabilities.cancelRemaining` 是协议支持标记，UI 仍须结合根终态和剩余工作决定按钮。
 旧宿主省略此字段时不能推断支持。日志沿用 call 控制通道，并区分 validate、ownership、
 authorization、cancel-remaining 和 receipt；不记录参数、取消原因或底层错误正文。
+
+
+## 子 Session 创建回执
+
+`session.content.child-receipt(CreateChildInput)` 只读核对原 `sessionId/requestId/title/transfer`，返回 `ChildCreationReceipt`：`unknown` 没有原意图，`reserved` 已有固定子身份，`created` 原会话创建与执行存储准备已完成并保存回执。查询不创建、绑定、恢复、补存储或调用写租约；错误与损坏不会降级为空结果。DTO 只含父/子身份、请求身份与阶段，不返回材料或标题。
+
+完成事实位于原 `content.child.<requestId>` 记录；它不等于子任务成功或资源停止，也不授予当前执行权限。完成后删除子 Session 不回退原回执；同一已完成请求不再创建，真正新建必须换请求 ID。旧无完成标记记录保留 `reserved`，只读查询不补写。`ContentTransferService` 保留公开入口，私有 `session/child-session-creation.ts` 负责身份和回执机制；表单失败仅查询同一冻结请求，缺少完成事实不自动重发。
+
+机制、C4 与未完成的跨 Session 受管控制见 [合入计划第 80 节](design/functional-merge-plan.md#80-子-session-创建完成事实与只读回执)。

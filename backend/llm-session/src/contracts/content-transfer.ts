@@ -2,6 +2,7 @@ import type { JsonValue } from '@itookit/llm-flow/contracts';
 
 export const ContentTransferCommand = {
     Capture: 'session.content.capture', Resolve: 'session.content.resolve', CreateChild: 'session.content.create-child',
+    ChildReceipt: 'session.content.child-receipt',
 } as const;
 export interface TransferMessage { id: string; roundId: string; role: 'user' | 'assistant'; text: string }
 export interface TransferOutput { id: string; requestId: string; taskId: string; port: string; label: string; value: JsonValue }
@@ -22,6 +23,10 @@ export interface ContentTransfer {
 export interface TransferReference { sessionId: string; id: string }
 export interface ResolveTransferInput { sessionId: string; captureId: string; selection: TransferSelection }
 export interface CreateChildInput { sessionId: string; requestId: string; title: string; transfer?: TransferReference }
+/** Original creation facts only; created never grants current execution or navigation permission. */
+export type ChildCreationReceipt = {parentSessionId: string; requestId: string} & (
+    {status: 'unknown'} | {status: 'reserved' | 'created'; sessionId: string});
+
 
 export function isTransferSelection(value: unknown): value is TransferSelection {
     if (!value || typeof value !== 'object') return false;

@@ -3,6 +3,7 @@ import { ContentTransferCommand, type ContentTransfer, type ICommandBus } from '
 import { promptFlowParameters } from '../components/FlowParameterForm';
 import { FlowInputSources } from './flow-input-sources';
 import { contentSourceError } from './content-source-picker';
+import {createChildWithReceipt} from './child-creation';
 
 export async function promptChildConversation(commands: ICommandBus, sessionId: string, signal: AbortSignal): Promise<string | null> {
     const fields = [{name: 'title', type: 'string' as const, label: t('project.childTitle'), required: true, default: t('project.childName', {count: 1})},
@@ -24,8 +25,8 @@ export async function promptChildConversation(commands: ICommandBus, sessionId: 
         }
         const key = JSON.stringify([title, transfer]), requestId = requests.get(key) ?? randomUUID(); requests.set(key, requestId);
         signal.throwIfAborted(); dialogSignal?.throwIfAborted();
-        const result = await commands.execute<{sessionId: string}>(ContentTransferCommand.CreateChild,
-            {sessionId, requestId, title, ...(transfer ? {transfer} : {})});
+        const result = await createChildWithReceipt(commands, {sessionId, requestId, title, ...(transfer ? {transfer} : {})}, dialogSignal);
+        signal.throwIfAborted();
         created = result.sessionId;
     }, signal, undefined, undefined, t('project.childContextHint'), extension);
     return created;

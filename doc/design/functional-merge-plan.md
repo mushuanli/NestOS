@@ -2301,3 +2301,5 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 诊断沿用 call.submit、call.submit.prepared、call.history.recover、call.history.reconcile，区分 policy、prepare、kernel-submit、reconcile-admission、scan、resume-admitted、wait、target-unavailable、target-unsettled 和 history。记录安全请求/Session 身份、分类、结果及耗时，不记录正文、完整参数或原始存储异常。单 Session 扫描失败不阻断其他 Session；补交失败保留原执行事实，下次启动或同请求重试恢复，不引入无限重试器。
 
 本轮按用户要求未运行测试、类型检查、构建和真实部署验收，以上为代码实现状态。没有生产频率数据，不能将历史索引中断问题描述为高频故障。完整 Flow 的 Kernel 工作区责任、跨调用预算、严格原生 continue、复杂历史性能及真实服务验收仍未完成；第 0 节整体目标不标记完成。子会话历史本版在目标收尾后写入，实时过程和交互通过父调用卡片观察。
+
+主链提交 `133e0b0c`。随后补齐“执行中提前打开子会话”的正常展示：历史保存后通知已有视图，由 SessionManager 复用 reloadSessionData 更新正文；视图销毁解除自身订阅。刷新失败以 call.history.display 记录 Session、阶段、错误分类和耗时，已提交历史保留。按当前交付要求不执行验证。

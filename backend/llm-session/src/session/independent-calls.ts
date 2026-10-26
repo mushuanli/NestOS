@@ -42,6 +42,7 @@ export class IndependentCallService {
     private historyEnabled = false;
     private readonly stopping = new AbortController();
     private readonly observers = new Map<string, Promise<void>>();
+    private readonly historyListeners = new Set<(sessionId: string) => Promise<void>>();
     constructor(private readonly options: Options) {this.host = createSessionHost(options.hostPorts);}
     register(commands: ICommandBus): void {
         this.historyEnabled = true;
@@ -190,7 +191,13 @@ export class IndependentCallService {
         }
     }
     async dispose(): Promise<void> {
-        this.stopping.abort(); await Promise.allSettled(this.observers.values());
+        this.stopping.abort(); await Promise.allSettled(this.observers.values()); this.historyListeners.clear();
+    }
+    onHistoryCommitted(listener: (sessionId: string) => Promise<void>): () => void {
+        this.historyListeners.add(listener); return () => {this.historyListeners.delete(listener);};
+    }
+    private async publishHistory(sessionId: string): Promise<void> {
+        await Promise.allSettled([...this.historyListeners].map(listener => Promise.resolve().then(() => listener(sessionId))));
     }
     private observeHistory(input: IndependentCallInput): void {
         if (!this.historyEnabled || this.stopping.signal.aborted) return;
@@ -243,6 +250,7 @@ export class IndependentCallService {
             progress.stage = 'history';
             await this.writable(identity.sessionId); await this.writable(ready.executionSessionId);
             await new RoundLog(this.options.repository, ready.executionSessionId).commitExpected(route.childRequest.expectedBranch!, round, null);
+            progress.stage = 'publish-history'; await this.publishHistory(ready.executionSessionId);
             return true;
         });
     }

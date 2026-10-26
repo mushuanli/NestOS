@@ -407,6 +407,23 @@ export class SessionManager implements ISession, SessionQuery {
         return { ...snapshot, isRunning, status: isRunning && !snapshot.isRunning ? 'running' : snapshot.status,
             instructionQueue: this.instructions.snapshot(snapshot.sessionId) };
     }
+    /** Refresh an already open child after a host-owned invocation commits its result. */
+    async refreshCommittedHistory(sessionId: string): Promise<void> {
+        if (this.registry.boundSessionId !== sessionId || this.runs.isActive(sessionId)) return;
+        const state = this.registry.getSessionState(sessionId); if (!state) return;
+        const started = Date.now();
+        try {
+            await this.registry.reloadSessionData(sessionId, state);
+            this.host.logger.info('Committed invocation history displayed', {operation: 'call.history.display',
+                sessionId, stage: 'reload', outcome: 'success', durationMs: Date.now() - started});
+        } catch (error) {
+            const code = (error as {code?: unknown})?.code;
+            try {this.host.logger.warn('Committed invocation history refresh failed', {operation: 'call.history.display',
+                sessionId, stage: 'reload', outcome: 'failure', durationMs: Date.now() - started,
+                errorCode: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CALL_HISTORY_DISPLAY_FAILED'});}
+            catch { /* Display diagnostics cannot invalidate committed history. */ }
+        }
+    }
     getInstructionQueue() { return this.instructions.queues.view(this.registry.ensureBound().sessionId); }
     hasPendingInstructions(): boolean { return this.instructions.hasPending(); }
     waitForInstructionWrites(): Promise<void> { return this.instructions.whenIdle(); }

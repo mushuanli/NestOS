@@ -216,6 +216,11 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
         const dispose = system.dispose, calls = system.independentCalls;
         system.dispose = async () => {await calls.dispose(); await dispose();};
     }
+    if (system.independentCalls) {
+        const unsubscribe = system.independentCalls.onHistoryCommitted(id => system.sessionManager.refreshCommittedHistory(id));
+        const dispose = system.dispose;
+        system.dispose = async () => {unsubscribe(); await dispose();};
+    }
     const invocations = new FlowInvocationService(options.kernel, new FlowDefinitionStore(options.flowStore, options.dagPlugins), system.commandBus, options.canWriteSession, async id => {
         const manifest = await new InvocationRoundLog(options.sessionEngine, id).loadManifest();
         const identity = await options.sessionEngine.getManifest(id);

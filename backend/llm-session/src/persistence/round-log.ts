@@ -127,6 +127,13 @@ export class RoundLog implements ILog {
         return roundId;
     }
 
+    /** Repair an interrupted append only when the complete persisted payload is identical. */
+    async commitExpected(ref: Ref, round: Round, expectedHead: RoundId | null): Promise<RoundId> {
+        const roundId = await this.graph.commitExpected(ref, round, expectedHead);
+        this._cache.invalidate(ref);
+        return roundId;
+    }
+
     async fold(ref: Ref, _strategy?: AssemblyStrategy): Promise<ChatMessage[]> {
         // Strategy: §3.4 — only 'concat' is implemented (YAGNI for now)
         const manifest = await this.loadManifest();

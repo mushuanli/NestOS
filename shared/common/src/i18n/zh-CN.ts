@@ -2728,6 +2728,7 @@ export const zhCN = {
 
     'callable.independent.readFailed': '独立调用读取失败（{code}），请重新连接或刷新。',
     'callable.independent.openFailed': '无法打开子会话，请重试。',
+    'callable.independent.historyPending': '执行已结束，历史结果待保存；请稍后刷新。',
     'callable.independent.status.pending': '已接纳，等待执行',
     'callable.independent.status.unknown': '接纳待核对',
     'callable.independent.status.running': '运行中',

@@ -819,3 +819,8 @@ initializeConversationSystem 在已配置独立调用宿主时返回 independent
 原 session.call.inspect 识别已冻结 Kernel 路由，仅按原 caller 规格核对接纳；list 与控制另经 Kernel 验证实际目标，不让历史写入影响接纳核对或取消。inspect 的回执返回 evidence=kernel、callerExecution；list 的回执另含已存在的真实 primary execution；列表分别返回 callerState、目标 executionState 和 historyPending；exitStatus 直接区分 Kernel 的成功、失败和取消，phase=done 本身不代表成功。已接纳但未生成目标时仍为 accepted，不伪造目标；失败、取消及源宿主重启后仍可核对同一关联。原队列路由保持原语义。
 
 没有新增 Session 公共执行查询命令或重复执行状态。未提交 Kernel 的计划不能凭子队列回执变成 accepted。Round 的摘要、发布身份、Invocation、实际目标和索引必须匹配后才能用于历史摘要；未索引文件保留 historyPending，不展示为已提交历史。查询不获取 writer、不恢复执行、不因历史失败重跑目标。当前尚未自动写入/恢复 Round，也未接通默认新 UI，后续按[交付验收包](design/functional-merge-plan.md#01-当前交付收敛与复杂度约束2026-10-26)推进。
+
+
+### 普通已发布 Agent 的正式调用与历史恢复
+
+正式入口按原路由固定执行方式。新普通已发布 Agent 由 app-core 选择 Kernel 路径（深度 8、允许持久人工等待）；Flow/Flow Agent 和旧队列记录不自动迁移。宿主共享同一 IndependentCallService，视图关闭不关闭后台历史观察。启动 recover 只跟随已有 Kernel 接纳，恢复尚未绑定的原 caller，等待收尾后从真实 target 写终态 Round；没有接纳的准备记录不派发。reconcileTaskCallHistory 是宿主内部恢复方法，不是 RPC，不执行模型或工具。RoundLog.commitExpected 允许完全相同的正文补交缺失索引，内容不同或空分支已变化明确拒绝。失败记录 call.history.recover / call.history.reconcile 的阶段、身份、错误分类和耗时，下次宿主恢复或原请求重试继续处理。父卡片从 Kernel 事实展示运行/失败/取消及待保存历史；正文结果仍以已提交 Round 为准。

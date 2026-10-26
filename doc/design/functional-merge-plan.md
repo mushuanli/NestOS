@@ -4,6 +4,8 @@
 
 ## 0. 当前剩余工作（2026-10-26）
 
+本轮快速交付更新：普通已发布 Agent（Chat / Agent / Harness）的新独立调用已接到原 `session.call.submit` → 持久准备 → Kernel 提交，旧请求按已保存的路由继续核对，Flow/Flow Agent 保留原入口。新增终态历史补交、启动恢复观察及 Kernel 状态卡片，详见第 92 节。此处为实现状态，按本轮要求未执行测试、构建或部署验收；不能等同于下表全部工作完成。
+
 整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—91 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
 
 | 优先级 / 工作线 | 已具备基础 | 仍需完成的结果 |
@@ -17,7 +19,7 @@
 | 运行策略与长期生命周期 | 当前输入/审批、资源恢复及资产引用 | 无人值守交互/失联策略，环境与记忆隔离、初始化作用域，以及历史/资产导出恢复、保留和回收边界 |
 | 真实部署与历史故障验收 | DSH 新请求、顺序发送及取消已验收；Codex 对应真实链路已验收 | Claude 真实云模型顺序执行、旧未知项/DSH 历史结算修复的运行端复验，以及最新统一调用方案的服务验收；协议替身和本地 peer 不替代这些结论 |
 
-本次正在推进 P1a/P1b，顺序为持久准备 → 原 Kernel 提交 → TaskRef/历史关联 → 重启恢复。原 session.call.submit 目前仍走旧队列；新增准备接口不自动把这个入口变成新 Kernel 调用路径。未满足上表完成条件前，F16/P1 不标记完成，也不以测试数量或 Git 工作树文件数表示整体完成率。
+P1a/P1b 已推进至普通已发布 Agent 的正式入口与终态历史恢复；Flow 仍走旧队列，其资源责任接线继续保留。未满足上表完成条件前，F16/P1 不标记完成，也不以测试数量或 Git 工作树文件数表示整体完成率。
 
 ## 0.1 当前交付收敛与复杂度约束（2026-10-26）
 
@@ -2283,3 +2285,19 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 补充机制的 Kernel 提交 `d59b9e1f`：490 项单元/契约、62 项真实多进程测试，以及独立 ESM/CommonJS/core、NodeNext 消费通过。SIGKILL 后先在未恢复源 Session 的独立进程核对实际目标，再恢复原调用，未创建第二个目标。应用隔离验证锁定该 gitlink；未部署到运行服务。
 
 应用补充验收：隔离 Flow 750、Session 607 项通过，宿主全量 1177 项在 maxWorkers=2/minWorkers=1 下通过（另 13 项既有跳过）；严格测试类型、Session/app-core/CLI/app-shell/UI adapter/app-contracts 类型、Flow/Session 构建与架构检查通过，76 个 Mermaid 图和 22 个链接解析通过。首次默认并发宿主运行有一项既有 IndexedDB 异步等待断言失败（默认等待内仍为零条），原版和候选版分别单独运行该文件均 13 项通过；最终只限制 worker 并发，未增加超时、跳过测试或更改业务逻辑来规避此项，不能把它记成修复 IndexedDB。全量 docs:check 仍为原 mindos-node 示例路径问题，没有新增。
+
+
+## 92. 普通已发布 Agent 的最小正式入口与终态历史恢复
+
+按本轮“快速完成可用版本、风险处增加日志、不频繁验证”的要求，直接接通现有入口和消费者，不增加 RPC、调度器、执行状态库或 package。实现范围：
+
+- app-core 对普通已发布 Agent（Chat / Agent / Harness）选择 Kernel 路径，宿主策略为 maxDepth=8、timeoutMs=null；准备、调用及恢复沿用原请求与 Invocation。Flow/Flow Agent 保留原队列路径，已有路由不随新默认策略改变执行方式。
+- 原 session.call.submit 串联持久准备与原 Kernel 提交；丢回复时读取原 caller 接纳，不退回队列。后台等待不登记源 Session 的前台输入队列活动。
+- 宿主和视图共用同一 IndependentCallService。关闭视图不关闭后台观察；宿主退出 abort 等待并排空已有观察。启动扫描原路由，只恢复已有接纳的 caller，未提交计划不自动执行。
+- 目标确认 settled 后，按原输入、真实 TaskRef、Invocation 和 Kernel 终态生成 Round。结果、usage（仅有真实数据时）和失败原因进入历史，附件保留原引用；不重读当前目录或再次执行工具。只读 inspect/list 保持只读。
+- RoundLog.commitExpected 复用原写串行边界：完全一致的正文允许补交历史索引，已提交记录幂等返回；内容不一致或分支头变化明确报错。既有已提交历史通过原身份核对后保留，不覆盖用户历史。
+- 默认工作台和独立视图复用原调用卡片、交互及控制。卡片直接使用 Kernel 的运行/终态事实，不再将已运行但尚无 Round 的调用一律显示成待执行；历史未提交单独显示提示，沿用现有刷新周期。
+
+诊断沿用 call.submit、call.submit.prepared、call.history.recover、call.history.reconcile，区分 policy、prepare、kernel-submit、reconcile-admission、scan、resume-admitted、wait、target-unavailable、target-unsettled 和 history。记录安全请求/Session 身份、分类、结果及耗时，不记录正文、完整参数或原始存储异常。单 Session 扫描失败不阻断其他 Session；补交失败保留原执行事实，下次启动或同请求重试恢复，不引入无限重试器。
+
+本轮按用户要求未运行测试、类型检查、构建和真实部署验收，以上为代码实现状态。没有生产频率数据，不能将历史索引中断问题描述为高频故障。完整 Flow 的 Kernel 工作区责任、跨调用预算、严格原生 continue、复杂历史性能及真实服务验收仍未完成；第 0 节整体目标不标记完成。子会话历史本版在目标收尾后写入，实时过程和交互通过父调用卡片观察。

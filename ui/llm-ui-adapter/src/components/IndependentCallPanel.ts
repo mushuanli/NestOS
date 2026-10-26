@@ -173,7 +173,11 @@ export class IndependentCallPanel {
     private clearCards(): void {for (const card of this.cards.values()) this.disposeCard(card); this.cards.clear();}
 }
 function statusText(call: IndependentCallView): string {
-    const state = call.status ?? (call.receipt.status === 'accepted' ? 'pending' : 'unknown');
+    const execution = call.executionState ?? call.callerState;
+    const terminal = execution?.exitStatus;
+    const state = call.status ?? (terminal === 'succeeded' ? 'completed' : terminal)
+        ?? (call.interactions?.total ? 'waiting' : execution && execution.phase !== 'created' ? 'running'
+            : call.receipt.status === 'accepted' ? 'pending' : 'unknown');
     return t(`callable.independent.status.${state}`);
 }
 
@@ -182,7 +186,9 @@ function executionStateText(call: IndependentCallView): string {
     if (!state) return '';
     if (state.phase === 'done' && call.executionTree && !call.executionTree.settled)
         return t('callable.independent.execution.treeCleaning', {tasks: call.executionTree.unsettledTasks, count: call.executionTree.activeOperations});
-    if (state.phase === 'done') return state.settled ? '' : t('callable.independent.execution.cleaning', {count: state.activeOperations});
+    if (state.phase === 'done') return state.settled
+        ? call.historyPending ? t('callable.independent.historyPending') : ''
+        : t('callable.independent.execution.cleaning', {count: state.activeOperations});
     if (state.control.requested === 'pause') return t((call.executionTree?.stopped ?? state.stopped) ? 'callable.independent.execution.paused' : 'callable.independent.execution.pausing');
     if (state.control.requested === 'interrupt') return t((call.executionTree?.stopped ?? state.stopped) ? 'callable.independent.execution.interrupted' : 'callable.independent.execution.interrupting');
     if (state.blockedBy === 'session-control' || state.blockedBy === 'ancestor-control') return t('callable.independent.execution.held');

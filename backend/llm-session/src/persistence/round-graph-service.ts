@@ -88,6 +88,23 @@ export class RoundGraphService {
         return this.withWrite(() => this.appendUnsafe(ref, round, expectedHead));
     }
 
+    /** Replay an identical immutable append, including a body written before an index failure. */
+    async commitExpected(ref: Ref, round: Round, expectedHead: RoundId | null): Promise<RoundId> {
+        return this.withWrite(async () => {
+            const existing = await this.readRound(round.id, ref);
+            if (!existing) return this.appendUnsafe(ref, round, expectedHead);
+            if (canonicalAdmission(existing) !== canonicalAdmission(round))
+                throw new RoundGraphError('History retry differs from the persisted Round', 'ROUND_COMMIT_CONFLICT');
+            const manifest = await this.loadManifest();
+            if (manifest.rootRoundId === round.id || Object.values(manifest.branches).includes(round.id)
+                || Object.values(manifest.children).some(ids => ids.includes(round.id))) return round.id;
+            if ((manifest.branches[ref] ?? null) !== expectedHead)
+                throw new RoundGraphError('History recovery branch head changed', 'HEAD_CONFLICT');
+            await this.indexRound(ref, round, manifest);
+            return round.id;
+        });
+    }
+
     private async appendUnsafe(ref: Ref, round: Round, expectedHead?: RoundId | null): Promise<RoundId> {
         const roundId = round.id || ulid();
         const persisted: PersistedRound = { ...round, id: roundId };
@@ -107,6 +124,12 @@ export class RoundGraphService {
         await this.writeRound(roundId, persisted);
 
         const manifest = await this.loadManifest();
+        await this.indexRound(ref, persisted, manifest);
+        return roundId;
+    }
+
+    private async indexRound(ref: Ref, round: PersistedRound, manifest: RoundManifest): Promise<void> {
+        const roundId = round.id;
         manifest.branches[ref] = roundId;
         manifest.rootRoundId = manifest.rootRoundId ?? roundId;
         if (manifest.currentBranch === ref) manifest.currentHead = roundId;
@@ -127,11 +150,10 @@ export class RoundGraphService {
                 type: 'round:appended',
                 ref,
                 roundId,
-                projection: roundToProjection(persisted, roundId),
+                projection: roundToProjection(round, roundId),
             });
         }
 
-        return roundId;
     }
 
     private async withWrite<T>(operation: () => Promise<T>): Promise<T> {

@@ -443,7 +443,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         cleanupFns.push(() => conversationViews.close());
         const createConversationView = async () => {
             const context = await createConversationSystem({ ...conversationOptions,
-                scheduleAgentInitialization: initialize => initialize(), scheduleInvocationRecovery: () => {} });
+                independentCalls, scheduleAgentInitialization: initialize => initialize(), scheduleInvocationRecovery: () => {} });
             try { return conversationViews.own(context, await attachProjectDraftRecovery(projects.drafts, context.sessionManager, false)); }
             catch (error) { await context.dispose(); throw error; }
         };

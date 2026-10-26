@@ -109,6 +109,8 @@ import { DagCommandService } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
+    independentCalls?: IndependentCallService;
+    independentTaskCallPolicy?(request: import('./contracts/submission').SubmissionRequest): Promise<import('./session/independent-call-preparation').IndependentTaskCallPolicy | undefined>;
     submitIndependentCall?: import('./contracts/independent-calls').IndependentCallSubmitter;
     readContextBindings?: import('./contracts/context-bindings').ContextBindingReader;
     readContextOptions?: import('./contracts/context-options').ContextOptionsReader;
@@ -202,11 +204,17 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
         hostPorts: options.hostPorts, canWrite: options.canWriteSession, prepareExecution: options.prepareSessionExecution,
         summarize: options.summarizeContent});
     transfers.register();
-    if (options.submitIndependentCall) {
+    if (options.independentCalls) {
+        system.independentCalls = options.independentCalls;
+        system.independentCalls.register(system.commandBus);
+    } else if (options.submitIndependentCall) {
         system.independentCalls = new IndependentCallService({kernel: options.kernel, repository: options.sessionEngine,
             transfers, submit: options.submitIndependentCall, prepareTaskCall: (request, invocation) => system.sessionManager.prepareIndependentTaskCall(request, invocation),
+            taskCallPolicy: options.independentTaskCallPolicy,
             prepareExecution: options.prepareSessionExecution, canWrite: options.canWriteSession, hostPorts: options.hostPorts});
         system.independentCalls.register(system.commandBus);
+        const dispose = system.dispose, calls = system.independentCalls;
+        system.dispose = async () => {await calls.dispose(); await dispose();};
     }
     const invocations = new FlowInvocationService(options.kernel, new FlowDefinitionStore(options.flowStore, options.dagPlugins), system.commandBus, options.canWriteSession, async id => {
         const manifest = await new InvocationRoundLog(options.sessionEngine, id).loadManifest();
@@ -214,7 +222,9 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
         return { branch: manifest.currentBranch, head: manifest.currentHead, parentSessionId: identity.parentSessionId ?? undefined };
     }, (id, selected) => resolveSessionConnection(options, id, selected), options.flowInvocationSessions, system.dag, transfers, options.hostPorts);
     invocations.register();
-    const recover = () => createSessionHost(options.hostPorts).traceBoot('flowInvocations.recover', () => invocations.recover());
+    const recover = () => createSessionHost(options.hostPorts).traceBoot('flowInvocations.recover', async () => {
+        await invocations.recover(); await system.independentCalls?.recover();
+    });
     if (options.scheduleInvocationRecovery) await options.scheduleInvocationRecovery(recover);
     else await recover();
 }

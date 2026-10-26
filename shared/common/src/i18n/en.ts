@@ -2714,6 +2714,7 @@ export const en: LocaleStrings = {
 
     'callable.independent.readFailed': 'Could not read independent calls ({code}). Reconnect or refresh.',
     'callable.independent.openFailed': 'Could not open the child conversation. Please retry.',
+    'callable.independent.historyPending': 'Execution ended; history is awaiting persistence. Refresh shortly.',
     'callable.independent.status.pending': 'Accepted, awaiting execution',
     'callable.independent.status.unknown': 'Admission unconfirmed',
     'callable.independent.status.running': 'Running',

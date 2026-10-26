@@ -2079,3 +2079,34 @@ C4Dynamic
 SDK 诊断为 run.task.call 的 plan/caller/binding 阶段，记录原请求/任务、安全错误分类和耗时；非法身份数据不作为日志 ID，回调失败不覆盖结果。Kernel 已通过 443 项单元测试、56 项真实进程集成测试与独立 ESM/CommonJS、core、NodeNext 安装消费，新增测试严格类型检查通过。
 
 本节完成准备函数、原普通路径复用及受信 SDK 的真实调用交接；模型与原生提供者使用测试端口，未宣称云模型或服务部署验收。独立业务调用路由的持久准备/历史映射、Flow 工作区责任、跨调用 token 预算预留结算及 UI 投影仍未完成；本批不把 F16/P1 标为整体完成。
+
+
+## 87. 明确受管调用期限并阻止过期恢复派发
+
+受管调用观察子任务时可能正常等待人工审批，外层旧默认 30 秒会误超时。机制放在 durable-kernel 的 Effect 期限与 Task 启动事务；llm-flow SDK 只传递已经选定的期限策略。应用决定是否允许长期等待及对应预算，不另建等待调度器或状态库。
+
+EffectRequest.timeoutMs 省略仍是原 30 秒，正数表示有限总期限，显式 null 不设置总执行期限。kernel.call@1 保持旧冻结语义；新增 @2 要求明确期限（正数或 null），SDK 仅在 null 时选择 @2。已有请求恢复不改 Program、计划或身份，调用者 wait 超时只结束观察，不取消执行。无期限调用的取消、lease、观察让出工作额度、预算和 drain blocked 语义仍有效。
+
+```mermaid
+C4Dynamic
+  title 期限策略与持久执行的唯一责任链
+  Component(host, "宿主 / prepareTaskCall", "选择并冻结期限策略")
+  Component(call, "Kernel 调用 Program", "旧 v1 或明确策略 v2")
+  Component(effect, "原 Effect 与 manifest", "冻结 deadline 或显式 null；原子声明存储能力")
+  Component(start, "目标 Task.start 事务", "已有启动核对；新启动检查绝对期限")
+  Component(target, "原目标 Task", "执行、人工等待与资源收尾")
+  RelIndex(1, host, call, "原请求身份提交；不在恢复时换策略")
+  RelIndex(2, call, effect, "登记真实 Effect 与可兼容存储契约")
+  RelIndex(3, effect, start, "恢复沿用原 deadline；无期限则不设置")
+  RelIndex(4, start, target, "期限内仅启动一次；过期拒绝新启动")
+  RelIndex(5, target, effect, "原结果与整树、资源清理确认")
+  RelIndex(6, effect, host, "结构化结果；观察超时不修改执行事实")
+```
+
+恢复有限期限调用时，原生核对可能在定时回调前经微任务启动尚未开始的 deferred 目标。EffectExecutionContext.deadlineAt 现在传入目标 TaskStartOptions；目标 created → ready 的同一事务检查，过期报 TASK_START_DEADLINE_EXCEEDED。已经接纳的相同启动仍可核对；完成与取消竞态保留真实终态。执行期限到期仍保留 cleanupPending，清理不复用已过期的启动限制。通用 numeric deadline 超过 JavaScript 单次定时器上限时分段等待，不溢出成 1ms。
+
+第一次持久化 null Effect 时，同一事务提升 Session effect schema 至 2 并声明 effect-unbounded-deadline；失败事务不遗留升级。未使用此能力的 Session 保持旧格式；升级后不自动降级。归档即使校验和有效，也不能省略该声明。实际上一提交 Kernel 的 ESM 构建产物读取新 Session 会拒绝，验证记录在本地 /tmp/x1-effect-deadline-old-compat.log；升级前须退出旧 writer，不支持新旧执行进程混写。
+
+验收覆盖审批等待超过 30 秒后继续、旧默认期限、观察超时和 drain、未确认物理清理、恢复期限与迟到旧 worker、原子格式升级回滚、归档恢复与伪降级，以及两种 LocalFS/SQLite 挂载下真实 SIGKILL 恢复/跨进程取消。新增通用机制不表示已发布 Agent/Flow 的业务路由接入完毕；下一步仍是持久准备与 Round/Invocation 历史映射、Flow 工作区资源归属和跨调用 token 预留结算，随后接 UI 投影。本批未部署到运行服务。
+
+本节 Kernel 提交 e55822a：455 项单元/契约与 60 项真实进程测试通过，独立安装的 ESM/CommonJS、core 与 NodeNext 消费通过。宿主 SDK 还验证三种期限策略的请求重放与改策略冲突；整体功能状态仍按上述未完成项保留。

@@ -5,7 +5,8 @@ export interface TaskCallRunOptions {
     kernel: Pick<Kernel, 'openSession' | 'bindTaskCall'>;
     caller: {sessionId: string; requestId: string; parent?: string; spawnKey?: string; labels?: Record<string, string>};
     maxDepth: number;
-    timeoutMs?: number;
+    /** null explicitly allows durable human/child waiting without a total call deadline. */
+    timeoutMs?: number | null;
     onDiagnostic?(event: KernelDiagnostic): void;
 }
 export interface TaskCallRunExecution extends RunExecution {root: TaskHandle<TaskCallResult>}
@@ -37,7 +38,7 @@ export async function submitTaskCall(definition: TaskRunDefinition, options: Tas
 function callerSpec(caller: TaskCallRunOptions['caller'], plan: TaskCallPlan): TaskSpec<TaskCallPlan> {
     if (!validCaller(caller))
         throw invalid('Task call caller identity is invalid');
-    return {program: {kind: 'kernel.call', version: '1'}, input: plan, requestId: caller.requestId, deferStart: true,
+    return {program: {kind: 'kernel.call', version: plan.timeoutMs === null ? '2' : '1'}, input: plan, requestId: caller.requestId, deferStart: true,
         ...(caller.parent !== undefined ? {parent: caller.parent} : {}), ...(caller.spawnKey !== undefined ? {spawnKey: caller.spawnKey} : {}),
         ...(caller.labels !== undefined ? {labels: structuredClone(caller.labels)} : {})};
 }

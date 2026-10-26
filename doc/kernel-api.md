@@ -167,7 +167,7 @@ class Kernel implements KernelRegistration {
 
 ### 受管跨 Session Task 调用
 
-Kernel 内置 `kernel.call@1` Program 与 `task.call@1` Effect，宿主通过 `bindTaskCall(TaskRef, TaskCallPlan)` 为确切计划授予执行能力并启动 deferred 调用者，根入口与 `/core` 均可使用。计划包含已准备的目标 Session、TaskSpec、能力绑定、正整数 maxDepth 和可选 timeoutMs；目标 Task ID、请求身份和 ownedBy 由 Kernel 生成。结构化成功结果为 `TaskCallResult {task: TaskRef, exit: ExitRecord}`；子任务失败或取消传播为调用者失败，保留子任务真实终态。
+Kernel 内置 `kernel.call@1/@2` Program 与 `task.call@1` Effect，宿主通过 `bindTaskCall(TaskRef, TaskCallPlan)` 为确切计划授予执行能力并启动 deferred 调用者，根入口与 `/core` 均可使用。计划包含已准备的目标 Session、TaskSpec、能力绑定、正整数 maxDepth 和可选 timeoutMs；目标 Task ID、请求身份和 ownedBy 由 Kernel 生成。结构化成功结果为 `TaskCallResult {task: TaskRef, exit: ExitRecord}`；子任务失败或取消传播为调用者失败，保留子任务真实终态。
 
 原 Effect.request 保持调用意图，source shared 保存目标实例与归属，目标以稳定身份先 deferred 再启动。取消可以先创建并取消同一目标，迟到创建只能得到原 Task；恢复核对原目标，不创建新业务调用。完成与清理确认同时检查本地后代和原 Resource claim，Task exit 不会自动释放物理容量。跨 Session 的嵌套调用按实际根 Task 继承最紧深度上限，只读等待使用原工作额度机制。
 
@@ -467,11 +467,15 @@ interface EffectRequest<Req = unknown> {
     version: string;
     request: Req;
     idempotencyKey: string;               // 幂等键（崩溃后不重复执行）
-    timeoutMs?: number;
+    timeoutMs?: number | null;           // 缺省 30 秒；null 显式无总执行期限
     retry?: RetryPolicy;
     grants?: Array<{ handleId: HandleId; right: ResourceRight }>;
 }
 ```
+
+timeoutMs 缺省保持原 30_000ms；正有限数指定总期限，显式 null 不设总执行期限。无期限仍保留取消、租约、预算、工作额度及物理清理责任；wait({timeoutMs}) 只超时观察，不能替代调用期限。数字定时器按平台上限分段。实际提交 null Effect 的同一事务声明 recordSchemas.effect=2 与 effect-unbounded-deadline 能力，旧 Kernel 拒绝读取该契约，归档也须保留声明；升级前退出旧 writer。
+
+kernel.call@1 保持旧冻结语义（缺省 30 秒或明确正数），@2 要求明确 timeoutMs 为正数或 null。SDK 仅在显式 null 时选择 @2，不改变旧请求的 Program 与去重身份。恢复将原 EffectExecutionContext.deadlineAt 传给目标 Task.start({deadlineAt})，在 created → ready 的目标事务中拒绝过期启动（TASK_START_DEADLINE_EXCEEDED）；已经接纳的原启动可继续核对。清理沿用独立超时与原目标停止确认，不能因总执行期限到期丢掉责任。
 
 ### EffectExecutionContext
 
@@ -482,6 +486,7 @@ interface EffectExecutionContext {
     effectId: EffectId;
     idempotencyKey?: string;
     abortSignal: AbortSignal;
+    deadlineAt?: number;                 // 执行/核对使用原冻结绝对期限；清理不受执行期限限制
     grants: AuthorizedEffectGrant[];
     sessionState?: EffectSessionState;
     emit?: (event: { type: string; payload?: unknown }) => Promise<void>;     // 流式事件

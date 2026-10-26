@@ -116,3 +116,16 @@ it('omits malformed identity data from diagnostics instead of logging it as an o
     expect(JSON.stringify(diagnostics)).not.toContain('PRIVATE BODY'); expect(diagnostics[0].operationId).toBe('unidentified-task-call');
     expect(await kernel.listSessionTasks('source')).toEqual([]);
 });
+
+it.each([undefined, 60_000, null])('freezes deadline policy %s without changing prior source identities', async timeoutMs => {
+    const configured = {...options(), timeoutMs}, first = await submitTaskCall(definition(), configured);
+    expect((await first.root.wait({timeoutMs: 3000})).status).toBe('succeeded');
+    const record = (await first.root.status()).task;
+    expect(record.program.version).toBe(timeoutMs === null ? '2' : '1');
+    expect(record.effects.call.request.timeoutMs).toBe(timeoutMs === undefined ? 30_000 : timeoutMs);
+    expect(record.effects.call.deadlineAt === undefined).toBe(timeoutMs === null);
+    expect((await submitTaskCall(definition(), configured)).root.id).toBe(first.root.id);
+    expect(model).toHaveBeenCalledOnce();
+    const alternate = {...configured, timeoutMs: timeoutMs === null ? 60_000 : null};
+    await expect(submitTaskCall(definition(), alternate)).rejects.toHaveProperty('code', 'CONFLICT');
+});

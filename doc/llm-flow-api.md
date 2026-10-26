@@ -604,6 +604,9 @@ const exit = await run.root.wait({until: 'settled'});
 
 `submitTaskCall` 用稳定 caller.requestId 创建或核对同一 deferred kernel.call Task，再授予确切计划的能力。已推进或终结的调用不重新绑定能力；提交或绑定丢回执后重放原冻结请求，不创建第二个目标。返回 TaskCallRunExecution，root 的成功输出为 Kernel TaskCallResult；tasks() 只列调用者代理 Task，目标 TaskRef 在输出中，不把不同 Session 的成员伪装成同一任务树。caller.parent 可将代理放入真实父任务控制树，取消和深度继承仍归 Kernel。
 
+调用期限必须在冻结计划时确定：timeoutMs 缺省保持 kernel.call@1 的原 30 秒，正数保持原有有限期限；显式 null 才选择 kernel.call@2，允许持久人工/子任务等待没有总执行期限。已提交请求仍以相同 Program、计划与 caller.requestId 核对，不能在恢复时改写期限。root.wait 的观察超时不取消调用；无期限也不解除预算、取消、lease 或清理责任。
+
+
 这是受信宿主 SDK，不是模型/RPC 准入端口；实际目标、上下文、授权和已准备输入由宿主提供。调用恢复须读取已冻结定义，不能从最新 Agent/模型设置重新构造；改变序列化表示或内容后复用 caller.requestId 会冲突。图定义使用原 prepareFlowRun / DurableFlowExecutor，其外层工作区收尾尚未全部进入 Kernel 资源责任，不能把 flow.aggregate 包装成这里的独立函数入口。Durable Program 内部可直接发出已授权的 task.call Effect；SDK 不自动接管某个外层 Effect 的生命周期。
 
 可选 onDiagnostic 接收 run.task.call 的 plan/caller/binding 阶段、原请求/任务身份、安全错误码和耗时；不包含输入或原异常正文，诊断失败不影响实际结果。裸 Task 的发布目录及 UI 入口仍待接入。

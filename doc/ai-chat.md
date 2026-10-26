@@ -8,6 +8,10 @@ Markdown 文件使用独立行 `::@`，在预览模式显示 Agent/Flow 选择�
 
 保存后切换到预览；编辑模式显示原始 Markdown。代码围栏和普通行内文字不触发输入框。Web/HTTPS 与桌面宿主共用此入口。
 
+## 界面兼容
+
+默认会话恢复原有 LLMWorkspaceEditor / RemoteConversationEditor，沿用 ChatInputView、MDxController、标题栏、右侧提问目录及消息操作。非必要配置继续收在设置内；独立 ChatView 保留为待完善的迁移入口，不作为按钮与移动布局尚未对齐时的产品默认。Session 消息的 AiChatPlugin 由原 MDxController 按持久消息锚点安装，保留附件、同 Session 分支与跳转。
+
 ## 当前主流程
 
 1. 选择已发布的 Agent 或 Flow，输入提示词并按需添加附件。

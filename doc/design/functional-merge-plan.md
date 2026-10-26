@@ -2378,3 +2378,6 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 
 
 llm-ui 后续主线已增加正式 Session/原生会话 ChatView 产品入口、分支草稿与模型选择保存、队列和审批/停止，以及 Markdown ::@ 输入。普通文件提交时创建稳定的新 Session/branch 并引用完整文件；Session 消息内从原 user/LLM 锚点创建同 Session 的 branch，排除其后历史，保留多条 user 输入边界与原项目。确认原持久队列接纳后切换普通 user/LLM 会话，支持附件及后续聊天。消息内 AiChatPlugin、公开 Flow 名称与“不调用”默认项、消息后的产物按钮、隐藏控件及桌面/移动工具栏隔离已补齐。大文件暂以 256 KiB 直接引用上限明确拒绝，不自动转 Harness；按需读取后置。按用户最新范围，::> 折叠与文档内回复后置；首次项目草稿/旧 handoff 及高级迁移清理继续保留，不把当前最小版本标记为全部任务完成。使用方式及日志见 [Markdown 聊天输入](../ai-chat.md)。本轮仅进行必要发布构建与服务健康确认，没有追加功能验证。
+
+
+界面兼容修正：独立 ChatView 的默认布局未完整保留已有按钮和移动配置收纳，现将正式会话产品默认恢复为原 LLMWorkspaceEditor / RemoteConversationEditor。原 ChatInputView、MDxController、消息编辑/重发/分支及右侧提问目录继续使用；内嵌 AiChatPlugin 改接原消息编辑器。独立库与适配入口保留，但产品默认迁移重新列为未完成，须先对齐既有交互。

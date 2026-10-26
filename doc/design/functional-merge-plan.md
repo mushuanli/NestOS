@@ -1814,3 +1814,29 @@ Claude 第一条真实提交约 25 秒后进入 uncertain。已暂停该验收�
 新增反例在旧实现失败，修复后通过；同时验证晚确认时精确取消独立可用、输入只出现一次、相同原回执反复查询一致，以及关闭进程不遗留等待或假接纳。node 子仓提交 c8a8fb0，版本 0.4.3。格式检查、全量 Rust 测试 391 通过/2 个既有忽略、debug/release 离线构建及已安装 Claude Code 2.1.209 对本地模型 peer 的真实协议验收均通过；后者覆盖审批、Write、原生状态与历史、图片、外部 CLI 读取和恢复、目录监听。它不是实际云模型验收。当前运行 node 仍是 0.4.1；本轮不宣称 Claude 实际模型已正常，也不自动结算升级前旧未知项。
 
 裸 Task 独立入口继续保留 P1：当前目录只有可调用 Agent/Flow 定义，Kernel Task ID 是执行实例，不能直接充当发布目标。仍需把 Task 实现的签名、版本及权限接入统一调用准入与子 Session 路由，不能仅增加 UI 选项就标为完成。严格 continue、跨 Session 受管收尾与长期生命周期也继续保留原任务。
+
+
+## 79. 队列派发与 composer 草稿所有权隔离
+
+第 78 节真实 Claude 未知提交的浏览器观察显示，已接纳队首正文又出现在输入框。审查确认 sendInstruction 直接调用公开 send/command；前者会把队首输入覆盖到当前草稿，后者在草稿为空时回填 slash 输入。二者之后又以原生接纳消费草稿，故下一份草稿即使只是正文相同，也可能被旧队列项清空。
+
+修复归独立 mindos-node-driver 的通用队列/草稿机制：公开直接发送与后台派发共用输入验证、会话准备和原生调用实现，但队列派发不拥有 composer。既有 pending 记录新增 consumeDraft=false，确认、丢回复核对与重开均保持此归属。旧直接发送记录缺省沿用原输入和 draftRevision 核对，不增加第二份草稿、台账或状态库。app-core 只验证及保存该恢复元数据，不加入输入编辑或发送策略；UI/OperationLedger 仍在持久队列接纳后按原提交的字段修订消费匹配草稿。
+
+```mermaid
+C4Dynamic
+  title 队列执行与下一次输入分别持有状态
+  Component(ui, "llm-ui 与 OperationLedger", "当前输入与原提交身份")
+  Component(queue, "既有 Harness 队列", "冻结输入、领取与接纳回执")
+  Component(journal, "既有 HarnessRecovery", "持久队列与独立草稿字段")
+  Component(native, "原生执行适配", "同一输入验证与原生调用")
+  RelIndex(1, ui, queue, "以原提交身份持久入队")
+  RelIndex(2, queue, journal, "保存冻结输入与队列接纳")
+  RelIndex(3, queue, ui, "接纳通知供台账消费匹配草稿")
+  RelIndex(4, queue, native, "派发冻结输入，不回写当前输入框")
+  RelIndex(5, native, journal, "原回执更新与 consumeDraft=false 一起保存")
+  RelIndex(6, ui, journal, "后续草稿独立保存；迟到确认不消费它")
+```
+
+原实现的 12 项矩阵有 7 项失败；修复后覆盖普通消息、prompt slash、action slash、空/不同/相同正文、后续附件、未知回执重开以及非法恢复标记。原纯附件队列测试补上宿主在队列接纳后显式消费原编辑器的步骤，不能再依赖原生回执顺带清草稿。直接发送原有回归继续保留。driver 完整测试 325 通过/1 个既有忽略，类型及 ESM/CJS 构建通过，版本 0.4.2、子仓提交 4d443dd。宿主恢复存储与真实队列初步回归 11 项通过，最终隔离候选继续验证。
+
+本轮未部署；旧版本已经回填的历史草稿不自动删除，已有未知原生操作仍只核对。该切片不以队列接纳伪造原生完成，也不修改第 78 节保留的 Claude 失败记录。

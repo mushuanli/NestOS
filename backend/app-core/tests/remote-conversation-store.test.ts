@@ -125,3 +125,19 @@ it('does not let a delayed load move the local CAS cursor behind an accepted sav
             .toEqual({draft: 'After', submittedTurnId: 'turn'});
     } finally {release(); await Promise.allSettled([loaded, saved]); await manager.dispose();}
 });
+
+
+it('persists queued draft ownership across reopening and rejects malformed consumption markers', async () => {
+    const {manager} = await createVFS({rootBackend: new MemoryBackend()});
+    try {
+        const fs = await manager.openFileSystem('/'), store = new RemoteConversationStore(fs, 'queue-draft');
+        const record = {draft: 'Next input', draftRevision: 2, pending: {requestId: 'original', epoch: 'e', operation: 'turn', inputText: 'Queued input', consumeDraft: false as const}};
+        await store.save(record);
+        expect(await new RemoteConversationStore(fs, 'queue-draft').load()).toEqual(record);
+        for (const value of [true, 'false', null, 0]) {
+            const invalid = {...record, pending: {...record.pending, consumeDraft: value}} as unknown as typeof record;
+            await expect(store.save(invalid)).rejects.toMatchObject({code: 'EINVAL'});
+        }
+        expect(await store.load()).toEqual(record);
+    } finally {await manager.dispose();}
+});

@@ -632,3 +632,8 @@ const exit = await run.root.wait({until: 'settled'});
 ### Kernel 受管 Flow 根准备
 
 prepareFlowCallTask(graph, parameters, options) 将可信冻结图转换为原 flow.aggregate TaskRunDefinition，包含空调度检查点、版本化目录、调用标签及宿主上下文。准备不创建工作区或 Task；Kernel 接纳后由原 RunResume 调度实际根。initialWorkspacePending=1 的隔离根先在 scheduler lease 内准备并保存原工作区记录，恢复复用原记录；首次执行再开始计算 Flow 总期限。
+
+
+### 受管调用启动前宿主准入
+
+TaskCallSubmitOptions.beforeBind(caller) 在原 caller 已接纳且仍为 created 时执行，之后才绑定原计划；失败保留同一 deferred caller。该可信回调不进入 Task 规格或 RPC 参数，Session 用于在执行前固定已接受的模式偏好。

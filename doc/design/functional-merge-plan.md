@@ -2347,3 +2347,10 @@ Flow 正式入口提交 `49a87e45`。父卡片补充原 caller 的收尾观察�
 Flow 根已确认终态、标明初始工作区待准备且原工作区记录不存在时，收尾不再按缺失租约报错；该根尚未给节点发布工作区或登记对应占用。诊断 flow.workspace.finalization/not-prepared 保留原根身份，宿主已有的私有目录创建意图核对仍负责中断准备后的残留。
 
 目标恢复和用户停止交错时，call.target.resume 先记录 scheduler 阶段具体失败；若随后读取确认同一真实目标已终态，继续观察原 caller 的资源收尾并保存原历史，不把取消结果丢在后台恢复异常中。非终态目标仍保留原错误，不创建新请求或重新执行。按本轮要求未运行验证。
+
+
+## 97. 独立直接调用在启动前固定原执行模式
+
+Task 调用 SDK 增加可信 beforeBind：原 caller 已持久接纳、仍为 deferred 时，宿主可完成启动前准入；失败保持同一 caller，不绑定或执行新目标。Session 用此阶段将冻结 Task 标签中的显式 Chat/Agent 模式写入原子会话设置并锁定，避免 Agent 首轮写入历史后被旧数据兼容规则按默认 Chat 模式锁定。纯准备仍不修改设置，Flow 和没有显式模式的旧请求继续原规则。
+
+重放相同已锁模式不改写设置；已有不同锁定模式保留 CALL_EXECUTION_MODE_CONFLICT。诊断 call.execution-mode.lock 区分 settings/permission/persist，Kernel SDK 记录 host-admission/binding，失败不记录正文或完整配置。按本轮要求未运行验证。

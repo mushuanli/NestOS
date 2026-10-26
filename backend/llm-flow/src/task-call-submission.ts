@@ -5,6 +5,8 @@ export interface TaskCallSubmitOptions {
     kernel: Pick<Kernel, 'openSession' | 'bindTaskCall'>;
     caller: {sessionId: string; requestId: string; parent?: string; spawnKey?: string; labels?: Record<string, string>};
     onDiagnostic?(event: KernelDiagnostic): void;
+    /** Trusted host admission work; rejection leaves the same caller deferred for retry. */
+    beforeBind?(caller: TaskRef): Promise<void>;
 }
 export interface TaskCallRunOptions extends TaskCallSubmitOptions {
     maxDepth: number;
@@ -70,7 +72,10 @@ async function submitPlan(plan: TaskCallPlan, options: TaskCallSubmitOptions, pr
     const session = await options.kernel.openSession(options.caller.sessionId);
     const root = await session.submit<TaskCallPlan, TaskCallResult>(spec);
     progress.taskId = root.id; progress.stage = 'binding';
-    if ((await root.status()).task.status === 'created') await options.kernel.bindTaskCall({sessionId: session.id, taskId: root.id}, plan);
+    if ((await root.status()).task.status === 'created') {
+        progress.stage = 'host-admission'; await options.beforeBind?.({sessionId: session.id, taskId: root.id});
+        progress.stage = 'binding'; await options.kernel.bindTaskCall({sessionId: session.id, taskId: root.id}, plan);
+    }
     return {root, tasks: () => [root]};
 }
 

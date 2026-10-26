@@ -160,11 +160,25 @@ export class IndependentCallService {
             await this.writable(ready.caller.sessionId); await this.writable(ready.executionSessionId);
             progress.stage = 'caller';
             const run = await submitPreparedTaskCall(ready.plan, {kernel: this.options.kernel, caller: ready.caller,
+                beforeBind: () => this.lockPreparedExecutionMode(input, ready),
                 onDiagnostic: event => this.host.logger.debug('Prepared Kernel call', event)});
             progress.stage = 'receipt'; const observed = await this.taskCallAdmission(ready);
             if (!observed || observed.submission.task.taskId !== run.root.id) throw independentPreparationError('CALL_EXECUTION_CONFLICT');
             this.observeHistory(input);
             return observed;
+        });
+    }
+    private async lockPreparedExecutionMode(input: IndependentCallInput, ready: PreparedIndependentTaskCall): Promise<void> {
+        const mode = ready.plan.task.labels?.executionMode;
+        if (mode !== 'chat' && mode !== 'agent') return;
+        await this.tracePreparation(input, 'call.execution-mode.lock', async progress => {
+            progress.executionSessionId = ready.executionSessionId; progress.stage = 'settings';
+            const current = await this.options.repository.getSessionSettings(ready.executionSessionId);
+            if (current.executionModeLocked && current.executionMode === mode) return;
+            if (current.executionModeLocked) throw failure('CALL_EXECUTION_MODE_CONFLICT');
+            progress.stage = 'permission'; await this.writable(ready.caller.sessionId); await this.writable(ready.executionSessionId);
+            progress.stage = 'persist';
+            await this.options.repository.saveSessionSettings(ready.executionSessionId, {executionMode: mode, executionModeLocked: true});
         });
     }
     /** Reattach only admitted calls; a prepared but unsubmitted route is not dispatch permission. */

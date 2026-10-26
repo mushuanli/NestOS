@@ -205,7 +205,7 @@ it('runs dynamically classified read commands while earlier subscriptions are pe
 });
 it('does not refresh other conversations for a session management event', async () => {
     const manager = session(), snapshot = vi.fn(() => ({ messages: [] }));
-    const { server } = await pair({ manager, other: { snapshot, respond: async () => {} } }); snapshot.mockClear();
+    const { server } = await pair({ manager, other: { snapshot, subscribe: () => () => {}, respond: async () => {} } }); snapshot.mockClear();
     manager.changed(); await server.refresh(); expect(snapshot).not.toHaveBeenCalled();
 });
 it('re-encodes only the affected message after a scoped streaming event', async () => {
@@ -229,7 +229,7 @@ it('returns a snapshot reference instead of retransmitting unchanged native hist
     let server!: RpcPeer, client!: RpcPeer; const replies: Reply[] = [];
     server = new RpcPeer('server', call => client.handle(call));
     client = new RpcPeer('client', async call => { const reply = await server.handle(call); replies.push(reply); return reply; }); peers.push(server, client);
-    const boot = await server.bootstrap({ snapshot: () => snapshot, refresh: async () => snapshot, respond: async () => snapshot });
+    const boot = await server.bootstrap({ snapshot: () => snapshot, refresh: async () => snapshot, subscribe: () => () => {}, respond: async () => snapshot });
     client.applyUpdates(boot.updates); const root = client.decode(boot.value!);
     expect(await root.refresh()).toEqual(snapshot); expect(JSON.stringify(replies.at(-1)).length).toBeLessThan(500);
 });

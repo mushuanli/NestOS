@@ -14,6 +14,7 @@
 | `IStorageBackend` | `stat/list/read/write/mkdir/delete/rename` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/storage/` | `vfsdriver-indexeddb`、`vfsdriver-local` | `vfs-core (VFSEngine)` |
 | `IVFSManager` | `openFileSystem()/mounts/devices/plugins` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/services/vfs-manager.ts` | `vfs-core (VFSManager)` | `app-core`、`app-shell`、`kernel-adapters` |
 | `IFileSystem` | `openFile()/driver/meta/capabilities/capabilitiesAt()/discoveryRoot?()` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/services/file-system.ts` | `vfs-core (FileSystemView)` | `vfs-ui`、`llm-ui`、`llm-session`、`app-core` |
+| `FileSystemView` | `IFileSystem` 加 `dispose()`；拥有独立生命周期的文件视图 | `vfs-core` 公共接口 | `SessionRepository.openAttachments()` 等 | HTTP RPC 显式保留 `dispose`，释放附件视图不关闭仓库或底层 VFS |
 | `IFSDriver` | `getNode/getChildren/readContent/writeContent/createFile/createDirectory/rename/move/delete/search` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/services/fs-driver.ts` | `FileSystemView.driver` | `vfs-ui`、`mdx-adapter`、`llm-session` |
 | `IFSMetaDriver` | `assets/tags/seq/refs/watcher` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/services/fs-meta-driver.ts` | `FileSystemView.meta` | `llm-session`、`mdx-adapter` |
 | `IFile` | `read()/write()`（extends `IIOStream`） | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/IFile.ts` | `FileHandle`、`MDXFileHandle` | `mdx-adapter`、`llm-session` |

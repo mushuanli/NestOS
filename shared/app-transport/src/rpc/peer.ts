@@ -201,9 +201,14 @@ export class RpcPeer {
         for (const [name, mode] of Object.entries(schema.methods)) {
             if (typeof value[name] !== 'function') continue;
             if (mode === 'snapshot') {
-                const source = schema.snapshotView ? schema.snapshotView(value, name) : value[name]();
-                snapshots[name] = schema.snapshotView ? this.snapshotCodec.encode(source) ?? await this.encode(source, seen, undefined, flat)
-                    : await this.encode(source, seen, undefined, flat);
+                try {
+                    const source = schema.snapshotView ? schema.snapshotView(value, name) : value[name]();
+                    snapshots[name] = schema.snapshotView ? this.snapshotCodec.encode(source) ?? await this.encode(source, seen, undefined, flat)
+                        : await this.encode(source, seen, undefined, flat);
+                } catch (error) {
+                    throw new FSError(error instanceof FSError ? error.code : 'EIO',
+                        'Snapshot encoding failed', `${kind}.${name}`, undefined, error instanceof Error ? error : undefined);
+                }
             }
         }
         for (const [key, args] of this.lookupArgs.get(id) ?? []) {

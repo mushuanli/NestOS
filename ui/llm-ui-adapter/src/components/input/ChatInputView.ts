@@ -325,9 +325,8 @@ export class ChatInput implements IChatInputPresenter {
         }, options.maxAgentExchanges, options.executionModeInfo);
         this.initExecutors();
         this.bindCallTargets();
-        this.contextPicker = new WorkspaceContextPicker(this.inputWrapper.parentElement!, () => this.options.contextOptions,
+        this.contextPicker = new WorkspaceContextPicker(container.querySelector<HTMLElement>('.llm-input__options-body')!, () => this.options.contextOptions,
             context => {this.setConfig({context}); this.notifyConfigChange();}, () => this.options.contextRevisionFloor?.() ?? 0);
-        this.inputWrapper.before(this.contextPicker.element);
         this.syncUIFromConfig();
         this.syncContext();
         this.restoreDraftToken(options.initialConfig?.draftToken);

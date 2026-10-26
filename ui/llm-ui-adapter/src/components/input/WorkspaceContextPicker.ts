@@ -95,13 +95,14 @@ export class WorkspaceContextPicker {
         this.verified = undefined; this.error = t('callable.context.failed', {code: errorCode(error)});
         if (['CONTEXT_CATALOG_CHANGED', 'CONTEXT_OPTIONS_CHANGED'].includes(errorCode(error))) {this.page = undefined; this.sources = []; this.checkpoints = []; this.candidate = undefined;}
         this.render();
+        const menu = this.element.closest('details'); if (menu) menu.open = true;
     }
     private render(): void {
         if (this.closed) return;
         this.element.hidden = !this.state.draft && (!this.query() || this.page?.kind === 'other');
-        this.element.innerHTML = `<button type="button" data-context-action="open">${escapeHTML(t('callable.context.title'))}: ${escapeHTML(this.summary())}</button>
+        this.element.innerHTML = `<button type="button" data-context-action="open" aria-expanded="${this.expanded}">${escapeHTML(this.state.draft ? `${t('callable.context.title')}: ${this.summary()}` : t('callable.context.title'))}</button>
             ${this.state.draft ? this.action('clear', 'callable.context.clear') + this.action('verify', 'callable.context.verify', this.loading) : ''}
-            <p role="status">${escapeHTML(this.notice())}</p>${this.error ? `<p role="alert">${escapeHTML(this.error)}</p>` : ''}
+            ${this.notice() ? `<p role="status">${escapeHTML(this.notice())}</p>` : ''}${this.error ? `<p role="alert">${escapeHTML(this.error)}</p>` : ''}
             ${this.state.draft?.selection.mode === 'fork' ? `<p>${escapeHTML(t('callable.context.forkBoundary'))}</p>` : ''}
             ${this.expanded ? this.panel() : ''}`;
     }
@@ -116,11 +117,10 @@ export class WorkspaceContextPicker {
     }
     private panel(): string {
         return `<div class="workspace-context__panel">${this.action('new', 'callable.context.new')}${this.action('refresh', 'callable.context.refresh', this.loading)}
-            <p>${escapeHTML(t('callable.context.continueUnsupported'))}</p><p>${escapeHTML(t('callable.context.forkBoundary'))}</p>
             ${this.bindingId ? this.action('back', 'callable.context.bindings', this.loading) : ''}
             <div class="workspace-context__rows">${this.rows()}</div>
             ${this.page?.nextCursor ? this.action('more', 'callable.context.more', this.loading) : ''}
-            ${this.candidate ? this.action('confirm', 'callable.context.confirm') : ''}</div>`;
+            ${this.candidate ? `<p>${escapeHTML(t('callable.context.forkBoundary'))}</p>${this.action('confirm', 'callable.context.confirm')}` : ''}</div>`;
     }
     private rows(): string {
         if (this.page?.kind !== 'direct-harness') return '';

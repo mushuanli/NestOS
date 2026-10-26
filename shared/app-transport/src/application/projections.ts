@@ -9,7 +9,7 @@ export function installViewProjections(kind: string, proxy: any): void {
         proxy.getStatus = () => proxy.getSnapshot().status;
         proxy.isGenerating = () => proxy.getSnapshot().isRunning;
     }
-    if (kind === 'IFileSystem') proxy.openFile = (path: string) => createFile(proxy, path);
+    if (kind === 'IFileSystem' || kind === 'FileSystemView') proxy.openFile = (path: string) => createFile(proxy, path);
     if (kind === 'IAgentManagementService' || kind === 'IConnectionService') {
         proxy.findAgent = (id: string) => proxy.listAgents?.().find((item: any) => item.id === id);
         proxy.findConnection = (id: string) => proxy.listConnections().find((item: any) => item.id === id);

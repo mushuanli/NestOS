@@ -23,7 +23,6 @@
     .flow-content-source__message { min-height: 44px; }
 }
 
-.llm-input-receiver { margin: 4px 12px; color: var(--text-secondary, #64748b); font-size: 12px; }
 .llm-input__flow-launch { min-height: 32px; padding: 4px 8px; border: 1px solid var(--border-color, #8885); border-radius: 6px; color: inherit; background: transparent; cursor: pointer; white-space: nowrap; }
 .llm-session-material { margin: 12px; padding: 12px; border: 1px solid var(--border-color, #8885); border-radius: 8px; }
 .llm-session-material summary { cursor: pointer; }

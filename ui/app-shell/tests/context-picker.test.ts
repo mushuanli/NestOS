@@ -43,6 +43,16 @@ async function inputFixture(context?: InputContextDraft, provider = vi.fn(async 
     return {host, input, provider, onSend, scope: currentScope, send: () => host.querySelector<HTMLButtonElement>('.llm-input__btn--send')!.click()};
 }
 
+it('keeps the default context in the input menu without a technical status row', async () => {
+    const f = await inputFixture();
+    const picker = f.host.querySelector<HTMLElement>('.workspace-context')!;
+    expect(picker.closest('.llm-input__options-body')).not.toBeNull();
+    expect(f.host.querySelector('[data-independent-call]')?.closest('.llm-input__options-body')).not.toBeNull();
+    expect(picker.querySelector('[data-context-action="open"]')?.textContent).toBe(t('callable.context.title'));
+    expect(picker.textContent).not.toContain(t('callable.context.new'));
+    expect(f.host.querySelector<HTMLDetailsElement>('.llm-input__options')!.open).toBe(false);
+});
+
 it('selects an immutable earlier checkpoint only after confirmation and freezes no observation metadata', async () => {
     const f = await inputFixture(); await choose(f.host);
     expect(f.input.getConfig().context).toEqual(draft()); expect(f.host.textContent).toContain(t('callable.context.forkBoundary'));

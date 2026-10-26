@@ -318,6 +318,10 @@ httpd 注入私有 `ProviderAuthorizationHost`，负责 PKCE、state、nonce、O
 
 授权面板通过后端订阅更新，窗口重新获得焦点或页面恢复可见时补查一次授权状态，同一轮触发合并；无状态变化保留回调输入，销毁后移除监听，不常驻轮询。HTTP 页面的短暂断线由 SSE 续传恢复；视图过期或模块加载失败后才探测 `/api/health`，探测失败按 1、2、4、8、15 秒退避，单次超时 5 秒；联网和窗口返回可提前重试，页面关闭时取消。仅事件订阅与 bootstrap 可创建视图，其他请求遇到不存在或未初始化的视图时返回 `ECAPABILITY` 及 `X-MindOS-View-Expired: 1`；JSON 与二进制客户端据此立即触发恢复，同一次连接丢失只通知一次。服务就绪后按编辑器显式恢复接口保存内存快照、重建视图并恢复表单，不根据输入/选择事件猜测未保存状态；程序填入的草稿同样保留。不能自动恢复时保留原页与具体原因，用户可重试或复制内容后手动重载。不自动重放写命令，也不把 health 就绪当成旧视图已经恢复。
 
+RPC 能力分类中，HarnessConversationPort 必须同时具备 `snapshot`、`respond` 和 `subscribe`，避免将含异步 `snapshot()` 的 TaskHandle 误识别为同步会话快照。TaskHandle 通过 `status` 等公开查询读取状态，不导出内部 `snapshot`。快照编码失败保留错误码、原因和具体能力/方法；不得通过自动等待 Promise 掩盖能力分类错误。真实内核任务经 `openTask` 导出及通知续传的回归见 [task-handle-rpc.test.ts](../apps/http-app/tests/task-handle-rpc.test.ts)。
+
+正文 AI 输入沿用 Session 分支已选 Agent（缺失时回退 default），候选来源于公开调用目录；验收定义须标为 local，不能污染用户调用选择器。HTTP 附件视图通过独立 `FileSystemView` 能力保留 `dispose()`，防止提交准备的清理异常覆盖原始错误；回归见 [附件视图生命周期](../apps/http-app/tests/view-ports.test.ts) 和 [正文 AI 输入](../ui/app-shell/tests/document-chat.test.ts)。
+
 ## 验证
 
 - [完整 Shell 回归](../ui/app-shell/tests/http-full-shell.test.ts)：通过远端服务端口装配原 UI、切换工作区，检查导航未被隐藏。

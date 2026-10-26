@@ -4,6 +4,13 @@ import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import type { CapabilitySchema, MethodMode } from '../rpc/capabilities';
 export type { ViewDomain } from '../rpc/capabilities';
 
+const fileSystem: CapabilitySchema = {
+    scopedObserver: true, fieldKinds: {driver: 'IFSDriver', meta: 'IFSMetaDriver'}, observer: 'onAny',
+    invalidates: ['files', 'settings'], domain: 'files', markers: ['viewId', 'driver', 'meta'],
+    fields: ['viewId', 'revision', 'capabilities', 'driver', 'meta', 'external'],
+    methods: {capabilitiesAt: 'async', on: 'subscribe', onAny: 'subscribe'},
+};
+
 export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
     "OpenedApplicationView": {markers: ['workbench', 'observation', 'cursor', 'dispose'],
         domain: 'opened-view', invalidates: [],
@@ -29,8 +36,9 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
         methods: {"addRef": "async", "removeRef": "async", "walkOutgoing": "query", "walkIncoming": "query", "hasRef": "query", "syncOutgoing": "async"} },
     "IFSMetaDriver": { domain: "files", invalidates: ["files", "settings"], fieldKinds: { assets: "IAssetOperations", tags: "ITagOperations", seq: "ISeqFileOperations", refs: "IRefOperations", watcher: "IWatchOperations" }, markers: ["assets", "tags"], fields: ["assets", "tags", "seq", "refs", "watcher"],
         methods: {} },
-    "IFileSystem": { scopedObserver: true, fieldKinds: { driver: "IFSDriver", meta: "IFSMetaDriver" }, observer: 'onAny', invalidates: ['files', 'settings'], domain: 'files', markers: ["viewId", "driver", "meta"], fields: ["viewId", "revision", "capabilities", "driver", "meta", "external"],
-        methods: {"capabilitiesAt": "async", "on": "subscribe", "onAny": "subscribe"} },
+    "IFileSystem": fileSystem,
+    "FileSystemView": {...fileSystem, markers: [...fileSystem.markers, 'dispose'],
+        methods: {...fileSystem.methods, dispose: 'async'}},
     "IVFSManager": { markers: ["openFileSystem"], fields: ["ioStats", "devices"],
         methods: {"openFileSystem": "async"} },
     "IToolService": { markers: ["getToolDefinitions", "getToolMeta"], fields: [],
@@ -63,7 +71,8 @@ export const CAPABILITIES: Readonly<Record<string, CapabilitySchema>> = {
         methods: {"diagnostics": "snapshot", "onChange": "subscribe", "scanOnce": "async", "snapshot": "query", "mergePeople": "async", "previewSource": "async", "addSource": "async", "setSourceEnabled": "async", "removeSource": "async", "analyze": "async", "cancelAnalysis": "async", "selectionInfo": "query", "selectSource": "async", "removeSelection": "async", "previewScanRule": "async", "saveScanRule": "async", "saveScanPlan": "async", "setScanPlanEnabled": "async", "removeScanPlan": "async", "runScanPlan": "async", "waitScanRun": "async", "cancelScanRun": "async", "addMemory": "async", "review": "async", "linkExecution": "async", "suppress": "async", "forgetPreview": "async", "forgetScopePreview": "async", "forgetScope": "async", "forget": "async", "getSettings": "query", "configure": "async", "retrieve": "query"} },
     "HarnessClient": { markers: ["profiles", "list"], fields: [],
         methods: {"readCommandOutput": "query", "queryCommand": "query", "commandCatalog": "query", "models": "query", "commands": "query", "command": "async", "subscribe": "subscribe", "eventSnapshot": "query", "subscribeDirectory": "subscribe", "directorySnapshot": "snapshot", "delete": "async", "rename": "async", "archive": "async", "search": "query", "profiles": "async", "list": "query", "read": "async", "inspect": "async", "fork": "async", "create": "async", "resume": "async", "turn": "async", "interrupt": "async", "respond": "async", "operation": "async", "close": "async"} },
-    "HarnessConversationPort": { observer: 'subscribe', scopedObserver: true, snapshotView: (value, name) => value[name](), sharedSnapshots: true, resultSnapshots: Object.fromEntries(['reconcileQuery', 'queryCommand', 'command', 'delete', 'read', 'refresh', 'loadEarlier', 'send', 'interrupt', 'respond', 'reconcile', 'reconcileControl', 'fork', 'forkAt', 'rename', 'archive'].map(method => [method, 'snapshot'])), domain: 'session', markers: ["snapshot", "respond"], fields: ["kind", "conversationId"],
+    // TaskHandle also has snapshot/respond; only conversations expose a synchronous subscribed snapshot.
+    "HarnessConversationPort": { observer: 'subscribe', scopedObserver: true, snapshotView: (value, name) => value[name](), sharedSnapshots: true, resultSnapshots: Object.fromEntries(['reconcileQuery', 'queryCommand', 'command', 'delete', 'read', 'refresh', 'loadEarlier', 'send', 'interrupt', 'respond', 'reconcile', 'reconcileControl', 'fork', 'forkAt', 'rename', 'archive'].map(method => [method, 'snapshot'])), domain: 'session', markers: ["snapshot", "respond", "subscribe"], fields: ["kind", "conversationId"],
         methods: {"readCommandOutput": "query", "loadCommandOutput": "query", "reconcileQuery": "async", "queryCommand": "async", "enqueue": "async", "editInstructionQueue": "async", "readComposerDraft": "query", "saveComposerDraft": "async", "putComposerAsset": "async", "readComposerAsset": "query", "models": "query", "commands": "query", "command": "async", "subscribe": "subscribe", "snapshot": "snapshot", "delete": "async", "rename": "async", "archive": "async", "fork": "async", "forkAt": "async", "branches": "async", "loadEarlier": "refresh", "saveDraft": "async", "read": "refresh", "refresh": "refresh", "send": "async", "interrupt": "async", "respond": "async", "reconcile": "async", "reconcileControl": "async", "close": "async"} },
     "ProjectSessions": { invalidates: ['projects', 'session', 'files'], domain: 'projects', markers: ["navigation", "family"], fields: [],
         methods: {"navigation": "query", "family": "query", "moveCandidates": "query", "rename": "async", "reparent": "async", "create": "async", "createChild": "async", "get": "query"} },

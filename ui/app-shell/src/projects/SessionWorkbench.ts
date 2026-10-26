@@ -153,7 +153,8 @@ export interface SessionWorkbenchOptions {
     workbenchState?: WorkbenchStatePort;
     windows?: import('../workbench/windows').WorkbenchWindowBinding;
     agents?: {resourceId(id: string): string | undefined; usage?: EditorOptions['executorUsage'];
-        read(id: string): Promise<import('@itookit/kernel-adapters/contracts').AgentDefinition | null>; createEditor: EditorFactory};
+        read(id: string): Promise<import('@itookit/kernel-adapters/contracts').AgentDefinition | null>; createEditor: EditorFactory;
+        rename?(id: string, name: string): Promise<void>; remove?(id: string): Promise<void>};
 }
 
 function afterSidebarPaint(): Promise<void> {
@@ -315,7 +316,7 @@ export class SessionWorkbench implements WorkspaceController {
             container => this.tabs.mountWindowList(container));
         if (options.agents && this.projects) {
             this.agentDrawer = new AgentDrawer({backend: this.backend, resourceId: options.agents.resourceId,
-                usage: options.agents.usage, navigate: request => this.hostContext?.navigate(request) ?? Promise.resolve(),
+                usage: options.agents.usage, rename: options.agents.rename, remove: options.agents.remove, navigate: request => this.hostContext?.navigate(request) ?? Promise.resolve(),
                 edit: id => this.hostContext?.navigate({target: 'chat', resourceId: '@agent/' + encodeURIComponent(id)}) ?? this.openAgentSettings(id),
                 start: id => this.startAgentDraft(id)});
             this.agentDrawer.setVisible(this.navigationVisible);

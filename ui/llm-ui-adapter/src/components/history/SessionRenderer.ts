@@ -231,14 +231,28 @@ export class SessionRenderer {
         if (!this.artifacts) return;
         const wrapper = this.getSessionElement(group.id), scope = this.context.artifacts?.scope(group);
         const target = wrapper?.querySelector<HTMLElement>('.llm-ui-execution-root');
-        let slot = target?.querySelector<HTMLElement>(':scope > [data-history-artifacts]');
+        let slot = target?.querySelector<HTMLElement>('[data-history-artifacts]');
         if (!target || !scope) {if (slot) {slot.remove(); this.artifacts.prune();} return;}
         const key = JSON.stringify([scope.sessionId, scope.taskId]);
-        if (slot?.dataset.historyArtifacts === key) return;
+        if (slot?.dataset.historyArtifacts === key) {this.attachArtifactMenu(target); return;}
         const replaced = !!slot;
-        if (!slot) {slot = document.createElement('div'); target.append(slot);}
-        slot.dataset.historyArtifacts = key; slot.innerHTML = this.artifacts.render(scope);
+        if (!slot) {slot = document.createElement('div'); slot.hidden = true; target.append(slot);}
+        slot.dataset.historyArtifacts = key;
+        slot.innerHTML = this.artifacts.render(scope);
+        this.attachArtifactMenu(target);
         if (replaced) this.artifacts.prune();
+    }
+
+    private attachArtifactMenu(target: HTMLElement): void {
+        const slot = target.querySelector<HTMLElement>('[data-history-artifacts]');
+        const footer = target.querySelector<HTMLElement>(':scope > .llm-ui-node > .llm-ui-message-footer');
+        if (!slot || !footer) return;
+        let menu = footer.querySelector<HTMLElement>('.llm-ui-message-more__items');
+        if (!menu) {
+            footer.querySelector('.llm-ui-actions')?.insertAdjacentHTML('beforeend', NodeTemplates.renderMoreMenu());
+            menu = footer.querySelector('.llm-ui-message-more__items');
+        }
+        if (menu) {menu.append(slot); slot.hidden = false;}
     }
 
     private restrictActions(element: HTMLElement): void {
@@ -293,6 +307,8 @@ export class SessionRenderer {
         parentEl.insertBefore(element, parentEl.querySelector(':scope > [data-history-artifacts]'));
         this.mountNodeEditor(element, node);
         this.restrictActions(element);
+        const target = parentEl.closest<HTMLElement>('.llm-ui-execution-root');
+        if (target) this.attachArtifactMenu(target);
     }
 
     private flowWindow(parentId: string, node: ExecutionNode, fallback: HTMLElement, collapsed: boolean): HTMLElement {

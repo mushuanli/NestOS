@@ -196,3 +196,5 @@ HTTP 视图恢复通过 AppHandle.captureRecovery/suspendForRecovery 和工作�
 模型连接行只显示名称；实际主力模型与该模型的能力通过 inventory.primaryModel / primaryCapabilityTags 投影到副标题，使用 vfs-ui indicatorPlacement:subtitle 与 muted 展示，宿主不查询库内部 DOM。停用连接仍能编辑，排序在所属服务商末尾；标签筛选沿用全部已配置档位的能力。
 
 LocalSessionActivityView 读取失败保留 Session/Task 刷新意图，经原有 ViewRefresh 调度按 1/2/4/8/15 秒退避重试；隐藏时暂停，销毁取消重试；已删除的身份结束刷新，单个 Task 缺失不阻止其他 Task 投影，暂时读取失败不得丢失最终完成事件。
+
+工作台智能体侧栏的更多菜单复用管理服务提供配置、重命名与删除；重命名只改显示名称，保留 Agent ID，删除前确认且不删除已有会话。远程 Agent 只提供配置入口，不在本地重命名或删除。失败保留列表并显示具体原因，日志只含身份、操作阶段、结果和耗时。正文 `::@` 的默认目标读取来源 Session 分支的目标/Agent，再回退 default；候选可见性由公开目录和 exposure 决定，禁止按测试名称过滤。

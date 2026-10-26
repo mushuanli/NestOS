@@ -293,7 +293,6 @@ export const ChatInputTemplates = {
                 <span class="llm-input__execution-source" title="${t('chatInput.nativeModelsHint')}" hidden>${t('chatInput.nativeModels')}</span>
                 <button type="button" class="llm-input__flow-configure" title="${t('chatInput.flowModelsHint')}" hidden>${t('chatInput.flowModels')}</button>
                 ${this.renderOptionsMenu()}
-                <button type="button" class="llm-input__btn" data-independent-call hidden>${t('callable.independent.run')}</button>
                 <button type="button" class="llm-input__btn llm-input__btn--send" title="${t('chatInput.send')} (Enter)" aria-label="${t('chatInput.send')}">${this.sendIcon()}</button>
                 <button type="button" class="llm-input__btn llm-input__btn--stop" title="${t('chatInput.stop')}" aria-label="${t('chatInput.stop')}" style="display:none;">${this.stopIcon()}</button>
             </div>
@@ -304,6 +303,7 @@ export const ChatInputTemplates = {
         return `<details class="llm-input__options">
             <summary title="${t('chat.toolbar.more')}" aria-label="${t('chat.toolbar.more')}">${CHAT_ICONS.more}</summary>
             <div class="llm-input__options-body">
+                <button type="button" class="llm-input__btn" data-independent-call hidden>${t('callable.independent.run')}</button>
                 <button type="button" class="llm-input__btn llm-input__btn--websearch" data-active="true" aria-pressed="true">${CHAT_ICONS.search}<span>${t('webSearch.label')}</span></button>
                 <button type="button" class="llm-input__btn llm-input__btn--settings">${this.sliderIcon()}<span>${t('chatSettings.title')}</span></button>
                 <button type="button" class="llm-input__btn llm-input__btn--configure-agent" hidden>${ENTITY_ICONS.agent}<span>${t('chatInput.configureAgent')}</span></button>

@@ -619,3 +619,11 @@
 .workbench-tabs__error { margin: 8px; color: var(--error-color, #dc2626); font-size: 13px; overflow-wrap: anywhere; }
 .workbench-tabs__error > button { margin-inline-start: 8px; min-height: 36px; }
 .workbench-filters__trigger[hidden] { display: none; }
+
+.workbench-agents__menu { position: relative; flex-shrink: 0; }
+.workbench-agents__menu > summary { display: grid; place-items: center; min-width: 36px; min-height: 36px; padding: 4px; border-radius: 5px; cursor: pointer; list-style: none; }
+.workbench-agents__menu > summary::-webkit-details-marker { display: none; }
+.workbench-agents__menu > summary:hover { background: var(--vfs-active-bg, #eef2ff); }
+.workbench-agents__menu-items { position: absolute; top: 100%; right: 0; z-index: 30; min-width: 140px; max-width: calc(100vw - 32px); padding: 4px; border: 1px solid var(--border-color, #8885); border-radius: 6px; background: var(--mm-bg-color, #fff); color: var(--mm-text-color, #111827); box-shadow: 0 4px 16px #0002; }
+.workbench-agents__menu-items button { display: flex; width: 100%; white-space: nowrap; }
+@media (max-width: 768px) { .workbench-agents__menu > summary { min-width: 44px; min-height: 44px; } }

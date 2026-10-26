@@ -38,6 +38,7 @@ export function workspaceMessagePlugins(options: EditorOptions, branch: () => st
             listTargets: context => host.listTargets({...context, source: {...context.source, documentPath}}),
             onSubmit: request => host.onSubmit({...request, source: {...request.source, documentPath}}),
         };
+        if (host.getDefaultTarget) bound.getDefaultTarget = context => host.getDefaultTarget!({...context, source: {...context.source, documentPath}});
         if (host.pickAttachments) bound.pickAttachments = context => host.pickAttachments!({...context, source: {...context.source, documentPath}});
         log.debug('message.markdown', {sessionId: target.sessionId, messageId: source.messageId,
             stage: 'workspace-plugin-install', result: 'success', plugin: 'interaction:ai-chat'});

@@ -13,17 +13,12 @@ export function sessionMaterialHeader(manifest: ConversationManifest): HTMLEleme
     details.append(title, hint, origin, text); return details;
 }
 
-export function mountSessionInputActions(input: HTMLElement, manifest: ConversationManifest, launch: () => Promise<unknown>): HTMLElement {
-    const receiver = document.createElement('p'); receiver.className = 'llm-input-receiver';
-    receiver.textContent = t('project.currentConversation', {name: manifest.title})
-        + (manifest.parentSessionId ? ` · ${t(manifest.initialContext ? 'project.childInitialMaterial' : 'project.childNoHistory')}` : '');
-    input.before(receiver);
-    const button = document.createElement('button'); button.type = 'button'; button.className = 'llm-input__flow-launch';
+export function mountSessionInputActions(input: HTMLElement, launch: () => Promise<unknown>): void {
+    const button = document.createElement('button'); button.type = 'button'; button.className = 'llm-input__btn llm-input__flow-launch';
     button.textContent = t('flow.invoke.title'); button.title = t('flow.invoke.description');
     button.addEventListener('click', () => {
         button.disabled = true;
         void launch().finally(() => { button.disabled = false; });
     });
-    input.querySelector('.llm-input__toolbar-left')?.append(button);
-    return receiver;
+    input.querySelector('.llm-input__options-body')?.append(button);
 }

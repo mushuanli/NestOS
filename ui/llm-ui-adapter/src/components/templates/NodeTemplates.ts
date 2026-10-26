@@ -106,14 +106,17 @@ export class NodeTemplates {
             ${this.action(user ? 'resend' : 'regenerate', t(user ? 'chatMessage.resend' : 'chatMessage.retry'), ACTION_ICONS.rerun)}
             ${this.collapseButton(collapsed)}
             ${user ? this.action(argumentsInput ? 'edit-arguments' : 'edit', t(argumentsInput ? 'callable.input.arguments' : 'branch.edit'), CHAT_ICONS.edit) + this.action('create-branch', t('branch.continue'), ACTION_ICONS.branch) : ''}
-            <details class="llm-ui-message-more">
-                <summary title="${t('chat.toolbar.more')}" aria-label="${t('chat.toolbar.more')}">${CHAT_ICONS.more}</summary>
-                <div class="llm-ui-message-more__items">${branch}
-                    ${user ? '' : this.action('create-branch', t('branch.continue'), ACTION_ICONS.branch) + this.action('edit', t('action.edit'), CHAT_ICONS.edit)}
-                    ${this.action('delete', t('action.delete'), CHAT_ICONS.delete)}
-                </div>
-            </details>
+            ${this.renderMoreMenu(`${branch}
+                ${user ? '' : this.action('create-branch', t('branch.continue'), ACTION_ICONS.branch) + this.action('edit', t('action.edit'), CHAT_ICONS.edit)}
+                ${this.action('delete', t('action.delete'), CHAT_ICONS.delete)}`)}
         </div>`;
+    }
+
+    static renderMoreMenu(content = ''): string {
+        return `<details class="llm-ui-message-more">
+            <summary title="${t('chat.toolbar.more')}" aria-label="${t('chat.toolbar.more')}">${CHAT_ICONS.more}</summary>
+            <div class="llm-ui-message-more__items">${content}</div>
+        </details>`;
     }
 
     static renderUserBubble(group: SessionGroup, preview: string, isCollapsed = false): string {

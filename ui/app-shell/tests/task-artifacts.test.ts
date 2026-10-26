@@ -89,15 +89,23 @@ it('keeps catalog responses in their original execution scope and hides raw fail
     expect(f.root.textContent).not.toContain('SECRET PRIVATE RESULT');
 });
 
-it('anchors history artifacts to the actual execution and ignores a late catalog after that execution changes', async () => {
+it.each([false, true])('anchors history artifacts in the reply menu and ignores a late catalog after its execution changes (readOnly: %s)', async readOnly => {
     const {SessionRenderer} = await import('../../llm-ui-adapter/src/components/history/SessionRenderer');
     const f = await fixture(); f.browser.dispose(); f.root.replaceChildren();
-    const renderer = new SessionRenderer(f.root, {artifacts: {commands: f.commands,
+    const renderer = new SessionRenderer(f.root, {readOnly, artifacts: {commands: f.commands,
         scope: group => group.execution ? {sessionId: 's', taskId: group.execution.taskId} : undefined}});
     cleanups.push(() => {void renderer.destroy();});
-    const group = {id: 'assistant', role: 'assistant', execution: {taskId: 't', role: 'primary'}, timestamp: 0} as const;
-    renderer.appendSession(group, false);
-    expect(f.root.querySelector('.llm-ui-execution-root > [data-history-artifacts]')).not.toBeNull();
+    const group = {id: 'assistant', role: 'assistant' as const, execution: {taskId: 't', role: 'primary' as const}, timestamp: 0,
+        executionRoot: {id: 'reply', name: 'Assistant', executorType: 'agent' as const, executorId: 'agent',
+            status: 'success' as const, startTime: 0, data: {output: ''}, children: []}};
+    renderer.appendSession(group, false); renderer.renderExecutionTree(group.executionRoot, true);
+    expect(f.root.querySelector('.llm-ui-message-details')).toBeNull();
+    const slot = f.root.querySelector<HTMLElement>('[data-history-artifacts]')!;
+    const menu = slot.closest<HTMLDetailsElement>('.llm-ui-message-more')!;
+    expect(menu).not.toBeNull(); expect(menu.open).toBe(false);
+    expect(slot.querySelector('[data-artifacts-load]')).not.toBeNull(); expect(f.execute).not.toHaveBeenCalled();
+    if (readOnly) expect(menu.querySelector('[data-action="delete"]')).toBeNull();
+    menu.open = true;
     let release!: (value: unknown) => void;
     f.execute.mockImplementation(() => new Promise(resolve => {release = resolve;}));
     f.root.querySelector<HTMLButtonElement>('[data-artifacts-load]')!.click();

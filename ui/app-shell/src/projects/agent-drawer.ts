@@ -1,5 +1,5 @@
 import { Drawer, describeErrorReason } from '@itookit/vfs-ui';
-import { FILE_BROWSER_ICONS, TOOLBOX_ICONS, t, type NavigationRequest } from '@itookit/common';
+import { FILE_BROWSER_ICONS, TOOLBOX_ICONS, createModuleLogger, randomUUID, t, type NavigationRequest } from '@itookit/common';
 import { toolboxPath } from '@itookit/app-contracts';
 import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import type { EditorOptions } from '@itookit/ui-common';
@@ -14,8 +14,12 @@ interface Options {
     navigate(request: NavigationRequest): Promise<void>;
     start(id: string): Promise<void>;
     edit?(id: string): Promise<void>;
+    rename?(id: string, name: string): Promise<void>;
+    remove?(id: string): Promise<void>;
     usage?: EditorOptions['executorUsage'];
 }
+
+const log = createModuleLogger('agent-drawer');
 
 /** A lazy launch surface; configuration persistence stays in the existing host services. */
 export class AgentDrawer {
@@ -95,8 +99,42 @@ export class AgentDrawer {
         const text = primary.lastElementChild!;
         const name = document.createElement('span'); name.textContent = agent.name; text.replaceChildren(name);
         if (agent.description) {const description = document.createElement('small'); description.textContent = agent.description; text.append(description);}
-        const configure = this.button(t('chatInput.configureAgent'), FILE_BROWSER_ICONS.more, () => this.configure(agent), true);
-        configure.disabled = !agent.path; row.append(primary, configure); return row;
+        row.append(primary, this.menu(agent)); return row;
+    }
+    private menu(agent: AgentEntry): HTMLElement {
+        const menu = document.createElement('details'); menu.className = 'workbench-agents__menu';
+        const summary = document.createElement('summary'); summary.innerHTML = FILE_BROWSER_ICONS.more;
+        summary.title = t('chat.toolbar.more'); summary.setAttribute('aria-label', summary.title);
+        const items = document.createElement('div'); items.className = 'workbench-agents__menu-items';
+        const action = (id: string, label: string, run: () => Promise<void>) => {
+            const button = this.button(label, '', async () => {menu.open = false; await run();});
+            button.dataset.action = id; items.append(button); return button;
+        };
+        action('configure-agent', t('workbench.configureAgent'), () => this.configure(agent)).disabled = !agent.path;
+        if (!agent.remote && this.options.rename) action('rename-agent', t('action.rename'), () => this.rename(agent));
+        if (!agent.remote && this.options.remove) action('delete-agent', t('action.delete'), () => this.remove(agent));
+        menu.onkeydown = event => {if (event.key === 'Escape') {menu.open = false; summary.focus();}};
+        menu.append(summary, items); return menu;
+    }
+    private async rename(agent: AgentEntry): Promise<void> {
+        await showNameDialog(t('action.rename'), t('workbench.name'), this.abort.signal,
+            name => this.mutate(agent.id, 'rename', () => this.options.rename!(agent.id, name)), undefined, {initialName: agent.name});
+    }
+    private async remove(agent: AgentEntry): Promise<void> {
+        if (!confirm(t('workbench.deleteAgentHint', {name: agent.name})) || this.abort.signal.aborted) return;
+        await this.mutate(agent.id, 'delete', () => this.options.remove!(agent.id));
+    }
+    private async mutate(agentId: string, operation: string, run: () => Promise<void>): Promise<void> {
+        const started = Date.now(), operationId = randomUUID();
+        try {
+            await run(); this.dirty = true; await this.refresh();
+            log.info('agent.manage', {agentId, operationId, operation, stage: 'persist', result: 'success', durationMs: Date.now() - started});
+        } catch (error) {
+            const code = (error as {code?: string})?.code;
+            log.warn('agent.manage', {agentId, operationId, operation, stage: 'persist', result: 'failure',
+                code: code && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : 'AGENT_UPDATE_FAILED', durationMs: Date.now() - started});
+            throw error;
+        }
     }
     private configure(agent: AgentEntry): Promise<void> {
         if (this.options.edit) return this.options.edit(agent.id);

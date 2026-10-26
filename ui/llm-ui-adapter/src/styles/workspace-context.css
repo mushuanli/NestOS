@@ -10,3 +10,6 @@
 .workspace-context__rows { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow: auto; }
 .workspace-context__rows button { text-align: start; overflow-wrap: anywhere; padding: 6px; }
 @media (max-width: 768px) { .workspace-context button { min-height: 44px; } }
+
+.llm-input__options-body .workspace-context > button[data-context-action="open"] { width: 100%; padding: 8px; border: 0; text-align: start; }
+.llm-input__options-body:has(.workspace-context__panel) { max-height: min(60dvh, 420px); max-width: calc(100vw - 24px); overflow-y: auto; }

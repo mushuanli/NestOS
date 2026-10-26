@@ -783,3 +783,11 @@
     max-width: 100%;
     overflow: auto;
 }
+
+/* Anchor the wider artifact menu to the reply footer so it cannot overflow to the left. */
+.llm-ui-message-more:has([data-history-artifacts]) { position: static; }
+.llm-ui-message-more__items:has([data-history-artifacts]) { flex-wrap: wrap; width: min(320px, calc(100vw - 32px), 100%); max-height: min(60dvh, 480px); overflow: auto; white-space: normal; }
+.llm-ui-message-more__items [data-history-artifacts] { flex-basis: 100%; min-width: 0; }
+.llm-ui-message-more__items .dag-artifacts { margin: 0; }
+.llm-ui-message-more__items [data-artifacts-load] { width: 100%; min-height: 36px; text-align: start; }
+@media (max-width: 768px) { .llm-ui-message-more__items [data-artifacts-load] { min-height: 44px; } }

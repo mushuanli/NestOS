@@ -22,11 +22,16 @@ export function createDocumentChatFactory(factory: EditorFactory, services: Appl
         if (supplied?.host) return factory(container, options);
         const association = supplied?.association ?? ('sessionId' in target && target.sessionId ? {sessionId: target.sessionId} : undefined);
         const pending = new Map<string, Pending>(), messageAnchors = new Map<string, MessageAnchor>();
+        let reading: Promise<RootTargetCatalog> | undefined;
+        const catalog = () => reading ??= services.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets)
+            .finally(() => {reading = undefined;});
+        const defaultTarget = async (branch?: string) => preferredTarget(await catalog(), services, target.kind === 'session' ? target.sessionId : association?.sessionId, branch);
         const host: AiChatHost = {
             listTargets: async ({signal}) => {
-                const catalog = await services.commandBus.execute<RootTargetCatalog>(SessionCommand.ListTargets); signal.throwIfAborted();
-                return catalog.entries.map(choice => ({kind: choice.target.kind, id: JSON.stringify(choice.target), label: choice.name}));
+                const choices = await catalog(); signal.throwIfAborted();
+                return choices.entries.map(choice => ({kind: choice.target.kind, id: JSON.stringify(choice.target), label: choice.name}));
             },
+            getDefaultTarget: async ({signal}) => {const choice = await defaultTarget(); signal.throwIfAborted(); return choice;},
             onSubmit: async input => {
                 const started = Date.now(); let stage = 'validate';
                 try {
@@ -56,13 +61,38 @@ export function createDocumentChatFactory(factory: EditorFactory, services: Appl
             },
         };
         editor = await factory(container, isSession ? {...options, defaultPluginOptions: {...options.defaultPluginOptions,
-            'interaction:ai-chat': {createHost: (source: MessageAnchor) => {messageAnchors.set(source.documentPath, {...source}); return host;}}}}
+            'interaction:ai-chat': {createHost: (source: MessageAnchor) => {
+                messageAnchors.set(source.documentPath, {...source});
+                return {...host, getDefaultTarget: async ({signal}: {signal: AbortSignal}) => {
+                    const choice = await defaultTarget(source.branch); signal.throwIfAborted(); return choice;
+                }};
+            }}}}
             : {...options, plugins: [...(options.plugins ?? []), ['interaction:ai-chat', {host}]]});
         const rename = editor.updateNodeId?.bind(editor);
         if (rename) editor.updateNodeId = path => {documentPath = path; rename(path);};
         return editor;
     };
 }
+async function preferredTarget(catalog: RootTargetCatalog, services: ApplicationServices, sessionId?: string, branch?: string) {
+    let selected: {kind: 'agent' | 'flow'; id: string} | undefined;
+    if (sessionId) {
+        const manifest = await services.sessionRepository.getManifest(sessionId), current = branch ?? manifest.currentBranch;
+        const draft = manifest.uiState?.branchDrafts?.[current];
+        selected = draft?.inputTarget ?? (draft?.inputAgentId ? {kind: 'agent', id: draft.inputAgentId} : undefined);
+        const head = manifest.branches[current];
+        if (!selected && head) {
+            const content = await services.sessionRepository.readDocument(sessionId, `round-${head}.json`);
+            const round = content ? JSON.parse(content) as {agentId?: string; target?: {kind: 'agent' | 'flow'; id: string}} : undefined;
+            selected = round?.target ?? (round?.agentId ? {kind: 'agent', id: round.agentId} : undefined);
+        }
+        selected ??= manifest.createdWithAgentId ? {kind: 'agent', id: manifest.createdWithAgentId} : undefined;
+    }
+    const choice = catalog.entries.find(choice => choice.target.kind === selected?.kind && choice.target.id === selected.id)
+        ?? catalog.entries.find(choice => choice.target.kind === 'agent' && choice.target.id === 'default')
+        ?? catalog.entries.find(choice => choice.target.kind === 'agent');
+    return choice ? {kind: choice.target.kind, id: JSON.stringify(choice.target)} : undefined;
+}
+
 async function prepareRequest(input: AiChatSubmitRequest, operation: Pending, association: Association | undefined,
     options: Parameters<EditorFactory>[1], services: ApplicationServices, backend: ApplicationBackend,
     prepare: NonNullable<AppUI['prepareChatSubmission']>, documentText?: string): Promise<SubmissionRequest> {

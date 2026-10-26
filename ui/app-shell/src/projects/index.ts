@@ -1,3 +1,4 @@
+import {t} from '@itookit/common';
 import type { ApplicationServices } from '@itookit/app-contracts/services';
 import type { AppUI } from '../types';
 import { showMemoryDialog } from '../files/memory-dialog';
@@ -21,7 +22,12 @@ export function createProjectModule(options: ProjectModuleOptions): WorkspaceMod
         prepareSession: services.prepareSession,
         projects: services.projects, digitalTwin: services.digitalTwin, projectSync: services.projectSync,
         agents: {resourceId: id => services.agentService.getAgentResourceId?.(id), usage: options.executorUsage,
-            read: id => services.agentService.getAgentConfig(id), createEditor: options.agentFactory},
+            read: id => services.agentService.getAgentConfig(id), createEditor: options.agentFactory,
+            rename: async (id, name) => {
+                const agent = await services.agentService.getAgentConfig(id);
+                if (!agent) throw new Error(t('toolbox.unavailable'));
+                await services.agentService.saveAgent({...agent, name});
+            }, remove: id => services.agentService.deleteAgent(id)},
         manageTwin: services.digitalTwin ? async id => { await options.hostContext?.navigate({ target: 'twin', resourceId: '/overview/' + encodeURIComponent(id) }); } : undefined,
         manageMemory: async (id, signal) => showMemoryDialog(await sessionManager.memory.forSession(id), await sessionManager.getAvailableAgents(), signal),
         flows: { fs: services.flowEngine.engine, menu: options.createFlowContextMenu({ commands: services.commandBus,

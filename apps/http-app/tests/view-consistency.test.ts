@@ -66,7 +66,7 @@ it('reclaims disposed resource graphs without revoking a shared filesystem', asy
 });
 it('refreshes a conversation snapshot after a poll without a domain event', async () => {
     let state = 'before';
-    const { root } = await pair({ snapshot: () => ({ state }), respond: async () => {}, refresh: async () => { state = 'after'; return { state }; } });
+    const { root } = await pair({ snapshot: () => ({ state }), subscribe: () => () => {}, respond: async () => {}, refresh: async () => { state = 'after'; return { state }; } });
     expect(root.snapshot()).toEqual({ state: 'before' });
     await root.refresh(); expect(root.snapshot()).toEqual({ state: 'after' });
 });
@@ -74,7 +74,7 @@ it('refreshes a conversation snapshot after a poll without a domain event', asyn
 it('transports a native command catalog and refreshes its snapshot after a command receipt', async () => {
     const catalog = [{name: 'compact', description: 'Compact', kind: 'action'}];
     let messages: unknown[] = [];
-    const {root} = await pair({snapshot: () => ({messages}), respond: async () => {}, commands: async () => catalog,
+    const {root} = await pair({snapshot: () => ({messages}), subscribe: () => () => {}, respond: async () => {}, commands: async () => catalog,
         command: async (name: string, args: string) => {
             messages = [{id: 'native-command', role: 'system', text: name + ':' + args}]; return {messages};
         }});
@@ -85,7 +85,7 @@ it('transports a native command catalog and refreshes its snapshot after a comma
 it('transports native model metadata and preserves the per-submission selection', async () => {
     const catalog = {models: [{id: 'native', label: 'Native', reasoningEfforts: [{id: 'high', label: 'High'}]}]};
     const send = vi.fn(async () => ({messages: []}));
-    const {root} = await pair({snapshot: () => ({messages: [], supportsModels: true}), respond: async () => {}, models: async () => catalog, send});
+    const {root} = await pair({snapshot: () => ({messages: [], supportsModels: true}), subscribe: () => () => {}, respond: async () => {}, models: async () => catalog, send});
     expect(await root.models()).toEqual(catalog);
     await root.send('Prompt', [], {modelId: 'native', reasoningEffort: 'high'});
     expect(send).toHaveBeenCalledExactlyOnceWith('Prompt', [], {modelId: 'native', reasoningEffort: 'high'});
@@ -93,7 +93,7 @@ it('transports native model metadata and preserves the per-submission selection'
 
 it('preserves original command input independently of its parsed arguments over RPC', async () => {
     const command = vi.fn(async () => ({messages: []}));
-    const {root} = await pair({snapshot: () => ({messages: []}), respond: async () => {}, command});
+    const {root} = await pair({snapshot: () => ({messages: []}), subscribe: () => () => {}, respond: async () => {}, command});
     await root.command('verify', 'src', {modelId: 'native'}, '  /verify src\n');
     expect(command).toHaveBeenCalledExactlyOnceWith('verify', 'src', {modelId: 'native'}, '  /verify src\n');
 });

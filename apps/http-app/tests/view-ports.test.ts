@@ -21,6 +21,19 @@ async function setup(providerAuthorization?: ProviderAuthorizationHost) {
     return { root, server, client, runtime };
 }
 describe('full application view ports', () => {
+    it('exports disposal for owned attachment views and keeps the repository alive after release', async () => {
+        const {root, runtime} = await setup();
+        const sessionId = await runtime.sessionRepository.createSession('Owned attachments');
+        const local = await runtime.sessionRepository.openAttachments(sessionId), dispose = vi.spyOn(local, 'dispose');
+        vi.spyOn(runtime.sessionRepository, 'openAttachments').mockResolvedValueOnce(local);
+        const assets = await root.services.sessionRepository.openAttachments(sessionId);
+        expect(typeof assets.dispose).toBe('function'); expect(typeof assets.openFile).toBe('function');
+        await assets.driver.createFile({parentPath: '/', name: 'image.png', content: 'fixture'});
+        expect(await assets.driver.readContent('/image.png', {encoding: 'utf-8'})).toBe('fixture');
+        await assets.dispose(); expect(dispose).toHaveBeenCalledOnce();
+        await expect(assets.capabilitiesAt('/')).rejects.toMatchObject({code: 'ECAPABILITY'});
+        expect((await root.services.sessionRepository.getManifest(sessionId)).id).toBe(sessionId);
+    });
     it('preserves draft UUIDs over RPC and returns the replacement identity after clearing', async () => {
         const {root, runtime} = await setup(), projects = root.services.projects;
         const project = await projects.personal(), folder = await projects.sessionFolder(project);

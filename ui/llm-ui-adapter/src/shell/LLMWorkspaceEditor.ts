@@ -215,7 +215,6 @@ export class LLMWorkspaceEditor implements IEditor {
     private connectionOptions?: ReturnType<typeof acquireConnectionOptions>;
     private refreshAgentsTimer: ReturnType<typeof setTimeout> | null = null;
     private titleInput!: HTMLInputElement;
-    private inputReceiver?: HTMLElement;
     private currentTitle: string = 'New Chat';
     private currentSessionId: string | null = null;
     private isBeingDeleted = false;
@@ -510,7 +509,7 @@ export class LLMWorkspaceEditor implements IEditor {
         this.chatInput = this.options.handoff ? bindWorkspaceInput(inputOptions, this.options.handoff) : new ChatInput(inputEl, inputOptions);
         this.chatInput.setAvailability?.({canSend: false, canInterrupt: false});
 
-        this.inputReceiver = mountSessionInputActions(inputEl, session.manifest, async () => {
+        mountSessionInputActions(inputEl, async () => {
             try { await this.startFlowInvocation(''); }
             catch (error) { this.errorHandler.handle(error, 'Invoke flow'); }
         });
@@ -838,7 +837,6 @@ export class LLMWorkspaceEditor implements IEditor {
 
     private async handleTitleChange(title: string): Promise<void> {
         this.currentTitle = title;
-        if (this.inputReceiver) this.inputReceiver.textContent = t('project.currentConversation', {name: title});
         this.emit('change', undefined);
         if (this.options.sessionId) {
             await this.errorHandler.wrap(
@@ -944,7 +942,6 @@ export class LLMWorkspaceEditor implements IEditor {
         if (this.currentSessionId && this.currentSessionId !== sessionId) await this.runAttachment?.detach();
         this.currentSessionId = sessionId;
         this.currentTitle = title;
-        if (this.inputReceiver) this.inputReceiver.textContent = t('project.currentConversation', {name: title});
 
         // Check if this session was interrupted (VFS meta.status === 'running')
         promptInterruptedRun(snapshot, (interruptedAssistantId) => {
@@ -1148,7 +1145,6 @@ export class LLMWorkspaceEditor implements IEditor {
 
     setTitle(title: string): void {
         this.currentTitle = title;
-        if (this.inputReceiver) this.inputReceiver.textContent = t('project.currentConversation', {name: title});
         if (this.titleInput) this.titleInput.value = title;
     }
 

@@ -1,4 +1,4 @@
-import { randomUUID } from '@itookit/common';
+import { createModuleLogger, randomUUID } from '@itookit/common';
 import type { ChatMessage, ConversationSnapshot, ConversationSource } from '@itookit/llm-ui';
 
 /** Preserve unchanged message identities while converting mutable domain projections. */
@@ -20,10 +20,21 @@ export class ChatProjection implements ConversationSource {
             conversationId: this.conversationId, viewId: this.snapshot.viewId, revision: this.snapshot.revision + 1 };
         for (const listener of this.listeners) { try { listener(); } catch (error) { this.report(error); } }
     }
+    private reportOutcome(message: ChatMessage): void {
+        const started = Date.now();
+        try {const detail = {operationId: randomUUID(), conversationId: this.conversationId,
+            viewId: this.snapshot.viewId, messageId: message.id, stage: 'terminal',
+            outcome: message.state, partCount: message.parts.length, durationMs: Date.now() - started};
+            const log = createModuleLogger('chat-projection');
+            if (message.state === 'failed') log.warn('chat.message.project', detail); else log.info('chat.message.project', detail);}
+        catch { /* Diagnostics cannot interrupt authoritative message projection. */ }
+    }
     private message(message: ChatMessage): ChatMessage {
         const encoded = JSON.stringify({ ...message, revision: 0 }), previous = this.messages.get(message.id);
         if (previous?.encoded === encoded) return previous.message;
         const next = structuredClone({ ...message, revision: (previous?.message.revision ?? -1) + 1 });
-        this.messages.set(message.id, { encoded, message: next }); return next;
+        this.messages.set(message.id, { encoded, message: next });
+        if (previous?.message.state !== next.state && ['failed', 'cancelled'].includes(next.state)) this.reportOutcome(next);
+        return next;
     }
 }

@@ -1,3 +1,4 @@
+import {messageState, toolState} from './message-state';
 import {verifyInputContext} from '../services/verify-input-context';
 import {SessionContextPicker} from './session-context';
 import {prepareInputContextDraft} from '../domain/context-draft';
@@ -353,7 +354,7 @@ function projectGroup(group: SessionGroup, ledger: OperationLedger, confirmed: R
     for (const [index, file] of (group.files ?? []).entries()) parts.push({ id: `attachment-${index}`, kind: 'attachment',
         file: { id: file.path ?? file.name, name: file.name, mimeType: file.type } });
     return { id: group.id, revision: 0, role: group.role, parts, timestamp: group.timestamp,
-        state: group.executionRoot?.status === 'running' ? 'streaming' as const : 'complete' as const,
+        state: messageState(group.executionRoot?.status),
         submissionId: operation?.context.operationId,
         acceptance: operation && !confirmed.has(operation.context.operationId) ? 'optimistic' as const : 'confirmed' as const };
 }
@@ -362,10 +363,11 @@ function projectNode(node?: ExecutionNode): MessagePart[] {
     const parts: MessagePart[] = [];
     if (node.executorType === 'tool') parts.push({ id: node.id, kind: 'tool', name: node.name,
         summary: node.data.toolCall?.name ?? node.name, detail: node.data.error ?? node.data.output,
-        state: node.status === 'running' ? 'running' : node.status === 'failed' ? 'failed' : 'succeeded' });
+        state: toolState(node.status) });
     else {
         if (node.data.thought) parts.push({ id: `${node.id}-thought`, kind: 'reasoning', text: node.data.thought });
         if (node.data.output) parts.push({ id: node.id, kind: 'markdown', text: node.data.output });
+        if (node.data.error) parts.push({id: `${node.id}-error`, kind: 'markdown', text: node.data.error});
     }
     return [...parts, ...(node.children ?? []).flatMap(projectNode)];
 }

@@ -27,6 +27,8 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly prepareAttachments?: (input: ChatSubmission, operationId: string) => Promise<NonNullable<SubmissionRequest['attachments']>>;
+    readonly executionOverrides?: (input: ChatSubmission) => SubmissionRequest['overrides'];
     readonly kernel?: import('@itookit/durable-kernel/contracts').EditorTaskControlPlane;
     readonly readOnly?: boolean;
     readonly instructionQueue?: boolean;
@@ -89,7 +91,7 @@ class SessionChatBinding {
         this.actions = { send: (input, context) => this.send(input, context), reconcile: id => this.reconcile(id) };
         if (options.kernel) {
             this.execution = new SessionExecution(options.kernel, this.sessionId, () => options.session.getSessions(),
-                () => this.current(), () => this.publish(), error => options.onError?.(error));
+                () => this.current() && !options.readOnly, () => this.publish(), error => options.onError?.(error));
             const allowed = (context: OperationContext) => !options.readOnly && this.active && this.current() && context.viewId === this.source.getSnapshot().viewId;
             this.actions.cancel = (ref, context) => allowed(context) ? this.execution!.cancel(ref, context) : Promise.resolve(rejected(context, 'STALE_VIEW', 'Execution control unavailable'));
             this.actions.respond = (input, context) => allowed(context) ? this.execution!.respond(input, context) : Promise.resolve(rejected(context, 'STALE_VIEW', 'Interaction control unavailable'));
@@ -117,7 +119,10 @@ class SessionChatBinding {
             if (input.context !== undefined && (!this.options.contextSelection || !input.target))
                 throw Object.assign(new Error('Context selection requires a published target and host support'), {code: 'CONTEXT_SELECTION_UNAVAILABLE'});
             if (!input?.target) return ledger.register(record);
-            const frozen = {...input, sessionRequest: this.targetRequest(input, record.context.operationId),
+            const request = this.targetRequest(input, record.context.operationId);
+            if (this.options.prepareAttachments) request.attachments = await this.options.prepareAttachments(input, record.context.operationId);
+            if (!this.current() || this.options.readOnly) throw Object.assign(new Error('Session binding changed while preparing input'), {code: 'STALE_VIEW'});
+            const frozen = {...input, sessionRequest: request,
                 ...(independent ? {independentTitle: input.target.id} : {})};
             const captured = JSON.parse(JSON.stringify(frozen));
             if (!ledger.getSnapshot().some(item => item.context.operationId === record.context.operationId))
@@ -134,7 +139,7 @@ class SessionChatBinding {
         if (!this.current()) {
             this.presentation?.setActive(false);
             if (!this.closed) this.source.publish({...this.source.getSnapshot(), allowed: [], interactions: [],
-                error: {code: 'STALE_VIEW', message: t('chat.submission.unconfirmed')}});
+                error: {code: 'STALE_VIEW', message: t('callable.submission.unavailable')}});
             return;
         }
         this.observeQueue(this.options.session.getSnapshot?.().instructionQueue);
@@ -277,7 +282,7 @@ class SessionChatBinding {
             values: structuredClone(input.input?.values ?? {})} as FlowCallSource;
         return {expectedSessionId: this.sessionId, expectedBranch: this.branch, target: {kind: target.kind, id: target.id, version: target.version}, expectedTarget: {...target}, source,
             attachments: input.attachments.map(file => ({name: file.name, type: file.mimeType ?? '', path: file.id})),
-            ...(input.input || context ? {overrides: {...(context ? {harnessConversation: context.selection} : {}),
+            ...(input.input || context || this.options.executionOverrides ? {overrides: {...this.options.executionOverrides?.(input), ...(context ? {harnessConversation: context.selection} : {}),
                 ...(input.input ? {flowExpectedSignature: {...input.input.signature,
                     id: input.input.signature.id as import('@itookit/llm-flow/contracts').FlowId}} : {})}} : {}), submission: this.submission(operationId)};
     }

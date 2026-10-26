@@ -1,4 +1,4 @@
-import {createModuleLogger, getLocale, t} from '@itookit/common';
+import {createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
 import {BaseSettingsEditor, Toast, type ConversationControls, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common';
 import type {ChatView, OperationReceipt} from '@itookit/llm-ui';
 import {createNativeChatBinding, createNativeChatView} from '../independent/native';
@@ -83,7 +83,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
         if (this.closed) return;
         const code = (error as {code?: string})?.code;
         log.warn('chat.editor', {stage: 'view', result: 'failure', code: code && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CHAT_VIEW_FAILED'});
-        Toast.error(error instanceof Error ? error.message : String(error)); this.emit('error', error);
+        Toast.error(escapeHTML(error instanceof Error ? error.message : String(error))); this.emit('error', error);
     }
     getText(): string {return this.service.snapshot?.()?.messages.map(message => message.text).join('\n\n') ?? '';}
     setText(text: string): void {this.view?.setText(text);}

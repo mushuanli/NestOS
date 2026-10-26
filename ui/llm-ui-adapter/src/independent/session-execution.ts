@@ -31,12 +31,12 @@ export class SessionExecution {
         return this.reading ??= this.read().finally(() => {this.reading = undefined;});
     }
     private async read(): Promise<void> {
-        clearTimeout(this.timer);
+        clearTimeout(this.timer); const started = Date.now();
         try {
             const tasks = await this.kernel.listSessionTasks(this.sessionId);
             if (!this.usable()) return;
             this.tasks = tasks.filter(task => this.owns(task)); this.changed();
-        } catch (error) {if (this.usable()) {trace('observe', '', Date.now(), error); this.failed(error);}}
+        } catch (error) {if (this.usable()) {trace('observe', '', started, error); this.failed(error);}}
         finally {if (this.usable() && this.tasks.some(task => !terminal(task))) this.timer = setTimeout(() => {void this.refresh();}, 1500);}
     }
     async cancel(executionRef: string, context: OperationContext): Promise<OperationReceipt> {
@@ -56,6 +56,8 @@ export class SessionExecution {
             if (!this.usable() || !this.owns(task) || terminal(task) || request?.status !== 'pending' || request.requestedAt !== input.revision)
                 throw Object.assign(new Error('Interaction changed; refresh before answering'), {code: 'STALE_INTERACTION'});
             if (request.kind !== input.response.kind) throw new Error('Interaction response kind differs');
+            if (input.response.kind === 'approval' && !['approved', 'rejected'].includes(input.response.decisionId))
+                throw new Error('Unknown approval decision');
             const payload = payloadOf(request), fields = agentQuestionFields(payload.questions);
             const value: JsonValue = input.response.kind === 'approval'
                 ? {approved: input.response.decisionId === 'approved', ...(input.response.note ? {note: input.response.note} : {})}

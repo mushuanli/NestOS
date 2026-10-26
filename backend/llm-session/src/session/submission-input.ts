@@ -17,7 +17,7 @@ export function submissionInstruction(request: SubmissionRequest): SessionInstru
     validateAttachments(request.attachments);
     const execution: SendIntent['execution'] = target.kind === 'flow'
         ? {kind: 'flow', flowId: target.id as FlowRevision['id'], revision: flowTargetRevision(target)} : createAgentSendIntent(target.id).execution;
-    return {target, expectedBranch: request.expectedBranch, expectedTarget: structuredClone(request.expectedTarget), source, text: source.kind === 'composer' ? source.text : request.presentation?.text ?? '', files: structuredClone(request.attachments ?? []),
+    return {...(request.branchFrom ? {branchFrom: structuredClone(request.branchFrom)} : {}), target, expectedBranch: request.expectedBranch, expectedTarget: structuredClone(request.expectedTarget), source, text: source.kind === 'composer' ? source.text : request.presentation?.text ?? '', files: structuredClone(request.attachments ?? []),
         agentId: target.kind === 'agent' ? target.id : '', overrides: structuredClone(request.overrides),
         origin: request.origin, historyPolicy: request.historyPolicy,
         sendIntent: {branch: {mode: request.overrides?.branchMode ?? 'continue', baseRoundId: request.overrides?.baseRoundId,

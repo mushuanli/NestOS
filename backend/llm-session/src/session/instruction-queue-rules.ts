@@ -21,7 +21,7 @@ export function prepareInstruction(input: SessionInstructionInput, sessionId: st
     if (!/^[\w-]{1,128}$/.test(id)) throw queueError('QUEUE_INVALID', 'Invalid instruction identity');
     const files = input.files.map(attachmentMetadata);
     const intent = input.sendIntent ?? { execution: { kind: 'agent', agentId: input.agentId }, branch: { mode: 'continue' }, retention: { mode: 'persistent' } };
-    const value = { text: input.text, agentId: input.agentId, overrides: input.overrides, origin: input.origin,
+    const value = { ...(input.branchFrom ? {branchFrom: structuredClone(input.branchFrom)} : {}), text: input.text, agentId: input.agentId, overrides: input.overrides, origin: input.origin,
         ...(input.expectedBranch !== undefined ? {expectedBranch: input.expectedBranch} : {}),
         ...(input.target ? {target: input.target} : {}), ...(input.expectedTarget ? {expectedTarget: input.expectedTarget} : {}), ...(input.source ? {source: input.source} : {}),
         historyPolicy: input.historyPolicy, files, sendIntent: { ...intent, submission: intent.submission ?? {
@@ -127,6 +127,7 @@ function signature(item: SessionInstruction, includeBinding = true): string {
     const owner = source?.kind === 'project-draft' ? source : source ? { kind: source.kind, ownerId: source.ownerId } : null;
     const values = [item.branch, item.agentId, item.overrides ?? null, item.origin ?? 'user', item.historyPolicy ?? 'include', intent, owner];
     if (item.expectedBranch !== undefined) values.push(['expectedBranch', item.expectedBranch]);
+    if (item.branchFrom) values.push(['branchFrom', item.branchFrom]);
     if (item.target) values.push(['target', item.target]);
     if (item.expectedTarget) values.push(['expectedTarget', item.expectedTarget]);
     if (item.source) values.push(['source', includeBinding && item.source.kind === 'composer' ? {...item.source, text: ''} : item.source]);

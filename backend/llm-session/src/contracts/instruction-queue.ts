@@ -4,6 +4,7 @@ import type { SendIntent } from '@itookit/llm-flow/contracts';
 
 /** A durable user request; execution history is resolved only when it is dispatched. */
 export interface SessionInstructionInput {
+    branchFrom?: import('./submission').SubmissionRequest['branchFrom'];
     expectedBranch?: string;
     target?: import('@itookit/llm-flow/contracts').TargetSelection;
     expectedTarget?: import('@itookit/llm-flow/contracts').TargetRef;

@@ -1765,7 +1765,7 @@ C4Dynamic
 |---|---|---|
 | P1 | 升级前遗留调用的历史核对与结算 | 第 77 节已实现已接纳纯文本队首的有据结算；运行端仍待更新并验证旧项，其他恢复范围继续待办 |
 | P1 | 严格原生 continue | 当前 validateExecutionContext 明确拒绝并返回 CONTEXT_NATIVE_WRITE_UNSUPPORTED；binding CAS 不足以防远端外部写入 |
-| P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 第 80 节补齐原子会话创建完成事实和只读核对；受管 Effect 的所有者、取消及物理收尾仍需接通，同 Session 聚合不冒充跨 Session 停止 |
+| P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 第 80–82 节补齐创建回执、提交准入接点及等待时的工作额度释放；受管 Effect 的所有者、取消及物理收尾仍需接通，同 Session 聚合不冒充跨 Session 停止 |
 | P1 | 裸 Task 的独立子 Session 调用入口 | 已有根选择为 Agent/Flow，尚无等价 Task 调用准入与路由闭环 |
 | P2 | Codex/Claude 真实运行及恢复验收 | 第 78 节 Codex 顺序发送、查询和取消已通过；Claude 查询/实际取消可用，真实提交仍有未知回执，源码修复待部署复验；重启恢复另列 |
 | P2 | 无人值守、工作区/记忆隔离、历史与资产长期生命周期 | 继续按第 5 节完成明确策略和故障组合验收 |
@@ -1910,3 +1910,31 @@ C4Dynamic
 日志沿用 call.independent，细分 receipt、attachments、admission-guard、dispatch；日志异常不覆盖持久接纳或原失败。未增加命令、package、调度器、业务参数或新的存储记录。
 
 验证使用真实 Kernel、Session 存储及队列回执：父 Effect 在子会话准备期间暂停/取消，旧 setIfRunning 不能保存派发意图且不提交子执行；派发意图先于取消时，迟到接纳仍可发生，清理失败保留 cleanupPending。另覆盖 held 后原子身份复用、重开后的原接纳优先、检查期间并发接纳、丢回执、未知后 held、附件准备失败、输入副本隔离、RPC 注入拒绝及诊断异常。该切片只完成受管准入接点，完整 Effect 的 journal、恢复观察、结果映射、精准取消与物理收尾仍为 P1，未部署，不将跨 Session 控制标为完成。
+
+## 82. 受管调用的等待不能占尽子执行额度
+
+审查受管 Effect 时发现进程内额度死锁：所有 Session 共用 maxConcurrentEffects；若父 Effect 在整个子调用期间占用工作额度，额度为 1 时子 Effect 永远不能启动，多层嵌套或并发父调用也可能耗尽默认额度。不能靠提高并发数解决，更不能在子接纳时提前完成父 Effect，否则取消会失去仍在执行的责任。
+
+Kernel 增加可选 EffectExecutionContext.waitForObservation(read)，只在已有操作的只读等待期间让出工作额度，结果或错误返回前重新取得额度。等待中的 Effect 保持原 leased 身份、心跳、deadline 与实际停止/清理语义，仍计入 waitIdle/drain；工作额度与在途生命周期计数分开。恢复者按队列先于新派发取得可用额度。该队列仅是进程内的额度等待者，不是业务调度器或持久任务队列；没有新增存储记录、执行状态、package 或重试策略。
+
+```mermaid
+C4Dynamic
+  title 让出工作额度，保留受管调用责任
+  Component(parent, "父 Effect", "持久执行所有者")
+  Component(slots, "EffectWorkSlots", "Kernel 私有额度机制")
+  Component(kernel, "原 Kernel 执行器", "原领取和派发")
+  Component(child, "子 Session Effect", "实际子执行")
+  Component(journal, "原 Task 与 Effect 记录", "租约、取消与清理事实")
+  RelIndex(1, parent, slots, "只读观察前让出额度")
+  RelIndex(2, parent, journal, "持续保有原身份、心跳及收尾责任")
+  RelIndex(3, kernel, slots, "领取可用工作额度")
+  RelIndex(4, kernel, child, "派发子执行")
+  RelIndex(5, child, parent, "原执行完成事实供观察")
+  RelIndex(6, parent, slots, "重新取得额度后才返回观察结果")
+```
+
+观察回调只能读取、等待已有执行，不能提交任务或发送业务指令，须遵守传入 AbortSignal 并释放观察资源；Kernel 中断等待不证明任意不合作回调已物理退出。重叠观察拒绝，取消后排队恢复不能执行继续代码，迟到完成不能泄漏额度。重新取得额度不提供续接授权，新副作用仍经过第 81 节的 setIfRunning 接点。取消清理上下文本身不申请工作额度。宿主缺少该能力时，受管适配器不能静默退回占用额度等待。
+
+旧基线的四 Session 嵌套调用在单额度下真实超时；新增接口后完成，工作阶段最大并发仍为 1。验证同时覆盖观察错误后恢复额度、排队恢复时取消/关闭、迟到观察、重复关闭、零额度、心跳持续、清理未确认、原 journal 重启核对且 execute 不重放、worker drain 阻塞与完成、日志错误分类和诊断异常。该机制为受管 Effect 的必要前置项；跨 Session 的实际所有权、取消传播、结构化结果与宿主接线仍沿 P1 实施，不据此标记整体完成或已部署。
+
+Kernel 库提交 f511d82：413 项单元测试、52 项真实进程集成测试、生产及新增测试的类型检查通过。独立包构建/安装验证覆盖 ESM 与 CJS 实际单额度跨 Session 等待，以及 NodeNext 两种声明消费；只读观察接口为可选能力，旧适配器继续沿原执行路径。

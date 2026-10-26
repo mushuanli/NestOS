@@ -158,7 +158,7 @@ class Kernel implements KernelRegistration {
 }
 ```
 
-**`KernelOptions`**：`catalog`（目录 fs，`rootPath` 默认 `/.config/kernel`）、`maxConcurrent` / `maxConcurrentEffects`（并发上限，均默认 4）、`leaseMs`（租约时长，默认 30s）、`effectCleanupTimeoutMs`（Effect 清理等待上限，默认 30s，整数范围 1–2147483647ms）、`pollMs`（兼容轮询间隔，默认 0）、`rescanMs`（安全补扫默认 1000ms，批量读取水位而非空闲全扫 Task；关闭时必须提供 wakeSource）、`workerId`（可选）、`onDiagnostic`（非敏感操作/阶段/分类/耗时观察回调）。并发上限属于单个 Kernel 实例。
+**`KernelOptions`**：`catalog`（目录 fs，`rootPath` 默认 `/.config/kernel`）、`maxConcurrent` / `maxConcurrentEffects`（Reducer / Effect 工作并发上限，均默认 4；显式只读观察可暂时让出 Effect 工作额度）、`leaseMs`（租约时长，默认 30s）、`effectCleanupTimeoutMs`（Effect 清理等待上限，默认 30s，整数范围 1–2147483647ms）、`pollMs`（兼容轮询间隔，默认 0）、`rescanMs`（安全补扫默认 1000ms，批量读取水位而非空闲全扫 Task；关闭时必须提供 wakeSource）、`workerId`（可选）、`onDiagnostic`（非敏感操作/阶段/分类/耗时观察回调）。并发上限属于单个 Kernel 实例。
 
 **`KernelChangeReason = 'structure' | 'content'`**：`onChanged` 通知的成因。`structure` 表示 Task/Session 被创建、删除或状态变化（列表视图需重读）；`content` 表示 Task 内容推进（流式增量、日志、共享状态、context 提交）而列表成员未变，每秒可能触发多次，消费者不应据此重渲染。
 
@@ -855,6 +855,8 @@ interrupt 保存 pending + cleanupPending 以及 lost attempt，再 abort / canc
 `withdrawPause({requestId, expectedEpoch})` 仅撤销指定版本的未确认 pause，不放宽 resume。它拒绝 interrupt、终态、已确认暂停及树内 cleanupPending，保留 Session、祖先和子节点自身 hold，不取消、核对或重派发原 Effect。长活 Effect 的 `sessionState.setIfRunning(key,value,expectedVersion?)` 与控制在同一事务校验 claim 及暂停屏障；受阻时返回 undefined 且不写，普通 set 仍可保存观察和结算。撤销记录使用 `task.control.withdraw-pause` 事件及独立请求身份。
 
 Task wait 默认等逻辑 exit，until: settled 等清理；waitStopped 等控制停止确认。Task watch 默认 settled，Session watch 在 closed / archived 后结束；dispose 结束流并拒绝未完成的等待，恢复后重新附加句柄。readEvents 使用有界 sequence 页；snapshot 与 asOfSequence 提供原子重同步边界。核心签名和错误分类以随包提供的[接口参考](../libraries/durable-kernel/docs/api.md)为准。
+
+Effect 的可选 `context.waitForObservation(read)` 在只读等待期间让出本实例工作额度，成功和失败都先重新取得额度再返回，避免单额度下父 Effect 等子 Effect 的死锁。原 Effect 仍保持 leased、心跳、deadline 和取消/清理责任；waitIdle/drain 不将它当作空闲。回调接收 AbortSignal，只能观察已有操作并应释放订阅；返回不授予新执行权限，后续副作用仍须 setIfRunning 与当前授权。恢复继续原 journal 的 reconcile，不保存 Promise 或重建原业务调用。具体限制见独立库接口。
 
 
 ## 独立库新增运行契约

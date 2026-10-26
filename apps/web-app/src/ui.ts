@@ -16,6 +16,7 @@ function lazyEditorFactory(load: () => Promise<EditorFactory>): EditorFactory {
 
 export function createBrowserUI(library: Parameters<typeof restoreFlowLibrary>[1]): AppUI {
     return {
+        prepareChatSubmission: async options => (await import('@itookit/llm-ui-adapter/independent')).prepareSessionChatRequest(options),
         createChatEditor: (service, deps) => lazyEditorFactory(async () =>
             (await loadChatEditor()).createLLMFactory(service, deps)),
         createAgentEditor: (service, capabilities) => lazyEditorFactory(async () =>

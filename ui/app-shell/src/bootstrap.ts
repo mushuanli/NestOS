@@ -44,7 +44,8 @@ import { installMobileViewport } from './navigation/mobile-viewport';
 import { installMobileShellState } from './navigation/mobile-shell-state';
 
 import { AppOptions, AppHandle, WorkspaceConfig } from './types';
-import { lazyMdxEditorFactory as defaultEditorFactory } from './browser/lazy-mdx';
+import {createDocumentChatFactory} from './browser/document-chat';
+import { lazyMdxEditorFactory as baseEditorFactory } from './browser/lazy-mdx';
 import { FILE_REGISTRY, EditorTypeKey } from './config/file-registry';
 import { themeService, ThemeMode } from './ThemeService';
 
@@ -124,6 +125,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     logStep('初始化界面服务…');
     await themeReady;
 
+    const defaultEditorFactory = createDocumentChatFactory(baseEditorFactory, services, backend, options.ui.prepareChatSubmission, request => handleNavigationRequest(request));
     const chatFromFile = createFileChatHandler(backend, request => handleNavigationRequest(request));
     const ocr = createOcrControls(() => backend.ocr(), agentService, request => handleNavigationRequest(request));
     cleanupFns.push(() => ocr.dispose());

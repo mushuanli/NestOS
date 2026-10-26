@@ -1024,7 +1024,7 @@ export class SessionWorkbench implements WorkspaceController {
                             previewCleanup = this.showBinary(mount, target.path, bytes);
                         } else {
                             const readOnly = (await context.context.fs.capabilitiesAt(target.path)).readonly;
-                            editor = await load.read(async () => editor = await createRecoverableFileEditor(this.fileFactory, mount!, { ...fileContentFormat(target.path), target: { kind: 'file', path: target.path }, files: context.context,
+                            editor = await load.read(async () => editor = await createRecoverableFileEditor(this.fileFactory, mount!, { ...fileContentFormat(target.path), target: { kind: 'file', path: target.path, sessionId: target.sessionId }, files: context.context,
                                 mountWindowList: container => this.tabs.mountWindowList(container),
                                 initialContent: content, signal: load.signal, title: target.path.split('/').pop(), readOnly,
                                 hostContext: { chatFromFile: this.hostContext?.chatFromFile
@@ -1538,7 +1538,8 @@ export class SessionWorkbench implements WorkspaceController {
         const project = await this.projects.forFolder(target.folder); load.check();
         const opened = await openProjectFileEditor(this.projects, target, load, {
             mountWindowList: container => this.tabs.mountWindowList(container),
-            factory: this.fileFactory, recoveryScope: 'project:' + (project?.project.id ?? target.folder), mount: () => this.editorMount(target.folder),
+            factory: (mount, options) => this.fileFactory(mount, {...options, defaultPluginOptions: {...options.defaultPluginOptions,
+                'interaction:ai-chat': {association: {projectFolder: target.folder}}}}), recoveryScope: 'project:' + (project?.project.id ?? target.folder), mount: () => this.editorMount(target.folder),
             showBinary: (mount, path, bytes) => this.showBinary(mount, path, bytes),
             deferCleanup: cleanup => this.finishReads(cleanup),
             changed: () => this.refresh(),

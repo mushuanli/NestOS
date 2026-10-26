@@ -269,6 +269,7 @@ async function bootstrap(): Promise<void> {
     // 3. Hand off to app-shell
     // Session Bash runs through the platform directory-grant namespace.
     const ui: AppUI = {
+        prepareChatSubmission: async options => (await import('@itookit/llm-ui-adapter/independent')).prepareSessionChatRequest(options),
         createChatEditor: (agents, deps) => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui-adapter/chat')).createLLMFactory(agents, {
                 ...deps, onLoadMetrics: metrics => { void recordDiagnostic('session.load.ready', metrics); },

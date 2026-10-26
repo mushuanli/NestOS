@@ -92,6 +92,9 @@ export interface AIContextMenuNode {
 }
 
 export interface AppUI {
+    prepareChatSubmission?(options: {commands: ICommandBus; agents: IAgentConfigService;
+        choice: import('@itookit/llm-session/contracts').RootCallTarget; request: import('@itookit/llm-session/contracts').SubmissionRequest;
+        files: File[]; assets?: IFileSystem; signal: AbortSignal}): Promise<import('@itookit/llm-session/contracts').SubmissionRequest>;
     restoreFlowLibrary?(commands: ICommandBus): Promise<number>;
     createFlowContextMenu<TNode extends { id: string; type: 'file' | 'directory' }>(deps: {
         commands: ICommandBus;

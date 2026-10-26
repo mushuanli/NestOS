@@ -14,7 +14,7 @@ it('keeps the shared sidebar file and directory creation actions usable', async 
         editorFactory: async () => ({ destroy() {} }) as never });
     try {
         await workbench.start();
-        expect(sidebar.querySelector('.workbench-sidebar__title')?.textContent).toBe('资源浏览 Minds');
+        expect(sidebar.querySelector('.workbench-sidebar__title')?.textContent).toBe('Minds');
         expect(sidebar.querySelector('.vfs-node-list--hide-title')).not.toBeNull();
         const root = sidebar.querySelector<HTMLButtonElement>('[data-action="open-root"]')!;
         expect(root.textContent).toBe('/');

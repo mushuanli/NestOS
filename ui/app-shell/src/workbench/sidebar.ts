@@ -26,13 +26,13 @@ export class WorkbenchSidebar {
         this.snapshot = persistence?.load() ?? {version: 1};
         this.navigation.className = 'workbench-sidebar__navigation'; this.navigation.append(...sidebar.childNodes);
         sidebar.classList.add('workbench-sidebar'); this.header.className = 'workbench-sidebar__header';
-        this.title.className = 'workbench-sidebar__title'; this.title.textContent = [t('workbench.navigation'), navigationLabel].filter(Boolean).join(' ');
+        this.title.className = 'workbench-sidebar__title'; this.title.textContent = navigationLabel ?? t('workbench.projects');
         this.tablist.className = 'workbench-sidebar__views'; this.tablist.setAttribute('role', 'tablist');
         this.tablist.setAttribute('aria-label', t('workbench.sidebarViews')); this.header.append(this.title, this.tablist);
         this.openedHost.className = 'workbench-sidebar__opened-host'; this.openedHost.hidden = true; this.openedHost.append(opened);
         sidebar.append(this.header, this.openedHost, this.resize);
         this.releaseWindowList = mountWindowList?.(this.header);
-        this.addDrawer('navigation', t('workbench.resources'), this.navigation); this.setupResize();
+        this.addDrawer('navigation', t('workbench.projects'), this.navigation); this.setupResize();
     }
     get activeView(): string { return this.views.has(this.snapshot.sidebarView ?? '') ? this.snapshot.sidebarView! : 'navigation'; }
     setViewChanged(listener: (kind: string) => void): void { this.changed = listener; }

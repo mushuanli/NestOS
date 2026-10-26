@@ -1,9 +1,11 @@
+import {presentChatButton} from './button-presentation';
 import {createChatView, type ChatOptions} from '@itookit/llm-ui';
 import {createImageEditingPort, type ImageEditingHost} from './image-editing';
 export type ImageChatOptions = Omit<ChatOptions, 'source' | 'actions' | 'operations'> & {readonly images?: ImageEditingHost};
 
 /** The adapter owns its image port; storage and borrowed processors remain with the host. */
 export async function createImageChatView(container: HTMLElement, options: ChatOptions, images?: ImageEditingHost) {
+    options = {...options, presentButton: options.presentButton ?? presentChatButton};
     if (!images) return createChatView(container, options);
     const lifetime = new AbortController(), port = options.imageEditing ? undefined : createImageEditingPort(images);
     try {

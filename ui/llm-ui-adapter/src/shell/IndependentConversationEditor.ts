@@ -1,5 +1,6 @@
+import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
-import {createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
+import {CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
 import {BaseSettingsEditor, Toast, type ConversationControls, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common';
 import type {ChatView, OperationReceipt} from '@itookit/llm-ui';
 import {createNativeChatBinding, createNativeChatView} from '../independent/native';
@@ -49,7 +50,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
         }
         if (this.options.mountMoreMenu) {
             const menu = document.createElement('details'), summary = document.createElement('summary'), body = document.createElement('div');
-            menu.className = 'llm-chat__host-menu'; summary.textContent = t('chat.toolbar.more'); menu.append(summary, body); root.append(menu);
+            menu.className = 'llm-chat__host-menu'; presentHostControl(summary, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(summary, body); root.append(menu);
             cleanups.push(this.options.mountMoreMenu(body), () => menu.remove());
         }
         this.branches = new RemoteBranches(this.service, this.options, async action => {

@@ -1,5 +1,6 @@
+import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
-import {createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
+import {ACTION_ICONS, CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
 import {BaseSettingsEditor, Toast, type EditorEvent, type EditorEventMap, type EditorEventCallback} from '@itookit/ui-common';
 import type {ChatSubmission, ChatView, ComposerDraft, SelectorView} from '@itookit/llm-ui';
 import {SessionCommand, type RootTargetCatalog, type SubmissionRequest} from '@itookit/llm-session/contracts';
@@ -120,7 +121,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             if (!mount) continue; const slot = document.createElement('div'); slot.className = className;
             if (className) slot.dataset.editorMobileNavigation = 'embedded'; root.append(slot); releases.push(mount(slot), () => slot.remove());
         }
-        if (this.config.hostContext?.toggleSidebar) {const button = document.createElement('button'); button.type = 'button'; button.textContent = t('chat.toolbar.sidebar');
+        if (this.config.hostContext?.toggleSidebar) {const button = document.createElement('button'); button.type = 'button'; presentHostControl(button, t('chat.toolbar.sidebar'), ACTION_ICONS.sidebar);
             button.onclick = () => this.config.hostContext!.toggleSidebar(); root.append(button);}
         const branches = document.createElement('select'); branches.setAttribute('aria-label', t('flow.output.branch')); root.append(branches);
         const refresh = async () => {const manifest = await this.service.getManifest(this.config.sessionId); if (this.closed || !branches.isConnected) return;
@@ -128,7 +129,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         void refresh().catch(error => this.fail(error));
         branches.onchange = () => {void this.switchBranch(branches.value).catch(error => {branches.value = this.branch; this.fail(error);});};
         const menu = document.createElement('details'), label = document.createElement('summary'), body = document.createElement('div');
-        menu.className = 'llm-chat__host-menu'; label.textContent = t('chat.toolbar.more'); menu.append(label, body); root.append(menu);
+        menu.className = 'llm-chat__host-menu'; presentHostControl(label, t('chat.toolbar.more'), CHAT_ICONS.more); menu.append(label, body); root.append(menu);
         if (this.config.mountMoreMenu) releases.push(this.config.mountMoreMenu(body));
         return {destroy: () => releases.forEach(release => release())};
     }

@@ -1,0 +1,56 @@
+/* Keep the standalone view on the existing product theme. */
+.llm-chat.llm-chat {
+    --llm-chat-accent: var(--llm-color-primary);
+    --llm-chat-border: var(--llm-border-color);
+    color: var(--llm-text-primary);
+    background: var(--llm-bg-primary);
+    font-family: var(--llm-font-family);
+}
+.llm-chat .llm-chat__header {
+    min-height: 48px;
+    box-sizing: border-box;
+    background: var(--llm-bg-secondary);
+}
+.llm-chat .llm-workspace-titlebar__btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: var(--llm-radius-md);
+    background: transparent;
+    color: var(--llm-text-secondary);
+    cursor: pointer;
+}
+.llm-chat .llm-workspace-titlebar__btn:hover {
+    background: var(--llm-bg-hover);
+    color: var(--llm-text-primary);
+}
+.llm-chat .llm-workspace-titlebar__btn:disabled { opacity: .4; cursor: not-allowed; }
+.llm-chat .llm-workspace-titlebar__btn svg { width: 18px; height: 18px; pointer-events: none; }
+.llm-chat .llm-input__btn--send {
+    background: var(--llm-color-primary);
+    color: white;
+    border-radius: var(--llm-radius-md);
+}
+.llm-chat .llm-input__btn--send:hover { background: var(--llm-color-primary-hover); color: white; }
+.llm-chat .llm-input__btn--stop { color: var(--llm-color-error); }
+.llm-chat .llm-chat__input {
+    border-color: var(--llm-border-color);
+    background: var(--llm-bg-primary);
+    border-radius: var(--llm-radius-lg);
+}
+.llm-chat .llm-chat__input:focus { outline: none; border-color: var(--llm-color-primary); }
+.llm-chat .llm-chat__host-menu > summary { list-style: none; padding: 0; }
+.llm-chat .llm-chat__host-menu > summary::-webkit-details-marker { display: none; }
+.llm-chat .llm-chat__host-toolbar > select {
+    font: inherit;
+    color: var(--llm-text-secondary);
+    background: var(--llm-bg-primary);
+    border: 1px solid var(--llm-border-color);
+    border-radius: var(--llm-radius-sm);
+    padding: 4px 6px;
+}

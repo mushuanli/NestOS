@@ -1,3 +1,4 @@
+import {prepareBranchSubmission} from './branch-submission';
 import { snapshotDirectAgentPolicy, type ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
 import { restoreFlowHistory } from '../persistence/restore-flow-history';
 import {assertSubmissionBinding, submissionInstruction} from './submission-input';
@@ -466,6 +467,18 @@ export class SessionManager implements ISession, SessionQuery {
         // resolves the same Session the write would target, including a lazy first bind.
         const sessionId = this.registry.ensureBound().sessionId;
         return this.instructions.send({ sessionId, text, files: files ?? [], agentId, overrides, origin, historyPolicy, sendIntent });
+    }
+
+    async prepareBranchSubmission(request: import('../contracts/submission').SubmissionRequest): Promise<import('../contracts/submission').SubmissionRequest> {
+        const {sessionId} = this.registry.ensureBound(), started = Date.now();
+        assertSubmissionBinding(request, sessionId); await this.assertPreparationWritable(sessionId);
+        this.registry.ensureNotGenerating('prepare anchored branch');
+        try {const prepared = await prepareBranchSubmission(this.registry.engine, request);
+            this.host.logger.info('Anchored branch prepared', {operationId: request.submission?.id, sessionId, stage: 'branch-prepare', result: 'success',
+                role: request.branchFrom?.role, userMessageCount: prepared.overrides?.userMessagePrefix?.length ?? 0, durationMs: Date.now() - started});
+            return prepared;
+        } catch (error) {this.host.logger.warn('Anchored branch rejected', {operationId: request.submission?.id, sessionId, stage: 'branch-prepare', result: 'failure',
+            code: (error as {code?: string})?.code ?? 'BRANCH_PREPARATION_FAILED', durationMs: Date.now() - started}); throw error;}
     }
 
     async submit(request: import('../contracts/submission').SubmissionRequest): Promise<string> {

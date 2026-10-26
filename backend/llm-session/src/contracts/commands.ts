@@ -19,6 +19,7 @@ export const SessionCommand = {
     CanEdit: 'session.can-edit',
     Send: 'session.send',
     Submit: 'session.submit',
+    PrepareBranch: 'session.branch.prepare',
     ListTargets: 'session.targets.list',
     HasCommittedSubmission: 'session.submission.committed',
     GetSubmissionReceipt: 'session.submission.receipt',

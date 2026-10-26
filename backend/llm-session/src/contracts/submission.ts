@@ -7,6 +7,8 @@ export type CallAssetValidator = (sessionId: string, value: unknown) => Promise<
 
 /** One caller-owned request; definition snapshots, plans and execution identities are host-owned. */
 export interface SubmissionRequest {
+    /** Explicit message anchor for a host-prepared branch in this same Session. */
+    branchFrom?: {branch: string; roundId: string; role: 'user' | 'assistant'; userIndex?: number};
     expectedSessionId?: string;
     expectedBranch?: string;
     target: TargetSelection;

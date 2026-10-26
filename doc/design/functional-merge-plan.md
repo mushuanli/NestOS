@@ -1763,7 +1763,7 @@ C4Dynamic
 
 | 优先级 | 剩余范围 | 当前证据/限制 |
 |---|---|---|
-| P1 | 升级前遗留调用的历史核对与结算 | 旧验收队列仍有 dispatching 项，已暂停；新请求正常不会自动补齐旧 turn 映射 |
+| P1 | 升级前遗留调用的历史核对与结算 | 第 77 节已实现已接纳纯文本队首的有据结算；运行端仍待更新并验证旧项，其他恢复范围继续待办 |
 | P1 | 严格原生 continue | 当前 validateExecutionContext 明确拒绝并返回 CONTEXT_NATIVE_WRITE_UNSUPPORTED；binding CAS 不足以防远端外部写入 |
 | P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 已实现的聚合/整树停止针对同一执行 Session，独立持久所有者仍需单独协议 |
 | P1 | 裸 Task 的独立子 Session 调用入口 | 已有根选择为 Agent/Flow，尚无等价 Task 调用准入与路由闭环 |
@@ -1772,3 +1772,32 @@ C4Dynamic
 | P2 | 大任务树与复杂结果性能 | 已有有界 UI/RPC 投影，存储仍扫描 Session 任务集合；完整详情、分页读取成本与长期回收未全部验收 |
 
 本轮为真实运行验收及任务状态更新，不修改执行代码，也不自动抹除旧未知记录。取消后的验收队列按原控制事实保持暂停。
+
+
+## 77. 以原生持久边界结算旧已接纳队首
+
+第 76 节遗留项有原已接纳回执，但旧业务 requestId 未关联原生 turn 编号。修复分别放在原生协议适配和通用客户端队列机制：DSH 驱动从同一有界历史页派生终态及可选 submissionEvidence；客户端核对原 Session、原接纳身份和冻结输入 SHA-256，复用既有 turnResults 与队列结算。不增加调度器、状态库、RPC 或 UI 解锁策略。
+
+```mermaid
+C4Dynamic
+  title 从原生历史核对并结算原已接纳调用
+  Component(native, "原生持久历史", "DSH 事件")
+  Component(adapter, "DSH 协议适配器", "mindos-node")
+  Component(client, "HarnessConversation", "通用客户端机制")
+  Component(queue, "HarnessInstructionRuntime", "原队列与原 journal")
+  Component(ui, "llm-ui", "展示与显式核对")
+  RelIndex(1, adapter, native, "只读当前有界历史页，不接管会话")
+  RelIndex(2, adapter, client, "完整连续 turn/start/end 与唯一输入派生终态和提交证据")
+  RelIndex(3, client, queue, "核对原接纳身份、Session、冻结输入摘要")
+  RelIndex(4, ui, client, "核对原 operationId")
+  RelIndex(5, client, queue, "只结算原已接纳队首，原持久机制确认写入")
+  RelIndex(6, queue, ui, "投影原队列结算结果，保留暂停与后续草稿")
+```
+
+证据 version=1 包含 requestId、promptSha256、startSequence、endSequence。缺失起止、事件缺口、替换、多次用户输入或重复原生 turn 不提供单次提交证明。客户端对错误 Session 或畸形声明明确报错；不同输入摘要、多个同 requestId 证据、带附件指令均不结算。同时修复历史刷新跨 turn 继承 lastTurnResult 的缺陷：只能复用同一 turnId 已观察到的结果，不把上一轮完成结果挂到新编号。对应反例在修复前确实误清队首，修复后保留原项；同编号结果缺失时仍可复用已有事实。普通 turn 仍沿用原生终态事件；删除了以 completed 助手内容推测 turn 完成的旧兜底，因为助手块结束不能证明工具循环或资源已停止。
+
+本切片只处理已保留接纳回执、原 turnId 等于 requestId 的旧纯文本指令。未知接纳、附件、多输入或当前页不完整的恢复仍待完成；较早证据可显式 loadEarlier 后重新核对，不自动扫描全历史。reconcile(originalId) 仅允许结算已领取且已接纳的当前队首，不能派发仅已入队但尚未发送的工作，也不能自动推进下一项。结算写入失败保留原领取责任，可重开后重新核对；原队列暂停、接纳回执与下一条草稿均保留。
+
+回归先证实旧实现有两项失败：精确历史不能结算旧项，助手块却会被误判为完成。修复后驱动完整测试 309 通过、1 忽略，类型与 ESM/CJS 构建通过；独立打包消费验证根、harness、sync、authorization 的 ESM/CJS 入口。node 全量测试 389 通过、2 忽略，最终代码的库与 DSH/项目/关闭测试再次通过，格式与离线 release 构建通过。另覆盖跨 Session、重复证据、摘要不符、畸形边界、附件、显式旧页、存储失败恢复及核对不触发首次发送。
+
+实现提交：mindos-node 7a763f9（0.4.2）、mindos-node-driver 9de8447（0.4.1）。运行端仍是第 76 节所验证的 node 0.4.1 与原 httpd；必须更新 node 和消费新驱动的 httpd 后，再对旧验收项进行只读核对与结算。当前不宣称旧线上队首已修复，也不扩大为严格 native continue、跨 Session 受管取消或其他 Harness 的真实恢复验收。

@@ -2340,3 +2340,10 @@ Flow 正式入口提交 `49a87e45`。父卡片补充原 caller 的收尾观察�
 新受管独立调用的 Kernel 终态事件可能先唤醒子会话队列，历史随后才补交。为避免下一轮抢占原空分支，SessionInstructions 在派发前经原 parentSessionId 和 conversation/call 路由核对实际 Kernel 接纳及首轮历史；只有原完整 Round 已提交，或 caller 已确认收尾且没有目标时，才允许该子会话开始下一次执行。尚未提交的准备不冒充执行占用，源 Session 的后台 caller 排除规则继续保留。
 
 历史提交通知显式唤醒原队列，已排队输入继续原身份派发。新增 call.input.ready 的 admission/target-pending/history-pending/history-committed 定位日志，不记录正文或参数，不新增队列或持久状态。按本轮要求未运行验证。
+
+
+## 96. 刚提交即停止仍保存原终态结果
+
+Flow 根已确认终态、标明初始工作区待准备且原工作区记录不存在时，收尾不再按缺失租约报错；该根尚未给节点发布工作区或登记对应占用。诊断 flow.workspace.finalization/not-prepared 保留原根身份，宿主已有的私有目录创建意图核对仍负责中断准备后的残留。
+
+目标恢复和用户停止交错时，call.target.resume 先记录 scheduler 阶段具体失败；若随后读取确认同一真实目标已终态，继续观察原 caller 的资源收尾并保存原历史，不把取消结果丢在后台恢复异常中。非终态目标仍保留原错误，不创建新请求或重新执行。按本轮要求未运行验证。

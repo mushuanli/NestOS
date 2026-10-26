@@ -45,12 +45,19 @@ export class FlowRunLifecycle {
         const state = (await session.getShared(workspaceFinalizationKey(rootTaskId)))?.value as
             WorkspaceFinalization | undefined;
         if (state?.status === 'succeeded') return;
-        const initial = record((await root.status()).task.input).initialScheduler;
+        const input = record((await root.status()).task.input), initial = input.initialScheduler;
         const checkpoint = await readFlowSchedulerCheckpoint(session, rootTaskId, initial);
         const policy = checkpoint?.spec.runPolicy?.workspace;
         if (!policy || policy.mode === 'shared') return;
+        if (input.initialWorkspacePending === 1 && input.initialWorkspace === undefined
+            && !await session.getShared(workspaceLeaseKey(rootTaskId))) {
+            try {console.debug('flow.workspace.finalization', {operation: 'flow.workspace.finalization', sessionId: session.id,
+                taskId: rootTaskId, operationId: `flow-workspace:${rootTaskId}`, stage: 'not-prepared', outcome: 'not-started', durationMs: 0});}
+            catch { /* A cancelled unprepared root has no registered workspace to finalize. */ }
+            return;
+        }
         const workspace = await this.restoreWorkspace(session, rootTaskId, policy, { forFinalization: true });
-        if (record((await root.status()).task.input).initialWorkspaceResource === 1) await workspace.attach?.(rootTaskId);
+        if (input.initialWorkspaceResource === 1) await workspace.attach?.(rootTaskId);
         await (await beginWorkspaceFinalization(session, root, workspace)).completion;
     }
 

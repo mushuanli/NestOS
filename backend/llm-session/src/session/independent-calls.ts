@@ -264,7 +264,18 @@ export class IndependentCallService {
         const ready = await this.requirePreparedTaskCall(input);
         while (!this.stopping.signal.aborted) {
             const execution = await this.taskCallExecution(ready);
-            if (execution?.target) {await this.options.resumeExecution(execution.target); return;}
+            if (execution?.target) {
+                const target = execution.target;
+                try {await this.tracePreparation(input, 'call.target.resume', async progress => {
+                    progress.executionSessionId = target.sessionId; progress.stage = 'scheduler';
+                    await this.options.resumeExecution!(target);
+                });}
+                catch (error) {
+                    if (!(await this.options.kernel.task(target.sessionId, target.taskId)).exit) throw error;
+                    // A concurrent stop may end the root before its scheduler resumes. Keep observing the original call.
+                }
+                return;
+            }
             if (!execution || (await this.options.kernel.task(execution.submission.task.sessionId, execution.submission.task.taskId)).exit) return;
             await new Promise(resolve => setTimeout(resolve, 25));
         }

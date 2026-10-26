@@ -84,20 +84,23 @@ export class CallControlOperations {
     }
     private async observe(frozen: Frozen, write: boolean): Promise<OperationReceipt> {
         const {request} = frozen, remaining = frozen.protocol === callTreeCancellationProtocol;
-        const started = Date.now(), operationId = request.requestId, stage = write ? 'dispatch' : 'receipt';
+        const started = Date.now(), operationId = request.requestId;
+        let stage = write ? 'dispatch' : 'receipt';
+        const action = remaining ? 'cancel-remaining' : 'interactionId' in request ? 'respond' : 'action' in request ? request.action : 'cancel';
         try {
             const {expectedEpoch: _epoch, value: _value, ...query} = request as Request & {expectedEpoch?: number; value?: unknown};
             const command = controlCommands[frozen.protocol][write ? 0 : 1];
             const result = await this.commands.execute<Result>(command, write ? request : query);
-            assertResult(request, result, query, remaining);
+            stage = 'validate-receipt'; assertResult(request, result, query, remaining);
             if (this.ledger.getSnapshot().find(record => record.context.operationId === operationId)?.status === 'accepted') return {operationId, status: 'accepted'};
             const receipt: OperationReceipt = result.receipt ? {operationId, status: 'accepted'}
                 : {operationId, status: 'unknown', message: 'No retained control admission; query the original request'};
+            stage = 'save-receipt';
             if (this.ledger.getSnapshot().find(record => record.context.operationId === operationId)?.status !== receipt.status)
                 await this.ledger.settle(receipt);
-            log.info('call.control', {operationId, action: remaining ? 'cancel-remaining' : 'action' in request ? request.action : 'cancel', stage, result: receipt.status, durationMs: Date.now() - started}); return receipt;
+            log.info('call.control', {operationId, action, stage, result: receipt.status, durationMs: Date.now() - started}); return receipt;
         } catch (error) {
-            log.warn('call.control', {operationId, action: remaining ? 'cancel-remaining' : 'action' in request ? request.action : 'cancel', stage, result: 'failure', code: safeCode(error), durationMs: Date.now() - started});
+            log.warn('call.control', {operationId, action, stage, result: 'failure', code: safeCode(error), durationMs: Date.now() - started});
             if (this.ledger.getSnapshot().find(record => record.context.operationId === operationId)?.status === 'accepted') return {operationId, status: 'accepted'};
             if (write) await this.ledger.settle({operationId, status: 'unknown', message: 'Query the original control receipt'});
             throw error;

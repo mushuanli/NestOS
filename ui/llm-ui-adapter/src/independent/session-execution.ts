@@ -61,7 +61,7 @@ export class SessionExecution {
             const payload = payloadOf(request), fields = agentQuestionFields(payload.questions);
             const value: JsonValue = input.response.kind === 'approval'
                 ? {approved: input.response.decisionId === 'approved', ...(input.response.note ? {note: input.response.note} : {})}
-                : fields.length ? agentQuestionAnswer(fields, input.response) : String(input.response.values.answer ?? '');
+                : fields.length ? agentQuestionAnswer(fields, input.response) : plainAnswer(input.response, payload);
             await handle.respond({interactionId, value}, {requestId: context.operationId});
         });
     }
@@ -96,9 +96,15 @@ function projectInteraction(taskId: string, request: InteractionRecord<JsonValue
         detail: request.payload === undefined ? undefined : JSON.stringify(request.payload, null, 2)};
     if (request.kind === 'approval') return {...base, kind: 'approval', note: true,
         decisions: [{id: 'approved', label: t('chatInput.interaction.approve')}, {id: 'rejected', label: t('chatInput.interaction.reject')}]};
-    // Structured Flow forms retain their specialized host UI until that slot is migrated.
-    if (payload.fields && !fields.length) return {...base, kind: 'unsupported'};
-    return {...base, kind: 'input', fields: fields.length ? fields : [{id: 'answer', kind: 'text', multiline: true, label: t('chatInput.interaction.answer')}]};
+
+    return {...base, kind: 'input', fields: fields.length ? fields : [{id: 'answer', kind: 'text', multiline: true, label: payload.fields ? t('callable.independent.answer.json') : t('chatInput.interaction.answer'), required: true}]};
+}
+function plainAnswer(response: Extract<import('@itookit/llm-ui').InteractionResponse, {kind: 'input'}>, payload: Record<string, JsonValue>): JsonValue {
+    const text = String(response.values.answer ?? '');
+    if (!payload.fields) return text;
+    try {const value = JSON.parse(text); if (value && typeof value === 'object' && !Array.isArray(value)) return value;}
+    catch { /* Keep the question pending until the user supplies valid JSON. */ }
+    throw Object.assign(new Error(t('callable.independent.answer.invalidJson')), {code: 'INTERACTION_JSON_REQUIRED'});
 }
 function trace(stage: string, operationId: string, started: number, error?: unknown): void {
     const code = (error as {code?: string})?.code;

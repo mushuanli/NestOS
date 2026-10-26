@@ -110,7 +110,11 @@ class SessionChatBinding {
         this.scheduleIndependentAdmission();
     }
     private createLedger(ledger: OperationLedger): OperationLedger {
-        return {...ledger, register: async record => {
+        return {...ledger, getSnapshot: () => ledger.getSnapshot().filter(record => {
+            const value = record.input as {sessionRequest?: SubmissionRequest; request?: SubmissionRequest} | null;
+            const branch = value?.sessionRequest?.expectedBranch ?? value?.request?.expectedBranch;
+            return record.conversationId !== this.sessionId || branch === undefined || branch === this.branch;
+        }), register: async record => {
             const input = record.input as unknown as ChatSubmission;
             if (record.kind !== 'send') return ledger.register(record);
             if (!this.current() || this.options.readOnly) throw Object.assign(new Error('Session input is unavailable'), {code: 'SESSION_INPUT_UNAVAILABLE'});
@@ -182,7 +186,7 @@ class SessionChatBinding {
         const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
             && item.conversationId === this.sessionId);
         const input = record?.input as unknown as ChatSubmission | undefined;
-        if (!input?.target) return Promise.resolve(false);
+        if (!input?.target && !(input as {request?: SubmissionRequest} | undefined)?.request?.target) return Promise.resolve(false);
         const request = this.frozenRequest(operationId);
         const title = this.independentTitle(operationId), started = Date.now();
         const pending = this.options.commands.execute<import('@itookit/llm-session/contracts').SubmissionReceipt>(
@@ -198,7 +202,10 @@ class SessionChatBinding {
         this.admissionChecks.set(operationId, pending); return pending;
     }
     private submission(operationId: string): SessionSubmission {
-        return { id: operationId, source: { kind: 'conversation', ownerId: this.sessionId, id: operationId } };
+        const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.conversationId === this.sessionId);
+        const input = record?.input as {sessionRequest?: SubmissionRequest; request?: SubmissionRequest} | undefined;
+        return input?.sessionRequest?.submission ?? input?.request?.submission
+            ?? { id: operationId, source: { kind: 'conversation', ownerId: this.sessionId, id: operationId } };
     }
     private check(operationId: string): Promise<boolean> {
         if (this.confirmed.has(operationId)) return Promise.resolve(true);
@@ -273,7 +280,8 @@ class SessionChatBinding {
     private frozenRequest(operationId: string): SubmissionRequest {
         const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send'
             && item.conversationId === this.sessionId);
-        const request = (record?.input as {sessionRequest?: SubmissionRequest} | undefined)?.sessionRequest;
+        const input = record?.input as {sessionRequest?: SubmissionRequest; request?: SubmissionRequest} | undefined;
+        const request = input?.sessionRequest ?? input?.request;
         if (request?.expectedSessionId !== this.sessionId || request.submission?.id !== operationId)
             throw Object.assign(new Error('Frozen submission context is unavailable'), {code: 'SUBMISSION_CONTEXT_MISSING'});
         return structuredClone(request);
@@ -311,7 +319,7 @@ class SessionChatBinding {
         if (this.operations.getSnapshot().some(record => record.context.operationId === operationId && record.kind === 'command') && this.options.composerCommands)
             return this.options.composerCommands.reconcile(operationId);
         const record = this.operations.getSnapshot().find(item => item.context.operationId === operationId && item.kind === 'send');
-        if ((record?.input as ChatSubmission | undefined)?.target)
+        if ((record?.input as ChatSubmission | undefined)?.target || (record?.input as {request?: SubmissionRequest} | undefined)?.request?.target)
             return await this.checkAdmission(operationId) ? {status: 'accepted', operationId}
                 : {status: 'unknown', operationId, message: 'No durable admission evidence is visible yet'};
         if (await this.check(operationId)) {

@@ -5,7 +5,7 @@ export function messageState(status?: string): ChatMessage['state'] {
     if (status === 'failed' || status === 'error') return 'failed';
     if (status === 'cancelled' || status === 'aborted') return 'cancelled';
     if (status === 'running' || status === 'streaming') return 'streaming';
-    if (['pending', 'queued', 'paused', 'waiting_input'].includes(status ?? '')) return 'pending';
+    if (['pending', 'queued', 'paused', 'waiting', 'waiting-input', 'waiting-approval', 'waiting_input'].includes(status ?? '')) return 'pending';
     return 'complete';
 }
 

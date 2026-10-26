@@ -35,7 +35,7 @@ export class NativeChatStore {
     }
     saveDraft(draft: ComposerDraft): Promise<void> {
         const captured = structuredClone(draft);
-        return this.enqueue(async () => {await this.write({...this.value, draft: captured});});
+        return this.enqueue(async () => {if (captured.revision >= this.value.draft.revision) await this.write({...this.value, draft: captured});});
     }
     dirty(draft: ComposerDraft): boolean {return JSON.stringify(draft) !== this.savedDraft;}
     suspend(): void {this.suspended = true;}

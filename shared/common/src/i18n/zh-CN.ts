@@ -1487,6 +1487,7 @@ export const zhCN = {
     'project.childInitialMaterial': '含固定初始材料',
     'project.currentConversation': '当前：{name}',
     'project.createChildWithMaterial': '带初始材料新建子会话',
+    'flow.invoke.none': '不调用',
     'flow.invoke.title': '调用 Flow',
     'flow.invoke.description': '选择并调用 Flow，可同时运行多个',
     'flow.invoke.run': '调用',

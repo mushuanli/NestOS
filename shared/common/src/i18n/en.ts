@@ -1486,6 +1486,7 @@ export const en: LocaleStrings = {
     'project.childInitialMaterial': 'Includes frozen initial material',
     'project.currentConversation': 'Current: {name}',
     'project.createChildWithMaterial': 'New child with initial material',
+    'flow.invoke.none': 'Do not call',
     'flow.invoke.title': 'Call Flow',
     'flow.invoke.description': 'Select and call a Flow; multiple calls can run together',
     'flow.invoke.run': 'Call',

@@ -1,3 +1,4 @@
+import {messageOutputs, messageOutputsPart, outputRenderer} from './message-outputs';
 import {SessionExecution} from './session-execution';
 import {sessionQueueToolbar} from './session-queue';
 import {messageState, toolState} from './message-state';
@@ -27,6 +28,7 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly openOutputs?: (taskId: string) => void | Promise<void>;
     readonly prepareRequest?: (request: SubmissionRequest, input: ChatSubmission) => Promise<SubmissionRequest>;
     readonly prepareAttachments?: (input: ChatSubmission, operationId: string) => Promise<NonNullable<SubmissionRequest['attachments']>>;
     readonly executionOverrides?: (input: ChatSubmission) => SubmissionRequest['overrides'];
@@ -152,7 +154,7 @@ class SessionChatBinding {
         }
         this.observeQueue(this.options.session.getSnapshot?.().instructionQueue);
         const groups = this.options.session.getSessions();
-        const projected = groups.map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId));
+        const projected = groups.map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId, !!this.options.openOutputs));
         const messages = this.presentation?.merge(projected, groups) ?? projected;
         this.source.publish({ title: this.options.title ?? this.options.session.getSnapshot?.().view?.manifest.title ?? '',
             messages, interactions: this.execution?.interactions ?? [], selectors: this.selectors(), commands: this.options.composerCommands?.getSnapshot(),
@@ -333,6 +335,7 @@ class SessionChatBinding {
         this.targets?.dispose();
     }
     async refreshTargets(): Promise<void> {await this.targets?.refreshCurrent(); await this.presentation?.refresh();}
+    get outputsRenderer() {return this.options.openOutputs ? outputRenderer(async taskId => {if (this.current() && this.active) await this.options.openOutputs!(taskId);}) : undefined;}
     get instructionQueue() {
         if (!this.options.instructionQueue) return undefined;
         return {commands: this.options.commands, sessionId: this.sessionId,
@@ -368,6 +371,8 @@ function validInputContract(input: ChatSubmission, contract?: ComposerInputContr
 }
 export async function createSessionChatView(container: HTMLElement, binding: ReturnType<typeof createSessionChatBinding>,
     options: ImageChatOptions = {}) {
+    if (options.renderers?.[messageOutputsPart]) throw new Error('The execution outputs renderer is reserved by the Session adapter');
+    const outputs = binding.outputsRenderer;
     if (options.renderers?.[independentCallPart]) throw new Error('The independent call renderer is reserved by the Session adapter');
     const queue = sessionQueueToolbar(binding.instructionQueue, options);
     options = {...options, mountToolbar: queue.mount};
@@ -383,7 +388,7 @@ export async function createSessionChatView(container: HTMLElement, binding: Ret
         } : options.mountToolbar;
         const view = await createImageChatView(container, {...options, mountToolbar,
             onDraftChange: draft => {contextPicker?.updateDraft(draft); options.onDraftChange?.(draft);}, renderers: {...options.renderers,
-            ...(calls ? {[independentCallPart]: calls.renderer} : {})},
+            ...(calls ? {[independentCallPart]: calls.renderer} : {}), ...(outputs ? {[messageOutputsPart]: outputs} : {})},
             source: binding.source, actions: binding.actions, operations: binding.operations}, options.images ?? binding.images);
         const setActive = view.setActive.bind(view), destroy = view.destroy.bind(view);
         view.setActive = active => {binding.setActive(active); queue.setActive(active); contextPicker?.setActive(active); setActive(active);};
@@ -395,7 +400,7 @@ export async function createSessionChatView(container: HTMLElement, binding: Ret
 function rejected(context: OperationContext, code: string, message: string): OperationReceipt {
     return { status: 'rejected', operationId: context.operationId, code, message };
 }
-function projectGroup(group: SessionGroup, ledger: OperationLedger, confirmed: ReadonlySet<string>, sessionId: string) {
+function projectGroup(group: SessionGroup, ledger: OperationLedger, confirmed: ReadonlySet<string>, sessionId: string, outputs = false) {
     const operation = ledger.getSnapshot().find(record => (record.kind === 'send' || record.kind === 'command') && record.conversationId === sessionId
         && group.id === `round-${record.context.operationId}-user`);
     const parts: MessagePart[] = group.role === 'user' ? [{ id: 'body', kind: 'markdown', text: group.content ?? '' }]
@@ -404,6 +409,7 @@ function projectGroup(group: SessionGroup, ledger: OperationLedger, confirmed: R
     if (input) parts.push({id: 'arguments', kind: 'json', value: input});
     for (const [index, file] of (group.files ?? []).entries()) parts.push({ id: `attachment-${index}`, kind: 'attachment',
         file: { id: file.path ?? file.name, name: file.name, mimeType: file.type } });
+    if (outputs) parts.push(...messageOutputs(group));
     return { id: group.id, revision: 0, role: group.role, parts, timestamp: group.timestamp,
         state: messageState(group.executionRoot?.status),
         submissionId: operation?.context.operationId,

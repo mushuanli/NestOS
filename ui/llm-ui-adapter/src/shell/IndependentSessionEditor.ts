@@ -53,6 +53,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             selectors: () => this.selectors(), executionOverrides: input => this.overrides(input),
             prepareRequest: (request, input) => this.prepare(request, input),
             hasCommittedSubmission: submission => this.config.commandBus!.execute(SessionCommand.HasCommittedSubmission, {sessionId: this.config.sessionId, submission}),
+            openOutputs: taskId => openSessionFlowOutputs(this.config.commandBus!, this.config.sessionId, this.lifetime.signal, taskId),
             openChild: id => this.config.hostContext?.navigate({target: 'chat', resourceId: id}),
             interactionDrafts: new InteractionDraftPersistence(this.service), onError: error => this.fail(error)});
         await this.binding.refreshTargets();
@@ -119,8 +120,6 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
         const menu = document.createElement('details'), label = document.createElement('summary'), body = document.createElement('div');
         label.textContent = t('chat.toolbar.more'); menu.append(label, body); root.append(menu);
         if (this.config.mountMoreMenu) releases.push(this.config.mountMoreMenu(body));
-        const outputs = document.createElement('button'); outputs.type = 'button'; outputs.textContent = t('flow.output.title');
-        outputs.onclick = () => openSessionFlowOutputs(this.config.commandBus!, this.config.sessionId, this.lifetime.signal); body.append(outputs);
         return {destroy: () => releases.forEach(release => release())};
     }
     private async switchBranch(branch: string): Promise<void> {

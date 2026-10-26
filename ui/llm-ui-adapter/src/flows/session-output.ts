@@ -1,4 +1,4 @@
-import { escapeHTML, t } from '@itookit/common';
+import { createModuleLogger, escapeHTML, randomUUID, t } from '@itookit/common';
 import { type ICommandBus } from '@itookit/llm-session/contracts';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
@@ -9,8 +9,10 @@ interface Branches { currentBranch: string; branches: Array<{ name: string; task
 interface Run { taskId: string; sessionId: string; name: string; status: string }
 
 /** A read-only attachment: opening outputs must never resume a stopped scheduler. */
-export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string, signal: AbortSignal): void {
+export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string, signal: AbortSignal, initialTaskId?: string): void {
     if (signal.aborted) return;
+    const operationId = randomUUID(), started = Date.now(), log = createModuleLogger('session-flow-outputs');
+    log.info('flow.outputs', {operationId, sessionId, taskId: initialTaskId, stage: 'open', result: 'requested', durationMs: 0});
     const dialog = document.createElement('dialog');
     dialog.className = 'dag-dialog dag-output-dialog';
     dialog.innerHTML = `<header><h2>${escapeHTML(t('flow.output.title'))}</h2><select data-branch aria-label="${escapeHTML(t('flow.output.branch'))}"></select><select data-run aria-label="${escapeHTML(t('flow.runs.title'))}"></select>
@@ -31,13 +33,14 @@ export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string,
     const open = async () => {
         if (!select.value || signal.aborted) return;
         try { await workbench.openRun(select.value, sessionId); }
-        catch (error) { if (dialog.isConnected) message.textContent = String(error); }
+        catch (error) { if (dialog.isConnected) message.textContent = String(error);
+            log.warn('flow.outputs', {operationId, sessionId, taskId: select.value, stage: 'run-read', result: 'failure', durationMs: Date.now() - started, code: 'FLOW_OUTPUT_READ_FAILED'}); }
     };
     const showBranch = async () => {
         workbench.destroy();
         const selected = memberships.branches.find(item => item.name === branch.value);
         const allowed = new Set(selected?.taskIds ?? []);
-        const ownRuns = runs.filter(run => run.sessionId === sessionId && allowed.has(run.taskId)), previous = select.value;
+        const ownRuns = runs.filter(run => run.sessionId === sessionId && allowed.has(run.taskId)), previous = select.value || initialTaskId || '';
         select.innerHTML = ownRuns.map(run => `<option value="${escapeHTML(run.taskId)}">${escapeHTML(run.name)}${escapeHTML(flowVersion(selected?.runs?.find(item => item.taskId === run.taskId)))} · ${escapeHTML(run.status)}</option>`).join('');
         if (ownRuns.some(run => run.taskId === previous)) select.value = previous;
         message.textContent = ownRuns.length ? '' : t('flow.runs.empty');
@@ -52,7 +55,7 @@ export function openSessionFlowOutputs(commands: ICommandBus, sessionId: string,
             ]);
             if (current !== revision || signal.aborted || !dialog.isConnected) return;
             runs = nextRuns; memberships = nextBranches;
-            const previous = branch.value || memberships.currentBranch;
+            const previous = branch.value || memberships.branches.find(item => initialTaskId && item.taskIds.includes(initialTaskId))?.name || memberships.currentBranch;
             branch.innerHTML = memberships.branches.map(item => `<option value="${escapeHTML(item.name)}">${escapeHTML(item.name)}${escapeHTML([...new Set((item.runs ?? []).map(flowVersion))].join(''))}</option>`).join('');
             if (memberships.branches.some(item => item.name === previous)) branch.value = previous;
             await showBranch();

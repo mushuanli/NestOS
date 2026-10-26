@@ -94,7 +94,7 @@ export async function createConversationSystem(
             ...await options.digitalTwin?.retrieve(plan, agent.id, context.sessionId) ?? [],
         ],
         memoryProvider: kernel.memory,
-        workspaceManager: options.flowWorkspaceManager ? withWorkspaceScopeCleanup(options.flowWorkspaceManager, kernel) : undefined,
+        workspaceManager: options.flowWorkspaceManager ? withWorkspaceScopeCleanup(options.flowWorkspaceManager, kernel, options.ensureWritable) : undefined,
         canWriteSession: options.ensureWritable,
         prepareSessionExecution: options.prepareSessionExecution,
         resolveSessionContext: (sessionId, userMessage) => resolveSessionSkillContext(kernel.kernel, kernel.sessions, sessionId, userMessage),

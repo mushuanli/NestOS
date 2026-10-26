@@ -622,3 +622,8 @@ const exit = await run.root.wait({until: 'settled'});
 
 
 `readTaskCallExecution(plan, options)` 共用原提交规格构造和限额检查，返回原 submission 与实际 target（存在时）。目标来自 Kernel 所有者/Effect/binding 核对，不从历史、成功输出或标签枚举推导。未接纳返回 undefined；已接纳但目标尚未出现时只返回 submission，不能把它解释为可重新派发。caller 对象在读取期间变化不能改写原接纳身份；不同目标、存储代次或关联损坏保留具体错误。该读接口无派发和恢复副作用，Session 使用它接入现有 inspect/list，不另建状态库。
+
+
+### Kernel 可核对的工作区占用
+
+可恢复的 FlowWorkspaceLease 可实现 attach(rootTaskId)。执行器在原根和租约记录持久化、取得调度所有权后，首个节点前调用；新根 initialWorkspaceResource=1 固定恢复协议。终态恢复也重放同一 attach。app-core 将原工作区登记为根 Task 的托管 pool/claim，由物理资源 adapter 等待成员停止、关闭能力并调用原 manager.restore/finish，取得持久回执后才释放容量。没有 record/restore 的旧 manager 沿原收尾路径。waitForFlowRunTasks 的可选 AbortSignal 仅中止观察，不取消成员执行。

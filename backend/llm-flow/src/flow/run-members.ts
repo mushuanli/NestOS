@@ -50,10 +50,11 @@ function appendDescendants(result: FlowRunMember[], tasks: TaskRecord[]): void {
 }
 
 /** Detached members may outlive the aggregate root. Drain them before closing workspace handles. */
-export async function waitForFlowRunTasks(session: SessionHandle, rootId: string): Promise<void> {
+export async function waitForFlowRunTasks(session: SessionHandle, rootId: string, signal?: AbortSignal): Promise<void> {
     const root = (await (await session.attachTask(rootId)).status()).task;
     const ids = new Set([rootId, ...(await readFlowRunMembers(session, root)).map(member => member.taskId)]);
     while (true) {
+        signal?.throwIfAborted();
         for (const member of await readFlowRunMembers(session, root)) ids.add(member.taskId);
         const tasks = await session.listTasks();
         let grew = true;
@@ -67,7 +68,7 @@ export async function waitForFlowRunTasks(session: SessionHandle, rootId: string
         if ([...ids].some(id => !tasks.some(task => task.id === id))) throw new Error('Flow workspace member is unavailable');
         const active = tasks.some(task => ids.has(task.id) && taskStat(task).activeOperations > 0);
         if (!pending.length && !active) return;
-        if (pending.length) await Promise.all(pending.map(async task => (await session.attachTask(task.id)).wait()));
+        if (pending.length) await Promise.all(pending.map(async task => (await session.attachTask(task.id)).wait({signal})));
         else await new Promise(resolve => setTimeout(resolve, 25));
     }
 }

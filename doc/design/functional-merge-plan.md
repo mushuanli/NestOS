@@ -2307,3 +2307,14 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 展示刷新提交 `851d8b7d`。下一主线修正源 Session 前台准入：原先 sessionActivity 的全会话忙闲统计会将独立 Kernel caller 计入，导致后台调用仍挡住普通输入。SessionInstructions 在正常忙碌判断后，经 IndependentCallService 按持久路由及原 caller 规格核对后台 Task，只排除这些确切 caller；其他活动任务、Session 控制及 cleanup 仍按原准入规则处理。诊断 session.input.ready 记录 background-call-scope、后台 caller 数量、剩余前台 Task 数量、结果及耗时。未运行验证。
 
 前台准入提交 `0f0761e5`；后续直接按 taskStat.settled 判断非后台任务，避免将 sessionActivity 的 queued 与 taskStat 的 ready 等不同阶段名混用而漏算正常就绪任务。继续沿用同一定位日志，未运行验证。
+
+
+## 93. 可恢复隔离工作区登记原 Kernel 资源责任
+
+FlowWorkspaceLease 增加 attach(rootTaskId)，在原调度者取得 lease、根 Task 与工作区记录已持久保存后，首个节点派发前调用。app-core 对同时支持 record/restore 的宿主工作区 manager 复用 Kernel pool/open/acquire，把单份工作区占用绑定原 Flow 根。能力、请求与 claim 使用固定根身份；原 manager 仍负责授权、保留/合并策略及实际文件收尾，没有新增工作区调度器或执行状态库。
+
+Kernel 的物理资源 adapter 按原 Session/Task 及根输入中的冻结策略和租约重建清理。先复验 Session 写权，等待原成员停止，再关闭 Run 能力作用域，恢复同一工作区并执行原 finish，持久保存清理回执后才返回 stopped。物理失败继续由 Kernel 保留 claim 和清理责任，跨 Session task.call 的既有资源结算检查可以观察这份占用。关闭等待使用原 AbortSignal；工作区保留提示沿原 finalization 投影返回。
+
+新根保存 initialWorkspaceResource=1，恢复按此标记重放资源接纳；历史根不自动改写身份。普通 shared 工作区不创建额外占用。没有可恢复租约的旧宿主仍沿原收尾方式；完整 Flow/Flow Agent 进入统一 Kernel 调用仍需后续接线，不能仅凭资源登记宣布 P1a/P1c 全部完成。
+
+诊断 flow.workspace.resource 记录原操作/Session/根 Task、attach/permission/receipt/members/capabilities/restore/physical-finish/persist 阶段、结果、具体错误码及耗时，不记录目录、完整策略或原异常。按用户要求，本批未运行测试、类型检查、构建或部署验收。

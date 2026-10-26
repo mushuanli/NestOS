@@ -7,6 +7,8 @@ import { instanceKey } from './node-instance';
 
 export interface FlowWorkspaceLease {
     directory: string;
+    /** Persist Kernel resource ownership before any node can use the workspace. */
+    attach?(rootTaskId: string): Promise<void>;
     /**
      * JSON-serializable description of the lease. The executor persists it so a new
      * host can restore the same workspace after a crash instead of creating a second one.
@@ -48,6 +50,7 @@ export class FlowRunLifecycle {
         const policy = checkpoint?.spec.runPolicy?.workspace;
         if (!policy || policy.mode === 'shared') return;
         const workspace = await this.restoreWorkspace(session, rootTaskId, policy, { forFinalization: true });
+        if (record((await root.status()).task.input).initialWorkspaceResource === 1) await workspace.attach?.(rootTaskId);
         await (await beginWorkspaceFinalization(session, root, workspace)).completion;
     }
 

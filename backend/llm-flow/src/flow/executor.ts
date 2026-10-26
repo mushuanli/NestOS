@@ -446,7 +446,8 @@ export class DurableFlowExecutor {
                 const request = { goal: spec.goal,
                     usage: { tokens: consumedTokens, startedAt, elapsedMs: Date.now() - startedAt },
                     awaitingSchedule: true, toleratedFailures: toleratedFailureNodes(),
-                    initial: { initialScheduler: jsonValue(checkpointSnapshot()), ...(workspace?.record !== undefined ? { initialWorkspace: jsonValue(workspace.record) } : {}) },
+                    initial: { initialScheduler: jsonValue(checkpointSnapshot()), ...(workspace?.record !== undefined ? { initialWorkspace: jsonValue(workspace.record) } : {}),
+                        ...(workspace?.attach ? {initialWorkspaceResource: 1} : {}) },
                 };
                 published = await aggregate(request);
                 schedulerAdmissionStarted = Date.now();
@@ -458,6 +459,9 @@ export class DurableFlowExecutor {
                     await session.setShared(workspaceLeaseKey(published.root.id), workspace.record);
                 }
             }
+            await lease!.assertOwned();
+            if (!restored || record((await published.root.status()).task.input).initialWorkspaceResource === 1)
+                await workspace?.attach?.(published.root.id);
             // Publish as soon as the durable root exists and this host owns the scheduler,
             // before any node is dispatched. Hosts need a live handle to monitor progress,
             // enforce per-task timeouts, react to interrupts and follow events; a handle

@@ -25,7 +25,7 @@ export class IndependentCallResponses {
         let input: IndependentCallResponseQuery | undefined;
         try {
             input = structuredClone(supplied); validate(input, write); stage = 'ownership';
-            const root = await this.options.resolve(input);
+            const root = await this.options.resolve(input); stage = 'interaction-target';
             const target = await readIndependentCallInteractionTask(this.options.kernel, root, input.targetTaskId);
             if (!target.interactions[input.interactionId]) throw failure('CALL_INTERACTION_NOT_FOUND');
             if (mode === 'detail') {stage = 'detail'; const result = detail(input, target); outcome = 'observed'; return result;}
@@ -35,6 +35,7 @@ export class IndependentCallResponses {
             }
             stage = 'receipt';
             const receipt = await this.options.kernel.readTaskInteractionResponseReceipt(input.executionSessionId, input.targetTaskId, input.requestId);
+            stage = 'validate-receipt';
             if (receipt && (receipt.requestId !== input.requestId || receipt.taskId !== input.targetTaskId || receipt.interactionId !== input.interactionId))
                 throw failure('CALL_RESPONSE_RECEIPT_MISMATCH');
             outcome = receipt ? 'observed' : 'missing'; return {...scope(input), ...(receipt ? {receipt} : {})};
@@ -55,7 +56,9 @@ export class IndependentCallResponses {
     private log(input: IndependentCallResponseQuery | undefined, result: Record<string, unknown>, mode: 'respond' | 'receipt' | 'detail'): void {
         const safe = (value: unknown) => typeof value === 'string' && /^[\w:-]{1,256}$/.test(value) ? value : undefined;
         const detail = {operation: mode === 'respond' ? 'call.respond' : mode === 'detail' ? 'call.interaction' : 'call.response.receipt', operationId: safe(input?.requestId),
-            callId: safe(input?.callId), taskId: safe(input?.targetTaskId), sessionId: safe(input?.sessionId), ...result};
+            callId: safe(input?.callId), taskId: safe(input?.targetTaskId), rootTaskId: safe(input?.taskId),
+            interactionId: safe(input?.interactionId), sessionId: safe(input?.sessionId),
+            executionSessionId: safe(input?.executionSessionId), ...result};
         try {
             if (result.outcome === 'failure') this.options.logger.warn('Independent call response failed', detail);
             else this.options.logger.info('Independent call response observed', detail);

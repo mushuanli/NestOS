@@ -24,6 +24,7 @@ export class SessionInstructions {
     private readonly release: () => void;
     private closed = false;
     backgroundCallers?: (sessionId: string) => Promise<Set<string>>;
+    callInputReady?: (sessionId: string) => Promise<boolean>;
     constructor(private readonly registry: SessionRegistry, private readonly runs: SessionRunCoordinator,
         private readonly rounds: RoundOperations, private readonly kernel: Kernel,
         private readonly canWrite: ((id: string) => Promise<boolean>) | undefined, sessions: InstructionQueueSessions | undefined,
@@ -101,7 +102,7 @@ export class SessionInstructions {
         const activity = await this.kernel.sessionActivity(id);
         if (activity.sessionStatus !== 'open' || activity.pending.cleanup !== 0) return false;
         const phases = new Set(['running', 'queued', 'created', 'waiting', 'paused', 'blocked']);
-        if ([...phases].every(phase => !activity.counts[phase as keyof typeof activity.counts])) return true;
+        if ([...phases].every(phase => !activity.counts[phase as keyof typeof activity.counts])) return this.callInputReady?.(id) ?? true;
         if (!this.backgroundCallers) return false;
         const started = Date.now(), background = await this.backgroundCallers(id);
         if (!background.size) return false;
@@ -111,7 +112,7 @@ export class SessionInstructions {
             stage: 'background-call-scope', outcome: foreground ? 'held' : 'ready', backgroundCallers: background.size,
             foregroundTasks: foreground, durationMs: Date.now() - started});}
         catch { /* Diagnostics cannot change the input admission decision. */ }
-        return foreground === 0;
+        return foreground === 0 && (await this.callInputReady?.(id) ?? true);
     }
 
     private async submit(id: string, item: SessionInstruction): Promise<string> {

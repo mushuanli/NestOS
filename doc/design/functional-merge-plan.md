@@ -2333,3 +2333,10 @@ Flow 的终态输出按原 formatFlowOutput 投影，Round 保留真实 Flow 修
 本批只记录实现及接线事实，按用户要求未运行测试、类型检查、构建或实际部署验收。跨调用预算、严格原生 continue、长期生命周期及复杂历史性能仍未整体完成；不能将本节视为整份计划清零。
 
 Flow 正式入口提交 `49a87e45`。父卡片补充原 caller 的收尾观察：目标 Task 已结束但 Kernel caller 尚未 settled 时，显示“调用仍在等待收尾确认”，不将物理资源收尾等同于历史写入。继续由同一列表观察及资源阶段日志定位，不新增状态字段或重复轮询器；本增量未运行验证。
+
+
+## 95. 子会话连续输入等待原调用历史提交
+
+新受管独立调用的 Kernel 终态事件可能先唤醒子会话队列，历史随后才补交。为避免下一轮抢占原空分支，SessionInstructions 在派发前经原 parentSessionId 和 conversation/call 路由核对实际 Kernel 接纳及首轮历史；只有原完整 Round 已提交，或 caller 已确认收尾且没有目标时，才允许该子会话开始下一次执行。尚未提交的准备不冒充执行占用，源 Session 的后台 caller 排除规则继续保留。
+
+历史提交通知显式唤醒原队列，已排队输入继续原身份派发。新增 call.input.ready 的 admission/target-pending/history-pending/history-committed 定位日志，不记录正文或参数，不新增队列或持久状态。按本轮要求未运行验证。

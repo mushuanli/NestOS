@@ -209,6 +209,29 @@ export class IndependentCallService {
         }
         return ids;
     }
+    /** A child may queue input while running, but its next execution must see the committed first Round. */
+    async canStartSessionInput(sessionId: string): Promise<boolean> {
+        const parent = (await this.options.repository.getManifest(sessionId)).parentSessionId;
+        if (!parent) return true;
+        for (const entry of await this.options.kernel.listShared(parent, prefix)) {
+            const route = entry.value as unknown as CallRoute;
+            if (!route.kernelPreparation || route.executionSessionId !== sessionId) continue;
+            return this.tracePreparation(route.input, 'call.input.ready', async progress => {
+                this.assertPreparationRoute(route, {sessionId: parent, id: route.input.request.submission!.id});
+                const ready = this.preparedCall(route); progress.executionSessionId = sessionId; progress.stage = 'admission';
+                if (!ready) return true;
+                const observed = await this.taskCallExecution(ready); if (!observed) return true;
+                if (!observed.target) {
+                    const ref = observed.submission.task, caller = await this.options.kernel.task(ref.sessionId, ref.taskId);
+                    progress.stage = 'target-pending'; return independentCallTaskState(caller).settled;
+                }
+                const committed = await committedIndependentKernelHistory(this.options.repository, route.childRequest,
+                    ready.invocation, observed.target, await this.round(route));
+                progress.stage = committed ? 'history-committed' : 'history-pending'; return !!committed;
+            });
+        }
+        return true;
+    }
     private async publishHistory(sessionId: string): Promise<void> {
         await Promise.allSettled([...this.historyListeners].map(listener => Promise.resolve().then(() => listener(sessionId))));
     }

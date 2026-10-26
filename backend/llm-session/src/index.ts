@@ -223,7 +223,7 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
     }
     if (system.independentCalls) {
         const calls = system.independentCalls;
-        system.sessionManager.setBackgroundCallReader(id => calls.readBackgroundCallers(id));
+        system.sessionManager.setIndependentCallScope(id => calls.readBackgroundCallers(id), id => calls.canStartSessionInput(id));
         const unsubscribe = system.independentCalls.onHistoryCommitted(id => system.sessionManager.refreshCommittedHistory(id));
         const dispose = system.dispose;
         system.dispose = async () => {unsubscribe(); await dispose();};

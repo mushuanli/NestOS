@@ -409,6 +409,7 @@ export class SessionManager implements ISession, SessionQuery {
     }
     /** Refresh an already open child after a host-owned invocation commits its result. */
     async refreshCommittedHistory(sessionId: string): Promise<void> {
+        this.instructions.queues.wake(sessionId);
         if (this.registry.boundSessionId !== sessionId || this.runs.isActive(sessionId)) return;
         const state = this.registry.getSessionState(sessionId); if (!state) return;
         const started = Date.now();
@@ -426,7 +427,9 @@ export class SessionManager implements ISession, SessionQuery {
     }
     getInstructionQueue() { return this.instructions.queues.view(this.registry.ensureBound().sessionId); }
     hasPendingInstructions(): boolean { return this.instructions.hasPending(); }
-    setBackgroundCallReader(read: (sessionId: string) => Promise<Set<string>>): void {this.instructions.backgroundCallers = read;}
+    setIndependentCallScope(read: (sessionId: string) => Promise<Set<string>>, ready: (sessionId: string) => Promise<boolean>): void {
+        this.instructions.backgroundCallers = read; this.instructions.callInputReady = ready;
+    }
     waitForInstructionWrites(): Promise<void> { return this.instructions.whenIdle(); }
     editInstructionQueue(edit: InstructionQueueEdit) { return this.instructions.edit(this.registry.ensureBound().sessionId, edit); }
     getSessions(): SessionGroup[] { return this.registry.getSessions(); }

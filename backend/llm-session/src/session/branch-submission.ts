@@ -25,6 +25,8 @@ export async function prepareBranchSubmission(repository: ISessionRepository, su
         await repository.updateManifest(request.expectedSessionId, {currentBranch: anchor.branch, currentHead: manifest.branches[anchor.branch]});
         if (anchor.role === 'assistant') await log.branchAfterRound(anchor.roundId, request.expectedBranch);
         else await log.createBranchForReplacement(anchor.roundId, id, {branchName: request.expectedBranch, createdFrom: 'edit'});
+        await repository.updateUIState(request.expectedSessionId, {branchDrafts: {[request.expectedBranch]: {inputText: '',
+            ...(request.expectedTarget ? {inputTarget: {...request.expectedTarget}} : {})}}});
     }
     return {...request, overrides: {...request.overrides, ...(prefix.length ? {userMessagePrefix: structuredClone(prefix)} : {})}};
 }

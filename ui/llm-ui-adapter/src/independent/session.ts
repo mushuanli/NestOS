@@ -27,6 +27,7 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly prepareRequest?: (request: SubmissionRequest, input: ChatSubmission) => Promise<SubmissionRequest>;
     readonly prepareAttachments?: (input: ChatSubmission, operationId: string) => Promise<NonNullable<SubmissionRequest['attachments']>>;
     readonly executionOverrides?: (input: ChatSubmission) => SubmissionRequest['overrides'];
     readonly kernel?: import('@itookit/durable-kernel/contracts').EditorTaskControlPlane;
@@ -119,10 +120,13 @@ class SessionChatBinding {
             if (input.context !== undefined && (!this.options.contextSelection || !input.target))
                 throw Object.assign(new Error('Context selection requires a published target and host support'), {code: 'CONTEXT_SELECTION_UNAVAILABLE'});
             if (!input?.target) return ledger.register(record);
-            const request = this.targetRequest(input, record.context.operationId);
+            let request = this.targetRequest(input, record.context.operationId);
+            if (this.options.prepareRequest) request = await this.options.prepareRequest(request, input);
+            if (request.expectedSessionId !== this.sessionId || request.expectedBranch !== this.branch || request.submission?.id !== record.context.operationId)
+                throw new Error('Prepared submission identity differs from the frozen view');
             if (this.options.prepareAttachments) request.attachments = await this.options.prepareAttachments(input, record.context.operationId);
             if (!this.current() || this.options.readOnly) throw Object.assign(new Error('Session binding changed while preparing input'), {code: 'STALE_VIEW'});
-            const frozen = {...input, sessionRequest: request,
+            const frozen = {...input, ...(input.input && request.source.kind === 'arguments' ? {input: {...input.input, values: request.source.value}} : {}), sessionRequest: request,
                 ...(independent ? {independentTitle: input.target.id} : {})};
             const captured = JSON.parse(JSON.stringify(frozen));
             if (!ledger.getSnapshot().some(item => item.context.operationId === record.context.operationId))

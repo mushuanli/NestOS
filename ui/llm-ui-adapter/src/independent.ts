@@ -11,3 +11,5 @@ export type {ImageChatOptions} from './independent/image-chat-view';
 
 export type {InteractionDraftStorage, InteractionDraftScope, InteractionDraftContent, InteractionDraftRecord, InteractionDraftWrite} from './domain/interaction-draft';
 export {InteractionDraftPersistence} from './services/InteractionDraftPersistence';
+
+export {prepareSessionChatRequest} from './independent/session-submission';

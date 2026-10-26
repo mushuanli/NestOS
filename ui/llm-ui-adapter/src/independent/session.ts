@@ -26,6 +26,7 @@ import { ChatProjection } from './projection';
 const independentLog = createModuleLogger('independent-chat-admission');
 
 export interface SessionChatBindingOptions {
+    readonly readOnly?: boolean;
     readonly instructionQueue?: boolean;
     readonly contextSelection?: boolean;
     readonly interactionDrafts?: InteractionDraftStorage;
@@ -98,6 +99,7 @@ class SessionChatBinding {
         return {...ledger, register: async record => {
             const input = record.input as unknown as ChatSubmission;
             if (record.kind !== 'send') return ledger.register(record);
+            if (!this.current() || this.options.readOnly) throw Object.assign(new Error('Session input is unavailable'), {code: 'SESSION_INPUT_UNAVAILABLE'});
             const independent = input?.selection?.callMode === 'independent';
             if (independent && (!this.options.independentCalls || !input.target)) throw new Error('Independent calls require an enabled published target');
             if (independent && !this.branch) throw Object.assign(new Error('Independent calls require an observed branch'), {code: 'CALL_BRANCH_REQUIRED'});
@@ -118,7 +120,12 @@ class SessionChatBinding {
             && this.currentBranch() === this.branch;
     }
     private publish(): void {
-        if (!this.current()) {this.presentation?.setActive(false); return;}
+        if (!this.current()) {
+            this.presentation?.setActive(false);
+            if (!this.closed) this.source.publish({...this.source.getSnapshot(), allowed: [], interactions: [],
+                error: {code: 'STALE_VIEW', message: t('chat.submission.unconfirmed')}});
+            return;
+        }
         this.observeQueue(this.options.session.getSnapshot?.().instructionQueue);
         const groups = this.options.session.getSessions();
         const projected = groups.map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId));
@@ -130,7 +137,7 @@ class SessionChatBinding {
             operationReceipts: this.operations.getSnapshot().filter(record => record.conversationId === this.sessionId && record.kind === 'send'
                 && this.queued.has(record.context.operationId)).map(record => ({status: 'accepted', operationId: record.context.operationId})),
             execution: this.options.session.isGenerating() ? 'running' : 'idle', connection: 'online', hasEarlier: false,
-            allowed: ['send', ...(this.options.composerCommands ? ['command' as const] : [])] });
+            allowed: this.options.readOnly ? [] : ['send', ...(this.options.composerCommands ? ['command' as const] : [])] });
         for (const message of messages) if (message.submissionId && !this.confirmed.has(message.submissionId)) {
             void this.check(message.submissionId).then(accepted => { if (accepted) this.publish(); }).catch(error => this.options.onError?.(error));
         }
@@ -181,6 +188,7 @@ class SessionChatBinding {
         this.checking.set(operationId, pending); return pending;
     }
     private async send(input: Parameters<NonNullable<ConversationActions['send']>>[0], context: OperationContext): Promise<OperationReceipt> {
+        if (this.options.readOnly) return rejected(context, 'READ_ONLY', 'Conversation is read-only');
         if (!this.current() || context.viewId !== this.source.getSnapshot().viewId)
             return rejected(context, 'STALE_VIEW', 'Observation binding expired');
         const choice = input.target && this.targets?.find(input.target);
@@ -261,6 +269,7 @@ class SessionChatBinding {
                     id: input.input.signature.id as import('@itookit/llm-flow/contracts').FlowId}} : {})}} : {}), submission: this.submission(operationId)};
     }
     private command(input: CommandSubmission, context: OperationContext): Promise<OperationReceipt> {
+        if (this.options.readOnly) return Promise.resolve(rejected(context, 'READ_ONLY', 'Conversation is read-only'));
         if (!this.current() || context.viewId !== this.source.getSnapshot().viewId)
             return Promise.resolve(rejected(context, 'STALE_VIEW', 'Observation binding expired'));
         const target = this.options.composerCommands?.getSnapshot().find(command => command.id === input.target.id
@@ -295,14 +304,14 @@ class SessionChatBinding {
     get instructionQueue() {
         if (!this.options.instructionQueue) return undefined;
         return {commands: this.options.commands, sessionId: this.sessionId,
-            current: () => this.active && this.current(),
+            current: () => !this.options.readOnly && this.active && this.current(),
             snapshot: () => this.current() ? this.options.session.getSnapshot?.().instructionQueue : undefined};
     }
     get contextSelection(): boolean {return !!this.options.contextSelection;}
     contextScope() {return this.current() && this.branch ? {sessionId: this.sessionId, branchId: this.branch} : undefined;}
     readContextOptions(query: ContextOptionsQuery): Promise<ContextOptionsPage> {return this.options.commands.execute(SessionCommand.ContextOptions, query);}
     mountCalls(): SessionCallPresentation | undefined {
-        if (!this.options.independentCalls || !this.branch || this.closed) return;
+        if (!this.options.independentCalls || !this.branch || this.closed || this.options.readOnly) return;
         if (this.presentation) throw new Error('The Session binding already owns a call presentation');
         clearTimeout(this.admissionTimer);
         this.presentation = new SessionCallPresentation(this.options.commands, this.sessionId, () => this.branch!, this.operations,

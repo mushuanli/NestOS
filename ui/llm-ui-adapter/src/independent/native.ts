@@ -22,6 +22,7 @@ import type {ExtensionRenderer, JsonValue} from '@itookit/llm-ui';
 const log = createModuleLogger('native-submission');
 
 export interface NativeChatBindingOptions {
+    readonly readOnly?: boolean;
     readonly images?: ImageEditingHost;
     readonly conversationId: string;
     readonly commandProviders?: readonly NativeCommandProvider[];
@@ -51,7 +52,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
             interactions: state.requests.map(request => interaction(request, requests)),
             loading: false, executionRef: state.observation?.activeTurnId ?? undefined, execution: state.observation?.execution === 'waiting-approval' ? 'waiting-input' : state.observation?.execution ?? 'unknown',
             connection: state.disconnected ? 'offline' : 'online', hasEarlier: state.hasEarlier ?? false,
-            allowed: [...(nativeCanSubmit(state, options.controls) ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
+            allowed: options.readOnly ? [] : [...(nativeCanSubmit(state, options.controls) ? ['send' as const] : []), ...(state.canRespond ? ['respond' as const] : []),
                 ...(state.canInterrupt && state.sessionId && state.observation?.activeTurnId && options.controls.reconcileControl ? ['cancel' as const] : []),
                 ...(catalog.some(command => !command.disabled) ? ['command' as const] : [])] });
     };
@@ -77,7 +78,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         try {releaseBinding([...(off ? [off] : []), offLedger, ...providerStops]);}
         catch (cleanup) {throw new AggregateError([error, cleanup], 'Native binding initialization failed');}
         throw error; }
-    const valid = (viewId: string) => !closed && viewId === source.getSnapshot().viewId;
+    const valid = (viewId: string) => !options.readOnly && !closed && viewId === source.getSnapshot().viewId;
     const findCommand = (input: CommandSubmission) => commands(native!).find(command => command.id === input.target.id
         && command.revision === input.target.expectedRevision && command.kind === input.kind && !command.disabled
         && (input.execution === undefined || input.execution === command.execution));
@@ -206,7 +207,7 @@ export async function createNativeChatBinding(options: NativeChatBindingOptions)
         } : undefined,
     };
     return { images: options.images, source: Object.assign(source, { refresh }), actions, operations: options.operations,
-        instructionQueue: createNativeQueuePort(options.controls, () => native, async action => {
+        instructionQueue: options.readOnly ? undefined : createNativeQueuePort(options.controls, () => native, async action => {
             if (closed) throw Object.assign(new Error('Native queue binding closed'), {code: 'QUEUE_VIEW_CLOSED'});
             const captured = generation, state = await action();
             if (closed) throw Object.assign(new Error('Native queue binding closed'), {code: 'QUEUE_VIEW_CLOSED'});

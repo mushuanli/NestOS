@@ -186,6 +186,8 @@ function executionStateText(call: IndependentCallView): string {
     if (!state) return '';
     if (state.phase === 'done' && call.executionTree && !call.executionTree.settled)
         return t('callable.independent.execution.treeCleaning', {tasks: call.executionTree.unsettledTasks, count: call.executionTree.activeOperations});
+    if (state.phase === 'done' && state.settled && call.callerState && !call.callerState.settled)
+        return t('callable.independent.execution.callSettling');
     if (state.phase === 'done') return state.settled
         ? call.historyPending ? t('callable.independent.historyPending') : ''
         : t('callable.independent.execution.cleaning', {count: state.activeOperations});

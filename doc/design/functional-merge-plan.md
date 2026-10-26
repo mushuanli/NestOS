@@ -2331,3 +2331,5 @@ Kernel 的物理资源 adapter 按原 Session/Task 及根输入中的冻结策�
 Flow 的终态输出按原 formatFlowOutput 投影，Round 保留真实 Flow 修订、参数、输入与主 Task 引用；父卡片继续使用原产物/交互/控制。失败且无正文时显示原具体错误原因。诊断新增 session.flow.prepare 的 context/graph/root，目标恢复归原 call.history.recover 的 target 阶段；不记录正文、完整参数和凭据。
 
 本批只记录实现及接线事实，按用户要求未运行测试、类型检查、构建或实际部署验收。跨调用预算、严格原生 continue、长期生命周期及复杂历史性能仍未整体完成；不能将本节视为整份计划清零。
+
+Flow 正式入口提交 `49a87e45`。父卡片补充原 caller 的收尾观察：目标 Task 已结束但 Kernel caller 尚未 settled 时，显示“调用仍在等待收尾确认”，不将物理资源收尾等同于历史写入。继续由同一列表观察及资源阶段日志定位，不新增状态字段或重复轮询器；本增量未运行验证。

@@ -2305,3 +2305,5 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 主链提交 `133e0b0c`。随后补齐“执行中提前打开子会话”的正常展示：历史保存后通知已有视图，由 SessionManager 复用 reloadSessionData 更新正文；视图销毁解除自身订阅。刷新失败以 call.history.display 记录 Session、阶段、错误分类和耗时，已提交历史保留。按当前交付要求不执行验证。
 
 展示刷新提交 `851d8b7d`。下一主线修正源 Session 前台准入：原先 sessionActivity 的全会话忙闲统计会将独立 Kernel caller 计入，导致后台调用仍挡住普通输入。SessionInstructions 在正常忙碌判断后，经 IndependentCallService 按持久路由及原 caller 规格核对后台 Task，只排除这些确切 caller；其他活动任务、Session 控制及 cleanup 仍按原准入规则处理。诊断 session.input.ready 记录 background-call-scope、后台 caller 数量、剩余前台 Task 数量、结果及耗时。未运行验证。
+
+前台准入提交 `0f0761e5`；后续直接按 taskStat.settled 判断非后台任务，避免将 sessionActivity 的 queued 与 taskStat 的 ready 等不同阶段名混用而漏算正常就绪任务。继续沿用同一定位日志，未运行验证。

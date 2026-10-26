@@ -106,7 +106,7 @@ export class SessionInstructions {
         const started = Date.now(), background = await this.backgroundCallers(id);
         if (!background.size) return false;
         const tasks = await this.kernel.listSessionTasks(id);
-        const foreground = tasks.filter(task => !background.has(task.id) && phases.has(taskStat(task).phase)).length;
+        const foreground = tasks.filter(task => !background.has(task.id) && !taskStat(task).settled).length;
         try {this.registry.host.logger.debug('Session foreground input admission', {operation: 'session.input.ready', sessionId: id,
             stage: 'background-call-scope', outcome: foreground ? 'held' : 'ready', backgroundCallers: background.size,
             foregroundTasks: foreground, durationMs: Date.now() - started});}

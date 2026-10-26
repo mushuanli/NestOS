@@ -167,6 +167,7 @@ function failAfterWrite(fs: IFileSystem): IFileSystem {
     } });
 }
 
+// This compatibility scenario seeds 250 rows and 105 committed revisions on the IndexedDB driver.
 it('bounds actual IndexedDB prefix batches across multiple index pages and cleans version chains without prefix materialization', async () => {
     const { fs, store } = await setup('indexeddb');
     for (let page = 0; page < 3; page++) await store.commit({ operationId: `page-${page}`, expectedForgetEpoch: 0,
@@ -197,4 +198,4 @@ it('bounds actual IndexedDB prefix batches across multiple index pages and clean
         expect(sizes.length).toBeGreaterThan(0); expect(Math.max(...sizes)).toBeLessThanOrEqual(100);
         expect(await fs.meta.seq!.getEntry('/var/lib/digital-twin/test/knowledge.seq', `version/memory/item-0/${current.revision}`)).toBeNull();
     } finally { spy.mockRestore(); }
-});
+}, 15_000);

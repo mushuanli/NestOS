@@ -1,3 +1,5 @@
+import {createSessionTaskCallAuthority} from '../session/task-call-authority';
+import {renewSessionWriteLease} from '../kernel/session-lease';
 import {createHarnessContextCleanup} from '../projects/harness-context-cleanup';
 import {createAgentPublicationDependencies} from '../configuration/agent-publications';
 import {FlowInstallationService} from '../configuration/flow-installation';
@@ -26,7 +28,7 @@ import { ProjectRemoteMountService, type RemoteFileSourceProvider } from '../pro
 import { HarnessConnectionService } from '../projects/harness-connections';
 import { createHarnessExecutionProvider } from '../projects/harness-execution';
 import {createTaskAssetReader} from './task-assets';
-import { createHarnessCleanupState, renewHarnessCleanupLease } from '../projects/harness-cleanup-state';
+import { createHarnessCleanupState } from '../projects/harness-cleanup-state';
 import { FSError } from '@itookit/vfs-core';
 import { ModelConfigurationCommands } from '../configuration/model-commands';
 import { resumeSessionDeletions } from './resume-session-deletions';
@@ -267,16 +269,21 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             targets: async () => { await initializeProjects(); return executionConnections.targets(await projects.list()); },
         });
         let harnessKernel: HeadlessKernelRuntime | undefined;
-        let ensureHarnessWrite = async (_id: string): Promise<void> => { throw new FSError('ECONFLICT', 'Session ownership is not ready'); };
+        let ensureExecutionWrite = async (_id: string): Promise<void> => { throw new FSError('ECONFLICT', 'Session ownership is not ready'); };
         let mayCollectContext = (_id: string): boolean => false;
         let digitalTwin: DigitalTwinService | undefined;
         const kernel: HeadlessKernelRuntime = await traceBoot('createKernelRuntime', () => createKernelRuntime({
             harnessExecution: createHarnessExecutionProvider(executionConnections, {
                 readTaskAsset: createTaskAssetReader(() => harnessKernel!.kernel, systemFS),
-                stateForCleanup: createHarnessCleanupState(() => harnessKernel!.kernel, id => ensureHarnessWrite(id)),
-                settleContextForCleanup: createHarnessContextCleanup(() => harnessKernel!.kernel, id => ensureHarnessWrite(id)),
+                stateForCleanup: createHarnessCleanupState(() => harnessKernel!.kernel, id => ensureExecutionWrite(id)),
+                settleContextForCleanup: createHarnessContextCleanup(() => harnessKernel!.kernel, id => ensureExecutionWrite(id)),
             }),
             systemFS,
+            authorizeTaskCall: createSessionTaskCallAuthority({
+                assertOwned: id => ensureExecutionWrite(id),
+                isDeleting: id => sessionRepository.isSessionDeletionPending(id),
+                isMoving: async id => !await projects.sessionMoves.ready(id),
+            }),
             contextEngineOptions: options.contextEngineOptions,
             contextGc: { canCollectSession: id => mayCollectContext(id) },
             llmDriver,
@@ -367,7 +374,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
             if (!await recovery.acquireMetadataLease(id)) throw new Error(`Session is owned by another host: ${id}`);
             await mountGuard(id);
         };
-        ensureHarnessWrite = id => renewHarnessCleanupLease(id, recovery.leases, lease => leaseStore.renew(lease));
+        ensureExecutionWrite = id => renewSessionWriteLease(id, recovery.leases, lease => leaseStore.renew(lease));
         mayCollectContext = id => (recovery.leases.get(id)?.leaseUntil ?? 0) > Date.now();
         cleanupFns.push(() => kernel.dispose());
         cleanupFns.push(async () => {

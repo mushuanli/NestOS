@@ -1,19 +1,6 @@
 import { FSError } from '@itookit/vfs-core';
 import type { EffectExecutionContext, EffectSessionState, Kernel, SessionHandle } from '@itookit/durable-kernel';
 import { harnessExecutionJournalKey } from './harness-execution-journal';
-import type { SessionLeaseRecord } from '../kernel/session-lease';
-
-/** Cleanup must neither reenter recovery nor acquire ownership that its Effect no longer holds. */
-export async function renewHarnessCleanupLease(sessionId: string, held: Map<string, SessionLeaseRecord>,
-    renew: (lease: SessionLeaseRecord) => Promise<SessionLeaseRecord | null>): Promise<void> {
-    const current = held.get(sessionId);
-    if (!current) throw new FSError('EACCES', 'Harness cleanup no longer owns the Session lease');
-    const renewed = await renew(current);
-    if (!renewed || held.get(sessionId)?.fencingToken !== current.fencingToken)
-        throw new FSError('EACCES', 'Harness cleanup lost the Session lease');
-    held.set(sessionId, renewed);
-}
-
 /** Cleanup may access only its own receipt journal, even when it has no live Effect state port. */
 export function createHarnessCleanupState(kernel: () => Pick<Kernel, 'openSession'>,
     ensureWritable: (sessionId: string) => Promise<void> = async () => {}): (context: EffectExecutionContext) => Promise<EffectSessionState> {

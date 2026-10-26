@@ -1,3 +1,4 @@
+import {renewSessionWriteLease, type SessionLeaseRecord} from '../src/kernel/session-lease';
 import { describe, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionLeaseStore } from '../src/index';
@@ -121,4 +122,11 @@ describe('SessionLeaseStore', () => {
             await manager.dispose();
         }
     });
+});
+
+it.each([{sessionId: 'other'}, {ownerId: 'other'}, {fencingToken: 3}])('refuses a renewal that changes lease identity: %j', async changed => {
+    const current: SessionLeaseRecord = {sessionId: 'session', ownerId: 'owner', ownerKind: 'cli', fencingToken: 2, heartbeatAt: 0, leaseUntil: 100};
+    const held = new Map([['session', current]]);
+    await expect(renewSessionWriteLease('session', held, async lease => ({...lease, ...changed}))).rejects.toHaveProperty('code', 'EACCES');
+    expect(held.get('session')).toBe(current);
 });

@@ -1,4 +1,4 @@
-import { pathUtils, type IFileSystem } from '@itookit/vfs-core';
+import { FSError, pathUtils, type IFileSystem } from '@itookit/vfs-core';
 
 export type SessionOwnerKind = 'cli' | 'tauri' | 'web';
 
@@ -153,4 +153,17 @@ function parse(raw: string): SessionLeaseRecord {
         throw new Error('Invalid Session lease record');
     }
     return value;
+}
+
+/** Renew existing ownership without reentering recovery or acquiring a different owner's Session. */
+export async function renewSessionWriteLease(sessionId: string, held: Map<string, SessionLeaseRecord>,
+    renew: (lease: SessionLeaseRecord) => Promise<SessionLeaseRecord | null>): Promise<void> {
+    const current = held.get(sessionId);
+    if (!current) throw new FSError('EACCES', 'Session write lease is not held');
+    const renewed = await renew(current);
+    const latest = held.get(sessionId);
+    if (!renewed || renewed.sessionId !== sessionId || renewed.ownerId !== current.ownerId || renewed.fencingToken !== current.fencingToken
+        || latest?.ownerId !== current.ownerId || latest.fencingToken !== current.fencingToken)
+        throw new FSError('EACCES', 'Session write lease was lost');
+    held.set(sessionId, renewed);
 }

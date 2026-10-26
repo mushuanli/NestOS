@@ -21,6 +21,8 @@ import { createRuntimeContextResolver } from './context-service';
 import { createRuntimeContextGc, type RuntimeContextGc, type RuntimeContextGcOptions } from './context-gc';
 
 export interface CreateKernelRuntimeOptions {
+    /** Host Session ownership and policy checks; Kernel still enforces exact plan capabilities. */
+    authorizeTaskCall?: import('@itookit/durable-kernel').TaskCallAuthority;
     harnessExecution?: KernelAdaptersRuntimeOptions['harnessExecution'];
     authorizeLlm?: KernelAdaptersRuntimeOptions['authorizeLlm'];
     authorizeMedia?: KernelAdaptersRuntimeOptions['authorizeMedia'];
@@ -104,6 +106,7 @@ export async function createKernelRuntime(
         catalog: { fs: options.systemFS, rootPath: '/var/lib/kernel' },
         maxConcurrent: options.maxConcurrent,
         maxConcurrentEffects: options.maxConcurrentEffects,
+        authorizeTaskCall: options.authorizeTaskCall,
     });
     const memory = new SessionMemoryProvider(kernel, sharedMemory);
     kernel.registerStorageResolver(options.storageResolver);

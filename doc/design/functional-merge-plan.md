@@ -2017,3 +2017,30 @@ Session 增加可选存储 instanceId：新建时保存；旧数据在有权限�
 验证覆盖单额度嵌套、最紧深度继承、计划能力不匹配、字段注入、宿主回调输入隔离、原目标重启恢复、两个独立 Kernel 实例的迟到创建/先取消、已完成根的剩余后代、物理清理失败、Task 终结但资源容量仍持有、替代实例拒绝、旧实例迁移、归档验证与日志脱敏。真实 LocalFS/SQLite 根挂载和模块挂载分别通过独立进程杀死调用者后恢复原目标，以及另一进程取消但保留同 Session 无关任务。该 Kernel 子功能可单独验证，不标记 F16/P1 整体完成，也未部署到运行服务。
 
 Kernel 提交 `4b21796c`：435 项单元测试、56 项真实进程集成测试、独立 ESM/CommonJS 与 `/core` 执行、NodeNext 声明和新增测试的严格类型检查通过；当前设计文档 69 个 Mermaid 图解析及 22 个本地链接检查通过。根仓库消费方验证另行记录，不把包内验证当作服务部署结果。
+
+
+## 85. 宿主接通受管调用的双侧写权检查
+
+createKernelRuntime 接收并透传 Kernel 的 authorizeTaskCall；完整应用装配 createSessionTaskCallAuthority。每次 execute/cleanup 都按实际 source 与 target Session 续验已持有的应用写租约，同一 Session 只检查一次。新执行分别检查删除/移动状态并报告 TASK_CALL_SESSION_DELETING / TASK_CALL_SESSION_MOVING；cleanup 不受新调用可用性阻拦，但仍必须持有两侧原写权。该回调不获取其他宿主的租约，也不重入 Session 恢复；准备业务 Session 和显式恢复仍由原应用入口完成。
+
+共用的 renewSessionWriteLease 从 Harness 项目实现移至 app-core/kernel/session-lease，原生 Harness journal/上下文清理与 Task 调用复用它。该租约是 MindOS 宿主的 Session 写策略，不能移入独立 durable-kernel；Kernel 继续提供通用调用能力、Task/Effect 围栏和停止确认。Session 层未增加所有权记录、调度器或新的控制 RPC。
+
+```mermaid
+C4Dynamic
+  title 受管调用的宿主写权与 Kernel 执行边界
+  Component(host, "应用宿主", "准备 Session、持有写租约")
+  Component(call, "Kernel task.call", "原计划能力与目标身份")
+  Component(gate, "应用 TaskCallAuthority", "两侧续验；新调用可用性")
+  Component(target, "原目标 Task", "Kernel 执行与停止围栏")
+  RelIndex(1, host, call, "提交已准备计划并授予确切能力")
+  RelIndex(2, call, gate, "execute 或 cleanup；最小身份与计划副本")
+  RelIndex(3, gate, call, "有写权才允许；失权明确拒绝")
+  RelIndex(4, call, target, "同一目标派发、恢复或取消")
+  RelIndex(5, target, call, "真实终态及整树、资源收尾证据")
+```
+
+失权时，尚无 binding 的调用拒绝且不创建目标；已派发调用的取消保留 cleanupPending，不能以取消接纳代替停止确认。另一宿主持有目标租约时显式恢复也返回只读；只有所有权依法重新取得后，原清理责任才继续处理同一目标。应用写权检查不构成跨 Session 原子事务，也不代替远端执行器的操作围栏。
+
+验收包含完整应用双侧写权有效、源或目标租约过期/被其他宿主持有、清理失权后恢复且目标不重复、完整应用重建后同一目标恢复、日志异常隔离与脱敏。重建验收保留测试存储并推进已到期的旧 worker 租约，恢复者取得自己的 Kernel claim 后继续原调用，不把重启视为立即取得旧在途操作所有权。独立宿主真实 Agent Program 验证 kernel.call → llm.agent@2 → 外部工具审批 → 工具执行 → 最终结构化输出，在单 Effect 工作额度下完成；工具只取得目标 Session 作用域。LLM 响应由测试端口提供，不是云模型或已发布 Agent 的业务调用验收。撤掉 headless 透传后，拒绝派发反例会错误成功，已确认该反例能检出旧接线缺口。
+
+本节完成宿主授权接线；第 84 节的产品计划准备、业务历史映射、工作区资源、预算及 UI 接入仍未完成。普通 Agent 的 Task 构造仍与立即提交耦合，Flow 工作区收尾仍有宿主责任；后续先分离准备/提交，再接入受管调用，不能直接把现有 submit 包装成函数便宣称完成。未部署到运行服务。

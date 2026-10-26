@@ -1,8 +1,8 @@
 import { expect, it, vi } from 'vitest';
 import type { EffectExecutionContext, Kernel } from '@itookit/durable-kernel';
-import { createHarnessCleanupState, renewHarnessCleanupLease } from '../src/projects/harness-cleanup-state';
+import { createHarnessCleanupState } from '../src/projects/harness-cleanup-state';
 import { harnessExecutionJournalKey } from '../src/projects/harness-execution';
-import type { SessionLeaseRecord } from '../src/kernel/session-lease';
+import { renewSessionWriteLease, type SessionLeaseRecord } from '../src/kernel/session-lease';
 
 it('limits cancellation recovery to one journal and preserves shared-state CAS versions', async () => {
     const context = { sessionId: 'session', taskId: 'task', effectId: 'effect' } as EffectExecutionContext;
@@ -25,9 +25,9 @@ it('renews only an already-held cleanup lease without invoking recovery or acqui
     const lease: SessionLeaseRecord = { sessionId: 'session', ownerId: 'host', ownerKind: 'cli',
         fencingToken: 2, heartbeatAt: 0, leaseUntil: 100 };
     const held = new Map([['session', lease]]), renew = vi.fn(async current => ({ ...current, leaseUntil: 200 }));
-    await renewHarnessCleanupLease('session', held, renew);
+    await renewSessionWriteLease('session', held, renew);
     expect(held.get('session')?.leaseUntil).toBe(200); expect(renew).toHaveBeenCalledWith(lease);
-    await expect(renewHarnessCleanupLease('missing', held, renew)).rejects.toMatchObject({ code: 'EACCES' });
+    await expect(renewSessionWriteLease('missing', held, renew)).rejects.toMatchObject({ code: 'EACCES' });
     expect(renew).toHaveBeenCalledOnce();
 });
 
@@ -35,8 +35,8 @@ it('keeps cleanup pending when lease renewal or its concurrent fencing identity 
     const lease: SessionLeaseRecord = { sessionId: 'session', ownerId: 'host', ownerKind: 'cli',
         fencingToken: 2, heartbeatAt: 0, leaseUntil: 100 };
     const held = new Map([['session', lease]]);
-    await expect(renewHarnessCleanupLease('session', held, async () => null)).rejects.toMatchObject({ code: 'EACCES' });
-    await expect(renewHarnessCleanupLease('session', held, async current => {
+    await expect(renewSessionWriteLease('session', held, async () => null)).rejects.toMatchObject({ code: 'EACCES' });
+    await expect(renewSessionWriteLease('session', held, async current => {
         held.set('session', { ...lease, fencingToken: 3 }); return current;
     })).rejects.toMatchObject({ code: 'EACCES' });
     expect(held.get('session')?.fencingToken).toBe(3);

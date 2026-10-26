@@ -812,3 +812,10 @@ initializeConversationSystem 在已配置独立调用宿主时返回 independent
 准备与普通运行共用只读输入准备函数；只有原普通提交路径写入 executionModeLocked。准备不会绑定视图、入队、创建 Kernel Task 或 Round，也不锁定子 Session 的运行偏好。已持久计划的重放直接返回原计划，不重读新草稿或发布目录。源与目标权限在原服务持久保存前复验，管理器在异步准备后再次检查目标写权。
 
 诊断 session.call.prepare 区分 input/permission/published-target，携带入口捕获的安全 Session/operationId、分类、结果与耗时，不记录用户输入、附件、策略正文或原异常。真正模型执行仍须显式调用 submitPreparedTaskCall；接纳、输出与历史完成分别核对。正式 session.call.submit、历史恢复与前台/后台范围仍按[功能合入计划第 91 节](design/functional-merge-plan.md#91-已发布目标复用普通对话准备进入可信宿主调用)继续。
+
+
+### 独立调用的原查询与 Kernel 事实
+
+原 session.call.inspect 识别已冻结 Kernel 路由，仅按原 caller 规格核对接纳；list 与控制另经 Kernel 验证实际目标，不让历史写入影响接纳核对或取消。inspect 的回执返回 evidence=kernel、callerExecution；list 的回执另含已存在的真实 primary execution；列表分别返回 callerState、目标 executionState 和 historyPending；exitStatus 直接区分 Kernel 的成功、失败和取消，phase=done 本身不代表成功。已接纳但未生成目标时仍为 accepted，不伪造目标；失败、取消及源宿主重启后仍可核对同一关联。原队列路由保持原语义。
+
+没有新增 Session 公共执行查询命令或重复执行状态。未提交 Kernel 的计划不能凭子队列回执变成 accepted。Round 的摘要、发布身份、Invocation、实际目标和索引必须匹配后才能用于历史摘要；未索引文件保留 historyPending，不展示为已提交历史。查询不获取 writer、不恢复执行、不因历史失败重跑目标。当前尚未自动写入/恢复 Round，也未接通默认新 UI，后续按[交付验收包](design/functional-merge-plan.md#01-当前交付收敛与复杂度约束2026-10-26)推进。

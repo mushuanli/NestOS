@@ -619,3 +619,6 @@ const exit = await run.root.wait({until: 'settled'});
 `readTaskCallSubmission(plan, {kernel, caller, onDiagnostic?})` 使用完全相同的源 TaskSpec，调用 Kernel.readTaskSubmissionReceipt，不 open/recover Session、不绑定能力或派发目标。返回 TaskSubmissionReceipt 或 undefined；不同内容抛 CONFLICT。提交或绑定回复丢失时，先用原 plan/caller 核对，后续重试仍使用它们。接纳不代表绑定完成、目标已经启动或调用完成；查询缺少证据也不授权更换请求身份重发。SDK 不为结果、资源清理或历史建立第二套状态。
 
 诊断沿用 run.task.call，新增 receipt 阶段，带原安全请求身份和实际 caller Task ID；不记录计划或消息正文。该可信宿主端口仍不等于正式 session.call.submit、UI 或 Round 恢复接线，见[功能合入计划第 90 节](design/functional-merge-plan.md#90-以原-kernel-事实提交和核对已准备调用)。
+
+
+`readTaskCallExecution(plan, options)` 共用原提交规格构造和限额检查，返回原 submission 与实际 target（存在时）。目标来自 Kernel 所有者/Effect/binding 核对，不从历史、成功输出或标签枚举推导。未接纳返回 undefined；已接纳但目标尚未出现时只返回 submission，不能把它解释为可重新派发。caller 对象在读取期间变化不能改写原接纳身份；不同目标、存储代次或关联损坏保留具体错误。该读接口无派发和恢复副作用，Session 使用它接入现有 inspect/list，不另建状态库。

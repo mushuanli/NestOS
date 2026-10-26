@@ -2,7 +2,7 @@ import {afterEach, expect, it, vi} from 'vitest';
 import {MemoryBackend} from '@itookit/vfs-core';
 import {sha256Hex} from '@itookit/llm-context';
 import {FlowLibraryCommand} from '@itookit/app-contracts';
-import {SessionCommand, type IndependentCallInput, type RootTargetCatalog} from '@itookit/llm-session/contracts';
+import {IndependentCallCommand, SessionCommand, type IndependentCallInput, type IndependentCallReceipt, type IndependentCallView, type RootTargetCatalog} from '@itookit/llm-session/contracts';
 import type {AgentDefinition, HarnessConnectionSnapshot} from '@itookit/kernel-adapters/contracts';
 import {createApplicationRuntime} from '../src/runtime/create-application-runtime';
 
@@ -153,4 +153,28 @@ it('does not compile a published Flow implementation into a bare Task and bypass
     const input = await request(runtime, parent);
     await expect(runtime.independentCalls!.prepareTaskCall(input, {maxDepth: 3})).rejects.toHaveProperty('code', 'CALL_GRAPH_PREPARATION_REQUIRED');
     expect(await runtime.independentCalls!.inspectPreparedTaskCall(input)).toBeUndefined();
+});
+it('reports actual Kernel acceptance and target through the existing call commands before history is written', async () => {
+    const {runtime, parent} = await fixture(), input = await request(runtime, parent);
+    const ready = await runtime.independentCalls!.prepareTaskCall(input, {maxDepth: 3});
+    const admitted = await runtime.independentCalls!.submitPreparedTaskCall(input);
+    await (await runtime.kernel.kernel.attachTask(parent, admitted.submission.task.taskId)).wait({until: 'settled', timeoutMs: 5000});
+    const receipt = await runtime.commandBus.execute<IndependentCallReceipt>(IndependentCallCommand.Inspect, input);
+    expect(receipt).toMatchObject({status: 'accepted', evidence: 'kernel', callerExecution: admitted.submission.task,
+        executionSessionId: ready.executionSessionId});
+    expect(receipt.execution).toBeUndefined();
+    const [view] = await runtime.commandBus.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: parent});
+    expect(view.receipt.execution).toMatchObject({role: 'primary', invocation: ready.invocation});
+    expect(view).toMatchObject({historyPending: true, callerState: {phase: 'done', exitStatus: 'succeeded'}, executionState: {phase: 'done', exitStatus: 'succeeded'}});
+    expect(view.status).toBeUndefined(); expect(await runtime.sessionRepository.listHistory(ready.executionSessionId)).toEqual([]);
+});
+it('reconciles a lost caller response with the existing inspect command without inventing a target', async () => {
+    const {runtime, parent, bodies} = await fixture(), input = await request(runtime, parent);
+    const ready = await runtime.independentCalls!.prepareTaskCall(input, {maxDepth: 3}), kernel = runtime.kernel.kernel, original = kernel.submit.bind(kernel);
+    vi.spyOn(kernel, 'submit').mockImplementationOnce(async (...args) => {await original(...args); throw Object.assign(Error('Reply lost'), {code: 'ETIMEDOUT'});});
+    await expect(runtime.independentCalls!.submitPreparedTaskCall(input)).rejects.toHaveProperty('code', 'ETIMEDOUT');
+    const receipt = await runtime.commandBus.execute<IndependentCallReceipt>(IndependentCallCommand.Inspect, input);
+    expect(receipt).toMatchObject({status: 'accepted', evidence: 'kernel', executionSessionId: ready.executionSessionId});
+    expect(receipt.execution).toBeUndefined(); expect(receipt.callerExecution).toBeDefined();
+    expect(await kernel.listSessionTasks(ready.executionSessionId)).toEqual([]); expect(bodies).toEqual([]);
 });

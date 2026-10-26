@@ -1,5 +1,6 @@
-import {submitPreparedTaskCall, readTaskCallSubmission} from '@itookit/llm-flow';
+import {submitPreparedTaskCall, readTaskCallSubmission, readTaskCallExecution} from '@itookit/llm-flow';
 import {snapshotIndependentTaskCallPolicy, newIndependentKernelPreparation, assertIndependentPreparationMode, freezeIndependentTaskCall, readIndependentTaskCall, independentPreparationError, type IndependentKernelPreparation, type IndependentTaskCallPolicy, type IndependentTaskCallPreparation, type PreparedIndependentTaskCall, type IndependentTaskCallAdmission, type PreparationScope} from './independent-call-preparation';
+import {committedIndependentKernelHistory} from './independent-call-history';
 import {IndependentCallDescendants} from './independent-call-descendants';
 import {independentCallTaskState, supportsCallCancellation} from './independent-call-task-state';
 import {readIndependentCallTree} from './independent-call-tree';
@@ -26,12 +27,13 @@ interface Options {
     submit: IndependentCallSubmitter; prepareExecution?(sessionId: string): Promise<void>; canWrite?(sessionId: string): Promise<boolean>; hostPorts?: SessionHostPorts;
     prepareTaskCall?: IndependentTaskCallPreparation['prepare'];
 }
+interface ObservedCall {receipt: IndependentCallReceipt; round?: Round; callerState?: import('../contracts/independent-calls').IndependentCallExecutionState; historyPending?: boolean}
 const prefix = 'conversation/call/';
 interface PreparationProgress {stage: string; executionSessionId?: string}
 /** Trusted Effect admission only; a held attempt says nothing about an earlier submission. */
 export type ManagedCallAdmission = IndependentCallReceipt | (Omit<IndependentCallReceipt, 'status' | 'evidence' | 'execution'> & {status: 'held'});
 export type ManagedCallAdmissionGuard = (request: SubmissionRequest) => Promise<boolean>;
-/** A durable route only: acceptance and execution remain owned by the child's existing queue and history. */
+/** Session routes and projections reuse queue/history or Kernel facts; they never own another executor. */
 export class IndependentCallService {
     private readonly host;
     constructor(private readonly options: Options) {this.host = createSessionHost(options.hostPorts);}
@@ -143,6 +145,11 @@ export class IndependentCallService {
             progress.executionSessionId = ready.executionSessionId; progress.stage = 'receipt'; return this.taskCallAdmission(ready);
         });
     }
+    private async taskCallExecution(ready: PreparedIndependentTaskCall) {
+        const observed = await readTaskCallExecution(ready.plan, {kernel: this.options.kernel, caller: ready.caller,
+            onDiagnostic: event => this.host.logger.debug('Prepared Kernel execution', event)});
+        return observed && {...callAdmission(ready, observed.submission), ...(observed.target ? {target: observed.target} : {})};
+    }
     private async requirePreparedTaskCall(input: IndependentCallInput): Promise<PreparedIndependentTaskCall> {
         const ready = await this.inspectPreparedTaskCall(input);
         if (!ready) throw independentPreparationError('CALL_PREPARATION_REQUIRED'); return ready;
@@ -150,8 +157,7 @@ export class IndependentCallService {
     private async taskCallAdmission(ready: PreparedIndependentTaskCall): Promise<IndependentTaskCallAdmission | undefined> {
         const submission = await readTaskCallSubmission(ready.plan, {kernel: this.options.kernel, caller: ready.caller,
             onDiagnostic: event => this.host.logger.debug('Prepared Kernel call receipt', event)});
-        return submission && {operationId: ready.operationId, invocation: structuredClone(ready.invocation),
-            executionSessionId: ready.executionSessionId, submission};
+        return submission && callAdmission(ready, submission);
     }
     private async tracePreparation<T>(input: IndependentCallInput, operation: string, work: (progress: PreparationProgress) => Promise<T>): Promise<T> {
         const started = Date.now(), progress: PreparationProgress = {stage: 'validate'}, supplied = input?.request?.submission?.id;
@@ -260,9 +266,9 @@ export class IndependentCallService {
             const route = entry.value as unknown as CallRoute;
             if (route.input.request.expectedSessionId !== query.sessionId) throw failure('CALL_ROUTE_CONFLICT');
             if (query.branchId !== undefined && route.input.request.expectedBranch !== query.branchId) continue;
-            const {receipt, round} = await this.observe(route);
+            const {receipt, round, ...observation} = await this.observe(route);
             const executionView = await this.executionProjection(receipt);
-            views.push({input: structuredClone(route.input), receipt, createdAt: route.createdAt ?? 0, head: route.head ?? null, ...executionView,
+            views.push({input: structuredClone(route.input), receipt, createdAt: route.createdAt ?? 0, head: route.head ?? null, ...observation, ...executionView,
                 ...(round ? {status: round.status, summary: outputSummary(round)} : {})});
         }
         return views.sort((a, b) => a.createdAt - b.createdAt || a.receipt.operationId.localeCompare(b.receipt.operationId));
@@ -274,7 +280,7 @@ export class IndependentCallService {
         if (request.expectedSessionId !== query.sessionId || request.expectedBranch !== query.branchId
             || request.submission?.id !== query.callId || route.executionSessionId !== query.executionSessionId
             || query.executionSessionId === query.sessionId) throw failure('CALL_CONTROL_SCOPE_MISMATCH');
-        const {receipt} = await this.observe(route);
+        const receipt = route.kernelPreparation ? await this.kernelExecutionReceipt(route) : (await this.observe(route)).receipt;
         if (receipt.status !== 'accepted' || !receipt.execution) throw failure('CALL_EXECUTION_UNAVAILABLE');
         if (receipt.execution.role !== 'primary' || receipt.execution.taskId !== query.taskId) throw failure('CALL_CONTROL_SCOPE_MISMATCH');
         return (await this.executionTask(receipt))!;
@@ -388,13 +394,42 @@ export class IndependentCallService {
         }
         await freezeAttachments(this.options.repository, route.executionSessionId!, route.childRequest.submission!.id, files, this.host.logger);
     }
-    private async receipt(route: CallRoute): Promise<IndependentCallReceipt> {return (await this.observe(route)).receipt;}
-    private async observe(route: CallRoute): Promise<{receipt: IndependentCallReceipt; round?: Round}> {
-        const request = route.input.request, base = {operationId: request.submission!.id, callerSessionId: request.expectedSessionId!, executionSessionId: route.executionSessionId};
+    private async receipt(route: CallRoute): Promise<IndependentCallReceipt> {
+        if (!route.kernelPreparation) return (await this.observe(route)).receipt;
+        return this.tracePreparation(route.input, 'call.receipt.inspect', async progress => {
+            progress.stage = 'plan'; const ready = this.preparedCall(route); progress.executionSessionId = ready?.executionSessionId;
+            progress.stage = 'receipt'; const admitted = ready && await this.taskCallAdmission(ready);
+            return admitted ? kernelReceipt(route, admitted) : {...callReceiptBase(route), status: 'unknown'};
+        });
+    }
+    /** Control authority comes from the owning Kernel relation, never history availability. */
+    private async kernelExecutionReceipt(route: CallRoute): Promise<IndependentCallReceipt> {
+        const ready = this.preparedCall(route), observed = ready && await this.taskCallExecution(ready);
+        return observed ? kernelReceipt(route, observed, observed.target) : {...callReceiptBase(route), status: 'unknown'};
+    }
+    private async observe(route: CallRoute): Promise<ObservedCall> {
+        const base = callReceiptBase(route);
         if (!route.executionSessionId) return {receipt: {...base, status: 'unknown'}};
+        if (route.kernelPreparation) return this.observeKernelCall(route, base);
         const receipt = await readSubmissionReceipt(this.options.kernel, this.options.repository, route.executionSessionId, submissionInstruction(route.childRequest));
         const round = receipt.status === 'accepted' ? await this.round(route) : undefined;
         return {receipt: {...base, ...receipt, ...(round ? {execution: round.executions.find(execution => execution.role === 'primary')} : {})}, round};
+    }
+    private async observeKernelCall(route: CallRoute, base: Pick<IndependentCallReceipt, 'operationId' | 'callerSessionId' | 'executionSessionId'>): Promise<ObservedCall> {
+        return this.tracePreparation(route.input, 'call.execution.observe', async progress => {
+            progress.stage = 'plan';
+            this.assertPreparationRoute(route, {sessionId: base.callerSessionId, id: base.operationId});
+            const ready = this.preparedCall(route); progress.executionSessionId = ready?.executionSessionId; progress.stage = 'target';
+            const observed = ready && await this.taskCallExecution(ready);
+            if (!observed) return {receipt: {...base, status: 'unknown'}};
+            progress.stage = 'caller';
+            const ref = observed.submission.task, caller = await this.options.kernel.task(ref.sessionId, ref.taskId);
+            if (caller.id !== ref.taskId || caller.sessionId !== ref.sessionId) throw failure('CALL_EXECUTION_CONFLICT');
+            progress.stage = 'history'; const round = await committedIndependentKernelHistory(this.options.repository, route.childRequest,
+                ready!.invocation, observed.target, await this.round(route));
+            return {receipt: kernelReceipt(route, observed, observed.target),
+                round, callerState: independentCallTaskState(caller), historyPending: !round};
+        });
     }
     private match(value: JsonValue, digest: string): CallRoute {
         const route = value as unknown as CallRoute;
@@ -410,4 +445,16 @@ function outputSummary(round: Round): string {
     if (!['completed', 'failed', 'cancelled'].includes(round.status)) return '';
     return round.output.map(message => typeof message.content === 'string' ? message.content
         : message.content.filter(part => part.type === 'text').map(part => 'text' in part ? part.text : '').join('\n')).join('\n\n').slice(0, 2000);
+}
+
+function callAdmission(ready: PreparedIndependentTaskCall, submission: import('@itookit/durable-kernel').TaskSubmissionReceipt): IndependentTaskCallAdmission {
+    return {operationId: ready.operationId, invocation: structuredClone(ready.invocation), executionSessionId: ready.executionSessionId, submission};
+}
+
+function callReceiptBase(route: CallRoute) {
+    return {operationId: route.input.request.submission!.id, callerSessionId: route.input.request.expectedSessionId!, executionSessionId: route.executionSessionId};
+}
+function kernelReceipt(route: CallRoute, admitted: IndependentTaskCallAdmission, target?: import('@itookit/durable-kernel').TaskRef): IndependentCallReceipt {
+    return {...callReceiptBase(route), status: 'accepted', evidence: 'kernel', callerExecution: admitted.submission.task,
+        ...(target ? {execution: {taskId: target.taskId, role: 'primary', invocation: structuredClone(admitted.invocation)}} : {})};
 }

@@ -25,7 +25,7 @@ export interface SubmissionRequest {
 export interface SubmissionReceipt {
     operationId: string;
     status: 'accepted' | 'unknown';
-    evidence?: 'queue' | 'history';
+    evidence?: 'queue' | 'history' | 'kernel';
 }
 
 export interface RootCallTarget {

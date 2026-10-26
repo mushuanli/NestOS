@@ -1,7 +1,7 @@
 import {afterEach, beforeEach, expect, it, vi} from 'vitest';
 import {Kernel, type KernelDiagnostic} from '@itookit/durable-kernel';
 import {createVFS, MemoryBackend, type IVFSManager} from '@itookit/vfs-core';
-import {prepareTaskCall, submitTaskCall, submitPreparedTaskCall, readTaskCallSubmission, registerDurablePrograms, type TaskRunDefinition, type TaskCallRunOptions} from '../src';
+import {prepareTaskCall, submitTaskCall, submitPreparedTaskCall, readTaskCallSubmission, readTaskCallExecution, registerDurablePrograms, type TaskRunDefinition, type TaskCallRunOptions} from '../src';
 
 let kernel: Kernel, manager: IVFSManager, diagnostics: KernelDiagnostic[];
 const model = vi.fn(async () => ({choices: [{message: {role: 'assistant', content: 'Done'}, finish_reason: 'stop'}]}));
@@ -161,4 +161,26 @@ it('keeps an exact-spec conflict distinct from a missing submission', async () =
     const run = await submitPreparedTaskCall(plan, configured); await run.root.wait({timeoutMs: 3000});
     const changed = structuredClone(plan); changed.task.input = 'PRIVATE CONTENT';
     await expect(readTaskCallSubmission(changed, configured)).rejects.toHaveProperty('code', 'CONFLICT'); expect(model).toHaveBeenCalledOnce();
+});
+it('reads the original caller and owned target independently of UI history', async () => {
+    const plan = prepareTaskCall(definition(), {maxDepth: 3, timeoutMs: null}), configured = {kernel, caller: options().caller};
+    expect(await readTaskCallExecution(plan, configured)).toBeUndefined();
+    const run = await submitPreparedTaskCall(plan, configured), exit = await run.root.wait({until: 'settled', timeoutMs: 3000});
+    expect(await readTaskCallExecution(plan, configured)).toMatchObject({submission: {task: {sessionId: 'source', taskId: run.root.id}}, target: exit.output!.task});
+    expect(model).toHaveBeenCalledOnce();
+});
+it('rejects a target that does not belong to the frozen plan', async () => {
+    const plan = prepareTaskCall(definition(), {maxDepth: 3}), configured = {kernel, caller: options().caller};
+    const run = await submitPreparedTaskCall(plan, configured); await run.root.wait({until: 'settled', timeoutMs: 3000});
+    vi.spyOn(kernel, 'readTaskCallTarget').mockResolvedValue({sessionId: 'foreign', taskId: 'foreign'});
+    await expect(readTaskCallExecution(plan, configured)).rejects.toHaveProperty('code', 'TASK_CALL_TARGET_INVALID');
+});
+it('uses the admitted caller identity if the request object changes during inspection', async () => {
+    const plan = prepareTaskCall(definition(), {maxDepth: 3}), configured = {kernel, caller: options().caller};
+    const run = await submitPreparedTaskCall(plan, configured); await run.root.wait({until: 'settled', timeoutMs: 3000});
+    const original = kernel.readTaskSubmissionReceipt.bind(kernel); let release!: () => void;
+    const gate = new Promise<void>(resolve => {release = resolve;});
+    vi.spyOn(kernel, 'readTaskSubmissionReceipt').mockImplementationOnce(async (...args) => {const receipt = await original(...args); await gate; return receipt;});
+    const pending = readTaskCallExecution(plan, configured); configured.caller.sessionId = 'foreign'; release();
+    expect(await pending).toMatchObject({submission: {task: {sessionId: 'source'}}, target: {sessionId: 'target'}});
 });

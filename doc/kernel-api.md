@@ -904,3 +904,10 @@ Effect适配器可通过可选 `failureOutcome(error)` 将实时调用无法确�
 接口只在原 Session 事务读取原 submission/<requestId> 和关联 Task，验证存储归属，不创建回执、不扫描 Task、不注册 worker 或启动恢复。损坏回执或归属不符报 TASK_SUBMISSION_RECEIPT_INVALID；错误不暴露原指纹正文。诊断 task.submission.inspect 包含安全操作身份、阶段、结果、错误码和耗时。无需增加 schema 或迁移既有记录。
 
 接纳只证明原 Task 已持久创建，不证明能力绑定、执行、目标结果或物理清理。终态不抹掉原接纳；证据随原 Session 存储保留，Session 删除或重建后不能用“查不到”推断历史从未执行。回复丢失后保留原请求核对，不能生成新身份重复副作用。公开契约也见[独立包 API](../libraries/durable-kernel/docs/api.md#task-submission-admission-receipts)。
+
+
+### 已拥有调用的真实目标查询
+
+根 Kernel 和 `/core` Harness 提供 `readTaskCallTarget({sessionId, taskId, effectId})`，以原 caller/Effect 读取实际目标 TaskRef，不需要成功输出或 Session 历史。检查原持久 request/binding、深度继承与所有者；目标 Session 代次和 Task 在同一目标事务读取，防止重建 Session 后误接续旧记录。源/目标不是跨存储的原子快照，目标暂缺不能用作重发依据。
+
+读取不创建目标、授予能力、登记 worker 或恢复执行。目标存在后，失败与取消不抹掉原关系；已完成 Effect 的目标丢失明确报错。Session 的现有调用查询消费此事实，将 caller/target 执行结果与 historyPending 分开，不增加第二份执行状态。公开细节见[独立库 API](../libraries/durable-kernel/docs/api.md#cold-task-call-target-inspection)。

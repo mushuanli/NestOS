@@ -1,4 +1,4 @@
-import {snapshotTaskCallPlan, type Kernel, type KernelDiagnostic, type TaskCallPlan, type TaskCallResult, type TaskHandle, type TaskSpec} from '@itookit/durable-kernel';
+import {KernelError, KernelErrorCode, snapshotTaskCallPlan, type Kernel, type KernelDiagnostic, type TaskCallPlan, type TaskCallResult, type TaskHandle, type TaskSpec, type TaskRef, type TaskSubmissionReceipt} from '@itookit/durable-kernel';
 import type {RunExecution, TaskRunDefinition} from './run-submission';
 
 export interface TaskCallSubmitOptions {
@@ -14,6 +14,10 @@ export interface TaskCallRunOptions extends TaskCallSubmitOptions {
 export interface TaskCallReadOptions extends Pick<TaskCallSubmitOptions, 'caller' | 'onDiagnostic'> {
     kernel: Pick<Kernel, 'readTaskSubmissionReceipt'>;
 }
+export interface TaskCallExecutionReadOptions extends Omit<TaskCallReadOptions, 'kernel'> {
+    kernel: Pick<Kernel, 'readTaskSubmissionReceipt' | 'readTaskCallTarget'>;
+}
+export interface TaskCallExecutionReceipt {submission: TaskSubmissionReceipt; target?: TaskRef}
 export interface TaskCallRunExecution extends RunExecution {root: TaskHandle<TaskCallResult>}
 
 /** A compiled target is an independent root; the Kernel assigns its durable operation identity. */
@@ -40,13 +44,23 @@ export async function submitPreparedTaskCall(plan: TaskCallPlan, options: TaskCa
 }
 /** A cold exact-spec lookup, including after the submit reply or caller handle was lost. */
 export async function readTaskCallSubmission(plan: TaskCallPlan, options: TaskCallReadOptions) {
+    return trace(options, async progress => (await readSubmission(plan, options, progress)).receipt);
+}
+/** Target identity comes from the owning Kernel Effect, independently of history or success output. */
+export async function readTaskCallExecution(plan: TaskCallPlan, options: TaskCallExecutionReadOptions): Promise<TaskCallExecutionReceipt | undefined> {
     return trace(options, async progress => {
-        assertFrozenLimits(options);
-        const frozen = snapshotTaskCallPlan(plan), spec = callerSpec(options.caller, frozen);
-        progress.stage = 'receipt';
-        const receipt = await options.kernel.readTaskSubmissionReceipt(options.caller.sessionId, spec);
-        progress.taskId = receipt?.task.taskId; return receipt;
+        const {receipt, frozen} = await readSubmission(plan, options, progress); if (!receipt) return;
+        progress.stage = 'target'; const target = await options.kernel.readTaskCallTarget({...receipt.task, effectId: 'call'});
+        if (target && target.sessionId !== frozen.targetSessionId)
+            throw new KernelError(KernelErrorCode.TASK_CALL_TARGET_INVALID, 'Task call target differs from the frozen plan');
+        return {submission: receipt, ...(target ? {target} : {})};
     });
+}
+async function readSubmission(plan: TaskCallPlan, options: TaskCallReadOptions, progress: {stage: string; taskId?: string}) {
+    assertFrozenLimits(options);
+    const frozen = snapshotTaskCallPlan(plan), spec = callerSpec(options.caller, frozen); progress.stage = 'receipt';
+    const receipt = await options.kernel.readTaskSubmissionReceipt(options.caller.sessionId, spec);
+    progress.taskId = receipt?.task.taskId; return {receipt, frozen};
 }
 function assertFrozenLimits(options: TaskCallSubmitOptions | TaskCallReadOptions): void {
     if ('maxDepth' in options || 'timeoutMs' in options) throw invalid('Prepared call limits belong to the stored plan');

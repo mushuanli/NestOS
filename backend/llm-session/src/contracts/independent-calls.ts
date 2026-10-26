@@ -11,6 +11,8 @@ export const IndependentCallCommand = {Submit: 'session.call.submit', Inspect: '
 /** Caller identity and selected materials; ancestry alone never imports conversation history. */
 export interface IndependentCallInput {request: SubmissionRequest; title: string; transfer?: TransferReference}
 export interface IndependentCallReceipt extends SubmissionReceipt {
+    /** Original Kernel caller admission; independent of target dispatch and history commit. */
+    callerExecution?: import('@itookit/durable-kernel/contracts').TaskRef;
     callerSessionId: string;
     executionSessionId?: string;
     execution?: ExecutionRef;
@@ -20,7 +22,8 @@ export type IndependentCallSubmitter = (request: SubmissionRequest) => Promise<s
 
 export interface IndependentCallListQuery {sessionId: string; branchId?: string}
 /** Single Task facts only; not an aggregate stop/settlement acknowledgement for its children. */
-export type IndependentCallExecutionState = Pick<TaskStat, 'id' | 'revision' | 'phase' | 'control' | 'blockedBy' | 'activeOperations' | 'settled' | 'stopped'> & {controlEpoch: number};
+export type IndependentCallExecutionState = Pick<TaskStat, 'id' | 'revision' | 'phase' | 'control' | 'blockedBy' | 'activeOperations' | 'settled' | 'stopped'>
+    & {controlEpoch: number; exitStatus?: NonNullable<TaskStat['exit']>['status']};
 /** Atomic Kernel observation of this Task and same-Session descendants, not external rollback. */
 export interface IndependentCallExecutionTreeState {
     taskId: string; asOfSequence: number; tasks: number; unsettledTasks: number;
@@ -30,6 +33,9 @@ export interface IndependentCallDescendant {
     taskId: string; parentTaskId: string; executionState: IndependentCallExecutionState; cancel: boolean;
 }
 export interface IndependentCallView {
+    /** Caller and target are separate Task observations, not an atomic cross-Session snapshot. */
+    callerState?: IndependentCallExecutionState;
+    historyPending?: boolean;
     input: IndependentCallInput;
     receipt: IndependentCallReceipt;
     createdAt: number;

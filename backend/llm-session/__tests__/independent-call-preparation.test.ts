@@ -343,3 +343,102 @@ it('does not silently replace an explicitly invalid preparer with the injected h
     await expect(host.prepareTaskCall(input(), {maxDepth: 3, prepare: undefined} as never)).rejects.toHaveProperty('code', 'CALL_PREPARATION_UNAVAILABLE');
     expect(compile).not.toHaveBeenCalled(); expect(await kernel.listSessionTasks(parent)).toEqual([]);
 });
+it('projects a known deferred Kernel admission through the original call query even after a lost reply', async () => {
+    const ready = await service.prepareTaskCall(input(), options()), original = kernel.submit.bind(kernel);
+    vi.spyOn(kernel, 'submit').mockImplementationOnce(async (...args) => {await original(...args); throw Error('Reply lost');});
+    await expect(service.submitPreparedTaskCall(input())).rejects.toThrow('Reply lost');
+    const execution = (await service.inspectTaskCallSubmission(input()))!;
+    expect(await service.inspect(input())).toMatchObject({status: 'accepted', evidence: 'kernel', callerExecution: execution.submission.task});
+    const [view] = await service.list({sessionId: parent});
+    expect(view).toMatchObject({historyPending: true, callerState: {id: execution.submission.task.taskId, phase: 'created'}});
+    expect(view.receipt.execution).toBeUndefined(); expect(await kernel.listSessionTasks(ready.executionSessionId)).toEqual([]);
+});
+it('does not confuse a child queue receipt with an unsubmitted Kernel plan', async () => {
+    const ready = await service.prepareTaskCall(input(), options()), stored = await (await kernel.inspectSession(parent)).getShared(key);
+    const request = (stored!.value as unknown as {childRequest: SubmissionRequest}).childRequest;
+    const store = new InstructionQueueStore(kernel), queue = await store.read(ready.executionSessionId);
+    const item = prepareInstruction(submissionInstruction(request), ready.executionSessionId, 'main');
+    await store.write({...queue, accepted: [{id: item.id, digest: await instructionDigest(item)}]});
+    expect(await service.inspect(input())).toMatchObject({status: 'unknown'}); expect(await service.inspectTaskCallSubmission(input())).toBeUndefined();
+});
+it('shows caller and target facts while execution is in flight without requiring a history message', async () => {
+    let release!: () => void; const gate = new Promise<void>(resolve => {release = resolve;});
+    model.mockImplementationOnce(async () => {await gate; return {choices: [{message: {role: 'assistant', content: 'Done'}, finish_reason: 'stop'}]};});
+    const ready = await service.prepareTaskCall(input(), options()), admitted = await service.submitPreparedTaskCall(input());
+    try {await vi.waitFor(async () => {const [view] = await service.list({sessionId: parent});
+        expect(view).toMatchObject({historyPending: true, receipt: {evidence: 'kernel', execution: {role: 'primary', invocation: ready.invocation}}, callerState: {id: admitted.submission.task.taskId}});
+        expect(view.executionState?.activeOperations).toBe(1); expect(view.status).toBeUndefined();});}
+    finally {release();} await (await kernel.attachTask(parent, admitted.submission.task.taskId)).wait({until: 'settled', timeoutMs: 3000});
+});
+async function completedKernelHistory() {
+    const ready = await service.prepareTaskCall(input(), options()), admitted = await service.submitPreparedTaskCall(input());
+    await (await kernel.attachTask(parent, admitted.submission.task.taskId)).wait({until: 'settled', timeoutMs: 3000});
+    const [view] = await service.list({sessionId: parent}), receipt = view.receipt, execution = {target: {sessionId: receipt.executionSessionId!, taskId: receipt.execution!.taskId}},
+        stored = await (await kernel.inspectSession(parent)).getShared(key);
+    const request = (stored!.value as unknown as {childRequest: SubmissionRequest}).childRequest;
+    const round: import('../src/contracts/conversation').Round = {id: 'call', sessionId: ready.executionSessionId, submission: request.submission,
+        submissionDigest: await instructionDigest(prepareInstruction(submissionInstruction(request), ready.executionSessionId, 'main')),
+        target: request.expectedTarget, historyParentIds: [], input: [{role: 'user', content: 'PRIVATE INPUT'}], output: [{role: 'assistant', content: 'Confirmed result'}],
+        executions: [{taskId: execution.target!.taskId, role: 'primary', invocation: ready.invocation}], status: 'completed', origin: 'user', createdAt: admitted.submission.acceptedAt};
+    return {ready, admitted, execution, request, round};
+}
+it('keeps completed execution separate from failed history commit and does not rerun the target', async () => {
+    const {ready, admitted, round} = await completedKernelHistory();
+    vi.spyOn(repository, 'updateManifest').mockRejectedValueOnce(Object.assign(Error('PRIVATE WRITE FAILURE'), {code: 'EIO'}));
+    await expect(new RoundLog(repository, ready.executionSessionId).append('main', round)).rejects.toHaveProperty('code', 'EIO');
+    const [view] = await service.list({sessionId: parent}); expect(view.historyPending).toBe(true); expect(view.status).toBeUndefined(); expect(view.summary).toBeUndefined();
+    expect(view.receipt).toMatchObject({status: 'accepted', evidence: 'kernel', execution: {role: 'primary'}});
+    expect(await service.submitPreparedTaskCall(input())).toEqual(admitted); expect(model).toHaveBeenCalledOnce();
+});
+it('uses only indexed history matching the actual Kernel target and original request', async () => {
+    const {ready, round} = await completedKernelHistory(); await new RoundLog(repository, ready.executionSessionId).append('main', round);
+    const [view] = await service.list({sessionId: parent}); expect(view).toMatchObject({historyPending: false, status: 'completed', summary: 'Confirmed result'});
+    expect(view.receipt.evidence).toBe('kernel'); expect(view.receipt.execution?.taskId).toBe(round.executions[0].taskId);
+});
+it.each(['task', 'invocation', 'digest', 'target'] as const)('rejects unindexed history with a foreign %s instead of trusting its message', async field => {
+    const {ready, round} = await completedKernelHistory();
+    if (field === 'task') round.executions[0].taskId = 'foreign';
+    if (field === 'invocation') round.executions[0].invocation!.invocationId = 'foreign';
+    if (field === 'digest') round.submissionDigest = 'foreign';
+    if (field === 'target') round.target!.digest = 'foreign';
+    await repository.writeDocument(ready.executionSessionId, 'round-call.json', JSON.stringify(round));
+    expect(await service.inspect(input())).toMatchObject({status: 'accepted', evidence: 'kernel'});
+    await expect(service.list({sessionId: parent})).rejects.toHaveProperty('code', 'CALL_EXECUTION_CONFLICT');
+    expect(logger.warn).toHaveBeenCalledWith('Independent call preparation', expect.objectContaining({operation: 'call.execution.observe', stage: 'history', errorCode: 'CALL_EXECUTION_CONFLICT'}));
+    expect(JSON.stringify(logger.warn.mock.calls)).not.toContain('PRIVATE INPUT');
+});
+it('reads original caller and target after reconstruction without writer acquisition or recovery', async () => {
+    const {execution} = await completedKernelHistory(); kernel.dispose(); await kernel.waitIdle(); kernel = await createKernel();
+    transfers = new ContentTransferService({kernel, repository, commands: new CommandBus()});
+    const denied = vi.fn(async () => false), restored = createService(denied), open = vi.spyOn(kernel, 'openSession'), recover = vi.spyOn(kernel, 'recoverSession');
+    expect((await restored.inspect(input())).callerExecution?.sessionId).toBe(parent);
+    expect((await restored.list({sessionId: parent}))[0].receipt).toMatchObject({status: 'accepted', evidence: 'kernel', execution: {taskId: execution.target!.taskId}});
+    expect(denied).not.toHaveBeenCalled(); expect(open).not.toHaveBeenCalled(); expect(recover).not.toHaveBeenCalled(); expect(model).toHaveBeenCalledOnce();
+});
+it('reports failure as an execution fact even when no history result exists', async () => {
+    const manifest = {kind: 'rejected', version: '1'};
+    kernel.registerProgram({manifest, init: () => ({state: null, next: {type: 'fail', error: {message: 'Expected failure'}}}), reduce: () => {throw Error('Unexpected');}});
+    const configured = options(), original = configured.prepare;
+    configured.prepare = async (...args) => {const ready = await original(...args); ready.definition.task.program = manifest; return ready;};
+    await service.prepareTaskCall(input(), configured); const admitted = await service.submitPreparedTaskCall(input());
+    await (await kernel.attachTask(parent, admitted.submission.task.taskId)).wait({until: 'settled', timeoutMs: 3000});
+    const [view] = await service.list({sessionId: parent});
+    expect(view).toMatchObject({historyPending: true, callerState: {phase: 'done', exitStatus: 'failed'}, executionState: {phase: 'done', exitStatus: 'failed'}});
+    expect(view.status).toBeUndefined(); expect(view.receipt.evidence).toBe('kernel');
+});
+it('keeps cancellation independent of damaged history when the Kernel target identity is known', async () => {
+    const manifest = {kind: 'question', version: '1'};
+    kernel.registerProgram({manifest, init: () => ({state: null, actions: [{type: 'request-interaction', interaction: {id: 'question', kind: 'input', prompt: 'Choose', payload: {}}}],
+        next: {type: 'wait', on: {type: 'interaction', id: 'question'}}}), reduce: () => {throw Error('Unexpected');}});
+    const configured = options(), original = configured.prepare;
+    configured.prepare = async (...args) => {const ready = await original(...args); ready.definition.task.program = manifest; return ready;};
+    const ready = await service.prepareTaskCall(input(), configured), admitted = await service.submitPreparedTaskCall(input());
+    let taskId = '';
+    await vi.waitFor(async () => {const [view] = await service.list({sessionId: parent}); taskId = view.receipt.execution?.taskId ?? ''; expect(taskId).not.toBe('');});
+    await repository.writeDocument(ready.executionSessionId, 'round-call.json', '{}');
+    const commands = new CommandBus(); service.register(commands);
+    await commands.execute('session.call.cancel', {sessionId: parent, branchId: 'main', callId: 'call', executionSessionId: ready.executionSessionId,
+        taskId, expectedEpoch: 0, requestId: 'stop-without-history'});
+    expect((await kernel.task(ready.executionSessionId, taskId)).status).toBe('cancelled');
+    expect(await service.inspect(input())).toMatchObject({status: 'accepted', evidence: 'kernel', callerExecution: admitted.submission.task});
+});

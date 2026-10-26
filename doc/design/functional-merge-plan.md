@@ -19,6 +19,23 @@
 
 本次正在推进 P1a/P1b，顺序为持久准备 → 原 Kernel 提交 → TaskRef/历史关联 → 重启恢复。原 session.call.submit 目前仍走旧队列；新增准备接口不自动把这个入口变成新 Kernel 调用路径。未满足上表完成条件前，F16/P1 不标记完成，也不以测试数量或 Git 工作树文件数表示整体完成率。
 
+## 0.1 当前交付收敛与复杂度约束（2026-10-26）
+
+第 0 节仍有八条未闭环工作线；不能把它们换算为八个提交，也不能用准备/读取 API 或测试数量作为完成率。当前交付先收敛为下列四个验收包，保留完整目标，不再按内部方法扩展阶段清单。
+
+| 当前验收包 | 对应工作线 | 完成条件 |
+|---|---|---|
+| 统一正式提交入口 | P1a | UI/CLI/RPC 的同一请求只有一条派发责任链；接纳未知核对原请求，后台调用不阻塞独立前台输入 |
+| 持久结果与重启恢复 | P1b | 真实 caller/target TaskRef、Round 与结果贯通；历史写入失败可恢复，不能重新执行已发生的副作用 |
+| Flow 资源责任闭环 | P1c | 工作区和能力的所有权、跨进程恢复及物理收尾由 Kernel 可核对，完成后才释放冲突资源 |
+| 最小 UI 和运行验收 | F16/F24 的基础展示/控制与实际部署 | 展示输入、结果与具体调用控制；本地/远程/DSH 按能力使用同一入口，断线、取消、顺序发送及历史故障在运行服务验收 |
+
+跨调用 token/费用预算、严格原生续接的进阶组合、大历史/复杂报告性能和长期生命周期仍在原目标内，排在上述主链之后；基础输入、结果、审批和停止能力不能因此延后。它们不是本轮继续新增框架或阻塞现有可用性修复的理由。
+
+必要复杂度保留：稳定请求身份、Kernel 执行/资源事实、原生 binding 隔离、控制接纳与物理停止的区别。收敛不等于删除这些正确性约束。要收掉的是无实际消费者的公共出口、重复保存的执行状态、按每个内部阶段单独扩展的产品概念，以及未接线能力被称为已完成功能。
+
+本轮以现有 session.call.inspect/list 接入真实源/目标事实，删除拟新增的重复 Session 执行查询公共入口；目标关联仍由 Kernel 验证，不在 Session 根据标签扫描或自造目标 ID。正式提交、持久历史恢复与最小 UI 按上述验收条件整体推进。
+
 ## 1. 合入规则
 
 一项功能包含自己的契约、实现、实际消费者、必要回归与文档。公共契约随首个有效消费者进入；共享文件按修改块拆分。纯算法出口等兼容性重构可先行，但不能将尚未接线的可选端口称为功能完成。
@@ -2201,7 +2218,7 @@ C4Dynamic
   Component(route, "原 IndependentCall 路由", "读取原冻结计划与 caller.requestId")
   Component(sdk, "原 Task 调用 SDK", "同一 caller TaskSpec；提交与查询共用构造")
   Component(kernel, "Durable Kernel", "原接纳事务、能力与持久调度")
-  Component(receipt, "原 Session 存储", "submission 键和关联真实 Task")
+  Component(receipt, "原 Kernel 存储", "submission、Effect/binding 和真实 Task")
   Component(history, "Session 历史投影", "待接：真实 TaskRef、Round 与结果")
   RelIndex(1, host, route, "读取持久准备；提交复验源与目标写权")
   RelIndex(2, route, sdk, "原计划及身份；不重装配当前定义")
@@ -2209,7 +2226,7 @@ C4Dynamic
   RelIndex(4, kernel, receipt, "原事务持久接纳；已有请求返回同一 Task")
   RelIndex(5, host, sdk, "丢提交或绑定回复后，只读核对原请求")
   RelIndex(6, sdk, receipt, "Kernel 冷读取；不启动 worker 或扫描 Tasks")
-  RelIndex(7, receipt, host, "仅原接纳 TaskRef；不冒充结果或历史完成")
+  RelIndex(7, receipt, host, "原 caller 与实际目标 TaskRef；历史提交独立核对")
   RelIndex(8, kernel, history, "后续将真实执行与结果关联，避免双重派发")
 ```
 
@@ -2217,7 +2234,7 @@ llm-flow 的 submitPreparedTaskCall 与 readTaskCallSubmission 共用原 callerS
 
 原接纳证据与真实目标输出分离；输入和指纹不出现在查询结果或诊断中。契约覆盖原计划表示、请求冲突、损坏记录、错误存储归属、失权、异步输入修改、终态及 Kernel 重建，并以两种真实 LocalFS/SQLite 挂载下 SIGKILL 后的独立进程冷查询验证不派发目标。独立安装 ESM/CommonJS/core 和 NodeNext 声明消费另行验证。
 
-本批只接通可信宿主的提交与接纳核对，没有新增 RPC；正式 session.call.submit 仍走旧队列，不能据此宣称 P1a/P1b 完成。下一步必须明确源 Session 前台/后台调度范围，再将真实 caller/target TaskRef 与原路由、Round、结果及恢复投影贯通；不能让一个后台代理任务意外阻塞普通输入。Flow 工作区、跨调用预算和 UI 仍按第 0 节保留。本批未部署或操作生产 Session。
+该批只接通可信宿主的提交与接纳核对，没有新增 RPC；正式 session.call.submit 仍走旧队列，不能据此宣称 P1a/P1b 完成。下一步必须明确源 Session 前台/后台调度范围，再将真实 caller/target TaskRef 与原路由、Round、结果及恢复投影贯通；不能让一个后台代理任务意外阻塞普通输入。Flow 工作区、跨调用预算和 UI 仍按第 0 节保留。本批未部署或操作生产 Session。
 
 本节 Kernel 提交 `98cc2d60`：469 项单元/契约及 62 项真实多进程测试通过；独立安装 ESM/CommonJS/core、NodeNext 声明消费通过。源树严格类型检查包含新回执测试。应用消费者以锁定该 gitlink 的隔离候选树验证，结果随本批记录。
 
@@ -2253,3 +2270,16 @@ SessionRunCoordinator 将输入与配置准备从普通提交的模式偏好写�
 正式 session.call.submit 仍走旧队列。本批让可信宿主具备“发布目标 → 持久准备 → 显式 Kernel 提交”的真实调用链，尚未把其 TaskRef/Round/结果恢复及前台/后台范围接入默认入口。八条剩余工作线保持，不标记 P1a/P1b 或 Flow 资源闭环完成，未部署到运行服务。
 
 本批隔离验收：Session 595 项、app-core 1175 项通过（另 13 项既有跳过）；新宿主测试 14 项和准备服务新增 2 项包含在上述总数内。新测试严格类型、Session/app-core/CLI/app-shell 类型、Session 构建与架构边界通过；76 个 Mermaid 图、22 个相对链接解析通过。全量 docs:check 仍为第 90 节已核对的 mindos-node 配置示例路径问题，本批无新增。普通发送的模式锁定、Flow 与 Harness 原路径随完整回归验证。
+
+
+### 第 90 节补充：原查询读取真实执行关系
+
+原 session.call.inspect 在 Kernel 路由上只核对原完整 caller 接纳，不依赖目标输出或历史可用性；list 和控制通过 Kernel.readTaskCallTarget 验证持久 Effect、binding 指纹、继承所有者、目标 Session 代次和实际目标 Task。目标代次与记录同事务读取，不扫描标签推断、不创建目标、不依赖成功输出；失败或取消后的关联仍可读取。读取不是跨 Session 原子快照，目标暂缺不等于从未派发，也不授权新请求身份重发。
+
+inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 primary、callerState、目标 executionState、exitStatus 和 historyPending。队列与历史不能冒充 Kernel 接纳，历史缺失也不再把已接纳调用降为 unknown。Round 仅在原摘要、发布目标、Invocation、实际 primary Task 及历史索引匹配后用于摘要和完成展示；仅有未索引的文件不能宣称历史已提交。历史损坏不会抹掉原接纳，也不阻止按已验证 Kernel 目标取消。没有增加执行状态库。
+
+本补充只推进真实引用和只读投影，不自动写 Round、不修复已有 orphan Round，也未切换正式提交入口或补齐新 UI。历史提交/恢复仍属于第二个验收包，不凭新增读取接口标记完成。
+
+补充机制的 Kernel 提交 `d59b9e1f`：490 项单元/契约、62 项真实多进程测试，以及独立 ESM/CommonJS/core、NodeNext 消费通过。SIGKILL 后先在未恢复源 Session 的独立进程核对实际目标，再恢复原调用，未创建第二个目标。应用隔离验证锁定该 gitlink；未部署到运行服务。
+
+应用补充验收：隔离 Flow 750、Session 607 项通过，宿主全量 1177 项在 maxWorkers=2/minWorkers=1 下通过（另 13 项既有跳过）；严格测试类型、Session/app-core/CLI/app-shell/UI adapter/app-contracts 类型、Flow/Session 构建与架构检查通过，76 个 Mermaid 图和 22 个链接解析通过。首次默认并发宿主运行有一项既有 IndexedDB 异步等待断言失败（默认等待内仍为零条），原版和候选版分别单独运行该文件均 13 项通过；最终只限制 worker 并发，未增加超时、跳过测试或更改业务逻辑来规避此项，不能把它记成修复 IndexedDB。全量 docs:check 仍为原 mindos-node 示例路径问题，没有新增。

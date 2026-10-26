@@ -79,19 +79,25 @@ export class IndependentCallPanel {
                 || record.kind === 'command' && [callCancellationProtocol, callTreeCancellationProtocol, callStateControlProtocol, callResponseProtocol].includes((record.input as {protocol?: string})?.protocol ?? '')));
     }
     private async load(branch: string, current: () => boolean): Promise<void> {
+        const started = Date.now();
         const calls = await this.commands.execute<IndependentCallView[]>(IndependentCallCommand.List, {sessionId: this.sessionId, branchId: branch});
         if (!current()) return;
         for (const call of calls) this.assertScope(call, branch);
+        const wasActive = this.active;
         this.error.textContent = ''; this.element.hidden = !calls.length; this.active = false;
         for (const call of calls) {
             await this.reconcile(call);
             if (!current()) return;
             this.render(call);
             this.active ||= !call.status || !['completed', 'failed', 'cancelled'].includes(call.status)
-                || !!call.executionState && !call.executionState.settled || !!call.executionTree && !call.executionTree.settled;
+                || !!call.executionState && !call.executionState.settled || !!call.executionTree && !call.executionTree.settled
+                || !!call.callerState && !call.callerState.settled || !!call.historyPending;
         }
         const ids = new Set(calls.map(call => call.receipt.operationId));
         for (const [id, card] of this.cards) if (!ids.has(id)) {this.disposeCard(card); this.cards.delete(id);}
+        if (wasActive !== this.active) log.debug('call.list', {sessionId: this.sessionId, stage: 'poll-state', result: 'success',
+            active: this.active, durationMs: Date.now() - started, callCount: calls.length, historyPending: calls.filter(call => call.historyPending).length,
+            callerSettling: calls.filter(call => call.callerState && !call.callerState.settled).length});
     }
     private assertScope(call: IndependentCallView, branch: string): void {
         const {request} = call.input, receipt = call.receipt;

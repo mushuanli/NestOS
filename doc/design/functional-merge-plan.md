@@ -2296,7 +2296,7 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 - 已发布 Agent（Chat / Agent / Harness）及 Flow/Flow Agent 的新独立调用共用 session.call.submit → 持久准备 → 原 Kernel caller/target。Flow 冻结图进入原 flow.aggregate 根，再由原 RunResume 调度；已有队列请求保持原身份和路线。直接调用在接纳后、目标启动前固定显式执行模式。
 - 原 TaskRef/Invocation 与子会话 Round 关联；终态结果按原请求写回，重复请求不重新执行。已有相同正文可补交历史索引；子会话下一条输入等待原完整历史提交。取消与调度恢复交错时继续保存原终态，关闭视图不取消执行。
 - 可恢复隔离工作区在首节点前绑定原根的 Kernel pool/claim；物理 adapter 等待原成员停止、关闭能力并调用原 manager.restore/finish，保存回执后释放占用。没有可恢复租约的旧宿主继续原边界。新根在 scheduler lease 内准备工作区，恢复读取原租约记录。
-- 原父卡片复用 Kernel 状态、交互/控制及按需产物；明确区分目标结束、调用收尾和历史待保存。结果保存后刷新已打开子会话。源 Session 输入只排除经原请求核对的后台 caller，其余活动任务和 cleanup 继续阻止冲突派发。
+- 原父卡片复用 Kernel 状态、交互/控制及按需产物；明确区分目标结束、调用收尾和历史待保存。结果保存后刷新已打开子会话。源 Session 输入只排除经原请求核对的后台 caller，其余活动任务和 cleanup 继续阻止冲突派发。父卡片在 caller 收尾或历史待保存期间保持原有活动刷新频率，避免目标终态后提前进入 30 秒空闲刷新。
 - 启动恢复使用事务成员索引定位独立调用所在 Session；路由写前标记，完整兼容扫描后才确认目录完整。索引失败回退扫描，不以索引代替 Kernel 接纳事实。
 
 ### 小功能提交
@@ -2321,7 +2321,7 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 
 沿用 call.submit / call.submit.prepared / call.target.resume / call.history.recover / call.history.reconcile，区分准备、接纳、绑定、调度恢复、等待、结果和历史提交。session.flow.prepare 区分 context/graph/root；flow.workspace.resource 区分权限、成员停止、能力关闭、租约恢复、物理收尾和回执保存。call.input.ready 记录首轮历史是否就绪，call.execution-mode.lock 记录设置读取、权限和保存阶段。
 
-审批回答前端日志使用 respond 动作，避免误记为 cancel；分别记录派发/回执读取、回执校验及本地保存阶段。后端回答日志关联根任务、实际交互任务、交互 ID、源/子会话，区分归属核对、交互目标读取、授权、回答及回执校验，不记录回答值。这两项日志调整按用户要求未另跑测试、类型检查或构建，也未更新运行服务。
+审批回答前端日志使用 respond 动作，避免误记为 cancel；分别记录派发/回执读取、回执校验及本地保存阶段。后端回答日志关联根任务、实际交互任务、交互 ID、源/子会话，区分归属核对、交互目标读取、授权、回答及回执校验，不记录回答值。这两项日志调整按用户要求未另跑测试、类型检查或构建，也未更新运行服务。后续静态检查补齐父卡片活动刷新条件中的 callerState/historyPending，刷新状态切换时记录待保存和收尾数量；同样未追加运行验证或部署。
 
 恢复摘要记录实际探测/跳过/含调用 Session 数量及是否完整；单 Session 失败不误写完整标记。无错误码的 effect.observe/yield 使用 debug，其他 blocked 和 failure 继续 warn。日志不记录正文、完整参数、目录、凭据或原始存储异常。
 

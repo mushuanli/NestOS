@@ -24,6 +24,9 @@ interface Options {
     submit: IndependentCallSubmitter; prepareExecution?(sessionId: string): Promise<void>; canWrite?(sessionId: string): Promise<boolean>; hostPorts?: SessionHostPorts;
 }
 const prefix = 'conversation/call/';
+/** Trusted Effect admission only; a held attempt says nothing about an earlier submission. */
+export type ManagedCallAdmission = IndependentCallReceipt | (Omit<IndependentCallReceipt, 'status' | 'evidence' | 'execution'> & {status: 'held'});
+export type ManagedCallAdmissionGuard = (request: SubmissionRequest) => Promise<boolean>;
 /** A durable route only: acceptance and execution remain owned by the child's existing queue and history. */
 export class IndependentCallService {
     private readonly host;
@@ -38,42 +41,69 @@ export class IndependentCallService {
         new IndependentCallResponses({kernel: this.options.kernel, commands, logger: this.host.logger,
             canWrite: this.options.canWrite, resolve: query => this.controlTarget(query)}).register();
     }
-    async submit(supplied: IndependentCallInput): Promise<IndependentCallReceipt> {
-        const input = structuredClone(supplied), started = Date.now(); let stage = 'validate', outcome = 'failure', code: string | undefined;
+    submit(supplied: IndependentCallInput): Promise<IndependentCallReceipt> {return this.submitWithGuard(supplied);}
+    /** Not an RPC argument: the owner must persist its fenced dispatch intent before returning true. */
+    submitManaged(supplied: IndependentCallInput, guard: ManagedCallAdmissionGuard): Promise<ManagedCallAdmission> {
+        if (typeof guard !== 'function') return Promise.reject(failure('CALL_ADMISSION_GUARD_REQUIRED'));
+        return this.submitWithGuard(supplied, guard);
+    }
+    private submitWithGuard(supplied: IndependentCallInput): Promise<IndependentCallReceipt>;
+    private submitWithGuard(supplied: IndependentCallInput, guard: ManagedCallAdmissionGuard): Promise<ManagedCallAdmission>;
+    private async submitWithGuard(supplied: IndependentCallInput, guard?: ManagedCallAdmissionGuard): Promise<ManagedCallAdmission> {
+        const input = structuredClone(supplied), started = Date.now(), progress = {stage: 'validate'};
+        let outcome = 'failure', code: string | undefined;
         const suppliedId = input?.request?.submission?.id;
         const operationId = typeof suppliedId === 'string' && /^[\w-]{1,128}$/.test(suppliedId) ? suppliedId : undefined;
         try {
-            const identity = await this.identity(input); stage = 'route';
+            const identity = await this.identity(input); progress.stage = 'route';
             await this.options.repository.getManifest(identity.sessionId);
             await this.options.prepareExecution?.(identity.sessionId);
             await this.writable(identity.sessionId);
             let route = await this.route(input, identity.digest);
             const child = await this.options.transfers.createChild({sessionId: identity.sessionId,
                 requestId: `call-${await sha256Hex(identity.id)}`, title: input.title, transfer: input.transfer});
-            route = await this.bindRoute(route, child.sessionId); stage = 'admission';
-            const result = await this.admit(route); outcome = result.status; return result;
+            route = await this.bindRoute(route, child.sessionId);
+            const result = await this.admit(route, progress, guard); outcome = result.status; return result;
         } catch (error) {
             const suppliedCode = (error as {code?: unknown})?.code;
             code = typeof suppliedCode === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(suppliedCode) ? suppliedCode : 'CALL_INDEPENDENT_FAILED';
             throw error;
         } finally {
-            const detail = {operation: 'call.independent', operationId, stage, outcome, code, durationMs: Date.now() - started};
-            if (outcome === 'failure') this.host.logger.warn('Independent call observation', detail);
-            else this.host.logger.info('Independent call observation', detail);
+            const detail = {operation: 'call.independent', operationId, stage: progress.stage, outcome, code, durationMs: Date.now() - started};
+            try {
+                if (outcome === 'failure') this.host.logger.warn('Independent call observation', detail);
+                else this.host.logger.info('Independent call observation', detail);
+            } catch { /* Diagnostics cannot replace admission or the original failure. */ }
         }
     }
-    private async admit(route: CallRoute): Promise<IndependentCallReceipt> {
+    private async admit(route: CallRoute, progress: {stage: string}, guard?: ManagedCallAdmissionGuard): Promise<ManagedCallAdmission> {
+        progress.stage = 'receipt';
         const previous = await this.receipt(route);
         if (previous.status === 'accepted') return previous;
+        progress.stage = 'attachments';
         await this.copyAttachments(route);
+        const request = structuredClone(route.childRequest);
+        progress.stage = 'admission-guard';
+        if (guard && await guard(structuredClone(request)) !== true) {
+            progress.stage = 'receipt'; return this.heldAdmission(route);
+        }
+        progress.stage = 'dispatch';
         try {
-            const accepted = await this.options.submit(structuredClone(route.childRequest));
+            const accepted = await this.options.submit(request);
             if (accepted !== route.input.request.submission!.id) throw failure('CALL_RECEIPT_MISMATCH');
         } catch (error) {
+            progress.stage = 'receipt';
             const observed = await this.receipt(route);
             if (observed.status !== 'accepted') throw error;
         }
+        progress.stage = 'receipt';
         return this.receipt(route);
+    }
+    private async heldAdmission(route: CallRoute): Promise<ManagedCallAdmission> {
+        const observed = await this.receipt(route);
+        if (observed.status === 'accepted') return observed;
+        return {operationId: observed.operationId, callerSessionId: observed.callerSessionId,
+            executionSessionId: observed.executionSessionId, status: 'held'};
     }
     async inspect(supplied: IndependentCallInput): Promise<IndependentCallReceipt> {
         const input = structuredClone(supplied), identity = await this.identity(input);

@@ -1876,3 +1876,37 @@ C4Dynamic
 原基线 8 项回归失败，其中包含已完成子会话被删除后同请求重新创建的真实反例。修复后 Session 全套 510 项、UI 适配层全套 312 项及真实 RPC 2 项通过，Session/UI/CLI 类型检查通过；隔离候选另验证宿主独立调用消费者。新增测试覆盖只读重开、无 Kernel 的合法父会话、准备失败、并发完成、丢写回执、旧身份不复活、跨父作用域/输入冲突、坏记录、错误与日志隔离、材料/标题脱敏以及原创建响应悬挂。API 见 [llm-session](../llm-session-api.md#子-session-创建回执)。
 
 下一步跨 Session 受管调用仍需以原 Kernel Effect 持有创建、提交与收尾责任，由宿主适配器执行本地 Agent/Flow 子调用；取消通过原 Effect.cancel 核对原创建及原提交，确认实际子执行与资源均收尾后才返回。unknown 查询本身不是未执行证明，必须同时排除旧所有者在核对后继续创建的可能。UI 关闭和 parentSessionId 关系不能取得这项所有权；不能把同一 Session 下所有独立调用隐式绑定到任意父 Task。该受管 Effect 尚未实现，本节不标记跨 Session 控制完成。
+
+## 81. 受管调用提交前的 Kernel 准入接点
+
+跨 Session 协调复用 Durable Kernel 的执行、版本化 shared state 和持久消息能力；SeqFile 是持久存储，不新增文件监听协议或执行状态库。现有独立调用路由不能取得任意父 Task 的所有权，因此先在原 IndependentCallService 增加私有宿主接点 submitManaged(input, guard)。普通 session.call.submit 与其请求结构保持原样，RPC 不能传入 guard。
+
+路由及子 Session 准备后，先查询原接纳，再准备附件，最后调用受信 guard。guard 收到实际子 Session 的冻结 Submission 副本，应使用父 Effect 的 sessionState.setIfRunning 保存派发意图；只有明确返回 true 才进入原 submit 端口。接口本身不生成 Effect、授予权限或持有取消责任。guard 或附件失败保留具体阶段和错误，不发送；回调及原调用方均不能修改实际提交快照。
+
+| 观察 | 处理 | 证明边界 |
+|---|---|---|
+| 原请求已 accepted | 返回原回执，不再调用 guard 或 submit | 接纳不代表执行完成 |
+| guard 返回 false 或非 true | 再核对原回执；仍无接纳则返回 held | 只表示本次被阻挡，不能证明原操作未执行 |
+| guard 抛错 | 保留原错误及 admission-guard 阶段 | 不把 journal 写失败当成接纳或停止 |
+| submit 丢回复 | 只读核对原接纳，已有事实优先 | 无事实仍保持原错误，不生成新身份 |
+| 派发意图先提交，随后取消 | 后续 Effect 必须继续核对这项在途责任 | guard 不提供跨 Session 原子取消 |
+
+```mermaid
+C4Dynamic
+  title 受管调用准入与持久事实的边界
+  Component(owner, "父 Effect（待接入）", "执行与收尾所有者")
+  Component(call, "IndependentCallService", "既有路由和提交机制")
+  Component(kernel, "Durable Kernel", "原执行围栏与 shared state")
+  Component(queue, "子 Session 指令队列", "接纳及派发事实")
+  RelIndex(1, owner, call, "调用受信 submitManaged")
+  RelIndex(2, call, queue, "先查询原请求，准备附件")
+  RelIndex(3, call, owner, "提交前请求 guard 确认")
+  RelIndex(4, owner, kernel, "setIfRunning 条件保存派发意图")
+  RelIndex(5, owner, call, "允许，或保留 held")
+  RelIndex(6, call, queue, "仅允许时提交同一冻结请求")
+  RelIndex(7, call, owner, "返回持久接纳或 held，不宣称完成")
+```
+
+日志沿用 call.independent，细分 receipt、attachments、admission-guard、dispatch；日志异常不覆盖持久接纳或原失败。未增加命令、package、调度器、业务参数或新的存储记录。
+
+验证使用真实 Kernel、Session 存储及队列回执：父 Effect 在子会话准备期间暂停/取消，旧 setIfRunning 不能保存派发意图且不提交子执行；派发意图先于取消时，迟到接纳仍可发生，清理失败保留 cleanupPending。另覆盖 held 后原子身份复用、重开后的原接纳优先、检查期间并发接纳、丢回执、未知后 held、附件准备失败、输入副本隔离、RPC 注入拒绝及诊断异常。该切片只完成受管准入接点，完整 Effect 的 journal、恢复观察、结果映射、精准取消与物理收尾仍为 P1，未部署，不将跨 Session 控制标为完成。

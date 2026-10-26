@@ -744,3 +744,12 @@ authorization、cancel-remaining 和 receipt；不记录参数、取消原因或
 完成事实位于原 `content.child.<requestId>` 记录；它不等于子任务成功或资源停止，也不授予当前执行权限。完成后删除子 Session 不回退原回执；同一已完成请求不再创建，真正新建必须换请求 ID。旧无完成标记记录保留 `reserved`，只读查询不补写。`ContentTransferService` 保留公开入口，私有 `session/child-session-creation.ts` 负责身份和回执机制；表单失败仅查询同一冻结请求，缺少完成事实不自动重发。
 
 机制、C4 与未完成的跨 Session 受管控制见 [合入计划第 80 节](design/functional-merge-plan.md#80-子-session-创建完成事实与只读回执)。
+
+
+## 受管独立调用准入接点（内部）
+
+Session 内部的 `IndependentCallService.submitManaged(input, guard)` 复用独立调用路由、子 Session 创建及正式提交端口；它不是新 RPC 命令或根导出。guard 接收实际子 Session 的冻结 Submission 副本，在附件准备完成、即将提交时执行。受信父 Effect 应先通过 `sessionState.setIfRunning` 持久保存派发意图，再明确返回 `true`。
+
+已有接纳优先返回，不再次调用 guard 或发送。guard 未明确允许时再次核对原接纳，无事实才返回 `held`；held 不证明原调用未执行，也不能用于确认清理。guard/附件错误原样保留，丢提交回执仍核对原请求；日志错误不覆盖持久结果。输入与回调副本不改变实际冻结请求。
+
+派发意图先于取消时仍可能发生迟到提交；后续受管 Effect 必须持有核对和实际收尾责任。该接点本身不实现跨 Session 取消、暂停传播或完成等待。边界与 C4 见 [合入计划第 81 节](design/functional-merge-plan.md#81-受管调用提交前的-kernel-准入接点)。

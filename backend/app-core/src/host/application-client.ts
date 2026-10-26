@@ -1,3 +1,4 @@
+import {submitSession} from '../session/submit-session';
 import { navigationView, warmNavigation } from './navigation-view';
 import { createMindosProviderTemplates } from '@itookit/kernel-adapters/llm/presets';
 import { createFileSystemView, FSError } from '@itookit/vfs-core';
@@ -55,6 +56,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
             try { return await scope.own(await openView(services, backend, request)); }
             finally { opening = false; }
         },
+        submitSession: request => submitSession(services, request),
         createSessionDraft: request => createSessionDraft(projects, repository, request),
         navigationView: options => navigationView(vfs, options),
         warmNavigation: roots => warmNavigation(vfs, roots),

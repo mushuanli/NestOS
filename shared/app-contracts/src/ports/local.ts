@@ -36,7 +36,7 @@ export interface LocalApplicationServices {
     commandBus: ICommandBus;
     startBackground?(): void;
     prepareSession?(sessionId: string): Promise<boolean>;
-    acquireConversation?(sessionId: string): Promise<{ dispose(): Promise<void> }>;
+    acquireConversation?(sessionId: string): Promise<{ commandBus: ICommandBus; dispose(): Promise<void> }>;
 }
 
 export type ApplicationKernelPort = import('@itookit/durable-kernel/contracts').KernelViewPort;

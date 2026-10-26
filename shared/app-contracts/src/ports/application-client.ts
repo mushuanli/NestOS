@@ -42,6 +42,7 @@ export interface ToolboxView {
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
     openView(request: import('./open-view').OpenViewRequest): Promise<import('./open-view').OpenedApplicationView>;
+    submitSession(request: import('@itookit/llm-session/contracts').SubmissionRequest): Promise<import('@itookit/llm-session/contracts').SubmissionReceipt>;
     createSessionDraft(request: SessionDraftRequest): Promise<string>;
     navigationView(options: { root: string; scope: string }): Promise<import('./navigation').NavigationView>;
     warmNavigation(roots: string[]): Promise<void>;
@@ -69,6 +70,8 @@ export interface ApplicationBackend {
     taskEvents(sessionId: string, taskId: string, options?: TaskEventQuery): Promise<TaskEventView>;
 }
 export interface SessionDraftRequest {
+    sessionId?: string;
+    branchName?: string;
     title: string;
     inputText: string;
     source?: { projectFolder?: string; sessionId?: string };

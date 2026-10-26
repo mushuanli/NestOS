@@ -1,3 +1,4 @@
+import {snapshotIndependentTaskCallPolicy, newIndependentKernelPreparation, assertIndependentPreparationMode, freezeIndependentTaskCall, readIndependentTaskCall, independentPreparationError, type IndependentKernelPreparation, type IndependentTaskCallPolicy, type IndependentTaskCallPreparation, type PreparedIndependentTaskCall, type PreparationScope} from './independent-call-preparation';
 import {IndependentCallDescendants} from './independent-call-descendants';
 import {independentCallTaskState, supportsCallCancellation} from './independent-call-task-state';
 import {readIndependentCallTree} from './independent-call-tree';
@@ -18,12 +19,13 @@ import {AttachmentProcessor} from './attachment-processor';
 import {freezeAttachments, readVerifiedAttachment} from './attachment-integrity';
 import {createSessionHost, type SessionHostPorts} from '../utils/host-ports';
 
-interface CallRoute {createdAt?: number; head?: string | null; digest: string; input: IndependentCallInput; childRequest: SubmissionRequest; executionSessionId?: string}
+interface CallRoute {createdAt?: number; head?: string | null; digest: string; input: IndependentCallInput; childRequest: SubmissionRequest; executionSessionId?: string; kernelPreparation?: IndependentKernelPreparation}
 interface Options {
     kernel: Kernel; repository: ISessionRepository; transfers: Pick<ContentTransferService, 'createChild'>;
     submit: IndependentCallSubmitter; prepareExecution?(sessionId: string): Promise<void>; canWrite?(sessionId: string): Promise<boolean>; hostPorts?: SessionHostPorts;
 }
 const prefix = 'conversation/call/';
+interface PreparationProgress {stage: string; executionSessionId?: string}
 /** Trusted Effect admission only; a held attempt says nothing about an earlier submission. */
 export type ManagedCallAdmission = IndependentCallReceipt | (Omit<IndependentCallReceipt, 'status' | 'evidence' | 'execution'> & {status: 'held'});
 export type ManagedCallAdmissionGuard = (request: SubmissionRequest) => Promise<boolean>;
@@ -75,6 +77,96 @@ export class IndependentCallService {
                 else this.host.logger.info('Independent call observation', detail);
             } catch { /* Diagnostics cannot replace admission or the original failure. */ }
         }
+    }
+    async prepareTaskCall(supplied: IndependentCallInput, options: IndependentTaskCallPreparation): Promise<PreparedIndependentTaskCall> {
+        const input = structuredClone(supplied), prepare = options?.prepare;
+        return this.tracePreparation(input, 'call.prepare', async progress => {
+            const policy = snapshotIndependentTaskCallPolicy(options);
+            if (typeof prepare !== 'function') throw independentPreparationError('CALL_PREPARATION_UNAVAILABLE');
+            return this.prepareCallRoute(input, policy, prepare, progress);
+        });
+    }
+    private async prepareCallRoute(input: IndependentCallInput, policy: IndependentTaskCallPolicy,
+        prepare: IndependentTaskCallPreparation['prepare'], progress: PreparationProgress): Promise<PreparedIndependentTaskCall> {
+        const identity = await this.identity(input);
+        if (input.request.expectedTarget?.kind !== 'agent') throw independentPreparationError('CALL_GRAPH_PREPARATION_REQUIRED');
+        await this.options.repository.getManifest(identity.sessionId);
+        await this.options.prepareExecution?.(identity.sessionId); await this.writable(identity.sessionId);
+        progress.stage = 'route'; let route = await this.route(input, identity.digest, policy);
+        if (!route.executionSessionId) {
+            const child = await this.options.transfers.createChild({sessionId: identity.sessionId,
+                requestId: `call-${await sha256Hex(identity.id)}`, title: input.title, transfer: input.transfer});
+            route = await this.bindRoute(route, child.sessionId);
+        }
+        this.assertPreparationRoute(route, identity);
+        progress.executionSessionId = route.executionSessionId;
+        await this.writable(route.executionSessionId!);
+        const previous = this.preparedCall(route); if (previous) return previous;
+        progress.stage = 'attachments'; await this.copyAttachments(route);
+        progress.stage = 'prepare';
+        const ready = await prepare(structuredClone(route.childRequest), structuredClone(route.kernelPreparation!.invocation));
+        const data = freezeIndependentTaskCall(route.kernelPreparation!, this.preparationScope(route), ready);
+        progress.stage = 'persist'; route = await this.savePreparation(route, data);
+        return this.preparedCall(route)!;
+    }
+    async inspectPreparedTaskCall(supplied: IndependentCallInput): Promise<PreparedIndependentTaskCall | undefined> {
+        const input = structuredClone(supplied);
+        return this.tracePreparation(input, 'call.prepare.inspect', async progress => {
+            const identity = await this.identity(input); progress.stage = 'lookup';
+            const stored = await this.readRoute(identity.sessionId, identity.id); progress.stage = 'plan';
+            const route = stored && this.match(stored.value, identity.digest);
+            if (route) this.assertPreparationRoute(route, identity);
+            const ready = route && this.preparedCall(route);
+            progress.executionSessionId = ready?.executionSessionId; return ready;
+        });
+    }
+    private async tracePreparation<T>(input: IndependentCallInput, operation: string, work: (progress: PreparationProgress) => Promise<T>): Promise<T> {
+        const started = Date.now(), progress: PreparationProgress = {stage: 'validate'}, supplied = input?.request?.submission?.id;
+        const source = input?.request?.expectedSessionId, sessionId = typeof source === 'string' && /^[\w:-]{1,256}$/.test(source) ? source : undefined;
+        const operationId = typeof supplied === 'string' && /^[\w-]{1,128}$/.test(supplied) ? supplied : undefined;
+        let errorCode: string | undefined;
+        try {return await work(progress);}
+        catch (error) {const code = (error as {code?: unknown})?.code;
+            errorCode = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CALL_PREPARATION_FAILED'; throw error;}
+        finally {const child = progress.executionSessionId, executionSessionId = typeof child === 'string' && /^[\w:-]{1,256}$/.test(child) ? child : undefined;
+            const detail = {operation, stage: progress.stage, outcome: errorCode ? 'failure' : 'success', errorCode, operationId, sessionId, executionSessionId, durationMs: Date.now() - started};
+            try {if (errorCode) this.host.logger.warn('Independent call preparation', detail); else this.host.logger.info('Independent call preparation', detail);}
+            catch { /* Diagnostics cannot change the persisted plan or the original failure. */ }}
+    }
+    private preparationScope(route: CallRoute): PreparationScope {
+        return {operationId: route.input.request.submission!.id, sessionId: route.executionSessionId!, roundId: route.childRequest.submission!.id,
+            target: route.childRequest.expectedTarget!, branch: route.childRequest.expectedBranch!};
+    }
+    private preparedCall(route: CallRoute): PreparedIndependentTaskCall | undefined {
+        if (!route.kernelPreparation) return;
+        const data = readIndependentTaskCall(route.kernelPreparation, this.preparationScope(route)); if (!data) return;
+        return {operationId: route.input.request.submission!.id,
+            caller: {sessionId: route.input.request.expectedSessionId!, requestId: route.kernelPreparation.callerRequestId}, executionSessionId: route.executionSessionId!, invocation: structuredClone(route.kernelPreparation.invocation), ...data};
+    }
+    private async savePreparation(route: CallRoute, prepared: NonNullable<IndependentKernelPreparation['prepared']>): Promise<CallRoute> {
+        const caller = route.input.request.expectedSessionId!, session = await this.options.kernel.openSession(caller);
+        const key = prefix + route.input.request.submission!.id, stored = (await session.getShared(key))!;
+        const current = this.match(stored.value, route.digest);
+        this.assertPreparationOwner(current, route);
+        if (this.preparedCall(current)) return current;
+        const next = {...current, kernelPreparation: {...current.kernelPreparation!, prepared}};
+        await this.writable(caller); await this.writable(next.executionSessionId!);
+        try {await session.setShared(key, json(next), {expectedVersion: stored.version}); return next;}
+        catch (error) {const observed = await session.getShared(key); if (!observed) throw error;
+            const found = this.match(observed.value, route.digest);
+            this.assertPreparationOwner(found, route);
+            if (!this.preparedCall(found)) throw error; return found;}
+    }
+    private assertPreparationOwner(current: CallRoute, expected: CallRoute): void {
+        assertIndependentPreparationMode(current.kernelPreparation, expected.kernelPreparation?.policy);
+        this.assertPreparationRoute(current, {sessionId: expected.input.request.expectedSessionId!, id: expected.input.request.submission!.id});
+        if (current.kernelPreparation!.callerRequestId !== expected.kernelPreparation!.callerRequestId || current.executionSessionId !== expected.executionSessionId
+            || JSON.stringify(current.kernelPreparation!.invocation) !== JSON.stringify(expected.kernelPreparation!.invocation))
+            throw independentPreparationError('CALL_PREPARATION_SCOPE_MISMATCH');
+    }
+    private assertPreparationRoute(route: CallRoute, expected: {sessionId: string; id: string}): void {
+        if (route.input?.request?.expectedSessionId !== expected.sessionId || route.input.request.submission?.id !== expected.id)
+            throw independentPreparationError('CALL_PREPARATION_SCOPE_MISMATCH');
     }
     private async admit(route: CallRoute, progress: {stage: string}, guard?: ManagedCallAdmissionGuard): Promise<ManagedCallAdmission> {
         progress.stage = 'receipt';
@@ -210,17 +302,21 @@ export class IndependentCallService {
         const digest = await instructionDigest(prepareInstruction(instruction, sessionId, request.expectedBranch));
         return {sessionId, id, digest: await sha256Hex(JSON.stringify([digest, request.submission!.source.id, input.title, input.transfer?.sessionId, input.transfer?.id]))};
     }
-    private async route(input: IndependentCallInput, digest: string): Promise<CallRoute> {
+    private async route(input: IndependentCallInput, digest: string, policy?: IndependentTaskCallPolicy): Promise<CallRoute> {
         const request = input.request, session = await this.options.kernel.openSession(request.expectedSessionId!);
         const key = prefix + request.submission!.id, stored = await session.getShared(key);
-        if (stored) return this.match(stored.value, digest);
+        if (stored) return this.routeMode(this.match(stored.value, digest), policy);
         const manifest = await this.options.repository.getManifest(request.expectedSessionId!);
         if (manifest.currentBranch !== request.expectedBranch) throw failure('CALL_BRANCH_CHANGED');
         const childRequest = await this.freezeRequest(request);
-        const route: CallRoute = {input, digest, childRequest, createdAt: Date.now(), head: manifest.currentHead};
+        const route: CallRoute = {input, digest, childRequest, createdAt: Date.now(), head: manifest.currentHead,
+            ...(policy ? {kernelPreparation: newIndependentKernelPreparation(policy, request.submission!.id)} : {})};
         await this.writable(request.expectedSessionId!);
         try {await session.setShared(key, json(route), {expectedVersion: null}); return route;}
-        catch (error) {const observed = await session.getShared(key); if (!observed) throw error; return this.match(observed.value, digest);}
+        catch (error) {const observed = await session.getShared(key); if (!observed) throw error; return this.routeMode(this.match(observed.value, digest), policy);}
+    }
+    private routeMode(route: CallRoute, policy?: IndependentTaskCallPolicy): CallRoute {
+        assertIndependentPreparationMode(route.kernelPreparation, policy); return route;
     }
     private async freezeRequest(request: SubmissionRequest): Promise<SubmissionRequest> {
         const instruction = submissionInstruction(request), caller = request.expectedSessionId!, id = request.submission!.id;

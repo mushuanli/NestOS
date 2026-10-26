@@ -2,6 +2,23 @@
 
 本计划针对根仓 `6d8d2171` 之后的工作树。按可独立审查、验证和回退的功能拆分；不按目录一次性提交，也不将所有 UI、CLI、RPC 接线留到最后。记录时间：2026-10-25。当前按 25 个能力组管理，F09 拆为四个交付单元，共 28 个功能切片。
 
+## 0. 当前剩余工作（2026-10-26）
+
+整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—89 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
+
+| 优先级 / 工作线 | 已具备基础 | 仍需完成的结果 |
+|---|---|---|
+| P1a 独立调用业务提交 | Kernel 受管调用、双侧写权、期限、共用准备；原路由持久计划见第 89 节 | 正式业务入口从持久准备进入 Kernel，固定 caller/target 引用；队列接纳、提交未知与原请求核对全链路统一，不能由两处派发 |
+| P1b 历史关联与恢复 | 旧队列/Round 恢复、Invocation 与子 Session、Kernel 原调用核对 | 新 Kernel 路径的真实 TaskRef、Round、接纳/结果回执与重启恢复投影贯通；有证据后再压缩准备数据 |
+| P1c Flow 工作区责任 | 既有隔离工作区 manager、scheduler lease 与收尾记录 | 将完整 Flow 的工作区/能力占用接到 Kernel 可核对的资源责任，确认物理收尾后再完成函数调用 |
+| P1d 跨调用预算 | Kernel 工作额度、共享资源、深度与幂等用量机制 | token/费用预算跨父子调用预留、分配、继承及实际结算；缺少远端 usage 时不能视为零用量 |
+| F16/F24 新调用 UI 与性能 | 旧调用卡片、交互回答、产物按需读取及同 Session 树控制 | 新跨 Session Kernel 调用的统一展示/控制/恢复，以及完整调用组、大报告与大历史性能验收 |
+| F15/F20—22 原生上下文与材料 | binding、检查点/fork、选择器及受支持材料传输 | 严格 continue 的远端条件写或独占保障；并行/循环/重试绑定及材料实例的组合验收，不将宿主 CAS 当成原生围栏 |
+| 运行策略与长期生命周期 | 当前输入/审批、资源恢复及资产引用 | 无人值守交互/失联策略，环境与记忆隔离、初始化作用域，以及历史/资产导出恢复、保留和回收边界 |
+| 真实部署与历史故障验收 | DSH 新请求、顺序发送及取消已验收；Codex 对应真实链路已验收 | Claude 真实云模型顺序执行、旧未知项/DSH 历史结算修复的运行端复验，以及最新统一调用方案的服务验收；协议替身和本地 peer 不替代这些结论 |
+
+本次正在推进 P1a/P1b，顺序为持久准备 → 原 Kernel 提交 → TaskRef/历史关联 → 重启恢复。原 session.call.submit 目前仍走旧队列；新增准备接口不自动把这个入口变成新 Kernel 调用路径。未满足上表完成条件前，F16/P1 不标记完成，也不以测试数量或 Git 工作树文件数表示整体完成率。
+
 ## 1. 合入规则
 
 一项功能包含自己的契约、实现、实际消费者、必要回归与文档。公共契约随首个有效消费者进入；共享文件按修改块拆分。纯算法出口等兼容性重构可先行，但不能将尚未接线的可选端口称为功能完成。
@@ -73,7 +90,7 @@ C4Component
 | F15 | 授权附件传输、原操作恢复与队列消费 | `5411bf71`，见第 13 节 | 原始与最终增量证据分别记录，不把默认并发超时隐藏为全套通过 |
 | F19 | 原生取消/核对事实桥及失败连接释放重试 | 本批，见第 14 节 | 隔离宿主 987、adapter 362、Session 436 项；类型、构建和架构检查 |
 
-独立仓当前锁定：Kernel `0c5e7cb`、llm-ui `595aaea6`、mindos-node-driver `6e32348`、mindos-node `edcaefb`。Kernel 已由 F02 锁定，driver 已由 F04 锁定，llm-ui 已由 F09a 接入，后续随 F09d 台账合并更新；mindos-node 已由原生查询/控制/输出批次锁定；四个 gitlink 均已接入已验证消费者。保留这些已有提交；根仓锁定版本时必须同时验证受影响消费者，不用未锁定的本地源码冒充集成完成。
+早期批次锁定（历史基线，当前消费版本以 gitlink 为准）：Kernel `0c5e7cb`、llm-ui `595aaea6`、mindos-node-driver `6e32348`、mindos-node `edcaefb`。Kernel 已由 F02 锁定，driver 已由 F04 锁定，llm-ui 已由 F09a 接入，后续随 F09d 台账合并更新；mindos-node 已由原生查询/控制/输出批次锁定；四个 gitlink 均已接入已验证消费者。保留这些已有提交；根仓锁定版本时必须同时验证受影响消费者，不用未锁定的本地源码冒充集成完成。
 
 ## 4. 继续细分的功能单元
 
@@ -2140,3 +2157,34 @@ C4Dynamic
 诊断区分 input/tools-and-skills/context/tool-catalog/compile，包含安全身份、具体错误分类、耗时与 tokenCount；不输出正文或原始错误，诊断失败不影响结果。验收使用真实 Memory VFS、SessionRepository、RoundLog、Context Profile、附件和 Kernel，覆盖选定历史、空头、旧 Profile、显式子会话材料、摘要产物、异步修改隔离及三类受管执行。提供者使用受控测试端口，不代表云模型或运行服务验收。
 
 该接口输出准备数据，尚未为独立业务路由保存持久接纳事实；context 的 ID 也不冒充已落盘快照。P1 后续依次落实：已有子会话路由按原 Invocation 持久准备并恢复同一计划；真实目标 TaskRef 与 Round/接纳回执关联；Flow 工作区归属及跨调用预算；最后统一 UI 投影。不能在恢复时重新准备旧调用，也不能把现有立即发送函数包装成 Kernel 调用后仍让两处持有执行责任。本批不标记 F16/P1 整体完成，未部署。
+
+
+## 89. 独立调用在原路由中持久冻结 Task 计划
+
+IndependentCallService 新增可信宿主 prepareTaskCall / inspectPreparedTaskCall，复用原 conversation/call 路由、原子 shared CAS、子会话创建和附件快照。路由首次声明 Kernel 准备方式、源 caller.requestId、Invocation 与 maxDepth/timeoutMs；普通队列路由保持原缺省语义，两种路径不能复用同一提交身份。没有新增状态库、调度器或 npm 包，也没有把准备数据当作执行状态。
+
+```mermaid
+C4Dynamic
+  title 独立调用的原路由持久准备
+  Component(host, "可信调用宿主", "目标授权与准备端口；保存原请求身份")
+  Component(route, "原 IndependentCall 路由", "模式、Invocation、策略与原 shared CAS")
+  Component(child, "原子会话创建与附件", "相同请求核对同一实际子 Session")
+  Component(prepare, "宿主共用准备函数", "实际上下文、工具与 Task 定义")
+  Component(kernel, "Durable Kernel", "真正调用、调度、取消与资源收尾")
+  RelIndex(1, host, route, "首次声明路径及调用策略；读取旧事实优先")
+  RelIndex(2, route, child, "复用原创建回执并绑定子 Session")
+  RelIndex(3, child, prepare, "实际目标请求及已持久 Invocation")
+  RelIndex(4, prepare, route, "检查目标、Round、上下文与身份；CAS 保存原计划")
+  RelIndex(5, route, host, "返回持久胜者；重开不再装配目录或附件")
+  RelIndex(6, host, kernel, "原 kernel.call / bindTaskCall 执行准备好的计划")
+```
+
+准备回调只有受信宿主能提供，不增加用户命令。原路线/子会话必须先存在，异步准备完成后复验两侧写权；结果核对实际 Session、Round、Invocation、发布身份及空子分支。准备失败不覆盖原声明，重试只用原 Invocation。新的 ULID 只为缺少路由时的初始 CAS 候选生成，准备完成后的重放不分配新身份。
+
+计划与 context 使用摘要检测损坏，保留原输入的序列化表示；并发不同有效快照只返回持久胜者。写回执丢失后读取原记录，不把异常当作未写入。已有计划的重放不重新复制附件，源文件后来不可读不抹掉准备事实；执行仍由其原资产/连接协议核验。冷读取不 open/recover Session 或获取写租约，未知版本、坏摘要和重新密封后的目标不符均拒绝。
+
+验收覆盖真实 SessionRepository/RoundLog/附件与 Kernel，重建 Kernel 后读取并执行 Chat、Agent、Harness 原计划；单 Effect 工作额度下完成。另覆盖丢写回执、写入失败、回调失败后同身份重试、并发 CAS、只读查询、请求/策略冲突、模式互斥、异步失权、原文件消失、当前分支变化、显式新调用和日志异常隔离。提供者使用测试端口；Kernel 重建使用保留的测试 VFS，不等同于新的 HTTP、OS 进程或云模型生产验收。
+
+原 session.call.submit 仍沿原队列和历史执行，本批不自动切换 UI；prepareTaskCall 返回准备计划，不返回假的 accepted 或输出。完整入口后续需将真实 caller/target TaskRef 与原路由、Round 及回执关联，再接恢复投影；计划在 Kernel 持有后才可按有证据的引用压缩。当前暂保留完整计划，不增加另一套运行状态或提前删除恢复依据。新增路由要求退出旧应用 writer 后使用，不承诺旧应用回滚能理解 Kernel 准备方式；旧队列记录保持兼容。
+
+P1 的业务提交/历史映射、Flow 工作区归属、跨调用 token 预算以及 UI 投影继续保留，F16/P1 不标记整体完成。本批未部署或操作生产 Session。

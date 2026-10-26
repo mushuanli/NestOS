@@ -777,3 +777,18 @@ Flow、显式无工具 Agent、非法宿主预算分别保留明确拒绝。Flow
 诊断 `session.direct.prepare` 区分 input、tools-and-skills、context、tool-catalog、compile，记录安全请求/Session 身份、结果、错误分类、耗时及 token 数量；不记录消息、提示词、文件内容、原始错误正文或完整参数。日志回调异常不改变准备结果与原错误。
 
 本接口提供准备结果，不代替持久调用接纳。独立业务路由仍须先持久冻结原准备结果，再由 Kernel 持有执行责任，并将真实目标 TaskRef 映射回 Round/Invocation；恢复不能重新调用本接口装配“同一次”调用。完整进度见[功能合入计划第 88 节](design/functional-merge-plan.md#88-宿主上下文与直接调用准备共用同一入口)。
+
+
+## 独立调用的持久 Task 准备
+
+可信宿主可用 IndependentCallService.prepareTaskCall(input, {maxDepth, timeoutMs?, prepare}) 准备独立 Agent/Harness 调用。prepare 回调接收原子分配的 Invocation 与已绑定实际子 Session 的 SubmissionRequest，应复用 prepareDirectConversationRun；回调及完整计划不开放为 RPC/模型输入。类和运行时类型从根入口导出，原 session.call.submit 仍为队列入口。
+
+首次在原 conversation/call/<submissionId> 路由中声明 kernelPreparation.version=1、Invocation 和期限/深度策略；真正缺少路由时才产生 Invocation 候选，同一请求重试读取持久胜者。随后复用原幂等子会话创建和附件快照，验证准备结果的实际 Session、Round、Invocation、发布目标与空子分支，最终将 TaskCallPlan、精简 context 及摘要用原 shared CAS 一起保存。两个宿主准备出不同的有效快照时，后提交者返回已持久的胜者。保存失败不返回未提交计划；丢写回执后核对原记录。
+
+返回 PreparedIndependentTaskCall，包含 operationId、caller（源 sessionId 与持久 requestId）、executionSessionId、invocation、plan、context。caller.requestId 在原路由首次保存，重试不能换成新的 Kernel 请求身份。它不是 SubmissionReceipt，也不是已运行或完成事实；原 inspect/List 不因准备而伪造 queue/history 接纳。调用宿主可用原 kernel.call 与 bindTaskCall 为 plan 授予确切能力，真正创建、调度、取消及资源收尾仍由 Kernel 持有。准备只保存本次调用的数据；写准备会取得原 Session 写端口，不宣称停止同一宿主已有任务。
+
+inspectPreparedTaskCall 是冷读取，不获取 writer、不创建子会话、不装配上下文，也不发起执行。已完成准备的重放不重新读取目录或附件；当前分支/设置变化不改变原计划。准备失败但未提交计划时，原 Invocation、策略和子会话保留，允许宿主重新准备；这不代表任何已有执行“未开始”。不同标题、请求或期限/深度策略拒绝复用身份；显式新调用使用新的 submissionId，得到独立 Invocation 和子会话。
+
+队列路由与 Kernel 准备路由按首次声明固定，同一身份不能互相解释。旧无 kernelPreparation 的记录沿用队列语义；新增 Kernel 路由要求所有应用 writer 升级后使用，不支持旧应用宿主回滚读取新路由。Session 写租约继续防止并发失权写，格式声明不替代授权。新写在异步准备结束后复验两侧写权限，损坏摘要、未知版本与身份不符明确拒绝，不静默重建。
+
+诊断 call.prepare/call.prepare.inspect 区分 validate、route、attachments、prepare、persist、lookup、plan，带安全源/目标 Session、operationId、分类与耗时，不记录计划、正文、文件或原始错误。独立业务提交的自动接线、Kernel 执行引用与 Round/Invocation 的关联和计划压缩仍待实施；当前保留原计划，不声称已完成 F16 或无人值守恢复投影。详见[功能合入计划第 89 节](design/functional-merge-plan.md#89-独立调用在原路由中持久冻结-task-计划)。

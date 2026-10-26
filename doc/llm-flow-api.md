@@ -588,3 +588,22 @@ Kernel 的原子取消事务，在事务内再次校验所有权。返回 `{task
 均拒绝。物理清理失败仍保留持久接纳证据，不能按写响应失败重新分配请求身份。
 `flow.run.cancel-remaining` 诊断沿用现有控制日志，包含请求、根任务、阶段、分类和耗时。
 Session 调用归属、UI 台账与按钮仍由上层接入；此 Flow 协议不授予跨 Session 控制权。
+
+
+## 准备后调用独立 Task
+
+`prepareTaskCall(definition: TaskRunDefinition, {maxDepth, timeoutMs?})` 将已准备的直接运行映射为 Kernel TaskCallPlan，保留消息、能力绑定及 Invocation labels。它不创建任务；目标 requestId / deferStart 由 Kernel 调用协议生成，不沿用普通直接提交的请求身份。带 parent/spawnKey 的目标拒绝转换，调用者的父关系单独通过 caller.parent / caller.spawnKey 建立。
+
+```ts
+const plan = prepareTaskCall(definition, {maxDepth: 4});
+const run = await submitTaskCall(definition, {
+    kernel, caller: {sessionId: 'caller-session', requestId: 'frozen-call-request'}, maxDepth: 4,
+});
+const exit = await run.root.wait({until: 'settled'});
+```
+
+`submitTaskCall` 用稳定 caller.requestId 创建或核对同一 deferred kernel.call Task，再授予确切计划的能力。已推进或终结的调用不重新绑定能力；提交或绑定丢回执后重放原冻结请求，不创建第二个目标。返回 TaskCallRunExecution，root 的成功输出为 Kernel TaskCallResult；tasks() 只列调用者代理 Task，目标 TaskRef 在输出中，不把不同 Session 的成员伪装成同一任务树。caller.parent 可将代理放入真实父任务控制树，取消和深度继承仍归 Kernel。
+
+这是受信宿主 SDK，不是模型/RPC 准入端口；实际目标、上下文、授权和已准备输入由宿主提供。调用恢复须读取已冻结定义，不能从最新 Agent/模型设置重新构造；改变序列化表示或内容后复用 caller.requestId 会冲突。图定义使用原 prepareFlowRun / DurableFlowExecutor，其外层工作区收尾尚未全部进入 Kernel 资源责任，不能把 flow.aggregate 包装成这里的独立函数入口。Durable Program 内部可直接发出已授权的 task.call Effect；SDK 不自动接管某个外层 Effect 的生命周期。
+
+可选 onDiagnostic 接收 run.task.call 的 plan/caller/binding 阶段、原请求/任务身份、安全错误码和耗时；不包含输入或原异常正文，诊断失败不影响实际结果。裸 Task 的发布目录及 UI 入口仍待接入。

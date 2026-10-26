@@ -1,5 +1,5 @@
 import type { ConversationExecution, ConversationRunCoordinatorOptions } from './conversation-run-coordinator';
-import type { ContextSnapshot, ToolDefinition } from '@itookit/llm-context';
+import type { ChatMessage, ContextSnapshot, ToolDefinition } from '@itookit/llm-context';
 import type { TaskSpec } from '@itookit/durable-kernel';
 import type { LLMSkill } from '../contracts';
 import type { ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
@@ -10,7 +10,17 @@ import {harnessInputDigest, prepareHarnessInput, type HarnessContextRequest} fro
 import type {HarnessProgramInput} from '@itookit/kernel-adapters';
 import {directHarnessContextIdentity} from '../contracts/context-options';
 
-interface DirectToolCatalog {definitions: ToolDefinition[]; externalIds: string[];}
+import type {ChatAttachment, ExecutionTask, ExecutorConfig} from '../core/types';
+
+export interface DirectToolCatalog {definitions: ToolDefinition[]; externalIds: string[];}
+/** Ready context and input only; planning does not require a UI state or a running Task. */
+export interface DirectConversationInput {
+    task: Pick<ExecutionTask, 'sessionId' | 'input'>;
+    config: ExecutorConfig;
+    roundId: string;
+    contextFiles?: ChatAttachment[];
+    currentInput?: ChatMessage;
+}
 
 export async function prepareDirectConversation(options: ConversationRunCoordinatorOptions, execution: ConversationExecution) {
     if (execution.config.execution?.kind === 'harness') return { execution, skills: [], skillsPrompt: '' };
@@ -43,7 +53,7 @@ function directSkillsPrompt(ids: string[], skills: LLMSkill[]): string {
 }
 
 export function directTaskSpec(
-    execution: ConversationExecution,
+    execution: DirectConversationInput,
     snapshot: ContextSnapshot,
     catalog: DirectToolCatalog,
     skills: LLMSkill[],
@@ -53,7 +63,7 @@ export function directTaskSpec(
         : modelTaskSpec(execution, snapshot, catalog, skills, policy);
 }
 
-function nativeTaskSpec(execution: ConversationExecution, snapshot: ContextSnapshot): TaskSpec<HarnessProgramInput> {
+function nativeTaskSpec(execution: DirectConversationInput, snapshot: ContextSnapshot): TaskSpec<HarnessProgramInput> {
     if (!execution.config.harnessConnection) throw new Error('Harness connection snapshot is required');
     if (execution.task.input.files.length && !execution.currentInput?.attachments?.length) throw new Error('HARNESS_CURRENT_INPUT_REQUIRED');
     const input = harnessInput(execution, snapshot); prepareHarnessInput(input);
@@ -61,7 +71,7 @@ function nativeTaskSpec(execution: ConversationExecution, snapshot: ContextSnaps
         labels: {roundId: execution.roundId, kind: 'agent'}, deferStart: true};
 }
 
-function modelTaskSpec(execution: ConversationExecution, snapshot: ContextSnapshot,
+function modelTaskSpec(execution: DirectConversationInput, snapshot: ContextSnapshot,
     catalog: DirectToolCatalog, skills: LLMSkill[], policy: ResolvedDirectAgentPolicy): TaskSpec<DurableAgentInput> {
     const tools = directToolIds(execution.config, execution.task.input);
     const mode = directExecutionMode(execution.task.input);
@@ -82,7 +92,7 @@ function modelTaskSpec(execution: ConversationExecution, snapshot: ContextSnapsh
     };
 }
 
-function harnessInput(execution: ConversationExecution, snapshot: ContextSnapshot): HarnessProgramInput {
+function harnessInput(execution: DirectConversationInput, snapshot: ContextSnapshot): HarnessProgramInput {
     const {canonicalMessages, ...contextSnapshot} = structuredClone(snapshot), context = harnessContext(execution, snapshot);
     if (context && context.conversation.mode !== 'new') return {connection: structuredClone(execution.config.harnessConnection!),
         ...harnessIncrementalInput(execution), context};
@@ -90,7 +100,7 @@ function harnessInput(execution: ConversationExecution, snapshot: ContextSnapsho
         ...(context ? {context, contextSnapshot} : {})};
 }
 
-function harnessContext(execution: ConversationExecution, snapshot: ContextSnapshot): HarnessContextRequest | undefined {
+function harnessContext(execution: DirectConversationInput, snapshot: ContextSnapshot): HarnessContextRequest | undefined {
     const invocation = execution.task.input.invocation;
     if (!invocation) {
         if (execution.task.input.overrides?.harnessConversation) throw new Error('CONTEXT_INVOCATION_REQUIRED');
@@ -105,11 +115,11 @@ function harnessContext(execution: ConversationExecution, snapshot: ContextSnaps
             : {mode: 'native-continuation', inputRef: `invocation:${invocation.invocationId}:input`, digest: incrementalDigest(execution)}};
 }
 
-function harnessIncrementalInput(execution: ConversationExecution) {
+function harnessIncrementalInput(execution: DirectConversationInput) {
     if (!execution.currentInput && execution.contextFiles?.length) throw new Error('HARNESS_CURRENT_INPUT_REQUIRED');
     return prepareHarnessInput({messages: [execution.currentInput ?? {role: 'user', content: execution.task.input.text}]});
 }
-function incrementalDigest(execution: ConversationExecution): string {
+function incrementalDigest(execution: DirectConversationInput): string {
     const input = harnessIncrementalInput(execution);
     return harnessInputDigest(input);
 }
@@ -133,7 +143,7 @@ function toolNameOf(tool: ToolDefinition): string {
     return tool.function?.name ?? tool.name ?? '';
 }
 
-function directBindings(execution: ConversationExecution, catalog: DirectToolCatalog, skills: LLMSkill[], tools: string[]) {
+function directBindings(execution: DirectConversationInput, catalog: DirectToolCatalog, skills: LLMSkill[], tools: string[]) {
     // The host search decision selects one search mechanism.
     const definitions = catalog.definitions.filter(tool => tools.includes(toolNameOf(tool))
         && (execution.config.webSearchMode === 'client-tool' || toolNameOf(tool) !== CLIENT_WEB_SEARCH_TOOL));
@@ -145,7 +155,7 @@ function directBindings(execution: ConversationExecution, catalog: DirectToolCat
         allowedToolIds, new Set(execution.config.capabilityPolicy?.skillIds ?? []));
     return { definitions, allowedToolIds, skillContexts };
 }
-function directInput(execution: ConversationExecution, snapshot: ContextSnapshot, policy: ResolvedDirectAgentPolicy) {
+function directInput(execution: DirectConversationInput, snapshot: ContextSnapshot, policy: ResolvedDirectAgentPolicy) {
     const mode = directExecutionMode(execution.task.input);
     return {
         sessionId: execution.task.sessionId,

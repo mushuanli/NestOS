@@ -3,6 +3,8 @@
 // 内置插件、flow 程序与 Flow 定义持久化。会话层（llm-session）依赖本包。
 
 export * from './flow';
+export {prepareTaskCall, submitTaskCall} from './task-call-submission';
+export type {TaskCallRunOptions, TaskCallRunExecution} from './task-call-submission';
 export { submitRun } from './run-submission';
 export type { CompiledRunDefinition, TaskRunDefinition, GraphRunDefinition, RunExecution, GraphRunExecution } from './run-submission';
 export {

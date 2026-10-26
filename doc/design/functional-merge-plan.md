@@ -1765,8 +1765,8 @@ C4Dynamic
 |---|---|---|
 | P1 | 升级前遗留调用的历史核对与结算 | 第 77 节已实现已接纳纯文本队首的有据结算；运行端仍待更新并验证旧项，其他恢复范围继续待办 |
 | P1 | 严格原生 continue | 当前 validateExecutionContext 明确拒绝并返回 CONTEXT_NATIVE_WRITE_UNSUPPORTED；binding CAS 不足以防远端外部写入 |
-| P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 第 84 节接通 Kernel 通用 Task 调用、原目标恢复和跨进程取消；Agent/Flow 宿主准备、工作区资源映射、预算预留及 UI 投影仍待接入，不以 Kernel 原语冒充产品链路完成 |
-| P1 | 裸 Task 的独立子 Session 调用入口 | 已有根选择为 Agent/Flow，尚无等价 Task 调用准入与路由闭环 |
+| P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 第 84–86 节接通 Kernel 调用、宿主双侧写权及直接准备结果的 SDK 提交；已发布 Agent/Flow 业务入口、工作区资源映射、预算预留及 UI 投影仍待接入，不以 Kernel 原语冒充产品链路完成 |
+| P1 | 裸 Task 的独立子 Session 调用入口 | 第 86 节新增受信 Task SDK；发布目录、业务准入及 UI 路由仍未闭环 |
 | P2 | Codex/Claude 真实运行及恢复验收 | 第 78 节 Codex 顺序发送、查询和取消已通过；Claude 查询/实际取消可用，真实提交仍有未知回执，源码修复待部署复验；重启恢复另列 |
 | P2 | 无人值守、工作区/记忆隔离、历史与资产长期生命周期 | 继续按第 5 节完成明确策略和故障组合验收 |
 | P2 | 大任务树与复杂结果性能 | 已有有界 UI/RPC 投影，存储仍扫描 Session 任务集合；完整详情、分页读取成本与长期回收未全部验收 |
@@ -2044,3 +2044,38 @@ C4Dynamic
 验收包含完整应用双侧写权有效、源或目标租约过期/被其他宿主持有、清理失权后恢复且目标不重复、完整应用重建后同一目标恢复、日志异常隔离与脱敏。重建验收保留测试存储并推进已到期的旧 worker 租约，恢复者取得自己的 Kernel claim 后继续原调用，不把重启视为立即取得旧在途操作所有权。独立宿主真实 Agent Program 验证 kernel.call → llm.agent@2 → 外部工具审批 → 工具执行 → 最终结构化输出，在单 Effect 工作额度下完成；工具只取得目标 Session 作用域。LLM 响应由测试端口提供，不是云模型或已发布 Agent 的业务调用验收。撤掉 headless 透传后，拒绝派发反例会错误成功，已确认该反例能检出旧接线缺口。
 
 本节完成宿主授权接线；第 84 节的产品计划准备、业务历史映射、工作区资源、预算及 UI 接入仍未完成。普通 Agent 的 Task 构造仍与立即提交耦合，Flow 工作区收尾仍有宿主责任；后续先分离准备/提交，再接入受管调用，不能直接把现有 submit 包装成函数便宣称完成。未部署到运行服务。
+
+
+## 86. 复用直接运行定义接入 Kernel 受管调用
+
+普通 Agent/Harness 的 Task 构造从立即提交中分离：prepareDirectRun 接收已解析配置、实际 ContextSnapshot、工具/Skill 及宿主策略，返回原 TaskRunDefinition。输入只需最小 DirectConversationInput，不需要 UI 状态、执行控制器或活动 Session；准备不创建 Task、不发模型请求。普通 ConversationRunCoordinator 同样调用它，然后继续原 submitRun、Round 历史与事件投影。没有新增 ExecutionPlan 存储、业务执行器或状态库。
+
+llm-flow 的 prepareTaskCall 把该定义映射为 Kernel TaskCallPlan；submitTaskCall 通过稳定 caller.requestId 提交 deferred kernel.call 并授予确切能力。返回 root 为调用者代理 Task，真实 callee TaskRef 与 ExitRecord 来自 Kernel；tasks() 不把跨 Session 成员混成一个本地集合。caller.parent/spawnKey 把代理放入实际父任务控制树，原 Kernel 传播取消和继承深度。目标 requestId/start 身份由 Kernel 生成，业务 Invocation labels 保留在真实目标。
+
+新增 SDK 只组合已有公共机制；它不取得外层任意 Effect 的所有权。Durable Program 内部可直接派发已授权 task.call Effect；模型/RPC 不得自行指定 Caller TaskRef、能力或计划。已发布定义范围、连接、实参、上下文及资产授权仍在原宿主准入边界完成。图定义不能经过直接 Task 编译绕开工作区收尾，Flow 完整函数入口继续按 P1 接入。
+
+```mermaid
+C4Dynamic
+  title 一份直接运行定义与两种提交边界
+  Component(host, "Session / 受信编排宿主", "解析目标、实参、上下文与权限")
+  Component(planner, "prepareDirectRun", "准备 TaskSpec 与能力；无执行副作用")
+  Component(ordinary, "原 submitRun", "普通直接运行及原历史投影")
+  Component(caller, "submitTaskCall", "核对同一源请求并授予计划能力")
+  Component(kernel, "Kernel kernel.call / task.call", "持久归属、深度、工作额度及清理")
+  Component(target, "原目标 Program", "Chat / Agent / Harness")
+  RelIndex(1, host, planner, "提供已装配输入与宿主策略")
+  RelIndex(2, planner, ordinary, "普通路径复用 TaskRunDefinition")
+  RelIndex(3, planner, caller, "受管路径复用同一准备结果")
+  RelIndex(4, caller, kernel, "稳定源 Task；可加入父任务控制树")
+  RelIndex(5, kernel, target, "原样派发冻结输入与实际能力")
+  RelIndex(6, target, kernel, "真实结果及停止、资源收尾事实")
+  RelIndex(7, kernel, host, "原目标 TaskRef 与结构化 ExitRecord")
+```
+
+接入原生 Harness 时发现并修复第 84 节实现的表示错误：TaskCallTargetSpec 原先为稳定指纹递归排序输入；原生 ContextSnapshot 按实际消息序列化校验摘要，因此原本有效的输入会报 HARNESS_CONTEXT_DIGEST_MISMATCH。Kernel 提交 `6420523` 将指纹规范化与实际派发分开；公开 snapshotTaskCallPlan 在接纳前验证并复制 JSON 数据，不改写输入表示。通用密封载荷反例和原生 Harness 准备→Kernel 调用反例均先在旧实现失败，修复后通过；未放宽原生摘要校验。
+
+准备结果须作为冻结 JSON 恢复，不从最新目录/模型设置重建。SDK 提交或能力绑定丢回执后重放原请求，核对同一源 Task；已推进/终结时不再绑定。普通旧直接提交保留原 TaskSpec 字段顺序和请求身份，验收先保存旧形状 deferred Task，再用新准备结果提交并取得同一 Task，不因重构制造 CONFLICT。改变内容或序列化表示后复用源 requestId 仍拒绝，不为了恢复改写真实输入。
+
+SDK 诊断为 run.task.call 的 plan/caller/binding 阶段，记录原请求/任务、安全错误分类和耗时；非法身份数据不作为日志 ID，回调失败不覆盖结果。Kernel 已通过 443 项单元测试、56 项真实进程集成测试与独立 ESM/CommonJS、core、NodeNext 安装消费，新增测试严格类型检查通过。
+
+本节完成准备函数、原普通路径复用及受信 SDK 的真实调用交接；模型与原生提供者使用测试端口，未宣称云模型或服务部署验收。独立业务调用路由的持久准备/历史映射、Flow 工作区责任、跨调用 token 预算预留结算及 UI 投影仍未完成；本批不把 F16/P1 标为整体完成。

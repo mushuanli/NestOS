@@ -753,3 +753,12 @@ Session 内部的 `IndependentCallService.submitManaged(input, guard)` 复用独
 已有接纳优先返回，不再次调用 guard 或发送。guard 未明确允许时再次核对原接纳，无事实才返回 `held`；held 不证明原调用未执行，也不能用于确认清理。guard/附件错误原样保留，丢提交回执仍核对原请求；日志错误不覆盖持久结果。输入与回调副本不改变实际冻结请求。
 
 派发意图先于取消时仍可能发生迟到提交；后续受管 Effect 必须持有核对和实际收尾责任。该接点本身不实现跨 Session 取消、暂停传播或完成等待。边界与 C4 见 [合入计划第 81 节](design/functional-merge-plan.md#81-受管调用提交前的-kernel-准入接点)。
+
+
+## 准备直接运行的 Task 定义
+
+根入口的 `prepareDirectRun(DirectRunPreparation)` 在实际提交前构造原 llm-flow TaskRunDefinition。输入是最小 DirectConversationInput（Session/实参、已解析配置、Round 与可选本轮 Harness 输入）、已装配 ContextSnapshot、工具目录、Skill 和宿主策略，不需要 SessionState、AbortController 或活动 Run。Context 装配、默认工具/MCP/Skill 解析及目标/授权准入仍先由原 Session/宿主完成；该函数不重新读取历史、不追加系统提示词，也不创建 Task 或发模型请求。
+
+普通 ConversationRunCoordinator 通过同一准备函数再走 submitRun。受信编排宿主可以将返回的 JSON 定义交给 llm-flow 的 prepareTaskCall / submitTaskCall，继续使用 Kernel 的调用归属、目标身份、工作额度和清理确认。准备结果复制消息、工具和策略数据，后续修改源配置不改变已准备请求；程序版本选择、Invocation labels、普通 requestId 和旧直接提交的序列化顺序保持。已持久接纳的普通 Task 因而可以按原 requestId 核对。
+
+Flow、显式无工具 Agent、非法宿主预算分别保留明确拒绝。Flow 继续使用图准备和工作区生命周期，不能当作普通 Agent 编译后绕过收尾。对已发布 Agent 的完整业务准备、独立子 Session 的接纳/历史映射和 UI 仍按合入计划继续；这个编译函数不直接开放为新的用户命令。接口与边界见[功能合入计划第 86 节](design/functional-merge-plan.md#86-复用直接运行定义接入-kernel-受管调用)。

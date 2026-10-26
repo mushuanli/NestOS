@@ -173,6 +173,8 @@ Kernel 内置 `kernel.call@1` Program 与 `task.call@1` Effect，宿主通过 `b
 
 `KernelOptions.authorizeTaskCall(plan, ownerRef, phase)` 可对 execute/cleanup 注入宿主授权与单写者检查；Kernel 不解析 Agent/Flow 定义、业务 Session 历史或上下文。当前暂停是调用边界语义，跨调用 token/费用预留和结算、业务工作区资源映射仍需接入。源绑定、目标请求和停止记录须保留至旧操作不能再次启动；目标 Session 的 instanceId 防止旧调用进入同 ID 的替代存储实例。完整示例、错误与诊断见[独立库接口](../libraries/durable-kernel/docs/api.md#受管-task-函数调用)，机制与应用边界见[合入计划第 84 节](design/functional-merge-plan.md#84-kernel-受管-task-调用贯通)。
 
+`snapshotTaskCallPlan` 提供接纳前的调用信封/持久 JSON 校验和独立快照，不创建任务或授予能力。指纹规范化与执行数据分开：目标提交保留原输入表示，不递归排序消息对象，以免破坏原生上下文摘要。SDK 恢复读取原冻结计划；重新装配输入属于新调用或显式冲突处理。
+
 完整应用通过 app-core 的 `createSessionTaskCallAuthority` 注入双侧应用写权检查；`createKernelRuntime` 的同名选项原样透传到 Kernel。execute 检查已持有租约及删除/移动状态，cleanup 续验原租约但不按新调用可用性拒绝清理；失权不自动接管，保留原清理责任。`renewSessionWriteLease` 位于 app-core/kernel/session-lease，供 Task 调用与 Harness 清理复用；这是应用宿主策略，独立 Kernel 不依赖该租约格式。该检查不提供跨 Session 原子事务或远端执行围栏，接线与验收边界见[合入计划第 85 节](design/functional-merge-plan.md#85-宿主接通受管调用的双侧写权检查)。
 
 ---

@@ -1,3 +1,5 @@
+export {prepareDirectRun, type DirectRunPreparation} from './session/direct-run-preparation';
+export type {DirectConversationInput} from './session/direct-conversation';
 import {IndependentCallService} from './session/independent-calls';
 import { prepareFlowConnections } from './session/flow-connections';
 import { operationModelNames } from '@itookit/kernel-adapters/contracts';

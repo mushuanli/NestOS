@@ -1,19 +1,19 @@
+import {prepareDirectRun} from './direct-run-preparation';
 import {conversationUserMessage as createUserMessage} from './conversation-attachments';
 import { ConversationContextBuilder, type ConversationLocation } from './conversation-context';
 import {callInputProjection} from './call-input-projection';
-import { prepareDirectConversation, directTaskSpec, skillContextResolver } from './direct-conversation';
+import { prepareDirectConversation, skillContextResolver } from './direct-conversation';
 import { createSessionHost, type SessionHost, type SessionHostPorts } from '../utils/host-ports';
 import { type RetrievedMemoryEntry } from '@itookit/llm-context';
 import { FlowHistory } from './flow-history';
-import { directExecutionMode, directToolIds } from './direct-execution-mode';
+import { directToolIds } from './direct-execution-mode';
 import { snapshotDirectAgentPolicy, type DirectAgentPolicy, type ResolvedDirectAgentPolicy } from '../contracts/direct-agent-policy';
-import { formatFlowOutput, invocationLabels, targetLabels } from '@itookit/llm-flow/contracts';
+import { formatFlowOutput } from '@itookit/llm-flow/contracts';
 import type { AgentEvent, ToolCallInfo } from '@itookit/llm-tasks/contracts';
 import type { Artifact, DagPluginCatalog, DagRunSpec, DagNodeDefinition } from '@itookit/llm-flow/contracts';
 import type { ChatMessage, ContextSnapshot, ContextPlan, ToolDefinition } from '@itookit/llm-context';
 import type { RoundResult, Signal, LLMSkill } from '../contracts';
 import {
-    type CapabilityBinding,
     type EventEnvelope,
     type Kernel,
     type JsonValue,
@@ -206,20 +206,9 @@ export class ConversationRunCoordinator {
         const tools = harness ? [] : directToolIds(execution.config, execution.task.input);
         const catalog = await (harness ? undefined : this.options.resolveTools?.(execution.task.sessionId, tools))
             ?? { definitions: [], externalIds: [] };
-        const spec = directTaskSpec(execution, snapshot, catalog, skills, this.policy);
-        spec.labels = {...spec.labels, ...invocationLabels(execution.task.input.invocation), ...targetLabels(execution.config.target)};
-        if (execution.task.input.invocation) spec.requestId = `invocation:${execution.task.input.invocation.invocationId}`;
-        if (!harness && directExecutionMode(execution.task.input) === 'agent' && !('tools' in spec.input && spec.input.tools?.length)) {
-            throw new Error(this.host.translate('chatInput.executionMode.noTools'));
-        }
-        if (this.options.kernel.programs.has(spec.program.kind, '2')) spec.program.version = '2';
-        const run = await submitRun({
-            kind: 'task', sessionId: execution.task.sessionId, task: spec,
-            capabilities: harness ? [{ kind: 'harness', uri: 'harness://session', rights: ['execute'], signalKey: 'harnessHandleId' }] : [
-                { kind: 'llm', uri: 'llm://session', rights: ['execute', 'write'], signalKey: 'llmHandleId' },
-                ...(tools.length ? [{ kind: 'tool', uri: 'tool://session', rights: ['execute'], signalKey: 'toolHandleId' } satisfies CapabilityBinding] : []),
-            ],
-        }, { kernel: this.options.kernel });
+        const definition = prepareDirectRun({execution, snapshot, catalog, skills, policy: this.policy,
+            hasProgram: (kind, version) => this.options.kernel.programs.has(kind, version), translate: this.host.translate});
+        const run = await submitRun(definition, {kernel: this.options.kernel});
         if (execution.task.abortController.signal.aborted) await run.root.cancel();
         return run;
     }

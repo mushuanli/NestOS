@@ -1,3 +1,4 @@
+import {isTargetRef} from '@itookit/llm-flow/contracts';
 import type {IAgentConfigService} from '@itookit/kernel-adapters/contracts';
 import type {ICommandBus, RootCallTarget, SubmissionRequest} from '@itookit/llm-session/contracts';
 import type {ChatSubmission} from '@itookit/llm-ui';
@@ -14,7 +15,8 @@ export async function prepareSessionChatRequest(options: {
     const {commands, agents, choice, signal, files} = options, request = structuredClone(options.request);
     signal.throwIfAborted();
     const draft = {text: options.input?.text ?? (request.source.kind === 'composer' ? request.source.text : request.presentation?.text ?? ''), files,
-        ...(options.input?.input ? {input: {...options.input.input, revision: 0, json: JSON.stringify(options.input.input.values)}} : {})};
+        ...(options.input?.input ? {input: {targetId: options.input.input.targetId, signature: {...options.input.input.signature},
+            ...(isTargetRef(options.input.input.target) ? {target: options.input.input.target} : {}), revision: 0, json: JSON.stringify(options.input.input.values)}} : {})};
     if (choice.input || choice.target.kind === 'flow') {
         const agent = choice.target.kind === 'agent' ? (await buildExecutorOptions(agents)).find(agent => agent.id === choice.target.id) : undefined;
         const prepared = choice.target.kind === 'flow' ? await prepareCallTarget(commands, choice, signal, draft)

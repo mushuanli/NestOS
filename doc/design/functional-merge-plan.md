@@ -4,7 +4,7 @@
 
 ## 0. 当前剩余工作（2026-10-26）
 
-本轮快速交付更新：普通已发布 Agent（Chat / Agent / Harness）以及 Flow/Flow Agent 的新独立调用已接到原 `session.call.submit` → 持久准备 → Kernel 提交，旧请求按已保存的路由继续核对。终态历史、恢复观察与卡片见第 92 节；可恢复工作区的 Kernel 责任见第 93 节；Flow 正式入口接线见第 94 节。此处为实现状态，按本轮要求未执行测试、构建或部署验收；不能等同于下表全部工作完成。
+本轮快速交付更新：普通已发布 Agent（Chat / Agent / Harness）以及 Flow/Flow Agent 的新独立调用已接到原 `session.call.submit` → 持久准备 → Kernel 提交，旧请求按已保存的路由继续核对。终态历史、恢复观察与卡片见第 92 节；可恢复工作区的 Kernel 责任见第 93 节；Flow 正式入口接线见第 94 节。最新正常主线已有一次小范围运行确认（第 98 节）；未执行全量测试、构建或部署验收，不能等同于下表全部工作完成。
 
 整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—91 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
 
@@ -2354,3 +2354,12 @@ Flow 根已确认终态、标明初始工作区待准备且原工作区记录不
 Task 调用 SDK 增加可信 beforeBind：原 caller 已持久接纳、仍为 deferred 时，宿主可完成启动前准入；失败保持同一 caller，不绑定或执行新目标。Session 用此阶段将冻结 Task 标签中的显式 Chat/Agent 模式写入原子会话设置并锁定，避免 Agent 首轮写入历史后被旧数据兼容规则按默认 Chat 模式锁定。纯准备仍不修改设置，Flow 和没有显式模式的旧请求继续原规则。
 
 重放相同已锁模式不改写设置；已有不同锁定模式保留 CALL_EXECUTION_MODE_CONFLICT。诊断 call.execution-mode.lock 区分 settings/permission/persist，Kernel SDK 记录 host-admission/binding，失败不记录正文或完整配置。按本轮要求未运行验证。
+
+
+## 98. 正常主线的小范围运行确认与等待日志降噪
+
+在连续提交后集中执行一份临时主线脚本，使用真实 createApplicationRuntime、Memory VFS、Session 仓库、发布目录、Kernel 以及 Flow 调度，模型 HTTP 和物理工作区 manager 使用受控替身。三个正常请求依次经过正式 session.call.submit：已发布 Agent、带可恢复隔离工作区的 Flow、已发布 Flow Agent。三者取得 Kernel 接纳、原 caller 成功收尾、子会话各保存一轮 completed 历史；原请求重放返回同一回执。模型只请求一次，两个隔离调用各执行一次 workspace.finish，读取 Kernel claims 确认释放。
+
+脚本最终通过，测试主体约 975ms，含加载总计 4.50s。首次脚本把只读 inspectSession 当作可查询 resources 的运行句柄，导致脚本断言阶段失败；改用 Kernel.resources.query 后完成全部三条主线，没有据此修改业务执行逻辑。临时文件已移出仓库，输出留在本机 /tmp/x1-mainline-smoke.log。没有扩大全量矩阵、运行云模型或操作生产 Session，也不能据此声称重启、审批/停止竞态、UI、大历史或真实部署全部通过。
+
+正常受管调用会主动 yield 执行额度等待目标，原 Kernel 缺省把 effect.observe/yield 的 blocked 打印成“需要处理”。应用宿主接入现有模块日志：无错误码的该阶段使用 debug，真正 failure 和其他 blocked 仍使用 warn，保留操作/阶段/身份/结果/耗时及错误码，不输出正文、参数或凭据。本日志调整不再追加验证。

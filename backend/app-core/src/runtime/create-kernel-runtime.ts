@@ -1,5 +1,5 @@
 import { t, createModuleLogger } from '@itookit/common';
-import { Kernel, type RecoveryOptions, type SessionStorageResolver } from '@itookit/durable-kernel';
+import { Kernel, type KernelDiagnostic, type RecoveryOptions, type SessionStorageResolver } from '@itookit/durable-kernel';
 import {
     createKernelAdaptersRuntime,
     createMediaResultStore,
@@ -102,11 +102,19 @@ export async function createKernelRuntime(
         effectTools: createMemoryTools(() => kernel, () => memory),
     });
 
+    const kernelLog = createModuleLogger('durable-kernel');
+    const reportKernel = (event: KernelDiagnostic) => {
+        const waiting = event.operation === 'effect.observe' && event.stage === 'yield' && !event.errorCode;
+        if (event.outcome === 'failure' || event.outcome === 'blocked' && !waiting)
+            kernelLog.warn('Kernel operation requires attention', event);
+        else kernelLog.debug('Kernel operation', event);
+    };
     const kernel = new Kernel({
         catalog: { fs: options.systemFS, rootPath: '/var/lib/kernel' },
         maxConcurrent: options.maxConcurrent,
         maxConcurrentEffects: options.maxConcurrentEffects,
         authorizeTaskCall: options.authorizeTaskCall,
+        onDiagnostic: reportKernel,
     });
     const memory = new SessionMemoryProvider(kernel, sharedMemory);
     kernel.registerStorageResolver(options.storageResolver);

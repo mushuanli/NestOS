@@ -97,6 +97,7 @@ export interface RoundProjection {
     kind: 'system' | 'chat' | 'merge';
 
     userMessage?: {
+        messages?: import('@itookit/llm-context').ChatMessage[];
         content: string;
         files?: import('../contracts').ChatAttachment[];
         persistedNodeId: string;

@@ -154,7 +154,7 @@ class SessionChatBinding {
         }
         this.observeQueue(this.options.session.getSnapshot?.().instructionQueue);
         const groups = this.options.session.getSessions();
-        const projected = groups.map(group => projectGroup(group, this.operations, this.confirmed, this.sessionId, !!this.options.openOutputs));
+        const projected = groups.flatMap(group => splitUserMessages(group, projectGroup(group, this.operations, this.confirmed, this.sessionId, !!this.options.openOutputs)));
         const messages = this.presentation?.merge(projected, groups) ?? projected;
         this.source.publish({ title: this.options.title ?? this.options.session.getSnapshot?.().view?.manifest.title ?? '',
             messages, interactions: this.execution?.interactions ?? [], selectors: this.selectors(), commands: this.options.composerCommands?.getSnapshot(),
@@ -397,6 +397,16 @@ export async function createSessionChatView(container: HTMLElement, binding: Ret
     } catch (error) {binding.releaseCalls(calls); throw error;}
 }
 
+function splitUserMessages(group: SessionGroup, message: import('@itookit/llm-ui').ChatMessage): import('@itookit/llm-ui').ChatMessage[] {
+    if (group.role !== 'user' || !group.inputMessages || group.inputMessages.length < 2) return [message];
+    return group.inputMessages.map((input, index, inputs) => ({...message, id: `${group.id}:input:${index}`,
+        ...(index === inputs.length - 1 ? {} : {submissionId: undefined}),
+        parts: [{id: 'body', kind: 'markdown', text: typeof input.content === 'string' ? input.content : JSON.stringify(input.content)},
+            ...((index === inputs.length - 1 ? message.parts : []).filter(part => part.kind === 'json')),
+            ...(input.attachments ?? []).map((attachment, number) => ({id: `attachment-${number}`, kind: 'attachment' as const,
+                file: {id: typeof attachment.source === 'string' ? attachment.source : attachment.name ?? attachment.filename ?? '',
+                    name: attachment.name ?? attachment.filename ?? '', mimeType: attachment.mimeType}}))]}));
+}
 function rejected(context: OperationContext, code: string, message: string): OperationReceipt {
     return { status: 'rejected', operationId: context.operationId, code, message };
 }

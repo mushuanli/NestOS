@@ -238,6 +238,8 @@ export interface BranchMetadata {
  * 会话组（一轮对话）
  */
 export interface SessionGroup {
+    /** Canonical ordered user inputs; display projection must preserve their boundaries. */
+    inputMessages?: import('@itookit/llm-context').ChatMessage[];
     target?: import('@itookit/llm-flow/contracts').TargetRef;
     callInput?: import('../contracts/conversation').Round['callInput'];
     invocation?: import('@itookit/llm-flow/contracts').InvocationIdentity;

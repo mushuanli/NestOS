@@ -379,13 +379,11 @@ function detectRoundKind(round: PersistedRound): 'system' | 'chat' | 'merge' {
 }
 
 export function roundToProjection(round: PersistedRound, roundId: RoundId): RoundProjection {
-    const userMsg = round.input.find(m => m.role === 'user');
+    const userMsgs = round.input.filter(m => m.role === 'user'), userMsg = userMsgs[0];
     // Use the LAST assistant message (final exchange), not the first.
     const assistantMsgs = round.output.filter(m => m.role === 'assistant');
     const assistantMsg = assistantMsgs.length > 0 ? assistantMsgs[assistantMsgs.length - 1] : undefined;
-    const attachments = (userMsg && 'attachments' in userMsg && Array.isArray(userMsg.attachments))
-        ? userMsg.attachments.map(attachment => historyAttachment(attachment))
-        : undefined;
+    const attachments = userMsgs.flatMap(message => message.attachments?.map(attachment => historyAttachment(attachment)) ?? []);
     const kind = detectRoundKind(round);
 
     return {
@@ -394,7 +392,8 @@ export function roundToProjection(round: PersistedRound, roundId: RoundId): Roun
         execution: [...(round.executions ?? [])].reverse().find(execution => execution.role === 'primary'),
         kind,
         userMessage: userMsg ? {
-            content: typeof userMsg.content === 'string' ? userMsg.content : JSON.stringify(userMsg.content),
+            messages: structuredClone(userMsgs),
+            content: userMsgs.map(message => typeof message.content === 'string' ? message.content : JSON.stringify(message.content)).join('\n\n---\n\n'),
             files: attachments,
             persistedNodeId: roundId,
         } : undefined,

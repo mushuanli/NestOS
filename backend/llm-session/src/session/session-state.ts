@@ -584,6 +584,7 @@ export class SessionState {
                 persistedNodeId: p.userMessage.persistedNodeId,
                 role: 'user',
                 content: p.userMessage.content,
+                inputMessages: p.userMessage.messages ? structuredClone(p.userMessage.messages) : undefined,
                 files: p.userMessage.files,
                 ...(p.callInput ? {callInput: structuredClone(p.callInput)} : {}),
                 ...(p.target ? {target: structuredClone(p.target)} : {}),

@@ -45,6 +45,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
     }
     private async mount(branch: string): Promise<void> {
         this.config.signal?.throwIfAborted(); this.branch = branch;
+        if (this.config.target?.kind === 'session') this.config.target = {...this.config.target, branch};
         this.store = await SessionChatStore.open(this.service, this.config.sessionId, branch, new AssetService(this.config.assets));
         const owner = this;
         this.binding = createSessionChatBinding({session: this.config.sessionManager, commands: this.config.commandBus!, kernel: this.config.kernel,
@@ -65,12 +66,20 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             const target = previous ?? choices.find(choice => choice.target.kind === 'agent' && choice.target.id === agentId)?.target ?? choices[0]?.target;
             draft = {...draft, ...(target ? {target} : {})};
         }
-        this.view = await createSessionChatView(this.container, this.binding, {locale: getLocale(), initialDraft: draft, markdown: messageMarkdown(this.config),
+        this.view = await createSessionChatView(this.container, this.binding, {locale: getLocale(), initialDraft: draft, markdown: messageMarkdown(this.config, id => this.messageAnchor(id)),
             assets: createAssetProvider(undefined, undefined, this.config.assets), upload: this.config.assets ? this.store.upload.bind(this.store) : undefined,
             saveDraft: draft => this.save(draft), onDraftChange: () => this.emit('interactiveChange', undefined),
             onError: error => this.fail(error), onDiagnostic: event => log.info('chat.operation', {...event, sessionId: this.config.sessionId, branch}),
             mountToolbar: root => this.toolbar(root)});
         if (!this.active) this.view.setActive(false);
+    }
+    private messageAnchor(messageId: string) {
+        for (const group of this.config.sessionManager.getSessions()) {
+            const roundId = group.roundId ?? group.persistedNodeId;
+            if (group.id === messageId) return {branch: this.branch, roundId, ...(group.role === 'user' ? {userIndex: (group.inputMessages?.length ?? 1) - 1} : {})};
+            if (group.role === 'user') for (let index = 0; index < (group.inputMessages?.length ?? 0); index++)
+                if (`${group.id}:input:${index}` === messageId) return {branch: this.branch, roundId, userIndex: index};
+        }
     }
     private async prepare(request: SubmissionRequest, input: ChatSubmission): Promise<SubmissionRequest> {
         if (!this.current() || this.config.readOnly) throw new Error('Session input binding expired');

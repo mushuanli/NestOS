@@ -27,7 +27,8 @@ export interface FlowInvocationSessions {
 const MARKER_PATH = '/var/lib/kernel/flow-invocations.json';
 const MARKER_VERSION = 1;
 
-export function createFlowInvocationSessions(fs: IFileSystem): FlowInvocationSessions {
+export function createFlowInvocationSessions(fs: IFileSystem, scope: 'flow' | 'independent' = 'flow'): FlowInvocationSessions {
+    if (scope === 'independent') return independentCallSessions(fs);
     let known: Set<string> | undefined;
     let tail: Promise<unknown> = Promise.resolve();
     const load = async (): Promise<Set<string> | undefined> => {
@@ -69,5 +70,48 @@ export function createFlowInvocationSessions(fs: IFileSystem): FlowInvocationSes
             const sessions = new Set(sessionIds);
             await persist(sessions);
         }),
+    };
+}
+
+/** A derived membership index; completion is sealed only after a full legacy probe. */
+function independentCallSessions(fs: IFileSystem): FlowInvocationSessions {
+    const path = '/var/lib/kernel/independent-calls.seq';
+    const prepare = async () => {
+        if (!fs.meta.seq?.transaction) throw Object.assign(new Error('Call recovery index requires transactional SeqFiles'), {code: 'CALL_RECOVERY_INDEX_UNAVAILABLE'});
+        if (!await fs.driver.exists(path)) {
+            try {await fs.driver.createFile({name: 'independent-calls.seq', parentPath: '/var/lib/kernel', type: 'seqfile', recursive: true});}
+            catch (error) {if (!await fs.driver.exists(path)) throw error;}
+        }
+    };
+    return {
+        async sessions() {
+            if (!await fs.driver.exists(path)) return undefined;
+            if (!fs.meta.seq?.transaction) return undefined;
+            return fs.meta.seq.transaction(async tx => {
+                if (await tx.getEntry(path, 'complete') !== '1') return undefined;
+                const ids = new Set<string>();
+                await tx.walkEntries(path, entry => {
+                    if (entry.value !== '1' || !entry.key.slice(8))
+                        throw Object.assign(new Error('Invalid call recovery membership'), {code: 'CALL_RECOVERY_INDEX_INVALID'});
+                    ids.add(entry.key.slice(8)); return true;
+                }, {keyPrefix: 'session:'});
+                return ids;
+            });
+        },
+        async mark(sessionId) {
+            await prepare();
+            await fs.meta.seq!.transaction!(async tx => {
+                const key = `session:${sessionId}`;
+                if (await tx.getEntry(path, key) !== '1') await tx.setEntry(path, key, '1');
+            });
+        },
+        async establish(sessionIds) {
+            await prepare();
+            await fs.meta.seq!.transaction!(async tx => {
+                // Preserve calls admitted concurrently with the compatibility probe.
+                for (const id of sessionIds) await tx.setEntry(path, `session:${id}`, '1');
+                await tx.setEntry(path, 'complete', '1');
+            });
+        },
     };
 }

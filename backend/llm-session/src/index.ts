@@ -154,6 +154,7 @@ export interface ConversationSystemOptions {
      * never did instead of probing every Session's shared state.
      */
     flowInvocationSessions?: FlowInvocationSessions;
+    independentCallSessions?: FlowInvocationSessions;
 }
 
 export interface ConversationSystem {
@@ -211,6 +212,7 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
         system.independentCalls = new IndependentCallService({kernel: options.kernel, repository: options.sessionEngine,
             transfers, submit: options.submitIndependentCall, prepareTaskCall: (request, invocation) => system.sessionManager.prepareIndependentTaskCall(request, invocation),
             taskCallPolicy: options.independentTaskCallPolicy,
+            sessions: options.independentCallSessions,
             resumeExecution: async target => {
                 const task = await options.kernel.task(target.sessionId, target.taskId);
                 if (task.program.kind === 'flow.aggregate') await system.commandBus.execute(FlowCommand.RunResume,

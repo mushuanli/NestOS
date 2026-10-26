@@ -16,6 +16,7 @@ import type {SubmissionRequest} from '../contracts/submission';
 import type {Round} from '../contracts/conversation';
 import type {ISessionRepository} from '../persistence/types';
 import type {ContentTransferService} from './content-transfers';
+import type {FlowInvocationSessions} from '../persistence/flow-invocation-sessions';
 import {assertSubmissionBinding, submissionInstruction} from './submission-input';
 import {instructionDigest, prepareInstruction} from './instruction-queue-rules';
 import {readSubmissionReceipt} from './submission-receipt';
@@ -30,6 +31,7 @@ interface Options {
     prepareTaskCall?: IndependentTaskCallPreparation['prepare'];
     taskCallPolicy?(request: SubmissionRequest): Promise<IndependentTaskCallPolicy | undefined>;
     resumeExecution?(target: import('@itookit/durable-kernel').TaskRef): Promise<void>;
+    sessions?: FlowInvocationSessions;
 }
 interface ObservedCall {receipt: IndependentCallReceipt; round?: Round; callerState?: import('../contracts/independent-calls').IndependentCallExecutionState; historyPending?: boolean}
 const prefix = 'conversation/call/';
@@ -184,12 +186,23 @@ export class IndependentCallService {
     /** Reattach only admitted calls; a prepared but unsubmitted route is not dispatch permission. */
     async recover(): Promise<void> {
         this.historyEnabled = true;
+        const started = Date.now(), marker = this.options.sessions, found = new Set<string>();
+        const marked = await marker?.sessions().catch(error => {this.reportRecovery('index-read', started, {}, error); return undefined;});
+        let complete = true, scanned = 0, skipped = 0;
         for await (const session of this.options.kernel.listSessions()) {
             if (this.stopping.signal.aborted) return;
-            await this.recoverSessionHistory(session.id);
+            if (marked && !marked.has(session.id)) {skipped++; continue;}
+            const present = await this.recoverSessionHistory(session.id); scanned++;
+            if (present === undefined) complete = false;
+            else if (present) found.add(session.id);
         }
+        if (marker && marked === undefined && complete) {
+            try {await marker.establish(found);}
+            catch (error) {complete = false; this.reportRecovery('index-write', started, {}, error);}
+        }
+        this.reportRecovery('complete', started, {scanned, skipped, callSessions: found.size, complete});
     }
-    private async recoverSessionHistory(sessionId: string): Promise<void> {
+    private async recoverSessionHistory(sessionId: string): Promise<boolean | undefined> {
         const started = Date.now();
         try {
             const entries = await this.options.kernel.listShared(sessionId, prefix);
@@ -197,13 +210,19 @@ export class IndependentCallService {
                 const route = entry.value as unknown as CallRoute;
                 if (route.kernelPreparation && route.input?.request.expectedSessionId === sessionId) this.observeHistory(route.input);
             }
+            return entries.length > 0;
         } catch (error) {
-            const code = (error as {code?: unknown})?.code;
-            try {this.host.logger.warn('Independent call recovery scan failed', {operation: 'call.history.recover', stage: 'scan',
-                sessionId: /^[\w:-]{1,256}$/.test(sessionId) ? sessionId : undefined, outcome: 'failure', durationMs: Date.now() - started,
-                errorCode: typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CALL_RECOVERY_SCAN_FAILED'});}
-            catch { /* Diagnostics cannot prevent recovery of other Sessions. */ }
+            this.reportRecovery('scan', started, {sessionId: /^[\w:-]{1,256}$/.test(sessionId) ? sessionId : undefined}, error);
         }
+    }
+    private reportRecovery(stage: string, started: number, facts: Record<string, unknown>, error?: unknown): void {
+        const code = (error as {code?: unknown})?.code;
+        const detail = {operation: 'call.history.recover', stage, ...facts, durationMs: Date.now() - started,
+            outcome: error ? 'failure' : facts.complete === false ? 'partial' : 'success',
+            errorCode: error ? typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'CALL_RECOVERY_INDEX_FAILED' : undefined};
+        try {if (error || facts.complete === false) this.host.logger.warn('Independent call recovery', detail);
+            else this.host.logger.info('Independent call recovery', detail);}
+        catch { /* Diagnostics cannot stop other Sessions from recovering. */ }
     }
     async dispose(): Promise<void> {
         this.stopping.abort(); await Promise.allSettled(this.observers.values()); this.historyListeners.clear();
@@ -524,6 +543,7 @@ export class IndependentCallService {
     }
     private async route(input: IndependentCallInput, digest: string, policy?: IndependentTaskCallPolicy): Promise<CallRoute> {
         const request = input.request, session = await this.options.kernel.openSession(request.expectedSessionId!);
+        await this.options.sessions?.mark(request.expectedSessionId!);
         const key = prefix + request.submission!.id, stored = await session.getShared(key);
         if (stored) return this.routeMode(this.match(stored.value, digest), policy);
         const manifest = await this.options.repository.getManifest(request.expectedSessionId!);

@@ -829,3 +829,8 @@ initializeConversationSystem 在已配置独立调用宿主时返回 independent
 ### Flow 的同一独立调用主链
 
 新独立 Flow 和 Flow Agent 经同一 session.call.submit 持久准备进入 Kernel。SessionRunCoordinator 复用原参数/连接冻结与 flowSpecification，ConversationRunCoordinator.prepareDag 复用上下文装配并输出原 aggregate Task 定义。IndependentCallService 按 Kernel 验证的真实目标调用原 RunResume；不再让队列重复派发这个请求。终态结果与实际 Flow 修订、参数和主 Task 写入原 Round，父卡片沿用现有读取、交互和控制。旧队列请求保持原路由身份。
+
+
+### 独立调用的恢复目录
+
+createFlowInvocationSessions(fs, "independent") 提供独立调用恢复索引，供 ConversationSystemOptions.independentCallSessions 注入。事务 SeqFile 在路由写入前标记来源 Session，完整兼容扫描后才确认目录完整；索引不可用时继续扫描原 Kernel 路由。目录仅优化恢复定位，不代替 Kernel 接纳或执行事实。

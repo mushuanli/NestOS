@@ -87,6 +87,7 @@ export async function createConversationSystem(
         sessionEngine: sessionRepository,
         promptHistoryFiles: options.promptHistoryFiles ?? await vfs.openFileSystem('/home/admin/.config/mindos/prompt-history'),
         flowInvocationSessions: createFlowInvocationSessions(systemFS),
+        independentCallSessions: createFlowInvocationSessions(systemFS, 'independent'),
         kernel: kernel.kernel,
         flowStore: flowEngine,
         dagPlugins: kernel.dagPlugins,

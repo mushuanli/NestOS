@@ -2363,3 +2363,12 @@ Task 调用 SDK 增加可信 beforeBind：原 caller 已持久接纳、仍为 de
 脚本最终通过，测试主体约 975ms，含加载总计 4.50s。首次脚本把只读 inspectSession 当作可查询 resources 的运行句柄，导致脚本断言阶段失败；改用 Kernel.resources.query 后完成全部三条主线，没有据此修改业务执行逻辑。临时文件已移出仓库，输出留在本机 /tmp/x1-mainline-smoke.log。没有扩大全量矩阵、运行云模型或操作生产 Session，也不能据此声称重启、审批/停止竞态、UI、大历史或真实部署全部通过。
 
 正常受管调用会主动 yield 执行额度等待目标，原 Kernel 缺省把 effect.observe/yield 的 blocked 打印成“需要处理”。应用宿主接入现有模块日志：无错误码的该阶段使用 debug，真正 failure 和其他 blocked 仍使用 warn，保留操作/阶段/身份/结果/耗时及错误码，不输出正文、参数或凭据。本日志调整不再追加验证。
+
+
+## 99. 正常启动按调用所在 Session 恢复
+
+独立调用复用 createFlowInvocationSessions 的恢复目录端口，增加 independent 作用域；Flow 原目录和旧数据格式保持兼容。独立目录保存在现有 Kernel 目录下的事务 SeqFile，只包含 Session 成员与“兼容扫描完成”标记，不保存调用/Task 执行状态。先登记来源 Session，再写原 conversation/call 路由；登记失败拒绝该次写入，不能静默漏掉恢复。
+
+新作用域的 mark 不表示已完成旧数据扫描。只有完整探测成功才写 complete；期间并发新调用按逐 Session 条目合入，不用整文件覆盖或进程内缓存丢失其他宿主的标记。索引缺失、不完整或读取失败时保留全量兼容扫描；之后启动只探测已标记 Session。准备但未接纳的原记录仍不自动执行。
+
+call.history.recover 的 index-read/index-write/scan/complete 记录具体分类、耗时、实际探测/跳过/含调用 Session 数量和扫描是否完整。单 Session 失败不误写完整标记，不阻断其他调用恢复。本次未扩展运行验证。

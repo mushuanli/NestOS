@@ -164,6 +164,15 @@ class Kernel implements KernelRegistration {
 
 **`bindCapabilities(task, bindings, onHandle?)`**：为 Task 创建类型化资源句柄（llm/tool/...），逐项回调 `onHandle`（用于 setBudget），发 `capabilities` signal 后 `start()`。这是上层能力绑定的统一入口。
 
+
+### 受管跨 Session Task 调用
+
+Kernel 内置 `kernel.call@1` Program 与 `task.call@1` Effect，宿主通过 `bindTaskCall(TaskRef, TaskCallPlan)` 为确切计划授予执行能力并启动 deferred 调用者，根入口与 `/core` 均可使用。计划包含已准备的目标 Session、TaskSpec、能力绑定、正整数 maxDepth 和可选 timeoutMs；目标 Task ID、请求身份和 ownedBy 由 Kernel 生成。结构化成功结果为 `TaskCallResult {task: TaskRef, exit: ExitRecord}`；子任务失败或取消传播为调用者失败，保留子任务真实终态。
+
+原 Effect.request 保持调用意图，source shared 保存目标实例与归属，目标以稳定身份先 deferred 再启动。取消可以先创建并取消同一目标，迟到创建只能得到原 Task；恢复核对原目标，不创建新业务调用。完成与清理确认同时检查本地后代和原 Resource claim，Task exit 不会自动释放物理容量。跨 Session 的嵌套调用按实际根 Task 继承最紧深度上限，只读等待使用原工作额度机制。
+
+`KernelOptions.authorizeTaskCall(plan, ownerRef, phase)` 可对 execute/cleanup 注入宿主授权与单写者检查；Kernel 不解析 Agent/Flow 定义、业务 Session 历史或上下文。当前暂停是调用边界语义，跨调用 token/费用预留和结算、业务工作区资源映射仍需接入。源绑定、目标请求和停止记录须保留至旧操作不能再次启动；目标 Session 的 instanceId 防止旧调用进入同 ID 的替代存储实例。完整示例、错误与诊断见[独立库接口](../libraries/durable-kernel/docs/api.md#受管-task-函数调用)，机制与应用边界见[合入计划第 84 节](design/functional-merge-plan.md#84-kernel-受管-task-调用贯通)。
+
 ---
 
 ## 句柄

@@ -1765,7 +1765,7 @@ C4Dynamic
 |---|---|---|
 | P1 | 升级前遗留调用的历史核对与结算 | 第 77 节已实现已接纳纯文本队首的有据结算；运行端仍待更新并验证旧项，其他恢复范围继续待办 |
 | P1 | 严格原生 continue | 当前 validateExecutionContext 明确拒绝并返回 CONTEXT_NATIVE_WRITE_UNSUPPORTED；binding CAS 不足以防远端外部写入 |
-| P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 第 80–82 节补齐创建回执、提交准入接点及等待时的工作额度释放；受管 Effect 的所有者、取消及物理收尾仍需接通，同 Session 聚合不冒充跨 Session 停止 |
+| P1 | 跨执行 Session 的受管子调用停止和资源收尾 | 第 84 节接通 Kernel 通用 Task 调用、原目标恢复和跨进程取消；Agent/Flow 宿主准备、工作区资源映射、预算预留及 UI 投影仍待接入，不以 Kernel 原语冒充产品链路完成 |
 | P1 | 裸 Task 的独立子 Session 调用入口 | 已有根选择为 Agent/Flow，尚无等价 Task 调用准入与路由闭环 |
 | P2 | Codex/Claude 真实运行及恢复验收 | 第 78 节 Codex 顺序发送、查询和取消已通过；Claude 查询/实际取消可用，真实提交仍有未知回执，源码修复待部署复验；重启恢复另列 |
 | P2 | 无人值守、工作区/记忆隔离、历史与资产长期生命周期 | 继续按第 5 节完成明确策略和故障组合验收 |
@@ -1938,3 +1938,82 @@ C4Dynamic
 旧基线的四 Session 嵌套调用在单额度下真实超时；新增接口后完成，工作阶段最大并发仍为 1。验证同时覆盖观察错误后恢复额度、排队恢复时取消/关闭、迟到观察、重复关闭、零额度、心跳持续、清理未确认、原 journal 重启核对且 execute 不重放、worker drain 阻塞与完成、日志错误分类和诊断异常。该机制为受管 Effect 的必要前置项；跨 Session 的实际所有权、取消传播、结构化结果与宿主接线仍沿 P1 实施，不据此标记整体完成或已部署。
 
 Kernel 库提交 f511d82：413 项单元测试、52 项真实进程集成测试、生产及新增测试的类型检查通过。独立包构建/安装验证覆盖 ESM 与 CJS 实际单额度跨 Session 等待，以及 NodeNext 两种声明消费；只读观察接口为可选能力，旧适配器继续沿原执行路径。
+
+## 83. 调度、额度、跨 Session 执行归属与持久通信统一归 Kernel
+
+高层边界进一步收敛：Durable Kernel 负责通用 Task/Effect/Resource/Message 机制，包括执行并发、持久容量、预算结算、父子执行归属、控制传播与恢复。Agent/Flow 声明编排和预算策略；Session/宿主解析定义、冻结实参、授权、上下文与历史；适配器负责实际进程/网络副作用及核对；llm-ui 展示投影与发出操作。Kernel 不解释 Agent 提示词、Flow 业务参数、Round、Branch 或原生上下文内容。
+
+| 机制 | 权威与执行位置 | 上层提供 |
+|---|---|---|
+| 实例工作并发 | Kernel 本地许可 | 宿主配置并发上限 |
+| 跨进程共享容量 | Kernel 原 managed resource pool、租约与 authority | 资源身份、容量、授权和物理适配器 |
+| 调用预算 | Kernel 预留、继承与幂等结算 | Agent/Flow/宿主的预算策略、用量及计价依据 |
+| 跨 Session 受管调用 | Kernel 的通用父子 Task 引用与所有权协议 | 已准备的目标 TaskSpec、目标 Session 与授权 |
+| 持久消息 | Kernel 原 outbox/inbox、稳定身份及消费确认 | 目标、消息内容及宿主传输端口 |
+| Session 历史与输入队列 | Session 语义及原持久存储 | UI 草稿、目标选择、材料与展示 |
+
+实例 maxConcurrentEffects 不等于跨进程全局上限；共享容量须通过同一资源 authority 及持久占用核对，跨后端不能各自计数再声称全局一致。等待保留调用归属，工作额度在真实工作开始前申请；宿主失联、请求超时或取消接纳均不能直接释放仍未确认停止的物理容量。预算策略的生成、价格目录和授权仍由宿主决定，Kernel 只执行被授予的数值约束。
+
+```mermaid
+C4Component
+  title 统一执行机制与应用策略边界
+  Component(ui, "llm-ui", "展示、输入、控制")
+  Component(host, "Session 与应用宿主", "定义、授权、上下文、历史")
+  Component(program, "Agent / Flow Program", "编排与预算策略")
+  Component(kernel, "Durable Kernel", "Task / Effect / Resource / Message")
+  Component(adapter, "执行与传输适配器", "本地进程、远程 Harness、RPC")
+  ComponentDb(storage, "原持久存储", "SeqFile / VFS")
+  Rel(ui, host, "提交、回答、控制；读取投影")
+  Rel(host, program, "冻结目标、输入与策略")
+  Rel(program, kernel, "提交任务、调用与资源要求")
+  Rel(kernel, adapter, "持有所有权后派发；核对停止")
+  Rel(adapter, kernel, "返回原操作事实与实际用量")
+  Rel(kernel, storage, "持久任务、消息、额度与控制事实")
+```
+
+Kernel 已有单 Session 父子任务、持久消息和托管资源；跨 Session 的通用受管 Task 关联仍缺少贯通协议。后续应在原 Task/消息/资源记录中补齐稳定调用身份、目标 TaskRef（sessionId/taskId）、目标端准入与取消屏障、父子预算关联、结果唤醒及物理收尾确认。跨 Session 不假定原子事务：取消先到则目标拒绝迟到启动，创建先到则停止原目标；只有目标端持久确认且旧请求不能再启动，源端才能确认收尾。复用原 outbox/inbox，不新建业务总线、状态库或调度器。HTTP/socket/文件通知等实际传输仍由宿主端口实现。
+
+这项收敛修正第 80–82 节的下一步落点：Session 不再承担通用执行所有权、递归深度与控制重放；其适配层只准备业务 Session、输入输出与历史关联。当时未提交的 Session 受管 Effect 原型不能作为完成项合入；第 84 节已撤出该原型并接通 Kernel 机制。已提交的创建回执、受信准入接点和 Kernel 工作额度机制继续复用。P1 仍未完成，下一条验收主线是同一 Kernel 在两个执行 Session 中建立真实受管调用，贯通输入、输出、重启、取消及共享额度。
+
+## 84. Kernel 受管 Task 调用贯通
+
+按第 83 节撤出未提交的 Session 所有权原型，在 durable-kernel 内置 kernel.call Program 与 task.call Effect。宿主只提供 TaskCallPlan：实际目标 Session、准备好的 TaskSpec、目标能力绑定、maxDepth 和可选 timeoutMs。bindTaskCall 授予确切计划的摘要能力并启动调用者；不能把它变为任意目标的通用执行权。Kernel 不读取 Agent/Flow 定义、提示词、业务参数或 Round，也不创建业务 Session。
+
+原 Effect.request 已是持久调用意图；source shared 只保存原归属、目标实例、深度和计划摘要。目标以原 source Session/Task/Effect 派生固定 Task ID 与请求身份，先 deferred 再启动。目标的 ownedBy 属于 Kernel Task 关联，不再另存 Session 层深度计数或调用执行状态。Program 派发后删除自身 state 中的冗余计划副本，审计输入和实际 Effect 请求继续保持原位置。
+
+```mermaid
+C4Dynamic
+  title Kernel 内的受管调用与取消屏障
+  Component(host, "宿主 / Program", "准备输入、授权及预算策略")
+  Component(parent, "原调用者 Effect", "Kernel 持久执行责任")
+  Component(binding, "原 source shared", "固定目标实例及关联")
+  Component(target, "目标 Session Task", "原 Task 及提交幂等索引")
+  Component(resource, "原资源与清理机制", "容量、claim、物理确认")
+  RelIndex(1, host, parent, "提交确切计划并授予能力")
+  RelIndex(2, parent, binding, "setIfRunning 先保存关联")
+  RelIndex(3, parent, target, "同一请求创建 deferred Task")
+  RelIndex(4, parent, target, "启动原目标；等待时让出工作额度")
+  RelIndex(5, target, resource, "按原资源协议持有并释放 claim")
+  RelIndex(6, parent, target, "取消核对原目标；可先形成已取消 Task")
+  RelIndex(7, parent, resource, "确认整树停止及已有 claim 已释放")
+  RelIndex(8, parent, host, "返回真实 TaskRef 与结构化 ExitRecord")
+```
+
+取消不依赖原创建响应先返回：有持久关联时，取消端可创建同一 deferred 目标并取消；迟到创建返回这个终态 Task，不能另建或恢复。先成功的根保留原结果，剩余本地后代按原树控制协议停止。观察和取消都校验实际 Kernel 父链与 root 身份；同 Session 的无关任务及其资源不进入调用控制。只读资源结算检查按实际树成员查原 claim，Task 已终结但 claim 尚未释放时，父调用仍不完成或确认清理。
+
+Session 增加可选存储 instanceId：新建时保存；旧数据在有权限的调用准备中条件补齐，并发写入由原事务裁决；导入生成新实例。目标实例核对、原请求去重和目标提交在同一目标事务中执行。逻辑 ID 相同的替代 Session 不能接收旧调用，归档 ownedBy 也要求宿主外部绑定验证。该字段不是 native bindingId，也不是业务 Session 新 ID。
+
+| 能力 | 当前交付边界 |
+|---|---|
+| 受管调用及恢复 | 原 Kernel Task/Effect 与单个关联记录；重启核对同一目标，不生成新的业务调用 |
+| 深度预算 | 按真实根任务 ownedBy 继承，取祖先与当前计划较小值；数字上限由宿主策略提供 |
+| 工作并发 | 原 Kernel 许可；只读等待让出额度，单额度多层调用可完成 |
+| 共享资源容量 | 原 Resource authority、claim 与物理清理协议；held 不被 Task exit 隐式释放 |
+| 取消与结果 | 跨 Session 原目标、同 Session 后代、资源释放事实；结构化 ExitRecord，不解析聊天文本 |
+| 暂停 | 当前为已接纳调用的边界暂停，未声明即时暂停子 Session 内部循环 |
+| 跨调用 token/费用预算 | 预留、分配与实际结算仍待贯通，不宣称本批自动继承 |
+| 产品调用入口 | Agent/Flow 计划准备、业务子 Session/Invocation/历史、工作区资源绑定及 UI 仍按 P1 接入 |
+
+验证覆盖单额度嵌套、最紧深度继承、计划能力不匹配、字段注入、宿主回调输入隔离、原目标重启恢复、两个独立 Kernel 实例的迟到创建/先取消、已完成根的剩余后代、物理清理失败、Task 终结但资源容量仍持有、替代实例拒绝、旧实例迁移、归档验证与日志脱敏。真实 LocalFS/SQLite 根挂载和模块挂载分别通过独立进程杀死调用者后恢复原目标，以及另一进程取消但保留同 Session 无关任务。该 Kernel 子功能可单独验证，不标记 F16/P1 整体完成，也未部署到运行服务。
+
+Kernel 提交 `4b21796c`：435 项单元测试、56 项真实进程集成测试、独立 ESM/CommonJS 与 `/core` 执行、NodeNext 声明和新增测试的严格类型检查通过；当前设计文档 69 个 Mermaid 图解析及 22 个本地链接检查通过。根仓库消费方验证另行记录，不把包内验证当作服务部署结果。

@@ -426,6 +426,7 @@ export class SessionManager implements ISession, SessionQuery {
     }
     getInstructionQueue() { return this.instructions.queues.view(this.registry.ensureBound().sessionId); }
     hasPendingInstructions(): boolean { return this.instructions.hasPending(); }
+    setBackgroundCallReader(read: (sessionId: string) => Promise<Set<string>>): void {this.instructions.backgroundCallers = read;}
     waitForInstructionWrites(): Promise<void> { return this.instructions.whenIdle(); }
     editInstructionQueue(edit: InstructionQueueEdit) { return this.instructions.edit(this.registry.ensureBound().sessionId, edit); }
     getSessions(): SessionGroup[] { return this.registry.getSessions(); }

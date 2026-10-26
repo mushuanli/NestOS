@@ -1,4 +1,4 @@
-import type { Kernel } from '@itookit/durable-kernel';
+import {taskStat, type Kernel} from '@itookit/durable-kernel';
 import {attachmentMetadata} from '../contracts/chat';
 import {freezeAttachments} from './attachment-integrity';
 import {AttachmentProcessor} from './attachment-processor';
@@ -23,6 +23,7 @@ export class SessionInstructions {
     private readonly pending = new Set<Promise<unknown>>();
     private readonly release: () => void;
     private closed = false;
+    backgroundCallers?: (sessionId: string) => Promise<Set<string>>;
     constructor(private readonly registry: SessionRegistry, private readonly runs: SessionRunCoordinator,
         private readonly rounds: RoundOperations, private readonly kernel: Kernel,
         private readonly canWrite: ((id: string) => Promise<boolean>) | undefined, sessions: InstructionQueueSessions | undefined,
@@ -98,8 +99,19 @@ export class SessionInstructions {
     private async ready(id: string): Promise<boolean> {
         if (this.runs.isActive(id)) return false;
         const activity = await this.kernel.sessionActivity(id);
-        return activity.sessionStatus === 'open' && activity.pending.cleanup === 0
-            && ['running', 'queued', 'created', 'waiting', 'paused', 'blocked'].every(phase => !activity.counts[phase as keyof typeof activity.counts]);
+        if (activity.sessionStatus !== 'open' || activity.pending.cleanup !== 0) return false;
+        const phases = new Set(['running', 'queued', 'created', 'waiting', 'paused', 'blocked']);
+        if ([...phases].every(phase => !activity.counts[phase as keyof typeof activity.counts])) return true;
+        if (!this.backgroundCallers) return false;
+        const started = Date.now(), background = await this.backgroundCallers(id);
+        if (!background.size) return false;
+        const tasks = await this.kernel.listSessionTasks(id);
+        const foreground = tasks.filter(task => !background.has(task.id) && phases.has(taskStat(task).phase)).length;
+        try {this.registry.host.logger.debug('Session foreground input admission', {operation: 'session.input.ready', sessionId: id,
+            stage: 'background-call-scope', outcome: foreground ? 'held' : 'ready', backgroundCallers: background.size,
+            foregroundTasks: foreground, durationMs: Date.now() - started});}
+        catch { /* Diagnostics cannot change the input admission decision. */ }
+        return foreground === 0;
     }
 
     private async submit(id: string, item: SessionInstruction): Promise<string> {

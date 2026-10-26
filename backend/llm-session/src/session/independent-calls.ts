@@ -196,6 +196,18 @@ export class IndependentCallService {
     onHistoryCommitted(listener: (sessionId: string) => Promise<void>): () => void {
         this.historyListeners.add(listener); return () => {this.historyListeners.delete(listener);};
     }
+    /** Exact route receipts identify background callers; arbitrary Task labels grant no exemption. */
+    async readBackgroundCallers(sessionId: string): Promise<Set<string>> {
+        const ids = new Set<string>();
+        for (const entry of await this.options.kernel.listShared(sessionId, prefix)) {
+            const route = entry.value as unknown as CallRoute;
+            if (!route.kernelPreparation || route.input?.request.expectedSessionId !== sessionId) continue;
+            const ready = this.preparedCall(route); if (!ready) continue;
+            const admitted = await this.taskCallAdmission(ready);
+            if (admitted?.submission.task.sessionId === sessionId) ids.add(admitted.submission.task.taskId);
+        }
+        return ids;
+    }
     private async publishHistory(sessionId: string): Promise<void> {
         await Promise.allSettled([...this.historyListeners].map(listener => Promise.resolve().then(() => listener(sessionId))));
     }

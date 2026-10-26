@@ -144,7 +144,8 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             defaultHarnessToolIds: DEFAULT_HARNESS_TOOL_IDS, sessionManager, sessionRepository, ocr, commandBus,
             kernel: kernel.kernel, readTaskAttachment: backend.taskAttachment?.bind(backend), ...controls,
         });
-        return async (container, config) => { await executorUsage.load(); return factory(container, {...config, executorUsage}); };
+        const withMarkdown = createDocumentChatFactory(factory, services, backend, options.ui.prepareChatSubmission, request => handleNavigationRequest(request));
+        return async (container, config) => { await executorUsage.load(); return withMarkdown(container, {...config, executorUsage}); };
     };
     const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS,
         listFlows: () => commandBus.execute<import('@itookit/llm-flow/contracts').FlowDraft[]>(FlowCommand.DraftList),

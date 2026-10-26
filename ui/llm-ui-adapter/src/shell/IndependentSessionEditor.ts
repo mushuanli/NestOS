@@ -1,3 +1,4 @@
+import {messageMarkdown} from '../independent/message-markdown';
 import {createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
 import {BaseSettingsEditor, Toast, type EditorEvent, type EditorEventMap, type EditorEventCallback} from '@itookit/ui-common';
 import type {ChatSubmission, ChatView, ComposerDraft, SelectorView} from '@itookit/llm-ui';
@@ -63,7 +64,7 @@ export class IndependentSessionEditor extends BaseSettingsEditor<LLMEditorOption
             const target = previous ?? choices.find(choice => choice.target.kind === 'agent' && choice.target.id === agentId)?.target ?? choices[0]?.target;
             draft = {...draft, ...(target ? {target} : {})};
         }
-        this.view = await createSessionChatView(this.container, this.binding, {locale: getLocale(), initialDraft: draft,
+        this.view = await createSessionChatView(this.container, this.binding, {locale: getLocale(), initialDraft: draft, markdown: messageMarkdown(this.config),
             assets: createAssetProvider(undefined, undefined, this.config.assets), upload: this.config.assets ? this.store.upload.bind(this.store) : undefined,
             saveDraft: draft => this.save(draft), onDraftChange: () => this.emit('interactiveChange', undefined),
             onError: error => this.fail(error), onDiagnostic: event => log.info('chat.operation', {...event, sessionId: this.config.sessionId, branch}),

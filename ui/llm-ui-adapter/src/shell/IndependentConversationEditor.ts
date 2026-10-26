@@ -1,3 +1,4 @@
+import {messageMarkdown} from '../independent/message-markdown';
 import {createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
 import {BaseSettingsEditor, Toast, type ConversationControls, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common';
 import type {ChatView, OperationReceipt} from '@itookit/llm-ui';
@@ -30,7 +31,7 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
         this.binding = await createNativeChatBinding({conversationId: sessionId, controls: this.service,
             get readOnly() {return !!owner.options.readOnly;}, operations: this.operations,
             readAttachment: this.store.read.bind(this.store), reconcile: id => this.receipt(id), onError: error => this.fail(error)});
-        this.view = await createNativeChatView(this.container, this.binding, {locale: getLocale(), initialDraft: this.store.draft,
+        this.view = await createNativeChatView(this.container, this.binding, {locale: getLocale(), initialDraft: this.store.draft, markdown: messageMarkdown(this.options),
             upload: this.options.readOnly ? undefined : this.store.upload.bind(this.store),
             assets: {read: async id => (await this.store.read({id, name: id}, {signal: new AbortController().signal})).arrayBuffer()},
             saveDraft: draft => this.suspended ? Promise.resolve() : this.store.saveDraft(draft),

@@ -122,3 +122,33 @@
     .llm-chat .llm-chat__header > button[data-chat-action="refresh"] { display: none; }
     .llm-chat .llm-chat__message[data-role="user"] > .llm-chat__body { max-width: 95%; }
 }
+
+/* The question directory opens beside its right-side titlebar trigger. */
+.llm-chat.llm-chat { position: relative; }
+.llm-chat .llm-chat__prompts {
+    position: absolute;
+    top: 56px;
+    right: 16px;
+    z-index: 30;
+    box-sizing: border-box;
+    width: min(400px, calc(100% - 32px));
+    max-height: min(60vh, 560px);
+    padding: 8px;
+    border: 1px solid var(--llm-border-color);
+    border-radius: var(--llm-radius-lg);
+    background: var(--llm-bg-primary);
+    box-shadow: 0 8px 24px #0002;
+}
+.llm-chat .llm-chat__prompts button {
+    width: 100%;
+    padding: 8px 10px;
+    border: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+}
+.llm-chat .llm-chat__prompts button:hover { background: var(--llm-bg-hover); }
+.llm-chat .llm-chat__composer-actions > .llm-chat__selectors { padding: 0; }
+.llm-chat .llm-chat__composer-actions .llm-chat__selectors label { gap: 2px; }
+@media (max-width: 768px) {
+    .llm-chat .llm-chat__prompts { top: 96px; right: 8px; width: calc(100% - 16px); }
+}

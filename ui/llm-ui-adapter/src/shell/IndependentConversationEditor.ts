@@ -1,6 +1,6 @@
 import {presentHostControl} from '../independent/button-presentation';
 import {messageMarkdown} from '../independent/message-markdown';
-import {CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
+import {ACTION_ICONS, CHAT_ICONS, createModuleLogger, escapeHTML, getLocale, t} from '@itookit/common';
 import {BaseSettingsEditor, Toast, type ConversationControls, type EditorOptions, type EditorEvent, type EditorEventCallback, type EditorEventMap} from '@itookit/ui-common';
 import type {ChatView, OperationReceipt} from '@itookit/llm-ui';
 import {createNativeChatBinding, createNativeChatView} from '../independent/native';
@@ -55,6 +55,12 @@ export class IndependentConversationEditor extends BaseSettingsEditor<Conversati
                 if (mount) cleanups.push(mount(body));
             }
             cleanups.push(() => menu.remove());
+        }
+        if (this.options.hostContext?.toggleSidebar) {
+            const button = document.createElement('button'); button.type = 'button';
+            presentHostControl(button, t('chat.toolbar.sidebar'), ACTION_ICONS.sidebar);
+            button.classList.add('llm-chat__sidebar'); button.onclick = () => this.options.hostContext!.toggleSidebar();
+            root.append(button); cleanups.push(() => button.remove());
         }
         this.branches = new RemoteBranches(this.service, this.options, async action => {
             if (!this.active || this.closed || this.options.readOnly) throw new Error('Conversation view is unavailable');

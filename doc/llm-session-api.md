@@ -824,3 +824,8 @@ initializeConversationSystem 在已配置独立调用宿主时返回 independent
 ### 普通已发布 Agent 的正式调用与历史恢复
 
 正式入口按原路由固定执行方式。新普通已发布 Agent 由 app-core 选择 Kernel 路径（深度 8、允许持久人工等待）；Flow/Flow Agent 和旧队列记录不自动迁移。宿主共享同一 IndependentCallService，视图关闭不关闭后台历史观察。启动 recover 只跟随已有 Kernel 接纳，恢复尚未绑定的原 caller，等待收尾后从真实 target 写终态 Round；没有接纳的准备记录不派发。reconcileTaskCallHistory 是宿主内部恢复方法，不是 RPC，不执行模型或工具。RoundLog.commitExpected 允许完全相同的正文补交缺失索引，内容不同或空分支已变化明确拒绝。失败记录 call.history.recover / call.history.reconcile 的阶段、身份、错误分类和耗时，下次宿主恢复或原请求重试继续处理。父卡片从 Kernel 事实展示运行/失败/取消及待保存历史；正文结果仍以已提交 Round 为准。
+
+
+### Flow 的同一独立调用主链
+
+新独立 Flow 和 Flow Agent 经同一 session.call.submit 持久准备进入 Kernel。SessionRunCoordinator 复用原参数/连接冻结与 flowSpecification，ConversationRunCoordinator.prepareDag 复用上下文装配并输出原 aggregate Task 定义。IndependentCallService 按 Kernel 验证的真实目标调用原 RunResume；不再让队列重复派发这个请求。终态结果与实际 Flow 修订、参数和主 Task 写入原 Round，父卡片沿用现有读取、交互和控制。旧队列请求保持原路由身份。

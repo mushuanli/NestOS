@@ -39,7 +39,7 @@ export function independentPreparationInstruction(request: SubmissionRequest, in
 function childPreparationScope(request: SubmissionRequest, invocation: InvocationIdentity) {
     const sessionId = request?.expectedSessionId, submission = request?.submission;
     if (!sessionId || !request.expectedBranch || !submission || submission.source?.kind !== 'independent-call'
-        || !isInvocationIdentity(invocation) || request.expectedTarget?.kind !== 'agent' || !request.expectedTarget.version)
+        || !isInvocationIdentity(invocation) || !request.expectedTarget?.version)
         throw invalid('CALL_PREPARATION_SCOPE_MISMATCH');
     return {sessionId, branch: request.expectedBranch};
 }

@@ -1,4 +1,4 @@
-import {prepareDirectConversationRun} from './conversation-preparation';
+import {prepareDirectConversationRun, provenance} from './conversation-preparation';
 import {conversationUserMessage as createUserMessage} from './conversation-attachments';
 import { ConversationContextBuilder, type ConversationLocation, type ConversationContextInput, type ConversationContextOptions } from './conversation-context';
 import {callInputProjection} from './call-input-projection';
@@ -28,7 +28,7 @@ import {
 import { formatErrorMessage } from '../utils/error-formatter';
 import { SessionEventBus } from './session-event-bus';
 import { SessionState } from './session-state';
-import { DurableFlowExecutor, submitRun, type RunExecution } from '@itookit/llm-flow';
+import { DurableFlowExecutor, prepareFlowCallTask, submitRun, type RunExecution } from '@itookit/llm-flow';
 
 export interface ConversationExecution extends ConversationContextInput {
     task: ExecutionTask;
@@ -71,6 +71,26 @@ export class ConversationRunCoordinator {
     prepareDirect(execution: import('./conversation-context').ConversationContextInput) {
         return prepareDirectConversationRun(execution, {...this.options, directAgentPolicy: this.policy,
             hasProgram: (kind, version) => this.options.kernel.programs.has(kind, version)});
+    }
+
+    async prepareDag(execution: ConversationContextInput, parameters: Record<string, JsonValue> | undefined,
+        createSpec: (snapshot: ContextSnapshot) => Promise<DagRunSpec>) {
+        const started = Date.now(); let stage = 'context', errorCode: string | undefined;
+        try {
+            const location = await this.contextBuilder.resolveLocation(execution);
+            const snapshot = await this.contextBuilder.assemble(execution, location, undefined, false);
+            stage = 'graph'; const graph = await createSpec(snapshot);
+            stage = 'root';
+            const definition = prepareFlowCallTask(graph, parameters, {sessionId: execution.task.sessionId,
+                roundId: execution.roundId, plugins: this.options.dagPlugins, sessionContext: flowSessionContext(snapshot),
+                contextProgramVersion: this.options.kernel.programs.has('llm.agent', '2') && this.options.kernel.programs.has('llm.chat', '2') ? '2' : '1'});
+            return {definition, context: provenance(snapshot)};
+        } catch (error) {const code = (error as {code?: unknown})?.code;
+            errorCode = typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code) ? code : 'FLOW_CALL_PREPARATION_FAILED'; throw error;}
+        finally {try {const detail = {operation: 'session.flow.prepare', stage, outcome: errorCode ? 'failure' : 'success', errorCode,
+            sessionId: execution.task.sessionId, operationId: execution.roundId, durationMs: Date.now() - started};
+            if (errorCode) this.host.logger.warn('Flow call preparation', detail); else this.host.logger.info('Flow call preparation', detail);}
+            catch { /* Diagnostics cannot replace the frozen graph or its rejection. */ }}
     }
 
     async executeDirect(execution: ConversationExecution): Promise<void> {

@@ -227,14 +227,16 @@ export class DurableFlowExecutor {
         try {
             workspace = workspacePolicy && workspacePolicy.mode !== 'shared'
                 ? restored
-                    ? await this.lifecycle.restoreWorkspace(session, restored.handle.root.id, workspacePolicy)
+                    ? record((await restored.handle.root.status()).task.input).initialWorkspacePending === 1
+                        ? await this.lifecycle.prepareAdmittedWorkspace(session, restored.handle.root.id, workspacePolicy)
+                        : await this.lifecycle.restoreWorkspace(session, restored.handle.root.id, workspacePolicy)
                     : await this.lifecycle.prepareWorkspace(sessionId, workspacePolicy)
                 : undefined;
             await attachSchedulerInstances(session, saved, instances);
             const maxConcurrency = positiveInteger(spec.maxConcurrency ?? spec.runPolicy?.maxConcurrency) ?? Number.MAX_SAFE_INTEGER;
             const timeoutMs = positiveInteger(spec.timeoutMs ?? spec.runPolicy?.timeoutMs);
             const maxTokens = positiveInteger(spec.maxTokens ?? spec.runPolicy?.maxTokens);
-            const startedAt = saved?.startedAt ?? Date.now();
+            const startedAt = saved?.startedAt || Date.now();
             const routeEdgeIds = collectRouteEdgeIds(saved ?? spec);
             const { backEdges, loopNodes } = findCycles(saved?.nodes ?? spec.nodes, saved?.edges ?? spec.edges);
             const collections = createSchedulerCollections(spec, saved, routeEdgeIds, workspace?.directory);
@@ -529,7 +531,11 @@ export class DurableFlowExecutor {
             }
             // A host may already hold the published handle (submit resolved), so a scheduler
             // failure must be observable on the Run itself, not only as a rejected promise.
-            // Cancel and clean up first, then report the combined message on the root.
+            // Managed workspace cleanup waits for the root's exit before acknowledging physical release.
+            if (published && workspace?.attach && !this.options.kernel.isDisposed) {
+                await session.signal(published.root.id, {type: 'flow.schedule.failed', payload: String(error)});
+                await published.root.wait();
+            }
             const failure = await this.lifecycle.cleanupFailedSubmission(instances, completed, workspace, error, published?.root.id);
             if (published && !this.options.kernel.isDisposed) {
                 const message = failure instanceof AggregateError

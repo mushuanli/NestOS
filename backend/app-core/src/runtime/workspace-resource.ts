@@ -53,7 +53,8 @@ async function finalize(context: ResourceCleanupContext, options: Options): Prom
         stage = 'receipt';
         if (await session.getShared(resultKey(owner.taskId))) return stopped(context);
         const input = root.input as {initialScheduler?: {spec?: {runPolicy?: {workspace?: FlowWorkspacePolicy}}}; initialWorkspace?: JsonValue};
-        const policy = input.initialScheduler?.spec?.runPolicy?.workspace, record = input.initialWorkspace;
+        const policy = input.initialScheduler?.spec?.runPolicy?.workspace;
+        const record = (await session.getShared(`flow.run.${owner.taskId}.workspace-lease`))?.value ?? input.initialWorkspace;
         if (!policy || policy.mode === 'shared' || record === undefined || !options.manager.restore) throw failure('FLOW_WORKSPACE_RECORD_MISSING');
         stage = 'members'; await waitForFlowRunTasks(session, owner.taskId, context.signal);
         stage = 'capabilities'; await options.runtime.disposeScope(owner.sessionId, owner.taskId);

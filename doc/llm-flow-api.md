@@ -627,3 +627,8 @@ const exit = await run.root.wait({until: 'settled'});
 ### Kernel 可核对的工作区占用
 
 可恢复的 FlowWorkspaceLease 可实现 attach(rootTaskId)。执行器在原根和租约记录持久化、取得调度所有权后，首个节点前调用；新根 initialWorkspaceResource=1 固定恢复协议。终态恢复也重放同一 attach。app-core 将原工作区登记为根 Task 的托管 pool/claim，由物理资源 adapter 等待成员停止、关闭能力并调用原 manager.restore/finish，取得持久回执后才释放容量。没有 record/restore 的旧 manager 沿原收尾路径。waitForFlowRunTasks 的可选 AbortSignal 仅中止观察，不取消成员执行。
+
+
+### Kernel 受管 Flow 根准备
+
+prepareFlowCallTask(graph, parameters, options) 将可信冻结图转换为原 flow.aggregate TaskRunDefinition，包含空调度检查点、版本化目录、调用标签及宿主上下文。准备不创建工作区或 Task；Kernel 接纳后由原 RunResume 调度实际根。initialWorkspacePending=1 的隔离根先在 scheduler lease 内准备并保存原工作区记录，恢复复用原记录；首次执行再开始计算 Flow 总期限。

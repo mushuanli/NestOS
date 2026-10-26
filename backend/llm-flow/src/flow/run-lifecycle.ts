@@ -70,6 +70,16 @@ export class FlowRunLifecycle {
         return this.options.manager.restore(session.id, policy, jsonValue(value), options);
     }
 
+    /** A Kernel-admitted aggregate prepares its physical workspace under the original scheduler lease. */
+    async prepareAdmittedWorkspace(session: SessionHandle, rootTaskId: string, policy: FlowWorkspacePolicy): Promise<FlowWorkspaceLease> {
+        const key = workspaceLeaseKey(rootTaskId), saved = await session.getShared(key);
+        if (saved) return this.restoreWorkspace(session, rootTaskId, policy);
+        const workspace = await this.prepareWorkspace(session.id, policy);
+        if (workspace.record === undefined) throw Object.assign(new Error('An admitted Flow requires a durable workspace lease'), {code: 'FLOW_WORKSPACE_RECORD_MISSING'});
+        await session.setShared(key, workspace.record, {expectedVersion: null});
+        return workspace;
+    }
+
     /** Keep local ownership until bounded detached work stops or the host shuts down. */
     async drainDetached(session: SessionHandle, rootTaskId: string, lease: SchedulerLease): Promise<void> {
         const checkpoint = await readFlowSchedulerCheckpoint(session, rootTaskId);

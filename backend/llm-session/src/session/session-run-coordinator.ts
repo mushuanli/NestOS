@@ -149,14 +149,25 @@ export class SessionRunCoordinator {
             || manifest.branches[item.branch] !== null) throw independentPreparationError('CALL_PREPARATION_SCOPE_MISMATCH');
         await this.assertCanSubmit(sessionId);
         const identity = await this.resolveSelectedIdentity(item);
-        if (identity.execution?.kind === 'flow') throw independentPreparationError('CALL_GRAPH_PREPARATION_REQUIRED');
-        if (!await this.agents.publishedTarget(identity.target)) throw independentPreparationError('CALL_PUBLISHED_TARGET_REQUIRED');
+        if (identity.target?.kind === 'agent' && !await this.agents.publishedTarget(identity.target)) throw independentPreparationError('CALL_PUBLISHED_TARGET_REQUIRED');
         const bound = await this.bindSelectedInstruction(sessionId, item, identity);
         const task = await this.prepareTask({...bound, sessionId, invocation, instructionId: bound.id, instructionBranch: bound.branch,
             instructionConnectionBinding: bound.connectionBinding, instructionFlowBinding: bound.flowBinding});
         const contextFiles = await this.attachments.resolveAttachments(sessionId, task.input.text, task.input.files);
+        if (task.input.sendIntent?.execution.kind === 'flow') return this.prepareIndependentFlow(task, contextFiles, bound.id);
         return this.runs.prepareDirect({task, config: task.frozen!.config!, roundId: bound.id,
             log: new RoundLog(this.engine, sessionId), contextFiles});
+    }
+
+    private async prepareIndependentFlow(prepared: PreparedExecutionTask, contextFiles: ChatAttachment[], roundId: string) {
+        const task: ExecutionTask = {...prepared, priority: 0, abortController: new AbortController()}, config = task.frozen!.config!;
+        const flow = task.input.sendIntent!.execution as Extract<NonNullable<TaskInput['sendIntent']>['execution'], {kind: 'flow'}>;
+        const revision = task.input.instructionFlowBinding?.definition
+            ?? await new FlowDefinitionStore(this.flowStore).loadRevision(flow.flowId, flow.revision);
+        if (!revision) throw Object.assign(new Error('Published Flow revision is unavailable'), {code: 'CALL_TARGET_UNAVAILABLE'});
+        const plan = task.input.instructionFlowBinding?.plan, identities = plan ? frozenFlowIdentities(plan.identities) : this.agents;
+        return this.runs.prepareDag({task, config, roundId, log: new RoundLog(this.engine, task.sessionId), contextFiles}, flow.parameters,
+            snapshot => this.flowSpecification(task, {config, roundId}, revision, snapshot, identities));
     }
 
     reviseQueuedInstruction(sessionId: string, item: import('../contracts/instruction-queue').SessionInstruction) {
@@ -328,7 +339,7 @@ export class SessionRunCoordinator {
         );
     }
 
-    private async flowSpecification(task: ExecutionTask, setup: ExecutionSetup, revision: import('@itookit/llm-flow/contracts').FlowRevision,
+    private async flowSpecification(task: ExecutionTask, setup: Pick<ExecutionSetup, 'config' | 'roundId'>, revision: import('@itookit/llm-flow/contracts').FlowRevision,
         snapshot: ContextSnapshot, identities: FlowIdentityResolver) {
         const binding = task.input.instructionFlowBinding;
         const catalog = binding ? frozenFlowConnections(this.agents, binding.connections) : this.agents;

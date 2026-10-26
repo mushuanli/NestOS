@@ -4,7 +4,7 @@
 
 ## 0. 当前剩余工作（2026-10-26）
 
-本轮快速交付更新：普通已发布 Agent（Chat / Agent / Harness）的新独立调用已接到原 `session.call.submit` → 持久准备 → Kernel 提交，旧请求按已保存的路由继续核对，Flow/Flow Agent 保留原入口。新增终态历史补交、启动恢复观察及 Kernel 状态卡片，详见第 92 节。此处为实现状态，按本轮要求未执行测试、构建或部署验收；不能等同于下表全部工作完成。
+本轮快速交付更新：普通已发布 Agent（Chat / Agent / Harness）以及 Flow/Flow Agent 的新独立调用已接到原 `session.call.submit` → 持久准备 → Kernel 提交，旧请求按已保存的路由继续核对。终态历史、恢复观察与卡片见第 92 节；可恢复工作区的 Kernel 责任见第 93 节；Flow 正式入口接线见第 94 节。此处为实现状态，按本轮要求未执行测试、构建或部署验收；不能等同于下表全部工作完成。
 
 整体尚未完成。前面的基础切片已经大量合入，但“机制已实现”“宿主已接线”“真实部署已验收”是三个不同状态。下列八条按端到端结果归并的工作线作为当前剩余清单；不是八个文件或八个提交。第 3—6 节保留分阶段历史，第 83—91 节记录当前 Kernel 归属方案的演进，不能用某一历史批次的“本批合入”推断整体清零。
 
@@ -19,7 +19,7 @@
 | 运行策略与长期生命周期 | 当前输入/审批、资源恢复及资产引用 | 无人值守交互/失联策略，环境与记忆隔离、初始化作用域，以及历史/资产导出恢复、保留和回收边界 |
 | 真实部署与历史故障验收 | DSH 新请求、顺序发送及取消已验收；Codex 对应真实链路已验收 | Claude 真实云模型顺序执行、旧未知项/DSH 历史结算修复的运行端复验，以及最新统一调用方案的服务验收；协议替身和本地 peer 不替代这些结论 |
 
-P1a/P1b 已推进至普通已发布 Agent 的正式入口与终态历史恢复；Flow 仍走旧队列，其资源责任接线继续保留。未满足上表完成条件前，F16/P1 不标记完成，也不以测试数量或 Git 工作树文件数表示整体完成率。
+P1a/P1b 已接通 Agent/Flow 的新独立调用入口与终态历史恢复；已有队列路由沿原请求继续处理。可恢复隔离工作区已接资源责任，旧宿主能力与实际运行验收继续保留。未满足上表完成条件前，F16/P1 不标记完成，也不以测试数量或 Git 工作树文件数表示整体完成率。
 
 ## 0.1 当前交付收敛与复杂度约束（2026-10-26）
 
@@ -2318,3 +2318,16 @@ Kernel 的物理资源 adapter 按原 Session/Task 及根输入中的冻结策�
 新根保存 initialWorkspaceResource=1，恢复按此标记重放资源接纳；历史根不自动改写身份。普通 shared 工作区不创建额外占用。没有可恢复租约的旧宿主仍沿原收尾方式；完整 Flow/Flow Agent 进入统一 Kernel 调用仍需后续接线，不能仅凭资源登记宣布 P1a/P1c 全部完成。
 
 诊断 flow.workspace.resource 记录原操作/Session/根 Task、attach/permission/receipt/members/capabilities/restore/physical-finish/persist 阶段、结果、具体错误码及耗时，不记录目录、完整策略或原异常。按用户要求，本批未运行测试、类型检查、构建或部署验收。
+
+
+## 94. Flow 与 Flow Agent 从同一正式入口进入 Kernel
+
+新独立 Flow/Flow Agent 复用普通 Session 的参数、连接、材料及上下文准备，经过原 flowSpecification 生成已冻结图。llm-flow 的 prepareFlowCallTask 复用编译器、运行目录和 checkpoint 序列化，返回原 flow.aggregate 的独立 Task 定义；准备不创建 Kernel Task 或工作区，不新增包装执行 Task、调度器或运行状态库。上下文来源、Round、目标修订及 Invocation 继续由原持久准备校验。
+
+原 session.call.submit 按持久路由选择唯一路径。Kernel 创建受管目标后，宿主按已验证的真实目标引用调用既有 RunResume，原 DurableFlowExecutor 在同一 aggregate 根恢复调度，不再调用旧 Session 队列。源 Session 的普通输入继续排除经回执核对的后台 caller。根的初始 checkpoint 在首个执行阶段开始计时；冻结的插件目录、节点/连接和消息继续随恢复复用。
+
+隔离工作区在取得原 scheduler lease 后准备，租约按原 shared key 保存再交给节点；恢复先读取原记录。新根标明初始工作区待准备，资源 adapter 也从同一记录恢复物理收尾。工作区管理器自身的创建意图核对继续保留，准备到租约保存之间的罕见故障暂以原机制及日志定位，不增加另一套工作区事务。调度失败先记录根失败，再等待托管工作区物理清理，避免清理反向等待仍未退出的根。
+
+Flow 的终态输出按原 formatFlowOutput 投影，Round 保留真实 Flow 修订、参数、输入与主 Task 引用；父卡片继续使用原产物/交互/控制。失败且无正文时显示原具体错误原因。诊断新增 session.flow.prepare 的 context/graph/root，目标恢复归原 call.history.recover 的 target 阶段；不记录正文、完整参数和凭据。
+
+本批只记录实现及接线事实，按用户要求未运行测试、类型检查、构建或实际部署验收。跨调用预算、严格原生 continue、长期生命周期及复杂历史性能仍未整体完成；不能将本节视为整份计划清零。

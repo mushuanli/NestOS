@@ -51,7 +51,7 @@ function snapshotInput(input: DirectConversationPreparationInput): DirectConvers
         ...(input.currentInput ? {currentInput: input.currentInput} : {}),
         task: {id: task.id, sessionId: task.sessionId, input: task.input, ...(task.frozen ? {frozen: task.frozen} : {})}}), log: input.log};
 }
-function provenance(snapshot: ContextSnapshot): PreparedConversationContext {
+export function provenance(snapshot: ContextSnapshot): PreparedConversationContext {
     const {id, taskRunId, createdAt, branchRef, branchHead, profile, agent, tokenCount, digest} = snapshot;
     return structuredClone({id, taskRunId, createdAt, branchRef, branchHead, profile, agent, tokenCount, digest});
 }

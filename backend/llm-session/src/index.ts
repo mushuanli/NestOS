@@ -105,7 +105,7 @@ import { createSessionPlugin, SessionCommand } from './plugins/session-plugin';
 import { createVcsPlugin } from './plugins/vcs-plugin';
 import { createHistoryPlugin } from './plugins/history-plugin';
 import { FlowDefinitionStore, type FlowStore } from '@itookit/llm-flow';
-import { DagCommandService } from '@itookit/llm-flow';
+import { DagCommandService, FlowCommand } from '@itookit/llm-flow';
 import { registerDurablePrograms } from '@itookit/llm-flow';
 
 export interface ConversationSystemOptions {
@@ -211,6 +211,11 @@ async function initializeInvocations(options: ConversationSystemOptions, system:
         system.independentCalls = new IndependentCallService({kernel: options.kernel, repository: options.sessionEngine,
             transfers, submit: options.submitIndependentCall, prepareTaskCall: (request, invocation) => system.sessionManager.prepareIndependentTaskCall(request, invocation),
             taskCallPolicy: options.independentTaskCallPolicy,
+            resumeExecution: async target => {
+                const task = await options.kernel.task(target.sessionId, target.taskId);
+                if (task.program.kind === 'flow.aggregate') await system.commandBus.execute(FlowCommand.RunResume,
+                    {sessionId: target.sessionId, taskId: target.taskId});
+            },
             prepareExecution: options.prepareSessionExecution, canWrite: options.canWriteSession, hostPorts: options.hostPorts});
         system.independentCalls.register(system.commandBus);
         const dispose = system.dispose, calls = system.independentCalls;

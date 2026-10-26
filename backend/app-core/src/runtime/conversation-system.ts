@@ -65,9 +65,10 @@ export async function createConversationSystem(
         independentCalls: options.independentCalls,
         independentTaskCallPolicy: async request => {
             const target = request.expectedTarget;
-            if (target?.kind !== 'agent') return;
+            if (!target) return;
+            if (target.kind === 'flow') return {maxDepth: 8, timeoutMs: null};
             const published = await agentService.getAgentRevision?.(target.id, target.version);
-            if (!published || published.definition.execution?.kind === 'flow') return;
+            if (!published) return;
             return {maxDepth: 8, timeoutMs: null};
         },
         instructionQueueSessions: options.instructionQueueSessions,

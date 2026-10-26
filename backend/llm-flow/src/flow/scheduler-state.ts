@@ -9,7 +9,8 @@ import { FlowVariableStore } from './variables';
 /** Reconstruct collections from durable data; never select new host policy on resume. */
 export function createSchedulerCollections(spec: DagRunSpec, saved: SchedulerCheckpoint | undefined,
     routeEdgeIds: Set<string>, workspaceDirectory?: string) {
-    const nodes = saved?.nodes ?? spec.nodes.map(node => withDispatchWorkspace(node, workspaceDirectory));
+    const nodes = saved ? saved.startedAt === 0 ? saved.nodes.map(node => withDispatchWorkspace(node, workspaceDirectory)) : saved.nodes
+        : spec.nodes.map(node => withDispatchWorkspace(node, workspaceDirectory));
     const edges = saved?.edges ?? [...spec.edges];
     return {
         nodes, edges,

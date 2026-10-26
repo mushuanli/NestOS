@@ -29,6 +29,7 @@ interface Options {
     submit: IndependentCallSubmitter; prepareExecution?(sessionId: string): Promise<void>; canWrite?(sessionId: string): Promise<boolean>; hostPorts?: SessionHostPorts;
     prepareTaskCall?: IndependentTaskCallPreparation['prepare'];
     taskCallPolicy?(request: SubmissionRequest): Promise<IndependentTaskCallPolicy | undefined>;
+    resumeExecution?(target: import('@itookit/durable-kernel').TaskRef): Promise<void>;
 }
 interface ObservedCall {receipt: IndependentCallReceipt; round?: Round; callerState?: import('../contracts/independent-calls').IndependentCallExecutionState; historyPending?: boolean}
 const prefix = 'conversation/call/';
@@ -120,7 +121,7 @@ export class IndependentCallService {
     private async prepareCallRoute(input: IndependentCallInput, policy: IndependentTaskCallPolicy,
         prepare: IndependentTaskCallPreparation['prepare'], progress: PreparationProgress): Promise<PreparedIndependentTaskCall> {
         const identity = await this.identity(input);
-        if (input.request.expectedTarget?.kind !== 'agent') throw independentPreparationError('CALL_GRAPH_PREPARATION_REQUIRED');
+        if (!input.request.expectedTarget?.version) throw independentPreparationError('CALL_PUBLISHED_TARGET_REQUIRED');
         await this.options.repository.getManifest(identity.sessionId);
         await this.options.prepareExecution?.(identity.sessionId); await this.writable(identity.sessionId);
         progress.stage = 'route'; let route = await this.route(input, identity.digest, policy);
@@ -228,11 +229,22 @@ export class IndependentCallService {
             await this.writable(admitted.submission.task.sessionId); await this.writable(admitted.executionSessionId);
             progress.stage = 'resume-admitted';
             await this.submitPreparedTaskCall(input);
+            progress.stage = 'target'; await this.resumeTarget(input);
             const ref = admitted.submission.task, caller = await this.options.kernel.attachTask(ref.sessionId, ref.taskId);
             progress.stage = 'wait'; await caller.wait({until: 'settled', signal: this.stopping.signal});
             if (this.stopping.signal.aborted) return;
             progress.stage = 'history'; await this.reconcileTaskCallHistory(input);
         });
+    }
+    private async resumeTarget(input: IndependentCallInput): Promise<void> {
+        if (!this.options.resumeExecution) return;
+        const ready = await this.requirePreparedTaskCall(input);
+        while (!this.stopping.signal.aborted) {
+            const execution = await this.taskCallExecution(ready);
+            if (execution?.target) {await this.options.resumeExecution(execution.target); return;}
+            if (!execution || (await this.options.kernel.task(execution.submission.task.sessionId, execution.submission.task.taskId)).exit) return;
+            await new Promise(resolve => setTimeout(resolve, 25));
+        }
     }
     async inspectTaskCallSubmission(supplied: IndependentCallInput): Promise<IndependentTaskCallAdmission | undefined> {
         const input = structuredClone(supplied);
@@ -564,8 +576,9 @@ function failure(code: string): Error {return Object.assign(new Error(code), {co
 
 function outputSummary(round: Round): string {
     if (!['completed', 'failed', 'cancelled'].includes(round.status)) return '';
-    return round.output.map(message => typeof message.content === 'string' ? message.content
+    const text = round.output.map(message => typeof message.content === 'string' ? message.content
         : message.content.filter(part => part.type === 'text').map(part => 'text' in part ? part.text : '').join('\n')).join('\n\n').slice(0, 2000);
+    return text || round.error?.slice(0, 2000) || '';
 }
 
 function callAdmission(ready: PreparedIndependentTaskCall, submission: import('@itookit/durable-kernel').TaskSubmissionReceipt): IndependentTaskCallAdmission {

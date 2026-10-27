@@ -2,7 +2,7 @@
   {
     "directory": "vfs-core",
     "name": "@itookit/vfs-core",
-    "version": "5.3.3",
+    "version": "5.3.4",
     "workspace": true
   },
   {
@@ -26,7 +26,7 @@
   {
     "directory": "mindos-node-driver",
     "name": "@itookit/mindos-node-driver",
-    "version": "0.3.2",
+    "version": "0.4.3",
     "workspace": true
   },
   {
@@ -44,7 +44,7 @@
   {
     "directory": "mdxeditor",
     "name": "@itookit/mdxeditor",
-    "version": "0.5.8",
+    "version": "0.5.9",
     "workspace": true
   },
   {

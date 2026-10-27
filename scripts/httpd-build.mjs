@@ -122,7 +122,11 @@ function compile(context, source, staging, kind) {
         } else {
             run('pnpm', ['exec', 'tsup', 'src/server/main.ts', '--format', 'esm', '--platform', 'node', '--out-dir', output, '--splitting', '--clean', '--metafile'], app, env);
             const metafile = path.join(output, 'metafile-esm.json');
-            files = Object.keys(readJSON(metafile).inputs).map(file => path.resolve(app, file)); rmSync(metafile);
+            const metadata = readJSON(metafile);
+            files = Object.keys(metadata.inputs).map(file => path.resolve(app, file));
+            const external = [...new Set(Object.values(metadata.outputs).flatMap(output => output.imports.filter(item => item.external).map(item => item.path)))].sort();
+            writeFileSync(path.join(output, 'runtime-dependencies.json'), JSON.stringify(external, null, 2) + '\n');
+            rmSync(metafile);
         }
         if (cache) storeArtifact(directory, output, source, common, graphInputs(source, files));
     });

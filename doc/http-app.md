@@ -387,3 +387,16 @@ C4Component
 文件编辑通过 app-shell 的 browser/file-recovery 保存浏览器本地恢复副本；backend 文件正文与条件写 revision 仍为真相。当前标签页小文本保存在 sessionStorage，大文本进入 IndexedDB，资源间隔离；重载只读取当前文件的副本，先核对原文摘要和权限，冲突保留副本而不覆盖后端。写请求结果未知时不重发，若重新读取的后端正文已等于副本则按已持久化处理。
 
 HTTP 自动恢复保留聊天正文草稿、附件、连接选择、光标与标签滚动位置，以及 Provider/Connection 和模型用途默认表单的内存草稿；不重发消息、工具或结果未知的写入，不能恢复的编辑器、在途提交和弹窗明确阻止自动重建。设置密钥只在内存中交接，不写入 sessionStorage/IndexedDB 或日志。工具箱恢复时打开资源须等待编辑器装配完成；快照在编辑器前后到达均可恢复，未完成装配报告 RECOVERY_RESTORE_INCOMPLETE，恢复异常保留原错误分类。单连接表单的服务通知不替换已挂载草稿。重建失败保留快照供重试，文件原文摘要已变化时显示可复制的冲突副本，不覆盖后端。服务端审计 view.expired 用 requestId 关联 VIEW_NOT_FOUND、VIEW_NOT_INITIALIZED、VIEW_STREAM_INVALIDATED、VIEW_PROTOCOL_MISMATCH、VIEW_HISTORY_EXPIRED；浏览器 http.view.recovery 记录 operationId、阶段、结果和耗时。
+
+## npm 分发
+
+HTTP 工作台以 `mindos@0.1.0` 发布，使用 `npm install -g mindos@0.1.0` 安装，
+`mindos init-certs --cert-host <实际 IP/DNS>` 初始化身份，导入 CA 和浏览器个人证书后运行 `mindos httpd`。
+支持聊天/分支、Agent/Flow、Markdown/嵌入式 AI、附件、项目文件、工具箱和共享工作台；模型与远程项目仍需相应配置。
+完整启动参数、功能与升级说明见 [npm README](../apps/http-app/npm/README.md)。
+
+打包入口 `pnpm mindos:pack` 复用本地库快照与隔离 HTTP 构建，不激活运行版本；
+服务端编译记录外部运行依赖，npm 包冻结为公开注册表版本，由目标系统安装原生模块。
+只打包 bin/server/dist、构建身份、README 和许可证；私有工作区依赖打入服务端，用户数据与证书不进包。
+`pnpm mindos:publish` 按已准备 tarball 的 SHA-256 核对后发布。npm 进程以前台日志运行，
+默认审计仍在用户配置目录的 `logs/http/`，仓库 `pnpm httpd` 的系统日志路径不变。

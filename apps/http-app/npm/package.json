@@ -1,0 +1,15 @@
+{
+  "name": "mindos",
+  "version": "0.1.0",
+  "description": "MindOS HTTPS workspace: AI chat, agents, flows, Markdown documents and project files with mutual TLS.",
+  "type": "module",
+  "bin": {"mindos": "./bin/mindos.mjs"},
+  "files": ["bin", "server", "dist", "release.json", "README.md", "LICENSE"],
+  "engines": {"node": ">=22.13.0"},
+  "repository": {"type": "git", "url": "git+https://github.com/mushuanli/itookit.git", "directory": "apps/http-app"},
+  "homepage": "https://github.com/mushuanli/itookit/tree/v5.5/apps/http-app",
+  "bugs": {"url": "https://github.com/mushuanli/itookit/issues"},
+  "keywords": ["mindos", "ai", "chat", "agents", "markdown", "https", "workspace"],
+  "license": "ISC",
+  "publishConfig": {"access": "public", "registry": "https://registry.npmjs.org/"}
+}

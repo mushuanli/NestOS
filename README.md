@@ -16,6 +16,18 @@ MindOS 以"操作系统"的理念重新定义 AI 应用：所有内容——对�
 
 ---
 
+### 通过 npm 运行 HTTP 工作台
+
+```bash
+npm install -g mindos@0.1.0
+mindos init-certs --cert-host 192.168.31.10
+mindos httpd
+```
+
+Node.js >=22.13；初始化证书需要 OpenSSL。将示例 IP 换成实际地址，导入生成的 CA 和浏览器个人证书后，
+打开 `https://<地址>:2000`。已有证书时无需重新生成。支持聊天、Agent/Flow、Markdown 与文档 AI、附件和项目文件。
+配置、启动参数、功能与升级见 [MindOS npm 说明](./apps/http-app/npm/README.md)。
+
 ### 工作区
 
 | 图标 | 名称 | 用途 |

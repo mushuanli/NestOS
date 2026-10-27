@@ -633,8 +633,19 @@ function kernelSlashCommands(cb: SlashCommandCallbacks): SlashCommandDef[] {
 }
 function toolsSlashCommands(cb: SlashCommandCallbacks): SlashCommandDef[] {
     return [
+        ...(cb.onTool ? [genericToolCommand(cb, false), genericToolCommand(cb, true)] : []),
         ...(cb.onToolInvoke ? [readCommand(cb), grepCommand(cb), globCommand(cb)] as SlashCommandDef[] : [])
     ];
+}
+function genericToolCommand(cb: SlashCommandCallbacks, mcpOnly: boolean): SlashCommandDef {
+    const name = mcpOnly ? 'mcp' : 'tool';
+    return {name, label: `/${name}`, description: t(mcpOnly ? 'flow.tool.mcpCommand' : 'flow.tool.command'),
+        icon: SLASH_ICONS.tools, group: 'tools', hasArgs: true, argsPlaceholder: '[id] [JSON]', preserveInput: true,
+        execute: async (args, context) => {
+            const submitted = context.getText(), revision = context.getDraftRevision?.();
+            if (await cb.onTool!(args, mcpOnly) && context.getText() === submitted && context.getDraftRevision?.() === revision)
+                context.setText('');
+        }};
 }
 function privilegedCommand(name: string, descriptionKey: LocaleKey, icon: string, execute: ((args: string) => Promise<void>) | (() => Promise<void>) | undefined, placeholder?: string): SlashCommandDef {
     return {

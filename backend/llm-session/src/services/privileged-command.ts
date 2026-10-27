@@ -15,7 +15,20 @@ export interface ExecCommandRequest {
     command: string;
 }
 
+export interface ToolCommandRequest {
+    sessionId: string;
+    requestId: string;
+    toolId: string;
+    toolVersion: string;
+    args: Record<string, import('@itookit/llm-flow/contracts').JsonValue>;
+}
+export interface ToolCommandOption {
+    id: string; name: string; description?: string; version?: string; parameters?: Record<string, unknown>;
+}
+
 export interface IPrivilegedCommandService {
     plan(request: PlanCommandRequest): Promise<string>;
     exec(request: ExecCommandRequest): Promise<string>;
+    tools?(sessionId: string): Promise<ToolCommandOption[]>;
+    tool?(request: ToolCommandRequest): Promise<string>;
 }

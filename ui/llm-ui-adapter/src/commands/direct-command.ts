@@ -46,6 +46,7 @@ export interface DirectCommandOutcome {
  * never written back into the conversation.
  */
 export function readDirectCommandOutcome(task: DirectCommandTask): DirectCommandOutcome | undefined {
+    if (task.program?.kind === 'kernel-adapters.tool') return readToolCommandOutcome(task);
     if (task.program?.kind !== DIRECT_COMMAND_PROGRAM) return undefined;
     if (task.status !== 'succeeded' && task.status !== 'failed' && task.status !== 'cancelled') return undefined;
     const command = readCommand(task.input);
@@ -54,6 +55,16 @@ export function readDirectCommandOutcome(task: DirectCommandTask): DirectCommand
         return { command, output: result.output, success: result.exitCode === 0, status: 'succeeded' };
     }
     return { command, output: task.exit?.error?.message ?? readEffectError(task) ?? '', success: false, status: task.status };
+}
+
+function readToolCommandOutcome(task: DirectCommandTask): DirectCommandOutcome | undefined {
+    if (task.status !== 'succeeded' && task.status !== 'failed' && task.status !== 'cancelled') return;
+    const input = task.input as {toolId?: string; toolVersion?: string} | undefined;
+    const result = (task.exit?.output as {outputs?: {result?: {content?: unknown}}} | undefined)?.outputs?.result?.content;
+    return {command: `${input?.toolId ?? 'tool'}@${input?.toolVersion ?? '1'}`, status: task.status,
+        success: task.status === 'succeeded', output: task.status === 'succeeded'
+            ? typeof result === 'string' ? result : JSON.stringify(result, null, 2) ?? ''
+            : task.exit?.error?.message ?? readEffectError(task) ?? ''};
 }
 
 function readCommand(input: unknown): string {

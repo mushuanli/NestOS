@@ -171,7 +171,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
         },
         listAgents: async () => (await agentService.getAgents()).map(agent => ({ id: agent.id, name: agent.name, description: agent.description })),
         listSystemPrompts: async () => (await agentService.listSystemPrompts()).map(prompt => ({ id: prompt.id, name: prompt.name, description: prompt.description })),
-        listTools: async () => kernel.toolCatalog.getToolDefinitions().map(definition => {
+        listTools: async () => kernel.toolCatalog.describeTools ? kernel.toolCatalog.describeTools() : kernel.toolCatalog.getToolDefinitions().map(definition => {
             const id = definition.function?.name ?? definition.name ?? '';
             const rawDescription = definition.function?.description ?? definition.description;
             const description = typeof rawDescription === 'string' ? rawDescription : undefined;

@@ -6,6 +6,8 @@
 
 export const zhCN = {
     'flow.tool.title': '选择工具与参数',
+    'flow.tool.command': '选择并执行工具，结果可用于流程输入',
+    'flow.tool.mcpCommand': '选择并执行已配置的 MCP 工具',
     'flow.tool.search': '搜索工具或 MCP 服务',
     'flow.tool.select': '工具',
     'flow.tool.local': '本地工具',
@@ -1493,7 +1495,7 @@ export const zhCN = {
     'flow.source.replies': '当前分支全部助手回复',
     'flow.source.summary': '对话摘要',
     'flow.source.selected': '选择消息',
-    'flow.source.output': '已完成流程的输出',
+    'flow.source.output': '已完成流程或工具的结果',
     'flow.source.preparing': '正在准备…',
     'flow.source.prepare': '准备并预览',
     'flow.source.preview': '本次引用的固定内容',

@@ -11,6 +11,7 @@ import { OcrService } from '../configuration/ocr-service';
 import { NestosInitialFiles } from '../presets/initial-files';
 import { createNestosFlowDrawers } from '../presets/flow-library';
 import { PrivilegedCommandService } from '../kernel/privileged-command-service';
+import {configuredToolCatalog} from '../kernel/tool-commands';
 import { createSessionSkillControls } from '@itookit/kernel-adapters';
 import { ProjectSessions } from '../projects/project-sessions';
 import { SessionLifecycleService } from '../session/session-lifecycle';
@@ -44,7 +45,8 @@ export function createApplicationClient(services: LocalApplicationServices, opti
     const scope = new ViewScope(), backend = bindApplicationBackend(services, options, scope);
     const { acquireConversation: _acquireConversation, editorSwapStore: _editorSwapStore, ...publicServices } = services;
     return { services: { ...publicServices, agentService: withConfigurationImport(services.agentService),
-        llmDriver: withConfigurationImport(services.llmDriver), flowEngine: { engine: services.flowEngine.engine }, kernel: { kernel: services.kernel.kernel, toolCatalog: services.kernel.toolCatalog } },
+        llmDriver: withConfigurationImport(services.llmDriver), flowEngine: { engine: services.flowEngine.engine }, kernel: { kernel: services.kernel.kernel,
+            toolCatalog: {...services.kernel.toolCatalog, describeTools: async () => configuredToolCatalog(services.kernel.toolCatalog, await services.agentService.getMCPServers())} } },
         backend, close: () => scope.close() };
 }
 export function bindApplicationBackend(services: LocalApplicationServices, options: ApplicationViewOptions = {}, scope = new ViewScope()): ApplicationBackend {
@@ -77,7 +79,8 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
                     settings?.initialSessionId ? () => prepareInitialSession(services, settings.initialSessionId!) : undefined);
                 const browser = await owned.own(view.browser);
                 const initialSession = view.initialSession ? await owned.own(view.initialSession) : undefined;
-                const chat = settings?.chatControls ? {privilegedCommands: new PrivilegedCommandService(kernel.kernel, agentService),
+                const chat = settings?.chatControls ? {privilegedCommands: new PrivilegedCommandService(kernel.kernel, agentService,
+                    {sessions: kernel.sessions, mcpServers: () => agentService.getMCPServers(), prepareSession: services.prepareSession?.bind(services)}),
                     sessionSkills: createSessionSkillControls(kernel.kernel, kernel.sessions),
                     configuration: options.preload ? await owned.own(await createChatConfigurationView(agentService)) : undefined} : undefined;
                 const connections = projects?.remoteMounts ? await owned.own(observeConnections(projects.remoteMounts)) : undefined;

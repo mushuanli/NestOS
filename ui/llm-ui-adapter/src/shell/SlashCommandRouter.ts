@@ -58,6 +58,7 @@ function isDirectInvocation(skill: SlashSkillDefinition): boolean {
 }
 export interface SlashCommandRouterDeps {
     onFlow?: (args: string) => Promise<boolean>;
+    onTool?: (args: string, mcpOnly: boolean) => Promise<boolean>;
     saveConfiguration?: () => Promise<void>;
     commands: ICommandBus;
     chatInput: IChatInputPresenter;
@@ -110,9 +111,9 @@ function saveSlashConfiguration(deps: SlashCommandRouterDeps): void {
     else
         deps.bus.emit('state:inputChanged', {});
 }
-function conversationSlashCallbacks(deps: SlashCommandRouterDeps): Pick<SlashCommandCallbacks, "onFlow"> {
+function conversationSlashCallbacks(deps: SlashCommandRouterDeps): Pick<SlashCommandCallbacks, "onFlow" | "onTool"> {
     return {
-        onFlow: deps.onFlow
+        onFlow: deps.onFlow, onTool: deps.onTool
     };
 }
 function commonSlashCallbacks(deps: SlashCommandRouterDeps): Pick<SlashCommandCallbacks, "onNew" | "onRetry" | "onContinue" | "onReedit" | "onDeleteLast" | "onClear" | "onBtw" | "onAddDirectory" | "onSetHome" | "onPlan" | "onCancelTask" | "onResumeTask" | "onApproveTask" | "onExec"> {

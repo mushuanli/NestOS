@@ -62,7 +62,7 @@ export type {
     ISessionRepository
 } from './persistence/types';
 
-export type { IPrivilegedCommandService, PlanCommandRequest, ExecCommandRequest } from './services/privileged-command';
+export type { IPrivilegedCommandService, PlanCommandRequest, ExecCommandRequest, ToolCommandRequest, ToolCommandOption } from './services/privileged-command';
 
 export { snapshotDirectAgentPolicy, type DirectAgentPolicy, type ResolvedDirectAgentPolicy } from './contracts/direct-agent-policy';
 

@@ -80,6 +80,7 @@ export function suggestCommands(commands: SlashCommandDef[], name: string, limit
  */
 export interface SlashCommandCallbacks {
     onFlow?: (args: string) => Promise<boolean>;
+    onTool?: (args: string, mcpOnly: boolean) => Promise<boolean>;
     // Common
     onRetry: () => void;
     onClear: () => void;

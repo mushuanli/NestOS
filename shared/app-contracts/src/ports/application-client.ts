@@ -24,7 +24,9 @@ export interface ApplicationServices {
     directoryMounts: DirectoryMountPort;
     projects: ProjectService;
     flowEngine: { engine: IFileSystem };
-    kernel: { kernel: KernelViewPort; toolCatalog: Pick<IToolService, 'getToolDefinitions' | 'listTools'> };
+    kernel: { kernel: KernelViewPort; toolCatalog: Pick<IToolService, 'getToolDefinitions' | 'listTools'> & {
+        describeTools?(): Promise<import('@itookit/llm-session/contracts').ToolCommandOption[]>;
+    } };
     sessionManager: Omit<SessionManagementPort, 'getSessionRuntime'>;
     commandBus: ICommandBus;
     projectSync?: ProjectSyncService;

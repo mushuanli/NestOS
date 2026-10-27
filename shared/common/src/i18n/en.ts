@@ -5,6 +5,8 @@ import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
     'flow.tool.title': 'Choose a tool and arguments',
+    'flow.tool.command': 'Choose and execute a tool for workflow input',
+    'flow.tool.mcpCommand': 'Choose and execute a configured MCP tool',
     'flow.tool.search': 'Search tools or MCP servers',
     'flow.tool.select': 'Tool',
     'flow.tool.local': 'Local tool',
@@ -1492,7 +1494,7 @@ export const en: LocaleStrings = {
     'flow.source.replies': 'All assistant replies in this branch',
     'flow.source.summary': 'Conversation summary',
     'flow.source.selected': 'Selected messages',
-    'flow.source.output': 'Completed flow output',
+    'flow.source.output': 'Completed flow or tool result',
     'flow.source.preparing': 'Preparing…',
     'flow.source.prepare': 'Prepare and preview',
     'flow.source.preview': 'Frozen material for this run',

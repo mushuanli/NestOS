@@ -9,7 +9,8 @@ import { collectHistoryChain } from '../persistence/history-chain';
 import { FlowInvocationCommand, type FlowInvocationRecord } from '../contracts/flow-invocations';
 import { ulid } from '../persistence/ulid';
 
-export async function captureContent(repository: ISessionRepository, commands: ICommandBus, sessionId: string): Promise<ContentCapture> {
+export async function captureContent(repository: ISessionRepository, commands: ICommandBus, sessionId: string,
+    kernel?: Pick<import('@itookit/durable-kernel').Kernel, 'listSessionTaskPage'>): Promise<ContentCapture> {
     const log = new RoundLog(repository, sessionId), manifest = await log.loadManifest();
     const history = repository.readHistoryChain ? await repository.readHistoryChain(sessionId)
         : await collectHistoryChain(manifest, id => log.readRound(id, manifest.currentBranch, manifest));
@@ -18,7 +19,27 @@ export async function captureContent(repository: ISessionRepository, commands: I
         ...(round.status === 'completed' ? messageItems(round.id, 'output', round.output) : []),
     ]);
     return { id: ulid(), sessionId, branch: history.branch, head: history.chain.at(-1) ?? null,
-        createdAt: Date.now(), messages, outputs: await outputItems(commands, sessionId) };
+        createdAt: Date.now(), messages, outputs: [...await outputItems(commands, sessionId), ...await toolOutputs(kernel, sessionId)] };
+}
+
+/** Only explicit completed tool commands are selectable; live effects are never input evidence. */
+async function toolOutputs(kernel: Pick<import('@itookit/durable-kernel').Kernel, 'listSessionTaskPage'> | undefined, sessionId: string): Promise<TransferOutput[]> {
+    if (!kernel) return [];
+    const outputs: TransferOutput[] = [];
+    let afterIndex: number | undefined, throughIndex: number | undefined;
+    do {
+        const page = await kernel.listSessionTaskPage(sessionId, {afterIndex, throughIndex, limit: 100});
+        throughIndex = page.throughIndex; afterIndex = page.nextAfterIndex;
+        for (const task of page.items) {
+            if (task.status !== 'succeeded' || task.program.kind !== 'kernel-adapters.tool' || task.labels?.command !== 'tool') continue;
+            const result = (task.output as {outputs?: {result?: {content?: JsonValue}}} | undefined)?.outputs?.result;
+            if (!result || !Object.hasOwn(result, 'content')) continue;
+            const input = task.input as {toolId: string};
+            outputs.push({id: `tool/${task.id}/result`, requestId: task.labels.toolRequestId ?? task.id,
+                taskId: task.id, port: 'result', label: `${input.toolId} · ${task.id.slice(0, 8)}`, value: result.content!});
+        }
+    } while (afterIndex !== undefined);
+    return outputs;
 }
 
 function messageItems(roundId: string, side: string, messages: ChatMessage[]): TransferMessage[] {

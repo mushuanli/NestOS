@@ -14,7 +14,7 @@ import type { EditorTaskControlPlane } from '@itookit/durable-kernel/contracts';
 import type { SessionViewPort } from '@itookit/llm-session/contracts';
 import { acquireConnectionOptions } from './connection-options-cache';
 import { rerunSession } from './rerun-session';
-import { t } from '@itookit/common';
+import { randomUUID, t } from '@itookit/common';
 import { bindWorkspaceInput, type WorkspaceHandoff } from './drafts/workspace-handoff';
 import { mountConversationSource } from './conversation-source';
 import { openSessionFlowOutputs } from '../flows/session-output';
@@ -67,6 +67,7 @@ import { WorkspaceDirectoryMenu } from './WorkspaceDirectoryMenu';
 import { NavigationHelper } from './NavigationHelper';
 import { RunAttachmentController } from './RunAttachmentController';
 import { readDirectCommandOutcome } from '../commands/direct-command';
+import {prepareToolInvocation} from '../flows/invoke-tool';
 import { inputInteraction } from './input-interaction';
 import {
     buildExecutorOptions, validateAgentId,
@@ -167,6 +168,7 @@ export class LLMWorkspaceEditor implements IEditor {
     private fileSearchService!: FileSearchService;
     private runAttachment?: RunAttachmentController;
     private viewActive = true;
+    private readonly toolRequests = new Map<string, string>();
     private activationRevision = 0;
     private rerunAbort?: AbortController;
     private rerunPending = false;
@@ -1239,6 +1241,8 @@ export class LLMWorkspaceEditor implements IEditor {
             buildSlashCallbacks({
                 commands: this.commandBus,
                 onFlow: args => this.startFlowInvocation(args),
+                onTool: this.options.privilegedCommands?.tool && this.options.privilegedCommands.tools
+                    ? (args, mcpOnly) => this.startToolInvocation(args, mcpOnly) : undefined,
                 chatInput: this.chatInput,
                 saveConfiguration: () => this.handleConfigChange(this.chatInput.getConfig()),
                 bus: this.bus,
@@ -1303,6 +1307,29 @@ export class LLMWorkspaceEditor implements IEditor {
         const agentId = this.chatInput.getConfig().agentId;
         const taskId = await this.options.privilegedCommands!.plan({ sessionId, agentId, goal, connectionId: this.chatInput.getConfig().settings?.connectionId });
         await this.attachPrivilegedTask(taskId, 'Plan task created');
+    }
+
+    private async startToolInvocation(text: string, mcpOnly: boolean): Promise<boolean> {
+        if (this.invocationPending || !this.viewActive || this.invocationAbort.signal.aborted) return false;
+        const sessionId = this.requireSessionId(), signal = this.invocationAbort.signal;
+        const operation = this.submitToolInvocation(text, mcpOnly, sessionId, signal);
+        this.invocationPending = operation;
+        try {return await operation;}
+        finally {if (this.invocationPending === operation) this.invocationPending = undefined;}
+    }
+
+    private async submitToolInvocation(text: string, mcpOnly: boolean, sessionId: string, signal: AbortSignal): Promise<boolean> {
+        const service = this.options.privilegedCommands!;
+        const value = await prepareToolInvocation(service, sessionId, text, signal, mcpOnly);
+        if (!value || signal.aborted || sessionId !== this.currentSessionId) return false;
+        const key = JSON.stringify([sessionId, value]);
+        let requestId = this.toolRequests.get(key);
+        if (!requestId) {requestId = randomUUID(); this.toolRequests.set(key, requestId);}
+        const taskId = await service.tool!({sessionId, requestId, ...value});
+        if (signal.aborted || sessionId !== this.currentSessionId) return false;
+        await this.attachPrivilegedTask(taskId);
+        this.toolRequests.delete(key);
+        return true;
     }
 
     private async startExec(command: string): Promise<void> {

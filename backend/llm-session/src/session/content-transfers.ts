@@ -36,7 +36,7 @@ export class ContentTransferService {
 
     async capture(sessionId: string): Promise<ContentCapture> {
         await this.writable(sessionId);
-        const captured = await captureContent(this.options.repository, this.options.commands, sessionId);
+        const captured = await captureContent(this.options.repository, this.options.commands, sessionId, this.options.kernel);
         await (await this.options.kernel.openSession(sessionId)).setShared(captureKey(captured.id), json(captured), { expectedVersion: null });
         return captured;
     }

@@ -229,6 +229,8 @@ export type SessionOrganizationStore = Pick<ISessionRepository, 'list' | 'listSu
 export interface PrivilegedCommandService {
     plan(request: PlanCommandRequest): Promise<string>;
     exec(request: ExecCommandRequest): Promise<string>;
+    tools?(sessionId: string): Promise<import('@itookit/llm-session/contracts').ToolCommandOption[]>;
+    tool?(request: import('@itookit/llm-session/contracts').ToolCommandRequest): Promise<string>;
 }
 
 export interface NestosInitialFiles {

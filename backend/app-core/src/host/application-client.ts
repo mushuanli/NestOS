@@ -2,14 +2,14 @@ import {DocumentChatFileView} from '../document-chat/file';
 import {documentChatBacklinks} from '../document-chat/backlinks';
 import {submitSession, prepareSessionBranch} from '../session/submit-session';
 import { navigationView, warmNavigation } from './navigation-view';
-import { createMindosProviderTemplates } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosProviderTemplates } from '@itookit/kernel-adapters/llm/presets';
 import { createFileSystemView, FSError } from '@itookit/vfs-core';
 import { createToolboxFiles } from '../configuration/toolbox-files';
 import { withConfigurationImport } from '../configuration/configuration-import';
 import { SettingsService } from '../settings/SettingsService';
 import { OcrService } from '../configuration/ocr-service';
-import { MindosInitialFiles } from '../presets/initial-files';
-import { createMindosFlowDrawers } from '../presets/flow-library';
+import { NestosInitialFiles } from '../presets/initial-files';
+import { createNestosFlowDrawers } from '../presets/flow-library';
 import { PrivilegedCommandService } from '../kernel/privileged-command-service';
 import { createSessionSkillControls } from '@itookit/kernel-adapters';
 import { ProjectSessions } from '../projects/project-sessions';
@@ -25,7 +25,7 @@ import { ToolboxInventory } from '../configuration/toolbox-catalog';
 import { SkillsEngine } from '../configuration/skills-files';
 import { ToolboxResources } from '../configuration/toolbox-resources';
 import { listRemoteHarnessAgents } from '../projects/remote-agent-catalog';
-import { conversationBranches } from '@itookit/mindos-node-driver';
+import { conversationBranches } from '@itookit/nestos-node-driver';
 import { prepareWorkbenchView } from './workbench-view';
 import { openSessionView } from './session-view';
 import { observeConnections } from './connection-observation';
@@ -42,7 +42,7 @@ export interface ApplicationViewOptions extends LocalBackendOptions { preload?: 
 /** Bind construction dependencies once, inside the host rather than across the UI port. */
 export function createApplicationClient(services: LocalApplicationServices, options: ApplicationViewOptions = {}): ApplicationClient & { close(): Promise<void> } {
     const scope = new ViewScope(), backend = bindApplicationBackend(services, options, scope);
-    const { acquireConversation: _acquireConversation, ...publicServices } = services;
+    const { acquireConversation: _acquireConversation, editorSwapStore: _editorSwapStore, ...publicServices } = services;
     return { services: { ...publicServices, agentService: withConfigurationImport(services.agentService),
         llmDriver: withConfigurationImport(services.llmDriver), flowEngine: { engine: services.flowEngine.engine }, kernel: { kernel: services.kernel.kernel, toolCatalog: services.kernel.toolCatalog } },
         backend, close: () => scope.close() };
@@ -52,6 +52,11 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
     const lifecycle = () => new SessionLifecycleService({ repository, kernel: kernel.kernel });
     let opening = false;
     const backend: ApplicationBackend = {
+        editorSwaps: services.editorSwapStore ? {openEditorSwap: async request => {
+            const node = await request.files.driver.getNode(request.path);
+            if (!node || node.type !== 'file') throw new FSError('ENOENT', 'Swap source file is unavailable');
+            return scope.own(services.editorSwapStore!.open({namespaceId: request.files.viewId, path: request.path}));
+        }} : undefined,
         documentChatFile: request => scope.own(new DocumentChatFileView(services, request)),
         documentChatBacklinks: (sessionId, branch) => documentChatBacklinks(services, sessionId, branch),
         openView: async request => {
@@ -88,7 +93,7 @@ export function bindApplicationBackend(services: LocalApplicationServices, optio
         writeUiDocuments: documents => writeUiDocuments(vfs, documents),
         settings: sources => settingsService(services, sources, options, scope),
         ocr: async () => new OcrService(await vfs.openFileSystem('/etc'), agentService, kernel.llmService),
-        initialFiles: async () => new MindosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/minds'), services.flowInstallations),
+        initialFiles: async () => new NestosInitialFiles(commandBus, await vfs.openFileSystem('/home/admin/minds'), services.flowInstallations),
         projectSessions: async () => projects?.sessions ?? new ProjectSessions(repository),
         skillsFiles: () => scope.own(new SkillsEngine(agentService)),
         toolboxView: () => toolboxView(services, scope),
@@ -134,7 +139,7 @@ async function toolboxView(services: LocalApplicationServices, scope: ViewScope)
             { mountId: 'remote', at: '/@remote', fs: inventory.remoteAgentSource, access: 'ro' }] }));
         const skills = await resources.own(new SkillsEngine(agentService));
         const toolbox = new ToolboxResources({ ...inventory.sources, agents, skills, flows: services.flowEngine.engine },
-            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory, createMindosFlowDrawers(), createMindosProviderTemplates(), {toolPackages: services.toolPackages, flowInstallations: services.flowInstallations});
+            agentService, services.commandBus, await vfs.openFileSystem('/etc'), inventory, createNestosFlowDrawers(), createNestosProviderTemplates(), {toolPackages: services.toolPackages, flowInstallations: services.flowInstallations});
         const files = await resources.own(createToolboxFiles(toolbox.sources));
         const initial = await toolbox.navigation(false);
         return scope.own({ inventory, resources: toolbox, files, initial, dispose: () => resources.close() });

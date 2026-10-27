@@ -3,7 +3,7 @@ import { showProjectSyncSetup, showDirectorySync, showSyncPreview } from '@itook
 import { t } from '@itookit/common';
 import { OperationManager, randomId, scopedStore, SyncError, assertSync, validId, type CoordinationGuard, type SyncState, type Coordinator, type FileRemote } from '@itookit/vfs-sync';
 import { normalizeVirtualPath } from '@itookit/vfs-core';
-import type { MindOSNodeDriver } from '@itookit/mindos-node-driver';
+import type { NestOSNodeDriver } from '@itookit/nestos-node-driver';
 import type { IndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { HttpSyncClient, IndexedDBSyncStore, IndexedDBSyncCoordinator, createIndexedDBSyncSession, browserSyncStorageStatus, compareSyncConflict } from '@itookit/sync-adapters';
 
@@ -13,13 +13,13 @@ export class WebProjectSync implements ProjectSyncProvider {
     private readonly clients = new Map<string, HttpSyncClient>();
     projects?: ProjectService;
     service?: ProjectSyncService;
-    constructor(private readonly backend: IndexedDBBackend, private readonly http: MindOSNodeDriver, coordinator?: Coordinator) {
+    constructor(private readonly backend: IndexedDBBackend, private readonly http: NestOSNodeDriver, coordinator?: Coordinator) {
         this.coordinator = coordinator ?? new IndexedDBSyncCoordinator(backend.storageAccess());
     }
     async open(localProjectId: string): Promise<ProjectSyncSession> {
         const state = await this.binding(localProjectId); assertSync(state, 'BINDING_NOT_FOUND');
         const remote = this.deferredClient(state);
-        const session = createIndexedDBSyncSession(this.backend, state.binding.bindingId, remote.port, { coordinator: this.coordinator, scope: { includes: [''], excludes: ['.mindos'], propagateDeletes: false } });
+        const session = createIndexedDBSyncSession(this.backend, state.binding.bindingId, remote.port, { coordinator: this.coordinator, scope: { includes: [''], excludes: ['.nestos'], propagateDeletes: false } });
         const guarded = <T>(action: () => Promise<T>) => async () => { await this.validate(state, await remote.resolve()); return action(); };
         return { store: session.store, preview: guarded(() => session.preview()), execute: id => guarded(() => session.execute(id))(),
             resolve: (id, decisions) => guarded(() => session.resolve(id, decisions))(),

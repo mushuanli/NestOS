@@ -8,7 +8,7 @@ import { guardHostStorage } from '@itookit/node-host/storage';
 
 let directory: string, backend: LocalFSBackend;
 beforeEach(async () => {
-    directory = await mkdtemp(path.join(tmpdir(), 'mindos-host-'));
+    directory = await mkdtemp(path.join(tmpdir(), 'nestos-host-'));
     backend = await openLocalFSBackend({ rootDir: path.join(directory, 'data'), sidecarDir: path.join(directory, 'meta'), createDb: NodeSqliteSidecarDb.open });
 });
 afterEach(async () => { await backend.close(); await rm(directory, { recursive: true, force: true }); });

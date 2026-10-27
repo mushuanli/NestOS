@@ -5,7 +5,7 @@
 ```mermaid
 C4Component
     title Flow 图片链路的运行职责
-    Container_Boundary(host, "MindOS 宿主") {
+    Container_Boundary(host, "NestOS 宿主") {
         Component(ui, "Flow UI Adapter", "DOM", "采集参数、上传和预览")
         Component(app, "App Core", "应用服务", "资产授权、冷读取和宿主装配")
         Component(flow, "Session / Flow", "会话与编排", "模型准入、作用域和 DAG")

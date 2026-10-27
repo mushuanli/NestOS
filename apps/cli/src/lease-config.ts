@@ -1,8 +1,8 @@
 /** Parse takeover allowances before opening storage or acquiring any leases. */
 export function leaseSkewConfig(env: Record<string, string | undefined>) {
     return {
-        sessionSkewMs: allowance(env, 'MINDOS_SESSION_LEASE_SKEW_MS'),
-        schedulerSkewMs: allowance(env, 'MINDOS_SCHEDULER_LEASE_SKEW_MS'),
+        sessionSkewMs: allowance(env, 'NESTOS_SESSION_LEASE_SKEW_MS'),
+        schedulerSkewMs: allowance(env, 'NESTOS_SCHEDULER_LEASE_SKEW_MS'),
     };
 }
 

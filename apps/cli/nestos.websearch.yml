@@ -3,7 +3,7 @@ name: deepseek-websearch
 goal: 验证 CLI 客户端 WebSearch 工具调用
 workspace:
   root: .
-  state_dir: .mindos-websearch
+  state_dir: .nestos-websearch
 providers:
   - id: deepseek
     implementation: openai-compatible

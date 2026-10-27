@@ -1,1 +1,1 @@
-export {createStartupStatus} from 'mind-os/startup';
+export {createStartupStatus} from 'nestos-web/startup';

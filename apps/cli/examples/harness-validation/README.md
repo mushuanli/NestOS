@@ -9,7 +9,7 @@
 | `harness-mcp` | 发现本地 MCP → 请求批准 → lookup | 批准前无调用日志；批准后产生 `MCP_VALIDATION_OK` 和真实调用记录 |
 | `harness-combined` | Read → MCP lookup → 按 Skill 审查 → transform 汇总 | 两个 marker、文件证据、topic 和下游返回值均保留 |
 
-此处 Skill 是 MindOS 的提示词 Skill：通过节点 `skillIds` 显式加载，不是一个单独运行的 Task。文件权限由 `toolIds` 声明，MCP 能力由 `mcpProfileIds` 解析。所有例子均未授权 Write、Edit 或 Bash。
+此处 Skill 是 NestOS 的提示词 Skill：通过节点 `skillIds` 显式加载，不是一个单独运行的 Task。文件权限由 `toolIds` 声明，MCP 能力由 `mcpProfileIds` 解析。所有例子均未授权 Write、Edit 或 Bash。
 
 ## 自动验证
 
@@ -30,14 +30,14 @@ pnpm --filter @itookit/cli test tests/harness-validation-examples.test.ts
 需要 Node.js 22.13+。从仓库根目录运行，目标目录必须尚不存在：
 
 ```bash
-node apps/cli/examples/harness-validation/prepare.mjs /tmp/mindos-harness-validation
+node apps/cli/examples/harness-validation/prepare.mjs /tmp/nestos-harness-validation
 pnpm --filter @itookit/cli build
 ```
 
 脚本创建：
 
 ```text
-/tmp/mindos-harness-validation/
+/tmp/nestos-harness-validation/
   profile/home/admin/flows/       四个可编辑定义
   profile/etc/llm/.skills/        validation-review.yaml
   profile/etc/llm/.mcp/           validation.json，绝对路径指向本地 fixture
@@ -55,7 +55,7 @@ stdio MCP 适用于 CLI/Tauri；纯浏览器宿主不能启动这个本地进程
 使用该 profile 打开应用；在会话工作目录设置中授权并选择上面的 `workspace`。若使用 CLI HTTP 界面：
 
 ```bash
-node apps/cli/dist/cli.js --profile /tmp/mindos-harness-validation/profile --http 127.0.0.1:18777
+node apps/cli/dist/cli.js --profile /tmp/nestos-harness-validation/profile --http 127.0.0.1:18777
 ```
 
 在设置中完成模型连接配置后，在同一聊天依次输入：
@@ -79,9 +79,9 @@ node apps/cli/dist/cli.js --profile /tmp/mindos-harness-validation/profile --htt
 
 ```bash
 node apps/cli/dist/cli.js run \
-  --profile /tmp/mindos-harness-validation/profile \
-  --set-home /tmp/mindos-harness-validation/workspace \
-  -f /tmp/mindos-harness-validation/profile/home/admin/flows/harness-combined.flow \
+  --profile /tmp/nestos-harness-validation/profile \
+  --set-home /tmp/nestos-harness-validation/workspace \
+  -f /tmp/nestos-harness-validation/profile/home/admin/flows/harness-combined.flow \
   --headless --json
 ```
 
@@ -91,9 +91,9 @@ MCP 例子首次运行应退出码 3，状态 waiting。记录输出中的 Run I
 
 ```bash
 node apps/cli/dist/cli.js respond <run-id> <interaction-id> --approve \
-  --profile /tmp/mindos-harness-validation/profile --json
+  --profile /tmp/nestos-harness-validation/profile --json
 node apps/cli/dist/cli.js resume <run-id> \
-  --profile /tmp/mindos-harness-validation/profile --json
+  --profile /tmp/nestos-harness-validation/profile --json
 ```
 
 拒绝分支将 `--approve` 改为 `--deny`。以 `profile/var/lib/cli-runs/runs/<run-id>/run.json`、`events.jsonl`、结果文件以及 `mcp-calls.jsonl` 为依据；不能仅凭模型说“我调用了工具”判定成功。`outputs` 会编译为持久的 `__flow_return` 节点；CLI 最终结果仍沿用所选末尾节点的 result。

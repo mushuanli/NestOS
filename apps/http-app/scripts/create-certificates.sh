@@ -8,7 +8,7 @@ Usage: create-certificates.sh [--cert-host IP_OR_DNS,...] [--cert-dir DIRECTORY]
 
 Creates a local CA, server certificate, enrolled browser certificate and PKCS#12 package.
 Default host: 127.0.0.1 (localhost is always included).
-Directory: --cert-dir > mindos.json http.certDir > ~/.config/mindos/http-certs.
+Directory: --cert-dir > nestos.json http.certDir > ~/.config/nestos/http-certs.
 The target must not already exist. Config-relative paths use the config directory.
 Import ca.crt as a trusted CA and browser-client.p12 as a personal certificate.
 The import password is saved in client-password.txt; secrets are never printed.

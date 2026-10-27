@@ -4,10 +4,12 @@ import { openNodeApplication } from '../runtime/application';
 import { ViewApi } from './view-api';
 import { createHttpServer } from './http-server';
 import type { loadCertificates } from './certificates';
+import {NodeEditorSwapStore} from '../storage/editor-swaps';
 
 export interface HttpHostOptions {
     root: string; sidecar: string; certificates: Awaited<ReturnType<typeof loadCertificates>>; staticDir: string;
     auditFile: string; authDir: string; logMode?: string; port: number; host: string; backlog: number;
+    editorSwap?: {enabled: boolean; directory: string};
 }
 
 /** Admit traffic only after the application's server readiness barrier succeeds. */
@@ -15,18 +17,22 @@ export async function startHost(options: HttpHostOptions) {
     const cleanup: HostCleanup = [];
     try {
         const host = await openNodeApplication({...options, runtime: {startupMode: 'server'}}); cleanup.push(host.close);
+        if (options.editorSwap?.enabled) {
+            const swaps = await NodeEditorSwapStore.start(options.editorSwap.directory, options.root, options.staticDir);
+            host.runtime.editorSwapStore = swaps; cleanup.push(() => swaps.dispose());
+        }
         const {audit} = host;
         const application = new ViewApi(Promise.resolve(host.runtime), audit, false);
         cleanup.push(() => application.close());
         const server = createHttpServer({ certificates: options.certificates, staticDir: options.staticDir, audit, application,
-            build: { mode: options.logMode ?? process.env.MINDOS_HTTPD_MODE ?? 'standalone', version: process.env.MINDOS_HTTPD_VERSION } });
+            build: { mode: options.logMode ?? process.env.NESTOS_HTTPD_MODE ?? 'standalone', version: process.env.NESTOS_HTTPD_VERSION } });
         cleanup.push(async () => {
             application.endStreams(); await stopServer(server);
             audit.write({ event: 'server.stopped' });
         });
         await listen(server, options);
         audit.write({ event: 'server.started', route: `https://${options.host}:${options.port}` });
-        console.log(`MindOS HTTPS UI: https://${options.host}:${options.port}\nClient certificate required\nAudit log: ${options.auditFile}`);
+        console.log(`NestOS HTTPS UI: https://${options.host}:${options.port}\nClient certificate required\nAudit log: ${options.auditFile}`);
         let closing: Promise<void> | undefined;
         return { server, close: () => closing ??= (async () => {
             audit.write({ event: 'server.stopping' }); await closeHostResources(cleanup);

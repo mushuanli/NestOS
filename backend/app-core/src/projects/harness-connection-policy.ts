@@ -1,5 +1,5 @@
 import { FSError } from '@itookit/vfs-core';
-import { validateAuthorization } from '@itookit/mindos-node-driver/authorization';
+import { validateAuthorization } from '@itookit/nestos-node-driver/authorization';
 import type { JsonValue } from '@itookit/durable-kernel';
 import type { HarnessExecutionConnection } from '@itookit/kernel-adapters/contracts';
 import type { ProjectRemoteMount } from './remote-mounts';

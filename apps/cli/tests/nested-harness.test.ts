@@ -46,8 +46,8 @@ it.skipIf(process.platform !== 'linux').each([false, true])('Bash starts a child
         if (!failure) expect(requests).toHaveLength(2);
         else expect(requests.length).toBeGreaterThanOrEqual(2);
         expect(requests[1]).toContain('first-result');
-        const [runId] = await readdir(`${directory}/.mindos/runs`);
-        const run = `${directory}/.mindos/runs/${runId}`;
+        const [runId] = await readdir(`${directory}/.nestos/runs`);
+        const run = `${directory}/.nestos/runs/${runId}`;
         expect(JSON.parse(await readFile(`${run}/run.json`, 'utf8'))).toMatchObject({ status: failure ? 'failed' : 'succeeded' });
         if (failure) await expect(readFile(`${run}/result.txt`, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
         else expect(await readFile(`${run}/result.txt`, 'utf8')).toBe('child-result');
@@ -98,7 +98,7 @@ async function verifyOuterHarness(directory: string, runtime: Awaited<ReturnType
     try {
         const session = await system.kernel.createSession({ id: 'outer', storage: { kind: 'test', locator: null } });
         const task = await session.submit({ program: outerProgram.manifest, deferStart: true,
-            input: 'MINIMAL_API_KEY=fixture node /app/apps/cli/dist/cli.js run -f /workspace/child.yml --state-dir /workspace/.mindos --headless --json' });
+            input: 'MINIMAL_API_KEY=fixture node /app/apps/cli/dist/cli.js run -f /workspace/child.yml --state-dir /workspace/.nestos --headless --json' });
         await bindCapabilities(task, [{ kind: 'tool', uri: 'tool://runtime', rights: ['execute'], signalKey: 'toolHandleId' }]);
         const exit = await task.wait({ timeoutMs: 35_000 });
         expect(exit.status, JSON.stringify(exit)).toBe('succeeded');

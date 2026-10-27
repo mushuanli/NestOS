@@ -26,7 +26,7 @@ async function exportSnapshot(projects: ProjectService, folder: string, profileI
             if (cursor) cursors.add(cursor);
         } while (cursor);
         if (fingerprint !== JSON.stringify(remote.list(project.project.id))) throw new FSError('ECONFLICT', 'Project authorization changed');
-        const content = JSON.stringify({format: 'mindos-native-history', version: 1, executable: false, toolDetail: 'summary',
+        const content = JSON.stringify({format: 'nestos-native-history', version: 1, executable: false, toolDetail: 'summary',
             source: {connectionId: root.connectionId, serverId: root.serverId, projectId: root.serverProjectId, profileId, sessionId},
             exportedAt: Date.now(), session, turns}, null, 2);
         return {name: 'native-session-' + encodeURIComponent(sessionId) + '.json', content, mimeType: 'application/json'};

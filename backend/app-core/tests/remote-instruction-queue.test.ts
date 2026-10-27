@@ -1,6 +1,6 @@
 import {expect, it} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
-import type {HarnessInstructionQueue} from '@itookit/mindos-node-driver';
+import type {HarnessInstructionQueue} from '@itookit/nestos-node-driver';
 import {RemoteConversationStore} from '../src/projects/remote-conversation-store';
 
 it('refuses stale, same-revision replacement and deletion of a pending native queue', async () => {

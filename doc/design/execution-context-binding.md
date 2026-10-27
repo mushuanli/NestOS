@@ -190,9 +190,9 @@ C4Dynamic
 
 ### 8.1 显式检查点 fork
 
-Codex 0.164.0 的本机生成协议与[官方 app-server 文档](https://learn.chatgpt.com/docs/app-server)均支持 thread/fork.lastTurnId：复制到指定回合并排除后续回合。mindos-node 的[检查点适配](../../tools/mindos-node/src/plugin/harness/drivers/codex/checkpoints.rs)先核验来源回合存在且终结，再发送 lastTurnId，并读取新 thread 的最后回合核对边界。原生返回已创建身份后，验证失败仍保存 committed 回执和真实引用，不能改写为“未创建”，也不能把 latest 当作成功结果。
+Codex 0.164.0 的本机生成协议与[官方 app-server 文档](https://learn.chatgpt.com/docs/app-server)均支持 thread/fork.lastTurnId：复制到指定回合并排除后续回合。nestos-node 的[检查点适配](../../tools/nestos-node/src/plugin/harness/drivers/codex/checkpoints.rs)先核验来源回合存在且终结，再发送 lastTurnId，并读取新 thread 的最后回合核对边界。原生返回已创建身份后，验证失败仍保存 committed 回执和真实引用，不能改写为“未创建”，也不能把 latest 当作成功结果。
 
-Profile 通过 checkpointFork 协商此能力，fork 布尔值仍仅表示原有分支功能。驱动[客户端](../../libraries/mindos-node-driver/src/harness/client.ts)对旧节点不发送检查点参数，发现失败归为未发送；远程历史的 forkAt 冻结 sourceSessionId/turnId 并进入原管理 journal。丢回执只核对原 requestId；确认失败会保存 lastFork 和 forkFailure，保留原会话与草稿，界面显示具体原因。切换会话发生在回执持久化之后，不能根据内存中的新身份提前导航。
+Profile 通过 checkpointFork 协商此能力，fork 布尔值仍仅表示原有分支功能。驱动[客户端](../../libraries/nestos-node-driver/src/harness/client.ts)对旧节点不发送检查点参数，发现失败归为未发送；远程历史的 forkAt 冻结 sourceSessionId/turnId 并进入原管理 journal。丢回执只核对原 requestId；确认失败会保存 lastFork 和 forkFailure，保留原会话与草稿，界面显示具体原因。切换会话发生在回执持久化之后，不能根据内存中的新身份提前导航。
 
 分支切换中的下一输入目标尚未确认，canQueue 暂停新增接纳并保留草稿；创建中、回执未知和回执尚未持久化都属于该窗口。管理分支操作启动前要求来源队列为空，避免留下指向旧目标的后台指令。普通 turn 的提交未知仍沿用既有队列接纳能力，不能用这条目标切换约束重新引入全局发送锁。
 
@@ -200,7 +200,7 @@ Profile 通过 checkpointFork 协商此能力，fork 布尔值仍仅表示原有
 
 fork 调用的 Task 输入只保存本次规范化 prompt、已核验的增量附件及来源摘要，Program 不再装入完整本地历史或历史附件。无附件时保持原 prompt 的 SHA-256；有附件时对规范化 prompt/attachments 的 JSON 计算摘要，并在 Program 初始化时核对真实输入。宿主装配模式另对真实 canonical messages 核对快照摘要。原生 fork 和随后 turn 使用不同、稳定的操作身份；取消恢复可以只核对已创建的 fork，不能补发尚未发送的增量。未通过边界验证的 binding 保持 invalid，真实原生引用留存，来源 binding 不变。已持久确认未开始 turn 的收尾可直接核对 journal，不因后来授权撤销而重新连接原生端。
 
-新增[宿主回归](../../backend/app-core/tests/harness-execution-fork.test.ts)覆盖丢 fork 回执、来源替换、创建后边界不符、旧修订与不支持能力、取消时未发 turn；[真实运行时](../../backend/app-core/tests/harness-agent-execution.test.ts)覆盖显式选择经队列到 Program/Effect 的增量输入。节点 Rust 回归验证历史截断和原生忽略参数；[原生验收脚本](../../tools/mindos-node/src/plugin/harness/tests/real_checkpoint_fork.py)在临时 CODEX_HOME 与本地拒绝端点生成两个终结失败回合，实际 fork 仅保留指定的第一个回合。该用例不使用个人会话或真实模型服务。
+新增[宿主回归](../../backend/app-core/tests/harness-execution-fork.test.ts)覆盖丢 fork 回执、来源替换、创建后边界不符、旧修订与不支持能力、取消时未发 turn；[真实运行时](../../backend/app-core/tests/harness-agent-execution.test.ts)覆盖显式选择经队列到 Program/Effect 的增量输入。节点 Rust 回归验证历史截断和原生忽略参数；[原生验收脚本](../../tools/nestos-node/src/plugin/harness/tests/real_checkpoint_fork.py)在临时 CODEX_HOME 与本地拒绝端点生成两个终结失败回合，实际 fork 仅保留指定的第一个回合。该用例不使用个人会话或真实模型服务。
 
 尚未完成：同一 thread 的原生条件追加、外部接管/丢失/内容推进处理、跨 Session 所有权、队列前序推进校验、父 Flow/动态 worker 及离线入口的完整接线，以及初始化、工作区和记忆隔离。绑定检查点目录、分页读取与 CLI 显式选择见 8.4，正式 Session 的被动资格与选择草稿见 8.5、8.6。continue 仍返回 CONTEXT_NATIVE_WRITE_UNSUPPORTED；checkpointFork 只证明原生回合边界复制，不证明项目记忆、工作区或外部修改后的全部实际上下文保持不变。尚未部署。
 
@@ -209,18 +209,18 @@ fork 调用的 Task 输入只保存本次规范化 prompt、已核验的增量�
 
 DSH 的 max_sessions 限制附着观察订阅数，不能用它表示原生历史数或 ContextBinding 生命周期。已复现旧实现的容量问题：限制为 1 时，第一个会话的 turn 已完成，第二次 create 仍返回 DSH_SESSION_LIMIT；这是一项受控 HTTP/WS 协议复现，尚不能证明线上原 Session 的故障原因。
 
-[观察资源回收](../../tools/mindos-node/src/plugin/harness/drivers/dsh/reclaim.rs)在容量不足时寻找已确认完成的会话。候选必须没有活动 turn、未确认或仍运行的命令、待答交互及正在借用该会话的控制操作；创建后尚未开始的会话也不回收。先取消并等待观察任务退出，才释放其容量；未确认退出保留占用并报告 DSH_SESSION_CLEANUP_PENDING。此处只确认本地观察任务退出，远端订阅的取消仍受传输状态影响；不等于确认原生执行停止，不能作为 Effect.cancel 的清理确认。
+[观察资源回收](../../tools/nestos-node/src/plugin/harness/drivers/dsh/reclaim.rs)在容量不足时寻找已确认完成的会话。候选必须没有活动 turn、未确认或仍运行的命令、待答交互及正在借用该会话的控制操作；创建后尚未开始的会话也不回收。先取消并等待观察任务退出，才释放其容量；未确认退出保留占用并报告 DSH_SESSION_CLEANUP_PENDING。此处只确认本地观察任务退出，远端订阅的取消仍受传输状态影响；不等于确认原生执行停止，不能作为 Effect.cancel 的清理确认。
 
-回收不发送原生 cancel/archive，不删除原生历史、回执或 binding。后续输入的准备阶段重新 inspect，必要时 resume 同一 sessionId，然后才发送冻结队列实参，禁止新建上下文冒充续接。命令结果未知时阻挡后续写入与 profile 空闲卸载，查询仍独立可用。[原生协议回归](../../tools/mindos-node/src/plugin/harness/tests/dsh.rs)覆盖完成后容量复用、历史和回执保留、恢复原会话、未知 prompt/命令不重发；[队列回归](../../libraries/mindos-node-driver/tests/conversation.test.ts)覆盖冷观察重新取得同一原生身份后派发。
+回收不发送原生 cancel/archive，不删除原生历史、回执或 binding。后续输入的准备阶段重新 inspect，必要时 resume 同一 sessionId，然后才发送冻结队列实参，禁止新建上下文冒充续接。命令结果未知时阻挡后续写入与 profile 空闲卸载，查询仍独立可用。[原生协议回归](../../tools/nestos-node/src/plugin/harness/tests/dsh.rs)覆盖完成后容量复用、历史和回执保留、恢复原会话、未知 prompt/命令不重发；[队列回归](../../libraries/nestos-node-driver/tests/conversation.test.ts)覆盖冷观察重新取得同一原生身份后派发。
 
 DSH 实时 turn 仍使用原 requestId，历史按原生 turn 编号投影；事件 gap 后的持久身份映射和终态核对尚未完整贯通。结果未知的串行命令当前继续保留占用，尚无经过原生身份核验的自动解除路径；需要补齐原生操作身份或独占调用网关及终态对账，不能仅凭超时清掉占用。观察资源回收没有补齐这项恢复契约，也没有处理外部客户端并发写入。线上 node/httpd 版本、原 Session 回执与实际资源占用仍需单独核对；本次未部署或重启。
 
 
 ### 8.3 DSH 原生输入接纳与实际 turn 关联
 
-原生 Session Controller 将普通输入的 requestId 保存为 user/message.source.rpcId。当前[输入接纳适配](../../tools/mindos-node/src/plugin/harness/drivers/dsh/admission.rs)保存冻结文字摘要，收到同一原生会话的消息事件后核对来源身份、原操作 ID、turn 编号及内容。历史替换事件不作为新输入接纳证据；已关联的原生 turn 不因后续消息重新绑定。匹配只证明该输入已进入原生执行，不表示整个调用完成，也不证明原生检查点已刷盘。身份不符继续 unknown；相同身份却内容不符报告 DSH_PROMPT_EVIDENCE_MISMATCH，不用文字相似度猜测归属。
+原生 Session Controller 将普通输入的 requestId 保存为 user/message.source.rpcId。当前[输入接纳适配](../../tools/nestos-node/src/plugin/harness/drivers/dsh/admission.rs)保存冻结文字摘要，收到同一原生会话的消息事件后核对来源身份、原操作 ID、turn 编号及内容。历史替换事件不作为新输入接纳证据；已关联的原生 turn 不因后续消息重新绑定。匹配只证明该输入已进入原生执行，不表示整个调用完成，也不证明原生检查点已刷盘。身份不符继续 unknown；相同身份却内容不符报告 DSH_PROMPT_EVIDENCE_MISMATCH，不用文字相似度猜测归属。
 
-[统一回执入口](../../tools/mindos-node/src/plugin/harness/service.rs)可对未知操作向既有驱动读取证据，先写入原[回执库](../../tools/mindos-node/src/plugin/harness/receipts.rs)，再通知适配器解除该操作的接纳屏障。回执遵守 unknown 到已知结果的单向结算；迟到的原工作者不能用 unknown 或拒绝覆盖既有结果。查询不创建驱动、不续接会话、不重发输入。项目模式按同一主体、项目及 profile 的回执作用域查找已有实例，避免只查询当前观察模式而漏掉原执行。
+[统一回执入口](../../tools/nestos-node/src/plugin/harness/service.rs)可对未知操作向既有驱动读取证据，先写入原[回执库](../../tools/nestos-node/src/plugin/harness/receipts.rs)，再通知适配器解除该操作的接纳屏障。回执遵守 unknown 到已知结果的单向结算；迟到的原工作者不能用 unknown 或拒绝覆盖既有结果。查询不创建驱动、不续接会话、不重发输入。项目模式按同一主体、项目及 profile 的回执作用域查找已有实例，避免只查询当前观察模式而漏掉原执行。
 
 ```mermaid
 C4Dynamic
@@ -240,7 +240,7 @@ C4Dynamic
 
 实际执行与输入接纳分别关联。turn/start 只表示原生端开始了某一轮；只有匹配的用户消息才能将它绑定到本次操作。此前外部轮次的输出保留原生身份，不能使本次调用提前终结。未识别本次输入时取消返回 DSH_TURN_NOT_IDENTIFIED；在途或未知取消有独立屏障，不能因目标已完成就假定该取消请求已释放。取消与完成竞态保留原生真实终态，正常完成仍记 completed。
 
-[协议与运行回归](../../tools/mindos-node/src/plugin/harness/tests/dsh.rs)覆盖未知接纳恢复、错误身份/内容、回执持久后容量释放、迟到响应不清掉仍运行的原轮次或已开始的新轮次、取消身份及成功竞态；项目模式、只读观察模式和 SIGTERM 关闭另有集成回归。
+[协议与运行回归](../../tools/nestos-node/src/plugin/harness/tests/dsh.rs)覆盖未知接纳恢复、错误身份/内容、回执持久后容量释放、迟到响应不清掉仍运行的原轮次或已开始的新轮次、取消身份及成功竞态；项目模式、只读观察模式和 SIGTERM 关闭另有集成回归。
 
 覆盖仍有限：上述证据来自仍存活驱动收到的原生事件；完整连接丢失、跨事件缺口的历史编号映射、未知 slash/取消操作的原生身份核对、严格条件写与条件取消仍需补齐。原生 llm-ui 已接入独立取消台账，实际范围与暂停限制见[控制协议第 8 节](invocation-control-state.md#8-当前实施覆盖)。节点重启后 epoch 变化，不自动重放旧操作。
 
@@ -305,7 +305,7 @@ C4Dynamic
     title 被动上下文资格与派发复验
     Component(ui, "上下文选择", "llm-ui", "目的身份与精确检查点")
     Component(query, "ContextOptions", "Session / app-core", "只读发布、授权及资格")
-    Component(node, "profiles", "mindos-node", "已登记项目的能力描述")
+    Component(node, "profiles", "nestos-node", "已登记项目的能力描述")
     ComponentDb(catalog, "原 binding 目录", "Kernel shared state", "检查点及当前修订")
     Component(queue, "原提交台账与队列", "既有接纳路径", "冻结用户选择及实参")
     Component(dispatch, "真实执行", "Context / Harness", "最终策略及原生边界")

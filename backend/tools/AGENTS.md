@@ -1,6 +1,6 @@
 # @itookit/tools 开发说明
 
-独立工具包，采用 `buildTool()` 工厂 + 按工具分目录的架构模式。平台能力由宿主注入：文件读写走 `ToolVFSContext`，命令执行走 `INativeShell`（本包不 spawn 进程），Grep/Glob 在无 VFS 时回退到 Node 文件系统遍历；通过同一发现服务支持 `.gitignore` / `.mindosignore` 和 `includeIgnored`，不使用 rg/fd 的独立过滤路径。
+独立工具包，采用 `buildTool()` 工厂 + 按工具分目录的架构模式。平台能力由宿主注入：文件读写走 `ToolVFSContext`，命令执行走 `INativeShell`（本包不 spawn 进程），Grep/Glob 在无 VFS 时回退到 Node 文件系统遍历；通过同一发现服务支持 `.gitignore` / `.nestosignore` 和 `includeIgnored`，不使用 rg/fd 的独立过滤路径。
 
 ## 目录结构
 

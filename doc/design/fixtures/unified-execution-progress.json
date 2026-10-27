@@ -12,7 +12,7 @@
       "llm-flow",
       "llm-session",
       "kernel-adapters",
-      "mindos-node-driver"
+      "nestos-node-driver"
     ],
     "appCoreRegression": "Latest complete application-core suite 1018 passed, 13 explicitly configured live tests skipped; includes independent Agent publication plus confirmed checkpoint persistence, legacy attribution, safe unbound context queries and exact earlier-checkpoint fork dispatch.",
     "deployment": "No deployment or restart performed by this task. An external process updated the running httpd release; native-node rollout and original Session acceptance remain unverified.",
@@ -31,7 +31,7 @@
       "nodeVersionEvidence": {
         "checkedAtUtc": "2026-10-24 16:16 UTC",
         "source": "authenticated MCP server/discover serverInfo",
-        "name": "mindos-node",
+        "name": "nestos-node",
         "protocol": "2026-07-28"
       },
       "originalSession": {
@@ -737,9 +737,9 @@
         "Pure input failures carry not-committed and precise remoteCode across RPC; independent native operation projection settles rejected rather than unknown."
       ],
       "evidence": [
-        "libraries/mindos-node-driver/tests/attachments.test.ts",
-        "libraries/mindos-node-driver/tests/conversation.test.ts",
-        "libraries/mindos-node-driver/tests/harness.test.ts",
+        "libraries/nestos-node-driver/tests/attachments.test.ts",
+        "libraries/nestos-node-driver/tests/conversation.test.ts",
+        "libraries/nestos-node-driver/tests/harness.test.ts",
         "backend/kernel-adapters/src/programs/harness-input.test.ts",
         "backend/kernel-adapters/src/programs/harness-program.test.ts",
         "backend/app-core/tests/harness-agent-execution.test.ts",
@@ -947,8 +947,8 @@
         "rustFull": "366 passed, 2 explicitly ignored across the full Rust suite; no filtered test matrix presented as full coverage"
       },
       "evidence": [
-        "tools/mindos-node/src/plugin/harness/tests/dsh_preparation.rs",
-        "libraries/mindos-node-driver/tests/conversation.test.ts"
+        "tools/nestos-node/src/plugin/harness/tests/dsh_preparation.rs",
+        "libraries/nestos-node-driver/tests/conversation.test.ts"
       ],
       "limitations": "Installed DSH command lifecycle events lack caller operation identity. Unknown serial commands, uncertain model-selection mutations, cross-epoch reconciliation and production rollout remain incomplete.",
       "runningRelease": {
@@ -960,7 +960,7 @@
       "docsCheck": "passed",
       "deployment": "No node deployment, original Session mutation or service restart performed; read-only authenticated httpd health remains the older running release.",
       "preparedNode": {
-        "path": "/home/li/share/prj/x1/tools/mindos-node/target/release/mindos-node",
+        "path": "/home/li/share/prj/x1/tools/nestos-node/target/release/nestos-node",
         "bytes": 17237944,
         "sha256": "f07556b0792bc4dddfdbc87e8e5d6d5b7ac91cf5cc1cefa66fef162251ff2de3",
         "markers": {
@@ -1153,10 +1153,10 @@
       "functionBudget": "Twenty-one changed production command/admission/config/transport/service functions satisfy <=30 source lines and <=10 branch estimate after rustfmt; match arms were also reviewed. Existing unrelated helpers are outside this increment.",
       "privacy": "New evidence logs retain only operationId, stage/outcome and duration. Transport failures preserve endpoint, safe code and elapsed time without native request or response bodies.",
       "build": {
-        "binary": "/home/li/share/prj/x1/tools/mindos-node/target/release/mindos-node",
+        "binary": "/home/li/share/prj/x1/tools/nestos-node/target/release/nestos-node",
         "sha256": "c3f5d1184fd061fdcf2b5b8e68a540766d6fff940de50b0827a1e563dbbadf4c",
         "bytes": 17292376,
-        "version": "mindos-node 0.4.0",
+        "version": "nestos-node 0.4.0",
         "isolatedMcp": {
           "result": "passed",
           "scope": "Loopback server/discover and harness_profiles only; accepted independent command deadline configuration; no native execution or user Session access.",
@@ -1181,11 +1181,11 @@
         "configurationExamples": "Both DSH TOML examples parse with the independent command deadline."
       },
       "evidence": [
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/command_admission.rs",
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/commands.rs",
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/transport.rs",
-        "tools/mindos-node/src/plugin/harness/service.rs",
-        "tools/mindos-node/src/plugin/harness/tests/dsh_command_recovery.rs"
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/command_admission.rs",
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/commands.rs",
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/transport.rs",
+        "tools/nestos-node/src/plugin/harness/service.rs",
+        "tools/nestos-node/src/plugin/harness/tests/dsh_command_recovery.rs"
       ],
       "remaining": "Recovery requires the original live HTTP call or its retained correlated response. A lost native response after native timeout/disconnection, cross-epoch recovery, authoritative DSH history command/request identity and external-writer isolation remain unfinished. Native command body/envelope alignment is now locally implemented and verified; see validation.nativeCommandOutputs. No deployment or original production Session acceptance was performed."
     },
@@ -1222,10 +1222,10 @@
         "modeSwitchDoesNotReplay": true
       },
       "binary": {
-        "binary": "/home/li/share/prj/x1/tools/mindos-node/target/release/mindos-node",
+        "binary": "/home/li/share/prj/x1/tools/nestos-node/target/release/nestos-node",
         "sha256": "7bd971e96dbdb32743b8dc84cb9b997bf3e04c8a7d2e4d48a043ee782be43c1a",
         "bytes": 17348352,
-        "version": "mindos-node 0.4.0",
+        "version": "nestos-node 0.4.0",
         "isolatedMcp": {
           "commandOutputs": true,
           "outputModes": {
@@ -1281,7 +1281,7 @@
           "entrySha256": "a2a985eea155bf6956e4822842971683d265fd0dc33731ae00ba1f1718963723"
         },
         "nativeNode": {
-          "version": "mindos-node 0.4.0",
+          "version": "nestos-node 0.4.0",
           "sha256": "7bd971e96dbdb32743b8dc84cb9b997bf3e04c8a7d2e4d48a043ee782be43c1a",
           "optimizedBuild": "passed",
           "isolatedMcp": "passed",
@@ -1290,12 +1290,12 @@
         }
       },
       "evidence": [
-        "tools/mindos-node/src/plugin/harness/command_outputs.rs",
-        "tools/mindos-node/src/plugin/harness/tests/command_outputs.rs",
-        "tools/mindos-node/src/plugin/harness/tests/dsh_command_output.rs",
-        "libraries/mindos-node-driver/src/harness/command-output.ts",
-        "libraries/mindos-node-driver/src/harness/committed-result.ts",
-        "libraries/mindos-node-driver/tests/command-output.test.ts",
+        "tools/nestos-node/src/plugin/harness/command_outputs.rs",
+        "tools/nestos-node/src/plugin/harness/tests/command_outputs.rs",
+        "tools/nestos-node/src/plugin/harness/tests/dsh_command_output.rs",
+        "libraries/nestos-node-driver/src/harness/command-output.ts",
+        "libraries/nestos-node-driver/src/harness/committed-result.ts",
+        "libraries/nestos-node-driver/tests/command-output.test.ts",
         "ui/llm-ui-adapter/src/components/history/NativeCommandOutput.ts",
         "ui/llm-ui-adapter/src/components/history/native-command-content.ts",
         "ui/app-shell/tests/native-command-output.test.ts",
@@ -1703,11 +1703,11 @@
           "commit": "0c5e7cb4aa5f18b9cc85ba14b0ea42a5fceefccf"
         },
         {
-          "repository": "tools/mindos-node",
+          "repository": "tools/nestos-node",
           "commit": "edcaefbdf89c79c9b5f1aa34b59c4bc9f10a125a"
         },
         {
-          "repository": "libraries/mindos-node-driver",
+          "repository": "libraries/nestos-node-driver",
           "commit": "6e323489a5bc7f9be66288c3e015e0e6e39cee1e"
         },
         {
@@ -2117,7 +2117,7 @@
             [
               "git",
               "-C",
-              "libraries/mindos-node-driver",
+              "libraries/nestos-node-driver",
               "checkout",
               "--quiet",
               "--detach",
@@ -2126,13 +2126,13 @@
             [
               "pnpm",
               "--filter",
-              "@itookit/mindos-node-driver",
+              "@itookit/nestos-node-driver",
               "build"
             ],
             [
               "pnpm",
               "--filter",
-              "@itookit/mindos-node-driver",
+              "@itookit/nestos-node-driver",
               "test"
             ],
             [
@@ -3091,7 +3091,7 @@
         "remaining": "F15-F24, independent child-session routing, control/context/artifacts, cross-boundary operating scenarios and original production Session acceptance."
       },
       "uiDataBoundary": {
-        "decision": "Independent llm-ui owns presentation, input editing and control requests plus transient state; MindOS host owns durable data through VFS/SessionRepository; Kernel and native Harness keep their execution/context authorities. Host adapter converts DTOs and files and coordinates recovery through injected ports; no new browser authoritative store.",
+        "decision": "Independent llm-ui owns presentation, input editing and control requests plus transient state; NestOS host owns durable data through VFS/SessionRepository; Kernel and native Harness keep their execution/context authorities. Host adapter converts DTOs and files and coordinates recovery through injected ports; no new browser authoritative store.",
         "document": "doc/design/llm-ui-independent-module.md#展示输入控制与持久数据边界",
         "commit": "558f8af40d20223440ef188b7a3783510d3dd58e"
       }
@@ -3114,7 +3114,7 @@
         "libraries/llm-ui/tests/flow.test.ts",
         "ui/llm-ui-adapter/src/independent/bindings.test.ts",
         "ui/llm-ui-adapter/src/independent/session-binding.test.ts",
-        "libraries/mindos-node-driver/tests/conversation.test.ts",
+        "libraries/nestos-node-driver/tests/conversation.test.ts",
         "ui/app-shell/tests/native-queue-input.test.ts",
         "ui/llm-ui-adapter/src/independent/native-admission.test.ts"
       ],
@@ -3241,7 +3241,7 @@
         "backend/llm-flow/__tests__/file-input.test.ts",
         "ui/app-shell/tests/flow-file-input.test.ts",
         "ui/app-shell/tests/send-failure-consistency.test.ts",
-        "tools/mindos-node/src/plugin/harness/tests/command_outputs.rs",
+        "tools/nestos-node/src/plugin/harness/tests/command_outputs.rs",
         "ui/app-shell/tests/native-command-output.test.ts",
         "apps/http-app/tests/native-command-output-rpc.test.ts"
       ],
@@ -3290,9 +3290,9 @@
         "backend/app-core/tests/harness-agent-execution.test.ts",
         "backend/kernel-adapters/src/programs/harness-program.test.ts",
         "backend/app-core/tests/harness-execution-fork.test.ts",
-        "tools/mindos-node/src/plugin/harness/tests/harness.rs",
-        "tools/mindos-node/src/plugin/harness/tests/real_checkpoint_fork.py",
-        "libraries/mindos-node-driver/tests/conversation.test.ts",
+        "tools/nestos-node/src/plugin/harness/tests/harness.rs",
+        "tools/nestos-node/src/plugin/harness/tests/real_checkpoint_fork.py",
+        "libraries/nestos-node-driver/tests/conversation.test.ts",
         "ui/app-shell/tests/remote-conversation-editor.test.ts",
         "backend/app-core/tests/harness-context-catalog.test.ts",
         "apps/cli/tests/application-submission.test.ts",
@@ -3323,15 +3323,15 @@
       "implemented": "DSH controls require identified native input, retain independent pending-control barriers and preserve real terminal outcomes. HarnessRecovery now contains independent exact-session/turn control receipts, original operationId/epoch reconciliation and separately persisted terminal evidence; UI readiness no longer uses the input send lock. Both the independent adapter and legacy workbench use distinct control receipts without draft consumption or fake history. Native cancellation does not implicitly pause the queue; an explicit pause can be persisted first. Queue locks cover durable claim/edit/settlement only, leaving suspended remote calls outside the editing lock. Host/RPC paths permit independent enqueue, editing, read, response, cancellation and control reconciliation; native events continue across a suspended queue dispatch. Unknown or accepted-but-unconfirmed controls pin host observation and block conflicting dispatch. Independent commandQueries/harness_query rejects serial dispatch and skips mutation receipts and resume. Query reports use existing recovery rows and exact session/definition identity; queryCommand/reconcileQuery, application RPC, the existing UI ledger, legacy workbench and CLI use separate readiness and report recovery. Stale execution observation does not prevent a fresh read. Unknown report storage retains original input/queue facts and background ownership; explicit new reads use new IDs without replaying execution. CLI query and report recovery skip full history; the legacy input component admits explicit reads while another send Promise is unresolved. Run snapshots publish current controlTaskIds; the legacy workbench filters historic retry/reply/cancel buttons, and backend scoped controls re-read current membership. Historic transcript reads use a separate read-only ownership projection. Native long-command response and persistence boundaries now retain both serial ownership and original evidence; see validation.nativeCommandReceiptRecovery. This does not implement scoped pause or external native ownership. A malformed committed command has a separate persistent dispatch barrier that ordinary queue retry cannot replay. Local artifact read errors do not block fresh input. Command-output queries cross RPC independently of suspended send. New versioned Flow task trees, pause admission barriers, explicit unconfirmed-pause withdrawal, atomic native approval continuation admission and actual-control UI projection are locally verified; see validation.hierarchicalPauseAndContinuations. Legacy accepted identities remain unchanged and limited recovery is explicit.",
       "remaining": "Complete five-channel contracts across remaining execution kinds; durable UI control-operation recovery after reload, full legacy control-tree migration, explicit Session-level unconfirmed-pause withdrawal, native control reconciliation across epochs and event-gap/external-writer guarantees. Native tool-loop pause remains unsupported by current adapters.",
       "evidence": [
-        "libraries/mindos-node-driver/src/harness/control-ledger.ts",
-        "libraries/mindos-node-driver/tests/control-ledger.test.ts",
-        "libraries/mindos-node-driver/tests/conversation.test.ts",
+        "libraries/nestos-node-driver/src/harness/control-ledger.ts",
+        "libraries/nestos-node-driver/tests/control-ledger.test.ts",
+        "libraries/nestos-node-driver/tests/conversation.test.ts",
         "backend/app-core/tests/conversation-view.test.ts",
         "backend/app-core/tests/conversation-registry.test.ts",
         "apps/http-app/tests/conversation-composer-rpc.test.ts",
         "ui/llm-ui-adapter/src/independent/bindings.test.ts",
         "ui/app-shell/tests/remote-conversation-editor.test.ts",
-        "libraries/mindos-node-driver/src/harness/conversation-queries.ts",
+        "libraries/nestos-node-driver/src/harness/conversation-queries.ts",
         "libraries/llm-ui/tests/chat-view.test.ts",
         "apps/cli/tests/application-send.test.ts"
       ]
@@ -3381,20 +3381,20 @@
       "finding": "A controlled DSH HTTP/WS regression reproduced capacity exhaustion after a confirmed completed turn with max_sessions=1. This is verified adapter behavior, not a diagnosis of the original production Session. Live CLI --connect inspection now confirms the original Session is idle with pending=false, no interactions, an empty queue, canSend=true and canQueue=true. This verifies current backend readiness, not historical root cause or browser recovery. A later staged live probe successfully opened the project Harness but its native command catalog returned EIO/remoteCode=EBUSY. This disproves any inference that idle/canSend metadata alone establishes native readiness. No native prompt, resume or interrupt was issued by this audit; the exact busy source remains to be diagnosed. Installed DSH command discovery resolves an Agent through resolveAgent/resolve/resume, which can claim a writer. Cold discovery now returns a marked partial query catalog without invoking Agent lookup; this establishes a concrete adapter hazard, not the unique historical production root cause. Installed DSH 0.2.0-rc.2 source confirms command/run.source contains kind=user without caller requestId; commandId is generated inside its executor. Matching command text or adjacent timestamps cannot establish authoritative ownership. A controlled regression reproduced a separate false-unknown error: failed command discovery before any commands/execute was classified as unknown; the new preparation evidence fixes that case without unlocking genuine unknown writes.",
       "remaining": "Authoritative native identity and terminal reconciliation for serial commands whose original native response is unavailable (these remain pinned; retained original responses can now reconcile within the live epoch); Complete durable mapping of real-time operation IDs to native DSH history turn IDs across event gaps; verify actual DSH/native resource behavior, exact deployed node build and the browser behavior of the original Session after a version-aware rollout. Observation-slot retirement does not prove native Agent/workspace disposal or external-writer exclusion. Complete native connection loss and a possibly sent model-selection mutation versus actual prompt-send stages still need full recovery rules; read-only model preparation now has distinct not-started evidence. Native UI now has independent control receipts and readiness projection. Scoped pause, cross-epoch control reconciliation and complete event-gap/external-writer guarantees remain unfinished. The production catalog previously returned EBUSY. The cold Agent-lookup hazard is fixed locally, but its actual native writer, deployed query capability and original browser behavior remain unverified until rollout.",
       "evidence": [
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/sessions.rs",
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/mod.rs",
-        "tools/mindos-node/src/plugin/harness/driver_slot.rs",
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/reclaim.rs",
-        "tools/mindos-node/src/plugin/harness/tests/dsh.rs",
-        "libraries/mindos-node-driver/tests/conversation.test.ts",
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/admission.rs",
-        "tools/mindos-node/src/plugin/harness/receipts.rs",
-        "tools/mindos-node/src/plugin/harness/tests/dsh_project.rs",
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/protocol.rs",
-        "tools/mindos-node/src/plugin/harness/driver.rs",
-        "tools/mindos-node/src/plugin/harness/tests/dsh_preparation.rs",
-        "tools/mindos-node/src/plugin/harness/drivers/dsh/command_admission.rs",
-        "tools/mindos-node/src/plugin/harness/tests/dsh_command_recovery.rs"
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/sessions.rs",
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/mod.rs",
+        "tools/nestos-node/src/plugin/harness/driver_slot.rs",
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/reclaim.rs",
+        "tools/nestos-node/src/plugin/harness/tests/dsh.rs",
+        "libraries/nestos-node-driver/tests/conversation.test.ts",
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/admission.rs",
+        "tools/nestos-node/src/plugin/harness/receipts.rs",
+        "tools/nestos-node/src/plugin/harness/tests/dsh_project.rs",
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/protocol.rs",
+        "tools/nestos-node/src/plugin/harness/driver.rs",
+        "tools/nestos-node/src/plugin/harness/tests/dsh_preparation.rs",
+        "tools/nestos-node/src/plugin/harness/drivers/dsh/command_admission.rs",
+        "tools/nestos-node/src/plugin/harness/tests/dsh_command_recovery.rs"
       ],
       "verification": "Current Rust suite 363 passed, 2 explicitly ignored with test-threads=1; optimized node release and isolated real MCP capability discovery passed. Driver full suite 249 passed, 1 explicitly skipped. Latest authenticated production health is recorded separately and remains the older running release. No user Session was prompted, resumed, interrupted or forcibly unlocked by this task. Live profile capability discovery at 2026-10-24 17:49 UTC confirms all three deployed profiles still lack commandQueries; this is a verified rollout gap. Latest full Rust verification: 366 passed, 2 explicitly ignored; driver full suite 273 passed, 1 explicitly skipped. Preparation EIO and possibly sent model-selection mutation are exercised separately. Deployed node and original browser acceptance remain unverified. Latest full Rust suite 375 passed, 2 explicitly ignored; optimized binary and isolated MCP discovery passed. See validation.nativeCommandReceiptRecovery for scope and limitations.",
       "implemented": "Capacity pressure now retires only completed unborrowed observations without active/unknown turns, commands or interactions; follow shutdown is confirmed before capacity release, and unconfirmed shutdown stays charged. Native cancel/archive is never issued by reclamation. Native history and operation receipts remain available, and queued dispatch inspects then resumes the same native ID. Serial-command unknowns block new side effects and profile unloading while status queries remain available. Safe stage/capacity diagnostics and concurrent attach winner checks are in place. Unknown ordinary prompt admission can now reconcile exact live native user-message identity and frozen text digest into the original receipt store before releasing its barrier. Known receipts are immutable against late workers. An owned turn binds only after identified input, and native cancellation rejects unidentified targets, pins unknown control requests and preserves actual successful terminal outcomes. Project query lookup reuses existing scoped drivers without initialization. DSH summary now projects whether the identified native turn is interruptible; native UI cancellation and independent receipts are wired through the host, RPC and both UI adapters. Unknown controls retain background observation and do not consume pending input. Cold/archived DSH catalogs no longer implicitly attach an Agent; attached catalogs pin their observation and preserve query entries on native conflicts. Native transport retains distinct busy/writer/workspace codes, including trusted HTTP 409 error envelopes. Independent adapter-owned queries bypass native catalog discovery. NativeExecution now distinguishes trusted NotStarted evidence from dispatched execution while legacy drivers default to Dispatched. Service discovery and DSH command/model preflight failures preserve the original safe error with a durable not-committed preparation receipt; model reads happen before prompt/writer admission. The native queue persists failed rather than uncertain, reopens without automatic dispatch and creates a new attempt only on explicit retry. A possibly sent model-selection mutation still remains unknown and blocks later side effects even when no prompt was sent. DSH serial commands now have a distinct bounded deadline. Their original validated native HTTP response and operationId remain in the existing cursor until the matching shared receipt is durable; original response queries can finish a failed receipt write. The existing mutation lock is held through receipt commit and driver settlement. Real 25s service response timeout, dropped caller, independent queries, ordered next command and true native-timeout barriers are verified; see validation.nativeCommandReceiptRecovery. Command output validation no longer rewrites a known commit to unknown. Valid execution and unavailable text are separate; malformed execution identity retains a durable result barrier. Positive reference-mode negotiation exposes original receipt text through scoped reads."

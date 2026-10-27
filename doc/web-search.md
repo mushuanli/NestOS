@@ -33,7 +33,7 @@ resolveWebSearchStrategy(capabilities?, enabled = true, protocol?): WebSearchMod
 C4Container
     Person(user, "用户", "Web GUI / CLI")
 
-    System_Boundary(mindos, "MindOS") {
+    System_Boundary(nestos, "NestOS") {
         Container(ui, "llm-ui", "DOM", "开关 + citations 渲染")
         Container(session, "llm-session", "TS", "三态决策 + 事件投影")
         Container(effects, "kernel-adapters", "TS", "参数下发 + citations 事件")

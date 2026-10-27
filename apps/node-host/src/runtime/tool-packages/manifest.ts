@@ -22,7 +22,7 @@ export function packageRelative(value: unknown): string {
 }
 
 export async function readToolPackage(root: string): Promise<ToolPackageSource> {
-    const raw = await readFile(path.join(root, 'mindos-tool.json'), 'utf8'); let data: unknown;
+    const raw = await readFile(path.join(root, 'nestos-tool.json'), 'utf8'); let data: unknown;
     try {data = JSON.parse(raw);} catch {throw packageError('TOOL_PACKAGE_MANIFEST_INVALID', 'Tool package manifest contains invalid JSON');}
     if (!data || typeof data !== 'object' || Array.isArray(data)) throw packageError('TOOL_PACKAGE_MANIFEST_INVALID', 'Expected a tool package manifest');
     const item = data as Record<string, unknown>;
@@ -66,11 +66,11 @@ function executableEntries(value: unknown): ToolPackageManifest['executables'] {
 }
 
 export function toolPackageDirectories(env: NodeJS.ProcessEnv = process.env): string[] {
-    if (!env.MINDOS_TOOL_PACKAGE_DIRS) return [path.resolve(env.INIT_CWD || process.cwd(), 'tools')];
+    if (!env.NESTOS_TOOL_PACKAGE_DIRS) return [path.resolve(env.INIT_CWD || process.cwd(), 'tools')];
     let value: unknown;
-    try {value = JSON.parse(env.MINDOS_TOOL_PACKAGE_DIRS);} catch {throw packageError('TOOL_PACKAGE_CATALOG_INVALID', 'MINDOS_TOOL_PACKAGE_DIRS must be a JSON array of absolute directories');}
+    try {value = JSON.parse(env.NESTOS_TOOL_PACKAGE_DIRS);} catch {throw packageError('TOOL_PACKAGE_CATALOG_INVALID', 'NESTOS_TOOL_PACKAGE_DIRS must be a JSON array of absolute directories');}
     if (!Array.isArray(value) || value.some(item => typeof item !== 'string' || !path.isAbsolute(item)))
-        throw packageError('TOOL_PACKAGE_CATALOG_INVALID', 'MINDOS_TOOL_PACKAGE_DIRS must be a JSON array of absolute directories');
+        throw packageError('TOOL_PACKAGE_CATALOG_INVALID', 'NESTOS_TOOL_PACKAGE_DIRS must be a JSON array of absolute directories');
     return [...new Set(value as string[])];
 }
 
@@ -78,7 +78,7 @@ export async function discoverToolPackages(directories: string[]): Promise<ToolP
     const sources: ToolPackageSource[] = [];
     for (const directory of directories) {
         try {
-            if ((await stat(path.join(directory, 'mindos-tool.json'))).isFile()) {sources.push(await readToolPackage(directory)); continue;}
+            if ((await stat(path.join(directory, 'nestos-tool.json'))).isFile()) {sources.push(await readToolPackage(directory)); continue;}
         } catch (error) {if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;}
         let children;
         try {children = await readdir(directory, {withFileTypes: true});}

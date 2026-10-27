@@ -9,7 +9,7 @@ beforeEach(async () => {
     fs = await manager.openFileSystem('/'); repository = new SessionRepository(fs); await repository.init();
 });
 afterEach(async () => { await repository.dispose(); await manager.dispose(); });
-const directory = '/home/admin/projects/project/.mindos/sessions';
+const directory = '/home/admin/projects/project/.nestos/sessions';
 
 it('relocates existing central conversation data while keeping runtime controls and kernel files', async () => {
     const id = await repository.createSession('Existing');

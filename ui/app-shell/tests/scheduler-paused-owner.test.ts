@@ -23,7 +23,7 @@ function message(child: ChildProcess): Promise<any> {
 }
 
 it('fences delayed controls after a stopped local owner resumes behind its replacement', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'mindos-paused-owner-'));
+    const root = await mkdtemp(join(tmpdir(), 'nestos-paused-owner-'));
     const owner = start(root, 'owner'); let replacement: ChildProcess | undefined;
     try {
         const ready = await message(owner);

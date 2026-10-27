@@ -72,13 +72,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mushuanli/itookit.git",
+    "url": "https://github.com/mushuanli/nestos.git",
     "directory": "backend/llm-tasks"
   },
   "bugs": {
-    "url": "https://github.com/mushuanli/itookit/issues"
+    "url": "https://github.com/mushuanli/nestos/issues"
   },
-  "homepage": "https://github.com/mushuanli/itookit/tree/main/backend/llm-tasks#readme",
+  "homepage": "https://github.com/mushuanli/nestos/tree/main/backend/llm-tasks#readme",
   "engines": {
     "node": ">=16.0.0"
   },

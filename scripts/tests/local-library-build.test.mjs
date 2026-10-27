@@ -34,7 +34,7 @@ fs.appendFileSync(process.env.BUILD_LOG, '${item.directory}:'+value+'\\n');`);
 }
 function build(root, library) {
     return spawnSync(process.execPath, ['scripts/local-libraries.mjs', 'build', ...(library ? [library] : [])], {
-        cwd: root, encoding: 'utf8', env: { ...process.env, MINDOS_LIBRARY_SNAPSHOT: '', BUILD_LOG: join(root, 'build.log') }, timeout: 60_000,
+        cwd: root, encoding: 'utf8', env: { ...process.env, NESTOS_LIBRARY_SNAPSHOT: '', BUILD_LOG: join(root, 'build.log') }, timeout: 60_000,
     });
 }
 const lines = root => readFileSync(join(root, 'build.log'), 'utf8').trim().split('\n');

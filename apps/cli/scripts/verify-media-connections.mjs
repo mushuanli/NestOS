@@ -153,8 +153,8 @@ function makeWav() {
 }
 
 function fixtureEnvironment(profile) {
-    return { ...process.env, XDG_CONFIG_HOME: path.join(profile, 'xdg'), MINDOS_LOG_DIR: path.join(profile, 'logs'),
-        MINDOS_SESSION_LEASE_TTL_MS: '1500', MINDOS_SCHEDULER_LEASE_TTL_MS: '1500' };
+    return { ...process.env, XDG_CONFIG_HOME: path.join(profile, 'xdg'), NESTOS_LOG_DIR: path.join(profile, 'logs'),
+        NESTOS_SESSION_LEASE_TTL_MS: '1500', NESTOS_SCHEDULER_LEASE_TTL_MS: '1500' };
 }
 async function verifyHttpFailure() {
     const profile = await seed('http-failure'), definition = flow(); definition.nodes = [definition.nodes[0]];

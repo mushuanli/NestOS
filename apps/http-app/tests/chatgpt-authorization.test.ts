@@ -21,7 +21,7 @@ function jwt(nonce: string, changes: Record<string, unknown> = {}) {
     return header + '.' + payload + '.' + sign('RSA-SHA256', Buffer.from(header + '.' + payload), keys.privateKey).toString('base64url');
 }
 async function setup() {
-    const directory = await mkdtemp(path.join(tmpdir(), 'mindos-chatgpt-'));
+    const directory = await mkdtemp(path.join(tmpdir(), 'nestos-chatgpt-'));
     releases.push(() => rm(directory, { recursive: true, force: true }));
     const store = new PrivateAuthStore(directory); await store.initialize();
     const requests: Array<{ url: string; body: URLSearchParams }> = [];
@@ -60,7 +60,7 @@ it('completes PKCE authorization, keeps credentials private and restores the sam
     const fixture = await setup(), { auth, store, begin, requests, directory } = fixture;
     const { state, callback } = await begin(), url = new URL(state.pending!.url);
     expect(url.searchParams.get('client_id')).toBe('dynamic_agent_client');
-    expect(url.searchParams.get('agent_name_hint')).toBe('MindOS');
+    expect(url.searchParams.get('agent_name_hint')).toBe('NestOS');
     expect(url.searchParams.get('ext_agent_host_id')).toBe(store.hostId);
     expect(url.searchParams.get('code_challenge_method')).toBe('S256');
     expect((await auth.complete('provider', state.pending!.id, callback.href)).status).toBe('authorized');
@@ -138,7 +138,7 @@ it('rejects a forged signature and public credential directories', async () => {
 });
 
 it('uses an OS-backed directory lock and permits reopening after release', async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), 'mindos-http-lock-'));
+    const directory = await mkdtemp(path.join(tmpdir(), 'nestos-http-lock-'));
     releases.push(() => rm(directory, { recursive: true, force: true }));
     const release = await acquireHostLock(directory);
     try { await expect(acquireHostLock(directory)).rejects.toThrow('another application host'); }

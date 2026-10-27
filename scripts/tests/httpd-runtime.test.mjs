@@ -84,12 +84,12 @@ test('captures source bytes independently and detects edits during a release bui
 });
 
 test('release and development isolate logs, credentials, ports and development data', () => {
-    const env = { XDG_CONFIG_HOME: '/tmp/mindos-config' };
+    const env = { XDG_CONFIG_HOME: '/tmp/nestos-config' };
     const release = runtimePaths('release', env), development = runtimePaths('dev', env);
-    assert.equal(release.runtime, '/var/log/mindos/httpd.runtime.log');
-    assert.equal(release.audit, '/var/log/mindos/httpd.audit.jsonl');
-    assert.equal(development.runtime, '/var/log/mindos/httpd.debug.runtime.log');
-    assert.equal(development.audit, '/var/log/mindos/httpd.debug.audit.jsonl');
+    assert.equal(release.runtime, '/var/log/nestos/httpd.runtime.log');
+    assert.equal(release.audit, '/var/log/nestos/httpd.audit.jsonl');
+    assert.equal(development.runtime, '/var/log/nestos/httpd.debug.runtime.log');
+    assert.equal(development.audit, '/var/log/nestos/httpd.debug.audit.jsonl');
     assert.notEqual(release.audit, development.audit); assert.notEqual(release.auth, development.auth);
     const dev = hostArguments('dev', [], env), prod = hostArguments('release', [], env);
     assert.equal(dev[dev.indexOf('--port') + 1], '2001');
@@ -100,10 +100,10 @@ test('release and development isolate logs, credentials, ports and development d
     assert.equal(overridden.filter(value => value === '--root').length, 1);
 });
 test('redirects both httpd logs without moving config and preserves an explicit audit file', () => {
-    const env = { XDG_CONFIG_HOME: '/tmp/mindos-config', MINDOS_HTTPD_LOG_DIR: '/tmp/mindos-logs' };
+    const env = { XDG_CONFIG_HOME: '/tmp/nestos-config', NESTOS_HTTPD_LOG_DIR: '/tmp/nestos-logs' };
     for (const mode of ['release', 'dev']) {
         const paths = runtimePaths(mode, env), defaults = runtimePaths(mode, { XDG_CONFIG_HOME: env.XDG_CONFIG_HOME });
-        assert.equal(paths.logs, env.MINDOS_HTTPD_LOG_DIR);
+        assert.equal(paths.logs, env.NESTOS_HTTPD_LOG_DIR);
         assert.equal(path.dirname(paths.runtime), paths.logs); assert.equal(path.dirname(paths.audit), paths.logs);
         assert.equal(paths.auth, defaults.auth); assert.equal(paths.config, defaults.config);
         const args = hostArguments(mode, [], env);

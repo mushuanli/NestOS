@@ -10,7 +10,7 @@ import { executeApplicationCommand } from '../../cli/src/application-command';
 const cleanup: Array<() => Promise<unknown>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); vi.restoreAllMocks(); });
 async function setup() {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-cli-http-')); cleanup.push(() => rm(root, {recursive: true, force: true}));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-cli-http-')); cleanup.push(() => rm(root, {recursive: true, force: true}));
     const identity = path.join(root, 'certs'); await createCertificates(identity, ['127.0.0.1']);
     const local = {profile: path.join(root, 'data'), authDir: path.join(root, 'auth'), auditFile: path.join(root, 'cli-local-audit.jsonl')};
     const start = async () => {

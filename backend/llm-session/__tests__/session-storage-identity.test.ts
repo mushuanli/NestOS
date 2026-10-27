@@ -6,7 +6,7 @@ import * as identifiers from '../src/persistence/ulid';
 
 let manager: IVFSManager, fs: IFileSystem, repository: SessionRepository;
 const index = '/var/lib/sessions/folders.seq';
-const directory = '/home/admin/projects/project/.mindos/sessions';
+const directory = '/home/admin/projects/project/.nestos/sessions';
 beforeEach(async () => {
     ({ manager } = await createVFS({ rootBackend: new MemoryBackend() }));
     fs = await manager.openFileSystem('/'); repository = new SessionRepository(fs); await repository.init();

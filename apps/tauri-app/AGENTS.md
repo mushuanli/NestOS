@@ -1,4 +1,4 @@
-# MindOS Tauri 宿主
+# NestOS Tauri 宿主
 
 桌面入口位于 `src/main.ts`，原生实现位于 `src-tauri/`。宿主装配 LocalFS/SQLite、原生文件与进程端口、ApplicationRuntime 和共享 app-shell。
 

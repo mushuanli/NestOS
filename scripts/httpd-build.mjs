@@ -117,7 +117,7 @@ function compile(context, source, staging, kind) {
         const app = path.join(source, 'apps/http-app'), graph = path.join(source, '.httpd-ui-inputs.json');
         let files;
         if (kind === 'ui') {
-            run('pnpm', ['exec', 'vite', 'build', '--outDir', output, '--emptyOutDir'], app, {...env, MINDOS_HTTPD_BUILD_GRAPH: graph});
+            run('pnpm', ['exec', 'vite', 'build', '--outDir', output, '--emptyOutDir'], app, {...env, NESTOS_HTTPD_BUILD_GRAPH: graph});
             files = readJSON(graph); rmSync(graph);
         } else {
             run('pnpm', ['exec', 'tsup', 'src/server/main.ts', '--format', 'esm', '--platform', 'node', '--out-dir', output, '--splitting', '--clean', '--metafile'], app, env);
@@ -185,6 +185,6 @@ export function buildHttpRelease(root, {cache = true, activate} = {}) {
             inputs: sourceFingerprint(root, dependencyInputs(inputs))}));
         const key = digest(JSON.stringify({fingerprint, dependencyKey, environment, commit, dirty}));
         return buildRelease({root, releases, cacheDirectory, snapshot, inputs, fingerprint, environment, dependencyKey, key,
-            cache, stage, sourceGuard, operationId, commit, dirty, env: {...process.env, MINDOS_LIBRARY_DEPLOYMENT: '1'}}, activate);
+            cache, stage, sourceGuard, operationId, commit, dirty, env: {...process.env, NESTOS_LIBRARY_DEPLOYMENT: '1'}}, activate);
     }); } finally { unlock(); }
 }

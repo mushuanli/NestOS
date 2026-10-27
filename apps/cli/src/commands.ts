@@ -11,7 +11,7 @@ import { stringify as yamlStringify } from 'yaml';
 import type { EventEnvelope, ExitRecord, JsonValue, Kernel, TaskHandle } from '@itookit/durable-kernel';
 import { loadWorkflow, parseDuration, validateWorkflow } from './config';
 import { expandWorkflow } from './expand';
-import { resolveProfileRoot } from './mindos';
+import { resolveProfileRoot } from './nestos';
 import { compileDag, createCliRuntime, cliStorage, type CliRuntime } from './runtime';
 import { compileRunDefinition } from './run-definition';
 import { createRunDefinitionFromFlow, toDagRunSpec, type RunDefinition } from '@itookit/app-core';
@@ -79,7 +79,7 @@ export interface CommandOptions {
     maxBytes?: number;
     /** --retry-indeterminate：resume 时对无法核对结果的 Effect 授权重放。 */
     retryIndeterminate?: boolean;
-    /** -d / --http: start the browser-accessible MindOS UI on [ip:]port. */
+    /** -d / --http: start the browser-accessible NestOS UI on [ip:]port. */
     http?: string;
 }
 
@@ -222,7 +222,7 @@ export async function promptCommand(options: CommandOptions): Promise<number> {
         }],
         tasks: [{ id: 'q', agent: 'default', description: prompt, outputs: { result: 'text' } }],
         result: { task: 'q', output: 'result' },
-        workspace: { root: '.', state_dir: '.mindos-prompt' },
+        workspace: { root: '.', state_dir: '.nestos-prompt' },
         // prompt 直跑默认 native（无需容器）；需要隔离时用 --sandbox oci
         sandbox: { mode: 'native' },
     };
@@ -669,7 +669,7 @@ function collectBlockedEffects(tasks: Awaited<ReturnType<Kernel['listSessionTask
 
 function printBlockedHint(manifest: RunManifest, options: CommandOptions): void {
     const effects = manifest.blockedEffects ?? [];
-    const resume = `mindos resume ${manifest.id} --state-dir ${resolveStateDir(options)} --retry-indeterminate`;
+    const resume = `nestos resume ${manifest.id} --state-dir ${resolveStateDir(options)} --retry-indeterminate`;
     if (options.json) {
         process.stderr.write(`${JSON.stringify({ type: 'run.blocked', runId: manifest.id, effects, resume })}\n`);
         return;
@@ -813,14 +813,14 @@ async function processInteractions(
 
 function printInteractionHint(manifest: RunManifest, options: CommandOptions): void {
     const requestIds = manifest.pendingInteractions.map(item => item.interactionId);
-    const resume = `mindos resume ${manifest.id} --state-dir ${resolveStateDir(options)}`;
+    const resume = `nestos resume ${manifest.id} --state-dir ${resolveStateDir(options)}`;
     if (options.json) {
         process.stderr.write(`${JSON.stringify({ type: 'run.waiting', runId: manifest.id, requestIds, resume })}\n`);
         return;
     }
     process.stderr.write(
         `等待人工输入 ${requestIds.join(', ')}。批准后继续：${resume}\n` +
-        requestIds.map(id => `  mindos respond ${manifest.id} ${id} --approve\n`).join(''),
+        requestIds.map(id => `  nestos respond ${manifest.id} ${id} --approve\n`).join(''),
     );
 }
 
@@ -965,7 +965,7 @@ async function runtimeFor(
 ): Promise<CliRuntime> {
     await stat(workflow.workspaceRoot);
     const vfsRoot = resolveProfileVfsRoot(options);
-    process.stderr.write(`[profile] mindos root: ${vfsRoot}\n`);
+    process.stderr.write(`[profile] nestos root: ${vfsRoot}\n`);
     return createCliRuntime(workflow, manifest, async grants => {
         manifest.grants = grants;
         await store.save(manifest);

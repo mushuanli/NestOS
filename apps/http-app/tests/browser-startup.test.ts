@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import {afterEach, expect, it, vi} from 'vitest';
-import {createStartupStatus, stylesReady} from 'mind-os/startup';
+import {createStartupStatus, stylesReady} from 'nestos-web/startup';
 
 afterEach(() => {document.head.replaceChildren(); document.body.replaceChildren(); delete document.body.dataset.appStarting; vi.useRealTimers();});
 function stylesheet() {

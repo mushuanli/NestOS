@@ -7,7 +7,7 @@
 ## 分层与接口
 
 - `ProjectFavorites` 保存 `{ id, title, target }`；target 为项目内规范文件路径（含目录类型）或稳定 sessionId。项目身份通过 projectId 分区；不持久化易变的项目文件夹导航地址。
-- 数据位于 `<mindos>/var/lib/projects/<projectId>/favorites.seq` 的 items 条目。seq 事务读改写，支持多个视图并发更新；同一目标不重复收藏，每项目最多 256 条。
+- 数据位于 `<nestos>/var/lib/projects/<projectId>/favorites.seq` 的 items 条目。seq 事务读改写，支持多个视图并发更新；同一目标不重复收藏，每项目最多 256 条。
 - `resolveProjectFavorite` 在点击时解析项目当前导航路径，并检查收藏会话仍属于该项目。项目重命名、会话分组移动不需要重写收藏 ID。文件使用路径身份：项目工作区收到已提交的 VFS 删除事件后清理该路径及所有后代收藏，移动/重命名更新后代路径及目标标题，释放视图前等待收藏写入完成。会话收藏在读取/刷新时按当前项目成员和标题校准，删除会话同步清理；同项目分组移动保留 sessionId。未经过 VFS 且未提供变更事件的外部宿主操作不能推测重命名目标。
 - `BrowserTarget` 的 favorites/favorite 表示导航投影，不能当作真实文件读写、移动、删除。收藏组为固定条目，收藏项取消通过专门服务完成。
 - vfs-ui 的 `favoriteAction` 端口把「查询」与「命令」分开：`state(node)` 只返回 active（`undefined` 表示该行不展示星标），`toggle(node)` 在用户激活后执行；它负责通用菜单、行尾星标展示及点击执行，不依赖项目、HTTP、Session 或配置文件。宿主使用 `projectFavoriteAction` 适配领域操作，图标和文案来自 common，使用 `project.favorites` 和 `vfs.favorites.add/remove`。

@@ -2,19 +2,19 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
-import { createMindOSNodeDriver, type MindOSNodeDriver, type RemoteProject } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver, type NestOSNodeDriver, type RemoteProject } from '@itookit/nestos-node-driver';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowLibraryCommand } from '@itookit/app-contracts';
 import type { FlowDraft } from '@itookit/llm-flow/contracts';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { harnessExecutionJournalKey } from '../src/projects/harness-execution';
 
-const metadataFile = process.env.MINDOS_HARNESS_LIVE_METADATA;
-const runId = process.env.MINDOS_HARNESS_LIVE_RUN_ID;
-const recoveryOnly = process.env.MINDOS_HARNESS_LIVE_RECOVERY_ONLY === '1';
+const metadataFile = process.env.NESTOS_HARNESS_LIVE_METADATA;
+const runId = process.env.NESTOS_HARNESS_LIVE_RUN_ID;
+const recoveryOnly = process.env.NESTOS_HARNESS_LIVE_RECOVERY_ONLY === '1';
 const expectedCases = recoveryOnly ? 1 : 4;
 type Runtime = Awaited<ReturnType<typeof createApplicationRuntime>>;
-let runtime: Runtime, driver: MindOSNodeDriver, folder: string, root: string;
+let runtime: Runtime, driver: NestOSNodeDriver, folder: string, root: string;
 const results: Array<Record<string, unknown>> = [];
 const nativeObservations: Array<Record<string, unknown>> = [];
 type ModelRequest = { stream?: boolean; messages: Array<{ role: string; content: string }> };
@@ -40,7 +40,7 @@ beforeAll(async () => {
         ] };
         return Promise.resolve(completion(request, message));
     });
-    driver = createMindOSNodeDriver();
+    driver = createNestOSNodeDriver();
     runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli', remoteSourceProvider: driver,
         digitalTwinAutoStart: false });
     const remote = runtime.projects.remoteMounts!;

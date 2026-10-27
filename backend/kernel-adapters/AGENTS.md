@@ -110,13 +110,13 @@ ModelDefaults / ModelOperation / modelForOperation 属于模型管理契约。Co
 
 `resolveChatModelTiers` 统一工具箱与聊天菜单的模型档位解析：只返回 Provider 目录中存在的聊天模型，保留缺省 category 的聊天语义，不为 standard/fast 添加未配置档位；optimal 缺省时沿用连接 model。未知 ID 和媒体模型不可作为聊天候选，执行准入继续由 assertModelConnection 校验。`resolveChatModelForTier` 复用执行档位的回退规则，解析任意指定档位的实际聊天模型；显式配置的媒体/未知模型返回 undefined，不能跳过它回退到其他聊天档位。
 
-模型管理机制使用 `/llm/core`，预设经 `presets` 快照注入，自动连接经 `providerConnectionPolicy` 注入。MindOS 目录与默认连接策略只在可选 `/llm/presets`；旧 `/llm` 聚合入口已删除。禁止机制入口加载产品目录。
+模型管理机制使用 `/llm/core`，预设经 `presets` 快照注入，自动连接经 `providerConnectionPolicy` 注入。NestOS 目录与默认连接策略只在可选 `/llm/presets`；旧 `/llm` 聚合入口已删除。禁止机制入口加载产品目录。
 
 配置格式与目录组合只从 `/llm/config` 提供，不依赖产品目录或设备实现。MCP 宿主桥从 `/llm/mcp-host` 的 createMCPStdioTransportFactory 创建，通过驱动 options.mcp.stdioTransport 注入。机制入口禁止读取全局桥；不提供全局桥注册或兼容构造器。
 
 构建自动运行 [入口检查](../../scripts/check-llm-entrypoints.mjs)，递归检查 ESM/CJS 配置与机制导入图，并验证核心入口不加载旧 MCP 全局注册模块。
 
-MCP 日志与客户端身份经 MCPConnectionOptions.logger/clientInfo 实例注入；机制默认空日志与通用身份，禁止读取 common 全局日志或内置 MindOS 身份。
+MCP 日志与客户端身份经 MCPConnectionOptions.logger/clientInfo 实例注入；机制默认空日志与通用身份，禁止读取 common 全局日志或内置 NestOS 身份。
 
 诊断日志与进程不可用提示通过实例选项注入；禁止重新引入 common 全局日志/翻译、MCP 全局注册或旧 /llm 聚合。设备 ioctl 分为管理分派表与 MCP/Skill/Chat 会话处理。
 
@@ -132,7 +132,7 @@ AgentDefinition.execution 可声明普通 Agent 或 Flow 引用（flowId、可�
 
 厂商参考价统一记录在 ../device-llm/src/catalogs/model-prices.json，覆盖全部内置 Provider，保留来源、reviewedAt、原币种/单位及价格条件；只经可选 presets 注入 reference_catalog。getPricingConfig 返回参考目录副本，与可编辑 model_pricing 账本费率独立；精确匹配 Provider/模型 ID，不换汇、不套用名称相似项或上游直供价。无可核实价格时记录 unverified/account/subscription/variable，不当作零价。新增 Provider 须补参考目录记录，厂商网页不进入 UI 或机制入口依赖。
 
-Provider 支持目录、模型/价格/接口资料的权威定义在 device-llm；kernel-adapters/contracts 复用 device-llm/contracts 的纯契约。禁止在本包重新建立同一厂家目录或全局注册器，MindOS 的 Agent、默认连接及宿主存储保持应用策略。
+Provider 支持目录、模型/价格/接口资料的权威定义在 device-llm；kernel-adapters/contracts 复用 device-llm/contracts 的纯契约。禁止在本包重新建立同一厂家目录或全局注册器，NestOS 的 Agent、默认连接及宿主存储保持应用策略。
 
 - ConnectionCancelResult 只在连接边界表达停止/清理结果；HarnessExecutionEffect 只接受 stopped/cleanup=confirmed 且证明匹配当前 Session/Task/Effect，随后仍等待 in-flight 退出。pending/unknown、旧 void、缺失或串用证明一律保留 Kernel cleanupPending；不把返回标签、取消接纳或断线当作已释放。宿主 Provider 必须从原持久 journal 及绑定收尾产生证明，Kernel 的 EffectAdapter.cancel 仍为 Promise<void>。
 

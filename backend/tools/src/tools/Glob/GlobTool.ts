@@ -12,7 +12,7 @@ import { discoverToolFiles, displaySearchPath, matchesSearchGlob } from '../../c
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
-    includeIgnored: z.boolean().optional().describe('Include files excluded by .gitignore, .mindosignore and default directory filters. Does not change access permissions.'),
+    includeIgnored: z.boolean().optional().describe('Include files excluded by .gitignore, .nestosignore and default directory filters. Does not change access permissions.'),
     pattern: z.string().describe('The glob pattern to match files against'),
     path: z
       .string()

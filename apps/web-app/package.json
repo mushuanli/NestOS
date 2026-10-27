@@ -1,5 +1,5 @@
 {
-  "name": "mind-os",
+  "name": "nestos-web",
   "private": true,
   "version": "0.0.1",
   "type": "module",
@@ -40,7 +40,7 @@
     "mermaid": "^11.12.1",
     "@itookit/tools": "workspace:*",
     "@itookit/sync-adapters": "workspace:*",
-    "@itookit/mindos-node-driver": "workspace:*",
+    "@itookit/nestos-node-driver": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
     "@itookit/image-tools": "workspace:*"
   },

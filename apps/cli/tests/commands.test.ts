@@ -23,7 +23,7 @@ const servers: ReturnType<typeof createServer>[] = [];
 
 afterEach(async () => {
     await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
-    delete process.env.MINDOS_TEST_API_KEY;
+    delete process.env.NESTOS_TEST_API_KEY;
 });
 
 describe('parseArgs', () => {
@@ -48,7 +48,7 @@ describe('parseArgs', () => {
     });
 
     it('parses --profile, --set-home and repeated --add-dir', () => {
-        expect(parseArgs(['run', '--profile', '/tmp/mindos-data']).options).toMatchObject({ profile: '/tmp/mindos-data' });
+        expect(parseArgs(['run', '--profile', '/tmp/nestos-data']).options).toMatchObject({ profile: '/tmp/nestos-data' });
         expect(parseArgs(['run', '--set-home', '/project']).options).toMatchObject({ setHome: '/project' });
         expect(parseArgs(['run', '--add-dir', '/lib:ro', '--add-dir', '/cache:rw']).options)
             .toMatchObject({ addDir: ['/lib:ro', '/cache:rw'] });
@@ -81,14 +81,14 @@ describe('resolveRespondValue', () => {
 
 describe('validate --offline', () => {
     it('validates without API keys when --offline is set', async () => {
-        const dir = await mkdtemp(path.join(tmpdir(), 'mindos-offline-'));
+        const dir = await mkdtemp(path.join(tmpdir(), 'nestos-offline-'));
         const configPath = path.join(dir, 'mindos.yml');
         await writeFile(configPath, offlineConfig(), 'utf8');
         await expect(validateCommand({ file: configPath, offline: true })).resolves.toBe(0);
     });
 
     it('fails without --offline when the API key env is missing', async () => {
-        const dir = await mkdtemp(path.join(tmpdir(), 'mindos-offline-'));
+        const dir = await mkdtemp(path.join(tmpdir(), 'nestos-offline-'));
         const configPath = path.join(dir, 'mindos.yml');
         await writeFile(configPath, offlineConfig(), 'utf8');
         await expect(validateCommand({ file: configPath })).rejects.toThrow('environment variable');
@@ -97,7 +97,7 @@ describe('validate --offline', () => {
 
 describe('graph command', () => {
     it('prints the compiled DAG without executing', async () => {
-        const dir = await mkdtemp(path.join(tmpdir(), 'mindos-graph-'));
+        const dir = await mkdtemp(path.join(tmpdir(), 'nestos-graph-'));
         const configPath = path.join(dir, 'mindos.yml');
         await writeFile(configPath, graphConfig(), 'utf8');
         const writes: string[] = [];
@@ -123,13 +123,13 @@ describe('run lifecycle commands', () => {
         const server = createServer((_request, response) => respondSse(response, 'done'));
         const port = await startServer(server);
 
-        const workspace = await mkdtemp(path.join(tmpdir(), 'mindos-lifecycle-'));
+        const workspace = await mkdtemp(path.join(tmpdir(), 'nestos-lifecycle-'));
         const configPath = path.join(workspace, 'mindos.yml');
-        process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+        process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
         await writeFile(configPath, runConfig(port), 'utf8');
 
-        expect(await runCommand({ file: configPath, stateDir: path.join(workspace, '.mindos'), headless: true, json: true })).toBe(0);
-        const stateDir = path.join(workspace, '.mindos');
+        expect(await runCommand({ file: configPath, stateDir: path.join(workspace, '.nestos'), headless: true, json: true })).toBe(0);
+        const stateDir = path.join(workspace, '.nestos');
         const runId = await latestRun(stateDir);
 
         expect(await statusCommand(runId, { stateDir, json: true })).toBe(0);
@@ -181,7 +181,7 @@ providers:
   - id: mock
     implementation: openai-compatible
     base_url: http://localhost
-    api_key_env: MINDOS_MISSING_KEY_XYZ
+    api_key_env: NESTOS_MISSING_KEY_XYZ
     models:
       - id: mock-model
 connections:
@@ -212,7 +212,7 @@ providers:
   - id: mock
     implementation: openai-compatible
     base_url: http://localhost
-    api_key_env: MINDOS_MISSING_KEY_XYZ
+    api_key_env: NESTOS_MISSING_KEY_XYZ
     models:
       - id: mock-model
 connections:
@@ -254,7 +254,7 @@ providers:
     implementation: openai-compatible
     base_url: http://127.0.0.1:${port}
     default_path: /v1/chat/completions
-    api_key_env: MINDOS_TEST_API_KEY
+    api_key_env: NESTOS_TEST_API_KEY
     models:
       - id: mock-model
 connections:

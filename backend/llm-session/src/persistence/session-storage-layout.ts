@@ -1,6 +1,6 @@
 import { FSError } from '@itookit/vfs-core';
 
-/** Paths are relative to the MindOS filesystem, never to the host OS root. */
+/** Paths are relative to the NestOS filesystem, never to the host OS root. */
 export const SESSION_STORAGE_ROOT = '/var/lib/sessions';
 export const KERNEL_STORAGE_ROOT = '/var/lib/kernel';
 

@@ -20,7 +20,7 @@
 
 ## 2. 当前逻辑目录
 
-路径由 StorageBinding resolver 决定，Session 不必放在固定的 `sessions/` 父目录。以下为两个逻辑根，不能理解为每个 Task 对应一个独立数据库。MindOS 当前 catalogRoot 为 `/var/lib/kernel`，sessionRoot 为 `/var/lib/sessions/<sessionId>/kernel`；外层业务 `session.seq/history.seq/attachments` 属于 SessionRepository，不能与本节 Kernel 内层 `session.seq` 混淆。
+路径由 StorageBinding resolver 决定，Session 不必放在固定的 `sessions/` 父目录。以下为两个逻辑根，不能理解为每个 Task 对应一个独立数据库。NestOS 当前 catalogRoot 为 `/var/lib/kernel`，sessionRoot 为 `/var/lib/sessions/<sessionId>/kernel`；外层业务 `session.seq/history.seq/attachments` 属于 SessionRepository，不能与本节 Kernel 内层 `session.seq` 混淆。
 
 ```text
 <catalogRoot>/

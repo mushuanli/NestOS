@@ -29,7 +29,7 @@ try {
         const frozen = existsSync(join(directory, 'pnpm-lock.yaml')) && !updateLock;
         run('pnpm', ['install', frozen ? '--frozen-lockfile' : '--no-frozen-lockfile'], directory);
         const args = process.argv.slice(2).filter(arg => !['--', '--update-lock'].includes(arg));
-        run('pnpm', args.length ? args : ['--filter', 'mind-os', 'build'], directory);
+        run('pnpm', args.length ? args : ['--filter', 'nestos-web', 'build'], directory);
         cpSync(join(directory, 'pnpm-lock.yaml'), join(root, 'pnpm-lock.registry.yaml'));
         console.log(`Registry build complete: ${directory}`);
     }

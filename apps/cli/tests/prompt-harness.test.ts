@@ -4,7 +4,7 @@ import path from 'node:path';
 import { afterEach, expect, it, vi } from 'vitest';
 import { promptCommand } from '../src/commands';
 
-afterEach(() => { vi.unstubAllGlobals(); delete process.env.MINDOS_PROMPT_TEST_KEY; });
+afterEach(() => { vi.unstubAllGlobals(); delete process.env.NESTOS_PROMPT_TEST_KEY; });
 
 it.each([{ noTools: false, includeIgnored: false }, { noTools: false, includeIgnored: true },
     { noTools: true, includeIgnored: false }])('runs a quick prompt with real Session files (%j)', async ({ noTools, includeIgnored }) => {
@@ -12,7 +12,7 @@ it.each([{ noTools: false, includeIgnored: false }, { noTools: false, includeIgn
     const workspace = path.join(root, 'project');
     await mkdir(path.join(workspace, 'node_modules'), { recursive: true });
     await writeFile(path.join(workspace, '.gitignore'), 'git-hidden.txt');
-    await writeFile(path.join(workspace, '.mindosignore'), 'ai-hidden.txt');
+    await writeFile(path.join(workspace, '.nestosignore'), 'ai-hidden.txt');
     await writeFile(path.join(workspace, 'git-hidden.txt'), 'git-filtered mdx content');
     await writeFile(path.join(workspace, 'ai-hidden.txt'), 'ai-filtered mdx content');
     await writeFile(path.join(workspace, 'source.txt'), 'actual mdx evidence');
@@ -29,10 +29,10 @@ it.each([{ noTools: false, includeIgnored: false }, { noTools: false, includeIgn
         return new Response(`data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: tool ? 'tool_calls' : 'stop' }] })}\n\ndata: [DONE]\n\n`,
             { headers: { 'content-type': 'text/event-stream' } });
     }));
-    process.env.MINDOS_PROMPT_TEST_KEY = 'test';
+    process.env.NESTOS_PROMPT_TEST_KEY = 'test';
     try {
         expect(await promptCommand({ prompt: 'current dir which file include mdx string?', noTools,
-            apiKeyEnv: 'MINDOS_PROMPT_TEST_KEY', baseUrl: 'http://mock', model: 'mock',
+            apiKeyEnv: 'NESTOS_PROMPT_TEST_KEY', baseUrl: 'http://mock', model: 'mock',
             setHome: workspace, stateDir: path.join(root, 'state'), json: true })).toBe(0);
         expect(requests).toHaveLength(noTools ? 1 : 2);
         if (noTools) expect(requests[0].tools ?? []).toEqual([]);

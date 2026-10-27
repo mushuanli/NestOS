@@ -9,9 +9,9 @@ import { workspaceAliases, workspaceExcludes } from '../../scripts/workspace-sou
 export default defineConfig({
     base: './',
     plugins: [moduleSeparationPlugin('frontend'), {
-        name: 'mindos-web-shell',
+        name: 'nestos-web-shell',
         transformIndexHtml: { order: 'pre', handler() {
-            const source = createRequire(import.meta.url).resolve('mind-os/index.html');
+            const source = createRequire(import.meta.url).resolve('nestos-web/index.html');
             return readFileSync(source, 'utf8')
                 .replace('<head>', '<head>\n<link rel="icon" href="data:,">')
                 .replace('src/styles/index.css', './src/style.css')

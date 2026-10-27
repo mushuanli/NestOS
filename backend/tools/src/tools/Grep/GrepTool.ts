@@ -13,7 +13,7 @@ import { discoverToolFiles, displaySearchPath, matchesSearchGlob, readSearchFile
 
 const inputSchema = lazySchema(() =>
   z.strictObject({
-    includeIgnored: z.boolean().optional().describe('Include files excluded by .gitignore, .mindosignore and default directory filters. Does not change access permissions.'),
+    includeIgnored: z.boolean().optional().describe('Include files excluded by .gitignore, .nestosignore and default directory filters. Does not change access permissions.'),
     pattern: z.string().describe('The regular expression pattern to search for in file contents'),
     glob: z.string().optional().describe('Glob pattern to filter files (e.g. "*.ts", "**/*.tsx")'),
     path: z.string().optional().describe('File or directory to search in. Defaults to current working directory.'),

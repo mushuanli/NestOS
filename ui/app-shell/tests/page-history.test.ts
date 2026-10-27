@@ -10,13 +10,13 @@ it('returns through prior resources and keeps the initial deep link within the a
     writePageHistory('chat', '/directory', '#/chat/directory', 'replace', 'list');
     writePageHistory('chat', '/one.md', '#/chat/one', 'push', 'detail');
     writePageHistory('chat', '/two.md', '#/chat/two', 'push', 'detail');
-    expect(history.state.mindosPage).toBe(2);
+    expect(history.state.nestosPage).toBe(2);
     const back = () => new Promise<void>(resolve => {window.addEventListener('popstate', () => resolve(), {once: true}); backToPreviousPage(fallback);});
     await back(); expect(history.state.resourceId).toBe('/one.md');
     await back(); expect(history.state.resourceId).toBe('/directory'); expect(history.state.mobileView).toBe('list');
     backToPreviousPage(fallback); expect(fallback).toHaveBeenCalledOnce();
     const push = vi.spyOn(history, 'pushState');
-    writePageHistory('chat', '/canonical', '#/chat/canonical', 'replace'); expect(push).not.toHaveBeenCalled(); expect(history.state.mindosPage).toBe(0);
+    writePageHistory('chat', '/canonical', '#/chat/canonical', 'replace'); expect(push).not.toHaveBeenCalled(); expect(history.state.nestosPage).toBe(0);
 });
 it('uses a back icon on mobile and a sidebar icon on desktop, releasing responsive listeners', () => {
     const media = Object.assign(new EventTarget(), {matches: true}); vi.stubGlobal('matchMedia', () => media);

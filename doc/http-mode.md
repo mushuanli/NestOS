@@ -14,7 +14,7 @@ pnpm cli session send <session-id> "Hello" --agent <agent-id> --profile /path/to
 
 默认直接装配 Node 宿主 → `createApplicationRuntime` → `openApplicationView`；不监听端口，不启动浏览器，不请求 httpd。CLI 只转换参数和输出，应用命令默认输出 JSON；启动进度和诊断走 stderr。消息用引号作为一个参数传入。
 
-数据根解析与 MindOS profile 一致。显式路径的 OAuth 目录默认是同级 `<data-root>.auth`，desktop 使用 release 的私密授权目录，可用 `--auth-dir` 覆盖。主机凭据和日志必须位于 VFS 根之外。应用宿主获取数据锁及授权锁，同一数据根不能与已运行 httpd 同时启动第二个写宿主；锁冲突明确失败，此时显式使用 `--connect`。文件名 `httpd-host-lock.sqlite` 为兼容已有宿主保留。
+数据根解析与 NestOS profile 一致。显式路径的 OAuth 目录默认是同级 `<data-root>.auth`，desktop 使用 release 的私密授权目录，可用 `--auth-dir` 覆盖。主机凭据和日志必须位于 VFS 根之外。应用宿主获取数据锁及授权锁，同一数据根不能与已运行 httpd 同时启动第二个写宿主；锁冲突明确失败，此时显式使用 `--connect`。文件名 `httpd-host-lock.sqlite` 为兼容已有宿主保留。
 
 本地 `session send/submit` 等待本次 Submission 对应的历史与执行引用完成、失败、终止或等待人工输入，再关闭宿主；执行失败或终止返回退出码 2，等待人工输入返回 3；`--follow` 额外输出会话事件 JSONL。同 Session 其他调用的完成或审批不能提前结束本次等待。Flow 使用 RunGet.controlTaskIds 核对真实持久成员；Kernel rootTaskId 不能代替 Flow 成员归属。队列暂停时返回 execution.waitingForDispatch，不将接纳标成完成。关闭视图不会重发消息，也不会把关闭转换为远程 interrupt。
 
@@ -74,7 +74,7 @@ pnpm cli conversation reconcile <project-id> <profile-id> <native-session-id>
 
 这可以分离界面问题与后端问题：若 CLI 同样返回 `HARNESS_SESSION_BUSY`，应处理原生线程的 active writer；若同一端口发送成功而 UI 无回显，再检查界面订阅和投影。复查当前运行 httpd 的挂载、授权和占用状态应使用 `--connect`，本地模式用于隔离验证同一实现。
 
-mindos-node 0.1.3 起支持同一远程项目的多个原生 session 并发执行；同一 session 仍只允许一个活动 turn。提交与收据按 session/requestId 隔离，一个会话等待审批不阻塞其他会话。活动执行共享文件保护，最后一个执行结束前，文件 API、project_exec 与挂载变更仍返回忙；独立修改代码时显式使用 worktree。此能力需要升级实际运行的 mindos-node，仅更新 CLI 或 httpd 不会解除旧服务的项目串行限制。
+nestos-node 0.1.3 起支持同一远程项目的多个原生 session 并发执行；同一 session 仍只允许一个活动 turn。提交与收据按 session/requestId 隔离，一个会话等待审批不阻塞其他会话。活动执行共享文件保护，最后一个执行结束前，文件 API、project_exec 与挂载变更仍返回忙；独立修改代码时显式使用 worktree。此能力需要升级实际运行的 nestos-node，仅更新 CLI 或 httpd 不会解除旧服务的项目串行限制。
 
 ## CLI 启动 HTTPS 服务
 
@@ -87,12 +87,12 @@ pnpm cli -d 127.0.0.1:2000 --profile /path/to/data \
 
 ## 远程会话用量与费用估算
 
-mindos-node 0.1.5+ 的 Codex/Claude profile 声明 `capabilities.usage`，提供只读 `harness_session_usage`。现有 `harness_session_read`（首页）及 `harness_session_info` 同时返回 `session.usage`，客户端沿用已有历史读取、15 秒状态核对及终态刷新，不新增费用轮询。CLI `conversation show` 与 Web/Tauri 消费相同的 `usage` 和 `usageEstimate`。
+nestos-node 0.1.5+ 的 Codex/Claude profile 声明 `capabilities.usage`，提供只读 `harness_session_usage`。现有 `harness_session_read`（首页）及 `harness_session_info` 同时返回 `session.usage`，客户端沿用已有历史读取、15 秒状态核对及终态刷新，不新增费用轮询。CLI `conversation show` 与 Web/Tauri 消费相同的 `usage` 和 `usageEstimate`。
 
-- mindos-node 只读取已授权原生历史，按文件身份与偏移缓存新增记录；重启后重建，不保存价格或消息副本。每次最多扫描 32 MiB，单记录最多 2 MiB，最多 8192 个计量项，超过扫描窗口、记录异常或计数器重置时明确返回 `complete: false`；条目容量超限明确报错。读取失败保留会话可用性并标记 `usageUnavailable`。
+- nestos-node 只读取已授权原生历史，按文件身份与偏移缓存新增记录；重启后重建，不保存价格或消息副本。每次最多扫描 32 MiB，单记录最多 2 MiB，最多 8192 个计量项，超过扫描窗口、记录异常或计数器重置时明确返回 `complete: false`；条目容量超限明确报错。读取失败保留会话可用性并标记 `usageUnavailable`。
 - `usage.scope = "transcript"`：估算当前原生历史中可见的用量，包含分支继承的历史，不代表该分支新增消费；独立子会话或原生未提供的用量不会凭空补齐。此投影不能跨分支直接相加当作实际账单。
 - 输入、缓存读取、缓存写入为互斥 token 桶；推理 token 是输出的子集，不重复计价。Codex 的累计快照只取增量；Claude 按原生 message ID 替换重复帧。失败和取消不会清空已观察用量。
-- `mindos-node-driver` 校验身份、非负安全整数、重复项和汇总一致性，只搬运用量。`app-core` 注入估算函数；`kernel-adapters/contracts` 提供纯定价解析与计算，不读取 VFS 或网络。UI 只展示结果。
+- `nestos-node-driver` 校验身份、非负安全整数、重复项和汇总一致性，只搬运用量。`app-core` 注入估算函数；`kernel-adapters/contracts` 提供纯定价解析与计算，不读取 VFS 或网络。UI 只展示结果。
 - 价格优先级：供应商与模型精确匹配 → 模型名称/别名 → `fallbackFor` 包含供应商 ID 的默认价 → 全局 `default`。具体默认金额只放在可选产品预设，已有配置只补缺失的供应商默认条目，不覆盖用户设置；新增自定义供应商从用户配置的全局默认价生成可编辑条目，没有全局模板时不凭空生成价格。
 - 定价编辑器可修改 `fallbackFor`（供应商 ID，逗号分隔），`.llm` 的 pricing 条目保留此字段。示例：`{id: "my-default", fallbackFor: ["my-provider"], providers: {}, price: [2, 8, 2, 0.2]}`，单位 USD/百万 token。
 - `usageEstimate` 使用当前定价，并携带各条目的价格快照、匹配依据与用量 revision；未知价格返回 null，不把缺失数据当作零费用。远程估算不写入本地 `cost.seq`，不修改已入账历史费用，避免重复统计。
@@ -104,12 +104,12 @@ mindos-node 0.1.5+ 的 Codex/Claude profile 声明 `capabilities.usage`，提供
 | CLI 本地 | `<config>/logs/cli/cli-local-<timestamp>-<pid>.jsonl` 与 `cli-local-<pid>-audit.jsonl` |
 | CLI 连接 httpd | `<config>/logs/cli/cli-remote-<timestamp>-<pid>.jsonl`；服务端审计仍写 httpd 自己的文件 |
 | CLI `-d` | `<config>/logs/cli/httpd-cli-<timestamp>-<pid>.jsonl`、`<config>/logs/http/httpd-cli-audit.jsonl` |
-| httpd release | `/var/log/mindos/httpd.runtime.log` 与 `/var/log/mindos/httpd.audit.jsonl` |
-| httpd dev | `/var/log/mindos/httpd.debug.runtime.log` 与 `/var/log/mindos/httpd.debug.audit.jsonl` |
+| httpd release | `/var/log/nestos/httpd.runtime.log` 与 `/var/log/nestos/httpd.audit.jsonl` |
+| httpd dev | `/var/log/nestos/httpd.debug.runtime.log` 与 `/var/log/nestos/httpd.debug.audit.jsonl` |
 | Tauri dev/release | `<config>/logs/desktop/tauri-<mode>-<timestamp>-<pid>.jsonl`；LLM 元数据位于 `<data>/var/log/llm/tauri-<mode>-<session>.json` |
-| mindos-node 0.1.4+ | mindos-node 配置文件同级 `logs/mindos-node-<启动时间>-<pid>.jsonl`；默认每份 10 MiB、每次启动最多 5 份，`[logging]` 可配置 |
+| nestos-node 0.1.4+ | nestos-node 配置文件同级 `logs/nestos-node-<启动时间>-<pid>.jsonl`；默认每份 10 MiB、每次启动最多 5 份，`[logging]` 可配置 |
 
-`<config>` 遵循 XDG_CONFIG_HOME。httpd 的 `MINDOS_HTTPD_LOG_DIR` 覆盖运行与审计日志目录；系统默认目录需先授权给运行用户，准备命令和运行版本查询见 [HTTP 宿主](http-app.md#启动与认证)。CLI 的 `MINDOS_DIAGNOSTICS_DIR` 只覆盖诊断目录，`--audit-file` 只覆盖当前宿主审计路径。新应用诊断记录操作阶段、错误码、提交结果和请求 ID，不写 prompt、消息正文或凭据。旧日志不删除。
+`<config>` 遵循 XDG_CONFIG_HOME。httpd 的 `NESTOS_HTTPD_LOG_DIR` 覆盖运行与审计日志目录；系统默认目录需先授权给运行用户，准备命令和运行版本查询见 [HTTP 宿主](http-app.md#启动与认证)。CLI 的 `NESTOS_DIAGNOSTICS_DIR` 只覆盖诊断目录，`--audit-file` 只覆盖当前宿主审计路径。新应用诊断记录操作阶段、错误码、提交结果和请求 ID，不写 prompt、消息正文或凭据。旧日志不删除。
 
 已有 `run/resume/respond` 等 YAML/RunDefinition 离线执行命令继续使用 `createKernelRuntime` 和自己的 RunStore 工件；它们不是应用 Session 命令，不支持 `--connect`，不能将旧 run-id 当作应用 session-id。`twin` 使用本地共享应用 Runtime；旧 memory/fs 辅助入口按原作用域执行。
 

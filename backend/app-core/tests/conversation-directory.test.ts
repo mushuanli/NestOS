@@ -12,7 +12,7 @@ async function setup(extraAgentSessions = 0) {
     const clock = vi.spyOn(Date, 'now');
     for (let i = 0; i < 20; i++) {
         clock.mockReturnValue(10000 - i * 4);
-        const id = await app.projects.sessions.create(`MindOS ${i}`, group);
+        const id = await app.projects.sessions.create(`NestOS ${i}`, group);
         await app.sessionRepository.updateManifest(id, {updatedAt: 10000 - i * 4});
     }
     clock.mockRestore();
@@ -41,7 +41,7 @@ it('projects fifteen mixed recent sessions and pages the complete collection thr
     expect(rootRows.find(row => row.path === recentPath)?.metadata.navigationTransparent).toBe(true);
     const recent = await fs.driver.getChildren(recentPath), sessions = recent.filter(row => isSession(row.path));
     expect(sessions).toHaveLength(15); expect(peer.list).toHaveBeenCalledTimes(3); expect(peer.inspect).not.toHaveBeenCalled();
-    expect(new Set(sessions.map(row => row.metadata.harnessKind))).toEqual(new Set(['mindos', 'codex', 'dsht', 'claudecode']));
+    expect(new Set(sessions.map(row => row.metadata.harnessKind))).toEqual(new Set(['nestos', 'codex', 'dsht', 'claudecode']));
     expect(sessions.map(row => row.modifiedAt)).toEqual(Array.from({length: 15}, (_, i) => 10000 - i));
     expect((await fs.driver.getNode(sessions[0]!.path))?.metadata.navigationTarget).toBe(conversationResourcePath(sessions[0]!.path));
     expect(recent.every(row => row.parentPath === recentPath)).toBe(true);

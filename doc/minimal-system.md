@@ -32,11 +32,11 @@ Rust 侧沙箱与进程边界测试（真实 bwrap 授权边界、取消/超时�
 pnpm --filter tauri-app test:rust                    # cargo test，12 通过
 ```
 
-数据根由 `mindos.json#rootDir` 决定，默认 `<config>/data`；验收时可用 `MINDOS_ROOT` 指向隔离目录，避免污染真实数据：
+数据根由 `nestos.json#rootDir` 决定，默认 `<config>/data`；验收时可用 `NESTOS_ROOT` 指向隔离目录，避免污染真实数据：
 
 ```bash
 env -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
-  DISPLAY=:0 MINDOS_ROOT=/tmp/mindos-acceptance/data \
+  DISPLAY=:0 NESTOS_ROOT=/tmp/nestos-acceptance/data \
   apps/tauri-app/src-tauri/target/debug/tauri-app
 ```
 
@@ -48,10 +48,10 @@ env -u http_proxy -u https_proxy -u all_proxy -u no_proxy \
 4. 发送一条要求“运行子 harness”的消息。Agent 会调用 Bash 工具，命令形如：
 
 ```bash
-node /app/apps/cli/dist/cli.js run -f /workspace/workflow.yml --state-dir /workspace/.mindos --headless --json
+node /app/apps/cli/dist/cli.js run -f /workspace/workflow.yml --state-dir /workspace/.nestos --headless --json
 ```
 
-子 Run 的输出目录是 `/workspace/.mindos/runs/<run-id>/`（`run.json`、`result.txt`）。预期：界面出现 Bash 工具节点与 `[exit N]`，外层 Task succeeded，子 Run 的 `result.txt` 与节点依赖一致。
+子 Run 的输出目录是 `/workspace/.nestos/runs/<run-id>/`（`run.json`、`result.txt`）。预期：界面出现 Bash 工具节点与 `[exit N]`，外层 Task succeeded，子 Run 的 `result.txt` 与节点依赖一致。
 
 ### 子进程凭证注入
 
@@ -100,16 +100,16 @@ cp apps/cli/examples/minimal-dag.yml /tmp/x1-minimal-demo/workflow.yml
 node apps/cli/dist/cli.js validate -f /tmp/x1-minimal-demo/workflow.yml --offline
 node apps/cli/dist/cli.js graph -f /tmp/x1-minimal-demo/workflow.yml --offline --json
 node apps/cli/dist/cli.js run -f /tmp/x1-minimal-demo/workflow.yml --headless --json
-node apps/cli/dist/cli.js runs --state-dir /tmp/x1-minimal-demo/.mindos --json
+node apps/cli/dist/cli.js runs --state-dir /tmp/x1-minimal-demo/.nestos --json
 ```
 
-`workspace.root: .` 相对于 YAML 所在目录。输出状态位于 `/tmp/x1-minimal-demo/.mindos/runs/<run-id>/`，包括 `run.json`、`result.txt` 和配置快照；成功退出码为 0。模型结果会变化，验收应检查 `first → second` 依赖、Run 成功与结果存在，不要求固定措辞。
+`workspace.root: .` 相对于 YAML 所在目录。输出状态位于 `/tmp/x1-minimal-demo/.nestos/runs/<run-id>/`，包括 `run.json`、`result.txt` 和配置快照；成功退出码为 0。模型结果会变化，验收应检查 `first → second` 依赖、Run 成功与结果存在，不要求固定措辞。
 
 若使用含人工交互的其他配置，退出码 3 表示等待输入，从等待事件/manifest 获取 request-id 后执行：
 
 ```bash
-node apps/cli/dist/cli.js respond <run-id> <request-id> --state-dir /tmp/x1-minimal-demo/.mindos --approve --json
-node apps/cli/dist/cli.js resume <run-id> --state-dir /tmp/x1-minimal-demo/.mindos --headless --json
+node apps/cli/dist/cli.js respond <run-id> <request-id> --state-dir /tmp/x1-minimal-demo/.nestos --approve --json
+node apps/cli/dist/cli.js resume <run-id> --state-dir /tmp/x1-minimal-demo/.nestos --headless --json
 ```
 
 以上尖括号参数需替换实际值。resume 复用已有 Run，rerun 创建新 Run。正常人工暂停检查点可恢复，不保证任意崩溃点无重复提交。另一个调度器持锁时 run/resume/delete 的冲突操作会被拒绝。
@@ -153,12 +153,12 @@ cd apps/cli && npx tsx ../../.tauri-acceptance/measure-ipc.mts <dataRoot> <每�
 
 结论：共享路径本身很快（进程内 96ms/4ms），延迟与**每次 VFS 后端调用的跨进程开销**近似线性；桌面端每次后端调用要走 Tauri IPC（`TauriFsOps` + `TauriSqlSidecarDb`），因此 600–800 次调用被放大到秒级。已确认的下一层问题是「桌面端每次发送为什么仍要数百次调用」（进程内同会话第二次只有 26 次），需要在应用内统计后端调用数（Rust 侧计数或 webview 侧 `ioStats` 落盘）后定位。可接受阈值建议：热路径单次发送 ≤ 2s、`task.created` 前后端调用 ≤ 100 次。
 
-2026-09-10 在真实窗口复现同一现象：发送 06:45:13 → `task.created` 06:45:33.720（20.7s），随后链路正常完成；应用内探针（`VITE_MINDOS_TRACE=1` 构建）进一步显示近乎空闲时仍有 ≈60 次 VFS 操作/秒（99% stat），与发送路径自身的 600–780 次操作争用同一条 Tauri IPC 通道。明细见 [最小系统验收记录](minimal-system-acceptance.md) §4。
+2026-09-10 在真实窗口复现同一现象：发送 06:45:13 → `task.created` 06:45:33.720（20.7s），随后链路正常完成；应用内探针（`VITE_NESTOS_TRACE=1` 构建）进一步显示近乎空闲时仍有 ≈60 次 VFS 操作/秒（99% stat），与发送路径自身的 600–780 次操作争用同一条 Tauri IPC 通道。明细见 [最小系统验收记录](minimal-system-acceptance.md) §4。
 
 诊断用法：
 
 ```bash
-VITE_MINDOS_TRACE=1 pnpm --filter tauri-app build
+VITE_NESTOS_TRACE=1 pnpm --filter tauri-app build
 cd apps/tauri-app/src-tauri && cargo build --offline --features tauri/custom-protocol
 # 运行后读 <rootDir>/var/log/vfs-trace.log（每 2s 一行 JSON：ops + 按操作类型增量）
 ```
@@ -168,7 +168,7 @@ cd apps/tauri-app/src-tauri && cargo build --offline --features tauri/custom-pro
 
 trace 构建在官方 Tauri core invoke 的统一入口计数，覆盖直接导入、event 相对导入、Resource.close、权限查询/申请、插件监听注册/移除及注册失败后的兼容重试；每次提交计数一次，不改写被冻结的宿主对象。入口形状变化会明确阻止构建，避免悄悄漏计。诊断文件追加显式绕过计数。
 
-仅 VITE_MINDOS_TRACE=1 时注册 window.__MINDOS_TRACE__。验收驱动在选定起点调用 begin('send-to-provider') 保存返回 id，在对应终点调用 end(id) 获取同步快照并追加日志。时间使用 performance.now；VFS/sidecar/IPC 分别记差值，不读取命令参数。开始前与结束后的操作不计入动作，重叠动作独立计算，计数重置则拒绝结果；运行时释放时清理活动动作和全局接口。
+仅 VITE_NESTOS_TRACE=1 时注册 window.__NESTOS_TRACE__。验收驱动在选定起点调用 begin('send-to-provider') 保存返回 id，在对应终点调用 end(id) 获取同步快照并追加日志。时间使用 performance.now；VFS/sidecar/IPC 分别记差值，不读取命令参数。开始前与结束后的操作不计入动作，重叠动作独立计算，计数重置则拒绝结果；运行时释放时清理活动动作和全局接口。
 
 日志 kind='action' 是指定动作的区间，kind='interval' 是周期区间，二者重叠，禁止相加当作总量。调用方必须把边界接到实际发送与 Provider 接收点；接口本身不证明边界已经正确放置。经过官方 core 的提交数也不等于全部 WebView 内部传输或底层重试。
 

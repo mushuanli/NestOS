@@ -24,8 +24,8 @@ afterEach(async () => {
     for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
-    delete process.env.MINDOS_TEST_API_KEY;
-    delete process.env.MINDOS_SCHEDULER_LEASE_TTL_MS;
+    delete process.env.NESTOS_TEST_API_KEY;
+    delete process.env.NESTOS_SCHEDULER_LEASE_TTL_MS;
 });
 
 /** Model server that accepts the request and never answers, so the Run stays in flight. */
@@ -50,7 +50,7 @@ providers:
     implementation: openai-compatible
     base_url: http://127.0.0.1:${port}
     default_path: /v1/chat/completions
-    api_key_env: MINDOS_TEST_API_KEY
+    api_key_env: NESTOS_TEST_API_KEY
     models:
       - id: mock-model
 connections:
@@ -79,18 +79,18 @@ async function startCrashedRun(ttlMs: string): Promise<{ stateDir: string; runId
     const model = hangingServer();
     const port = await listenForTest(model.server);
     servers.push(model.server);
-    const workspace = await mkdtemp(path.join(tmpdir(), 'mindos-lease-delete-'));
+    const workspace = await mkdtemp(path.join(tmpdir(), 'nestos-lease-delete-'));
     roots.push(workspace);
-    const stateDir = path.join(workspace, '.mindos');
+    const stateDir = path.join(workspace, '.nestos');
     const configPath = path.join(workspace, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, config(port), 'utf8');
 
     const child = spawn(process.execPath, ['--import', 'tsx', CLI, 'run', '-f', configPath,
         '--state-dir', stateDir, '--headless', '--json'], {
         cwd: CLI_CWD,
         stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, MINDOS_SCHEDULER_LEASE_TTL_MS: ttlMs },
+        env: { ...process.env, NESTOS_SCHEDULER_LEASE_TTL_MS: ttlMs },
     });
     children.push(child);
     let stderr = '';

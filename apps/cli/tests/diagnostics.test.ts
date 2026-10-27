@@ -9,7 +9,7 @@ const roots: string[] = [];
 afterEach(async () => { await Promise.all(roots.splice(0).map(root => rm(root, { recursive: true, force: true }))); });
 async function directory() { const root = await mkdtemp(path.join(tmpdir(), 'cli-diagnostics-')); roots.push(root); return root; }
 async function run(args: string[], root: string) {
-    const child = spawn(process.execPath, ['--import', 'tsx', ...args], { cwd: path.resolve('.'), env: { ...process.env, MINDOS_DIAGNOSTICS_DIR: root }, stdio: ['ignore', 'pipe', 'pipe'] });
+    const child = spawn(process.execPath, ['--import', 'tsx', ...args], { cwd: path.resolve('.'), env: { ...process.env, NESTOS_DIAGNOSTICS_DIR: root }, stdio: ['ignore', 'pipe', 'pipe'] });
     let stdout = '', stderr = '';
     child.stdout.on('data', data => { stdout += data; }); child.stderr.on('data', data => { stderr += data; });
     const code = await new Promise<number | null>((resolve, reject) => { child.once('error', reject); child.once('close', resolve); });

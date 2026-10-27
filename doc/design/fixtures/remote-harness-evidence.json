@@ -14,7 +14,7 @@
     "capacity": "At most 16 loaded Claude processes; reclaim unborrowed idle sessions after confirmed exit, retain history and receipts"
   },
   "environment": {
-    "transport": "Real mindos-node HTTP/MCP over loopback",
+    "transport": "Real nestos-node HTTP/MCP over loopback",
     "nativeCLI": "Installed Claude Code",
     "model": "Isolated local fixed Anthropic peer, no cloud model",
     "projectRuntime": true,
@@ -103,7 +103,7 @@
   ],
   "knownValidationFailure": {
     "test": "apps/http-app/tests/view-ports.test.ts:162",
-    "reason": "Existing test assumes a seeded chatgpt provider; current MindOS presets do not seed it. Independently reproduced, unrelated to new harness methods, left unchanged."
+    "reason": "Existing test assumes a seeded chatgpt provider; current NestOS presets do not seed it. Independently reproduced, unrelated to new harness methods, left unchanged."
   },
   "limits": [
     "Text input only; native assistant text collection does not claim final-phase-only extraction or local token streaming.",
@@ -137,7 +137,7 @@
     "backend/llm-session/src/session/harness-binding.ts": "527181e7505d4aa09081f5f0a76b4b7f010e343e057bf7f7b66d323902de6de0",
     "libraries/durable-kernel/src/application/kernel.ts": "fe22ae10b7045bb9f90b19ed40daaf4a5a46b41443259dc6099463f6ddab298b",
     "libraries/durable-kernel/src/domain/types.ts": "ba8c13c939a721a1ac32244cda0880aa34262a62e73d22978774d3c95a52d1c9",
-    "tools/mindos-node/src/plugin/harness/drivers/claude/sessions.rs": "d7c2a5af2c0e991082bb725c5d9898cf5af4fcfde39780841ccf19bb71a6a3a6",
+    "tools/nestos-node/src/plugin/harness/drivers/claude/sessions.rs": "d7c2a5af2c0e991082bb725c5d9898cf5af4fcfde39780841ccf19bb71a6a3a6",
     "ui/llm-settings-ui/src/editors/agent-execution.ts": "c6d67b479ad9e68069217c081cc51b525915f51c623e79631a0be04e3af89af2",
     "ui/llm-settings-ui/src/editors/agent-harness-connections.ts": "031648508009aee8724df38e659e3aa4649ec67d34f960adab40caf8894f2d34"
   },

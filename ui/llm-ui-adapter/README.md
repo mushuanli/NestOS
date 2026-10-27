@@ -1,6 +1,6 @@
 # @itookit/llm-ui-adapter
 
-MindOS 对独立 llm-ui 的适配与原产品编辑器兼容入口。通用 Chat + Flow 在 ../../libraries/llm-ui，仅依赖 mdxeditor；本包公开依赖实际领域契约，不宣称单依赖。
+NestOS 对独立 llm-ui 的适配与原产品编辑器兼容入口。通用 Chat + Flow 在 ../../libraries/llm-ui，仅依赖 mdxeditor；本包公开依赖实际领域契约，不宣称单依赖。
 
 新的 Session/native ChatView 绑定通过 /independent 导出，宿主保留其 source、台账和连接生命周期。原 /chat、/conversation、/settings、/startup 入口继续保留项目草稿、配置、Flow 业务表单、导航及原编辑器行为。
 
@@ -51,7 +51,7 @@ const factory = createLLMFactory(agentService, {
 
 原生远程会话的系统事件以淡紫色“系统提示”摘要呈现，默认折叠，展开仍为转义后的原始文本；工具记录以灰色“工具”标签和操作/目标呈现。两者保留轮内顺序，不生成正文级标题，也不把原生 HTML 当作可执行标记。快照更新保留已展开系统提示的状态。
 
-原生用户消息中有明确来源标记的项目指令、运行环境和附加上下文默认折叠，点击展开可查看、复制完整原文，刷新保留展开状态。正文继续直接展示；仅依据 `contentPartKinds` 判定来源，不按文件名、标签、长度或位置猜测。Codex 的标记由 mindos-node 从 rollout 元数据透传；旧服务、未知来源及没有来源元数据的 Claude 用户文本保持原样。
+原生用户消息中有明确来源标记的项目指令、运行环境和附加上下文默认折叠，点击展开可查看、复制完整原文，刷新保留展开状态。正文继续直接展示；仅依据 `contentPartKinds` 判定来源，不按文件名、标签、长度或位置猜测。Codex 的标记由 nestos-node 从 rollout 元数据透传；旧服务、未知来源及没有来源元数据的 Claude 用户文本保持原样。
 
 输入工具栏保留添加、模式、智能体、模型和发送。模型选择器统一选择连接与档位；搜索、聊天设置、预设提示词及帮助位于更多菜单。连接与档位不再重复显示活动标签；历史范围、非流式设置仍有提示。用量信息在输入区下方折叠查看。远程会话继续隐藏本地模型和执行设置，原生历史保持只读。
 
@@ -69,7 +69,7 @@ await restoreFlowLibrary(commands, hostTemplates);
 const menu = createFlowContextMenuConfig({ ...runOptions, library: hostTemplates });
 ```
 
-未提供 `library` 的菜单不显示恢复入口。MindOS 使用 app-core 的 `createMindosFlowLibrary()`，其他宿主可提供符合公共契约的模板。恢复入口委托应用命令 `app.flow-library.restore`（见 app-contracts 的 FlowLibraryCommand），宿主负责恢复与发布策略；MindOS 的 app-core 已注册。只使用核心 Flow 命令的宿主应显式协调 DraftRestore 与 RevisionCreate，核心恢复本身不会发布。
+未提供 `library` 的菜单不显示恢复入口。NestOS 使用 app-core 的 `createNestosFlowLibrary()`，其他宿主可提供符合公共契约的模板。恢复入口委托应用命令 `app.flow-library.restore`（见 app-contracts 的 FlowLibraryCommand），宿主负责恢复与发布策略；NestOS 的 app-core 已注册。只使用核心 Flow 命令的宿主应显式协调 DraftRestore 与 RevisionCreate，核心恢复本身不会发布。
 
 Agent 设置工厂使用 `createAgentEditorFactory(service, { defaultToolIds: hostToolIds })` 显式注入宿主默认授权；不传则默认目录为空。UI 不选择 Read/Write/Bash 等工具。该默认列表仅用于展示与编辑，实际工具授权由执行层校验。
 

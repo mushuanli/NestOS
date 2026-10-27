@@ -33,6 +33,6 @@ Session manifest 只接受规范 `schemaVersion: 3` 数据。作文预设和播�
 
 `directAgentPolicy` 只作用于显式 Agent 模式：提示词在 Context 装配阶段加入并参与 token 预算，maxExchanges 固定到持久 Task。实例构造时复制并冻结策略；maxExchanges 必须为正的安全整数。未传提示词时不追加产品执行指令；未传预算时沿用 llm-tasks 的通用默认值。普通 Chat、Flow 和无显式模式的旧调用不追加这些提示词。
 
-`SessionManager.getDirectAgentPolicy()` 提供只读视图，宿主 UI 可据此显示实际预算。MindOS 的默认执行指导由 app-core 注入；其他宿主可传自己的策略或空对象。
+`SessionManager.getDirectAgentPolicy()` 提供只读视图，宿主 UI 可据此显示实际预算。NestOS 的默认执行指导由 app-core 注入；其他宿主可传自己的策略或空对象。
 
 DirectAgentPolicy 还可指定 llmRetry（retries/backoffMs）与 toolTimeoutMs；仅用于显式 Agent，构造时验证、快照并冻结，最终写入持久 Task input。Flow 使用节点配置或 Flow defaults 的同名字段，不读取直接 Agent 策略。

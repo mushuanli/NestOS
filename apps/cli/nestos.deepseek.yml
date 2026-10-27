@@ -3,7 +3,7 @@ name: deepseek-smoke
 goal: 验证 CLI 与真实 DeepSeek 模型连通
 workspace:
   root: .
-  state_dir: .mindos-deepseek
+  state_dir: .nestos-deepseek
 providers:
   - id: deepseek
     implementation: openai-compatible

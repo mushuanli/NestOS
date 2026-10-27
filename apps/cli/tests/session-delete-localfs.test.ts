@@ -17,7 +17,7 @@ afterEach(async () => { await Promise.all(cleanup.splice(0).map(run => run())); 
 
 /** Real localfs backend: files land under `<root>/data`, metadata in `<root>/meta/index.db`. */
 async function setup() {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-session-delete-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-session-delete-'));
     cleanup.push(() => rm(root, { recursive: true, force: true }));
     const backend = await openLocalFSBackend({ rootDir: `${root}/data`, sidecarDir: `${root}/meta` });
     const { manager } = await createVFS({ rootBackend: backend });
@@ -110,7 +110,7 @@ it('refuses to remove a Session with a live Task and deletes it after close', as
 }, 15_000);
 
 it('recovers an interrupted deletion across a real process restart', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-session-restart-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-session-restart-'));
     cleanup.push(() => rm(root, { recursive: true, force: true }));
     const id = 'interrupted-session';
 

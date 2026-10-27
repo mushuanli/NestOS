@@ -1,17 +1,17 @@
-import { mindosNodeConfiguration } from '@itookit/app-contracts';
+import { nestosNodeConfiguration } from '@itookit/app-contracts';
 import type { ProjectRemoteMountPort, ProjectService } from '@itookit/app-contracts/services';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
 import { t } from '@itookit/common';
 import { showHarnessControl } from '../harness/control';
 
 /** Presentation only; standard discovery and extension verification are owned by MCPManager. */
-export class MindOSNodeMCPControls {
+export class NestOSNodeMCPControls {
     private readonly lifetime = new AbortController();
     private stopMounts?: () => void;
     private mountRead = 0;
     constructor(private readonly remote: ProjectRemoteMountPort, private readonly projects?: ProjectService) {}
     render(parent: HTMLElement, server: MCPServer): void {
-        const settings = mindosNodeConfiguration(server);
+        const settings = nestosNodeConfiguration(server);
         if (!settings) return;
         const hint = document.createElement('p'); hint.textContent = t('remote.mcpApiKeyHint'); parent.append(hint);
         this.renderMounts(parent, server.id);
@@ -38,7 +38,7 @@ export class MindOSNodeMCPControls {
         this.stopMounts = this.remote.onChange(refresh); refresh();
     }
     read(server: MCPServer): MCPServer {
-        if (!server.apiKey || !mindosNodeConfiguration(server)) return server;
+        if (!server.apiKey || !nestosNodeConfiguration(server)) return server;
         const headers = Object.fromEntries(Object.entries(server.headers ?? {}).filter(([key]) => key.toLowerCase() !== 'authorization'));
         return {...server,headers,auth:undefined};
     }

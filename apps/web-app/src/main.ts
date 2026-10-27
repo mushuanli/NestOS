@@ -1,11 +1,11 @@
 import {createBrowserImageTools} from '@itookit/image-tools/browser';
-import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import { SnapshotService } from './storage/snapshots';
 import { createApplicationClient, bindLocalApplicationServices } from '@itookit/app-core/host';
 import { configureAppCache } from './app-cache';
-import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
 import { initApp, installMobileNavigation, windowSessionLeaseToken } from '@itookit/app-shell';
-import { createApplicationRuntime, createMindosFlowLibrary } from '@itookit/app-core';
+import { createApplicationRuntime, createNestosFlowLibrary } from '@itookit/app-core';
 import { openIndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { createBrowserUI } from './ui';
 import { WORKSPACES, ROUTE_ALIASES } from './config/modules';
@@ -22,14 +22,14 @@ async function main(styles: Promise<void>) {
     try {
         await styles;
         const app = await initApp({
-            fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) },
+            fileTemplates: { agent: JSON.stringify(createNestosLlmPresets().agents, null, 2) },
             ...client,
             projectSyncSetup: (id, signal) => sync.setup(id, signal),
             projectSyncDirectory: (id, signal) => sync.directory(id, signal),
             workspaces: WORKSPACES,
             defaultSlug: 'start', startPage: true,
             routeAliases: ROUTE_ALIASES,
-            ui: createBrowserUI(createMindosFlowLibrary()),
+            ui: createBrowserUI(createNestosFlowLibrary()),
         });
         app.onDestroy(() => runtime.dispose(), 'sources');
         app.onDestroy(() => client.close(), 'sources');
@@ -40,7 +40,7 @@ async function main(styles: Promise<void>) {
 }
 
 async function createLocalClient() {
-    const backend = await openIndexedDBBackend({dbName: 'MindOS-v3'}), remoteSourceProvider = createMindOSNodeDriver();
+    const backend = await openIndexedDBBackend({dbName: 'MindOS-v3'}), remoteSourceProvider = createNestOSNodeDriver();
     const sync = new WebProjectSync(backend, remoteSourceProvider);
     const runtime = await createApplicationRuntime({
         startupMode: 'interactive', remoteSourceProvider, backend, ownerKind: 'web',

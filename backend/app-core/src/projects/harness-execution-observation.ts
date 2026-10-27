@@ -1,4 +1,4 @@
-import type { HarnessEvents, HarnessHistory } from '@itookit/mindos-node-driver';
+import type { HarnessEvents, HarnessHistory } from '@itookit/nestos-node-driver';
 import type { EffectExecutionContext } from '@itookit/durable-kernel';
 import type { HarnessExecutionResult } from '@itookit/kernel-adapters/contracts';
 import { canonical } from './harness-connection-policy';

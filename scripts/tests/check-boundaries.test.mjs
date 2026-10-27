@@ -163,7 +163,7 @@ test('chat must receive business flow templates from the host', () => {
 });
 
 
-test('public LLM capabilities cannot choose MindOS default tool grants', () => {
+test('public LLM capabilities cannot choose NestOS default tool grants', () => {
     for (const name of ['kernel-adapters', 'llm-session', 'llm-ui-adapter', 'llm-settings-ui']) {
         const source = pkg(name);
         assert.match(inspect(source, "export const DEFAULT_HARNESS_TOOL_IDS = ['Bash'];")[0], /injected policy/);
@@ -204,8 +204,8 @@ test('VFS drivers have no sync runtime or type dependencies', () => {
         assert.equal(inspect(driver, "import type { IStorageBackend } from '@itookit/vfs-core'").length, 0);
     }
     assert.match(dependencyError('@itookit/vfs-core', '@itookit/vfs-sync'), /remain independent/);
-    assert.equal(dependencyError('@itookit/mindos-node-driver','@itookit/vfs-sync'),undefined);
-    assert.match(dependencyError('@itookit/mindos-node-driver','@itookit/vfsdriver-agent'),/public ports/);
+    assert.equal(dependencyError('@itookit/nestos-node-driver','@itookit/vfs-sync'),undefined);
+    assert.match(dependencyError('@itookit/nestos-node-driver','@itookit/vfsdriver-agent'),/public ports/);
 });
 
 test('UI consumes application capabilities instead of backend construction contracts', () => {

@@ -22,7 +22,7 @@
 | [Tasks](llm-tasks-api.md) / [Flow](llm-flow-api.md) / [Session](llm-session-api.md) | 持久程序、编排与会话 |
 | [RunDefinition](run-definition.md) / [联网搜索](web-search.md) | 调用输入与搜索策略 |
 | [HTTP 宿主](http-app.md) / [CLI HTTP 模式](http-mode.md) | 共用界面、应用 API 与远程 CLI |
-| [Profile 与数据根](mindos-profile.md) / [最小系统](minimal-system.md) | 配置、部署和运行步骤 |
+| [Profile 与数据根](nestos-profile.md) / [最小系统](minimal-system.md) | 配置、部署和运行步骤 |
 | [Firecracker 隔离服务](../tools/fc-server/README.md) | Rust microVM API、Debian 13、virtio-fs 目录直通、持久卷与 vsock |
 
 ## 领域设计与验证
@@ -39,7 +39,7 @@
 | 调用配套协议 | [上下文绑定](design/execution-context-binding.md)、[输入解析与文件传输](design/invocation-input-resolution.md)、[Invocation 展示](design/invocation-presentation.md)、[控制与状态矩阵](design/invocation-control-state.md) |
 | 图片处理与聊天接入 | [image-parser、Scanic、裁剪及默认 1024 resize](design/chat-image-editing.md) |
 | 非 ML 纸边检测验收 | [风险、68例回归与正式接入门槛](design/image-parser-detector-validation.md) |
-| 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/mindos-node-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/mindos-node-sync.md) |
+| 远程项目与同步 | [Agent 服务](design/agent-server.md)、[项目模型](design/nestos-node-project-model.md)、[客户端同步](design/project-sync.md)、[服务端同步](design/nestos-node-sync.md) |
 | RAPTOR 用例与远程编排 | [现有 Flow、Composite、Claude Code、执行连接与沙箱边界](design/raptor-harness-integration.md)、[可执行 Flow 示例](../apps/cli/examples/raptor/README.md)、[远程 Harness 执行连接](design/remote-harness-connections.md) |
 | Harness 通用原语 | [取自 RAPTOR 的可移植原语、现状实现位置、缺口与闭环方式](design/harness-borrowables.md) |
 | Anki 工作流 | [三连接 Flow、Rust 工具、YAML 清单与打包](design/anki-flow.md) |
@@ -60,3 +60,5 @@
 - 更新文档后运行 `pnpm docs:check`；历史归档的文件链接也应保持可解析。
 
 - [Flow 图片处理与资产引用](./design/flow-image-processing.md)：版本化配方、宿主引擎、原图与派生图、处理回执及发送预算。
+
+产品改名、三个 repo 对应关系、旧配置兼容和 httpd swap 开关见 [NestOS 命名与迁移](nestos-rename.md)。

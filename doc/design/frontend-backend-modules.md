@@ -13,7 +13,7 @@
 | 后端应用 | backend/app-core/src/host、configuration、settings、projects、session、runtime 等 | 不加载 UI、CSS 或 DOM 组件 |
 | 独立持久执行内核 | libraries/durable-kernel | 仅依赖 vfs-core，运行与纯契约入口分开 |
 | 后端领域与能力 | backend/ 下的 llm-context、llm-session、llm-flow、llm-tasks、kernel-adapters、device-llm、tools、sanbox、sync-adapters | 领域契约与实现入口分开 |
-| 后端独立库 | device-tty、driver-llm、mindos-node-driver、vfs-sync、vfsdriver-* 的实现 | 存储、网络和执行能力由宿主选择 |
+| 后端独立库 | device-tty、driver-llm、nestos-node-driver、vfs-sync、vfsdriver-* 的实现 | 存储、网络和执行能力由宿主选择 |
 | 共享应用契约 | shared/app-contracts/src | 应用 DTO、事件、设置端口、身份与纯变换；无执行或存储实现 |
 | 所属领域契约 | 各包公开 contracts 入口及目录 | 类型、命令标识与纯校验；不转发执行类的运行时值 |
 | 共享文件机制 | libraries/vfs-core | 文件接口和通用机制；展示文件源可使用 MemoryBackend，不装配应用执行 Runtime |
@@ -91,7 +91,7 @@ C4Component
 - SnapshotService 位于 Web 存储宿主，通过 SnapshotPort 注入。Node/Tauri 未提供快照适配时，写维护操作明确拒绝；不会误操作浏览器数据库或关闭 VFS 后假成功。
 - 存储估计、主题和日志偏好通过设置端口访问。浏览器存储 API 不出现在设置 UI。
 - llm-settings-ui 保留文件选择、格式解析提示、冲突选择和结果展示。冲突查询、ID 分配、关联重映射、凭据保留与按依赖顺序保存由 app-core/configuration/configuration-import 执行；ConfigurationImportPort 属于配置领域契约。
-- llm-ui 通过自身的 Chat/Flow 展示契约消费宿主 source/actions，仅依赖 mdxeditor。llm-ui-adapter 保留 MindOS 交互命令、投影、视图缓存与完整产品编辑器兼容入口，通过 Session/Task/Conversation 公开端口调用。
+- llm-ui 通过自身的 Chat/Flow 展示契约消费宿主 source/actions，仅依赖 mdxeditor。llm-ui-adapter 保留 NestOS 交互命令、投影、视图缓存与完整产品编辑器兼容入口，通过 Session/Task/Conversation 公开端口调用。
 
 连接和原生会话状态由后端按观察需求共享探测；闲置状态缓存有身份、有效期和容量限制。前端读取快照并声明兴趣，不逐项目定时查询；后台执行记录仍以持久 Task 为准，缓存不授予操作权限。见 [业务装配与后台缓存](../http-app.md#业务装配与后台缓存)。
 

@@ -1,12 +1,12 @@
 [submodule "tookit/cc-proxy"]
 	path = tookit/cc-proxy
 	url = git@github.com:mushuanli/cc-proxy.git
-[submodule "tools/mindos-node"]
-	path = tools/mindos-node
-	url = git@github.com:mushuanli/mindos-node.git
-[submodule "libraries/mindos-node-driver"]
-	path = libraries/mindos-node-driver
-	url = https://github.com/mushuanli/mindos-node-driver.git
+[submodule "tools/nestos-node"]
+	path = tools/nestos-node
+	url = git@github.com:mushuanli/nestos-node.git
+[submodule "libraries/nestos-node-driver"]
+	path = libraries/nestos-node-driver
+	url = https://github.com/mushuanli/nestos-node-driver.git
 [submodule "libraries/vfs-core"]
 	path = libraries/vfs-core
 	url = https://github.com/mushuanli/vfs-core.git

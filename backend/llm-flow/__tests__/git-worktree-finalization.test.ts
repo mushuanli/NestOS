@@ -9,7 +9,7 @@ import { GitWorktreeFlowWorkspaceManager } from '../src/flow/git-worktree-manage
 const execute = promisify(execFile);
 it.each([['discard', true], ['auto-if-clean', true], ['discard', false]] as const)(
     'finalizes a real Git worktree (%s, previously removed: %s)', async (merge, removed) => {
-    const directory = await mkdtemp(join(tmpdir(), 'mindos-worktree-finalize-'));
+    const directory = await mkdtemp(join(tmpdir(), 'nestos-worktree-finalize-'));
     const repository = join(directory, 'repo'), workspace = join(directory, 'copy');
     const commands = { run: async (program: string, args: string[], options: { cwd: string }) => execute(program, args, options) };
     const git = (args: string[]) => commands.run('git', args, { cwd: repository });

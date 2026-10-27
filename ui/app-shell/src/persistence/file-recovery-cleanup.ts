@@ -1,5 +1,6 @@
 import {createModuleLogger, randomUUID} from '@itookit/common';
 import type {FileRecovery} from './file-recovery-store';
+import {canPreserveRefreshBackup} from './file-recovery-store';
 
 const log = createModuleLogger('file-recovery'), retentionMs = 2 * 24 * 60 * 60 * 1000;
 const isBackup = (key: unknown): key is string => typeof key === 'string'
@@ -19,12 +20,12 @@ function cleanSession(now: number): {removed: number; migrated: number} {
         let value: FileRecovery;
         try {value = JSON.parse(storage.getItem(key) ?? 'null');} catch {continue;}
         if (!value || typeof value.text !== 'string' || typeof value.base !== 'string') continue;
-        if (expired(value, now)) {storage.removeItem(key); result.removed++;}
+        if (expired(value, now) || !canPreserveRefreshBackup(value.text)) {storage.removeItem(key); result.removed++;}
         else if (ageOf(value) === undefined) {storage.setItem(key, JSON.stringify({...value, retentionStartedAt: now})); result.migrated++;}
     }
     return result;
 }
-function cleanDatabase(now: number): Promise<{removed: number; migrated: number}> {
+function cleanDatabase(): Promise<{removed: number; migrated: number}> {
     if (!globalThis.indexedDB) return Promise.resolve({removed: 0, migrated: 0});
     return new Promise((resolve, reject) => {
         const opening = indexedDB.open('mindos-file-recovery', 1); let blocked = false;
@@ -34,27 +35,21 @@ function cleanDatabase(now: number): Promise<{removed: number; migrated: number}
         opening.onsuccess = () => {
             const db = opening.result; if (blocked) {db.close(); return;}
             const transaction = db.transaction('drafts', 'readwrite');
-            const result = cleanRecords(transaction.objectStore('drafts'), now);
+            const result = cleanRecords(transaction.objectStore('drafts'));
             transaction.oncomplete = () => {db.close(); resolve(result);};
             transaction.onabort = transaction.onerror = () => {db.close(); reject(transaction.error);};
         };
     });
 }
 
-function cleanRecords(store: IDBObjectStore, now: number): {removed: number; migrated: number} {
+function cleanRecords(store: IDBObjectStore): {removed: number; migrated: number} {
     const result = {removed: 0, migrated: 0}, keys = store.openKeyCursor();
     keys.onsuccess = () => {
         const cursor = keys.result; if (!cursor) return;
         if (!isBackup(cursor.key)) {cursor.continue(); return;}
-        const read = store.get(cursor.key);
-        read.onsuccess = () => {
-            const value = read.result as FileRecovery | undefined;
-            if (value && typeof value.text === 'string' && typeof value.base === 'string') {
-                if (expired(value, now)) {store.delete(cursor.key); result.removed++;}
-                else if (ageOf(value) === undefined) {store.put({...value, retentionStartedAt: now}, cursor.key); result.migrated++;}
-            }
-            cursor.continue();
-        };
+        // Refresh backups no longer use IndexedDB; ordinary draft keys are left untouched.
+        store.delete(cursor.key); result.removed++;
+        cursor.continue();
     };
     return result;
 }
@@ -62,7 +57,7 @@ function cleanRecords(store: IDBObjectStore, now: number): {removed: number; mig
 /** Sweep only refresh backups across tabs/scopes; ordinary unsaved drafts are never expired here. */
 export async function cleanupFileRefreshBackups(): Promise<void> {
     const operationId = randomUUID(), now = Date.now();
-    for (const [stage, clean] of [['session-storage', () => cleanSession(now)], ['indexed-db', () => cleanDatabase(now)]] as const) {
+    for (const [stage, clean] of [['session-storage', () => cleanSession(now)], ['indexed-db', () => cleanDatabase()]] as const) {
         const started = Date.now();
         try {const counts = await clean(); log.info('file.backup.cleanup', {operation: 'file.backup.cleanup', operationId, stage,
             result: 'success', durationMs: Date.now() - started, ...counts});}

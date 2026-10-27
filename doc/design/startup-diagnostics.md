@@ -56,7 +56,7 @@ HTTP MemoryBackend + RPC 集成测试覆盖轻量入口、工作台、文件深�
 
 ## 2026-09-27 启动等待链优化
 
-桌面在 HTML head 记录 `mindos.document`，入口模块及其静态依赖执行后写入 `frontend.bootstrap.entry`：`timeOrigin` 为页面时间原点，`documentMs` / `entryMs` 为相对时刻，`documentToEntryMs` 包含资源加载和模块执行，`resourceCount` 为已记录资源数。结合 Rust `process.start` / `app.ready` 可区分页面前与页面内的等待；该区间不能直接归因成 Vite 编译时间。原有 `bootstrap.ready` 仍只度量 JS bootstrap，不能替代端到端或首帧时间。
+桌面在 HTML head 记录 `nestos.document`，入口模块及其静态依赖执行后写入 `frontend.bootstrap.entry`：`timeOrigin` 为页面时间原点，`documentMs` / `entryMs` 为相对时刻，`documentToEntryMs` 包含资源加载和模块执行，`resourceCount` 为已记录资源数。结合 Rust `process.start` / `app.ready` 可区分页面前与页面内的等待；该区间不能直接归因成 Vite 编译时间。原有 `bootstrap.ready` 仍只度量 JS bootstrap，不能替代端到端或首帧时间。
 
 会话导航在整个投影内复用一次 folders / sessions 快照：根目录读取不再自我作废快照，文件夹 `stat()`、`ProjectNavigation.sync()/refresh()` 与 `ProjectService.list()/forFolder()` 都从同一份 `navigation()` 派生，启动实测 `listFolders()` 由 25 次降到 3 次、连续两次根读由 2 次 `repository.list()` 降到 1 次（sidebar 根读与项目导航各一次属跨层，未合并）。仓库变更、Kernel 结构事件、关闭浏览器或工作台刷新使快照失效；失败读取可重试。权衡：根投影与文件夹投影一样只在显式刷新时看到其它宿主实例的写入。快照仅用于导航投影，`SessionRepository.list()` 不做长期缓存，恢复和跨实例持久读取仍读存储。manifest 每批最多 64 个并发读取，所有读取结束后才提交或回滚事务，保留不完整 Session 跳过和格式错误失败语义。
 
@@ -80,16 +80,16 @@ LocalFS journal 初始化失败会关闭已打开 sidecar，失败来源、数�
 
 | 宿主 | Linux 默认目录 | 重点事件 |
 |---|---|---|
-| Tauri | `${XDG_CONFIG_HOME:-$HOME/.config}/mindos/logs/desktop/` | `bootstrap.source.failed`、`bootstrap.stage`、`bootstrap.failed`、`sidecar.scope.open`、`sidecar.database.open`、`sidecar.sql`、WebKit/Rust/进程异常 |
-| CLI（含 HTTP） | `${XDG_CONFIG_HOME:-$HOME/.config}/mindos/logs/cli/` | `cli.failed`、`command.error`、`run.failed`、`runtime.*`、`http.*`、`process.*` |
+| Tauri | `${XDG_CONFIG_HOME:-$HOME/.config}/nestos/logs/desktop/` | `bootstrap.source.failed`、`bootstrap.stage`、`bootstrap.failed`、`sidecar.scope.open`、`sidecar.database.open`、`sidecar.sql`、WebKit/Rust/进程异常 |
+| CLI（含 HTTP） | `${XDG_CONFIG_HOME:-$HOME/.config}/nestos/logs/cli/` | `cli.failed`、`command.error`、`run.failed`、`runtime.*`、`http.*`、`process.*` |
 
-`MINDOS_DIAGNOSTICS_DIR` 可直接指定日志目录；日志独立于 `--profile` / 数据根。每个进程一个 `<时间>-<PID>.jsonl`，4 MiB 后保留一份 previous 文件，历史进程文件不自动清除。错误链最多展开 8 层、32 项，单条前端/CLI 消息截断到 4000 字符。
+`NESTOS_DIAGNOSTICS_DIR` 可直接指定日志目录；日志独立于 `--profile` / 数据根。每个进程一个 `<时间>-<PID>.jsonl`，4 MiB 后保留一份 previous 文件，历史进程文件不自动清除。错误链最多展开 8 层、32 项，单条前端/CLI 消息截断到 4000 字符。
 
 启动失败先打开界面/终端提示的文件，查找 `.failed` 事件，沿内层原因定位具体 source 与数据库。比较 `bootstrap.stage` / `bootstrap.source.ready` 的 `durationMs` 可区分数据库打开、runtime 和 UI 初始化耗时。`sidecar.scope.open` 的 `rolledBack` 表示本次刷新回收了多少旧事务；`sidecar.database.open` 区分新建与复用 pool。常规阶段事件只追加日志，不再逐条 `fsync`；panic、异常退出和前端 failure/error/exception/rejection 事件仍同步落盘。
 
-`sidecar.sql` 把一次语句的**宿主耗时**拆成 `waitMs`（事务互斥锁等待、`BEGIN IMMEDIATE` 等写出锁、或 pool 取连接）、`queryMs`（SQL 本身）与 `decodeMs`（行→JSON 解码），并带 `rows`、`ok`（失败时另有 `error`）；`database_*` 语句还带 `poolSize` / `poolIdleBefore`。判定记录的条件是 **失败（`ok:false`）**、`waitMs + queryMs + decodeMs ≥ 25 ms`、或 `poolIdleBefore == 0`（pool 需要新建连接，典型是空闲超时回收后的第一条语句）；`MINDOS_SIDECAR_TRACE` 取 `1`/`true`/`yes`/`on`（不区分大小写）时记录全部语句，其余值（含 `0`）不改变默认行为。**WebKit 录制里的 IPC 时长不等于宿主耗时**：例如 `sidecar.database.open` 自报 `durationMs: 0` 却观测到 336 ms，说明差值来自命令返回之后的交付/排队，不能用它归因到 SQLite。判断启动慢属于宿主还是交付路径，必须两边对着看。
+`sidecar.sql` 把一次语句的**宿主耗时**拆成 `waitMs`（事务互斥锁等待、`BEGIN IMMEDIATE` 等写出锁、或 pool 取连接）、`queryMs`（SQL 本身）与 `decodeMs`（行→JSON 解码），并带 `rows`、`ok`（失败时另有 `error`）；`database_*` 语句还带 `poolSize` / `poolIdleBefore`。判定记录的条件是 **失败（`ok:false`）**、`waitMs + queryMs + decodeMs ≥ 25 ms`、或 `poolIdleBefore == 0`（pool 需要新建连接，典型是空闲超时回收后的第一条语句）；`NESTOS_SIDECAR_TRACE` 取 `1`/`true`/`yes`/`on`（不区分大小写）时记录全部语句，其余值（含 `0`）不改变默认行为。**WebKit 录制里的 IPC 时长不等于宿主耗时**：例如 `sidecar.database.open` 自报 `durationMs: 0` 却观测到 336 ms，说明差值来自命令返回之后的交付/排队，不能用它归因到 SQLite。判断启动慢属于宿主还是交付路径，必须两边对着看。
 
-CLI 使用 `uncaughtExceptionMonitor` 记录致命异常，不安装吞错的异常处理器；同步日志追加使普通失败退出前的记录可读取。SIGKILL 等无法运行 JS 回调的结束不保证有 CLI 退出记录。桌面的 Linux 独立监测进程和下次启动补记机制见 [MindOS profile](../mindos-profile.md#tauri--cli-运行日志)。
+CLI 使用 `uncaughtExceptionMonitor` 记录致命异常，不安装吞错的异常处理器；同步日志追加使普通失败退出前的记录可读取。SIGKILL 等无法运行 JS 回调的结束不保证有 CLI 退出记录。桌面的 Linux 独立监测进程和下次启动补记机制见 [NestOS profile](../nestos-profile.md#tauri--cli-运行日志)。
 
 ## 回归证据
 

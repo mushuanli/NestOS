@@ -48,7 +48,7 @@ async function assertInside(root: string, file: string): Promise<void> {
 export async function packageFiles(source: ToolPackageSource, bindings: ExecutableBinding[] = []): Promise<string[]> {
     const files: string[] = [];
     const binaries = bindings.filter(binding => binding.source === 'package' && binding.relative).map(binding => binding.relative!);
-    const entries = [...new Set(['mindos-tool.json', source.manifest.module, ...source.manifest.files, ...binaries])].sort();
+    const entries = [...new Set(['nestos-tool.json', source.manifest.module, ...source.manifest.files, ...binaries])].sort();
     for (const entry of entries) await enumerate(source.root, entry, files);
     return [...new Set(files)].sort();
 }

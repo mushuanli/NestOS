@@ -2,9 +2,9 @@
 
 ## 新增 Provider
 
-MindOS 默认仅装配 DeepSeek、火山引擎和豆包语音及对应连接。其他服务从工具箱「新建 → 模型服务商」按需添加，旧工作区已保存的配置保留；系统恢复不再提供 Provider/Connection 条目，配置异常时从工具箱删除后重新添加。完整厂商定义仍可供宿主显式组合，默认选择只在产品预设入口 `createMindosLlmPresets` 中决定。
+NestOS 默认仅装配 DeepSeek、火山引擎和豆包语音及对应连接。其他服务从工具箱「新建 → 模型服务商」按需添加，旧工作区已保存的配置保留；系统恢复不再提供 Provider/Connection 条目，配置异常时从工具箱删除后重新添加。完整厂商定义仍可供宿主显式组合，默认选择只在产品预设入口 `createNestosLlmPresets` 中决定。
 
-新建 Provider 的预设来自 `createMindosProviderTemplates`，由宿主注入 `ToolboxResources`。该目录不自动创建 Provider；本地 Codex 等固定身份的宿主服务不作为可复制的 API 预设。UI/RPC 只读取预设 ID 和名称；新建界面不另设配置名称，选择列表预设或输入其精确名称时，提交对应预设 ID 及其名称，列表外输入作为自定义服务商名称。后端按配置字段白名单深拷贝并清除内置身份、凭据、费用等运行数据。预设服务商使用预设的稳定 ID，自定义服务商分配 UUID；已有预设 ID 或同名服务商（去除首尾空白、忽略大小写）时拒绝创建，未知预设同样在持久化前拒绝。多个视图的创建按同一管理服务串行核对，避免并发覆盖已有配置；删除后可从预设重新添加。自定义创建空白 OpenAI 兼容配置。创建不调用验证，也不改变已有实例或全局默认。
+新建 Provider 的预设来自 `createNestosProviderTemplates`，由宿主注入 `ToolboxResources`。该目录不自动创建 Provider；本地 Codex 等固定身份的宿主服务不作为可复制的 API 预设。UI/RPC 只读取预设 ID 和名称；新建界面不另设配置名称，选择列表预设或输入其精确名称时，提交对应预设 ID 及其名称，列表外输入作为自定义服务商名称。后端按配置字段白名单深拷贝并清除内置身份、凭据、费用等运行数据。预设服务商使用预设的稳定 ID，自定义服务商分配 UUID；已有预设 ID 或同名服务商（去除首尾空白、忽略大小写）时拒绝创建，未知预设同样在持久化前拒绝。多个视图的创建按同一管理服务串行核对，避免并发覆盖已有配置；删除后可从预设重新添加。自定义创建空白 OpenAI 兼容配置。创建不调用验证，也不改变已有实例或全局默认。
 
 工具箱新建弹窗先选类型，再填写对应参数，保留 MCP 等原有可创建类型；模型相关类型显示为「模型服务商」和「模型连接」。新服务商详情与连接引导仅在弹窗内装配，复用已有编辑器并在完成前提交待保存配置；创建后的加载失败重试已有资源，不重复创建。现有工具栏、菜单和详情页沿用原有布局。
 
@@ -19,7 +19,7 @@ Provider 高级设置以 `supportedProtocols` 声明可用协议，以 `defaultP
 
 ## LLM 配置自动保存
 
-Provider/Connection 配置可以打包为标准 `itookit.toolbox` v1 归档，从工具箱导入；通用导入器按资源分配新 ID 并重写 Provider 引用，不加载第三方专用解析器，也不自动绑定已有 Flow。内置厂商目录由 itookit 的 `createMindosLlmPresets()` 提供，并出现在系统恢复中；豆包语音与火山方舟分别配置。厂商协议由独立 driver-llm 适配，业务工具不携带 Provider、模型目录或凭据；Flow 经连接槽执行音频生成，再将媒体交给 anki-cli 打包。
+Provider/Connection 配置可以打包为标准 `itookit.toolbox` v1 归档，从工具箱导入；通用导入器按资源分配新 ID 并重写 Provider 引用，不加载第三方专用解析器，也不自动绑定已有 Flow。内置厂商目录由 itookit 的 `createNestosLlmPresets()` 提供，并出现在系统恢复中；豆包语音与火山方舟分别配置。厂商协议由独立 driver-llm 适配，业务工具不携带 Provider、模型目录或凭据；Flow 经连接槽执行音频生成，再将媒体交给 anki-cli 打包。
 
 工具箱的模型分类提供折叠能力筛选，按钮组合稳定的 `tag:chat`、`tag:vision`、`tag:image.generate`、`tag:speech.synthesize` 等查询，与普通文字搜索取交集；显示名称通过 presentation.tagLabel 本地化，查询和资源身份不随语言改变。能力来自 Provider 模型目录及 Connection 实际档位，生成操作还须具有受支持的媒体适配器；音频输入与音频分类不等于 TTS。标签与凭据就绪状态分别呈现，不能代替运行前准入检查。
 

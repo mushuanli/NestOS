@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
 import { composeLlmPresets, parseLLMConfig, serializeLLMConfig, type LLMConfigFile } from '../../src/llm-management/config';
-import { createMindosLlmPresets } from '../../src/llm-management/presets';
+import { createNestosLlmPresets } from '../../src/llm-management/presets';
 import { LLMDeviceDriver } from '../../src/llm-management/core';
 
 const config: LLMConfigFile = {
@@ -10,12 +10,12 @@ const config: LLMConfigFile = {
     pricing: [{ id: 'host-model', price: [1, 2, 0, 0], providers: { 'host-test': ['model'] } }],
 };
 
-it('composes deterministic isolated catalogs without changing the global MindOS presets', () => {
-    const base = createMindosLlmPresets(), before = structuredClone(base), source = structuredClone(config);
+it('composes deterministic isolated catalogs without changing the global NestOS presets', () => {
+    const base = createNestosLlmPresets(), before = structuredClone(base), source = structuredClone(config);
     const left = composeLlmPresets(base, [config]);
     expect(composeLlmPresets(base, [config])).toEqual(left);
     expect(base).toEqual(before);
-    expect(createMindosLlmPresets()).toEqual(before);
+    expect(createNestosLlmPresets()).toEqual(before);
     expect(config).toEqual(source);
     const driver = new LLMDeviceDriver({} as never, { presets: left });
     left.agents.find(agent => agent.id === 'host-agent')!.config.systemPrompt = 'Changed';

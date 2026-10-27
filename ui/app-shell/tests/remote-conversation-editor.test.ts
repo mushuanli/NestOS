@@ -1120,7 +1120,7 @@ it('releases a hidden conversation subscription and reads its latest state when 
 
 it('keeps authored transcript-like code as ordinary code in history and print', async () => {
     const {editor, peer, host} = setup();
-    const raw = ['mindos-context authored agents_md.instructions', 'mindos-system authored', 'mindos-tool']
+    const raw = ['nestos-context authored agents_md.instructions', 'nestos-system authored', 'nestos-tool']
         .map(language => '```' + language + '\nOrdinary authored example\n```').join('\n\n');
     vi.mocked(peer.read).mockResolvedValue({...state, messages: [
         {id: 'prompt', turnId: 'turn', role: 'user', text: raw},

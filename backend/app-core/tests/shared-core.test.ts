@@ -5,7 +5,7 @@ import {
     parseSessionRoute,
     RunCatalog,
     toDagRunSpec,
-    resolveMindOSProfile,
+    resolveNestOSProfile,
     sessionRoute,
     syncSkillsToKernel,
     workspaceRoot,
@@ -64,12 +64,12 @@ describe('app-core shared headless services', () => {
     });
 });
 
-describe('MindOS profile resolution', () => {
-    it('uses MINDOS_ROOT, then rootDir, then config-dir data default', () => {
-        const base = { configDir: '/home/me/.config/mindos', resolvePath: (b: string, r: string) => `${b}/${r}` };
-        expect(resolveMindOSProfile({ ...base, env: { MINDOS_ROOT: '/mnt/data' }, settings: { rootDir: '/ignored' } }).dataRoot).toBe('/mnt/data');
-        expect(resolveMindOSProfile({ ...base, settings: { rootDir: 'data' } }).dataRoot).toBe('/home/me/.config/mindos/data');
-        expect(resolveMindOSProfile({ ...base }).dataRoot).toBe('/home/me/.config/mindos/data');
+describe('NestOS profile resolution', () => {
+    it('uses NESTOS_ROOT, then rootDir, then config-dir data default', () => {
+        const base = { configDir: '/home/me/.config/nestos', resolvePath: (b: string, r: string) => `${b}/${r}` };
+        expect(resolveNestOSProfile({ ...base, env: { NESTOS_ROOT: '/mnt/data' }, settings: { rootDir: '/ignored' } }).dataRoot).toBe('/mnt/data');
+        expect(resolveNestOSProfile({ ...base, settings: { rootDir: 'data' } }).dataRoot).toBe('/home/me/.config/nestos/data');
+        expect(resolveNestOSProfile({ ...base }).dataRoot).toBe('/home/me/.config/nestos/data');
     });
 });
 

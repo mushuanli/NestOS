@@ -60,7 +60,7 @@ it('removes a deleted project directory from navigation and allows an explicit n
         const replacement = await projects.create(project.name);
         await workbench.refresh(); await workbench.openResource(folderBrowserPath(replacement.path));
         expect(replacement.project.id).not.toBe(project.project.id);
-        expect(await root.driver.exists(replacement.project.directory + '/.mindos/info.seq')).toBe(true);
+        expect(await root.driver.exists(replacement.project.directory + '/.nestos/info.seq')).toBe(true);
         await vi.waitFor(() => expect(sidebar.querySelector(`[data-item-id="${prefix}/@files"]`)).not.toBeNull());
         expect(sidebar.querySelector(`[data-item-id="${prefix}/@files"]`)!.getAttribute('aria-disabled')).toBe('false');
     } finally { await workbench.destroy(); report.mockRestore(); sidebar.remove(); main.remove(); await mounts.dispose(); await files.dispose(); await manager.dispose(); }

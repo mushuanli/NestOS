@@ -77,7 +77,7 @@ export interface ToolVFSContext {
     writeFile(path: string, content: string): Promise<void>;
     /**
      * 列出路径下所有文件（递归），返回相对路径列表。
-     * Discovery respects .gitignore/.mindosignore by default. includeIgnored only
+     * Discovery respects .gitignore/.nestosignore by default. includeIgnored only
      * changes discovery filtering; it never grants access to additional files.
      */
     listFiles(dir?: string, options?: { includeIgnored?: boolean; excludeDirectories?: readonly string[]; signal?: AbortSignal }): Promise<string[]>;

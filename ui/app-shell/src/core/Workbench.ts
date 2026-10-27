@@ -1,5 +1,5 @@
 import {backToPreviousPage} from '../navigation/page-history';
-import { createMindOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
+import { createNestOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { connectEditorLifecycle } from '../browser/editor-connector';
 import { resolveFileEditor } from '../browser/types';
 import { createVFSMentionProviders } from '../browser/mention/createVFSMentionProviders';

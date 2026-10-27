@@ -1,12 +1,14 @@
 import {randomUUID} from '@itookit/common';
 
 export interface FileRecovery { base: string; text: string; savedAt?: number; retentionStartedAt?: number; }
+const maxRefreshBackupBytes = 512 * 1024;
+export const canPreserveRefreshBackup = (text: string): boolean => text.length < maxRefreshBackupBytes && new TextEncoder().encode(text).byteLength < maxRefreshBackupBytes;
 
 /** Per-tab small drafts are synchronous; larger documents use browser storage without an RPC. */
 export class FileRecoveryStore {
     private readonly key: string;
     private available = true;
-    constructor(scope: string, path: string, slot?: 'reload-backup') {
+    constructor(scope: string, path: string, private readonly slot?: 'reload-backup') {
         let tab = 'unavailable';
         try {
             const existing = sessionStorage.getItem('mindos.file-recovery.tab');
@@ -19,12 +21,17 @@ export class FileRecoveryStore {
         if (!this.available) throw new Error('Recovery tab identity unavailable');
         let value: unknown;
         try { const text = sessionStorage.getItem(this.key); if (text) value = JSON.parse(text); } catch { /* Try the large-document store. */ }
-        value ??= await this.database('readonly', store => store.get(this.key));
+        if (!this.slot) value ??= await this.database('readonly', store => store.get(this.key));
         const draft = value as FileRecovery | undefined;
         return draft && typeof draft.base === 'string' && typeof draft.text === 'string' ? draft : undefined;
     }
     write(value: FileRecovery): Promise<void> {
         if (!this.available) return Promise.reject(new Error('Recovery tab identity unavailable'));
+        if (this.slot === 'reload-backup') {
+            if (!canPreserveRefreshBackup(value.text)) return Promise.reject(new Error('Refresh backup exceeds the 512 KiB limit'));
+            try {sessionStorage.setItem(this.key, JSON.stringify(value)); return Promise.resolve();}
+            catch (error) {return Promise.reject(error);}
+        }
         if (value.text.length < 512 * 1024) {
             try { sessionStorage.setItem(this.key, JSON.stringify(value)); return Promise.resolve(); } catch { /* Quota or disabled session storage. */ }
         }

@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { expect } from 'vitest';
-import type { HarnessClient, RemoteProject } from '@itookit/mindos-node-driver';
+import type { HarnessClient, RemoteProject } from '@itookit/nestos-node-driver';
 import type { LLMProvider, LLMConnection } from '@itookit/driver-llm/contracts';
 
 export interface RealMetadata {

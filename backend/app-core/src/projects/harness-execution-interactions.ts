@@ -1,6 +1,6 @@
 import { sha256HexSync } from '@itookit/common';
 import type { EffectExecutionContext, JsonValue } from '@itookit/durable-kernel';
-import type { HarnessEvent, HarnessEvents } from '@itookit/mindos-node-driver';
+import type { HarnessEvent, HarnessEvents } from '@itookit/nestos-node-driver';
 import type { HarnessInteractionNotification } from '@itookit/kernel-adapters/contracts';
 import { executionError, jsonValue, nativeOperationId } from './harness-execution-journal';
 import { nativeMutation, NATIVE_MUTATION_HELD, type NativeExecution } from './harness-execution-operations';

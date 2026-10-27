@@ -13,7 +13,7 @@ export function compareConversations(a: FSNode, b: FSNode): number {
     return b.modifiedAt - a.modifiedAt || a.path.localeCompare(b.path);
 }
 export function localConversationSource(nodes: FSNode[]): ConversationSource {
-    return {id: '@mindos', cursorAfter: node => JSON.stringify([node.modifiedAt, node.path]), read: async cursor => {
+    return {id: '@nestos', cursorAfter: node => JSON.stringify([node.modifiedAt, node.path]), read: async cursor => {
         if (!cursor) return {nodes};
         let after: unknown;
         try {after = JSON.parse(cursor);} catch {throw new FSError('EINVAL', 'Invalid local conversation cursor');}

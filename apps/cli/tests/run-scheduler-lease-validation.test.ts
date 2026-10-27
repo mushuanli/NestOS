@@ -23,7 +23,7 @@ it.each([null, {}, { ...lease(5), version: 2 }, lease(-1), lease(0.5)])(
 );
 
 it('keeps an expired lease protected through the configured clock allowance', async () => {
-    vi.stubEnv('MINDOS_SCHEDULER_LEASE_SKEW_MS', '200');
+    vi.stubEnv('NESTOS_SCHEDULER_LEASE_SKEW_MS', '200');
     state.entry = { value: lease(1000) };
     await expect(assertRunNotScheduled(ref, 1199)).rejects.toThrow('other-host');
     await expect(assertRunNotScheduled(ref, 1200)).resolves.toBeUndefined();
@@ -32,7 +32,7 @@ it('keeps an expired lease protected through the configured clock allowance', as
 });
 
 it('rejects an invalid allowance before opening inspection storage', async () => {
-    vi.stubEnv('MINDOS_SCHEDULER_LEASE_SKEW_MS', 'NaN');
+    vi.stubEnv('NESTOS_SCHEDULER_LEASE_SKEW_MS', 'NaN');
     await expect(assertRunNotScheduled(ref)).rejects.toThrow('non-negative safe integer');
     expect(state.opened).not.toHaveBeenCalled();
 });

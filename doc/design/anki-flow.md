@@ -12,7 +12,7 @@
 
 Flow 的 `outputs.manifest` / `outputs.package` 显式声明清单及 `.apkg` 的路径和 MIME 类型。Rust 工具拥有清单版本、牌组/笔记身份、卡片字段、媒体映射与校验、51 字段模板、临时 ZIP 和完成替换。最终文件保存到工作区 `输出目录/<操作摘要>/`，回执核对清单、包和媒体 SHA-256；没有完整回执时不自动重放写操作。当前 Node 扩展导出限制单包 128 MiB。
 
-Node 宿主通过 `MINDOS_TOOL_MODULES`（绝对模块路径 JSON 数组）加载外部 `createTools` 工厂，通过 `ANKI_CLI_BIN` 指向 Rust 二进制。HTTP 与 CLI 共用加载机制，业务工具实现保留在外部包；浏览器/Tauri 不自动获得 Rust 能力。平台新增的 Task 资产读取端口只允许同 Session、同 Flow 的节点间读取，并校验资产身份与摘要；二进制工作区写入沿用挂载权限。库恢复与发布由应用层 app.flow-library.restore 显式协调，核心 DraftRestore 仍只恢复草稿。Anki 的单一 JSON 声明源位于应用预设目录，外部包和 CLI 示例不再保存 Flow 副本；已有用户文件、发布版本和安装回执保留。普通平台测试可验证应用资源恢复，但不加载 Anki 子模块或 Rust 工具，业务执行集成测试在外部包中显式运行。
+Node 宿主通过 `NESTOS_TOOL_MODULES`（绝对模块路径 JSON 数组）加载外部 `createTools` 工厂，通过 `ANKI_CLI_BIN` 指向 Rust 二进制。HTTP 与 CLI 共用加载机制，业务工具实现保留在外部包；浏览器/Tauri 不自动获得 Rust 能力。平台新增的 Task 资产读取端口只允许同 Session、同 Flow 的节点间读取，并校验资产身份与摘要；二进制工作区写入沿用挂载权限。库恢复与发布由应用层 app.flow-library.restore 显式协调，核心 DraftRestore 仍只恢复草稿。Anki 的单一 JSON 声明源位于应用预设目录，外部包和 CLI 示例不再保存 Flow 副本；已有用户文件、发布版本和安装回执保留。普通平台测试可验证应用资源恢复，但不加载 Anki 子模块或 Rust 工具，业务执行集成测试在外部包中显式运行。
 
 当前验收：Rust 包数据库/媒体、旧项目与 GUID、字段合并、背诵往返、失败保留旧包；Node 回执与损坏检测；平台资产权限与通用执行回归；[完整 CLI 模拟端点验收](../../apps/cli/scripts/verify-anki-flow.mjs) 实际生成媒体和 `.apkg`，覆盖统一入口文本/图片、combined/grouped、校对前后进程退出/恢复，以及恢复不重复识别或媒体请求。45 条内容合并为 20/20/5；按 21/24 两组处理时为 20/1/20/4。
 

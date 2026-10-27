@@ -33,7 +33,7 @@ export class WorkspaceGrantRegistry {
         const resolved = await realpath(path.resolve(this.workspaceRoot, requestedPath));
         const info = await stat(resolved);
         const directory = info.isDirectory() ? resolved : path.dirname(resolved);
-        if (inside(this.stateDir, directory)) throw new Error('MindOS state directory cannot be granted');
+        if (inside(this.stateDir, directory)) throw new Error('NestOS state directory cannot be granted');
         const existing = this.list().find(item => item.path === directory && covers(item.access, access));
         if (existing) return existing;
         const id = `grant-${this.values.size + 1}`;

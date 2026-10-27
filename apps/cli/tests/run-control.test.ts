@@ -25,7 +25,7 @@ afterEach(async () => {
     for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
-    delete process.env.MINDOS_TEST_API_KEY;
+    delete process.env.NESTOS_TEST_API_KEY;
 });
 
 /**
@@ -60,7 +60,7 @@ providers:
     implementation: openai-compatible
     base_url: http://127.0.0.1:${port}
     default_path: /v1/chat/completions
-    api_key_env: MINDOS_TEST_API_KEY
+    api_key_env: NESTOS_TEST_API_KEY
     models:
       - id: mock-model
 connections:
@@ -96,7 +96,7 @@ function startRun(configPath: string, stateDir: string): ChildProcess {
 async function layout(prefix: string): Promise<{ workspace: string; stateDir: string; configPath: string }> {
     const workspace = await mkdtemp(path.join(tmpdir(), prefix));
     roots.push(workspace);
-    return { workspace, stateDir: path.join(workspace, '.mindos'), configPath: path.join(workspace, 'mindos.yml') };
+    return { workspace, stateDir: path.join(workspace, '.nestos'), configPath: path.join(workspace, 'mindos.yml') };
 }
 
 async function latestRun(stateDir: string): Promise<string> {
@@ -111,8 +111,8 @@ it('stops a node that exceeds its configured timeout and fails the Run', async (
     const model = hangingServer();
     const port = await listenForTest(model.server);
     servers.push(model.server);
-    const { stateDir, configPath } = await layout('mindos-timeout-');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    const { stateDir, configPath } = await layout('nestos-timeout-');
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, config(port, '400ms'), 'utf8');
 
     const child = startRun(configPath, stateDir);
@@ -130,8 +130,8 @@ it('cancels the Run and stops the in-flight request on SIGINT', async () => {
     const model = hangingServer();
     const port = await listenForTest(model.server);
     servers.push(model.server);
-    const { stateDir, configPath } = await layout('mindos-sigint-');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    const { stateDir, configPath } = await layout('nestos-sigint-');
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, config(port), 'utf8');
 
     const child = startRun(configPath, stateDir);

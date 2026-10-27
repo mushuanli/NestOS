@@ -54,10 +54,11 @@ export function mountFileMenu(container: HTMLElement, editor: MDxEditor, options
                     if (lifetime.signal.aborted || path !== getPath() || editor.isDirty() !== dirty || editor.getText() !== original)
                         throw Object.assign(new Error(t('editor.file.changed')), {code: 'ECONFLICT'});
                     if (content !== original) {
-                        if (!await compareFileContents(original, content, dirty, lifetime.signal, !dirty || !!options.hostContext?.reloadRecovery)) return false;
+                        const recovery = options.hostContext?.reloadRecovery, preserve = recovery?.canPreserve?.(original) ?? !!recovery;
+                        if (!await compareFileContents(original, content, dirty, lifetime.signal, true, undefined, dirty && !preserve ? recovery ? 'large' : 'disabled' : false)) return false;
                         if (lifetime.signal.aborted || path !== getPath() || editor.getText() !== original || editor.isDirty() !== dirty)
                             throw Object.assign(new Error(t('editor.file.changed')), {code: 'ECONFLICT'});
-                        if (dirty) try {await options.hostContext!.reloadRecovery!.preserve(original);}
+                        if (dirty && preserve) try {await options.hostContext!.reloadRecovery!.preserve(original);}
                         catch (error) {throw Object.assign(new Error(t('editor.file.backupFailed'), {cause: error}), {code: 'RELOAD_BACKUP_FAILED'});}
                     }
                     editor.replaceLoadedContent(content, original); accepted = true; return true;

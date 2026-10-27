@@ -1,5 +1,5 @@
+import {createEditorSwapFactory} from './browser/editor-swap';
 import { WorkbenchWindows } from './workbench/windows';
-import {cleanupFileRefreshBackups} from './persistence/file-recovery-cleanup';
 import {t as translate} from '@itookit/common';
 import {rememberPagePresentation, writePageHistory, type PagePresentation} from './navigation/page-history';
 import { FlowCommand } from '@itookit/llm-flow/contracts';
@@ -51,7 +51,6 @@ import { FILE_REGISTRY, EditorTypeKey } from './config/file-registry';
 import { themeService, ThemeMode } from './ThemeService';
 
 export async function initApp(options: AppOptions): Promise<AppHandle> {
-    await cleanupFileRefreshBackups();
     let diagnostics = false;
     try { diagnostics = localStorage.getItem('vfs:debug') === '1'; } catch { /* Diagnostics remain opt-in when storage is unavailable. */ }
     setBootTraceEnabled(diagnostics);
@@ -127,7 +126,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
     logStep('初始化界面服务…');
     await themeReady;
 
-    const defaultEditorFactory = createDocumentChatFactory(baseEditorFactory, services, backend, options.ui.prepareChatSubmission, request => handleNavigationRequest(request));
+    const defaultEditorFactory = createEditorSwapFactory(createDocumentChatFactory(baseEditorFactory, services, backend, options.ui.prepareChatSubmission, request => handleNavigationRequest(request)), backend);
     const chatFromFile = createFileChatHandler(backend, request => handleNavigationRequest(request));
     const ocr = createOcrControls(() => backend.ocr(), agentService, request => handleNavigationRequest(request));
     cleanupFns.push(() => ocr.dispose());
@@ -146,7 +145,7 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             defaultHarnessToolIds: DEFAULT_HARNESS_TOOL_IDS, sessionManager, sessionRepository, ocr, commandBus,
             kernel: kernel.kernel, readTaskAttachment: backend.taskAttachment?.bind(backend), ...controls,
         });
-        const withMarkdown = createDocumentChatFactory(factory, services, backend, options.ui.prepareChatSubmission, request => handleNavigationRequest(request));
+        const withMarkdown = createEditorSwapFactory(createDocumentChatFactory(factory, services, backend, options.ui.prepareChatSubmission, request => handleNavigationRequest(request)), backend);
         return async (container, config) => { await executorUsage.load(); return withMarkdown(container, {...config, executorUsage}); };
     };
     const agentFactory = options.ui.createAgentEditor(agentService, { defaultToolIds: DEFAULT_HARNESS_TOOL_IDS,

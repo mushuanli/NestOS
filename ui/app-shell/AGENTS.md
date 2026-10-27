@@ -18,7 +18,7 @@ SessionWorkbench 统一项目草稿、智能体快捷入口和原生新会话入
 
 工具箱新建弹窗先选择添加类型，再填写对应参数；完整保留原有可创建类型，当前分类不删减 MCP 等选项，模型相关类型显示为「模型服务商」和「模型连接」。服务商名称使用单一可搜索、可输入字段，不另设配置名称；选择列表预设或输入其精确名称时，自动使用该预设及其名称，列表外输入作为自定义服务商名称。预设元数据来自 ToolboxResources.providerTemplates；提交对应预设 ID 与名称，由后端初始化配置，前端不复制厂商目录或凭据。已有服务商预设标记「已添加」并禁选，名称输入也校验重复；后端最终核对预设稳定 ID 和归一化名称，重复创建不得覆盖配置。自定义服务商从空白配置开始，新建不自动验证。新服务商/连接创建后在同一弹窗内复用原编辑器继续配置，连接引导也仅在弹窗内装配；工具栏、菜单及已有详情页保持原样。编辑器 form 与创建 form 为兄弟节点，完成前提交待保存配置，失败保留弹窗；创建成功后的加载失败不重复创建，日志区分阶段并保留安全错误分类。
 
-工具箱模型抽屉优先展示默认连接所在 Provider，并显示默认标识及实际就绪状态；其余抽屉/连接按就绪、待配置、停用排序，Provider 设置行保持首位。搜索匹配显示名称与可搜索文本，匹配子项时展开所属抽屉，资源 ID 不随排序改变。智能体与抽屉按最近成功提交排序，时间通过宿主 `ExecutorUsage` 保存到 UI 文档 `mindos_executor_usage_v1`，不改写 Agent 配置时间；聊天与工具箱延迟读取并共享该端口。
+工具箱模型抽屉优先展示默认连接所在 Provider，并显示默认标识及实际就绪状态；其余抽屉/连接按就绪、待配置、停用排序，Provider 设置行保持首位。搜索匹配显示名称与可搜索文本，匹配子项时展开所属抽屉，资源 ID 不随排序改变。智能体与抽屉按最近成功提交排序，时间通过宿主 `ExecutorUsage` 保存到 UI 文档 `nestos_executor_usage_v1`，不改写 Agent 配置时间；聊天与工具箱延迟读取并共享该端口。
 工具箱能力筛选通过折叠标签按钮组合现有 tag: 查询，与名称搜索同时匹配，多标签取交集；手机按钮至少 44px。后端按 Provider 模型目录及 Connection 实际档位投影 capabilityTags；图像生成和 TTS 必须有明确 operation 与受支持适配器，不能用名称、audio 输入或分类猜测。标签不代表凭据就绪，媒体连接不再被误判为缺少聊天模型。前端只翻译能力名，不持久化自动派生标签，不按具体工具或厂商分支。
 项目会话通过 `onStartConversationDraft` 请求切换执行方式；宿主定位同一项目的草稿，将输入和附件交给 appendDraft。已有草稿追加内容，接收编辑器身份变化后不再写入；不迁移原生历史、不发送输入、不取消原任务。模型和助手的下一轮选择仍由原会话编辑器管理。
 平台无关的 Session/Kernel 组合位于 backend/app-core；app-shell 只通过 shared/app-contracts 接收服务，不导入 app-core。UI 仅消费 ApplicationServices/ApplicationBackend；应用操作异步，宿主内部构造契约不进入 UI。本地与 HTTP 宿主共用 initApp。
@@ -88,7 +88,7 @@ const factory = factories[strategyType] ?? defaultEditorFactory;
 ## Conventions
 
 - `initApp()` 是唯一 UI 装配点 — VFS/LLM/Kernel 由宿主调用 `app-core` 的 `createApplicationRuntime()` 装配，UI 只接收 `services` 和 `backend`，编辑器/AI 菜单/LLM 设置编辑器经 `AppOptions.ui` 注入
-- 项目收藏只做端口适配：`project-favorites.ts` 把 `resolveBrowserTarget` 路由翻译成 `ProjectFavorites` 命令。远程命令由 mindos-node 能力声明控制，工作台不提供启用/禁用开关。
+- 项目收藏只做端口适配：`project-favorites.ts` 把 `resolveBrowserTarget` 路由翻译成 `ProjectFavorites` 命令。远程命令由 nestos-node 能力声明控制，工作台不提供启用/禁用开关。
 - 项目范围选择复用 vfs-ui 的 ScopeSelector；导入导出通过 toolbarOptions.definitions 统一按钮、菜单、图标与异步执行，工作台只注入业务命令和目标策略。
 - 通用 Workbench 保留 vfs-ui 默认的创建文件、创建目录按钮，并透传宿主 toolbarOptions；项目侧栏的精简操作只由 ProjectNavigation 配置，不影响其他模块。
 - 普通工作区侧栏通过 toolbarOptions.root 在刷新按钮前显示 `/` 根目录入口，不再为工作区名称单独增加一行目录按钮。

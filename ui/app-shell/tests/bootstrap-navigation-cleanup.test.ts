@@ -194,7 +194,7 @@ const uiFactory = () => vi.fn(async () => ({ destroy: vi.fn(async () => {}) }));
 const testUI = () => ({ createChatEditor: uiFactory, createAgentEditor: uiFactory, createFlowEditor: uiFactory,
     createSkillEditor: uiFactory, createAIContextMenu: () => ({}), createFlowContextMenu: () => ({}), llmUiEditors: {} }) as any;
 function navigationDOM(other = false) {
-    document.body.innerHTML = `<aside class="app-sidebar"><div class="app-sidebar__brand">MindOS</div>
+    document.body.innerHTML = `<aside class="app-sidebar"><div class="app-sidebar__brand">NestOS</div>
         <button class="app-nav-btn" data-target="settings-workspace"><span>Settings</span></button></aside>
         <main class="main-content-area"><div id="settings-workspace" class="workspace-view"></div>
         ${other ? '<div id="other-workspace" class="workspace-view"></div>' : ''}</main>`;
@@ -337,7 +337,7 @@ it('releases replay mode after the newest Back navigation even when an older pag
     const slow = new Promise<void>(resolve => {finish = resolve;});
     lifecycle.open.mockImplementation(async (id: string) => {if (id === 'slow') await slow; else lifecycle.selection?.(id);});
     const replay = (id: string) => {
-        const state = {workspaceId: workspace.elementId, resourceId: id, mindosPage: 1};
+        const state = {workspaceId: workspace.elementId, resourceId: id, nestosPage: 1};
         history.replaceState(state, '', '#/settings/' + id); window.dispatchEvent(new PopStateEvent('popstate', {state}));
     };
     try {

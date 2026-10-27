@@ -24,8 +24,8 @@
     "workspace": true
   },
   {
-    "directory": "mindos-node-driver",
-    "name": "@itookit/mindos-node-driver",
+    "directory": "nestos-node-driver",
+    "name": "@itookit/nestos-node-driver",
     "version": "0.4.3",
     "workspace": true
   },

@@ -140,7 +140,7 @@ it('leaves unknown input unexecuted and rejects malformed, conflicting or cross-
 
 it('keeps malformed JSON and parameter values out of diagnostic logs', async () => {
     const f = await setup(), file = path.join(f.directory, 'bad.json');
-    vi.stubEnv('MINDOS_DIAGNOSTICS_DIR', f.directory); const diagnostics = installRuntimeDiagnostics(); cleanup.push(() => diagnostics.dispose());
+    vi.stubEnv('NESTOS_DIAGNOSTICS_DIR', f.directory); const diagnostics = installRuntimeDiagnostics(); cleanup.push(() => diagnostics.dispose());
     await writeFile(file, '{"secret":"PRIVATE_CALL_BODY",');
     await expect(f.call('prepare', undefined, {flow: 'worker', paramsFile: file, submissionFile: path.join(f.directory, 'call.json')})).rejects.toMatchObject({code: 'CLI_CALL_JSON_INVALID'});
     const logs = await readFile(diagnostics.file, 'utf8');
@@ -207,7 +207,7 @@ it('rejects a Flow connection override for a plain Agent before creating a reque
 
 
 it('diagnoses context validation and host failures without logging cursor contents or remote error text', async () => {
-    const f = await setup(); vi.stubEnv('MINDOS_DIAGNOSTICS_DIR', f.directory);
+    const f = await setup(); vi.stubEnv('NESTOS_DIAGNOSTICS_DIR', f.directory);
     const diagnostics = installRuntimeDiagnostics(); cleanup.push(() => diagnostics.dispose());
     await f.call('contexts');
     await expect(f.call('contexts', undefined, {cursor: 'PRIVATE_CURSOR_TEXT'})).rejects.toMatchObject({code: 'CONTEXT_CURSOR_INVALID'});

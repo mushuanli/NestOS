@@ -13,7 +13,7 @@ async function setup() {
     return { backend, manager, etc: await manager.openFileSystem('/etc'), files: await manager.openFileSystem('/home/admin/files') };
 }
 
-describe('MindOS label catalog', () => {
+describe('NestOS label catalog', () => {
     it('reads legacy definitions without writing, then migrates once without losing unused definitions', async () => {
         const { etc } = await setup();
         await etc.driver.createFile({ name: 'tags.json', parentPath: '/', content: JSON.stringify([

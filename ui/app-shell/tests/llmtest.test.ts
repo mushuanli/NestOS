@@ -14,7 +14,7 @@
 
 import { describe, it, expect, beforeAll } from 'vitest';
 import { LLMDriver } from '@itookit/driver-llm';
-import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import type { ChatMessage, Attachment } from '@itookit/llm-context';
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -45,7 +45,7 @@ const model = process.env.LLM_MODEL ?? 'gpt-4o-mini';
 const baseURL = process.env.OPENAI_BASE_URL;
 
 // Pull the default agent definition from constants
-const defaultAgentDef = createMindosLlmPresets().agents!.find(a => a.id === 'default')!;
+const defaultAgentDef = createNestosLlmPresets().agents!.find(a => a.id === 'default')!;
 const systemPrompt = defaultAgentDef.config.systemPrompt;
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

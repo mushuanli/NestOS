@@ -8,7 +8,7 @@ import { serveStatic } from '@itookit/node-host/http';
 
 vi.mock('node:zlib', async original => { const actual = await original<typeof import('node:zlib')>(); return { ...actual, gzip: vi.fn(actual.gzip) }; });
 let directory: string;
-beforeEach(async () => { directory = await mkdtemp(path.join(tmpdir(), 'mindos-assets-')); await mkdir(path.join(directory, 'assets')); vi.mocked(gzip).mockClear(); });
+beforeEach(async () => { directory = await mkdtemp(path.join(tmpdir(), 'nestos-assets-')); await mkdir(path.join(directory, 'assets')); vi.mocked(gzip).mockClear(); });
 afterEach(async () => { await rm(directory, { recursive: true, force: true }); });
 function response() { return { writeHead: vi.fn(), end: vi.fn() }; }
 it('reuses compressed hashed assets and honors conditional requests', async () => {

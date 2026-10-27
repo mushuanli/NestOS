@@ -20,7 +20,7 @@
 
 ## 根因与修复
 
-实际 DSH 0.2 的 SessionEventMap 中，turn/start 与 turn/end 携带 turn；user/message 使用 UserMessage，只携带消息身份、内容和 source。mindos-node 原代码错误要求 user/message.data.turn 为数字，故无法把真实 requestId 与正在观察的 turn 关联；其测试替身也额外填入了不存在的 turn 字段，掩盖了故障。
+实际 DSH 0.2 的 SessionEventMap 中，turn/start 与 turn/end 携带 turn；user/message 使用 UserMessage，只携带消息身份、内容和 source。nestos-node 原代码错误要求 user/message.data.turn 为数字，故无法把真实 requestId 与正在观察的 turn 关联；其测试替身也额外填入了不存在的 turn 字段，掩盖了故障。
 
 新增真实消息形状的回归在旧代码失败：native_turn=None，预期为 Some(1)。修复在连续事件流内以匹配 requestId、原冻结内容与追加语义的用户消息，关联已经观察到的 turn/start；匹配 turn/end 后才发布 turn/completed。新的提交和已关闭 turn 会清除旧上下文，避免借用前一轮编号；缺少已确认上下文时继续保持未核对，不凭 idle 释放。
 
@@ -28,14 +28,14 @@
 
 ## 运行更新与后续验收
 
-实际原生端点为 http://127.0.0.1:8787，监听进程使用 tools/svr。此文件不由 httpd 的 release 更新。修复产物位于 tools/mindos-node/target/release/mindos-node，版本 0.4.1，SHA-256 为 6c2092fbf51efb341e2e283992609985630cca136cd24b0c84b64e8e8876bc1b。
+实际原生端点为 http://127.0.0.1:8787，监听进程使用 tools/svr。此文件不由 httpd 的 release 更新。修复产物位于 tools/nestos-node/target/release/nestos-node，版本 0.4.1，SHA-256 为 6c2092fbf51efb341e2e283992609985630cca136cd24b0c84b64e8e8876bc1b。
 
 首次验收时尚未替换或重启 tools/svr；更新后的结果见下一节。更新需保留原配置与凭据，核对其他原生工作和未确认控制；正常关闭原进程后切换已验证二进制，再验证两个新 turn 顺序完成、队列排空、发送能力恢复、独立查询和精确取消，以及旧待核对验收项的恢复。更新 httpd、清空 UI 状态或删除 journal 均不能替代这一验收。
 
 
 ## 更新到 0.4.1 后的真实复验
 
-用户更新服务后，已核对 httpd 为 20261025T232317-cada401f-dirty，原生端口 8787 使用新进程，tools/svr --version 返回 mindos-node 0.4.1。原故障 Session 再次观察为 idle、pending=false、canSend=true、canQueue=true，三项只读命令目录及原查询回执可读；Chromium 原页面输入框可编辑，没有未确认提交提示或页面脚本错误。
+用户更新服务后，已核对 httpd 为 20261025T232317-cada401f-dirty，原生端口 8787 使用新进程，tools/svr --version 返回 nestos-node 0.4.1。原故障 Session 再次观察为 idle、pending=false、canSend=true、canQueue=true，三项只读命令目录及原查询回执可读；Chromium 原页面输入框可编辑，没有未确认提交提示或页面脚本错误。
 
 新建验收 Session pi-8999a0f366c57ce2dd01b8edf28fb79f01cbabd3ed47069abcedc3bb08886623 后，再次验证暂停、接纳、编辑、旧 revision 拒绝、排序、合并、删除、重开和空队列恢复。随后两个真实原生 turn 顺序完成：verify-turn-a-4e5de8fd-3197-4825-b108-cd964869465b 与 verify-turn-b-2028e12d-c794-47ee-9797-f5f4394bbf41。每个测试输入只出现一次，两项接纳身份保留，两个预期助手标记均出现；没有工具消息，最终 active=false、pending=false、queueCount=0、canSend=true。
 
@@ -52,7 +52,7 @@
 
 ## 旧已接纳项恢复：源码完成，运行端待复验
 
-已实现 mindos-node 0.4.2（7a763f9）与 mindos-node-driver 0.4.1（9de8447）的配套修复。原生适配器只读同一有界历史页，在连续、完整的 turn/start/end 内，以唯一原生用户输入派生 requestId、输入 SHA-256 与事件起止序号；客户端再与已持久接纳的原队首核对。结算使用原队列 journal，不恢复发送、不接管原生会话，也不消费后续草稿。助手块完成和 native idle 均不能代替执行终态。
+已实现 nestos-node 0.4.2（7a763f9）与 nestos-node-driver 0.4.1（9de8447）的配套修复。原生适配器只读同一有界历史页，在连续、完整的 turn/start/end 内，以唯一原生用户输入派生 requestId、输入 SHA-256 与事件起止序号；客户端再与已持久接纳的原队首核对。结算使用原队列 journal，不恢复发送、不接管原生会话，也不消费后续草稿。助手块完成和 native idle 均不能代替执行终态。
 
 该范围限于已保留原接纳回执的纯文本旧项；缺页、附件、多输入和接纳本身未知的操作不会被自动标为完成。核对只结算当前已接纳项，不派发其他项；失败的持久写入保留原责任。完整机制与回归记录见 [合入计划第 77 节](./functional-merge-plan.md#77-以原生持久边界结算旧已接纳队首)。
 

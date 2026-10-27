@@ -29,7 +29,7 @@ function serve(mode, args) {
     const file = runtimePaths(mode).runtime, output = runtimeLog(file);
     const banner = `HTTP mode: ${mode}\nVersion: ${id}\nRuntime log: ${file}`; console.log(banner); output.write(Buffer.from(banner + '\n'));
     const child = spawn(command, childArgs, { cwd: directory, stdio: ['inherit', 'pipe', 'pipe'], detached: true,
-        env: { ...hostEnvironment(), INIT_CWD: root, MINDOS_HTTPD_MODE: mode, MINDOS_HTTPD_VERSION: id } });
+        env: { ...hostEnvironment(), INIT_CWD: root, NESTOS_HTTPD_MODE: mode, NESTOS_HTTPD_VERSION: id } });
     child.stdout.on('data', chunk => { output.write(chunk); process.stdout.write(chunk); });
     child.stderr.on('data', chunk => { output.write(chunk); process.stderr.write(chunk); });
     let stopping = false;

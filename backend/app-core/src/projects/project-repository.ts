@@ -4,9 +4,9 @@ import type { DirectoryMountService } from '@itookit/app-contracts/services';
 import { mapConcurrent } from '../utils/map-concurrent';
 
 const ROOT = '/home/admin/projects';
-const INFO = '/.mindos/info.seq';
-const READONLY = `${ROOT}/.mindos/readonly`;
-const EXTERNAL = `${ROOT}/.mindos/local.seq`;
+const INFO = '/.nestos/info.seq';
+const READONLY = `${ROOT}/.nestos/readonly`;
+const EXTERNAL = `${ROOT}/.nestos/local.seq`;
 export interface ProjectIdentity { version: 1; id: string; name: string; createdAt: number; navigationName?: string }
 export interface StoredProject extends ProjectIdentity { directory: string; kind: 'local' | 'remote'; metadataDirectory?: string }
 
@@ -23,7 +23,7 @@ export class ProjectRepository {
     }
     dispose(): void { this.unsubscribe?.(); this.unsubscribe = undefined; this.invalidate(); }
     private affectsIdentity(path: string): boolean {
-        if (path.endsWith('/.mindos/info.seq') || path === EXTERNAL || path.endsWith('/info.seq') && path.startsWith(READONLY + '/')) return true;
+        if (path.endsWith('/.nestos/info.seq') || path === EXTERNAL || path.endsWith('/info.seq') && path.startsWith(READONLY + '/')) return true;
         return path === ROOT || path.startsWith(ROOT + '/') && !path.slice(ROOT.length + 1).includes('/');
     }
     private snapshot?: { until: number; rows: StoredProject[] };
@@ -49,7 +49,7 @@ export class ProjectRepository {
             if (error instanceof FSError && error.code === 'ENOENT') return [];
             throw error;
         });
-        const local = await mapConcurrent(children.filter(child => child.type === 'directory' && child.name !== '.mindos'),
+        const local = await mapConcurrent(children.filter(child => child.type === 'directory' && child.name !== '.nestos'),
             4, child => this.readLocal(child.path));
         records.push(...local.filter((project): project is StoredProject => project !== undefined));
         const external = await mapConcurrent(await this.references(EXTERNAL), 4, async reference => {
@@ -97,7 +97,7 @@ export class ProjectRepository {
         const seq = fs.meta.seq;
         if (!seq?.transaction) throw new FSError('ECAPABILITY', 'Project identity requires SeqFile transactions');
         if (!await fs.driver.exists(INFO)) {
-            try { await fs.driver.createFile({ parentPath: '/.mindos', name: 'info.seq', type: 'seqfile', recursive: true }); }
+            try { await fs.driver.createFile({ parentPath: '/.nestos', name: 'info.seq', type: 'seqfile', recursive: true }); }
             catch (error) { if (!(error instanceof FSError) || error.code !== 'EEXIST') throw error; }
         }
         await seq.transaction(async tx => {
@@ -146,8 +146,8 @@ export class ProjectRepository {
     }
     sessionDirectory(project: StoredProject): string {
         if (project.kind === 'remote') return `${project.metadataDirectory}/sessions`;
-        return project.directory.startsWith('/home/admin/') ? `${project.directory}/.mindos/sessions`
-            : `${ROOT}/.mindos/local/${project.id}/sessions`;
+        return project.directory.startsWith('/home/admin/') ? `${project.directory}/.nestos/sessions`
+            : `${ROOT}/.nestos/local/${project.id}/sessions`;
     }
     private async readLocal(directory: string): Promise<StoredProject | undefined> {
         let owner: FileSystemSourceOwner | undefined;
@@ -182,7 +182,7 @@ export class ProjectRepository {
     }
     private async saveReference(path: string, project: StoredProject): Promise<void> {
         if (!await this.root.driver.exists(path)) {
-            try { await this.root.driver.createFile({ parentPath: `${ROOT}/.mindos`, name: path.split('/').pop()!, type: 'seqfile', recursive: true }); }
+            try { await this.root.driver.createFile({ parentPath: `${ROOT}/.nestos`, name: path.split('/').pop()!, type: 'seqfile', recursive: true }); }
             catch (error) { if (!(error instanceof FSError) || error.code !== 'EEXIST') throw error; }
         }
         await this.root.meta.seq!.setEntry(path, project.id, JSON.stringify(project));

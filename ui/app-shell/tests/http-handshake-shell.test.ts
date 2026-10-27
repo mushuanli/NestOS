@@ -21,7 +21,7 @@ it('shows the first-paint skeleton while a real HTTPS opening is pending, then m
     const html = new DOMParser().parseFromString(await readFile('../../apps/web-app/index.html', 'utf8'), 'text/html');
     document.body.replaceWith(document.importNode(html.body, true));
     const style = document.createElement('style'); style.textContent = html.querySelector('style')!.textContent; document.head.append(style); releases.push(() => style.remove());
-    const directory = await mkdtemp(path.join(tmpdir(), 'mindos-handshake-shell-')); releases.push(() => rm(directory, {recursive: true, force: true}));
+    const directory = await mkdtemp(path.join(tmpdir(), 'nestos-handshake-shell-')); releases.push(() => rm(directory, {recursive: true, force: true}));
     const certificates = path.join(directory, 'certs'); await createCertificates(certificates, ['127.0.0.1']);
     const host = await startHost({root: path.join(directory, 'data'), sidecar: path.join(directory, 'meta'), authDir: path.join(directory, 'auth'),
         auditFile: path.join(directory, 'audit.jsonl'), certificates: await loadCertificates(certificates), staticDir: directory, host: '127.0.0.1', port: 0, backlog: 32});

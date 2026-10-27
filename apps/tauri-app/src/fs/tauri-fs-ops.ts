@@ -8,7 +8,7 @@
  *   This means `path/**` never matches `path/.hidden`, blocking access to VFS paths
  *   like .connections, .mcp, .skills, etc. regardless of allow_directory() calls.
  *   Our Rust commands skip the glob scope entirely and validate paths directly
- *   against the allowed dirs (mindos_dir and home_dir set in AppPaths state).
+ *   against the allowed dirs (nestos_dir and home_dir set in AppPaths state).
  */
 
 import { invoke } from '@tauri-apps/api/core';

@@ -6,7 +6,7 @@ import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 
 describe('NodeSqliteSidecarDb', () => {
     it('persists records and rolls back transactions', async () => {
-        const directory = await mkdtemp(path.join(tmpdir(), 'mindos-sqlite-'));
+        const directory = await mkdtemp(path.join(tmpdir(), 'nestos-sqlite-'));
         const file = path.join(directory, 'index.db');
         const first = await NodeSqliteSidecarDb.open(file);
         await first.setRecordField('/task', 'stable', { value: 1 });

@@ -8,7 +8,7 @@ import { ProjectSearch } from '@itookit/app-core';
 import type { ProjectService } from '@itookit/app-contracts/services';
 
 it('searches unopened on-disk files through the existing local driver without a new driver API', async () => {
-    const directory = await mkdtemp(join(tmpdir(), 'mindos-local-search-')), root = join(directory, 'files');
+    const directory = await mkdtemp(join(tmpdir(), 'nestos-local-search-')), root = join(directory, 'files');
     await mkdir(join(root, 'nested', 'child'), {recursive: true}); await mkdir(join(root, '.private'));
     await writeFile(join(root, 'nested', 'child', 'notes.md'), 'first\nneedle from disk');
     await writeFile(join(root, '.gitignore'), 'ignored.txt\n'); await writeFile(join(root, 'ignored.txt'), 'needle ignored');

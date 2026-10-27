@@ -1,5 +1,5 @@
 import { FlowLibraryCommand } from '@itookit/app-contracts';
-import { createMindosFlowLibrary } from '@itookit/app-core';
+import { createNestosFlowLibrary } from '@itookit/app-core';
 // @vitest-environment jsdom
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ICommandBus } from '@itookit/llm-session/contracts';
@@ -272,7 +272,7 @@ it('offers explicit restore on the Flow directory and sends the dedicated restor
         expect(command).toBe(FlowLibraryCommand.Restore);
         return 4 as never;
     });
-    const library = createMindosFlowLibrary();
+    const library = createNestosFlowLibrary();
     const menu = createFlowContextMenuConfig({ ...f, library });
     const directory = { id: '/@flows', type: 'directory' as const };
     const action = menu.items!(directory, []).find(item => 'id' in item && item.id === 'flow:restore');

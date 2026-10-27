@@ -2,7 +2,7 @@
 
 状态：目标架构有条件通过；已实现增量的架构复核与提交范围见第 14 节。更新：2026-10-25。
 
-评审基线：[itookit 5e9365a](https://github.com/mushuanli/itookit/tree/5e9365ae3aac3d4d0b8e820135e072c01c8389f8)、其锁定的 [llm-ui f39c40b](https://github.com/mushuanli/llm-ui/tree/f39c40ba7d6c88d3c87832e0b2348988f174c2c6) 与 [durable-kernel 0a786b2](https://github.com/mushuanli/durable-kernel/tree/0a786b24c410abdf8b75983c6acb5dd59a247207)。当前工作树已有队列相关增量；第 12 节分别标记基线能力、已确认的兼容问题和目标契约。
+评审基线：[itookit 5e9365a](https://github.com/mushuanli/nestos/tree/5e9365ae3aac3d4d0b8e820135e072c01c8389f8)、其锁定的 [llm-ui f39c40b](https://github.com/mushuanli/llm-ui/tree/f39c40ba7d6c88d3c87832e0b2348988f174c2c6) 与 [durable-kernel 0a786b2](https://github.com/mushuanli/durable-kernel/tree/0a786b24c410abdf8b75983c6acb5dd59a247207)。当前工作树已有队列相关增量；第 12 节分别标记基线能力、已确认的兼容问题和目标契约。
 
 实施前须落实取消与核对适配、重试身份及四份配套协议，保留交互补参和操作台账，并完成跨边界组合回归。文档修订不等同于这些运行行为已经修复或验收。::@753a5dac-460c-4cbc-ae38-b1053e4ec8e3@
 
@@ -82,14 +82,14 @@ attempt 不是一次新业务调用的替代身份。已终结 Invocation 不能
 C4Context
     title 统一执行模型的系统上下文
     Person(user, "用户", "输入任务、查看结果并控制执行")
-    System(mindos, "MindOS", "Session 状态、Agent 与 Flow 执行、llm-ui")
+    System(nestos, "NestOS", "Session 状态、Agent 与 Flow 执行、llm-ui")
     System_Ext(models, "模型端点", "本地模型服务或远程 API")
-    System_Ext(node, "原生执行节点", "mindos-node 与 Codex、Claude Code、DSH")
+    System_Ext(node, "原生执行节点", "nestos-node 与 Codex、Claude Code、DSH")
     System_Ext(tools, "外部工具服务", "Tool 包、MCP 与已授权工作区")
-    Rel(user, mindos, "提交、观察、交互与控制")
-    Rel(mindos, models, "通过模型 Connection 调用")
-    Rel(mindos, node, "通过 Harness Connection 调用与核对")
-    Rel(mindos, tools, "按授权执行工具")
+    Rel(user, nestos, "提交、观察、交互与控制")
+    Rel(nestos, models, "通过模型 Connection 调用")
+    Rel(nestos, node, "通过 Harness Connection 调用与核对")
+    Rel(nestos, tools, "按授权执行工具")
 ```
 
 ### 3.2 C4 容器
@@ -98,7 +98,7 @@ C4Context
 C4Container
     title 交互状态与执行的容器边界
     Person(user, "用户", "浏览器、桌面或 CLI")
-    System_Boundary(mindos, "MindOS") {
+    System_Boundary(nestos, "NestOS") {
         Container(ui, "llm-ui 与宿主适配", "原生 DOM / TypeScript", "输入、历史、队列、交互与运行展示")
         Container(app, "应用宿主", "app-core", "装配、授权、资源解析与会话共享所有权")
         Container(session, "Session 服务", "llm-session", "提交、草稿、队列、历史与控制路由")
@@ -125,7 +125,7 @@ C4Container
 ```mermaid
 C4Component
     title 宿主内的模块协作
-    Container_Boundary(host, "MindOS 应用运行时") {
+    Container_Boundary(host, "NestOS 应用运行时") {
         Component(view, "ChatView 与 FlowView", "libraries/llm-ui", "通用输入、展示、交互和队列组件")
         Component(binding, "ConversationBinding", "llm-ui-adapter", "映射安全读模型、回调和视图生命周期")
         Component(ledger, "OperationLedger", "llm-ui 公开契约及宿主注入实例", "冻结操作、回执与匹配草稿消费")
@@ -138,7 +138,7 @@ C4Component
         Component(program, "Agent 与叶子 Program", "llm-tasks / kernel-adapters", "工具循环、模型调用与 Harness 执行")
         Component(kernel, "Durable Kernel", "durable-kernel", "Task、Effect、租约、交互和恢复")
         Component(adapter, "ConnectionAdapter", "kernel-adapters", "按协议执行、核对和取消")
-        Component(driver, "协议驱动", "driver-llm / mindos-node-driver", "传输、原生能力、回执及事件")
+        Component(driver, "协议驱动", "driver-llm / nestos-node-driver", "传输、原生能力、回执及事件")
     }
     Rel(binding, view, "注入快照源与操作回调")
     Rel(binding, ledger, "复用宿主生命周期及持久保存")
@@ -159,14 +159,14 @@ C4Component
 | 模块 | 应拥有的职责 | 公共边界 |
 | --- | --- | --- |
 | llm-ui | 编辑态、通用 schema 表单、历史与运行读模型、操作反馈 | 自包含 UI DTO、snapshot/subscribe、具名回调 |
-| llm-ui-adapter | MindOS 与原生会话的展示映射、能力映射和导航接线 | 消费 app-contracts；向独立库注入端口 |
+| llm-ui-adapter | NestOS 与原生会话的展示映射、能力映射和导航接线 | 消费 app-contracts；向独立库注入端口 |
 | app-core | 目标目录、定义解析、连接与 binding 协调、授权及共享宿主实例 | 应用用例与组合根 |
 | llm-session | Submission、Instruction、入口解析协作、上下文、历史及控制关联 | Session 命令及读模型 |
 | llm-flow | DAG 与 Agent 编排的统一执行体、调用、分支、循环和汇合 | 已解析定义及通用运行端口 |
 | llm-tasks | 可恢复 Agent 循环、基础执行契约与任务 Program | Program、输入输出及通用执行引用 |
 | durable-kernel | Task/Effect 状态、租约 fencing、交互、取消与恢复机制 | 已有 Kernel 接口 |
 | kernel-adapters | Connection 能力分派、模型与 Harness Effect | 适配器接口与授权资源句柄 |
-| driver-llm / mindos-node-driver | 各自的传输、协议和原生语义 | 能力目录、执行、回执、事件及核对 |
+| driver-llm / nestos-node-driver | 各自的传输、协议和原生语义 | 能力目录、执行、回执、事件及核对 |
 
 以上职责优先在现有模块内收敛，不为每个概念新建 package。Flow 不依赖 Session 服务，独立 UI 不依赖 app-core、VFS 或执行包。流程字段、业务提示词和业务产物处理继续由外部 Flow、Tool 和产品配置提供。
 
@@ -857,7 +857,7 @@ C4Dynamic
 | [ISession](../../backend/llm-session/src/contracts/session.ts) | signal/events 的控制与事件入口 | 以 Session 状态实体解释其接口，具体运行身份归 Invocation |
 | [独立 llm-ui](../../libraries/llm-ui/src/contracts.ts) | source/actions/operations、冻结 draft、OperationReceipt 与交互 DTO | 同一 OperationLedger 接纳队列证据，修正操作限制范围，再扩展展示 |
 | [AgentComposition](../../backend/kernel-adapters/src/llm-management/contracts/agent-composition.ts) | 主持者选择一批成员任务，再汇总 | 迁入 single-batch orchestration，保持原限制；迭代主持显式 opt-in |
-| [HarnessRecovery](../../libraries/mindos-node-driver/src/harness/conversation-journal.ts) | 原生回执、命令结果、队列与草稿恢复 | 统一逻辑关联，同时保留 adapter journal 所有权 |
+| [HarnessRecovery](../../libraries/nestos-node-driver/src/harness/conversation-journal.ts) | 原生回执、命令结果、队列与草稿恢复 | 统一逻辑关联，同时保留 adapter journal 所有权 |
 
 当前 Agent 的 Flow 执行绑定及远程执行连接可以保留，目标设计不要求先重写它们。当前远程执行节点的输入输出、流式展示和控制能力以各自已实现契约为准，新增能力须经过目录协商。
 
@@ -1040,7 +1040,7 @@ DSH 长串行命令使用独立有界等待，不因普通查询或服务对调�
 | durable-kernel | Task/Effect 事实、事务、CAS、fencing、暂停树与物理清理确认 | Agent/Flow 发布规则、binding 策略、提示词与具体 Harness 识别 | 原子屏障必须在此层，不能上移为 UI 或调度器的先查后写 |
 | kernel-adapters | Effect 能力桥、连接事实到 Kernel 的转换、在途执行等待 | 项目授权、跨分支续接策略、厂商 SDK 或会话历史写入 | cancel/reconcile 的证明校验在此边界；pending/unknown 不转换为清理完成或重试 |
 | app-core | 当前项目授权、连接绑定、上下文兼容策略、资产授权读取与宿主 journal | 通用 reducer、UI DOM、按业务工具名分支 | 本次宿主实现应留在此层；只读资格是投影，实际派发仍复验授权与策略 |
-| mindos-node-driver / mindos-node | 前者负责协议与原生会话恢复；后者调用 SDK 并提供准确回执、能力和范围读取 | 定义宿主 Session/Branch、替代 Kernel 编排、推断宿主草稿消费 | 传输与原生语义保持分层；厂商差异留在对应原生 driver |
+| nestos-node-driver / nestos-node | 前者负责协议与原生会话恢复；后者调用 SDK 并提供准确回执、能力和范围读取 | 定义宿主 Session/Branch、替代 Kernel 编排、推断宿主草稿消费 | 传输与原生语义保持分层；厂商差异留在对应原生 driver |
 
 global/local、默认值覆盖和上下文兼容是策略；序列化、两阶段校验、CAS、回执核对和原子屏障是机制。策略选择由有权限和业务语义的层完成，再把冻结结果交给下层机制执行。不能为减少调用层数，把授权和 native journal 下沉进 Kernel；也不能为复用一段判断，把原子准入上移成宿主内存锁。
 
@@ -1051,7 +1051,7 @@ C4Component
         Component(ui, "独立 llm-ui", "DOM / ports", "编辑、显示、局部观察生命周期")
         Component(entry, "UI adapter / CLI", "入口适配", "冻结输入与草稿证据，调用公共端口")
     }
-    Container_Boundary(host, "MindOS 宿主") {
+    Container_Boundary(host, "NestOS 宿主") {
         Component(session, "llm-session", "会话语义", "准入、队列、分支、历史关联")
         Component(flow, "llm-flow", "编排机制", "冻结图、成员、调度租约")
         Component(kernel, "durable-kernel", "持久执行机制", "Task / Effect、CAS、控制树与清理确认")
@@ -1059,8 +1059,8 @@ C4Component
         Component(policy, "app-core", "宿主策略与适配", "授权、binding、资产与执行 journal")
     }
     Container_Boundary(remote, "原生协议") {
-        Component(client, "mindos-node-driver", "平台无关协议", "原生队列、回执与查询恢复")
-        Component(node, "mindos-node drivers", "Rust / SDK", "准确的原生操作身份、能力和资源事实")
+        Component(client, "nestos-node-driver", "平台无关协议", "原生队列、回执与查询恢复")
+        Component(node, "nestos-node drivers", "Rust / SDK", "准确的原生操作身份、能力和资源事实")
     }
     System_Ext(native, "Codex / Claude / DSH", "实际原生执行与上下文")
     Rel(ui, entry, "source / actions / operations")

@@ -12,7 +12,7 @@ it.each(['Grep', 'Glob'])('uses the shared ignore policy for standalone native %
     const root = await mkdtemp(join(tmpdir(), 'search-ignore-')); roots.push(root);
     await mkdir(join(root, 'src'));
     await writeFile(join(root, '.gitignore'), '*.log\n');
-    await writeFile(join(root, '.mindosignore'), 'private.txt\n');
+    await writeFile(join(root, '.nestosignore'), 'private.txt\n');
     for (const name of ['keep.txt', 'private.txt', 'output.log']) await writeFile(join(root, 'src', name), 'mdx');
     const driver = new ToolDeviceDriver([...BUILTIN_TOOLS]);
     // Accelerators must not bypass the shared discovery policy.

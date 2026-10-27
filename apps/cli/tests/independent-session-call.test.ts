@@ -117,7 +117,7 @@ it('returns the child interaction state instead of waiting forever or inspecting
 }, 15000);
 
 it('logs observation failures without exposing the backend error body or resending the call', async () => {
-    const f = await setup(); vi.stubEnv('MINDOS_DIAGNOSTICS_DIR', f.directory);
+    const f = await setup(); vi.stubEnv('NESTOS_DIAGNOSTICS_DIR', f.directory);
     const diagnostics = installRuntimeDiagnostics(); cleanup.push(() => diagnostics.dispose());
     await f.call('call-prepare', undefined, {flow: 'worker', callTitle: 'PRIVATE_TITLE', submissionFile: f.file});
     vi.spyOn(f.client.backend, 'openSessionView').mockRejectedValueOnce(new Error('PRIVATE_BACKEND_ERROR'));

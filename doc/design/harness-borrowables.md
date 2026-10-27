@@ -35,7 +35,7 @@
 | B-08 | (item × model) 成对幂等身份 + 每模型断路器 | `chargeBudget` 幂等，粒度是资源句柄 | 无 pair 身份；无 per-model 断路器 | 三 |
 | B-09 | 预算预检取最贵模型上界 + 分档 cutoff | 只有每请求输出上限 | 无累计预算与分档跳过判据 | 三 |
 | B-10 | abort 后 straggler 收尾，已花费不得记为“未发生” | 取消有“请求/确认”两态 | 取消与异常路径不补记已发生花费 | 二 |
-| B-11 | 隔离地板契约：floor 声明 + dispatch 前断言 + 请求/交付成对记录 | `tools/mindos-node/src/plugin/process/sandbox.rs` fail-closed 启动 | 无“请求边界 vs 交付边界”记录 | 二 |
+| B-11 | 隔离地板契约：floor 声明 + dispatch 前断言 + 请求/交付成对记录 | `tools/nestos-node/src/plugin/process/sandbox.rs` fail-closed 启动 | 无“请求边界 vs 交付边界”记录 | 二 |
 | B-12 | 有版本、可迁移、损坏即隔离的派生上下文缓存 | VFS/Context 有持久化 | 缺派生产物的版本-迁移-隔离约定 | 三 |
 | B-13 | 度量防伪：label digest + 工具链版本戳 + 反事实评分 | `doc/design/fixtures/raptor-parity-evidence.json` 有 definition sha | 无标签集摘要与工具链戳，结论过期不可察觉 | 收尾 |
 | B-14 | 只读子代理与证据完整性绑定 | 模型节点按需声明 `Read`/`Grep` 能力 | 缺“账本写入者必须是宿主”的不变量与测试 | 二（B-05 前置） |
@@ -64,7 +64,7 @@
 
 - 机制：证据按内容哈希寻址，同一字节只写一次、跨管道自动去重；执行结果区分“证伪”“证实”“环境无法验证”，第三态既不算成功也不算失败。
 - 上游：`core/witness/`（`Witness` 只存 sha256 引用 + `WitnessStore` 哈希寻址）与 `core/witness/sandbox_outcome.py` 的 `UNVERIFIABLE_ENVIRONMENT`。
-- 现状：`backend/kernel-adapters/src/effects/llm-chat-effect.ts` 的 `reconcile` 已有 indeterminate；`tools/mindos-node/src/plugin/harness/receipts.rs` 已有 epoch 回执。
+- 现状：`backend/kernel-adapters/src/effects/llm-chat-effect.ts` 的 `reconcile` 已有 indeterminate；`tools/nestos-node/src/plugin/harness/receipts.rs` 已有 epoch 回执。
 - 缺口：没有“沙箱/环境未满足”这一分类，于是“没复现”容易被读成“不存在”；证据块没有内容寻址，重复产物无法自动合并。
 - 落地层：kernel-adapters Effect 结果分类 + VFS 内容寻址目录。
 - 验收：缺口。需要覆盖“环境拒绝执行时结论为不可判定，且不写入任何否定证据”。
@@ -136,7 +136,7 @@
 
 - 机制：调用方声明一次隔离下限（floor），入口检查意图，**每次派发前**再断言实际交付能力不低于 floor；任何降级通道都必须穿过派发点，否则 fail closed；跨平台不比较、同一档内变化的轴（策略 ABI、seccomp、egress）是拒绝条件而不是新档位。
 - 上游：`core/sandbox/tiers.py`（`ContainmentTier` 全序 + `assert_floor`）与 `core/sandbox/context.py`。
-- 现状：`tools/mindos-node/src/plugin/process/sandbox.rs` 在 bubblewrap 不可用时 fail closed；`tools/mindos-node/src/plugin/projects/api.rs` 上报执行后端与 `execution` 可用性。
+- 现状：`tools/nestos-node/src/plugin/process/sandbox.rs` 在 bubblewrap 不可用时 fail closed；`tools/nestos-node/src/plugin/projects/api.rs` 上报执行后端与 `execution` 可用性。
 - 缺口：请求的边界与交付的边界没有成对记录，事后无法证明“这次到底在什么隔离级别下跑的”。
 - 落地层：执行请求带 `containmentFloor`，Effect 结果记 `deliveredTier` 与降级原因，日志与界面可见。
 - 验收：缺口。需要覆盖“floor 未达成时拒绝而非降级执行”“降级原因可查”。

@@ -6,7 +6,7 @@ import type {HarnessConnectionService} from '../projects/harness-connections';
 import { createTransferSummarizer } from './transfer-summary';
 import {registerInputAssets} from './input-assets';
 import {validateCallAssets} from './call-asset-preflight';
-import { createMindosDirectAgentPolicy } from '../presets/direct-agent-policy';
+import { createNestosDirectAgentPolicy } from '../presets/direct-agent-policy';
 import { createFlowCapabilities } from './flow-capabilities';
 import { createFlowInvocationSessions, initializeConversationSystem, type CommandBus, type FlowEngine, type SessionManager, type SessionRepository, type VFSAgentService } from '@itookit/llm-session';
 import { resolveSessionSkillContext, resolveSessionSelectedSkills } from '@itookit/kernel-adapters';
@@ -74,7 +74,7 @@ export async function createConversationSystem(
         instructionQueueSessions: options.instructionQueueSessions,
         scheduleAgentInitialization: options.scheduleAgentInitialization,
         scheduleInvocationRecovery: options.scheduleInvocationRecovery,
-        directAgentPolicy: options.directAgentPolicy ?? createMindosDirectAgentPolicy(),
+        directAgentPolicy: options.directAgentPolicy ?? createNestosDirectAgentPolicy(),
         agentResolution: options.agentResolution,
         hostPorts: { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot },
         loadArtifact: artifacts.loadArtifact,
@@ -85,7 +85,7 @@ export async function createConversationSystem(
         agentService,
         summarizeContent: createTransferSummarizer(sessionRepository, agentService, kernel.llmService),
         sessionEngine: sessionRepository,
-        promptHistoryFiles: options.promptHistoryFiles ?? await vfs.openFileSystem('/home/admin/.config/mindos/prompt-history'),
+        promptHistoryFiles: options.promptHistoryFiles ?? await vfs.openFileSystem('/home/admin/.config/nestos/prompt-history'),
         flowInvocationSessions: createFlowInvocationSessions(systemFS),
         independentCallSessions: createFlowInvocationSessions(systemFS, 'independent'),
         kernel: kernel.kernel,

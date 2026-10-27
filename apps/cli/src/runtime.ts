@@ -1,6 +1,6 @@
 import {stageInputAssets} from '@itookit/app-core';
 import { prepareFlowConnections } from '@itookit/llm-session';
-import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
 import { selectFinalResult } from './run-store';
 import { recordRuntimeDiagnostic, traceRuntimeStage } from './diagnostics';
 import { leaseSkewConfig } from './lease-config';
@@ -12,7 +12,7 @@ import type { LLMConnection, LLMProvider } from '@itookit/driver-llm/contracts';
 import { parse } from 'yaml';
 import { SessionFileSkillSource, resolveSessionSkillContext } from '@itookit/kernel-adapters';
 import { LLMDeviceDriver } from '@itookit/kernel-adapters/llm/core';
-import { createMindosLlmPresets, firstChatModelConnection } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosLlmPresets, firstChatModelConnection } from '@itookit/kernel-adapters/llm/presets';
 import { NodePtyDriver } from '@itookit/device-tty';
 import {
     Kernel,
@@ -41,7 +41,7 @@ import {
     HarnessConnectionService,
     createHarnessExecutionProvider,
     createHarnessCleanupState,
-    createMindOSNodeMCPExtension,
+    createNestOSNodeMCPExtension,
     MCPRemoteConnections,
     ProjectExecutionService,
     createRemoteExecutionProvider,
@@ -156,11 +156,11 @@ export async function createCliRuntime(
     const sidecarDir = vfsRoot ? path.join(vfsRoot, '_meta') : path.join(workflow.stateDir, 'runtime', 'meta');
     const additionalMounts = hostOptions.useProfileConfig ? [] : [{ path: '/etc', backend: new MemoryBackend() }];
     const { manager: vfs } = await openCliVfs(root, sidecarDir, additionalMounts);
-    const remoteProvider = createMindOSNodeDriver(ref => process.env[`MINDOS_REMOTE_${ref.replace(/-/g, '_')}`] ?? '');
+    const remoteProvider = createNestOSNodeDriver(ref => process.env[`NESTOS_REMOTE_${ref.replace(/-/g, '_')}`] ?? '');
     let remoteConnections: ProjectRemoteMountService | undefined;
     const llmDriver = new LLMDeviceDriver(vfs, {
-        presets: createMindosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
-        mcp: { clientInfo: { name:'mindos-cli',version:'1.0.0' }, extensions: [createMindOSNodeMCPExtension()], resolveCredential:ref => remoteProvider.resolveCredential(ref),
+        presets: createNestosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
+        mcp: { clientInfo: { name:'nestos-cli',version:'1.0.0' }, extensions: [createNestOSNodeMCPExtension()], resolveCredential:ref => remoteProvider.resolveCredential(ref),
             beforeSave:(server,previous) => remoteConnections?.beforeMCPChange(server,previous),
             beforeDelete:id => remoteConnections?.beforeMCPDelete(id),configurationChanged:() => remoteConnections?.refreshMCPConnections() },
     });
@@ -170,7 +170,7 @@ export async function createCliRuntime(
     const systemFS = await vfs.openFileSystem('/');
     // Test/tuning knob: a crashed CLI keeps its Session lease until the TTL expires,
     // so crash-recovery tests shorten it instead of waiting the full minute.
-    const leaseTtlMs = Number(process.env.MINDOS_SESSION_LEASE_TTL_MS) || undefined;
+    const leaseTtlMs = Number(process.env.NESTOS_SESSION_LEASE_TTL_MS) || undefined;
     // The skew budget is the explicit cross-host clock-error constraint for shared roots.
     const leases = new SessionLeaseStore(systemFS, { ttlMs: leaseTtlMs,
         skewMs: skew.sessionSkewMs });
@@ -348,7 +348,7 @@ export async function createCliRuntime(
         // A crashed host keeps the Run's scheduler lease until the TTL expires; tests
         // shorten it the same way they shorten the Session lease. The skew budget is the
         // explicit cross-host clock-error constraint for shared-storage deployments.
-        schedulerLeaseTtlMs: Number(process.env.MINDOS_SCHEDULER_LEASE_TTL_MS) || undefined,
+        schedulerLeaseTtlMs: Number(process.env.NESTOS_SCHEDULER_LEASE_TTL_MS) || undefined,
         schedulerLeaseSkewMs: skew.schedulerSkewMs,
         ...(workspaceManager ? { workspaceManager: withWorkspaceScopeCleanup(workspaceManager, core) } : {}),
     });

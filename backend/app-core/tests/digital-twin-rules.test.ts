@@ -8,7 +8,7 @@ import { DigitalTwinService, type TwinDiscoveredSource, type TwinSourceCatalog }
 import { matchesRules, ruleLines } from '../src/digital-twin/scan-rules';
 import { publicHarnessText, readHarness, discoverHarness } from '../src/digital-twin/harness-reader';
 import type { ProjectService, ProjectFolder } from '../src/projects/project-service';
-import type { HarnessClient } from '@itookit/mindos-node-driver';
+import type { HarnessClient } from '@itookit/nestos-node-driver';
 
 const closes: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of closes.splice(0).reverse()) await close(); });
@@ -153,8 +153,8 @@ it('enumerates and reads actual project directories and native sessions through 
         const { RoundLog } = await import('@itookit/llm-session');
         await new RoundLog(runtime.sessionRepository, id).append('main', { id: 'r', kind: 'chat', historyParentIds: [], origin: 'user', status: 'completed', createdAt: 1,
             input: [{ role: 'user', content: 'Native project fact' }], output: [{ role: 'assistant', content: 'Visible suggestion' }] });
-        const { MindosTwinSourceReader } = await import('../src/digital-twin/source-reader');
-        const fs = await runtime.vfs.openFileSystem('/'), reader = new MindosTwinSourceReader(fs, runtime.sessionRepository, runtime.projects);
+        const { NestosTwinSourceReader } = await import('../src/digital-twin/source-reader');
+        const fs = await runtime.vfs.openFileSystem('/'), reader = new NestosTwinSourceReader(fs, runtime.sessionRepository, runtime.projects);
         const catalog = await reader.discover();
         const document = catalog.resources.find(resource => resource.path === 'docs/note.md')!;
         expect(document.projectId).toBe(project.project.id); expect(catalog.resources.some(resource => resource.path?.includes('node_modules'))).toBe(false);

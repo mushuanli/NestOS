@@ -51,7 +51,7 @@
       ]
     },
     {
-      "command": "pnpm --filter @itookit/cli exec vitest run --config ../../tools/anki-cli/tests/mindos-vitest.config.mjs",
+      "command": "pnpm --filter @itookit/cli exec vitest run --config ../../tools/anki-cli/tests/nestos-vitest.config.mjs",
       "passed": 16
     },
     {

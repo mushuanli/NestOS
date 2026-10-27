@@ -15,7 +15,7 @@ export function installFileTransport(peer: RpcPeer, url: string, clientId: strin
             body: content, signal: options?.signal ? AbortSignal.any([abort, options.signal]) : abort }).catch(error => {
                 if (!abort.aborted && !options?.signal?.aborted) disconnected?.(error); throw error;
             });
-        if (response.headers.get('X-MindOS-View-Expired') === '1') disconnected?.(new Error('View expired'));
+        if ((response.headers.get('X-NestOS-View-Expired') ?? response.headers.get('X-MindOS-View-Expired')) === '1') disconnected?.(new Error('View expired'));
         if (response.ok && !write) {
             const bytes = await response.arrayBuffer(), header = response.headers.get('X-File-Revision');
             await options?.onRevision?.(header ? JSON.parse(decodeURIComponent(header)) ?? undefined : undefined); return bytes;

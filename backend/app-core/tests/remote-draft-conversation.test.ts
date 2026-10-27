@@ -1,6 +1,6 @@
 import {expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
-import {HarnessConversation, type HarnessClient, type HarnessProfile} from '@itookit/mindos-node-driver';
+import {HarnessConversation, type HarnessClient, type HarnessProfile} from '@itookit/nestos-node-driver';
 import {RemoteConversationStore} from '../src/projects/remote-conversation-store';
 import {draftConversation, draftHarness, remoteConversationJournal} from '../src/projects/remote-draft-conversation';
 import {interceptConversationTransactions} from './remote-conversation-faults';

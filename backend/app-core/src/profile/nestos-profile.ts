@@ -1,11 +1,11 @@
 import defaultSettings from './default-profile.json';
 
-export const DEFAULT_MINDOS_SETTINGS: Readonly<MindOSProfileSettings> = Object.freeze(defaultSettings);
+export const DEFAULT_NESTOS_SETTINGS: Readonly<NestOSProfileSettings> = Object.freeze(defaultSettings);
 
-/** Canonical MindOS config file name under $XDG_CONFIG_HOME/mindos or ~/.config/mindos. */
-export const MINDOS_CONFIG_FILE = 'mindos.json';
+/** Canonical NestOS config file name under $XDG_CONFIG_HOME/nestos or ~/.config/nestos. */
+export const NESTOS_CONFIG_FILE = 'nestos.json';
 
-export interface MindOSProfileSettings {
+export interface NestOSProfileSettings {
     /** Absolute or config-dir-relative data root. */
     rootDir?: string;
     /** Optional host working directory override. */
@@ -16,7 +16,7 @@ export interface MindOSProfileSettings {
     layoutVersion?: number;
 }
 
-export interface MindOSProfile {
+export interface NestOSProfile {
     configDir: string;
     dataRoot: string;
     homeDir?: string;
@@ -24,10 +24,10 @@ export interface MindOSProfile {
     layoutVersion: number;
 }
 
-export interface ResolveMindOSProfileOptions {
+export interface ResolveNestOSProfileOptions {
     configDir: string;
-    settings?: MindOSProfileSettings | null;
-    env?: { MINDOS_ROOT?: string | undefined } | undefined;
+    settings?: NestOSProfileSettings | null;
+    env?: { NESTOS_ROOT?: string | undefined; MINDOS_ROOT?: string | undefined } | undefined;
     /** Host-specific resolver for relative `rootDir` values. */
     resolvePath?: (base: string, relative: string) => string;
 }
@@ -41,13 +41,13 @@ function defaultResolvePath(base: string, relative: string): string {
 }
 
 /**
- * Resolve the host-neutral MindOS profile identity from parsed config.
+ * Resolve the host-neutral NestOS profile identity from parsed config.
  *
  * Hosts own file I/O and pass their path semantics via `resolvePath`.
  */
-export function resolveMindOSProfile(options: ResolveMindOSProfileOptions): MindOSProfile {
+export function resolveNestOSProfile(options: ResolveNestOSProfileOptions): NestOSProfile {
     const configDir = options.configDir;
-    const envRoot = options.env?.MINDOS_ROOT?.trim();
+    const envRoot = (options.env?.NESTOS_ROOT ?? options.env?.MINDOS_ROOT)?.trim();
     const settingsRoot = options.settings?.rootDir?.trim();
     const resolvePath = options.resolvePath ?? defaultResolvePath;
 
@@ -65,3 +65,8 @@ export function resolveMindOSProfile(options: ResolveMindOSProfileOptions): Mind
         layoutVersion: options.settings?.layoutVersion ?? DEFAULT_LAYOUT_VERSION,
     };
 }
+
+/** @deprecated Use the NestOS names. Existing integrations retain their profile identity. */
+export {resolveNestOSProfile as resolveMindOSProfile, DEFAULT_NESTOS_SETTINGS as DEFAULT_MINDOS_SETTINGS};
+export const MINDOS_CONFIG_FILE = 'mindos.json';
+export type {NestOSProfile as MindOSProfile, NestOSProfileSettings as MindOSProfileSettings, ResolveNestOSProfileOptions as ResolveMindOSProfileOptions};

@@ -8,7 +8,7 @@ import {loadFlowDefinition} from '../src/flow-config';
 const roots: string[] = [];
 afterEach(async () => {await Promise.all(roots.splice(0).map(root => rm(root, {recursive: true, force: true})));});
 async function fixture() {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-flow-exposure-')); roots.push(root);
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-flow-exposure-')); roots.push(root);
     const child = {id: 'child', name: 'Local implementation', draftVersion: 1, exposure: 'local', updatedAt: 1,
         nodes: [{id: 'out', name: 'Out', plugin: 'builtin.transform', pluginVersion: '1.0.0', inputs: {}, config: {value: 'internal-result'}}],
         edges: [], layout: {}, outputs: {result: {value: '${nodes.out.outputs.result}'}}};

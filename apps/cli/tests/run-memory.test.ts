@@ -29,9 +29,9 @@ it.each([false, true])('runs a configured CLI memory tool through HTTP model cal
                 usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 } }));
         });
     });
-    const previous = process.env.MINDOS_MEMORY_TEST_KEY; process.env.MINDOS_MEMORY_TEST_KEY = 'test';
+    const previous = process.env.NESTOS_MEMORY_TEST_KEY; process.env.NESTOS_MEMORY_TEST_KEY = 'test';
     try {
-        const port = await listenForTest(server), file = path.join(root, 'workflow.yml'), stateDir = path.join(root, '.mindos');
+        const port = await listenForTest(server), file = path.join(root, 'workflow.yml'), stateDir = path.join(root, '.nestos');
         let sharedRef: { id: string; incarnation: string } | undefined;
         if (shared) {
             expect(await sharedMemoryCommand(['create', 'team', 'agent', 'creator'], { profile: stateDir })).toBe(0);
@@ -41,7 +41,7 @@ it.each([false, true])('runs a configured CLI memory tool through HTTP model cal
         }
         await writeFile(file, stringify({ version: 1, name: 'memory', goal: 'remember', workspace: { root: '.' },
             providers: [{ id: 'mock', implementation: 'openai-compatible', base_url: `http://127.0.0.1:${port}`,
-                default_path: '/v1/chat/completions', api_key_env: 'MINDOS_MEMORY_TEST_KEY', models: [{ id: 'model' }] }],
+                default_path: '/v1/chat/completions', api_key_env: 'NESTOS_MEMORY_TEST_KEY', models: [{ id: 'model' }] }],
             connections: [{ id: 'default', provider: 'mock', tiers: { standard: 'model' } }],
             agents: [{ id: 'worker', connection: 'default', tools: ['memory_write'], stream: false, approval: 'none',
                 memory_policy: { namespace_id: 'agent', read_scopes: ['project'], write_scopes: ['project'],
@@ -66,7 +66,7 @@ it.each([false, true])('runs a configured CLI memory tool through HTTP model cal
             ]);
         } finally { await inspection.dispose(); }
     } finally {
-        if (previous === undefined) delete process.env.MINDOS_MEMORY_TEST_KEY; else process.env.MINDOS_MEMORY_TEST_KEY = previous;
+        if (previous === undefined) delete process.env.NESTOS_MEMORY_TEST_KEY; else process.env.NESTOS_MEMORY_TEST_KEY = previous;
         await new Promise<void>(resolve => server.close(() => resolve())); await rm(root, { recursive: true, force: true });
     }
 });

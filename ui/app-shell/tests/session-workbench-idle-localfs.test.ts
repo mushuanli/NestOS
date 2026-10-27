@@ -24,7 +24,7 @@ it('issues no VFS or sidecar operations while the Session workbench is idle on L
     vi.stubGlobal('localStorage', { getItem: (key: string) => storage.get(key) ?? null, setItem: (key: string, value: string) => storage.set(key, value) });
     vi.stubGlobal('requestAnimationFrame', (fn: FrameRequestCallback) => setTimeout(fn, 0));
     vi.stubGlobal('cancelAnimationFrame', clearTimeout);
-    const root = await mkdtemp(join(tmpdir(), 'mindos-idle-localfs-'));
+    const root = await mkdtemp(join(tmpdir(), 'nestos-idle-localfs-'));
     const backend = await openLocalFSBackend({
         rootDir: join(root, 'data'), sidecarDir: join(root, 'db'),
     });

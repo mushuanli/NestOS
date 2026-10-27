@@ -1,1 +1,1 @@
-export {stylesReady} from 'mind-os/startup';
+export {stylesReady} from 'nestos-web/startup';

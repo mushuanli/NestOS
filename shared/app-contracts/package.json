@@ -36,7 +36,7 @@
     "@itookit/llm-session": "workspace:*",
     "@itookit/tools": "workspace:*",
     "@itookit/driver-llm": "workspace:*",
-    "@itookit/mindos-node-driver": "workspace:*",
+    "@itookit/nestos-node-driver": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
     "@itookit/llm-context": "workspace:*",
     "@itookit/llm-flow": "workspace:*",

@@ -3,7 +3,7 @@ import { openNodeApplication, configDirectory, resolveHttpDirectories, type Node
 import { openApplicationView } from '@itookit/app-core/host';
 import type { ApplicationClient } from '@itookit/app-contracts/services';
 import type { CommandOptions } from './commands';
-import { resolveProfileRoot } from './mindos';
+import { resolveProfileRoot } from './nestos';
 import { CliDirectorySourceProvider } from './directories';
 import { runtimeDiagnosticPath } from './diagnostics';
 

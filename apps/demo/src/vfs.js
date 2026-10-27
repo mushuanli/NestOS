@@ -148,7 +148,7 @@ async function main() {
     
     // --- 步骤 1: 初始化 vfs ---
     const vfsCore = await createVFSCore({
-        dbName: 'VFS_Demo_MindOS_Connector',
+        dbName: 'VFS_Demo_NestOS_Connector',
         defaultModule: moduleName
     });
     console.log('vfs initialized and "notes" module is ready.');

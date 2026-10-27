@@ -281,7 +281,7 @@ export class ProjectService {
         let project: ProjectFolder | undefined;
         try {
             const source = await this.directories.openDirectory(target); await source.dispose();
-            if (target.startsWith('/home/admin/')) await this.repository.validateProjectSessions?.(`${target}/.mindos/sessions`);
+            if (target.startsWith('/home/admin/')) await this.repository.validateProjectSessions?.(`${target}/.nestos/sessions`);
             await this.projectRepository.createLocal(target, { version: 1, id, name: name.trim(), createdAt: Date.now() });
             project = await this.repository.createFolder(path, { id, directory: target, source: { kind: 'local' } }) as ProjectFolder;
             await this.sessionFolder(project);

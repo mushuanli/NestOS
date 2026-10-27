@@ -5,7 +5,7 @@
 - 代码注释用英文，Git commit 用 Conventional Commits (`type(scope): description`)
 
 ## 项目概览
-- **itookit**：pnpm monorepo，承载 **MindOS**（浏览器/桌面的个人知识 OS：虚拟文件系统 + Markdown 编辑器 + LLM 对话/Agent 执行）
+- **itookit**：pnpm monorepo，承载 **NestOS**（浏览器/桌面的个人知识 OS：虚拟文件系统 + Markdown 编辑器 + LLM 对话/Agent 执行）
 - 工具链：`pnpm@10.20.0`（`workspace:*`）、TypeScript 5.9 strict（`target: ES2022`、`moduleResolution: bundler`，见 `tsconfig.base.json`）
 - 无前端框架：原生 DOM + TypeScript
 - 19 个业务/共享 package（`ui/`、`backend/`、`shared/`）+ 12 个独立库源码工作区（`libraries/`）+ 5 个 app + 共享 Node 宿主适配包，详见 [包结构](./doc/pkgstructure.md)
@@ -56,8 +56,8 @@ pnpm --filter @itookit/<pkg> typecheck
 
 ## httpd 日志与运行版本
 
-- 排查 httpd 默认查看 release 日志：运行日志 `/var/log/mindos/httpd.runtime.log`，审计日志 `/var/log/mindos/httpd.audit.jsonl`；轮转文件追加 `.1`、`.2`、`.3`。
-- `MINDOS_HTTPD_LOG_DIR` 可覆盖日志目录，`--audit-file` 可单独覆盖审计文件；以启动参数和启动输出为准。部署时需确保日志目录由运行用户拥有并可写。
+- 排查 httpd 默认查看 release 日志：运行日志 `/var/log/nestos/httpd.runtime.log`，审计日志 `/var/log/nestos/httpd.audit.jsonl`；轮转文件追加 `.1`、`.2`、`.3`。
+- `NESTOS_HTTPD_LOG_DIR` 可覆盖日志目录，`--audit-file` 可单独覆盖审计文件；以启动参数和启动输出为准。部署时需确保日志目录由运行用户拥有并可写。
 - 当前运行版本通过携带客户端证书请求 `GET /api/health` 的 `version` 字段核对；运行日志中的最新 `Version:` 为启动版本。`release/httpd/current.json` 仅表示下次启动选用的 release，不能代替运行版本核对。
 - 版本 ID 格式为 `<UTC构建时间 YYYYMMDDTHHmmss>-<Git提交前8位>[-dirty]`，文件名和日志目录不带版本。查询命令见 [HTTP 宿主发布与诊断](./doc/http-app.md#启动与认证)。
 
@@ -89,7 +89,7 @@ pnpm --filter @itookit/<pkg> typecheck
 | [联网搜索](./doc/web-search.md) | 三态 WebSearchMode 决策 + citations[] 事件链 + Provider 适配 |
 | [CLI HTTP 模式](./doc/http-mode.md) | `-d/--http` 远程模式、`/api/*` 路由 |
 | [RunDefinition](./doc/run-definition.md) | CLI/`.flow` → RunDefinition → DagRunSpec |
-| [MindOS profile](./doc/mindos-profile.md) | `--profile` / 数据根 / Session lease |
+| [NestOS profile](./doc/nestos-profile.md) | `--profile` / 数据根 / Session lease |
 | [最小系统](./doc/minimal-system.md) | 两节点 YAML 与运行说明（含桌面操作教程） |
 | [最小系统验收记录](./doc/minimal-system-acceptance.md) | 当前工作树的构建/测试/桌面端到端验收记录 |
 | [TODO 与进度](./doc/todo.md) | 目标、已完成范围与待办（活文档） |

@@ -1,5 +1,5 @@
 import { FSError } from '@itookit/vfs-core';
-import type { HarnessClient, HarnessHistory } from '@itookit/mindos-node-driver';
+import type { HarnessClient, HarnessHistory } from '@itookit/nestos-node-driver';
 import type { ProjectService, ProjectFolder } from '@itookit/app-contracts/services';
 import type { TwinSourceCatalog, TwinSourceContent } from './domain';
 import { sha256HexSync } from '@itookit/llm-context';

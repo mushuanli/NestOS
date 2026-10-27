@@ -10,4 +10,4 @@
 
 详见 [模块边界](../doc/design/frontend-backend-modules.md)、[包结构](../doc/pkgstructure.md)。
 
-libraries/llm-ui 同时提供 Chat 与可选 Flow，唯一直接运行时依赖是 mdxeditor；MindOS 业务接线与完整产品编辑器兼容入口位于 llm-ui-adapter。
+libraries/llm-ui 同时提供 Chat 与可选 Flow，唯一直接运行时依赖是 mdxeditor；NestOS 业务接线与完整产品编辑器兼容入口位于 llm-ui-adapter。

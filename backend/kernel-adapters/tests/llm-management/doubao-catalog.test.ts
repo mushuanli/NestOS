@@ -3,7 +3,7 @@ import { LLMMediaClient } from '@itookit/driver-llm';
 import {createLlmDeviceCatalog} from '@itookit/device-llm';
 const createDoubaoSpeechProvider = () => createLlmDeviceCatalog().providers['doubao-speech'];
 const DOUBAO_SPEECH_REFERENCE = createLlmDeviceCatalog().providerReferences['doubao-speech'];
-import { createMindosLlmPresets } from '../../src/llm-management/presets';
+import { createNestosLlmPresets } from '../../src/llm-management/presets';
 import { ProviderManager } from '../../src/llm-management/device/provider-manager';
 import { LLMDeviceDriver } from '../../src/llm-management/device/llm-device-driver';
 import { isProvider } from '../../src/llm-management/device/argument-validation';
@@ -44,7 +44,7 @@ it('does not advertise or send documented WAV and instruction capabilities befor
 });
 
 it('keeps reference snapshots isolated and preserves stored credentials, endpoint and voice edits', () => {
-    const presets = createMindosLlmPresets(), driver = new LLMDeviceDriver({} as never, {presets});
+    const presets = createNestosLlmPresets(), driver = new LLMDeviceDriver({} as never, {presets});
     const references = driver.getProviderReferences(); references['doubao-speech'].voices[0].name = 'Edited by consumer';
     expect(driver.getProviderReferences()['doubao-speech'].voices[0].name).not.toBe('Edited by consumer');
     const manager = new ProviderManager({} as never, {} as never, () => {}, presets);

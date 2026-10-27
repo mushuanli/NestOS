@@ -11,7 +11,7 @@ export function createVFSToolContext(context: FileSystemContext): ToolVFSContext
         return normalizeVirtualPath(pathUtils.normalize(path.startsWith('/') ? path : `${context.cwd}/${path}`));
     };
     const walkFiles: NonNullable<ToolVFSContext['walkFiles']> = async function* (path, options) {
-        const discovery = {...options, excludeDirectories: [...(options?.includeIgnored ? [] : ['.mindos']), ...options?.excludeDirectories ?? []]};
+        const discovery = {...options, excludeDirectories: [...(options?.includeIgnored ? [] : ['.nestos']), ...options?.excludeDirectories ?? []]};
         const source = createVFSFileDiscoverySource(context.fs, discovery);
         for await (const node of discoverFiles(source, resolve(path ?? context.cwd), discovery)) yield node.path;
     };

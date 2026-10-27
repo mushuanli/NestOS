@@ -1,4 +1,4 @@
-# MindOS HTTP app
+# NestOS HTTP app
 
 Node.js 提供受双向 TLS 保护的应用能力服务，持有唯一的 Session/Kernel/LLM Runtime。浏览器仅装配 UI、应用端口适配器与视图状态。Node.js >=22.13；初始化证书需要 OpenSSL。
 
@@ -24,7 +24,7 @@ nestos httpd
 导入生成的 CA 和浏览器个人证书后，打开 `https://192.168.31.10:2000`。
 已有可用证书时跳过初始化。`nestos`、`nestos start` 与 `nestos httpd` 等价；`nestos --help` 查看参数。
 配置目录、数据根和 mTLS 规则与源码宿主一致；认证配置使用 release 子目录。
-运行信息输出到前台，默认审计写入配置目录 `logs/http/httpd-release-audit.jsonl`，不是仓库脚本的 `/var/log/mindos/`。
+运行信息输出到前台，默认审计写入配置目录 `logs/http/httpd-release-audit.jsonl`，不是仓库脚本的 `/var/log/nestos/`。
 详细安装、功能、配置、备份与升级见 [npm 包说明](./npm/README.md)。
 
 开发者用 `pnpm nestos:pack` 通过既有隔离 HTTP release 流程准备 npm tarball，
@@ -41,7 +41,7 @@ nestos httpd
 
 也可运行 `pnpm --filter @itookit/http-app create:certs --cert-host 192.168.31.10`。脚本可从任意目录调用，`--help` 查看参数；使用 `--cert-dir /path/to/private/certs` 指定输出目录，相对路径按调用目录解析。脚本设置私有文件权限，并复用服务端证书生成逻辑。
 
-默认生成到 `~/.config/mindos/http-certs`，可通过 `mindos.json` 的 `http.certDir` 修改；目录已存在时拒绝覆盖。`--cert-host` 可填写逗号分隔的 IP/DNS 名称，必须覆盖实际访问地址。初始化只打印文件位置，不打印密钥或密码。
+默认生成到 `~/.config/nestos/http-certs`，可通过 `nestos.json` 的 `http.certDir` 修改；目录已存在时拒绝覆盖。`--cert-host` 可填写逗号分隔的 IP/DNS 名称，必须覆盖实际访问地址。初始化只打印文件位置，不打印密钥或密码。
 
 如果提示 `Certificate directory already exists`（旧版本为 `EEXIST`），说明目标目录已经存在。已生成的证书覆盖实际访问地址时，跳过初始化，直接用该目录启动服务；需要新证书时通过 `--cert-dir` 指定尚不存在的新目录，并在启动服务时使用同一个目录。新 CA 和浏览器身份需要重新导入浏览器。
 
@@ -49,7 +49,7 @@ nestos httpd
 
 1. 将 `ca.crt` 导入受信任的证书颁发机构，以验证服务器身份。
 2. 将 `browser-client.p12` 导入个人证书，导入密码在 `client-password.txt`。
-3. 打开 `https://192.168.31.10:2000`，浏览器请求选择身份时选 `MindOS browser`。
+3. 打开 `https://192.168.31.10:2000`，浏览器请求选择身份时选 `NestOS browser`。
 
 不导入 CA 时浏览器不能信任服务器；不导入客户端身份时无法连接。CA 私钥 `ca.key` 不用于浏览器导入，应妥善保管。客户端私钥和导入包只交给获准访问该个人数据的设备。
 
@@ -61,22 +61,22 @@ pnpm httpd
 
 发布使用根目录的 `pnpm httpd:build` 构建并选择独立 release，再运行 `pnpm httpd`（或 `pnpm --filter @itookit/http-app start`）。`--cert-dir` 指定证书目录，`--audit-file` 指定 JSONL 日志；缺少有效证书或指纹允许名单时拒绝启动。没有匿名或明文降级开关。更新 UI 也需构建新 release，并在重启后生效。
 
-`pnpm httpd` 直接启动已选 release；默认监听 `0.0.0.0:2000`（所有 IPv4 网卡），Runtime 直接使用本地存储，不再监听内部 VFS 端口。默认读取 `~/.config/mindos/mindos.json`，设置了 `XDG_CONFIG_HOME` 时读取其下的 `mindos/mindos.json`；文件缺失时创建与 CLI/桌面端相同的默认配置。证书默认使用该配置目录，可通过下面的 `http` 配置覆盖。可用 `pnpm httpd --host 127.0.0.1 --port 3000 --root /path/to/data` 覆盖启动参数。监听所有网卡不改变证书要求，`--cert-host` 仍需包含浏览器实际访问的 IP/DNS。
+`pnpm httpd` 直接启动已选 release；默认监听 `0.0.0.0:2000`（所有 IPv4 网卡），Runtime 直接使用本地存储，不再监听内部 VFS 端口。默认读取 `~/.config/nestos/nestos.json`，设置了 `XDG_CONFIG_HOME` 时读取其下的 `nestos/nestos.json`；文件缺失时创建与 CLI/桌面端相同的默认配置。证书默认使用该配置目录，可通过下面的 `http` 配置覆盖。可用 `pnpm httpd --host 127.0.0.1 --port 3000 --root /path/to/data` 覆盖启动参数。监听所有网卡不改变证书要求，`--cert-host` 仍需包含浏览器实际访问的 IP/DNS。
 
-可在 `mindos.json` 指定宿主私有目录，证书初始化和启动读取同一配置：
+可在 `nestos.json` 指定宿主私有目录，证书初始化和启动读取同一配置：
 
 ```json
 {
-  "rootDir": "/home/li/share/prj/pair-x1/mindos",
+  "rootDir": "/home/li/share/prj/pair-x1/nestos",
   "http": {
-    "certDir": "/home/li/share/prj/pair-x1/mindos-host/http-certs",
-    "authDir": "/home/li/share/prj/pair-x1/mindos-host/http-auth"
+    "certDir": "/home/li/share/prj/pair-x1/nestos-host/http-certs",
+    "authDir": "/home/li/share/prj/pair-x1/nestos-host/http-auth"
   }
 }
 ```
 
 路径优先级：显式 `--cert-dir` / `--auth-dir` → `http.certDir` / `http.authDir` → 原配置目录下的默认位置。
-配置内相对路径按 `mindos.json` 所在目录解析，命令行相对路径按调用目录解析；配置请使用绝对路径或相对路径，不使用 `~`。
+配置内相对路径按 `nestos.json` 所在目录解析，命令行相对路径按调用目录解析；配置请使用绝对路径或相对路径，不使用 `~`。
 `http.authDir` 是认证目录基址：`pnpm httpd` 使用其 `release/`，`pnpm httpd:dev` 使用其 `dev/`，
 直接启动 standalone 不添加后缀；显式 `--auth-dir` 是最终目录，不添加后缀。
 本地 CLI 的 desktop profile 也使用同一 `release/` 认证目录，其他独立 profile 保持隔离。
@@ -92,10 +92,16 @@ HTTPS 监听队列默认为 4096，可用 `--backlog <正整数>` 调整，例�
 
 证书有效期：CA 10 年，服务器及客户端证书 1 年。`clients.json` 保存允许的 SHA-256 指纹；删除对应项后下一次请求立即拒绝，包括已有连接。全部移除可禁止所有访问，重启前需恢复至少一枚有效身份。指纹文件不是私钥，不应填写任意 API Token。
 
-默认排查 release 日志：`/var/log/mindos/httpd.runtime.log`（运行日志）与 `/var/log/mindos/httpd.audit.jsonl`（审计日志）；文件名不含版本。dev 文件名分别为 `httpd.debug.runtime.log` 和 `httpd.debug.audit.jsonl`。运行用户需拥有日志目录的写权限，可用 `MINDOS_HTTPD_LOG_DIR` 覆盖目录；部署准备与 `/api/health` 运行版本查询见 [启动与认证](../../doc/http-app.md#启动与认证)。审计记录认证成功/拒绝、请求 ID、来源 IP、路由、HTTP 状态、错误码及耗时，不记录密码、Authorization/Cookie、查询参数、文件正文或模型消息。文件权限 0600，每份 10 MiB，保留当前及 3 份轮转记录；极端突发时汇总记录丢弃数量。
+默认排查 release 日志：`/var/log/nestos/httpd.runtime.log`（运行日志）与 `/var/log/nestos/httpd.audit.jsonl`（审计日志）；文件名不含版本。dev 文件名分别为 `httpd.debug.runtime.log` 和 `httpd.debug.audit.jsonl`。运行用户需拥有日志目录的写权限，可用 `NESTOS_HTTPD_LOG_DIR` 覆盖目录；部署准备与 `/api/health` 运行版本查询见 [启动与认证](../../doc/http-app.md#启动与认证)。审计记录认证成功/拒绝、请求 ID、来源 IP、路由、HTTP 状态、错误码及耗时，不记录密码、Authorization/Cookie、查询参数、文件正文或模型消息。文件权限 0600，每份 10 MiB，保留当前及 3 份轮转记录；极端突发时汇总记录丢弃数量。
 
-数据根优先级为 `--root` → `MINDOS_ROOT` → `mindos.json` 的 `rootDir` → `<配置目录>/data`。配置中的相对 `rootDir` 按配置目录解析，`--root` 的相对路径按启动目录 `INIT_CWD` 解析。`--root` 是整个 MindOS 数据根，SQLite 默认 `<root>/_meta/index.db`。证书与审计日志必须在数据根之外，证书不能放在静态 UI 根中。浏览器访问认证后的同源 `/api/application` 与事件订阅；对外 `/api/vfs` 被拒绝。
+数据根优先级为 `--root` → `NESTOS_ROOT` → `nestos.json` 的 `rootDir` → `<配置目录>/data`。配置中的相对 `rootDir` 按配置目录解析，`--root` 的相对路径按启动目录 `INIT_CWD` 解析。`--root` 是整个 NestOS 数据根，SQLite 默认 `<root>/_meta/index.db`。证书与审计日志必须在数据根之外，证书不能放在静态 UI 根中。浏览器访问认证后的同源 `/api/application` 与事件订阅；对外 `/api/vfs` 被拒绝。
 
 协议、事务语义与限制见 [HTTP 存储应用](../../doc/http-app.md)。
 
 应用冲突返回 409 / ECONFLICT。应用命令通过持久回执核对结果，不自动重放。内部存储协议的事务冲突诊断记录观察类型、数量与位置哈希，不记录原始路径、字段名、值或凭据；它不等同于所有应用用例的执行日志。
+
+
+编辑临时副本可由 `http.editorSwap: true` 显式开启，默认关闭；`http.swapDir` 默认 `~/swap`，支持 `~/`。
+仅 httpd 开启时提供查看菜单、修改后防抖写入小文件副本；每个编辑器正常关闭时删除自己的 swap。
+达到或超过 512 KiB 的文件不写 swap；httpd 启动时和每小时清理最后更新超过 48 小时的文件。
+历史配置、证书及数据的兼容读取规则见仓库 `doc/nestos-rename.md`；已有私有文件不会因为产品改名重新生成。

@@ -194,9 +194,9 @@ class BrowserBackend implements IStorageBackend {
         return `${folderBrowserPath(folder)}/${id}`;
     }
     private sessionNode(manifest: { id: string; title: string; createdAt: number; updatedAt: number; folder?: string | null; parentSessionId?: string | null; createdWithAgentId?: string }): FSNode {
-        const source = harnessPresentation('mindos');
+        const source = harnessPresentation('nestos');
         return { ...this.node(this.sessionBrowserPath(manifest.id, manifest.folder), manifest.title, true, manifest.updatedAt),
-            createdAt: manifest.createdAt, icon: source.icon, metadata: { title: manifest.title, createdWithAgentId: manifest.createdWithAgentId, harnessKind: 'mindos', harnessLabel: source.label, _favorite: this.deps.projects?.favorites.hasSession(manifest.id), _showAll: true, _fileDetails: false, parentSessionId: manifest.parentSessionId ?? null } };
+            createdAt: manifest.createdAt, icon: source.icon, metadata: { title: manifest.title, createdWithAgentId: manifest.createdWithAgentId, harnessKind: 'nestos', harnessLabel: source.label, _favorite: this.deps.projects?.favorites.hasSession(manifest.id), _showAll: true, _fileDetails: false, parentSessionId: manifest.parentSessionId ?? null } };
     }
     private sessionNodes(sessions: import('@itookit/llm-session').SessionSummary[], folder: string | null, agentId: string | null = this.agentFilter ?? null): FSNode[] {
         sessions = sessions.filter(session => !agentId || session.createdWithAgentId === agentId);
@@ -363,7 +363,7 @@ class BrowserBackend implements IStorageBackend {
         let state: FileProjection | undefined, raw: FSNode[];
         try { [state, raw] = await Promise.all(pending); } finally { await Promise.allSettled(pending); }
         const visible = this.deps.filterDisplayedFiles ? await this.deps.filterDisplayedFiles(fs, raw, options?.signal) : raw;
-        const nodes = await Promise.all(visible.filter(node => node.path !== '/workspace/.mindos' && !this.isOtherProjectRoot(node, state))
+        const nodes = await Promise.all(visible.filter(node => node.path !== '/workspace/.nestos' && !this.isOtherProjectRoot(node, state))
             .map(node => this.mapped(fs, node, prefix, state)));
         return nodes.map(node => this.withMountStatus(node, prefix, target, state));
     }

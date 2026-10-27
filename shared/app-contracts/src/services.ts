@@ -6,7 +6,7 @@ export type * from './ports/files';
 export type * from './ports/session';
 export type * from './ports/sync';
 export type * from './ports/local';
-export type { HarnessClient, HarnessEvent, HarnessEvents, HarnessProfile, HarnessSession } from '@itookit/mindos-node-driver/harness';
+export type { HarnessClient, HarnessEvent, HarnessEvents, HarnessProfile, HarnessSession } from '@itookit/nestos-node-driver/harness';
 export type * from './ports/application-client';
 export type * from './ports/task-view';
 
@@ -18,3 +18,5 @@ export type { HostedApplicationClient } from './ports/hosted-application';
 export type * from './ports/flow-installation';
 
 export type * from './ports/document-chat';
+
+export type {EditorSwap, EditorSwapSnapshot, EditorSwapFactory, EditorSwapStore} from "./ports/editor-swap";

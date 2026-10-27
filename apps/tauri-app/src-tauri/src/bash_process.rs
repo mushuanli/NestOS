@@ -208,7 +208,7 @@ mod tests {
         // Stands in for a host without bubblewrap (non-Linux or a stripped runtime): the only
         // program the session shell can spawn is the namespace builder, so the command must
         // fail closed — never silently run in the host environment.
-        let mut command = Command::new("mindos-missing-isolator");
+        let mut command = Command::new("nestos-missing-isolator");
         command.arg("--").arg("bash").arg("-c").arg("echo leaked");
         let error = execute_command(command, 5_000, &AtomicBool::new(false)).unwrap_err();
         assert!(error.contains("bash exec failed"), "{error}");

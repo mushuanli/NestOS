@@ -117,8 +117,8 @@ export class ChatGPTAuthorization implements ProviderAuthorizationHost {
             }
             void this.complete(id, attempt.id, callback.href).then(state => {
                 response.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store', 'Referrer-Policy': 'no-referrer' });
-                response.end(state.status === 'authorized' && !state.issue ? 'Sign-in completed. Return to MindOS.'
-                    : 'Sign-in did not complete. Return to MindOS. Check the server audit log for provider.authorization.failed.');
+                response.end(state.status === 'authorized' && !state.issue ? 'Sign-in completed. Return to NestOS.'
+                    : 'Sign-in did not complete. Return to NestOS. Check the server audit log for provider.authorization.failed.');
             }).catch(() => { response.writeHead(400, { 'Cache-Control': 'no-store' }); response.end('Invalid sign-in callback.'); });
         });
         server.maxConnections = 8; server.headersTimeout = 10_000; server.requestTimeout = 15_000;
@@ -133,7 +133,7 @@ export class ChatGPTAuthorization implements ProviderAuthorizationHost {
             response_type: 'code', redirect_uri: values.callbackUri, scope: 'openid profile email offline_access resource.invoke chatgpt.tokens.use.direct',
             resource: 'https://api.openai.com/v1', state: values.state, nonce: values.nonce, code_challenge_method: 'S256',
             code_challenge: createHash('sha256').update(values.verifier).digest('base64url'),
-            ...(!previous ? { agent_name_hint: 'MindOS' } : {}) };
+            ...(!previous ? { agent_name_hint: 'NestOS' } : {}) };
         for (const [key, value] of Object.entries(parameters)) url.searchParams.set(key, value);
         const attempt: Attempt = { ...values, server, url: url.href, cancelled: false, expiresAt: Date.now() + 600_000,
             timer: setTimeout(() => { void this.cancel(id); }, 600_000) };

@@ -9,15 +9,7 @@ export async function createRecoverableFileEditor(factory: EditorFactory, panel:
     let draft: FileRecovery | undefined, unavailable = false;
     try { draft = await store.read(); } catch { unavailable = true; }
     let path = options.target.path;
-    const editor = await factory(panel, {...options, hostContext: options.hostContext ? {...options.hostContext,
-        reloadRecovery: options.hostContext.reloadRecovery ?? {
-            preserve: text => new FileRecoveryStore(scope, path, 'reload-backup').write({base: sha256HexSync(original), text, savedAt: Date.now()}),
-            read: async () => {
-                const backup = await new FileRecoveryStore(scope, path, 'reload-backup').read();
-                return backup ? {content: backup.text, savedAt: backup.savedAt} : undefined;
-            },
-        },
-    } : undefined});
+    const editor = await factory(panel, options);
     if (typeof editor.on !== 'function' || typeof editor.getText !== 'function') return editor;
     const recovery = new FileRecoveryBinding(editor, panel, store, scope, original, !!options.readOnly, draft, unavailable);
     if (!editor.captureRecovery) {

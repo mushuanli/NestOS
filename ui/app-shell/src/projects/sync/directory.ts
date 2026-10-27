@@ -1,5 +1,5 @@
 import { t } from '@itookit/common';
-import type { DirectorySyncBinding, DirectorySyncPlan, DirectorySyncDirection, DirectorySyncComparison, DirectorySyncConflict } from '@itookit/mindos-node-driver';
+import type { DirectorySyncBinding, DirectorySyncPlan, DirectorySyncDirection, DirectorySyncComparison, DirectorySyncConflict } from '@itookit/nestos-node-driver';
 import { SyncDialog, paragraph } from './dialog';
 import { directionSelect, renderChanges, conflictReason, resolutionToolbar } from './controls';
 import { conflictMetadata, renderComparison } from './comparison';
@@ -52,7 +52,7 @@ function installActions(ports: DirectorySyncPorts,view: View): void {
     const button=(name: string,key: Parameters<typeof t>[0],action: () => Promise<void>)=>{view.buttons.set(name,view.dialog.button(t(key),action));};
     button('upload','project.sync.directoryUpload',ports.upload);
     button('bind','project.sync.bindConfirm',async()=> {
-        const path=view.path.value.trim();if (path && (path.startsWith('/') || path.split('/').some(p=>!p || p==='.' || p==='..' || p==='.mindos'))) throw new Error(t('project.sync.invalidTargetPath'));
+        const path=view.path.value.trim();if (path && (path.startsWith('/') || path.split('/').some(p=>!p || p==='.' || p==='..' || p==='.nestos'))) throw new Error(t('project.sync.invalidTargetPath'));
         view.binding=await ports.bind(view.targets.value,path,view.direction.value as DirectorySyncDirection);render(ports,view);view.dialog.message(t('project.sync.directoryBound'));
     });
     button('preview','project.sync.refreshPreview',async()=> {

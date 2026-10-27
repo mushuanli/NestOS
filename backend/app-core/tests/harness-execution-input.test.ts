@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import type { HarnessEvent } from '@itookit/mindos-node-driver';
+import type { HarnessEvent } from '@itookit/nestos-node-driver';
 import { nativeInputResponse } from '../src/projects/harness-execution-input';
 
 const questions = [

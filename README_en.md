@@ -1,4 +1,4 @@
-# MindOS
+# NestOS
 
 **An AI-powered personal knowledge operating system**
 
@@ -8,7 +8,7 @@
 
 ### Overview
 
-MindOS reimagines AI applications with an "operating system" philosophy: all content—conversations, notes, agent configs, flashcards, projects—is stored in a unified **Virtual File System (VFS)**. AI Agents don't just answer questions; they can read and write your workspace files directly, creating a true human-AI collaboration loop.
+NestOS reimagines AI applications with an "operating system" philosophy: all content—conversations, notes, agent configs, flashcards, projects—is stored in a unified **Virtual File System (VFS)**. AI Agents don't just answer questions; they can read and write your workspace files directly, creating a true human-AI collaboration loop.
 
 - **Current version**: v3.1
 - **Platforms**: Web (browser) + Desktop (Tauri / macOS · Windows)
@@ -35,7 +35,7 @@ MindOS reimagines AI applications with an "operating system" philosophy: all con
 
 #### 1. Virtual File System (VFS) — `libraries/vfs-core`
 
-VFS is the foundation of MindOS, providing a unique filesystem abstraction:
+VFS is the foundation of NestOS, providing a unique filesystem abstraction:
 
 - **Module Isolation**: Each workspace (Agents / Minds / Chats …) is an isolated VFS module with a `chroot`-like boundary. The path `/notes.md` inside the Minds module maps to `/module/minds/notes.md` in the system tree—modules cannot access each other's files directly.
 
@@ -149,13 +149,13 @@ pnpm --filter @itookit/vfs-core test
 libraries/               # Independent Git libraries in the source workspace
 ├── driver-llm/ # LLM transport
 ├── mdxeditor/ # Standalone Markdown editor
-├── mindos-node-driver/ # mindos-node files, sync and execution client
+├── nestos-node-driver/ # nestos-node files, sync and execution client
 ├── vfs-core/ # VFS engine and contracts
 ├── vfs-sync/ # Multi-device file sync
 ├── vfs-ui/ # File and resource browsing UI
 ├── vfsdriver-indexeddb/ # IndexedDB storage backend
 └── vfsdriver-local/ # Local FS and SQLite backend
-ui/                      # MindOS business UI
+ui/                      # NestOS business UI
 ├── app-shell/
 ├── app-settings/
 ├── llm-ui/

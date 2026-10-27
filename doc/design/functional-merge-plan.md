@@ -51,17 +51,17 @@ P1a/P1b 已接通 Agent/Flow 的新独立调用入口与终态历史恢复；已
 ```mermaid
 C4Component
     title 功能切片共享机制与宿主边界
-    Container_Boundary(host, "MindOS 宿主") {
+    Container_Boundary(host, "NestOS 宿主") {
         Component(entry, "UI / CLI / RPC", "入口适配", "输入编辑、台账、结果展示、能力传输")
         Component(session, "llm-session", "会话语义", "准入、队列、调用身份、历史关联")
         Component(flow, "llm-flow", "编排机制", "参数解析、节点调度、成员与控制树")
         Component(core, "app-core", "用例与装配", "授权、发布、租约、资产与 binding 端口")
         Component(effect, "kernel-adapters", "执行桥", "连接事实与 Kernel 结果转换")
         Component(port, "HarnessExecutionProvider", "注入契约", "execute / reconcile / cancel")
-        Component(driver, "mindos-node-driver", "原生协议适配", "操作身份、回执、队列与查询")
+        Component(driver, "nestos-node-driver", "原生协议适配", "操作身份、回执、队列与查询")
     }
     Component(kernel, "durable-kernel", "持久机制", "任务事实、原子准入、控制与清理")
-    Component(node, "mindos-node", "SDK 宿主", "原生会话、turn、查询与输出")
+    Component(node, "nestos-node", "SDK 宿主", "原生会话、turn、查询与输出")
     Rel(entry, session, "结构化提交；独立回答和控制")
     Rel(session, flow, "冻结实参与执行关联")
     Rel(session, kernel, "持久准入与事实观察")
@@ -109,7 +109,7 @@ C4Component
 | F15 | 授权附件传输、原操作恢复与队列消费 | `5411bf71`，见第 13 节 | 原始与最终增量证据分别记录，不把默认并发超时隐藏为全套通过 |
 | F19 | 原生取消/核对事实桥及失败连接释放重试 | 本批，见第 14 节 | 隔离宿主 987、adapter 362、Session 436 项；类型、构建和架构检查 |
 
-早期批次锁定（历史基线，当前消费版本以 gitlink 为准）：Kernel `0c5e7cb`、llm-ui `595aaea6`、mindos-node-driver `6e32348`、mindos-node `edcaefb`。Kernel 已由 F02 锁定，driver 已由 F04 锁定，llm-ui 已由 F09a 接入，后续随 F09d 台账合并更新；mindos-node 已由原生查询/控制/输出批次锁定；四个 gitlink 均已接入已验证消费者。保留这些已有提交；根仓锁定版本时必须同时验证受影响消费者，不用未锁定的本地源码冒充集成完成。
+早期批次锁定（历史基线，当前消费版本以 gitlink 为准）：Kernel `0c5e7cb`、llm-ui `595aaea6`、nestos-node-driver `6e32348`、nestos-node `edcaefb`。Kernel 已由 F02 锁定，driver 已由 F04 锁定，llm-ui 已由 F09a 接入，后续随 F09d 台账合并更新；nestos-node 已由原生查询/控制/输出批次锁定；四个 gitlink 均已接入已验证消费者。保留这些已有提交；根仓锁定版本时必须同时验证受影响消费者，不用未锁定的本地源码冒充集成完成。
 
 ## 4. 继续细分的功能单元
 
@@ -163,7 +163,7 @@ C4Dynamic
     Component(view, "独立 ChatView", "输入与显示")
     Component(adapter, "原生 UI 适配器", "等待与事实投影")
     Component(ledger, "OperationLedger", "原有提交台账")
-    Component(queue, "宿主原生队列", "mindos-node-driver")
+    Component(queue, "宿主原生队列", "nestos-node-driver")
     Component(store, "恢复记录", "app-core CAS")
     Component(native, "原生执行端", "原 session 与 turn")
     RelIndex(1, editor, adapter, "冻结输入与 operationId")
@@ -268,7 +268,7 @@ F13/F14 一批合入 51 个文件。上传身份与内容存储归 app-core，Se
 
 ## 11. 展示与存储边界、草稿冲突闭环
 
-llm-ui 只负责显示、输入编辑与控制请求；临时编辑状态和读缓存留在界面，MindOS 的持久数据经宿主端口写入既有 VFS/SessionRepository，执行事实继续归 Kernel。独立库不绑定文件系统实现。适配层负责 DTO、浏览器文件编解码与恢复交互，不建立新的执行状态库。职责及 C4 见[独立模块的数据边界](llm-ui-independent-module.md#展示输入控制与持久数据边界)。
+llm-ui 只负责显示、输入编辑与控制请求；临时编辑状态和读缓存留在界面，NestOS 的持久数据经宿主端口写入既有 VFS/SessionRepository，执行事实继续归 Kernel。独立库不绑定文件系统实现。适配层负责 DTO、浏览器文件编解码与恢复交互，不建立新的执行状态库。职责及 C4 见[独立模块的数据边界](llm-ui-independent-module.md#展示输入控制与持久数据边界)。
 
 本批补全 F09d 的同分支草稿基线、冲突提示及加载/替换动作；持久输入与基线不符时不覆盖正文、参数或附件。替换仍校验所显示的冲突快照，加载中的编辑和隐藏会阻止迟到恢复，读取失败不能当作空草稿。偏好写入在草稿条件检查后进行，发送前核对草稿；恢复动作不派发业务调用。
 
@@ -793,7 +793,7 @@ C4Component
 
 ## 34. F22 工作台上下文选择、草稿与提交证据
 
-默认工作台通过可选 ContextOptionsPort 查询目的 Session/分支/发布目标的只读目录，用户显式选择并确认已确认检查点。选择器属于 MindOS 的 UI adapter：宿主负责兼容性与执行授权，独立 llm-ui 不导入 binding 存储或原生协议。选择和查询观察分开，旧响应、分页 basis 变化及视图销毁不能覆盖新选择。
+默认工作台通过可选 ContextOptionsPort 查询目的 Session/分支/发布目标的只读目录，用户显式选择并确认已确认检查点。选择器属于 NestOS 的 UI adapter：宿主负责兼容性与执行授权，独立 llm-ui 不导入 binding 存储或原生协议。选择和查询观察分开，旧响应、分页 basis 变化及视图销毁不能覆盖新选择。
 
 ```mermaid
 C4Component
@@ -1776,7 +1776,7 @@ C4Dynamic
   title 按真实 DSH 事件关联操作与原生 turn
   Component(queue, "宿主命令队列", "原提交身份")
   Component(native, "DSH 原生服务", "连续持久事件")
-  Component(adapter, "mindos-node DSH 适配器", "原生身份映射")
+  Component(adapter, "nestos-node DSH 适配器", "原生身份映射")
   Component(runtime, "原 Harness Runtime", "执行事实与资源租约")
   RelIndex(1, queue, adapter, "冻结 requestId 与输入后提交")
   RelIndex(2, native, adapter, "turn/start 建立当前原生 turn 上下文")
@@ -1786,7 +1786,7 @@ C4Dynamic
   RelIndex(6, runtime, queue, "原完成事实允许后续派发")
 ```
 
-根因属于原生协议适配，修复放在 tools/mindos-node 的 DSH 驱动：连续事件上下文关联、精确消息证据与旧 turn 清除，不在 UI 或队列加入 idle 解锁策略。测试替身改用真实 UserMessage 形状。新回归先在旧实现失败，修复后 node 格式/全量测试（386 通过、2 忽略）/release 构建通过，版本更新为 0.4.1。
+根因属于原生协议适配，修复放在 tools/nestos-node 的 DSH 驱动：连续事件上下文关联、精确消息证据与旧 turn 清除，不在 UI 或队列加入 idle 解锁策略。测试替身改用真实 UserMessage 形状。新回归先在旧实现失败，修复后 node 格式/全量测试（386 通过、2 忽略）/release 构建通过，版本更新为 0.4.1。
 
 第 75 节首次验收时运行 tools/svr 尚未更新；验收队列已暂停且未发送的第二项已移除，第一项保留原核对身份。更新后的真实顺序发送与取消验收见第 76 节，旧项恢复仍未完成。
 
@@ -1818,7 +1818,7 @@ C4Dynamic
 C4Dynamic
   title 从原生历史核对并结算原已接纳调用
   Component(native, "原生持久历史", "DSH 事件")
-  Component(adapter, "DSH 协议适配器", "mindos-node")
+  Component(adapter, "DSH 协议适配器", "nestos-node")
   Component(client, "HarnessConversation", "通用客户端机制")
   Component(queue, "HarnessInstructionRuntime", "原队列与原 journal")
   Component(ui, "llm-ui", "展示与显式核对")
@@ -1836,7 +1836,7 @@ C4Dynamic
 
 回归先证实旧实现有两项失败：精确历史不能结算旧项，助手块却会被误判为完成。修复后驱动完整测试 309 通过、1 忽略，类型与 ESM/CJS 构建通过；独立打包消费验证根、harness、sync、authorization 的 ESM/CJS 入口。node 全量测试 389 通过、2 忽略，最终代码的库与 DSH/项目/关闭测试再次通过，格式与离线 release 构建通过。另覆盖跨 Session、重复证据、摘要不符、畸形边界、附件、显式旧页、存储失败恢复及核对不触发首次发送。
 
-实现提交：mindos-node 7a763f9（0.4.2）、mindos-node-driver 9de8447（0.4.1）。运行端仍是第 76 节所验证的 node 0.4.1 与原 httpd；必须更新 node 和消费新驱动的 httpd 后，再对旧验收项进行只读核对与结算。当前不宣称旧线上队首已修复，也不扩大为严格 native continue、跨 Session 受管取消或其他 Harness 的真实恢复验收。
+实现提交：nestos-node 7a763f9（0.4.2）、nestos-node-driver 9de8447（0.4.1）。运行端仍是第 76 节所验证的 node 0.4.1 与原 httpd；必须更新 node 和消费新驱动的 httpd 后，再对旧验收项进行只读核对与结算。当前不宣称旧线上队首已修复，也不扩大为严格 native continue、跨 Session 受管取消或其他 Harness 的真实恢复验收。
 
 
 ## 78. Codex/Claude 真实验收与迟到接纳的生命周期
@@ -1856,7 +1856,7 @@ Claude 第一条真实提交约 25 秒后进入 uncertain。已暂停该验收�
 
 第 78 节真实 Claude 未知提交的浏览器观察显示，已接纳队首正文又出现在输入框。审查确认 sendInstruction 直接调用公开 send/command；前者会把队首输入覆盖到当前草稿，后者在草稿为空时回填 slash 输入。二者之后又以原生接纳消费草稿，故下一份草稿即使只是正文相同，也可能被旧队列项清空。
 
-修复归独立 mindos-node-driver 的通用队列/草稿机制：公开直接发送与后台派发共用输入验证、会话准备和原生调用实现，但队列派发不拥有 composer。既有 pending 记录新增 consumeDraft=false，确认、丢回复核对与重开均保持此归属。旧直接发送记录缺省沿用原输入和 draftRevision 核对，不增加第二份草稿、台账或状态库。app-core 只验证及保存该恢复元数据，不加入输入编辑或发送策略；UI/OperationLedger 仍在持久队列接纳后按原提交的字段修订消费匹配草稿。
+修复归独立 nestos-node-driver 的通用队列/草稿机制：公开直接发送与后台派发共用输入验证、会话准备和原生调用实现，但队列派发不拥有 composer。既有 pending 记录新增 consumeDraft=false，确认、丢回复核对与重开均保持此归属。旧直接发送记录缺省沿用原输入和 draftRevision 核对，不增加第二份草稿、台账或状态库。app-core 只验证及保存该恢复元数据，不加入输入编辑或发送策略；UI/OperationLedger 仍在持久队列接纳后按原提交的字段修订消费匹配草稿。
 
 ```mermaid
 C4Dynamic
@@ -2059,7 +2059,7 @@ Kernel 提交 `4b21796c`：435 项单元测试、56 项真实进程集成测试�
 
 createKernelRuntime 接收并透传 Kernel 的 authorizeTaskCall；完整应用装配 createSessionTaskCallAuthority。每次 execute/cleanup 都按实际 source 与 target Session 续验已持有的应用写租约，同一 Session 只检查一次。新执行分别检查删除/移动状态并报告 TASK_CALL_SESSION_DELETING / TASK_CALL_SESSION_MOVING；cleanup 不受新调用可用性阻拦，但仍必须持有两侧原写权。该回调不获取其他宿主的租约，也不重入 Session 恢复；准备业务 Session 和显式恢复仍由原应用入口完成。
 
-共用的 renewSessionWriteLease 从 Harness 项目实现移至 app-core/kernel/session-lease，原生 Harness journal/上下文清理与 Task 调用复用它。该租约是 MindOS 宿主的 Session 写策略，不能移入独立 durable-kernel；Kernel 继续提供通用调用能力、Task/Effect 围栏和停止确认。Session 层未增加所有权记录、调度器或新的控制 RPC。
+共用的 renewSessionWriteLease 从 Harness 项目实现移至 app-core/kernel/session-lease，原生 Harness journal/上下文清理与 Task 调用复用它。该租约是 NestOS 宿主的 Session 写策略，不能移入独立 durable-kernel；Kernel 继续提供通用调用能力、Task/Effect 围栏和停止确认。Session 层未增加所有权记录、调度器或新的控制 RPC。
 
 ```mermaid
 C4Dynamic
@@ -2240,7 +2240,7 @@ llm-flow 的 submitPreparedTaskCall 与 readTaskCallSubmission 共用原 callerS
 
 本节 Kernel 提交 `98cc2d60`：469 项单元/契约及 62 项真实多进程测试通过；独立安装 ESM/CommonJS/core、NodeNext 声明消费通过。源树严格类型检查包含新回执测试。应用消费者以锁定该 gitlink 的隔离候选树验证，结果随本批记录。
 
-应用隔离候选树验证：Flow 747、Session 593、app-core 1161 项通过（另 13 项既有跳过）；Flow/Session 测试严格类型及 Flow/Session/app-core/CLI/app-shell 类型、Flow/Session 构建、架构边界通过，75 个 Mermaid 图和 22 个相对链接解析通过。全量 docs:check 仍报告 mindos-node README 的 tools/config.toml 示例路径；回到原根提交与原 Kernel gitlink 后复验，错误完全相同，本批未新增。隔离树补齐原 anki-cli gitlink 后，该目录的链接不再误报。此检查限制不解释为全量文档绿色，后续单独处理原示例路径。
+应用隔离候选树验证：Flow 747、Session 593、app-core 1161 项通过（另 13 项既有跳过）；Flow/Session 测试严格类型及 Flow/Session/app-core/CLI/app-shell 类型、Flow/Session 构建、架构边界通过，75 个 Mermaid 图和 22 个相对链接解析通过。全量 docs:check 仍报告 nestos-node README 的 tools/config.toml 示例路径；回到原根提交与原 Kernel gitlink 后复验，错误完全相同，本批未新增。隔离树补齐原 anki-cli gitlink 后，该目录的链接不再误报。此检查限制不解释为全量文档绿色，后续单独处理原示例路径。
 
 
 ## 91. 已发布目标复用普通对话准备进入可信宿主调用
@@ -2271,7 +2271,7 @@ SessionRunCoordinator 将输入与配置准备从普通提交的模式偏好写�
 
 正式 session.call.submit 仍走旧队列。本批让可信宿主具备“发布目标 → 持久准备 → 显式 Kernel 提交”的真实调用链，尚未把其 TaskRef/Round/结果恢复及前台/后台范围接入默认入口。八条剩余工作线保持，不标记 P1a/P1b 或 Flow 资源闭环完成，未部署到运行服务。
 
-本批隔离验收：Session 595 项、app-core 1175 项通过（另 13 项既有跳过）；新宿主测试 14 项和准备服务新增 2 项包含在上述总数内。新测试严格类型、Session/app-core/CLI/app-shell 类型、Session 构建与架构边界通过；76 个 Mermaid 图、22 个相对链接解析通过。全量 docs:check 仍为第 90 节已核对的 mindos-node 配置示例路径问题，本批无新增。普通发送的模式锁定、Flow 与 Harness 原路径随完整回归验证。
+本批隔离验收：Session 595 项、app-core 1175 项通过（另 13 项既有跳过）；新宿主测试 14 项和准备服务新增 2 项包含在上述总数内。新测试严格类型、Session/app-core/CLI/app-shell 类型、Session 构建与架构边界通过；76 个 Mermaid 图、22 个相对链接解析通过。全量 docs:check 仍为第 90 节已核对的 nestos-node 配置示例路径问题，本批无新增。普通发送的模式锁定、Flow 与 Harness 原路径随完整回归验证。
 
 
 ### 第 90 节补充：原查询读取真实执行关系
@@ -2284,7 +2284,7 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 
 补充机制的 Kernel 提交 `d59b9e1f`：490 项单元/契约、62 项真实多进程测试，以及独立 ESM/CommonJS/core、NodeNext 消费通过。SIGKILL 后先在未恢复源 Session 的独立进程核对实际目标，再恢复原调用，未创建第二个目标。应用隔离验证锁定该 gitlink；未部署到运行服务。
 
-应用补充验收：隔离 Flow 750、Session 607 项通过，宿主全量 1177 项在 maxWorkers=2/minWorkers=1 下通过（另 13 项既有跳过）；严格测试类型、Session/app-core/CLI/app-shell/UI adapter/app-contracts 类型、Flow/Session 构建与架构检查通过，76 个 Mermaid 图和 22 个链接解析通过。首次默认并发宿主运行有一项既有 IndexedDB 异步等待断言失败（默认等待内仍为零条），原版和候选版分别单独运行该文件均 13 项通过；最终只限制 worker 并发，未增加超时、跳过测试或更改业务逻辑来规避此项，不能把它记成修复 IndexedDB。全量 docs:check 仍为原 mindos-node 示例路径问题，没有新增。
+应用补充验收：隔离 Flow 750、Session 607 项通过，宿主全量 1177 项在 maxWorkers=2/minWorkers=1 下通过（另 13 项既有跳过）；严格测试类型、Session/app-core/CLI/app-shell/UI adapter/app-contracts 类型、Flow/Session 构建与架构检查通过，76 个 Mermaid 图和 22 个链接解析通过。首次默认并发宿主运行有一项既有 IndexedDB 异步等待断言失败（默认等待内仍为零条），原版和候选版分别单独运行该文件均 13 项通过；最终只限制 worker 并发，未增加超时、跳过测试或更改业务逻辑来规避此项，不能把它记成修复 IndexedDB。全量 docs:check 仍为原 nestos-node 示例路径问题，没有新增。
 
 
 ## 92. 当前最小可用版本交付记录
@@ -2368,7 +2368,7 @@ inspect 返回 evidence=kernel 和 callerExecution；列表再投影真实 prima
 
 主线代码和主要操作链已贯通，本次发布准备时的剩余收尾为：切换运行到包含后续日志/卡片刷新/子会话目标恢复的制品，并仅确认新修复实际生效。已执行一次 pnpm httpd:build --no-activate 成功生成 20261026T115203-0a6a57fa-dirty，HTTP 构建总阶段约 19.75s，证据为 /tmp/x1-mainline-final-release.log；当前工作树构建保留 dirty 标识。该构建阶段没有修改启动选择（当时仍为 20261026T110715-600146cc-dirty）或重启服务，不将候选制品视为运行版本。
 
-用户随后明确要求「先完成收尾，然后完成 llm-ui」。已切换并正常停止原 HTTP wrapper/server，沿用原启动参数和环境启动新进程；现运行于后台，wrapper PID 4149960，运行日志仍为 /var/log/mindos/httpd.runtime.log，启动输出另存 /tmp/x1-mainline-release-start.log。mTLS 健康接口确认 ready=true、mode=release、version=20261026T115203-0a6a57fa-dirty；证据为 /tmp/x1-mainline-new-release-health.json。
+用户随后明确要求「先完成收尾，然后完成 llm-ui」。已切换并正常停止原 HTTP wrapper/server，沿用原启动参数和环境启动新进程；现运行于后台，wrapper PID 4149960，运行日志仍为 /var/log/nestos/httpd.runtime.log，启动输出另存 /tmp/x1-mainline-release-start.log。mTLS 健康接口确认 ready=true、mode=release、version=20261026T115203-0a6a57fa-dirty；证据为 /tmp/x1-mainline-new-release-health.json。
 
 仅针对最新修复创建一个无工具的诊断 Agent 调用，子会话在打开前不存在已保存目标选择；浏览器直接打开后自动显示原诊断 Agent、输入可用、无 pageerror，确认 bc889b6d 已在实际运行版本生效。证据为 /tmp/x1-http-target-restore-prepare.json 与 /tmp/x1-http-target-restore-browser.json。未追加全量矩阵或重复已有审批/控制验收。正常主线本次发布收尾完成，随后按用户新要求推进 llm-ui 产品迁移；不能把此结论扩张为整个功能计划或 llm-ui 已全部完成。
 

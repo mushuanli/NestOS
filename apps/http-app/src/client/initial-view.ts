@@ -1,5 +1,5 @@
 import {initialViewRequest, INITIAL_CHAT_DOCUMENTS, parseWorkspaceHash} from '@itookit/app-shell/startup';
-import {ROUTE_ALIASES} from 'mind-os/workspaces';
+import {ROUTE_ALIASES} from 'nestos-web/workspaces';
 
 export function initialView(hash: string) {
     const route = parseWorkspaceHash(hash, 'start');

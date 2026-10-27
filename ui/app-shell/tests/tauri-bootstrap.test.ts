@@ -5,9 +5,9 @@
  * in Node.js with real SQLite sidecars — no Tauri runtime or browser APIs.
  *
  * Mirrors the production backend layout exactly:
- *   rootBackend         ~/.mindos/           SQLite: ~/.mindos/_meta/
- *   module/<name>       ~/.mindos/home/admin/     SQLite: ~/.mindos/_db/<name>/
- *   homeBackend         <homeDir>/            SQLite: ~/.mindos/meta/<path>/
+ *   rootBackend         ~/.nestos/           SQLite: ~/.nestos/_meta/
+ *   module/<name>       ~/.nestos/home/admin/     SQLite: ~/.nestos/_db/<name>/
+ *   homeBackend         <homeDir>/            SQLite: ~/.nestos/meta/<path>/
  *
  * If a test fails here it is a VFS/engine bug.
  * If it passes here but fails in Tauri it is a Tauri scope / IFsOps bug.
@@ -24,7 +24,7 @@ import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { Kernel } from '@itookit/durable-kernel';
 import { SessionRepository, VFSAgentService, SessionDirectoryStorageResolver, sessionDirectoryStorage } from '@itookit/llm-session';
 import { LLMDeviceDriver } from '@itookit/kernel-adapters/llm/core';
-import { createMindosLlmPresets, firstChatModelConnection } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosLlmPresets, firstChatModelConnection } from '@itookit/kernel-adapters/llm/presets';
 import type { IVFSManager } from '@itookit/vfs-core';
 
 // ── Module list (mirrors tauri-app/src/config/modules.ts, minus settings/home) ─
@@ -43,7 +43,7 @@ const MODULE_NAMES = MODULE_CONFIGS.map(m => m.name);
 // ── Shared fixture (created once for the suite) ───────────────────────────────
 
 interface BootstrapFixture {
-    mindosDir: string;
+    nestosDir: string;
     homeDir:   string;
     tempBase:  string;
     vfs:       IVFSManager;
@@ -56,30 +56,30 @@ interface BootstrapFixture {
 let fix: BootstrapFixture;
 
 /** pathToMetaDir — same function as in tauri-app/src/main.ts */
-function pathToMetaDir(mindosDir: string, absPath: string): string {
+function pathToMetaDir(nestosDir: string, absPath: string): string {
     const name = absPath.replace(/^\/+/, '').replace(/\//g, '_');
-    return `${mindosDir}/meta/${name}`;
+    return `${nestosDir}/meta/${name}`;
 }
 
 beforeAll(async () => {
     // ── 1. Create temp dir layout (mirrors Rust setup hook) ────────────────────
     const tempBase  = join(tmpdir(), `tauri-sim-${Date.now()}`);
-    const mindosDir = join(tempBase, '.mindos');
+    const nestosDir = join(tempBase, '.nestos');
     const homeDir   = join(tempBase, 'home');
 
     for (const dir of [
-        mindosDir,
-        `${mindosDir}/_meta`,
-        `${mindosDir}/_db`,
-        `${mindosDir}/meta`,
-        `${mindosDir}/home/admin`,
+        nestosDir,
+        `${nestosDir}/_meta`,
+        `${nestosDir}/_db`,
+        `${nestosDir}/meta`,
+        `${nestosDir}/home/admin`,
         homeDir,
     ]) {
         await fsp.mkdir(dir, { recursive: true });
     }
     for (const name of MODULE_NAMES) {
-        await fsp.mkdir(`${mindosDir}/home/admin/${name}`, { recursive: true });
-        await fsp.mkdir(`${mindosDir}/_db/${name}`,    { recursive: true });
+        await fsp.mkdir(`${nestosDir}/home/admin/${name}`, { recursive: true });
+        await fsp.mkdir(`${nestosDir}/_db/${name}`,    { recursive: true });
     }
 
     // ── 2. Open all backends in parallel (same as main.ts) ────────────────────
@@ -90,10 +90,10 @@ beforeAll(async () => {
         });
 
     const [rootBackend, homeBackend, ...moduleBackends] = await Promise.all([
-        open(mindosDir, `${mindosDir}/_meta`),
-        open(homeDir,   pathToMetaDir(mindosDir, homeDir)),
+        open(nestosDir, `${nestosDir}/_meta`),
+        open(homeDir,   pathToMetaDir(nestosDir, homeDir)),
         ...MODULE_NAMES.map(name =>
-            open(`${mindosDir}/home/admin/${name}`, `${mindosDir}/_db/${name}`)
+            open(`${nestosDir}/home/admin/${name}`, `${nestosDir}/_db/${name}`)
         ),
     ]);
 
@@ -107,7 +107,7 @@ beforeAll(async () => {
     });
 
     // ── 4. LLM device driver (same as bootstrap) ───────────────────────────────
-    const llmDriver = new LLMDeviceDriver(vfs, { presets: createMindosLlmPresets(), providerConnectionPolicy: firstChatModelConnection });
+    const llmDriver = new LLMDeviceDriver(vfs, { presets: createNestosLlmPresets(), providerConnectionPolicy: firstChatModelConnection });
     await llmDriver.init();
     vfs.devices.register(llmDriver);
     await llmDriver.createDeviceNodes();
@@ -120,7 +120,7 @@ beforeAll(async () => {
     await sessionEngine.init();
 
     fix = {
-        mindosDir, homeDir, tempBase, vfs,
+        nestosDir, homeDir, tempBase, vfs,
         llmDriver, agentService, sessionEngine,
         async dispose() {
             await vfs.dispose?.();
@@ -137,7 +137,7 @@ describe('tauri-app bootstrap simulation', () => {
 
     it('VFS mounts: each module directory is accessible', async () => {
         for (const name of MODULE_NAMES) {
-            const modulePath = `${fix.mindosDir}/home/admin/${name}`;
+            const modulePath = `${fix.nestosDir}/home/admin/${name}`;
             const stat = await fsp.stat(modulePath);
             expect(stat.isDirectory()).toBe(true);
         }
@@ -159,7 +159,7 @@ describe('tauri-app bootstrap simulation', () => {
     it('Session creation persists the Session record in the data store', async () => {
         const id = await fix.sessionEngine.createSession('Hello');
         expect((await fix.sessionEngine.getManifest(id)).id).toBe(id);
-        expect((await fsp.stat(`${fix.mindosDir}/var/lib/sessions/${id}/session.seq`)).isFile()).toBe(true);
+        expect((await fsp.stat(`${fix.nestosDir}/var/lib/sessions/${id}/session.seq`)).isFile()).toBe(true);
     });
 
     it('SessionRepository: multiple concurrent createSession calls succeed', async () => {
@@ -176,8 +176,8 @@ describe('tauri-app bootstrap simulation', () => {
     });
 
     it('etc rootfs: LLM connection config is persisted on disk', async () => {
-        // /etc is a rootfs built-in directory (v4.1), not a mounted module → ~/.mindos/etc/
-        const etcPath = `${fix.mindosDir}/etc`;
+        // /etc is a rootfs built-in directory (v4.1), not a mounted module → ~/.nestos/etc/
+        const etcPath = `${fix.nestosDir}/etc`;
         const stat = await fsp.stat(etcPath).catch(() => null);
         expect(stat?.isDirectory()).toBe(true);
 
@@ -231,7 +231,7 @@ describe('tauri-app bootstrap simulation', () => {
     });
 
     it('home module: can write and read a file', async () => {
-        const homeDir = `${fix.mindosDir}/home/admin/home`;  // mounted on homeDir temp path
+        const homeDir = `${fix.nestosDir}/home/admin/home`;  // mounted on homeDir temp path
         // Write through VFS
         const content = new TextEncoder().encode('hello from home');
         await (await fix.vfs.openFileSystem('/home/admin/home')).driver.createFile({ name: 'test.md', parentPath: '/', content });

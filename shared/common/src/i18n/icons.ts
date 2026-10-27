@@ -283,7 +283,7 @@ export const TOOLBOX_PROVIDER_ICONS: Readonly<Record<string, string>> = {
 const harnessMark = (label: string, mark: string) => ({label, icon: providerMark(mark)
     .replace('aria-hidden="true"', `role="img" aria-label="${label}"`).replace('><rect', `><title>${label}</title><rect`)});
 const HARNESS_MARKS: Readonly<Record<string, {label: string; icon: string}>> = {
-    mindos: harnessMark('MindOS', 'M'), codex: harnessMark('Codex', 'CX'), dsht: harnessMark('DSHT', 'DS'),
+    nestos: harnessMark('NestOS', 'M'), codex: harnessMark('Codex', 'CX'), dsht: harnessMark('DSHT', 'DS'),
     dsh: harnessMark('DSHT', 'DS'), claude: harnessMark('Claude Code', 'CC'),
     'claude-code': harnessMark('Claude Code', 'CC'), claudecode: harnessMark('Claude Code', 'CC'),
 };

@@ -44,12 +44,12 @@
 | `apps/cli`（崩溃矩阵） | `pnpm --filter @itookit/cli exec vitest run tests/crash-matrix.test.ts` | 6 通过（真实 SIGKILL，~160s，需单独跑） |
 | `tauri-app`（Rust） | `pnpm --filter tauri-app test:rust` | 16 通过（第七十六轮 +1：无挂载时的 Session Bash 文案） |
 
-合计 **1339 通过 / 30 跳过**（含 CLI 94 与 Rust 16；llm-session 97、vfs-core 173、vfsdriver-local 64、app-shell 133/30 跳过；各轮增量为 96→97、54→57、132→133、57→59、59→60、60→62、62→63、63→64、Rust 15→16）。**2026-09-11 第六十轮在本工作树逐项复跑核对**：`pnpm test`（`scripts/test-all.mjs`，含 crash-matrix 6 与 Rust 15）输出 `=== full matrix passed`、exit 0；逐包重采计数与上表 17 行**完全一致**（65/123+30/46/4/201/95/177/91/1/37/19/9/2/173/15/54/88，合计 1309 + CLI 94）；`pnpm build:libs`、`pnpm --filter @itookit/cli build`、`pnpm --filter mind-os build`、`pnpm --filter tauri-app build` 全部成功。注意：`apps/cli` 的 `crash-matrix` 与其他文件并行会拖慢时序敏感用例，必须单独复跑——该隔离已固化到根脚本 `pnpm test`（`scripts/test-all.mjs`：各包套件 → CLI 去掉 crash-matrix → crash-matrix → `tauri-app test:rust`，任一步失败即停止）。本轮之前 `llm-ui` / `mdxeditor` 两个套件因缺少脚本（后者还缺 vitest/jsdom 依赖）从未进入任何聚合验证；`llm-tasks` 的 `test` 曾是 watch 模式，现已改为 `vitest run` 并保留 `test:watch`。
+合计 **1339 通过 / 30 跳过**（含 CLI 94 与 Rust 16；llm-session 97、vfs-core 173、vfsdriver-local 64、app-shell 133/30 跳过；各轮增量为 96→97、54→57、132→133、57→59、59→60、60→62、62→63、63→64、Rust 15→16）。**2026-09-11 第六十轮在本工作树逐项复跑核对**：`pnpm test`（`scripts/test-all.mjs`，含 crash-matrix 6 与 Rust 15）输出 `=== full matrix passed`、exit 0；逐包重采计数与上表 17 行**完全一致**（65/123+30/46/4/201/95/177/91/1/37/19/9/2/173/15/54/88，合计 1309 + CLI 94）；`pnpm build:libs`、`pnpm --filter @itookit/cli build`、`pnpm --filter nestos-web build`、`pnpm --filter tauri-app build` 全部成功。注意：`apps/cli` 的 `crash-matrix` 与其他文件并行会拖慢时序敏感用例，必须单独复跑——该隔离已固化到根脚本 `pnpm test`（`scripts/test-all.mjs`：各包套件 → CLI 去掉 crash-matrix → crash-matrix → `tauri-app test:rust`，任一步失败即停止）。本轮之前 `llm-ui` / `mdxeditor` 两个套件因缺少脚本（后者还缺 vitest/jsdom 依赖）从未进入任何聚合验证；`llm-tasks` 的 `test` 曾是 watch 模式，现已改为 `vitest run` 并保留 `test:watch`。
 
 ## 3. 桌面端到端（P0-01 复验，当前工作树）
 
 用当前树构建的生产二进制（`cargo build --features tauri/custom-protocol`）在真实 X11 窗口上
-重跑验收链，`MINDOS_ROOT` 指向隔离数据根 `.tauri-acceptance/data`，模型服务为本地
+重跑验收链，`NESTOS_ROOT` 指向隔离数据根 `.tauri-acceptance/data`，模型服务为本地
 OpenAI-compatible mock（`127.0.0.1:8399`），子 harness 配置 `.tauri-acceptance/work/child.yml`。
 
 链路：窗口 → 默认 Agent → 外层 harness → Bash tool → 真实 IPC `session_shell_exec` →
@@ -81,7 +81,7 @@ bwrap（`/app` 只读仓库 + `/workspace` 可写）→ 子 CLI 两节点 DAG。
 411ms/1532ms。Tauri 端每次后端调用走 IPC（`TauriFsOps` + `TauriSqlSidecarDb`），
 因此 600–800 次调用被放大到秒级。
 
-应用内测量（2026-09-10，`VITE_MINDOS_TRACE=1` 构建，见 `apps/tauri-app/src/log/vfs-trace.ts`，
+应用内测量（2026-09-10，`VITE_NESTOS_TRACE=1` 构建，见 `apps/tauri-app/src/log/vfs-trace.ts`，
 每 2s 把 `runtime.vfs` 的 `ioStats` 增量追加到 `<rootDir>/var/log/vfs-trace.log`）：
 
 ```
@@ -188,7 +188,7 @@ CLI 实测（单节点 + 1.5s mock 响应，探针 `.tauri-acceptance/probe-publ
 | CLI 入口缺少超时/取消的真实验收（P0-02 要求“不能把取消请求发出等同于进程已停止”） | 新增 `apps/cli/tests/run-control.test.ts`：① `timeout: 400ms` + 永不回包的模型服务 → 节点 cancelled、Run failed、退出码 1、模型服务观察到客户端断开；② 运行中 SIGINT → 退出码 130、Run cancelled、`taskStatuses.finish=cancelled`、`resume` 不重发节点（模型请求数不变） |
 | `NodeNativeShell.runProcess` 在 abort 时只发 SIGTERM 就 resolve，且不等待进程退出：取消“已发出”被当成“已停止” | 已修：SIGTERM 进程组 → 1s 未退出则 SIGKILL → 只在 `close`（或 SIGKILL 后 2s 兜底）时 resolve。新增 `apps/cli/tests/process-cancel.test.ts`：命令 `trap '' TERM` 的**进程组**在 cancel 返回后 pid 必须已消失（无修复时该用例失败：`expected true to be false`） |
 | `skill.load`/`skill.unload` 适配器仍无 `cancel` | 已补齐：6 个适配器（含 skill.*）现全部实现 cancel；`effect-adapters.test.ts` 增加对应等待用例 |
-| 跨进程 `mindos cancel` 的边界未记录：Session 单写者租约使活宿主的 Run 无法被第二个进程取消 | 已验收为**明确的拒绝语义**：`apps/cli/tests/run-live-owner-refusal.test.ts` 断言第二个进程退出码 2、stderr 含 `is owned by`、在途请求不受影响，只有宿主 SIGINT 能停止（退出码 130、Run cancelled） |
+| 跨进程 `nestos cancel` 的边界未记录：Session 单写者租约使活宿主的 Run 无法被第二个进程取消 | 已验收为**明确的拒绝语义**：`apps/cli/tests/run-live-owner-refusal.test.ts` 断言第二个进程退出码 2、stderr 含 `is owned by`、在途请求不受影响，只有宿主 SIGINT 能停止（退出码 130、Run cancelled） |
 | 宿主已死、Effect 阻塞（`indeterminate`）的 Run 能否可靠取消并阻止重放 | 已验收：`crash-matrix.test.ts` 新增用例——SIGKILL 后 `cancelCommand` 成功（持久 `cancelled`），`resumeCommand` 返回 1 且模型请求数不增加，证明 blocked Effect 未被重放 |
 | Session 关闭时在途 Effect 是否确认停止后才返回 | 已验收（内核层）：`libraries/durable-kernel/src/protocol.test.ts`「closes a Session only after the in-flight Effect confirms it stopped」——适配器故意延迟确认，断言 `closeSession(id, cancelRunning)` 在确认前不完成；之后 Task `cancelled`、无 `cleanupPending`、Session 持久 `closed`，重启 Kernel 仍为 `closed` |
 | `SessionLeaseStore.init()` 每次操作都 `exists`（热路径 VFS 往返）+ 租约续期/Skill 同步静默失败 | 已修（P2-06）：`init()` 只 ensure 一次（失败清除以便重试），续期与同步失败改为带上下文的 `console.warn`。回归 `backend/app-core/tests/session-lease.test.ts`；无界面探针 10s 空闲突发 5 → **0** 次 stat |
@@ -197,7 +197,7 @@ CLI 实测（单节点 + 1.5s mock 响应，探针 `.tauri-acceptance/probe-publ
 | P1-05 cache 缺三项验收：依赖版本、generation fencing、策略矩阵 | 已验收：`libraries/durable-kernel/src/protocol.test.ts` 新增/明确——fingerprint 变化与 `expectedVersion` 不符 → miss（匹配才 hit）；`invalidate` 后新 operationId miss、旧 generation 的 publish 冲突；`prefer-cache`/`cache-only` 命中，`refresh`/`bypass` 恒 bypass 且不消费 single-use。`durable-harness-evidence.md` §5 对应行由「缺口」改为证据（终态清理与 provider 能力差异仍记为缺口，因为 cache 只有内置 SeqFile 实现） |
 | P2-06 `any` 读取 VFS 私有字段 `_engine` | 已修：vfs-core 暴露 `IO_OPERATIONS`/`IOOperation` 与 `IVFSManager.ioStats`/`resetIOStats()`；app-core 启动埋点与 `vfs-trace.ts` 改用公开 API。回归 `https://github.com/mushuanli/vfs-core/blob/main/tests/23-io-stats.test.ts`（vfs-core 173） |
 | P1-04 被丢弃实例的 token 退款语义 | 已实现：`applyGraphRetry` 丢弃已提交下游实例时按 `output.usage` 从 `consumedTokens` 退款；`llm-flow` 新增「refunds discarded downstream tokens so a graph retry is not double-charged」（`maxTokens: 6`，无退款则 8/6 失败；有退款 exit succeeded、usage=4） |
-| P2-06 `app-core/index.ts` 转发外家符号与历史别名 | 已修：移除 `registerKernelPrograms` 转发与 `createMindOSRuntime`/`MindOSRuntime`/`CreateMindOSRuntimeOptions`/`MindOSKernelPorts` 别名；CLI HTTP 主机与文档改用 `createApplicationRuntime`/`ApplicationRuntime`。回归：app-core 测试改从 `@itookit/llm-flow` 导入 `registerDurablePrograms`（app-core 11 通过） |
+| P2-06 `app-core/index.ts` 转发外家符号与历史别名 | 已修：移除 `registerKernelPrograms` 转发与 `createNestOSRuntime`/`NestOSRuntime`/`CreateNestOSRuntimeOptions`/`NestOSKernelPorts` 别名；CLI HTTP 主机与文档改用 `createApplicationRuntime`/`ApplicationRuntime`。回归：app-core 测试改从 `@itookit/llm-flow` 导入 `registerDurablePrograms`（app-core 11 通过） |
 | P0-02② UI 侧空闲流来源 | 证据（jsdom）：真实 vfs-ui 侧栏 + `SessionWorkbench` + 真实 VFS 静置 6s → **0 次 VFS 操作**，转为回归测试 `ui/app-shell/tests/session-workbench-idle.test.ts`。与内核修复（1504→0 ops/10s）及 trace 算术一致。**第六十七轮补齐 sidecar 通道**：`LocalFSBackend.sidecarStats` 计量 SQLite 调用，trace 同时输出两条通道，并在 LocalFS 后端上回归验证静置 1s 内 VFS 与 sidecar 增量均为 0；真实 Tauri IPC 的 llm-ui 聊天视图与真实窗口仍未覆盖 |
 | P2-06 `createApplicationRuntime` 单函数承担策略 | 大部分完成：抽出 `recoverSessionsWithLeases` 与 `createConversationSystem` 与其返回的实例 dispose；主函数只剩接线与清理。剩余 `createInfrastructure` 拆分与启动埋点收口 |
 | P1-04 委派组的图级重算 | 已实现：`applyGraphRetry` 丢弃父节点前先 `discardDelegationGroups`（取消/移除子实例与合成节点/边/组状态，并递增子节点 generation 以避免回放旧 Task）；仅拒绝「源本身是 `:delegate:` 合成子节点」。回归 `llm-flow`「recomputes a delegation group after a graph retry of an upstream node」；隔离工作区同样覆盖：「recomputes a delegation group inside an isolated workspace without re-preparing it」（`prepare` 1 次 / `restore` 1 次；llm-flow 171） |
@@ -212,12 +212,12 @@ CLI 实测（单节点 + 1.5s mock 响应，探针 `.tauri-acceptance/probe-publ
 | P1-05 Cache §10「Session scope 保留到 Session 关闭」未落地物理回收 | 已实现（2026-09-11 第二十六轮）：`cleanupSessionCachesTx` 在 Session 转为 `closed` 的同一事务删除该 Session 全部 cache namespace（含 `session` scope）、entry、发布序号、owner 索引与 handle/resource，并追加 `cache.cleaned`（`scope: session`）。`closed` 转换前已校验无未结束 Task，cache 操作对 closed Session 一律拒绝，故回收时无活跃引用；artifact 族资源、其 handle 与 `cache-operation` 回执保留。回归 `libraries/durable-kernel/src/protocol.test.ts`「reclaims every cache namespace when the Session closes, including session scope」；durable-kernel 189，vfsdriver-local 54、llm-flow 171、app-core 58、llm-session 89、CLI 91 全通过 |
 | P1-07「无消费边输出的契约验证」缺失：终止节点/Run 结果/旁路输出无人消费时其自身端口 schema 从不校验 | 已实现（2026-09-11 第二十七轮）：新增 `assertUnconsumedOutputs(node, edges, plugins, output)`，执行器在节点成功结算（`completed.add`）后只对「该节点声明了 schema 且无 active data edge 消费」的输出端口做内容校验，不通过则 Run 失败且不派发下游（合成委派实例无声明节点，跳过）。回归 `backend/llm-flow/__tests__/durable-flow-executor.test.ts`「validates a declared output no edge consumes (valid: %s)」（有效值 succeeded、无效值 failed 且报 `Invalid output only.result: $.count: expected integer`）；llm-flow 173，app-shell 115（+30 跳过）、CLI 91 无回归 |
 | P1-06「UI 端按字节预算增量加载」缺失（DagWorkbench 要求先加载完才可导出） | 已实现（2026-09-11 第二十八轮）：`TaskTranscriptDialog` 交互分页每页带 `maxBytes: 256 KiB`，续页固定首页 `version` 与 `nextOffset`；被裁剪的页面在状态行显示 `flow.transcript.truncated` 与字节数。导出改为独立完整读取（按 `version` 从 offset 0 循环、不传 `maxBytes`、含 `nextOffset` 单调性与 10k Effect 上限保护），不再要求先手工翻页，导出文件无损。回归 `ui/app-shell/tests/task-transcript-dialog.test.ts` 4 通过；app-shell 115（+30 跳过）、llm-ui 15 通过且构建成功 |
-| P1-02「跨主机时钟偏差」无显式约束：接管只看本地时钟的 `expiresAt > now`，快时钟宿主可抢走慢时钟宿主的活租约 | 已实现（2026-09-11 第二十九轮）：`acquireSchedulerLease` 新增 `skewMs`（默认 0，保持单机行为），接管要求 `expiresAt + skewMs <= now`，错误信息给出含预算的到期时刻与预算值；executor 经 `schedulerLeaseSkewMs` 透传，CLI 用 `MINDOS_SCHEDULER_LEASE_SKEW_MS` 配置。回归 `backend/llm-flow/__tests__/scheduler-lease.test.ts` 6 通过（新增「误差预算内拒绝、预算后接管」与「默认 0 行为不变」）；llm-flow 175，CLI 91、app-shell 115、durable-kernel 189 无回归。仍未完成：共享存储上的 authority store 时间与真实多进程接管 |
+| P1-02「跨主机时钟偏差」无显式约束：接管只看本地时钟的 `expiresAt > now`，快时钟宿主可抢走慢时钟宿主的活租约 | 已实现（2026-09-11 第二十九轮）：`acquireSchedulerLease` 新增 `skewMs`（默认 0，保持单机行为），接管要求 `expiresAt + skewMs <= now`，错误信息给出含预算的到期时刻与预算值；executor 经 `schedulerLeaseSkewMs` 透传，CLI 用 `NESTOS_SCHEDULER_LEASE_SKEW_MS` 配置。回归 `backend/llm-flow/__tests__/scheduler-lease.test.ts` 6 通过（新增「误差预算内拒绝、预算后接管」与「默认 0 行为不变」）；llm-flow 175，CLI 91、app-shell 115、durable-kernel 189 无回归。仍未完成：共享存储上的 authority store 时间与真实多进程接管 |
 | P1-05 Storage/Resources「stream/消息/receipt 保留期与 GC 竞争」未实现 | 已实现（2026-09-11 第三十轮）：新增 `Kernel.pruneSessionMessages(sessionId, before, limit?)` → `SeqFileKernelStore.pruneMessages` → `pruneMessagesTx`，只删除**已终结**出箱记录（delivered/rejected）与**已消费或已拒绝**的收件回执；未投递出箱、已投递未消费回执、以及同库内仍有 `pending` 出箱对应 id 的回执一律保留（保护发送方尚未记录投递的 receipt）。删除时写入 `retention` 水位键并追加 `session.messages.pruned` 事件；`before` 由宿主维护、必须早于部署重放窗口（幂等重放依赖出箱身份记录）。回归 `libraries/durable-kernel/src/protocol.test.ts`「prunes settled messages only, keeping undelivered and unconsumed records」；durable-kernel 190 |
 | P2-06「拆 `createApplicationRuntime`」最后一项 `createInfrastructure`（VFS + LLM 驱动）未抽出 | 已完成（2026-09-11 第三十一轮）：新增 `backend/app-core/src/runtime/infrastructure.ts` 的 `createInfrastructure(options)`——VFS（`/run` 挂载、`ioStats` 埋点 `logIO`）、LLM 设备驱动 init/注册/冻结、固定用户布局预热、宿主 Codex transport 关闭句柄；`createApplicationRuntime` 215 → 181 行，只剩接线与释放顺序（VFS 最后释放写入返回契约）。新增单测 `backend/app-core/tests/application-runtime.test.ts`「application infrastructure」（/run、宿主附加挂载与 /home/admin/* 可达、设备已冻结、logIO 报告并清零、transport 被关闭）；app-core 15 文件 / 59 用例、app-shell 115（+30 跳过）、CLI 91、`pnpm typecheck` 通过。P2-06 至此全部完成 |
 | P1-05「Tauri/隔离模式下的真实进程树终止取证」缺口 | 已取证（2026-09-11 第三十二轮）：`apps/cli/tests/tauri-process-tree.test.ts` 用 `rustc` 编译**真实** Tauri Rust 模块（`session_bash.rs` + `bash_process.rs`），在 bwrap（`--die-with-parent --unshare-pid`）内运行「忽略 SIGTERM + 持续写文件」的进程树并触发取消；断言 `cancelled=true`、`elapsed_ms` 远小于 30s 超时、退出码 1、取消返回后 1s 内文件不再增长（无残留进程）。隔离模式下该保证由进程组 SIGTERM→SIGKILL 与 `--die-with-parent`/PID namespace 拆除共同提供，测试断言宿主可观察行为。CLI 现 92 / 24 文件（新增 1 文件 1 用例） |
 | P1-07「运行定义持久冻结」未验证 | 已取证（2026-09-11 第三十三轮）：调度检查点持久化 `spec`/`parameters`/`sessionContext`/live `nodes`+`edges`+`edgeState`（含动态 patch 结果）/`nodeDefaults`/`nodeConnections`，`resume(sessionId, rootTaskId)` 不接受宿主定义参数。新增回归 `backend/llm-flow/__tests__/durable-flow-executor.test.ts`「resumes the Run definition frozen at submit instead of a later host definition」：第一宿主 park 在 human 节点后停机，宿主侧另编译 v2 定义（不同节点 id 与指令），恢复后节点集合与模型请求仍是检查点中的 v1（含 `DEFINITION-V1`、不含 `DEFINITION-V2`）。未冻结者为宿主插件实现代码。llm-flow 176 |
-| P1-02「跨主机时钟偏差」只覆盖 Run 级调度租约，外层 Session 单写者租约仍有同类漏洞 | 已补齐（2026-09-11 第三十四轮）：`apps/core` 的 `SessionLeaseStore` 新增 `skewMs`（默认 0），接管要求旧租约 `leaseUntil + skewMs` 已过；`createApplicationRuntime` 暴露 `sessionLeaseSkewMs` 选项，CLI 用 `MINDOS_SESSION_LEASE_SKEW_MS` 配置。回归 `backend/app-core/tests/session-lease.test.ts` 3 通过（预算内拒绝、预算后接管且 `fencingToken` 递增、未配置时行为不变）；app-core 15 文件 / 61 用例，CLI 92 / 24 文件无回归 |
+| P1-02「跨主机时钟偏差」只覆盖 Run 级调度租约，外层 Session 单写者租约仍有同类漏洞 | 已补齐（2026-09-11 第三十四轮）：`apps/core` 的 `SessionLeaseStore` 新增 `skewMs`（默认 0），接管要求旧租约 `leaseUntil + skewMs` 已过；`createApplicationRuntime` 暴露 `sessionLeaseSkewMs` 选项，CLI 用 `NESTOS_SESSION_LEASE_SKEW_MS` 配置。回归 `backend/app-core/tests/session-lease.test.ts` 3 通过（预算内拒绝、预算后接管且 `fencingToken` 递增、未配置时行为不变）；app-core 15 文件 / 61 用例，CLI 92 / 24 文件无回归 |
 | P1-05 Storage §5「新增 manifest 声明 layoutVersion、recordSchemas、requiredCapabilities 和 migration 状态；未支持能力必须明确拒绝」未落地 | 已实现骨架（2026-09-11 第三十五轮）：`createSession` 在 `session.seq` 的 `record` 写入 `layout`，`assertSessionLayout` 在 `kernel.openSession` 与 `requireSessionTx`（含 `listShared`）拒绝更高 `layoutVersion`、`migration.status === 'pending'`、未知 `requiredCapabilities`（如 `streams`），无该字段的旧记录按 legacy 读取。回归 `libraries/durable-kernel/src/protocol.test.ts`「declares a layout manifest and refuses Sessions it cannot interpret」（4 类拒绝 + legacy 兼容）；durable-kernel 191，llm-flow 176、vfsdriver-local 54、app-core 61 无回归。§5 各记录族拆分与 compaction 仍未落地 |
 | P1-05 Storage §3「retention/compaction 不删活跃引用」无实现 | 已落地一条记录族（2026-09-11 第三十六轮）：`Kernel.compactTaskHistory(sessionId, taskId, { keepVersions?, beforeVersion? })` → `SeqFileKernelStore.compactTaskHistory`，只删除 `task.seq` 的 `snapshot/<version>`，保留最新 `keepVersions`（默认 20）与 `beforeVersion` 之后的版本；主记录、attempts、effects、interactions、receipts 不动，写入 `task.history.compacted` 事件；被裁剪版本的 pinned 读返回空而非损坏。回归 `libraries/durable-kernel/src/protocol.test.ts`「compacts Task version history without touching the authoritative record or facts」（裁剪计数、保留窗口、主记录相等、每次重复裁剪为 no-op、默认窗口不删）；durable-kernel 192，llm-flow 176、vfsdriver-local 54、llm-session 89、CLI 92 无回归。`events.seq` 等其它族与跨 Session GC 竞争仍待落地 |
 | P0-04「Linux Bubblewrap/目录边界」实机验证：Rust 侧已有 12 项原生测试，但不在仓库验证流程里（无脚本、未记录） | 已可见并可复现（2026-09-11 第三十七轮）：`apps/tauri-app/package.json` 新增 `test:rust`（`cargo test --manifest-path src-tauri/Cargo.toml`），实跑 **12 通过 / 0 失败**（0.16s，构建 ~4.5s），覆盖 `session_bash::tests::confines_bash_to_readonly_and_writable_grants`（真实 bwrap：只读/可写授权与 cwd 边界）、`session_bash::tests::refuses_ungranted_cwd_and_reserved_or_traversing_paths`、`bash_process::tests::cancellation_stops_a_running_process_group`、`bash_process::tests::timeout_stops_children_that_ignore_term_and_closes_their_pipes`（取消/超时的进程组终止）、`directory_boundary::tests::*`（绝对/父路径与符号链接逃逸）、`scoped_directory::tests::scoped_io_rejects_escape_and_closed_handles`、`bash_process::tests::bounds_both_streams_while_draining_large_child_output`（输出上界）。结论修正：此前记为「缺证」的是**索引与执行**，不是测试本身；CLI 侧 `tauri-process-tree.test.ts` 仍提供真实模块端到端路径。 |
@@ -248,11 +248,11 @@ CLI 实测（单节点 + 1.5s mock 响应，探针 `.tauri-acceptance/probe-publ
 
 | P0-00「相同项目规则与 Skill 在两端一致」缺 Tauri 应用半边证据 | 已取证（无界面宿主装配，2026-09-11 第五十六轮）：`ui/app-shell/tests/tauri-host-skill-context.test.ts` 按 `apps/tauri-app/src/main.ts` 的同一装配创建运行时（`createApplicationRuntime` + `kernelPlatform.skillSourceForSession = new TauriSkillSource(files.vfs, files.cwd)`），把含 `_agent/AGENT.md` 与 `_agent/skills/review/SKILL.md`（含 `[红线]`）的项目目录挂为 Session 工作区，经 `SessionCommand.Bind`/`Send` 发起真实聊天运行后断言**落盘运行输入**含项目规则、Skill 正文与关键规则、不含非红线 compact 正文，并断言 `kernel-adapters.skills.loaded === ['review']`（宿主持久身份）与「消息不再匹配时仍按身份恢复正文/关键规则」（调用两宿主共用的 `resolveSessionSkillContext`）。app-shell 121→122。**仓库级重开宿主已补证（第五十七轮）**：同一文件用真实本地存储根（LocalFS + 共享 sidecar）跑两个宿主实例——宿主 A 建会话/挂目录/发起首次运行并持久 `kernel-adapters.skills.loaded` 后 `dispose()`（释放 Session 租约），宿主 B 仍能列出该 Session 并用**不再匹配触发词**的消息发起新运行，新运行落盘输入仍含项目规则、Skill 正文与 `[红线]` 关键规则。**边界**：仍是无界面装配证据，不是真实窗口/IPC 或真机验收（P0-04 仍缺） |
 
-| P0-04「无隔离能力时不回退宿主 shell」与「Session Bash 清空继承环境」缺测试 | 已补证（2026-09-11 第五十八轮，`pnpm --filter tauri-app test:rust`，Rust 12→15）：`session_bash::tests::never_falls_back_to_a_host_shell`——构建出的命令只能是 `bwrap`，脚本仅作为内层 `bash` 的单个 `-c` 参数（不存在把脚本拼进宿主 shell 的路径）；`session_bash::tests::clears_host_credentials_and_exposes_only_the_fixed_session_environment`——进程内设置 `MINDOS_HOST_SECRET` 后，会话 shell 观察不到该变量且 `HOME=/tmp`、`LANG=C.UTF-8`，显式环境恰为 `PATH`/`HOME`/`LANG` 三项；`bash_process::tests::a_missing_isolator_fails_the_command_instead_of_running_unescaped`——隔离器缺失时命令以 `bash exec failed` 失败，不会在宿主环境里静默执行。这也把 P0-03 教程里「原生 Session Bash 清空继承环境」从约定升级为有测试的行为。**边界**：非 Linux 目标平台的 `cfg!` 拒绝分支无法在本机执行；其他平台支持范围仍需真实平台确认 |
+| P0-04「无隔离能力时不回退宿主 shell」与「Session Bash 清空继承环境」缺测试 | 已补证（2026-09-11 第五十八轮，`pnpm --filter tauri-app test:rust`，Rust 12→15）：`session_bash::tests::never_falls_back_to_a_host_shell`——构建出的命令只能是 `bwrap`，脚本仅作为内层 `bash` 的单个 `-c` 参数（不存在把脚本拼进宿主 shell 的路径）；`session_bash::tests::clears_host_credentials_and_exposes_only_the_fixed_session_environment`——进程内设置 `NESTOS_HOST_SECRET` 后，会话 shell 观察不到该变量且 `HOME=/tmp`、`LANG=C.UTF-8`，显式环境恰为 `PATH`/`HOME`/`LANG` 三项；`bash_process::tests::a_missing_isolator_fails_the_command_instead_of_running_unescaped`——隔离器缺失时命令以 `bash exec failed` 失败，不会在宿主环境里静默执行。这也把 P0-03 教程里「原生 Session Bash 清空继承环境」从约定升级为有测试的行为。**边界**：非 Linux 目标平台的 `cfg!` 拒绝分支无法在本机执行；其他平台支持范围仍需真实平台确认 |
 
 | P0-02「文件保存失败时应用 UI 与持久状态一致」缺证据 | 已取证并修复缺陷（2026-09-11 第五十九轮）：[mdxeditor/tests/save-manager.test.ts](https://github.com/mushuanli/mdxeditor/blob/main/tests/save-manager.test.ts) 新增失败契约 3 条——保存失败保持 dirty 且回调 `onError`（不误报成功）、后续保存重试成功后清除 dirty、`finalSave` 失败只报告一次并保持 dirty（不空转）；mdxeditor 6→9。同轮发现并修复应用层缺口：`SessionWorkbench` 的文件编辑器把 `saveContent` 直接透传给 VFS 写入，写失败（只读挂载/IPC/授权撤销）时只保持编辑器 dirty，**界面无任何提示**，关闭编辑器时的 `finalSave` 也静默失败；现写失败先 `this.report(error)`（渲染 `role=alert` 提示）再重新抛出，编辑器保持 dirty 可重试。回归 `ui/app-shell/tests/session-browser-ui.test.ts` 断言提示内容为 `EROFS: mount is read-only`；未修复时该断言失败（已实测），证明缺口可复现。**边界**：真实 Tauri IPC/窗口下重测未做同轮修复第五十七轮重开用例的偶发失败（宿主 A 在 dispose 前等待首个运行到达终态，宿主 B 的失败信息进入断言）；随后 5 次全量 `app-shell` 套件连跑均 123 通过（+30 跳过），`mdxeditor` 9 通过。**边界**：真实 Tauri IPC/窗口下重测未做 |
 
-| 聚合验证与构建未在当前树复核（§2 各行计数可能漂移） | 已复核（2026-09-11 第六十轮）：`pnpm test`（全量矩阵脚本）输出 `=== full matrix passed`、exit 0——各包套件 + CLI 去掉 crash-matrix + crash-matrix（6 通过，163s，真实 SIGKILL）+ `tauri-app test:rust`（15 通过）；逐包重采计数与 §2 的 17 行全部一致（app-core 65、app-shell 123/+30、driver-llm 46、device-tty 4、durable-kernel 201、kernel-adapters 95、llm-flow 177、llm-session 91、llm-settings-ui 1、llm-tasks 37、llm-ui 19、mdxeditor 9、tools 2、vfs-core 173、vfsdriver-indexeddb 15、vfsdriver-local 54、vfs-ui 88；合计 1309 + CLI 94 + Rust 15 与文档一致）；构建面 `pnpm build:libs`（全部 packages）、`@itookit/cli`（tsup）、`mind-os`（web 前端）、`tauri-app`（桌面前端）全部成功。顺带复核文档口径：`backend/app-core/src/` 已无 `files/` 目录、`llm-flow/__tests__/transcript-budget.test.ts` 存在、`packages/*/package.json` 恰 22 个 + 4 个 app、Effect 清理与调度租约默认超时均为 30s、Rust 输出上限 1 MiB 与文档一致 |
+| 聚合验证与构建未在当前树复核（§2 各行计数可能漂移） | 已复核（2026-09-11 第六十轮）：`pnpm test`（全量矩阵脚本）输出 `=== full matrix passed`、exit 0——各包套件 + CLI 去掉 crash-matrix + crash-matrix（6 通过，163s，真实 SIGKILL）+ `tauri-app test:rust`（15 通过）；逐包重采计数与 §2 的 17 行全部一致（app-core 65、app-shell 123/+30、driver-llm 46、device-tty 4、durable-kernel 201、kernel-adapters 95、llm-flow 177、llm-session 91、llm-settings-ui 1、llm-tasks 37、llm-ui 19、mdxeditor 9、tools 2、vfs-core 173、vfsdriver-indexeddb 15、vfsdriver-local 54、vfs-ui 88；合计 1309 + CLI 94 + Rust 15 与文档一致）；构建面 `pnpm build:libs`（全部 packages）、`@itookit/cli`（tsup）、`nestos-web`（web 前端）、`tauri-app`（桌面前端）全部成功。顺带复核文档口径：`backend/app-core/src/` 已无 `files/` 目录、`llm-flow/__tests__/transcript-budget.test.ts` 存在、`packages/*/package.json` 恰 22 个 + 4 个 app、Effect 清理与调度租约默认超时均为 30s、Rust 输出上限 1 MiB 与文档一致 |
 
 | P0-02「区分工具 Effect 成功与子命令退出成功」与 TTY 面板终态语义缺测试 | 已补证（2026-09-11 第六十一轮）：① **Effect 与退出码可区分**——`apps/cli/tests/nested-harness.test.ts`（`it.each([false, true])`）用真实子 CLI 断言：子命令退出非 0 时外层 Task 仍 `succeeded`、Bash Effect 仍为 `succeeded`，而工具结果文本是 `[exit 1]`（成功路径为 `[exit 0]` 且含子运行结果），即「工具是否执行」与「子命令是否成功」不会互相冒充；本轮实跑该文件复核通过。② **TTY 面板契约**——新增 `ui/app-shell/tests/tty-panel.test.ts`（jsdom，驱动真实 `TtyPanel`/`TtyController`）5 条：输出与命令一律以文本节点写入（注入 `<script>`/`<img onerror>` 不产生元素）、`finalize` 之后到达的输出被忽略、`[exit 0]`/`[exit 3]` 如实报告、输出超上限只保留最新 100k 字符、meta 只路由到匹配会话且 `ttyOpen` 幂等、`destroyAll` 移除面板。同轮修复缺陷：`finalize(null)`（`tty_close` 未观测到退出码时会话被杀）此前显示 `Process exited (code ?)`，现为 `Process stopped (exit code unknown)`，与 `tty_close` 工具自身文案一致；新测试在修复前失败（`expected 'Process exited (code ?)' …`）。app-shell 123→128。③ **重开宿主用例的偶发失败已定位并修掉**：第五十七轮用例在满载并行下偶发 `ConversationError: Cannot send consecutive user messages`——「Kernel Task 已终态」并不等于「会话 round 已持久化」：宿主 A 在 round 文档状态与分支 head 落盘前 `dispose()`，重开的宿主 B 只会恢复出「以用户消息结尾」的转写并拒绝发送。用例现改为等待**持久条件**（`manifest.currentHead` 指向的 round 文档 `status === 'failed'`）再关闭宿主；此后 5 次全量 `app-shell` 连跑（含并行真实 CLI 子进程压力）均 128 通过。这也记录了宿主关闭顺序要求：应在会话 round 结算后再退出，而不是只看 Kernel Task 终态 |
 
@@ -307,7 +307,7 @@ cargo build --offline --features tauri/custom-protocol \
 #   Xvfb :99 -screen 0 1280x800x24 -nolisten tcp &
 #   dbus-run-session -- bash <<'SH'
 #     export DISPLAY=:99 GDK_BACKEND=x11 WEBKIT_DISABLE_COMPOSITING_MODE=1 LIBGL_ALWAYS_SOFTWARE=1 NO_AT_BRIDGE=0
-#     MINDOS_ROOT=<隔离数据根> ./apps/tauri-app/src-tauri/target/debug/tauri-app &
+#     NESTOS_ROOT=<隔离数据根> ./apps/tauri-app/src-tauri/target/debug/tauri-app &
 #     sleep 25
 #     python3 .tauri-acceptance/a11y.py apps          # → :1.1 tauri-app
 #     python3 .tauri-acceptance/a11y.py snap          # 完整 a11y 树
@@ -353,7 +353,7 @@ cargo build --offline --features tauri/custom-protocol \
 
 ### 11.1 打通方式（可复现）
 
-- **长驻会话**：把 Xvfb + dbus + 应用放在**一个后台任务**里常驻（默认每条命令是独立 PID/tmp 命名空间），地址写入 `.tauri-acceptance/gui-env.sh` 后由前台命令 `source` 复用，迭代不再需要每次重启应用。应用用 `MINDOS_ROOT=<隔离根> --home <隔离 home>` 启动。
+- **长驻会话**：把 Xvfb + dbus + 应用放在**一个后台任务**里常驻（默认每条命令是独立 PID/tmp 命名空间），地址写入 `.tauri-acceptance/gui-env.sh` 后由前台命令 `source` 复用，迭代不再需要每次重启应用。应用用 `NESTOS_ROOT=<隔离根> --home <隔离 home>` 启动。
 - **Mock Provider 预置**：`<根>/etc/llm/.providers/mock.json` + `.connections/default.json` 指向 `http://127.0.0.1:8399`（mock 与应用同一命名空间）。
 - **键盘输入需要 X input focus**：无窗口管理器时合成按键会丢失；给 `xsend` 增加 `focus` 命令（`XQueryTree` 找可见顶层窗口 + `XSetInputFocus`）后，先 `xsend focus`、再 `a11y.py focus "Message..."`（GrabFocus），`xsend text` 才能进入聊天输入框。
 - **聊天输入框不是 EditableText**：AT-SPI 只给出 `[Action,Text,Component]`（Name 是 placeholder，正文在 `Text.GetText`）。因此「读内容」用 `Text.GetText`，「写内容」用点击几何位置 + 合成按键，`EditableText.SetTextContents` 不可用。
@@ -369,7 +369,7 @@ cargo build --offline --features tauri/custom-protocol \
 
 UI 文本树（`a11y.py texts`）同时出现：用户消息 `TRACED-SEND` → 助手 `SUCCESS` + 正文 `pong` + token/成本行。即 **当前树在真实 X11 窗口上的「输入 → 发送 → 模型请求 → 回复渲染」链路已贯通**（此前只有旧树真机记录与无界面装配证据）。
 
-### 11.3 发送延迟与 IPC 归因（`VITE_MINDOS_TRACE=1` 构建）
+### 11.3 发送延迟与 IPC 归因（`VITE_NESTOS_TRACE=1` 构建）
 
 三次发送的「点击 Send → Provider 收到请求」延迟：**17.1s / 18.3s / 16.5s**（第三次带 trace）。第三次（`TRACED-SEND`）16.47s 窗口内的计数：
 
@@ -411,7 +411,7 @@ Mock 为本地服务、单会话、无并发/取消/崩溃场景；前两次延�
 
 - 回归 `https://github.com/mushuanli/vfsdriver-local/blob/main/tests/25-journal-probe.test.ts` 2 条：启动后连续 10 次记录读写只探测 journal **1 次**；写入 intent 后仍能完成 rename 并迁移记录、随后恢复安静。**已验证未修复时失败**（`expected 11 to be 1`）。
 - 全量 localfs 套件 **59 通过**（含 `20-kernel-ipc.test.ts` 的跨进程 SIGKILL rename 恢复：进程 A 在文件系统 rename 后被杀，新进程 B 读到迁移后的记录）。
-- 真机复测（同一 §11 harness + `VITE_MINDOS_TRACE=1` 构建，同一发送路径）：
+- 真机复测（同一 §11 harness + `VITE_NESTOS_TRACE=1` 构建，同一发送路径）：
 
 | | 延迟 | VFS | sidecar | 合计 IPC |
 |---|---|---|---|---|
@@ -984,7 +984,7 @@ GUI 把宿主目录挂为 `/workspace`（可读写、`设为工作目录`）后�
 
 P0-02 从第五轮起就挂着「UI 侧空闲流（连续 ≈60 ops/s）」未定位。内核轮询与 sidecar 事务修复后，本轮用 trace 构建在真实窗口做一次**专门的空闲测量**，给出阈值（空闲 ≤ 5 ops/s）的对照数字。
 
-**方法**：`VITE_MINDOS_TRACE=1 pnpm --filter tauri-app build` + `cargo build --features tauri/custom-protocol`；`dbus-run-session` + Xvfb 启动应用（隔离数据根，预置会话）；打开会话（工作台/编辑器已挂载）后**不再交互** 70s；读 `<root>/var/log/vfs-trace.log`（每 2s 在有变化时输出 VFS 与 sidecar 增量）。
+**方法**：`VITE_NESTOS_TRACE=1 pnpm --filter tauri-app build` + `cargo build --features tauri/custom-protocol`；`dbus-run-session` + Xvfb 启动应用（隔离数据根，预置会话）；打开会话（工作台/编辑器已挂载）后**不再交互** 70s；读 `<root>/var/log/vfs-trace.log`（每 2s 在有变化时输出 VFS 与 sidecar 增量）。
 
 **结果**（`13:11:24Z → 13:12:24Z`，8 条记录、约 70s 窗口）：
 
@@ -1415,7 +1415,7 @@ trace 开关新增公开 API 命令计数，采用 Vite alias 包装，避免写
 
 ## 69. 真实 WebView 验证公开 IPC 计量（2026-09-13）
 
-使用 `VITE_MINDOS_TRACE=1 pnpm --filter tauri-app build` 和 `cargo build --offline --features tauri/custom-protocol --manifest-path apps/tauri-app/src-tauri/Cargo.toml` 构建。全新 `/tmp/mindos-trace-window-VPy9Iq` 数据根经 Xvfb + dbus-run-session 启动，设置 MINDOS_ROOT 和 `--home` 指向该目录；未使用用户 profile。30 秒 timeout 返回 124，属于预定结束，不作为自然退出或取消确认验收。
+使用 `VITE_NESTOS_TRACE=1 pnpm --filter tauri-app build` 和 `cargo build --offline --features tauri/custom-protocol --manifest-path apps/tauri-app/src-tauri/Cargo.toml` 构建。全新 `/tmp/nestos-trace-window-VPy9Iq` 数据根经 Xvfb + dbus-run-session 启动，设置 NESTOS_ROOT 和 `--home` 指向该目录；未使用用户 profile。30 秒 timeout 返回 124，属于预定结束，不作为自然退出或取消确认验收。
 
 真实 WebView 在 `2026-09-13T14:14:55.745Z` 写入一条 trace：VFS ops=23（stat 22、mkdir 1），sidecarOps=11（getMetaExt 11），公开 API ipcOps=70。命令分布为 fs_mkdir 1、plugin:sql|select 28、fs_stat 36、fs_stat_many 4、fs_read_dir 1。同一窗口逻辑计数 34 与 API 调用 70 的差异，直接证明二者不可等同。30 秒内只产生此一条变化日志，不据此推算发送延迟或长期空闲指标。
 
@@ -1426,7 +1426,7 @@ trace 开关新增公开 API 命令计数，采用 Vite alias 包装，避免写
 
 ## 70. 当前树真实窗口发送样本（2026-09-13）
 
-使用 trace 前端与自包含原生二进制、Xvfb/dbus-run-session、新建数据根 `/tmp/mindos-send-window-1Ebh04` 及本地 OpenAI-compatible mock（18439 端口）。通过窗口“会话 → + 会话”输入名称 probe 并确认，再双击会话行；无障碍树确认消息框位于 @367,383 882×54，点击后输入 ping 并按 Return。旧 focusbig 依赖 EditableText，而当前树的输入框只暴露 Action/Text/Component，故不能继续以该脚本返回值判定输入框不存在。前面的未打开输入框尝试未产生模型请求，不计为样本。
+使用 trace 前端与自包含原生二进制、Xvfb/dbus-run-session、新建数据根 `/tmp/nestos-send-window-1Ebh04` 及本地 OpenAI-compatible mock（18439 端口）。通过窗口“会话 → + 会话”输入名称 probe 并确认，再双击会话行；无障碍树确认消息框位于 @367,383 882×54，点击后输入 ping 并按 Return。旧 focusbig 依赖 EditableText，而当前树的输入框只暴露 Action/Text/Component，故不能继续以该脚本返回值判定输入框不存在。前面的未打开输入框尝试未产生模型请求，不计为样本。
 
 按键前时间为 `2026-09-13T14:24:55.489Z`，mock 收齐请求为 `14:24:58.196Z`：**2.707 秒**。请求为 `/v1/chat/completions`、stream=true、mock-model，最后用户内容 ping。该计时包含按键注入与实际发送处理，不是服务端完成响应时间，仍高于 ≤2 秒目标。
 
@@ -1458,7 +1458,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 
 ### 71.3 真实窗口严格闭环（Xvfb + dbus-run-session + AT-SPI）
 
-用当前前端 dist 重新 `cargo build --offline --features tauri/custom-protocol`（embedded assets），全新数据根 `MINDOS_ROOT` + `--home`，通过种子脚本把宿主目录 `<root>/home/admin/proj` 以 `admin-home:/proj` 挂到 `/workspace` 并设为 cwd；`_agent/AGENT.md` 为 `Always cite the interface contract.`，`_agent/skills/review/SKILL.md` 为 `description: Review changes interface` + `auto-load: false`、正文 `Check every changed interface.`、compact `[红线] Preserve access checks.` + `Background note.`。mock 逐字落盘每个请求体；每段都是**新进程 + 新 Xvfb/dbus**（真实宿主重开），段间使上一实例的租约过期。
+用当前前端 dist 重新 `cargo build --offline --features tauri/custom-protocol`（embedded assets），全新数据根 `NESTOS_ROOT` + `--home`，通过种子脚本把宿主目录 `<root>/home/admin/proj` 以 `admin-home:/proj` 挂到 `/workspace` 并设为 cwd；`_agent/AGENT.md` 为 `Always cite the interface contract.`，`_agent/skills/review/SKILL.md` 为 `description: Review changes interface` + `auto-load: false`、正文 `Check every changed interface.`、compact `[红线] Preserve access checks.` + `Background note.`。mock 逐字落盘每个请求体；每段都是**新进程 + 新 Xvfb/dbus**（真实宿主重开），段间使上一实例的租约过期。
 
 | 段 | 输入 | 当前运行的系统消息 | 持久 `kernel-adapters.skills.loaded` |
 | --- | --- | --- | --- |
@@ -1484,7 +1484,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 
 复测：用修复后的前端与原生二进制重新创建临时 profile，连续执行创建 → 发送 → 确认运行 → 右键删除 → 原生 OK。模型请求在 01:10:58 UTC 收齐，确认删除发生在 120 秒延迟回复前；删除后无旧聊天、重试或 Session not found。结束该应用进程，重新启动同一数据根，列表仍为空，Session 目录未复活。过程没有调用内部删除 API。
 
-本地定位：失败 profile `/tmp/mindos-live-close-r2gvit`，修复与重开 profile `/tmp/mindos-live-close-RVCjog`，其中 running/context/confirm/deleted/reopen 文本与 PNG 为当次证据；临时目录不是长期交付物。重现时按上述步骤建立新数据根，并将 mock 回复延迟到删除确认之后。窗口开发者工具中的字体 CSP 告警仍存在，本批未验收其修复。
+本地定位：失败 profile `/tmp/nestos-live-close-r2gvit`，修复与重开 profile `/tmp/nestos-live-close-RVCjog`，其中 running/context/confirm/deleted/reopen 文本与 PNG 为当次证据；临时目录不是长期交付物。重现时按上述步骤建立新数据根，并将 mock 回复延迟到删除确认之后。窗口开发者工具中的字体 CSP 告警仍存在，本批未验收其修复。
 
 自动回归先复现了删除后 active route 仍保留的失败，再验证 ENOENT 清理、EIO 保留和核对期间切换新 Session 不误关新编辑器。隔离 app-shell 196 项通过，30 项既有跳过；Tauri 类型、前端与原生构建通过。本场景只证明模型请求在途时的 Session 删除及重开；原生设备不确认停止、单独关闭但保留记录、真实超时/IPC 故障和其余 P0-02 矩阵仍开放。
 
@@ -1496,7 +1496,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 
 静态导航链接补 aria-label，保留已有 title。AT-SPI 在鼠标停留于开发者工具时读到全部 11 个名称：AI Sessions、Projects、Anki Memory、Emails、Private Notes、Minds、Skills、Workflows、Agents、Mount directory…、Settings。此前多个导航链接只有悬停后才出现名称，不能把这种临时提示当稳定的无障碍名称。
 
-证据定位：`/tmp/mindos-live-close-OJI72o/fonts.txt`、`fonts.png` 与 `nav-labels.txt`。复核命令：Tauri 前端构建、custom-protocol 原生构建、Tauri 类型检查、`node apps/tauri-app/scripts/verify-ipc-trace.mjs`（真实 Vite 配置的 trace 开关/内部调用回归）均通过。临时文件不是长期交付物，复测应从新 profile 重建窗口并重复上述 FontFace/AT-SPI 检查。
+证据定位：`/tmp/nestos-live-close-OJI72o/fonts.txt`、`fonts.png` 与 `nav-labels.txt`。复核命令：Tauri 前端构建、custom-protocol 原生构建、Tauri 类型检查、`node apps/tauri-app/scripts/verify-ipc-trace.mjs`（真实 Vite 配置的 trace 开关/内部调用回归）均通过。临时文件不是长期交付物，复测应从新 profile 重建窗口并重复上述 FontFace/AT-SPI 检查。
 
 边界：本轮文件列表仍观察到部分方框字符，其来源需继续核对；FontAwesome 成功加载不证明所有 emoji、系统字体回退或全部控件都正确渲染。该项保留在 P0-04，未关闭其他平台、GTK 目录选择器、Skill 复选框或完整无障碍验收。
 
@@ -1515,7 +1515,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 | 卸载 | 第二个进程点击可见开关，变为 Enable skill | `[]` / 2 | 无 Skill 正文、有项目规则 |
 | 卸载后重开 | 第三个进程面板仍为 Enable skill | `[]` / 2 | 无 Skill 正文、有项目规则 |
 
-身份由只读 SQLite 连接读取 kernel/shared.seq 的 kernel-adapters.skills.loaded 记录核对，模型侧只检查每次请求的 system 消息，避免把历史用户文本当作当前注入。四次请求的 UTC 时间为 01:40:07.843、01:44:42.642、01:45:16.069、01:47:03.232。临时证据根 `/tmp/mindos-skill-toggle-CGsFtZ` 包含四段 request/state JSON、截图、mock.log 与开关前后 AT-SPI 文本；这些临时产物不作为永久测试入口。
+身份由只读 SQLite 连接读取 kernel/shared.seq 的 kernel-adapters.skills.loaded 记录核对，模型侧只检查每次请求的 system 消息，避免把历史用户文本当作当前注入。四次请求的 UTC 时间为 01:40:07.843、01:44:42.642、01:45:16.069、01:47:03.232。临时证据根 `/tmp/nestos-skill-toggle-CGsFtZ` 包含四段 request/state JSON、截图、mock.log 与开关前后 AT-SPI 文本；这些临时产物不作为永久测试入口。
 
 本轮无需修改实现，补齐 P0-04 的真实 GUI 勾选/取消及持久恢复证据。多层级嵌套挂载的项目规则窗口验收、严格 Skill 版本冻结、跨进程通知及其他平台要求仍开放。复现时使用新的临时 profile，保持 auto-load=false，不直接改 loaded 记录，并等待旧实例租约到期后重开。
 
@@ -1556,7 +1556,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 
 复现步骤：配置本地等待 120 秒的 mock；新建并选中 Session；再次点“+ 会话”应在同组产生同级会话；发送请求后切到 Projects 或另一个 Session，观察服务端连接仍在，等待约 60 秒超时，再重开原 Session 查看记录。关闭内核的验收需另有明确操作入口，不能把这些导航当作停止。
 
-临时证据：数据根 `/tmp/mindos-live-close-VYKRwL`，`second-created.png`（旧错误）、`fixed-create.png`、`timeout-reopened.png`、`switch-inflight.png`、`actually-switched.png`、`mock.log`、`closed-storage.json`。日志 `/tmp/x1-close-create-before.log`、`/tmp/x1-close-create-files.log`、`/tmp/x1-close-shell-final.log`、`/tmp/x1-close-vfsui.log`、`/tmp/x1-close-types.log`、`/tmp/x1-close-front.log`、`/tmp/x1-close-native.log`。长期复核以本提交回归和上述步骤为准；临时文件会消失。验收后关闭本次应用与 mock，产物保留正常入口。
+临时证据：数据根 `/tmp/nestos-live-close-VYKRwL`，`second-created.png`（旧错误）、`fixed-create.png`、`timeout-reopened.png`、`switch-inflight.png`、`actually-switched.png`、`mock.log`、`closed-storage.json`。日志 `/tmp/x1-close-create-before.log`、`/tmp/x1-close-create-files.log`、`/tmp/x1-close-shell-final.log`、`/tmp/x1-close-vfsui.log`、`/tmp/x1-close-types.log`、`/tmp/x1-close-front.log`、`/tmp/x1-close-native.log`。长期复核以本提交回归和上述步骤为准；临时文件会消失。验收后关闭本次应用与 mock，产物保留正常入口。
 ## 2026-09-14：模型超时与用户取消的原因保留
 
 基线 `abacbe43` 加本批选定文件，隔离快照 `/tmp/x1-feature-verify-w_wua9ix`。修复 LLMDriver 将内部首响应/流中停顿超时与调用方取消都转为无原因 AbortError 的问题：RequestCancellation 保留首个取消原因，即使 fetch/ReadableStream 用 `Fetch is aborted` 覆盖原因，也分别返回 TIMEOUT 或 ABORTED。流式迭代异常经过同一原因恢复；完成、失败及消费者结束迭代均清理计时器和外部监听器。已取消请求不派发，已超时的同一请求不继续在失效 signal 上重试。这里没有用 Promise.race 把设备未停止伪装成已停止，仍等待实际 Provider 读取结束。
@@ -1567,7 +1567,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 
 边界：连接断开后 2 秒的第一张截图仍显示总体 Error / 助手 RUNNING；打开 Inspector 后画面已显示 FAILED 和错误卡片。现有证据无法区分绘制延迟与事件消费延迟，不能以最终画面替代有界 live 收敛证明，P0-02 保留此项。原生已停止这里只指本地 HTTP 连接被关闭，不证明远端供应商计算或计费已停止。原始结构化错误码并未据此宣称完整穿透所有持久错误序列化层。
 
-可复现命令：`pnpm --filter @itookit/driver-llm test`、`pnpm --filter @itookit/app-shell test`；窗口步骤：本地 OpenAI-compatible mock 等待 120 秒后回复，发送消息并观察约 60 秒连接断开，核对错误卡片和 Task/Effect 持久错误。数据根 `/tmp/mindos-live-close-VIgRBk`；截图 `timeout-inflight.png`、`timeout-live.png`、`console.png`，持久摘录 `timeout-persisted.json`，请求日志 `mock.log`。测试/构建日志 `/tmp/x1-timeout-before.log`、`/tmp/x1-timeout-device.log`、`/tmp/x1-timeout-shell.log`、`/tmp/x1-timeout-types.log`、`/tmp/x1-timeout-front.log`、`/tmp/x1-timeout-native.log`。临时文件会消失，长期证据以本提交测试与步骤为准。
+可复现命令：`pnpm --filter @itookit/driver-llm test`、`pnpm --filter @itookit/app-shell test`；窗口步骤：本地 OpenAI-compatible mock 等待 120 秒后回复，发送消息并观察约 60 秒连接断开，核对错误卡片和 Task/Effect 持久错误。数据根 `/tmp/nestos-live-close-VIgRBk`；截图 `timeout-inflight.png`、`timeout-live.png`、`console.png`，持久摘录 `timeout-persisted.json`，请求日志 `mock.log`。测试/构建日志 `/tmp/x1-timeout-before.log`、`/tmp/x1-timeout-device.log`、`/tmp/x1-timeout-shell.log`、`/tmp/x1-timeout-types.log`、`/tmp/x1-timeout-front.log`、`/tmp/x1-timeout-native.log`。临时文件会消失，长期证据以本提交测试与步骤为准。
 
 补验：旧拥有者租约自然过期后，用新进程重开同一数据根，`timeout-reopened.png` 显示原消息 FAILED 与同一 60000 ms 超时原因。随后发送 `hello user-cancel`，mock 于 `03:36:49.210Z` 收齐，点击真实停止按钮后 `03:36:49.883Z` 记录连接关闭；`user-cancel-live.png` 显示 ABORTED，SQLite 中 Task `task_23d85d37-042a-4541-9a95-f48722ea2592` 和 Effect 为 cancelled、cleanupPending=false，未误写 TIMEOUT，前一条超时仍为 failed。摘录见 `timeout-and-cancel-persisted.json`。取消卡片仍写“执行失败”和 Task cancelled，用户取消文案优化仍属 P0-02，不据此宣称三态文案完成。验收结束后关闭本次应用和 mock，正常构建产物保留。
 
@@ -1575,7 +1575,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 
 此前只有覆盖较宽的区间计数（§70 的 953 次含边界外操作），不能与“单次发送 ≤2s / ≤100 次”直接比较。本轮补上缺失的那一段接线，并取得**动作边界内**的真实数字。
 
-实现：`apps/tauri-app/src/log/send-boundary.ts` 定义一个不嵌套、有上界的 `send-to-provider` 动作；起点是命令总线上的 `SessionCommand.Send`（Session 事件按已绑定 Session 分频道，启动期订阅会因尚未绑定而是空订阅，故改在总线处观察），终点是 Provider 响应头（`TauriLLMLogger.logResponse`，即设备已收到请求并开始应答）。超过 120 秒无应答的窗口会被有界关闭并留下记录，避免下一次发送被静默吞掉。仅在 `VITE_MINDOS_TRACE=1` 时生效，普通构建不接线。
+实现：`apps/tauri-app/src/log/send-boundary.ts` 定义一个不嵌套、有上界的 `send-to-provider` 动作；起点是命令总线上的 `SessionCommand.Send`（Session 事件按已绑定 Session 分频道，启动期订阅会因尚未绑定而是空订阅，故改在总线处观察），终点是 Provider 响应头（`TauriLLMLogger.logResponse`，即设备已收到请求并开始应答）。超过 120 秒无应答的窗口会被有界关闭并留下记录，避免下一次发送被静默吞掉。仅在 `VITE_NESTOS_TRACE=1` 时生效，普通构建不接线。
 
 真实 Linux Tauri（Xvfb `:98` + 会话总线 + AT-SPI；自包含正常前端与 `tauri/custom-protocol` 原生构建；全新数据根；本地 OpenAI-compatible mock `18471`；窗口内点消息框输入 `ping`/`ping2` 后按 Return）：
 
@@ -1590,7 +1590,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 
 方向与边界：`https://github.com/mushuanli/vfsdriver-local/blob/main/AGENTS.md` 明确要求减少 IPC 只能走**原子批量操作**，不得为省往返省略事务内的跨进程 rename journal 恢复检查；因此“只读操作不经事务”这条捷径不可用。真正能跨过阈值的是协议层改动（把逐字段/逐路径的 SeqFile 读写合批，或让调用方显式传参而不是每个逻辑步骤重读同一记录），属尚未实施的设计，不能以本次测量宣称完成。
 
-复现：`VITE_MINDOS_TRACE=1 pnpm --filter tauri-app build` 加 `cargo build --offline --features tauri/custom-protocol --manifest-path apps/tauri-app/src-tauri/Cargo.toml`，Xvfb + 会话总线 + AT-SPI 启动，发送后在 `<rootDir>/var/log/vfs-trace.log` 取 `"kind":"action","label":"send-to-provider"` 行。窗口驱动与数据根在临时目录（`.tauri-acceptance/measure/`，已 gitignore），长期证据以本节数字、`send-boundary.ts` 与 `ui/app-shell/tests/trace-send-boundary.test.ts` 为准。验收后已恢复普通前端与原生构建。
+复现：`VITE_NESTOS_TRACE=1 pnpm --filter tauri-app build` 加 `cargo build --offline --features tauri/custom-protocol --manifest-path apps/tauri-app/src-tauri/Cargo.toml`，Xvfb + 会话总线 + AT-SPI 启动，发送后在 `<rootDir>/var/log/vfs-trace.log` 取 `"kind":"action","label":"send-to-provider"` 行。窗口驱动与数据根在临时目录（`.tauri-acceptance/measure/`，已 gitignore），长期证据以本节数字、`send-boundary.ts` 与 `ui/app-shell/tests/trace-send-boundary.test.ts` 为准。验收后已恢复普通前端与原生构建。
 
 环境注意（可复现性）：本机 `/run/user/<uid>` 对沙箱只读，AT-SPI bridge 无法在其下绑定套接字并会导致应用进程被带走；`XDG_RUNTIME_DIR`/`XDG_CACHE_HOME` 必须指向可写目录。命令隔离环境各自持有独立 `/tmp` 与 PID 命名空间，会话总线套接字因此要放在共享的数据目录下（X11 走抽象套接字不受影响），否则跨调用驱动无障碍树会连接失败。这两点此前未记录，是“AT-SPI 需要可写缓存与显示会话”之外的具体原因。
 
@@ -1653,7 +1653,7 @@ P0-00 此前只有「项目规则 + Skill 进入真实窗口请求」的证据�
 
 回归覆盖真实 runtime/Kernel 的失败与取消终态事件、DOM error 消费、TIMEOUT/缺失 code 不误判、原因文本转义、取消状态结束 loading。app-shell 204 项与 llm-session 116 项通过，共 320 项；30 项既有跳过。llm-session、llm-ui、Tauri 类型检查与样式检查通过，样式检查不等于清空历史 allowlist。前端和 custom-protocol 原生构建通过；新增历史取消配色后重新构建。
 
-真实 Linux Tauri/Xvfb/D-Bus/AT-SPI：使用已有数据根 `/tmp/mindos-live-close-VIgRBk`，打开原会话、发送 `hello cancel-ui-verified`，mock 于 `04:53:23.006Z` 收齐请求；点击实际停止按钮后于 `04:53:23.604Z` 关闭连接（responseEnded=false）。`cancel-ui-live.png` 显示顶部“执行已取消”、消息 ABORTED、中性卡片“执行已取消”与“重新执行”。这验证 UI 取消路径；Task 取消语义不自动证明任意外部设备或供应商已停止，此处只确认本地 HTTP 连接断开。
+真实 Linux Tauri/Xvfb/D-Bus/AT-SPI：使用已有数据根 `/tmp/nestos-live-close-VIgRBk`，打开原会话、发送 `hello cancel-ui-verified`，mock 于 `04:53:23.006Z` 收齐请求；点击实际停止按钮后于 `04:53:23.604Z` 关闭连接（responseEnded=false）。`cancel-ui-live.png` 显示顶部“执行已取消”、消息 ABORTED、中性卡片“执行已取消”与“重新执行”。这验证 UI 取消路径；Task 取消语义不自动证明任意外部设备或供应商已停止，此处只确认本地 HTTP 连接断开。
 
 剩余边界：首次超时后消息状态的短暂 RUNNING 残留及其有界收敛仍需定位；pause 三态及未确认物理停止的真实窗口场景仍未完成。独立关闭并保留记录已由后续 `d393d2fc` / `3c3afe5d` 实现和验收，不再作为本条剩余入口。重新打开 Session 时顶部可显示 Ready（当前没有活跃执行），不把它当作历史 Task 状态。本文不宣称整个 P0-02 完成。
 

@@ -5,7 +5,7 @@
 ## 数据流
 
 ```text
-mindos.yml ──┐
+nestos.yml ──┐
              ├→ RunDefinition → DagRunSpec
 *.flow ──────┘
 ```
@@ -89,7 +89,7 @@ interface RunDefinition {
 | `--profile <name>` | 选择数据根，不属于 RunDefinition |
 | `--set-home <dir>` | `policy.workspaceRoot`，并生成 `/workspace` Session mount |
 | `--add-dir <dir>[:ro\|rw]` | 尚未映射：CLI 只把目录作为宿主挂载交给 `CliRuntimeOptions.addDir` → `DirectoryMountService`，从不写入 `policy.additionalDirectories` |
-| `-f mindos.yml` | `source: 'yaml'`，编译 YAML 后填充 graph/environment |
+| `-f nestos.yml` | `source: 'yaml'`，编译 YAML 后填充 graph/environment |
 | `.flow` 输入 | `source: 'flow'`，从 `FlowRevision` 编译 |
 
 CLI 的 `flow-config` 只读取文件并调用 llm-flow 公开的 `createFlowRevision`，不另行维护草稿字段清单。

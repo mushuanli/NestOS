@@ -10,7 +10,7 @@ function pane(label: string, text: string, start: number, end: number): HTMLElem
     pre.append(document.createTextNode(numbered(0, start)), changed, document.createTextNode(numbered(end, lines.length)));
     section.append(heading, pre); return section;
 }
-export function compareFileContents(current: string, incoming: string, dirty: boolean, signal: AbortSignal, confirm: boolean, backup?: {savedAt?: number}): Promise<boolean> {
+export function compareFileContents(current: string, incoming: string, dirty: boolean, signal: AbortSignal, confirm: boolean, backup?: {savedAt?: number}, withoutBackup: false | 'large' | 'disabled' = false): Promise<boolean> {
     if (signal.aborted) return Promise.resolve(false);
     const a = current.split('\n'), b = incoming.split('\n'); let start = 0, tail = 0;
     while (start < Math.min(a.length, b.length) && a[start] === b[start]) start++;
@@ -19,6 +19,7 @@ export function compareFileContents(current: string, incoming: string, dirty: bo
         const dialog = document.createElement('dialog'); dialog.className = 'mdx-file-compare';
         const title = document.createElement('h2'); title.textContent = t(backup ? 'editor.file.backup' : 'editor.file.compare');
         const hint = document.createElement('p'); hint.textContent = t(dirty ? confirm ? 'editor.file.compareDirty' : 'editor.file.compareUnsafe' : 'editor.file.compareHint');
+        if (withoutBackup) hint.textContent = t(withoutBackup === 'large' ? 'editor.file.compareLarge' : 'editor.file.compareNoSwap');
         if (backup) hint.textContent = t('editor.file.backupTime', {time: typeof backup.savedAt === 'number' && Number.isFinite(backup.savedAt) && backup.savedAt > 0
             ? new Date(backup.savedAt).toLocaleString() : t('editor.file.backupTimeUnknown')});
         const panes = document.createElement('div'); panes.className = 'mdx-file-compare__panes';

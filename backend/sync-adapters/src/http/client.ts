@@ -1,3 +1,3 @@
-/** Compatibility export; remote protocols belong to mindos-node-driver. */
-export { HttpSyncClient } from '@itookit/mindos-node-driver/sync';
-export type { SyncCapabilities } from '@itookit/mindos-node-driver/sync';
+/** Compatibility export; remote protocols belong to nestos-node-driver. */
+export { HttpSyncClient } from '@itookit/nestos-node-driver/sync';
+export type { SyncCapabilities } from '@itookit/nestos-node-driver/sync';

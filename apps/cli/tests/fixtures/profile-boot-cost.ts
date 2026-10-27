@@ -117,7 +117,7 @@ function report(title: string, result: Awaited<ReturnType<typeof boot>>): Record
 }
 
 async function main(): Promise<void> {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-boot-cost-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-boot-cost-'));
     const output: unknown[] = [];
     try {
         const first = await boot(root);

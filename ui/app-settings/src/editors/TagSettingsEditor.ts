@@ -185,7 +185,7 @@ export class TagSettingsEditor extends BaseSettingsEditor<SettingsService> {
     private deleteTag(tag: Tag) {
         const count = tag.count || 0;
         const msg = count > 0
-            ? `标签 "${tag.name}" 被引用了 ${count} 次。\n\n注意：此操作会移除 MindOS 文件中的该标签及其定义，不会删除文件。确定继续吗？`
+            ? `标签 "${tag.name}" 被引用了 ${count} 次。\n\n注意：此操作会移除 NestOS 文件中的该标签及其定义，不会删除文件。确定继续吗？`
             : `确定要删除标签 "${tag.name}" 吗？`;
 
         Modal.confirm('确认删除', msg, async () => {

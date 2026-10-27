@@ -1,7 +1,7 @@
 import {ACTION_ICONS, CHAT_ICONS} from '@itookit/common';
 import {ChatInputTemplates} from '../components/templates/ChatInputTemplates';
 
-/** Reuse the product's existing icons without coupling the standalone view to MindOS. */
+/** Reuse the product's existing icons without coupling the standalone view to NestOS. */
 export function presentChatButton(node: HTMLButtonElement, action: string): void {
     const icons: Readonly<Record<string, string>> = {
         refresh: ACTION_ICONS.refreshView, prompts: ACTION_ICONS.promptList,

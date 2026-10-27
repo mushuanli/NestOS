@@ -24,7 +24,7 @@ async function connection(mode: 'eof' | 'headers' | 'open') {
             controller.enqueue(new TextEncoder().encode(': connected\n\n'));
             if (subscriptions > 1 && mode === 'eof') controller.close();
         }});
-        return new Response(body, {headers: {'X-MindOS-View-Resume': '1'}});
+        return new Response(body, {headers: {'X-NestOS-View-Resume': '1'}});
     };
     const client = new HttpViewClient('test', '/api/application', fetcher);
     releases.push(async () => {await client.close(); await server.close();});

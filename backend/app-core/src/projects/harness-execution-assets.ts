@@ -2,7 +2,7 @@ import type {EffectExecutionContext} from '@itookit/durable-kernel';
 import {prepareHarnessInput, type HarnessAssetAttachment, type HarnessExecutionRequest, type HarnessInlineAttachment} from '@itookit/kernel-adapters/contracts';
 import {sha256Hex} from '@itookit/llm-context/digest';
 import {isSupportedTextContent} from '@itookit/driver-llm';
-import {validateHarnessAttachments, type HarnessProfile} from '@itookit/mindos-node-driver/harness';
+import {validateHarnessAttachments, type HarnessProfile} from '@itookit/nestos-node-driver/harness';
 import type {TaskAssetReader} from '@itookit/tools/contracts';
 import {executionError} from './harness-execution-journal';
 import {validateExecutionInput} from './harness-execution-call-input';

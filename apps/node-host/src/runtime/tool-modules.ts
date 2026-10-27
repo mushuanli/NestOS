@@ -7,11 +7,11 @@ import { z } from 'zod/v4';
 export interface ToolModuleAPI { buildTool: typeof buildTool; z: typeof z; }
 
 /** Only trusted host configuration selects executable extension modules. */
-export async function loadNodeToolModules(value = process.env.MINDOS_TOOL_MODULES): Promise<Tool[]> {
+export async function loadNodeToolModules(value = process.env.NESTOS_TOOL_MODULES): Promise<Tool[]> {
     if (!value) return [];
     const paths: unknown = JSON.parse(value);
     if (!Array.isArray(paths) || paths.some(path => typeof path !== 'string' || !isAbsolute(path))) {
-        throw new Error('MINDOS_TOOL_MODULES must be a JSON array of absolute module paths');
+        throw new Error('NESTOS_TOOL_MODULES must be a JSON array of absolute module paths');
     }
     const tools: Tool[] = [], names = new Set<string>();
     for (const path of paths) {

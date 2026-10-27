@@ -1,4 +1,4 @@
-import type { HarnessClient, HarnessConversationJournal, HarnessConversationPort, HarnessConversationSnapshot, HarnessReceipt } from '@itookit/mindos-node-driver';
+import type { HarnessClient, HarnessConversationJournal, HarnessConversationPort, HarnessConversationSnapshot, HarnessReceipt } from '@itookit/nestos-node-driver';
 import type { RemoteConversationStore } from './remote-conversation-store';
 import {formatDefaultFileTitle, t} from '@itookit/common';
 import {reportRemoteFailure} from './remote-diagnostics';
@@ -12,7 +12,7 @@ export function remoteConversationJournal(recovery: RemoteConversationStore, epo
     }, save: record => {checkAccess(); return recovery.save({...record, submittedTurnId: record.submittedTurnId ?? recovery.submittedTurnId});}};
 }
 
-function hasRecoveryWork(record: import('@itookit/mindos-node-driver').HarnessRecovery): boolean {
+function hasRecoveryWork(record: import('@itookit/nestos-node-driver').HarnessRecovery): boolean {
     return !!(record.pending || record.responses?.length || record.draft || record.draftAttachments?.length
         || record.instructionQueue?.items.length || record.controls?.some(row => row.receipt === 'pending' || row.receipt === 'accepted' && !row.terminal));
 }

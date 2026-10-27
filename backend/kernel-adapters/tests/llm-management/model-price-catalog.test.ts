@@ -3,7 +3,7 @@ import {createLlmDeviceCatalog} from '@itookit/device-llm';
 const {providers: LLM_PROVIDERS, pricing: {reference_catalog: catalog}} = createLlmDeviceCatalog();
 const MODEL_PRICE_CATALOG = catalog!;
 import {resolveModelReferencePrice} from '@itookit/device-llm/contracts';
-import {createMindosLlmPresets} from '../../src/llm-management/presets';
+import {createNestosLlmPresets} from '../../src/llm-management/presets';
 import {ProviderManager} from '../../src/llm-management/device/provider-manager';
 
 it('records a reviewed pricing source and explicit pricing mode for every builtin provider', () => {
@@ -33,7 +33,7 @@ it('preserves exact model identity and the original image and speech billing uni
 });
 
 it('keeps reviewed vendor references available independently of editable ledger rates', () => {
-    const presets = createMindosLlmPresets();
+    const presets = createNestosLlmPresets();
     const manager = new ProviderManager({} as never, {} as never, () => {}, presets);
     const config = manager.getPricingConfig();
     expect(config.model_pricing).toEqual([]);

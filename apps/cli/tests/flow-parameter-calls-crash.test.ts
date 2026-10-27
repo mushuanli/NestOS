@@ -34,8 +34,8 @@ function alive(child: ChildProcess): boolean { return child.exitCode === null &&
 function cli(stateDir: string, args: string[], interactive = false): CliProcess {
     const child = spawn(process.execPath, ['--import', 'tsx', CLI, ...args, '--profile', stateDir, '--state-dir', stateDir,
         ...interactive ? [] : ['--headless', '--json']], { cwd: CLI_CWD, stdio: ['pipe', 'pipe', 'pipe'], env: {
-        ...process.env, MINDOS_TOOL_MODULES: '[]', MINDOS_SESSION_LEASE_TTL_MS: '1500', MINDOS_SCHEDULER_LEASE_TTL_MS: '1500',
-        MINDOS_SESSION_LEASE_SKEW_MS: '0', MINDOS_SCHEDULER_LEASE_SKEW_MS: '0',
+        ...process.env, NESTOS_TOOL_MODULES: '[]', NESTOS_SESSION_LEASE_TTL_MS: '1500', NESTOS_SCHEDULER_LEASE_TTL_MS: '1500',
+        NESTOS_SESSION_LEASE_SKEW_MS: '0', NESTOS_SCHEDULER_LEASE_SKEW_MS: '0',
     } });
     let stdout = '', stderr = '';
     child.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });

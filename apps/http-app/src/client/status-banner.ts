@@ -29,7 +29,7 @@ class HttpStatusBanner {
         this.banner.className = 'http-status'; this.banner.setAttribute('role', 'alert'); this.banner.hidden = true;
         this.action.type = 'button'; this.action.textContent = t('httpApp.reload');
         this.action.onclick = () => {
-            if (this.state === 'reconnecting') window.dispatchEvent(new Event('mindos:http-retry'));
+            if (this.state === 'reconnecting') window.dispatchEvent(new Event('nestos:http-retry'));
             else if (this.state === 'expired' && this.recover && !this.manualReload) this.restore();
             else this.reload();
         };
@@ -42,13 +42,13 @@ class HttpStatusBanner {
         document.addEventListener('visibilitychange', () => {if (!document.hidden) this.recovery.retry();}, {signal});
     }
     private listenConnection(signal: AbortSignal): void {
-        window.addEventListener('mindos:http-disconnected', event => this.disconnected(event), {signal});
-        window.addEventListener('mindos:http-reconnected', () => this.connectionChanged('connected'), {signal});
-        window.addEventListener('mindos:http-view-error', () => this.connectionChanged('view-error'), {signal});
+        window.addEventListener('nestos:http-disconnected', event => this.disconnected(event), {signal});
+        window.addEventListener('nestos:http-reconnected', () => this.connectionChanged('connected'), {signal});
+        window.addEventListener('nestos:http-view-error', () => this.connectionChanged('view-error'), {signal});
     }
     private connectionChanged(state: ConnectionState): void {
         if (state === 'view-error') this.show('view-error', t('httpApp.viewError'), false);
-        else if (state !== 'connected') this.disconnected(new CustomEvent('mindos:http-disconnected', {detail: {state}}));
+        else if (state !== 'connected') this.disconnected(new CustomEvent('nestos:http-disconnected', {detail: {state}}));
         else if (this.state === 'reconnecting') {this.banner.hidden = true; this.state = undefined;}
     }
     private disconnected(event: Event): void {

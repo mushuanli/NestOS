@@ -17,7 +17,7 @@ let temp: string, certificates: string, untrusted: string, backend: LocalFSBacke
 let host: Awaited<ReturnType<typeof secureServers>>, client: Awaited<ReturnType<typeof authenticatedFetch>>;
 const execute = promisify(execFile);
 beforeAll(async () => {
-    temp = await mkdtemp(path.join(tmpdir(), 'mindos-mtls-'));
+    temp = await mkdtemp(path.join(tmpdir(), 'nestos-mtls-'));
     certificates = path.join(temp, 'trusted'); untrusted = path.join(temp, 'untrusted');
     await createCertificates(certificates, ['127.0.0.1']); await createCertificates(untrusted, ['127.0.0.1']);
     await writeFile(path.join(certificates, 'expired-index.txt'), ''); await writeFile(path.join(certificates, 'expired-serial.txt'), '01');
@@ -30,7 +30,7 @@ beforeEach(async () => {
     const certificate = new X509Certificate(await readFile(path.join(certificates, 'client.crt')));
     await writeFile(path.join(certificates, 'clients.json'), JSON.stringify([certificate.fingerprint256.replaceAll(':', '').toLowerCase()]));
     const root = await mkdtemp(path.join(temp, 'data-')), ui = path.join(root, 'ui');
-    await mkdir(ui); await writeFile(path.join(ui, 'index.html'), '<title>Private MindOS</title>');
+    await mkdir(ui); await writeFile(path.join(ui, 'index.html'), '<title>Private NestOS</title>');
     await mkdir(path.join(ui, 'assets')); await writeFile(path.join(ui, 'assets/chat.js'), 'private module');
     backend = await openLocalFSBackend({ rootDir: root, sidecarDir: path.join(temp, path.basename(root) + '-meta'), createDb: file => NodeSqliteSidecarDb.open(file) });
     host = await secureServers(backend, root, ui, certificates); client = await authenticatedFetch(certificates);

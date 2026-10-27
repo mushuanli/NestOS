@@ -1,4 +1,4 @@
-export { MindosInitialFiles } from './presets/initial-files';
+export { NestosInitialFiles } from './presets/initial-files';
 export { TWIN_SELECTION_TYPES, selectionKinds } from './digital-twin/selection';
 export type { TwinSelectionTarget, TwinSelectionType } from './digital-twin/selection';
 export type { TwinScanRuleInput, TwinScanRules } from './digital-twin/scan-rules';
@@ -43,8 +43,8 @@ export type { CreateKernelRuntimeOptions, HeadlessKernelRuntime } from './runtim
 export type { RuntimeContextGc, RuntimeContextGcOptions, RuntimeContextGcResult } from './runtime/context-gc';
 export { syncSkillsToKernel } from './kernel/sync-skills';
 export type { SkillSourceDriver, KernelSkillCatalog } from './kernel/sync-skills';
-export { DEFAULT_MINDOS_SETTINGS, MINDOS_CONFIG_FILE, resolveMindOSProfile } from './profile/mindos-profile';
-export type { MindOSProfile, MindOSProfileSettings, ResolveMindOSProfileOptions } from './profile/mindos-profile';
+export { DEFAULT_NESTOS_SETTINGS, NESTOS_CONFIG_FILE, resolveNestOSProfile } from './profile/nestos-profile';
+export type { NestOSProfile, NestOSProfileSettings, ResolveNestOSProfileOptions } from './profile/nestos-profile';
 export { createRunDefinitionFromFlow, toDagRunSpec } from './run/run-definition';
 export type {
     RunAgentConfig,
@@ -93,7 +93,7 @@ export { OcrService, type OcrSettings, type OcrConnection } from './configuratio
 
 export { ProjectRemoteMountService } from './projects/remote-mounts';
 export { HarnessConnectionService } from './projects/harness-connections';
-export { createMindOSNodeMCPExtension } from './projects/mindos-node-mcp-extension';
+export { createNestOSNodeMCPExtension } from './projects/nestos-node-mcp-extension';
 export type { HarnessConnectionAcquisition } from './projects/harness-connections';
 export type { HarnessConnectionRecord } from './projects/harness-connection-store';
 export { createHarnessExecutionProvider, harnessExecutionJournalKey } from './projects/harness-execution';
@@ -118,21 +118,21 @@ export type { ProjectFavorite, ProjectFavoriteTarget, ProjectFavoriteStore } fro
 
 export { resolveProjectFavorite } from './projects/favorites/routes';
 
-export { createMindosFlowLibrary } from './presets/flow-library';
+export { createNestosFlowLibrary } from './presets/flow-library';
 
 export { DEFAULT_HARNESS_TOOL_IDS } from './presets/harness-tools';
 
-export { createMindosDirectAgentPolicy } from './presets/direct-agent-policy';
+export { createNestosDirectAgentPolicy } from './presets/direct-agent-policy';
 
 export { ProjectSyncService } from './projects/sync/service';
 export type { ProjectSyncProvider, ProjectSyncSession, ProjectSyncComparison, ProjectSyncContent } from './projects/sync/service';
 
 export { prepareProjectSync } from './projects/sync/prepare';
 export type { ProjectSyncPreparationRemote } from './projects/sync/prepare';
-export type { HarnessClient, HarnessProfile, HarnessSession, HarnessPage, HarnessHistory, HarnessEvent, HarnessEvents, HarnessReceipt } from '@itookit/mindos-node-driver/harness';
+export type { HarnessClient, HarnessProfile, HarnessSession, HarnessPage, HarnessHistory, HarnessEvent, HarnessEvents, HarnessReceipt } from '@itookit/nestos-node-driver/harness';
 
-export { MCPRemoteConnections, MINDOS_NODE_EXTENSION, remoteMCPConnection, mindosNodeConfiguration, isMindOSNodeTool } from './projects/mcp-remote-connections';
-export type { MindOSNodeConfiguration, MCPConfigurationStore } from './projects/mcp-remote-connections';
+export { MCPRemoteConnections, NESTOS_NODE_EXTENSION, remoteMCPConnection, nestosNodeConfiguration, isNestOSNodeTool } from './projects/mcp-remote-connections';
+export type { NestOSNodeConfiguration, MCPConfigurationStore } from './projects/mcp-remote-connections';
 
 export { listRemoteHarnessAgents } from './projects/remote-agent-catalog';
 export type { RemoteHarnessAgent } from './projects/remote-agent-catalog';

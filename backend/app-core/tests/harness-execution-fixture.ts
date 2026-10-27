@@ -1,6 +1,6 @@
 import { vi } from 'vitest';
 import type { EffectExecutionContext, EffectSessionState, JsonValue, SharedStateEntry } from '@itookit/durable-kernel';
-import type { HarnessClient, HarnessEvent, HarnessHistory, HarnessMutationOptions, HarnessProfile, HarnessReceipt } from '@itookit/mindos-node-driver';
+import type { HarnessClient, HarnessEvent, HarnessHistory, HarnessMutationOptions, HarnessProfile, HarnessReceipt } from '@itookit/nestos-node-driver';
 import type { HarnessExecutionRequest } from '@itookit/kernel-adapters/contracts';
 import { createHarnessExecutionProvider } from '../src/projects/harness-execution';
 import {settleExecutionContext} from '../src/projects/harness-execution-context';

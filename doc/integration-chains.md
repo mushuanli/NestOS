@@ -154,21 +154,21 @@ TTY：TtyEffectAdapter → device-tty（node-pty）
 
 ## HTTP 项目外挂
 
-工作台项目 → ProjectRemoteMountService → 项目组合视图 → FileStorageAdapter → HttpFSBackend → fetch → Rust fs-server 的导出别名。Session 将同一项目视图挂到 `/workspace`。凭据由宿主 provider 持有；项目配置只保存 credentialRef。服务端源码位于 `tools/mindos-node/`（独立 git 仓库，`tools/` 另放部署产物），协议与边界详见 [设计与实现边界](design/vfs-http-driver.md)。
+工作台项目 → ProjectRemoteMountService → 项目组合视图 → FileStorageAdapter → HttpFSBackend → fetch → Rust fs-server 的导出别名。Session 将同一项目视图挂到 `/workspace`。凭据由宿主 provider 持有；项目配置只保存 credentialRef。服务端源码位于 `tools/nestos-node/`（独立 git 仓库，`tools/` 另放部署产物），协议与边界详见 [设计与实现边界](design/vfs-http-driver.md)。
 
-命名连接入口：工具箱 → MCP → `MCPSettingsEditor` → MCPManager 标准发现及已注册扩展验证 → 保存统一配置及运行期凭据引用。宿主注入 `MCPConfigurationControlsRegistry`，只为已识别 mindos-node 显示 `MindOSNodeMCPControls` 控制中心。工作台新建项目 → `ProjectService.createRemote` → `bindProject`，以服务地址和别名内路径去重，将远程根组合到项目 `/` 及 Session `/workspace`。连接名称可改，引用使用稳定 ID；Basic 密码仅存宿主凭据 provider。
+命名连接入口：工具箱 → MCP → `MCPSettingsEditor` → MCPManager 标准发现及已注册扩展验证 → 保存统一配置及运行期凭据引用。宿主注入 `MCPConfigurationControlsRegistry`，只为已识别 nestos-node 显示 `NestOSNodeMCPControls` 控制中心。工作台新建项目 → `ProjectService.createRemote` → `bindProject`，以服务地址和别名内路径去重，将远程根组合到项目 `/` 及 Session `/workspace`。连接名称可改，引用使用稳定 ID；Basic 密码仅存宿主凭据 provider。
 
-## mindos-node 与外部 harness 控制链
+## nestos-node 与外部 harness 控制链
 
-Web/Tauri/CLI → `createMindOSNodeDriver` → 同一命名连接和凭据解析器。节点 0.4 起，Harness、项目目录与进程观察复用按节点/身份共享的 fetch SSE；修改命令与回执查询继续使用 HTTP/MCP。文件/远程进程交给 mindos-node-driver HTTP；同步交给 mindos-node-driver 的 HttpSyncClient；外部会话交给 MCPHarnessClient → mindos-node `/mcp` → 通用 Harnesses/收据表 → Codex HarnessDriver → `codex app-server --stdio`。
+Web/Tauri/CLI → `createNestOSNodeDriver` → 同一命名连接和凭据解析器。节点 0.4 起，Harness、项目目录与进程观察复用按节点/身份共享的 fetch SSE；修改命令与回执查询继续使用 HTTP/MCP。文件/远程进程交给 nestos-node-driver HTTP；同步交给 nestos-node-driver 的 HttpSyncClient；外部会话交给 MCPHarnessClient → nestos-node `/mcp` → 通用 Harnesses/收据表 → Codex HarnessDriver → `codex app-server --stdio`。
 
-Web/Tauri 在“工具箱 → MCP → 对应 mindos-node 配置 → 控制中心”打开 profile/workspace、会话和归档分页、历史、消息、输出、审批与中断。app-core 只解析连接并暴露 HarnessClient 类型端口；原生协议、主机目录和启动命令不进入 UI。外部会话不写入 MindOS 的 llm-session/Kernel，不共享其恢复日志或 Session 租约。
+Web/Tauri 在“工具箱 → MCP → 对应 nestos-node 配置 → 控制中心”打开 profile/workspace、会话和归档分页、历史、消息、输出、审批与中断。app-core 只解析连接并暴露 HarnessClient 类型端口；原生协议、主机目录和启动命令不进入 UI。外部会话不写入 NestOS 的 llm-session/Kernel，不共享其恢复日志或 Session 租约。
 
-详情见 [mindos-node-driver](../libraries/mindos-node-driver/README.md) 和 [mindos-node](../tools/mindos-node/README.md)。
+详情见 [nestos-node-driver](../libraries/nestos-node-driver/README.md) 和 [nestos-node](../tools/nestos-node/README.md)。
 
-远程项目绑定为 MCP 配置 ID + 导出 alias/规范化路径 → 项目 ID。只有经过 mindos-node 能力发现的 HTTP MCP 配置进入绑定列表，显示名不能冒充类型。标准发现元数据优先提供同源 HTTP 文件端点、fileProtocol 与 serverId；旧服务复用通用连接调用其已声明的能力工具。测试成功后保存、改名复用结果，地址或认证变化重新验证；普通 MCP 不发 mindos-node 探测。同一安装身份（或规范化地址）、账号和路径只创建一个远程项目。
+远程项目绑定为 MCP 配置 ID + 导出 alias/规范化路径 → 项目 ID。只有经过 nestos-node 能力发现的 HTTP MCP 配置进入绑定列表，显示名不能冒充类型。标准发现元数据优先提供同源 HTTP 文件端点、fileProtocol 与 serverId；旧服务复用通用连接调用其已声明的能力工具。测试成功后保存、改名复用结果，地址或认证变化重新验证；普通 MCP 不发 nestos-node 探测。同一安装身份（或规范化地址）、账号和路径只创建一个远程项目。
 
-MCP 配置是唯一连接权威，`/etc/fs` 只保存项目授权；旧连接迁到 `/llm/.mcp`，保留 ID 与 credentialRef，清除旧配置和密码记录。旧文件服务作为 legacy mindos-node 配置继续访问，升级并测试后开放 harness。删除或改指向已绑定配置由宿主注入的管理器钩子拒绝。跨窗口配置重载更新远程连接投影，不维护第二份连接目录。
+MCP 配置是唯一连接权威，`/etc/fs` 只保存项目授权；旧连接迁到 `/llm/.mcp`，保留 ID 与 credentialRef，清除旧配置和密码记录。旧文件服务作为 legacy nestos-node 配置继续访问，升级并测试后开放 harness。删除或改指向已绑定配置由宿主注入的管理器钩子拒绝。跨窗口配置重载更新远程连接投影，不维护第二份连接目录。
 
 远程项目 `displayName` 动态组成“服务器名:项目名”，导航 path 与项目 ID 不依赖服务器名；同名项目创建时可使用带项目 ID 的 navigationName 消除内部路径冲突。配置重命名刷新侧栏、切换器、标题和传输目标，不移动会话或远程目录。
 

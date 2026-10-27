@@ -106,7 +106,7 @@
 
 ## 6. 数据与组件边界
 
-Session 元信息增加可选 `parentSessionId`，缺省或 null 表示顶层会话。继续使用独立 Session 的既有物理存储路径，项目文件目录、MindOS profile 根目录均无需搬迁。不要把该字段写入历史索引。
+Session 元信息增加可选 `parentSessionId`，缺省或 null 表示顶层会话。继续使用独立 Session 的既有物理存储路径，项目文件目录、NestOS profile 根目录均无需搬迁。不要把该字段写入历史索引。
 
 约束：
 

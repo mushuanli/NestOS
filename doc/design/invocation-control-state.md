@@ -201,7 +201,7 @@ C4Dynamic
 
 ### 8.1 原生执行的独立控制回执
 
-[HarnessControlLedger](../../libraries/mindos-node-driver/src/harness/control-ledger.ts)复用 HarnessRecovery 的 controls 字段，保存原生控制请求及观察恢复点，不替代 Kernel Task/Effect 状态。当前落地取消，统一 InvocationControl、控制版本、steer 和分层暂停屏障仍是目标契约。
+[HarnessControlLedger](../../libraries/nestos-node-driver/src/harness/control-ledger.ts)复用 HarnessRecovery 的 controls 字段，保存原生控制请求及观察恢复点，不替代 Kernel Task/Effect 状态。当前落地取消，统一 InvocationControl、控制版本、steer 和分层暂停屏障仍是目标契约。
 
 ```ts
 interface HarnessInterruptRequest {
@@ -245,7 +245,7 @@ C4Dynamic
     Component(view, "ConversationView", "宿主端口", "独立控制与队列入口")
     Component(driver, "HarnessConversation", "驱动", "冻结精确目标与控制台账")
     ContainerDb(journal, "HarnessRecovery", "既有 SeqFile", "输入、队列、控制回执")
-    Container(native, "mindos-node / Harness", "原生执行", "原生 turn 与 operation 回执")
+    Container(native, "nestos-node / Harness", "原生执行", "原生 turn 与 operation 回执")
     RelIndex(1, ui, view, "submit 已领取，原发送回复仍未到达")
     RelIndex(2, native, view, "原生事件经驱动观察、RPC 更新执行身份")
     RelIndex(3, ui, view, "interrupt：sessionId、turnId、独立 operationId")
@@ -264,7 +264,7 @@ C4Dynamic
 
 旧 @new 草稿清理不会删除仍有控制待确认、待发送队列、待回应交互或后续输入的恢复记录。宿主注册表在控制 unknown 或 accepted 且未观察终态时继续保留后台观察，最后一个页面关闭不会令停止自动成功。原始异常和正文不写入新增日志；日志保留 operationId、阶段、安全错误码与耗时。
 
-[驱动回归](../../libraries/mindos-node-driver/tests/conversation.test.ts)、[台账回归](../../libraries/mindos-node-driver/tests/control-ledger.test.ts)、[真实 RPC 组合](../../apps/http-app/tests/conversation-composer-rpc.test.ts)、[工作台 DOM 回归](../../ui/app-shell/tests/remote-conversation-editor.test.ts)覆盖悬挂发送时入队、编辑、显式暂停和取消，以及迟到回复、真实完成竞态和精确目标去重。[存储故障注入](../../backend/app-core/tests/remote-conversation-store.test.ts)与[草稿集成](../../backend/app-core/tests/remote-draft-conversation.test.ts)覆盖事务提交前失败、提交后丢回复、同实例核对及并发胜者保护。
+[驱动回归](../../libraries/nestos-node-driver/tests/conversation.test.ts)、[台账回归](../../libraries/nestos-node-driver/tests/control-ledger.test.ts)、[真实 RPC 组合](../../apps/http-app/tests/conversation-composer-rpc.test.ts)、[工作台 DOM 回归](../../ui/app-shell/tests/remote-conversation-editor.test.ts)覆盖悬挂发送时入队、编辑、显式暂停和取消，以及迟到回复、真实完成竞态和精确目标去重。[存储故障注入](../../backend/app-core/tests/remote-conversation-store.test.ts)与[草稿集成](../../backend/app-core/tests/remote-draft-conversation.test.ts)覆盖事务提交前失败、提交后丢回复、同实例核对及并发胜者保护。
 
 仍未完成：全入口控制版本、分层暂停及审批屏障、原生控制跨节点 epoch 核对、完整事件缺口下的 turn 映射，以及各类连接的完整独立就绪度。原生只读命令通道的本轮接入见 §8.6；当前队首悬挂场景的独立观察，不等于所有长期挂起网络请求均已实现无阻塞投影。
 
@@ -339,7 +339,7 @@ HarnessExecutionProvider.reconcile 现在返回 ConnectionReconcileResult，不�
 
 DSH 的 `commands/list` 依赖原生 Agent lookup，可能隐式恢复会话及取得写入权。因此未附着或已归档会话只返回适配器自有只读目录，并以 `observation.complete=false` 和具体 code 声明不完整；附着记录在原生目录读取期间保持借用。原生目录冲突仍保留只读项；权限及协议错误不降级为空目录。独立状态查询直接读取会话摘要，不依赖全量目录查询成功。该修复阻止一种隐式写入路径，不证明原生产 EBUSY 的唯一来源或原生资源已经全部释放。
 
-宿主的 [HarnessCommandQueries](../../libraries/mindos-node-driver/src/harness/conversation-queries.ts)将已取得的查询结果保存到既有 HarnessRecovery.commandResults，附加查询 operationId、原生 sessionId、定义身份和修订。只有持久保存确认后才投影 queryReceipts；查询不会替换 pending/submission/submittedTurnId，不消费原生草稿、不覆盖队列回执。重复的同一身份复用已保存报告，同身份不同定义拒绝。网络读取失败只表示没有可接纳报告，不产生执行 unknown 屏障；报告写入丢回复保留原观察结果，通过 pendingQueryReports 暴露精确报告身份，宿主注册表在页面关闭后保留它，reconcileQuery 只重试保存，不重新读取原生状态。旧工作台的核对按钮同样优先核对该报告，不替换原输入提交。重开后找不到已保存报告时保持报告未知，不调用 harness_operation，不据此宣称原执行未发生。
+宿主的 [HarnessCommandQueries](../../libraries/nestos-node-driver/src/harness/conversation-queries.ts)将已取得的查询结果保存到既有 HarnessRecovery.commandResults，附加查询 operationId、原生 sessionId、定义身份和修订。只有持久保存确认后才投影 queryReceipts；查询不会替换 pending/submission/submittedTurnId，不消费原生草稿、不覆盖队列回执。重复的同一身份复用已保存报告，同身份不同定义拒绝。网络读取失败只表示没有可接纳报告，不产生执行 unknown 屏障；报告写入丢回复保留原观察结果，通过 pendingQueryReports 暴露精确报告身份，宿主注册表在页面关闭后保留它，reconcileQuery 只重试保存，不重新读取原生状态。旧工作台的核对按钮同样优先核对该报告，不替换原输入提交。重开后找不到已保存报告时保持报告未知，不调用 harness_operation，不据此宣称原执行未发生。
 
 独立 llm-ui 冻结 CommandSubmission.execution，并将查询报告接纳更新到同一 OperationLedger。查询目录刷新和原发送 Promise 均不阻挡已知只读命令；真实派发的定义复验归节点。报告未知时允许用户显式提交新的只读观察，保留旧报告身份；执行修改仍禁止自动重放。旧工作台的查询不使用原输入的 ConversationComposer.submit/accepted，不清除其 remoteSubmission 标记；接纳查询报告后只按当前文字修订清理匹配输入，并保存仍待核对的原提交。旧输入组件按明确的只读命令能力放行，其他发送限制不变。
 
@@ -348,7 +348,7 @@ C4Dynamic
     title 原生查询报告与执行队列的独立路径
     Container(ui, "llm-ui", "DOM", "冻结查询分类和操作身份")
     Container(host, "Conversation", "宿主", "独立查询与报告核对")
-    Container(node, "mindos-node", "MCP", "只读授权及定义校验")
+    Container(node, "nestos-node", "MCP", "只读授权及定义校验")
     Container(native, "Harness adapter", "原生协议", "只读 handler")
     ContainerDb(recovery, "HarnessRecovery", "现有持久记录", "查询报告；原 pending 和队列")
     RelIndex(1, ui, host, "queryCommand：operationId 与 expectedCommand")
@@ -360,11 +360,11 @@ C4Dynamic
     RelIndex(7, host, ui, "queryReceipts 接纳，原发送和队列事实独立")
 ```
 
-验证入口：[驱动及恢复](../../libraries/mindos-node-driver/tests/conversation.test.ts)、[客户端协议](../../libraries/mindos-node-driver/tests/harness.test.ts)、[真实 RPC 组合](../../apps/http-app/tests/conversation-composer-rpc.test.ts)、[旧工作台点击](../../ui/app-shell/tests/remote-conversation-editor.test.ts)。节点回归覆盖 Codex、Claude、DSH 的只读端口、拒绝串行命令、无修改 receipt、DSH 不触发 Agent lookup，以及项目只读授权。线上节点尚未配套发布，不能用这些替身和协议测试代替原 Session 的实际验收。 当前报告保留沿用最近 64 条 commandResults 恢复窗口；统一历史的长期保存、分页及产物归档仍在迁移范围内，不能将此窗口当作完整历史归档。
+验证入口：[驱动及恢复](../../libraries/nestos-node-driver/tests/conversation.test.ts)、[客户端协议](../../libraries/nestos-node-driver/tests/harness.test.ts)、[真实 RPC 组合](../../apps/http-app/tests/conversation-composer-rpc.test.ts)、[旧工作台点击](../../ui/app-shell/tests/remote-conversation-editor.test.ts)。节点回归覆盖 Codex、Claude、DSH 的只读端口、拒绝串行命令、无修改 receipt、DSH 不触发 Agent lookup，以及项目只读授权。线上节点尚未配套发布，不能用这些替身和协议测试代替原 Session 的实际验收。 当前报告保留沿用最近 64 条 commandResults 恢复窗口；统一历史的长期保存、分页及产物归档仍在迁移范围内，不能将此窗口当作完整历史归档。
 
 ### 8.7 未开始执行的预检失败
 
-命令目录读取失败、模型目录读取失败与修改请求丢回复可能具有相同 EIO/超时错误码，但只有后一种情况表示执行结果未知。[节点服务](../../tools/mindos-node/src/plugin/harness/service.rs)在执行端口之前的失败保存明确未派发回执；[驱动契约](../../tools/mindos-node/src/plugin/harness/driver.rs)增加 `NativeExecution.NotStarted/Dispatched`，DSH 据此报告内部预检边界。旧驱动默认 Dispatched，不能凭错误码推测未开始；此证据不是 Kernel 的停止或清理确认。
+命令目录读取失败、模型目录读取失败与修改请求丢回复可能具有相同 EIO/超时错误码，但只有后一种情况表示执行结果未知。[节点服务](../../tools/nestos-node/src/plugin/harness/service.rs)在执行端口之前的失败保存明确未派发回执；[驱动契约](../../tools/nestos-node/src/plugin/harness/driver.rs)增加 `NativeExecution.NotStarted/Dispatched`，DSH 据此报告内部预检边界。旧驱动默认 Dispatched，不能凭错误码推测未开始；此证据不是 Kernel 的停止或清理确认。
 
 DSH 的只读模型目录准备在取得 prompt 占用前完成；命令目录包括服务预检及适配器派发前复验。确切未发出修改时，保存原 operationId 的 not-committed、原安全错误码和 `stage=prepare/executionStarted=false`。回执保存成功后，现有队列记 failed 并暂停，保留原接纳身份及草稿；重开不自动重发，用户显式 retry 创建新的 attemptId。保存回执失败继续 unknown，沿原身份核对，不拿内存中的未派发标志替代持久事实。
 
@@ -372,7 +372,7 @@ DSH 的只读模型目录准备在取得 prompt 占用前完成；命令目录�
 C4Component
     title 原生预检失败与执行未知的区别
     Component(queue, "原生指令队列", "既有 HarnessInstructionRuntime", "持久接纳；显式重试保留指令身份")
-    Component(service, "Harness 服务", "mindos-node", "目录、能力与准入预检")
+    Component(service, "Harness 服务", "nestos-node", "目录、能力与准入预检")
     Component(adapter, "DSH 适配器", "NativeExecution", "只读准备；修改边界；保守默认")
     Component(native, "原生 DSH", "HTTP/WS", "模型选择、命令或 turn 的实际修改")
     ComponentDb(receipts, "原操作回执", "既有 ReceiptScope", "同 requestId 核对；确认事实不被迟到回复覆盖")
@@ -383,7 +383,7 @@ C4Component
     RelIndex(5, receipts, queue, "未开始则 failed；未知则仅核对，不重发")
 ```
 
-[HTTP/WS 回归](../../tools/mindos-node/src/plugin/harness/tests/dsh_preparation.rs)覆盖两次命令目录读取分别失败、模型目录失败后无修改、原回执不变及显式新 attempt。模型选择请求已发出但结果未知时，即使 prompt 尚未发出，也保留原占用并阻止下一修改；本轮没有实现该阶段的完整后续核对。[真实客户端与持久队列回归](../../libraries/mindos-node-driver/tests/conversation.test.ts)证明 not-committed EIO 不会变成 uncertain，重开后等待显式重试。
+[HTTP/WS 回归](../../tools/nestos-node/src/plugin/harness/tests/dsh_preparation.rs)覆盖两次命令目录读取分别失败、模型目录失败后无修改、原回执不变及显式新 attempt。模型选择请求已发出但结果未知时，即使 prompt 尚未发出，也保留原占用并阻止下一修改；本轮没有实现该阶段的完整后续核对。[真实客户端与持久队列回归](../../libraries/nestos-node-driver/tests/conversation.test.ts)证明 not-committed EIO 不会变成 uncertain，重开后等待显式重试。
 
 安装的 DSH 0.2.0-rc.2 命令事件没有调用方 requestId，不能按相同命令、参数或时间邻近推断原生 commandId。未知串行命令的权威身份映射、跨 epoch 核对及外部写入隔离仍未完成，不因这项预检修复而自动解锁旧未知操作。
 
@@ -413,7 +413,7 @@ C4Dynamic
     RelIndex(8, service, admission, "确认 requestId 和结果后释放；后续修改才可派发")
 ```
 
-[HTTP/WS 回归](../../tools/mindos-node/src/plugin/harness/tests/dsh_command_recovery.rs)覆盖短查询超时与长命令预算分离、调用方丢弃、服务真实 25 秒响应上限、独立查询、后续修改屏障及真正原生超时不重发。[原生占用回归](../../tools/mindos-node/src/plugin/harness/drivers/dsh/commands.rs)覆盖回执未确认时保留原响应、错误结果或 requestId 不释放、旧回调不释放新操作，以及相同 command/done 文本不能作为原操作证据。
+[HTTP/WS 回归](../../tools/nestos-node/src/plugin/harness/tests/dsh_command_recovery.rs)覆盖短查询超时与长命令预算分离、调用方丢弃、服务真实 25 秒响应上限、独立查询、后续修改屏障及真正原生超时不重发。[原生占用回归](../../tools/nestos-node/src/plugin/harness/drivers/dsh/commands.rs)覆盖回执未确认时保留原响应、错误结果或 requestId 不释放、旧回调不释放新操作，以及相同 command/done 文本不能作为原操作证据。
 
 这项修复限于仍存活的原 HTTP 调用及已取得响应：连接断开、超过原生命令预算且响应丢失、节点重启后 epoch 改变，仍需保留未知。DSH 事件中的请求关联、原生持久历史身份和外部写入隔离继续属于未完成项；本轮不执行原用户 Session，也不声明线上问题已恢复。
 

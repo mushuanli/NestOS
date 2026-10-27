@@ -14,11 +14,11 @@ import { HttpSyncClient } from '../src';
 import { IndexedDBFileLocal, IndexedDBSyncStore } from '../src';
 import { prepareProjectSync } from '@itookit/app-core';
 
-it('roundtrips IndexedDB and local clients against mindos-node without overwriting offline edits', async () => {
+it('roundtrips IndexedDB and local clients against nestos-node without overwriting offline edits', async () => {
     const directory = await mkdtemp(join(tmpdir(), 'itookit-sync-'));
     const config = join(directory, 'server.toml');
     await writeFile(config, `listen = "127.0.0.1:0"\nexecution = false\nusername = "owner"\npassword_env = "SYNC_TEST_PASSWORD"\n[sync]\nenabled = true\nroot = ${JSON.stringify(join(directory, 'store'))}\n`);
-    const child = spawn('cargo', ['run', '--quiet', '--offline', '--manifest-path', resolve('../../tools/mindos-node/Cargo.toml'), '--', config],
+    const child = spawn('cargo', ['run', '--quiet', '--offline', '--manifest-path', resolve('../../tools/nestos-node/Cargo.toml'), '--', config],
         { env: { ...process.env, SYNC_TEST_PASSWORD: 'sync-secret' }, stdio: ['ignore', 'ignore', 'pipe'] });
     const exited = once(child, 'exit'); const backends: Array<IndexedDBBackend | LocalFSBackend> = [], clients: HttpSyncClient[] = [];
     try {
@@ -47,7 +47,7 @@ it('roundtrips IndexedDB and local clients against mindos-node without overwriti
                 return reply;
             } }, caps.historyEpoch); clients.push(remote);
             await prepareProjectSync(store, remote, coordinator, newId, device === 'A');
-            const scope = { includes: [''], excludes: ['.mindos'], propagateDeletes: true };
+            const scope = { includes: [''], excludes: ['.nestos'], propagateDeletes: true };
             const sync = backend instanceof LocalFSBackend ? createLocalSyncSession(backend, device, remote, { scope, newId })
                 : new FileSync(store, new IndexedDBFileLocal(store as IndexedDBSyncStore), remote, coordinator, newId, scope);
             return { backend, store, sync };

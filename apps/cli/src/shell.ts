@@ -143,7 +143,7 @@ export function sandboxBaseArgs(
     env?: Record<string, string>,
 ): { args: string[]; image: string } {
     const sandbox = workflow.config.sandbox ?? {};
-    const image = sandbox.image ?? 'mindos-sandbox:v1';
+    const image = sandbox.image ?? 'nestos-sandbox:v1';
     const writable = workflow.config.tasks.some(task => task.workspace_access === 'write');
     const readOnly = workflow.config.runtime?.workspace?.mode === 'read-only';
     const workspaceGrant = grants.find(grant => grant.mountAt === '/workspace');

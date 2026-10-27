@@ -231,7 +231,7 @@ export interface PrivilegedCommandService {
     exec(request: ExecCommandRequest): Promise<string>;
 }
 
-export interface MindosInitialFiles {
+export interface NestosInitialFiles {
     list(): Promise<InitialFileEntry[]>;
     restore(ids: string[]): Promise<InitialFileResult[]>;
     prepareDependencies(ids: string[]): Promise<import('./flow-installation').FlowInstallationReport[]>;

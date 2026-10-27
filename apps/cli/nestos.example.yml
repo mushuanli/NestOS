@@ -4,7 +4,7 @@ goal: 分析项目并产出实现建议
 
 workspace:
   root: ../..
-  state_dir: .mindos
+  state_dir: .nestos
 
 providers:
   - id: anthropic
@@ -77,7 +77,7 @@ runtime:
 sandbox:
   mode: oci
   engine: auto
-  image: mindos-sandbox:v1
+  image: nestos-sandbox:v1
   network: none
   limits:
     cpus: 2

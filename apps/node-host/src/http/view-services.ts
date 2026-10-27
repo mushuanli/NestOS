@@ -1,7 +1,7 @@
-import { createMindosFlowLibrary, type ApplicationRuntime } from '@itookit/app-core';
+import { createNestosFlowLibrary, type ApplicationRuntime } from '@itookit/app-core';
 import { openApplicationView, restrictApplicationFiles } from '@itookit/app-core/host';
 import { APPLICATION_WORKSPACES } from '@itookit/app-contracts';
-import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import type { ApplicationServices, ToolboxResources } from '@itookit/app-contracts/services';
 import type { RpcPeer } from '@itookit/app-transport/application';
 import type { ViewDomain } from '@itookit/app-transport/application';
@@ -15,7 +15,7 @@ export async function createHostedView(runtime: ApplicationRuntime): Promise<Hos
     const client = restrictApplicationFiles(view, ROOTS);
     try {
         const root: HostedApplicationClient = { ...client, services: { ...client.services, startBackground: undefined },
-            flowLibrary: createMindosFlowLibrary(), fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) } };
+            flowLibrary: createNestosFlowLibrary(), fileTemplates: { agent: JSON.stringify(createNestosLlmPresets().agents, null, 2) } };
         return { root, prepare: (peer, domains) => prepareSnapshots(peer, root.services, domains, runtime.projects.remoteMounts?.mountedProjectIds() ?? []),
             close: () => view.close() };
     } catch (error) { await view.close(); throw error; }

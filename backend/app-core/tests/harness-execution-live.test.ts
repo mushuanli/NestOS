@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend, type IVFSManager } from '@itookit/vfs-core';
-import { createMindOSNodeDriver, type MindOSNodeDriver, type RemoteProject } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver, type NestOSNodeDriver, type RemoteProject } from '@itookit/nestos-node-driver';
 import type { EffectExecutionContext } from '@itookit/durable-kernel';
 import type { HarnessConnectionSnapshot, HarnessExecutionRequest } from '@itookit/kernel-adapters/contracts';
 import { HarnessConnectionService } from '../src/projects/harness-connections';
@@ -12,15 +12,15 @@ import type { ProjectRemoteMount } from '../src/projects/remote-mounts';
 import { durableState } from './harness-execution-fixture';
 import { diskState } from './harness-execution-disk-fixture';
 
-const metadataFile = process.env.MINDOS_HARNESS_LIVE_METADATA;
+const metadataFile = process.env.NESTOS_HARNESS_LIVE_METADATA;
 const testRunId = randomUUID();
-let manager: IVFSManager, driver: MindOSNodeDriver, service: HarnessConnectionService, snapshot: HarnessConnectionSnapshot;
+let manager: IVFSManager, driver: NestOSNodeDriver, service: HarnessConnectionService, snapshot: HarnessConnectionSnapshot;
 let metadata: { endpoint: string; serverId: string; project: RemoteProject; profileId: string; credentialFile: string; root: string };
 
 beforeAll(async () => {
     if (!metadataFile) return;
     metadata = JSON.parse(await readFile(resolve(metadataFile), 'utf8'));
-    driver = createMindOSNodeDriver(); driver.setCredential('live-fixture', await readFile(metadata.credentialFile, 'utf8'));
+    driver = createNestOSNodeDriver(); driver.setCredential('live-fixture', await readFile(metadata.credentialFile, 'utf8'));
     const config = { endpoint: metadata.endpoint, credentialRef: 'live-fixture' };
     const descriptor = await driver.discover({ ...config, endpoint: `${metadata.endpoint}/mcp` });
     ({ manager } = await createVFS({ rootBackend: new MemoryBackend() }));

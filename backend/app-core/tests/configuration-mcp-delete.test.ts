@@ -3,13 +3,13 @@ import 'fake-indexeddb/auto';
 import { IndexedDBBackend } from '@itookit/vfsdriver-indexeddb';
 import { FSError, MemoryBackend, createFileSystemSource } from '@itookit/vfs-core';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
-import { mockMindOSNodeDiscovery } from './helpers/mcp-discovery';
+import { mockNestOSNodeDiscovery } from './helpers/mcp-discovery';
 import { RemoteMountStore } from '../src/projects/remote-mount-store';
 import { createSessionBrowser, folderBrowserPath } from '../src/session/session-browser';
 
 async function configureMCP(runtime: Awaited<ReturnType<typeof createApplicationRuntime>>) {
     const descriptor = {version:1,httpEndpoint:'https://office.test',fileProtocol:'fs-agent-http-v1',serverId:'office-node',harness:true};
-    const fetch = mockMindOSNodeDiscovery(descriptor);
+    const fetch = mockNestOSNodeDiscovery(descriptor);
     try {
         const draft = {id:'office',name:'Office',transport:'http' as const,endpoint:'https://office.test/mcp',apiKey:'fixture-api-key-at-least-24-bytes'};
         await runtime.agentService.saveMCPServer({...draft,...await runtime.agentService.testMCPServer(draft)});

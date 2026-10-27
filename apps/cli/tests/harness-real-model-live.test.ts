@@ -5,7 +5,7 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { createApplicationRuntime, harnessExecutionJournalKey } from '@itookit/app-core';
-import { createMindOSNodeDriver, type HarnessUsage, type RemoteProject } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver, type HarnessUsage, type RemoteProject } from '@itookit/nestos-node-driver';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { SeqFileKernelStore } from '@itookit/durable-kernel';
@@ -13,7 +13,7 @@ import { CliStorageResolver, cliStorage, openProfileInspectionFs } from '../src/
 import { RunStore } from '../src/run-store';
 import type { PendingInteraction } from '../src/types';
 
-const metadataFile = process.env.MINDOS_HARNESS_REAL_METADATA;
+const metadataFile = process.env.NESTOS_HARNESS_REAL_METADATA;
 const instruction = 'Use the native Read tool to read challenge.txt in this project. Do not use Bash. '
     + 'Do not include commentary or Markdown. Return only one JSON object with exactly these keys: '
     + 'nonce (the full file content trimmed), result (the numeric value of 7*13).';
@@ -30,7 +30,7 @@ async function prepare(metadata: Metadata): Promise<Fixture> {
     expect(nonce.length > 16 && !instruction.includes(nonce)).toBe(true);
     let credentialReference = ''; const workspace = join(directory, 'workspace'); await mkdir(workspace, { recursive: true });
     const backend = await openLocalFSBackend({ rootDir: profile, sidecarDir: join(profile, '_meta'), createDb: NodeSqliteSidecarDb.open });
-    const driver = createMindOSNodeDriver(), runtime = await createApplicationRuntime({ backend, ownerKind: 'cli', remoteSourceProvider: driver,
+    const driver = createNestOSNodeDriver(), runtime = await createApplicationRuntime({ backend, ownerKind: 'cli', remoteSourceProvider: driver,
         digitalTwinAutoStart: false });
     try {
         const nodeId = await runtime.projects.remoteMounts!.saveConnection({ name: 'Real native model fixture', endpoint: metadata.endpoint }, credential);
@@ -83,7 +83,7 @@ function hasRead(value: unknown): boolean {
 }
 
 async function verifyNativeRead(f: Fixture, sessionId: string): Promise<HarnessUsage | undefined> {
-    const driver = createMindOSNodeDriver(); driver.setCredential('cli-real-inspection', f.credential);
+    const driver = createNestOSNodeDriver(); driver.setCredential('cli-real-inspection', f.credential);
     const projects = driver.projects({ endpoint: f.metadata.endpoint, credentialRef: 'cli-real-inspection' });
     const client = projects.harness(await projects.read(f.metadata.project.id));
     try {
@@ -145,8 +145,8 @@ function approval(f: Fixture, pending: PendingInteraction) {
 async function command(f: Fixture, label: string, operation: string[]): Promise<number> {
     const args = ['--import', 'tsx', resolve('src/cli.ts'), ...operation, '--profile', f.profile, '--headless', '--json'], started = Date.now();
     const result = await promisify(execFile)(process.execPath, args, { timeout: 240_000, maxBuffer: 2 * 1024 * 1024,
-        env: { ...process.env, MINDOS_DIAGNOSTICS_DIR: join(f.directory, 'diagnostics'),
-            [`MINDOS_REMOTE_${f.credentialReference.replace(/-/g, '_')}`]: f.credential } })
+        env: { ...process.env, NESTOS_DIAGNOSTICS_DIR: join(f.directory, 'diagnostics'),
+            [`NESTOS_REMOTE_${f.credentialReference.replace(/-/g, '_')}`]: f.credential } })
         .then(value => ({ ...value, code: 0 })).catch(error => ({ stdout: String(error.stdout ?? ''), stderr: String(error.stderr ?? ''), code: error.code }));
     const { stdout, stderr } = result;
     expect(stdout.includes(f.credential) || stderr.includes(f.credential)).toBe(false);

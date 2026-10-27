@@ -13,8 +13,8 @@ export default defineConfig({
             const entry = 'return window.__TAURI_INTERNALS__.invoke(cmd, args, options);';
             if (code.split(entry).length !== 2) throw new Error('Tauri core invoke changed; update IPC instrumentation');
             const counter = JSON.stringify(path.resolve(__dirname, 'src/log/ipc-counter-state.ts'));
-            return { code: `import { ipcCounter as __mindosIpc } from ${counter};\n` + code.replace(entry,
-                `if (import.meta.env.VITE_MINDOS_TRACE === '1') __mindosIpc.record(cmd);\n    ${entry}`), map: null };
+            return { code: `import { ipcCounter as __nestosIpc } from ${counter};\n` + code.replace(entry,
+                `if (import.meta.env.VITE_NESTOS_TRACE === '1') __nestosIpc.record(cmd);\n    ${entry}`), map: null };
         },
         resolveId(source, importer) {
             if (source === './core.js' && importer?.replaceAll('\\', '/').includes('/@tauri-apps/api/')) {

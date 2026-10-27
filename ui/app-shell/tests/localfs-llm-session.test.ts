@@ -5,13 +5,13 @@
  * Each conversation is written to the real filesystem for offline inspection.
  *
  * Required env var:
- *   MINDOS_LLM_APIKEY          — API key (sk-ant-* for Anthropic, sk-* for OpenAI)
+ *   NESTOS_LLM_APIKEY          — API key (sk-ant-* for Anthropic, sk-* for OpenAI)
  *
  * Optional overrides:
- *   MINDOS_LLM_AUTH_TOKEN      — Bearer token for proxy auth (skips apiKey check)
- *   MINDOS_LLM_PROVIDER        — 'anthropic' | 'openai'  (autodetected if omitted)
- *   MINDOS_LLM_MODEL           — model name  (default: haiku / gpt-4o-mini)
- *   MINDOS_LLM_BASE_URL        — custom endpoint
+ *   NESTOS_LLM_AUTH_TOKEN      — Bearer token for proxy auth (skips apiKey check)
+ *   NESTOS_LLM_PROVIDER        — 'anthropic' | 'openai'  (autodetected if omitted)
+ *   NESTOS_LLM_MODEL           — model name  (default: haiku / gpt-4o-mini)
+ *   NESTOS_LLM_BASE_URL        — custom endpoint
  *
  * After running, browse tests/test_vfsroot/llm-session/ to inspect saved transcripts.
  */
@@ -39,27 +39,27 @@ interface LLMConfig {
 
 function detectConfig(): LLMConfig | null {
     // Bearer-token proxy (takes priority — apiKey is a placeholder)
-    if (process.env.MINDOS_LLM_AUTH_TOKEN) {
-        const provider: Provider = (process.env.MINDOS_LLM_PROVIDER as Provider) ?? 'anthropic';
+    if (process.env.NESTOS_LLM_AUTH_TOKEN) {
+        const provider: Provider = (process.env.NESTOS_LLM_PROVIDER as Provider) ?? 'anthropic';
         return {
             provider,
             apiKey:  'proxy-bearer-auth',
-            model:   process.env.MINDOS_LLM_MODEL ?? defaultModel(provider),
-            baseURL: process.env.MINDOS_LLM_BASE_URL,
-            headers: { Authorization: `Bearer ${process.env.MINDOS_LLM_AUTH_TOKEN}` },
+            model:   process.env.NESTOS_LLM_MODEL ?? defaultModel(provider),
+            baseURL: process.env.NESTOS_LLM_BASE_URL,
+            headers: { Authorization: `Bearer ${process.env.NESTOS_LLM_AUTH_TOKEN}` },
         };
     }
-    const apiKey = process.env.MINDOS_LLM_APIKEY;
+    const apiKey = process.env.NESTOS_LLM_APIKEY;
     if (!apiKey) return null;
 
-    const provider: Provider = process.env.MINDOS_LLM_PROVIDER as Provider
+    const provider: Provider = process.env.NESTOS_LLM_PROVIDER as Provider
         ?? (apiKey.startsWith('sk-ant-') ? 'anthropic' : 'openai');
 
     return {
         provider,
         apiKey,
-        model:   process.env.MINDOS_LLM_MODEL ?? defaultModel(provider),
-        baseURL: process.env.MINDOS_LLM_BASE_URL,
+        model:   process.env.NESTOS_LLM_MODEL ?? defaultModel(provider),
+        baseURL: process.env.NESTOS_LLM_BASE_URL,
     };
 }
 
@@ -122,7 +122,7 @@ async function saveTranscript(vfs: LocalTestVFS, name: string, history: ChatMess
 // ── Test suite ─────────────────────────────────────────────────────────────────
 
 describe.skipIf(!cfg)(
-    `LLM session — ${cfg?.provider ?? '?'} / ${cfg?.model ?? '?'} — MINDOS_LLM_APIKEY`,
+    `LLM session — ${cfg?.provider ?? '?'} / ${cfg?.model ?? '?'} — NESTOS_LLM_APIKEY`,
     () => {
         let driver: LLMDriver;
         let vfs: LocalTestVFS;

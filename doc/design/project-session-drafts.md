@@ -61,7 +61,7 @@ vfs-ui/src/utils/fixed-entry.ts
 
 ### 二进制附件
 
-附件端口仅接受 `ArrayBuffer`，提供 `put/read`，不暴露宿主路径或 DOM File。文件存于 MindOS VFS 的 `/var/lib/projects/<projectId>/draft-attachments/<draftId>/<attachmentId>`；草稿 UI 数据 v2 只保存不透明 ID、原文件名、MIME 和 lastModified。先成功写入字节，再 CAS 保存引用；正文编辑及恢复后编辑复用已有引用，不重复写附件。UI 转换 File，app-core 管理受限路径与生命周期，app-shell 只透传端口。
+附件端口仅接受 `ArrayBuffer`，提供 `put/read`，不暴露宿主路径或 DOM File。文件存于 NestOS VFS 的 `/var/lib/projects/<projectId>/draft-attachments/<draftId>/<attachmentId>`；草稿 UI 数据 v2 只保存不透明 ID、原文件名、MIME 和 lastModified。先成功写入字节，再 CAS 保存引用；正文编辑及恢复后编辑复用已有引用，不重复写附件。UI 转换 File，app-core 管理受限路径与生命周期，app-shell 只透传端口。
 
 旧 v1 base64 记录在打开时解码、写入独立文件，再保存 v2；失败保留原记录。清空与持久转正成功后删除原草稿附件目录，发送阶段仍由正式会话附件服务保存自己的副本。转正结果未知时保留草稿附件。迟到上传在写前、写后检查草稿身份，不能向已退休草稿发布引用。加载草稿时重试清理退休目录，以回收提交后崩溃遗留文件。
 

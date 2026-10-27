@@ -1,3 +1,4 @@
+Object.assign(process.env, require('./scripts/legacy-environment.cjs').legacyEnvironment(process.env));
 const { readSelection, snapshotOverrides } = require('./scripts/local-library-state.cjs');
 const path = require('node:path');
 const snapshot = readSelection(__dirname);
@@ -22,7 +23,7 @@ function rewriteDependencies(pkg) {
 module.exports = { hooks: {
     updateConfig(config) {
         if (!snapshot) return config;
-        const deployment = process.env.MINDOS_LIBRARY_DEPLOYMENT === '1';
+        const deployment = process.env.NESTOS_LIBRARY_DEPLOYMENT === '1';
         return { ...config, overrides: { ...config.overrides, ...overrides },
             lockfileDir: deployment ? __dirname : snapshot.lockfileDir,
             virtualStoreDir: deployment ? path.join(__dirname, 'node_modules', '.pnpm') : snapshot.virtualStoreDir,

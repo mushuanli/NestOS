@@ -163,6 +163,6 @@ function escapeLike(value: string): string {
 function assertNodeVersion(): void {
     const [major, minor] = process.versions.node.split('.').map(Number);
     if (major < 22 || (major === 22 && minor < 13)) {
-        throw new Error(`MindOS HTTP app requires Node.js >=22.13 for node:sqlite; current ${process.versions.node}`);
+        throw new Error(`NestOS HTTP app requires Node.js >=22.13 for node:sqlite; current ${process.versions.node}`);
     }
 }

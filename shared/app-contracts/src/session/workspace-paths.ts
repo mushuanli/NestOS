@@ -1,4 +1,4 @@
-/** Single-user application layout, relative to the MindOS filesystem. */
+/** Single-user application layout, relative to the NestOS filesystem. */
 export function workspaceRoot(name: string): string {
     if (!/^[a-zA-Z0-9_-]+$/.test(name)) throw new Error('Invalid workspace identity');
     return `/home/admin/${name}`;

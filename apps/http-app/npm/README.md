@@ -1,6 +1,6 @@
 # NestOS
 
-NestOS 是 MindOS AI 工作台的 npm 发行版，可运行在自己的电脑或服务器上。`nestos` npm 包包含完整网页和 HTTPS 服务端，浏览器连接后使用聊天、Agent、Flow、Markdown 笔记及项目文件。无需克隆源码或单独构建网页。
+NestOS 是 NestOS AI 工作台的 npm 发行版，可运行在自己的电脑或服务器上。`nestos` npm 包包含完整网页和 HTTPS 服务端，浏览器连接后使用聊天、Agent、Flow、Markdown 笔记及项目文件。无需克隆源码或单独构建网页。
 
 服务端持有文件、SQLite、会话和模型执行；浏览器负责展示与交互。网页通过双向 TLS（mTLS）连接，只有持有已登记客户端证书的设备能访问。
 
@@ -26,7 +26,7 @@ nestos init-certs --cert-host 192.168.31.10
 已有目录不会被覆盖，包括内容不完整的目录。systemd 等标准输入不是终端的非交互启动缺少证书时立即提示初始化命令，不等待输入。
 自动生成仍需要 OpenSSL，不会使用自签服务器证书绕过客户端认证。
 
-默认写入 `~/.config/mindos/http-certs`；已存在时拒绝覆盖。已有证书覆盖实际访问地址时跳过初始化，避免更换浏览器身份。初始化只打印文件位置，不打印私钥和密码。
+默认写入 `~/.config/nestos/http-certs`；已存在时拒绝覆盖。已有证书覆盖实际访问地址时跳过初始化，避免更换浏览器身份。初始化只打印文件位置，不打印私钥和密码。
 
 在浏览器/系统证书设置中导入：
 
@@ -46,14 +46,14 @@ nestos httpd
 
 ## 配置与数据
 
-配置文件为 `$XDG_CONFIG_HOME/mindos/mindos.json`，未设置 XDG 时是 `~/.config/mindos/mindos.json`。首次使用自动补齐缺失的默认配置，保留已有文件。
+配置文件为 `$XDG_CONFIG_HOME/nestos/nestos.json`，未设置 XDG 时是 `~/.config/nestos/nestos.json`。首次使用自动补齐缺失的默认配置，保留已有文件。
 
 ```json
 {
-  "rootDir": "/home/li/share/prj/pair-x1/mindos",
+  "rootDir": "/home/li/share/prj/pair-x1/nestos",
   "http": {
-    "certDir": "/home/li/.config/mindos/http-certs",
-    "authDir": "/home/li/.config/mindos/http-auth"
+    "certDir": "/home/li/.config/nestos/http-certs",
+    "authDir": "/home/li/.config/nestos/http-auth"
   }
 }
 ```
@@ -64,12 +64,12 @@ nestos httpd
 - 配置内相对路径按配置文件所在目录解析；请使用绝对路径或普通相对路径，不使用 `~`。
 - 私有证书和认证目录必须在数据根及静态网页根之外，不放进可由应用 VFS 读取的 `etc/`、`_etc/`。
 
-数据根优先级为 `--root` → `MINDOS_ROOT` → `rootDir` → 默认值。`--cert-dir`、`--auth-dir` 优先于配置；命令行相对路径按调用目录解析，`--auth-dir` 指向最终目录，不再追加 `release/`。
+数据根优先级为 `--root` → `NESTOS_ROOT` → `rootDir` → 默认值。`--cert-dir`、`--auth-dir` 优先于配置；命令行相对路径按调用目录解析，`--auth-dir` 指向最终目录，不再追加 `release/`。
 
 ```bash
 nestos httpd --host 127.0.0.1 --port 3000
-nestos httpd --root /srv/mindos/data --cert-dir /srv/mindos-private/certs \
-  --auth-dir /srv/mindos-private/auth --audit-file /srv/mindos-private/audit.jsonl
+nestos httpd --root /srv/nestos/data --cert-dir /srv/nestos-private/certs \
+  --auth-dir /srv/nestos-private/auth --audit-file /srv/nestos-private/audit.jsonl
 ```
 
 修改目录不会自动搬迁证书、凭据或应用数据。迁移前停止宿主，完整备份并复制原目录，保留私有权限，再修改配置并启动。更新 npm 包也不会重建证书或删除数据。
@@ -78,16 +78,16 @@ nestos httpd --root /srv/mindos/data --cert-dir /srv/mindos-private/certs \
 
 - **聊天与分支**：多会话、Agent/已发布 Flow 选择、文件和图片附件、消息历史与分支导航。
 - **文档中的 AI**：Markdown 渲染模式选中文字插入 AI 输入，粘贴图片，发送后展开回复，后续请求追加原分支，并可跳转完整会话。
-- **Markdown/MDX 编辑**：编辑与只读渲染、代码高亮、图表和公式、附件、复制、打印、保存；文件菜单提供信息、自动换行和显式刷新。刷新有差异时先比较，覆盖未保存文本前保留本地副本，启动时清理超过两天的刷新前副本。
+- **Markdown/MDX 编辑**：编辑与只读渲染、代码高亮、图表和公式、附件、复制、打印、保存；文件菜单提供信息、自动换行和显式刷新。刷新有差异时先比较，httpd 显式开启 swap 时提供小文件临时副本与查看入口。
 - **智能体与 Flow**：智能体管理、模型服务商/连接设置、工具箱及工作流配置；实际模型调用需要先配置连接和可用目标。
-- **项目与文件**：工作台导航、项目文件与会话、VFS 挂载；可连接独立的 mindos-node 来访问获准的远程项目，权限和元数据能力由远端协商。
+- **项目与文件**：工作台导航、项目文件与会话、VFS 挂载；可连接独立的 nestos-node 来访问获准的远程项目，权限和元数据能力由远端协商。
 - **后台执行与恢复**：执行由服务端管理，SSE 推送界面变化；短暂断连尝试恢复，过期视图保留可恢复的编辑状态，不自动重放业务写入。
 
-本包发布的是 HTTP 工作台，不包含开发仓库的全部 CLI 子命令，也不是独立的 Rust `mindos-node` 远程文件服务。项目介绍与实现文档见 [GitHub](https://github.com/mushuanli/itookit/tree/main) 和 [HTTP 宿主文档](https://github.com/mushuanli/itookit/blob/main/doc/http-app.md)。
+本包发布的是 HTTP 工作台，不包含开发仓库的全部 CLI 子命令，也不是独立的 Rust `nestos-node` 远程文件服务。项目介绍与实现文档见 [GitHub](https://github.com/mushuanli/nestos/tree/main) 和 [HTTP 宿主文档](https://github.com/mushuanli/nestos/blob/main/doc/http-app.md)。
 
 ## 日志与升级
 
-npm 方式启动将运行信息写到前台 stdout/stderr；默认审计文件在配置目录的 `logs/http/httpd-release-audit.jsonl`，可用 `--audit-file` 指定。仓库 `pnpm httpd` 的运行/审计日志另由其启动脚本管理，默认位于 `/var/log/mindos/`。
+npm 方式启动将运行信息写到前台 stdout/stderr；默认审计文件在配置目录的 `logs/http/httpd-release-audit.jsonl`，可用 `--audit-file` 指定。仓库 `pnpm httpd` 的运行/审计日志另由其启动脚本管理，默认位于 `/var/log/nestos/`。
 
 审计只包含认证和操作元数据，不记录文档正文、消息、密钥或密码。证书允许名单 `clients.json` 变更在后续请求重新核对。可使用已登记客户端身份请求 `/api/health` 查询实际运行版本。
 
@@ -97,3 +97,9 @@ npm install -g nestos@latest
 ```
 
 浏览器重新加载以获取新网页。升级前备份数据根和私有配置；npm 安装包不携带你的证书、凭据或数据。
+
+
+编辑临时副本可由 `http.editorSwap: true` 显式开启，默认关闭；`http.swapDir` 默认 `~/swap`，支持 `~/`。
+仅 httpd 开启时提供查看菜单、修改后防抖写入小文件副本；每个编辑器正常关闭时删除自己的 swap。
+达到或超过 512 KiB 的文件不写 swap；httpd 启动时和每小时清理最后更新超过 48 小时的文件。
+历史配置、证书及数据的兼容读取规则见仓库 `doc/nestos-rename.md`；已有私有文件不会因为产品改名重新生成。

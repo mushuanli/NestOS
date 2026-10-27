@@ -24,7 +24,7 @@ src/
 
 ## 模型管理子入口
 
-`/llm/core` 提供 LLMDeviceDriver 与设备常量；`/contracts` 拥有公共管理接口，`/llm/config` 提供配置编码，`/llm/presets` 提供可选 MindOS 目录，`/llm/mcp-host` 提供实例传输桥。旧 `/llm` 聚合已删除。
+`/llm/core` 提供 LLMDeviceDriver 与设备常量；`/contracts` 拥有公共管理接口，`/llm/config` 提供配置编码，`/llm/presets` 提供可选 NestOS 目录，`/llm/mcp-host` 提供实例传输桥。旧 `/llm` 聚合已删除。
 
 ```ts
 import { LLMDeviceDriver } from '@itookit/kernel-adapters/llm/core';
@@ -37,7 +37,7 @@ await driver.dispose();
 
 `/llm/core` 默认使用空目录，不加载内置 Provider、连接、Agent 或价格，也不自动创建连接。`presets` 接受 `Partial<LlmManagementPresets>`，构造时深拷贝隔离；持久配置和用户修改按原有规则保留。宿主通过 `providerConnectionPolicy` 决定启用 Provider 后是否自动创建连接；不传时不创建。预设连接的更新由宿主递增 `version` 控制。
 
-需要 MindOS 默认行为时，从 `/llm/presets` 导入 `createMindosLlmPresets`、`firstChatModelConnection`，显式传入这两个选项。旧 `/llm` 入口继续自动选择这套预设和策略，仅作兼容。契约入口 `/contracts` 不加载 VFS、YAML、MCP 或产品目录。
+需要 NestOS 默认行为时，从 `/llm/presets` 导入 `createNestosLlmPresets`、`firstChatModelConnection`，显式传入这两个选项。旧 `/llm` 入口继续自动选择这套预设和策略，仅作兼容。契约入口 `/contracts` 不加载 VFS、YAML、MCP 或产品目录。
 
 只需要模型通信时使用独立的 `@itookit/driver-llm`；它没有运行时依赖，不需要本包。模型集成详情见 [管理接口](./doc/llm-management/README.md)。
 
@@ -80,6 +80,6 @@ TaskProgram 由 Skill 插件注册；KernelAdapters 不执行或解释 Skill 私
 
 `/llm/mcp-host` 提供 createMCPStdioTransportFactory(bridge)，每次连接创建独立 transport。通过 `/llm/core` 驱动的 `mcp: { stdioTransport: factory }` 注入；`false` 显式禁止 stdio，省略时仅 Node 可用。工厂失败直接传播，不回退。设置 UI 通过管理服务 supportsMCPStdio() 查询实例能力，缺省不可用。全局 MCP 注册 API 已删除，所有宿主显式持有自己的工厂。
 
-MCPConnectionOptions 同时接受 logger（debug/info/warn/error）和 clientInfo（name/version）。默认空日志及通用 mcp-client 身份；clientInfo 在构造时复制、冻结并验证。app-core 显式提供 MindOS 身份和应用日志，其他实例互不覆盖。
+MCPConnectionOptions 同时接受 logger（debug/info/warn/error）和 clientInfo（name/version）。默认空日志及通用 mcp-client 身份；clientInfo 在构造时复制、冻结并验证。app-core 显式提供 NestOS 身份和应用日志，其他实例互不覆盖。
 
-运行时诊断通过 KernelAdaptersRuntimeOptions.logger 与 processUnavailableMessage 注入，缺省静默日志及英文提示。Effect 不读取 common 的全局日志或翻译；app-core 负责 MindOS 诊断装配。本包已移除 common 运行依赖。
+运行时诊断通过 KernelAdaptersRuntimeOptions.logger 与 processUnavailableMessage 注入，缺省静默日志及英文提示。Effect 不读取 common 的全局日志或翻译；app-core 负责 NestOS 诊断装配。本包已移除 common 运行依赖。

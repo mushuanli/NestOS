@@ -8,7 +8,7 @@ it('shows a named, actionable cause even when a missing connection is wrapped by
         reason: 'extension-missing', revision: 1, configured: []}, ['project-id']);
     const wrapper = new FSError('EACCES', 'View access failed'); wrapper.cause = source;
     const localized = localizeMountError(wrapper) as Error;
-    expect(localized.message).toContain('Office'); expect(localized.message).toContain('mindos-node');
+    expect(localized.message).toContain('Office'); expect(localized.message).toContain('nestos-node');
     expect(localized.message).not.toContain('private-uuid'); expect(localized.message).not.toContain('Remote file system');
 });
 

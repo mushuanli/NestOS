@@ -6,7 +6,7 @@
   "environment": {
     "actualModelGateway": true,
     "fixedPeer": false,
-    "transport": "Real mindos-node HTTP/MCP over loopback",
+    "transport": "Real nestos-node HTTP/MCP over loopback",
     "nativeCLI": "Installed Claude Code",
     "configuredNativeAlias": "claude-sonnet-flash[1m]",
     "nativeCurrentModel": "sonnet",

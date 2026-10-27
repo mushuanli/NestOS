@@ -1,6 +1,6 @@
 import { ENTITY_ICONS, t } from '@itookit/common';
 import { VFSUIShell, type BrowserNode, type BrowserSource } from '@itookit/vfs-ui';
-import { mindOSVFSPresentation } from '../browser/vfs-presentation';
+import { nestOSVFSPresentation } from '../browser/vfs-presentation';
 import { TWIN_PAGES, label } from './view';
 
 /** Project domain pages into the same resource list used by Settings. */
@@ -29,7 +29,7 @@ export class TwinNavigation {
         this.list = new VFSUIShell({
             sessionListContainer: container, source: twinNavigationSource(), title: t('twin.title'),
             searchPlaceholder: t('twin.navigationSearch'),
-            presentation: mindOSVFSPresentation, readOnly: true, autoSelectFirst: false,
+            presentation: nestOSVFSPresentation, readOnly: true, autoSelectFirst: false,
             persistence: false, hideGitignored: false, toolbar: 'hidden',
             appearance: { showTimestamp: false }, defaultUiSettings: { showSummary: false, showTags: false, showBadges: false },
             sort: { by: 'title', direction: 'asc' }, compareItems: (a, b) => rank(a.id) - rank(b.id),

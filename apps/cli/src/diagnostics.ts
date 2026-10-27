@@ -46,8 +46,8 @@ export function recordRuntimeDiagnostic(event: string, value?: unknown): void {
 export function runtimeDiagnosticPath(): string | undefined { return active?.file; }
 
 export function installRuntimeDiagnostics(mode: 'cli-local' | 'cli-remote' | 'httpd-cli' = 'cli-local'): { file: string; dispose(): void } {
-    const base = process.env.MINDOS_DIAGNOSTICS_DIR ?? path.join(
-        process.env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'), 'mindos', 'logs', 'cli');
+    const base = process.env.NESTOS_DIAGNOSTICS_DIR ?? path.join(
+        process.env.XDG_CONFIG_HOME ?? path.join(homedir(), '.config'), 'nestos', 'logs', 'cli');
     const log = new RuntimeDiagnostics(base, mode); active = log;
     const fatal = (error: Error, origin: string) => {
         log.record(`process.${origin}`, error);

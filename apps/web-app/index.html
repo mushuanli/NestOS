@@ -4,14 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <title>X1 · Mind OS</title>
+    <title>NestOS</title>
 
     <!-- PWA -->
     <link rel="manifest" href="./manifest.json">
     <meta name="theme-color" content="#0f172a">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta name="apple-mobile-web-app-title" content="X1">
+    <meta name="apple-mobile-web-app-title" content="NestOS">
     <meta name="mobile-web-app-capable" content="yes">
     <link rel="apple-touch-icon" href="./icon.svg">
 
@@ -22,7 +22,7 @@
             document.documentElement.dataset.theme = mode === 'dark' || mode === 'light' ? mode
                 : matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
         } catch (_) {}
-        performance.mark('mindos:document');
+        performance.mark('nestos:document');
     </script>
     <style>
         html { background: #f7f8fa; }
@@ -61,7 +61,7 @@
     <!--          1. 左侧主导航栏 (App Sidebar)         -->
     <!-- ============================================= -->
     <nav class="app-sidebar" aria-label="主导航">
-        <div class="app-sidebar__brand" aria-label="MindOS 个人助理"><span>X1</span><small>MindOS</small></div>
+        <div class="app-sidebar__brand" aria-label="NestOS 个人助理"><span>NestOS</span></div>
         <ul class="main-nav-list">
             <li class="app-nav-item--primary">
                 <button type="button" class="app-nav-btn active" data-target="llm-workspace" title="工作台" aria-label="工作台">

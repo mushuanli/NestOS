@@ -10,7 +10,7 @@ const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { await Promise.all(cleanup.splice(0).map(run => run())); });
 
 async function leaseStore() {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-lease-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-lease-'));
     cleanup.push(() => rm(root, { recursive: true, force: true }));
     const backend = await openLocalFSBackend({ rootDir: `${root}/data`, sidecarDir: `${root}/meta` });
     const { manager } = await createVFS({ rootBackend: backend });

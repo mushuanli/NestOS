@@ -1,17 +1,17 @@
-# MindOS CLI
+# NestOS CLI
 
-MindOS CLI 在指定工作区中运行声明式多 Agent workflow graph。无环数据依赖按 DAG 调度，并支持有界循环、条件路由、动态子图与 Supervisor。CLI 与 Tauri 共用 `@itookit/app-core` 的 `createKernelRuntime` 组合，以及 LLM、Tool、Kernel 和持久化内核，不需要启动桌面 UI。CLI 要求 Node.js 22.13 或更高版本，并使用内置 `node:sqlite` 持久化运行状态，无需安装原生 SQLite npm 扩展。
+NestOS CLI 在指定工作区中运行声明式多 Agent workflow graph。无环数据依赖按 DAG 调度，并支持有界循环、条件路由、动态子图与 Supervisor。CLI 与 Tauri 共用 `@itookit/app-core` 的 `createKernelRuntime` 组合，以及 LLM、Tool、Kernel 和持久化内核，不需要启动桌面 UI。CLI 要求 Node.js 22.13 或更高版本，并使用内置 `node:sqlite` 持久化运行状态，无需安装原生 SQLite npm 扩展。
 
 无显示服务器的最小 DAG、Bash 子 harness 验收及平台边界见 [最小系统运行说明](../../doc/minimal-system.md)，公开配置见 [minimal-dag.yml](examples/minimal-dag.yml)。
 
 文件工具、Skill、本地 MCP 及组合流程的可运行定义和审批验证见 [Harness 验证例子](examples/harness-validation/README.md)。
 
-CLI 的运行异常会自动写入 `~/.config/mindos/logs/cli/`（遵循 `XDG_CONFIG_HOME`，可用 `MINDOS_DIAGNOSTICS_DIR` 覆盖），失败时 stderr 显示具体路径；详见 [运行日志](../../doc/mindos-profile.md#tauri--cli-运行日志)。
+CLI 的运行异常会自动写入 `~/.config/nestos/logs/cli/`（遵循 `XDG_CONFIG_HOME`，可用 `NESTOS_DIAGNOSTICS_DIR` 覆盖），失败时 stderr 显示具体路径；详见 [运行日志](../../doc/nestos-profile.md#tauri--cli-运行日志)。
 
 ## 使用
 
 ```bash
-cp apps/cli/mindos.example.yml mindos.yml
+cp apps/cli/nestos.example.yml nestos.yml
 export ANTHROPIC_API_KEY=...
 
 pnpm cli:build
@@ -22,8 +22,8 @@ node apps/cli/dist/cli.js run
 构建后可以从仓库根目录直接运行：
 
 ```bash
-pnpm cli validate -f apps/cli/mindos.example.yml
-pnpm cli run -f mindos.yml --headless --json
+pnpm cli validate -f apps/cli/nestos.example.yml
+pnpm cli run -f nestos.yml --headless --json
 ```
 
 最小配置可以使用简写形式：
@@ -51,7 +51,7 @@ result: report
 除 YAML 外，`run` 也接受 `.flow` 文件：
 
 ```bash
-mindos --profile desktop run -f workflow.flow
+nestos --profile desktop run -f workflow.flow
 ```
 
 `.flow` 支持：
@@ -72,15 +72,15 @@ mindos --profile desktop run -f workflow.flow
 ## 校验、图与运行管理
 
 ```bash
-mindos validate -f mindos.yml --offline
-mindos graph -f mindos.yml --offline --json
-mindos runs --state-dir .mindos
-mindos status <run-id> --state-dir .mindos
-mindos tasks <run-id> --state-dir .mindos
-mindos rerun <run-id> --state-dir .mindos
-mindos export-config <run-id> --state-dir .mindos
-mindos export <run-id> --state-dir .mindos --out run.json --max-bytes 262144
-mindos delete <run-id> --state-dir .mindos
+nestos validate -f nestos.yml --offline
+nestos graph -f nestos.yml --offline --json
+nestos runs --state-dir .nestos
+nestos status <run-id> --state-dir .nestos
+nestos tasks <run-id> --state-dir .nestos
+nestos rerun <run-id> --state-dir .nestos
+nestos export-config <run-id> --state-dir .nestos
+nestos export <run-id> --state-dir .nestos --out run.json --max-bytes 262144
+nestos delete <run-id> --state-dir .nestos
 ```
 
 `tasks` 展示节点状态和已生成产物，不是可恢复的状态快照；`rerun` 使用原配置创建全新的完整运行；`export-config` 只导出配置快照；`export` 把 manifest 与每个节点的 transcript（受 `--max-bytes` 字节预算约束，默认 256 KiB）写到真实文件，需要持有 Session 租约。当前不提供 checkpoint replay 或 state fork。
@@ -90,32 +90,32 @@ mindos delete <run-id> --state-dir .mindos
 CLI 默认连接桌面 profile：
 
 ```text
-$XDG_CONFIG_HOME/mindos/mindos.json
+$XDG_CONFIG_HOME/nestos/nestos.json
 或
-~/.config/mindos/mindos.json
+~/.config/nestos/nestos.json
 ```
 
 数据根解析顺序：
 
 ```text
-MINDOS_ROOT
-  → mindos.json#rootDir
+NESTOS_ROOT
+  → nestos.json#rootDir
   → <configDir>/data
 ```
 
 使用 `--profile` 切换：
 
 ```bash
-mindos --profile desktop run -f mindos.yml       # 默认，共享桌面数据根
-mindos --profile /path/to/profile run -f mindos.yml
+nestos --profile desktop run -f nestos.yml       # 默认，共享桌面数据根
+nestos --profile /path/to/profile run -f nestos.yml
 ```
 
 CLI 不再直接以 Node fs 访问工作目录，而是通过 Session 挂载：
 
 ```bash
-mindos --set-home /path/to/project run -f mindos.yml
-mindos --add-dir /path/to/lib:ro run -f mindos.yml
-mindos --add-dir /path/to/cache:rw run -f mindos.yml
+nestos --set-home /path/to/project run -f nestos.yml
+nestos --add-dir /path/to/lib:ro run -f nestos.yml
+nestos --add-dir /path/to/cache:rw run -f nestos.yml
 ```
 
 - `--set-home <dir>`：挂载到 `/workspace`，作为 Session 工作目录，默认 `rw`。
@@ -125,9 +125,9 @@ mindos --add-dir /path/to/cache:rw run -f mindos.yml
 无头模式会把事件作为 JSONL 写到 stdout，适合 CI。`--json` 自动采用无头行为，遇到人工输入时返回退出码 `3`，不会读取交互式 stdin：
 
 ```bash
-mindos run --headless --json
-mindos resume <run-id> --headless --json
-mindos respond <run-id> <request-id> --approve
+nestos run --headless --json
+nestos resume <run-id> --headless --json
+nestos respond <run-id> <request-id> --approve
 ```
 
 退出码 `0` 表示成功，`1` 表示运行失败，`2` 表示配置或命令错误，`3` 表示等待人工输入或等待 Effect 裁决。
@@ -137,26 +137,26 @@ mindos respond <run-id> <request-id> --approve
 Run 的聚合根和调度检查点在第一个节点派发前就已持久化，因此进程在任意后续时刻被杀掉后，`resume` 都能从已提交的调度状态继续，而不是重跑整张图。崩溃时无法核对结果的外部 Effect（例如已发出、结果未落盘的模型请求）会被 Kernel 恢复为 `indeterminate`：
 
 ```bash
-mindos resume <run-id> --json                     # 退出码 3，run.json 写入 blockedEffects 并打印裁决命令
-mindos resume <run-id> --retry-indeterminate      # 授权重放同一逻辑 Effect 后继续
+nestos resume <run-id> --json                     # 退出码 3，run.json 写入 blockedEffects 并打印裁决命令
+nestos resume <run-id> --retry-indeterminate      # 授权重放同一逻辑 Effect 后继续
 ```
 
-`--retry-indeterminate` 只重放逻辑 Effect（`effectId` 不变、确定性 `requestId`），不会重新开始已完成的迭代；确认外部副作用不可重放时应改用 `mindos cancel <run-id>`。
+`--retry-indeterminate` 只重放逻辑 Effect（`effectId` 不变、确定性 `requestId`），不会重新开始已完成的迭代；确认外部副作用不可重放时应改用 `nestos cancel <run-id>`。
 
-`mindos cancel` 用于取消**没有活宿主**的 Run（宿主崩溃、Effect 阻塞）。Session 是单写者：如果 Run 正由另一个 CLI 进程执行，该进程持有 Session 租约，`cancel` 会以退出码 2 明确拒绝并提示租约持有者，不会干扰在途请求；取消正在运行的 Run 请对该进程发送 `SIGINT`（退出码 130，Run 持久为 `cancelled`）。
+`nestos cancel` 用于取消**没有活宿主**的 Run（宿主崩溃、Effect 阻塞）。Session 是单写者：如果 Run 正由另一个 CLI 进程执行，该进程持有 Session 租约，`cancel` 会以退出码 2 明确拒绝并提示租约持有者，不会干扰在途请求；取消正在运行的 Run 请对该进程发送 `SIGINT`（退出码 130，Run 持久为 `cancelled`）。
 
-`mindos delete` 有两道互斥守卫：本机用 Run 目录内的 SQLite 写锁（`run/resume/delete` 共用，争用即拒绝），跨主机再看该 Run 的通用调度租约（Session shared `flow.run.<rootTaskId>.scheduler-owner`）。共享存储（NFS/S3 类）上本地文件锁不可靠，因此只要另一个宿主的租约还没到期，`delete` 就会拒绝并保留 Run 目录，报错给出持有者与到期时间；宿主崩溃后租约到期（默认 30s，可用 `MINDOS_SCHEDULER_LEASE_TTL_MS` 缩短）即自动放行。跨主机共享数据根时，若各主机时钟可能不一致，用 `MINDOS_SCHEDULER_LEASE_SKEW_MS` 声明允许的时钟误差：接管会在旧租约到期后再等这段时间，避免快时钟主机抢走慢时钟主机的活租约（默认 0，适合单机或统一时钟源）。
+`nestos delete` 有两道互斥守卫：本机用 Run 目录内的 SQLite 写锁（`run/resume/delete` 共用，争用即拒绝），跨主机再看该 Run 的通用调度租约（Session shared `flow.run.<rootTaskId>.scheduler-owner`）。共享存储（NFS/S3 类）上本地文件锁不可靠，因此只要另一个宿主的租约还没到期，`delete` 就会拒绝并保留 Run 目录，报错给出持有者与到期时间；宿主崩溃后租约到期（默认 30s，可用 `NESTOS_SCHEDULER_LEASE_TTL_MS` 缩短）即自动放行。跨主机共享数据根时，若各主机时钟可能不一致，用 `NESTOS_SCHEDULER_LEASE_SKEW_MS` 声明允许的时钟误差：接管会在旧租约到期后再等这段时间，避免快时钟主机抢走慢时钟主机的活租约（默认 0，适合单机或统一时钟源）。
 
-Session 单写者租约同理：`MINDOS_SESSION_LEASE_SKEW_MS`（默认 0）声明允许的时钟误差，接管会在旧 Session 租约到期后再等这段时间。
+Session 单写者租约同理：`NESTOS_SESSION_LEASE_SKEW_MS`（默认 0）声明允许的时钟误差，接管会在旧 Session 租约到期后再等这段时间。
 
 ## HTTP 模式（`-d` / `--http`）
 
 CLI 可以作为 HTTP 主机，直接提供 Tauri UI：
 
 ```bash
-mindos -d 127.0.0.1:8080
-mindos -d 0.0.0.0:8080
-mindos -d 8080
+nestos -d 127.0.0.1:8080
+nestos -d 0.0.0.0:8080
+nestos -d 8080
 ```
 
 规则：
@@ -165,11 +165,11 @@ mindos -d 8080
 - 端口为 `0` 时由系统分配；
 - 静态资源优先使用 `apps/tauri-app/dist`，不存在时回退 `apps/web-app/dist`；
 - 页面注入 Tauri IPC shim，将 `window.__TAURI_INTERNALS__.invoke` 转发到 CLI HTTP API；
-- 启动时先完成 MindOS runtime 初始化，再监听 HTTP；
+- 启动时先完成 NestOS runtime 初始化，再监听 HTTP；
 - 数据根来自 `--profile desktop` 或显式 `--profile <path>`；
 - `--set-home <dir>` 指定 HTTP 模式下暴露给 UI 的宿主 home 目录；
 - `GET /api/status` 返回 runtime 是否 ready、profile、workspace 和 Session 数；
-- 浏览器端注入 `window.__MINDOS_MODE__ = 'remote'`，不再执行本地 `initApp()`；
+- 浏览器端注入 `window.__NESTOS_MODE__ = 'remote'`，不再执行本地 `initApp()`；
 - `GET /api/sessions` / `GET /api/runs` 提供 remote UI 数据。
 
 当前 HTTP 模式支持：
@@ -191,7 +191,7 @@ mindos -d 8080
 
 ## 文件与进程权限
 
-- 文件工具默认只能访问工作区及其子目录，`.mindos` 始终对 Agent 隐藏。
+- 文件工具默认只能访问工作区及其子目录，`.nestos` 始终对 Agent 隐藏。
 - 外部路径必须先调用 `RequestWorkspaceAccess`，经人工批准后获得当前 run 有效的只读或读写授权。
 - Native 模式中的 Bash/TTY 每次都需要批准；批准后的进程具有当前系统用户权限，因此 Native 是能力控制，不是 OS 强隔离。TTY 使用 node-pty 分配真伪终端（`supportsPty=true`），交互式程序（REPL、vim）可正常检测 `isatty()`，输出已规范化 CRLF。
 - OCI 模式把 Bash 与 TTY 都放入 rootless Podman 或 Docker。工作区挂载到 `/workspace`，默认断网、只读根文件系统、无 Linux capabilities，并限制 PID、CPU、内存和执行时间。TTY 会话通过 `engine run -i` 保持持久 stdin，容器内进程与宿主环境隔离。
@@ -200,7 +200,7 @@ mindos -d 8080
 
 ### 隔离工作区（`runtime.workspace`）
 
-`mindos.yml` 可用 `runtime.workspace` 让整个 Run 在独立 Git worktree 里执行：
+`nestos.yml` 可用 `runtime.workspace` 让整个 Run 在独立 Git worktree 里执行：
 
 ```yaml
 runtime:
@@ -222,11 +222,11 @@ sandbox:
 首次使用 OCI 模式时构建最小镜像：
 
 ```bash
-podman build -t mindos-sandbox:v1 -f apps/cli/sandbox/Dockerfile .
-# 或 docker build -t mindos-sandbox:v1 -f apps/cli/sandbox/Dockerfile .
+podman build -t nestos-sandbox:v1 -f apps/cli/sandbox/Dockerfile .
+# 或 docker build -t nestos-sandbox:v1 -f apps/cli/sandbox/Dockerfile .
 ```
 
-运行状态位于 `.mindos/runs/<run-id>/`，包括配置快照、`run.json`、`events.jsonl`、产物和最终结果。API Key 只从环境变量读取，不写入配置快照；LLM 的运行时配置使用内存 VFS。
+运行状态位于 `.nestos/runs/<run-id>/`，包括配置快照、`run.json`、`events.jsonl`、产物和最终结果。API Key 只从环境变量读取，不写入配置快照；LLM 的运行时配置使用内存 VFS。
 
 `runtime.workspace.mode: read-only` 仅接受 OCI 沙箱：宿主 Git 创建独立副本，文件工具、Bash 和交互 TTY 的所有用户挂载均只读，写授权申请被拒绝。`merge` 可省略或设为 `discard`，不允许合并副本改动；`cleanup` 沿用工作区策略。此模式不能与 `--set-home` 合用。native 模式不提供只读进程边界，配置及运行时均拒绝。当前仅有配置/挂载参数回归，真实 OCI 运行仍待验收。
 
@@ -254,7 +254,7 @@ agents:
 
 ### 租约接管的时钟偏差配置
 
-`MINDOS_SESSION_LEASE_SKEW_MS` 和 `MINDOS_SCHEDULER_LEASE_SKEW_MS` 分别传给 Session 租约及 Flow 调度租约，单位为毫秒。未设置时使用库默认值 0；显式 0 有效。配置必须为非负安全整数，空白、负数、非整数和非法数值在 CLI 创建运行时资源前报错。不同拥有者须等到旧租约到期时间加偏差预算后再接管；显式释放的 Flow 租约无需等待。该配置不自动校准主机时钟，也不证明共享存储或多主机 fencing 已通过验收。
+`NESTOS_SESSION_LEASE_SKEW_MS` 和 `NESTOS_SCHEDULER_LEASE_SKEW_MS` 分别传给 Session 租约及 Flow 调度租约，单位为毫秒。未设置时使用库默认值 0；显式 0 有效。配置必须为非负安全整数，空白、负数、非整数和非法数值在 CLI 创建运行时资源前报错。不同拥有者须等到旧租约到期时间加偏差预算后再接管；显式释放的 Flow 租约无需等待。该配置不自动校准主机时钟，也不证明共享存储或多主机 fencing 已通过验收。
 
 ### Run 隔离工作区
 
@@ -264,7 +264,7 @@ YAML 的 runtime.workspace 支持 mode: shared/worktree/read-only，以及 base�
 
 read-only 只接受 OCI，拒绝写授权和 --set-home，所有用户挂载降为只读；当前配置及挂载参数测试通过，真实 OCI 验收仍待完成。OCI cwd 仅接受已挂载宿主或虚拟路径，范围外路径报错。
 
-mindos delete 在本机锁之外，通过持久调度记录 CAS 写入删除标记，与识别该协议的宿主接管互斥；活租约（含配置时钟偏差）拒绝删除。标记写入后才删除 CLI 投影目录，失败保留标记供重试，不宣称旧宿主或跨主机外部副作用已经强隔离。
+nestos delete 在本机锁之外，通过持久调度记录 CAS 写入删除标记，与识别该协议的宿主接管互斥；活租约（含配置时钟偏差）拒绝删除。标记写入后才删除 CLI 投影目录，失败保留标记供重试，不宣称旧宿主或跨主机外部副作用已经强隔离。
 
 ### 原生进程结束与取消
 
@@ -323,13 +323,13 @@ tasks:
 宿主管理命令（均可传 `--profile <path>`）：
 
 ```bash
-mindos memory create team notes creator-session
-mindos memory list
-mindos memory inspect team <incarnation>
-mindos memory grant team <incarnation> <session-id> --value '{"readScopes":["project"],"writeScopes":["project"]}'
-mindos memory revoke team <incarnation> <session-id>
-mindos memory audit team <incarnation>
-mindos memory delete team <incarnation>
+nestos memory create team notes creator-session
+nestos memory list
+nestos memory inspect team <incarnation>
+nestos memory grant team <incarnation> <session-id> --value '{"readScopes":["project"],"writeScopes":["project"]}'
+nestos memory revoke team <incarnation> <session-id>
+nestos memory audit team <incarnation>
+nestos memory delete team <incarnation>
 ```
 
 Agent YAML 的 `memory_policy.shared_memory: {id: team, incarnation: <创建结果>}` 选择资源，仍需配置 namespace_id/read_scopes/write_scopes。引用本身不授权；新 Run 显式传 `--grant-memory team` 才为本次 Session 授予所引用 Agent 策略的 scope 并集，或事先使用管理命令授权已知 Session。资源名称、incarnation 与 namespace 必须一致。删除创建者 Session 不删除共享资源，资源删除后旧引用失效；审计和操作回执保留。
@@ -338,26 +338,26 @@ Agent YAML 的 `memory_policy.shared_memory: {id: team, incarnation: <创建结�
 
 ## 本地数字分身
 
-`mindos twin` 使用同一 profile 的 SQLite SeqFile，通过宿主服务操作，普通 memory 工具不能直接读写分身。先用 `list` 获得来源/记忆/设置的当前 revision，条件修改必须明确传该版本。所有会话默认可使用相关知识，无需会话授权；使用全局忽略和规则级忽略限定资料范围。
+`nestos twin` 使用同一 profile 的 SQLite SeqFile，通过宿主服务操作，普通 memory 工具不能直接读写分身。先用 `list` 获得来源/记忆/设置的当前 revision，条件修改必须明确传该版本。所有会话默认可使用相关知识，无需会话授权；使用全局忽略和规则级忽略限定资料范围。
 
 ```bash
-mindos twin list --profile desktop
-mindos twin preview-source --value '{"kind":"file","target":"/home/admin/minds/context.md","label":"背景"}'
-mindos twin add-source --value '{"kind":"file","target":"/home/admin/minds/context.md","label":"背景","connectionId":"default"}'
-mindos twin analyze <source-id>
-mindos twin review <memory-id> <revision> confirm
-mindos twin review <memory-id> <revision> correct --value '{"content":"新的独立用户陈述"}'
-mindos twin add-memory --value '{"content":"希望 Alpha 使用 TypeScript","kind":"preference","project":"Alpha"}'
-mindos twin settings <settings-revision> --value '{"tokenLimit":100000,"paused":false,"useEnabled":true}'
-mindos twin link-execution <goal-memory-id> <revision> --value '{"sessionId":"<session-id>","taskId":"<existing-task-id>"}'
-mindos twin forget <memory-id>
-mindos twin forget-project Alpha
-mindos twin forget-subject <subject-id>
-mindos twin suppress <memory-id> <revision>
-mindos twin revoke-source <source-id> <revision>
-mindos twin enable-source <source-id> <revision>
-mindos twin remove-source <source-id> <revision>
-mindos twin cancel <job-id>
+nestos twin list --profile desktop
+nestos twin preview-source --value '{"kind":"file","target":"/home/admin/minds/context.md","label":"背景"}'
+nestos twin add-source --value '{"kind":"file","target":"/home/admin/minds/context.md","label":"背景","connectionId":"default"}'
+nestos twin analyze <source-id>
+nestos twin review <memory-id> <revision> confirm
+nestos twin review <memory-id> <revision> correct --value '{"content":"新的独立用户陈述"}'
+nestos twin add-memory --value '{"content":"希望 Alpha 使用 TypeScript","kind":"preference","project":"Alpha"}'
+nestos twin settings <settings-revision> --value '{"tokenLimit":100000,"paused":false,"useEnabled":true}'
+nestos twin link-execution <goal-memory-id> <revision> --value '{"sessionId":"<session-id>","taskId":"<existing-task-id>"}'
+nestos twin forget <memory-id>
+nestos twin forget-project Alpha
+nestos twin forget-subject <subject-id>
+nestos twin suppress <memory-id> <revision>
+nestos twin revoke-source <source-id> <revision>
+nestos twin enable-source <source-id> <revision>
+nestos twin remove-source <source-id> <revision>
+nestos twin cancel <job-id>
 ```
 
 自动规则使用总览配置的分析模型；来源分析会发送至明确选择的模型连接；CLI 的 add-source/grant 命令本身代表该项显式授权。未知计费保留预留额度，不当作免费。`forget` 可用 `--value '["<session-id>"]'` 明确要求同时删除曾用过该条的整个会话；省略时保留历史副本并阻断后续模型使用。原始来源、导出、手动复制、外部备份及服务商数据不在本地清理范围。来源移除保留独立用户陈述与其修订历史。
@@ -365,19 +365,19 @@ mindos twin cancel <job-id>
 分身扫描规则在“数字分身 → 自动更新”管理，自动发现所有登记项目的文本文档、原生与可读 harness 会话。全局忽略在通用设置中，模型与累计预算位于高级选项；每条规则定义范围、关注点、忽略规则、周期与可选提取类型，不再逐个授权来源。
 
 ```bash
-mindos twin settings <settings-revision> --value '{"connectionId":"default","tokenLimit":100000,"globalExclude":["file:**/private/**"]}'
-mindos twin rule-preview --value '{"include":["file:**/*.md","session:native/**"],"exclude":[]}'
-mindos twin rule-create --value '{"name":"项目资料","include":["project:Alpha"],"exclude":["file:**/drafts/**"],"intervalMinutes":30}'
-mindos twin rule-update <rule-id> <revision> --value '{"name":"文档与会话","include":[],"exclude":["session:harness/codex/temporary-*"],"intervalMinutes":60}'
-mindos twin scan-plans --profile desktop
-mindos twin plan-run <rule-id>
-mindos twin scan-runs
-mindos twin plan-pause <rule-id> <revision>
-mindos twin plan-enable <rule-id> <revision>
-mindos twin plan-delete <rule-id> <revision>
-mindos twin scan-cancel <scan-run-id>
-mindos twin scan-tick --profile desktop
-mindos twin watch --profile desktop
+nestos twin settings <settings-revision> --value '{"connectionId":"default","tokenLimit":100000,"globalExclude":["file:**/private/**"]}'
+nestos twin rule-preview --value '{"include":["file:**/*.md","session:native/**"],"exclude":[]}'
+nestos twin rule-create --value '{"name":"项目资料","include":["project:Alpha"],"exclude":["file:**/drafts/**"],"intervalMinutes":30}'
+nestos twin rule-update <rule-id> <revision> --value '{"name":"文档与会话","include":[],"exclude":["session:harness/codex/temporary-*"],"intervalMinutes":60}'
+nestos twin scan-plans --profile desktop
+nestos twin plan-run <rule-id>
+nestos twin scan-runs
+nestos twin plan-pause <rule-id> <revision>
+nestos twin plan-enable <rule-id> <revision>
+nestos twin plan-delete <rule-id> <revision>
+nestos twin scan-cancel <scan-run-id>
+nestos twin scan-tick --profile desktop
+nestos twin watch --profile desktop
 ```
 
 `rule-create/update` 默认白名单/黑名单为空、30 分钟、全部提取类型、启用。`project:` 匹配项目 ID 或名称，`file:` 匹配项目内相对路径，`session:native/` 和 `session:harness/` 匹配会话 ID / profile+会话 ID；支持 `*`、`**`、`?`、目录末尾 `/` 和整行 `#` 注释。白名单任一命中即可，黑名单在当前规则内优先，多规则取并集，全局排除优先。`rule-preview` 返回 `resources` 和 `excluded`，不读取正文/不新增来源。忽略模式可省略前缀，例如 `*.log`、`drafts/`，开头 `/` 锚定项目根。`focus` 可设置自然语言关注点，不同关注点拥有独立提取进度。来源删除、替换、全局排除会使旧证据失效，离线不视作删除；明确主体的信息自动生效，未知主体待确认；同名人物保持独立，可在对象详情中手动合并。

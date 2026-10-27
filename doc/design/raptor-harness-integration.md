@@ -17,8 +17,8 @@ RAPTOR 分析基线固定为 [`2ac96303d5e382c196aa34b2984a3c6a218132a9`](https:
 | 原生 RAPTOR 用例 Flow | [raptor-review.flow](../../apps/cli/examples/raptor/raptor-review.flow) 已由真实 Semgrep 与模型执行：6 条 RAPTOR Python 原始规则、扫描、按 finding 分派、初始分析、consensus、judge、一次修订和汇总；见[执行证据](fixtures/raptor-evidence.json) |
 | Agent 绑定 Flow | [示例 Agent](../../apps/cli/examples/raptor/raptor-review.agent) 绑定已发布 Flow 的真实调用已成功；[flow-agent.ts](../../backend/llm-session/src/session/flow-agent.ts#L24) 固定定义、参数、连接与依赖，复用持久执行链。发布修订、摘要和结果见机器记录 |
 | Composite | 已有协调 Agent 选择一批成员、隔离子上下文、汇总结果的通用编译；见 [agent-composition.ts](../../backend/app-core/src/configuration/agent-composition.ts)。通用本地主持者与远程成员已真实验收；尚未新增 RAPTOR 专用专家成员资源与业务验收 |
-| 远程进程 | 已有 project-scoped shell、进程状态订阅、取消与清理；见 [project-process.ts](../../libraries/mindos-node-driver/src/project-process.ts)、[process.ts](../../libraries/mindos-node-driver/src/files/process.ts)。RAPTOR 在该路径上的真实节点执行仍须单独验收 |
-| 原生远程 harness | 已有项目限定的 Claude/Codex/DSH 会话控制、事件、交互与 epoch 回执；见 [contracts.ts](../../libraries/mindos-node-driver/src/harness/contracts.ts)。已接入具名执行连接、普通 Agent、Flow 与 Composite 远程成员；详见[执行连接](remote-harness-connections.md) |
+| 远程进程 | 已有 project-scoped shell、进程状态订阅、取消与清理；见 [project-process.ts](../../libraries/nestos-node-driver/src/project-process.ts)、[process.ts](../../libraries/nestos-node-driver/src/files/process.ts)。RAPTOR 在该路径上的真实节点执行仍须单独验收 |
+| 原生远程 harness | 已有项目限定的 Claude/Codex/DSH 会话控制、事件、交互与 epoch 回执；见 [contracts.ts](../../libraries/nestos-node-driver/src/harness/contracts.ts)。已接入具名执行连接、普通 Agent、Flow 与 Composite 远程成员；详见[执行连接](remote-harness-connections.md) |
 | `ExecutionConnection` | 已实现独立 HarnessExecutionConnection；复用原有节点凭据和项目授权，不加入 LLMConnection 模型档位 |
 
 测试和真实运行结论应以 Semgrep 输出、模型响应、Flow 节点结果、Agent 绑定与持久记录为证。本文不把模拟模型、配置保存、规则文本存在、单独调用 Flow 或调用旧 CLI 原型成功当成完整验收。
@@ -78,7 +78,7 @@ flowchart LR
     B --> M[内联 Flow：分析与复核]
     M --> O[汇总：结果与证据]
     S --> E[宿主授权 shell]
-    E --> L[本地宿主 / OCI / mindos-node 项目进程]
+    E --> L[本地宿主 / OCI / nestos-node 项目进程]
 ```
 
 | 层 | 应负责 | RAPTOR 示例 |
@@ -87,7 +87,7 @@ flowchart LR
 | 业务 Flow 资源 | 规则内容、分析指令、模型角色、复核条件、阶段结果和报告要求 | 内联函数实现每个 finding 的初始分析、consensus、judge 与可选修订 |
 | Flow 运行时 | 参数与具名输出、发布版本、连接固定、并发上限、持久 Task/Effect | 扫描通过门禁后分派 findings；失败阻止下游执行 |
 | Composite | 根据用户要求选择专家、分配明确任务、控制成员数量、最终解释 | 可用于审查前后专家分工；当前不等同于本用例的固定分析面板 |
-| mindos-node | 项目授权、文件与进程边界、原生 harness 协议、事件与停止核对 | 在远程工作区执行 Semgrep，或控制独立原生 harness session/turn |
+| nestos-node | 项目授权、文件与进程边界、原生 harness 协议、事件与停止核对 | 在远程工作区执行 Semgrep，或控制独立原生 harness session/turn |
 
 不要将 RAPTOR 的策略复制进平台内置 Agent 循环。当前 Composite 编译器只接受普通 Agent 作为成员，拒绝已有 composition 或 `execution.kind=flow` 的成员；见 [compositionAgents](../../backend/app-core/src/configuration/agent-composition.ts#L51)。因此“将整个 RAPTOR Flow 直接选为 Composite 成员”目前并未实现。本用例直接由 Agent 绑定 Flow，固定专家面板使用内联函数和模型节点表达。
 
@@ -166,7 +166,7 @@ Judge 要求修订、初判与盲审的 verdict/exploitability 不一致、Judge
 
 ### 项目进程承接外部 Tool
 
-现有 [createProjectProcess](../../libraries/mindos-node-driver/src/project-process.ts#L6) 把 native shell 的启动替换为 `ProjectClient.exec`，校验请求挂载与项目授权一致；[ProjectClient](../../libraries/mindos-node-driver/src/projects.ts#L16) 传递项目 ID、修订、epoch 和 requestId。进程生命周期继续由 [HttpProcessSession](../../libraries/mindos-node-driver/src/files/process.ts#L9) 管理：启动响应丢失后按 ID 尝试取消，不重放启动；SSE 订阅状态；释放时确认进程清理。
+现有 [createProjectProcess](../../libraries/nestos-node-driver/src/project-process.ts#L6) 把 native shell 的启动替换为 `ProjectClient.exec`，校验请求挂载与项目授权一致；[ProjectClient](../../libraries/nestos-node-driver/src/projects.ts#L16) 传递项目 ID、修订、epoch 和 requestId。进程生命周期继续由 [HttpProcessSession](../../libraries/nestos-node-driver/src/files/process.ts#L9) 管理：启动响应丢失后按 ID 尝试取消，不重放启动；SSE 订阅状态；释放时确认进程清理。
 
 原生 `.flow` 的 Bash 扫描节点可以复用当前项目 shell，但需要同时满足：
 
@@ -174,13 +174,13 @@ Judge 要求修订、初判与盲审的 verdict/exploitability 不一致、Judge
 2. Flow 的 Write 节点、Semgrep 扫描节点和后续文件读取必须使用同一授权项目及文件视图，规则文件与诊断文件才能互相可见。
 3. 目标与产物目录属于授权项目挂载，读写模式与节点项目修订一致。
 4. 模型节点使用已冻结的 itookit 连接；扫描器若另需网络，必须由执行节点授权，不假定本机配置自动传到节点或沙箱。
-5. 单次远程进程的现有上限为 300000ms：客户端 [process.ts](../../libraries/mindos-node-driver/src/files/process.ts) 和服务端 [policy.rs](../../tools/mindos-node/src/plugin/process/policy.rs) 均有约束。更长的模型审查需要拆分阶段，或新增持久 start/status/结果核对能力；提高 Flow 的 `timeoutMs` 本身不能突破此边界。
+5. 单次远程进程的现有上限为 300000ms：客户端 [process.ts](../../libraries/nestos-node-driver/src/files/process.ts) 和服务端 [policy.rs](../../tools/nestos-node/src/plugin/process/policy.rs) 均有约束。更长的模型审查需要拆分阶段，或新增持久 start/status/结果核对能力；提高 Flow 的 `timeoutMs` 本身不能突破此边界。
 
 现有进程 shell 处理一次命令的运行与停止，Flow 持久记录负责阶段和函数任务恢复。Bash 没有已实现的业务回执核对器，worker 丢失后不能因 Semgrep 通常只读而自动重放所有 Bash 命令；应保留通用 Effect 的结果未知语义，按实际副作用核对。
 
 ### 原生 harness 承接交互式 RAPTOR
 
-[projectHarness](../../backend/app-core/src/projects/remote-mounts.ts#L379) 读取远程项目，核对授权后创建 project-scoped `HarnessClient`。该客户端已支持 profiles、commands、create/resume、turn、事件、交互和 operation；[HarnessConversation](../../libraries/mindos-node-driver/src/harness/conversation.ts#L18) 已区分提交接纳、原生执行状态和观察失败，并持久化 pending 与 submittedTurnId。
+[projectHarness](../../backend/app-core/src/projects/remote-mounts.ts#L379) 读取远程项目，核对授权后创建 project-scoped `HarnessClient`。该客户端已支持 profiles、commands、create/resume、turn、事件、交互和 operation；[HarnessConversation](../../libraries/nestos-node-driver/src/harness/conversation.ts#L18) 已区分提交接纳、原生执行状态和观察失败，并持久化 pending 与 submittedTurnId。
 
 这条链适合运行 RAPTOR 的原生交互体验，但当前只接通远程会话控制。现有 [AgentExecution](../../backend/kernel-adapters/src/llm-management/contracts/agent.ts#L15) 只有 `agent/flow`；[RemoteHarnessAgent](../../backend/app-core/src/projects/remote-agent-catalog.ts#L4) 是发现目录，尚未成为 Flow/Composite 可持久调用的执行目标；[builtin.agent](../../backend/llm-flow/src/flow/builtin-plugins.ts#L106) 仍生成 `llm.agent`。工具箱中看得到远程 Agent，不能推导出已有编排桥梁。
 
@@ -189,7 +189,7 @@ Judge 要求修订、初判与盲审的 verdict/exploitability 不一致、Judge
 本节用于解释完整外部 harness 如何加载环境，属于未来远程执行兼容研究；它不参与此次无外部脚本的 Flow 成功标准，也不能代替原生 Flow 验收。如果另行运行上游原版交互式 RAPTOR，应显式区分“执行项目”和“被审查项目”：
 
 ```text
-MindOS 执行项目 root = RAPTOR checkout
+NestOS 执行项目 root = RAPTOR checkout
 原生 session.cwd = /projects/<execution-project-id>
 目标仓库 = 该执行项目的显式附加挂载（通常只读）
 报告目录 = 该执行项目的授权可写目录
@@ -198,18 +198,18 @@ MindOS 执行项目 root = RAPTOR checkout
 
 profile 使用 `kind=claude`、`command=claude`。实际 cwd 是 RAPTOR checkout 对应的项目路径，RAPTOR 配置与相对脚本能按原生规则加载；目标通过 `--repo` 或原生命令参数明确传入。不要把执行 cwd 伪装成被审查项目，也不要让 wrapper 私自切换 cwd 后仍保存原 cwd。
 
-这与已有历史授权兼容：[Claude history](../../tools/mindos-node/src/plugin/harness/drivers/claude/history.rs#L35) 根据真实 transcript cwd 调用项目 `resolve_cwd` 核验，不能为了读到 RAPTOR 历史而放宽到任意宿主目录。执行项目与目标项目的双重绑定仍需在调用记录和产物索引中表达；当前尚未完成该模式的端到端验收。
+这与已有历史授权兼容：[Claude history](../../tools/nestos-node/src/plugin/harness/drivers/claude/history.rs#L35) 根据真实 transcript cwd 调用项目 `resolve_cwd` 核验，不能为了读到 RAPTOR 历史而放宽到任意宿主目录。执行项目与目标项目的双重绑定仍需在调用记录和产物索引中表达；当前尚未完成该模式的端到端验收。
 
 必要运行条件包括：
 
 - checkout 中的 `.claude`、`CLAUDE.md`、`libexec` 等必须完整可见；启动 hook 会写 env 文件和启动信息，不能简单把整个运行目录当成只读代码目录。
 - [raptor-session-init](https://github.com/gadievron/raptor/blob/2ac96303d5e382c196aa34b2984a3c6a218132a9/libexec/raptor-session-init) 依赖可用 Python 与 RAPTOR 依赖，负责写 `RAPTOR_DIR/PATH`；它并不替代 launcher 的全部预检、会话项目播种和 trust 流程。
-- 原生 Claude 的配置 home、认证、Python 虚拟环境、工具链、证书与网络均须在沙箱内可用。当前 [ProjectLauncher](../../tools/mindos-node/src/plugin/projects/runtime.rs) 只额外挂载 harness 单个 executable 和 home，其他运行依赖须经已授权项目挂载或系统安装提供。
+- 原生 Claude 的配置 home、认证、Python 虚拟环境、工具链、证书与网络均须在沙箱内可用。当前 [ProjectLauncher](../../tools/nestos-node/src/plugin/projects/runtime.rs) 只额外挂载 harness 单个 executable 和 home，其他运行依赖须经已授权项目挂载或系统安装提供。
 - 原版 `bin/raptor` 负责的预检、目标绑定和会话注册必须明确执行或以已验证的兼容方式替代；采用 plain Claude 只能声称加载原版配置，不能声称完整复现 launcher。
 
 ### 为何不能直接 `command=bin/raptor`
 
-[Claude 驱动](../../tools/mindos-node/src/plugin/harness/drivers/claude/process.rs#L205) 给配置的 executable 追加 stream-json、stdio 权限协议、session ID/resume 等参数。[RAPTOR launcher](https://github.com/gadievron/raptor/blob/2ac96303d5e382c196aa34b2984a3c6a218132a9/bin/raptor#L594) 使用自己的参数解析器：`-p` 是 RAPTOR project，未知 `--flag` 逐个透传，而后面的普通 token 被视为目标。`stream-json`、`stdio`、`manual` 和 session UUID 因而可能被误作目标，无法保证原生协议参数保持成对。
+[Claude 驱动](../../tools/nestos-node/src/plugin/harness/drivers/claude/process.rs#L205) 给配置的 executable 追加 stream-json、stdio 权限协议、session ID/resume 等参数。[RAPTOR launcher](https://github.com/gadievron/raptor/blob/2ac96303d5e382c196aa34b2984a3c6a218132a9/bin/raptor#L594) 使用自己的参数解析器：`-p` 是 RAPTOR project，未知 `--flag` 逐个透传，而后面的普通 token 被视为目标。`stream-json`、`stdio`、`manual` 和 session UUID 因而可能被误作目标，无法保证原生协议参数保持成对。
 
 此外，项目沙箱只映射单个 executable 时，launcher 从自身位置定位的 checkout、Python 环境和脚本也未必存在。直接更改 `command` 既不能证明协议兼容，也不能证明运行环境完整。
 
@@ -223,7 +223,7 @@ profile 使用 `kind=claude`、`command=claude`。实际 cwd 是 RAPTOR checkout
 
 执行复用 `projectHarness(requireRegistered: true)` 和项目限定 HarnessClient。创建会话、提交 turn、回答交互及 interrupt 均在外部修改前持久化稳定 requestId，恢复查询原身份回执。一个长活 Effect 覆盖原生执行和人工等待，Program 通过持久 Interaction/响应通道桥接审批与输入；取消等待原生 turn 的权威终态，无法证明时保留 cleanup-pending。精确完成证据和该 turn 文本核对后才成功，返回 turnId 只表示接纳。
 
-该实现是通用原生 harness 远程编排能力。它不代表完整 RAPTOR 已迁至远程，也不新增 Firecracker 或原版 RAPTOR launcher 的环境兼容层。真实验收使用安装的 Claude Code、真实 mindos-node、授权项目与 bubblewrap 沙箱，模型端为隔离的本地固定 Anthropic peer，不能据此宣称真实云模型审查。具体案例与故障证据随本轮机器记录归档。
+该实现是通用原生 harness 远程编排能力。它不代表完整 RAPTOR 已迁至远程，也不新增 Firecracker 或原版 RAPTOR launcher 的环境兼容层。真实验收使用安装的 Claude Code、真实 nestos-node、授权项目与 bubblewrap 沙箱，模型端为隔离的本地固定 Anthropic peer，不能据此宣称真实云模型审查。具体案例与故障证据随本轮机器记录归档。
 
 本轮[机器记录](fixtures/remote-harness-evidence.json)将普通测试与真实网关证据分开：CLI的Agent引用与仓库原版 [remote-harness.flow](../../apps/cli/examples/remote-harness.flow) 均exit 0；AppRuntime普通Agent、并行Flow、Composite各完成两轮，输出与持久journal一致。实际Kernel丢提交回复后进入indeterminate，经显式核对继续成功，同一native session/turn保持不变，create/turn/receipt各一次；独立Provider测试另覆盖磁盘CAS状态关闭重开，不将其称为Kernel进程重启。
 
@@ -237,7 +237,7 @@ profile 使用 `kind=claude`、`command=claude`。实际 cwd 是 RAPTOR checkout
 
 最值得借鉴的是“要求的边界与实际交付的边界”一起记录，而不是添加一个配置枚举就声明安全：
 
-| 机制 | 当前 itookit / mindos-node 基础 | 应采用的通用改进 |
+| 机制 | 当前 itookit / nestos-node 基础 | 应采用的通用改进 |
 | --- | --- | --- |
 | 隔离最低要求与实际探测 | `ProjectLauncher`、bubblewrap 启动探测、固定项目挂载 | 运行准入冻结所需隔离能力，启动验证实际能力；达不到 floor 则给出具体原因，降级不能由模型自行接受 |
 | 凭据边界 | 驱动清理环境并选择继承认证变量 | 将可信控制面与不可信工具进程区分；后者通过受限模型代理访问，不直接继承控制面密钥和 home |
@@ -248,11 +248,11 @@ profile 使用 `kind=claude`、`command=claude`。实际 cwd 是 RAPTOR checkout
 
 Firecracker 可作为未来 `ProjectLauncher`/远程执行 worker 的一种后端。依据 [Firecracker design](https://github.com/firecracker-microvm/firecracker/blob/main/docs/design.md)，它提供 KVM microVM 的 VMM；[生产宿主要求](https://github.com/firecracker-microvm/firecracker/blob/main/docs/prod-host-setup.md)还要求宿主加固、隔离及维护。项目快照传入、guest worker、harness 协议、凭据代理、产物导出、配额与故障核对仍须由集成层实现。
 
-建议的责任位置是宿主保留 mindos-node 控制面、授权和 operation 记录，guest worker 运行 RAPTOR 工具链及 harness；Flow 仍调用同一项目执行能力。guest 不持有宿主控制面凭据。节点取消要停止 worker/VM 并核对终态；VM 消失而结果未核对时保留未知，不能自动重复模型或外部副作用。此方案是后端提议，当前仓库没有相应实现与验收；Flow 节点不直接配置 hypervisor 操作或 RAPTOR 专用 VM 字段。
+建议的责任位置是宿主保留 nestos-node 控制面、授权和 operation 记录，guest worker 运行 RAPTOR 工具链及 harness；Flow 仍调用同一项目执行能力。guest 不持有宿主控制面凭据。节点取消要停止 worker/VM 并核对终态；VM 消失而结果未核对时保留未知，不能自动重复模型或外部副作用。此方案是后端提议，当前仓库没有相应实现与验收；Flow 节点不直接配置 hypervisor 操作或 RAPTOR 专用 VM 字段。
 
 ## 回执、审批与取消的验收边界
 
-mindos-node [receipts.rs](../../tools/mindos-node/src/plugin/harness/receipts.rs#L22) 使用临时 SQLite，回执跨运行时替换保留，但节点进程退出后删除，新进程使用新 epoch。相同 epoch 内查到已提交回执可避免重放；epoch 变化后不能把找不到旧回执解释为“从未执行”。必须结合原生 session/turn 历史和 RAPTOR run 产物核对，无法核对则保留结果未知。
+nestos-node [receipts.rs](../../tools/nestos-node/src/plugin/harness/receipts.rs#L22) 使用临时 SQLite，回执跨运行时替换保留，但节点进程退出后删除，新进程使用新 epoch。相同 epoch 内查到已提交回执可避免重放；epoch 变化后不能把找不到旧回执解释为“从未执行”。必须结合原生 session/turn 历史和 RAPTOR run 产物核对，无法核对则保留结果未知。
 
 平台持久记录至少应关联执行绑定、稳定请求身份、native session/turn、原生等待交互、事件游标与产物引用。远程原生工具审批须转换为平台可恢复的 Interaction，回答时保留 nativeRequestId 和响应回执；发现命令能力不授予执行权限。
 
@@ -264,7 +264,7 @@ mindos-node [receipts.rs](../../tools/mindos-node/src/plugin/harness/receipts.rs
 | 原生模型审查 | 每个 finding 的初始分析、consensus、judge、可选修订及汇总对应真实模型调用 | 已完成一次三个独立角色与修订的成功验收；再次执行遇到坏 JSON 时按修复上限失败，见各次机器记录 |
 | Agent 绑定执行 | Agent 保存的发布 Flow 身份/修订、连接固定、真实调用和最终结果对应 | 已通过真实 Agent 调用，根 Task 为 succeeded；见[机器记录](fixtures/raptor-evidence.json) |
 | Composite | 协调者真实分配成员任务、成员调用授权工具、隔离上下文、汇总产物 | 真实DeepSeek主持者与实际模型远程成员已贯通；RAPTOR业务专家团队待验收 |
-| 远程项目进程 | 真 mindos-node 的授权、依赖可见性、产物读取、失败分类、取消确认 | 通用路径存在，RAPTOR 真节点待验收 |
+| 远程项目进程 | 真 nestos-node 的授权、依赖可见性、产物读取、失败分类、取消确认 | 通用路径存在，RAPTOR 真节点待验收 |
 | 原生 RAPTOR harness | 正确执行项目 cwd、原生 commands、startup hook、目标绑定与历史恢复 | 可行方案，尚未端到端验证 |
 | 请求结果未知 | 丢启动/提交响应后按原身份核对，不自动二次执行 | 已实现稳定子操作 journal 与回执核对，mock故障矩阵覆盖；真实网关故障注入单独记录 |
 | 节点重启 | epoch 改变后核对 native 历史与 RAPTOR 产物，不能依据回执缺失重放 | 尚无完整跨节点重启桥梁 |

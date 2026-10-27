@@ -69,7 +69,7 @@
     "@itookit/app-core": "workspace:*",
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
-    "@itookit/mindos-node-driver": "workspace:*",
+    "@itookit/nestos-node-driver": "workspace:*",
     "@itookit/node-host": "workspace:*",
     "@itookit/app-transport": "workspace:*"
   }

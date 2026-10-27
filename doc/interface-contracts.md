@@ -2,7 +2,7 @@
 
 调用方只依赖接口，不依赖实现。契约按能力归属：driver-llm/contracts（模型通信与服务端口）、llm-context（领域消息与上下文）、tools/contracts（Tool 执行）、device-tty/contracts（TTY 接口，tools/contracts 保留兼容类型导出）、vfs-core（文件系统）；llm-tasks/contracts、llm-flow/contracts 和 llm-session/contracts 分别承载执行、编排与会话契约；kernel-adapters/contracts 承载配置管理与定价；common 不再转发 LLM 契约。
 
-独立 `@itookit/llm-ui` 的 ChatOptions/ConversationSource/ConversationActions/OperationLedger 定义于 [contracts.ts](../libraries/llm-ui/src/contracts.ts)，FlowSource/FlowActions 定义于 [flow-contracts.ts](../libraries/llm-ui/src/flow-contracts.ts)。两者只依赖展示数据与 mdxeditor；MindOS 接线位于 `llm-ui-adapter/independent`，原工厂兼容入口迁至适配包。Flow 通过 `features.flow` 与 `setFlowEnabled` 控制，默认关闭。
+独立 `@itookit/llm-ui` 的 ChatOptions/ConversationSource/ConversationActions/OperationLedger 定义于 [contracts.ts](../libraries/llm-ui/src/contracts.ts)，FlowSource/FlowActions 定义于 [flow-contracts.ts](../libraries/llm-ui/src/flow-contracts.ts)。两者只依赖展示数据与 mdxeditor；NestOS 接线位于 `llm-ui-adapter/independent`，原工厂兼容入口迁至适配包。Flow 通过 `features.flow` 与 `setFlowEnabled` 控制，默认关闭。
 
 `SessionChatBindingOptions.hasCommittedSubmission(submission)` 由宿主注入，委托 llm-session 的公开持久提交查询；不再注入仓储或在 UI 解析 Round。Send 入队后的回执与后续 confirmed 投影均依据同一后端证据；unknown 的 edit/retry 锁定目标消息，respond 锁定请求 ID/revision。Flow 的恢复 submitting 操作可显式核对，检查器保存后从新节点快照获取下次编辑版本。
 
@@ -15,7 +15,7 @@
 
 | 接口 | 核心方法 | 定义 | 实现 | 消费 |
 |---|---|---|---|---|
-| `FileStorageBackend` / `OperationOptions` | `files` + 可选 `mutations`，signal/timeoutMs，opaque revision | `https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/storage/file-storage.ts`、`https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/core/operation.ts` | `mindos-node-driver` | `FileStorageAdapter` → VFS |
+| `FileStorageBackend` / `OperationOptions` | `files` + 可选 `mutations`，signal/timeoutMs，opaque revision | `https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/storage/file-storage.ts`、`https://github.com/mushuanli/vfs-core/blob/main/src/interfaces/core/operation.ts` | `nestos-node-driver` | `FileStorageAdapter` → VFS |
 | `IStorageBackend` | `stat/list/read/write/mkdir/delete/rename` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/storage/` | `vfsdriver-indexeddb`、`vfsdriver-local` | `vfs-core (VFSEngine)` |
 | `IVFSManager` | `openFileSystem()/mounts/devices/plugins` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/services/vfs-manager.ts` | `vfs-core (VFSManager)` | `app-core`、`app-shell`、`kernel-adapters` |
 | `IFileSystem` | `openFile()/driver/meta/capabilities/capabilitiesAt()/discoveryRoot?()` | `https://github.com/mushuanli/vfs-core/blob/main/interfaces/services/file-system.ts` | `vfs-core (FileSystemView)` | `vfs-ui`、`llm-ui`、`llm-session`、`app-core` |
@@ -175,24 +175,24 @@ HTTP 外挂的条件写入、取消与项目授权见 [HTTP VFS 设计](design/v
 
 ### 独立 VFS UI 接入
 
-`vfs-ui` 仅依赖 `vfs-core`。`BrowserSource` / `BrowserAction` 接收自定义资源与动作；`VFSPresentationOptions` 按实例注入翻译、SVG 和启动跟踪；`TagEditorFactory` / `ContextMenuConfig` / `UIPersistencePort` 接收宿主组件、菜单和存储。消费方从 vfs-ui 导入这些类型，或提供结构兼容实现，无需依赖 common/ui-common。MindOS 展示适配位于 `app-shell/src/browser/vfs-presentation.ts`。
+`vfs-ui` 仅依赖 `vfs-core`。`BrowserSource` / `BrowserAction` 接收自定义资源与动作；`VFSPresentationOptions` 按实例注入翻译、SVG 和启动跟踪；`TagEditorFactory` / `ContextMenuConfig` / `UIPersistencePort` 接收宿主组件、菜单和存储。消费方从 vfs-ui 导入这些类型，或提供结构兼容实现，无需依赖 common/ui-common。NestOS 展示适配位于 `app-shell/src/browser/vfs-presentation.ts`。
 
 通信契约的权威实现已迁到 `https://github.com/mushuanli/driver-llm/blob/main/src/types/`，原 llm-common 和 common 的 LLM 兼容转发已删除。通信消息 DTO 由 `https://github.com/mushuanli/driver-llm/blob/main/src/types/message.ts` 定义；上下文领域消息仍归 `llm-context/src/domain/message.ts`。两包互不依赖，宿主将上下文结果映射为通信请求；目前兼容字段可直接按结构赋值。模型设备与配置实现已迁到 `kernel-adapters/src/llm-management/`，通过 `@itookit/kernel-adapters/llm` 公开。
 
 ## 外部 harness 端口
 
-`MindOSNodeDriver` 由宿主装配并注入远程来源服务，统一凭据，暴露文件/进程 provider、sync 与 harness。`HarnessClient`、`HarnessProfile`、`HarnessSession`、`HarnessEvents`、`HarnessReceipt` 位于 mindos-node-driver `/harness` 公共入口，app-core 消费该端口，分别装配原生会话展示和持久远程执行；UI不持有底层凭据。
+`NestOSNodeDriver` 由宿主装配并注入远程来源服务，统一凭据，暴露文件/进程 provider、sync 与 harness。`HarnessClient`、`HarnessProfile`、`HarnessSession`、`HarnessEvents`、`HarnessReceipt` 位于 nestos-node-driver `/harness` 公共入口，app-core 消费该端口，分别装配原生会话展示和持久远程执行；UI不持有底层凭据。
 
 创建仅使用服务端声明的 workspaceId；继续先核对 native cwd 授权并拒绝抢占活跃会话；发送、响应和中断必须属于本服务接管的会话。只读历史不触发 resume。修改必须使用当前 epoch/requestId，未知结果查询 operation 收据，禁止自动重放。事件有独立 epoch、递增 seq 与 cursor；gap 要求刷新历史，不能宣称完整输出。客户端关闭不代表原生 turn 停止。
 
 `MCPServer.auth` 保存 basic/bearer 类型、username 和 credentialRef，密钥由 `MCPConnectionOptions.resolveCredential` 在每次请求解析。`beforeSave/beforeDelete/configurationChanged` 由应用注入授权与投影刷新；机制不依赖 app-core。`MCPConnectionOptions.extensions` 注册 `MCPConfigurationExtension`，其 `matches` 本地筛选标准发现结果，`discover` 通过 `MCPConfigurationExtensionContext` 消费 `MCPDiscovery.metadata` 或复用当前连接的 `callTool`。验证结果放入 `MCPDiscovery.extensions`，管理器负责测试/保存复用与连接身份变更后的重新验证。
 
-mindos-node 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）。app-core 注册的扩展优先验证 `server/discover._meta['itookit/mindos-node']`（兼容旧 `itookit/pi-agent`）；旧服务通过已声明的能力工具验证，不为普通 MCP 发专用探测。结果保存于 `MCPServer.extensions['itookit/pi-agent']`，绑定须匹配当前 MCP endpoint 及已知 fileProtocol。`MCPRemoteConnections` 从已验证配置恢复驱动凭据，API Key 不复制到项目挂载记录。旧 basic/bearer credentialRef 仍支持。配置展示名自由修改，不用名称判断能力；设置 UI 控件只呈现已识别扩展。
+nestos-node 可直接使用标准 `MCPServer.apiKey`（Bearer，无 username）。app-core 注册的扩展优先验证 `server/discover._meta['itookit/nestos-node']`（兼容旧 `itookit/pi-agent`）；旧服务通过已声明的能力工具验证，不为普通 MCP 发专用探测。结果保存于 `MCPServer.extensions['itookit/pi-agent']`，绑定须匹配当前 MCP endpoint 及已知 fileProtocol。`MCPRemoteConnections` 从已验证配置恢复驱动凭据，API Key 不复制到项目挂载记录。旧 basic/bearer credentialRef 仍支持。配置展示名自由修改，不用名称判断能力；设置 UI 控件只呈现已识别扩展。
 
 `ProjectFolder.displayName` 是当前服务器名与项目名的组合；持久身份 name 与可选 navigationName 区分人类名称和稳定路由。`MCPRemoteConnections` 是 MCP 目录的只读投影及旧连接迁移适配，不在挂载目录保存第二份连接配置。
 
 
-`MindOSNodeDriver.projects` 暴露 ProjectClient/RemoteProject/ProjectMount/RegisterProject；服务端目录项目与 sync 数据项目是不同身份。项目文件请求使用项目 ID、revision 与只读衰减 headers，project_exec/harness 从服务端同一份授权获取 mounts。ProjectLauncher 是进程/harness 共用启动端口，当前 bubblewrap，VMM 尚未实现。详见 [项目模型](design/mindos-node-project-model.md)。
+`NestOSNodeDriver.projects` 暴露 ProjectClient/RemoteProject/ProjectMount/RegisterProject；服务端目录项目与 sync 数据项目是不同身份。项目文件请求使用项目 ID、revision 与只读衰减 headers，project_exec/harness 从服务端同一份授权获取 mounts。ProjectLauncher 是进程/harness 共用启动端口，当前 bubblewrap，VMM 尚未实现。详见 [项目模型](design/nestos-node-project-model.md)。
 
 `ProjectRemoteMountService.remountProject` 修改客户端项目权限，必要时经可选 `ProjectClient.remount` 调用 `project_remount` 提升服务端项目根授权；所有写入均校验当前权限与版本，不修改项目身份。客户端降为只读只衰减本地绑定。`ApplicationBackend.unmountProject` 是本地卸载用例，允许远端离线，不通过远程文件删除或服务端 `project_forget` 执行。
 
@@ -214,7 +214,7 @@ HarnessExecutionProvider.reconcile 返回 ConnectionReconcileResult；Effect 桥
 
 ### 远程项目会话展示端口
 
-`ui-common` 的 `ConversationControls` 由宿主注入，提供 read/refresh/subscribe/send/respond/interrupt/reconcile/close 及能力限定的 rename/archive，返回规范化历史、待交互卡片及操作可用状态。`mindos-node-driver` 的 `HarnessConversation` 按结构实现；app-core 的 `ProjectRemoteMountService.projectConversation` 注入项目授权和持久回执 journal；llm-ui 只消费该端口。`RemoteAgentControls` 提供项目范围内目标列表及发送路由，远程选择不进入本地 SessionCommand.Send。原生会话引用、输入草稿和待确认回执位于 `/etc/fs/harness-conversations.seq`，不复制原生历史。 `ConversationSnapshot` 可携带 `canFork` / `hasEarlier`，对应可选 `fork` / `branches` / `loadEarlier`；分支切换仍由宿主导航处理。`HarnessHistory.nextCursor` 与 `HarnessHistoryOptions.cursor` 描述只读历史分页；`HarnessClient.inspect` 读取元信息，`fork` 是带 epoch/requestId 的原生修改。
+`ui-common` 的 `ConversationControls` 由宿主注入，提供 read/refresh/subscribe/send/respond/interrupt/reconcile/close 及能力限定的 rename/archive，返回规范化历史、待交互卡片及操作可用状态。`nestos-node-driver` 的 `HarnessConversation` 按结构实现；app-core 的 `ProjectRemoteMountService.projectConversation` 注入项目授权和持久回执 journal；llm-ui 只消费该端口。`RemoteAgentControls` 提供项目范围内目标列表及发送路由，远程选择不进入本地 SessionCommand.Send。原生会话引用、输入草稿和待确认回执位于 `/etc/fs/harness-conversations.seq`，不复制原生历史。 `ConversationSnapshot` 可携带 `canFork` / `hasEarlier`，对应可选 `fork` / `branches` / `loadEarlier`；分支切换仍由宿主导航处理。`HarnessHistory.nextCursor` 与 `HarnessHistoryOptions.cursor` 描述只读历史分页；`HarnessClient.inspect` 读取元信息，`fork` 是带 epoch/requestId 的原生修改。
 
 原生只读命令由 `capabilities.commandQueries` 协商 `HarnessClient.queryCommand` → `harness_query`，携带授权项目修订、原生会话、关联 requestId 和冻结定义；不占原生修改队列或创建执行 receipt。展示端口的 `queryCommand/reconcileQuery` 与 `canQueryCommand/queryReceipts` 将结果保存到既有恢复记录，独立于输入 pending/submission 和队列接纳。查询报告丢回复只核对报告，不拿查询 ID 调用 `harness_operation`；独立 llm-ui 在 CommandSubmission.execution 冻结分类并更新同一 OperationLedger。详细实现、DSH 目录不完整语义及 C4 见[控制协议 §8.6](design/invocation-control-state.md#86-原生只读命令与查询报告)。
 
@@ -226,7 +226,7 @@ HarnessExecutionProvider.reconcile 返回 ConnectionReconcileResult；Effect 桥
 
 `ModelConfigurationCommands.inspectMCPDeletion` 返回配置和项目挂载引用的删除预览；`deleteMCPServers` 校验预览并要求有引用时显式 force。`MCPDeletionPort` 由 ProjectRemoteMountService 实现，预览由 ProjectService 提供远程项目与本地会话信息；经 SessionLifecycleService 清理以目标 MCP 为根来源的本地远程项目及其本地会话，再批量移除引用并释放视图。普通本地项目只解除附加挂载，服务器内容和原生会话保留。普通 MCP 删除仍禁止有引用的配置。
 
-`MCPRemoteConnections.diagnostic(connectionId)` 返回不含凭据和端点的 `MCPConnectionDiagnostic`（名称、验证原因、catalog revision、当前配置身份）。`ProjectRemoteMountService.resolveConnection` 在异步访问前恢复当前引用，缺失连接抛出 `RemoteConnectionUnavailableError`，保留 ENOENT 错误码并附带诊断及引用项目 ID。宿主本地化展示；`reportRemoteFailure` 记录 `mindos-node` 模块日志和时间在前的控制台错误，按异常实例去重，只输出身份、阶段、结构化错误码。详见 [项目模型](design/mindos-node-project-model.md)。
+`MCPRemoteConnections.diagnostic(connectionId)` 返回不含凭据和端点的 `MCPConnectionDiagnostic`（名称、验证原因、catalog revision、当前配置身份）。`ProjectRemoteMountService.resolveConnection` 在异步访问前恢复当前引用，缺失连接抛出 `RemoteConnectionUnavailableError`，保留 ENOENT 错误码并附带诊断及引用项目 ID。宿主本地化展示；`reportRemoteFailure` 记录 `nestos-node` 模块日志和时间在前的控制台错误，按异常实例去重，只输出身份、阶段、结构化错误码。详见 [项目模型](design/nestos-node-project-model.md)。
 
 
 `HarnessClient.search`、`ProjectClient.search` 是可选的能力协商读取端口，返回有界 matches/truncated/nextCursor；项目搜索默认仅当前项目。`ProjectSearch` 统一本地文件及 PI Agent 文件/原生会话检索，完整绑定身份随结果传播，在点击导航时再次核对。`ConversationSnapshot.observation` 与 driver 的 `HarnessObservation` 结构兼容；`conversationStatus` 为正文/侧栏/标签提供统一状态文案。`RemoteSessionStatus` 是按项目引用计数的只读观察用例；其 provider 在 driver 实现，无 app-core DOM/Node 依赖。`exportRemoteSession` 输出原生只读 JSON；`remoteSessionSources` 只匹配已注册且完整授权的附加项目来源。
@@ -257,7 +257,7 @@ HarnessExecutionProvider.reconcile 返回 ConnectionReconcileResult；Effect 桥
 
 ## 初始文件恢复
 
-`app-settings` 的 `InitialFilesPort` 注入 `list()` 与 `restore(ids)`；列表包含稳定 ID、分组、文件名、目标路径和存在状态，恢复返回逐文件 restored/preserved/failed。`app-core` 的 `MindosInitialFiles` 提供产品模板，宿主将当前笔记文件系统和 CommandBus 注入；笔记只创建缺失文件，Flow 复用 DraftLoad/DraftRestore。文件系统及系统恢复页复用 `InitialFilesSection`，默认全选、分组折叠，保留勾选和展开状态，不把文件恢复等同于覆盖或模型分析。 系统恢复页将初始文件与配置勾选统一计入顶部“恢复选中项”，确认时分别说明补缺失文件与覆盖内置配置的影响；“刷新全部状态”覆盖所有分组并保留勾选和展开状态；各折叠组标题旁的“全选”仅作用于本组。“重置全部内置配置”仅针对 Provider/Connection/Agent，不包含初始文件。
+`app-settings` 的 `InitialFilesPort` 注入 `list()` 与 `restore(ids)`；列表包含稳定 ID、分组、文件名、目标路径和存在状态，恢复返回逐文件 restored/preserved/failed。`app-core` 的 `NestosInitialFiles` 提供产品模板，宿主将当前笔记文件系统和 CommandBus 注入；笔记只创建缺失文件，Flow 复用 DraftLoad/DraftRestore。文件系统及系统恢复页复用 `InitialFilesSection`，默认全选、分组折叠，保留勾选和展开状态，不把文件恢复等同于覆盖或模型分析。 系统恢复页将初始文件与配置勾选统一计入顶部“恢复选中项”，确认时分别说明补缺失文件与覆盖内置配置的影响；“刷新全部状态”覆盖所有分组并保留勾选和展开状态；各折叠组标题旁的“全选”仅作用于本组。“重置全部内置配置”仅针对 Provider/Connection/Agent，不包含初始文件。
 
 数字分析的 selectionInfo 返回关联扫描 runs 与分析结果。用户修正将知识转为独立陈述，originSourceId 仅保留文档归属，不作为事实证据；对话框据此继续显示修正结果。显式 removeSelection 一并清理这些关联修正，普通来源变更不覆盖用户陈述。旧记录无需迁移。
 
@@ -285,7 +285,7 @@ HTTP v14 的 bootstrap 可携带 OpenViewRequest 并返回 HostedApplicationClie
 
 ## 原生 Harness 斜杠命令
 
-ConversationControls 的可选 commands/command 端口承接当前原生会话的命令目录和执行；snapshot.supportsSlashCommands 只在宿主声明能力时启用。mindos-node-driver 通过 profile.capabilities.slashCommands 协商，目录为纯数据，具体命令名与原生 RPC 留在 mindos-node 对应插件内。Claude 使用 SDK 目录及 slash prompt，Codex 将 compact/review 映射为专用控制调用，DSH 使用原生 commands/list 与 commands/execute。
+ConversationControls 的可选 commands/command 端口承接当前原生会话的命令目录和执行；snapshot.supportsSlashCommands 只在宿主声明能力时启用。nestos-node-driver 通过 profile.capabilities.slashCommands 协商，目录为纯数据，具体命令名与原生 RPC 留在 nestos-node 对应插件内。Claude 使用 SDK 目录及 slash prompt，Codex 将 compact/review 映射为专用控制调用，DSH 使用原生 commands/list 与 commands/execute。
 
 原生会话输入使用 NativeSlashCommandPlugin 提供候选，不混入本地 Kernel slash 操作；选择只填入输入，发送时再次验证当前目录。command 沿用 epoch、requestId、项目 revision、操作队列和 reconcile，可接纳但不产生 turnId；只有 prompt 类命令产生原生用户消息时才按该消息身份呈现。DSH command/run、command/done 以稳定 commandId 进入系统记录。未知操作跨视图保留，接纳不清除提交后的新草稿；关闭输入释放插件并拒绝迟到目录恢复弹层。
 
@@ -323,3 +323,10 @@ Flow 连接准入错误通过 `code` 和 `field`（槽位名）定位；RPC 只�
 [TaskArtifacts](../backend/app-core/src/session/task-artifacts.ts) 从既有 Kernel 输出派生引用，复用 TaskAssetReader 验证二进制归属与内容，不保存第二份执行状态。session.artifact.get 及 Context 装配通过 [ArtifactLoader](../backend/llm-session/src/contracts/artifacts.ts) 读取语义值；未导入的远端 file 明确不可读取。UI 的 [TaskArtifactBrowser](../ui/llm-ui-adapter/src/components/dag/TaskArtifactBrowser.ts) 只在用户操作时加载并校验分页，保持执行锚点及视图销毁边界。
 
 文档 AI Chat 的宿主回调、DocumentChatFile 端口与规范双向关系见 [文档 AI Chat](./design/document-ai-chat.md)。
+
+
+httpd 可通过 `http.editorSwap` 装配可选 `ApplicationBackend.editorSwaps`，默认不提供。
+`EditorSwapFactory.openEditorSwap({files,path})` 只接受调用者获准的文件能力并检查目标文件；返回该编辑器独立的 `EditorSwap`。
+`writeSwap/readSwap/clearSwap/closeSwap` 处理本编辑器私有副本，`dispose` 仅失效句柄，正常关闭由 `closeSwap` 删除；断线不自动删掉残留文件。
+Node 的目录、权限、原子写入和 48 小时清理由可信宿主实现，原始 `EditorSwapStore` 不进入 UI 服务图。
+能力调用不使文件/会话域失效，不把每次副本写入变成工作区重载。MDX 核心仍只消费宿主回调，不解释 httpd 或宿主路径。

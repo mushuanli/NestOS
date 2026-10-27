@@ -2,7 +2,7 @@ import { harnessObservation as observeHarness } from '@itookit/app-contracts';
 import {expect, it, vi} from 'vitest';
 import {conversationStatus} from '@itookit/ui-common';
 import {t} from '@itookit/common';
-import {harnessObservation} from '@itookit/mindos-node-driver';
+import {harnessObservation} from '@itookit/nestos-node-driver';
 import {remoteSessionPath, type ProjectService} from '@itookit/app-core';
 import {RemoteSessionStatusView} from '../src/projects/remote-session-status';
 it('shares visible session observers without reading file versions or refreshing directory contents', () => {

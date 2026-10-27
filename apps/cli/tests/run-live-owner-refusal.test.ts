@@ -1,5 +1,5 @@
 // @file: apps/cli/tests/run-live-owner-refusal.test.ts
-// Cross-process Run control boundary: a Session has a single writer, so `mindos cancel`
+// Cross-process Run control boundary: a Session has a single writer, so `nestos cancel`
 // refuses a Run whose owner is still alive. The refusal must leave the Run untouched
 // (the in-flight request keeps running), and only the owner can stop it (SIGINT).
 // Cancelling a Run left blocked by a dead owner is covered by crash-matrix.
@@ -23,7 +23,7 @@ afterEach(async () => {
     for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
-    delete process.env.MINDOS_TEST_API_KEY;
+    delete process.env.NESTOS_TEST_API_KEY;
 });
 
 /** Accepts a request and never answers; reports arrival and client disconnect. */
@@ -53,7 +53,7 @@ providers:
     implementation: openai-compatible
     base_url: http://127.0.0.1:${port}
     default_path: /v1/chat/completions
-    api_key_env: MINDOS_TEST_API_KEY
+    api_key_env: NESTOS_TEST_API_KEY
     models:
       - id: mock-model
 connections:
@@ -88,7 +88,7 @@ function spawnCli(args: string[]): ChildProcess {
 async function layout(prefix: string): Promise<{ stateDir: string; configPath: string }> {
     const workspace = await mkdtemp(path.join(tmpdir(), prefix));
     roots.push(workspace);
-    return { stateDir: path.join(workspace, '.mindos'), configPath: path.join(workspace, 'mindos.yml') };
+    return { stateDir: path.join(workspace, '.nestos'), configPath: path.join(workspace, 'mindos.yml') };
 }
 
 async function latestRun(stateDir: string): Promise<string> {
@@ -107,8 +107,8 @@ it('refuses to cancel a Run owned by a live host and leaves it running', async (
     const model = hangingServer();
     const port = await listenForTest(model.server);
     servers.push(model.server);
-    const { stateDir, configPath } = await layout('mindos-cross-cancel-');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    const { stateDir, configPath } = await layout('nestos-cross-cancel-');
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, config(port), 'utf8');
 
     const running = spawnCli(['run', '-f', configPath, '--state-dir', stateDir, '--headless', '--json']);

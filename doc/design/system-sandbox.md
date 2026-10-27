@@ -55,7 +55,7 @@ flowchart TD
 | 资源限制 | 已构造 PID 上限，以及可选 CPU/内存限制参数 | 新包尚无 CPU/内存/PID 限额 |
 | 生命周期 | 还需实测引擎客户端退出后容器及后代确实停止 | 仍需宿主管理进程与退出确认 |
 
-本项目 OCI 不要求必须有 Docker：`sandboxDoctor('auto')` 按 Podman → Docker 顺序探测。默认镜像 `mindos-sandbox:v1` 的构建文件在 [Dockerfile](../../apps/cli/sandbox/Dockerfile)。当前 doctor 只调用 `version --format '{{.Client.Version}}'`，不验证镜像存在或真正运行容器；探测通过不足以证明执行可用。
+本项目 OCI 不要求必须有 Docker：`sandboxDoctor('auto')` 按 Podman → Docker 顺序探测。默认镜像 `nestos-sandbox:v1` 的构建文件在 [Dockerfile](../../apps/cli/sandbox/Dockerfile)。当前 doctor 只调用 `version --format '{{.Client.Version}}'`，不验证镜像存在或真正运行容器；探测通过不足以证明执行可用。
 
 OCI 不是未引用的占位类：[CLI runtime](../../apps/cli/src/runtime.ts) 调用 `createShell`，把 `OciSandboxShell` 注入 Bash 能力，并为交互命令创建 `OciTtyDriver`，二者实际调用容器引擎的 `run`。但 [历史验收记录第 59–60 节](../minimal-system-acceptance.md) 明确只证明参数/授权/路径构造正确，没有真实容器端到端证据。本次复核 PATH 中同样未找到 `docker` 或 `podman`，旧 shell 测试 11 项通过，仍不能替代容器验收。
 

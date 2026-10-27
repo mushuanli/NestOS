@@ -1,5 +1,5 @@
 import { createApplicationRuntime, type ApplicationRuntime, type ApplicationRuntimeOptions } from '@itookit/app-core';
-import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
 import { guardHostStorage } from '../storage/host-storage';
 import type { IStorageBackend } from '@itookit/vfs-core';
 import type { AuditPort } from '../logging/audit-log';
@@ -35,7 +35,7 @@ export async function createNodeRuntime(source: IStorageBackend, root?: string, 
         await packages.initialize();
         const additionalTools = mergeNodePackageTools([...createStandardNodeTools(), ...await loadNodeToolModules(),
             ...options.kernelPlatform?.additionalTools ?? []], packages.initialTools(), BUILTIN_TOOLS);
-        const runtime = await createApplicationRuntime({remoteSourceProvider: createMindOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
+        const runtime = await createApplicationRuntime({remoteSourceProvider: createNestOSNodeDriver(), ownerKind: 'cli', ...options, backend: borrowed,
             toolDependencies: options.toolDependencies ?? packages,
             kernelPlatform: { ...options.kernelPlatform, additionalTools, configure: async (kernel, services) => {
                 packages.bind(kernel); await options.kernelPlatform?.configure?.(kernel, services);

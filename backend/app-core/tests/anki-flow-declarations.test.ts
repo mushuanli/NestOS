@@ -4,7 +4,7 @@ import {FlowLibraryCommand} from '@itookit/app-contracts';
 import {FlowCommand, flowConnectionRequired, flowParameterValues, type FlowDraft, type FlowRevision, type JsonValue} from '@itookit/llm-flow/contracts';
 import {SessionCommand} from '@itookit/llm-session/contracts';
 import {createApplicationRuntime} from '../src/runtime/create-application-runtime';
-import {createMindosFlowLibrary} from '../src/presets/flow-library';
+import {createNestosFlowLibrary} from '../src/presets/flow-library';
 
 let runtime: Awaited<ReturnType<typeof createApplicationRuntime>> | undefined;
 afterEach(async () => {await runtime?.dispose(); runtime = undefined;});
@@ -30,7 +30,7 @@ it('publishes declared composer sources and connection requirements without repl
     expect(JSON.parse(generation.systemPrompt.find((text: string) => text.startsWith(prefix)).slice(prefix.length))).toEqual(schema);
     const draft = await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: 'anki-generate'});
     await runtime.commandBus.execute(FlowCommand.DraftSave, {draft: {...draft, name: 'Personal flow'}, expectedDraftVersion: draft.draftVersion});
-    expect(await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: createMindosFlowLibrary()})).toBe(0);
+    expect(await runtime.commandBus.execute(FlowLibraryCommand.Restore, {templates: createNestosFlowLibrary()})).toBe(0);
     expect((await runtime.commandBus.execute<FlowDraft>(FlowCommand.DraftLoad, {id: 'anki-generate'})).name).toBe('Personal flow');
     expect(await runtime.commandBus.execute(FlowCommand.RevisionGet, {id: 'anki-generate'})).toEqual(revision);
 });

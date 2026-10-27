@@ -7,12 +7,12 @@ import {ensureStartupCertificates, protectCertificateDirectory, reportCertificat
 import { configDirectory, resolveDataRoot, resolveHttpDirectories } from '../runtime/profile';
 import { options } from './options';
 
-export async function runHttpHost(args = process.argv.slice(2), defaultStaticDir?: string, logMode = process.env.MINDOS_HTTPD_MODE ?? 'standalone'): Promise<void> {
+export async function runHttpHost(args = process.argv.slice(2), defaultStaticDir?: string, logMode = process.env.NESTOS_HTTPD_MODE ?? 'standalone'): Promise<void> {
     const values = options(args);
-    if (values.help) { console.log('MindOS HTTPS defaults: --host 0.0.0.0 --port 2000 --backlog 4096\n  Data root: --root > MINDOS_ROOT > mindos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/mindos/mindos.json or ~/.config/mindos/mindos.json\n  mindos.json: http.certDir / http.authDir (config-relative paths; flags override)\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file> --auth-dir <private directory>'); return; }
+    if (values.help) { console.log('NestOS HTTPS defaults: --host 0.0.0.0 --port 2000 --backlog 4096\n  Data root: --root > NESTOS_ROOT > nestos.json rootDir > <configDir>/data\n  Config: $XDG_CONFIG_HOME/nestos/nestos.json or ~/.config/nestos/nestos.json\n  nestos.json: http.certDir / http.authDir (config-relative paths; flags override)\n  --cert-dir <private directory> --init-certs --cert-host <IP or hostname>\n  --sidecar <directory> --static <UI directory> --audit-file <JSONL file> --auth-dir <private directory>'); return; }
     const backlog = validBacklog(values.backlog);
     const cwd = process.env.INIT_CWD ?? process.cwd(), config = configDirectory();
-    const {certDir, authDir: authPath} = await resolveHttpDirectories(config, cwd,
+    const {certDir, authDir: authPath, editorSwap} = await resolveHttpDirectories(config, cwd,
         {certDir: values['cert-dir'], authDir: values['auth-dir']}, logMode);
     const root = await resolveDataRoot(config, cwd, values.root), sidecar = path.resolve(cwd, values.sidecar ?? path.join(root, '_meta'));
     const configuredStatic = values.static ? path.resolve(cwd, values.static) : defaultStaticDir;
@@ -34,7 +34,7 @@ export async function runHttpHost(args = process.argv.slice(2), defaultStaticDir
     if (within(canonicalRoot, authDir) || within(await realpath(staticDir), authDir)) throw new Error('OAuth credentials must remain outside data and static roots');
     if (within(await realpath(staticDir), canonicalCertificates)) throw new Error('Certificates cannot reside within the static UI root');
     const certificates = await loadCertificates(certDir), port = validPort(values.port);
-    const hosted = await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, authDir, logMode, port, host: values.host, backlog });
+    const hosted = await startHost({ root: canonicalRoot, sidecar: canonicalSidecar, certificates, staticDir, auditFile, authDir, editorSwap, logMode, port, host: values.host, backlog });
     installShutdown(hosted);
 }
 

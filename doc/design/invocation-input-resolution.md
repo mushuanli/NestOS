@@ -242,7 +242,7 @@ C4Dynamic
     Component(context, "上下文装配", "Session/Context", "全量选定历史或本轮增量")
     Component(program, "Harness Program", "既有 Task/Effect", "核对真实输入摘要")
     Component(adapter, "Harness 执行适配", "既有连接与 journal", "能力及编码校验先于原生副作用")
-    Component(native, "原生 Harness", "mindos-node", "文件随原 turn requestId 发送")
+    Component(native, "原生 Harness", "nestos-node", "文件随原 turn requestId 发送")
     RelIndex(1, queue, assets, "派发前核验不可变附件")
     RelIndex(2, context, assets, "只读取声明范围内的材料")
     RelIndex(3, context, program, "持久化 canonical 输入或 fork 增量及摘要")
@@ -255,7 +255,7 @@ C4Dynamic
 
 读取旧 `HarnessRecovery` 草稿及队列保留原先形状和容量约束，不用新图片签名或 Unicode 规则阻断整个会话恢复。旧字节与操作身份保持原样；新提交、队列文本编辑、合并及真正发送才严格校验。旧待发送文件不合法时明确失败并暂停，可移除或修复；已提交且结果未知的操作仍只核对原身份。底层客户端及纯输入校验失败返回 `not-committed` 和可跨 RPC 保留的具体 `remoteCode`，不查询或修改原生会话。独立 llm-ui 将此类明确拒绝结算为 rejected，不转换成 unknown。
 
-[驱动回归](../../libraries/mindos-node-driver/tests/conversation.test.ts)覆盖旧草稿读取、查询、删除坏队列、未知操作不重放及编辑失败不改修订；[真实运行时回归](../../backend/app-core/tests/harness-agent-execution.test.ts)覆盖文本/图片、256 KiB 图片、fork 仅本轮文件，以及原 turn 回执悬挂时接纳并编辑下一条文件指令。直接原生输入端口和兼容工作台也支持纯附件提交：队列、草稿和 pending.inputText 保留原始空正文，实际 turn 使用确定性的文件名称提示；回执恢复仅消费原修订，后续同名新附件保留。通用 Flow 文件输入准备、远端工作区传输、远端产物导入及线上原会话验收仍未完成。
+[驱动回归](../../libraries/nestos-node-driver/tests/conversation.test.ts)覆盖旧草稿读取、查询、删除坏队列、未知操作不重放及编辑失败不改修订；[真实运行时回归](../../backend/app-core/tests/harness-agent-execution.test.ts)覆盖文本/图片、256 KiB 图片、fork 仅本轮文件，以及原 turn 回执悬挂时接纳并编辑下一条文件指令。直接原生输入端口和兼容工作台也支持纯附件提交：队列、草稿和 pending.inputText 保留原始空正文，实际 turn 使用确定性的文件名称提示；回执恢复仅消费原修订，后续同名新附件保留。通用 Flow 文件输入准备、远端工作区传输、远端产物导入及线上原会话验收仍未完成。
 
 
 ### 7.3 Flow 资产引用与 Harness 目标准备

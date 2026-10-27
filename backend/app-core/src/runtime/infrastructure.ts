@@ -1,5 +1,5 @@
 import { TwinSafeLlmLogger } from '../digital-twin/llm-logger';
-import { createMindosLlmPresets, firstChatModelConnection } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosLlmPresets, firstChatModelConnection } from '@itookit/kernel-adapters/llm/presets';
 import { createVFS, MemoryBackend, type IFileSystem, type IStorageBackend, type IVFSManager, type MountOptions } from '@itookit/vfs-core';
 import { LLMDeviceDriver, type CodexAppServerTransport } from '@itookit/kernel-adapters/llm/core';
 import { t, traceBoot, createModuleLogger } from '@itookit/common';
@@ -67,9 +67,9 @@ async function initializeDevices(options: ApplicationInfrastructureOptions, vfs:
     logStep(t('boot.llmDriver'));
     const llmDriver = new LLMDeviceDriver(vfs, {
         logger: createModuleLogger('llm-driver'),
-        presets: createMindosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
+        presets: createNestosLlmPresets(), providerConnectionPolicy: firstChatModelConnection,
         providerAuthorization: options.providerAuthorization,
-        llmLogger: options.llmLogger ? new TwinSafeLlmLogger(options.llmLogger) : undefined, mcp: { clientInfo: { name: 'mindos', version: '1.0.0' }, logger: createModuleLogger('llm:mcp'), ...options.mcp }, codexTransport: options.codexTransport,
+        llmLogger: options.llmLogger ? new TwinSafeLlmLogger(options.llmLogger) : undefined, mcp: { clientInfo: { name: 'nestos', version: '1.0.0' }, logger: createModuleLogger('llm:mcp'), ...options.mcp }, codexTransport: options.codexTransport,
     });
     vfs.devices.register(llmDriver);
     vfs.devices.freeze();

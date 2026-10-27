@@ -472,7 +472,7 @@ backend/llm-session/src/
 │   └── history-plugin.ts         createHistoryPlugin
 ├── services/                    业务服务（注入文件系统持久化）
 │   ├── agent-service.ts          IAgentConfigService/IAgentManagementService/IConnectionService 接口
-│   ├── vmindos-node-service.ts      VFSAgentService（Agent 配置 CRUD）
+│   ├── vnestos-node-service.ts      VFSAgentService（Agent 配置 CRUD）
 │   ├── privileged-command.ts     IPrivilegedCommandService/PlanCommandRequest/ExecCommandRequest
 │   └── prompt-history-service.ts PromptHistoryService（实例生命周期）
 └── utils/                        error-formatter / file-backed-service / logger / vfs-entity-store
@@ -485,7 +485,7 @@ backend/llm-session/src/
 | `/var/lib/sessions` | 会话存储根（`SESSION_STORAGE_ROOT`，`persistence/session-storage-layout.ts`），`SessionRepository` 在其下按 `<id>/` 组织 |
 | `/var/lib/sessions/<id>/kernel` | Kernel Session 存储根（`sessionExecutionRoot()`，由 `SessionDirectoryStorageResolver` 解析，含 `catalog.seq/session.seq/tasks/…`，见 `kernel-api.md`） |
 | `FLOW_MODULE_NAME = 'flows'` | 独立 flows 模块名（`persistence/flow-engine.ts`）；应用装配于 `/home/admin/flows`（`app-core/src/runtime/create-application-runtime.ts:106`），每个 Flow 一个 `.flow` 文件 |
-| `/home/admin/.config/mindos/prompt-history` | prompt 历史文件系统（经 `initializeConversationSystem({ promptHistoryFiles })` 传入，`create-application-runtime.ts:192`） |
+| `/home/admin/.config/nestos/prompt-history` | prompt 历史文件系统（经 `initializeConversationSystem({ promptHistoryFiles })` 传入，`create-application-runtime.ts:192`） |
 | `RUNTIME_KEY = 'conversation/runtime'` | Durable Conversation 运行时共享键 |
 | `/var/lib/kernel/flow-invocations.json` | Flow 调用标记（`persistence/flow-invocation-sessions.ts`，经 `initializeConversationSystem({ flowInvocationSessions })` 传入）：受理调用**之前**写入 Session id，启动恢复据此跳过从未受理过调用的 Session；缺失/损坏/不可读时报告 unknown，恢复退回逐 Session 探测并把命中者补写进标记 |
 
@@ -543,7 +543,7 @@ TTY 首次结束信息保持不变，后续结束通知与输出不覆盖；已�
 会话工厂接受实例级 `hostPorts` 与 `agentResolution`，返回独立 SessionManager 和幂等异步 dispose。UI 必须接入返回实例；不再提供全局单例入口。业务预设移到 `backend/app-core/src/presets/default-flows.ts` 与 `backend/app-core/src/presets/essay-review.json`；默认安装和系统恢复仅提供这一版作文模板，已有旧文件保留。
 
 
-会话领域存储支持项目定位：`setStorageDirectoryResolver` 为新会话选择数据目录，`indexProjectSessions` 从项目目录重建会话位置索引；索引位于 `/var/lib/sessions/folders.seq`。本地项目使用 `.mindos/sessions/<sessionId>/`，只读远程项目使用本地 `.mindos/readonly/<项目名>/sessions/<sessionId>/`。没有设置定位器的独立仓库继续使用原默认路径。运行控制文件与执行内核存储不随领域目录移动。移动日志位于 `/var/lib/sessions/storage-moves.seq`，恢复完成前相关领域记录报告 EBUSY；来源与目标同时存在时保留双方并报告冲突，不猜测或清理正文。
+会话领域存储支持项目定位：`setStorageDirectoryResolver` 为新会话选择数据目录，`indexProjectSessions` 从项目目录重建会话位置索引；索引位于 `/var/lib/sessions/folders.seq`。本地项目使用 `.nestos/sessions/<sessionId>/`，只读远程项目使用本地 `.nestos/readonly/<项目名>/sessions/<sessionId>/`。没有设置定位器的独立仓库继续使用原默认路径。运行控制文件与执行内核存储不随领域目录移动。移动日志位于 `/var/lib/sessions/storage-moves.seq`，恢复完成前相关领域记录报告 EBUSY；来源与目标同时存在时保留双方并报告冲突，不猜测或清理正文。
 
 已有中心目录会话迁入项目时只复制 `session` / `settings` 领域记录、历史与附件，再事务提交会话定位；`files` 挂载授权和 kernel 控制记录留在 `/var/lib/sessions/<id>/`。迁移路径先校验后写日志；历史版本留下的中心目录迁移日志可在启动恢复中完成。附件复制出现无法确认的中断时保留来源并报告冲突，不覆盖未知目标。
 

@@ -135,7 +135,7 @@ export class ViewApi {
         return this.expire(response, !client ? 'VIEW_NOT_FOUND' : !client.initialized ? 'VIEW_NOT_INITIALIZED' : 'VIEW_STREAM_INVALIDATED', 'View expired; reconnect the page');
     }
     private expire(response: ServerResponse, code: string, message: string): never {
-        response.setHeader('X-MindOS-View-Expired', '1');
+        response.setHeader('X-NestOS-View-Expired', '1'); response.setHeader('X-MindOS-View-Expired', '1');
         this.audit?.write({event: 'view.expired', requestId: String(response.getHeader('X-Request-ID') ?? ''),
             operation: 'view.resume', code, durationMs: 0});
         throw new FSError('ECAPABILITY', message);
@@ -170,7 +170,7 @@ export class ViewApi {
             this.expire(response, 'VIEW_HISTORY_EXPIRED', 'View event history expired; reconnect the page');
         }
         client.lastSeen = Date.now(); client.stream = response;
-        response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-MindOS-View-Resume': '1' });
+        response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-NestOS-View-Resume': '1', 'X-MindOS-View-Resume': '1' });
         response.write(': connected\n\n');
         client.events.attach(response, after, resume || url.searchParams.get('resume') === '1');
         const timer = setInterval(() => {

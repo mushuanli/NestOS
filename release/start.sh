@@ -9,7 +9,7 @@ if ! command -v node &> /dev/null; then
     exit 1
 fi
 
-echo "🚀 Starting MindOS..."
+echo "🚀 Starting NestOS..."
 
 # 打开浏览器 (等待1秒确保服务器启动)
 (sleep 1 && (open "http://localhost:4173" 2>/dev/null || xdg-open "http://localhost:4173" 2>/dev/null)) &

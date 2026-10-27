@@ -1,6 +1,6 @@
 {
-  "name": "X1 · Mind OS",
-  "short_name": "X1",
+  "name": "NestOS",
+  "short_name": "NestOS",
   "description": "Multi-workspace AI-powered knowledge management",
   "start_url": "./index.html",
   "display": "standalone",

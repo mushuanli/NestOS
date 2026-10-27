@@ -234,4 +234,4 @@ C4Dynamic
     RelIndex(8, driver, ui, "完整大小与 SHA 校验后展示或下载；失败仅更新该产物")
 ```
 
-实现入口见[节点正文协议](../../tools/mindos-node/src/plugin/harness/command_outputs.rs)、[Driver 范围及完整读取](../../libraries/mindos-node-driver/src/harness/command-output.ts)和[共用查看器](../../ui/llm-ui-adapter/src/components/history/NativeCommandOutput.ts)。具体实施与验收结果由[进度记录](fixtures/unified-execution-progress.json)单独列明，不能由类型或图表推断已部署。
+实现入口见[节点正文协议](../../tools/nestos-node/src/plugin/harness/command_outputs.rs)、[Driver 范围及完整读取](../../libraries/nestos-node-driver/src/harness/command-output.ts)和[共用查看器](../../ui/llm-ui-adapter/src/components/history/NativeCommandOutput.ts)。具体实施与验收结果由[进度记录](fixtures/unified-execution-progress.json)单独列明，不能由类型或图表推断已部署。

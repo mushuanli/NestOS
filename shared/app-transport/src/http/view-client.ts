@@ -67,7 +67,7 @@ export class HttpViewClient {
     }
     private async startEventStream(): Promise<void> {
         const response = await this.subscribe(false);
-        this.resumable = response.headers.get('X-MindOS-View-Resume') === '1';
+        this.resumable = (response.headers.get('X-NestOS-View-Resume') ?? response.headers.get('X-MindOS-View-Resume')) === '1';
         this.listening = this.listen(response.body!);
         void this.listening.catch(error => this.showUpdateError(error));
     }
@@ -104,7 +104,7 @@ export class HttpViewClient {
             if (!this.abort.signal.aborted && !init?.signal?.aborted) this.showDisconnected(error);
             throw error;
         });
-        if (response.headers.get('X-MindOS-View-Expired') === '1') {
+        if ((response.headers.get('X-NestOS-View-Expired') ?? response.headers.get('X-MindOS-View-Expired')) === '1') {
             await response.body?.cancel(); this.expire(); throw this.expired;
         }
         return response;
@@ -120,9 +120,9 @@ export class HttpViewClient {
         try {
             const response = await this.fetcher(`${this.url}/events?clientId=${encodeURIComponent(this.clientId)}&resume=1${resume ? `&after=${this.lastEventId}&version=${RPC_VERSION}` : ''}`, {
                 signal: AbortSignal.any([this.abort.signal, this.streamAbort.signal]), cache: 'no-store', redirect: 'error' });
-            if (response.headers.get('X-MindOS-View-Expired') === '1') { await response.body?.cancel(); this.expire(); throw this.expired; }
+            if ((response.headers.get('X-NestOS-View-Expired') ?? response.headers.get('X-MindOS-View-Expired')) === '1') { await response.body?.cancel(); this.expire(); throw this.expired; }
             if (!response.ok || !response.body) { await response.body?.cancel(); throw new FSError('EIO', `View subscription failed (${response.status})`); }
-            if (resume && response.headers.get('X-MindOS-View-Resume') !== '1') { await response.body.cancel(); this.expire(); throw this.expired; }
+            if (resume && (response.headers.get('X-NestOS-View-Resume') ?? response.headers.get('X-MindOS-View-Resume')) !== '1') { await response.body.cancel(); this.expire(); throw this.expired; }
             this.streamConnected = true; this.lastStreamActivity = Date.now();
             return response;
         } finally { clearTimeout(timer); }

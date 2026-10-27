@@ -96,7 +96,7 @@ export function moduleRole(path, root = repository) {
         if (name === 'durable-kernel') return tail === 'contracts.ts' ? 'shared' : 'backend';
         if (name === 'device-tty') return tail === 'contracts.ts' ? 'shared' : 'backend';
         if (name === 'driver-llm' && (tail === 'contracts.ts' || tail.startsWith('types/'))) return 'shared';
-        if (['driver-llm', 'mindos-node-driver', 'vfs-sync'].includes(name) || name.startsWith('vfsdriver-')) return 'backend';
+        if (['driver-llm', 'nestos-node-driver', 'vfs-sync'].includes(name) || name.startsWith('vfsdriver-')) return 'backend';
         return undefined;
     }
     if (frontend.includes(name)) return 'frontend';

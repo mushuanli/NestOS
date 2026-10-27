@@ -77,7 +77,7 @@ fn bind_query(
     Ok(statement)
 }
 
-/// Truthy values only: `MINDOS_SIDECAR_TRACE=0` must not turn tracing on.
+/// Truthy values only: `NESTOS_SIDECAR_TRACE=0` must not turn tracing on.
 fn truthy(value: Option<&str>) -> bool {
     value.is_some_and(|value| {
         matches!(
@@ -89,7 +89,7 @@ fn truthy(value: Option<&str>) -> bool {
 
 fn sidecar_sql_trace_enabled() -> bool {
     static TRACE: OnceLock<bool> = OnceLock::new();
-    *TRACE.get_or_init(|| truthy(std::env::var("MINDOS_SIDECAR_TRACE").ok().as_deref()))
+    *TRACE.get_or_init(|| truthy(std::env::var("NESTOS_SIDECAR_TRACE").ok().as_deref()))
 }
 
 /// Where one statement spent its host time. Split so a client-side measurement can be attributed:
@@ -1070,7 +1070,7 @@ mod tests {
         assert!(should_record_sql(false, true, &timings(0, 0, SIDECAR_SLOW_SQL_MS), None));
         // A failed statement is always recorded, however fast it failed.
         assert!(should_record_sql(false, false, &timings(0, 0, 0), None));
-        // MINDOS_SIDECAR_TRACE records everything, including transaction-scoped statements.
+        // NESTOS_SIDECAR_TRACE records everything, including transaction-scoped statements.
         assert!(should_record_sql(true, true, &timings(0, 0, 0), None));
     }
 

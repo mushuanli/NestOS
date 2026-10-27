@@ -12,7 +12,7 @@ async function connection(resumable = false) {
     let stream!: ReadableStreamDefaultController<Uint8Array>;
     const body = new ReadableStream<Uint8Array>({ start(controller) { stream = controller; } });
     const fetcher: typeof fetch = async (_input, init) => {
-        if (!init?.method) return new Response(body, {headers: resumable ? {'X-MindOS-View-Resume': '1'} : {}});
+        if (!init?.method) return new Response(body, {headers: resumable ? {'X-NestOS-View-Resume': '1'} : {}});
         const request = JSON.parse(String(init.body));
         return Response.json(request.kind === 'bootstrap' ? bootstrap : {});
     };

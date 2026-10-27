@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { FlowStore } from '@itookit/llm-flow';
 import { FlowDefinitionStore } from '@itookit/llm-flow';
-import { createMindosFlowLibrary, createMindosFlowDrawers } from '../src/presets/flow-library';
+import { createNestosFlowLibrary, createNestosFlowDrawers } from '../src/presets/flow-library';
 import { essayReviewDraft, seedDefaultFlows, ESSAY_REVIEW_FLOW_ID } from '../src/presets/default-flows';
 import { externalFlow } from './fixtures/flow-library';
 
@@ -77,7 +77,7 @@ it('does not recreate the current essay Flow after deletion and restart', async 
 
 it('installs product templates in the backend and preserves user edits and deletion receipts', async () => {
     const storage = memoryStore(), store = new FlowDefinitionStore(storage);
-    const template = createMindosFlowLibrary()[0];
+    const template = createNestosFlowLibrary()[0];
     await seedDefaultFlows(store);
     const loaded = (await store.loadDraft(template.id))!;
     expect(loaded.parameters?.find(parameter => parameter.name === 'maxRounds')?.default).toBe(10);
@@ -96,8 +96,8 @@ it('uses one essay template and one Anki entry while preserving explicitly insta
     expect((await store.listDrafts()).map(draft => draft.id).sort()).toEqual([
         'anki-generate', 'essay-review', 'external-workflow',
     ]);
-    expect(createMindosFlowLibrary().map(draft => draft.id)).toEqual(['essay-review', 'anki-generate']);
-    expect(createMindosFlowDrawers()).toEqual([]);
+    expect(createNestosFlowLibrary().map(draft => draft.id)).toEqual(['essay-review', 'anki-generate']);
+    expect(createNestosFlowDrawers()).toEqual([]);
     await seedDefaultFlows(new FlowDefinitionStore(storage));
     expect(await store.loadDraft(external.id)).toMatchObject({ name: external.name });
 });
@@ -110,5 +110,5 @@ it.each(['essay-review', 'essay-review-isolated'])('keeps existing %s files and 
     await seedDefaultFlows(store);
     expect(await store.loadDraft(id)).toEqual(installed);
     expect(await store.loadRevision(id, published.revision)).toEqual(published);
-    expect(createMindosFlowLibrary().filter(flow => flow.id.startsWith('essay-review')).map(flow => flow.id)).toEqual(['essay-review']);
+    expect(createNestosFlowLibrary().filter(flow => flow.id.startsWith('essay-review')).map(flow => flow.id)).toEqual(['essay-review']);
 });

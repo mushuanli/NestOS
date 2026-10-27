@@ -1,11 +1,11 @@
-import { HttpFSBackend } from '@itookit/mindos-node-driver';
+import { HttpFSBackend } from '@itookit/nestos-node-driver';
 import { writeFile } from 'node:fs/promises';
 import type { CommandOptions } from './commands';
 
 /** Direct VFS access without pretending an HTTP alias is a native process directory. */
 export async function remoteFilesCommand(args: string[], options: CommandOptions): Promise<number> {
     const [operation, endpoint, alias, path = ''] = args;
-    if (!['list', 'read', 'stat', 'status'].includes(operation) || !endpoint || !alias) throw new Error('Usage: mindos fs list|read|stat|status <endpoint> <alias> [relative-path]');
+    if (!['list', 'read', 'stat', 'status'].includes(operation) || !endpoint || !alias) throw new Error('Usage: nestos fs list|read|stat|status <endpoint> <alias> [relative-path]');
     const username = process.env.FS_SERVER_USER;
     const credentialEnv = options.credentialEnv ?? (username ? 'FS_SERVER_PASSWORD' : 'FS_SERVER_TOKEN');
     const token = process.env[credentialEnv];

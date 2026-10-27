@@ -2,10 +2,10 @@
 import type * as ToolContracts from '@itookit/tools/contracts';
 import type * as VfsContracts from '@itookit/vfs-core';
 import type { IFileSystem, FileSystemSourceOwner, OperationOptions } from '@itookit/vfs-core';
-import type * as HarnessContracts from '@itookit/mindos-node-driver';
-import type { HarnessObservation, HarnessStatusRow, HarnessProfile, HarnessConversationPort, HarnessConversationSnapshot } from '@itookit/mindos-node-driver';
+import type * as HarnessContracts from '@itookit/nestos-node-driver';
+import type { HarnessObservation, HarnessStatusRow, HarnessProfile, HarnessConversationPort, HarnessConversationSnapshot } from '@itookit/nestos-node-driver';
 import type { MCPServer } from '@itookit/tools/mcp-contracts';
-import type { HarnessClient } from '@itookit/mindos-node-driver/harness';
+import type { HarnessClient } from '@itookit/nestos-node-driver/harness';
 import type { ISessionRepository, SessionFolder, SessionSummary, ConversationManifest } from '@itookit/llm-session/contracts';
 import type * as FlowContracts from '@itookit/llm-flow/contracts';
 import type { SessionSubmission } from '@itookit/llm-flow/contracts';
@@ -159,7 +159,7 @@ export type ProjectFolder = SessionFolder & {
 };
 
 export interface ProjectRemoteMount extends RemoteFileConnection {
-    capabilities?: import('@itookit/mindos-node-driver').RemoteProjectCapabilities;
+    capabilities?: import('@itookit/nestos-node-driver').RemoteProjectCapabilities;
     serverProjectId?: string;
     serverProjectRevision?: number;
     serverId?: string;
@@ -172,7 +172,7 @@ export interface ProjectRemoteMount extends RemoteFileConnection {
 
 export interface RemoteFileConnection {
     anonymous?: boolean;
-    authorization?: import('@itookit/mindos-node-driver').RemoteAuthorization;
+    authorization?: import('@itookit/nestos-node-driver').RemoteAuthorization;
     endpoint: string;
     alias: string;
     credentialRef: string;
@@ -316,7 +316,7 @@ export interface ProjectRemoteMountService {
     removeMCPReferences(ids: readonly string[], expected: readonly MCPDeletionReference[], projectIds?: readonly string[]): Promise<void>;
     refreshMCPConnections(): Promise<void>;
     setMCPCredential(reference: string, password: string): void | (() => void);
-    discoverMCP(endpoint: string, username: string | undefined, credentialRef: string, options?: OperationOptions): Promise<HarnessContracts.MindOSNodeDescriptor>;
+    discoverMCP(endpoint: string, username: string | undefined, credentialRef: string, options?: OperationOptions): Promise<HarnessContracts.NestOSNodeDescriptor>;
     forgetProject(projectId: string): Promise<void>;
     findRemoteProject(connectionId: string, path: string): string | undefined | Promise<string | undefined>;
     bindProject(projectId: string, connectionId: string, path: string, access: 'ro' | 'rw', options?: OperationOptions & {
@@ -349,7 +349,7 @@ export type RemoteFileSystemInput = Pick<RemoteFileSystemConfig, 'name' | 'endpo
 
 export interface RemoteFileSystemConfig {
     anonymous?: boolean;
-    authorization?: import('@itookit/mindos-node-driver').RemoteAuthorization;
+    authorization?: import('@itookit/nestos-node-driver').RemoteAuthorization;
     id: string;
     name: string;
     endpoint: string;

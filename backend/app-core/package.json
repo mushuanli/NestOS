@@ -13,9 +13,9 @@
       "default": "./src/index.ts"
     },
     "./profile": {
-      "types": "./src/profile/mindos-profile.ts",
-      "import": "./src/profile/mindos-profile.ts",
-      "default": "./src/profile/mindos-profile.ts"
+      "types": "./src/profile/nestos-profile.ts",
+      "import": "./src/profile/nestos-profile.ts",
+      "default": "./src/profile/nestos-profile.ts"
     },
     "./host": {
       "types": "./src/host/index.ts",
@@ -44,7 +44,7 @@
     "@itookit/llm-tasks": "workspace:*",
     "@itookit/tools": "workspace:*",
     "@itookit/vfs-sync": "workspace:*",
-    "@itookit/mindos-node-driver": "workspace:*",
+    "@itookit/nestos-node-driver": "workspace:*",
     "@itookit/app-contracts": "workspace:*",
     "js-yaml": "^4.1.1"
   },

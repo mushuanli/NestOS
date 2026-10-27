@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
-import { createMindOSNodeDriver, type MindOSNodeDriver } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver, type NestOSNodeDriver } from '@itookit/nestos-node-driver';
 import { SessionCommand } from '@itookit/llm-session/contracts';
 import { FlowLibraryCommand } from '@itookit/app-contracts';
 import type { FlowDraft } from '@itookit/llm-flow/contracts';
@@ -12,18 +12,18 @@ import { harnessExecutionJournalKey } from '../src/projects/harness-execution';
 import { coordinatorConfiguration, fixtureHashes, nativeEvidence, realMetadata, reviewInstruction,
     saveReport, verifyReview, type RealMetadata } from './harness-real-model-fixture';
 
-const metadataPath = process.env.MINDOS_HARNESS_REAL_METADATA;
-const coordinatorPath = process.env.MINDOS_REAL_COORDINATOR_CONFIG;
+const metadataPath = process.env.NESTOS_HARNESS_REAL_METADATA;
+const coordinatorPath = process.env.NESTOS_REAL_COORDINATOR_CONFIG;
 const cases: Array<Record<string, unknown>> = [], observations: Array<Record<string, unknown>> = [], sessions: string[] = [];
 const kinds = ['sql', 'shell'] as const;
 const responded = new Set<string>();
-let runtime: Awaited<ReturnType<typeof createApplicationRuntime>>, driver: MindOSNodeDriver;
+let runtime: Awaited<ReturnType<typeof createApplicationRuntime>>, driver: NestOSNodeDriver;
 let metadata: RealMetadata, nonce: string, folder: string, initialized = false;
 
 beforeAll(async () => {
     if (!metadataPath) return;
     metadata = await realMetadata(metadataPath); nonce = (await readFile(join(metadata.projectDirectory, 'challenge.txt'), 'utf8')).trim();
-    driver = createMindOSNodeDriver(); runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli',
+    driver = createNestOSNodeDriver(); runtime = await createApplicationRuntime({ backend: new MemoryBackend(), ownerKind: 'cli',
         remoteSourceProvider: driver, digitalTwinAutoStart: false });
     const remote = runtime.projects.remoteMounts!;
     const nodeId = await remote.saveConnection({ name: 'Actual model validation', endpoint: metadata.endpoint }, await readFile(metadata.credentialFile, 'utf8'));

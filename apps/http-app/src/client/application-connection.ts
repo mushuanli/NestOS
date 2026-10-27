@@ -17,8 +17,8 @@ class ConnectionStatus {
         for (const listener of this.listeners) {
             try {listener(state);} catch {console.warn('[HTTP] Status observer failed');}
         }
-        const event = state === 'connected' ? new Event('mindos:http-reconnected') : state === 'view-error'
-            ? new Event('mindos:http-view-error') : new CustomEvent('mindos:http-disconnected', {detail: {state}});
+        const event = state === 'connected' ? new Event('nestos:http-reconnected') : state === 'view-error'
+            ? new Event('nestos:http-view-error') : new CustomEvent('nestos:http-disconnected', {detail: {state}});
         window.dispatchEvent(event);
     }
     close(): void {this.listeners.clear();}
@@ -30,12 +30,12 @@ export function connectApplication() {
     const client = new HttpViewClient(randomUUID(), '/api/application', globalThis.fetch.bind(globalThis),
         error => status.publish(error instanceof ViewExpiredError ? 'expired' : 'reconnecting'),
         () => status.publish('view-error'), () => status.publish('connected'));
-    for (const event of ['online', 'focus', 'mindos:http-retry']) window.addEventListener(event, () => client.retryConnection(), {signal: listeners.signal});
+    for (const event of ['online', 'focus', 'nestos:http-retry']) window.addEventListener(event, () => client.retryConnection(), {signal: listeners.signal});
     document.addEventListener('visibilitychange', () => {if (!document.hidden) client.retryConnection();}, {signal: listeners.signal});
     window.addEventListener('pageshow', () => client.retryConnection(), {signal: listeners.signal});
     const snapshots = new SnapshotCache({read: () => sessionStorage.getItem('mindos.snapshot-cache.v14'),
         write: value => sessionStorage.setItem('mindos.snapshot-cache.v14', value)});
-    const ready = client.start({initialView: route.request, snapshots}).then(root => {performance.mark('mindos:data-ready'); return root;});
+    const ready = client.start({initialView: route.request, snapshots}).then(root => {performance.mark('nestos:data-ready'); return root;});
     return {ready, editor: route.editor, subscribeStatus: (listener: (state: ConnectionState) => void) => status.subscribe(listener),
         close: async () => {listeners.abort(); status.close(); await client.close();}};
 }

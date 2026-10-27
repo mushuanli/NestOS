@@ -35,7 +35,7 @@ mod tests {
 
     fn directory() -> PathBuf {
         let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("mindos-atomic-{}-{stamp}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("nestos-atomic-{}-{stamp}", std::process::id()));
         std::fs::create_dir(&root).unwrap();
         root
     }

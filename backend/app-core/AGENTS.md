@@ -7,7 +7,7 @@
 ## 定位与铁律
 
 - **平台无关**：`src/` 内不出现 `node:*`、DOM、`window`、`localStorage`；宿主差异一律通过注入传入（`ApplicationKernelPlatform`：`createSessionProcesses` / `skillSourceForSession` / `configureSession` / `configure`）。
-- **依赖只朝下**：只依赖共享 `app-contracts`、`llm-context`、`common`、`vfs-core`、`durable-kernel`、`kernel-adapters`、`llm-flow`、`llm-session`、`llm-tasks`、`tools`、`driver-llm`、`vfs-sync`、`mindos-node-driver`（harness 类型端口及纯 authorization 校验入口）；不得依赖 `app-shell`、UI 包或任何 app。
+- **依赖只朝下**：只依赖共享 `app-contracts`、`llm-context`、`common`、`vfs-core`、`durable-kernel`、`kernel-adapters`、`llm-flow`、`llm-session`、`llm-tasks`、`tools`、`driver-llm`、`vfs-sync`、`nestos-node-driver`（harness 类型端口及纯 authorization 校验入口）；不得依赖 `app-shell`、UI 包或任何 app。
 - **用例与装配分开**：应用策略放入 configuration/projects/session 等可单测服务；`runtime/` 负责接线与生命周期，不内联业务用例。宿主差异通过端口注入，DOM、导航与确认交互归 app-shell。
 - Composite 作者配置由 `configuration/agent-composition.ts` 校验并生成受管 Flow：普通主持动态选择一批白名单成员，再由同一主持汇总；不新增执行器。`VFSAgentService.configureAgentPreparation` 是唯一保存预处理入口，受管 Flow 身份以先于发布持久化的所有权收据为准，不能信任调用方的旧绑定或节点形状。工具箱导出包含主持/成员闭包，导入先重映射普通 Agent 再重编译 Composite；回归见 `tests/agent-composition.test.ts`。
 - 受管发布以已发布正文核验幂等，同 Agent 的准备与保存串行；草稿相同不能证明发布成功。归档通过 llm-flow/contracts 的语义引用遍历重映射 Agent，禁止递归改写 Tool 参数中的同名字段。删除 Agent 或导入回滚保留已登记发布资源供历史和重试核对，见 `../../doc/design/flow-invocation-composition.md`。
@@ -22,7 +22,7 @@
 
 ```
 src/
-├── index.ts                     统一导出（历史别名 createMindOSRuntime/MindOSRuntime 已于 2026-09-11 移除）
+├── index.ts                     统一导出（历史别名 createNestOSRuntime/NestOSRuntime 已于 2026-09-11 移除）
 ├── runtime/
 │   ├── infrastructure.ts        VFS + LLM 设备驱动（/run 挂载、设备注册与冻结、固定用户布局预热）
 │   ├── create-kernel-runtime.ts 平台无关 Kernel 组合：Kernel + kernel-adapters + Durable programs
@@ -57,7 +57,7 @@ src/
 │   ├── session-lease.ts         Session 单写者租约（CAS + fencingToken，默认 TTL 60s）
 │   ├── sync-skills.ts           Skill catalog → Kernel 同步
 │   └── privileged-command-service.ts 受限 plan/exec 命令
-├── profile/mindos-profile.ts    数据根解析（mindos.json#rootDir）
+├── profile/nestos-profile.ts    数据根解析（nestos.json#rootDir）
 ├── run/
 │   ├── run-definition.ts        RunDefinition 契约 + FlowRevision 编译
 │   └── run-catalog.ts           Run 目录投影（flow-root 任务）
@@ -112,7 +112,7 @@ pnpm --filter @itookit/app-core typecheck
 | [接口契约](../../doc/interface-contracts.md) | 跨包接口与实现/消费关系 |
 | [VFS Session 挂载访问边界](../../doc/design/vfs-session-mount-access.md) | 命名空间、挂载与授权语义 |
 | [Session 浏览](../../doc/design/vfs-session-browser.md) | `session-browser` 的路由与投影契约 |
-| [MindOS profile](../../doc/mindos-profile.md) | 数据根与 Session 租约规则 |
+| [NestOS profile](../../doc/nestos-profile.md) | 数据根与 Session 租约规则 |
 
 - 项目收藏位于 `projects/favorites/`：contracts 定义存储/变更端口，policy 无 I/O，store 封装 SeqFile 事务，service 串行化同项目读写，lifecycle 适配 VFS 提交事件；UI 跳转展示策略留在 app-shell。
 
@@ -124,14 +124,14 @@ pnpm --filter @itookit/app-core typecheck
 - 作文业务预设统一位于 `src/presets/essay-review.json`，以声明数据保存提示词与参数；`presets/default-flows.ts` 只负责复制和播种。旧用户文件与发布版本保留，产品文案不得混入通用 Session 机制。
 - `contextEngineOptions` 与 `agentResolution` 由应用装配透传；Conversation 系统的清理使用返回实例的 dispose，不重置进程单例。
 
-- 产品 Flow 库包含 `src/presets/essay-review.json` 和 `src/presets/anki-generate.json`，公共 `createMindosFlowLibrary()` 返回副本；宿主共用安装、系统恢复和菜单机制。二合一 Anki Flow 只有此一份声明源，三个内联函数随主版本发布，不单独安装。`tools/anki-cli` 维护业务 Tool 实现，其集成验收读取应用声明源，不保留 Flow 副本；产品提示词不进入 llm-ui 包。已有用户文件、发布版本及手动分组保留，通用核心不按业务 ID 分支。
+- 产品 Flow 库包含 `src/presets/essay-review.json` 和 `src/presets/anki-generate.json`，公共 `createNestosFlowLibrary()` 返回副本；宿主共用安装、系统恢复和菜单机制。二合一 Anki Flow 只有此一份声明源，三个内联函数随主版本发布，不单独安装。`tools/anki-cli` 维护业务 Tool 实现，其集成验收读取应用声明源，不保留 Flow 副本；产品提示词不进入 llm-ui 包。已有用户文件、发布版本及手动分组保留，通用核心不按业务 ID 分支。
 - `presets/flow-library.ts` 保留 Flow 默认逻辑分组入口（当前为空），host 可向 ToolboxResources 显式注入通用分组；配置机制不按业务 Flow ID 分支。用户抽屉归属优先于产品默认，导出/导入先准备分组目录，归档保存实际分组名；分组不移动文件或改变调用身份。
 - 外部 Flow 可用通用 `functions` 数组携带内联函数；显式恢复、发布、导入与归档只创建主 Flow 资源，不把内联函数加入全局库。工具箱递归收集及重映射内联函数的提示词依赖，保持局部函数 ID 和调用引用不变；回归见 inline-flow-library。
 - Agent 可通过通用 `execution.kind=flow` 引用任意内部 Flow；app-core 注入资源存在、发布版本及语法观察，`availability` 只作投影，不写回 Agent 文件。Flow 删除后禁用新调用，恢复或重新发布后重检；运行准入与已接纳快照由 Session 层负责。Agent 归档携带发布 Flow 及跨文件依赖，导入先发布依赖再创建 Agent 并重映射全局身份，内联函数 ID 保留。
 
-MindOS 默认工具列表属于 `src/presets/harness-tools.ts`，通过 app-core 公共出口供 app-shell 装配聊天与 Agent 设置 UI；禁止从公共配置契约读取产品默认授权。
+NestOS 默认工具列表属于 `src/presets/harness-tools.ts`，通过 app-core 公共出口供 app-shell 装配聊天与 Agent 设置 UI；禁止从公共配置契约读取产品默认授权。
 
-MindOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createMindosDirectAgentPolicy 返回副本；ApplicationRuntimeOptions.directAgentPolicy 可替换整个策略（包括空对象），会话装配显式注入，不在 Session 机制中保留产品指令。
+NestOS Agent 默认执行策略位于 `src/presets/direct-agent.json`，createNestosDirectAgentPolicy 返回副本；ApplicationRuntimeOptions.directAgentPolicy 可替换整个策略（包括空对象），会话装配显式注入，不在 Session 机制中保留产品指令。
 
 - `projects/sync` 封装项目同步策略与绑定生命周期，`ApplicationRuntimeOptions.sync` 注入宿主 provider/coordinator 后开放 `runtime.projectSync`；默认不创建连接。文件机制归 `vfs-sync`，具体 HTTP 与 IndexedDB 不进入本包。
 
@@ -184,7 +184,7 @@ Flow 库恢复的发布策略位于 presets/restore-flows.ts：app.flow-library.
 
 - `configuration/flow-installation.ts` 与 `flow-tool-packages.ts` 是 Flow 安装/导入/恢复共用的依赖准备边界：按已保存声明检查 schema、参数默认值、条件连接及工具版本，返回 ready/needsConfiguration/missingTools/failed 明细，不覆盖已有草稿/修订或写入猜测配置。`ApplicationRuntimeOptions.toolDependencies` 注入可信宿主目录的 ensure/list；Flow 只携带工具 ID/版本，不提供模块路径或安装命令。默认播种也检查依赖；工具箱 importWithReport 与系统恢复逐项返回报告，prepareDependencies 只重试。
 
-工作区工具的默认文件发现由 vfs/tool-context 排除应用拥有的 `.mindos` 目录，避免会话历史递归进入搜索结果；`includeIgnored` 与授权范围内的显式读取仍可使用。此产品策略不写入独立 VFS 或工具库的通用默认过滤器。
+工作区工具的默认文件发现由 vfs/tool-context 排除应用拥有的 `.nestos` 目录，避免会话历史递归进入搜索结果；`includeIgnored` 与授权范围内的显式读取仍可使用。此产品策略不写入独立 VFS 或工具库的通用默认过滤器。
 
 - 原生 ConversationView 的入队、队列编辑、草稿保存、读取、回应、取消与控制核对不等待原发送 tail；队首派发悬挂时继续观察原生事件，由既有 RPC 失效通知更新动作。ConversationRegistry 在控制 unknown 或 accepted 未确认终态时保留后台观察。RemoteConversationStore 串行写入，事务回执丢失后核对原写前/写后值恢复己方 CAS 游标；真实并发冲突固定拒绝旧实例写入，不因 load 解除。旧 @new 清理须保留后续草稿、队列、回应及未完成控制；控制事实不伪造成消息历史。
 

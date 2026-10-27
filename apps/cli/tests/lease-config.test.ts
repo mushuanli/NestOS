@@ -6,11 +6,11 @@ afterEach(() => vi.unstubAllEnvs());
 
 it('preserves missing, zero and distinct explicit allowances', () => {
     expect(leaseSkewConfig({})).toEqual({ sessionSkewMs: undefined, schedulerSkewMs: undefined });
-    expect(leaseSkewConfig({ MINDOS_SESSION_LEASE_SKEW_MS: '0', MINDOS_SCHEDULER_LEASE_SKEW_MS: '5000' }))
+    expect(leaseSkewConfig({ NESTOS_SESSION_LEASE_SKEW_MS: '0', NESTOS_SCHEDULER_LEASE_SKEW_MS: '5000' }))
         .toEqual({ sessionSkewMs: 0, schedulerSkewMs: 5000 });
 });
 
-it.each(['MINDOS_SESSION_LEASE_SKEW_MS', 'MINDOS_SCHEDULER_LEASE_SKEW_MS'])('validates %s before opening runtime resources', async key => {
+it.each(['NESTOS_SESSION_LEASE_SKEW_MS', 'NESTOS_SCHEDULER_LEASE_SKEW_MS'])('validates %s before opening runtime resources', async key => {
     for (const value of ['', ' ', 'NaN', 'Infinity', '-1', '0.5', '9007199254740992', 'invalid']) {
         expect(() => leaseSkewConfig({ [key]: value })).toThrow(key);
         vi.stubEnv(key, value);

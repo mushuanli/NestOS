@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { createVFS, MemoryBackend, type IVFSManager } from '@itookit/vfs-core';
-import type { ProjectClient, RemoteProject } from '@itookit/mindos-node-driver';
+import type { ProjectClient, RemoteProject } from '@itookit/nestos-node-driver';
 import { ProjectRemoteMountService, type ProjectRemoteMount } from '../src/projects/remote-mounts';
 
 let manager: IVFSManager;

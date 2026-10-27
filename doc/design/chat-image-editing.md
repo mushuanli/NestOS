@@ -49,7 +49,7 @@
 
 宿主注入 `IFileSystem` 的授权视图及固定目标，适配器经其公开读取接口处理二进制内容。读取前后核对资源身份/版本，不能把路径或整个文件系统的 revision 当作内容身份；底层缺少可靠版本时，使用宿主提供的不可变附件引用。传入信号不支持真正取消时，仍拒绝迟到结果。权限、存储错误不能转换成文件不存在。
 
-`llm-ui` 不直接依赖 image-parser 或 vfs-core，包括类型导入；继续保持唯一直接运行时依赖 mdxeditor。MindOS 的 llm-ui-adapter 装配图片库，独立 llm-ui 消费注入的图片编辑端口。独立图片库也可供普通文件预览、表单或其他应用复用。
+`llm-ui` 不直接依赖 image-parser 或 vfs-core，包括类型导入；继续保持唯一直接运行时依赖 mdxeditor。NestOS 的 llm-ui-adapter 装配图片库，独立 llm-ui 消费注入的图片编辑端口。独立图片库也可供普通文件预览、表单或其他应用复用。
 
 ```mermaid
 C4Component
@@ -383,7 +383,7 @@ C4Component
     }
     Container_Boundary(host, "应用宿主") {
         Component(store, "ConversationComposerStore", "app-core", "不透明草稿 CAS、资源权限与保存回执")
-        Component(native, "HarnessConversation", "mindos-node-driver", "稳定请求 ID、持久接纳事实和核对")
+        Component(native, "HarnessConversation", "nestos-node-driver", "稳定请求 ID、持久接纳事实和核对")
     }
     Rel(view, images, "附件或策略变更；渲染不调度")
     Rel(images, processor, "从原图处理；完成后核对策略")

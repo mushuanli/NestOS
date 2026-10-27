@@ -84,7 +84,7 @@ async function main(argv: string[]): Promise<number> {
 }
 
 export function parseArgs(argv: string[]): ParsedArgs {
-    // 支持 `mindos -p "x"`：参数首位是选项（-p）时无显式 command。
+    // 支持 `nestos -p "x"`：参数首位是选项（-p）时无显式 command。
     const isOptionFirst = !argv[0] || argv[0].startsWith('-');
     const command = isOptionFirst ? undefined : argv[0];
     const rest = isOptionFirst ? argv : argv.slice(1);
@@ -154,52 +154,52 @@ function required(value: string | undefined, label: string): string {
 }
 
 function help(): string {
-    return `MindOS CLI\n\n` +
-        `  mindos project list|create [name] [--profile data-root] [--json]\n` +
-        `  mindos session list | create <project-id> <title> | show <session-id>\n` +
-        `  mindos session send|branches|branch|delete-branch <session-id> [text/name] [--agent id] [--branch name]\n` +
-        `  mindos flow-run show|cancel|reattach <session-id> <root-task-id>\n` +
-        `  mindos flow-run pause|resume|withdraw-pause <session-id> <root-task-id> <request-id> <observed-epoch>\n` +
-        `  mindos flow-run receipt <session-id> <root-task-id> <request-id>\n` +
-        `  mindos session targets\n` +
-        `  mindos session call-prepare <session-id> [text] --agent id | --flow id --call-title title --submission-file call.json [--transfer reference.json]\n` +
-        `  mindos session call-submit <session-id> <call.json> [--follow]\n` +
-        `  mindos session call-receipt <session-id> <call.json>\n` +
-        `  mindos session contexts <session-id> [binding-id] [--cursor json] [--branch name]\n` +
-        `  mindos session prepare|send <session-id> [text] --agent id [--context selection.json] [--submission-file call.json]\n` +
-        `  mindos session send <session-id> [text] --agent <id> | --flow <id> [--params file]\n` +
-        `  mindos session prepare <session-id> [text] --flow <id> --submission-file file\n` +
-        `  mindos session submit|receipt <session-id> <submission.json>\n` +
-        `  mindos conversation profiles <project-id> | list <project-id> <profile-id> [cursor]\n` +
-        `  mindos conversation create <project-id> <profile-id> <workspace-id>\n` +
-        `  mindos conversation query <project-id> <profile-id> <session-id> <command> [query-id]\n` +
-        `  mindos conversation reconcile-query <project-id> <profile-id> <session-id> <query-id>\n` +
-        `  mindos conversation show|send|branches|fork|reconcile|interrupt <project-id> <profile-id> <session-id> [text/name]\n` +
-        `  mindos connection list | mcp list | task show|events|cancel <session-id> <task-id>\n` +
+    return `NestOS CLI\n\n` +
+        `  nestos project list|create [name] [--profile data-root] [--json]\n` +
+        `  nestos session list | create <project-id> <title> | show <session-id>\n` +
+        `  nestos session send|branches|branch|delete-branch <session-id> [text/name] [--agent id] [--branch name]\n` +
+        `  nestos flow-run show|cancel|reattach <session-id> <root-task-id>\n` +
+        `  nestos flow-run pause|resume|withdraw-pause <session-id> <root-task-id> <request-id> <observed-epoch>\n` +
+        `  nestos flow-run receipt <session-id> <root-task-id> <request-id>\n` +
+        `  nestos session targets\n` +
+        `  nestos session call-prepare <session-id> [text] --agent id | --flow id --call-title title --submission-file call.json [--transfer reference.json]\n` +
+        `  nestos session call-submit <session-id> <call.json> [--follow]\n` +
+        `  nestos session call-receipt <session-id> <call.json>\n` +
+        `  nestos session contexts <session-id> [binding-id] [--cursor json] [--branch name]\n` +
+        `  nestos session prepare|send <session-id> [text] --agent id [--context selection.json] [--submission-file call.json]\n` +
+        `  nestos session send <session-id> [text] --agent <id> | --flow <id> [--params file]\n` +
+        `  nestos session prepare <session-id> [text] --flow <id> --submission-file file\n` +
+        `  nestos session submit|receipt <session-id> <submission.json>\n` +
+        `  nestos conversation profiles <project-id> | list <project-id> <profile-id> [cursor]\n` +
+        `  nestos conversation create <project-id> <profile-id> <workspace-id>\n` +
+        `  nestos conversation query <project-id> <profile-id> <session-id> <command> [query-id]\n` +
+        `  nestos conversation reconcile-query <project-id> <profile-id> <session-id> <query-id>\n` +
+        `  nestos conversation show|send|branches|fork|reconcile|interrupt <project-id> <profile-id> <session-id> [text/name]\n` +
+        `  nestos connection list | mcp list | task show|events|cancel <session-id> <task-id>\n` +
         `  --connect https://host:2000 --client-cert file --client-key file --ca-cert file\n` +
-        `  mindos validate [-f mindos.yml] [--offline]\n` +
-        `  mindos run [-f mindos.yml] [--headless] [--json] [--sandbox native|oci]\n` +
-        `  mindos -p "your prompt" [--model provider/model] [--api-key-env ENV] [--base-url URL] [--protocol openai-chat|openai-responses] [--no-tools]\n` +
-        `  mindos graph [-f mindos.yml] [--offline]\n` +
-        `  mindos runs [--state-dir .mindos]\n` +
-        `  mindos status <run-id> [--state-dir .mindos] [--json]\n` +
-        `  mindos logs <run-id> [--state-dir .mindos] [--follow]\n` +
-        `  mindos resume <run-id> [--state-dir .mindos] [--headless] [--json] [--retry-indeterminate]\n` +
-        `  mindos respond <run-id> <request-id> (--approve | --deny | --value <json>) [--state-dir .mindos]\n` +
-        `  mindos cancel <run-id> [--state-dir .mindos]\n` +
-        `  mindos delete <run-id> [--state-dir .mindos]\n` +
-        `  mindos tasks <run-id> [--state-dir .mindos] [--json]\n` +
-        `  mindos rerun <run-id> [--state-dir .mindos] [--headless] [--json]\n` +
-        `  mindos export-config <run-id> [--state-dir .mindos]\n` +
-        `  mindos export <run-id> [--state-dir .mindos] [--out file.json] [--max-bytes N]\n` +
-        `  mindos fs list|read|stat|status <endpoint> <alias> [relative-path] [--credential-env ENV] [--out file]\n` +
-        `  mindos sandbox doctor\n\n` +
-        `  mindos twin list|preview-source|add-source|add-memory|analyze|cancel|review|forget|forget-subject|forget-project|suppress|settings|link-execution|revoke-source|enable-source|remove-source [id] [revision] [decision] [--profile root] [--value JSON]\n` +
-        `  mindos twin scan-plans|scan-runs|plan-create|plan-update|plan-pause|plan-enable|plan-delete|plan-run|scan-cancel|scan-tick|watch [id] [revision] [--profile root] [--value JSON]\n` +
-        `  mindos memory list|create|inspect|grant|revoke|delete|audit [id] [incarnation] [session] [--profile root] [--value JSON]\n\n` +
+        `  nestos validate [-f nestos.yml] [--offline]\n` +
+        `  nestos run [-f nestos.yml] [--headless] [--json] [--sandbox native|oci]\n` +
+        `  nestos -p "your prompt" [--model provider/model] [--api-key-env ENV] [--base-url URL] [--protocol openai-chat|openai-responses] [--no-tools]\n` +
+        `  nestos graph [-f nestos.yml] [--offline]\n` +
+        `  nestos runs [--state-dir .nestos]\n` +
+        `  nestos status <run-id> [--state-dir .nestos] [--json]\n` +
+        `  nestos logs <run-id> [--state-dir .nestos] [--follow]\n` +
+        `  nestos resume <run-id> [--state-dir .nestos] [--headless] [--json] [--retry-indeterminate]\n` +
+        `  nestos respond <run-id> <request-id> (--approve | --deny | --value <json>) [--state-dir .nestos]\n` +
+        `  nestos cancel <run-id> [--state-dir .nestos]\n` +
+        `  nestos delete <run-id> [--state-dir .nestos]\n` +
+        `  nestos tasks <run-id> [--state-dir .nestos] [--json]\n` +
+        `  nestos rerun <run-id> [--state-dir .nestos] [--headless] [--json]\n` +
+        `  nestos export-config <run-id> [--state-dir .nestos]\n` +
+        `  nestos export <run-id> [--state-dir .nestos] [--out file.json] [--max-bytes N]\n` +
+        `  nestos fs list|read|stat|status <endpoint> <alias> [relative-path] [--credential-env ENV] [--out file]\n` +
+        `  nestos sandbox doctor\n\n` +
+        `  nestos twin list|preview-source|add-source|add-memory|analyze|cancel|review|forget|forget-subject|forget-project|suppress|settings|link-execution|revoke-source|enable-source|remove-source [id] [revision] [decision] [--profile root] [--value JSON]\n` +
+        `  nestos twin scan-plans|scan-runs|plan-create|plan-update|plan-pause|plan-enable|plan-delete|plan-run|scan-cancel|scan-tick|watch [id] [revision] [--profile root] [--value JSON]\n` +
+        `  nestos memory list|create|inspect|grant|revoke|delete|audit [id] [incarnation] [session] [--profile root] [--value JSON]\n\n` +
         `选项：\n` +
-        `  --profile <name>    desktop（默认，共享 ~/.config/mindos）或显式数据根路径\n` +
-        `  -d, --http <addr>   启动 HTTP 版 MindOS UI（[ip:]port，默认 127.0.0.1）\n` +
+        `  --profile <name>    desktop（默认，共享 ~/.config/nestos）或显式数据根路径\n` +
+        `  -d, --http <addr>   启动 HTTP 版 NestOS UI（[ip:]port，默认 127.0.0.1）\n` +
         `  --connect <url>     应用命令连接 HTTPS httpd；默认直接启动本地运行时，不监听端口\n` +
         `  --follow            应用 session send 等待执行结果并输出事件 JSONL\n` +
         `  --state-dir <dir>   运行状态目录；默认 <dataRoot>/var/lib/cli-runs\n` +

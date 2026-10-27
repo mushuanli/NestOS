@@ -1,6 +1,6 @@
 import {initApp, installMobileNavigation, type AppHandle, type AppRecoveryState} from '@itookit/app-shell';
-import {WORKSPACES, ROUTE_ALIASES} from 'mind-os/workspaces';
-import {createBrowserUI} from 'mind-os/ui';
+import {WORKSPACES, ROUTE_ALIASES} from 'nestos-web/workspaces';
+import {createBrowserUI} from 'nestos-web/ui';
 import {installHttpStatus} from './status-banner';
 import {connectApplication, type ApplicationConnection} from './application-connection';
 import {stylesReady} from './styles-ready';
@@ -8,7 +8,7 @@ import {ViewRecovery} from './view-recovery';
 
 export async function startApplicationClient(onProgress: (message: string) => void, onShellReady?: () => void,
     connection: ApplicationConnection = connectApplication()): Promise<AppHandle> {
-    if (!performance.getEntriesByName('mindos:entry').length) performance.mark('mindos:entry');
+    if (!performance.getEntriesByName('nestos:entry').length) performance.mark('nestos:entry');
     installMobileNavigation();
     let activeConnection = connection, releaseStatus = () => {};
     const open = async (recovery?: AppRecoveryState) => mount(activeConnection, onProgress, onShellReady, recovery);
@@ -43,8 +43,8 @@ async function mount(connection: ApplicationConnection, onProgress: (message: st
 }
 
 function markEditorReady(): void {
-    performance.mark('mindos:editor-ready');
-    performance.measure('mindos:entry-to-editor', 'mindos:entry', 'mindos:editor-ready');
-    if (performance.getEntriesByName('mindos:document').length)
-        performance.measure('mindos:document-to-editor', 'mindos:document', 'mindos:editor-ready');
+    performance.mark('nestos:editor-ready');
+    performance.measure('nestos:entry-to-editor', 'nestos:entry', 'nestos:editor-ready');
+    if (performance.getEntriesByName('nestos:document').length)
+        performance.measure('nestos:document-to-editor', 'nestos:document', 'nestos:editor-ready');
 }

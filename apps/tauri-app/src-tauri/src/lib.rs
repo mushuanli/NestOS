@@ -19,23 +19,21 @@ pub mod diagnostics;
 
 // ── Settings ──────────────────────────────────────────────────────────────────
 
-/// Canonical config file name, mirroring MINDOS_CONFIG_FILE in @itookit/app-core.
-const MINDOS_CONFIG_FILE: &str = profile_config::FILE_NAME;
 
-struct MindosSettings {
-    /// Raw value from mindos.json#rootDir — may be relative or absolute.
+struct NestosSettings {
+    /// Raw value from nestos.json#rootDir — may be relative or absolute.
     root_dir: Option<PathBuf>,
     home_dir: Option<PathBuf>,
 }
 
-fn read_settings(config_dir: &PathBuf) -> MindosSettings {
-    let Ok(raw) = std::fs::read_to_string(config_dir.join(MINDOS_CONFIG_FILE)) else {
-        return MindosSettings { root_dir: None, home_dir: None };
+fn read_settings(config_dir: &PathBuf) -> NestosSettings {
+    let Ok(raw) = std::fs::read_to_string(profile_config::settings_file(config_dir)) else {
+        return NestosSettings { root_dir: None, home_dir: None };
     };
     let Ok(v) = serde_json::from_str::<serde_json::Value>(&raw) else {
-        return MindosSettings { root_dir: None, home_dir: None };
+        return NestosSettings { root_dir: None, home_dir: None };
     };
-    MindosSettings {
+    NestosSettings {
         root_dir: v["rootDir"].as_str().filter(|s| !s.is_empty()).map(PathBuf::from),
         home_dir: v["homeDir"].as_str().filter(|s| !s.is_empty()).map(PathBuf::from),
     }
@@ -45,12 +43,12 @@ fn read_settings(config_dir: &PathBuf) -> MindosSettings {
 
 #[derive(Clone)]
 pub(crate) struct AppPaths {
-    /// Config dir: $XDG_CONFIG_HOME/mindos or ~/.config/mindos. mindos.json lives here.
-    /// Deliberately separate from the data root — ~/.mindos may hold unrelated
+    /// Config dir: $XDG_CONFIG_HOME/nestos or ~/.config/nestos. nestos.json lives here.
+    /// Deliberately separate from the data root — ~/.nestos may hold unrelated
     /// data, so it is never used as a default location.
     config_dir: PathBuf,
     /// Resolved data root. All VFS modules live here (module/, _db/, _meta/).
-    /// From MINDOS_ROOT env, mindos.json#rootDir, or <config_dir>/data.
+    /// From NESTOS_ROOT env, nestos.json#rootDir, or <config_dir>/data.
     root_dir: PathBuf,
     home_dir: PathBuf,
     /// Which input produced `root_dir`, surfaced at startup and in diagnostics.
@@ -70,8 +68,8 @@ pub(crate) enum RootSource {
 impl RootSource {
     fn label(self) -> &'static str {
         match self {
-            RootSource::Env => "MINDOS_ROOT env",
-            RootSource::Settings => "mindos.json#rootDir",
+            RootSource::Env => "NESTOS_ROOT env",
+            RootSource::Settings => "nestos.json#rootDir",
             RootSource::Default => "<config_dir>/data (default)",
         }
     }
@@ -90,7 +88,7 @@ impl HomeSource {
     fn label(self) -> &'static str {
         match self {
             HomeSource::CliArg => "--home arg",
-            HomeSource::Settings => "mindos.json#homeDir",
+            HomeSource::Settings => "nestos.json#homeDir",
             HomeSource::InitCwd => "INIT_CWD (launch dir)",
             HomeSource::ProcessCwd => "process cwd (fallback)",
         }
@@ -110,8 +108,8 @@ struct CodexProcess {
 struct CodexAppServer(Mutex<Option<CodexProcess>>);
 
 fn resolve_all_paths(system_home: &PathBuf) -> std::io::Result<AppPaths> {
-    // Config lives at $XDG_CONFIG_HOME/mindos/mindos.json (default ~/.config/mindos),
-    // never inside the data root. This keeps unrelated ~/.mindos data untouched.
+    // Config lives at $XDG_CONFIG_HOME/nestos/nestos.json (default ~/.config/nestos),
+    // never inside the data root. This keeps unrelated ~/.nestos data untouched.
     let xdg = std::env::var("XDG_CONFIG_HOME")
         .ok()
         .filter(|s| !s.is_empty())
@@ -119,13 +117,13 @@ fn resolve_all_paths(system_home: &PathBuf) -> std::io::Result<AppPaths> {
     let config_dir = profile_config::config_dir(system_home, xdg);
     profile_config::ensure_settings(&config_dir)?;
 
-    let MindosSettings { root_dir: settings_root, home_dir: settings_home } = read_settings(&config_dir);
+    let NestosSettings { root_dir: settings_root, home_dir: settings_home } = read_settings(&config_dir);
 
     // Data root resolution order:
-    //   MINDOS_ROOT env      → explicit override, used as-is
-    //   mindos.json#rootDir → primary source; relative resolved against config_dir
-    //   default              → <config_dir>/data (never ~/.mindos)
-    let env_root = std::env::var("MINDOS_ROOT").ok().filter(|s| !s.is_empty());
+    //   NESTOS_ROOT env      → explicit override, used as-is
+    //   nestos.json#rootDir → primary source; relative resolved against config_dir
+    //   default              → <config_dir>/data (never ~/.nestos)
+    let env_root = std::env::var("NESTOS_ROOT").or_else(|_| std::env::var("MINDOS_ROOT")).ok().filter(|s| !s.is_empty());
     let (root_dir, root_source) = match (env_root, settings_root) {
         (Some(raw), _) => (PathBuf::from(raw), RootSource::Env),
         (None, Some(rd)) => (
@@ -142,7 +140,7 @@ fn resolve_all_paths(system_home: &PathBuf) -> std::io::Result<AppPaths> {
 
 /// Resolve the host workspace directory (mounted at `/workspace`).
 ///
-/// `--home` wins, then mindos.json#homeDir, then `INIT_CWD` — the directory the
+/// `--home` wins, then nestos.json#homeDir, then `INIT_CWD` — the directory the
 /// user launched from, which npm/pnpm export because `tauri dev` runs the app
 /// with `src-tauri/` as its process cwd — and only then the process cwd.
 fn resolve_home_dir(settings_home: Option<PathBuf>) -> (PathBuf, HomeSource) {
@@ -171,10 +169,10 @@ fn init_cwd() -> Option<PathBuf> {
 /// Report the resolved paths on the launching terminal, so the active data root
 /// and where it came from are visible without opening the webview console.
 fn log_resolved_paths(paths: &AppPaths) {
-    let config_file = paths.config_dir.join(MINDOS_CONFIG_FILE);
-    println!("[MindOS] config file : {}", config_file.display());
-    println!("[MindOS] data root   : {}  ({})", paths.root_dir.display(), paths.root_source.label());
-    println!("[MindOS] workspace   : {}  ({})", paths.home_dir.display(), paths.home_source.label());
+    let config_file = profile_config::settings_file(&paths.config_dir);
+    println!("[NestOS] config file : {}", config_file.display());
+    println!("[NestOS] data root   : {}  ({})", paths.root_dir.display(), paths.root_source.label());
+    println!("[NestOS] workspace   : {}  ({})", paths.home_dir.display(), paths.home_source.label());
     diagnostics::record("paths.resolved", serde_json::json!({
         "configFile": config_file.to_string_lossy(),
         "dataRoot": paths.root_dir.to_string_lossy(),
@@ -229,15 +227,15 @@ fn get_home_dir(paths: State<AppPaths>) -> String {
 }
 
 /// Resolved VFS root directory (base for all module data).
-/// From MINDOS_ROOT env, mindos.json#rootDir, or <config_dir>/data.
+/// From NESTOS_ROOT env, nestos.json#rootDir, or <config_dir>/data.
 /// Relative rootDir values are resolved against the config dir
-/// (~/.config/mindos), keeping the data root portable.
+/// (~/.config/nestos), keeping the data root portable.
 #[tauri::command]
 fn get_root_dir(paths: State<AppPaths>) -> String {
     paths.root_dir.to_string_lossy().into_owned()
 }
 
-/// Where the resolved root and workspace came from, e.g. `mindos.json#rootDir`.
+/// Where the resolved root and workspace came from, e.g. `nestos.json#rootDir`.
 #[derive(serde::Serialize)]
 struct PathSources {
     root: String,

@@ -1,6 +1,6 @@
 import { expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
-import { createMindOSNodeDriver, type RemoteProject } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver, type RemoteProject } from '@itookit/nestos-node-driver';
 import type { ProjectService } from '@itookit/app-contracts/services';
 import { createApplicationRuntime } from '../src/runtime/create-application-runtime';
 import { ProjectSearch } from '../src/projects/project-search';
@@ -23,7 +23,7 @@ async function fixture() {
         if (message.method === 'tools/call') calls.push({name: message.params.name, arguments: message.params.arguments});
         return response(message.id, message.method, message.params, project);
     });
-    const driver = createMindOSNodeDriver(() => 'token', fetch), remote = new ProjectRemoteMountService(fs, driver);
+    const driver = createNestOSNodeDriver(() => 'token', fetch), remote = new ProjectRemoteMountService(fs, driver);
     await remote.init();
     const search = new ProjectSearch({forFolder: async () => ({path: '/P', project: {id: 'project'}}), remoteMounts: remote} as unknown as ProjectService);
     return {search, remote, project, calls, fetch, async dispose() {await remote.dispose(); await runtime.dispose();}};

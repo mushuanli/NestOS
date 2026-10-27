@@ -9,7 +9,7 @@ const snapshotIdentity = packages => createHash('sha256').update(JSON.stringify(
     ({ name, version, file, sha256, ...(sourceHash && { sourceHash }), ...(buildHash && { buildHash }),
         ...(libraryDependencies && { libraryDependencies }) })).sort((a, b) => a.name.localeCompare(b.name)))).digest('hex');
 
-function readSelection(root, choice = process.env.MINDOS_LIBRARY_SNAPSHOT) {
+function readSelection(root, choice = process.env.NESTOS_LIBRARY_SNAPSHOT ?? process.env.MINDOS_LIBRARY_SNAPSHOT) {
     if (choice === 'source') return null;
     if (!choice && !fs.existsSync(activeFile(root))) return null;
     if (!choice) {

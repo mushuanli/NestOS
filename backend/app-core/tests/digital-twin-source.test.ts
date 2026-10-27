@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { createVFS, MemoryBackend } from '@itookit/vfs-core';
 import { SessionRepository, RoundLog, type Round } from '@itookit/llm-session';
-import { MindosTwinSourceReader } from '../src/digital-twin/source-reader';
+import { NestosTwinSourceReader } from '../src/digital-twin/source-reader';
 
 const cleanup: Array<() => Promise<void>> = [];
 afterEach(async () => { for (const close of cleanup.splice(0).reverse()) await close(); });
@@ -9,7 +9,7 @@ async function setup() {
     const { manager } = await createVFS({ rootBackend: new MemoryBackend() }); cleanup.push(() => manager.dispose());
     const fs = await manager.openFileSystem('/'), repository = new SessionRepository(fs);
     await repository.init(); cleanup.push(() => repository.dispose());
-    return { fs, repository, reader: new MindosTwinSourceReader(fs, repository) };
+    return { fs, repository, reader: new NestosTwinSourceReader(fs, repository) };
 }
 it('reads only authorized ordinary VFS documents and rejects private paths, protected ancestors and oversized sources', async () => {
     const { fs, reader } = await setup();

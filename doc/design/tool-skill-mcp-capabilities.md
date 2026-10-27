@@ -32,7 +32,7 @@ flowchart LR
     Shell --> Workbench
 ```
 
-使用官方 `@modelcontextprotocol/client` / `@modelcontextprotocol/core` **2.0.0**，Node 最低版本为 20。通用 MCP 客户端采用 `Client.versionNegotiation.mode: 'auto'` 和 SDK 支持的协议版本：优先 `server/discover`，遇到旧协议或未知方法时由 SDK 使用 `initialize` 协商。认证失败及服务器故障不会触发协议降级。`MCPDiscovery.protocolVersion` 返回实际协商版本；`MCP_PROTOCOL_VERSION` 是现代协议版本常量。mindos-node-driver 的专用 harness 网关仍要求服务声明的 2026-07-28 契约。
+使用官方 `@modelcontextprotocol/client` / `@modelcontextprotocol/core` **2.0.0**，Node 最低版本为 20。通用 MCP 客户端采用 `Client.versionNegotiation.mode: 'auto'` 和 SDK 支持的协议版本：优先 `server/discover`，遇到旧协议或未知方法时由 SDK 使用 `initialize` 协商。认证失败及服务器故障不会触发协议降级。`MCPDiscovery.protocolVersion` 返回实际协商版本；`MCP_PROTOCOL_VERSION` 是现代协议版本常量。nestos-node-driver 的专用 harness 网关仍要求服务声明的 2026-07-28 契约。
 
 只保留 stdio 和 Streamable HTTP（JSON-RPC over HTTP，可返回 JSON 或 SSE）。移除旧 HTTP+SSE 和 WebSocket 配置入口；已有旧传输配置显示“不支持”，连接或保存时明确拒绝，需要选择支持的传输。SDK 按协商版本生成请求头、客户端元数据并验证响应；现代协议不建立 MCP 协议级 Session，旧协议的初始化及 Session 生命周期由 SDK 管理。
 
@@ -54,13 +54,13 @@ stdio 服务器是用户配置的外部进程，使用该服务器的启动目�
 
 ## MCP 配置扩展
 
-`MCPConnectionOptions.extensions` 注册 `MCPConfigurationExtension`。管理器完成标准发现后，以本地 `matches` 筛选扩展；扩展只消费 `MCPDiscovery.metadata` 或经同一连接调用已声明的工具。普通 MCP 不发 mindos-node 能力探测。服务名称只用于展示，不参与类型识别。
+`MCPConnectionOptions.extensions` 注册 `MCPConfigurationExtension`。管理器完成标准发现后，以本地 `matches` 筛选扩展；扩展只消费 `MCPDiscovery.metadata` 或经同一连接调用已声明的工具。普通 MCP 不发 nestos-node 能力探测。服务名称只用于展示，不参与类型识别。
 
-mindos-node 在 `server/discover._meta['itookit/mindos-node']`（兼容旧 `itookit/pi-agent`） 中声明安装身份、同源文件端点和项目/harness 能力；应用扩展验证描述后生成 `MCPDiscovery.extensions`。旧服务只有声明 `piagent_capabilities` 或 `fsagent_capabilities` 时才调用对应工具。元数据无效时失败，不回退以绕过验证。这里的描述是应用扩展，不是 MCP 标准的项目或 harness 接口。
+nestos-node 在 `server/discover._meta['itookit/nestos-node']`（兼容旧 `itookit/pi-agent`） 中声明安装身份、同源文件端点和项目/harness 能力；应用扩展验证描述后生成 `MCPDiscovery.extensions`。旧服务只有声明 `piagent_capabilities` 或 `fsagent_capabilities` 时才调用对应工具。元数据无效时失败，不回退以绕过验证。这里的描述是应用扩展，不是 MCP 标准的项目或 harness 接口。
 
 验证结果按配置 ID 和连接身份保留在管理器内存中。测试成功后的保存及显示名修改复用结果；地址、认证、headers、stdio 参数或环境变量变化时重新验证已识别扩展。导入的新扩展描述不能代替验证。新的发现不再声明扩展时移除旧描述；删除、身份变更或关闭管理器清理缓存。授权钩子继续检查项目引用，扩展发现不会授予工具或目录权限。兼容迁移的纯 HTTP 文件连接保留旧 itookit/fs-agent 描述，不要求旧文件服务提供 MCP；显式升级到新扩展须完成通用发现。
 
-设置 UI 只呈现已验证配置。宿主的 `MCPConfigurationControlsRegistry` 按扩展匹配展示控件，`MindOSNodeMCPControls` 提供控制中心；验证属于管理器及应用扩展，测试与保存共用一条发现链。增加服务扩展无需为每一种 MCP 修改通用表单。
+设置 UI 只呈现已验证配置。宿主的 `MCPConfigurationControlsRegistry` 按扩展匹配展示控件，`NestOSNodeMCPControls` 提供控制中心；验证属于管理器及应用扩展，测试与保存共用一条发现链。增加服务扩展无需为每一种 MCP 修改通用表单。
 
 ## 超时与连接生命周期
 
@@ -86,8 +86,8 @@ CLI 的 worktree 创建、恢复和清理由宿主 Git 通道执行；Agent 的 
 - [Agent 导入导出](../../backend/kernel-adapters/tests/llm-management/agent-config-roundtrip.test.ts)：显式空白名单、策略和嵌套配置。
 - [连接管理测试](../../backend/kernel-adapters/tests/llm-management/mcp-manager.test.ts)：配置失效、并发修改、删除、reload 及旧单位。
 - [配置扩展测试](../../backend/kernel-adapters/tests/llm-management/mcp-extensions.test.ts)：匹配、结果复用、身份变化、导入验证及失败不保存。
-- [mindos-node 扩展测试](../../backend/app-core/tests/mindos-node-mcp-extension.test.ts)：标准元数据、已声明工具兼容、名称不能冒充和同源验证。
-- [真实 mindos-node 集成](../../ui/app-shell/tests/web-project-sync.test.ts)：通用 MCP 发现、保存/改名无额外验证及远程项目绑定。
+- [nestos-node 扩展测试](../../backend/app-core/tests/nestos-node-mcp-extension.test.ts)：标准元数据、已声明工具兼容、名称不能冒充和同源验证。
+- [真实 nestos-node 集成](../../ui/app-shell/tests/web-project-sync.test.ts)：通用 MCP 发现、保存/改名无额外验证及远程项目绑定。
 - [宿主 stdio 测试](../../backend/kernel-adapters/tests/llm-management/mcp-host-transport.test.ts)：真实子进程、SDK 2026-07-28 协商、分页、资源、Prompt、progress 和启动取消。
 - [MCP 工具适配](../../backend/kernel-adapters/src/tool/mcp-tools.test.ts)：能力 ID、参数验证、external 标记及进度。
 - [Harness 提交](../../backend/llm-session/__tests__/direct-execution-mode.test.ts)：profile 展开进入实际 Task 输入，Chat 不加载 MCP。

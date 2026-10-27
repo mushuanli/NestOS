@@ -45,7 +45,7 @@ function alive(pid: number): boolean {
 }
 
 it.skipIf(process.platform === 'win32')('confirms cancellation only after the process group has exited', async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), 'mindos-process-cancel-'));
+    const directory = await mkdtemp(path.join(tmpdir(), 'nestos-process-cancel-'));
     roots.push(directory);
     const pidFile = path.join(directory, 'pid');
     const driver = new ToolDeviceDriver([createBashTool(new NodeNativeShell())]);
@@ -69,7 +69,7 @@ it.skipIf(process.platform === 'win32')('confirms cancellation only after the pr
 }, 30_000);
 
 it.skipIf(process.platform !== 'linux')('stops background descendants even when their parent exits and their output pipes are closed', async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), 'mindos-background-cancel-'));
+    const directory = await mkdtemp(path.join(tmpdir(), 'nestos-background-cancel-'));
     roots.push(directory);
     const pidFile = path.join(directory, 'pid');
     let pid: number | undefined;
@@ -85,7 +85,7 @@ it.skipIf(process.platform !== 'linux')('stops background descendants even when 
 }, 10_000);
 
 it('does not start a command when cancellation was requested before execution', async () => {
-    const directory = await mkdtemp(path.join(tmpdir(), 'mindos-preabort-'));
+    const directory = await mkdtemp(path.join(tmpdir(), 'nestos-preabort-'));
     roots.push(directory);
     const file = path.join(directory, 'started');
     const controller = new AbortController();

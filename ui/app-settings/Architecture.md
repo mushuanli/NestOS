@@ -78,6 +78,6 @@ const factory = createSettingsFactory(
 - `AppearanceSettingsEditor` 写 `/ui/theme.json`，通过 `app:theme-change` 事件广播
 - `SystemFSExploreEditor` 经 `createSystemFileInspector()` 组装只读视图：`/dev` 挂载设备描述，`/workspaces/<name>` 挂载各工作区文件系统
 
-mindos-node 连接位于工具箱 MCP，Storage 不再注入远程连接编辑器。MCP 表单通过中立 ConfigurationFormControls 扩展，业务授权与控制中心由 app-shell/app-core 装配。
+nestos-node 连接位于工具箱 MCP，Storage 不再注入远程连接编辑器。MCP 表单通过中立 ConfigurationFormControls 扩展，业务授权与控制中心由 app-shell/app-core 装配。
 
 目录与模块边界见 [前后端模块边界](../../doc/design/frontend-backend-modules.md)。设置 UI 不直接调用 IndexedDB 或 navigator.storage，也不装配执行 Runtime。

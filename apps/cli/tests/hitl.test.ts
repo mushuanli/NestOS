@@ -12,7 +12,7 @@ const servers: ReturnType<typeof createServer>[] = [];
 
 afterEach(async () => {
     await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
-    delete process.env.MINDOS_TEST_API_KEY;
+    delete process.env.NESTOS_TEST_API_KEY;
 });
 
 describe('HITL run → respond → resume', () => {
@@ -25,16 +25,16 @@ describe('HITL run → respond → resume', () => {
         const server = createServer((_request, response) => respondHitl(response));
         const port = await startServer(server);
 
-        const workspace = await mkdtemp(path.join(tmpdir(), 'mindos-hitl-'));
+        const workspace = await mkdtemp(path.join(tmpdir(), 'nestos-hitl-'));
         const configPath = path.join(workspace, 'mindos.yml');
-        process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+        process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
         await writeFile(configPath, hitlConfig(port, downstream), 'utf8');
 
         // 1) run 在 AskUserQuestion 处暂停（headless 返回退出码 3）。
-        expect(mode.process ? await childCli(['run', '-f', configPath, '--state-dir', path.join(workspace, '.mindos'), '--headless', '--json'])
-            : await runCommand({ file: configPath, stateDir: path.join(workspace, '.mindos'), headless: true, json: true })).toBe(3);
+        expect(mode.process ? await childCli(['run', '-f', configPath, '--state-dir', path.join(workspace, '.nestos'), '--headless', '--json'])
+            : await runCommand({ file: configPath, stateDir: path.join(workspace, '.nestos'), headless: true, json: true })).toBe(3);
 
-        const stateDir = path.join(workspace, '.mindos');
+        const stateDir = path.join(workspace, '.nestos');
         const runId = await latestRun(stateDir);
         const manifest = await readManifest(stateDir, runId);
         expect(manifest.status).toBe('waiting');
@@ -146,7 +146,7 @@ providers:
     implementation: openai-compatible
     base_url: http://127.0.0.1:${port}
     default_path: /v1/chat/completions
-    api_key_env: MINDOS_TEST_API_KEY
+    api_key_env: NESTOS_TEST_API_KEY
     models:
       - id: mock-model
 connections:

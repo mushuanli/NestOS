@@ -272,7 +272,7 @@ Session browser 与项目/家族导航优先使用 `ISessionRepository.listSumma
 
 ### 项目内的新会话草稿
 
-本地项目固定显示“收藏 → 文件 → 新会话 → 正式会话”；`/folder:<project>/@new` 是投影入口，不是真实 Session，不参与重命名、删除或导出。侧栏与目录列表共用固定优先级，用户切换名称或日期排序不会把“新会话”排到正式会话之后。点击只打开复用 ChatInput 的项目草稿，不创建 Session。每个项目使用 MindOS VFS 内 `/var/lib/projects/<projectId>/draft.seq` 的 `draft` 记录，保存文字、Agent、聊天选项与附件引用；真实附件字节独立存放在 `/var/lib/projects/<projectId>/draft-attachments/<draftId>/<attachmentId>`。项目重命名不影响草稿身份；Web 与 Tauri 共用 VFS 存储，不访问宿主系统 `/var`。规范草稿路由为项目浏览路径下的 `@new`，仍兼容旧 `draft:<projectId>` 恢复地址；项目内再次点击“新会话”复用同一草稿编辑器。
+本地项目固定显示“收藏 → 文件 → 新会话 → 正式会话”；`/folder:<project>/@new` 是投影入口，不是真实 Session，不参与重命名、删除或导出。侧栏与目录列表共用固定优先级，用户切换名称或日期排序不会把“新会话”排到正式会话之后。点击只打开复用 ChatInput 的项目草稿，不创建 Session。每个项目使用 NestOS VFS 内 `/var/lib/projects/<projectId>/draft.seq` 的 `draft` 记录，保存文字、Agent、聊天选项与附件引用；真实附件字节独立存放在 `/var/lib/projects/<projectId>/draft-attachments/<draftId>/<attachmentId>`。项目重命名不影响草稿身份；Web 与 Tauri 共用 VFS 存储，不访问宿主系统 `/var`。规范草稿路由为项目浏览路径下的 `@new`，仍兼容旧 `draft:<projectId>` 恢复地址；项目内再次点击“新会话”复用同一草稿编辑器。
 
 输入及选项、附件变更立即排队保存，切换页面等待保存完成；自动保存正常时保持普通空会话界面，失败时显示提示；尚未保存时浏览器离开提示作为辅助保护。已提交存储的草稿可恢复；强制终止发生在异步提交之前仍可能丢失最后一次输入，不承诺同步磁盘落盘。CAS 拒绝旧窗口覆盖新草稿；保存失败保留输入、提示备份，不继续发送。
 
@@ -311,9 +311,9 @@ Session browser 与项目/家族导航优先使用 `ISessionRepository.listSumma
 
 新项目根必须独立，不能包含其他项目根或位于其内部。旧工作台直属数据目录补登记为独立项目；总目录或其他重叠映射保留原数据并报告来源冲突，不能自动认领为覆盖其他项目的文件根；列表过滤和项目存储根操作保护仅作为兼容防线，不承担主要隔离职责。普通文件及子目录仍能通过显式传输命令跨项目复制或移动；传输不会改写项目根绑定，也不搬动项目存储容器。
 
-项目以工作台直属物理目录中的 `.mindos/info.seq` 为身份依据；全局会话文件夹索引只作为导航缓存，可重建，不能让已经删除的项目目录继续成为可访问项目。直属目录是项目，其子目录是普通目录，文件视图不展示 `.mindos` 内部记录。项目根不得相互包含。启动和创建前检查没有身份记录、且存在数据的工作台直属目录，为其补建项目身份；匹配旧索引时沿用原项目 ID、名称和会话归属。子目录不单独登记；正文保留原位。不可访问的文件深链在标签页显示局部错误，不阻止工作台启动。
+项目以工作台直属物理目录中的 `.nestos/info.seq` 为身份依据；全局会话文件夹索引只作为导航缓存，可重建，不能让已经删除的项目目录继续成为可访问项目。直属目录是项目，其子目录是普通目录，文件视图不展示 `.nestos` 内部记录。项目根不得相互包含。启动和创建前检查没有身份记录、且存在数据的工作台直属目录，为其补建项目身份；匹配旧索引时沿用原项目 ID、名称和会话归属。子目录不单独登记；正文保留原位。不可访问的文件深链在标签页显示局部错误，不阻止工作台启动。
 
-只读远程项目的正文保持远程引用，本地配套目录为 `/home/admin/projects/.mindos/readonly/<项目名>/`，包含 `info.seq` 和 `sessions/<sessionId>/`。重命名移动配套目录并更新会话定位，解除引用不删除远程正文。本地可移植会话领域记录位于 `项目/.mindos/sessions/<sessionId>/`；运行任务、租约等控制状态仍留在 `/var/lib/`。宿主目录项目的会话数据暂存本地控制树。可写远程整个项目尚未开放，需先具备项目级多文件记录事务，不能把只读配套目录作为可写项目的隐式替代。
+只读远程项目的正文保持远程引用，本地配套目录为 `/home/admin/projects/.nestos/readonly/<项目名>/`，包含 `info.seq` 和 `sessions/<sessionId>/`。重命名移动配套目录并更新会话定位，解除引用不删除远程正文。本地可移植会话领域记录位于 `项目/.nestos/sessions/<sessionId>/`；运行任务、租约等控制状态仍留在 `/var/lib/`。宿主目录项目的会话数据暂存本地控制树。可写远程整个项目尚未开放，需先具备项目级多文件记录事务，不能把只读配套目录作为可写项目的隐式替代。
 
 跨存储移动先完成目标复制，复核源内容后再删除源，不提供跨后端原子事务。复制或复核失败不开始删除；失败时目标可能保留部分副本。源删除失败仍保留完整目标副本。并发修改通过节点、内容、记录及目录子项复核检测；复核与删除之间没有后端条件删除保证，因此同时编辑时仍存在并发窗口。
 
@@ -346,7 +346,7 @@ Session browser 与项目/家族导航优先使用 `ISessionRepository.listSumma
 
 ### 项目最近会话与完整列表
 
-项目侧栏的固定入口使用本地化标题与共享图标，内部 `@favorites` / `@files` 只作为稳定路由身份，不向用户表达引用语义；真实文件仍按文件名展示。每个项目直接合并 MindOS 与原生执行器会话，按最近活动显示最多 15 条，不再展示远程根或各 harness 目录。超过 15 条时，“更多会话”打开右侧完整列表，每页最多 50 条会话，下一页保持各来源游标与页内位置；固定入口、新建动作、归档入口和错误提示不占会话名额。
+项目侧栏的固定入口使用本地化标题与共享图标，内部 `@favorites` / `@files` 只作为稳定路由身份，不向用户表达引用语义；真实文件仍按文件名展示。每个项目直接合并 NestOS 与原生执行器会话，按最近活动显示最多 15 条，不再展示远程根或各 harness 目录。超过 15 条时，“更多会话”打开右侧完整列表，每页最多 50 条会话，下一页保持各来源游标与页内位置；固定入口、新建动作、归档入口和错误提示不占会话名额。
 
 文件目录与收藏夹同样在侧栏最多显示 15 个子项，按现有筛选和排序后截取；超过时分别显示“更多文件”“更多收藏”，点击原目录路径在右侧查看完整列表，不在侧栏展开全部。通过 vfs-ui 的 `directoryPreview` 对象配置接入宿主导航，按钮不伪造文件或收藏身份，预览不截断原始树、选择/导出范围或右侧目录数据。此处为呈现限制，不承诺文件与收藏的数据读取已分页。回归见 `ui/app-shell/tests/project-navigation-preview.test.ts`。
 
@@ -380,7 +380,7 @@ C4Component
 
 原生 create 成功只代表预留会话，不代表首条消息提交成功。app-core 在远程草稿恢复记录中保存明确的 submittedTurnId；拒绝发送时保留输入与已创建的原生身份，重开不会再次 create。结果未知时保留 requestId/epoch 并查询回执，不自动重放。只有 turn 的明确成功响应或 committed 回执才允许 UI 转为正式会话；新入口随后提供空白草稿。关闭或刷新视图不会中断原生执行。
 
-首次 turn 提交后，app-core 对声明 rename 能力的适配器应用日期时间默认标题；不支持 rename 的原生服务保留自身标题。命名失败不把已提交消息报告为发送失败；若命名结果未知，仍通过原生回执核对。标题策略和草稿转正归 app-core，mindos-node/driver 保持原生 create/turn/rename 与回执机制。
+首次 turn 提交后，app-core 对声明 rename 能力的适配器应用日期时间默认标题；不支持 rename 的原生服务保留自身标题。命名失败不把已提交消息报告为发送失败；若命名结果未知，仍通过原生回执核对。标题策略和草稿转正归 app-core，nestos-node/driver 保持原生 create/turn/rename 与回执机制。
 
 ## 目录和会话页面搜索
 
@@ -396,7 +396,7 @@ C4Component
 
 文件搜索能力由 `ProjectClient` 在执行查询的同一 MCP 连接上读取 discovery metadata；明确声明 `fileSearch: false` 时拒绝查询。应用层只核对项目授权与 revision，不把文件 HTTP 根地址再次传给要求完整 MCP 地址的 discovery 入口。名称/目录搜索仍要求版本 2；未声明新能力的旧服务保持原有路径/内容搜索契约。
 
-远程文件扫描由 mindos-node 的 rg 执行并自行选择线程数，不在 HTTP 或 app-core 再复制文件扫描器。子目录范围通过标准输入提供的 rg 忽略规则在遍历时剪枝，项目原有忽略规则保持优先，输出仍核对相对目录；保留项目根作为遍历根，避免显式指定目录后改变链接、隐藏和忽略行为。不能安全表示为逐行忽略规则的目录沿用结果过滤。Node 与浏览器本地来源继续走授权 VFS 视图，不能用物理目录扫描替代组合视图。
+远程文件扫描由 nestos-node 的 rg 执行并自行选择线程数，不在 HTTP 或 app-core 再复制文件扫描器。子目录范围通过标准输入提供的 rg 忽略规则在遍历时剪枝，项目原有忽略规则保持优先，输出仍核对相对目录；保留项目根作为遍历根，避免显式指定目录后改变链接、隐藏和忽略行为。不能安全表示为逐行忽略规则的目录沿用结果过滤。Node 与浏览器本地来源继续走授权 VFS 视图，不能用物理目录扫描替代组合视图。
 
 多关键字内容查询只启动一次 rg，以最长字面关键字筛选候选，结构化输出经全部关键字验证后才计入结果上限；多词时不使用 rg 的单关键字 `--max-count`，避免提前丢弃真正命中。现有时间、输出容量、目录和授权预算仍生效。文件 discovery metadata 与原生 profile 的 `searchKeywords: true` 明确声明该语义；旧节点不支持时返回能力不足，不能静默按整段短语查询。
 
@@ -404,21 +404,21 @@ C4Component
 
 文件目录页采用显式刷新：首次进入、用户刷新或当前用户的文件操作读取数据，后台会话、连接和项目事件不重建目录页。会话状态观察不启用文件监听；目录版本仅反映真实服务端版本，不因覆盖不足而拼接时间桶。前端聊天只展示后端快照与订阅更新，不再自行定时查询。后端正文仅在有活动轮次且存在展示订阅时推进事件游标，轮次结束或最后一个订阅离开即停止。原生会话列表初次读取后空闲停止，显式刷新及会话活动变化可以重新触发读取；连接只在新增观察兴趣或授权绑定变化时探测，不周期轮询。浏览器页面隐藏时释放展示兴趣，返回时按需读取最新快照；执行本身继续由后端负责。
 
-原生交互由 mindos-node-driver 提供结构化问题、选项说明、多选/自由回答/密码输入标记与审批决策目录；UI 适配到 llm-ui 的共享 InteractionCard，主工作台和独立 ChatView 使用同一转换与渲染。未知交互保留只读提示，不能静默隐藏。相同请求的观察更新保留未提交回答；密码回答只进入明确的回复调用，不进入会话草稿或恢复记录。
+原生交互由 nestos-node-driver 提供结构化问题、选项说明、多选/自由回答/密码输入标记与审批决策目录；UI 适配到 llm-ui 的共享 InteractionCard，主工作台和独立 ChatView 使用同一转换与渲染。未知交互保留只读提示，不能静默隐藏。相同请求的观察更新保留未提交回答；密码回答只进入明确的回复调用，不进入会话草稿或恢复记录。
 
 启动本轮的响应可能等待审批，因此 conversation-view 在 send/command 尚未完成时独立推进事件读取，respond 不排在该响应之后；driver 独立保存每个回复的 requestId/epoch，不覆盖正在等待的 turn 回执。未知回复通过原操作回执核对，不自动重发。重新打开会话的首次 read 同时读取未解决请求，恢复待答框，不依赖新执行事件；普通发送前按需刷新超过 30 秒的投影，防止空闲回收后沿用旧 owned 状态。
 
 执行中的 Codex 最新历史从原生运行时读取，不能以尚未写入完整回答的 rollout 文件替代；空闲历史和加载更早页继续使用文件分页。原生 `thread/read` 回复在有序输出读取点标记 `eventCursor`，会话从该边界继续读增量，避免刷新后重复拼接已包含的正文；事件缓冲区溢出后的历史修复不能把游标倒退到旧事件页。启动尚未完成时遇到事件缺口，先投影待答请求，历史修复留到启动结束，避免审批通路等待自身。
 
-HTTP 网页视图的 60 秒空闲租约与 mindos-node 原生运行时分别管理。mindos-node 每分钟仅做内存状态检查：项目/profile 运行时连续空闲且无读取 5 分钟后卸载原生进程与连接；其中任一会话有执行、待答请求或在途调用就保留整个共享运行时。历史由原生存储保留，profile 的回执表与授权上下文独立于可卸载 driver 保留；下次实际访问延迟重建，并在发送前核对/恢复原生会话。等待用户回答不自动超时取消，网页断开或隐藏也不批准、不拒绝该交互。
+HTTP 网页视图的 60 秒空闲租约与 nestos-node 原生运行时分别管理。nestos-node 每分钟仅做内存状态检查：项目/profile 运行时连续空闲且无读取 5 分钟后卸载原生进程与连接；其中任一会话有执行、待答请求或在途调用就保留整个共享运行时。历史由原生存储保留，profile 的回执表与授权上下文独立于可卸载 driver 保留；下次实际访问延迟重建，并在发送前核对/恢复原生会话。等待用户回答不自动超时取消，网页断开或隐藏也不批准、不拒绝该交互。
 
 ```mermaid
 C4Component
   title 原生交互与运行时生命周期
   Component(ui, "ChatInput / InteractionCard", "llm-ui + adapter", "展示结构化问题，保留输入，提交用户选择")
   Component(view, "ConversationView", "app-core", "共享事件推进；回复通道独立于等待中的启动调用")
-  Component(driver, "HarnessConversation", "mindos-node-driver", "原生交互、回复回执与恢复引用")
-  Component(slot, "DriverSlot", "mindos-node", "空闲卸载；保留执行、待答与在途调用")
+  Component(driver, "HarnessConversation", "nestos-node-driver", "原生交互、回复回执与恢复引用")
+  Component(slot, "DriverSlot", "nestos-node", "空闲卸载；保留执行、待答与在途调用")
   System_Ext(native, "Codex / Claude / DSH", "原生执行、交互与持久历史")
   Rel(ui, view, "提交回复或订阅展示状态")
   Rel(view, driver, "独立观察和 respond")
@@ -435,8 +435,8 @@ C4Component
   Component(files, "VFS discovery + readContent", "vfs-core", "授权目录遍历与有界文件读取")
   Component(store, "LocalFS / IndexedDB", "storage backends", "通用目录和文件 I/O")
   Component(sessions, "SessionRepository", "llm-session", "摘要、存活分支与轮次文档")
-  Component(driver, "ProjectClient / HarnessClient", "mindos-node-driver", "同一 MCP 连接的能力协商、查询与响应校验")
-  Component(remote, "project_search / harness_session_search", "mindos-node", "远程授权视图、原生结构化历史与角色筛选")
+  Component(driver, "ProjectClient / HarnessClient", "nestos-node-driver", "同一 MCP 连接的能力协商、查询与响应校验")
+  Component(remote, "project_search / harness_session_search", "nestos-node", "远程授权视图、原生结构化历史与角色筛选")
   Component(rg, "ripgrep", "isolated process", "并行扫描、遍历剪枝、忽略规则与有界流式输出")
   Rel(page, query, "调用搜索端口；不携带列表分页游标")
   Rel(query, keywords, "本地查询在结果截断前匹配全部词")

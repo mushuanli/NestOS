@@ -28,7 +28,7 @@ import type { ProjectSearchMatch } from '@itookit/app-contracts/services';
 import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import { projectTransferTargets } from './transfer-targets';
 import { ProjectSyncMenu } from './sync/menu';
-import { createMindOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
+import { createNestOSVFSUI as createVFSUI } from '../browser/vfs-presentation';
 import { WorkbenchTabs, type WorkbenchTab } from '../workbench/tabs';
 import { WorkbenchSidebar } from '../workbench/sidebar';
 import { createDirectoryList, refreshDirectoryList, watchDirectorySelection, type DirectoryEntry } from '../workbench/directory-list';

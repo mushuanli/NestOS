@@ -4,7 +4,7 @@
 
 `@itookit/llm-ui` 是原生 DOM 的 LLM 界面库，**同时包含 Chat 和 Flow 功能**，唯一直接运行时依赖为 `@itookit/mdxeditor`。Flow 通过同一包的 `/flow` 子入口按需加载，不建立单独的 Flow UI 包。
 
-MindOS 的 Session、Task、Flow 执行、VFS、配置和权限由 `@itookit/llm-ui-adapter` 及宿主连接，不进入独立库的类型或实现。后端 `@itookit/llm-flow` 继续负责 Flow 执行语义，与 UI 的包划分是不同边界。
+NestOS 的 Session、Task、Flow 执行、VFS、配置和权限由 `@itookit/llm-ui-adapter` 及宿主连接，不进入独立库的类型或实现。后端 `@itookit/llm-flow` 继续负责 Flow 执行语义，与 UI 的包划分是不同边界。
 
 ## 1 模块与当前实施范围
 
@@ -12,7 +12,7 @@ MindOS 的 Session、Task、Flow 执行、VFS、配置和权限由 `@itookit/llm
 C4Component
     title Chat 与 Flow 的模块职责
     Component(app, "Web / Tauri / HTTP", "组合根", "装配端口并持有台账")
-    Component(compat, "llm-ui-adapter/chat", "MindOS UI", "现有产品编辑器兼容入口")
+    Component(compat, "llm-ui-adapter/chat", "NestOS UI", "现有产品编辑器兼容入口")
     Component(binding, "llm-ui-adapter/independent", "展示适配", "Session 与原生会话投影")
     Component(ui, "libraries/llm-ui", "原生 DOM", "通用 Chat 与按需 Flow")
     Component(mdx, "mdxeditor", "Markdown", "受控渲染")
@@ -33,10 +33,10 @@ C4Component
 | --- | --- | --- |
 | 独立 llm-ui | 根入口 createChatView、createOperationLedger | 聊天展示、已加载内容搜索与定位、草稿附件、消息操作、交互卡片、提及候选、选择器和扩展 |
 | 独立 llm-ui | /flow 的 createFlowView | 节点与端口、连线、检查器、布局、运行状态及输出 |
-| MindOS 适配 | llm-ui-adapter/independent | Session 与原生会话投影到同一 ChatView |
-| MindOS 兼容入口 | llm-ui-adapter/chat、/conversation、/settings、/startup | 保留完整产品编辑器、Flow 业务表单、菜单、项目草稿与设置接线 |
+| NestOS 适配 | llm-ui-adapter/independent | Session 与原生会话投影到同一 ChatView |
+| NestOS 兼容入口 | llm-ui-adapter/chat、/conversation、/settings、/startup | 保留完整产品编辑器、Flow 业务表单、菜单、项目草稿与设置接线 |
 
-现有 Web/Tauri/HTTP 的产品编辑器改从适配包导入，保留原来的产品行为。兼容工厂目前仍使用原业务编辑器；新的 Session/native 绑定提供独立 ChatView 接入，不宣称所有产品插槽都已经迁入通用组件。复杂 MindOS Flow 配置也保留在适配层，通用 Flow 通过宿主描述字段或检查器接入。
+现有 Web/Tauri/HTTP 的产品编辑器改从适配包导入，保留原来的产品行为。兼容工厂目前仍使用原业务编辑器；新的 Session/native 绑定提供独立 ChatView 接入，不宣称所有产品插槽都已经迁入通用组件。复杂 NestOS Flow 配置也保留在适配层，通用 Flow 通过宿主描述字段或检查器接入。
 
 原生会话的诊断展示也归适配层：ConversationInformation 将已有快照中的被动状态、累计 token 和宿主估价收进「更多 → 会话信息」，说明外部运行观察范围及估价与实际账单的区别；不读取定价目录、不发探测请求。基础字段与本地 SessionFamilyActions 统一为创建时间、最后活动，复用相同文案与 ui-common.setTimePresentation 时间展示；缺失值显示「暂无记录」，不以页面刷新时间替代远端活动。运行和等待保留标题栏指标，离线、错误、缺口与未知回执保留直接提示。详情更新只修改自身文本，不替换历史或输入 DOM；销毁释放弹层。
 
@@ -125,7 +125,7 @@ Chat 通过 features.flow 控制 Flow 入口，默认关闭。启用后点击入
 
 ### 6.1 配置表单共用与宿主定制
 
-智能体的 Flow 默认配置、Flow 运行参数面板及独立 llm-ui 的节点检查器共用 `@itookit/llm-ui/forms`，不在设置包中重新实现一套类型控件。公共层只接受轻量 `FormParameter`、JSON 值和展示选项，不引用 FlowDraft、AgentDefinition、Session、注册服务或配置存储。MindOS 适配层将领域定义投影到公共字段；公开 `/forms` 入口可独立使用，不加载 Chat、Markdown 或 Flow 执行代码。
+智能体的 Flow 默认配置、Flow 运行参数面板及独立 llm-ui 的节点检查器共用 `@itookit/llm-ui/forms`，不在设置包中重新实现一套类型控件。公共层只接受轻量 `FormParameter`、JSON 值和展示选项，不引用 FlowDraft、AgentDefinition、Session、注册服务或配置存储。NestOS 适配层将领域定义投影到公共字段；公开 `/forms` 入口可独立使用，不加载 Chat、Markdown 或 Flow 执行代码。
 
 | 层次 | 职责 | 定制方式 |
 | --- | --- | --- |
@@ -294,7 +294,7 @@ C4Component
 
 ### 10.1 当前缺口与实现边界
 
-工作台仍使用 `ui/llm-ui-adapter` 的 LLMWorkspaceEditor / RemoteConversationEditor 兼容入口。独立 ChatView 经 independent/session、independent/native 接入；不能用兼容组件的测试宣称独立输入契约已经覆盖，也不能用独立绑定测试宣称工作台已整体迁移。未更新的 mindos-node 不会因只更新前端就宣称新的模型或命令能力。
+工作台仍使用 `ui/llm-ui-adapter` 的 LLMWorkspaceEditor / RemoteConversationEditor 兼容入口。独立 ChatView 经 independent/session、independent/native 接入；不能用兼容组件的测试宣称独立输入契约已经覆盖，也不能用独立绑定测试宣称工作台已整体迁移。未更新的 nestos-node 不会因只更新前端就宣称新的模型或命令能力。
 
 本轮补齐独立输入的 commands / actions.command、命令来源与版本、模型依赖选择器，以及 native/session 绑定的命令贡献与路由。工作台整体切换仍按 9.5 逐项迁移，不另建第三套输入组件。
 
@@ -303,7 +303,7 @@ C4Component
 | 概念 | 当前职责 | 输入层边界 |
 | --- | --- | --- |
 | LLMConnection | 直连 Provider 的模型配置与档位解析 | 不作为远程 harness 的配置容器 |
-| MCP connection | 远程节点的通信、凭据和服务发现；mindos-node 能力复用这份连接记录 | 不直接决定模型或可用 slash |
+| MCP connection | 远程节点的通信、凭据和服务发现；nestos-node 能力复用这份连接记录 | 不直接决定模型或可用 slash |
 | 远程项目与 harness profile | 目录授权、执行隔离和具体原生执行器选择 | 宿主绑定并投影当前能力 |
 | 会话绑定 | 固定观察与操作目标；持有 session/branch/view 身份 | UI 不解析 remote: 字符串或 endpoint |
 | Composer 能力投影 | 选择器、当前可用命令、来源与版本 | ChatInput 只展示和提交意图 |
@@ -333,7 +333,7 @@ flowchart LR
 
 ### 10.4 原生提交与恢复的共同路径
 
-兼容输入与独立 ChatView 通过 independent/native-command 共享解析和提交语义。两者都捕获原始输入、命令目标、参数和模型选择；解析后的 slash 文本不作为清理草稿的依据。mindos-node-driver 的 HarnessConversation 为消息和 prompt 命令共用 prepareSession、接纳清理和提交后刷新；新草稿中的会话级 action 标为不可用，不为查看候选提前创建会话。
+兼容输入与独立 ChatView 通过 independent/native-command 共享解析和提交语义。两者都捕获原始输入、命令目标、参数和模型选择；解析后的 slash 文本不作为清理草稿的依据。nestos-node-driver 的 HarnessConversation 为消息和 prompt 命令共用 prepareSession、接纳清理和提交后刷新；新草稿中的会话级 action 标为不可用，不为查看候选提前创建会话。
 
 HarnessRecovery 保存 draftRevision，turn/command 的 pending 捕获当时的 inputText 与 draftRevision。接纳或核对回执后仅清理匹配版本；等待期间编辑再恢复为相同文字也属于新版本。create、resume、turn、command 各自持有稳定 requestId，unknown 只核对既有回执，不重新提交。app-core 的 draftHarness 同时记录 turn 与 command 的首轮接纳，只有持久确认后发布正式会话身份。
 
@@ -352,9 +352,9 @@ C4Component
     }
     Container_Boundary(host, "应用宿主") {
         Component(app, "项目用例", "app-core", "授权绑定、模型查询与草稿转正")
-        Component(driver, "原生会话", "mindos-node-driver", "准备会话、提交、接纳与恢复")
+        Component(driver, "原生会话", "nestos-node-driver", "准备会话、提交、接纳与恢复")
     }
-    Component(native, "Harness 适配器", "mindos-node", "动态目录、别名与原生协议")
+    Component(native, "Harness 适配器", "nestos-node", "动态目录、别名与原生协议")
     System_Ext(executor, "Claude / Codex / DSH", "执行与原生历史")
     Rel(views, binding, "原始输入、目标、参数及选择")
     Rel(binding, app, "显式操作意图")
@@ -365,7 +365,7 @@ C4Component
 
 ### 通用指令队列视图
 
-`InstructionQueueView` 从独立 llm-ui 根入口导出，接收展示投影、标签与 read/edit 端口，提供正文编辑、排序、相邻合并、删除、暂停/继续与失败重试。组件不依赖 Session 或应用类型，不负责持久接纳、续发、回执核对或共享连接。MindOS 的 InstructionQueuePanel 只做本地/远程命令适配；远程输入复用相同可编辑视图。正文编辑保持原 revision，版本冲突刷新投影并保留待处理文本，不重放编辑。
+`InstructionQueueView` 从独立 llm-ui 根入口导出，接收展示投影、标签与 read/edit 端口，提供正文编辑、排序、相邻合并、删除、暂停/继续与失败重试。组件不依赖 Session 或应用类型，不负责持久接纳、续发、回执核对或共享连接。NestOS 的 InstructionQueuePanel 只做本地/远程命令适配；远程输入复用相同可编辑视图。正文编辑保持原 revision，版本冲突刷新投影并保留待处理文本，不重放编辑。
 
 ### 正式 Session 工作台的目标选择与提交
 
@@ -425,14 +425,14 @@ C4Component
 
 独立 llm-ui 负责显示、输入编辑及控制请求。组件保留当前编辑值、选择、展开状态、渲染缓存和在途请求等临时状态；持久历史、指令队列、发布定义、执行事实、文件内容及原生上下文由宿主提供。宿主通过 source 投影数据、actions 接收带身份的操作、operations 保存请求与回执。组件不直接读写 Session 目录，也不拥有执行线程、自动调度或后台资源释放。
 
-MindOS 宿主将会话、草稿、资产及关联记录存入既有 VFS/SessionRepository；Kernel 保有 Task/Effect 与执行 journal 的事实。VFS 的文件、SeqFile 事务元数据及其底层存储由宿主管理，独立 llm-ui 不限定具体文件系统或数据库。原生 Harness 的真实历史和上下文仍由原生端持有，宿主保存 binding、操作 journal 与观察结果，UI 读取投影。
+NestOS 宿主将会话、草稿、资产及关联记录存入既有 VFS/SessionRepository；Kernel 保有 Task/Effect 与执行 journal 的事实。VFS 的文件、SeqFile 事务元数据及其底层存储由宿主管理，独立 llm-ui 不限定具体文件系统或数据库。原生 Harness 的真实历史和上下文仍由原生端持有，宿主保存 binding、操作 journal 与观察结果，UI 读取投影。
 
 ```mermaid
 C4Component
     title llm-ui 的展示控制端口与宿主持久数据
     Container_Boundary(browser, "界面") {
         Component(view, "llm-ui", "原生 DOM", "显示、输入编辑、控制请求及临时视图状态")
-        Component(adapter, "llm-ui-adapter", "MindOS 适配", "投影转换、文件编解码、编辑基线与恢复交互")
+        Component(adapter, "llm-ui-adapter", "NestOS 适配", "投影转换、文件编解码、编辑基线与恢复交互")
     }
     Container_Boundary(host, "应用宿主") {
         Component(session, "Session 应用端口", "准入与查询", "授权、队列、历史及不透明 UI 状态持久化")

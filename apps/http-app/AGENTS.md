@@ -4,7 +4,7 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 
 - `apps/node-host/src/http/start-host.ts` 必须等待 server 策略的 ApplicationRuntime 初始化成功后再 listen；失败清理全部资源且不开放端口。MCP 首次连接尝试可失败降级，不能吞掉本地初始化错误后仍声称 ready。
 - `src/server/` 仅委托 node-host/http；node-host 装配 LocalFS、Node SQLite、静态 UI 与唯一应用 Runtime；浏览器不能再装配另一套执行 Runtime。
-- `src/client/` 不导入 Node、LocalFS、Tauri。Web UI 经 mind-os 的公开入口导入。
+- `src/client/` 不导入 Node、LocalFS、Tauri。Web UI 经 nestos-web 的公开入口导入。
 - 对外 API 暴露应用查询、命令、确认和事件，不提供 SQL、任意宿主路径、原始托管状态写入或 Tauri invoke；没有原始 VFS 存储 HTTP 协议。
 - app-transport/application 绑定应用能力描述与共享 selector；app-transport/rpc 通过注入获得描述，不导入业务模块。协议 v14 拒绝旧客户端。
 - bootstrap 不预开文件系统，主题与 UI 状态经文档端口读取；OCR、设置、恢复与聊天能力按消费创建。设置工作区以声明身份传递，后端按需解析并保持写权限保护，不能通过延迟视图绕过托管状态命令。
@@ -13,8 +13,8 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 - SeqFile 事务缓存写入，服务端在同一原生事务中先校验读观察再批量提交。不可把跨文件事务改成逐条非原子写入，不自动重试回调或结果未知的提交。
 - `_meta` 和 LocalFS rename journal 是宿主内部路径，不向客户端暴露。
 
-- `pnpm httpd:build` 先自动执行增量 lib:build，成功后生成独立 release；库构建失败立即停止，构建不重启服务；根目录 `pnpm httpd` 直接运行选定 release，`pnpm httpd:dev` 默认端口 2001、独立数据/凭据/日志；默认读取共享 `mindos.json`（遵循 XDG_CONFIG_HOME），数据根优先级为 --root → MINDOS_ROOT → rootDir → 配置目录/data。
-- 默认排查 release 日志 `/var/log/mindos/httpd.runtime.log` 和 `/var/log/mindos/httpd.audit.jsonl`；目录可由 `MINDOS_HTTPD_LOG_DIR` 覆盖，审计可由 `--audit-file` 覆盖。当前运行版本以认证后的 `/api/health` 返回值为准，`release/httpd/current.json` 仅选择下次启动版本。
+- `pnpm httpd:build` 先自动执行增量 lib:build，成功后生成独立 release；库构建失败立即停止，构建不重启服务；根目录 `pnpm httpd` 直接运行选定 release，`pnpm httpd:dev` 默认端口 2001、独立数据/凭据/日志；默认读取共享 `nestos.json`（遵循 XDG_CONFIG_HOME），数据根优先级为 --root → NESTOS_ROOT → rootDir → 配置目录/data。
+- 默认排查 release 日志 `/var/log/nestos/httpd.runtime.log` 和 `/var/log/nestos/httpd.audit.jsonl`；目录可由 `NESTOS_HTTPD_LOG_DIR` 覆盖，审计可由 `--audit-file` 覆盖。当前运行版本以认证后的 `/api/health` 返回值为准，`release/httpd/current.json` 仅选择下次启动版本。
 - 对外默认 HTTPS 0.0.0.0:2000，TLS 强制验证客户端证书和 clients.json 的 SHA-256 指纹；不能提供无认证降级。只保留一个 HTTPS 监听；LocalFS/SQLite 由 Runtime 直接使用，--internal-port 已移除。
 - 证书、CA 私钥、浏览器导入包及审计日志必须保存在 VFS 数据根之外；证书不能置于静态目录。日志仅记录认证与请求元数据，不记录请求头、参数、文件正文、模型消息和密钥。
 - `audit-log` 的 JSONL 文件权限 0600；每份 10 MiB，保留当前及 3 份轮转记录。客户端证书撤销在下一次 HTTP 请求重新核对，包括已有连接。
@@ -24,7 +24,7 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 验证：`pnpm --filter @itookit/http-app test`、`typecheck`、`build`。
 
 - 通知只运行一个刷新循环，256 条限制包含处理中和等待中的回调；客户端通知缓存有界。查询每批最多 32 项、最多 2 批在途、队列最多 1024 项。
-- `mindos:http-disconnected` 区分 reconnecting 和 expired：短暂中断由传输恢复同一 SSE，成功发出 `mindos:http-reconnected` 收起提示；视图过期才探测健康，服务就绪后由 view-recovery 捕获全部已打开标签的编辑器快照并重建应用视图，不刷新整个文档。恢复接口显式保存输入、附件、配置和滚动位置；不支持的编辑器、在途提交及尚未提交的弹窗保留原页并给出具体原因，不依赖输入事件判断是否安全恢复。恢复快照在失败重试间保留，设置密钥只留在内存，不写入浏览器存储或日志。`mindos:http-retry` 唤醒退避，不重发业务写入。`mindos:http-view-error` 显示页面更新失败和手动重载入口，不单独触发自动重载，保留当前页面未发送内容。
+- `nestos:http-disconnected` 区分 reconnecting 和 expired：短暂中断由传输恢复同一 SSE，成功发出 `nestos:http-reconnected` 收起提示；视图过期才探测健康，服务就绪后由 view-recovery 捕获全部已打开标签的编辑器快照并重建应用视图，不刷新整个文档。恢复接口显式保存输入、附件、配置和滚动位置；不支持的编辑器、在途提交及尚未提交的弹窗保留原页并给出具体原因，不依赖输入事件判断是否安全恢复。恢复快照在失败重试间保留，设置密钥只留在内存，不写入浏览器存储或日志。`nestos:http-retry` 唤醒退避，不重发业务写入。`nestos:http-view-error` 显示页面更新失败和手动重载入口，不单独触发自动重载，保留当前页面未发送内容。
 - 应用层决定只读命令、消息投影和快照结果引用；rpc 层只实现注入规则、不可变 DTO 编码缓存及版本补丁。静态 hash 资源私有缓存，HTML 重新验证；压缩结果最多 64 项 / 16 MiB。
 
 - workbenchView 可带 initialSessionId 并行准备当前会话；chat.configuration 提供安全展示字段的配置快照与订阅。openSessionView/activate 保留准备与激活顺序，UI 文档按当前路由合并预读；连接检查按观察兴趣共享，不由浏览器逐项目轮询。application.complete 只记录注册能力/方法和批次数，不记录参数或用户内容。
@@ -36,7 +36,7 @@ HTTP 应用薄入口；Node 能力统一位于 apps/node-host，传输统一位�
 - openView 聚合聊天首屏及无旧编辑器时的激活/恢复，observeView 按水位补发并共享 SSE；事件缺口与回调失败报告更新错误。CLI 临时 profile/mTLS 测试覆盖新路径和多客户端隔离。
 
 - 轻入口先并行启动 HTTP 同步、Shell 与当前编辑器代码加载；初始目标通过 app-shell/startup 构造。初始视图随 bootstrap 进入 initApp，不重复 openView/observeView。浏览器按内容摘要缓存纯数据，首帧使用共享 HTML 的主题镜像和静态骨架，错误仍显示现有入口。
-- HTML 在样式 load/error 时记录结果；HTTP/Web 共用 mind-os/startup 读取已有结果、等待未完成样式（最长 30 秒）和显示启动失败。失败提示的必要样式内联在 HTML，CSS 不可用时仍可操作重载。
+- HTML 在样式 load/error 时记录结果；HTTP/Web 共用 nestos-web/startup 读取已有结果、等待未完成样式（最长 30 秒）和显示启动失败。失败提示的必要样式内联在 HTML，CSS 不可用时仍可操作重载。
 - 提前连接保存当前状态，状态 UI 订阅时同步补报；终结的 view-error/expired 不能被迟到的重连覆盖。窗口事件保留兼容通知，正常 HTTP UI 通过连接状态订阅消费。
 
 - 手机 visible/pageshow 与 online/focus 唤醒重连；30 秒没有流活动的旧 SSE 会立即替换，健康流不额外重连。服务端 view.expired 按 requestId 区分视图不存在、未初始化、流失效、协议变化与事件历史过期，不记录参数。

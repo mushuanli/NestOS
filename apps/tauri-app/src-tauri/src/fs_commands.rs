@@ -7,7 +7,7 @@ use crate::{AppPaths, is_allowed, atomic_file};
 // Tauri's plugin-fs uses glob crate with require_literal_leading_dot=true,
 // so `path/**` never matches `path/.hidden`. We expose our own FS commands
 // and enforce path security ourselves: every operation must be under
-// mindos_dir or home_dir (resolved without following symlinks via normalize_path).
+// nestos_dir or home_dir (resolved without following symlinks via normalize_path).
 
 #[derive(serde::Serialize)]
 pub(crate) struct FsStatResult {
@@ -173,7 +173,7 @@ mod stat_type_tests {
     #[test]
     fn reports_links_without_following_them() {
         let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("mindos-stat-{}-{stamp}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("nestos-stat-{}-{stamp}", std::process::id()));
         std::fs::create_dir_all(&root).unwrap();
         let paths = AppPaths { config_dir: root.clone(), root_dir: root.clone(), home_dir: root.clone(), root_source: RootSource::Default, home_source: HomeSource::ProcessCwd };
         let file = root.join("file");

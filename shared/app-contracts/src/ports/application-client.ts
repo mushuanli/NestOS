@@ -3,10 +3,10 @@ import type { ConfigurationImportPort, IConnectionService, IAgentManagementServi
 import type { ISessionRepository, SessionManagementPort, ICommandBus } from '@itookit/llm-session/contracts';
 import type { KernelViewPort } from '@itookit/durable-kernel/contracts';
 import type { IToolService } from '@itookit/tools/contracts';
-import type { HarnessSession, HarnessConversationSnapshot } from '@itookit/mindos-node-driver/harness';
+import type { HarnessSession, HarnessConversationSnapshot } from '@itookit/nestos-node-driver/harness';
 import type { SessionFilesPort, DirectoryMountPort, FileSystemsPort } from './files';
 import type { ProjectService, ProjectSessions, NativeSessionCommand, ResolvedProjectFavorite } from './projects';
-import type { SessionExport, WorkbenchView, SessionOpenView, WorkbenchArchiveExporter, WorkbenchArchiveImporter, MindosInitialFiles } from './session';
+import type { SessionExport, WorkbenchView, SessionOpenView, WorkbenchArchiveExporter, WorkbenchArchiveImporter, NestosInitialFiles } from './session';
 import type { SettingsPort, SettingsWorkspaceSource } from '../settings';
 import type { ToolboxInventory, ToolboxResources, OcrService, ModelConfigurationCommands } from './configuration';
 import type { DigitalTwinService } from './digital-twin';
@@ -41,6 +41,7 @@ export interface ToolboxView {
 }
 /** Boundary operations are asynchronous; synchronous selectors belong to loaded snapshots. */
 export interface ApplicationBackend {
+    editorSwaps?: import('./editor-swap').EditorSwapFactory;
     documentChatFile(request: import('./document-chat').DocumentChatFileRequest): Promise<import('./document-chat').DocumentChatFile>;
     documentChatBacklinks(sessionId: string, branch: string): Promise<import('./document-chat').DocumentChatLink[]>;
     openView(request: import('./open-view').OpenViewRequest): Promise<import('./open-view').OpenedApplicationView>;
@@ -55,7 +56,7 @@ export interface ApplicationBackend {
     writeUiDocuments(documents: Record<string, unknown>): Promise<void>;
     settings(sources: readonly SettingsWorkspaceSource[]): Promise<SettingsPort>;
     ocr(): Promise<OcrService>;
-    initialFiles(): Promise<MindosInitialFiles>;
+    initialFiles(): Promise<NestosInitialFiles>;
     projectSessions(): Promise<ProjectSessions>;
     skillsFiles(): Promise<IFileSystem>;
     toolboxView(): Promise<ToolboxView>;

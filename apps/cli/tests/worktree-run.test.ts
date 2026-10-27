@@ -16,8 +16,8 @@ import { resumeCommand } from '../src/commands';
 
 // A killed CLI cannot release its Session or scheduler lease; shorten both TTLs the same
 // way the crash matrix does so recovery happens inside the test.
-process.env.MINDOS_SESSION_LEASE_TTL_MS = '1500';
-process.env.MINDOS_SCHEDULER_LEASE_TTL_MS = '1500';
+process.env.NESTOS_SESSION_LEASE_TTL_MS = '1500';
+process.env.NESTOS_SCHEDULER_LEASE_TTL_MS = '1500';
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const CLI_CWD = fileURLToPath(new URL('../', import.meta.url));
@@ -29,7 +29,7 @@ afterEach(async () => {
     for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
-    delete process.env.MINDOS_TEST_API_KEY;
+    delete process.env.NESTOS_TEST_API_KEY;
 });
 
 function git(cwd: string, args: string[]): Promise<string> {
@@ -44,7 +44,7 @@ function git(cwd: string, args: string[]): Promise<string> {
 async function initRepo(root: string): Promise<void> {
     await git(root, ['init', '-b', 'main']);
     await git(root, ['config', 'user.email', 'test@example.com']);
-    await git(root, ['config', 'user.name', 'Mindos Test']);
+    await git(root, ['config', 'user.name', 'Nestos Test']);
     await writeFile(path.join(root, 'base.txt'), 'base\n', 'utf8');
     await git(root, ['add', '-A']);
     await git(root, ['commit', '-m', 'init']);
@@ -109,7 +109,7 @@ providers:
     implementation: openai-compatible
     base_url: http://127.0.0.1:${port}
     default_path: /v1/chat/completions
-    api_key_env: MINDOS_TEST_API_KEY
+    api_key_env: NESTOS_TEST_API_KEY
     models:
       - id: mock-model
 connections:
@@ -148,12 +148,12 @@ async function setup(writes: boolean, workspaceBlock = '', tool: 'Bash' | 'Write
     const server = modelServer(writes, tool);
     const port = await listenForTest(server);
     servers.push(server);
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-worktree-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-worktree-'));
     roots.push(root);
     await initRepo(root);
-    const stateDir = path.join(root, '.mindos');
+    const stateDir = path.join(root, '.nestos');
     const configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, config(port, workspaceBlock, tool), 'utf8');
     return { root, stateDir, configPath, canonical: target => realpath(target).catch(() => target) };
 }
@@ -290,12 +290,12 @@ it('re-attaches the recorded worktree when a crashed host resumes', async () => 
     });
     servers.push(server);
     const port = await listenForTest(server);
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-worktree-resume-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-worktree-resume-'));
     roots.push(root);
     await initRepo(root);
-    const stateDir = path.join(root, '.mindos');
+    const stateDir = path.join(root, '.nestos');
     const configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, config(port, '    cleanup: keep\n'), 'utf8');
 
     const child = startRun(configPath, stateDir);

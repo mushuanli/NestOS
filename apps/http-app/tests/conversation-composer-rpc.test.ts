@@ -2,8 +2,8 @@ import {expect, it, vi} from 'vitest';
 import {createVFS, MemoryBackend} from '@itookit/vfs-core';
 import {RpcPeer} from '@itookit/app-transport/application';
 import {ConversationComposerStore} from '../../../backend/app-core/src/projects/conversation-composer-store';
-import {HarnessConversation} from '@itookit/mindos-node-driver';
-import type {HarnessClient, HarnessProfile, HarnessRecovery} from '@itookit/mindos-node-driver';
+import {HarnessConversation} from '@itookit/nestos-node-driver';
+import type {HarnessClient, HarnessProfile, HarnessRecovery} from '@itookit/nestos-node-driver';
 import {observeConversation} from '../../../backend/app-core/src/projects/conversation-view';
 
 it('preserves native input rejection evidence and attachment-only queue identity across RPC', async () => {

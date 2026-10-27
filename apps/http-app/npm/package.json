@@ -1,7 +1,7 @@
 {
   "name": "nestos",
   "version": "0.1.0",
-  "description": "NestOS: the MindOS HTTPS workspace for AI chat, agents, flows, Markdown documents and project files.",
+  "description": "NestOS: the NestOS HTTPS workspace for AI chat, agents, flows, Markdown documents and project files.",
   "type": "module",
   "bin": {
     "nestos": "./bin/nestos.mjs"
@@ -19,16 +19,16 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mushuanli/itookit.git",
+    "url": "git+https://github.com/mushuanli/nestos.git",
     "directory": "apps/http-app"
   },
-  "homepage": "https://github.com/mushuanli/itookit/tree/main/apps/http-app",
+  "homepage": "https://github.com/mushuanli/nestos/tree/main/apps/http-app",
   "bugs": {
-    "url": "https://github.com/mushuanli/itookit/issues"
+    "url": "https://github.com/mushuanli/nestos/issues"
   },
   "keywords": [
     "nestos",
-    "mindos",
+    "nestos",
     "ai",
     "chat",
     "agents",

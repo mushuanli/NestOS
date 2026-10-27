@@ -5,12 +5,12 @@ import { join, resolve } from 'node:path';
 import { createHash } from 'node:crypto';
 import { describe, expect, it } from 'vitest';
 import { createApplicationRuntime } from '@itookit/app-core';
-import { createMindOSNodeDriver, type RemoteProject } from '@itookit/mindos-node-driver';
+import { createNestOSNodeDriver, type RemoteProject } from '@itookit/nestos-node-driver';
 import { openLocalFSBackend } from '@itookit/vfsdriver-local';
 import { NodeSqliteSidecarDb } from '@itookit/node-host/storage';
 import { RunStore } from '../src/run-store';
 
-const metadataFile = process.env.MINDOS_HARNESS_LIVE_METADATA;
+const metadataFile = process.env.NESTOS_HARNESS_LIVE_METADATA;
 
 interface Metadata { endpoint: string; project: RemoteProject; credentialFile: string; profileId: string; root: string }
 interface Fixture { directory: string; profile: string; workspace: string; credential: string; credentialReference: string }
@@ -21,7 +21,7 @@ async function prepare(metadata: Metadata): Promise<Fixture> {
     const credential = await readFile(metadata.credentialFile, 'utf8'); let credentialReference = '';
     const workspace = join(directory, 'workspace'); await mkdir(workspace, { recursive: true });
     const backend = await openLocalFSBackend({ rootDir: profile, sidecarDir: join(profile, '_meta'), createDb: NodeSqliteSidecarDb.open });
-    const driver = createMindOSNodeDriver(), runtime = await createApplicationRuntime({ backend, ownerKind: 'cli',
+    const driver = createNestOSNodeDriver(), runtime = await createApplicationRuntime({ backend, ownerKind: 'cli',
         remoteSourceProvider: driver, digitalTwinAutoStart: false });
     try {
         const nodeId = await runtime.projects.remoteMounts!.saveConnection({ name: 'CLI fixture', endpoint: metadata.endpoint }, credential);
@@ -52,8 +52,8 @@ async function execute(f: Fixture, scenario: Scenario) {
         '--set-home', f.workspace, '--headless', '--json', ...scenario.extra];
     const started = Date.now();
     const { stdout, stderr } = await promisify(execFile)(process.execPath, args, { timeout: 120_000, maxBuffer: 2 * 1024 * 1024,
-        env: { ...process.env, MINDOS_DIAGNOSTICS_DIR: join(f.directory, 'diagnostics'),
-            [`MINDOS_REMOTE_${f.credentialReference.replace(/-/g, '_')}`]: f.credential } });
+        env: { ...process.env, NESTOS_DIAGNOSTICS_DIR: join(f.directory, 'diagnostics'),
+            [`NESTOS_REMOTE_${f.credentialReference.replace(/-/g, '_')}`]: f.credential } });
     expect(stdout).not.toContain(f.credential); expect(stderr).not.toContain(f.credential);
     await writeFile(join(f.directory, `${scenario.name}.stdout.jsonl`), stdout);
     await writeFile(join(f.directory, `${scenario.name}.stderr.log`), stderr);

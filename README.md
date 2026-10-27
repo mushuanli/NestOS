@@ -1,14 +1,14 @@
-# MindOS
+# NestOS
 
 **一个由 AI 驱动的个人知识操作系统**
 
-[English Version](README_en.md)
+[English Version](README_en.md) · [命名与迁移](doc/nestos-rename.md)
 
 ---
 
 ### 项目简介
 
-MindOS 以"操作系统"的理念重新定义 AI 应用：所有内容——对话、笔记、Agent 配置、记忆卡片、项目——都存储在一个统一的**虚拟文件系统（VFS）**中。AI Agent 不只是回答问题，它能直接读写你的工作区文件，形成真正的人机协作闭环。
+NestOS 以"操作系统"的理念重新定义 AI 应用：所有内容——对话、笔记、Agent 配置、记忆卡片、项目——都存储在一个统一的**虚拟文件系统（VFS）**中。AI Agent 不只是回答问题，它能直接读写你的工作区文件，形成真正的人机协作闭环。
 
 - **当前版本**：v3.1
 - **运行方式**：Web（浏览器）+ 桌面（Tauri / macOS · Windows）
@@ -26,7 +26,7 @@ nestos httpd
 
 Node.js >=22.13；初始化证书需要 OpenSSL。将示例 IP 换成实际地址，导入生成的 CA 和浏览器个人证书后，
 打开 `https://<地址>:2000`。已有证书时无需重新生成。支持聊天、Agent/Flow、Markdown 与文档 AI、附件和项目文件。
-配置、启动参数、功能与升级见 [MindOS npm 说明](./apps/http-app/npm/README.md)。
+配置、启动参数、功能与升级见 [NestOS npm 说明](./apps/http-app/npm/README.md)。
 
 ### 工作区
 
@@ -47,7 +47,7 @@ Node.js >=22.13；初始化证书需要 OpenSSL。将示例 IP 换成实际地�
 
 #### 1. 虚拟文件系统（VFS）— `libraries/vfs-core`
 
-VFS 是 MindOS 的底层基础，提供了独特的文件系统抽象：
+VFS 是 NestOS 的底层基础，提供了独特的文件系统抽象：
 
 - **模块隔离（Module Isolation）**：每个工作区（Agents / Minds / Chats …）是一个独立的 VFS 模块，通过 `chroot` 机制相互隔离。模块内路径 `/notes.md` 映射到系统路径 `/module/minds/notes.md`，工作区之间无法直接访问对方的文件。
 
@@ -161,13 +161,13 @@ pnpm --filter @itookit/vfs-core test
 libraries/               # 独立 Git 库，统一源码工作区
 ├── driver-llm/ # 模型通信
 ├── mdxeditor/ # 独立 Markdown 编辑器
-├── mindos-node-driver/ # mindos-node 文件、同步和执行客户端
+├── nestos-node-driver/ # nestos-node 文件、同步和执行客户端
 ├── vfs-core/ # VFS 引擎与协议
 ├── vfs-sync/ # 多端文件同步核心
 ├── vfs-ui/ # 文件与资源浏览 UI
 ├── vfsdriver-indexeddb/ # IndexedDB 存储后端
 └── vfsdriver-local/ # 本地 FS 与 SQLite 后端
-ui/                      # MindOS 业务 UI
+ui/                      # NestOS 业务 UI
 ├── app-shell/
 ├── app-settings/
 ├── llm-ui/

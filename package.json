@@ -1,11 +1,11 @@
 {
-    "name": "itookit",
+    "name": "nestos-workspace",
     "version": "1.0.0",
     "private": true,
     "description": "",
     "main": "index.js",
     "scripts": {
-        "dev": "pnpm --filter mind-os dev",
+        "dev": "pnpm --filter nestos-web dev",
         "httpd": "node scripts/httpd.mjs start",
         "build": "node scripts/business-workspace.mjs build",
         "build:libs": "node scripts/business-workspace.mjs build:libs",

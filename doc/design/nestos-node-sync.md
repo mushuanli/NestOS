@@ -1,8 +1,8 @@
-# mindos-node 多端同步服务实施方案
+# nestos-node 多端同步服务实施方案
 
-状态：服务端首版已实施，2026-10-03。运行说明与具体请求见 [mindos-node 同步协议](../../tools/mindos-node/doc/sync.md)，配置见 [纯同步实例示例](../../tools/mindos-node/config.sync.example.toml)。itookit 客户端尚未接入；下文保留设计目标与验收要求，实际交付差异见第 16 节。
+状态：服务端首版已实施，2026-10-03。运行说明与具体请求见 [nestos-node 同步协议](../../tools/nestos-node/doc/sync.md)，配置见 [纯同步实例示例](../../tools/nestos-node/config.sync.example.toml)。itookit 客户端尚未接入；下文保留设计目标与验收要求，实际交付差异见第 16 节。
 
-本方案细化 [项目多端同步设计](project-sync.md) 的服务端部分。mindos-node 作为单节点云存储，保存项目数据集的不可变对象、manifest、持久版本、成员目录和变更日志。A、B、C 等设备独立发布和读取，不要求同时在线。客户端决定基线、合并、覆盖与目录应用；服务器只接受经过授权和条件校验的明确发布结果。
+本方案细化 [项目多端同步设计](project-sync.md) 的服务端部分。nestos-node 作为单节点云存储，保存项目数据集的不可变对象、manifest、持久版本、成员目录和变更日志。A、B、C 等设备独立发布和读取，不要求同时在线。客户端决定基线、合并、覆盖与目录应用；服务器只接受经过授权和条件校验的明确发布结果。
 
 首版实现单账号、多设备、多项目，沿用现有认证入口。存储键从第一版包含 namespace 和持久主体身份，为后续多账号留出隔离边界；首版不宣称已经提供多租户账号管理。
 
@@ -30,23 +30,23 @@ SQLite 在 WAL 模式下使用 FULL 会在每次提交增加同步写盘，NORMA
 
 | 当前源码 | 实施处理 |
 | --- | --- |
-| [app::State](../../tools/mindos-node/src/app/mod.rs) | 增加可选 SyncService 装配；管理独立准入、恢复和关闭 |
-| [配置模型](../../tools/mindos-node/src/config/model.rs) | 增加可选 sync 配置，缺省关闭，保持旧配置可解析 |
-| [export 初始化](../../tools/mindos-node/src/config/exports.rs) | 当前拒绝空 exports；仅在 sync 启用且 execution 关闭时允许纯同步实例使用空集合 |
-| [auth](../../tools/mindos-node/src/core/auth.rs) | 复用 Basic/Bearer 认证；把运行期 usize 身份映射为持久 principalId 和 namespace 授权 |
-| [operations](../../tools/mindos-node/src/plugin/files/operations/mod.rs) | 当前为 Mutex<HashMap>，保留一小时，重启后未知；只保留普通文件操作用途 |
-| [HTTP router](../../tools/mindos-node/src/http/mod.rs) | 增加独立 sync 子路由、对象流预算和结构化错误映射 |
-| [能力发现](../../tools/mindos-node/src/http/handlers/capabilities.rs) | 增加同步协议发现入口，仅在恢复和能力验收完成后开启 |
-| [文件 revision](../../tools/mindos-node/src/plugin/files/fs/revision.rs) | 不用于同步 generation 或内容标识 |
-| [workspace journal](../../tools/mindos-node/src/plugin/common/workspace/journal.rs) | 可参考写盘故障分类和存储锁思路，不复用租约模型或整份 JSON journal |
-| [main](../../tools/mindos-node/src/main.rs) | 启动时恢复同步存储，关闭时停止同步准入并等待持久提交 |
-| [sandbox](../../tools/mindos-node/src/plugin/process/sandbox.rs) | 当前使用 bubblewrap、授权目录 fd 及只读运行库挂载；补充同步根不可达检查和真实进程验收 |
+| [app::State](../../tools/nestos-node/src/app/mod.rs) | 增加可选 SyncService 装配；管理独立准入、恢复和关闭 |
+| [配置模型](../../tools/nestos-node/src/config/model.rs) | 增加可选 sync 配置，缺省关闭，保持旧配置可解析 |
+| [export 初始化](../../tools/nestos-node/src/config/exports.rs) | 当前拒绝空 exports；仅在 sync 启用且 execution 关闭时允许纯同步实例使用空集合 |
+| [auth](../../tools/nestos-node/src/core/auth.rs) | 复用 Basic/Bearer 认证；把运行期 usize 身份映射为持久 principalId 和 namespace 授权 |
+| [operations](../../tools/nestos-node/src/plugin/files/operations/mod.rs) | 当前为 Mutex<HashMap>，保留一小时，重启后未知；只保留普通文件操作用途 |
+| [HTTP router](../../tools/nestos-node/src/http/mod.rs) | 增加独立 sync 子路由、对象流预算和结构化错误映射 |
+| [能力发现](../../tools/nestos-node/src/http/handlers/capabilities.rs) | 增加同步协议发现入口，仅在恢复和能力验收完成后开启 |
+| [文件 revision](../../tools/nestos-node/src/plugin/files/fs/revision.rs) | 不用于同步 generation 或内容标识 |
+| [workspace journal](../../tools/nestos-node/src/plugin/common/workspace/journal.rs) | 可参考写盘故障分类和存储锁思路，不复用租约模型或整份 JSON journal |
+| [main](../../tools/nestos-node/src/main.rs) | 启动时恢复同步存储，关闭时停止同步准入并等待持久提交 |
+| [sandbox](../../tools/nestos-node/src/plugin/process/sandbox.rs) | 当前使用 bubblewrap、授权目录 fd 及只读运行库挂载；补充同步根不可达检查和真实进程验收 |
 
 已增加并锁定 rusqlite 0.31.0（bundled SQLite）；数据库连接与文件同步操作放在专用存储执行器或有界 blocking worker 中，不阻塞 Tokio 网络线程。
 
 ## 3 模块结构
 
-以下目录相对 mindos-node 仓库，为职责结构；实际实现增加 commands、admin、transport 和显式测试 feature，具体文件以源码为准：
+以下目录相对 nestos-node 仓库，为职责结构；实际实现增加 commands、admin、transport 和显式测试 feature，具体文件以源码为准：
 
 ```text
 src/sync/
@@ -83,7 +83,7 @@ allowed_origins = ["http://localhost:3000"]
 
 [sync]
 enabled = true
-root = "/srv/mindos-node-sync"
+root = "/srv/nestos-node-sync"
 principal_id = "owner"
 namespace_id = "personal"
 max_object_bytes = 268435456
@@ -488,7 +488,7 @@ sync 默认关闭；未配置时新增路由返回不可用，原有文件及进
 | F3 发现与保留 | catalog、changes、历史枚举、回收站、pin、GC 与副本重接入 | 历史不因 changes 清理而丢失；保留从替代/删除起算；GC 无悬空引用 |
 | F4 恢复与交付 | 版本/删除恢复、损坏修复、停机备份恢复、隔离验收和能力声明 | 空目录恢复与 HTTP 校验通过；A/B/C 可重新接入；完整矩阵通过 |
 
-中间阶段只在测试或显式开发开关下使用，不能在 F1 就把生产能力声明成完整同步。最终交付包括 mindos-node 实现、服务端 README/config 示例、HTTP 契约 fixture 和不依赖 itookit UI 的 A/B/C 客户端测试脚本。
+中间阶段只在测试或显式开发开关下使用，不能在 F1 就把生产能力声明成完整同步。最终交付包括 nestos-node 实现、服务端 README/config 示例、HTTP 契约 fixture 和不依赖 itookit UI 的 A/B/C 客户端测试脚本。
 
 itookit 后续按同一协议接入。服务端完成不代表客户端基线、合并和会话接续已交付；验收报告分别记录这两个边界。
 
@@ -534,14 +534,14 @@ itookit 后续按同一协议接入。服务端完成不代表客户端基线、
 
 存储测试注入文件写入、rename、目录 fsync、数据库事务和回执返回边界故障；HTTP 集成测试使用真实临时存储及重启子进程。进程崩溃和 I/O 故障分别记录，真实断电保证按部署环境验证。
 
-实现检查使用 mindos-node 仓库的 cargo fmt、cargo clippy、cargo test，并运行真实 HTTP 多客户端测试。同步关闭时现有文件和执行测试必须继续通过；同步开启时新增持久化测试不能只使用内存数据库。
+实现检查使用 nestos-node 仓库的 cargo fmt、cargo clippy、cargo test，并运行真实 HTTP 多客户端测试。同步关闭时现有文件和执行测试必须继续通过；同步开启时新增持久化测试不能只使用内存数据库。
 
 
 ## 16 首版实施记录
 
-当前实现的 C4 架构、接口事件流、策略与机制边界及改进项见 [同步架构与代码评审](mindos-node-sync-architecture-review.md)。
+当前实现的 C4 架构、接口事件流、策略与机制边界及改进项见 [同步架构与代码评审](nestos-node-sync-architecture-review.md)。
 
-实现位于 [sync](../../tools/mindos-node/src/plugin/sync/mod.rs)，纯同步启动、现有认证、独立 JSON/对象流预算、CORS、能力发现与停机 drain 已接入原服务。默认 sync 关闭；生产构建默认不启用故障注入。
+实现位于 [sync](../../tools/nestos-node/src/plugin/sync/mod.rs)，纯同步启动、现有认证、独立 JSON/对象流预算、CORS、能力发现与停机 drain 已接入原服务。默认 sync 关闭；生产构建默认不启用故障注入。
 
 | 设计职责 | 实际交付 |
 | --- | --- |
@@ -560,7 +560,7 @@ changes 和重复 catalog 快照按保留窗口分批压缩；历史版本目录
 
 管理员支持同服务灾备恢复，保留 authorityId、更新 historyEpoch；另一个 authority 的克隆命令未在首版交付。项目时间点 checkpoint 和会话安全接续继续作为独立后续能力，当前 projectCheckpoint=false，opaqueBundle 不表示可继续旧运行。
 
-验收入口为 [同步测试](../../tools/mindos-node/src/plugin/sync/tests/integration/main.rs)、[故障测试](../../tools/mindos-node/src/plugin/sync/tests/integration/crash.rs)、[共享 fixture](../../tools/mindos-node/src/plugin/sync/tests/integration/fixtures/manifests.json) 和 [真实 HTTP 脚本](../../tools/mindos-node/scripts/sync-smoke.py)。故障注入使用独立测试构建，涵盖提交、安装、GC、修复与恢复边界；不把这些证据等同于真实断电、磁盘控制器故障或 itookit 客户端同步验收。
+验收入口为 [同步测试](../../tools/nestos-node/src/plugin/sync/tests/integration/main.rs)、[故障测试](../../tools/nestos-node/src/plugin/sync/tests/integration/crash.rs)、[共享 fixture](../../tools/nestos-node/src/plugin/sync/tests/integration/fixtures/manifests.json) 和 [真实 HTTP 脚本](../../tools/nestos-node/scripts/sync-smoke.py)。故障注入使用独立测试构建，涵盖提交、安装、GC、修复与恢复边界；不把这些证据等同于真实断电、磁盘控制器故障或 itookit 客户端同步验收。
 
 ### 16.1 正确性评审修复
 
@@ -570,13 +570,13 @@ init.pending 续作先核对已有身份和存储证据，不能因数据库缺�
 
 关闭协调计入 HTTP 请求、blocking 工作、接收中的上传和异步清理。停止准入后才可排空，超时记录明确失败并依赖重启恢复；backup 仍取得独占 root 锁，服务方法同时在数据库锁内复制。verify 改为只读连接，不执行启动恢复、不重建缓存或登记 corrupt，引用修复不能隐藏在校验中。
 
-文件摘要、健康状态处理和副本活跃规则复用，HTTP 响应映射留在 transport。changes 与回执使用同一个类型化 operation 身份，并在原子发布事务中写入。详细证据见 [修复实施结果](mindos-node-sync-architecture-review.md#11-正确性修复实施结果)；测试增加实际 SQLITE_FULL、回执 SQL 失败、关闭/取消 HTTP 流，以及旧 epoch 对新操作的隔离。
+文件摘要、健康状态处理和副本活跃规则复用，HTTP 响应映射留在 transport。changes 与回执使用同一个类型化 operation 身份，并在原子发布事务中写入。详细证据见 [修复实施结果](nestos-node-sync-architecture-review.md#11-正确性修复实施结果)；测试增加实际 SQLITE_FULL、回执 SQL 失败、关闭/取消 HTTP 流，以及旧 epoch 对新操作的隔离。
 
 
 ### 16.2 发现索引清理与测量驱动优化
 
-新增 [发现索引清理](../../tools/mindos-node/src/plugin/sync/compaction.rs) 和 [性能计量](../../tools/mindos-node/src/plugin/sync/metrics.rs)。纯策略 change_cutoff 计算回收边界，存储机制在同一事务更新项目 changeFloor、清理 changes 并保留 catalog 的成员边界快照。默认 changes 保留 7 天，另加一个完整 cursor TTL；每批最多删除 2000 行发现索引。分页续读保留原期限，落后于边界的读取、ACK 和 activate 明确返回 CURSOR_EXPIRED，全量对账后重新接入。缺失可靠事件时间的旧数据保守阻止清理。
+新增 [发现索引清理](../../tools/nestos-node/src/plugin/sync/compaction.rs) 和 [性能计量](../../tools/nestos-node/src/plugin/sync/metrics.rs)。纯策略 change_cutoff 计算回收边界，存储机制在同一事务更新项目 changeFloor、清理 changes 并保留 catalog 的成员边界快照。默认 changes 保留 7 天，另加一个完整 cursor TTL；每批最多删除 2000 行发现索引。分页续读保留原期限，落后于边界的读取、ACK 和 activate 明确返回 CURSOR_EXPIRED，全量对账后重新接入。缺失可靠事件时间的旧数据保守阻止清理。
 
 历史恢复目录、删除成员身份和防重放操作身份独立保留，不因 changes 到期丢失。单节点仍存在元数据增长上限；这次未改变永久身份契约，也未承诺无限历史审计或数据库物理压缩。
 
-锁等待、持锁、服务事务和 COMMIT 分开计量，错误回滚计入事务时间。1000 个文件引用同一对象的测量发现重复检查和 INSERT；现在先按摘要形成唯一引用集合，拒绝不一致长度，再在原事务中验证和写入。未移动验证到锁外，没有引入新的 GC 保护竞态。负载结果和适用边界见 [批量实施结果](mindos-node-sync-architecture-review.md#12-发现索引与性能批量实施结果)。
+锁等待、持锁、服务事务和 COMMIT 分开计量，错误回滚计入事务时间。1000 个文件引用同一对象的测量发现重复检查和 INSERT；现在先按摘要形成唯一引用集合，拒绝不一致长度，再在原事务中验证和写入。未移动验证到锁外，没有引入新的 GC 保护竞态。负载结果和适用边界见 [批量实施结果](nestos-node-sync-architecture-review.md#12-发现索引与性能批量实施结果)。

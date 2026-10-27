@@ -12,7 +12,7 @@ import { recoverInstructionQueues } from '../session/instruction-queue-recovery'
 import { StartupCoordinator } from './startup-coordinator';
 import { SessionLifecycleService } from '../session/session-lifecycle';
 import { MCPRemoteConnections } from '../projects/mcp-remote-connections';
-import { createMindOSNodeMCPExtension } from '../projects/mindos-node-mcp-extension';
+import { createNestOSNodeMCPExtension } from '../projects/nestos-node-mcp-extension';
 import { ProjectSyncService, type ProjectSyncProvider } from '../projects/sync/service';
 import type { Coordinator } from '@itookit/vfs-sync';
 import { seedDefaultFlows } from '../presets/default-flows';
@@ -86,6 +86,7 @@ export interface ApplicationKernelPlatform {
 }
 
 export interface ApplicationRuntime {
+    editorSwapStore?: import('@itookit/app-contracts/services').EditorSwapStore;
     /** Trusted host preparation and dispatch; this service is not an RPC contract. */
     independentCalls?: import('@itookit/llm-session').IndependentCallService;
     flowInstallations: import('@itookit/app-contracts/services').FlowInstallations;
@@ -157,7 +158,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
     let remoteConnections: ProjectRemoteMountService | undefined;
     const injectedMCP = options.mcp;
     options = { ...options,mcp:{ ...injectedMCP,
-        extensions:[...(injectedMCP?.extensions ?? []),...(options.remoteSourceProvider ? [createMindOSNodeMCPExtension()] : [])],
+        extensions:[...(injectedMCP?.extensions ?? []),...(options.remoteSourceProvider ? [createNestOSNodeMCPExtension()] : [])],
         resolveCredential:injectedMCP?.resolveCredential ?? options.remoteSourceProvider?.resolveCredential?.bind(options.remoteSourceProvider),
         beforeSave:async (server,previous) => { await injectedMCP?.beforeSave?.(server,previous); await remoteConnections?.beforeMCPChange(server,previous); },
         beforeDelete:async id => { await injectedMCP?.beforeDelete?.(id); remoteConnections?.beforeMCPDelete(id); },
@@ -177,7 +178,7 @@ export async function createApplicationRuntime(options: ApplicationRuntimeOption
         logStep(t('boot.coreServices'));
         const [agentFiles, flowFiles, homeFiles, promptHistoryFiles] = await traceBoot('core.openFileSystems', () => Promise.all([
             vfs.openFileSystem(workspaceRoot('agents')), vfs.openFileSystem(workspaceRoot('flows')), vfs.openFileSystem('/home/admin'),
-            vfs.openFileSystem('/home/admin/.config/mindos/prompt-history'),
+            vfs.openFileSystem('/home/admin/.config/nestos/prompt-history'),
         ]));
         const agentService   = new VFSAgentService(agentFiles, llmDriver, { translate: t, logger: createModuleLogger('llm-conversation'), traceBoot });
         cleanupFns.push(() => agentService.dispose());

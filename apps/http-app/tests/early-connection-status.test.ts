@@ -17,7 +17,7 @@ async function connection() {
     let controller!: ReadableStreamDefaultController<Uint8Array>, expired = false;
     vi.stubGlobal('fetch', async (_url: unknown, init?: RequestInit) => {
         if (!init?.method) return new Response(new ReadableStream<Uint8Array>({start(value) {controller = value;}}));
-        if (expired) return Response.json({error: {message: 'Expired'}}, {status: 400, headers: {'X-MindOS-View-Expired': '1'}});
+        if (expired) return Response.json({error: {message: 'Expired'}}, {status: 400, headers: {'X-NestOS-View-Expired': '1'}});
         return Response.json(bootstrap);
     });
     const client = connectApplication(); releases.push(() => client.close()); const root = await client.ready;

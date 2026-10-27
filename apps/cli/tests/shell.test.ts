@@ -65,7 +65,7 @@ describe('sandboxBaseArgs', () => {
         const { args } = sandboxBaseArgs(workflow(), [grant], '/host/workspace', true);
 
         expect(args).toContain('type=bind,src=/external/data,dst=/mnt/grants/grant-1,ro');
-        expect(pair(args, '--tmpfs', 2)).toBe('/workspace/.mindos:rw,noexec,nosuid,nodev,size=16m');
+        expect(pair(args, '--tmpfs', 2)).toBe('/workspace/.nestos:rw,noexec,nosuid,nodev,size=16m');
     });
 
     it('enforces read-only root, no capabilities and network isolation', () => {
@@ -103,7 +103,7 @@ function workflow(): CompiledWorkflow {
             sandbox: { mode: 'oci', engine: 'auto' },
         },
         workspaceRoot: '/host/workspace',
-        stateDir: '/host/workspace/.mindos',
+        stateDir: '/host/workspace/.nestos',
     } as unknown as CompiledWorkflow;
 }
 

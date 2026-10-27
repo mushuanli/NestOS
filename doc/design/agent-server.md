@@ -1,4 +1,4 @@
-# mindos-node 与 Harness：统一工作目录、挂载与执行环境
+# nestos-node 与 Harness：统一工作目录、挂载与执行环境
 
 状态：收敛后的设计规范，2026-09-29。本文替代此前以同步、不可变版本、私有副本和结果回传为主线的方案。当前实现与差距见第 9 节，不能把设计接口视为已交付能力。
 
@@ -10,9 +10,9 @@ Harness 只要求：一个 cwd、一张挂载表、一套目录权限，以及�
 
 默认 cwd 为 `/workspace`，当前项目位于 `/workspace`，额外授权目录位于同级路径，例如 `/reference`、`/datasets`。撤销“Shell 的 `/` 必须等于项目目录”的要求。UI 可以隐藏项目根前缀，但路径复制、附件引用和工具参数必须使用规范路径。
 
-mindos-node 是可选的远端文件/执行适配服务，不拥有另一套 Agent、Session、审批或任务调度系统。推理、工具授权和 Kernel 继续由应用层负责。
+nestos-node 是可选的远端文件/执行适配服务，不拥有另一套 Agent、Session、审批或任务调度系统。推理、工具授权和 Kernel 继续由应用层负责。
 
-拟新增的云存储与多端同步能力见 [项目多端同步设计](project-sync.md)。该设计独立管理云端项目版本、设备副本和条件发布，不改变本文普通远程挂载与执行的基础契约；项目数据布局及可选 .mindos 便携目录见其第 18 节。
+拟新增的云存储与多端同步能力见 [项目多端同步设计](project-sync.md)。该设计独立管理云端项目版本、设备副本和条件发布，不改变本文普通远程挂载与执行的基础契约；项目数据布局及可选 .nestos 便携目录见其第 18 节。
 
 MVP 不要求自动同步、PublishedRevision、SyncBatch、版本发布 CAS、结果 sealing、ResultRevision、apply-back、可转移工作区租约或持久输出重放。已有独立工作区功能继续服务其原有用途，不成为普通 Harness 的必经步骤。远端复制与结果导出将来可由 RemoteBackend 扩展，不进入 Harness 核心模型。
 
@@ -115,9 +115,9 @@ Linux 当前 bubblewrap 路径可表达虚拟挂载；macOS 当前 Seatbelt 实�
 
 源目录直接挂载意味着 Bash 与文件 API 都可能修改它。MVP 采用普通文件系统一致性，不承诺跨工具事务、时间点快照或写入回滚。只允许在后端真实支持时宣告条件写入；不能在开放 Bash 写入后继续使用“独占 HTTP writer 的内存 revision”冒充强 CAS。现有 HTTP exclusive 写入契约保留：当前实现通过服务端文件/进程互斥门隔离两条写入通道，进程完整回收后使此前的 revision 全部失效。外部进程不得绕过服务修改 exclusive export。
 
-## 6. mindos-node 的最小职责
+## 6. nestos-node 的最小职责
 
-目录为 `tools/mindos-node`，仓库为 `mushuanli/mindos-node`，二进制为 `mindos-node`，Rust library 为 `mindos_node`。
+目录为 `tools/nestos-node`，仓库为 `mushuanli/nestos-node`，二进制为 `nestos-node`，Rust library 为 `nestos_node`。
 
 首期保留认证、export 别名、路径限制和文件能力发现；执行扩展只需要目录授权解析、命令启动、状态、有界输出、取消及清理。文件与进程共享服务端解析的授权目录，复用连接配置与凭据机制；HTTP 文件 driver 不承担项目策略或进程编排。
 
@@ -136,7 +136,7 @@ Linux 当前 bubblewrap 路径可表达虚拟挂载；macOS 当前 Seatbelt 实�
 
 ## 7. 展示过滤与路径引用
 
-`.gitignore` 只影响约定的界面展示；既有 Glob/Grep/候选发现的忽略策略独立保留。mindos-node 和原始 VFS stat/read/list 不因 `.gitignore` 删除或隐藏实际文件。
+`.gitignore` 只影响约定的界面展示；既有 Glob/Grep/候选发现的忽略策略独立保留。nestos-node 和原始 VFS stat/read/list 不因 `.gitignore` 删除或隐藏实际文件。
 
 因此，文件树隐藏 ignored 项而 `ls` 列出它们可以是正常差异。界面应明确过滤状态，并可提供展示忽略项的入口；这属于展示功能，不改变执行目录。比较目录一致性时使用 raw list 和对应的 Shell 目录枚举，不直接拿过滤后的 UI 树作等价断言。
 
@@ -156,7 +156,7 @@ Linux 当前 bubblewrap 路径可表达虚拟挂载；macOS 当前 Seatbelt 实�
 
 ### A2：最小远端执行
 
-mindos-node 为同节点已有目录增加 exec；Web/Tauri/CLI 复用相同环境端口。先完成文件/进程一致性、认证、权限、取消和 unknown 行为；未通过前继续报告 process.exec=false。不以前置同步和结果回传扩大交付范围。
+nestos-node 为同节点已有目录增加 exec；Web/Tauri/CLI 复用相同环境端口。先完成文件/进程一致性、认证、权限、取消和 unknown 行为；未通过前继续报告 process.exec=false。不以前置同步和结果回传扩大交付范围。
 
 ### 后续可选
 
@@ -166,11 +166,11 @@ PTY、自动 materialization、增量传输、缓存和结果导出，分别按�
 
 已存在的基础：
 
-- mindos-node 提供 `/v1/capabilities`；命令执行默认开启，配置 execution=false 可关闭；启动探测成功后，宣告 Linux bubblewrap virtual-root、kernel-enforced readonly 与 exec=true；sync/PTY 仍为 false。
+- nestos-node 提供 `/v1/capabilities`；命令执行默认开启，配置 execution=false 可关闭；启动探测成功后，宣告 Linux bubblewrap virtual-root、kernel-enforced readonly 与 exec=true；sync/PTY 仍为 false。
 - HTTP provider 已接入能力发现；仅 capabilities 的 HTTP 404 触发旧文件服务器兼容路径。
 - SessionFiles 已有 cwd/mounts，DirectoryMountService 将项目放在 `/workspace` 并提供进程授权；Tauri/Linux 通过 bubblewrap 装配授权目录。
 - UI 项目文件入口和编辑器已改用 `/workspace` 子树视图；导航路由保持兼容，引用传递规范路径。文件工具允许相对 cwd 解析 `..`，访问仍受挂载表约束。项目内部 source view 继续服务归档等内部操作。
-- `ProjectExecutionService` 按远程根目录的连接和 mindos-node 能力声明自动获取文件/进程上下文。工作台不持久化执行开关、不提供启用/禁用菜单；历史 execution 记录不再读取，服务器关闭 `execution` 时只保留文件能力。当前挂载授权摘要、隔离要求和服务端身份仍在获取期间校验。Web/Tauri/CLI 共用此策略。
+- `ProjectExecutionService` 按远程根目录的连接和 nestos-node 能力声明自动获取文件/进程上下文。工作台不持久化执行开关、不提供启用/禁用菜单；历史 execution 记录不再读取，服务器关闭 `execution` 时只保留文件能力。当前挂载授权摘要、隔离要求和服务端身份仍在获取期间校验。Web/Tauri/CLI 共用此策略。
 - Tauri 原生适配在 macOS 拒绝源路径与目标路径不同的挂载，避免 seatbelt 仅改变 cwd 而制造假命名空间；完整虚拟目录执行仍需 namespace-capable 后端。
 - Rust `workspaces/leases` 是独立的未接路由机制；不作为 Harness MVP 的必选依赖，也不据此新增工作区租约协议。删除或复用它应在专门代码变更中进行。
 - 已有 `.gitignore` 展示过滤、只读 UI 联动和取消基础可以继续复用。
@@ -180,7 +180,7 @@ PTY、自动 materialization、增量传输、缓存和结果导出，分别按�
 
 ## 10. 最小远端执行的实现契约
 
-- 开启方式：mindos-node 默认启用执行，顶层 `execution = false` 显式关闭。`server_id` 可指定稳定身份；未指定时生成本次启动的随机节点身份，不承诺跨重启稳定。启动时探测真实 bubblewrap 启动、fd mount 和禁用嵌套 user namespace；失败即拒绝服务启动，不回退宿主 Shell。
+- 开启方式：nestos-node 默认启用执行，顶层 `execution = false` 显式关闭。`server_id` 可指定稳定身份；未指定时生成本次启动的随机节点身份，不承诺跨重启稳定。启动时探测真实 bubblewrap 启动、fd mount 和禁用嵌套 user namespace；失败即拒绝服务启动，不回退宿主 Shell。
 - `POST /v1/processes` 接收 serverId、epoch、requestId、command/args、cwd、mounts、timeoutMs；mount 只含 export alias、相对 path、虚拟 at、ro/rw。服务端 openat2 拒绝符号链接和越界，再通过 `--bind-fd`/`--ro-bind-fd` 挂载，客户端不能提交宿主路径。
 - `GET /v1/processes/:epoch/:id` 查询，`POST .../cancel` 取消。状态为 running/exited/cancelled/timed-out/failed/unknown。ID 绑定认证身份和启动 epoch；重复启动只返回既有状态。取消可先于启动形成拒绝执行记录。启动 POST 不自动重试；响应丢失时以原 ID 取消并报告 unknown，不能伪称没有执行。
 - 首版最多运行一个命令，命令最长 300 秒，stdout/stderr 各 64 KiB；超量触发取消并标记 truncated。状态查询返回最终有界输出，目前不提供实时流、stdin 或 PTY。最多保留 1024 条请求记录，达到上限拒绝新命令，需管理员重启；重启 epoch 改变，旧请求不得重放。
@@ -192,23 +192,23 @@ PTY、自动 materialization、增量传输、缓存和结果导出，分别按�
 
 ## 已实现：外部 harness 控制与统一接入
 
-mindos-node-driver 统一文件、进程、同步和外部 harness 连接。服务端在现有认证端口新增无状态 MCP 2026-07-28 `/mcp`，使用 MCP SDK 2.0 客户端验证。文件字节和原有进程接口继续 HTTP；不替换文件修订/操作收据，也不把 Codex 原生 stdio 称为 MCP。
+nestos-node-driver 统一文件、进程、同步和外部 harness 连接。服务端在现有认证端口新增无状态 MCP 2026-07-28 `/mcp`，使用 MCP SDK 2.0 客户端验证。文件字节和原有进程接口继续 HTTP；不替换文件修订/操作收据，也不把 Codex 原生 stdio 称为 MCP。
 
 通用 `HarnessDriver` 与注册/修改收据层分开，当前驱动为 Codex。每个配置 profile 懒启动独立 app-server，通过原生 thread/list/read/start/resume、turn/start/interrupt、通知和反向请求控制。显式 CODEX_HOME 和 workspace 白名单为部署授权，不自动扫描宿主所有 home。配置可指向 ~/.codex 的实际绝对路径，分页读取各来源和归档会话；不修改原生数据库或 JSONL。历史只读 fallback 限于 sessions/archived_sessions 中的常规 JSONL，拒绝链接与目录逃逸。
 
-接管只允许授权 cwd 且非活跃的原生线程。网关 owned/收据是进程内控制状态，不保证跨 harness 或跨主机排他；外部 CLI 仍可访问自己的状态。旧宿主 workspace 模式与 exclusive rw exports 禁止重叠。新项目模式通过共同 ProjectLauncher 和 FileGate 控制文件、进程及 Codex turn，支持受控 rw 导出；native 运行在外层项目沙箱中。详见 [项目模型](mindos-node-project-model.md)。
+接管只允许授权 cwd 且非活跃的原生线程。网关 owned/收据是进程内控制状态，不保证跨 harness 或跨主机排他；外部 CLI 仍可访问自己的状态。旧宿主 workspace 模式与 exclusive rw exports 禁止重叠。新项目模式通过共同 ProjectLauncher 和 FileGate 控制文件、进程及 Codex turn，支持受控 rw 导出；native 运行在外层项目沙箱中。详见 [项目模型](nestos-node-project-model.md)。
 
 操作以 epoch/requestId 保留未知/已提交/未提交收据，HTTP 超时后后台继续等待原生回执，查询可确认晚到结果。事件有界并报告 gap；控制面板安全显示文本，保留审批草稿，不因关闭面板中断原生 turn。服务关闭先封闭所有 driver，再取消监管、回收各 app-server 进程组并等待 leader；已脱离进程组的后代不宣称被回收。
 
-Codex 0.159.2 的 paginated 历史恢复尚有兼容限制；新建显式 legacy，未物化会话展示空历史。旧 paginated 会话保留只读历史；扩展版本能力后再开放恢复。当前支持命令/文件审批与用户问题，其他原生反向请求显示不支持，不自动批准。使用与上限见 [服务 README](../../tools/mindos-node/README.md)。
+Codex 0.159.2 的 paginated 历史恢复尚有兼容限制；新建显式 legacy，未物化会话展示空历史。旧 paginated 会话保留只读历史；扩展版本能力后再开放恢复。当前支持命令/文件审批与用户问题，其他原生反向请求显示不支持，不自动批准。使用与上限见 [服务 README](../../tools/nestos-node/README.md)。
 
 ## MCP 配置与项目目录绑定
 
-客户端按多条 MCP 配置管理 mindos-node，每条有独立 ID、地址、认证引用和状态；不按显示名称判定服务类型。MCPSettingsEditor 通过中立 ConfigurationFormControls 注入应用专属 mindos-node 字段和控制中心。普通 MCP 配置不进入项目目录选择列表。新 mindos-node 配置须测试协议及 mindos_node_capabilities（兼容旧名称），验证版本、文件协议和同源 HTTP 端点；服务名称可自由修改。
+客户端按多条 MCP 配置管理 nestos-node，每条有独立 ID、地址、认证引用和状态；不按显示名称判定服务类型。MCPSettingsEditor 通过中立 ConfigurationFormControls 注入应用专属 nestos-node 字段和控制中心。普通 MCP 配置不进入项目目录选择列表。新 nestos-node 配置须测试协议及 nestos_node_capabilities（兼容旧名称），验证版本、文件协议和同源 HTTP 端点；服务名称可自由修改。
 
 服务器配置的 Codex home/workspace 仍属于部署 TOML，客户端不能改写主机授权。MCP 保存连接与验证信息，项目保存配置 ID、alias、root、access；不会把远程真实目录路径当作客户端本地目录。现有连接保留 ID 迁入 MCP 目录，旧密码转入运行期 provider 并清除持久记录。离线旧连接不因迁移而丢失，legacy 标记只用于已有文件服务兼容。
 
 项目显示“服务器名:项目名”，项目名不是远程目录身份。同一服务器身份/账号与规范化路径的创建操作串行化，重复请求返回原项目；不同服务器允许同名项目，必要时内部 navigationName 使用稳定项目 ID 区分。服务器改名不改变路由、授权或会话位置。
 
 
-项目管理现由独立服务端 catalog 管理 alias 下的真实子目录、策略 revision 和额外挂载。sync project 保持数据同步身份，不自动获得执行权限；接口、配置与 VMM 扩展端口见 [mindos-node 项目与同步模型](mindos-node-project-model.md)。
+项目管理现由独立服务端 catalog 管理 alias 下的真实子目录、策略 revision 和额外挂载。sync project 保持数据同步身份，不自动获得执行权限；接口、配置与 VMM 扩展端口见 [nestos-node 项目与同步模型](nestos-node-project-model.md)。

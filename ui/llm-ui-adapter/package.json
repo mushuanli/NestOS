@@ -1,7 +1,7 @@
 {
   "name": "@itookit/llm-ui-adapter",
   "version": "0.1.0",
-  "description": "MindOS conversation, settings and execution adapters for llm-ui",
+  "description": "NestOS conversation, settings and execution adapters for llm-ui",
   "type": "module",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -97,13 +97,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mushuanli/itookit.git",
+    "url": "https://github.com/mushuanli/nestos.git",
     "directory": "ui/llm-ui-adapter"
   },
   "bugs": {
-    "url": "https://github.com/mushuanli/itookit/issues"
+    "url": "https://github.com/mushuanli/nestos/issues"
   },
-  "homepage": "https://github.com/mushuanli/itookit/tree/main/ui/llm-ui#readme",
+  "homepage": "https://github.com/mushuanli/nestos/tree/main/ui/llm-ui#readme",
   "engines": {
     "node": ">=16.0.0"
   },

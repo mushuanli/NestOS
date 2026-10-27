@@ -78,19 +78,19 @@ function parseArgs(argv: string[]): Options {
 
 const USAGE = `旧版文件式聊天 → Durable Session 迁移工具
 
-  --root <dir>        数据根（默认取 ~/.config/mindos/mindos.json#rootDir）
+  --root <dir>        数据根（默认取 ~/.config/nestos/nestos.json#rootDir）
   --source <rel>      旧聊天目录，相对数据根（默认 ${DEFAULT_SOURCE}）
   --apply             真正写入（默认只做 dry-run，不碰任何文件）
-  --config-dir <dir>  mindos.json 所在目录（默认 $XDG_CONFIG_HOME 或 ~/.config）
+  --config-dir <dir>  nestos.json 所在目录（默认 $XDG_CONFIG_HOME 或 ~/.config）
 
 先跑 dry-run 看清单，确认后再加 --apply；写入前请退出正在使用该数据根的 Tauri/CLI。`;
 
-/** mindos.json#rootDir wins, then <configDir>/mindos/data — same order as the app. */
+/** nestos.json#rootDir wins, then <configDir>/nestos/data — same order as the app. */
 async function resolveRoot(options: Options): Promise<string> {
     if (options.root) return path.resolve(options.root);
-    const configDir = path.join(options.configDir, 'mindos');
+    const configDir = path.join(options.configDir, 'nestos');
     try {
-        const settings = JSON.parse(await readFile(path.join(configDir, 'mindos.json'), 'utf8')) as { rootDir?: unknown };
+        const settings = JSON.parse(await readFile(path.join(configDir, 'nestos.json'), 'utf8')) as { rootDir?: unknown };
         if (typeof settings.rootDir === 'string' && settings.rootDir) return path.resolve(configDir, settings.rootDir);
     } catch { /* fall through to the default layout */ }
     return path.join(configDir, 'data');

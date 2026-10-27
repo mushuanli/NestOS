@@ -11,7 +11,7 @@ afterEach(async () => {
 });
 
 it('explains how to reuse certificates and preserves an existing directory', async () => {
-    directory = await mkdtemp(path.join(tmpdir(), 'mindos-existing-certs-'));
+    directory = await mkdtemp(path.join(tmpdir(), 'nestos-existing-certs-'));
     await writeFile(path.join(directory, 'ca.key'), 'existing private key');
     await expect(createCertificates(directory, ['192.168.31.10'])).rejects.toThrow('Reuse this directory');
     expect(await readFile(path.join(directory, 'ca.key'), 'utf8')).toBe('existing private key');

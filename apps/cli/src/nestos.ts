@@ -1,41 +1,37 @@
 /**
- * @file apps/cli/src/mindos.ts
+ * @file apps/cli/src/nestos.ts
  *
- * MindOS profile resolution for the headless CLI.
- * Reads the shared config file ($XDG_CONFIG_HOME/mindos/mindos.json or
- * ~/.config/mindos/mindos.json) and resolves the real MindOS data root.
+ * NestOS profile resolution for the headless CLI.
+ * Reads the shared config file ($XDG_CONFIG_HOME/nestos/nestos.json or
+ * ~/.config/nestos/nestos.json) and resolves the real NestOS data root.
  * Mirrors apps/tauri-app/src-tauri/src/lib.rs `resolve_all_paths`.
  */
-import { homedir } from 'node:os';
+import {configurationFilePath, configDirectory} from '@itookit/node-host/runtime';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-    MINDOS_CONFIG_FILE,
-    DEFAULT_MINDOS_SETTINGS,
-    resolveMindOSProfile as resolveProfile,
-    type MindOSProfile,
-    type MindOSProfileSettings,
+    DEFAULT_NESTOS_SETTINGS,
+    resolveNestOSProfile as resolveProfile,
+    type NestOSProfile,
+    type NestOSProfileSettings,
 } from '@itookit/app-core';
 
-/** Config dir: $XDG_CONFIG_HOME/mindos or ~/.config/mindos. */
-function configDir(): string {
-    const xdg = process.env.XDG_CONFIG_HOME;
-    return xdg ? path.join(xdg, 'mindos') : path.join(homedir(), '.config', 'mindos');
-}
+/** Config dir: $XDG_CONFIG_HOME/nestos or ~/.config/nestos. */
+function configDir(): string { return configDirectory(); }
 
 function ensureSettings(): void {
     mkdirSync(configDir(), { recursive: true });
     try {
-        writeFileSync(path.join(configDir(), MINDOS_CONFIG_FILE), JSON.stringify(DEFAULT_MINDOS_SETTINGS, null, 2) + '\n', { flag: 'wx' });
+        writeFileSync(configurationFilePath(configDir()), JSON.stringify(DEFAULT_NESTOS_SETTINGS, null, 2) + '\n', { flag: 'wx' });
     } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
     }
 }
 
-function readSettings(): MindOSProfileSettings {
+function readSettings(): NestOSProfileSettings {
     ensureSettings();
     try {
-        const raw = JSON.parse(readFileSync(path.join(configDir(), MINDOS_CONFIG_FILE), 'utf8'));
+        const raw = JSON.parse(readFileSync(configurationFilePath(configDir()), 'utf8'));
         return {
             rootDir: typeof raw.rootDir === 'string' && raw.rootDir ? raw.rootDir : undefined,
             homeDir: typeof raw.homeDir === 'string' && raw.homeDir ? raw.homeDir : undefined,
@@ -47,19 +43,19 @@ function readSettings(): MindOSProfileSettings {
     }
 }
 
-/** Resolve the shared MindOS profile used by CLI and the desktop app. */
-export function resolveMindosProfile(): MindOSProfile {
+/** Resolve the shared NestOS profile used by CLI and the desktop app. */
+export function resolveNestosProfile(): NestOSProfile {
     return resolveProfile({
         configDir: configDir(),
         settings: readSettings(),
-        env: { MINDOS_ROOT: process.env.MINDOS_ROOT },
+        env: { NESTOS_ROOT: process.env.NESTOS_ROOT },
         resolvePath: (base, relative) => path.resolve(base, relative),
     });
 }
 
-/** Resolve the mindos data root. Kept as the CLI's narrow convenience helper. */
-export function resolveMindosRoot(): string {
-    return resolveMindosProfile().dataRoot;
+/** Resolve the nestos data root. Kept as the CLI's narrow convenience helper. */
+export function resolveNestosRoot(): string {
+    return resolveNestosProfile().dataRoot;
 }
 
 export type CliProfileKind = 'desktop' | 'path';
@@ -71,12 +67,12 @@ export interface CliProfile {
 
 /**
  * Resolve the CLI profile selected by `--profile`.
- * - desktop: shared ~/.config/mindos profile (default)
+ * - desktop: shared ~/.config/nestos profile (default)
  * - anything else: explicit data root path
  */
 export function resolveCliProfile(profile?: string): CliProfile {
     const value = profile?.trim() || 'desktop';
-    if (value === 'desktop') return { kind: 'desktop', root: resolveMindosProfile().dataRoot };
+    if (value === 'desktop') return { kind: 'desktop', root: resolveNestosProfile().dataRoot };
     return { kind: 'path', root: path.resolve(value) };
 }
 

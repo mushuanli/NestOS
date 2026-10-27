@@ -57,7 +57,7 @@ function snapshotAt(root, value = 'snapshot') {
 }
 function install(root, choice) {
     return spawnSync('pnpm', ['install', '--offline', '--ignore-scripts', '--no-frozen-lockfile'], {
-        cwd: root, encoding: 'utf8', env: { ...process.env, CI: 'true', MINDOS_LIBRARY_SNAPSHOT: choice }, timeout: 30_000,
+        cwd: root, encoding: 'utf8', env: { ...process.env, CI: 'true', NESTOS_LIBRARY_SNAPSHOT: choice }, timeout: 30_000,
     });
 }
 function runConsumer(root) {
@@ -114,7 +114,7 @@ test('explicit source restoration returns to workspace links and preserves the s
     const initial = install(root, 'source'); assert.equal(initial.status, 0, initial.stdout + initial.stderr);
     const lock = readFileSync(join(root, 'pnpm-lock.yaml'), 'utf8'), snapshot = snapshotAt(root);
     const execute = args => spawnSync(process.execPath, ['scripts/local-libraries.mjs', ...args], {
-        cwd: root, encoding: 'utf8', env: {...process.env, CI: 'true', MINDOS_LIBRARY_SNAPSHOT: ''}, timeout: 30_000,
+        cwd: root, encoding: 'utf8', env: {...process.env, CI: 'true', NESTOS_LIBRARY_SNAPSHOT: ''}, timeout: 30_000,
     });
     const enabled = execute(['use', snapshot.id]); assert.equal(enabled.status, 0, enabled.stdout + enabled.stderr);
     assert.equal(state.readSelection(root).id, snapshot.id);
@@ -131,9 +131,9 @@ test('failed activation restores the previous installation and never publishes t
     write(state.activeFile(root), { format: 1, mode: 'snapshot', id: previous.id });
     const bin = join(root, 'bin'); mkdirSync(bin);
     const pnpm = execFileSync('which', ['pnpm'], { encoding: 'utf8' }).trim();
-    writeFileSync(join(bin, 'pnpm'), `#!/bin/sh\nif [ "$MINDOS_LIBRARY_SNAPSHOT" = "${candidate.id}" ]; then echo "FIXTURE_INSTALL_FAILURE" >&2; exit 9; fi\nexec '${pnpm}' "$@"\n`, { mode: 0o755 });
+    writeFileSync(join(bin, 'pnpm'), `#!/bin/sh\nif [ "$NESTOS_LIBRARY_SNAPSHOT" = "${candidate.id}" ]; then echo "FIXTURE_INSTALL_FAILURE" >&2; exit 9; fi\nexec '${pnpm}' "$@"\n`, { mode: 0o755 });
     result = spawnSync(process.execPath, ['scripts/local-libraries.mjs', 'use', candidate.id], {
-        cwd: root, encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, CI: 'true', MINDOS_LIBRARY_SNAPSHOT: '' }, timeout: 30_000,
+        cwd: root, encoding: 'utf8', env: { ...process.env, PATH: bin + ':' + process.env.PATH, CI: 'true', NESTOS_LIBRARY_SNAPSHOT: '' }, timeout: 30_000,
     });
     assert.equal(result.status, 1, result.stdout + result.stderr);
     assert.match(result.stderr, /FIXTURE_INSTALL_FAILURE/);
@@ -152,11 +152,11 @@ test('production deployment resolves peer-only libraries from local artifacts wi
     write(state.activeFile(root), {format: 1, mode: 'snapshot', id: snapshot.id});
     rmSync(join(root, 'libraries'), {recursive: true});
     const installed = spawnSync('pnpm', ['install', '--offline', '--ignore-scripts', '--no-frozen-lockfile'], {
-        cwd: root, encoding: 'utf8', env: {...process.env, CI: 'true', MINDOS_LIBRARY_SNAPSHOT: snapshot.id, MINDOS_LIBRARY_DEPLOYMENT: '1'}, timeout: 30_000,
+        cwd: root, encoding: 'utf8', env: {...process.env, CI: 'true', NESTOS_LIBRARY_SNAPSHOT: snapshot.id, NESTOS_LIBRARY_DEPLOYMENT: '1'}, timeout: 30_000,
     });
     assert.equal(installed.status, 0, installed.stdout + installed.stderr);
     const deployed = spawnSync('pnpm', ['--config.offline=true', '--ignore-scripts', '--filter', '@itookit/consumer', 'deploy', '--prod', '--legacy', destination], {
-        cwd: root, encoding: 'utf8', env: {...process.env, CI: 'true', MINDOS_LIBRARY_SNAPSHOT: snapshot.id, MINDOS_LIBRARY_DEPLOYMENT: '1'}, timeout: 30_000,
+        cwd: root, encoding: 'utf8', env: {...process.env, CI: 'true', NESTOS_LIBRARY_SNAPSHOT: snapshot.id, NESTOS_LIBRARY_DEPLOYMENT: '1'}, timeout: 30_000,
     });
     assert.equal(deployed.status, 0, deployed.stdout + deployed.stderr);
     freezeWorkspaceDependencies(destination);

@@ -2,9 +2,9 @@ import { randomUUID, CHAT_ICONS, TOOLBOX_ICONS, escapeHTML, t } from '@itookit/c
 import type { MDxPlugin } from '@itookit/mdxeditor';
 import { copyText } from '@itookit/ui-common';
 
-export const TRANSCRIPT_SYSTEM = 'mindos-system';
-export const TRANSCRIPT_TOOL = 'mindos-tool';
-export const TRANSCRIPT_CONTEXT = 'mindos-context';
+export const TRANSCRIPT_SYSTEM = 'nestos-system';
+export const TRANSCRIPT_TOOL = 'nestos-tool';
+export const TRANSCRIPT_CONTEXT = 'nestos-context';
 
 /** Only explicit native provenance may hide context; prompt text is never inspected. */
 export function contextLabel(kind: string): string | undefined {

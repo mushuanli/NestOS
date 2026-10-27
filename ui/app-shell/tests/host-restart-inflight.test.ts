@@ -37,7 +37,7 @@ async function dispatch(runtime: Awaited<ReturnType<typeof createApplicationRunt
 }
 
 it('keeps the Session sendable after disposing and reopening a host during an in-flight run', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'mindos-restart-inflight-'));
+    const root = await mkdtemp(join(tmpdir(), 'nestos-restart-inflight-'));
     const requests: string[] = [];
     const model = createServer(request => { requests.push(request.url ?? ''); });
     await new Promise<void>(resolve => model.listen(0, '127.0.0.1', resolve));

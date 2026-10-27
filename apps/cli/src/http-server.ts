@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 import type { CommandOptions } from './commands';
-import { resolveProfileRoot } from './mindos';
+import { resolveProfileRoot } from './nestos';
 
 export function parseHttpAddress(value: string): {host: string; port: number} {
     const index = value.lastIndexOf(':'), host = index < 0 ? '127.0.0.1' : value.slice(0, index);

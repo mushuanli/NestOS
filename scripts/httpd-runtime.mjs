@@ -1,3 +1,4 @@
+import legacy from './legacy-environment.cjs';
 import path from 'node:path';
 import os from 'node:os';
 import { mkdirSync, openSync, writeSync, closeSync, statSync, renameSync, existsSync, readFileSync, readdirSync, lstatSync, realpathSync, rmSync, symlinkSync } from 'node:fs';
@@ -64,8 +65,11 @@ export function copySource(root, destination, files = sourceFiles(root)) {
 }
 
 export function runtimePaths(mode, env = process.env) {
-    const config = path.join(env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config'), 'mindos');
-    const logs = path.resolve(env.MINDOS_HTTPD_LOG_DIR || '/var/log/mindos'), prefix = mode === 'dev' ? 'httpd.debug' : 'httpd';
+    env = legacy.legacyEnvironment(env);
+    const base = env.XDG_CONFIG_HOME || path.join(os.homedir(), '.config');
+    const current = path.join(base, 'nestos'), previous = path.join(base, 'mindos');
+    const config = !existsSync(path.join(current, 'nestos.json')) && existsSync(path.join(previous, 'mindos.json')) ? previous : current;
+    const logs = path.resolve(env.NESTOS_HTTPD_LOG_DIR || (!existsSync('/var/log/nestos') && existsSync('/var/log/mindos') ? '/var/log/mindos' : '/var/log/nestos')), prefix = mode === 'dev' ? 'httpd.debug' : 'httpd';
     return { config, logs, audit: path.join(logs, `${prefix}.audit.jsonl`), runtime: path.join(logs, `${prefix}.runtime.log`),
         auth: path.join(config, 'http-auth', mode), developmentRoot: path.join(config, 'http-dev', 'data') };
 }
@@ -79,7 +83,7 @@ export function hostArguments(mode, args, env = process.env) {
 }
 /** Inherit system proxy settings while preserving an explicit Node proxy opt-out. */
 export function hostEnvironment(env = process.env) {
-    const values = { ...env };
+    const values = legacy.legacyEnvironment(env);
     if (values.NODE_USE_ENV_PROXY === undefined
         && ['http_proxy', 'https_proxy', 'HTTP_PROXY', 'HTTPS_PROXY'].some(name => values[name]?.trim()))
         values.NODE_USE_ENV_PROXY = '1';
@@ -118,7 +122,7 @@ function freezeLinks(directory, snapshot, packages) {
         const manifest = path.join(target, 'package.json');
         const pkg = existsSync(manifest) ? JSON.parse(readFileSync(manifest, 'utf8')) : {};
         const local = packages.get(pkg.name + '@' + pkg.version);
-        if (!local || !(pkg.name?.startsWith('@itookit/') || pkg.name === 'mind-os')) throw new Error(`External release dependency: ${file}`);
+        if (!local || !(pkg.name?.startsWith('@itookit/') || pkg.name === 'nestos-web')) throw new Error(`External release dependency: ${file}`);
         rmSync(file); symlinkSync(path.relative(path.dirname(file), local), file, 'dir');
     }
 }

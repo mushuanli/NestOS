@@ -1,4 +1,4 @@
-# MindOS Runtime 架构
+# NestOS Runtime 架构
 
 ## 单一 runtime 契约
 
@@ -194,7 +194,7 @@ C4Component
 
 宿主通过 `createApplicationRuntime({ sessionOwnerToken })` 提供**按窗口稳定**的租约标识（桌面/Web 用 `windowSessionLeaseToken()` 存于 `sessionStorage`）：同一窗口重载后复用同一 owner，可立即接管自己上一页仍持有的租约；不同窗口/标签页各自独立，单写者语义不变。未提供时退回每次运行时随机 token。
 
-租约接管的时钟偏差预算：`SessionLeaseOptions.skewMs` 与 `DurableFlowExecutorOptions.schedulerLeaseSkewMs` 默认 0，接受非负安全整数毫秒。不同拥有者必须等到持久到期时间加预算后才能接管；预算应覆盖部署中实际允许的时钟差，代码不自动同步时钟。显式释放的 Flow 租约立即允许接管，续租仍按原 TTL 处理。CLI 已通过 MINDOS_SESSION_LEASE_SKEW_MS / MINDOS_SCHEDULER_LEASE_SKEW_MS 转发这两项配置；其他宿主配置转发另行接线；共享存储原子性及真实多主机 fencing 仍需验收。
+租约接管的时钟偏差预算：`SessionLeaseOptions.skewMs` 与 `DurableFlowExecutorOptions.schedulerLeaseSkewMs` 默认 0，接受非负安全整数毫秒。不同拥有者必须等到持久到期时间加预算后才能接管；预算应覆盖部署中实际允许的时钟差，代码不自动同步时钟。显式释放的 Flow 租约立即允许接管，续租仍按原 TTL 处理。CLI 已通过 NESTOS_SESSION_LEASE_SKEW_MS / NESTOS_SCHEDULER_LEASE_SKEW_MS 转发这两项配置；其他宿主配置转发另行接线；共享存储原子性及真实多主机 fencing 仍需验收。
 
 ### 应用装配职责
 
@@ -246,7 +246,7 @@ Kernel 在恢复 sweep 后复用一次任务扫描供任务遍历、Effect 候�
 
 trace 构建在官方 Tauri core invoke 的统一入口计数，覆盖直接导入、event 相对导入、Resource.close、权限查询/申请、插件监听注册/移除及注册失败后的兼容重试；每次提交计数一次，不改写被冻结的宿主对象。入口形状变化会明确阻止构建，避免悄悄漏计。诊断文件追加显式绕过计数。
 
-仅 VITE_MINDOS_TRACE=1 时注册 window.__MINDOS_TRACE__。验收驱动在选定起点调用 begin('send-to-provider') 保存返回 id，在对应终点调用 end(id) 获取同步快照并追加日志。时间使用 performance.now；VFS/sidecar/IPC 分别记差值，不读取命令参数。开始前与结束后的操作不计入动作，重叠动作独立计算，计数重置则拒绝结果；运行时释放时清理活动动作和全局接口。
+仅 VITE_NESTOS_TRACE=1 时注册 window.__NESTOS_TRACE__。验收驱动在选定起点调用 begin('send-to-provider') 保存返回 id，在对应终点调用 end(id) 获取同步快照并追加日志。时间使用 performance.now；VFS/sidecar/IPC 分别记差值，不读取命令参数。开始前与结束后的操作不计入动作，重叠动作独立计算，计数重置则拒绝结果；运行时释放时清理活动动作和全局接口。
 
 日志 kind='action' 是指定动作的区间，kind='interval' 是周期区间，二者重叠，禁止相加当作总量。调用方必须把边界接到实际发送与 Provider 接收点；接口本身不证明边界已经正确放置。经过官方 core 的提交数也不等于全部 WebView 内部传输或底层重试。
 
@@ -301,11 +301,11 @@ Tauri 每个页面先调用 `sidecar_open_scope`，Rust 以 WebView label 维护
 
 ### 项目与统一工作台
 
-`ApplicationRuntime.projects` 提供 `ProjectService`：项目的稳定 ID、目录来源保存在 `SessionFolder.project`，导航路径用于组织项目与会话，项目重命名或分组移动不会移动实际文件。Web 首次启动创建“个人项目”，文件存放在 `/home/admin/projects/<projectId>`；Tauri 将解析后的 `homeDir` 注册为当前项目，并用同一目录创建新会话的 `/workspace`，来源遵循 `--home → mindos.json#homeDir → INIT_CWD → cwd`。
+`ApplicationRuntime.projects` 提供 `ProjectService`：项目的稳定 ID、目录来源保存在 `SessionFolder.project`，导航路径用于组织项目与会话，项目重命名或分组移动不会移动实际文件。Web 首次启动创建“个人项目”，文件存放在 `/home/admin/projects/<projectId>`；Tauri 将解析后的 `homeDir` 注册为当前项目，并用同一目录创建新会话的 `/workspace`，来源遵循 `--home → nestos.json#homeDir → INIT_CWD → cwd`。
 
 新建会话先根据目标分组查找项目，再配置项目目录挂载。`Read`、`Write`、`Edit`、`Glob`、`Grep` 在 Web 使用 VFS；没有原生进程能力时不启用 `Bash`。现有会话的授权不会被重开覆盖；拿到 Session 写租约后，可将目录已匹配的旧会话归入项目，保留原授权。
 
-项目身份来自工作台直属项目目录的 `.mindos/info.seq`，导航索引仅作缓存。身份有效性以 SeqFile 的 `identity` 记录为准：零字节标记文件不代表已有身份，创建和恢复在 SeqFile 事务中核对并补全空记录；已有身份冲突时保留原记录并拒绝覆盖。本地根互不重叠；只读远程项目正文保持逻辑引用，本地 `.mindos/readonly/<项目名>/` 保存身份和会话领域数据。普通子目录不会被识别成独立项目。项目创建、文件访问、本地进程及受管 Web 同步均校验根边界；文件来源错误局部显示，不中断工作台。`SessionFilesService.workspaceProvider` 解析项目授权视图，视图所有者随会话释放。可移植会话数据位于项目 `.mindos/sessions/`，运行控制状态仍在 `/var/lib/`；Seq 索引保存实际位置并记录目录移动恢复意图。可写远程项目需额外的多文件事务能力，当前单 SeqFile HTTP API 不宣称完成此能力。
+项目身份来自工作台直属项目目录的 `.nestos/info.seq`，导航索引仅作缓存。身份有效性以 SeqFile 的 `identity` 记录为准：零字节标记文件不代表已有身份，创建和恢复在 SeqFile 事务中核对并补全空记录；已有身份冲突时保留原记录并拒绝覆盖。本地根互不重叠；只读远程项目正文保持逻辑引用，本地 `.nestos/readonly/<项目名>/` 保存身份和会话领域数据。普通子目录不会被识别成独立项目。项目创建、文件访问、本地进程及受管 Web 同步均校验根边界；文件来源错误局部显示，不中断工作台。`SessionFilesService.workspaceProvider` 解析项目授权视图，视图所有者随会话释放。可移植会话数据位于项目 `.nestos/sessions/`，运行控制状态仍在 `/var/lib/`；Seq 索引保存实际位置并记录目录移动恢复意图。可写远程项目需额外的多文件事务能力，当前单 SeqFile HTTP API 不宣称完成此能力。
 
 `ProjectService.personal()` 独立于当前项目解析个人项目，以 `/etc/personal-project.json` 保存稳定项目 ID。旧 profile 首次使用时仅接纳已知中英文默认名称的托管个人项目，否则新建；改名、分组移动和重启后仍按 ID 找回。标题栏 AI 引用产生新的会话输入草稿：项目文件归其项目，Session 文件沿用 Session 所属项目，其余归个人项目。草稿先写入 `uiState.branchDrafts.main.inputText`，再导航到聊天，不触发模型请求。
 
@@ -336,17 +336,17 @@ LLM UI 分为 `/chat` 与 `/settings` 子入口；设置包是可选 peer，聊�
 
 本轮边界补全验收：全仓 typecheck、架构守卫与 docs:check 通过；Kernel adapters 199、Session 208、LLM UI 64、app-core 231 项测试通过。Session/UI/Flow/Adapters 与 Web 构建通过，构建后的 `/llm/core` 导入图不含产品目录，`/chat` 导入图不含 Session 单例或设置实现。宿主定向回归 25 项中 23 项通过，2 项仍为此前确认的外部草稿刷新问题；这不代表完整 app-shell 矩阵通过。
 
-业务 Flow 模板由 app-core 的 `createMindosFlowLibrary` 提供。普通安装由后端 seedDefaultFlows 按回执完成；llm-ui 的显式恢复 API 接收模板数组并复制输入以保护宿主目录；菜单仅在提供非空 `library` 时暴露恢复入口。Web/Tauri 在 UI 装配时注入 MindOS 目录，其他宿主可注入自己的 FlowDraft。原 UI 导出的 builtinFlowLibrary 已移除，迁移时需向 restoreFlowLibrary 显式传目录。
+业务 Flow 模板由 app-core 的 `createNestosFlowLibrary` 提供。普通安装由后端 seedDefaultFlows 按回执完成；llm-ui 的显式恢复 API 接收模板数组并复制输入以保护宿主目录；菜单仅在提供非空 `library` 时暴露恢复入口。Web/Tauri 在 UI 装配时注入 NestOS 目录，其他宿主可注入自己的 FlowDraft。原 UI 导出的 builtinFlowLibrary 已移除，迁移时需向 restoreFlowLibrary 显式传目录。
 
-MindOS 默认工具授权已从 kernel-adapters/contracts 与 llm-session/contracts 移到 app-core 宿主预设。AgentConfigEditor 和 createAgentEditorFactory 接收 defaultToolIds，实例保存独立副本。app-shell 使用同一宿主列表装配聊天与设置界面；Web/Tauri 透传该参数。通用设置 UI 默认目录为空，继承与显式空授权语义保持不同。
+NestOS 默认工具授权已从 kernel-adapters/contracts 与 llm-session/contracts 移到 app-core 宿主预设。AgentConfigEditor 和 createAgentEditorFactory 接收 defaultToolIds，实例保存独立副本。app-shell 使用同一宿主列表装配聊天与设置界面；Web/Tauri 透传该参数。通用设置 UI 默认目录为空，继承与显式空授权语义保持不同。
 
-DirectAgentPolicy 从 ApplicationRuntimeOptions 经 ConversationSystemOptions、SessionManager、SessionRunCoordinator 传到 ConversationRunCoordinator，实例内冻结。显式 Agent 附加提示参与 Context 装配和预算计算，maxExchanges 固定到持久 Task；普通 Chat/Flow 不消费该提示。MindOS 默认指令留在 app-core JSON 预设，SessionViewPort 可暴露只读策略供 UI 显示实际上限。
+DirectAgentPolicy 从 ApplicationRuntimeOptions 经 ConversationSystemOptions、SessionManager、SessionRunCoordinator 传到 ConversationRunCoordinator，实例内冻结。显式 Agent 附加提示参与 Context 装配和预算计算，maxExchanges 固定到持久 Task；普通 Chat/Flow 不消费该提示。NestOS 默认指令留在 app-core JSON 预设，SessionViewPort 可暴露只读策略供 UI 显示实际上限。
 
 设置 UI 的配置解析/导出已改为 kernel-adapters/llm/config，Tauri 桥通过 /llm/mcp-host 创建本地 transport 工厂，经 ApplicationRuntimeOptions.mcp 注入驱动；设置 UI 通过服务 supportsMCPStdio() 查询同一实例能力。机制核心不读取全局桥，旧 /llm 聚合入口已移除。composeLlmPresets 纯合并模型目录并显式选择冲突策略，不写 VFS、不修改全局预设，驱动只消费注入的快照；Provider 支持目录通过 device-llm 的 createLlmDeviceCatalog 注入，旧全局 registerLLMConfig 已移除。
 
-执行策略收尾：DirectAgentPolicy.llmRetry/toolTimeoutMs 冻结到显式 Agent Task；Flow 从节点或 Flow defaults 接入相同参数。Tasks 取消重试次数的固定 3 次上限，工具超时可覆盖且跨持久恢复保持一致。MCP 日志和客户端身份由实例选项注入，机制默认空日志及 mcp-client 身份，app-core 提供 MindOS 身份与日志。driver-llm 的连接测试要求调用方模型或注入目录；Codex 缺省不覆盖宿主模型。
+执行策略收尾：DirectAgentPolicy.llmRetry/toolTimeoutMs 冻结到显式 Agent Task；Flow 从节点或 Flow defaults 接入相同参数。Tasks 取消重试次数的固定 3 次上限，工具超时可覆盖且跨持久恢复保持一致。MCP 日志和客户端身份由实例选项注入，机制默认空日志及 mcp-client 身份，app-core 提供 NestOS 身份与日志。driver-llm 的连接测试要求调用方模型或注入目录；Codex 缺省不覆盖宿主模型。
 
-宿主入口收尾：CLI 显式注入 MindOS 预设与自动连接策略；app-core 的模型导航从实例管理接口读取 Provider 默认值，app-shell 的模板仅加载可选预设。生产宿主禁止使用 /llm 兼容聚合。llm-ui 根入口现在等同 /chat，不加载设置或 Session 单例；已移除旧聚合 API，设置工厂在 /settings。
+宿主入口收尾：CLI 显式注入 NestOS 预设与自动连接策略；app-core 的模型导航从实例管理接口读取 Provider 默认值，app-shell 的模板仅加载可选预设。生产宿主禁止使用 /llm 兼容聚合。llm-ui 根入口现在等同 /chat，不加载设置或 Session 单例；已移除旧聚合 API，设置工厂在 /settings。
 
 UI 发布收尾：driver-llm、tools、kernel-adapters、llm-tasks 改为开发契约依赖，JS 常量与声明内联，直接运行依赖从 12 个降到 8 个；Session/Flow 等传递依赖仍存在。Kernel 公开类保持外部类型身份。UI 默认根入口、/chat、/startup 不加载设置或 Session 单例；Session 单例 API 与 UI /legacy 入口已删除。ui-common 与 durable-kernel 的 publishConfig.exports 已补齐实际产物路径。
 
@@ -360,7 +360,7 @@ UI 发布收尾：driver-llm、tools、kernel-adapters、llm-tasks 改为开发�
 C4Context
     title LLM framework in its host
     Person(user, "用户", "聊天、Agent、Flow 与审批")
-    System(host, "MindOS / 第三方宿主", "注入配置、策略、UI 与平台能力")
+    System(host, "NestOS / 第三方宿主", "注入配置、策略、UI 与平台能力")
     System(framework, "公共 LLM 框架", "通信、上下文、持久执行、编排与会话")
     System_Ext(provider, "模型服务 / Codex", "Provider 协议与流式结果")
     System_Ext(capabilities, "工具 / MCP / 原生进程", "授权后的外部能力")
@@ -426,7 +426,7 @@ C4Component
 | tools | Tool、ToolInvokeRequest、ToolInvokeResult、ToolVFSContext、INativeShell | 授权、工作目录、进程、外部服务与工具启用范围 |
 | llm-ui | SessionViewPort、PromptHistoryPort、TaskControlPlane、ICommandBus、会话仓储端口 | 导航、默认工具、宿主创建协议、国际化及产品动作 |
 | llm-settings-ui | 管理服务接口、配置编码及可选设置入口 | 实例能力与可编辑配置范围 |
-| app-core/app-shell/apps | createApplicationRuntime/createKernelRuntime 与 UI 装配 | MindOS 预设、产品提示词、菜单、路由、环境与生命周期 |
+| app-core/app-shell/apps | createApplicationRuntime/createKernelRuntime 与 UI 装配 | NestOS 预设、产品提示词、菜单、路由、环境与生命周期 |
 
 Session、Flow 和 Tasks 分别拥有历史语义、图语义和单任务状态机，不能因为都处理 LLM 就合并。driver-llm 和 llm-context 可分别使用；Kernel 可以执行非 LLM Program。kernel-adapters 当前同时覆盖执行适配和模型管理，应先按子入口及内部组件治理，暂不增加新的 npm 包。
 
@@ -579,7 +579,7 @@ sequenceDiagram
 | Effect 日志与翻译 | 已改为实例注入 | KernelAdapterDiagnostics 提供日志和不可用提示；宿主注入翻译，适配器默认静默；kernel-adapters 不再依赖 common |
 | Provider 扩展注册 | 已改为实例端口 | createProviderRegistry 创建独立注册表，snapshot 固定 Driver 的工厂；LLMProviderInstance 为结构接口，无需继承 BaseProvider |
 | MCP 兼容宿主 | 已删除 | 删除 legacy-device-driver、全局注册及 /llm 聚合；使用 core/config/presets/contracts 与实例传输工厂 |
-| 厂商默认行为 | 已显式化 | DeepSeek thinking 默认移至可选 MindOS presets；独立 Driver 通过 responses 选项配置；wire 日志使用实例 sink |
+| 厂商默认行为 | 已显式化 | DeepSeek thinking 默认移至可选 NestOS presets；独立 Driver 通过 responses 选项配置；wire 日志使用实例 sink |
 | UI 完全通用化 | 尚未完成 | 仍依赖通用包翻译/图标和具体仓储能力；作为框架 UI 合理，但不等于任意系统都能只传一个流使用 |
 
 因此“主链解耦已完成”应限定为模块依赖方向、主要策略注入和本轮确认的共享状态已处理；UI 通用化、外部解码与复杂执行函数治理仍未全部完成。无需为可替换性无限增加接口或包；只抽取确实存在多宿主差异的端口。
@@ -687,13 +687,13 @@ sequenceDiagram
 
 `ApplicationRuntimeOptions.sync` 注入 `ProjectSyncProvider` 和 `Coordinator`，运行时提供可选 `projectSync`。默认不初始化云端连接。app-core 用例负责范围策略和解绑，provider 按本地项目返回同一持久绑定的同步 session；HTTP、凭据及 IndexedDB 实现由宿主装配。关闭运行时先等待已接受用例，再释放 provider 与存储。契约与实施边界见 [项目同步设计](design/project-sync.md#22-实施工作清单与完成标准)。
 
-项目侧栏经 `createProjectModule` 透传 runtime.projectSync。app-shell 的 `projects/sync` 提供菜单、预览和服务器／同步目录选择面板；`AppOptions.projectSyncSetup` 注入宿主首次绑定。Web 的 [WebProjectSync](../apps/web-app/src/sync.ts) 复用 MCPRemoteConnections 投影出的 mindos-node 配置和 mindos-node-driver 的运行期凭据，按同步能力开放已有目录绑定或新目录创建；控制记录仍在 IndexedDB 的 state.seq，刷新后恢复。它只支持受管本地项目，不把 export 远程视图当本地扫描来源。未提供同步端口的宿主点击时显示未接入说明。
+项目侧栏经 `createProjectModule` 透传 runtime.projectSync。app-shell 的 `projects/sync` 提供菜单、预览和服务器／同步目录选择面板；`AppOptions.projectSyncSetup` 注入宿主首次绑定。Web 的 [WebProjectSync](../apps/web-app/src/sync.ts) 复用 MCPRemoteConnections 投影出的 nestos-node 配置和 nestos-node-driver 的运行期凭据，按同步能力开放已有目录绑定或新目录创建；控制记录仍在 IndexedDB 的 state.seq，刷新后恢复。它只支持受管本地项目，不把 export 远程视图当本地扫描来源。未提供同步端口的宿主点击时显示未接入说明。
 
 ## 外部 harness 的宿主装配
 
-三个宿主统一创建 mindos-node-driver 并作为远程文件来源注入。外部 Codex 控制由远程连接服务创建 HarnessClient，app-shell 控制面板负责关闭该客户端；服务端持续监管 app-server。此链路独立于 MindOS Kernel 的模型设备与 llm-session 恢复，复用连接和运行期凭据，不把外部线程转为内部 Task。同步存储/协调器仍由 sync-adapters 提供，HTTP 同步 transport 由 mindos-node-driver 封装。
+三个宿主统一创建 nestos-node-driver 并作为远程文件来源注入。外部 Codex 控制由远程连接服务创建 HarnessClient，app-shell 控制面板负责关闭该客户端；服务端持续监管 app-server。此链路独立于 NestOS Kernel 的模型设备与 llm-session 恢复，复用连接和运行期凭据，不把外部线程转为内部 Task。同步存储/协调器仍由 sync-adapters 提供，HTTP 同步 transport 由 nestos-node-driver 封装。
 
-外部 mindos-node 配置统一位于工具箱 MCP，基础设施为 MCP 注入运行期凭据解析和配置变更钩子。ProjectRemoteMountService 从 MCPRemoteConnections 读取连接；初始化先幂等迁移旧连接，再移除 `/etc/fs` 中的旧描述与密码。配置改名只刷新展示，不失效正在使用的文件来源；删除/改地址或账号受到项目引用保护。
+外部 nestos-node 配置统一位于工具箱 MCP，基础设施为 MCP 注入运行期凭据解析和配置变更钩子。ProjectRemoteMountService 从 MCPRemoteConnections 读取连接；初始化先幂等迁移旧连接，再移除 `/etc/fs` 中的旧描述与密码。配置改名只刷新展示，不失效正在使用的文件来源；删除/改地址或账号受到项目引用保护。
 
 ## 本地数字分身装配
 
@@ -707,7 +707,7 @@ sequenceDiagram
 
 `createApplicationRuntime` 在恢复前通过 `createNativeDigitalTwin` 装配 `runtime.digitalTwin`；应用启动自动初始化分身扫描存储和可用的默认规则，不依赖用户先打开分身页面；新会话消费仍须授权。`createConversationSystem` 把授权相关记忆追加到公开 ContextPlan 检索入口；`createKernelRuntime.authorizeLlm` 透传到通用 LLM Effect，事件持久化前和 provider 发送前均等待校验。分身内核分析使用独立 `twin-analysis-*` Session，无工具；新扫描规则中有明确主体的信息自动生效，未知主体候选待确认，结果提交或失败后删除执行快照；恢复回调不把它作为工作台项目会话收养。
 
-来源与消费策略、版本和使用回执在 app-core；kernel-adapters 只提供通用异步发送前钩子，没有分身类型依赖。基础设施包装宿主 LLM 日志，为受门禁标记的分析/消费及后续轮次脱敏正文，保留响应观测。CLI 自有 Runtime 在恢复前接入相同门禁，`mindos twin` 管理命令采用共享应用 Runtime 和 SQLite。具体能力、布局与验收边界见[数字分身设计](design/digital-twin.md#实现与边界)。
+来源与消费策略、版本和使用回执在 app-core；kernel-adapters 只提供通用异步发送前钩子，没有分身类型依赖。基础设施包装宿主 LLM 日志，为受门禁标记的分析/消费及后续轮次脱敏正文，保留响应观测。CLI 自有 Runtime 在恢复前接入相同门禁，`nestos twin` 管理命令采用共享应用 Runtime 和 SQLite。具体能力、布局与验收边界见[数字分身设计](design/digital-twin.md#实现与边界)。
 
 扫描计划与运行由 `digital-twin/scans.ts` 组织，`scan-store.ts` 在现有 SeqFile 中保存队列与扫描宿主租约，`scan-worker.ts` 调用已有 Kernel 提取任务。运行时默认在装配末尾启动 15 秒检查循环；`startupMode=interactive` 的 UI 宿主在外壳导航可用后调用 `startBackground()` 启动，退出时先停止分身扫描再释放内核与 VFS；`digitalTwinAutoStart=false` 可禁用自动调度。CLI 的一次性 twin 管理命令使用这一开关，`twin watch` 显式开启在线调度。间隔与变化轮询都保存下次检查时间，重开合并补跑；扫描暂停不阻断来源安全核对。
 

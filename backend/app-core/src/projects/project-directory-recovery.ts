@@ -18,7 +18,7 @@ export async function recoverProjectDirectories(context: Context): Promise<Map<s
     const children = await context.root.driver.getChildren(ROOT).catch(error => {
         if (error instanceof FSError && error.code === 'ENOENT') return []; throw error;
     });
-    const candidates = new Set(children.filter(child => child.type === 'directory' && child.name !== '.mindos').map(child => child.path));
+    const candidates = new Set(children.filter(child => child.type === 'directory' && child.name !== '.nestos').map(child => child.path));
     for (const folder of folders) if (folder.project?.directory.startsWith('/home/admin/') && folder.project.directory !== ROOT)
         candidates.add(folder.project.directory);
     for (const directory of candidates) {
@@ -51,7 +51,7 @@ async function recoverDirectory(context: Context, directory: string, folders: Se
     for (let n = 2; active.some(project => project.name === name) || folders.some(folder => folder !== cached && folder.path === `${parent ?? ''}/${name}`); n++) name = `${base} (${n})`;
     const path = `${parent ?? ''}/${name}`, reference: ProjectReference = { id, directory, source: { kind: 'local' } };
     await context.check(path, reference);
-    await context.repository.validateProjectSessions?.(`${directory}/.mindos/sessions`);
+    await context.repository.validateProjectSessions?.(`${directory}/.nestos/sessions`);
     await context.identities.adoptLocal(directory, { version: 1, id, name, createdAt: cached?.updatedAt ?? Date.now() });
     if (cached) {
         if (cached.path !== path) await context.repository.renameFolder(cached.path, path);

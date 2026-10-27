@@ -68,7 +68,7 @@ fn record_inner(event: &str, detail: Value, durable: bool) {
 }
 
 pub fn install() {
-    let base = std::env::var_os("MINDOS_DIAGNOSTICS_DIR")
+    let base = std::env::var_os("NESTOS_DIAGNOSTICS_DIR")
         .map(PathBuf::from)
         .unwrap_or_else(|| {
             std::env::var_os("XDG_CONFIG_HOME")
@@ -76,7 +76,7 @@ pub fn install() {
                 .unwrap_or_else(|| {
                     PathBuf::from(std::env::var_os("HOME").unwrap_or_default()).join(".config")
                 })
-                .join("mindos/logs/desktop")
+                .join("nestos/logs/desktop")
         });
     if let Err(error) = std::fs::create_dir_all(&base) {
         eprintln!("[Diagnostics] Cannot create {}: {error}", base.display());
@@ -159,7 +159,7 @@ fn spawn_watcher() {
     if let (Some(log), Ok(exe)) = (LOG.get(), std::env::current_exe()) {
         use std::process::{Command, Stdio};
         let result = Command::new(exe)
-            .arg("--mindos-diagnostic-watch")
+            .arg("--nestos-diagnostic-watch")
             .arg(std::process::id().to_string())
             .arg(&log.marker)
             .arg(&log.path)
@@ -176,7 +176,7 @@ fn spawn_watcher() {
 /// A separate process can record SIGKILL/OOM disappearance after the app can no longer write.
 pub fn run_watcher() -> bool {
     let args: Vec<String> = std::env::args().collect();
-    if args.get(1).map(String::as_str) != Some("--mindos-diagnostic-watch") {
+    if args.get(1).map(String::as_str) != Some("--nestos-diagnostic-watch") {
         return false;
     }
     if args.len() != 5 || args[2].parse::<u32>().is_err() {

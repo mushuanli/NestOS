@@ -58,10 +58,10 @@ mod tests {
         let root = std::env::temp_dir().join(format!("session-bash-env-{}", std::process::id()));
         std::fs::create_dir_all(root.join("rw")).unwrap();
         let mounts = [Mount { source: root.join("rw").to_string_lossy().into(), target: "/workspace".into(), writable: true }];
-        std::env::set_var("MINDOS_HOST_SECRET", "must-not-leak");
-        let output = command("set -e; test -z \"$MINDOS_HOST_SECRET\"; printf '%s|%s' \"$HOME\" \"$LANG\"", "/workspace", &mounts)
+        std::env::set_var("NESTOS_HOST_SECRET", "must-not-leak");
+        let output = command("set -e; test -z \"$NESTOS_HOST_SECRET\"; printf '%s|%s' \"$HOME\" \"$LANG\"", "/workspace", &mounts)
             .unwrap().output().unwrap();
-        std::env::remove_var("MINDOS_HOST_SECRET");
+        std::env::remove_var("NESTOS_HOST_SECRET");
         assert!(output.status.success(), "{}", String::from_utf8_lossy(&output.stderr));
         assert_eq!(output.stdout, b"/tmp|C.UTF-8");
         let mut configured: Vec<String> = command("true", "/workspace", &mounts).unwrap()

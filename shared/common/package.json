@@ -48,13 +48,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mushuanli/itookit.git",
+    "url": "https://github.com/mushuanli/nestos.git",
     "directory": "shared/common"
   },
   "bugs": {
-    "url": "https://github.com/mushuanli/itookit/issues"
+    "url": "https://github.com/mushuanli/nestos/issues"
   },
-  "homepage": "https://github.com/mushuanli/itookit/tree/main/shared/common#readme",
+  "homepage": "https://github.com/mushuanli/nestos/tree/main/shared/common#readme",
   "dependencies": {},
   "devDependencies": {
     "cpx": "^1.5.0",

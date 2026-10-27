@@ -95,7 +95,7 @@ it('assembles project rules and auto-loaded Skills into an app-host chat run', a
 it('restores the persisted Skill identity when a new host instance starts the next run', async () => {
     // A real storage root is required: the point is that a *new* host instance recovers what
     // the previous one wrote, which an explicitly disposed in-memory backend cannot show.
-    const root = await mkdtemp(join(tmpdir(), 'mindos-app-host-'));
+    const root = await mkdtemp(join(tmpdir(), 'nestos-app-host-'));
     // The sidecar is the durable index for the local files; one instance across both hosts
     // stands in for the on-disk SQLite file a real host reopens.
     const sidecar = new FakeSidecarDb();

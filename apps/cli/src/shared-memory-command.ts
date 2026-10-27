@@ -1,6 +1,6 @@
 import { SharedMemoryStore } from '@itookit/llm-session';
 import type { CommandOptions } from './commands';
-import { resolveProfileRoot } from './mindos';
+import { resolveProfileRoot } from './nestos';
 import { openProfileInspectionFs } from './runtime';
 
 /** Explicit single-user host administration; model tools cannot invoke these operations. */

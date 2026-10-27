@@ -2,15 +2,15 @@
 
 状态：已实施基础读取、项目外挂与条件写入，2026-09-28。本文保留总体设计约束；本轮实际实现、验证与尚未开放的能力见第 14 节。连续操作与结束语义见第 6.3 节，评审取舍见第 13 节。
 
-后续演进见 [mindos-node 与 Harness：统一工作目录、挂载与执行环境](agent-server.md)。该文将核心收敛为 cwd、挂载表和有效权限，不改变本文现有文件协议；远端执行按能力独立接入，同步与结果回传不作为 Harness MVP 前提。
+后续演进见 [nestos-node 与 Harness：统一工作目录、挂载与执行环境](agent-server.md)。该文将核心收敛为 cwd、挂载表和有效权限，不改变本文现有文件协议；远端执行按能力独立接入，同步与结果回传不作为 Harness MVP 前提。
 
 ## 1. 目标与决策
 
-Rust HTTP 文件服务位于 tools/mindos-node，三端共用文件驱动源码已并入 libraries/mindos-node-driver/src/files，随统一接入包 @itookit/mindos-node-driver 发布。服务端仅暴露预配置目录别名；工作台可把别名中的目录外挂到项目，项目文件树、编辑器和 Agent 使用同一授权视图。
+Rust HTTP 文件服务位于 tools/nestos-node，三端共用文件驱动源码已并入 libraries/nestos-node-driver/src/files，随统一接入包 @itookit/nestos-node-driver 发布。服务端仅暴露预配置目录别名；工作台可把别名中的目录外挂到项目，项目文件树、编辑器和 Agent 使用同一授权视图。
 
 核心决策：
 
-- 服务端采用 Axum + Tokio；只负责目录导出、文件操作、认证与请求生命周期，不装配 MindOS Kernel 或 Session 运行时；SeqFile 结构化记录使用 SQLite。
+- 服务端采用 Axum + Tokio；只负责目录导出、文件操作、认证与请求生命周期，不装配 NestOS Kernel 或 Session 运行时；SeqFile 结构化记录使用 SQLite。
 - vfs-core 后端拆为最小文件读取接口与可选写入、元数据、标签、记录、批量、搜索等能力；保留上层 IFileSystem 使用方式，通过增量扩展与适配迁移。
 - HTTP 元数据使用 JSON，内容使用原始二进制；完整操作下推服务端，优先减少网络往返。
 - 所有可能执行 I/O 的新接口支持 AbortSignal；取消贯穿消费者、视图、引擎、驱动、传输和服务端。
@@ -495,7 +495,7 @@ processMounts 必须区分 VFS 可访问性与本地进程目录能力。HTTP �
 
 ## 14. 本轮实现与验收边界（2026-09-28）
 
-服务端位于 `tools/mindos-node/`（独立 git 仓库，自带 README 与 Rust 测试）；`tools/` 另放部署用的可执行文件与 `config.toml`（均被 `.gitignore` 忽略）。配置格式见第 4 节与第 14.2 节。服务端实际采用 Linux `openat2(BENEATH | NO_SYMLINKS | NO_MAGICLINKS)` 的目录句柄实现；不在不支持的平台退化成字符串检查。三种客户端均使用可注入的 fetch，Tauri 当前复用 WebView fetch，遵守同样的 CORS/混合内容限制，尚未引入原生 HTTP 插件。
+服务端位于 `tools/nestos-node/`（独立 git 仓库，自带 README 与 Rust 测试）；`tools/` 另放部署用的可执行文件与 `config.toml`（均被 `.gitignore` 忽略）。配置格式见第 4 节与第 14.2 节。服务端实际采用 Linux `openat2(BENEATH | NO_SYMLINKS | NO_MAGICLINKS)` 的目录句柄实现；不在不支持的平台退化成字符串检查。三种客户端均使用可注入的 fetch，Tauri 当前复用 WebView fetch，遵守同样的 CORS/混合内容限制，尚未引入原生 HTTP 插件。
 
 | 部分 | 已实现 |
 |---|---|
@@ -503,7 +503,7 @@ processMounts 必须区分 VFS 可访问性与本地进程目录能力。HTTP �
 | HTTP | exports、批量 stat、目录分页、二进制内容、单段 Range、If-Match；Basic 用户名/密码与兼容 Bearer 身份、Origin 白名单、no-store、禁止重定向、body 上限、剩余 deadline、只读有限重试 |
 | 可写 | exclusive 根锁、epoch + inode generation；条件 replace、mkdir、禁止覆盖的 rename、文件/空目录 remove；operationId 注册/状态/取消/过期、临时上传清理，响应丢失返回 unknown |
 | 项目 | ProjectRemoteMountService；挂载名称保留、远程优先、同名诊断、断线占位、Session 继承、重连与撤权；连接描述符存 `/etc/fs/remote/<connectionId>.seq`，项目挂载存 `/etc/fs/projects/<projectId>.seq`；索引与记录事务 CAS 防止覆盖其他管理端更新 |
-| 三端 | Web/Tauri 注入 provider；CLI HTTP runtime、工作流 runtime 与 `mindos fs list/read/stat/status`；项目带远程挂载时不为 Agent 装配宿主 Shell/TTY |
+| 三端 | Web/Tauri 注入 provider；CLI HTTP runtime、工作流 runtime 与 `nestos fs list/read/stat/status`；项目带远程挂载时不为 Agent 装配宿主 Shell/TTY |
 | 工作台 | 工具箱 → MCP 多实例配置；新建本地/远程项目，按连接和路径去重，会话仅在项目内创建；默认只读，显式授权读写；凭据不入项目配置；关闭对话框取消连接；冲突或未知结果时保留编辑内容 |
 
 实现收窄与后续扩展：
@@ -522,7 +522,7 @@ Settings 与断线状态补充后的回归：app-core 174 项、app-shell 420 �
 
 ### 14.1 Settings 与断线项目状态
 
-工具箱 → MCP 管理多条 mindos-node 配置，名称可自定义。启用 mindos-node 并测试连接后，通过标准发现或 `mindos_node_capabilities`（兼容旧名称）验证协议和同源文件服务地址；普通 MCP 不可绑定远程项目。配置保存稳定 ID 和 credentialRef，密码仅放宿主运行期凭据缓存，重启后重新输入。旧远程连接自动迁移到 MCP 并清除旧密码记录；未升级的旧服务保留文件访问兼容，需能力验证才能启用控制中心。远程项目显示「服务器名:项目名」，显示改名不移动项目与会话。
+工具箱 → MCP 管理多条 nestos-node 配置，名称可自定义。启用 nestos-node 并测试连接后，通过标准发现或 `nestos_node_capabilities`（兼容旧名称）验证协议和同源文件服务地址；普通 MCP 不可绑定远程项目。配置保存稳定 ID 和 credentialRef，密码仅放宿主运行期凭据缓存，重启后重新输入。旧远程连接自动迁移到 MCP 并清除旧密码记录；未升级的旧服务保留文件访问兼容，需能力验证才能启用控制中心。远程项目显示「服务器名:项目名」，显示改名不移动项目与会话。
 
 断线仅禁用该项目的文件入口、文件操作及新建会话；项目抽屉仍可展开，已有 Session 和历史可查看，其他项目不受影响。不可用文件项置灰并阻止操作，已打开文件区保留编辑状态并禁用交互；已有会话不设 inert。工具箱 MCP 的配置入口保持可用。断线不删除文件，也不自动取消已经运行的 Task。
 
@@ -531,11 +531,11 @@ Settings 与断线状态补充后的回归：app-core 174 项、app-shell 420 �
 
 ### 14.2 命名连接与远程项目
 
-工作台“+ 项目”提供本地/远程选择。远程项目引用 工具箱 MCP 中已验证的 mindos-node 配置，指定 `/导出别名/子目录`；例如连接“团队资料”下的 `/docs/a` 与 `/docs/b` 是两个项目。第一段 alias 保持服务端访问范围约束，不能传宿主绝对根。整个项目文件根挂到所选远程目录，Session 通过 `/workspace` 继承；本地管理目录仅保留应用组织身份，不作为断线回退文件源。全局“+ 会话”入口隐藏，只能在项目内创建；程序调用同样校验当前项目和离线状态。
+工作台“+ 项目”提供本地/远程选择。远程项目引用 工具箱 MCP 中已验证的 nestos-node 配置，指定 `/导出别名/子目录`；例如连接“团队资料”下的 `/docs/a` 与 `/docs/b` 是两个项目。第一段 alias 保持服务端访问范围约束，不能传宿主绝对根。整个项目文件根挂到所选远程目录，Session 通过 `/workspace` 继承；本地管理目录仅保留应用组织身份，不作为断线回退文件源。全局“+ 会话”入口隐藏，只能在项目内创建；程序调用同样校验当前项目和离线状态。
 
 项目去重键为服务身份（有 serverId 时采用该身份，否则使用规范化 endpoint）+ username + alias + root。路径折叠重复与尾斜杠，拒绝 `..`、反斜杠和 NUL，不做物理路径推断。重复选择同一服务器同一路径打开已有项目，保留名称与权限；不同服务器可使用相同项目名，其导航路由在冲突时加入稳定项目 ID，展示名仍为服务器名:项目名。当前运行期创建串行化，catalog CAS 防止跨宿主并发提交重复授权。
 
-MCP 配置以稳定 ID 区分，名称不承担类型或身份判断，可维护多个实例。一个配置可被多个项目引用；被引用配置禁止删除或修改地址、账号、凭据引用及移除 mindos-node 标记。MCP catalog 是连接配置的唯一来源，挂载授权仍保存在 `/etc/fs/projects/`；旧 `/etc/fs/remote/` 记录迁移后清理。凭据更新检查关联会话并撤销旧视图。
+MCP 配置以稳定 ID 区分，名称不承担类型或身份判断，可维护多个实例。一个配置可被多个项目引用；被引用配置禁止删除或修改地址、账号、凭据引用及移除 nestos-node 标记。MCP catalog 是连接配置的唯一来源，挂载授权仍保存在 `/etc/fs/projects/`；旧 `/etc/fs/remote/` 记录迁移后清理。凭据更新检查关联会话并撤销旧视图。
 
 Rust 服务端采用单用户配置：顶层凭据可为内联 `password`、环境变量 `password_env = "ENV"`（至少 8 字节，二者只能选一种），或旧 Bearer 的 `token` / `token_env`（至少 24 字节，与密码互斥且不设置 `username`）；用户名取 `username`，未写时读 `FS_SERVER_USER`。导出目录写成一个扁平 `[[exports]]` 列表，`alias` 默认取目录名、`access` 默认 `ro`，`rw` 直接申请独占锁，因此不再有 per-client 授权与 `writer_policy` 二次配置。Basic 内容采用 UTF-8 编码，跨机器部署使用 HTTPS；不在 URL 或日志输出密码。Web/Tauri/CLI 共用相同认证实现。密码保存在运行期凭据缓存，重启后重新输入；CLI 在没有本地密码时仍可由凭据引用环境变量注入。
 
@@ -544,11 +544,11 @@ Rust 服务端采用单用户配置：顶层凭据可为内联 `password`、环�
 
 ### 14.3 Storage 整合与旧同步清理
 
-远程服务配置现统一位于工具箱 → MCP，Storage 中的旧远程设置入口已移除。每条配置独立维护名称、认证和能力测试，只有 mindos-node 配置显示 harness 控制中心并可用于远程项目绑定；编辑器生命周期负责释放控制中心与连接测试。
+远程服务配置现统一位于工具箱 → MCP，Storage 中的旧远程设置入口已移除。每条配置独立维护名称、认证和能力测试，只有 nestos-node 配置显示 harness 控制中心并可用于远程项目绑定；编辑器生命周期负责释放控制中心与连接测试。
 
 移除旧远程同步 UI/Service/类型/样式、同步缓存清理入口与“上次同步”指标，同时删除 SettingsService 中重复的 HTTP 同步实现、配置加载、自动同步订阅及定时器。已有 `/etc/sync_config.json` 不再读取或执行，不自动删除用户历史数据。本地存储统计、快照、导入导出和重置功能继续保留。
 
-失去入口的项目额外挂载对话框（`showRemoteMountDialog`）与仅为它保留的文案一并移除：当前产品流是「工具箱 MCP 管理 mindos-node 配置 → 新建项目选择配置与路径」，项目根即所选远程目录。`ProjectRemoteMountService` 仍保留多挂载点的能力与测试。
+失去入口的项目额外挂载对话框（`showRemoteMountDialog`）与仅为它保留的文案一并移除：当前产品流是「工具箱 MCP 管理 nestos-node 配置 → 新建项目选择配置与路径」，项目根即所选远程目录。`ProjectRemoteMountService` 仍保留多挂载点的能力与测试。
 
 ### 14.4 断线降级与契约校正（2026-09-28 修复）
 
@@ -560,7 +560,7 @@ Rust 服务端采用单用户配置：顶层凭据可为内联 `password`、环�
 
 ### 远程文件系统配置与目录选择交互
 
-- 工具箱 MCP 编辑器提供 mindos-node 开关、用户名、运行期密码和连接检测。启用开关只记录待验证意图，测试通过并取得能力描述后才允许远程项目绑定。
+- 工具箱 MCP 编辑器提供 nestos-node 开关、用户名、运行期密码和连接检测。启用开关只记录待验证意图，测试通过并取得能力描述后才允许远程项目绑定。
 - 编辑时密码留空沿用凭据提供器中的原密码；非空密码用于连接测试，保存失败恢复先前凭据。关闭编辑器取消检测；密码仅驻留运行期缓存，不随 MCP 配置导出或持久化。
 - 新建远程项目可从授权导出别名逐级浏览子目录，也可以输入路径；列表按页读取，只展示目录，切换连接/路径或关闭弹窗取消旧请求，过期响应不更新界面。目录选择不自动创建项目，仍需确认项目名称和路径。
 - 无需修改 fs-server：复用 `GET /v1/exports` 与 `GET /v1/fs/{alias}/entries`。客户端不请求或展示宿主物理根路径，不全量递归扫描。
@@ -598,7 +598,7 @@ HTTP 单次内存读取默认限制 32 MiB。超过上限返回 `EFBIG`（不是
 
 ## 15. SQLite SeqFile 接口（2026-10-04）
 
-mindos-node 在 export 内提供独立 `.seq` 文件的结构化记录读写。文件本身是 SQLite 数据库，记录表为 `entries(key TEXT PRIMARY KEY, value TEXT)`，value 保存 JSON。路径仍受 export 的认证、只读权限与禁止符号链接越界规则约束；不使用 sync 对象库，也不接受任意 SQL。
+nestos-node 在 export 内提供独立 `.seq` 文件的结构化记录读写。文件本身是 SQLite 数据库，记录表为 `entries(key TEXT PRIMARY KEY, value TEXT)`，value 保存 JSON。路径仍受 export 的认证、只读权限与禁止符号链接越界规则约束；不使用 sync 对象库，也不接受任意 SQL。
 
 | API | 请求 | 响应 |
 |---|---|---|
@@ -616,4 +616,4 @@ mindos-node 在 export 内提供独立 `.seq` 文件的结构化记录读写。�
 
 ### 服务端项目授权
 
-新 `[projects]` 模式支持导出目录下的子目录项目与受控挂载，文件请求附带项目 ID/revision；服务端逐路径核对授权。客户端项目支持 ro/rw，组织和 MindOS Session 数据仍存本地 profile；旧无项目协议服务保持只读项目兼容。详见 [项目与同步模型](mindos-node-project-model.md)。
+新 `[projects]` 模式支持导出目录下的子目录项目与受控挂载，文件请求附带项目 ID/revision；服务端逐路径核对授权。客户端项目支持 ro/rw，组织和 NestOS Session 数据仍存本地 profile；旧无项目协议服务保持只读项目兼容。详见 [项目与同步模型](nestos-node-project-model.md)。

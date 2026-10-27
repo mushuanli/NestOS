@@ -26,7 +26,7 @@ function stage(name, action) {
 
 function install(choice) {
     execFileSync('pnpm', ['install', '--prefer-offline', '--no-frozen-lockfile'], { cwd: root, stdio: 'inherit',
-        env: { ...process.env, MINDOS_LIBRARY_SNAPSHOT: choice, CI: 'true' } });
+        env: { ...process.env, NESTOS_LIBRARY_SNAPSHOT: choice, CI: 'true' } });
     const errors = checkWorkspace(root, { installed: true, snapshot: state.readSelection(root, choice) });
     if (errors.length) throw new Error(`LOCAL_LIBRARIES_RESOLUTION: ${errors.join('\n')}`);
 }

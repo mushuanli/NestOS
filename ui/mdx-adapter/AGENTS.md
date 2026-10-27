@@ -1,6 +1,6 @@
 # @itookit/mdx-adapter
 
-MindOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJS 和类型声明。
+NestOS 对独立 `@itookit/mdxeditor` 的适配层。使用 tsup 构建 ESM、CJS 和类型声明。
 
 ## Responsibilities
 

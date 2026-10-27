@@ -13,7 +13,7 @@ function source(id: string, times: number[], size = 4) {
 
 it('merges sources into bounded recent pages with no lost or repeated rows across continuations', async () => {
     const a = source('a', [30, 27, 24, 21, 18, 15]), b = source('b', [29, 26, 23, 20, 17, 14]);
-    const c = source('mindos', [28, 25, 22, 19, 16, 13]);
+    const c = source('nestos', [28, 25, 22, 19, 16, 13]);
     const first = await readConversationPage([a, b, c], undefined, 15);
     expect(first.nodes.map(row => row.modifiedAt)).toEqual(Array.from({length: 15}, (_, i) => 30 - i));
     expect(first.hasMore).toBe(true); expect(first.errors).toEqual([]);

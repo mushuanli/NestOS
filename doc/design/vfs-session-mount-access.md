@@ -201,7 +201,7 @@ Tauri 文件 IO 使用原生 directory_open/close/io，保存规范化目录根�
 
 ## 6. 其他 harness 的参考
 
-以下为官方文档描述；关于 MindOS 的选择是本方案的设计判断，不能把这些机制都等同于 VFS 挂载。
+以下为官方文档描述；关于 NestOS 的选择是本方案的设计判断，不能把这些机制都等同于 VFS 挂载。
 
 | Harness | 官方机制 | 本方案借鉴与区别 |
 | --- | --- | --- |
@@ -210,7 +210,7 @@ Tauri 文件 IO 使用原生 directory_open/close/io，保存规范化目录根�
 | OpenCode V2 | 外部目录先检查 external_directory，再检查 read/edit；文档说明 shell 使用宿主用户权限，对命令参数中的目录并非完整边界 | 借鉴目录授权与操作授权分层；必须补足进程边界。[官方文档](https://opencode.ai/v2/docs/permissions) |
 | Aider | 以一个 Git repo 为编辑中心，可 `/read` 另一个 repo 的文件 | 借鉴工作项目与只读参考；加入模型上下文不是 OS 文件隔离。[官方文档](https://aider.chat/docs/faq.html) |
 
-MindOS 的目标更明确：未配置默认来源的 Session 不附加用户目录；每个挂载是该 Session 的真实访问授权；用户只需理解附件、工作目录与附加目录。
+NestOS 的目标更明确：未配置默认来源的 Session 不附加用户目录；每个挂载是该 Session 的真实访问授权；用户只需理解附件、工作目录与附加目录。
 
 ## 7. 验收
 

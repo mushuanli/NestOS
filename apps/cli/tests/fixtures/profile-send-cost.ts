@@ -50,7 +50,7 @@ async function seed(root: string, port: number): Promise<void> {
 }
 
 async function main(): Promise<void> {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-send-cost-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-send-cost-'));
     let result: unknown;
     let reached!: () => void;
     const received = new Promise<void>(resolve => { reached = resolve; });

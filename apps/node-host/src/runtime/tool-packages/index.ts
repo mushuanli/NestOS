@@ -32,8 +32,8 @@ export class NodeToolPackages implements ToolDependencyResolver {
 
     constructor(private readonly options: NodeToolPackageOptions = {}) {
         this.env = options.env ?? process.env;
-        this.dataDirectory = path.resolve(options.dataDirectory ?? path.join(this.env.XDG_DATA_HOME || path.join(homedir(), '.local/share'), 'mindos/tools'));
-        this.registryFile = path.resolve(options.registryFile ?? path.join(this.env.XDG_CONFIG_HOME || path.join(homedir(), '.config'), 'mindos/tool-packages.json'));
+        this.dataDirectory = path.resolve(options.dataDirectory ?? path.join(this.env.XDG_DATA_HOME || path.join(homedir(), '.local/share'), 'nestos/tools'));
+        this.registryFile = path.resolve(options.registryFile ?? path.join(this.env.XDG_CONFIG_HOME || path.join(homedir(), '.config'), 'nestos/tool-packages.json'));
     }
 
     async initialize(): Promise<void> {

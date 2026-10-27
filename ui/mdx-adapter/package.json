@@ -1,7 +1,7 @@
 {
   "name": "@itookit/mdx-adapter",
   "version": "0.1.0",
-  "description": "MindOS host and VFS adapter for the standalone mdxeditor.",
+  "description": "NestOS host and VFS adapter for the standalone mdxeditor.",
   "type": "module",
   "main": "./src/index.ts",
   "module": "./src/index.ts",
@@ -64,7 +64,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mushuanli/itookit.git",
+    "url": "https://github.com/mushuanli/nestos.git",
     "directory": "ui/mdx-adapter"
   },
   "sideEffects": [

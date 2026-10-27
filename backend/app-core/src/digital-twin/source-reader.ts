@@ -9,7 +9,7 @@ import type { TwinSourceContent, TwinSourceReader, TwinSourceSpec } from './doma
 
 const MAX_BYTES = 1024 * 1024;
 /** Read ordinary project documents and visible conversations through existing application services. */
-export class MindosTwinSourceReader implements TwinSourceReader {
+export class NestosTwinSourceReader implements TwinSourceReader {
     constructor(private readonly fs: IFileSystem, private readonly sessionsRepository: SessionRepository, private readonly projects?: ProjectService) {}
     async discover() {
         if (!this.projects) throw new Error('TWIN_PROJECT_CATALOG_UNAVAILABLE');

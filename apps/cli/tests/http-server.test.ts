@@ -4,7 +4,7 @@ it.each([false, true])('initializes local application Sessions with cwd or the e
     const { tmpdir } = await import('node:os');
     const path = await import('node:path');
     const { openLocalApplication } = await import('../src/application-host');
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-http-workspace-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-http-workspace-'));
     const directory = path.join(root, 'project'); await mkdir(directory);
     const workingDirectory = path.join(root, 'cwd'); await mkdir(workingDirectory);
     const cwd = vi.spyOn(process, 'cwd').mockReturnValue(workingDirectory);

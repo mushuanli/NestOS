@@ -9,7 +9,7 @@ MindOS 日常开发默认使用源码，HTTP 发布构建单独消费固定本�
 | @itookit/vfs-ui | `libraries/vfs-ui` | 0.6.0 |
 | @itookit/vfsdriver-indexeddb | `libraries/vfsdriver-indexeddb` | 5.3.4 |
 | @itookit/vfsdriver-local | `libraries/vfsdriver-local` | 5.3.1 |
-| @itookit/mindos-node-driver | `libraries/mindos-node-driver` | 0.3.1 |
+| @itookit/mindos-node-driver | `libraries/nestos-node-driver` | 0.3.1 |
 | @itookit/vfs-sync | `libraries/vfs-sync` | 0.1.1 |
 | @itookit/mdxeditor | `libraries/mdxeditor` | 0.5.8 |
 | @itookit/driver-llm | `libraries/driver-llm` | 0.4.0 |
@@ -86,7 +86,7 @@ C4Component
 ## 源码开发
 
 ```bash
-git submodule update --init --recursive -- libraries tools/mindos-node
+git submodule update --init --recursive -- libraries tools/nestos-node
 pnpm install --frozen-lockfile
 pnpm workspace:check --installed
 pnpm dev
@@ -259,7 +259,7 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 
 ### mindos-node 命名迁移
 
-服务源码工作区由 `tools/pi-agent` 更名为 `tools/mindos-node`，服务仓库为 <https://github.com/mushuanli/mindos-node>。客户端工作区由 `libraries/piagent-driver` 更名为 `libraries/mindos-node-client`，包名为 `@itookit/mindos-node-client`，工厂为 `createMindOSNodeClient()`；源码仓库暂沿用 `mushuanli/piagent-driver`。源码、构建与 npm 制品目录配置均已更新，新包首次发布与消费验证见下一节。
+服务源码工作区由 `tools/pi-agent` 更名为 `tools/nestos-node`，服务仓库为 <https://github.com/mushuanli/nestos-node>。客户端工作区由 `libraries/piagent-driver` 更名为 `libraries/mindos-node-client`，包名为 `@itookit/mindos-node-client`，工厂为 `createMindOSNodeClient()`；源码仓库暂沿用 `mushuanli/piagent-driver`。源码、构建与 npm 制品目录配置均已更新，新包首次发布与消费验证见下一节。
 
 现有 MCP 配置、serverId、项目和会话 UUID、数据根与协议编码不迁移。节点增加 `itookit/mindos-node` 发现描述及 `mindos_node_capabilities` 工具，保留旧描述、能力工具与 HTTP 授权头；客户端同时接受新旧名称。持久配置仍使用原扩展键，已有凭据和项目绑定无需重建。
 
@@ -283,7 +283,7 @@ vfs-ui@0.5.10 将 `navigationChildren` 开放到单栏入口，并在恢复展�
 
 ### 2026-10-19 mindos-node-driver 名称统一
 
-源码工作区改为 `libraries/mindos-node-driver`，npm 包为 `@itookit/mindos-node-driver@0.3.1`，主工厂与类型为 `createMindOSNodeDriver()` / `MindOSNodeDriver`。GitHub 目标为 <https://github.com/mushuanli/mindos-node-driver>；旧独立仓库 piagent-driver 已包含客户端此前的全部提交。旧 Client 与 PiAgent 工厂/类型保留为弃用别名，原协议、配置键、serverId 和会话 UUID 不变。
+源码工作区改为 `libraries/nestos-node-driver`，npm 包为 `@itookit/mindos-node-driver@0.3.1`，主工厂与类型为 `createMindOSNodeDriver()` / `MindOSNodeDriver`。GitHub 目标为 <https://github.com/mushuanli/nestos-node-driver>；旧独立仓库 piagent-driver 已包含客户端此前的全部提交。旧 Client 与 PiAgent 工厂/类型保留为弃用别名，原协议、配置键、serverId 和会话 UUID 不变。
 
 当前状态：本地改名、204 项测试、全仓类型/架构/文档检查已完成；正式 tarball 的仓库外 ESM/CommonJS、公开子路径、旧工厂别名与 bundler/NodeNext 声明解析通过。新 GitHub 地址仍返回 404，推送及 npm 发布等待仓库地址可访问。上文的 mindos-node-client@0.3.0 是真实历史发布名，不改写其制品身份或摘要。
 
@@ -318,4 +318,4 @@ NestOS tarball SHA-256：`13c0612438baab7c17994014e7862fdc093ce004c3c85a708cc4ee
 npm publish 已退出码 0 接纳发布，注册表提示仍需处理数分钟；不因短暂不可见重复提交相同版本。
 此前 mindos 包名被 npm 以与 minio 过于相似为由拒绝；MindNest 仅作为候选准备过制品，没有发布。
 本次按用户要求不执行测试套件，仅完成发布所需的构建、打包、源输入/原生运行时检查及注册表状态查询。
-没有用新包启动生产服务，也没有重启现有 httpd。GitHub Pages 已部署，站点为 <https://mushuanli.github.io/itookit/>。
+没有用新包启动生产服务，也没有重启现有 httpd。GitHub Pages 已部署，站点为 <https://mushuanli.github.io/nestos/>。

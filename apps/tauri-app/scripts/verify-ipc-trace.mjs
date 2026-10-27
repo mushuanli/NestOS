@@ -8,7 +8,7 @@ import { build } from 'vite';
 
 // Compile actual Tauri event imports through the production Vite configuration.
 const root = fileURLToPath(new URL('../', import.meta.url));
-const temporary = await mkdtemp(path.join(tmpdir(), 'mindos-ipc-build-'));
+const temporary = await mkdtemp(path.join(tmpdir(), 'nestos-ipc-build-'));
 try {
     const entry = path.join(temporary, 'entry.js');
     await writeFile(entry, `
@@ -29,7 +29,7 @@ try {
     `);
     for (const enabled of [true, false]) {
     const result = await build({ root, configFile: path.join(root, 'vite.config.ts'), logLevel: 'error',
-        define: { 'import.meta.env.VITE_MINDOS_TRACE': JSON.stringify(enabled ? '1' : '0') },
+        define: { 'import.meta.env.VITE_NESTOS_TRACE': JSON.stringify(enabled ? '1' : '0') },
         plugins: [{ name: 'probe-single-chunk', configResolved(config) {
             delete config.build.rollupOptions.output.manualChunks;
         } }],

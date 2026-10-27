@@ -43,7 +43,7 @@ overrides:
   "@itookit/driver-llm": "workspace:*"
   "@itookit/mdxeditor": "workspace:*"
   "@itookit/image-parser": "workspace:*"
-  "@itookit/mindos-node-driver": "workspace:*"
+  "@itookit/nestos-node-driver": "workspace:*"
   "@itookit/vfs-core": "workspace:*"
   "@itookit/vfs-sync": "workspace:*"
   "@itookit/vfs-ui": "workspace:*"

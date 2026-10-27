@@ -163,7 +163,7 @@ mod tests {
     }
 
     fn granted_repo(name: &str) -> GrantedRepo {
-        let root = std::env::temp_dir().join(format!("mindos-git-{name}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("nestos-git-{name}-{}", std::process::id()));
         let repository = root.join("repository");
         let workspace = root.join("workspaces");
         std::fs::create_dir_all(&repository).unwrap();
@@ -340,7 +340,7 @@ mod tests {
 
     #[test]
     fn resolves_repository_handles_and_rejects_closed_or_unknown_grants() {
-        let dir = std::env::temp_dir().join(format!("mindos-host-git-grant-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nestos-host-git-grant-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert!(Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
         let scopes = crate::scoped_directory::DirectoryScopes::default();
@@ -358,13 +358,13 @@ mod tests {
 
     #[test]
     fn ignores_inherited_repository_redirection() {
-        let probe = "MINDOS_HOST_GIT_ENV_PROBE";
+        let probe = "NESTOS_HOST_GIT_ENV_PROBE";
         if let Ok(cwd) = std::env::var(probe) {
             let (_, stderr, code) = run(&cwd, &argv(&["rev-parse", "--is-inside-work-tree"]), None).unwrap();
             assert_eq!(code, 0, "{stderr}");
             return;
         }
-        let dir = std::env::temp_dir().join(format!("mindos-host-git-env-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nestos-host-git-env-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert!(Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
         // A child test process gives this test hostile inherited environment without global races.
@@ -388,7 +388,7 @@ mod tests {
 
     #[test]
     fn refuses_to_run_outside_a_repository_root() {
-        let dir = std::env::temp_dir().join("mindos-host-git-not-a-repo");
+        let dir = std::env::temp_dir().join("nestos-host-git-not-a-repo");
         let _ = std::fs::create_dir_all(&dir);
         let error = run(dir.to_str().unwrap(), &argv(&["rev-parse", "HEAD"]), None).unwrap_err();
         assert!(error.contains("not a repository root"), "{error}");
@@ -396,7 +396,7 @@ mod tests {
 
     #[test]
     fn runs_a_whitelisted_command_inside_a_real_repository() {
-        let dir = std::env::temp_dir().join(format!("mindos-host-git-repo-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nestos-host-git-repo-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         // Set the repository up with std::process directly: `init` is intentionally not whitelisted.
@@ -414,7 +414,7 @@ mod tests {
     #[test]
     fn status_does_not_execute_a_repository_fsmonitor() {
         use std::os::unix::fs::PermissionsExt;
-        let dir = std::env::temp_dir().join(format!("mindos-host-git-monitor-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("nestos-host-git-monitor-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         assert!(Command::new("git").args(["init", "-q"]).current_dir(&dir).status().unwrap().success());
         let monitor = dir.join("monitor.sh");

@@ -31,11 +31,11 @@ queries 合并同一微任务中独立的只读查询，bindings 合并订阅注
 
 文件操作经过应用文件视图。用户内容可以读写；`/etc` 的直接写入仅允许 UI 偏好，配置、会话和任务修改通过各自服务执行。字节、Map、Set、回调与持续句柄有显式编码。同步 UI 查询读取已加载的快照；执行和持久化调用经异步端口完成，不使用同步 XMLHttpRequest。
 
-`GET /api/application/events?clientId=<id>` 提供 SSE。通知按 16 ms 窗口合并，只运行一个刷新循环，256 条 / 1 MiB 上限覆盖等待和处理中的事件；刷新期间的失效只安排一次后续刷新，保持事件顺序。客户端也限制排队通知的数量和字节；需要结果的回调单独经 reply 返回，不等待通知批次。领域服务变更也主动更新其他浏览器的快照。客户端先安装 bootstrap，再按序消费已经缓冲的 SSE；服务端在首次快照建立前暂停通知快照刷新。快照补丁携带前后版本，客户端缓冲乱序补丁、忽略旧版本，缺失更新不能覆盖新状态。长连接每 15 秒重新验证证书。初次连接通过 `resume=1` 显式协商带序号的 SSE，未协商的旧客户端仍收到原有 data 帧格式。短暂中断通过 `after=<最后接收序号>&version=14` 恢复同一视图，服务端以 `X-MindOS-View-Resume: 1` 声明支持；按视图保留最近 256 帧 / 2 MiB 内存事件日志，包含离线期间通知。恢复前验证证书、已初始化视图、协议版本和序号范围，缺失历史或回调超时必须重新加载，不能静默漏掉更新或为旧句柄创建新视图。客户端按序接收、忽略重复帧，首次立即重连，连续失败按 1/2/4/8/15 秒退避；响应头成功但立即 EOF 仍累计退避，连接持续 15 秒后重置，online/focus 或立即重连可唤醒；45 秒无心跳触发重连，取消与销毁停止恢复。写请求不会自动重发。事件日志不跨 daemon 重启，不提供持久命令回执，不能宣称跨重载的 exactly-once 保证。
+`GET /api/application/events?clientId=<id>` 提供 SSE。通知按 16 ms 窗口合并，只运行一个刷新循环，256 条 / 1 MiB 上限覆盖等待和处理中的事件；刷新期间的失效只安排一次后续刷新，保持事件顺序。客户端也限制排队通知的数量和字节；需要结果的回调单独经 reply 返回，不等待通知批次。领域服务变更也主动更新其他浏览器的快照。客户端先安装 bootstrap，再按序消费已经缓冲的 SSE；服务端在首次快照建立前暂停通知快照刷新。快照补丁携带前后版本，客户端缓冲乱序补丁、忽略旧版本，缺失更新不能覆盖新状态。长连接每 15 秒重新验证证书。初次连接通过 `resume=1` 显式协商带序号的 SSE，未协商的旧客户端仍收到原有 data 帧格式。短暂中断通过 `after=<最后接收序号>&version=14` 恢复同一视图，服务端以 `X-NestOS-View-Resume: 1` 声明支持；按视图保留最近 256 帧 / 2 MiB 内存事件日志，包含离线期间通知。恢复前验证证书、已初始化视图、协议版本和序号范围，缺失历史或回调超时必须重新加载，不能静默漏掉更新或为旧句柄创建新视图。客户端按序接收、忽略重复帧，首次立即重连，连续失败按 1/2/4/8/15 秒退避；响应头成功但立即 EOF 仍累计退避，连接持续 15 秒后重置，online/focus 或立即重连可唤醒；45 秒无心跳触发重连，取消与销毁停止恢复。写请求不会自动重发。事件日志不跨 daemon 重启，不提供持久命令回执，不能宣称跨重载的 exactly-once 保证。
 
 `POST /api/application/files?clientId=<id>&version=14` 使用 application/octet-stream 传输文件字节，X-View-Call 携带编码后的文件能力参数。权限仍由已导出的文件视图检查，不提供宿主路径或存储驱动入口。二进制读写省去 JSON/base64 编码；读取响应头与写入回执携带文件 revision，前端在操作完成前更新 onRevision，条件写入参数保持原有含义。文件接口仍使用完整 ArrayBuffer，不是无限大小的流式存储接口。
 
-HTTP 客户端分别报告传输断开和视图更新失败。fetch/SSE 短暂断开恢复原视图且保留页面与输入，恢复成功收起提示；服务重启或视图过期返回 `X-MindOS-View-Expired: 1` 后，旧句柄的查询、命令和二进制文件请求在客户端立即拒绝，避免重复无效轮询。过期后保留页面及草稿，服务就绪后捕获编辑器快照并自动重建视图，不刷新文档；受阻或恢复失败时保留草稿，显示具体原因和重试/手动重载入口。DOM 输入事件不能证明所有编辑已保存，健康检查成功也不代表视图已经恢复。快照应用、回调、事件解析和通知过载显示页面数据更新失败，提供手动重载入口，保留当前页面未发送内容，不单独触发健康探测或自动重载。解析失败和过载中止事件消费；写命令始终不自动重放。原生 harness 另行区分连接状态与 `refreshError`：目录监听失败不改变会话在线状态，各 profile 的状态读取错误独立显示阶段和安全错误码，events/list 的实际传输断开均标 offline，协议、权限错误与超时只标 stale，成功空轮询也可恢复传输状态。
+HTTP 客户端分别报告传输断开和视图更新失败。fetch/SSE 短暂断开恢复原视图且保留页面与输入，恢复成功收起提示；服务重启或视图过期返回 `X-NestOS-View-Expired: 1` 后，旧句柄的查询、命令和二进制文件请求在客户端立即拒绝，避免重复无效轮询。过期后保留页面及草稿，服务就绪后捕获编辑器快照并自动重建视图，不刷新文档；受阻或恢复失败时保留草稿，显示具体原因和重试/手动重载入口。DOM 输入事件不能证明所有编辑已保存，健康检查成功也不代表视图已经恢复。快照应用、回调、事件解析和通知过载显示页面数据更新失败，提供手动重载入口，保留当前页面未发送内容，不单独触发健康探测或自动重载。解析失败和过载中止事件消费；写命令始终不自动重放。原生 harness 另行区分连接状态与 `refreshError`：目录监听失败不改变会话在线状态，各 profile 的状态读取错误独立显示阶段和安全错误码，events/list 的实际传输断开均标 offline，协议、权限错误与超时只标 stale，成功空轮询也可恢复传输状态。
 
 ```mermaid
 C4Component
@@ -60,7 +60,7 @@ C4Component
 
 每个视图最多 4096 个活跃能力句柄、16 个在途业务请求和 128 个待回复回调，最多 128 个浏览器视图。dispose/release/close 撤销独占子图并传送句柄撤销，关闭资源时同步取消其订阅；共享子图按可达拥有者保留；压缩的撤销区间使迟到更新不能复活已释放句柄。回调中的事务能力仅借用到回调结束。没有事件连接和在途回调的视图在空闲 60 秒后回收。JSON 与独立二进制传输分别限制为 32 MiB；通知等待队列和流写缓冲也有上限。
 
-网页视图释放只停止展示与连接兴趣。mindos-node 独立按项目/profile 回收连续空闲 5 分钟的原生运行时，每 60 秒检查一次内存状态；执行、待答交互和在途请求会阻止卸载，等待回答不自动取消。原生历史与操作回执保留，重新访问延迟创建 driver，打开会话时重新读取待答框。进程退出或服务重启的恢复能力仍受原生 harness 限制；该保留策略不承诺跨原生进程故障恢复尚未完成的工具调用。
+网页视图释放只停止展示与连接兴趣。nestos-node 独立按项目/profile 回收连续空闲 5 分钟的原生运行时，每 60 秒检查一次内存状态；执行、待答交互和在途请求会阻止卸载，等待回答不自动取消。原生历史与操作回执保留，重新访问延迟创建 driver，打开会话时重新读取待答框。进程退出或服务重启的恢复能力仍受原生 harness 限制；该保留策略不承诺跨原生进程故障恢复尚未完成的工具调用。
 
 旧 HttpStorageBackend、记录事务传输、loopback 存储监听、精简 ApplicationShell 与禁用菜单适配已删除。`/api/vfs` 始终拒绝访问；`/api/health` 返回就绪状态及运行模式、构建版本。
 
@@ -199,11 +199,11 @@ HTTP 页面现在由轻入口同时启动数据连接、Shell 模块和当前编
 
 首帧处理：共享 HTML 直接提供当前主题背景和静态页面骨架；主题镜像只用于首帧，后端 UI 文档返回后校准。骨架不显示历史正文或可交互按钮，正常启动没有加载 banner。主样式表以非阻塞方式加载，避免下载大 CSS 时只能显示白色页面。当前目标加载完成后移除骨架；失败时显示现有错误入口。普通 SSE 重连不重建 DOM 或显示首屏骨架。
 
-HTML 的样式处理器在模块加载前记录 load/error，HTTP 和 Web 本地入口共用 `mind-os/startup` 读取已有结果并等待样式，最长 30 秒；超时或失败释放其他样式的等待监听，显示可重载的错误。提示所需样式内联在 HTML，不依赖失败的 CSS。Web 在 IndexedDB 或 Runtime 初始化失败时也解除骨架并显示错误，样式与本地初始化并行。
+HTML 的样式处理器在模块加载前记录 load/error，HTTP 和 Web 本地入口共用 `nestos-web/startup` 读取已有结果并等待样式，最长 30 秒；超时或失败释放其他样式的等待监听，显示可重载的错误。提示所需样式内联在 HTML，不依赖失败的 CSS。Web 在 IndexedDB 或 Runtime 初始化失败时也解除骨架并显示错误，样式与本地初始化并行。
 
-HTTP 提前连接保留当前连接状态，状态提示安装时同步补报；终结的更新错误或视图过期不会被迟到的重连清除。`mindos:data-ready` 只记录连接数据就绪，不包含编辑器代码和样式等待。服务端通知刷新失败后关闭队列并使 SSE 日志失效，后续请求报告视图过期；不会跳过丢失序号继续发送，也不重放业务命令。回归见 [浏览器启动](../apps/http-app/tests/browser-startup.test.ts)、[Web 初始化失败](../apps/http-app/tests/web-startup-failure.test.ts)、[提前连接状态](../apps/http-app/tests/early-connection-status.test.ts) 和 [通知刷新失败](../apps/http-app/tests/view-notification-failure.test.ts)。
+HTTP 提前连接保留当前连接状态，状态提示安装时同步补报；终结的更新错误或视图过期不会被迟到的重连清除。`nestos:data-ready` 只记录连接数据就绪，不包含编辑器代码和样式等待。服务端通知刷新失败后关闭队列并使 SSE 日志失效，后续请求报告视图过期；不会跳过丢失序号继续发送，也不重放业务命令。回归见 [浏览器启动](../apps/http-app/tests/browser-startup.test.ts)、[Web 初始化失败](../apps/http-app/tests/web-startup-failure.test.ts)、[提前连接状态](../apps/http-app/tests/early-connection-status.test.ts) 和 [通知刷新失败](../apps/http-app/tests/view-notification-failure.test.ts)。
 
-浏览器 Performance 条目 `mindos:document-to-editor` 记录 HTML 脚本开始至编辑器就绪，`mindos:entry-to-editor` 记录入口执行至编辑器就绪；二者包括相应网络/代码/装配等待，不能用服务器 rpcMs 替代。bootstrap 现在也记录 application.complete 和 rpcMs，日志不记录目标、已知摘要或用户正文。
+浏览器 Performance 条目 `nestos:document-to-editor` 记录 HTML 脚本开始至编辑器就绪，`nestos:entry-to-editor` 记录入口执行至编辑器就绪；二者包括相应网络/代码/装配等待，不能用服务器 rpcMs 替代。bootstrap 现在也记录 application.complete 和 rpcMs，日志不记录目标、已知摘要或用户正文。
 
 复核范围包括初始握手与快照缓存、Shell 的打开/观察装配、真实 Kernel 重建后的审批恢复，以及过期候选和监听释放。历史样本的请求数、响应大小和测试计数通过 Git 查阅，不作为当前运行版本的性能保证；v14 发布需前后端同步更新。运行版本核对见[启动与认证](#启动与认证)。
 
@@ -267,25 +267,25 @@ release 保存在 `release/httpd/<版本ID>/`，包括固定的服务端、UI �
 
 release 沿用原 profile 数据；dev 默认使用 `<configDir>/http-dev/data`，忽略原 profile 数据根。两者的 OAuth 凭据分别在 `<configDir>/http-auth/release` 与 `dev`。数据根和凭据目录分别以 SQLite 排他锁防止新宿主重复打开，崩溃后由操作系统释放。
 
-默认排查 release 日志：运行日志 `/var/log/mindos/httpd.runtime.log`，审计日志 `/var/log/mindos/httpd.audit.jsonl`。dev 使用同目录的 `httpd.debug.runtime.log` 和 `httpd.debug.audit.jsonl`。目录和文件名不包含版本 ID，切换 release 后继续追加；版本 ID 保留在运行日志的启动记录中。每份 10 MiB，保留当前文件及追加 `.1`、`.2`、`.3` 的轮转文件，文件权限 0600。旧版本目录中的日志不自动迁移或删除。
+默认排查 release 日志：运行日志 `/var/log/nestos/httpd.runtime.log`，审计日志 `/var/log/nestos/httpd.audit.jsonl`。dev 使用同目录的 `httpd.debug.runtime.log` 和 `httpd.debug.audit.jsonl`。目录和文件名不包含版本 ID，切换 release 后继续追加；版本 ID 保留在运行日志的启动记录中。每份 10 MiB，保留当前文件及追加 `.1`、`.2`、`.3` 的轮转文件，文件权限 0600。旧版本目录中的日志不自动迁移或删除。
 
 系统部署时先创建由服务运行用户拥有的目录。以下命令用于以当前用户运行的服务；独立服务账号应替换 owner/group：
 
 ```bash
-sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" /var/log/mindos
+sudo install -d -m 0700 -o "$(id -un)" -g "$(id -gn)" /var/log/nestos
 pnpm httpd
 ```
 
-目录不可写时启动失败。可用 `MINDOS_HTTPD_LOG_DIR=/path/to/logs pnpm httpd` 同时覆盖运行与审计日志目录，`--audit-file` 单独覆盖审计文件；配置、凭据和数据路径仍按原规则解析。相对日志目录按启动工作目录解析。
+目录不可写时启动失败。可用 `NESTOS_HTTPD_LOG_DIR=/path/to/logs pnpm httpd` 同时覆盖运行与审计日志目录，`--audit-file` 单独覆盖审计文件；配置、凭据和数据路径仍按原规则解析。相对日志目录按启动工作目录解析。
 
 查询当前运行版本需要使用已登记的客户端证书，访问证书覆盖的实际主机地址：
 
 ```bash
-cert_dir="${XDG_CONFIG_HOME:-$HOME/.config}/mindos/http-certs"
+cert_dir="${XDG_CONFIG_HOME:-$HOME/.config}/nestos/http-certs"
 curl --fail --silent --show-error --cacert "$cert_dir/ca.crt" \
   --cert "$cert_dir/client.crt" --key "$cert_dir/client.key" \
   https://127.0.0.1:2000/api/health
-tail -n 100 /var/log/mindos/httpd.runtime.log
+tail -n 100 /var/log/nestos/httpd.runtime.log
 ```
 
 健康检查返回 `{"ready":true,"mode":"release","version":"<release-id>"}`，其中 `version` 才是当前服务版本。版本 ID 为 `<UTC构建时间 YYYYMMDDTHHmmss>-<Git提交前8位>[-dirty]`，例如 `20261017T100615-b109df0a-dirty`；`dirty` 表示构建时存在未提交修改。运行日志中最新的 `Version:` 记录可用于核对启动版本，但进程退出后仍保留。`release/httpd/current.json` 只指定下次启动选择，不证明当前服务已切换；修改日志目录后，日志查询命令也应使用新目录。
@@ -294,8 +294,8 @@ httpd 使用 `startupMode: 'server'`：LLM 配置与设备、MCP 首次自动连
 
 默认只监听 HTTPS `0.0.0.0:2000`，backlog 为 4096。TLS 验证客户端证书与 clients.json 的 SHA-256 指纹，没有匿名或明文入口。CA、密钥、浏览器导入包和审计日志位于数据根之外。
 
-数据根优先级：`--root` → `MINDOS_ROOT` → mindos.json 的 rootDir → 配置目录/data。配置目录遵循 XDG_CONFIG_HOME，默认 `~/.config/mindos`。SQLite 默认保存在 `<root>/_meta/index.db`；`--sidecar` 可以指定数据根之外的位置。
-`mindos.json` 的 `http.certDir` 指定证书目录，`http.authDir` 指定认证基址（release/dev 分别追加子目录）；
+数据根优先级：`--root` → `NESTOS_ROOT` → nestos.json 的 rootDir → 配置目录/data。配置目录遵循 XDG_CONFIG_HOME，默认 `~/.config/nestos`。SQLite 默认保存在 `<root>/_meta/index.db`；`--sidecar` 可以指定数据根之外的位置。
+`nestos.json` 的 `http.certDir` 指定证书目录，`http.authDir` 指定认证基址（release/dev 分别追加子目录）；
 显式 `--cert-dir` / `--auth-dir` 仍优先且为最终目录，省略配置保持旧路径，不自动迁移。
 配置路径相对配置目录解析，CLI 路径相对调用目录解析；两类私有目录仍须在数据根、静态 UI 根之外。`--internal-port` 已移除。
 
@@ -315,11 +315,11 @@ httpd 注入私有 `ProviderAuthorizationHost`，负责 PKCE、state、nonce、O
 
 私有凭据目录权限 0700、文件 0600，必须位于数据根和静态目录之外；注销后保留客户端注册身份，清除本地令牌，远端撤销未确认时明确提示。授权流程、刷新和 RPC 用签名模拟响应验证，尚未使用真实订阅账号验收。
 
-授权交换失败写入当前宿主审计文件（release 默认为 `/var/log/mindos/httpd.audit.jsonl`）的 `provider.authorization.failed` 事件，`operation` 区分客户端注册检查、令牌交换、令牌结构/权限校验、OIDC 身份校验、账号核对和凭据保存；记录耗时、HTTP 状态及白名单错误分类，合法的远端请求 ID 作为 `providerRequestId` 保留。上游错误正文、异常原文、回调 URL、授权码及令牌不写日志。授权成功保存后记录 `provider.authorization.completed`。回调结果页的 HTTP 200 仅表示结果页已返回，页面正文才表明授权结果；已有账号在重新授权失败后保持可用，结果页仍明确报告本次失败。
+授权交换失败写入当前宿主审计文件（release 默认为 `/var/log/nestos/httpd.audit.jsonl`）的 `provider.authorization.failed` 事件，`operation` 区分客户端注册检查、令牌交换、令牌结构/权限校验、OIDC 身份校验、账号核对和凭据保存；记录耗时、HTTP 状态及白名单错误分类，合法的远端请求 ID 作为 `providerRequestId` 保留。上游错误正文、异常原文、回调 URL、授权码及令牌不写日志。授权成功保存后记录 `provider.authorization.completed`。回调结果页的 HTTP 200 仅表示结果页已返回，页面正文才表明授权结果；已有账号在重新授权失败后保持可用，结果页仍明确报告本次失败。
 
 身份字段校验使用独立错误分类区分 issuer、audience、authorized party、过期时间、签发时间、生效时间、subject 及 nonce 缺失/不匹配，不记录字段值。`aud` 可以是包含当前客户端的字符串或字符串数组；单元素数组不强制要求 `azp`，多个 audience 时要求 `azp`，提供的 `azp` 必须匹配当前客户端。身份校验始终在签名验证成功后执行，失败不保存凭据。
 
-授权面板通过后端订阅更新，窗口重新获得焦点或页面恢复可见时补查一次授权状态，同一轮触发合并；无状态变化保留回调输入，销毁后移除监听，不常驻轮询。HTTP 页面的短暂断线由 SSE 续传恢复；视图过期或模块加载失败后才探测 `/api/health`，探测失败按 1、2、4、8、15 秒退避，单次超时 5 秒；联网和窗口返回可提前重试，页面关闭时取消。仅事件订阅与 bootstrap 可创建视图，其他请求遇到不存在或未初始化的视图时返回 `ECAPABILITY` 及 `X-MindOS-View-Expired: 1`；JSON 与二进制客户端据此立即触发恢复，同一次连接丢失只通知一次。服务就绪后按编辑器显式恢复接口保存内存快照、重建视图并恢复表单，不根据输入/选择事件猜测未保存状态；程序填入的草稿同样保留。不能自动恢复时保留原页与具体原因，用户可重试或复制内容后手动重载。不自动重放写命令，也不把 health 就绪当成旧视图已经恢复。
+授权面板通过后端订阅更新，窗口重新获得焦点或页面恢复可见时补查一次授权状态，同一轮触发合并；无状态变化保留回调输入，销毁后移除监听，不常驻轮询。HTTP 页面的短暂断线由 SSE 续传恢复；视图过期或模块加载失败后才探测 `/api/health`，探测失败按 1、2、4、8、15 秒退避，单次超时 5 秒；联网和窗口返回可提前重试，页面关闭时取消。仅事件订阅与 bootstrap 可创建视图，其他请求遇到不存在或未初始化的视图时返回 `ECAPABILITY` 及 `X-NestOS-View-Expired: 1`；JSON 与二进制客户端据此立即触发恢复，同一次连接丢失只通知一次。服务就绪后按编辑器显式恢复接口保存内存快照、重建视图并恢复表单，不根据输入/选择事件猜测未保存状态；程序填入的草稿同样保留。不能自动恢复时保留原页与具体原因，用户可重试或复制内容后手动重载。不自动重放写命令，也不把 health 就绪当成旧视图已经恢复。
 
 RPC 能力分类中，HarnessConversationPort 必须同时具备 `snapshot`、`respond` 和 `subscribe`，避免将含异步 `snapshot()` 的 TaskHandle 误识别为同步会话快照。TaskHandle 通过 `status` 等公开查询读取状态，不导出内部 `snapshot`。快照编码失败保留错误码、原因和具体能力/方法；不得通过自动等待 Promise 掩盖能力分类错误。真实内核任务经 `openTask` 导出及通知续传的回归见 [task-handle-rpc.test.ts](../apps/http-app/tests/task-handle-rpc.test.ts)。
 
@@ -405,3 +405,9 @@ HTTP 工作台以 `nestos@0.1.0` 发布，使用 `npm install -g nestos@0.1.0` �
 用户确认后复用 createCertificates，完成后显示 CA/浏览器个人证书导入位置并继续启动；不记录密钥、密码或证书正文。
 已有证书目录不覆盖；非交互启动缺少目录时直接报出 --init-certs 命令，不等待输入。
 初始化前解析真实父目录，检查证书目的地不在数据根或静态网页根中，包含符号链接父路径。
+
+
+编辑临时副本可由 `http.editorSwap: true` 显式开启，默认关闭；`http.swapDir` 默认 `~/swap`，支持 `~/`。
+仅 httpd 开启时提供查看菜单、修改后防抖写入小文件副本；每个编辑器正常关闭时删除自己的 swap。
+达到或超过 512 KiB 的文件不写 swap；httpd 启动时和每小时清理最后更新超过 48 小时的文件。
+历史配置、证书及数据的兼容读取规则见仓库 `doc/nestos-rename.md`；已有私有文件不会因为产品改名重新生成。

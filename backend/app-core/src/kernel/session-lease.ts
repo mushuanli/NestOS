@@ -34,7 +34,7 @@ export interface SessionLeaseOptions {
 const DEFAULT_PATH = '/var/lib/kernel/session-leases.seq';
 const DEFAULT_TTL_MS = 60_000;
 
-/** Single-owner-per-Session lease stored in the shared MindOS SeqFiles. */
+/** Single-owner-per-Session lease stored in the shared NestOS SeqFiles. */
 export class SessionLeaseStore {
     private readonly path: string;
     private readonly ttlMs: number;

@@ -25,11 +25,11 @@ async function readSession(runtime: ApplicationRuntime, id: string, path: string
 it('rejects a copied Session identity before adopting a new project directory', async () => {
     const r = await setup(), root = await r.vfs.openFileSystem('/'), original = (await r.projects.current())!;
     const id = await r.sessionRepository.createSession('Original', await r.projects.sessionFolder(original));
-    const target = '/home/admin/copied-project', parent = `${target}/.mindos/sessions`;
-    await root.driver.createDirectory({ parentPath: `${target}/.mindos`, name: 'sessions', recursive: true });
-    await transferFileSystemEntry(root, `${original.project.directory}/.mindos/sessions/${id}`, root, parent);
+    const target = '/home/admin/copied-project', parent = `${target}/.nestos/sessions`;
+    await root.driver.createDirectory({ parentPath: `${target}/.nestos`, name: 'sessions', recursive: true });
+    await transferFileSystemEntry(root, `${original.project.directory}/.nestos/sessions/${id}`, root, parent);
     await expect(r.projects.create('Copied', null, target)).rejects.toMatchObject({ code: 'ECONFLICT' });
-    expect(await root.driver.exists(`${target}/.mindos/info.seq`)).toBe(false);
+    expect(await root.driver.exists(`${target}/.nestos/info.seq`)).toBe(false);
     expect(await root.driver.exists(`${parent}/${id}/session.seq`)).toBe(true);
     expect((await r.sessionRepository.getManifest(id)).title).toBe('Original');
     expect((await r.projects.list()).some(project => project.project.directory === target)).toBe(false);
@@ -37,8 +37,8 @@ it('rejects a copied Session identity before adopting a new project directory', 
 
 it('completes an empty project identity marker without replacing existing records', async () => {
     const r = await setup(), root = await r.vfs.openFileSystem('/');
-    const directory = '/home/admin/recovered-workspace', info = directory + '/.mindos/info.seq';
-    await root.driver.createFile({ parentPath: directory + '/.mindos', name: 'info.seq', type: 'seqfile', recursive: true });
+    const directory = '/home/admin/recovered-workspace', info = directory + '/.nestos/info.seq';
+    await root.driver.createFile({ parentPath: directory + '/.nestos', name: 'info.seq', type: 'seqfile', recursive: true });
     await root.meta.seq!.setEntry(info, 'retained', 'existing data');
     const project = await r.projects.ensureDirectory(directory, 'Recovered');
     expect(JSON.parse((await root.meta.seq!.getEntry(info, 'identity'))!).id).toBe(project.project.id);
@@ -85,7 +85,7 @@ it('does not relocate an unknown project owner into the currently selected proje
     const id = await legacy.createSession('Unresolved owner', '/Orphan/@sessions');
     await r.projects.adoptSession(id);
     expect((await r.sessionRepository.getManifest(id)).folder).toBe('/Orphan/@sessions');
-    expect(await root.driver.exists(`${current.project.directory}/.mindos/sessions/${id}`)).toBe(false);
+    expect(await root.driver.exists(`${current.project.directory}/.nestos/sessions/${id}`)).toBe(false);
     expect(await root.driver.exists(`/var/lib/sessions/${id}/session.seq`)).toBe(true);
     await legacy.dispose();
 });
@@ -380,7 +380,7 @@ it('serializes competing local root registrations so only one project owns the d
 it('uses directory identities as the authority and rediscovers projects after clearing the navigation cache', async () => {
     const r = await setup(), project = await r.projects.create('Portable');
     const root = await r.vfs.openFileSystem('/');
-    const info = project.project.directory + '/.mindos/info.seq';
+    const info = project.project.directory + '/.nestos/info.seq';
     expect(JSON.parse((await root.meta.seq!.getEntry(info, 'identity'))!).id).toBe(project.project.id);
     await r.sessionRepository.deleteFolder(project.path, true);
     expect((await r.projects.get(project.project.id)).project.directory).toBe(project.project.directory);
@@ -399,7 +399,7 @@ it('stores portable conversation files inside the project and keeps execution co
     const id = await first.sessionRepository.createSession('Conversation', await first.projects.sessionFolder(project));
     await first.sessionRepository.writeDocument(id, 'round-one.json', '{"text":"portable"}');
     const root = await first.vfs.openFileSystem('/');
-    expect(await root.driver.exists(`${project.project.directory}/.mindos/sessions/${id}/history.seq`)).toBe(true);
+    expect(await root.driver.exists(`${project.project.directory}/.nestos/sessions/${id}/history.seq`)).toBe(true);
     expect(await root.meta.seq!.getEntry(`/var/lib/sessions/${id}/session.seq`, 'session')).toBeNull();
     await first.dispose();
     const reopened = await createApplicationRuntime({ backend, ownerKind: 'web' }); cleanups.push(() => reopened.dispose());
@@ -435,7 +435,7 @@ it('boots existing central Sessions into project storage without moving their ru
     cleanups.push(() => reopened.dispose());
     const files = await reopened.vfs.openFileSystem('/');
     expect(await reopened.sessionRepository.readDocument(id, 'round.json')).toBe('{"text":"saved"}');
-    await vi.waitFor(async () => expect(await files.driver.exists(`${project.project.directory}/.mindos/sessions/${id}/history.seq`)).toBe(true));
+    await vi.waitFor(async () => expect(await files.driver.exists(`${project.project.directory}/.nestos/sessions/${id}/history.seq`)).toBe(true));
     expect((await reopened.sessionFiles.inspect(id))?.mounts).toEqual(before?.mounts);
     expect(await files.driver.exists(`/var/lib/sessions/${id}/kernel`)).toBe(true);
 });
@@ -494,7 +494,7 @@ it('converts data-bearing legacy directories using the original project identity
     await runtime.projects.initializeSources();
     const recovered = await runtime.projects.get('legacy-data');
     expect(recovered.path).toBe('/Recovered'); expect(recovered.project.directory).toBe(directory);
-    expect(JSON.parse((await root.meta.seq!.getEntry(`${directory}/.mindos/info.seq`, 'identity'))!).id).toBe('legacy-data');
+    expect(JSON.parse((await root.meta.seq!.getEntry(`${directory}/.nestos/info.seq`, 'identity'))!).id).toBe('legacy-data');
     expect((await runtime.sessionRepository.getManifest(id)).folder).toBe('/Recovered/@sessions');
     expect(await runtime.sessionRepository.readDocument(id, 'round.json')).toBe('{"text":"retained"}');
     const files = await runtime.projects.openFiles(recovered.path);
@@ -531,7 +531,7 @@ it('retains an unreadable legacy directory and its index instead of treating it 
     try {
         await expect(runtime.projects.create('Unreadable')).rejects.toMatchObject({ code: 'EIO' });
         expect((await runtime.sessionRepository.listFolders()).find(folder => folder.project?.id === 'unreadable-old')?.path).toBe('/Unreadable');
-        expect(await root.driver.exists(`${directory}/.mindos/info.seq`)).toBe(false);
+        expect(await root.driver.exists(`${directory}/.nestos/info.seq`)).toBe(false);
     } finally { scan.mockRestore(); warning.mockRestore(); }
     await runtime.projects.initializeSources();
     expect((await runtime.projects.get('unreadable-old')).path).toBe('/Unreadable');
@@ -558,7 +558,7 @@ it('recovers an old data directory and its conversation during IndexedDB applica
     expect(await reopened.sessionRepository.readDocument(id, 'round.json')).toBe('{"text":"original conversation"}');
     // Wait for committed public access while recovery runs in the background.
     await vi.waitFor(async () => expect(await readSession(reopened, id, 'old.md')).toBe('original file'));
-    expect(await (await reopened.vfs.openFileSystem('/')).driver.exists(`${directory}/.mindos/sessions/${id}/history.seq`)).toBe(true);
+    expect(await (await reopened.vfs.openFileSystem('/')).driver.exists(`${directory}/.nestos/sessions/${id}/history.seq`)).toBe(true);
 });
 
 it('projects an empty Sessions section when a discovered project has no organization record', async () => {

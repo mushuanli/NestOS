@@ -111,7 +111,7 @@ export class ProjectSearchPanel {
     }
     private row(row: ProjectSearchMatch, query: string) {
         const button = document.createElement('button'); button.type = 'button'; button.className = 'project-search__result';
-        const title = document.createElement('strong'); title.textContent = row.title + (row.line ? `:${row.line}` : '') + (row.profileId ? ` · ${row.profileId}` : row.kind === 'session' ? ' · MindOS' : '');
+        const title = document.createElement('strong'); title.textContent = row.title + (row.line ? `:${row.line}` : '') + (row.profileId ? ` · ${row.profileId}` : row.kind === 'session' ? ' · NestOS' : '');
         const detail = document.createElement('span'); detail.textContent = row.summary; button.append(title, detail);
         button.onclick = () => { void this.open(row, query).catch(() => { this.status.textContent = t('project.search.navigateFailed'); }); }; return button;
     }

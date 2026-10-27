@@ -15,7 +15,7 @@ describe('compileDag', () => {
     });
     it('maps explicit task outputs to deterministic DAG edges', () => {
         const workflow: CompiledWorkflow = {
-            workspaceRoot: '/work', stateDir: '/work/.mindos',
+            workspaceRoot: '/work', stateDir: '/work/.nestos',
             config: {
                 version: 1, name: 'test', goal: 'goal',
                 providers: [{
@@ -49,7 +49,7 @@ describe('compileDag', () => {
 describe('compileRunDefinition', () => {
     it('wraps the compiled graph with environment and policy', () => {
         const workflow: CompiledWorkflow = {
-            workspaceRoot: '/work', stateDir: '/work/.mindos',
+            workspaceRoot: '/work', stateDir: '/work/.nestos',
             config: {
                 version: 1, name: 'test', goal: 'goal',
                 providers: [{

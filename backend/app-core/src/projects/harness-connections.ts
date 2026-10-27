@@ -1,5 +1,5 @@
 import { FSError, type IFileSystem } from '@itookit/vfs-core';
-import type { HarnessClient, HarnessProfile } from '@itookit/mindos-node-driver';
+import type { HarnessClient, HarnessProfile } from '@itookit/nestos-node-driver';
 import type { HarnessConnectionSnapshot, HarnessExecutionConnection } from '@itookit/kernel-adapters/contracts';
 import type { ProjectRemoteMountService } from './remote-mounts';
 import { HarnessConnectionStore, type HarnessConnectionRecord } from './harness-connection-store';

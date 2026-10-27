@@ -4,12 +4,12 @@ import { snapshotLlmPresets, type LlmManagementPresets, type ProviderConnectionP
 import type { LLMProvider } from '@itookit/driver-llm/contracts';
 
 /** API templates are available on demand without seeding their providers into user storage. */
-export function createMindosProviderTemplates(): LLMProvider[] {
+export function createNestosProviderTemplates(): LLMProvider[] {
     return Object.values(createLlmDeviceCatalog().providers).filter(provider => provider.id !== 'custom' && provider.credentialMode !== 'host');
 }
 
-/** Optional MindOS catalog; the mechanism entry never imports this module. */
-export function createMindosLlmPresets(): LlmManagementPresets {
+/** Optional NestOS catalog; the mechanism entry never imports this module. */
+export function createNestosLlmPresets(): LlmManagementPresets {
     const device = createLlmDeviceCatalog();
     const providers = Object.fromEntries(['deepseek', 'volcengine', 'doubao-speech'].map(id => [id, device.providers[id]]));
     return snapshotLlmPresets({ version: CONST_CONFIG_VERSION, providers, providerReferences: device.providerReferences,

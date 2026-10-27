@@ -24,7 +24,7 @@
     "@itookit/common": "workspace:*",
     "@itookit/vfs-core": "workspace:*",
     "@itookit/vfsdriver-local": "workspace:*",
-    "@itookit/mindos-node-driver": "workspace:*",
+    "@itookit/nestos-node-driver": "workspace:*",
     "@itookit/kernel-adapters": "workspace:*",
     "@itookit/driver-llm": "workspace:*",
     "@itookit/image-tools": "workspace:*"

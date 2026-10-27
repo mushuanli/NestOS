@@ -13,7 +13,7 @@ import { scanCommand } from '../src/digital-twin-scans-command';
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 it('registers watch shutdown before announcing readiness and removes signal handlers on stop', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'mindos-twin-watch-')); roots.push(root);
+    const root = await mkdtemp(path.join(os.tmpdir(), 'nestos-twin-watch-')); roots.push(root);
     const host = await openLocalApplication({ profile: root }, false);
     const runtime = host.runtime;
     const before = new Set(process.listeners('SIGTERM'));
@@ -27,7 +27,7 @@ it('registers watch shutdown before announcing readiness and removes signal hand
     } finally { output.mockRestore(); await host.close(); }
 });
 it('persists CLI scan plans and queued work through SQLite reopen without registering a workspace', async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'mindos-twin-scans-')); roots.push(rootDir);
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'nestos-twin-scans-')); roots.push(rootDir);
     const open = async () => {
         const backend = await openLocalFSBackend({ rootDir, sidecarDir: path.join(rootDir, '_meta'), createDb: NodeSqliteSidecarDb.open });
         const { manager } = await createVFS({ rootBackend: backend });
@@ -54,8 +54,8 @@ it('persists CLI scan plans and queued work through SQLite reopen without regist
     } finally { await host.close(); }
 });
 it('boots profile administration without registering or modifying the current workspace', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'mindos-twin-admin-')); roots.push(root);
-    const workspace = path.join(root, 'workspace'), identityPath = path.join(workspace, '.mindos', 'info.seq');
+    const root = await mkdtemp(path.join(os.tmpdir(), 'nestos-twin-admin-')); roots.push(root);
+    const workspace = path.join(root, 'workspace'), identityPath = path.join(workspace, '.nestos', 'info.seq');
     await mkdir(path.dirname(identityPath), { recursive: true });
     await writeFile(identityPath, 'existing workspace identity');
     const host = await openLocalApplication({ profile: path.join(root, 'profile'), setHome: workspace }, false);
@@ -66,7 +66,7 @@ it('boots profile administration without registering or modifying the current wo
     } finally { await host.close(); }
 });
 it('persists twin review, authority, CAS and forgetting across real SQLite host restarts', async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'mindos-twin-')); roots.push(rootDir);
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'nestos-twin-')); roots.push(rootDir);
     const open = async () => {
         const backend = await openLocalFSBackend({ rootDir, sidecarDir: path.join(rootDir, '_meta'), createDb: NodeSqliteSidecarDb.open });
         const { manager } = await createVFS({ rootBackend: backend });
@@ -100,7 +100,7 @@ it('persists twin review, authority, CAS and forgetting across real SQLite host 
     } finally { await host.manager.dispose(); }
 });
 it('persists automatic rule selectors and incrementally reconciles real SQLite-backed document changes', async () => {
-    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'mindos-twin-rules-')); roots.push(rootDir);
+    const rootDir = await mkdtemp(path.join(os.tmpdir(), 'nestos-twin-rules-')); roots.push(rootDir);
     const open = async () => {
         const backend = await openLocalFSBackend({ rootDir, sidecarDir: path.join(rootDir, '_meta'), createDb: NodeSqliteSidecarDb.open });
         const { manager } = await createVFS({ rootBackend: backend }), fs = await manager.openFileSystem('/');

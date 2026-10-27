@@ -54,7 +54,7 @@ initialMessageId 使用 Session 的标准 assistant 投影 ID（`round-<roundId>
 | `source:<namespace>:<path>:<anchorId>` | linkId，用于改名后的定位及撤销恢复 |
 | `branch:<sessionId>:<branch>:<linkId>` | linkId，仅有效绑定进入反向索引 |
 
-文件 metadata 的 `_mindos_document_chat` 保存 `{schemaVersion, documentId, anchors}`。
+文件 metadata 的 `_nestos_document_chat` 保存 `{schemaVersion, documentId, anchors}`。
 每个 anchors[id] 保存 linkId、状态、引用选区、默认提示词及有效 binding/projectId/latestRoundId。
 普通 Markdown 读取、保存不会创建这项 metadata 或关系表；用户明确插入 AI 时才记录。
 删除最后一个标记并保存时移除该 metadata 键。
@@ -100,12 +100,12 @@ HTTP 能力表显式导出这些方法，真实 RpcPeer 往返验证生命周期
 
 ## 远程文件 metadata
 
-所有文件操作经 VFS。mindos-node 的每个 export 是 metadata 项目边界，首次写 metadata 才创建
-`<export>/.mindos/meta.sqlite`，按真实 export 相对路径保存 metadata 和稳定文件身份，改名跟随。
+所有文件操作经 VFS。nestos-node 的每个 export 是 metadata 项目边界，首次写 metadata 才创建
+`<export>/.nestos/meta.sqlite`，按真实 export 相对路径保存 metadata 和稳定文件身份，改名跟随。
 客户端在明确协商 `metadata: true` 且获得 rw 授权后写入；旧服务不降级为本地副本。
 多个 mount 深度映射同一 export 内文件时读取同一份 metadata；重叠 export 根不共享库，配置应避免。
 其他后端可读共享引用，但 Session/规范关系仍归原应用后端；缺少该关系时拒绝覆盖远程引用。
-备份/迁移必须包含 `.mindos`，CLI/config/README 已明确说明。
+备份/迁移必须包含 `.nestos`，CLI/config/README 已明确说明。
 
 普通打开含锚点的 Markdown 也不获取目标、关系或订阅，不加载 Flow 配置；用户操作入口后才激活。
 
@@ -129,11 +129,9 @@ HTTP 能力表显式导出这些方法，真实 RpcPeer 往返验证生命周期
 app-shell 扩展全套检查未全绿（18 项失败）；其中附件草稿格式及 Flow 来源的 8 项失败在修改前提交
 `ff404195` 的独立工作树也可复现，其余失败未全部判定为基线问题，不作为本功能通过的证据。
 
-## 文件刷新前副本
+## 编辑临时副本
 
-刷新覆盖未保存文本前，宿主在浏览器本地保存最近一份副本及 `savedAt`，查看时显示本地备份时间，
-并以“刷新前副本 / 当前内容”对照展示。应用 `initApp` 启动时清理超过 48 小时的刷新前副本：
-当前标签页的 sessionStorage 与同源 IndexedDB 中所有标签页、作用域的备份均参与清理。
-仅匹配 `:reload-backup` 记录，不删除普通未保存草稿。旧记录无可靠时间时显示未知，
-首次清理补记保留起点，之后保留 48 小时；不伪造原备份时间。清理失败只记录安全分类与阶段，不阻塞应用恢复，
-不记录文档路径或正文；不定时清理，持续打开超过两天的应用将在下次启动时清理。
+临时副本现为 httpd 显式启用的 editor swap，默认关闭，其他宿主不创建也不显示查看入口。
+小于 512 KiB 的内容在修改后防抖写入服务端独立 swap，正常关闭编辑器时删除自己的文件；大文件不写。
+httpd 启动及每小时清理更新超过 48 小时的文件，查看时显示服务端备份时间，不再使用 IndexedDB 保存刷新副本。
+配置、目录、兼容规则见 [NestOS 命名与迁移](../nestos-rename.md#httpd-编辑-swap)。

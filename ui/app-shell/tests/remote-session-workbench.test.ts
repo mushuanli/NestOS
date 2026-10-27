@@ -4,7 +4,7 @@ import { beforeEach, afterEach, expect, it, vi } from 'vitest';
 import { t } from '@itookit/common';
 import { MemoryBackend, createFileSystemSource, FSError } from '@itookit/vfs-core';
 import { createApplicationRuntime, remoteSessionPath, folderBrowserPath } from '@itookit/app-core';
-import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/mindos-node-driver';
+import { HarnessConversation, type HarnessClient, type ProjectClient } from '@itookit/nestos-node-driver';
 import {createLLMFactory} from '../../llm-ui-adapter/src/chat';
 import type { EditorOptions } from '@itookit/ui-common';
 import type { VFSUIShell } from '@itookit/vfs-ui';
@@ -100,7 +100,7 @@ it('browses mounted native history pages, opens their conversations and routes a
             expect(workbench.getActiveResourceId()).toBe(remotePath);
             expect(selector.value).toBe(remotePath);
             expect(main.querySelector('.workbench-tabs__panel:not([hidden])')!.textContent).toContain('Remote directory unavailable');
-            expect(diagnostic.mock.calls.some(([message, details]) => String(message).includes('[itookit/mindos-node]')
+            expect(diagnostic.mock.calls.some(([message, details]) => String(message).includes('[itookit/nestos-node]')
                 && details?.stage === 'project-open' && details?.projectId === project.project.id && details?.code === 'EIO')).toBe(true);
         } finally {listFailure.mockRestore(); diagnostic.mockRestore();}
         await workbench.openResource(remotePath);

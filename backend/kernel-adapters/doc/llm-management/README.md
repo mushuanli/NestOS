@@ -1,14 +1,14 @@
 # kernel-adapters 模型管理
 
-MindOS 的 LLM 宿主集成层。独立模型通信请使用 `@itookit/driver-llm`。
+NestOS 的 LLM 宿主集成层。独立模型通信请使用 `@itookit/driver-llm`。
 
 本包提供 VFS 设备接口、Provider/Connection 配置、费用记录、默认 Agent、系统提示词、Skill、MCP 和 `.llm` 配置导入导出；Provider 支持目录由独立的 `@itookit/device-llm` 提供。
 
 ```ts
 import { LLMDeviceDriver } from '@itookit/kernel-adapters/llm/core';
-import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 
-const driver = new LLMDeviceDriver(vfs, { llmLogger, presets: createMindosLlmPresets() });
+const driver = new LLMDeviceDriver(vfs, { llmLogger, presets: createNestosLlmPresets() });
 await driver.init();
 // 通过原有 VFS 设备和管理接口使用，退出时调用 driver.dispose()。
 ```

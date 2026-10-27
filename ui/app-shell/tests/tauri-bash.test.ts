@@ -47,13 +47,13 @@ it('maps granted mounts and stops active Session commands before closing directo
     });
     const files = { cwd: '/workspace', release: async () => {},
         vfs: { readFile: async () => '', writeFile: async () => {}, listFiles: vi.fn(async () => []) } };
-    const scope = await createTauriSessionProcesses('/mindos')('one', files, [
+    const scope = await createTauriSessionProcesses('/nestos')('one', files, [
         { sourceId: 'admin-home', directory: '/home/admin/project', at: '/workspace', access: 'rw' },
         { sourceId: 'external', directory: '/selected/input', at: '/input', access: 'ro' },
     ]);
-    const operation = scope.nativeShell.exec('sh', ['-c', 'mindos run --headless']);
+    const operation = scope.nativeShell.exec('sh', ['-c', 'nestos run --headless']);
     await vi.waitFor(() => expect(invoke).toHaveBeenCalledWith('session_shell_exec', expect.objectContaining({
-        mounts: [['/mindos/home/admin/project', '/workspace', true], ['/selected/input', '/input', false]], cwd: '/workspace',
+        mounts: [['/nestos/home/admin/project', '/workspace', true], ['/selected/input', '/input', false]], cwd: '/workspace',
     })));
     await scope.release();
     expect((await operation).code).toBe(-1);
@@ -64,7 +64,7 @@ it('maps granted mounts and stops active Session commands before closing directo
 
 it('refuses a revoked Session view before issuing process IPC', async () => {
     invoke.mockReset().mockResolvedValue({ id: 'grant' });
-    const scope = await createTauriSessionProcesses('/mindos')('one', { cwd: '/workspace', release: async () => {},
+    const scope = await createTauriSessionProcesses('/nestos')('one', { cwd: '/workspace', release: async () => {},
         vfs: { readFile: async () => '', writeFile: async () => {}, listFiles: async () => { throw new Error('view revoked'); } },
     }, [{ sourceId: 'external', directory: '/selected', at: '/workspace', access: 'rw' }]);
     await expect(scope.nativeShell.exec('bash', ['-c', 'true'])).rejects.toThrow('view revoked');
@@ -82,7 +82,7 @@ it('waits for commands and closes every grant after cancellation IPC fails', asy
         if (command === 'shell_cancel') throw cancelled;
         if (command === 'directory_close' && args.id === '/one') throw closeFailed;
     });
-    const scope = await createTauriSessionProcesses('/mindos')('one', { cwd: '/workspace', release: async () => {},
+    const scope = await createTauriSessionProcesses('/nestos')('one', { cwd: '/workspace', release: async () => {},
         vfs: { readFile: async () => '', writeFile: async () => {}, listFiles: async () => [] },
     }, [{ sourceId: 'one', directory: '/one', at: '/workspace', access: 'rw' },
         { sourceId: 'two', directory: '/two', at: '/input', access: 'ro' }]);
@@ -111,7 +111,7 @@ it('reports initialization and grant cleanup failures together', async () => {
         if (command === 'directory_open') throw opening;
         if (command === 'directory_close') throw closing;
     });
-    const outcome = await createTauriSessionProcesses('/mindos')('one', { cwd: '/workspace', release: async () => {},
+    const outcome = await createTauriSessionProcesses('/nestos')('one', { cwd: '/workspace', release: async () => {},
         vfs: { readFile: async () => '', writeFile: async () => {}, listFiles: async () => [] },
     }, [{ sourceId: 'one', directory: '/one', at: '/workspace', access: 'rw' },
         { sourceId: 'two', directory: '/two', at: '/input', access: 'ro' }]).catch(error => error);
@@ -138,7 +138,7 @@ it('binds an isolated workspace file view and Tauri Bash to the same copy', asyn
     try {
         context = await acquireWorkspaceProcessContext(files, 's', {
             mountId: 'work', fs: await manager.openFileSystem('/copy'), directory: '/native/worktree',
-        }, createTauriSessionProcesses('/mindos'), async () => [
+        }, createTauriSessionProcesses('/nestos'), async () => [
             { sourceId: 'admin-home', directory: '/home/admin/base', at: '/workspace', access: 'rw' },
         ]);
         expect(await context.vfs.readFile('file')).toBe('copy');

@@ -9,7 +9,7 @@ import { executeApplicationCommand } from '../src/application-command';
 const roots: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, {recursive: true, force: true}); });
 async function options() {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-app-cli-')); roots.push(root);
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-app-cli-')); roots.push(root);
     return {profile: path.join(root, 'data'), authDir: path.join(root, 'auth'), auditFile: path.join(root, 'cli-local-audit.jsonl')};
 }
 it('uses the same persistent Project and Session models without opening a listener, and fences a second local host', async () => {

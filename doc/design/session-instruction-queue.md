@@ -84,7 +84,7 @@ ApplicationRuntime 为所有 Session 视图注入同一个 `SessionExecutionActi
 
 ## 远程原生 Session
 
-`mindos-node-driver/harness` 的 `HarnessInstructionRuntime` 将原生队列写入既有 `HarnessRecovery.instructionQueue`；app-core 的 `RemoteConversationStore` 继续用 SeqFile CAS 保存。入队冻结文字、附件、原生模型/推理选择和命令种类；最近 256 个接纳身份保存原始内容摘要，编辑和合并不改变原始接纳回执。快照仅投影附件名称，不回传排队附件正文。支持 100 条、单条 1 MiB、整队列 4 MiB。
+`nestos-node-driver/harness` 的 `HarnessInstructionRuntime` 将原生队列写入既有 `HarnessRecovery.instructionQueue`；app-core 的 `RemoteConversationStore` 继续用 SeqFile CAS 保存。入队冻结文字、附件、原生模型/推理选择和命令种类；最近 256 个接纳身份保存原始内容摘要，编辑和合并不改变原始接纳回执。快照仅投影附件名称，不回传排队附件正文。支持 100 条、单条 1 MiB、整队列 4 MiB。
 
 `enqueue` 返回持久接纳事实，`editInstructionQueue` 接收显示的 `expectedRevision`；正文编辑捕获开始编辑时的版本，后续通知不升级该写入条件。原生斜杠命令沿用原命令端口，不作为模型消息发送；命令不能合并，也不能在编辑中切换消息/命令种类。派发前重新校验命令能力与模型选择。
 
@@ -100,7 +100,7 @@ app-core 的 `ConversationRegistry` 按项目、profile、Session、只读属性
 
 ### 原生队列宿主入口
 
-原生 Harness 队列由 mindos-node-driver 持有，宿主通过 enqueue/editInstructionQueue 及修订 CAS 接入，不转换成已执行聊天消息。项目宿主复用同一 ConversationRegistry 控制器，视图关闭后保留可派发工作和未知控制/查询回执，暂停队列可按持久记录重新打开。@new 转正不得清除后续草稿、队列、回答或未完成控制。RPC 显式开放队列方法；原发送响应悬挂时仍可接纳与编辑，队首派发期间仍消费原生观察。UI 草稿消费依赖持久接纳，由独立台账适配功能接入。
+原生 Harness 队列由 nestos-node-driver 持有，宿主通过 enqueue/editInstructionQueue 及修订 CAS 接入，不转换成已执行聊天消息。项目宿主复用同一 ConversationRegistry 控制器，视图关闭后保留可派发工作和未知控制/查询回执，暂停队列可按持久记录重新打开。@new 转正不得清除后续草稿、队列、回答或未完成控制。RPC 显式开放队列方法；原发送响应悬挂时仍可接纳与编辑，队首派发期间仍消费原生观察。UI 草稿消费依赖持久接纳，由独立台账适配功能接入。
 
 ### 默认远程工作台的接纳等待
 

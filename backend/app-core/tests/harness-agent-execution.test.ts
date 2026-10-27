@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { MemoryBackend } from '@itookit/vfs-core';
-import type { HarnessClient } from '@itookit/mindos-node-driver';
+import type { HarnessClient } from '@itookit/nestos-node-driver';
 import type { HarnessConnectionSnapshot } from '@itookit/kernel-adapters/contracts';
 import { SessionCommand, type ContextBindingPage } from '@itookit/llm-session/contracts';
 import { FlowLibraryCommand, InputAssetCommand } from '@itookit/app-contracts';

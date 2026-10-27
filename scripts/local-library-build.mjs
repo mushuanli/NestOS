@@ -29,11 +29,11 @@ function captureSources(root, work, plan) {
 }
 function buildCaptured(work, log, selected) {
     log('install', () => execFileSync('pnpm', ['install', '--prefer-offline', '--no-frozen-lockfile', '--ignore-scripts'], {
-        cwd: work, stdio: 'inherit', env: { ...process.env, MINDOS_LIBRARY_SNAPSHOT: 'source', CI: 'true' },
+        cwd: work, stdio: 'inherit', env: { ...process.env, NESTOS_LIBRARY_SNAPSHOT: 'source', CI: 'true' },
     }));
     const filters = selected.flatMap(name => ['--filter', name]);
     log('build', () => execFileSync('pnpm', ['-r', '--workspace-concurrency=1', ...filters, 'build'], {
-        cwd: work, stdio: 'inherit', env: { ...process.env, MINDOS_LIBRARY_SNAPSHOT: 'source' },
+        cwd: work, stdio: 'inherit', env: { ...process.env, NESTOS_LIBRARY_SNAPSHOT: 'source' },
     }));
 }
 function packCaptured(work, output, plan) {
@@ -60,8 +60,16 @@ function saveSnapshot(root, output, packages) {
     if (!existsSync(destination)) renameSync(output, destination);
     return state.readSnapshot(root, id);
 }
+function incrementalBase(root, operationId) {
+    try {return preparedSnapshot(root);}
+    catch (error) {
+        if (!error.message?.startsWith('LOCAL_LIBRARIES_INCOMPLETE:')) throw error;
+        console.log(`[local-libraries] operationId=${operationId} stage=plan-base result=rebuild code=CATALOG_CHANGED`);
+        return null;
+    }
+}
 export function prepareSnapshot(root, operationId, log, { incremental = false, requested } = {}) {
-    const base = incremental ? preparedSnapshot(root) : null;
+    const base = incremental ? incrementalBase(root, operationId) : null;
     const plan = log('plan', () => planSnapshot(root, libraries, { base, requested, full: !incremental }));
     console.log(`[local-libraries] operationId=${operationId} stage=plan result=success base=${base?.id ?? 'none'} rebuild=${plan.selected.length} reuse=${plan.records.length - plan.selected.length} libraries=${plan.selected.join(',')}`);
     if (!plan.selected.length) return base;

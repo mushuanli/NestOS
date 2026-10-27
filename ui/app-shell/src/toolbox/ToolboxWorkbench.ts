@@ -1,6 +1,6 @@
 import { presentationPersistence } from '../persistence/initial-navigation';
 import { defaultConnectionMenu } from './model-defaults';
-import { createMindOSVFSUI as createVFSUI, mindOSVFSPresentation } from '../browser/vfs-presentation';
+import { createNestOSVFSUI as createVFSUI, nestOSVFSPresentation } from '../browser/vfs-presentation';
 import { ToolboxDeletion, toolboxSelectionPaths } from './ToolboxDeletion';
 import { directorySnapshot } from '../browser/directory-snapshot';
 import { ConfigurationDeletionDialog } from '../configuration/delete-dialog';
@@ -57,7 +57,7 @@ export interface ToolboxPreferencesPort { load(): unknown; save(preferences: Too
 /** Document name under `etc:/ui` for {@link ToolboxPreferences}. */
 export const TOOLBOX_PREFERENCES_DOC = 'mindos_toolbox_v1.preferences';
 /** Browser snapshot scope; kept separate from the preference document. */
-export const TOOLBOX_SCOPE = 'mindos:toolbox:v1';
+export const TOOLBOX_SCOPE = 'nestos:toolbox:v1';
 
 /** Tolerate a missing or hand-edited document: unknown fields fall back to defaults. */
 function preferences(data: unknown): ToolboxPreferences {
@@ -112,7 +112,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.applyNavigation(this.options.initial ?? await resources.navigation());
         this.buildFilters();
         this.ui = createVFSUI({ sessionListContainer: sidebar, title: t('toolbox.title'), scopeId: TOOLBOX_SCOPE, persistence: presentationPersistence(this.options.uiPersistence), autoSelectFirst: false,
-            presentation: {...mindOSVFSPresentation, tagLabel: capabilityLabel},
+            presentation: {...nestOSVFSPresentation, tagLabel: capabilityLabel},
             appearance: { showTimestamp: false, menuVisibility: 'always' },
             searchPlaceholder: t('toolbox.search'), titleHeader: this.header,
             navigationHeader: {filter: this.filterPanel.trigger, summary: this.filterPanel.summary}, listItems: items => this.project(items),

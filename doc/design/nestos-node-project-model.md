@@ -1,4 +1,4 @@
-# mindos-node 项目与同步模型
+# nestos-node 项目与同步模型
 
 ## 结论与重构原因
 
@@ -9,7 +9,7 @@
 ## 目录与身份
 
 ```text
-mindos-node installation (stable server_id)
+nestos-node installation (stable server_id)
 ├── exports: authorized directory roots
 │   └── home = /srv/work
 │       ├── team/a -> executable project A
@@ -24,11 +24,11 @@ mindos-node installation (stable server_id)
 
 服务端在稳定安装与认证身份内按 alias、相对路径去重，为首次注册生成并持久化项目 ID；重复注册返回已有项目，保留名称、权限和挂载。目录设备/inode/创建时间身份也保存在私有 catalog；原路径被其他目录替换时拒绝访问，不自动改绑。元数据使用单实例文件锁、8 MiB/1024 项上限、原子替换和目录 fsync；替换后持久化状态不明时停止服务该 catalog。
 
-itookit 保存自己的项目 ID 与服务端项目引用，显示「服务器名:项目名」。工作台组织和 MindOS Session 记录仍存客户端 profile；Codex 原生会话仍由 native harness 的 home 管理。新项目协议支持只读和读写文件根，旧无项目协议的远程绑定继续只读。历史 `.mindos/readonly` 元数据路径保留以免迁移已有会话，不再代表文件根必须只读。
+itookit 保存自己的项目 ID 与服务端项目引用，显示「服务器名:项目名」。工作台组织和 NestOS Session 记录仍存客户端 profile；Codex 原生会话仍由 native harness 的 home 管理。新项目协议支持只读和读写文件根，旧无项目协议的远程绑定继续只读。历史 `.nestos/readonly` 元数据路径保留以免迁移已有会话，不再代表文件根必须只读。
 
-服务端导出 `rw` 是授权上限；MindOS 创建远程项目默认保存 `ro` 绑定，修改服务端配置不会自动升权。远程项目菜单只提供重命名、重新挂载和卸载等项目管理操作，不提供根项目的复制/移动/删除入口；项目内文件保留其文件操作。重新挂载使用 `remountProject` 用例：切为 `rw` 时读取服务端登记，必要时调用带 revision 的 `project_remount`；切为 `ro` 只收窄客户端视图，不下调其他客户端的服务端授权。持久绑定更新后撤销旧视图及会话授权，释放旧来源，保留项目 ID、文件和原生会话。切换前保存并关闭本项目编辑视图，本地在途任务由应用层拒绝，服务端权限修改由文件执行门拒绝；响应丢失后重读登记核对，不盲目重放。
+服务端导出 `rw` 是授权上限；NestOS 创建远程项目默认保存 `ro` 绑定，修改服务端配置不会自动升权。远程项目菜单只提供重命名、重新挂载和卸载等项目管理操作，不提供根项目的复制/移动/删除入口；项目内文件保留其文件操作。重新挂载使用 `remountProject` 用例：切为 `rw` 时读取服务端登记，必要时调用带 revision 的 `project_remount`；切为 `ro` 只收窄客户端视图，不下调其他客户端的服务端授权。持久绑定更新后撤销旧视图及会话授权，释放旧来源，保留项目 ID、文件和原生会话。切换前保存并关闭本项目编辑视图，本地在途任务由应用层拒绝，服务端权限修改由文件执行门拒绝；响应丢失后重读登记核对，不盲目重放。
 
-卸载经独立 `ApplicationBackend.unmountProject` 用例，仅撤销客户端挂载、移除本地项目接入和本地 Session；离线仍可卸载，不遍历远端树，不调用服务端 `project_forget` 或原生删除。MCP 详情将 ProjectRemoteMountService 的挂载、客户端权限与连通状态投影为列表，不把挂载记录复制进 MCP 配置。mindos-node 启动日志单独展示实际导出权限，避免将导出上限与项目绑定混为一谈。
+卸载经独立 `ApplicationBackend.unmountProject` 用例，仅撤销客户端挂载、移除本地项目接入和本地 Session；离线仍可卸载，不遍历远端树，不调用服务端 `project_forget` 或原生删除。MCP 详情将 ProjectRemoteMountService 的挂载、客户端权限与连通状态投影为列表，不把挂载记录复制进 MCP 配置。nestos-node 启动日志单独展示实际导出权限，避免将导出上限与项目绑定混为一谈。
 
 ## 同一项目授权用于三种访问
 
@@ -65,15 +65,15 @@ itookit 保存自己的项目 ID 与服务端项目引用，显示「服务器�
 C4Component
     title 工作台远程目录显示（优化后）
     Person(user, "用户", "点击目录或使用键盘激活")
-    Container_Boundary(client, "MindOS 客户端") {
+    Container_Boundary(client, "NestOS 客户端") {
         Component(view, "SessionWorkbench", "原生 DOM / TypeScript", "目录正文、标签、取消过期读取")
         Component(sidebar, "ProjectNavigation / VFSUI", "原生 DOM", "后台展开、选择与刷新")
         Component(browser, "SessionBrowser", "app-core", "一次投影目录节点及条目")
         Component(project, "ProjectService", "app-core", "项目目录、重叠校验、授权文件视图")
         Component(ignore, "directory-visibility", "app-shell / FileIgnoreFilter", "并行祖先规则读取、保留忽略语义")
-        Component(http, "HttpFSBackend", "mindos-node-driver", "项目授权 HTTP 文件读取、stat 批处理")
+        Component(http, "HttpFSBackend", "nestos-node-driver", "项目授权 HTTP 文件读取、stat 批处理")
     }
-    System_Ext(remote, "mindos-node 文件服务", "项目授权、目录分页、文件属性及规则内容")
+    System_Ext(remote, "nestos-node 文件服务", "项目授权、目录分页、文件属性及规则内容")
     Rel(user, view, "激活资源")
     Rel(view, browser, "readFileDirectory：目录节点与条目")
     Rel(view, sidebar, "后台同步，不阻塞正文")
@@ -104,13 +104,13 @@ HTTP 关系经过授权 VFS 视图；图中的组件关系不是 UI 绕过 VFS �
 
 已知目录的正文路径为：获取授权视图 → 并行目录 stat / entries / 项目投影 → 并行祖先规则 → 节点映射 → 渲染。首次来源初始化与非在线连接的有界探测仍需要等待；大目录仍按协议读完分页，不伪造完成。`projectDirectory.read` 记录正文总耗时，`projectFile.navigation` 记录后台导航耗时。测试验证源获取次数、规则请求数量与并行启动、修改后的刷新、取消与故障、只读创建限制以及侧栏刷新不会打开旧资源；真实远程网络的耗时需现场观测，不能由单元测试推断。
 
-远程项目持久保存 `connectionId`，运行时从工具箱 MCP 配置投影连接。原来的 `[ENOENT] fs: Remote file system not found` 来自本地连接查询，不能据此判断 mindos-node 上的目录或原生 session 已丢失。配置存在但未通过 mindos-node 能力验证时也不会进入连接投影。
+远程项目持久保存 `connectionId`，运行时从工具箱 MCP 配置投影连接。原来的 `[ENOENT] fs: Remote file system not found` 来自本地连接查询，不能据此判断 nestos-node 上的目录或原生 session 已丢失。配置存在但未通过 nestos-node 能力验证时也不会进入连接投影。
 
 连接访问现使用结构化 `RemoteConnectionUnavailableError`，区分 `mcp-not-found`、`catalog-not-loaded`、`auth-missing`、`extension-missing`、`invalid-descriptor`、`endpoint-mismatch`、`invalid-endpoint` 和 `unsupported-transport`。界面显示配置名称与修复提示；目录说明及菜单生成容忍暂不可用的连接。异步 harness、连接检测、能力查询和目录浏览会先恢复当前引用的 MCP 配置，不按名称或服务器地址猜测并重绑项目。
 
-“设置 → 日志管理”按 `mindos-node` 模块可查看 `remote.operation.failed`，包括阶段、缺失连接 ID、配置名称、原因、MCP catalog revision、现有配置的 ID/名称/验证状态，以及引用该连接的项目 ID。失败也输出到开发者控制台，时间在前；同一个异常沿调用链传播仅输出一次 ERROR。目录列表中的离线占位不再吞掉诊断；原生 session 打开失败记录 `session-open` 阶段，历史读取等编辑器内调用记录 `harness.read` 等具体阶段。恢复旧路由时保留连接故障原因，不误报为书签已过期。日志不记录 API Key、认证引用、请求头、端点地址或会话正文，provider 异常仅记录结构化错误码。
+“设置 → 日志管理”按 `nestos-node` 模块可查看 `remote.operation.failed`，包括阶段、缺失连接 ID、配置名称、原因、MCP catalog revision、现有配置的 ID/名称/验证状态，以及引用该连接的项目 ID。失败也输出到开发者控制台，时间在前；同一个异常沿调用链传播仅输出一次 ERROR。目录列表中的离线占位不再吞掉诊断；原生 session 打开失败记录 `session-open` 阶段，历史读取等编辑器内调用记录 `harness.read` 等具体阶段。恢复旧路由时保留连接故障原因，不误报为书签已过期。日志不记录 API Key、认证引用、请求头、端点地址或会话正文，provider 异常仅记录结构化错误码。
 
-常规 catalog 刷新只写 DEBUG；需要追踪时在日志管理中将 `mindos-node` 设为 DEBUG，复现后查看 `mcp.catalog.refreshed` 和 `mcp.connection.recovery.started`。能力验证恢复成功写一条 `mcp.connection.recovery.completed`。日志保留在现有内存缓冲区，刷新或重启客户端前应复制所需诊断。
+常规 catalog 刷新只写 DEBUG；需要追踪时在日志管理中将 `nestos-node` 设为 DEBUG，复现后查看 `mcp.catalog.refreshed` 和 `mcp.connection.recovery.started`。能力验证恢复成功写一条 `mcp.connection.recovery.completed`。日志保留在现有内存缓冲区，刷新或重启客户端前应复制所需诊断。
 
 同步控制记录也独立保存 MCP `connectionId`。旧同步绑定的失效引用不属于原生 harness session；状态读取只读本地记录，不能因刷新项目菜单而创建远程客户端并抛 ENOENT。项目同步图标、当前项目状态按钮及悬停异常列表展示失效原因，保留显式解绑；实际同步操作才恢复当前引用。未发送命令的绑定可离线解除，结果未知的命令及序号继续保留，不推断为未提交。
 
@@ -124,10 +124,10 @@ MCP 增加 `project_roots`、`project_list`、`project_read`、`project_register
 listen = "127.0.0.1:8787"
 server_id = "office-node"
 execution = true
-api_key_env = "MINDOS_NODE_API_KEY"
+api_key_env = "NESTOS_NODE_API_KEY"
 
 [projects]
-root = "/var/lib/mindos-node/projects"
+root = "/var/lib/nestos-node/projects"
 network = true
 
 [[exports]]
@@ -144,7 +144,7 @@ access = "ro"
 id = "codex"
 kind = "codex"
 command = "/opt/codex/codex"
-home = "/var/lib/mindos-node/codex"
+home = "/var/lib/nestos-node/codex"
 projects = true
 ```
 
@@ -160,7 +160,7 @@ projects = true
 
 目录同步由两条独立关系组成：itookit 本地项目 ↔ files 数据集，以及 files 数据集 ↔ 服务器项目中的已有目录。两条关系各自选择方向、预览并确认执行；打开目录面板不会修改本地同步方向。服务端必须同时开启 `[projects]` 和 `[sync]`，sync 存储保持私有。Web 已装配交互；Tauri／CLI 可以使用相同协议，其宿主同步入口仍需单独装配。
 
-默认使用更新模式：复制新增／修改项，保留目标独有文件，不自动传播删除；双向模式将独立编辑收敛，同一路径双方改变时保留冲突。目录类型转换、符号链接、读取不完整和超限项阻塞目录计划，不能通过普通选侧绕过。目录同步不穿透附加挂载和 `.mindos`。镜像删除、自动触发和目录结构转换未开放。
+默认使用更新模式：复制新增／修改项，保留目标独有文件，不自动传播删除；双向模式将独立编辑收敛，同一路径双方改变时保留冲突。目录类型转换、符号链接、读取不完整和超限项阻塞目录计划，不能通过普通选侧绕过。目录同步不穿透附加挂载和 `.nestos`。镜像删除、自动触发和目录结构转换未开放。
 
 `piagent_capabilities.directorySyncVersion=2` 表示支持完整方向及比较接口；只有旧 directorySync 布尔能力的服务器在界面中限定为数据集落地，并说明升级入口。
 
@@ -199,11 +199,11 @@ Codex 会话从显式配置的 home 通过原生 `thread/list` 发现，再以�
 
 绑定打开时按其 MCP ID 恢复连接投影；如保存的能力扩展缺失，仅重新验证该配置，验证成功后修复缓存及扩展。不会按显示名称猜测绑定，也不会探测全部 MCP。刷新带版本围栏，较旧异步结果不能覆盖更新后的目录。
 
-工具箱 Agent 将各个已验证的 mindos-node MCP 配置所声明的项目 harness 投影为只读条目，显示服务器、kind 和 profile。条目不保存为本地 AgentDefinition；详情只能选择同一服务器上已绑定的项目浏览会话或创建会话。当前服务端实际实现包括 Codex 与 Claude Code，DeepSeek 等不会凭名称生成虚假的可执行条目；增加驱动后由服务端能力声明决定显示。
+工具箱 Agent 将各个已验证的 nestos-node MCP 配置所声明的项目 harness 投影为只读条目，显示服务器、kind 和 profile。条目不保存为本地 AgentDefinition；详情只能选择同一服务器上已绑定的项目浏览会话或创建会话。当前服务端实际实现包括 Codex 与 Claude Code，DeepSeek 等不会凭名称生成虚假的可执行条目；增加驱动后由服务端能力声明决定显示。
 
 项目聊天和草稿的 Agent 选择器通过宿主注入 `RemoteAgentControls` 获取可用远程目标；本地会话仍使用原执行链。选择远程目标后，输入直接进入远程会话，不创建本地 Session、不经本地模型 Provider，也不把本地 Slash 工具提前执行。远程模式隐藏本地模型/执行模式设置，使用原生 harness 的配置。原生 capability 声明附件时可发送内联 UTF-8 文本及 PNG/JPEG/WebP 图片：每次最多 5 个，文本每个 64 KiB、图片解码每个 256 KiB、全部编码内容 512 KiB。浏览器和服务端分别核验格式、容量与文件名，不接受远程 URL 或宿主路径。附件草稿与输入一起保存在客户端，不支持的格式在发送前拒绝并保留输入。
 
-`mindos-node-driver/HarnessConversation` 封装原生会话读取、创建/恢复、turn、事件、审批、中断和回执查询；`app-core` 为它提供项目授权及恢复记录，调用前检查当前本地挂载授权与连接仍与打开时一致。`ui-common/ConversationControls` 是注入 llm-ui 的展示接口，UI 不调用 MCP 或设备协议。远程编辑器显示原生 user/assistant 历史、工具摘要、增量回复及审批/人工输入卡片。内容通过共享 MDx 渲染，远端 HTML 按字面显示。打开历史不自动恢复执行；读档不可恢复、只读绑定、运行中、失联或结果未知时禁用发送，中断与审批按授权和网关原生会话控制权开放。
+`nestos-node-driver/HarnessConversation` 封装原生会话读取、创建/恢复、turn、事件、审批、中断和回执查询；`app-core` 为它提供项目授权及恢复记录，调用前检查当前本地挂载授权与连接仍与打开时一致。`ui-common/ConversationControls` 是注入 llm-ui 的展示接口，UI 不调用 MCP 或设备协议。远程编辑器显示原生 user/assistant 历史、工具摘要、增量回复及审批/人工输入卡片。内容通过共享 MDx 渲染，远端 HTML 按字面显示。打开历史不自动恢复执行；读档不可恢复、只读绑定、运行中、失联或结果未知时禁用发送，中断与审批按授权和网关原生会话控制权开放。
 
 事件按原生 item ID 合并；完成内容替换增量，迟到增量不覆写已完成卡片。事件游标缺口或 epoch 改变时重读原生历史，避免把已经记录的 delta 再附加一次。关闭编辑器只释放客户端，不隐式中断远程 turn。
 
@@ -215,11 +215,11 @@ Codex 会话从显式配置的 home 通过原生 `thread/list` 发现，再以�
 
 服务配置使用 `api_key` 或 `api_key_env`，以 Bearer 认证（兼容旧 `token`/`token_env`）。启动连接提示在 console 输出实际 API Key；结构化事件和 HTTP 响应不携带密钥。itookit 只需填写 MCP endpoint 和 API Key；通用 MCP 发现后，app-core 注册的扩展验证 `server/discover._meta['itookit/pi-agent']` 中的能力描述，同源端点和项目协议符合要求才生成远程连接。旧服务通过同一连接调用已声明的能力工具。名称或 API Key 本身不授予项目绑定资格。
 
-API Key 通过既有 MCP 配置持久保存，启动时恢复到 mindos-node-driver 的凭据解析器；文件、sync、bash 与 harness 共用 Bearer。项目挂载记录只保留 credentialRef，不复制密钥。旧 Basic 连接仍兼容；已被项目引用的连接不能直接改变认证身份，需先解除绑定。
+API Key 通过既有 MCP 配置持久保存，启动时恢复到 nestos-node-driver 的凭据解析器；文件、sync、bash 与 harness 共用 Bearer。项目挂载记录只保留 credentialRef，不复制密钥。旧 Basic 连接仍兼容；已被项目引用的连接不能直接改变认证身份，需先解除绑定。
 
 连接 ID 是项目引用，endpoint 是可替换的网络位置。修改已引用连接的地址时，通用 MCP 管理器先对新地址重新发现并验证能力；只有 serverId、principalId 和资源授权 revision 均与原连接一致，且认证模式与凭据引用不变，才允许保留原 ID 保存。旧协议没有授权快照时，只允许保留原凭据和认证头、相同 serverId，并在新地址明确发现为 owner 的兼容迁移；不能同时更换凭据或切换身份。缺少服务器身份时不自动迁移。保存前检查受影响项目的运行保护，保存后释放旧文件来源与派生视图，后续访问使用新地址；不删除项目、会话，也不自动重放操作。httpd 模式下的 127.0.0.1 指 httpd 所在主机。
 
-通用 MCP 管理器负责认证、协议协商、扩展注册及验证缓存。普通 MCP 只执行标准发现；mindos-node 测试后的保存和改名不再单独调用 driver 验证。地址、API Key 或 headers 变化重新验证，错误描述不生成绑定。UI 只按已验证扩展显示控制中心。多个 harness 共用一个 mindos-node MCP 连接，原生协议适配留在服务端插件内。
+通用 MCP 管理器负责认证、协议协商、扩展注册及验证缓存。普通 MCP 只执行标准发现；nestos-node 测试后的保存和改名不再单独调用 driver 验证。地址、API Key 或 headers 变化重新验证，错误描述不生成绑定。UI 只按已验证扩展显示控制中心。多个 harness 共用一个 nestos-node MCP 连接，原生协议适配留在服务端插件内。
 
 ### Harness 内置插件
 
@@ -240,7 +240,7 @@ API Key 通过既有 MCP 配置持久保存，启动时恢复到 mindos-node-dri
 
 ## 命名兼容
 
-服务及工具目录为 mindos-node（MindOS 节点），统一接入包为 mindos-node-driver，公开创建函数为 createMindOSNodeDriver。标准发现增加 itookit/mindos-node；持久配置扩展键仍为 itookit/pi-agent；读取旧 itookit/fs-agent 配置时保留 serverId、项目、挂载与凭据引用。能力描述优先随标准发现返回，主能力工具为 mindos_node_capabilities，piagent_capabilities 和 fsagent_capabilities 作为兼容别名保留；无标准元数据的旧服务使用工具发现。共享文件／项目协议标识、HTTP 授权头和 fs-agent.files／fs-agent.bundle 规范编码保持原值，避免使已有内容摘要、回执或上游同步库失效。升级继续沿用原配置数据根及原生会话 home。
+服务及工具目录为 nestos-node（NestOS 节点），统一接入包为 nestos-node-driver，公开创建函数为 createNestOSNodeDriver。标准发现增加 itookit/nestos-node；持久配置扩展键仍为 itookit/pi-agent；读取旧 itookit/fs-agent 配置时保留 serverId、项目、挂载与凭据引用。能力描述优先随标准发现返回，主能力工具为 nestos_node_capabilities，piagent_capabilities 和 fsagent_capabilities 作为兼容别名保留；无标准元数据的旧服务使用工具发现。共享文件／项目协议标识、HTTP 授权头和 fs-agent.files／fs-agent.bundle 规范编码保持原值，避免使已有内容摘要、回执或上游同步库失效。升级继续沿用原配置数据根及原生会话 home。
 
 
 ## 原生状态观察与项目检索
@@ -251,7 +251,7 @@ API Key 通过既有 MCP 配置持久保存，启动时恢复到 mindos-node-dri
 
 `harness_session_search` 通过 Codex 插件遍历授权会话与解析后的用户/assistant 文本及命令摘要，不全扫 home。查询限定 profile/project/archived，最多 20 页会话、每会话 64 页历史、16 MiB、100 条命中、15 秒及 2 个并发。结果保留 sessionId/turnId/itemId；授权和 revision 在返回前再核对。旧服务不支持时返回能力不可用。
 
-工作台共用侧栏搜索输入框，默认筛选已加载树；非空查询时显示范围选项，可切换异步项目检索，清空即收起。异步搜索视图区分文件路径、文件正文、原生标题、原生正文及归档范围，取消旧查询、丢弃旧响应、返回身份校验后导航；较早原生命中自动加载历史并定位。已注册项目的附加挂载通过完整远程身份匹配提供来源导航，普通目录挂载不授予原生控制。远程收藏包含 MCP/server/project/profile/session 身份，失效绑定不回退到同名服务器。归档视图只读；导出 `mindos-native-history` v1 JSON 保留原生来源和摘要历史，executable=false，不是本地 Kernel bundle。侧栏提供只读原生家族导航。Codex 已声明 rename/archive/unarchive/delete 和 text/image 附件能力。原生标题直接通过 thread/name/set 修改；归档允许本服务持有且明确 idle 的会话或 notLoaded 原生历史；未加载不等于外部执行空闲，归档不会停止独立 CLI。运行中的受控会话显示禁用的归档菜单。归档前检查派生子会话的授权与状态，归档后释放所有权；恢复归档不 resume、不发送 turn。以上操作共享 epoch/requestId 回执与客户端 CAS journal，未知结果只核对回执。归档与恢复同步已有收藏的路由和标题。永久删除调用原生 thread/delete，要求受控 idle 或已归档 notLoaded，前置有界检查全部派生子会话的项目授权及可删除状态；保留项目文件，移除原生历史/元数据及对应已有收藏，关闭被删除会话的标签。客户端保存删除 tombstone；丢失响应后先核对 receipt，不读取已删除的历史，不重新提交删除。Claude 尚未声明归档或删除能力。共享观察记录将标题通知用于侧栏及标签；fileChange 完成、turn 完成和重连快照修复触发项目目录有限刷新，文本 delta 不刷新。独立 CLI 的文件变化通过项目目录 watcher 刷新；Claude Code 已接入，DeepSeek CLI 和 VMM 尚未实现。
+工作台共用侧栏搜索输入框，默认筛选已加载树；非空查询时显示范围选项，可切换异步项目检索，清空即收起。异步搜索视图区分文件路径、文件正文、原生标题、原生正文及归档范围，取消旧查询、丢弃旧响应、返回身份校验后导航；较早原生命中自动加载历史并定位。已注册项目的附加挂载通过完整远程身份匹配提供来源导航，普通目录挂载不授予原生控制。远程收藏包含 MCP/server/project/profile/session 身份，失效绑定不回退到同名服务器。归档视图只读；导出 `nestos-native-history` v1 JSON 保留原生来源和摘要历史，executable=false，不是本地 Kernel bundle。侧栏提供只读原生家族导航。Codex 已声明 rename/archive/unarchive/delete 和 text/image 附件能力。原生标题直接通过 thread/name/set 修改；归档允许本服务持有且明确 idle 的会话或 notLoaded 原生历史；未加载不等于外部执行空闲，归档不会停止独立 CLI。运行中的受控会话显示禁用的归档菜单。归档前检查派生子会话的授权与状态，归档后释放所有权；恢复归档不 resume、不发送 turn。以上操作共享 epoch/requestId 回执与客户端 CAS journal，未知结果只核对回执。归档与恢复同步已有收藏的路由和标题。永久删除调用原生 thread/delete，要求受控 idle 或已归档 notLoaded，前置有界检查全部派生子会话的项目授权及可删除状态；保留项目文件，移除原生历史/元数据及对应已有收藏，关闭被删除会话的标签。客户端保存删除 tombstone；丢失响应后先核对 receipt，不读取已删除的历史，不重新提交删除。Claude 尚未声明归档或删除能力。共享观察记录将标题通知用于侧栏及标签；fileChange 完成、turn 完成和重连快照修复触发项目目录有限刷新，文本 delta 不刷新。独立 CLI 的文件变化通过项目目录 watcher 刷新；Claude Code 已接入，DeepSeek CLI 和 VMM 尚未实现。
 
 
 ## Claude Code 与目录 watcher
@@ -271,33 +271,33 @@ Claude 配置 `kind="claude"`、显式 command 和私有 home（CLAUDE_CONFIG_DI
 
 侧栏点击项目根及项目选择器显式切换项目范围，复用已打开目录标签时也应用当前选择；文件和会话子项继续保留所在浏览范围。已知范围从当前目录清单立即显示，正文目录读取不等待整个侧栏导航、会话区和文件区展开。侧栏在后台补齐展开与选中状态，旧结果不得覆盖新路由，后台同步期间仍接受显式点击。
 
-目录读取复用已知节点，其他情况下并行读取条目与元数据；正文不重复执行侧栏展开。远程探测和打开错误停留在目标标签，显示原因并允许重试，不隐式回退到本地项目。项目文件、目录和原生会话错误使用统一带时间的 mindos-node 结构化日志，包含阶段、身份和错误码，不记录凭据或正文。
+目录读取复用已知节点，其他情况下并行读取条目与元数据；正文不重复执行侧栏展开。远程探测和打开错误停留在目标标签，显示原因并允许重试，不隐式回退到本地项目。项目文件、目录和原生会话错误使用统一带时间的 nestos-node 结构化日志，包含阶段、身份和错误码，不记录凭据或正文。
 
 ## 2026-10-16：目录共享 ACL 与稳定身份
 
-目录共享采用一个非重叠 export 对应一个权限范围，不为不同用户重复导出同一个真实根。mindos-node 的 `principals` 将凭据映射到稳定 ID；exports 的 public/grants 决定文件 ro/rw 和独立执行权限。匿名请求仅能访问显式公开目录；无效认证不能退回匿名。项目绑定、harness profile/home、历史、事件和回执不因目录公开而共享。项目和目录同步绑定的持久 owner 从数组下标升级为稳定字符串；旧单用户 0 只映射 owner，用户重排与凭据轮换不转移所有权。
+目录共享采用一个非重叠 export 对应一个权限范围，不为不同用户重复导出同一个真实根。nestos-node 的 `principals` 将凭据映射到稳定 ID；exports 的 public/grants 决定文件 ro/rw 和独立执行权限。匿名请求仅能访问显式公开目录；无效认证不能退回匿名。项目绑定、harness profile/home、历史、事件和回执不因目录公开而共享。项目和目录同步绑定的持久 owner 从数组下标升级为稳定字符串；旧单用户 0 只映射 owner，用户重排与凭据轮换不转移所有权。
 
 `config/authorization.rs` 编译部署策略；`auth.rs` 提供身份解析、权限查询及缓存的授权版本；文件与进程边界消费同一授权。Bearer 使用摘要索引、Basic 使用用户名索引，读取不扫描全部用户。授权版本包含有效操作、可见目录物理身份和原生 home 范围；请求 headers 可绑定 principal/revision，旧上下文在执行前拒绝。文件 revision、项目布局 revision、授权 revision 各自独立。权限配置目前重启生效，没有在线 ACL 修改、组或任意嵌套规则。
 
-mindos-node-driver 的纯 authorization 入口负责校验 DTO，连接支持显式匿名，来源池包含身份、授权版本和认证模式。app-core 持有连接与挂载策略，阻止引用中的连接改为其他 principal；授权变化释放旧来源。服务端 ProjectCapabilities 分别投影 fileRead/fileWrite/run/sessionRead/sessionControl。只读挂载可以显式允许自己的原生会话，旧节点无该能力快照时仍按旧只读行为处理。UI 只展示认证模式、文件能力及会话控制能力，不解释 ACL。
+nestos-node-driver 的纯 authorization 入口负责校验 DTO，连接支持显式匿名，来源池包含身份、授权版本和认证模式。app-core 持有连接与挂载策略，阻止引用中的连接改为其他 principal；授权变化释放旧来源。服务端 ProjectCapabilities 分别投影 fileRead/fileWrite/run/sessionRead/sessionControl。只读挂载可以显式允许自己的原生会话，旧节点无该能力快照时仍按旧只读行为处理。UI 只展示认证模式、文件能力及会话控制能力，不解释 ACL。
 
-配置示例见 [config.access.example.toml](../../tools/mindos-node/config.access.example.toml)。同一 mindos-node 可由不同用户的独立 itookit 实例连接；单个 httpd 的多租户 profile、凭据和订阅隔离尚未实现，不能把 mTLS 准入作为多人应用隔离。同步仍是单个配置主体的 namespace，不隐式共享。
+配置示例见 [config.access.example.toml](../../tools/nestos-node/config.access.example.toml)。同一 nestos-node 可由不同用户的独立 itookit 实例连接；单个 httpd 的多租户 profile、凭据和订阅隔离尚未实现，不能把 mTLS 准入作为多人应用隔离。同步仍是单个配置主体的 namespace，不隐式共享。
 
 ## DSH 驱动
 
-mindos-node@0.3.1 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适配通用 HarnessDriver。驱动目录 `tools/mindos-node/src/plugin/harness/drivers/dsh/` 持有原生传输、历史投影和进程生命周期；通用 harness 服务继续持有目录授权、epoch/requestId 回执与会话修改队列，itookit 前端不依赖 DSH 协议。
+nestos-node@0.3.1 内置 `kind = "dsh"`，通过 DSH Remote HTTP/WebSocket 适配通用 HarnessDriver。驱动目录 `tools/nestos-node/src/plugin/harness/drivers/dsh/` 持有原生传输、历史投影和进程生命周期；通用 harness 服务继续持有目录授权、epoch/requestId 回执与会话修改队列，itookit 前端不依赖 DSH 协议。
 
-托管模式启动 DSH `web` profile，项目实例使用 ProjectRuntime/launcher 与独立授权的模型 home；多个会话共享该实例的 WS mux，HTTP 只等提交回执。连接已有服务时必须显式配置 origin、令牌环境变量和 legacy workspaces，拒绝声明项目沙箱或多身份隔离。配置示例见 [config.dsh.example.toml](../../tools/mindos-node/config.dsh.example.toml)。
+托管模式启动 DSH `web` profile，项目实例使用 ProjectRuntime/launcher 与独立授权的模型 home；多个会话共享该实例的 WS mux，HTTP 只等提交回执。连接已有服务时必须显式配置 origin、令牌环境变量和 legacy workspaces，拒绝声明项目沙箱或多身份隔离。配置示例见 [config.dsh.example.toml](../../tools/nestos-node/config.dsh.example.toml)。
 
-多身份服务的追加式配置模板见 [profiles/dsh.example.toml](../../tools/mindos-node/profiles/dsh.example.toml)，profile 必须绑定现有 principal 并沿用需要读取历史的 DSH_HOME。DSH 会话发现同时校验原生会话 cwd 与 workspace 成员关系；项目运行时通过已有目录授权映射物理路径和虚拟路径，不按路径文本直接相等过滤旧历史，也不扫描其他主体的 home。
+多身份服务的追加式配置模板见 [profiles/dsh.example.toml](../../tools/nestos-node/profiles/dsh.example.toml)，profile 必须绑定现有 principal 并沿用需要读取历史的 DSH_HOME。DSH 会话发现同时校验原生会话 cwd 与 workspace 成员关系；项目运行时通过已有目录授权映射物理路径和虚拟路径，不按路径文本直接相等过滤旧历史，也不扫描其他主体的 home。
 
 默认 profile ID 使用 codex、dsh；改名通过配置 aliases 保留旧引用，客户端按服务端发现的 aliases 解析旧目录和会话路由。别名在服务端先规范化，再执行主体授权、实例选择与回执处理，不能创建重复实例或绕过权限。历史收藏保留原键并继续识别，新发现列表只展示规范 ID。
 
 DSH 原生 workspace 还会按原 cwd 的规范化结果过滤成员；仅将项目挂到虚拟路径时，session/list 能读到日志，但 workspace/follow 成员为空，最终项目列表为空。DSH 驱动通过通用 ProjectRuntime.prepare_with_source_paths 请求已授权目录的等权物理路径别名；运行时从固定目录身份的挂载生成别名，并复制嵌套覆盖和只读限制，不开放父目录、其他共享或运行时保留路径。其他驱动保持默认虚拟命名空间。真实 DSH 原生 API 的对比验收确认同一存储在虚拟路径下为 0 个 workspace 成员，加上授权物理路径后恢复 44 个。
 
-2026-10-16 部署 mindos-node@0.3.4 后，生产 MCP HTTP API 和已发布 mindos-node-driver@0.2.1 均返回 x1 的 41 个未归档 DSH 会话，另有 3 个归档会话，与原生 workspace 的 44 个成员一致。用户提供的 `session-a455bf84-d57b-4817-aad3-ba160e78fa9f` 可读取 243 项历史，保持 owned=false，未恢复执行或调用模型。此次修复不需要前端绕过成员校验或自行读取原生日志。
+2026-10-16 部署 nestos-node@0.3.4 后，生产 MCP HTTP API 和已发布 nestos-node-driver@0.2.1 均返回 x1 的 41 个未归档 DSH 会话，另有 3 个归档会话，与原生 workspace 的 44 个成员一致。用户提供的 `session-a455bf84-d57b-4817-aad3-ba160e78fa9f` 可读取 243 项历史，保持 owned=false，未恢复执行或调用模型。此次修复不需要前端绕过成员校验或自行读取原生日志。
 
-历史投影按每条持久事件的原生 turn 编号生成稳定身份，分页从轮次中间开始也保留相同 ID；不能将后续所有轮次沿用首轮 ID，否则多轮回复会合成超大卡片并触发 Markdown 编辑器的源码视图降级。实时流保留当前提交的 requestId，历史投影不修改实时回执身份。DSH 的会话 DTO 还返回可选 archiveAllowed，说明原生归档是否适用于当前状态，独立于 owned；mindos-node-driver 统一应用该提示与空闲、归档状态检查，app-core 消费同一判断，UI 只展示结果。旧节点未返回提示时保留既有的保守判断，最终操作仍由节点校验目录权限和原生状态。
+历史投影按每条持久事件的原生 turn 编号生成稳定身份，分页从轮次中间开始也保留相同 ID；不能将后续所有轮次沿用首轮 ID，否则多轮回复会合成超大卡片并触发 Markdown 编辑器的源码视图降级。实时流保留当前提交的 requestId，历史投影不修改实时回执身份。DSH 的会话 DTO 还返回可选 archiveAllowed，说明原生归档是否适用于当前状态，独立于 owned；nestos-node-driver 统一应用该提示与空闲、归档状态检查，app-core 消费同一判断，UI 只展示结果。旧节点未返回提示时保留既有的保守判断，最终操作仍由节点校验目录权限和原生状态。
 
 已实现新建/继续、历史分页、流式文本/推理、工具摘要、交互确认、中断、重命名和归档；能力描述不声明未实现的分支、永久删除、附件、取消归档或用量。网络结果不明时保留 unknown，不自动重放；WS 断线后实例拒绝续写，节点重启后可显式恢复持久会话。
 
@@ -305,12 +305,12 @@ DSH 原生 workspace 还会按原 cwd 的规范化结果过滤成员；仅将项
 
 ## Claude Code 驱动
 
-项目模板见 [profiles/claude.example.toml](../../tools/mindos-node/profiles/claude.example.toml)，绑定已有 principal 并沿用原 CLAUDE_CONFIG_DIR。原生历史发现与模型执行分开：只读项目的 MCP API 能列出和读取历史，保持 notLoaded/owned=false，不启动模型、resume 或接管外部会话。0.3.4 生产节点已启用 claude profile：x1 的 harness_sessions 列出一个原生初始化日志 `7a5611ba-e806-420a-9efa-f9be534b4e5e`，harness_session_read 成功返回 0 项消息，保持 notLoaded/owned=false。另以已安装的 Claude Code 2.1.209 和本机受控模型 peer 验证新建、审批、写入、历史、恢复及图片链路；该验证使用临时数据，不代表真实模型服务验收。
+项目模板见 [profiles/claude.example.toml](../../tools/nestos-node/profiles/claude.example.toml)，绑定已有 principal 并沿用原 CLAUDE_CONFIG_DIR。原生历史发现与模型执行分开：只读项目的 MCP API 能列出和读取历史，保持 notLoaded/owned=false，不启动模型、resume 或接管外部会话。0.3.4 生产节点已启用 claude profile：x1 的 harness_sessions 列出一个原生初始化日志 `7a5611ba-e806-420a-9efa-f9be534b4e5e`，harness_session_read 成功返回 0 项消息，保持 notLoaded/owned=false。另以已安装的 Claude Code 2.1.209 和本机受控模型 peer 验证新建、审批、写入、历史、恢复及图片链路；该验证使用临时数据，不代表真实模型服务验收。
 
 
 ## 本地目录授权管理
 
-mindos-node 0.3.2 的 `access` CLI 管理 `principals`、exports、grants 与 public，复用运行时授权编译器。CLI 参数与输出归 cli，配置修改用例和安全文件替换归 admin；HTTP 文件访问和原生执行仍在既有机制内校验，不引入在线 ACL 写入口。旧单用户配置通过显式 init 迁到 owner，保留凭据、目录权限、项目身份与会话归属；修改后需重启。
+nestos-node 0.3.2 的 `access` CLI 管理 `principals`、exports、grants 与 public，复用运行时授权编译器。CLI 参数与输出归 cli，配置修改用例和安全文件替换归 admin；HTTP 文件访问和原生执行仍在既有机制内校验，不引入在线 ACL 写入口。旧单用户配置通过显式 init 迁到 owner，保留凭据、目录权限、项目身份与会话归属；修改后需重启。
 
 `list` / `validate` / `check` 针对磁盘上的配置，不对运行中进程宣称已应用；只读打开 export 避免争抢运行服务的写锁，且不会初始化项目、同步库或启动模型。itookit 无需复制目录授权管理策略，继续通过 MCP 能力发现读取 principal/grant revision 与有效权限。
 
@@ -320,12 +320,12 @@ mindos-node 0.3.2 的 `access` CLI 管理 `principals`、exports、grants 与 pu
 C4Component
     title 工作台与节点的提交、回执和观察职责
     Container(ui, "工作台", "原生 DOM / TypeScript", "编辑输入、发起命令、订阅可见视图")
-    Container_Boundary(app, "MindOS 应用运行时：Web / Tauri / httpd") {
+    Container_Boundary(app, "NestOS 应用运行时：Web / Tauri / httpd") {
         Component(policy, "应用用例", "app-core", "冻结目标与草稿、维护稳定会话身份")
-        Component(driver, "节点驱动", "mindos-node-driver", "持久操作身份、原生协议和观察投影")
+        Component(driver, "节点驱动", "nestos-node-driver", "持久操作身份、原生协议和观察投影")
         ComponentDb(profile, "Profile", "SeqFile 等", "输入草稿、提交证据与原生引用")
     }
-    Container_Boundary(node, "mindos-node") {
+    Container_Boundary(node, "nestos-node") {
         Component(auth, "项目授权", "Rust", "当前主体、目录身份、能力与 revision")
         Component(ledger, "回执账本", "SQLite 临时库", "当前 epoch 的稳定操作身份与防重")
         Component(runtime, "原生运行时", "HarnessDriver", "原生执行、历史和事件")
@@ -361,7 +361,7 @@ stateDiagram-v2
     Rejected --> Draft: 保留输入，允许明确重试
 ```
 
-回执账本位于 [receipts.rs](../../tools/mindos-node/src/plugin/harness/receipts.rs)，与按 revision/readOnly 缓存的原生运行时分离。项目操作以 owner、projectId、规范 profileId、requestId 定位，同一 epoch 内重新挂载和运行时关闭不删除历史事实。查询仍校验当前主体与项目访问权限，过期 revision 只能用于查原回执，不能授权新执行。账本使用有限缓存和 256 MiB 主库上限的私有临时数据库；并发修改上限为 1024，终态不占并发名额。服务重启仍使用新 epoch，不宣称持久回执恢复；存储失败返回 unknown 并保留防重记录。
+回执账本位于 [receipts.rs](../../tools/nestos-node/src/plugin/harness/receipts.rs)，与按 revision/readOnly 缓存的原生运行时分离。项目操作以 owner、projectId、规范 profileId、requestId 定位，同一 epoch 内重新挂载和运行时关闭不删除历史事实。查询仍校验当前主体与项目访问权限，过期 revision 只能用于查原回执，不能授权新执行。账本使用有限缓存和 256 MiB 主库上限的私有临时数据库；并发修改上限为 1024，终态不占并发名额。服务重启仍使用新 epoch，不宣称持久回执恢复；存储失败返回 unknown 并保留防重记录。
 
 工作台和项目观察在存在订阅时保持低频空闲检查：空闲 15 秒，项目活跃观察 1 秒、会话流式观察 200 毫秒；失败有界退避。最后一个订阅释放后停止定时器，隐藏/关闭不取消原生任务。首次观察失败且没有缓存行时同样继续退避重试。
 
@@ -369,4 +369,4 @@ stateDiagram-v2
 
 远程分支操作在保存草稿后、调用原生端口前再次检查生命周期版本、绑定身份和只读状态；隐藏、销毁或权限切换使已排队操作失效，快速重新激活也不能恢复旧操作。宿主斜杠命令的识别与候选位于 `commands/native-branch-command.ts`，编辑器只负责接线和草稿接纳。
 
-公共 [HarnessConversationSnapshot](../../libraries/mindos-node-driver/src/harness/conversation-snapshot.ts) 是独立 DTO，不从实现类返回值派生。操作能力集中计算，发送与分支使用一致的新鲜度条件；顶层 active/pending/disconnected 是 observation 的兼容投影。应用端口显式透传 submissionId，确保冻结提交与回执始终对应同一次用户操作。
+公共 [HarnessConversationSnapshot](../../libraries/nestos-node-driver/src/harness/conversation-snapshot.ts) 是独立 DTO，不从实现类返回值派生。操作能力集中计算，发送与分支使用一致的新鲜度条件；顶层 active/pending/disconnected 是 observation 的兼容投影。应用端口显式透传 submissionId，确保冻结提交与回执始终对应同一次用户操作。

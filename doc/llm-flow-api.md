@@ -334,7 +334,7 @@ backend/llm-flow/src/
 
 ## 持久任务 Transcript
 
-`FlowCommand.RunTranscript`（`dag.run.transcript`）接受 `{ sessionId, taskId, targetTaskId }`，taskId 是 Run 根聚合任务 ID。返回 `FlowTaskTranscript`，包含任务 input/output、status/version、完整持久 Effect 交换与 interaction 记录；也可直接调用 `readFlowTaskTranscript(kernel, sessionId, runTaskId, taskId)`。以根任务 input.runTasks 验证归属，无需原 DagCommandService 句柄，拒绝其他 Run 的任务。runTasks 包含全部循环实例、未汇总及 detached 节点。支持可选 `query: { version?, offset?, limit?, maxBytes? }`：默认每页 100 条 Effect、最多 500 条，返回 totalEffects 与可选 nextOffset；`maxBytes`（≥64）限制本页 JSON 编码后的 UTF-8 字节数，超出时按固定顺序裁剪——先丢弃尾部 Effect 并前移 nextOffset，再缩短 input/output 与 Effect 负载，最后只保留首个 Effect 或退化为仅头部——结果带 `bytes` 与 `truncated: true`。后续页携带首屏 version 固定历史快照；未提供 version 的非零 offset 拒绝。这是结构化记录；DagWorkbench 的任务记录对话框按交换分段展示并支持 JSON 和 UTF-8 纯文本文件导出，加载更多会合并同一版本的交换，首屏加载后即可按固定版本独立读取全部分页导出。底层仍整任务读取，输入/输出/interaction 不分页，但整页受 `maxBytes` 字节预算约束。CLI 提供 `mindos export <run-id> [--out file.json] [--max-bytes N]`：以 control 模式读取 transcript（默认 256 KiB/节点）并连同 manifest 写入真实文件，已在 LocalFS 上通过集成测试。纯文本导出包含快照身份与 version，以及完整输入、交换、交互和输出。
+`FlowCommand.RunTranscript`（`dag.run.transcript`）接受 `{ sessionId, taskId, targetTaskId }`，taskId 是 Run 根聚合任务 ID。返回 `FlowTaskTranscript`，包含任务 input/output、status/version、完整持久 Effect 交换与 interaction 记录；也可直接调用 `readFlowTaskTranscript(kernel, sessionId, runTaskId, taskId)`。以根任务 input.runTasks 验证归属，无需原 DagCommandService 句柄，拒绝其他 Run 的任务。runTasks 包含全部循环实例、未汇总及 detached 节点。支持可选 `query: { version?, offset?, limit?, maxBytes? }`：默认每页 100 条 Effect、最多 500 条，返回 totalEffects 与可选 nextOffset；`maxBytes`（≥64）限制本页 JSON 编码后的 UTF-8 字节数，超出时按固定顺序裁剪——先丢弃尾部 Effect 并前移 nextOffset，再缩短 input/output 与 Effect 负载，最后只保留首个 Effect 或退化为仅头部——结果带 `bytes` 与 `truncated: true`。后续页携带首屏 version 固定历史快照；未提供 version 的非零 offset 拒绝。这是结构化记录；DagWorkbench 的任务记录对话框按交换分段展示并支持 JSON 和 UTF-8 纯文本文件导出，加载更多会合并同一版本的交换，首屏加载后即可按固定版本独立读取全部分页导出。底层仍整任务读取，输入/输出/interaction 不分页，但整页受 `maxBytes` 字节预算约束。CLI 提供 `nestos export <run-id> [--out file.json] [--max-bytes N]`：以 control 模式读取 transcript（默认 256 KiB/节点）并连同 manifest 写入真实文件，已在 LocalFS 上通过集成测试。纯文本导出包含快照身份与 version，以及完整输入、交换、交互和输出。
 
 `dag.run.list()` 只读枚举最近 100 个 Run（时间倒序，含 Session、根任务 ID、名称、状态）。工作流工具栏的「运行记录」打开列表并进入 Run 控制台；「返回设计」恢复编辑。「继续运行」调用 `dag.run.resume({ sessionId, taskId })`，检查 Session 写权限并取得本机 Run 所有权后恢复调度；同一 Kernel 已有调度器时复用。图级重试提交后会自动继续调度，重开应用后无需额外调用内部 API。列表、快照及固定版本 transcript 均使用持久绑定检查，不因浏览记录激活 Session；显式控制入口才打开 Session。
 
@@ -550,7 +550,7 @@ CLI 使用 `node apps/cli/dist/cli.js run -f job.flow --profile <profile> --conn
 
 命令 `FlowCommand.SourceCheck`（`flow.source.check`）接收 `{source}`，返回 `{valid,diagnostics}`，使用运行时插件目录和持久子流程解析器。编辑器验证面板、草稿校验与发布共用检查器；`DraftSave` 保存不完整内容并返回校验错误，`DraftValidate` 只校验不写入。草稿安装/恢复只校验自身语法，允许随后安装依赖。发布解析并锁定依赖时再次检查调用参数，错误不写入新发布版本。运行时在动态值解析后再次检查类型、范围、非空和选项约束。
 
-CLI 用 `mindos validate -f example.flow --json` 检查源码和同目录子流程，成功退出 0，错误退出 1。已有 Workflow YAML 的 validate 入口继续使用对应 DSL 校验。检查结果不能证明外部工具已安装、连接凭据可用、图片可解码或业务规则满足；这些由运行准入和 Tool 验证。
+CLI 用 `nestos validate -f example.flow --json` 检查源码和同目录子流程，成功退出 0，错误退出 1。已有 Workflow YAML 的 validate 入口继续使用对应 DSL 校验。检查结果不能证明外部工具已安装、连接凭据可用、图片可解码或业务规则满足；这些由运行准入和 Tool 验证。
 
 
 ## Flow 安装与工具依赖

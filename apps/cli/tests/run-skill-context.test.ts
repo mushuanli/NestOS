@@ -20,7 +20,7 @@ const roots: string[] = [];
 afterEach(async () => {
     await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
-    delete process.env.MINDOS_TEST_API_KEY;
+    delete process.env.NESTOS_TEST_API_KEY;
 });
 
 function config(port: number, goal = 'Review the interface change'): string {
@@ -34,7 +34,7 @@ providers:
     implementation: openai-compatible
     base_url: http://127.0.0.1:${port}
     default_path: /v1/chat/completions
-    api_key_env: MINDOS_TEST_API_KEY
+    api_key_env: NESTOS_TEST_API_KEY
     models:
       - id: mock-model
 connections:
@@ -111,7 +111,7 @@ it('assembles project rules and auto-loaded Skills into the CLI run and persists
     const model = recordingServer();
     servers.push(model.server);
     const port = await listenForTest(model.server);
-    const workspace = await mkdtemp(path.join(tmpdir(), 'mindos-skill-context-'));
+    const workspace = await mkdtemp(path.join(tmpdir(), 'nestos-skill-context-'));
     roots.push(workspace);
     // The CLI host reads project rules from `_agent/AGENT.md` and Skills from `_agent/skills/*`.
     await mkdir(path.join(workspace, '_agent', 'skills', 'review'), { recursive: true });
@@ -122,8 +122,8 @@ it('assembles project rules and auto-loaded Skills into the CLI run and persists
         '', '## Compact Instructions', '- [红线] Preserve access checks.', '- Background note.',
     ].join('\n'), 'utf8');
     const configPath = path.join(workspace, 'mindos.yml');
-    const stateDir = path.join(workspace, '.mindos');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    const stateDir = path.join(workspace, '.nestos');
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, config(port), 'utf8');
 
     expect(await runCommand({ file: configPath, stateDir, headless: true, json: true })).toBe(0);
@@ -157,7 +157,7 @@ it('does not auto-inject an auto-load:false reference Skill into a non-matching 
     const model = recordingServer();
     servers.push(model.server);
     const port = await listenForTest(model.server);
-    const workspace = await mkdtemp(path.join(tmpdir(), 'mindos-skill-manual-'));
+    const workspace = await mkdtemp(path.join(tmpdir(), 'nestos-skill-manual-'));
     roots.push(workspace);
     await mkdir(path.join(workspace, '_agent', 'skills', 'review'), { recursive: true });
     await writeFile(path.join(workspace, '_agent', 'AGENT.md'), 'Always cite the interface contract.', 'utf8');
@@ -165,8 +165,8 @@ it('does not auto-inject an auto-load:false reference Skill into a non-matching 
         '---', 'name: Review', 'description: Review changes interface', 'auto-load: false', '---',
         'Check every changed interface.',
     ].join('\n'), 'utf8');
-    const stateDir = path.join(workspace, '.mindos');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    const stateDir = path.join(workspace, '.nestos');
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
 
     // A new run whose goal does not match must get the project rules but not the Skill body.
     const unmatchedConfig = path.join(workspace, 'unmatched.yml');

@@ -1,8 +1,8 @@
 import {createBrowserImageTools} from '@itookit/image-tools/browser';
-import { createMindosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
+import { createNestosLlmPresets } from '@itookit/kernel-adapters/llm/presets';
 import { openApplicationView } from '@itookit/app-core/host';
-import { createMindosFlowLibrary } from '@itookit/app-core';
-import { createMindOSNodeDriver } from '@itookit/mindos-node-driver';
+import { createNestosFlowLibrary } from '@itookit/app-core';
+import { createNestOSNodeDriver } from '@itookit/nestos-node-driver';
 import { createTauriMCPTransport } from './shell/tauri-mcp-transport';
 import { recordDiagnostic, observeTools } from './log/desktop-diagnostics';
 import { errorDetails, t } from '@itookit/common';
@@ -18,7 +18,7 @@ import { createFileSystemSource } from '@itookit/vfs-core';
  *
  * Tauri-specific bootstrap:
  *  1. Resolve homeDir + rootDir via Tauri commands
- *       rootDir = resolved data root (mindos.json#rootDir or <config>/data)
+ *       rootDir = resolved data root (nestos.json#rootDir or <config>/data)
  *  2. Build backends:
  *       rootBackend  = LocalFSBackend at <rootDir>/        (all shared modules)
  *       homeBackend  = LocalFSBackend at <homeDir>         (local filesystem)
@@ -137,8 +137,8 @@ async function getHomeDir(): Promise<string> {
 
 /**
  * Returns the resolved VFS root directory.
- * Config lives at ~/.config/mindos/mindos.json; the data root comes from
- * mindos.json#rootDir, the MINDOS_ROOT env var, or ~/.config/mindos/data.
+ * Config lives at ~/.config/nestos/nestos.json; the data root comes from
+ * nestos.json#rootDir, the NESTOS_ROOT env var, or ~/.config/nestos/data.
  */
 async function getRootDir(): Promise<string> {
     try {
@@ -148,12 +148,12 @@ async function getRootDir(): Promise<string> {
         // Fallback for plain Vite dev (no Tauri context)
         const home = (globalThis as { process?: { env?: { HOME?: string } } })
             .process?.env?.HOME ?? '.';
-        return `${home}/.config/mindos/data`;
+        return `${home}/.config/nestos/data`;
     }
 }
 
 /**
- * Where the resolved root and workspace came from — `mindos.json#rootDir`,
+ * Where the resolved root and workspace came from — `nestos.json#rootDir`,
  * `INIT_CWD (launch dir)`, `<config_dir>/data (default)`, and so on.
  */
 async function getPathSources(): Promise<{ root: string; home: string }> {
@@ -185,10 +185,10 @@ async function bootstrap(): Promise<void> {
 
     // 1. Resolve paths
     //    homeDir   = working project directory (CWD or --home arg)
-    //    rootDir   = resolved data root (mindos.json#rootDir, never ~/.mindos)
+    //    rootDir   = resolved data root (nestos.json#rootDir, never ~/.nestos)
     const [homeDir, rootDir, sources] = await Promise.all([getHomeDir(), getRootDir(), getPathSources()]);
     log(`路径解析 (home=${homeDir})`);
-    console.log(`[Boot] MindOS root=${rootDir} (${sources.root}); 工作目录 home=${homeDir} (${sources.home})`);
+    console.log(`[Boot] NestOS root=${rootDir} (${sources.root}); 工作目录 home=${homeDir} (${sources.home})`);
 
     const dirName = homeDir.split('/').filter(Boolean).pop() ?? homeDir;
     const navLabel = document.getElementById('nav-home-label');
@@ -257,7 +257,7 @@ async function bootstrap(): Promise<void> {
     try {
     log(`文件系统初始化 (${workspaceNames.length + 2} backends)`);
 
-    // The host owns this source independently of the MindOS root.
+    // The host owns this source independently of the NestOS root.
     const homeSource = await createFileSystemSource({ tags: false, backend: homeBackend, viewId: 'host-home' });
     startupCleanup.push(() => homeSource.dispose());
 
@@ -278,8 +278,8 @@ async function bootstrap(): Promise<void> {
             (await import('@itookit/llm-ui-adapter/settings')).createAgentEditorFactory(agents, capabilities)),
         createFlowEditor: deps => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui-adapter/chat')).createFlowsEditorFactory(deps)),
-        createFlowContextMenu: deps => createFlowContextMenuConfig({ ...deps, library: createMindosFlowLibrary() }),
-        restoreFlowLibrary: commands => restoreFlowLibrary(commands, createMindosFlowLibrary()),
+        createFlowContextMenu: deps => createFlowContextMenuConfig({ ...deps, library: createNestosFlowLibrary() }),
+        restoreFlowLibrary: commands => restoreFlowLibrary(commands, createNestosFlowLibrary()),
         createSkillEditor: agents => lazyEditorFactory(async () =>
             (await import('@itookit/llm-ui-adapter/settings')).createSkillsEditorFactory(agents)),
         createAIContextMenu: createAIContextMenuConfig,
@@ -295,7 +295,7 @@ async function bootstrap(): Promise<void> {
     const llmLogger = new TauriLLMLogger(rootDir);
     const runtime = await createApplicationRuntime({
         startupMode: 'interactive',
-        remoteSourceProvider: createMindOSNodeDriver(),
+        remoteSourceProvider: createNestOSNodeDriver(),
         backend: rootBackend,
         additionalMounts: [...workspaceMounts],
         ownerKind: 'tauri',
@@ -322,11 +322,11 @@ async function bootstrap(): Promise<void> {
     const client = await openApplicationView(runtime);
     startupCleanup.push(() => client.close());
     recordDiagnostic('workspace.default', { sessionDirectory: homeDir, rootDir });
-    // Acceptance diagnostics: VITE_MINDOS_TRACE=1 records per-interval VFS + sidecar op counts
+    // Acceptance diagnostics: VITE_NESTOS_TRACE=1 records per-interval VFS + sidecar op counts
     // so a slow user action can be attributed to backend/IPC round trips.
-    if (import.meta.env.VITE_MINDOS_TRACE === '1') {
+    if (import.meta.env.VITE_NESTOS_TRACE === '1') {
         const stopTrace = startVfsTrace(rootDir, runtime.vfs, { sidecar: rootBackend });
-        window.__MINDOS_TRACE__ = stopTrace;
+        window.__NESTOS_TRACE__ = stopTrace;
         // Bracket one send with an exact boundary so "≤2s / ≤100 calls" is measured on
         // the action itself instead of inferred from a wider interval. Session events are
         // routed per bound Session, so the send is observed at the command bus instead.
@@ -344,12 +344,12 @@ async function bootstrap(): Promise<void> {
         startupCleanup.push(() => {
             commandBus.execute = execute;
             stopTrace();
-            if (window.__MINDOS_TRACE__ === stopTrace) delete window.__MINDOS_TRACE__;
+            if (window.__NESTOS_TRACE__ === stopTrace) delete window.__NESTOS_TRACE__;
         });
         console.log('[Boot] VFS trace enabled -> var/log/vfs-trace.log');
     }
     const app = await initApp({
-        fileTemplates: { agent: JSON.stringify(createMindosLlmPresets().agents, null, 2) },
+        fileTemplates: { agent: JSON.stringify(createNestosLlmPresets().agents, null, 2) },
         ...client,
         workspaces: WORKSPACES.map(ws => ws.workspaceName === 'home' ? { ...ws, files: { fs: homeSource.fs, cwd: '/' } } : ws),
         defaultSlug: 'start', startPage: true,
@@ -385,7 +385,7 @@ async function bootstrap(): Promise<void> {
 }
 
 async function bootstrapRemote(): Promise<void> {
-    const api = (window as { __MINDOS_API__?: string }).__MINDOS_API__ ?? '/api';
+    const api = (window as { __NESTOS_API__?: string }).__NESTOS_API__ ?? '/api';
     const read = async <T>(path: string): Promise<T> => {
         const response = await fetch(`${api}${path}`);
         if (!response.ok) throw new Error(`${path}: ${response.status}`);
@@ -434,7 +434,7 @@ function escapeHtml(value: string): string {
     return value.replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]!));
 }
 
-if ((window as { __MINDOS_MODE__?: string }).__MINDOS_MODE__ === 'remote') {
+if ((window as { __NESTOS_MODE__?: string }).__NESTOS_MODE__ === 'remote') {
     bootstrapRemote().catch(err => {
         recordDiagnostic('bootstrap.failed', err);
         console.error('[Remote Bootstrap] Fatal:', err);

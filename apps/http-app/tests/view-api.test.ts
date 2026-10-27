@@ -18,11 +18,11 @@ let certificateRoot: string, certificates: string, directory: string, backend: L
 let api: Awaited<ReturnType<typeof createApplicationApi>>, server: Awaited<ReturnType<typeof secureServers>>, auth: Awaited<ReturnType<typeof authenticatedFetch>>;
 const clients: HttpViewClient[] = [];
 const auditEvents: import('@itookit/node-host/logging').AuditEvent[] = [];
-beforeAll(async () => { certificateRoot = await mkdtemp(path.join(tmpdir(), 'mindos-view-certs-')); certificates = path.join(certificateRoot, 'certs'); await createCertificates(certificates, ['127.0.0.1']); });
+beforeAll(async () => { certificateRoot = await mkdtemp(path.join(tmpdir(), 'nestos-view-certs-')); certificates = path.join(certificateRoot, 'certs'); await createCertificates(certificates, ['127.0.0.1']); });
 afterAll(async () => { await rm(certificateRoot, { recursive: true, force: true }); });
 beforeEach(async () => {
-    directory = await mkdtemp(path.join(tmpdir(), 'mindos-view-'));
-    const root = path.join(directory, 'data'), ui = path.join(directory, 'ui'); await mkdir(ui); await writeFile(path.join(ui, 'index.html'), '<title>MindOS</title>');
+    directory = await mkdtemp(path.join(tmpdir(), 'nestos-view-'));
+    const root = path.join(directory, 'data'), ui = path.join(directory, 'ui'); await mkdir(ui); await writeFile(path.join(ui, 'index.html'), '<title>NestOS</title>');
     backend = await openLocalFSBackend({ rootDir: root, sidecarDir: path.join(directory, 'meta'), createDb: NodeSqliteSidecarDb.open });
     auditEvents.length = 0;
     api = await createApplicationApi(backend, root, { write: event => auditEvents.push(event), close: async () => {} }); server = await secureServers(backend, root, ui, certificates, api); auth = await authenticatedFetch(certificates);
@@ -314,7 +314,7 @@ it.each(['queries', 'file'])('marks an expired %s view without creating a replac
             headers: { 'Content-Type': 'application/octet-stream', 'X-View-Call': encodeURIComponent(JSON.stringify({ target: ref.$ref, method: 'readContent', args: ['/missing'] })) } })
         : await auth.fetcher(server.origin + '/api/application', { method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ kind: 'queries', clientId: 'expired', version: RPC_VERSION, calls: [{ target: ref.$ref, method: 'getNode', args: ['/'] }] }) });
-    expect(response.status).toBe(400); expect(response.headers.get('X-MindOS-View-Expired')).toBe('1');
+    expect(response.status).toBe(400); expect(response.headers.get('X-NestOS-View-Expired')).toBe('1');
     expect(await response.json()).toHaveProperty('error.code', 'ECAPABILITY');
 });
 
@@ -374,7 +374,7 @@ it('stops old-handle requests after the view expires, including binary file requ
     await expect(root.services.projects.sessions.create('Never sent', null)).rejects.toMatchObject({code: 'ECAPABILITY'});
     expect(fetcher).toHaveBeenCalledTimes(count);
     const response = await auth.fetcher(server.origin + `/api/application/events?clientId=lost-view&after=0&version=${RPC_VERSION}`);
-    expect(response.status).toBe(400); expect(response.headers.get('X-MindOS-View-Expired')).toBe('1');
+    expect(response.status).toBe(400); expect(response.headers.get('X-NestOS-View-Expired')).toBe('1');
 });
 
 it('does not replay a command whose response was lost even after reconnecting successfully', async () => {

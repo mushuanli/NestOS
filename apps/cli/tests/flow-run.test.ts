@@ -11,7 +11,7 @@ const cleanup: string[] = [];
 afterEach(async () => { await Promise.all(cleanup.splice(0).map(dir => rm(dir, { recursive: true, force: true }))); });
 
 it('runs a .flow draft through RunDefinition without YAML environment', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-flow-run-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-flow-run-'));
     cleanup.push(root);
     const flowPath = path.join(root, 'demo.flow');
     await writeFile(flowPath, JSON.stringify({
@@ -42,7 +42,7 @@ it('verifies real CLI media bindings, frozen reruns and Tool calls with local fi
 }, 160_000);
 
 it('rejects non-object parameter files before starting a run', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-flow-invalid-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-flow-invalid-'));
     cleanup.push(root);
     const paramsFile = path.join(root, 'params.json');
     await writeFile(paramsFile, '[]');
@@ -52,7 +52,7 @@ it('rejects non-object parameter files before starting a run', async () => {
 });
 
 it('loads parameter files and resumes a missing field through the saved flow definition', async () => {
-    const root = await mkdtemp(path.join(tmpdir(), 'mindos-flow-input-'));
+    const root = await mkdtemp(path.join(tmpdir(), 'nestos-flow-input-'));
     cleanup.push(root);
     const file = path.join(root, 'input.flow');
     const paramsFile = path.join(root, 'params.json');

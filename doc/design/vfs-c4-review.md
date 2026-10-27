@@ -4,10 +4,10 @@
 
 ## 1. 结论和数据组织
 
-采用单用户 `admin`。`[mindos]` 表示应用打开的文件系统根，不是内层目录名。Session 是业务实体，history 和 attachments 都属于 Session；SessionFS 是运行时组合视图，不是第二份数据。通用映射器属于 `vfs-core`，Session 仓库属于 `llm-session`，持久挂载配置及来源组装属于 `app-core`（`backend/app-core/src/vfs/session-files.ts`、`backend/app-core/src/vfs/directory-mounts.ts`）；`app-shell` 只做装配与兼容 re-export。
+采用单用户 `admin`。`[nestos]` 表示应用打开的文件系统根，不是内层目录名。Session 是业务实体，history 和 attachments 都属于 Session；SessionFS 是运行时组合视图，不是第二份数据。通用映射器属于 `vfs-core`，Session 仓库属于 `llm-session`，持久挂载配置及来源组装属于 `app-core`（`backend/app-core/src/vfs/session-files.ts`、`backend/app-core/src/vfs/directory-mounts.ts`）；`app-shell` 只做装配与兼容 re-export。
 
 ```text
-[mindos]/
+[nestos]/
   etc/                            系统配置；原始凭据只由专用服务访问
   var/lib/
     kernel/                       全局 catalog、跨 Session IPC、资源账本
@@ -31,7 +31,7 @@
 
 `session.seq/history.seq` 是逻辑记录文件，`/var/lib/sessions/folders.seq` 同样承载文件夹记录（`backend/llm-session/src/persistence/session-repository.ts`）。IndexedDB 使用记录表，LocalFS 使用对应 sidecar SQLite；不能把空的物理 `.seq` 文件单独复制当成完整备份。LocalFS 的 `_meta/_db/meta` 是后端索引侧车，不是 Session 可见目录。
 
-没有 `conversation/`、`/etc/mindos`、`/var/lib/mindos` 或预留的 `/var/lib/files`。可靠恢复所需的任务和 IPC 数据留在 `/var/lib`；移入 `/run` 会丢失重启恢复能力。
+没有 `conversation/`、`/etc/nestos`、`/var/lib/nestos` 或预留的 `/var/lib/files`。可靠恢复所需的任务和 IPC 数据留在 `/var/lib`；移入 `/run` 会丢失重启恢复能力。
 
 Session 用户文件视图默认只有：
 
@@ -47,14 +47,14 @@ Session 用户文件视图默认只有：
 
 ```mermaid
 C4Context
-  title MindOS 文件与会话系统
+  title NestOS 文件与会话系统
   Person(admin, "admin", "唯一用户")
-  System(mindos, "MindOS", "应用、Session、文件视图与任务执行")
+  System(nestos, "NestOS", "应用、Session、文件视图与任务执行")
   System_Ext(host, "宿主环境", "浏览器存储或授权的本地目录")
   System_Ext(llm, "模型服务", "通过专用设备服务访问")
-  Rel(admin, mindos, "编辑文档、打开会话、配置挂载")
-  Rel(mindos, host, "按授权读写持久数据")
-  Rel(mindos, llm, "请求推理")
+  Rel(admin, nestos, "编辑文档、打开会话、配置挂载")
+  Rel(nestos, host, "按授权读写持久数据")
+  Rel(nestos, llm, "请求推理")
 ```
 
 ## 3. 进程内组件
@@ -62,7 +62,7 @@ C4Context
 ```mermaid
 C4Component
   title 一个宿主进程内的职责和依赖
-  Container_Boundary(process, "MindOS host") {
+  Container_Boundary(process, "NestOS host") {
     Component(shell, "AppHost", "app-shell", "创建来源、注册工作区、组装会话和工具")
     Component(ui, "文件应用", "vfs-ui / mdx", "只持有 FileSystemContext")
     Component(chatui, "会话应用", "llm-ui", "只按 sessionId 打开会话和资产")
@@ -93,9 +93,9 @@ C4Component
 ```mermaid
 C4Deployment
   title 同一虚拟路径模型用于浏览器和桌面
-  Deployment_Node(host, "MindOS host", "单用户 admin") {
+  Deployment_Node(host, "NestOS host", "单用户 admin") {
     Container(app, "应用进程", "TypeScript", "组装应用视图和 Session 视图")
-    Deployment_Node(root, "[mindos] 根来源", "IndexedDB 或本地 backend") {
+    Deployment_Node(root, "[nestos] 根来源", "IndexedDB 或本地 backend") {
       ContainerDb(etc, "/etc", "配置存储", "系统配置；凭据经专用服务")
       ContainerDb(sessions, "/var/lib/sessions", "持久数据", "各 Session 的 session.seq、history.seq、attachments、kernel")
       ContainerDb(kernel, "/var/lib/kernel", "持久数据", "catalog、跨 Session IPC、宿主来源登记与资源账本")

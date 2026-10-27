@@ -312,7 +312,7 @@ export class LLMWorkspaceEditor implements IEditor {
         if (!this.options.handoff) this.container.innerHTML = LayoutTemplates.renderWorkspace(this.currentTitle);
         this.titleInput = this.container.querySelectorAll('#llm-title-input')[0] as HTMLInputElement;
         this.titleInput.readOnly = false;
-        mountConversationSource(this.container, 'mindos');
+        mountConversationSource(this.container, 'nestos');
         this.container.addEventListener('click', this.onWelcomePrompt);
     }
 

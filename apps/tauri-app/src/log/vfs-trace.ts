@@ -1,6 +1,6 @@
 /**
  * @file apps/tauri-app/src/log/vfs-trace.ts
- * @description VFS/IPC op trace for acceptance runs (build-time flag `VITE_MINDOS_TRACE=1`).
+ * @description VFS/IPC op trace for acceptance runs (build-time flag `VITE_NESTOS_TRACE=1`).
  *
  * VFS and sidecar counters describe logical operations, not IPC round trips.
  * The invoke counter separately records actual command submissions, including SQL
@@ -14,7 +14,7 @@ import { ipcCounter } from './traced-core';
 import { createActionMetrics, type ActionSnapshot } from './action-metrics';
 
 export type VfsTraceControl = (() => void) & Pick<ReturnType<typeof createActionMetrics>, 'begin' | 'end'>;
-declare global { interface Window { __MINDOS_TRACE__?: VfsTraceControl; } }
+declare global { interface Window { __NESTOS_TRACE__?: VfsTraceControl; } }
 
 export interface VfsTraceOptions {
     intervalMs?: number;

@@ -1,4 +1,4 @@
-import type { HarnessMutationOptions } from '@itookit/mindos-node-driver';
+import type { HarnessMutationOptions } from '@itookit/nestos-node-driver';
 import type { HarnessExecutionRequest, HarnessInlineAttachment } from '@itookit/kernel-adapters/contracts';
 import type { HarnessConnectionAcquisition } from './harness-connections';
 import { ExecutionJournal, executionError, jsonValue, nativeOperationId, type NativeOperation } from './harness-execution-journal';
@@ -89,7 +89,7 @@ async function prepareForkSession(run: NativeExecution): Promise<void> {
 
 /** Recovery records created identity even when checkpoint verification failed; it never retries the fork. */
 export async function recordForkReference(run: NativeExecution, result: unknown): Promise<void> {
-    const source = run.journal.data.forkSource, value = result as import('@itookit/mindos-node-driver/harness').HarnessForkResult;
+    const source = run.journal.data.forkSource, value = result as import('@itookit/nestos-node-driver/harness').HarnessForkResult;
     const id = value?.session?.id;
     if (!source || typeof id !== 'string' || !id) throw executionError('NATIVE_REFERENCE_INVALID');
     if (run.journal.data.sessionId !== id) await run.journal.save({sessionId: id});
@@ -100,7 +100,7 @@ export async function recordForkReference(run: NativeExecution, result: unknown)
     }
     await attachExecutionContext(run);
 }
-function forkRejection(value: import('@itookit/mindos-node-driver/harness').HarnessForkResult,
+function forkRejection(value: import('@itookit/nestos-node-driver/harness').HarnessForkResult,
     source: NonNullable<ExecutionJournal['data']['forkSource']>): string | undefined {
     const proof = value.checkpoint;
     if (value.session.id !== source.nativeRef.sessionId && proof?.verified === true && proof.sourceSessionId === source.nativeRef.sessionId

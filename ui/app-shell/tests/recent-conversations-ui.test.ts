@@ -42,7 +42,7 @@ it('keeps fifteen sidebar sessions and opens a larger paged view when More is cl
         const search = panel().querySelector<HTMLInputElement>('input[type=search]')!;
         search.value = '0 Session'; search.dispatchEvent(new Event('input'));
         await vi.waitFor(() => expect(panel().querySelectorAll('.project-search__result')).toHaveLength(7));
-        expect([...panel().querySelectorAll('.project-search__result')].some(row => row.querySelector('strong')?.textContent === 'Session 0 · MindOS')).toBe(true);
+        expect([...panel().querySelectorAll('.project-search__result')].some(row => row.querySelector('strong')?.textContent === 'Session 0 · NestOS')).toBe(true);
         expect(panel().querySelector('table')!.hidden).toBe(true); expect(sessionRows()).toHaveLength(15);
         search.value = ''; search.dispatchEvent(new Event('input'));
         expect(panel().querySelector('table')!.hidden).toBe(false);

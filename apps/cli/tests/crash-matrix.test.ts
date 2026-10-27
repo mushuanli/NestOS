@@ -26,8 +26,8 @@ import { cancelCommand, exportCommand, resumeCommand } from '../src/commands';
 // A killed CLI cannot release its Session lease or the Run's scheduler lease; shorten
 // both TTLs so recovery can take over within the test instead of waiting the
 // production 60s / 30s.
-process.env.MINDOS_SESSION_LEASE_TTL_MS = '1500';
-process.env.MINDOS_SCHEDULER_LEASE_TTL_MS = '1500';
+process.env.NESTOS_SESSION_LEASE_TTL_MS = '1500';
+process.env.NESTOS_SCHEDULER_LEASE_TTL_MS = '1500';
 
 const CLI = fileURLToPath(new URL('../src/cli.ts', import.meta.url));
 const CLI_CWD = fileURLToPath(new URL('../', import.meta.url));
@@ -47,7 +47,7 @@ afterEach(async () => {
     for (const child of children.splice(0)) if (child.exitCode === null && child.signalCode === null) child.kill('SIGKILL');
     await Promise.all(servers.splice(0).map(server => new Promise<void>(resolve => server.close(() => resolve()))));
     for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
-    delete process.env.MINDOS_TEST_API_KEY;
+    delete process.env.NESTOS_TEST_API_KEY;
 });
 
 /** Wait for the killed owner's Session and scheduler leases to expire before resuming. */
@@ -100,7 +100,7 @@ function startRun(configPath: string, stateDir: string, crash?: { tool: string; 
     const entry = crash ? fileURLToPath(new URL('./fixtures/memory-crash.ts', import.meta.url)) : CLI;
     const child = spawn(process.execPath, ['--import', 'tsx', entry, 'run', '-f', configPath,
         '--state-dir', stateDir, '--headless', '--json'], { cwd: CLI_CWD, stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, ...(crash ? { MINDOS_TEST_MEMORY_CRASH_TOOL: crash.tool, MINDOS_TEST_MEMORY_CRASH_PHASE: crash.phase } : {}) } });
+        env: { ...process.env, ...(crash ? { NESTOS_TEST_MEMORY_CRASH_TOOL: crash.tool, NESTOS_TEST_MEMORY_CRASH_PHASE: crash.phase } : {}) } });
     children.push(child);
     return child;
 }
@@ -112,7 +112,7 @@ async function workspace(prefix: string): Promise<string> {
 }
 
 async function latestRun(workspaceDir: string): Promise<string> {
-    return (await readdir(path.join(workspaceDir, '.mindos', 'runs')))[0];
+    return (await readdir(path.join(workspaceDir, '.nestos', 'runs')))[0];
 }
 
 async function manifest(workspaceDir: string, runId: string): Promise<{
@@ -121,7 +121,7 @@ async function manifest(workspaceDir: string, runId: string): Promise<{
     nodeTaskIds?: Record<string, string>;
     blockedEffects?: Array<{ taskId: string; effectId: string }>;
 }> {
-    return JSON.parse(await readFile(path.join(workspaceDir, '.mindos', 'runs', runId, 'run.json'), 'utf8'));
+    return JSON.parse(await readFile(path.join(workspaceDir, '.nestos', 'runs', runId, 'run.json'), 'utf8'));
 }
 
 // A killed process cannot prove whether its in-flight LLM call reached the provider, so
@@ -174,12 +174,12 @@ it.each([
         });
     });
     servers.push(server);
-    const port = await listenForTest(server), root = await workspace('mindos-memory-unreceipted-');
-    const stateDir = path.join(root, '.mindos'), configPath = path.join(root, 'mindos.yml');
+    const port = await listenForTest(server), root = await workspace('nestos-memory-unreceipted-');
+    const stateDir = path.join(root, '.nestos'), configPath = path.join(root, 'mindos.yml');
     const config = parse(singleNodeConfig(port));
     Object.assign(config.agents[0], { tools: ['memory_write', 'memory_remove'], stream: false, approval: 'none',
         memory_policy: { namespace_id: 'agent', read_scopes: ['project'], write_scopes: ['project'] } });
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, stringify(config));
     const child = startRun(configPath, stateDir, crash);
     let stderr = ''; child.stderr?.on('data', data => { stderr += data; });
@@ -221,12 +221,12 @@ it.each(['write', 'remove'] as const)('preserves a committed memory %s across CL
         });
     });
     servers.push(server);
-    const port = await listenForTest(server), root = await workspace('mindos-crash-memory-');
-    const stateDir = path.join(root, '.mindos'), configPath = path.join(root, 'mindos.yml');
+    const port = await listenForTest(server), root = await workspace('nestos-crash-memory-');
+    const stateDir = path.join(root, '.nestos'), configPath = path.join(root, 'mindos.yml');
     const config = parse(singleNodeConfig(port));
     Object.assign(config.agents[0], { tools: ['memory_write', 'memory_remove'], stream: false, approval: 'none',
         memory_policy: { namespace_id: 'agent', read_scopes: ['project'], write_scopes: ['project'] } });
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, stringify(config));
     child = startRun(configPath, stateDir);
     const [code, signal] = await once(child, 'exit');
@@ -256,10 +256,10 @@ it('recovers a run killed while the first Effect is in flight', async () => {
     const port = await listenForTest(crash.server);
     servers.push(crash.server);
 
-    const root = await workspace('mindos-crash-effect-');
-    const stateDir = path.join(root, '.mindos');
+    const root = await workspace('nestos-crash-effect-');
+    const stateDir = path.join(root, '.nestos');
     const configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, singleNodeConfig(port), 'utf8');
 
     const child = startRun(configPath, stateDir);
@@ -311,10 +311,10 @@ it('cancels a Run blocked on an indeterminate Effect and refuses to replay it', 
     const port = await listenForTest(crash.server);
     servers.push(crash.server);
 
-    const root = await workspace('mindos-crash-cancel-');
-    const stateDir = path.join(root, '.mindos');
+    const root = await workspace('nestos-crash-cancel-');
+    const stateDir = path.join(root, '.nestos');
     const configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, singleNodeConfig(port), 'utf8');
 
     const child = startRun(configPath, stateDir);
@@ -328,7 +328,7 @@ it('cancels a Run blocked on an indeterminate Effect and refuses to replay it', 
     expect(blocked.flatMap(task => Object.values(task.effects)).filter(effect => effect.status === 'indeterminate')).toHaveLength(1);
     expect(crash.prompts).toHaveLength(1);
 
-    // The killed host left an Effect whose outcome cannot be proven. `mindos cancel` is
+    // The killed host left an Effect whose outcome cannot be proven. `nestos cancel` is
     // the documented alternative to authorizing a replay, and it must converge durably:
     // the old owner is dead and its leases have expired before the new host cancels.
     expect(await cancelCommand(runId, { stateDir, headless: true, json: true })).toBe(0);
@@ -347,10 +347,10 @@ it('does not re-apply a graph patch when replaying a crashed spawned node', asyn
     const port = await listenForTest(crash.server);
     servers.push(crash.server);
 
-    const root = await workspace('mindos-crash-spawn-');
-    const stateDir = path.join(root, '.mindos');
+    const root = await workspace('nestos-crash-spawn-');
+    const stateDir = path.join(root, '.nestos');
     const configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, spawnConfig(port), 'utf8');
 
     const child = startRun(configPath, stateDir);
@@ -380,10 +380,10 @@ it('reconciles a run killed after the reply was delivered but before it committe
     const port = await listenForTest(crash.server);
     servers.push(crash.server);
 
-    const root = await workspace('mindos-crash-commit-');
-    const stateDir = path.join(root, '.mindos');
+    const root = await workspace('nestos-crash-commit-');
+    const stateDir = path.join(root, '.nestos');
     const configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, singleNodeConfig(port), 'utf8');
 
     const child = startRun(configPath, stateDir);
@@ -404,10 +404,10 @@ it('continues a loop from the last committed iteration after a kill', async () =
     const port = await listenForTest(crash.server);
     servers.push(crash.server);
 
-    const root = await workspace('mindos-crash-loop-');
-    const stateDir = path.join(root, '.mindos');
+    const root = await workspace('nestos-crash-loop-');
+    const stateDir = path.join(root, '.nestos');
     const configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, loopConfig(port), 'utf8');
 
     const child = startRun(configPath, stateDir);
@@ -440,10 +440,10 @@ it('preserves budget accounting across a crash and resume', async () => {
     const port = await listenForTest(crash.server);
     servers.push(crash.server);
 
-    const root = await workspace('mindos-crash-budget-');
-    const stateDir = path.join(root, '.mindos');
+    const root = await workspace('nestos-crash-budget-');
+    const stateDir = path.join(root, '.nestos');
     const configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     // Each reply reports 3 tokens; a 9-token budget on the entry node allows three
     // iterations. A resumed run must not restart the counter.
     await writeFile(configPath, loopConfig(port, { budget: 9 }), 'utf8');
@@ -465,8 +465,8 @@ function startSchedulerCrash(configPath: string, stateDir: string, node: string,
     const entry = fileURLToPath(new URL('./fixtures/scheduler-crash.ts', import.meta.url));
     const child = spawn(process.execPath, ['--import', 'tsx', entry, 'run', '-f', configPath,
         '--state-dir', stateDir, '--headless', '--json'], { cwd: CLI_CWD, stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, MINDOS_TEST_SUBMIT_NODE: node,
-            MINDOS_TEST_COMPLETED_INSTANCE: completed } });
+        env: { ...process.env, NESTOS_TEST_SUBMIT_NODE: node,
+            NESTOS_TEST_COMPLETED_INSTANCE: completed } });
     children.push(child);
     child.stdout?.resume();
     return child;
@@ -508,8 +508,8 @@ it.each(['root-created', 'capability-bound', 'task-started', 'graph-patched', 'd
             });
         });
         servers.push(server);
-        const port = await listenForTest(server), root = await workspace('mindos-submit-gap-');
-        const stateDir = path.join(root, '.mindos'), configPath = path.join(root, 'mindos.yml');
+        const port = await listenForTest(server), root = await workspace('nestos-submit-gap-');
+        const stateDir = path.join(root, '.nestos'), configPath = path.join(root, 'mindos.yml');
         const config = parse(singleNodeConfig(port));
         Object.assign(config.agents[0], { stream: false, approval: 'none' });
         if (delegation) config.tasks[0].delegation = { agent: 'worker', instruction: 'Handle one payload',
@@ -519,7 +519,7 @@ it.each(['root-created', 'capability-bound', 'task-started', 'graph-patched', 'd
                 edges: [{ from: 'dispatcher', to: 'worker_a' }] }, outputs: { result: 'text' } }];
             config.result = { task: 'dispatcher', output: 'result' };
         }
-        process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+        process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
         await writeFile(configPath, stringify(config));
         child = startSchedulerCrash(configPath, stateDir, inflight ? '' : node);
         let stderr = ''; child.stderr?.on('data', chunk => { stderr += chunk; });
@@ -557,9 +557,9 @@ it.each(['root-created', 'capability-bound', 'task-started', 'graph-patched', 'd
 it('does not replay a completed loop iteration whose checkpoint was killed before commit', async () => {
     const model = crashingServer({ request: -1, when: 'before-reply' }, (_prompt, index) => `answer-${index}`);
     servers.push(model.server);
-    const port = await listenForTest(model.server), root = await workspace('mindos-loop-checkpoint-');
-    const stateDir = path.join(root, '.mindos'), configPath = path.join(root, 'mindos.yml');
-    process.env.MINDOS_TEST_API_KEY = 'test-secret-value';
+    const port = await listenForTest(model.server), root = await workspace('nestos-loop-checkpoint-');
+    const stateDir = path.join(root, '.nestos'), configPath = path.join(root, 'mindos.yml');
+    process.env.NESTOS_TEST_API_KEY = 'test-secret-value';
     await writeFile(configPath, loopConfig(port));
     const child = startSchedulerCrash(configPath, stateDir, '', 'entry#2');
     let stderr = ''; child.stderr?.on('data', chunk => { stderr += chunk; });
@@ -598,7 +598,7 @@ providers:
     implementation: openai-compatible
     base_url: http://127.0.0.1:${port}
     default_path: /v1/chat/completions
-    api_key_env: MINDOS_TEST_API_KEY
+    api_key_env: NESTOS_TEST_API_KEY
     models:
       - id: mock-model
 connections:

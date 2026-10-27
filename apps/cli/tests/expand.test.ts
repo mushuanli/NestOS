@@ -4,6 +4,17 @@ import { validateWorkflow } from '../src/config';
 import type { WorkflowConfigV1 } from '../src/types';
 
 describe('expandWorkflow', () => {
+    it('composes MCP input, a configured Harness and a tool output without a local model', () => {
+        const expanded = expandWorkflow({version: 1, name: 'remote-report', goal: 'Report', tasks: [
+            {id: 'fetch', mcp: {server: 'knowledge', tool: 'search'}, args: {query: 'recent'}},
+            {id: 'work', harness: 'reviewer', prompt: 'Summarize the supplied material', inputs: {input: '${tasks.fetch.outputs.result}'}},
+            {id: 'save', tool: 'fixture.save', input_argument: 'body', inputs: {input: '${tasks.work.outputs.result}'}},
+        ], result: 'save'});
+        const config = validateWorkflow(expanded, false);
+        expect(config.tasks[1].node).toMatchObject({plugin: 'builtin.agent', config: {
+            execution: {kind: 'harness', connectionId: 'reviewer'}, messages: [{role: 'user', content: 'Summarize the supplied material'}]}});
+        expect(config.tasks[2].node?.config).toMatchObject({inputArgument: 'body'});
+    });
     it('expands Tool/MCP input and output steps without requiring a model', () => {
         const source = {version: 1, name: 'collect', goal: 'Collect material', tasks: [
             {id: 'fetch', kind: 'tool', mcp: {server: 'knowledge_base', tool: 'search'}, args: {query: 'recent'}},

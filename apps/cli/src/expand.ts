@@ -56,6 +56,7 @@ function expandTask(raw: unknown): unknown {
     if (!isRecord(raw)) return raw;
     const task: Record<string, unknown> = { ...raw };
     expandToolTask(task);
+    expandHarnessTask(task);
     if (task.prompt !== undefined && task.description === undefined) task.description = task.prompt;
     delete task.prompt;
     if (task.needs !== undefined && task.depends_on === undefined) {
@@ -76,7 +77,7 @@ function expandToolTask(task: Record<string, unknown>): void {
     if (task.tool === undefined && task.mcp === undefined && task.kind !== 'tool') return;
     if (task.tool !== undefined && task.mcp !== undefined) throw new Error(`Task ${task.id} cannot combine tool and mcp`);
     if (task.node !== undefined || task.agent !== undefined || task.uses !== undefined || task.route !== undefined
-        || task.spawn !== undefined || task.supervisor !== undefined || task.kind !== undefined && task.kind !== 'tool')
+        || task.harness !== undefined || task.spawn !== undefined || task.supervisor !== undefined || task.kind !== undefined && task.kind !== 'tool')
         throw new Error(`Task ${task.id} tool conflicts with its execution target`);
     const toolId = toolReference(task);
     const version = task.tool_version ?? '1';
@@ -85,10 +86,27 @@ function expandToolTask(task: Record<string, unknown>): void {
     if (task.approval !== undefined && task.approval !== 'all' && task.approval !== 'none')
         throw new Error(`Task ${task.id} approval must be all or none`);
     task.kind = 'node';
+    if (task.input_argument !== undefined && (typeof task.input_argument !== 'string' || !task.input_argument.trim()))
+        throw new Error(`Task ${task.id} input_argument must be a nonempty string`);
     task.node = { plugin: 'builtin.tool', pluginVersion: '1.0.0', capabilities: [toolId],
-        config: { toolId, toolVersion: version, args: task.args ?? {}, approval: task.approval ?? 'all' } };
+        config: { toolId, toolVersion: version, args: task.args ?? {}, approval: task.approval ?? 'all',
+            ...(task.input_argument !== undefined ? {inputArgument: task.input_argument} : {}) } };
     task.outputs ??= { result: 'json' };
-    for (const key of ['tool', 'mcp', 'tool_version', 'args', 'approval']) delete task[key];
+    for (const key of ['tool', 'mcp', 'tool_version', 'args', 'approval', 'input_argument']) delete task[key];
+}
+
+function expandHarnessTask(task: Record<string, unknown>): void {
+    if (task.harness === undefined && task.kind !== 'harness') return;
+    if (typeof task.harness !== 'string' || !task.harness.trim()) throw new Error(`Task ${task.id} requires a configured harness connection id`);
+    if (task.node !== undefined || task.agent !== undefined || task.uses !== undefined || task.route !== undefined
+        || task.spawn !== undefined || task.supervisor !== undefined || task.kind !== undefined && task.kind !== 'harness')
+        throw new Error(`Task ${task.id} harness conflicts with its execution target`);
+    const prompt = task.prompt ?? task.description;
+    if (typeof prompt !== 'string' || !prompt.trim()) throw new Error(`Task ${task.id} harness requires prompt`);
+    task.node = {plugin: 'builtin.agent', pluginVersion: '1.0.0', capabilities: [],
+        config: {execution: {kind: 'harness', connectionId: task.harness}, messages: [{role: 'user', content: prompt}]}};
+    task.kind = 'node'; task.outputs ??= {result: 'text'};
+    delete task.harness;
 }
 
 function toolReference(task: Record<string, unknown>): string {

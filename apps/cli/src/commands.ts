@@ -14,6 +14,7 @@ import { expandWorkflow } from './expand';
 import { resolveProfileRoot } from './nestos';
 import { compileDag, createCliRuntime, cliStorage, type CliRuntime } from './runtime';
 import { compileRunDefinition } from './run-definition';
+import {bindWorkflowHarness} from './workflow-harness';
 import { createRunDefinitionFromFlow, toDagRunSpec, type RunDefinition } from '@itookit/app-core';
 import { loadFlowDefinition, siblingFlowResolver } from './flow-config';
 import { readFlowTaskTranscript } from '@itookit/llm-flow';
@@ -289,6 +290,7 @@ async function runLoaded(loaded: LoadedWorkflow, options: CommandOptions, overri
                 resolveComposite: override.resolveComposite,
                 bind: (node, defaults) => runtime!.flowCapabilities.bindNode(id, node, defaults),
             }) : override?.definition ?? compileRunDefinition(loaded.workflow, loaded.hash, runtime.workspaceRoot);
+        if (definition.source === 'yaml') await bindWorkflowHarness(definition, id, runtime.flowCapabilities);
         if (override) {
             manifest.flow = { definition, parameters: override.parameters, config: loaded.workflow.config };
             await store.save(manifest);

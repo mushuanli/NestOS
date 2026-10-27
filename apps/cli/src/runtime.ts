@@ -337,7 +337,12 @@ export async function createCliRuntime(
 
     const basicCapabilities = createFlowCapabilities(core);
     const identities = agentService ? new AgentResolver(agentService, basicCapabilities.resolveSkills, basicCapabilities.resolveMCPToolIds) : undefined;
-    const flowCapabilities = identities ? createFlowCapabilities(core, identities) : basicCapabilities;
+    const flowCapabilities = createFlowCapabilities(core, identities, async (id, saved) => {
+        if (saved) {await executionConnections.validate(saved); return saved;}
+        const snapshot = await executionConnections.freeze(id);
+        if (!snapshot) throw new Error('HARNESS_CONNECTION_UNAVAILABLE');
+        return snapshot;
+    });
     const executor = new DurableFlowExecutor({
         kernel,
         plugins: core.dagPlugins,

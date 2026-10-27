@@ -6,7 +6,8 @@ import { type FlowNodeDefinition } from '@itookit/llm-flow/contracts';
 import type { HeadlessKernelRuntime } from './create-kernel-runtime';
 
 /** Shared capability binding for standalone Flow hosts. */
-export function createFlowCapabilities(runtime: HeadlessKernelRuntime, identities?: Omit<FlowIdentityResolver, 'getSkills'>) {
+export function createFlowCapabilities(runtime: HeadlessKernelRuntime, identities?: Omit<FlowIdentityResolver, 'getSkills'>,
+    resolveHarnessConnection?: FlowIdentityResolver['resolveHarnessConnection']) {
     const resolveSkills = (sessionId: string, ids: string[]) =>
         resolveSessionSelectedSkills(runtime.kernel, runtime.sessions, sessionId, ids);
     const resolveMCPToolIds = async (sessionId: string, ids: string[]): Promise<string[]> => {
@@ -15,6 +16,7 @@ export function createFlowCapabilities(runtime: HeadlessKernelRuntime, identitie
         return scope.resolveMCPToolIds(ids);
     };
     const resolver: FlowIdentityResolver = {
+        resolveHarnessConnection: resolveHarnessConnection ?? identities?.resolveHarnessConnection?.bind(identities),
         getMCPToolIds: (ids, sessionId) => resolveMCPToolIds(sessionId, ids),
         resolveExact: identities?.resolveExact.bind(identities) ?? (async id => { throw new Error(`Agent reference requires a host resolver: ${id}`); }),
         getSystemPrompt: identities?.getSystemPrompt.bind(identities) ?? (async id => { throw new Error(`System prompt reference requires a host resolver: ${id}`); }),

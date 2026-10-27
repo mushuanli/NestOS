@@ -150,6 +150,23 @@ result: save
 
 `input` 端口接收工具参数对象，与固定 args 合并；字段冲突报错。非对象结果先通过通用转换节点映射为参数对象。恢复使用持久任务输入及结果，不因重新读取 YAML 而重复执行已完成步骤。
 
+也可用 `input_argument: body` 把整个上游值绑定到指定工具参数，适用于直接保存 Harness 文本。YAML 的 `harness: <已配置连接ID>` 与 `prompt` 编译到普通 `builtin.agent` Harness 节点：
+
+```yaml
+  - id: work
+    harness: reviewer
+    prompt: Summarize the supplied material
+    inputs:
+      input: ${tasks.fetch.outputs.result}
+  - id: save
+    tool: fixture.save
+    input_argument: body
+    inputs:
+      input: ${tasks.work.outputs.result}
+```
+
+Harness 可位于图的任意阶段，连接必须已由宿主配置并授权；CLI 在提交前冻结连接快照，动态节点使用同一宿主解析器。这里表达 MCP/Tool 与 Harness 间的输入输出编排，不向原生执行器注入本地工具配置；原生执行器内部仍使用自身 MCP/工具配置。
+
 WorkflowTaskSpec 支持 `kind: node`，通过 node 定义版本化插件；depends_on、inputs、budget、retry 等仍由工作流编译器处理。例如：
 
 ```yaml

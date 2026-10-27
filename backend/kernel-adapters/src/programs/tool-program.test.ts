@@ -30,6 +30,14 @@ it('rejects argument collisions with a diagnostic that contains no input body', 
     expect(JSON.stringify(failed.actions)).not.toContain('secret-value');
 });
 
+it('maps a Harness text output to an explicitly named tool argument', () => {
+    const program = new ToolProgram(), request = {...input(), inputArgument: 'body'};
+    const initial = program.init(request), bound = program.reduce(initial.state, capability);
+    const ready = program.reduce(bound.state, exited('report text'));
+    expect(ready.state.input.args).toEqual({format: 'json', body: 'report text'});
+    expect(ready.next).toMatchObject({type: 'wait', on: {type: 'effect', id: 'tool'}});
+});
+
 it('does not inject control dependencies or reapply duplicate task exit notifications', () => {
     const program = new ToolProgram();
     const request = input(); request.dependencies!.push({taskId: 'control', input: 'input', injectOutput: false});

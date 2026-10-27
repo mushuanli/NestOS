@@ -30,6 +30,8 @@ export interface PopupItem {
 }
 
 export interface PopupPanelOptions {
+    /** Show filters for item groups; the label selects all groups. */
+    groupFilterLabel?: string;
     toggle?: { label: string; checked?: boolean; onChange: (checked: boolean) => void };
     /** 最大可见条数 */
     maxVisible?: number;
@@ -56,6 +58,7 @@ export class PopupPanel {
     private items: PopupItem[] = [];
     private filteredItems: PopupItem[] = [];
     private selectedIndex = 0;
+    private selectedGroup?: string;
     private visible = false;
     private outsideClickHandler: ((e: MouseEvent) => void) | null = null;
 
@@ -91,12 +94,15 @@ export class PopupPanel {
         }
     ): void {
         this.items = items;
+        this.selectedGroup = undefined;
         this.filteredItems = [...items];
         this.selectedIndex = this.firstSelectable();
         this.onSelect = callbacks.onSelect;
         this.onClose = callbacks.onClose ?? null;
 
+        this.renderGroupFilters();
         this.renderItems();
+        this.listEl.scrollTop = 0;
         this.panel.classList.add('llm-popup--visible');
         this.visible = true;
 
@@ -137,23 +143,27 @@ export class PopupPanel {
      */
     updateItems(items: PopupItem[]): void {
         this.items = items;
+        if (!items.some(item => item.group === this.selectedGroup)) this.selectedGroup = undefined;
+        this.renderGroupFilters();
         this.filter(this.searchInput?.value ?? '');
     }
 
     filter(query: string): void {
+        const items = this.items.filter(item => !this.selectedGroup || item.group === this.selectedGroup);
         if (!query.trim()) {
-            this.filteredItems = [...this.items];
+            this.filteredItems = [...items];
         } else {
-            const q = query.toLowerCase();
-            this.filteredItems = this.items.filter(item =>
-                item.label.toLowerCase().includes(q) ||
-                item.description?.toLowerCase().includes(q) ||
-                item.searchText?.toLowerCase().includes(q)
-            );
+            const terms = query.trim().toLowerCase().split(/\s+/u);
+            this.filteredItems = items.filter(item => {
+                const fields = [item.label, item.description, item.group, item.searchText]
+                    .map(value => value?.toLowerCase() ?? '');
+                return terms.every(term => fields.some(field => field.includes(term)));
+            });
         }
 
         this.selectedIndex = this.firstSelectable();
         this.renderItems();
+        this.listEl.scrollTop = 0;
     }
 
     /**
@@ -225,6 +235,7 @@ export class PopupPanel {
             `;
         }
 
+        if (this.options.groupFilterLabel) html += `<div class="llm-popup__filters" role="group" aria-label="${escapeAttr(this.options.groupFilterLabel)}"></div>`;
         html += `<div class="llm-popup__list" role="listbox"></div>`;
 
         if (this.options.toggle) {
@@ -241,6 +252,16 @@ export class PopupPanel {
         }
 
         el.innerHTML = html;
+
+        el.querySelector('.llm-popup__filters')?.addEventListener('click', event => {
+            const button = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-popup-group]');
+            if (!button) return;
+            this.selectedGroup = button.dataset.popupGroup || undefined;
+            el.querySelectorAll<HTMLButtonElement>('[data-popup-group]').forEach(filter => {
+                filter.setAttribute('aria-pressed', String((filter.dataset.popupGroup || undefined) === this.selectedGroup));
+            });
+            this.filter(this.searchInput?.value ?? '');
+        });
 
         el.querySelector<HTMLInputElement>('[data-popup-toggle]')?.addEventListener('change', event => {
             this.options.toggle?.onChange((event.target as HTMLInputElement).checked);
@@ -301,6 +322,14 @@ export class PopupPanel {
     // ================================================================
     // 渲染
     // ================================================================
+
+    private renderGroupFilters(): void {
+        const filters = this.panel.querySelector('.llm-popup__filters');
+        if (!filters) return;
+        const groups = [...new Set(this.items.flatMap(item => item.group ? [item.group] : []))];
+        filters.innerHTML = [{value: '', label: this.options.groupFilterLabel!}, ...groups.map(group => ({value: group, label: group}))]
+            .map(({value, label}) => `<button type="button" class="llm-popup__filter" data-popup-group="${escapeAttr(value)}" aria-pressed="${(this.selectedGroup ?? '') === value}">${escapeHTML(label)}</button>`).join('');
+    }
 
     private renderItems(): void {
         if (this.filteredItems.length === 0) {

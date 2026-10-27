@@ -406,7 +406,9 @@ it('creates every editable category in named drawers and persists their organiza
 it('moves tool references in bulk without changing definitions and deleting a drawer only ungroups them', async () => {
     const f = await setup(); f.workbench.setFilter('all');
     f.sidebar.querySelector<HTMLButtonElement>('.vfs-node-list__secondary-action')!.click();
-    expect(document.querySelector<HTMLSelectElement>('.project-dialog [name="kind"]')?.value).toBe('agents');
+    expect(document.querySelector<HTMLSelectElement>('.project-dialog [name="kind"]')?.value).toBe('flows');
+    expect(document.querySelector('.project-dialog [name="kind"] option[value="agents"]')).toBeNull();
+    expect(f.sidebar.querySelector('[data-action="select-items"]')).toBeNull();
     document.querySelector('.project-dialog')!.dispatchEvent(new Event('cancel', { cancelable: true }));
     f.workbench.setFilter('tools');
     const paths = [...f.inventory.tools.keys()].slice(0, 2).map(id => '/tools/' + encodeURIComponent(id));
@@ -426,6 +428,80 @@ it('moves tool references in bulk without changing definitions and deleting a dr
     await vi.waitFor(() => expect(f.resources.drawers.forPath(paths[0])?.name).toBe('未分组'));
     expect(f.sidebar.querySelector(`[data-item-id="${group.id}"]`)).toBeNull();
     for (const path of paths) expect(await f.resources.sources.tools.driver.exists(path.slice('/tools'.length))).toBe(true);
+});
+
+async function organizeSelection(f: Awaited<ReturnType<typeof setup>>, kind: 'flows' | 'skills' | 'prompts' | 'tools', path?: string) {
+    f.workbench.setFilter(kind);
+    f.sidebar.querySelector<HTMLButtonElement>('.vfs-node-list__secondary-action')!.click();
+    await vi.waitFor(() => expect(document.querySelector('.toolbox-organize-list')).not.toBeNull());
+    const dialog = document.querySelector<HTMLDialogElement>('.project-dialog')!;
+    if (path) {
+        const input = [...dialog.querySelectorAll<HTMLInputElement>('.toolbox-organize-list input')].find(input => input.value === path)!;
+        expect(input).toBeDefined(); input.checked = true; input.dispatchEvent(new Event('change', {bubbles: true}));
+    }
+    return {dialog, remove: dialog.querySelector<HTMLButtonElement>('[data-action="delete-organized"]')!};
+}
+
+it('deletes selected definitions inside the organizer and preserves the destination draft', async () => {
+    const f = await setup(); vi.stubGlobal('confirm', () => true);
+    const {dialog, remove} = await organizeSelection(f, 'flows', '/flows/review.flow');
+    dialog.querySelector<HTMLInputElement>('[name="drawer"]')!.value = 'Keep destination';
+    expect(dialog.querySelector('[name="kind"] option[value="agents"]')).toBeNull();
+    expect(f.sidebar.querySelector('[data-action="select-items"]')).toBeNull();
+    expect(remove.disabled).toBe(false); remove.click(); remove.click();
+    await vi.waitFor(() => expect(dialog.querySelector('.toolbox-organize-list input[value="/flows/review.flow"]')).toBeNull());
+    expect(await f.resources.sources.flows.driver.exists('/review.flow')).toBe(false);
+    expect(dialog.open).toBe(true); expect(dialog.querySelector<HTMLInputElement>('[name="drawer"]')!.value).toBe('Keep destination');
+    expect(remove.disabled).toBe(true);
+    dialog.dispatchEvent(new Event('cancel', {cancelable: true}));
+});
+
+it('keeps organizer selection and reports the actual deletion error, then allows an explicit retry', async () => {
+    const f = await setup(), confirm = vi.fn(() => false); vi.stubGlobal('confirm', confirm);
+    const {dialog, remove} = await organizeSelection(f, 'skills', '/skills/phrases');
+    remove.click(); await vi.waitFor(() => expect(confirm).toHaveBeenCalledOnce());
+    await vi.waitFor(() => expect(dialog.open && !remove.disabled).toBe(true));
+    expect(dialog.querySelector<HTMLInputElement>('.toolbox-organize-list input[value="/skills/phrases"]')!.checked).toBe(true);
+    confirm.mockReturnValue(true);
+    const deletion = vi.spyOn(f.resources.sources.skills.driver, 'delete').mockRejectedValueOnce(new Error('Organizer storage unavailable'));
+    remove.click(); await vi.waitFor(() => expect(dialog.querySelector('.toolbox-organize-status')?.textContent).toContain('Organizer storage unavailable'));
+    expect(dialog.querySelector<HTMLInputElement>('.toolbox-organize-list input[value="/skills/phrases"]')!.checked).toBe(true);
+    expect(dialog.open).toBe(true); expect(deletion).toHaveBeenCalledOnce();
+    remove.click(); await vi.waitFor(() => expect(dialog.querySelector('.toolbox-organize-list input[value="/skills/phrases"]')).toBeNull());
+    expect(deletion).toHaveBeenCalledTimes(2); dialog.dispatchEvent(new Event('cancel', {cancelable: true}));
+});
+
+it('uses the existing prompt dependency confirmation above the organizer and restores it on cancellation', async () => {
+    const f = await setup(); vi.stubGlobal('confirm', () => true);
+    const {dialog, remove} = await organizeSelection(f, 'prompts', '/prompts/default'); remove.click();
+    await vi.waitFor(() => expect(document.querySelector('.settings-modal-confirm')).not.toBeNull());
+    expect(dialog.open).toBe(false);
+    document.querySelector<HTMLButtonElement>('.settings-modal-cancel')!.click();
+    await vi.waitFor(() => expect(dialog.open).toBe(true));
+    expect(dialog.querySelector<HTMLInputElement>('.toolbox-organize-list input[value="/prompts/default"]')!.checked).toBe(true);
+    expect(await runtime.agentService.getSystemPrompt('default')).not.toBeNull();
+    remove.click(); await vi.waitFor(() => expect(document.querySelector('.settings-modal-confirm')).not.toBeNull());
+    document.querySelector<HTMLButtonElement>('.settings-modal-confirm')!.click();
+    await vi.waitFor(() => expect(dialog.querySelector('.toolbox-organize-list input[value="/prompts/default"]')).toBeNull());
+    expect(await runtime.agentService.getSystemPrompt('default')).toBeNull(); expect(dialog.open).toBe(true);
+    dialog.dispatchEvent(new Event('cancel', {cancelable: true}));
+});
+
+it('keeps discovered tool references available for organization without offering definition deletion', async () => {
+    const f = await setup(), {dialog, remove} = await organizeSelection(f, 'tools');
+    expect(remove.hidden).toBe(true); expect(dialog.querySelector('[name="kind"] option[value="agents"]')).toBeNull();
+    dialog.dispatchEvent(new Event('cancel', {cancelable: true}));
+});
+
+it('does not dispatch organizer deletion or reopen its dialog after the workbench closes during confirmation', async () => {
+    const f = await setup(); let finish!: (confirmed: boolean) => void;
+    vi.stubGlobal('confirm', () => new Promise<boolean>(resolve => {finish = resolve;}));
+    const deletion = vi.spyOn(f.resources.sources.skills.driver, 'delete');
+    const {dialog, remove} = await organizeSelection(f, 'skills', '/skills/phrases'); remove.click();
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    await f.workbench.destroy(); finish(true); await new Promise(resolve => setTimeout(resolve, 0));
+    expect(deletion).not.toHaveBeenCalled(); expect(dialog.isConnected).toBe(false);
+    expect(await runtime.agentService.getSkills()).toHaveLength(1);
 });
 it('keeps the original toolbar and all resource types available from model creation', async () => {
     const f = await setup(); f.workbench.setFilter('models');
@@ -728,10 +804,16 @@ it('exports shared prompts with their Agent and remaps references on import', as
 
 it('orders categories consistently and deletes prompts through the configuration menu', async () => {
     const f = await setup();
-    const order = [...f.sidebar.querySelectorAll<HTMLOptionElement>('.vfs-scope-selector option')].map(option => option.value);
-    expect(order).toEqual(['all', 'agents', 'flows', 'skills', 'prompts', 'tools', 'mcp', 'models']);
+    const order = [...f.sidebar.querySelectorAll<HTMLButtonElement>('[data-toolbox-filter]')].map(button => button.dataset.toolboxFilter);
+    expect(order).toEqual(['all', 'models', 'flows', 'tools', 'mcp', 'skills', 'prompts', 'agents']);
+    expect(f.sidebar.querySelector('[data-toolbox-filter="all"]')?.getAttribute('aria-pressed')).toBe('true');
+    f.sidebar.querySelector<HTMLButtonElement>('[data-toolbox-filter="skills"]')!.click();
+    expect(f.sidebar.querySelector('[data-toolbox-filter="skills"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect(f.sidebar.querySelector('[data-item-id="/drawers/ungrouped-skills"]')).not.toBeNull();
+    expect(f.sidebar.querySelector('[data-item-id="/drawers/ungrouped-agents"]')).toBeNull();
+    f.sidebar.querySelector<HTMLButtonElement>('[data-toolbox-filter="all"]')!.click();
     const roots = [...f.sidebar.querySelectorAll<HTMLElement>('.vfs-directory-item')].map(item => item.dataset.itemId).filter(Boolean);
-    expect(roots.indexOf('/drawers/ungrouped-agents')).toBeLessThan(roots.indexOf('/drawers/ungrouped-prompts'));
+    expect(roots.indexOf('/drawers/ungrouped-prompts')).toBeLessThan(roots.indexOf('/drawers/ungrouped-agents'));
     await f.workbench.openResource('/prompts/default');
     f.sidebar.querySelector('[data-item-id="/prompts/default"]')!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true }));
     document.querySelector<HTMLButtonElement>('[data-action="delete-resource"]')!.click();

@@ -10,10 +10,11 @@ export class NavigationFilters {
     readonly content = document.createElement('div');
     private readonly dialog = document.createElement('dialog');
     private readonly abort = new AbortController();
-    constructor(private readonly label = t('workbench.filters')) {
+    constructor(private readonly label = t('workbench.filters'), private readonly options: {iconOnly?: boolean} = {}) {
         this.trigger.type = 'button'; this.trigger.className = 'workbench-filters__trigger';
         this.trigger.setAttribute('aria-haspopup', 'dialog'); this.trigger.setAttribute('aria-expanded', 'false');
-        decorateButton(this.trigger, TOOLBOX_ICONS.settings, label);
+        decorateButton(this.trigger, TOOLBOX_ICONS.settings, label, options.iconOnly);
+        this.trigger.classList.toggle('workbench-filters__trigger--icon', !!options.iconOnly);
         this.summary.className = 'workbench-filters__summary'; this.summary.hidden = true;
         this.content.className = 'workbench-filters__content'; this.dialog.className = 'workbench-filters';
         this.dialog.setAttribute('aria-label', label);
@@ -28,7 +29,7 @@ export class NavigationFilters {
     }
     update(chips: NavigationFilterChip[]): void {
         const label = this.label + (chips.length ? ` (${chips.length})` : '');
-        decorateButton(this.trigger, TOOLBOX_ICONS.settings, label);
+        decorateButton(this.trigger, TOOLBOX_ICONS.settings, label, this.options.iconOnly);
         this.trigger.setAttribute('aria-label', label); this.summary.hidden = !chips.length;
         this.summary.replaceChildren(...chips.map(chip => {
             const button = document.createElement('button'); button.type = 'button'; button.textContent = chip.label;

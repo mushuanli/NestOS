@@ -1605,8 +1605,10 @@ export class ChatInput implements IChatInputPresenter {
         if (!this.agentPopup) {
             this.agentPopup = new PopupPanel(this.agentPickerBtn, {
                 showSearch: true,
-                searchPlaceholder: t('chatInput.searchAssistants'),
-                emptyText: t('chatInput.noAssistants'),
+                maxVisible: Number.POSITIVE_INFINITY,
+                groupFilterLabel: this.callTargets ? t('chatInput.allTargets') : undefined,
+                searchPlaceholder: t(this.callTargets ? 'chatInput.searchTargets' : 'chatInput.searchAssistants'),
+                emptyText: t(this.callTargets ? 'chatInput.noTargets' : 'chatInput.noAssistants'),
                 animated: true,
             });
         }
@@ -1662,6 +1664,9 @@ export class ChatInput implements IChatInputPresenter {
     private updateAgentTrigger(): void {
         const agent = this.callTargets?.find(this.config.target) ?? this.agents.find(a => a.id === this.config.agentId);
         if (!this.agentNameEl) return;
+        const label = t(this.callTargets ? 'chatInput.selectTarget' : 'chatInput.selectAgent');
+        this.agentPickerBtn.title = label;
+        this.agentPickerBtn.setAttribute('aria-label', label);
         if (agent) {
             this.agentIconEl.textContent = agent.icon ?? ENTITY_ICONS.agent;
             this.agentNameEl.textContent = agent.name;

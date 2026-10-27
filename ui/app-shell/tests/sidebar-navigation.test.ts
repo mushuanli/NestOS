@@ -40,7 +40,7 @@ async function setup(sidebarView: string, initialResource?: string) {
 
 it('defers resource navigation for a restored agent view and refreshes changes only when resources return', async () => {
     const f = await setup('agents');
-    await vi.waitFor(() => expect(f.sidebar.querySelector('[data-agent-id]')).not.toBeNull());
+    await vi.waitFor(() => expect(f.sidebar.querySelector('.workbench-agents [data-item-id]')).not.toBeNull());
     expect(f.workbenchView).toHaveBeenCalledWith(expect.objectContaining({initialNavigation: false}));
     expect(f.navigation).not.toHaveBeenCalled(); expect(f.toolboxView).toHaveBeenCalledOnce();
     await f.select('navigation'); expect(f.navigation).toHaveBeenCalled();
@@ -59,7 +59,7 @@ it('does not read agents before selection or change the active draft and project
     await f.workbench.startSessionDraft(path);
     const active = f.workbench.getActiveResourceId(), scope = f.workbench.getNavigationScope();
     const field = f.main.querySelector('textarea')!, count = f.factory.mock.calls.length; f.onSelect.mockClear();
-    await f.select('agents'); await vi.waitFor(() => expect(f.sidebar.querySelector('[data-agent-id]')).not.toBeNull());
+    await f.select('agents'); await vi.waitFor(() => expect(f.sidebar.querySelector('.workbench-agents [data-item-id]')).not.toBeNull());
     await f.select('navigation');
     expect(f.workbench.getActiveResourceId()).toBe(active); expect(f.workbench.getNavigationScope()).toBe(scope);
     expect(f.main.contains(field)).toBe(true); expect(field.value).toBe('Keep this draft');

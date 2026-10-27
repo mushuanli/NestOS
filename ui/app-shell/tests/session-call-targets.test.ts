@@ -89,6 +89,39 @@ async function selectFlow(host: HTMLElement) {
     const choice = [...document.querySelectorAll<HTMLElement>('.llm-popup__item')].find(item => item.querySelector('.llm-popup__item-label')?.textContent === 'Independent worker')!;
     choice.click();
 }
+
+it('keeps Flows reachable after more than ten Agents and supports group filtering and search', async () => {
+    const f = await workspace();
+    for (let index = 0; index < 12; index++) await f.runtime.agentService.saveAgent({
+        id: `picker-agent-${index}`, name: `Picker agent ${index}`, type: 'agent', config: {},
+    });
+    const view = await f.open();
+    const catalog = await f.runtime.commandBus.execute<import('@itookit/llm-session/contracts').RootTargetCatalog>(SessionCommand.ListTargets);
+    const flowNames = catalog.entries.filter(entry => entry.target.kind === 'flow').map(entry => entry.name);
+    await selectFlow(view.host);
+    expect(view.input.getConfig().target).toMatchObject({kind: 'flow', id: 'worker'});
+    view.host.querySelector<HTMLButtonElement>('.llm-input__agent-trigger')!.click();
+    await vi.waitFor(() => expect(document.querySelectorAll('.llm-popup--visible .llm-popup__item').length).toBeGreaterThan(12));
+    const popup = document.querySelector<HTMLElement>('.llm-popup--visible')!;
+    const flowFilter = [...popup.querySelectorAll<HTMLButtonElement>('[data-popup-group]')].find(button => button.textContent === 'Flow')!;
+    flowFilter.click();
+    expect(flowFilter.dataset.popupGroup).toBe('Flow');
+    expect(popup.querySelector('[data-popup-group="Flow"]')?.getAttribute('aria-pressed')).toBe('true');
+    expect([...popup.querySelectorAll('.llm-popup__item-label')].map(item => item.textContent)).toEqual(flowNames);
+    popup.querySelector<HTMLButtonElement>('[data-popup-group=""]')!.click();
+    const search = popup.querySelector<HTMLInputElement>('input')!;
+    search.value = ' flow '; search.dispatchEvent(new Event('input'));
+    expect([...popup.querySelectorAll('.llm-popup__item-label')].map(item => item.textContent)).toEqual(flowNames);
+    search.value = '  WORKER\tflow　independent  '; search.dispatchEvent(new Event('input'));
+    expect([...popup.querySelectorAll('.llm-popup__item-label')].map(item => item.textContent)).toEqual(['Independent worker']);
+    search.value = 'flow independent unmatched'; search.dispatchEvent(new Event('input'));
+    expect(popup.querySelectorAll('.llm-popup__item')).toHaveLength(0);
+    search.value = 'flow independent'; search.dispatchEvent(new Event('input'));
+    search.dispatchEvent(new KeyboardEvent('keydown', {key: 'Enter', bubbles: true}));
+    expect(view.input.getConfig().target).toMatchObject({kind: 'flow', id: 'worker'});
+    expect(document.querySelector('.llm-popup--visible')).toBeNull();
+});
+
 async function submitForm(host: HTMLElement, text: string, edit?: (dialog: HTMLDialogElement) => void) {
     const area = host.querySelector<HTMLTextAreaElement>('.llm-input__textarea')!;
     area.value = text; area.dispatchEvent(new Event('input'));

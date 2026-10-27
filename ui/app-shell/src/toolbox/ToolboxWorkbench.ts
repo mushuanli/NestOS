@@ -7,14 +7,14 @@ import { ConfigurationDeletionDialog } from '../configuration/delete-dialog';
 import type { ModelConfigurationCommands } from '@itookit/app-contracts/services';
 import { connectEditorLifecycle } from '../browser/editor-connector';
 import { DrawerActions } from './DrawerActions';
-import { drawerKind, ungroupedId, type Drawer } from '@itookit/app-contracts';
+import { DRAWER_KINDS, drawerKind, ungroupedId, type Drawer } from '@itookit/app-contracts';
 import { resourceDrawers } from './resource-drawers';
 import { resourceIcon } from './resource-icons';
 import { mcpStatusIcon } from './mcp-status';
 import { modelDrawers, compareModelItems, modelDrawerId, modelDrawerProvider } from './model-drawers';
 import { invalidConnectionsId, invalidConnectionPaths } from './model-orphans';
 import { CapabilityFilters, capabilityLabel, capabilityLabels } from './capability-filters';
-import { ScopeSelector } from '@itookit/vfs-ui';
+import { CategoryFilters } from './category-filters';
 import { NavigationFilters } from '../workbench/navigation-filters';
 import { type VFSUIShell, type VFSNodeUI, type VFSToolbarContext, type UIPersistencePort } from '@itookit/vfs-ui';
 import type { IFileSystem } from '@itookit/vfs-core';
@@ -81,9 +81,9 @@ export class ToolboxWorkbench implements WorkspaceController {
     private titles = new Map<string, string>();
     private readonly abort = new AbortController();
     private readonly prefs: ToolboxPreferences;
-    private readonly header = document.createElement('div');
-    private readonly filterPanel = new NavigationFilters(t('toolbox.capability.filter'));
-    private readonly selector = new ScopeSelector({label: t('toolbox.filters'), select: async id => { this.setFilter(id as ToolboxFilter); }});
+    private readonly searchFilters = document.createElement('div');
+    private readonly categories: CategoryFilters;
+    private readonly filterPanel = new NavigationFilters(t('toolbox.capability.filter'), {iconOnly: true});
     private readonly capabilities = new CapabilityFilters(() => this.ui?.getQuery() ?? '', query => this.ui.setQuery(query), (tags, visible) => {
         this.filterPanel.trigger.hidden = !visible;
         this.filterPanel.update(tags.map(tag => ({label: capabilityLabel(tag), remove: () => this.capabilities.remove(tag)})));
@@ -101,21 +101,26 @@ export class ToolboxWorkbench implements WorkspaceController {
     private refreshTail: Promise<void> = Promise.resolve();
     constructor(private readonly options: Options) {
         this.prefs = preferences(this.options.uiPreferences?.load()); this.snapshot = directorySnapshot(options.files);
+        this.categories = new CategoryFilters(kind => this.setFilter(kind), options.agentsInWorkbench);
         if (options.agentsInWorkbench && this.prefs.filter === 'agents') this.prefs.filter = 'all';
     }
     async start(): Promise<void> {
         const { resources, sidebar } = this.options;
         sidebar.classList.add('toolbox-navigation');
         this.drawerActions = new DrawerActions({ groups: resources.drawers, signal: this.abort.signal,
+            kinds: DRAWER_KINDS.filter(kind => kind !== 'agents'),
+            remove: (paths, signal) => this.removeOrganized(paths, signal),
+            canRemove: paths => {const nodes = paths.flatMap(path => this.ui.getNode(path) ?? []);
+                return nodes.length === paths.length && this.selectionDeletion.allows(nodes);},
             refresh: () => { this.ui.refreshList(); const active = this.ui.getSnapshot().activeId; if (active) this.revealDrawer(active); }, create: group => this.createResource({ drawerId: group.id }), title: path => this.titles.get(path) ?? path });
         this.view = this.snapshot.files;
         this.applyNavigation(this.options.initial ?? await resources.navigation());
         this.buildFilters();
         this.ui = createVFSUI({ sessionListContainer: sidebar, title: t('toolbox.title'), scopeId: TOOLBOX_SCOPE, persistence: presentationPersistence(this.options.uiPersistence), autoSelectFirst: false,
             presentation: {...nestOSVFSPresentation, tagLabel: capabilityLabel},
-            appearance: { showTimestamp: false, menuVisibility: 'always' },
-            searchPlaceholder: t('toolbox.search'), titleHeader: this.header,
-            navigationHeader: {filter: this.filterPanel.trigger, summary: this.filterPanel.summary}, listItems: items => this.project(items),
+            appearance: { showTitle: false, showTimestamp: false, menuVisibility: 'always' },
+            searchPlaceholder: t('toolbox.search'),
+            navigationHeader: {layout: 'inline', filter: this.filterPanel.trigger, summary: this.searchFilters}, listItems: items => this.project(items),
             alwaysLoadedDirectories: this.loadedDirectories,
             hideGitignored: false,
             defaultUiSettings: { showSummary: true, showTags: true, showBadges: false, sortBy: 'title' },
@@ -171,12 +176,11 @@ export class ToolboxWorkbench implements WorkspaceController {
         };
     }
     private buildFilters(): void {
-        this.header.className = 'workbench-navigation-header'; this.header.append(this.selector.element);
+        this.searchFilters.className = 'toolbox-search-filters'; this.searchFilters.append(this.categories.element, this.filterPanel.summary);
         this.filterPanel.content.append(this.capabilities.root); this.updateScope();
     }
     private updateScope(): void {
-        this.selector.update(TOOLBOX_FILTERS.filter(kind => kind !== 'agents' || !this.options.agentsInWorkbench)
-            .map(kind => ({id: kind, label: t(`toolbox.${kind}`)})), this.prefs.filter);
+        this.categories.update(this.prefs.filter);
     }
     setFilter(filter: ToolboxFilter, remember = true): void {
         if (this.ui && remember) this.prefs.queries[this.prefs.filter] = this.ui.getQuery();
@@ -187,11 +191,11 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.ui?.refreshList(); this.updateToolbar(); this.persist();
     }
     private updateToolbar(): void {
-        this.ui?.setToolbar({ fileLabel: t('toolbox.new'),
+        this.ui?.setToolbar({ fileLabel: t('toolbox.new'), fileTitle: t('toolbox.create'), iconOnlyActions: ['create-file'],
             secondary: this.prefs.filter === 'tools' && (this.options.resources.toolPackages || this.options.resources.flowInstallations)
                 ? {label: t('toolbox.packages.title'), run: () => {void showToolPackages(this.options.resources, this.abort.signal, () => this.refresh());}}
                 : this.prefs.filter === 'models' ? { label: t('modelDefaults.button'), run: () => { void this.options.navigate({ target: 'settings', resourceId: 'model-defaults' }); } } : { label: t('toolbox.organize'), run: () => { const group = this.selectedDrawer();
-                const kind = group?.kind ?? (drawerKind(this.prefs.filter as ToolboxKind) ? this.prefs.filter as import('@itookit/app-contracts').DrawerKind : this.options.agentsInWorkbench ? 'flows' : 'agents');
+                const kind = group?.kind ?? (drawerKind(this.prefs.filter as ToolboxKind) ? this.prefs.filter as import('@itookit/app-contracts').DrawerKind : 'flows');
                 void this.drawerActions.move(kind, group?.paths).catch(error => alert(String(error))); } },
             hiddenActions: this.prefs.filter === 'tools' ? ['create-file', 'create-directory']
                 : ['create-directory'],
@@ -312,6 +316,16 @@ export class ToolboxWorkbench implements WorkspaceController {
         const group = this.options.resources.drawers.get(path) ?? this.options.resources.drawers.forPath(path);
         return group && (this.prefs.filter === 'all' || this.prefs.filter === group.kind) ? group : undefined;
     }
+    private async removeOrganized(paths: string[], signal: AbortSignal): Promise<import('@itookit/vfs-ui').DeleteResult> {
+        const nodes = paths.flatMap(path => this.ui.getNode(path) ?? []);
+        if (nodes.length !== paths.length || !this.selectionDeletion.allows(nodes))
+            throw Object.assign(new Error(t('toolbox.selectionChanged')), {code: 'TOOLBOX_SELECTION_UNAVAILABLE'});
+        try {return await this.selectionDeletion.run([...paths], signal);}
+        catch (error) {
+            if (!this.closed && !signal.aborted) await this.refresh().catch(() => {});
+            throw error;
+        }
+    }
     private selected(path: string | null): void {
         this.options.selected(path);
     }
@@ -414,7 +428,7 @@ export class ToolboxWorkbench implements WorkspaceController {
         this.prefs.queries[this.prefs.filter] = this.ui?.getQuery() ?? ''; this.persist();
         for (const close of this.cleanups.reverse()) await close();
         await this.refreshTail; this.ui?.destroy();
-        this.selector.destroy(); this.filterPanel.destroy();
+        this.filterPanel.destroy();
         this.options.sidebar.classList.remove('toolbox-navigation');
     }
 }

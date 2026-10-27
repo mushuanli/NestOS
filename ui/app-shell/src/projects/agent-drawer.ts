@@ -1,13 +1,14 @@
-import { Drawer, describeErrorReason } from '@itookit/vfs-ui';
+import { Drawer, createVFSBrowser, createDeleteOperation, describeErrorReason, type VFSBrowser, type BrowserNode, type BrowserAction } from '@itookit/vfs-ui';
 import { FILE_BROWSER_ICONS, TOOLBOX_ICONS, createModuleLogger, randomUUID, t, type NavigationRequest } from '@itookit/common';
-import { toolboxPath } from '@itookit/app-contracts';
+import { toolboxPath, ungroupedId } from '@itookit/app-contracts';
 import type { ApplicationBackend } from '@itookit/app-contracts/services';
 import type { EditorOptions } from '@itookit/ui-common';
 import { lazyResource } from '../lifecycle/lazy-resource';
 import { showNameDialog } from '../files/project-dialog';
-import { decorateButton } from '../workbench/controls';
+import { nestOSVFSPresentation } from '../browser/vfs-presentation';
+import { DrawerActions } from '../toolbox/DrawerActions';
 
-interface AgentEntry { id: string; name: string; description?: string; source?: string; path?: string; remote?: boolean }
+interface AgentEntry { id: string; name: string; description?: string; source?: string; path?: string; remote?: boolean; group?: string }
 interface Options {
     backend: Pick<ApplicationBackend, 'toolboxView'>;
     resourceId(id: string): string | undefined;
@@ -18,10 +19,9 @@ interface Options {
     remove?(id: string): Promise<void>;
     usage?: EditorOptions['executorUsage'];
 }
-
 const log = createModuleLogger('agent-drawer');
 
-/** A lazy launch surface; configuration persistence stays in the existing host services. */
+/** Host actions share the browser's selection, menus and batch operation lifecycle. */
 export class AgentDrawer {
     private readonly drawer: Drawer;
     readonly element: HTMLElement;
@@ -29,35 +29,30 @@ export class AgentDrawer {
     private readonly status = document.createElement('p');
     private readonly abort = new AbortController();
     private readonly view;
+    private browser?: VFSBrowser;
     private readonly cleanups: Array<() => void> = [];
     private entries: AgentEntry[] = [];
-    private query = '';
     private expanded = false;
     private visible = true;
     private dirty = true;
     private loading = false;
-    private pendingAction = false;
     private loaded = false;
+    private pendingAction = false;
     constructor(private readonly options: Options) {
         this.view = lazyResource(async () => {
             const view = await options.backend.toolboxView();
             if (!this.abort.signal.aborted) this.cleanups.push(view.resources.subscribe(() => this.invalidate()));
             return view;
         }, view => view.dispose());
-        this.drawer = new Drawer({title: t('toolbox.agents'), showHeader: false, collapsible: false,
-            search: {label: t('workbench.findAgents'), onChange: query => {this.query = query; this.render();}}});
+        this.drawer = new Drawer({title: t('toolbox.agents'), showHeader: false, collapsible: false});
         this.element = this.drawer.element; this.element.classList.add('workbench-agents');
-        const create = this.button(t('workbench.createAgent'), FILE_BROWSER_ICONS.addFile, () => this.create());
-        const refresh = this.button(t('workbench.refresh'), FILE_BROWSER_ICONS.refresh, async () => {this.dirty = true; await this.refresh();}, true);
-        create.dataset.action = 'create-agent'; this.status.setAttribute('role', 'status');
-        const toolbar = document.createElement('div'); toolbar.className = 'workbench-agents__toolbar'; toolbar.append(create, refresh);
         this.rows.className = 'workbench-agents__list'; this.status.className = 'workbench-agents__status';
-        this.drawer.content.append(toolbar, this.status, this.rows);
-        const stop = options.usage?.subscribe?.(() => this.render()); if (stop) this.cleanups.push(stop);
+        this.status.setAttribute('role', 'status'); this.drawer.content.append(this.status, this.rows);
+        const stop = options.usage?.subscribe?.(() => {void this.browser?.refresh();}); if (stop) this.cleanups.push(stop);
     }
-    setExpanded(expanded: boolean): void { this.expanded = expanded; if (expanded) void this.refresh(); }
-    setVisible(visible: boolean): void { this.visible = visible; if (visible && this.expanded) void this.refresh(); }
-    private invalidate(): void { this.dirty = true; if (this.visible && this.expanded) void this.refresh(); }
+    setExpanded(expanded: boolean): void {this.expanded = expanded; if (expanded) void this.refresh();}
+    setVisible(visible: boolean): void {this.visible = visible; if (visible && this.expanded) void this.refresh();}
+    private invalidate(): void {this.dirty = true; if (this.visible && this.expanded) void this.refresh();}
     private async refresh(): Promise<void> {
         if (this.loading || !this.dirty || !this.visible || !this.expanded || this.abort.signal.aborted) return;
         this.loading = true; this.dirty = false; this.status.textContent = t('status.loading');
@@ -69,102 +64,129 @@ export class AgentDrawer {
             if (this.abort.signal.aborted || !this.expanded || !this.visible) {this.dirty = true; return;}
             this.entries = agents.map(agent => ({id: agent.id, name: agent.name, description: agent.description,
                 path: this.options.resourceId(agent.id) ? toolboxPath('agents', this.options.resourceId(agent.id)!) : undefined}));
+            for (const agent of this.entries) if (agent.path) {
+                const group = view.resources.drawers.forPath(agent.path);
+                agent.group = group?.id !== ungroupedId('agents') ? group?.name : undefined;
+            }
             this.entries.push(...[...view.inventory.remoteAgents.values()].map(agent => ({id: agent.id, name: agent.name,
                 description: agent.description, source: agent.source, remote: true,
                 path: toolboxPath('agents', '/@remote/' + encodeURIComponent(agent.id) + '.agent')})));
-            this.status.textContent = ''; succeeded = this.loaded = true;
-        } catch (error) {
-            this.dirty = true;
-            if (!this.abort.signal.aborted) this.status.textContent = describeErrorReason(error);
-        } finally {
-            this.loading = false;
-            if (!this.abort.signal.aborted) this.render();
-            if (succeeded && this.dirty) void this.refresh();
-        }
+            await this.render(); this.status.textContent = ''; succeeded = this.loaded = true;
+        } catch (error) {this.dirty = true; this.report(error);}
+        finally {this.loading = false; if (succeeded && this.dirty) void this.refresh();}
     }
-    private render(): void {
+    private node(agent: AgentEntry): BrowserNode {
+        return {id: agent.id, label: agent.name, parentId: null, kind: 'file', icon: TOOLBOX_ICONS.agents,
+            description: [agent.group, agent.description, agent.source].filter(Boolean).join(' · '),
+            tags: agent.group ? [agent.group] : [],
+            modifiedAt: this.options.usage?.lastUsed(agent.id) ?? 0, readOnly: agent.remote};
+    }
+    private async render(): Promise<void> {
         if (this.abort.signal.aborted) return;
-        const query = this.query.trim().toLocaleLowerCase();
-        const entries = this.entries.filter(agent => [agent.name, agent.description, agent.source].join('\n').toLocaleLowerCase().includes(query));
-        entries.sort((a, b) => (this.options.usage?.lastUsed(b.id) ?? 0) - (this.options.usage?.lastUsed(a.id) ?? 0) || a.name.localeCompare(b.name));
-        this.rows.replaceChildren(...entries.map(agent => this.row(agent)));
-        if (!entries.length && !this.loading) this.rows.textContent = t('workbench.noAgents');
+        if (this.browser) {await this.browser.refresh(); return;}
+        this.browser = createVFSBrowser({container: this.rows, title: t('toolbox.agents'), presentation: nestOSVFSPresentation,
+            searchPlaceholder: t('workbench.findAgents'),
+            appearance: {showTitle: false, showTimestamp: false, menuVisibility: 'always'},
+            sort: {by: 'lastModified', direction: 'desc'}, selection: true,
+            source: {children: async parent => parent === null ? this.entries.map(agent => this.node(agent)) : [],
+                get: async id => {const agent = this.entries.find(entry => entry.id === id); return agent ? this.node(agent) : undefined;},
+                subscribe: () => () => {}}, actions: this.actions(), onError: error => this.report(error),
+            onActivate: node => {const agent = this.entries.find(entry => entry.id === node.id);
+                if (agent) void this.activate(agent);},
+        });
+        await this.browser.start();
     }
-    private row(agent: AgentEntry): HTMLElement {
-        const row = document.createElement('div'); row.className = 'workbench-agents__row'; row.dataset.agentId = agent.id;
-        const primary = this.button(agent.name, TOOLBOX_ICONS.agents,
-            () => agent.remote ? this.configure(agent) : this.options.start(agent.id));
-        primary.className = 'workbench-agents__launch'; primary.title = t(agent.remote ? 'workbench.agentDetails' : 'workbench.startWithAgent', {name: agent.name});
-        primary.setAttribute('aria-label', primary.title);
-        const text = primary.lastElementChild!;
-        const name = document.createElement('span'); name.textContent = agent.name; text.replaceChildren(name);
-        if (agent.description) {const description = document.createElement('small'); description.textContent = agent.description; text.append(description);}
-        row.append(primary, this.menu(agent)); return row;
+    private actions(): BrowserAction[] {
+        const toolbar = (id: string, label: string, run: () => Promise<void>, iconHTML?: string): BrowserAction =>
+            ({id, label, iconHTML, placements: ['toolbar'], run});
+        return [toolbar('create-agent', t('workbench.createAgent'), () => this.create()),
+            toolbar('refresh-agents', t('workbench.refresh'), async () => {this.dirty = true; await this.refresh();}, FILE_BROWSER_ICONS.refresh),
+            this.menu('configure-agent', t('workbench.configureAgent'), agent => this.configure(agent)),
+            ...(this.options.rename ? [this.menu('rename-agent', t('action.rename'), agent => this.rename(agent), true)] : []),
+            ...(this.options.remove ? [this.menu('delete-agent', t('action.delete'), agent => this.remove([agent.id]), true)] : []),
+            this.batch('bulk-delete', t('action.delete'), ids => this.remove(ids), !!this.options.remove),
+            this.batch('bulk-move', t('toolbox.moveDrawer'), ids => this.move(ids)),
+            this.menu('move-agent', t('toolbox.moveDrawer'), agent => this.move([agent.id]), true)];
     }
-    private menu(agent: AgentEntry): HTMLElement {
-        const menu = document.createElement('details'); menu.className = 'workbench-agents__menu';
-        const summary = document.createElement('summary'); summary.innerHTML = FILE_BROWSER_ICONS.more;
-        summary.title = t('chat.toolbar.more'); summary.setAttribute('aria-label', summary.title);
-        const items = document.createElement('div'); items.className = 'workbench-agents__menu-items';
-        const action = (id: string, label: string, run: () => Promise<void>) => {
-            const button = this.button(label, '', async () => {menu.open = false; await run();});
-            button.dataset.action = id; items.append(button); return button;
-        };
-        action('configure-agent', t('workbench.configureAgent'), () => this.configure(agent)).disabled = !agent.path;
-        if (!agent.remote && this.options.rename) action('rename-agent', t('action.rename'), () => this.rename(agent));
-        if (!agent.remote && this.options.remove) action('delete-agent', t('action.delete'), () => this.remove(agent));
-        menu.onkeydown = event => {if (event.key === 'Escape') {menu.open = false; summary.focus();}};
-        menu.append(summary, items); return menu;
+    private menu(id: string, label: string, run: (agent: AgentEntry) => Promise<void>, local = false): BrowserAction {
+        return {id, label, placements: ['menu'], state: ({target}) => {const agent = this.entries.find(entry => entry.id === target?.id);
+            return {visible: !!agent && (!local || !agent.remote), enabled: !!agent?.path && !this.pendingAction};},
+            run: async ({target}) => {const agent = this.entries.find(entry => entry.id === target?.id); if (agent) await run(agent);}};
+    }
+    private batch(id: string, label: string, run: (ids: string[]) => Promise<void>, enabled = true): BrowserAction {
+        return {id, label, placements: ['selection'], state: ({selection}) => ({visible: enabled,
+            enabled: !this.pendingAction && selection.length > 0 && selection.every(node => this.entries.some(agent => agent.id === node.id && !agent.remote && !!agent.path))}),
+            run: async ({selection}) => run(selection.map(node => node.id))};
+    }
+    private async local(ids: readonly string[]): Promise<AgentEntry[]> {
+        const started = Date.now();
+        const view = await this.view.get(), current = new Set((await view.resources.getAgents()).map(agent => agent.id));
+        const entries = ids.map(id => this.entries.find(entry => entry.id === id));
+        if (!ids.length || entries.some(agent => !agent || agent.remote || !agent.path || !current.has(agent.id))) {
+            log.warn('agent.manage', {operationId: randomUUID(), stage: 'catalog.validate', result: 'failure',
+                count: ids.length, code: 'AGENT_SELECTION_UNAVAILABLE', durationMs: Date.now() - started});
+            throw Object.assign(new Error(t('workbench.agentSelectionChanged')), {code: 'AGENT_SELECTION_UNAVAILABLE'});
+        }
+        return entries as AgentEntry[];
+    }
+    private async remove(ids: string[]): Promise<void> {
+        const remove = createDeleteOperation<string[]>({resolve: async ids => {
+            await this.local(ids);
+            return {resources: [{ids, remove: async (selected, signal) => {
+                for (const id of selected) {if (signal.aborted) return 'cancelled'; await this.options.remove!(id);}
+                return 'completed';
+            }}]};
+        }, confirm: () => Promise.resolve(confirm(t('workbench.deleteAgentsHint', {count: ids.length}))),
+        completed: () => this.browser?.setSelectionMode(false)});
+        await this.mutate(ids.length, 'delete', () => remove(ids, this.abort.signal));
+    }
+    private async move(ids: string[]): Promise<void> {
+        const entries = await this.local(ids), view = await this.view.get();
+        const actions = new DrawerActions({groups: view.resources.drawers, signal: this.abort.signal,
+            refresh: () => this.invalidate(), title: path => this.entries.find(agent => agent.path === path)?.name ?? path,
+            create: async () => {await this.create();}});
+        await this.mutate(ids.length, 'move', () => actions.moveSelection('agents', entries.map(agent => agent.path!), async () => {await this.local(ids);}));
     }
     private async rename(agent: AgentEntry): Promise<void> {
         await showNameDialog(t('action.rename'), t('workbench.name'), this.abort.signal,
-            name => this.mutate(agent.id, 'rename', () => this.options.rename!(agent.id, name)), undefined, {initialName: agent.name});
+            name => this.mutate(1, 'rename', async () => {await this.local([agent.id]); await this.options.rename!(agent.id, name);}),
+            undefined, {initialName: agent.name});
     }
-    private async remove(agent: AgentEntry): Promise<void> {
-        if (!confirm(t('workbench.deleteAgentHint', {name: agent.name})) || this.abort.signal.aborted) return;
-        await this.mutate(agent.id, 'delete', () => this.options.remove!(agent.id));
-    }
-    private async mutate(agentId: string, operation: string, run: () => Promise<void>): Promise<void> {
-        const started = Date.now(), operationId = randomUUID();
-        try {
-            await run(); this.dirty = true; await this.refresh();
-            log.info('agent.manage', {agentId, operationId, operation, stage: 'persist', result: 'success', durationMs: Date.now() - started});
-        } catch (error) {
+    private async mutate(count: number, operation: string, run: () => Promise<unknown>): Promise<void> {
+        if (this.pendingAction || this.abort.signal.aborted) return;
+        const started = Date.now(), operationId = randomUUID(); this.pendingAction = true;
+        try {const result = await run(); log.info('agent.manage', {operationId, operation, count, stage: 'persist', result: result === 'cancelled' ? 'cancelled' : 'success', durationMs: Date.now() - started});}
+        catch (error) {
             const code = (error as {code?: string})?.code;
-            log.warn('agent.manage', {agentId, operationId, operation, stage: 'persist', result: 'failure',
+            log.warn('agent.manage', {operationId, operation, count, stage: 'persist', result: 'failure',
                 code: code && /^[A-Z][A-Z0-9_]{0,63}$/.test(code) ? code : 'AGENT_UPDATE_FAILED', durationMs: Date.now() - started});
             throw error;
-        }
+        } finally {this.pendingAction = false; this.dirty = true; await this.refresh();}
+    }
+    private report(error: unknown): void {if (!this.abort.signal.aborted) this.status.textContent = describeErrorReason(error);}
+    private async activate(agent: AgentEntry): Promise<void> {
+        if (this.pendingAction || this.abort.signal.aborted) return;
+        this.pendingAction = true;
+        try {await (agent.remote ? this.configure(agent) : this.options.start(agent.id));}
+        catch (error) {this.report(error);}
+        finally {this.pendingAction = false;}
     }
     private configure(agent: AgentEntry): Promise<void> {
-        if (this.options.edit) return this.options.edit(agent.id);
-        return this.options.navigate({target: 'toolbox', resourceId: agent.path ?? '/agents'});
-    }
-    private button(label: string, icon: string, run: () => Promise<void>, iconOnly = false): HTMLButtonElement {
-        const button = document.createElement('button'); button.type = 'button'; decorateButton(button, icon, label, iconOnly);
-        button.onclick = () => {
-            if (this.abort.signal.aborted || button.disabled || this.pendingAction) return;
-            button.disabled = true; this.pendingAction = true;
-            void run().catch(error => {if (!this.abort.signal.aborted) this.status.textContent = describeErrorReason(error);})
-                .finally(() => {this.pendingAction = false; if (!this.abort.signal.aborted) button.disabled = false;});
-        };
-        return button;
+        return this.options.edit ? this.options.edit(agent.id) : this.options.navigate({target: 'toolbox', resourceId: agent.path ?? '/agents'});
     }
     private async create(): Promise<void> {
         await showNameDialog(t('workbench.createAgent'), t('workbench.name'), this.abort.signal, async name => {
-            const view = await this.view.get();
-            if (this.abort.signal.aborted) return;
-            const path = await view.resources.create('agents', name);
-            if (this.abort.signal.aborted) return;
+            const view = await this.view.get(); if (this.abort.signal.aborted) return;
+            const path = await view.resources.create('agents', name); if (this.abort.signal.aborted) return;
             if (this.options.edit) {
                 const agent = (await view.resources.getAgents()).find(item => toolboxPath('agents', this.options.resourceId(item.id) ?? '') === path);
-                if (!agent) throw new Error(t('toolbox.unavailable'));
-                await this.options.edit(agent.id);
+                if (!agent) throw new Error(t('toolbox.unavailable')); await this.options.edit(agent.id);
             } else await this.options.navigate({target: 'toolbox', resourceId: path});
         });
     }
     async destroy(): Promise<void> {
         this.abort.abort(); const errors: unknown[] = [];
+        try {this.browser?.destroy();} catch (error) {errors.push(error);}
         for (const close of this.cleanups.splice(0)) {try {close();} catch (error) {errors.push(error);}}
         try {this.drawer.destroy();} catch (error) {errors.push(error);}
         try {await this.view.close();} catch (error) {errors.push(error);}

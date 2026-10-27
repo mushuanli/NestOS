@@ -67,7 +67,32 @@
 }
 
 /* --- 列表区 --- */
+.llm-popup__filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 8px 12px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--llm-border-color);
+}
+
+.llm-popup__filter {
+    padding: 8px 12px;
+    border: 1px solid var(--llm-border-color);
+    border-radius: var(--llm-radius-md);
+    background: var(--llm-bg-tertiary);
+    color: var(--llm-text-primary);
+    font: inherit;
+    cursor: pointer;
+}
+
+.llm-popup__filter[aria-pressed="true"] {
+    border-color: var(--llm-color-primary);
+    color: var(--llm-color-primary);
+}
+
 .llm-popup__list {
+    min-height: 0;
     overflow-y: auto;
     max-height: 320px;
     padding: 4px 0;

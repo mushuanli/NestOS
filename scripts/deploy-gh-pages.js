@@ -32,19 +32,21 @@ try {
     // Clean up stale worktree from previous failed runs
     cleanup();
 
-    execSync('git fetch origin gh-pages', { cwd: rootDir, stdio: 'inherit' });
-
-    // Ensure gh-pages branch exists locally
-    try {
-        execSync('git rev-parse --verify gh-pages', { cwd: rootDir, stdio: 'pipe' });
-    } catch {
-        console.log('📥 Fetching gh-pages branch from origin...');
-        execSync('git fetch origin gh-pages:gh-pages', { cwd: rootDir, stdio: 'inherit' });
+    const remotePages = execSync('git ls-remote --heads origin gh-pages', { cwd: rootDir, encoding: 'utf8' }).trim();
+    console.log('🌲 Creating deployment worktree...');
+    if (remotePages) {
+        execSync('git fetch origin gh-pages', { cwd: rootDir, stdio: 'inherit' });
+        execSync(`git worktree add -B gh-pages "${worktreeDir}" origin/gh-pages`, { cwd: rootDir, stdio: 'inherit' });
+    } else {
+        let localPages = false;
+        try { execSync('git rev-parse --verify gh-pages', { cwd: rootDir, stdio: 'pipe' }); localPages = true; } catch { /* New repository. */ }
+        if (localPages) execSync(`git worktree add "${worktreeDir}" gh-pages`, { cwd: rootDir, stdio: 'inherit' });
+        else {
+            execSync(`git worktree add --detach --no-checkout "${worktreeDir}" HEAD`, { cwd: rootDir, stdio: 'inherit' });
+            execSync('git switch --orphan gh-pages', { cwd: worktreeDir, stdio: 'inherit' });
+        }
+        console.log('First Pages deployment: select gh-pages / (root) in the repository Settings → Pages.');
     }
-
-    // Create worktree from gh-pages
-    console.log('🌲 Creating worktree...');
-    execSync(`git worktree add -B gh-pages "${worktreeDir}" origin/gh-pages`, { cwd: rootDir, stdio: 'inherit' });
 
     // Clear all files except .git
     for (const file of fs.readdirSync(worktreeDir)) {

@@ -23,6 +23,8 @@ HTTP 发行包已使用 `nestos`，命令为 `nestos httpd`；完整 CLI 仍是�
 
 旧库快照包含旧包名时不会直接用于新构建；下一次 `pnpm lib:build` 会因目录清单变化准备完整的新快照。
 
+部署脚本支持新仓库首次创建 gh-pages 分支；首次部署后在 GitHub Settings → Pages 选择 gh-pages / (root)。本轮没有重新构建或部署页面。
+
 新 Pages 地址为 <https://mushuanli.github.io/NestOS/>。仓库链接、子模块、文档和包清单同步更新；本地 checkout 的物理目录不必随 repo 改名。
 
 ## 配置和既有数据

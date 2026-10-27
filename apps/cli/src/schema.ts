@@ -211,9 +211,9 @@ export const workflowSchema = z.strictObject({
         root: z.string().optional(),
         state_dir: z.string().optional(),
     }).optional(),
-    providers: z.array(providerSchema).min(1),
-    connections: z.array(connectionSchema).min(1),
-    agents: z.array(agentSchema).min(1),
+    providers: z.array(providerSchema).default([]),
+    connections: z.array(connectionSchema).default([]),
+    agents: z.array(agentSchema).default([]),
     tasks: z.array(taskSchema).min(1),
     result: z.strictObject({
         task: z.string(),

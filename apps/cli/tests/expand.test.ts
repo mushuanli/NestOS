@@ -4,6 +4,30 @@ import { validateWorkflow } from '../src/config';
 import type { WorkflowConfigV1 } from '../src/types';
 
 describe('expandWorkflow', () => {
+    it('expands Tool/MCP input and output steps without requiring a model', () => {
+        const source = {version: 1, name: 'collect', goal: 'Collect material', tasks: [
+            {id: 'fetch', kind: 'tool', mcp: {server: 'knowledge_base', tool: 'search'}, args: {query: 'recent'}},
+            {id: 'save', tool: 'fixture.save', inputs: {input: '${tasks.fetch.outputs.result}'}, args: {format: 'json'}},
+        ], result: 'save'};
+        const expanded = expandWorkflow(source) as WorkflowConfigV1;
+        const config = validateWorkflow(expanded, false);
+        expect(config.agents).toEqual([]);
+        expect(config.tasks[0].node).toMatchObject({plugin: 'builtin.tool',
+            capabilities: ['mcp__knowledge_5Fbase__search'], config: {toolVersion: '1', approval: 'all'}});
+        expect(config.tasks[1].inputs).toEqual({input: '${tasks.fetch.outputs.result}'});
+        expect(source.tasks[0].kind).toBe('tool');
+    });
+
+    it.each([
+        {tool: 'fixture', mcp: {server: 's', tool: 't'}},
+        {tool: 'fixture', kind: 'agent'},
+        {tool: 'fixture', agent: 'writer'},
+        {mcp: {server: 's', tool: 't', command: 'untrusted'}},
+        {tool: 'fixture', args: []},
+        {tool: 'fixture', approval: 'invalid'},
+    ])('rejects ambiguous or invalid tool shortcuts: %j', fields => {
+        expect(() => expandWorkflow({tasks: [{id: 'fetch', ...fields}]})).toThrow();
+    });
     it('expands model/env/prompt/needs shorthand into a full workflow', () => {
         const expanded = expandWorkflow({
             version: 1,

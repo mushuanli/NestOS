@@ -1,5 +1,11 @@
 export const MCP_PROTOCOL_VERSION = '2026-07-28' as const;
 
+/** Canonical, collision-free identity shared by configuration and execution. */
+export function mcpToolId(server: string, tool: string): string {
+    const encode = (value: string) => encodeURIComponent(value).replace(/_/g, '%5F').replace(/%/g, '_');
+    return `mcp__${encode(server)}__${encode(tool)}`;
+}
+
 export interface MCPAuthentication {
     type: 'basic' | 'bearer' | 'anonymous';
     credentialRef: string;

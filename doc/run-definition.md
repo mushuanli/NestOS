@@ -128,6 +128,28 @@ CLI Agent memory_policy 经 memoryPolicyForAgent 转换为 RunAgentConfig.memory
 
 ## 通用插件节点 DSL
 
+YAML 支持确定性 Tool/MCP 简写，编译到同一个 `builtin.tool@1.0.0`；可用于开始取数、中间处理和结束保存。MCP 只引用宿主已配置的服务，不接受地址、凭据或执行命令。仅含工具的工作流无需声明 providers/connections/agents。默认审批为 `all`，`tool_version` 缺省为字符串 `"1"`。
+
+```yaml
+version: 1
+name: collect-and-save
+goal: Collect and save material
+tasks:
+  - id: fetch
+    kind: tool
+    mcp: { server: knowledge, tool: search }
+    args: { query: recent }
+  - id: save
+    tool: fixture.save
+    tool_version: "1"
+    args: { format: json }
+    inputs:
+      input: ${tasks.fetch.outputs.result}
+result: save
+```
+
+`input` 端口接收工具参数对象，与固定 args 合并；字段冲突报错。非对象结果先通过通用转换节点映射为参数对象。恢复使用持久任务输入及结果，不因重新读取 YAML 而重复执行已完成步骤。
+
 WorkflowTaskSpec 支持 `kind: node`，通过 node 定义版本化插件；depends_on、inputs、budget、retry 等仍由工作流编译器处理。例如：
 
 ```yaml

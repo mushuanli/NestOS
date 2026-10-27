@@ -3,6 +3,8 @@
 // 供 loadWorkflow 在 Zod 校验之前调用。完整写法（providers/connections/agents/tasks）
 // 与简写写法可混用：简写生成 default 资源，用户显式定义的资源追加合并。
 
+import { mcpToolId } from '@itookit/tools/mcp-contracts';
+
 const PROVIDER_PRESETS: Record<string, { implementation: string; base_url: string }> = {
     anthropic: { implementation: 'anthropic', base_url: 'https://api.anthropic.com' },
     openai: { implementation: 'openai-compatible', base_url: 'https://api.openai.com/v1' },
@@ -53,6 +55,7 @@ function expandModel(result: Record<string, unknown>): void {
 function expandTask(raw: unknown): unknown {
     if (!isRecord(raw)) return raw;
     const task: Record<string, unknown> = { ...raw };
+    expandToolTask(task);
     if (task.prompt !== undefined && task.description === undefined) task.description = task.prompt;
     delete task.prompt;
     if (task.needs !== undefined && task.depends_on === undefined) {
@@ -62,10 +65,39 @@ function expandTask(raw: unknown): unknown {
     if (task.uses !== undefined && task.agent === undefined) task.agent = task.uses;
     delete task.uses;
     // 控制节点（route/spawn/supervisor）不需要 agent 与 outputs 声明。
-    const isControl = task.route !== undefined || task.spawn !== undefined || task.supervisor !== undefined;
+    const isControl = task.route !== undefined || task.spawn !== undefined || task.supervisor !== undefined || task.node !== undefined;
     if (!isControl && task.agent === undefined) task.agent = 'default';
     if (!isControl && task.outputs === undefined) task.outputs = { result: 'text' };
     return task;
+}
+
+/** Tool sugar only selects trusted host identities; it never carries executable code. */
+function expandToolTask(task: Record<string, unknown>): void {
+    if (task.tool === undefined && task.mcp === undefined && task.kind !== 'tool') return;
+    if (task.tool !== undefined && task.mcp !== undefined) throw new Error(`Task ${task.id} cannot combine tool and mcp`);
+    if (task.node !== undefined || task.agent !== undefined || task.uses !== undefined || task.route !== undefined
+        || task.spawn !== undefined || task.supervisor !== undefined || task.kind !== undefined && task.kind !== 'tool')
+        throw new Error(`Task ${task.id} tool conflicts with its execution target`);
+    const toolId = toolReference(task);
+    const version = task.tool_version ?? '1';
+    if (typeof version !== 'string' || !version.trim()) throw new Error(`Task ${task.id} requires a tool_version string`);
+    if (task.args !== undefined && !isRecord(task.args)) throw new Error(`Task ${task.id} args must be an object`);
+    if (task.approval !== undefined && task.approval !== 'all' && task.approval !== 'none')
+        throw new Error(`Task ${task.id} approval must be all or none`);
+    task.kind = 'node';
+    task.node = { plugin: 'builtin.tool', pluginVersion: '1.0.0', capabilities: [toolId],
+        config: { toolId, toolVersion: version, args: task.args ?? {}, approval: task.approval ?? 'all' } };
+    task.outputs ??= { result: 'json' };
+    for (const key of ['tool', 'mcp', 'tool_version', 'args', 'approval']) delete task[key];
+}
+
+function toolReference(task: Record<string, unknown>): string {
+    if (typeof task.tool === 'string' && task.tool.trim()) return task.tool;
+    const mcp = task.mcp;
+    if (!isRecord(mcp) || Object.keys(mcp).some(key => !['server', 'tool'].includes(key))
+        || typeof mcp.server !== 'string' || !mcp.server.trim() || typeof mcp.tool !== 'string' || !mcp.tool.trim())
+        throw new Error(`Task ${task.id} requires tool or mcp: { server, tool }`);
+    return mcpToolId(mcp.server, mcp.tool);
 }
 
 function parseModel(model: unknown): { providerId: string; modelId: string } {

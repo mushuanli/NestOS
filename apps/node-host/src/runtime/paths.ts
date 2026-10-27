@@ -2,11 +2,11 @@ import path from 'node:path';
 import {mkdir, realpath} from 'node:fs/promises';
 
 interface HostPaths {root: string; sidecar: string; authDir: string; auditFile: string}
-function within(root: string, target: string): boolean {
+export function within(root: string, target: string): boolean {
     const relative = path.relative(root, target);
     return relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
 }
-async function canonical(value: string): Promise<string> {
+export async function canonical(value: string): Promise<string> {
     try { return await realpath(value); }
     catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;

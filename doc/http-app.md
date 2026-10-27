@@ -390,13 +390,18 @@ HTTP 自动恢复保留聊天正文草稿、附件、连接选择、光标与标
 
 ## npm 分发
 
-HTTP 工作台以 `mindnest@0.1.0` 发布，使用 `npm install -g mindnest@0.1.0` 安装，
-`mindnest init-certs --cert-host <实际 IP/DNS>` 初始化身份，导入 CA 和浏览器个人证书后运行 `mindnest httpd`。
+HTTP 工作台以 `nestos@0.1.0` 发布，使用 `npm install -g nestos@0.1.0` 安装，
+`nestos init-certs --cert-host <实际 IP/DNS>` 初始化身份，导入 CA 和浏览器个人证书后运行 `nestos httpd`。
 支持聊天/分支、Agent/Flow、Markdown/嵌入式 AI、附件、项目文件、工具箱和共享工作台；模型与远程项目仍需相应配置。
 完整启动参数、功能与升级说明见 [npm README](../apps/http-app/npm/README.md)。
 
-打包入口 `pnpm mindnest:pack` 复用本地库快照与隔离 HTTP 构建，不激活运行版本；
+打包入口 `pnpm nestos:pack` 复用本地库快照与隔离 HTTP 构建，不激活运行版本；
 服务端编译记录外部运行依赖，npm 包冻结为公开注册表版本，由目标系统安装原生模块。
 只打包 bin/server/dist、构建身份、README 和许可证；私有工作区依赖打入服务端，用户数据与证书不进包。
-`pnpm mindnest:publish` 按已准备 tarball 的 SHA-256 核对后发布。npm 进程以前台日志运行，
+`pnpm nestos:publish` 按已准备 tarball 的 SHA-256 核对后发布。npm 进程以前台日志运行，
 默认审计仍在用户配置目录的 `logs/http/`，仓库 `pnpm httpd` 的系统日志路径不变。
+
+首次交互终端启动（stdin/stdout 均为 TTY）缺少证书目录时，询问是否初始化，默认否，并收集访问 IP/DNS。
+用户确认后复用 createCertificates，完成后显示 CA/浏览器个人证书导入位置并继续启动；不记录密钥、密码或证书正文。
+已有证书目录不覆盖；非交互启动缺少目录时直接报出 --init-certs 命令，不等待输入。
+初始化前解析真实父目录，检查证书目的地不在数据根或静态网页根中，包含符号链接父路径。

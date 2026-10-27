@@ -19,9 +19,9 @@ MindOS 以"操作系统"的理念重新定义 AI 应用：所有内容——对�
 ### 通过 npm 运行 HTTP 工作台
 
 ```bash
-npm install -g mindnest@0.1.0
-mindnest init-certs --cert-host 192.168.31.10
-mindnest httpd
+npm install -g nestos@0.1.0
+nestos init-certs --cert-host 192.168.31.10
+nestos httpd
 ```
 
 Node.js >=22.13；初始化证书需要 OpenSSL。将示例 IP 换成实际地址，导入生成的 CA 和浏览器个人证书后，

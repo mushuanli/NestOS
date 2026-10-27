@@ -3,6 +3,7 @@ import { mkdir, realpath, access } from 'node:fs/promises';
 import path from 'node:path';
 import { loadCertificates } from './certificates';
 import { createCertificates } from './create-certificates';
+import {ensureStartupCertificates, protectCertificateDirectory, reportCertificateFiles} from './startup-certificates';
 import { configDirectory, resolveDataRoot, resolveHttpDirectories } from '../runtime/profile';
 import { options } from './options';
 
@@ -13,12 +14,16 @@ export async function runHttpHost(args = process.argv.slice(2), defaultStaticDir
     const cwd = process.env.INIT_CWD ?? process.cwd(), config = configDirectory();
     const {certDir, authDir: authPath} = await resolveHttpDirectories(config, cwd,
         {certDir: values['cert-dir'], authDir: values['auth-dir']}, logMode);
-    if (values['init-certs']) {
-        await createCertificates(certDir, (values['cert-host'] ?? (values.host === '0.0.0.0' || values.host === '::' ? '127.0.0.1' : values.host)).split(',').map(host => host.trim()));
-        console.log(`Certificates created: ${certDir}\nBrowser identity: ${path.join(certDir, 'browser-client.p12')}\nImport password file: ${path.join(certDir, 'client-password.txt')}`); return;
-    }
     const root = await resolveDataRoot(config, cwd, values.root), sidecar = path.resolve(cwd, values.sidecar ?? path.join(root, '_meta'));
+    const configuredStatic = values.static ? path.resolve(cwd, values.static) : defaultStaticDir;
+    const certificateHosts = values['cert-host'] ?? (values.host === '0.0.0.0' || values.host === '::' ? '127.0.0.1' : values.host);
+    await protectCertificateDirectory(certDir, root, configuredStatic);
+    if (values['init-certs']) {
+        await createCertificates(certDir, certificateHosts.split(',').map(host => host.trim()));
+        reportCertificateFiles(certDir); return;
+    }
     const staticDir = values.static ? path.resolve(cwd, values.static) : defaultStaticDir ?? (() => { throw new Error('Expected --static UI directory'); })();
+    await ensureStartupCertificates(certDir, certificateHosts);
     const auditFile = path.resolve(cwd, values['audit-file'] ?? path.join(config, 'logs', 'http', `httpd-${logMode}-audit.jsonl`));
     await mkdir(authPath, { recursive: true, mode: 0o700 });
     const authDir = await realpath(authPath);

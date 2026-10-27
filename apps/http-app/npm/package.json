@@ -1,10 +1,10 @@
 {
-  "name": "mindnest",
+  "name": "nestos",
   "version": "0.1.0",
-  "description": "MindNest: the MindOS HTTPS workspace for AI chat, agents, flows, Markdown documents and project files.",
+  "description": "NestOS: the MindOS HTTPS workspace for AI chat, agents, flows, Markdown documents and project files.",
   "type": "module",
   "bin": {
-    "mindnest": "./bin/mindnest.mjs"
+    "nestos": "./bin/nestos.mjs"
   },
   "files": [
     "bin",
@@ -27,7 +27,7 @@
     "url": "https://github.com/mushuanli/itookit/issues"
   },
   "keywords": [
-    "mindnest",
+    "nestos",
     "mindos",
     "ai",
     "chat",

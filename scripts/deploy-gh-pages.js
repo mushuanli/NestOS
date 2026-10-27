@@ -32,6 +32,8 @@ try {
     // Clean up stale worktree from previous failed runs
     cleanup();
 
+    execSync('git fetch origin gh-pages', { cwd: rootDir, stdio: 'inherit' });
+
     // Ensure gh-pages branch exists locally
     try {
         execSync('git rev-parse --verify gh-pages', { cwd: rootDir, stdio: 'pipe' });
@@ -54,6 +56,9 @@ try {
     // Copy build output
     console.log('📂 Copying build output...');
     fs.cpSync(distDir, worktreeDir, { recursive: true });
+    const commit = execSync('git rev-parse HEAD', { cwd: rootDir, encoding: 'utf8' }).trim();
+    fs.writeFileSync(path.join(worktreeDir, 'build.json'), JSON.stringify({ commit, deployedAt: new Date().toISOString() }) + '\n');
+    fs.writeFileSync(path.join(worktreeDir, '.nojekyll'), '');
 
     // Commit if there are changes
     execSync('git add -A', { cwd: worktreeDir, stdio: 'inherit' });
@@ -61,7 +66,7 @@ try {
 
     if (status.trim()) {
         const dateStr = new Date().toISOString().replace('T', ' ').slice(0, 16);
-        const msg = `deploy: sync v4.0 — ${dateStr}`;
+        const msg = `deploy(pages): publish ${commit.slice(0, 8)} — ${dateStr}`;
         execSync(`git commit -m "${msg}"`, { cwd: worktreeDir, stdio: 'inherit' });
         execSync('git push origin gh-pages', { cwd: worktreeDir, stdio: 'inherit' });
         console.log('✅ Deployed to gh-pages');

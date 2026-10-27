@@ -29,9 +29,13 @@ export class ToolProgram implements DurableTaskProgram<State, ToolProgramInput, 
             return awaitingInputs(state);
         }
         if (state.phase === 'approval') {
-            if (event.type !== 'interaction-resolved' || event.interactionId !== 'approve:tool' || !interactionApproved(event.value)) return fail(state, 'Tool approval denied');
+            if (event.type !== 'interaction-resolved' || event.interactionId !== 'approve:tool')
+                return {state: {...state}, next: {type: 'wait', on: {type: 'interaction', id: 'approve:tool'}}};
+            if (!interactionApproved(event.value)) return fail(state, 'Tool approval denied', 'TOOL_APPROVAL_DENIED');
             return invoke(state);
         }
+        if (event.type === 'task-exited' || event.type === 'signal')
+            return {state: {...state}, next: {type: 'wait', on: {type: 'effect', id: 'tool'}}};
         if (event.type === 'effect-failed') return { state: { ...state }, next: { type: 'fail', error: event.error } };
         if (event.type !== 'effect-completed' || event.effectId !== 'tool') return fail(state, 'Unexpected tool event');
         const result = event.result as ToolInvokeResult;

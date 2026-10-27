@@ -38,6 +38,15 @@ it('maps a Harness text output to an explicitly named tool argument', () => {
     expect(ready.next).toMatchObject({type: 'wait', on: {type: 'effect', id: 'tool'}});
 });
 
+it('keeps pending approval when duplicate dependency or capability notifications arrive', () => {
+    const program = new ToolProgram(), request = {...input(), approval: 'all' as const};
+    const initial = program.init(request), bound = program.reduce(initial.state, capability);
+    const approval = program.reduce(bound.state, exited({body: 'material'}));
+    const duplicate = program.reduce(approval.state, exited({body: 'different'}));
+    expect(duplicate.next).toEqual({type: 'wait', on: {type: 'interaction', id: 'approve:tool'}});
+    expect(duplicate.state.input.args).toEqual({format: 'json', body: 'material'});
+});
+
 it('does not inject control dependencies or reapply duplicate task exit notifications', () => {
     const program = new ToolProgram();
     const request = input(); request.dependencies!.push({taskId: 'control', input: 'input', injectOutput: false});

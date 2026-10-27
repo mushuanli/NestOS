@@ -2,8 +2,17 @@ import { describe, expect, it } from 'vitest';
 import { expandWorkflow } from '../src/expand';
 import { validateWorkflow } from '../src/config';
 import type { WorkflowConfigV1 } from '../src/types';
+import {compileWorkflow} from '@itookit/llm-flow';
 
 describe('expandWorkflow', () => {
+    it('orders tool dependencies without silently injecting them into arguments', () => {
+        const value = expandWorkflow({version: 1, name: 'ordered', goal: 'Run tools', tasks: [
+            {id: 'fetch', tool: 'fixture.fetch'}, {id: 'save', tool: 'fixture.save', needs: 'fetch'},
+        ], result: 'save'});
+        const config = validateWorkflow(value, false);
+        const graph = compileWorkflow(config.tasks, () => {throw new Error('A tool workflow must not acquire an Agent');});
+        expect(graph.edges).toEqual([expect.objectContaining({from: 'fetch', to: 'save', kind: 'control'})]);
+    });
     it('composes MCP input, a configured Harness and a tool output without a local model', () => {
         const expanded = expandWorkflow({version: 1, name: 'remote-report', goal: 'Report', tasks: [
             {id: 'fetch', mcp: {server: 'knowledge', tool: 'search'}, args: {query: 'recent'}},

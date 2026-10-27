@@ -196,7 +196,8 @@ function compileEdges(
             const onFailure = typeof dependency === 'string' ? undefined : dependency.on_failure;
             if (routeTargets.get(task.id) === depId) continue;
             const alreadyMapped = [...edges.values()].some(edge => edge.from === depId && edge.to === task.id);
-            if (!alreadyMapped) addEdge(edges, depId, task.id, 'result', depId, undefined, onFailure);
+            if (!alreadyMapped) addEdge(edges, depId, task.id, 'result', depId, undefined, onFailure,
+                task.node?.plugin === 'builtin.tool' ? 'control' : undefined);
         }
     }
     return [...edges.values()];
@@ -219,9 +220,10 @@ function addEdge(
     input: string,
     id?: string,
     onFailure?: 'fail' | 'skip' | 'continue',
+    kind?: 'control',
 ): void {
     const edgeId = id ?? `${from}:${output}->${to}:${input}`;
-    edges.set(edgeId, { id: edgeId, from, to, output, input, ...(onFailure ? { onFailure } : {}) });
+    edges.set(edgeId, { id: edgeId, from, to, output, input, ...(kind ? {kind} : {}), ...(onFailure ? { onFailure } : {}) });
 }
 
 function routeEdgeId(from: string, to: string): string {

@@ -4,7 +4,7 @@
 
 | 原名称 | 新名称 |
 | --- | --- |
-| `mushuanli/itookit` | `mushuanli/nestos` |
+| `mushuanli/itookit` | `mushuanli/NestOS` |
 | `mushuanli/mindos-node` | `mushuanli/nestos-node` |
 | `mushuanli/mindos-node-driver` | `mushuanli/nestos-node-driver` |
 | `tools/mindos-node` | `tools/nestos-node` |
@@ -23,7 +23,7 @@ HTTP 发行包已使用 `nestos`，命令为 `nestos httpd`；完整 CLI 仍是�
 
 旧库快照包含旧包名时不会直接用于新构建；下一次 `pnpm lib:build` 会因目录清单变化准备完整的新快照。
 
-新 Pages 地址为 <https://mushuanli.github.io/nestos/>。仓库链接、子模块、文档和包清单同步更新；本地 checkout 的物理目录不必随 repo 改名。
+新 Pages 地址为 <https://mushuanli.github.io/NestOS/>。仓库链接、子模块、文档和包清单同步更新；本地 checkout 的物理目录不必随 repo 改名。
 
 ## 配置和既有数据
 

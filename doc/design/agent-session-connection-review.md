@@ -2,7 +2,7 @@
 
 状态：目标架构有条件通过；已实现增量的架构复核与提交范围见第 14 节。更新：2026-10-25。
 
-评审基线：[itookit 5e9365a](https://github.com/mushuanli/nestos/tree/5e9365ae3aac3d4d0b8e820135e072c01c8389f8)、其锁定的 [llm-ui f39c40b](https://github.com/mushuanli/llm-ui/tree/f39c40ba7d6c88d3c87832e0b2348988f174c2c6) 与 [durable-kernel 0a786b2](https://github.com/mushuanli/durable-kernel/tree/0a786b24c410abdf8b75983c6acb5dd59a247207)。当前工作树已有队列相关增量；第 12 节分别标记基线能力、已确认的兼容问题和目标契约。
+评审基线：[itookit 5e9365a](https://github.com/mushuanli/NestOS/tree/5e9365ae3aac3d4d0b8e820135e072c01c8389f8)、其锁定的 [llm-ui f39c40b](https://github.com/mushuanli/llm-ui/tree/f39c40ba7d6c88d3c87832e0b2348988f174c2c6) 与 [durable-kernel 0a786b2](https://github.com/mushuanli/durable-kernel/tree/0a786b24c410abdf8b75983c6acb5dd59a247207)。当前工作树已有队列相关增量；第 12 节分别标记基线能力、已确认的兼容问题和目标契约。
 
 实施前须落实取消与核对适配、重试身份及四份配套协议，保留交互补参和操作台账，并完成跨边界组合回归。文档修订不等同于这些运行行为已经修复或验收。::@753a5dac-460c-4cbc-ae38-b1053e4ec8e3@
 

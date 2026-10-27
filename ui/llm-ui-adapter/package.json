@@ -97,13 +97,13 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/mushuanli/nestos.git",
+    "url": "https://github.com/mushuanli/NestOS.git",
     "directory": "ui/llm-ui-adapter"
   },
   "bugs": {
-    "url": "https://github.com/mushuanli/nestos/issues"
+    "url": "https://github.com/mushuanli/NestOS/issues"
   },
-  "homepage": "https://github.com/mushuanli/nestos/tree/main/ui/llm-ui#readme",
+  "homepage": "https://github.com/mushuanli/NestOS/tree/main/ui/llm-ui#readme",
   "engines": {
     "node": ">=16.0.0"
   },

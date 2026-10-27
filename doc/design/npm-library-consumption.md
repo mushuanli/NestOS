@@ -318,4 +318,4 @@ NestOS tarball SHA-256：`13c0612438baab7c17994014e7862fdc093ce004c3c85a708cc4ee
 npm publish 已退出码 0 接纳发布，注册表提示仍需处理数分钟；不因短暂不可见重复提交相同版本。
 此前 mindos 包名被 npm 以与 minio 过于相似为由拒绝；MindNest 仅作为候选准备过制品，没有发布。
 本次按用户要求不执行测试套件，仅完成发布所需的构建、打包、源输入/原生运行时检查及注册表状态查询。
-没有用新包启动生产服务，也没有重启现有 httpd。GitHub Pages 已部署，站点为 <https://mushuanli.github.io/nestos/>。
+没有用新包启动生产服务，也没有重启现有 httpd。GitHub Pages 已部署，站点为 <https://mushuanli.github.io/NestOS/>。

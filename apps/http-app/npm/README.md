@@ -83,7 +83,7 @@ nestos httpd --root /srv/nestos/data --cert-dir /srv/nestos-private/certs \
 - **项目与文件**：工作台导航、项目文件与会话、VFS 挂载；可连接独立的 nestos-node 来访问获准的远程项目，权限和元数据能力由远端协商。
 - **后台执行与恢复**：执行由服务端管理，SSE 推送界面变化；短暂断连尝试恢复，过期视图保留可恢复的编辑状态，不自动重放业务写入。
 
-本包发布的是 HTTP 工作台，不包含开发仓库的全部 CLI 子命令，也不是独立的 Rust `nestos-node` 远程文件服务。项目介绍与实现文档见 [GitHub](https://github.com/mushuanli/nestos/tree/main) 和 [HTTP 宿主文档](https://github.com/mushuanli/nestos/blob/main/doc/http-app.md)。
+本包发布的是 HTTP 工作台，不包含开发仓库的全部 CLI 子命令，也不是独立的 Rust `nestos-node` 远程文件服务。项目介绍与实现文档见 [GitHub](https://github.com/mushuanli/NestOS/tree/main) 和 [HTTP 宿主文档](https://github.com/mushuanli/NestOS/blob/main/doc/http-app.md)。
 
 ## 日志与升级
 

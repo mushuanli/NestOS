@@ -8,7 +8,6 @@ export async function createRecoverableFileEditor(factory: EditorFactory, panel:
     const store = new FileRecoveryStore(scope, options.target.path), original = options.initialContent ?? '';
     let draft: FileRecovery | undefined, unavailable = false;
     try { draft = await store.read(); } catch { unavailable = true; }
-    let path = options.target.path;
     const editor = await factory(panel, options);
     if (typeof editor.on !== 'function' || typeof editor.getText !== 'function') return editor;
     const recovery = new FileRecoveryBinding(editor, panel, store, scope, original, !!options.readOnly, draft, unavailable);
@@ -18,7 +17,7 @@ export async function createRecoverableFileEditor(factory: EditorFactory, panel:
         editor.suspendForRecovery = () => {editor.flushPendingSave = async () => {}; recovery.release();};
     }
     const rename = editor.updateNodeId?.bind(editor);
-    if (rename) editor.updateNodeId = next => {rename(next); path = next; recovery.move(next);};
+    if (rename) editor.updateNodeId = next => {rename(next); recovery.move(next);};
     const destroy = editor.destroy.bind(editor);
     editor.destroy = async () => { await destroy(); recovery.release(); };
     return editor;

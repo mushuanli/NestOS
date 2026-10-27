@@ -10,6 +10,7 @@ export function toolPlugin(): DagPlugin {
     return { manifest, runtime: async () => ({ createTask(context) {
         const config = context.config as Record<string, JsonValue>;
         return { programKind: 'kernel-adapters.tool', programVersion: '1', input: { toolId: config.toolId, toolVersion: config.toolVersion,
-            args: config.args, approval: config.approval ?? 'all', ...(config.timeoutMs === undefined ? {} : { timeoutMs: config.timeoutMs }) } };
+            args: config.args, inputs: context.inputs, dependencies: context.dependencies,
+            approval: config.approval ?? 'all', ...(config.timeoutMs === undefined ? {} : { timeoutMs: config.timeoutMs }) } };
     } }), ui: async () => ({ palette: { label: manifest.title, group: manifest.category }, node: { summarize: config => String((config as Record<string, unknown>).toolId ?? '') }, inspector: {} }) };
 }

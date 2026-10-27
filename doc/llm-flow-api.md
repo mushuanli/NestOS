@@ -457,6 +457,7 @@ FlowDraft/FlowRevision.variables 声明类型和 initial；FlowNodeDefinition.as
 ### 通用 Tool 与媒体 Connection 节点
 
 `builtin.tool@1.0.0` 指定 `toolId/toolVersion/args`，节点 `capabilities` 授权对应工具，
+可在任意阶段通过 `input` 数据端口接收上游的参数对象；静态 `inputs.input`、上游具名输出与 `config.args` 合并后冻结到工具 Task 状态。重复参数拒绝覆盖，非对象或缺失的具名输出明确失败；控制依赖不注入参数。所有输入就绪且能力绑定完成后才请求审批、执行工具，恢复不重复合并已消费的输出。
 通过 `kernel-adapters.tool@1` 调用既有 `tool.call`。默认持久审批；明确配置 `approval: none`
 可确定性执行。成功输出 `outputs.result.content` 为完整有界 JSON，并校验工具输出 Schema。
 原生工具可通过 `reconcile(args, context)` 核对同一 `operationId`；无核对能力的写操作

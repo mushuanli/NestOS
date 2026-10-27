@@ -61,19 +61,22 @@ export class ToolCallEffectAdapter implements EffectAdapter<ToolCallEffectReques
         const started = Date.now();
         try {
             const result = await this.invoke(request, context, admitOutput);
-            this.log.info('[tool.call] Execution settled', {operation: 'tool.call', stage: 'execute',
-                sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId,
-                toolId: request.toolId, result: result.success ? 'success' : 'failure',
-                errorCategory: result.success ? undefined : result.errorCode ?? 'TOOL_RESULT_FAILED', elapsedMs: Date.now() - started});
+            this.diagnostic(request, context, started, result.success ? 'success' : 'failure',
+                result.success ? undefined : result.errorCode ?? 'TOOL_RESULT_FAILED');
             return result;
         }
         catch (error) {
-            this.log.error('[tool.call] Execution failed', { sessionId: context.sessionId, taskId: context.taskId,
-                effectId: context.effectId, toolId: request.toolId, operation: 'tool.call', stage: 'execute', result: 'failure',
-                cancelled: context.abortSignal.aborted, elapsedMs: Date.now() - started,
-                errorCategory: context.abortSignal.aborted ? 'CANCELLED' : toolErrorCode(error) });
+            this.diagnostic(request, context, started, 'failure', context.abortSignal.aborted ? 'CANCELLED' : toolErrorCode(error));
             throw error;
         }
+    }
+
+    private diagnostic(request: ToolCallEffectRequest, context: EffectExecutionContext, started: number,
+        result: 'success' | 'failure', errorCategory?: string): void {
+        const data = {...toolIdentity(context), operation: 'tool.call', stage: 'execute', result,
+            toolId: request.toolId, cancelled: context.abortSignal.aborted, errorCategory, elapsedMs: Date.now() - started};
+        try {if (result === 'success') this.log.info('Tool execution settled', data); else this.log.error('Tool execution failed', data);}
+        catch { /* Diagnostics cannot change the outcome of an external side effect. */ }
     }
 
     private async invoke(request: ToolCallEffectRequest, context: EffectExecutionContext,

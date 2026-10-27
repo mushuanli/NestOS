@@ -1,5 +1,7 @@
 # 目标、进度与后续任务
 
+2026-10-28 Flow 工具入口增量：设计器增加「从工具获取输入」Schema 向导；`/tool`、`/mcp` 通过持久 Task 审批执行，提交前保存操作台账，未知回执重试复用身份，结果可作为 Flow 参数来源。CLI/YAML 支持 Tool/MCP/Harness 简写和整值参数绑定，宿主连接与临时模型配置分开；真实 stdio MCP 的无模型取数→保存、固定 Harness provider 的 Tool→Harness→Tool、DOM 表单及取消已验证。使用见[Flow 能力与输出](design/flow-capabilities-and-output.md)、[YAML DSL](run-definition.md#通用插件节点-dsl)。**外部 Harness 内部动态调用 NestOS 本地工具的 MCP 网关尚未实现**，当前编排传递材料与结果，原生执行器仍使用自身工具/MCP 配置；未执行真实原生执行器的新增端到端验收。
+
 2026-10-25 分支草稿增量：同分支保存核对已观察的持久基线，陈旧回执不清除另一视图的新输入；提供加载/替换决策，恢复不派发调用。独立 llm-ui 保持展示/输入控制职责，数据经宿主保存在 VFS/SessionRepository。见[设计边界](design/llm-ui-independent-module.md#展示输入控制与持久数据边界)与[合入计划第 11 节](design/functional-merge-plan.md#11-展示与存储边界草稿冲突闭环)。
 
 2026-10-25 台账并发增量：多视图操作记录按冻结身份和终态合并，通过 Session 原有修订原子条件写入，丢回复只读核对；Chat/Flow 不重复派发已知原操作。该批次留下的同分支草稿冲突由后续基线保护增量处理，见[合入计划第 10 节](design/functional-merge-plan.md#10-多视图台账合并增量)。

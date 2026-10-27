@@ -40,24 +40,30 @@ export function configuredToolCatalog(service: Pick<import('@itookit/tools/contr
 /** Explicit user calls still use the durable Program, approval and capability boundary. */
 export async function submitToolCommand(kernel: Pick<Kernel, 'openSession'>, ports: ToolCommandPorts, request: ToolCommandRequest): Promise<string> {
     const started = Date.now();
+    let stage = 'validate-input';
     try {
         if (!request.requestId?.trim() || !request.toolId?.trim() || !request.toolVersion?.trim()) throw failure('TOOL_COMMAND_IDENTITY_REQUIRED');
         if (!request.args || typeof request.args !== 'object' || Array.isArray(request.args)) throw failure('TOOL_COMMAND_ARGUMENTS_INVALID');
+        stage = 'session-lease';
         if (ports.prepareSession && !await ports.prepareSession(request.sessionId)) throw failure('TOOL_COMMAND_SESSION_READ_ONLY');
+        stage = 'prepare-tool';
         const scope = await ports.sessions.get(request.sessionId);
         await scope.prepareTools?.([request.toolId]);
+        stage = 'validate-tool';
         const meta = scope.toolService.getToolMeta(request.toolId);
         if (!meta?.enabled) throw failure('TOOL_COMMAND_UNAVAILABLE');
         if ((meta.version ?? '1') !== request.toolVersion) throw failure('TOOL_COMMAND_VERSION_UNAVAILABLE');
+        stage = 'submit-task';
         const task = await prepareToolTask(kernel, request);
-        if ((await task.status()).task.status !== 'created') return task.id;
+        if ((await task.status()).task.status !== 'created') {
+            reportCommand(request, started, 'receipt', 'success'); return task.id;
+        }
+        stage = 'bind-capabilities';
         await bindCapabilities(task, [{kind: 'tool', uri: 'tool://command', rights: ['execute'], signalKey: 'toolHandleId'}]);
-        logger.info('Tool command admitted', diagnostic(request, started, 'success'));
+        reportCommand(request, started, stage, 'success');
         return task.id;
     } catch (error) {
-        const code = (error as {code?: unknown})?.code;
-        logger.error('Tool command rejected', {...diagnostic(request, started, 'failure'),
-            errorCategory: typeof code === 'string' && /^[A-Z_]+$/.test(code) ? code : 'TOOL_COMMAND_ADMISSION_FAILED'});
+        reportCommand(request, started, stage, 'failure', error);
         throw error;
     }
 }
@@ -68,7 +74,11 @@ async function prepareToolTask(kernel: Pick<Kernel, 'openSession'>, request: Too
             allowedToolIds: [request.toolId], approval: 'all'}, labels: {command: 'tool', toolRequestId: request.requestId}});
 }
 function failure(code: string): Error {return Object.assign(new Error(code), {code});}
-function diagnostic(request: ToolCommandRequest, started: number, result: string) {
-    return {operation: 'tool.command', stage: 'admission', result, operationId: request.requestId,
-        sessionId: request.sessionId, toolId: request.toolId, elapsedMs: Date.now() - started};
+function reportCommand(request: ToolCommandRequest, started: number, stage: string, result: string, error?: unknown): void {
+    const code = (error as {code?: unknown})?.code;
+    const data = {operation: 'tool.command', stage, result, operationId: request.requestId,
+        sessionId: request.sessionId, toolId: request.toolId, elapsedMs: Date.now() - started,
+        errorCategory: error ? typeof code === 'string' && /^[A-Z_]{1,80}$/.test(code) ? code : 'TOOL_COMMAND_ADMISSION_FAILED' : undefined};
+    try {if (error) logger.error('Tool command rejected', data); else logger.info('Tool command admitted', data);}
+    catch { /* Logs cannot rewrite task admission or a persisted receipt. */ }
 }

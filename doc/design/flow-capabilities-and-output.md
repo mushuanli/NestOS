@@ -50,6 +50,8 @@ Skill 可通过工具绑定声明：
 
 适配器按显式工具列表发现并注册 MCP 工具，执行通过 Kernel `tool.call` Effect，沿用批准、取消和恢复机制；结果保留 MCP content 与 structuredContent，`isError` 转为失败。冷启动后重新发现所需工具，不依赖内存中的注册状态。
 
+MCP 注册使用通用 `outputEncoding: json` 声明：模型仍接收完整 JSON 文本，确定性 Flow 节点接收解码后的结果对象，避免二次编码使下游拿到字符串。处理器注册缺省版本统一为 `1`，与内置 Tool 的既有缺省版本一致；不把 MCP Server 自身版本冒充工具版本。YAML 运行仅隔离其模型 Provider/Connection，宿主 MCP、Skill 和 Harness 连接继续可引用。
+
 设备层使用 [MCP 官方 TypeScript SDK](https://github.com/modelcontextprotocol/typescript-sdk/blob/main/docs/client.md) 完成初始化、工具分页与传输。HTTP 使用 Streamable HTTP，另支持 SSE/WebSocket；stdio 仅 Node 宿主支持，浏览器入口明确拒绝 stdio。支持配置 headers、cwd、环境变量和 timeout，取消信号传递给 SDK。远端副作用是否已经发生，仍受远端服务契约约束。
 
 ### 其他 Skill 工具

@@ -66,7 +66,7 @@ export class MCPToolAdapter {
             + JSON.stringify(resource ? catalog.resources : catalog.prompts).slice(0, 16000);
         const parameters = resource ? { type: 'object', properties: { uri: { type: 'string' } }, required: ['uri'], additionalProperties: false }
             : { type: 'object', properties: { name: { type: 'string' }, args: { type: 'object', additionalProperties: { type: 'string' } } }, required: ['name'], additionalProperties: false };
-        service.registerTool({ id, name: id, description, type: 'mcp', sideEffect: 'external', timeoutMs: 30000, enabled: true },
+        service.registerTool({ id, name: id, description, type: 'mcp', outputEncoding: 'json', sideEffect: 'external', timeoutMs: 30000, enabled: true },
             { type: 'function', function: { name: id, description, parameters } }, async (args, context) => {
                 context.signal?.throwIfAborted();
                 const result = await this.session(server, device => this.driver.ioctl!(device,
@@ -88,7 +88,7 @@ export class MCPToolAdapter {
             if (!definition) throw new Error(`MCP tool not found: ${id}`);
             const named = definition.function ? { ...definition, function: { ...definition.function, name: id } } : { ...definition, name: id };
             service.registerTool({ id, name: id, description: String(definition.function?.description ?? definition.description ?? ''),
-                type: 'mcp', sideEffect: 'external', timeoutMs: 30000, enabled: true }, named,
+                type: 'mcp', outputEncoding: 'json', sideEffect: 'external', timeoutMs: 30000, enabled: true }, named,
             (args, context) => this.call(server, name, args, context));
         }
     }

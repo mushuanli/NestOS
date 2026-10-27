@@ -35,7 +35,7 @@ export class ToolProgram implements DurableTaskProgram<State, ToolProgramInput, 
         if (event.type === 'effect-failed') return { state: { ...state }, next: { type: 'fail', error: event.error } };
         if (event.type !== 'effect-completed' || event.effectId !== 'tool') return fail(state, 'Unexpected tool event');
         const result = event.result as ToolInvokeResult;
-        if (!result?.success || result.data === undefined) return fail(state, result?.error ?? 'Complete structured result required');
+        if (!result?.success || result.data === undefined) return fail(state, result?.error ?? 'Complete structured result required', result?.errorCode ?? 'TOOL_OUTPUT_MISSING');
         return { state: { ...state }, next: { type: 'complete', output: { outputs: { result: { outputName: 'result', type: 'json', content: result.data } } } } };
     }
 }

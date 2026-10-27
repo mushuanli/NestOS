@@ -54,6 +54,35 @@ async function savedRounds(root: string, sessionId: string) {
     } finally { await inspection.dispose(); }
 }
 
+it('runs a model-free YAML MCP input and output chain once', async () => {
+    const {root, requests} = await profile();
+    const file = path.join(root, 'tools.yaml');
+    await writeFile(file, `version: 1
+name: tool-chain
+goal: Collect and store material
+sandbox: { mode: native }
+tasks:
+  - id: fetch
+    mcp: { server: fixture, tool: lookup }
+    args: { essay: sample }
+    approval: none
+  - id: save
+    mcp: { server: fixture, tool: store }
+    input_argument: body
+    inputs:
+      input: \${tasks.fetch.outputs.result}
+    approval: none
+result: save
+`);
+    expect(await runCommand({file, profile: root, stateDir: root, json: true, headless: true})).toBe(0);
+    expect(requests).toEqual([]);
+    const calls = (await readFile(path.join(root, 'mcp-calls.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
+    expect(calls.map(call => call.name)).toEqual(['lookup', 'store']);
+    expect(calls[1].arguments.body.structuredContent).toEqual({score: 9});
+    const [run] = await new RunStore(root).list();
+    expect(run.status).toBe('succeeded');
+});
+
 it.each([[false, false, false], [true, false, false], [true, true, false], [false, false, true]])('CLI Flow calls MCP: Skill=%s, built CLI=%s, profile=%s', async (useSkill, built, useProfile) => {
     if (built) await promisify(execFile)('pnpm', ['build'], { timeout: 60000, maxBuffer: 2000000 });
     const { root, requests, save } = await profile();

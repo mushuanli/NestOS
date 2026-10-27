@@ -289,6 +289,7 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
   }
 
   registerTool(meta: ToolMeta, definition: ToolDefinition, handler: ToolHandler): void {
+    meta = {...meta, version: meta.version ?? '1'};
     const schema = definition.function?.parameters ?? definition.parameters ?? { type: 'object' };
     // Wrap a ToolHandler as a Tool adapter for backward compatibility.
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -304,13 +305,13 @@ export class ToolDeviceDriver implements IDeviceDriver, IToolService {
       isEnabled() { return meta.enabled; },
       async call(args: Record<string, unknown>, context: Record<string, unknown>) {
         const result = await handler(args, context as unknown as Parameters<typeof handler>[1]);
-        return { data: result };
+        return { data: meta.outputEncoding === 'json' ? JSON.parse(result) : result };
       },
       mapToolResultToToolResultBlockParam(data: unknown, toolUseId: string) {
         return {
           tool_use_id: toolUseId,
           type: 'tool_result' as const,
-          content: String(data),
+          content: typeof data === 'string' ? data : JSON.stringify(data),
         };
       },
     } as unknown as Tool;

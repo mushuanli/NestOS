@@ -64,14 +64,14 @@ export class ToolCallEffectAdapter implements EffectAdapter<ToolCallEffectReques
             this.log.info('[tool.call] Execution settled', {operation: 'tool.call', stage: 'execute',
                 sessionId: context.sessionId, taskId: context.taskId, effectId: context.effectId,
                 toolId: request.toolId, result: result.success ? 'success' : 'failure',
-                errorCategory: result.success ? undefined : 'TOOL_RESULT_FAILED', elapsedMs: Date.now() - started});
+                errorCategory: result.success ? undefined : result.errorCode ?? 'TOOL_RESULT_FAILED', elapsedMs: Date.now() - started});
             return result;
         }
         catch (error) {
             this.log.error('[tool.call] Execution failed', { sessionId: context.sessionId, taskId: context.taskId,
                 effectId: context.effectId, toolId: request.toolId, operation: 'tool.call', stage: 'execute', result: 'failure',
                 cancelled: context.abortSignal.aborted, elapsedMs: Date.now() - started,
-                errorCategory: context.abortSignal.aborted ? 'CANCELLED' : 'TOOL_INVOCATION_ERROR' });
+                errorCategory: context.abortSignal.aborted ? 'CANCELLED' : toolErrorCode(error) });
             throw error;
         }
     }
@@ -151,7 +151,14 @@ export class ToolCallEffectAdapter implements EffectAdapter<ToolCallEffectReques
 
 export function requireToolSuccess(result: ToolInvokeResult): ToolInvokeResult {
     if (result.success) return result;
-    throw new Error(result.error ?? result.output ?? `Tool failed: ${result.toolId}`);
+    throw Object.assign(new Error(result.error ?? result.output ?? `Tool failed: ${result.toolId}`), {code: result.errorCode ?? 'TOOL_RESULT_FAILED'});
+}
+
+function toolErrorCode(error: unknown): string {
+    const code = (error as {code?: unknown})?.code;
+    if (typeof code === 'string' && /^[A-Z][A-Z0-9_]{0,79}$/.test(code)) return code;
+    if (error instanceof SyntaxError) return 'TOOL_OUTPUT_JSON_INVALID';
+    return 'TOOL_INVOCATION_ERROR';
 }
 
 function toolIdentity(context: EffectExecutionContext) {

@@ -154,7 +154,9 @@ export async function createCliRuntime(
     if (readOnly && (workflow.config.sandbox?.mode ?? 'oci') !== 'oci') throw new Error('read-only workspace requires OCI isolation');
     const root = vfsRoot ?? path.join(workflow.stateDir, 'runtime', 'vfs');
     const sidecarDir = vfsRoot ? path.join(vfsRoot, '_meta') : path.join(workflow.stateDir, 'runtime', 'meta');
-    const additionalMounts = hostOptions.useProfileConfig ? [] : [{ path: '/etc', backend: new MemoryBackend() }];
+    // YAML model definitions are ephemeral; MCP, Skills and Harness grants remain host-owned.
+    const additionalMounts = hostOptions.useProfileConfig ? [] : ['/etc/llm/.providers', '/etc/llm/.connections']
+        .map(path => ({path, backend: new MemoryBackend()}));
     const { manager: vfs } = await openCliVfs(root, sidecarDir, additionalMounts);
     const remoteProvider = createNestOSNodeDriver(ref => process.env[`NESTOS_REMOTE_${ref.replace(/-/g, '_')}`] ?? '');
     let remoteConnections: ProjectRemoteMountService | undefined;

@@ -29,6 +29,8 @@ it('exposes only authorized server capabilities, validates arguments and forward
         expect((await tools.invoke({ toolId: ids[1], args: { uri: 42 } })).success).toBe(false);
         const onProgress = vi.fn(async () => {});
         expect((await tools.invoke({ toolId: ids[0], args: {}, onProgress })).success).toBe(true);
+        const structured = await tools.invoke({toolId: ids[0], toolVersion: '1', args: {}, resultMode: 'structured'});
+        expect(structured.data).toEqual({content: [{type: 'text', text: 'TOOL'}]});
         expect(onProgress).toHaveBeenCalledWith(expect.objectContaining({ message: 'Looking up (1/2)' }));
         expect((await tools.invoke({ toolId: mcpResourceToolId('unselected'), args: { uri: 'test://resource' } })).success).toBe(false);
         expect(close).toHaveBeenCalled();

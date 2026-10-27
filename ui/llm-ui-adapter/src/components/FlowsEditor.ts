@@ -24,7 +24,7 @@ export interface FlowsEditorDeps {
     listConnections?: () => Promise<Array<{ id: string; name: string }>>;
     listAgents?: () => Promise<Array<{ id: string; name: string; description?: string }>>;
     listSystemPrompts?: () => Promise<Array<{ id: string; name: string; description?: string }>>;
-    listTools?: () => Promise<Array<{ id: string; name: string; description?: string }>>;
+    listTools?: () => Promise<import('./dag/FlowSettingsDialog').EntityOption[]>;
     listSkills?: () => Promise<Array<{ id: string; name: string; description?: string }>>;
 }
 

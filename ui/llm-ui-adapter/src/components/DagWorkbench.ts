@@ -23,6 +23,7 @@ import { openFlowSettings } from './dag/FlowSettingsDialog';
 import type { EntityOption } from './dag/FlowSettingsDialog';
 import { FlowRunParameters } from './dag/FlowRunParameters';
 import type { FlowRunInput } from '../flows/run-flow';
+import {promptToolCall} from '../flows/tool-call-form';
 
 export interface DagWorkbenchOptions {
     readOnly?: boolean;
@@ -58,6 +59,7 @@ export class DagWorkbench {
     private parameterPanel?: FlowRunParameters;
     private inspectorMode: 'parameters' | 'edit' = 'parameters';
     private preparingRun = false;
+    private toolDialog?: AbortController;
     private readonly artifacts: TaskArtifactBrowser;
 
     constructor(
@@ -137,11 +139,12 @@ export class DagWorkbench {
 
     setVisible(visible: boolean): void {
         this.visible = visible; this.artifacts.setVisible(visible);
-        if (!visible) {this.viewRequest++; this.stopRunRefresh();}
+        if (!visible) {this.viewRequest++; this.stopRunRefresh(); this.toolDialog?.abort();}
         else if (this.mode === 'run' && this.run) void this.refreshRun(this.run.root.task.id);
     }
 
     destroy(): void {
+        this.toolDialog?.abort();
         this.artifacts.dispose();
         this.viewRequest++;
         this.parameterPanel?.destroy();
@@ -175,6 +178,7 @@ export class DagWorkbench {
             <strong class="dag-toolbar__name" title="${escapeHTML(draft?.name ?? '')}">${escapeHTML(draft?.name ?? t('flow.toolbar.noSelection'))}</strong>
             <button data-action="runs">${escapeHTML(t('flow.runs.title'))}</button>
             <select data-action="add-kind" aria-label="${escapeHTML(t('flow.toolbar.addNode'))}" ${draft ? '' : 'disabled'}><option value="">${escapeHTML(t('flow.toolbar.addNode'))}</option>${addOptions}</select>
+            <button data-action="tool-source" ${draft && this.options.listTools ? '' : 'disabled'}>${escapeHTML(t('flow.tool.addSource'))}</button>
             <button data-action="undo" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.undo'))}</button>
             <button data-action="redo" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.redo'))}</button>
             <button data-action="layout" ${draft ? '' : 'disabled'}>${escapeHTML(t('flow.toolbar.layout'))}</button>
@@ -396,6 +400,7 @@ export class DagWorkbench {
             });
         const actions: Record<string, () => void> = {
             runs: () => openRunPicker(this.options.commands, run => this.openRun(run.taskId, run.sessionId)),
+            'tool-source': () => void this.addToolSource(),
             undo: () => this.changeHistory('undo'),
             redo: () => this.changeHistory('redo'),
             layout: () => this.autoLayout(),
@@ -409,6 +414,25 @@ export class DagWorkbench {
         for (const [action, callback] of Object.entries(actions)) {
             this.root.querySelector(`[data-action="${action}"]`)?.addEventListener('click', callback);
         }
+    }
+
+    private async addToolSource(): Promise<void> {
+        const controller = this.controller, targetId = this.selectedNodeId;
+        if (!controller || !this.options.listTools || this.toolDialog) return;
+        const dialog = this.toolDialog = new AbortController();
+        try {
+            const tools = await this.options.listTools();
+            if (dialog.signal.aborted || this.controller !== controller) return;
+            const value = await promptToolCall(tools, {signal: dialog.signal});
+            if (!value || dialog.signal.aborted || this.controller !== controller) return;
+            const target = controller.value.nodes.find(node => node.id === targetId);
+            const acceptsInput = target && this.findDescriptor(target)?.inputs.some(port => port.name === 'input');
+            const descriptor = this.catalogue.find(item => item.manifest.id === 'builtin.tool')?.manifest;
+            if (!descriptor) throw new Error(t('flow.tool.unavailable'));
+            this.selectedNodeId = controller.addToolSource(descriptor, value, acceptsInput ? target.id : undefined).id;
+            this.inspectorMode = 'edit'; this.render();
+        } catch (error) {if (!dialog.signal.aborted) Toast.error(error instanceof Error ? error.message : String(error));}
+        finally {if (this.toolDialog === dialog) this.toolDialog = undefined;}
     }
 
     private bindEdgeActions(root: HTMLElement): void {

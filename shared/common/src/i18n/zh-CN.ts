@@ -5,6 +5,14 @@
 // Interpolation syntax:   {param}  e.g. '已导入 {count} 个 Skill'
 
 export const zhCN = {
+    'flow.tool.title': '选择工具与参数',
+    'flow.tool.search': '搜索工具或 MCP 服务',
+    'flow.tool.select': '工具',
+    'flow.tool.local': '本地工具',
+    'flow.tool.deferred': '确认只保存工具选择；实际调用在提交任务后执行，并按任务规则审批。',
+    'flow.tool.required': '请选择可用工具并填写参数。',
+    'flow.tool.unavailable': '当前宿主未提供工具执行节点。',
+    'flow.tool.addSource': '从工具获取输入',
     'modelDefaults.button': '默认模型',
     'modelDefaults.default': '默认',
     'modelDefaults.badge': '默认：{purpose}',

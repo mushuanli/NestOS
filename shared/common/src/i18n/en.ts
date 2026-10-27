@@ -4,6 +4,14 @@
 import type { LocaleStrings } from './zh-CN';
 
 export const en: LocaleStrings = {
+    'flow.tool.title': 'Choose a tool and arguments',
+    'flow.tool.search': 'Search tools or MCP servers',
+    'flow.tool.select': 'Tool',
+    'flow.tool.local': 'Local tool',
+    'flow.tool.deferred': 'Confirming saves the selection. Calls execute after task submission and follow task approval rules.',
+    'flow.tool.required': 'Choose an available tool and provide its arguments.',
+    'flow.tool.unavailable': 'This host does not provide tool execution nodes.',
+    'flow.tool.addSource': 'Get input from a tool',
     'modelDefaults.button': 'Model defaults',
     'modelDefaults.default': 'Default',
     'modelDefaults.badge': 'Default: {purpose}',

@@ -175,7 +175,9 @@ export async function initApp(options: AppOptions): Promise<AppHandle> {
             const id = definition.function?.name ?? definition.name ?? '';
             const rawDescription = definition.function?.description ?? definition.description;
             const description = typeof rawDescription === 'string' ? rawDescription : undefined;
-            return { id, name: id, ...(description ? { description } : {}) };
+            const parameters = definition.function?.parameters ?? definition.parameters;
+            return { id, name: id, ...(description ? { description } : {}),
+                ...(parameters && typeof parameters === 'object' ? {parameters: parameters as Record<string, unknown>} : {}) };
         }).filter(tool => Boolean(tool.id)),
         listSkills: async () => (await agentService.getSkills()).map(skill => ({ id: skill.id, name: skill.name, description: skill.description })),
     });

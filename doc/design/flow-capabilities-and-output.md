@@ -27,6 +27,8 @@ History 展示交互而不展开 DAG：输入节点与补充输入显示为 user
 
 ## 节点工具与 Skill
 
+设计器工具栏「从工具获取输入」提供工具/MCP 搜索与 Schema 参数表单。确认只新增普通 `builtin.tool` 节点；已选节点具有 `input` 端口时，同一次可撤销编辑添加 `result → input` 数据边。打开与取消表单不执行工具；运行后仍按 Task 审批、授权及持久恢复。节点可在图中移动到开始、中间或结束阶段。
+
 UI 与 CLI 复用 [createFlowCapabilities](../../backend/app-core/src/runtime/flow-capabilities.ts)，在 Session 创建后装配节点的 `config.toolIds` 和 `config.skillIds`。动态派发子任务也经过身份绑定、Skill 选择和工具白名单校验。缺失或禁用的工具、不可供模型使用的 Skill 会明确报错。
 
 隔离 history 只移除消息、记忆及父会话上下文；显式选择的 Skill 指令和持久快照仍保留。宿主可注入 Agent/SystemPrompt 引用解析器；CLI 默认不提供实体引用解析，引用未接入的实体会报错，内联 system prompt 可直接使用。

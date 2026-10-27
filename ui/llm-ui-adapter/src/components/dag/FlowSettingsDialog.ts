@@ -23,7 +23,7 @@ export interface FlowSettingsOptions {
     skills?: EntityOption[];
 }
 
-export interface EntityOption { id: string; name: string; description?: string }
+export interface EntityOption { id: string; name: string; description?: string; parameters?: Record<string, unknown>; version?: string }
 
 export interface FlowSettingsResult {
     exposure?: import('@itookit/llm-flow/contracts').CallableExposure;

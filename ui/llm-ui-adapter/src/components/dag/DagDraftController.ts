@@ -48,6 +48,23 @@ export class DagDraftController {
         });
     }
 
+    /** One undo step owns both the input producer and its explicit data edge. */
+    addToolSource(descriptor: DagPluginManifest, value: {toolId: string; toolVersion: string; args: Record<string, import('@itookit/llm-flow/contracts').JsonValue>}, targetId?: FlowNodeId): FlowNodeDefinition {
+        const node = createFlowNode(descriptor);
+        node.name = value.toolId;
+        node.config = {...value, approval: 'all'};
+        node.capabilities = [value.toolId];
+        this.change(draft => {
+            const target = targetId ? draft.nodes.find(item => item.id === targetId) : undefined;
+            if (targetId && !target) throw new Error('Tool input target no longer exists');
+            draft.nodes.push(node);
+            const position = target ? draft.layout.nodes?.[target.id] : undefined;
+            draft.layout.nodes = {...draft.layout.nodes, [node.id]: {x: (position?.x ?? 300) - 260, y: position?.y ?? 80}};
+            if (target) draft.edges.push(createFlowEdge(node, target, 'data', {output: 'result', input: 'input'}));
+        });
+        return clone(node);
+    }
+
     duplicateNode(nodeId: FlowNodeId): FlowNodeDefinition {
         const source = this.requireNode(nodeId);
         const copy = { ...clone(source), id: uniqueId('node'), name: `${source.name} Copy` };

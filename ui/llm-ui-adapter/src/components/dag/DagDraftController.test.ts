@@ -19,6 +19,17 @@ function draft(): FlowDraft {
 }
 
 describe('DagDraftController', () => {
+    it('adds a tool input and its data edge as one undoable change', () => {
+        const controller = new DagDraftController(draft());
+        const target = controller.addNode(manifests()[0]);
+        const descriptor = {...manifests()[0], id: 'builtin.tool', kind: 'tool'} as DagPluginManifest;
+        const source = controller.addToolSource(descriptor, {toolId: 'mcp__knowledge__search', toolVersion: '1', args: {query: 'recent'}}, target.id);
+        expect(controller.value.edges).toContainEqual(expect.objectContaining({from: source.id, to: target.id, input: 'input', output: 'result'}));
+        expect(source.capabilities).toEqual(['mcp__knowledge__search']);
+        controller.undo();
+        expect(controller.value.nodes).toEqual([target]);
+        expect(controller.value.edges).toEqual([]);
+    });
     it('creates all six built-in nodes from serializable manifests', () => {
         const controller = new DagDraftController(draft());
         manifests().forEach(item => controller.addNode(item));

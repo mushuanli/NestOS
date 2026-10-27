@@ -43,8 +43,8 @@
         "test:tooling": "node --test scripts/tests/*.test.mjs",
         "lib:build": "node scripts/local-libraries.mjs build",
         "cli:built": "node apps/cli/dist/cli.js",
-        "mindos:pack": "node scripts/release-mindos.mjs prepare",
-        "mindos:publish": "node scripts/release-mindos.mjs publish"
+        "mindnest:pack": "node scripts/release-mindnest.mjs prepare",
+        "mindnest:publish": "node scripts/release-mindnest.mjs publish"
     },
     "keywords": [],
     "author": "lizlok@gmail.com",

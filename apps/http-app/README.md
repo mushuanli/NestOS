@@ -12,22 +12,22 @@ Browser + client certificate + shared AppShell
 
 ## npm 安装与启动
 
-发布包名为 `mindos`，首次版本 `0.1.0`，包含完整网页和服务端；无需克隆开发仓库。
+发布包名为 `mindnest`，首次版本 `0.1.0`，包含完整网页和服务端；无需克隆开发仓库。
 
 ```bash
-npm install -g mindos@0.1.0
-mindos init-certs --cert-host 192.168.31.10
-mindos httpd
+npm install -g mindnest@0.1.0
+mindnest init-certs --cert-host 192.168.31.10
+mindnest httpd
 ```
 
 导入生成的 CA 和浏览器个人证书后，打开 `https://192.168.31.10:2000`。
-已有可用证书时跳过初始化。`mindos`、`mindos start` 与 `mindos httpd` 等价；`mindos --help` 查看参数。
+已有可用证书时跳过初始化。`mindnest`、`mindnest start` 与 `mindnest httpd` 等价；`mindnest --help` 查看参数。
 配置目录、数据根和 mTLS 规则与源码宿主一致；认证配置使用 release 子目录。
 运行信息输出到前台，默认审计写入配置目录 `logs/http/httpd-release-audit.jsonl`，不是仓库脚本的 `/var/log/mindos/`。
 详细安装、功能、配置、备份与升级见 [npm 包说明](./npm/README.md)。
 
-开发者用 `pnpm mindos:pack` 通过既有隔离 HTTP release 流程准备 npm tarball，
-再用 `pnpm mindos:publish` 发布已准备制品。原生依赖由安装目标系统安装，包内不携带宿主 node_modules、证书或用户数据。
+开发者用 `pnpm mindnest:pack` 通过既有隔离 HTTP release 流程准备 npm tarball，
+再用 `pnpm mindnest:publish` 发布已准备制品。原生依赖由安装目标系统安装，包内不携带宿主 node_modules、证书或用户数据。
 该流程不启动或重启现有 httpd，也不改变 `release/httpd/current.json`。
 
 ## 源码宿主
